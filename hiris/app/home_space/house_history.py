@@ -23,8 +23,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from itertools import pairwise
 
+from ..proxy.entity_cache import VALUES
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
 from .historian import day_boundaries, home_space_zone, instant_epoch
@@ -433,29 +433,26 @@ def _covered_since(idents: list[str], series: dict, start_ts: float) -> float:
 
 
 def _declare_gaps(out: dict, idents: list[str], series: dict, *, truncated: bool,
-                  query: HistoryQuery, late_slack: float | None = None) -> None:
+                  query: HistoryQuery) -> None:
     """Cio' che la risposta non copre: i soggetti MOSTRATI senza registrazioni
     (nella corta solo la pagina -- 250 identificatori fuori pagina
     sfonderebbero la soglia del ponte), e la finestra tagliata da Home
     Assistant, con `da` spostato dove i dati cominciano davvero e la domanda
     in `chiesta_da`.
 
-    `late_slack` (i valori, Task 4, 30/09/2026): anche SENZA taglio la
-    finestra si accorcia se i dati cominciano piu' di tanto dopo l'inizio
-    chiesto: prima non c'e' registrazione (Home Assistant non conserva cosi'
-    indietro, o la serie e' nata dopo), e 90 giorni chiesti a chi ne conserva
-    10 sono 10 giorni. Le fasce orarie cominciano all'ora piena: lo scarto
-    dice quanto ritardo non e' ancora una finestra piu' corta."""
+    SOLO il taglio sposta la finestra di tutti (revisione del Task 4,
+    30/09/2026): una serie nata dentro la finestra lo dice sulla SUA riga
+    (`dal`, nei valori), e i suoi conti partono da li'. Spostare la finestra
+    di tutte per una sola contraddiceva i conti delle altre, calcolati
+    dall'inizio chiesto."""
     missing = [i for i in idents if not series.get(i)]
     if missing:
         out["nessuna_registrazione"] = {"soggetti": missing, "perche": _NO_RECORDING}
-    start_ts = query.start.timestamp()
-    covered = _covered_since(idents, series, start_ts)
-    late = late_slack is not None and covered > start_ts + late_slack
-    if truncated or late:
+    if truncated:
+        start_ts = query.start.timestamp()
+        covered = _covered_since(idents, series, start_ts)
         out["finestra"]["chiesta_da"] = out["finestra"]["da"]
         out["finestra"]["da"] = _local(covered, query.start.tzinfo)
-    if truncated:
         out["finestra"]["troncata"] = _TRUNCATED
 
 
@@ -531,11 +528,19 @@ DETAIL_MAX_HOURS = 24
 COUNTED = "calcolati da HIRIS sulla finestra"
 #: Le serie che hanno un consumato (spec §3): i contatori.
 _COUNTERS = frozenset({"total", "total_increasing"})
-#: La prima fascia oraria comincia all'ora piena: un'ora di scarto non e' una
-#: finestra piu' corta.
+#: La prima fascia oraria comincia all'ora piena: una serie a fasce che
+#: parte entro un'ora dall'inizio chiesto non e' nata dopo.
 _COVERAGE_SLACK_S = 3600
 _UNREADABLE_BAND = ("Home Assistant ha mandato fasce orarie con un inizio che non si "
                     "legge come istante col fuso: non le leggo, per non leggerle male")
+#: Revisione del Task 4 (30/09/2026): `HAClient.history` chiede
+#: `minimal_response&no_attributes`, quindi nei punti `last_reset` non c'e'
+#: e i cicli di un `total` non si vedono. Il consumato si prende allora dal
+#: `cambio` delle fasce di Home Assistant, che i cicli li conta.
+_CYCLES_UNSEEN = ("questo contatore riparte a ogni ciclo (ha last_reset) e i punti "
+                  "dei cambi non dicono quando: il consumato non lo calcolo -- "
+                  "chiedi una finestra di piu' di 24 ore, dove e' il cambio orario "
+                  "di Home Assistant")
 
 
 def value_surface(query: HistoryQuery, state_class: str | None) -> str:
@@ -564,66 +569,110 @@ def _round(value: float) -> float:
     return round(value, 3)
 
 
-def _time_mean(numeric: list[tuple[float, float]], end_ts: float) -> float:
-    """La media pesata sul tempo: ogni valore vale fino al successivo, l'ultimo
-    fino alla fine della finestra. Una media dei punti conterebbe dieci volte
-    un sensore che cambia dieci volte in un'ora (decisione del piano,
-    30/09/2026). Tutto in secondi dall'epoch: il giorno del cambio d'ora ha
-    25 ore vere, e l'ora del muro ne conterebbe 24 (la lezione del Task 2)."""
-    total = weight = 0.0
-    for index, (since, value) in enumerate(numeric):
-        until = numeric[index + 1][0] if index + 1 < len(numeric) else end_ts
+def _time_mean(timeline: list[tuple[float, float | None]],
+               end_ts: float) -> tuple[float, float]:
+    """(media pesata sul tempo, secondi senza valore). Ogni punto vale fino al
+    punto SUCCESSIVO, di qualunque stato, l'ultimo fino alla fine della
+    finestra. Una media dei punti conterebbe dieci volte un sensore che cambia
+    dieci volte in un'ora (decisione del piano, 30/09/2026).
+
+    Il tempo di un punto non numerico (`unavailable`, `unknown`) esce dal
+    peso e si conta a parte (revisione del Task 4, 30/09/2026): nella prima
+    forma valeva per il numero di prima, e [10, unavailable per 20 ore, 20]
+    dava 10,8 invece di 15 -- venti ore di un 10 mai misurato.
+
+    Tutto in secondi dall'epoch: il giorno del cambio d'ora ha 25 ore vere, e
+    l'ora del muro ne conterebbe 24 (la lezione del Task 2)."""
+    total = weight = blank = 0.0
+    for index, (since, value) in enumerate(timeline):
+        until = timeline[index + 1][0] if index + 1 < len(timeline) else end_ts
         span = max(0.0, until - since)
+        if value is None:
+            blank += span
+            continue
         total += value * span
         weight += span
     if weight == 0:
-        return sum(value for _when, value in numeric) / len(numeric)
-    return total / weight
+        numbers = [value for _when, value in timeline if value is not None]
+        return sum(numbers) / len(numbers), blank
+    return total / weight, blank
 
 
 def _consumed(values: list[float], state_class: str) -> float:
-    """`total`: la differenza netta. `total_increasing`: la somma dei salti in
-    su, e un salto in giu' e' un azzeramento -- il nuovo valore e' cio' che si
-    e' consumato dopo (come Home Assistant conta le sue statistiche). Cosi'
-    «energia consumata oggi» chiesta da ieri somma i due giorni (Review
-    Focus 2): mai il solo ultimo giorno, mai un numero negativo."""
+    """Il consumato come lo conta Home Assistant nelle sue statistiche
+    (`homeassistant/components/sensor/recorder.py`, tag `2026.9.0`, letto il
+    30/09/2026 -- la prima forma di questa funzione diceva di farlo, e non lo
+    faceva):
+
+    - `total` senza `last_reset`: la somma parte dal primo stato e non si
+      azzera mai (righe 771-777 e 818) -- ultimo meno primo;
+    - `total_increasing`: `reset_detected` (righe 475-493) dice azzeramento
+      SOLO se il nuovo valore e' sotto il 90% del precedente. Un calo fra il
+      90% e il 100% non e' un azzeramento: entra nella somma col suo segno
+      (486-488 avvisano soltanto, 818 somma). Un valore NEGATIVO solleva
+      `HomeAssistantError` e il ciclo lo salta (`continue`, 795-796): non
+      si trasforma in zero. A un azzeramento si chiude il ciclo
+      (`_sum += new_state - old_state`, 801) e il nuovo riparte da 0 (807).
+
+    Cosi' «energia consumata oggi» chiesta da ieri somma i due giorni (Review
+    Focus 2), e un contatore che trema non diventa un milione di azzeramenti:
+    [100, 101, 100,5, 102] e' 2, non 103."""
     if state_class == "total":
         return values[-1] - values[0]
     used = 0.0
-    for before, after in pairwise(values):
-        used += after - before if after >= before else max(0.0, after)
-    return used
+    cycle_start = previous = None
+    for value in values:
+        if value < 0:
+            continue
+        if previous is None:
+            cycle_start = previous = value
+            continue
+        if value < 0.9 * previous:
+            used += previous - cycle_start
+            cycle_start = 0.0
+        previous = value
+    return used if previous is None else used + previous - cycle_start
 
 
 def _detail_counts(points: list[dict], state_class, start_ts: float,
-                   end_ts: float) -> dict | None:
+                   end_ts: float, *, cycles_unseen: bool) -> dict | None:
     """I conti di una serie di cambi veri, sulla serie INTERA (ruling P3,
-    30/09/2026: il campione della completa puo' saltare il picco)."""
-    numeric = []
+    30/09/2026: il campione della completa puo' saltare il picco). Il tempo
+    senza un numero si dichiara in `ore_senza_valore`; una serie nata dopo
+    l'inizio conta dal suo primo punto (`dal` sulla riga)."""
+    timeline = []
     for point in points:
-        epoch, value = _epoch(point.get("quando")), _number(point.get("valore"))
-        if epoch is not None and value is not None:
-            numeric.append((max(epoch, start_ts), value))
-    if not numeric:
+        epoch = _epoch(point.get("quando"))
+        if epoch is not None:
+            timeline.append((max(epoch, start_ts), _number(point.get("valore"))))
+    values = [value for _when, value in timeline if value is not None]
+    if not values:
         return None
-    values = [value for _when, value in numeric]
+    mean, blank = _time_mean(timeline, end_ts)
     counts = {"primo": values[0], "ultimo": values[-1], "minimo": min(values),
-              "massimo": max(values), "media": _round(_time_mean(numeric, end_ts))}
+              "massimo": max(values), "media": _round(mean)}
+    if blank > 0:
+        counts["ore_senza_valore"] = _round(blank / 3600)
     if state_class in _COUNTERS:
-        counts["consumato"] = _round(_consumed(values, state_class))
+        if cycles_unseen:
+            counts["consumato_non_calcolato"] = _CYCLES_UNSEEN
+        else:
+            counts["consumato"] = _round(_consumed(values, state_class))
     return counts
 
 
 def _band_counts(bands: list[dict], state_class) -> dict | None:
     """I conti dalle fasce. Un contatore ha `stato` (a fine ora) e `cambio`
-    (gia' corretto per gli azzeramenti, misurato il 27/08/2026); una misura
-    ha `media`, `minimo`, `massimo` di ogni ora -- ore di peso uguale."""
+    (gia' corretto per gli azzeramenti, misurato il 27/08/2026) e NESSUNA
+    media: la media delle letture di fine ora di un contatore non dice niente
+    (revisione del Task 4, 30/09/2026). Una misura ha `media`, `minimo`,
+    `massimo` di ogni ora -- ore di peso uguale."""
     if state_class in _COUNTERS:
         states = [x for x in (_number(b.get("stato")) for b in bands) if x is not None]
         if not states:
             return None
         counts = {"primo": states[0], "ultimo": states[-1], "minimo": min(states),
-                  "massimo": max(states), "media": _round(sum(states) / len(states))}
+                  "massimo": max(states)}
         changes = [x for x in (_number(b.get("cambio")) for b in bands) if x is not None]
         if changes:
             counts["consumato"] = _round(sum(changes))
@@ -672,12 +721,31 @@ def _in_zone(point: dict, keys: tuple[str, ...], zone) -> dict:
     return {**point, **{key: _local(point.get(key), zone) for key in keys if key in point}}
 
 
+def _born_since(points: list[dict], key: str, start_ts: float,
+                slack: float) -> float | None:
+    """Il primo istante di una serie che comincia DOPO l'inizio chiesto (oltre
+    lo scarto), o `None`. Lo storico di Home Assistant apre ogni serie con lo
+    stato all'inizio della finestra: se il primo punto viene dopo, prima non
+    c'era registrazione (nata dopo, o gia' cancellata) -- o Home Assistant ha
+    tagliato la testa, e allora lo dice anche `finestra`."""
+    firsts = [epoch for epoch in (_epoch(p.get(key)) for p in points) if epoch is not None]
+    if firsts and min(firsts) > start_ts + slack:
+        return min(firsts)
+    return None
+
+
+#: Lo stato d'inizio dello storico porta l'istante chiesto: un secondo di
+#: scarto copre l'arrotondamento dell'ISO, non una serie nata dopo.
+_DETAIL_SLACK_S = 1
+
+
 def _value_row(s: Subject, query: HistoryQuery, depth: str, *, surface: str,
                detail: list[dict], bands: list[dict], unit: str | None,
-               state_class) -> tuple[dict, list[dict], float | None]:
+               state_class, cycles_unseen: bool) -> tuple[dict, list[dict], float | None]:
     """(riga, punti letti, ultima attivita' nella finestra) di UNA serie. I
     punti vuoti dicono «nessuna registrazione»; una riga con `errore` ha
-    punti ma illeggibili."""
+    punti ma illeggibili. Una serie nata dentro la finestra porta `dal` e i
+    suoi conti partono da li' (revisione del Task 4, 30/09/2026)."""
     zone = query.start.tzinfo
     start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
     row: dict = {"id": s.ident, "nome": s.name}
@@ -687,6 +755,7 @@ def _value_row(s: Subject, query: HistoryQuery, depth: str, *, surface: str,
         points = bands
         if any(_epoch(p.get("inizio")) is None for p in points):
             return {**row, "errore": _UNREADABLE_BAND}, points, None
+        born = _born_since(points, "inizio", start_ts, _COVERAGE_SLACK_S)
         counts = _band_counts(points, state_class)
         activity = _band_activity(points)
         keys: tuple[str, ...] = ("inizio", "fine")
@@ -694,10 +763,14 @@ def _value_row(s: Subject, query: HistoryQuery, depth: str, *, surface: str,
         # Il valore passa da `redact_state` PRIMA di ogni conto e di ogni
         # punto: la serie di una persona e' fatta di zone (spec §5).
         points = [{**p, "valore": redact_state(s.ident, p.get("valore"))} for p in detail]
-        counts = _detail_counts(points, state_class, start_ts, end_ts)
+        born = _born_since(points, "quando", start_ts, _DETAIL_SLACK_S)
+        counts = _detail_counts(points, state_class, start_ts, end_ts,
+                                cycles_unseen=cycles_unseen)
         mine = _changes(s.ident, detail, start_ts)
         activity = mine[-1][1] if mine else None
         keys = ("quando",)
+    if born is not None:
+        row["dal"] = _local(born, zone)
     if counts:
         row.update(counts)
         row["conti"] = COUNTED
@@ -713,7 +786,8 @@ def _value_row(s: Subject, query: HistoryQuery, depth: str, *, surface: str,
 
 def value_rows(query: HistoryQuery, chosen: Chosen, *, detail: dict[str, list[dict]],
                bands: dict[str, list[dict]], truncated: bool, surfaces: dict[str, str],
-               units: dict[str, str], state_classes: dict[str, str | None]) -> dict:
+               units: dict[str, str], state_classes: dict[str, str | None],
+               attributes: dict[str, dict]) -> dict:
     """I valori (spec §3): per ogni serie i conti di HIRIS, dichiarati
     (decisione 2, solo per i numeri); nella completa anche la serie, al piu'
     `ROWS_MAX` punti distribuiti nel tempo, coi conti della serie INTERA
@@ -723,16 +797,24 @@ def value_rows(query: HistoryQuery, chosen: Chosen, *, detail: dict[str, list[di
     TUTTE le serie, si ordinano per cio' che e' successo nella finestra
     (`_activity`), e solo poi si impagina (`_page`); chi non ha
     registrazioni sta in fondo e si nomina nella SUA pagina, non in `voci`.
-    `finestra` e' cio' che i dati coprono davvero (`_declare_gaps`)."""
+    `finestra` si sposta solo per il taglio di Home Assistant
+    (`_declare_gaps`); una serie nata dopo lo dice con `dal`.
+
+    `attributes` sono gli attributi ADESSO di ogni entita', nelle ceste dello
+    specchio (`mirror[5]`): servono a sapere se un `total` ha `last_reset`,
+    che i punti dello storico non portano (revisione del Task 4)."""
     out = _frame(query, chosen)
     ranked = []
     firsts: dict[str, list[dict]] = {}
     for s in chosen.subjects:
         surface = surfaces[s.ident]
+        state_class = state_classes.get(s.ident)
+        declared = (attributes.get(s.ident) or {}).get(VALUES) or {}
         row, points, activity = _value_row(
             s, query, chosen.depth, surface=surface, detail=detail.get(s.ident) or [],
             bands=bands.get(s.ident) or [], unit=units.get(s.ident),
-            state_class=state_classes.get(s.ident))
+            state_class=state_class,
+            cycles_unseen=state_class == "total" and bool(declared.get("last_reset")))
         if points:
             # Il primo istante di ogni serie, nella forma che `_covered_since`
             # legge: le fasce lo hanno in `inizio`, i cambi in `quando`.
@@ -752,6 +834,5 @@ def value_rows(query: HistoryQuery, chosen: Chosen, *, detail: dict[str, list[di
         out["grana"] = grains.pop()
     if beyond:
         out["oltre"] = _oltre(beyond)
-    _declare_gaps(out, shown, firsts, truncated=truncated, query=query,
-                  late_slack=_COVERAGE_SLACK_S)
+    _declare_gaps(out, shown, firsts, truncated=truncated, query=query)
     return out

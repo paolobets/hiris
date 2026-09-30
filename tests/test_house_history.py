@@ -508,13 +508,14 @@ def test_nella_corta_scelta_davvero_chi_si_sposta_resta_in_casa_o_fuori():
 # --- I valori (Task 4) ---------------------------------------------------
 
 def _valori(query, soggetti, *, dettaglio=None, fasce=None, superfici=None,
-            classi=None, unita=None, troncato=False):
+            classi=None, unita=None, troncato=False, attributi=None):
     chosen = hh.Chosen(len(soggetti), dict(_NESSUNA), hh.depth_for(len(soggetti)),
                        [hh.Subject(i, i) for i in soggetti])
     return hh.value_rows(query, chosen, detail=dettaglio or {}, bands=fasce or {},
                          truncated=troncato,
                          surfaces=superfici or {i: "dettaglio" for i in soggetti},
-                         units=unita or {}, state_classes=classi or {})
+                         units=unita or {}, state_classes=classi or {},
+                         attributes=attributi or {})
 
 
 def test_entro_un_giorno_i_cambi_veri_oltre_le_fasce_per_chi_le_ha():
@@ -587,15 +588,110 @@ def test_le_fasce_di_un_contatore_sommano_il_cambio_di_home_assistant():
     assert uscita["voci"][0]["punti"][0]["inizio"] == "2026-09-29T00:00:00+02:00"
 
 
-def test_una_finestra_piu_corta_di_quella_chiesta_si_dice():
-    """Spec §3: `finestra` e' il periodo DAVVERO coperto.
+def test_le_fasce_di_un_contatore_non_hanno_media():
+    """Revisione del Task 4 (#5): la media delle letture di fine ora di un
+    contatore non dice niente. Primo, ultimo, minimo, massimo e consumato
+    si'; la media no.
 
-    Mutazione ESEGUITA: lasciare `finestra` com'era chiesta -- rossa."""
-    serie = {"sensor.temperatura": _TEMPERATURA["sensor.temperatura"][1:]}
-    uscita = _valori(_q(genere="valori"), ["sensor.temperatura"], dettaglio=serie)
-    assert uscita["finestra"] == {"da": "2026-09-29T00:40:00+02:00",
-                                  "a": "2026-09-29T18:40:00+02:00",
-                                  "chiesta_da": "2026-09-28T18:40:00+02:00"}
+    Mutazione ESEGUITA: rimettere `media` fra i conti delle fasce di un
+    contatore -- rossa."""
+    fasce = {"sensor.energia": [
+        {"inizio": "2026-09-28T22:00:00+00:00", "stato": 0.4, "cambio": 0.4},
+        {"inizio": "2026-09-28T23:00:00+00:00", "stato": 0.9, "cambio": 0.5}]}
+    riga = _valori(_q(genere="valori", ore=48), ["sensor.energia"], fasce=fasce,
+                   superfici={"sensor.energia": "oraria"},
+                   classi={"sensor.energia": "total_increasing"})["voci"][0]
+    assert "media" not in riga
+    assert (riga["primo"], riga["ultimo"], riga["consumato"]) == (0.4, 0.9, 0.9)
+    assert riga["conti"] == hh.COUNTED
+
+
+@pytest.mark.parametrize("letture,consumato", [
+    (["100", "101", "100.5", "102"], 2.0),
+    (["5", "-1", "6"], 1.0),
+    (["9", "-1", "4.5"], 4.5),
+    (["100", "95"], -5.0),
+])
+def test_il_consumato_di_un_total_increasing_e_quello_di_home_assistant(letture, consumato):
+    """Revisione del Task 4 (#1), sul sorgente di Home Assistant
+    (`components/sensor/recorder.py`, tag 2026.9.0): azzeramento SOLO sotto
+    il 90% del valore di prima (`reset_detected`, 475-493); un calo piu'
+    piccolo entra nella somma col suo segno, anche se la fa negativa (818);
+    un valore negativo si salta (795-796), non vale zero.
+
+    Mutazione ESEGUITA: ogni calo e' un azzeramento (la prima forma) --
+    rossa (103 invece di 2); togliere il salto dei negativi -- rossa
+    ([5, -1, 6] da' 6); il negativo portato a zero (`max(0.0, value)`) --
+    rossa ([5, -1, 6] da' 6)."""
+    ore = [f"2026-09-29T0{i}:00:00+00:00" for i in range(len(letture))]
+    serie = {"sensor.energia": [_punto(q, v) for q, v in zip(ore, letture, strict=True)]}
+    riga = _valori(_q(genere="valori"), ["sensor.energia"], dettaglio=serie,
+                   classi={"sensor.energia": "total_increasing"})["voci"][0]
+    assert riga["consumato"] == consumato
+
+
+def test_un_total_con_last_reset_non_si_conta_dai_punti():
+    """Revisione del Task 4 (#2): lo storico e' chiesto senza attributi, e i
+    cicli di `last_reset` nei punti non si vedono. Con `last_reset` negli
+    attributi di ADESSO il consumato non si calcola e si dice perche'; senza,
+    resta ultimo meno primo.
+
+    Mutazione ESEGUITA: ignorare `attributes` (mai `cycles_unseen`) --
+    rossa (consumato -6,0 su un ciclo che non si vede)."""
+    serie = {"sensor.gas": [_punto(_INIZIO, "8.0"),
+                            _punto("2026-09-28T22:00:00+00:00", "0.5"),
+                            _punto("2026-09-29T12:00:00+00:00", "2.0")]}
+    ciclica = _valori(_q(genere="valori"), ["sensor.gas"], dettaglio=serie,
+                      classi={"sensor.gas": "total"},
+                      attributi={"sensor.gas": {"values": {
+                          "last_reset": "2026-09-28T22:00:00+00:00"}}})["voci"][0]
+    assert "consumato" not in ciclica
+    assert "24 ore" in ciclica["consumato_non_calcolato"]
+    netta = _valori(_q(genere="valori"), ["sensor.gas"], dettaglio=serie,
+                    classi={"sensor.gas": "total"})["voci"][0]
+    assert netta["consumato"] == -6.0 and "consumato_non_calcolato" not in netta
+
+
+def test_il_tempo_senza_un_numero_non_pesa_e_si_dice():
+    """Revisione del Task 4 (#4): 10 all'inizio, `unavailable` dopo due ore,
+    20 dopo ventidue. Ogni punto vale fino al punto dopo, di qualunque stato:
+    la media e' (10*2 + 20*2) / 4 = 15, e le 20 ore senza valore si dicono.
+    Nella prima forma valevano per il 10: 10,833.
+
+    Mutazione ESEGUITA: togliere dalla linea del tempo i punti non numerici
+    -- rossa (10,833)."""
+    serie = {"sensor.temperatura": [
+        _punto(_INIZIO, "10.0"), _punto("2026-09-28T18:40:00+00:00", "unavailable"),
+        _punto("2026-09-29T14:40:00+00:00", "20.0")]}
+    riga = _valori(_q(genere="valori"), ["sensor.temperatura"],
+                   dettaglio=serie)["voci"][0]
+    assert riga["media"] == 15.0
+    assert riga["ore_senza_valore"] == 20.0
+    intera = _valori(_q(genere="valori"), ["sensor.temperatura"],
+                     dettaglio=_TEMPERATURA)["voci"][0]
+    assert "ore_senza_valore" not in intera
+
+
+def test_una_serie_nata_dopo_lo_dice_sulla_sua_riga():
+    """Revisione del Task 4 (#3): spostare la finestra di TUTTE per una serie
+    nata dopo contraddiceva i conti delle altre, calcolati dall'inizio. Solo
+    il taglio di Home Assistant sposta `finestra`; la serie nata dopo porta
+    `dal`, e la sua media parte da li': 5 per quattro ore, 7 per due -- 5,667.
+
+    Mutazione ESEGUITA: spostare `finestra` anche senza taglio -- rossa;
+    non scrivere `dal` -- rossa."""
+    nata = {**_TEMPERATURA, "sensor.energia": [
+        _punto("2026-09-29T10:40:00+00:00", "5.0"),
+        _punto("2026-09-29T14:40:00+00:00", "7.0")]}
+    uscita = _valori(_q(genere="valori"), ["sensor.temperatura", "sensor.energia"],
+                     dettaglio=nata)
+    assert uscita["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
+                                  "a": "2026-09-29T18:40:00+02:00"}
+    righe = {v["id"]: v for v in uscita["voci"]}
+    assert righe["sensor.energia"]["dal"] == "2026-09-29T12:40:00+02:00"
+    assert righe["sensor.energia"]["media"] == 5.667
+    assert "dal" not in righe["sensor.temperatura"]
+    assert righe["sensor.temperatura"]["media"] == 20.5
 
 
 def _lunga():
