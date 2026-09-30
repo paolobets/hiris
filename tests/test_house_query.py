@@ -244,11 +244,31 @@ def test_lo_stato_si_filtra_su_quello_che_il_lettore_vede():
 
 
 def test_nessun_riepilogo_per_stato():
-    """Decisione 5: le voci, non i conti.
+    """Decisione 5: le voci, non i conti. `nota` e' ammessa perche' dichiara
+    cio' che NON e' stato dato (le escluse), non riassume cio' che c'e'.
 
     Mutazione ESEGUITA: aggiungere `per_stato` al risultato -- rossa."""
     r = _chiedi(tipo="light", includi_nascoste=True)
-    assert set(r) <= {"trovate", "escluse", "profondita", "voci", "oltre"}
+    assert set(r) <= {"trovate", "escluse", "profondita", "voci", "oltre", "nota"}
+
+
+def test_con_le_escluse_la_nota_dice_il_totale_vero():
+    """Batteria del 30/09/2026: «74 non disponibili in totale» (catena) e «72
+    in tutto» (ponte), quando le escluse dichiarate erano 179 e 203. Il
+    numero dato era vero, il «totale» no: la prosa «leggi sempre `escluse`»
+    non e' bastata, quindi il totale sta scritto nella risposta.
+
+    Mutazione ESEGUITA: non scrivere `nota` -- rossa."""
+    r = _chiedi(tipo="light", stato="on")
+    assert r["trovate"] == 1 and r["escluse"]["nascoste"] == 2
+    assert "3" in r["nota"] and "2 nascoste" in r["nota"]
+
+
+def test_senza_escluse_nessuna_nota():
+    """Mutazione ESEGUITA: scrivere `nota` anche con le escluse a zero -- rossa."""
+    r = _chiedi(tipo="light", stato="on", includi_nascoste=True)
+    assert not any(r["escluse"].values())
+    assert "nota" not in r
 
 
 def test_solo_il_nome_cerca_in_tutti_i_generi():

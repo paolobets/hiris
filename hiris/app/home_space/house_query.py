@@ -517,6 +517,26 @@ def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
                     "voci": [redact_row(v) for v in page]}
     if beyond:
         result["oltre"] = beyond
+    note = _excluded_note(found, excluded)
+    if note:
+        result["nota"] = note
     return result
+
+
+def _excluded_note(found: int, excluded: dict) -> str | None:
+    """Il totale vero, scritto nella risposta quando ci sono escluse.
+
+    Batteria del 30/09/2026: la catena ha risposto «74 non disponibili in
+    totale» e il ponte «72 in tutto», con 179 e 203 escluse dichiarate in
+    `escluse`. Il numero era vero, il «totale» no -- e la descrizione diceva
+    gia' «leggi sempre `escluse`». Non e' un riepilogo (decisione 5): dice
+    cio' che NON e' stato dato, che e' l'unica cosa che HIRIS dichiara.
+    """
+    parts = [f"{n} {label}" for label, n in excluded.items() if n]
+    if not parts:
+        return None
+    return (f"trovate conta solo cio' che ti ho dato: con le escluse sono "
+            f"{found + sum(excluded.values())} ({found} date, {', '.join(parts)}). "
+            "Se dai un numero, di' anche le escluse.")
 
 

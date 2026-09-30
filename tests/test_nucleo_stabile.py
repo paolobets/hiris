@@ -59,6 +59,20 @@ def test_quando_il_tetto_morde_cadono_le_capacita_non_le_automazioni():
     assert "cosa sanno fare" in " ".join(riepilogo["notices"])
 
 
+def test_la_riga_del_comportamento_non_ripete_il_genere():
+    """Il genere lo dice gia' l'id (`automation.`, `script.`): il suffisso
+    «(automazione)» era un doppione da ~14 caratteri a riga, e sulla casa vera
+    (30/09/2026, 19 voci) teneva fuori dal nucleo l'ultima automazione per
+    un centinaio di caratteri.
+
+    Mutazione ESEGUITA: rimettere ` ({kind})` in `_behavior_lines` -- rossa."""
+    comportamento = [{"id": "automation.a", "tipo": "automazione", "nome": "A", "corpo": {}},
+                     {"id": "script.s", "tipo": "script", "nome": "S", "corpo": {}}]
+    testo, _ = compose(_CASA, comportamento, _RICORDI, _STATO)
+    assert "- A (id: automation.a)\n" in testo
+    assert "(automazione)" not in testo and "(script)" not in testo
+
+
 def test_se_il_comportamento_non_ci_sta_si_dice_come_averlo():
     """Mutazione ESEGUITA: in `cut_labels`, riportare le frasi del
     comportamento a «voci di comportamento non incluse» senza la strada per

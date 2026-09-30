@@ -289,8 +289,10 @@ def test_un_automazione_e_uno_script_mostrano_l_id_accanto_al_nome():
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
     sezione_comportamento = testo.split("## Cio' che la casa fa gia' da sola")[-1].split(
         "## Cio' che le persone")[0]
-    assert "Sveglia (id: automation.sveglia) (automazione)" in sezione_comportamento
-    assert "Buonanotte (id: script.buonanotte) (script)" in sezione_comportamento
+    # Senza il suffisso «(automazione)»/«(script)» dal 30/09/2026: il genere lo
+    # dice l'id (test_nucleo_stabile::test_la_riga_del_comportamento_non_ripete_il_genere).
+    assert "Sveglia (id: automation.sveglia)" in sezione_comportamento
+    assert "Buonanotte (id: script.buonanotte)" in sezione_comportamento
 
 
 def test_stato_vuoto_si_dichiara_non_letto():

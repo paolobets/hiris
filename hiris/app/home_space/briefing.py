@@ -832,8 +832,11 @@ def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
     for v in behavior:
         id_ = v.get("id")
         name = v.get("nome") or id_ or "(senza nome)"
-        kind = v.get("tipo", "?")
-        line = f"- {name_with_id(name, id_)} ({kind})"
+        # Il genere NON si ripete in riga: lo dice gia' l'id (`automation.`,
+        # `script.`). Il suffisso «(automazione)» costava ~14 caratteri a voce
+        # e il 30/09/2026, sulla casa vera (19 voci), teneva fuori dal nucleo
+        # l'ultima automazione per un centinaio di caratteri.
+        line = f"- {name_with_id(name, id_)}"
         # Un'automazione DISABILITATA dal proprietario (24/09/2026). Senza
         # questa dichiarazione il modello la vede uguale alle altre e
         # chiama «ferma da undici giorni» una cosa che e' stata spenta

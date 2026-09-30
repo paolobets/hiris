@@ -362,10 +362,15 @@ def test_a_seimila_il_taglio_morde_le_capacita_e_non_il_comportamento():
     passerebbe anche su una casa che ci sta comoda.
 
     Mutazione ESEGUITA: in `compose()`, rimettere `("comportamento", ...)`
-    PRIMA di `("capacita", ...)` in `cut_order` -- a 6.000 le automazioni
+    PRIMA di `("capacita", ...)` in `cut_order` -- a 5.600 le automazioni
     scendono sotto 36 e la prova arrossisce.
+
+    **Il tetto era 6.000 fino al 30/09/2026**: tolto il suffisso
+    «(automazione)» dalle righe del comportamento, questa casa pesa meno e a
+    6.000 il taglio non mordeva piu' -- l'oracolo qui sopra l'ha detto. A
+    5.600 morde di nuovo le capacita' (10 firme su 18).
     """
-    testo, riepilogo = _nucleo_tetto(ceiling=6000)
+    testo, riepilogo = _nucleo_tetto(ceiling=5600)
     assert riepilogo["truncated"] is True
     automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
     assert len(automazioni) == _AUTOMAZIONI_TETTO, (
