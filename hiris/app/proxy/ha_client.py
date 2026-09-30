@@ -1714,12 +1714,8 @@ class HAClient:
         """
         if item_type not in self.RELATED_ITEM_TYPES:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {item_type}"}
-        try:
-            msg = await self._ws_batch(
-                [("search/related", {"item_type": item_type, "item_id": identifier})])
-        except Exception as e:
-            logger.debug("legami di %s/%s non letti: %s", item_type, identifier, e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_batch(
+            [("search/related", {"item_type": item_type, "item_id": identifier})])
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
             error = msg["error"]
@@ -1757,11 +1753,7 @@ class HAClient:
         `{"errore": ...}` su guasto, per la stessa ragione dei legami: un
         elenco vuoto significherebbe «non c'e' niente che non va».
         """
-        try:
-            msg = await self._ws_batch([("repairs/list_issues", None)])
-        except Exception as e:
-            logger.debug("problemi diagnosticati da HA non letti: %s", e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_batch([("repairs/list_issues", None)])
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
             error = msg["error"]
@@ -1805,11 +1797,7 @@ class HAClient:
         `legami`: un elenco vuoto significherebbe «non c'e' niente nel
         registro», che e' un'affermazione, non un silenzio.
         """
-        try:
-            msg = await self._ws_batch([("system_log/list", None)])
-        except Exception as e:
-            logger.debug("registro di sistema non letto: %s", e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_batch([("system_log/list", None)])
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
             error = msg["error"]
@@ -1872,13 +1860,9 @@ class HAClient:
         """
         if not keys:
             return {"tracce": {}, "non_letti": {}}
-        try:
-            replies = await self._ws_batch(
-                [("trace/list", {"domain": domain, "item_id": item_id})
-                 for domain, item_id in keys])
-        except Exception as e:
-            logger.debug("tracce non lette (%s): %s", keys, e)
-            return {"errore": _HA_SILENT}
+        replies = await self._ws_batch(
+            [("trace/list", {"domain": domain, "item_id": item_id})
+             for domain, item_id in keys])
         if all(reply is None for reply in replies):
             return {"errore": _HA_SILENT}
         found: dict[str, list] = {}
@@ -1911,13 +1895,9 @@ class HAClient:
         Home Assistant risponde con un errore esplicito (`ERR_NOT_FOUND`), che
         arriva qui come ogni altro rifiuto. `{"errore": ...}` su ogni guasto.
         """
-        try:
-            msg = await self._ws_batch(
-                [("trace/get", {"domain": domain, "item_id": item_id,
-                                "run_id": run_id})])
-        except Exception as e:
-            logger.debug("traccia %s.%s/%s non letta: %s", domain, item_id, run_id, e)
-            return {"errore": _HA_SILENT}
+        msg = await self._ws_batch(
+            [("trace/get", {"domain": domain, "item_id": item_id,
+                            "run_id": run_id})])
         msg = msg[0] if msg else None
         if msg is None:
             return {"errore": _HA_SILENT}
@@ -2108,12 +2088,8 @@ class HAClient:
         `problemi`: un dizionario vuoto significherebbe «nessuna direzione
         esiste», non «non ho potuto leggere».
         """
-        try:
-            msg_prefs, msg_registry = await self._ws_batch(
-                [("energy/get_prefs", None), ("config/entity_registry/list", None)])
-        except Exception as e:
-            logger.debug("direzioni dell'energia non lette: %s", e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg_prefs, msg_registry = await self._ws_batch(
+            [("energy/get_prefs", None), ("config/entity_registry/list", None)])
         if msg_prefs is None or msg_registry is None:
             return {"errore": "Home Assistant non ha risposto"}
         for msg in (msg_prefs, msg_registry):

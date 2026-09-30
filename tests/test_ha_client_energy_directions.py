@@ -33,15 +33,12 @@ class _Finto:
     vero: ogni messaggio e' `{success, result, error}` o `None`
     (connessione/autenticazione fallita)."""
 
-    def __init__(self, risposte=None, *, solleva=False):
+    def __init__(self, risposte=None):
         self.risposte = risposte if risposte is not None else [None, None]
-        self.solleva = solleva
         self.comandi = []
 
     async def _ws_batch(self, commands, timeout=10.0):
         self.comandi.extend(commands)
-        if self.solleva:
-            raise OSError("HA muto")
         return list(self.risposte)
 
 
@@ -252,7 +249,7 @@ async def test_la_dichiarata_vince_sempre_anche_se_la_dedotta_direbbe_altro():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("finto,perche", [
-    (_Finto(solleva=True), "connessione caduta"),
+    (_Finto(), "connessione caduta"),
     (_Finto([None, _registro()]), "energy/get_prefs senza risposta"),
     (_Finto([_prefs(), None]), "entity_registry senza risposta"),
     (_Finto([{"error": {"message": "non trovato"}}, _registro()]), "HA ha rifiutato i prefs"),
