@@ -181,6 +181,7 @@ from .house_history import (
     choose,
     empty_answer,
     error_rows,
+    last_line,
     parse_query,
     run_detail,
     run_rows,
@@ -3069,8 +3070,15 @@ class ToolDispatcher:
         rifiutata scritta nel messaggio dell'eccezione arrivava al fornitore
         del modello. Il sigillo guarda il testo PEZZO PER PEZZO
         (`_sealed_free_text`), perche' un segreto in un registro sta dentro una
-        frase. Poi `sanitize_traceback`, che tiene la CODA: la riga che dice
-        cosa e' successo, quella che `error_rows` porta."""
+        frase. Poi `sanitize_traceback` (il filtro delle istruzioni e il
+        tetto).
+
+        **Dell'eccezione si sigilla solo l'ultima riga** (revisione finale
+        della fetta, M-3, 30/09/2026): `error_rows` porta solo quella
+        (`house_history.last_line`, la stessa regola, importata), e sigillare
+        parola per parola tutta la traccia costava una quindicina di impronte
+        a parola per righe che non arrivano mai al modello. Le righe prima
+        non si sigillano perche' si BUTTANO: la sicurezza e' la stessa."""
         seal = self._seal()
         sealed = []
         for entry in entries:
@@ -3082,9 +3090,9 @@ class ToolDispatcher:
             elif "message" in plain:
                 plain["message"] = _sealed_free_text(plain["message"], seal)
             clean = sanitize_structure(plain, seal=seal)
-            if entry.get("exception"):
-                clean["exception"] = sanitize_traceback(
-                    _sealed_free_text(str(entry["exception"]), seal))
+            tail = last_line(entry["exception"]) if entry.get("exception") else None
+            if tail is not None:
+                clean["exception"] = sanitize_traceback(_sealed_free_text(tail, seal))
             sealed.append(clean)
         return sealed
 

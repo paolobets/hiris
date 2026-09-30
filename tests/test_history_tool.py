@@ -677,6 +677,49 @@ async def test_un_segreto_dentro_l_eccezione_non_arriva_al_modello(tmp_path):
     assert "<secret nas_password>" in voce["messaggio"]
 
 
+class _SigilloSpia:
+    """Il sigillo vero, che si annota ogni testo che gli passa davanti."""
+
+    def __init__(self, vero):
+        self._vero = vero
+        self.visti: list[str] = []
+
+    def redact(self, testo):
+        self.visti.append(testo)
+        return self._vero.redact(testo)
+
+    def __getattr__(self, nome):
+        return getattr(self._vero, nome)
+
+
+@pytest.mark.asyncio
+async def test_un_segreto_nelle_righe_prima_dell_ultima_si_butta_non_si_sigilla(tmp_path):
+    """Revisione finale della fetta (M-3, 30/09/2026): dell'eccezione arriva
+    solo l'ultima riga, quindi si sigilla solo quella -- le righe prima
+    costavano una quindicina di impronte a parola e non arrivavano mai. Un
+    segreto in una riga di mezzo non arriva al modello perche' e' BUTTATO:
+    nemmeno sigillato (`<secret ...>` non c'e'), e il sigillo non lo vede.
+
+    Mutazione ESEGUITA: sigillare l'eccezione intera prima di prenderne
+    l'ultima riga (la forma di prima) -- rossa (il sigillo vede la riga di
+    mezzo)."""
+    segreti = tmp_path / "secrets.yaml"
+    segreti.write_text("nas_password: Zq9-segreto-77\n", encoding="utf-8")
+    registro = [{"level": "ERROR", "name": "homeassistant.components.synology_dsm",
+                 "message": ["login rifiutato"],
+                 "exception": "Traceback (most recent call last):\n"
+                              "  login(user='admin', password='Zq9-segreto-77')\n"
+                              "SynologyDSMLoginFailed: credenziali rifiutate"}]
+    d = ToolDispatcher(None, None, ha=_HA(registro=registro))
+    spia = _SigilloSpia(SecretSeal.from_file(segreti))
+    d._remembered_seal = spia
+    esito = await d.dispatch("history", {"genere": "errori"})
+    assert "Zq9-segreto-77" not in str(esito) and "<secret" not in str(esito)
+    assert esito["voci"][0]["eccezione"] == "SynologyDSMLoginFailed: credenziali rifiutate"
+    assert not any("login(user" in testo or "Traceback" in testo for testo in spia.visti)
+    assert any("SynologyDSMLoginFailed" in testo for testo in spia.visti)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("segreto,testo", [
     ("Zq9-segreto-77", "login rifiutato per Zq9-segreto-77."),

@@ -1183,8 +1183,14 @@ def _last_message(raw) -> str | None:
     return None if raw in (None, "") else str(raw)
 
 
-def _last_line(text) -> str | None:
-    lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+def last_line(text) -> str | None:
+    """L'ultima riga non vuota di un'eccezione: il «cosa» (tipo e messaggio),
+    l'unica che `error_rows` porta. Pubblica perche' il gestore la prende
+    PRIMA del sigillo dei segreti (revisione finale della fetta, M-3,
+    30/09/2026): sigillare parola per parola tutta la traccia costava una
+    quindicina di impronte a parola per righe che nessuno vede. Una regola
+    sola, qui: il gestore la importa, non la copia."""
+    lines =[line.strip() for line in str(text).splitlines() if line.strip()]
     return lines[-1] if lines else None
 
 
@@ -1247,7 +1253,7 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
                "prima": _local(entry.get("first_occurred"), zone),
                "ultima": _local(entry.get("timestamp"), zone)}
         if entry.get("exception"):
-            row["eccezione"] = _short(_last_line(entry["exception"]))
+            row["eccezione"] = _short(last_line(entry["exception"]))
         ranked.append((_activity(f"{level}|{row['fonte']}|{row['messaggio']}", last),
                        row))
     ranked.sort(key=lambda item: item[0])
