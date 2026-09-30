@@ -1,5 +1,91 @@
 # HIRIS — Changelog
 
+## [3.71.0] — Una porta sola per la casa (2026-09-30)
+
+### Perche'
+
+La batteria del 29/09/2026 (28 domande sulla casa) ha dato sul ponte 13 risposte giuste, 5
+incomplete e 6 sbagliate; sulla catena 15, 2 e 7. L'archivio era completo: **tutti** i difetti
+erano di consegna al modello. Il modello non poteva interrogare la casa per attributi (`search`
+cercava per nome, `view` apriva un contenitore alla volta), cosi' ogni domanda di scansione
+camminava area per area. Le luci di servizio accese, nascoste e senza area, non le vedeva nessuna
+strada. L'area Telecamere (287 entita', ~64k caratteri) superava il tetto dei risultati MCP del
+ponte. Lo specchio degli stati restava stantio dopo un riavvio di Home Assistant (15 entita' diverse
+il 29/09). E il nucleo tagliava 5 automazioni su 17.
+
+### `search` e' l'unica porta che legge la casa
+
+`search` e `view` diventano un solo strumento: trovare, contare, elencare, filtrare e il dettaglio
+di una cosa (con `riferimento`). I filtri sono tutti facoltativi e si combinano: `nome` (anche per
+radice e per alias: «rifiuti» trova «rifiuto», «luci» trova «Luce»), `genere`, `riferimento`,
+`tipo`, `stato`, `classe`, `area`, `piano`, `integrazione`, `fermo_da`, `cambiato_da`, `sopra`,
+`sotto`, `in_esecuzione`, `includi_nascoste`, `includi_servizio`, `ordina`, `limite`, `salta`.
+
+- **La profondita' la decide lo strumento**: con un solo risultato il dettaglio completo, da 2 a 10
+  righe medie, oltre righe corte, al massimo 50, con `oltre` e `salta`. Anche il dettaglio completo
+  di un'area, di un dispositivo o di un'integrazione si ferma a 50 righe e dice come restringere.
+- **Ogni esclusione e' dichiarata** in `escluse` (nascoste, di servizio, disabilitate), e un
+  registro che non si e' potuto leggere si dice, non si tace. HIRIS non riassume al posto del
+  modello.
+- **Un filtro che non vale per un genere risponde con un errore**, mai ignorato in silenzio. Un
+  riferimento che non esiste risponde `esiste: false` con un suggerimento.
+- Per le automazioni e gli script conta l'ultima esecuzione; quelle mai eseguite vengono prima in
+  `ordina=ultimo_cambio`.
+- Il catalogo passa da 16 a **15** strumenti. `view` esce da ogni testo che il modello legge (guide,
+  suggerimenti, rifiuti, nucleo), e un cancello lo sorveglia. L'avviso dei vecchi nomi dice
+  `view → search` e `guarda → search`.
+
+### Riservatezza in tutte le profondita'
+
+Un solo punto di filtro (`home_space/privacy.py`), applicato anche alle righe annidate del
+dettaglio: le credenziali mai; di una persona o di un dispositivo che si muove solo «in casa» o
+«fuori casa», senza coordinate ne' nome della zona; le coordinate restano solo a `zone.home`. Chi
+non amministra continua a non vedere il corpo delle automazioni.
+
+### Il nucleo porta cio' che e' stabile
+
+«Notevole adesso» esce dal nucleo: la #18 («come sta la casa») era stata risposta senza strumenti, e
+sbagliata, dalla fotografia del momento. Le automazioni entrano tutte finche' c'e' spazio; se il
+tetto morde cadono prima le capacita', e l'avviso dice quante voci mancano e come chiederle a
+`search`.
+
+### Lo specchio si rilegge a ogni riconnessione
+
+A ogni riconnessione con Home Assistant, prima compresa, lo specchio degli stati si rilegge per
+intero. Gli eventi che arrivano durante la rilettura si tengono da parte e si riapplicano sopra la
+fotografia nuova; due riletture sovrapposte si mettono in fila. Chi legge nel frattempo vede lo
+specchio di prima.
+
+### Il registro dei turni salva gli argomenti
+
+`turn.tool_args` porta gli argomenti di ogni chiamata, allineati agli strumenti, sulla catena e sul
+ponte: il 29/09 non si e' potuto sapere quale ricerca avesse perso l'Indifferenziato. I valori
+lunghi si accorciano, i segreti delle chiamate ai servizi (`code`, `pin`, `user_code`, `usercode`,
+`alarm_code`, token…) si mascherano e le posizioni si tolgono. Il testo libero non si maschera.
+
+### Pulizia
+
+Via la vecchia ricerca per nome (`queries.search`) e la cache che serviva solo a lei, i parametri
+di `compose` che nessuno leggeva piu', `is_notable`, i candidati di piani ed etichette dell'indice.
+Nessuno strumento risolve piu' un'etichetta dal nome: le etichette si passano per id.
+
+### La CLI del ponte sale alla 2.1.285
+
+Segnalata dal cancello pre-push durante il rilascio della 3.70.1, sale qui secondo la regola del
+proprietario. Ripiego dichiarato nel `Dockerfile`.
+
+### Migrazione e ripiego
+
+`consumi.db` passa allo schema 3 con `ALTER TABLE turn ADD COLUMN tool_args`: le righe gia' scritte
+restano NULL. Un ripiego alla 3.70.x resta sicuro: la colonna resta, inosservata.
+
+### Cosa resta
+
+In `docs/BACKLOG.md`: la fetta «la storia, con la stessa forma»; il tetto del dettaglio e' sulle
+righe, non sui caratteri (50 righe ricche ~33k caratteri, ~13k token, sotto il tetto MCP); qualche
+residuo della ricerca per radice («casi» trova «case»); la domanda al proprietario sul campo
+`notevole` dei giudizi, che non ha piu' lettori. La batteria si rifa' dal vivo dopo questo rilascio.
+
 ## [3.70.1] — I giri veri del ponte (2026-09-30)
 
 Correzioni emerse dalla verifica dal vivo della 3.70.0, il 29/09/2026.
