@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## [3.70.1] — I giri veri del ponte (2026-09-30)
+
+Correzioni emerse dalla verifica dal vivo della 3.70.0, il 29/09/2026.
+
+### I giri del ponte si contano dallo stream
+
+`iterations` sul ponte valeva `num_turns` della CLI: con gli strumenti in parallelo, 17 per un
+turno che al modello era arrivato **5** volte (turno `og7xwGjc4Yji`, «Quali luci sono accese»;
+la somma dei 5 `message.id` coincide al token con l'`usage` totale). Adesso i giri sono i
+`message.id` dello stream, cioe' le chiamate al modello, come sulla catena. `num_turns` resta solo
+come ripiego quando lo stream non ne porta.
+
+### La chat sulla catena dice il modello vero
+
+I turni di chat sulla catena si registravano con `model: ignoto`, perche' i due punti della chat
+non passano il modello. Ora i runner lo consegnano insieme ai token del giro, e `misura_turno` lo
+usa quando il chiamante tace.
+
+### La batteria delle misure
+
+`scripts/batteria_misure.py` fa girare una batteria di domande sulla casa (le domande e i criteri
+restano fuori dal repo) e registra gli esiti; `scripts/misure.py` guadagna il catalogo senza
+`ToolSearch`, i canali letti dai turni, i token e la batteria. Gli script usano una firma sola
+(`misure.intestazioni_firmate`).
+
 ## [3.70.0] — Il ponte si pesa (2026-09-28)
 
 ### La CLI del ponte sale alla 2.1.284
