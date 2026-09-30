@@ -38,8 +38,9 @@ from ..home_space.type_vocabulary import (
 )
 
 # Nome privato importato da un altro modulo, di proposito: la guardia stretta
-# sulla forma `dominio.oggetto` vive in quattro copie (docs/BACKLOG.md, voce
-# «`_ENTITY_ID_RE` vive in quattro copie») e una quinta peggiorerebbe il debito.
+# sulla forma `dominio.oggetto` vive in tre copie (docs/BACKLOG.md, voce
+# «`_ENTITY_ID_RE` vive in tre copie»; erano quattro fino al 30/09/2026) e
+# una quarta peggiorerebbe il debito.
 # `proxy/ha_client.py` e' la prima e il confine con Home Assistant, e non
 # importa nessun modulo di `mind`: nessun ciclo.
 from ..proxy.ha_client import _ENTITY_ID_RE

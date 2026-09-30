@@ -115,8 +115,8 @@ def _readable_state(state: str) -> str:
 
 
 #: Quanto si conserva della frase che conferma (B-5). La cronaca la rilegge
-#: `logbook`, che la porta al modello: un muro di testo incollato in chat
-#: diventerebbe carico a ogni turno, per i novanta giorni della conservazione.
+#: `history` («per mano di HIRIS»), che ne porta al modello l'atto: un muro di testo
+#: incollato in chat diventerebbe carico a ogni turno, per i novanta giorni della conservazione.
 #: Un sì sta in poche parole; quel che eccede non aggiunge niente alla domanda
 #: a cui questo campo risponde («chi ha detto sì?»).
 PHRASE_MAX = 240

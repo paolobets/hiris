@@ -59,9 +59,9 @@ def automation_config_id(cache, entity_id: str) -> str | None:
     cui quell'id vive gia', senza aprire un secondo rubinetto verso Home
     Assistant, e' lo specchio dello stato: `_to_minimal` lo porta in
     `automation_id`. I due chiamanti che devono risolverlo -- il collettore
-    delle tracce in `server.py` e lo strumento `automation_trace` in
-    `home_space/tools.py` -- farebbero altrimenti la stessa scansione due
-    volte, in due file diversi: e' un solo posto, come per
+    delle tracce in `server.py` e la storia in
+    `home_space/tools.py` (`ToolDispatcher._run_key`) -- farebbero
+    altrimenti la stessa scansione due volte, in due file diversi: e' un solo posto, come per
     `inventory_is_readable` qui sopra.
 
     **`None` significa «non riesco a risolvere», MAI «non ha mai girato».**

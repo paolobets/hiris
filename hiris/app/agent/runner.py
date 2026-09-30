@@ -207,7 +207,7 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     che a import-time non si puo' ancora leggere."""
     prefix = f"mcp__{_mcp_server_name()}__"
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
-    # promessa ne vede nove -- gli otto lettori di `SOLA_LETTURA` piu'
+    # promessa ne vede sei -- i cinque lettori di `SOLA_LETTURA` piu'
     # `conclude` -- e i due elenchi non sono l'uno il sottoinsieme dell'altro:
     # `conclude` esiste solo di la', `execute` solo di qua.
     #
@@ -294,7 +294,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
     # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
     # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
-    # `promise_tools()` (gli otto lettori piu' `conclude`) e dispaccia
+    # `promise_tools()` (i cinque lettori piu' `conclude`) e dispaccia
     # con `PromiseDispatcher`. Come `X-HIRIS-Turno` qui sopra NON e'
     # un'autenticazione -- quella resta il token -- e per questo la rotta la
     # VERIFICA contro una promessa `in_corso` invece di crederle.

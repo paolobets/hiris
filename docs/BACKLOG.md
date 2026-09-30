@@ -2143,21 +2143,22 @@ player, valvole...) oggi non producono nessun oggetto — il pavimento non li la
 nell'immagine Docker pubblicata, mentre `LICENSE` dice «PROPRIETARY SOFTWARE LICENSE». Da sanare
 prima di un rilascio.
 
-### `_ENTITY_ID_RE` vive in quattro copie
+### `_ENTITY_ID_RE` vive in tre copie
 
 `origine: rilevata nel giro di correzioni del Task 5 di «le tracce e il log», 05/09/2026` ·
 `nessun documento`
 
 Stessa espressione (`^[a-z][a-z0-9_]*\.[a-z0-9_]+$`), stessa intenzione — una guardia sulla forma
-`dominio.oggetto` di un `entity_id`, la piu' stretta possibile — duplicata a mano quattro volte,
-ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
-(la prima), `home_space/behavior.py:45` (indipendente, un'espressione diversa nello scopo ma
-identica nel testo), `mind/watcher.py:82` (Task 4 di questa stessa fetta) e
-`home_space/tools.py:188` (Task 5, questo giro; il rimando diceva `:352`, corretto nel Task 6 --
-`:352` e' dentro lo schema di `view`, non la guardia). Non si unifica adesso: ogni fetta che
+`dominio.oggetto` di un `entity_id`, la piu' stretta possibile — duplicata a mano quattro volte
+(tre dal 30/09/2026: la copia di `home_space/tools.py` e' uscita con i quattro lettori del
+tempo, quando `history` ha preso il loro posto), ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
+(la prima), `home_space/behavior.py:89` (indipendente, un'espressione diversa nello scopo ma
+identica nel testo), `mind/watcher.py:88` (Task 4 di questa stessa fetta) e
+`home_space/tools.py` (Task 5, questo giro; la copia e' uscita il 30/09/2026 con la
+storia). Non si unifica adesso: ogni fetta che
 l'ha scritta aveva una ragione dichiarata per non importarla da un'altra (modulo diverso,
 accoppiamento non voluto), e unificarle tutte e quattro e' un lavoro suo, con la sua verifica — non un effetto
-collaterale di un giro di correzioni. Ma quattro copie della stessa guardia, scoperte una alla
+collaterale di un giro di correzioni. Ma tre copie della stessa guardia, scoperte una alla
 volta invece che in un colpo solo, sono il tipo di cosa che questo registro esiste per non
 lasciar perdere.
 
@@ -2216,7 +2217,7 @@ difetto: chi aggiunge la quarta voce non ha niente che gli ricordi le altre tre,
 una sola al riavvio rompe un invariante che nessuna firma dichiara. Chi la chiude raccolga le
 tre in un oggetto con le sue prove, invece di aggiungerne una quarta accanto.
 
-Vale la stessa disciplina della voce sulle quattro copie di `_ENTITY_ID_RE`: si nomina adesso
+Vale la stessa disciplina della voce sulle copie di `_ENTITY_ID_RE` (quattro quando fu scritta, tre oggi): si nomina adesso
 perche' e' stato visto adesso,
 e si chiude in una fetta sua, non come effetto collaterale di un giro di correzioni.
 

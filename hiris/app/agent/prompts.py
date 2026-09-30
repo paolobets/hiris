@@ -268,12 +268,19 @@ _GUIDE_WITHOUT_TOOLS = (
 # sopra. Il default storico ne nominava DUE soli (`cerca`, `guarda`); `view`
 # (il nome inglese di `guarda`, uscito il 29/09/2026 con «una porta sola per
 # la casa») e `ricorda` coprono i prompt salvati dopo la rinomina e i piu'
-# frequenti fra quelli riscritti a mano.
+# frequenti fra quelli riscritti a mano. Dal 30/09/2026 («la storia») cita
+# anche i quattro lettori del tempo diventati `history`: sono i nomi che la
+# guida del ponte ha servito per un mese, e un prompt salvato in quel mese
+# li nomina. I nomi di prima che l'avviso cita oggi sono otto: `cerca`,
+# `guarda`, `ricorda`, `view`, `trend`, `logbook`, `system_log`,
+# `automation_trace`.
 _OLD_NAMES_NOTICE = (
     "Se il testo qui sopra nomina gli strumenti in italiano (`cerca`, "
-    "`guarda`, `ricorda`...) o `view`, sono i nomi DI PRIMA: oggi `cerca`, "
-    "`guarda` e `view` sono un solo strumento, `search`, e `ricorda` si "
-    "chiama `remember`. Usa i nomi del catalogo.\n"
+    "`guarda`, `ricorda`...), `view`, `trend`, `logbook`, `system_log` o "
+    "`automation_trace`, sono i nomi DI PRIMA: oggi `cerca`, `guarda` e "
+    "`view` sono un solo strumento, `search`; `trend`, `logbook`, "
+    "`system_log` e `automation_trace` sono un solo strumento, `history`; "
+    "e `ricorda` si chiama `remember`. Usa i nomi del catalogo.\n"
 )
 
 _GUIDE_WITH_TOOLS = (

@@ -2,7 +2,7 @@
 
 `HAClient.calendars()` legge `GET /api/calendars`, `HAClient.calendar_events()`
 legge `GET /api/calendars/<entity_id>?start=&end=` -- stessa disciplina dei
-tre fratelli (`system_log()`, `automation_traces()`, `automation_trace()`,
+tre fratelli (`system_log()`, `automation_traces()`, `trace()`,
 `ha_client.py`):
 
 1. **il client legge, non giudica**: le righe escono coi campi di HA, senza
@@ -274,7 +274,7 @@ async def test_calendar_events_are_asked_at_the_right_url_with_the_window():
 
 @pytest.mark.asyncio
 async def test_calendar_events_rejects_an_invalid_entity_id_before_making_a_request():
-    """Stessa guardia di `history()` e `logbook()`: un `entity_id` malformato
+    """Stessa guardia di `history()`: un `entity_id` malformato
     non deve comporre un URL, anche se il percent-encoding chiuderebbe
     comunque l'iniezione.
 
@@ -383,8 +383,8 @@ async def test_an_empty_calendar_stays_empty_not_an_error():
 # `elenco_incompleto`/`mute_da`/`entita_stato_ignoto` (home_space/queries.py)
 # seguono gia' la stessa disciplina: le chiavi che non hanno niente da dire
 # non escono. Qui si applica alla stessa fetta: `troncato` esce SOLO quando
-# il taglio e' avvenuto -- a differenza di `history()`/`logbook()` in questo
-# stesso file, che lo dichiarano SEMPRE (anche a falso). Le due meta' dello
+# il taglio e' avvenuto -- a differenza di `history()` in questo
+# stesso file, che lo dichiara SEMPRE (anche a falso). Le due meta' dello
 # stesso difetto si sorvegliano con due prove separate.
 
 @pytest.mark.asyncio
@@ -425,8 +425,8 @@ async def test_calendar_events_does_not_declare_a_cut_when_there_was_none():
 
 @pytest.mark.asyncio
 async def test_calendar_events_cut_keeps_the_nearest_not_the_farthest():
-    """Direzione OPPOSTA a `history()`/`logbook()`, e non per distrazione.
-    Per quei due la finestra finisce ad ADESSO: la coda sono i punti/voci
+    """Direzione OPPOSTA a `history()`, e non per distrazione.
+    Per quello la finestra finisce ad ADESSO: la coda sono i punti
     piu' RECENTI, i piu' rilevanti. Per un calendario la finestra tipica
     PARTE da adesso e va in avanti: la coda sono gli eventi piu' LONTANI,
     la testa i PROSSIMI appuntamenti -- cio' per cui questo strumento

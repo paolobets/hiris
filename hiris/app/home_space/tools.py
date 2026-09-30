@@ -1563,8 +1563,8 @@ class ToolDispatcher:
         self._exchange = exchange
         # La cronaca degli atti (`action/journal.py`), la STESSA istanza che
         # riceve l'officina -- non una seconda apertura dello stesso file
-        # SQLite. Serve ad `logbook` per dire «l'ho fatto io» dove il diario
-        # di Home Assistant direbbe soltanto «servizio chiamato». `None` e'
+        # SQLite. Serve a `history` per dire «l'ho fatto io» accanto a un cambio
+        # che Home Assistant non firma. `None` e'
         # legittimo e NON passa da `_missing_resource`: senza cronaca lo
         # strumento risponde lo stesso, perdendo l'attribuzione e non la
         # risposta -- che e' una degradazione, non un guasto.
@@ -1676,9 +1676,10 @@ class ToolDispatcher:
         # Task 1 di «rifiutare e importare» (§6b): un obbligatorio mancante e
         # un nome ignoto si rifiutano QUI, una volta sola per tutti e dodici
         # gli strumenti -- non nei gestori, che fino ad oggi lo facevano a
-        # mano (quattro di loro) o non lo facevano affatto (`logbook`
-        # dichiara `required: ["ore"]` e non lo controllava; un argomento
-        # sconosciuto veniva ignorato in silenzio da ognuno). Vedi
+        # mano (quattro di loro) o non lo facevano affatto (un lettore
+        # del tempo, uscito il 30/09/2026 con la storia, dichiarava un
+        # obbligatorio e non lo controllava; un argomento sconosciuto veniva
+        # ignorato in silenzio da ognuno). Vedi
         # `_bad_arguments` per le due discipline e perche' sono diverse.
         bad_arguments = _bad_arguments(name, arguments)
         if bad_arguments is not None:
@@ -2958,7 +2959,7 @@ class ToolDispatcher:
                              mirror: tuple, known_classes: dict[str, str | None]) -> dict:
         """I valori: lo `state_class` dallo specchio decide la superficie
         (chiederlo al modello sarebbe chiedergli un fatto che abbiamo noi, spec
-        di `trend` §3.1), e ogni superficie e' UNA lettura per tutte le serie
+        «la storia» §3.1), e ogni superficie e' UNA lettura per tutte le serie
         che la usano. `known_classes` viene dalla STESSA lettura dello specchio
         di `mirror` (revisione del Task 7: una seconda `all_states()` poteva
         dare un'altra casa).
@@ -3149,10 +3150,10 @@ class ToolDispatcher:
         consumatore prima di questo strumento) -- e' questo il punto in cui
         quel testo, scritto da una persona in un calendario condiviso, entra
         DAVVERO in un prompt. `titolo`/`luogo`/`descrizione` passano da
-        `sanitize_ha_free_text`, la stessa strada dei fratelli (`logbook`,
-        `system_log`), non una seconda. **Il NOME del calendario passa da
+        `sanitize_ha_free_text`, la stessa strada dei fratelli (`motivo` di
+        un'integrazione rotta), non una seconda. **Il NOME del calendario passa da
         `sanitize_ha_value`** (non `sanitize_ha_free_text`: e' un
-        `friendly_name`, la stessa forma di `nome` in `logbook()`, non testo
+        `friendly_name`, la stessa forma di `nome` per le altre entita', non testo
         libero senza tetto HA) -- e' `state.name` di
         `HAClient.calendars()`, scelto da una persona e potenzialmente
         condiviso (un Google Calendar puo' esserlo), quindi un vettore di
