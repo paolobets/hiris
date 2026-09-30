@@ -1,5 +1,62 @@
 # HIRIS — Changelog
 
+## [3.72.0] — La storia, con la stessa forma (2026-09-30)
+
+### Perche'
+
+Quattro strumenti per il tempo, quattro forme di domanda e quattro di risposta, e nessuno sapeva
+scegliere DI CHI parlare coi filtri di `search`. Misurato sul registro dei turni (30/09/2026):
+`logbook` restituiva 22.000-35.000 caratteri di tutta la casa senza potersi restringere;
+«perche' sono partite le automazioni dei rifiuti» costava cinque chiamate ad `automation_trace`;
+la #14 («consumo di oggi contro ieri») restava incompleta su tutte e due le strade.
+
+### `history` al posto di `trend`, `logbook`, `automation_trace` e `system_log`
+
+Uno strumento solo, con un `genere`: **stati**, **valori**, **esecuzioni**, **errori**. Il catalogo
+passa da 15 a **12** strumenti, e la descrizione pesa 3.327 caratteri contro i 7.449 delle quattro.
+
+- **Di chi**: gli stessi filtri di `search` (nome anche per radice e alias, tipo, classe, area,
+  piano, integrazione, nascoste, servizio), scelti dalla STESSA funzione (`select_subjects`).
+- **Quando**: `ore` (default 24), oppure `da`/`a` con un istante o «oggi»/«ieri» nel fuso della
+  casa -- giusti anche nei giorni del cambio d'ora, dove una finestra contata sugli orologi
+  sbagliava di un'ora.
+- **Quanto**: la profondita' la decide lo strumento (1 soggetto completa, fino a 10 media, oltre
+  corta), al massimo 50 righe con `oltre`; nella corta prima i soggetti che nella finestra sono
+  cambiati davvero.
+- **Valori**: primo, ultimo, minimo, massimo, media pesata sul tempo e consumato, dichiarati come
+  conti di HIRIS (`conti`). Il consumato dei contatori segue le regole del recorder di Home
+  Assistant: un azzeramento solo sotto il 90% del valore precedente, un piccolo calo si sottrae.
+  Oltre le 24 ore si usano le statistiche orarie di Home Assistant, e l'ora in corso -- che Home
+  Assistant non ha ancora compilato -- si dichiara (`al`).
+- **Esecuzioni**: piu' automazioni e script in UNA chiamata; chi non si puo' leggere e' nominato
+  (`non_letti`, `non_lette_in_tutto`), mai un elenco vuoto che sembri «mai partita».
+- **Errori**: il registro di Home Assistant filtrato per integrazione e livello; la finestra dice
+  da dove il registro, che ne tiene poche, copre davvero.
+- Chi non amministra resta escluso da esecuzioni ed errori, come prima.
+
+### Riservatezza e segreti
+
+La storia di persone e dispositivi che si spostano dice solo in casa / fuori casa, anche dentro
+le tracce delle esecuzioni -- compreso l'esito delle condizioni di stato, dove Home Assistant
+scrive il valore vivo senza dire di chi. Il registro di sistema passa dal sigillo dei segreti sia
+nel messaggio sia nell'eccezione (prima solo il messaggio), e il sigillo riconosce un segreto
+anche accanto a un punto, dentro un indirizzo o in una query.
+
+### Pulizia, e un guasto che si nascondeva
+
+Escono i lettori rimasti senza chiamanti (il diario, le statistiche a giorni, la traccia
+singola, due metodi del client mai usati) e un `except` irraggiungibile attorno alle chiamate
+WebSocket in otto punti. Togliendolo e' venuto fuori un difetto vero: con Home Assistant
+irraggiungibile, la rilettura dei corpi delle automazioni rispondeva «nessuna configurazione»;
+adesso lo dichiara. Il cancello dei nomi guarda tutto `hiris/app`, anche nella forma
+`mcp__hiris__<nome>`, e l'avviso dei nomi vecchi manda i quattro a `history`.
+
+### Cosa resta
+
+Da verificare dal vivo (`docs/BACKLOG.md`): la lettura dello storico a blocchi con la casa vera,
+il costo di un `history()` senza filtri, il peso di una traccia lunga, la #14 e la #26. Scoperto e
+registrato come debito: la semina dei bilanci energetici e' ferma dal 15/09/2026.
+
 ## [3.71.1] — Il totale con le escluse, il nucleo intero (2026-09-30)
 
 Due correzioni emerse dalla verifica dal vivo della 3.71.0, lo stesso giorno.
