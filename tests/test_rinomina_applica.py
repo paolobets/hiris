@@ -1833,7 +1833,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_le_dataclass_del_prodotto_sono_diciotto_e_i_campi_centodue():
+def test_le_dataclass_del_prodotto_sono_diciannove_e_i_campi_centocinque():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1886,7 +1886,7 @@ def test_le_dataclass_del_prodotto_sono_diciotto_e_i_campi_centodue():
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (18, 102), (classi, campi)
+    assert (classi, campi) == (19, 105), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

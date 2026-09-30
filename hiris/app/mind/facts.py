@@ -47,9 +47,8 @@ sostituisce: lo **sorveglia**, ed e' lavoro delle fette 3 e 4.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
 
-from ..home_space.historian import home_space_zone
+from ..home_space.historian import day_boundaries
 from ..home_space.type_judgments import TypeJudgments
 from ..home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
@@ -162,31 +161,6 @@ def genre_for(subject: str, device_class: str | None, *,
     if subject.startswith(NOT_ENTITY_PREFIXES):
         return "guasto"
     return judgments.genre_of(subject, device_class)
-
-
-def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
-    """L'inizio e la fine di un giorno **nel fuso della casa**.
-
-    Le 23:30 di Roma sono le 21:30 UTC: un giorno calcolato in UTC spezzerebbe
-    ogni serata in due, e la fetta dello schedulatore ha gia' pagato un difetto
-    di orologi diversi.
-
-    **La finestra di `archivio.cambi` e' semi-aperta (`[from_ts, to_ts)`)**, e
-    questi confini ci contano sopra cosi' come sono: un `-1` o un `-0.001` "per
-    stare sicuri" riaprirebbe un buco di un secondo a ogni mezzanotte, e con
-    due confini inclusivi un cambio esattamente a mezzanotte finirebbe contato
-    in due giorni.
-
-    **Pubblica (correzione del giro di review, punto 4).** Prima era `_confini`
-    e importava `_zona`, un'altra privata, da `home_space/historian.py`: due nomi con
-    underscore attraversati da fuori dal solo import. Il calcolo e' uno solo
-    (nessun doppione nel prodotto); tenerlo privato avrebbe solo obbligato chi
-    ne ha bisogno a importare comunque il nome privato, o a riscrivere il
-    calcolo -- che e' esattamente come nascono i doppioni.
-    """
-    zone = home_space_zone(timezone)
-    start = datetime.fromisoformat(day).replace(tzinfo=zone)
-    return start.timestamp(), (start + timedelta(days=1)).timestamp()
 
 
 def _is_on(value, subject: str, device_class: str | None,

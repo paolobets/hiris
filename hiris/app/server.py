@@ -50,7 +50,7 @@ from .chat_thread import SyncTurnsInFlight, thread_for
 from .env_util import env_bool
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
-from .home_space.historian import home_space_zone, instant_epoch
+from .home_space.historian import day_boundaries, home_space_zone, instant_epoch
 from .home_space.reader import HomeSpace
 from .home_space.topology import (
     AREAS_PER_ROUND,
@@ -73,7 +73,6 @@ from .mind.facts import (
     aggregate_day,
     build_balance_body,
     chronicle_is_stale,
-    day_boundaries,
     rebuild_chronicle,
 )
 from .mind.judgments import build_judgments

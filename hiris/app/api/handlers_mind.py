@@ -41,9 +41,8 @@ from datetime import datetime, timedelta
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
-from ..home_space.historian import home_space_zone
+from ..home_space.historian import day_boundaries, home_space_zone
 from ..home_space.type_census import OPEN_QUESTIONS
-from ..mind.facts import day_boundaries
 from ..mind.judgments import (
     JudgmentNotInEffect,
     JudgmentRefused,
@@ -184,7 +183,7 @@ def _volume(app, store) -> list[dict]:
     """Quante righe grezze per ciascuno degli ultimi giorni, **dal piu'
     vecchio**: si legge come una tendenza, e una tendenza si legge in avanti.
 
-    I confini sono quelli del giorno LOCALE (`facts.day_boundaries` col fuso
+    I confini sono quelli del giorno LOCALE (`historian.day_boundaries` col fuso
     della casa), gli stessi che usa l'aggregazione notturna: un conteggio su
     giorni UTC direbbe numeri che non combaciano con nessun'altra pagina.
     """

@@ -422,19 +422,36 @@ def _missing_reference(f: HouseFilters, home_space, detail, unavailable) -> dict
     return _not_found_detail(None, reference, bool(set(unavailable) & _REFERENCE_STORES))
 
 
-def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
-            now, excluded: dict) -> tuple[int, str, list[dict], dict | None]:
-    """(trovate, profondita, voci NON ancora filtrate, oltre)."""
-    if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
-        # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
-        return _one(detail(f.kind, f.reference or f.name or ""))
-    kinds = KINDS if f.only_by_name else ((f.kind,) if f.kind else ("entita",))
+@dataclass(frozen=True)
+class Selection:
+    """Chi hanno scelto i filtri di «di chi»: le entita' `(voce, area, dove)`,
+    le automazioni e gli script `(voce, valori dello specchio)`, e le escluse
+    contate.
+
+    Nasce il 30/09/2026 con la storia (spec `2026-09-30-la-storia.md` §2):
+    `search` e `history` scelgono con questa STESSA funzione -- alias, radice,
+    nascoste, servizio, disabilitate -- invece di due copie che
+    divergerebbero alla prima correzione (la batteria del 30/09 ne ha
+    corrette quattro in un giorno)."""
+    entities: list[tuple[dict, dict, str]]
+    behavior: list[tuple[dict, dict]]
+    excluded: dict[str, int]
+
+
+def select_subjects(f: HouseFilters, kinds: tuple[str, ...], home_space: dict,
+                    behavior, mirror, *, unavailable=(), now: float) -> Selection:
+    """Le entita' e i comportamenti che passano i filtri, per i generi dati.
+
+    Le disabilitate sono sempre fuori e contate; le nascoste e quelle di
+    servizio fuori e contate, salvo `includi_nascoste`/`includi_servizio`.
+    La riga di comportamento rappresenta gia' l'automazione: quando si
+    cercano anche automazioni o script, la loro entita' di registro sarebbe
+    un doppione e non si sceglie (solo quelle che il comportamento conosce:
+    un'automazione che non c'e' resta un'entita')."""
     entries = _entity_entries(home_space, unavailable)
-    # La riga di comportamento rappresenta gia' l'automazione: la sua entita'
-    # di registro sarebbe un doppione. SOLO quelle che il comportamento
-    # conosce: un'automazione che non c'e' resta un'entita', non sparisce.
     searching_behavior = any(k in _BEHAVIOR_KINDS for k in kinds)
     shadowed = {b.get("id") for b in behavior or []} if searching_behavior else set()
+    excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
     matched = []
     if "entita" in kinds:
         for entry, area, floor, where in entries:
@@ -454,12 +471,41 @@ def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
             matched.append((entry, area, where))
     places = {entry["id"]: (entry, area, floor) for entry, area, floor, _w in entries}
     behaving = []
-    others: list[dict] = []
     for kind in kinds:
         if kind in _BEHAVIOR_KINDS:
             behaving.extend(_behavior_matches(replace(f, kind=kind), behavior,
                                               mirror, now, places))
-        elif kind == "area":
+    return Selection(matched, behaving, excluded)
+
+
+def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
+    """La pagina `[offset, offset+limit)` (limite tagliato a `ROWS_MAX`) e, se
+    restano righe, `{"restano", "salta"}` per chiedere la successiva.
+
+    Un punto solo per `search` e per la storia (30/09/2026): con `limit` 0 non
+    c'e' `oltre`, perche' chi chiede zero righe vuole solo il conto."""
+    page = rows[offset:offset + min(limit, ROWS_MAX)]
+    left = len(rows) - offset - len(page)
+    beyond = ({"restano": left, "salta": offset + len(page)}
+              if left > 0 and limit > 0 else None)
+    return page, beyond
+
+
+def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
+            now, excluded: dict) -> tuple[int, str, list[dict], dict | None]:
+    """(trovate, profondita, voci NON ancora filtrate, oltre)."""
+    if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
+        # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
+        return _one(detail(f.kind, f.reference or f.name or ""))
+    kinds = KINDS if f.only_by_name else ((f.kind,) if f.kind else ("entita",))
+    chosen = select_subjects(f, kinds, home_space, behavior, mirror,
+                             unavailable=unavailable, now=now)
+    for key, count in chosen.excluded.items():
+        excluded[key] += count
+    matched, behaving = chosen.entities, chosen.behavior
+    others: list[dict] = []
+    for kind in kinds:
+        if kind == "area":
             others.extend(_area_rows(f, home_space, unavailable))
         elif kind == "dispositivo":
             others.extend(_device_rows(f, home_space, unavailable, excluded))
@@ -478,10 +524,7 @@ def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
             + [_behavior_row(item, values, mirror, medium) for item, values in behaving]
             + others)
     rows.sort(key=_sort_key(f.order_by))
-    page = rows[f.offset:f.offset + min(f.limit, ROWS_MAX)]
-    left = len(rows) - f.offset - len(page)
-    beyond = ({"restano": left, "salta": f.offset + len(page)}
-              if left > 0 and f.limit > 0 else None)
+    page, beyond = page_rows(rows, f.offset, f.limit)
     return found, "media" if medium else "corta", page, beyond
 
 
@@ -517,13 +560,13 @@ def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
                     "voci": [redact_row(v) for v in page]}
     if beyond:
         result["oltre"] = beyond
-    note = _excluded_note(found, excluded)
+    note = excluded_note(found, excluded)
     if note:
         result["nota"] = note
     return result
 
 
-def _excluded_note(found: int, excluded: dict) -> str | None:
+def excluded_note(found: int, excluded: dict) -> str | None:
     """Il totale vero, scritto nella risposta quando ci sono escluse.
 
     Batteria del 30/09/2026: la catena ha risposto «74 non disponibili in
@@ -531,6 +574,9 @@ def _excluded_note(found: int, excluded: dict) -> str | None:
     `escluse`. Il numero era vero, il «totale» no -- e la descrizione diceva
     gia' «leggi sempre `escluse`». Non e' un riepilogo (decisione 5): dice
     cio' che NON e' stato dato, che e' l'unica cosa che HIRIS dichiara.
+
+    Pubblica dal 30/09/2026: la storia dichiara le escluse con la stessa frase
+    (spec «la storia» §3).
     """
     parts = [f"{n} {_EXCLUDED_WORDS[key][n != 1]}" for key, n in excluded.items() if n]
     if not parts:

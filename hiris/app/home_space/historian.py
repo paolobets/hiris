@@ -137,6 +137,28 @@ def window(*, hours: float, now_ts: float, timezone: str | None) -> tuple[str, s
     return start.isoformat(), a.isoformat()
 
 
+def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
+    """L'inizio e la fine di un giorno **nel fuso della casa**.
+
+    Le 23:30 di Roma sono le 21:30 UTC: un giorno calcolato in UTC spezzerebbe
+    ogni serata in due, e la fetta dello schedulatore ha gia' pagato un difetto
+    di orologi diversi. Il giorno del cambio d'ora dura 23 o 25 ore, e qui lo
+    fa davvero: `start + timedelta(days=1)` somma in ora locale.
+
+    **La finestra e' semi-aperta (`[from_ts, to_ts)`)**, e chi la usa ci conta
+    sopra: un `-1` "per stare sicuri" riaprirebbe un buco di un secondo a ogni
+    mezzanotte, e con due confini inclusivi un cambio a mezzanotte finirebbe
+    contato in due giorni.
+
+    **Spostata qui il 30/09/2026 da `mind/facts.py`**: la storia («oggi»,
+    «ieri», spec `2026-09-30-la-storia.md` §2) la usa in `home_space/`, e
+    `home_space` non importa da `mind`. Un calcolo solo, in un posto solo.
+    """
+    zone = home_space_zone(timezone)
+    start = datetime.fromisoformat(day).replace(tzinfo=zone)
+    return start.timestamp(), (start + timedelta(days=1)).timestamp()
+
+
 # Quanti punti arrivano al modello in UNA risposta. Non e' il cap del client
 # (`MAX_HISTORY_POINTS`, che protegge la memoria di questo processo): questo
 # protegge la LEGGIBILITA'. Per le entita' con statistiche il problema non si
