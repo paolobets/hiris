@@ -3381,6 +3381,13 @@ codice:
 > ha provato le description corrette): e' un ragionamento verificato da una seconda lettura, non
 > una prova eseguita.
 
+> **15 -> 12: `history` (fetta «la storia», 30/09/2026)**, registrato qui perche' questa e' dove i
+> nomi degli strumenti si decidono. `trend`, `logbook`, `system_log` e `automation_trace` escono e
+> diventano UNO strumento con un `genere` (stati, valori, esecuzioni, errori). Il nome e' inglese
+> come gli altri undici (decisione 6 della spec, 30/09/2026); i parametri restano italiani come
+> quelli di `search`. I quattro nomi di
+> prima restano in `_OLD_NAMES_NOTICE` (`agent/prompts.py`) e in `tests/test_tool_names.py`.
+
 ## I valori di dominio
 
 **Aggiunto il 28/08 durante l'esecuzione: la spec non li aveva visti.** Emersi dalla review del

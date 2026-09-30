@@ -638,7 +638,7 @@ va corretto, in un posto solo.
 
 ## In attesa
 
-### La storia, con la stessa forma — la fetta successiva a «una porta sola» — aperta il 30/09/2026
+### La storia, con la stessa forma — la fetta successiva a «una porta sola» — COSTRUITA sul ramo `la-storia` il 30/09/2026, in attesa di rilascio (3.72.0)
 
 `origine: il proprietario, decisione 11 della spec del 29/09/2026` · `docs/design/2026-09-29-una-porta-sola-per-la-casa.md §8` · nessun altro documento
 
@@ -652,6 +652,62 @@ il tetto **nella regola**, non in un taglio a valle. Gli strumenti che **scrivon
 **Prima di disegnarla** si guardano i numeri della batteria di §9: se `search` ha ridotto le
 chiamate come promesso, si sa quanta parte del peso resta alla storia. Nessuno dei quattro
 strumenti è stato toccato dalla fetta della porta.
+
+**Costruita**: `history` al posto dei quattro, catalogo da 15 a 12 (piano
+`docs/superpowers/plans/2026-09-30-la-storia.md`). **Resta**: la batteria delle 28 domande sulle
+due strade dopo il rilascio, coi cinque criteri di §8 della spec; la verifica dal vivo della chiave
+delle tracce degli script (`script.<unique_id>`) su una casa con script tracciati.
+
+### `history`: cosa va provato dal vivo prima di dirla chiusa — aperta il 30/09/2026
+
+`origine: emerso costruendo, registro del piano «la storia»` · `docs/design/2026-09-30-la-storia.md §6, §8`
+
+Cinque cose che nessuna prova in locale puo' dire, perche' dipendono da una casa vera:
+
+- **Lo spezzettamento della richiesta allo storico.** `/api/history/period` porta gli id nell'URL e
+  il server aiohttp rifiuta una riga di richiesta oltre 8.190 byte: con ~300 entita' si
+  sfora. Il gestore legge a pezzi (`_HISTORY_FILTER_MAX = 6000` byte di filtro per richiesta,
+  `home_space/tools.py`). Il 6.000 e' un margine scelto, **non misurato**: va provato con una
+  ricerca che scelga ~300 entita' (per esempio `history(genere=valori, tipo=sensor)` su tutta la casa).
+- **Le domande #14 e #26 della batteria**, le due che la spec nomina: #14 (`da="ieri"`, consumato,
+  fasce orarie di Home Assistant oltre le 24 ore) e #26. Si leggono coi cinque criteri di §8.
+- **Uno script rinominato dall'interfaccia.** La chiave della traccia e' `unique_id` del registro
+  (il nome dell'oggetto cambia rinominando, l'unique_id no): verificato alla fonte di Home
+  Assistant, mai su una casa con uno script rinominato.
+- **I rifiuti a chi non amministra**: `esecuzioni` ed `errori` dalla chat di un non-admin, dalla
+  promessa sincrona e dalla promessa del ponte. Le prove coprono il rifiuto, non la casa vera.
+- **Il sigillo coi segreti veri**: `message` ed `exception` del registro passano dal sigillo; le
+  prove hanno usato un `secrets.yaml` di prova. Va provato col file vero della casa.
+
+### Minori rinviati dalla costruzione di «la storia» — aperta il 30/09/2026
+
+`origine: revisioni dei Task 1-9, registro del piano` · nessun altro documento
+
+Tutti dichiarati, nessuno mette in pericolo un dato; si raccolgono qui perche' non si perdano.
+
+- **Il sigillo dei segreti** (Task 7). Riconosce un segreto per impronta del valore esatto, una
+  parola alla volta: un segreto che contiene uno spazio, dentro una frase, **non** si prende
+  (limite dichiarato). In senso opposto sigilla troppo: un segreto che e' una parola comune sigilla
+  ogni sua occorrenza, e uno contenuto in un'altra parola puo' sigillarne il prefisso
+  (`casa` dentro `casa.casalinga`).
+- **Un punto di partenza tirato in avanti** (Task 3): `_covered_since` puo' spostarsi piu' tardi
+  se una entita' e' nata a meta' finestra, perche' Home Assistant non dice quale entita' ha
+  troncato i dati. Dichiarato nel docstring, non nella risposta.
+- **Contatori** (Task 4). Un `total` il cui `last_reset` sta solo nei punti vecchi, e non negli
+  attributi di adesso, riceve comunque ultimo-meno-primo. Una pagina `corta` fatta solo di serie
+  vuote (per esempio `trovate: 6`, `voci: []`, con `nessuna_registrazione`) e' coerente e
+  dichiarata, ma occupa un posto in pagina.
+- **Riservatezza delle tracce** (Task 5). Se il percorso di una condizione non si riconosce e nella
+  configurazione c'e' un'entita' che si muove, anche lo stato di un'entita' che non si muove viene
+  ridotto: sbaglia dalla parte sicura (provato).
+- **Due `except Exception` morti** (Task 8) attorno a `_ws_request`, che non solleva: in
+  `get_system_health` (`ha_client.py`, ~1037) e nella lettura dei campi estesi del registro
+  (~2346). Il resto dei morti e' gia' uscito nella fetta.
+- **Il cancello dei nomi** (Task 2, Task 9). Il confronto per nome e' una sottostringa: una
+  reimplementazione con un altro nome passa. L'elenco delle eccezioni (`_ECCEZIONI_GATE`) confronta
+  file piu' sottostringa, non il letterale intero: un `==` sarebbe piu' stretto.
+- **Prosa** (Task 9). La fine del docstring del modulo `_sanitize` ha ancora il testo vecchio, e
+  una riga di commento di `watcher.py` e' piu' lunga del resto.
 
 ### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
 
