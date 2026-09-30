@@ -318,7 +318,7 @@ _RADICE = Path(__file__).resolve().parent.parent / "hiris" / "app"
 
 # I letterali che nominano un vecchio nome e NON sono testo per il modello.
 # Breve e a mano: chi ne aggiunge una riga scrive perche'.
-_ECCEZIONI_DEL_CANCELLO = (
+_ECCEZIONI_GATE = (
     # comando WebSocket di Home Assistant, non il nome di uno strumento
     ("proxy/ha_client.py", "system_log/list"),
     # riga di log per chi gestisce l'add-on, mai servita al modello
@@ -373,7 +373,7 @@ def _citati(citazione):
         if relativo == "agent/prompts.py":
             testo = testo.replace(prompts._OLD_NAMES_NOTICE, "")
         if any(relativo == f and t in testo
-               for f, t in _ECCEZIONI_DEL_CANCELLO):
+               for f, t in _ECCEZIONI_GATE):
             continue
         if citazione.search(testo):
             colpevoli.append((relativo, testo[:80]))
@@ -381,13 +381,13 @@ def _citati(citazione):
 
 
 def test_ogni_eccezione_del_cancello_nomina_ancora_un_vecchio_nome():
-    """Una voce di `_ECCEZIONI_DEL_CANCELLO` che non copre piu' niente e' un buco
+    """Una voce di `_ECCEZIONI_GATE` che non copre piu' niente e' un buco
     che resta aperto: il cancello ignorerebbe per sempre quel letterale.
 
     Mutazione ESEGUITA: una voce inventata (`("server.py", "xx")`) -- rossa."""
     vecchi = _nomina("view", *_QUATTRO_USCITI)
     letterali = list(_letterali())
-    for f, t in _ECCEZIONI_DEL_CANCELLO:
+    for f, t in _ECCEZIONI_GATE:
         assert any(r == f and t in x and vecchi.search(x) for r, x in letterali), (f, t)
 
 
