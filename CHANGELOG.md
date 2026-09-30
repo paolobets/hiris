@@ -1,5 +1,25 @@
 # HIRIS — Changelog
 
+## [3.71.1] — Il totale con le escluse, il nucleo intero (2026-09-30)
+
+Due correzioni emerse dalla verifica dal vivo della 3.71.0, lo stesso giorno.
+
+### Un numero senza le escluse non e' un totale
+
+Nella batteria il modello ha risposto «74 non disponibili in totale» (catena) e «72 in tutto»
+(ponte). Il numero era vero, ma erano solo le entita' visibili: `search` aveva dichiarato in
+`escluse` altre 179 e 203 entita', di servizio e nascoste, e la descrizione diceva gia' «leggi
+sempre `escluse`». Adesso, quando le escluse ci sono, la risposta porta una `nota` col totale vero
+(«in tutto sono 275 (72 trovate, 190 di servizio, 13 nascoste)»), e la descrizione chiede di
+nominarle quando si da' un numero. Non e' un riepilogo: dichiara cio' che non e' stato dato, come
+`escluse`.
+
+### Il nucleo porta tutte le automazioni
+
+Sulla casa vera il nucleo ne portava 16 su 17: a meno di cento caratteri dal tetto, restava fuori
+«Controllo aggiornamenti sistema». Le righe del comportamento ripetevano il genere
+(«(automazione)», «(script)») che l'id dice gia': tolto, il tetto di 6.800 caratteri resta com'e'.
+
 ## [3.71.0] — Una porta sola per la casa (2026-09-30)
 
 ### Perche'
