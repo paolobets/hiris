@@ -105,7 +105,7 @@ _REGISTRI_COMPLETI = {
 
 def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
     """**Il contratto di forma dell'anagrafe.** I lettori -- `hierarchy`,
-    `queries.search`/`view`, `briefing` -- non fanno una riga di SQL: leggono
+    `queries.view`, `house_query`, `briefing` -- non fanno una riga di SQL: leggono
     chiavi da questi dizionari. Rinominarne una qui li rompe tutti insieme, e
     li rompe in silenzio (`.get()` torna `None`, non solleva).
 

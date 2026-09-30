@@ -17,6 +17,8 @@ import logging
 import secrets
 import threading
 
+from ..home_space.privacy import POSITION_ATTRIBUTES
+from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
 from .vocabulary import local_day, piu_debole
 
@@ -84,9 +86,13 @@ CREATE TABLE IF NOT EXISTS fallback (
 -- non e' normalizzazione per gusto: la moltiplicazione della latenza avviene
 -- per giro, e una media per turno la nasconderebbe.
 --
--- `tools` porta i NOMI in ordine, mai gli argomenti: un `view` porta il nome
--- di una stanza e un `execute` un valore impostato, e questo archivio entra
--- nei backup di Home Assistant.
+-- `tools` porta i NOMI in ordine; `tool_args` (dal 29/09/2026, spec «una porta
+-- sola» §7) i loro ARGOMENTI, ridotti (testi a 200 caratteri, 20 chiavi) e
+-- allineati per posizione. Il 29/09 nessuno ha saputo dire quale `search`
+-- avesse mancato l'Indifferenziato, perche' c'erano solo i nomi. Un `view`
+-- porta il nome di una stanza e questo archivio entra nei backup di Home
+-- Assistant: e' una scelta dichiarata, e le CREDENZIALI non entrano mai --
+-- il valore di `code`, `pin`, `password`, `token`... si scrive `***`.
 --
 -- Colonne NUOVE, quindi in inglese.
 -- `subject_json` ha la STESSA forma del soggetto della cronaca
@@ -121,7 +127,8 @@ CREATE TABLE IF NOT EXISTS turn (
     -- pagato -- sul ponte il turno e' compreso nell'abbonamento -- e per
     -- questo non sta in `payload.cost_usd`: due cose diverse, due colonne.
     output_tokens INTEGER,
-    list_cost_usd REAL
+    list_cost_usd REAL,
+    tool_args     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn(ts DESC);
 -- `prefix_hash` e' l'impronta di cio' che DOVREBBE essere stabile fra un
@@ -214,6 +221,99 @@ def _migration_2(conn) -> None:
         conn.execute("ALTER TABLE turn ADD COLUMN list_cost_usd REAL")
 
 
+def _migration_3(conn) -> None:
+    """Versione 3 (29/09/2026, spec «una porta sola» §7): gli argomenti.
+
+    Stessa cura della 2: la colonna si aggiunge solo se manca. Le righe gia'
+    scritte restano NULL -- gli argomenti non furono registrati, e non si
+    inventa che siano `[]`."""
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(turn)").fetchall()}
+    if "tool_args" not in columns:
+        conn.execute("ALTER TABLE turn ADD COLUMN tool_args TEXT")
+
+
+#: Quanto si tiene di un argomento. Testo libero lungo non deve gonfiare il
+#: registro; e sono filtri e nomi della casa, non contenuti.
+_ARG_TEXT_MAX = 200
+_ARG_KEYS_MAX = 20
+#: Fin dove si scende nei dati annidati (`execute` mette i dati del servizio
+#: sotto una chiave). Oltre, il ramo si sostituisce: un contenitore piu'
+#: profondo non e' un filtro, e non si lascia passare senza guardarlo.
+_ARG_DEPTH_MAX = 4
+#: Il segnaposto delle credenziali: lo stesso stile di `runner.REDATTO`.
+_ARG_MASK = "***"
+_ARG_TRUNCATED = "..."
+
+
+def _compact_value(value, depth: int):
+    """Un valore ridotto: credenziali mascherate, testi e contenitori tagliati.
+
+    Le chiavi credenziali le decide `entity_cache.is_credential` -- per NOME,
+    sull'insieme `entity_cache.CALL_ARGUMENT_SECRETS` (`code`, `pin`,
+    `password`, `token`... e gli attributi che lo specchio trattiene), e per
+    VALORE (un indirizzo con `token=`, una chiave esadecimale, un MAC). La
+    funzione e' una e gli insiemi sono dichiarati la': qui non se ne scrive
+    un terzo.
+
+    Nei contenitori annidati valgono gli stessi tetti del livello alto: al
+    massimo 20 chiavi (o elementi), testi a 200 caratteri, e la discesa si
+    ferma a `_ARG_DEPTH_MAX` livelli."""
+    if isinstance(value, str):
+        return value[:_ARG_TEXT_MAX]
+    if isinstance(value, (dict, list, tuple)):
+        if depth >= _ARG_DEPTH_MAX:
+            return _ARG_TRUNCATED
+        if isinstance(value, dict):
+            return _compact_mapping(value, depth + 1)
+        out = []
+        for item in list(value)[:_ARG_KEYS_MAX]:
+            if isinstance(item, str) and is_credential("", item, CALL_ARGUMENT_SECRETS):
+                out.append(_ARG_MASK)
+            else:
+                out.append(_compact_value(item, depth + 1))
+        return out
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)[:_ARG_TEXT_MAX]
+
+
+def _compact_mapping(item: dict, depth: int) -> dict:
+    kept = {}
+    for key in list(item)[:_ARG_KEYS_MAX]:
+        value = item[key]
+        # La posizione di persone e dispositivi non si salva: stesso elenco
+        # del filtro della porta (`privacy.POSITION_ATTRIBUTES`, spec §3).
+        if str(key).lower() in POSITION_ATTRIBUTES:
+            continue
+        if is_credential(str(key).lower(), value, CALL_ARGUMENT_SECRETS):
+            kept[str(key)] = _ARG_MASK
+        else:
+            kept[str(key)] = _compact_value(value, depth)
+    return kept
+
+
+def compact_tool_args(inputs: list) -> list[dict]:
+    """Gli argomenti di ogni chiamata, ridotti, con le credenziali mascherate
+    e senza la posizione di persone e dispositivi.
+
+    Sono filtri e nomi della casa, non contenuti -- ma un testo libero lungo
+    non deve gonfiare il registro (200 caratteri, 20 chiavi). `execute` e
+    `propose` portano i dati di un servizio, e quel servizio puo' essere il
+    disarmo di un allarme: il valore di una chiave credenziale (`code`,
+    `user_code`, `pin`, `password`, `token`...) diventa `***`, a qualunque
+    profondita'; le chiavi di posizione (`latitude`, `longitude`, `gps`...,
+    `privacy.POSITION_ATTRIBUTES`) si tolgono.
+
+    **Il limite, dichiarato**: il mascheramento va per NOME della chiave e per
+    FORMA del valore (un indirizzo con `token=`, una chiave esadecimale, un
+    MAC). Il TESTO LIBERO non si maschera: `{"message": "codice 4321"}` si
+    salva com'e'. Restano in casa, in `consumi.db`, con la sua retention."""
+    out = []
+    for item in inputs or []:
+        out.append(_compact_mapping(item, 0) if isinstance(item, dict) else {})
+    return out
+
+
 CAMPI = ("richieste", "token_in", "token_out", "cache_lettura",
          "cache_scrittura", "errori_rate_limit")
 
@@ -223,7 +323,8 @@ class UsageStore:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
+        init_schema(self._conn, _SCHEMA, version=3,
+                    migrations={2: _migration_2, 3: _migration_3})
 
     def close(self) -> None:
         with self._lock:
@@ -341,19 +442,26 @@ class UsageStore:
                  channel: str, duration_ms: int, iterations: int, tools: list,
                  outcome: str, now: float, subject: dict | None = None,
                  output_tokens: int | None = None,
-                 list_cost_usd: float | None = None) -> str:
+                 list_cost_usd: float | None = None,
+                 tool_args: list | None = None) -> str:
         """Un turno intero, e quanto e' costato in giri e in secondi.
 
         **`tools` porta i nomi in ORDINE**, non un insieme: «search, view,
         search» racconta una ricerca che non ha trovato al primo colpo, tre
         nomi in un insieme no.
 
-        **Mai gli argomenti.** Un `view` porta il nome di una stanza, un
-        `execute` un valore impostato: dati personali, e questo archivio
-        entra nei backup di Home Assistant, che non sono cifrati se il
-        proprietario non ci mette una password. E' la stessa scelta che
-        `claude_runner` fa gia' per la riga di avviso delle iterazioni
-        esaurite.
+        **Gli argomenti si salvano, ridotti e senza credenziali** (decisione
+        del 29/09/2026, spec «una porta sola» §7, che ribalta il «mai gli
+        argomenti» della 3.70). Il 29/09 non si e' potuto sapere quale
+        `search` avesse mancato l'Indifferenziato: c'erano solo i nomi.
+        `tool_args` e' allineato a `tools` (stessa lunghezza, stesso ordine)
+        e passa da `compact_tool_args`: testi a 200 caratteri, 20 chiavi, e il
+        valore di ogni chiave credenziale (`code`, `pin`, `password`,
+        `token`... -- la lista e' quella di `entity_cache`) diventa `***`,
+        anche annidato. Restano dati personali (il nome di una stanza), e
+        questo archivio entra nei backup di Home Assistant, non cifrati se il
+        proprietario non ci mette una password: per questo le credenziali non
+        entrano mai. `None` = non registrati.
 
         **Si scrive anche quando il turno e' andato male**, ed e' il caso piu'
         interessante di tutti: un giro che esaurisce le cinquanta iterazioni
@@ -373,12 +481,15 @@ class UsageStore:
             self._conn.execute(
                 "INSERT INTO turn(id,ts,species,provider,model,channel,"
                 "subject_json,duration_ms,iterations,tools,outcome,"
-                "output_tokens,list_cost_usd) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "output_tokens,list_cost_usd,tool_args) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ident, now, species, provider, model, channel,
                  None if subject is None else json.dumps(subject),
                  int(duration_ms), int(iterations), json.dumps(list(tools)),
                  outcome, None if output_tokens is None else int(output_tokens),
-                 None if list_cost_usd is None else float(list_cost_usd)))
+                 None if list_cost_usd is None else float(list_cost_usd),
+                 None if tool_args is None else json.dumps(
+                     compact_tool_args(tool_args), ensure_ascii=False)))
             self._conn.commit()
         return ident
 
@@ -434,7 +545,7 @@ class UsageStore:
             righe = self._conn.execute(
                 "SELECT id,ts,species,provider,model,channel,subject_json,"
                 "duration_ms,iterations,tools,outcome,output_tokens,"
-                "list_cost_usd FROM turn "
+                "list_cost_usd,tool_args FROM turn "
                 "ORDER BY ts DESC LIMIT ?",
                 (int(limit),)).fetchall()
         return [{"id": r["id"], "ts": r["ts"], "species": r["species"],
@@ -445,7 +556,9 @@ class UsageStore:
                  "duration_ms": r["duration_ms"], "iterations": r["iterations"],
                  "tools": json.loads(r["tools"]), "outcome": r["outcome"],
                  "output_tokens": r["output_tokens"],
-                 "list_cost_usd": r["list_cost_usd"]}
+                 "list_cost_usd": r["list_cost_usd"],
+                 "tool_args": (None if r["tool_args"] is None
+                               else json.loads(r["tool_args"]))}
                 for r in righe]
 
     def payloads(self, turn_id: str) -> list[dict]:

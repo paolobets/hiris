@@ -20,10 +20,8 @@ import ast
 import pathlib
 
 from hiris.app.home_space import topology
-from hiris.app.home_space.briefing import compose
 from hiris.app.home_space.queries import view
 from hiris.app.proxy import state_translations
-from hiris.app.proxy.state_translations import StateTranslations
 from tests._house_translations import house_translations, unread_translations
 
 _PRODOTTO = pathlib.Path(__file__).resolve().parents[1] / "hiris"
@@ -220,43 +218,11 @@ _HOUSE_WITH_ONE_LIGHT = {
 }
 _ONE_LIGHT_ON = {"light.cucina": "on"}
 
-
-def _sezione_notevole(testo: str) -> str:
-    return testo.split("## Notevole adesso")[1].split("## ")[0]
-
-
-def test_il_nucleo_dichiara_le_traduzioni_non_lette_invece_di_mostrare_un_vuoto():
-    """**La condizione della cancellazione** (spec §6, primo vincolo): si
-    cancella una tabella solo se il consumatore sa dire «traduzioni non lette».
-
-    Il nucleo mostra il grezzo -- `on` e' comunque il fatto -- e lo dichiara in
-    testa alla sezione, col motivo di chi ha fallito. La riga pesa ZERO e sta
-    in testa, come quella delle irraggiungibili: il taglio morde dal fondo, e
-    un avviso in coda sarebbe il primo a cadere.
-
-    Mutazione ESEGUITA: togliere il ramo che raccoglie `untranslated` in
-    `_highlight_lines` -- la sezione mostra `- Cucina: Faretto (on)` e basta,
-    e questa prova arrossisce sulla prima asserzione: un vuoto travestito da
-    parola di Home Assistant.
-    """
-    testo, _ = compose(_HOUSE_WITH_ONE_LIGHT, [], [], _ONE_LIGHT_ON,
-                       translations=unread_translations("Home Assistant non risponde"))
-    sezione = _sezione_notevole(testo)
-    assert "Le traduzioni di Home Assistant non sono state lette" in sezione
-    assert "Home Assistant non risponde" in sezione
-    assert "Faretto (on)" in sezione
-
-
-def test_senza_nessun_esito_vale_come_non_lette_e_non_come_tutto_a_posto():
-    """`None` significa «il chiamante non ha guardato», e non e' «non c'e'
-    niente da tradurre»: la sezione lo dice lo stesso. E' la stessa disciplina
-    di `problemi` e `confronto` in `compose()`.
-
-    Mutazione ESEGUITA: far tornare a `rendered_state` una stringa vuota invece
-    di un silenzio quando `translations` e' `None` -- la prova arrossisce.
-    """
-    testo, _ = compose(_HOUSE_WITH_ONE_LIGHT, [], [], _ONE_LIGHT_ON)
-    assert "Le traduzioni di Home Assistant non sono state lette" in _sezione_notevole(testo)
+# Due prove del NUCLEO stavano qui («il nucleo dichiara le traduzioni non
+# lette invece di mostrare un vuoto», «senza nessun esito vale come non
+# lette»): guardavano la riga in testa a «Notevole adesso», e sono uscite con
+# quella sezione il 29/09/2026 -- il nucleo non porta piu' uno stato da
+# tradurre. Il lettore che resta e' il dettaglio di un'entita', qui sotto.
 
 
 def test_guarda_dice_il_motivo_al_posto_dello_stato_in_parole():
@@ -287,14 +253,10 @@ def test_i_tre_silenzi_non_collassano_fino_al_lettore():
     due fatti diversi, e restano diversi fino a chi legge.
 
     Il caso vero: uno stato che quel tipo non pubblica (`cover` non ha `on`).
-    Le traduzioni sono state lette per intero, quindi il nucleo **non** annuncia
-    un guasto che non c'e' -- mostra il grezzo, come fa Home Assistant stesso
-    («We don't know! Return the raw state») -- mentre `guarda` porta il silenzio
-    giusto, che e' il secondo e non il primo.
-
-    Mutazione ESEGUITA: in `_highlight_lines`, dichiarare anche il silenzio
-    «ho chiesto e non c’e'» -- la prima asserzione arrossisce, e il nucleo
-    direbbe al proprietario di non aver letto niente mentre ha letto tutto.
+    Le traduzioni sono state lette per intero, e `guarda` porta il silenzio
+    giusto, che e' il secondo e non il primo. (Fino al 29/09/2026 la prova
+    guardava anche il nucleo, che mostrava il grezzo senza annunciare un
+    guasto; il nucleo non porta piu' lo stato del momento.)
     """
     casa = {
         "aree": [{"id": "sala", "nome": "Sala", "piano_id": None, "alias": [],
@@ -305,10 +267,6 @@ def test_i_tre_silenzi_non_collassano_fino_al_lettore():
                     "disabilitata": 0}],
     }
     stato = {"cover.tapparella": "on"}
-    testo, _ = compose(casa, [], [], stato, translations=house_translations())
-    sezione = _sezione_notevole(testo)
-    assert "Le traduzioni di Home Assistant non sono state lette" not in sezione
-    assert "Tapparella (on)" in sezione
 
     # E `guarda` **tace**, con lo `stato` grezzo al suo posto: e' la stessa
     # regola, e la lettura e' quella di `queries._enrich_entity`
@@ -344,20 +302,3 @@ def test_una_categoria_che_non_esiste_e_il_terzo_silenzio_non_il_primo():
     assert esito["silenzio"] == state_translations.SILENCE_UNDEFINED
 
 
-def test_la_cache_non_va_in_rete_e_dichiara_di_non_aver_ancora_letto():
-    """`cached()` e' cio' che permette al nucleo -- che si compone in una
-    funzione SINCRONA -- di leggere le parole senza diventare `async`. Non
-    chiede niente a nessuno: se nessuno ha ancora letto, lo dice.
-
-    Mutazione ESEGUITA: far tornare a `cached()` un `{"lette": True,
-    "risorse": {}}` quando non c'e' niente -- la prova arrossisce, e il nucleo
-    direbbe «questa casa non pubblica niente» invece di «non ho ancora letto».
-    """
-    class _ClienteCheEsplode:
-        async def get_translations(self, language, category):  # pragma: no cover
-            raise AssertionError("`cached()` non deve andare in rete")
-
-    cache = StateTranslations(_ClienteCheEsplode())
-    esito = cache.cached()
-    assert esito["lette"] is False
-    assert "non sono ancora state lette" in esito["motivo"]

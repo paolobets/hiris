@@ -1,45 +1,42 @@
-"""Le tre domande: cercare per nome, guardare il dettaglio, chiedere i legami.
+"""Le due domande di dettaglio: guardare una cosa, chiedere i legami.
 
-Il nucleo (nucleo.py) dice DOVE sono le cose -- conta, non elenca. Le tre
+Il nucleo (nucleo.py) dice DOVE sono le cose -- conta, non elenca. Le due
 funzioni qui sotto danno il DETTAGLIO, quando il modello (o l'utente dalla
 pagina) lo chiede esplicitamente:
 
-- `cerca(indice, testo)` -- trovare qualcosa per nome o alias. E' un guscio
-  sottile attorno a `Lookup.find()` (memory/resolver.py): il
-  contratto -- `candidati` sempre una lista, `ambiguo` dichiarato -- e' gia'
-  li', e riscriverlo qui vorrebbe dire poterlo rompere in due punti invece
-  che in uno. Due voci che si normalizzano uguali (due «Bagno» su piani
-  diversi, un alias che collide col nome vero di un'altra area) restano
-  AMBIGUE: scegliere spetta al modello, che ha la casa in contesto, o
-  all'utente, che corregge dalla pagina -- non a questo modulo.
-- `guarda(casa, comportamento, ricordi, stato, tipo, riferimento)` -- il
-  dettaglio di UNA cosa sola: un'area con le sue entita' e i loro stati,
-  un'entita' col suo stato e la sua classe, un'automazione o uno script col
-  loro corpo, un dispositivo con le sue entita', un ricordo con la sua
-  interpretazione.
-- `related(risposta, tipo, riferimento)` -- CHI tocca questa cosa, secondo
-  Home Assistant. Non e' un terzo modo di guardare la stessa cosa: `guarda`
-  porta il CORPO (cosa fa quell'automazione), `legami` porta i LEGAMI (quali
-  automazioni, script, scene o gruppi nominano questa entita'). Sono due
-  fatti diversi sullo stesso oggetto, e tenerli in due risposte e' cio' che
-  li tiene distinti -- la confusione fra «dichiarato» e «dedotto» questo
+- view -- il dettaglio di UNA cosa sola: un'area con le sue entita' e i
+  loro stati, un'entita' col suo stato e la sua classe, un'automazione o uno
+  script col loro corpo, un dispositivo con le sue entita', un ricordo con
+  la sua interpretazione. Dal 29/09/2026 non e' piu' uno strumento: e' la
+  voce di `search` quando l'insieme ne ha una sola
+  (`house_query.query_house`).
+- related -- CHI tocca questa cosa, secondo Home Assistant. Non e' un
+  secondo modo di guardare la stessa cosa: view porta il CORPO (cosa fa
+  quell'automazione), `related` porta i LEGAMI
+  (quali automazioni, script, scene o gruppi nominano questa entita'). Sono
+  due fatti diversi sullo stesso oggetto, e tenerli in due risposte e' cio'
+  che li tiene distinti -- la confusione fra «dichiarato» e «dedotto» questo
   progetto la paga da sempre.
 
-Due, non trentaquattro: la mappa del prodotto ha condannato un catalogo di
-trentaquattro strumenti con tre copie divergenti (vedi
-docs/design/2026-08-05-la-conoscenza-di-hiris.md). Un tipo nuovo di "cosa"
-si aggiunge come un altro `if` dentro `guarda`, non come un tool in piu'.
+Fino al 29/09/2026 c'era anche `search(indice, testo)`, la ricerca per nome
+sull'indice di `memory/resolver.py`: la porta della casa
+(`home_space/house_query.py`) confronta i nomi da se' e l'ha resa codice
+morto, cancellato con lei (spec «una porta sola per la casa»).
 
-Tutte e tre sono PURE: prendono dati gia' letti dal chiamante (l'indice, la
-casa, il comportamento, i ricordi, lo stato vivo, la risposta che Home
-Assistant ha gia' dato) e non aprono archivi ne' chiamano la rete -- la
-stessa scelta che rende `compose()` del nucleo verificabile senza finti
-elaborati (nucleo.py). Vale anche per `legami`: la chiamata WebSocket la fa
-il chiamante (`home_space/tools.py`), qui arriva solo cio' che ha risposto.
+Un tipo nuovo di "cosa" si aggiunge come un altro `if` dentro view, non
+come uno strumento in piu' (vedi docs/design/2026-08-05-la-conoscenza-di-
+hiris.md: trentaquattro strumenti con tre copie divergenti).
+
+Tutte e due sono PURE: prendono dati gia' letti dal chiamante (la casa, il
+comportamento, i ricordi, lo stato vivo, la risposta che Home Assistant ha
+gia' dato) e non aprono archivi ne' chiamano la rete -- la stessa scelta che
+rende `compose()` del nucleo verificabile senza finti elaborati (nucleo.py).
+Vale anche per `related`: la chiamata WebSocket la fa il chiamante
+(`home_space/tools.py`), qui arriva solo cio' che ha risposto.
 
 **Un silenzio non dichiarato e' indistinguibile da un'assenza di
 problemi** (pagato sedici volte su questo ramo, sempre trovato da una
-review, mai dalla suite). Per questo `guarda` restituisce SEMPRE la chiave
+review, mai dalla suite). Per questo view restituisce SEMPRE la chiave
 `esiste`, e quando e' `False` non inventa il resto: nessun `entita: []`,
 nessun `corpo: None` che si potrebbe scambiare per un fatto sulla casa
 invece che per "non trovato". E «non ho il corpo» (un limite di HIRIS --
@@ -49,11 +46,7 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 from __future__ import annotations
 
 from ..action.registry import field_applies
-from ..memory.resolver import (
-    ITALIAN_ELISIONS,
-    ITALIAN_FUNCTION_WORDS,
-    _normalize,
-)
+from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_structure, sanitize_text
 from ..proxy.entity_cache import (
     ASSUMABLE,
@@ -129,227 +122,6 @@ LINK_NAME = {
 
 # La stessa tabella dal verso del modello. Derivata, mai riscritta.
 HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
-
-
-#: Quanti nomi al massimo escono dal ripiego per frammento. Non e' una
-#: soglia sulla ricerca -- `Lookup.names_containing()` non scarta niente --
-#: ma sul CONTESTO: sulla casa del proprietario «reolink» sta in 166 nomi,
-#: e versarli tutti nel carico del modello e' il difetto che le misure
-#: esistono per trovare. Il taglio si dichiara sempre (`troppi_nomi`): una
-#: lista tagliata in silenzio fa dire al modello «ne ho trovati dodici» di
-#: una casa che ne ha centosessantasei.
-FRAMMENTO_MAX = 12
-
-
-def _words_to_search(text: str, results: list[dict]) -> list[str]:
-    """Le parole di `testo` che `find()` NON ha consumato e che vale la pena
-    cercare fra i nomi.
-
-    **Il difetto che l'ha fatta nascere** (24/09/2026, sera). Il ripiego
-    partiva solo quando `find()` tornava a mani vuote. Ma il modello non
-    cerca «taverna»: cerca **«luce della taverna»**, la frase intera, e su
-    quella `find()` trova «Luce» -- la luce del bagno, che si chiama
-    proprio cosi'. Risultato non vuoto, ripiego mai partito, e HIRIS ha
-    risposto di nuovo «non c'e' nessuna luce chiamata taverna» con la
-    correzione gia' installata. **«Trovare qualcosa» non e' «trovare cio'
-    che si cercava»**, ed era il mio errore, non quello del modello.
-
-    Le parole funzionali restano fuori: sulla casa vera «della» compare in
-    undici nomi, «di» in sessantotto. Cercarle porterebbe decine di
-    candidati che non c'entrano a ogni domanda che contiene una
-    preposizione, cioe' quasi tutte. L'elenco e' quello di
-    `memory/resolver.ITALIAN_FUNCTION_WORDS`, lo stesso che vieta una
-    giuntura italiana dentro un identificatore: non se ne tiene un secondo.
-
-    I numeri non sono nomi («1» sta in quarantotto nomi di questa casa) e
-    sotto le tre lettere non si cerca: «tv» e «ha» troverebbero mezza casa.
-    """
-    consumed = {word
-                for entry in results
-                for word in _normalize(entry.get("nome_visto") or "").split()}
-    seen: list[str] = []
-    for word in _normalize(text).split():
-        if (word in consumed or word in ITALIAN_FUNCTION_WORDS
-                or word in ITALIAN_ELISIONS or len(word) < 3
-                or word.isdigit() or word in seen):
-            continue
-        seen.append(word)
-    return seen
-
-
-def _per_frammento(lookup, text: str, results: list[dict]) -> list[dict]:
-    """I nomi che CONTENGONO `testo` come parola intera, nella forma che
-    `search` restituisce.
-
-    E' il ripiego di `search` quando `find()` non ha trovato niente, e solo
-    allora: quando un nome combacia per intero la domanda ha gia' la sua
-    risposta esatta, e aggiungerle accanto ogni nome che contiene quella
-    parola trasformerebbe una risposta certa in una lista ambigua --
-    «Cantina» tornerebbe l'area piu' tutto il resto.
-
-    Ogni voce porta `parte_di_un_nome`, il termine che ha combaciato. Il
-    modello DEVE poter distinguere «si chiama cosi'» da «si chiama cosi' e
-    qualcos'altro»: da quella differenza dipende se puo' agire senza
-    chiedere. La chiave compare solo qui, dove e' sempre vera e sempre
-    informativa -- non e' il `solo_una_parte` scartato in `search()`, che
-    sarebbe uscito su 11 frasi su 13 e che un modello impara a saltare.
-
-    L'ordine e' per lunghezza del nome crescente: il nome piu' corto e'
-    quello che aggiunge meno a cio' che e' stato cercato, quindi il piu'
-    probabile. Non e' un punteggio -- non sceglie, non scarta, e a parita'
-    l'ordine e' alfabetico perche' sia lo stesso a ogni chiamata.
-    """
-    if not hasattr(lookup, "names_containing"):
-        return []
-    collected: dict[str, tuple] = {}
-    for word in _words_to_search(text, results):
-        for candidati, term in lookup.names_containing(word):
-            # Una parola sola per voce: due parole della domanda possono
-            # cadere sullo stesso nome, e ripeterlo direbbe al modello che
-            # sono due cose.
-            collected.setdefault(term, (candidati, term))
-    entries = sorted(collected.values(),
-                     key=lambda entry: (len(entry[1]), entry[1]))
-    if not entries:
-        return []
-    shown = entries[:FRAMMENTO_MAX]
-    results = [{"nome_visto": text,
-                "parte_di_un_nome": term,
-                "candidati": [{"tipo": kind, "riferimento": reference}
-                              for kind, reference in candidates],
-                "ambiguo": len(candidates) > 1}
-               for candidates, term in shown]
-    if len(entries) > len(shown):
-        # Stessa forma della voce «piattaforma» piu' sotto: una voce SENZA
-        # candidati, che dichiara un fatto sulla ricerca invece di
-        # aggiungere una cosa trovata.
-        results.append({"nome_visto": text, "candidati": [], "ambiguo": False,
-                        "troppi_nomi": {"mostrati": len(shown),
-                                        "in_tutto": len(entries)}})
-    return results
-
-
-def search(lookup, text: str) -> list[dict]:
-    """Trova `testo` per nome o alias, con l'ambiguita' dichiarata.
-
-    E' `Lookup.find()` PIU' cio' che serve a non sbagliare cosa si e'
-    trovato. Scegliere UN candidato qui -- il primo, il piu' probabile --
-    rifarebbe il difetto che e' gia' costato un fix: due «Bagno» su piani
-    diversi vincevano in silenzio in base all'ordine di raccolta. Questa
-    funzione non sceglie: **rende scegliere possibile**.
-
-    Ogni candidato porta:
-
-    - `nome`, con cui la casa lo conosce. Senza, il modello ha una lista di
-      identificatori e nessun modo di riconoscerli;
-    - `dominio` (solo per le entita'): `sensor`, `light`, ... E' il rimedio
-      alla cecita' al dominio -- `cerca("luci")` restituisce `sensor.lights`,
-      un CONTATORE di luci, e nel risultato non c'era niente che lo dicesse.
-      Non si filtra (il modello e' quello che sa se un contatore gli serve),
-      si dichiara;
-    - `nome_dedotto`, presente (col nome dedotto, come STRINGA -- mai un
-      booleano: I2, review finale) quando il nome non e' dichiarato nel
-      registro ma ricavato dal `friendly_name` dello specchio dello stato
-      (vedi `memory/resolver.costruisci_indice`). Un nome dedotto e'
-      un fatto diverso da un nome scelto dall'utente e non va spacciato per
-      tale -- stessa forma di `nome_dedotto` in `guarda()`/`_view_entity`;
-    - `nascosta` (solo per le entita', e solo quando e' vera), fetta
-      "nascoste fuori dagli elenchi" (2026-08-25): il proprietario ha
-      misurato in produzione che `cerca` non riportava affatto questo campo
-      -- «lampadario» trovava tre lampade LIFX nascoste e nulla lo diceva.
-      Qui NON si esclude come in `guarda`: un'entita' cercata per nome e'
-      una domanda diretta, e togliere dalla lista una cosa che esiste
-      sarebbe rispondere «non esiste» di una cosa che c'e' -- la frase che
-      questo prodotto non deve mai dire con sicurezza. Si MARCA soltanto, e
-      solo quando e' vera: `nascosta: false` su ogni candidato di una casa
-      da 1226 entita' sarebbe rumore in ogni risposta -- stessa disciplina
-      di `unita`/`categorie` in `guarda()`.
-
-    Un risultato puo' portare anche `piattaforma` (`{dominio, quante_entita}`)
-    quando il testo E' il dominio di un'integrazione (`hydrawise`, `sonos`):
-    si AFFIANCA ai candidati trovati per nome, non li sostituisce mai --
-    review del 04/09, review del brief: una casa vera ha entita' che si
-    chiamano come la propria piattaforma («Sonos», «Hue», «Shelly», «Tuya»),
-    e tornare subito con `candidati: []` in quel caso le renderebbe
-    irraggiungibili da `search`, esattamente la frase vietata sopra per
-    `nascosta` applicata a un altro campo.
-
-    `verify()` e' un accesso a dizionario, non una ricerca: farlo per
-    candidato costa quanto leggere la lista.
-
-    Il secondo bordo della correzione del 06/09 al §6a -- «la corrispondenza
-    su un frammento» -- NON aggiunge una chiave qui: misurato costruendo
-    l'indice sulla casa vera (16 aree, 1018 entita') e su due case finte
-    realistiche, un campo `solo_una_parte` (`nome_visto` normalizzato diverso
-    dall'intero `testo` normalizzato) usciva su 11 frasi su 13 nella prima e
-    11 su 15 nella seconda -- su tutto il linguaggio naturale tranne il nome
-    nudo. Una dichiarazione quasi sempre vera il modello impara a saltarla,
-    anche il giorno in cui conta, che e' l'unico giorno per cui esisterebbe
-    -- e non esiste nel repo un elenco di parole vuote («il», «la», «di») da
-    cui distinguere un frammento povero da uno che ha perso informazione
-    vera: costruirne uno, o mettere una soglia sui caratteri residui,
-    sarebbe di nuovo il punteggio che la correzione vieta. Il fatto resta
-    vero e gratis in `nome_visto` (gia' il testo del SOLO frammento
-    riconosciuto, mai la frase intera): lo dichiara la description dello
-    strumento (`tools.py::SEARCH_TOOL_DEF`), non una chiave in piu' qui."""
-    # Il ripiego del 24/09/2026. Prima di queste righe «taverna» tornava
-    # `nulla_riconosciuto` mentre «Taverna 1» e «Taverna 2» esistevano, e il
-    # modello -- su tutte e due le strade, catena e ponte -- diceva «non c'e'
-    # nessuna luce chiamata taverna»: esattamente la frase che il docstring
-    # qui sopra dichiara di non voler mai dire.
-    #
-    # Si AFFIANCA a `find()`, non lo sostituisce e non aspetta che fallisca:
-    # la prima versione partiva solo sul vuoto, e su «luce della taverna»
-    # non e' mai partita perche' «Luce» -- la luce del bagno -- e' un
-    # risultato. Vedi `_words_to_search`.
-    results = lookup.find(text)
-    results = results + _per_frammento(lookup, text, results)
-    whole_phrase = _normalize(text)
-    for entry in results:
-        for candidate in entry["candidati"]:
-            resolved = lookup.verify(candidate["tipo"], candidate["riferimento"]) or {}
-            deduced = (resolved.get("nome_dedotto") or "").strip()
-            candidate["nome"] = (resolved.get("nome") or "").strip() or deduced
-            if deduced:
-                # I2 (review finale): `nome_dedotto` e' UNA forma sola in
-                # tutto il modulo -- la stringa col nome dedotto, la stessa
-                # che porta `guarda()`/`_view_entity`. Prima di questo fix
-                # qui usciva un booleano (`True`) mentre `guarda()` usciva la
-                # stringa: due tipi diversi per lo stesso fatto, con un
-                # modello che poteva imparare la forma sbagliata dall'uno e
-                # leggere male l'altro.
-                candidate["nome_dedotto"] = deduced
-            if candidate["tipo"] == "entita":
-                candidate["dominio"] = domain_of(candidate["riferimento"])
-                if resolved.get("nascosta"):
-                    candidate["nascosta"] = True
-
-    # Una piattaforma si riconosce ACCANTO alla ricerca fra i nomi, mai al
-    # suo posto: tornare subito quando il testo e' un dominio (`hydrawise`,
-    # `sonos`) cancellava gli omonimi veri di una casa -- un'entita', un'area
-    # o un dispositivo chiamati come la propria integrazione. Se il testo
-    # normalizzato e' anche il nome di una voce gia' trovata da `find()`, la
-    # piattaforma si aggiunge a QUELLA voce; altrimenti diventa una voce sua,
-    # con `candidati: []` -- non un candidato in piu' da nessuna parte.
-    platforms = lookup.platforms() if hasattr(lookup, "platforms") else {}
-    matched = platforms.get(whole_phrase)
-    if matched:
-        # `dominio` e' la chiave che il modello ripassera' a `view(tipo=
-        # "integrazione", riferimento=...)` (Task 3): deve uscire gia'
-        # normalizzata, non il testo grezzo digitato dall'utente ("  HYDRAWISE ")
-        # -- altrimenti quella `view` non troverebbe mai un'integrazione che
-        # pure esiste. Stessa `_normalize` che ha costruito la chiave in
-        # `Lookup.platforms()`, cosi' le due sono garantite uguali.
-        info = {"dominio": whole_phrase, "quante_entita": len(matched)}
-        same_text = next(
-            (entry for entry in results if _normalize(entry["nome_visto"]) == whole_phrase),
-            None)
-        if same_text is not None:
-            same_text["piattaforma"] = info
-        else:
-            results.append({"nome_visto": text, "piattaforma": info,
-                             "candidati": [], "ambiguo": False})
-    return results
 
 
 def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]:
@@ -430,6 +202,9 @@ _BASKET_NAMES = {
 #: La cesta che dice cosa e' stato trattenuto, e perche'. Non i valori: i nomi
 #: e la ragione. Vedi `entity_cache.withheld_credentials`.
 _WITHHELD_BASKET = "trattenuti"
+#: Esposto per il filtro di riservatezza: il nome della cesta che raccoglie
+#: cio' che non passa la porta al modello.
+WITHHELD_BASKET = _WITHHELD_BASKET
 
 
 def _enrich_entity(entity_detail: dict, entry: dict,
@@ -619,7 +394,7 @@ def _add_categories(detail: dict, entry: dict,
     non la salvava nemmeno. Costo pieno, resa zero.
 
     Escono col NOME, non col `category_id`: l'unione la fa
-    `anagrafe.categories_with_name`, la stessa che usa l'indice di `cerca`.
+    `anagrafe.categories_with_name`, la stessa che usa l'indice dei nomi.
     Senza, HIRIS riferirebbe all'utente un identificativo che l'utente non ha
     mai scritto -- ed e' la trappola gia' pagata una volta con le etichette.
 
@@ -656,10 +431,8 @@ def _add_labels(detail: dict, entry: dict, label_lookup: dict[str, str]) -> dict
     piu' radicale della famiglia, docs/design/2026-08-20-i-riferimenti.md).
     La scelta di leggibilita' di questo modulo NON cambia: la parentesi entra
     solo perche' l'id serve, non al posto del nome. L'unione la fa
-    `anagrafe.label_names`, la stessa che usa l'indice di `cerca` --
-    che da T8 conosce anche le etichette stesse come candidati
-    (`memory/resolver.py::costruisci_indice`), per chi sa solo il nome
-    e non ha ancora nessuna cosa che la porti.
+    `anagrafe.label_names`, la stessa che usa l'indice dei nomi
+    (`memory/resolver.py::costruisci_indice`).
 
     Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
@@ -683,7 +456,7 @@ def _search_suggestion(reference) -> str:
     finche' il turno muore.
 
     Il pattern esiste gia' in `action/verification.py::_no` per il bersaglio
-    non risolto («Usa "cerca" per trovare il nome giusto e ripeti il
+    non risolto («Usa «search» per trovare il nome giusto e ripeti il
     comando») -- questa funzione lo estende a `guarda`, non lo reinventa:
     UNA sola sorgente per i tre rami (fondamenta 3, "stessa forma"), cosi'
     che togliere il richiamo da un ramo solo non lascia gli altri due
@@ -691,7 +464,7 @@ def _search_suggestion(reference) -> str:
     """
     return (f"«{reference}» non e' stato trovato. Se e' un NOME (non un "
             f"id), chiama «search» con questo testo per trovare l'id giusto, "
-            f"poi ripeti «view» con quello.")
+            f"poi ripeti «search» con quello come `riferimento`.")
 
 
 def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
@@ -727,6 +500,10 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     logica con un `file_non_letti` scambiato per `unavailable`.
     """
     detail = {"esiste": False, "tipo": kind, "riferimento": reference}
+    if kind is None:
+        # Un `riferimento` dato alla porta senza genere (`house_query`, dal
+        # 30/09/2026): il tipo non si inventa.
+        del detail["tipo"]
     if unavailable:
         detail["non_disponibile"] = True
     else:
@@ -773,6 +550,47 @@ def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str
     ]
 
 
+#: Il tetto delle righe di UNA risposta della porta della casa (spec
+#: `2026-09-29-una-porta-sola-per-la-casa.md` §2.3): le voci di un insieme
+#: (`house_query`) e le entita' annidate nel dettaglio completo di un'area, di
+#: un dispositivo o di un'integrazione. Vive qui e non nella porta perche' il
+#: dettaglio si costruisce qui, e la porta lo importa: una cifra sola.
+ROWS_MAX = 50
+
+#: Gli elenchi di righe annidati nel dettaglio completo, nell'ordine in cui
+#: si spende il tetto: prima le visibili, poi le nascoste.
+_NESTED_ROWS = ("entita", "entita_nascoste")
+
+
+def _within_ceiling(detail: dict, hint: str) -> dict:
+    """Il dettaglio completo sotto il tetto della porta, per costruzione.
+
+    **Il tetto sta nella regola** (spec §2.3): fino al 30/09/2026 il dettaglio
+    di un'area elencava ogni sua entita' -- Telecamere 287, ~64.000
+    caratteri; «senza area» ~126.000 -- e sul ponte il risultato superava i
+    25.000 token che la CLI accetta, e diventava un rimando a un file che il
+    modello non puo' leggere (spec §1, causa 2). Qui le righe annidate si
+    fermano a `ROWS_MAX` IN TUTTO, visibili prima; cio' che resta si dichiara
+    in `oltre` con il modo di chiederlo -- mai tagliato in silenzio."""
+    budget = ROWS_MAX
+    left: dict = {}
+    for key in _NESTED_ROWS:
+        rows = detail.get(key)
+        if not rows:
+            continue
+        kept = rows[:budget]
+        budget -= len(kept)
+        if len(rows) > len(kept):
+            left[key] = len(rows) - len(kept)
+        if kept or key == "entita":
+            detail[key] = kept
+        else:
+            del detail[key]
+    if left:
+        detail["oltre"] = {**left, "suggerimento": hint}
+    return detail
+
+
 def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
                  unavailable: tuple[str, ...] = (),
                  fallback_names: dict[str, str] | None = None,
@@ -799,20 +617,17 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
         # affermazione che nessuno ha il diritto di fare. La scelta fra
         # `non_disponibile` e `suggerimento` e' in `_not_found_detail`.
         return _not_found_detail("area", reference, "aree" in unavailable)
-    entity = (
-        # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
-        # dire "questa luce c'e' ma e' disabilitata" -- `_view_device`
-        # e `_view_entity` lo fanno gia', `_view_area` no. `hierarchy()`
-        # le tiene apposta fuori dai conteggi ma raggiungibili qui (vedi
-        # anagrafe.py). Restano dentro `entita`, marcate: sapere che quella
-        # luce c'e' ma non funziona e' informazione, non rumore.
-        _entity_rows(area["entita"], state, reported_since_when, False, fallback_names,
-                     reported_units, label_lookup, reported_classes, category_lookup,
-                     reported_attributes, translations)
-        + _entity_rows(area.get("entita_disabilitate", []), state, reported_since_when, True,
-                       fallback_names, reported_units, label_lookup, reported_classes,
-                       category_lookup, reported_attributes, translations)
-    )
+    # Le DISABILITATE si contano, non si elencano (30/09/2026, review finale
+    # della fetta «una porta sola», C2). Fino ad allora restavano dentro
+    # `entita`, marcate: sulla casa vera l'area Telecamere ne porta 120 su
+    # 287, con lo stato vuoto -- righe che non dicono niente e che portavano
+    # il dettaglio a ~64.000 caratteri, oltre il limite del ponte. E' la
+    # regola della porta per ogni insieme («disabilitate sempre escluse e
+    # contate», spec §2.4), e `_view_integration` la applicava gia'.
+    entity = _entity_rows(area["entita"], state, reported_since_when, False, fallback_names,
+                          reported_units, label_lookup, reported_classes, category_lookup,
+                          reported_attributes, translations)
+    disabled_count = len(area.get("entita_disabilitate") or [])
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
     # elenchi", 2026-08-25). Il proprietario ha misurato in produzione che
@@ -842,6 +657,14 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
     # -- stessa disciplina di `unita`/`etichette`/`categorie` in questo file.
     if hidden_entities:
         detail["entita_nascoste"] = hidden_entities
+    if disabled_count:
+        detail["entita_disabilitate"] = disabled_count
+    # Il filtro della porta si scrive col nome che il nucleo usa: le
+    # pseudo-aree (`__senza_area__` e le sorelle) sono tutte «senza area».
+    where = "senza area" if str(area["id"]).startswith("__") else area["id"]
+    _within_ceiling(detail, f"chiedi «search» con area=\"{where}\" e un filtro "
+                            "(tipo, stato, classe): l'insieme si restringe, e "
+                            "la porta lo pagina con `oltre` e `salta`")
     # Le entita' di riferimento della stanza: solo quando l'utente le ha
     # dichiarate. Una chiave `null` su ogni area sarebbe rumore, e per giunta
     # indistinguibile da un registro delle aree caduto.
@@ -1425,12 +1248,19 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
     # (fetta "nascoste fuori dagli elenchi", 2026-08-25) -- STESSA chiave,
     # STESSA forma della porta area, cosi' il modello non impara due
     # vocabolari per lo stesso fatto su due porte diverse.
+    #
+    # Le DISABILITATE si contano in `entita_disabilitate`, come nell'area e
+    # nell'integrazione (re-review della fetta «una porta sola», 30/09/2026):
+    # elencate dentro `entita` spendevano il tetto di `ROWS_MAX` righe con
+    # voci senza stato. La regola della porta e' una: «disabilitate sempre
+    # escluse e contate» (spec §2.4). `disabilitato` del dispositivo resta.
     raw_device_entities = [
         e for e in home_space.get("entita") or [] if e.get("dispositivo_id") == reference]
+    disabled_count = sum(1 for e in raw_device_entities if e.get("disabilitata"))
     raw_hidden = [e for e in raw_device_entities
                        if e.get("nascosta") and not e.get("disabilitata")]
     raw_visible = [e for e in raw_device_entities
-                       if not (e.get("nascosta") and not e.get("disabilitata"))]
+                       if not e.get("nascosta") and not e.get("disabilitata")]
     device_entities = [
         _enrich_entity(
             # `stato` come dall'area: la stessa entita' e' la stessa cosa da
@@ -1463,6 +1293,13 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
     # Solo quando ce n'e' almeno una -- stessa disciplina della porta area.
     if device_hidden_entities:
         detail["entita_nascoste"] = device_hidden_entities
+    if disabled_count:
+        detail["entita_disabilitate"] = disabled_count
+    # Lo stesso tetto dell'area: un dispositivo «Home Assistant» ne porta 55.
+    _within_ceiling(detail, "chiedi «search» con un filtro (tipo, stato, "
+                            "integrazione, area) per restringere l'insieme, o "
+                            "con `riferimento` = l'id di un'entita' per il suo "
+                            "dettaglio")
     # Marca e modello: letti a ogni ricostruzione, e mai usciti da nessuna
     # porta. «Di che marca e' la valvola del bagno? Devo ordinarne un'altra
     # uguale» e' una domanda che si fa davvero, e la risposta era in tabella.
@@ -1679,13 +1516,11 @@ def _view_integration(home_space: dict, state: dict, reference,
     istante valido, la chiave non esce affatto: l'assenza e' assenza, mai
     un `None` ne' una sentinella spacciata per un fatto.
 
-    `reference` si normalizza (`_normalize`, la stessa di `search`) prima del
-    confronto -- passata da `str()` prima, perche' lo schema dello strumento
-    ammette anche un intero (`riferimento: ["string", "integer"]`,
-    tools.py) e `_normalize` chiama `.lower()`, che un intero non ha: il
-    valore che arriva da `search` e' gia' la chiave canonica (fix accanto a
-    `info["dominio"]`, sopra), ma il modello puo' scrivere questo
-    `riferimento` a mano invece di ripassare quello -- ed e' l'UNICO ramo di
+    `reference` si normalizza (`_normalize`, quella dell'indice dei nomi)
+    prima del confronto -- passata da `str()` prima, perche' lo schema dello
+    strumento ammette anche un intero (`riferimento: ["string", "integer"]`,
+    tools.py) e `_normalize` chiama `.lower()`, che un intero non ha. Il
+    modello puo' scrivere questo `riferimento` a mano -- ed e' l'UNICO ramo di
     `view` dove il riferimento e' un dominio tecnico (sempre minuscolo, senza
     accenti, in Home Assistant) invece di un id-slug come per
     area/entita'/dispositivo: normalizzarlo qui non puo' mai confondere due
@@ -1760,6 +1595,10 @@ def _view_integration(home_space: dict, state: dict, reference,
                                category_names(home_space), reported_attributes,
                                translations),
     }
+    # `entita` sono le mute, e `entita_mute` resta il loro numero intero.
+    _within_ceiling(detail, f"chiedi «search» con integrazione=\"{domain}\" e "
+                            "stato=\"unavailable\": la porta pagina l'insieme con "
+                            "`oltre` e `salta`")
     if unknown:
         detail["entita_stato_ignoto"] = len(unknown)
     if disabled:
@@ -1812,9 +1651,10 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     esplicitamente". Restano complete e raggiungibili nella chiave parallela
     `entita_nascoste` (presente solo quando ce n'e' almeno una), la stessa
     forma di `hierarchy()` per le disabilitate. La differenza col
-    trattamento delle disabilitate e' voluta: quelle restano DENTRO `entita`,
-    marcate (`disabilitata: true`) -- e' un dato utile su un impianto che
-    esiste, "questa luce c'e' ma non funziona"; le nascoste sono una scelta
+    trattamento delle disabilitate e' voluta: quelle, nel dettaglio di
+    un'area, di un dispositivo e di un'integrazione, si CONTANO
+    (`entita_disabilitate`, dal 30/09/2026: Telecamere ne elencava 120 con lo
+    stato vuoto), perche' non hanno uno stato da dire; le nascoste sono una scelta
     di VISTA dell'utente, e la misura in produzione (`guarda("area",
     "sala_da_pranzo")`, sette luci mescolate, quattro nascoste) ha mostrato
     che marcarle SENZA separarle non basta -- il campo c'era gia' e non ha
@@ -1867,7 +1707,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     non ha risposto.
 
     `nomi_di_ripiego` (entity_id -> friendly_name dallo specchio dello
-    stato, stessa forma usata da `costruisci_indice` e da `cerca()`) conta
+    stato, stessa forma usata da `costruisci_indice`) conta
     per OGNI ramo che elenca entita' -- `entita` da sola, ma anche le
     entita' di un'`area` e di un `dispositivo` (I1, review finale: la stessa
     entita' e' la stessa cosa da tutte le porte) -- e solo quando il

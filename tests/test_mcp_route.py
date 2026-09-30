@@ -220,10 +220,10 @@ async def test_tools_call_cerca_risponde_dagli_archivi_dell_app(rotta):
     client, _ = rotta
     corpo = await (await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-        "params": {"name": "search", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"nome": "cucina"}},
     })).json()
     esito = json.loads(corpo["result"]["content"][0]["text"])
-    assert esito["trovati"]
+    assert esito["trovate"]
 
 
 @pytest.mark.asyncio
@@ -252,7 +252,7 @@ async def test_tools_call_senza_archivi_dichiara_cosa_manca(rotta_senza_archivi)
     esplode e non tace: rimanda l'errore leggibile del dispatcher, marcato."""
     risposta = await _jsonrpc(rotta_senza_archivi, {
         "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-        "params": {"name": "search", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"nome": "cucina"}},
     })
     assert risposta.status == 200
     corpo = await risposta.json()
@@ -285,7 +285,7 @@ async def test_tools_call_senza_nome_dice_quale_campo_manca(rotta):
 async def _chiama_cerca(client, id_richiesta, intestazioni):
     return await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": id_richiesta, "method": "tools/call",
-        "params": {"name": "search", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"nome": "cucina"}},
     }, intestazioni=intestazioni)
 
 
@@ -390,7 +390,7 @@ async def test_senza_intestazione_di_turno_lo_strumento_si_esegue_e_il_log_lo_di
     corpo = await risposta.json()
     assert "isError" not in corpo["result"]
     esito = json.loads(corpo["result"]["content"][0]["text"])
-    assert esito["trovati"]  # lo strumento e' stato ESEGUITO davvero
+    assert esito["trovate"]  # lo strumento e' stato ESEGUITO davvero
 
     messaggi = [r.getMessage() for r in caplog.records]
     assert any("X-HIRIS-Turno" in m and "search" in m for m in messaggi)
@@ -721,7 +721,7 @@ async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monk
     intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-guardia-mcp"}
     await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-        "params": {"name": "search", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"nome": "cucina"}},
     }, intestazioni=intestazioni)
     assert len(chiamate) == 1
     _app_vista, turno_visto = chiamate[0]

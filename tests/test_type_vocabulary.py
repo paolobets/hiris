@@ -20,10 +20,17 @@ nato e si era fermato li'. Queste prove lo finiscono.
 in casa?». Il vocabolario dice cosa una cosa e', e lascia decidere a chi legge.
 
 Spec: docs/design/2026-08-16-il-vocabolario-delle-tipologie.md
-"""
-import pytest
 
-from hiris.app.home_space import briefing, topology, type_vocabulary
+**Dal 29/09/2026 il nucleo non annuncia piu' lo stato del momento**
+(«Notevole adesso» e' uscita, spec «una porta sola per la casa» §5): le prove
+che guardavano quella sezione -- l'allagamento che si legge «Bagnato», il
+movimento che non entra, le entita' di servizio e nascoste che non si
+annunciano, le irraggiungibili contate in una riga, la soglia dei quindici --
+sono uscite con lei. Restano le prove sulle PAROLE (`readable_state`), sui
+conteggi che il nucleo porta ancora e su cio' che `guarda` riporta a chi chiede.
+"""
+
+from hiris.app.home_space import briefing, topology, type_census, type_vocabulary
 from hiris.app.home_space.briefing import compose
 from hiris.app.proxy import state_translations
 
@@ -34,14 +41,9 @@ from tests._house_translations import house_translations
 from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 
-def _sezione_notevole(testo: str) -> str:
-    return testo.split("## Notevole adesso")[1].split("## ")[0]
-
-
 def _con(entita, stato_extra):
     casa = dict(_CASA, entita=_CASA["entita"] + entita)
-    return compose(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra),
-                   translations=house_translations())[0]
+    return compose(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra))[0]
 
 
 def _voce(eid, nome, **extra):
@@ -52,66 +54,6 @@ def _voce(eid, nome, **extra):
 
 
 # ── Cosa significano i valori: la classe decide ────────────────────────────
-
-def test_un_allagamento_si_legge_bagnato_e_non_acceso():
-    """`moisture` acceso significa BAGNATO -- lo dichiara Home Assistant
-    (developers.home-assistant.io/docs/core/entity/binary-sensor/), non lo
-    indoviniamo noi. Scritto «acceso», un allagamento e' indistinguibile da una
-    lampadina."""
-    sezione = _sezione_notevole(_con(
-        [_voce("binary_sensor.perdita", "Perdita bagno", classe="moisture")],
-        {"binary_sensor.perdita": "on"}))
-    assert "Perdita bagno" in sezione
-    # La parola e' quella che Home Assistant pubblica per QUELLA classe
-    # (`component.binary_sensor.entity_component.moisture.state.on`), non piu'
-    # una tupla scritta a mano: dall'08/09/2026 `_CLASS_MEANING` non esiste.
-    assert "Bagnato" in sezione
-    assert "Perdita bagno (Acceso)" not in sezione
-
-
-# I nomi-stringa VERI, dalla sorgente di Home Assistant
-# (homeassistant/components/binary_sensor/__init__.py), non dalla pagina di
-# documentazione -- che elenca i NOMI DELLE COSTANTI e non i valori.
-# Tutte tranne una coincidono col nome in minuscolo. L'eccezione:
-# `BinarySensorDeviceClass.CO = "carbon_monoxide"`.
-#
-# **Le parole non sono piu' nostre, dall'08/09/2026**: sono quelle che questa
-# casa pubblica (`tests/_house_translations.py`, misurate). Nessuna di esse e'
-# «Acceso», che e' la parola del DOMINIO: e' quello il difetto che questa prova
-# sorveglia, e la classe e' cio' che lo evita.
-_ALLARMI = [
-    ("moisture", "Bagnato"),
-    ("smoke", "Rilevato"),
-    ("gas", "Rilevato"),
-    ("carbon_monoxide", "Rilevato"),
-    ("safety", "Non Sicuro"),
-    ("tamper", "Rilevata manomissione"),
-]
-
-
-@pytest.mark.parametrize("classe,parola", _ALLARMI)
-def test_ogni_classe_di_allarme_entra_nel_digesto_e_si_legge_in_parole(classe, parola):
-    """TUTTE le classi d'allarme, non una campione.
-
-    Trovato da una review indipendente su questa stessa fetta: `co` era scritto
-    col nome della costante invece che col valore, quindi `carbon_monoxide` non
-    combaciava con niente -- un allarme monossido non entrava nel digesto e non
-    veniva tradotto. **La classe piu' critica dell'elenco, muta, e la suite
-    verde.** Una prova su una sola classe campione non lo avrebbe visto: le
-    altre ventisette funzionavano.
-    """
-    sezione = _sezione_notevole(_con(
-        [_voce(f"binary_sensor.allarme_{classe}", f"Allarme {classe}", classe=classe)],
-        {f"binary_sensor.allarme_{classe}": "on"}))
-    assert f"Allarme {classe}" in sezione, (
-        f"la classe {classe!r} non entra nel digesto: probabilmente non "
-        f"combacia con nessuna voce di _CLASSI_EVENTO")
-    assert f"({parola})" in sezione, (
-        f"la classe {classe!r} entra ma non si rende con la parola della sua "
-        f"classe: Home Assistant la pubblica, e senza di lei si leggerebbe "
-        f"«Acceso», cioe' la parola del dominio")
-    assert f"Allarme {classe} (Acceso)" not in sezione
-
 
 def test_ogni_classe_di_evento_ha_anche_un_significato():
     """Ogni classe che entra nel digesto ha, in questa casa, la COPPIA
@@ -135,17 +77,6 @@ def test_ogni_classe_di_evento_ha_anche_un_significato():
     assert not senza, f"classi che entrano nel digesto senza la coppia: {senza}"
 
 
-def test_un_movimento_NON_entra_nel_digesto():
-    """La prova gemella della precedente, sullo STESSO dominio: senza,
-    «filtrare per dominio» le lascerebbe passare o cadere entrambe. Un
-    movimento e' vero per trenta secondi -- non e' cio' che la casa STA
-    facendo, e' cio' che e' successo un attimo fa."""
-    sezione = _sezione_notevole(_con(
-        [_voce("binary_sensor.corridoio", "Movimento corridoio", classe="motion")],
-        {"binary_sensor.corridoio": "on"}))
-    assert "Movimento corridoio" not in sezione
-
-
 def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
     """`_CLASSI_APERTURA` non esiste piu': le sue cinque voci sono cinque righe
     della mappa dei significati. La prova che l'estensione ha ASSORBITO il caso
@@ -153,9 +84,12 @@ def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
     vocabolario e aggiungergliene accanto un secondo."""
     assert not hasattr(briefing, "_CLASSI_APERTURA"), (
         "la tabella vecchia deve sparire, non restare accanto alla nuova")
-    sezione = _sezione_notevole(compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-                                        translations=house_translations())[0])
-    assert "Porta" in sezione and "Aperto" in sezione
+    # Fino al 29/09/2026 la parola si leggeva in «Notevole adesso»; uscita
+    # quella sezione, si chiede alla sola resa che resta (la stessa che usa
+    # `guarda`).
+    assert topology.readable_state(
+        "on", domain="binary_sensor", device_class="door",
+        translations=house_translations())["valore"] == "Aperto"
 
 
 def test_a_valve_opening_or_closing_is_not_a_dumb_on_off():
@@ -211,30 +145,12 @@ def test_the_domain_decides_which_word_a_state_gets():
 
 # ── Cio' che Home Assistant dichiara non primario ──────────────────────────
 
-def test_un_entita_diagnostic_non_entra_qualunque_sia_il_suo_stato():
-    """Il caso da 179 unita' su 300. Home Assistant DICHIARA che queste non
-    sono primarie, e la sua documentazione dice che sono normalmente nascoste
-    dalle viste principali. HIRIS legge gia' il campo (`home_space/store.py:135`)
-    e il digesto lo ignorava."""
-    sezione = _sezione_notevole(_con(
-        [_voce("switch.led_stato", "LED di stato", categoria="diagnostic")],
-        {"switch.led_stato": "on"}))
-    assert "LED di stato" not in sezione
-
-
-def test_un_entita_config_non_entra():
-    sezione = _sezione_notevole(_con(
-        [_voce("switch.ripeti", "Ripeti segnale", categoria="config")],
-        {"switch.ripeti": "on"}))
-    assert "Ripeti segnale" not in sezione
-
-
 def test_service_entities_are_counted_even_when_not_announced():
     """Task 3 di «rifiutare e importare» (§7①): `entity_category` era gia'
     letto (`store.py:385`, e da questa stessa fetta anche da `_enrich_entity`,
     `queries.py`) ma nessun lettore lo metteva DAVANTI -- il digesto le
-    escludeva in silenzio da «Notevole adesso» (le due prove sopra) senza mai
-    dire QUANTE fossero. Stessa disciplina delle nascoste due sezioni sopra:
+    escludeva in silenzio da «Notevole adesso» (uscita il 29/09/2026) senza
+    mai dire QUANTE fossero. Stessa disciplina delle nascoste due sezioni sopra:
     «non le annuncio» e «non so che esistono» sono due cose diverse.
 
     Mutazione: non contare `service` (o non appenderlo a `notices`) -- il
@@ -247,12 +163,10 @@ def test_service_entities_are_counted_even_when_not_announced():
         state[f"switch.servizio_{i}"] = "on"
     text = _con(entities, state)
 
-    assert "Servizio 0" not in _sezione_notevole(text), (
-        "il digesto rispetta la dichiarazione di Home Assistant")
     gaps = _sezione_lacune(text)
     assert "2 entita' di servizio" in gaps, (
         "ma il numero c'e', altrimenti la domanda «quante sono di servizio?» "
-        "costerebbe una chiamata a `view` per ognuna")
+        "costerebbe una chiamata a `search` per ognuna")
 
 
 def test_without_service_entities_nothing_is_said():
@@ -267,38 +181,18 @@ def test_without_service_entities_nothing_is_said():
         compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
 
 
-def test_un_entita_nascosta_dall_utente_non_entra():
-    """E' una scelta esplicita dentro Home Assistant: rimetterla davanti da
-    un'altra porta sarebbe disfarla."""
-    sezione = _sezione_notevole(_con(
-        [_voce("switch.roba", "Roba nascosta", nascosta=1)],
-        {"switch.roba": "on"}))
-    assert "Roba nascosta" not in sezione
-
-
 # ── Condizioni travestite da eventi ────────────────────────────────────────
 
-def test_un_automazione_abilitata_non_e_una_cosa_accesa():
-    """Caso da 18 unita' sull'impianto vero. `on` su un'automazione significa
-    ABILITATA: e' il riposo, non un'eccezione rispetto al riposo."""
-    sezione = _sezione_notevole(_con(
-        [_voce("automation.sveglia_2", "Sveglia infrasettimanale")],
-        {"automation.sveglia_2": "on"}))
-    assert "Sveglia infrasettimanale" not in sezione
+def test_un_telefono_in_casa_chi_chiede_lo_vede():
+    """LA DIFFERENZA FRA VOCABOLARIO E FILTRO.
 
-
-def test_un_telefono_in_casa_non_e_un_evento_MA_guarda_lo_riporta():
-    """LA DIFFERENZA FRA VOCABOLARIO E FILTRO, in una prova sola.
-
-    Un `device_tracker` a casa e' una CONDIZIONE: il digesto tace. Ma non e'
-    escluso dal prodotto -- se lo chiedi, `guarda` te lo dice, altrimenti HIRIS
-    non saprebbe piu' rispondere a «chi e' in casa?». Senza la seconda meta' di
-    questa prova avremmo costruito un filtro invece di un vocabolario, e la
-    suite sarebbe restata verde."""
+    Un `device_tracker` a casa e' una CONDIZIONE, e il nucleo non la annuncia
+    (dal 29/09/2026 il nucleo non annuncia nessuno stato del momento: la meta'
+    di questa prova che lo verificava su «Notevole adesso» e' uscita con la
+    sezione). Ma non e' escluso dal prodotto -- se lo chiedi, `guarda` te lo
+    dice, altrimenti HIRIS non saprebbe piu' rispondere a «chi e' in casa?»."""
     from hiris.app.home_space.queries import view
     voce = _voce("device_tracker.paolo", "Telefono di Paolo")
-    sezione = _sezione_notevole(_con([voce], {"device_tracker.paolo": "home"}))
-    assert "Telefono di Paolo" not in sezione
 
     casa = dict(_CASA, entita=_CASA["entita"] + [voce])
     dettaglio = view(casa, _COMPORTAMENTO, _RICORDI,
@@ -311,41 +205,7 @@ def test_un_telefono_in_casa_non_e_un_evento_MA_guarda_lo_riporta():
 
 # ── La salute non e' l'adesso ──────────────────────────────────────────────
 
-def test_le_irraggiungibili_diventano_UNA_riga_di_conteggio():
-    """Erano 119 sull'impianto vero e occupavano 76 righe del digesto. Non sono
-    «cosa sta facendo la casa»: sono SALUTE, ed e' una fetta sua. Togliere il
-    fatto sarebbe una perdita; ripeterlo settantasei volte e' il rumore."""
-    entita, stato = [], {}
-    for i in range(12):
-        entita.append(_voce(f"sensor.giu_{i}", f"Sensore {i}"))
-        stato[f"sensor.giu_{i}"] = "unavailable"
-    sezione = _sezione_notevole(_con(entita, stato))
-    assert "12 entità non rispondono" in sezione
-    assert "Sensore 0" not in sezione, (
-        "una riga di conteggio, non una riga per entita'")
-
-
 # ── La soglia: smette di scattare, non sparisce ────────────────────────────
-
-def test_sotto_la_soglia_le_luci_si_chiamano_per_nome():
-    """Il metro della fetta, in piccolo: tolto il rumore il digesto scende
-    sotto i 15, il dettaglio individuale torna, e HIRIS puo' dire QUALE luce
-    senza chiamare nessuno strumento."""
-    sezione = _sezione_notevole(compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
-    assert "Faretti" in sezione
-
-
-def test_la_soglia_resta_viva_quando_serve_davvero():
-    """Non si tara e non si toglie una guardia corretta: con trenta luci accese
-    raggruppare e' giusto. Le si toglie il motivo per cui scattava SEMPRE."""
-    entita, stato = [], {}
-    for i in range(30):
-        entita.append(_voce(f"light.festa_{i}", f"Luce {i}"))
-        stato[f"light.festa_{i}"] = "on"
-    sezione = _sezione_notevole(_con(entita, stato))
-    assert "Luce 0" not in sezione
-    assert "raggruppat" in sezione.lower()
-
 
 # ── Le nascoste: fuori dalle gestioni, DENTRO la conoscenza ────────────────
 
@@ -357,18 +217,17 @@ def test_le_nascoste_si_contano_nel_nucleo_anche_se_non_si_annunciano():
     """«Non la annuncio» e «non so che esiste» sono due cose diverse, e la
     seconda sarebbe una perdita.
 
-    Il digesto rispetta la scelta dell'utente e tace. Ma alla domanda «quante
-    entita' nascoste ci sono?» HIRIS deve saper rispondere -- e senza il numero
-    nel nucleo servirebbe una chiamata a `guarda` per ognuna delle sedici aree,
-    cioe' lo stesso difetto che questa fetta chiude."""
+    Il nucleo rispetta la scelta dell'utente e non le conta in «La casa». Ma
+    alla domanda «quante entita' nascoste ci sono?» HIRIS deve saper
+    rispondere -- e senza il numero nel nucleo servirebbe una chiamata a
+    `search` per ognuna delle sedici aree, cioe' lo stesso difetto che questa
+    fetta chiude."""
     entita, stato = [], {}
     for i in range(3):
         entita.append(_voce(f"light.nascosta_{i}", f"Luce nascosta {i}", nascosta=1))
         stato[f"light.nascosta_{i}"] = "on"
     testo = _con(entita, stato)
 
-    assert "Luce nascosta 0" not in _sezione_notevole(testo), (
-        "il digesto rispetta la scelta dell'utente")
     lacune = _sezione_lacune(testo)
     assert "3 entita' nascoste" in lacune, (
         "ma il numero c'e', altrimenti la domanda «quante ce ne sono?» "
@@ -392,7 +251,7 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 # ── R9: il vocabolario del nucleo pinnato alla fonte ───────────────────────
 #
-# `briefing._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
+# `type_census._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
 # scritti a mano. Senza queste prove, togliere una voce (o non aggiungerne una
 # quando Home Assistant introduce un dominio o una device_class nuova) non
 # farebbe rosso nessun test -- lo stesso rischio gia' pagato con
@@ -416,18 +275,31 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 # dominio/classe nuova nel prodotto.
 
 
+def _seed_says_notable(dominio: str, classe: str | None = None) -> bool:
+    """Il giudizio `notevole` del seme, letto dalle righe: coppia, poi
+    dominio. Fino al 29/09/2026 lo leggeva `TypeJudgments.is_notable`, uscita
+    col suo unico lettore di produzione («Notevole adesso» del nucleo); il
+    seme resta, e queste prove lo pinnano alla fonte. Verificato quel giorno,
+    prima di togliere la domanda: stessi 10 domini e stesse 13 coppie."""
+    giudizi = {soggetto: valore for _, soggetto, campo, valore
+               in type_vocabulary.judgment_seed_rows() if campo == "notevole"}
+    if classe and f"{dominio}.{classe}" in giudizi:
+        return giudizi[f"{dominio}.{classe}"] == "si"
+    return giudizi.get(dominio) == "si"
+
+
 def domini_notevoli() -> set[str]:
     """I domini che il repo dei giudizi dichiara degni di un annuncio --
     stesso fatto di `notable_types()` (cancellata col Task 8, spec
-    2026-09-16 §11), letto dalla nuova porta."""
+    2026-09-16 §11)."""
     return {dominio for dominio in type_vocabulary.declared_domains()
-            if type_vocabulary.REPO_JUDGMENTS.is_notable(dominio)}
+            if _seed_says_notable(dominio)}
 
 
 def classi_notevoli() -> set[tuple[str, str]]:
     """Le coppie (dominio, classe) degne di un annuncio."""
     return {coppia for coppia in type_vocabulary.declared_pairs()
-            if type_vocabulary.REPO_JUDGMENTS.is_notable(*coppia)}
+            if _seed_says_notable(*coppia)}
 
 _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 
@@ -435,8 +307,8 @@ _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 def test_stati_attivi_e_pinnato_alla_fonte():
     """Mutazione: togliere uno stato da `_ACTIVE_STATES` deve far rosso
     questo test."""
-    senza = sorted(_STATI_ATTIVI_HA - briefing._ACTIVE_STATES)
-    extra = sorted(briefing._ACTIVE_STATES - _STATI_ATTIVI_HA)
+    senza = sorted(_STATI_ATTIVI_HA - type_census._ACTIVE_STATES)
+    extra = sorted(type_census._ACTIVE_STATES - _STATI_ATTIVI_HA)
     assert not senza and not extra, (
         f"_STATI_ATTIVI e' cambiato senza aggiornare questo pin -- mancanti: "
         f"{senza}, in piu': {extra}")

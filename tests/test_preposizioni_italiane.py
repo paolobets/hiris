@@ -243,18 +243,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # anche parole inglesi. `in` e `per` sono esclusi di proposito: vedi il
 # docstring del modulo, con la misura degli usi inglesi veri.
 # La lista vive in `memory/resolver.py` dal 24/09/2026: la usa anche il
-# prodotto (`home_space/queries.search`), e un cancello chiede il suo
+# prodotto (`memory/resolver.name_matches`), e un cancello chiede il suo
 # elenco invece di ricopiarlo -- due copie sono due posti in cui la stessa
 # aggiunta si dimentica di uno.
 from hiris.app.memory.resolver import (
-    ITALIAN_ELISIONS as _ELISIONI,
-)
-from hiris.app.memory.resolver import (
     ITALIAN_FUNCTION_WORDS as _PIANE,
 )
-from hiris.app.memory.resolver import (
-    ITALIAN_VOWELS as _VOCALI,
-)
+
+# Le elisioni, invece, sono tornate qui il 30/09/2026 (review finale della
+# fetta «una porta sola», M3): nel prodotto non le legge nessuno --
+# `name_matches` confronta parole, e «dell'» non e' una parola che si cerca --
+# e l'unico lettore e' questo cancello. Valgono SOLO davanti a vocale, perche'
+# e' cio' che l'elisione e'.
+_ELISIONI = frozenset(["dell", "all", "nell", "sull", "coll", "dall", "l"])
+_VOCALI = frozenset("aeiou")
 
 
 def giunture(nome: str) -> list[str]:
@@ -367,7 +369,7 @@ _NOTE_ITALIANE = frozenset({
     "CLIMA_A_21", "CREDENZIALI_DEL_PROPRIETARIO", "HA_RIPORTA_IL_SALOTTO_SPENTO",
     "HA_RIPORTA_LA_CAMERA_A_19_5", "METTI_A_21", "METTI_LA_CAMERA_A_19_5", "SCADENZA_NEI_TEST",
     "SPEGNI_IL_SALOTTO", "TUTTA_LA_CUCINA",
-    "_ARCHIVIO_DELL_UTENTE", "_BLOCCHI_A_TUTTA_LARGHEZZA", "_CASA_CON_ETICHETTA",
+    "_ARCHIVIO_DELL_UTENTE", "_BLOCCHI_A_TUTTA_LARGHEZZA",
     "_CHIAVI_NOMINATE_DAL_PROMPT",
     "_DOMINI_DI_RECAPITO", "_DOMINI_NON_PIATTAFORMA",
     "_FALSITA_IN_ENTRAMBE_LE_VOCI", "_FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE",
@@ -419,9 +421,9 @@ _NOTE_ITALIANE = frozenset({
     "nomi_di_ripiego", "non_c_e", "non_chiesto", "non_disponibili", "non_esiste", "non_letti",
     "non_letto", "non_viste", "notte_30_oltre_confine", "parole_di_scadenza",
     "poco_dopo", "porta_con_canale",
-    "prima_dei_guasti", "prima_riga", "prima_rivendicazione", "resp_con",
+    "prima_dei_guasti", "prima_rivendicazione", "resp_con",
     "resp_senza", "riepilogo_non_chiesto",
-    "riepilogo_non_letto", "riga_di", "righe_non_vuote", "rompe_dalla_lettura",
+    "riepilogo_non_letto", "riga_di", "rompe_dalla_lettura",
     "rotta_senza_archivi", "runner_con", "runner_senza",
     "senza_accenti", "senza_area", "senza_causa", "senza_id",
     "senza_registro_caduto", "senza_stato_vivo", "senza_token", "specchio_al_ritorno",

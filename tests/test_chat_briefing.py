@@ -161,7 +161,6 @@ async def test_il_contesto_della_chat_e_il_nucleo(aiohttp_client, tmp_path):
     # Le sezioni del nucleo -- lo stesso testo che GET /api/briefing mostra --
     # non le quattro vecchie intestazioni.
     assert "## La casa" in context_str
-    assert "## Notevole adesso" in context_str
     assert "## Cio' che la casa fa gia' da sola" in context_str
     assert "Cucina" in context_str
     assert "## Contesto casa" not in context_str
@@ -169,10 +168,17 @@ async def test_il_contesto_della_chat_e_il_nucleo(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_il_ritratto_ora_entra_nel_contesto_della_chat(aiohttp_client, tmp_path):
-    """La sovrapposizione n.1 della mappa: prima di questa fetta nessuna
-    delle fonti di `handle_chat` guardava lo stato vivo -- ora "Notevole
-    adesso" (dal nucleo) sa che la luce e' accesa."""
+async def test_lo_stato_del_momento_non_entra_nel_contesto_della_chat(
+        aiohttp_client, tmp_path):
+    """Il contrario di cio' che questa prova diceva fino al 29/09/2026.
+
+    Allora «Notevole adesso» portava nel contesto della chat la luce accesa
+    -- «il ritratto, non solo l'anagrafe». Misurato quel giorno: la #18 della
+    batteria («come sta la casa») e' stata risposta da quella fotografia,
+    senza strumenti, e sbagliata. Il nucleo porta cio' che e' STABILE; lo
+    stato vivo si chiede a `search`, che lo legge quando serve (spec «una
+    porta sola per la casa» §5). La prova sta qui, e non solo su `compose()`,
+    perche' questo e' il testo che il modello riceve davvero."""
     archivio_casa = _semina_casa(tmp_path)
     cache = _CacheFinta([{"id": "light.cucina", "state": "on"}])
     client, mock_runner = await _build_chat_client(
@@ -183,7 +189,9 @@ async def test_il_ritratto_ora_entra_nel_contesto_della_chat(aiohttp_client, tmp
     assert resp.status == 200
 
     context_str = mock_runner.chat.call_args.kwargs["context_str"]
-    assert "Faretti" in context_str  # accesa: e' notevole -- il ritratto, non solo l'anagrafe
+    assert "Cucina" in context_str        # la casa c'e'
+    assert "Notevole adesso" not in context_str
+    assert "Faretti" not in context_str   # la luce accesa no: si chiede
     archivio_casa.close()
 
 
@@ -302,10 +310,9 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
 
     context_str = mock_runner.chat.call_args.kwargs["context_str"]
     assert "Nessun piano registrato." in context_str
+    # Mai un nucleo vuoto spacciato per una casa vuota: il nucleo dice
+    # "non ho potuto guardare".
     assert "non si e' potuto guardare" in context_str
-    # Mai un nucleo vuoto spacciato per una casa vuota: "Notevole adesso" deve
-    # dire "non ho potuto guardare", non "niente di notevole".
-    assert "Niente di notevole al momento." not in context_str
 
 
 # ---------------------------------------------------------------------------
@@ -569,7 +576,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
         giro["n"] += 1
         if giro["n"] == 1:
             return _falsa_risposta_tool_use(
-                "view", {"tipo": "automazione", "riferimento": "automation.sveglia"})
+                "search", {"genere": "automazione", "riferimento": "automation.sveglia"})
         return _falsa_risposta_testo(
             "La sveglia ha un trigger configurato, l'ho letto dal suo corpo vero.")
 
@@ -584,7 +591,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     # legge piu' dal payload -- i nomi degli strumenti non si scrivono in chat --
     # ma dal canale che li ha sostituiti: la riga di log a livello debug. Questa
     # asserzione e' quindi anche la prova che quel canale esiste davvero.
-    assert "view" in _strumenti_loggati(caplog)
+    assert "search" in _strumenti_loggati(caplog)
 
     # La prova vera: il SECONDO giro della stessa conversazione -- non
     # un'assunzione del test, la vera seconda chiamata a
@@ -596,7 +603,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     assert ultimo_messaggio["role"] == "user"
     blocco_risultato = ultimo_messaggio["content"][0]
     assert blocco_risultato["type"] == "tool_result"
-    corpo_ricevuto_dal_modello = json.loads(blocco_risultato["content"])
+    corpo_ricevuto_dal_modello = json.loads(blocco_risultato["content"])["voci"][0]
     assert corpo_ricevuto_dal_modello["esiste"] is True
     assert corpo_ricevuto_dal_modello["corpo"] == {"trigger": []}
 

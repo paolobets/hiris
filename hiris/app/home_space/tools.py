@@ -149,6 +149,7 @@ import logging
 import math
 import os
 import re
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
@@ -172,10 +173,10 @@ from ..proxy.entity_cache import (
 )
 from . import ha_vocabulary, historian
 from .appointments import read_appointment, sort_appointments
+from .house_query import KINDS, ORDERS, ROWS_MAX, parse_filters, query_house
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
-from .queries import search as _search_candidates
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import SecretSeal, home_assistant_folder
@@ -192,15 +193,16 @@ from .type_vocabulary import REPO_JUDGMENTS
 #
 # T7 (R2): prima di questo task le due fonti coincidevano per coincidenza
 # (`_ARCHIVI` aveva solo i tre tipi che sono anche ancore valide), e
-# derivare da `STORE_KEY_PER_TYPE` sembrava innocuo. Da quando
-# `_ARCHIVI` include anche "piano" -- un registro dell'anagrafe vero, ma
-# NON un tipo di ancora che `remember` possa mai scrivere -- le due cose
-# sono tornate a essere quello che sono sempre state: due vocabolari
-# diversi con scopi diversi. Se fossero rimaste legate, `fetch`
-# avrebbe accettato silenziosamente `tipo="piano"` (nessun errore, solo
-# una lista di ricordi sempre vuota, perche' nessuna ancora di quel tipo
-# puo' esistere) al posto del messaggio che insegna i tipi validi -- lo
-# stesso genere di secondo vocabolario silenzioso che R9 denuncia altrove.
+# derivare da `STORE_KEY_PER_TYPE` sembrava innocuo. Quando `_ARCHIVI`
+# includeva anche "piano" (dal T7 al 30/09/2026) -- un registro
+# dell'anagrafe vero, ma NON un tipo di ancora che `remember` possa mai
+# scrivere -- le due cose sono tornate a essere quello che sono sempre
+# state: due vocabolari diversi con scopi diversi, e restano separati. Se
+# fossero rimaste legate, `fetch` avrebbe accettato silenziosamente
+# `tipo="piano"` (nessun errore, solo una lista di ricordi sempre vuota,
+# perche' nessuna ancora di quel tipo puo' esistere) al posto del messaggio
+# che insegna i tipi validi -- lo stesso genere di secondo vocabolario
+# silenzioso che R9 denuncia altrove.
 _TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
 
 # La forma canonica `dominio.oggetto` di un `entity_id`. DOPPIONE DICHIARATO
@@ -236,7 +238,7 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 # vuoto, lo ripeteva fedelmente. Ma quando aveva un COMPITO da portare a
 # casa -- «accendi la luce della taverna» -- rispondeva «in Home Assistant
 # non c'e' nessuna stanza ne' luce chiamata taverna», cioe' esattamente la
-# frase che `queries.search` dichiara di non voler mai dire con sicurezza.
+# frase che la vecchia ricerca per nome dichiarava di non voler mai dire.
 # Misurato su tutte e due le strade, catena e ponte: non era il modello.
 #
 # Il resto era un consiglio inservibile: «riprova col nome esatto» lo si da'
@@ -248,287 +250,181 @@ _NOTHING_RECOGNIZED_SUGGESTION = (
     "lo sai.** «search» guarda i nomi, non l'inventario, e una cosa puo' "
     "esistere con un nome che non somiglia a quello che hai cercato. "
     "Prima di concludere: cerca la STANZA in cui la cosa dovrebbe stare e "
-    "chiama «view» su quell'area per vedere cosa contiene davvero; se "
-    "conosci gia' tipo e riferimento, «view» diretto."
+    "chiama «search» con il `riferimento` di quell'area per vedere cosa "
+    "contiene davvero, o filtra per `area`; se conosci gia' il "
+    "`riferimento` della cosa, chiedilo diretto."
 )
+
+#: I registri dell'anagrafe che la porta legge per rispondere: aree, entita' e
+#: dispositivi (i nomi) e i PIANI, perche' `piano` e' un filtro della porta
+#: (`house_query._place_matches`, `_area_rows`, `_device_rows`). Col registro
+#: dei piani caduto `search(piano=...)` trova zero e deve dirlo (spec §2.4:
+#: il silenzio si dichiara sempre). Le etichette no: la porta non le cerca.
+_SEARCHED_STORES = frozenset(STORE_KEY_PER_TYPE.values()) | {"piani"}
+
+
+def _fallen_stores_message(stores: list[str]) -> str:
+    return (f"registri non letti all'ultima ricostruzione dell'anagrafe: "
+            f"{', '.join(stores)}. Cio' che sta li' dentro non e' cercabile "
+            "adesso, e potrebbe esistere lo stesso.")
+
 
 logger = logging.getLogger(__name__)
 
 
 SEARCH_TOOL_DEF = {
     "name": "search",
+    # La porta che interroga la casa (spec `2026-09-29-una-porta-sola-per-la-
+    # casa.md` §2): dal 29/09/2026 fa anche il mestiere del dettaglio, che era
+    # di un secondo strumento. La descrizione dice, in quest'ordine, a cosa
+    # serve, i filtri, la profondita', cosa leggere SEMPRE nella risposta e
+    # cosa non esce -- il resto (le cinque ceste degli attributi, i comandi di
+    # un'entita') lo dice la risposta stessa, non una descrizione da 13.000
+    # caratteri pagata a ogni turno.
     "description": (
-        "Trova nella casa un'area, un'entita', un dispositivo, un piano, "
-        "un'automazione, uno script o un'etichetta a partire da un nome o alias "
-        "scritto in linguaggio naturale (es. «il bagno», «la lavatrice», «il "
-        "termostato del salotto», «il piano di sotto», «la sveglia del mattino», "
-        "«da controllare»). Per ogni "
-        "frammento di testo riconosciuto restituisce la lista COMPLETA dei candidati che quel nome "
-        "puo' significare: se una sola voce lo usa la lista ha un elemento; se "
-        "piu' voci si chiamano allo stesso modo (due «Bagno» su piani diversi, "
-        "un alias che collide col nome vero di un'altra area) la lista ne ha "
-        "piu' di uno e il risultato e' marcato `ambiguo` -- in quel caso scegli "
-        "tu, guardando il resto della conversazione, o chiedi a chi ti sta parlando: non "
-        "prendere semplicemente il primo della lista. "
-        "Ogni candidato porta il `nome` con cui la casa lo conosce e, per le entita', "
-        "il `dominio` (`light`, `sensor`, `switch`, ...): **guarda il dominio prima di "
-        "concludere**, perche' «luci» puo' corrispondere a un `sensor` che CONTA le luci "
-        "invece che a una luce. Se compare anche `nome_dedotto` (una STRINGA, mai un "
-        "booleano -- la stessa forma in `view`), il nome che vedi in `nome` non l'ha "
-        "scelto chi vive in questa casa: viene dedotto da cio' che Home Assistant mostra "
-        "a schermo, e i due campi portano lo stesso testo. "
-        "Un candidato di tipo `entita` può portare anche `nascosta: true`: la persona l'ha "
-        "tolta dalle proprie viste in Home Assistant, ma esiste comunque, ed è per questo "
-        "che qui NON viene esclusa come invece accade nelle liste di `view` — dire "
-        "«non esiste» di una cosa che c'è sarebbe peggio che dirla nascosta. Non proporla "
-        "spontaneamente se la domanda non la riguarda; se invece la riguarda — chi ti sta "
-        "parlando ha cercato proprio quel nome, o chiede esplicitamente cosa è nascosto — "
-        "usala e dillo, non negarla. "
-        "`nome_visto` è il PEZZO del testo che ha combaciato, non necessariamente tutta "
-        "la frase che hai cercato: il riconoscimento avviene DENTRO il testo, quindi «la "
-        "lampada di sopra» può agganciare un'entità chiamata esattamente «lampada». "
-        "Confrontalo con quello che hai chiesto: se è più corto, hai un riferimento "
-        "preciso per QUELLA parola, non per il resto — una posizione, un dettaglio che "
-        "il match non ha catturato — e non dare per scontato che chi ti sta parlando si "
-        "riferisse proprio a quella cosa. "
-        "Un candidato di tipo `piano` NON si passa a `view`, che non sa aprire un "
-        "piano da solo: serve a `execute(piani=...)`, per agire su tutte le aree di "
-        "quel piano insieme. `automazione` e `script` invece si passano a `view` "
-        "esattamente come `area`/`entita`/`dispositivo`. "
-        "Un candidato di tipo `etichetta` NEMMENO si passa a `view` (non e' una "
-        "cosa che si apre in dettaglio): il suo `riferimento` E' il `label_id` che "
-        "`execute(bersaglio.etichette=[...])` pretende -- fino ad ora nessuna porta lo "
-        "faceva uscire per un'etichetta che nessuna entita' ancora porta; da «search» "
-        "sul suo NOME si arriva al `label_id` con una chiamata sola. "
-        "Se il testo e' il dominio di un'integrazione (`hydrawise`, `sonos`), la "
-        "risposta porta anche `piattaforma` (`{dominio, quante_entita}`) ACCANTO ai "
-        "candidati trovati per nome, mai al loro posto: una casa vera puo' avere "
-        "entita' o aree chiamate come la propria integrazione (una cassa «Sonos», "
-        "un'area «Hue»), e resterebbero irraggiungibili se `piattaforma` le "
-        "sostituisse. E' una cosa di tipo diverso da un nome, e si apre con «view» "
-        "tipo `integrazione`. "
-        "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
-        "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
-        "**Ma una lista vuota non basta sempre a concludere che la cosa non esista**: "
-        "la risposta puo' portare `nulla_riconosciuto` e/o `non_ho_potuto_guardare`, a "
-        "seconda del perche'. "
-        "`non_ho_potuto_guardare` esce quando la ricerca non ha potuto guardare tutto, "
-        "con la lista dei motivi. Ogni motivo e' o un guasto DI ADESSO (un registro non "
-        "letto, lo specchio dello stato giu', un file di comportamento illeggibile o la "
-        "cartella di Home Assistant non raggiungibile: ha senso riprovare piu' tardi) o "
-        "un limite STABILE di alcune entita' di questa casa (nessun nome ne' nel registro "
-        "ne' nello stato vivo: riprovare la stessa ricerca non cambia nulla, serve "
-        "rinominarle in Home Assistant) -- il testo del motivo dice quale dei due e'. "
-        "SOLO un guasto DI ADESSO puo' comparire ANCHE accanto a candidati gia' trovati: "
-        "un registro non letto o un file non letto possono nascondere altri omonimi anche "
-        "quando questa ricerca ha gia' trovato qualcosa. Il limite STABILE invece esce "
-        "SOLO quando `trovati` e' vuoto (mai accanto a candidati gia' trovati): riguarda "
-        "sempre un'ALTRA entita' rispetto a quella cercata, e dirlo mentre la ricerca ha "
-        "gia' avuto successo non spiegherebbe niente. "
-        "Se hai guardato TUTTI i nomi dichiarati per intero e nessuno combaciava -- "
-        "nessun guasto DI ADESSO a impedirtelo -- la risposta porta anche "
-        "`nulla_riconosciuto: true` con un `suggerimento`: **vuol dire «non ho "
-        "riconosciuto niente in questo testo», MAI «questa cosa non esiste in casa»** "
-        "-- non hai guardato l'inventario, hai guardato i NOMI. Segui il suggerimento "
-        "(il nome esatto, o `view` diretto sul tipo giusto) invece di concludere che la "
-        "cosa manchi o di ripetere la stessa ricerca uguale. Richiede `trovati` vuoto, "
-        "quindi MAI insieme a candidati gia' trovati; MAI insieme a un guasto DI ADESSO "
-        "in `non_ho_potuto_guardare` (la casa non sarebbe stata letta per intero, e il "
-        "suggerimento di riprovare con un nome esatto sarebbe una strada cieca finche' "
-        "quel registro resta giu'). PUO' invece comparire insieme a "
-        "`non_ho_potuto_guardare` quando l'UNICO motivo li' dentro e' il limite STABILE: "
-        "riguarda ALTRE entita', non mette in dubbio che tu abbia guardato i nomi "
-        "dichiarati per intero, e il suggerimento resta la strada giusta. In nessuno dei "
-        "due casi (ne' `nulla_riconosciuto` ne' `non_ho_potuto_guardare`) concludere che "
-        "la cosa non esiste."
+        "La porta che interroga la casa: per TROVARE, CONTARE, ELENCARE e "
+        "FILTRARE le cose di casa, e per il DETTAGLIO di una cosa sola (con "
+        "`riferimento`, l'id esatto). Tutti i filtri sono facoltativi e si "
+        "combinano; senza nessuno, elenca le entita'.\n"
+        "I filtri, e dove valgono:\n"
+        "- `nome`: un nome, un alias o un pezzo di nome, confrontato anche per "
+        "radice («rifiuti» trova «rifiuto»). Da solo cerca in TUTTI i generi.\n"
+        "- `genere`: entita (predefinito), area, dispositivo, automazione, "
+        "script, ricordo, integrazione.\n"
+        "- `riferimento`: l'id esatto -- di entita', area, dispositivo, "
+        "automazione o script; il numero di un ricordo; il dominio di "
+        "un'integrazione. Da' il dettaglio completo; se non esiste, una voce "
+        "`esiste: false` col `suggerimento`.\n"
+        "- `tipo`: il dominio di Home Assistant (`light`, `sensor`, `switch`...); "
+        "`automation` e `script` portano ad automazioni e script.\n"
+        "- `stato`: `on`, `off`, `unavailable`, `unknown`, `home`...; per "
+        "automazioni e script dice se sono abilitate.\n"
+        "- `classe`: la classe del dispositivo (`battery`, `motion`, "
+        "`temperature`...). Solo entita'.\n"
+        "- `area`, `piano`: i nomi del nucleo; `area` «senza area» trova cio' "
+        "che non ne ha una.\n"
+        "- `integrazione`: la piattaforma (`tuya`, `reolink`...).\n"
+        "- `fermo_da`, `cambiato_da`: una durata (`30d`, `2h`, `15m`); per "
+        "automazioni e script conta l'ultima esecuzione.\n"
+        "- `sopra`, `sotto`: un numero; solo entita' con uno stato numerico.\n"
+        "- `in_esecuzione`: solo automazioni e script.\n"
+        "- `includi_nascoste`, `includi_servizio`: di norma restano fuori le "
+        "nascoste e le entita' di servizio (diagnostica, configurazione).\n"
+        "- `ordina` (`nome`, `ultimo_cambio`, `valore`), `limite` (0-50; 0 da' "
+        "solo i conti), `salta` (la pagina dopo).\n"
+        "Per le aree valgono solo `nome` e `piano`; per i dispositivi `nome`, "
+        "`area`, `piano`, `integrazione`. Un filtro che non vale per il genere "
+        "chiesto torna un `errore`, mai un insieme intero.\n"
+        "La profondita' la decide lo strumento, da quante voci trova: UNA -> "
+        "`completa`, il dettaglio intero (stato, attributi, `comandi`, per "
+        "un'automazione o uno script il corpo, per un'area le sue entita' -- "
+        "al massimo 50, il resto nel suo `oltre`); "
+        "fino a 10 -> `media`, con attributi e ultimo cambio; oltre -> "
+        "`corta`, una riga per voce, al massimo 50.\n"
+        "La risposta porta SEMPRE `trovate` (quante corrispondono) ed "
+        "`escluse` (nascoste, servizio, disabilitate: cio' che NON ti ha "
+        "dato). **Leggi sempre `escluse`**: se `escluse.nascoste` e' maggiore "
+        "di zero e la domanda riguarda quelle cose, richiama con "
+        "`includi_nascoste` -- «nessuna luce accesa» e' falso se le accese "
+        "sono nascoste. Se c'e' `oltre`, **prima restringi** con un filtro; "
+        "scorri con `salta` solo se ti servono davvero tutte: ogni pagina e' "
+        "un giro.\n"
+        "Guarda `tipo` e l'id prima di concludere: «luci» puo' essere un "
+        "`sensor` che le CONTA invece che una luce. Se piu' voci hanno lo "
+        "stesso nome (due «Bagno» su piani diversi) scegli guardando la "
+        "conversazione o chiedi a chi ti sta parlando: non prendere la prima.\n"
+        "Una voce con `nascosta: true` esiste: la persona l'ha tolta dalle "
+        "proprie viste in Home Assistant, non cancellata. Non proporla di tua "
+        "iniziativa; se la domanda la riguarda, usala e dillo.\n"
+        "Se compare `nome_dedotto` (una STRINGA, mai un booleano), quel testo "
+        "E' il nome: non l'ha scelto chi vive qui, viene da cio' che Home "
+        "Assistant mostra a schermo. Non concludere «senza nome».\n"
+        "Le posizioni di persone e dispositivi che si spostano non escono: di "
+        "una persona sai solo se e' in casa (`home`) o fuori (`not_home`). "
+        "Credenziali e indirizzi di rete non escono mai.\n"
+        "Una ricerca per `nome` senza nessuna voce porta `nulla_riconosciuto`: "
+        "nessun nome combacia, MAI «la cosa non esiste» -- segui il "
+        "`suggerimento`. `non_ho_potuto_guardare` dice cosa non si e' potuto "
+        "leggere; `stato_non_letto`, che gli stati non si sono potuti "
+        "leggere. Per sapere CHI tocca una cosa usa `related`."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "testo": {
+            "nome": {
                 "type": "string",
-                "description": (
-                    "Il testo in cui cercare nomi di aree, entita', dispositivi, piani, "
-                    "automazioni, script o etichette, cosi' come l'ha scritto chi ti sta "
-                    "parlando (es. 'quanto fa caldo in soggiorno?')."
-                ),
+                "description": "Un nome o un pezzo di nome (es. «bagno», «lavatrice»).",
             },
-        },
-        "required": ["testo"],
-    },
-}
-
-VIEW_TOOL_DEF = {
-    "name": "view",
-    "description": (
-        "Il dettaglio di UNA cosa sola della casa: un'area con le sue entita' e "
-        "i loro stati, un'entita' con il suo stato e la sua classe, "
-        "un'automazione o uno script con il corpo che li definisce, un "
-        "dispositivo con le entita' che gli appartengono, oppure un ricordo con "
-        "la sua interpretazione (forza, ancore, condizioni), oppure un'integrazione "
-        "con le sue voci di configurazione e quante entita' non rispondono. Richiede "
-        "`tipo` ('area', 'entita', 'dispositivo', 'automazione', 'script', 'ricordo' o "
-        "'integrazione') e `riferimento`: l'identificatore ESATTO della cosa (l'id di "
-        "area/entita'/dispositivo, l'id dell'automazione o script, il numero del "
-        "ricordo, il dominio dell'integrazione) -- non un nome libero. Se hai solo un "
-        "nome, usa prima `search`. "
-        "Restituisce SEMPRE la chiave `esiste`: quando e' `false` il resto non "
-        "e' inventato -- nessuna lista di entita' o corpo che potrebbe passare "
-        "per un fatto sulla casa invece che per 'non trovato'. Anche quando "
-        "esiste, un dettaglio puo' mancare (`corpo: null` per un'automazione "
-        "scritta a mano di cui non abbiamo letto il file): e' un limite di "
-        "HIRIS dichiarato in `origine`, non un fatto sulla casa. Un'entita' -- "
-        "da sola, o dentro le liste di un'area o di un dispositivo -- puo' "
-        "avere `nome: null` e portare invece `nome_dedotto` (una STRINGA, mai "
-        "un booleano -- la stessa forma in `search`): quel testo E' il nome, "
-        "solo non scelto da chi vive in questa casa ma letto da cio' che Home "
-        "Assistant mostra a schermo. Non concludere «senza nome» quando "
-        "`nome_dedotto` c'e'. "
-        "Un'entita' puo' portare anche `regola`: non una tua deduzione, una "
-        "citazione di cio' che Home Assistant stesso dichiara sul dato -- "
-        "leggila PRIMA di indovinare dal nome. Oggi esce solo su un "
-        "`sensor` `diagnostic` senza `device_class` ne' unita' di misura: "
-        "dice che quel numero e' un dato tecnico sull'entita' o sul "
-        "dispositivo, NON una misura della casa (`sensor.persons`, per "
-        "esempio, non e' quante persone ci sono in casa). Esce SOLO quando "
-        "guardi l'entita' da sola (`tipo: 'entita'`, come `nascosta` due "
-        "righe sotto): un'area o un dispositivo con decine di sensori "
-        "diagnostici non la ripetono su ognuna. La sua assenza li' -- "
-        "nell'elenco `entita` di un'area o di un dispositivo -- NON vuol "
-        "dire che il vocabolario tace: vuol dire solo che non hai chiesto "
-        "il dettaglio di quella singola entita'. «Il vocabolario non ha "
-        "nessuna regola citabile» e' una conclusione valida SOLO su un "
-        "`tipo: 'entita'` senza `regola`, mai su una voce dentro un elenco. "
-        "Un'entita' -- da sola o dentro un elenco -- puo' portare anche "
-        "`capacita'` (una lista di parole: cosa sa fare, per esempio "
-        "'transizione' o 'effetti' -- decodificata da cio' che Home "
-        "Assistant dichiara, mai dedotta dal dominio; assente anche quando "
-        "l'entita' dichiara di saper fare qualcosa ma per il suo dominio "
-        "non esiste un vocabolario di bit nominabili -- li' manca a "
-        "entrambi, non solo a HIRIS) e `stato_presunto: "
-        "true` (l'integrazione stessa non e' sicura che lo stato rispecchi "
-        "la realta'): entrambe compaiono SOLO quando c'e' qualcosa da dire "
-        "-- mai `capacita': []` ne' `stato_presunto: false`. Il dettaglio "
-        "di UNA entita' sola puo' portare anche `attributi`, che raccoglie "
-        "TUTTO cio' che Home Assistant espone di quell'entita', in cinque "
-        "ceste: `campo_di_manovra` (cosa si puo' IMPORRE e dentro quali "
-        "limiti -- `hvac_modes`, `min_temp`/`max_temp`, `effect_list`, "
-        "`select.options`, `source_list`), `valori_che_puo_assumere` (cosa lo "
-        "stato di quell'entita' potra' VALERE -- `sensor.options`, "
-        "`event.event_types`: NON e' un elenco di comandi, un sensore non si "
-        "comanda e chiedergli uno di quei valori non e' un'azione possibile), "
-        "`valori` (com'e' adesso -- luminosita', "
-        "temperatura letta, titolo del brano), `non_interpretati` (attributi "
-        "che l'integrazione manda e di cui NESSUNA fonte pubblica dichiara "
-        "il significato: leggili come dati grezzi, non dedurne cosa "
-        "vogliano dire) e `trattenuti` (nome e ragione delle credenziali "
-        "che questa entita' porta -- token, indirizzi di rete, numeri di "
-        "serie: HIRIS le conserva e non le scrive in chat). Di cosa "
-        "un'entita' e' FATTA non sta li' dentro: un gruppo porta `membri`, "
-        "una chiave sua accanto a `capacita'`, con l'elenco delle entita' che "
-        "contiene -- l'appartenenza a un gruppo non e' una cosa che gli si "
-        "possa chiedere. E se il gruppo dichiara qualcosa che non tutti i "
-        "suoi membri sanno fare, `membri.capacita_non_di_tutti` lo dice: "
-        "Home Assistant su un gruppo dichiara l'UNIONE delle capacita' dei "
-        "membri, accetta il comando e lo applica SOLO a chi puo', in "
-        "silenzio -- chiedere il colore a un gruppo di tre luci di cui una "
-        "sola fa colore ne cambia una. `membri.non_letti` nomina i membri "
-        "che non ho potuto guardare: dove compare, i conteggi valgono sui "
-        "soli letti. Una cesta "
-        "compare solo se ha qualcosa dentro, e una chiave senza valore non "
-        "compare affatto: un attributo assente vuol dire che Home Assistant "
-        "non l'ha mandato, non che HIRIS l'ha scartato. Mai nelle liste "
-        "di un'area o di un dispositivo, dove sarebbe rumore su decine di "
-        "cose alla volta. "
-        "Il dettaglio di UNA entita' sola porta anche `comandi`: COSA PUOI "
-        "CHIEDERLE, servizio per servizio, gia' filtrato su questa entita' "
-        "precisa. Sotto ogni servizio c'e' `parametri`, e ci sono SOLO i "
-        "parametri che Home Assistant dichiara applicabili a lei: se "
-        "`rgb_color` non c'e' sotto `light.turn_on`, quella luce non fa "
-        "colore e chiederlo verrebbe rifiutato. Ogni parametro puo' portare "
-        "`minimo`/`massimo`/`passo`/`unita` oppure `valori` (l'elenco di "
-        "quelli legali, tagliato con `altri_valori` quando e' lunghissimo), e "
-        "accanto `limiti_da`/`valori_da`, che dice da dove vengono: "
-        "«questa entita'» sono i limiti VERI del dispositivo, «il servizio» "
-        "sono quelli generici del cursore di Home Assistant, uguali per tutta "
-        "la casa -- quando ci sono entrambi vincono i primi, e sono quelli "
-        "scritti. Un parametro con `{}` esiste e non ha limiti noti: si puo' "
-        "usare. `parametri: {}` vuol dire che quel servizio non ne accetta "
-        "nessuno (`light.turn_off`); `parametri_non_letti: true` vuol dire "
-        "che il servizio c'e' ma i suoi parametri non si sono potuti leggere "
-        "-- non che non ne abbia. Guarda qui PRIMA di provare un parametro a "
-        "caso: e' l'unica risposta che tiene conto di cosa questa entita' sa "
-        "fare davvero. Ci sono solo i servizi del dominio dell'entita'. "
-        "Le liste `entita` di un'area o di un dispositivo NON includono le entità che "
-        "la persona ha nascosto dalle proprie viste in Home Assistant: non proporle mai di "
-        "tua iniziativa quando descrivi cosa c'è in una stanza o su un dispositivo. Se ce "
-        "ne sono, le trovi complete — mai troncate — nella chiave separata "
-        "`entita_nascoste` (stessa forma di `entita`, presente solo quando non è vuota): "
-        "usala quando la domanda le riguarda davvero — «cosa hai nascosto in sala da "
-        "pranzo?», «c'è qualcos'altro oltre a quello che vedo?» — e in quel caso dille, "
-        "non negarle: esistono, la persona le ha solo tolte dalle proprie viste, non "
-        "cancellate. Un'entità guardata da sola (`tipo: 'entita'`) non ha questa chiave: "
-        "porta invece il campo `nascosta: true` su se stessa, per lo stesso motivo — hai "
-        "chiesto esplicitamente proprio lei. "
-        "Questo strumento porta il CORPO di una cosa -- cosa fa quell'automazione, "
-        "cosa contiene quell'area -- non i suoi legami: per sapere CHI tocca una "
-        "cosa (e quindi cosa smetterebbe di funzionare se la cancellassi) usa "
-        "`related`, che e' una domanda diversa e una risposta diversa. "
-        "`integrazione`: il dominio (`hydrawise`, `lifx`). Porta le sue voci di "
-        "configurazione, quante entita' ha, e quante `unavailable` -- non "
-        "rispondono affatto (`entita_mute`) -- separate da quante `unknown` -- "
-        "rispondono, ma il valore non e' noto ora (`entita_stato_ignoto`, solo "
-        "se ce ne sono): sono due stati diversi in Home Assistant, non lo "
-        "stesso problema -- una piattaforma con sole entita' `unknown` (una "
-        "lampadina spenta, non guasta) non ha nessuna entita' che 'non "
-        "risponde'. E quante la persona ha disabilitato (`entita_disabilitate`, "
-        "solo se ce ne sono -- una cosa spenta dalla persona non conta fra "
-        "quelle che non rispondono). Quando le `unavailable` sono diventate "
-        "mute quasi nello stesso istante porta anche `mute_da`: NON e' un "
-        "verdetto -- dice solo che sono diventate mute INSIEME, e un riavvio "
-        "di Home Assistant produce la stessa firma su tutte le sue "
-        "integrazioni, non solo su quella rotta davvero. Il sospetto si "
-        "scioglie confrontando quell'istante con l'avvio di Home Assistant -- "
-        "e quando si puo', il TERMINE DI PARAGONE e' gia' nella stessa "
-        "risposta (anch'esso NON un verdetto, solo un secondo istante da "
-        "affiancare al primo): `avvio_home_assistant`, accanto a `mute_da`, "
-        "senza bisogno di un'altra chiamata. E' lo stato di `sensor.uptime`, "
-        "che porta «the date and time when Home Assistant was last started» "
-        "(documentazione dell'integrazione Uptime: device class timestamp, "
-        "scritto una volta all'avvio e fermo fino al riavvio successivo). "
-        "Vicino a `mute_da` e' un riavvio; lontano e' un guasto; **in mezzo "
-        "non si sceglie, si dice che non si sa**. E quando "
-        "`avvio_home_assistant` non compare -- l'integrazione Uptime e' "
-        "facoltativa e molte case non l'hanno -- non si conclude «allora e' "
-        "un guasto»: si torna a non affermare, perche' una regola che "
-        "funziona solo dove il confronto c'e' mente dappertutto dove non "
-        "c'e'. Se un "
-        "registro dell'anagrafe non ha risposto lo dice in "
-        "`elenco_incompleto`: i numeri accanto sono parziali, non una buona "
-        "notizia."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "tipo": {
+            "genere": {
                 "type": "string",
-                "description": (
-                    "'area', 'entita', 'dispositivo', "
-                    "'automazione', 'script', 'ricordo' o 'integrazione'."
-                ),
+                "enum": list(KINDS),
+                "description": "Che cosa cercare; di norma entita.",
             },
             "riferimento": {
                 "type": ["string", "integer"],
                 "description": (
-                    "L'identificatore esatto della cosa da guardare: l'id di "
-                    "area/entita'/dispositivo o di automazione/script cosi' "
-                    "come lo conosce Home Assistant, il numero di un "
-                    "ricordo (visto in `view`/`fetch`), oppure il dominio di "
-                    "un'integrazione (`hydrawise`, `lifx`)."
+                    "L'id esatto della cosa, il numero di un ricordo o il "
+                    "dominio di un'integrazione: da' il dettaglio completo."
                 ),
             },
+            "tipo": {
+                "type": "string",
+                "description": "Il dominio di Home Assistant: light, sensor, switch, automation...",
+            },
+            "stato": {
+                "type": "string",
+                "description": "Lo stato: on, off, unavailable, unknown, home...",
+            },
+            "classe": {
+                "type": "string",
+                "description": ("La classe del dispositivo: battery, motion, "
+                                "temperature... Solo entita'."),
+            },
+            "area": {
+                "type": "string",
+                "description": "Il nome o l'id dell'area; «senza area» per cio' che non ne ha.",
+            },
+            "piano": {"type": "string", "description": "Il nome del piano."},
+            "integrazione": {
+                "type": "string",
+                "description": "La piattaforma: tuya, reolink, hue...",
+            },
+            "fermo_da": {
+                "type": "string",
+                "description": "Fermo da almeno questa durata: 30d, 2h, 15m.",
+            },
+            "cambiato_da": {
+                "type": "string",
+                "description": "Cambiato entro questa durata: 30d, 2h, 15m.",
+            },
+            "sopra": {"type": "number", "description": "Stato numerico maggiore di."},
+            "sotto": {"type": "number", "description": "Stato numerico minore di."},
+            "in_esecuzione": {
+                "type": "boolean",
+                "description": "Solo automazioni e script in corsa (o ferme).",
+            },
+            "includi_nascoste": {
+                "type": "boolean",
+                "description": "Includi le entita' nascoste. Di norma no.",
+            },
+            "includi_servizio": {
+                "type": "boolean",
+                "description": "Includi le entita' di servizio. Di norma no.",
+            },
+            "ordina": {
+                "type": "string",
+                "enum": list(ORDERS),
+                "description": "L'ordine delle voci; di norma per nome.",
+            },
+            "limite": {
+                "type": "integer", "minimum": 0, "maximum": ROWS_MAX,
+                "description": "Quante voci al massimo (0: solo i conti).",
+            },
+            "salta": {
+                "type": "integer", "minimum": 0,
+                "description": "Quante voci saltare: la pagina dopo.",
+            },
         },
-        "required": ["tipo", "riferimento"],
     },
 }
 
@@ -552,18 +448,20 @@ RELATED_TOOL_DEF = {
         "`riferimento`, l'identificatore ESATTO (usa `search` se hai solo un nome). "
         "Lo calcola Home Assistant su TUTTO cio' che ha caricato, ovunque sia "
         "scritto -- pacchetti, `!include`, cartelle, scene, gruppi -- mentre "
-        "`view` legge due soli file: qui i legami sono completi, ma non c'e' il "
-        "CORPO. Le due cose non si sostituiscono: per sapere COSA FA "
-        "un'automazione che trovi qui, aprila con `view`. "
+        "`search` con `riferimento` legge due soli file: qui i legami sono "
+        "completi, ma non c'e' il CORPO. Le due cose non si sostituiscono: per "
+        "sapere COSA FA un'automazione che trovi qui, aprila con `search` e il "
+        "suo `riferimento`. "
         "**Come si legge la risposta.** `related` e' un dizionario tipo -> "
         "identificatori. Per un'entita' mescola chi la USA (automazione, script, "
         "scena, gruppo, persona) con dove STA (area, dispositivo, piano, "
         "integrazione, etichetta): se la domanda e' «cosa smette di funzionare», "
         "guarda i primi -- un'area non smette di funzionare perche' le togli una "
         "luce. Per un'area, invece, le entita' elencate sono cio' che l'area "
-        "CONTIENE. I tipi usano gli stessi nomi di `search` e `view`, quindi un "
-        "riferimento letto qui si passa a `view` cosi' com'e' -- ma `view` sa "
-        "aprire solo area, entita, dispositivo, automazione e script: sugli altri "
+        "CONTIENE. I tipi usano gli stessi nomi di `search`, quindi un "
+        "riferimento letto qui si passa a `search` cosi' com'e' -- ma il "
+        "dettaglio si apre solo per area, entita, dispositivo, automazione e "
+        "script: sugli altri "
         "risponde `non_so_guardare`, che significa «non lo so aprire», MAI «non "
         "esiste». "
         "Un `related` vuoto significa che Home Assistant non conosce nessun legame "
@@ -757,9 +655,9 @@ EXECUTE_TOOL_DEF = {
         "parametro che il servizio ha ma che Home Assistant non offre a "
         "questa entita' (il colore su una luce che fa solo acceso/spento, la "
         "transizione su una che non la sa fare) viene rifiutato qui, con la "
-        "ragione detta. Per non arrivarci, guarda l'entita' con `view`: sotto "
-        "`comandi` c'e' cosa accetta davvero, coi limiti veri del "
-        "dispositivo. "
+        "ragione detta. Per non arrivarci, guarda l'entita' con `search` e il suo "
+        "`riferimento`: sotto `comandi` c'e' cosa accetta davvero, coi limiti "
+        "veri del dispositivo. "
         "Con un bersaglio risolto l'esito porta anche `bersaglio`, che "
         "dice cosa conteneva (`risolte`), su cosa la chiamata e' partita "
         "(`toccate`) e cosa e' rimasto fuori perche' di un altro dominio o "
@@ -807,11 +705,11 @@ EXECUTE_TOOL_DEF = {
                         "items": {"type": "string"},
                         "description": (
                             "Gli id delle etichette (`label_id`): tutto cio' che le "
-                            "porta, entita', dispositivi o aree. Si prendono da "
-                            "«search» sul NOME dell'etichetta (il candidato di tipo "
-                            "«etichetta» porta il suo id), o da «view», dove "
-                            "compaiono accanto al nome di ogni etichetta -- mai da "
-                            "solo, sono slug che nessuno scrive a memoria."
+                            "porta, entita', dispositivi o aree. Si danno per id, "
+                            "cosi' come li conosce Home Assistant: nessuno "
+                            "strumento trasforma il NOME di un'etichetta nel suo "
+                            "id, quindi non indovinarlo e non ricavarlo dal nome, "
+                            "sono slug che nessuno scrive a memoria."
                         ),
                     },
                     "dispositivi": {
@@ -968,7 +866,7 @@ PROPOSE_TOOL_DEF = {
         "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
         "«script» o «scene». Per modificare o cancellare serve `chiave` (l'id "
         "dell'automazione o della scena, lo slug dello script): la trovi con "
-        "`search` o `view`. "
+        "`search` (col suo `riferimento` se lo hai gia'). "
         "Componi con i PARAMETRI, non scrivendo YAML: `innesco`, `condizioni`, "
         "`azioni` per un'automazione; `azioni` per uno script; `stati` per una "
         "scena. Usa lo schema moderno di Home Assistant (`trigger:`, `action:` "
@@ -1479,7 +1377,7 @@ CALENDAR_TOOL_DEF = {
 }
 
 KNOWLEDGE_TOOLS: list[dict] = [
-    SEARCH_TOOL_DEF, VIEW_TOOL_DEF, RELATED_TOOL_DEF, REMEMBER_TOOL_DEF,
+    SEARCH_TOOL_DEF, RELATED_TOOL_DEF, REMEMBER_TOOL_DEF,
     FETCH_TOOL_DEF, EXECUTE_TOOL_DEF,
     PROMISE_TOOL_DEF, AGENDA_TOOL_DEF, CANCEL_TOOL_DEF,
     PROPOSE_TOOL_DEF, CONFIRM_TOOL_DEF,
@@ -1682,8 +1580,8 @@ class ToolDispatcher:
         # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
         # vedi `handlers_chat.py::create_tool_dispatcher`) ma vive
         # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
-        # dipendenza. Default `None`: nessuna cache, `_search`/`_remember`
-        # ricostruiscono l'indice ogni volta come facevano prima di questo
+        # dipendenza. Default `None`: nessuna cache, `_remember` ricostruisce
+        # l'indice ogni volta come faceva prima di questo
         # task -- ogni chiamante esistente (i test, e ogni altro punto del
         # prodotto che non la passa esplicitamente) non cambia comportamento.
         self._lookup_cache = lookup_cache
@@ -1746,7 +1644,11 @@ class ToolDispatcher:
         self._judgments = judgments if judgments is not None else REPO_JUDGMENTS
 
     _RESOURCE_PER_TOOL: ClassVar[dict[str, tuple[str, ...]]] = {
-        "search": ("casa",), "view": ("casa", "memoria"),
+        # Solo la casa: la memoria serve al dettaglio di un ricordo, e quello
+        # lo dichiara da se' quando manca (`_full_detail_sync`). Rifiutare
+        # «luci accese» perche' l'archivio dei ricordi non e' pronto sarebbe
+        # un no a una domanda che non lo tocca (review finale, M5, 30/09/2026).
+        "search": ("casa",),
         "related": ("ha",),
         "remember": ("casa", "memoria"), "fetch": ("memoria",),
         "execute": ("porta",),
@@ -1840,7 +1742,6 @@ class ToolDispatcher:
             return bad_arguments
         handler = {
             "search": self._search,
-            "view": self._view,
             "related": self._related,
             "remember": self._remember,
             "fetch": self._recall,
@@ -1859,12 +1760,13 @@ class ToolDispatcher:
         try:
             # `_execute`, `_related`, `_promise`, `_propose`, `_confirm`,
             # `_trend`, `_happened`, `_system_log`, `_automation_trace`,
-            # `_calendar` e -- dall'08/09/2026 -- `_view` sono coroutine
-            # (fanno rete, o -- `_promise` e `_view` -- possono scaldare il
-            # registro dei servizi prima di verificarlo o di mostrarlo); gli
-            # altri cinque no. Si attende cio' che e' attendibile invece di
-            # rendere `async` anche i cinque sincroni: cambiare la loro firma
-            # avrebbe toccato sedici gestori per un bisogno di undici.
+            # `_calendar` e -- dal 29/09/2026 -- `_search` sono coroutine
+            # (fanno rete, o -- `_promise` e `_search` -- possono scaldare il
+            # registro dei servizi prima di verificarlo o di mostrarlo; fino
+            # al 29/09 lo faceva `_view`, uscito dal catalogo); gli altri
+            # quattro no. Si attende cio' che e' attendibile invece di
+            # rendere `async` anche i quattro sincroni: cambiare la loro firma
+            # avrebbe toccato quindici gestori per un bisogno di undici.
             # (`_legami` era il refuso del nome italiano di `_related`,
             # sopravvissuto alla fetta dei nomi degli strumenti del 02/09:
             # corretto qui, di passaggio, mentre questo commento si tocca
@@ -1889,82 +1791,92 @@ class ToolDispatcher:
 
     # -- cerca ---------------------------------------------------------
 
-    def _search(self, arguments: dict[str, Any]) -> dict:
-        text = arguments.get("testo")
-        if not isinstance(text, str) or not text.strip():
-            return {"errore": "«search» richiede un «testo» non vuoto."}
-        home_space = self._home_space.read()
-        # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
-        # `view` (`HomeSpace.behavior()`), non dall'anagrafe --
-        # senza indicizzarli qui, nessuna sequenza di chiamate produceva mai
-        # il loro id, e `view("automazione", ...)` restava irraggiungibile
-        # per chi partiva da un nome. Letto eagerly come `casa`: `_search`
-        # non ha niente da rimandare (a differenza di `_remember`, che non lo
-        # passa affatto -- il comportamento non e' un tipo di ancora).
-        behavior = self._home_space.behavior()
-        _, reported_names, _units, _classes, _since_when, _attributes, mirror_loaded = \
-            self._mirror()
-        # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
-        # (`aggiornata_il()`), il comportamento (`comportamento_letto_il()`,
-        # T7) e i nomi vivi di ripiego non cambiano -- vedi
-        # `memory/lookup_cache.py` per la chiave. Spazio "cerca", diverso da
-        # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_remember` no,
-        # e sulla stessa casa i due indici hanno contenuti diversi.
-        if self._lookup_cache is not None:
-            lookup = self._lookup_cache.get(
-                "cerca", home_space, self._home_space.updated_at(), reported_names,
-                behavior, self._home_space.behavior_loaded_at())
-        else:
-            lookup = costruisci_indice(home_space, reported_names, behavior)
-        found = _search_candidates(lookup, text)
-        response: dict = {"trovati": found}
-        # N2 (ri-review): il ramo strutturale di `_blind_spots` (I3, sotto) si
-        # accende su OGNI casa sana che abbia entita' senza nome ne' nel
-        # registro ne' nello specchio -- sull'impianto vero, un fatto
-        # STABILE (376 entita' ad agosto), non un guasto di QUESTA ricerca.
-        # La chiave esiste per spiegare un `trovati` vuoto che potrebbe
-        # nascondere qualcosa (vedi il docstring di `_blind_spots`): non ha
-        # niente da spiegare quando la ricerca ha gia' trovato cio' che
-        # cercava, e dichiararla comunque la rende permanente -- un'assenza
-        # dichiarata SEMPRE smette di essere un segnale (la stessa invariante
-        # 4 che questo ramo esiste per rispettare, rivoltata contro se
-        # stessa).
-        blind_spot_entries = self._blind_spots(
-            home_space, mirror_loaded, reported_names, found_nothing=not found)
-        blind_spots = [message for message, _stable in blind_spot_entries]
-        # Correzione del 06/09 al §6a, primo bordo -- e SECONDA correzione
-        # della ri-review su questo ramo. La prima correzione (`not found and
-        # not blind_spots`) trattava OGNI motivo di `blind_spot_entries`
-        # come lo stesso genere di dubbio: misurato che non lo sono. Un
-        # registro non letto o uno specchio giu' sono un guasto DI ADESSO --
-        # la casa non e' stata guardata per intero, e "nulla_riconosciuto"
-        # sarebbe falso. Ma il ramo strutturale (entita' senza nome ne' nel
-        # registro ne' nello specchio) e' un limite STABILE che riguarda
-        # ALTRE entita': la ricerca HA guardato tutti i nomi dichiarati per
-        # intero, e non dirlo perche' esiste quel limite altrove avrebbe
-        # spento `nulla_riconosciuto` su OGNI ricerca senza esito dell'intera
-        # casa non appena una sola entita' porta quel limite -- misurato: sui
-        # dati di agosto (376 entita' senza stato vivo) sarebbe stata una
-        # funzione scritta, provata, verde, e silenziosa sulla casa vera. Il
-        # `suggerimento` resta la strada giusta anche in quel caso: il nome
-        # esatto o `view` diretto e' esattamente cio' che serve per
-        # un'entita' che un nome non ce l'ha da nessuna parte. Per questo la
-        # guardia guarda SOLO i motivi non stabili (`stable is False`), mai
-        # l'elenco intero -- e puo' quindi coesistere con
-        # `non_ho_potuto_guardare` quando l'UNICO motivo li' dentro e'
-        # quello stabile. La voce SENZA candidati che `search()` aggiunge
-        # quando il testo e' il dominio di una piattaforma (`queries.search`,
-        # il ramo «piattaforma», l'Attenzione del brief del Task 2) resta
-        # comunque coperta da questa guardia: porta sempre una voce in
-        # `found`, quindi `not found` e' gia' falso e non serve un caso a
-        # parte per escluderla.
-        current_gap = any(not stable for _message, stable in blind_spot_entries)
-        if not found and not current_gap:
+    async def _search(self, arguments: dict[str, Any]) -> dict:
+        """La porta che interroga la casa (spec `2026-09-29-una-porta-sola-
+        per-la-casa.md` §2): i filtri entrano, un insieme di voci esce, e la
+        profondita' la decide `house_query.query_house` da quante sono.
+
+        **Coroutine dal 29/09/2026**, per la stessa ragione per cui lo era il
+        dettaglio che assorbe: quando la voce e' una sola esce il dettaglio
+        completo, e quello di un'entita' porta i `comandi` dal registro dei
+        servizi -- un registro che si carica PIGRAMENTE (vedi
+        `_ensure_registry_fresh`). Si scalda qui, PRIMA di sapere quante voci
+        usciranno: `query_house` e' pura e sincrona, e non puo' aspettare a
+        meta' strada. Il costo e' quello dichiarato dal registro: un giro per
+        invalidazione, non uno per ricerca.
+
+        Solo quando un'ENTITA' puo' uscire -- nessun `genere`, o `entita`:
+        e' l'unico dettaglio che legge il registro (`queries._view_entity` ->
+        `commands_for`), come lo scaldava il vecchio dettaglio. Scaldarlo per
+        un ricordo o per un'area sarebbe un giro di rete per un dato che quel
+        ramo non guarda.
+        """
+        filters = parse_filters(arguments)
+        if isinstance(filters, dict):
+            return filters
+        if filters.kind in (None, "entita"):
+            await self._ensure_registry_fresh()
+        translations = await self._read_translations()
+        # UNA lettura dello specchio, per le righe e per il dettaglio: due
+        # letture in istanti diversi sarebbero la divergenza che `_mirror`
+        # esiste per chiudere.
+        mirror = self._mirror()
+        mirror_loaded = mirror[6]
+
+        def detail(kind: str, reference) -> dict:
+            return self._full_detail_sync(kind, reference, mirror=mirror,
+                                          translations=translations)
+
+        response = query_house(self._home_space.read(), self._home_space.behavior(),
+                               mirror[:6], filters, detail=detail,
+                               unavailable=tuple(self._home_space.unavailable()))
+        if "errore" in response:
+            return response
+        # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
+        # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
+        # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
+        # fine) va OR-ato con `inventory_is_readable` (cosa dichiara la cache
+        # di se stessa), non sostituito. Sulla risposta e non sulla voce:
+        # vale per ogni riga, a qualunque profondita'.
+        if not mirror_loaded or not inventory_is_readable(self._cache):
+            response["stato_non_letto"] = True
+        if filters.name:
+            self._declare_name_gaps(response, filters, mirror[1], mirror_loaded)
+        elif filters.floor and "piani" in self._home_space.unavailable():
+            # Una domanda per `piano` senza nome: col registro dei piani
+            # caduto nessuna area ha un piano, e `trovate: 0` sarebbe un
+            # silenzio non dichiarato (re-review della fetta, 30/09/2026).
+            response["non_ho_potuto_guardare"] = [_fallen_stores_message(["piani"])]
+        return response
+
+    def _declare_name_gaps(self, response: dict, filters, reported_names: dict,
+                           mirror_loaded: bool) -> None:
+        """Cio' che una ricerca per NOME non ha potuto guardare, e il divieto
+        di concludere «non esiste» (24/09/2026) quando nessun nome combacia.
+
+        Sopravvive alla porta nuova (29/09/2026) perche' il difetto che chiude
+        non dipende dalla forma della risposta: `trovate: 0` su un nome e'
+        «nessun nome combacia», non «la cosa non c'e'». Vale solo per le
+        domande per NOME: su «luci accese: 0» non c'e' nessun nome da non aver
+        riconosciuto, e `escluse` dice gia' cosa manca.
+
+        `nulla_riconosciuto` esce solo se non c'e' NIENTE: ne' voci, ne'
+        escluse -- una cosa nascosta che combacia e' un nome riconosciuto -- e
+        nessun filtro oltre al nome e al genere, che potrebbe essere lui ad
+        aver svuotato l'insieme. Le due guardie su `_blind_spots` (guasto di
+        adesso contro limite stabile) sono quelle di prima: vedi il suo
+        docstring."""
+        found_nothing = response["trovate"] == 0
+        entries = self._blind_spots(self._home_space.read(), mirror_loaded,
+                                    reported_names, found_nothing=found_nothing)
+        current_gap = any(not stable for _message, stable in entries)
+        only_the_name = replace(filters, kind=None).only_by_name
+        if (found_nothing and not any(response["escluse"].values())
+                and only_the_name and not current_gap):
             response["nulla_riconosciuto"] = True
             response["suggerimento"] = _NOTHING_RECOGNIZED_SUGGESTION
-        if blind_spots:
-            response["non_ho_potuto_guardare"] = blind_spots
-        return response
+        if entries:
+            response["non_ho_potuto_guardare"] = [message for message, _s in entries]
 
     def _blind_spots(self, home_space: dict, mirror_loaded: bool,
                 reported_names: dict[str, str] | None = None, *,
@@ -2018,21 +1930,14 @@ class ToolDispatcher:
         stessa irraggiungibile) e "illeggibile: ..." producono una voce dal
         ramo sui file di comportamento, sotto."""
         entries: list[tuple[str, bool]] = []
-        # `STORE_KEY_PER_TYPE` e' apposta SENZA "etichette" (non e' un tipo di
-        # ancora -- allargarla rifarebbe il secondo vocabolario che R9
-        # denuncia). Ma "etichette" e' comunque un registro vero che PUO'
-        # cadere in `non_disponibili()`, e `search` indicizza le etichette
-        # stesse come candidati: un registro etichette caduto merita lo stesso
-        # motivo degli altri, aggiunto qui invece che dentro una mappa che
-        # serve a un altro scopo.
-        fallen_stores = sorted(set(self._home_space.unavailable())
-                               & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
+        # I registri che la porta legge (`_SEARCHED_STORES`). Fino al
+        # 30/09/2026 c'erano anche le «etichette», perche' la vecchia ricerca
+        # le offriva come candidati; la porta non le cerca, e un loro registro
+        # caduto non nasconde niente a chi cerca (review finale, M3). I
+        # «piani» restano: `piano` e' un filtro della porta.
+        fallen_stores = sorted(set(self._home_space.unavailable()) & _SEARCHED_STORES)
         if fallen_stores:
-            message = (
-                f"registri non letti all'ultima ricostruzione dell'anagrafe: "
-                f"{', '.join(fallen_stores)}. Cio' che sta li' dentro non e' cercabile "
-                "adesso, e potrebbe esistere lo stesso.")
-            entries.append((message, False))
+            entries.append((_fallen_stores_message(fallen_stores), False))
         # Il comportamento non passa MAI da `non_disponibili()` -- la sua
         # fonte non e' un registro dell'anagrafe, e ha un segnale di
         # incompletezza suo: `unread_bodies()`, le entita' di cui non si
@@ -2097,120 +2002,74 @@ class ToolDispatcher:
                 entries.append((message, True))
         return entries
 
-    # -- guarda ----------------------------------------------------------
+    # -- il dettaglio completo, la voce di `search` quando e' una sola ----
 
-    async def _view(self, arguments: dict[str, Any]) -> dict:
-        """La vista di una cosa di casa.
+    def _full_detail_sync(self, kind: str, reference, *, mirror: tuple,
+                          translations: dict) -> dict:
+        """Il dettaglio completo di UNA cosa di casa -- quello che fino al
+        29/09/2026 dava lo strumento `view`, oggi la voce di `search` quando
+        l'insieme ne ha una sola (`house_query.query_house`, il suo `detail`).
 
-        **Coroutine dall'08/09/2026**, e per un motivo solo: il registro dei
-        servizi si carica PIGRAMENTE, e fino a quel giorno lo scaldava
-        soltanto chi ESEGUE un comando. Misurato dal vivo sulla 3.23.0, sette
-        minuti dopo l'aggiornamento: `view` su `light.alberello`, su un
-        termostato e su uno `switch` non portava la chiave `comandi` su
-        nessuno dei tre -- il modello poteva scoprire cosa chiedere **solo
-        dopo aver gia' chiesto qualcosa**, cioe' la conoscenza che esiste per
-        evitare un tentativo sbagliato arrivava dopo il tentativo. 3.648 prove
-        verdi non l'hanno vista, perche' nelle prove il registro finto e' gia'
-        pieno: e' la forma «stato condiviso caricato pigramente», dove la
-        domanda da farsi e' **chi lo riempie**.
+        Sincrono apposta: `query_house` e' pura e lo chiama a meta' strada.
+        Cio' che andava ATTESO -- il registro dei servizi, che fino all'08/09
+        nessuno scaldava per chi leggeva (misurato dal vivo sulla 3.23.0: la
+        chiave `comandi` mancava su tutte le entita' di una casa appena
+        riavviata), e le parole degli stati -- l'ha gia' scaldato `_search`, e
+        arriva qui come `translations`. Lo specchio e' la STESSA lettura delle
+        righe (`mirror`), non una seconda.
 
-        Il costo e' quello dichiarato dal registro stesso: `ensure_fresh` va
-        in rete solo se il registro non e' fresco o e' stato invalidato --
-        **un giro per invalidazione, non uno per vista**.
+        Il filtro di riservatezza NON si applica qui: lo applica
+        `query_house` a ogni voce che esce, in un punto solo.
         """
-        kind = arguments.get("tipo")
-        reference = arguments.get("riferimento")
-        # Il controllo «"tipo" e "riferimento" sono obbligatori» viveva QUI
-        # fino al Task 1 di «rifiutare e importare» (§6b): tolto perche'
-        # `dispatch()` lo fa gia' PRIMA di chiamare questo gestore
-        # (`_bad_arguments`, dallo stesso `input_schema["required"]` di
-        # `VIEW_TOOL_DEF`), e il messaggio non diceva niente di piu' di
-        # quello centrale. Verificato per davvero, non ad occhio: con questo
-        # controllo tolto la suite intera (3280 prove) resta verde -- nessuna
-        # di esse raggiunge questa riga con `tipo`/`riferimento` presenti ma
-        # invalidi, il solo caso che `dispatch()` non intercetterebbe.
-        # I ricordi hanno un id numerico (MemoryStore, AUTOINCREMENT):
-        # il modello puo' passarlo come stringa (i JSON tool-call spesso lo
-        # fanno). Un riferimento non convertibile non e' un errore da
-        # sollevare -- e' lo stesso "non l'ho trovato" degli altri tipi.
+        # I ricordi hanno un id numerico (MemoryStore, AUTOINCREMENT), e
+        # `parse_filters` rende ogni riferimento un testo. Un riferimento non
+        # convertibile non e' un errore da sollevare -- e' lo stesso "non l'ho
+        # trovato" degli altri tipi.
+        if kind == "ricordo" and self._memory is None:
+            return {"esiste": False, "tipo": "ricordo", "riferimento": reference,
+                    "non_disponibile": True,
+                    "motivo": "l'archivio della memoria non e' ancora stato caricato"}
         if kind == "ricordo" and not isinstance(reference, int):
             try:
                 reference = int(reference)
             except (TypeError, ValueError):
                 return {"esiste": False, "tipo": "ricordo", "riferimento": reference}
-
-        home_space = self._home_space.read()
-        unavailable = tuple(self._home_space.unavailable())
-        behavior = self._home_space.behavior()
-        unread_bodies = self._home_space.unread_bodies()
+        (state, reported_names, reported_units, reported_classes,
+         reported_since_when, reported_attributes, _loaded) = mirror
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
         # recenti -- stessa scelta di `handlers_home_space.handle_get_briefing`.
-        memories = self._memory.fetch(limit=self._memory.count())
-        # `view()` (domande.py) e' pura: lo stato glielo passa il chiamante.
-        # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
-        # lei (chiave "id", non "entity_id").
-        (state, reported_names, reported_units, reported_classes,
-         reported_since_when, reported_attributes, loaded) = self._mirror()
-        # Solo per l'entita': e' l'UNICO ramo che legge il registro
-        # (`queries._view_entity` -> `commands_for`). Scaldarlo anche per un
-        # ricordo o per un'area sarebbe un giro di rete per un dato che quel
-        # ramo non guarda.
-        if kind == "entita":
-            await self._ensure_registry_fresh()
-        # Le parole degli stati, scaldate come il registro qui sopra e per la
-        # stessa ragione misurata: una tabella che si carica pigramente e' una
-        # tabella che il primo lettore trova vuota. Qui si puo' ASPETTARE (e'
-        # una coroutine, a differenza della composizione del nucleo), quindi
-        # `guarda` non si accontenta di cio' che c'e': lo va a prendere.
-        # Costa zero quando c'e' gia' -- `read` risponde dalla cache finche'
-        # la casa non cambia versione o lingua.
-        translations = await self._read_translations()
-        detail = _view_detail(home_space, behavior, memories, state, kind, reference,
-                                      unavailable=unavailable,
-                                      unread_bodies=unread_bodies,
-                                      fallback_names=reported_names,
-                                      reported_units=reported_units,
-                                      reported_classes=reported_classes,
-                                      reported_since_when=reported_since_when,
-                                      reported_attributes=reported_attributes,
-                                      # Il registro dei servizi: con lui la
-                                      # vista di UNA entita' dice anche cosa
-                                      # le si puo' CHIEDERE, coi limiti veri
-                                      # -- quelli dell'entita', non quelli
-                                      # del cursore generico del servizio
-                                      # (spec §13). Scaldato qui sopra: il
-                                      # commento che diceva «non si scalda
-                                      # qui, e' gia' in memoria» era FALSO --
-                                      # in memoria c'era un registro VUOTO
-                                      # finche' nessuno eseguiva un comando.
-                                      # `None` e' legittimo -- `guarda` resta
-                                      # una lettura, e non deve fallire
-                                      # perche' l'azione non e' cablata.
-                                      registry=self._registry,
-                                      translations=translations,
-                                      # Il sapere: da li' `guarda` dice cosa
-                                      # significa la classe di un'entita'.
-                                      # `None` e' legittimo come per gli
-                                      # altri archivi -- il dispatcher e'
-                                      # SEMPRE costruibile, e senza sapere il
-                                      # dettaglio tace su quel campo.
-                                      knowledge=self._knowledge,
-                                      # L'istantanea dei giudizi (spec §3): mai
-                                      # `None` qui -- `__init__` l'ha gia'
-                                      # ricaduta sul seme se il chiamante non
-                                      # gliel'ha passata.
-                                      judgments=self._judgments)
-        # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
-        # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
-        # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
-        # fine) va OR-ato con `inventory_is_readable` (cosa dichiara la
-        # cache di se stessa), non sostituito -- una cache che si dichiara
-        # `loaded` ma il cui `all_states()` solleva davvero e' comunque
-        # "non letto" qui.
-        if isinstance(detail, dict) and (not loaded or not inventory_is_readable(self._cache)):
-            detail["stato_non_letto"] = True
+        memories = ([] if self._memory is None
+                    else self._memory.fetch(limit=self._memory.count()))
+        detail = _view_detail(self._home_space.read(), self._home_space.behavior(),
+                              memories, state, kind, reference,
+                              unavailable=tuple(self._home_space.unavailable()),
+                              unread_bodies=self._home_space.unread_bodies(),
+                              fallback_names=reported_names,
+                              reported_units=reported_units,
+                              reported_classes=reported_classes,
+                              reported_since_when=reported_since_when,
+                              reported_attributes=reported_attributes,
+                              # Il registro dei servizi: con lui il dettaglio
+                              # di UNA entita' dice anche cosa le si puo'
+                              # CHIEDERE, coi limiti veri (spec §13). `None`
+                              # e' legittimo -- la lettura non deve fallire
+                              # perche' l'azione non e' cablata.
+                              registry=self._registry,
+                              translations=translations,
+                              # Il sapere: cosa significa la classe di
+                              # un'entita'. `None` e' legittimo.
+                              knowledge=self._knowledge,
+                              # L'istantanea dei giudizi (spec §3): mai `None`
+                              # qui -- `__init__` l'ha gia' ricaduta sul seme.
+                              judgments=self._judgments)
+        if self._memory is None and isinstance(detail, dict) and "ricordi" in detail:
+            # I ricordi ancorati a questa cosa non si sono potuti leggere: si
+            # dice, invece di un `ricordi: []` che direbbe «nessuno».
+            del detail["ricordi"]
+            detail["ricordi_non_letti"] = ("l'archivio della memoria non e' "
+                                           "ancora stato caricato")
         if (kind == "automazione" and isinstance(detail, dict)
                 and detail.get("corpo") is not None
                 and self._ceiling_denies("amministrare")):
@@ -2328,13 +2187,12 @@ class ToolDispatcher:
             # basta a decidere un colpo a segno SENZA leggere l'anagrafe --
             # su un hit questa funzione non viene mai chiamata, e la lettura
             # SQL vera (+ json.loads per riga, quando l'anagrafe era su disco) non
-            # si paga. A differenza di `_search`, dove `casa` serve comunque a
-            # `_blind_spots()` piu' sotto e non c'e' niente da rimandare.
+            # si paga.
             return self._home_space.read() if topology_loaded else {}
 
-        # Task B7, spazio "ricorda": MAI nomi di ripiego (a differenza di
-        # "cerca"), e `aggiornata_il` porta gia' la distinzione fra "anagrafe
-        # letta" e "non letta" -- `None` qui e un valore vero non sono mai la
+        # Task B7, spazio "ricorda": MAI nomi di ripiego, e `aggiornata_il`
+        # porta gia' la distinzione fra "anagrafe letta" e "non letta" --
+        # `None` qui e un valore vero non sono mai la
         # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
         # della casa piena non si confondono mai (memory/lookup_cache.py).
         if self._lookup_cache is not None:

@@ -27,7 +27,7 @@ nessuno legge.
 
 La priorita' di taglio NON e' "cosa e' recuperabile": tutto qui dentro lo e',
 un ricordo tagliato incluso -- sta in SQLite e si raggiunge con
-`view("ricordo", id)`, esattamente come un'area o un dispositivo (una
+`search(genere="ricordo", riferimento=id)`, esattamente come un'area o un dispositivo (una
 versione precedente di questo commento affermava il contrario: era falso, e
 motivava con una bugia una scelta che una ragione vera ha comunque). La
 priorita' vera e' "cosa il modello perde la possibilita' di SAPERE che
@@ -46,7 +46,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..proxy import state_translations
 from ..proxy.entity_cache import CAPABILITIES
 from .ha_vocabulary import (
     config_entry_is_broken,
@@ -55,15 +54,10 @@ from .ha_vocabulary import (
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
-    actual_class,
     domain_of,
     hierarchy,
-    is_pseudo_area,
     name_with_id,
-    readable_state,
 )
-from .type_judgments import TypeJudgments
-from .type_vocabulary import REPO_JUDGMENTS
 
 # **Perche' questa tabella e' rimasta qui mentre le altre traslocavano**
 # (08/09/2026). I nomi sono vocabolario di un tipo, e la loro casa naturale e'
@@ -174,54 +168,6 @@ _DOMAIN_NAMES = {
 }
 
 
-# Gli stati che rendono un'entita' NOTEVOLE adesso: acceso, aperto, in allarme
-# SCATTATO. Il resto e' rumore in una casa da trecento entita' -- una
-# temperatura di 19.5 non e' notevole solo perche' e' un numero, uno stato
-# "on"/"open" lo e' perche' e' un'eccezione rispetto al riposo.
-#
-# La fonte, stato per stato -- verificata su home-assistant/core il
-# 20/08/2026 (ramo `dev`, non un modulo installato: questo modulo resta PURO,
-# vedi il docstring in testa al file):
-#   "on"       -- STATE_ON,       homeassistant/const.py
-#   "open"     -- STATE_OPEN,     homeassistant/const.py
-#   "playing"  -- STATE_PLAYING,  homeassistant/const.py
-#   "unlocked" -- LockState.UNLOCKED,   homeassistant/components/lock/const.py
-#   "cleaning" -- VacuumActivity.CLEANING, homeassistant/components/vacuum/const.py
-# Senza Home Assistant installato non c'e' un enum da importare e confrontare
-# a runtime: l'elenco e' ricopiato a mano e pinnato (con lo stesso limite
-# dichiarato) in tests/test_type_vocabulary.py.
-#
-# **E' l'ULTIMA delle sei liste rimasta qui, ed e' rimasta per una ragione
-# misurata, non per mancanza di tempo.** La fetta che ha sciolto le altre
-# cinque doveva scioglierla derivandola dai riposi che il vocabolario dei tipi
-# gia' dichiara -- `unlocked` e' il complemento di `locked`, `open` di
-# `closed`, `on` di `off`: la stessa conoscenza, detta due volte dai due lati
-# opposti. **Il complemento non e' esatto**, e la misura sta in
-# `tests/test_notable_states_complement.py`: sui tipi che meritano un annuncio,
-# UNDICI stati che questa casa PUBBLICA non sono riposi e non sono qui dentro --
-# `cover`/`valve` in `opening` e `closing`, `lock` in `locking`, `unlocking`,
-# `opening` e `jammed`, `media_player` in `paused` e `buffering`, `vacuum` in
-# `paused`. Derivare dai riposi li conterebbe tutti e undici, e cambierebbe i
-# conteggi del nucleo: una correzione, forse giusta, ma una correzione -- e va
-# fatta in una fetta sua, col suo changelog, non di straforo dentro una che si
-# era impegnata a non cambiare un solo numero.
-#
-# Il verso opposto invece TORNA: nessuna di queste cinque parole e' un riposo
-# per nessuno dei tipi che le puo' portare, e anche quello e' pinnato dalla
-# stessa prova. Il difetto che resta e' quindi uno solo, e ha un nome: queste
-# cinque parole sono CIECHE AL TIPO -- `open` conta come «attivo» tanto per una
-# tapparella quanto per una serratura -- ed e' lo stesso difetto per cui
-# `topology._STATE_TRANSLATION` e' stata cancellata l'08/09/2026.
-_ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
-
-
-# Oltre questa quantita' di elementi notevoli, elencarli uno per uno
-# sfonderebbe il nucleo tanto quanto elencare le trecento entita' della casa
-# (vedi il docstring del modulo): si raggruppa per area, dominio e stato --
-# vedi `_group_highlights`.
-_INDIVIDUAL_HIGHLIGHT_THRESHOLD = 15
-
-
 # Il buffer riservato alla sezione "cio' che HIRIS ignora": deve poter contenere
 # l'avviso di taglio anche quando il taglio e' avvenuto, quindi si sottrae
 # dal budget PRIMA di tagliare, non dopo -- altrimenti l'avviso stesso
@@ -239,39 +185,6 @@ _GAP_SECTION_RESERVE = 400
 # prima di "ricordi" nell'ordine di taglio -- un modello che legge quel
 # nucleo non saprebbe piu' quali stanze esistono (IMPORTANT ⑥).
 _MIN_HOME_SPACE_LINES_RESERVE = 3
-
-# **Quante righe di «Notevole adesso» il taglio non tocca** (23/09/2026).
-#
-# Misurato sulla casa vera: il nucleo chiudeva con «19 elementi notevoli non
-# inclusi», e quella sezione era **vuota**. Non un guasto -- gli elementi
-# notevoli sono i primi a essere tagliati, e su una casa di quella taglia il
-# tetto morde sempre -- ma il risultato e' un'intestazione che promette cosa
-# sta succedendo adesso e non lo dice mai.
-#
-# **IL NUMERO E' PROVVISORIO, e non e' misurato.** E' scelto piccolo apposta:
-# la mappa resta la sezione che costa meno per riga e serve di piu' per
-# orientarsi, e questa riserva non deve rubarle il posto. Quanto valga
-# davvero lo diranno i registri delle misure che partono con questa stessa
-# fetta -- quante volte «Notevole adesso» viene davvero letto, e quanto
-# pesa. Finche' quella lettura non c'e', questo numero e' un segnaposto con
-# una ragione, non una decisione.
-#
-# `tests/test_notevole_ha_una_riserva.py` impedisce che «provvisorio»
-# diventi «permanente per dimenticanza»: e' la stessa disciplina della soglia
-# del freno di ritmo (reperto B-3).
-#
-# La riserva tiene un POSTO, non inventa un contenuto: una casa in cui non
-# sta succedendo niente continua a dirlo con una sezione vuota.
-#
-# **Il prezzo, detto per intero.** A tetti strettissimi questi tre posti
-# battono i ricordi. I ricordi restano l'ULTIMA cosa che il taglio tocca --
-# l'ordine non e' cambiato -- ma una riserva piu' in alto puo' esaurire il
-# budget prima che tocchi a loro: misurato, a 1.100 caratteri non ne
-# sopravvive nessuno, dove prima ne restava uno
-# (`tests/test_briefing.py::test_i_ricordi_tagliati_sono_ordinati_...`).
-# Al tetto vero di 6.800 non succede; e' uno dei numeri che le misure devono
-# rivedere.
-_MIN_HIGHLIGHT_LINES_RESERVE = 3
 
 # L'intestazione della sezione dei guasti. E' una domanda a cui l'utente vuole
 # una risposta, non una categoria di archivio: «cosa non va» si legge e si
@@ -374,9 +287,9 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
         return f" ({name})"
     # Un dispositivo senza nome esiste davvero: `home_space/store.py` scrive
     # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
-    # MARCATO come id -- la stessa convenzione di `_displayed_area_name`
+    # MARCATO come id -- la stessa convenzione di `name_with_id` per le aree
     # (IMPORTANT ⑦) -- perche' e' l'unica chiave con cui
-    # `view("dispositivo", ...)` lo ritrova, e perche' un id tecnico non va
+    # `search(riferimento=...)` lo ritrova, e perche' un id tecnico non va
     # mai spacciato per un nome dichiarato dall'utente.
     return f" (id: {device_id})"
 
@@ -401,56 +314,6 @@ def _plural(n: int, singular: str, plural: str) -> str:
     return singular if n == 1 else plural
 
 
-
-
-def _is_event(domain: str, device_class: str | None, value,
-              judgments: TypeJudgments = REPO_JUDGMENTS) -> bool:
-    """Sta SUCCEDENDO qualcosa? -- non «e' cosi'», non «vale tanto».
-
-    E' la domanda che il digesto deve porsi, ed e' diversa da «vale la pena
-    saperlo»: una condizione stabile (un telefono a casa) e una misura (19,5 °C)
-    si sanno benissimo, si vanno a chiedere, e non si annunciano.
-
-    Fino alla fetta «il vocabolario delle tipologie» questa funzione non
-    esisteva e al suo posto c'era un `in _STATI_NOTEVOLI` cieco al tipo: 300
-    elementi su 845, e il dettaglio individuale perso sotto il raggruppamento.
-
-    **Chi merita un annuncio lo dice l'istantanea dei giudizi** (dal
-    17/09/2026, spec 2026-09-16 §3 -- prima era il vocabolario dei tipi letto
-    a mano), non due elenchi di questo modulo: `is_notable` risponde per il
-    dominio e per la coppia con lo stesso campo, che e' il motivo per cui
-    `binary_sensor` puo' dire «no» in generale e «si'» sulle tredici classi
-    che lo meritano. `judgments` arriva come parametro (D3): in produzione
-    l'istantanea viva (`app["type_judgments"]`), il predefinito
-    `REPO_JUDGMENTS` e' il solo seme del repo, per le prove -- questa
-    funzione non ha niente a che fare col censore (`type_census.py`), che
-    legge `REPO_JUDGMENTS` per conto suo e non chiama mai `_is_event`.
-
-    **`alarm_control_panel` era una TERZA sede dello stesso fatto** (corretto
-    il 09/09/2026, audit delle fondamenta): fino ad allora questa funzione
-    portava un ramo scritto a mano, `if domain == "alarm_control_panel":
-    return v == "triggered"`, mentre il vocabolario dei tipi dichiarava GIA'
-    lo stesso fatto -- oggi `judgments.working_of("alarm_control_panel") ==
-    {"triggered": "..."}`, con la sua ragione scritta li' («e' il fatto piu'
-    notevole che questa casa possa produrre»). Il comportamento era giusto;
-    il valore che decide era scritto due volte. Non passa da `is_notable` +
-    `_ACTIVE_STATES` come gli altri domini accendibili, perche' l'allarme non
-    e' accendibile (`"alarm_control_panel"` non e' in `judgments.operable_domains()`:
-    non si "accende", si arma) e i suoi stati notevoli non sono il complemento dei
-    riposi che quelle cinque parole rappresentano -- e' la stessa distinzione
-    che tiene `_ACTIVE_STATES` fuori dal vocabolario (vedi la sua dichiarazione
-    qui sotto).
-    """
-    v = str(value).lower()
-    if domain == "alarm_control_panel":
-        return v in judgments.working_of(domain)
-    if domain == "binary_sensor":
-        return v == "on" and judgments.is_notable(domain, device_class)
-    if judgments.is_notable(domain):
-        return v in _ACTIVE_STATES
-    return False
-
-
 def _count_per_domain(entity: list[dict]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for e in entity:
@@ -467,35 +330,17 @@ def _count_per_domain(entity: list[dict]) -> dict[str, int]:
 # scritta due volte sarebbe la stessa forma di difetto che sta chiudendo.
 
 
-def _displayed_area_name(area: dict) -> str:
-    """Il nome di un'area per il PREFISSO di "Notevole adesso"
-    (`_area_per_entity`): l'id accanto solo se e' una pseudo-area
-    (IMPORTANT ⑦): "Senza area", "Aree non lette" & co. non esistono
-    nell'anagrafe grezza di Home Assistant, quindi ne' `search()` ne'
-    `view('area', nome)` le trovano per nome -- solo per id
-    (`view('area', '__senza_area__')`). Mostrare solo il nome e' un vicolo
-    cieco: le entita' che piu' meritano attenzione (orfane, non lette)
-    finirebbero contate nel nucleo e irraggiungibili nel dettaglio.
-
-    Le aree REALI non mostrano qui il proprio id (decisione del proprietario,
-    spec "i riferimenti"): a differenza delle pseudo-aree sono comunque
-    risolvibili per nome da `search`/`view`, e ripeterlo a ogni entita'
-    notevole costerebbe piu' di quel che rende. Per l'albero di "La casa",
-    che puo' permetterselo (una riga per area, non una per entita'), vedi
-    `_tree_area_name`."""
-    if is_pseudo_area(area["id"]):
-        return name_with_id(area["nome"], area["id"])
-    return area["nome"]
-
-
 def _tree_area_name(area: dict) -> str:
     """Il nome di un'area per l'albero di "La casa" (`_home_space_lines`): l'id
     accanto SEMPRE che differisca dal nome, reale o pseudo che sia -- e' il
     reperto R1 dell'incidente 2026-08-20: l'albero mostrava solo nomi,
-    `view`/`execute` pretendono l'id esatto e vietano di indovinarlo dal
-    nome mostrato. A differenza di `_displayed_area_name`, che alimenta
-    anche il prefisso di "Notevole adesso" (dove l'id resta fuori, vedi
-    li'), qui il costo e' una riga per area."""
+    `search(riferimento=...)`/`execute` pretendono l'id esatto e vietano di
+    indovinarlo dal nome mostrato. Il costo e' una riga per area.
+
+    Fino al 29/09/2026 esisteva un secondo nome d'area, `_displayed_area_name`,
+    che teneva l'id fuori dal prefisso di ogni riga di «Notevole adesso» (una
+    riga per ENTITA', non per area: li' l'id costava troppo). E' uscito con
+    quella sezione."""
     return name_with_id(area["nome"], area["id"])
 
 
@@ -651,9 +496,9 @@ def _home_space_lines(floors: list[dict],
     -- vedi il docstring del modulo sul perche'.
 
     Prende l'albero gia' costruito da `hierarchy()` (con `non_disponibili`
-    applicato dal chiamante, `compose()`) invece di ricostruirselo: cosi'
-    "La casa" e "Notevole adesso" -- che condividono lo stesso albero --
-    non possono mai raccontare due storie diverse sulla stessa area.
+    applicato dal chiamante, `compose()`) invece di ricostruirselo: un
+    albero solo per il nucleo, lo stesso che `search` percorre, cosi' due
+    porte non possono raccontare due storie diverse sulla stessa area.
 
     `device_names` (id -> nome, `None` quando il registro dei
     dispositivi non ha risposto) serve alle ANNOTAZIONI: un conteggio che
@@ -689,68 +534,13 @@ def _home_space_lines(floors: list[dict],
     return lines
 
 
-def _area_per_entity(floors: list[dict]) -> dict[str, str]:
-    """entity_id -> nome dell'area (o pseudo-area: "Senza area", "Aree non
-    lette", ...) che le e' stata assegnata, letta dallo STESSO albero usato
-    per "La casa". Serve a "Notevole adesso" per non ricalcolare l'area a
-    mano con una logica propria che finirebbe per divergere da quella di
-    `hierarchy()` -- e per raccontare, di un'entita' con un riferimento
-    penzolante o un registro caduto, esattamente cio' che "La casa" ne
-    direbbe, invece di lasciarla senza prefisso in silenzio."""
-    area_lookup = {}
-    for floor in floors:
-        for area in floor["aree"]:
-            name = _displayed_area_name(area)
-            for entity in area["entita"]:
-                area_lookup[entity["id"]] = name
-    return area_lookup
-
-
-def _group_highlights(entries: list[dict]) -> list[tuple[int, str]]:
-    """Oltre `_INDIVIDUAL_HIGHLIGHT_THRESHOLD`, "Notevole adesso" CONTA anche
-    lei invece di elencare -- "Cucina: 3 luci (accese)" invece di tre righe.
-
-    Restituisce `(peso, riga)`: il PESO (quante entita' individuali quella
-    riga rappresenta) serve a chi taglia (`compose()`) per dichiarare
-    correttamente quanti ELEMENTI sono esclusi quando una riga raggruppata
-    viene tagliata, non quante RIGHE (IMPORTANT ⑤) -- una riga puo' valere
-    per cento entita'."""
-    counts: dict[tuple[str, str, str], int] = {}
-    order: list[tuple[str, str, str]] = []
-    for v in entries:
-        key = (v["area_nome"] or "Fuori da un’area nota", v["dominio"], v["stato_leggibile"])
-        if key not in counts:
-            order.append(key)
-        counts[key] = counts.get(key, 0) + 1
-    # Le righe si raccolgono nell'ordine in cui capitano le entita', che e'
-    # quello dell'anagrafe: la stessa area finirebbe sparsa in tre punti
-    # diversi dell'elenco. Qui si tengono insieme -- la leggibilita' non e' un
-    # abbellimento, e' cio' che permette a chi legge (una persona dalla pagina,
-    # o il modello nel prompt) di vedere una stanza per volta invece di
-    # ricomporla a mente.
-    lines = []
-    for area_name, domain, word in sorted(order):
-        n = counts[(area_name, domain, word)]
-        line = f"- {area_name}: {n} {_domain_name(domain, n)} ({word})"
-        lines.append((n, line))
-    return lines
-
-
-def _grouped_highlights_heading(total: int) -> str:
-    """La riga di testa di "Notevole adesso" quando raggruppato, ricostruita
-    dal TOTALE ATTUALMENTE mostrato -- non da quello originale prima di un
-    eventuale taglio (IMPORTANT ⑤): un'intestazione che dice "150 elementi"
-    sopra righe che ne sommano 95 e' il nucleo che si contraddice da solo."""
-    entry = _plural(total, "elemento notevole", "elementi notevoli")
-    return (f"({total} {entry}: raggruppati per area, dominio e stato -- "
-            f"oltre {_INDIVIDUAL_HIGHLIGHT_THRESHOLD} il dettaglio individuale non ci sta.)")
-
-
 def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
                         unavailable: tuple[str, ...] = ()) -> bool:
     """Distingue «ho guardato ed e' tutto tranquillo» da «non ho guardato»:
-    sono due cose diverse, e la Sezione 2 deve dirle diversamente (CRITICAL
-    ②). Tre modi per finirci dentro:
+    sono due cose diverse, e il nucleo deve dirle diversamente (CRITICAL
+    ②) -- dal 29/09/2026 in due punti: la riga «Stato non letto» delle
+    capacita' (`_capability_lines`) e l'avviso fra cio' che HIRIS ignora
+    (`compose()`). Tre modi per finirci dentro:
 
     - il chiamante lo dichiara esplicitamente (`reliable_state=False`) --
       per esempio una lettura iniziata ma non ancora conclusa;
@@ -791,18 +581,20 @@ def digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
     (`categoria` = `config`/`diagnostic`).
 
     **Nata dal rilievo R1** (revisione del tratto v3.23.0..HEAD, 08/09/2026):
-    `_highlight_lines` applicava gia' queste tre regole scrivendole a mano
-    riga per riga, e `_capability_lines` -- la sezione «Cosa si puo' chiedere
-    alle cose di casa», nata nello stesso tratto -- non le riceveva affatto:
+    la sezione «Notevole adesso» (uscita dal nucleo il 29/09/2026) applicava
+    gia' queste tre regole scrivendole a mano riga per riga, e
+    `_capability_lines` -- la sezione «Cosa si puo' chiedere alle cose di
+    casa», nata nello stesso tratto -- non le riceveva affatto:
     iterava lo specchio INTERO della cache (`live_mirror`), quindi contava le
     nascoste, le entita' di servizio, e perfino un'entita' presente in cache
     ma assente dall'anagrafe (mai arrivata, o rimossa da Home Assistant). Sulla
     casa del proprietario: quattro luci nascoste in piu' e 113 `config` + 66
-    `diagnostic` che «La casa» e «Notevole adesso» non contano, contate qui --
-    lo stesso testo che dava due totali diversi per la stessa parola. Una
-    funzione sola, usata da entrambe le sezioni, e' l'unico modo per cui le
-    due non possano tornare a divergere in silenzio: e' la terza fondamenta,
-    consistenza, dentro un'unica pagina.
+    `diagnostic` che «Notevole adesso» non contava, contate qui -- lo stesso
+    testo che dava due totali diversi per la stessa parola. Una funzione sola
+    era l'unico modo per cui le due sezioni non potessero tornare a divergere
+    in silenzio: e' la terza fondamenta, consistenza, dentro un'unica pagina.
+    Dal 29/09/2026 nel nucleo la legge solo `_capability_lines`; fuori,
+    l'osservatore e `server.py` (qui sotto).
 
     **Pubblica dall'11/09/2026**, e per la stessa ragione per cui lo divento'
     `historian.home_space_zone`: l'osservatore (`mind/observer.py`) applica la
@@ -817,193 +609,6 @@ def digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
         and not e.get("disabilitata")
         and not e.get("categoria")
         and not e.get("nascosta"))
-
-
-def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
-                    unreliable_state: bool,
-                    reported_classes: dict[str, str] | None = None,
-                    translations: dict | None = None,
-                    fallback_names: dict[str, str] | None = None,
-                    judgments: TypeJudgments = REPO_JUDGMENTS
-                    ) -> tuple[list[str], list[int], bool]:
-    """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
-    Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
-    cercare -- e l'albero gia' costruito da `hierarchy()` per l'area, non
-    uno ricalcolato a mano (vedi `_area_per_entity`).
-
-    Restituisce `(righe, pesi, raggruppato)`. `pesi` e' parallelo a `righe`:
-    quante entita' individuali OGNI riga rappresenta (1 quando non
-    raggruppato, il conteggio del gruppo quando lo e') -- serve al taglio in
-    `compose()` per dichiarare ELEMENTI esclusi, non righe (IMPORTANT ⑤).
-    `raggruppato` dice se serve ricostruire l'intestazione dopo un eventuale
-    taglio (vedi `_grouped_highlights_heading`): l'intestazione non e'
-    nelle righe tagliabili apposta, per poterla ricalcolare sul totale VERO
-    dopo il taglio invece di lasciarla affermare un numero che le righe
-    sotto non confermano piu'.
-
-    `judgments` e' l'istantanea dei giudizi che decide chi e' notevole
-    (`_is_event`, spec 2026-09-16 §3): la inoltra soltanto, non la usa qui."""
-    if unreliable_state:
-        return ([
-            ("Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
-            "questo momento c’e' qualcosa di notevole -- non e' lo stesso di "
-            "'niente di notevole'.")
-        ], [1], False)
-    area_per_entity = _area_per_entity(floors)
-    # La classe viene dallo SPECCHIO: il registro delle entita' non la manda
-    # (`anagrafe.actual_class`). Finche' si e' letta solo dal registro,
-    # `_is_event` ha sempre ricevuto `None` per ogni sensore binario --
-    # quindi nessun allagamento, nessun fumo, nessun monossido e' MAI entrato
-    # in questa sezione, e la parola della loro CLASSE non e' mai
-    # stata raggiunta.
-    reported = reported_classes or {}
-    entries = []
-    unreachable = 0
-    # Il motivo per cui le traduzioni non ci sono, dichiarato da CHI HA
-    # FALLITO e non indovinato qui: si raccoglie mentre si rende, e si scrive
-    # UNA volta in testa alla sezione invece che su ogni riga.
-    untranslated: str | None = None
-    # Disabilitate, di servizio (`categoria`: "config"/"diagnostic") e
-    # nascoste: fuori da un digesto, perche' un digesto e' una vista
-    # PRINCIPALE -- cio' che HIRIS dice senza che tu l'abbia chiesta. La doc
-    # di HA dice che «diagnostic and config entities are typically hidden
-    # from primary UI displays»: qui vale lo stesso.
-    #
-    # NON valgono per `view`/`search`: li' hai chiesto tu, e filtrare una
-    # risposta esplicita sarebbe nascondere. (Il significato per esteso di
-    # "config"/"diagnostic" -- citato dal sorgente -- vive in
-    # `ha_vocabulary.ENTITY_CATEGORY_MEANING`, non ripetuto qui.)
-    #
-    # Sull'impianto del proprietario tolgono 179 elementi su 300: 113
-    # `config` + 66 `diagnostic`, piu' 10 nascoste a mano. **Una sola
-    # funzione** (`digest_visible_entity_ids`, R1) decide chi resta: prima
-    # di questa correzione questi tre `if` stavano scritti a mano qui E MAI
-    # ricevuti da `_capability_lines`, che per questo contava una casa
-    # diversa nella stessa pagina.
-    visible = digest_visible_entity_ids(home_space)
-    for e in home_space.get("entita", []):
-        entity_id = e.get("id")
-        if entity_id not in visible:
-            continue
-        if entity_id not in state:
-            continue
-        value = state[entity_id]
-        # Le irraggiungibili non sono «cosa sta facendo la casa»: sono SALUTE,
-        # ed erano 119 -- 76 righe di digesto. Il fatto resta (una riga di
-        # conteggio, sotto), il dettaglio e' della fetta «salute di HA».
-        if str(value).lower() == "unavailable":
-            unreachable += 1
-            continue
-        if not _is_event(
-            domain_of(entity_id), actual_class(e.get("classe"), reported.get(entity_id)), value,
-            judgments=judgments,
-        ):
-            continue
-        # **Il DOMINIO entra nella resa**, e prima dell'08/09/2026 non
-        # entrava: la tabella cancellata era cieca al dominio, quindi il nucleo
-        # non aveva niente da farsene. Adesso `off` di un `update` e' cio' che
-        # Home Assistant dice («Aggiornato»), non «spento».
-        rendered = readable_state(
-            value, domain=domain_of(entity_id),
-            device_class=actual_class(e.get("classe"), reported.get(entity_id)),
-            translations=translations)
-        if rendered.get("silenzio") in state_translations.TABLE_MISSING_SILENCES:
-            # **Il grezzo, e la sezione lo DICHIARA in testa.** Un vuoto su una
-            # pagina che il proprietario legge e' peggio di uno stato non
-            # tradotto: `on` e' comunque il fatto. Cio' che non si fa e' lasciar
-            # credere che quella sia la parola di Home Assistant.
-            #
-            # **Solo per i due silenzi che riguardano la TABELLA**, e la
-            # distinzione e' la fetta intera: «questo stato non ha una resa»
-            # (`ho chiesto e non c’e'`) non e' «non ho potuto chiedere». Il
-            # primo e' cio' che Home Assistant stesso fa -- il suo frontend a
-            # `compute_state_display.ts` commenta «We don't know! Return the raw
-            # state» -- e annunciarlo in testa alla sezione direbbe al
-            # proprietario che HIRIS non ha letto niente, mentre ha letto tutto
-            # e quel valore non e' fra cio' che quel tipo pubblica. Farli
-            # collassare in una riga sola sarebbe rimettere insieme due cose
-            # diverse sotto una parola sola, nel punto esatto in cui questa
-            # fetta le ha separate.
-            untranslated = untranslated or rendered.get("motivo")
-        entries.append({
-            "area_nome": area_per_entity.get(entity_id),
-            "dominio": domain_of(entity_id),
-            "stato_leggibile": rendered.get("valore", str(value)),
-            # Il nome DELLO SPECCHIO quando il registro tace, con la stessa
-            # disciplina di `queries._enrich_entity`: solo se `nome` e' vuoto,
-            # mai scritto sopra il dichiarato. Il registro delle entita' di
-            # Home Assistant non porta un nome finche' l'utente non lo cambia
-            # a mano -- su questa casa 82 entita' sono cosi' -- e senza questa
-            # riga il nucleo diceva «switch.smart_wi_fi_plug_2» mentre `view`
-            # e `search` dicevano «Fuoco e tv»: la stessa entita' con due nomi
-            # a seconda della porta (audit delle fondamenta, rilievo 3).
-            # L'identificatore resta l'ultimo ripiego, ed e' onesto: quando
-            # nemmeno lo specchio ha un `friendly_name` non c'e' altro di
-            # vero da scrivere.
-            "nome": (e.get("nome") or (fallback_names or {}).get(entity_id)
-                     or entity_id),
-        })
-    # La riga delle irraggiungibili sta IN TESTA e pesa ZERO, e nessuna delle
-    # due cose e' estetica: `compose()` taglia dal fondo, quindi in coda
-    # sarebbe la prima a cadere; e `_grouped_highlights_heading` conta
-    # la somma dei pesi, quindi con peso 1 direbbe «N+1 elementi notevoli»
-    # includendo una riga che non e' un elemento ma un riassunto.
-    unreachable_line = ([f"- {unreachable} entità non rispondono."]
-                if unreachable else [])
-    unreachable_weight = [0] if unreachable else []
-    # STESSA disciplina della riga delle irraggiungibili: in testa (il taglio
-    # morde dal fondo) e di peso ZERO (non e' un elemento notevole, e' cio' che
-    # si sa degli elementi notevoli). Senza questa riga gli stati grezzi
-    # sarebbero indistinguibili da parole di Home Assistant scelte male.
-    untranslated_line = (
-        [("- Le traduzioni di Home Assistant non sono state lette "
-          f"({untranslated}): gli stati qui sotto sono grezzi.")]
-        if untranslated else [])
-    untranslated_weight = [0] if untranslated else []
-    unreachable_line = untranslated_line + unreachable_line
-    unreachable_weight = untranslated_weight + unreachable_weight
-
-    if not entries:
-        # «Niente di notevole» resta vero anche con delle irraggiungibili: sono
-        # due frasi diverse e si dicono tutte e due.
-        #
-        # **Peso ZERO, e non e' un dettaglio** (audit delle fondamenta,
-        # rilievo 4, 08/09/2026). Il peso di una riga e' «quanti elementi
-        # questa riga rappresenta», e `_pop` lo somma in
-        # `excluded_per_pool` per scrivere l'avviso di taglio. Questa riga
-        # non rappresenta nessun elemento: rappresenta la loro ASSENZA.
-        # Con peso 1 -- come stava fino a qui -- una casa senza niente di
-        # notevole che sforasse il tetto perdeva la frase e l'avviso diceva
-        # «1 elemento notevole non incluso»: il modello leggeva che esiste
-        # un elemento che non vede, e non ne esisteva nessuno. E' la stessa
-        # disciplina della riga delle irraggiungibili qui sopra, per la
-        # stessa ragione: cio' che si SA degli elementi non e' un elemento.
-        # Il contratto di `compose()` in una riga: il riepilogo non puo'
-        # mentire su cio' che il testo non contiene.
-        #
-        # **E resta tagliabile, deliberatamente.** Una riserva che la
-        # tenesse fuori dal taglio e' stata scritta e tolta: costa 30
-        # caratteri a ogni casa senza niente di notevole, e a tetto stretto
-        # quei caratteri li paga la mappa delle stanze -- misurato, una
-        # riga d'area in meno (`test_briefing_capabilities.py::test_con_le_
-        # firme_dentro_il_nucleo_non_perde_nemmeno_un_area`). Il baratto e'
-        # sbagliato in entrambi i sensi: la sezione «Notevole adesso» VUOTA
-        # dice gia' esattamente cio' che questa frase dice -- «non c'e'
-        # niente» -- mentre l'area persa non la dice piu' nessuno. Il caso
-        # dello stato inattendibile e' diverso e resta fuori dal taglio piu'
-        # sotto (CRITICAL ②): li' la sezione vuota direbbe «va tutto bene»
-        # al posto di «non ho potuto guardare».
-        return (unreachable_line + ["Niente di notevole al momento."],
-                unreachable_weight + [0], False)
-    if len(entries) > _INDIVIDUAL_HIGHLIGHT_THRESHOLD:
-        groups = _group_highlights(entries)
-        return (unreachable_line + [line for _, line in groups],
-                unreachable_weight + [weight for weight, _ in groups], True)
-    lines = []
-    for v in entries:
-        prefix = f"{v['area_nome']}: " if v["area_nome"] else ""
-        lines.append(f"- {prefix}{v['nome']} ({v['stato_leggibile']})")
-    return (unreachable_line + lines, unreachable_weight + [1] * len(lines), False)
 
 
 # Quante voci un elenco di capacita' puo' portare per esteso prima di
@@ -1045,8 +650,8 @@ _MAX_CAPABILITY_LIST_CHARS = 44
 # **600**: il 96% delle entita' per il 61% del costo. Le sette firme che
 # restano fuori riguardano una o due entita' a testa -- un lettore
 # multimediale con due sorgenti, un selettore con sei opzioni -- e per quelle
-# `view` risponde meglio di quanto una riga aggregata possa fare. Il rinvio a
-# `view` e' scritto DENTRO la sezione: un elenco accorciato in silenzio
+# `search` risponde meglio di quanto una riga aggregata possa fare. Il rinvio a
+# `search` e' scritto DENTRO la sezione: un elenco accorciato in silenzio
 # sarebbe un HIRIS che crede di sapere.
 #
 # Senza un tetto suo, una casa con molte firme rare mangerebbe tutto lo spazio
@@ -1064,7 +669,7 @@ def _capability_value(value) -> str | None:
     (§15.1): una firma aggregata e' MAPPA, non dettaglio. «Questa luce sa fare
     colore» e «questa luce arriva a 9000 K» sono due frasi diverse -- la prima
     e' cio' che il modello deve sapere di poter chiedere, la seconda e' cio'
-    che `view` gli dice quando guarda quella luce. Scrivere `9000` qui
+    che `search` gli dice quando guarda quella luce. Scrivere `9000` qui
     costerebbe il doppio (2.497 caratteri contro 1.096, misurati) per
     un’informazione che ha gia' una porta sua.
 
@@ -1104,7 +709,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
 
     Restituisce `(righe, pesi, aggregabile)`. `pesi` e' parallelo a `righe`:
     quante entita' ogni riga rappresenta -- serve al taglio, che dichiara
-    ENTITA' escluse e non righe (stessa disciplina di `_highlight_lines`).
+    ENTITA' escluse e non righe (stessa disciplina dei conteggi della casa).
     `aggregabile` e' falso in due casi diversi, e nessuno dei due entra
     nell'ordine di taglio: quando la sezione porta una DICHIARAZIONE invece
     delle capacita' (lo stato non e' stato letto, oppure nessuna entita' ne
@@ -1129,8 +734,8 @@ def _capability_lines(attributes: dict[str, dict] | None,
     prima di questa correzione questa funzione iterava `attributi` -- lo
     specchio INTERO della cache -- senza ricevere l'anagrafe, quindi contava
     nascoste, entita' di servizio (`categoria`) e perfino entita' presenti in
-    cache ma assenti dall'anagrafe. `_highlight_lines` filtrava gia' le prime
-    due, due righe piu' su nello stesso file: la stessa casa raccontava due
+    cache ma assenti dall'anagrafe. «Notevole adesso» (uscita dal nucleo il
+    29/09/2026) filtrava gia' le prime due: la stessa casa raccontava due
     totali diversi per la stessa parola, nello stesso testo. Vedi
     `digest_visible_entity_ids`, l'unica fonte di questa regola ora."""
     if unreliable_state:
@@ -1198,7 +803,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
         # ENTRAMBI i casi, che il rinvio sopravviva o no.
         entity = _plural(left_out, "entita'", "entita'")
         lines.append(f"- (altre {left_out} {entity} con capacita' rare non elencate qui: "
-                     "chiedile con `view`.)")
+                     "chiedile con `search`.)")
         weights.append(left_out)
     return (lines, weights, True)
 
@@ -1206,20 +811,20 @@ def _capability_lines(attributes: dict[str, dict] | None,
 def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
     stessa regola di `name_with_id` in `topology.py`: fetta "i riferimenti",
-    incidente 2026-08-20) -- `view('automazione'/'script', ...)` pretende l'id
+    incidente 2026-08-20) -- `search(riferimento=...)` pretende l'id
     esatto, e senza di qui il modello non aveva da dove prenderlo. Il corpo
     si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
     sapere che esistono. Chi non ha il corpo lo dichiara in riga.
 
-    Restituisce `(righe, pesi)` come `_highlight_lines`, e il peso lo decide
+    Restituisce `(righe, pesi)` come `_capability_lines`, e il peso lo decide
     QUI perche' e' qui che si sa cosa una riga rappresenta (audit delle
     fondamenta, rilievo 4). Fino all'08/09/2026 i pesi si costruivano dal
     di fuori con `[1] * len(righe)`: una regola scritta lontano da chi la
     conosce, che contava anche la frase segnaposto come una voce vera.
     """
     if not behavior:
-        # Peso ZERO: la stessa ragione, parola per parola, di «Niente di
-        # notevole al momento.» in `_highlight_lines`. Non c'e' nessuna
+        # Peso ZERO: il peso di una riga e' «quanti elementi questa riga
+        # rappresenta», e questa rappresenta la loro ASSENZA. Non c'e' nessuna
         # automazione, quindi tagliando questa riga non se ne esclude
         # nessuna -- e l'avviso di `_pop` non deve dire il contrario.
         return (["Nessuna automazione o script registrati."], [0])
@@ -1282,10 +887,10 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
     leggeva ne' l'uno ne' l'altro -- poteva solo contare le entita' non
     disponibili e non sapere perche'.
 
-    Sta fra gli AVVISI e non in «Notevole adesso» perche' non e' un evento:
-    e' una condizione, e resta vera finche' qualcuno non la ripara. E' anche
-    la sezione giusta per un altro motivo: dichiara cio' che HIRIS NON puo'
-    raccontare della casa, ed e' esattamente il caso -- le entita' di
+    Non e' un evento: e' una condizione, e resta vera finche' qualcuno non
+    la ripara. Per questo sta in «Cosa non va in casa», la sezione dei guasti
+    subito dopo «La casa» (vedi `compose()`), e non fra le lacune: e' un
+    fatto che HIRIS SA e deve dire -- la ragione per cui le entita' di
     quell'integrazione non hanno uno stato leggibile.
 
     Il motivo esce solo se c'e': HA lo riempie per `setup_error` e
@@ -1428,8 +1033,6 @@ def _problems_notice(problems: dict | None) -> str | None:
     stessa ragione: quello dice PERCHE' un'integrazione non e' partita,
     questo dice cosa HA ha diagnosticato in generale. Nessuno dei due e' un
     evento -- sono condizioni, e restano vere finche' qualcuno non le ripara.
-    In «Notevole adesso» annuncerebbero a ogni messaggio una cosa che non e'
-    successa adesso.
 
     `problemi` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
     da `app["ha_problems"]`), esattamente come `stato` e
@@ -1713,7 +1316,8 @@ def _memory_lines(memories: list[dict]) -> list[str]:
         # due nomi diversi (docs/GLOSSARIO.md aggiornato di conseguenza).
         author_label = r.get("detto_da") or "qualcuno"
         # L'ID, che mancava. Il modulo dichiara a inizio file che un ricordo
-        # tagliato «si raggiunge con `view("ricordo", id)`» -- ma l'id non
+        # tagliato «si raggiunge con `search(genere="ricordo", riferimento=id)`»
+        # (allora `view("ricordo", id)`, uscito il 29/09/2026) -- ma l'id non
         # era stampato da nessuna porta, e `fetch` esige un'ancora che i
         # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
         # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
@@ -1770,19 +1374,29 @@ def _assemble(sections: list[tuple[str, list[str]]]) -> str:
 #: isolato: "714" era rimasto scritto senza aggiornarsi quando la sezione ha
 #: preso la sua forma definitiva), lo stesso tetto sfrattava **«Notevole
 #: adesso» per intero** -- da quattro righe a zero -- e **sette voci di
-#: comportamento su venti**. A 6.800 convivono tutte: 6.461 caratteri,
-#: «Notevole adesso» sale a sei righe (piu' di quante ne avesse prima), il
-#: comportamento esce completo (20 su 20), la mappa delle stanze non perde
-#: una riga. Ricomposto in locale sugli ingressi veri della casa il
-#: 08/09/2026; la ricostruzione e' verificata contro il nucleo vivo (5.676
-#: caratteri, sezione per sezione).
+#: comportamento su venti**. A 6.800, l'08/09/2026, convivevano tutte: 6.461
+#: caratteri, «Notevole adesso» a sei righe, il comportamento completo (allora
+#: 20 su 20), la mappa delle stanze intera. Ricomposto in locale sugli
+#: ingressi veri della casa; la ricostruzione era verificata contro il nucleo
+#: vivo (5.676 caratteri, sezione per sezione).
+#:
+#: **Non e' durato, e il «20 su 20» qui sopra vale per quel giorno soltanto.**
+#: Misurato il 29/09/2026 sulla stessa casa, allo stesso tetto: il
+#: comportamento usciva **12 voci su 17** -- cinque automazioni tagliate --
+#: mentre «Notevole adesso» restava dentro. E la sezione che restava era la
+#: fotografia di un istante: la #18 della batteria («come sta la casa») e'
+#: stata risposta da li', senza uno strumento, e sbagliata. Da quel giorno il
+#: nucleo porta cio' che e' STABILE: «Notevole adesso» e' uscita (lo stato si
+#: chiede a `search`), e il comportamento si taglia DOPO le capacita', cioe'
+#: esce intero finche' c'e' spazio.
 #:
 #: **Cosa NON risolve, e va detto qui perche' non si scopra fra sei mesi**: un
-#: tetto piu' alto non impedisce che la PROSSIMA sezione aggiunta sfratti di
-#: nuovo «Notevole adesso», e in silenzio. Solo un minimo garantito lo
-#: impedirebbe -- come gia' ce l'ha la mappa delle stanze
-#: (`_MIN_HOME_SPACE_LINES_RESERVE`). Non e' stato fatto: e' una scelta
-#: dichiarata (spec §15.1), non una dimenticanza.
+#: tetto fisso non impedisce che una casa con piu' automazioni, o la PROSSIMA
+#: sezione aggiunta, torni a tagliare il comportamento. Non c'e' una riserva
+#: minima come quella della mappa (`_MIN_HOME_SPACE_LINES_RESERVE`); c'e'
+#: l'avviso di taglio, che dice quante voci mancano e con quale
+#: `search(genere=...)` si ritrovano -- un taglio dichiarato e raggiungibile,
+#: non un silenzio.
 DEFAULT_CEILING = 6800
 
 
@@ -1793,14 +1407,10 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             behavior_problems: tuple[str, ...] = (),
             unread_bodies: dict[str, str] | None = None,
             reference_frame: dict | None = None,
-            reported_classes: dict[str, str] | None = None,
             problems: dict | None = None,
             comparison: dict | None = None,
             attributes: dict[str, dict] | None = None,
-            translations: dict | None = None,
-            fallback_names: dict[str, str] | None = None,
-            now: float | None = None,
-            judgments: TypeJudgments = REPO_JUDGMENTS) -> tuple[str, dict]:
+            now: float | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1808,18 +1418,28 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     puo' mentire su cio' che il testo non contiene, perche' e' costruito
     dagli stessi tagli che il testo dichiara -- vedi `test_briefing.py`.
 
-    L'ordine, deciso e fisso: 1) la casa (conteggi), 2) cio' che e' notevole
-    adesso, 3) cosa si puo' chiedere alle cose di casa, 4) cio' che la casa fa
-    gia' da sola, 5) cio' che le persone hanno detto, 6) cio' che HIRIS ignora
-    (incluso l'eventuale taglio).
+    L'ordine, deciso e fisso: 1) la casa (conteggi), 2) cosa si puo' chiedere
+    alle cose di casa, 3) cio' che la casa fa gia' da sola, 4) cio' che le
+    persone hanno detto, 5) cio' che HIRIS ignora (incluso l'eventuale
+    taglio). Fra la casa e le capacita', quando ci sono, i guasti che Home
+    Assistant ha diagnosticato.
 
-    `traduzioni` e' l'esito etichettato della lettura delle traduzioni di Home
-    Assistant (`proxy/state_translations.StateTranslations.cached`). `None`
-    significa «il chiamante non ha guardato», e vale come «non lette»: la
-    sezione «Notevole adesso» lo DICHIARA in testa e mostra gli stati grezzi,
-    invece di far credere che `on` sia la parola che Home Assistant userebbe.
-    Dall'08/09/2026 e' la sola fonte delle parole: le quattro tabelle scritte a
-    mano in `topology.py` non esistono piu' (spec §6).
+    **Il nucleo porta cio' che e' STABILE, non lo stato del momento** (dal
+    29/09/2026, spec «una porta sola per la casa» §5). Fino a quel giorno la
+    seconda sezione era «Notevole adesso» -- cio' che era acceso, aperto, in
+    allarme -- e il modello la prendeva per la risposta: la #18 della
+    batteria («come sta la casa») e' stata risposta da quella fotografia,
+    senza strumenti, e sbagliata. Lo stato vivo si chiede a `search`, che lo
+    legge nel momento in cui serve. Il riepilogo (secondo elemento) non ha
+    mai avuto una chiave per quella sezione: cambia solo l'avviso di taglio,
+    che non conta piu' «elementi notevoli».
+
+    **Quattro argomenti servivano solo a quella sezione** -- le traduzioni
+    degli stati, i nomi e le classi dello specchio, l'istantanea dei giudizi
+    sui tipi -- e sono usciti dalla firma lo stesso giorno, insieme alla
+    lettura che il chiamante (`handlers_home_space.compose_briefing`) ne
+    faceva per nessuno (decisione del proprietario: il codice morto si
+    elimina).
 
     `attributi` sono le ceste degli attributi vivi, entita' per entita', come
     `topology.live_mirror` le consegna gia' al chiamante. Servono a una cosa
@@ -1828,25 +1448,14 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     significa «il chiamante non ha guardato» e NON «nessuna entita' sa fare
     niente»: la sezione lo dichiara, come `problemi` e `confronto` qui sopra.
 
-    `fallback_names` sono i nomi dello SPECCHIO VIVO (entity_id ->
-    `friendly_name`), la stessa mappa che `topology.live_mirror` consegna gia'
-    al chiamante e che `view`/`search` ricevono come `nomi_di_ripiego`. Serve
-    a una cosa sola qui dentro, e non e' una comodita': il registro delle
-    entita' di Home Assistant NON porta un nome finche' l'utente non lo
-    cambia a mano -- su questa casa sono 82 entita' -- e senza questa mappa
-    «Notevole adesso» scriveva l'identificatore mentre ogni altra porta
-    scriveva il nome. La stessa entita' con due nomi a seconda di chi la
-    guarda e' la fondamenta 3 rotta nel testo che il modello ha SEMPRE
-    davanti (audit delle fondamenta, rilievo 3).
-
     `non_disponibili` sono i registri dell'anagrafe che non hanno risposto
     all'ultima lettura (`HomeSpaceStore.non_disponibili()`). Senza, ne' "La
     casa" ne' "cio' che HIRIS ignora" potrebbero nominare la lacuna piu'
     grave che esista: una casa letta a meta' che il nucleo racconterebbe
     come una casa piccola (o senz'area) invece che come una casa non letta
     per intero. Va passato a `hierarchy()` (tramite `_home_space_lines`) E a
-    `_unreliable_state`/`_highlight_lines` -- attraverso lo STESSO albero,
-    cosi' le sezioni non possono raccontarla in modo incompatibile. Una casa
+    `_unreliable_state`, cosi' le sezioni non possono raccontarla in modo
+    incompatibile. Una casa
     non ancora letta non e' una casa cambiata.
 
     `reliable_state=False` dichiara esplicitamente che `stato` non ci si
@@ -1874,19 +1483,6 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     chiamante non ha chiesto», e NON «l'albero combacia»: vedi
     `_comparison_notice`, che tiene separati i tre esiti e il non-letto.
 
-    `judgments` e' l'istantanea dei giudizi sui tipi (spec 2026-09-16 §3):
-    decide chi e' notevole in "Notevole adesso" (`_highlight_lines` ->
-    `_is_event`). Arriva come ARGOMENTO come `stato`: questa funzione e' pura.
-    In produzione e' sempre l'istantanea viva, `app["type_judgments"]`; il
-    predefinito `REPO_JUDGMENTS` -- il solo seme del repo -- serve alle prove
-    (il censore, `type_census.py`, non chiama mai `compose()`: legge
-    `REPO_JUDGMENTS` per conto suo). Una prova strutturale
-    (`test_judgments_passed_in_production.py`) boccia ogni chiamata di
-    produzione a questa funzione senza `judgments=`; due prove dal lettore
-    (`test_briefing.py`/`test_queries.py`) sorvegliano che le catene interne
-    -- che quella prova strutturale non guarda -- lo inoltrino davvero fino
-    in fondo.
-
     `behavior_problems`/`unread_bodies` sono le
     dichiarazioni che `comportamento.reread()` costruisce gia' e che
     `/api/home-space` espone (`HomeSpaceStore.behavior_problems()`/
@@ -1894,11 +1490,10 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     un'automazione sconosciuta (id duplicato, file malformato) non arrivava
     mai al modello (IMPORTANT ⑧).
 
-    Quando serve tagliare per stare sotto `tetto`, si tagliano prima gli
-    elementi notevoli (raggruppati o no, vedi `_highlight_lines`), poi cio'
-    che la casa fa da sola, poi -- fino a una riserva minima che non si
-    tocca mai (`_MIN_HOME_SPACE_LINES_RESERVE`, IMPORTANT ⑥) -- i conteggi
-    della casa, e per ultimi i ricordi. Il PERCHE' di quest'ordine e' nel
+    Quando serve tagliare per stare sotto `tetto`, si tagliano prima le
+    capacita', poi cio' che la casa fa da sola, poi -- fino a una riserva
+    minima che non si tocca mai (`_MIN_HOME_SPACE_LINES_RESERVE`, IMPORTANT
+    ⑥) -- i conteggi della casa, e per ultimi i ricordi. Il PERCHE' di quest'ordine e' nel
     docstring del modulo: non e' "cosa e' recuperabile" (lo e' tutto), e'
     "cosa il modello perde la possibilita' di sapere che esiste".
     """
@@ -1956,35 +1551,40 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     # Le NASCOSTE: fuori dalle gestioni, dentro la conoscenza.
     #
-    # Dalla fetta «il vocabolario delle tipologie» un'entita' nascosta in Home
-    # Assistant non entra piu' in «Notevole adesso»: e' una scelta esplicita
-    # dell'utente e il digesto la rispetta. Ma «non la annuncio» e «non so che
+    # Un'entita' nascosta in Home Assistant non entra nei conteggi di «La
+    # casa» ne' nelle capacita' (`digest_visible_entity_ids`): e' una scelta
+    # esplicita dell'utente e il digesto la rispetta. (Fino al 29/09/2026 il
+    # posto da cui restava fuori era soprattutto «Notevole adesso», uscita
+    # dal nucleo quel giorno.) Ma «non la annuncio» e «non so che
     # esiste» sono due cose diverse, e la seconda sarebbe una perdita: alla
     # domanda «quante entita' nascoste ci sono?» HIRIS deve saper rispondere.
     #
     # Qui, e non altrove, perche' questa sezione esiste per dire cio' che HIRIS
     # NON porta nel discorso -- ed e' l'unico posto da cui la risposta si legge
-    # senza chiamare uno strumento per ognuna delle sedici aree. `view` le
-    # riporta gia' (filtra `disabilitata`, mai `nascosta`): la conoscenza c'era,
-    # mancava il numero.
+    # senza chiamare uno strumento per ognuna delle sedici aree. `search` le
+    # riporta con `includi_nascoste`: la conoscenza c'e', qui c'e' il numero.
     hidden = [e for e in home_space.get("entita", [])
                 if e.get("nascosta") and not e.get("disabilitata")]
     if hidden:
         n = len(hidden)
         entry = _plural(n, "entita' nascosta", "entita' nascoste")
         notices.append(
-            f"{n} {entry} in Home Assistant: non entrano in «Notevole adesso» "
-            "perche' la persona le ha nascoste, ma esistono e `view` le "
-            "riporta se gliele chiedi.")
+            f"{n} {entry} in Home Assistant: fuori dai conteggi qui sopra "
+            "perche' la persona le ha nascoste, ma esistono e `search` le "
+            "riporta se gliele chiedi (`includi_nascoste`).")
 
     # `entity_category`: fuori dalle gestioni, dentro la conoscenza -- stessa
     # legge delle nascoste due righe sopra, per lo stesso dato che
-    # `_highlight_lines` gia' filtra (`e.get("categoria")`, "config" o
-    # "diagnostic") ma non ha mai dichiarato: prima di questa fetta il
+    # `digest_visible_entity_ids` gia' filtra (`e.get("categoria")`, "config"
+    # o "diagnostic") ma non ha mai dichiarato: prima di questa fetta il
     # digesto le escludeva in silenzio, e alla domanda «quante sono le
-    # entita' di servizio?» HIRIS non aveva un numero -- solo `view` (che
-    # gia' porta `categoria`, `queries.py::_enrich_entity`) poteva dirlo, una
-    # per una. `nascoste` e `entita' di servizio` restano CONTATE separate:
+    # entita' di servizio?» HIRIS non aveva un numero -- solo il dettaglio
+    # di un'entita' (che porta `categoria`, `queries.py::_enrich_entity`)
+    # poteva dirlo, una per una. A differenza delle nascoste, «La casa» le
+    # CONTA (`hierarchy()` non guarda `categoria`): restano fuori dalle
+    # capacita', e da `search` finche' non le si chiede.
+    #
+    # `nascoste` e `entita' di servizio` restano CONTATE separate:
     # una disabilitata e nascosta insieme finisce fra le disabilitate
     # (stessa precedenza di `hierarchy()`), e la stessa entita' puo' essere
     # sia di servizio sia nascosta -- contarla due volte sarebbe un doppione,
@@ -2002,9 +1602,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         # un giro a vuoto che nasconde perche' non serve).
         notices.append(
             f"{n} entita' di servizio (config/diagnostic) in Home Assistant: "
-            "non entrano in «Notevole adesso» "
-            "perche' l’integrazione le marca cosi', ma esistono e `view` le "
-            "riporta se gliele chiedi.")
+            "fuori dalle capacita' del nucleo "
+            "perche' l’integrazione le marca cosi', ma esistono e `search` le "
+            "riporta se gliele chiedi (`includi_servizio`).")
 
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il
     # nucleo applica a trecento entita' (vedi il docstring del modulo),
@@ -2058,11 +1658,10 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         device_names = {d["id"]: (d.get("nome") or "")
                             for d in home_space.get("dispositivi") or [] if d.get("id")}
 
-    # Un solo albero (`hierarchy()`, con `non_disponibili` applicato),
-    # condiviso da "La casa" e da "Notevole adesso": prima di questo fix
-    # `_highlight_lines` se ne ricalcolava uno proprio a mano, che poteva
-    # dire "Senza area" dove "La casa" -- correttamente -- diceva "Aree non
-    # lette" (CRITICAL ①).
+    # Un solo albero (`hierarchy()`, con `non_disponibili` applicato): prima
+    # del fix CRITICAL ① la sezione dello stato («Notevole adesso», uscita il
+    # 29/09/2026) se ne ricalcolava uno proprio a mano, che poteva dire
+    # "Senza area" dove "La casa" -- correttamente -- diceva "Aree non lette".
     floors = hierarchy(home_space, unavailable)
     # Il riferimento sta in testa a "La casa" e non in una sezione sua: e' una
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
@@ -2071,15 +1670,17 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     reference_frame_lines = _reference_frame_lines(reference_frame, now)
     home_space_lines = reference_frame_lines + _home_space_lines(floors, device_names)
 
+    # Lo stato NON entra nel nucleo (dal 29/09/2026), ma resta vero che uno
+    # stato non letto non e' uno stato tranquillo (CRITICAL ②): lo dicono la
+    # riga «Stato non letto» delle capacita' e questo avviso, entrambi fuori
+    # dal taglio. Senza, chi legge «Cosa non va in casa» vuota
+    # concluderebbe «va tutto bene» proprio quando nessuno ha guardato.
     unreliable = _unreliable_state(home_space, state, reliable_state, unavailable)
     if unreliable:
         notices.append(
             "lo stato delle entita' non e' stato letto, o e' stato dichiarato non "
-            "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
-            "dice che non si e' potuto guardare.")
-    highlight_lines, highlight_weights, grouped_highlight = _highlight_lines(
-        home_space, state, floors, unreliable, reported_classes, translations,
-        fallback_names, judgments=judgments)
+            "attendibile: il nucleo non dice che va tutto bene, dice che non si "
+            "e' potuto guardare.")
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
         attributes, unreliable, digest_visible_entity_ids(home_space))
     behavior_lines, behavior_weights = _behavior_lines(behavior)
@@ -2096,32 +1697,21 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     home_space_reserve = _MIN_HOME_SPACE_LINES_RESERVE + len(reference_frame_lines)
     memory_weights = [1] * len(memory_lines)
 
-    def _current_highlight_section() -> list[str]:
-        # L'intestazione raggruppata (se serve) si ricostruisce dal totale
-        # ATTUALMENTE rappresentato dalle righe rimaste, mai da quello
-        # originale: dopo un taglio, un'intestazione che afferma il numero
-        # di PRIMA sopra righe che ne sommano meno e' il nucleo che si
-        # contraddice da solo (IMPORTANT ⑤).
-        if grouped_highlight and highlight_lines:
-            return [_grouped_highlights_heading(sum(highlight_weights))] + highlight_lines
-        return list(highlight_lines)
-
     # L'ordine di STAMPA e' fisso (vedi docstring); l'ordine di TAGLIO e'
     # diverso e definito piu' sotto (`cut_order`).
     home_space_section = ("## La casa", home_space_lines)
-    highlight_section = ("## Notevole adesso", _current_highlight_section())
-    # DOVE va, e perche' qui: subito dopo «cosa sta succedendo» e prima di
-    # «cosa fa da sola». L'ordine di lettura diventa: com'e' fatta -> cosa e'
-    # rotto -> cosa sta succedendo -> **cosa le si puo' chiedere** -> cosa fa
-    # gia' da sola. Le ultime due sono la stessa domanda vista dalle due parti
-    # (cosa puo' fare qualcuno, cosa fa gia' nessuno), e chi legge le trova
-    # accanto. Piu' in alto avrebbe spinto giu' la mappa delle stanze, che e'
-    # la chiave di lettura di tutti i nomi che vengono dopo.
+    # DOVE va, e perche' qui: subito dopo la casa (e i suoi guasti) e prima di
+    # «cosa fa da sola». L'ordine di lettura e': com'e' fatta -> cosa e' rotto
+    # -> **cosa le si puo' chiedere** -> cosa fa gia' da sola. Le ultime due
+    # sono la stessa domanda vista dalle due parti (cosa puo' fare qualcuno,
+    # cosa fa gia' nessuno), e chi legge le trova accanto. Piu' in alto
+    # avrebbe spinto giu' la mappa delle stanze, che e' la chiave di lettura
+    # di tutti i nomi che vengono dopo.
     capability_section = ("## Cosa si puo' chiedere alle cose di casa", capability_lines)
     behavior_section = ("## Cio' che la casa fa gia' da sola", behavior_lines)
     memory_section = ("## Cio' che le persone hanno detto", memory_lines)
 
-    print_order = [home_space_section, highlight_section]
+    print_order = [home_space_section]
     # Zero righe significa «il chiamante non ha guardato gli attributi», e
     # allora la sezione non esiste: l'intestazione da sola direbbe «ho
     # guardato e non c'e' niente», che e' l'altro fatto.
@@ -2129,62 +1719,55 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         print_order.append(capability_section)
     print_order += [behavior_section, memory_section]
 
-    def _refresh_highlight_section() -> None:
-        print_order[1] = ("## Notevole adesso", _current_highlight_section())
-
     # (chiave, righe, pesi, riserva minima) -- l'ordine qui e' l'ordine di
-    # taglio: dal meno utile al piu' prezioso. Prima si tagliano gli
-    # elementi notevoli (la sezione senza tetto proprio, e la piu' pesante
-    # per riga quando la casa e' grande -- vedi `_group_highlights` per
-    # come si comprime prima ancora di arrivare qui), poi cio' che la casa
-    # fa da sola, poi -- fino alla riserva minima, MAI oltre
+    # taglio: dal meno utile al piu' prezioso. Prima le capacita', poi cio'
+    # che la casa fa da sola, poi -- fino alla riserva minima, MAI oltre
     # (`_MIN_HOME_SPACE_LINES_RESERVE`, IMPORTANT ⑥) -- i conteggi della casa:
     # e' la mappa che costa meno per riga e serve di piu' per orientarsi. I
     # ricordi restano gli ultimi in assoluto (vedi il docstring del modulo
     # sul perche' non e' "recuperabilita'").
     #
-    # Quando lo stato e' inaffidabile, "Notevole adesso" e' UNA riga sola --
-    # la dichiarazione stessa di "non ho guardato" (CRITICAL ②). Metterla
-    # nel pool tagliabile la renderebbe la prima cosa a sparire, il che la
-    # ricreerebbe esattamente: un silenzio non dichiarato. Resta fuori dal
-    # taglio; se il nucleo sfora lo stesso, ci pensa la rete di sicurezza
-    # piu' sotto.
-    cut_order: list[tuple[str, list[str], list[int], int]] = []
-    if not unreliable:
-        cut_order.append(("notevole", highlight_lines, highlight_weights,
-                          _MIN_HIGHLIGHT_LINES_RESERVE))
-    cut_order.append(("comportamento", behavior_lines, behavior_weights, 0))
-    # DOPO il comportamento e PRIMA della casa, e i due confini sono decisi
-    # dalla stessa misura -- quanto una riga spiega per carattere che costa.
+    # **Le capacita' PRIMA del comportamento** (29/09/2026; fino ad allora
+    # l'ordine era l'inverso). La ragione di allora era la densita': una riga
+    # di capacita' spiega da 4 a 73 entita' (19 firme per 841, misurato
+    # l'08/09), una voce di comportamento UNA automazione. Ma la densita' non
+    # misura quanto costa perdere la riga: la capacita' tagliata e' una mappa
+    # -- chi la vuole la chiede a `search` sull'entita', e la sezione lo dice
+    # gia' da se' per le firme rare --, la voce di comportamento tagliata e'
+    # un'automazione che il modello non sa che esiste, ed era il caso misurato
+    # il 29/09: 12 voci su 17, cinque automazioni fuori, al tetto vero.
+    # Entrambi i tagli si dichiarano, quindi nessuno dei due sparisce in
+    # silenzio.
     #
     # **Prima della casa, sempre**: la mappa delle stanze e' la sezione piu'
     # economica per riga e la sola da cui il modello sappia quali stanze
     # esistono. Un nucleo che guadagna le capacita' e perde un'area e' un
     # peggioramento, e questo posto nell'ordine e' cio' che lo rende
-    # impossibile: le capacita' si esauriscono per intero prima che una riga
-    # di conteggio venga toccata.
-    #
-    # **Dopo il comportamento**: una riga di capacita' spiega da 4 a 73
-    # entita' insieme (misurato: 19 firme per 841 entita'), una voce di
-    # comportamento spiega UNA automazione. A tetto stretto sopravvive cio'
-    # che copre di piu' -- ed e' lo stesso criterio con cui la mappa ha la sua
-    # riserva. Entrambi i tagli si dichiarano, quindi nessuno dei due sparisce
-    # in silenzio.
+    # impossibile: capacita' e comportamento si esauriscono per intero prima
+    # che una riga di conteggio venga toccata.
+    cut_order: list[tuple[str, list[str], list[int], int]] = []
     if capabilities_are_countable:
         cut_order.append(("capacita", capability_lines, capability_weights, 0))
     cut_order += [
+        ("comportamento", behavior_lines, behavior_weights, 0),
         ("casa", home_space_lines, home_space_weights, home_space_reserve),
         ("ricordi", memory_lines, memory_weights, 0),
     ]
     # (chiave, frase singolare, frase plurale) GIA' concordate col genere
     # del sostantivo -- vedi il docstring di `_cut_notice`.
+    #
+    # Il comportamento porta ANCHE la strada per ritrovarlo: un taglio
+    # dichiarato ma senza la porta da cui rientrare e' mezza informazione
+    # («5 voci non incluse» -- e quali? come?). `search` le elenca per genere,
+    # automazioni e script separati (`home_space/tools.py`, filtro `genere`).
     cut_labels = [
-        ("notevole", "elemento notevole non incluso",
-                     "elementi notevoli non inclusi"),
-        ("comportamento", "voce di comportamento non inclusa",
-                          "voci di comportamento non incluse"),
         ("capacita", "entita' di cui il nucleo non dice cosa sa fare",
                       "entita' di cui il nucleo non dice cosa sanno fare"),
+        ("comportamento",
+         ("voce di comportamento non inclusa (le elencano "
+          "`search(genere=\"automazione\")` e `search(genere=\"script\")`)"),
+         ("voci di comportamento non incluse (le elencano "
+          "`search(genere=\"automazione\")` e `search(genere=\"script\")`)")),
         ("casa", "riga di conteggio della casa non inclusa",
                  "righe di conteggio della casa non incluse"),
         ("ricordi", "ricordo non incluso (il piu' vecchio prima)",
@@ -2196,17 +1779,15 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     def _pop(pool_name: str, pool_lines: list[str], pool_weights: list[int], reserve: int) -> None:
         # IMPORTANT ⑤: si conta il PESO (quante entita'/elementi la riga
-        # rappresenta davvero -- per "notevole" raggruppato puo' essere
+        # rappresenta davvero -- per una firma di capacita' puo' essere
         # molto piu' di 1), non la riga. Sottostimare l'escluso di nove
-        # volte sulla lacuna piu' calda della casa e' peggio di non
-        # dichiararlo affatto: sembra onesto e non lo e'.
+        # volte e' peggio di non dichiararlo affatto: sembra onesto e non
+        # lo e'.
         nonlocal truncated
         pool_lines.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
         weight = pool_weights.pop()
         truncated = True
         excluded_per_pool[pool_name] = excluded_per_pool.get(pool_name, 0) + weight
-        if pool_name == "notevole":
-            _refresh_highlight_section()
         if pool_name == "casa":
             # MINOR: un'intestazione di piano ("Primo piano:") senza righe
             # sotto e' un artefatto del taglio, non un'informazione -- si
@@ -2218,7 +1799,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
                 pool_lines.pop()
                 pool_weights.pop()
 
-    # IMPORTANT ④: il budget per casa/notevole/comportamento/ricordi non e'
+    # IMPORTANT ④: il budget per casa/capacita'/comportamento/ricordi non e'
     # `tetto - _GAP_SECTION_RESERVE` alla cieca. Se le lacune GIA' note
     # (registri caduti, corpi mancanti, problemi di comportamento, stato
     # inaffidabile...) pesano gia' piu' della riserva stimata, il budget per
@@ -2255,9 +1836,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     gap_section = ("## Cio' che HIRIS ignora", _gap_lines(notices))
 
-    # DOVE va la sezione dei guasti: subito dopo «La casa» e PRIMA di «Notevole
-    # adesso». L'ordine di lettura diventa: com'e' fatta -> cosa e' rotto ->
-    # cosa sta succedendo. Metterla in fondo, accanto alle lacune, e' cio' che
+    # DOVE va la sezione dei guasti: subito dopo «La casa» e prima di tutto il
+    # resto. L'ordine di lettura diventa: com'e' fatta -> cosa e' rotto ->
+    # cosa le si puo' chiedere. Metterla in fondo, accanto alle lacune, e' cio' che
     # l'ha fatta ignorare; metterla in cima al posto della mappa toglierebbe a
     # chi legge il riferimento per capire i nomi che ci trova dentro.
     #
@@ -2278,15 +1859,16 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # dichiarato in piu'. Si scende fino alla riserva minima della mappa;
     # oltre quella, mai (IMPORTANT ⑥): sforare il tetto in modo dichiarato
     # e' meno grave che svuotare anche la mappa in silenzio.
-    safety_pools = [
-        ("ricordi", memory_lines, memory_weights, 0),
-        ("comportamento", behavior_lines, behavior_weights, 0),
-    ]
+    #
+    # Le capacita' prima del comportamento anche qui, per la stessa ragione
+    # scritta sopra `cut_order`.
+    safety_pools = [("ricordi", memory_lines, memory_weights, 0)]
     if capabilities_are_countable:
         safety_pools.append(("capacita", capability_lines, capability_weights, 0))
-    safety_pools.append(("casa", home_space_lines, home_space_weights, home_space_reserve))
-    if not unreliable:
-        safety_pools.append(("notevole", highlight_lines, highlight_weights, 0))
+    safety_pools += [
+        ("comportamento", behavior_lines, behavior_weights, 0),
+        ("casa", home_space_lines, home_space_weights, home_space_reserve),
+    ]
 
     while len(text) > int(ceiling * 1.1):
         cut = False

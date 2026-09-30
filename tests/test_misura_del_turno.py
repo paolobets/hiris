@@ -82,6 +82,25 @@ async def test_il_filo_INTERO_dal_runner_alla_cronaca_dei_consumi(app):
 
 
 @pytest.mark.asyncio
+async def test_la_catena_registra_gli_argomenti(app):
+    """Spec §7: allineati agli strumenti, stessa lunghezza e stesso ordine.
+
+    Mutazione ESEGUITA: `misura_turno` che non passa `tool_args` -- rossa."""
+    runner = FintoRunner(giri=1)
+    runner.last_tool_calls = [
+        {"tool": "search", "input": {"tipo": "light"}},
+        {"tool": "execute", "input": {"data": {"code": "1234"}}},
+        {"tool": "view"}]
+
+    await _gira(app, runner)
+
+    riga = app["usage"].turns()[0]
+    assert riga["tools"] == ["search", "execute", "view"]
+    assert riga["tool_args"] == [{"tipo": "light"},
+                                 {"data": {"code": "***"}}, {}]
+
+
+@pytest.mark.asyncio
 async def test_si_vede_CRESCERE_il_carico_giro_per_giro(app):
     """La curva, non il suo punto medio. È l'intera ragione per cui il
     secondo registro è per iterazione: i risultati degli strumenti si

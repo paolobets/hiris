@@ -22,9 +22,11 @@ La voce e' in `docs/BACKLOG.md`.
 canale firmato o l'ingress. E' importante che ci resti, perche' i turni
 portano `subject_json`, cioe' CHI ha chiesto.
 
-**Non porta gli argomenti degli strumenti**, e non e' una scelta di questa
-rotta: non sono nell'archivio, perche' `log_turn` non li accetta. Un `view`
-porta il nome di una stanza, un `execute` un valore impostato.
+**Porta gli argomenti degli strumenti** (`tool_args`, dal 29/09/2026, spec
+«una porta sola» §7), allineati a `tools` e ridotti dall'archivio: testi a 200
+caratteri, 20 chiavi, e il valore di ogni credenziale (`code`, `pin`,
+`password`, `token`...) e' `***`. Restano dati personali -- un `view` porta il
+nome di una stanza -- e per questo la rotta sta dietro il perimetro.
 """
 from __future__ import annotations
 

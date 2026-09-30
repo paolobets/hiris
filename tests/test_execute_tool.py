@@ -82,8 +82,12 @@ async def test_senza_porta_lo_dichiara_invece_di_rompersi():
 async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
     """La modifica a dispatch() non deve rompere i gestori che non sono coroutine."""
     d = ToolDispatcher(None, None, cache=None, actuator=None)
-    esito = await d.dispatch("search", {"testo": "salotto"})
-    assert "errore" in esito  # niente archivio casa: errore dichiarato, non eccezione
+    # `fetch` e non piu' `search`: dal 29/09/2026 `search` e' una coroutine
+    # (assorbe il dettaglio, che scalda il registro), e con `{"testo": ...}`
+    # questa prova passava per l'argomento sconosciuto, non per l'archivio.
+    esito = await d.dispatch("fetch", {"riferimento": "salotto"})
+    assert "errore" in esito  # niente archivio: errore dichiarato, non eccezione
+    assert "testo" not in esito["errore"]
 
 
 # -- il cablaggio: la porta arriva davvero fin qui --------------------------

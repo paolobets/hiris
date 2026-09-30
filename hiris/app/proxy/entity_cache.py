@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
@@ -241,6 +242,29 @@ _CREDENTIAL_ATTRIBUTES: dict[str, str] = {
     "media_content_id": "l’indirizzo del contenuto, con la chiave della sessione dentro",
 }
 
+#: Le chiavi con cui una CHIAMATA DI SERVIZIO porta un segreto (29/09/2026,
+#: registro dei turni: `execute` e `propose` mettono i dati del servizio negli
+#: argomenti, e `alarm_control_panel.alarm_disarm` vuole `code`). I campi veri
+#: di Home Assistant per i codici di serrature e allarmi: `zha.set_lock_user_code`
+#: (`user_code`), `zwave_js.set_lock_usercode` (`usercode`), `alarm_code`,
+#: `lock_code` -- un PIN di 4-6 cifre non ha una forma che la regola sul valore
+#: prenda.
+#:
+#: **Un insieme suo, non dentro `_CREDENTIAL_ATTRIBUTES`** (review finale della
+#: fetta «una porta sola», 30/09/2026): quella tabella decide cosa lo SPECCHIO
+#: trattiene degli attributi di stato, e un attributo che si chiama davvero
+#: `code` -- i codici dei punti dati Tuya, i codici d'errore di un
+#: elettrodomestico -- non e' un segreto e non deve sparire dal testo che il
+#: modello riceve. La FUNZIONE resta una (`is_credential`), con due insiemi
+#: dichiarati; le regole sul valore valgono per tutti e due.
+SERVICE_CALL_SECRETS = frozenset({
+    "code", "user_code", "usercode", "alarm_code", "lock_code", "pin", "password",
+    "passcode", "token", "secret", "api_key"})
+#: Cio' che si maschera negli argomenti salvati di una chiamata: i segreti di
+#: un servizio e, per le stesse chiavi che il modello puo' ricopiare da
+#: un'entita', gli attributi di stato che lo specchio trattiene.
+CALL_ARGUMENT_SECRETS = SERVICE_CALL_SECRETS | frozenset(_CREDENTIAL_ATTRIBUTES)
+
 # La ragione con cui esce cio' che nessun nome della tabella prevedeva.
 _CREDENTIAL_BY_VALUE = (
     "un valore che contiene una credenziale (un indirizzo con `token=`, "
@@ -260,7 +284,7 @@ _HEXADECIMAL_SECRET = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{32,}(?![0-9a-fA-F
 _MAC_ADDRESS = re.compile(r"^(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$")
 
 
-def _is_credential(name: str, value) -> bool:
+def is_credential(name: str, value, secret_names=_CREDENTIAL_ATTRIBUTES) -> bool:
     """Se questo attributo va trattenuto dal testo che il modello riceve.
 
     Per NOME o per VALORE, e i due non sono la stessa difesa: il nome copre
@@ -269,8 +293,12 @@ def _is_credential(name: str, value) -> bool:
     questa casa (sono icone `/api/brands/...`): la regola si scrive sulla
     chiave, perche' la STESSA chiave porta un token su `camera`, `image` e
     `media_player`. E' una perdita accettata, non un'assenza.
+
+    `secret_names` e' l'insieme dei NOMI: di norma gli attributi di stato
+    (`_CREDENTIAL_ATTRIBUTES`); gli argomenti salvati di una chiamata passano
+    `CALL_ARGUMENT_SECRETS`. Le regole sul valore sono le stesse.
     """
-    if name in _CREDENTIAL_ATTRIBUTES:
+    if name in secret_names:
         return True
     if not isinstance(value, str):
         return False
@@ -383,7 +411,7 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
             continue
         if _has_nothing_to_say(value):
             continue
-        if _is_credential(name, value):
+        if is_credential(name, value):
             basket = CREDENTIALS
         elif name in capability_names:
             basket = CAPABILITIES
@@ -575,6 +603,14 @@ class EntityCache:
         # i casi ("la casa e' vuota"). Il controllo comune era
         # `ToolDispatcher._cache_non_leggibile`, uscito -- fetta E2 Task 7.
         self._loaded = False
+        # Tampone della rilettura (`reload`): None fuori dalla rilettura; durante
+        # l'await sulla fotografia raccoglie gli eventi che arrivano, per
+        # riapplicarli sopra di essa.
+        self._pending: list | None = None
+        # Due riconnessioni ravvicinate lanciano due `reload` che si
+        # sovrappongono: il secondo azzerava il tampone del primo e il primo,
+        # finendo, lo metteva a None -- il secondo poi iterava None.
+        self._reload_lock = asyncio.Lock()
 
     @property
     def loaded(self) -> bool:
@@ -600,6 +636,49 @@ class EntityCache:
         # la cache resta dichiaratamente non pronta.
         self._loaded = True
 
+    async def reload(self, ha_client) -> None:
+        """Rilegge lo specchio dopo una riconnessione (spec §6).
+
+        Gli eventi emessi mentre la connessione era giu' non tornano: fino
+        alla 3.70 lo specchio restava stantio fino al riavvio dell'add-on
+        (misurato il 29/09/2026: 15 entita' diverse da Home Assistant dopo
+        il riavvio delle 09:11). Qui si rilegge tutto, e gli eventi che
+        arrivano DURANTE la rilettura si tengono da parte e si riapplicano
+        sopra la fotografia: una fotografia presa prima di loro non puo'
+        cancellarli. `loaded` non cambia: chi legge nel frattempo vede lo
+        specchio di prima, che e' meglio di nessuno.
+
+        Le riletture si serializzano (`_reload_lock`): due riconnessioni di
+        fila non condividono il tampone.
+        """
+        async with self._reload_lock:
+            self._pending = []
+            # Il tampone si chiude su OGNI uscita, `finally`: anche quando la
+            # rilettura viene CANCELLATA durante l'await (l'ascoltatore che si
+            # chiude, una riconnessione abbandonata). `CancelledError` non e'
+            # un `Exception` e scavalcava il ramo d'errore: il tampone restava
+            # aperto e cresceva a ogni evento, per sempre (review finale, M2,
+            # 30/09/2026).
+            try:
+                try:
+                    raw_states = await ha_client.get_states([])
+                except Exception as error:  # lo specchio resta com'era
+                    logger.warning("specchio: rilettura dopo la riconnessione fallita "
+                                   "(%s: %s)", type(error).__name__, error)
+                    return
+                fresh = {}
+                for raw in raw_states:
+                    eid = raw.get("entity_id")
+                    if eid:
+                        fresh[eid] = _to_minimal(raw)
+                pending, self._pending = self._pending, None
+                self._states = fresh
+                for event_data in pending:
+                    self.on_state_changed(event_data)
+                self._loaded = True
+            finally:
+                self._pending = None
+
     def on_state_changed(self, event_data: dict) -> None:
         """L'unico rubinetto che tiene vivo lo specchio: `state_changed`.
 
@@ -610,9 +689,8 @@ class EntityCache:
         `{"entity_id": ..., "old_state": <State>, "new_state": None}` -- e'
         l'UNICO segnale che Home Assistant manda quando un'entita' sparisce, e
         fino all'09/09/2026 HIRIS lo scartava con un `return` muto. Nessun
-        altro percorso toglieva una voce: `server.reload_entity_inventory`
-        rilegge solo se il caricamento iniziale era fallito, e la
-        riconnessione WS rifa' l'anagrafe e i servizi, non lo specchio.
+        altro percorso toglieva una voce (allora: la riconnessione WS non
+        rileggeva lo specchio, ora lo fa `reload`).
 
         Il danno non era solo un elenco piu' lungo del vero: `GET
         /api/entities` continuava a mostrare l'ultimo stato di un'entita'
@@ -623,12 +701,11 @@ class EntityCache:
         a ogni `entity_registry_updated`, lo specchio no -- due porte, due
         case.
 
-        **Il residuo dichiarato**: gli eventi emessi mentre la connessione WS
-        era giu' non tornano (`ha_client._ws_loop` ricostruisce anagrafe,
-        servizi e plance a ogni riconnessione, lo specchio no). Una rimozione
-        avvenuta in quella finestra resta invisibile fino al riavvio
-        dell'add-on, esattamente come vi resta un cambio di stato.
+        Gli eventi emessi mentre la connessione WS era giu' non tornano: a
+        ogni riconnessione `reload` rilegge lo specchio intero.
         """
+        if self._pending is not None:
+            self._pending.append(event_data)
         new_state = event_data.get("new_state")
         if not new_state:
             # `entity_id` sta nell'evento, non nello stato: e' la sola chiave

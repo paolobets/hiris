@@ -45,14 +45,14 @@ from ..home_space.topology import (
 # contesto, cosi' l'ancora che nomina "area" o "entita" e' gia' la chiave
 # con cui si cerca qui.
 #
-# "piani" (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md): stesso
-# trattamento di aree/entita/dispositivi, perche' e' la stessa cosa che
-# loro sono -- un REGISTRO dell'anagrafe (`_TABELLE`, home_space/store.py),
-# gia' dentro la `casa` che ogni chiamante legge, che puo' mancare
-# all'appello di una ricostruzione esattamente come gli altri tre
-# (`HomeSpaceStore.non_disponibili()`). Prima di questo task nessuna
-# sequenza di chiamate produceva mai un id di piano: `esegui(piani=...)`
-# lo pretende (`claude_runner.py`), e non esisteva modo di procurarselo.
+# I PIANI (e le ETICHETTE come candidati di se stesse) ci sono stati dal T7
+# (R2, docs/design/2026-08-20-i-riferimenti.md) al 30/09/2026: servivano alla
+# vecchia ricerca per nome, che doveva produrre l'id di un piano per
+# `execute(piani=...)`. Da «una porta sola per la casa» il piano e' un FILTRO
+# della porta (`house_query`), e l'unico lettore rimasto di questo indice e'
+# `remember`, che ancora solo aree, entita' e dispositivi
+# (`memory/interpretation.VOCABULARY`): un candidato che nessuno puo' usare e'
+# codice morto, ed e' uscito (review finale, M3).
 #
 # Automazioni e script NON entrano qui, apposta: vengono da
 # `HomeSpaceStore.comportamento()`, una fonte diversa (file YAML riletti a
@@ -66,10 +66,12 @@ from ..home_space.topology import (
 # lei `_TETHER_TYPES` in home_space/tools.py) a tipi che la memoria non puo'
 # mai scrivere come ancora (`memory/interpretation.VOCABULARY`),
 # creando esattamente il secondo vocabolario che R9 denuncia altrove.
-# `costruisci_indice()` le indicizza per conto suo, sotto: stessa forma
-# dei candidati, fonte e ciclo di vita diversi.
-_ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"),
-           ("piani", "piano"))
+# Fino al 29/09/2026 `costruisci_indice()` le indicizzava per conto suo, per
+# la vecchia ricerca per nome (`queries.search`); uscita quella, nessun
+# chiamante le chiedeva piu' -- la porta della casa (`home_space/
+# house_query.py`) confronta i nomi da se' -- e il parametro e' uscito con
+# lei.
+_ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"))
 
 # Stessa mappa di _ARCHIVI, capovolta: dato il tipo di un'ancora, la chiave
 # del registro che l'anagrafe usa per quel tipo. Pubblica perche' serve a chi
@@ -82,11 +84,11 @@ STORE_KEY_PER_TYPE: dict[str, str] = {type: key for key, type in _ARCHIVI}
 # Le parole funzionali dell'italiano. **Vivono qui, non nel cancello**
 # (24/09/2026): erano nate in `tests/test_preposizioni_italiane.py`, che le
 # usa per vietare una giuntura italiana dentro un identificatore, e da oggi
-# servono anche al prodotto -- `home_space/queries.search` deve sapere che
-# «della» non e' il nome di niente prima di andarlo a cercare fra i nomi
-# della casa (sulla casa vera «della» compare in undici nomi: cercarla
-# porterebbe undici candidati che non c'entrano a ogni domanda che contiene
-# una preposizione, cioe' quasi tutte).
+# servono anche al prodotto -- `name_matches` (qui sotto, la porta della
+# casa dal 29/09/2026) deve sapere che «della» non e' il nome di niente
+# prima di andarlo a cercare fra i nomi della casa (sulla casa vera «della»
+# compare in undici nomi: cercarla porterebbe undici candidati che non
+# c'entrano a ogni domanda che contiene una preposizione, cioe' quasi tutte).
 #
 # La lista NON si ricopia di la': un cancello chiede il suo elenco
 # (CLAUDE.md, I-0), e due copie della stessa lista sono due posti in cui la
@@ -127,10 +129,6 @@ ITALIAN_FUNCTION_WORDS = frozenset([
     "eccetto", "escluso", "incluso", "compreso",
 ])
 
-# Elisioni: valgono SOLO davanti a vocale, perche' e' cio' che l'elisione e'.
-ITALIAN_ELISIONS = frozenset(["dell", "all", "nell", "sull", "coll", "dall", "l"])
-ITALIAN_VOWELS = frozenset("aeiou")
-
 
 def _normalize(text: str) -> str:
     """Minuscole, accenti tolti, spazi multipli compressi.
@@ -142,6 +140,58 @@ def _normalize(text: str) -> str:
     decomposto = unicodedata.normalize("NFKD", text)
     senza_accenti = "".join(c for c in decomposto if not unicodedata.combining(c))
     return re.sub(r"\s+", " ", senza_accenti).strip()
+
+
+#: Sotto questa lunghezza una parola non ha radice: «luc» a inizio di parola
+#: troverebbe «lucernario», e «tv» senza vocale niente di sensato. A quattro
+#: lettere cambia solo il numero (`_NUMBER_PAIRS`, sotto).
+STEM_MIN_LENGTH = 5
+
+
+def _stem(word: str) -> str:
+    """La radice di una parola italiana, nel senso piu' povero e dichiarato:
+    la vocale finale tolta. Basta a far incontrare singolare e plurale
+    («rifiuto»/«rifiuti», «indifferenziato»/«indifferenziata»), ed e' tutto
+    cio' che la batteria del 29/09/2026 ha chiesto."""
+    if len(word) >= STEM_MIN_LENGTH and word[-1] in "aeiou":
+        return word[:-1]
+    return word
+
+
+#: Le vocali finali che fanno coppia singolare/plurale in italiano: -o/-i
+#: («faro»/«fari»), -a/-e («casa»/«case»), -e/-i («luce»/«luci»). Servono
+#: alle parole di QUATTRO lettere (review finale della fetta «una porta
+#: sola», M4, 30/09/2026): «luci» non trovava «Luce». Una parola di quattro
+#: lettere si confronta ancora INTERA -- nessun prefisso: «luce» non trova
+#: «lucernario» -- e la sua vocale finale puo' cambiare solo nella propria
+#: coppia: «casa» trova «case» ma non «caso», «pala» non trova «palo». Il
+#: residuo dichiarato: la regola sa di grammatica, non di significato, e
+#: «casi» trova anche «case» (tutte e due plurali di parole diverse).
+_NUMBER_PAIRS = {"a": "ae", "e": "eai", "i": "ieo", "o": "oi"}
+#: La lunghezza a cui vale la coppia: sotto e' sempre intera, sopra c'e' la
+#: radice (`STEM_MIN_LENGTH`).
+_PAIR_LENGTH = 4
+
+
+def _word_pattern(word: str) -> str:
+    stem = _stem(word)
+    if stem != word:
+        return rf"(?<!\w){re.escape(stem)}\w*"
+    if len(word) == _PAIR_LENGTH and word[-1] in _NUMBER_PAIRS:
+        return rf"(?<!\w){re.escape(word[:-1])}[{_NUMBER_PAIRS[word[-1]]}](?!\w)"
+    return rf"(?<!\w){re.escape(word)}(?!\w)"
+
+
+def name_matches(query: str, name: str) -> bool:
+    """Vero se ogni parola significativa di `query` sta in `name`, intera o
+    (dalle cinque lettere in su) come radice a inizio di parola; a quattro
+    lettere, intera o col numero cambiato (`_NUMBER_PAIRS`)."""
+    words = [w for w in _normalize(query).split()
+             if w and w not in ITALIAN_FUNCTION_WORDS]
+    if not words:
+        return False
+    target = _normalize(name)
+    return all(re.search(_word_pattern(word), target) for word in words)
 
 
 def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
@@ -217,8 +267,7 @@ class Lookup:
     verificare. Si costruisce con `costruisci_indice()`, non direttamente."""
 
     def __init__(self, termini: dict[str, list[tuple[str, str]]],
-                 per_type: dict[str, dict[str, dict]],
-                 platforms: dict[str, list[str]] | None = None) -> None:
+                 per_type: dict[str, dict[str, dict]]) -> None:
         # I termini piu' lunghi vincono e consumano il testo, cosi' "sala da
         # pranzo" non collassa su "sala": l'ordine e' deciso una volta sola,
         # non a ogni chiamata di trova(). Un testo normalizzato che piu'
@@ -236,7 +285,6 @@ class Lookup:
         self._termini_grezzi = sorted(termini.items(), key=lambda kv: len(kv[0]), reverse=True)
         self._termini_compilati: list[tuple[list[tuple[str, str]], re.Pattern[str]]] | None = None
         self._per_type = per_type
-        self._platforms = platforms or {}
 
     def _termini(self) -> list[tuple[list[tuple[str, str]], re.Pattern[str]]]:
         if self._termini_compilati is None:
@@ -289,54 +337,6 @@ class Lookup:
         trovate.sort(key=lambda t: t[0])
         return [entry for _, entry in trovate]
 
-    def names_containing(self, text: str) -> list[tuple[list[tuple[str, str]], str]]:
-        """I termini dell'indice che CONTENGONO `testo` come parola intera.
-
-        E' l'operazione opposta a `find()`, e sono due cose diverse che
-        fino al 24/09/2026 condividevano un meccanismo solo. `find()`
-        ancora i nomi dentro la PROSA e cerca i termini dentro la frase:
-        giusto li', perche' «ho pulito la cucina» non deve agganciare le 22
-        entita' che portano «cucina» nel nome. Una domanda DIRETTA --
-        «trovami le cose che si chiamano taverna» -- vuole il verso
-        contrario, e senza questo metodo non aveva nessun posto dove
-        succedere.
-
-        **Il difetto che l'ha fatta nascere**, misurato sulla casa vera:
-        «Accendi la luce della taverna» rispondeva «non c'e' nessuna stanza
-        ne' luce chiamata taverna» mentre `light.taverna_1_taverna_1` e
-        `light.taverna_2_taverna_2` -- «Taverna 1» e «Taverna 2», vive,
-        nell'area Cantina -- esistevano. I termini erano «taverna 1» e
-        «taverna 2»; la frase «taverna» non li contiene, quindi `find()`
-        non trovava niente e lo strumento dichiarava `nulla_riconosciuto`.
-        Sia la catena sia il ponte si arrendevano uguale: non era il
-        modello.
-
-        **Perche' non c'e' una soglia sul numero di candidati.** Il primo
-        disegno scartava le parole troppo frequenti, per non annegare il
-        modello. Misurato sulla casa vera (869 nomi vivi, 604 parole nuove)
-        quella soglia avrebbe buttato via le parole PIU' utili: «cucina»
-        (22 entita'), «giardino» (28), «luci» (21), «sala» (15). Il rumore
-        vero sta altrove ed e' pochissimo -- «reolink», «trackmix», «poe» a
-        166 -- e non si distingue da «cucina» contando. Chi taglia e'
-        `search` (`home_space/queries.py`), che conosce il proprio tetto e
-        dichiara quando ha tagliato; qui non si sceglie e non si scarta:
-        e' la stessa legge di `find()`.
-
-        **Il confine di parola vale anche qui**: «tav» non nomina niente,
-        altrimenti questa diventerebbe una ricerca per sottostringa e
-        «sala» troverebbe «salato».
-
-        Un testo che E' gia' un termine intero non esce di qui: lo trova
-        `find()`, e restituirlo due volte darebbe al chiamante la stessa
-        voce sdoppiata.
-        """
-        cercato = _normalize(text)
-        if not cercato:
-            return []
-        pattern = _compila(cercato)
-        return [(candidati, term) for term, candidati in self._termini_grezzi
-                if term != cercato and pattern.search(term)]
-
     def verify(self, type: str, reference: str) -> dict | None:
         """L'oggetto dell'anagrafe se `riferimento` esiste con quel `tipo`,
         altrimenti None.
@@ -359,18 +359,12 @@ class Lookup:
         """
         return list(self._per_type.get(type, {}).values())
 
-    def platforms(self) -> dict[str, list[str]]:
-        """`{piattaforma normalizzata: [entity_id, ...]}`. Vuota quando
-        l'anagrafe non e' stata letta: un dizionario vuoto dice «non lo so»
-        allo stesso modo in cui lo dice `find()`."""
-        return self._platforms
-
 
 def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
               candidate: tuple[str, str]) -> None:
     """Aggiunge `candidato` (tipo, riferimento) al termine che
     `term_originale` normalizza a -- il cuore di `costruisci_indice()`,
-    estratto perche' anagrafe e comportamento (sotto) lo condividono: due
+    estratto perche' anagrafe ed etichette (sotto) lo condividono: due
     copie della stessa regola di dedup/ambiguita' sarebbero due posti in
     cui la stessa correzione si dimentica di un posto.
 
@@ -388,11 +382,9 @@ def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
 
 
 def costruisci_indice(home_space: dict,
-                      nomi_di_ripiego: dict[str, str] | None = None,
-                      behavior: list[dict] | None = None) -> Lookup:
+                      nomi_di_ripiego: dict[str, str] | None = None) -> Lookup:
     """Costruisce l'indice di una casa: nome e alias di aree, entita',
-    dispositivi e piani, PIU' automazioni e script (`comportamento`, T7),
-    normalizzati e pronti per trova()/verifica().
+    dispositivi e piani, normalizzati e pronti per trova()/verifica().
 
     Due voci diverse possono normalizzarsi allo stesso termine (due aree
     omonime, un alias che e' il nome vero di un'altra voce): il termine
@@ -415,7 +407,7 @@ def costruisci_indice(home_space: dict,
     trovata": e' INESISTENTE nello spazio in cui si cerca -- nessun nome,
     nessun termine, invisibile. E' lo stesso criterio del nucleo: il modello
     perde la possibilita' di sapere che quella cosa esiste, e sono i quattro
-    giri di `cerca` bruciati sulle abat-jour.
+    giri di `search` (allora `cerca`) bruciati sulle abat-jour.
 
     Il ripiego e' il `friendly_name`, non l'`entity_id`: e' cio' che Home
     Assistant mostra all'utente ed e' la parola che una persona userebbe
@@ -442,19 +434,6 @@ def costruisci_indice(home_space: dict,
     Il ripiego vale solo per le entita': lo specchio dello stato non ha
     `friendly_name` per aree e dispositivi, e un ripiego li' sarebbe di
     nuovo un id travestito da nome.
-
-    `comportamento` (T7, R2): le voci di `HomeSpaceStore.comportamento()` --
-    automazioni e script, col loro `tipo` ("automazione" o "script") gia'
-    dentro ogni voce, non nella chiave del dizionario `casa` come per
-    `_ARCHIVI` sopra. Indicizzate con la STESSA disciplina (nome, alias,
-    etichette, categorie; ambiguita' dichiarata, mai scelta), ma FUORI dal
-    ciclo su `_ARCHIVI`: sono lette da una fonte diversa, con un ciclo di
-    vita diverso (file YAML riletti a una cadenza propria, non un registro
-    di Home Assistant) -- vedi il commento su `_ARCHIVI` per la ragione per
-    cui non condividono la stessa tupla. Nessun ripiego sul nome qui: le
-    voci di comportamento arrivano gia' con un nome (`friendly_name` dello
-    stato o l'`alias` dello YAML -- vedi `home_space/behavior.py`), mai nullo
-    per costruzione.
     """
     termini: dict[str, list[tuple[str, str]]] = {}
     per_type: dict[str, dict[str, dict]] = {}
@@ -511,80 +490,11 @@ def costruisci_indice(home_space: dict,
             # sentinelle `None` degli alias), ma questo indice legge
             # l'ARCHIVIO -- che su un'installazione gia' avvelenata
             # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
-            # Un rilevatore che muore sul dato vecchio lascia `cerca` e
+            # Un rilevatore che muore sul dato vecchio lascia `search` e
             # `remember` rotti fino al riavvio successivo. Vedi `_log`.
             for term_originale in [deduced or name, *(entry.get("alias") or []),
                                       *labels_with_name(entry, nomi_etichette),
                                       *categories_with_name(entry, nomi_categorie).values()]:
                 _log(termini, term_originale, (type, reference))
 
-    # Automazioni e script (T7, R2): stessa disciplina, fonte diversa --
-    # vedi il commento su `_ARCHIVI` e il docstring qui sopra. `tipo` viene
-    # dalla VOCE stessa, non da `_ARCHIVI`: una lista sola porta entrambi i
-    # tipi, distinti campo per campo (`home_space/behavior.py`). Una voce col
-    # `tipo` che non e' ne' "automazione" ne' "script", o senza `id`, non e'
-    # una voce di comportamento valida: si scarta invece di indicizzarla
-    # sotto un tipo che ne' `guarda` ne' `verifica()` altrove riconoscono.
-    for entry in behavior or []:
-        entry_type = entry.get("tipo")
-        reference = entry.get("id")
-        if entry_type not in ("automazione", "script") or reference is None:
-            continue
-        registry = per_type.setdefault(entry_type, {})
-        registry[reference] = entry
-        for term_originale in [entry.get("nome") or "", *(entry.get("alias") or []),
-                                  *labels_with_name(entry, nomi_etichette),
-                                  *categories_with_name(entry, nomi_categorie).values()]:
-            _log(termini, term_originale, (entry_type, reference))
-
-    # Le etichette STESSE (T8, R2 -- docs/design/2026-08-20-i-riferimenti.md
-    # §2): fin qui sopra un'etichetta entrava nell'indice SOLO come termine
-    # che porta a un'entita'/area/dispositivo/automazione che la porta (vedi
-    # "Nome, alias E ETICHETTE" piu' sopra) -- mai come candidato essa
-    # stessa. Un'etichetta ancora inutilizzata, o assegnata solo a cose
-    # disabilitate o fuori registro, restava IRRAGGIUNGIBILE: nessuna
-    # sequenza di chiamate produceva mai il suo `label_id`, che
-    # `esegui(bersaglio.etichette=...)` pretende -- il vicolo cieco piu'
-    # radicale della famiglia (R2). Qui il suo NOME diventa un termine che
-    # porta a SE STESSA -- tipo "etichetta", riferimento il suo `label_id`
-    # -- cosi' un modello che sa solo il nome arriva all'id con UNA sola
-    # chiamata a `cerca`, invece di doverne prima trovare una cosa che la
-    # porta (che potrebbe non esistere).
-    #
-    # Fonte diversa da `_ARCHIVI` per lo stesso motivo di `comportamento`
-    # (vedi il commento su `_ARCHIVI` in cima al modulo): la tabella
-    # `etichette` non e' una voce con `nome`/`alias`/`etichette` proprie, e'
-    # gia' l'unione id->nome (`label_names`, sopra). Un nome vuoto o
-    # un id assente non e' un'etichetta indicizzabile: si scarta invece di
-    # registrare un termine muto o un candidato senza riferimento.
-    label_registry = per_type.setdefault("etichetta", {})
-    for e in home_space.get("etichette") or []:
-        label_id = e.get("id")
-        if label_id is None:
-            continue
-        label_name = (e.get("nome") or "").strip() or str(label_id)
-        label_registry[label_id] = {"id": label_id, "nome": label_name}
-        _log(termini, label_name, ("etichetta", label_id))
-
-    # Le piattaforme NON entrano nell'indice dei nomi: un'entita' non si
-    # chiama «hydrawise», ci appartiene. Sta in una mappa a parte perche' e'
-    # una cosa di tipo diverso, e `search` la riporta come tale invece di
-    # spacciarla per un nome (spec §3.1b).
-    #
-    # Le DISABILITATE si escludono qui come in `queries.py::_view_integration`
-    # (`entita_totali`, stesso ruling del controller): senza questo filtro
-    # `search "lifx"` e `view tipo: "integrazione"` contavano due insiemi
-    # diversi per la stessa piattaforma -- sulla casa vera, `quante_entita:
-    # 30` contro `entita_totali: 28` (revisione indipendente, I-3) -- due
-    # «quante» diverse per la stessa domanda, lette una dopo l'altra dallo
-    # stesso modello.
-    platforms: dict[str, list[str]] = {}
-    for entry in home_space.get("entita") or []:
-        if entry.get("disabilitata"):
-            continue
-        domain = (entry.get("piattaforma") or "").strip()
-        entity_id = (entry.get("id") or "").strip()
-        if domain and entity_id:
-            platforms.setdefault(_normalize(domain), []).append(entity_id)
-
-    return Lookup(termini, per_type, platforms)
+    return Lookup(termini, per_type)

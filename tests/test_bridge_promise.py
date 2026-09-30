@@ -118,7 +118,7 @@ def test_i_nomi_attesi_seguono_il_catalogo_del_turno():
     assert not any(n.endswith("__execute") for n in promessa), (
         "un turno che gira senza nessuno davanti non tocca la casa")
     assert any(n.endswith("__execute") for n in chat), "la chat non cambia"
-    assert any(n.endswith("__view") for n in promessa), "i lettori restano"
+    assert any(n.endswith("__search") for n in promessa), "i lettori restano"
 
 
 def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():

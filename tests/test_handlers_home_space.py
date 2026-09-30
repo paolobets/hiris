@@ -179,7 +179,8 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     testo = corpo["text"]
     riepilogo = corpo["summary"]
     assert "Cucina" in testo
-    assert "Faretti" in testo                     # accesa: e' notevole
+    # Lo stato del momento non entra (29/09/2026): la luce accesa si chiede.
+    assert "Notevole adesso" not in testo
     assert "fra 19 e 20 gradi" in testo            # i ricordi entrano interi
     # Il riepilogo non puo' mentire su cio' che il testo contiene davvero.
     assert riepilogo["chars"] == len(testo)
@@ -206,7 +207,7 @@ async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
     corpo = await resp.json()
     testo = corpo["text"]
     riepilogo = corpo["summary"]
-    # "Notevole adesso" dice "non ho guardato", non "niente di notevole".
+    # Il nucleo dice "non ho guardato", non "va tutto bene".
     assert "non si e' potuto guardare" in testo or "non si e’ potuto guardare" in testo
     assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
@@ -235,7 +236,7 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
-    sezione_casa = corpo["text"].split("## Notevole adesso")[0]
+    sezione_casa = corpo["text"].split("## La casa")[1].split("\n## ")[0]
     assert "Aree non lette" in sezione_casa
     assert "Senza area" not in sezione_casa
     assert any("aree" in a and "non hanno risposto" in a for a in corpo["summary"]["notices"])

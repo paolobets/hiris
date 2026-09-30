@@ -638,6 +638,118 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### La storia, con la stessa forma — la fetta successiva a «una porta sola» — aperta il 30/09/2026
+
+`origine: il proprietario, decisione 11 della spec del 29/09/2026` · `docs/design/2026-09-29-una-porta-sola-per-la-casa.md §8` · nessun altro documento
+
+Dopo «leggere la casa» (v3.71.0, `search` come porta sola) viene la **storia**: `trend`, `logbook`,
+`automation_trace`, `system_log`, che oggi sono quattro strumenti con quattro forme di domanda e
+quattro forme di risposta. La spec dice «stessa forma»: una domanda strutturata (filtri
+facoltativi, combinabili), una risposta con `trovate`, `escluse`, `profondita`, `voci`, `oltre`, e
+il tetto **nella regola**, non in un taglio a valle. Gli strumenti che **scrivono** (`execute`,
+`propose`, `confirm`) restano separati apposta.
+
+**Prima di disegnarla** si guardano i numeri della batteria di §9: se `search` ha ridotto le
+chiamate come promesso, si sa quanta parte del peso resta alla storia. Nessuno dei quattro
+strumenti è stato toccato dalla fetta della porta.
+
+### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
+
+`origine: spec del 29/09/2026 §8, «si cambia una cosa alla volta»` · nessun documento
+
+La spec (§8) nomina «il `ToolSearch` spento sul ponte» come una prova a parte. La prova è
+spegnerlo sul ponte (`ENABLE_TOOL_SEARCH=false`, nome dalla spec, non riverificato nel codice) e **misurare**, sulla stessa
+batteria delle 28 domande, giri, token e latenza. È una fetta sua, e va **dopo** il rilascio della
+3.71.0 e dopo la rilettura della batteria: cambiarla insieme alla porta renderebbe illeggibile il
+«prima e dopo». Il tema si aggancia a «Ottimizzazione: base dati, chiamate e consumo di token»
+qui sotto: le definizioni degli strumenti erano il 57,5% del carico.
+
+### Dismissione del gateway MCP su .31 — aperta il 30/09/2026
+
+`origine: il proprietario, 29/09/2026 («da non più calcolare, lo eliminiamo»)` · `reference_hiris_mcp_gateway_31` (`/opt/hiris-mcp-gateway`, porte 18080/18090, Cloudflare)
+
+Il gateway MCP v0.14.0 sulla macchina .31 non è un consumatore da preservare: il proprietario ha
+deciso di **eliminarlo**. La fetta della porta non lo ha contato (§4 della spec), quindi chi lo
+usasse vede sparire `view` senza avviso. Il lavoro è a parte: fermare il servizio, togliere la
+regola di Cloudflare, cancellare `/opt/hiris-mcp-gateway`, e cercare nel repo ciò che lo nomina
+(prove, guida, glossario) per toglierlo. **Da verificare prima**: che nessun client del
+proprietario lo chiami ancora.
+
+### Relazioni e promesse, se i numeri lo giustificano — aperta il 30/09/2026
+
+`origine: il proprietario, decisione 11 della spec del 29/09/2026` · nessun documento
+
+Terza fetta della sequenza (leggere la casa, la storia, **relazioni e promesse**): `related`,
+`fetch`, `agenda`, `cancel`, `promise`, il calendario. Si fa **solo se** la batteria e il registro
+dei turni (ora con gli argomenti, §7) mostrano che quegli strumenti costano giri o sbagliano; se
+non lo mostrano, restano come sono, come dice §8.
+
+### Il campo `notevole` del giudizio di tipo non ha più un lettore — DOMANDA AL PROPRIETARIO — aperta il 30/09/2026
+
+`origine: costruzione della fetta «una porta sola», Task 6` · `hiris/app/home_space/type_vocabulary.py:880` · `type_judgments.py`, `mind/judgments.py:72`, `static/config/watcher-sapere.js`
+
+Con l'uscita di «Notevole adesso» dal nucleo (§5 della spec) il giudizio `notevole` di un tipo ha
+perso il suo unico lettore, `TypeJudgments.is_notable`, che è stato cancellato. Il campo resta nel
+seme, nell'API, nella pagina dei giudizi e nel JS del watcher, dove si può ancora impostare **senza
+che cambi nulla**: una promessa falsa dell'interfaccia.
+
+**Domanda**: si **toglie** (seme, API, pagina, watcher: un cambio di interfaccia e una migrazione
+del seme) o gli si **dà un lettore** (per esempio la pagina dell'osservatore, o una risposta di
+`search` ordinata per «notevole»)? Nessuna delle due è stata scelta: cancellarlo tocca un'interfaccia
+che il proprietario usa.
+
+### I residui della fetta «una porta sola» — aperti il 30/09/2026
+
+`origine: revisione finale del ramo e ondata di correzioni, 29-30/09/2026` · `.superpowers/sdd/2026-09-29-una-porta-sola-per-la-casa/progress.md` (i rilievi «minor (deferred)» e «parked»)
+
+Rilievi **minori**, dichiarati e non corretti, raggruppati. Nessuno rompe una risposta corretta;
+ognuno ha un effetto che qualcuno può incontrare.
+
+*Da misurare dal vivo nel rilancio della batteria di §9* (segnati **[batteria]**):
+- **Il tetto è sulle righe, non sui caratteri.** `BRIDGE_CEILING_CHARS = 30.000` è la soglia dei
+  cancelli, ma il dettaglio completo tiene 50 righe (`ROWS_MAX`), non 30.000 caratteri: 50 righe
+  molto ricche arrivano a ~32.700 caratteri (~13.000 token), sotto i 25.000 del ponte. Il commento
+  lo dice; **[batteria]**: misurare il peso reale dei dettagli sulla casa vera.
+- **Il registro dei turni salva ora gli argomenti** (§7): **[batteria]** è l'unico modo di vedere se
+  il modello sceglie i filtri (criterio 3 di §9) e se `errore` sui filtri fuori genere è una
+  risposta che il modello sa correggere.
+- **I falsi incontri di radice**: «casi» trova «case» e «sale» trova «sala» (la regola conosce la
+  grammatica, non il significato). **[batteria]**: vedere se compare in una risposta vera.
+
+*Domande che rispondono in modo poco elegante:*
+- `genere=automazione` insieme a `tipo=automation` risponde `errore` (la domanda è ridondante, non
+  sbagliata).
+- `riferimento=__senza_area__` senza `genere` risponde `esiste: False`; con `genere=area` funziona.
+- Le **etichette** cadute non si dichiarano: la porta non le filtra, ma se un giorno lo farà la
+  dichiarazione va rimessa (`_SEARCHED_STORES`).
+- Il dettaglio di una voce sola dice `trovate: 1` anche quando `esiste` è falso nei rami «solo
+  dettaglio», e il percorso `completa` ignora `salta`. Le righe `corta` non hanno una forma sola
+  (`genere` compare solo sulle righe di comportamento). L'ordinamento per data ISO con fusi orari
+  misti è quello di prima. Il registro delle automazioni si scalda anche per `tipo=automation`
+  senza genere, un giro in più.
+
+*Riservatezza:*
+- I **segreti in testo libero** negli argomenti salvati non si mascherano (chiave e forma del
+  valore, non il senso): dichiarato nel docstring di `compact_tool_args` e fissato da una prova.
+- I nomi nuovi in `SERVICE_CALL_SECRETS` (`user_code`, `alarm_code`, `lock_code`…) sono i campi
+  veri di Home Assistant, non verificati contro integrazioni personalizzate.
+
+*Le prove:*
+- Le **152 avvertenze** della suite intera sono di prima di questo ramo.
+- **Fetta 7 (specchio)**: la prova «l'avvio CABLA la rilettura» è un controllo `in src`, verde
+  anche con la riga commentata; due prove asseriscono `_pending`, che è privato; la prova delle
+  riletture sovrapposte usa tempi reali di 5 e 20 ms (rischio di prova instabile in CI). Vanno
+  riscritte con un comportamento osservabile.
+- La prova del cablaggio della mente esegue il codice in uno spazio di nomi finto (uno *stub*):
+  prova la forma, non il collegamento vero.
+- Alcune prove minori senza mutazione dichiarata: la guardia `if not words` di `name_matches`
+  (toglierla farebbe trovare tutto) e `test_accenti_e_maiuscole_non_contano`.
+
+*Prosa per gli sviluppatori:*
+- `view` è ancora nominata in docstring e commenti **per sviluppatori** (il cancello guarda solo i
+  testi che il modello legge). Si ripulisce quando si tocca ciascun file.
+- `_cut_notice` chiama `cut_order` un parametro che riceve `cut_labels` (di prima del ramo).
+
 ### Ottimizzazione: base dati, chiamate e consumo di token — il tema che aspettava le misure — aperta il 28/09/2026
 
 `origine: proprietario, 28/09/2026 («dovremmo avere tutte le misure necessarie»)` · `sprint misure del 24/09/2026` · `GET /api/misure` · `hiris/app/usage/store.py`

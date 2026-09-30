@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # sulla fonte che quella promessa deve guardare. Deliberato, non automatico:
 # questo elenco resta di AMMISSIONE, e uno strumento nuovo non ci entra da
 # solo finche' qualcuno non scrive perche'.
-SOLA_LETTURA = ("search", "view", "related", "fetch", "trend", "logbook",
+SOLA_LETTURA = ("search", "related", "fetch", "trend", "logbook",
                 "system_log", "automation_trace", "calendar")
 
 CONCLUDI_TOOL_DEF = {

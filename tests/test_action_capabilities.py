@@ -656,11 +656,12 @@ async def test_guardare_una_entita_scalda_il_registro_dei_servizi(tmp_path):
     """**Chi legge ha lo stesso bisogno di chi esegue.** Il registro parte
     freddo -- `empty()` vero, come su un add-on appena avviato -- e `view`
     dev'essere lui a scaldarlo: se aspetta il primo comando, il modello non
-    sa cosa chiedere finche' non ha gia' chiesto.
+    sa cosa chiedere finche' non ha gia' chiesto. Dal 29/09/2026 il
+    dettaglio e' la voce di `search` quando ne esce una sola.
 
     Mutazione ESEGUITA: togliere `await self._ensure_registry_fresh()` da
-    `ToolDispatcher._view` (`home_space/tools.py`) -- `comandi` sparisce e la
-    prova arrossisce su `"comandi" in esito`, esattamente come e' successo
+    `ToolDispatcher._search` (`home_space/tools.py`) -- `comandi` sparisce e
+    la prova arrossisce su `"comandi" in esito`, esattamente come e' successo
     sulla casa vera.
     """
     from tests.test_knowledge_tools import _semina_casa
@@ -677,11 +678,12 @@ async def test_guardare_una_entita_scalda_il_registro_dei_servizi(tmp_path):
     dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
                                 ha=FintoClient(), registry=registro)
     try:
-        esito = await dispatcher.dispatch(
-            "view", {"tipo": "entita", "riferimento": "light.alberello"})
+        risposta = await dispatcher.dispatch(
+            "search", {"genere": "entita", "riferimento": "light.alberello"})
     finally:
         memoria.close()
         casa.close()
+    esito = risposta["voci"][0]
     assert esito["esiste"] is True
     assert "comandi" in esito, (
         "il registro dei servizi era freddo e nessuno l'ha scaldato: «view» "
@@ -696,9 +698,9 @@ async def test_guardare_un_ricordo_non_scalda_niente(tmp_path):
     (`queries._view_entity` -> `commands_for`). Scaldarlo per un ricordo
     sarebbe un giro di rete per un dato che quel ramo non guarda.
 
-    Mutazione ESEGUITA: togliere il `if kind == "entita"` da `_view`, cosi'
-    che si scaldi sempre -- `registro.empty()` diventa falso e la prova
-    arrossisce.
+    Mutazione ESEGUITA: togliere il `if filters.kind in (None, "entita")`
+    da `_search`, cosi' che si scaldi sempre -- `registro.empty()` diventa
+    falso e la prova arrossisce.
     """
     from tests.test_knowledge_tools import _semina_casa
 
@@ -709,8 +711,12 @@ async def test_guardare_un_ricordo_non_scalda_niente(tmp_path):
     dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
                                 ha=FintoClient(), registry=registro)
     try:
-        await dispatcher.dispatch("view", {"tipo": "ricordo", "riferimento": 1})
+        risposta = await dispatcher.dispatch(
+            "search", {"genere": "ricordo", "riferimento": 1})
     finally:
         memoria.close()
         casa.close()
+    # La risposta e' davvero passata dalla porta: senza, la prova sarebbe
+    # verde anche con uno strumento rifiutato, che non scalda niente.
+    assert risposta["profondita"] == "completa"
     assert registro.empty() is True

@@ -528,7 +528,7 @@ def readable_state(value, *, domain, device_class=None, hvac_action=None,
     parole nella sua interfaccia.
 
     `translations` e' l'esito etichettato della lettura
-    (`StateTranslations.read` / `.cached()`), **non il dizionario nudo**:
+    (`StateTranslations.read`), **non il dizionario nudo**:
     l'esito porta la differenza fra «non ho potuto chiedere» e «questo stato
     non ha resa», e chi legge deve poterla dire.
 
@@ -681,8 +681,9 @@ def actual_class(declared: str | None, live: str | None) -> str | None:
     per tutto il tempo in cui e' stata l'unica fonte:
 
     - `nucleo._is_event("binary_sensor", None, "on")` era sempre falso:
-      NESSUN sensore binario e' mai entrato in «Notevole adesso». Un
-      allagamento, un principio d'incendio, il monossido: muti;
+      NESSUN sensore binario e' mai entrato in «Notevole adesso» (la sezione
+      e `_is_event` sono uscite dal nucleo il 29/09/2026). Un allagamento, un
+      principio d'incendio, il monossido: muti;
     - le rese per CLASSE -- l'intera fetta 3.4.0, con `carbon_monoxide`
       verificato una riga per volta -- erano irraggiungibili;
     - `guarda` prometteva la classe e rispondeva `null` su ogni entita'.
@@ -852,10 +853,11 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     Effetto collaterale voluto, non un caso: "La casa" del nucleo, che legge
     lo stesso `area["entita"]`, smette anch'essa di contare le nascoste nei
     conteggi per dominio -- allineandosi a "Notevole adesso"
-    (`nucleo._highlight_lines`), che le esclude gia' da prima con un `if
+    (`nucleo._highlight_lines`), che le escludeva gia' da prima con un `if
     e.get("nascosta"): continue` esplicito. Prima di questa fetta le due
     sezioni del nucleo si contraddicevano fra loro: una le contava, l'altra
-    no.
+    no. (Quella sezione e' uscita dal nucleo il 29/09/2026; la regola resta
+    in «La casa» e in `briefing.digest_visible_entity_ids`.)
     """
     device_loaded = "dispositivi" not in unavailable
     device_area = device_areas(home_space.get("dispositivi"))

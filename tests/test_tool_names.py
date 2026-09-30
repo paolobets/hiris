@@ -176,18 +176,19 @@ def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
         "riconoscera' piu' la citazione del loro nome precedente")
 
 
-def test_the_catalog_has_seventeen_distinct_names():
-    """Sedici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
+def test_the_catalog_has_sixteen_distinct_names():
+    """Quindici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
     «le tracce e il log», Task 5: `system_log`, `automation_trace`; 15 -> 16
-    con la fetta «i calendari», Task 3: `calendar`), diciassette quello
-    delle definizioni: e' la sesta volta, in questa fetta, che un
+    con la fetta «i calendari», Task 3: `calendar`; 16 -> 15 con «una porta
+    sola per la casa», 29/09/2026: esce `view`), sedici quello delle
+    definizioni: e' la sesta volta, in questa fetta, che un
     numero giusto su un perimetro sembra sbagliato su un altro (vedi la nota
     in cima a "I nomi degli strumenti" nel glossario). Pinnato qui perche'
     un doppione fra i due cataloghi -- `concludi` che finisse anche nella
     chat -- non lo vedrebbe nessun altro test."""
     nomi = [d["name"] for d in _DEFINIZIONI]
-    assert len(nomi) == 17, nomi
-    assert len(set(nomi)) == 17, "due definizioni portano lo stesso nome"
+    assert len(nomi) == 16, nomi
+    assert len(set(nomi)) == 16, "due definizioni portano lo stesso nome"
 
 
 def _prose_runtime():
@@ -243,7 +244,8 @@ def test_nessun_prompt_a_runtime_nomina_uno_strumento_che_non_esiste():
 # Non e' un doppione dell'elenco storico sopra: quello dice CHE una parola e'
 # stata un nome di strumento, questo dice A QUALE nome corrisponde oggi.
 _NOMI_NUOVI = {
-    "cerca": "search", "guarda": "view", "legami": "related",
+    "cerca": "search", "guarda": "search", "view": "search",
+    "legami": "related",
     "ricorda": "remember", "richiama": "fetch", "esegui": "execute",
     "prometti": "promise", "promesse": "agenda", "disdici": "cancel",
     "costruisci": "propose", "conferma": "confirm", "andamento": "trend",
@@ -302,3 +304,46 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     # refuso che nessun altro test vedrebbe.
     estranee = citati - _NOMI_MAI_STATI_STRUMENTO
     assert not estranee, f"l'avviso cita parole che non sono nomi di strumento: {sorted(estranee)}"
+
+
+def test_nessun_testo_che_il_modello_legge_nomina_view():
+    """Spec §4: view esce ovunque. I testi di risposta (suggerimenti, rifiuti
+    di execute, righe del nucleo) arrivano al modello come le guide, e il
+    cancello di sopra guarda solo definizioni e guide (rischio 4 della mappa).
+
+    Si guardano le STRINGHE del sorgente (letterali di codice), non i commenti
+    ne' i docstring: quelli sono prosa per chi legge il codice. L'unico testo
+    che puo' nominare `view` e' l'avviso dei vecchi nomi, che dice che e'
+    diventato `search`: lo si toglie dal sorgente per nome, non si allarga il
+    filtro.
+
+    Mutazione ESEGUITA: lasciare «view» in `_NOTHING_RECOGNIZED_SUGGESTION` -- rossa.
+    Mutazione ESEGUITA: rimettere «più view, più related» (view NUDO) in
+    `BASE_TOOL_RULES` -- rossa (la prima forma del filtro, con virgolette, era verde)."""
+    import ast
+    import inspect
+
+    from hiris.app import chat_settings, claude_runner
+    from hiris.app.action import verification
+    from hiris.app.agent import prompts
+    from hiris.app.home_space import briefing, queries, tools, type_census
+
+    citazione = re.compile(r"\bview\b")
+    colpevoli = []
+    for modulo in (verification, prompts, briefing, queries, tools,
+                   type_census, claude_runner, chat_settings):
+        albero = ast.parse(inspect.getsource(modulo))
+        docstring = {id(n.body[0].value) for n in ast.walk(albero)
+                     if isinstance(n, (ast.Module, ast.FunctionDef,
+                                       ast.AsyncFunctionDef, ast.ClassDef))
+                     and n.body and isinstance(n.body[0], ast.Expr)
+                     and isinstance(n.body[0].value, ast.Constant)}
+        for nodo in ast.walk(albero):
+            if (isinstance(nodo, ast.Constant) and isinstance(nodo.value, str)
+                    and id(nodo) not in docstring):
+                testo = nodo.value
+                if modulo is prompts:
+                    testo = testo.replace(prompts._OLD_NAMES_NOTICE, "")
+                if citazione.search(testo):
+                    colpevoli.append((modulo.__name__, testo[:80]))
+    assert not colpevoli, colpevoli[:5]

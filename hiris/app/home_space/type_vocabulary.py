@@ -875,6 +875,12 @@ UNKNOWN_STATES = Ours({"unavailable", "unknown"})
 # una cosa che si va a chiedere. Un telefono a casa e una temperatura di 19,5
 # si sanno benissimo e non si annunciano.
 #
+# **Dal 29/09/2026 la domanda non ha piu' chi la pone**: «Notevole adesso» e'
+# uscita dal nucleo (spec «una porta sola per la casa» §5) e con lei il suo
+# unico lettore, `TypeJudgments.is_notable`. Il campo resta nel seme e nella
+# porta dei giudizi senza lettori: se toglierlo o ridargli una domanda e' una
+# fetta sua (vedi `mind/judgments._LEVELS`).
+#
 # Fino all'08/09/2026 la risposta viveva in due insiemi di `briefing.py`,
 # `_EVENT_DOMAINS` e `_EVENT_CLASSES`, che rispondevano alla stessa domanda a
 # due granularita' diverse senza che niente li tenesse allineati. Sono un campo
@@ -885,8 +891,8 @@ UNKNOWN_STATES = Ours({"unavailable", "unknown"})
 #   - `automation`/`script`/`input_boolean`: `on` significa ABILITATA. Erano 18,
 #     ed erano riposo travestito da eccezione.
 #   - `device_tracker`/`person`: `home` e' una CONDIZIONE (un telefono a casa e'
-#     il riposo). Erano 49. Non sono esclusi dal prodotto: `view` e `search` li
-#     riportano quando li chiedi -- e' la differenza fra un vocabolario e un
+#     il riposo). Erano 49. Non sono esclusi dal prodotto: `search` li
+#     riporta quando li chiedi -- e' la differenza fra un vocabolario e un
 #     filtro.
 #   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
 #   - `calendar`: dice se c'e' un evento in corso ADESSO, non se qualcuno lo ha
@@ -1857,6 +1863,19 @@ def dropped_capability_attributes() -> Mapping[str, Mapping[str, str]]:
         domain: _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED)
         for domain in sorted(_vocabulary.domains())
         if _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED) is not None})
+
+
+def domains_by_genre(genre: str) -> frozenset[str]:
+    """I domini il cui genere corrisponde a quello passato.
+
+    Serve a chi ha bisogno di raggruppare i tipi per semantica senza un
+    vocabolario parallelo: `privacy.MOVING_DOMAINS` raccoglie i due soli domini
+    il cui genere e' "presenza", ricavati dalla dichiarazione che vive qui.
+    """
+    return frozenset(
+        row.domain for row in _vocabulary.rows()
+        if row.device_class is None
+        and _vocabulary.value(row.domain, None, GENRE) == genre)
 
 
 # --------------------------------------------------------------------------

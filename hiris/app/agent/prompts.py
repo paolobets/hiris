@@ -115,7 +115,7 @@ _GUIDE_WITHOUT_TOOLS = (
     "guardare adesso lo stato della casa (entita', aree, dispositivi, meteo, "
     "storico) e non puoi salvare nuovi ricordi ne' andare a cercarne altri "
     "adesso. Se il prompt qui sopra nomina "
-    "degli strumenti (per esempio `search`, `view`, `remember`, `fetch`, "
+    "degli strumenti (per esempio `search`, `remember`, `fetch`, "
     "`execute`) o "
     "ti ordina di chiamarli, qui non ci sono: quelle istruzioni non si "
     "applicano. Non inventare stati, valori o entita', e non dire di aver "
@@ -260,20 +260,24 @@ _GUIDE_WITHOUT_TOOLS = (
 # installazione ha o il default nuovo o un prompt riscritto a mano. Non si
 # misura dal repository: si misura sulle installazioni vive.
 #
-# I tre esempi bastano perche' il catalogo intero e' elencato due righe sopra,
-# e perche' il default storico ne nominava DUE soli (`cerca`, `guarda`) -- il
-# terzo copre il caso piu' frequente fra i prompt riscritti a mano.
+# I quattro nomi bastano perche' il catalogo intero e' elencato due righe
+# sopra. Il default storico ne nominava DUE soli (`cerca`, `guarda`); `view`
+# (il nome inglese di `guarda`, uscito il 29/09/2026 con «una porta sola per
+# la casa») e `ricorda` coprono i prompt salvati dopo la rinomina e i piu'
+# frequenti fra quelli riscritti a mano.
 _OLD_NAMES_NOTICE = (
     "Se il testo qui sopra nomina gli strumenti in italiano (`cerca`, "
-    "`guarda`, `ricorda`...), sono i nomi DI PRIMA: oggi si chiamano "
-    "`search`, `view`, `remember`. Usa i nomi del catalogo.\n"
+    "`guarda`, `ricorda`...) o `view`, sono i nomi DI PRIMA: oggi `cerca`, "
+    "`guarda` e `view` sono un solo strumento, `search`, e `ricorda` si "
+    "chiama `remember`. Usa i nomi del catalogo.\n"
 )
 
 _GUIDE_WITH_TOOLS = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
-    "l'unica forma in cui puoi chiamarli: `mcp__hiris__search` e "
-    "`mcp__hiris__view` per lo stato della casa, `mcp__hiris__related` per "
+    "l'unica forma in cui puoi chiamarli: `mcp__hiris__search` per lo stato "
+    "della casa (elenco, filtri e dettaglio di una cosa sola), "
+    "`mcp__hiris__related` per "
     "sapere chi tocca una cosa (quali automazioni, script, scene o gruppi la "
     "usano), `mcp__hiris__remember` e `mcp__hiris__fetch` per la memoria di "
     "cio' che le persone ti hanno detto, `mcp__hiris__execute` per far "
@@ -292,7 +296,7 @@ _GUIDE_WITH_TOOLS = (
     "andate le esecuzioni recenti di un'automazione, `mcp__hiris__calendar` "
     "per i prossimi appuntamenti nei calendari di questa casa. "
     "Quando il prompt qui sopra parla "
-    "di `search`, `view`, `related`, `remember`, `fetch`, `execute`, "
+    "di `search`, `related`, `remember`, `fetch`, `execute`, "
     "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `trend`, "
     "`logbook`, `system_log`, `automation_trace` o `calendar` parla di "
     "questi STESSI strumenti, non di altri: usa il nome prefissato per "
@@ -313,18 +317,20 @@ _GUIDE_WITH_TOOLS = (
     "Se devi risolvere piu' nomi nella stessa richiesta, chiama "
     "`mcp__hiris__search` UNA sola volta con tutto il testo invece di una "
     "chiamata per nome.\n"
-    "Se devi fare piu' letture indipendenti -- piu' `mcp__hiris__view`, "
-    "piu' `mcp__hiris__related` -- puoi chiamarle IN PARALLELO nella stessa "
+    "Se devi fare piu' letture indipendenti -- piu' `mcp__hiris__search` "
+    "con `riferimento`, piu' `mcp__hiris__related` -- puoi chiamarle IN PARALLELO nella stessa "
     "risposta, ma qui OGNI chiamata conta nel tetto per-turno, anche quelle "
     "parallele: il risparmio vero e' risolvere piu' nomi con UNA "
     "`mcp__hiris__search` (vedi sopra) ed essere parsimoniosi con le "
     "chiamate, non il parallelismo in se'.\n"
-    "Se invece la richiesta riguarda una STANZA, un piano, un'etichetta o un "
-    "dispositivo, passali a `mcp__hiris__execute` cosi' come sono (`aree`, "
-    "`piani`, `etichette`, `dispositivi`) e NON raccogliere gli id a mano: li "
-    "risolve Home Assistant, che e' l'unico a saperli tutti. Raccoglierli a "
-    "mano significa spegnerne quattordici su quindici e dire di averle spente "
-    "tutte."
+    "Se invece la richiesta riguarda una STANZA, un piano o un dispositivo, "
+    "passane l'id a `mcp__hiris__execute` cosi' com'e' (`aree`, `piani`, "
+    "`dispositivi`) e NON raccogliere a mano gli id delle entita' che "
+    "contengono: li risolve Home Assistant, che e' l'unico a saperli tutti. "
+    "Raccoglierli a mano significa spegnerne quattordici su quindici e dire "
+    "di averle spente tutte. Le etichette (`etichette`) si danno per id, "
+    "come le conosce Home Assistant: nessuno strumento le risolve dal nome, "
+    "quindi non indovinare l'id di un'etichetta.\n"
 )
 
 # Le due frasi sul CONTESTO, complementari fra loro: una sola delle due entra
@@ -348,7 +354,7 @@ _GUIDE_WITH_TOOLS = (
 # presente. Sono uscite:
 #
 #   - «non e' aggiornabile in questo turno»: col ramo attivo la fotografia
-#     E' aggiornabile -- si chiama `mcp__hiris__view`. Sul ramo di degrado
+#     E' aggiornabile -- si chiama `mcp__hiris__search`. Sul ramo di degrado
 #     la frase e' ridondante, non necessaria: `_GUIDE_WITHOUT_TOOLS` dice
 #     gia' «non puoi guardare adesso lo stato della casa» e «se per
 #     rispondere servirebbe un valore aggiornato ADESSO, DILLO». Verificato

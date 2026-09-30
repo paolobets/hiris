@@ -1,51 +1,10 @@
-import pytest
-
-from hiris.app.home_space.queries import search, view
-from hiris.app.memory.resolver import costruisci_indice
+from hiris.app.home_space.queries import view
 from hiris.app.proxy.entity_cache import inherited_attributes
 from tests._house_translations import house_translations
 from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 # _CASA, _COMPORTAMENTO, _RICORDI, _STATO sono di tests/test_briefing.py,
 # importati invece di ricopiati -- stessa casa che gia' esercita nucleo.py.
-
-
-@pytest.fixture
-def indice():
-    return costruisci_indice(_CASA)
-
-
-@pytest.fixture
-def indice_ambiguo():
-    """Due «Bagno» su piani diversi -- la stessa ambiguita' che ha gia'
-    costato un fix a Lookup.find() (resolver.py)."""
-    casa = {
-        "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0},
-                  {"id": "primo", "nome": "Primo piano", "livello": 1}],
-        "aree": [
-            {"id": "bagno_terra", "nome": "Bagno", "piano_id": "terra",
-             "alias": [], "etichette": []},
-            {"id": "bagno_primo", "nome": "Bagno", "piano_id": "primo",
-             "alias": [], "etichette": []},
-        ],
-        "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
-    }
-    return costruisci_indice(casa)
-
-
-def test_cerca_trova_per_nome_e_alias(indice):
-    trovate = search(indice, "cucina")
-    assert any(c["riferimento"] == "cucina"
-               for t in trovate for c in t["candidati"])
-
-
-def test_cerca_non_appiattisce_l_ambiguita(indice_ambiguo):
-    """Due «Bagno» su piani diversi: il contratto di Lookup.find e'
-    `candidati` sempre lista + `ambiguo`. Appiattirlo qui rifarebbe il difetto
-    che e' gia' costato un fix."""
-    trovate = search(indice_ambiguo, "il bagno")
-    assert trovate[0]["ambiguo"] is True
-    assert len(trovate[0]["candidati"]) == 2
 
 
 def test_guarda_un_area_da_le_sue_entita_con_lo_stato():
@@ -305,10 +264,15 @@ def test_senza_registri_caduti_l_elenco_non_si_dichiara_incompleto():
     assert "elenco_incompleto" not in dettaglio
 
 
-def test_guarda_un_dispositivo_dice_se_e_spento_e_quali_entita_sono_morte():
+def test_guarda_un_dispositivo_dice_se_e_spento_e_quante_entita_sono_morte():
     """Stessa ragione di `_view_entity`: qui si legge l'anagrafe grezza, fuori
     da `hierarchy()`, che le disabilitate le esclude. Senza dirlo, un
-    dispositivo spento ha la stessa forma di uno che funziona."""
+    dispositivo spento ha la stessa forma di uno che funziona. Dal 30/09/2026
+    le entita' disabilitate si CONTANO, come nell'area e nell'integrazione
+    (spec §2.4, «escluse e contate»).
+
+    Mutazione ESEGUITA: in `_view_device` rimettere le disabilitate in
+    `raw_visible` -- rossa."""
     casa = dict(
         _CASA,
         dispositivi=[{"id": "d1", "nome": "Frigo", "area_id": "cucina", "disabilitato": 1}],
@@ -318,7 +282,8 @@ def test_guarda_un_dispositivo_dice_se_e_spento_e_quali_entita_sono_morte():
              "disabilitata": 1}])
     dettaglio = view(casa, _COMPORTAMENTO, _RICORDI, _STATO, "dispositivo", "d1")
     assert dettaglio["disabilitato"] is True
-    assert dettaglio["entita"][0]["disabilitata"] is True
+    assert dettaglio["entita"] == []
+    assert dettaglio["entita_disabilitate"] == 1
 
 
 def test_guarda_un_entita_non_trovata_dichiara_il_registro_caduto():
@@ -490,22 +455,6 @@ def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_in_tutti_i_tipi
 # --- R2 (T7): `search` impara piani, automazioni e script -------------------
 
 
-def test_cerca_poi_guarda_un_automazione_end_to_end():
-    """Requisito 2 del brief: `view` deve accettare DAVVERO i riferimenti
-    che `search` ora produce -- non solo un id che il modello sapeva gia'.
-    Qui si parte da un nome, si passa da `search`, e si chiude il giro con
-    `view` sul candidato restituito."""
-    indice = costruisci_indice(_CASA, behavior=_COMPORTAMENTO)
-    trovati = search(indice, "spegni la sveglia")
-    candidato = next(c for t in trovati for c in t["candidati"] if c["tipo"] == "automazione")
-    assert candidato["riferimento"] == "automation.sveglia"
-
-    dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-                       candidato["tipo"], candidato["riferimento"])
-    assert dettaglio["esiste"] is True
-    assert dettaglio["corpo"] == {"trigger": []}
-
-
 def test_guarda_non_sa_aprire_un_piano():
     """Requisito 2 del brief, il caso negativo che va scritto e non lasciato
     implicito: `search` ora risolve un piano per nome, ma `view` non ha (e
@@ -520,16 +469,21 @@ def test_guarda_non_sa_aprire_un_piano():
     assert dettaglio["non_so_guardare"] is True
 
 
-def test_guarda_un_area_marca_le_entita_disabilitate_invece_di_nasconderle():
-    """MINOR: `_view_area` nascondeva le entita' disabilitate senza dirlo,
-    mentre `_view_device` le mostra marcate. Per una vista di
-    dettaglio e' informazione, non rumore."""
+def test_guarda_un_area_conta_le_entita_disabilitate_invece_di_elencarle():
+    """Le disabilitate di un'area non si tacciono: si CONTANO (30/09/2026,
+    review finale della fetta «una porta sola», C2). Elencate una per una
+    portavano l'area Telecamere a 287 righe, 120 con lo stato vuoto, oltre il
+    limite del ponte; la regola della porta e' «escluse e contate».
+
+    Mutazione ESEGUITA: rimetterle in `entita` -- rossa; non scrivere
+    `entita_disabilitate` -- rossa."""
     casa = dict(_CASA, entita=_CASA["entita"] + [
         {"id": "light.cucina_morta", "nome": "Faretto rotto", "area_id": "cucina",
          "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 1}])
     dettaglio = view(casa, _COMPORTAMENTO, _RICORDI, _STATO, "area", "cucina")
     per_id = {e["id"]: e for e in dettaglio["entita"]}
-    assert per_id["light.cucina_morta"]["disabilitata"] is True
+    assert "light.cucina_morta" not in per_id
+    assert dettaglio["entita_disabilitate"] == 1
     assert per_id["light.cucina_1"]["disabilitata"] is False
 
 
@@ -555,70 +509,6 @@ def test_l_entita_orfana_finisce_nella_pseudo_area_giusta():
     # affermata «senza area»: e' proprio la bugia che il fix toglie
     senza_area = view(casa, _COMPORTAMENTO, _RICORDI, _STATO, "area", "__senza_area__")
     assert [e["id"] for e in senza_area["entita"]] == ["light.forno"]
-
-
-# --- Task B4: i candidati di `search` portano nome e dominio -------------
-
-
-def test_i_candidati_portano_il_dominio_cosi_un_contatore_non_sembra_una_luce():
-    """`search("luci")` restituiva `sensor.lights` e niente lo diceva."""
-    casa = {"aree": [], "dispositivi": [],
-            "entita": [{"id": "sensor.lights", "nome": "Luci", "alias": []},
-                       {"id": "light.salotto", "nome": "Luce salotto", "alias": []}]}
-    voci = search(costruisci_indice(casa), "quante luci")
-    domini = {c["riferimento"]: c["dominio"] for v in voci for c in v["candidati"]}
-    assert domini == {"sensor.lights": "sensor"}
-
-
-def test_i_candidati_portano_il_nome():
-    casa = {"aree": [{"id": "b1", "nome": "Bagno", "alias": []},
-                     {"id": "b2", "nome": "Bagno", "alias": []}],
-            "dispositivi": [], "entita": []}
-    voci = search(costruisci_indice(casa), "in bagno")
-    assert [c["nome"] for c in voci[0]["candidati"]] == ["Bagno", "Bagno"]
-    assert voci[0]["ambiguo"] is True
-
-
-def test_un_nome_dedotto_si_dichiara_dedotto():
-    """I2 (review finale): `nome_dedotto` e' una forma sola in tutto il
-    modulo -- la stringa col nome dedotto, mai un booleano. Prima di questo
-    fix `search()` scriveva `True` mentre `view()` scriveva la stringa: due
-    tipi diversi per lo stesso fatto, e un modello che avesse imparato la
-    forma da `search` avrebbe letto male quella di `view` (e viceversa)."""
-    casa = {"aree": [], "dispositivi": [],
-            "entita": [{"id": "light.a", "nome": None, "alias": []}]}
-    voci = search(costruisci_indice(casa, {"light.a": "Abat-jour"}), "abat-jour")
-    candidato = voci[0]["candidati"][0]
-    assert candidato["nome"] == "Abat-jour" and candidato["nome_dedotto"] == "Abat-jour"
-
-
-def test_un_nome_dichiarato_non_si_dichiara_dedotto():
-    """Mutazione uccisa: mettere `nome_dedotto` su tutti."""
-    casa = {"aree": [{"id": "c", "nome": "Cucina", "alias": []}],
-            "dispositivi": [], "entita": []}
-    candidato = search(costruisci_indice(casa), "cucina")[0]["candidati"][0]
-    assert "nome_dedotto" not in candidato and "dominio" not in candidato
-
-
-def test_il_nome_dichiarato_vince_sul_dedotto_quando_ci_sono_entrambi():
-    """Mutazione uccisa: invertire la precedenza (preferire il nome dedotto
-    al dichiarato). `costruisci_indice` non produce mai i due insieme -- il
-    ripiego scatta solo quando il nome in registro manca (B1) -- quindi
-    nessuna delle case sopra puo' esercitare questo ramo passando per
-    l'indice vero. La precedenza si prova qui direttamente sull'oggetto che
-    `verifica()` restituisce, con un indice finto che li mette entrambi: e'
-    la garanzia che `search()` non deleghi la propria correttezza a
-    un'invariante di un modulo diverso."""
-    class _IndiceFinto:
-        def find(self, testo):
-            return [{"nome_visto": testo, "ambiguo": False,
-                     "candidati": [{"tipo": "entita", "riferimento": "light.a"}]}]
-
-        def verify(self, tipo, riferimento):
-            return {"nome": "Abat-jour", "nome_dedotto": "Luce salotto"}
-
-    candidato = search(_IndiceFinto(), "abat-jour")[0]["candidati"][0]
-    assert candidato["nome"] == "Abat-jour"
 
 
 # --- Le unita': stessa disciplina dei nomi, stessa ragione ------------------
@@ -703,23 +593,6 @@ def test_senza_unita_vive_si_comporta_come_prima():
 
 
 # --- R2 (T8): il label_id esce come dato accessorio da cerca/guarda -------
-
-
-def test_cerca_un_etichetta_da_il_label_id_end_to_end():
-    """Requisito 2 del brief T8: un modello che sa solo il NOME di
-    un'etichetta arriva al suo `label_id` con UNA chiamata a `search` --
-    anche quando nessuna entita' la porta ancora, il vicolo cieco piu'
-    radicale della famiglia (R2, docs/design/2026-08-20-i-riferimenti.md):
-    fino a questa fetta il `label_id` non usciva da NESSUNA porta."""
-    casa = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
-           "categorie": [], "integrazioni": [],
-           "etichette": [{"id": "da_controllare", "nome": "Da controllare"}]}
-    indice = costruisci_indice(casa)
-    trovati = search(indice, "da controllare")
-    candidato = next(c for t in trovati for c in t["candidati"]
-                     if c["tipo"] == "etichetta")
-    assert candidato["riferimento"] == "da_controllare"
-    assert candidato["nome"] == "Da controllare"
 
 
 def test_guarda_un_entita_mostra_il_label_id_accanto_al_nome():
@@ -877,200 +750,37 @@ def test_guarda_un_dispositivo_riporta_le_nascoste_complete_in_una_chiave_a_part
 
 def test_guarda_un_dispositivo_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
     """Stessa precedenza di `hierarchy()`/`briefing.py`: chi e' disabilitata E
-    nascosta non duplica il fatto in due chiavi -- resta fra le disabilitate,
-    marcata `disabilitata: true`, mai in `entita_nascoste`."""
+    nascosta non duplica il fatto in due chiavi -- resta fra le disabilitate
+    (dal 30/09/2026 contate in `entita_disabilitate`), mai in `entita_nascoste`.
+
+    Mutazione ESEGUITA: in `_view_device` contare solo le disabilitate non
+    nascoste -- rossa."""
     casa = _casa_sala_da_pranzo()
     casa["entita"] = casa["entita"] + [
         {"id": "light.lampadario_morto", "nome": None, "classe": None, "unita": None,
          "area_id": None, "dispositivo_id": "dev_lampadario",
          "disabilitata": 1, "nascosta": 1}]
     dettaglio = view(casa, [], [], {}, "dispositivo", "dev_lampadario")
-    ids_entita = {e["id"] for e in dettaglio["entita"]}
-    assert "light.lampadario_morto" in ids_entita
+    assert "light.lampadario_morto" not in {e["id"] for e in dettaglio["entita"]}
     assert "light.lampadario_morto" not in {
         e["id"] for e in dettaglio.get("entita_nascoste", [])}
-    marcata = next(e for e in dettaglio["entita"] if e["id"] == "light.lampadario_morto")
-    assert marcata["disabilitata"] is True
+    assert dettaglio["entita_disabilitate"] == 1
 
 
 def test_guarda_un_area_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
     """Stessa prova, sul ramo area -- la precedenza la decide `hierarchy()`,
-    ma va verificata dalla porta che il modello chiama davvero."""
+    ma va verificata dalla porta che il modello chiama davvero. Dal
+    30/09/2026 le disabilitate dell'area si contano invece di elencarsi: la
+    disabilitata e nascosta sta nel conto, non fra le nascoste."""
     casa = _casa_sala_da_pranzo()
     casa["entita"] = casa["entita"] + [
         {"id": "light.lampadario_morto", "nome": None, "classe": None, "unita": None,
          "area_id": "sala_da_pranzo", "dispositivo_id": None,
          "disabilitata": 1, "nascosta": 1}]
     dettaglio = view(casa, [], [], {}, "area", "sala_da_pranzo")
-    ids_entita = {e["id"] for e in dettaglio["entita"]}
-    assert "light.lampadario_morto" in ids_entita
+    assert dettaglio["entita_disabilitate"] == 1
     assert "light.lampadario_morto" not in {
         e["id"] for e in dettaglio.get("entita_nascoste", [])}
-
-
-def test_cerca_marca_un_candidato_entita_nascosto():
-    """Misurato in produzione: `search` non riportava affatto questo campo --
-    "lampadario" trovava le lampade LIFX nascoste e nulla lo diceva."""
-    casa = _casa_sala_da_pranzo()
-    indice = costruisci_indice(casa, _ripiego_sala_da_pranzo())
-    trovati = search(indice, "lampadario fake")
-    candidato = next(c for t in trovati for c in t["candidati"]
-                     if c["tipo"] == "entita" and c["riferimento"] == "light.lampadario_fake")
-    assert candidato["nascosta"] is True
-
-
-def test_cerca_non_marca_un_candidato_entita_visibile():
-    """Mutazione uccisa: marcare `nascosta` su ogni candidato invece che
-    solo su chi lo e' davvero -- `nascosta: false` su una casa da 1226
-    entita' sarebbe rumore in ogni risposta. Il termine indicizzato e' il
-    nome dedotto INTERO ("Sala pranzo applique"), non la singola parola: e'
-    cosi' che `find()` riconosce i termini, non per sottostringa."""
-    casa = _casa_sala_da_pranzo()
-    indice = costruisci_indice(casa, _ripiego_sala_da_pranzo())
-    trovati = search(indice, "sala pranzo applique")
-    candidato = next(c for t in trovati for c in t["candidati"] if c["tipo"] == "entita")
-    assert "nascosta" not in candidato
-
-
-def test_cerca_non_esclude_i_candidati_nascosti():
-    """Il caso che questa fetta distingue esplicitamente da `view`:
-    cercare "lampadario 2" (il nome dedotto intero di una lampada LIFX
-    nascosta) deve TROVARLA, non farla sparire -- dire "non esiste" di una
-    cosa che c'e' e' precisamente la frase che questo prodotto non deve mai
-    dire con sicurezza."""
-    casa = _casa_sala_da_pranzo()
-    indice = costruisci_indice(casa, _ripiego_sala_da_pranzo())
-    trovati = search(indice, "lampadario 2")
-    riferimenti = {c["riferimento"] for t in trovati for c in t["candidati"]
-                  if c["tipo"] == "entita"}
-    assert "light.lampadario_2" in riferimenti
-    candidato = next(c for t in trovati for c in t["candidati"]
-                     if c["tipo"] == "entita" and c["riferimento"] == "light.lampadario_2")
-    assert candidato["nascosta"] is True
-
-
-def _platform_lookup():
-    """Un indice minimo con due entita' hydrawise e una lifx, nessuna
-    chiamata come la propria piattaforma."""
-    house = {
-        "piani": [], "aree": [], "dispositivi": [], "etichette": [], "categorie": [],
-        "integrazioni": [],
-        "entita": [
-            {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
-             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
-             "alias": [], "disabilitata": 0},
-            {"id": "sensor.giardino_minuti", "nome": "Minuti", "piattaforma": "hydrawise",
-             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
-             "alias": [], "disabilitata": 0},
-            {"id": "light.cucina", "nome": "Faretti", "piattaforma": "lifx",
-             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
-             "alias": [], "disabilitata": 0},
-        ],
-    }
-    return costruisci_indice(house)
-
-
-def _platform_lookup_with_name_collision():
-    """Un indice minimo dove UN'entita' si chiama «Sonos» -- come la propria
-    piattaforma -- e un'altra porta la stessa piattaforma senza quel nome:
-    il caso vero di una casa (04/09), dove «Sonos», «Hue», «Shelly», «Tuya»
-    sono nomi comuni delle entita' stesse, non solo domini tecnici."""
-    house = {
-        "piani": [], "aree": [], "dispositivi": [], "etichette": [], "categorie": [],
-        "integrazioni": [],
-        "entita": [
-            {"id": "media_player.soggiorno", "nome": "Sonos", "piattaforma": "sonos",
-             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
-             "alias": [], "disabilitata": 0},
-            {"id": "sensor.sonos_batteria", "nome": "Batteria altoparlante",
-             "piattaforma": "sonos",
-             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
-             "alias": [], "disabilitata": 0},
-        ],
-    }
-    return costruisci_indice(house)
-
-
-def test_search_recognizes_a_platform_as_such():
-    """`search "hydrawise"` tornava ZERO risultati sulla casa vera (04/09)
-    mentre 30 entita' hanno quella piattaforma. Non e' un nome: e' una cosa
-    di tipo diverso, e va detta come tale -- e non diventa trenta candidati:
-    la strada corta (indicizzarla come alias di ogni entita') direbbe che
-    quelle entita' SI CHIAMANO hydrawise, che e' falso.
-
-    Mutazione 1: rimuovere il ramo «piattaforma» in `search()` (o farlo
-    restituire `[]` sempre) -- rosso su `assert len(found) == 1` (0 != 1),
-    perche' senza quel ramo `lookup.find()` non riconosce affatto
-    «hydrawise» (nessuna entita' si chiama cosi').
-    Mutazione 2: indicizzare la piattaforma come alias nei nomi -- rosso su
-    `assert entry["candidati"] == []`, perche' le due entita' hydrawise
-    diventerebbero candidati di un nome che non hanno mai dichiarato."""
-    lookup = _platform_lookup()
-    found = search(lookup, "hydrawise")
-    assert len(found) == 1
-    entry = found[0]
-    assert entry["piattaforma"]["dominio"] == "hydrawise"
-    assert entry["piattaforma"]["quante_entita"] == 2
-    assert entry["candidati"] == []
-    assert entry["ambiguo"] is False
-
-
-def test_search_normalizes_the_domain_before_matching_a_platform():
-    """La chiave della mappa e' normalizzata da `resolver.py`
-    (maiuscole/accenti/spazi non contano); se `search()` non normalizzasse
-    anche il TESTO cercato, chi scrive «HYDRAWISE» o lascia spazi in coda
-    non troverebbe una piattaforma che pure esiste -- e nessun'altra prova
-    lo vedrebbe, perche' tutte le altre cercano gia' col testo normalizzato.
-
-    Mutazione: togliere `_normalize(text)` nel ramo «piattaforma» -- rosso
-    su `assert len(found) == 1` (0 != 1), perche' `platforms.get("  HYDRAWISE ")`
-    non colpisce la chiave `"hydrawise"`."""
-    lookup = _platform_lookup()
-    found = search(lookup, "  HYDRAWISE ")
-    assert len(found) == 1
-    assert found[0]["piattaforma"]["quante_entita"] == 2
-
-
-def test_search_keeps_a_name_candidate_that_shares_the_platform_domain():
-    """Il difetto trovato in review (04/09): il ramo «piattaforma» tornava
-    SUBITO, senza mai chiamare `lookup.find()`. Una casa vera ha entita' che
-    si chiamano come la propria piattaforma («Sonos», «Hue», «Shelly»,
-    «Tuya»): con quel codice diventavano irraggiungibili da `search`, la
-    stessa frase che il docstring di `search()` vieta esplicitamente per
-    `nascosta` -- "togliere dalla lista una cosa che esiste sarebbe
-    rispondere «non esiste» di una cosa che c'e'".
-
-    Mutazione: tornare subito col solo `piattaforma`, senza calcolare
-    `lookup.find(text)`, quando il testo combacia una piattaforma -- rosso
-    su `assert candidates == {"media_player.soggiorno"}` (l'insieme torna
-    vuoto), perche' l'entita' «Sonos» sparisce dalla risposta."""
-    lookup = _platform_lookup_with_name_collision()
-    found = search(lookup, "sonos")
-    assert len(found) == 1
-    entry = found[0]
-    assert entry["piattaforma"]["dominio"] == "sonos"
-    assert entry["piattaforma"]["quante_entita"] == 2
-    candidates = {c["riferimento"] for c in entry["candidati"]}
-    assert candidates == {"media_player.soggiorno"}
-    assert entry["ambiguo"] is False
-
-
-def test_search_returns_the_normalized_domain_as_the_platform_key():
-    """`info["dominio"]` e' l'IDENTIFICATORE che il modello ripassera' a
-    `view(tipo="integrazione", riferimento=...)` (Task 3): deve essere gia'
-    la chiave canonica dell'archivio (`lookup.platforms()`, normalizzata da
-    `resolver.py`), non il testo grezzo digitato dall'utente -- altrimenti
-    " HYDRAWISE " uscirebbe cosi' com'e' e `view` non troverebbe mai
-    l'integrazione che pure esiste.
-
-    Mutazione: tornare a `info["dominio"] = text.strip()` -- rosso su
-    `assert entry["piattaforma"]["dominio"] == "hydrawise"` (uscirebbe
-    `"HYDRAWISE"`, la sola stripatura di ' HYDRAWISE ')."""
-    lookup = _platform_lookup()
-    found = search(lookup, "  HYDRAWISE ")
-    assert len(found) == 1
-    entry = found[0]
-    assert entry["piattaforma"]["dominio"] == "hydrawise"
 
 
 def test_viewing_an_integration_counts_silent_entities_and_says_since_when():

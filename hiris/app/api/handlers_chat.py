@@ -274,8 +274,7 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # dispatcher nasce a ogni turno (vedi il docstring qui sopra), e ogni
         # turno riceve l'istantanea corrente, non un fornitore -- una
         # correzione della casa scritta un attimo prima deve arrivare al
-        # turno di adesso. `.get()` e non l'indice diretto per la STESSA
-        # ragione di `compose_briefing` (`handlers_home_space.py`): questa
+        # turno di adesso. `.get()` e non l'indice diretto: questa
         # funzione e' chiamata anche con un `app` finto nei test
         # (`tests/test_execute_tool.py`), e `ToolDispatcher.__init__` ricade
         # gia' sul solo seme se riceve `None` -- in una vera richiesta questo

@@ -1357,7 +1357,8 @@ async def test_il_CORPO_di_un_automazione_e_degli_amministratori(tmp_path, ruolo
     a chi non amministra dice che l'automazione c'e', non cosa fa.
 
     Mutazione ESEGUITA: tolto il controllo `amministrare` da `_view` --
-    rossa."""
+    rossa. Rieseguita il 29/09/2026 sul suo erede, `_full_detail_sync`
+    (il dettaglio di `search`) -- rossa."""
     from hiris.app.memory.store import MemoryStore
     from tests.test_knowledge_tools import _semina_casa
 
@@ -1371,16 +1372,16 @@ async def test_il_CORPO_di_un_automazione_e_degli_amministratori(tmp_path, ruolo
     chat = ToolDispatcher(casa_seminata, memoria, soffitto=soffitto,
                           subject=_PERSONA_MARTA)
 
-    automazione = await chat.dispatch("view", {"tipo": "automazione",
-                                               "riferimento": "automation.luci_alba"})
-    script = await chat.dispatch("view", {"tipo": "script",
-                                          "riferimento": "script.buonanotte"})
+    automazione = await chat.dispatch("search", {"genere": "automazione",
+                                                 "riferimento": "automation.luci_alba"})
+    script = await chat.dispatch("search", {"genere": "script",
+                                            "riferimento": "script.buonanotte"})
     memoria.close()
     casa_seminata.close()
 
     assert ("CORPO-RISERVATO" in json_text(automazione)) is vede
     assert ("solo agli amministratori" in json_text(automazione)) is not vede
-    assert automazione["esiste"] is True
+    assert automazione["voci"][0]["esiste"] is True
     assert "CORPO-DELLO-SCRIPT" in json_text(script)
 
 

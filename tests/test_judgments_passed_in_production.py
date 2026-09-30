@@ -21,22 +21,24 @@ che mancava, non un difetto.
 
 **Resta cio' che questa prova non puo' fare**: guarda il keyword su una riga,
 non il valore che ci passa. La proprieta' vera -- che una correzione della casa
-arrivi in fondo alla catena -- la difendono due prove **dal lettore**:
-`tests/test_briefing.py::
-test_una_correzione_su_notevole_arriva_dal_nucleo_intero_non_solo_da_is_event`
-(la catena `compose -> _highlight_lines -> _is_event`) e
+arrivi in fondo alla catena -- la difende una prova **dal lettore**:
 `tests/test_queries.py::
 test_una_correzione_su_limiti_arriva_dalla_vista_intera_non_solo_dalla_foglia`
 (la catena `view -> _view_entity -> commands_for -> _command_parameters ->
-_limits_of_entity`): chiamano la funzione di TESTA con un'istantanea diversa
-dal seme e guardano il TESTO/DETTAGLIO finale, non solo il keyword scritto a
-una riga.
+_limits_of_entity`): chiama la funzione di TESTA con un'istantanea diversa
+dal seme e guarda il DETTAGLIO finale, non solo il keyword scritto a una riga.
+Fino al 29/09/2026 ce n'era una seconda sulla catena del nucleo
+(`compose -> _highlight_lines -> _is_event`); e' uscita con «Notevole
+adesso», e lo stesso giorno `compose` ha perso il parametro `judgments`
+(non lo leggeva piu' nessuno): il nucleo non e' piu' fra le funzioni
+sorvegliate, perche' la sua firma non lo dichiara piu'.
 
-Mutazione ESEGUITA: tolto `judgments=` dalla chiamata `compose(` in
-`api/handlers_home_space.py` -- rossa, con file e riga nel messaggio;
-ripristinato con l'editor (verificato che `git diff` dopo il ripristino
-mostri solo le righe volute di questa fetta, nessuna persa -- non c'e' nessun
-commit, quindi niente `git status` da dire "pulito").
+Mutazione ESEGUITA (29/09/2026, rieseguita dopo l'uscita di `compose` da
+questo insieme): tolto `judgments=self._judgments` dalla chiamata in
+`home_space/tools.py` -- rossa, con file e riga nel messaggio; ripristinato
+riscrivendo il file originale (sha256 identico). Prima era eseguita sulla
+chiamata `compose(` di `api/handlers_home_space.py`, che non porta piu'
+l'istantanea.
 
 **`ToolDispatcher` in `FUNZIONI`.** Il costruttore riceve `judgments=None`
 (Task 5, `tools.py::ToolDispatcher.__init__`) con una ricaduta interna su
@@ -44,7 +46,7 @@ commit, quindi niente `git status` da dire "pulito").
 opzionali della classe (`cache`, `actuator`, ...). Perche' quella ricaduta non
 sia la stessa ricaduta silenziosa che questo test esiste per vietare, il suo
 UNICO sito di costruzione di produzione deve essere sorvegliato qui esattamente
-come `compose`/`view`: e' per questo che `ToolDispatcher` e' nell'insieme,
+come `view`: e' per questo che `ToolDispatcher` e' nell'insieme,
 anche se il piano non lo elencava per nome -- senza, il default della classe
 sarebbe garantito da niente.
 
@@ -136,16 +138,39 @@ def posizioni_giudizi() -> dict[str, set[int]]:
     return posizioni
 
 
+def alias_importati(tree) -> dict[str, str]:
+    """`from x import nome as alias` -> `{alias: nome}`, per un modulo.
+
+    Serve perche' il cancello confronta il NOME scritto alla chiamata: fino al
+    29/09/2026 `home_space/tools.py` chiamava `queries.view` come
+    `_view_detail(...)` (`from .queries import view as _view_detail`, Task 4),
+    e quella chiamata passava sotto il cancello senza essere guardata --
+    misurato: tolto `judgments=` li', la prova restava verde.
+    """
+    return {a.asname: a.name
+            for nodo in ast.walk(tree) if isinstance(nodo, ast.ImportFrom)
+            for a in nodo.names if a.asname}
+
+
 def test_ogni_chiamata_di_produzione_passa_l_istantanea():
+    """Mutazione ESEGUITA (29/09/2026): tolto `judgments=self._judgments`
+    dalla chiamata `_view_detail(` in `home_space/tools.py` -- prima di
+    `alias_importati` VERDE (l'alias non combaciava con nessun nome
+    sorvegliato), dopo rossa; ripristinato, sha256 identico."""
     sorvegliate = funzioni_sorvegliate()
     posizioni = posizioni_giudizi()
     mancanti = []
     for path in RADICE.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        alias = alias_importati(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            # Solo un nome NUDO puo' essere un alias importato: `x.attr` e'
+            # l'attributo di un oggetto, non il nome locale di un import.
+            if isinstance(node.func, ast.Name):
+                name = alias.get(name, name)
             if name not in sorvegliate:
                 continue
             # Per NOME o per POSIZIONE: cio' che conta e' che l'istantanea

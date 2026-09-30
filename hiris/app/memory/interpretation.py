@@ -195,7 +195,7 @@ def _validate_ancore(ancore, lookup, tipi_non_verificabili: frozenset[str],
             # la verita' -- decisione del proprietario), ma il problema deve
             # INSEGNARE la correzione, non solo dichiarare lo scarto: stesso
             # pattern gia' in `action/verification.py::_no` per un bersaglio non
-            # risolto («Usa "cerca" per trovare il nome giusto e ripeti il
+            # risolto («Usa «search» per trovare il nome giusto e ripeti il
             # comando»), esteso qui a `remember`.
             problemi.append(
                 f"ancora {type} «{label}» non esiste nell'anagrafe -- scartata "

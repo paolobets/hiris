@@ -158,9 +158,9 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     stati non arrivavano mai, perche' non aprono ne' chiudono un episodio e
     sono scartati prima che un `corpo.stato` esista.
     Ma `rendered_state` (sotto, nello stesso modulo) chiama questa funzione
-    per conto di `topology.readable_state`, che `home_space/briefing.py` e
-    `home_space/queries.py` invocano sullo stato VIVO di un'entita' -- non
-    filtrato da `aggregate_day` -- per il nucleo e per `view`/`search`: un
+    per conto di `topology.readable_state`, che `home_space/queries.py`
+    invoca sullo stato VIVO di un'entita' -- non filtrato da `aggregate_day`
+    -- per `search` (fino al 29/09/2026 anche `briefing.py`, per il nucleo): un
     dispositivo davvero irraggiungibile ci arriva con `stato: "unavailable"`.
     Anche li' il risultato e' corretto senza bisogno di un ramo dedicato:
     nessun gradino risponde, questa funzione torna `None` come per qualunque
@@ -276,9 +276,9 @@ def _class_steps(device_class) -> tuple[str, ...]:
 #: non c’e'» -- riguarda quello stato soltanto, e si comporta come si comporta
 #: Home Assistant: mostra il grezzo, senza annunciare un guasto che non c'e'.
 #:
-#: Sta QUI e non in ciascun lettore perche' i lettori sono due (il nucleo e
-#: `guarda`) e devono trattarli allo stesso modo: due elenchi identici scritti
-#: in due file sono due elenchi che divergono.
+#: Sta QUI e non nel lettore perche' e' vocabolario delle traduzioni: i
+#: lettori erano due (il nucleo e `guarda`) fino al 29/09/2026, quando il
+#: nucleo ha smesso di rendere stati; oggi e' uno, `queries.py`.
 TABLE_MISSING_SILENCES = (SILENCE_UNREACHABLE, SILENCE_UNDEFINED)
 
 
@@ -599,30 +599,3 @@ class StateTranslations:
             logger.info("traduzioni degli stati lette da Home Assistant: %d chiavi (%s, HA %s)",
                         len(self._resources), language, ha_version)
         return {"lette": True, "lingua": language, "risorse": self._resources}
-
-    def cached(self) -> dict:
-        """Cio' che si ha **adesso, senza chiedere niente a nessuno** --
-        etichettato coi tre silenzi.
-
-        Esiste per un lettore preciso e per una ragione precisa: **il nucleo si
-        compone in una funzione sincrona** (`api/handlers_home_space.
-        compose_briefing`, condivisa con il contesto della chat), e da
-        quando le quattro tabelle scritte a mano non ci sono piu' quel testo ha
-        bisogno delle traduzioni a ogni turno. Renderla `async` avrebbe voluto
-        dire rendere `async` la composizione del nucleo e i suoi chiamanti --
-        cioe' cambiare la forma di mezzo prodotto per una lettura che
-        `_prime_state_translations` (allo `startup`) e il suo giro periodico
-        hanno gia' fatto.
-
-        **Non va in rete, mai.** Se nessuno ha ancora letto, risponde «non ho
-        potuto chiedere» col motivo -- e il lettore lo DICE, invece di mostrare
-        un vuoto. E' esattamente la condizione che la spec (§6) pone alla
-        cancellazione delle tabelle: si cancella solo se il consumatore sa dire
-        «traduzioni non lette».
-        """
-        if self._resources is None:
-            return {"lette": False,
-                    "motivo": "le traduzioni degli stati non sono ancora state "
-                              "lette da Home Assistant in questa sessione"}
-        return {"lette": True, "lingua": self._key[1] if self._key else None,
-                "risorse": self._resources}

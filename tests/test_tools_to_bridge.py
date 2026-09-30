@@ -24,7 +24,7 @@ Cosa difende ciascun gruppo:
   quella del ponte sono **lo stesso token**, non due;
 - ⑤ **la rientranza**: mentre la CLI "gira" nel thread dell'executor, l'add-on
   serve davvero la callback -- e la serve per **tutti** gli
-  strumenti di conoscenza, `view` compreso, che e' l'unico che legge la `entity_cache` e
+  strumenti di conoscenza, `search` compreso, che legge la `entity_cache` e
   quindi l'argomento portante con cui il disegno giustifica una rotta invece
   di un sottoprocesso separato;
 - ⑥ **il degrado dichiarato**: gli strumenti erano attesi e non ci sono -- la
@@ -188,10 +188,12 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     sopra, ed entra anche lui (deliberato, non automatico) nello stesso
     elenco di ammissione del turno delle promesse, per la stessa ragione:
     senza, il ponte non potrebbe mai tenere una promessa «avvisami la sera
-    prima di un impegno»."""
+    prima di un impegno». «Una porta sola per la casa» (29/09/2026): da 16
+    a 15, esce `view` -- il suo dettaglio e' la voce di `search` quando
+    l'insieme ne ha una sola."""
     nomi = runner.mcp_names()
 
-    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 16
+    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 15
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da
@@ -442,12 +444,13 @@ def _base_url(client) -> str:
 def _semina_gli_archivi(app, tmp_path):
     """Gli archivi veri e la `entity_cache` vera nell'app gia' avviata.
 
-    `view` e' l'unico strumento di lettura che legge la cache delle entita', ed e'
-    **l'argomento portante** con cui il disegno giustifica una rotta invece di
-    un sottoprocesso stdio separato (`handlers_mcp.py`, «la stessa
-    `entity_cache` del turno sincrono»): senza di essa `view` risponderebbe
-    sempre `stato_non_letto`, e avremmo due intelligenze nella stessa casa che
-    ne vedono due diverse. Un'affermazione del genere si prova, non si cita."""
+    `search` legge la cache delle entita' (fino al 29/09/2026 lo faceva
+    `view`, oggi il suo dettaglio), ed e' **l'argomento portante** con cui
+    il disegno giustifica una rotta invece di un sottoprocesso stdio
+    separato (`handlers_mcp.py`, «la stessa `entity_cache` del turno
+    sincrono»): senza di essa `search` risponderebbe sempre
+    `stato_non_letto`, e avremmo due intelligenze nella stessa casa che ne
+    vedono due diverse. Un'affermazione del genere si prova, non si cita."""
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
     memoria = MemoryStore(memoria_db)
@@ -551,7 +554,7 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
             lambda: http.post(
                 f"{_base_url(client)}/api/mcp", headers=intestazioni,
                 json={"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                      "params": {"name": "search", "arguments": {"testo": "cucina"}}}))
+                      "params": {"name": "search", "arguments": {"nome": "cucina"}}}))
 
     assert risposta.status_code == 200
     contenuto = risposta.json()["result"]
@@ -578,9 +581,10 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     test e' cio' che glielo impedisce -- e fallirebbe **in stallo**, che e'
     l'unico modo onesto di fallire per questa proprieta'.
 
-    Si esercitano **tutti e quattro** gli strumenti DI CONOSCENZA attraverso la
-    rotta, `view` e `fetch` compresi (Minor noto del Task 1: non l'avevano mai
-    attraversata), e `view` legge la `entity_cache` vera dell'app -- che e'
+    Si esercitano **tutti e tre** gli strumenti DI CONOSCENZA attraverso la
+    rotta, `fetch` compreso (Minor noto del Task 1: non l'aveva mai
+    attraversata), e il dettaglio di `search` -- fino al 29/09/2026 era lo
+    strumento `view` -- legge la `entity_cache` vera dell'app, che e'
     l'argomento con cui il disegno ha scartato un sottoprocesso stdio."""
     client, coda, app, intestazioni = ponte_produzione
     casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
@@ -615,9 +619,9 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
                                      "params": {"name": nome, "arguments": argomenti}})
                     return json.loads(risposta["result"]["content"][0]["text"])
 
-                visto["search"] = _chiama("search", {"testo": "cucina"})
-                visto["view"] = _chiama("view", {"tipo": "area",
-                                                     "riferimento": "cucina"})
+                visto["search"] = _chiama("search", {"nome": "cucina"})
+                visto["dettaglio"] = _chiama("search", {"genere": "area",
+                                                          "riferimento": "cucina"})
                 visto["remember"] = _chiama(
                     "remember", {"testo": "in cucina si cena alle 20",
                                 "ancore": [{"tipo": "area", "riferimento": "cucina"}]})
@@ -642,13 +646,14 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         assert visto["nomi"] == _NOMI_NUDI
 
         # `search` legge l'archivio della casa dell'app
-        assert visto["search"]["trovati"]
-        # `view` legge la STESSA entity_cache del turno sincrono: e' la
+        assert visto["search"]["trovate"]
+        # Il dettaglio legge la STESSA entity_cache del turno sincrono: e' la
         # ragione per cui questa e' una rotta e non un sottoprocesso separato.
-        stati = {e["id"]: e["stato"] for e in visto["view"]["entita"]}
+        stati = {e["id"]: e["stato"]
+                 for e in visto["dettaglio"]["voci"][0]["entita"]}
         assert stati["light.cucina_1"] == "on"
         assert stati["light.cucina_2"] == "off"
-        assert "stato_non_letto" not in visto["view"]
+        assert "stato_non_letto" not in visto["dettaglio"]
         # `remember` scrive davvero in memoria.db -- il guasto storico da cui
         # questo strumento e' nato («preso nota» senza salvare niente)
         assert visto["remember"]["salvato"] is True

@@ -82,17 +82,19 @@ _FILE_PERMISSIONS = 0o600
 # di la' gli strumenti di home_space/tools.py esistono davvero, e l'ordine
 # di usarli e' lo stesso di prima); il ponte legge il ramo "altrimenti", che
 # e' esattamente cio' che puo' fare -- rispondere col contesto e dichiarare
-# cio' che non c'e'. I due nomi `search` e `view` restano SCRITTI: la guida
-# del ponte li nomina per negarli, e `test_il_prompt_del_ponte_smentisce_gli_
-# strumenti_nominati_dalla_persona` asserisce che il default continui a
-# nominarli.
+# cio' che non c'e'. Il nome `search` resta SCRITTO (dal 29/09/2026 `view`
+# non e' piu' uno strumento): la guida del ponte lo nomina per negarlo, e
+# `test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona`
+# asserisce che il default continui a nominarlo.
 #
 # Il riferimento alla "sezione CASA" e' uscito con l'imperativo: dal Task 1 di
 # questa fetta il contesto della chat non e' piu' una sezione sola ma il
 # NUCLEO INTERO (`compose_chat_context` -> `compose_briefing`), che compone
-# «## La casa», «## Notevole adesso», «## Cosa si puo' chiedere alle cose di
-# casa», «## Cio' che la casa fa gia' da sola», «## Cio' che le persone hanno
-# detto», «## Cio' che HIRIS ignora», piu' «## Sessioni precedenti».
+# «## La casa», «## Cosa non va in casa» (quando c'e' un guasto), «## Cosa si
+# puo' chiedere alle cose di casa», «## Cio' che la casa fa gia' da sola»,
+# «## Cio' che le persone hanno detto», «## Cio' che HIRIS ignora», piu'
+# «## Sessioni precedenti». («## Notevole adesso» c'era fino al 29/09/2026:
+# lo stato del momento si chiede a `search`.)
 # Nominare una sola sezione maiuscola che non esiste
 # piu' con quel nome sarebbe la solita dichiarazione falsa al presente.
 #
@@ -155,10 +157,10 @@ _FILE_PERMISSIONS = 0o600
 # stato bisogno di toccarla: e' diventata vera da sola.
 DEFAULT_SYSTEM_PROMPT = (
     "Sei l'assistente principale per la gestione della smart home.\n"
-    "Se in questa conversazione hai gli strumenti `search` (trova per nome un'area,"
-    " un'entità o un dispositivo) e `view` (il dettaglio di una cosa sola, col suo"
-    " stato), usali per scoprire cosa c'è in casa e per i valori precisi — temperature,"
-    " stati correnti — invece di dedurli.\n"
+    "Se in questa conversazione hai lo strumento `search` (trova per nome un'area,"
+    " un'entità o un dispositivo; con `riferimento` dà il dettaglio di una cosa sola,"
+    " col suo stato), usalo per scoprire cosa c'è in casa e per i valori precisi —"
+    " temperature, stati correnti — invece di dedurli.\n"
     "Altrimenti rispondi con ciò che trovi nel contesto in fondo al prompt (la casa,"
     " ciò che le persone hanno detto, le sessioni precedenti): è uno snapshot di"
     " orientamento, non una lettura fatta adesso. Dichiara apertamente ciò che non c'è,"
