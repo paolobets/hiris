@@ -1203,8 +1203,14 @@ _COMPANION_TYPES = ("entita", "automazione", "scena", "script")
 #
 # Con lui e' uscita la lettura delle direzioni dell'energia da qui dentro
 # (`energy_directions`): riempiva `direzione` sull'episodio di energia, e
-# quell'episodio non c'e' piu'. Il metodo del client resta, e lo usa
-# `build_balances` qui sotto per decidere i candidati.
+# quell'episodio non c'e' piu'. **Il metodo del client e' uscito il
+# 30/09/2026** (revisione finale della storia): zero chiamanti. Questo
+# commento diceva che lo usava `build_balances` qui sotto, ed era falso --
+# `build_balances` riceve `directions` dal chiamante, e l'unico chiamante
+# (`_aggrega_ieri`) passa `directions={}`. Con una mappa vuota nessun
+# soggetto diventa membro, nessun dispositivo diventa candidato, e la
+# funzione torna `([], 0)` senza seminare niente: debito dichiarato in
+# `docs/BACKLOG.md`, non riprogettato qui.
 
 
 async def build_balances(
@@ -4771,6 +4777,11 @@ async def _on_startup(app: web.Application) -> None:
             # usa piu' -- i numeri del bilancio arrivano al resoconto dalla
             # ricetta, come tutti gli altri -- ma senza questa chiamata un
             # dispositivo nuovo non avrebbe mai la sua.
+            #
+            # **Letto il 30/09/2026 (revisione finale della storia): oggi non
+            # semina niente.** Con `directions={}` nessun dispositivo diventa
+            # candidato e `build_balances` torna `([], 0)` prima della rete e
+            # prima di `_balance_recipe_for`. Debito in `docs/BACKLOG.md`.
             da_ts, a_ts = day_boundaries(ieri, timezone)
             subjects = sorted({r["soggetto"] for r
                                in app["observations"].readings(from_ts=da_ts, to_ts=a_ts)})

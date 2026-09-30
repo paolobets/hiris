@@ -89,7 +89,7 @@ async def test_una_configurazione_non_letta_manca_invece_di_essere_vuota():
 
 @pytest.mark.asyncio
 async def test_un_guasto_della_connessione_e_un_errore_non_un_elenco_vuoto():
-    """Stessa disciplina di `legami`, `problemi` e `energy_directions`: mai un
+    """Stessa disciplina di `legami` e `problemi`: mai un
     dizionario vuoto che significherebbe «questa casa non ha automazioni»
     quando il websocket e' giu'. La connessione caduta e' `None` per ogni
     comando, come la torna il vero `_ws_batch` (che non solleva mai).

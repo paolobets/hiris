@@ -1,6 +1,6 @@
 """Test per le letture diagnostiche di HAClient:
-system_health (WS) e render_template (REST) (il diario e' uscito il 30/09/2026
-con la storia).
+render_template (REST) e `_truncate`. Il diario e' uscito il 30/09/2026 con
+la storia, e con lei `get_system_health` (WS), senza chiamanti.
 
 Stile: fake della sessione aiohttp + asserzione sull'URL esatto chiamato.
 Tutti i metodi sono di sola lettura e degradano senza sollevare.
@@ -49,81 +49,6 @@ def _fake_session(client, method, resp=None, exc=None):
     client._session = MagicMock()
     setattr(client._session, method, MagicMock(side_effect=_call))
     return calls
-
-
-
-
-# --------------------------------------------------------------------------
-# get_system_health
-# --------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_get_system_health_maps_domains(client, monkeypatch):
-    """Mappa dominio -> informazioni; i valori "tipizzati" di HA vengono
-    appiattiti e le forme non riconosciute ignorate senza sollevare."""
-    captured = {}
-
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        captured["msg_type"] = msg_type
-        return {
-            "homeassistant": {"info": {"version": "2026.7.1",
-                                       "installation_type": "Home Assistant OS",
-                                       "dev": False}},
-            "cloud": {"info": {"logged_in": True,
-                               "subscription_expiration": {"type": "date",
-                                                           "value": "2027-01-01"}}},
-            "mqtt": {"info": {"broker": {"type": "failed",
-                                         "error": "connection refused"}}},
-            "recorder": {"info": {"oldest_recorder_run": {"type": "pending"}}},
-            # forme inattese: vanno ignorate, non devono far esplodere nulla
-            "rotto": "non e' un dict",
-            "vuoto": {},
-            "senza_info": {"can_reach_server": "ok"},
-        }
-
-    monkeypatch.setattr(client, "_ws_request", fake_ws_request)
-    out = await client.get_system_health()
-
-    assert captured["msg_type"] == "system_health/info"
-    assert out["homeassistant"] == {"version": "2026.7.1",
-                                    "installation_type": "Home Assistant OS",
-                                    "dev": False}
-    assert out["cloud"] == {"logged_in": True,
-                            "subscription_expiration": "2027-01-01"}
-    assert out["mqtt"] == {"broker": "connection refused"}
-    assert out["recorder"] == {"oldest_recorder_run": "pending"}
-    assert out["senza_info"] == {"can_reach_server": "ok"}
-    assert "rotto" not in out
-    assert "vuoto" not in out
-
-
-@pytest.mark.asyncio
-async def test_get_system_health_empty_on_ws_failure(client, monkeypatch):
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        return None
-
-    monkeypatch.setattr(client, "_ws_request", fake_ws_request)
-    assert await client.get_system_health() == {}
-
-
-@pytest.mark.asyncio
-async def test_get_system_health_empty_on_unexpected_shape(client, monkeypatch):
-    """Il formato di system_health/info non e' documentato: se HA risponde con
-    qualcosa che non e' una mappa, il dato vale semplicemente "non disponibile"."""
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        return ["non", "una", "mappa"]
-
-    monkeypatch.setattr(client, "_ws_request", fake_ws_request)
-    assert await client.get_system_health() == {}
-
-
-@pytest.mark.asyncio
-async def test_get_system_health_never_raises(client, monkeypatch):
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        raise OSError("ws down")
-
-    monkeypatch.setattr(client, "_ws_request", fake_ws_request)
-    assert await client.get_system_health() == {}
 
 
 # --------------------------------------------------------------------------

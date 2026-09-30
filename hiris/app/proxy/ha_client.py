@@ -1004,59 +1004,6 @@ class HAClient:
     # invocava mai (lo nominava solo nei propri messaggi d'errore, come
     # suggerimento per l'LLM), ne' alcun altro modulo vivo.
 
-    @staticmethod
-    def _health_value(value: Any) -> Any:
-        """Appiattisce un valore di system_health in uno scalare presentabile.
-
-        HA restituisce sia scalari sia valori "tipizzati" come
-        {"type": "date", "value": ...}, {"type": "pending"} oppure
-        {"type": "failed", "error": "..."}. Il formato non e' documentato: si
-        riconosce quello che si capisce e si scarta il resto (None = ignora)."""
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            return value
-        if isinstance(value, dict):
-            if value.get("error"):
-                return _truncate(str(value["error"]), 200)
-            if "value" in value:
-                inner = value["value"]
-                if isinstance(inner, (str, int, float, bool)) or inner is None:
-                    return inner
-                return None
-            if value.get("type"):
-                return str(value["type"])
-        return None
-
-    async def get_system_health(self) -> dict:
-        """Salute nativa delle integrazioni via WS `system_health/info`.
-
-        Ritorna una mappa dominio -> {chiave: valore} con le sole informazioni
-        riconosciute; {} se il dato non e' disponibile. Sola lettura, non
-        solleva mai: ogni fallimento vale come "dato non disponibile"."""
-        try:
-            result = await self._ws_request("system_health/info")
-        except Exception as exc:
-            logger.debug("get_system_health: WS non disponibile (%s)", exc)
-            return {}
-        if not isinstance(result, dict):
-            return {}
-        health: dict = {}
-        for domain, payload in result.items():
-            if not isinstance(payload, dict):
-                continue
-            # HA annida le informazioni sotto "info", ma non e' garantito:
-            # se manca si legge il payload stesso.
-            info = payload.get("info")
-            if not isinstance(info, dict):
-                info = payload
-            entries = {}
-            for key, raw in info.items():
-                value = self._health_value(raw)
-                if value is not None or raw is None:
-                    entries[str(key)] = value
-            if entries:
-                health[str(domain)] = entries
-        return health
-
     async def history(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
         """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
         GET /api/history/period/<da>.
@@ -1594,7 +1541,7 @@ class HAClient:
         Torna `{"configurazioni": {entity_id: corpo}}` oppure
         `{"errore": str}` -- mai un dizionario vuoto, che direbbe «questa casa
         non ha automazioni» anche col websocket giu' (stessa disciplina di
-        `related`, `problems` e `energy_directions`).
+        `related` e `problems`).
 
         **Se TUTTE le risposte mancano** (connessione o autenticazione
         cadute: `_ws_batch` non solleva, torna una `None` per comando) il
@@ -2050,109 +1997,6 @@ class HAClient:
         if key in answer["non_letti"]:
             return {"errore": answer["non_letti"][key]}
         return {"tracce": answer["tracce"][key]}
-
-    # Le quattordici righe che stavano QUI sono uscite il 12/09/2026 (fetta
-    # «il sapere e le ricette»): erano una tabella `translation_key ->
-    # direzione` scritta nel codice, e per correggerne una serviva un
-    # rilascio. Adesso sono righe del sapere (`mind/seed.py`), col loro
-    # soggetto (l'integrazione `zcsazzurro`), la loro provenienza (`dedotto`)
-    # e le loro prove -- si leggono, si correggono a caldo, e si esportano a
-    # chiunque abbia lo stesso inverter.
-    #
-    # **Questo lettore non sa piu' cosa voglia dire `energy_generating_today`,
-    # ed e' giusto cosi'**: sa leggere il registro delle entita' di Home
-    # Assistant, non sa che quella chiave significhi «produzione». Quel salto
-    # e' un giudizio, e arriva da fuori come parametro -- la stessa disciplina
-    # con cui `mind/operations.episodio` riceve `is_on` invece di sapere quali
-    # stati siano un riposo.
-
-    async def energy_directions(self, *, direction_by_translation_key: dict) -> dict:
-        """Le direzioni dell'energia: chi produce, chi preleva, chi immette,
-        chi carica, chi scarica -- lette da dove Home Assistant le dichiara,
-        mai indovinate dal nome del sensore (`CLAUDE.md`, «su Home Assistant
-        non si ipotizza mai»).
-
-        Due fonti, sulla STESSA connessione (`_ws_batch` con due comandi):
-
-        - **`energy/get_prefs`** (la dashboard Energia): **dichiarata**
-          dall'utente, vale per qualunque integrazione. Copre, su questa
-          casa, 6 delle 17 entita' dell'inverter -- **vince sempre**.
-        - **`config/entity_registry/list`**, campo `translation_key`:
-          **dedotta**, scritta dall'integrazione e interpretata con la mappa
-          che il chiamante consegna (`direction_by_translation_key`, che
-          viene dal sapere -- `mind/knowledge.directions_by_translation_key`).
-          Copre tutte le direzioni, ma solo sulle integrazioni di cui il
-          sapere ha righe -- un altro inverter usera' chiavi sue, e finche'
-          nessuno gliele insegna quella mappa per lui e' vuota. Si applica
-          SOLO dove la dichiarata tace.
-
-        **La mappa e' obbligatoria, e un dizionario vuoto e' una risposta
-        legittima.** Non ha un valore per difetto proprio perche' un difetto
-        silenzioso qui vorrebbe dire perdere la meta' dedotta senza che
-        nessuno se ne accorga: chi chiama deve dire cosa sa, anche quando non
-        sa niente.
-
-        Torna `entity_id -> {"direzione": ..., "provenienza": "dichiarata" |
-        "dedotta"}`.
-
-        **Trappola di forma, misurata il 27/08/2026 sulla casa vera** (gia'
-        pagata una volta, il 26/08, da un altro script): la sorgente `grid`
-        di `energy_sources` porta i suoi due sensori in campi SCALARI
-        (`stat_energy_from`/`stat_energy_to`), non in una lista di flussi
-        come `solar`/`battery`. Un lettore che si aspettasse liste ovunque
-        leggerebbe una configurazione piena come se fosse vuota. La sorgente
-        `solar` porta anche `stat_rate` (la POTENZA prodotta, non solo
-        l'energia): stessa direzione, entita' diversa.
-
-        `{"errore": ...}` su guasto, per la stessa ragione di `legami` e
-        `problemi`: un dizionario vuoto significherebbe «nessuna direzione
-        esiste», non «non ho potuto leggere».
-        """
-        msg_prefs, msg_registry = await self._ws_batch(
-            [("energy/get_prefs", None), ("config/entity_registry/list", None)])
-        if msg_prefs is None or msg_registry is None:
-            return {"errore": "Home Assistant non ha risposto"}
-        for msg in (msg_prefs, msg_registry):
-            if msg.get("error"):
-                error = msg["error"]
-                return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        prefs = msg_prefs.get("result")
-        registry = msg_registry.get("result")
-        if not isinstance(prefs, dict) or not isinstance(registry, list):
-            return {"errore": "risposta in forma inattesa"}
-
-        by_entity: dict[str, dict] = {}
-
-        def _declare(entity_id, direction: str) -> None:
-            if isinstance(entity_id, str) and entity_id:
-                by_entity[entity_id] = {"direzione": direction, "provenienza": "dichiarata"}
-
-        for energy_source in prefs.get("energy_sources") or []:
-            if not isinstance(energy_source, dict):
-                continue
-            kind = energy_source.get("type")
-            if kind == "grid":
-                _declare(energy_source.get("stat_energy_from"), "prelievo")
-                _declare(energy_source.get("stat_energy_to"), "immissione")
-            elif kind == "solar":
-                _declare(energy_source.get("stat_energy_from"), "produzione")
-                _declare(energy_source.get("stat_rate"), "produzione")
-            elif kind == "battery":
-                _declare(energy_source.get("stat_energy_from"), "scarica")
-                _declare(energy_source.get("stat_energy_to"), "carica")
-
-        for row in registry:
-            if not isinstance(row, dict):
-                continue
-            eid = row.get("entity_id")
-            if not isinstance(eid, str) or eid in by_entity:
-                continue  # la dichiarata vince sempre: la dedotta tace qui
-            direction = (direction_by_translation_key or {}).get(
-                row.get("translation_key"))
-            if direction:
-                by_entity[eid] = {"direzione": direction, "provenienza": "dedotta"}
-
-        return by_entity
 
     async def get_translations(self, language: str,
                                category: str = "entity_component") -> dict:

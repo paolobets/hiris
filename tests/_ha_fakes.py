@@ -54,19 +54,10 @@ class _ClienteLegami:
       l'innesco del punto 1 (difesa-profondita-brief.md): fa uscire un
       `TypeError` vero dalla catena vera, senza monkeypatch.
 
-    **Cresciuta il 27/08/2026 (mandato "le direzioni dell'energia") per
-    fingere anche `energy_directions()`**, non una seconda finta a fianco:
-    e' la stessa disciplina "una sola finta per `HAClient`" del paragrafo
-    sopra, e i due lavori dell'aggregazione (`_aggrega_ieri`,
-    `reaggregate_last_two_days`) chiamano ORA entrambi i metodi sullo
-    STESSO client. `direzioni` e' la mappa che `energy_directions()` torna
-    (default vuota: nessuna direzione nota, non un guasto); `direzioni_errore`
-    -- se dato -- la fa rispondere `{"errore": ...}`, fedele al contratto
-    vero (mai un dizionario vuoto travestito da «non ho potuto leggere»)."""
+    La finta di `energy_directions()` e' uscita il 30/09/2026 col metodo
+    vero, che non aveva piu' chiamanti (revisione finale della storia)."""
 
     def __init__(self, mappa: dict[str, dict] | None = None, *, default=None,
-                direzioni: dict[str, dict] | None = None,
-                direzioni_errore: str | None = None,
                 statistiche: dict[str, list[dict]] | None = None,
                 statistiche_errore: str | None = None,
                 statistiche_per_finestra: (
@@ -74,11 +65,7 @@ class _ClienteLegami:
                 ) = None,
                 ):
         self._mappa = mappa or {}
-        #: Le mappe con cui `energy_directions` e' stata chiamata, in ordine.
-        self.direzioni_mappe: list[dict] = []
         self._default = {} if default is None else default
-        self._direzioni = direzioni or {}
-        self._direzioni_errore = direzioni_errore
         # `statistiche` -- **cresciuta il 27/08/2026 (mandato «il bilancio
         # dell'energia») per fingere anche `hourly_statistics()`**, stessa
         # disciplina "una sola finta" del paragrafo sopra: `{statistic_id:
@@ -111,7 +98,6 @@ class _ClienteLegami:
         # posto di una stringa come chiave.
         self._statistiche_per_finestra = statistiche_per_finestra or {}
         self.chiesti = []
-        self.direzioni_chieste = 0
         self.statistiche_chieste: list[tuple[list[str], str, str]] = []
 
     # **Cresciuta il 10/09/2026** (fetta «il lettore»), stessa disciplina
@@ -137,21 +123,6 @@ class _ClienteLegami:
         if item_type not in HAClient.RELATED_ITEM_TYPES:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {item_type}"}
         return self._mappa.get(identifier, self._default)
-
-    async def energy_directions(self, *, direction_by_translation_key):
-        # Il parametro e' OBBLIGATORIO anche nella finta, e la finta se lo
-        # ANNOTA: dal 12/09/2026 la mappa `translation_key -> direzione` non
-        # vive piu' dentro `HAClient`, arriva dal sapere -- e una finta che
-        # accettasse la chiamata senza il parametro lascerebbe passare un
-        # chiamante che ha smesso di leggerlo (memoria
-        # `hiris_runner_signature_contract`: un kwarg nuovo lo accettano
-        # TUTTI i finti di quella firma, o la prova difende un contratto che
-        # in produzione non esiste piu').
-        self.direzioni_mappe.append(dict(direction_by_translation_key or {}))
-        self.direzioni_chieste += 1
-        if self._direzioni_errore is not None:
-            return {"errore": self._direzioni_errore}
-        return dict(self._direzioni)
 
     async def hourly_statistics(self, identifiers, from_iso, to_iso):
         self.statistiche_chieste.append((list(identifiers), from_iso, to_iso))
