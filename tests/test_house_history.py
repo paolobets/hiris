@@ -984,9 +984,11 @@ def test_chi_non_si_legge_e_nominato_e_gli_altri_rispondono():
     assert "automation.vetro" not in [v["id"] for v in rifiutata["voci"]]
 
 
-def test_la_traccia_di_una_esecuzione_non_dice_dove_e_chi_l_ha_accesa():
+def test_l_innesco_di_chi_si_sposta_non_dice_dove_era_ne_dove_va():
     """Review Focus 1 sulle tracce: l'innesco di una persona che si sposta,
-    ripetuto nei passi.
+    ripetuto nei passi, perde zone e coordinate. (Nome corretto nella
+    revisione del Task 5, M4: il «chi l'ha accesa» -- `context.user_id` --
+    non e' una posizione, resta e questa prova non lo guarda.)
 
     Mutazione ESEGUITA: `run_detail` senza `redact_nested` -- rossa."""
     chosen = hh.Chosen(1, dict(_NESSUNA), "completa", [hh.Subject("automation.x", "X")])
@@ -1000,6 +1002,132 @@ def test_la_traccia_di_una_esecuzione_non_dice_dove_e_chi_l_ha_accesa():
         assert dove not in testo, dove
     assert uscita["soggetto"]["id"] == "automation.x"
     assert uscita["voci"][0]["run_id"] == "r1"
+
+
+def _risultato(stato, voluto):
+    """Un elemento di traccia di una condizione `state`, nella forma di Home
+    Assistant 2026.9.0 (`condition_trace_set_result(is_state, state=value,
+    wanted_state=state_value)`): NESSUN `entity_id`."""
+    return [{"path": "x", "timestamp": _fa(1),
+             "result": {"result": stato == voluto, "state": stato,
+                        "wanted_state": voluto}}]
+
+
+def _esecuzione_intera(traccia):
+    chosen = hh.Chosen(1, dict(_NESSUNA), "completa", [hh.Subject("automation.x", "X")])
+    return hh.run_detail(_q(genere="esecuzioni", esecuzione="r1"), chosen, traccia)
+
+
+def test_una_condizione_su_chi_si_sposta_non_dice_la_zona():
+    """Review Task 5, I1: una condizione `state` su `person.marta` registrava
+    lo stato vivo, «Palestra», senza `entity_id`: `redact_nested` non lo
+    vedeva. Di chi sia lo dice la configurazione allo stesso percorso --
+    una condizione in cima (chiavi al plurale), dentro un `and` con un
+    elenco di entita', dentro un `if` di un'azione. La luce resta com'e'.
+
+    Mutazione ESEGUITA: `run_detail` senza `_redact_condition_results` --
+    rossa; `_config_at` che non salta il nome ripetuto dell'elenco
+    (`if/condition/0`) -- rossa sul ramo `if` della luce (il ripiego la
+    riduce)."""
+    traccia = {"run_id": "r1", "config": {
+        "triggers": [{"trigger": "zone", "entity_id": "person.marta",
+                      "zone": "zone.palestra", "event": "enter"}],
+        "conditions": [
+            {"condition": "state", "entity_id": "person.marta", "state": "Palestra"},
+            {"condition": "and", "conditions": [
+                {"condition": "state", "entity_id": ["light.sala", "person.luca"],
+                 "state": "on"}]}],
+        "actions": [{"if": [{"condition": "state", "entity_id": "device_tracker.iphone",
+                             "state": "Lavoro"}], "then": []},
+                    {"if": [{"condition": "state", "entity_id": "light.cucina",
+                             "state": "on"}], "then": []}]},
+        "trace": {
+            "condition/0/entity_id/0": _risultato("Palestra", "Palestra"),
+            "condition/1/conditions/0/entity_id/0": _risultato("on", "on"),
+            "condition/1/conditions/0/entity_id/1": _risultato("Lavoro", "home"),
+            "action/0/if/condition/0/entity_id/0": _risultato("Lavoro", "Lavoro"),
+            "action/1/if/condition/0/entity_id/0": _risultato("on", "on")}}
+    passi = _esecuzione_intera(traccia)["voci"][0]["trace"]
+
+    def stati(percorso):
+        risultato = passi[percorso][0]["result"]
+        return risultato["state"], risultato["wanted_state"]
+    assert stati("condition/0/entity_id/0") == ("not_home", "not_home")
+    assert stati("condition/1/conditions/0/entity_id/0") == ("on", "on")
+    assert stati("condition/1/conditions/0/entity_id/1") == ("not_home", "home")
+    assert stati("action/0/if/condition/0/entity_id/0") == ("not_home", "not_home")
+    # Ritrovata la luce, non il ripiego su chi si sposta nella configurazione.
+    assert stati("action/1/if/condition/0/entity_id/0") == ("on", "on")
+    # La zona configurata nell'innesco resta: e' configurazione.
+    assert _esecuzione_intera(traccia)["voci"][0]["config"]["triggers"][0]["zone"] == \
+        "zone.palestra"
+
+
+def test_una_condizione_che_non_si_ritrova_nella_configurazione_si_riduce():
+    """Un percorso che la configurazione non spiega non passa grezzo: se la
+    configurazione nomina qualcuno che si sposta, lo stato si riduce.
+
+    Mutazione ESEGUITA: senza il ripiego su `_moving_in` (`owners` vuoti ->
+    nessuno) -- rossa."""
+    traccia = {"run_id": "r1",
+               "config": {"condition": [{"condition": "state",
+                                         "entity_id": "person.marta", "state": "home"}]},
+               "trace": {"condition/7/entity_id/0": _risultato("Lavoro", "home")}}
+    risultato = _esecuzione_intera(traccia)["voci"][0]["trace"]["condition/7/entity_id/0"]
+    assert risultato[0]["result"]["state"] == "not_home"
+    senza = {"run_id": "r1", "config": {"condition": [{"condition": "state",
+                                                        "entity_id": "light.sala"}]},
+             "trace": {"condition/7/entity_id/0": _risultato("on", "on")}}
+    assert _esecuzione_intera(senza)["voci"][0]["trace"]["condition/7/entity_id/0"][0][
+        "result"]["state"] == "on"
+
+
+def test_ogni_pagina_della_corta_conta_le_non_lette():
+    """Review Task 5, I3: i nomi delle non lette stanno sulla loro pagina, e
+    la prima si leggeva «lette tutte». Il conto esce su OGNI pagina.
+
+    Mutazione ESEGUITA: contare le non lette della pagina invece di tutte --
+    rossa."""
+    nomi, tracce, chiavi = _dodici_automazioni()
+    chiavi["automation.a04"] = None
+    prima = _esecuzioni(nomi, _q(genere="esecuzioni", limite=5), traces=tracce,
+                        keys=chiavi, unread={})
+    assert prima["non_lette_in_tutto"] == 2 and "non_letti" not in prima
+    # Chi non si legge sta in fondo coi mai partiti, per id: a04 sulla
+    # seconda pagina, a11 sulla terza -- ognuna col suo nome e col conto.
+    for salta, nominate in ((5, ["automation.a04"]), (10, ["automation.a11"])):
+        pagina = _esecuzioni(nomi, _q(genere="esecuzioni", limite=5, salta=salta),
+                             traces=tracce, keys=chiavi, unread={})
+        assert pagina["non_lette_in_tutto"] == 2
+        assert list(pagina["non_letti"]) == nominate
+
+
+def test_il_dal_della_media_e_di_chi_ha_righe_nella_pagina():
+    """Review Task 5, M1.
+
+    Mutazione ESEGUITA: `dal` della media non filtrato sulla pagina -- rossa."""
+    nomi = [f"automation.rifiuto_{n}" for n in range(5)]
+    tracce = {f"automation.10{n}": [_traccia(f"r{n}{k}", 5 - n + k) for k in range(5)]
+              for n in range(5)}
+    uscita = _esecuzioni(nomi, _q(genere="esecuzioni", limite=3), traces=tracce,
+                         keys={f"automation.rifiuto_{n}": f"automation.10{n}"
+                               for n in range(5)}, unread={})
+    assert {v["id"] for v in uscita["voci"]} == {"automation.rifiuto_4"}
+    assert list(uscita["dal"]) == ["automation.rifiuto_4"]
+
+
+def test_l_esito_dice_di_quando_se_non_e_l_ultima_esecuzione_dello_specchio():
+    """Review Task 5, M3: `ultima_esecuzione` e' dello specchio, `esito_ultima`
+    della traccia conservata piu' recente. Quando sono due esecuzioni, la
+    riga dice di quando e' l'esito.
+
+    Mutazione ESEGUITA: non scrivere mai `esito_ultima_del` -- rossa."""
+    nomi, tracce, chiavi = _dodici_automazioni()
+    righe = {v["id"]: v for v in _esecuzioni(nomi, traces=tracce, keys=chiavi,
+                                             unread={})["voci"]}
+    assert "esito_ultima_del" not in righe["automation.a05"]
+    assert righe["automation.a02"]["esito_ultima_del"] == datetime.fromtimestamp(
+        T0 - 3 * 3600, ZoneInfo(ROMA)).isoformat()
 
 
 _REGISTRO = [
@@ -1044,8 +1172,9 @@ def test_gli_errori_si_filtrano_per_livello_e_integrazione():
     di terze parti (`custom_components.<nome>`).
 
     Mutazione ESEGUITA: ignorare `livello` -- rossa; ignorare
-    `integrazione` -- rossa; `_integration_of` che non riconosce
-    `custom_components` -- rossa."""
+    `integrazione` -- rossa; il nome leggibile di `integration_of` al posto
+    dell'identificativo (`found[0]`) -- rossa (giro di correzioni: la
+    lettura propria del logger e' uscita, era un doppione)."""
     assert [v["messaggio"] for v in hh.error_rows(
         _q(genere="errori", livello="WARNING"), _REGISTRO)["voci"]] == ["lento"]
     assert [v["messaggio"] for v in hh.error_rows(
@@ -1079,3 +1208,51 @@ def test_gli_errori_si_impaginano_con_oltre():
     assert "consiglio" in prima["oltre"]
     fuori = hh.error_rows(_q(genere="errori", salta=9), _REGISTRO)
     assert fuori["voci"] == [] and fuori["oltre"]["disponibili"] == 3
+
+
+def test_un_registro_che_non_copre_la_finestra_lo_dice():
+    """Review Task 5, I2: il registro e' una coda limitata. Se la voce piu'
+    vecchia CONSERVATA -- prima dei filtri -- e' dentro la finestra, `da` si
+    sposta li' con `troncata`. Se ce n'e' una di prima (come in `_REGISTRO`),
+    la finestra e' intera.
+
+    Mutazione ESEGUITA: non spostare `da` -- rossa; prendere la piu' vecchia
+    DOPO il filtro del livello -- rossa (`da` diventa quella del WARNING)."""
+    corto = [voce for voce in _REGISTRO if voce.get("timestamp") != T0 - 3 * 86400]
+    uscita = hh.error_rows(_q(genere="errori", ore=168, livello="WARNING"), corto)
+    assert uscita["finestra"]["da"] == datetime.fromtimestamp(
+        T0 - 600, ZoneInfo(ROMA)).isoformat()
+    assert uscita["finestra"]["chiesta_da"] == datetime.fromtimestamp(
+        T0 - 168 * 3600, ZoneInfo(ROMA)).isoformat()
+    assert "riavvio" in uscita["finestra"]["troncata"]
+    intero = hh.error_rows(_q(genere="errori"), _REGISTRO)
+    assert "troncata" not in intero["finestra"]
+
+
+def test_a_parita_di_istante_decide_anche_il_livello():
+    """Review Task 5, M2: due voci nello stesso istante, stessa fonte e stesso
+    messaggio, livelli diversi: l'ordine non dipende da come arrivano.
+
+    Mutazione ESEGUITA: togliere il livello dalla chiave di `_activity` --
+    rossa."""
+    gemelle = [{"level": livello, "message": "uguale", "source": ["a.py", 1],
+                "timestamp": T0 - 5} for livello in ("WARNING", "ERROR")]
+    assert [v["livello"] for v in hh.error_rows(_q(genere="errori"), gemelle)["voci"]] \
+        == ["ERROR", "WARNING"]
+
+
+def test_le_librerie_di_un_integrazione_si_dichiarano_col_filtro():
+    """Review Task 5, M5: `zigpy` scrive per zha col suo nome. La lettura del
+    logger e' quella del primo piano (`mind.report.integration_of`), che
+    nessuna tabella libreria -> integrazione completa: il filtro non le vede,
+    e la risposta lo dice.
+
+    Mutazione ESEGUITA: non scrivere `nota_integrazione` -- rossa."""
+    voci = [*_REGISTRO, {"name": "zigpy.application", "level": "ERROR",
+                         "message": ["radio giu'"], "timestamp": T0 - 30}]
+    tutte = hh.error_rows(_q(genere="errori"), voci)
+    assert tutte["voci"][0]["integrazione"] == "zigpy"
+    assert "nota_integrazione" not in tutte
+    zha = hh.error_rows(_q(genere="errori", integrazione="zha"), voci)
+    assert [v["messaggio"] for v in zha["voci"]] == ["zigbee giu'"]
+    assert "zigpy" in zha["nota_integrazione"]

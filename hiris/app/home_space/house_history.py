@@ -24,6 +24,7 @@ import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
+from ..mind.report import integration_of
 from ..proxy.entity_cache import VALUES
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
@@ -36,7 +37,7 @@ from .house_query import (
     parse_filters,
     select_subjects,
 )
-from .privacy import redact_nested, redact_state
+from .privacy import MOVING_DOMAINS, redact_nested, redact_state
 from .queries import ROWS_MAX
 
 KINDS = ("stati", "valori", "esecuzioni", "errori")
@@ -910,7 +911,17 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
 
     `traces`: chiave -> righe di `trace/list`, gia' sigillate dal gestore;
     `keys`: soggetto -> la sua chiave (`None` se irrisolta); `unread`:
-    chiave -> il motivo per cui Home Assistant non ha risposto."""
+    chiave -> il motivo per cui Home Assistant non ha risposto.
+
+    Revisione del Task 5 (30/09/2026):
+    - `non_lette_in_tutto` esce su OGNI pagina: con i nomi solo sulla loro
+      pagina, la prima si leggeva «lette tutte»;
+    - `dal` della media vale solo per chi ha righe nella pagina;
+    - `ultima_esecuzione` e' `last_triggered` dello specchio, `esito_ultima`
+      e' della traccia conservata piu' recente: possono essere due
+      esecuzioni diverse (la traccia puo' mancare, o lo specchio essere
+      indietro). Quando distano piu' di `_SAME_RUN_S`, la riga dice di quando
+      e' l'esito (`esito_ultima_del`)."""
     zone = query.start.tzinfo
     start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
     out = _frame(query, chosen)
@@ -927,6 +938,7 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
             runs[s.ident], born = _runs_in_window(traces.get(key) or [], start_ts, end_ts)
             if born is not None:
                 since[s.ident] = born
+    unread_count = len(not_read)
     ranked = sorted(chosen.subjects, key=lambda s: _activity(
         s.ident, runs[s.ident][0][0] if runs.get(s.ident) else None))
     if chosen.depth == "corta":
@@ -939,63 +951,185 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
                    "partenze_conservate": len(runs[s.ident]),
                    "ultima_esecuzione": _local(s.last, zone) if s.last else "mai"}
             if runs[s.ident]:
-                row["esito_ultima"] = runs[s.ident][0][1].get("script_execution")
+                newest, trace = runs[s.ident][0]
+                row["esito_ultima"] = trace.get("script_execution")
+                mirror_last = _epoch(s.last)
+                if mirror_last is None or abs(mirror_last - newest) > _SAME_RUN_S:
+                    row["esito_ultima_del"] = _local(newest, zone)
             if s.ident in since:
                 row["dal"] = _local(since[s.ident], zone)
             rows.append(row)
         out["voci"] = rows
         shown = {s.ident for s in page}
-        not_read = {ident: why for ident, why in not_read.items() if ident in shown}
-        since = {ident: when for ident, when in since.items() if ident in shown}
     else:
         per_subject = RECENT_RUNS if chosen.depth == "media" else None
         events = []
         for s in ranked:
             for _began, trace in runs.get(s.ident, [])[:per_subject]:
                 row = _run_row(trace, zone)
-                events.append({"id": s.ident, **row} if chosen.depth == "media" else row)
-        out["voci"], beyond = _page(events, query.who)
+                events.append((s.ident, {"id": s.ident, **row}
+                               if chosen.depth == "media" else row))
+        page, beyond = _page(events, query.who)
+        out["voci"] = [row for _ident, row in page]
+        shown = {ident for ident, _row in page}
         _name_subjects(out, chosen)
         if "soggetto" in out:
             s = chosen.subjects[0]
             out["soggetto"]["ultima_esecuzione"] = _local(s.last, zone) if s.last else "mai"
             if s.ident in since:
                 out["soggetto"]["dal"] = _local(since[s.ident], zone)
-        elif since:
-            out["dal"] = {ident: _local(when, zone) for ident, when in since.items()}
+        else:
+            since = {ident: when for ident, when in since.items() if ident in shown}
+            if since:
+                out["dal"] = {ident: _local(when, zone) for ident, when in since.items()}
+        # Nella media e nella completa i soggetti sono al piu' dieci: le non
+        # lette si nominano tutte, qualunque sia la pagina delle righe.
+        shown = {s.ident for s in chosen.subjects}
+    if chosen.depth == "corta":
+        since = {ident: when for ident, when in since.items() if ident in shown}
+    not_read = {ident: why for ident, why in not_read.items() if ident in shown}
     if since:
         out["conservate"] = _RUNS_KEPT
     if beyond:
         out["oltre"] = _oltre(beyond)
+    if unread_count:
+        out["non_lette_in_tutto"] = unread_count
     if not_read:
         out["non_letti"] = not_read
     return out
 
 
+#: Un `last_triggered` e l'inizio della sua traccia sono lo stesso istante a
+#: meno di millisecondi: oltre due secondi sono due esecuzioni.
+_SAME_RUN_S = 2
+#: Una condizione `state` registra `{result, state, wanted_state}` SENZA
+#: `entity_id` (`helpers/condition.py`, `state()`, tag `2026.9.0`, letto il
+#: 30/09/2026): lo stato vivo di una persona sta li', e `redact_nested` non
+#: lo riconosce. Di chi sia lo dice la configurazione, allo stesso percorso.
+_CONDITION_STATE_KEYS = ("state", "wanted_state")
+
+
+def _config_at(config, path: str):
+    """Il nodo della configurazione a cui corrisponde il percorso di un
+    elemento di traccia, o `None`.
+
+    I percorsi li scrive Home Assistant (`trace_path`, tag `2026.9.0`):
+    `condition/0/entity_id/1`, `condition/0/conditions/2/...` dentro un
+    `and`/`or`, `action/3/if/condition/0/...`. Le differenze dalla
+    configurazione sono tre, e si seguono qui:
+    - la configurazione puo' dire `conditions` dove il percorso dice
+      `condition` (le chiavi al plurale dalla 2024.10), o il contrario;
+    - dentro un elenco il percorso puo' ripeterne il nome (`if/condition/0`
+      per `if: [...]`): il nome si salta, la lista e' gia' lei;
+    - una condizione sola, o un `entity_id` sola, si scrivono senza elenco:
+      l'indice 0 e' lei."""
+    node = config
+    for step in path.split("/"):
+        if isinstance(node, list):
+            if step.isdigit():
+                if int(step) >= len(node):
+                    return None
+                node = node[int(step)]
+            continue
+        if isinstance(node, dict):
+            for key in (step, step + "s", step.removesuffix("s")):
+                if key in node:
+                    node = node[key]
+                    break
+            else:
+                if step != "0":
+                    return None
+            continue
+        if not (isinstance(node, str) and step == "0"):
+            return None
+    return node
+
+
+def _entities_in(node) -> list[str]:
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        return _entities_in(node.get("entity_id"))
+    if isinstance(node, list):
+        return [item for item in node if isinstance(item, str)]
+    return []
+
+
+def _moving_in(config) -> list[str]:
+    """Le entita' che si spostano nominate OVUNQUE nella configurazione."""
+    if isinstance(config, str):
+        return [config] if config.split(".", 1)[0] in MOVING_DOMAINS else []
+    items = config.values() if isinstance(config, dict) else (
+        config if isinstance(config, list) else ())
+    return [found for item in items for found in _moving_in(item)]
+
+
+def _redact_condition_results(trace: dict) -> dict:
+    """Lo stato vivo che le condizioni registrano senza `entity_id`, ridotto
+    a in casa / fuori per chi si sposta (Review Task 5, I1, 30/09/2026).
+
+    Di chi sia lo dice la configurazione allo stesso percorso (`_config_at`).
+    Un percorso che non vi si ritrova non si lascia passare: se la
+    configurazione nomina qualcuno che si sposta, lo stato si riduce come
+    se fosse suo -- una zona scappata costa piu' di un «on» diventato
+    `not_home`."""
+    steps = trace.get("trace")
+    if not isinstance(steps, dict):
+        return trace
+    config = trace.get("config")
+    anyone_moving = _moving_in(config)
+    cleaned = {}
+    for path, elements in steps.items():
+        owners = _entities_in(_config_at(config, str(path)))
+        moving = ([e for e in owners if e.split(".", 1)[0] in MOVING_DOMAINS]
+                  if owners else anyone_moving)
+        if not moving or not isinstance(elements, list):
+            cleaned[path] = elements
+            continue
+        cleaned[path] = [_reduced(element, moving[0]) for element in elements]
+    return {**trace, "trace": cleaned}
+
+
+def _reduced(element, entity_id: str):
+    result = element.get("result") if isinstance(element, dict) else None
+    if not isinstance(result, dict):
+        return element
+    result = dict(result)
+    for key in _CONDITION_STATE_KEYS:
+        if key in result:
+            value = result[key]
+            result[key] = ([redact_state(entity_id, item) for item in value]
+                           if isinstance(value, list) else redact_state(entity_id, value))
+    return {**element, "result": result}
+
+
 def run_detail(query: HistoryQuery, chosen: Chosen, trace: dict) -> dict:
     """Una sola esecuzione passo per passo (`esecuzione` = il `run_id`): la
     traccia intera di `trace/get`, gia' sigillata dal gestore, senza le
-    posizioni di chi si muove (`redact_nested`: l'innesco e le variabili dei
-    passi portano `to_state` interi)."""
+    posizioni di chi si muove: `redact_nested` per gli stati annidati
+    (l'innesco e le variabili dei passi portano `to_state` interi), e
+    `_redact_condition_results` per lo stato che le condizioni registrano
+    senza `entity_id`. La zona configurata in un innesco (`trigger.zone`)
+    resta: e' configurazione, e questo genere e' dei soli amministratori."""
     out = _frame(query, chosen)
     _name_subjects(out, chosen)
-    out["voci"] = [redact_nested(trace)]
+    out["voci"] = [redact_nested(_redact_condition_results(trace))]
     return out
 
 
-def _integration_of(logger_name) -> str | None:
-    """L'integrazione che ha scritto una voce, dal nome del logger:
-    `homeassistant.components.zha.core` -> `zha`,
-    `custom_components.meteo.sensor` -> `meteo`."""
-    parts = str(logger_name or "").split(".")
-    if len(parts) >= 2 and parts[0] == "custom_components":
-        return parts[1]
-    if "components" in parts:
-        index = parts.index("components")
-        if index + 1 < len(parts):
-            return parts[index + 1]
-    return None
-
+#: `integration_of` legge il logger: le librerie scrivono col loro nome
+#: (`zigpy` per zha, `aiohttp`), e il filtro non le riconosce come
+#: dell'integrazione. Nessuna tabella libreria -> integrazione esiste nel
+#: codice: lo si dice, non si indovina (Review Task 5, M5).
+_LIBRARIES_UNFILTERED = ("integrazione si legge dal nome di chi scrive nel registro: le "
+                         "librerie che un'integrazione usa (es. zigpy per zha) scrivono "
+                         "col loro nome e con questo filtro non ci sono -- per vederle, "
+                         "togli integrazione")
+#: Il registro di Home Assistant e' una coda limitata (`max_entries`, 50 se
+#: non si cambia) che si svuota a ogni riavvio: prima della voce piu' vecchia
+#: conservata non si sa (Review Task 5, I2).
+_LOG_KEPT = ("Home Assistant tiene solo le ultime voci del registro, e lo svuota a ogni "
+             "riavvio: la piu' vecchia conservata e' di `da`, prima non si sa")
 
 def _last_message(raw) -> str | None:
     """Home Assistant tiene fino a cinque messaggi per voce (`LogEntry.message`
@@ -1035,17 +1169,30 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
 
     `entries`: le voci di `system_log/list` con `message` ed `exception` GIA'
     passati dal sigillo dei segreti dal gestore (reperto B-1): qui non si
-    sigilla niente, si accorcia."""
+    sigilla niente, si accorcia.
+
+    `finestra` e' quella coperta davvero: il registro e' una coda limitata,
+    e se la voce piu' vecchia CONSERVATA -- di tutte, prima dei filtri -- e'
+    dentro la finestra, `da` si sposta li' con `troncata` (la regola del
+    taglio, Task 4; Review Task 5, I2). Una settimana chiesta a una casa
+    chiacchierona diceva «nessun altro errore» a finestra intera.
+
+    `integrazione` e' la stessa lettura del logger del primo piano
+    (`mind.report.integration_of`), non una seconda."""
     zone = query.start.tzinfo
     start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
     ranked = []
+    retained = [epoch for epoch in (_epoch(entry.get("timestamp"))
+                                    for entry in entries or [] if isinstance(entry, dict))
+                if epoch is not None]
     for entry in entries or []:
         if not isinstance(entry, dict):
             continue
         level = str(entry.get("level") or "").upper() or None
         if query.level and level != query.level:
             continue
-        integration = _integration_of(entry.get("name"))
+        found = integration_of(str(entry.get("name") or ""))
+        integration = found[1] if found else None
         if query.who.platform and integration != query.who.platform:
             continue
         last = _epoch(entry.get("timestamp"))
@@ -1058,13 +1205,20 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
                "ultima": _local(entry.get("timestamp"), zone)}
         if entry.get("exception"):
             row["eccezione"] = _short(_last_line(entry["exception"]))
-        ranked.append((_activity(f"{row['fonte']}|{row['messaggio']}", last), row))
+        ranked.append((_activity(f"{level}|{row['fonte']}|{row['messaggio']}", last),
+                       row))
     ranked.sort(key=lambda item: item[0])
     page, beyond = _page([row for _key, row in ranked], query.who)
     out = {"trovate": len(ranked),
            "escluse": {"nascoste": 0, "servizio": 0, "disabilitate": 0},
            "profondita": "corta", "voci": page,
            "finestra": {"da": query.start.isoformat(), "a": query.end.isoformat()}}
+    if retained and min(retained) > start_ts:
+        out["finestra"]["chiesta_da"] = out["finestra"]["da"]
+        out["finestra"]["da"] = _local(min(retained), zone)
+        out["finestra"]["troncata"] = _LOG_KEPT
+    if query.who.platform:
+        out["nota_integrazione"] = _LIBRARIES_UNFILTERED
     if beyond:
         out["oltre"] = _oltre(beyond)
     return out
