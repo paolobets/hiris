@@ -6,6 +6,7 @@ Raccoglie anche le prove di cablaggio di `tests/test_historian_tools.py`
 (uscito con i quattro strumenti) che restano vere."""
 import copy
 import inspect
+import json
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
@@ -75,8 +76,10 @@ class _Specchio:
     def __init__(self, righe, loaded=True):
         self._righe = list(righe)
         self.loaded = loaded
+        self.letture = 0
 
     def all_states(self):
+        self.letture += 1
         return list(self._righe)
 
 
@@ -187,12 +190,17 @@ def test_la_descrizione_dice_cosa_portano_i_dati_ed_e_piu_corta_delle_quattro():
     controllore, 30/09/2026), in meno dei 7.449 caratteri delle quattro
     descrizioni uscite.
 
-    Mutazione ESEGUITA: tolta la frase su `non_lette_in_tutto` -- rossa."""
+    Mutazione ESEGUITA: tolta la frase su `non_lette_in_tutto` -- rossa.
+    Mutazione ESEGUITA: tolta la frase su `grana: dettaglio` -- rossa.
+    Mutazione ESEGUITA: tolta la frase sui messaggi sigillati -- rossa."""
     testo = next(d for d in KNOWLEDGE_TOOLS if d["name"] == "history")["description"]
     for chiave in ("salta", "oltre", "nota", "conti", "non_lette_in_tutto",
                    "consumato_non_calcolato", "ore_senza_valore", "per_mano_di",
                    "count"):
         assert f"`{chiave}" in testo, chiave
+    # Revisione del Task 7: le due grane per nome, e il sigillo del registro.
+    assert "`grana: dettaglio`" in testo and "`grana: oraria`" in testo
+    assert "sigillati" in testo and "`<secret nome>`" in testo
     assert len(testo) < 7449 * 0.75
     assert "storia" not in testo.lower().replace("storico", "")
 
@@ -353,6 +361,42 @@ async def test_un_contatore_con_last_reset_non_inventa_il_consumato(tmp_path):
         "history", {"genere": "valori", "riferimento": "sensor.energia_oggi", "ore": 6})
     riga = esito["voci"][0]
     assert "consumato_non_calcolato" in riga and "consumato" not in riga
+
+
+@pytest.mark.asyncio
+async def test_i_valori_leggono_lo_specchio_una_volta_sola(tmp_path):
+    """Revisione del Task 7: `state_class` e lo specchio derivato vengono
+    dalla STESSA `all_states()` -- due letture in istanti diversi possono
+    dare due case diverse (docstring di `_mirror`).
+
+    Mutazione ESEGUITA: `_value_history` che rilegge con `_state_readings()`
+    -- rossa (due letture)."""
+    specchio = _history_mirror()
+    ha = _HA(serie={"sensor.cucina_t": [{"quando": _ADESSO.isoformat(), "valore": "19"}]})
+    esito = await _history_dispatcher(tmp_path, ha, cache=specchio).dispatch(
+        "history", {"genere": "valori", "riferimento": "sensor.cucina_t"})
+    assert "errore" not in esito
+    assert specchio.letture == 1
+
+
+@pytest.mark.asyncio
+async def test_le_esecuzioni_leggono_la_casa_una_volta_sola(tmp_path):
+    """Revisione del Task 7: le chiavi degli script si prendono dalla casa
+    che `choose` ha gia' letto.
+
+    Mutazione ESEGUITA: `_run_history` che rilegge `self._home_space.read()`
+    -- rossa (due letture)."""
+    d = _history_dispatcher(tmp_path, _HA())
+    letture = []
+    leggi = d._home_space.read
+
+    def _conta():
+        letture.append(1)
+        return leggi()
+
+    d._home_space.read = _conta
+    await d.dispatch("history", {"genere": "esecuzioni", "riferimento": "script.buonanotte"})
+    assert len(letture) == 1
 
 
 # --- i pezzi dello storico ------------------------------------------------------
@@ -628,3 +672,34 @@ async def test_un_segreto_dentro_l_eccezione_non_arriva_al_modello(tmp_path):
     voce = esito["voci"][0]
     assert "<secret nas_password>" in voce["eccezione"]
     assert "<secret nas_password>" in voce["messaggio"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("segreto,testo", [
+    ("Zq9-segreto-77", "login rifiutato per Zq9-segreto-77."),
+    ("hunter2", "connessione a http://admin:hunter2@host fallita"),
+    ("Xk42tok", "richiesta con token=Xk42tok&y=1 rifiutata"),
+    ("Qw8secret", "chiamata Qw8secret/retry fallita"),
+    # Una password col punto e il `!`: la grana stretta la tiene intera.
+    ("pa.ss!", "credenziali 'pa.ss!' rifiutate"),
+    ("Hunter2!", "accesso negato per Hunter2!."),
+])
+async def test_un_segreto_attaccato_alla_punteggiatura_non_arriva_al_modello(
+        tmp_path, segreto, testo):
+    """Revisione del Task 7: quattro fughe provate su un `secrets.yaml` vero
+    col solo separatore stretto -- il punto a fine frase, un indirizzo con
+    credenziali, una query, un percorso.
+
+    Mutazione ESEGUITA: solo la grana stretta (senza `_SEAL_BROAD_RE`) --
+    rossa sull'indirizzo, la query e il percorso. Mutazione ESEGUITA: nessun
+    bordo tolto (`_SEAL_EDGES` vuoti) -- rossa sul punto a fine frase."""
+    segreti = tmp_path / "secrets.yaml"
+    segreti.write_text(f"la_chiave: {json.dumps(segreto)}\n", encoding="utf-8")
+    registro = [{"level": "ERROR", "name": "homeassistant.components.x",
+                 "message": [testo], "exception": f"Traceback:\nValueError: {testo}"}]
+    d = ToolDispatcher(None, None, ha=_HA(registro=registro))
+    d._remembered_seal = SecretSeal.from_file(segreti)
+    esito = await d.dispatch("history", {"genere": "errori"})
+    assert segreto not in str(esito)
+    assert "<secret la_chiave>" in esito["voci"][0]["messaggio"]
+    assert "<secret la_chiave>" in esito["voci"][0]["eccezione"]

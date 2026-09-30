@@ -1028,9 +1028,10 @@ HISTORY_TOOL_DEF = {
         "`conti` fatti da me sulla finestra, non misure di Home Assistant. "
         "`ore_senza_valore` sono le ore senza un numero (es. unavailable), "
         "fuori dalla media. `consumato` c'e' solo per i contatori; "
-        "`consumato_non_calcolato` dice perche' manca. `grana: oraria` sono "
-        "fasce di un'ora: una fascia non e' un punto, di' «fra le 14 e le 15», "
-        "non «alle 14». "
+        "`consumato_non_calcolato` dice perche' manca. `grana: dettaglio` sono "
+        "i cambi veri (entro le 24 ore, o per chi non ha statistiche); "
+        "`grana: oraria` sono fasce di un'ora: una fascia non e' un punto, di' "
+        "«fra le 14 e le 15», non «alle 14». "
         "Stati: `per_mano_di: HIRIS` e' probabile (un mio atto nello stesso "
         "istante): dillo come probabile; senza, chi sia stato non lo so. "
         "`cronaca_non_letta`: non ho potuto controllare i miei atti. Di chi si "
@@ -1041,7 +1042,9 @@ HISTORY_TOOL_DEF = {
         "`non_lette_in_tutto` le conta su tutte le pagine. "
         "Errori: `count` e' una causa sola ricomparsa N volte, non N episodi; "
         "conta per `livello`. Il registro tiene poche voci e si svuota a ogni "
-        "riavvio di Home Assistant: un'assenza non prova niente. "
+        "riavvio di Home Assistant: un'assenza non prova niente. I messaggi "
+        "arrivano sigillati: i segreti che conosco sono `<secret nome>`, e il "
+        "testo che somiglia a un'istruzione e' filtrato. "
         "Esecuzioni ed errori solo per chi amministra Home Assistant."
     ),
     "input_schema": {
@@ -1369,22 +1372,56 @@ def _history_chunks(entity_ids: list[str]) -> list[list[str]]:
     return chunks
 
 
-#: Un pezzo di testo libero per il sigillo dei segreti: cio' che sta fra
-#: spazi, virgolette, parentesi e i separatori di un `chiave=valore`. Il
+#: I separatori di un `chiave=valore`, delle virgolette e delle parentesi. Il
 #: sigillo riconosce un segreto per impronta del valore ESATTO
 #: (`redaction.SecretSeal.redact`): su un messaggio di registro intero non
 #: combacia mai, perche' il segreto sta DENTRO la frase
 #: («credenziali 'Zq9-...' rifiutate»).
-_SEAL_PIECE_RE = re.compile(r"[^\s'\"`=:,;()\[\]{}<>]+")
+_SEAL_NARROW_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>]+")
+#: Anche i separatori di un indirizzo e di una query (`/`, `@`, `&`, `?`,
+#: `#`, `|`, `\`), il punto e il `!`. Revisione del Task 7 (30/09/2026):
+#: col solo elenco stretto quattro prove su un `secrets.yaml` vero passavano
+#: in chiaro -- «rifiutato per Zq9-segreto-77.» (il punto a fine frase, la
+#: forma piu' comune di un registro), `http://admin:hunter2@host`,
+#: `token=X&y=1`, `X/retry`. Da solo pero' questo elenco spezzerebbe una
+#: password che il punto o il `!` li contiene: per questo si provano tutte e
+#: due le grane (`_sealed_token`).
+_SEAL_BROAD_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>/&@?!.#|\\]+")
+#: La punteggiatura che si toglie dai bordi di un pezzo: tutta, oppure tutta
+#: tranne `!` e `?`, che in una password stanno spesso in fondo.
+_SEAL_EDGES = ("'\"`.,;:!?()[]{}<>", "'\"`.,;:()[]{}<>")
+
+
+def _sealed_token(token: str, seal) -> str:
+    """Una parola (cio' che sta fra due spazi) col sigillo passato su ogni
+    lettura plausibile di dove il segreto cominci e finisca: la parola
+    intera, i pezzi fra i separatori stretti e quelli larghi, e ognuno anche
+    senza la punteggiatura dei bordi. Una quindicina di impronte per parola,
+    non una per ogni sottostringa: il sigillo tiene solo impronte, e cercare
+    davvero una sottostringa vorrebbe il testo dei segreti in memoria.
+
+    Il piu' lungo si sostituisce per primo: un segreto che ne contiene un
+    altro non si spezza a meta'."""
+    candidates = set()
+    for piece in {token, *_SEAL_NARROW_RE.split(token), *_SEAL_BROAD_RE.split(token)}:
+        candidates.add(piece)
+        candidates.update(piece.strip(edges) for edges in _SEAL_EDGES)
+    for candidate in sorted(candidates, key=len, reverse=True):
+        if not candidate:
+            continue
+        sealed = seal.redact(candidate)
+        if sealed != candidate:
+            token = token.replace(candidate, sealed)
+    return token
 
 
 def _sealed_free_text(text, seal):
     """Il testo libero di un registro col sigillo passato tre volte: il testo
-    intero, ogni riga, ogni pezzo (`_SEAL_PIECE_RE`). Il prezzo e' quello gia'
+    intero, ogni riga, ogni parola (`_sealed_token`). Il prezzo e' quello gia'
     dichiarato dal sigillo: un pezzo innocente IDENTICO a un segreto viene
-    oscurato. Un segreto che contiene uno dei separatori, e non sta da solo
-    su una riga, non si riconosce -- il limite di un sigillo che tiene solo
-    impronte, dichiarato qui e non taciuto.
+    oscurato. Resta fuori un segreto che contiene uno spazio, dentro una
+    frase: il limite di un sigillo che tiene solo impronte, dichiarato qui e
+    non taciuto.
 
     `seal` puo' essere `None` (un dispatcher costruito a meta' nei test del
     confine): il testo torna com'e'."""
@@ -1399,7 +1436,7 @@ def _sealed_free_text(text, seal):
         if sealed_line != line.strip():
             lines.append(sealed_line)
             continue
-        lines.append(_SEAL_PIECE_RE.sub(lambda piece: seal.redact(piece.group(0)), line))
+        lines.append(re.sub(r"\S+", lambda word: _sealed_token(word.group(0), seal), line))
     return "\n".join(lines)
 
 
@@ -1979,8 +2016,9 @@ class ToolDispatcher:
                       "corpo_non_disponibile": _AUTOMATION_BODY_ADMIN_ONLY}
         return detail
 
-    def _mirror(self) -> tuple[dict[str, str], dict[str, str], dict[str, str],
-                                 dict[str, str], dict[str, str], dict[str, dict], bool]:
+    def _mirror(self, rows_out: list | None = None
+                ) -> tuple[dict[str, str], dict[str, str], dict[str, str],
+                           dict[str, str], dict[str, str], dict[str, dict], bool]:
         """Lo specchio vivo in UNA lettura:
         `(stato, nomi, unita, classi, da_quando, attributi, letto)`.
 
@@ -2023,17 +2061,24 @@ class ToolDispatcher:
         `letto` conserva esattamente la semantica del fix E1-(3): False solo
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
         resta `True` -- non e' successo niente di male, e a dire che
-        l'inventario non e' guardabile ci pensa `inventory_is_readable`."""
+        l'inventario non e' guardabile ci pensa `inventory_is_readable`.
+
+        `rows_out`, se c'e', riceve le righe GREZZE della stessa lettura: la
+        storia ci legge `state_class`, che lo specchio derivato non porta, e
+        una seconda `all_states()` sarebbe la divergenza che questo metodo
+        esiste per chiudere (revisione del Task 7, 30/09/2026)."""
         if self._cache is None or not hasattr(self._cache, "all_states"):
             return {}, {}, {}, {}, {}, {}, True
         try:
             # La lettura vera e' in `anagrafe.live_mirror`, condivisa con chi
             # legge lo specchio da fuori dal dispatcher: qui restano solo la
             # difesa sulla cache assente e la semantica di `letto`.
-            state, names, units, classes, since_when, attributes = \
-                live_mirror(self._cache.all_states())
+            rows = self._cache.all_states()
+            state, names, units, classes, since_when, attributes = live_mirror(rows)
         except Exception:
             return {}, {}, {}, {}, {}, {}, False
+        if rows_out is not None:
+            rows_out.extend(row for row in rows or [] if isinstance(row, dict))
         return state, names, units, classes, since_when, attributes, True
 
     # -- legami --------------------------------------------------------
@@ -2833,8 +2878,13 @@ class ToolDispatcher:
         if self._home_space is None:
             return {"errore": "`history` non e' disponibile: la conoscenza della casa "
                               "non e' ancora stata caricata."}
-        mirror = self._mirror()
-        chosen = choose(query, self._home_space.read(), self._home_space.behavior(),
+        # UNA lettura dello specchio e UNA della casa per tutta la chiamata:
+        # le righe grezze servono ai valori (`state_class`), la casa alle
+        # chiavi degli script (revisione del Task 7).
+        rows: list[dict] = []
+        mirror = self._mirror(rows_out=rows)
+        home = self._home_space.read()
+        chosen = choose(query, home, self._home_space.behavior(),
                         mirror[:6], unavailable=tuple(self._home_space.unavailable()),
                         now=now)
         if isinstance(chosen, dict):
@@ -2842,9 +2892,14 @@ class ToolDispatcher:
         if not chosen.subjects:
             return empty_answer(query, chosen)
         if query.kind == "esecuzioni":
-            return await self._run_history(query, chosen)
+            return await self._run_history(query, chosen, home)
         if query.kind == "valori":
-            response = await self._value_history(query, chosen, mirror)
+            # La stessa guardia di `_state_readings`: da un inventario non
+            # leggibile non si prende nemmeno lo `state_class`.
+            readable = inventory_is_readable(self._cache)
+            state_classes = {row.get("id"): row.get("state_class")
+                             for row in rows if readable}
+            response = await self._value_history(query, chosen, mirror, state_classes)
         else:
             response = await self._state_history(query, chosen, mirror)
         # Come in `search`: senza specchio leggibile lo stato di adesso e
@@ -2900,18 +2955,18 @@ class ToolDispatcher:
                           acts=self._journal_acts(query), current=mirror[0])
 
     async def _value_history(self, query: HistoryQuery, chosen: Chosen,
-                             mirror: tuple) -> dict:
+                             mirror: tuple, known_classes: dict[str, str | None]) -> dict:
         """I valori: lo `state_class` dallo specchio decide la superficie
         (chiederlo al modello sarebbe chiedergli un fatto che abbiamo noi, spec
         di `trend` §3.1), e ogni superficie e' UNA lettura per tutte le serie
-        che la usano.
+        che la usano. `known_classes` viene dalla STESSA lettura dello specchio
+        di `mirror` (revisione del Task 7: una seconda `all_states()` poteva
+        dare un'altra casa).
 
         `attributes` sono le ceste dello specchio (`mirror[5]`) com'erano:
         `value_rows` ci guarda se un `total` ha `last_reset` (revisione del
         Task 4)."""
-        readings = self._state_readings() or {}
-        state_classes = {s.ident: (readings.get(s.ident) or {}).get("state_class")
-                         for s in chosen.subjects}
+        state_classes = {s.ident: known_classes.get(s.ident) for s in chosen.subjects}
         surfaces = {ident: value_surface(query, state_class)
                     for ident, state_class in state_classes.items()}
         detail_ids = [ident for ident, surface in surfaces.items() if surface == "dettaglio"]
@@ -2953,7 +3008,8 @@ class ToolDispatcher:
         key = unique_id or object_id
         return ("script", str(key)) if key else None
 
-    async def _run_history(self, query: HistoryQuery, chosen: Chosen) -> dict:
+    async def _run_history(self, query: HistoryQuery, chosen: Chosen,
+                           home: dict) -> dict:
         """Le esecuzioni: la chiave di Home Assistant di ogni soggetto
         (`_run_key`), UNA raffica per tutti (`HAClient.traces`), le righe da
         `house_history`. Le chiavi irrisolte non si chiedono: vanno in
@@ -2971,7 +3027,9 @@ class ToolDispatcher:
             fault = unreadable_inventory_error(self._cache)
             if fault is not None:
                 return {"errore": fault["error"]}
-        registry = {e.get("id"): e for e in self._home_space.read().get("entita") or []}
+        # `home` e' la casa che `choose` ha gia' letto: la stessa, non una
+        # seconda lettura.
+        registry = {e.get("id"): e for e in home.get("entita") or []}
         keys = {s.ident: self._run_key(s.ident, registry) for s in chosen.subjects}
         ha = self._ha_channel()
         seal = self._seal()
