@@ -662,7 +662,8 @@ delle tracce degli script (`script.<unique_id>`) su una casa con script tracciat
 
 `origine: emerso costruendo, registro del piano «la storia»` · `docs/design/2026-09-30-la-storia.md §6, §8`
 
-Cinque cose che nessuna prova in locale puo' dire, perche' dipendono da una casa vera:
+Sette cose che nessuna prova in locale puo' dire, perche' dipendono da una casa vera, e un minore
+da ottimizzare sui numeri veri:
 
 - **Lo spezzettamento della richiesta allo storico.** `/api/history/period` porta gli id nell'URL e
   il server aiohttp rifiuta una riga di richiesta oltre 8.190 byte: con ~300 entita' si
@@ -671,6 +672,8 @@ Cinque cose che nessuna prova in locale puo' dire, perche' dipendono da una casa
   ricerca che scelga ~300 entita' (per esempio `history(genere=valori, tipo=sensor)` su tutta la casa).
 - **Le domande #14 e #26 della batteria**, le due che la spec nomina: #14 (`da="ieri"`, consumato,
   fasce orarie di Home Assistant oltre le 24 ore) e #26. Si leggono coi cinque criteri di §8.
+  Sulla #14 la riga deve portare `al` (l'ora in corso non e' ancora compilata: revisione finale,
+  I-1) e la risposta del modello deve dirlo.
 - **Uno script rinominato dall'interfaccia.** La chiave della traccia e' `unique_id` del registro
   (il nome dell'oggetto cambia rinominando, l'unique_id no): verificato alla fonte di Home
   Assistant, mai su una casa con uno script rinominato.
@@ -678,6 +681,14 @@ Cinque cose che nessuna prova in locale puo' dire, perche' dipendono da una casa
   promessa sincrona e dalla promessa del ponte. Le prove coprono il rifiuto, non la casa vera.
 - **Il sigillo coi segreti veri**: `message` ed `exception` del registro passano dal sigillo; le
   prove hanno usato un `secrets.yaml` di prova. Va provato col file vero della casa.
+- **`history()` senza argomenti** (revisione finale, I-2). La lettura senza filtri e' la casa
+  intera: misurare sulla casa vera il tempo e i byte trasferiti da Home Assistant.
+- **Il peso di un `run_detail` vero** (revisione finale, I-3). Misurare la traccia di una
+  esecuzione di un'automazione lunga; se passa i ~60 KB, decidere se togliere `context` o
+  `blueprint_inputs`, o dichiarare un taglio.
+- **Frasi lunghe ripetute su ogni riga** (minore M-1, rinviato). `_CYCLES_UNSEEN` e
+  `UNRESOLVED_RUNS` si ripetono riga per riga: su una risposta di 60 contatori sono circa il 60%
+  del testo. Si dicono una volta in cima; si ottimizza dopo, sui numeri veri.
 
 ### Minori rinviati dalla costruzione di «la storia» — aperta il 30/09/2026
 
@@ -700,9 +711,16 @@ Tutti dichiarati, nessuno mette in pericolo un dato; si raccolgono qui perche' n
 - **Riservatezza delle tracce** (Task 5). Se il percorso di una condizione non si riconosce e nella
   configurazione c'e' un'entita' che si muove, anche lo stato di un'entita' che non si muove viene
   ridotto: sbaglia dalla parte sicura (provato).
-- **Due `except Exception` morti** (Task 8) attorno a `_ws_request`, che non solleva: in
-  `get_system_health` (`ha_client.py`, ~1037) e nella lettura dei campi estesi del registro
-  (~2346). Il resto dei morti e' gia' uscito nella fetta.
+- **Un `except Exception` morto** (Task 8) attorno a `_ws_request`, che non solleva: nella
+  lettura dei campi estesi del registro (`ha_client.py`, ~2350). L'altro stava in
+  `get_system_health`, uscito senza chiamanti con la revisione finale (M-4).
+- **I bilanci non seminano niente** (emerso nella revisione finale, M-4, 30/09/2026).
+  `server.build_balances` sceglie i candidati dalle direzioni che riceve, e l'unico chiamante
+  (`_aggrega_ieri`) passa `directions={}`: nessun dispositivo diventa candidato, la funzione torna
+  `([], 0)` e `_balance_recipe_for` non semina nessuna ricetta. Il commento accanto alla chiamata
+  diceva il contrario. `mind/knowledge.directions_by_translation_key` e' rimasta senza chiamanti
+  di produzione (la usava solo `HAClient.energy_directions`, uscito). Da decidere: le direzioni
+  tornano da un'altra fonte, o i bilanci e la funzione escono. Non riprogettato nella fetta.
 - **Il cancello dei nomi** (Task 2, Task 9). Il confronto per nome e' una sottostringa: una
   reimplementazione con un altro nome passa. L'elenco delle eccezioni (`_ECCEZIONI_GATE`) confronta
   file piu' sottostringa, non il letterale intero: un `==` sarebbe piu' stretto.
