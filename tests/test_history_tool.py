@@ -192,8 +192,11 @@ def test_la_descrizione_dice_cosa_portano_i_dati_ed_e_piu_corta_delle_quattro():
 
     Mutazione ESEGUITA: tolta la frase su `non_lette_in_tutto` -- rossa.
     Mutazione ESEGUITA: tolta la frase su `grana: dettaglio` -- rossa.
-    Mutazione ESEGUITA: tolta la frase sui messaggi sigillati -- rossa."""
+    Mutazione ESEGUITA: tolta la frase sui messaggi sigillati -- rossa.
+    Mutazione ESEGUITA: tolta la frase su `al` (la coda delle fasce orarie,
+    revisione finale) -- rossa."""
     testo = next(d for d in KNOWLEDGE_TOOLS if d["name"] == "history")["description"]
+    assert "`al`" in testo and "compilata" in testo
     for chiave in ("salta", "oltre", "nota", "conti", "non_lette_in_tutto",
                    "consumato_non_calcolato", "ore_senza_valore", "per_mano_di",
                    "count"):

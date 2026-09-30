@@ -708,6 +708,49 @@ def test_una_serie_nata_dopo_lo_dice_sulla_sua_riga():
     assert righe["sensor.temperatura"]["media"] == 20.5
 
 
+def _fascia(inizio: str, fine: str | None, stato: float, cambio: float) -> dict:
+    fascia = {"inizio": inizio, "minimo": None, "massimo": None, "media": None,
+              "stato": stato, "cambio": cambio}
+    if fine is not None:
+        fascia["fine"] = fine
+    return fascia
+
+
+def test_le_fasce_orarie_che_finiscono_prima_di_adesso_lo_dicono_con_al():
+    """Revisione finale della fetta (I-1, 30/09/2026): Home Assistant legge
+    le fasce orarie solo dalle ore gia' COMPILATE (`Statistics`, tag
+    2026.9.0), e l'ora in corso non c'e' mai. La #14, «oggi contro ieri»
+    (`da="ieri"`), finisce alle 16:00 UTC mentre `finestra.a` dice 16:40: la
+    riga porta `al` e il consumato e' quello fino a li'. Una fascia senza
+    `fine` vale un'ora dal suo inizio.
+
+    Mutazione ESEGUITA: non scrivere `al` sulla riga -- rossa.
+    Mutazione ESEGUITA: `<=` al posto di `<` in `_bands_until` -- rossa
+    (la finestra che finisce all'ora piena porta `al` falso)."""
+    fasce = {"sensor.energia": [
+        _fascia("2026-09-29T14:00:00+00:00", "2026-09-29T15:00:00+00:00", 1.0, 0.5),
+        _fascia("2026-09-29T15:00:00+00:00", "2026-09-29T16:00:00+00:00", 1.4, 0.4)]}
+    uscita = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], fasce=fasce,
+                     superfici={"sensor.energia": "oraria"},
+                     classi={"sensor.energia": "total_increasing"})
+    riga = uscita["voci"][0]
+    assert uscita["finestra"]["a"] == "2026-09-29T18:40:00+02:00"
+    assert riga["al"] == "2026-09-29T18:00:00+02:00"
+    assert riga["consumato"] == 0.9
+    senza_fine = {"sensor.energia": [
+        _fascia("2026-09-29T15:00:00+00:00", None, 1.4, 0.4)]}
+    riga = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], fasce=senza_fine,
+                   superfici={"sensor.energia": "oraria"},
+                   classi={"sensor.energia": "total_increasing"})["voci"][0]
+    assert riga["al"] == "2026-09-29T18:00:00+02:00"
+    all_ora_piena = _q(genere="valori", da="2026-09-27T16:00:00+00:00",
+                       a="2026-09-29T16:00:00+00:00")
+    riga = _valori(all_ora_piena, ["sensor.energia"], fasce=fasce,
+                   superfici={"sensor.energia": "oraria"},
+                   classi={"sensor.energia": "total_increasing"})["voci"][0]
+    assert "al" not in riga
+
+
 def _lunga():
     return [_punto(datetime.fromtimestamp(T0 - 86_000 + i * 280, ZoneInfo("UTC"))
                    .isoformat(), str(i)) for i in range(300)]

@@ -557,7 +557,12 @@ def value_surface(query: HistoryQuery, state_class: str | None) -> str:
     ha statistiche va a fasce (`ha_vocabulary.produces_statistics`: non
     `bool(state_class)`, o una banderuola `measurement_angle` riceverebbe un
     elenco vuoto -- «non e' mai cambiata»). Le ore sono quelle VERE,
-    dall'epoch (`HistoryQuery.hours`)."""
+    dall'epoch (`HistoryQuery.hours`).
+
+    Il prezzo di `oraria` (revisione finale della fetta, 30/09/2026): le
+    fasce sono solo le ore gia' compilate da Home Assistant, e l'ora in corso
+    manca in fondo. Non si rimedia qui: la riga lo dichiara con `al`
+    (`_bands_until`)."""
     if query.hours <= DETAIL_MAX_HOURS:
         return "dettaglio"
     return "oraria" if ha_vocabulary.produces_statistics(state_class) else "dettaglio"
@@ -729,6 +734,31 @@ def _in_zone(point: dict, keys: tuple[str, ...], zone) -> dict:
     return {**point, **{key: _local(point.get(key), zone) for key in keys if key in point}}
 
 
+def _bands_until(bands: list[dict], end_ts: float) -> float | None:
+    """La fine dell'ultima fascia, se cade PRIMA della fine chiesta, o
+    `None`. Lo specchio di `_born_since` sulla coda (revisione finale della
+    fetta, 30/09/2026): Home Assistant legge le fasce orarie solo dalla
+    tabella `Statistics`, cioe' le ore gia' COMPILATE
+    (`recorder/statistics.py`, tag 2026.9.0: `table = Statistics if period
+    != "5minute" else StatisticsShortTerm`). L'ora in corso non c'e' mai: da
+    0 a oltre 60 minuti mancano in fondo alla finestra, e `finestra.a` dice
+    «adesso». La riga lo dice con `al`.
+
+    Una fascia senza `fine` leggibile vale un'ora dal suo inizio: e' la
+    fascia di `period="hour"`, per definizione."""
+    ends = []
+    for band in bands:
+        until = _epoch(band.get("fine"))
+        if until is None:
+            since = _epoch(band.get("inizio"))
+            until = None if since is None else since + 3600
+        if until is not None:
+            ends.append(until)
+    if ends and max(ends) < end_ts:
+        return max(ends)
+    return None
+
+
 def _born_since(points: list[dict], key: str, start_ts: float,
                 slack: float) -> float | None:
     """Il primo istante di una serie che comincia DOPO l'inizio chiesto (oltre
@@ -753,17 +783,22 @@ def _value_row(s: Subject, query: HistoryQuery, depth: str, *, surface: str,
     """(riga, punti letti, ultima attivita' nella finestra) di UNA serie. I
     punti vuoti dicono «nessuna registrazione»; una riga con `errore` ha
     punti ma illeggibili. Una serie nata dentro la finestra porta `dal` e i
-    suoi conti partono da li' (revisione del Task 4, 30/09/2026)."""
+    suoi conti partono da li' (revisione del Task 4, 30/09/2026). Una serie
+    a fasce che finisce prima della fine chiesta porta `al` -- l'ora in corso
+    Home Assistant non l'ha ancora compilata (`_bands_until`), e i conti si
+    fermano li'."""
     zone = query.start.tzinfo
     start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
     row: dict = {"id": s.ident, "nome": s.name}
     if unit:
         row["unita"] = unit
+    until = None
     if surface == "oraria":
         points = bands
         if any(_epoch(p.get("inizio")) is None for p in points):
             return {**row, "errore": _UNREADABLE_BAND}, points, None
         born = _born_since(points, "inizio", start_ts, _COVERAGE_SLACK_S)
+        until = _bands_until(points, end_ts)
         counts = _band_counts(points, state_class)
         activity = _band_activity(points)
         keys: tuple[str, ...] = ("inizio", "fine")
@@ -779,6 +814,8 @@ def _value_row(s: Subject, query: HistoryQuery, depth: str, *, surface: str,
         keys = ("quando",)
     if born is not None:
         row["dal"] = _local(born, zone)
+    if until is not None:
+        row["al"] = _local(until, zone)
     if counts:
         row.update(counts)
         row["conti"] = COUNTED

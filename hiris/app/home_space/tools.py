@@ -984,7 +984,8 @@ CONFIRM_TOOL_DEF = {
 # dato alla risposta chiavi che la prima stesura di questa descrizione non
 # nominava -- `salta` che scorre voci diverse secondo la profondita', `oltre`
 # che dice anche «oltre la fine», `nota` col totale delle escluse, `conti`,
-# `ore_senza_valore`, `consumato_non_calcolato`, `non_lette_in_tutto`, `dal`.
+# `ore_senza_valore`, `consumato_non_calcolato`, `non_lette_in_tutto`, `dal`,
+# `al` (la coda delle fasce orarie, revisione finale della fetta).
 # Una chiave che il modello non sa leggere e' una chiave che non esiste. Il
 # testo resta sotto i tre quarti delle quattro descrizioni uscite
 # (`tests/test_history_tool.py` lo misura). Al modello lo strumento si
@@ -1020,7 +1021,9 @@ HISTORY_TOOL_DEF = {
         "escluse, e se dai un numero di' anche quelle. "
         "`finestra` e' il periodo DAVVERO coperto: con `chiesta_da` e "
         "`troncata` mancano i dati piu' vecchi -- dillo. `dal` su una riga: "
-        "quella serie, o le esecuzioni conservate, cominciano dopo l'inizio. "
+        "quella serie, o le esecuzioni conservate, cominciano dopo l'inizio; "
+        "`al`: le sue fasce finiscono li', l'ora in corso non e' ancora "
+        "compilata. "
         "`nessuna_registrazione` non vuol dire «non e' mai cambiato». Un "
         "`errore` vuol dire che Home Assistant non ha risposto: non concludere "
         "niente sulla casa. "
