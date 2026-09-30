@@ -34,7 +34,8 @@ l'`object_id`): la catena e' verificata sui tag rilasciati `2024.7.0` e
 
 La proprieta' che questi test sorvegliano adesso e' quindi: **cio' che il
 chiamante passa arriva a `item_id` TALE E QUALE, senza essere spaccato,
-tagliato o ricomposto**, e il `domain` e' la costante `"automation"`. Per
+tagliato o ricomposto**, e il `domain` e' quello che il chiamante passa (`"automation"` per i vecchi
+lettori, che delegano a `traces`/`trace`; `"script"` per gli script). Per
 poterla vedere davvero, l'id usato in tutto il file e' un timbro numerico
 come quelli che l'interfaccia di HA genera (`"1771346155970"`) e che NON
 somiglia a nessun `object_id`: con `"luci_sera"` sia da una parte sia
@@ -53,15 +54,20 @@ class _FakeConnection:
     `test_ha_client_related_problems.py`): non se ne inventa una nuova per
     verticale."""
 
-    def __init__(self, response=None, raises=False):
+    def __init__(self, response=None, raises=False, replies=None):
         self.response = response
         self.raises = raises
+        self.replies = replies  # una risposta per comando, come `_ws_batch` vero
         self.commands = []
+        self.batches = []
 
     async def _ws_batch(self, commands, timeout=10.0):
         self.commands.extend(commands)
+        self.batches.append(list(commands))
         if self.raises:
             raise OSError("HA muto")
+        if self.replies is not None:
+            return list(self.replies)
         return [self.response]
 
 
@@ -293,19 +299,6 @@ async def test_every_trace_failure_shape_says_error_not_an_empty_dict(fake, why)
     assert "traccia" not in outcome
 
 
-class _FakeBatch:
-    """Una risposta per comando, nell'ordine in cui partono: la raffica vera
-    (`_ws_batch`) ne manda N su una connessione e ne raccoglie N."""
-
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.batches = []
-
-    async def _ws_batch(self, commands, timeout=10.0):
-        self.batches.append(list(commands))
-        return list(self.responses)
-
-
 @pytest.mark.asyncio
 async def test_the_runs_of_many_automations_travel_in_one_batch():
     """Spec «la storia» §8.3: «perche' sono partite le automazioni dei
@@ -313,7 +306,7 @@ async def test_the_runs_of_many_automations_travel_in_one_batch():
 
     Mutazione ESEGUITA: un `_ws_batch` per chiave -- rossa su
     `len(fake.batches)`."""
-    fake = _FakeBatch([{"result": [_short_trace(run_id="a")]}, {"result": []}])
+    fake = _FakeConnection(replies=[{"result": [_short_trace(run_id="a")]}, {"result": []}])
     outcome = await _client(fake).traces([("automation", _CONFIG_ID),
                                           ("script", "buonanotte")])
     assert len(fake.batches) == 1
@@ -331,23 +324,52 @@ async def test_a_refused_key_is_named_and_the_others_answer():
 
     Mutazione ESEGUITA: il primo rifiuto rende `errore` tutta la risposta
     -- rossa."""
-    fake = _FakeBatch([{"error": {"message": "non trovato"}},
-                       {"result": [_short_trace()]}, None])
+    fake = _FakeConnection(replies=[{"error": {"message": "non trovato"}},
+                                    {"result": [_short_trace()]}, None,
+                                    {"result": {"non": "una lista"}}])
     outcome = await _client(fake).traces([("automation", "1"), ("automation", "2"),
-                                          ("automation", "3")])
+                                          ("automation", "3"), ("automation", "4")])
     assert outcome["non_letti"] == {"automation.1": "non trovato",
-                                    "automation.3": "risposta in forma inattesa"}
+                                    "automation.3": "Home Assistant non ha risposto in tempo",
+                                    "automation.4": "risposta in forma inattesa"}
     assert list(outcome["tracce"]) == ["automation.2"]
 
 
 @pytest.mark.asyncio
-async def test_a_failed_batch_says_error_never_no_runs():
-    """Una raffica che non parte e' un `errore`, mai «nessuna esecuzione».
+async def test_a_dead_connection_says_error_never_no_runs():
+    """`_ws_batch` vero NON solleva: connessione caduta, auth rifiutata o
+    timeout totale tornano `[None, None, ...]` (`tests/test_ws_batch.py`). Una
+    raffica in cui nessuno ha risposto e' un `errore`, mai «nessuna
+    esecuzione» ne' un `non_letti` di tutte le chiavi.
 
-    Mutazione ESEGUITA: il `except` torna `{"tracce": {}, "non_letti": {}}`
-    -- rossa."""
-    outcome = await _client(_FakeConnection(raises=True)).traces([("automation", "1")])
-    assert "errore" in outcome and "tracce" not in outcome
+    Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` -- rossa."""
+    fake = _FakeConnection(replies=[None, None])
+    outcome = await _client(fake).traces([("automation", "1"), ("script", "s")])
+    assert outcome == {"errore": "Home Assistant non ha risposto"}
+
+
+@pytest.mark.asyncio
+async def test_a_silent_tail_is_named_as_not_answered_in_time():
+    """Il timeout taglia la coda: le chiavi senza risposta sono nominate col
+    motivo giusto (non «forma inattesa»), le altre rispondono.
+
+    Mutazione ESEGUITA: `None` trattato come forma inattesa -- rossa sul
+    motivo."""
+    fake = _FakeConnection(replies=[{"result": []}, None])
+    outcome = await _client(fake).traces([("automation", "1"), ("script", "s")])
+    assert outcome["tracce"] == {"automation.1": []}
+    assert outcome["non_letti"] == {"script.s": "Home Assistant non ha risposto in tempo"}
+
+
+@pytest.mark.asyncio
+async def test_a_single_run_with_no_reply_says_error():
+    """`trace/get` senza risposta (`[None]`, come da `_ws_batch` vero) e'
+    `errore`, non una forma inattesa.
+
+    Mutazione ESEGUITA: `None` cade nel ramo «forma inattesa» -- rossa sul
+    testo."""
+    outcome = await _client(_FakeConnection(replies=[None])).trace("script", "s", "r")
+    assert outcome == {"errore": "Home Assistant non ha risposto"}
 
 
 @pytest.mark.asyncio
@@ -356,7 +378,7 @@ async def test_no_keys_ask_nothing():
 
     Mutazione ESEGUITA: tolto il ritorno anticipato su `not keys` -- rossa
     su `fake.batches == []`."""
-    fake = _FakeBatch([])
+    fake = _FakeConnection(replies=[])
     assert await _client(fake).traces([]) == {"tracce": {}, "non_letti": {}}
     assert fake.batches == []
 
@@ -369,3 +391,24 @@ async def test_a_single_run_of_a_script_is_asked_under_the_script_domain():
     assert fake.commands == [("trace/get", {"domain": "script", "item_id": "buonanotte",
                                             "run_id": "r1"})]
     assert outcome["traccia"]["run_id"] == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_the_real_batch_on_a_dead_network_ends_in_error():
+    """La strada VERA, senza finta di `_ws_batch`: rete assente -> il vero
+    `_ws_batch` torna `[None, None]` senza sollevare -> `traces` e `trace`
+    dicono `errore`.
+
+    Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` in
+    `traces` -- rossa (le chiavi finirebbero tutte in `non_letti`)."""
+    from unittest.mock import patch
+
+    def esplode(*a, **k):
+        raise OSError("rete assente")
+
+    client = HAClient(base_url="http://ha.test", token="t")
+    with patch("aiohttp.ClientSession", esplode):
+        many = await client.traces([("automation", "1"), ("script", "s")])
+        one = await client.trace("script", "s", "r")
+    assert many == {"errore": "Home Assistant non ha risposto"}
+    assert one == {"errore": "Home Assistant non ha risposto"}

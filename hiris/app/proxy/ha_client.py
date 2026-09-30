@@ -140,6 +140,10 @@ MAX_TEMPLATE_RESPONSE_LEN = 2000
 
 logger = logging.getLogger(__name__)
 
+# Il motivo di una lettura di tracce in cui Home Assistant non ha risposto
+# affatto (`_ws_batch` non solleva: torna `None` per comando).
+_HA_SILENT = "Home Assistant non ha risposto"
+
 
 def _instant_from_ha(raw):
     """Un istante come lo manda Home Assistant -> ISO-8601 con fuso.
@@ -1952,7 +1956,7 @@ class HAClient:
         raffica sola** (`trace/list`, WS, `require_admin`).
 
         Nasce il 30/09/2026 con la storia (spec `2026-09-30-la-storia.md`
-        §8.3): «perche' sono partite le automazioni dei rifiuti» costava
+        §1 e §8 punto 3): «perche' sono partite le automazioni dei rifiuti» costava
         cinque chiamate allo strumento e cinque connessioni. `keys` e'
         `[(domain, item_id)]`: per un'automazione `item_id` e' l'id della
         CONFIGURAZIONE (catena verificata sui tag `2024.7.0` e `2026.9.0` nel
@@ -1979,9 +1983,24 @@ class HAClient:
         Torna `{"tracce": {"<domain>.<item_id>": [...]}, "non_letti": {...}}`:
         una chiave che Home Assistant rifiuta, o che non risponde, finisce in
         `non_letti` col suo motivo e NON spegne le altre -- e non diventa mai
-        `[]`, che direbbe «non e' mai partita». Se la raffica non parte
-        affatto, `{"errore": ...}`. Il client legge e non giudica: le righe
-        escono come Home Assistant le manda.
+        `[]`, che direbbe «non e' mai partita». Il client legge e non giudica:
+        le righe escono come Home Assistant le manda.
+
+        **`_ws_batch` non solleva mai**: connessione caduta, autenticazione
+        rifiutata o timeout totale tornano come UNA `None` per comando
+        (`_ws_batch`, `except Exception` finale; `tests/test_ws_batch.py`).
+        Quindi la «raffica che non parte» e' quella in cui TUTTE le risposte
+        sono `None`: `{"errore": ...}`, mai «nessuna esecuzione». Se solo
+        alcune sono `None` (il timeout ne taglia la coda), quelle chiavi
+        vanno in `non_letti` con «non ha risposto in tempo».
+
+        **Una chiave SCONOSCIUTA torna `[]`, non un errore**: un id di script
+        scritto male, o un'automazione YAML senza `id:` (che vive sotto
+        `automation.None`, condivisa), sono indistinguibili da «mai partita».
+        `trace/util.py::_get_debug_traces` usa `.get(key)` e non solleva.
+        Perche' un `[]` significhi qualcosa, **il chiamante DEVE risolvere le
+        chiavi PRIMA di chiedere**, e una chiave irrisolta va in `non_letti`
+        senza essere mandata qui.
         """
         if not keys:
             return {"tracce": {}, "non_letti": {}}
@@ -1991,17 +2010,22 @@ class HAClient:
                  for domain, item_id in keys])
         except Exception as e:
             logger.debug("tracce non lette (%s): %s", keys, e)
-            return {"errore": "Home Assistant non ha risposto"}
+            return {"errore": _HA_SILENT}
+        if all(reply is None for reply in replies):
+            return {"errore": _HA_SILENT}
         found: dict[str, list] = {}
         unread: dict[str, str] = {}
         for index, (domain, item_id) in enumerate(keys):
             key = f"{domain}.{item_id}"
             msg = replies[index] if index < len(replies) else None
-            if msg and msg.get("error"):
+            if msg is None:
+                unread[key] = "Home Assistant non ha risposto in tempo"
+                continue
+            if msg.get("error"):
                 error = msg["error"]
                 unread[key] = error.get("message") or error.get("code") or "rifiutato"
                 continue
-            result = msg.get("result") if msg else None
+            result = msg.get("result")
             if not isinstance(result, list):
                 unread[key] = "risposta in forma inattesa"
                 continue
@@ -2025,12 +2049,14 @@ class HAClient:
                                 "run_id": run_id})])
         except Exception as e:
             logger.debug("traccia %s.%s/%s non letta: %s", domain, item_id, run_id, e)
-            return {"errore": "Home Assistant non ha risposto"}
+            return {"errore": _HA_SILENT}
         msg = msg[0] if msg else None
-        if msg and msg.get("error"):
+        if msg is None:
+            return {"errore": _HA_SILENT}
+        if msg.get("error"):
             error = msg["error"]
             return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
+        result = msg.get("result")
         if not isinstance(result, dict):
             return {"errore": "risposta in forma inattesa"}
         return {"traccia": result}
