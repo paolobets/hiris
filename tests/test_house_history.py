@@ -737,15 +737,15 @@ def test_le_fasce_orarie_che_finiscono_prima_di_adesso_lo_dicono_con_al():
     assert uscita["finestra"]["a"] == "2026-09-29T18:40:00+02:00"
     assert riga["al"] == "2026-09-29T18:00:00+02:00"
     assert riga["consumato"] == 0.9
-    senza_fine = {"sensor.energia": [
+    fasce_mute = {"sensor.energia": [
         _fascia("2026-09-29T15:00:00+00:00", None, 1.4, 0.4)]}
-    riga = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], fasce=senza_fine,
+    riga = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], fasce=fasce_mute,
                    superfici={"sensor.energia": "oraria"},
                    classi={"sensor.energia": "total_increasing"})["voci"][0]
     assert riga["al"] == "2026-09-29T18:00:00+02:00"
-    all_ora_piena = _q(genere="valori", da="2026-09-27T16:00:00+00:00",
-                       a="2026-09-29T16:00:00+00:00")
-    riga = _valori(all_ora_piena, ["sensor.energia"], fasce=fasce,
+    ora_piena = _q(genere="valori", da="2026-09-27T16:00:00+00:00",
+                   a="2026-09-29T16:00:00+00:00")
+    riga = _valori(ora_piena, ["sensor.energia"], fasce=fasce,
                    superfici={"sensor.energia": "oraria"},
                    classi={"sensor.energia": "total_increasing"})["voci"][0]
     assert "al" not in riga
