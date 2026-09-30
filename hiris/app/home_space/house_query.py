@@ -35,7 +35,7 @@ _BEHAVIOR_KINDS = {"automazione": "automation", "script": "script"}
 #: Il dominio di Home Assistant -> il genere: `tipo=automation` senza
 #: `genere` e' una domanda sulle automazioni, e per loro conta l'ultima
 #: esecuzione, non l'ultimo cambio di stato (spec §2.2).
-_BEHAVIOR_DOMAINS = {v: k for k, v in _BEHAVIOR_KINDS.items()}
+BEHAVIOR_DOMAINS = {v: k for k, v in _BEHAVIOR_KINDS.items()}
 #: I generi che si chiedono per `riferimento` e rispondono col dettaglio
 #: completo di `queries.view`. Un dispositivo senza `riferimento` si cerca
 #: invece per nome, come faceva il vecchio `search` («la lavatrice»).
@@ -532,8 +532,8 @@ def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
                 detail, unavailable=(), now: float | None = None) -> dict:
     now = time.time() if now is None else now
     f = filters
-    if f.kind is None and f.domain in _BEHAVIOR_DOMAINS:
-        f = replace(f, kind=_BEHAVIOR_DOMAINS[f.domain], domain=None)
+    if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
+        f = replace(f, kind=BEHAVIOR_DOMAINS[f.domain], domain=None)
     # Qui convergono `genere=automazione` e `tipo=automation`: un filtro che
     # su un genere non ha senso si dice, non si ignora -- ignorato, darebbe
     # con sicurezza l'insieme intero (spec §2.4). Una domanda per solo nome o
