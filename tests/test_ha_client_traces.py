@@ -1,7 +1,7 @@
 """«Com'e' andata questa automazione?»
 
 `HAClient.automation_traces()` legge `trace/list` (le esecuzioni RECENTI, in
-breve), `HAClient.automation_trace()` legge `trace/get` (UNA esecuzione,
+breve), `HAClient.trace()` legge `trace/get` (UNA esecuzione,
 per intero) -- stessa disciplina di `problems()` e `system_log()`, verificata
 identica alla fonte (`homeassistant/components/trace/websocket_api.py`,
 funzioni `websocket_trace_list`/`websocket_trace_get`; `trace/util.py`,
@@ -54,9 +54,8 @@ class _FakeConnection:
     `test_ha_client_related_problems.py`): non se ne inventa una nuova per
     verticale."""
 
-    def __init__(self, response=None, raises=False, replies=None):
+    def __init__(self, response=None, replies=None):
         self.response = response
-        self.raises = raises
         self.replies = replies  # una risposta per comando, come `_ws_batch` vero
         self.commands = []
         self.batches = []
@@ -64,8 +63,6 @@ class _FakeConnection:
     async def _ws_batch(self, commands, timeout=10.0):
         self.commands.extend(commands)
         self.batches.append(list(commands))
-        if self.raises:
-            raise OSError("HA muto")
         if self.replies is not None:
             return list(self.replies)
         return [self.response]
@@ -170,10 +167,15 @@ async def test_a_failed_traces_read_says_error_not_an_empty_list():
     """Un elenco vuoto significherebbe «questa automazione non ha mai
     girato»: la stessa bugia che `system_log()` e `problems()` evitano.
 
-    Mutazione: tornare `{"tracce": []}` invece di `{"errore": ...}` -- il
-    test torna rosso su `assert "errore" in outcome`.
+    La connessione caduta e' `replies=[None]`, come la torna il vero
+    `_ws_batch`, che non solleva mai. Ha DUE guardie (il controllo
+    `all(reply is None ...)` in `traces` e il ramo `non_letti` di
+    `automation_traces`): ciascuna da sola la copre l'altra.
+
+    Mutazione ESEGUITA: togliere TUTTE E DUE le guardie (`{"tracce": []}`
+    per una chiave non letta) -- rossa su `assert "errore" in outcome`.
     """
-    fake = _FakeConnection(raises=True)
+    fake = _FakeConnection(replies=[None])
     outcome = await _client(fake).automation_traces(_CONFIG_ID)
     assert "errore" in outcome
     assert "tracce" not in outcome
@@ -181,7 +183,7 @@ async def test_a_failed_traces_read_says_error_not_an_empty_list():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fake,why", [
-    (_FakeConnection(raises=True), "connessione caduta"),
+    (_FakeConnection(replies=[None]), "connessione caduta"),
     (_FakeConnection({"error": {"message": "non trovato"}}), "HA ha rifiutato"),
     (_FakeConnection({"result": {"issues": "non una lista nuda"}}),
      "forma inattesa: trace/list non manda un dizionario qui"),
@@ -217,7 +219,7 @@ async def test_an_empty_traces_list_stays_empty_not_an_error():
 
 
 # --------------------------------------------------------------------------
-# automation_trace() -- trace/get
+# trace() -- trace/get
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -231,7 +233,7 @@ async def test_a_single_trace_is_read_as_home_assistant_sends_it():
     row = _extended_trace(run_id="xyz", state="stopped")
     expected = copy.deepcopy(row)
     fake = _FakeConnection({"result": row})
-    outcome = await _client(fake).automation_trace(_CONFIG_ID, "xyz")
+    outcome = await _client(fake).trace("automation", _CONFIG_ID, "xyz")
     trace = outcome["traccia"]
     assert trace["run_id"] == "xyz"
     assert trace["trace"] == row["trace"]
@@ -248,12 +250,12 @@ async def test_a_single_trace_is_asked_for_by_configuration_id_verbatim():
     Stessa fonte (`websocket_trace_get`, stessi due tag), stessa chiave
     ricomposta con un `.get(key)` nudo.
 
-    Mutazione: scambiare i due argomenti nel comando (`"item_id": run_id,
+    Mutazione ESEGUITA: scambiare i due argomenti nel comando (`"item_id": run_id,
     "run_id": automation_id`) -- il test torna rosso sull'unico assert,
     che riceve `item_id: "xyz"` e `run_id: _CONFIG_ID`.
     """
     fake = _FakeConnection({"result": _extended_trace()})
-    await _client(fake).automation_trace(_CONFIG_ID, "xyz")
+    await _client(fake).trace("automation", _CONFIG_ID, "xyz")
     assert fake.commands == [
         ("trace/get", {"domain": "automation", "item_id": _CONFIG_ID,
                        "run_id": "xyz"})]
@@ -265,18 +267,18 @@ async def test_a_failed_trace_read_says_error_not_an_empty_dict():
     e' senza contenuto», che non e' mai vero per una traccia reale: la stessa
     bugia dell'elenco vuoto, in un'altra forma.
 
-    Mutazione: tornare `{"traccia": {}}` invece di `{"errore": ...}` -- il
-    test torna rosso su `assert "errore" in outcome`.
+    Mutazione ESEGUITA: `{"traccia": {}}` invece di `{"errore": ...}` su
+    risposta assente -- rossa su `assert "errore" in outcome`.
     """
-    fake = _FakeConnection(raises=True)
-    outcome = await _client(fake).automation_trace(_CONFIG_ID, "xyz")
+    fake = _FakeConnection(replies=[None])
+    outcome = await _client(fake).trace("automation", _CONFIG_ID, "xyz")
     assert "errore" in outcome
     assert "traccia" not in outcome
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fake,why", [
-    (_FakeConnection(raises=True), "connessione caduta"),
+    (_FakeConnection(replies=[None]), "connessione caduta"),
     (_FakeConnection({"error": {"code": "not_found",
                                 "message": "The trace could not be found"}}),
      "run_id caduto fuori dalle tracce conservate"),
@@ -290,18 +292,18 @@ async def test_every_trace_failure_shape_says_error_not_an_empty_dict(fake, why)
     risposta di forma inattesa (una lista al posto del dizionario che manda
     davvero `async_get_trace`).
 
-    Mutazione: togliere il controllo `isinstance(result, dict)` -- solo il
+    Mutazione ESEGUITA: togliere il controllo `isinstance(result, dict)` -- solo il
     terzo caso (forma inattesa) tocca quel ramo e torna rosso su
     `assert "errore" in outcome, why`.
     """
-    outcome = await _client(fake).automation_trace(_CONFIG_ID, "xyz")
+    outcome = await _client(fake).trace("automation", _CONFIG_ID, "xyz")
     assert "errore" in outcome, why
     assert "traccia" not in outcome
 
 
 @pytest.mark.asyncio
 async def test_the_runs_of_many_automations_travel_in_one_batch():
-    """Spec «la storia» §8.3: «perche' sono partite le automazioni dei
+    """Spec «la storia» §1 e §8 punto 3: «perche' sono partite le automazioni dei
     rifiuti» erano cinque chiamate. Ora una raffica, N comandi.
 
     Mutazione ESEGUITA: un `_ws_batch` per chiave -- rossa su

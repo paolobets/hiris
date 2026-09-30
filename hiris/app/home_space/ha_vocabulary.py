@@ -503,10 +503,9 @@ def produces_statistics(state_class) -> bool:
     oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
     cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
 
-    Il nome e' diverso dal parametro `has_statistics` che `historian` passa in
-    giro (`trend`, `choose_surface`): quello e' gia' il booleano risolto,
-    questa e' la funzione che lo risolve dal vocabolario di HA -- due cose
-    diverse, non due nomi per la stessa.
+    Il consumatore e' `house_history.value_surface`, che la chiede quando
+    deve scegliere fra il dettaglio e le fasce: questa e' la funzione che
+    risolve la domanda dal vocabolario di HA, non un booleano gia' pronto.
     """
     return state_class in STATE_CLASSES_WITH_STATISTICS
 

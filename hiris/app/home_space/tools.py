@@ -1106,8 +1106,8 @@ HISTORY_TOOL_DEF = {
 # a differenza del 30 predefinito qui sotto, che e' una misura sulla casa
 # vera. Oltre un ANNO in ciascuna direzione la domanda non e' piu' sui
 # PROSSIMI appuntamenti ma una scansione del calendario -- la stessa soglia
-# concettuale di `historian.MAX_WINDOW_HOURS` (90 giorni, la' per un valore
-# nel tempo, anch'esso scelto e non misurato), spostata piu' in la' perche'
+# concettuale dei 90 giorni che la storia ammette per un valore nel tempo
+# (`house_history`, anch'essi scelti e non misurati), spostata piu' in la' perche'
 # un calendario vive per natura su questa scala: un impegno come «Ferie
 # estive» o «Anniversario» (`home_space/appointments.py`) e' proprio
 # annuale.
@@ -1126,11 +1126,11 @@ DEFAULT_CALENDAR_DAYS_AHEAD = 30
 def _clamp_days(raw, *, default: float, ceiling: float) -> float:
     """Qualunque cosa -> un numero di giorni fra 0 e `ceiling`.
 
-    Gemella di `historian.normalize_hours` (stesso contratto totale: NaN,
-    stringhe, numeri fuori scala diventano tutti il default, mai
-    un'eccezione), ma con un minimo diverso apposta: qui 0 e' un valore
+    Contratto totale (NaN, stringhe, numeri fuori scala diventano tutti il
+    default, mai un'eccezione) e minimo a 0 apposta: qui 0 e' un valore
     LEGITTIMO -- e' il default di `giorni_indietro`, "niente passato" -- e
-    alzarlo a 1 come fa `normalize_hours` trasformerebbe "niente passato" in
+    alzarlo a 1 (come faceva `normalize_hours`, uscita il 30/09/2026 con gli
+    strumenti del tempo) trasformerebbe "niente passato" in
     "un giorno di passato" a ogni chiamata senza l'argomento esplicito.
     """
     try:
