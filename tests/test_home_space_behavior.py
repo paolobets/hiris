@@ -43,8 +43,9 @@ class _ClienteFinto:
     esiste per dichiarare.
     """
 
-    def __init__(self, stati=(), configurazioni=None, *, errore=None):
+    def __init__(self, stati=(), configurazioni=None, *, errore=None, non_letti=None):
         self.stati = list(stati)
+        self.non_letti = non_letti
         self.configurazioni = dict(configurazioni or {})
         self.errore = errore
         self.chiesti = None
@@ -56,8 +57,11 @@ class _ClienteFinto:
         self.chiesti = list(entity_ids)
         if self.errore:
             return {"errore": self.errore}
-        return {"configurazioni": {k: v for k, v in self.configurazioni.items()
-                                   if k in set(entity_ids)}}
+        risposta = {"configurazioni": {k: v for k, v in self.configurazioni.items()
+                                       if k in set(entity_ids)}}
+        if self.non_letti:
+            risposta["non_letti"] = dict(self.non_letti)
+        return risposta
 
 
 @pytest.fixture
@@ -200,6 +204,23 @@ async def test_un_guasto_delle_configurazioni_diventa_la_ragione_di_ogni_voce(ca
     await reread(client, casa, cartella)
 
     assert set(casa.unread_bodies().values()) == {"websocket giu'"}
+
+
+@pytest.mark.asyncio
+async def test_il_motivo_per_voce_di_un_guasto_parziale_arriva_alla_replica(casa, cartella):
+    """Un guasto PARZIALE (`non_letti` del client) da' a ogni voce il SUO
+    motivo; chi non e' nominato ripiega sul generico.
+
+    Mutazione ESEGUITA: togliere la lettura di `non_letti` in `reread` --
+    rossa (tutte e due le voci valgono il generico)."""
+    client = _ClienteFinto(
+        stati=[_stato("automation.a"), _stato("automation.b")],
+        non_letti={"automation.a": "sparita"})
+
+    await reread(client, casa, cartella)
+
+    assert casa.unread_bodies() == {"automation.a": "sparita",
+                                    "automation.b": BODY_NOT_READ}
 
 
 @pytest.mark.asyncio

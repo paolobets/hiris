@@ -171,7 +171,8 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
         entity_id = state["entity_id"]
         body = configs.get(entity_id)
         if body is None:
-            unread[entity_id] = failure or BODY_NOT_READ
+            unread[entity_id] = (failure or (report.get("non_letti") or {}).get(entity_id)
+                                 or BODY_NOT_READ)
         elif not seal.readable:
             unread[entity_id] = SECRETS_UNCHECKABLE
             body = None

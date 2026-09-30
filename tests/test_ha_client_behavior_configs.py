@@ -26,15 +26,12 @@ class _Finto:
     result, error}` oppure `None` (comando senza risposta, o connessione
     fallita del tutto). Fedele al contratto vero, non alla forma comoda."""
 
-    def __init__(self, risposte=None, *, solleva=False):
+    def __init__(self, risposte=None):
         self.risposte = risposte
-        self.solleva = solleva
         self.comandi = []
 
     async def _ws_batch(self, commands, timeout=10.0):
         self.comandi.extend(commands)
-        if self.solleva:
-            raise RuntimeError("websocket giu'")
         if self.risposte is None:
             return [None] * len(commands)
         return list(self.risposte)
@@ -94,11 +91,38 @@ async def test_una_configurazione_non_letta_manca_invece_di_essere_vuota():
 async def test_un_guasto_della_connessione_e_un_errore_non_un_elenco_vuoto():
     """Stessa disciplina di `legami`, `problemi` e `energy_directions`: mai un
     dizionario vuoto che significherebbe «questa casa non ha automazioni»
-    quando il websocket e' giu'."""
-    esito = await _client(_Finto(solleva=True)).behavior_configs(["automation.x"])
+    quando il websocket e' giu'. La connessione caduta e' `None` per ogni
+    comando, come la torna il vero `_ws_batch` (che non solleva mai).
 
-    assert "errore" in esito
-    assert "configurazioni" not in esito
+    Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` -- rossa
+    (torna `{"configurazioni": {}}`)."""
+    esito = await _client(_Finto()).behavior_configs(["automation.x", "script.y"])
+
+    assert esito == {"errore": "Home Assistant non ha risposto"}
+
+
+@pytest.mark.asyncio
+async def test_le_voci_non_lette_si_nominano_col_motivo_e_le_altre_restano():
+    """Un guasto PARZIALE non spegne le voci lette ne' resta muto: chi non ha
+    risposto, chi e' stato rifiutato e chi ha risposto in una forma
+    inattesa finiscono in `non_letti` col loro motivo (come `traces`).
+
+    Mutazione ESEGUITA: togliere `non_letti` dalla risposta -- rossa."""
+    finto = _Finto([
+        {"success": True, "result": {"config": {"alias": "Sveglia"}}},
+        None,
+        {"success": False, "error": {"code": "not_found", "message": "sparita"}},
+        {"success": True, "result": {"config": "non un dizionario"}},
+    ])
+
+    esito = await _client(finto).behavior_configs(
+        ["automation.a", "automation.b", "automation.c", "script.d"])
+
+    assert esito["configurazioni"] == {"automation.a": {"alias": "Sveglia"}}
+    assert esito["non_letti"] == {
+        "automation.b": "Home Assistant non ha risposto in tempo",
+        "automation.c": "sparita",
+        "script.d": "risposta in forma inattesa"}
 
 
 @pytest.mark.asyncio

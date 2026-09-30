@@ -1596,6 +1596,13 @@ class HAClient:
         non ha automazioni» anche col websocket giu' (stessa disciplina di
         `related`, `problems` e `energy_directions`).
 
+        **Se TUTTE le risposte mancano** (connessione o autenticazione
+        cadute: `_ws_batch` non solleva, torna una `None` per comando) il
+        risultato e' `{"errore": ...}`, mai una mappa vuota. **Se solo alcune**
+        mancano o sono rifiutate, le altre restano e le prime si nominano in
+        `non_letti` -- `{entity_id: motivo}`, presente SOLO se c'e' almeno una
+        voce non letta (stessa forma di `traces`).
+
         **Una voce che non risponde MANCA dalla mappa, e non vale `{}`**:
         «non ho letto il corpo» e «il corpo e' vuoto» sono due fatti diversi --
         il primo e' un limite di HIRIS, il secondo un fatto sulla casa -- e
@@ -1615,18 +1622,31 @@ class HAClient:
         wanted = [(eid, command) for eid, command in wanted if command]
         if not wanted:
             return {"configurazioni": {}}
-        try:
-            replies = await self._ws_batch(
-                [(command, {"entity_id": eid}) for eid, command in wanted])
-        except Exception as error:
-            return {"errore": f"configurazioni non lette ({type(error).__name__}: {error})"}
+        replies = await self._ws_batch(
+            [(command, {"entity_id": eid}) for eid, command in wanted])
+        if all(reply is None for reply in replies):
+            return {"errore": "Home Assistant non ha risposto"}
         configs: dict[str, dict] = {}
-        for (eid, _command), msg in zip(wanted, replies, strict=False):
-            result = msg.get("result") if isinstance(msg, dict) else None
+        unread: dict[str, str] = {}
+        for index, (eid, _command) in enumerate(wanted):
+            msg = replies[index] if index < len(replies) else None
+            if msg is None:
+                unread[eid] = "Home Assistant non ha risposto in tempo"
+                continue
+            if msg.get("error"):
+                error = msg["error"]
+                unread[eid] = error.get("message") or error.get("code") or "rifiutato"
+                continue
+            result = msg.get("result")
             body = result.get("config") if isinstance(result, dict) else None
             if isinstance(body, dict):
                 configs[eid] = body
-        return {"configurazioni": configs}
+            else:
+                unread[eid] = "risposta in forma inattesa"
+        answer: dict = {"configurazioni": configs}
+        if unread:
+            answer["non_letti"] = unread
+        return answer
 
     async def _request_statistics(self, identifiers: list[str],
                                   window: dict) -> dict:
@@ -2157,13 +2177,9 @@ class HAClient:
         si costruisce una chiave, sta in `proxy/state_translations.py` -- il
         client non ha un'opinione su cosa della casa valga la pena tenere.
         """
-        try:
-            msg = await self._ws_command(
-                "frontend/get_translations",
-                {"language": language, "category": category})
-        except Exception as e:
-            logger.debug("traduzioni non lette (%s/%s): %s", language, category, e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_command(
+            "frontend/get_translations",
+            {"language": language, "category": category})
         if msg is None:
             return {"errore": "Home Assistant non ha risposto"}
         if msg.get("error"):
