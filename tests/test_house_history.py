@@ -3,6 +3,7 @@
 La finestra, la scelta, la profondita' e le righe, senza rete: le risposte
 di Home Assistant si passano gia' lette, nella forma vera di
 `HAClient.history`, `hourly_statistics`, `traces` e `system_log`."""
+import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -10,6 +11,16 @@ import pytest
 
 from hiris.app.home_space import house_history as hh
 from hiris.app.home_space import house_query as hq
+from tests.test_briefing import _casa_grande
+from tests.test_house_query import (
+    BRIDGE_CEILING_CHARS,
+    STATI,
+    T_IERI,
+    _automazioni,
+    _casa,
+    _luce,
+    _specchio,
+)
 
 ROMA = "Europe/Rome"
 T0 = 1_790_700_000.0  # 29/09/2026 16:40 UTC, 18:40 a Roma
@@ -165,3 +176,219 @@ def test_la_storia_non_ha_una_sua_scelta_di_chi():
     for vietato in ("name_matches", "hierarchy(", "_entity_matches",
                     "_any_name_matches"):
         assert vietato not in sorgente, vietato
+
+
+_NESSUNA = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
+
+
+def _scegli(query, casa=None, comportamento=(), stati=None):
+    chosen = hh.choose(query, casa or _casa(), list(comportamento),
+                       _specchio(stati or STATI), now=T0)
+    assert not isinstance(chosen, dict), chosen
+    return chosen
+
+
+def _punto(quando, valore):
+    return {"quando": quando, "valore": valore}
+
+
+_INIZIO = "2026-09-28T16:40:00+00:00"   # l'inizio della finestra di 24 ore
+_LUCE_1 = [_punto(_INIZIO, "off"), _punto("2026-09-29T10:00:00+00:00", "on"),
+           _punto("2026-09-29T12:00:00+00:00", "off"),
+           _punto("2026-09-29T12:30:00+00:00", "off")]
+
+
+def test_una_cosa_sola_da_ogni_cambio_dal_piu_recente():
+    """Profondita' completa: ogni cambio vero, con l'ora nel fuso della casa.
+    Il primo punto e' lo stato all'inizio della finestra, e un punto uguale
+    al precedente non e' un cambio.
+
+    Mutazione ESEGUITA: contare il primo punto anche quando sta
+    all'inizio della finestra -- rossa (tre righe)."""
+    query = _q(riferimento="light.soggiorno_1")
+    chosen = _scegli(query)
+    assert chosen.depth == "completa" and chosen.found == 1
+    uscita = hh.state_rows(query, chosen, {"light.soggiorno_1": _LUCE_1},
+                           truncated=False, acts=[], current=STATI)
+    assert uscita["voci"] == [
+        {"quando": "2026-09-29T14:00:00+02:00", "stato": "off"},
+        {"quando": "2026-09-29T12:00:00+02:00", "stato": "on"}]
+    assert uscita["soggetto"]["id"] == "light.soggiorno_1"
+    assert uscita["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
+                                  "a": "2026-09-29T18:40:00+02:00"}
+    assert "cronaca_non_letta" not in uscita
+
+
+def _atto(ident, entita, ritardo, quando="2026-09-29T10:00:00+00:00"):
+    base = datetime.fromisoformat(quando).timestamp()
+    return {"id": ident, "entita": [entita], "quando_ts": base + ritardo,
+            "origine": "chat", "servizio": "light.turn_on"}
+
+
+def test_per_mano_di_hiris_e_probabile_e_il_piu_vicino():
+    """Home Assistant non firma i cambi: l'aggancio e' entita' + istante
+    (60 secondi), e fra due atti vince il piu' vicino.
+
+    Mutazione ESEGUITA: `MATCH_TOLERANCE_S = 600` -- rossa (l'atto a 180
+    secondi dal cambio delle 12:00 diventerebbe suo); prendere il primo atto
+    che passa invece del piu' vicino -- rossa sull'id."""
+    query = _q(riferimento="light.soggiorno_1")
+    atti = [_atto(1, "light.soggiorno_1", 50), _atto(2, "light.soggiorno_1", 5),
+            _atto(3, "light.soggiorno_2", 1),
+            _atto(4, "light.soggiorno_1", 180, quando="2026-09-29T12:00:00+00:00")]
+    uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
+                           truncated=False, acts=atti, current=STATI)
+    mezzogiorno, mattina = uscita["voci"]
+    assert "per_mano_di" not in mezzogiorno
+    assert mattina["per_mano_di"] == "HIRIS"
+    assert mattina["abbinamento"] == "probabile"
+    assert mattina["atto"]["id"] == 2
+
+
+def test_una_cronaca_che_non_risponde_si_dichiara():
+    """«Non l'ha fatto HIRIS» e «non ho potuto guardare» hanno due facce.
+
+    Mutazione ESEGUITA: non scrivere `cronaca_non_letta` -- rossa."""
+    query = _q(riferimento="light.soggiorno_1")
+    uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
+                           truncated=False, acts=None, current=STATI)
+    assert "cronaca_non_letta" in uscita
+
+
+def test_un_entita_rumorosa_si_ferma_a_cinquanta_righe_dal_piu_recente():
+    """Review Focus 3: 200 cambi in una notte accanto a una luce tranquilla.
+
+    Mutazione ESEGUITA: non scrivere `oltre` -- rossa; ordinare dal piu'
+    vecchio -- rossa sulla prima riga."""
+    query = _q(tipo="light")
+    chosen = _scegli(query)
+    assert chosen.depth == "media" and chosen.found == 2
+    notte = [_punto((datetime(2026, 9, 29, 0, 0, tzinfo=ZoneInfo("UTC"))
+                     + timedelta(minutes=i)).isoformat(), "on" if i % 2 else "off")
+             for i in range(200)]
+    sera = [_punto(_INIZIO, "off"), _punto("2026-09-28T20:00:00+00:00", "on")]
+    uscita = hh.state_rows(query, chosen, {"light.soggiorno_2": notte,
+                                           "light.soggiorno_1": sera},
+                           truncated=False, acts=[], current=STATI)
+    assert len(uscita["voci"]) == 50
+    assert uscita["voci"][0] == {"id": "light.soggiorno_2",
+                                 "quando": "2026-09-29T05:19:00+02:00", "stato": "on"}
+    assert uscita["oltre"]["restano"] == 151 and uscita["oltre"]["salta"] == 50
+    assert "restringi" in uscita["oltre"]["consiglio"]
+    assert set(uscita["soggetti"]) == {"light.soggiorno_1", "light.soggiorno_2"}
+    assert uscita["escluse"]["nascoste"] == 2 and "nota" in uscita
+
+
+def test_su_una_casa_grande_una_riga_per_soggetto_e_sotto_la_soglia_del_ponte():
+    """Spec §9: una casa grande come quella vera. 300 entita', nessun filtro:
+    corta, 50 righe, e la risposta resta sotto la soglia del ponte.
+
+    Mutazione ESEGUITA: nella corta, una riga per cambio invece che per
+    soggetto -- rossa sulle chiavi."""
+    casa = _casa_grande()
+    stati = {e["id"]: "on" for e in casa["entita"]}
+    query = _q()
+    chosen = _scegli(query, casa=casa, stati=stati)
+    assert chosen.depth == "corta" and chosen.found == 300
+    assert len(chosen.subjects) == 50 and chosen.beyond["restano"] == 250
+    serie = {s.ident: [_punto(_INIZIO, "off")] + [
+        _punto(f"2026-09-29T0{i}:00:00+00:00", "on" if i % 2 else "off")
+        for i in range(1, 6)] for s in chosen.subjects}
+    uscita = hh.state_rows(query, chosen, serie, truncated=False, acts=[],
+                           current=stati)
+    assert len(uscita["voci"]) == 50
+    assert set(uscita["voci"][0]) == {"id", "nome", "cambi", "ultimo_cambio", "stato"}
+    assert uscita["voci"][0]["cambi"] == 5
+    assert len(json.dumps(uscita, ensure_ascii=False)) < BRIDGE_CEILING_CHARS
+
+
+def test_chi_si_sposta_e_solo_in_casa_o_fuori_in_ogni_profondita():
+    """Review Focus 1, spec §5: «Lavoro» -> «Palestra» sono due `not_home`,
+    e non sono un cambio da raccontare.
+
+    Mutazione ESEGUITA: applicare `redact_state` DOPO il confronto fra
+    punti -- rossa (tre cambi invece di due)."""
+    casa = _casa()
+    casa["entita"].append(_luce("device_tracker.iphone", None))
+    viaggio = [_punto(_INIZIO, "home"), _punto("2026-09-29T08:00:00+00:00", "Lavoro"),
+               _punto("2026-09-29T12:00:00+00:00", "Palestra"),
+               _punto("2026-09-29T15:00:00+00:00", "home")]
+    serie = {"person.marta": viaggio, "device_tracker.iphone": viaggio}
+    stati = {**STATI, "device_tracker.iphone": "Palestra"}
+    for argomenti in ({"riferimento": "person.marta"},
+                      {"area": "senza area", "includi_nascoste": True}):
+        query = _q(**argomenti)
+        uscita = hh.state_rows(query, _scegli(query, casa=casa, stati=stati), serie,
+                               truncated=False, acts=[], current=stati)
+        testo = json.dumps(uscita, ensure_ascii=False)
+        assert "Lavoro" not in testo and "Palestra" not in testo, argomenti
+        suoi = [v for v in uscita["voci"] if v.get("id", "person.marta") == "person.marta"]
+        assert [v["stato"] for v in suoi] == ["home", "not_home"], argomenti
+    corta = hh.Chosen(12, dict(_NESSUNA), "corta", [hh.Subject("person.marta", "Marta")])
+    uscita = hh.state_rows(_q(), corta, serie, truncated=False, acts=[], current=stati)
+    assert uscita["voci"][0]["stato"] == "not_home"
+    assert "Lavoro" not in json.dumps(uscita, ensure_ascii=False)
+
+
+def test_senza_registrazioni_non_e_mai_cambiato_non_si_dice():
+    """Mutazione ESEGUITA: non scrivere `nessuna_registrazione` -- rossa."""
+    query = _q(riferimento="light.soggiorno_1")
+    uscita = hh.state_rows(query, _scegli(query), {}, truncated=False, acts=[],
+                           current=STATI)
+    assert uscita["voci"] == []
+    assert uscita["nessuna_registrazione"]["soggetti"] == ["light.soggiorno_1"]
+
+
+def test_un_elenco_tagliato_da_home_assistant_si_dichiara_nella_finestra():
+    """Home Assistant legge al piu' un tetto di cambi e tiene i recenti:
+    senza la dichiarazione, la finestra sembrerebbe cominciare piu' tardi
+    di quanto si e' chiesto.
+
+    Mutazione ESEGUITA: in `_declare_gaps`, non scrivere `troncata` quando
+    `truncated` e' vero -- rossa (KeyError)."""
+    query = _q(riferimento="light.soggiorno_1")
+    uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
+                           truncated=True, acts=[], current=STATI)
+    assert "i piu' vecchi della finestra mancano" in uscita["finestra"]["troncata"]
+
+
+def test_nessun_soggetto_suggerisce_search_ma_non_se_ci_sono_escluse():
+    """Mutazione ESEGUITA: scrivere `suggerimento` anche con le escluse -- rossa."""
+    vuota = _q(riferimento="light.inesistente")
+    uscita = hh.empty_answer(vuota, _scegli(vuota))
+    assert uscita["trovate"] == 0 and "search" in uscita["suggerimento"]
+    nascosta = _q(riferimento="light.servizio_sala")
+    uscita = hh.empty_answer(nascosta, _scegli(nascosta))
+    assert uscita["escluse"]["nascoste"] == 1 and "nota" in uscita
+    assert "suggerimento" not in uscita
+
+
+def test_limite_zero_non_legge_nessuno_e_conta():
+    """`limite=0` chiede solo il conto: nessun soggetto da leggere a Home
+    Assistant, ma `found` resta quello vero.
+
+    Mutazione ESEGUITA: in `choose`, restituire `subjects` anche con
+    `limit` 0 nella completa e nella media -- rossa (due soggetti)."""
+    chosen = _scegli(_q(tipo="light", limite=0))
+    assert chosen.found == 2 and chosen.subjects == []
+
+
+def test_una_esecuzione_vale_per_una_sola_automazione():
+    """Un `run_id` e' di UNA automazione: con due scelte, quale traccia
+    leggere non si sa, e si dice invece di sceglierne una a caso.
+
+    Mutazione ESEGUITA: togliere il controllo `len(subjects) != 1` con
+    `run_id` -- rossa (ritorna un `Chosen`, non l'errore)."""
+    comportamento, specchio = _automazioni(("carta", T_IERI), ("vetro", T_IERI))
+    query = _q(genere="esecuzioni", esecuzione="r1")
+    risposta = hh.choose(query, _casa(), comportamento, specchio, now=T0)
+    assert "esecuzione vale per UNA sola automazione" in risposta["errore"]
+
+
+@pytest.mark.parametrize("quante,profondita", [(1, "completa"), (2, "media"),
+                                               (10, "media"), (11, "corta")])
+def test_la_profondita_la_decide_lo_strumento(quante, profondita):
+    """Spec §3: 1 -> completa, 2-10 -> media, oltre 10 -> corta.
+
+    Mutazione ESEGUITA: `DETAIL_MEDIUM_MAX` letto come 9 -- rossa sul 10."""
+    assert hh.depth_for(quante) == profondita

@@ -1833,7 +1833,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_le_dataclass_del_prodotto_sono_venti_e_i_campi_centoundici():
+def test_le_dataclass_del_prodotto_sono_ventidue_e_i_campi_centodiciannove():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1891,13 +1891,19 @@ def test_le_dataclass_del_prodotto_sono_venti_e_i_campi_centoundici():
     (`hiris/app/home_space/house_history.py`) coi suoi sei campi -- `kind`,
     `who`, `start`, `end`, `run_id`, `level` -- la domanda di `history` gia'
     validata: cosa, di chi, quando.
+
+    **Ventidue e 119 lo stesso giorno**, Task 3: in
+    `hiris/app/home_space/house_history.py`, `Subject` coi suoi tre campi --
+    `ident`, `name`, `last` -- un soggetto della storia con l'ultimo cambio
+    che ordina la corta; e `Chosen` coi suoi cinque -- `found`, `excluded`,
+    `depth`, `subjects`, `beyond` -- chi, quanti e quanto dire.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (20, 111), (classi, campi)
+    assert (classi, campi) == (22, 119), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

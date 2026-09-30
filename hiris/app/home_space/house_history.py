@@ -21,12 +21,20 @@ che ha letto: come `house_query`, questo modulo non conosce la rete.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from .behavior import BEHAVIOR_DOMAINS
 from .historian import day_boundaries, home_space_zone, instant_epoch
-from .house_query import HouseFilters, parse_filters
+from .house_query import (
+    DETAIL_MEDIUM_MAX,
+    HouseFilters,
+    excluded_note,
+    page_rows,
+    parse_filters,
+    select_subjects,
+)
+from .privacy import redact_state
 
 KINDS = ("stati", "valori", "esecuzioni", "errori")
 #: Un giorno: la finestra che la parola «oggi» significa per chi chiede
@@ -201,3 +209,248 @@ def parse_query(arguments: dict, *, now: float,
     start, end = window
     return HistoryQuery(kind=kind, who=who, start=start, end=end, run_id=run_id,
                         level=level)
+
+
+#: Quanto possono distare un atto della cronaca e il cambio che ne e'
+#: l'effetto (da `historian.MATCH_TOLERANCE_S`, 24/08/2026): Home Assistant
+#: non firma i cambi, l'unico aggancio e' entita' + istante vicino, ed e' per
+#: questo che l'abbinamento si dice «probabile».
+MATCH_TOLERANCE_S = 60
+_NARROW = ("prima restringi -- una finestra piu' corta, un'area, un nome --; "
+           "scorri con salta solo se ti servono davvero tutte")
+_NOTHING_CHOSEN = ("nessuna cosa di questa casa corrisponde a questi filtri: cerca "
+                   "il nome con `search` e richiama `history` col suo `riferimento`")
+_JOURNAL_UNREAD = ("non ho potuto leggere la mia cronaca: un cambio senza "
+                   "per_mano_di potrebbe essere comunque mio")
+#: Tre cause danno lo STESSO vuoto, e da qui non si distinguono (la nota di
+#: `trend`, 24/08/2026): `purge_keep_days` non e' leggibile da nessuna API.
+_NO_RECORDING = ("nessuna registrazione in questa finestra: la finestra puo' andare "
+                 "oltre cio' che Home Assistant conserva, l'entita' puo' essere esclusa "
+                 "dalla registrazione, o non esistere piu' -- da qui non si distingue")
+_TRUNCATED = ("Home Assistant aveva piu' cambi di quanti se ne leggono in una volta: "
+              "ho tenuto i piu' recenti, e i piu' vecchi della finestra mancano")
+_NOTHING = object()
+
+
+@dataclass(frozen=True)
+class Subject:
+    """Un soggetto della storia: l'identificatore, il nome, e l'ultimo cambio
+    (entita') o l'ultima esecuzione (automazioni e script) secondo lo
+    specchio -- serve a ordinare la corta dal piu' vivo."""
+    ident: str
+    name: str
+    last: str | None = None
+
+
+@dataclass(frozen=True)
+class Chosen:
+    """Chi, quanti e quanto: `found` conta i soggetti PRIMA della pagina,
+    `subjects` sono quelli da leggere a Home Assistant (nella corta, solo la
+    pagina: una casa di 300 entita' non si legge intera per darne 50)."""
+    found: int
+    excluded: dict
+    depth: str
+    subjects: list[Subject]
+    beyond: dict | None = None
+
+
+def depth_for(count: int) -> str:
+    """Spec §3: 1 -> completa, 2-10 -> media, oltre 10 -> corta (la soglia
+    della porta, `DETAIL_MEDIUM_MAX`)."""
+    if count == 1:
+        return "completa"
+    return "media" if count <= DETAIL_MEDIUM_MAX else "corta"
+
+
+def _epoch(raw) -> float | None:
+    """Un istante in secondi: ISO col fuso (storico, tracce) o gia' numero
+    (il registro di Home Assistant). `None` se non si legge."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    if isinstance(raw, int | float):
+        return float(raw)
+    return instant_epoch(raw)
+
+
+def _local(raw, zone) -> str | None:
+    """Un istante nel fuso della casa. Lo storico e le tracce tornano in UTC:
+    due offset nella stessa risposta sono la fondamenta 3 rotta (misurato il
+    24/08/2026 su `trend`). Cio' che non si legge resta com'e', come testo:
+    meglio un formato inatteso che un istante inventato."""
+    if raw is None:
+        return None
+    epoch = _epoch(raw)
+    if epoch is None:
+        return str(raw)
+    return datetime.fromtimestamp(epoch, tz=zone).isoformat()
+
+
+def _page(rows: list, f: HouseFilters) -> tuple[list, dict | None]:
+    """Il tetto nella regola (spec §3), con la pagina di `search`: un punto
+    solo, `house_query.page_rows` (30/09/2026)."""
+    return page_rows(rows, f.offset, f.limit)
+
+
+def choose(query: HistoryQuery, home_space: dict, behavior, mirror, *,
+           unavailable=(), now: float) -> Chosen | dict:
+    """Di chi (la scelta di `search`, `select_subjects`) e quanto.
+
+    Stati e valori guardano le entita'; le esecuzioni automazioni e script.
+    I soggetti si ordinano dal piu' vivo (ultimo cambio o ultima esecuzione
+    dello specchio): nella corta si legge solo la pagina."""
+    f = query.who
+    if query.kind == "esecuzioni":
+        kinds = ((BEHAVIOR_DOMAINS[f.domain],) if f.domain
+                 else ("automazione", "script"))
+        f = replace(f, domain=None)
+    else:
+        kinds = ("entita",)
+    selection = select_subjects(f, kinds, home_space, behavior, mirror,
+                                unavailable=unavailable, now=now)
+    names, since_when = mirror[1], mirror[4]
+    if query.kind == "esecuzioni":
+        subjects = [Subject(item["id"], item.get("nome") or item["id"],
+                            values.get("last_triggered"))
+                    for item, values in selection.behavior]
+    else:
+        subjects = [Subject(entry["id"],
+                            names.get(entry["id"]) or entry.get("nome") or entry["id"],
+                            since_when.get(entry["id"]))
+                    for entry, _area, _where in selection.entities]
+    if query.run_id is not None and len(subjects) != 1:
+        return {"errore": f"esecuzione vale per UNA sola automazione, e questi filtri "
+                          f"ne scelgono {len(subjects)}: restringi con riferimento"}
+    subjects.sort(key=lambda s: _epoch(s.last) or 0.0, reverse=True)
+    depth = depth_for(len(subjects))
+    if depth != "corta":
+        return Chosen(len(subjects), selection.excluded, depth,
+                      subjects if f.limit > 0 else [])
+    page, beyond = _page(subjects, f)
+    return Chosen(len(subjects), selection.excluded, depth, page, beyond)
+
+
+def _frame(query: HistoryQuery, chosen: Chosen) -> dict:
+    """La forma della porta, uguale per ogni genere (spec §3): cio' che si e'
+    trovato, cio' che si e' lasciato fuori con la stessa nota di `search`
+    (3.71.1), e la finestra chiesta nel fuso della casa."""
+    out: dict = {"trovate": chosen.found, "escluse": chosen.excluded,
+                 "profondita": chosen.depth, "voci": []}
+    note = excluded_note(chosen.found, chosen.excluded)
+    if note:
+        out["nota"] = note
+    out["finestra"] = {"da": query.start.isoformat(), "a": query.end.isoformat()}
+    return out
+
+
+def empty_answer(query: HistoryQuery, chosen: Chosen) -> dict:
+    """Nessuno da leggere: nessun soggetto, o `limite` 0. Senza soggetti e
+    senza escluse la strada si indica: il nome si trova con `search`."""
+    out = _frame(query, chosen)
+    if chosen.beyond:
+        out["oltre"] = {**chosen.beyond, "consiglio": _NARROW}
+    if chosen.found == 0 and not any(chosen.excluded.values()):
+        out["suggerimento"] = _NOTHING_CHOSEN
+    return out
+
+
+def _name_subjects(out: dict, chosen: Chosen) -> None:
+    """Di chi sono le righe: nella completa il soggetto, nella media la mappa
+    `{id: nome}` -- il nome una volta sola, non su ogni riga."""
+    if chosen.depth == "completa" and chosen.subjects:
+        s = chosen.subjects[0]
+        out["soggetto"] = {"id": s.ident, "nome": s.name}
+    elif chosen.depth == "media":
+        out["soggetti"] = {s.ident: s.name for s in chosen.subjects}
+
+
+def _changes(entity_id: str, points: list[dict],
+             start_ts: float) -> list[tuple[str, float, str | None]]:
+    """I cambi VERI dentro la finestra, dal piu' vecchio: (istante, secondi,
+    stato).
+
+    Lo stato passa dal filtro di riservatezza PRIMA del confronto (spec §5):
+    «Lavoro» -> «Palestra» di una persona sono due `not_home` e non sono un
+    cambio. Il primo punto e' lo stato all'inizio della finestra: conta solo
+    se e' dentro. Un punto uguale al precedente (un attributo cambiato) non
+    e' un cambio di stato."""
+    out = []
+    previous = _NOTHING
+    for point in points:
+        epoch = _epoch(point.get("quando"))
+        if epoch is None:
+            continue
+        value = redact_state(entity_id, point.get("valore"))
+        changed = epoch > start_ts if previous is _NOTHING else value != previous
+        if changed:
+            out.append((point.get("quando"), epoch, value))
+        previous = value
+    return out
+
+
+def _by_hand(entity_id: str, epoch: float, acts: list[dict] | None) -> dict:
+    """«Per mano di HIRIS» (da `historian._match`, 24/08/2026): l'atto della
+    cronaca su questa entita' piu' vicino al cambio, entro
+    `MATCH_TOLERANCE_S`, detto `probabile`. Nessun atto: niente -- il cambio
+    non e' di HIRIS, e chi l'abbia fatto la storia non lo sa."""
+    best, best_gap = None, None
+    for act in acts or []:
+        if entity_id not in (act.get("entita") or []):
+            continue
+        gap = abs(float(act.get("quando_ts") or 0.0) - epoch)
+        if gap <= MATCH_TOLERANCE_S and (best_gap is None or gap < best_gap):
+            best, best_gap = act, gap
+    if best is None:
+        return {}
+    return {"per_mano_di": "HIRIS", "abbinamento": "probabile",
+            "atto": {"id": best.get("id"), "origine": best.get("origine"),
+                     "servizio": best.get("servizio")}}
+
+
+def _declare_gaps(out: dict, chosen: Chosen, series: dict, *, truncated: bool) -> None:
+    missing = [s.ident for s in chosen.subjects if not series.get(s.ident)]
+    if missing:
+        out["nessuna_registrazione"] = {"soggetti": missing, "perche": _NO_RECORDING}
+    if truncated:
+        out["finestra"]["troncata"] = _TRUNCATED
+
+
+def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]], *,
+               truncated: bool, acts: list[dict] | None,
+               current: dict[str, str]) -> dict:
+    """Gli stati (spec §3): completa -- ogni cambio, con «per mano di»;
+    media -- ogni cambio con l'id, una riga per evento; corta -- una riga per
+    soggetto (quanti cambi, l'ultimo, lo stato adesso). Nelle prime due le
+    righe vanno dal piu' recente e si fermano a `ROWS_MAX`."""
+    zone = query.start.tzinfo
+    start_ts = query.start.timestamp()
+    out = _frame(query, chosen)
+    changes = {s.ident: _changes(s.ident, series.get(s.ident) or [], start_ts)
+               for s in chosen.subjects}
+    if chosen.depth == "corta":
+        out["voci"] = [{"id": s.ident, "nome": s.name, "cambi": len(changes[s.ident]),
+                        "ultimo_cambio": (_local(changes[s.ident][-1][0], zone)
+                                          if changes[s.ident] else None),
+                        "stato": redact_state(s.ident, current.get(s.ident))}
+                       for s in chosen.subjects]
+        beyond = chosen.beyond
+    else:
+        events = []
+        for s in chosen.subjects:
+            for when, epoch, value in changes[s.ident]:
+                row = {"quando": _local(when, zone), "stato": value}
+                if chosen.depth == "media":
+                    row = {"id": s.ident, **row}
+                row.update(_by_hand(s.ident, epoch, acts))
+                events.append((epoch, row))
+        events.sort(key=lambda event: event[0], reverse=True)
+        out["voci"], beyond = _page([row for _when, row in events], query.who)
+        _name_subjects(out, chosen)
+        if "soggetto" in out:
+            ident = out["soggetto"]["id"]
+            out["soggetto"]["stato"] = redact_state(ident, current.get(ident))
+        if acts is None:
+            out["cronaca_non_letta"] = _JOURNAL_UNREAD
+    if beyond:
+        out["oltre"] = {**beyond, "consiglio": _NARROW}
+    _declare_gaps(out, chosen, series, truncated=truncated)
+    return out
