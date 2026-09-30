@@ -20,11 +20,13 @@ che ha letto: come `house_query`, questo modulo non conosce la rete.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from .behavior import BEHAVIOR_DOMAINS
 from .historian import day_boundaries, home_space_zone, instant_epoch
-from .house_query import BEHAVIOR_DOMAINS, HouseFilters, parse_filters
+from .house_query import HouseFilters, parse_filters
 
 KINDS = ("stati", "valori", "esecuzioni", "errori")
 #: Un giorno: la finestra che la parola «oggi» significa per chi chiede
@@ -143,13 +145,21 @@ def _window(a: dict, *, now: float,
             if isinstance(moment, str):
                 return moment
     else:
+        raw_hours = a.get("ore")
         try:
-            hours = float(a["ore"]) if a.get("ore") is not None else DEFAULT_HOURS
+            if isinstance(raw_hours, bool):
+                raise TypeError("un booleano non e' un numero di ore")
+            hours = float(raw_hours) if raw_hours is not None else DEFAULT_HOURS
+            if not math.isfinite(hours):
+                raise ValueError("nan e inf non sono ore")
         except (TypeError, ValueError, OverflowError):
             return "ore vuole un numero di ore"
         if not 0 < hours <= WINDOW_MAX_HOURS:
             return f"ore va da piu' di 0 a {WINDOW_MAX_HOURS} (90 giorni)"
-        start, end = now_local - timedelta(hours=hours), now_local
+        # Dall'epoch, mai `now_local - timedelta`: in ora del muro il giorno
+        # del cambio d'ora sbagliava di un'ora (24 ore chiedevano 25 vere).
+        start = datetime.fromtimestamp(now - hours * 3600, tz=zone)
+        end = now_local
     # Confronti sull'epoch, mai tra `datetime` dello stesso fuso: quelli
     # ignorano il cambio d'ora (vedi `HistoryQuery.hours`).
     if end.timestamp() > now:

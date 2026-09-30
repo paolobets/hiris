@@ -21,6 +21,7 @@ from datetime import datetime
 
 from ..memory.resolver import name_matches
 from . import topology
+from .behavior import BEHAVIOR_DOMAINS
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 
@@ -31,11 +32,10 @@ ORDERS = ("nome", "ultimo_cambio", "valore")
 _DURATION = re.compile(r"^\s*(\d+)\s*([smhd])\s*$")
 _UNIT_S = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 #: I generi che hanno uno stato nello specchio e un'ultima esecuzione.
-_BEHAVIOR_KINDS = {"automazione": "automation", "script": "script"}
+_BEHAVIOR_KINDS = {kind: domain for domain, kind in BEHAVIOR_DOMAINS.items()}
 #: Il dominio di Home Assistant -> il genere: `tipo=automation` senza
 #: `genere` e' una domanda sulle automazioni, e per loro conta l'ultima
 #: esecuzione, non l'ultimo cambio di stato (spec §2.2).
-BEHAVIOR_DOMAINS = {v: k for k, v in _BEHAVIOR_KINDS.items()}
 #: I generi che si chiedono per `riferimento` e rispondono col dettaglio
 #: completo di `queries.view`. Un dispositivo senza `riferimento` si cerca
 #: invece per nome, come faceva il vecchio `search` («la lavatrice»).

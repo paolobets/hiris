@@ -32,6 +32,37 @@ def test_senza_quando_la_finestra_e_di_ventiquattro_ore_e_il_genere_e_stati():
     assert query.start.utcoffset() == timedelta(hours=2)
 
 
+@pytest.mark.parametrize("quando,ore", [
+    (datetime(2026, 10, 25, 12, 0, tzinfo=ZoneInfo(ROMA)), 12),
+    (datetime(2026, 10, 25, 12, 0, tzinfo=ZoneInfo(ROMA)), 24),
+    (datetime(2026, 3, 29, 12, 0, tzinfo=ZoneInfo(ROMA)), 12),
+    (datetime(2026, 3, 29, 12, 0, tzinfo=ZoneInfo(ROMA)), 24),
+    (datetime(2026, 10, 25, 2, 30, tzinfo=ZoneInfo(ROMA), fold=1), 1),
+    (datetime(2026, 10, 25, 2, 30, tzinfo=ZoneInfo(ROMA), fold=0), 1),
+])
+def test_ore_sono_ore_vere_anche_nel_giorno_del_cambio_d_ora(quando, ore):
+    """`ore=N` dura N ore VERE: la finestra si costruisce dall'epoch. In ora
+    del muro `ore=24` il 25/10 (25 ore) o `ore=12` erano 25 e 13 ore vere.
+
+    Mutazione ESEGUITA: `start = now_local - timedelta(hours=hours)` --
+    rossa."""
+    ora = quando.timestamp()
+    query = hh.parse_query({"ore": ore}, now=ora, timezone=ROMA)
+    assert query.end.timestamp() - query.start.timestamp() == ore * 3600
+    assert query.hours == ore
+    assert query.end.timestamp() == ora
+
+
+@pytest.mark.parametrize("ore", [True, False, "nan", "inf", float("nan"), float("inf")])
+def test_ore_non_numeriche_o_non_finite_sono_rifiutate(ore):
+    """`True` non e' un'ora e `nan`/`inf` non sono un numero di ore.
+
+    Mutazione ESEGUITA: togliere il controllo `isinstance(raw_hours, bool)`
+    -- rossa su True/False; togliere `math.isfinite` -- rossa su nan/inf."""
+    risposta = hh.parse_query({"ore": ore}, now=T0, timezone=ROMA)
+    assert isinstance(risposta, dict) and "ore vuole un numero" in risposta["errore"]
+
+
 def test_oggi_e_la_mezzanotte_della_casa_non_quella_di_greenwich():
     """Alle 00:30 di Roma in UTC e' ancora ieri.
 
