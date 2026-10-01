@@ -3,7 +3,8 @@
 Spec `docs/design/2026-09-10-i-tre-attori.md` §8: *«Il repo diventa il seme.
 Le righe del vocabolario dei tipi e quelle delle direzioni si caricano
 all'avvio con la loro provenienza: restano scritte, riviste, linterate e in
-git -- e la casa scrive sopra.»*
+git -- e la casa scrive sopra.»* (Le righe delle direzioni sono uscite il 01/10/2026 con
+la pulizia dei bilanci: le scriveva solo questo seme e nessuno le leggeva.)
 
 **Perche' un seme e non una tabella nel codice.** Finora queste righe erano
 dizionari dentro `proxy/ha_client.py`: per correggerne una serviva un

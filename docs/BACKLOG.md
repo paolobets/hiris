@@ -741,7 +741,8 @@ Tutti dichiarati, nessuno mette in pericolo un dato; si raccolgono qui perche' n
 `origine: il proprietario e la verifica dal vivo del 01/10/2026, durante la pulizia dei bilanci` · nessun documento
 
 **Il fatto.** Il 01/10/2026 i 17 sensori dell'integrazione dell'inverter, `zcsazzurro`
-(`ZE1ES030N5E528`), sono stati trovati **fermi**. L'ultimo cambio era del 30/09/2026 alle 10:41
+(`ZE1ES030N5E528`), sono stati trovati **fermi** dal 30/09/2026 00:00 al 01/10/2026 07:24 ora di
+casa (l'intervallo in cui l'inverter non ha mandato dati). L'ultimo cambio era del 30/09/2026 alle 10:41
 ora di casa, il riavvio di Home Assistant; sono ripartiti il 01/10/2026 alle 07:24 ora di casa
 (05:24Z), dopo un intervento del proprietario. In mezzo: la potenza ferma a «10 W», la batteria
 ferma al 74%, ogni contatore «oggi» a 0, l'integrazione `loaded` senza nessun errore e niente nel
@@ -751,6 +752,12 @@ l'INVERTER a non mandare piu' dati.**
 **Quanto e' grande il buco.** I dati del 29/09 ci sono (le statistiche del giorno di Home
 Assistant danno 20,2 kWh prodotti). Le statistiche orarie sono a zero dal 30/09 00:00 ora di casa:
 il buco e' **un giorno, il 30/09, piu' la notte che lo segue**.
+
+**Un buco di prova emerso nella stessa revisione.** Nessuna prova porta una ricetta di energia
+dal sapere, con un dispositivo e le sue serie, fino alle `misure` del resoconto
+(`_report_ingredients` -> `aggregate_day`): la prova nuova di `test_mind_wiring` gira con
+`knowledge=None` e prova che il lavoro notturno arriva al resoconto, non che le sette ricette
+vengano calcolate. Il buco c'era gia' prima della pulizia (il risultato dei bilanci si buttava).
 
 **Perche' conta.** Il resoconto del 30/09 ha calcolato produzione 0, consumo 0 e «copertura 1.0»,
 e nessuno se n'e' accorto. Dal punto di vista di HIRIS non c'era niente da vedere: quando la fonte
