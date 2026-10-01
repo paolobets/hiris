@@ -414,7 +414,7 @@ from _comune import file_py, rel
 
 # Il confine di HAClient (`proxy/ha_client.py`): un ambito che OGNI
 # sottosistema convertito puo' chiamare
-# per attributo (`ha.history(...)`, `ha.statistics(...)`...). Una parola
+# per attributo (`ha.history(...)`, `ha.hourly_statistics(...)`...). Una parola
 # gia' decisa nel glossario (`statistiche -> statistics`) non sa
 # distinguere "un metodo mio che si chiama cosi'" da "un metodo DI
 # HACLIENT che si chiama cosi' per caso" -- l'attributo dopo il punto e'
@@ -426,31 +426,39 @@ from _comune import file_py, rel
 # non viene convertito, e nessun test lo vedeva perche' il finto che lo
 # imitava era stato rinominato insieme al chiamante. **Le due frasi qui
 # sopra sono il verbale di quella misura e portano i nomi di ALLORA**:
-# `proxy/` e' convertito dal lotto 19, `statistiche` si chiama `statistics`
-# per davvero, e questa lista porta i nomi nuovi. La guardia non e' scaduta
-# con la conversione -- serve identica il giorno in cui una parola inglese
-# di `HAClient` finisse nel glossario come traduzione di qualcos'altro.
+# `proxy/` e' convertito dal lotto 19, `statistiche` si e' chiamato
+# `statistics` per davvero (ed e' uscito con la 3.72.0, insieme a `logbook`),
+# e questa lista porta i nomi nuovi. La guardia non e' scaduta con la
+# conversione -- serve identica il giorno in cui una parola inglese di
+# `HAClient` finisse nel glossario come traduzione di qualcos'altro.
 #
 # Elenco letto a mano da `proxy/ha_client.py` (non importato: questo
 # script non dipende dal resto del pacchetto) -- va aggiornato se quel
 # file guadagna o perde un metodo. Include anche i privati (`_ws_batch` e
 # simili): non c'e' svantaggio a proteggerli anche se oggi nessuna parola
 # del glossario li tocca, e un domani in cui una collidesse non
-# richiederebbe di ricordarsi di questa lista.
+# richiederebbe di ricordarsi di questa lista. **Riletto il 01/10/2026**:
+# portava ancora `logbook` e `statistics`, usciti con la 3.72.0, e mancava di
+# quindici metodi veri (`traces`, `trace`, `behavior_configs`, ...). Da quel
+# giorno lo confronta col sorgente una prova
+# (`tests/test_rinomina_applica.py`), perche' «va aggiornato» scritto in un
+# commento non l'aveva aggiornato nessuno.
 _METODI_HA_CLIENT = frozenset({
     "start", "stop", "get_states", "get_services", "call_service",
     "_config_route", "_http_reason", "read_configuration",
     "save_configuration", "delete_configuration", "validate_config",
     "_ws_occurrence", "create_helper", "delete_helper", "list_labels",
     "create_label", "add_label_to", "extract_from_target",
-    "read_dashboards",
-    "history", "logbook", "render_template", "_ws_batch", "_ws_request",
-    "_ws_command", "_ws_call", "statistics", "hourly_statistics",
-    "_request_statistics", "related", "problems",
+    "read_dashboards", "update_panel", "panels", "users", "_user_row",
+    "history", "recorded_changes", "render_template", "_ws_batch",
+    "_ws_request", "_ws_command", "_ws_call", "hourly_statistics",
+    "statistic_ids", "_request_statistics", "related", "problems",
+    "system_log", "automation_traces", "traces", "trace", "behavior_configs",
+    "calendars", "calendar_events", "get_translations",
     "get_config", "read_registries", "_add_extended_fields",
     "add_state_listener", "remove_state_listener", "add_topology_listener",
-    "add_service_listener", "add_dashboard_listener", "start_websocket",
-    "_ws_loop",
+    "add_service_listener", "add_dashboard_listener",
+    "add_automation_listener", "start_websocket", "_ws_loop",
 })
 
 # La STESSA guardia, per una specie diversa di confine (Task 9, `api/`):
