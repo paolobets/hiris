@@ -90,12 +90,6 @@ VERIFICATIONS = ("confermata", "non_confermabile", "non_capito")
 # bisogno quanto chi semina. Tenerli nel seme obbligava il lettore a
 # importarli da li', cioe' a dipendere da chi scrive per poter leggere.
 
-#: Il campo sotto cui vive una direzione dell'energia. Il soggetto e'
-#: l'integrazione, il resto del nome e' il `translation_key` a cui la riga si
-#: riferisce: `direzione:energy_generating_today`.
-DIRECTION_FIELD_PREFIX = "direzione:"
-
-
 #: Il campo sotto cui vive il significato di un tipo. Il soggetto e' il tipo
 #: stesso -- `sensor`, oppure `sensor.power` per una coppia dominio/classe --
 #: esattamente come la spec §8 lo scrive nel suo esempio.
@@ -225,11 +219,11 @@ CREATE TABLE IF NOT EXISTS knowledge (
     seeded_priority INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (subject_kind, subject, field)
 );
--- Nessun indice su `field`. Gli accessi per campo sono due: `by_field_prefix`,
--- che usa `substr(field, 1, ?)` -- una funzione sulla colonna, che l'indice non
--- puo' servire (Fable 5.1, 13/09/2026) -- e `judgment_rows` (fetta «il
--- giudizio dei tipi», 16/09/2026), `field IN (...)`, che un indice servirebbe
--- ma che gira all'avvio, a ogni scrittura di un giudizio dalla porta unica
+-- Nessun indice su `field`. L'accesso per campo e' uno, `judgment_rows` (fetta
+-- «il giudizio dei tipi», 16/09/2026), `field IN (...)`; il secondo,
+-- `by_field_prefix`, e' uscito il 01/10/2026 col suo unico lettore (le
+-- direzioni dell'energia). `judgment_rows` un indice lo servirebbe, ma
+-- gira all'avvio, a ogni scrittura di un giudizio dalla porta unica
 -- (`mind/judgments.write_judgment`, spec 2026-09-16 §4) e a ogni lettura della
 -- pagina del sapere: mai nel percorso caldo. Sulla casa del
 -- proprietario la tabella aveva 241 righe il 16/09/2026 (spec 2026-09-16 §1
@@ -719,26 +713,6 @@ class KnowledgeStore:
         found = _facts([row])
         return found[0] if found else None
 
-    def by_field_prefix(self, prefix: str) -> list[Fact]:
-        """Tutte le righe il cui campo comincia per `prefix`.
-
-        Serve ai campi che portano una chiave dentro il nome --
-        `direzione:energy_generating_today` -- dove il prefisso e' il tipo di
-        cosa e il resto e' di chi parla.
-
-        `substr(...) = ?` e non `LIKE ?`: in un `LIKE` i caratteri `%` e `_`
-        sono jolly, e `_` compare in ogni nome di campo di questo archivio.
-        Con `LIKE` servirebbe un `ESCAPE` e tre `replace` prima della
-        chiamata -- tre righe di quoting a mano che sbagliano al primo campo
-        con un carattere inatteso. Il confronto sul prefisso non ha jolly.
-        """
-        with self._lock:
-            rows = self._conn.execute(
-                f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
-                "WHERE substr(field, 1, ?) = ? ORDER BY subject, field",
-                (len(prefix), prefix)).fetchall()
-        return _facts(rows)
-
     def judgment_rows(self) -> list[Fact]:
         """Le righe dei giudizi su tipi, entita' e integrazioni (spec
         2026-09-16 §3; `integrazione` dal 20/09/2026)."""
@@ -787,10 +761,12 @@ class KnowledgeStore:
             rows = self._conn.execute(
                 # **Il campo si taglia ai due punti.** `direzione:power_importing`
                 # e `direzione:energy_exporting_today` sono lo stesso campo con
-                # dentro la cosa di cui parlano -- e' cosi' che
-                # `by_field_prefix` li cerca. Senza il taglio il riassunto
+                # dentro la cosa di cui parlano. Senza il taglio il riassunto
                 # sarebbe lungo quanto il dato: misurato il 15/09/2026, 14
-                # righe da uno su 19 totali.
+                # righe da uno su 19 totali. **Il seme delle direzioni e' uscito
+                # il 01/10/2026**, ma le righe gia' scritte restano sul disco
+                # delle case avviate (il seme non cancella), e il taglio vale
+                # per qualunque campo che porti i due punti.
                 "SELECT subject_kind, "
                 "       CASE WHEN instr(field, ':') > 0 "
                 "            THEN substr(field, 1, instr(field, ':') - 1) "
@@ -849,35 +825,6 @@ def now_ts() -> float:
     """L'orologio, in un posto solo: le prove lo sostituiscono senza toccare
     ogni sito di chiamata."""
     return _time.time()
-
-
-def directions_by_translation_key(store, integration: str | None = None) -> dict[str, str]:
-    """`{translation_key: direzione}`, dalle righe del sapere.
-
-    **Nessun chiamante di produzione dal 30/09/2026**: lo consumava solo
-    `HAClient.energy_directions`, uscito senza chiamanti con la revisione
-    finale della storia. Resta finche' non si decide dei bilanci
-    (`server.build_balances` riceve oggi `directions={}`): debito in
-    `docs/BACKLOG.md`.
-
-    **La lettura e' del sapere, non del proxy.** Il lettore di Home Assistant
-    sa leggere un registro di entita': non sa, e non deve sapere, che
-    `energy_generating_today` voglia dire «produzione». Quel salto e' un
-    giudizio, vive nel sapere con la sua provenienza, e arriva al proxy come
-    un parametro -- la stessa disciplina con cui `episodio` riceve `is_on` e
-    `quando_succede` riceve il fuso gia' risolto.
-
-    Senza `integration` raccoglie le direzioni di tutte le integrazioni note.
-    Due integrazioni che usassero la stessa chiave per direzioni diverse sono
-    un caso che questa casa non ha: quando capitera', questa funzione dovra'
-    prendere l'integrazione dell'entita' invece di appiattire.
-    """
-    by_key: dict[str, str] = {}
-    for fact in store.by_field_prefix(DIRECTION_FIELD_PREFIX):
-        if integration is not None and fact.subject != integration:
-            continue
-        by_key[fact.field[len(DIRECTION_FIELD_PREFIX):]] = fact.value
-    return by_key
 
 
 def attributes_wanted_for(store, *, domain: str,

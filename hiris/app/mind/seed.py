@@ -3,7 +3,8 @@
 Spec `docs/design/2026-09-10-i-tre-attori.md` §8: *«Il repo diventa il seme.
 Le righe del vocabolario dei tipi e quelle delle direzioni si caricano
 all'avvio con la loro provenienza: restano scritte, riviste, linterate e in
-git -- e la casa scrive sopra.»*
+git -- e la casa scrive sopra.»* (Le righe delle direzioni sono uscite il 01/10/2026 con
+la pulizia dei bilanci: le scriveva solo questo seme e nessuno le leggeva.)
 
 **Perche' un seme e non una tabella nel codice.** Finora queste righe erano
 dizionari dentro `proxy/ha_client.py`: per correggerne una serviva un
@@ -12,8 +13,9 @@ ne' se qualcuno le avesse mai verificate. Come righe del sapere hanno una
 provenienza, si leggono e si correggono senza toccare il codice.
 
 **«A caldo» vale per chi le rilegge a ogni giro, non per tutte** (Fable 5.1,
-13/09/2026): le direzioni si rileggono a ogni aggregazione, il significato di
-una classe a ogni dettaglio chiesto. Gli **attributi voluti** no --
+13/09/2026): il significato di una classe si rilegge a ogni dettaglio chiesto
+(le direzioni dell'energia, che si rileggevano a ogni aggregazione, sono
+uscite dal seme il 01/10/2026). Gli **attributi voluti** no --
 l'osservatore li tiene in memoria per non interrogare l'archivio due volte per
 evento, e una riga corretta si legge al riavvio successivo. Il costo della
 memoria e la sua sorte stanno scritti accanto (`mind/watcher.py`).
@@ -27,13 +29,11 @@ from __future__ import annotations
 
 from .knowledge import (
     ATTRIBUTE_FIELD,
-    DIRECTION_FIELD_PREFIX,
     MEANING_FIELD,
     Fact,
     now_ts,
     type_subject,
 )
-from .recipes import ENTITY_MARK, STEP_MARK
 
 #: Chi ha scritto le righe del seme: il repo stesso, non un modello e non il
 #: proprietario. Serve perche' `Fact` pretende un autore, e «il repo» e' la
@@ -66,55 +66,15 @@ HOUSE_AUTHOR = "l'installazione di questa casa"
 #: La precedenza dell'installazione: sotto il repo. Vedi `REPO_PRIORITY`.
 HOUSE_PRIORITY = 1
 
-#: Le quattordici chiavi di `zcsazzurro`, misurate sulla casa vera il
-#: 27/08/2026 e ri-misurate il 12/09/2026 (tutte e quattordici hanno ancora un
-#: nome tradotto vivo dentro l'installazione, vedi
-#: `docs/design/2026-09-12-il-sapere-e-le-ricette.md`).
-#:
-#: **Nessun suffisso `_today` sul gemello di potenza** -- trappola misurata,
-#: non dedotta dal pattern dell'energia (`power_generating`, non
-#: `power_generating_today`).
-#:
-#: **La provenienza e' `dedotto`, e le prove sono il `translation_key`.**
-#: Home Assistant dichiara il NOME («Energia prodotta oggi»), non la
-#: direzione: il salto fra le due cose l'ha fatto un modello leggendo le
-#: chiavi che l'integrazione scrive -- che e' esattamente cio' che `dedotto`
-#: significa nel vocabolario del sapere. Non `importato` (nessuno la' fuori ce
-#: l'ha detto) e non `nostro` (quello e' un giudizio che nessuna fonte
-#: potrebbe darci, e qui la fonte c'e': la chiave).
-_ZCSAZZURRO_DIRECTIONS = {
-    "energy_generating_today": "produzione", "power_generating": "produzione",
-    "energy_importing_today": "prelievo", "power_importing": "prelievo",
-    "energy_exporting_today": "immissione", "power_exporting": "immissione",
-    "energy_charging_today": "carica", "power_charging": "carica",
-    "energy_discharging_today": "scarica", "power_discharging": "scarica",
-    "energy_consuming_today": "consumo", "power_consuming": "consumo",
-    "energy_autoconsuming_today": "autoconsumo", "power_autoconsuming": "autoconsumo",
-}
-
-_DIRECTION_EVIDENCE = (
-    "il translation_key che l'integrazione scrive nel registro delle entita' "
-    "(config/entity_registry/list), misurato sulla casa vera il 27/08/2026. Il "
-    "12/09/2026 si e' ri-visto che tutte e quattordici le chiavi hanno ancora "
-    "un nome pubblicato (frontend/get_translations, categoria «entity») -- il "
-    "che prova che la chiave esiste, non che la direzione sia quella"
-)
-
-
-def direction_seed(when_ts: float | None = None) -> list[Fact]:
-    """Le direzioni dell'energia come righe del sapere.
-
-    Soggetto **integrazione**, quindi universali: valgono per chiunque abbia
-    quell'inverter, e si esportano.
-    """
-    when = when_ts if when_ts is not None else now_ts()
-    return [
-        Fact(subject_kind="integrazione", subject="zcsazzurro",
-             field=f"{DIRECTION_FIELD_PREFIX}{key}", value=direction,
-             provenance="dedotto", evidence=_DIRECTION_EVIDENCE,
-             who=SEED_AUTHOR, when_ts=when)
-        for key, direction in sorted(_ZCSAZZURRO_DIRECTIONS.items())
-    ]
+# **Le direzioni dell'energia sono uscite dal seme il 01/10/2026.** Le
+# quattordici chiavi di `zcsazzurro` (`direzione:energy_generating_today` ->
+# «produzione», ...) si leggevano solo da
+# `knowledge.directions_by_translation_key`, che serviva solo ai bilanci, e i
+# bilanci non seminavano niente da due settimane: le righe erano scritte e
+# mai lette. Sono usciti tutti e tre insieme. Quelle gia' scritte
+# restano nel sapere delle case avviate, perche' il seme non cancella (vedi
+# `docs/BACKLOG.md`, «Una riga del seme ritirata da un rilascio futuro resta
+# in vigore per sempre»).
 
 
 # -- I significati delle classi -------------------------------------------
@@ -273,79 +233,3 @@ def judgment_seed(when_ts: float | None = None) -> list[Fact]:
     return [Fact(subject_kind=kind, subject=subject, field=field, value=value,
                  provenance="nostro", who=SEED_AUTHOR, when_ts=when)
             for kind, subject, field, value in judgment_seed_rows()]
-
-
-# -- la ricetta del bilancio ------------------------------------------------
-
-def balance_recipe(entity_per_dimension: dict[str, str], *, order,
-                   expected_hours: int | None = None) -> dict:
-    """La ricetta del bilancio dell'energia, **come dato**.
-
-    **Sta fra i SEMI e non nel motore** (Fable 5.1, 13/09/2026): `recipes.py`
-    e' l'esecutore generico e non deve sapere cosa sono i kWh, l'autoconsumo o
-    il prelievo. Questa funzione invece e' cio' che il REPO sa di un bilancio,
-    destinato a diventare una riga del sapere quando la ricetta ci vivra'
-    davvero -- esattamente come le direzioni e i significati qui sopra.
-
-    **E' il pezzo che la spec §7 nomina per primo.** Da qui in avanti il
-    bilancio e' una sequenza di passi con nomi: si legge tutta, si valida, si
-    rifiuta prima di eseguirla, e le due quote si calcolano in un posto solo
-    invece che in due (erano un conto a se' dentro `_balance_moments`).
-
-    **Non e' ancora scritta nel sapere**, quindi correggerla vuole ancora un
-    rilascio: la meta' che manca e' a backlog. Vedi il docstring del modulo.
-
-    **Perche' il repo la genera invece di averla scritta a mano.** I passi
-    dipendono da quali direzioni questo dispositivo ha davvero: un inverter
-    senza accumulo non ha «carica» ne' «scarica», e una ricetta con passi che
-    nominano entita' inesistenti verrebbe **rifiutata** dalla validazione --
-    giustamente. La ricetta e' un dato generato da un altro dato (la mappa
-    direzione -> entita', che il chiamante risolve), non un letterale da
-    tenere aggiornato a mano per ogni forma d'impianto.
-
-    **L'ordine arriva da chi possiede l'elenco delle direzioni**, e non e'
-    estetica: un passo puo' leggere solo quelli PRIMA di lui, quindi i totali
-    devono venire prima delle quote che li compongono, e l'ordine fra i totali
-    dev'essere stabile o due giri della stessa casa produrrebbero due ricette
-    diverse. La prima stesura ne teneva una copia qui (`_BALANCE_ORDER`),
-    identica lettera per lettera a `mind/facts.BALANCE_DIRECTIONS`: una
-    direzione aggiunta a una sola delle due sarebbe sparita dal bilancio
-    **senza un errore e senza un log** (revisione indipendente, 13/09/2026).
-
-    I passi:
-
-    - un totale per ogni direzione presente (`somma_periodo`);
-    - la quota di autoconsumo sulla produzione, quando ci sono entrambe;
-    - l'autosufficienza come **la ricetta della spec §7 la scrive**:
-      `quota(differenza_fra(consumo, prelievo), consumo)`.
-    """
-    steps = []
-    present = [d for d in order if entity_per_dimension.get(d)]
-    for dimension in present:
-        given_entity = f"{ENTITY_MARK}{entity_per_dimension[dimension]}"
-        steps.append({
-            "name": dimension, "operation": "somma_periodo",
-            "inputs": [given_entity],
-            "params": {"unit": "kWh", "expected_parts": expected_hours},
-        })
-        steps.append({
-            "name": f"forma_{dimension}", "operation": "per_ora",
-            "inputs": [given_entity],
-            "params": {"unit": "kWh", "expected_parts": expected_hours},
-        })
-    if "autoconsumo" in present and "produzione" in present:
-        steps.append({"name": "quota_autoconsumo", "operation": "quota",
-                      "inputs": [f"{STEP_MARK}autoconsumo",
-                                 f"{STEP_MARK}produzione"]})
-    if "consumo" in present and "prelievo" in present:
-        steps.append({"name": "autoprodotto", "operation": "differenza_fra",
-                      "inputs": [f"{STEP_MARK}consumo", f"{STEP_MARK}prelievo"]})
-        steps.append({"name": "quota_autosufficienza", "operation": "quota",
-                      "inputs": [f"{STEP_MARK}autoprodotto",
-                                 f"{STEP_MARK}consumo"]})
-    return {
-        "why": ("il bilancio dell'energia di questo dispositivo: quanto ha "
-                "prodotto, consumato, prelevato, e quanta parte del consumo "
-                "non e' venuta dalla rete"),
-        "steps": steps,
-    }

@@ -2,7 +2,6 @@
 import asyncio
 import contextlib
 import hashlib
-import json
 import logging
 import os
 import re
@@ -69,14 +68,12 @@ from .memory.store import MemoryStore
 from .mind import actuator, actuator_turn, analyst, analyst_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
-    BALANCE_DIRECTIONS,
     aggregate_day,
-    build_balance_body,
     chronicle_is_stale,
     rebuild_chronicle,
 )
 from .mind.judgments import build_judgments
-from .mind.knowledge import Fact, KnowledgeStore
+from .mind.knowledge import KnowledgeStore
 from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
@@ -85,10 +82,7 @@ from .mind.recipes import Recipe
 from .mind.seed import (
     HOUSE_PRIORITY,
     REPO_PRIORITY,
-    SEED_AUTHOR,
     attribute_seed,
-    balance_recipe,
-    direction_seed,
     judgment_seed,
     meaning_seed,
     meanings_from_translations,
@@ -1188,213 +1182,21 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     return run_round
 
 
-# I legami che valgono come comprimari: cose che FANNO o MISURANO qualcosa
-# mentre l'oggetto dura. Un'area e' dove sta, non cosa fa.
-_COMPANION_TYPES = ("entita", "automazione", "scena", "script")
-
-
 # **`build_companions` e' uscito** (15/09/2026, con gli oggetti). Chiedeva
 # a Home Assistant, un soggetto alla volta, chi stava con chi, e il suo
-# unico lettore era il corpo di un oggetto: «cosa ha fatto la temperatura
-# mentre il riscaldamento andava». Misurato sulla casa vera prima di
-# cancellarlo: **zero comprimari su 200 oggetti**, il campo `misure` vuoto
-# in tutti. Erano centinaia di chiamate di rete a giro per un campo che
-# nessuno ha mai visto pieno.
+# unico lettore era il corpo di un oggetto. Misurato sulla casa vera prima di
+# cancellarlo: **zero comprimari su 200 oggetti**. Con lui e' uscita la
+# lettura delle direzioni dell'energia (`energy_directions`, il metodo del
+# client e' uscito il 30/09/2026).
 #
-# Con lui e' uscita la lettura delle direzioni dell'energia da qui dentro
-# (`energy_directions`): riempiva `direzione` sull'episodio di energia, e
-# quell'episodio non c'e' piu'. **Il metodo del client e' uscito il
-# 30/09/2026** (revisione finale della storia): zero chiamanti. Questo
-# commento diceva che lo usava `build_balances` qui sotto, ed era falso --
-# `build_balances` riceve `directions` dal chiamante, e l'unico chiamante
-# (`_aggrega_ieri`) passa `directions={}`. Con una mappa vuota nessun
-# soggetto diventa membro, nessun dispositivo diventa candidato, e la
-# funzione torna `([], 0)` senza seminare niente: debito dichiarato in
-# `docs/BACKLOG.md`, non riprogettato qui.
-
-
-async def build_balances(
-        ha_client, home_space_store, *, day: str, timezone: str | None,
-        energy_subjects: list[str], directions: dict,
-        knowledge=None) -> tuple[list[dict], int]:
-    """I bilanci del giorno, uno per dispositivo -- mandato «il bilancio
-    dell'energia», 27/08/2026. Torna `(bilanci, falliti)`: stessa forma di
-    `build_companions` sopra, per la stessa ragione -- il chiamante
-    deve poter distinguere «non ho trovato niente da riassumere» (`falliti
-    == 0`, `bilanci` magari vuota) da «ho trovato dispositivi ma non sono
-    riuscito a leggerne le statistiche» (`falliti > 0`).
-
-    **Il raggruppamento per dispositivo non costa nessuna rete**: il legame
-    entita'->dispositivo lo dichiara HA nel registro delle entita', gia'
-    replicato in `home_space_store` (`read_registries()` lo alimenta da tempo --
-    fondamenta 2, nessun doppione: interrogare di nuovo `config/entity_
-    registry/list` qui sarebbe una seconda porta per un fatto che ne ha gia'
-    una). **Non si congela il dispositivo nel grezzo** (mandato, punto 3):
-    si rilegge a ogni giro, come i comprimari e le direzioni -- un'entita'
-    si puo' spostare, e il nome di un dispositivo lo puo' cambiare l'utente.
-
-    Un dispositivo diventa un CANDIDATO solo se almeno una delle sue entita'
-    di energia ha una direzione fra `BALANCE_DIRECTIONS` **e** la classe
-    `energy` (non `power`: il bilancio riporta kWh del giorno, non W
-    istantanei -- vedi il docstring di `build_balance_body`). Un
-    dispositivo senza nessuna direzione utile non diventa un bilancio: le
-    sue entita' continuano a produrre il loro episodio individuale, come
-    prima di questa fetta.
-
-    **Una connessione sola per TUTTI i dispositivi candidati** (come i
-    comprimari e le direzioni sono una connessione sola per il giro): tutti
-    gli `entity_id` utili -- le dimensioni scelte piu' l'eventuale entita'
-    batteria di ogni dispositivo -- finiscono in UNA chiamata a
-    `HAClient.hourly_statistics()`. Se quella chiamata fallisce (un
-    `{"errore": ...}` vero, es. il websocket giu'), FALLISCONO TUTTI i
-    dispositivi candidati insieme (`bilanci` vuota, `falliti =
-    len(candidati)`).
-
-    **Due guasti diversi, entrambi contano** (secondo guasto corretto dalla
-    review, mandato punto 3, 27/08/2026). La richiesta puo' anche RIUSCIRE
-    e tornare comunque vuota per UN candidato -- identificatori rinominati,
-    recorder ripartito (misurato: il database del recorder e' gia' rinato
-    una volta, il 13 agosto). Prima di questa correzione questo caso non
-    contava come fallito: un `corpo` senza nessun totale veniva scritto
-    comunque, e la riparazione all'avvio (che SOSTITUISCE) lo avrebbe usato
-    per rimpiazzare un giorno che aveva gia' un bilancio -- gli undici
-    frammenti tornano, un impoverimento puro. Ora **un candidato la cui
-    serie non porta nessun totale conta come fallito** (`falliti` cresce di
-    uno, quel dispositivo non entra in `bilanci`), indipendentemente dagli
-    altri candidati della stessa connessione: qui il fallimento PUO' essere
-    parziale (un dispositivo su due, es.), a differenza del guasto di rete
-    sopra che li prende tutti insieme.
-
-    Nessun dispositivo candidato -> nessuna chiamata di rete: se questa
-    casa non ha nessuna direzione nota (o `home_space_store` non c'e' ancora),
-    tornare `([], 0)` non costa niente.
-    """
-    if home_space_store is None or not energy_subjects:
-        return [], 0
-
-    home_space = home_space_store.read()
-    entities_by_id = {e.get("id"): e for e in home_space.get("entita", []) if e.get("id")}
-    device_names = {d.get("id"): d.get("nome") or d.get("id")
-                    for d in home_space.get("dispositivi", []) if d.get("id")}
-    device_entities: dict[str, list[dict]] = {}
-    for e in home_space.get("entita", []):
-        did = e.get("dispositivo_id")
-        if did:
-            device_entities.setdefault(did, []).append(e)
-
-    members_by_device: dict[str, set[str]] = {}
-    for subject in energy_subjects:
-        # **Correzione BASSA della review (mandato, punto 6, 27/08/2026):
-        # solo i soggetti che hanno DAVVERO una direzione entrano fra i
-        # "membri" candidati.** `energy_subjects` nella vita vera porta
-        # TUTTI i soggetti osservati quel giorno (`server.py::_aggrega_ieri`
-        # e `reaggregate_last_two_days` passano `sorted(soggetti)`,
-        # senza filtro) -- prima di questa correzione un interruttore o un
-        # sensore diagnostico dello STESSO dispositivo dell'inverter finiva
-        # elencato come «dentro il bilancio» pur continuando a produrre il
-        # proprio episodio. Innocuo su questa casa (l'inverter ha solo
-        # energia, potenza e batteria), falso su un dispositivo misto.
-        info = directions.get(subject) if directions else None
-        if not info or not info.get("direzione"):
-            continue
-        entry = entities_by_id.get(subject)
-        device_id = entry.get("dispositivo_id") if entry else None
-        if device_id:
-            members_by_device.setdefault(device_id, set()).add(subject)
-
-    candidates: dict[str, dict] = {}
-    for device_id, membri in members_by_device.items():
-        entity_by_dimension: dict[str, str] = {}
-        provenance_by_dimension: dict[str, str] = {}
-        for subject in sorted(membri):
-            info = directions.get(subject) if directions else None
-            if not info or info.get("direzione") not in BALANCE_DIRECTIONS:
-                continue
-            entry = entities_by_id.get(subject) or {}
-            if entry.get("classe") != "energy":
-                continue
-            dimension = info["direzione"]
-            if dimension in entity_by_dimension:
-                continue  # la prima trovata (ordine alfabetico) vince, deterministico
-            entity_by_dimension[dimension] = subject
-            provenance_by_dimension[dimension] = info["provenienza"]
-        if not entity_by_dimension:
-            continue  # nessuna direzione utile: niente bilancio per questo dispositivo
-
-        battery_entity = next(
-            (e.get("id") for e in sorted(device_entities.get(device_id, []),
-                                         key=lambda e: e.get("id") or "")
-             if e.get("classe") == "battery"), None)
-
-        candidates[device_id] = {
-            "nome": device_names.get(device_id, device_id),
-            "entita": sorted(membri),
-            "entita_per_dimensione": entity_by_dimension,
-            "provenienza_per_dimensione": provenance_by_dimension,
-            "entita_batteria": battery_entity,
-        }
-
-    if not candidates:
-        return [], 0
-
-    ids_da_leggere = sorted(
-        {subject for c in candidates.values() for subject in c["entita_per_dimensione"].values()}
-        | {c["entita_batteria"] for c in candidates.values() if c["entita_batteria"]})
-
-    da_ts, a_ts = day_boundaries(day, timezone)
-    da_iso = datetime.fromtimestamp(da_ts, tz=UTC).isoformat()
-    a_iso = datetime.fromtimestamp(a_ts, tz=UTC).isoformat()
-    report = await ha_client.hourly_statistics(ids_da_leggere, da_iso, a_iso)
-    if "errore" in report:
-        logger.warning(
-            "cervello: statistiche del bilancio non lette per %d dispositivi -- "
-            "nessun bilancio per questo giro (%s)", len(candidates), report["errore"])
-        return [], len(candidates)
-
-    series = report["serie"]
-    bilanci: list[dict] = []
-    failed = 0
-    for device_id, c in candidates.items():
-        # **La ricetta del bilancio vive nel sapere**, una per dispositivo
-        # (13/09/2026). Il repo la genera dalle direzioni e la SEMINA la prima
-        # volta; da li' in poi e' un dato: si legge, si corregge a mano, e il
-        # seme non la tocca piu' (`KnowledgeStore.seed`). E' anche cio' che
-        # impedisce all'anello delle ricette di chiederne una seconda per lo
-        # stesso dispositivo -- due ricette per un dispositivo solo sarebbero
-        # la seconda fondamenta rotta.
-        ore_attese = round((a_ts - da_ts) / 3600)
-        ricetta = _balance_recipe_for(
-            knowledge, device_id, c["entita_per_dimensione"], ore_attese)
-        body = build_balance_body(
-            series=series, entity_per_dimension=c["entita_per_dimensione"],
-            provenance_per_dimension=c["provenienza_per_dimensione"],
-            battery_entity=c["entita_batteria"], recipe=ricetta,
-            # Le ore che il giorno DOVEVA avere -- 24, o 23/25 al cambio
-            # d'ora. E' il denominatore della copertura: Home Assistant
-            # omette le ore senza dati, e contare i punti ricevuti darebbe
-            # 100% a una giornata che ne ha consegnate tre.
-            expected_hours=ore_attese)
-        if not body.get("totali"):
-            # **Correzione MEDIA della review (mandato, punto 3,
-            # 27/08/2026): una serie vuota dove ci si aspettava un bilancio
-            # CONTA come fallimento**, anche se `ha_client.statistiche_
-            # orarie()` non ha sollevato nessun `errore` -- identificatori
-            # rinominati, recorder ripartito (misurato: il database del
-            # recorder e' gia' rinato una volta, il 13 agosto -- vedi la
-            # spec dell'osservatore, §9③). Un bilancio senza nemmeno un
-            # totale non e' un fatto onesto su questo dispositivo, e'
-            # un'assenza indistinguibile da «non ho letto niente»: la
-            # riparazione (`reaggregate_last_two_days`, che
-            # SOSTITUISCE) deve fermarsi su questo `falliti`, o sostituisce
-            # un giorno che aveva gia' un bilancio con uno senza -- gli
-            # undici frammenti tornano. La notte (`_aggrega_ieri`, che
-            # COSTRUISCE da zero) ignora `falliti` apposta: resta
-            # tollerabile, non peggiora niente che gia' esisteva.
-            failed += 1
-            continue
-        bilanci.append({"dispositivo_id": device_id, "nome": c["nome"],
-                        "entita": c["entita"], "corpo": body})
-    return bilanci, failed
+# **`build_balances` e `_balance_recipe_for` sono usciti il 01/10/2026.**
+# Dal 15/09/2026 l'unico chiamante passava `directions={}`: nessun
+# dispositivo diventava candidato, e la funzione tornava `([], 0)` senza
+# seminare niente. Misurato sulla casa vera il 01/10/2026: i 7 dispositivi
+# con un contatore di energia hanno gia' la loro ricetta nel sapere, e il
+# resoconto la calcola. Le ricette esistenti non si toccano; un dispositivo
+# di energia nuovo riceve la sua dal modello (`mind/recipe_turn.py`), come
+# e' successo il 15/09/2026.
 
 
 def _timezone_from_home_space_store(home_space_store) -> str | None:
@@ -1985,37 +1787,6 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         return None
 
 
-
-def _balance_recipe_for(sapere, device_id: str, entity_per_dimension: dict,
-                        expected_hours: int | None) -> dict | None:
-    """La ricetta del bilancio di un dispositivo, dal sapere.
-
-    Se il sapere ne ha una -- scritta dal repo, corretta a mano o proposta dal
-    modello -- vince quella. Se non ce n'e', il repo la genera dalle direzioni
-    e la **semina**: da li' in poi e' un dato, e chi la corregge non deve piu'
-    aspettare un rilascio.
-
-    `None` quando non c'e' sapere collegato: `build_balance_body` genera la sua
-    e il bilancio esce lo stesso -- un componente che si rompe quando un altro
-    manca non e' autonomo.
-    """
-    if sapere is None:
-        return None
-    scritta = recipe_turn.recipe_for(sapere, device_id)
-    if scritta is not None:
-        return scritta
-    generata = balance_recipe(entity_per_dimension,
-                              order=BALANCE_DIRECTIONS,
-                              expected_hours=expected_hours)
-    sapere.seed([Fact(
-        subject_kind="dispositivo", subject=device_id,
-        field=recipe_turn.RECIPE_FIELD,
-        value=json.dumps(generata, ensure_ascii=False),
-        provenance="nostro", who=SEED_AUTHOR, when_ts=time.time())],
-        priority=REPO_PRIORITY)
-    return generata
-
-
 async def _report_ingredients(app, ha_client, *, giorno: str,
                                      timezone: str | None):
     """Le ricette, le serie e i nomi che servono al resoconto di un giorno.
@@ -2024,7 +1795,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     una, o il sapere non e' collegato -- fanno un resoconto con la meta' delle
     misure vuota, ed e' un fatto vero su quella casa: si scrive.
 
-    **Una lettura di rete sola per tutte le ricette**, come per i bilanci: le
+    **Una lettura di rete sola per tutte le ricette**: le
     entita' che ogni ricetta nomina si raccolgono prima, e le statistiche si
     chiedono una volta. Una richiesta per dispositivo sarebbe una connessione
     per dispositivo, ogni notte.
@@ -2077,9 +1848,9 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
 def _punti_orari(punti) -> list[dict]:
     """Le statistiche orarie nella forma che le operazioni leggono.
 
-    E' la stessa traduzione di `mind/facts._dimension_points` -- il `cambio`
-    dell'ora, mai uno zero inventato dove il dato manca -- e vive qui perche'
-    quella e' privata del bilancio e questa serve a qualunque ricetta.
+    Il `cambio` dell'ora, mai uno zero inventato dove il dato manca. Fino al
+    01/10/2026 ne esisteva una copia privata del bilancio
+    (`mind/facts._dimension_points`), uscita con lui: questa e' l'unica.
     """
     return [{"inizio": p.get("inizio"), "fine": p.get("fine"),
              "valore": p.get("cambio"),
@@ -2677,7 +2448,8 @@ async def recipe_round(app) -> dict | None:
 
     **Perche' esiste, col numero.** Il registro delle operazioni e il motore
     delle ricette sono arrivati con la fetta 4, ma nessuno scriveva ricette
-    nuove: il repo ne porta una, quella del bilancio. Misurato sulla casa vera
+    nuove: il repo ne portava una, quella del bilancio (uscita il
+    01/10/2026, le ricette gia' seminate restano). Misurato sulla casa vera
     il 13/09/2026, il resoconto giornaliero avrebbe avuto **~6 misure al
     giorno** -- tutte dello stesso inverter -- contro ~28 fatti di cronaca, e
     tutti e tre gli inneschi dell'analista lavorano sulle misure.
@@ -3519,7 +3291,7 @@ def _open_knowledge(app, data_dir: str) -> None:
     try:
         knowledge = KnowledgeStore(os.path.join(data_dir, "sapere.db"))
         seeded = knowledge.seed(
-            direction_seed() + meaning_seed() + attribute_seed() + judgment_seed(),
+            meaning_seed() + attribute_seed() + judgment_seed(),
             priority=REPO_PRIORITY)
     except Exception as error:
         reason = f"{type(error).__name__}: {error}"
@@ -3855,13 +3627,14 @@ async def _on_startup(app: web.Application) -> None:
     # **L'anagrafe si legge SUBITO, prima di chi la usa.** Da quando la casa
     # non e' piu' replicata su disco, `read()` torna `{}` finche' una lettura
     # non e' riuscita -- e la riparazione d'avvio, qui sotto, ne ha bisogno:
-    # `build_balances` cerca le entita' di classe `energy` per capire quali
-    # dispositivi hanno un bilancio, e su una casa vuota non ne trova
-    # nessuna. **Misurato dal vivo sulla v3.24.0**: i due giorni riparati
-    # all'avvio nascevano senza bilancio, e `replace_day` li sostituiva a
-    # quelli buoni della notte -- l'esatto impoverimento che l'asimmetria fra
-    # le due porte esiste per impedire. Finche' la copia stava su disco il
-    # difetto non si vedeva: la riparazione leggeva quella di ieri.
+    # `_report_ingredients` cerca le ricette dei dispositivi elencati
+    # nell'anagrafe, e su una casa vuota non ne trova nessuna, quindi il
+    # resoconto riparato nascerebbe senza misure. **Misurato dal vivo sulla
+    # v3.24.0**, quando a leggerla era `build_balances` (uscito il
+    # 01/10/2026): i due giorni riparati all'avvio nascevano senza bilancio, e
+    # `replace_day` li sostituiva a quelli buoni della notte. Finche' la copia
+    # stava su disco il difetto non si vedeva: la riparazione leggeva quella
+    # di ieri.
     try:
         await rebuild(ha_client, home_space_store, entity_cache)
     except Exception as exc:
@@ -4765,34 +4538,14 @@ async def _on_startup(app: web.Application) -> None:
             ieri = (datetime.now(home_space_zone(timezone))
                     - timedelta(days=1)).strftime("%Y-%m-%d")
             # **I comprimari e le direzioni sono usciti con gli oggetti**
-            # (15/09/2026). Erano due letture di rete per giornata, e
-            # servivano a riempire il corpo di un oggetto: i comprimari a
-            # dire cosa aveva fatto la temperatura mentre l'episodio durava,
-            # le direzioni a mettere `direzione` sull'energia. Misurato prima
-            # di cancellarli: i comprimari erano **zero su 200 oggetti**.
+            # (15/09/2026), e **i bilanci il 01/10/2026**: da due settimane
+            # la loro chiamata riceveva `directions={}` e non seminava
+            # nessuna ricetta. I numeri dell'energia arrivano al resoconto
+            # dalle ricette del sapere, come tutti gli altri.
             #
-            # **I bilanci restano, per una ragione sola**: `build_balances`
-            # SEMINA nel sapere la ricetta del bilancio di ogni dispositivo
-            # che ne ha uno (`_balance_recipe_for`). Il suo risultato non si
-            # usa piu' -- i numeri del bilancio arrivano al resoconto dalla
-            # ricetta, come tutti gli altri -- ma senza questa chiamata un
-            # dispositivo nuovo non avrebbe mai la sua.
-            #
-            # **Letto il 30/09/2026 (revisione finale della storia): oggi non
-            # semina niente.** Con `directions={}` nessun dispositivo diventa
-            # candidato e `build_balances` torna `([], 0)` prima della rete e
-            # prima di `_balance_recipe_for`. Debito in `docs/BACKLOG.md`.
-            da_ts, a_ts = day_boundaries(ieri, timezone)
-            subjects = sorted({r["soggetto"] for r
-                               in app["observations"].readings(from_ts=da_ts, to_ts=a_ts)})
-            await build_balances(
-                ha_client, app.get("home_space_store"), day=ieri, timezone=timezone,
-                energy_subjects=subjects, directions={},
-                knowledge=app.get("knowledge"))
             # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
-            # delle entita' che nominano lette in UNA connessione sola --
-            # stessa disciplina dei bilanci qui sopra, per la stessa ragione
-            # (una lettura per giro, non una per dispositivo).
+            # delle entita' che nominano lette in UNA connessione sola (una
+            # lettura per giro, non una per dispositivo).
             ricette, serie, nomi, without = await _report_ingredients(
                 app, ha_client, giorno=ieri, timezone=timezone)
             count = aggregate_day(

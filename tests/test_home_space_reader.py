@@ -66,8 +66,9 @@ def test_la_classe_viene_dallo_specchio_vivo_perche_il_registro_non_la_manda():
     porta `device_class` — misurato: assente su 1.227 righe su 1.227 — e lo
     specchio dello stato lo porta per ogni entita'. Se il lettore leggesse solo
     il registro, `classe` resterebbe `None` su OGNI entita' di OGNI casa, e
-    ogni lettore che decide su quel campo (`server.build_balances`,
-    `memoria/interpretation`) sarebbe inerte in produzione.
+    ogni lettore che decide su quel campo (`house_query`, il filtro per
+    classe; `memory/interpretation`) sarebbe inerte in produzione. Fino al
+    01/10/2026 lo era anche `server.build_balances`, uscito.
 
     Mutazione che la uccide: in `build_home_space`, leggere la classe dalla
     sola riga di registro (`e.get("device_class")`) invece che da
@@ -117,7 +118,8 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
 
     Mutazione che la uccide: rinominare `dispositivo_id` in `device_id` in
     `_entity` -- la chiave che lega un'entita' al suo dispositivo, e su cui
-    `build_balances` raggruppa il bilancio.
+    `mind/recipe_turn.py` raccoglie le entita' di un dispositivo da mostrare
+    al modello quando gli chiede una ricetta.
     """
     anagrafe = build_home_space(_REGISTRI_COMPLETI)
 

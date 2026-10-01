@@ -88,8 +88,7 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
 
     **Puro**: nessuna lettura di rete e nessun archivio. Le serie arrivano gia'
     lette dal chiamante, le ricette gia' lette dal sapere, gli episodi gia'
-    costruiti da `facts.build_episodes` -- stessa disciplina di
-    `build_balance_body`.
+    costruiti da `facts.build_episodes`.
 
     Un giorno vuoto produce un resoconto vuoto, e **va scritto lo stesso**:
     «quel giorno non e' successo niente» e «quel giorno non l'abbiamo

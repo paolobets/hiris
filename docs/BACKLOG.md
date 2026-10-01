@@ -714,18 +714,74 @@ Tutti dichiarati, nessuno mette in pericolo un dato; si raccolgono qui perche' n
 - **Un `except Exception` morto** (Task 8) attorno a `_ws_request`, che non solleva: nella
   lettura dei campi estesi del registro (`ha_client.py`, ~2350). L'altro stava in
   `get_system_health`, uscito senza chiamanti con la revisione finale (M-4).
-- **I bilanci non seminano niente** (emerso nella revisione finale, M-4, 30/09/2026).
-  `server.build_balances` sceglie i candidati dalle direzioni che riceve, e l'unico chiamante
-  (`_aggrega_ieri`) passa `directions={}`: nessun dispositivo diventa candidato, la funzione torna
-  `([], 0)` e `_balance_recipe_for` non semina nessuna ricetta. Il commento accanto alla chiamata
-  diceva il contrario. `mind/knowledge.directions_by_translation_key` e' rimasta senza chiamanti
-  di produzione (la usava solo `HAClient.energy_directions`, uscito). Da decidere: le direzioni
-  tornano da un'altra fonte, o i bilanci e la funzione escono. Non riprogettato nella fetta.
+- ~~**I bilanci non seminano niente**~~ — **RISOLTA il 01/10/2026** (ramo `pulizia-bilanci`, in
+  attesa di rilascio). Emersa nella revisione finale (M-4, 30/09/2026): `server.build_balances`
+  sceglieva i candidati dalle direzioni che riceveva, e l'unico chiamante (`_aggrega_ieri`)
+  passava `directions={}` dal 15/09/2026 (commit `b2b2b55e`): nessun dispositivo diventava
+  candidato, la funzione tornava `([], 0)` e `_balance_recipe_for` non seminava nessuna ricetta.
+  **Decisione del proprietario: il percorso esce.** Misurato sulla casa vera il 01/10/2026 prima
+  di toglierlo: i 7 dispositivi con un contatore di energia hanno gia' la loro ricetta nel sapere, e
+  il resoconto la calcola ogni notte. Sono usciti la chiamata, `build_balances`,
+  `_balance_recipe_for`, `mind/facts.build_balance_body` coi suoi aiutanti, `BALANCE_DIRECTIONS`,
+  `mind/seed.balance_recipe`, il seme delle direzioni (`direction_seed`), e il loro unico lettore
+  `mind/knowledge.directions_by_translation_key` con `by_field_prefix`. **Le ricette esistenti non
+  si toccano**, e restano anche le operazioni che usano (`somma_periodo`, `per_ora`, `quota`,
+  `differenza_fra`); un dispositivo di energia nuovo riceve la sua ricetta dal modello
+  (`mind/recipe_turn.py`), come e' successo il 15/09/2026. Le 14 righe `direzione:` gia' scritte
+  restano nel sapere delle case avviate, lette da nessuno (il seme non cancella: vedi «Una riga
+  del seme ritirata da un rilascio futuro resta in vigore per sempre»).
 - **Il cancello dei nomi** (Task 2, Task 9). Il confronto per nome e' una sottostringa: una
   reimplementazione con un altro nome passa. L'elenco delle eccezioni (`_ECCEZIONI_GATE`) confronta
   file piu' sottostringa, non il letterale intero: un `==` sarebbe piu' stretto.
 - **Prosa** (Task 9). La fine del docstring del modulo `_sanitize` ha ancora il testo vecchio, e
   una riga di commento di `watcher.py` e' piu' lunga del resto.
+
+### Un contatore CONGELATO non si distingue da un giorno a zero — aperta il 01/10/2026
+
+`origine: il proprietario e la verifica dal vivo del 01/10/2026, durante la pulizia dei bilanci` · nessun documento
+
+**Il fatto.** Il 01/10/2026 i 17 sensori dell'integrazione dell'inverter, `zcsazzurro`
+(`ZE1ES030N5E528`), sono stati trovati **fermi** dal 30/09/2026 00:00 al 01/10/2026 07:24 ora di
+casa (l'intervallo in cui l'inverter non ha mandato dati). L'ultimo cambio era del 30/09/2026 alle 10:41
+ora di casa, il riavvio di Home Assistant; sono ripartiti il 01/10/2026 alle 07:24 ora di casa
+(05:24Z), dopo un intervento del proprietario. In mezzo: la potenza ferma a «10 W», la batteria
+ferma al 74%, ogni contatore «oggi» a 0, l'integrazione `loaded` senza nessun errore e niente nel
+log. **La causa l'ha trovata il proprietario: Home Assistant e l'integrazione funzionavano, era
+l'INVERTER a non mandare piu' dati.**
+
+**Quanto e' grande il buco.** I dati del 29/09 ci sono (le statistiche del giorno di Home
+Assistant danno 20,2 kWh prodotti). Le statistiche orarie sono a zero dal 30/09 00:00 ora di casa:
+il buco e' **un giorno, il 30/09, piu' la notte che lo segue**.
+
+**Un buco di prova emerso nella stessa revisione.** Nessuna prova porta una ricetta di energia
+dal sapere, con un dispositivo e le sue serie, fino alle `misure` del resoconto
+(`_report_ingredients` -> `aggregate_day`): la prova nuova di `test_mind_wiring` gira con
+`knowledge=None` e prova che il lavoro notturno arriva al resoconto, non che le sette ricette
+vengano calcolate. Il buco c'era gia' prima della pulizia (il risultato dei bilanci si buttava).
+
+**Perche' conta.** Il resoconto del 30/09 ha calcolato produzione 0, consumo 0 e «copertura 1.0»,
+e nessuno se n'e' accorto. Dal punto di vista di HIRIS non c'era niente da vedere: quando la fonte
+tace, Home Assistant tiene gli ultimi valori e l'integrazione non dichiara nessun errore. **Le
+ventiquattro ore erano tutte presenti, quindi la copertura diceva il vero e il numero mentiva lo
+stesso**: la copertura misura quante ore ci sono, non se quelle ore dicono qualcosa. Solo un
+controllo di «dato congelato» dalla parte di HIRIS l'avrebbe visto.
+
+**La domanda aperta** (lavoro di progetto, non una specifica). Insegnare a HIRIS a riconoscere un
+contatore o una potenza **fermi per molte ore mentre la casa e' viva**, e a dichiararlo nel
+resoconto e/o all'osservatore invece di fidarsi degli zeri. Segnali possibili, nessuno ancora
+misurato:
+
+- una potenza **invariata per N ore di giorno** (su un fotovoltaico, 10 W fissi a mezzogiorno non
+  sono un valore, sono un silenzio);
+- un contatore «oggi» che **non si muove per tutto il giorno** mentre gli altri contatori della
+  casa si muovono;
+- un `last_updated` **molto piu' vecchio di quello dei fratelli** dello stesso dispositivo o
+  della stessa integrazione.
+
+Da decidere prima di scrivere codice: quale soglia separa «fermo» da «di notte non produce»; se
+il segnale vive nel resoconto (una misura che dichiara «fonte ferma» accanto al suo zero), nella
+cronaca o fra le condizioni dell'osservatore; e se vale solo per i contatori di energia o per
+ogni entita' che una ricetta nomina.
 
 ### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
 

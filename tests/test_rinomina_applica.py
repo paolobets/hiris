@@ -329,6 +329,40 @@ def test_un_metodo_che_non_e_di_haclient_si_applica_normalmente():
     assert proposte == []
 
 
+def test_l_elenco_dei_metodi_di_haclient_e_quello_del_SORGENTE():
+    """`_METODI_HA_CLIENT` e' scritto a mano, e il suo commento chiedeva di
+    aggiornarlo quando `proxy/ha_client.py` guadagna o perde un metodo.
+    **Riletto il 01/10/2026 non lo era**: portava `logbook` e `statistics`,
+    usciti con la 3.72.0, e mancava di quindici metodi veri -- fra cui
+    `traces`, `trace` e `behavior_configs`. Un metodo che manca dall'elenco e'
+    un metodo che la guardia non protegge, in silenzio.
+
+    Si legge il sorgente con `ast`, non si importa la classe: lo script non
+    dipende dal pacchetto, e la prova confronta le due cose che devono
+    coincidere. `__init__` resta fuori: non e' un nome che una parola del
+    glossario possa raggiungere per attributo.
+
+    Mutazione ESEGUITA: rimettere `"logbook"` nell'elenco -- rossa (fra i
+    nomi in piu'); togliere `"traces"` -- rossa (fra i mancanti).
+    """
+    import ast
+
+    path = Path(__file__).resolve().parents[1] / "hiris" / "app" / "proxy" / "ha_client.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    client = next(n for n in tree.body
+                  if isinstance(n, ast.ClassDef) and n.name == "HAClient")
+    methods = {n.name for n in client.body
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+               and n.name != "__init__"}
+
+    assert not rinomina._METODI_HA_CLIENT - methods, (
+        "nell'elenco ma non piu' in HAClient: "
+        f"{sorted(rinomina._METODI_HA_CLIENT - methods)}")
+    assert not methods - rinomina._METODI_HA_CLIENT, (
+        "in HAClient ma non nell'elenco, quindi non protetti: "
+        f"{sorted(methods - rinomina._METODI_HA_CLIENT)}")
+
+
 def test_un_metodo_di_usagestore_non_si_applica_da_solo():
     """La stessa guardia, per `UsageStore` (Task 9): `sezioni`/`totali`/
     `storia` sono metodi PUBBLICI di un ambito gia' chiuso (`usage/`)

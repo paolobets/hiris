@@ -12,11 +12,7 @@ import pytest
 
 from hiris.app.home_space.ha_vocabulary import VOCABULARY_HA_VERSION
 from hiris.app.mind import seed
-from hiris.app.mind.knowledge import (
-    KnowledgeStore,
-    directions_by_translation_key,
-    type_subject,
-)
+from hiris.app.mind.knowledge import KnowledgeStore, type_subject
 
 
 @pytest.fixture
@@ -30,37 +26,6 @@ def _risorse(*coppie):
     """Le risorse di `entity_component` come le manda Home Assistant."""
     return {f"component.{d}.entity_component.{c}.name": nome
             for d, c, nome in coppie}
-
-
-# -- le direzioni dell'energia ---------------------------------------------
-
-def test_le_direzioni_del_seme_sono_UNIVERSALI_e_portano_le_loro_prove():
-    """Soggetto `integrazione`: valgono per chiunque abbia quell'inverter, non
-    solo per questa casa -- ed e' il genere a dirlo, non una colonna in piu'
-    che potrebbe divergere da lui."""
-    righe = seed.direction_seed(1789000000.0)
-
-    assert len(righe) == 14
-    assert {r.subject for r in righe} == {"zcsazzurro"}
-    assert {r.subject_kind for r in righe} == {"integrazione"}
-    assert all(r.provenance == "dedotto" and r.evidence for r in righe)
-
-
-def test_la_direzione_si_rilegge_come_mappa_per_il_lettore(sapere):
-    sapere.seed(seed.direction_seed(1789000000.0))
-
-    mappa = directions_by_translation_key(sapere)
-
-    assert mappa["energy_generating_today"] == "produzione"
-    assert mappa["power_autoconsuming"] == "autoconsumo"
-    assert len(mappa) == 14
-
-
-def test_una_casa_che_non_ha_MAI_seminato_ha_una_mappa_vuota_non_un_errore(sapere):
-    """Un impianto con un altro inverter: nessuna riga, mappa vuota. Il
-    lettore perde la meta' dedotta e lo fa in silenzio -- che e' giusto,
-    perche' indovinare sarebbe peggio."""
-    assert directions_by_translation_key(sapere) == {}
 
 
 # -- i significati delle classi --------------------------------------------

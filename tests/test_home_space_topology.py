@@ -486,8 +486,8 @@ async def test_la_ricostruzione_porta_nell_anagrafe_la_classe_che_solo_lo_specch
     l'ha per ogni entita' che ne dichiara una.
 
     La ricostruzione deve unirli, o l'anagrafe rinasce senza classi -- ed e'
-    l'anagrafe su cui `build_balances` decide quali entita' formano un
-    bilancio.
+    l'anagrafe su cui `house_query` filtra per classe e
+    `memory/interpretation` riconosce le grandezze.
 
     Mutazione che la uccide: in `rebuild`, non passare lo specchio al lettore.
     """

@@ -133,8 +133,8 @@ class Recipe:
 
         Chi deve leggere le serie deve sapere quali prima di cominciare: e'
         cio' che permette **una lettura sola** di rete per tutta la ricetta
-        invece di una per passo -- la stessa disciplina che `build_balances`
-        applica gia' oggi alle statistiche orarie.
+        invece di una per passo: `server._report_ingredients` raccoglie le
+        entita' di tutte le ricette e chiede le statistiche orarie una volta.
         """
         nomi: set[str] = set()
         for step in self._steps:
