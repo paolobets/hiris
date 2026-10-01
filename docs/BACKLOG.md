@@ -63,6 +63,44 @@ Ogni punto ha la sua voce qui sotto, con i dettagli: questa e' solo la rotta.
    CONGELATO non si distingue da un giorno a zero». Lavoro di disegno: si comincia dalle domande.
 
 
+### Una fonte sola di verita' per tutta l'app — I REQUISITI DEL PROSSIMO SPRINT — aperta il 01/10/2026
+
+`origine: il proprietario, 01/10/2026 («e' la quinta volta che lo chiedo di fare, deve essere l'ultima»; «alla fine delle analisi creiamo un doc con il risultato e il piano di intervento come requisiti del prossimo sprint»)` · analisi in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · documento dei requisiti: `docs/design/2026-10-01-una-fonte-sola-di-verita.md` (**da scrivere a fine analisi: questa voce lo annuncia, non lo sostituisce**)
+
+**Viene prima della riparazione degli attori** (la voce qui sotto), che riparte sopra la fonte
+unica: il proprietario ha messo in pausa lo strato 1 quando e' emerso che la regola «disabilitata /
+nascosta / di servizio = fuori» e' scritta undici volte e che il modulo nuovo che stavo proponendo
+sarebbe stato la dodicesima copia.
+
+**L'obiettivo, con le sue parole.** In tutta l'app ogni domanda ha una risposta sola, scritta in un
+posto solo, che possa restituire le informazioni necessarie. Tutto e' costruito in modo consistente
+e coerente con la casa. Gli strumenti sono fatti in modo completo, senza doppioni, tutto unificato
+dove possibile in metodi atomici e strutturati, con il livello necessario a rispondere a tutte le
+funzionalita' dell'app. Gli strumenti restituiscono ai modelli il set informativo necessario,
+ottimizzando il consumo di token e la latenza nelle risposte e nel recupero.
+
+**Cosa ha misurato l'analisi (01/10/2026, v3.72.2).** Tutte le 62.703 righe di Python lette per
+intero, il frontend (10.824 righe di JS) letto per intero, la suite misurata come insieme; una sonda
+di parita' ha fatto girare le copie vere delle regole sui dati veri della casa. Il registro conta
+155 voci di doppione, 41 di codice morto e 20 affermazioni false nei documenti, piu' circa 270
+reperti del passaggio di copertura ancora da fondere (indice v2 in scrittura). Fra le regole
+ripetute, nove su tredici danno gia' oggi risposte diverse; sulla casa vera pesano l'area ereditata
+(194 entita' guardabili su 324 arrivano all'osservatore senza area), le ricette che vedono 1.138
+entita' che l'osservatore esclude, e il nome mostrato in due modi.
+
+**Le decisioni gia' prese dal proprietario.** La strada e' una domanda alla volta con la sonda di
+parita' («approccio A»), la destinazione e' il modello unico («approccio B»). I dati verso l'esterno
+si possono modificare. Esce tutto il codice dell'MCP di integrazione esterno (il gateway su .31,
+abbandonato): `GET /api/entities` e le sue prove; **il ponte interno resta**. Il censimento doveva
+essere completo su tutta l'app, strumenti e percorsi verso i modelli compresi.
+
+**Cosa deve contenere il documento dei requisiti.** L'esito dell'analisi; l'obiettivo e le sue
+cinque proprieta'; i requisiti numerati e verificabili; il piano di intervento per tappe, con le
+voci del registro che ciascuna chiude; i criteri di accettazione (registro vuoto, sonda di parita'
+a zero disaccordi, cancello nel pre-push, batteria della chat non peggiorata in token e latenza); le
+decisioni che restano al proprietario; cio' che resta fuori. Il piano di dettaglio di ogni tappa si
+scrive quando la tappa comincia.
+
 ### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
 
 `origine: il proprietario, 01/10/2026, dopo l'audit degli attori sulla casa vera («i risultati non mi convincono, sembrano sommari e non mi ritrovo»)` · rapporti dell'audit in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · `hiris/app/server.py::_on_startup` · `hiris/app/server.py::actuator_round`
