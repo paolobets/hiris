@@ -576,10 +576,11 @@ async def handle_knowledge(request) -> web.Response:
     di rispondere (spec 2026-09-16 §7).
 
     **La quarta fondamenta**: se un dato c'e' e nessuno puo' chiederlo, non
-    esiste. Il sapere contiene le direzioni dell'energia, i significati delle
-    classi che Home Assistant pubblica, gli attributi che valgono la pena e le
-    ricette dei dispositivi -- e fino al 15/09/2026 si leggeva da tre punti
-    del codice e da **nessuna pagina**.
+    esiste. Il sapere contiene i significati delle classi che Home Assistant
+    pubblica, gli attributi che valgono la pena e le ricette dei dispositivi
+    (e, sulle case avviate prima del 01/10/2026, le direzioni dell'energia che
+    il seme scriveva e nessuno legge piu') -- e fino al 15/09/2026 si leggeva
+    da tre punti del codice e da **nessuna pagina**.
 
     **Il riassunto e' per specie e provenienza, non un numero solo**: «177
     significati importati da Home Assistant» e «tre ricette dedotte dal

@@ -494,7 +494,6 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "aggregate_day": server.aggregate_day, "datetime": server.datetime,
         "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
         "day_boundaries": server.day_boundaries,
-        "build_balances": server.build_balances,
         "_report_ingredients": server._report_ingredients,
         "_timezone_from_home_space_store": server._timezone_from_home_space_store,
     })
@@ -506,6 +505,47 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "cervello: aggregazione notturna fallita (RuntimeError: sqlite del "
         "sistema di riferimento irraggiungibile)" in r.getMessage()
         for r in caplog.records)
+
+
+def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, caplog):
+    """**Il giro della notte, eseguito fino in fondo**, con le sole variabili
+    libere che il suo corpo nomina oggi.
+
+    Nessuna prova lo eseguiva fino al resoconto: quella sopra solleva alla
+    prima riga. E il corpo e' tutto dentro un `except Exception` che logga e
+    basta -- un nome che non esiste piu' (un `build_balances` dimenticato
+    dopo la sua uscita, il 01/10/2026) diventerebbe un `NameError` ogni notte,
+    inghiottito, e nessun resoconto nascerebbe senza che niente diventi rosso.
+
+    Mutazione ESEGUITA: rimettere la chiamata
+    `await build_balances(ha_client, ...)` prima di `_report_ingredients` --
+    rossa (il resoconto di ieri non c'e', e il log dice `NameError`).
+    """
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    logger_test = logging.getLogger("test_aggrega_ieri_fino_in_fondo")
+    try:
+        job = _carica_funzione_innestata("_aggrega_ieri", {
+            "app": {"home_space_store": None, "knowledge": None,
+                    "observations": archivio, "type_judgments": REPO_JUDGMENTS},
+            "ha_client": None, "logger": logger_test,
+            "aggregate_day": server.aggregate_day, "datetime": server.datetime,
+            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
+            "_report_ingredients": server._report_ingredients,
+            "_timezone_from_home_space_store": server._timezone_from_home_space_store,
+        })
+
+        with caplog.at_level(logging.INFO, logger="test_aggrega_ieri_fino_in_fondo"):
+            asyncio.run(job())
+
+        ieri = (server.datetime.now(server.home_space_zone(None))
+                - server.timedelta(days=1)).strftime("%Y-%m-%d")
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING], (
+            [r.getMessage() for r in caplog.records])
+        assert [r["giorno"] for r in archivio.reports(limit=5)] == [ieri]
+    finally:
+        archivio.close()
 
 
 def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tmp_path):
@@ -703,12 +743,12 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
         assert ricevuto["home_space_store"] is namespace["app"]["home_space_store"]
         # **E l'anagrafe dev'essere gia' LETTA, non solo costruita.** Misurato
         # dal vivo il 10/09/2026 sulla v3.24.0: la riparazione girava prima di
-        # `rebuild`, quindi leggeva una casa vuota -- e `build_balances`, che
-        # cerca le entita' con classe `energy`, non trovava un solo candidato.
-        # Risultato: i due giorni riparati all'avvio nascevano SENZA bilancio,
-        # e `replace_day` li sostituiva a quelli buoni della notte. Finche'
-        # l'anagrafe stava su disco il difetto non si vedeva: c'era la copia di
-        # ieri.
+        # `rebuild`, quindi leggeva una casa vuota -- e `build_balances`
+        # (uscito il 01/10/2026) non trovava un solo candidato: i due giorni
+        # riparati all'avvio nascevano SENZA bilancio. Oggi a leggerla e'
+        # `_report_ingredients`, che su una casa vuota non trova nessun
+        # dispositivo e quindi nessuna ricetta: il resoconto riparato
+        # nascerebbe senza misure.
         assert ricevuto["anagrafe"].get("entita"), (
             "la riparazione ha ricevuto un'anagrafe vuota: gira prima di rebuild")
     finally:
@@ -769,43 +809,6 @@ def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
     assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
 
 
-# --------------------------------------------------------------------------
-# Le direzioni dell'energia (mandato 27/08/2026): costruite UNA VOLTA per
-# giro di aggregazione, come i comprimari -- e con la STESSA asimmetria gia'
-# decisa per loro: chi costruisce dal nulla (`_aggrega_ieri`) tollera il
-# parziale, chi sostituisce (`reaggregate_last_two_days`) no.
-# --------------------------------------------------------------------------
-
-def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
-    """Un `HomeSpace` reale con un dispositivo e una sua entita' di
-    energia -- il minimo che `build_balances` ha bisogno di leggere dal
-    registro (fedele al contratto vero, non una finta a parte)."""
-    from hiris.app.home_space.reader import HomeSpace
-
-    casa = HomeSpace(str(tmp_path))
-    casa.hold_registries(
-        {"dispositivi": [{"id": "dev1", "name": "Inverter"}],
-         "entita": [{"entity_id": "sensor.energia_prodotta_oggi",
-                    "device_id": "dev1", "device_class": "energy"}]},
-        [], reference_frame={"fuso": fuso})
-    return casa
-
-
-def _giornata_bilancio(cambi: dict[int, float]):
-    """Una giornata INTERA di punti orari: i valori alle ore dette, uno zero
-    MISURATO nelle altre.
-
-    Dal 12/09/2026 il totale di una dimensione passa da `somma_periodo` del
-    registro (`mind/operations.py`), che rifiuta sotto la copertura minima. Un
-    solo punto su ventiquattro ore non e' piu' un bilancio, ed e' giusto cosi':
-    queste prove di CABLAGGIO -- che il bilancio nasca, si scriva, si riapplichi
-    alla riparazione -- non devono poggiare su un totale che il registro non
-    firmerebbe. Il caso «poche ore» ha la sua prova dove e' il soggetto,
-    in `test_mind_balance.py`.
-    """
-    return [_punto_bilancio(cambi.get(ora, 0.0), ora=ora) for ora in range(24)]
-
-
 #: I sapere aperti dalle prove, chiusi alla fine della sessione.
 _SAPERI_APERTI = []
 
@@ -849,37 +852,29 @@ class _ClienteStatistiche:
 
 
 def _sapere(tmp_path):
-    """Il sapere, seminato come fa l'avvio vero.
+    """Un sapere vero, aperto e vuoto.
 
     Le prove di cablaggio costruiscono un'app a mano: se quella e' piu' povera
-    di quella che gira davvero, difendono un cablaggio che non esiste. Dal
-    12/09/2026 `reaggregate_last_two_days` legge le direzioni dal sapere, e
-    un'app senza sapere non e' una semplificazione -- e' un'altra app.
+    di quella che gira davvero, difendono un cablaggio che non esiste. La
+    riparazione e il recupero leggono le ricette dal sapere
+    (`_report_ingredients`), e un'app senza sapere non e' una semplificazione
+    -- e' un'altra app.
+
+    **Vuoto, e non seminato come all'avvio** (01/10/2026). Fino a quel giorno
+    qui si seminavano le direzioni dell'energia, uscite dal seme. Il seme che
+    resta (significati, attributi, giudizi) non scrive ricette, e nessuna
+    prova di questo file le legge dal sapere: provato togliendolo, le 67 prove
+    del file restano verdi. Seminarlo qui sarebbe una fedelta' che non regge
+    niente.
     """
     from hiris.app.mind.knowledge import KnowledgeStore
-    from hiris.app.mind.seed import direction_seed
 
     sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
-    sapere.seed(direction_seed(1787572800.0))
     # Si annota per chiuderlo a fine sessione: quindici prove che aprono un
     # sqlite e non lo chiudono lasciano quindici descrittori aperti, e su
     # Windows il file resta bloccato (revisione indipendente, 13/09/2026).
     _SAPERI_APERTI.append(sapere)
     return sapere
-
-
-def _punto_bilancio(cambio, ora=6):
-    """Un punto orario tradotto, con istanti VERI -- non `"x"`/`"y"`
-    (correzione del mandato «il bilancio dell'energia», punto 1, secondo
-    paragrafo, 27/08/2026): una stringa segnaposto non sa nemmeno
-    RAPPRESENTARE un istante, e a quel livello il contenuto della curva
-    resta strutturalmente non verificabile. Questi test di cablaggio non
-    leggono ancora `forma`/`ora` (la verifica del contenuto vive in
-    `test_mind_balance.py`, pura), ma la finta deve poter reggere quel
-    controllo il giorno in cui un test qui lo chiedesse."""
-    return {"inizio": f"2026-08-24T{ora:02d}:00:00+00:00",
-            "fine": f"2026-08-24T{ora + 1:02d}:00:00+00:00",
-            "minimo": None, "massimo": None, "media": None, "cambio": cambio}
 
 
 def test_il_doppione_con_hiris_ha_problems_e_documentato():
@@ -1598,54 +1593,6 @@ def test_l_osservatore_riceve_il_sapere_e_nasce_DOPO_di_lui():
     assert 'Watcher(app["observations"], knowledge=app["knowledge"])' in sorgente
     assert (sorgente.index("_open_knowledge(app, data_dir)")
             < sorgente.index('app["watcher"] = Watcher('))
-
-
-def test_la_ricetta_del_bilancio_SI_SEMINA_nel_sapere_al_primo_giro(tmp_path):
-    """**La meta' che mancava alla promessa della spec §7.**
-
-    Finche' la ricetta si ricomponeva a ogni giro dentro il motore, la frase
-    «come dato sarebbe correggibile senza un rilascio» era falsa: per cambiare
-    quel conto serviva ancora un rilascio, esattamente come il 27/08/2026.
-
-    Adesso il repo la genera dalle direzioni e la **semina**: da li' in poi e'
-    una riga del sapere, e chi la corregge non aspetta nessuno. E' anche cio'
-    che impedisce all'anello delle ricette di chiederne una seconda per lo
-    stesso dispositivo -- due ricette per un dispositivo solo sarebbero la
-    seconda fondamenta rotta.
-
-    Mutazione ESEGUITA: togliere la `seed` da `_balance_recipe_for` -- rossa,
-    e il dispositivo tornerebbe fra quelli da chiedere al modello.
-    """
-    from hiris.app.mind.recipe_turn import RECIPE_FIELD, recipe_for
-
-    sapere = _sapere(tmp_path)
-    ricetta = server._balance_recipe_for(
-        sapere, "dev1", {"produzione": "sensor.p", "consumo": "sensor.c"}, 24)
-
-    assert [p["name"] for p in ricetta["steps"]][:2] == ["produzione", "forma_produzione"]
-    assert sapere.get("dispositivo", "dev1", RECIPE_FIELD) is not None
-    assert recipe_for(sapere, "dev1")["why"]
-
-
-def test_una_ricetta_GIA_SCRITTA_vince_su_quella_del_repo(tmp_path):
-    """Se qualcuno ha corretto la ricetta -- a mano, o il modello -- il repo
-    non la schiaccia: e' il senso di averla messa nel sapere."""
-    import json
-
-    from hiris.app.mind.knowledge import Fact
-    from hiris.app.mind.recipe_turn import RECIPE_FIELD
-
-    sapere = _sapere(tmp_path)
-    sua = {"why": "corretta a mano", "steps": []}
-    sapere.write(Fact(subject_kind="dispositivo", subject="dev1",
-                      field=RECIPE_FIELD, value=json.dumps(sua),
-                      provenance="chiesto", who="proprietario",
-                      when_ts=1789000000.0))
-
-    ricetta = server._balance_recipe_for(
-        sapere, "dev1", {"produzione": "sensor.p"}, 24)
-
-    assert ricetta["why"] == "corretta a mano"
 
 
 def test_L_AGGREGAZIONE_NOTTURNA_scrive_anche_il_RESOCONTO(tmp_path):

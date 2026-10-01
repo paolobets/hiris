@@ -451,14 +451,15 @@ def _known_points(series, expected_parts: int | None = None) -> tuple[list, floa
     """I punti che portano un valore, e la **copertura** che ne esce.
 
     Un punto con `valore: None` e' un'ora SENZA dato, non un'ora a zero: e' la
-    regola che `mind/facts._dimension_points` gia' applicava -- *«mai uno zero
-    inventato»* -- e qui produce anche il numero che dice quanto manca.
+    regola che `mind/facts._dimension_points` applicava (uscita col bilancio il
+    01/10/2026) -- *«mai uno zero inventato»* -- e qui produce anche il numero
+    che dice quanto manca.
 
     **`expected_parts` e' il denominatore vero, e chi chiama deve darlo quando lo
     sa.** Senza, la copertura dice quanto del CAMPIONE si e' letto, non quanto
     del periodo -- e i due numeri divergono proprio dove fa male: Home
-    Assistant **omette** le ore senza dati dalle statistiche orarie (fatto gia'
-    scritto in `mind/facts.build_balance_body`, correzione del 27/08/2026), per
+    Assistant **omette** le ore senza dati dalle statistiche orarie (correzione
+    del 27/08/2026, pagata nel vecchio corpo del bilancio), per
     cui un giorno che consegna tre ore, tutte e tre con un valore, darebbe
     copertura 100% -- un numero non misurato con la faccia di uno misurato,
     che e' il difetto che questo modulo esiste per non fare. La distribuzione
@@ -583,9 +584,10 @@ def _reject_for_coverage(coverage: float, known: int,
 def _sum_period(series, *, unit: str, expected_parts: int | None = None) -> Result:
     """La somma delle parti conosciute del periodo, con la sua copertura.
 
-    **Estratta da `mind/facts.build_balance_body`**, dove era «la somma delle
-    ore CONOSCIUTE» e la copertura non usciva: un totale fatto di tre ore su
-    ventiquattro aveva la stessa faccia di uno completo.
+    **Estratta da `mind/facts.build_balance_body`** (uscita il 01/10/2026),
+    dove era «la somma delle ore CONOSCIUTE» e la copertura non usciva: un
+    totale fatto di tre ore su ventiquattro aveva la stessa faccia di uno
+    completo.
     """
     known, coverage = _known_points(series, expected_parts)
     if not known and _looks_instantaneous(series):
@@ -670,7 +672,8 @@ _register(Operation(
 def _difference(first: Result, second: Result) -> Result:
     """`prima - seconda`, **con la stessa unita' e la copertura peggiore**.
 
-    Estratta dal `consumo - prelievo` di `mind/facts._balance_moments`.
+    Estratta dal `consumo - prelievo` di `mind/facts._balance_moments`
+    (uscita col bilancio il 01/10/2026).
 
     Tre regole, e nessuna e' pedanteria:
     - **il «non lo so» si propaga**: se uno dei due non si e' potuto calcolare,
@@ -743,7 +746,8 @@ _register(Operation(
 def _per_hour(series, *, unit: str, expected_parts: int | None = None) -> Result:
     """Il profilo: **ogni punto porta la sua ORA**, non la sua posizione.
 
-    Correzione gia' pagata il 27/08/2026 in `mind/facts.build_balance_body`: la
+    Correzione gia' pagata il 27/08/2026 in `mind/facts.build_balance_body`
+    (uscita il 01/10/2026): la
     forma era una lista NUDA di valori, e Home Assistant **omette** le ore senza
     dati -- quindi l'indice non era l'ora, e una giornata che comincia alle 7
     aveva il primo valore in posizione zero. L'oggetto, da solo, non sapeva piu'

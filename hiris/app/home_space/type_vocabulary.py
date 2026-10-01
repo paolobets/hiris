@@ -629,10 +629,13 @@ _vocabulary.add("sensor", "battery")
 # energy` (e `power`) sia per l'energia PRODOTTA da un fotovoltaico sia per
 # quella PRELEVATA dalla rete -- la classe da sola non separa le due
 # direzioni, e indovinarle dal NOME del sensore si romperebbe sul prossimo
-# inverter. La direzione vive DENTRO l'episodio del bilancio
-# (`mind/facts.py::aggregate_day`, parametro `direzioni`), non in un giudizio
-# di questo vocabolario -- che dal 16/09/2026 non assegna piu' nessun genere a
-# questi quattro (D2: «energia» era un genere morto, nessun ramo lo apriva).
+# inverter. La direzione non vive in un giudizio di questo vocabolario -- che
+# dal 16/09/2026 non assegna piu' nessun genere a questi quattro (D2:
+# «energia» era un genere morto, nessun ramo lo apriva). Dal 01/10/2026 non
+# vive piu' nemmeno nel codice: l'episodio del bilancio e' uscito il
+# 15/09/2026, il seme delle direzioni il 01/10/2026. Dove la si dice, la
+# direzione di un contatore sta nel nome del passo della ricetta del suo
+# dispositivo («produzione», «prelievo», ...), che il sapere conserva.
 #
 # **`state_class: total_increasing` da solo NON basta per rivendicare questa
 # riga** (correzione del 27/08/2026): prima di quella correzione un contatore

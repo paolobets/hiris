@@ -543,8 +543,10 @@ def test_il_riassunto_RAGGRUPPA_i_campi_che_portano_un_valore_nel_nome(sapere):
     Misurato sulla casa vera il 15/09/2026, appena aperta la porta: su 19
     righe di riassunto, **14 erano direzioni da una riga ciascuna** -- un
     elenco lungo quanto il dato che doveva riassumere. Chi legge vuole sapere
-    che di direzioni ce ne sono quattordici, non vederle una per una: per
-    quello c'e' `by_field_prefix`.
+    che di direzioni ce ne sono quattordici, non vederle una per una. Il seme
+    delle direzioni e' uscito il 01/10/2026, ma le righe gia' scritte restano
+    sul disco delle case avviate, e la regola vale per ogni campo coi due
+    punti.
 
     Mutazione ESEGUITA: raggruppare sul campo intero -- rossa.
     """

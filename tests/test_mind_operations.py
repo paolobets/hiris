@@ -213,9 +213,11 @@ def test_il_registro_e_VERSIONATO():
 
 # -- somma_periodo: i sette totali dell'energia ------------------------------
 #
-# ESTRATTA da `mind/facts.build_balance_body`, dove il totale di una dimensione
-# era «la somma delle ore CONOSCIUTE». Li' la copertura non usciva: un totale
-# fatto di tre ore su ventiquattro aveva la stessa faccia di uno completo.
+# ESTRATTA da `mind/facts.build_balance_body` (uscita il 01/10/2026), dove il
+# totale di una dimensione era «la somma delle ore CONOSCIUTE». Li' la
+# copertura non usciva: un totale fatto di tre ore su ventiquattro aveva la
+# stessa faccia di uno completo. Le prove del bilancio che dicevano cose ancora
+# vive delle operazioni sono state portate qui, accanto al loro soggetto.
 
 
 def _ore(values, start=0.0):
@@ -274,16 +276,42 @@ def test_una_serie_del_tutto_vuota_dice_che_non_c_e_niente():
     assert "nessun" in r.reason.lower()
 
 
+def test_tre_ore_RICEVUTE_su_ventiquattro_attese_non_sono_un_totale_del_giorno():
+    """**Le ore che Home Assistant NON manda sono il punto.** Portata qui il
+    01/10/2026 da `test_mind_balance.py`, uscito col bilancio: la regola e'
+    dell'operazione, e la usano ogni notte le ricette del sapere, che passano
+    `expected_parts: 24`.
+
+    La serie ha tre punti, tutti con un valore: contando solo i punti ricevuti
+    la copertura direbbe 100%, e «3,0 kWh prodotti» avrebbe la faccia di un
+    totale completo per una giornata di cui HIRIS ha visto un'ottava parte. E'
+    `expected_parts` a dire quante ore doveva avere. La prova sopra
+    (`test_sotto_la_soglia_...`) non lo coglie: le sue ore mancanti ci sono,
+    con `valore: None`, e la lunghezza della serie basta gia'.
+
+    Mutazione ESEGUITA: in `_known_points`, ignorare `expected_parts`
+    (`expected = len(points)`) -- rossa.
+    """
+    tre_ore = _ore([1.0, 1.0, 1.0], start=6 * 3600.0)
+
+    r = ops.REGISTRY["somma_periodo"].run(tre_ore, unit="kWh", expected_parts=24)
+
+    assert not r.computable
+    assert "copertura" in r.reason
+
+
 # -- le operazioni sui numeri e sulle serie ---------------------------------
 #
 # ESTRATTE da `mind/facts.py`: `_share` -> `quota`, il `consumo - prelievo` di
 # `_balance_moments` -> `differenza_fra`, la somma delle ore conosciute di
 # `build_balance_body` -> `somma_periodo`, `_dimension_points` + `forma` ->
-# `per_ora`, `_difference` -> `primo_ultimo_differenza`.
+# `per_ora`, `_difference` -> `primo_ultimo_differenza`. Le fonti sono uscite
+# dal repo col bilancio il 01/10/2026; le operazioni restano, e le ricette del
+# sapere le usano ogni notte.
 #
 # `media_min_max` **non e' estratta**: in `facts.py` non c'era nessuna media.
-# (La riga precedente diceva che veniva da `_percent`, che invece e'
-# l'arrotondamento della batteria a un decimale ed e' ancora li', al confine.)
+# (Una riga precedente diceva che veniva da `_percent`, che era
+# l'arrotondamento della batteria a un decimale: e' uscito col bilancio.)
 # Nasce dalla domanda 4, sul comfort quando qualcuno c'e'.
 
 
@@ -421,6 +449,36 @@ def test_per_ora_tiene_l_ORA_di_ogni_punto_non_la_sua_posizione():
 
     assert [p["ora"] for p in r.value] == [0.0, 3600.0, 7200.0, 10800.0]
     assert [p["valore"] for p in r.value] == [1.0, None, 3.0, 4.0]
+
+
+def test_per_ora_su_una_giornata_BUCATA_porta_l_ora_vera_non_quella_ricostruita():
+    """**La prova sopra non distingue l'ora vera da «primo istante + indice»**:
+    i suoi punti sono contigui, e su punti contigui le due cose coincidono per
+    caso. E' gia' successo: un revisore ha rimesso lo stesso difetto
+    ricostruendo l'ora dall'indice, e le prove restavano verdi perche' ogni
+    giornata finta era contigua (mandato «il bilancio dell'energia», punto 1,
+    27/08/2026). Portata qui il 01/10/2026 da `test_mind_balance.py`, uscito
+    col bilancio: la forma la producono oggi le ricette del sapere, con
+    `per_ora`.
+
+    Qui Home Assistant ha OMESSO le 10 e le 11: con l'ora ricostruita
+    dall'indice il quarto punto direbbe le 10 invece delle 12.
+
+    Mutazione ESEGUITA: in `_per_hour`, `"ora": points[0]["inizio"] + i * 3600`
+    al posto di `p.get("inizio")` -- rossa.
+    """
+    bucata = [p for p in _ore([1.0, 2.0, 3.0, 9.0, 9.0, 4.0, 5.0], start=7 * 3600.0)
+              if p["inizio"] not in (10 * 3600.0, 11 * 3600.0)]
+
+    r = ops.REGISTRY["per_ora"].run(bucata, unit="kWh", expected_parts=24)
+
+    assert r.value == [
+        {"ora": 7 * 3600.0, "valore": 1.0},
+        {"ora": 8 * 3600.0, "valore": 2.0},
+        {"ora": 9 * 3600.0, "valore": 3.0},
+        {"ora": 12 * 3600.0, "valore": 4.0},
+        {"ora": 13 * 3600.0, "valore": 5.0},
+    ]
 
 
 def test_primo_ultimo_differenza_con_UN_SOLO_punto_non_dice_zero():

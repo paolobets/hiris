@@ -4,7 +4,8 @@ Spec `docs/design/2026-09-10-i-tre-attori.md` §7.
 
 **Perche' esiste, col numero.** Il registro delle operazioni e il motore delle
 ricette sono arrivati con la fetta 4, ma nessuno scriveva ricette nuove: il
-repo ne porta **una**, quella del bilancio dell'energia. Misurato sulla casa
+repo ne portava **una**, quella del bilancio dell'energia (il generatore e'
+uscito il 01/10/2026; le ricette che aveva seminato restano). Misurato sulla casa
 vera il 13/09/2026, il resoconto giornaliero avrebbe avuto **~6 misure al
 giorno** -- tutte dello stesso inverter -- contro ~28 fatti di cronaca. Tutti e
 tre gli inneschi dell'analista (§10) lavorano sulle misure: gliene sarebbe
