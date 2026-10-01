@@ -63,6 +63,58 @@ Ogni punto ha la sua voce qui sotto, con i dettagli: questa e' solo la rotta.
    CONGELATO non si distingue da un giorno a zero». Lavoro di disegno: si comincia dalle domande.
 
 
+### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
+
+`origine: il proprietario, 01/10/2026, dopo l'audit degli attori sulla casa vera («i risultati non mi convincono, sembrano sommari e non mi ritrovo»)` · rapporti dell'audit in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · `hiris/app/server.py::_on_startup` · `hiris/app/server.py::actuator_round`
+
+**Il fatto.** Tre revisioni indipendenti, ognuna controverificata su Home Assistant (v3.72.1):
+gli attori non inventano quasi niente -- una osservazione allucinata su ventisei -- ma lavorano su
+dati rotti e nessuno di loro se ne accorge. I conti del codice sono esatti; il 30/09 pero' 34
+misure su 63 non si calcolavano, 13 dei 29 numeri calcolati venivano da fonti ferme, e circa il
+40% della cronaca era falso o con l'inizio sbagliato. L'analista: 9 osservazioni vere, 5 vere ma
+banali o ripetute, 11 artefatti. L'attuatore: zero indagini su dodici con un fatto letto dalla
+casa, zero proposte utili su nove.
+
+**L'attuatore e' in pausa (v3.72.2).** Il suo lavoro orario `hiris_mind_actuator` non e' piu'
+registrato allo schedulatore; `actuator_round` e `mind/actuator*.py` restano. Si ferma tutto cio'
+che girava li' dentro: indagini, proposte e la riparazione automatica delle ricette. «Rifalla»
+resta, perche' e' un gesto del proprietario. **Lo riaccende lo strato 4 qui sotto**, e chi lo
+riaccende toglie la prova `test_l_attuatore_e_in_pausa_e_nessun_lavoro_periodico_lo_fa_girare`
+insieme alla pausa. Il criterio di spegnimento della spec (`2026-09-21-l-attuatore.md` §8: due
+settimane, rifiuto dominante) scadeva il 05/10: al 01/10, 0 accettate e 2 rifiutate.
+
+**La rotta decisa: uno strato per rilascio, nell'ordine in cui i dati dipendono l'uno
+dall'altro.** Ogni strato ha la sua spec, e prima di scriverla si misura sulla casa vera che la
+soluzione regga (regola del proprietario, 01/10: «verificare prima di scrivere il codice la
+veridicita' della soluzione»).
+
+1. **La fonte sana.** Nessun attore sa quando una fonte e' morta: `unavailable` e `unknown` si
+   scartano prima di tutto (`mind/facts.py:230`), la copertura dice 1.0 su una serie ferma, il
+   flag `disabilitata` dell'anagrafe non ha lettori, e un messaggio solo -- «manca lo
+   `state_class`» (`mind/recipes.py:314`) -- copre entita' disabilitate, ricreate e sparite.
+   Assorbe la voce «Un contatore CONGELATO non si distingue da un giorno a zero».
+2. **Le misure dell'obiettivo.** L'autoconsumo e' definito senza la batteria (reale:
+   autosufficienza mediana 96,6%, il resoconto dice «minoritario»); acqua, carica della batteria e
+   presenza non hanno misura; le forme orarie non arrivano all'analista, che quindi non vede che
+   il 95% dell'immissione esce fra le 13 e le 18.
+3. **L'analista.** Gli inneschi li sceglie il modello e non il codice (la spec `i tre attori` §10
+   dice il contrario); 99 serie su 168 nel prompt hanno l'ultimo valore vuoto; nessuna memoria
+   delle analisi precedenti; l'obiettivo stampato «dal ... al ...» viene letto come scadenza;
+   `cosa_cambierebbe` obbligatorio contraddice «il silenzio e' un esito legittimo».
+4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
+   dell'attuatore) contro la spec §5 che gli da' la sola lettura; il contratto dell'`intenzione`
+   (`mind/actuator_turn.py:75-98`) incompatibile con l'officina (`workshop.py:1026`); «riscritta»
+   che vuol dire solo «file scritto».
+
+**Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
+altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
+illeggibile -- non si chiudono riaccendendolo. **La batteria degli attori**: l'audit di oggi va
+reso ripetibile (come le 28 domande della chat) e lanciato prima e dopo ogni strato.
+
+**Dopo, non prima**: la riprogettazione della pagina dell'osservatore (analisi di leggibilita' in
+`docs/superpowers/audit-2026-10-01/pagina.md`). Ridisegnarla adesso vorrebbe dire presentare meglio
+un contenuto che non regge.
+
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
 
 `origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`

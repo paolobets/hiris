@@ -4500,19 +4500,13 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=1800,
     )
 
-    # L'anello dell'ATTUATORE (spec 2026-09-21 §4): stesso battito, e non fa
-    # niente finche' l'analisi di oggi non c'e' o e' gia' stata attuata. Cosi'
-    # parte quando l'analisi e' finita -- qualunque ora sia, perche' l'analista
-    # ritenta ogni ora finche' non riesce -- senza inventare un orario suo.
-    async def _anello_attuatore() -> None:
-        await actuator_round(app)
-
-    scheduler.add_job(
-        _anello_attuatore,
-        trigger="interval", minutes=60,
-        id="hiris_mind_actuator", replace_existing=True,
-        misfire_grace_time=1800,
-    )
+    # L'ATTUATORE (spec 2026-09-21 §4) e' IN PAUSA dal 01/10/2026, per
+    # decisione del proprietario: qui stava il suo anello orario, e non c'e'
+    # piu'. L'audit di quel giorno sulla casa vera: il turno parte senza
+    # strumenti di lettura, quindi nessuna indagine riporta un fatto letto
+    # dalla casa, e nessuna delle sue proposte era utile. Il giro e i moduli
+    # `mind/actuator*.py` restano: si riaccende quando avra' gli strumenti --
+    # voce «L'attuatore e' in pausa» in `docs/BACKLOG.md`.
 
     scheduler.add_job(
         _recupero_resoconti,

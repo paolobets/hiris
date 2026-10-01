@@ -67,7 +67,7 @@ one of the twelve tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **seventeen** APScheduler jobs
+Periodic work *does* run — the scheduler registers **sixteen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
 the paragraph above needed the caveat. Fourteen are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
@@ -177,8 +177,16 @@ model never writes a number — it names which measure, and the code attaches
 value, coverage, deviation and base from the series, so that a wrong number
 inside an authoritative-looking report is impossible.
 
-The seventeenth is the actuator (spec `2026-09-21-l-attuatore.md`), the brain's
-third actor, on the same hourly beat (`server.py::actuator_round`). It does
+There was a seventeenth, and it is **paused since 01/10/2026**: the actuator
+(spec `2026-09-21-l-attuatore.md`), the brain's third actor. Its hourly job is
+no longer registered; `server.py::actuator_round` and `mind/actuator*.py` stay,
+because it comes back once it can actually read the house. An audit on the
+owner's house that day found that its turn starts with no read tools at all —
+so none of its twelve investigations reported a fact read from the house — that
+none of its nine proposals was useful, and that its recipe repairs repeated
+every round without anyone checking whether the measure became computable
+again. What follows describes it as designed, for when it is switched back on.
+It ran on the same hourly beat and did
 nothing until today's analysis exists and has not been acted on yet: *one
 analysis, one actuation* — keyed to the analysis's own foundation, not to the
 day, so an analysis redone after a recovered report gets a new actuation. Its

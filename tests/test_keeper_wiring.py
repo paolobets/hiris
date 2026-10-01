@@ -361,8 +361,11 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
 # frase che invecchia senza avvisare.
 
-def test_the_registered_periodic_jobs_are_seventeen_as_the_readme_declares():
-    """**Il quattordicesimo e' l'anello delle ricette** (13/09/2026, spec §7):
+def test_the_registered_periodic_jobs_are_sixteen_as_the_readme_declares():
+    """**Erano diciassette fino al 01/10/2026: il diciassettesimo, l'attuatore,
+    e' in pausa** (vedi la prova qui sotto), e il numero scende con lui.
+
+    **Il quattordicesimo e' l'anello delle ricette** (13/09/2026, spec §7):
     ogni dieci minuti chiede al modello come si misura UN dispositivo che pesa
     e di cui non si sa ancora niente, e poi smette -- una ricetta scritta, o un
     rifiuto registrato, non si richiede mai piu'.
@@ -370,13 +373,6 @@ def test_the_registered_periodic_jobs_are_seventeen_as_the_readme_declares():
     **Il quindicesimo e' il recupero dei resoconti** (14/09/2026): ogni cinque
     minuti scrive il resoconto di UN giorno che non ce l'ha, dal piu' vecchio,
     e smette quando non ne manca piu' nessuno.
-
-    **Il diciassettesimo e' l'attuatore** (21/09/2026): stesso battito orario,
-    e non fa niente finche' l'analisi di oggi non c'e' o e' gia' stata attuata.
-    Indaga in sola lettura, riscrive una ricetta che non si esegue piu', e
-    propone soltanto quando c'e' qualcosa da proporre -- misurato: delle otto
-    osservazioni vere dell'analista, cinque chiedevano di indagare e nessuna di
-    costruire.
 
     **Il sedicesimo e' l'analista** (15/09/2026, spec §10): ogni ora legge le
     misure di trenta giorni e dice cosa si potrebbe fare. E' il piu' caro dei
@@ -395,15 +391,36 @@ def test_the_registered_periodic_jobs_are_seventeen_as_the_readme_declares():
     """
     src = inspect.getsource(server._on_startup)
     n = src.count("scheduler.add_job(")
-    assert n == 17, (
-        f"server.py registra {n} lavori periodici (scheduler.add_job), non 17: "
+    assert n == 16, (
+        f"server.py registra {n} lavori periodici (scheduler.add_job), non 16: "
         "il README dichiara un numero preciso e va aggiornato insieme al "
         "codice, non dopo.")
     readme = (pathlib.Path(__file__).resolve().parents[1] / "README.md").read_text(
         encoding="utf-8")
-    assert "registers **seventeen** APScheduler jobs" in readme, (
-        "il README non dichiara piu' diciassette lavori periodici: il numero "
+    assert "registers **sixteen** APScheduler jobs" in readme, (
+        "il README non dichiara piu' sedici lavori periodici: il numero "
         "vive in due posti e questa prova esiste perche' non divergano.")
+
+
+def test_l_attuatore_e_in_pausa_e_nessun_lavoro_periodico_lo_fa_girare():
+    """**L'attuatore e' fermo dal 01/10/2026, per decisione del proprietario.**
+
+    L'audit di quel giorno, sulla casa vera: zero indagini su dodici riportano
+    un fatto letto dalla casa -- il turno parte senza strumenti di lettura --,
+    zero proposte utili su nove, e le riparazioni delle ricette si ripetono a
+    ogni giro senza che nessuno guardi se la misura torna a calcolarsi.
+
+    Si ferma togliendo il suo lavoro dallo schedulatore: `actuator_round` e i
+    moduli `mind/actuator*.py` restano, perche' si riaccende quando avra' gli
+    strumenti (voce «L'attuatore e' in pausa» in `docs/BACKLOG.md`). Chi lo
+    riaccende toglie questa prova insieme alla pausa, non la aggira.
+    """
+    src = inspect.getsource(server._on_startup)
+    assert "hiris_mind_actuator" not in src, (
+        "l'attuatore e' in pausa: il suo lavoro periodico non va registrato")
+    assert "actuator_round(" not in src, (
+        "l'attuatore e' in pausa: niente all'avvio deve farlo girare, nemmeno "
+        "sotto un altro id")
 
 
 @pytest.mark.asyncio
