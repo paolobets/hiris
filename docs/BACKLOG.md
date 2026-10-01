@@ -42,6 +42,27 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### I prossimi passi, in ordine — aperta il 01/10/2026
+
+`origine: il proprietario, 01/10/2026 («segna nel backlog il da farsi»)` · uscite 3.71.0, 3.71.1, 3.72.0, 3.72.1
+
+Cosa resta dopo le fette «una porta sola» (3.71.x) e «la storia» (3.72.x), nell'ordine deciso.
+Ogni punto ha la sua voce qui sotto, con i dettagli: questa e' solo la rotta.
+
+1. **La verifica dal vivo della 3.72.x**, dopo che il proprietario aggiorna l'add-on. La batteria
+   sulle due strade, con le domande di storia (7, 8, 13, 14, 26, 28) lette coi cinque criteri di
+   §8 della spec della storia, piu' le misure che solo una casa vera puo' dare -- voce
+   «`history`: cosa va provato dal vivo prima di dirla chiusa». In piu': la CLI del ponte 2.1.286
+   letta dentro il container (`GET /api/health`, `ponte.cli`, dopo un turno di chat), il passo 4
+   del `Dockerfile` ancora da saldare dalla 2.1.284.
+2. **L5 -- `ToolSearch` spento sul ponte**, prova misurata e da sola. E' la leva piu' grossa
+   rimasta sui token: ogni giro sul ponte costa ~29.000 token fissi, e `ToolSearch` aggiunge un
+   giro a 26 domande su 28 (misurato il 30/09/2026) -- voce «L5».
+3. **Il dato fermo**: insegnare a HIRIS a riconoscere un contatore o una potenza che non si
+   muovono da ore mentre la casa vive (il caso dell'inverter del 30/09) -- voce «Un contatore
+   CONGELATO non si distingue da un giorno a zero». Lavoro di disegno: si comincia dalle domande.
+
+
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
 
 `origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`
@@ -638,7 +659,7 @@ va corretto, in un posto solo.
 
 ## In attesa
 
-### La storia, con la stessa forma — la fetta successiva a «una porta sola» — COSTRUITA sul ramo `la-storia` il 30/09/2026, in attesa di rilascio (3.72.0)
+### La storia, con la stessa forma — la fetta successiva a «una porta sola» — **USCITA con la v3.72.0** (30/09/2026); resta la verifica dal vivo
 
 `origine: il proprietario, decisione 11 della spec del 29/09/2026` · `docs/design/2026-09-29-una-porta-sola-per-la-casa.md §8` · nessun altro documento
 
