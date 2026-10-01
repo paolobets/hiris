@@ -1,5 +1,33 @@
 # HIRIS — Changelog
 
+## [3.72.2] — L'attuatore va in pausa (2026-10-01)
+
+### Perche'
+
+Un audit degli attori sulla casa vera, controverificato su Home Assistant, ha misurato che
+l'attuatore non faceva il suo lavoro: il suo turno parte senza strumenti di lettura, quindi
+nessuna delle dodici indagini dal 28/09 al 01/10 riporta un fatto letto dalla casa; nessuna delle
+nove proposte che ha messo in coda era utile (quattro con una premessa falsa, cinque vaghe); e le
+riparazioni delle ricette si ripetevano a ogni giro senza che nessuno guardasse se la misura
+tornava a calcolarsi. Il proprietario ha deciso di fermarlo finche' non avra' gli strumenti.
+
+### Cosa cambia
+
+Il lavoro orario dell'attuatore (`hiris_mind_actuator`) non e' piu' registrato allo schedulatore:
+i lavori periodici scendono da diciassette a sedici, e il README lo dichiara. Si ferma tutto cio'
+che girava in quel giro: le indagini, le proposte automatiche e la riparazione automatica delle
+ricette. Osservatore, resoconto e analista continuano come prima. Le proposte gia' in coda restano
+dove sono, e «Rifalla» continua a funzionare perche' e' un gesto di chi amministra la casa.
+
+Il codice dell'attuatore resta: lo riaccende la fetta che gli dara' gli strumenti di lettura.
+Nella scheda «Cosa fare» le osservazioni dell'analista compaiono senza esito sotto.
+
+### Aperto nel BACKLOG
+
+La rotta per rimettere in piedi gli attori, uno strato per rilascio: la fonte sana, le misure
+dell'obiettivo, l'analista, l'attuatore con gli strumenti -- voce «Gli attori si riparano dal
+basso, e l'attuatore e' in pausa».
+
 ## [3.72.1] — Escono i bilanci che non seminavano niente (2026-10-01)
 
 ### I bilanci dell'energia
