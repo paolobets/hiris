@@ -1,5 +1,40 @@
 # HIRIS — Changelog
 
+## [3.72.1] — Escono i bilanci che non seminavano niente (2026-10-01)
+
+### I bilanci dell'energia
+
+Dal 15/09/2026 la semina automatica delle ricette di bilancio (`build_balances`) non faceva piu'
+niente: il suo unico chiamante le passava una mappa vuota di direzioni, nessun dispositivo
+diventava candidato, e il commento accanto alla chiamata diceva il contrario. Verificato dal vivo
+il 01/10/2026: tutti e sette i dispositivi con contatori di energia hanno gia' la loro ricetta, e
+il resoconto notturno le calcola. Esce quindi tutto il percorso morto -- `build_balances`, la
+semina delle ricette di bilancio, il corpo del bilancio, le direzioni dell'energia che solo lui
+leggeva e il loro seme -- circa 2.000 righe. Le ricette esistenti e le operazioni che usano
+(`somma_periodo`, `per_ora`, `quota`, `differenza_fra`) restano; un dispositivo di energia nuovo
+riceve la sua ricetta dal modello, come gia' successo il 15/09. Una prova nuova fa girare il
+lavoro notturno fino al resoconto.
+
+Le righe «direzione» gia' scritte nel sapere di una casa restano, non lette: compaiono solo come
+conteggio nella pagina del sapere.
+
+### La guardia dei nomi di `rinomina.py`
+
+L'elenco dei metodi del client di Home Assistant che lo script di rinomina non deve toccare
+torna uguale al sorgente (uscivano `logbook` e `statistics`, mancavano `traces`, `trace`,
+`behavior_configs` e altri dodici), e una prova lo confronta col sorgente.
+
+### La CLI del ponte sale alla 2.1.286
+
+Segnalata dal cancello pre-push durante il rilascio della 3.72.0, sale qui secondo la regola del
+proprietario. Ripiego dichiarato nel `Dockerfile`.
+
+### Aperto nel BACKLOG
+
+Il 30/09 l'inverter non ha mandato dati per un giorno: Home Assistant ha tenuto gli ultimi
+valori, l'integrazione non ha dato errori, e il resoconto ha calcolato zeri con copertura piena.
+Riconoscere un dato «fermo» mentre la casa vive e' una domanda aperta.
+
 ## [3.72.0] — La storia, con la stessa forma (2026-09-30)
 
 ### Perche'
