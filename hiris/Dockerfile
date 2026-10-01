@@ -77,6 +77,22 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      visto», che non e' «assente»: basta una domanda in chat e poi
 #      rileggere. Lo stesso oggetto porta `ponte.apiKeySource`, che vale
 #      `none` quando si sta usando l'abbonamento e non una chiave a consumo.
+# 1 ottobre 2026 — alzata da 2.1.285 a **2.1.286**, col rilascio della 3.72.1,
+# secondo la regola del proprietario (07/09): il cancello pre-push l'ha
+# segnalata a rilascio della 3.72.0 gia' in corso, la 3.72.0 e' uscita con
+# `HIRIS_COMPONENTI_OK=1` e la CLI sale nel rilascio successivo. La suite
+# intera gira dopo il salto (passo 5 di `release.py`).
+#
+# Uscite saltate: nessuna (un salto di patch).
+#
+# **Ripiego dichiarato: la 2.1.283**, l'ultima LETTA dentro il container
+# (28/09/2026). Il 01/10/2026 `GET /api/health` firmata, sulla 3.72.0, dava
+# ancora `ponte: null`: la CLI si dichiara solo dopo un turno sul ponte, e
+# nessuna delle 2.1.284-2.1.285 e' stata ancora letta.
+#
+# **Passo 4 da saldare**: la 2.1.286 si legge dentro il container alla prima
+# verifica dal vivo dopo il rilascio, con un turno di chat e una GET firmata.
+#
 # 30 settembre 2026 — alzata da 2.1.284 a **2.1.285**, col rilascio della
 # 3.71.0, secondo la regola del proprietario (07/09): il cancello pre-push l'ha
 # segnalata a rilascio della 3.70.1 gia' in corso, la 3.70.1 e' uscita con
@@ -318,7 +334,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.285 \
+    && npm install -g @anthropic-ai/claude-code@2.1.286 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \
