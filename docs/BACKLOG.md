@@ -801,6 +801,42 @@ da ottimizzare sui numeri veri:
   `UNRESOLVED_RUNS` si ripetono riga per riga: su una risposta di 60 contatori sono circa il 60%
   del testo. Si dicono una volta in cima; si ottimizza dopo, sui numeri veri.
 
+**Misurato il 01/10/2026 (v3.72.2, build `4986e014779f`, HA 2026.9.4), solo sulla CATENA
+(deepseek-v4.1-flash). La strada del ponte NON e' stata fatta** -- il ponte era spento -- e con lei
+restano aperti `ponte.cli` e il passo 4 del `Dockerfile`. Sospesa dal proprietario in favore dello
+sprint «una fonte sola di verita'».
+
+- **Spezzettamento: regge.** Via chat, senza errori: `valori, tipo=sensor` 134 soggetti (1 pezzo);
+  con nascoste e servizio 232 (2 pezzi); `history()` 324 (3 pezzi); casa intera con nascoste e
+  servizio 960 (7 pezzi). La riga di richiesta piu' lunga e' ~6.160 byte. Home Assistant diretto
+  (`:8123`) accetta righe fino a ~25.900 byte e rifiuta da ~26.000 (il suo registro: «Got more than
+  24570 bytes»): l'8.190 del commento di `tools.py` non e' il suo limite. Il proxy del Supervisor
+  non e' stato misurato.
+- **`history()` senza argomenti**: 3,1 s di turno, 9.603 caratteri; lato HA 327 entita' su 24 ore
+  in 1,64 s, 1.481.797 byte, 21.277 punti.
+- **DIFETTO: la finestra si accorcia fino a pochi minuti.** Tre sensori superano i 5.000 punti,
+  scatta `troncato`, e `_covered_since` prende il primo punto piu' tardo di QUALUNQUE serie, anche
+  non tagliata: con 960 soggetti la finestra copre 4 minuti e mezzo su 24 ore (un dispositivo
+  comparso alle 17:41), con 324 e con 134 quattordici ore. Dichiarato (`troncata`, `chiesta_da`),
+  ma la domanda resta senza risposta; e la frase da' la colpa a Home Assistant mentre il taglio e'
+  `MAX_HISTORY_POINTS` di HIRIS. E' il minore «un punto di partenza tirato in avanti», con la sua
+  misura.
+- **`run_detail`**: la traccia piu' pesante della casa (79 passi, 32.418 byte grezzi) esce a
+  29.376 caratteri, 11.129 token: sotto i 60 KB. Porta `config`, `blueprint_inputs`, `context`.
+- **#14**: la riga porta `al` (17:00 alle 17:47, 40 fasce); nei primi 600 caratteri letti la
+  risposta non lo dice. Una sola `history`, con `ore=48` e non `da="ieri"`. Il confronto non si puo'
+  fare: ieri il contatore e' rimasto a 0,0 per 24 fasce (voce «Un contatore CONGELATO»).
+- **#26**: sei `history` (una per nome piu' una per automazione), non una: criterio 3 di §8 fallito
+  sulla catena. Criterio 4 passato (zero nomi vecchi su 13 turni). Criterio 5 fallito com'e'
+  scritto: caratteri da 62.782 a 75.865, mediana da 4,4 a 6,8 s -- per le `search` in piu', non per
+  `history` (`errori` pesa 3.146 caratteri contro i 4.660 di `system_log`). Una passata sola.
+- **Non verificabili su questa casa**: script rinominato (due script, nessuno rinominato); sigillo
+  (nessuna delle 8 voci del registro contiene un segreto; nessuna parola oscurata a torto); rifiuti
+  a chi non amministra (si entra solo come amministratore).
+- **Documenti falsi trovati**: `CLAUDE.md` e `docs/collaudo.md` dicono di entrare con
+  `~/.hiris-debug-token`, che da' 401 dal 22/09; si entra firmando con
+  `~/.hiris-canale-sviluppo.key`.
+
 ### Minori rinviati dalla costruzione di «la storia» — aperta il 30/09/2026
 
 `origine: revisioni dei Task 1-9, registro del piano` · nessun altro documento
