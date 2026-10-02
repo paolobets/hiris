@@ -405,8 +405,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Reperto | Righe | Corretta da | Fonti |
 |---|---|---|---|---|
-| X-03 | `CLAUDE.md`: righe di `server.py`, conteggi dei moduli, «nessun linter», «due porte», numero dei test (CONTRADDIZIONE sui conteggi) | `CLAUDE.md:119-124,199,244,253,267,274,302-303,454-460` |  | reg |
-| X-04 | `README.md`: `## AI providers` descrive il mondo pre-3.0.0 e contraddice `## Configuration` | `README.md:224,303,316-345,354` |  | reg |
 | X-12 | Messaggio fisso «le tiene solo per le entità che dichiarano uno `state_class`» stampato per ogni id fuori da `statistic_ids`. Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `recipes.py:314-318`; `operations.py:548`; `recipe_turn.py:279-281` |  | reg |
 | X-13 | `observer.SYSTEM`: «ciò che lasci FUORI non viene registrato affatto». Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `observer.py:57-62` |  | reg · cop-6 |
 | X-14 | `actuator_turn.SYSTEM` promette «INDAGINE — vai a vedere» a un turno senza strumenti; frasi false nella pagina dell'osservatore. Riletta il 02/10 (Task 21): è testo che arriva al modello (il prompt dell'attuatore, in pausa) e all'utente (la pagina dell'osservatore): si decide con lo strato 4 degli attori | `actuator_turn.py:51-54`; `watcher-lavoro.js:214` |  | reg · cop-6 |
@@ -425,6 +423,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | X-63 | Resta `verifica_init` dentro una stringa di log di `agent/runner.py` (testo all'utente). I nomi vecchi nei commenti sono corretti (`64c0ae19`, `7de68a43`) | `agent/runner.py:42-43,156-157,177,260,608,1113,1725,1733,2083`; `prompts.py:135,144,157,548,561`; `claude_runner.py:19,145,360,845,984,987,1243`; `openai_compat_runner.py:1047` |  | cop-7 N-X4 |
 | X-64 | Docstring e messaggi che descrivono ciò che non c'è più; due messaggi chiedono all'utente un'azione impossibile. Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `agent/runner.py:775-847`; `prompts.py:19-20,518-524`; `openai_compat_runner.py:165,881-883,1169-1171`; `claude_runner.py:140-148` |  | cop-7 N-X6 |
 | X-66 | Il testo che dice al modello «trattato come utente» (un ruolo ignoto vale `lettore`). Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `api/handlers_chat.py:321-325,362-363` |  | cop-8 X1 |
+| X-78 | `hiris/config.yaml`, `ports_description`: dice che la porta 8099 è protetta «solo da Avanzate · token delle API interne», un'opzione uscita con la 3.60.0. È testo che l'utente legge nel Supervisor: si corregge con una tappa che cambia testo | `hiris/config.yaml` (`ports_description`) |  | rilettura indipendente dei documenti, 02/10/2026 |
 
 ---
 
@@ -823,3 +822,5 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | X-75 | Commenti che descrivono un'altra cosa (`usage/store.py:173-174`, `revisions.py:373-377`, «quattro... anzi tre caselle», `tools.py:206-224`) | 3.73.0 (da rilasciare) | 7de68a43 | Task 21 della Tappa 0: commento riscritto o tolto leggendo il codice di oggi |
 | X-77 | `GET /api/pending`: il docstring promette due letture, ne fa due COUNT più una SELECT intera | 3.73.0 (da rilasciare) | 7de68a43 | Task 21 della Tappa 0: commento riscritto o tolto leggendo il codice di oggi |
 | X-05 | `scripts/doppioni.py:51` «per .githooks/pre-push»: l'hook non lo invoca | 3.73.0 (da rilasciare) | 07dd7b50 | il pre-push lancia scripts/cancelli.py, che invoca doppioni.py: la frase e' tornata vera |
+| X-03 | `CLAUDE.md`: righe di `server.py`, conteggi dei moduli, «nessun linter», «due porte», numero dei test (CONTRADDIZIONE sui conteggi) | 3.73.0 (da rilasciare) | c8231bed | Task 22 della Tappa 0, con la rilettura indipendente |
+| X-04 | `README.md`: `## AI providers` descrive il mondo pre-3.0.0 e contraddice `## Configuration` | 3.73.0 (da rilasciare) | c8231bed | Task 22 della Tappa 0, con la rilettura indipendente |
