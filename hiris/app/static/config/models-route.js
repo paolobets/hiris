@@ -1129,14 +1129,6 @@
        e sparisce se il payload non porta la decisione (renderAdesso). */
     createNowShell();
 
-    /* Gli embedding non sono una sezione e non sono numerati: la numerazione,
-       qui, significa «si decide qualcosa», e questi non fanno niente. Restano
-       in Configurazione add-on perché toglierli da lì costerebbe la perdita
-       silenziosa di un valore in cambio di nulla (progetto §8). */
-    outlet.appendChild(el('p', 'embedding-note',
-      'Embedding: nessun testo viene vettorizzato, e i due campi in Configurazione add-on non ' +
-      'hanno effetto. La ricerca per somiglianza è rimandata, non annullata.'));
-
     loadModelsAndConfig();
   }
 

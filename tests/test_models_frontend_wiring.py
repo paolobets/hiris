@@ -36,12 +36,14 @@ def test_models_route_ha_due_sezioni_e_una_riga_in_fondo():
     assert "'Provider attivi'" not in js
     assert "'Catena automatica'" not in js
     assert "'Assegnazione entita''" not in js
-    # Gli embedding restano dichiarati, ma NON come sezione numerata: la
-    # numerazione, in questa pagina, significa «qui si decide qualcosa», e gli
-    # embedding non decidono niente (progetto §8). Erano la sezione «03».
+    # Gli embedding non compaiono piu' affatto. Erano la sezione «03», poi una
+    # riga in fondo che diceva «i due campi in Configurazione add-on non hanno
+    # effetto»: quei due campi sono usciti dallo schema dell'add-on (Tappa 0,
+    # ottobre 2026), e una pagina che li nomina manda a cercare cio' che non c'e'.
+    # Mutazione ESEGUITA: rimessa la riga in `models-route.js` -- rossa.
     assert "'Embeddings (oggi inattivi)'" not in js
-    assert "'embedding-note'" in js
-    assert "nessun testo viene vettorizzato" in js
+    assert "embedding-note" not in js
+    assert "vettorizzato" not in js
     # E il blocco «03 QUANDO NON DECIDE LA CATENA» del progetto §3 non si
     # disegna: il campo che scavalcava la catena e' uscito col Task 4, e un
     # avviso per uno stato irraggiungibile e' l'esatto contrario del principio

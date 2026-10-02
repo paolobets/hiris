@@ -1,8 +1,8 @@
 #!/bin/sh
-# HIRIS — due cancelli in un solo hook.
+# HIRIS — i cancelli di ogni push, e quello del rilascio, in un solo hook.
 #
-# 1. Il linter (ruff + oxlint) gira su OGNI push, senza eccezioni: costa
-#    frazioni di secondo su tutto il repo, e non dorme mai.
+# 1. A OGNI push, senza eccezioni: il linter (ruff + oxlint), le sponde fra i
+#    file del frontend e i cancelli della fonte unica (`scripts/cancelli.py`).
 # 2. La verifica dei componenti si sveglia SOLO se il push contiene un cambio
 #    del campo `version` di hiris/config.yaml: riconosce il rilascio dal
 #    CONTENUTO, non dalle intenzioni, non da un flag e non dal nome del ramo.
@@ -42,7 +42,7 @@
 # lasciarlo passare senza che nessuno l'abbia mai controllato.
 if ! python -c "import ruff" >/dev/null 2>&1; then
     echo "HIRIS: ruff non e' installato in questo Python -- il linter non e' girato."
-    echo "       Per installarlo:  pip install -r hiris/requirements.txt"
+    echo "       Per installarlo:  pip install -r hiris/requirements-dev.txt"
     exit 1
 fi
 

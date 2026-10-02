@@ -1629,17 +1629,6 @@
 }
 .outside-note:empty { display: none; }
 
-/* Gli embedding: una riga, in fondo, sotto un filetto. Non sono una sezione e
-   non sono numerati -- la numerazione, in questa pagina, significa «qui si
-   decide qualcosa», e questi non fanno niente (progetto §8). */
-.embedding-note {
-  margin: var(--sp-5) 0 0;
-  padding-top: var(--sp-4);
-  border-top: 1px solid var(--border);
-  font-size: var(--fs-12); color: var(--text-3);
-  line-height: var(--lh-snug);
-}
-
 /* Il pannello del modello: si apre DENTRO la riga, espanso, non sovrapposto.
    Un riquadro flottante coprirebbe le righe accanto -- cioè la catena, che è
    il contenuto della pagina -- e su un tablet in verticale coprirebbe anche
