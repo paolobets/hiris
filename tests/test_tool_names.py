@@ -422,7 +422,8 @@ def test_nessun_testo_che_il_modello_legge_nomina_i_quattro_strumenti_della_hist
     Il cancello guarda i LETTERALI, non i docstring ne' i commenti: quelli di
     `house_history.py` e `tools.py` nominano i quattro come storia, apposta.
 
-    Mutazione ESEGUITA: lasciare «nel logbook» nel testo di `type_census`
+    Mutazione ESEGUITA: lasciare «nel logbook» nel testo del censore dei tipi
+    (allora `type_census`)
     -- rossa.
     Mutazione ESEGUITA: «`mcp__hiris__trend`» in `_GUIDE_WITH_TOOLS` -- rossa.
     Mutazione ESEGUITA: un letterale «leggi il logbook» in fondo a

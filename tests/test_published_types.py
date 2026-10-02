@@ -19,23 +19,26 @@ e `action/registry.py::capability_bits_of`, anch'essa cancellata per lo stesso
 motivo).
 """
 import asyncio
+import pathlib
+import sys
 
 import pytest
 
-from hiris.app.action.registry import (
-    ServiceRegistry,
-    capability_bits,
-    single_bits,
-    switchable_domains,
-)
+from hiris.app.action.registry import ServiceRegistry
 from hiris.app.proxy.state_translations import (
     SILENCE_UNREACHABLE,
-    SILENCES,
     StateTranslations,
     published_device_classes,
+)
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+from istantaneo_pubblicato import (
+    capability_bits,
     published_domains,
     published_state_classes,
     published_states,
+    single_bits,
+    switchable_domains,
 )
 
 # Le chiavi sono MISURATE, non inventate: `sensor` pubblica 62 classi e nessuna
@@ -91,23 +94,6 @@ def _registro(righe) -> ServiceRegistry:
     registro = ServiceRegistry()
     asyncio.run(registro.refresh(_RegistroFinto(righe)))
     return registro
-
-
-# ---------------------------------------------------------------------------
-# I TRE SILENZI -- e restano tre fino a chi legge
-# ---------------------------------------------------------------------------
-
-def test_le_etichette_dei_silenzi_sono_tre_e_tutte_diverse():
-    """Un quarto silenzio nato di nascosto, o due che collassano nella stessa
-    stringa, e' il modo in cui «perche' non lo so» torna a essere un'opinione
-    di chi legge.
-
-    Mutazione ESEGUITA: dare a `SILENCE_UNDEFINED` lo stesso testo di
-    `SILENCE_ABSENT` in `proxy/state_translations.py` -- rosso su
-    `len(set(SILENCES)) == 3`.
-    """
-    assert len(SILENCES) == 3
-    assert len(set(SILENCES)) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +305,7 @@ def test_un_registro_mai_letto_non_e_un_registro_senza_bit():
 
     (R6, revisione del tratto v3.23.0..HEAD, 08/09/2026: questa prova
     copriva anche `capability_bits_of`, cancellata perche' senza chiamante di
-    produzione -- vedi `registry.py` sopra `switchable_domains`. Il pezzo che
+    produzione -- vedi `scripts/istantaneo_pubblicato.py` sopra `switchable_domains`. Il pezzo che
     resta, sul solo `capability_bits`, e' verificabile: nessun altro test
     tocca i suoi rami `unreachable`.)
 

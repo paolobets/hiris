@@ -8,7 +8,7 @@ leggendo i sorgenti -- cosi' la settima non nasce per distrazione, e chi ne
 riporta una indietro trova un rosso invece di un commento di buone intenzioni.
 
 La seconda e' il perche' della **sesta**. `_ACTIVE_STATES` (in `briefing.py`
-fino al 29/09/2026, oggi in `type_census.py` accanto al suo unico lettore) doveva
+fino al 29/09/2026, oggi in `scripts/censore_tipi.py` accanto al suo unico lettore) doveva
 sciogliersi derivandola dai riposi che il vocabolario dei tipi gia' dichiara:
 `unlocked` e' il complemento di `locked`, `open` di `closed`, `on` di `off` --
 la stessa conoscenza, detta due volte dai due lati opposti. **Il complemento
@@ -27,9 +27,13 @@ Spec: `docs/design/2026-09-07-l-anagrafe-dei-tipi.md` §16.
 """
 import ast
 import json
+import sys
 from pathlib import Path
 
-from hiris.app.home_space import type_census, type_vocabulary
+from hiris.app.home_space import type_vocabulary
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import censore_tipi
 
 
 def _domini_notevoli() -> set[str]:
@@ -71,7 +75,7 @@ _TRASLOCATE = {
     # il suo solo lettore rimasto era il censore.
     "_ACTIVE_STATES": (
         "home_space/briefing.py",
-        "`type_census._ACTIVE_STATES`, accanto al censore che la legge"),
+        "`censore_tipi._ACTIVE_STATES`, accanto al censore che la legge"),
 }
 
 #: L'unica delle sei non sciolta, col suo motivo (traslocata il 29/09/2026,
@@ -81,7 +85,7 @@ _TRASLOCATE = {
 #: difetto che `test_un_tipo_ha_una_casa_sola` chiude dall'altro lato.
 _RIMASTE = {
     "_ACTIVE_STATES": (
-        "home_space/type_census.py",
+        "../../scripts/censore_tipi.py",
         "il complemento dei riposi non e' esatto: vedi la misura qui sotto"),
 }
 
@@ -195,7 +199,7 @@ def test_il_complemento_dei_riposi_non_coincide_con_gli_stati_attivi():
                   | type_vocabulary.unknown_states()
                   | type_vocabulary.ABSENT_STATE_FORMS.value)
         for stato in _stati_pubblicati(dominio) - riposi:
-            if stato not in type_census._ACTIVE_STATES:
+            if stato not in censore_tipi._ACTIVE_STATES:
                 divario.add(f"{dominio}={stato}")
     assert divario == _DIVARIO_MISURATO, (
         "il divario fra «non a riposo» e «attivo» e' cambiato -- in piu': "
@@ -218,7 +222,7 @@ def test_nessuno_stato_attivo_e_il_riposo_di_un_tipo_che_lo_porta():
     contraddizioni = sorted(
         f"{dominio}={stato}"
         for dominio in _domini_notevoli()
-        for stato in type_census._ACTIVE_STATES
+        for stato in censore_tipi._ACTIVE_STATES
         if stato in type_vocabulary.REPO_JUDGMENTS.resting_of(dominio))
     assert not contraddizioni, (
         "stati che il nucleo conta come attivi e il vocabolario dichiara "
@@ -232,7 +236,7 @@ def test_il_divario_e_fatto_di_stati_che_il_vocabolario_ha_gia_guardato():
     con la loro ragione scritta -- cioe' qualcuno li ha guardati e ha detto che
     la' succede qualcosa, mentre il nucleo non li annuncia. L'undicesimo,
     `lock=jammed`, non e' ne' l'uno ne' l'altro: e' un GUASTO, deciso dal
-    proprietario, e resta aperto in `type_census.OPEN_QUESTIONS`.
+    proprietario, e resta aperto in `open_questions.OPEN_QUESTIONS`.
 
     E' la differenza che rende la fetta necessaria e non facoltativa: non
     manca una parola, si contraddicono due giudizi.

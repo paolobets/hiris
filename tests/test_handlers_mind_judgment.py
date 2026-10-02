@@ -12,7 +12,7 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.api.handlers_mind import handle_knowledge, handle_set_judgment
 from hiris.app.home_space import type_vocabulary as tv
-from hiris.app.home_space.type_census import OPEN_QUESTIONS
+from hiris.app.home_space.open_questions import OPEN_QUESTIONS
 from hiris.app.mind.judgments import build_judgments
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed

@@ -34,7 +34,6 @@ from hiris.app.home_space.queries import group_membership, view
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.home_space.type_vocabulary import (
     capability_attributes,
-    declared_group_membership_attributes,
     group_membership_attributes,
 )
 from hiris.app.proxy.entity_cache import (
@@ -45,6 +44,7 @@ from hiris.app.proxy.entity_cache import (
     group_members,
     inherited_attributes,
 )
+from tests._vocabulary_tables import declared_group_membership_attributes
 
 # --------------------------------------------------------------------------
 # I PAYLOAD VERI -- il gruppo della casa e i suoi tre membri, letti dal vivo

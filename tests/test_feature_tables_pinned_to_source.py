@@ -27,7 +27,7 @@ la citazione file-per-file.
 import pytest
 
 from hiris.app.home_space.topology import decoded_capabilities
-from hiris.app.home_space.type_vocabulary import capability_tables
+from tests._vocabulary_tables import capability_tables
 
 # (dominio, bit, nome) -- una riga per OGNI voce di OGNI tabella verificata
 # su questa fetta. L'ordine ricalca quello di `_FEATURE_TABLES`, ma i valori

@@ -42,7 +42,7 @@ from aiohttp import web
 
 from ..chat_thread import subject_key_for
 from ..home_space.historian import day_boundaries, home_space_zone
-from ..home_space.type_census import OPEN_QUESTIONS
+from ..home_space.open_questions import OPEN_QUESTIONS
 from ..mind.judgments import (
     JudgmentNotInEffect,
     JudgmentRefused,
@@ -572,7 +572,7 @@ async def handle_knowledge(request) -> web.Response:
     "domande_aperte": [...]}`. `giudizi` sono le righe dei giudizi sui tipi che
     l'archivio sa leggere, con da dove vengono (`mind/judgments.judgment_listing`:
     una riga che l'archivio salta non c'e'); `domande_aperte` le
-    domande del censore (`type_census.OPEN_QUESTIONS`) a cui la pagina chiede
+    domande del censore (`open_questions.OPEN_QUESTIONS`) a cui la pagina chiede
     di rispondere (spec 2026-09-16 §7).
 
     **La quarta fondamenta**: se un dato c'e' e nessuno puo' chiederlo, non

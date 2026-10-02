@@ -85,3 +85,49 @@ def test_the_guard_recognises_the_shape_it_forbids():
     assert _absolute_self_imports(ast.parse(relativo)) == []
     assert _absolute_self_imports(ast.parse(risalita)) == []
     assert _absolute_self_imports(ast.parse(estraneo)) == []
+
+
+_TOOLS = _PRODUCT.parent / "scripts"
+
+
+def _tool_names() -> frozenset[str]:
+    """I nomi sotto cui un attrezzo si puo' importare: la cartella, e ogni
+    modulo che contiene. Si CHIEDONO alla cartella: un attrezzo nato domani
+    entra nel cancello senza toccare questa prova."""
+    return frozenset({_TOOLS.name} | {path.stem for path in _TOOLS.glob("*.py")})
+
+
+def _tool_imports(tree: ast.AST, tools: frozenset[str]) -> list[str]:
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.level == 0 and (node.module or "").split(".")[0] in tools:
+                found.append(f"from {node.module} import ...")
+        elif isinstance(node, ast.Import):
+            found.extend(f"import {alias.name}" for alias in node.names
+                         if alias.name.split(".")[0] in tools)
+    return found
+
+
+def test_il_prodotto_non_importa_gli_attrezzi():
+    """`scripts/` non entra nell'immagine dell'add-on (il `Dockerfile` copia
+    solo `app/`): un import di un attrezzo dal prodotto funziona qui e muore
+    all'avvio in produzione. Ed e' il confine che tiene fuori dal pacchetto
+    cio' che serve solo alle prove -- il censore dei tipi ne e' uscito il
+    02/10/2026 (`scripts/censore_tipi.py`).
+
+    Mutazione ESEGUITA: aggiunto `import censore_tipi` in
+    `hiris/app/api/handlers_mind.py` -- rossa, nominando il file e la riga.
+    Mutazione ESEGUITA: `_tool_names` che torna `frozenset()` -- rossa sulla
+    prima asserzione (un elenco vuoto e' un cancello che non guarda niente).
+    """
+    tools = _tool_names()
+    assert {"scripts", "censore_tipi", "censimento"} <= tools, sorted(tools)
+    colpevoli: list[str] = []
+    for sorgente in sorted(_PRODUCT.rglob("*.py")):
+        tree = ast.parse(sorgente.read_text(encoding="utf-8"), filename=str(sorgente))
+        for riga in _tool_imports(tree, tools):
+            colpevoli.append(f"{sorgente.relative_to(_PRODUCT.parent)}: {riga}")
+    assert colpevoli == [], (
+        "il prodotto importa un attrezzo di `scripts/`, che nell'immagine "
+        "dell'add-on non c'e'. Trovati: " + "; ".join(colpevoli))

@@ -1,6 +1,6 @@
 """Come si rende uno stato di Home Assistant, e da dove viene la tabella.
 
-I quattro gradini sono la trascrizione di `async_translate_state`
+I gradini sono la trascrizione di `async_translate_state` (dal secondo in poi)
 (`homeassistant/helpers/translation.py:459-491`, tag `2026.9.1`): ognuno ha
 qui la sua prova, e ognuna dichiara la mutazione che l'ha vista rossa. Le
 chiavi usate nelle prove non sono inventate: sono state LETTE dalla casa vera
@@ -23,36 +23,13 @@ RISORSE_COMPONENTE = {
 
 
 # ---------------------------------------------------------------------------
-# I quattro gradini, uno per uno, ognuno che cade sul successivo
+# I gradini trascritti (il secondo, il terzo e il quarto di Home Assistant),
+# ognuno che cade sul successivo
 # ---------------------------------------------------------------------------
 
-def test_primo_gradino_la_chiave_dell_integrazione_vince_su_tutte():
-    """`component.{platform}.entity.{domain}.{translation_key}.state.{state}`
-    (`translation.py:472-478`). E' il gradino piu' specifico: quando risponde,
-    nessun altro viene interrogato.
-
-    Mutazione ESEGUITA: spostare il blocco del primo gradino DOPO quello del
-    `device_class` in `state_translation` -- il test torna rosso su
-    `assert reso == "Rilevato dall'integrazione"`, perche' risponde il
-    gradino della classe («Rilevato dalla classe»).
-    """
-    reso = state_translation(
-        "on", domain="binary_sensor", device_class="motion", platform="reolink",
-        translation_key="animal",
-        component_resources={
-            "component.binary_sensor.entity_component.motion.state.on":
-                "Rilevato dalla classe",
-        },
-        entity_resources={
-            "component.reolink.entity.binary_sensor.animal.state.on":
-                "Rilevato dall'integrazione",
-        })
-    assert reso == "Rilevato dall'integrazione"
-
-
-def test_senza_la_chiave_dell_integrazione_si_cade_sul_device_class():
-    """Il primo gradino non trova nulla (o `entity_resources` non c'e'
-    affatto, che e' il caso di oggi): risponde il secondo,
+def test_il_device_class_risponde_per_primo():
+    """Il primo gradino di Home Assistant (la chiave propria dell'integrazione)
+    qui non e' trascritto -- nessuno ne scarica le risorse: risponde il secondo,
     `component.{domain}.entity_component.{device_class}.state.{state}`
     (`translation.py:480-486`).
 

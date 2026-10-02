@@ -1,6 +1,6 @@
 """L'istantaneo del pubblicato e' ancora quello di QUESTA casa?
 
-**E' l'altro fallimento, e non e' lo stesso di `test_type_census.py`.** Quello
+**E' l'altro fallimento, e non e' lo stesso di `test_censore_tipi.py`.** Quello
 dice *«il vocabolario non copre cio' che Home Assistant pubblica»* -- e allora
 qualcuno deve decidere. Questo dice *«l'istantaneo non e' piu' quello di questa
 casa»* -- e allora l'istantaneo va rifatto, e solo dopo si guarda cosa il
@@ -28,9 +28,8 @@ import sys
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+import censore_tipi
 import istantaneo_pubblicato as istantaneo
-
-from hiris.app.home_space import type_census
 
 
 @pytest.fixture(scope="module")
@@ -74,11 +73,11 @@ def test_l_istantaneo_versionato_e_ancora_quello_di_questa_casa(casa_viva):
     tenerla avrebbe dato l'impressione di una copertura in piu' che non c'era.
     """
     versionato = istantaneo.stored_snapshot()
-    diverse = [subject.value for subject, key in type_census.SNAPSHOT_KEYS.items()
+    diverse = [subject.value for subject, key in censore_tipi.SNAPSHOT_KEYS.items()
                if versionato.get(key) != casa_viva.get(key)]
     assert not diverse, (
-        f"l'istantaneo del {versionato.get(type_census.SNAPSHOT_READ_ON)} non e' piu' "
-        f"quello di questa casa (HA {casa_viva.get(type_census.SNAPSHOT_HA_VERSION)}): "
+        f"l'istantaneo del {versionato.get(censore_tipi.SNAPSHOT_READ_ON)} non e' piu' "
+        f"quello di questa casa (HA {casa_viva.get(censore_tipi.SNAPSHOT_HA_VERSION)}): "
         f"e' cambiato in {', '.join(diverse)}. Rigeneralo con "
         "`python scripts/istantaneo_pubblicato.py --scrivi`, POI guarda cosa il "
         "censore nomina di nuovo -- prima si rilegge, poi si decide.")
@@ -137,10 +136,10 @@ def test_la_casa_e_la_stessa_versione_e_la_stessa_lingua(casa_viva):
     versionato -- la prova arrossisce sulle due versioni affiancate.
     """
     versionato = istantaneo.stored_snapshot()
-    assert (versionato.get(type_census.SNAPSHOT_HA_VERSION),
-            versionato.get(type_census.SNAPSHOT_LANGUAGE)) == (
-        casa_viva.get(type_census.SNAPSHOT_HA_VERSION),
-        casa_viva.get(type_census.SNAPSHOT_LANGUAGE))
+    assert (versionato.get(censore_tipi.SNAPSHOT_HA_VERSION),
+            versionato.get(censore_tipi.SNAPSHOT_LANGUAGE)) == (
+        casa_viva.get(censore_tipi.SNAPSHOT_HA_VERSION),
+        casa_viva.get(censore_tipi.SNAPSHOT_LANGUAGE))
 
 
 def test_l_istantaneo_versionato_e_json_leggibile():
@@ -152,4 +151,4 @@ def test_l_istantaneo_versionato_e_json_leggibile():
     un `JSONDecodeError`.
     """
     letto = json.loads(istantaneo.SNAPSHOT_PATH.read_text(encoding="utf-8"))
-    assert set(type_census.SNAPSHOT_KEYS.values()) <= set(letto)
+    assert set(censore_tipi.SNAPSHOT_KEYS.values()) <= set(letto)

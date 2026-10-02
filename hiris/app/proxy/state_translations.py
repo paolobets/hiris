@@ -41,7 +41,8 @@ logger = logging.getLogger(__name__)
 # La categoria che porta le traduzioni degli stati per DOMINIO. Non e' quella
 # che il nome suggerisce: `category: "state"` risponde con zero chiavi
 # (misurato dal vivo, 07/09/2026), e `category: "entity"` (134 KB) copre solo
-# le entita' con un `translation_key` proprio -- il primo gradino qui sotto.
+# le entita' con un `translation_key` proprio -- il gradino di Home Assistant
+# che `state_translation` qui sotto dichiara di non avere.
 STATE_TRANSLATIONS_CATEGORY = "entity_component"
 
 #: Il trattino basso con cui Home Assistant scrive «vale per il dominio, senza
@@ -81,11 +82,6 @@ SILENCE_UNREACHABLE = "non ho potuto chiedere"
 SILENCE_ABSENT = "ho chiesto e non c’e'"
 SILENCE_UNDEFINED = "ho chiesto una cosa che non esiste"
 
-#: I tre, scritti una volta perche' una prova possa contarli: un quarto
-#: silenzio nato di nascosto e' esattamente il modo in cui «perche' non lo so»
-#: tornerebbe a essere un'opinione di chi legge.
-SILENCES = (SILENCE_UNREACHABLE, SILENCE_ABSENT, SILENCE_UNDEFINED)
-
 
 def known(value) -> dict:
     """L'esito pieno: `{"letto": True, "valore": ...}`.
@@ -116,14 +112,13 @@ def undefined(reason: str) -> dict:
             "motivo": reason or "motivo non dichiarato"}
 
 
-def state_translation(state, *, domain, device_class=None, platform=None,
-                      translation_key=None, component_resources,
-                      entity_resources=None) -> str | None:
+def state_translation(state, *, domain, device_class=None,
+                      component_resources) -> str | None:
     """La resa di `state`, o `None` quando nessun gradino risponde.
 
     Trascrizione di `async_translate_state`
-    (`homeassistant/helpers/translation.py:459-491`, tag `2026.9.1`), quattro
-    gradini nell'ordine esatto:
+    (`homeassistant/helpers/translation.py:459-491`, tag `2026.9.1`), che ha
+    quattro gradini in quest'ordine:
 
     1. `component.{platform}.entity.{domain}.{translation_key}.state.{state}`
        nelle risorse di `category: "entity"` (`:472-478`);
@@ -132,8 +127,18 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     3. `component.{domain}.entity_component._.state.{state}` (`:487-489`);
     4. nessuna traduzione (`:491`).
 
-    **Uno scostamento dichiarato dal sorgente di HA, e ha un perche' che vale
-    piu' della fedelta' letterale.**
+    **Due scostamenti dichiarati dal sorgente di HA.**
+
+    **Il primo gradino qui NON c'e'.** HIRIS scarica una categoria sola,
+    `entity_component`: quella di `category: "entity"` (134 KB) nessuno la
+    legge, quindi il gradino dell'integrazione non ha di che rispondere. Fino
+    al 02/10/2026 era trascritto lo stesso, dietro tre parametri (`platform`,
+    `translation_key`, `entity_resources`) che nessun chiamante passava: un
+    ramo provato e mai eseguito. La conseguenza e' un fatto del prodotto, non
+    di questa funzione: lo stato di un'entita' con una `translation_key`
+    propria si rende con la parola del suo dominio o della sua classe, o resta
+    grezzo. Il giorno in cui qualcuno scarichera' quella categoria, il gradino
+    rientra insieme a chi lo alimenta.
 
     **Il quarto gradino torna `None`, non il grezzo.** HA a `:491` fa
     `return state`, e chi lo chiama non puo' piu' distinguere «tradotto» da
@@ -178,20 +183,12 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     silenzio generico.
 
     `component_resources` e' obbligatorio ed e' il dizionario piatto di
-    `category: "entity_component"`; `entity_resources` (`category: "entity"`)
-    e' facoltativo, e senza di esso il primo gradino non puo' rispondere --
-    cade sul secondo, che e' esattamente cio' che HA fa quando la cache di
-    quella categoria e' vuota.
+    `category: "entity_component"`.
     """
     if not isinstance(state, str) or not state:
         return None
     if not isinstance(domain, str) or not domain:
         return None
-    if platform and translation_key and isinstance(entity_resources, dict):
-        key = (f"component.{platform}.entity.{domain}."
-               f"{translation_key}.state.{state}")
-        if key in entity_resources:
-            return entity_resources[key]
     if not isinstance(component_resources, dict):
         return None
     if device_class:
@@ -384,9 +381,12 @@ def rendered_state(state, *, domain, device_class=None, translations) -> dict:
 # COSA QUESTA CASA PUBBLICA ADESSO, distillato dalle stesse 801 chiavi
 # --------------------------------------------------------------------------
 #
-# **Nessuna chiamata in piu'.** Le quattro materie qui sotto escono TUTTE dalla
-# risposta che questo modulo gia' scarica per rendere uno stato: un comando
-# solo, `frontend/get_translations` con `category: "entity_component"`.
+# **Nessuna chiamata in piu'.** Le quattro materie escono TUTTE dalla risposta
+# che questo modulo gia' scarica per rendere uno stato: un comando solo,
+# `frontend/get_translations` con `category: "entity_component"`. Qui sotto
+# resta quella che il prodotto legge (le `device_class` per dominio, per il
+# seme del sapere); le altre tre le distilla `scripts/istantaneo_pubblicato.py`,
+# con la stessa `entity_component_key`.
 # Misurato sulla casa vera l'08/09/2026 (HA `2026.9.1`, lingua `it`, 801
 # chiavi):
 #
@@ -410,7 +410,7 @@ def rendered_state(state, *, domain, device_class=None, translations) -> dict:
 # Una tabella si legge cosi' anche in una prova, senza casa.
 
 
-def _entity_component_key(key) -> list[str] | None:
+def entity_component_key(key) -> list[str] | None:
     """I pezzi di una chiave di `entity_component`, o `None` se non lo e'.
 
     Una chiave che non ha questa forma non e' un errore da segnalare: la
@@ -427,20 +427,6 @@ def _entity_component_key(key) -> list[str] | None:
     return parts
 
 
-def published_domains(resources) -> frozenset[str]:
-    """I domini che QUESTA casa ha caricato -- 53, misurati.
-
-    Non e' l'elenco esaustivo delle piattaforme di Home Assistant (quello non
-    lo pubblica nessuna API): e' cio' che questa installazione ha acceso, che
-    e' la domanda a cui serve rispondere.
-    """
-    if not isinstance(resources, dict):
-        return frozenset()
-    return frozenset(parts[1] for parts in
-                     (_entity_component_key(key) for key in resources)
-                     if parts is not None)
-
-
 def published_device_classes(resources) -> dict[str, frozenset[str]]:
     """Dominio -> le sue `device_class`, come Home Assistant le pubblica.
 
@@ -453,62 +439,13 @@ def published_device_classes(resources) -> dict[str, frozenset[str]]:
     if not isinstance(resources, dict):
         return {}
     for key in resources:
-        parts = _entity_component_key(key)
+        parts = entity_component_key(key)
         if parts is None or len(parts) != 5 or parts[4] != "name":
             continue
         if parts[3] == NO_DEVICE_CLASS:
             continue
         per_domain.setdefault(parts[1], set()).add(parts[3])
     return {domain: frozenset(classes) for domain, classes in per_domain.items()}
-
-
-def published_states(resources) -> dict[tuple[str, str | None], frozenset[str]]:
-    """(dominio, classe o `None`) -> gli stati canonici di quel tipo.
-
-    **La chiave e' il TIPO**, la stessa del vocabolario dei tipi: un dominio, o
-    una coppia. Il `_` di Home Assistant -- che significa «vale per il dominio,
-    senza classe» -- diventa `None`, cosi' che nessun consumatore debba sapere
-    che quel trattino basso e' una convenzione e non una classe di dispositivo.
-    """
-    per_type: dict[tuple[str, str | None], set[str]] = {}
-    if not isinstance(resources, dict):
-        return {}
-    for key in resources:
-        parts = _entity_component_key(key)
-        if parts is None or len(parts) < 6 or parts[4] != "state":
-            continue
-        device_class = None if parts[3] == NO_DEVICE_CLASS else parts[3]
-        # Lo stato e' TUTTO cio' che resta: un valore con un punto dentro non
-        # si taglia a meta'. Prendere `parts[5]` e basta produrrebbe uno stato
-        # che non esiste, senza che niente lo segnali.
-        per_type.setdefault((parts[1], device_class), set()).add(".".join(parts[5:]))
-    return {type_key: frozenset(states) for type_key, states in per_type.items()}
-
-
-#: L'attributo di stato di cui si vogliono i valori legali. Uno solo, e scritto
-#: qui perche' e' l'unico che decide come si legge un numero: `total_increasing`
-#: e `measurement` non si sommano allo stesso modo.
-STATE_CLASS_ATTRIBUTE = "state_class"
-
-
-def published_state_classes(resources) -> frozenset[str]:
-    """I valori legali di `state_class`, come questa casa li pubblica.
-
-    **Quattro, non tre**: `measurement`, `measurement_angle`, `total`,
-    `total_increasing` (misurati). Il quarto -- `measurement_angle` -- e'
-    esattamente il tipo di voce che una lista scritta a mano non guadagna mai:
-    e' nato in Home Assistant, e nessuno qui se n'e' accorto.
-    """
-    values: set[str] = set()
-    if not isinstance(resources, dict):
-        return frozenset()
-    for key in resources:
-        parts = _entity_component_key(key)
-        if (parts is None or len(parts) < 8 or parts[4] != "state_attributes"
-                or parts[5] != STATE_CLASS_ATTRIBUTE or parts[6] != "state"):
-            continue
-        values.add(".".join(parts[7:]))
-    return frozenset(values)
 
 
 class StateTranslations:
@@ -531,15 +468,15 @@ class StateTranslations:
     lette e uno stato senza traduzione sono due fatti diversi, e chi PRODUCE
     il motivo deve etichettarlo -- non chi lo consuma indovinarlo.
 
-    **`published_domains`/`published_device_classes`/`published_states`/
-    `published_state_classes`** (sopra, in questo stesso modulo) distillano
+    **`published_device_classes`** (sopra, in questo stesso modulo) distilla
     dalle stesse chiavi cio' che una casa DICHIARA di avere -- non da questa
-    cache, che resta la sola lettura sincrona per rendere uno stato. Il
-    censore (`home_space/type_census.py`) e lo script che gli fa da fonte
-    (`scripts/istantaneo_pubblicato.py`) le chiamano direttamente sulle
-    risorse che leggono da soli, senza passare da qui: sono le due domande
-    diverse sulla stessa lettura di cui parla il loro modulo -- «come si rende
-    uno stato» qui dentro, «cosa questa casa dichiara di avere» li'.
+    cache, che resta la sola lettura sincrona per rendere uno stato. Le sue
+    tre sorelle (domini, stati per tipo, valori di `state_class`) non avevano
+    un chiamante nel prodotto e dal 02/10/2026 vivono accanto al loro unico
+    lettore, `scripts/istantaneo_pubblicato.py`, che chiede la forma della
+    chiave a `entity_component_key` qui sopra: sono le due domande diverse
+    sulla stessa lettura -- «come si rende uno stato» qui dentro, «cosa questa
+    casa dichiara di avere» li'.
     (R6, revisione del tratto v3.23.0..HEAD, 08/09/2026: fino a questa
     correzione questa classe portava anche `published()` e `PublishedTypes`,
     un secondo wrapper con gli stessi tre silenzi ma NESSUN chiamante di

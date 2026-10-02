@@ -81,7 +81,7 @@ riga e non sa quale dei due, ha trovato il caso che scioglie la fetta 6.
 **Cosa questo modulo NON fa, e chi lo fa al posto suo.** Non chiede niente a
 Home Assistant: la lettura viva sta in `proxy/state_translations.py` e in
 `action/registry.py` (piano, fetta 3), e **il censore che confronta cio' che HA
-pubblica con cio' che questo vocabolario rivendica sta in `type_census.py`**
+pubblica con cio' che questo vocabolario rivendica sta in `scripts/censore_tipi.py`**
 (fetta 4, 08/09/2026). Sono tre moduli e non uno apposta: un vocabolario che
 leggesse la rete congelerebbe all'import un dato che e' «di adesso» per
 definizione, e un censore dentro il vocabolario giudicherebbe se stesso.
@@ -98,8 +98,8 @@ quattro domini (`assist_satellite`, `camera`, `timer`, `group`) restano fuori
 con la ragione scritta nel censore.
 
 Cio' che il censore nomina e che NON e' nostro decidere resta aperto in
-`type_census.OPEN_QUESTIONS`, con la domanda scritta: **115 voci** (ricontate
-eseguendo `sum(len(q.keys) for q in type_census.OPEN_QUESTIONS)`) -- 109
+`open_questions.OPEN_QUESTIONS`, con la domanda scritta: **115 voci** (ricontate
+eseguendo `sum(len(q.keys) for q in open_questions.OPEN_QUESTIONS)`) -- 109
 classi del dispositivo mai nominate, i quattro stati indecisi di
 `alarm_control_panel` (`arming`, `disarmed`, `disarming`, `pending`),
 `update=off`, e `lock=jammed`, che ha la decisione presa (e' un GUASTO) e non
@@ -129,16 +129,16 @@ from .type_judgments import (
 
 
 class Provenance(Enum):
-    """Da dove viene un campo del vocabolario. Tre, e non di piu'.
+    """Da dove viene un campo del vocabolario. Due oggi: la spec ne nomina una
+    terza, `chiesto` («letto da questa casa adesso»), che entrera' qui col
+    primo campo che la porta. Finche' nessun campo veniva chiesto, la voce e
+    la sua classe (`Asked`) erano una forma senza contenuto, e sono uscite il
+    02/10/2026.
 
     Il valore di ogni voce e' la parola italiana con cui la spec la nomina:
     e' cio' che una persona legge in un rapporto o in un messaggio d'errore, e
     non deve tradursi due volte fra il codice e la prosa.
     """
-
-    #: Letto da questa casa adesso -- traduzioni, registro dei servizi. Non
-    #: invecchia: e' il dato di adesso.
-    ASKED = "chiesto"
 
     #: Copiato dal sorgente o dalla documentazione di Home Assistant, con la
     #: versione da cui viene. Invecchia: si data e si sorveglia.
@@ -175,7 +175,7 @@ class Field(ABC):
     parametro che si possa dimenticare, sbagliare o mettere a `None` -- e' la
     CLASSE. `Field` e' astratta (`provenance` e' astratta): `Field("x")`
     solleva `TypeError` prima ancora che l'oggetto esista. Gli unici modi di
-    ottenerne uno sono `Asked`, `Imported` e `Ours`, e ciascuno porta la
+    ottenerne uno sono `Imported` e `Ours`, e ciascuno porta la
     propria provenienza scritta addosso.
 
     Era la parte da fare bene: se la si potesse costruire senza dichiararla,
@@ -207,22 +207,6 @@ class Field(ABC):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._value!r})"
-
-
-class Asked(Field):
-    """Letto da questa casa adesso.
-
-    Nessun campo di questo tipo esiste ancora: la lettura viva e' la fetta
-    successiva, e dichiararne uno oggi sarebbe un «dato di adesso» che nessuno
-    ha chiesto. La classe c'e' lo stesso perche' la forma deve reggere tutte e
-    tre le provenienze prima che la terza arrivi -- non dopo.
-    """
-
-    __slots__ = ()
-
-    @property
-    def provenance(self) -> Provenance:
-        return Provenance.ASKED
 
 
 class Imported(Field):
@@ -278,13 +262,6 @@ class Ours(Field):
         return Provenance.OURS
 
 
-#: Le tre provenienze, e le tre classi che le portano. Scritte qui perche' una
-#: prova possa contarle: una quarta provenienza nata di nascosto e' esattamente
-#: il modo in cui «da dove viene questo dato» tornerebbe a essere un'opinione.
-PROVENANCES = frozenset(Provenance)
-FIELD_KINDS = (Asked, Imported, Ours)
-
-
 class TypeRow:
     """La riga di UN tipo: un dominio, oppure una coppia dominio + classe.
 
@@ -307,7 +284,7 @@ class TypeRow:
                 raise TypeError(
                     f"il campo `{name}` di `{domain}` non dichiara la propria "
                     f"provenienza: e' un {type(field).__name__} nudo, non un "
-                    "`Asked`/`Imported`/`Ours`")
+                    "`Imported`/`Ours`")
         object.__setattr__(self, "domain", domain)
         object.__setattr__(self, "device_class", device_class)
         object.__setattr__(self, "fields", MappingProxyType(dict(fields)))
@@ -469,13 +446,9 @@ STATE_ATTRIBUTES = "state_attributes"
 #: non si dichiara.
 CAPABILITY_ATTRIBUTES_DROPPED = "capability_attributes_dropped"
 
-#: Attributi che Home Assistant NON elenca fra le capacita' del dominio e che
-#: qui lo sono. Stessa forma, stessa regola: `nome -> ragione scritta`.
-CAPABILITY_ATTRIBUTES_ADDED = "capability_attributes_added"
-
 #: Attributi che Home Assistant classifica come capacita' e che dicono cosa
 #: quell'entita' puo' ASSUMERE, non cosa le si puo' IMPORRE. Stessa forma
-#: delle due sopra: `nome -> ragione scritta`.
+#: di quella sopra: `nome -> ragione scritta`.
 ASSUMABLE_ATTRIBUTES = "assumable_attributes"
 
 #: Per un parametro di servizio, quale attributo di QUESTA entita' porta il
@@ -592,7 +565,7 @@ _vocabulary.add("sensor")
 
 # Queste tre coppie non portano piu' nessun campo dall'uscita della gamba
 # (spec 2026-09-16 §11, 17/09/2026): restano dichiarate -- come il dominio
-# `sensor` qui sopra -- perche' il censore (`type_census.py`) le sappia gia'
+# `sensor` qui sopra -- perche' il censore (`scripts/censore_tipi.py`) le sappia gia'
 # guardate, non perche' abbiano un giudizio proprio.
 _vocabulary.add_all("binary_sensor", ("presence", "occupancy", "motion"))
 _vocabulary.add_all("binary_sensor", ("door", "window", "opening", "garage_door"))
@@ -830,7 +803,7 @@ _vocabulary.add("media_player", operable=Ours(True),
 # lo stato non lo riceve nemmeno), quindi non c'e' nessun posto in cui `jammed`
 # possa entrare senza mentire: metterlo qui direbbe «sta funzionando», che e'
 # esattamente cio' che il proprietario ha escluso. Resta **aperto e nominato**
-# in `type_census.OPEN_QUESTIONS`, con la decisione gia' presa e cio' che
+# in `open_questions.OPEN_QUESTIONS`, con la decisione gia' presa e cio' che
 # manca per eseguirla scritto accanto. Meglio una voce aperta di una infilata
 # nel posto sbagliato.
 _vocabulary.extend("lock", working_states=Ours({
@@ -1066,7 +1039,7 @@ for _device_class in ("smoke", "gas", "carbon_monoxide", "heat", "cold", "moistu
 # un servizio di integrazione che BERSAGLIA `button`. Non esiste nessun
 # `ButtonEntityFeature` da cui prendere il nome di quel bit, quindi
 # decodificarlo vorrebbe dire inventarlo. Resta fuori, e l'eccezione e'
-# scritta in `type_census.py`.
+# scritta in `scripts/censore_tipi.py`.
 #
 # COPERTURA IN NUMERI -- TRE fatti diversi, misurati sulla casa vera
 # (`/api/states`) il 06/09/2026, non a parole e non confusi l'uno con
@@ -1686,15 +1659,6 @@ del _domain, _new_fields
 # LE METRICHE, in forma di domanda
 # --------------------------------------------------------------------------
 
-def declared_working_states() -> Mapping[str, Mapping[str, str]]:
-    """Dominio -> `stato -> ragione`, per la prova che boccia un giudizio
-    senza ragione scritta. Stessa forma di `dropped_capability_attributes`."""
-    return MappingProxyType({
-        domain: _vocabulary.value(domain, None, WORKING_STATES)
-        for domain in sorted(_vocabulary.domains())
-        if _vocabulary.value(domain, None, WORKING_STATES) is not None})
-
-
 def unknown_states() -> frozenset[str]:
     """Gli stati «non lo so»: non un riposo, non un fatto sulla casa. Una riga
     con questo stato si salta, e l'episodio in corso resta aperto attraverso il
@@ -1716,7 +1680,7 @@ def declared_domains() -> frozenset[str]:
     """I domini per cui questo vocabolario ha una riga -- qualunque cosa quella
     riga dica.
 
-    Serve al censore (`type_census.py`): «rivendicato» non vuol dire «giudicato
+    Serve al censore (`scripts/censore_tipi.py`): «rivendicato» non vuol dire «giudicato
     bene», vuol dire che questo vocabolario quel dominio l'ha guardato. Chi
     vuole sapere COSA ne dice chiede il campo, non questa vista.
     """
@@ -1726,15 +1690,6 @@ def declared_domains() -> frozenset[str]:
 def declared_pairs() -> frozenset[tuple[str, str]]:
     """Le coppie (dominio, classe) per cui questo vocabolario ha una riga."""
     return _vocabulary.pairs()
-
-
-def capability_tables() -> Mapping[str, Mapping[int, str]]:
-    """Tutte le tabelle dei bit, per la prova che le riporta alla fonte. Non un
-    secondo elenco: una vista sulle righe che gia' le portano."""
-    return MappingProxyType({
-        domain: _vocabulary.value(domain, None, CAPABILITY_NAMES)
-        for domain in sorted(_vocabulary.domains())
-        if _vocabulary.value(domain, None, CAPABILITY_NAMES) is not None})
 
 
 def capability_attributes(domain: str) -> frozenset[str]:
@@ -1778,13 +1733,6 @@ def group_membership_attributes() -> frozenset[str]:
     return frozenset(GROUP_MEMBERSHIP_ATTRIBUTES.value)
 
 
-def declared_group_membership_attributes() -> Mapping[str, str]:
-    """I nomi della composizione **con la ragione scritta di ognuno**. Un
-    giudizio senza ragione non passa la prova che legge questa vista -- la
-    stessa disciplina di `declared_assumable_attributes`."""
-    return MappingProxyType(dict(GROUP_MEMBERSHIP_ATTRIBUTES.value))
-
-
 def assumable_attributes(domain: str) -> frozenset[str]:
     """**Metrica 4, terza meta'** -- i nomi degli attributi che, per questo
     dominio, dicono cosa l'entita' puo' ASSUMERE: non un campo di manovra, ma
@@ -1796,26 +1744,6 @@ def assumable_attributes(domain: str) -> frozenset[str]:
     `_ASSUMABLE_ATTRIBUTES` per la ragione, scritta voce per voce.
     """
     return frozenset(_vocabulary.value(domain, None, ASSUMABLE_ATTRIBUTES, {}))
-
-
-def declared_assumable_attributes() -> Mapping[str, Mapping[str, str]]:
-    """Gli attributi che Home Assistant chiama capacita' e che qui dicono
-    «cosa puo' assumere», **con la ragione scritta di ognuno**. Un'eccezione
-    senza ragione non passa la prova che legge questa vista."""
-    return MappingProxyType({
-        domain: _vocabulary.value(domain, None, ASSUMABLE_ATTRIBUTES)
-        for domain in sorted(_vocabulary.domains())
-        if _vocabulary.value(domain, None, ASSUMABLE_ATTRIBUTES) is not None})
-
-
-def declared_parameter_limits() -> Mapping[str, Mapping[str, Mapping[str, str]]]:
-    """Tutti i collegamenti parametro -> attributo, per la prova che verifica
-    che ogni attributo nominato sia una capacita' DICHIARATA da Home Assistant
-    per quel dominio. Un refuso non diventa un limite che non esiste."""
-    return MappingProxyType({
-        domain: _vocabulary.value(domain, None, PARAMETER_LIMITS)
-        for domain in sorted(_vocabulary.domains())
-        if _vocabulary.value(domain, None, PARAMETER_LIMITS) is not None})
 
 
 def state_attributes(domain: str) -> frozenset[str]:
@@ -1838,34 +1766,6 @@ def state_attributes(domain: str) -> frozenset[str]:
     dropped = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED, {})
     return (frozenset(own) | frozenset(dropped)
             | UNIVERSAL_STATE_ATTRIBUTES.value)
-
-
-def capability_attribute_tables() -> Mapping[str, frozenset[str]]:
-    """Le trascrizioni delle capacita', dominio per dominio, **come sono nella
-    fonte** -- il giudizio nostro non le tocca. Per la prova che le riporta al
-    sorgente di Home Assistant."""
-    return MappingProxyType({
-        domain: frozenset(_vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES))
-        for domain in sorted(_vocabulary.domains())
-        if _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES) is not None})
-
-
-def state_attribute_tables() -> Mapping[str, frozenset[str]]:
-    """Come sopra, per la meta' «com'e' adesso»."""
-    return MappingProxyType({
-        domain: frozenset(_vocabulary.value(domain, None, STATE_ATTRIBUTES))
-        for domain in sorted(_vocabulary.domains())
-        if _vocabulary.value(domain, None, STATE_ATTRIBUTES) is not None})
-
-
-def dropped_capability_attributes() -> Mapping[str, Mapping[str, str]]:
-    """Gli attributi che Home Assistant chiama capacita' e questo vocabolario
-    no, **con la ragione scritta di ognuno**. Un'eccezione senza ragione non
-    passa la prova che legge questa vista."""
-    return MappingProxyType({
-        domain: _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED)
-        for domain in sorted(_vocabulary.domains())
-        if _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED) is not None})
 
 
 def domains_by_genre(genre: str) -> frozenset[str]:

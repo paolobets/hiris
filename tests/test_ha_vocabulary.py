@@ -20,8 +20,6 @@ from hiris.app.home_space.ha_vocabulary import (
     DEVICE_CLASS_MEANING,
     ENTITY_CATEGORY_MEANING,
     STATE_CLASS_MEANING,
-    UNAVAILABLE_MEANING,
-    UNKNOWN_MEANING,
     VOCABULARY_HA_VERSION,
     VOCABULARY_SOURCE,
     entity_category_measure_rule,
@@ -304,37 +302,11 @@ def test_uptime_is_documented_as_a_point_in_time_not_a_duration():
     assert "NON" in meaning
 
 
-def test_unavailable_and_unknown_are_two_different_documented_facts():
-    """Il terzo pezzo del "vocabolario che HA documenta e non manda":
-    `unavailable` e `unknown` non sono sinonimi -- uno dice che
-    l'integrazione non e' raggiungibile, l'altro che lo e' ma il valore non
-    e' ancora noto. Verificato alla fonte (`entity.py::_stringify_state`,
-    tag `2026.9.1`): l'ordine dei due controlli nel sorgente e' esattamente
-    "prima `available`, poi il valore".
-
-    Mutazione: rendere `UNKNOWN_MEANING` uguale a `UNAVAILABLE_MEANING` (o
-    svuotarne uno) -- il test torna rosso su
-    `assert UNAVAILABLE_MEANING != UNKNOWN_MEANING`.
-    """
-    assert UNAVAILABLE_MEANING
-    assert UNKNOWN_MEANING
-    assert UNAVAILABLE_MEANING != UNKNOWN_MEANING
-    assert "available" in UNAVAILABLE_MEANING.lower() or "raggiungibile" in UNAVAILABLE_MEANING
-    assert "none" in UNKNOWN_MEANING.lower() or "non" in UNKNOWN_MEANING.lower()
-
-
-# Le due ETICHETTE BREVI (`UNAVAILABLE_LABEL`/`UNKNOWN_LABEL`) sono state
-# rimosse dalla revisione del tratto v3.22.2..HEAD (rilievo R5): il loro solo
-# consumatore (`proxy/state_translations.py`) era un ramo morto, mai
-# raggiungibile dall'unico chiamante (vedi il commento in `ha_vocabulary.py`
-# sopra `UNKNOWN_MEANING`). Le due spiegazioni lunghe restano, e restano
-# provate qui sotto.
-
-
 def test_la_fonte_dichiara_PERCHE_unavailable_e_unknown_sono_un_buco_di_ha():
-    """Le due spiegazioni lunghe (`UNAVAILABLE_MEANING`/`UNKNOWN_MEANING`)
-    esistono perche' Home Assistant non pubblica MAI la distinzione fra i due
-    stati verso un add-on, e la prova di quel buco e' una riga di sorgente:
+    """La differenza fra `unavailable` e `unknown` e' scritta in
+    `ha_vocabulary.py` perche' Home Assistant non pubblica MAI la distinzione
+    fra i due stati verso un add-on, e la prova di quel buco e' una riga di
+    sorgente:
     `translation.py:469-470`, dove `async_translate_state` restituisce
     `unavailable`/`unknown` grezzi prima di guardare qualunque tabella. Senza
     questa citazione dentro `VOCABULARY_SOURCE`, fra sei mesi le due

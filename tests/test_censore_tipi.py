@@ -9,25 +9,30 @@ FATTO invece della proprieta' che dovrebbe produrlo.
 **La suite gira senza la casa**, quindi qui non si legge Home Assistant: si
 legge l'istantaneo versionato (`tests/data/pubblicato-dalla-casa.json`). Che
 quell'istantaneo sia ancora quello di questa casa lo dice un'altra prova, che
-gira solo quando la casa risponde (`test_type_census_live.py`) -- **due
+gira solo quando la casa risponde (`test_censore_tipi_live.py`) -- **due
 fallimenti diversi, perche' sono due difetti diversi**.
 """
 import json
 import pathlib
+import sys
 
 import pytest
 
-from hiris.app.home_space import type_census
-from hiris.app.home_space.type_census import (
-    EXCEPTIONS,
+from hiris.app.home_space.open_questions import (
     OPEN_QUESTIONS,
-    SUBJECTS,
     OpenQuestion,
     Subject,
+    state_key,
+)
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+import censore_tipi
+from censore_tipi import (
+    EXCEPTIONS,
+    SUBJECTS,
     findings,
     published_but_unclaimed,
     report,
-    state_key,
     undecided,
 )
 
@@ -43,7 +48,7 @@ def casa():
 def _classi_rivendicate(*domini):
     """Le classi che il prodotto rivendica, per i domini chiesti."""
     per_dominio = {domain: [] for domain in domini}
-    for key in sorted(type_census.claimed_device_classes()):
+    for key in sorted(censore_tipi.claimed_device_classes()):
         domain, _, device_class = key.partition(".")
         if domain in per_dominio:
             per_dominio[domain].append(device_class)
@@ -58,9 +63,9 @@ def _coperto():
     a fallire per il motivo sbagliato.
     """
     return {
-        type_census.SNAPSHOT_READ_ON: "2026-09-08",
-        type_census.SNAPSHOT_HA_VERSION: "2026.9.1",
-        type_census.SNAPSHOT_LANGUAGE: "it",
+        censore_tipi.SNAPSHOT_READ_ON: "2026-09-08",
+        censore_tipi.SNAPSHOT_HA_VERSION: "2026.9.1",
+        censore_tipi.SNAPSHOT_LANGUAGE: "it",
         "domini": ["light", "switch"],
         # Le classi del dominio le pubblica TUTTE, altrimenti il confronto
         # all'incontrario -- che e' meta' del censore -- avrebbe ragione a
@@ -97,8 +102,8 @@ def test_claimed_states_e_claimed_switchable_domains_leggono_il_seme():
     from hiris.app.home_space import type_vocabulary as tv
     from hiris.app.home_space.type_judgments import TypeJudgments
 
-    assert "stopped" in type_census.claimed_states("cover", None)
-    assert "light" in type_census.claimed_switchable_domains()
+    assert "stopped" in censore_tipi.claimed_states("cover", None)
+    assert "light" in censore_tipi.claimed_switchable_domains()
 
     righe = tuple(r for r in tv.judgment_seed_rows()
                   if not (r[1] == "cover" and r[2] == "riposo")
@@ -108,10 +113,10 @@ def test_claimed_states_e_claimed_switchable_domains_leggono_il_seme():
     originale = tv.REPO_JUDGMENTS
     tv.REPO_JUDGMENTS = finto
     try:
-        assert "stopped" not in type_census.claimed_states("cover", None), (
+        assert "stopped" not in censore_tipi.claimed_states("cover", None), (
             "il riposo deve venire dall'istantanea del seme, non da una "
             "funzione di modulo letta a mano")
-        assert "light" not in type_census.claimed_switchable_domains(), (
+        assert "light" not in censore_tipi.claimed_switchable_domains(), (
             "l'accendibile deve venire dall'istantanea del seme, non da "
             "`type_vocabulary.operable_domains()`")
     finally:
@@ -234,7 +239,7 @@ def test_il_censore_gira_anche_all_incontrario():
     """
     istantaneo = _coperto()
     istantaneo["classi_per_dominio"]["binary_sensor"].remove("door")
-    orfane = type_census.claimed_but_unpublished(istantaneo)[Subject.DEVICE_CLASS]
+    orfane = censore_tipi.claimed_but_unpublished(istantaneo)[Subject.DEVICE_CLASS]
     assert "binary_sensor.door" in orfane
 
 
@@ -250,7 +255,7 @@ def test_il_rovescio_vale_anche_per_gli_accendibili():
     """
     istantaneo = _coperto()
     istantaneo["domini"] = [*istantaneo["domini"], "vacuum"]
-    orfani = type_census.claimed_but_unpublished(istantaneo)[Subject.SWITCHABLE]
+    orfani = censore_tipi.claimed_but_unpublished(istantaneo)[Subject.SWITCHABLE]
     assert "vacuum" in orfani
 
 
@@ -263,7 +268,7 @@ def test_un_dominio_che_questa_casa_non_ha_non_e_un_difetto():
     `if domain in domains` -- la prova arrossisce perche' `vacuum` compare su
     una casa che non lo ha.
     """
-    orfani = type_census.claimed_but_unpublished(_coperto())[Subject.SWITCHABLE]
+    orfani = censore_tipi.claimed_but_unpublished(_coperto())[Subject.SWITCHABLE]
     assert "vacuum" not in orfani
 
 
@@ -279,9 +284,9 @@ def test_l_istantaneo_e_datato_e_dice_di_quale_casa_e(casa):
     -- la prova arrossisce su `KeyError: 'letto_il'`.
     """
     from datetime import date
-    assert date.fromisoformat(casa[type_census.SNAPSHOT_READ_ON])
-    assert casa[type_census.SNAPSHOT_HA_VERSION]
-    assert casa[type_census.SNAPSHOT_LANGUAGE]
+    assert date.fromisoformat(casa[censore_tipi.SNAPSHOT_READ_ON])
+    assert casa[censore_tipi.SNAPSHOT_HA_VERSION]
+    assert casa[censore_tipi.SNAPSHOT_LANGUAGE]
 
 
 def test_i_bit_dell_istantaneo_sono_gia_scomposti(casa):
@@ -290,7 +295,7 @@ def test_i_bit_dell_istantaneo_sono_gia_scomposti(casa):
     «questo dominio non ha capacita' che conosciamo» su un dominio che le ha
     tutte. La scomposizione sta a monte, nell'istantaneo.
 
-    Mutazione ESEGUITA: in `registry.single_bits`, tornare `{value}` -- il 3 di
+    Mutazione ESEGUITA: in `istantaneo_pubblicato.single_bits`, tornare `{value}` -- il 3 di
     `cover` sopravvive alla rigenerazione e la prova arrossisce su
     `assert 3 in (1, 2, 4, ...)`.
     """
@@ -359,7 +364,8 @@ def test_i_cinque_difetti_gia_misurati_sono_chiusi_e_nessuno_e_sparito(casa):
     del boiler e i due della serratura tornano fra i ritrovamenti, e le
     asserzioni `not in` arrossiscono.
     """
-    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS, capability_tables
+    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+    from tests._vocabulary_tables import capability_tables
     stati = set(findings(casa)[Subject.STATE])
     # 1. i sei modi del boiler: FUNZIONAMENTO, e il vocabolario lo dice
     assert state_key("water_heater", None, "eco") not in stati
@@ -373,7 +379,7 @@ def test_i_cinque_difetti_gia_misurati_sono_chiusi_e_nessuno_e_sparito(casa):
     assert "jammed" not in REPO_JUDGMENTS.working_of("lock")
     assert "jammed" not in REPO_JUDGMENTS.resting_of("lock")
     assert (Subject.STATE, state_key("lock", None, "jammed")) in {
-        (q.subject, key) for q in type_census.OPEN_QUESTIONS for key in q.keys}
+        (q.subject, key) for q in censore_tipi.OPEN_QUESTIONS for key in q.keys}
     # 4. il tosaerba come l'aspirapolvere
     assert "docked" in REPO_JUDGMENTS.resting_of("lawn_mower")
     assert state_key("lawn_mower", None, "mowing") not in stati
@@ -388,7 +394,7 @@ def test_i_cinque_difetti_gia_misurati_sono_chiusi_e_nessuno_e_sparito(casa):
         assert domain in tabelle, f"«{domain}» aveva bit e nessuna tabella"
     assert (Subject.CAPABILITY_BIT, "button=2") in EXCEPTIONS
     # `damper`: la riga irraggiungibile non c'e' piu', quindi il rovescio tace
-    assert not type_census.claimed_but_unpublished(casa)[Subject.DEVICE_CLASS]
+    assert not censore_tipi.claimed_but_unpublished(casa)[Subject.DEVICE_CLASS]
 
 
 # ---------------------------------------------------------------------------

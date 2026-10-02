@@ -44,15 +44,13 @@ un proprio perimetro da importare.
 **Le quattro tabelle di significati non le consuma il digesto, e non le
 consuma nemmeno `view`** (corretto il 09/09/2026: la frase precedente diceva
 il contrario, ed era falsa il giorno stesso in cui l'ha letta un revisore).
-`STATE_CLASS_MEANING` ha oggi UN lettore -- `type_census.py`, che lo usa per
+`STATE_CLASS_MEANING` ha oggi UN lettore -- `scripts/censore_tipi.py`, che lo usa per
 elencare le coppie (dominio, classe) censite. `DEVICE_CLASS_MEANING` ne ha
 **due dal 12/09/2026**: quello e `mind/seed.meaning_seed`, che ne fa il SEME
 del sapere (la fetta «il sapere e le ricette»). Sono due domande diverse sulla
 stessa tabella -- «cosa il repo rivendica» e «cosa significa» -- e per questo
-non sono un doppione. -- e `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` nessuno: restano
-conoscenza per chi legge il codice o interroga la casa a mano, pinnate solo
-dalla prova che le confronta con la fonte (`tests/test_ha_vocabulary.py`), non
-un fatto che il digesto o `view` ripetono a ogni turno. **Le tre voci
+non sono un doppione. La differenza fra `unavailable` e `unknown` non e' piu'
+una tabella: e' il commento accanto alla sua fonte, piu' sotto. **Le tre voci
 arrivate l'08/09/2026 invece hanno
 un lettore vivo ciascuna, e non e' lo stesso**: `config_entry_is_broken` la
 usa il digesto, per la riga degli avvisi; `config_entry_is_healthy`
@@ -261,7 +259,7 @@ DEVICE_CLASS_MEANING = {
     # PRELEVATA dalla rete, e su QUESTA casa il fotovoltaico produce:
     # `type_vocabulary.py` (righe intorno a "le direzioni dell'energia",
     # 27/08/2026) e CLAUDE.md lo dichiarano entrambi. Nessuno collega ancora
-    # questa tabella alle righe dei tipi (type_census.py e' l'unico lettore,
+    # questa tabella alle righe dei tipi (scripts/censore_tipi.py e' l'unico lettore,
     # e non la mostra): il giorno in cui qualcuno lo fara', un inverter
     # letto da qui uscirebbe come "energia consumata". La cura e' su quel
     # lettore futuro -- distinguere la direzione prima di citare questa
@@ -375,19 +373,21 @@ DEVICE_CLASS_MEANING = {
 # default): quando e' falsa, HA scrive "unavailable" PRIMA ancora di
 # guardare il valore. Solo se l'entita' e' disponibile HA guarda il valore,
 # e "unknown" e' cio' che scrive quando quel valore e' `None`.
-UNAVAILABLE_MEANING = (
-    "L'entita' NON e' raggiungibile: l'integrazione ha dichiarato "
-    "`available = False` (dispositivo spento, offline, connessione persa). "
-    "Home Assistant scrive lo stato come `unavailable` PRIMA di guardare il "
-    "valore -- il collegamento manca, non solo il dato."
-)
-
-UNKNOWN_MEANING = (
-    "L'entita' E' raggiungibile (`available` e' vero), ma il suo valore non "
-    "e' ancora noto: `self.state` e' `None` -- lo stato iniziale prima "
-    "della prima lettura, o un valore che l'integrazione stessa non sa "
-    "dire. Il collegamento e' sano: manca solo il dato, non e' un guasto."
-)
+#
+# Quindi i due stati dicono due cose diverse:
+#
+#   unavailable  l'entita' NON e' raggiungibile: l'integrazione ha dichiarato
+#                `available = False` (dispositivo spento, offline, connessione
+#                persa). Il collegamento manca, non solo il dato.
+#   unknown      l'entita' E' raggiungibile, ma il suo valore non e' ancora
+#                noto: `self.state` e' `None` -- lo stato iniziale prima della
+#                prima lettura, o un valore che l'integrazione stessa non sa
+#                dire. Il collegamento e' sano: manca solo il dato.
+#
+# Fino al 02/10/2026 queste due spiegazioni erano due costanti
+# (`UNAVAILABLE_MEANING`/`UNKNOWN_MEANING`) senza nessun lettore: nessuna porta
+# le ha mai rese. Sono conoscenza per chi legge il codice, e per chi legge il
+# codice basta un commento.
 
 # Le due ETICHETTE BREVI di queste voci (`UNAVAILABLE_LABEL`/`UNKNOWN_LABEL`,
 # fino al 07/09/2026) sono state rimosse dalla revisione indipendente del
@@ -400,11 +400,7 @@ UNKNOWN_MEANING = (
 # prova che lo provava (`tests/test_mind_api.py`) costruiva a mano un corpo
 # che l'archivio non produce mai -- codice morto con una prova che non poteva
 # fallire per una ragione vera (fondamenta 4: se nessuno puo' chiederlo, non
-# esiste). Le spiegazioni lunghe sopra (`UNAVAILABLE_MEANING`/
-# `UNKNOWN_MEANING`) restano: sono conoscenza per chi legge il codice o
-# interroga la casa a mano (vedi il docstring di testa del modulo), non un
-# dato che un confine deve rendere -- non hanno mai avuto un chiamante da
-# perdere.
+# esiste).
 
 # --- in che condizione e' una voce di configurazione ------------------------
 #

@@ -23,14 +23,11 @@ from hiris.app.home_space import topology, type_vocabulary
 from hiris.app.home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
     CAPABILITY_NAMES,
-    FIELD_KINDS,
     GENRE,
     NOTABLE,
     OPERABLE,
-    PROVENANCES,
     RESTING_STATES,
     UNKNOWN_STATES,
-    Asked,
     Field,
     Imported,
     Ours,
@@ -39,37 +36,40 @@ from hiris.app.home_space.type_vocabulary import (
     TypeVocabulary,
     _vocabulary,
     capability_names,
-    capability_tables,
-    declared_working_states,
     unknown_states,
 )
 from hiris.app.mind import facts
 from hiris.app.proxy import entity_cache
+from tests._vocabulary_tables import capability_tables, declared_working_states
 
 # --- la provenienza: un campo senza non deve poter esistere ---------------
 
-def test_le_provenienze_sono_tre_e_non_di_piu():
+def test_le_provenienze_sono_due_e_non_di_piu():
     """La spec ne dichiara tre (`chiesto`, `importato`, `nostro`) e dice «e non
-    di piu'». Una quarta nata di nascosto e' il modo in cui «da dove viene
-    questo dato» tornerebbe a essere un'opinione.
+    di piu'». Il vocabolario ne porta DUE: `chiesto` vuol dire «letto da questa
+    casa adesso», nessun campo lo e' mai stato, e la voce e' uscita il
+    02/10/2026 con la classe `Asked` che la portava senza un'istanza. Una
+    provenienza nata di nascosto e' il modo in cui «da dove viene questo dato»
+    tornerebbe a essere un'opinione -- e vale anche per il ritorno di
+    `chiesto`: rientra col primo campo davvero chiesto, e con questa prova.
 
-    Mutazione: aggiungere un quarto membro a `Provenance` -- la prima
-    asserzione arrossisce."""
-    assert len(Provenance) == 3
-    assert {p.value for p in Provenance} == {"chiesto", "importato", "nostro"}
-    assert PROVENANCES == frozenset(Provenance)
+    Mutazione ESEGUITA: aggiungere `GUESSED = "indovinato"` a `Provenance` --
+    la prima asserzione arrossisce (`assert 3 == 2`)."""
+    assert len(Provenance) == 2
+    assert {p.value for p in Provenance} == {"importato", "nostro"}
 
 
-def test_le_classi_di_campo_sono_tre_e_coprono_le_tre_provenienze():
+def test_le_classi_di_campo_coprono_le_provenienze_una_a_una():
     """Una provenienza senza una classe che la porti sarebbe inarrivabile; una
-    classe in piu' sarebbe una quarta provenienza travestita.
+    classe in piu' sarebbe una provenienza in piu' travestita.
 
-    Mutazione: definire una `class Guessed(Field)` accanto alle tre -- il
-    confronto con `Field.__subclasses__()` arrossisce."""
-    assert set(Field.__subclasses__()) == set(FIELD_KINDS)
-    assert len(FIELD_KINDS) == 3
-    portate = {kind.__new__(kind).provenance for kind in FIELD_KINDS}
-    assert portate == PROVENANCES
+    Mutazione ESEGUITA: definire una `class Guessed(Imported)` in fondo a
+    `type_vocabulary.py` -- arrossisce il confronto con le due classi."""
+    kinds = set(Field.__subclasses__()) | {
+        nested for kind in Field.__subclasses__() for nested in kind.__subclasses__()}
+    assert kinds == {Imported, Ours}
+    portate = {kind.__new__(kind).provenance for kind in kinds}
+    assert portate == frozenset(Provenance)
 
 
 def test_un_campo_senza_provenienza_non_si_costruisce():
@@ -134,7 +134,7 @@ def test_ogni_campo_di_ogni_riga_dichiara_la_propria_provenienza():
             "coppia")
         for name, field in row.fields.items():
             assert isinstance(field, Field), f"{row.key}.{name}"
-            assert field.provenance in PROVENANCES, f"{row.key}.{name}"
+            assert field.provenance in frozenset(Provenance), f"{row.key}.{name}"
 
 
 def test_i_giudizi_sono_nostri_e_le_capacita_sono_importate():
@@ -155,22 +155,6 @@ def test_i_giudizi_sono_nostri_e_le_capacita_sono_importate():
             assert field.provenance is Provenance.IMPORTED, row.key
             assert field.ha_version == "2026.9.1"
             assert "home-assistant/core" in field.source
-
-
-def test_nessun_campo_e_chiesto_finche_nessuno_chiede():
-    """La forma regge tutte e tre le provenienze, ma `chiesto` vuol dire
-    «letto da questa casa adesso», e questa fetta non legge niente. Un campo
-    `Asked` dichiarato con un valore scritto a mano sarebbe la bugia peggiore
-    del vocabolario: un giudizio nostro travestito da dato del fornitore.
-
-    Mutazione: dichiarare un campo `Asked(...)` su una riga qualunque --
-    arrossisce, e chi lo fa deve prima averlo davvero chiesto."""
-    asked = [(row.key, name) for row in _vocabulary.rows()
-             for name, field in row.fields.items()
-             if isinstance(field, Asked)]
-    assert asked == [], (
-        "un campo `chiesto` che nessuno ha chiesto e' un giudizio nostro "
-        "travestito da dato di Home Assistant")
 
 
 # --- una coppia si collega al suo dominio, non lo copia -------------------

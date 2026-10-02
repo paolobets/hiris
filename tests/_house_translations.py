@@ -30,7 +30,7 @@ una rigenerazione dell'una dall'altra, e nessuno strumento aggiorna
 `PUBLISHED_STATE_WORDS` in automatico. **Si corregge a mano**, quando la casa
 cambia parole -- e la sola verifica dal vivo che le due letture concordino e'
 `test_l_istantaneo_e_questa_fixture_nominano_gli_stessi_stati` in
-`test_type_census_live.py`, che confronta i TIPI derivabili da queste chiavi
+`test_censore_tipi_live.py`, che confronta i TIPI derivabili da queste chiavi
 (`derived_state_keys()` sotto) con `stati_per_tipo` dell'istantaneo -- non le
 PAROLE: un `triggered` ridetto «Scattato» invece di «Innescato» da Home
 Assistant non farebbe arrossire quella prova, perche' nessuna prova dal vivo
@@ -262,7 +262,7 @@ def derived_state_keys() -> dict[str, dict[str, list[str]]]:
     nell'istantaneo del censore (`tests/data/pubblicato-dalla-casa.json`).
 
     Serve alla sola verifica dal vivo che questa fixture puo' avere
-    (`test_type_census_live.py`): NON le parole -- questa funzione non le
+    (`test_censore_tipi_live.py`): NON le parole -- questa funzione non le
     tocca -- ma la STRUTTURA, cioe' quali stati esistono per quale tipo. Le
     chiavi di `hvac_action` (`.state_attributes.hvac_action.state.*`) restano
     fuori: sono un'altra cesta (l'attributo di uno stato), non lo stato di

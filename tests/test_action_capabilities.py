@@ -44,6 +44,7 @@ from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import _to_minimal, disclosable_attributes
+from tests import _vocabulary_tables
 
 # --------------------------------------------------------------------------
 # I PAYLOAD VERI
@@ -566,7 +567,7 @@ async def test_solo_il_select_dice_che_quei_valori_si_possono_imporre():
 def test_ogni_attributo_assumibile_porta_la_sua_ragione_scritta():
     """Un'eccezione senza ragione non passa -- la stessa regola che
     l'anagrafe dei tipi impone gia' agli attributi tolti dalle capacita'."""
-    dichiarati = type_vocabulary.declared_assumable_attributes()
+    dichiarati = _vocabulary_tables.declared_assumable_attributes()
     assert dichiarati, "nessun attributo assumibile dichiarato"
     for domain, voci in dichiarati.items():
         for name, ragione in voci.items():
@@ -574,7 +575,7 @@ def test_ogni_attributo_assumibile_porta_la_sua_ragione_scritta():
             # E dev'essere una capacita' che Home Assistant DICHIARA per quel
             # dominio: un nome inventato qui creerebbe una cesta che non si
             # riempie mai, e nessuno se ne accorgerebbe.
-            assert name in type_vocabulary.capability_attribute_tables()[domain], (
+            assert name in _vocabulary_tables.capability_attribute_tables()[domain], (
                 f"«{name}» non e' una capacita' dichiarata da Home Assistant "
                 f"per «{domain}»: non c'e' niente da spostare")
         # E i due insiemi sono DISGIUNTI: la separazione sta nell'anagrafe,
@@ -594,8 +595,8 @@ def test_ogni_limite_preso_dall_entita_nomina_una_capacita_vera():
 
     Mutazione (eseguita): `min_color_temp` al posto di `min_color_temp_kelvin`
     in `_PARAMETER_LIMITS["light"]` -- questa prova arrossisce nominandolo."""
-    tabelle = type_vocabulary.capability_attribute_tables()
-    for domain, per_parameter in type_vocabulary.declared_parameter_limits().items():
+    tabelle = _vocabulary_tables.capability_attribute_tables()
+    for domain, per_parameter in _vocabulary_tables.declared_parameter_limits().items():
         assert domain in tabelle, domain
         for parameter, linked in per_parameter.items():
             assert set(linked) in ({"min", "max"}, {"options"}), (domain, parameter)

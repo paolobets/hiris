@@ -44,12 +44,14 @@ from hiris.app.home_space.type_vocabulary import (
     GROUP_MEMBERSHIP_ATTRIBUTES,
     UNIVERSAL_CAPABILITY_ATTRIBUTES,
     UNIVERSAL_STATE_ATTRIBUTES,
-    capability_attribute_tables,
     capability_attributes,
-    dropped_capability_attributes,
     group_membership_attributes,
-    state_attribute_tables,
     state_attributes,
+)
+from tests._vocabulary_tables import (
+    capability_attribute_tables,
+    dropped_capability_attributes,
+    state_attribute_tables,
 )
 
 # --------------------------------------------------------------------------

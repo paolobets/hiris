@@ -30,9 +30,15 @@ sono uscite con lei. Restano le prove sulle PAROLE (`readable_state`), sui
 conteggi che il nucleo porta ancora e su cio' che `guarda` riporta a chi chiede.
 """
 
-from hiris.app.home_space import briefing, topology, type_census, type_vocabulary
+import pathlib
+import sys
+
+from hiris.app.home_space import briefing, topology, type_vocabulary
 from hiris.app.home_space.briefing import compose
 from hiris.app.proxy import state_translations
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+import censore_tipi
 
 # Le finte vivono gia' in `test_briefing.py`: si riusano invece di riscriverle.
 # Due finte che fingono la stessa casa sono la seconda rappresentazione in
@@ -251,7 +257,7 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 # ── R9: il vocabolario del nucleo pinnato alla fonte ───────────────────────
 #
-# `type_census._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
+# `censore_tipi._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
 # scritti a mano. Senza queste prove, togliere una voce (o non aggiungerne una
 # quando Home Assistant introduce un dominio o una device_class nuova) non
 # farebbe rosso nessun test -- lo stesso rischio gia' pagato con
@@ -307,8 +313,8 @@ _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 def test_stati_attivi_e_pinnato_alla_fonte():
     """Mutazione: togliere uno stato da `_ACTIVE_STATES` deve far rosso
     questo test."""
-    senza = sorted(_STATI_ATTIVI_HA - type_census._ACTIVE_STATES)
-    extra = sorted(type_census._ACTIVE_STATES - _STATI_ATTIVI_HA)
+    senza = sorted(_STATI_ATTIVI_HA - censore_tipi._ACTIVE_STATES)
+    extra = sorted(censore_tipi._ACTIVE_STATES - _STATI_ATTIVI_HA)
     assert not senza and not extra, (
         f"_STATI_ATTIVI e' cambiato senza aggiornare questo pin -- mancanti: "
         f"{senza}, in piu': {extra}")

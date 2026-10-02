@@ -95,7 +95,7 @@ def meaning_seed(when_ts: float | None = None) -> list[Fact]:
     Il dizionario **resta nel repo**: e' il seme, ed e' cio' che la spec
     chiede -- *«restano scritte, riviste, linterate e in git, e la casa scrive
     sopra»*. Resta anche il lettore che ne fa un altro uso: il censore
-    (`home_space/type_census.py`) lo interroga per sapere cosa il REPO
+    (`scripts/censore_tipi.py`) lo interroga per sapere cosa il REPO
     rivendica, che e' una domanda diversa da «cosa significa».
     """
     from ..home_space.ha_vocabulary import (
