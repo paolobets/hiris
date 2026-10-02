@@ -1,11 +1,14 @@
+"""La guardia sull'indirizzo di Ollama (`LOCAL_MODEL_URL`).
+
+Il modulo portava anche `OllamaBackend`, un backend di libreria che nessuno
+costruiva piu' (voce M-03 del registro): e' uscito con la Tappa 0 dello sprint
+«Una fonte sola di verita'». Resta la guardia, che tre punti del prodotto
+chiamano: l'avvio, la pagina Modelli e il runner locale.
+"""
 from __future__ import annotations
 
 import logging
 from urllib.parse import urlparse
-
-import aiohttp
-
-from .base import LLMBackend
 
 logger = logging.getLogger(__name__)
 
@@ -25,31 +28,3 @@ def _validate_ollama_url(url: str) -> None:
     if port is not None and port in _DANGEROUS_PORTS:
         logger.warning("LOCAL_MODEL_URL uses a dangerous port: %d", port)
         raise ValueError(f"LOCAL_MODEL_URL uses a dangerous port: {port}")
-
-
-class OllamaBackend(LLMBackend):
-    """OpenAI-compat chat completions via Ollama for low-complexity tasks."""
-
-    def __init__(self, url: str, model: str) -> None:
-        _validate_ollama_url(url)
-        self._url = url.rstrip("/")
-        self._model = model
-
-    async def simple_chat(self, messages: list[dict], system: str = "") -> str:
-        msgs: list[dict] = []
-        if system:
-            msgs.append({"role": "system", "content": system})
-        msgs.extend(messages)
-        payload = {"model": self._model, "messages": msgs, "stream": False}
-        timeout = aiohttp.ClientTimeout(total=30, connect=5)
-        try:
-            async with (
-                aiohttp.ClientSession(timeout=timeout) as session,
-                session.post(f"{self._url}/api/chat", json=payload) as resp,
-            ):
-                resp.raise_for_status()
-                data = await resp.json()
-                return data.get("message", {}).get("content", "")
-        except Exception as exc:
-            logger.warning("OllamaBackend simple_chat failed: %s", exc)
-            raise

@@ -116,8 +116,7 @@ def test_il_percorso_sincrono_continua_a_comporre_la_costante_intera():
     client finto. Qui si difende il livello che quelli non vedono: DA QUALE
     costante il blocco viene preso.)"""
     for sorgente in (inspect.getsource(ClaudeRunner.chat),
-                     inspect.getsource(OpenAICompatRunner.chat),
-                     inspect.getsource(OpenAICompatRunner.chat_stream)):
+                     inspect.getsource(OpenAICompatRunner.chat)):
         assert "BASE_SYSTEM_PROMPT" in sorgente
         assert "BASE_IDENTITY" not in sorgente, (
             "un percorso SINCRONO ha cominciato a comporre solo meta' BASE: "

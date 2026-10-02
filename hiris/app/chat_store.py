@@ -86,7 +86,7 @@ BRIDGE_SENTINELS = (
 # ancoraggio.
 #
 # Erano DUE regex identiche tranne che per uno spazio tollerato in testa --
-# quella del runner (`backends/openai_compat_runner._TOOL_LEAK_RE`) lo
+# quella del runner (`backends/openai_compat_runner`, `LEAKED_TOOL_NAME_RE`) lo
 # tollerava, questa no. E la differenza contava proprio qui:
 # `_purge_toxic_turns` gira in lettura per ripulire le righe GIA' su disco,
 # quindi una riga avvelenata con uno spazio iniziale -- scritta da una versione

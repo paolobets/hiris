@@ -1,4 +1,3 @@
-import json
 import logging
 import secrets
 import time
@@ -796,10 +795,10 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
                 # passarla intera come `conversation_history` E ripetere il
                 # messaggio come `user_message` lo manderebbe due volte.
                 conversation_history=cronologia[:-1],
-                # L'unico valore che fa girare il ciclo di ripiego del router: con
-                # un modello esplicito `_route()` sceglie una volta sola e non
-                # ripiega mai. Dal Task 4 è già l'unico che esiste, ma qui va
-                # SCRITTO, non ereditato.
+                # Il turno passa dal ciclo di ripiego del router, nell'ordine
+                # della catena: e' l'unico modo che esiste (il ramo del modello
+                # esplicito e' uscito con la Tappa 0). Qui va SCRITTO, non
+                # ereditato.
                 model="auto",
                 max_tokens=CHAT_MAX_TOKENS,
                 agent_type="chat",
@@ -1211,14 +1210,12 @@ async def handle_chat(request: web.Request) -> web.Response:
         # fetta "la catena diventa l'unica verita'": qui c'era
         # `agent_model = settings.model`. Il campo e' uscito con la decisione
         # del proprietario del 13 agosto: il modello si sceglie per provider, nella
-        # pagina Modelli, e la chat chiede SEMPRE `auto`. Non e' una costante di
-        # comodo: `auto` e' l'UNICO valore che fa passare il turno dal ciclo di
-        # ripiego di `LLMRouter.chat` invece che da `_route()`, che sceglie una
-        # volta sola e non ripiega mai.
+        # pagina Modelli, e la chat chiede SEMPRE `auto`: il turno passa dal ciclo
+        # di ripiego di `LLMRouter.chat`, l'unico che esiste.
         agent_model = "auto"
         # Personas are always the chat entity (Slice 5 retired the non-chat
         # "agent" type and the `type` field itself) — no per-type branch needed
-        # here. Kept as a literal only because runner.chat/chat_stream still take
+        # here. Kept as a literal only because runner.chat still takes
         # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
         agent_type = "chat"
         # fetta E4 Task 4: `max_tokens` era uno dei sette campi che il turno di
@@ -1254,75 +1251,6 @@ async def handle_chat(request: web.Request) -> web.Response:
         agent_restrict = settings.restrict_to_home
         agent_response_mode = settings.response_mode
         agent_thinking_budget = settings.thinking_budget
-
-        wants_stream = (
-            "text/event-stream" in request.headers.get("Accept", "")
-            or body.get("stream") is True
-        )
-
-        if wants_stream:
-            stream_resp = web.StreamResponse(
-                status=200,
-                headers={
-                    "Content-Type": "text/event-stream",
-                    "Cache-Control": "no-cache",
-                    "X-Accel-Buffering": "no",
-                },
-            )
-            await stream_resp.prepare(request)
-            collected_tokens: list[str] = []
-            async for chunk in runner.chat_stream(
-                user_message=message,
-                system_prompt=system_prompt,
-                context_str=context_str,
-                conversation_history=context_history,
-                model=agent_model,
-                max_tokens=agent_max_tokens,
-                agent_type=agent_type,
-                restrict_to_home=agent_restrict,
-                # fetta E4 Task 6 ("un bot solo"): `chatbot_id`/`require_confirmation`
-                # sono usciti dalla firma dei runner -- non c'e' piu' nulla da
-                # passare qui. `chatbot_id` alimentava solo il tracking dei consumi
-                # per-bot (uscito con lui) e il campo di debug `agent_id` del
-                # done-event SSE (uscito anche lui, nessun lettore in static/).
-                response_mode=agent_response_mode,
-                thinking_budget=agent_thinking_budget,
-                tools=KNOWLEDGE_TOOLS,
-                dispatcher=tool_dispatcher,
-            ):
-                await stream_resp.write(chunk.encode())
-                try:
-                    evt = json.loads(chunk.removeprefix("data: ").strip())
-                    etype = evt.get("type")
-                    if etype == "token":
-                        collected_tokens.append(evt.get("text", ""))
-                    elif etype == "discard_collected":
-                        # Runner detected a leaked tool-call rendered as text and
-                        # asked us to drop the polluted assistant turn before it
-                        # reaches chat_store (would corrupt next turn's history).
-                        collected_tokens.clear()
-                except Exception as exc:
-                    # Non-JSON chunk (e.g. heartbeat ': keep-alive') is normal in SSE.
-                    logger.debug("SSE chunk parse skipped: %s", exc)
-            await stream_resp.write_eof()
-            full_response = "".join(collected_tokens)
-            # Fetta "esce il documentale": qui c'era la detokenizzazione della
-            # risposta accumulata (`pseudonymizer.detokenize(full_response,
-            # runner.last_pseudonym_map)`), uscita con brain/privacy.py. Era un
-            # no-op: nessun percorso del prodotto chiamava piu' `pseudonymize()`,
-            # quindi `last_pseudonym_map` era sempre vuota e non c'era nessun
-            # token da riespandere. Vedi il commento gemello nel ramo sincrono.
-            # Skip persistence for toxic / synthetic-error responses so the next
-            # turn does not see a poisoned history. discard_collected already
-            # zeroes collected_tokens for tool-call leaks; this also covers the
-            # rare case where the runner returns a known-bad payload some other
-            # way (e.g. partial leak that slipped past detection).
-            if full_response and not _is_toxic_assistant(full_response):
-                append_messages([
-                    {"role": "user", "content": message},
-                    {"role": "assistant", "content": full_response},
-                ], data_dir, thread=thread)
-            return stream_resp
 
         try:
             async with misura_turno(request.app.get("usage"), runner,

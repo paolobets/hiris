@@ -19,7 +19,7 @@ I campi di oggi sono SETTE: `nome`, `system_prompt`, `response_mode`,
 paragrafo qui sotto). Il settimo dei sei originali, `model`,
 e' uscito con la fetta "la catena diventa l'unica verita'" (Task 4): era uno
 SCAVALCO -- se valorizzato, `handlers_chat` lo passava a `LLMRouter.chat`,
-che con un modello diverso da "auto" chiama `_route()` una volta sola,
+che con un modello diverso da "auto" sceglieva un runner una volta sola,
 saltando la catena della pagina Modelli e annullando ogni ripiego. Il modello
 si sceglie per provider, in `models_config.json`, e la chat chiede sempre
 "auto". Un file scritto da una versione precedente che porta ancora quella

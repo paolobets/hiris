@@ -2,8 +2,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hiris.app.backends.base import LLMBackend
-from hiris.app.backends.ollama import OllamaBackend
 from hiris.app.claude_runner import (
     RunnerBackendError,
     _current_thinking_blocks,
@@ -12,45 +10,16 @@ from hiris.app.claude_runner import (
 from hiris.app.llm_router import LLMRouter
 
 
-def test_llm_backend_is_abstract():
-    import inspect
-    assert inspect.isabstract(LLMBackend)
+def _runners(router):
+    """I runner della catena, in ordine: la stessa lista che `chat()` cicla."""
+    return [runner for _name, runner in router._ordered_backends_with_name()]
 
-
-@pytest.mark.asyncio
-async def test_ollama_backend_simple_chat():
-    backend = OllamaBackend(url="http://localhost:11434", model="llama3.2")
-    mock_resp_data = {
-        "message": {
-            "content": (
-                '{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}'
-            )
-        }
-    }
-    with patch("aiohttp.ClientSession") as MockSession:
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=ctx)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        ctx.json = AsyncMock(return_value=mock_resp_data)
-        ctx.raise_for_status = MagicMock()
-        session_inst = MagicMock()
-        session_inst.__aenter__ = AsyncMock(return_value=session_inst)
-        session_inst.__aexit__ = AsyncMock(return_value=False)
-        session_inst.post = MagicMock(return_value=ctx)
-        MockSession.return_value = session_inst
-
-        result = await backend.simple_chat([{"role": "user", "content": "classify"}])
-        assert isinstance(result, str)
-        assert "energy_meter" in result
 
 
 @pytest.fixture
 def mock_runner():
     runner = MagicMock()
     runner.chat = AsyncMock(return_value="response text")
-    runner.simple_chat = AsyncMock(
-        return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}'
-    )
     runner.last_tool_calls = []
     runner.total_input_tokens = 10
     runner.total_output_tokens = 5
@@ -123,7 +92,7 @@ def test_router_strategy_cost_first_orders_ollama_first(mock_runner):
     mock_ollama = MagicMock()
     mock_ollama.chat = AsyncMock(return_value="ollama response")
     router = LLMRouter(claude=mock_runner, ollama=mock_ollama, strategy="cost_first")
-    backends = router._ordered_backends()
+    backends = _runners(router)
     assert backends[0] is mock_ollama
     assert backends[1] is mock_runner
 
@@ -131,7 +100,7 @@ def test_router_strategy_cost_first_orders_ollama_first(mock_runner):
 def test_router_strategy_quality_first_orders_claude_first(mock_runner):
     mock_ollama = MagicMock()
     router = LLMRouter(claude=mock_runner, ollama=mock_ollama, strategy="quality_first")
-    backends = router._ordered_backends()
+    backends = _runners(router)
     assert backends[0] is mock_runner
     assert backends[1] is mock_ollama
 
@@ -259,7 +228,7 @@ def test_router_strategy_includes_openrouter_in_chain():
     or_runner = MagicMock()
     claude_runner = MagicMock()
     router = LLMRouter(claude=claude_runner, openrouter=or_runner, strategy="balanced")
-    backends = router._ordered_backends()
+    backends = _runners(router)
     # balanced: claude > openrouter > openai > ollama
     assert backends[0] is claude_runner
     assert or_runner in backends
@@ -322,7 +291,7 @@ def test_model_chain_sets_single_chain_for_both_modes():
     r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced",
                   model_chain=["ollama", "claude"])
     # un'unica policy (chat_policy), nell'ordine dato dalla catena
-    assert r._ordered_backends() == [ollama, claude]
+    assert _runners(r) == [ollama, claude]
 
 
 def test_ordered_backends_empty_when_no_runners_registered():
@@ -333,9 +302,9 @@ def test_ordered_backends_empty_when_no_runners_registered():
     spostata qui -- la meta' su `automatic_allows_sensitive()` e' uscita col
     suo soggetto (fetta E4 Task 7)."""
     r_model_chain = LLMRouter(strategy="balanced", model_chain=[])
-    assert r_model_chain._ordered_backends() == []
+    assert _runners(r_model_chain) == []
     r_legacy = LLMRouter(strategy="quality_first")
-    assert r_legacy._ordered_backends() == []
+    assert _runners(r_legacy) == []
 
 
 # fetta «la catena diventa l'unica verita'»: `LLMRouter.simple_chat` e' uscito,
@@ -366,7 +335,7 @@ def test_una_catena_esplicitamente_vuota_non_ripiega_sull_ordine_di_strategia():
     claude, ollama = _Dummy(), _Dummy()
     r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced", model_chain=[])
     assert r._chat_policy == []
-    assert r._ordered_backends() == []
+    assert _runners(r) == []
 
 
 def test_senza_catena_passata_il_ripiego_di_libreria_resta():
@@ -375,7 +344,7 @@ def test_senza_catena_passata_il_ripiego_di_libreria_resta():
     «catena vuota» da «nessuna catena» e' tutto cio' che il cambio fa."""
     claude, ollama = _Dummy(), _Dummy()
     r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced")
-    assert r._ordered_backends() == [claude, ollama]
+    assert _runners(r) == [claude, ollama]
 
 
 @pytest.mark.asyncio
@@ -587,28 +556,3 @@ async def test_la_durata_misurata_e_quella_del_tentativo_fallito():
 
     assert registro.occurrence("claude")["durata_s"] == 8.0
 
-
-def test_l_ordine_coi_nomi_e_l_ordine_senza_sono_LO_STESSO_calcolo():
-    """`_ordered_backends` e' DERIVATA da `_ordered_backends_with_name`. Due
-    implementazioni della stessa lista sarebbero due rappresentazioni della
-    stessa cosa, libere di divergere -- e la seconda sceglie a chi chiedere
-    mentre la prima decide su chi si scrive."""
-    import ast
-    import inspect
-
-    from hiris.app import llm_router as modulo
-
-    claude, ollama = _Dummy(), _Dummy()
-    r = LLMRouter(claude=claude, ollama=ollama, model_chain=["ollama", "claude"])
-    assert r._ordered_backends() == [ollama, claude]
-    assert [n for n, _ in r._ordered_backends_with_name()] == ["ollama", "claude"]
-
-    import textwrap
-    albero = ast.parse(textwrap.dedent(
-        inspect.getsource(modulo.LLMRouter._ordered_backends)))
-    chiamate = [n.func.attr for n in ast.walk(albero)
-                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
-    assert "_ordered_backends_with_name" in chiamate, (
-        "_ordered_backends deve derivare dall'altra, non rifare il giro sulla "
-        "policy per conto proprio"
-    )

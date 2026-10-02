@@ -55,9 +55,9 @@ def test_i_due_runner_hanno_la_stessa_interfaccia():
     cioe' esattamente il difetto che il lotto di `backends/` ha evitato a mano.
     """
     condivisi = _metodi_condivisi()
-    assert "chat" in condivisi and "chat_stream" in condivisi, (
-        "i due runner non condividono piu' `chat`/`chat_stream`: o l'hanno "
-        "rinominato, o questo cancello ha smesso di guardare cio' che conta")
+    assert "chat" in condivisi, (
+        "i due runner non condividono piu' `chat`: o l'hanno rinominato, o "
+        "questo cancello ha smesso di guardare cio' che conta")
     for nome in condivisi:
         assert_stessa_firma(getattr(ClaudeRunner, nome),
                             getattr(OpenAICompatRunner, nome),

@@ -113,7 +113,6 @@ def warn_thinking_ignored(backend_noun: str, thinking_budget: int) -> None:
 
 AUTO_MODEL_MAP: dict[str, str] = {
     "chat":  "gpt-4o",
-    "agent": "gpt-4o-mini",
 }
 
 # fetta "i riferimenti" (R3): stesso tetto e stessa ragione di
@@ -156,7 +155,6 @@ def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
 # si tollerava, la' no. La differenza contava sul disco -- `_purge_toxic_turns`
 # ripulisce le righe GIA' scritte, e una avvelenata con uno spazio iniziale non
 # veniva mai riconosciuta e tornava al modello a ogni turno, per sempre.
-_TOOL_LEAK_RE = LEAKED_TOOL_NAME_RE
 
 TOOL_LEAK_USER_MSG = (
     "Il modello selezionato non gestisce correttamente i tool tramite questo "
@@ -177,7 +175,7 @@ def detect_leaked_tool_call(content: str, tool_names) -> str | None:
         return None
     if not isinstance(tool_names, (set, frozenset)):
         tool_names = frozenset(tool_names)
-    m = _TOOL_LEAK_RE.match(content)
+    m = LEAKED_TOOL_NAME_RE.match(content)
     if not m:
         return None
     candidate = m.group(1)
@@ -626,41 +624,6 @@ class OpenAICompatRunner:
             self._conn_fail_count = 0
             self._circuit_open_until = 0.0
 
-    async def simple_chat(self, messages: list[dict], system: str = "") -> str:
-        # Skip the network entirely while the breaker is open — this is what
-        # stops a dead backend (e.g. a stale Ollama tunnel) from flooding the
-        # log and wasting connect timeouts once per classify_entities call.
-        if self._circuit_is_open():
-            return ""
-        msgs: list[dict] = []
-        if system:
-            msgs.append({"role": "system", "content": system})
-        msgs.extend(messages)
-        try:
-            kwargs: dict = {
-                # Cloud: lo stesso "gpt-4o-mini" scritto qui da sempre (questa
-                # chiamata non passa da `_resolve_model` e non ha un
-                # agent_type). Locale: il modello scelto, letto adesso.
-                "model": (self._chosen_model() if self._local else "") or "gpt-4o-mini",
-                "messages": msgs,
-                "max_tokens": 1024,
-            }
-            if self._local:
-                kwargs["extra_body"] = {"think": False}
-            resp = await self._client.chat.completions.create(**kwargs)
-            self._record_success()
-            return resp.choices[0].message.content or ""
-        except Exception as exc:
-            if _is_conn_error(exc):
-                self._record_conn_failure()
-                # Log the first failures, then go quiet (the open-circuit warning
-                # is logged once) so a dead endpoint doesn't flood the log.
-                if self._conn_fail_count < _CIRCUIT_THRESHOLD:
-                    logger.warning("simple_chat connection error: %s", exc)
-            else:
-                logger.error("simple_chat failed: %s", exc)
-            return ""
-
     # fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
     # `user_id` e' uscito da `chat()`/`chat_stream()` -- stessa mossa, stessa
     # storia del commento gemello in claude_runner.py (il suo unico lettore
@@ -696,10 +659,9 @@ class OpenAICompatRunner:
         del thinking_budget
         import openai as _openai
 
-        # review M3/#2: the connection-failure circuit breaker used to guard
-        # simple_chat() only. The agentic loop below never consulted it, so a
-        # dead Ollama endpoint was retried at full timeout every single turn
-        # instead of failing fast like simple_chat() already does.
+        # review M3/#2: the agentic loop below did not consult the
+        # connection-failure circuit breaker, so a dead Ollama endpoint was
+        # retried at full timeout every single turn instead of failing fast.
         if self._circuit_is_open():
             # Il circuito aperto è «non l'ho interrogato», e si registra come
             # tale: la famiglia è `irraggiungibile` (è l'unica cosa che fa
@@ -886,7 +848,7 @@ class OpenAICompatRunner:
                         ) from retry_exc
                 else:
                     # review M3/#2: connection-class failures (dead endpoint)
-                    # must trip the same breaker simple_chat() uses, so a
+                    # must trip the circuit breaker, so a
                     # stale Ollama tunnel fails fast on the NEXT turn instead
                     # of being retried at full timeout forever.
                     if _is_conn_error(exc):
@@ -1018,328 +980,6 @@ class OpenAICompatRunner:
             max_iter, [c["tool"] for c in self.last_tool_calls],
         )
         return _MAX_ITERATIONS_NOTICE
-
-    async def chat_stream(
-        self,
-        user_message: str,
-        system_prompt: str = "",
-        context_str: str = "",
-        conversation_history: list[dict] | None = None,
-        model: str = "auto",
-        max_tokens: int = 4096,
-        agent_type: str = "chat",
-        restrict_to_home: bool = False,
-        response_mode: str = "auto",
-        thinking_budget: int = 0,
-        tools: list[dict] | None = None,
-        dispatcher: Any | None = None,
-    ):
-        """Vero streaming SSE: i token arrivano mentre il modello genera.
-
-        **Zero lettori di produzione oggi** (misurato il 09/09/2026, audit
-        delle fondamenta): stessa condizione di `ClaudeRunner.chat_stream`,
-        vedi il suo docstring per la misura e la decisione (collegare o
-        cancellare -- non presa in questo giro, tracciata in
-        `docs/BACKLOG.md`).
-        Le iterazioni tool-call vengono risolte prima di cedere il controllo
-        al loop successivo; il testo finale è streamato token per token.
-
-        `strumenti`/`dispatcher` (Task 3 della fetta "il contesto della chat
-        viene dal core"): a differenza di `ClaudeRunner.chat_stream`, che e'
-        gia' un guscio sottile attorno a `chat()`, questo metodo costruisce il
-        proprio loop agentico da zero -- quindi i due punti dove `chat()`
-        applica la stessa regola (catalogo tool, dispatch) sono replicati qui
-        sotto uno per uno, non ereditati per delega. Senza questo, il ramo SSE
-        (la card Lovelace) sarebbe rimasto sul catalogo di trentaquattro
-        strumenti mentre la pagina chat (che non streamma, vedi
-        static/chat/send.js) passava ai quattro del core -- due strade
-        divergenti per la stessa conversazione, esattamente il difetto che
-        questa fetta esiste per chiudere.
-        """
-        # See chat() for rationale on accepting+ignoring thinking_budget here
-        # -- avviso incluso (fix round 1, I-2): il ramo SSE serve la card
-        # Lovelace, dove il silenzio sarebbe identico.
-        warn_thinking_ignored(self._backend_noun, thinking_budget)
-        del thinking_budget
-        import openai as _openai
-
-        # review M3/#2: see chat() above -- the streaming agentic loop must
-        # also consult the circuit breaker instead of hammering a dead
-        # endpoint at full timeout on every turn.
-        if self._circuit_is_open():
-            yield (
-                'data: '
-                + json.dumps({
-                    "type": "error",
-                    "message": (
-                        f"{self._backend_noun} non risponde da diversi tentativi "
-                        "consecutivi (circuito aperto). Riprova tra qualche istante."
-                    ),
-                })
-                + '\n\n'
-            )
-            return
-
-        self.last_tool_calls = []
-
-        effective_model = self._resolve_model(model, agent_type)
-        # Stesso ordine di `chat()` qui sopra: blocchi stabili, poi il
-        # volatile `context_str` (fix m-4 della review totale della fetta --
-        # la motivazione per esteso e' nel commento gemello in `chat()`; lo
-        # streaming non e' una porta di servizio).
-        system_parts = [BASE_SYSTEM_PROMPT]
-        if system_prompt:
-            system_parts.append(system_prompt)
-        if restrict_to_home:
-            system_parts.append(RESTRICT_PROMPT)
-        # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`
-        # stesso e' uscito -- vedi il commento gemello in chat() sopra.
-        if response_mode == "compact":
-            system_parts.append(COMPACT_PROMPT)
-        elif response_mode == "minimal":
-            system_parts.append(MINIMAL_PROMPT)
-        if context_str:
-            system_parts.append(context_str)
-
-        messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
-        for msg in (conversation_history or []):
-            messages.append({"role": msg["role"], "content": str(msg["content"])})
-        messages.append({"role": "user", "content": user_message})
-
-        if tools is not None:
-            # Il catalogo arriva gia' deciso dal chiamante -- stessa regola di
-            # chat() (vedi il suo commento gemello).
-            tools = list(tools)
-        else:
-            # fetta E3 Task 8: nessun catalogo di scorta da cui pescare --
-            # vedi il commento gemello in claude_runner.chat(). Lo streaming
-            # non e' una porta di servizio: stessa regola di chat().
-            tools = []
-        oai_tools = _to_openai_tools(tools) if tools else None
-        tool_name_set = frozenset(t["name"] for t in tools)
-
-        if self._local and tools:
-            tool_names = ", ".join(t["name"] for t in tools)
-            messages[0]["content"] += (
-                f"\n\n---\n\nTool disponibili: {tool_names}.\n"
-                "NON chiamare tool non presenti in questa lista."
-            )
-
-        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._local else MAX_TOOL_ITERATIONS
-        try:
-            for _ in range(max_iter):
-                kwargs: dict = {
-                    "model": effective_model,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "stream": True,
-                }
-                if oai_tools:
-                    kwargs["tools"] = oai_tools
-                # Ollama-specific: vedi commento in chat() per think:false.
-                if self._local:
-                    kwargs["extra_body"] = {"think": False}
-
-                try:
-                    stream = await self._client.chat.completions.create(**kwargs)
-                except _openai.RateLimitError as exc:
-                    self._write_rejection(effective_model)
-                    logger.error("OpenAI rate limit (stream): %s", exc)
-                    upstream = parse_upstream_rate_limit(exc)
-                    err_msg = upstream or "Rate limit — riprova tra poco."
-                    yield f'data: {json.dumps({"type": "error", "message": err_msg})}\n\n'
-                    return
-                except _openai.APIError as exc:
-                    # OpenRouter 402: see chat() for full rationale.
-                    affordable = parse_afford_limit(exc)
-                    if affordable and affordable < kwargs.get("max_tokens", 0):
-                        logger.warning(
-                            "OpenRouter 402 stream on %s: requested max_tokens=%d, "
-                            "retrying with %d (key credit limit).",
-                            effective_model, kwargs["max_tokens"], affordable,
-                        )
-                        kwargs["max_tokens"] = affordable
-                        try:
-                            stream = await self._client.chat.completions.create(**kwargs)
-                        except _openai.APIError as retry_exc:
-                            logger.error(
-                                "OpenRouter 402 stream retry failed: %s", retry_exc,
-                            )
-                            err = (
-                                f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
-                                f"Riduci max_tokens dell’agente sotto {affordable} "
-                                f"oppure aggiungi credito su openrouter.ai."
-                            )
-                            yield f'data: {json.dumps({"type": "error", "message": err})}\n\n'
-                            return
-                    else:
-                        # review M3/#2: see chat() for full rationale — trip
-                        # the breaker on connection-class failures so a dead
-                        # endpoint fails fast on subsequent turns.
-                        if _is_conn_error(exc):
-                            self._record_conn_failure()
-                        logger.error("OpenAI/Ollama API error (stream): %s", exc)
-                        yield (
-                "data: "
-                f'{json.dumps({"type": "error", "message": "Errore temporaneo del servizio AI."})}'
-                "\n\n"
-                        )
-                        return
-
-                self._record_success()
-                collected_text = ""
-                finish_reason: str | None = None
-                # {index: {id, name, args}} — assembla i frammenti tool-call dallo stream
-                tc_fragments: dict[int, dict] = {}
-
-                async for chunk in stream:
-                    if not chunk.choices:
-                        continue
-                    choice = chunk.choices[0]
-                    delta = choice.delta
-
-                    if delta.content:
-                        collected_text += delta.content
-                        yield f'data: {json.dumps({"type": "token", "text": delta.content})}\n\n'
-
-                    if delta.tool_calls:
-                        for tc_delta in delta.tool_calls:
-                            idx = tc_delta.index
-                            if idx not in tc_fragments:
-                                tc_fragments[idx] = {"id": "", "name": "", "args": ""}
-                            if tc_delta.id:
-                                tc_fragments[idx]["id"] = tc_delta.id
-                            if tc_delta.function:
-                                if tc_delta.function.name:
-                                    tc_fragments[idx]["name"] += tc_delta.function.name
-                                if tc_delta.function.arguments:
-                                    tc_fragments[idx]["args"] += tc_delta.function.arguments
-
-                    if choice.finish_reason:
-                        finish_reason = choice.finish_reason
-
-                if not tc_fragments:
-                    # Risposta testuale finale — stream completato.
-                    # Verifica leak di tool call come testo (Mistral/Hermes su
-                    # OpenRouter): se rilevato, dì al frontend di scartare i
-                    # token già renderizzati e mostra un errore esplicito,
-                    # così la chat history non viene avvelenata al prossimo
-                    # turno.
-                    leaked = detect_leaked_tool_call(collected_text, tool_name_set)
-                    if leaked:
-                        logger.warning(
-                            "Stream from %s leaked tool call '%s' as text content. "
-                            "Sample: %r",
-                            effective_model, leaked, collected_text[:160],
-                        )
-                        yield f'data: {json.dumps({"type": "discard_collected"})}\n\n'
-                        yield (
-                            "data: "
-                            f'{json.dumps({"type": "error", "message": TOOL_LEAK_USER_MSG})}'
-                            "\n\n"
-                        )
-                        return
-                    if finish_reason == "length":
-                        # review M3/#1: chat() surfaces _TRUNCATION_NOTICE
-                        # when finish_reason=='length' (see the "else" branch
-                        # below the tool_calls check there); this streaming
-                        # path used to just `break` silently, leaving the
-                        # client with a truncated response and no warning.
-                        from ..claude_runner import _TRUNCATION_NOTICE
-                        notice = f"\n\n{_TRUNCATION_NOTICE}"
-                        yield f'data: {json.dumps({"type": "token", "text": notice})}\n\n'
-                    break
-
-                # Ci sono tool calls: eseguili e continua il loop
-                tcs = sorted(tc_fragments.items())
-                assistant_msg: dict = {"role": "assistant"}
-                if collected_text:
-                    assistant_msg["content"] = collected_text
-                assistant_msg["tool_calls"] = [
-                    {
-                        "id": d["id"],
-                        "type": "function",
-                        "function": {"name": d["name"], "arguments": d["args"]},
-                    }
-                    for _, d in tcs
-                ]
-                messages.append(assistant_msg)
-
-                for _, tc_data in tcs:
-                    try:
-                        tool_input = json.loads(tc_data["args"])
-                    except json.JSONDecodeError as json_exc:
-                        logger.warning(
-                            "chat_stream tool %s: JSON non valido %r: %s",
-                            tc_data["name"], tc_data["args"][:120], json_exc,
-                        )
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc_data["id"],
-                            "content": json.dumps({
-                                "error": (
-                                    f"Argomenti JSON non validi per '{tc_data['name']}'. "
-                                    "Correggi il JSON e riprova."
-                                )
-                            }),
-                        })
-                        continue
-                    if dispatcher is not None:
-                        # ToolDispatcher (e affini): stessa interfaccia
-                        # minima dispatch(nome, argomenti). fetta E4 Task 6:
-                        # il ramo "dispatcher di scorta" (self._dispatcher) e'
-                        # uscito -- vedi il commento gemello in chat().
-                        result = await dispatcher.dispatch(tc_data["name"], tool_input)
-                    else:
-                        # ne' un dispatcher per-chiamata -- vedi il commento
-                        # gemello in chat().
-                        logger.debug(
-                            "Strumento '%s' richiesto ma nessun dispatcher disponibile "
-                            "(degradazione dichiarata, non un errore)", tc_data["name"])
-                        result = {"error": f"Strumento '{tc_data['name']}' non disponibile."}
-                    self.last_tool_calls.append({"tool": tc_data["name"], "input": tool_input})
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc_data["id"],
-                        "content": json.dumps(result),
-                    })
-            else:
-                # fetta "i riferimenti" (R4, Task 6): il `for...else` di
-                # Python scatta SOLO se il ciclo si esaurisce senza mai
-                # incontrare il `break` di qui sopra (quello che segna una
-                # risposta testuale finale, `if not tc_fragments`) -- cioe'
-                # esattamente quando il modello ha chiesto uno strumento in
-                # OGNI iterazione fino al tetto, senza mai concludere. Prima
-                # il generatore cadeva dritto sul "done" finale qui sotto
-                # senza dire nulla: un done muto. Riusa la STESSA forma con
-                # cui questo generatore segnala gia' gli altri errori (vedi
-                # il ramo circuito aperto piu' sopra e l'`except` qui sotto)
-                # invece di inventarne una nuova, e si ferma li' -- senza il
-                # "done" finale, come gli altri rami d'errore. `self.
-                # last_tool_calls` e' gia' in mano, riusato qui, non un
-                # secondo tracciamento; solo i NOMI degli strumenti, mai gli
-                # argomenti.
-                logger.warning(
-                    "chat_stream(): esaurite %d iterazioni senza risposta finale -- "
-                    "strumenti chiamati: %s",
-                    max_iter, [c["tool"] for c in self.last_tool_calls],
-                )
-                yield (
-                    "data: "
-                    f'{json.dumps({"type": "error", "message": _MAX_ITERATIONS_NOTICE})}'
-                    "\n\n"
-                )
-                return
-
-        except Exception as exc:
-            logger.error("chat_stream error: %s", exc)
-            yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
-            return
-
-        # fetta E4 Task 6: il campo `agent_id` esce -- vedi il commento
-        # gemello nel docstring di ClaudeRunner.chat_stream() (nessun lettore
-        # in static/, grep verificato).
-        yield f'data: {json.dumps({"type": "done", "tool_calls": self.last_tool_calls})}\n\n'
 
     # fetta E3 Task 8: `run_with_actions` e' uscito -- vedi il commento
     # gemello in claude_runner.py (stesso motivo: il suo unico chiamante, la

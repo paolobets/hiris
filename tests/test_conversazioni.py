@@ -560,34 +560,6 @@ async def test_durante_un_turno_sincrono_le_tre_scritture_rispondono_409(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_durante_un_turno_in_streaming_le_tre_scritture_rispondono_409(tmp_path):
-    app, _q, d = _app_with_conversations(tmp_path)
-    old, new = _two_conversations(d)
-    started, release = asyncio.Event(), asyncio.Event()
-
-    async def slow_stream(**_kw):
-        started.set()
-        await release.wait()
-        yield 'data: {"type": "token", "text": "risposta in streaming"}\n\n'
-
-    app["llm_router"].chat_stream = slow_stream
-    async with TestClient(TestServer(app)) as client:
-        turn = asyncio.ensure_future(client.post(
-            "/api/chat", json={"message": "domanda in streaming", "stream": True},
-            headers=_P))
-        await asyncio.wait_for(started.wait(), 5)
-        await _writes_during_turn(client, d, old)
-        release.set()
-        resp = await turn
-        assert resp.status == 200
-        await resp.read()
-        after = await client.post("/api/chat/conversations", headers=_P)
-        assert after.status == 200
-    assert _session_contents(d, new)[-2:] == ["domanda in streaming",
-                                              "risposta in streaming"]
-
-
-@pytest.mark.asyncio
 async def test_un_turno_sincrono_che_fallisce_libera_il_filo(tmp_path):
     app, _q, d = _app_with_conversations(tmp_path)
     _two_conversations(d)

@@ -2125,10 +2125,6 @@ def run_once(client, base_url: str, headers: dict, mode: str) -> str:
     sr.raise_for_status()
     return "done" if (sr.json() or {}).get("ok") else "failed"
 
-def poll_seconds() -> int:
-    return int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3"))
-
-
 async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> None:
     """Coroutine per il task asyncio in-addon (server.py, task 4). `run_once`
     resta sincrono (subprocess.run + httpx.Client): girano sullo stesso loop

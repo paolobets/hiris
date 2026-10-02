@@ -1,3 +1,15 @@
+"""La chat risponde in un modo solo: chi chiede lo streaming riceve la risposta normale.
+
+Fino alla 3.72.2 `POST /api/chat` aveva un secondo ramo, in Server-Sent
+Events, attivato da `Accept: text/event-stream` o da `"stream": true`. Nessuna
+pagina lo chiedeva (la chat disegna una risposta per turno), e il ramo portava
+con se' un secondo ciclo del modello in ogni runner (`chat_stream`), libero di
+divergere dal primo. E' uscito con la Tappa 0 dello sprint «Una fonte sola di
+verita'» (dichiarazione D2 del piano, voce M-04 del registro).
+
+Mutazione ESEGUITA: rimesso in `handle_chat` il ramo `wants_stream` che
+risponde `text/event-stream` -- rossa (`text/event-stream` nel Content-Type).
+"""
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,15 +35,8 @@ async def client(aiohttp_client, tmp_path):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="SSE test response text")
+    mock_runner.chat = AsyncMock(return_value="risposta di prova")
     mock_runner.last_tool_calls = []
-
-    async def fake_chat_stream(**kwargs):
-        import json
-        yield f'data: {json.dumps({"type": "token", "text": "SSE test"})}\n\n'
-        yield f'data: {json.dumps({"type": "done", "tool_calls": []})}\n\n'
-
-    mock_runner.chat_stream = fake_chat_stream
     app["ha_client"] = mock_ha
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = mock_runner
@@ -44,37 +49,24 @@ async def client(aiohttp_client, tmp_path):
     return await aiohttp_client(app)
 
 
-@pytest.mark.asyncio
-async def test_chat_sse_via_stream_body_param(client):
-    resp = await client.post("/api/chat", json={"message": "Test SSE", "stream": True})
-    assert resp.status == 200
-    assert "text/event-stream" in resp.headers.get("Content-Type", "")
+async def _answered_as_json(response) -> None:
+    assert response.status == 200
+    assert response.headers.get("Content-Type", "").startswith("application/json")
+    assert (await response.json())["response"] == "risposta di prova"
 
 
 @pytest.mark.asyncio
-async def test_chat_sse_via_accept_header(client):
-    resp = await client.post(
-        "/api/chat",
-        json={"message": "Test SSE"},
-        headers={"Accept": "text/event-stream"},
-    )
-    assert resp.status == 200
-    assert "text/event-stream" in resp.headers.get("Content-Type", "")
+async def test_chi_chiede_lo_streaming_col_corpo_riceve_la_risposta_normale(client):
+    await _answered_as_json(
+        await client.post("/api/chat", json={"message": "Prova", "stream": True}))
 
 
 @pytest.mark.asyncio
-async def test_chat_json_still_works(client):
-    """Non-SSE requests still return JSON."""
-    resp = await client.post("/api/chat", json={"message": "Hello"})
-    assert resp.status == 200
-    data = await resp.json()
-    assert "response" in data
-    assert data["response"] == "SSE test response text"
+async def test_chi_chiede_lo_streaming_con_l_intestazione_riceve_la_risposta_normale(client):
+    await _answered_as_json(await client.post(
+        "/api/chat", json={"message": "Prova"}, headers={"Accept": "text/event-stream"}))
 
 
 @pytest.mark.asyncio
-async def test_chat_sse_body_contains_events(client):
-    resp = await client.post("/api/chat", json={"message": "Test", "stream": True})
-    body = await resp.text()
-    assert "data:" in body
-    assert '"type"' in body
+async def test_la_risposta_normale_resta_quella(client):
+    await _answered_as_json(await client.post("/api/chat", json={"message": "Ciao"}))

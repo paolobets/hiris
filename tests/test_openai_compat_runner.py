@@ -5,7 +5,6 @@ valid kwarg (httpx uses `timeout` as positional or `connect/read/write/pool`).
 This crashed startup with `TypeError: Timeout.__init__() got an unexpected
 keyword argument 'total'` whenever an OpenAI key or Ollama URL was configured.
 """
-import json
 import logging
 import time
 from unittest.mock import AsyncMock, MagicMock
@@ -506,43 +505,22 @@ async def test_chat_returns_clear_message_on_upstream_rate_limit(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_simple_chat_circuit_breaker_skips_dead_backend(tmp_path):
-    """After N consecutive connection failures the breaker opens and further
-    calls skip the network — stops a dead backend (stale Ollama tunnel) from
-    flooding the log once per classify_entities call."""
-    from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
-    runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, read_model=lambda: "llama3.1:8b",
-    )
-    create = AsyncMock(side_effect=httpx.ConnectError("name does not resolve"))
-    runner._client.chat.completions.create = create
-
-    for _ in range(_CIRCUIT_THRESHOLD + 10):
-        assert await runner.simple_chat([{"role": "user", "content": "x"}]) == ""
-
-    # Network was hit only until the breaker opened; later calls were skipped.
-    assert create.call_count == _CIRCUIT_THRESHOLD
-    assert runner._circuit_is_open()
-
-
-@pytest.mark.asyncio
-async def test_simple_chat_circuit_resets_on_success(tmp_path):
+async def test_chat_circuit_resets_on_success(tmp_path):
     """A success before the threshold resets the failure counter (no premature
-    open, recovers cleanly)."""
+    open, recovers cleanly). Era provata su `simple_chat`, uscita con la
+    Tappa 0 (M-02): il circuito e' lo stesso, si prova da `chat()`."""
+    import openai as _openai
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         local=True, read_model=lambda: "llama3.1:8b",
     )
-    ok = MagicMock()
-    ok.choices = [MagicMock(message=MagicMock(content="hi"))]
-    runner._client.chat.completions.create = AsyncMock(side_effect=[
-        httpx.ConnectError("x"), httpx.ConnectError("x"), ok,
-    ])
-
-    assert await runner.simple_chat([{"role": "user", "content": "x"}]) == ""
-    assert await runner.simple_chat([{"role": "user", "content": "x"}]) == ""
-    assert await runner.simple_chat([{"role": "user", "content": "x"}]) == "hi"
+    conn_err = _openai.APIConnectionError(request=MagicMock())
+    runner._client.chat.completions.create = AsyncMock(side_effect=[conn_err, conn_err])
+    for _ in range(2):
+        with pytest.raises(RunnerBackendError):
+            await runner.chat(user_message="ciao", model="llama3.1:8b")
+    assert runner._conn_fail_count == 2
+    runner._record_success()
     assert runner._conn_fail_count == 0
     assert not runner._circuit_is_open()
 
@@ -695,58 +673,6 @@ def _stream_chunk(content=None, finish_reason=None):
     return chunk
 
 
-@pytest.mark.asyncio
-async def test_chat_stream_length_finish_yields_truncation_notice(tmp_path):
-    """finish_reason='length' on the streaming path must surface the same
-    truncation notice as chat(), not silently end the SSE stream."""
-    from hiris.app.claude_runner import _TRUNCATION_NOTICE
-    runner = OpenAICompatRunner(
-        base_url="https://api.openai.com/v1",
-        api_key="sk-test",
-    )
-
-    stream = _FakeStream([
-        _stream_chunk(content="Ora creo la dashboard!"),
-        _stream_chunk(finish_reason="length"),
-    ])
-    runner._client.chat.completions.create = AsyncMock(return_value=stream)
-
-    lines = [line async for line in runner.chat_stream(
-        user_message="crea dashboard", model="gpt-4o",
-    )]
-    # SSE lines are 'data: {json}\n\n' -- json.dumps() escapes non-ASCII (the
-    # ⚠️ emoji etc.), so reconstruct the streamed text from the parsed
-    # payloads rather than substring-searching the raw (escaped) SSE text.
-    streamed_text = "".join(
-        json.loads(line[len("data: "):])["text"]
-        for line in lines
-        if '"type": "token"' in line
-    )
-    assert _TRUNCATION_NOTICE in streamed_text
-
-
-@pytest.mark.asyncio
-async def test_chat_stream_normal_stop_has_no_truncation_notice(tmp_path):
-    """Sanity: a normal finish_reason='stop' must NOT emit the notice."""
-    from hiris.app.claude_runner import _TRUNCATION_NOTICE
-    runner = OpenAICompatRunner(
-        base_url="https://api.openai.com/v1",
-        api_key="sk-test",
-    )
-
-    stream = _FakeStream([
-        _stream_chunk(content="Tutto ok."),
-        _stream_chunk(finish_reason="stop"),
-    ])
-    runner._client.chat.completions.create = AsyncMock(return_value=stream)
-
-    lines = [line async for line in runner.chat_stream(
-        user_message="come stiamo", model="gpt-4o",
-    )]
-    full_output = "\n".join(lines)
-    assert _TRUNCATION_NOTICE not in full_output
-
-
 # ---------------------------------------------------------------------------
 # fetta "i riferimenti" (R4, Task 6): il ramo streaming era il peggiore dei
 # due -- il generatore usciva senza evento d'errore ne' testo, un "done"
@@ -782,54 +708,6 @@ def _stream_chunk_tool(tc_deltas, finish_reason=None):
     return chunk
 
 
-@pytest.mark.asyncio
-async def test_chat_stream_esaurimento_iterazioni_emette_errore_non_done_muto(
-    tmp_path, caplog, monkeypatch
-):
-    """Deve poter fallire (mutazioni eseguite a mano, task-6-report.md): (c)
-    togliendo il `for...else` (tornando al solo `yield` "done" finale di
-    prima) lo stream torna muto e il primo assert cade."""
-    monkeypatch.setattr("hiris.app.backends.openai_compat_runner.MAX_TOOL_ITERATIONS", 3)
-
-    runner = OpenAICompatRunner(
-        base_url="https://api.openai.com/v1",
-        api_key="sk-test",
-    )
-
-    def _stream_sempre_tool(nome, argomenti, tc_id):
-        tc = _stream_tc_delta(0, id_=tc_id, name=nome, arguments=argomenti)
-        return _FakeStream([_stream_chunk_tool([tc], finish_reason="tool_calls")])
-
-    runner._client.chat.completions.create = AsyncMock(side_effect=[
-        _stream_sempre_tool("view", '{"area": "cucina"}', "tc-1"),
-        _stream_sempre_tool("view", '{"area": "salotto"}', "tc-2"),
-        _stream_sempre_tool("search", '{"testo": "termostato"}', "tc-3"),
-    ])
-    finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
-
-    with caplog.at_level(logging.WARNING):
-        lines = [line async for line in runner.chat_stream(
-            user_message="guarda ogni stanza", model="gpt-4o", dispatcher=finto_dispatcher,
-        )]
-
-    assert runner._client.chat.completions.create.call_count == 3
-
-    events = [json.loads(line[len("data: "):]) for line in lines if line.startswith("data: ")]
-    error_events = [e for e in events if e.get("type") == "error"]
-    assert len(error_events) == 1, f"atteso un solo evento 'error', trovati: {events}"
-    from hiris.app.claude_runner import _MAX_ITERATIONS_NOTICE
-    assert error_events[0]["message"] == _MAX_ITERATIONS_NOTICE
-    # mai il "done" muto: lo stream si ferma sull'evento che spiega -- non
-    # aggiunge un "done" senza spiegazione dopo.
-    assert not any(e.get("type") == "done" for e in events)
-
-    warning_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("3" in m and "view" in m and "search" in m for m in warning_messages), (
-        f"nessun warning col conto delle iterazioni e i nomi degli strumenti: {warning_messages}"
-    )
-    assert not any("cucina" in m or "salotto" in m or "termostato" in m for m in warning_messages)
-
-
 # ---------------------------------------------------------------------------
 # review M3/#2: the connection-failure circuit breaker guarded simple_chat()
 # only. The agentic chat()/chat_stream() loop never checked/tripped it, so a
@@ -852,26 +730,6 @@ async def test_chat_short_circuits_when_breaker_open(tmp_path):
 
     with pytest.raises(RunnerBackendError):
         await runner.chat(user_message="ciao", model="llama3.1:8b")
-    create.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_chat_stream_short_circuits_when_breaker_open(tmp_path):
-    """chat_stream() must consult the circuit breaker too, yielding an SSE
-    error event instead of calling the network."""
-    runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, read_model=lambda: "llama3.1:8b",
-    )
-    runner._circuit_open_until = time.monotonic() + 60
-    create = AsyncMock()
-    runner._client.chat.completions.create = create
-
-    lines = [line async for line in runner.chat_stream(
-        user_message="ciao", model="llama3.1:8b",
-    )]
-    full_output = "\n".join(lines)
-    assert '"type": "error"' in full_output
     create.assert_not_called()
 
 
@@ -964,8 +822,8 @@ def test_thinking_budget_a_zero_non_dice_niente(caplog):
 
 
 def test_entrambi_i_percorsi_del_runner_avvisano():
-    """`chat()` e `chat_stream()` scartano entrambi il parametro: il ramo SSE
-    serve la card Lovelace, dove il silenzio sarebbe identico. Guardia sul
+    """`chat()` scarta il parametro e lo dichiara (`chat_stream()`, che lo
+    scartava anche lui, e' uscito con la Tappa 0). Guardia sul
     sorgente perche' esercitare i due loop agentici richiederebbe un finto
     server OpenAI completo -- il comportamento del messaggio e' gia' coperto
     dai due test sopra."""
@@ -980,9 +838,9 @@ def test_entrambi_i_percorsi_del_runner_avvisano():
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
         and n.func.id == "warn_thinking_ignored"
     ]
-    assert len(chiamate) == 2, (
-        "ogni punto che scarta thinking_budget deve dichiararlo: attesi 2 "
-        f"(chat, chat_stream), trovati {len(chiamate)}"
+    assert len(chiamate) == 1, (
+        "ogni punto che scarta thinking_budget deve dichiararlo: atteso 1 "
+        f"(chat), trovati {len(chiamate)}"
     )
     scarti = [
         n for n in ast.walk(albero)

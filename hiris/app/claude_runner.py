@@ -484,7 +484,6 @@ RETRY_DELAYS = [5, 15, 45]
 
 AUTO_MODEL_MAP: dict[str, str] = {
     "chat": "claude-sonnet-4-6",
-    "agent": "claude-haiku-4-5-20251001",
 }
 # Il turno di una promessa "chiedi" (`keeper/exchange.py::interpreta_promise`)
 # ragiona come un turno di chat -- confronta un valore con un'istantanea,
@@ -897,18 +896,6 @@ class ClaudeRunner:
     # runner, usciti con loro). Vedi il commento sul costruttore per la
     # storia completa.
 
-    async def simple_chat(self, messages: list[dict], system: str = "") -> str:
-        """Single API call with no tools and no retry loop — for classification tasks."""
-        kwargs: dict = {"model": MODEL, "max_tokens": 1024, "messages": messages}
-        if system:
-            kwargs["system"] = system
-        try:
-            response = await self._client.messages.create(**kwargs)
-            return next((b.text for b in response.content if b.type == "text"), "")
-        except Exception as exc:
-            logger.error("simple_chat failed: %s", exc)
-            return ""
-
     async def chat(
         self,
         user_message: str,
@@ -1155,126 +1142,6 @@ class ClaudeRunner:
             MAX_TOOL_ITERATIONS, [c["tool"] for c in self.last_tool_calls],
         )
         return _MAX_ITERATIONS_NOTICE
-
-    async def chat_stream(
-        self,
-        user_message: str,
-        system_prompt: str = "",
-        context_str: str = "",
-        conversation_history: list[dict] | None = None,
-        model: str = "auto",
-        max_tokens: int = MAX_TOKENS,
-        agent_type: str = "chat",
-        restrict_to_home: bool = False,
-        response_mode: str = "auto",
-        thinking_budget: int = 0,
-        tools: list[dict] | None = None,
-        dispatcher: Any | None = None,
-    ):
-        """Async generator yielding SSE-formatted lines for the chat response.
-
-        Phase 1 implementation: awaits the full chat() response, then slices it
-        into 80-char chunks for SSE framing. The client sees all tokens arrive
-        after the full Claude round-trip (same latency as non-streaming).
-        Phase 2 will replace this with true Anthropic streaming API calls.
-
-        Yields lines in the form:
-          'data: {"type": "token", "text": "<chunk>"}\\n\\n'
-          'data: {"type": "done", "tool_calls": [...]}\\n\\n'
-          'data: {"type": "error", "message": "<msg>"}\\n\\n'
-
-        fetta E4 Task 6 ("un bot solo"): il campo `agent_id` del done-event e'
-        uscito -- il grep su static/ trovava un solo lettore del `done` event
-        (la card Lovelace) e leggeva SOLO `evt.type`, mai `evt.agent_id`; la
-        pagina chat (send.js) non usa nemmeno lo streaming. Nessun lettore
-        vivo, dichiarato per la E5 (docs/design/2026-08-08-frontend-da-
-        rifare.md non lo elenca: non c'era nulla da riparare). fetta E5 Task
-        5: la card e' uscita dal prodotto, quindi `chat_stream()` non ha
-        oggi **nessun** lettore nel frontend -- la pagina chat resta sul
-        turno sincrono, ed e' lo stato che `docs/design/2026-08-05-mappa-
-        funzionalita.md` dichiara che TIENE ("Pagina chat: funziona, senza
-        streaming"). E' una superficie senza superficie: dichiarato per il
-        Task 10.
-
-        **Corretto il 09/09/2026 (audit delle fondamenta): «il ponte... lo
-        usa» era falso, non solo impreciso.** Misurato di nuovo: il ponte
-        (`server.py`, il canale della CLI di Claude Code) non passa MAI da
-        `LLMRouter.chat()` ne' da `chat_stream()` -- ha una strada sua,
-        `_invoca`, un sottoprocesso -- e l'unico chiamante di produzione di
-        questo metodo e' `api/handlers_chat.py::handle_chat`, dietro
-        `Accept: text/event-stream` o `{"stream": true}` nel corpo: nessun
-        file in `static/` manda ne' l'uno ne' l'altro (grep, zero
-        occorrenze). Vive per i test -- che sono 12 file .py, non solo
-        `tests/test_chat_sse.py` (`test_base_prompt_memory.py`,
-        `test_base_prompt_split.py`, `test_chat_briefing.py`,
-        `test_claude_runner.py`, `test_composition_order.py`,
-        `test_llm_router_policies.py`, `test_model_invariants.py`,
-        `test_openai_compat_runner.py`, `test_runner_catalog.py`,
-        `test_runner_parity.py` -- misurato il 09/09/2026, `grep -rl
-        chat_stream tests/`).
-
-        **Decisione (fondamenta 4: collegare o cancellare): NON cancellato
-        in questo giro, ed e' una scelta e non un rinvio senza ragione.**
-        Cancellarlo per bene vuol dire toccare dodici file di prova
-        (non uno solo, com'era stato misurato prima di questa correzione) e
-        tre moduli di produzione (qui, `backends/openai_compat_runner.py`,
-        `llm_router.py`) sotto un cancello che deve restare verde -- un
-        lavoro suo, con la sua verifica, non l'effetto collaterale di una
-        correzione «sotto soglia». Collegarlo (dargli un lettore vero in
-        `static/`) sarebbe una funzionalita' NUOVA che il documento della
-        mappa dichiara esplicitamente di NON volere oggi, e per giunta
-        collegherebbe un percorso che oggi e' rotto se usato:
-        `LLMRouter.chat_stream` (`llm_router.py`) non ripiega su un secondo
-        provider come fa `chat()`, e non scrive nel registro degli esiti che
-        lo stesso modulo dichiara essere «l'unico scrittore» -- la pagina
-        Consumi mentirebbe su ogni turno in streaming. Tracciato in
-        `docs/BACKLOG.md`, «`chat_stream` vive solo per i test»: chi sceglie
-        questa voce per uno sprint decide fra le due strade con la sua
-        verifica, non a margine di un audit di prosa.
-
-        fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
-        `user_id` e' uscito anche lui da `chat()`/`chat_stream()` -- il suo
-        unico lettore era `user_id=user_id` dentro il ramo di scorta
-        `elif self._dispatcher is not None` rimosso da questo stesso task
-        (era nel commit iniziale insieme agli altri otto kwarg orfani, ma
-        sfuggito al primo giro: verificato ora con lo stesso grep dello
-        Step 1, zero lettori in produzione).
-
-        `strumenti`/`dispatcher` (Task 3 of the nucleo-alla-chat slice):
-        forwarded to `self.chat()` unchanged -- since this generator is
-        already just a thin wrapper around it (see Phase 1 above), accepting
-        the two here and passing them through is enough to keep the SSE path
-        (Lovelace card) and the non-streaming path (chat page) offering the
-        SAME tools/context, instead of the card silently keeping the old
-        34-tool catalog while the page switched to the four that know the
-        house.
-        """
-        import json as _json
-        try:
-            result = await self.chat(
-                user_message=user_message,
-                system_prompt=system_prompt,
-                context_str=context_str,
-                conversation_history=conversation_history,
-                model=model,
-                max_tokens=max_tokens,
-                agent_type=agent_type,
-                restrict_to_home=restrict_to_home,
-                response_mode=response_mode,
-                thinking_budget=thinking_budget,
-                tools=tools,
-                dispatcher=dispatcher,
-            )
-        except Exception as exc:
-            yield f'data: {_json.dumps({"type": "error", "message": str(exc)})}\n\n'
-            return
-
-        chunk_size = 80
-        for i in range(0, len(result), chunk_size):
-            yield f'data: {_json.dumps({"type": "token", "text": result[i:i + chunk_size]})}\n\n'
-
-        tool_calls = self.last_tool_calls if isinstance(self.last_tool_calls, list) else []
-        yield f'data: {_json.dumps({"type": "done", "tool_calls": tool_calls})}\n\n'
 
     # fetta E3 Task 8: `run_with_actions` e' uscito. Girava un passaggio
     # agentico ristretto a `EVALUATION_ONLY_TOOLS` (le 18 letture) per conto

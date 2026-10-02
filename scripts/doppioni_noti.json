@@ -1,6 +1,5 @@
 {
  "funzione-gemella · __init__ · hiris/app/action/construction/revisions.py + hiris/app/action/journal.py · 2 posti": "D-27",
- "predefinito-ripetuto · HIRIS_AGENT_POLL_SECONDS = '3' · hiris/app/agent/runner.py + hiris/app/server.py · 2 posti": "D-09",
  "predefinito-ripetuto · data_dir = '/data' · hiris/app/api/handlers_chat.py + hiris/app/chat_thread.py · 3 posti": "D-09",
  "regex-ripetuta · ```(?:json)?\\s*(.*?)``` · hiris/app/mind/observer.py + hiris/app/mind/recipe_turn.py · 2 posti": "D-11",
  "vocabolario-parallelo · {accumulated_precipitation, area, length, mass, pressure, temperature, volume, wind_speed} · hiris/app/home_space/briefing.py + hiris/app/static/config/tree-route.js · 2 posti": "C-10",

@@ -107,35 +107,6 @@ async def test_openai_compat_chat_mette_i_modificatori_prima_del_contesto(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_openai_compat_chat_stream_mette_i_modificatori_prima_del_contesto(tmp_path):
-    """`OpenAICompatRunner.chat_stream` -- il punto violato n.2. Lo streaming
-    non e' una porta di servizio: stessa invariante, stesso pin."""
-    runner = _runner(tmp_path)
-    runner._client = _fake_openai_client()
-
-    async def _stream_vuoto(*_a, **_kw):
-        if False:  # pragma: no cover - generatore vuoto, ci basta la chiamata
-            yield None
-
-    runner._client.chat.completions.create = AsyncMock(return_value=_stream_vuoto())
-
-    async for _chunk in runner.chat_stream(
-        user_message="ciao",
-        system_prompt=_PERSONA,
-        context_str=_CONTESTO,
-        model="gpt-4o",
-        max_tokens=64,
-        restrict_to_home=True,
-        response_mode="compact",
-    ):
-        pass
-
-    messaggi = runner._client.chat.completions.create.call_args.kwargs["messages"]
-    assert messaggi[0]["role"] == "system"
-    _asserisci_ordine(messaggi[0]["content"])
-
-
-@pytest.mark.asyncio
 async def test_claude_runner_mette_i_modificatori_prima_del_contesto(tmp_path):
     """Il punto che DICHIARAVA l'invariante: deve continuare a rispettarla.
     Qui i blocchi sono una lista di dict (prompt caching), quindi si guarda

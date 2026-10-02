@@ -31,7 +31,7 @@ def test_resolve_model_uses_provider_default_when_auto():
 
 def test_resolve_model_falls_back_to_auto_map_when_no_default():
     # nessun default -> comportamento odierno (AUTO_MODEL_MAP)
-    assert resolve_model("auto", "agent", "") == "claude-haiku-4-5-20251001"
+    assert resolve_model("auto", "chat", "") == AUTO_MODEL_MAP["chat"]
 
 
 def test_resolve_model_explicit_wins_over_default():

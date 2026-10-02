@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from contextvars import ContextVar
 from typing import Any
@@ -26,19 +24,6 @@ logger = logging.getLogger(__name__)
 #: sarebbe quello del turno precedente, e si leggerebbe come un fatto.
 _current_provider: ContextVar[str] = ContextVar(
     "hiris_provider_corrente", default="")
-
-
-def _is_openai_model(model: str) -> bool:
-    return bool(re.match(r"^(gpt-|o[1-9])", model))
-
-
-def _is_openrouter_model(model: str) -> bool:
-    """User-facing prefix to route a model through OpenRouter.
-
-    Accepts both 'openrouter:provider/model' and 'openrouter/provider/model'
-    so users coming from LiteLLM-style naming feel at home.
-    """
-    return model.startswith(("openrouter:", "openrouter/"))
 
 
 # `backend_is_cloud` e' USCITO (censimento del 17/08/2026, zero chiamanti di
@@ -142,7 +127,6 @@ class LLMRouter:
         self._openrouter = openrouter
         self._ollama = ollama
         self._strategy = strategy if strategy in _STRATEGY_ORDER else "balanced"
-        self._all = [r for r in [claude, openai, openrouter, ollama] if r is not None]
         # Se model_chain è fornito, sostituisce chat_policy col suo ordine
         # (fetta E4 Task 7: non esiste più una seconda policy da tenere
         # allineata -- automatic_policy è uscita con l'ultimo chiamante che
@@ -187,24 +171,6 @@ class LLMRouter:
         return [(name, bmap[name]) for name in self._chat_policy
                 if bmap[name] is not None]
 
-    def _ordered_backends(self) -> list[Any]:
-        """Return available backends in chat_policy priority order.
-
-        DERIVATA da `_ordered_backends_with_name`, non una seconda
-        implementazione: due liste ordinate dalla stessa policy sono due
-        rappresentazioni della stessa cosa, libere di divergere.
-        """
-        return [runner for _, runner in self._ordered_backends_with_name()]
-
-    def _route(self, model: str) -> Any:
-        if _is_openrouter_model(model):
-            return self._openrouter
-        if model.startswith("claude-"):
-            return self._claude
-        if _is_openai_model(model):
-            return self._openai
-        return self._ollama
-
     # ------------------------------------------------------------------
     # LLM interface (mirrors ClaudeRunner)
     # ------------------------------------------------------------------
@@ -220,27 +186,11 @@ class LLMRouter:
         """
         return _current_provider.get()
 
-    def _backend_name(self, runner) -> str:
-        """Il nome di catena di un backend gia' costruito. Si ricava dalla
-        stessa mappa che costruisce la catena, non da un secondo elenco che
-        potrebbe divergere."""
-        for name, candidate in self._backend_map().items():
-            if candidate is runner:
-                return name
-        return ""
-
     async def chat(self, **kwargs) -> str:
-        model = kwargs.get("model", "auto")
-        if model != "auto":
-            runner = self._route(model)
-            if runner is None:
-                return "Nessun provider AI configurato per questo modello."
-            # Anche qui, non solo nel ciclo: questo ramo e' meta' dei turni,
-            # e una dichiarazione che vive su un ramo solo lascia muta
-            # l'altra meta'.
-            _current_provider.set(self._backend_name(runner))
-            return await runner.chat(**kwargs)
-        # auto: try backends in chat_policy order with fallback
+        # Si chiede sempre `model="auto"` (tutti i chiamanti del prodotto, misurato
+        # il 02/10/2026): il turno passa dal ciclo di ripiego, nell'ordine della
+        # catena. Il ramo del modello esplicito, che sceglieva un runner una volta
+        # sola e non ripiegava, e' uscito con la Tappa 0 (voce M-05 del registro).
         ordered = self._ordered_backends_with_name()
         if not ordered:
             # Da questa fetta e' uno stato RAGGIUNGIBILE e con un significato:
@@ -291,40 +241,6 @@ class LLMRouter:
                 _current_provider.set(backend_name)
                 return answer
         return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
-
-    async def chat_stream(self, **kwargs):
-        """Zero lettori di produzione oggi (misurato il 09/09/2026, audit
-        delle fondamenta: vedi il docstring di `ClaudeRunner.chat_stream`
-        per la misura e la decisione, collegare o cancellare, non presa in
-        questo giro).
-
-        **Il gap che rende «collegare» piu' caro di quanto suoni**: a
-        differenza di `chat()` qui sopra, questo metodo non ripiega su un
-        secondo backend quando il primo fallisce (commento originale: "no
-        fallback in streaming (as today): just the first pick") e non
-        chiama mai `self._registry.successo(...)`/`.fallimento(...)` -- il
-        registro degli esiti che questo stesso modulo alimenta per ogni
-        turno sincrono. Collegarlo a un lettore vero senza chiudere anche
-        questo gap farebbe mentire la pagina Consumi su ogni turno in
-        streaming: non e' un difetto di questa fetta, ma la ragione per cui
-        «collegare» non e' un cambio di una riga.
-        """
-        model = kwargs.get("model", "auto")
-        if model == "auto":
-            # no fallback in streaming (as today): just the first pick
-            backends = self._ordered_backends()
-            runner = backends[0] if backends else None
-        else:
-            runner = self._route(model)
-        if runner is None:
-            yield (
-                "data: "
-                f'{json.dumps({"type": "error", "message": "Provider AI non configurato"})}'
-                "\n\n"
-            )
-            return
-        async for chunk in runner.chat_stream(**kwargs):
-            yield chunk
 
     # fetta E3 Task 8: `run_with_actions` e' uscito. Il "sole real caller" che
     # il commento qui sopra citava (server.py's `_llm_reason`) era la

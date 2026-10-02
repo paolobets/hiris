@@ -66,21 +66,6 @@ def test_i_due_runner_accettano_gli_stessi_argomenti():
     assert {"tools", "dispatcher"} <= b
 
 
-def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
-    """Task 3 della fetta "il contesto della chat viene dal nucleo": il buco
-    oltre il brief -- `chat_stream()` non riceveva `strumenti`/`dispatcher`,
-    quindi la superficie che streammava (allora la card Lovelace, uscita col
-    Task 5 della E5) sarebbe rimasta sul catalogo di trentaquattro strumenti
-    mentre la pagina chat, che non streamma, passava ai quattro del nucleo.
-    Il ramo streaming e' vivo anche senza la card: il vincolo di CLAUDE.md
-    sulle due firme vale comunque. Stesso confronto via inspect del test
-    gemello sopra, sul metodo streaming."""
-    a = set(inspect.signature(ClaudeRunner.chat_stream).parameters)
-    b = set(inspect.signature(OpenAICompatRunner.chat_stream).parameters)
-    assert {"tools", "dispatcher"} <= a
-    assert {"tools", "dispatcher"} <= b
-
-
 # --- fixture condivise, stesso pattern di test_claude_runner.py / -----------
 # --- test_openai_compat_runner.py -------------------------------------------
 
@@ -321,44 +306,3 @@ async def _fake_stream(chunks):
     for c in chunks:
         yield c
 
-
-@pytest.mark.asyncio
-async def test_openai_stream_con_strumenti_offre_esattamente_quelli(openai_runner):
-    catturati: dict = {}
-
-    async def capture(**kwargs):
-        catturati.update(kwargs)
-        return _fake_stream([_fake_chunk(content="ok", finish_reason="stop")])
-
-    openai_runner._client.chat.completions.create = capture
-    async for _ in openai_runner.chat_stream(
-        user_message="ciao", model="gpt-4o", tools=KNOWLEDGE_TOOLS,
-    ):
-        pass
-
-    nomi = {t["function"]["name"] for t in catturati.get("tools", [])}
-    assert nomi == _NOMI_DEL_CATALOGO
-
-
-@pytest.mark.asyncio
-async def test_openai_stream_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_runner):
-    finto_dispatcher = MagicMock()
-    finto_dispatcher.dispatch = AsyncMock(return_value={"trovati": []})
-
-    chiamate = {"n": 0}
-
-    async def capture(**kwargs):
-        chiamate["n"] += 1
-        if chiamate["n"] == 1:
-            tc = _fake_tc_delta(0, id_="tc_1", name="search", arguments='{"testo": "bagno"}')
-            return _fake_stream([_fake_chunk(tool_calls=[tc], finish_reason="tool_calls")])
-        return _fake_stream([_fake_chunk(content="trovato", finish_reason="stop")])
-
-    openai_runner._client.chat.completions.create = capture
-    async for _ in openai_runner.chat_stream(
-        user_message="cerca il bagno", model="gpt-4o",
-        tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
-    ):
-        pass
-
-    finto_dispatcher.dispatch.assert_awaited_once_with("search", {"testo": "bagno"})

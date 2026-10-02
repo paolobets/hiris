@@ -241,54 +241,6 @@ async def test_il_ramo_sincrono_conia_un_turno_non_vuoto_per_l_officina(aiohttp_
         "a quello della `propose`")
 
 
-@pytest.mark.asyncio
-async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path):
-    """Il buco oltre il brief: quando questo test e' stato scritto, le due
-    superfici della chat sceglievano strade diverse -- la card Lovelace
-    streammava, la pagina chat no -- e se solo una delle due ricevesse
-    `strumenti`/`dispatcher` sarebbero due conversazioni divergenti. La card
-    e' uscita col Task 5 della E5 e oggi nessun frontend chiede lo streaming,
-    ma il ramo SSE di `handle_chat` e' vivo (lo usano il ponte e questi test):
-    resta pinnato qui, cosi' non riparte divergente."""
-    app = create_app()
-
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
-    catturati: dict = {}
-
-    async def fake_chat_stream(**kwargs):
-        import json
-        catturati.update(kwargs)
-        yield f'data: {json.dumps({"type": "token", "text": "ok"})}\n\n'
-        yield f'data: {json.dumps({"type": "done", "agent_id": None, "tool_calls": []})}\n\n'
-
-    mock_runner = AsyncMock()
-    mock_runner.chat_stream = fake_chat_stream
-    mock_runner.last_tool_calls = []
-
-    app["ha_client"] = mock_ha
-    app["chat_settings"] = ChatSettings(system_prompt="base prompt")
-    app["claude_runner"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app.on_startup.clear()
-    app.on_cleanup.clear()
-    client = await aiohttp_client(app)
-
-    resp = await client.post("/api/chat", json={"message": "ciao", "stream": True})
-    assert resp.status == 200
-    await resp.text()
-
-    nomi = {t["name"] for t in catturati["tools"]}
-    assert nomi == {d["name"] for d in KNOWLEDGE_TOOLS}
-    assert isinstance(catturati["dispatcher"], ToolDispatcher)
-
-
 # ---------------------------------------------------------------------------
 # Step 1: "diciannovesima comparsa evitata" -- senza archivi, la chat non
 # deve rispondere come se conoscesse la casa. Deve dirlo, nel contesto che

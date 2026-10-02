@@ -94,13 +94,6 @@ async def test_backward_compat_policies_default_from_strategy():
     assert await r.chat(model="auto") == "ollama"
 
 
-@pytest.mark.asyncio
-async def test_chat_stream_auto_uses_chat_policy_first_backend():
-    r = _router()
-    chunks = [c async for c in r.chat_stream(model="auto")]
-    assert chunks == ["claude"]
-
-
 # fetta E4 Task 7: `test_chat_stream_mode_not_forwarded_to_runner' e' uscito,
 # cancellato e non spostato -- passava `mode="automatic"` per far scegliere
 # `ollama` (automatic_policy=["ollama", "claude"]) e verificava che `mode`

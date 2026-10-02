@@ -17,6 +17,12 @@ utente puo' produrre.
 from hiris.app.model_activation import providers_in_chain
 
 
+def _runners(router):
+    """I runner della catena, in ordine: la stessa lista che `chat()` cicla."""
+    return [runner for _name, runner in router._ordered_backends_with_name()]
+
+
+
 def test_in_catena_ci_sta_chi_l_utente_ci_ha_messo_e_ha_una_credenziale():
     assert providers_in_chain(
         ["openrouter", "claude", "ollama"],
@@ -343,7 +349,7 @@ def test_una_catena_svuotata_svuota_ANCHE_il_router():
     _recompute_chain(app)
     assert app["model_chain"] == []
     assert r._chat_policy == []
-    assert r._ordered_backends() == []
+    assert _runners(r) == []
 
 
 def test_un_nome_senza_backend_costruito_non_entra_in_catena():
@@ -384,7 +390,7 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     app = _app(["claude", "ollama"], ollama_modello="llama3.1:8b", router=r)
     _recompute_chain(app)
     assert app["model_chain"] == ["claude", "ollama"]
-    assert r._ordered_backends()[-1] is locale
+    assert _runners(r)[-1] is locale
 
 
 def test_il_timeout_del_locale_viene_dall_archivio_a_ogni_ricalcolo():

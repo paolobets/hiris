@@ -199,10 +199,6 @@ def test_resolve_model_auto_chat_returns_sonnet():
     assert resolve_model("auto", "chat") == "claude-sonnet-4-6"
 
 
-def test_resolve_model_auto_agent_returns_haiku():
-    assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
-
-
 def test_resolve_model_explicit_overrides_auto():
     assert resolve_model("claude-sonnet-4-6", "agent") == "claude-sonnet-4-6"
 
@@ -222,19 +218,6 @@ def test_resolve_model_auto_promessa_e_agganciato_a_chat():
     accorga."""
     assert AUTO_MODEL_MAP["promessa"] == AUTO_MODEL_MAP["chat"]
     assert resolve_model("auto", "promessa") == AUTO_MODEL_MAP["chat"]
-
-
-@pytest.mark.asyncio
-async def test_chat_uses_resolved_model_for_agent(runner):
-    success = MagicMock()
-    success.stop_reason = "end_turn"
-    success.content = [MagicMock(type="text", text="ok")]
-    success.usage.input_tokens = 10
-    success.usage.output_tokens = 5
-    runner._client.messages.create = AsyncMock(return_value=success)
-    await runner.chat("Test", model="auto", agent_type="agent")
-    call_kwargs = runner._client.messages.create.call_args.kwargs
-    assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
 
 
 @pytest.mark.asyncio
@@ -339,21 +322,6 @@ async def test_rate_limit_exhausts_retries_raises(runner, rifiuti):
 #   and_reloads:
 #     AttributeError: 'ClaudeRunner' object has no attribute '_per_chatbot_usage'
 # (visto girando la suite intera prima di questa pulizia -- vedi task-6-report.md).
-
-
-@pytest.mark.asyncio
-async def test_simple_chat_returns_text(runner):
-    fake_message = MagicMock()
-    fake_message.content = [MagicMock(type="text", text='{"result": "ok"}')]
-    with patch("anthropic.AsyncAnthropic") as MockClient:
-        instance = MockClient.return_value
-        instance.messages.create = AsyncMock(return_value=fake_message)
-        runner._client = instance
-        result = await runner.simple_chat(
-            [{"role": "user", "content": "classify"}],
-            system="Classify entities",
-        )
-    assert result == '{"result": "ok"}'
 
 
 # fetta E3 Task 8: `test_get_calendar_events_in_all_tool_defs` e' uscito
