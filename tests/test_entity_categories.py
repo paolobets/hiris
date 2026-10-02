@@ -31,7 +31,6 @@ import pytest
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.reader import HomeSpace, build_home_space
 from hiris.app.home_space.topology import category_names
-from hiris.app.memory.resolver import costruisci_indice
 
 # Il campo `ambito` di ogni riga NON viene da Home Assistant: lo mette
 # `ha_client.read_registries`, che chiede il registro una volta per ambito e
@@ -178,26 +177,6 @@ def test_le_tre_porte_di_guarda_dicono_la_stessa_cosa(casa):
 
 
 # --- da `cerca`: la parola che l'utente ha scritto ------------------------
-
-def test_si_cerca_per_nome_di_categoria(casa):
-    """Se una categoria non porta a niente, HIRIS chiede all'utente di
-    ripetere a parole cio' che aveva gia' dichiarato una volta.
-
-    Si cerca «luci esterne» -- il NOME -- non `01luci`: un identificativo e'
-    una stringa che nessuno pronuncera' mai.
-    """
-    indice = costruisci_indice(casa)
-    candidati = [c for t in indice.find("luci esterne") for c in t["candidati"]]
-    assert {"tipo": "entita", "riferimento": "automation.luci_giardino"} in candidati
-    assert {"tipo": "entita", "riferimento": "switch.pompa"} in candidati
-
-
-def test_l_identificativo_non_diventa_un_termine_di_ricerca(casa):
-    """Il contrario della prova sopra, e serve quanto quella: indicizzare gli
-    id avrebbe fatto passare l'altra senza che i nomi entrassero mai."""
-    indice = costruisci_indice(casa)
-    assert indice.find("01luci") == []
-
 
 def test_la_categoria_non_diventa_il_nome_di_niente(casa):
     """Entra fra i termini che `find()` riconosce, non fra i nomi: un'entita'

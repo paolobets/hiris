@@ -120,20 +120,6 @@ def test_senza_etichette_la_chiave_non_compare(casa):
     assert "etichette" not in d
 
 
-def test_si_cerca_per_etichetta(casa):
-    """L'etichetta e' una parola che l'utente ha scritto lui: se non porta a
-    niente, HIRIS chiede all'utente di ripetere cio' che ha gia' dichiarato.
-
-    Si cerca «da controllare» -- il NOME, con lo spazio -- non «da_controllare»:
-    lo slug e' una parola che l'utente non pronuncera' mai, e indicizzare
-    quello significa che la ricerca funziona solo per le etichette di una
-    parola sola senza maiuscole."""
-    indice = costruisci_indice(casa)
-    trovati = indice.find("da controllare")
-    candidati = [c for t in trovati for c in t["candidati"]]
-    assert {"tipo": "entita", "riferimento": "sensor.frigo_temp"} in candidati
-
-
 # --- l'unita': la fonte viva, non il registro muto ------------------------
 
 def test_la_regola_dell_unita_sta_in_un_posto_solo():

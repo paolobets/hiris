@@ -1257,9 +1257,9 @@ def _conta_costruzioni(monkeypatch):
     chiamate = []
     originale = _modulo_strumenti.costruisci_indice
 
-    def spia(casa, nomi=None):
+    def spia(casa):
         chiamate.append(1)
-        return originale(casa, nomi)
+        return originale(casa)
 
     monkeypatch.setattr(_modulo_strumenti, "costruisci_indice", spia)
     monkeypatch.setattr(_lookup_cache_modulo, "costruisci_indice", spia)

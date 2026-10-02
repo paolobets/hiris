@@ -146,14 +146,12 @@ async def handle_get_memories(request: web.Request) -> web.Response:
 
     home_space_store = request.app.get("home_space_store")
     topology_loaded = _topology_loaded(home_space_store)
-    # Coi NOMI DI RIPIEGO, come in chat. Senza, un ricordo ancorato a
-    # un'entita' che nel registro non ha nome usciva su questa pagina col suo
-    # entity_id crudo, mentre in chat HIRIS la chiama «Abat-jour sinistra»:
-    # due nomi per la stessa cosa, e l'utente senza modo di capire se il
-    # ricordo sia ancorato bene. Lo specchio si legge gia' quattro righe piu'
-    # in la' per le unita': mancava solo passarne i nomi.
-    live_state = _page_mirror(request)
-    lookup = (costruisci_indice(home_space_store.read(), live_state[1])
+    # Fino alla 3.72.2 qui si passavano anche i NOMI DI RIPIEGO (dallo
+    # specchio), per mostrare il nome di un'entita' senza nome nel registro.
+    # Non hanno mai avuto effetto: entravano solo nell'indice di `find()`, e
+    # `_resolve_tether` legge `nome`. E' un difetto della pagina, scritto nel
+    # registro (capitolo S); il parametro inerte e' uscito con la Tappa 0.
+    lookup = (costruisci_indice(home_space_store.read())
               if topology_loaded else None)
     unverifiable = _unverifiable_types(home_space_store, topology_loaded)
 
@@ -235,7 +233,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
     live_state = _page_mirror(request)
-    lookup = (costruisci_indice(home_space_store.read(), live_state[1])
+    lookup = (costruisci_indice(home_space_store.read())
               if topology_loaded else costruisci_indice({}))
     unverifiable_types = _unverifiable_types(home_space_store, topology_loaded)
     # Le unita' vive, dalla stessa fonte che usa `remember` in chat. Senza,

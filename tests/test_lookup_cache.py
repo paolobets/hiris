@@ -28,9 +28,9 @@ def _spia(monkeypatch) -> list:
     from hiris.app.memory import lookup_cache as modulo
     originale = modulo.costruisci_indice
 
-    def spia(casa, nomi=None):
+    def spia(casa):
         chiamate.append(1)
-        return originale(casa, nomi)
+        return originale(casa)
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
     return chiamate

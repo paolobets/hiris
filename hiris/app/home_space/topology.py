@@ -269,7 +269,7 @@ def name_with_id(name: str, id_: str | None) -> str:
     LA regola unica dietro ogni riferimento della casa che deve portare
     entrambi -- il nome protagonista, l'id accessorio: nata in `briefing.py`
     per l'albero (aree, piani, automazioni/script -- le pseudo-aree la
-    applicavano gia' da sole), qui perche' `labels_with_name` sotto la
+    applicavano gia' da sole), qui perche' `labels_with_id` sotto la
     riusa per lo stesso motivo (T8, R2) -- **un posto solo**, non una
     seconda formattazione che domani diverge dalla prima (fondamenta:
     stessa forma per lo stesso fatto).
@@ -311,35 +311,19 @@ def label_names(home_space: dict) -> dict[str, str]:
 
 def _label_id_and_name(entry: dict, names: dict[str, str]) -> list[tuple[str, str]]:
     """(label_id, nome) per ogni etichetta valida della voce -- la base
-    condivisa da `labels_with_name` (ricerca: nomi PURI, mai l'id nel
-    testo che si indicizza) ed `labels_with_id` (display: nome+id
-    accessorio, T8). Un id che il registro non conosce resta com'e' invece
-    di sparire: e' un riferimento penzolante (o un registro delle etichette
-    non letto), e «questa cosa ha un'etichetta che non so nominare» e' piu'
-    vero di «questa cosa non ha etichette». Stessa scelta di `hierarchy()`
+    di `labels_with_id` (display: nome+id accessorio, T8). Un id che il
+    registro non conosce resta com'e' invece di sparire: e' un riferimento
+    penzolante (o un registro delle etichette non letto), e «questa cosa ha
+    un'etichetta che non so nominare» e' piu' vero di «questa cosa non ha
+    etichette». Stessa scelta di `hierarchy()`
     con le aree sconosciute.
     """
     return [(str(e), names.get(str(e), str(e))) for e in (entry.get("etichette") or [])
             if str(e).strip()]
 
 
-def labels_with_name(entry: dict, names: dict[str, str]) -> list[str]:
-    """Le etichette di una voce dell'anagrafe, coi nomi al posto degli id.
-
-    SOLO nomi, MAI l'id nel testo: alimenta anche l'indice di `cerca`
-    (`memory/resolver.py::costruisci_indice`), che indicizza questi
-    stessi nomi come TERMINI di ricerca -- un `label_id` mescolato nel
-    testo renderebbe "da controllare" irriconoscibile, perche' il termine
-    indicizzato sarebbe "da controllare (id: da_controllare)" e nessuno lo
-    scrive cosi'. Chi vuole l'id accanto per un display usa
-    `labels_with_id` sotto: due usi diversi, due funzioni -- non una che
-    prova a servirli entrambi.
-    """
-    return [name for _, name in _label_id_and_name(entry, names)]
-
-
 def labels_with_id(entry: dict, names: dict[str, str]) -> list[str]:
-    """Come `labels_with_name`, ma col `label_id` accanto come dato
+    """Le etichette di una voce coi loro nomi, e il `label_id` accanto come dato
     ACCESSORIO -- `Nome (id: X)`, la stessa forma di `name_with_id` che
     l'albero del nucleo usa gia' per aree/piani/automazioni (T8, R2:
     decisione del proprietario 2026-08-20,
@@ -348,10 +332,7 @@ def labels_with_id(entry: dict, names: dict[str, str]) -> list[str]:
     Fino a questa fetta il `label_id` non usciva da NESSUNA porta:
     `esegui(bersaglio.etichette=[...])` lo pretende, e nessuna sequenza di
     chiamate lo produceva mai -- il vicolo cieco piu' radicale della
-    famiglia (R2). Per USARE questa funzione al posto di
-    `labels_with_name`: solo dove il testo e' per un umano/modello da
-    LEGGERE (`guarda`), mai dove diventa un termine da CERCARE -- vedi il
-    docstring di `labels_with_name`.
+    famiglia (R2).
     """
     return [name_with_id(name, id_) for id_, name in _label_id_and_name(entry, names)]
 
@@ -404,7 +385,7 @@ def categories_with_name(entry: dict, names: dict[tuple[str, str], str]) -> dict
     riferimento penzolante (o un registro delle categorie non letto -- ne
     esistono quattro, uno per ambito, e possono cadere separatamente), e
     «questa cosa sta in una categoria che non so nominare» e' piu' vero di
-    «questa cosa non ha categoria». Stessa scelta di `labels_with_name`.
+    «questa cosa non ha categoria». Stessa scelta di `_label_id_and_name`.
     """
     assigned = entry.get("categorie")
     if not isinstance(assigned, dict):

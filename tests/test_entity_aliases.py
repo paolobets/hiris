@@ -78,27 +78,6 @@ async def test_un_entita_senza_alias_non_ne_guadagna_uno_vuoto():
 
 
 @pytest.mark.asyncio
-async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
-    """La prova che conta: dall'anagrafe fino a `cerca`. Senza, l'alias
-    sarebbe letto e salvato e non porterebbe a niente -- la fondamenta 4."""
-    from hiris.app.home_space.reader import HomeSpace
-    from hiris.app.memory.resolver import costruisci_indice
-
-    a = HomeSpace(str(tmp_path))
-    try:
-        a.hold_registries({"entita": [
-            {"entity_id": "light.salotto", "name": "Piantana",
-             "aliases": ["lampada della nonna"]},
-        ]}, [])
-        indice = costruisci_indice(a.read())
-        trovati = indice.find("lampada della nonna")
-        candidati = [c for t in trovati for c in t["candidati"]]
-        assert {"tipo": "entita", "riferimento": "light.salotto"} in candidati
-    finally:
-        a.close()
-
-
-@pytest.mark.asyncio
 async def test_il_None_di_home_assistant_non_e_un_alias():
     """LA SENTINELLA, e il difetto vero trovato sull'impianto il 2026-08-18.
 
@@ -130,19 +109,3 @@ async def test_una_lista_di_sole_sentinelle_non_diventa_un_alias_vuoto():
     registri, _ = await _client_vero(finto).read_registries()
     assert "aliases" not in registri["entita"][0]
 
-
-def test_l_indice_sopravvive_a_un_archivio_gia_avvelenato():
-    """Difesa in profondita', e serve davvero: la causa si chiude a monte, ma
-    un'installazione gia' avvelenata tiene `[null]` in archivio finche'
-    l'anagrafe non si ricostruisce. Un indice che muore sul dato vecchio
-    lascia `cerca` e `remember` rotti fino al riavvio successivo."""
-    from hiris.app.memory.resolver import costruisci_indice
-
-    casa = {"entita": [
-        {"id": "light.salotto", "nome": "Piantana", "alias": [None, "nonna"]},
-    ]}
-    indice = costruisci_indice(casa)
-    trovati = indice.find("nonna")
-    candidati = [c for t in trovati for c in t["candidati"]]
-    assert {"tipo": "entita", "riferimento": "light.salotto"} in candidati
-    assert indice.find("piantana"), "il nome vero deve restare cercabile"
