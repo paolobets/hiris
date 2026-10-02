@@ -106,6 +106,19 @@ e permessi (S-17 e `GET /api/home-space` a un servizio «lettore») in un rilasc
 la Tappa 0; l'ordine **a scaglioni** -- tappe 0-3, poi gli strati 1 e 2 degli attori, poi tappe
 4-6, poi gli strati 3 e 4, poi 7-8. In corso la Tappa 0, «Si toglie e si prepara».
 
+**Stato (02/10/2026, sera).** La Tappa 0 e' scritta per intero sul ramo
+`claude/project-thread-6h94lt` (PR 44), **non ancora rilasciata**: se rilasciarla subito o
+attendere lo decide il proprietario. Cosa c'e' dentro: la rete (registro leggibile da un
+programma, sonda di parita', fotografia delle porte, due batterie con la prima misura in token e
+tempi, quattro cancelli nel pre-push e nella CI); le uscite (l'MCP esterno, lo streaming della
+chat, l'embedder, il codice senza chiamanti, il censore dei tipi fra gli attrezzi, la semina delle
+opzioni, undici annunci d'avvio falsi); la migrazione che toglie dal sapere le righe `notevole` e
+`direzione`; i commenti e i documenti che dicevano il falso. La fotografia a freddo delle porte e'
+identica a quella di partenza dopo ogni passo. I conti di oggi si chiedono a
+`python scripts/registro.py conta`; le misure stanno in `docs/misure/2026-10-tappa-0.md`.
+**Resta aperto dal proprietario**: le dieci operazioni delle sette domande (voce sugli attori qui
+sotto), e i numeri di R18.
+
 ### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
 
 `origine: il proprietario, 01/10/2026, dopo l'audit degli attori sulla casa vera («i risultati non mi convincono, sembrano sommari e non mi ritrovo»)` · rapporti dell'audit in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · `hiris/app/server.py::_on_startup` · `hiris/app/server.py::actuator_round`
@@ -1062,6 +1075,12 @@ usasse vede sparire `view` senza avviso. Il lavoro è a parte: fermare il serviz
 regola di Cloudflare, cancellare `/opt/hiris-mcp-gateway`, e cercare nel repo ciò che lo nomina
 (prove, guida, glossario) per toglierlo. **Da verificare prima**: che nessun client del
 proprietario lo chiami ancora.
+
+**02/10/2026: la parte nel repo e' fatta**, in attesa di rilascio (Tappa 0 dello sprint «Una
+fonte sola di verita'»): `GET /api/entities`, `api/handlers_entities.py` e le loro prove sono
+usciti; il ponte interno (`/api/mcp`, `/api/reasoning/claim`, `/api/reasoning/submit`) resta. La
+parte sulla macchina .31 (fermare il servizio, la regola di Cloudflare, la cartella) resta da fare
+ed e' del proprietario.
 
 ### Relazioni e promesse, se i numeri lo giustificano — aperta il 30/09/2026
 

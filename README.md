@@ -310,36 +310,41 @@ action gate that stood in front of them were both removed in 2.0; what came back
 each with its own verification, not a catalogue with a gate — plus a scheduler that can walk
 through the services door on its own, later, for a promise you made.
 
-Answers stream token by token (`text/event-stream`) when the client asks for
-it, and closed sessions are summarised back into the next conversation
-(`hiris/app/api/handlers_chat.py:262-269,330-335`).
+Answers arrive in one JSON response: the streaming branch of `POST /api/chat`
+was removed in 3.73.0 (no page ever asked for it), and a client that still asks
+for `text/event-stream` gets the same JSON answer. Closed sessions are
+summarised back into the next conversation.
 
 ---
 
 ## AI providers
 
-Five backends, each enabled independently, each used only when it is **both**
-switched on **and** credentialed (`hiris/app/model_activation.py:14-35`):
+Four pay-per-use providers, plus the Claude subscription. The add-on page only
+keeps their **credentials**; whether a provider is used, and in what order, is
+decided inside HIRIS, on the **Models** page.
 
-| Provider | Credential |
+| Provider | Credential (add-on option) |
 |---|---|
 | Claude API (Anthropic) | `claude_api_key` |
 | OpenAI | `openai_api_key` |
 | OpenRouter | `openrouter_api_key` |
-| Ollama (local) | `local_model.url` + `local_model.model` |
+| Ollama (local) | `local_model.url` (the model is chosen on the Models page) |
 | Claude subscription (Claude Max) | `claude_code_oauth_token` |
 
-**Fallback chain.** With `model="auto"`, if the leading backend is unavailable
-the next active one in the strategy order is tried
-(`hiris/app/llm_router.py:45-55`):
+**The chain is the only truth.** A provider answers if and only if it is in the
+chain (`chain_order` in `/data/models_config.json`), and the chain is what the
+Models page shows and writes. A turn goes to the first provider of the chain;
+if it fails, the next one is tried, and the reply says that it fell back.
+There is no per-provider switch any more and no model picked per chat.
 
-- `balanced` (default): Claude → OpenRouter → OpenAI → Ollama
-- `quality_first`: Claude → OpenAI → OpenRouter → Ollama
-- `cost_first`: Ollama → OpenRouter → OpenAI → Claude
+The three presets — `balanced`, `quality_first`, `cost_first` — are **gestures**
+on the Models page that rewrite the chain, not a state the chain is derived
+from (`hiris/app/llm_router.py::_STRATEGY_ORDER` holds their orders).
 
-You can override the order manually; an active provider missing from a stale
-saved order is appended rather than silently dropped
-(`hiris/app/model_activation.py:37-78`).
+A new installation starts with every credentialed pay-per-use provider in the
+chain, in the `balanced` order (Claude → OpenRouter → OpenAI). Ollama and the
+subscription are never added by themselves: you add Ollama on the Models page,
+and the subscription is not a member of the chain at all — see below.
 
 Token counts and cumulative cost are tracked and readable at `GET /api/usage`.
 
@@ -348,14 +353,13 @@ Token counts and cumulative cost are tracked and readable at `GET /api/usage`.
 There is a second chat path. When it is active, a chat turn is handed to an
 external subscription runner through a queue instead of being answered locally.
 
-It is active when `ponte.attivo` is on — **and also**, regardless of that
-option, whenever `provider_subscription` is enabled and
-`claude_code_oauth_token` is set: an active subscription provider implies the
-bridge (`hiris/app/server.py::_bridge_active`, fed by `_sub_first_class`).
-
-Until 2.3.1 this took **two** options that had to be on together
-(`bridge_enabled` and `chat_via_subscription`); they were merged in 2.4.0,
-because they were never two decisions.
+It is active if and only if the bridge is switched on on the Models page
+(`ponte.attivo` in `/data/models_config.json`; `hiris/app/server.py::_bridge_active`).
+When it is on, the subscription answers; when it cannot (no token, the daily
+cap reached, the deadline passed) the turn falls back to the chain, and the reply
+says so every time.
+It is not an add-on option: until 2.3.1 it took two of them, merged in 2.4.0
+and moved into HIRIS in 3.0.0.
 
 **That path now carries the nucleo, and — when it can — the tools.** The
 turn is enqueued together with the same context the synchronous chat composes
@@ -375,7 +379,8 @@ reply are drawn on this path too (`handle_chat_reply_poll` → `send.js::pollCha
 What still differs from the synchronous path: usage is **not** measured (the
 subscription exposes neither tokens nor cost — `GET /api/usage` says so instead
 of showing zeros), the reply arrives by polling rather than in one response, and
-the turn is subject to `bridge_deadline_min` and to a separate daily cap.
+the turn is subject to a deadline and to a separate daily cap (both set on the
+Models page: `ponte.scadenza_min`, `ponte.tetto_giornaliero`).
 
 ---
 
@@ -422,7 +427,7 @@ descriptions are in [`hiris/translations/en.yaml`](hiris/translations/en.yaml)
 and are what the add-on UI shows.
 
 Since 3.0.0 the add-on page only **keeps** things: the four credentials, Ollama's
-address, the theme, the two embedding fields and the advanced fields. The
+address, the theme and the advanced fields. The
 decisions — which providers are used and in what order, the bridge, Ollama's
 model, how long conversations are kept — are made inside HIRIS, on the
 **Models** page and in **Chat settings**, where their effect is seen. A provider
@@ -430,8 +435,8 @@ is used if and only if it is in the chain, and the chain is composed on the
 Models page. See the 3.0.0 entry of the CHANGELOG for where each removed option
 went.
 
-Nested keys (`local_model`, `memory`) are the only thing the Supervisor renders
-as a titled section. They are used sparingly and never for credentials: nesting
+A nested key (`local_model`) is the only thing the Supervisor renders
+as a titled section. It is used sparingly and never for credentials: nesting
 renames an option, and a renamed option loses its stored value silently.
 
 ### To get answers
@@ -504,17 +509,13 @@ before uninstalling.
 
 The option is read once at startup: after changing it, restart the add-on.
 
-### Carried over from 1.x — read, but inert
+### Removed options
 
-| Option | Description |
-|---|---|
-| `memory.embedding_provider` · `memory.embedding_model` | Read at startup, shown on the Models page — but **nothing in HIRIS computes an embedding today.** Similarity search is a postponed decision, not a cancelled one; when it is turned on, it will be configured from here. |
-
-The `mayan.*` block and `memory.rag_k` were removed in 2.1.0 together with the
-document integration and the knowledge archive — see the CHANGELOG. `chat_policy`
-was removed in 2.3.0: the router always receives a non-empty `model_chain`, and
-`LLMRouter.__init__` discards `chat_policy` whenever it does, so the field could
-be filled in without anything ever happening.
+`memory.embedding_provider` and `memory.embedding_model` were removed in 3.73.0:
+nothing in HIRIS computed an embedding, and the two fields configured nothing.
+A value already saved for them is ignored. The `mayan.*` block and
+`memory.rag_k` were removed in 2.1.0 together with the document integration and
+the knowledge archive, and `chat_policy` in 2.3.0 — see the CHANGELOG.
 
 ---
 
@@ -567,8 +568,7 @@ is listed at the bottom of that document — none of it is a fault a tester can
 run into.
 
 **Stack:** Python 3.13 (Alpine) · aiohttp · Anthropic SDK · OpenAI SDK ·
-APScheduler · SQLite · model2vec (shipped in the image, not invoked today — see the inert
-embedding options above)
+APScheduler · SQLite
 
 ---
 
@@ -598,7 +598,8 @@ rewritten, with a design of its own.
   above) that named a `notify.*` recapito **will** reach you when you are not
   in the chat — it is the one way this add-on can, on a channel you chose
   yourself, not one of its own
-- **MQTT**, the gateway, Test Run, the sandbox
+- **MQTT**, the external gateway (and `GET /api/entities`, the route it used —
+  removed in 3.73.0), Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
 - **The thirty-four-tool catalogue** — replaced by the twelve above
 

@@ -2078,7 +2078,7 @@ al Task 6 invece che deciso qui.
 > **`stati` → `states`: nota di rischio, aggiunta durante la review finale del ramo -- secondo
 > caso di confine preso con un significato diverso, questa volta senza cambiare il nome.** Home
 > Assistant chiama gia' `/api/states` l'elenco degli stati vivi di tutte le entita', e il codice
-> lo rispecchia: `api/handlers_entities.py:13` (`def filter_entities(states: list[dict], ...)`),
+> lo rispecchia: `api/handlers_entities.py:13` (file uscito il 02/10/2026; allora `def filter_entities(states: list[dict], ...)`),
 > `proxy/ha_client.py:332` (`f"{self._base_url}/api/states"`). La riga `stati` (sopra) e' una cosa
 > diversa: *«un insieme chiuso di valori... usato per verificare se un valore singolo vi
 > appartiene»* -- `STATI_SOSPESO`, `STATI_CONCLUSI` e simili, non l'elenco delle entita' vive.

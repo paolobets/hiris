@@ -13,6 +13,7 @@ Prima di scrivere qualunque riga:
 | Cosa **c'è dentro**, e cosa ne resta | `docs/design/2026-08-05-mappa-funzionalita.md` — **l'ordine di demolizione** |
 | Come si conosce la casa | `docs/design/2026-08-05-la-conoscenza-di-hiris.md` |
 | Cosa **aspetta** uno sprint | `docs/BACKLOG.md` — **il registro degli argomenti** |
+| Quali **doppioni** restano da unire | `docs/design/2026-10-01-registro-dei-doppioni.md` — **la lista di lavoro** dello sprint «Una fonte sola di verità» (spec: `docs/design/2026-10-01-una-fonte-sola-di-verita.md`). Si legge con `python scripts/registro.py conta` |
 
 **Quando il proprietario dice «inseriamo per il prossimo sprint», la voce entra in
 `docs/BACKLOG.md` subito**, prima di continuare il discorso — non in un appunto, non in una
@@ -196,8 +197,10 @@ demolire i test significa difendere con centinaia di asserzioni ciò che si è a
 rimuovere, e pagarne il prezzo a ogni fetta successiva. **Anche i test si smontano**, insieme a ciò
 che testavano.
 
-Fatta a occhio su 43.000 righe questa regola non è eseguibile: usa `python scripts/censimento.py`,
-che la rende un comando invece di una buona intenzione.
+Fatta a occhio questa regola non è eseguibile: usa `python scripts/censimento.py`, che la rende un
+comando invece di una buona intenzione. Dal 2 ottobre 2026 è anche un **cancello**: con
+`--cancello` un orfano nuovo ferma il push, e le poche voci volute stanno scritte, ognuna con la
+sua ragione, in `scripts/censimento_eccezioni.json`.
 
 ## Cosa è condannato dal refactor
 
@@ -234,50 +237,60 @@ per-entità) che non ci sono più.
 ## Struttura reale
 
 Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un piano. Ricavata il
-28/09/2026 da `ls` e dai docstring dei moduli (il numero fra parentesi conta i `.py`, `__init__`
-compreso).
+02/10/2026 da `ls` e dai docstring dei moduli. Non porta conteggi: quanti file ha una cartella lo
+dice `ls`, e quante righe ha `server.py` lo dice `wc -l hiris/app/server.py`. Sono numeri che
+invecchiano da soli, non fatti che questo file possa custodire (ci ha già provato tre volte:
+«~1.900», «4.340», «6.229»).
 
 ```
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # 6.229 righe: registrazione rotte, giri del cervello E gran parte del wiring
+    ├── server.py         # registrazione rotte, giri del cervello E gran parte del wiring
     ├── claude_runner.py · llm_router.py   # la catena: loop agentico Claude, instradamento
     ├── steering.py       # chi risponde a questo turno: il ponte, o la catena (e il registro dei turni)
     ├── model_resolution.py · model_activation.py · provider_occurrences.py
     ├── chat_store.py · chat_thread.py · chat_settings.py
     ├── panel_visibility.py · options_migration.py
-    ├── config.py · storage.py · env_util.py · version.py
-    ├── api/        (28)      handlers_* — la superficie HTTP; ingresso, soffitto, canali,
-    │                         servizi, credenziali: chi entra e cosa puo'
-    ├── home_space/ (14)      l'anagrafe dal vivo (reader, topology), il nucleo (briefing), le tre
-    │                         domande (queries), gli strumenti della chat (tools), il tempo della casa
-    │                         (historian), i giudizi sui tipi, il sigillo dei segreti (redaction)
-    ├── action/     (6)       «cosa questa casa sa fare, e il farlo»: actuator.py — i SERVIZI, l'unica
-    │                         porta sul canale — verification.py, registry.py, journal.py, rhythm.py;
-    │                         construction/ (5) — workshop.py, l'unica porta sul canale della
-    │                         CONFIGURAZIONE — composer.py, advisor.py, revisions.py
-    ├── mind/       (18)      il cervello: osservatore (observer, watcher, scope, facts, report),
-    │                         sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
-    │                         analista (analyst, analyst_turn), attuatore (actuator, actuator_turn)
-    ├── memory/     (5)       cio' che le persone hanno detto: store, interpretation, resolver
-    ├── keeper/     (7)       le promesse dell'utente: promise, store, sweeper, exchange, outcome
-    ├── agent/      (3)       runner.py (il ponte push) + prompts.py
-    ├── reasoning/  (2)       queue.py — la coda dei turni del ponte
-    ├── usage/      (3)       l'archivio dei consumi e le sue parole
-    ├── proxy/      (5)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
-    ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
-    └── static/     index.html · config.html · chat/*.js · config/*.js
+    ├── config.py · storage.py · version.py
+    ├── api/            handlers_* — la superficie HTTP; ingresso, soffitto, canali,
+    │                   servizi, credenziali: chi entra e cosa puo'
+    ├── home_space/     l'anagrafe dal vivo (reader, topology), il nucleo (briefing), le tre
+    │                   domande (queries), gli strumenti della chat (tools), il tempo della casa
+    │                   (historian), i giudizi sui tipi e le loro domande aperte, il sigillo
+    │                   dei segreti (redaction)
+    ├── action/         «cosa questa casa sa fare, e il farlo»: actuator.py — i SERVIZI, l'unica
+    │                   porta sul canale — verification.py, registry.py, journal.py, rhythm.py;
+    │                   construction/ — workshop.py, l'unica porta sul canale della
+    │                   CONFIGURAZIONE — composer.py, advisor.py, revisions.py
+    ├── mind/           il cervello: osservatore (observer, watcher, scope, facts, report),
+    │                   sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
+    │                   analista (analyst, analyst_turn), attuatore (actuator, actuator_turn)
+    ├── memory/         cio' che le persone hanno detto: store, interpretation, resolver
+    ├── keeper/         le promesse dell'utente: promise, store, sweeper, exchange, outcome
+    ├── agent/          runner.py (il ponte push) + prompts.py
+    ├── reasoning/      queue.py — la coda dei turni del ponte
+    ├── usage/          l'archivio dei consumi e le sue parole
+    ├── proxy/          ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
+    ├── backends/       i runner OpenAI-compat e OpenRouter, pricing, la guardia sull'indirizzo
+    │                   di Ollama
+    └── static/         index.html · config.html · chat/*.js · config/*.js
+scripts/                  # gli ATTREZZI: non entrano nell'immagine, e il prodotto non li importa
+                          # (lo prova tests/test_import_boundary.py). release.py, cancelli.py,
+                          # censimento.py, doppioni.py, registro.py, verifica_componenti.py; casa.py
+                          # (l'unica porta degli attrezzi verso la casa, di sola lettura),
+                          # sonda_parita.py, fotografia_porte.py, le batterie di misura;
+                          # censore_tipi.py e istantaneo_pubblicato.py (l'anagrafe dei tipi)
 ```
-
-`server.py` era dichiarato «~1.900 righe», poi «4.340» il 10 settembre. Misurato con
-`wc -l hiris/app/server.py` il 28 settembre: **6.229**. Verifica di nuovo prima di fidartene: è un
-numero che invecchia da solo, non un fatto che questo file possa custodire.
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
 `app/routes.py`, `app/ha_client.py`, `app/agent_engine.py`, `api/handlers_agents.py`,
 e — dopo le tre fette di demolizione del 2.0 — `app/chatbot_engine.py`, `app/task_engine.py`,
 `app/mqtt_publisher.py`, e le cartelle `tools/`, `watcher/`, `security/`, `mcp/`.
+Dalla Tappa 0 dello sprint «Una fonte sola di verità» (ottobre 2026) non esistono più
+`app/env_util.py`, `api/handlers_entities.py` (con la rotta `GET /api/entities`),
+`backends/embeddings.py` e `backends/base.py`; `home_space/type_census.py` è diventato un attrezzo
+(`scripts/censore_tipi.py`), e nel prodotto ne resta `home_space/open_questions.py`.
 Dalla fetta «esce il documentale» (2.1.0) non esistono più nemmeno le cartelle `app/brain/` e
 `app/history/`, né `api/handlers_knowledge.py` e `api/handlers_history_policy.py`: l'integrazione
 documentale (Mayan), l'archivio di conoscenza (`knowledge.db`), la cattura dello storico
@@ -299,9 +312,15 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 5.385 test + 3 skip (misurato 28/09/2026)
-npm test                     # 592 test frontend: node --test + jsdom (misurato 28/09/2026)
+python -m pytest -q          # quanti sono lo dice lei: `--collect-only -q | tail -1`
+npm test                     # il frontend: node --test + jsdom
+python scripts/cancelli.py   # registro, doppioni, censimento, fonte unica: i quattro cancelli
 ```
+**La suite intera supera i dieci minuti**: lanciata in un colpo solo, in background, viene
+uccisa senza esito. Si lancia in due metà, in foreground (l'elenco dei file di `tests/` diviso a
+metà). E si lancia **prima di ogni commit**, non solo le prove dei file toccati: il 2 ottobre 2026
+due commit sono partiti con prove rosse in file che nessuno aveva pensato di rilanciare.
+
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
 `app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.
 
@@ -451,13 +470,10 @@ parola italiana mandata dove serviva la parola del sistema esterno.
 Quindi valgono solo quelle **controllate automaticamente**, e ciò che non è controllato non si
 pretende.
 
-Lo stato al 26 agosto: **il progetto non ha nessun linter** — né `ruff`, né `flake8`, né `black`, né
-`mypy` — e niente di tutto ciò gira nel CI. Va colmato, e il debito è dichiarato qui invece che
-sottinteso.
-
-Quando entrerà, entra **così**: configurazione in `pyproject.toml`, esecuzione nel CI accanto alla
-suite, e appartenenza al cancello del rilascio come la suite verde. Un linter che si può ignorare non
-serve a niente.
+Il linter c'è, ed è entrato **così**: `ruff` per il Python (configurazione in `pyproject.toml`) e
+`oxlint` per il JavaScript (`npm run lint`), nel pre-push a **ogni** push e nella CI accanto alla
+suite. Il 26 agosto 2026 il progetto non ne aveva nessuno, e questo paragrafo lo dichiarava come
+debito. `mypy` e un formattatore non ci sono: non si pretende ciò che nessuno strumento controlla.
 
 ### Il debito dichiarato: la rinomina in inglese
 
@@ -482,14 +498,19 @@ Due condizioni, perché una rinomina di massa è l'operazione che rompe le cose 
 - `save_policy` ricostruisce da `DEFAULT_POLICY` e **strippa ogni chiave top-level sconosciuta**:
   lo stato del Brain vive in file sidecar, non nella policy.
 - Alcune funzioni sono **inerti di fabbrica**. Prima di dare la caccia a un bug, verifica che la
-  funzione sia accesa. Caso limite di questa regola: dalla 2.1.0 l'embedder è inerte **sempre** —
-  le opzioni `memory.*` si leggono, ma nessun percorso chiama più `embed()`.
+  funzione sia accesa.
 
 ---
 
-## Il cancello del rilascio
+## I cancelli del push, e quello del rilascio
 
-`.githooks/pre-push` ferma ogni push che contiene un bump di `hiris/config.yaml` finché non hai
+`.githooks/pre-push` fa tre cose. A **ogni** push lancia il linter (`ruff`, `oxlint`) e i quattro
+cancelli della fonte unica (`python scripts/cancelli.py`: il registro dei doppioni è leggibile,
+nessun doppione nuovo, nessun codice morto nuovo, nessuna lettura o regola ricopiata fuori dalla
+sua casa). Le eccezioni note di ognuno stanno in un file con la ragione scritta, e possono solo
+diminuire. Gli stessi cancelli girano nella CI.
+
+E ferma ogni push che contiene un bump di `hiris/config.yaml` finché non hai
 guardato i componenti: la **CLI del ponte** (pin esatto, quindi le patch non arrivano da sole), le
 **azioni CI**, un **major nuovo sopra un tetto** di `requirements.txt` (che congelerebbe una
 dipendenza in silenzio) e i **pacchetti installati sotto i pavimenti dichiarati**.
