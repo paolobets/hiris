@@ -231,7 +231,7 @@ def _big_home() -> dict:
         "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
         "aree": [{"id": "telecamere", "nome": "Telecamere", "piano_id": "terra",
                   "alias": [], "etichette": []}],
-        "dispositivi": [{"id": "dev_nvr", "nome": "NVR", "nome_utente": None,
+        "dispositivi": [{"id": "dev_nvr", "nome": "NVR",
                          "produttore": "Reolink", "modello": "RLN16-410",
                          "area_id": "telecamere", "disabilitato": 0, "etichette": []}],
         "entita": entita, "etichette": [], "categorie": [], "integrazioni": [],

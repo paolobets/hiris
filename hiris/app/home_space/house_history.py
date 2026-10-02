@@ -244,10 +244,10 @@ _NOTHING = object()
 
 @dataclass(frozen=True)
 class Subject:
-    """Un soggetto della storia: l'identificatore, il nome, e l'ultimo cambio
-    (entita') o l'ultima esecuzione (automazioni e script) secondo lo
-    specchio. NON ordina la corta degli stati: l'ordine lo da' la finestra
-    letta (revisione del Task 3, 30/09/2026 -- vedi `Chosen`)."""
+    """Un soggetto della storia: l'identificatore, il nome, e -- solo per
+    automazioni e script -- l'ultima esecuzione secondo lo specchio. NON
+    ordina la corta degli stati: l'ordine lo da' la finestra letta (revisione
+    del Task 3, 30/09/2026 -- vedi `Chosen`)."""
     ident: str
     name: str
     last: str | None = None
@@ -331,15 +331,14 @@ def choose(query: HistoryQuery, home_space: dict, behavior, mirror, *,
         kinds = ("entita",)
     selection = select_subjects(f, kinds, home_space, behavior, mirror,
                                 unavailable=unavailable, now=now)
-    names, since_when = mirror[1], mirror[4]
+    names = mirror[1]
     if query.kind == "esecuzioni":
         subjects = [Subject(item["id"], item.get("nome") or item["id"],
                             values.get("last_triggered"))
                     for item, values in selection.behavior]
     else:
         subjects = [Subject(entry["id"],
-                            names.get(entry["id"]) or entry.get("nome") or entry["id"],
-                            since_when.get(entry["id"]))
+                            names.get(entry["id"]) or entry.get("nome") or entry["id"])
                     for entry, _area, _where in selection.entities]
     if query.run_id is not None and len(subjects) != 1:
         return {"errore": f"esecuzione vale per UNA sola automazione, e questi filtri "

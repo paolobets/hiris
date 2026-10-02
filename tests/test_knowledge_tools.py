@@ -1491,8 +1491,8 @@ async def test_calendar_without_ha_channel_declares_instead_of_raising():
     **Mutazione che uccide l'assert**: togliere `"calendar": ("ha",)` da
     `_RESOURCE_PER_TOOL`. Verificato eseguendo: senza quella riga
     `_missing_resource` non trova niente da segnalare, `dispatch` chiama
-    `_calendar`, che fa `self._ha_channel().calendars()` con
-    `_ha_channel()` che torna `None` -- `AttributeError` risale fino alla
+    `_calendar`, che fa `self._ha.calendars()` con `_ha` che vale
+    `None` -- `AttributeError` risale fino alla
     rete di sicurezza finale, che produce SI' un `errore` ma un messaggio
     diverso («ha incontrato un problema: ...»), e il secondo assert (sulla
     frase «collegamento vivo») diventa rosso."""

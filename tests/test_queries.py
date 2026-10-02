@@ -389,13 +389,13 @@ def test_uno_script_che_non_esiste_con_un_corpo_non_letto_dichiara_l_incertezza(
 
 def test_a_not_found_automation_with_an_unreachable_folder_declares_uncertainty():
     """Il gemello del test sopra, sul verso opposto: la cartella di Home
-    Assistant stessa irraggiungibile (`FOLDER_UNREACHABLE`) NON e'
+    Assistant stessa irraggiungibile («cartella non raggiungibile») NON e'
     un'assenza -- i due file potrebbero esserci ed essere scritti, HIRIS non
     ha potuto nemmeno controllare. Deve restare `non_disponibile`.
 
-    Mutazione che uccide: escludere ANCHE `FOLDER_UNREACHABLE` dal calcolo
-    di `unavailable_files` in `_view_behavior` (non solo
-    `FILE_GENUINELY_ABSENT`) -- il test torna rosso su `assert
+    Mutazione che uccide: escludere ANCHE «cartella non raggiungibile» dal
+    calcolo di `unavailable_files` in `_view_behavior` (non solo
+    «assente») -- il test torna rosso su `assert
     detail["non_disponibile"] is True` (`KeyError: 'non_disponibile'`)."""
     detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
                     "script", "script.scritto_a_mano",

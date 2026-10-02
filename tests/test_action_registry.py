@@ -74,7 +74,6 @@ async def test_il_registro_non_inventa_cio_che_non_c_e():
 async def test_un_registro_mai_caricato_lo_dichiara():
     registro = ServiceRegistry()
     assert registro.empty() is True
-    assert registro.age_seconds() is None
     # e non solleva: chi lo interroga prima del caricamento riceve None,
     # non un'eccezione
     assert registro.service("light", "turn_on") is None
@@ -163,16 +162,6 @@ async def test_se_il_primo_caricamento_fallisce_il_guasto_si_vede():
     with pytest.raises(RuntimeError):
         await registro.ensure_fresh(ClientSempreRotto(RISPOSTA_HA))
     assert registro.empty() is True
-
-
-@pytest.mark.asyncio
-async def test_l_eta_cresce_e_parte_da_zero_al_caricamento():
-    registro = ServiceRegistry()
-    await registro.refresh(FintoClient(RISPOSTA_HA))
-    eta = registro.age_seconds()
-    assert eta is not None and eta < 5.0
-    registro._caricato_a -= 42
-    assert registro.age_seconds() >= 42
 
 
 @pytest.mark.asyncio

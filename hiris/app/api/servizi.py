@@ -45,11 +45,6 @@ RUOLI = ("amministratore", "utente", "lettore")
 #: si' -- e nella cronaca sono due fatti diversi.
 SPECIE = ("integrazione", "luogo")
 
-#: Gli stati di un servizio. `revocato` non e' la cancellazione: una riga
-#: cancellata potrebbe ripresentarsi e tornare in coda, e allora revocare
-#: sarebbe un fastidio invece che una decisione.
-STATI = ("in_attesa", "autorizzato", "revocato")
-
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS servizi (
     chiave TEXT PRIMARY KEY,

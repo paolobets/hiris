@@ -801,8 +801,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
         # riga cade il taglio la conta come le firme vere che cadono con lei:
         # l'avviso in fondo al nucleo (`_cut_notice`) resta giusto in
         # ENTRAMBI i casi, che il rinvio sopravviva o no.
-        entity = _plural(left_out, "entita'", "entita'")
-        lines.append(f"- (altre {left_out} {entity} con capacita' rare non elencate qui: "
+        lines.append(f"- (altre {left_out} entita' con capacita' rare non elencate qui: "
                      "chiedile con `search`.)")
         weights.append(left_out)
     return (lines, weights, True)

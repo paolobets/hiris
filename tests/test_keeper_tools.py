@@ -512,7 +512,7 @@ class _RegistroTracciaScaldamento:
     scaldarlo -- e si rifiuta di farlo passare inosservato: solleva.
 
     Serve al test gemello di quello sopra (canale HA assente): la guardia
-    su `_ha_channel() is None` deve impedire la chiamata PRIMA che parta, non
+    su `_ha is None` deve impedire la chiamata PRIMA che parta, non
     limitarsi a sperare che un `try/except` a valle la inghiotta -- questa
     finta lo dimostra tenendo il conto (`chiamato`) invece di limitarsi a
     non rompersi.

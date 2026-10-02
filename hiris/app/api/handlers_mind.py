@@ -118,18 +118,6 @@ async def handle_watching(request: web.Request) -> web.Response:
     })
 
 
-#: I prefissi dei soggetti TECNICI, e da dove si legge l'integrazione dentro
-#: ciascuno. `log:` porta il logger fino alla chiocciola
-#: (`log:homeassistant.components.hassio.handler@...`); `problema:` porta il
-#: dominio come primo pezzo (`problema:hacs.restart_required_...`).
-#: **`integrazione:` non c'e', e non e' una dimenticanza**: quel soggetto porta
-#: l'identificativo di una voce di configurazione
-#: (`integrazione:01K2CK4GG287VKK18M5J788MRQ`), da cui il dominio non si ricava
-#: -- e indovinarlo darebbe un nome inventato a una riga che ne ha gia' uno
-#: vero da un'altra parte.
-_TECHNICAL_PREFIXES = ("log:", "problema:")
-
-
 def _with_integration(lines: list[dict]) -> list[dict]:
     """Le voci tecniche con **l'integrazione da cui vengono, e il suo nome**.
 
@@ -269,26 +257,6 @@ async def handle_report(request: web.Request) -> web.Response:
     return web.json_response({"resoconto": as_page(
         resoconto, judgments=request.app.get("type_judgments"),
         names=_entity_names(request.app))})
-
-
-async def _translations_report(app) -> dict:
-    """L'esito etichettato della lettura delle traduzioni, per questa casa.
-
-    La coppia `(versione_ha, lingua)` viene dal sistema di riferimento che
-    l'anagrafe ha gia' distillato da `Config.as_dict()`
-    (`home_space.topology.reference_frame`): non una seconda lettura verso
-    Home Assistant a ogni pagina, e non una seconda idea di "lingua della
-    casa". Nessuna delle due chiavi si indovina: senza, la cache lo dichiara
-    e la pagina lo dice.
-    """
-    cache = app.get("state_translations")
-    if cache is None:
-        return {"lette": False,
-                "motivo": "la lettura delle traduzioni non e' collegata a questa istanza"}
-    home_space_store = app.get("home_space_store")
-    frame = home_space_store.reference_frame() if home_space_store is not None else {}
-    return await cache.read(ha_version=frame.get("versione_ha"),
-                            language=frame.get("lingua"))
 
 
 async def handle_set_objective(request) -> web.Response:

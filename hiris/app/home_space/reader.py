@@ -111,7 +111,7 @@ def clean_categories(value) -> dict:
 
 def _floor(row: dict) -> dict:
     return {"id": row["floor_id"], "nome": clean_name(row.get("name")) or row["floor_id"],
-            "livello": row.get("level"), "icona": row.get("icon")}
+            "livello": row.get("level")}
 
 
 def _area(row: dict) -> dict:
@@ -124,7 +124,7 @@ def _area(row: dict) -> dict:
     chiamate.
     """
     return {"id": row["area_id"], "nome": clean_name(row.get("name")) or row["area_id"],
-            "piano_id": row.get("floor_id"), "icona": row.get("icon"),
+            "piano_id": row.get("floor_id"),
             "alias": clean_aliases(row.get("aliases")),
             "etichette": plain_list(row.get("labels")),
             "entita_temperatura": row.get("temperature_entity_id"),
@@ -134,15 +134,11 @@ def _area(row: dict) -> dict:
 def _device(row: dict) -> dict:
     """Un dispositivo, **come oggetto e non come identificatore opaco**.
 
-    `nome_utente` sta accanto a `nome` e non lo sostituisce: `nome` e' il nome
-    da usare (quello scelto dall'utente se c'e', altrimenti quello proposto
-    dall'integrazione), `nome_utente` dice **se l'utente l'ha rinominato** --
-    misurato sulla casa vera il 10/09/2026: **13 dispositivi su 241**. Sono due
-    fatti diversi, e uno solo dei due si puo' dedurre dall'altro.
+    `nome` e' il nome da usare: quello scelto dall'utente se c'e', altrimenti
+    quello proposto dall'integrazione.
     """
     return {"id": row["id"],
             "nome": clean_name(row.get("name_by_user") or row.get("name")),
-            "nome_utente": clean_name(row.get("name_by_user")),
             "produttore": clean_name(row.get("manufacturer")),
             "modello": clean_name(row.get("model")),
             "area_id": row.get("area_id"),
@@ -151,8 +147,7 @@ def _device(row: dict) -> dict:
 
 
 def _label(row: dict) -> dict:
-    return {"id": row["label_id"], "nome": clean_name(row.get("name")) or row["label_id"],
-            "colore": row.get("color"), "icona": row.get("icon")}
+    return {"id": row["label_id"], "nome": clean_name(row.get("name")) or row["label_id"]}
 
 
 def _category(row: dict) -> dict:

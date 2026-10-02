@@ -67,7 +67,7 @@ def _fields(reading) -> dict | None:
       un'ipotesi.
     - **forma illeggibile** -- `fields` c'e' ma non e' una mappa: `None`.
       `None` NON e' `{}`, ed e' la stessa distinzione che questo modulo usa
-      gia' per `servizio()` e `age_seconds()`: `{}` dice «letto: nessun
+      gia' per `servizio()`: `{}` dice «letto: nessun
       parametro» e autorizza a rifiutare un parametro in piu', `None` dice
       «non l'ho potuto leggere» -- e su cio' che non si e' potuto misurare
       non si rifiuta.
@@ -287,15 +287,16 @@ class ServiceRegistry:
         Un registro vecchio e' meno peggio di un registro assente: col primo
         HIRIS puo' ancora rifiutare un servizio che non esiste, col secondo
         non puo' verificare niente. Se il rinfresco fallisce si logga e si
-        tiene il vecchio -- e `age_seconds()` resta grande, cosi' chi vuole
-        saperlo puo' chiederlo.
+        tiene il vecchio -- e l'eta' resta grande, cosi' il giro dopo riprova.
 
         Al **primo** caricamento non c'e' nessun vecchio da proteggere:
         li' il guasto risale, perche' un registro mai caricato e un registro
         caricato e vuoto rispondono uguale a chi li interroga, e chi chiama
         deve poterli distinguere.
         """
-        age = self.age_seconds()
+        # `None` = mai letto: da quanti secondi il registro e' quello che e'.
+        age = (None if self._caricato_a is None
+               else time.monotonic() - self._caricato_a)
         if age is not None and age < self._max_age_s and not self._da_rileggere:
             return
         try:
@@ -338,12 +339,6 @@ class ServiceRegistry:
 
     def services_for(self, domain: str) -> list[str]:
         return sorted(self._per_domain.get(domain, {}))
-
-    def age_seconds(self) -> float | None:
-        """Da quanti secondi il registro e' quello che e'. `None` = mai letto."""
-        if self._caricato_a is None:
-            return None
-        return time.monotonic() - self._caricato_a
 
     def empty(self) -> bool:
         """Vero finche' nessun caricamento e' mai riuscito.

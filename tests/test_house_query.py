@@ -39,7 +39,7 @@ def _casa():
         "aree": [{"id": "soggiorno", "nome": "Soggiorno", "piano_id": "terra",
                   "alias": [], "etichette": []}],
         "dispositivi": [{"id": "dev_lavatrice", "nome": "Lavatrice",
-                         "nome_utente": None, "produttore": None, "modello": None,
+                         "produttore": None, "modello": None,
                          "area_id": "soggiorno", "disabilitato": 0,
                          "etichette": []}],
         "entita": [

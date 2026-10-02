@@ -125,7 +125,7 @@ _MOVING_HOME = {
     "aree": [{"id": "ingresso", "nome": "Ingresso", "piano_id": "terra",
               "alias": [], "etichette": []}],
     "dispositivi": [{"id": "dev_iphone", "nome": "iPhone di Marta",
-                     "nome_utente": None, "produttore": "Apple", "modello": None,
+                     "produttore": "Apple", "modello": None,
                      "area_id": None, "disabilitato": 0, "etichette": []}],
     "entita": [
         {"id": "device_tracker.iphone_marta", "nome": "", "area_id": None,

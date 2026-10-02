@@ -9,7 +9,6 @@
  "vocabolario-parallelo · {aree, dispositivi, entita, integrazioni} · hiris/app/home_space/house_query.py + hiris/app/static/config/dashboard.js · 2 posti": "C-10",
  "vocabolario-parallelo · {automation, scene, script} · hiris/app/action/construction/workshop.py + hiris/app/static/config/constructions-route.js · 3 posti": "C-10",
  "vocabolario-parallelo · {automazione:, integrazione:, log:, problema:} · hiris/app/mind/facts.py + hiris/app/static/config/watcher-shared.js · 2 posti": "C-10",
- "vocabolario-parallelo · {autorizzato, in_attesa, revocato} · hiris/app/api/servizi.py + hiris/app/static/config/services-route.js · 2 posti": "C-10",
  "vocabolario-parallelo · {campo, soggetto, soggetto_genere} · hiris/app/api/handlers_mind.py + hiris/app/static/config/watcher-sapere.js · 2 posti": "C-10",
  "vocabolario-parallelo · {cancella, crea, modifica} · hiris/app/action/construction/workshop.py + hiris/app/static/config/constructions-route.js · 2 posti": "C-10",
  "vocabolario-parallelo · {chain_order, nascondi_gratuiti, ollama, ponte, provider_models, strategia_ultima} · hiris/app/api/handlers_models.py + hiris/app/static/config/models-route.js · 2 posti": "C-10",

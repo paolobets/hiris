@@ -32,10 +32,7 @@ ORDERS = ("nome", "ultimo_cambio", "valore")
 _DURATION = re.compile(r"^\s*(\d+)\s*([smhd])\s*$")
 _UNIT_S = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 #: I generi che hanno uno stato nello specchio e un'ultima esecuzione.
-_BEHAVIOR_KINDS = {kind: domain for domain, kind in BEHAVIOR_DOMAINS.items()}
-#: Il dominio di Home Assistant -> il genere: `tipo=automation` senza
-#: `genere` e' una domanda sulle automazioni, e per loro conta l'ultima
-#: esecuzione, non l'ultimo cambio di stato (spec §2.2).
+_BEHAVIOR_KINDS = frozenset(BEHAVIOR_DOMAINS.values())
 #: I generi che si chiedono per `riferimento` e rispondono col dettaglio
 #: completo di `queries.view`. Un dispositivo senza `riferimento` si cerca
 #: invece per nome, come faceva il vecchio `search` («la lavatrice»).

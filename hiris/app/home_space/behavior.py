@@ -44,30 +44,6 @@ logger = logging.getLogger(__name__)
 #: sia segreto -- e nessuna API la espone.
 _SECRETS = "secrets.yaml"
 
-# Le RAGIONI di `file_non_letti` (`reread()`, sotto). Pubbliche perche' chi
-# consuma quella mappa per decidere se dichiarare un punto cieco
-# (`tools.py::ToolDispatcher._blind_spots`) deve poter distinguere i due
-# generi senza duplicare la stringa letterale -- ri-review sul Task 2
-# «rifiutare e importare», secondo giro di correzioni: la stessa forma del
-# fianco gia' chiuso su `_blind_spots` (guasto di adesso vs limite stabile),
-# un livello piu' sotto.
-#
-# Un file davvero assente (la cartella e' raggiungibile, il file no) non
-# nasconde NIENTE: non c'e' contenuto scritto da poter mancare, quindi non
-# e' un punto cieco per `search` -- va creato, non riparato.
-FILE_GENUINELY_ABSENT = "assente"
-
-# Quando la cartella di configurazione di Home Assistant stessa non e'
-# raggiungibile (`ha_folder is None`, sotto): i due file POTREBBERO esserci,
-# HIRIS non ha potuto nemmeno controllare. E' un guasto DI ADESSO -- il
-# Supervisor puo' non aver ancora montato la cartella (`server.py::
-# behavior_sentinel` la ricerca a ogni giro apposta per questo), non
-# un'assenza -- misurato che confonderlo con `FILE_GENUINELY_ABSENT` spegne
-# `nulla_riconosciuto` per SEMPRE su questa casa, con un motivo che dice
-# "cio' che c'e' scritto li' dentro potrebbe esistere lo stesso" di un file
-# che il codice non ha nemmeno guardato.
-FOLDER_UNREACHABLE = "cartella non raggiungibile"
-
 # entity_id canonico (dominio.oggetto). Qui serve a RICONOSCERE, dentro una
 # configurazione di plancia, quali stringhe sono un entity_id.
 #
@@ -87,16 +63,6 @@ FOLDER_UNREACHABLE = "cartella non raggiungibile"
 #   una guardia contro l'iniezione (stretta) e un riconoscitore
 #   (largo). Allinearle sarebbe una falla, non una pulizia.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
-
-# Sentinella per distinguere «la chiave non c'e'» da «la chiave c'e' e vale
-# None» in `scripts_by_key.get(...)`. Con `None` come default le due cose
-# sono indistinguibili, e uno scripts.yaml a meta' modifica (chiave presente,
-# valore nullo) faceva emettere lo stesso script due volte: una `solo_stato`
-# (perche' "sembrava" senza corpo) e una `solo_file` (perche' "sembrava" mai
-# vista) — fino a un UNIQUE constraint failed che fa fallire l'intero
-# aggiornamento del comportamento.
-_ABSENT = object()
-
 
 #: I due domini che portano un comportamento. Le scene non entrano in questa
 #: fetta: `scene/config` esiste, ma il vocabolario di `tipo` ha due valori e

@@ -1538,7 +1538,7 @@ class ToolDispatcher:
         self._ha = ha
         # Il registro dei servizi (`action/registry.py::ServiceRegistry`), la
         # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
-        # stessa ragione di `_ha_channel`: due registri sarebbero due opinioni
+        # stessa ragione di `_ha`: due registri sarebbero due opinioni
         # su cosa esiste, e potrebbero divergere. Serve a `promise` per
         # verificare un `fai` ADESSO (`_verify_now`). `None` e' legittimo e
         # NON passa da `_missing_resource` (che solleverebbe un errore
@@ -1607,32 +1607,6 @@ class ToolDispatcher:
         "calendar": ("ha",),
     }
 
-    def _ha_channel(self):
-        """Il canale vivo verso Home Assistant -- uno solo, mai un secondo.
-
-        `related` chiede a Home Assistant un fatto che non esiste in nessun
-        archivio (chi tocca cosa, ADESSO), quindi gli serve il client. Aprirne
-        uno qui sarebbe un secondo canale verso la stessa casa: la fondamenta
-        «nessun doppione» vale anche per le connessioni, e due websocket che
-        si autenticano da soli sono due cose che possono divergere.
-
-        Il canale arriva da fuori (`ha=`), dall'unico costruttore del
-        dispatcher (`api/handlers_chat.py::create_tool_dispatcher`),
-        ed e' lo stesso oggetto che riceve la porta dell'azione.
-
-        C'e' stato per poco un ripiego che leggeva `porta._ha` -- l'attributo
-        privato di un altro oggetto -- perche' quella fetta non poteva toccare
-        il costruttore. E' durato il tempo di aggiungere una riga la', ed e'
-        uscito: un modulo che conosce le parti private di un altro e' un
-        accoppiamento che nessun test dichiara, e si scopre il giorno in cui
-        l'altro cambia nome a un campo.
-
-        `None` quando il canale non c'e', e chi chiama lo DICHIARA: uno
-        strumento che tace perche' non ha la connessione e uno che tace perche'
-        non c'e' nessun legame direbbero la stessa cosa.
-        """
-        return self._ha
-
     def _missing_resource(self, name: str) -> str | None:
         """Quale archivio serve a questo strumento e non c'e'."""
         for which in self._RESOURCE_PER_TOOL.get(name, ()):
@@ -1642,7 +1616,7 @@ class ToolDispatcher:
                 return "l'archivio della memoria non e' ancora stato caricato"
             if which == "porta" and self._actuator is None:
                 return "il collegamento con Home Assistant non e' disponibile"
-            if which == "ha" and self._ha_channel() is None:
+            if which == "ha" and self._ha is None:
                 # Distinto dal messaggio della porta apposta: li' manca
                 # l'oggetto che ESEGUE, qui il canale a cui CHIEDERE. Sono due
                 # assenze diverse, e un utente che legge la risposta del
@@ -1863,16 +1837,7 @@ class ToolDispatcher:
         NON hanno questo cancello: un registro caduto puo' nascondere altri
         omonimi anche quando QUESTA ricerca ha gia' trovato qualcosa, quindi
         possono uscire accanto a candidati gia' trovati (`tools.py::
-        SEARCH_TOOL_DEF["description"]` lo dichiara).
-
-        Terzo giro di ri-review: un file "genuinamente assente"
-        (`behavior.FILE_GENUINELY_ABSENT`, la cartella di HA si raggiunge ma
-        il file no) NON entra affatto in questo elenco -- non e' un terzo
-        genere da etichettare, e' un motivo che qui non conta per niente:
-        non c'e' contenuto scritto da poter mancare, quindi non nasconde
-        NIENTE a chi cerca. Solo `behavior.FOLDER_UNREACHABLE` (la cartella
-        stessa irraggiungibile) e "illeggibile: ..." producono una voce dal
-        ramo sui file di comportamento, sotto."""
+        SEARCH_TOOL_DEF["description"]` lo dichiara)."""
         entries: list[tuple[str, bool]] = []
         # I registri che la porta legge (`_SEARCHED_STORES`). Fino al
         # 30/09/2026 c'erano anche le «etichette», perche' la vecchia ricerca
@@ -2118,7 +2083,7 @@ class ToolDispatcher:
             available = ", ".join(_OUR_LINK_TYPES)
             return {"errore": f"«{kind}» non e' un tipo di cui Home Assistant sappia "
                               f"i legami ({available})."}
-        response = await self._ha_channel().related(ha_kind, str(reference))
+        response = await self._ha.related(ha_kind, str(reference))
         return _readable_links(response, kind, reference)
 
     # -- ricorda -----------------------------------------------------------
@@ -2344,7 +2309,7 @@ class ToolDispatcher:
 
         Senza registro (`None`, legittimo: `promise` non lo dichiara come
         archivio richiesto in `_RESOURCE_PER_TOOL`) o senza un canale HA
-        vivo (`_ha_channel()` e' `None`, altrettanto legittimo per lo stesso
+        vivo (`_ha` e' `None`, altrettanto legittimo per lo stesso
         motivo) non si tenta nemmeno: il registro non si puo' caricare senza
         un client a cui chiedere, e restare senza canale resta il rifiuto
         onesto di sempre -- non diventa "«promise» non e' disponibile"
@@ -2354,7 +2319,7 @@ class ToolDispatcher:
         """
         if self._registry is None:
             return
-        channel = self._ha_channel()
+        channel = self._ha
         if channel is None:
             return
         try:
@@ -2488,7 +2453,7 @@ class ToolDispatcher:
             return None
         if not isinstance(resolved, dict) or resolved.get("errore"):
             return None
-        found = resolved.get("entita") or resolved.get("entity") or []
+        found = resolved.get("entita") or []
         return len(found) if isinstance(found, list) else None
 
     def _list_agenda(self, arguments: dict[str, Any]) -> dict:
@@ -2875,7 +2840,7 @@ class ToolDispatcher:
             if refusal is not None:
                 return refusal
         if query.kind == "errori":
-            answer = await self._ha_channel().system_log()
+            answer = await self._ha.system_log()
             if not isinstance(answer.get("voci"), list):
                 return {"errore": answer.get("errore",
                                              "il registro di Home Assistant non ha risposto")}
@@ -2933,7 +2898,7 @@ class ToolDispatcher:
         Gli istanti passano col loro ISO intero, secondi e microsecondi: la
         finestra delle righe (`dal`, con un secondo di scarto) e' calcolata
         sugli stessi."""
-        ha = self._ha_channel()
+        ha = self._ha
         start, end = query.start.isoformat(), query.end.isoformat()
         answers = await asyncio.gather(*(ha.history(chunk, start, end)
                                          for chunk in _history_chunks(entity_ids)))
@@ -2980,7 +2945,7 @@ class ToolDispatcher:
                   else {"serie": {}, "troncato": False})
         if "errore" in detail:
             return detail
-        bands = (await self._ha_channel().hourly_statistics(
+        bands = (await self._ha.hourly_statistics(
             band_ids, query.start.isoformat(), query.end.isoformat()) if band_ids
             else {"serie": {}})
         if not isinstance(bands, dict) or "serie" not in bands:
@@ -3036,7 +3001,7 @@ class ToolDispatcher:
         # seconda lettura.
         registry = {e.get("id"): e for e in home.get("entita") or []}
         keys = {s.ident: self._run_key(s.ident, registry) for s in chosen.subjects}
-        ha = self._ha_channel()
+        ha = self._ha
         seal = self._seal()
         if query.run_id is not None:
             subject = chosen.subjects[0]
@@ -3210,7 +3175,7 @@ class ToolDispatcher:
                             ceiling=MAX_CALENDAR_DAYS_AHEAD)
         behind = _clamp_days(arguments.get("giorni_indietro"),
                              default=0, ceiling=MAX_CALENDAR_DAYS_BACK)
-        ha = self._ha_channel()
+        ha = self._ha
         listing = await ha.calendars()
         if "errore" in listing:
             return listing

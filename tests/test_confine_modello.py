@@ -255,7 +255,7 @@ async def _chiedi(argomenti):
 
     dispatcher = _t.ToolDispatcher.__new__(_t.ToolDispatcher)
     canale = _CanaleFinto()
-    dispatcher._ha_channel = lambda: canale
+    dispatcher._ha = canale
     dispatcher._seal = lambda: None
     # Nessuna persona ha aperto questo turno: il soffitto non si pronuncia.
     dispatcher._soffitto = None

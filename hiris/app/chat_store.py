@@ -96,7 +96,6 @@ BRIDGE_SENTINELS = (
 # Vince la piu' TOLLERANTE: qui si riconosce, non si valida, e un
 # riconoscitore troppo stretto lascia passare il guasto che deve cogliere.
 LEAKED_TOOL_NAME_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]{2,})[^\x00-\x7F\s]")
-_TOXIC_ASSISTANT_RE = LEAKED_TOOL_NAME_RE
 _TOXIC_ASSISTANT_EXACT = frozenset({
     "Errore temporaneo del servizio AI. Riprova tra poco.",
     "Rate limit — riprova tra poco.",
@@ -114,7 +113,7 @@ def _is_toxic_assistant(content: str) -> bool:
     """Return True if this assistant content should be filtered from history."""
     if content in _TOXIC_ASSISTANT_EXACT:
         return True
-    if _TOXIC_ASSISTANT_RE.match(content):
+    if LEAKED_TOOL_NAME_RE.match(content):
         return True
     return any(content.startswith(p) for p in _TOXIC_ASSISTANT_PREFIXES)
 

@@ -125,19 +125,19 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
 
     assert set(anagrafe) == {"piani", "aree", "dispositivi", "entita",
                              "etichette", "categorie", "integrazioni"}
-    assert set(anagrafe["piani"][0]) == {"id", "nome", "livello", "icona"}
+    assert set(anagrafe["piani"][0]) == {"id", "nome", "livello"}
     assert set(anagrafe["aree"][0]) == {
-        "id", "nome", "piano_id", "icona", "alias", "etichette",
+        "id", "nome", "piano_id", "alias", "etichette",
         "entita_temperatura", "entita_umidita"}
     assert set(anagrafe["dispositivi"][0]) == {
-        "id", "nome", "nome_utente", "produttore", "modello", "area_id",
+        "id", "nome", "produttore", "modello", "area_id",
         "disabilitato", "etichette"}
     assert set(anagrafe["entita"][0]) == {
         "id", "nome", "translation_key", "unique_id", "original_name",
         "area_id", "dispositivo_id", "piattaforma", "config_entry_id",
         "categoria", "classe", "unita", "disabilitata", "nascosta",
         "alias", "etichette", "categorie"}
-    assert set(anagrafe["etichette"][0]) == {"id", "nome", "colore", "icona"}
+    assert set(anagrafe["etichette"][0]) == {"id", "nome"}
     assert set(anagrafe["categorie"][0]) == {"id", "nome", "ambito"}
     assert set(anagrafe["integrazioni"][0]) == {
         "entry_id", "dominio", "titolo", "stato", "motivo", "origine"}
@@ -178,27 +178,20 @@ def test_il_nome_originale_non_diventa_il_nome_quando_l_utente_non_ha_rinominato
     assert entita["original_name"] == "Energia prodotta oggi"
 
 
-def test_il_dispositivo_dice_se_e_stato_rinominato_dall_utente():
-    """`nome_utente` accanto a `nome`: l'inverter si chiama `SOLARE` perche'
-    il proprietario l'ha rinominato -- l'integrazione lo chiamava
-    `ZE1ES030N5E528`. Senza il campo, «SOLARE» e «Sun» sarebbero
-    indistinguibili come provenienza.
-
-    Mutazione che la uccide: far scrivere a `nome_utente` lo stesso
-    `name_by_user or name` di `nome` -- un dispositivo mai rinominato
-    direbbe di esserlo.
+def test_il_nome_del_dispositivo_e_quello_scelto_dall_utente_se_c_e():
+    """L'inverter si chiama `SOLARE` perche' il proprietario l'ha rinominato
+    -- l'integrazione lo chiamava `ZE1ES030N5E528`. Un dispositivo mai
+    rinominato porta il nome proposto dall'integrazione.
     """
     dispositivo = next(d for d in build_home_space(_REGISTRI)["dispositivi"])
 
     assert dispositivo["nome"] == "SOLARE"
-    assert dispositivo["nome_utente"] == "SOLARE"
     assert dispositivo["produttore"] == "ZCS Azzurro"
     assert dispositivo["modello"] == "Inverter ibrido"
 
     mai_rinominato = build_home_space(
         {"dispositivi": [{"id": "d2", "name": "Sun", "name_by_user": None}]})
     assert mai_rinominato["dispositivi"][0]["nome"] == "Sun"
-    assert mai_rinominato["dispositivi"][0]["nome_utente"] is None
 
 
 def test_l_anagrafe_tenuta_a_memoria_risponde_come_rispondeva_dal_disco(tmp_path):
