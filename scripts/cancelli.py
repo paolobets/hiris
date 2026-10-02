@@ -20,7 +20,9 @@ lento. Ognuno dice il suo esito, e basta un no per fermare il push:
 1. il registro dei doppioni e' leggibile e nessuna voce e' chiusa a meta';
 2. nessun doppione nuovo fra quelli che `doppioni.py` sa vedere, e nessuno
    guarito rimasto nell'elenco dei noti;
-3. le regole strutturali del censimento;
+3. il censimento: nessun codice morto nuovo (funzioni, rotte, opzioni,
+   tabelle), nessuna regola strutturale rotta, e nessuna eccezione rimasta a
+   coprire qualcosa che non c'e' piu' (`scripts/censimento_eccezioni.json`);
 4. il cancello R19, che legge l'albero del codice (`tests/test_fonte_unica.py`),
    con le prove del registro.
 

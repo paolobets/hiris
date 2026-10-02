@@ -803,10 +803,10 @@ def test_un_registro_che_esplode_non_ferma_il_censimento(tmp_path):
 # Dockerfile -- *«una disciplina scritta non e' una disciplina eseguita»*. I due
 # controlli rendevano la regola **misurabile**; questo la rende **imposta**.
 #
-# Il resto del censimento continua a uscire 0: e' uno strumento di lettura, e
-# far fallire un rilascio per un simbolo senza chiamanti fermerebbe il progetto
-# ogni settimana. Le due categorie nuove sono diverse -- dicono che una regola
-# STRUTTURALE e' stata rotta, e quella non si negozia.
+# Allora il resto del censimento continuava a uscire 0: far fallire un rilascio
+# per un simbolo senza chiamanti avrebbe fermato il progetto ogni settimana.
+# Dal 02/10/2026 fermano anche il codice morto e le rotte senza chiamanti --
+# vedi «Il cancello pieno» in fondo a questo file.
 
 
 def test_il_cancello_esce_1_quando_una_regola_strutturale_e_rotta(monkeypatch):
@@ -848,3 +848,75 @@ def test_senza_cancello_il_censimento_resta_uno_strumento_di_LETTURA(monkeypatch
                      "hiris/app/altro/modulo.py:12", "scrive in una tabella d'altri")])
 
     assert cens.run() == 0
+
+
+# ── Il cancello pieno (Tappa 0, 02/10/2026) ─────────────────────────────────
+#
+# Fino a oggi fermavano solo due categorie strutturali; un simbolo orfano o una
+# rotta senza chiamanti si leggevano e basta. Il blocco B della Tappa 0 ha
+# portato quelle categorie a zero, salvo poche voci volute: adesso un orfano
+# NUOVO ferma il push, e ogni voce voluta sta scritta con la sua ragione in
+# `scripts/censimento_eccezioni.json`. L'elenco puo' solo accorciarsi:
+# un'eccezione che non copre piu' niente ferma quanto un orfano.
+
+
+def test_un_simbolo_orfano_nuovo_ferma_il_cancello():
+    """Mutazione ESEGUITA: aggiunta in `hiris/app/config.py` la funzione
+    `def _orfana_di_prova(): return 1` -- `python scripts/censimento.py
+    --cancello` esce 1 e la nomina."""
+    findings = [censimento.Reperto("simbolo-orfano", "_orfana", "hiris/app/x.py:1")]
+    assert censimento.stopping(findings, exceptions={}) == findings
+
+
+def test_una_variabile_d_ambiente_non_ferma():
+    """Le variabili lette e mai esportate restano una lettura: una parte arriva
+    da fuori (`SUPERVISOR_TOKEN`, `PATH`, `HOME`) e il rilevatore non le
+    distingue dalle costanti travestite."""
+    findings = [censimento.Reperto("envvar-mai-esportata", "PATH", "hiris/app/x.py:1")]
+    assert censimento.stopping(findings, exceptions={}) == []
+
+
+def test_un_eccezione_scritta_non_ferma_e_una_guarita_si():
+    kept = censimento.Reperto("simbolo-solo-test", "actuator_round",
+                              "hiris/app/server.py:2001")
+    exceptions = {"simbolo-solo-test": {
+        "actuator_round": "pausa voluta, decisione 10: lo riaccende lo strato 4"}}
+    assert censimento.stopping([kept], exceptions=exceptions) == []
+    assert censimento.stale_exceptions([kept], exceptions=exceptions) == []
+    assert censimento.stale_exceptions([], exceptions=exceptions) == [
+        ("simbolo-solo-test", "actuator_round")]
+
+
+def test_un_eccezione_vale_solo_per_la_sua_categoria():
+    """Un nome eccettuato come «usato solo dai test» non copre lo stesso nome
+    il giorno in cui resta senza nessun chiamante: e' un fatto diverso, e
+    vuole una ragione sua."""
+    orphan = censimento.Reperto("simbolo-orfano", "actuator_round", "hiris/app/server.py:1")
+    exceptions = {"simbolo-solo-test": {"actuator_round": "pausa voluta, decisione 10"}}
+    assert censimento.stopping([orphan], exceptions=exceptions) == [orphan]
+
+
+def test_un_eccezione_senza_ragione_non_si_legge(tmp_path):
+    """Un'eccezione muta e' un permesso che nessuno puo' rivedere."""
+    import json
+
+    import pytest
+
+    path = tmp_path / "eccezioni.json"
+    path.write_text(json.dumps({"simbolo-orfano": {"_x": "si'"}}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="_x"):
+        censimento.read_exceptions(path)
+    path.write_text(json.dumps({"categoria-inventata": {"_x": "una ragione abbastanza lunga"}}),
+                    encoding="utf-8")
+    with pytest.raises(SystemExit, match="categoria-inventata"):
+        censimento.read_exceptions(path)
+
+
+def test_le_eccezioni_versionate_coprono_esattamente_i_reperti_di_oggi():
+    """Lo stato del repository: il cancello pieno passa, e nessuna eccezione e'
+    rimasta a coprire qualcosa che non c'e' piu'. Se questa prova arrossisce
+    per un reperto nuovo, non e' lei da aggiustare; se arrossisce per
+    un'eccezione guarita, si toglie la riga dal file."""
+    import scripts.censimento as cens
+
+    assert cens.run(cancello=True) == 0

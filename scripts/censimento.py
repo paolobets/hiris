@@ -5,11 +5,15 @@ Rende eseguibile la «review totale» del Refactor 2.0 (vedi CLAUDE.md): in un
 progetto di demolizione la domanda non e' «cio' che hai aggiunto e' corretto?»
 ma «cosa hai lasciato orfano?», e le righe morte non stanno dentro il diff.
 
-Legge e stampa. Non modifica niente, ed esce sempre 0: e' uno strumento di
-lettura, non un cancello di CI.
+Legge e stampa, e non modifica niente. Senza argomenti esce sempre 0: e' uno
+strumento di lettura. Con `--cancello` esce 1 quando trova un reperto che
+ferma -- un orfano nuovo, una regola strutturale rotta, o un'eccezione che non
+copre piu' niente -- ed e' cosi' che gira nel pre-push e nella CI
+(`scripts/cancelli.py`).
 
 Uso:
   python scripts/censimento.py
+  python scripts/censimento.py --cancello
 """
 import argparse
 import ast
@@ -17,6 +21,7 @@ import collections
 import functools
 import importlib.util
 import io
+import json
 import re
 import sys
 import tokenize
@@ -907,24 +912,89 @@ def stampa(reperti: list[Reperto]) -> None:
     print(f"\nTotale reperti: {len(reperti)}")
 
 
-#: Le due categorie che **fermano** un rilascio, e non sono tutte le altre.
+#: Le categorie che fermano il cancello.
 #:
-#: Il resto del censimento esce sempre 0 ed e' giusto cosi': e' uno strumento
-#: di lettura, e far fallire un rilascio per un simbolo senza chiamanti
-#: fermerebbe il progetto ogni settimana, finche' qualcuno non imparasse a
-#: passargli accanto -- e uno strumento che si aggira non serve a niente.
+#: **Le prime due sono regole strutturali** (dall'11/09/2026): un modulo che
+#: scrive nelle tabelle di un altro e un'operazione re-implementata fuori dal
+#: registro sono cio' che la spec dei tre attori (§15) chiede a qualcuno di
+#: DIFENDERE. La lezione che l'ha insegnato: *«una disciplina scritta non e'
+#: una disciplina eseguita»* -- tre release hanno ignorato il pin del
+#: Dockerfile prima che qualcuno lo rendesse un passo che fallisce.
 #:
-#: Queste due sono di un'altra specie: non dicono «qui c'e' del disordine»,
-#: dicono che una regola STRUTTURALE e' rotta. Un modulo che scrive nelle
-#: tabelle di un altro e un'operazione re-implementata fuori dal registro sono
-#: esattamente cio' che la spec §15 chiede a qualcuno di DIFENDERE, e il piano
-#: cita la lezione che l'ha insegnato: *«una disciplina scritta non e' una
-#: disciplina eseguita»* -- tre release hanno ignorato il pin del Dockerfile
-#: prima che qualcuno lo rendesse un passo che fallisce.
-CATEGORIE_FERMANTI = ("scrittura-fuori-schema", "operazione-fuori-dal-registro")
+#: **Le altre sono il codice morto** (dal 02/10/2026, Tappa 0 dello sprint
+#: «Una fonte sola di verita'»). Finche' il repository ne portava decine,
+#: farle fermare avrebbe fermato il progetto ogni settimana; il blocco B le ha
+#: portate a zero salvo poche voci volute, e da li' in poi un orfano nuovo e'
+#: una notizia, non rumore.
+#:
+#: Restano fuori le variabili d'ambiente (una parte arriva da fuori --
+#: `SUPERVISOR_TOKEN`, `PATH`, `HOME` -- e il rilevatore non le distingue) e
+#: le categorie su cui il rilevatore dichiara di non poter concludere.
+CATEGORIE_FERMANTI = (
+    "scrittura-fuori-schema", "operazione-fuori-dal-registro",
+    "simbolo-orfano", "simbolo-solo-test",
+    "rotta-senza-chiamanti", "rotta-solo-test",
+    "opzione-mai-letta", "tabella-mai-toccata", "tabella-scritta-mai-letta",
+)
+
+#: Le voci volute, ognuna con la sua ragione scritta. Possono solo diminuire.
+ECCEZIONI = Path(__file__).with_name("censimento_eccezioni.json")
+
+#: Sotto questa lunghezza una ragione non spiega niente («si'», «ovvio»).
+_SHORTEST_REASON = 15
 
 
-def run(*, cancello: bool = False) -> int:
+def read_exceptions(path: Path) -> dict[str, dict[str, str]]:
+    """`{categoria: {nome: ragione}}`, letto e controllato.
+
+    Un file che non c'e' vale «nessuna eccezione». Una categoria che non
+    ferma, o una ragione che non dice niente, fermano la lettura: un permesso
+    scritto male e' peggio di un permesso che manca.
+    """
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"censimento: {path.name} non si legge ({error})") from error
+    if not isinstance(raw, dict):
+        raise SystemExit(f"censimento: {path.name} deve essere un oggetto per categoria")
+    for category, names in raw.items():
+        if category not in CATEGORIE_FERMANTI:
+            raise SystemExit(
+                f"censimento: {path.name} nomina la categoria «{category}», che non "
+                "ferma il cancello: un'eccezione li' non difende niente")
+        if not isinstance(names, dict):
+            raise SystemExit(f"censimento: «{category}» in {path.name} deve mappare "
+                             "ogni nome alla sua ragione")
+        for name, reason in names.items():
+            if not isinstance(reason, str) or len(reason.strip()) < _SHORTEST_REASON:
+                raise SystemExit(
+                    f"censimento: l'eccezione «{name}» ({category}) non porta una "
+                    "ragione scritta: un permesso muto non si puo' rivedere")
+    return raw
+
+
+def stopping(findings: list[Reperto], *, exceptions: dict) -> list[Reperto]:
+    """I reperti che fermano: di una categoria che ferma, e senza un'eccezione
+    scritta **per quella categoria e quel nome**."""
+    return [r for r in findings
+            if r.categoria in CATEGORIE_FERMANTI
+            and r.nome not in (exceptions.get(r.categoria) or {})]
+
+
+def stale_exceptions(findings: list[Reperto], *, exceptions: dict) -> list[tuple[str, str]]:
+    """Le eccezioni che non coprono piu' niente: il reperto e' guarito e la
+    riga e' rimasta. Fermano quanto un orfano -- un permesso che nessuno usa
+    e' il posto dove il prossimo orfano con lo stesso nome passerebbe in
+    silenzio."""
+    found = {(r.categoria, r.nome) for r in findings}
+    return sorted((category, name)
+                  for category, names in exceptions.items() for name in names
+                  if (category, name) not in found)
+
+
+def run(*, cancello: bool = False, exceptions: Path | None = None) -> int:
     file_app = _file_py(APP)
     reperti = censisci_tabelle(file_app)
     reperti += censisci_scritture(file_app)
@@ -937,15 +1007,23 @@ def run(*, cancello: bool = False) -> int:
     stampa(reperti)
     if not cancello:
         return 0
-    fermanti = [r for r in reperti if r.categoria in CATEGORIE_FERMANTI]
+    allowed = read_exceptions(exceptions or ECCEZIONI)
+    fermanti = stopping(reperti, exceptions=allowed)
+    healed = stale_exceptions(reperti, exceptions=allowed)
     if fermanti:
         print(file=sys.stderr)
-        print(f"{_ROSSO}CANCELLO: {len(fermanti)} violazioni strutturali. "
-              f"Non e' disordine da sistemare con calma: e' una regola rotta.{_RESET}",
-              file=sys.stderr)
+        print(f"{_ROSSO}CANCELLO: {len(fermanti)} reperti che fermano. Si toglie "
+              "il codice morto, o si scrive l'eccezione con la sua ragione in "
+              f"{ECCEZIONI.name}.{_RESET}", file=sys.stderr)
         for r in fermanti:
             print(f"  {r.categoria}  {r.nome}  ({r.dove})", file=sys.stderr)
-    return 1 if fermanti else 0
+    if healed:
+        print(file=sys.stderr)
+        print(f"{_ROSSO}CANCELLO: {len(healed)} eccezioni GUARITE, da togliere da "
+              f"{ECCEZIONI.name}: non coprono piu' niente.{_RESET}", file=sys.stderr)
+        for category, name in healed:
+            print(f"  {category}  {name}", file=sys.stderr)
+    return 1 if fermanti or healed else 0
 
 
 def main() -> None:
@@ -955,9 +1033,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--cancello", action="store_true",
-        help="esce 1 se una regola STRUTTURALE e' rotta (scritture fuori dallo "
-             "schema del proprio modulo, operazioni re-implementate fuori dal "
-             "registro). Senza, il censimento resta uno strumento di lettura e "
+        help="esce 1 se trova un reperto che ferma (codice morto nuovo, una "
+             "regola strutturale rotta) o un'eccezione che non copre piu' "
+             "niente. Senza, il censimento resta uno strumento di lettura e "
              "esce sempre 0.")
     args = parser.parse_args()
     sys.exit(run(cancello=args.cancello))
