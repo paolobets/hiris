@@ -63,6 +63,20 @@ python scripts/sponde_js.py || {
     exit 1
 }
 
+# I cancelli della fonte unica (R19, R20 dello sprint «Una fonte sola di
+# verita'»): un doppione nuovo, un'eccezione guarita rimasta in elenco, una
+# voce del registro chiusa a meta'. `censimento.py` e `doppioni.py` avevano
+# una modalita' cancello dal giorno in cui sono nati e non giravano da nessuna
+# parte: adesso girano a OGNI push, tutti insieme (mezzo minuto, misurato il
+# 01/10/2026), e non dormono.
+# L'elenco dei cancelli vive in `scripts/cancelli.py`, non qui: lo stesso
+# comando lo lancia la CI, e due elenchi sarebbero due verita'.
+python scripts/cancelli.py || {
+    echo "HIRIS: un cancello della fonte unica ha fermato il push."
+    echo "       Per rivederlo:  python scripts/cancelli.py"
+    exit 1
+}
+
 # Un clone senza `npm install` non ha oxlint: non lo si blocca per uno
 # strumento che non ha. Il CI e' il cancello vero su questo strato, questo e'
 # la comodita' veloce.

@@ -244,3 +244,60 @@ def test_una_costante_solo_NOMINATA_in_una_docstring_non_e_un_legame(tmp_path):
                     '"""Una prova che PARLA di VOCI e di p.js senza toccarli."""\n\n\n'
                     'def test_niente():\n    assert True\n')
     assert len(cerca_vocabolari_paralleli([py], [js], [prova])) == 1
+
+
+# --- l'elenco dei doppioni noti (cancello della fonte unica) ---------------
+
+def test_un_doppione_noto_non_ferma_e_uno_nuovo_si():
+    """Mutazione ESEGUITA: in `against_known` restituito sempre `([], [])` --
+    rossa (il reperto nuovo non e' piu' fra i fermanti)."""
+    from _comune import Reperto
+    from doppioni import against_known, fingerprint
+
+    old = Reperto("regex-ripetuta", "^a+$", ["hiris/app/a.py:10", "hiris/app/b.py:20"])
+    new = Reperto("regex-ripetuta", "^b+$", ["hiris/app/a.py:11", "hiris/app/c.py:5"])
+    known = {fingerprint(old): "B-24"}
+    assert against_known([old], known) == ([], [])
+    unknown, healed = against_known([old, new], known)
+    assert unknown == [new] and healed == []
+
+
+def test_l_impronta_non_cambia_se_il_codice_si_sposta_di_riga():
+    from _comune import Reperto
+    from doppioni import fingerprint
+
+    before = Reperto("regex-ripetuta", "^a+$", ["hiris/app/a.py:10", "hiris/app/b.py:20"])
+    after = Reperto("regex-ripetuta", "^a+$", ["hiris/app/b.py:99", "hiris/app/a.py:3"])
+    elsewhere = Reperto("regex-ripetuta", "^a+$", ["hiris/app/a.py:10", "hiris/app/z.py:20"])
+    assert fingerprint(before) == fingerprint(after)
+    assert fingerprint(before) != fingerprint(elsewhere)
+    third = Reperto("regex-ripetuta", "^a+$",
+                    ["hiris/app/a.py:10", "hiris/app/a.py:40", "hiris/app/b.py:20"])
+    assert fingerprint(before) != fingerprint(third), (
+        "una terza copia negli stessi file deve avere un'altra impronta")
+
+
+def test_un_doppione_guarito_rimasto_in_elenco_ferma_il_cancello():
+    """L'elenco puo' solo accorciarsi: una voce che il codice non conferma
+    piu' va tolta, o l'elenco diventa un permesso in bianco per rifarla.
+
+    Mutazione ESEGUITA: tolto il calcolo dei guariti -- rossa."""
+    from doppioni import against_known
+
+    healed = "regex-ripetuta · ^a+$ · hiris/app/a.py + hiris/app/b.py · 2 posti"
+    assert against_known([], {healed: "B-24"}) == ([], [healed])
+
+
+def test_l_elenco_dei_noti_puo_solo_accorciarsi():
+    """Il tetto e' il numero di voci di oggi (25 il 01/10/2026). Scende quando
+    un doppione esce; alzarlo e' una riga di diff che una revisione vede."""
+    import json
+
+    known = json.loads((Path(__file__).resolve().parents[1] / "scripts"
+                        / "doppioni_noti.json").read_text(encoding="utf-8"))
+    assert len(known) == KNOWN_CEILING, (
+        f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CEILING}")
+
+
+KNOWN_CEILING = 25
+

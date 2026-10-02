@@ -1,0 +1,216 @@
+{
+ "letture-del-client": {
+  "hiris/app/action/actuator.py": {
+   "conti": {
+    "extract_from_target": 1
+   },
+   "voci": [
+    "E-09"
+   ]
+  },
+  "hiris/app/action/construction/workshop.py": {
+   "conti": {
+    "get_states": 1,
+    "list_labels": 1,
+    "read_configuration": 2,
+    "read_registries": 1,
+    "validate_config": 1
+   },
+   "voci": [
+    "A-01",
+    "A-15"
+   ]
+  },
+  "hiris/app/action/registry.py": {
+   "conti": {
+    "get_services": 1
+   },
+   "voci": [
+    "A-04"
+   ]
+  },
+  "hiris/app/api/soffitto.py": {
+   "conti": {
+    "users": 1
+   },
+   "voci": [
+    "F-01"
+   ]
+  },
+  "hiris/app/home_space/behavior.py": {
+   "conti": {
+    "behavior_configs": 1,
+    "get_states": 1,
+    "read_dashboards": 1
+   },
+   "voci": [
+    "A-12"
+   ]
+  },
+  "hiris/app/home_space/tools.py": {
+   "conti": {
+    "calendar_events": 1,
+    "calendars": 1,
+    "history": 1,
+    "hourly_statistics": 1,
+    "system_log": 1,
+    "trace": 1,
+    "traces": 1
+   },
+   "voci": [
+    "A-27",
+    "A-34",
+    "A-36"
+   ]
+  },
+  "hiris/app/home_space/topology.py": {
+   "conti": {
+    "get_config": 1,
+    "read_registries": 1
+   },
+   "voci": [
+    "A-01",
+    "A-07"
+   ]
+  },
+  "hiris/app/keeper/recipient.py": {
+   "conti": {
+    "get_services": 1,
+    "get_states": 1,
+    "read_registries": 1
+   },
+   "voci": [
+    "A-03",
+    "A-04"
+   ]
+  },
+  "hiris/app/mind/cadence.py": {
+   "conti": {
+    "recorded_changes": 2
+   },
+   "voci": [
+    "A-36"
+   ]
+  },
+  "hiris/app/panel_visibility.py": {
+   "conti": {
+    "panels": 1
+   },
+   "voci": [
+    "E-01"
+   ]
+  },
+  "hiris/app/server.py": {
+   "conti": {
+    "automation_traces": 1,
+    "extract_from_target": 1,
+    "hourly_statistics": 1,
+    "problems": 2,
+    "read_registries": 1,
+    "statistic_ids": 2,
+    "system_log": 1
+   },
+   "voci": [
+    "A-01",
+    "A-02",
+    "A-05",
+    "A-08",
+    "A-21"
+   ]
+  }
+ },
+ "letterali-di-stato": {
+  "hiris/app/home_space/briefing.py": {
+   "conti": {
+    "unknown": 1
+   },
+   "voci": [
+    "B-08"
+   ]
+  },
+  "hiris/app/home_space/privacy.py": {
+   "conti": {
+    "unavailable": 1,
+    "unknown": 1
+   },
+   "voci": [
+    "B-07"
+   ]
+  },
+  "hiris/app/home_space/queries.py": {
+   "conti": {
+    "unavailable": 1,
+    "unknown": 1
+   },
+   "voci": [
+    "B-09"
+   ]
+  },
+  "hiris/app/keeper/recipient.py": {
+   "conti": {
+    "unknown": 1
+   },
+   "non_e_un_doppione": "lo slug di ripiego di un destinatario senza nome: non e' uno stato di Home Assistant"
+  },
+  "hiris/app/proxy/entity_cache.py": {
+   "conti": {
+    "unknown": 1
+   },
+   "voci": [
+    "B-09"
+   ]
+  },
+  "hiris/app/server.py": {
+   "conti": {
+    "unknown": 1
+   },
+   "non_e_un_doppione": "l'impronta della build quando il file non si legge: non e' uno stato di Home Assistant"
+  },
+  "hiris/app/version.py": {
+   "conti": {
+    "unknown": 2
+   },
+   "non_e_un_doppione": "la versione dell'add-on quando config.yaml non si legge: non e' uno stato di Home Assistant"
+  }
+ },
+ "regola-del-fuori": {
+  "hiris/app/home_space/house_query.py": {
+   "conti": {
+    "categoria": 1,
+    "nascosta": 1
+   },
+   "voci": [
+    "B-01"
+   ]
+  },
+  "hiris/app/home_space/queries.py": {
+   "conti": {
+    "categoria": 3,
+    "disabilitata": 7,
+    "nascosta": 4
+   },
+   "voci": [
+    "B-01",
+    "B-02"
+   ]
+  },
+  "hiris/app/home_space/tools.py": {
+   "conti": {
+    "disabilitata": 1
+   },
+   "voci": [
+    "B-02"
+   ]
+  },
+  "hiris/app/home_space/topology.py": {
+   "conti": {
+    "categoria": 1,
+    "disabilitata": 3,
+    "nascosta": 3
+   },
+   "voci": [
+    "B-01"
+   ]
+  }
+ }
+}
