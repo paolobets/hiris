@@ -1,5 +1,66 @@
 # HIRIS — Changelog
 
+## [3.73.0] — Si toglie e si prepara: la Tappa 0 di «Una fonte sola di verità» (2026-10-02)
+
+### Perche'
+
+L'analisi del 01/10/2026 ha registrato, voce per voce, i punti in cui HIRIS sa la stessa cosa in
+due posti, tiene codice che nessuno chiama, o scrive una frase che il codice smentisce. Prima di unire le copie
+serviva togliere cio' che e' morto e costruire la rete che dice, a ogni passo, se una risposta e'
+cambiata. Questo rilascio fa solo quello: **nessun comportamento voluto cambia**. La fotografia a
+freddo delle porte (cio' che HIRIS risponde, su ingressi registrati dalla casa) e' identica a
+quella della 3.72.2 dopo ogni passo.
+
+### Cosa esce, e chi lo vede
+
+- **L'MCP esterno**: `GET /api/entities` non esiste piu'. Il ponte interno (`/api/mcp`, la coda dei
+  turni) resta, e `/api/mcp` accetta solo la credenziale di un turno del ponte.
+- **Lo streaming della chat**: `POST /api/chat` risponde sempre in JSON. Nessuna pagina di HIRIS
+  chiedeva lo streaming.
+- **Le due opzioni dell'embedder** (`memory.embedding_provider`, `memory.embedding_model`) escono
+  dalla pagina di configurazione dell'add-on: dalla 2.1.0 nessun percorso calcolava un embedding. Un
+  valore gia' salvato non ferma l'add-on. La pagina Modelli non le nomina piu'.
+- **Il giudizio `notevole`**: la pagina «Cosa ho capito» non lo mostra e la porta dei giudizi non lo
+  accetta. Dal 29/09/2026 impostarlo non cambiava niente. Una migrazione del sapere toglie le righe
+  gia' scritte (`notevole` e `direzione:*`) e le nomina una per una nel registro dell'add-on.
+- **Il resoconto in forma di documento**: `GET /api/mind/report?formato=documento` torna il JSON di
+  sempre.
+- **Undici annunci all'avvio** sugli archivi dismessi: dicevano «il file resta su disco» un attimo
+  prima che il file venisse cancellato. La cancellazione non cambia.
+- **Sette variabili d'ambiente** di prima della 3.0.0, che un'installazione nuova leggeva ancora
+  una volta: via Supervisor non arrivavano gia' piu'.
+- **Codice senza chiamanti**, circa 5.300 righe in meno nel prodotto: `chat_stream`, `simple_chat`,
+  l'embedder, `Lookup.find`, la semina delle opzioni, una trentina di residui piccoli. Il censore
+  dei tipi esce dall'immagine e diventa un attrezzo (`scripts/censore_tipi.py`).
+
+### Cosa nasce (attrezzi, non entrano nell'immagine)
+
+- Il registro dei doppioni letto da un programma (`scripts/registro.py`): una voce si chiude con un
+  comando, e i conti si chiedono.
+- La porta degli attrezzi verso la casa, di sola lettura (`scripts/casa.py`); la sonda di parita';
+  la fotografia delle porte; due batterie di misura (chat e attori) con la prima misura in token e
+  tempi (`docs/misure/2026-10-tappa-0.md`).
+- Quattro cancelli nel pre-push e nella CI: registro leggibile, nessun doppione nuovo, nessun codice
+  morto nuovo, nessuna lettura o regola ricopiata fuori dalla sua casa.
+
+### Corretto
+
+- Decine di commenti e docstring che nominavano moduli usciti o dicevano il contrario del codice, riscritti
+  leggendo il codice di oggi; `CLAUDE.md` e `README.md` riletti allo stesso modo.
+- I due messaggi d'avvio su `giorni_conservazione` non parlano piu' di una «migrazione».
+
+### Deciso dal proprietario
+
+I numeri di R18 (i costi fissi che lo sprint deve far scendere) sono nella spec. Le dieci operazioni
+costruite per le sette domande del proprietario restano nel codice, per il refactor degli agenti
+che seguira' lo sprint.
+
+### Aperto
+
+Due difetti su dati e permessi trovati dall'analisi (S-17 e `GET /api/home-space` a un «lettore»)
+escono in un rilascio a se', subito dopo questo. Il registro conta 370 voci aperte: sono il lavoro
+delle tappe 1-8.
+
 ## [3.72.2] — L'attuatore va in pausa (2026-10-01)
 
 ### Perche'
