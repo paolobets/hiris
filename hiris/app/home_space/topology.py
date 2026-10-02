@@ -590,8 +590,7 @@ def domain_of(entity_id) -> str:
 
     Lo DICHIARA Home Assistant nell'id stesso -- non e' un elenco nostro -- e
     per questo la lettura e' banale. Il punto non e' la logica: e' che era
-    scritta SEI volte (`nucleo`, `domande`, `entity_cache`, `action/verification`,
-    `home_space/behavior` due volte, `api/handlers_entities`) e due copie non
+    scritta SEI volte (in sei moduli, uno dei quali uscito da allora) e due copie non
     erano d'accordo. Su un id senza punto -- una riga di registro corrotta, un
     id sintetico di un'integrazione mal formata -- una restituiva l'id intero e
     l'altra la stringa vuota, cosi' il nucleo stampava «1 unknown» fra i

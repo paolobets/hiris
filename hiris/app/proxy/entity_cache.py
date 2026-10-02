@@ -20,11 +20,8 @@ logger = logging.getLogger(__name__)
 #
 # Vivono qui, accanto alla bandiera `loaded` che li governa, perche' duplicarne
 # il testo era esattamente il modo in cui il difetto e' sopravvissuto nei
-# fratelli. Al momento in cui questi messaggi sono nati li usavano quattro
-# moduli (dispatcher, ha_tools, briefing, api/handlers_entities): i primi tre
-# sono usciti nella demolizione (rispettivamente 68d3670, bca1b85, 2441b7d) --
-# oggi il solo lettore di produzione e' `api/handlers_entities.py`, via
-# `unreadable_inventory_error()` sotto.
+# fratelli. Oggi li leggono gli strumenti della chat (`home_space/tools.py`),
+# via `unreadable_inventory_error()` sotto.
 NO_INVENTORY_ERROR = (
     "Non sono riuscito a leggere lo stato della casa: l’inventario delle "
     "entità non è disponibile. Non posso dire che non ci sia nulla, solo che "
@@ -692,8 +689,8 @@ class EntityCache:
         altro percorso toglieva una voce (allora: la riconnessione WS non
         rileggeva lo specchio, ora lo fa `reload`).
 
-        Il danno non era solo un elenco piu' lungo del vero: `GET
-        /api/entities` continuava a mostrare l'ultimo stato di un'entita'
+        Il danno non era solo un elenco piu' lungo del vero: chi elencava
+        le entita' continuava a mostrare l'ultimo stato di un'entita'
         cancellata, `action/verification` la dichiarava esistente («guarda lo
         specchio»), Home Assistant rispondeva 200 senza fare niente e
         l'attuatore rileggeva lo stesso specchio prima e dopo, riferendo un

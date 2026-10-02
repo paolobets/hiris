@@ -47,7 +47,7 @@ class _Richiesta(dict):
         # `method` e `path` ci sono sempre in una richiesta vera, e il confine
         # li nomina: una finta senza si difenderebbe da un mondo che non esiste.
         self.method = "GET"
-        self.path = "/api/entities"
+        self.path = "/api/health"
         # La rotta risolta da aiohttp prima dei middleware: una finta senza
         # rotta e' una richiesta a un indirizzo che non esiste, e il cancello
         # al confine la tratta cosi'.
@@ -201,7 +201,7 @@ class _Firmata(_Richiesta):
     """Come `_Richiesta`, ma con un corpo: la firma lo copre."""
 
     def __init__(self, *, headers, remote, token="", corpo=b"",
-                 metodo="GET", percorso="/api/entities", servizi=None):
+                 metodo="GET", percorso="/api/health", servizi=None):
         super().__init__(headers=headers, remote=remote, token=token)
         self._corpo = corpo
         self.method = metodo
@@ -240,7 +240,7 @@ def _firmante(archivio, ruolo="lettore", nome="sviluppo", specie="integrazione")
 
 
 def _richiesta_firmata(privata, pubblica, archivio, *, metodo="GET",
-                       percorso="/api/entities", corpo=b"", unico="u-1"):
+                       percorso="/api/health", corpo=b"", unico="u-1"):
     momento = time.time()
     firma = base64.b64encode(privata.sign(
         canali.materia_firmata(metodo, percorso, momento, unico, corpo))

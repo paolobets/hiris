@@ -125,7 +125,7 @@ ADMIN_SWEEP_302AE885 = {
     "GET /api/chat/conversations": 200, "GET /api/chat/history": 200,
     "GET /api/chat/reply/{job_id}": 503, "GET /api/config": 200,
     "GET /api/constructions": 503, "GET /api/constructions/{id}": 503,
-    "GET /api/entities": 503, "GET /api/executions/{id}": 503,
+    "GET /api/executions/{id}": 503,
     "GET /api/health": 200, "GET /api/home-space": 200, "GET /api/memories": 200,
     "GET /api/mind/analysis": 503, "GET /api/mind/knowledge": 503,
     "GET /api/mind/report": 503, "GET /api/mind/watching": 503,
@@ -136,7 +136,7 @@ ADMIN_SWEEP_302AE885 = {
     "HEAD /api/chat-settings": 200, "HEAD /api/chat/conversations": 200,
     "HEAD /api/chat/history": 200, "HEAD /api/chat/reply/{job_id}": 503,
     "HEAD /api/config": 200, "HEAD /api/constructions": 503,
-    "HEAD /api/constructions/{id}": 503, "HEAD /api/entities": 503,
+    "HEAD /api/constructions/{id}": 503,
     "HEAD /api/executions/{id}": 503, "HEAD /api/health": 200,
     "HEAD /api/home-space": 200, "HEAD /api/memories": 200,
     "HEAD /api/mind/analysis": 503, "HEAD /api/mind/knowledge": 503,
@@ -391,7 +391,7 @@ def test_ogni_voce_porta_la_sua_RAGIONE_e_nessuna_e_doppia():
 #: Cio' che chi non amministra NON deve mai raggiungere (security-constraints
 #: 2.22). Non e' una copia della lista: e' l'altra meta' della decisione, e la
 #: prova sotto dice che le due meta' non si toccano.
-_VIETATE_PREFISSI = ("/api/usage", "/api/models", "/api/entities", "/api/home-space",
+_VIETATE_PREFISSI = ("/api/usage", "/api/models", "/api/home-space",
                      "/api/briefing", "/api/mind/", "/api/services",
                      "/api/constructions", "/api/proposals", "/api/misure",
                      "/api/reasoning/", "/api/mcp")

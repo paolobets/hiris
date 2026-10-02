@@ -208,8 +208,8 @@ def compose_briefing(app) -> tuple[str, dict]:
     home_space_store = app.get("home_space_store")
     memory_store = app.get("memory_store")
     cache = app.get("entity_cache")
-    # Stessa difesa di `handle_list_entities`: una cache finta senza
-    # `all_states` (o assente) non e' un inventario leggibile.
+    # Una cache finta senza `all_states` (o assente) non e' un inventario
+    # leggibile.
     if cache is not None and not hasattr(cache, "all_states"):
         cache = None
 

@@ -1,12 +1,19 @@
-def test_create_app_registers_entities_routes():
-    """fetta E3 Task 5: era test_create_app_registers_entities_and_suggestions_
-    routes -- le due asserzioni /api/suggestions* sono uscite col Brain
-    auto-proponente (handlers_suggestions.py, cancellato). /api/entities non
-    c'entra nulla col Brain: resta, potato al proprio soggetto."""
+def test_il_ponte_interno_resta_e_l_mcp_esterno_no():
+    """Tappa 0 dello sprint «Una fonte sola di verita'» (decisione 5 del
+    proprietario, 01/10/2026): l'MCP di integrazione esterno esce -- il
+    gateway che lo usava e' stato abbandonato -- e con lui `GET
+    /api/entities`, che non aveva altri chiamanti. **Il ponte interno DEVE
+    restare**: `/api/mcp` e le due rotte della coda dei turni.
+
+    Mutazione ESEGUITA: tolta da `server.py` la riga
+    `add_post("/api/mcp", handle_mcp)` -- rossa (`/api/mcp mancante`).
+    """
     from hiris.app.server import create_app
     app = create_app()
     paths = {r.resource.canonical for r in app.router.routes() if r.resource is not None}
-    assert "/api/entities" in paths
+    for kept in ("/api/mcp", "/api/reasoning/claim", "/api/reasoning/submit"):
+        assert kept in paths, f"{kept} mancante: il ponte interno DEVE restare"
+    assert "/api/entities" not in paths
 
 
 # fetta E3 Task 11: test_supervisor_client_lifecycle_wired_in_server_source e

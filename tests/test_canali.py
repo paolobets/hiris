@@ -62,7 +62,7 @@ def _servizi(pubblica, *, nome="sviluppo", ruolo="lettore", specie="integrazione
                                  "chiave": pubblica, "stato": "autorizzato"}})
 
 
-def _firma(privata, *, chiave=None, metodo="GET", percorso="/api/entities",
+def _firma(privata, *, chiave=None, metodo="GET", percorso="/api/health",
            momento=None, unico="u-1", corpo=b""):
     momento = time.time() if momento is None else momento
     if chiave is None:
@@ -144,7 +144,7 @@ def test_anche_il_PERCORSO_e_dentro_la_firma():
 
     Mutazione: firmare solo il corpo -- rossa."""
     privata, pubblica = _coppia()
-    richiesta = _firma(privata, percorso="/api/entities")
+    richiesta = _firma(privata, percorso="/api/health")
     richiesta["percorso"] = "/api/usage/reset"
 
     esito, _ = _verifica(_servizi(pubblica), **richiesta)
@@ -303,7 +303,7 @@ def test_una_firma_STORTA_non_fa_cadere_la_verifica():
     for guasta in ("", "non-base64!!", base64.b64encode(b"corta").decode()):
         esito, motivo = _verifica(
             _servizi(pubblica), chiave=pubblica, momento=time.time(),
-            unico="u-x", firma=guasta, metodo="GET", percorso="/api/entities",
+            unico="u-x", firma=guasta, metodo="GET", percorso="/api/health",
             corpo=b"")
         assert esito is None and motivo
 

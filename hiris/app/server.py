@@ -28,7 +28,6 @@ from .api.handlers_chat_history import (
     handle_resume_conversation,
 )
 from .api.handlers_config import handle_config
-from .api.handlers_entities import handle_list_entities
 from .api.handlers_misure import handle_misure
 from .api.handlers_models import (
     handle_get_models_config,
@@ -5534,7 +5533,6 @@ def create_app() -> web.Application:
     # config/usage-route.js) sono usciti ai Task 7 e 8. Col gate verde
     # (`grep -rn "api/chatbots" hiris/app/static/` a zero fetch, solo
     # commenti storici) la rotta e il suo handler sono usciti col Task 10.
-    app.router.add_get("/api/entities", handle_list_entities)
     # fetta E5 Task 4 ("il frontend"): erano
     # GET/DELETE /api/chatbots/{agent_id}/chat-history -- un placeholder
     # {agent_id} che il handler non leggeva mai da match_info (c'e' UNA
