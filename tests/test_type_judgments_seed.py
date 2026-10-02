@@ -174,34 +174,6 @@ def test_i_sedici_tipi_da_sapere_subito_sono_QUESTI():
         "binary_sensor.window"])
 
 
-def test_da_sapere_subito_NON_e_notevole_e_i_due_elenchi_DIVERGONO():
-    """La ragione per cui questa fetta esiste, scritta come prova: `notable`
-    sta su 23 tipi del vocabolario fra cui `light`, `switch`, `cover`,
-    `media_player`; `da_sapere_subito` su 16, e una luce accesa non c'e'. Se i
-    due elenchi coincidessero, il campo nuovo sarebbe un doppione -- ed e'
-    esattamente cio' che questa prova sorveglia.
-
-    `notable` si legge dal vocabolario e non dal seme: dal 02/10/2026 non e'
-    piu' un giudizio del sapere, e le sue dichiarazioni restano li' per il
-    censore dei tipi.
-    """
-    notevoli = {row.domain if row.device_class is None
-                else f"{row.domain}.{row.device_class}"
-                for row in tv._vocabulary.rows()
-                if row.fields.get(tv.NOTABLE) is not None
-                and row.fields[tv.NOTABLE].value is True}
-    assert len(notevoli) == 23
-    # `v != "no"` e non `v == "si"`: `lock` porta l'elenco `["jammed"]` (vedi la
-    # prova sopra), e con un filtro sul solo `si` questo confronto avrebbe
-    # taciuto su di lei.
-    subito = {s for _, s, f, v in tv.judgment_seed_rows()
-              if f == "da_sapere_subito" and v != "no"}
-    assert "light" in notevoli and "light" not in subito
-    assert "switch" in notevoli and "switch" not in subito
-    assert "alarm_control_panel" in subito and "alarm_control_panel" not in notevoli
-    assert notevoli != subito
-
-
 def test_OGNI_tipo_da_sapere_subito_HA_un_riposo_O_un_lavoro():
     """Ruling del controller (giro di correzioni 1, IMPORTANT 2b). Un tipo
     `da_sapere_subito: si` SENZA `riposo` ne' `lavoro` e' un caso **indecidibile**

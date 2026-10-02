@@ -137,9 +137,9 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
 
     # Nata dalla correzione R3b (revisione del tratto v3.23.0..HEAD,
     # 08/09/2026): `update=off` stava eccettuato insieme a `calendar`/`sensor`
-    # citando una decisione (il campo `notable` di `type_vocabulary`) che non nomina
-    # `update`. Il proprietario non ha mai deciso se un aggiornamento
-    # disponibile riguardi il «buono stato» della casa.
+    # citando una decisione che non nominava `update`. Il proprietario non ha
+    # mai deciso se un aggiornamento disponibile riguardi il «buono stato»
+    # della casa.
     OpenQuestion(
         Subject.STATE,
         "Un aggiornamento disponibile (`update=on`, 53 entita' di questa casa "

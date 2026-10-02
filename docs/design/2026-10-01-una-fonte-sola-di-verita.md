@@ -291,10 +291,22 @@ Ogni requisito dice cosa deve essere vero alla fine e come lo si controlla.
 - **R17.** **Unificare non costa di più.** La batteria della chat (token e tempi per domanda) e
   quella degli attori si rilanciano prima e dopo ogni tappa: se un numero peggiora, la tappa non è
   chiusa.
-- **R18.** I costi fissi scendono. Obiettivi misurabili, da fissare come numeri alla tappa 0 sulla
-  prima misura: nessun turno senza strumenti riceve regole sugli strumenti; il testo ripetuto fra
-  regole di base, guida del ponte e descrizioni sparisce; la casa si legge una volta all'avvio; la
-  gerarchia e lo specchio si calcolano una volta per turno.
+- **R18.** I costi fissi scendono. I numeri, fissati alla tappa 0 sulla prima misura e approvati dal
+  proprietario il 02/10/2026 (come sono calcolati: `docs/misure/2026-10-tappa-0.md`, «Obiettivi di
+  R18»):
+  - un turno senza strumenti riceve **0** caratteri di regole sugli strumenti (partenza 6.044) —
+    tappa 6;
+  - il catalogo degli strumenti sta in **≤ 32.425** caratteri (partenza 33.045: escono le 620 dei
+    dodici parametri descritti due volte fra `search` e `history`) — tappa 5;
+  - all'avvio la casa si legge **una volta**: `get_states` 1, `read_registries` 1 (partenza 2 e 2) —
+    tappa 2;
+  - il prompt fisso della chat sulla catena **non sale**: ≤ 39.415 caratteri e ≤ 21.500 token in
+    ingresso per un turno da un giro solo, a ogni tappa.
+
+  Tre costi non hanno ancora un numero di partenza, e quindi nemmeno un obiettivo in cifre: il testo
+  ripetuto fra regole di base, guida del ponte e descrizioni (si misura quando la tappa 5 lo
+  riscrive); la descrizione di `calendar` (partenza 3.050 caratteri); la gerarchia e lo specchio,
+  che devono calcolarsi **una volta per turno** e che la tappa 3 nasce contando.
 
 ### Che resti così
 
@@ -616,3 +628,11 @@ In `docs/superpowers/audit-2026-10-01/` — cartella fuori da git, archivio dell
   Le misure della tappa: `docs/misure/2026-10-tappa-0.md`.
   L'ordine dopo la Tappa 3 (domanda (b)): **a scaglioni** -- tappe 0-3, strati 1 e 2 degli attori,
   tappe 4-6, strati 3 e 4, tappe 7-8. Ogni strato nasce sul pezzo gia' unificato.
+- **02/10/2026** — **Tappa 0 chiusa sul ramo**, in rilascio come 3.73.0. La fotografia a freddo delle
+  porte e' identica a quella di partenza dopo ogni passo; i quattro cancelli sono nel pre-push e
+  nella CI; le misure di partenza sono in `docs/misure/2026-10-tappa-0.md`. Decisioni del
+  proprietario dello stesso giorno: i numeri di R18 sono approvati (scritti qui sopra, al requisito);
+  le dieci operazioni costruite per le sue sette domande **restano** nel codice, per il refactor
+  degli agenti che seguira' lo sprint (voce nel BACKLOG); le 23 dichiarazioni `notable` del
+  vocabolario dei tipi **escono**, con le prove che le leggevano. **Prossimo passo:** il rilascio a
+  se' per S-17 e `GET /api/home-space` al «lettore», poi la Tappa 1.

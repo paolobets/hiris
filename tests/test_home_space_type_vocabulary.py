@@ -24,7 +24,6 @@ from hiris.app.home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
     CAPABILITY_NAMES,
     GENRE,
-    NOTABLE,
     OPERABLE,
     RESTING_STATES,
     UNKNOWN_STATES,
@@ -199,10 +198,10 @@ def test_se_coppia_e_dominio_dicono_due_cose_vince_la_coppia():
     """Mutazione ESEGUITA: in `TypeVocabulary.field` guardare la riga di
     dominio PRIMA della coppia -- la prima asserzione arrossisce."""
     vocabolario = TypeVocabulary()
-    vocabolario.add("binary_sensor", notable=Ours(False))
-    vocabolario.add("binary_sensor", "smoke", notable=Ours(True))
-    assert vocabolario.value("binary_sensor", "smoke", NOTABLE) is True
-    assert vocabolario.value("binary_sensor", "door", NOTABLE) is False
+    vocabolario.add("binary_sensor", operable=Ours(False))
+    vocabolario.add("binary_sensor", "smoke", operable=Ours(True))
+    assert vocabolario.value("binary_sensor", "smoke", OPERABLE) is True
+    assert vocabolario.value("binary_sensor", "door", OPERABLE) is False
 
 
 def test_nessuna_coppia_ripete_un_valore_che_il_suo_dominio_gia_dice():
@@ -235,9 +234,9 @@ def test_una_coppia_orfana_non_si_costruisce():
     `TypeVocabulary.add` -- la costruzione riesce e questa prova arrossisce."""
     vocabolario = TypeVocabulary()
     with pytest.raises(KeyError):
-        vocabolario.add("sensor", "energy", notable=Ours(True))
+        vocabolario.add("sensor", "energy", operable=Ours(True))
     vocabolario.add("sensor")
-    vocabolario.add("sensor", "energy", notable=Ours(True))  # ora si collega
+    vocabolario.add("sensor", "energy", operable=Ours(True))  # ora si collega
 
 
 def test_un_tipo_non_puo_avere_due_righe():
@@ -250,7 +249,7 @@ def test_un_tipo_non_puo_avere_due_righe():
     vocabolario = TypeVocabulary()
     vocabolario.add("light", operable=Ours(True), resting_states=Ours({"off"}))
     with pytest.raises(ValueError):
-        vocabolario.add("light", notable=Ours(True))
+        vocabolario.add("light", genre=Ours("luce"))
     # E un campo gia' dichiarato non si sovrascrive in silenzio.
     with pytest.raises(ValueError):
         vocabolario.extend("light", operable=Ours(False))
@@ -504,11 +503,11 @@ _PRODOTTO = Path(__file__).resolve().parents[1] / "hiris" / "app"
 # confronto.
 _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
     # `briefing._EVENT_DOMAINS` e `briefing._EVENT_CLASSES` stavano qui, e non
-    # ci sono piu': l'08/09/2026 sono diventate UN campo solo -- `notable` --
-    # sulle righe del vocabolario, il dominio per i dieci e la coppia per le
-    # tredici classi di `binary_sensor`. Erano il caso da manuale di questa
-    # istantanea: due elenchi che rispondevano alla stessa domanda a due
-    # granularita' diverse, e nessuno che li tenesse allineati.
+    # ci sono piu': l'08/09/2026 erano diventate un campo solo sulle righe del
+    # vocabolario (`notable`), uscito a sua volta il 02/10/2026 quando nessun
+    # codice lo leggeva piu'. Erano il caso da manuale di questa istantanea:
+    # due elenchi che rispondevano alla stessa domanda a due granularita'
+    # diverse, e nessuno che li tenesse allineati.
     ("proxy/ha_client.py", ("automation", "script")):
         "`HAClient._CONFIG_COMMAND_BY_DOMAIN`: non e' un giudizio su un tipo, "
         "e' la mappa fra un dominio e il COMANDO WebSocket che ne porta la "

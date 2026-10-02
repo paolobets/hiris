@@ -116,8 +116,9 @@ opzioni, undici annunci d'avvio falsi); la migrazione che toglie dal sapere le r
 `direzione`; i commenti e i documenti che dicevano il falso. La fotografia a freddo delle porte e'
 identica a quella di partenza dopo ogni passo. I conti di oggi si chiedono a
 `python scripts/registro.py conta`; le misure stanno in `docs/misure/2026-10-tappa-0.md`.
-**Resta aperto dal proprietario**: le dieci operazioni delle sette domande (voce sugli attori qui
-sotto), e i numeri di R18.
+**Deciso dal proprietario il 02/10/2026**: si rilascia come 3.73.0; le dieci operazioni delle sette
+domande restano, per il refactor degli agenti (voce sugli attori qui sotto); i numeri di R18 sono
+approvati e scritti nella spec; le 23 dichiarazioni `notable` escono.
 
 ### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
 
@@ -237,7 +238,7 @@ uscita: `git log --oneline -- hiris/app/mind/report.py`.
   turni su 8 sono finiti troncati (`docs/misure/2026-10-tappa-0.md`). Una forma che pesa un terzo
   e si chiede a porzioni è una delle leve dello strato 3.
 
-*B. Dieci operazioni del registro delle misure e `Period` — RESTANO nel codice, in attesa.* Stanno
+*B. Dieci operazioni del registro delle misure e `Period` — RESTANO nel codice, per decisione del proprietario del 02/10/2026.* Stanno
 in `mind/operations.py` e le eseguono solo le prove delle sette domande del proprietario
 (`docs/design/2026-09-11-le-domande-del-proprietario.md`, cancello in `tests/test_mind_operations.py`).
 Nessuna ricetta le può scrivere, perché vogliono ingressi che una ricetta non sa consegnare.
@@ -1097,8 +1098,8 @@ non lo mostrano, restano come sono, come dice §8.
 con la loro migrazione» fra ciò che esce con la Tappa 0, e ha approvato la dichiarazione D4. Il
 campo è uscito dai giudizi: non si semina, la porta non lo accetta, la pagina «Cosa ho capito» non
 lo mostra, e la migrazione 9 del sapere toglie le righe già scritte (in casa erano 23, tutte del
-seme). **Resta una coda**: le 23 dichiarazioni `notable` nel vocabolario dei tipi, che legge il
-solo censore; ridare loro una domanda o toglierle è la voce M-17 del registro dei doppioni.
+seme). La coda — le 23 dichiarazioni `notable` nel vocabolario dei tipi, che nessun codice leggeva —
+è uscita lo stesso giorno, per decisione del proprietario, con le prove che le pinnavano.
 
 *Il testo della domanda, com'era:*
 

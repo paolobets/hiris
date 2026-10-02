@@ -130,14 +130,12 @@ def bit_key(domain: str, bit: int) -> str:
 #
 # **Quattro delle sei liste sparse sono sparite l'08/09/2026**, e con loro i
 # termini che questo modulo aggiungeva per andarle a leggere dove stavano: i
-# domini-evento e le classi-evento sono UN campo solo sulle righe del
-# vocabolario (`notable`, dominio e coppia), i valori di `state_class` che
-# aggregano e le condizioni di una voce di configurazione sono in
-# `ha_vocabulary`. **Il conto non e' cambiato di una voce** -- erano tutti
-# sottoinsiemi di cio' che il vocabolario gia' rivendicava -- ed e'
-# esattamente cio' che rende visibile il guadagno: due elenchi che dicevano la
-# stessa cosa a due granularita' adesso la dicono una volta sola, e il censore
-# li sorveglia con lo STESSO conto.
+# domini-evento e le classi-evento erano diventati un campo solo sulle righe
+# del vocabolario (`notable`, uscito il 02/10/2026: dal 29/09 nessuna domanda
+# lo consultava), i valori di `state_class` che aggregano e le condizioni di
+# una voce di configurazione sono in `ha_vocabulary`. **Il conto non e'
+# cambiato di una voce** ne' allora ne' con l'uscita di `notable`: erano tutti
+# sottoinsiemi di cio' che il vocabolario gia' rivendicava.
 #
 # **Resta un lettore col nome privato**, `briefing._DOMAIN_NAMES`, e la
 # ragione e' scritta accanto alla lista stessa: dare una riga a tutti e 63 i
@@ -172,8 +170,8 @@ def bit_key(domain: str, bit: int) -> str:
 # derivandola dai riposi che il vocabolario dei tipi gia' dichiara --
 # `unlocked` e' il complemento di `locked`, `open` di `closed`, `on` di `off`.
 # **Il complemento non e' esatto**, e la misura sta in
-# `tests/test_notable_states_complement.py`: sui tipi che meritano un annuncio,
-# UNDICI stati che questa casa PUBBLICA non sono riposi e non sono qui dentro --
+# `tests/test_notable_states_complement.py`: sui dieci domini che il nucleo
+# annunciava, UNDICI stati che questa casa PUBBLICA non sono riposi e non sono qui dentro --
 # `cover`/`valve` in `opening` e `closing`, `lock` in `locking`, `unlocking`,
 # `opening` e `jammed`, `media_player` in `paused` e `buffering`, `vacuum` in
 # `paused`.
@@ -378,8 +376,7 @@ EXCEPTIONS: dict[tuple[Subject, str], str] = {
         "`on` significa «abilitata», non «accesa»: un'automazione attiva e' il "
         "riposo di quella casa, non un funzionamento in corso. Misurato -- con "
         "`automation`, `script` e `input_boolean` dentro, 18 entita' di questa "
-        "casa erano riposo travestito da eccezione, ed e' la ragione gia' "
-        "scritta accanto al campo `notable` di `type_vocabulary`."),
+        "casa erano riposo travestito da eccezione."),
     (Subject.SWITCHABLE, "script"): (
         "Come `automation`: `on` dice che lo script e' abilitato -- e per la "
         "manciata di secondi in cui gira, che sta girando. Dichiararlo "
@@ -499,14 +496,13 @@ EXCEPTIONS.update(_same_reason(
       "lightning-rainy", "partlycloudy", "pouring", "rainy", "snowy",
       "snowy-rainy", "sunny", "windy", "windy-variant")),
     "`weather` e' una MISURA, non un evento: `rainy` e' com'e' il tempo, non "
-    "qualcosa che qualcuno ha acceso, e non apre ne' chiude niente. Deciso e "
-    "scritto accanto al campo `notable` di `type_vocabulary`, insieme a `sensor`, `number` e "
-    "`sun`."))
+    "qualcosa che qualcuno ha acceso, e non apre ne' chiude niente. Vale lo "
+    "stesso per `sensor`, `number` e `sun`."))
 
 EXCEPTIONS.update(_same_reason(
     Subject.STATE,
     (state_key("sun", None, state) for state in ("above_horizon", "below_horizon")),
-    "Stessa ragione di `weather`, e la stessa riga di commento la dichiara: "
+    "Stessa ragione di `weather`: "
     "dove sta il sole e' una misura dell'universo, non un fatto della casa."))
 
 # -- le classi del dispositivo lasciate fuori DI PROPOSITO, con la ragione
@@ -518,17 +514,18 @@ EXCEPTIONS.update(_same_reason(
 # servono». Adesso le parole le dice Home Assistant, e la domanda vera di
 # allora (spec §7: serve a una delle sei gambe dell'obiettivo? -- la gamba e'
 # uscita per intero il 17/09/2026, spec 2026-09-16 §11) restava scoperta per
-# le dodici che nessuna gamba raccoglieva. **La risposta era gia' scritta nel
-# prodotto**, accanto al campo `notable` di `type_vocabulary`, ed e' quella: sono transitori e
-# manutenzione, si vanno a chiedere e non si annunciano.
+# le dodici che nessuna gamba raccoglieva. **La risposta il prodotto se l'era
+# gia' data** decidendo cosa meritava un annuncio (il campo `notable` del
+# vocabolario dei tipi, uscito il 02/10/2026), ed e' quella: sono transitori e
+# manutenzione, si vanno a chiedere e non si annunciano. Le ragioni, da
+# allora, stanno scritte qui sotto e in nessun altro posto.
 
 EXCEPTIONS.update(_same_reason(
     Subject.DEVICE_CLASS,
     (class_key("binary_sensor", device_class) for device_class in
      ("light", "moving", "plug", "power", "running", "sound", "vibration")),
     "Transitorio: dice com'e' un istante, non che sia successo qualcosa da "
-    "osservare o da annunciare. Deciso e scritto accanto al campo `notable` di `type_vocabulary` "
-    "(«restano fuori i transitori»): `binary_sensor.motion`/`occupancy`/`presence` "
+    "osservare o da annunciare: `binary_sensor.motion`/`occupancy`/`presence` "
     "sono gia' nel vocabolario, senza campi propri, per lo stesso motivo."))
 
 EXCEPTIONS.update(_same_reason(
@@ -539,8 +536,7 @@ EXCEPTIONS.update(_same_reason(
     "il dato e' un NUMERO (`sensor.battery`, gia' nel vocabolario) e non dove e' "
     "un si'/no. Un `binary_sensor.battery` dice «carica bassa» e basta: non c'e' "
     "una soglia da confrontare ne' una tendenza da guardare, e annunciarlo "
-    "riempirebbe il nucleo di righe che non cambiano per settimane. Deciso e "
-    "scritto accanto al campo `notable` di `type_vocabulary` («e la manutenzione»)."))
+    "riempirebbe il nucleo di righe che non cambiano per settimane."))
 
 EXCEPTIONS[(Subject.DEVICE_CLASS, class_key("binary_sensor", "lock"))] = (
     "E' il DOPPIONE di un tipo che il vocabolario gia' porta: il dominio `lock` "
@@ -579,17 +575,14 @@ EXCEPTIONS.update(_same_reason(
     #
     # **Solo `calendar` e `sensor`**, non piu' tre (correzione R3b, revisione
     # del tratto v3.23.0..HEAD, 08/09/2026): la versione precedente includeva
-    # anche `update=off` citando questa stessa decisione, ma il campo `notable`
-    # non nomina ne' `calendar` ne' `update` -- solo `sensor` ci sta scritto
-    # davvero. `calendar` e' stato aggiunto a quella riga (vedi il commento
-    # accanto al campo `notable` di `type_vocabulary`), quindi per lui la citazione ora e'
-    # vera. `update=off` non ci sta piu': vedi `OPEN_QUESTIONS`, perche'
+    # anche `update=off`, citando una decisione che nominava solo `sensor`.
+    # `calendar` e' stato deciso allora, con la ragione scritta qui sotto.
+    # `update=off` non ci sta piu': vedi `OPEN_QUESTIONS`, perche'
     # `update=on` tocca il «buono stato» della casa e nessuno lo ha mai deciso.
     (state_key("calendar", None, "off"), state_key("sensor", None, "off")),
     "Sono due domini che HIRIS non giudica per stato: un `sensor` MISURA, un "
     "`calendar` dice se c'e' un evento in corso adesso. Nessuno dei due e' "
-    "una cosa che si accende, e per entrambi la decisione e' scritta accanto "
-    "al campo `notable` di `type_vocabulary`."))
+    "una cosa che si accende."))
 
 EXCEPTIONS.update(_same_reason(
     Subject.STATE,

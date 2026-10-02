@@ -331,8 +331,8 @@ def switchable_domains(registry) -> dict:
     `script`, `input_boolean`, `camera`, `remote`, `siren` e `homeassistant`,
     dove `on` significa «abilitata» e non «accesa», e perde `vacuum`, che Home
     Assistant comanda con `start`/`stop`. Serve a SORVEGLIARE il giudizio, e
-    chi la legge come un elenco di interruttori riapre il difetto che
-    il campo `notable` di `type_vocabulary` documenta di aver gia' pagato.
+    chi la legge come un elenco di interruttori riapre un difetto gia'
+    pagato: le ragioni stanno nelle eccezioni di `censore_tipi.py`.
 
     **Sono domini di SERVIZIO**, non di entita': `homeassistant` sta qui e non
     e' un dominio di entita'. E' un fatto della derivazione, non un difetto --

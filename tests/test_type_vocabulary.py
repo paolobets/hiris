@@ -33,9 +33,8 @@ conteggi che il nucleo porta ancora e su cio' che `guarda` riporta a chi chiede.
 import pathlib
 import sys
 
-from hiris.app.home_space import briefing, topology, type_vocabulary
+from hiris.app.home_space import briefing, topology
 from hiris.app.home_space.briefing import compose
-from hiris.app.proxy import state_translations
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 import censore_tipi
@@ -60,28 +59,6 @@ def _voce(eid, nome, **extra):
 
 
 # ── Cosa significano i valori: la classe decide ────────────────────────────
-
-def test_ogni_classe_di_evento_ha_anche_un_significato():
-    """Ogni classe che entra nel digesto ha, in questa casa, la COPPIA
-    acceso/spento pubblicata da Home Assistant -- non mezza.
-
-    Fino all'08/09/2026 questa prova confrontava `briefing._EVENT_CLASSES` con
-    `topology._CLASS_MEANING`, cioe' una nostra tabella con un'altra nostra
-    tabella: diceva che due elenchi scritti a mano erano d'accordo, non che
-    fossero veri. Adesso il metro e' la casa, e la coppia si RICOSTRUISCE (non
-    si assume): una classe di cui HA pubblichi solo `on` si leggerebbe con una
-    parola sua per l'acceso e con la parola del DOMINIO per lo spento -- due
-    meta' di due tipi diversi presentate come un significato solo.
-
-    Mutazione: togliere `component.binary_sensor.entity_component.smoke.state.off`
-    dalle risorse -- questa prova nomina `smoke`."""
-    risorse = house_translations()["risorse"]
-    senza = sorted(
-        classe for _, classe in classi_notevoli()
-        if not state_translations.published_pair(
-            risorse, domain="binary_sensor", device_class=classe).get("letto"))
-    assert not senza, f"classi che entrano nel digesto senza la coppia: {senza}"
-
 
 def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
     """`_CLASSI_APERTURA` non esiste piu': le sue cinque voci sono cinque righe
@@ -257,55 +234,20 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 # ── R9: il vocabolario del nucleo pinnato alla fonte ───────────────────────
 #
-# `censore_tipi._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
-# scritti a mano. Senza queste prove, togliere una voce (o non aggiungerne una
-# quando Home Assistant introduce un dominio o una device_class nuova) non
-# farebbe rosso nessun test -- lo stesso rischio gia' pagato con
-# `carbon_monoxide`/`co` (vedi in cima a questo file). `_CLASS_MEANING`
-# in topology.py aveva gia' avuto questo trattamento -- e dall'08/09/2026 non
-# esiste piu': le parole le pubblica Home Assistant.
+# `censore_tipi._ACTIVE_STATES` e' scritto a mano. Senza questa prova, togliere
+# una voce non farebbe rosso nessun test -- lo stesso rischio gia' pagato con
+# `carbon_monoxide`/`co` (vedi in cima a questo file).
 #
-# **Le due liste-evento non sono piu' due liste, e queste prove lo mostrano.**
-# Dall'08/09/2026 `_EVENT_DOMAINS` e `_EVENT_CLASSES` sono lo STESSO campo --
-# `notable` -- sulle due granularita' del tipo: i due pin qui sotto
-# interrogano `notable_types()` e lo separano in domini e coppie, invece di
-# leggere due insiemi che nessuno teneva allineati.
+# I due pin delle liste-evento (dieci domini e tredici classi, il campo
+# `notable` del vocabolario dei tipi) sono usciti il 02/10/2026 con le
+# dichiarazioni che pinnavano: dal 29/09 nessun codice le leggeva.
 #
-# LIMITE DICHIARATO: il vocabolario dei tipi e briefing.py sono PURI e non
-# installano Home Assistant (vedi i loro docstring), quindi non c'e' un enum
-# vero da importare e confrontare a runtime -- come per `_PIATTAFORME_HA` in
-# test_domain_vocabulary.py, gli elenchi sotto sono ricopiati A MANO dalla
-# fonte (vedi i commenti accanto a ciascun giudizio per dove ogni voce e'
-# verificata). La prova non si accorge se Home Assistant cambia la fonte da
-# sola: va RIVISTA a mano quando si aggiorna Home Assistant, o quando entra un
-# dominio/classe nuova nel prodotto.
+# LIMITE DICHIARATO: il censore non installa Home Assistant, quindi non c'e'
+# un enum vero da importare e confrontare a runtime -- l'elenco sotto e'
+# ricopiato A MANO dalla fonte (i riferimenti stanno accanto a
+# `_ACTIVE_STATES`). La prova non si accorge se Home Assistant cambia la
+# fonte da sola: va RIVISTA a mano quando si aggiorna Home Assistant.
 
-
-def _seed_says_notable(dominio: str, classe: str | None = None) -> bool:
-    """La dichiarazione `notable` del vocabolario: coppia, poi dominio. Fino
-    al 29/09/2026 la leggeva `TypeJudgments.is_notable`, uscita col suo unico
-    lettore di produzione («Notevole adesso» del nucleo), e fino al 02/10 era
-    anche un giudizio del sapere (`notevole`), seminato da qui. Oggi resta
-    una dichiarazione del vocabolario, letta dal censore dei tipi, e queste
-    prove la pinnano alla fonte: stessi 10 domini e stesse 13 coppie."""
-    vocabulary = type_vocabulary._vocabulary
-    if classe and vocabulary.value(dominio, classe, type_vocabulary.NOTABLE) is not None:
-        return vocabulary.value(dominio, classe, type_vocabulary.NOTABLE) is True
-    return vocabulary.value(dominio, None, type_vocabulary.NOTABLE) is True
-
-
-def domini_notevoli() -> set[str]:
-    """I domini che il repo dei giudizi dichiara degni di un annuncio --
-    stesso fatto di `notable_types()` (cancellata col Task 8, spec
-    2026-09-16 §11)."""
-    return {dominio for dominio in type_vocabulary._vocabulary.domains()
-            if _seed_says_notable(dominio)}
-
-
-def classi_notevoli() -> set[tuple[str, str]]:
-    """Le coppie (dominio, classe) degne di un annuncio."""
-    return {coppia for coppia in type_vocabulary._vocabulary.pairs()
-            if _seed_says_notable(*coppia)}
 
 _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 
@@ -318,53 +260,3 @@ def test_stati_attivi_e_pinnato_alla_fonte():
     assert not senza and not extra, (
         f"_STATI_ATTIVI e' cambiato senza aggiornare questo pin -- mancanti: "
         f"{senza}, in piu': {extra}")
-
-
-_DOMINI_EVENTO_HA = {
-    "light", "switch", "cover", "lock", "fan",
-    "media_player", "valve", "remote", "siren", "vacuum",
-}
-
-
-def test_domini_evento_e_pinnato_alla_fonte():
-    """Mutazione: togliere `notable` a un dominio del vocabolario deve far
-    rosso questo test."""
-    senza = sorted(_DOMINI_EVENTO_HA - domini_notevoli())
-    extra = sorted(domini_notevoli() - _DOMINI_EVENTO_HA)
-    assert not senza and not extra, (
-        f"_DOMINI_EVENTO e' cambiato senza aggiornare questo pin -- "
-        f"mancanti: {senza}, in piu': {extra}")
-
-
-def test_domini_evento_sono_tutte_piattaforme_vere_di_home_assistant():
-    """Coerenza fra le liste: ogni dominio trattato come «evento» deve essere
-    una piattaforma che Home Assistant riconosce davvero -- altrimenti
-    l'eccezione descriverebbe un dominio che non esiste. Sottoinsieme, come
-    quello gia' pinnato fra le classi notevoli e cio' che la casa pubblica."""
-    from tests.test_domain_vocabulary import _PIATTAFORME_HA
-    sconosciuti = sorted(domini_notevoli() - set(_PIATTAFORME_HA))
-    assert not sconosciuti, f"domini che Home Assistant non ha: {sconosciuti}"
-
-
-_CLASSI_EVENTO_HA = {
-    "moisture", "smoke", "gas", "carbon_monoxide", "safety", "tamper",
-    "problem", "heat", "cold", "door", "window", "garage_door", "opening",
-}
-
-
-def test_classi_evento_e_pinnato_alla_fonte():
-    """Mutazione: togliere `notable` a una coppia del vocabolario deve far
-    rosso questo test -- la mutazione che il brief della fetta chiede
-    esplicitamente («togliere una classe dall'elenco»).
-
-    **E tutte e tredici sono coppie di `binary_sensor`**: il campo `notable`
-    vive sulla riga del tipo, quindi la classe non e' piu' una stringa nuda
-    che qualcuno abbina al dominio giusto a mano."""
-    domini = {dominio for dominio, _ in classi_notevoli()}
-    assert domini == {"binary_sensor"}, domini
-    presenti = {classe for _, classe in classi_notevoli()}
-    senza = sorted(_CLASSI_EVENTO_HA - presenti)
-    extra = sorted(presenti - _CLASSI_EVENTO_HA)
-    assert not senza and not extra, (
-        f"_CLASSI_EVENTO e' cambiato senza aggiornare questo pin -- "
-        f"mancanti: {senza}, in piu': {extra}")

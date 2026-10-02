@@ -23,9 +23,6 @@ interrogare la stessa riga, e ogni sezione del modulo ne porta una.
   giudizi (`home_space/type_judgments.TypeJudgments`), di cui questi campi
   sono il seme.
 - «Cosa sa fare?» -> `capability_names`.
-- «Merita un annuncio?» -> il campo `notable`: un campo solo sulle due
-  granularita' del tipo, ed e' il caso che dimostra perche' il soggetto e' il
-  tipo e non il dominio.
 - «Quali attributi dicono cosa puo' fare, quali com'e' adesso, e quali di
   cosa e' fatta?» -> le tabelle degli attributi.
 
@@ -48,7 +45,7 @@ seconda casa per un fatto del fornitore. **«Tutto nostro» era gia' falso
 quando questa frase fu scritta**: le tabelle di `capability_names`,
 `capability_attributes` e `state_attributes` sono `importato` da sempre. Cio'
 che e' DAVVERO nostro, qui, sono i giudizi -- genere, riposo, lavoro,
-notevole, accendibile, limiti dei parametri -- ed e' SOLO quello il **seme
+accendibile, limiti dei parametri -- ed e' SOLO quello il **seme
 del sapere** (`judgment_seed_rows()`, in fondo a questo file, spec
 2026-09-16 §2-§3): l'archivio lo legge una volta, e da li' in poi corregge
 l'istantanea viva senza toccare questo letterale. Le due meta' non si
@@ -443,20 +440,6 @@ ASSUMABLE_ATTRIBUTES = "assumable_attributes"
 #: oppure `parametro -> {"options": ...}`.
 PARAMETER_LIMITS = "parameter_limits"
 
-#: Se un cambiamento di questo tipo MERITA UN ANNUNCIO: se cioe' il nucleo,
-#: trovandolo fuori dal riposo, lo dice invece di lasciarlo cercare.
-#:
-#: **E' un campo solo su DUE granularita', ed e' il motivo per cui il soggetto
-#: di questo vocabolario e' il tipo e non il dominio.** Fino all'08/09/2026 la
-#: stessa domanda viveva in due insiemi separati di `home_space/briefing.py`:
-#: `_EVENT_DOMAINS` per i dieci domini in cui «acceso» e' un'eccezione, e
-#: `_EVENT_CLASSES` per le tredici classi di `binary_sensor` in cui a dirlo e'
-#: la classe e non il dominio. Due elenchi, una domanda, e nessuno che li
-#: tenesse allineati. Qui sono un campo solo: la coppia lo dichiara di suo, il
-#: dominio lo dichiara per tutte le sue coppie, e la gerarchia di `field` fa il
-#: resto -- cosi' il censore li sorveglia con lo stesso conto.
-NOTABLE = "notable"
-
 #: Il campo `da_sapere_subito` (spec `2026-09-18-da-sapere-subito.md`). **In
 #: italiano anche qui**, e non per svista: il glossario vuole che una riga nasca
 #: con l'italiano e che l'inglese si scelga in un passaggio successivo -- un
@@ -528,12 +511,9 @@ _vocabulary.add("cover", genre=Ours("funzionamento"))
 # era il buco peggiore possibile, sulla categoria di dati che conta piu' di
 # tutte (`docs/design/2026-08-26-l-osservatore.md` §4).
 #
-# Il vocabolario gemello di «cosa e' notevole ADESSO» viveva in
-# `home_space/briefing.py`; oggi e' il campo `notable`, sotto: «cosa e'
-# notevole ADESSO» resta una domanda diversa da «cosa si osserva SEMPRE»
-# (quest'ultima, dal 17/09/2026, la decide lo scope dell'osservatore --
-# `mind/watcher.py`, spec 2026-09-16 §11 -- non piu' una riga di questo
-# vocabolario).
+# «Cosa si osserva SEMPRE» non e' una riga di questo vocabolario: dal
+# 17/09/2026 la decide lo scope dell'osservatore (`mind/watcher.py`, spec
+# 2026-09-16 §11).
 _vocabulary.add("lock", resting_states=Ours({"locked"}), genre=Ours("sicurezza"))
 # «Un allarme si INSERISCE per stare a riposo, non il contrario» -- correzione
 # al rovesciamento della review, punto 3b: `disarmed` e `triggered` NON sono
@@ -544,9 +524,9 @@ _vocabulary.add("alarm_control_panel",
               genre=Ours("sicurezza"))
 _vocabulary.add("siren", resting_states=Ours({"off"}), genre=Ours("sicurezza"))
 
-# `binary_sensor` e `sensor`: il dominio da solo non porta ne' genere ne'
-# `notable` -- il giudizio vive sulle COPPIE qui sotto, che dal dominio
-# ereditano il riposo invece di ripeterlo.
+# `binary_sensor` e `sensor`: il dominio da solo non porta un genere -- il
+# giudizio vive sulle COPPIE qui sotto, che dal dominio ereditano il riposo
+# invece di ripeterlo.
 _vocabulary.add("binary_sensor", resting_states=Ours({"off"}))
 _vocabulary.add("sensor")
 
@@ -829,92 +809,9 @@ ABSENT_STATE_FORMS = Ours({"none", ""})
 UNKNOWN_STATES = Ours({"unavailable", "unknown"})
 
 
-# -- la metrica dell'annuncio: merita un annuncio? -------------------------
-#
-# **Non e' la domanda dell'accensione travestita.** «Sta funzionando?»
-# guarda un episodio -- nasce, dura, finisce; «merita un annuncio?» guarda il
-# nucleo, cioe' il testo che il modello ha sempre davanti, e chiede se un
-# cambiamento di questo tipo vale le poche righe di «Notevole adesso» oppure e'
-# una cosa che si va a chiedere. Un telefono a casa e una temperatura di 19,5
-# si sanno benissimo e non si annunciano.
-#
-# **Dal 29/09/2026 la domanda non ha piu' chi la pone**: «Notevole adesso» e'
-# uscita dal nucleo (spec «una porta sola per la casa» §5) e con lei il suo
-# unico lettore, `TypeJudgments.is_notable`. **Dal 02/10/2026 non e' piu' un
-# giudizio del sapere**: non si semina, la porta dei giudizi non lo accetta e
-# la pagina non lo mostra (le righe gia' scritte le toglie
-# `mind/knowledge._migration_9`). **Le dichiarazioni qui sotto non le legge
-# nessun codice**: le leggono solo delle prove, e il censore dei tipi
-# (`scripts/censore_tipi.py`) non guarda il campo -- le sue eccezioni citano,
-# in prosa, le ragioni scritte qui accanto. Restano in attesa del
-# proprietario (voce M-17 del registro): ridare loro una domanda, o toglierle
-# insieme alle loro prove e riscrivere quelle citazioni.
-#
-# Fino all'08/09/2026 la risposta viveva in due insiemi di `briefing.py`,
-# `_EVENT_DOMAINS` e `_EVENT_CLASSES`, che rispondevano alla stessa domanda a
-# due granularita' diverse senza che niente li tenesse allineati. Sono un campo
-# solo, dichiarato dove il tipo gia' abita.
-#
-# **Chi NON c'e', e perche'** (misurato sull'impianto del proprietario, 845
-# entita'; le ragioni vengono da `briefing.py`, dove sono nate):
-#   - `automation`/`script`/`input_boolean`: `on` significa ABILITATA. Erano 18,
-#     ed erano riposo travestito da eccezione.
-#   - `device_tracker`/`person`: `home` e' una CONDIZIONE (un telefono a casa e'
-#     il riposo). Erano 49. Non sono esclusi dal prodotto: `search` li
-#     riporta quando li chiedi -- e' la differenza fra un vocabolario e un
-#     filtro.
-#   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
-#   - `calendar`: dice se c'e' un evento in corso ADESSO, non se qualcuno lo ha
-#     acceso -- la stessa differenza di `weather`: e' cio' che la casa MISURA
-#     del calendario, non un apparecchio che qualcuno ha azionato.
-#   - `button`/`event`/`tag`/`notify`/`image`: non hanno uno stato utile -- 57
-#     dei 72 `button` di questa casa sono `unknown` per costruzione.
-#
-# QUALE sottoinsieme merita il trattamento «evento» resta un giudizio del
-# prodotto, non qualcosa che Home Assistant dichiara da se': provenienza
-# `nostro`, e il censore lo sorveglia come tutti gli altri.
-_vocabulary.extend("cover", notable=Ours(True))
-_vocabulary.extend("light", notable=Ours(True))
-_vocabulary.extend("switch", notable=Ours(True))
-_vocabulary.extend("lock", notable=Ours(True))
-_vocabulary.extend("fan", notable=Ours(True))
-_vocabulary.extend("media_player", notable=Ours(True))
-_vocabulary.extend("valve", notable=Ours(True))
-_vocabulary.extend("remote", notable=Ours(True))
-_vocabulary.extend("siren", notable=Ours(True))
-_vocabulary.extend("vacuum", notable=Ours(True))
-
-# Per `binary_sensor` il dominio non basta: e' la CLASSE a dire se `on` e' un
-# allagamento o il corridoio attraversato trenta secondi fa. Meritano un
-# annuncio gli allarmi e le aperture; restano fuori i transitori (`motion`,
-# `occupancy`, `presence`, `sound`, `vibration`, `light`, `running`, `moving`,
-# `power`, `plug`) e la manutenzione (`battery`, `connectivity`, `update`,
-# `battery_charging`), che si vanno a chiedere e non si annunciano.
-#
-# La riga del dominio `binary_sensor` NON dichiara questo campo, ed e' cio' che
-# rende vero il «restano fuori»: una classe senza giudizio proprio eredita dal
-# dominio, e il dominio qui non risponde.
-#
-# -- gli allarmi
-_vocabulary.extend("binary_sensor", "moisture", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "smoke", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "gas", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "carbon_monoxide", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "safety", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "tamper", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "problem", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "heat", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "cold", notable=Ours(True))
-# -- le aperture
-_vocabulary.extend("binary_sensor", "door", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "window", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "garage_door", notable=Ours(True))
-_vocabulary.extend("binary_sensor", "opening", notable=Ours(True))
-
 # «Da sapere subito»: i dodici tipi di genere `sicurezza` piu' i quattro sensori
-# di apertura (decisione del proprietario, 18/09/2026). **Non coincide con
-# `notable` qui sopra, ed e' il punto**: una luce accesa vale la pena
-# raccontarla nel riassunto e non e' una cosa da sapere subito.
+# di apertura (decisione del proprietario, 18/09/2026). Una luce accesa non
+# e' una cosa da sapere subito.
 _vocabulary.extend("alarm_control_panel", da_sapere_subito=Ours(True))
 # **La serratura porta un ELENCO, non un `si`** (decisione del proprietario,
 # 18/09/2026, dopo la revisione finale). Delle sedici righe di questo giudizio
@@ -930,11 +827,9 @@ _vocabulary.extend("alarm_control_panel", da_sapere_subito=Ours(True))
 _vocabulary.extend("lock", da_sapere_subito=Ours(("jammed",)))
 _vocabulary.extend("siren", da_sapere_subito=Ours(True))
 # Fix round 1 (revisione Fable, MINOR 4): un ciclo qui e' un'eccezione (il
-# resto del modulo, `notable` incluso, dichiara una riga per chiamata) e va
-# giustificato, non lasciato all'abitudine. La ragione: le tredici classi qui
-# sotto NON hanno la sotto-distinzione che `notable` ha (li' «allarmi» e
-# «aperture» sono due gruppi commentati a parte, perche' un lettore potrebbe
-# chiedersi perche' l'uno e non l'altro); qui sono tutte e sole le classi di
+# resto del modulo dichiara una riga per chiamata) e va giustificato, non
+# lasciato all'abitudine. La ragione: le tredici classi qui sotto non hanno
+# sotto-distinzioni da commentare a parte; sono tutte e sole le classi di
 # apertura piu' i rilevatori di pericolo del genere `sicurezza`, la STESSA
 # ragione gia' scritta nel commento qui sopra, ripetuta tredici volte
 # identica. Un ciclo la scrive una volta: tredici chiamate uguali non
@@ -1825,11 +1720,6 @@ _verify_no_state_is_both_rest_and_work()
 #: Nome del campo in questo modulo -> nome del campo nel sapere. **La traduzione
 #: vive qui e solo qui.** Solo i giudizi nostri: i fatti copiati dal sorgente di
 #: HA restano codice, con le loro prove ancorate alla fonte.
-#:
-#: **`notable` non c'e'**, dal 02/10/2026: non e' piu' un giudizio del sapere
-#: (nessuna domanda lo consultava dal 29/09), quindi non si semina, non passa
-#: dalla porta e non compare nella pagina. Le sue dichiarazioni restano piu'
-#: sopra, senza lettori nel codice (voce M-17 del registro).
 JUDGMENT_FIELDS = MappingProxyType({
     GENRE: GENRE_FIELD, RESTING_STATES: RESTING_FIELD, WORKING_STATES: WORKING_FIELD,
     OPERABLE: OPERABLE_FIELD,

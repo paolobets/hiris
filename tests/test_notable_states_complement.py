@@ -12,8 +12,8 @@ fino al 29/09/2026, oggi in `scripts/censore_tipi.py` accanto al suo unico letto
 sciogliersi derivandola dai riposi che il vocabolario dei tipi gia' dichiara:
 `unlocked` e' il complemento di `locked`, `open` di `closed`, `on` di `off` --
 la stessa conoscenza, detta due volte dai due lati opposti. **Il complemento
-non e' esatto**, e questa prova e' la misura: sui tipi che meritano un
-annuncio, ci sono stati che questa casa PUBBLICA, che non sono riposi, e che
+non e' esatto**, e questa prova e' la misura: sui dieci domini che il nucleo
+annunciava, ci sono stati che questa casa PUBBLICA, che non sono riposi, e che
 `_ACTIVE_STATES` non conta. Derivare li conterebbe tutti, e cambierebbe i
 conteggi del nucleo -- una correzione, forse giusta, che va fatta in una fetta
 sua col suo changelog.
@@ -35,13 +35,29 @@ from hiris.app.home_space import type_vocabulary
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import censore_tipi
 
+#: I dieci domini che il nucleo annunciava in «Notevole adesso». **L'elenco e'
+#: il fatto**: fino al 02/10/2026 lo dichiarava il campo `notable` del
+#: vocabolario dei tipi, uscito quando nessun codice lo leggeva piu', e una
+#: fonte da interrogare non c'e'. Resta qui perche' e' il perimetro della
+#: misura: su QUESTI domini le cinque parole di `_ACTIVE_STATES` valevano.
+_DOMINI_ANNUNCIATI = frozenset({
+    "light", "switch", "cover", "lock", "fan",
+    "media_player", "valve", "remote", "siren", "vacuum",
+})
 
-def _domini_notevoli() -> set[str]:
-    """I domini che il seme dei giudizi dichiara degni di un annuncio: la
-    stessa lettura delle prove R9 (`test_type_vocabulary.domini_notevoli`),
-    non una seconda copia."""
-    from tests.test_type_vocabulary import domini_notevoli
-    return domini_notevoli()
+
+def _domini_notevoli() -> frozenset[str]:
+    return _DOMINI_ANNUNCIATI
+
+
+def test_i_domini_della_misura_sono_tipi_che_il_vocabolario_conosce():
+    """La derivazione non si e' rotta: un dominio che il vocabolario non ha
+    piu' darebbe riposi vuoti, e la misura qui sotto conterebbe ogni suo
+    stato come divario senza che nessuno l'abbia deciso.
+
+    Mutazione ESEGUITA: aggiunto `"tosaerba"` all'elenco -- rossa, col nome."""
+    sconosciuti = sorted(_DOMINI_ANNUNCIATI - type_vocabulary._vocabulary.domains())
+    assert not sconosciuti, f"domini che il vocabolario non ha: {sconosciuti}"
 
 _PRODOTTO = Path(__file__).resolve().parents[1] / "hiris" / "app"
 _PUBBLICATO = Path(__file__).resolve().parent / "data" / "pubblicato-dalla-casa.json"
@@ -55,11 +71,10 @@ _PUBBLICATO = Path(__file__).resolve().parent / "data" / "pubblicato-dalla-casa.
 _TRASLOCATE = {
     "_EVENT_DOMAINS": (
         "home_space/briefing.py",
-        "il campo `notable` sulle righe di dominio di `type_vocabulary`"),
+        "nessun posto: la domanda «merita un annuncio?» e' uscita il 02/10/2026"),
     "_EVENT_CLASSES": (
         "home_space/briefing.py",
-        ("lo STESSO campo `notable`, sulle righe delle coppie "
-         "(binary_sensor, classe)")),
+        "nessun posto, come `_EVENT_DOMAINS`: stessa domanda, stessa uscita"),
     "_BROKEN_INTEGRATION_STATES": (
         "home_space/briefing.py",
         ("`ha_vocabulary.CONFIG_ENTRY_FAILURE_STATES`, con "
@@ -184,7 +199,7 @@ def test_il_complemento_dei_riposi_non_coincide_con_gli_stati_attivi():
     """**La misura che ha fermato la sesta lista**, e va letta prima di
     riprovarci.
 
-    Per ogni dominio che merita un annuncio, si prendono gli stati che questa
+    Per ogni dominio che il nucleo annunciava, si prendono gli stati che questa
     casa pubblica, si tolgono i riposi dichiarati e i due «non lo so»: cio' che
     resta e' il complemento. Se il complemento fosse `_ACTIVE_STATES`, la lista
     si scioglierebbe senza cambiare un solo conteggio. Non lo e'.
