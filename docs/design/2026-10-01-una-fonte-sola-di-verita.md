@@ -1,6 +1,6 @@
 # Una fonte sola di verità — esito dell'analisi e requisiti dello sprint
 
-`requisiti · 01/10/2026 · BOZZA in attesa del sì del proprietario · v3.72.2`
+`requisiti · 01/10/2026 · sprint partito il 01/10/2026; le sedici decisioni del §7 restano al proprietario · v3.72.2`
 
 Nasce da una pausa. Il 01/10/2026 un audit degli attori automatici sulla casa vera ha mostrato che
 non inventano quasi niente: lavorano su dati rotti. Stavo proponendo un modulo nuovo che dicesse
@@ -44,8 +44,8 @@ si arriva. Ogni numero viene da un rapporto nominato; dove un numero non è misu
 **Il codice di oggi non è conforme all'obiettivo, e la distanza è grande.** Non si parte da zero —
 l'ossatura giusta esiste — ma è usata da metà dell'app; l'altra metà l'ha riscritta per conto suo.
 
-Il metro è il registro: su 287 voci di doppione, **127 danno già oggi risposte diverse** alla stessa
-domanda, e **163 non si chiudono con una sostituzione**: 114 cambiano un comportamento, 49 chiedono
+Il metro è il registro: su 288 voci di doppione, **128 danno già oggi risposte diverse** alla stessa
+domanda, e **164 non si chiudono con una sostituzione**: 115 cambiano un comportamento, 49 chiedono
 una decisione. Le pure sostituzioni sono 120.
 
 | Proprietà dell'obiettivo | Distanza | Perché |
@@ -109,10 +109,11 @@ pezzi vedeva meno della metà.
 | X · Documenti e commenti che dicono il falso | 77 |
 | S · Difetti veri che non sono doppioni | 20 |
 
-Delle 288 voci di doppione (A–G e T): **111 copie equivalenti, 128 divergenti, 46 non verificate.**
+Delle 288 voci di doppione (A–G e T): **111 copie equivalenti, 128 divergenti, 46 non verificate**
+(più 3 su cui due rapporti danno verdetti diversi).
 Unirle è **pura sostituzione in 120 casi, cambia un comportamento in 115, chiede una decisione del
-proprietario in 49.** (Le sei voci in più rispetto all'indice v2 vengono dal complemento della
-matrice: sezione 6 del registro.)
+proprietario in 49** (più 2 con due verdetti e 2 senza verdetto dichiarato). I conti di questa sezione si chiedono al registro, non si ricopiano:
+`python scripts/registro.py conta` (ricontati così il 01/10/2026, a Tappa 0 cominciata).
 
 ### 1.3 Cosa diverge già oggi, sulla casa vera
 
@@ -176,7 +177,7 @@ una destinazione scritta e senza un cancello che fermasse il successivo.
 
 ### 1.6 I difetti veri che l'analisi ha trovato per strada
 
-Sono 19 (capitolo S del registro). Quelli che esistono oggi in produzione e toccano dati o permessi,
+Sono 20 (capitolo S del registro). Quelli che esistono oggi in produzione e toccano dati o permessi,
 tutti letti sul codice e non provati dal vivo:
 
 | | Difetto |
@@ -413,14 +414,14 @@ da cosa lasciano le precedenti.
 
 | Tappa | Cosa | Voci | Natura |
 |---|---|---|---|
-| **0** | Si toglie e si prepara | M 77 · X 75 · i difetti urgenti di S | cancellazioni; nessun cambio di comportamento voluto |
+| **0** | Si toglie e si prepara | M 79 · X 77 · i difetti urgenti di S | cancellazioni; nessun cambio di comportamento voluto |
 | **1** | Le prove smettono di leggere il testo | T 16 | solo test |
 | **2** | Un solo lettore di Home Assistant | A 39 | quasi tutta sostituzione |
 | **3** | La casa: un oggetto, una risposta | B 54 | qui stanno le decisioni del proprietario |
 | **4** | Una resa, un vocabolario | C 56 | cambia forme: server e pagine insieme |
 | **5** | Gli strumenti | parte di C e D | catalogo, completezza, tetti |
 | **6** | Un turno verso un modello | D 66 | catena e ponte uguali |
-| **7** | Scrivere, permessi, modelli | E 12 · F 21 | sicurezza e coerenza |
+| **7** | Scrivere, permessi, modelli | E 13 · F 21 | sicurezza e coerenza |
 | **8** | Gli archivi seguono la casa | G 23 | migrazioni |
 | **poi** | Riparte la riparazione degli attori, poi la pagina | — | voce del BACKLOG «Gli attori si riparano dal basso» |
 
@@ -607,3 +608,11 @@ In `docs/superpowers/audit-2026-10-01/` — cartella fuori da git, archivio dell
 - **01/10/2026** — analisi chiusa; documento in bozza. Rilasciata la 3.72.2 (attuatore in pausa).
   **In attesa:** il sì del proprietario a questo documento e alle decisioni del §7; poi il piano di
   dettaglio della tappa 0.
+- **01/10/2026, sera** — il proprietario fa partire lo sprint e risponde «procediamo» all'elenco delle
+  domande aperte (piano, dichiarazioni D1–D13, decisione 1). Decisione 1 del §7: i due difetti su
+  dati e permessi (S-17 e `GET /api/home-space` a un «lettore») si correggono in un rilascio a sé,
+  subito dopo la Tappa 0. Piano della Tappa 0 approvato:
+  `docs/superpowers/plans/2026-10-01-tappa-0-si-toglie-e-si-prepara.md` (cartella fuori da git).
+  Le misure della tappa: `docs/misure/2026-10-tappa-0.md`.
+  L'ordine dopo la Tappa 3 (domanda (b)): **a scaglioni** -- tappe 0-3, strati 1 e 2 degli attori,
+  tappe 4-6, strati 3 e 4, tappe 7-8. Ogni strato nasce sul pezzo gia' unificato.

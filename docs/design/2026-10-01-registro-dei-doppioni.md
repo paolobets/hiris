@@ -1,6 +1,7 @@
-# Indice del registro dei doppioni, versione 2 — HIRIS 3.72.2
+# Il registro dei doppioni — la lista di lavoro dello sprint «Una fonte sola di verità»
 
-Data: 01/10/2026. Versione del repo: 3.72.2. È la lista di lavoro: una riga per voce, i dettagli restano nei rapporti a cui la riga rimanda.
+Nato il 01/10/2026 sulla v3.72.2 come indice v2 dell'analisi. È la lista di lavoro: una riga per voce, i dettagli restano nei rapporti a cui la riga rimanda.
+**Si legge con un programma**: `python scripts/registro.py conta` dice quante voci sono aperte e chiuse; `chiudi <id>` sposta una voce nella sezione «Chiuse» in fondo; `verifica` gira nel cancello. La prova è `tests/test_registro.py`.
 Fonde il registro v1 (`REGISTRO-DEI-DOPPIONI.md`: 155 voci A–G e T, 41 righe M, 20 righe X) con le parti 2 e 3 dei nove rapporti di copertura (`copertura-1…9-*.md`, sigle `cop-1`…`cop-9`).
 **Regola di chiusura: una voce si chiude solo quando la copia è cancellata.** Una prova che passa o un commento che promette non chiudono niente.
 Gli id del registro v1 non cambiano; i reperti nuovi continuano la numerazione del capitolo (A da A-19, B da B-30, C da C-28, D da D-34, E da E-09, F da F-14, G da G-16, T da T-13, M da M-42, X da X-21). Il capitolo S è nuovo.
@@ -271,6 +272,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | E-10 | `call_service` butta il motivo di HA, senza guardia; le primitive di configurazione no | D | CC |  |  | cop-5 E1 |
 | E-11 | «La scrittura è arrivata?»: due regole opposte; la riga incerta esce dalla potatura | D | DP |  |  | cop-9 N-E-2 |
 | E-12 | Il dominio dell'helper non si valida alla proposta: l'errore arriva dopo il «sì» | D | CC |  |  | cop-9 N-E-3 |
+| E-13 | «Verificare senza eseguire» non ha una porta pubblica: `verification()` è atomica, `ActionActuator.verify(call)` non esiste; chi ne ha bisogno ricompone il pre-volo (si lega a E-09) | D | CC |  |  | compl §2.1 |
 
 ---
 
@@ -380,7 +382,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-19 | Sei funzioni senza chiamanti (censimento): `_exception_keys`, `state_domain_of`, `_fact_row`, `_record_repair`, `_translations_report`, `_ws_call` | `type_census.py:845,854`; `mind/store.py:692`; `server.py:1410`; `handlers_mind.py:274`; `ha_client.py:1470` |  | reg · cop-1 M1 · cop-5 · cop-6 |
 | M-20 | Sette usate solo dai test (censimento): `actuator_round`, `capability_bits`, `switchable_domains`, `objective_history`, `published_domains/states/state_classes`; `get_config` TOLTA: è letta in produzione (`topology.py:142` via `getattr`, dentro `rebuild`) | `server.py:2001`; `action/registry.py:498,523`; `mind/store.py:1157`; `state_translations.py:430,465,494` | cop-4 (conteggio, SBAGLIATA in parte); cop-5 (conteggio, SBAGLIATA in parte) | reg · cop-4 · cop-5 |
 | M-21 | `mind/store.objective_history` (ha un test) e `_fact_row` | `mind/store.py:692,1157` |  | reg |
-| M-22 | Rotte senza chiamante di produzione: `GET /api/entities` (tutto `handlers_entities.py`, 91 righe) e `GET /api/misure` | `server.py:5517,5537`; `api/handlers_entities.py` | cop-8 (conteggio, incompleta) | reg · cop-2 · cop-3 · cop-8 |
+| M-22 | Rotta senza chiamante di produzione: `GET /api/misure`. **Resta per scelta** (dichiarazione D5 della Tappa 0): la usano `scripts/misure.py` e le batterie. La parte `GET /api/entities` (tutto `handlers_entities.py`) e' USCITA con la Tappa 0, Task 9 | `server.py` (rotta `/api/misure`) | cop-8 (conteggio, incompleta) | reg · cop-2 · cop-3 · cop-8 |
 | M-23 | `HAClient.render_template`: nessun chiamante di produzione | `ha_client.py:124-129,1363` | cop-5 (incompleta) | reg · cop-5 |
 | M-24 | `ServiceRegistry.age_seconds` letto solo da `ensure_fresh` | `action/registry.py` |  | reg |
 | M-25 | `behavior_reader.look(force)`: resta nella firma e non fa più niente | `server.py:3039-3044` | cop-1 (righe); cop-2 (righe) | reg · cop-1 · cop-2 |
@@ -436,6 +438,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-75 | Il ramo «ripristino dalla chat» di `Workshop.restore` non ha chiamanti di produzione | `workshop.py:987-1001` |  | cop-9 N-M-1 |
 | M-76 | `REASON_DISDETTA`, il `motivo` delle righe `disdetta` e `_migration_3`: scritti, mai letti | `revisions.py:50,110-130,404-406`; `constructions-route.js:633-644` |  | cop-9 N-M-2 |
 | M-77 | `nomi_di_ripiego` e `nome_dedotto` di `costruisci_indice` senza lettore: la correzione della pagina Memoria non ha mai funzionato | `memory/resolver.py:384-461`; `handlers_memory.py:121-157` |  | cop-9 N-M-3 |
+| M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso | `mind/operations.py` |  | compl N-2 |
+| M-79 | `LLMRouter._all`: nessun chiamante | `llm_router.py` |  | compl N-7 |
 
 ---
 
@@ -518,6 +522,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | X-73 | Nomi di moduli e funzioni usciti in `keeper/store.py` (`orologio.py`, `promessa.py`, `turno.SOLA_LETTURA`) | `keeper/store.py:5,73,365,374,376` |  | cop-9 N-X-1 |
 | X-74 | `HomeSpaceStore`, `home_space/store.py`, `casa.db`, `trova()`/`verifica()`/`_normalizza` citati come vivi in `memory/` | `memory/resolver.py:43,58,79,198,249-283,386-397,431,457`; `interpretation.py:89`; `memory/store.py:3,6,23,231,314` |  | cop-9 N-X-2 |
 | X-75 | Commenti che descrivono un'altra cosa (`usage/store.py:173-174`, `revisions.py:373-377`, «quattro... anzi tre caselle», `tools.py:206-224`) | `usage/store.py:173-174`; `revisions.py:373-377`; `interpretation.py:48-53`; `tools.py:206-224` |  | cop-9 N-X-3 |
+| X-76 | Il «solo scrittore» del registro degli esiti: i punti che scrivono sono 11 in 5 moduli | non dichiarate dal rapporto |  | compl N-6 |
+| X-77 | `GET /api/pending`: il docstring promette due letture, ne fa due COUNT più una SELECT intera | non dichiarate dal rapporto |  | compl N-5 |
 
 ---
 
@@ -546,6 +552,8 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-17 | Costruire: il «prima» non si rilegge all'applicazione (fino a 7 giorni) né al ripristino: una modifica fatta a mano è sovrascritta e persa |  | LETTO | cap. proposto E; Stato DIVERGENTE, Unirla CC (rifiuto contro avviso: DP) | cop-9 N-E-1 |
 | S-18 | `importa_legacy` non è atomica: due commit, un crash in mezzo raddoppia i totali ereditati |  | DEDOTTO | cap. proposto G; Stato NV, Unirla PS (una transazione) | cop-9 N-G-6 |
 | S-19 | `ChatSettings.load` solleva (`[1,2]` → `AttributeError`; `thinking_budget: "abc"` → `ValueError`) e `server.py:3809` la chiama senza `try` |  | ESEGUITO | già nel registro v1 dentro X-10 (docstring «non solleva mai»); nessun rapporto di copertura l'ha riletta | reg X-10 (d7 §1.9) |
+| S-20 | L'avviso «il bersaglio è cambiato» di una promessa non può mai partire: lo spazzino legge `occurrence["anteprima"]` (`sweeper.py:202-205`), la porta scrive `"bersaglio"` (`actuator.py:816`); alla nascita `_count_target` passa il bersaglio non tradotto, quindi `entities_at_birth` è sempre NULL |  | LETTO (non eseguito) | Stato DIVERGENTE, Unirla CC; la prova usa una porta finta | compl N-1 |
+| S-21 | Nessuna prova fissa che un servizio firmato (`auth_via="canale"`) non arrivi a `/api/mcp`: il codice lo impedisce, ma senza sorveglianza |  | LETTO | dal censimento dell'MCP esterno (`mcp-esterno.md`, «Non stabilito»); e' un comportamento dei permessi: Tappa 7 | Tappa 0, Task 9 |
 
 ---
 
@@ -553,22 +561,11 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 
 ## 1. Sintesi
 
-| Capitolo | Vecchie (v1) | Nuove | Ritirate | Totale | E | D | NV | due verdetti | PS | CC | DP | — | due verdetti (Unirla) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A. Leggere da Home Assistant | 18 | 21 | 0 | 39 | 16 | 9 | 13 | 1 | 15 | 16 | 7 | 0 | 1 |
-| B. L'oggetto «casa» e le sue regole | 29 | 25 | 0 | 54 | 28 | 18 | 7 | 1 | 31 | 15 | 8 | 0 | 0 |
-| C. La resa in uscita e i nomi dei campi | 27 | 29 | 0 | 56 | 14 | 34 | 8 | 0 | 18 | 29 | 9 | 0 | 0 |
-| D. Un turno verso un modello | 33 | 33 | 0 | 66 | 22 | 36 | 7 | 1 | 26 | 32 | 7 | 0 | 1 |
-| E. Scrivere su Home Assistant | 8 | 4 | 0 | 12 | 4 | 8 | 0 | 0 | 3 | 5 | 4 | 0 | 0 |
-| F. Chi sei, cosa puoi, quali modelli | 13 | 8 | 0 | 21 | 10 | 10 | 1 | 0 | 11 | 8 | 2 | 0 | 0 |
-| G. Gli archivi che seguono la casa | 15 | 8 | 0 | 23 | 10 | 9 | 4 | 0 | 7 | 8 | 8 | 0 | 0 |
-| T. La suite di test | 12 | 4 | 0 | 16 | 7 | 3 | 6 | 0 | 9 | 1 | 4 | 2 | 0 |
-| **Totale A–G e T** | **155** | **132** | **0** | **287** | **111** | **127** | **46** | **3** | **120** | **114** | **49** | **2** | **2** |
-| M. Codice morto e residui | 41 | 36 | 0 | 77 | – | – | – | – | – | – | – | – | – |
-| X. Documenti e commenti che dicono il falso | 20 | 55 | 0 | 75 | – | – | – | – | – | – | – | – | – |
-| S. Difetti che non sono doppioni | – | 19 | 0 | 19 | – | – | – | – | – | – | – | – | – |
+I conti si chiedono, non si ricopiano: `python scripts/registro.py conta`.
+Questa sezione portava una tabella di totali scritta a mano il 01/10/2026 (458 voci, prima
+delle sei aggiunte del complemento): i suoi numeri non coincidevano con quelli della spec che
+li citava, ed è uscita con la Tappa 0.
 
-Totale delle righe dell'indice: **458** (216 del registro v1, 223 nuove nei capitoli A–G, T, M, X, 19 nel capitolo S).
 
 Ritirate per intero: **0**. Nessuna correzione dichiara falsa una voce intera; sette voci perdono un pezzo (ritiri parziali, elencati nella sezione 2). Lo stato `RITIRATA` resta in legenda per le prossime revisioni.
 «Due verdetti» = voci nuove trovate da due rapporti che non concordano sullo Stato o su Unirla (sezione 3). Lo Stato delle voci v1 non è cambiato per nessuna correzione; Unirla è cambiata per A-13 (da CC a PS).
@@ -798,14 +795,8 @@ Voci v1 toccate dalla copertura: 152 su 216 (88 corrette almeno una volta, le al
 
 Fonte: `MATRICE-COMPLEMENTO-44-FILE.md`, §7. Letto sul codice, non eseguito salvo dove detto.
 
-| Id | Voce | Stato | Unirla | Fonti |
-|---|---|---|---|---|
-| S-20 | L'avviso «il bersaglio è cambiato» di una promessa non può mai partire: lo spazzino legge `occurrence["anteprima"]` (`sweeper.py:202-205`), la porta scrive `"bersaglio"` (`actuator.py:816`); alla nascita `_count_target` passa il bersaglio non tradotto, quindi `entities_at_birth` è sempre NULL. La prova usa una porta finta | D | CC | compl N-1 (LETTO, non eseguito) |
-| M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso | — | PS | compl N-2 |
-| M-79 | `LLMRouter._all`: nessun chiamante | — | PS | compl N-7 |
-| X-76 | Il «solo scrittore» del registro degli esiti: i punti che scrivono sono 11 in 5 moduli | — | PS | compl N-6 |
-| X-77 | `GET /api/pending`: il docstring promette due letture, ne fa due COUNT più una SELECT intera | — | PS | compl N-5 |
-| E-13 | «Verificare senza eseguire» non ha una porta pubblica: `verification()` è atomica, `ActionActuator.verify(call)` non esiste; chi ne ha bisogno ricompone il pre-volo (si lega a cop-3 E-n1) | D | CC | compl §2.1 |
+Le sei voci del complemento (S-20, M-78, M-79, X-76, X-77, E-13) stanno ora nei loro capitoli:
+una voce scritta fuori dal suo capitolo è una voce che un lettore dei capitoli non vede.
 
 ### Correzioni portate dal complemento
 
@@ -816,3 +807,12 @@ Fonte: `MATRICE-COMPLEMENTO-44-FILE.md`, §7. Letto sul codice, non eseguito sal
 - **Matrice, contraddizione n.12**: nessun calendario nel contesto della chat (ragione a cop-4 e cop-8).
 - `GET /api/misure`: l'N+1 arriva a 2.000 letture, non 500.
 - `mind/operations.py`: le operazioni sono 18, non 14; 8 sono offribili al modello.
+
+---
+
+## Chiuse
+
+Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copia è cancellata.
+
+| Id | Voce | Chiusa con | Commit | Cosa è stato cancellato |
+|---|---|---|---|---|
