@@ -100,11 +100,12 @@ def test_i_fatti_di_HA_non_entrano_nel_seme():
     assert "attributi_assumibili" not in campi  # D1: resta codice
 
 
-def test_il_seme_conta_121_celle_campo_per_campo():
+def test_il_seme_conta_98_celle_campo_per_campo():
     """Contato ESEGUENDO, non a mano: 99 celle prima della fetta «da sapere
-    subito», 16 righe nuove il 18/09/2026 (115), e **6 righe di `impalcatura`
-    il 20/09** -- le integrazioni che sono Home Assistant che parla di se'.
-    121.
+    subito», 16 righe nuove il 18/09/2026 (115), **6 righe di `impalcatura`
+    il 20/09** -- le integrazioni che sono Home Assistant che parla di se' --
+    (121), e 23 righe di `notevole` in meno il 02/10/2026, quando il campo e'
+    uscito dai giudizi. 98.
 
     Le sei non sono di gusto: ognuna e' comparsa in primo piano nella
     settimana 13-19/09, e insieme hanno fatto 12 righe su 42.
@@ -114,10 +115,10 @@ def test_il_seme_conta_121_celle_campo_per_campo():
     """
     import collections
     per_campo = collections.Counter(field for _, _, field, _ in tv.judgment_seed_rows())
-    assert per_campo == {"genere": 26, "notevole": 23, "riposo": 18, "accendibile": 13,
+    assert per_campo == {"genere": 26, "riposo": 18, "accendibile": 13,
                          "limiti_parametri": 10, "lavoro": 9, "da_sapere_subito": 16,
                          "impalcatura": 6}
-    assert sum(per_campo.values()) == 121
+    assert sum(per_campo.values()) == 98
 
 
 def test_l_impronta_del_seme_vero_e_QUESTA():
@@ -174,13 +175,22 @@ def test_i_sedici_tipi_da_sapere_subito_sono_QUESTI():
 
 
 def test_da_sapere_subito_NON_e_notevole_e_i_due_elenchi_DIVERGONO():
-    """La ragione per cui questa fetta esiste, scritta come prova: `notevole`
-    sta su 23 soggetti fra cui `light`, `switch`, `cover`, `media_player`;
-    `da_sapere_subito` su 16, e una luce accesa non c'e'. Se i due elenchi
-    coincidessero, il campo nuovo sarebbe un doppione -- ed e' esattamente cio'
-    che questa prova sorveglia.
+    """La ragione per cui questa fetta esiste, scritta come prova: `notable`
+    sta su 23 tipi del vocabolario fra cui `light`, `switch`, `cover`,
+    `media_player`; `da_sapere_subito` su 16, e una luce accesa non c'e'. Se i
+    due elenchi coincidessero, il campo nuovo sarebbe un doppione -- ed e'
+    esattamente cio' che questa prova sorveglia.
+
+    `notable` si legge dal vocabolario e non dal seme: dal 02/10/2026 non e'
+    piu' un giudizio del sapere, e le sue dichiarazioni restano li' per il
+    censore dei tipi.
     """
-    notevoli = {s for _, s, f, v in tv.judgment_seed_rows() if f == "notevole" and v == "si"}
+    notevoli = {row.domain if row.device_class is None
+                else f"{row.domain}.{row.device_class}"
+                for row in tv._vocabulary.rows()
+                if row.fields.get(tv.NOTABLE) is not None
+                and row.fields[tv.NOTABLE].value is True}
+    assert len(notevoli) == 23
     # `v != "no"` e non `v == "si"`: `lock` porta l'elenco `["jammed"]` (vedi la
     # prova sopra), e con un filtro sul solo `si` questo confronto avrebbe
     # taciuto su di lei.

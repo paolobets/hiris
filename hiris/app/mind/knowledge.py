@@ -463,6 +463,49 @@ def _migration_8(conn) -> None:
         conn.execute("ALTER TABLE knowledge ADD COLUMN said_by TEXT")
 
 
+#: I campi che nessuno legge piu', e che la migrazione 9 toglie dagli archivi
+#: gia' avviati. `notevole` e' un nome intero; delle direzioni si conosce il
+#: prefisso, perche' il campo portava dentro la cosa di cui parlava
+#: (`direzione:power_importing`).
+_DEAD_FIELD = "notevole"
+_DEAD_FIELD_PREFIX = "direzione:"
+
+
+def _migration_9(conn) -> None:
+    """v8 -> v9: escono le righe che nessuno legge piu'.
+
+    - **`notevole`**: il giudizio «vale la pena raccontarlo nel riassunto?».
+      Il suo unico lettore, «Notevole adesso» del nucleo, e' uscito il
+      29/09/2026; da allora la pagina dei giudizi lo lasciava impostare senza
+      che cambiasse niente.
+    - **`direzione:*`**: le direzioni dell'energia dedotte per integrazione.
+      Il loro seme e' uscito il 01/10/2026 e nessun codice le leggeva gia' da
+      prima.
+
+    Il seme non cancella (`mind/seed.py`): senza questa migrazione le righe
+    resterebbero per sempre negli archivi delle case avviate. Misurato sulla
+    casa del proprietario il 02/10/2026: 23 righe `notevole`, tutte del seme
+    del repo, e 14 `direzione:*`, tutte dedotte.
+
+    **Ogni riga tolta si nomina nel registro, col suo valore**: cancellare in
+    silenzio un dato della casa e' proibito dalle fondamenta, e nessuna rotta
+    le elencava una per una.
+    """
+    rows = conn.execute(
+        "SELECT subject_kind, subject, field, value, provenance, who FROM knowledge "
+        "WHERE field = ? OR substr(field, 1, ?) = ? "
+        "ORDER BY subject_kind, subject, field",
+        (_DEAD_FIELD, len(_DEAD_FIELD_PREFIX), _DEAD_FIELD_PREFIX)).fetchall()
+    for row in rows:
+        logger.info(
+            "sapere: riga tolta, nessun codice la leggeva piu' -- %s/%s/%s = %r "
+            "(%s, scritta da %s)", row["subject_kind"], row["subject"], row["field"],
+            row["value"], row["provenance"], row["who"])
+    conn.execute(
+        "DELETE FROM knowledge WHERE field = ? OR substr(field, 1, ?) = ?",
+        (_DEAD_FIELD, len(_DEAD_FIELD_PREFIX), _DEAD_FIELD_PREFIX))
+
+
 def _why_from_evidence(evidence: str | None) -> str:
     """Il `why` del modello dentro le prove, o la stringa vuota.
 
@@ -494,7 +537,7 @@ def _why_from_evidence(evidence: str | None) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts", "said_by")
@@ -560,7 +603,8 @@ class KnowledgeStore:
                     migrations={2: _migration_2, 3: _migration_3,
                                 4: _migration_4, 5: _migration_5,
                                 6: _migration_6,
-                                7: _migration_7, 8: _migration_8})
+                                7: _migration_7, 8: _migration_8,
+                                9: _migration_9})
 
     def close(self) -> None:
         with self._lock:
@@ -749,19 +793,7 @@ class KnowledgeStore:
         """
         with self._lock:
             rows = self._conn.execute(
-                # **Il campo si taglia ai due punti.** `direzione:power_importing`
-                # e `direzione:energy_exporting_today` sono lo stesso campo con
-                # dentro la cosa di cui parlano. Senza il taglio il riassunto
-                # sarebbe lungo quanto il dato: misurato il 15/09/2026, 14
-                # righe da uno su 19 totali. **Il seme delle direzioni e' uscito
-                # il 01/10/2026**, ma le righe gia' scritte restano sul disco
-                # delle case avviate (il seme non cancella), e il taglio vale
-                # per qualunque campo che porti i due punti.
-                "SELECT subject_kind, "
-                "       CASE WHEN instr(field, ':') > 0 "
-                "            THEN substr(field, 1, instr(field, ':') - 1) "
-                "            ELSE field END AS campo, "
-                "       provenance, COUNT(*) AS quante "
+                "SELECT subject_kind, field AS campo, provenance, COUNT(*) AS quante "
                 "FROM knowledge GROUP BY subject_kind, campo, provenance "
                 "ORDER BY subject_kind, campo, provenance").fetchall()
         counted = [{"specie": r["subject_kind"], "campo": r["campo"],

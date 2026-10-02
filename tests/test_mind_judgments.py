@@ -416,8 +416,9 @@ def test_porta_RIFIUTA_guasto(tmp_path):
 # `resting_of` salgono entita' -> coppia -> dominio; `working_of` coppia ->
 # dominio; `operable_domains` e `parameter_limits` solo dominio. (Fino al
 # 29/09/2026 c'era anche `is_notable`, coppia -> dominio: uscita col suo unico
-# lettore, «Notevole adesso» del nucleo, e con lei la sua riga qui sotto. Il
-# campo `notevole` resta scrivibile senza lettori: vedi `_LEVELS`.)
+# lettore, «Notevole adesso» del nucleo. Il campo `notevole` e' uscito dai
+# giudizi il 02/10/2026: una riga cosi' la porta la rifiuta come ogni campo
+# che non conosce.)
 _LIVELLI_LETTI = [
     ("entita", "switch.x", "genere", "sicurezza",
      lambda j: j.genre_of("switch.x", None) == "sicurezza"),
@@ -436,7 +437,6 @@ _LIVELLI_LETTI = [
 ]
 
 _LIVELLI_MUTI = [
-    ("entita", "light.x", "notevole", "si"),
     ("entita", "light.x", "lavoro", '{"on": "acceso"}'),
     ("entita", "light.x", "accendibile", "si"),
     ("entita", "climate.x", "limiti_parametri", '{"x": {"options": "y"}}'),
@@ -444,7 +444,7 @@ _LIVELLI_MUTI = [
     ("tipo", "climate.hvac", "limiti_parametri", '{"x": {"options": "y"}}'),
     # D1 della fetta 2026-09-18: `_LEVELS` dichiara i livelli a cui
     # `da_sapere_subito` e' davvero CONSULTATO -- coppia e dominio, come
-    # `notevole`. Una riga su un'entita' sarebbe accettata e non letta da
+    # `lavoro`. Una riga su un'entita' sarebbe accettata e non letta da
     # nessuno: il proprietario la vedrebbe scritta e la casa non cambierebbe.
     ("entita", "alarm_control_panel.ingresso", "da_sapere_subito", "si"),
     # forme di soggetto che nessuna chiave di ricerca costruisce

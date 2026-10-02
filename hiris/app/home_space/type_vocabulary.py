@@ -119,7 +119,6 @@ from types import MappingProxyType
 from .type_judgments import (
     DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
-    NOTABLE_FIELD,
     OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD,
     RESTING_FIELD,
@@ -853,9 +852,14 @@ UNKNOWN_STATES = Ours({"unavailable", "unknown"})
 #
 # **Dal 29/09/2026 la domanda non ha piu' chi la pone**: «Notevole adesso» e'
 # uscita dal nucleo (spec «una porta sola per la casa» §5) e con lei il suo
-# unico lettore, `TypeJudgments.is_notable`. Il campo resta nel seme e nella
-# porta dei giudizi senza lettori: se toglierlo o ridargli una domanda e' una
-# fetta sua (vedi `mind/judgments._LEVELS`).
+# unico lettore, `TypeJudgments.is_notable`. **Dal 02/10/2026 non e' piu' un
+# giudizio del sapere**: non si semina, la porta dei giudizi non lo accetta e
+# la pagina non lo mostra (le righe gia' scritte le toglie
+# `mind/knowledge._migration_9`). Le dichiarazioni qui sotto restano perche'
+# le legge il censore dei tipi (`scripts/censore_tipi.py`): una coppia
+# dichiarata e' una coppia rivendicata, e le ragioni scritte accanto sono
+# quelle che le sue eccezioni citano. Se ridare loro una domanda o toglierle
+# -- riaprendo quelle voci nel censore -- lo decide il proprietario.
 #
 # Fino all'08/09/2026 la risposta viveva in due insiemi di `briefing.py`,
 # `_EVENT_DOMAINS` e `_EVENT_CLASSES`, che rispondevano alla stessa domanda a
@@ -1848,9 +1852,14 @@ _verify_no_state_is_both_rest_and_work()
 #: Nome del campo in questo modulo -> nome del campo nel sapere. **La traduzione
 #: vive qui e solo qui.** Solo i giudizi nostri: i fatti copiati dal sorgente di
 #: HA restano codice, con le loro prove ancorate alla fonte.
+#:
+#: **`notable` non c'e'**, dal 02/10/2026: non e' piu' un giudizio del sapere
+#: (nessuna domanda lo consultava dal 29/09), quindi non si semina, non passa
+#: dalla porta e non compare nella pagina. Le sue dichiarazioni restano piu'
+#: sopra, lette dal solo censore dei tipi.
 JUDGMENT_FIELDS = MappingProxyType({
     GENRE: GENRE_FIELD, RESTING_STATES: RESTING_FIELD, WORKING_STATES: WORKING_FIELD,
-    NOTABLE: NOTABLE_FIELD, OPERABLE: OPERABLE_FIELD,
+    OPERABLE: OPERABLE_FIELD,
     PARAMETER_LIMITS: PARAMETER_LIMITS_FIELD,
     DA_SAPERE_SUBITO: DA_SAPERE_SUBITO_FIELD,
 })
@@ -1859,7 +1868,7 @@ JUDGMENT_FIELDS = MappingProxyType({
 def _seed_value(name: str, value) -> str:
     if name == GENRE:
         return value
-    if name in (NOTABLE, OPERABLE):
+    if name == OPERABLE:
         return "si" if value else "no"
     if name == DA_SAPERE_SUBITO:
         # Tre forme, non due (spec §2): `si`, `no`, oppure l'elenco degli stati

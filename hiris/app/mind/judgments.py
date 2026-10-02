@@ -21,7 +21,6 @@ from ..home_space.type_judgments import (
     DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
     JUDGMENT_FIELD_NAMES,
-    NOTABLE_FIELD,
     OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD,
     RESTING_FIELD,
@@ -69,16 +68,14 @@ CORRECTION_ORIGIN = "correzione"
 #: dominio. Una riga a un livello che nessuna domanda legge non si scrive: il
 #: proprietario la vedrebbe accettata e la casa non cambierebbe.
 #:
-#: **`notevole` e' l'eccezione aperta, dal 29/09/2026**: la sua domanda
-#: (`is_notable`) e' uscita col suo unico lettore, «Notevole adesso» del
-#: nucleo. I livelli qui sotto sono quelli a cui era letto; oggi nessuna
-#: domanda lo consulta, e per la regola appena scritta il campo intero -- seme,
-#: porta, pagina -- va tolto o ridato a un lettore. E' una fetta sua.
+#: Per questa regola `notevole` e' uscito il 02/10/2026: la sua domanda
+#: (`is_notable`) era uscita il 29/09 col suo unico lettore, «Notevole adesso»
+#: del nucleo, e una riga `notevole` si poteva ancora scrivere senza che
+#: cambiasse niente.
 _LEVELS = {
     GENRE_FIELD: frozenset({"entita", "coppia", "dominio"}),
     RESTING_FIELD: frozenset({"entita", "coppia", "dominio"}),
     WORKING_FIELD: frozenset({"coppia", "dominio"}),
-    NOTABLE_FIELD: frozenset({"coppia", "dominio"}),
     DA_SAPERE_SUBITO_FIELD: frozenset({"coppia", "dominio"}),
     SCAFFOLDING_FIELD: frozenset({"integrazione"}),
     OPERABLE_FIELD: frozenset({"dominio"}),

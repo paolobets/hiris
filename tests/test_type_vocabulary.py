@@ -282,16 +282,16 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 
 def _seed_says_notable(dominio: str, classe: str | None = None) -> bool:
-    """Il giudizio `notevole` del seme, letto dalle righe: coppia, poi
-    dominio. Fino al 29/09/2026 lo leggeva `TypeJudgments.is_notable`, uscita
-    col suo unico lettore di produzione («Notevole adesso» del nucleo); il
-    seme resta, e queste prove lo pinnano alla fonte. Verificato quel giorno,
-    prima di togliere la domanda: stessi 10 domini e stesse 13 coppie."""
-    giudizi = {soggetto: valore for _, soggetto, campo, valore
-               in type_vocabulary.judgment_seed_rows() if campo == "notevole"}
-    if classe and f"{dominio}.{classe}" in giudizi:
-        return giudizi[f"{dominio}.{classe}"] == "si"
-    return giudizi.get(dominio) == "si"
+    """La dichiarazione `notable` del vocabolario: coppia, poi dominio. Fino
+    al 29/09/2026 la leggeva `TypeJudgments.is_notable`, uscita col suo unico
+    lettore di produzione («Notevole adesso» del nucleo), e fino al 02/10 era
+    anche un giudizio del sapere (`notevole`), seminato da qui. Oggi resta
+    una dichiarazione del vocabolario, letta dal censore dei tipi, e queste
+    prove la pinnano alla fonte: stessi 10 domini e stesse 13 coppie."""
+    vocabulary = type_vocabulary._vocabulary
+    if classe and vocabulary.value(dominio, classe, type_vocabulary.NOTABLE) is not None:
+        return vocabulary.value(dominio, classe, type_vocabulary.NOTABLE) is True
+    return vocabulary.value(dominio, None, type_vocabulary.NOTABLE) is True
 
 
 def domini_notevoli() -> set[str]:

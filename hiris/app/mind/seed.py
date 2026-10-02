@@ -71,10 +71,10 @@ HOUSE_PRIORITY = 1
 # «produzione», ...) si leggevano solo da
 # `knowledge.directions_by_translation_key`, che serviva solo ai bilanci, e i
 # bilanci non seminavano niente da due settimane: le righe erano scritte e
-# mai lette. Sono usciti tutti e tre insieme. Quelle gia' scritte
-# restano nel sapere delle case avviate, perche' il seme non cancella (vedi
-# `docs/BACKLOG.md`, «Una riga del seme ritirata da un rilascio futuro resta
-# in vigore per sempre»).
+# mai lette. Sono usciti tutti e tre insieme. Quelle gia' scritte nel
+# sapere delle case avviate le toglie `knowledge._migration_9` (02/10/2026),
+# perche' il seme non cancella (vedi `docs/BACKLOG.md`, «Una riga del seme
+# ritirata da un rilascio futuro resta in vigore per sempre»).
 
 
 # -- I significati delle classi -------------------------------------------

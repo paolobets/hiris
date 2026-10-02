@@ -178,14 +178,12 @@ def test_una_chiave_DOPPIA_e_storta():
 def test_accendibile_limiti_lavoro():
     """Le domande del giudizio che hanno ancora un lettore. (Fino al
     29/09/2026 la prova chiedeva anche `is_notable`, uscita col suo unico
-    lettore, «Notevole adesso» del nucleo.)
+    lettore, «Notevole adesso» del nucleo; il campo `notevole` e' uscito dai
+    giudizi il 02/10/2026.)
 
     Mutazione ESEGUITA: `operable_domains` che restituisce un insieme vuoto
     -- rossa su `== frozenset({"light"})`."""
-    j = _j(("tipo", "light", "notevole", "si"),
-           ("tipo", "light", "accendibile", "si"),
-           ("tipo", "binary_sensor", "notevole", "no"),
-           ("tipo", "binary_sensor.smoke", "notevole", "si"),
+    j = _j(("tipo", "light", "accendibile", "si"),
            ("tipo", "light", "limiti_parametri",
             ('{"color_temp_kelvin": {"min": "min_color_temp_kelvin",'
              ' "max": "max_color_temp_kelvin"},'

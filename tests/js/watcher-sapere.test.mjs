@@ -248,7 +248,7 @@ test('mount: una correzione di PRIMA mostra il suo autore «proprietario», la d
   // righe scritte prima portano «proprietario», e per loro e' vero.
   const g = giudizio({
     da: 'correzione', chi: 'proprietario', quando_ts: 1787000000,
-    campo: 'notevole', valore: 'true',
+    campo: 'accendibile', valore: 'si',
   });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
   ctx.window.HirisWatcherRoute.mount('sapere');
@@ -500,7 +500,7 @@ test('seam _rendiSapere: il select dell’editor del genere (dentro una riga) ha
 test('mount: «Torna al seme» sposta il focus ad ogni passo — niente focus perso su <body>', async () => {
   // Mutazione che la uccide: nascondere il bottone che ha il focus senza
   // spostarlo altrove (start.hidden/confirmBox.hidden senza .focus()).
-  const g = giudizio({ da: 'correzione', campo: 'notevole', soggetto: 'light.focus_revert' });
+  const g = giudizio({ da: 'correzione', campo: 'accendibile', soggetto: 'light.focus_revert' });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -903,7 +903,7 @@ test('seam _rendiSapere: la sezione DISEGNA un gruppo per OGNI campo dichiarato,
    cronaca dei giorni passati si rifà da sola» accanto al badge, e «Anche questo
    rifà la cronaca degli ultimi 22 giorni» dentro «Torna al seme» -- ma la
    cronaca si rifa' solo per i campi che entrano nell'IMPRONTA
-   (`type_judgments.CHRONICLE_FIELDS`: `genere` e `riposo`). Per `notevole`,
+   (`type_judgments.CHRONICLE_FIELDS`: `genere` e `riposo`). Per
    `accendibile`, `lavoro`, `limiti_parametri` e `da_sapere_subito` quelle due
    frasi erano una promessa che nessuno mantiene. */
 
@@ -932,7 +932,6 @@ const VALORE_PER_CAMPO = {
   riposo: '["off"]',
   lavoro: '{"on": "acceso"}',
   limiti_parametri: '{"brightness": {"min": "a", "max": "b"}}',
-  notevole: 'si',
   accendibile: 'si',
   da_sapere_subito: 'no',
 };
@@ -943,9 +942,10 @@ test('seam _rendiSapere: la frase sulla cronaca compare per TUTTI e SOLI i campi
      costante. **Con la stesura precedente di questa prova restava verde su
      417 prove**, perche' quella asseriva i due casi di oggi invece della
      proprieta' che li produce -- il difetto n. 1 del progetto, in casa nostra.
-     Ora e' rossa su `notevole`. Ripristinata con l'editor.
+     Ora e' rossa sul primo campo fuori dall'impronta (allora era `notevole`,
+     uscito dai giudizi il 02/10/2026). Ripristinata con l'editor.
 
-     Cosa lasciava passare: il giorno in cui qualcuno corregge `notevole`, la
+     Cosa lasciava passare: il giorno in cui qualcuno corregge `accendibile`, la
      pagina gli rimostrerebbe la frase falsa e nessuna prova lo direbbe. */
   const impronta = campiDellImpronta();
   assert.ok(impronta.size > 0, 'l\'impronta ha almeno un campo');
@@ -976,7 +976,8 @@ test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TU
   /* Stessa correzione della prova qui sopra, e per la stessa ragione: le due
      frasi escono dalla STESSA funzione (`rifaLaCronaca`), quindi una mutazione
      su quella deve arrossire tutt'e due. Mutazione ESEGUITA: la stessa
-     (`campo !== 'da_sapere_subito'`) -- rossa su `notevole`; ripristinata con
+     (`campo !== 'da_sapere_subito'`) -- rossa su un campo fuori dall'impronta
+     (allora `notevole`); ripristinata con
      l'editor. */
   const impronta = campiDellImpronta();
   const costo = /rifà la cronaca degli ultimi/;
@@ -1001,16 +1002,16 @@ test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TU
 
 test('seam _rendiSapere: in «Correzioni» ogni riga dice QUALE campo è', () => {
   /* Senza, due righe dello stesso soggetto sono indistinguibili: «lock · no ·
-     Corretto da Paolo» vale identica per `notevole` e per `da_sapere_subito`.
+     Corretto da Paolo» vale identica per `accendibile` e per `da_sapere_subito`.
      Mutazione che la uccide: togliere il campo dalla riga. */
   const { corpo } = rendiSapere(sapereFinto({
     giudizi: [
-      giudizio({ da: 'correzione', campo: 'notevole', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
+      giudizio({ da: 'correzione', campo: 'accendibile', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
       giudizio({ da: 'correzione', campo: 'da_sapere_subito', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
     ],
   }));
   const campi = Array.from(corpo.querySelectorAll('.jr-row .jr-field')).map((n) => n.textContent);
-  assert.deepEqual(campi.slice().sort(), ['Da sapere subito', 'Notevole'],
+  assert.deepEqual(campi.slice().sort(), ['Accendibile', 'Da sapere subito'],
     'le due righe dello stesso soggetto si distinguono per campo');
 });
 

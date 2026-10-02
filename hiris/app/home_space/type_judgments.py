@@ -17,18 +17,17 @@ Row = tuple[str, str, str, str]
 GENRE_FIELD = "genere"
 RESTING_FIELD = "riposo"
 WORKING_FIELD = "lavoro"
-NOTABLE_FIELD = "notevole"
 OPERABLE_FIELD = "accendibile"
 PARAMETER_LIMITS_FIELD = "limiti_parametri"
 #: «Quando una cosa di questo tipo esce dal suo riposo, il proprietario deve
-#: saperlo subito?» (spec `2026-09-18-da-sapere-subito.md` §2). **Non e'
-#: `notevole`**, che risponde a «vale la pena raccontarlo nel riassunto?» -- e'
-#: cosi' che la usava `home_space/briefing._is_event` fino al 29/09/2026 (uscita
-#: con «Notevole adesso»; da quel giorno `notevole` non ha piu' un lettore nel
-#: codice), ed e' per questo che una luce accesa e' `notevole` e non e' da
-#: sapere subito. Misurato il 18/09/2026:
-#: leggendo `notevole` come criterio della banda, 71 voci di cronaca su 75
-#: finivano in prima pagina, 35 delle quali accensioni di luce.
+#: saperlo subito?» (spec `2026-09-18-da-sapere-subito.md` §2). **Non e' il
+#: vecchio `notevole`**, che rispondeva a «vale la pena raccontarlo nel
+#: riassunto?»: una luce accesa era `notevole` e non e' da sapere subito.
+#: Misurato il 18/09/2026: leggendo `notevole` come criterio della banda, 71
+#: voci di cronaca su 75 finivano in prima pagina, 35 delle quali accensioni
+#: di luce. `notevole` ha perso il suo lettore il 29/09/2026 (uscita di
+#: «Notevole adesso») ed e' uscito dai giudizi il 02/10/2026, con le sue righe
+#: (`mind/knowledge._migration_9`).
 #:
 #: **Il nome inglese non e' deciso** (regola del glossario: una riga nasce con
 #: l'italiano e l'inglese si sceglie in un passaggio successivo). Quando lo
@@ -48,7 +47,7 @@ DA_SAPERE_SUBITO_FIELD = "da_sapere_subito"
 #: nasce con l'italiano (regola del glossario).
 SCAFFOLDING_FIELD = "impalcatura"
 JUDGMENT_FIELD_NAMES = frozenset({
-    GENRE_FIELD, RESTING_FIELD, WORKING_FIELD, NOTABLE_FIELD, OPERABLE_FIELD,
+    GENRE_FIELD, RESTING_FIELD, WORKING_FIELD, OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD, DA_SAPERE_SUBITO_FIELD, SCAFFOLDING_FIELD})
 CHRONICLE_FIELDS = (GENRE_FIELD, RESTING_FIELD)
 NO_GENRE = "nessuno"
@@ -154,7 +153,7 @@ def _parse(field: str, value: str, genres: frozenset[str], absent_forms: frozens
         if value != NO_GENRE and value not in genres:
             raise ValueError(f"genere fuori elenco: {value!r}")
         return value
-    if field in (NOTABLE_FIELD, OPERABLE_FIELD, SCAFFOLDING_FIELD):
+    if field in (OPERABLE_FIELD, SCAFFOLDING_FIELD):
         if value not in _YES_NO:
             raise ValueError(f"atteso si/no, trovato {value!r}")
         return _YES_NO[value]

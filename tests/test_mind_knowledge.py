@@ -540,33 +540,6 @@ def test_il_sapere_sa_DIRE_cosa_contiene(sapere):
     assert per[("dispositivo", "ricetta", "dedotto")] == 1
 
 
-def test_il_riassunto_RAGGRUPPA_i_campi_che_portano_un_valore_nel_nome(sapere):
-    """`direzione:power_importing` e `direzione:energy_exporting_today` sono
-    **lo stesso campo**, con dentro la cosa di cui parlano.
-
-    Misurato sulla casa vera il 15/09/2026, appena aperta la porta: su 19
-    righe di riassunto, **14 erano direzioni da una riga ciascuna** -- un
-    elenco lungo quanto il dato che doveva riassumere. Chi legge vuole sapere
-    che di direzioni ce ne sono quattordici, non vederle una per una. Il seme
-    delle direzioni e' uscito il 01/10/2026, ma le righe gia' scritte restano
-    sul disco delle case avviate, e la regola vale per ogni campo coi due
-    punti.
-
-    Mutazione ESEGUITA: raggruppare sul campo intero -- rossa.
-    """
-    for verso in ("power_importing", "power_exporting", "energy_charging"):
-        _fatto(sapere, subject_kind="integrazione", subject="zcsazzurro",
-               field=f"direzione:{verso}", value=verso, provenance="dedotto",
-               evidence="il nome dell'entita'")
-    _fatto(sapere, subject_kind="tipo", field="significato")
-
-    righe = {(r["specie"], r["campo"]): r["quante"]
-             for r in sapere.summary()["righe"]}
-    assert righe[("integrazione", "direzione")] == 3
-    assert righe[("tipo", "significato")] == 1
-    assert sapere.summary()["totale"] == 4, "si raggruppa, non si perde niente"
-
-
 def test_il_riassunto_torna_in_un_ordine_DICHIARATO(sapere):
     """Specie, poi campo, poi provenienza -- **scritto**, non quello che
     SQLite si trova in mano.
@@ -630,3 +603,96 @@ def test_le_righe_non_capite_portano_CHI_e_QUANDO(sapere):
     riga = sapere.not_understood()[0]
     assert riga.who == "modello (ponte)"
     assert riga.when_ts == 1787000000.0
+
+
+# -- la migrazione 9: le righe che nessuno legge piu' ------------------------
+
+def _archive_at_v8(tmp_path, rows):
+    """Un archivio com'era alla 3.72.2: alla versione 8, con le righe date.
+
+    Le righe si scrivono con `INSERT` e non con `write()`: `notevole` e
+    `direzione:*` sono campi che il prodotto di oggi non scrive piu'."""
+    path = str(tmp_path / "sapere.db")
+    store = sap.KnowledgeStore(path)
+    for subject_kind, subject, field, value, provenance in rows:
+        store._conn.execute(
+            "INSERT INTO knowledge (subject_kind, subject, field, value, provenance,"
+            " evidence, who, when_ts) VALUES (?,?,?,?,?,?,?,?)",
+            (subject_kind, subject, field, value, provenance,
+             "una prova" if provenance == "dedotto" else None, "seme del repo", 1.0))
+    store._conn.execute("PRAGMA user_version = 8")
+    store._conn.commit()
+    store.close()
+    return path
+
+
+def _fields(store):
+    return [(r["subject"], r["field"]) for r in store._conn.execute(
+        "SELECT subject, field FROM knowledge ORDER BY subject, field").fetchall()]
+
+
+def test_la_migrazione_toglie_le_righe_che_nessuno_legge_e_solo_quelle(tmp_path, caplog):
+    """`notevole` ha perso il suo unico lettore il 29/09/2026 e le
+    `direzione:*` il loro seme il 01/10/2026: restavano nell'archivio delle
+    case avviate, perche' il seme non cancella. Misurato sulla casa del
+    proprietario il 02/10/2026: 23 e 14 righe.
+
+    **Ogni riga tolta si nomina nel registro**: cancellare in silenzio un dato
+    della casa e' proibito, e una rotta che le elenchi non c'e'.
+
+    Mutazione ESEGUITA: la migrazione cancella con `field LIKE '%'` -- rossa
+    (spariscono anche `significato` e `accendibile`)."""
+    import logging
+
+    path = _archive_at_v8(tmp_path, [
+        ("tipo", "light", "notevole", "si", "nostro"),
+        ("tipo", "light", "accendibile", "si", "nostro"),
+        ("integrazione", "un_inverter", "direzione:power_importing", "prelievo", "dedotto"),
+        ("tipo", "sensor:temperature", "significato", "la temperatura", "importato"),
+    ])
+
+    with caplog.at_level(logging.INFO):
+        store = sap.KnowledgeStore(path)
+    try:
+        assert _fields(store) == [("light", "accendibile"),
+                                  ("sensor:temperature", "significato")]
+        said = "\n".join(record.getMessage() for record in caplog.records)
+        assert "notevole" in said and "light" in said
+        assert "direzione:power_importing" in said and "prelievo" in said
+    finally:
+        store.close()
+
+
+def test_la_migrazione_non_gira_due_volte_e_non_parla_se_non_toglie_niente(tmp_path, caplog):
+    import logging
+
+    path = _archive_at_v8(tmp_path, [
+        ("tipo", "sensor:temperature", "significato", "la temperatura", "importato")])
+    sap.KnowledgeStore(path).close()
+    with caplog.at_level(logging.INFO):
+        store = sap.KnowledgeStore(path)
+    try:
+        assert _fields(store) == [("sensor:temperature", "significato")]
+        assert "riga tolta" not in caplog.text
+    finally:
+        store.close()
+
+
+def test_il_riassunto_conta_per_campo_intero(tmp_path):
+    """Il riassunto tagliava il campo ai due punti, per raggruppare le
+    `direzione:*`. Uscite quelle, un campo e' il suo nome intero: un taglio
+    senza niente da tagliare fonderebbe in silenzio due campi diversi il
+    giorno in cui uno portasse i due punti per un'altra ragione.
+
+    Mutazione ESEGUITA: rimesso il `CASE ... instr(field, ':')` in `summary`
+    -- rossa (`a:b` e `a:c` contate come un campo solo)."""
+    store = sap.KnowledgeStore(str(tmp_path / "sapere.db"))
+    try:
+        for field in ("a:b", "a:c"):
+            store._conn.execute(
+                "INSERT INTO knowledge (subject_kind, subject, field, value, provenance,"
+                " who, when_ts) VALUES ('tipo', 'x', ?, 'v', 'nostro', 'prova', 1.0)", (field,))
+        store._conn.commit()
+        assert [r["campo"] for r in store.summary()["righe"]] == ["a:b", "a:c"]
+    finally:
+        store.close()
