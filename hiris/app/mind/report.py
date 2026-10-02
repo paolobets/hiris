@@ -42,17 +42,15 @@ raccolti. Home Assistant, richiesto domani, risponde con quelli di domani: e'
 la lezione gia' pagata da `friendly_name`, che si salva nel grezzo invece di
 risolverlo dopo. Costa 27 byte a voce.
 
-## Il documento
+## Le rese
 
-**Si deriva, non si scrive.** Se si derivasse a mano sarebbe una seconda copia
-che diverge dalla prima; derivandolo, migliorare il modo di raccontare un
-giorno vale anche per i giorni passati -- la stessa promessa per cui il grezzo
-dura 22 giorni.
-
-Costa **un terzo** del JSON a parita' di contenuto (misurato: 146 KB contro 46,
-su trenta giorni), e le sue sezioni sono il meccanismo delle porzioni: si
-consegna `## Le misure` di trenta giorni, poi `## La cronaca` del solo giorno
-che e' saltato fuori.
+**Si derivano, non si scrivono.** Una resa scritta a mano sarebbe una seconda
+copia che diverge dalla prima; derivandola, migliorare il modo di raccontare
+un giorno vale anche per i giorni passati -- la stessa promessa per cui il
+grezzo dura 22 giorni. Oggi la resa e' una: quella per la pagina (`as_page`).
+Quella per l'analista -- un documento markdown a sezioni, un terzo dei byte
+del JSON -- non aveva lettori ed e' uscita il 02/10/2026; cosa faceva e'
+scritto nel BACKLOG, alla voce sugli attori.
 """
 from __future__ import annotations
 
@@ -60,7 +58,6 @@ import logging
 
 from ..home_space.type_vocabulary import SYSTEM_GENRE, unknown_states
 from .recipes import Recipe
-from .store import READING_RETENTION_S
 
 logger = logging.getLogger(__name__)
 
@@ -148,8 +145,8 @@ def _measurements(series: dict, recipes: dict, names: dict,
     sono le serie, non i valori composti.
 
     **Un rifiuto resta fra le MISURE**, anche se non ha un numero: e' dove
-    l'analista guarda cio' che manca (`as_document` ne fa «cosa non si sa»), e
-    spostarlo fra le forme lo nasconderebbe.
+    l'analista guarda cio' che manca, e spostarlo fra le forme lo
+    nasconderebbe.
     """
     out: list[dict] = []
     shapes: list[dict] = []
@@ -447,132 +444,11 @@ def _split_value(line: dict):
             value, key=lambda k: (_KEY_ORDER.get(k, 9), str(k)))]
     return [(None, value)]
 
-def measured_value(line: dict) -> str:
-    """Il valore di una misura **a parole**, composto o no.
-
-    **Trovato dal vivo il 20/09/2026**, sul resoconto del 19: 36 misure su 67
-    hanno un valore composto -- 23 `media_min_max` e 13 `tendenza` -- e il
-    documento le stampava cosi' come sono, `{'media': 24.12, 'minimo': 23.4,
-    'massimo': 24.3} °C`, dentro la tabella che l'analista legge. La regola per
-    scomporle (`_split_value`, `_KEY_ORDER`) esisteva dal 13/09 ed era usata
-    dalle SERIE: una regola gia' scritta che il suo vicino non chiamava.
-
-    **L'unita' si attacca solo quando TUTTE le parti sono numeri.** `tendenza`
-    porta `verso` (una parola) e `punti` (un conteggio): scriverci «°C» in
-    fondo direbbe che ventiquattro punti sono ventiquattro gradi.
-    """
-    parts = _split_value(line)
-    unit = str(line.get("unita") or "").strip()
-    if len(parts) == 1 and parts[0][0] is None:
-        value = parts[0][1]
-        return f"{value} {unit}".strip()
-    numeric = all(isinstance(v, (int, float)) and not isinstance(v, bool)
-                  for _, v in parts)
-    said = " · ".join(f"{k} {v}" for k, v in parts)
-    return f"{said} {unit}".strip() if numeric and unit else said
-
-
-# -- il documento -----------------------------------------------------------
-
-#: I titoli delle sezioni. Sono l'indice che l'analista scorre, e la porzione
-#: che gli si puo' consegnare da sola: vivono qui in un posto solo perche'
-#: `section()` li cerca per nome e un letterale ripetuto due volte sarebbe un
-#: refuso che non fallisce -- restituirebbe una sezione vuota.
-SEZIONE_MISURE = "Le misure"
-SEZIONE_CRONACA = "La cronaca"
-SEZIONE_IGNOTO = "Cosa non si sa"
-
-
-def as_document(report: dict, *, current_fingerprint: str | None = None) -> str:
-    """Il resoconto reso come documento, **derivato e mai scritto a mano**.
-
-    Tre sezioni, e la terza non e' una ripetizione della prima: *«cosa non si
-    sa»* e' il terzo innesco dell'analista, e in fondo a una tabella di numeri
-    buoni non salterebbe all'occhio.
-
-    **`current_fingerprint` e' l'impronta dei giudizi di adesso** (spec
-    2026-09-16 §6). Quando arriva ed e' diversa da quella del resoconto -- o il
-    resoconto non ne ha nessuna, perche' e' nato prima che l'impronta esistesse
-    -- sotto «La cronaca» una riga lo dice. La frase vale sia per un giorno
-    oltre il grezzo, che resta com'e', sia per uno recente che il recupero non
-    ha ancora rifatto: questa funzione non sa quale dei due sia, e non lo
-    afferma. Senza `current_fingerprint` non si afferma niente.
-    """
-    measurements = [m for m in report.get("misure") or [] if "valore" in m]
-    unknown = [m for m in report.get("misure") or [] if "valore" not in m]
-    chronicle = report.get("cronaca") or []
-
-    lines = [f"# Resoconto del {report.get('giorno')}", ""]
-    # **L'obiettivo sta in cima**, prima dei numeri: e' la domanda a cui quel
-    # giorno risponde, e chi legge la serie di trenta giorni deve incontrarla
-    # prima di leggere una tendenza che potrebbe essere un cambio di domanda.
-    aim = (report.get("obiettivo") or {}).get("testo")
-    if aim:
-        lines += [f"*La domanda di quel giorno: {aim}*", ""]
-    lines += [f"## {SEZIONE_MISURE}", ""]
-    if measurements:
-        lines += ["| chi | misura | valore | copertura |",
-                  "|---|---|---|---|"]
-        lines += [f"| {m.get('nome') or m['soggetto']} | {m['misura']} | "
-                  f"{measured_value(m)} | {m['copertura']:.0%} |"
-                  for m in measurements]
-    else:
-        lines.append("Nessuna misura: nessun dispositivo ha una ricetta, "
-                     "oppure nessuna ha potuto calcolarsi.")
-    lines.append("")
-
-    lines += [f"## {SEZIONE_CRONACA}", ""]
-    fingerprint = (report.get("giudizio") or {}).get("impronta")
-    if current_fingerprint is not None and fingerprint != current_fingerprint:
-        lines += [("*Questa cronaca e' raccontata con un giudizio diverso da quello "
-                   "di adesso. Il recupero la rifa' finche' il grezzo di quel giorno "
-                   f"c'e' tutto ({READING_RETENTION_S // 86400} giorni); oltre, resta "
-                   "com'e'.*"), ""]
-    if chronicle:
-        lines += ["| when | chi | cosa |", "|---|---|---|"]
-        for v in chronicle:
-            end = v.get("fine_ts")
-            when = (f"{v.get('quando_ts')}"
-                      + (f" → {end}" if end is not None else " → in corso"))
-            attributes = v.get("attributi") or []
-            tail = f" ({len(attributes)} cambi di attributo)" if attributes else ""
-            lines.append(f"| {when} | {v.get('nome') or v.get('chi')} | "
-                         f"{v.get('cosa')}{tail} |")
-    else:
-        lines.append("Nessun fatto: quel giorno non e' cambiato niente di "
-                     "cio' che si guarda.")
-    lines.append("")
-
-    if unknown:
-        lines += [f"## {SEZIONE_IGNOTO}", ""]
-        lines += [f"- **{m.get('nome') or m['soggetto']} · {m['misura']}**: "
-                  f"{m['non_calcolabile']}" for m in unknown]
-        lines.append("")
-    return "\n".join(lines)
-
-
-def section(document: str, title: str) -> str:
-    """Una sezione sola del documento, o `""` se non c'e'.
-
-    E' il meccanismo delle porzioni: l'analista scorre le misure di trenta
-    giorni, trova il giorno, e chiede **solo la cronaca di quello**. Una
-    sezione che non c'e' torna vuota e non solleva: un resoconto senza «cosa
-    non si sa» e' un buon resoconto, non un errore.
-    """
-    opening = f"## {title}"
-    if opening not in document:
-        return ""
-    rest = document.split(opening, 1)[1]
-    end = rest.find("\n## ")
-    return (opening + (rest if end == -1 else rest[:end])).strip()
-
-
 # ---------------------------------------------------------------------------
 # Il resoconto come lo legge la PAGINA (spec 2026-09-18 §3).
 #
-# `as_document` rende lo stesso archivio per un modello; qui si rende per un
-# umano. Due rese, un archivio solo: e' la ragione per cui il documento si
-# deriva invece di essere scritto, applicata una seconda volta.
+# L'archivio si rende per un umano, e la resa si deriva invece di essere
+# scritta.
 #
 # **Niente di tutto questo si salva.** La cronaca archiviata si rifa' solo
 # quando cambia un giudizio, e l'impronta dice quali giorni rifare: se «esce

@@ -411,40 +411,6 @@ async def test_SENZA_giorno_tornano_le_MISURE_di_molti_giorni_senza_cronaca():
     assert "cronaca" not in giorno
 
 
-@pytest.mark.asyncio
-async def test_lo_stesso_giorno_si_puo_chiedere_come_DOCUMENTO():
-    from hiris.app.api.handlers_mind import handle_report
-    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
-
-    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO}),
-           "type_judgments": REPO_JUDGMENTS}
-    r = await handle_report(_richiesta(
-        app, query={"day": "2026-09-13", "formato": "documento"}))
-
-    assert r.content_type == "text/markdown"
-    assert "## Le misure" in r.text
-
-
-@pytest.mark.asyncio
-async def test_il_DOCUMENTO_confronta_la_cronaca_col_giudizio_di_ADESSO():
-    """Spec 2026-09-16 §6: il documento dell'analista dice quando un giorno e'
-    raccontato con un giudizio diverso da quello attuale. Mutazione ESEGUITA:
-    in `handle_report` chiamare `as_document(resoconto)` senza
-    `current_fingerprint` -- rossa sulla prima asserzione."""
-    from hiris.app.api.handlers_mind import handle_report
-    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
-
-    attuale = {**_RESOCONTO, "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}}
-    altro = {**_RESOCONTO, "giudizio": {"impronta": "0000000000000000"}}
-    app = {"observations": _ArchivioConResoconto({"2026-09-13": altro, "2026-09-14": attuale}),
-           "type_judgments": REPO_JUDGMENTS}
-    r = await handle_report(_richiesta(
-        app, query={"day": "2026-09-13", "formato": "documento"}))
-    assert "giudizio diverso" in r.text
-    r = await handle_report(_richiesta(
-        app, query={"day": "2026-09-14", "formato": "documento"}))
-    assert "giudizio diverso" not in r.text
-
 # ── L'obiettivo si puo' finalmente SCRIVERE ──────────────────────────────────
 #
 # `store.set_objective` esisteva dal 11/09/2026, provata da dieci prove, e
@@ -1029,32 +995,6 @@ async def test_senza_l_istantanea_dei_GIUDIZI_il_primo_piano_porta_solo_il_siste
 
     assert r.status == 200
     assert [x["sorta"] for x in json.loads(r.text)["resoconto"]["primo_piano"]] == ["guasto"]
-
-
-@pytest.mark.asyncio
-async def test_il_DOCUMENTO_resta_quello_che_era():
-    """Il markdown e' la resa per il MODELLO, e non guadagna il primo piano: e' la
-    pagina che ha bisogno di sapere cosa sta in cima, l'analista legge i
-    numeri. Due rese dello stesso archivio, e ognuna porta cio' che serve a
-    chi la legge.
-
-    Mutazione ESEGUITA: passare anche il documento da `as_page` -- rossa.
-    """
-    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
-           "type_judgments": _giudizi_seme()}
-    r = await handle_report(_richiesta(app, query={"day": "2026-09-17",
-                                                   "formato": "documento"}))
-
-    assert r.content_type == "text/markdown"
-    # **Non basta cercare la chiave**: `as_document` rende le sezioni che
-    # conosce e una chiave in piu' la ignorerebbe in silenzio -- la prova
-    # resterebbe verde anche col documento passato da `as_page`, cioe' non
-    # potrebbe fallire (mutazione ESEGUITA il 20/09, verde). Cio' che cambia
-    # davvero e' la cronaca: il documento tiene l'IDENTIFICATIVO archiviato,
-    # che e' con quello che l'analista va a scavare, mentre la pagina mostra
-    # il nome risolto adesso.
-    assert "log:homeassistant.components.hydrawise" in r.text
-    assert "Hydrawise" not in r.text
 
 
 # ---------------------------------------------------------------------------

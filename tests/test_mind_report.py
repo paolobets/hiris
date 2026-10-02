@@ -262,71 +262,6 @@ def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
 
 # -- il documento: DERIVATO, mai scritto ------------------------------------
 
-def test_il_documento_ha_una_sezione_per_parte():
-    """Le sezioni sono l'indice: si consegna solo `## Le misure` di trenta
-    giorni, poi solo `## La cronaca` del giorno che e' saltato fuori."""
-    r = rep.build_report(day="2026-09-13", episodes=EPISODI, series=SERIE,
-                         recipes={"dev1": RICETTA}, names={"dev1": "Inverter"})
-
-    doc = rep.as_document(r)
-
-    assert doc.startswith("# Resoconto del 2026-09-13")
-    assert "## Le misure" in doc
-    assert "## La cronaca" in doc
-
-
-def test_il_documento_costa_un_TERZO_del_JSON():
-    """Misurato il 13/09/2026 sui 200 oggetti veri: la stessa cronaca pesa 146
-    KB in JSON e 46 in markdown su trenta giorni. Un terzo, e si paga a ogni
-    giro dell'analista.
-
-    Non e' un'ottimizzazione prematura: e' la ragione per cui il documento
-    esiste come resa invece che il JSON essere consegnato cosi' com'e'.
-    """
-    import json
-
-    r = rep.build_report(day="2026-09-13", episodes=EPISODI * 20, series=SERIE,
-                         recipes={"dev1": RICETTA}, names={})
-
-    doc = rep.as_document(r)
-    assert len(doc) < len(json.dumps(r, ensure_ascii=False)) * 0.6
-
-
-def test_cio_che_NON_si_sa_ha_una_sezione_SUA():
-    """Il terzo innesco dell'analista deve saltare all'occhio, non stare in
-    fondo a una tabella di numeri buoni.
-
-    Mutazione che la uccide: rendere le non calcolabili dentro «Le misure».
-    """
-    magra = {"sensor.prodotta": _serie([1.0] + [None] * 23),
-             "sensor.consumata": _serie([2.0] * 24)}
-    r = rep.build_report(day="2026-09-13", episodes=[], series=magra,
-                         recipes={"dev1": RICETTA}, names={})
-
-    doc = rep.as_document(r)
-
-    assert "## Cosa non si sa" in doc
-    assert "copertura" in doc.split("## Cosa non si sa", 1)[1]
-
-
-def test_una_sezione_si_puo_prendere_da_sola():
-    """E' il meccanismo delle porzioni: l'analista scorre le misure di trenta
-    giorni, trova il giorno, e chiede solo la cronaca di quello."""
-    r = rep.build_report(day="2026-09-13", episodes=EPISODI, series=SERIE,
-                         recipes={"dev1": RICETTA}, names={})
-
-    solo_misure = rep.section(rep.as_document(r), "Le misure")
-
-    assert "prodotta" in solo_misure
-    assert "climate.soggiorno" not in solo_misure
-
-
-def test_una_sezione_che_non_esiste_torna_VUOTO_non_un_errore():
-    r = rep.build_report(day="2026-09-13", episodes=[], series={},
-                         recipes={}, names={})
-
-    assert rep.section(rep.as_document(r), "Le ricette") == ""
-
 def test_una_ricetta_che_il_registro_rifiuta_NON_fa_morire_il_giorno():
     """**Il difetto del 14/09/2026, dalla parte del resoconto.**
 
@@ -516,41 +451,6 @@ def test_un_resoconto_senza_obiettivo_dichiarato_non_ne_inventa_uno():
     r = rep.build_report(day="2026-09-13", episodes=[], series={}, recipes={},
                          names={})
     assert r["obiettivo"] is None
-
-
-def test_il_documento_scrive_l_obiettivo_sotto_il_titolo():
-    """E' la domanda a cui quel giorno risponde: sta in cima, dove chi legge la
-    incontra prima dei numeri.
-
-    Mutazione: non scriverlo nel documento -- rossa.
-    """
-    documento = rep.as_document(rep.build_report(
-        day="2026-09-13", episodes=[], series={}, recipes={}, names={},
-        objective={"testo": "spendere meno di sera", "scritto_ts": 1.0}))
-    righe = documento.split("\n")
-    assert righe[0].startswith("# Resoconto del")
-    assert "spendere meno di sera" in "\n".join(righe[:4]), documento[:200]
-
-
-def test_il_documento_DICE_quando_la_cronaca_e_di_un_altro_giudizio():
-    """Il gradino si vede (spec 2026-09-16 §6). Mutazione ESEGUITA: ignorare
-    `current_fingerprint` -- rossa. Un resoconto SENZA impronta (scritto prima
-    del 17/09/2026) e' raccontato con un giudizio diverso anche lui; senza
-    un'impronta corrente il documento non afferma niente."""
-    r = {"giorno": "2026-08-01", "misure": [], "cronaca": [], "giudizio": {"impronta": "a"}}
-    assert "giudizio diverso" in rep.as_document(r, current_fingerprint="b")
-    assert "giudizio diverso" not in rep.as_document(r, current_fingerprint="a")
-    assert "giudizio diverso" not in rep.as_document(r)
-    anteriore = {"giorno": "2026-08-01", "misure": [], "cronaca": []}
-    assert "giudizio diverso" in rep.as_document(anteriore, current_fingerprint="a")
-    # I giorni del grezzo vengono dalla conservazione, una fonte sola (fix
-    # round 1). Mutazione ESEGUITA: scrivere «(21 giorni)» a mano -- rossa.
-    from hiris.app.mind.store import READING_RETENTION_S
-    assert f"({READING_RETENTION_S // 86400} giorni)" in rep.as_document(
-        r, current_fingerprint="b")
-    # Sta sotto «La cronaca», non altrove: e' di lei che parla.
-    assert "giudizio diverso" in rep.section(
-        rep.as_document(r, current_fingerprint="b"), rep.SEZIONE_CRONACA)
 
 
 def test_il_resoconto_porta_il_giudizio_ricevuto():
@@ -926,62 +826,3 @@ def test_senza_nomi_la_serie_non_ne_inventa():
 # SERIE, non dal documento: una regola gia' scritta che il suo vicino non
 # chiamava.
 # ---------------------------------------------------------------------------
-
-def test_una_misura_COMPOSTA_si_legge_a_parole_non_come_un_dizionario():
-    """Mutazione: tornare a `str(valore)` -- rossa (il dizionario compare)."""
-    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
-        {"soggetto": "x", "nome": "Corridoio T", "misura": "temperatura_media_min_max",
-         "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
-         "valore": {"media": 24.12, "minimo": 23.4, "massimo": 24.3}}]})
-
-    assert "media 24.12" in documento
-    assert "minimo 23.4" in documento
-    assert "massimo 24.3" in documento
-    assert "{" not in documento, "il dizionario Python e' finito nel markdown"
-
-
-def test_le_parti_di_un_valore_composto_sono_nell_ordine_DICHIARATO():
-    """«media, minimo, massimo» e' come l'operazione le racconta; in ordine
-    alfabetico uscirebbe «massimo, media, minimo», lo stesso dato detto in un
-    ordine che nessuno userebbe parlando.
-
-    Mutazione: `sorted(valore)` -- rossa."""
-    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
-        {"soggetto": "x", "nome": "Corridoio T", "misura": "t",
-         "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
-         "valore": {"massimo": 24.3, "media": 24.12, "minimo": 23.4}}]})
-
-    riga = next(r for r in documento.splitlines() if "Corridoio T" in r)
-    assert riga.index("media 24.12") < riga.index("minimo 23.4") < riga.index("massimo 24.3")
-
-
-def test_un_valore_composto_MISTO_non_prende_l_unita():
-    """`tendenza` porta `verso` (una parola), `pendenza` e `punti` (un
-    conteggio): scriverci «°C» in fondo direbbe che ventiquattro punti sono
-    ventiquattro gradi. L'unita' si attacca solo quando TUTTE le parti sono
-    numeri della stessa misura.
-
-    Mutazione: appendere l'unita' sempre -- rossa."""
-    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
-        {"soggetto": "x", "nome": "Corridoio T", "misura": "temperatura_tendenza",
-         "operazione": "tendenza", "unita": "°C", "copertura": 1.0,
-         "valore": {"verso": "in salita", "pendenza": 0.0007, "punti": 24}}]})
-
-    riga = next(r for r in documento.splitlines() if "Corridoio T" in r)
-    assert "verso in salita" in riga
-    assert "punti 24" in riga
-    assert "°C" not in riga, "l'unita' della temperatura appiccicata a un conteggio"
-
-
-def test_un_valore_composto_tutto_NUMERICO_l_unita_ce_l_ha():
-    """La contropartita: media, minimo e massimo sono tre gradi, e senza
-    l'unita' sarebbero tre numeri nudi.
-
-    Mutazione: non appendere mai l'unita' -- rossa."""
-    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
-        {"soggetto": "x", "nome": "Corridoio T", "misura": "t",
-         "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
-         "valore": {"media": 24.12, "minimo": 23.4, "massimo": 24.3}}]})
-
-    riga = next(r for r in documento.splitlines() if "Corridoio T" in r)
-    assert "°C" in riga

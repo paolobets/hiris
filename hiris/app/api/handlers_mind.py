@@ -50,7 +50,7 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from ..mind.report import as_document, as_page, integration_of
+from ..mind.report import as_page, integration_of
 from .soffitto import require_builder, subject_name
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
@@ -193,15 +193,17 @@ def _volume(app, store) -> list[dict]:
 async def handle_report(request: web.Request) -> web.Response:
     """Il resoconto di un giorno, o la serie degli ultimi (spec §9).
 
-    Tre forme, e la differenza fra loro e' il meccanismo delle **porzioni**:
+    Due forme:
 
-    - `?day=2026-09-13` -- il resoconto di un giorno, com'e' archiviato;
-    - `?day=...&formato=documento` -- lo stesso, reso in markdown: un terzo
-      dei byte a parita' di contenuto (misurato il 13/09/2026: 146 KB contro
-      46, su trenta giorni);
-    - senza `day` -- **le misure degli ultimi giorni**, che e' la lettura che
-      serve all'analista: due dei suoi tre inneschi sono confronti nel tempo,
-      e con la cronaca dentro non ci starebbero in un prompt.
+    - `?day=2026-09-13` -- il resoconto di un giorno, reso per la pagina;
+    - senza `day` -- **le misure degli ultimi giorni**: due dei tre inneschi
+      dell'analista sono confronti nel tempo, e con la cronaca dentro non ci
+      starebbero in un prompt. Oggi la leggono gli attrezzi di misura
+      (`scripts/batteria_attori.py`).
+
+    Una terza forma, `?day=...&formato=documento`, rendeva lo stesso giorno in
+    markdown a sezioni per l'analista. Nessuno la chiedeva, ed e' uscita il
+    02/10/2026: cosa faceva e' scritto nel BACKLOG, alla voce sugli attori.
 
     **Un giorno mai aggregato torna 404, non un resoconto vuoto**: «quel
     giorno non e' successo niente» e «quel giorno non l'abbiamo guardato» sono
@@ -239,18 +241,11 @@ async def handle_report(request: web.Request) -> web.Response:
     resoconto = {**resoconto,
                  "misure": _named(names, resoconto.get("misure")),
                  "forme": _named(names, resoconto.get("forme"))}
-    if request.query.get("formato") == "documento":
-        # Il documento confronta l'impronta della cronaca con quella dei giudizi
-        # di adesso, e dice quando e' diversa (spec 2026-09-16 §6).
-        current = request.app["type_judgments"].chronicle_fingerprint()
-        return web.Response(text=as_document(resoconto, current_fingerprint=current),
-                            content_type="text/markdown", charset="utf-8")
     # **La resa per la PAGINA** (spec 2026-09-18 §3): il nome sempre, e la
     # banda di cio' che esce dal solito. Non tocca cio' che e' archiviato --
     # il giudizio su cosa merita la banda si cambia da «Cosa ho capito», e se
     # stesse nella cronaca ogni ripensamento costerebbe ventidue giorni da
-    # rifare. Il documento qui sopra NON ci passa: e' la resa per il modello,
-    # e l'analista legge i numeri, non la prima pagina.
+    # rifare.
     #
     # Le due fonti si chiedono con `.get`: un add-on partito a meta' deve
     # rispondere lo stesso, con meno cose da dire e nessuna inventata.

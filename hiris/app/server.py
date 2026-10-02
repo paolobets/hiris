@@ -1314,8 +1314,7 @@ async def backfill_one_report(app, ha_client, *,
     17/09/2026, eseguita): la potatura taglia a un istante e non a mezzanotte,
     quindi il giorno in cui cade il taglio ha perso le sue voci nate prima. Non
     si possono ricostruire, e rifarlo le cancellerebbe: quel giorno tiene la
-    cronaca e l'impronta che ha, e il documento dice che e' di un altro
-    giudizio. Solo per la cronaca: un giorno MANCANTE a cavallo si scrive
+    cronaca e l'impronta che ha. Solo per la cronaca: un giorno MANCANTE a cavallo si scrive
     ancora, com'era.
 
     **La condizione e' «nessuna riga di questo giorno puo' essere stata
@@ -1326,8 +1325,7 @@ async def backfill_one_report(app, ha_client, *,
     casa potata, dove la riga piu' vecchia E' il taglio, e divergono su una
     casa **giovane**: li' la riga piu' vecchia e' soltanto l'ora
     d'installazione, il primo giorno comincia a mezzanotte e con la vecchia
-    condizione restava al giudizio vecchio per sempre, in silenzio, mentre
-    `report.as_document` prometteva il contrario.
+    condizione restava al giudizio vecchio per sempre, in silenzio.
 
     **Ogni giorno rifatto logga una riga con la durata**: e' la misura vera di
     quanto costa un giorno sull'host di Home Assistant, che la spec (§1,
