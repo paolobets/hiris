@@ -382,7 +382,7 @@ window.HirisServicesRoute = (function () {
       }
       riga.appendChild(testa);
       riga.appendChild(el('div', 'sc-row-why',
-        ruoloDetto(r.ruolo) + ' · ' + (SPECIE[r.specie] ? r.specie : r.specie || '') +
+        ruoloDetto(r.ruolo) + ' · ' + (r.specie || '') +
         ' · accoppiato il ' + quando(r.deciso_ts)));
       var azioni = el('div', 'jr-actions');
       var revoca = el('button', 'btn btn-ghost btn-ghost-danger', 'Revoca');

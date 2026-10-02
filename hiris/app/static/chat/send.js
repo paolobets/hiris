@@ -208,8 +208,6 @@
     }
   }
 
-  function sendQuick(text) { send(text); }
-
   function autoResize() {
     state.els.input.style.height = 'auto';
     state.els.input.style.height = Math.min(state.els.input.scrollHeight, 160) + 'px';
@@ -259,8 +257,7 @@
     });
     state.els.sendBtn.addEventListener('click', function() { send(); });
 
-    /* Quick-reply chips in the welcome screen (was onclick="sendQuick(...)"
-       per button -- one delegated listener instead). */
+    /* Quick-reply chips in the welcome screen: one delegated listener. */
     if (state.els.welcome) {
       state.els.welcome.addEventListener('click', function(e) {
         var chip = e.target.closest && e.target.closest('.chip[data-quick]');
@@ -271,7 +268,6 @@
 
   window.HirisChatSend = {
     send: send,
-    sendQuick: sendQuick,
     autoResize: autoResize,
     wireComposer: wireComposer,
   };

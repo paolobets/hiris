@@ -431,9 +431,6 @@ window.HirisDashboard = (function () {
   }
 
   return {
-    mount: mount,
-    /* Seam di test: le due funzioni di resa sono pure DOM + dati, e i tre
-       stati vanno pinnati senza passare da fetch. */
-    _rendi: { casa: renderHomeSpace, nucleo: renderBriefing }
+    mount: mount
   };
 })();

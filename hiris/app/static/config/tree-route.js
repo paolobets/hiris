@@ -564,8 +564,6 @@ window.HirisTreeRoute = (function () {
   }
 
   return {
-    mount: mount,
-    /* Seam di test: la resa è pura DOM + dati, va pinnata senza passare da fetch. */
-    _rendi: renderTree
+    mount: mount
   };
 })();
