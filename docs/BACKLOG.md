@@ -158,6 +158,42 @@ reso ripetibile (come le 28 domande della chat) e lanciato prima e dopo ogni str
 `docs/superpowers/audit-2026-10-01/pagina.md`). Ridisegnarla adesso vorrebbe dire presentare meglio
 un contenuto che non regge.
 
+**Argomenti di analisi per il refactor degli attori, dal confronto con i progetti «Jarvis» (02/10/2026).**
+`origine: il proprietario, 02/10/2026 («queste idee possono essere fondamentali»)` · studio in
+`ricerche/2026-10-02-progetti-jarvis.md` e `ricerche/2026-10-02-hiris-vs-openjarvis.md`, fra i
+file del progetto (fuori da git). **Sono argomenti da analizzare, non decisioni.** Il proprietario vuole rivedere
+la parte degli agenti con un refactor **subito dopo lo sprint in corso**, e questi entrano in
+quell'analisi accanto ai quattro strati qui sopra. Le funzioni dei progetti esterni sono quelle
+dichiarate nei loro README e lette nel loro codice, **non provate**.
+
+1. **Silenzio di default, e l'insolito che apre un giudizio** (jarvis-aio: ogni evento riceve un
+   livello di urgenza, il routinario tace). Tocca lo strato 3: è la stessa direzione di «il
+   silenzio è un esito legittimo», contraddetta oggi da `cosa_cambierebbe` obbligatorio.
+2. **Lo stato che passa da un giro al successivo, salvato dal contenitore se il modello non lo fa**
+   (OpenJarvis `agents/operative.py`). Tocca lo strato 3, «nessuna memoria delle analisi
+   precedenti».
+3. **Livelli di rischio sulle proposte, con la decisione ricordata per schema** (OpenJarvis
+   `tools/approval_store.py`: `trivial` · `low` si chiede una volta · `medium` si chiede salvo
+   «sempre sì» · `high` si chiede sempre e non si ricorda mai). Tocca lo strato 4 e il perimetro.
+   **Vincolo della Legge I:** uno schema approvato «sempre» è un'automazione HA, quindi il «sempre
+   sì» diventa una **proposta di costruirla** attraverso `workshop.py`, non autonomia dell'agente.
+   All'agente resta solo ciò che chiede giudizio.
+4. **L'abitudine diventa automazione** (rovesciamento della regola di jarvis-aio «dopo tre sì lo
+   fa da solo»). Quando una persona chiede in chat la stessa cosa nello stesso contesto N volte,
+   HIRIS propone l'automazione. Candidato a primo comportamento utile dell'attuatore quando lo
+   strato 4 lo riaccende: oggi propone zero cose utili su nove.
+5. **Il giro del mattino come forma del primo agente** (OpenJarvis `agents/proactive_agent.py`):
+   raccoglie la notte, classifica, propone con un livello, esegue solo ciò che è banale, poi manda
+   un riassunto con le proposte numerate. Riguarda ③, dopo gli strati.
+6. **Proporre i ricordi invece di aspettarli** (OpenJarvis `memory/extractor.py` estrae in
+   background, con livelli di fiducia). Adattato al contratto di `memory/` («il testo detto è la
+   verità»): HIRIS propone il ricordo e lo salva solo con un sì. Riguarda la memoria più che gli
+   attori, ma nasce dalla stessa analisi.
+
+**Escluso dallo stesso studio, con la ragione:** i canali e i connettori esterni (Legge I e la
+fetta del documentale), l'addestramento dei modelli dalle tracce, la sandbox per il codice, le
+architetture «pluggable» con N implementazioni («un comportamento solo»).
+
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
 
 `origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`
@@ -2336,6 +2372,18 @@ perimetro non e' ancora stato scelto**.
 ("un filo per ogni conversazione di Assist") esiste ora nel prodotto (`hiris/app/chat_thread.py`,
 chiave `(subject_key, entry_point)`) — quello che manca e' ancora e solo l'`entry_point` di
 Assist e della card lovelace: la fetta li rende possibili, non li costruisce.
+
+**02/10/2026, confronto con OpenJarvis: la sua parte vocale non si prende.** Su richiesta del
+proprietario è stato studiato OpenJarvis (Stanford, `open-jarvis/OpenJarvis`, commit `1a9c8cf`
+del 02/10/2026) per capire se la sua voce servisse a HIRIS. **No.** `src/openjarvis/speech/`
+contiene solo adattatori: Faster-Whisper, OpenAI Whisper e Deepgram per capire il parlato; Kokoro,
+OpenAI e Cartesia per la sintesi. Non ha parola di attivazione e non ha satelliti: parla al
+computer su cui gira, non alla casa. Tutto ciò che fa lo fa già la pipeline di Assist con Whisper e
+Piper (decisione del 16/09 qui sopra), e prenderlo violerebbe la prima legge. **La strada resta
+quella decisa il 16/09**: HIRIS agente di Assist via Wyoming, dentro l'add-on, senza custom
+component. Lo studio completo è fuori da git, fra i file del progetto
+(`ricerche/2026-10-02-hiris-vs-openjarvis.md`). Aggiunta approvata dal proprietario il 02/10/2026
+nel thread sul confronto con OpenJarvis; lo studio è di quel thread, non riverificato qui.
 
 ### ~~La sicurezza~~ — **USCITA**: lo sprint c'e' stato, dal 21 al 23/09/2026
 
