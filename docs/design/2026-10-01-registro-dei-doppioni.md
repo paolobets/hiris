@@ -133,7 +133,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-07 | Altre forme dell'errore HTTP e righe ripetute negli handler | E | PS |  | cop-8 (incompleta) | reg · cop-8 · cop-9 N-C-2 |
 | C-08 | I mappatori della stessa riga di `/api/usage` | D | CC |  |  | reg |
 | C-09 | Il frontend che rifà regole del server: la copia parola per parola | E | PS |  |  | reg · cop-6 |
-| C-10 | Grammatica dei soggetti e vocabolari chiusi scritti in Python e in JS | E | PS |  | cop-6 (incompleta, due etichette sbagliate) | reg · cop-6 |
+| C-10 | Grammatica dei soggetti e vocabolari chiusi scritti in Python e in JS. Dal 02/10 il rilevatore dei doppioni non vede più il vocabolario dei predefiniti (il dizionario Python con quelle quattro chiavi è uscito, `4745d69e`): il doppione fra `handlers_models._store_keys` e `models-route.js` resta, senza un attrezzo che lo sorvegli | E | PS |  | cop-6 (incompleta, due etichette sbagliate) | reg · cop-6 |
 | C-11 | Prosa del JS che ricopia costanti dello scheduler e dell'archivio | NV | PS |  |  | reg · cop-2 · cop-6 |
 | C-12 | Regole di dominio che vivono solo nel JS | NV | DP |  |  | reg · cop-6 |
 | C-13 | Il JS ricostruisce un dato che il server ha, o gliene manca uno | D | CC |  | cop-6 (incompleta); cop-9 (incompleta) | reg · cop-6 · cop-9 |
@@ -366,21 +366,17 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-11 | L'attuatore in pausa dal 3.72.2: 318 righe in `server.py`, `mind/actuator.py` 82, `actuator_turn.py` 221 | `server.py:2001-2336,4508` | cop-1 (incompleta) | reg · cop-1 · cop-2 |
 | M-12 | `mind/scope.ANALYST` e `OWNER` mai passati come `author` in produzione. Riletto il 02/10: è la scala d'autorità del perimetro (osservatore < analista < proprietario), disegno degli attori; si decide con gli strati degli attori | `mind/scope.py:44`; `observer.py:282,299` |  | reg |
 | M-14 | `Operation.refuses_when` non letto a runtime (lo legge solo l'impronta del catalogo, in una prova); i `SHAPE_*` oltre i due delle ricette servono solo alle dieci operazioni di M-78. **In attesa del proprietario** (chiesto il 02/10/2026): è costruito per l'analista, non codice morto qualunque | `mind/operations.py`; `recipes.py:281` |  | reg |
-| M-15 | `api/ingresso.prepara_ingresso(app)`: corpo = docstring; `import ipaddress as _ip` ridondante | `api/ingresso.py:145,161-168`; `server.py:5686` |  | reg · cop-2 |
-| M-16 | `auth_via == "token"` mai assegnato dal 22/09/2026, ancora accettato e documentato | `handlers_mcp.py:656-687`; `server.py:5648`; `handlers_reasoning.py:39` | cop-8 (incompleta) | reg · cop-2 · cop-8 |
 | M-17 | Campi `notable` e `operable` dei giudizi senza lettore di produzione (36 righe del seme su 121) | `type_judgments.py:30-35,401`; `type_vocabulary.py:910-946` | cop-5 (SBAGLIATA in parte) | reg · cop-5 |
 | M-18 | Residui di `direzione:*`: taglio in `knowledge.summary()` ed etichetta nel JS | `knowledge.py:762-776`; `watcher-sapere.js:87` |  | reg |
-| M-19 | Tre funzioni senza chiamanti (censimento): `_record_repair`, `_translations_report`, `_ws_call` (`_fact_row` e le due del censore sono uscite, `a0a26584` e `b6a2c155`) | `mind/store.py:692`; `server.py:1408`; `handlers_mind.py:274`; `ha_client.py:1470` |  | reg · cop-1 M1 · cop-5 · cop-6 |
+| M-19 | Due funzioni senza chiamanti (censimento): `_translations_report`, `_ws_call` (le altre quattro sono uscite: `b6a2c155`, `a0a26584`, `a507a2c7`) | `handlers_mind.py:274`; `ha_client.py:1470` |  | reg · cop-1 M1 · cop-5 · cop-6 |
 | M-20 | Una usata solo dai test (censimento): `actuator_round`, in pausa e non morta (D5). `objective_history` è uscita (`a0a26584`), le cinque del censore sono negli attrezzi (`b6a2c155`); `get_config` TOLTA: è letta in produzione (`topology.py:142` via `getattr`, dentro `rebuild`) | `server.py:1999`; `mind/store.py:1157` | cop-4 (conteggio, SBAGLIATA in parte); cop-5 (conteggio, SBAGLIATA in parte) | reg · cop-4 · cop-5 |
 | M-22 | Rotta senza chiamante di produzione: `GET /api/misure`. **Resta per scelta** (dichiarazione D5 della Tappa 0): la usano `scripts/misure.py` e le batterie. La parte `GET /api/entities` (tutto `handlers_entities.py`) e' USCITA con la Tappa 0, Task 9 | `server.py` (rotta `/api/misure`) | cop-8 (conteggio, incompleta) | reg · cop-2 · cop-3 · cop-8 |
 | M-23 | `HAClient.render_template`: nessun chiamante di produzione | `ha_client.py:124-129,1363` | cop-5 (incompleta) | reg · cop-5 |
 | M-24 | `ServiceRegistry.age_seconds` letto solo da `ensure_fresh` | `action/registry.py` |  | reg |
-| M-25 | `behavior_reader.look(force)`: resta nella firma e non fa più niente | `server.py:3039-3044` | cop-1 (righe); cop-2 (righe) | reg · cop-1 · cop-2 |
 | M-26 | `model_activation.py` (51 righe, una funzione): si fonde in `model_resolution` | `model_activation.py` |  | reg |
 | M-27 | `model_resolution` campo `quando: ""`: chiave sempre vuota | `model_resolution.py:1129` |  | reg |
-| M-28 | Migrazioni con la scadenza scritta: sette variabili morte, `HISTORY_RETENTION_DAYS`, `options_migration.seed*`, ramo `"model" in raw` | `server.py:3600-3606,4099-4106`; `chat_settings.py:223,308-325`; `options_migration.py` |  | reg |
 | M-29 | `chat_store._TOXIC_ASSISTANT_RE` alias; `conversation_title` usata solo da `list_conversations` | `chat_store.py:99` |  | reg |
-| M-30 | `app["model_chain"]` scritto due volte; `app["ultima_riparazione"]` tre (una in codice morto) | `server.py:3232,5250`; `server.py:1421,1494,1536` | cop-1 (conteggio); cop-2 (conteggio) | reg · cop-1 · cop-2 |
+| M-30 | `app["model_chain"]` scritto in due punti (all'avvio e alla ricomposizione della catena): due momenti, da ricondurre a una funzione sola con la Tappa 1. `app["ultima_riparazione"]`: la scrittura in codice morto è uscita (`a507a2c7`), restano le due vive | `server.py` (`app["model_chain"]`) | cop-1 (conteggio); cop-2 (conteggio) | reg · cop-1 · cop-2 |
 | M-31 | Segnali in uscita senza lettore: `debug.thinking_blocks`, `tools_called`, `"input"` | `handlers_chat.py:1399-1400,1413` | cop-8 (incompleta) | reg · cop-8 |
 | M-32 | `queries._view_behavior` chiede `ricordi` per automazione/script: ramo sempre `[]` [D] | `queries.py:1369` | cop-4 (doppio conteggio) | reg · cop-4 |
 | M-33 | `handlers_mind._TECHNICAL_PREFIXES`: definita e mai usata | `handlers_mind.py:130` |  | reg · cop-6 |
@@ -392,8 +388,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-39 | Prompt in `agent/prompts.py`: nessun prompt morto (voce negativa, conservata) | `agent/prompts.py` |  | reg · cop-7 |
 | M-40 | Residui per tabelle: `casa.db` non aperto da nessun codice, `cambi.state_class`/`source_type` (vedi G-12, G-06) | — |  | reg |
 | M-41 | `server.py` «Disinstallazione della card Lovelace»: ~190 righe eseguite a ogni avvio (vedi E-01, E-08) | `server.py:353-603,3399` |  | reg · cop-1 · cop-2 |
-| M-42 | `_attempt_detail`: un solo chiamante, una riga di formattazione (indirezione, non morta) | `server.py:2795-2798` |  | cop-1 M2 |
-| M-44 | `import time as _time` dentro `_on_startup` accanto a `time` di modulo | `server.py:3321` contro `:9` |  | cop-2 M3 |
+| M-44 | `import time as _time` dentro `_on_startup` accanto a `time` di modulo. Riletto il 02/10: tre file di prova estraggono blocchi di `_on_startup` e ci iniettano `_time`; si toglie quando quelle prove si convertono (Tappa 1, D9) | `server.py:3321` contro `:9` |  | cop-2 M3 |
 | M-45 | `resolved.get("entity")`: chiave che il risolutore non restituisce mai | `tools.py:2491`; `ha_client.py:830` |  | cop-3 M-n1 |
 | M-46 | `Subject.last` calcolato per stati e valori e mai letto | `house_history.py:340-343` |  | cop-3 M-n2 |
 | M-47 | `_BEHAVIOR_KINDS`: dizionario di cui si usano solo le chiavi, sotto un commento orfano | `house_query.py:35-38` |  | cop-3 M-n3 |
@@ -420,6 +415,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-75 | Il ramo «ripristino dalla chat» di `Workshop.restore` non ha chiamanti di produzione | `workshop.py:987-1001` |  | cop-9 N-M-1 |
 | M-76 | `REASON_DISDETTA`, il `motivo` delle righe `disdetta` e `_migration_3`: scritti, mai letti | `revisions.py:50,110-130,404-406`; `constructions-route.js:633-644` |  | cop-9 N-M-2 |
 | M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso. Riletto il 02/10: sono il vocabolario delle sette domande del proprietario dell'11/09 (`docs/design/2026-09-11-le-domande-del-proprietario.md`), le eseguono le prove di quel cancello. Misurato in casa il 02/10: le 21 ricette archiviate usano 7 operazioni, nessuna delle dieci. **In attesa del proprietario** (chiesto il 02/10/2026): è costruito per l'analista, non codice morto qualunque | `mind/operations.py` |  | compl N-2 |
+| M-80 | La chiave `seminato` di `GET /api/models/config` (e `_MIGRATION_FLAGS`): dal 02/10 nessuno la scrive né la legge; toglierla cambia la forma di una rotta, quindi va dichiarata | `api/handlers_models.py` (`_store_keys`, `_MIGRATION_FLAGS`) |  | Tappa 0, Task 16 |
 
 ---
 
@@ -453,8 +449,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | X-24 | `_close_expired_promise`: riga citata spostata (`handlers_chat.py:477` → `:716-723`) e minuti non quelli del job (vedi S-02) | `server.py:148-149,160-161` |  | cop-1 X4 |
 | X-25 | `_promise_delivery`: «I tre collaboratori» sono quattro | `server.py:174-188,209-210` |  | cop-1 X5 |
 | X-26 | Il commento del freno (`RETRY_BASE_S`/`RETRY_MAX_S`) attaccato sopra `SCOPE_BATCH` | `server.py:2801-2827` |  | cop-1 X6 |
-| X-27 | Undici «silenzi dichiarati»: otto annunciano «resta intatto» prima della cancellazione, tre non girano mai (~330 righe) | `server.py:3918-3926,3942-3960,4002-4010,4218-4259,4708-4771` contro `:4261-4262,2663-2675` |  | cop-2 X1 |
-| X-28 | Il commento di apertura della semina: «le sette variabili che run.sh esporta» (non le esporta) | `server.py:3594-3598` contro `:4031-4040`, `run.sh:8,28-68` |  | cop-2 X2 |
 | X-29 | «UNA connessione sola» per le serie del resoconto: sono due chiamate (numero di connessioni dedotto) | `server.py:4541-4542,1790-1812` contro `:1831-1839` |  | cop-2 X3 |
 | X-30 | Tre riferimenti di riga/luogo che non esistono più (`:633-690`, Google Fonts, `server.py:1169-1177`) | `server.py:3795,5851`; `tests/test_startup_legacy_db_silence.py:2` |  | cop-2 X4 |
 | X-31 | La regola «non si scrive in `app[...]` a richiesta servita» dichiarata tre volte, violata in ≥17 punti | `server.py:5652-5681` contro `:737,1174,1421,2034,2523,3155,3208,3232`, `judgments.py:375`, `handlers_models.py:587`, `handlers_settings.py:361` |  | cop-2 X5 |
@@ -817,3 +811,10 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | M-13 | `mind/operations.UNKNOWN_UNIT`: zero lettori, zero test | 3.73.0 (da rilasciare) | a0a26584 | Task 15 della Tappa 0 |
 | M-21 | `mind/store.objective_history` (ha un test) e `_fact_row` | 3.73.0 (da rilasciare) | a0a26584 | Task 15 della Tappa 0 |
 | M-66 | `KnowledgeStore.read` e `KnowledgeStore.count`: solo test | 3.73.0 (da rilasciare) | a0a26584 | Task 15 della Tappa 0 |
+| M-15 | `api/ingresso.prepara_ingresso(app)`: corpo = docstring; `import ipaddress as _ip` ridondante | 3.73.0 (da rilasciare) | a507a2c7 | Task 16 della Tappa 0 |
+| M-16 | `auth_via == "token"` mai assegnato dal 22/09/2026, ancora accettato e documentato | 3.73.0 (da rilasciare) | a507a2c7 | Task 16 della Tappa 0 |
+| M-25 | `behavior_reader.look(force)`: resta nella firma e non fa più niente | 3.73.0 (da rilasciare) | a507a2c7 | Task 16 della Tappa 0 |
+| M-42 | `_attempt_detail`: un solo chiamante, una riga di formattazione (indirezione, non morta) | 3.73.0 (da rilasciare) | a507a2c7 | Task 16 della Tappa 0 |
+| X-27 | Undici «silenzi dichiarati»: otto annunciano «resta intatto» prima della cancellazione, tre non girano mai (~330 righe) | 3.73.0 (da rilasciare) | a507a2c7 | Task 16 della Tappa 0 |
+| X-28 | Il commento di apertura della semina: «le sette variabili che run.sh esporta» (non le esporta) | 3.73.0 (da rilasciare) | a507a2c7 | Task 16 della Tappa 0 |
+| M-28 | Migrazioni con la scadenza scritta: sette variabili morte, `HISTORY_RETENTION_DAYS`, `options_migration.seed*`, ramo `"model" in raw` | 3.73.0 (da rilasciare) | 4745d69e | Task 16: uscite la semina delle opzioni, le sette letture, HISTORY_RETENTION_DAYS e il ramo model; seed_chain e seed_subscription_model restano, girano su ogni installazione nuova |
