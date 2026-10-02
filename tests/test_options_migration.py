@@ -280,8 +280,8 @@ def test_ollama_senza_modello_non_entra_in_catena_per_migrazione(tmp_path):
     che nessuna installazione riceve piu': un'installazione con l'indirizzo si
     ritroverebbe in catena un provider senza modello.
 
-    Mutazione ESEGUITA: `{**_credentials}` al posto di
-    `{**_credentials, "ollama": False}` in `server._on_startup` -- rossa."""
+    Mutazione ESEGUITA: tolto `"ollama"` dai nomi che
+    `server._chain_as_it_was` tiene fuori -- rossa."""
     app = _avvia_la_semina_della_catena(
         tmp_path, {**CREDENZIALI_DEL_PROPRIETARIO, "ollama": True})
     assert "ollama" not in app["models_config"]["chain_order"]

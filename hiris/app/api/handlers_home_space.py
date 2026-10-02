@@ -109,7 +109,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # di «Da controllare», una parola che l'utente non ha mai scritto e che
         # non cambierebbe nemmeno rinominando l'etichetta.
         #
-        # E' lo stesso difetto gia' chiuso su `guarda` (`anagrafe.labels_with_name`),
+        # E' lo stesso difetto gia' chiuso su `guarda`,
         # che pero' risolve i nomi DENTRO la risposta perche' li' esce un
         # dettaglio. Qui esce l'albero intero: ripetere il nome su ogni entita'
         # etichettata sarebbe lo stesso fatto scritto mille volte. Esce la

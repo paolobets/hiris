@@ -233,12 +233,11 @@ def test_salva_non_riscrive_il_vecchio_modello_che_quindi_sparisce_dal_file(tmp_
 
 
 # ---------------------------------------------------------------------------
-# fetta "Modelli" (2.0), Task 12: `giorni_conservazione` si sposta qui da
-# `history_retention_days` (l'opzione dell'add-on). E' ancora la versione A
-# della migrazione (Task 6): se il file non porta la chiave, il valore arriva
-# dall'ambiente (`HISTORY_RETENTION_DAYS`, che `run.sh` esporta dall'opzione),
-# dichiarato nel log -- non un seed permanente: un file che GIA' porta la
-# chiave, 0 compreso, vince sempre.
+# fetta "Modelli" (2.0), Task 12: `giorni_conservazione` vive qui, e non piu'
+# in `history_retention_days` (l'opzione dell'add-on, uscita con la 3.0.0). Un
+# file che porta la chiave, 0 compreso, vince sempre; uno che non la porta
+# vale il default. Fino al 02/10/2026 il valore mancante si leggeva
+# dall'ambiente (`HISTORY_RETENTION_DAYS`): quella lettura e' uscita.
 # ---------------------------------------------------------------------------
 
 def test_i_giorni_di_conservazione_vivono_nelle_impostazioni_della_chat():

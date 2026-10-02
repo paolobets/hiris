@@ -12,10 +12,6 @@ class _R:
         self.calls.append(kw)
         return self.name
 
-    async def chat_stream(self, **kw):
-        self.calls.append(kw)
-        yield self.name
-
 
 def _router():
     return LLMRouter(

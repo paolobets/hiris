@@ -76,15 +76,17 @@ _OUR_KEYS = (
 )
 
 # I SEGNI DELLA MIGRAZIONE, che non sono decisioni e non viaggiano in una PUT.
-# `seminato` dice che le opzioni dell'add-on sono gia' state copiate;
-# `catena_seminata` che la catena e' gia' stata copiata dalla vecchia regola.
-# Stavano in `_OUR_KEYS` e ne sono usciti: un client che rimandasse
-# `seminato: false` -- la pagina lo faceva, con lo `state.cfg` di default, dopo
-# un GET fallito; qualunque client con uno snapshot stale lo farebbe ancora --
-# farebbe RIGIRARE la semina al riavvio successivo, e dopo la versione B, con
-# l'ambiente muto, ricopierebbe i predefiniti sopra le decisioni dell'utente.
-# Cioe' la perdita silenziosa che le due versioni della migrazione esistono per
-# evitare, innescata da un click.
+# `catena_seminata` dice che la catena e' gia' stata composta, `piano_seminato`
+# che il modello del piano e' gia' stato copiato. Stavano in `_OUR_KEYS` e ne
+# sono usciti: un client che rimandasse `catena_seminata: false` -- la pagina
+# lo faceva, con lo `state.cfg` di default, dopo un GET fallito; qualunque
+# client con uno snapshot stale lo farebbe ancora -- farebbe RIGIRARE la semina
+# al riavvio successivo, e una catena svuotata di proposito si ripopolerebbe.
+# Cioe' una perdita silenziosa innescata da un click.
+#
+# `seminato` era il segno della semina delle OPZIONI, uscita il 02/10/2026:
+# nessuno lo scrive ne' lo legge piu'. Resta in questo elenco e nella forma
+# della rotta finche' il cambio di forma non e' dichiarato (registro, M-80).
 #
 # Il valore sopravvive comunque a ogni PUT: `_store_keys` lo ricava da
 # `base`, che parte dal contenuto GIA' SU DISCO. Solo l'avvio li scrive, con

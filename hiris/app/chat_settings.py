@@ -198,16 +198,13 @@ def file_lacks_retention_days(data_dir: str) -> bool:
     """`True` se `impostazioni_chat.json` non ha (ancora) la chiave
     `giorni_conservazione`, file assente o illeggibile compresi.
 
-    Esiste perche' `carica()` LEGGE attraverso l'ambiente ma non SCRIVE, e
-    `save()` ha un solo chiamante di produzione: la PUT della pagina
+    Esiste perche' `load()` da' il default quando la chiave manca ma non lo
+    SCRIVE, e `save()` ha un solo chiamante di produzione: la PUT della pagina
     «Impostazioni chat». Un utente che quella pagina non la apre mai non
-    produce mai la chiave sul disco -- e la versione B (3.0.0, che
-    `history_retention_days` l'ha tolta dallo schema) troverebbe un ambiente
-    muto e farebbe valere il default del codice, 90. Chi aveva messo 30 se lo ritrova a 90
-    senza una riga che lo dica; chi aveva messo **0** -- «non cancellare mai»
-    -- se lo ritrova a 90 e la potatura notturna delle 3 gli cancella le
-    conversazioni piu' vecchie di novanta giorni. Per questo campo, la versione
-    A senza una scrittura all'avvio non migra NIENTE: legge e basta.
+    produrrebbe mai la chiave sul disco, e il file non direbbe quanto conserva.
+    Nasce come meta' di una migrazione: fino alla 3.0.0 il valore arrivava da
+    un'opzione dell'add-on, e chi aveva scelto **0** («non cancellare mai») se
+    lo sarebbe ritrovato a 90 senza una scrittura all'avvio.
 
     Il chiamante e' `server._on_startup`, subito dopo `carica()`."""
     path = os.path.join(data_dir, _SETTINGS_FILE)

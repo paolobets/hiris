@@ -770,9 +770,13 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
     tornasse a esserci una leva da tenere allineata a mano. Con la versione B
     non ne resta nessuna -- `ponte:` per intero e `provider_subscription` sono
     usciti -- e `server.py` non legge piu' nessuna delle due variabili
-    d'ambiente per DECIDERE. `BRIDGE_ENABLED` resta nominata in una riga viva
-    sola, quella della migrazione (`_chain_as_it_was`), che copia la catena
-    com'era e non decide niente: si guarda quindi il gate, non il nome.
+    d'ambiente, ne' per decidere ne' per migrare: l'ultima lettura di
+    `BRIDGE_ENABLED`, quella della semina della catena, e' uscita il
+    02/10/2026. Si cerca quindi il NOME della variabile fra i letterali del
+    codice vivo, in qualunque forma la si legga.
+
+    Mutazione ESEGUITA: aggiunta in `server.py` la riga
+    `os.environ.get("BRIDGE_ENABLED")` -- rossa, col nome della variabile.
     """
     import pathlib as _pl
 
@@ -799,10 +803,11 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
 
     app_py = (base / "app" / "server.py").read_text(encoding="utf-8").splitlines()
     codice = [r for r in app_py if not r.lstrip().startswith("#")]
-    assert not [r for r in codice if 'env_bool("CHAT_VIA_SUBSCRIPTION")' in r]
-    assert not [r for r in codice if 'env_bool("PROVIDER_SUBSCRIPTION")' in r], (
-        "l'ultimo dei cinque interruttori e' tornato a decidere qualcosa"
-    )
+    for variabile in ("CHAT_VIA_SUBSCRIPTION", "PROVIDER_SUBSCRIPTION", "BRIDGE_ENABLED"):
+        lette = [r.strip() for r in codice
+                 if f'"{variabile}"' in r or f"'{variabile}'" in r]
+        assert not lette, (
+            f"`{variabile}` e' tornata a essere letta dall'ambiente: {lette[:2]}")
     # L'IMPLICAZIONE, non il suo nome: la docstring di `_bridge_active` racconta
     # apposta che cosa era `_sub_first_class` e perche' e' uscita, e una
     # docstring non e' un commento `#` -- il filtro qui sopra non la toglie. Si

@@ -132,22 +132,39 @@ def test_un_guasto_NON_ferma_l_avvio(tmp_path, monkeypatch):
     cancella_residui(str(tmp_path))  # non deve sollevare
 
 
-def test_l_elenco_combacia_con_quello_che_il_codice_DICHIARA_morto():
-    """L'elenco non è una lista a mano: ogni nome deve corrispondere a un
-    file che `server.py` annuncia come «di un'installazione precedente». Se
-    domani si dismette un altro archivio e lo si annuncia soltanto, questa
-    prova non se ne accorge — ma se qualcuno mette nell'elenco un file che il
-    codice non dichiara morto, sì.
+def _string_constants_in_the_product() -> dict[str, list[str]]:
+    """Ogni letterale stringa del prodotto -> i file in cui compare."""
+    import ast
 
-    Mutazione ESEGUITA: aggiungere all'elenco un archivio vivo -- rossa."""
-    import inspect
+    found: dict[str, list[str]] = {}
+    app = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
+    for source in sorted(app.rglob("*.py")):
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                found.setdefault(node.value, []).append(source.name)
+    return found
 
-    from hiris.app import server
 
-    sorgente = inspect.getsource(server)
-    for nome in RESIDUI_DISMESSI:
-        assert f"{nome} presente in" in sorgente or nome in sorgente, (
-            f"«{nome}» non è dichiarato morto da nessuna parte nel codice")
+def test_nessun_residuo_dell_elenco_e_un_archivio_che_il_prodotto_apre():
+    """Cio' che questo elenco cancella a ogni avvio non deve essere un file
+    che qualche riga del prodotto apre: il nome di ogni residuo compare nel
+    codice UNA volta sola, dentro `RESIDUI_DISMESSI`. Un archivio vivo
+    (`consumi.db`, `sapere.db`...) e' nominato anche da chi lo apre.
+
+    La prova di prima confrontava l'elenco col sorgente di `server.py`, dove
+    l'elenco stesso e' scritto: non poteva fallire (misurato dal revisore il
+    02/10/2026, con la mutazione che il suo docstring dichiarava rossa).
+
+    Mutazione ESEGUITA: aggiunto `"consumi.db"` a `RESIDUI_DISMESSI` -- rossa,
+    col nome dell'archivio e dei punti che lo nominano."""
+    constants = _string_constants_in_the_product()
+    assert len(constants) > 1000, "la raccolta dei letterali si e' rotta"
+    alive = {name: constants.get(name, []) for name in RESIDUI_DISMESSI
+             if len(constants.get(name, [])) != 1}
+    assert not alive, (
+        "nomi dell'elenco dei residui che il prodotto nomina anche altrove "
+        f"(o non nomina affatto): {alive}")
 
 
 def _startup_messages(tmp_path) -> list[str]:
@@ -214,7 +231,8 @@ def test_nessun_messaggio_d_avvio_promette_un_file_che_sta_per_cancellare(tmp_pa
     for nome in RESIDUI_DISMESSI:
         gone = not (tmp_path / nome).exists()
         promised = [message for message in messages
-                    if nome in message and "resta" in message]
+                    if nome in message
+                    and any(word in message for word in ("resta", "intatto", "non viene toccato"))]
         if gone and promised:
             lies.append(f"{nome}: «{promised[0][-60:]}»")
     assert not lies, (

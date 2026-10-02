@@ -189,7 +189,7 @@ _ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 def claimed_domains() -> frozenset[str]:
     """I domini che qualcuno ha guardato: quelli che il vocabolario dei tipi
     dichiara, piu' quelli che il nucleo sa nominare in italiano."""
-    return type_vocabulary.declared_domains() | frozenset(briefing._DOMAIN_NAMES)
+    return type_vocabulary._vocabulary.domains() | frozenset(briefing._DOMAIN_NAMES)
 
 
 def claimed_device_classes() -> frozenset[str]:
@@ -197,7 +197,7 @@ def claimed_device_classes() -> frozenset[str]:
     claimed = {class_key(domain, device_class)
                for domain, device_class in ha_vocabulary.DEVICE_CLASS_MEANING}
     claimed |= {class_key(domain, device_class)
-                for domain, device_class in type_vocabulary.declared_pairs()}
+                for domain, device_class in type_vocabulary._vocabulary.pairs()}
     return frozenset(claimed)
 
 

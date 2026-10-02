@@ -266,8 +266,7 @@ def _exchange_promise_id(request: web.Request) -> str:
     `X-HIRIS-Promessa` e' l'intestazione che `agent/runner.py::config_mcp`
     aggiunge alla `--mcp-config` quando il job che il ponte sta servendo e' un
     `kind="promessa"`. Dice QUALE turno sta parlando -- non e'
-    un'autenticazione, che resta il token interno (vedi il docstring in cima a
-    questo modulo).
+    un'autenticazione, che resta la credenziale di turno (vedi `handle_mcp`).
 
     Proprio perche' non autentica, si VERIFICA: un id che non corrisponde a una
     promessa `in_corso` non vale niente. Senza questo controllo l'intestazione
@@ -667,15 +666,12 @@ async def handle_mcp(request: web.Request) -> web.Response:
     per difetto.
 
     **Il CSRF, che non e' l'autenticazione.** `csrf_middleware` blocca ogni POST
-    su `/api/*` privo di `X-Requested-With`, ed esenta chi porta un
-    `X-HIRIS-Internal-Token` valido. La CLI `claude` manda il token e **non**
-    manda `X-Requested-With`: passa quindi da quell'esenzione, che a sua volta
-    e' viva solo perche' l'add-on genera un token interno quando l'opzione e'
-    vuota (`internal_token.py`). Entrambe le vie sono pinnate in
-    `tests/test_mcp_route.py` con le valvole della suite rimosse -- e il Task 3,
-    che scrive gli header della voce `--mcp-config`, ha per iscritto la
-    raccomandazione di mandare **anche** `X-Requested-With`, cosi' che nessuno
-    dei due rami resti da solo a reggere la rotta.
+    su `/api/*` privo di `X-Requested-With`, ed esenta chi il confine ha gia'
+    riconosciuto come macchina (`auth_via` «canale», «turno», «accoppiamento»).
+    La CLI `claude` manda la credenziale di turno nell'intestazione
+    `X-HIRIS-Internal-Token` e **non** manda `X-Requested-With`: passa quindi da
+    quell'esenzione. Entrambe le vie sono pinnate in `tests/test_mcp_route.py`
+    con le valvole della suite rimosse.
     """
     # «turno» e' la credenziale EFFIMERA del ponte, che dal 22/09/2026
     # sostituisce il segreto condiviso su questo percorso: stessa rotta,

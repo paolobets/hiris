@@ -1680,22 +1680,6 @@ def capability_names(domain: str) -> Mapping[int, str] | None:
     return _vocabulary.value(domain, None, CAPABILITY_NAMES)
 
 
-def declared_domains() -> frozenset[str]:
-    """I domini per cui questo vocabolario ha una riga -- qualunque cosa quella
-    riga dica.
-
-    Serve al censore (`scripts/censore_tipi.py`): «rivendicato» non vuol dire «giudicato
-    bene», vuol dire che questo vocabolario quel dominio l'ha guardato. Chi
-    vuole sapere COSA ne dice chiede il campo, non questa vista.
-    """
-    return _vocabulary.domains()
-
-
-def declared_pairs() -> frozenset[tuple[str, str]]:
-    """Le coppie (dominio, classe) per cui questo vocabolario ha una riga."""
-    return _vocabulary.pairs()
-
-
 def capability_attributes(domain: str) -> frozenset[str]:
     """**Metrica 4, prima meta'** -- i nomi degli attributi che, per questo
     dominio, dicono COSA L'ENTITA' PUO' FARE.

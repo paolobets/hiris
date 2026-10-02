@@ -298,13 +298,13 @@ def domini_notevoli() -> set[str]:
     """I domini che il repo dei giudizi dichiara degni di un annuncio --
     stesso fatto di `notable_types()` (cancellata col Task 8, spec
     2026-09-16 §11)."""
-    return {dominio for dominio in type_vocabulary.declared_domains()
+    return {dominio for dominio in type_vocabulary._vocabulary.domains()
             if _seed_says_notable(dominio)}
 
 
 def classi_notevoli() -> set[tuple[str, str]]:
     """Le coppie (dominio, classe) degne di un annuncio."""
-    return {coppia for coppia in type_vocabulary.declared_pairs()
+    return {coppia for coppia in type_vocabulary._vocabulary.pairs()
             if _seed_says_notable(*coppia)}
 
 _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}

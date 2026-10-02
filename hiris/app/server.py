@@ -309,9 +309,10 @@ def _bridge_notices(bridge_active: bool, token_presente: bool) -> list[str]:
 # passa una catena (`model_chain=None`), ed e' pinnato dai suoi test.
 
 
-def _chain_as_it_was(strategia: str, credentials: dict, bridge: bool) -> list[str]:
+def _chain_as_it_was(credentials: dict) -> list[str]:
     """La catena con cui nasce un archivio che non ha ancora la sua: **ogni
-    provider di cui c'e' una credenziale**, nell'ordine del preset.
+    provider a consumo di cui c'e' una credenziale**, nell'ordine del preset
+    «balanced».
 
     Si chiama ancora «com'era» perche' e' cio' che la regola pre-2.5 produceva
     sull'installazione del proprietario, ed e' per quello che esiste: copiare
@@ -335,16 +336,20 @@ def _chain_as_it_was(strategia: str, credentials: dict, bridge: bool) -> list[st
     fetta successiva non puo' limitarsi a cancellarla: senza, un'installazione
     nuova nasce con la catena vuota e la chat muta.
 
-    Il piano non e' un membro della catena: entra solo se il ponte e' acceso, e
-    quello lo dice `ponte.attivo`, non l'appartenenza.
+    **Due provider non ci entrano mai, qualunque credenziale abbiano.** Il
+    piano non e' un membro della catena: sta in testa quando il ponte e'
+    acceso, e quello lo dice `ponte.attivo`, non l'appartenenza. Ollama la
+    vecchia regola lo voleva con l'indirizzo E il nome del modello, e il nome
+    arrivava da una variabile d'ambiente che nessuna installazione riceve
+    piu': chi lo vuole lo aggiunge dalla pagina Modelli.
+
+    Fino al 02/10/2026 prendeva anche il preset e lo stato del ponte, letti
+    da `LLM_STRATEGY` e `BRIDGE_ENABLED`: `run.sh` non le esporta dalla 3.0.0,
+    e su ogni installazione valevano «balanced» e spento.
     """
     from .llm_router import _STRATEGY_ORDER
-    active = {}
-    for p in ("subscription", "claude", "openai", "openrouter", "ollama"):
-        ha = bool(credentials.get(p))
-        active[p] = (ha and bridge) if p == "subscription" else ha
-    order = _STRATEGY_ORDER.get(strategia, _STRATEGY_ORDER["balanced"])
-    return [n for n in order if active.get(n)]
+    return [name for name in _STRATEGY_ORDER["balanced"]
+            if name not in ("subscription", "ollama") and credentials.get(name)]
 
 
 def _find_ha_config_dir() -> str | None:
@@ -3776,19 +3781,17 @@ async def _on_startup(app: web.Application) -> None:
         try:
             chat_settings.save(data_dir)
             logger.info(
-                "Migrazione (versione A): 'giorni_conservazione' (%d) e' stato "
-                "scritto in impostazioni_chat.json -- da adesso si cambia dalla "
-                "pagina Impostazioni chat, e l'opzione dell'add-on "
-                "'history_retention_days' non serve piu'.",
+                "'giorni_conservazione' (%d) e' stato scritto in "
+                "impostazioni_chat.json: si cambia dalla pagina Impostazioni "
+                "chat.",
                 chat_settings.retention_days,
             )
         except OSError as exc:
             logger.warning(
-                "Migrazione (versione A): 'giorni_conservazione' (%d) NON e' "
-                "stato scritto su disco (%s). Il valore vale per questo avvio, "
-                "ma al prossimo riavvio si perde: 'history_retention_days' non "
-                "e' piu' un'opzione dell'add-on, quindi non c'e' piu' niente da "
-                "cui rileggerlo. Salvalo dalla pagina Impostazioni chat.",
+                "'giorni_conservazione' (%d) NON e' stato scritto su disco "
+                "(%s). Il valore vale per questo avvio, e al prossimo si "
+                "riparte dal default: per fissarlo, salvalo dalla pagina "
+                "Impostazioni chat.",
                 chat_settings.retention_days, exc,
             )
 
@@ -3906,9 +3909,9 @@ async def _on_startup(app: web.Application) -> None:
         # invece di nasconderlo. Fino al Task 9 quello stato ha un BUCO
         # dichiarato: il runner di Ollama nasce ancora solo con
         # `url AND model`, quindi Ollama puo' stare in catena senza un backend
-        # dietro. La migrazione non ce lo porta (`_chain_as_it_was` riceve la
-        # credenziale VECCHIA, vedi sotto): ci si arriva solo mettendocelo a
-        # mano dalla pagina Modelli.
+        # dietro. La semina della catena non ce lo porta (`_chain_as_it_was`
+        # lo tiene fuori): ci si arriva solo mettendocelo a mano dalla pagina
+        # Modelli.
         #
         # Task 9: il buco è CHIUSO, e non rimettendo il modello dentro la
         # credenziale (sarebbero di nuovo due concetti in un posto solo) ma
@@ -3939,15 +3942,7 @@ async def _on_startup(app: web.Application) -> None:
     # proposito. Vedi `seed_chain`.
     from .options_migration import seed_chain
     if not app["models_config"].get("catena_seminata"):
-        # Preset, Ollama e ponte entravano qui da tre variabili d'ambiente
-        # (`LLM_STRATEGY`, `LOCAL_MODEL_NAME`, `BRIDGE_ENABLED`) che `run.sh`
-        # non esporta dalla 3.0.0: su ogni installazione valevano il loro
-        # silenzio, che e' cio' che sta scritto adesso. Ollama resta fuori
-        # dalla catena di un'installazione nuova, come la vecchia regola
-        # voleva senza il nome del modello; chi lo vuole lo aggiunge dalla
-        # pagina Modelli.
-        _current_chain = _chain_as_it_was(
-            "balanced", {**_credentials, "ollama": False}, False)
+        _current_chain = _chain_as_it_was(_credentials)
         _arch, _da_salvare = seed_chain(dict(app["models_config"]),
                                         _current_chain, log=logger)
         if _da_salvare:

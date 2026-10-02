@@ -210,7 +210,8 @@ uscita: `git log --oneline -- hiris/app/mind/report.py`.
   detti a parole (`media 24.1 · minimo 23.4 · massimo 24.3 °C`; l'unità si attacca solo quando
   tutte le parti sono numeri). «La cronaca»: quando · chi · cosa, con quanti cambi di attributo ha
   avuto l'episodio, e una riga d'avviso quando la cronaca è raccontata con un giudizio diverso da
-  quello di adesso. «Cosa non si sa»: le misure non calcolabili, ognuna con la sua ragione — era
+  quello di adesso. «Cosa non si sa», solo quando ce n'erano: le misure non calcolabili, ognuna con
+  la sua ragione — era
   pensata come il terzo innesco dell'analista, che in fondo a una tabella di numeri buoni non
   salterebbe all'occhio.
 - `report.section(documento, titolo)` restituiva **una sezione sola**: il «meccanismo delle
@@ -378,11 +379,15 @@ la §3 chiedeva («un numero di volte senza finestra non significa niente»). Qu
 nessun contatore: va deciso su quale finestra si conta (il grezzo dura 22 giorni) e chi la conta.
 Finché non c'è, la pagina non dice un numero che non ha.
 
-### La fusione dei quattro composer — aperta il 24/09/2026
+### La fusione dei composer (erano quattro, sono tre) — aperta il 24/09/2026
 
 `origine: il proprietario, domanda del 23/09/2026` · `misurato durante la fetta delle misure`
 
-Ciò che il modello vede è composto in **quattro posti**: `claude_runner.chat` (API Anthropic),
+**Aggiornamento del 02/10/2026**: `OpenAICompatRunner.chat_stream`, la quarta composizione, è
+uscita con la Tappa 0 dello sprint «Una fonte sola di verità». Restano le tre che esistono per una
+ragione vera (tre protocolli); il resto della voce si legge con questo in mente.
+
+Ciò che il modello vedeva era composto in **quattro posti**: `claude_runner.chat` (API Anthropic),
 `OpenAICompatRunner.chat` e `.chat_stream` (catena stile OpenAI), e `agent/prompts.build_chat_messages`
 (il ponte, in sottoprocesso).
 
@@ -3138,7 +3143,14 @@ che ci lavora la prende per caso.
 
 **Si incrocia con «L'analista»**: è lui che dovrebbe decidere *cosa* mettere in quell'appendice.
 
-### `chat_stream` vive solo per i test
+### ~~`chat_stream` vive solo per i test~~ — CHIUSA il 02/10/2026 (Tappa 0 dello sprint «Una fonte sola di verità»)
+
+**Come si è chiusa.** È stata presa la strada 1: `chat_stream` è uscito dai due runner e dal
+router, e la rotta di `POST /api/chat` risponde sempre in JSON anche a chi chiede
+`text/event-stream` o `"stream": true` (dichiarazione D2, approvata dal proprietario). Le prove che
+lo esercitavano sono uscite con lui.
+
+*Il testo della voce, com'era:*
 
 `origine: audit delle fondamenta, «sotto la soglia dei dieci» n.8, 09/09/2026` · `nessun documento`
 

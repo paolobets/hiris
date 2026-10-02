@@ -54,12 +54,10 @@ class _FintoArchivio:
             raise RuntimeError("archivio rotto")
         self.annotati.append(kw)
 
-    def readings(self, *, from_ts, to_ts, subject=None, source=None, limit=200_000):
+    def readings(self, *, from_ts, to_ts, source=None, limit=200_000):
         if self._cambi_solleva:
             raise RuntimeError("archivio irraggiungibile")
         righe = [c for c in self._cambi if from_ts <= c["quando_ts"] < to_ts]
-        if subject is not None:
-            righe = [c for c in righe if c["soggetto"] == subject]
         if source is not None:
             righe = [c for c in righe if c["fonte"] == source]
         righe = sorted(righe, key=lambda c: c["quando_ts"])

@@ -159,8 +159,15 @@ def _senza_docstring(testo: str) -> str:
             fine = (primo.end_col_offset       # i numeri di riga non devono
                     if i == (primo.end_lineno or primo.lineno) - 1
                     else len(corpo_riga))      # cambiare
-            righe[i] = (corpo_riga[:inizio] + " " * max(0, fine - inizio)
-                        + corpo_riga[fine:] + coda)
+            vuoto = " " * max(0, fine - inizio)
+            if len(corpo) == 1 and i == primo.lineno - 1:
+                # Un corpo fatto del SOLO docstring, svuotato, non e' piu' un
+                # corpo: il testo smetterebbe di parsarsi e l'intero file
+                # uscirebbe dal censimento in silenzio. Tre puntini tengono il
+                # posto (un letterale stringa ne occupa almeno due, piu' cio'
+                # che contiene: il piu' corto sensato ne occupa tre).
+                vuoto = ("..." + vuoto[3:]) if len(vuoto) >= 3 else vuoto
+            righe[i] = corpo_riga[:inizio] + vuoto + corpo_riga[fine:] + coda
     return "".join(righe)
 
 
@@ -864,7 +871,7 @@ def stampa(reperti: list[Reperto]) -> None:
         illeggibili = COPERTURA_SIMBOLI.get("illeggibili", 0)
         print(f"\n{_GRIGIO}Copertura dei simboli: {esaminati} nomi esaminati, {ambigui} saltati"
               f" perche' definiti in piu'\n  punti, "
-              f"{ingressi} punto{'i' if ingressi != 1 else ''} d'ingresso, "
+              f"{ingressi} punt{'i' if ingressi != 1 else 'o'} d'ingresso, "
               f"{illeggibili} file illeggibili.{_RESET}")
 
     if COPERTURA_SCRITTURE:
@@ -906,6 +913,8 @@ def stampa(reperti: list[Reperto]) -> None:
     print("  - il SQL nelle docstring non conta ne' come schema ne' come scrittura: e'")
     print("    documentazione, e mind/store.py ne cita uno che dichiarerebbe una tabella")
     print("    fantasma di nome «if»;")
+    print("  - le COSTANTI di modulo non si esaminano: solo funzioni e classi. Una")
+    print("    tupla o un dizionario senza lettori non e' un reperto di questo strumento;")
     print("  - una variabile d'ambiente si vede solo se il suo nome e' una stringa")
     print(f"    letterale: os.environ.get(nome) con un nome indiretto resta invisibile.{_RESET}")
 

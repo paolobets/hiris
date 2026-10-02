@@ -59,27 +59,6 @@ def test_nessuna_parola_afferma_piu_di_cio_che_il_sistema_sa(parola):
     )
 
 
-# ── L'invariante che regge tutto il disegno: la chat non fa streaming ───────
-
-def test_la_chat_non_fa_streaming_e_quindi_la_catena_e_onesta():
-    """Invariante che regge TUTTO il disegno (progetto §0.1 e §14.1):
-    `llm_router.chat` cicla la catena, `chat_stream` NO -- prende il primo e
-    basta. La chat di HIRIS non fa streaming (`static/chat/send.js` fa un POST
-    JSON e legge `r.json()`), quindi il ramo SSE e' raggiungibile solo da un
-    client API esterno. Il giorno in cui la chat chiedesse SSE, il ripiego
-    sparirebbe e questa pagina inizierebbe a mentire SENZA CHE NESSUNO LA
-    TOCCHI.
-
-    E non solo la pagina: dal Task 11 `chat_stream` non scrive nel registro
-    degli esiti, e dal Task 14 il ramo streaming non porta la nota del ripiego
-    (nessun payload JSON in cui metterla). Passare la chat allo streaming
-    costerebbe insieme il ripiego, il registro e l'annuncio -- tre promesse
-    fatte all'utente in questa versione."""
-    send = (STATIC / "chat" / "send.js").read_text(encoding="utf-8")
-    assert "text/event-stream" not in send
-    assert "stream: true" not in send and "stream:true" not in send
-
-
 # ── Invariante 4: una sola regola di instradamento ─────────────────────────
 
 def test_non_esiste_una_seconda_regola_di_instradamento():

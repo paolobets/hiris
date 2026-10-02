@@ -665,7 +665,6 @@ ATTEMPT_QUEUED = "accodata"
 ATTEMPT_DONE = "riuscito"
 ATTEMPT_FAILED = "non_riuscito"
 ATTEMPT_EXPIRED = "scaduta"
-ATTEMPT_OUTCOMES = (ATTEMPT_QUEUED, ATTEMPT_DONE, ATTEMPT_FAILED, ATTEMPT_EXPIRED)
 
 
 def _reading_row(r) -> dict:

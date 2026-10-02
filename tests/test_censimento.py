@@ -920,3 +920,99 @@ def test_le_eccezioni_versionate_coprono_esattamente_i_reperti_di_oggi():
     import scripts.censimento as cens
 
     assert cens.run(cancello=True) == 0
+
+
+# ── Il cancello guarda TUTTI i file (revisione indipendente del 02/10/2026) ──
+
+
+def test_una_funzione_col_solo_docstring_resta_leggibile_senza_il_docstring():
+    """Tolto il docstring, una funzione il cui corpo era SOLO docstring restava
+    senza corpo: il testo non si parsava piu', e l'intero file usciva dal
+    censimento dei simboli senza che niente lo dicesse. Misurato dal revisore
+    il 02/10/2026: quattro file, 121 definizioni fuori dal cancello, e due
+    orfani veri nascosti li' dentro.
+
+    Mutazione ESEGUITA: tolto il ramo che lascia `...` al posto del docstring
+    -- rossa (`SyntaxError` sul testo ripulito)."""
+    import ast
+
+    source = ('class A:\n    def close(self):\n        """Niente da chiudere."""\n\n'
+              'def f():\n    "una riga"\n\n'
+              'def g():\n    """Con un corpo."""\n    return 1\n')
+    clean = censimento._senza_docstring(source)
+    ast.parse(clean)
+    assert "Niente da chiudere" not in clean and "una riga" not in clean
+    assert clean.count("\n") == source.count("\n"), "i numeri di riga non devono cambiare"
+
+
+def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
+    """La derivazione non si e' rotta: un file che il rilevatore non sa
+    leggere e' un file su cui il cancello non guarda niente, e resta verde."""
+    import scripts.censimento as cens
+
+    cens.run()
+    assert cens.COPERTURA_SIMBOLI["illeggibili"] == 0, (
+        f"{cens.COPERTURA_SIMBOLI['illeggibili']} file del prodotto non si leggono: "
+        "le loro definizioni sono fuori dal cancello")
+
+
+# ── Le eccezioni non crescono da sole (revisione indipendente del 02/10/2026) ─
+
+#: Quante sono le eccezioni scritte. Scende quando una guarisce; per farlo
+#: SALIRE bisogna toccare questo numero, cioe' deciderlo davanti a tutti.
+EXCEPTIONS_CEILING = 4
+
+#: Il segno con cui un'eccezione dichiara di non essere codice morto ma un
+#: errore del rilevatore: non ha una voce del registro perche' non c'e' niente
+#: da togliere.
+_FALSE_POSITIVE = "Falso positivo"
+
+
+def _written_exceptions():
+    import scripts.censimento as cens
+
+    raw = cens.read_exceptions(cens.ECCEZIONI)
+    return [(category, name, reason)
+            for category, names in raw.items() for name, reason in names.items()]
+
+
+def test_le_eccezioni_del_censimento_hanno_un_tetto():
+    """«L'elenco puo' solo accorciarsi» era prosa: una riga nuova con una
+    ragione qualunque faceva passare il cancello e questa suite insieme
+    (eseguito dal revisore il 02/10/2026). Adesso una riga in piu' arrossisce
+    qui, e una in meno obbliga ad abbassare il tetto.
+
+    Mutazione ESEGUITA: aggiunta a `censimento_eccezioni.json` l'eccezione
+    «_orfana»: «serve, fidati di me.» -- rossa (`5 == 4`)."""
+    written = _written_exceptions()
+    assert len(written) == EXCEPTIONS_CEILING, (
+        f"le eccezioni del censimento sono {len(written)}, il tetto e' "
+        f"{EXCEPTIONS_CEILING}: una in piu' si decide alzando il tetto, una in "
+        "meno lo abbassa")
+
+
+def test_ogni_eccezione_cita_una_voce_aperta_del_registro_o_si_dichiara_falso_positivo():
+    """Un'eccezione e' un debito: o e' scritta nel registro dei doppioni, come
+    voce APERTA, o e' un errore del rilevatore e lo dice. Stessa forma di
+    `test_fonte_unica.py`.
+
+    Mutazione ESEGUITA: tolta «Voce M-61» dalla ragione di `operable_domains`
+    -- rossa, col nome dell'eccezione."""
+    import re
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import registro
+
+    still_open = {entry.id for entry in registro.read_entries(registro.REGISTER)
+                  if not entry.closed}
+    assert still_open, "il registro non ha voci aperte: la prova non guarda niente"
+    loose = []
+    for category, name, reason in _written_exceptions():
+        if reason.startswith(_FALSE_POSITIVE):
+            continue
+        cited = set(re.findall(r"\b[A-Z]-\d{2}\b", reason))
+        if not cited & still_open:
+            loose.append(f"{category}/{name} (cita: {sorted(cited) or 'niente'})")
+    assert not loose, (
+        "eccezioni che non citano una voce APERTA del registro e non si "
+        "dichiarano falso positivo: " + "; ".join(loose))

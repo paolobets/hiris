@@ -173,7 +173,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # Critical 1 della review indipendente): la costante e' spezzata in DUE meta',
 # e `BASE_SYSTEM_PROMPT` resta la loro concatenazione, byte per byte. NESSUN
 # chiamante cambia: `chat()` qui sotto, backends/openai_compat_runner.py
-# (`chat` e `chat_stream`) e tests/test_base_prompt_memory.py continuano a
+# (`chat`) e tests/test_base_prompt_memory.py continuano a
 # vedere la STESSA costante con lo STESSO testo (pinnato da
 # tests/test_base_prompt_split.py).
 #
@@ -364,7 +364,7 @@ MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 # Tetto d'uscita piu' alto per la chat interattiva: una risposta lunga (il
 # riepilogo di una casa grande, un elenco di ricordi) supera legittimamente il
-# default da 4096 di `chat()`/`chat_stream()` -- `MAX_TOKENS` qui sopra,
+# default da 4096 di `chat()` -- `MAX_TOKENS` qui sopra,
 # ereditato dall'agente di valutazione uscito con la fetta E3 Task 8
 # (`run_with_actions`, vedi il commento su `EVALUATION_TOOL_DEFS` poco sopra;
 # stessa uscita annotata in llm_router.py e in backends/openai_compat_runner.py).
@@ -671,7 +671,7 @@ MINIMAL_PROMPT = (
 # instance attribute, via the _PerCallList descriptor below. asyncio.Task
 # creation copies the current Context, and ContextVar.set() inside a Task
 # mutates only that Task's own copy — never a sibling Task's. Two concurrent
-# Tasks calling chat()/chat_stream() on the very same runner instance
+# Tasks calling chat() on the very same runner instance
 # therefore never observe each other's resets or appends, even though they
 # share the object. Within a single Task (the normal, non-overlapping case —
 # e.g. handlers_chat.py reading `runner.last_tool_calls` right after
