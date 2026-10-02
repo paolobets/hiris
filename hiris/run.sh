@@ -12,12 +12,8 @@
 # LOCAL_MODEL_NAME, OLLAMA_REQUEST_TIMEOUT, HISTORY_RETENTION_DAYS e
 # HIRIS_DEBUG_EXPOSE_PORT. Quelle decisioni vivono adesso nell'archivio di
 # HIRIS (`/data/models_config.json`, `/data/impostazioni_chat.json`), dove le
-# scrive la pagina che le fa vedere. `options_migration.seed` e
-# `server._chain_as_it_was` continuano a LEGGERE alcune di quelle variabili
-# d'ambiente: e' la migrazione, e serve a un'installazione che salti la
-# versione A e arrivi qui con l'ambiente ancora popolato dal vecchio run.sh
-# (non puo' succedere via Supervisor, ma puo' succedere in sviluppo). Escono
-# con la fetta successiva.
+# scrive la pagina che le fa vedere. Nessuna riga dell'add-on legge piu' quelle
+# variabili d'ambiente: le ultime letture sono uscite il 02/10/2026.
 
 # ── 1. Le credenziali dei provider ──────────────────────────────────────────
 # Solo credenziali: chi le USA lo dice la catena, nella pagina Modelli di

@@ -44,7 +44,6 @@ from .api.middleware_internal_auth import internal_auth_middleware
 from .api.soffitto import restricted_person
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
-from .env_util import env_bool
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
 from .home_space.historian import day_boundaries, home_space_zone, instant_epoch
@@ -3585,33 +3584,12 @@ async def _on_startup(app: web.Application) -> None:
     # Task 7: il Brain (_holistic_reason) che l'avrebbe letto è già uscito
     # con la E3 -- vedi handlers_models.py.
     from .api.handlers_models import load_models_config, save_models_config
-    from .options_migration import seed
-    # Task 6 -- versione A della migrazione. Il Supervisor scarta ogni chiave
-    # fuori schema PRIMA che /data/options.json esista: togliere un'opzione
-    # dallo schema, da sola, fa sparire IN SILENZIO il valore dell'utente, e
-    # nessun ripiego in run.sh puo' recuperarlo. Finche' le opzioni ci sono
-    # ancora, si copia il loro valore nell'archivio di HIRIS -- una volta sola,
-    # dichiarandolo nel log. Le sette variabili qui sotto sono quelle che
-    # run.sh esporta dalle opzioni di config.yaml (i nomi MAIUSCOLI non
-    # coincidono con i nomi delle opzioni: la catena si segue per intero).
-    _store, _copiate = seed(load_models_config(data_dir), {
-        "BRIDGE_ENABLED": os.environ.get("BRIDGE_ENABLED", ""),
-        "BRIDGE_DEADLINE_MIN": os.environ.get("BRIDGE_DEADLINE_MIN", ""),
-        "CHAT_DAILY_CAP": os.environ.get("CHAT_DAILY_CAP", ""),
-        "LOCAL_MODEL_NAME": os.environ.get("LOCAL_MODEL_NAME", ""),
-        "OLLAMA_REQUEST_TIMEOUT": os.environ.get("OLLAMA_REQUEST_TIMEOUT", ""),
-        "HIRIS_HIDE_FREE_MODELS": os.environ.get("HIRIS_HIDE_FREE_MODELS", ""),
-        "LLM_STRATEGY": os.environ.get("LLM_STRATEGY", ""),
-    }, log=logger)
-    # Si persiste SEMPRE, anche quando non c'era niente da copiare: cio' che
-    # deve arrivare al disco e' `seminato`. Se la semina restasse in memoria, il
-    # rilascio successivo (versione B, opzioni fuori dallo schema) troverebbe di
-    # nuovo un archivio non seminato E un ambiente muto -- cioe' esattamente la
-    # perdita di valori che la versione A esiste per evitare.
-    # `flags=True`: `seminato` e' un SEGNO DI MIGRAZIONE, non una decisione, e
-    # l'avvio e' l'unico posto che lo scrive -- una PUT non lo tocca piu'
-    # (`handlers_models._MIGRATION_FLAGS`).
-    save_models_config(data_dir, _store, flags=True)
+    # Qui c'era la semina delle opzioni dell'add-on (`options_migration.seed`):
+    # copiava nell'archivio, una volta sola, sette valori che arrivavano
+    # dall'ambiente. Dalla 3.0.0 `run.sh` non li esporta piu', e sulla casa la
+    # copia e' avvenuta da tempo (misurato il 02/10/2026: `seminato` vero).
+    # L'archivio e' la sola fonte, e i campi che non ha partono dai
+    # predefiniti di `load_models_config`.
     app["models_config"] = load_models_config(data_dir)
 
     # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
@@ -3807,17 +3785,13 @@ async def _on_startup(app: web.Application) -> None:
     chat_settings = ChatSettings.load(data_dir)
     app["chat_settings"] = chat_settings
 
-    # Versione A della migrazione, applicata a `giorni_conservazione`: la META'
-    # CHE MANCAVA. `load()` legge il valore attraverso `HISTORY_RETENTION_DAYS`
-    # quando la chiave non c'e', ma non lo SCRIVE, e `save()` ha un solo
-    # chiamante di produzione (la PUT di «Impostazioni chat»). Chi quella pagina
-    # non la apre mai non produce mai la chiave: al rilascio successivo, con
-    # l'opzione fuori dallo schema e l'ambiente muto, il valore diventa il
-    # default del codice (90) -- e per chi aveva scelto `0` («non cancellare
-    # mai») la potatura delle 3 comincia a cancellare. Qui il valore appena
-    # letto arriva al disco, una volta sola: dal secondo avvio il file porta la
-    # chiave e questo ramo non fa piu' niente (e con lui tace anche la riga di
-    # log della migrazione, che prima ricompariva a ogni riavvio).
+    # `giorni_conservazione` arriva al disco al primo avvio. `load()` da' il
+    # default quando la chiave non c'e', ma non lo SCRIVE, e `save()` ha un solo
+    # chiamante di produzione (la PUT di «Impostazioni chat»): chi quella
+    # pagina non la apre mai non produrrebbe mai la chiave. Nasce come meta'
+    # di una migrazione (il valore arrivava da `HISTORY_RETENTION_DAYS`, letta
+    # fino al 02/10/2026); oggi scrive il default, una volta sola: dal secondo
+    # avvio il file porta la chiave e questo ramo non fa piu' niente.
     #
     # Un disco che non collabora non deve impedire il boot: si dichiara e si
     # prosegue, come per l'anagrafe e il comportamento qui sopra. Il valore in
@@ -4020,23 +3994,6 @@ async def _on_startup(app: web.Application) -> None:
         except ValueError as exc:
             logger.error("Invalid LOCAL_MODEL_URL (%s) — disabling local model", exc)
             local_model_url = ""
-    # L'UNICO uso rimasto di `LOCAL_MODEL_NAME` in questo file, e il nome lo
-    # dice: serve a ricostruire la CREDENZIALE COM'ERA per la migrazione della
-    # catena (sotto), dove la regola vecchia contava il modello insieme
-    # all'indirizzo. Il modello che il runner usa arriva dall'archivio -- una
-    # sola casa, `models_config["ollama"]["modello"]` (Task 9).
-    #
-    # DA VERSIONE B (3.0.0) `run.sh` NON esporta piu' questa variabile, ne' le
-    # sei della semina, ne' i cinque `PROVIDER_*` letti dalla migrazione della
-    # catena piu' sotto: l'opzione non c'e' piu'. Le letture restano perche'
-    # un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
-    # popolato dal vecchio `run.sh` deve poter migrare -- non puo' succedere
-    # via Supervisor, puo' succedere in sviluppo. Escono con la fetta
-    # successiva, insieme a `_chain_as_it_was` e a `options_migration`, quando
-    # nessuna installazione potra' piu' arrivare non seminata (scadenza: la
-    # prima fetta dopo il 14 agosto 2026). Fino ad allora il censimento le
-    # elenca fra le «variabili lette e mai esportate da run.sh», ed e' corretto.
-    _model_name_as_it_was = os.environ.get("LOCAL_MODEL_NAME", "")
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
 
@@ -4094,15 +4051,15 @@ async def _on_startup(app: web.Application) -> None:
     # proposito. Vedi `seed_chain`.
     from .options_migration import seed_chain
     if not app["models_config"].get("catena_seminata"):
+        # Preset, Ollama e ponte entravano qui da tre variabili d'ambiente
+        # (`LLM_STRATEGY`, `LOCAL_MODEL_NAME`, `BRIDGE_ENABLED`) che `run.sh`
+        # non esporta dalla 3.0.0: su ogni installazione valevano il loro
+        # silenzio, che e' cio' che sta scritto adesso. Ollama resta fuori
+        # dalla catena di un'installazione nuova, come la vecchia regola
+        # voleva senza il nome del modello; chi lo vuole lo aggiunge dalla
+        # pagina Modelli.
         _current_chain = _chain_as_it_was(
-            os.environ.get("LLM_STRATEGY", "balanced"),
-            # Le credenziali COM'ERANO, non quelle di adesso: la credenziale di
-            # Ollama comprendeva il nome del modello. Passare quelle nuove
-            # farebbe entrare in catena un Ollama che la vecchia regola non ci
-            # aveva MAI messo -- cioe' si inventerebbe invece di copiare.
-            {**_credentials, "ollama": bool(local_model_url and _model_name_as_it_was)},
-            env_bool("BRIDGE_ENABLED"),
-        )
+            "balanced", {**_credentials, "ollama": False}, False)
         _arch, _da_salvare = seed_chain(dict(app["models_config"]),
                                         _current_chain, log=logger)
         if _da_salvare:

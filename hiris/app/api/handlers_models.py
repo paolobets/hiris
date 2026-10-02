@@ -16,7 +16,6 @@ from ..model_resolution import (
     compose_topology,
     subscription_has_token,
 )
-from ..options_migration import _DEFAULTS as _SEED_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +57,13 @@ _STORE_DEFAULTS = {
     # valore, e la semina (`options_migration.seed_subscription_model`) lo
     # sostituisce una volta sola con quello che l'installazione stava gia'
     # usando.
-    # I numeri vengono da `options_migration._DEFAULTS`, non ridigitati:
-    # erano gli stessi valori in due moduli (piu' due volte dentro l'altro), ed
-    # e' la struttura che ha gia' prodotto il debito F. `modello` e' l'UNICO
-    # campo in piu' -- la semina lo tratta a parte
-    # (`seed_subscription_model`), quindi non sta nell'altro elenco: la
-    # differenza e' voluta, e adesso e' l'unica.
-    "ponte": {**_SEED_DEFAULTS["ponte"], "modello": "sonnet"},
-    "ollama": dict(_SEED_DEFAULTS["ollama"]),
+    # I numeri vivono qui e solo qui. Fino al 02/10/2026 stavano in
+    # `options_migration._DEFAULTS`, accanto alla semina delle opzioni che li
+    # copiava; uscita la semina, questo dizionario era rimasto il loro unico
+    # lettore.
+    "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50,
+              "modello": "sonnet"},
+    "ollama": {"modello": "", "timeout_s": 120},
 }
 
 # Le sole chiavi che un CLIENT puo' scrivere: le sei decisioni della pagina
@@ -478,8 +476,8 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # come uno stato. Dalla fetta «la catena è l'unica verità» le tre strategie
     # sono tre GESTI che riscrivono la catena, non uno stato da cui la catena si
     # deriva: non c'è più un preset corrente da dichiarare, e quindi non c'è più
-    # niente da leggere. `LLM_STRATEGY` resta letta da `server.py` per costruire
-    # il router (l'opzione esce con il Task 13); qui smette di essere pubblicata.
+    # niente da leggere. `LLM_STRATEGY` non la legge piu' nessuno: l'opzione e'
+    # uscita con la 3.0.0 e l'ultima lettura il 02/10/2026.
     #
     # Task 9: escono anche gli ultimi due passeggeri senza lettori.
     # `embeddings` (`MEMORY_EMBEDDING_PROVIDER`/`_MODEL`) alimentava la sezione
@@ -602,16 +600,9 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, **clean})
 
 
-# `_hide_free_models_enabled()` è uscito con questa fetta. Leggeva
-# `HIRIS_HIDE_FREE_MODELS` dall'ambiente, cioè l'opzione dell'add-on, mentre il
-# valore vive nell'archivio dal Task 6 (`nascondi_gratuiti`, seminato proprio
-# da quella variabile): finché il lettore restava qui, la casella del pannello
-# avrebbe scritto nell'archivio e la lista avrebbe continuato a filtrare
-# sull'ambiente -- una casella che non fa niente, cioè il difetto di questa
-# fetta rimesso in un pannello nuovo. Adesso il valore arriva come argomento a
-# `_fetch_openrouter_models`, e `HIRIS_HIDE_FREE_MODELS` perde il suo unico
-# lettore di comportamento (resta letta da `options_migration` per la semina,
-# e l'opzione esce da `config.yaml` col Task 13).
+# Il filtro dei modelli gratuiti arriva come argomento a
+# `_fetch_openrouter_models`, letto dall'archivio (`nascondi_gratuiti`): la
+# variabile d'ambiente `HIRIS_HIDE_FREE_MODELS` non la legge piu' nessuno.
 
 # Recent Claude models (Anthropic doesn't expose a public list-models endpoint)
 #

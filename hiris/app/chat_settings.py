@@ -187,56 +187,11 @@ DEFAULT_SYSTEM_PROMPT = (
 # di cio' che chiunque si aspetta da una "conservazione" messa a zero, e per
 # questo va detto esplicitamente, non lasciato dedurre.
 #
-# **Versione A della migrazione, applicata a questo singolo campo** (la
-# sorella maggiore, su tutto `models_config.json`, e' `options_migration.py`
-# del Task 6 -- questo campo non ci passa attraverso, perche' vive in un
-# archivio diverso, `impostazioni_chat.json`): se il file non porta ancora la
-# chiave, `carica()` la prende da `HISTORY_RETENTION_DAYS`, la variabile che
-# `run.sh` esporta dall'opzione `history_retention_days` di `config.yaml`.
-# Una volta sola per lettura del file (non un seed permanente: un file che GIA'
-# porta la chiave, anche a `0`, vince sempre sull'opzione -- vedi
-# `_retention_days_from_environment` sotto), dichiarata nel log ESATTAMENTE quando il valore
-# copiato non e' quello che i default del codice avrebbero comunque prodotto
-# (stessa disciplina del blocco `if "model" in raw` qui sotto, e dello stesso
-# "non annuncia se non c'e' niente da annunciare" imparato al debito F della
-# migrazione di `models_config.json`, Task 6/7: un'installazione MAI toccata
-# non deve leggere un log a ogni riavvio).
-#
-# **FATTO, versione B (3.0.0, 14 agosto 2026)**: `history_retention_days` e'
-# uscita dallo schema dell'add-on, e `run.sh` non esporta piu'
-# `HISTORY_RETENTION_DAYS`. Su un'installazione aggiornata dal Supervisor
-# questo ramo non trova piu' niente da leggere -- e non deve trovarlo: il
-# valore e' gia' sul disco, perche' l'avvio della 2.5.0 lo ha SCRITTO
-# (`server._on_startup`, `file_lacks_retention_days`), non solo letto.
-#
-# La lettura resta, ed e' la stessa eccezione dichiarata per
-# `options_migration.seed` e `server._chain_as_it_was`: serve a
-# un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
-# popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
-# fuori schema vengono scartate prima che /data/options.json esista); in
-# sviluppo si'. Esce con la fetta successiva, insieme alle altre due, quando
-# nessuna installazione potra' piu' arrivare non seminata.
-#
-# Il censimento la elenchera' fra le «variabili lette e mai esportate da
-# run.sh»: e' corretto, ed e' dichiarato nel rapporto del Task 13.
-def _retention_days_from_environment(default: int) -> int:
-    raw = os.environ.get("HISTORY_RETENTION_DAYS")
-    if raw is None:
-        return default
-    try:
-        days = int(raw)
-    except (TypeError, ValueError):
-        return default
-    if days != default:
-        logger.info(
-            "impostazioni_chat.json non specifica 'giorni_conservazione': "
-            "arriva dall'opzione dell'add-on 'history_retention_days' (valore "
-            "%d). Da ora si cambia dalla pagina Impostazioni chat -- governa "
-            "sia la potatura notturna sia quanto HIRIS rilegge della "
-            "conversazione in corso.",
-            days,
-        )
-    return days
+# Fino al 02/10/2026 un file senza la chiave la prendeva da
+# `HISTORY_RETENTION_DAYS`, la variabile che `run.sh` esportava dall'opzione
+# `history_retention_days`. L'opzione e' uscita dallo schema con la 3.0.0 e
+# la variabile non arriva piu' da nessuno: un file senza la chiave vale il
+# default, e l'avvio lo scrive (`file_lacks_retention_days`, qui sotto).
 
 
 def file_lacks_retention_days(data_dir: str) -> bool:
@@ -287,12 +242,8 @@ class ChatSettings:
         log, non un pass muto) -- mai uno stato "impostazioni mancanti" che
         il chiamante dovrebbe scoprire da solo.
 
-        Task 12: file assente e file corrotto convergono sullo stesso `raw =
-        {}` invece di due `return cls()` separati (com'era prima) -- e' cio'
-        che permette a ENTRAMBI i casi di consultare `HISTORY_RETENTION_DAYS`
-        per `giorni_conservazione` (`_retention_days_from_environment` sopra), invece di
-        far scomparire silenziosamente la versione A della migrazione ogni
-        volta che il file non e' leggibile."""
+        File assente e file corrotto convergono sullo stesso `raw = {}`: un
+        solo percorso produce i default, non due."""
         path = os.path.join(data_dir, _SETTINGS_FILE)
         raw: dict = {}
         if os.path.exists(path):
@@ -305,24 +256,6 @@ class ChatSettings:
                     path, exc,
                 )
                 raw = {}
-        if "model" in raw:
-            # Silenzio dichiarato (fetta "la catena diventa l'unica verita'"):
-            # il modello della chat scavalcava l'intera pagina Modelli --
-            # sceglieva il provider da se' (`LLMRouter._route`), saltava la
-            # catena e annullava il ripiego. Il campo e' uscito; il valore
-            # salvato non viene migrato (non c'e' dove metterlo: il modello si
-            # sceglie per provider, in `models_config.json`) ne' riscritto da
-            # `save()`, quindi sparira' dal file al primo salvataggio. A
-            # differenza di `brain_model` in `load_models_config` -- che
-            # sopravvive perche' `save_models_config` fa
-            # lettura-modifica-scrittura -- qui NON si conserva: sarebbe
-            # conservare una scelta che il prodotto non sa piu' eseguire.
-            logger.info(
-                "impostazioni_chat.json contiene 'model' (%r) di una versione "
-                "precedente: non e' piu' letto -- la chat usa sempre la catena "
-                "della pagina Modelli. Sparira' dal file al primo salvataggio.",
-                raw.get("model"),
-            )
         default = cls()
         # NOTA il contrasto deliberato con `thinking_budget`/`max_chat_turns`
         # due righe sopra: quelli usano `raw.get(k, 0) or 0`, che trasforma
@@ -330,16 +263,16 @@ class ChatSettings:
         # loro perche' il ripiego E' 0. Per `giorni_conservazione` il ripiego
         # (90) e' diverso dal valore-sentinella (0 = "non cancellare mai"):
         # lo stesso pattern trasformerebbe silenziosamente uno 0 scelto
-        # dall'utente nel default. Qui si distingue "chiave assente" (versione
-        # A: consulta l'ambiente) da "chiave presente" (vince sempre, 0
-        # compreso) con un `in` esplicito, non con la verita' del valore.
+        # dall'utente nel default. Qui si distingue "chiave assente" (vale il
+        # default) da "chiave presente" (vince sempre, 0 compreso) con un `in`
+        # esplicito, non con la verita' del valore.
         if "giorni_conservazione" in raw:
             value = raw.get("giorni_conservazione")
             retention_days = (
                 default.retention_days if value is None else int(value)
             )
         else:
-            retention_days = _retention_days_from_environment(default.retention_days)
+            retention_days = default.retention_days
         return cls(
             name=raw.get("nome", default.name),
             system_prompt=raw.get("system_prompt") or default.system_prompt,

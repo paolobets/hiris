@@ -1,182 +1,21 @@
-"""Versione A della migrazione: dall'opzione dell'add-on all'archivio di HIRIS.
+"""Le due semine che girano ancora: la catena e il modello del piano.
 
-Il Supervisor scarta ogni chiave fuori schema (`AddonOptions.__call__`) PRIMA
-di scrivere /data/options.json: non esiste nessun ripiego possibile in
-`run.sh`, perche' la vecchia chiave non ci arriva nemmeno. Togliere un'opzione
-dallo schema, da sola, fa sparire IN SILENZIO il valore dell'utente.
+Qui viveva anche la semina delle OPZIONI dell'add-on (`seed`, «versione A»):
+copiava nell'archivio di HIRIS, una volta sola, sette valori letti da
+variabili d'ambiente che `run.sh` esportava dalle opzioni di `config.yaml`.
+Quelle opzioni sono uscite dallo schema con la 3.0.0 (14 agosto 2026) e
+`run.sh` non esporta piu' niente: la semina non aveva piu' niente da leggere,
+ed e' uscita il 02/10/2026 con le sette letture d'ambiente. Sulla casa del
+proprietario la copia era avvenuta da tempo (`seminato` vero, misurato quel
+giorno). Il segno `seminato` resta nella forma di `GET /api/models/config` e
+negli archivi che gia' lo portano, ma nessuno lo scrive ne' lo legge piu':
+toglierlo cambia la forma di una rotta, e si fa quando quel cambio e'
+dichiarato.
 
-La rete e' questa: finche' le opzioni sono ancora nello schema, HIRIS legge dal
-PROPRIO archivio e, quando l'archivio non e' ancora stato seminato, ci COPIA
-dentro il valore dell'opzione -- una volta sola, dichiarandolo nel log. Un
-avvio, e i valori sono al sicuro. Solo il rilascio DOPO toglie le opzioni.
-
-Perche' la copia deve avvenire una volta sola: se si ripetesse a ogni avvio,
-l'opzione dell'add-on continuerebbe a vincere sulla scelta fatta dalla pagina
-Modelli, e la migrazione non finirebbe mai. `seminato` e' il segno che e'
-avvenuta -- e va segnato ANCHE quando non c'era niente da copiare, altrimenti
-un'installazione nuova ricomincerebbe a cercare opzioni che dopo la versione B
-non esistono piu'.
-
-Le sette variabili d'ambiente lette qui erano quelle che `run.sh` esportava
-dalle opzioni di `config.yaml` (`ponte.attivo`, `ponte.bridge_deadline_min`,
-`ponte.chat_daily_cap`, `local_model.model`, `local_model.request_timeout`,
-`hide_free_models`, `llm_strategy`): i nomi MAIUSCOLI non coincidono con i nomi
-delle opzioni, quindi la catena si segue per intero -- config.yaml -> run.sh ->
-qui -- o si copia la cosa sbagliata.
-
-**VERSIONE B (3.0.0, 14 agosto 2026): quelle sette opzioni sono USCITE**, e con
-loro i sette `export` di `run.sh`. Nessuno di quei valori governa piu' niente
-dall'ambiente: il ponte, i due tempi, il tetto, il modello di Ollama, il
-filtro dei gratuiti e il preset vivono nell'archivio, e chi li legge lo legge
-di li'.
-
-Questo modulo resta, e resta l'unico posto che legge ancora quelle variabili.
-Non e' un ripiego «se non so niente comportati come prima»: e' la migrazione, e
-serve a un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
-popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
-fuori schema vengono scartate PRIMA che /data/options.json esista, quindi
-l'ambiente e' muto e la semina scrive i predefiniti su un archivio che pero' e'
-gia' `seminato`, e quindi esce subito); in sviluppo si'. **Esce con la fetta
-successiva**, insieme a `chat_settings._retention_days_from_environment`, quando nessuna
-installazione potra' piu' arrivare non seminata.
-
-`server._chain_as_it_was` era elencata qui accanto, e **non esce con loro**: con
-gli interruttori tolti non copia piu' niente da nessuna parte, COMPONE la
-catena di ogni installazione nuova, e cancellarla e basta la farebbe nascere
-con la catena vuota e la chat muta. Va decisa -- vedi la sua docstring.
-
-Funzione PURA: `ambiente` e' un dizionario gia' letto, non `os.environ`.
+Restano `seed_chain` e `seed_subscription_model`, che non sono migrazioni
+compiute: girano su ogni installazione nuova (vedi `server._chain_as_it_was`).
 """
 from __future__ import annotations
-
-
-def _integer(value, default: int) -> int:
-    """`run.sh` esporta stringhe, e un `bashio::config` su un campo vuoto torna
-    "". Un ValueError qui fermerebbe l'add-on all'avvio: si ricade sul
-    predefinito, che e' cio' che facevano gia' i lettori che sostituiamo
-    (`int(os.environ.get("CHAT_DAILY_CAP", "50"))` e gemelli)."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _bool(value, default: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None or value == "":
-        return default
-    return str(value).strip().lower() in ("1", "true", "yes", "on")
-
-
-# Il predefinito di ogni campo e' quello dell'OPZIONE da cui il campo viene:
-# se i due non coincidono, un'installazione mai toccata sembra averla toccata.
-# `strategia_ultima` valeva "" mentre `config.yaml` e `run.sh` dicono
-# "balanced", quindi OGNI installazione -- anche nuova -- logga «Copiati:
-# strategia_ultima» e il ramo «erano tutti ai predefiniti» e' morto in
-# produzione: e' il debito F dichiarato dal Task 6, e si chiude decidendo il
-# predefinito del campo. Il predefinito e' "balanced", come l'opzione.
-_DEFAULTS = {
-    "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
-    "ollama": {"modello": "", "timeout_s": 120},
-    "nascondi_gratuiti": False,
-    "strategia_ultima": "balanced",
-}
-
-# Le sette variabili che `run.sh` esportava e che dalla versione B non esporta
-# piu'. Servono a distinguere due casi che il log confondeva in una riga sola:
-# «c'erano dei valori, e valevano il predefinito» e «non c'era NIENTE da
-# leggere». Dalla 3.0.0 il secondo e' la condizione normale -- via Supervisor
-# e' l'UNICA possibile -- e dire «erano tutti ai predefiniti» quando non si e'
-# letto niente afferma piu' di cio' che il sistema sa. Su un archivio
-# illeggibile quella riga era, insieme a quella della catena, l'unica cosa che
-# l'utente leggeva mentre dodici sue decisioni sparivano.
-_VARIABLES = ("BRIDGE_ENABLED", "BRIDGE_DEADLINE_MIN", "CHAT_DAILY_CAP",
-              "LOCAL_MODEL_NAME", "OLLAMA_REQUEST_TIMEOUT",
-              "HIRIS_HIDE_FREE_MODELS", "LLM_STRATEGY")
-
-
-def environment_is_silent(environment: dict) -> bool:
-    """Nessuna delle sette variabili porta un valore. `""` conta come muto:
-    e' cio' che `bashio::config` restituisce per un campo vuoto, ed e' anche
-    cio' che resta quando l'opzione non esiste piu'."""
-    return not any(str(environment.get(n) or "").strip() for n in _VARIABLES)
-
-
-def seed(store: dict, environment: dict, *, log) -> tuple[dict, list[str]]:
-    """Riempie l'archivio con i valori delle opzioni dell'add-on, una volta.
-
-    Restituisce `(archivio, chiavi_copiate)`. `chiavi_copiate` e' vuota sia
-    quando la semina era gia' avvenuta sia quando non c'era niente da copiare:
-    sono due casi diversi, e il log li distingue.
-    """
-    if store.get("seminato"):
-        return store, []
-
-    # I predefiniti si LEGGONO da `_DEFAULTS`, non si ridigitano qui: erano
-    # gli stessi numeri scritti due volte nello stesso file (una nel
-    # dizionario, una come argomento di `_integer`/`_bool`), piu' una terza
-    # volta in `api/handlers_models._STORE_DEFAULTS`. E' esattamente la
-    # struttura che ha prodotto il debito F -- `strategia_ultima` che valeva
-    # `""` in una copia e `"balanced"` nell'altra, e ogni installazione, anche
-    # nuova, che logga «Copiati: strategia_ultima» -- chiuso allora
-    # ALLINEANDO le copie invece di toglierne una.
-    _p = _DEFAULTS
-    values = {
-        "ponte": {
-            "attivo": _bool(environment.get("BRIDGE_ENABLED"), _p["ponte"]["attivo"]),
-            "scadenza_min": _integer(environment.get("BRIDGE_DEADLINE_MIN"),
-                                     _p["ponte"]["scadenza_min"]),
-            "tetto_giornaliero": _integer(environment.get("CHAT_DAILY_CAP"),
-                                          _p["ponte"]["tetto_giornaliero"]),
-        },
-        "ollama": {
-            "modello": str(environment.get("LOCAL_MODEL_NAME") or _p["ollama"]["modello"]),
-            "timeout_s": _integer(environment.get("OLLAMA_REQUEST_TIMEOUT"),
-                                  _p["ollama"]["timeout_s"]),
-        },
-        "nascondi_gratuiti": _bool(environment.get("HIRIS_HIDE_FREE_MODELS"),
-                                   _p["nascondi_gratuiti"]),
-        # Lo stesso ripiego di `run.sh` (`bashio::config 'llm_strategy'
-        # 'balanced'`): un ambiente muto vale «balanced», non «niente». Senza,
-        # un ambiente muto verrebbe contato come valore copiato.
-        "strategia_ultima": str(environment.get("LLM_STRATEGY") or _p["strategia_ultima"]),
-    }
-
-    copied = [k for k, v in values.items() if v != _DEFAULTS[k]]
-    store.update(values)
-    store["seminato"] = True
-
-    if copied:
-        log.info(
-            "Migrazione (versione A): i valori delle opzioni dell'add-on sono "
-            "stati copiati nell'archivio di HIRIS, e da adesso si cambiano dalla "
-            "pagina Modelli. Copiati: %s. Valori: ponte=%r, ollama=%r, "
-            "nascondi_gratuiti=%r, strategia=%r.",
-            ", ".join(sorted(copied)), values["ponte"], values["ollama"],
-            values["nascondi_gratuiti"], values["strategia_ultima"],
-        )
-    elif environment_is_silent(environment):
-        # Il caso normale dalla 3.0.0: le opzioni non esistono piu', quindi non
-        # c'era NIENTE da leggere. Non si dice «erano tutti ai predefiniti»:
-        # sarebbe un'affermazione sui valori dell'utente, e nessun valore
-        # dell'utente e' stato letto. Se ci si arriva con un archivio che
-        # ESISTEVA ma non si e' potuto leggere, la riga che lo dice l'ha gia'
-        # scritta `_read_raw_store` (logger.error), e questa non la
-        # contraddice piu'.
-        log.info(
-            "Migrazione (versione A): non c'era nessuna opzione dell'add-on da "
-            "copiare -- sono uscite dallo schema con la 3.0.0. L'archivio di "
-            "HIRIS e' la sola fonte di queste decisioni, e i campi che non "
-            "aveva partono dai suoi predefiniti."
-        )
-    else:
-        log.info(
-            "Migrazione (versione A): nessun valore da copiare dalle opzioni "
-            "dell'add-on -- erano tutti ai predefiniti. L'archivio di HIRIS e' "
-            "adesso la fonte di queste decisioni."
-        )
-    return store, copied
 
 
 def seed_chain(store: dict, current_chain: list[str], *, log) -> tuple[dict, bool]:

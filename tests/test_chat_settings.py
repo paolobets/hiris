@@ -206,30 +206,12 @@ def test_salva_scrive_col_permesso_piu_stretto_disponibile(tmp_path):
 # ---------------------------------------------------------------------------
 # fetta «la catena diventa l'unica verita'» (Task 4): il campo `model` esce.
 # Non c'e' piu' un modello scelto qui che scavalchi la catena della pagina
-# Modelli -- e un file scritto da una versione precedente non viene ne'
-# migrato ne' ignorato in silenzio: viene DICHIARATO.
+# Modelli. Un file scritto da una versione precedente non viene migrato: il
+# campo non si legge, e sparisce dal file al primo salvataggio.
 # ---------------------------------------------------------------------------
 
 def test_le_impostazioni_non_hanno_piu_un_modello():
     assert not hasattr(ChatSettings(), "model")
-
-
-def test_un_file_con_il_vecchio_modello_lo_dichiara_invece_di_ignorarlo(tmp_path, caplog):
-    (tmp_path / "impostazioni_chat.json").write_text(
-        '{"nome": "HIRIS", "model": "claude-opus-4-7"}', encoding="utf-8")
-    with caplog.at_level("INFO"):
-        imp = ChatSettings.load(str(tmp_path))
-    assert imp.name == "HIRIS"
-    testo = "\n".join(r.getMessage() for r in caplog.records)
-    assert "claude-opus-4-7" in testo, testo
-
-
-def test_un_file_senza_il_vecchio_modello_non_dice_niente(tmp_path, caplog):
-    """La prova gemella: la dichiarazione non è una riga che si stampa sempre."""
-    (tmp_path / "impostazioni_chat.json").write_text('{"nome": "HIRIS"}', encoding="utf-8")
-    with caplog.at_level("INFO"):
-        ChatSettings.load(str(tmp_path))
-    assert "model" not in "\n".join(r.getMessage() for r in caplog.records)
 
 
 def test_salva_non_riscrive_il_vecchio_modello_che_quindi_sparisce_dal_file(tmp_path):
@@ -263,63 +245,31 @@ def test_i_giorni_di_conservazione_vivono_nelle_impostazioni_della_chat():
     assert ChatSettings().retention_days == 90
 
 
-def test_al_primo_avvio_il_valore_arriva_dall_opzione_dell_addon(tmp_path, monkeypatch, caplog):
-    """Versione A applicata a questo valore: chi aveva 30 giorni non deve
-    ritrovarsi a 90 senza una riga che lo dica. "Primo avvio" = nessun file
-    ancora sul disco, non solo "chiave assente in un file esistente" --
-    `load()` deve consultare l'ambiente in entrambi i casi."""
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
-    with caplog.at_level("INFO"):
-        imp = ChatSettings.load(str(tmp_path))
-    assert imp.retention_days == 30
-    assert "30" in "\n".join(r.getMessage() for r in caplog.records)
-
-
-def test_un_valore_gia_scelto_vince_sull_opzione(tmp_path, monkeypatch):
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
+def test_un_valore_gia_scelto_si_rilegge(tmp_path):
     (tmp_path / "impostazioni_chat.json").write_text(
         '{"giorni_conservazione": 7}', encoding="utf-8")
     assert ChatSettings.load(str(tmp_path)).retention_days == 7
 
 
-def test_uno_zero_gia_scelto_vince_sull_opzione_e_non_diventa_il_default(tmp_path, monkeypatch):
+def test_uno_zero_gia_scelto_non_diventa_il_default(tmp_path):
     """La prova gemella, sul valore che il pattern `valore or predefinito`
     (usato per gli altri interi di questo file) romperebbe in silenzio: uno
     `0` esplicito nel file e' "non cancellare mai", non "chiave assente"."""
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
     (tmp_path / "impostazioni_chat.json").write_text(
         '{"giorni_conservazione": 0}', encoding="utf-8")
     assert ChatSettings.load(str(tmp_path)).retention_days == 0
 
 
-def test_un_ambiente_uguale_al_default_non_scrive_niente_nel_log(tmp_path, monkeypatch, caplog):
-    """La prova gemella di `test_un_file_senza_il_vecchio_modello_non_dice_
-    niente` sopra: un'installazione MAI toccata (opzione al suo stesso
-    predefinito, 90) non deve leggere una riga di log a ogni riavvio --
-    stessa disciplina del debito F della migrazione di `models_config.json`
-    (Task 6/7)."""
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "90")
-    with caplog.at_level("INFO"):
-        imp = ChatSettings.load(str(tmp_path))
-    assert imp.retention_days == 90
-    assert "giorni_conservazione" not in "\n".join(r.getMessage() for r in caplog.records)
-    assert "history_retention_days" not in "\n".join(r.getMessage() for r in caplog.records)
+def test_senza_la_chiave_vale_il_default_e_l_ambiente_non_conta(tmp_path, monkeypatch):
+    """Un file senza `giorni_conservazione` (o nessun file) vale il default.
+    Fino al 02/10/2026 lo si leggeva da `HISTORY_RETENTION_DAYS`, la variabile
+    che `run.sh` esportava dall'opzione dell'add-on: l'opzione e' uscita con la
+    3.0.0, e la variabile non la legge piu' nessuno.
 
-
-def test_un_ambiente_muto_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch):
-    """`HISTORY_RETENTION_DAYS` assente dall'ambiente (mai il caso reale
-    sotto `run.sh`, che esporta sempre un valore -- ma questo modulo non deve
-    fidarsi di chi lo chiama): nessun KeyError, nessun crash, il default nel
-    codice."""
-    monkeypatch.delenv("HISTORY_RETENTION_DAYS", raising=False)
-    assert ChatSettings.load(str(tmp_path)).retention_days == 90
-
-
-def test_un_ambiente_non_numerico_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch):
-    """`bashio::config` su un campo vuoto/malformato torna una stringa che
-    `int()` non digerisce: stessa disciplina di `options_migration._integer`
-    per gli altri sette valori che arrivano da `run.sh`."""
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "")
+    Mutazione ESEGUITA: rimesso `int(os.environ.get("HISTORY_RETENTION_DAYS",
+    default.retention_days))` nel ramo senza chiave di `ChatSettings.load` --
+    rossa (30 invece di 90)."""
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
     assert ChatSettings.load(str(tmp_path)).retention_days == 90
 
 
@@ -330,24 +280,12 @@ def test_salva_scrive_i_giorni_di_conservazione(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# **C2 della revisione finale: la versione A, per questo campo, non migrava.**
+# `load()` da' il default quando la chiave manca, ma non SCRIVE, e `save()` ha
+# un solo chiamante di produzione: la PUT di «Impostazioni chat». Chi quella
+# pagina non la apre mai non produrrebbe mai la chiave sul disco: la scrive
+# l'avvio, una volta sola.
 #
-# `carica()` LEGGE attraverso `HISTORY_RETENTION_DAYS` quando la chiave manca,
-# ma non SCRIVE, e `save()` ha un solo chiamante di produzione: la PUT di
-# «Impostazioni chat». Chi quella pagina non la apre mai non produce mai la
-# chiave sul disco -- e il rilascio successivo (versione B, l'opzione fuori
-# dallo schema) trova l'ambiente muto e fa valere il default del codice, 90.
-# Chi aveva messo 30 se lo ritrova a 90 senza una riga che lo dica; chi aveva
-# messo **0** («non cancellare mai») se lo ritrova a 90, e la potatura delle 3
-# (`server._run_retention`) gli cancella le conversazioni piu' vecchie di
-# novanta giorni. Perdita di dato irreversibile, e proprio la classe di perdita
-# che la scelta di NON accorpare A e B esiste per impedire.
-#
-# Il cancello di rilascio non se ne accorgeva: le sue precondizioni guardavano
-# solo `/data/models_config.json`. Adesso ne ha una quarta
-# (`docs/prova-modelli-e-catena.md`).
-#
-# Si pinna il CABLAGGIO, non solo la funzione: la chiusura vive in
+# Si pinna il CABLAGGIO, non solo la funzione: la scrittura vive in
 # `_on_startup`, quindi si estrae il blocco dal sorgente vero e lo si esegue
 # isolato -- stessa tecnica (e stessa ragione: ogni fixture fa
 # `app.on_startup.clear()`) di `tests/test_websocket_startup.py` e
@@ -384,48 +322,25 @@ def _avvia(tmp_path):
     return app["chat_settings"]
 
 
-def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path, monkeypatch):
+def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path):
     """Rimettere il difetto -- togliere da `_on_startup` la chiamata a
     `save()` -- fa cadere questo test."""
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
-    assert _avvia(tmp_path).retention_days == 30
+    assert _avvia(tmp_path).retention_days == 90
     su_disco = json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
-    assert su_disco["giorni_conservazione"] == 30, (
-        "il valore che l'utente aveva nell'opzione dell'add-on non e' arrivato "
-        "sul disco: la versione B lo perde e la potatura notturna cambia "
-        "comportamento da sola"
+    assert su_disco["giorni_conservazione"] == 90, (
+        "il primo avvio non ha scritto la chiave: chi non apre mai la pagina "
+        "resterebbe con un file che non dice quanto conserva"
     )
 
 
-def test_lo_zero_sopravvive_alla_versione_b(tmp_path, monkeypatch):
-    """Il caso che costa un dato: `0` significa «non cancellare mai», e il
-    default del codice e' 90. Se la versione A non scrive, dopo la versione B
-    la potatura delle 3 comincia a cancellare tutto cio' che ha piu' di
-    novanta giorni -- senza che nessuno l'abbia chiesto e senza una riga che lo
-    dica."""
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "0")
-    assert _avvia(tmp_path).retention_days == 0
-
-    # Versione B: l'opzione esce dallo schema, `run.sh` non esporta piu'
-    # niente, l'ambiente e' muto.
-    monkeypatch.delenv("HISTORY_RETENTION_DAYS", raising=False)
-    assert ChatSettings.load(str(tmp_path)).retention_days == 0, (
-        "dopo la versione B «non cancellare mai» e' diventato «cancella dopo "
-        "90 giorni»: e' una perdita di dato, non un default"
-    )
-
-
-def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, monkeypatch, caplog):
-    """Contorno di C2, ed e' il debito F di un altro archivio: finche' la
-    chiave non arriva sul disco, la riga di migrazione ricompare a OGNI
-    riavvio. Dal primo avvio in poi il file la porta, quindi
-    `_retention_days_from_environment` non viene nemmeno consultata."""
+def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, caplog):
+    """Finche' la chiave non arriva sul disco, la riga che lo annuncia
+    ricompare a OGNI riavvio. Dal primo avvio in poi il file la porta."""
     import logging
 
-    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
     _avvia(tmp_path)
     # Fra i due avvii l'utente cambia il valore dalla pagina: il secondo avvio
-    # non deve riportarlo a quello dell'opzione.
+    # non deve riportarlo al default.
     ChatSettings(retention_days=7).save(str(tmp_path))
     with caplog.at_level(logging.INFO):
         assert _avvia(tmp_path).retention_days == 7
