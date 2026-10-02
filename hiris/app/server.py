@@ -42,7 +42,6 @@ from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_h
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.soffitto import restricted_person
-from .backends.embeddings import build_embedding_provider
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
 from .env_util import env_bool
@@ -4150,29 +4149,6 @@ async def _on_startup(app: web.Application) -> None:
     # sotto (`_bridge_notices`): da uno script di avvio l'archivio non si
     # legge, e restare in silenzio avrebbe reso muta proprio la transizione che
     # questa versione produce.
-
-    # Provider di embedding. Fetta "esce il documentale": `MEMORY_RAG_K`/
-    # `memory.rag_k` escono da qui e dalle altre quattro sedi dell'opzione --
-    # erano il `k` del richiamo per somiglianza sull'archivio di conoscenza,
-    # uscito con questa fetta; `app["memory_rag_k"]` non aveva gia' oggi
-    # nessun lettore. Il provider resta costruito e pubblicato, ma DICHIARATO
-    # INERTE: dopo questa fetta nessun percorso di HIRIS chiama piu'
-    # `embed()` -- gli ultimi tre chiamanti (ingest Mayan, digest storico,
-    # coda di approvazione della conoscenza) sono usciti tutti qui. Non e'
-    # cancellato perche' "se e quando accendere i vettori" e' una decisione
-    # esplicitamente rimandata dal contratto (docs/design/2026-08-05-la-
-    # conoscenza-di-hiris.md, sezione 11) e la pagina Modelli lo mostra gia'
-    # all'utente: la sua inerzia e' scritta nel CHANGELOG, non taciuta.
-    mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
-    mem_model = os.environ.get("MEMORY_EMBEDDING_MODEL", "")
-
-    embedder = build_embedding_provider(
-        provider=mem_provider,
-        model=mem_model,
-        openai_api_key=openai_api_key,
-        local_model_url=local_model_url,
-    )
-    app["embedding_provider"] = embedder
 
     # ── Fetta "esce il documentale" ────────────────────────────────────────
     # Decisione del proprietario, 12 agosto 2026: «Al momento l'integrazione

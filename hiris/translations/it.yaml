@@ -49,17 +49,6 @@ configuration:
     name: "Aspetto — chiaro o scuro"
     description: "Il tema con cui si apre HIRIS; 'auto' segue il sistema. Se poi usi l'interruttore chiaro/scuro dentro HIRIS, su quel browser vince quello."
 
-  # ── 3. Embedding (oggi inattivi) ──────────────────────────────────────────
-  memory:
-    name: "Embedding — oggi non hanno effetto"
-    description: "Provider e modello per la ricerca per somiglianza. Oggi non fanno niente: nessuna parte di HIRIS calcola embedding."
-    embedding_provider:
-      name: "Provider (inattivo)"
-      description: "Quale servizio li calcolerebbe: openai, ollama, model2vec. Oggi il valore viene letto all'avvio e non produce nessun effetto."
-    embedding_model:
-      name: "Modello (inattivo)"
-      description: "Quale modello userebbe: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Oggi non viene mai invocato."
-
   # ── 4. Chi usa HIRIS ──────────────────────────────────────────────────────
   non_admin_access:
     name: "Consenti HIRIS agli utenti non amministratori"

@@ -185,17 +185,12 @@ options:
   # fa (quanto HIRIS rilegge della conversazione in corso).
   theme: "auto"
 
-  # ── 3. Embedding (oggi inattivi) ──────────────────────────────────────────
-  # Fetta "esce il documentale": esce `rag_k` (era il k del richiamo per
-  # somiglianza sull'archivio di conoscenza, uscito con la fetta). I due campi
-  # che restano sono letti da `server.py` per costruire il provider, ma
-  # DICHIARATI INERTI: nessun percorso di HIRIS chiama piu' `embed()`. Restano
-  # perche' "se e quando accendere i vettori" e' una decisione rimandata dal
-  # contratto, non annullata -- e perche' toglierli costerebbe la perdita del
-  # valore salvato in cambio di niente.
-  memory:
-    embedding_provider: ""
-    embedding_model: ""
+  # ── 3. Embedding: uscita ─────────────────────────────────────────────────
+  # `memory.embedding_provider` e `memory.embedding_model` sono usciti con la
+  # Tappa 0 dello sprint «Una fonte sola di verita'» (voce M-01 del registro):
+  # nessun percorso di HIRIS calcolava piu' un embedding dalla 2.1.0. Un valore
+  # gia' salvato in casa NON ferma l'add-on: il Supervisor scarta un'opzione
+  # che lo schema non ha, con un avviso nel suo registro (misurato sul sorgente del Supervisor il 02/10/2026, supervisor/apps/options.py, commit 64ea3be4).
 
   # ── 4. Chi usa HIRIS ──────────────────────────────────────────────────────
   # L'unica DECISIONE rimasta in questa pagina, e lo e' per scelta del
@@ -271,11 +266,6 @@ schema:
 
   # ── 2. Aspetto ────────────────────────────────────────────────────────────
   theme: "list(light|dark|auto)"
-
-  # ── 3. Embedding (oggi inattivi) ──────────────────────────────────────────
-  memory:
-    embedding_provider: str
-    embedding_model: str
 
   # ── 4. Chi usa HIRIS ──────────────────────────────────────────────────────
   non_admin_access: bool

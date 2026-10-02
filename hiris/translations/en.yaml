@@ -47,17 +47,6 @@ configuration:
     name: "Appearance — light or dark"
     description: "The theme HIRIS opens with; 'auto' follows the system. If you then use the light/dark toggle inside HIRIS, that wins in that browser."
 
-  # ── 3. Embeddings (inactive today) ────────────────────────────────────────
-  memory:
-    name: "Embeddings — no effect today"
-    description: "Provider and model for similarity search. They do nothing today: no part of HIRIS computes embeddings."
-    embedding_provider:
-      name: "Provider (inactive)"
-      description: "Which service would compute them: openai, ollama, model2vec. Today the value is read at startup and has no effect at all."
-    embedding_model:
-      name: "Model (inactive)"
-      description: "Which model it would use: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Today it is never invoked."
-
   # ── 4. Who uses HIRIS ─────────────────────────────────────────────────────
   non_admin_access:
     name: "Allow HIRIS for non-administrator users"

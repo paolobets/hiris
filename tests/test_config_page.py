@@ -65,12 +65,13 @@ IN_FONDO_PERCHE_PERICOLOSE = [
     "supervisor_ingress_cidr",
 ]
 
-# I due gruppi annidati rimasti. Il dizionario annidato e' l'unico
+# Il gruppo annidato rimasto (`memory` e' uscito con la Tappa 0 dello sprint
+# «Una fonte sola di verita'»). Il dizionario annidato e' l'unico
 # raggruppamento che il Supervisor rende a schermo, e l'intestazione porta il
 # contesto: dentro, i nomi dei figli non lo ripetono. Era il test sulla sezione
 # «Ponte», uscita per intero; l'invariante non era del ponte, era della
 # nidificazione, e vale ancora dove la nidificazione c'e'.
-SEZIONI_ANNIDATE = ["local_model", "memory"]
+SEZIONI_ANNIDATE = ["local_model"]
 
 
 def _config() -> dict:
@@ -288,7 +289,7 @@ def test_la_pagina_add_on_tiene_solo_cio_che_si_custodisce():
     cfg = _config()
     assert set(cfg["options"]) == {
         "claude_api_key", "claude_code_oauth_token", "openrouter_api_key",
-        "openai_api_key", "local_model", "theme", "memory",
+        "openai_api_key", "local_model", "theme",
         "non_admin_access",
         "log_level", "supervisor_ingress_cidr",
     }

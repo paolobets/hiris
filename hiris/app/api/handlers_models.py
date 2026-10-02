@@ -485,8 +485,8 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # `embeddings` (`MEMORY_EMBEDDING_PROVIDER`/`_MODEL`) alimentava la sezione
     # «03 Embeddings», uscita col Task 8: la pagina dichiara che nessun testo
     # viene vettorizzato e NON mostra più i due valori, quindi pubblicarli era
-    # una lettura che nessuno faceva. Le due variabili restano lette da
-    # `server.py`, dove decidono qualcosa.
+    # una lettura che nessuno faceva. Le due variabili sono uscite con la
+    # Tappa 0, insieme all'embedder che le leggeva.
     # `ollama_model` era `app["local_model_name"]` accanto a
     # `payload["ollama"]["modello"]`: la stessa cosa detta due volte, e la
     # copia era pure ferma all'avvio. Era l'ultimo residuo dell'invariante 1 in

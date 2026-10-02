@@ -39,22 +39,6 @@ export LOCAL_MODEL_URL=$(bashio::config 'local_model.url' '')
 # ── 2. Aspetto ──────────────────────────────────────────────────────────────
 export THEME=$(bashio::config 'theme' 'auto')
 
-# ── 3. Embedding (oggi inattivi) ────────────────────────────────────────────
-# Fetta "esce il documentale": i due export qui sotto restano ma sono
-# DICHIARATI INERTI -- server.py li legge per costruire il provider, ma dopo
-# quella fetta nessun percorso chiama piu' `embed()`. Esce invece
-# MEMORY_RAG_K/memory.rag_k: era il k del richiamo per somiglianza
-# sull'archivio di conoscenza, uscito con la fetta.
-export MEMORY_EMBEDDING_PROVIDER=$(bashio::config 'memory.embedding_provider' '')
-export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory.embedding_model' '')
-
-# HuggingFace model cache → persistent HA config directory. Resta esportata:
-# la useranno i provider locali (model2vec/fastembed) se e quando i vettori
-# verranno accesi. Nota: e' una cartella DENTRO la configurazione dell'utente
-# (/config/hiris/models), fuori dall'add-on -- se un'installazione precedente
-# ci ha scaricato un modello, quel file NON viene toccato da questa fetta.
-export HF_HOME=/config/hiris/models/huggingface
-
 # ── 4. Chi usa HIRIS ────────────────────────────────────────────────────────
 # `true`/`false`, come `bashio::config` scrive un `bool`. Il codice apre solo
 # su `true` (`panel_visibility.parse_access_flag`) e lo legge una volta,
