@@ -194,6 +194,71 @@ dichiarate nei loro README e lette nel loro codice, **non provate**.
 fetta del documentale), l'addestramento dei modelli dalle tracce, la sandbox per il codice, le
 architetture «pluggable» con N implementazioni («un comportamento solo»).
 
+**Pezzi costruiti per l'analista e mai collegati: cosa sapevano fare (02/10/2026).**
+`origine: il proprietario, 02/10/2026` («i documenti possono essere eliminati, ma prima segnamo le
+caratteristiche sul backlog per poi gestire il refactor degli agenti»). La Tappa 0 dello sprint
+«Una fonte sola di verità» ha trovato due cose scritte per l'analista, provate, e senza un
+chiamante nel prodotto. Qui resta scritto **cosa facevano**, perché il refactor degli attori possa
+decidere se rifarle, riprenderle da git o lasciarle andare.
+
+*A. Il resoconto come documento — TOLTO il 02/10/2026.* Si riprende dal commit che precede la sua
+uscita: `git log --oneline -- hiris/app/mind/report.py`.
+
+- `report.as_document(report, current_fingerprint=…)` rendeva il resoconto di un giorno in
+  markdown, **derivato e mai scritto a mano**: in cima la domanda (l'obiettivo) di quel giorno,
+  poi tre sezioni. «Le misure»: una tabella chi · misura · valore · copertura, coi valori composti
+  detti a parole (`media 24.1 · minimo 23.4 · massimo 24.3 °C`; l'unità si attacca solo quando
+  tutte le parti sono numeri). «La cronaca»: quando · chi · cosa, con quanti cambi di attributo ha
+  avuto l'episodio, e una riga d'avviso quando la cronaca è raccontata con un giudizio diverso da
+  quello di adesso. «Cosa non si sa»: le misure non calcolabili, ognuna con la sua ragione — era
+  pensata come il terzo innesco dell'analista, che in fondo a una tabella di numeri buoni non
+  salterebbe all'occhio.
+- `report.section(documento, titolo)` restituiva **una sezione sola**: il «meccanismo delle
+  porzioni». L'analista scorre le misure di trenta giorni, trova il giorno, e chiede solo la
+  cronaca di quello.
+- La rotta era `GET /api/mind/report?day=…&formato=documento` (`text/markdown`).
+- **Il numero che la giustificava**, misurato il 13/09/2026: su trenta giorni il markdown pesava
+  46 KB contro i 146 KB del JSON, un terzo a parità di contenuto.
+- **Perché torna utile**: il 01/10/2026 l'analista ha speso 58.404 token d'ingresso a turno e 7
+  turni su 8 sono finiti troncati (`docs/misure/2026-10-tappa-0.md`). Una forma che pesa un terzo
+  e si chiede a porzioni è una delle leve dello strato 3.
+
+*B. Dieci operazioni del registro delle misure e `Period` — RESTANO nel codice, in attesa.* Stanno
+in `mind/operations.py` e le eseguono solo le prove delle sette domande del proprietario
+(`docs/design/2026-09-11-le-domande-del-proprietario.md`, cancello in `tests/test_mind_operations.py`).
+Nessuna ricetta le può scrivere, perché vogliono ingressi che una ricetta non sa consegnare.
+Misurato in casa il 02/10/2026: le 21 ricette archiviate usano 7 operazioni, nessuna di queste.
+
+- `Period`: **su quando** si calcola. Un elenco di finestre, non un intervallo solo: le finestre
+  si ordinano e si fondono quando si toccano, il confine destro è escluso. È ciò che rende «la
+  temperatura mentre qualcuno era in casa» una composizione invece di un'operazione in più.
+- `episodio` (le letture di un soggetto e come si riconosce un riposo → le finestre in cui era
+  acceso, come periodo) · `tempo_in_stato` (un periodo → la durata totale) · `quante_volte` (un
+  periodo → quante volte è cominciato) · `quando_succede` (un periodo e il fuso → le ore del
+  giorno in cui comincia) · `misure_durante` (le letture di una grandezza e un periodo → la serie
+  ristretta a quelle finestre) · `dentro` (due periodi → il pezzo del primo che cade nel secondo).
+- `somma_entita` e `media_entita` (le misure di più entità della stessa unità → totale o media,
+  con la copertura che paga chi manca) · `raggruppa_per` (le misure per entità, una funzione che
+  dice il gruppo, il nome della riduzione → un risultato per gruppo: «la CO2 di tutto il piano
+  terra» è un ramo dell'anagrafe, non un elenco).
+- `primo_ultimo_differenza` (le letture cumulate di un contatore → di quanto è salito). Uscita dal
+  catalogo il 15/09/2026, dopo un'energia consumata negativa: dentro una ricetta `@entita` dà i
+  cambi orari, non le letture cumulate.
+- Ogni operazione dichiara anche **quando rifiuta** (`refuses_when`), che oggi legge solo una
+  prova.
+- **Le domande che le eseguono**, lette dalle prove del cancello: la 1 (riscaldamento, effetto e
+  persone) usa `episodio`, `tempo_in_stato`, `quando_succede`, `misure_durante`, `dentro` e
+  `primo_ultimo_differenza`; la 3 (irrigazione e prato) `episodio`, `tempo_in_stato`,
+  `quante_volte`; la 4 (comfort quando c'è qualcuno) `episodio` e `misure_durante`; la 4-bis (le
+  automazioni) `episodio`, `quante_volte`, `quando_succede`; la 5 (ore irrigate su una stagione)
+  `somma_entita`; la 6 (CO2 di un piano) `raggruppa_per`, che riduce con `media_entita`; la 7 (i
+  problemi) `episodio` e `tempo_in_stato`. La 2 (energia e stagione) usa solo operazioni che le
+  ricette hanno già.
+
+**Da decidere col refactor degli attori**: se l'analista risponde alle sette domande con queste
+operazioni (e allora serve chi gli consegna periodi e letture), o se le domande si servono in un
+altro modo e le dieci escono. Voci del registro dei doppioni: M-12, M-14, M-64, M-65, M-78.
+
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
 
 `origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`
