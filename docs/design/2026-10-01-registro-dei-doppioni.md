@@ -363,8 +363,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 |---|---|---|---|---|
 | M-02 | `_resolve_current_model` (due runner) senza chiamanti di produzione: lo usano 15 asserzioni di `tests/test_provider_default_model.py` come cucitura di prova. Esce alla Tappa 1, quando quelle prove passano da `chat()`. La parte `simple_chat` x4 e' USCITA con la Tappa 0, Task 10 (38684dae) | `claude_runner.py`; `openai_compat_runner.py` | cop-7 (incompleta) | reg · cop-7 |
 | M-07 | `llm_router._STRATEGY_ORDER`/`_norm_policy`/`chat_policy`/`strategy`: solo ramo «libreria» e `_chain_as_it_was` | `llm_router.py:52-62`; `server.py:3240,5258-5266` |  | reg · cop-2 |
-| M-09 | `action/registry.capability_bits` e `switchable_domains` con sei ausiliarie (~150 righe): solo uno script e le prove | `action/registry.py:404,498,523` |  | reg |
-| M-10 | `home_space/type_census.py` (907 righe): strumento di prova nel pacchetto di produzione | `home_space/type_census.py`; `handlers_mind.py:45,575` |  | reg |
 | M-11 | L'attuatore in pausa dal 3.72.2: 318 righe in `server.py`, `mind/actuator.py` 82, `actuator_turn.py` 221 | `server.py:2001-2336,4508` | cop-1 (incompleta) | reg · cop-1 · cop-2 |
 | M-12 | `mind/scope.ANALYST` e `OWNER` mai passati come `author` in produzione | `mind/scope.py:44`; `observer.py:282,299` |  | reg |
 | M-13 | `mind/operations.UNKNOWN_UNIT`: zero lettori, zero test | `mind/operations.py:87` |  | reg |
@@ -373,8 +371,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-16 | `auth_via == "token"` mai assegnato dal 22/09/2026, ancora accettato e documentato | `handlers_mcp.py:656-687`; `server.py:5648`; `handlers_reasoning.py:39` | cop-8 (incompleta) | reg · cop-2 · cop-8 |
 | M-17 | Campi `notable` e `operable` dei giudizi senza lettore di produzione (36 righe del seme su 121) | `type_judgments.py:30-35,401`; `type_vocabulary.py:910-946` | cop-5 (SBAGLIATA in parte) | reg · cop-5 |
 | M-18 | Residui di `direzione:*`: taglio in `knowledge.summary()` ed etichetta nel JS | `knowledge.py:762-776`; `watcher-sapere.js:87` |  | reg |
-| M-19 | Sei funzioni senza chiamanti (censimento): `_exception_keys`, `state_domain_of`, `_fact_row`, `_record_repair`, `_translations_report`, `_ws_call` | `type_census.py:845,854`; `mind/store.py:692`; `server.py:1410`; `handlers_mind.py:274`; `ha_client.py:1470` |  | reg · cop-1 M1 · cop-5 · cop-6 |
-| M-20 | Sette usate solo dai test (censimento): `actuator_round`, `capability_bits`, `switchable_domains`, `objective_history`, `published_domains/states/state_classes`; `get_config` TOLTA: è letta in produzione (`topology.py:142` via `getattr`, dentro `rebuild`) | `server.py:2001`; `action/registry.py:498,523`; `mind/store.py:1157`; `state_translations.py:430,465,494` | cop-4 (conteggio, SBAGLIATA in parte); cop-5 (conteggio, SBAGLIATA in parte) | reg · cop-4 · cop-5 |
+| M-19 | Quattro funzioni senza chiamanti (censimento): `_fact_row`, `_record_repair`, `_translations_report`, `_ws_call` (le due del censore sono uscite col Task 14, `b6a2c155`) | `mind/store.py:692`; `server.py:1408`; `handlers_mind.py:274`; `ha_client.py:1470` |  | reg · cop-1 M1 · cop-5 · cop-6 |
+| M-20 | Due usate solo dai test (censimento): `actuator_round` (in pausa, non morta), `objective_history`; le cinque del censore sono negli attrezzi dal Task 14 (`b6a2c155`); `get_config` TOLTA: è letta in produzione (`topology.py:142` via `getattr`, dentro `rebuild`) | `server.py:1999`; `mind/store.py:1157` | cop-4 (conteggio, SBAGLIATA in parte); cop-5 (conteggio, SBAGLIATA in parte) | reg · cop-4 · cop-5 |
 | M-21 | `mind/store.objective_history` (ha un test) e `_fact_row` | `mind/store.py:692,1157` |  | reg |
 | M-22 | Rotta senza chiamante di produzione: `GET /api/misure`. **Resta per scelta** (dichiarazione D5 della Tappa 0): la usano `scripts/misure.py` e le batterie. La parte `GET /api/entities` (tutto `handlers_entities.py`) e' USCITA con la Tappa 0, Task 9 | `server.py` (rotta `/api/misure`) | cop-8 (conteggio, incompleta) | reg · cop-2 · cop-3 · cop-8 |
 | M-23 | `HAClient.render_template`: nessun chiamante di produzione | `ha_client.py:124-129,1363` | cop-5 (incompleta) | reg · cop-5 |
@@ -410,12 +408,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-54 | `HAClient.PROBLEM_SEVERITY`: alias di classe con zero lettori di produzione | `ha_client.py:1696-1700` |  | cop-5 M1 |
 | M-55 | `HAClient.get_states(entity_ids)`: il ramo del filtro mai raggiunto in produzione (cinque chiamanti passano `[]`) | `ha_client.py:364-365` |  | cop-5 M2 |
 | M-56 | `type_vocabulary.CAPABILITY_ATTRIBUTES_ADDED`: mai popolata, mai letta | `type_vocabulary.py:472-474` |  | cop-5 M3 |
-| M-57 | `type_vocabulary.Asked` (zero istanze), `PROVENANCES`, `FIELD_KINDS`: solo test | `type_vocabulary.py:212-225,284-285` |  | cop-5 M4 |
-| M-58 | Otto viste «per la prova» in `type_vocabulary.py` senza chiamanti di produzione (~95 righe) | `type_vocabulary.py:1689-1861` |  | cop-5 M5 |
-| M-59 | 22 righe del vocabolario senza nessun campo, lette solo dal censore | `type_vocabulary.py:597,612-645` |  | cop-5 M6 |
-| M-60 | `state_translation`: il primo gradino (`translation_key` propria) mai alimentato; `SILENCES` solo test | `state_translations.py:87,190-194,374-375` |  | cop-5 M7 |
-| M-61 | `TypeJudgments.da_sapere_subito` solo interno; `operable_domains` solo dal censore (`accendibile` senza lettore) | `type_judgments.py:283,401` |  | cop-5 M8 |
-| M-62 | `ha_vocabulary`: `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` zero lettori, `STATE_CLASS_MEANING` solo censore, `ENTITY_CATEGORY_MEANING["config"]` mai letto | `ha_vocabulary.py:208,378-390,531` |  | cop-5 M9 |
+| M-59 | 22 righe del vocabolario senza nessun campo: le legge solo il censore, che dal Task 14 è un attrezzo (`scripts/censore_tipi.py`). Non sono morte: toglierle riapre 22 voci del censore. Da decidere | `type_vocabulary.py` (righe senza campi) |  | cop-5 M6 |
+| M-61 | Il giudizio `accendibile` non ha lettori nel prodotto: `operable_domains` lo legge solo il censore (attrezzo dal Task 14). `da_sapere_subito` ha un chiamante interno e non è un reperto. Da decidere se il giudizio serve | `type_judgments.py:401` |  | cop-5 M8 |
 | M-63 | Commenti-lapide di metodi usciti: 92 righe in `ha_client.py`, 62 in `entity_cache.py` | `ha_client.py:16-22,207-237,383-392,893-905,1000-1005,1389-1406,2058-2066`; `entity_cache.py:13,591-596,723-777` |  | cop-5 M10 |
 | M-64 | `report.section()` e il «meccanismo delle porzioni»: zero chiamanti | `mind/report.py:479-483,554-567` |  | cop-6 N-15 |
 | M-65 | `as_document`, `measured_value` e tre forme di rotta (`formato=documento`, senza `day`): nessun lettore | `mind/report.py:450-472,486-551`; `handlers_mind.py:227-241,254-259,442-446` |  | cop-6 N-16 |
@@ -817,3 +811,9 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | M-70 | Import locali ridondanti nei runner (`json as _json`, `hashlib as _hashlib`, costanti già importate in testa) | 3.73.0 (da rilasciare) | 38684dae | gli import locali dentro chat_stream, usciti con lei; l'alias hashlib di modulo in openai_compat_runner non e' un import locale e resta |
 | M-77 | `nomi_di_ripiego` e `nome_dedotto` di `costruisci_indice` senza lettore: la correzione della pagina Memoria non ha mai funzionato | 3.73.0 (da rilasciare) | fa268542 | il parametro nomi_di_ripiego e nome_dedotto dell'indice; il difetto della pagina Memoria e' la voce S-22 |
 | M-79 | `LLMRouter._all`: nessun chiamante | 3.73.0 (da rilasciare) | 38684dae | LLMRouter._all |
+| M-09 | `action/registry.capability_bits` e `switchable_domains` con sei ausiliarie (~150 righe): solo uno script e le prove | 3.73.0 (da rilasciare) | b6a2c155 | Task 14 della Tappa 0 |
+| M-10 | `home_space/type_census.py` (907 righe): strumento di prova nel pacchetto di produzione | 3.73.0 (da rilasciare) | b6a2c155 | Task 14 della Tappa 0 |
+| M-57 | `type_vocabulary.Asked` (zero istanze), `PROVENANCES`, `FIELD_KINDS`: solo test | 3.73.0 (da rilasciare) | b6a2c155 | Task 14 della Tappa 0 |
+| M-58 | Otto viste «per la prova» in `type_vocabulary.py` senza chiamanti di produzione (~95 righe) | 3.73.0 (da rilasciare) | b6a2c155 | Task 14 della Tappa 0 |
+| M-60 | `state_translation`: il primo gradino (`translation_key` propria) mai alimentato; `SILENCES` solo test | 3.73.0 (da rilasciare) | b6a2c155 | Task 14 della Tappa 0 |
+| M-62 | `ha_vocabulary`: `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` zero lettori, `STATE_CLASS_MEANING` solo censore, `ENTITY_CATEGORY_MEANING["config"]` mai letto | 3.73.0 (da rilasciare) | b6a2c155 | Task 14: le due spiegazioni sono un commento; STATE_CLASS_MEANING resta (la legge il censore); la voce config di ENTITY_CATEGORY_MEANING resta, e' la trascrizione dell'enumerazione di HA |
