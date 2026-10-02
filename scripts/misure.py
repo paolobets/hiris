@@ -85,6 +85,13 @@ def _leggi_remoto(url: str, giorni: int, chiave: str = ""):
     if "temporanea" not in dati:
         print("  NOTA: la rotta non si dichiara piu' temporanea. O e' "
               "diventata un'interfaccia, o qualcuno l'ha dimenticata li'.")
+    return turns_with_loads(dati)
+
+
+def turns_with_loads(dati: dict) -> list:
+    """Dalla risposta di `GET /api/misure` alle coppie (turno, carichi) su cui
+    lavora tutto questo script. Pubblica perche' la usa anche
+    `batteria_attori.py`: l'unione fra turni e carichi si scrive una volta."""
     carichi = dati.get("carichi") or {}
     return [(t, carichi.get(t["id"], [])) for t in dati.get("turni", [])]
 
@@ -191,6 +198,76 @@ def sezione_token(dati) -> None:
         if v["giri_senza_token"]:
             print(f"               {v['giri_senza_token']} giri senza token "
                   "(prima della 3.70.0, o provider che non li dichiara)")
+
+
+#: Quanto prima dell'inizio e dopo la fine di una domanda si cerca il suo turno:
+#: il turno si registra a risposta data, un attimo dopo che la batteria l'ha
+#: ricevuta. Misurati in secondi; non e' una soglia fine, e' il gioco fra due
+#: orologi sulla stessa macchina.
+WINDOW_LEAD_S = 2.0
+WINDOW_TRAIL_S = 5.0
+
+
+def question_tokens(dati, esiti: list[dict]) -> dict:
+    """Per ogni domanda della batteria, i token VERI dei turni di chat che ha
+    prodotto: quelli registrati fra il suo inizio e la sua fine.
+
+    La batteria misura il tempo e non i token; il registro dei turni misura i
+    token e non sa di quale domanda erano. L'unione e' per finestra di tempo,
+    e una domanda per cui non si trova nessun turno lo dice (`turni: 0`)
+    invece di mostrare zeri che sembrerebbero una risposta gratuita.
+
+    **Un turno va a UNA domanda sola**: quella la cui fine gli e' piu' vicina.
+    La batteria aspetta mezzo secondo fra una domanda e l'altra, meno del
+    margine con cui si cerca: senza questa regola il turno di una domanda
+    cadrebbe anche nella finestra della successiva, e verrebbe contato due
+    volte (rilievo I7 della revisione del 01/10/2026, eseguito).
+    """
+    righe = {esito["n"]: {"turni": 0, "giri": 0, "nuovi": 0, "letti": 0, "scritti": 0,
+                          "uscita": 0, "secondi": esito["secondi"]}
+             for esito in esiti}
+    for turno, carichi in dati:
+        quando = turno.get("ts", 0)
+        if turno.get("species") != "chat":
+            continue
+        vicine = [esito for esito in esiti
+                  if esito["ts"] - esito["secondi"] - WINDOW_LEAD_S <= quando
+                  <= esito["ts"] + WINDOW_TRAIL_S]
+        if not vicine:
+            continue
+        riga = righe[min(vicine, key=lambda esito: abs(esito["ts"] - quando))["n"]]
+        riga["turni"] += 1
+        riga["giri"] += len(carichi)
+        riga["uscita"] += turno.get("output_tokens") or 0
+        for c in carichi:
+            riga["nuovi"] += c.get("input_tokens") or 0
+            riga["letti"] += c.get("cache_read_tokens") or 0
+            riga["scritti"] += c.get("cache_write_tokens") or 0
+    return righe
+
+
+def sezione_domande(dati, file_esiti: list[str]) -> None:
+    """I token domanda per domanda, per ogni file di esiti della batteria."""
+    import json as _json
+
+    for f in file_esiti:
+        esiti = _json.loads(pathlib.Path(f).expanduser().read_text(encoding="utf-8"))
+        righe = question_tokens(dati, [e for e in esiti if e.get("stato") == "ok"])
+        _titolo(f"TOKEN · per domanda · {pathlib.Path(f).name}")
+        for n, r in sorted(righe.items()):
+            if not r["turni"]:
+                print(f"  #{n:>2} nessun turno trovato nella finestra")
+                continue
+            ingresso = r["nuovi"] + r["letti"] + r["scritti"]
+            print(f"  #{n:>2} {r['secondi']:>6.1f}s · {r['giri']} giri · ingresso "
+                  f"{ingresso:>8,} (nuovi {r['nuovi']:,}, letti {r['letti']:,}, "
+                  f"scritti {r['scritti']:,}) · uscita {r['uscita']:,}")
+        trovate = [r for r in righe.values() if r["turni"]]
+        if trovate:
+            totale = sum(r["nuovi"] + r["letti"] + r["scritti"] for r in trovate)
+            print(f"  {len(trovate)} domande su {len(righe)} · ingresso totale "
+                  f"{totale:,} · per domanda {totale // len(trovate):,} · giri "
+                  f"{sum(r['giri'] for r in trovate)}")
 
 
 def sezione_batteria(file_esiti: list[str]) -> None:
@@ -408,6 +485,7 @@ def main() -> None:
     chi_ha_chiesto(dati)
     if scelte.esiti:
         sezione_batteria(scelte.esiti)
+        sezione_domande(dati, scelte.esiti)
 
 
 if __name__ == "__main__":

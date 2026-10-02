@@ -50,3 +50,41 @@ def test_i_token_si_sommano_per_attore_e_canale_con_i_NULL_contati_a_parte():
     assert t["scritti_1h"] == 100
     assert t["giri_senza_token"] == 1
     assert t["quota_cache"] == 90 / 200
+
+
+def test_i_token_di_una_domanda_sono_quelli_dei_turni_di_chat_nella_sua_finestra():
+    """La batteria sa quando una domanda e' finita (`ts`) e quanto e' durata
+    (`secondi`); il registro dei turni sa i token. Si uniscono per finestra.
+
+    Mutazione ESEGUITA: tolto il filtro `species == "chat"` -- rossa (il turno
+    dell'analista caduto nella stessa finestra entra nel conto: `nuovi` 5010)."""
+    giro = {"input_tokens": 10, "cache_read_tokens": 90, "cache_write_tokens": 0}
+    dentro = dict(_turno(canale="catena"), ts=1000.0)
+    fuori = dict(_turno(canale="catena"), ts=2000.0)
+    altro = dict(_turno(specie="analista", canale="catena"), ts=1001.0)
+    dati = [(dentro, [giro, giro]), (fuori, [giro]),
+            (altro, [{"input_tokens": 5000, "cache_read_tokens": 0,
+                      "cache_write_tokens": 0}])]
+    esiti = [{"n": 7, "ts": 1001.0, "secondi": 12.0, "stato": "ok"},
+             {"n": 8, "ts": 5000.0, "secondi": 3.0, "stato": "ok"}]
+    righe = _m().question_tokens(dati, esiti)
+    assert righe[7] == {"turni": 1, "giri": 2, "nuovi": 20, "letti": 180,
+                        "scritti": 0, "uscita": 50, "secondi": 12.0}
+    assert righe[8]["turni"] == 0, "una domanda senza turno trovato si dichiara, non si inventa"
+
+
+def test_due_domande_una_dopo_l_altra_non_si_contano_lo_stesso_turno():
+    """La batteria aspetta mezzo secondo fra due domande: il turno della prima
+    cade anche nella finestra della seconda. Va contato una volta.
+
+    Mutazione ESEGUITA: assegnato il turno all'ULTIMA domanda la cui finestra lo
+    contiene -- rossa (`(0, 2)`: la seconda si prende anche il turno della prima)."""
+    giro = {"input_tokens": 100, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    primo = dict(_turno(canale="catena"), ts=1010.0)
+    secondo = dict(_turno(canale="catena"), ts=1020.6)
+    esiti = [{"n": 1, "ts": 1010.1, "secondi": 10.0, "stato": "ok"},
+             {"n": 2, "ts": 1020.7, "secondi": 10.0, "stato": "ok"}]
+    righe = _m().question_tokens([(primo, [giro]), (secondo, [giro])], esiti)
+    assert (righe[1]["turni"], righe[2]["turni"]) == (1, 1)
+    assert righe[1]["nuovi"] == righe[2]["nuovi"] == 100
+
