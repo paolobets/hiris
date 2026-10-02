@@ -717,24 +717,6 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 # disco e vengono importati una volta sola come riga «(prima del dettaglio)».
 # Lo pinna `tests/test_usage_anchor.py`.
 
-# --- render_template e il perimetro delle entita' ---------------------------
-# fetta E2 Task 8 ("escono i trentaquattro"): i tre test che vivevano qui
-# (render_template tolto sotto perimetro, lasciato senza, concedibile
-# esplicitamente) sono stati cancellati, non spostati. Il loro soggetto era
-# la presenza CONDIZIONATA di `render_template` nel catalogo che `chat()`
-# offre quando `strumenti` non e' passato -- ma quella definizione (RENDER_
-# TEMPLATE_TOOL_DEF) e' uscita da EVALUATION_TOOL_DEFS insieme al resto dei
-# 34: non e' nominata da EVALUATION_ONLY_TOOLS (esclusa di proposito, vedi il
-# commento su quel set in claude_runner.py), e la chat non offre piu' un
-# catalogo da questo file (KNOWLEDGE_TOOLS, home_space/tools.py). Nessuna
-# combinazione di allowed_tools/allowed_entities puo' piu' far comparire
-# "render_template" in un catalogo che non lo contiene: due dei tre test
-# fallivano gia' per costruzione, il terzo era diventato vacuo. Il filtro
-# stesso (la riga `tools = [t for t in tools if t["name"] != "render_
-# template"]` in claude_runner.chat()) resta nel codice come no-op innocuo,
-# non e' stato toccato da questo task.
-
-
 # ---------------------------------------------------------------------------
 # L'errore porta con se' che cosa e' successo (Task 11)
 #

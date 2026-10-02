@@ -10,8 +10,6 @@ from ._sanitize import sanitize_ha_value
 
 logger = logging.getLogger(__name__)
 
-# `NOISE_DOMAINS` e' uscito con `get_all_useful`, il suo unico lettore.
-
 # Messaggi per chi legge l'inventario quando l'inventario non e' leggibile.
 # Un elenco vuoto direbbe "la casa e' vuota"; questi dicono "non ho potuto
 # guardare", che e' l'unica frase vera. I due casi restano distinti perche'
@@ -585,12 +583,6 @@ def _to_minimal(raw: dict) -> dict:
 
 
 class EntityCache:
-    # `_by_domain` (entity_id per dominio) e' USCITO l'09/09/2026: era
-    # scritto in tre punti e letto in NESSUNO. Il commento che lo teneva in
-    # piedi diceva «lo popola e lo legge `_index`», e `_index` non esiste su
-    # HEAD -- il suo ultimo lettore era `get_by_domain`, uscito col censimento
-    # del 17/08/2026. Aggiungerne la manutenzione anche nel ramo della
-    # rimozione (sotto) sarebbe stato lavoro morto fatto da codice vivo.
     def __init__(self) -> None:
         self._states: dict[str, dict] = {}
         # False finche' load() non ha completato almeno una volta. Serve a
@@ -716,62 +708,6 @@ class EntityCache:
         if not eid:
             return
         self._states[eid] = _to_minimal(new_state)
-
-    # fetta E3 Task 12 ("esce il ritratto"): `get_state` e' uscito -- ORFANO
-    # DICHIARATO dal Task 9, il cui unico chiamante era
-    # `TaskEngine._evaluate_condition`, cancellato per intero col Task
-    # Engine. Verificato di nuovo qui (grep sull'intero repo, zero
-    # chiamanti): nessun successore.
-
-    # `get_minimal` e `get_by_domain` sono USCITI (censimento del 17/08/2026,
-    # zero chiamanti di produzione: il secondo era l'unico lettore del primo).
-    # E con loro, l'09/09/2026, l'indice `_by_domain` che era rimasto a
-    # riempirsi per nessuno -- vedi la nota in cima alla classe.
-
-    # fetta E3 Task 12 ("esce il ritratto"): `domain_counts` e' uscito --
-    # ORFANO DICHIARATO dal Task 7 (viveva per la UI della gateway policy,
-    # cancellata insieme al semaforo). Verificato di nuovo qui: zero
-    # chiamanti nell'intero repo.
-
-    # `get_on` e `get_all_useful` sono USCITI (stesso censimento). Il secondo
-    # era l'unico lettore di `NOISE_DOMAINS`, uscito con lui: quella lista
-    # decideva cosa fosse "rumore" per un consumatore che non esiste piu', e la
-    # domanda «cosa merita di essere detto» vive adesso in `home_space/briefing.py`, per
-    # TIPOLOGIA e non per dominio (fetta «il vocabolario delle tipologie»).
-    #
-    # `load_area_registry`/`get_area_map` SONO usciti, insieme -- ed e' il
-    # motivo per cui la nota di prima diceva "va deciso insieme, non a meta'":
-    # il censimento segnalava l'accessore (zero letture di produzione) ma il
-    # caricatore era chiamato davvero, due volte (avvio e riconnessione).
-    # Lavoro morto fatto da codice vivo: due chiamate WebSocket a ogni avvio
-    # per costruire una mappa che nessuno leggeva.
-    #
-    # E non era nemmeno una mappa giusta. Indicizzava per NOME dell'area --
-    # due "Bagno" su piani diversi si fondevano in uno -- e ignorava l'area
-    # EREDITATA dal dispositivo, che in una casa vera e' il caso normale, non
-    # l'eccezione. `home_space/topology.hierarchy()` risponde alla stessa domanda
-    # per id, con l'ereditarieta', e dichiarando quale registro non ha
-    # risposto. Due risposte alla stessa domanda, una delle quali sbagliata e
-    # letta da nessuno: NESSUN DOPPIONE.
-
-    # `get_all` e' USCITO il 09/09/2026: portava lo STESSO corpo di
-    # `all_states` (sotto) -- `return list(self._states.values())`, la
-    # stessa riga in due metodi -- doppione misurato dall'audit delle
-    # fondamenta (fondamenta 2, "nessun doppione"). L'unico chiamante di
-    # produzione era `server.py::_retry_entity_inventory_if_needed`, dietro
-    # un `hasattr` difensivo per un log di ricarica: ripuntato su
-    # `all_states()`, il metodo vero che gia' leggono `ToolDispatcher`,
-    # `action/actuator.py::Porta` e le porte API (vedi il docstring di
-    # `_CacheFinta` in `tests/test_keeper_tools.py`, che documenta perche'
-    # e' questo -- non l'altro -- il nome che conta).
-
-    # fetta E3 Task 12 ("esce il ritratto"): `get_all_states` (la forma a
-    # dizionario, entity_id -> stato) e' uscito -- ORFANO DICHIARATO dal
-    # Task 2, il cui unico chiamante era `semantic_context_map`, cancellata
-    # insieme alla context map. Verificato di nuovo qui: zero chiamanti.
-    # Da non confondere con `all_states` (sotto), la forma a lista che
-    # `api/handlers_home_space.py` e l'inventario entita' usano ancora: quella
-    # resta.
 
     def all_states(self) -> list[dict]:
         """Return all cached entity states as a list (read-only access for the entity

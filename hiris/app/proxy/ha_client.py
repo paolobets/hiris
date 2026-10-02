@@ -9,17 +9,8 @@ from urllib.parse import quote
 
 import aiohttp
 
-from ..home_space.topology import PROBLEM_SEVERITY
 from ._sanitize import sanitize_ha_value
 from ._sanitize import truncate_with_marker as _truncate
-
-# Review finale fetta E3, Important #3: `_IDENTIFIER_RE` serviva solo a
-# `call_service`, uscita qui sotto -- vedi il commento sopra `class HAClient`.
-
-# fetta E3 Task 12 ("esce il ritratto"): `_AUTOMATION_ID_RE` e' uscita --
-# serviva solo a `is_automation_id_candidate`/`get_automation_config`,
-# entrambe cancellate qui insieme al resto della superficie di scrittura
-# automazioni (vedi il commento piu' sotto, dove viveva `is_automation_config`).
 
 # entity_id canonico (dominio.oggetto). Serve a rifiutare un entity_id
 # ostile PRIMA di comporlo in un URL: e' una GUARDIA, e va tenuta la piu'
@@ -121,12 +112,6 @@ MAX_HISTORY_POINTS = 5000
 # del troncamento di `history()`: chi legge deve poter sapere
 # che e' scattato, la risposta lo dichiara invece di tacere.
 MAX_CALENDAR_EVENTS = 2000
-# Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
-# ma un payload.
-MAX_TEMPLATE_LEN = 2000
-# Risposta del template (sia il risultato sia il messaggio d'errore di HA, che
-# puo' includere un traceback intero).
-MAX_TEMPLATE_RESPONSE_LEN = 2000
 
 logger = logging.getLogger(__name__)
 
@@ -203,38 +188,6 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
         series[ident] = translated
     return series
 
-
-# M1 (August 2026 review): `_truncate` used to be defined here,
-# duplicating `_sanitize.py`'s clamp algorithm and marker constant
-# (`_TRUNC_MARK = " [troncato]"`) line for line. This module already imports
-# from `._sanitize` (`sanitize_ha_value`), so the shared version costs one
-# more name on that import line above -- `truncate_with_marker as _truncate`
-# keeps every call site below unchanged. Both copies used the identical
-# marker string before the merge, so there was nothing to choose between;
-# `_sanitize.py` is the survivor because it is the module both this file and
-# `home_space/store.py`/`home_space/queries.py` already depend on.
-
-
-# fetta E3 Task 12 ("esce il ritratto", il task della coerenza): il Task 10
-# aveva lasciato QUESTO gruppo di metodi di scrittura HA orfano DI PROPOSITO
-# (create_automation/is_automation_config, create_script, create_scene,
-# create_dashboard, get_lovelace_config, save_dashboard_config -- persero il
-# loro ultimo chiamante di produzione, handlers_proposals.py/
-# proposta_config.py, quando le proposte uscirono per intero), promettendo
-# che sarebbero tornati "quando saranno rifatte col perimetro e la verifica
-# umana (progetto agenti)". Questo task raccoglie quella promessa: escono qui,
-# insieme alle loro suite dedicate (test_ha_client_automation_config.py,
-# test_ha_client_config.py, test_dashboard_client.py, test_proposal_config_
-# shape.py) e a cio' che li serviva SOLO loro -- is_automation_entity_id/
-# is_automation_id_candidate (usate solo da create_automation),
-# resolve_automation_id_by_alias/resolve_automation_id_by_entity_id (usate
-# solo da create_automation), _is_slug/_post_config (usate solo da
-# create_script/create_scene), _ws_error (usato solo da create_dashboard/
-# get_lovelace_config/save_dashboard_config) e get_automation_config (che non
-# aveva NESSUN chiamante nemmeno prima -- ne' create_automation lo invocava
-# mai, solo lo nominava nei propri messaggi d'errore). Tornera' tutto insieme
-# quando il progetto agenti lo richiedera' davvero: prima non c'era motivo di
-# tenerlo in piedi senza un chiamante che lo eserciti.
 
 # ── La risposta di POST /api/services, che nessuno aveva mai misurata ──────
 #
@@ -379,17 +332,6 @@ class HAClient:
         async with self._session.get(url) as resp:
             resp.raise_for_status()
             return await resp.json()
-
-    # fetta E3 Task 8 ("escono i trentaquattro"): `get_history` e' uscito --
-    # ORFANO DICHIARATO, i suoi call site (history_tools.py, calendar_tools.py)
-    # erano gia' caduti col ToolDispatcher. Raccolto qui (fetta E3 Task 12):
-    # verificato di nuovo, zero chiamanti in tutto il repo.
-    #
-    # 24/08/2026, fetta «HIRIS e il tempo»: lo storico dettagliato e' TORNATO, come
-    # `history()` qui sotto, e questa volta con un chiamante vero (la storia,
-    # `home_space/house_history.py`).
-    # La rimozione raccontata sopra resta vera come storia -- usci' perche' nessuno
-    # leggeva -- ma non descrive piu' lo stato di adesso.
 
     async def call_service(self, domain: str, service: str, data: dict) -> list[dict]:
         """Chiama un servizio di Home Assistant. La primitiva che ATTUA.
@@ -890,20 +832,6 @@ class HAClient:
             "etichette_mancanti": _identifiers(result.get("missing_labels")),
         }
 
-    # fetta E3 Task 12: `get_automations`/`create_automation`/
-    # `resolve_automation_id_by_alias`/`resolve_automation_id_by_entity_id`/
-    # `_is_slug`/`_post_config`/`create_script`/`create_scene`/`_ws_error`/
-    # `create_dashboard`/`get_lovelace_config` sono usciti insieme (vedi il
-    # commento sopra `class HAClient`): erano la superficie di scrittura HA
-    # delle proposte, orfana di proposito dal Task 10. `get_automations`
-    # (che HA nomina "automazioni", non lette da nessun altro tool "conosce")
-    # non aveva altro chiamante che i due `resolve_*` qui sopra.
-
-    # Review finale fetta E2, I-2: `list_dashboards` e' uscito -- orfano dal
-    # Task 7 (il suo ultimo chiamante di produzione, `tools/dispatcher.py`,
-    # e' stato cancellato). `read_dashboards()` sotto usa lo stesso comando WS
-    # (`lovelace/dashboards/list`) per il percorso ancora vivo.
-
     async def read_dashboards(self) -> tuple[list[dict], list[str]]:
         """Le plance con la loro configurazione. Due connessioni, N comandi:
         prima l'elenco (`lovelace/dashboards/list`), poi — solo dopo, perche'
@@ -996,13 +924,6 @@ class HAClient:
             entry["config"] = config
             dashboards.append(entry)
         return dashboards, unavailable
-
-    # fetta E3 Task 12: `save_dashboard_config` esce con `create_dashboard`
-    # (stessa superficie di scrittura, vedi il commento sopra `class
-    # HAClient`). `get_automation_config` esce con lei: non aveva NESSUN
-    # chiamante nemmeno prima di questo task -- ne' `create_automation` lo
-    # invocava mai (lo nominava solo nei propri messaggi d'errore, come
-    # suggerimento per l'LLM), ne' alcun altro modulo vivo.
 
     async def history(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
         """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
@@ -1360,51 +1281,6 @@ class HAClient:
             result["troncato"] = True
         return result
 
-    async def render_template(self, template: str) -> dict:
-        """Valuta un template Jinja di HA via POST /api/template.
-
-        E' una POST ma resta una LETTURA: HA renderizza e basta, nessun effetto
-        collaterale. Ritorna {"result": "<testo>"} oppure {"error": "..."}.
-        L'endpoint risponde testo semplice, non JSON. In caso di template
-        sbagliato HA restituisce il proprio messaggio d'errore (utile all'LLM
-        per correggersi): lo si inoltra ma troncato, perche' puo' contenere un
-        traceback intero."""
-        if not isinstance(template, str) or not template.strip():
-            return {"error": "template vuoto o non valido"}
-        if len(template) > MAX_TEMPLATE_LEN:
-            return {"error": f"template troppo lungo (max {MAX_TEMPLATE_LEN} caratteri)"}
-        url = f"{self._base_url}/api/template"
-        try:
-            async with self._session.post(url, json={"template": template}) as resp:
-                body = await resp.text()
-                if resp.status != 200:
-                    message = body.strip() or f"HA ha risposto {resp.status}"
-                    return {"error": _truncate(message, MAX_TEMPLATE_RESPONSE_LEN)}
-                return {"result": _truncate(body, MAX_TEMPLATE_RESPONSE_LEN)}
-        except Exception as exc:
-            # Mai fare eco di str(exc) al chiamante: resta nel log.
-            logger.debug("render_template: valutazione fallita (%s)", exc)
-            return {"error": "valutazione del template non riuscita"}
-
-    # fetta E3 Task 11 -> Task 12: `get_config_entries`/`get_system_info`/
-    # `get_updates` sono usciti. Erano gia' ORFANI DICHIARATI dal Task 11
-    # (l'HealthMonitor/SupervisorClient che li leggeva e' uscito per intero):
-    # verificato di nuovo qui, zero chiamanti in tutto il repo.
-    # `read_registries` (sopra) non li richiama: chiede il comando delle
-    # integrazioni direttamente nel suo batch WS, non passando da
-    # `get_config_entries`. Il nome del comando era sbagliato fino al Task
-    # B6 ("config/config_entries/get_entries", che non esiste in HA): vedi
-    # `_REGISTRI` per quello vero, "config_entries/get".
-
-    # fetta E2 Task 8 ("escono i trentaquattro"): `get_calendars`/
-    # `get_calendar_events_range` sono uscite -- orfane a cascata dalla
-    # stessa fetta: il loro unico chiamante era `tools/calendar_tools.
-    # get_calendar_events`, uscito lui stesso perche' orfano dal Task 7 (il
-    # `ToolDispatcher` che lo chiamava e' uscito). Nessun test le copriva
-    # come API del client (a differenza di `statistiche`, che ha una sua
-    # suite dedicata, tests/test_ha_client_statistics.py, e resta): nessuna
-    # garanzia persa.
-
     async def _ws_batch(self, commands: list[tuple[str, dict | None]],
                         timeout: float = 10.0) -> list[dict | None]:
         """N comandi WebSocket su UNA connessione → N messaggi interi, in ordine.
@@ -1466,11 +1342,6 @@ class HAClient:
         le scritture possono verificare l'esito. `None` solo se la connessione
         o l'autenticazione sono fallite."""
         return (await self._ws_batch([(msg_type, extra)], timeout=timeout))[0]
-
-    async def _ws_call(self, msg_type: str, timeout: float = 10.0) -> list[dict]:
-        """Back-compat wrapper: WS command whose result is a list (registry, etc.)."""
-        result = await self._ws_request(msg_type, timeout=timeout)
-        return result if isinstance(result, list) else []
 
     async def statistic_ids(self) -> set[str] | None:
         """Le entita' per cui Home Assistant TIENE statistiche, per nome.
@@ -1692,12 +1563,6 @@ class HAClient:
             return {"errore": "risposta in forma inattesa"}
         return {key: sorted(str(v) for v in values)
                 for key, values in result.items() if values}
-
-    # Le tre severita' di un problema, da `home_space.topology` -- la foglia dove
-    # vivono i vocabolari di Home Assistant. Le legge anche il nucleo, e
-    # tenerle qui avrebbe voluto dire far importare il client di rete al
-    # digesto, che si dichiara puro.
-    PROBLEM_SEVERITY = PROBLEM_SEVERITY
 
     async def problems(self) -> dict:
         """I guasti che Home Assistant ha GIA' diagnosticato.
@@ -2054,16 +1919,6 @@ class HAClient:
         """
         result = await self._ws_request("get_config")
         return result if isinstance(result, dict) else {}
-
-    # `get_area_registry` e `get_entity_registry` SONO usciti (review dei
-    # doppioni, 17/08). Emettevano gli stessi identici comandi WS che
-    # `read_registries` manda gia' in batch: una seconda porta per un fatto che
-    # ne ha gia' una, viva solo nei test -- e i test che le esercitavano davano
-    # l'impressione che la lettura dei registri fosse coperta da due lati,
-    # mentre il percorso vero (`_ws_batch` piu' la gestione di
-    # `non_disponibili`) ha una sola implementazione. Chi avesse aggiunto una
-    # normalizzazione in `read_registries` non l'avrebbe vista applicata dalle
-    # prove che passavano di qui.
 
     # Gli ambiti delle categorie di Home Assistant. Sono partizionate per
     # ambito: chiederne uno solo farebbe sparire la tassonomia che l'utente ha
