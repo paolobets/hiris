@@ -205,10 +205,11 @@ def apri_finestra(finestra: dict, *, adesso: float) -> float:
 
 
 def chiudi_finestra(finestra: dict) -> None:
-    """La chiude subito.
+    """La chiude subito: il gesto a mano del proprietario
+    (`handlers_servizi.handle_close_window`).
 
-    Accoppiato il servizio, la finestra non deve restare aperta per i minuti
-    che avanzano: e' una superficie in piu' per niente.
+    L'approvazione di un servizio NON la chiama: senza quel gesto la finestra
+    resta aperta fino allo scadere.
     """
     finestra.pop("scade", None)
 

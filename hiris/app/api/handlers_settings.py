@@ -15,13 +15,9 @@ chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
 `tests/test_chat_settings.py`). Per chi installa l'add-on senza aprire una
 shell dentro il container, quei campi erano di fatto costanti.
 
-**Il contratto e' nuovo, non la superficie di compatibilita' inglese che
-c'era.** Il payload porta i sette campi del dataclass (`name`,
+**Il contratto.** Il payload porta i sette campi del dataclass (`name`,
 `system_prompt`, `response_mode`, `thinking_budget`, `max_chat_turns`,
-`restrict_to_home`, `retention_days`). `GET /api/chatbots`
-(`handlers_chatbots.py`) parlava inglese per la card Lovelace e la pagina
-chat: questo file non l'ha mai usata, ed e' uscita per intero al Task 10 di
-questa fetta, col resto dei suoi ultimi chiamanti in `static/`.
+`restrict_to_home`, `retention_days`).
 
 **Cosa si valida, e perche' non di piu'.** Un campo fuori intervallo, di tipo
 sbagliato o sconosciuto produce un **400 che dice quale campo e cosa non va**,
@@ -31,7 +27,7 @@ assenti conservano il valore corrente -- un client che manda meno campi non
 azzera gli altri). I tre interi hanno come solo limite `>= 0` perche' i limiti
 veri stanno gia' a valle e dipendono dal modello (o, per `retention_days`,
 non esistono affatto -- vedi sotto):
-`claude_runner._thinking_param` disattiva un `thinking_budget` sotto i 1024 o
+`claude_runner._build_thinking_param` disattiva un `thinking_budget` sotto i 1024 o
 su un modello non capace e lo clampa contro `max_tokens`; `max_chat_turns` a 0
 significa "nessun tetto" (`handlers_chat.py`). Duplicare qui una soglia
 numerica che vale solo per un backend sarebbe una dichiarazione falsa al
@@ -41,16 +37,13 @@ presente non appena il modello cambia.
 l'opzione dell'add-on -- non e' aspetto, non e' una chiave, non e' rete: e'
 una decisione sulla conversazione, come le altre sei. Fa DUE lavori: la
 potatura notturna (`server.py::_run_retention`) e quanto HIRIS rilegge della
-conversazione in corso (`chat_store.load_context`, chiamato da
+conversazione in corso (`chat_store.load_history`, chiamato da
 `handlers_chat.py` con questo stesso valore). `0` non attiva mai nessuno dei
 due -- non cancella e non limita niente, il contrario di cio' che ci si
 aspetterebbe da una "conservazione" a zero, e per questo la descrizione in
 pagina lo dice esplicitamente invece di lasciarlo dedurre. Dalla **versione
 B** (3.0.0) `history_retention_days` NON e' piu' un'opzione dell'add-on: il
-valore vive solo qui, e ci e' arrivato con la versione A -- `carica()` lo
-copiava dall'ambiente quando l'archivio non aveva ancora la chiave, e l'avvio
-lo SCRIVEVA su disco (`file_lacks_retention_days`), che e' la meta' senza cui
-la copia non sarebbe sopravvissuta a questa versione.
+valore vive solo qui.
 
 **Il caso speciale del prompt di sistema.** E' il campo piu' delicato del
 prodotto: arriva verbatim nel prompt di ogni turno, sia sul percorso sincrono
@@ -72,9 +65,7 @@ altra forma. E' lo stesso hot-update di
 application is deprecated") che quella riga produce gia' oggi in suite:
 aiohttp scoraggia la mutazione di `app` dopo l'avvio, ma qui non esiste un
 canale alternativo senza cambiare il tipo di `app["chat_settings"]`, letto
-per riferimento da `handlers_chat.py` (`handlers_chatbots.py` la leggeva
-anche lui, finche' non e' uscito al Task 10 della E5). Dichiarato,
-non taciuto.
+per riferimento da `handlers_chat.py`. Dichiarato, non taciuto.
 """
 from __future__ import annotations
 
@@ -111,8 +102,8 @@ FIELDS = (
     "retention_days",
 )
 
-# I tre valori che il codice a valle distingue davvero: `prompts.py:315-317`,
-# `claude_runner.py:703-705` e `openai_compat_runner.py:523-525/801-803`
+# I tre valori che il codice a valle distingue davvero: `agent/prompts.py`,
+# `claude_runner.py` e `backends/openai_compat_runner.py`
 # trattano "compact" e "minimal"; qualunque altro valore ricade nel ramo
 # neutro, che e' esattamente "auto". Elencarli qui evita che l'utente scriva
 # un quarto valore convinto di aver ottenuto qualcosa.
@@ -176,9 +167,9 @@ def _text(body: dict, key: str, current: str) -> str:
     try:
         value.encode("utf-8")
     except UnicodeEncodeError as exc:
-        # Del carattere si dice la POSIZIONE, mai il valore: stessa disciplina
-        # di `internal_token.invalid_token_reason`, e un prompt di sistema
-        # intero dentro un messaggio d'errore sarebbe illeggibile in pagina.
+        # Del carattere si dice la POSIZIONE, mai il valore: un prompt di
+        # sistema intero dentro un messaggio d'errore sarebbe illeggibile in
+        # pagina.
         raise Rejection(
             key,
             f"«{key}» contiene un carattere non rappresentabile in UTF-8 "
@@ -259,8 +250,7 @@ def validate(current: ChatSettings, body) -> ChatSettings:
 
     # Stesso `_non_negative_integer` dei due campi sopra: `0` e' un valore
     # AMMESSO (Task 12 -- "non cancella e non limita mai niente"), non un
-    # errore. Nessun tetto superiore: `config.yaml` ne porta uno
-    # (`int(0,3650)`) solo perche' e' l'opzione dell'add-on -- qui, come per
+    # errore. Nessun tetto superiore: come per
     # `thinking_budget`/`max_chat_turns`, il limite vero non esiste o non e'
     # di competenza di questa validazione.
     retention_days = _non_negative_integer(

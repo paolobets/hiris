@@ -25,8 +25,8 @@ portano `subject_json`, cioe' CHI ha chiesto.
 **Porta gli argomenti degli strumenti** (`tool_args`, dal 29/09/2026, spec
 «una porta sola» §7), allineati a `tools` e ridotti dall'archivio: testi a 200
 caratteri, 20 chiavi, e il valore di ogni credenziale (`code`, `pin`,
-`password`, `token`...) e' `***`. Restano dati personali -- un `view` porta il
-nome di una stanza -- e per questo la rotta sta dietro il perimetro.
+`password`, `token`...) e' `***`. Restano dati personali -- un `search` porta
+il nome di una stanza -- e per questo la rotta sta dietro il perimetro.
 """
 from __future__ import annotations
 

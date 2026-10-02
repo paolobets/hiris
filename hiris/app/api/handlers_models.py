@@ -125,10 +125,9 @@ def _clean_subscription_model(value, default: str) -> str:
     Adesso traduce una volta sola, all'INGRESSO del campo: cio' che sta
     nell'archivio e' gia' un alias, e chi legge non ha niente da tradurre.
 
-    L'import e' DIFFERITO per la ragione misurata in `agent/runner.py:122-131`:
-    `api/handlers_chat.py` importa da quel modulo e `api/handlers_mcp.py`
-    importa `handlers_chat`; un import in cima chiude il cerchio e rompe
-    l'avvio con `ImportError ... partially initialized module`.
+    L'import e' differito. Lo obbligava un ciclo (`api/handlers_chat.py`
+    importava da quel modulo) che non c'e' piu': vedi
+    `agent/runner._mcp_server_name`.
     """
     from ..agent.runner import cli_model
     if not isinstance(value, str) or not value.strip():
@@ -169,8 +168,7 @@ def _store_keys(raw: dict) -> dict:
         # Debito F del Task 6, chiuso qui: il predefinito del campo e' quello
         # dell'opzione da cui viene (`llm_strategy: "balanced"` in
         # config.yaml). Valeva "", e la differenza faceva contare come
-        # «copiato» un valore che nessuno aveva scelto -- vedi
-        # `options_migration._DEFAULTS`.
+        # «copiato» un valore che nessuno aveva scelto.
         "strategia_ultima": strategy if isinstance(strategy, str) else "balanced",
         "seminato": bool(raw.get("seminato", False)),
         # Il segno della semina della CATENA, distinto da `seminato` (che e'
@@ -278,9 +276,7 @@ def load_models_config(data_dir: str) -> dict:
     # precedente puo' avere 'brain_model' popolato -- non viene ne' migrato
     # ne' cancellato (mai dati utente rimossi silenziosamente), ma il
     # silenzio si dichiara: stessa disciplina di
-    # tests/test_startup_legacy_db_silence.py e dello stesso identico
-    # precedente in claude_runner._load_usage per 'per_agent' di usage.json
-    # (tests/test_claude_runner.py:721-780). save_models_config (sotto) fa
+    # tests/test_startup_legacy_db_silence.py. save_models_config (sotto) fa
     # lettura-modifica-scrittura, quindi la chiave sopravvive anche a un
     # salvataggio, non solo al load.
     if "brain_model" in raw:
@@ -355,20 +351,9 @@ def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dic
 # I cinque id del prodotto (subscription/claude/openai/openrouter/ollama),
 # distinti dagli id di `handle_list_models` ("anthropic" per storia
 # dell'endpoint): sono le cinque righe di cui questa rotta misura la
-# credenziale.
-#
-# fetta «la catena diventa l'unica verità»: il campo "toggle" è uscito insieme
-# a `_TOGGLE_ENV_VARS` e `_config_raw_toggle`. Leggevano i cinque interruttori
-# `provider_*` dall'ambiente, e gli interruttori non decidono più niente: lo
-# stato di un provider è l'appartenenza alla catena più la credenziale, e sono
-# due fatti diversi che non collassano l'uno nell'altro. Il Task 13 toglierà le
-# opzioni da `config.yaml`; qui smettono di essere LETTE, che è la condizione
-# per poterle togliere.
-#
-# Task 8: accanto viveva `_CONFIG_PROVIDERS`, le stesse cinque voci con la
-# label, per il payload `providers[]`. Le label le compone `model_resolution`
-# per le due liste vere (`catena`/`fuori_catena`), e un secondo elenco di nomi
-# non serviva più a nessuno.
+# credenziale. Lo stato di un provider è l'appartenenza alla catena più la
+# credenziale: due fatti diversi, che non collassano l'uno nell'altro. Le label
+# le compone `model_resolution` per le due liste (`catena`/`fuori_catena`).
 _CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollama")
 
 
@@ -386,10 +371,10 @@ def _config_has_credential(request: web.Request, provider_id: str) -> bool:
         return bool(request.app.get("openrouter_api_key"))
     if provider_id == "ollama":
         # fetta «la catena diventa l'unica verità»: la credenziale di Ollama è
-        # il SOLO indirizzo, come in `server._credentials`. Il nome del modello
-        # è una decisione, non una credenziale, e da questa fetta vive
-        # nell'archivio. Due definizioni della stessa credenziale, una qui e
-        # una nell'avvio, sarebbero la seconda rappresentazione in miniatura.
+        # il SOLO indirizzo. Il nome del modello è una decisione, non una
+        # credenziale, e vive nell'archivio. La stessa regola è scritta una
+        # seconda volta nell'avvio (`_credentials`, in `server.py`): le due
+        # vanno tenute d'accordo a mano.
         return bool(request.app.get("local_model_url"))
     return False
 
@@ -397,17 +382,7 @@ def _config_has_credential(request: web.Request, provider_id: str) -> bool:
 def _credentials_of_the_five(request: web.Request) -> dict[str, bool]:
     """I cinque fatti di credenziale, misurati UNA volta per richiesta.
 
-    Task 8: qui viveva `_build_config_providers`, che componeva il payload
-    storico `providers[]` -- `{id, label, in_catena, has_credential}` per tutti
-    e cinque. Il Task 7 l'aveva tenuto in vita con una data di scadenza scritta
-    nel docstring («finché il Task 8 non riscrive la pagina»), ed è oggi:
-    `in_catena` era l'APPARTENENZA ALLA CATENA detta una seconda volta, accanto
-    a `catena`/`fuori_catena` che la dicono per esteso. Due rappresentazioni
-    della stessa cosa nello stesso payload sono la miniatura del difetto che
-    questa fetta chiude, e l'unico lettore di quella seconda copia era la
-    pagina, che adesso disegna la prima.
-
-    Resta il fatto grezzo, che non è una rappresentazione dello stato ma la sua
+    È il fatto grezzo, non una rappresentazione dello stato ma la sua
     misura, e serve a `compose_now` e a `compose_topology`: entrambe la
     ricevono dallo stesso dizionario, perché due misure degli stessi fatti
     nello stesso handler sarebbero lo stesso difetto un piano più sotto.
@@ -470,36 +445,6 @@ def _models_in_use(provider_models: dict, ollama_model: str,
 async def handle_get_models_config(request: web.Request) -> web.Response:
     data_dir = request.app.get("data_dir") or "/data"
     payload = load_models_config(data_dir)
-    # Task 8: qui stava `payload["llm_strategy"]`, l'ultimo residuo
-    # dell'invariante 1 in questo handler. Era il preset LETTO DALL'AMBIENTE
-    # accanto a `strategia_ultima` letto dall'archivio -- la stessa cosa detta
-    # due volte da due sorgenti che possono divergere -- e il suo unico lettore
-    # era la riga «Preset corrente: …» di una pagina che presentava un ordine
-    # come uno stato. Dalla fetta «la catena è l'unica verità» le tre strategie
-    # sono tre GESTI che riscrivono la catena, non uno stato da cui la catena si
-    # deriva: non c'è più un preset corrente da dichiarare, e quindi non c'è più
-    # niente da leggere. `LLM_STRATEGY` non la legge piu' nessuno: l'opzione e'
-    # uscita con la 3.0.0 e l'ultima lettura il 02/10/2026.
-    #
-    # Task 9: escono anche gli ultimi due passeggeri senza lettori.
-    # `embeddings` (`MEMORY_EMBEDDING_PROVIDER`/`_MODEL`) alimentava la sezione
-    # «03 Embeddings», uscita col Task 8: la pagina dichiara che nessun testo
-    # viene vettorizzato e NON mostra più i due valori, quindi pubblicarli era
-    # una lettura che nessuno faceva. Le due variabili sono uscite con la
-    # Tappa 0, insieme all'embedder che le leggeva.
-    # `ollama_model` era `app["local_model_name"]` accanto a
-    # `payload["ollama"]["modello"]`: la stessa cosa detta due volte, e la
-    # copia era pure ferma all'avvio. Era l'ultimo residuo dell'invariante 1 in
-    # questo handler, dichiarato dal Task 7 e assegnato al Task 9.
-    #
-    # Versione B (3.0.0): esce anche `ponte_attivo`, l'ULTIMO residuo
-    # dell'invariante 1 di tutto il payload. Era `app["bridge_active"]`, cioe'
-    # `BRIDGE_ENABLED or _sub_first_class`, pubblicato ACCANTO a
-    # `payload["ponte"]["attivo"]`: non un doppione esatto -- il valore vero
-    # poteva essere `true` con l'archivio a `false`, e la pagina riceveva due
-    # risposte alla stessa domanda. Tolta l'implicazione in `server.py`, il
-    # secondo valore e' il primo: qui ne resta uno, `ponte["attivo"]`, e la
-    # pagina lo legge di li'.
     _bridge_on = payload["ponte"]["attivo"]
     # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
     # due derivazioni degli stessi fatti nello stesso handler sarebbero la
@@ -871,36 +816,6 @@ async def _fetch_openrouter_models(api_key: str,
     except Exception as exc:
         logger.warning("Could not fetch OpenRouter models: %s", exc)
         return _OPENROUTER_PRESETS, "riserva"
-
-
-# `is_openrouter_model_tool_capable` (uscita, fetta E4 Task 3 "un bot
-# solo"): validava un modello OpenRouter contro la capability list live al
-# salvataggio di un chatbot -- il suo unico chiamante era
-# `handlers_chatbots._validate_openrouter_model`, uscito insieme a
-# `handle_create_chatbot`/`handle_update_chatbot` (le tre strade di
-# creazione sopravvissute alla E3 convergevano tutte su POST /api/chatbots
-# con `enabled: true` di default, il contrario di quanto prescrive lo
-# scope). Orfana per costruzione di questo task (non prevista dal brief,
-# trovata dal censimento), raccolta subito insieme ai suoi sei test in
-# tests/test_handlers_models_openrouter.py -- `_supports_tools`/
-# `_fetch_openrouter_models`/`_OPENROUTER_PRESETS` restano vivi (alimentano
-# GET /api/models, adesso il pannello del modello, indipendente dal CRUD
-# chatbot) e non sono toccati. (`_hide_free_models_enabled`, che era nominata
-# qui accanto, è uscita col Task 9: vedi il commento sopra `_CLAUDE_MODELS`.)
-
-
-# `_enrich_provider` e `_NOMI_IN_CATENA` sono USCITI con il Task 9.
-# `_enrich_provider` attaccava a ogni voce `in_catena` + `has_credential`: era
-# la TERZA superficie che descriveva l'appartenenza alla catena, dopo che il
-# Task 7 aveva tolto `providers[].active` e il Task 8 l'intero `providers[]`
-# da `/api/models/config`. Il suo unico lettore era il picker della vecchia
-# sezione 01, uscito col Task 8; questa rotta serve adesso UN SOLO cliente --
-# il pannello del modello -- che l'appartenenza non la usa: la riga da cui il
-# pannello si apre sta già dentro `catena` o dentro `fuori_catena`, e sono
-# quelle due liste a dirlo. `_NOMI_IN_CATENA` esisteva solo per riconciliare
-# l'id storico "anthropic" di questa rotta col nome "claude" della catena: gli
-# id di questa rotta sono adesso i CINQUE del prodotto, gli stessi di ogni
-# altra superficie, e non c'è più niente da riconciliare.
 
 
 async def handle_list_models(request: web.Request) -> web.Response:

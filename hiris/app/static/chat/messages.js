@@ -146,18 +146,8 @@
     state.els.messages.scrollTop = state.els.messages.scrollHeight;
   }
 
-  /* `appendDebug` E' USCITA (17 agosto 2026). Disegnava una targhetta per
-     ogni strumento chiamato, col nome e -- al click -- con gli ARGOMENTI, che
-     per `remember` sono il testo del ricordo e per `esegui`/`cerca` sono gli id
-     delle entita' di casa.
-
-     Era nata per rendere osservabile una scrittura di `remember`, e quella
-     ragione resta valida: l'osservabilita' non e' stata tolta, e' stata
-     SPOSTATA nei log a livello debug del backend (`api/handlers_chat.py`).
-     Toglierla senza spostarla avrebbe distrutto la capacita' per cui esisteva.
-
-     Con lei sono uscite `.debug-row`, `.tool-chips`, `.tool-chip`, `.tc-ic`,
-     `.tc-name` e `.tool-args` da `hiris-chat.css`: nessun altro le usa. */
+  /* Gli strumenti chiamati da un turno non si disegnano in pagina: i loro
+     nomi vanno nei log a livello debug del backend (`api/handlers_chat.py`). */
 
   /* ── L'attesa ────────────────────────────────────────────────────
      C'era piu' di un indicatore, e quale vedessi dipendeva da come il server

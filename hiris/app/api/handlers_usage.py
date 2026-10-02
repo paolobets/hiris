@@ -27,8 +27,8 @@ rispondere. Il ramo «abbonamento» e' uscito con la sua frase: l'abbonamento
 adesso si misura -- i token, non il costo del turno, che non esiste -- e ha
 una sezione sua nella pagina.
 
-E `POST /api/usage/reset` non risponde piu' 409: azzerare non cancella piu'
-niente, sposta un'ancora, e un'ancora c'e' sempre.
+E `POST /api/usage/reset` non cancella piu' niente: sposta un'ancora, e
+un'ancora c'e' sempre. Il 409 resta solo per un'app senza archivio dei consumi.
 """
 from __future__ import annotations
 
@@ -281,9 +281,8 @@ async def handle_usage_history(request: web.Request) -> web.Response:
 async def handle_reset_usage(request: web.Request) -> web.Response:
     """«Riparti da adesso»: sposta l'ancora. Non cancella una riga.
 
-    Il `409` di prima -- «azzerare un contatore che non esiste e' una
-    richiesta in conflitto con lo stato della risorsa» -- e' uscito con la
-    ragione che lo giustificava: un'ancora c'e' sempre.
+    Con l'archivio c'e' sempre un'ancora da spostare. Il `409` resta per
+    l'app che l'archivio non ce l'ha: li' non c'e' niente da cui ripartire.
     """
     store = request.app.get("usage")
     if store is None:

@@ -347,7 +347,7 @@ class Operation:
 #:
 #: **Il punto non e' l'elenco, e' cosa una ricetta sa PRODURRE.** Dentro una
 #: ricetta esistono due sole sorgenti: `@entita` da' la serie del periodo,
-#: `#passo` da' il risultato di un passo precedente. Tutto il resto --
+#: `$passo` da' il risultato di un passo precedente. Tutto il resto --
 #: le letture grezze, un `Period` nudo, un elenco o una mappa di misure --
 #: nessuna ricetta lo sa scrivere, e un'operazione che lo pretende non e'
 #: offribile al modello: gliela si metterebbe nell'elenco perche' la usi, e il
@@ -364,9 +364,9 @@ SHAPE_SERIES = "serie del periodo"
 #: CAMBIO di quell'ora. Fare `ultima - prima` su quelle calcola la variazione
 #: della variazione -- che non e' niente, e sull'ora giusta esce negativa.
 #:
-#: Dentro una ricetta nessuna sorgente produce questa forma: l'operazione resta
-#: nel registro perche' `mind/facts.aggregate_day` la usa sul GREZZO, dove le
-#: letture sono davvero cumulate.
+#: Dentro una ricetta nessuna sorgente produce questa forma, e fuori dalle
+#: ricette nessun modulo di `hiris/app` chiama piu' l'operazione (cercato il
+#: 02/10/2026): resta nel registro senza chiamanti.
 SHAPE_COUNTER = "letture cumulate di un contatore"
 SHAPE_RESULT = "misura"
 SHAPE_READINGS = "letture"

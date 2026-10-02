@@ -168,8 +168,8 @@ def meanings_from_translations(resources, *, ha_version: str, language: str,
 #: cervello, che la spec §5.4 cita come **oggi non rispondibile**: *«il
 #: riscaldamento parte alle 15:30, la casa e' calda alle 16:30»*. Lo stato di
 #: un termostato e' `heat` e resta `heat`; `hvac_action` dice se sta davvero
-#: scaldando, `current_temperature` dove si e', `temperature` dove si vuole
-#: arrivare. Senza quei tre, quella frase non si puo' scrivere.
+#: scaldando, `temperature` dove si vuole
+#: arrivare. Senza quei due, quella frase non si puo' scrivere.
 #:
 #: **Sono pochi apposta.** Il silenzio qui significa «non tenere niente», non
 #: «tieni tutto»: tenere tutto rimetterebbe nel grezzo le 6.503 righe al

@@ -145,9 +145,10 @@ window.HirisAgendaRoute = (function () {
      chiuso) il difetto che questa riga rende impossibile. Lo usano tutti e
      due i rivelatori della pagina, l'intestazione dello «Storico» e il
      pannello «Cosa è cambiato»: un secondo meccanismo sarebbe un doppione.
-     Gemello di `constructions-route.js::setDisclosure` -- non condiviso in
-     `config/api.js` perche' i test caricano ciascuna route DA SOLA, senza
-     quel file (vedi la nota nel rapporto della fetta). */
+     Gemello di `constructions-route.js::setDisclosure`: sono due copie.
+     Non stanno in `config/api.js` per una scelta delle prove, che caricano
+     ciascuna route DA SOLA senza quel file -- non per un vincolo del
+     prodotto: le pagine lo caricano sempre. */
   function setDisclosure(btn, panel, open) {
     panel.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');

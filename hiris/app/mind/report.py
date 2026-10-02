@@ -5,7 +5,7 @@ proprietario il 13/09/2026.
 
 ## A cosa serve, perche' da li' viene tutto il resto
 
-**Non e' fatto per un umano.** Serve all'**analista** (§10), che ha tre inneschi
+**Le misure servono all'analista** (§10), che ha tre inneschi
 e tutti e tre guardano NUMERI:
 
 1. *«qualcosa e' cambiato, e non e' spiegato»* -- la stessa misura su molti
@@ -24,16 +24,15 @@ e tutti e tre guardano NUMERI:
 **Le misure** si leggono **in serie**, molti giorni insieme: sono decine di
 numeri, e trenta giorni ci stanno in un prompt.
 
-**La cronaca e' un INDICE** -- quando, chi, cosa -- che l'analista scorre e da
-cui poi scava: in Home Assistant se il giorno e' dentro la settimana che lui
-ricorda, nel nostro grezzo fino al ventiduesimo giorno, e **dicendo quale dei
-due ha usato** (vincolo della spec §10).
+**La cronaca e' un INDICE** -- quando, chi, cosa. Oggi la legge la pagina
+(`as_page`): l'analista riceve le sole serie delle misure
+(`analyst_turn.build_question`) e non ha strumenti con cui scavare. La spec §10
+lo voleva capace di partire dall'indice e scavare in Home Assistant o nel
+nostro grezzo, dicendo quale dei due ha usato: non e' costruito.
 
 **Perche' un indice e non l'episodio intero**, misurato sui 200 oggetti veri
 della casa il 13/09/2026: l'episodio pesa **622 byte**, l'indice **109**. Su
-trenta giorni sono **521 KB contro 92** -- e con la cronaca intera l'analista
-puo' guardare solo il giorno che ha gia' deciso di guardare, mentre per sapere
-quale dovrebbe averlo gia' guardato.
+trenta giorni sono **521 KB contro 92**.
 
 **Ma l'indice porta un'ancora.** E' l'unico difetto irreversibile che la forma
 nuda avrebbe: cio' che dopo non si recupera piu' perche' dipende da com'era la

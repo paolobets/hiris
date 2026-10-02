@@ -207,10 +207,10 @@ window.HirisConstructions = (function () {
      divergere se nessuno li assegna separatamente. Lo usano tutti e due i
      rivelatori della pagina -- i «Dettagli tecnici» di una riga e
      l'intestazione dello «Storico» -- perche' un secondo meccanismo sarebbe
-     un doppione. Gemello di `agenda-route.js::setDisclosure`: NON e' stato
-     messo in `config/api.js` (il solo file davvero condiviso) perche' i test
-     caricano ciascuna route DA SOLA, senza quel file, e un helper globale
-     li' dentro semplicemente non esisterebbe durante la prova. */
+     un doppione. Gemello di `agenda-route.js::setDisclosure`: sono due
+     copie. Non stanno in `config/api.js` (il file condiviso) per una scelta
+     delle prove, che caricano ciascuna route DA SOLA senza quel file -- non
+     per un vincolo del prodotto: le pagine lo caricano sempre. */
   function setDisclosure(btn, panel, open) {
     panel.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');

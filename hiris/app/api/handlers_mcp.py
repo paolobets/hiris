@@ -18,8 +18,8 @@ funziona: tre metodi JSON-RPC su una rotta aiohttp dell'app che c'e' gia'.
 Nessuna dipendenza nuova, nessun processo da governare, nessuna porta nuova da
 configurare -- e soprattutto **la stessa `entity_cache`** del turno sincrono, che
 e' la ragione per cui un sottoprocesso stdio e' stato scartato: senza di essa
-`view` risponderebbe sempre `stato_non_letto`, e avremmo due intelligenze nella
-stessa casa che ne vedono due diverse.
+gli strumenti risponderebbero sempre `stato_non_letto`, e avremmo due
+intelligenze nella stessa casa che ne vedono due diverse.
 
 **Cosa NON e'.** Non e' una superficie remota: la chiama solo il sottoprocesso
 `claude` che gira dentro l'add-on, su `127.0.0.1`, e nessuna opzione `Network`
@@ -54,12 +54,9 @@ esiste per chiudere. L'ASSENZA dell'intestazione (promesse, osservatore)
 resta com'era prima di questa fetta.
 
 **E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
-«costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli
-strumenti restano quattro e nessuno tocca Home Assistant -- HIRIS conosce e
-non agisce»: era vero, e ha smesso di esserlo su entrambe le meta'. Gli
-strumenti sono sedici, lo stesso catalogo del turno sincrono: `execute` chiama
-un servizio di Home Assistant, `propose`/`confirm` compongono e scrivono
-configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
+«costruire» anche di configurazione.** Il catalogo e' quello del turno
+sincrono: `execute` chiama un servizio di Home Assistant, `propose`/`confirm`
+compongono e scrivono configurazione. Ma
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
 la stessa funzione del turno sincrono, che dispaccia alle stesse due porte --
 `action/actuator.py` per i servizi, `action/construction/workshop.py` per la
@@ -74,11 +71,6 @@ passa questa rotta nella voce `--mcp-config` (`config_mcp`), e la sonda
 per decidere se il prompt puo' affermare gli strumenti. La registrazione
 in `server.py` (`app.router.add_post("/api/mcp", handle_mcp)`) porta lo stesso
 elenco: i due file devono restare d'accordo.
-
-Fra il Task 1 e il Task 3 di questa fetta la rotta e' stata un **orfano
-dichiarato** -- `scripts/censimento.py` la contava fra le «rotte HTTP chiamate
-solo dai test» -- mai un orfano nascosto. Col Task 3 l'orfano e' stato raccolto
-e il censimento e' tornato a 43.
 """
 from __future__ import annotations
 
@@ -122,11 +114,13 @@ METHODS = ("initialize", "tools/list", "tools/call")
 #
 # **Perche' qui e non sulla riga di comando.** Il piano lo chiede come
 # mitigazione minima (progetto, §5.2): il modello puo' incatenare `search` ->
-# `view` -> `fetch` -> ancora, e ogni giro costa un turno di
-# `chat_daily_cap` mentre ne consuma N. `claude 2.1.226` pero' NON ha un
-# `--max-turns` ne' alcun flag che limiti i giri di strumento (verificato su
-# `claude --help`, decisione A.7 del progetto): il tetto non puo' stare
-# sull'argv del ponte (`agent/runner.py::_chat_claude_args`), deve stare QUI,
+# `related` -> `fetch` -> ancora, e il tetto giornaliero del ponte conta un
+# turno mentre ne consuma N. Quando questo tetto e' nato la CLI (`claude
+# 2.1.226`) NON aveva un `--max-turns` ne' alcun flag che limitasse i giri di
+# strumento (verificato allora su `claude --help`, decisione A.7 del
+# progetto; non riverificato sulla versione che il `Dockerfile` pinna oggi):
+# il tetto non sta
+# sull'argv del ponte (`agent/runner.py::_chat_claude_args`), sta QUI,
 # l'unico punto che vede passare OGNI `tools/call` -- comprese, se mai
 # arrivassero, quelle di una SECONDA invocazione dello stesso turno (Task 4:
 # oggi quella seconda invocazione riparte sempre SENZA strumenti, quindi non
@@ -159,7 +153,7 @@ METHODS = ("initialize", "tools/list", "tools/call")
 # nella stessa risposta costano una sola iterazione (vedi il for su
 # `response.content` in `claude_runner.chat()`). `MAX_TOOL_ROUNDS` (qui)
 # conta un giro per OGNI singola `tools/call` che arriva su questa rotta,
-# comprese quelle parallele della stessa risposta della CLI: 8 `view`
+# comprese quelle parallele della stessa risposta della CLI: 8 `fetch`
 # richiesti insieme dal modello costano comunque 8 giri qui, non 1. Stesso
 # tetto, contatori diversi -- e' per questo che `agent/prompts.py::
 # _GUIDE_WITH_TOOLS` insegna al ponte una parsimonia che
@@ -346,7 +340,7 @@ def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
     qui da sola invece di essere dimenticata.
 
     Il parametro serve al turno di una promessa, che ha un catalogo suo
-    (`promise_tools()`: gli otto lettori piu' `conclude`). E' la STESSA
+    (`promise_tools()`: i lettori di `SOLA_LETTURA` piu' `conclude`). E' la STESSA
     trasformazione, non una seconda: due funzioni che riformattano cataloghi
     sarebbero il difetto da cui e' nata la fetta E2 (tre cataloghi divergenti).
     """
@@ -424,8 +418,7 @@ def _ceiling_rejection(name: str) -> dict:
     che pretenda che lo strumento abbia fatto il suo lavoro) -- il dispatcher
     non e' stato invocato, e la chiamata NON ha prodotto l'effetto richiesto.
     Cio' che la distingue da una chiamata fallita del dispatcher (stessa
-    forma nel protocollo: `isError: True`) e' il TESTO, leggibile sia nel log
-    sia da chi ispeziona `debug.tools_called` (Task 5): un fallimento del
+    forma nel protocollo: `isError: True`) e' il TESTO, che il modello legge: un fallimento del
     dispatcher nomina l'archivio o l'argomento mancante, questo nomina
     ESPLICITAMENTE il tetto e il numero. Un quarto stato nella forma del
     protocollo non esiste in questo prodotto (tre bastano: riuscita, fallita,
@@ -657,7 +650,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
     Supervisor, un canale firmato, la credenziale di un turno del ponte, e
     (nella sola suite di test) la valvola `HIRIS_ALLOW_NO_TOKEN`. Questa rotta
     ne accetta **una sola**: `turno`, la credenziale effimera che il worker del
-    ponte manda (`agent/runner.py::build_headers`). Fino al 22/09/2026 era il
+    ponte manda (la conia `server.py::_intestazioni_ponte`). Fino al 22/09/2026 era il
     segreto condiviso (`auth_via == "token"`), che da quel giorno il middleware
     non assegna piu'. Il controllo e' su `request["auth_via"]`,
     che il middleware scrive: non si ricopia qui un secondo confronto di segreti
@@ -744,7 +737,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
         if method == "tools/list":
             _promise_id = _exchange_promise_id(request)
             # Il turno di una promessa vede il catalogo della promessa:
-            # gli otto lettori piu' `conclude`, che li' e' l'unico modo
+            # i lettori di `SOLA_LETTURA` piu' `conclude`, che li' e' l'unico modo
             # in cui il turno puo' finire. Le definizioni sono le STESSE
             # di `KNOWLEDGE_TOOLS` (promise_tools le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su

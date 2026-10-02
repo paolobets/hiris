@@ -100,7 +100,7 @@ DECLINED_FIELD = "ricetta_non_serve"
 #:
 #: Quindi il rifiuto porta la versione del registro contro cui e' stato preso,
 #: e vale finche' quella versione e' quella corrente. E' anche cio' che
-#: finalmente da' un LETTORE a `VERSIONE_REGISTRO`, che fino a oggi era un
+#: finalmente da' un LETTORE a `REGISTRY_VERSION`, che fino a oggi era un
 #: numero scritto e mai interrogato.
 REFUSAL_SOURCE = "registro delle operazioni v"
 
@@ -166,12 +166,13 @@ def _device_name(home_space: dict, device_id: str) -> str:
 
 
 def device_lines(home_space: dict, device_id: str) -> list[str]:
-    """Una riga per entita' del dispositivo, nella forma gia' usata per lo scope.
+    """Una riga per entita' del dispositivo: identificatore, nome, classe,
+    unita'.
 
-    Stessi campi e stesso separatore di `observer.house_lines`: **due forme
-    della stessa riga sarebbero due verita' libere di divergere**, e la prima
-    volta che qualcuno ne arricchisce una sola il modello leggerebbe due case
-    diverse a seconda della domanda.
+    Stesso separatore di `observer.house_lines` e i suoi primi quattro campi,
+    ma NON e' la stessa riga: qui mancano l'area e il `translation_key`, e non
+    si filtra per cio' che compete all'osservatore. Sono due composizioni
+    scritte a mano, libere di divergere.
     """
     lines = []
     for e in _device_entities(home_space, device_id):

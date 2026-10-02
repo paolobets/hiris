@@ -2,8 +2,8 @@
 
 E' l'invariante centrale della spec dell'azione: **una porta sola**. La chat
 non chiama i servizi -- chiede qui. Lo schedulatore (fetta 3) e il brain
-faranno lo stesso, senza che questo modulo cambi: per questo `esegui` prende
-un'`origine` e non sa nulla di chi lo chiama.
+faranno lo stesso, senza che questo modulo cambi: per questo `execute` prende
+un `actor` e non sa nulla di chi lo chiama.
 
 Un secondo punto di scrittura SULLO STESSO CANALE e' un difetto, non
 un'ottimizzazione: verifica, registro e -- il giorno in cui si affronteranno
@@ -22,7 +22,7 @@ Non solleva mai: ogni guasto diventa un dizionario con `errore`, perche' il
 suo chiamante e' uno strumento che parla a un modello.
 
 **I bersagli, e perche' il giro e' in due tempi.** «Spegni tutto in cucina»
-obbligava il modello a chiamare `cerca`, raccogliere gli id a mano e passarli
+obbligava il modello a cercare le entita', raccogliere gli id a mano e passarli
 tutti qui: se ne perdeva uno, HIRIS ne spegneva quattordici su quindici e
 dichiarava di aver spento tutto. Dalla fetta «i bersagli» un'area, un piano,
 un'etichetta o un dispositivo si passano come sono, e a dire cosa contengono

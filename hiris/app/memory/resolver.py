@@ -1,9 +1,5 @@
 """Riconoscere di quale parte della casa parla una frase.
 
-Oggi non esiste in HIRIS nessun codice che risolva un nome in un'entita':
-nessuna normalizzazione, nessun indice sugli alias. Senza questo, "la sala
-da pranzo" resta una parola e un'ancora di memoria non si puo' scrivere.
-
 La semantica NON la fa questo modulo. Il modello, che ha la casa in
 contesto, e' quello che capisce che "in salotto fa freddo" parla dell'area
 "soggiorno" anche se l'utente non ha mai scritto quell'alias: e' esattamente
@@ -23,15 +19,14 @@ sola di verita'» insieme all'indice dei termini e ai nomi di ripiego, che
 servivano solo a lei.
 
 Niente fuzzy, niente embedding: un sinonimo che l'utente non ha dichiarato
-non e' un sinonimo, e di fabbrica l'embedder di HIRIS e' spento -- una
-ricerca approssimata che ne dipendesse degraderebbe in silenzio.
+non e' un sinonimo, e HIRIS non ha un embedder.
 """
 from __future__ import annotations
 
 import re
 import unicodedata
 
-# Tipi che l'indice riconosce, nello spazio di nomi di verifica(): stessa
+# Tipi che l'indice riconosce, nello spazio di nomi di `Lookup.verify()`: stessa
 # forma dei termini che il modello vede quando la casa gli e' data in
 # contesto, cosi' l'ancora che nomina "area" o "entita" e' gia' la chiave
 # con cui si cerca qui.
@@ -45,14 +40,14 @@ import unicodedata
 # (`memory/interpretation.VOCABULARY`): un candidato che nessuno puo' usare e'
 # codice morto, ed e' uscito (review finale, M3).
 #
-# Automazioni e script NON entrano qui, apposta: vengono da
-# `HomeSpaceStore.comportamento()`, una fonte diversa (file YAML riletti a
-# una cadenza propria, non un registro di Home Assistant) con un proprio
-# segnale di incompletezza (`file_non_letti()`, non `non_disponibili()`)
+# Automazioni e script NON entrano qui, apposta: vengono dal comportamento
+# (`HomeSpace.behavior()`, in `home_space/reader.py`), una fonte diversa (non
+# un registro di Home Assistant) con un proprio
+# segnale di incompletezza (`unread_bodies()`, non `unavailable()`)
 # e un proprio campo `tipo` PER VOCE -- una lista sola contiene sia le
 # automazioni sia gli script, a differenza di `_ARCHIVI` dove ogni chiave
 # e' UN tipo solo. Mescolarli qui avrebbe fatto sembrare "automazione" un
-# registro dell'anagrafe che puo' comparire in `non_disponibili()`, cosa
+# registro dell'anagrafe che puo' comparire in `unavailable()`, cosa
 # che non fa mai -- e avrebbe allargato `STORE_KEY_PER_TYPE` (e con
 # lei `_TETHER_TYPES` in home_space/tools.py) a tipi che la memoria non puo'
 # mai scrivere come ancora (`memory/interpretation.VOCABULARY`),
@@ -67,7 +62,7 @@ _ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo
 # Stessa mappa di _ARCHIVI, capovolta: dato il tipo di un'ancora, la chiave
 # del registro che l'anagrafe usa per quel tipo. Pubblica perche' serve a chi
 # deve sapere se QUEL registro specifico ha risposto all'ultima lettura
-# (`HomeSpaceStore.non_disponibili()`), non solo se l'anagrafe intera e' stata
+# (`HomeSpace.unavailable()`), non solo se l'anagrafe intera e' stata
 # letta -- vedi handlers_memory.py.
 STORE_KEY_PER_TYPE: dict[str, str] = {type: key for key, type in _ARCHIVI}
 
@@ -193,7 +188,7 @@ class Lookup:
         self._per_type = per_type
 
     def verify(self, type: str, reference: str) -> dict | None:
-        """L'oggetto dell'anagrafe se `riferimento` esiste con quel `tipo`,
+        """L'oggetto dell'anagrafe se `reference` esiste con quel `type`,
         altrimenti None.
 
         E' il punto in cui "il modello propone, il codice restringe"

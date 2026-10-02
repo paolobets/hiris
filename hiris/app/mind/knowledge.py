@@ -99,8 +99,10 @@ MEANING_FIELD = "significato"
 def type_subject(domain: str, device_class: str | None = None) -> str:
     """Il soggetto di un tipo: `sensor`, oppure `sensor.power`.
 
-    Un posto solo dove si compone, perche' due composizioni divergono al
-    primo dominio con un punto nel nome.
+    Dovrebbe essere il solo posto dove si compone, perche' due composizioni
+    divergono al primo dominio con un punto nel nome. Oggi lo stesso
+    `dominio.classe` si compone a mano anche in `home_space/type_judgments.py`
+    e in `home_space/open_questions.py`.
     """
     return f"{domain}.{device_class}" if device_class else domain
 

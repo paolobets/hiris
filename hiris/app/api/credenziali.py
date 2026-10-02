@@ -16,10 +16,11 @@ Due portatori, meno esotici di come sembrano:
 Entrambi vivono quanto un turno, quindi la credenziale muore col turno -- e cio'
 che resta nella riga di comando dopo non apre piu' niente.
 
-**Perche' non basta il segreto condiviso.** Quello e' uno solo per tutti i
-portatori, vive in `/data`, finisce nei backup di Home Assistant in chiaro
-(reperto C-4), e chi lo legge una volta e' tutti, per sempre. Una credenziale
-effimera non si mette in un backup: quando il backup si apre e' gia' scaduta.
+**Perche' non bastava il segreto condiviso** (uscito il 22/09/2026). Era uno
+solo per tutti i portatori, viveva in `/data`, finiva nei backup di Home
+Assistant in chiaro (reperto C-4), e chi lo leggeva una volta era tutti, per
+sempre. Una credenziale effimera non si mette in un backup: quando il backup si
+apre e' gia' scaduta.
 
 **Perche' qui un segreto al portatore va bene, e per i canali no.** Un canale
 esterno vive su un'altra macchina e la sua credenziale deve sopravvivere a
@@ -35,8 +36,9 @@ import secrets
 
 logger = logging.getLogger(__name__)
 
-#: Quanti bit. Gli stessi del token interno: un segreto indovinabile non e' un
-#: segreto, e un contatore -- o un identificatore di turno -- sarebbe prevedibile.
+#: Quanti BYTE casuali chiede a `secrets.token_urlsafe` (il nome dice bit, e
+#: sbaglia): un segreto indovinabile non e' un segreto, e un contatore -- o un
+#: identificatore di turno -- sarebbe prevedibile.
 _BIT = 32
 
 
@@ -105,9 +107,10 @@ def prepara_credenziali(app) -> None:
 #: Un turno del ponte dura minuti, ma il worker ne chiede una a ogni giro di
 #: sondaggio -- ogni pochi secondi. Una per giro ne lascerebbe centinaia vive
 #: insieme; una per turno richiederebbe di sapere quando un turno comincia, che
-#: il worker non sa. Dieci minuti e' il compromesso: piu' della scadenza di un
-#: turno del ponte (`ponte.bridge_deadline_min`, dieci di default) e infinitamente
-#: meno di «per sempre», che e' cio' che era prima.
+#: il worker non sa. Dieci minuti e' il compromesso: piu' della scadenza
+#: predefinita di un turno del ponte (`ponte.scadenza_min` nell'archivio dei
+#: modelli, che la pagina Modelli puo' alzare oltre) e infinitamente meno di
+#: «per sempre», che e' cio' che era prima.
 PONTE_S = 600.0
 
 

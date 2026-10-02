@@ -559,9 +559,7 @@ def request_ceiling(request) -> dict:
     """**Il soffitto di questa richiesta**, dal ruolo gia' letto
     (`request_role`): la stessa regola di `ceiling_for`, senza rileggere i
     ruoli. E' la sola strada per chi decide su una richiesta -- il cancello di
-    chi costruisce, quello dei servizi, il turno di chat, i pallini: fino al
-    fix round 1 del Task 3 c'era anche `per_richiesta`, che rileggeva il ruolo
-    da Home Assistant dopo il cancello, ed e' uscita."""
+    chi costruisce, quello dei servizi, il turno di chat, i pallini."""
     return consente(request.get("soggetto") or {}, ruolo=request_role(request))
 
 
@@ -609,7 +607,7 @@ def require_builder(request) -> web.Response | None:
 
 def prepara_ruoli(app) -> None:
     """Il contenitore dei ruoli nasce quando l'app si compone, non alla prima
-    richiesta servita: vedi il commento dentro `_person_row`.
+    richiesta servita: vedi il commento in fondo a `_refresh_users`.
 
     `quando = 0` vuol dire «mai letto», e la prima richiesta che serve un ruolo
     lo legge — non c'è nessun ramo «prima volta» da ricordarsi.

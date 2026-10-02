@@ -1,14 +1,5 @@
 /* HIRIS · configurazione · bootstrap: cornice (sidebar + header) e route. */
 (function() {
-  /* fetta E5 Task 6: qui viveva l'installazione del guard di navigazione
-     (HirisEditorKit.dirty.guard) contro le modifiche non salvate. E' uscita
-     insieme a editor-kit.js e ai tre editor che la usavano (Chatbot,
-     Agentbot, wizard): in questa SPA non c'e' piu' nessuna pagina che possa
-     avere modifiche pendenti da perdere -- le due che scrivono
-     (#/settings e #/models) salvano al click, senza stato "sporco". Un
-     `if (window.HirisEditorKit)` su un modulo che non esiste piu' sarebbe
-     una dichiarazione falsa, non una degradazione. */
-
   function mountChrome() {
     var sn = document.getElementById('side-nav');
     var pc = document.getElementById('page-chrome');

@@ -372,8 +372,10 @@ class ConstructionStore:
     def mark_cancelled(self, ident: str, *, now: float) -> dict:
         """Il «no» di chi costruisce -- che NON e' un fallimento.
 
-        `rifiutata` vuol dire «ho provato e non ci sono riuscito»: validazione
-        caduta, Home Assistant che rifiuta, riavvio a meta'. Questo e' l'altro
+        `rifiutata` vuol dire che l'applicazione non e' andata a buon fine, o
+        che non si sa se lo sia: validazione caduta, Home Assistant che
+        rifiuta, e il riavvio a meta' (`risana`), dove la scrittura puo' anche
+        essere arrivata. Questo e' l'altro
         caso, ed e' quello che vogliamo sia facile: la persona ha guardato la
         proposta e ha detto di no. Tenerli separati e' cio' che permette alla
         pagina di non colorare di rosso l'esercizio del controllo per cui

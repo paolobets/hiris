@@ -45,11 +45,11 @@ from __future__ import annotations
 
 from ..home_space.topology import actual_area, actual_unit, device_areas
 
-# Le quattro... anzi tre caselle con un vocabolario chiuso: "a chi si
-# riferisce" e "che forza ha" restano qui elencate per intero; "cosa
-# chiede" non ha voce perche' il suo vocabolario e' quello di Home
+# Le tre caselle con un vocabolario chiuso: "che forza ha", "quando vale" e
+# "a chi si riferisce". "Cosa chiede" non ha voce perche' il suo
+# vocabolario e' quello di Home
 # Assistant (device_class), non uno nostro -- vedi la docstring del
-# modulo. "quando vale" aggiunge "stagione" alle condizioni che HA gia'
+# modulo. "Quando vale" aggiunge "stagione" alle condizioni che HA gia'
 # conosce.
 VOCABULARY: dict[str, frozenset[str]] = {
     "forza": frozenset({"preferenza", "divieto", "fatto", "regola"}),
@@ -86,7 +86,7 @@ def validate(interpretation: dict, lookup,
     due soli argomenti) sono i tipi di ancora (`area`/`entita`/`dispositivo`)
     per cui `indice` non puo' dare una risposta affidabile -- l'anagrafe non
     e' mai stata letta, o quel registro specifico non ha risposto
-    all'ultima lettura (`HomeSpaceStore.non_disponibili()`). Restano
+    all'ultima lettura (`HomeSpace.unavailable()`). Restano
     scartate lo stesso (fail-closed: un'ancora senza riscontro non si
     scrive), ma con la ragione vera -- "non si puo' verificare", non "non
     esiste", che sarebbe falso quando semplicemente non si e' potuto

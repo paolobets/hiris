@@ -128,8 +128,7 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                            thread: ChatThread | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
-    I dodici strumenti della chat (`home_space/tools.py`) -- non il catalogo
-    di trentaquattro di ALL_TOOL_DEFS: quattro conoscono la casa (`search`,
+    Gli strumenti della chat (`home_space/tools.py`): quattro conoscono la casa (`search`,
     `related`, `remember`, `fetch`), il quinto, `execute`, la comanda
     passando per la porta unica (vedi il docstring di quel modulo), tre
     (`promise`, `agenda`, `cancel`, fetta «lo schedulatore») la impegnano
@@ -200,7 +199,7 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     (vedi `Workshop.apply`): il soffitto (chi puo' costruire) resta invariato
     e continua a mordere.
 
-    Task B7 -- `cache_indice=app.get("tools_lookup_cache")`: l'oggetto di
+    Task B7 -- `lookup_cache=app.get("tools_lookup_cache")`: l'oggetto di
     vita lunga costruito accanto a `entity_cache` in `server.py`, non uno
     nuovo per turno. Il dispatcher stesso nasce a ogni turno (e' il motivo per
     cui questa funzione esiste), ma la cache dell'indice che gli si passa
@@ -258,11 +257,11 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # Le parole con cui uno stato si rende, dall'08/09/2026 lette da Home
         # Assistant e non piu' da quattro tabelle scritte a mano (spec §6). E'
         # la STESSA istanza che legge il nucleo (`compose_briefing`) e la rotta
-        # dei fatti: una tabella sola, o `guarda` e il digesto direbbero la
-        # stessa entita' con parole diverse -- che e' esattamente la
+        # dei fatti: una tabella sola, o uno strumento e il digesto direbbero
+        # la stessa entita' con parole diverse -- che e' esattamente la
         # divergenza da cui e' nata la casa unica del vocabolario degli stati.
         translations=app.get("state_translations"),
-        # Il sapere: `guarda` ne legge il significato della classe di
+        # Il sapere: gli strumenti ne leggono il significato della classe di
         # un'entita'. STESSA istanza di quella che l'osservatore scrive --
         # una casa sola per cio' che HIRIS ha capito, o le due divergono.
         knowledge=app.get("knowledge"),
@@ -286,13 +285,10 @@ def _build_system_prompt(settings) -> str:
     """Il prompt statico della chat, condiviso dal ramo sincrono e da quello
     in abbonamento (async job context).
 
-    fetta E4 Task 4 ("un bot solo"): prima componeva `strategic_context` +
-    `system_prompt` di un `Chatbot` -- due campi pensati per una molteplicita'
-    di persone che non esiste piu'. `ChatSettings` ha un solo campo
-    (`system_prompt`): niente piu' da comporre. `settings` non e' mai
-    `None` (vedi `ChatSettings.load`, che non lo restituisce mai) --
-    il parametro resta accettabile a `None` solo per i test che passano un
-    oggetto costruito a mano."""
+    `ChatSettings` ha un solo campo di prompt (`system_prompt`): niente da
+    comporre. `settings` non e' mai `None` (vedi `ChatSettings.load`, che
+    non lo restituisce mai) -- il parametro resta accettabile a `None` solo
+    per i test che passano un oggetto costruito a mano."""
     if settings and settings.system_prompt:
         return settings.system_prompt.strip()
     return ""
@@ -379,7 +375,7 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     Estratto qui, invariato, perche' il Task 2 deve mettere la STESSA
     stringa nel job del ponte (chat via abbonamento) -- se la ricopiasse, i
     due percorsi avrebbero due composizioni destinate a divergere, la
-    "funzione doppia" vietata da CLAUDE.md:70-72. Prende `app` (non
+    "funzione doppia" vietata da CLAUDE.md. Prende `app` (non
     `request`), stessa ragione di `compose_briefing` in handlers_home_space.py:
     nessun motivo di legarla a una request in corso.
 
@@ -414,54 +410,22 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
             lines.append(f"[{dt}] {s['summary']}")
         past_str = "\n".join(lines)
 
-    # Task 3 ("il contesto della chat viene dal nucleo"): una fonte sola.
-    # Prima qui c'erano quattro chiamate indipendenti -- KnowledgeStore.
-    # declared() per i dichiarati, KnowledgeStore.search() per il RAG,
-    # SemanticContextMap.get_context() per "cosa c'e' in giro", e le sessioni
-    # precedenti -- e nessuna delle prime tre vedeva mai il ritratto: e' la
-    # sovrapposizione n.1 della mappa del prodotto, vista da dentro (due
-    # intelligenze nella stessa casa che ne vedono due diverse -- vedi
-    # docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
-    # `compose_briefing()` (condivisa con GET /api/briefing,
-    # handlers_home_space.py -- stessa composizione, non due che potrebbero
-    # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
-    # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --
-    # ed e' lo stesso testo che vedranno il Brain e gli agenti quando
-    # torneranno (vedi il brief). All'epoca del Task 3 il blocco RAG e
-    # `KnowledgeStore.declared()` non erano stati cancellati: smettevano solo
-    # di essere chiamati da QUI. Dalla fetta "esce il documentale" sono
-    # cancellati davvero, insieme all'intero `KnowledgeStore` -- da allora non
-    # avevano ripreso nessun chiamante di produzione, e l'archivio che
-    # leggevano non aveva piu' nessuno che lo riaprisse. SemanticContextMap
-    # era uscita anche prima (fetta E3 Task 2, 2.0): il suo unico altro
-    # chiamante era il context-preview dell'editor Chatbot, uscito con lei.
+    # Una fonte sola per la casa: `compose_briefing()` (condivisa con
+    # GET /api/briefing, `handlers_home_space.py` -- stessa composizione, non
+    # due che potrebbero divergere) contiene gia' cio' che le persone hanno
+    # detto, la casa, cosa e' notevole adesso e cosa la casa fa da sola.
     #
-    # Se il nucleo non si compone (nessun archivio della casa, anagrafe mai
-    # letta) `compose()` non tace: lo dichiara nel testo stesso ("Nessun
-    # piano registrato.", "Stato non letto ... non e' lo stesso di 'niente
-    # di notevole'", una voce in "Cio' che HIRIS ignora") -- lo stesso
-    # principio gia' verificato per `handle_get_briefing`
-    # (test_api_nucleo_senza_archivi_non_afferma_di_sapere). Un silenzio non
-    # dichiarato e' indistinguibile da un'assenza di problemi: qui non puo'
-    # scattare, perche' il testo che il modello legge lo dice da solo.
-    # Fix E1-①: `compose_briefing()` non e' protetta -- apre `home_space_store`
-    # e `memory_store` (SQLite) e puo' sollevare (file corrotto, o in
-    # lock dopo un riavvio sporco: sqlite3.DatabaseError/OperationalError).
-    # Il codice pre-fetta avvolgeva OGNI fonte in un try/except con questo
-    # stesso commento: "un fallimento qui non deve mai impedire alla chat di
-    # rispondere" (vedi git blame -- il blocco RAG e i dichiarati, qualche
-    # riga sopra qui in cronologia). Diventare una fonte sola ha fatto
-    # sparire quel commento insieme al codice che avvolgeva, e la regola con
-    # lui: senza questo try/except un `memoria.db` corrotto o un `casa.db`
-    # in lock fa rispondere 500 a OGNI `POST /api/chat`, dove prima -- coi
-    # quattro try/except separati -- la chat rispondeva semplicemente SENZA
-    # quella fonte. Il fallback qui sotto non e' una stringa vuota (che
-    # `if briefing_text:` scarterebbe zittendo la chat sul contesto, e che il
-    # modello leggerebbe come "casa vuota" invece che "guasto"): e' la
-    # stessa distinzione che il nucleo gia' fa per i registri caduti
-    # (`non_disponibili`) e per lo stato inaffidabile (`stato_non_letto`),
-    # qui applicata al caso in cui comporlo del tutto solleva invece di
-    # dichiarare.
+    # Se il nucleo non ha di che comporsi (anagrafe mai letta) `compose()` non
+    # tace: lo dichiara nel testo stesso. Un silenzio non dichiarato e'
+    # indistinguibile da un'assenza di problemi.
+    #
+    # Fix E1-①: `compose_briefing()` non e' protetta, e legge `memory_store`
+    # (SQLite): puo' sollevare su un `memoria.db` corrotto o in lock. Senza
+    # questo try/except ogni `POST /api/chat` risponderebbe 500. Il ripiego
+    # non e' una stringa vuota (che `if briefing_text:` scarterebbe, e che il
+    # modello leggerebbe come "casa vuota" invece che "guasto"): dichiara il
+    # guasto, come il nucleo fa per i registri caduti (`non_disponibili`) e
+    # per lo stato inaffidabile (`stato_non_letto`).
     try:
         briefing_text, _briefing_summary = compose_briefing(app)
     except Exception as exc:
@@ -492,16 +456,6 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     if said:
         context_parts.append(said)
     return "\n\n".join(context_parts)
-
-
-# fetta «le promesse seguono la catena» (22/08/2026): `_bridge_on` e
-# `_subscription_can_answer` sono USCITE da qui e vivono in `app/steering.py`,
-# insieme alla decisione che compongono. Restavano importabili da questo nome
-# per due soli chiamanti -- questa funzione e i suoi test -- e lasciarle qui
-# avrebbe reso circolare l'import: la chat chiede a `steering`, e
-# `steering` avrebbe dovuto chiedere alla chat.
-#
-# Non sono un doppione ri-esportato: si importano da dove vivono.
 
 
 def _who_answered_note(request: web.Request, *, reason: str) -> str:
@@ -564,7 +518,7 @@ async def _enqueue_chat_job(
 
     # Built AFTER the append above, so the current user turn is the last
     # entry — the external runner needs it to know what it's replying to.
-    # Task 12: stesso secondo lavoro di `giorni_conservazione` del ramo
+    # Task 12: stesso secondo lavoro di `retention_days` del ramo
     # sincrono qui sotto (`handle_chat`) — il ponte non deve rileggere piu'
     # conversazione di quanto l'utente abbia scelto.
     history = load_history(data_dir, thread=thread, days=settings.retention_days)
@@ -620,8 +574,8 @@ async def _enqueue_chat_job(
         "restrict_to_home": settings.restrict_to_home,
         "response_mode": settings.response_mode,
         # Il modello del piano e' un CAMPO, letto dall'archivio a ogni turno
-        # come la scadenza qui sopra e il tetto piu' su: e' il TERZO valore che
-        # questo punto legge da `models_config["ponte"]`.
+        # come la scadenza qui sopra: sono i due valori che questo punto legge
+        # da `models_config["ponte"]`.
         #
         # Fino alla 3.1.0 qui si componeva
         # `cli_model(resolve_model("auto", "chat", provider_models["claude"]))`,
@@ -890,10 +844,9 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     decision = job.get("decision") or {}
     reply = decision.get("reply")
     if status in ("expired", "failed"):
-        # Never spin forever: the ponte-push sweep (server.py's
-        # _reasoning_sweep) already left non-holistic jobs in this state
-        # without routing them anywhere else -- this is the only place they
-        # get surfaced to the user.
+        # Never spin forever: the sweep (server.py's `_reasoning_sweep`)
+        # leaves jobs in this state without routing them anywhere else --
+        # this is the only place they get surfaced to the user.
         return web.json_response({
             "status": "error",
             "message": "La risposta non è arrivata in tempo. Riprova.",
@@ -928,16 +881,6 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         # 'failed' -- e 'failed' esce dal ramo di errore qui sopra.
         return web.json_response({"status": "pending"})
     payload = {"status": "done", "reply": reply}
-    # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): `tools_called`
-    # e' la SOLA cosa che rende osservabile una scrittura di `remember` fatta
-    # dal ponte -- vedi il docstring in cima a `agent/runner.py`. Compare in
-    # `decision` SOLO quando `_reason_chat` ha girato in modalita' `live`
-    # (un job mock o un `decision_json` scritto prima di questo deploy non
-    # porta la chiave): questo `if` e' l'unico cambio a questa funzione, i
-    # rami "pending"/"error" sopra restano identici. Il conteggio dei giri
-    # "esposto dove l'utente lo vede" (progetto, Sec5.2) e' len() di questa
-    # stessa lista lato client: non serve un secondo contatore qui da tenere
-    # allineato con lei.
     # Gli strumenti del turno vanno nei LOG a livello debug, non nella risposta.
     #
     # Fino al 17/08/2026 finivano in `payload["debug"]["tools_called"]` e il
@@ -969,13 +912,6 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
 
 
 async def handle_chat(request: web.Request) -> web.Response:
-    # fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
-    # il vecchio calcolo dell'identita' utente e il suo inoltro ai runner
-    # (`user_id=`) sono usciti -- `user_id` non aveva piu' nessun lettore nel
-    # corpo dei due runner (il suo unico lettore era il ramo di scorta
-    # rimosso da questo stesso task), quindi il valore entrava nei runner e
-    # veniva buttato in silenzio. Nessun altro punto di questa funzione lo
-    # legge: e' uscito con lui, non lasciato come calcolo morto.
     try:
         body = await request.json()
     except Exception:
@@ -1122,7 +1058,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # una conversazione e scrivere la risposta in un'altra sarebbe peggio.
     with _sync_turn(request.app, thread):
         # Load server-side history (client-sent history field is ignored).
-        # Task 12: `giorni_conservazione` fa qui il suo SECONDO lavoro -- non solo
+        # Task 12: `retention_days` fa qui il suo SECONDO lavoro -- non solo
         # la potatura notturna, ma anche quanto di questa conversazione HIRIS
         # rilegge adesso. Riletto a ogni turno dall'archivio come il modello
         # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
@@ -1135,18 +1071,10 @@ async def handle_chat(request: web.Request) -> web.Response:
 
         context_history = _trim_history(history)
 
-        # fetta E4 Task 4: il ramo "agent is None -> BASE_SYSTEM_PROMPT senza
-        # cronologia" non esiste piu'. Prima, un chatbot seminato mancante (id
-        # sbagliato, seed mai girato) faceva silenziosamente cadere `agent` a
-        # `None`: il prompt degradava a una stringa vuota E la cronologia
-        # smetteva di essere letta/scritta, senza che nessun log lo dicesse.
         # `chat_settings` non e' mai `None` (`ChatSettings.load` non lo
-        # restituisce mai) -- quel ramo di degrado e' impossibile per
-        # costruzione, non solo non piu' preso. fetta E4 Task 5 ("un bot solo"):
-        # anche l'id transitorio che qui sotto selezionava la cronologia
-        # (`effective_chatbot_id`) e' uscito. Dalla fetta «le chat divise»
+        # restituisce mai). Dalla fetta «le chat divise»
         # `load_history`/`get_past_summaries` leggono la cronologia del FILO di
-        # chi scrive (`thread`, calcolato in cima), non piu' una sola per tutti.
+        # chi scrive (`thread`, calcolato in cima), non una sola per tutti.
         system_prompt = _build_system_prompt(settings)
 
         # Il soffitto di chi ha scritto (I-1): si legge UNA volta per turno.
@@ -1171,25 +1099,15 @@ async def handle_chat(request: web.Request) -> web.Response:
                                            said_before=unanswered_assistant_lines(
                                                history))
 
-        # I sedici strumenti della chat -- il perche' di ogni riga sta
+        # Gli strumenti della chat -- il perche' di ogni riga sta
         # nel docstring di `create_tool_dispatcher` (sopra), che dalla
         # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
         # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
         # che possono divergere.
         #
-        # fix round 1 (Important 3 della review indipendente): il commento che
-        # viveva qui descriveva un ramo -- il "dispatcher di scorta"
-        # `self._dispatcher`, che leggeva `visible_entity_ids` e degradava APERTO
-        # quando assente -- gia' uscito dai runner alla fetta E2 Task 7
-        # (`ToolDispatcher`) e i cui ultimi resti (il costruttore `dispatcher=`,
-        # l'`elif self._dispatcher is not None`) sono usciti dalla fetta E4,
-        # Task 6. `visible_entity_ids` non e' piu' un parametro di nessuna firma:
-        # non c'e' piu' niente da riaprire ne' da tenere chiuso su quel fronte, la
-        # trappola stessa non esiste piu'.
-        #
         # fetta «costruire»: l'identita' di QUESTO turno si conia UNA volta qui,
         # non dentro il dispatcher -- questa funzione risponde a UNA richiesta
-        # HTTP sola (sincrona o in streaming, mai entrambe), quindi un turno le
+        # HTTP sola, quindi un turno le
         # basta. Serve alla guardia dell'officina (`propose`/`confirm`, vedi
         # il docstring di `create_tool_dispatcher`).
         exchange_id = secrets.token_urlsafe(8)
@@ -1218,35 +1136,9 @@ async def handle_chat(request: web.Request) -> web.Response:
         # here. Kept as a literal only because runner.chat still takes
         # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
         agent_type = "chat"
-        # fetta E4 Task 4: `max_tokens` era uno dei sette campi che il turno di
-        # chat leggeva dal vecchio `Chatbot`, ma GIA' inerte in pratica -- non e'
-        # entrato in `ChatSettings`, diventa qui una costante diretta:
-        # la chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
-        # modulo dei runner (4096), perche' una risposta lunga -- il riepilogo di
-        # una casa grande, un elenco di ricordi -- lo supera legittimamente.
-        #
-        # fetta E4 Task 9 (il conto): questo commento diceva "higher output ceiling
-        # than the per-agent eval cap" e "complex requests -- a multi-view
-        # dashboard, a long script -- legitimately need more room, and the old 4096
-        # default truncated them mid-tool-call". Tre dichiarazioni false al
-        # presente, stessa famiglia bonificata al Task 8 in claude_runner.py
-        # (`_TRUNCATION_NOTICE`, il commento su `MAX_TOKENS`): l'agente di
-        # valutazione col suo tetto e' uscito con la fetta E3 Task 8
-        # (`run_with_actions`/`EVALUATION_TOOL_DEFS`) -- non c'e' piu' un "eval cap"
-        # con cui confrontarsi; le plance e gli script non sono piu' cose che HIRIS
-        # sa fare (l'attuazione e' uscita con la fetta E2), quindi non sono l'uso
-        # che riempie il tetto; e nessun tool-call puo' essere troncato "a meta'"
-        # per colpa di un default che nessun chiamante di produzione raggiunge piu'
-        # (qui si passa SEMPRE `CHAT_MAX_TOKENS`).
-        #
-        # Il vecchio codice "floorava" un valore persistito fino a
-        # CHAT_MAX_TOKENS -- ma senza piu' un editor che possa persisterne uno
-        # diverso da 4096 (uscito con la E4 Task 3), il floor scattava SEMPRE:
-        # usare direttamente CHAT_MAX_TOKENS e' lo stesso comportamento, senza il
-        # giro morto.
-        # `require_confirmation` (l'altro dei sette campi, gia' inerte da fetta E2
-        # Task 5) e' uscito per intero dalla firma dei runner alla fetta E4 Task 6:
-        # non c'e' piu' nulla da passare qui.
+        # La chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
+        # modulo dei runner, perche' una risposta lunga -- il riepilogo di una
+        # casa grande, un elenco di ricordi -- lo supera legittimamente.
         agent_max_tokens = CHAT_MAX_TOKENS
         agent_restrict = settings.restrict_to_home
         agent_response_mode = settings.response_mode
@@ -1265,7 +1157,6 @@ async def handle_chat(request: web.Request) -> web.Response:
                     max_tokens=agent_max_tokens,
                     agent_type=agent_type,
                     restrict_to_home=agent_restrict,
-                    # Vedi il commento gemello sul ramo streaming sopra.
                     response_mode=agent_response_mode,
                     thinking_budget=agent_thinking_budget,
                     tools=KNOWLEDGE_TOOLS,
@@ -1292,16 +1183,6 @@ async def handle_chat(request: web.Request) -> web.Response:
             # se e' vivo e' esattamente cio' che questa fetta chiude altrove.
             response = exc.friendly_message
 
-        # Fetta "esce il documentale": qui c'era la detokenizzazione della
-        # risposta prima del controllo di tossicita', della persistenza e della
-        # serializzazione. Esce con brain/privacy.py, e non cambia il testo di un
-        # carattere: la pseudonimizzazione era INERTE nell'intero prodotto --
-        # l'unico ramo che popolava `last_pseudonym_map` (il dispatcher che
-        # passava `pseudonym_map=` a `dispatch()`) e' uscito con la fetta E2
-        # Task 7, quindi da allora `detokenize` girava su un dizionario vuoto.
-        # Era, testualmente, una promessa di protezione non mantenuta: la stessa
-        # famiglia della frase su `mayan.sensitivity` che esce con questa fetta.
-
         # Persist the new user+assistant exchange — but skip when the runner
         # returned a synthetic error / leak sentinel, so the next turn doesn't
         # inherit a degraded history. The user retains the visible error in the
@@ -1313,17 +1194,6 @@ async def handle_chat(request: web.Request) -> web.Response:
             ], data_dir, thread=thread)
 
     raw = getattr(runner, "last_tool_calls", None)
-    # Pass the raw tool-call objects ({tool, input}) — the shape the panel's
-    # appendDebug() and the SSE done-event both expect. Previously this used
-    # t.get("name"), but last_tool_calls keys are "tool"/"input", so every entry
-    # was None; appendDebug then threw on t.input AFTER the answer had rendered,
-    # surfacing a spurious "Errore di connessione" with no backend-side error.
-    # Review finale fetta E2, I-4: la redazione dell'OTP di confirm_pending
-    # (qui e nella gemella `_redact_stream_tool_calls`, claude_runner.py) e'
-    # uscita -- confirm_pending non e' dichiarato in nessun catalogo
-    # raggiungibile, quindi un tool_use con quel nome non arriva mai qui:
-    # l'impianto OTP e' uscito col Task 5, non esiste piu' un codice da
-    # nascondere.
     tools_called = [
         {"tool": t.get("tool", ""), "input": t.get("input")}
         for t in raw if isinstance(t, dict)

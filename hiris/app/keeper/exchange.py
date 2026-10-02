@@ -380,8 +380,10 @@ def _system_prompt() -> str:
 def _domanda(promise: dict) -> str:
     """La domanda, con l'istantanea di partenza accanto.
 
-    L'istantanea porta valore, unita' e istante della misura: senza, «e'
-    aumentata» non ha un termine di paragone e il modello se lo inventerebbe.
+    Di ogni voce dell'istantanea si rendono l'entita', il valore e l'unita':
+    senza, «e' aumentata» non ha un termine di paragone e il modello se lo
+    inventerebbe. L'istantanea porta anche l'istante (`misurato_ts`) e, per
+    un'entita' che non esisteva, una `nota`: qui non si rendono.
     """
     righe = ["Me l'hai chiesto cosi': «{}».".format(promise["frase"]),
              "Quello che devi guardare: {}".format(promise["domanda"])]

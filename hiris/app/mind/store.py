@@ -11,7 +11,7 @@ il 15/09/2026, e l'ha trovato la revisione indipendente.
 
 **Perche' 21 giorni e non una notte.** La proprieta' che rende buono lo schema
 a due strati e' che sbagliare l'aggregazione costa un GIORNO, non tutto: finche'
-il grezzo c'e', gli oggetti si rifanno. Ma il modo di costruirli cambiera' --
+il grezzo c'e', i resoconti si rifanno. Ma il modo di costruirli cambiera' --
 le prime settimane sono quelle in cui si sta ancora imparando -- e con una notte
 sola ogni miglioramento varrebbe solo da domani. Ventuno giorni sono TRE
 MERCOLEDI', l'unita' dell'esempio da cui nasce tutto il cervello.
@@ -23,10 +23,10 @@ a `READING_RETENTION_S`.
 **Perche' non e' il ritorno di `history.db`.** Quello scriveva e nessuno
 leggeva, e l'avvio lo tratta ancora oggi come un residuo da rimuovere. La
 differenza non e' di forma, e' di destino: quello nasceva senza lettore, questo
-nasce col lettore -- l'analista e' la fetta successiva, e senza gli oggetti non
-puo' esistere. **Se l'analista non venisse costruito, questo archivio va
-cancellato**, non lasciato a scrivere: e' la stessa regola che ha condannato il
-primo.
+ha i suoi -- l'aggregazione del giorno (`mind/facts.py`), la pagina
+dell'osservatore e l'analista, che legge le misure dei resoconti. Un archivio
+che scrive senza lettori va cancellato, non lasciato a scrivere: e' la regola
+che ha condannato il primo.
 """
 from __future__ import annotations
 
@@ -237,8 +237,8 @@ def _migration_5(conn) -> None:
     nome non lo portavano. **Non si riempiono a posteriori** dall'anagrafe
     di oggi -- sarebbe attribuire a ieri il nome di oggi, esattamente cio'
     che questa colonna esiste per non fare. Chi legge le rende dicendo che
-    quello che mostra e' un identificatore (`static/config/watcher-route.js`,
-    `describeWatchedSubject`), mai inventando un nome dall'id.
+    quello che mostra e' un identificatore (`describeWatchedSubject`, nelle
+    pagine dell'osservatore in `static/config/`), mai inventando un nome dall'id.
     """
     _add_missing_columns(conn, ("friendly_name",))
 
@@ -270,7 +270,7 @@ def _migration_7(conn) -> None:
 
 #: Cosa si scrive al posto di un numero calcolato con un'operazione che il
 #: registro non sa piu' eseguire dentro una ricetta. Sta qui accanto alla
-#: migrazione, come `_MIGRATED_REASON`, perche' una migrazione deve dire fra
+#: migrazione perche' una migrazione deve dire fra
 #: due anni la stessa cosa che dice adesso.
 _WITHDRAWN_REASON = (
     "calcolata con \u00ab{operazione}\u00bb, che il registro non sa piu' eseguire "
@@ -743,9 +743,9 @@ class ObservationsStore:
 
         `friendly_name` e' il nome che Home Assistant ha GIA' composto per
         l'entita' al momento del cambio -- **grezzo anche lui**, e per la
-        stessa ragione degli altri, piu' una che vale solo per lui: gli
-        `oggetti` sopravvivono ai `cambi`, quindi un nome risolto dopo su un
-        oggetto vecchio non si troverebbe piu' (vedi `_migration_5`).
+        stessa ragione degli altri, piu' una che vale solo per lui: i
+        resoconti sopravvivono ai `cambi`, quindi un nome risolto dopo su un
+        giorno vecchio non si troverebbe piu' (vedi `_migration_5`).
         Annullabile: una condizione di sistema non e' un'entita' e non ne
         porta uno, e su un'entita' HA scrive l'attributo solo se il nome
         composto non e' vuoto (`helpers/entity.py:1166-1167` @ `2026.9.1`).
@@ -780,12 +780,8 @@ class ObservationsStore:
     def replace_report(self, day: str, report: dict) -> None:
         """Scrive il resoconto di un giorno, **sostituendo** quello che c'era.
 
-        **Rifare un giorno lo sostituisce e non lo accoda.** Era «stessa
-        disciplina di `replace_day`», e quella funzione non esiste piu': e'
-        uscita il 15/09/2026 con la tabella degli oggetti (`_migration_10`),
-        lasciando qui il rinvio a un nome che chi legge non puo' trovare (giro
-        di correzioni 1, punto 2). La disciplina, che era sua e resta,
-        e' scritta qui sopra. Sbagliare un resoconto costa **un giorno**, e solo
+        **Rifare un giorno lo sostituisce e non lo accoda.** Sbagliare un
+        resoconto costa **un giorno**, e solo
         finche' il grezzo di quel giorno esiste -- e' la promessa dei due
         strati, e senza la sostituzione non sarebbe vera.
         """
@@ -1287,8 +1283,10 @@ class ObservationsStore:
         """`{impronta: prova}` per le proposte che l'attuatore non deve rifare.
 
         **Ci stanno anche quelle in ATTESA**: una coda aperta non si duplica.
-        Una proposta rifiutata torna solo se la prova cambia -- il confronto lo
-        fa `actuator.to_handle`, qui si consegna cio' su cui e' stato deciso.
+        Oggi chi la legge (`_file_proposals`, in `server.py`) salta ogni
+        domanda che ha gia' una proposta, SENZA confrontare la prova: il
+        confronto di `actuator.to_handle`, che la riaprirebbe a prova cambiata,
+        questo dizionario non lo riceve.
         """
         with self._lock:
             rows = self._conn.execute(
@@ -1351,10 +1349,3 @@ class ObservationsStore:
                 righe_tolte += cur.rowcount or 0
             self._conn.commit()
         return righe_tolte
-
-    # **Gli OGGETTI sono usciti** (spec §13, 15/09/2026), e con loro
-    # `facts()` e `replace_day()`. La tabella la lascia cadere
-    # `_migration_10`; il docstring di `prune` qui sopra, che prometteva
-    # di non toccarli, parla ormai di una cosa che non c'e' piu' -- resta
-    # perche' la ragione ("due vite, due tabelle") vale ancora per il
-    # grezzo contro i resoconti.

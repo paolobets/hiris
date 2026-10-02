@@ -24,11 +24,12 @@ valore irripetibile, impronta del corpo. Firmare la sola identita' lascerebbe
 cambiare cio' che la richiesta chiede tenendo buona la firma, e lascerebbe
 valere per una scrittura una firma nata per una lettura.
 
-**Tre posti, separati apposta** (spec §7): la chiave pubblica e il ruolo stanno
-nelle opzioni dell'add-on, perche' sono la decisione del proprietario su quel
-dispositivo; **che il canale esista** sta qui nel codice. Un nome non dichiarato
-e' rifiutato anche con una firma perfetta, cosi' aggiungere un'integrazione
-costringe a decidere il suo perimetro invece di fargli ereditare tutto.
+**Dove sta la decisione** (dal 22/09/2026): la chiave pubblica e il ruolo
+stanno nell'archivio dei servizi (`api/servizi.py`, `servizi.db`), scritti
+quando il proprietario approva l'accoppiamento. Una chiave che l'archivio non
+autorizza e' rifiutata anche con una firma perfetta, cosi' aggiungere
+un'integrazione costringe a decidere il suo perimetro invece di fargli
+ereditare tutto.
 
 **Cosa questa credenziale NON fa**: non sostituisce TLS e non lo finge. Risponde
 a *chi sei* e *questa richiesta e' intatta*, non a *chi puo' leggerla*.

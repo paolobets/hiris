@@ -1,17 +1,16 @@
-"""L'aggregazione: dai cambi grezzi agli oggetti.
+"""L'aggregazione: dai cambi grezzi agli episodi della cronaca.
 
-**Un oggetto e' una cosa compiuta della casa**: qualcosa che e' cominciato, e'
-durato, e' finito -- con dentro chi lo ha fatto e cosa c'era attorno mentre
-durava.
+**Un episodio e' una cosa compiuta della casa**: qualcosa che e' cominciato,
+e' durato, e' finito.
 
-    Riscaldamento camera: acceso 15:30 -> 17:05. Temperatura da 18,2 a 21,0.
+    Riscaldamento camera: acceso 15:30 -> 17:05.
 
 **E' l'unico posto di questa fetta dove si giudica**, ed e' voluto: un giudizio
 qui si rifa' finche' il grezzo esiste (22 giorni: 21 di promessa, uno di
 guardia -- vedi `mind/store.READING_RETENTION_S`), uno preso in scrittura non
 si corregge piu'.
 
-**L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di oggetto ne
+**L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di episodio ne
 esce.** La prima non e' una lista scritta a mano: e' lo scope
 (`mind/watcher.py`, `store.is_watched`), una decisione presa soggetto per
 soggetto dall'osservatore (`mind/observer.py`, spec §5.1) -- non piu' derivata
@@ -78,11 +77,10 @@ GENRES = CHRONICLE_GENRES
 #: Assistant, ma una condizione di sistema: una voce del registro di errori
 #: (`problema:`, `integrazione:`, `log:` -- Task 2 «le tracce e il log») o
 #: un'esecuzione di automazione in errore (`automazione:`, Task 4 dello
-#: stesso verticale). **Il suo unico lettore e' `genre_for`**, qui sotto, che
-#: ne fa un `guasto`. Fino al 09/09/2026 (audit delle fondamenta) la stessa
-#: tupla era scritta a mano in tre posti; gli altri due lettori sono usciti:
-#: `api/handlers_mind.py::_with_rendered_states` il 15/09/2026 con gli oggetti
-#: (commit `b2b2b55e`), `_reading_aspect` il 17/09/2026 con la gamba.
+#: stesso verticale). **Il lettore della tupla e' `genre_for`**, qui sotto, che
+#: ne fa un `guasto`. I singoli prefissi sono riletti a mano anche in
+#: `api/handlers_mind.py::_with_integration` e in
+#: `mind/watcher.py::rebuild_conditions`.
 NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
 
 # **Il riposo e' del SOGGETTO, non l'unione di tutti i tipi** (17/09/2026, spec

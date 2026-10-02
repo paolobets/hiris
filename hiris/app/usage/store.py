@@ -170,8 +170,6 @@ CREATE TABLE IF NOT EXISTS payload (
 );
 """
 
-# I contatori che si sommano. Uno solo, perche' l'elenco scritto tre volte in
-# tre query e' il modo in cui una colonna nuova entra in due su tre.
 #: **Per quanto si tengono i due registri della misura.** Trenta giorni, e si
 #: dichiara: un registro di misura che cresce per sempre e' esattamente il
 #: difetto che il reperto C-6 ha chiuso il 23/09/2026 -- ogni archivio dice
@@ -314,6 +312,8 @@ def compact_tool_args(inputs: list) -> list[dict]:
     return out
 
 
+# I contatori che si sommano. Un elenco solo, perche' scritto a mano in ogni
+# query e' il modo in cui una colonna nuova entra in una e non nell'altra.
 CAMPI = ("richieste", "token_in", "token_out", "cache_lettura",
          "cache_scrittura", "errori_rate_limit")
 

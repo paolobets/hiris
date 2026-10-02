@@ -53,13 +53,9 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # pagina che apre per prima, e senza questa riga la vedrebbe vuota finche'
     # non scrive un messaggio (spec §3).
     await adopt_if_owner(request.app, request, thread)
-    # Task 12: prima di questo task `load_history` leggeva sempre il globale
-    # `chat_store.HISTORY_RETENTION_DAYS` -- questa pagina era GIA' filtrata
-    # dallo stesso numero, per accidente di implementazione condivisa, non
-    # per scelta dichiarata qui. Passare `giorni_conservazione` esplicitamente
-    # mantiene lo stesso comportamento invece di farlo silenziosamente
-    # ricadere sul default (90) del parametro qualunque cosa l'utente abbia
-    # scelto in «Impostazioni chat».
+    # Si passa `retention_days` esplicitamente: senza, `load_history`
+    # ricadrebbe in silenzio sul default del suo parametro, qualunque cosa
+    # l'utente abbia scelto in «Impostazioni chat».
     giorni = request.app["chat_settings"].retention_days
     # collaudo 3.22, C4: `include_timestamp=True` SOLO qui -- questa e' la
     # rotta che disegna le bolle, e disegnarle con `new Date()` "al momento

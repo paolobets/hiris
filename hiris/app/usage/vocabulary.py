@@ -56,9 +56,9 @@ def cost_state_and_value(provider: str, model: str, *,
                   cost_da_listino: float | None) -> tuple[str, float | None]:
     """Lo stato del costo di UNA chiamata, e il costo che le corrisponde.
 
-    `costo_dichiarato` e' quello che il provider ha detto di aver addebitato --
+    `cost_dichiarato` e' quello che il provider ha detto di aver addebitato --
     OpenRouter lo mette in `usage.cost` a ogni risposta, sempre, anche in
-    streaming. `costo_da_listino` e' quello che il runner ha calcolato dai
+    streaming. `cost_da_listino` e' quello che il runner ha calcolato dai
     prezzi in `pricing.py`, e vale solo se quel modello e' davvero in tabella:
     altrimenti e' lo zero del ripiego, che non significa «gratis».
     """
@@ -78,7 +78,7 @@ def local_day(now: float, timezone: str = "") -> str:
 
     In UTC le 00:30 del 22 agosto a Roma sono ancora il 21: un secchiello
     giornaliero calcolato in UTC racconterebbe una bugia ogni notte. Il fuso lo
-    sa l'anagrafe (`HomeSpaceStore.sistema_di_riferimento()['fuso']`), che tace
+    sa l'anagrafe (`HomeSpace.reference_frame()['fuso']`), che tace
     quando non lo sa: senza, si ripiega su UTC -- e la pagina lo dichiara,
     invece di far passare un giorno spostato per un giorno.
     """

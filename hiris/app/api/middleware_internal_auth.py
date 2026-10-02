@@ -39,13 +39,15 @@ async def _is_supervisor_ingress(request: web.Request) -> bool:
 
     1. `X-Ingress-Path` c'e' e ha la forma del Supervisor -- che chiunque puo'
        scrivere, quindi da solo non dimostra niente;
-    2. l'indirizzo sorgente e' quello di cui ci si fida, e dal 22/09/2026
-       quello e' **l'indirizzo a cui risponde il nome «supervisor»**, risolto
-       all'avvio: uno solo, non la rete Docker intera dove vive ogni add-on
-       installato.
+    2. l'indirizzo sorgente sta nel perimetro che l'avvio ha calcolato
+       (`ingresso.perimetro_fidato`): dal 22/09/2026 **l'indirizzo a cui
+       risponde il nome «supervisor»**, uno solo. Se il nome non si risolve
+       valgono le reti scritte nelle opzioni, e se l'elenco e' vuoto
+       `_supervisor_cidrs` ripiega su `_DEFAULT_SUPERVISOR_CIDRS`, cioe' la
+       rete Docker intera dove vive ogni add-on installato.
 
-    Un add-on vicino puo' falsificare l'intestazione. Non puo' presentarsi
-    dall'indirizzo del Supervisor.
+    Un add-on vicino puo' falsificare l'intestazione. Col nome risolto non
+    puo' presentarsi dall'indirizzo del Supervisor.
     """
     ingress_path = request.headers.get("X-Ingress-Path", "")
     if not ingress_path or not _INGRESS_PATH_RE.match(ingress_path):
@@ -79,9 +81,7 @@ async def _is_supervisor_ingress(request: web.Request) -> bool:
     # proprietario chiuso fuori dal proprio pannello -- vedi `api/ingresso.py`,
     # dove la lezione sta scritta per esteso.
     #
-    # A stringere e' adesso l'INDIRIZZO: `reti_di_fiducia` crede al solo
-    # indirizzo a cui risponde il nome «supervisor», non alla rete Docker
-    # intera dove vive ogni add-on installato.
+    # A stringere e' adesso l'INDIRIZZO: vedi il docstring qui sopra.
     return True
 
 
@@ -95,12 +95,6 @@ _MOMENTO = "X-HIRIS-Momento"
 _UNICO = "X-HIRIS-Unico"
 _FIRMA = "X-HIRIS-Firma"
 
-#: Le intestazioni con cui il Supervisor dice CHI sta chiamando. Verificato il
-#: 21/09/2026 sul sorgente (`supervisor/api/ingress.py::_init_header`): le
-#: compone da `session_data.user` e **filtra via le stesse in ingresso** prima
-#: di aggiungere le proprie, quindi attraverso l'ingress non sono falsificabili.
-#: Su ogni altra strada lo sono, ed e' il motivo per cui si leggono in un ramo
-#: solo.
 #: Il rifiuto di chi non ha nessuna delle tre credenziali. **Dice cosa fare**:
 #: un'integrazione non aggiornata trova una porta chiusa, e senza questa frase
 #: chi la mantiene passerebbe il pomeriggio a leggere il registro.
@@ -112,6 +106,12 @@ _ISTRUZIONI = (
     "quattro cifre. Il segreto condiviso non esiste più dal 22/09/2026."
 )
 
+#: Le intestazioni con cui il Supervisor dice CHI sta chiamando. Verificato il
+#: 21/09/2026 sul sorgente (`supervisor/api/ingress.py::_init_header`): le
+#: compone da `session_data.user` e **filtra via le stesse in ingresso** prima
+#: di aggiungere le proprie, quindi attraverso l'ingress non sono falsificabili.
+#: Su ogni altra strada lo sono, ed e' il motivo per cui si leggono in un ramo
+#: solo.
 _CHI = "X-Remote-User-Id"
 _NOME = "X-Remote-User-Display-Name"
 _UTENTE = "X-Remote-User-Name"
@@ -244,11 +244,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
             return refusal
         return await handler(request)
 
-    # **La credenziale EFFIMERA del ponte** (spec §5, ingresso 7), e si guarda
-    # PRIMA del segreto condiviso per la stessa ragione per cui la firma si
-    # guarda prima di entrambi: finche' il segreto lungo vince, chi ce l'ha non
-    # ha nessun motivo di passare a una credenziale che scade, e il ripiego non
-    # finisce mai.
+    # **La credenziale EFFIMERA del ponte** (spec §5, ingresso 7).
     #
     # Il ponte non e' una persona e non e' un'integrazione registrata: e' HIRIS
     # che lavora per conto suo, per il tempo di un turno. Da cui `specie:

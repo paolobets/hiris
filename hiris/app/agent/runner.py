@@ -1,113 +1,65 @@
 """Runner hiris-agent: polla la coda di ragionamento HIRIS e ragiona (mock|live).
 
-Porta in-addon del runner del gateway esterno (hiris-mcp-gateway/agent/runner.py).
-La credenziale di TURNO -- coniata da `server.py`, vive dieci minuti -- e' usata
-per l'HTTP verso la reasoning
-API (`/api/reasoning/claim` e `/api/reasoning/submit`).
+Gira dentro l'add-on (`run_loop`, avviato da `server.py`). La credenziale di
+TURNO -- coniata da `server.py`, vive dieci minuti (`api/credenziali.PONTE_S`)
+-- serve all'HTTP verso la reasoning API (`/api/reasoning/claim` e
+`/api/reasoning/submit`) e alla rotta degli strumenti (`/api/mcp`).
 
-OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
-anche AGIRE su di essa -- gli strumenti sono sedici, lo stesso catalogo della
-chat sincrona (`home_space/tools.py`): fra loro `execute` chiama un servizio di
-Home Assistant passando per la porta dei servizi (`action/actuator.py`), e
-`propose`/`confirm` (fetta «costruire») passano per l'officina
-(`action/construction/workshop.py`) -- due canali, due porte, non piu' una
-sola. Le note che seguono sono la STORIA di come ci si e' arrivati, e sono al
-passato apposta: fino alla review
-totale della parita' B la prima di esse affermava al PRESENTE il contrario, ed
-era la prima cosa che un lettore di questo file trovava. La riga qui sopra ha
-appena smesso a sua volta di dire «e NON agisce» (fetta «comandare», Task 5):
-lo stesso difetto, un giro dopo.
+**Cosa puo' il ponte.** LEGGE la casa e la memoria e puo' AGIRE su di essa,
+con lo stesso catalogo della chat sincrona (`home_space/tools.KNOWLEDGE_TOOLS`):
+`execute` chiama un servizio di Home Assistant passando per la porta dei
+servizi (`action/actuator.py`), e `propose`/`confirm` passano per l'officina
+(`action/construction/workshop.py`) -- due canali, due porte.
 
-STORIA (Fetta E2 Task 3): il percorso `claude --mcp-config` verso l'MCP interno
-(Piano 2A, hiris/app/mcp/) usci' insieme al server che serviva -- era il terzo
-catalogo di strumenti della mappa del prodotto. Da allora, e fino alla parita'
-B, `_reason_chat` ragionava SENZA STRUMENTI: non poteva guardare la casa in quel
-momento ne' salvare o richiamare ricordi, e non poteva controllarla.
+**Il contesto.** Il job di chat porta `contesto`, la STESSA stringa che il ramo
+sincrono passa al runner (`handlers_chat.compose_chat_context`), e
+`_reason_chat` la passa a `prompts.build_chat_messages`: una fotografia della
+casa presa quando il messaggio e' stato accodato.
 
-fetta "il ponte riceve il nucleo" (parita' A, Task 2): questa nota diceva
-«ragiona in puro testo, senza poter leggere o controllare la casa». La prima
-meta' e' diventata falsa: il job di chat porta ora anche `contesto`, la
-STESSA stringa che il ramo sincrono passa al runner
-(`handlers_chat.compose_chat_context`: nucleo + sessioni precedenti), e
-`_reason_chat` la passa a `prompts.build_chat_messages`. Il modello quindi
-LEGGE una fotografia della casa, presa quando il messaggio e' stato accodato;
-cio' che continua a non poter fare e' guardarla ADESSO e agire su di essa.
-Gli strumenti restavano fuori; li ha riattaccati la fetta B
-(docs/superpowers/plans/2026-08-10-il-ponte-riceve-gli-strumenti.md), qui sotto.
-
-fetta "il ponte riceve gli strumenti" (parita' B, Task 3): li ha riattaccati.
-Le due note qui sopra sono ora vere solo per il ramo di DEGRADO. Il ponte
-chiede alla rotta `POST /api/mcp` (Task 1) se gli strumenti ci sono
-(`probe_tools`), e da quell'UNICO booleano discendono insieme il prompt
-(`prompts.build_chat_messages(strumenti_attivi=...)`) e l'argv
-(`_chat_claude_args(strumenti_attivi=..., mcp_config=...)`): non esistono due
-decisioni da tenere allineate. Quando la sonda dice di si', il modello puo'
-guardare la casa ADESSO, salvare o richiamare ricordi e -- dalla fetta
-«comandare» -- far succedere qualcosa in casa, coi nomi che MCP gli
-serve (`mcp__hiris__search`, ...). Quando dice di no -- ed erano attesi -- il
-prompt torna a negarli e la `reply` lo dichiara ANCHE all'utente, in una riga
+**Gli strumenti: un solo booleano.** Il ponte chiede alla rotta `POST /api/mcp`
+se gli strumenti ci sono (`probe_tools`), e da quell'UNICO booleano discendono
+insieme il prompt (`prompts.build_chat_messages(active_tools=...)`) e l'argv
+(`_chat_claude_args(active_tools=..., mcp_config=...)`): non esistono due
+decisioni da tenere allineate. Il modello li vede coi nomi che MCP gli serve
+(`mcp__hiris__search`, ...). Quando la sonda dice di no -- ed erano attesi --
+il prompt li nega e la `reply` lo dichiara ANCHE all'utente, in una riga
 premessa: mai una risposta che sembra normale.
 
-fetta "il ponte riceve gli strumenti" (parita' B, Task 4): gli stati sono TRE,
-non due -- strumenti attivi, strumenti mai attesi, e strumenti attesi e non
-arrivati IN QUESTO TURNO. Il terzo nasce quando l'evento `system/init` della CLI
-smentisce la sonda (`verify_init`): li' l'invocazione si BUTTA e se ne
-ricompone una senza strumenti, una sola volta. Il terzo stato non ha un terzo
-testo di guida -- `_GUIDE_WITHOUT_TOOLS` e' vera anche li' -- e cio' che lo
-distingue e' `MISSING_TOOLS_NOTICE`, la riga che l'utente legge.
+**Gli stati sono TRE**, non due: strumenti attivi, strumenti mai attesi, e
+strumenti attesi e non arrivati IN QUESTO TURNO. Il terzo nasce anche quando
+l'evento `system/init` della CLI smentisce la sonda (`verify_init`): li'
+l'invocazione si BUTTA e se ne ricompone una senza strumenti, una sola volta.
+Il terzo stato non ha un terzo testo di guida -- `_GUIDE_WITHOUT_TOOLS` e' vera
+anche li' -- e cio' che lo distingue e' `MISSING_TOOLS_NOTICE`, la riga che
+l'utente legge.
 
-fetta "il ponte riceve gli strumenti" (parita' B, Task 5): da qui `ricorda' e'
-raggiungibile ANCHE dal ponte, e scrive in `memoria.db` -- il primo effetto
-DURATURO che il ponte sappia produrre. Il ramo sincrono lo mostra all'utente
-(`handlers_chat.py`, `tools_called`); il ponte no, e con le sicurezze fuori
-dall'UAT (decisione del proprietario) quella riga e' l'unica cosa che rende
-osservabile una scrittura che non doveva avvenire. `read_stream` la raccoglie
-dallo STESSO flusso che gia' legge (nessuna seconda lettura), `_reason_chat`
-la mette in `decision["tools_called"]`, nella STESSA forma del ramo sincrono.
+**Cio' che il turno ha chiamato.** `read_stream` raccoglie i blocchi `tool_use`
+dallo STESSO flusso che gia' legge, e `_reason_chat` li mette in
+`decision["tools_called"]`: e' cio' che rende osservabile una scrittura fatta
+dal ponte (un `remember` scrive in `memoria.db`).
 
-fetta "il ponte riceve gli strumenti" (parita' B, Task 6): il ponte ora
-manda anche `X-HIRIS-Turno` dentro la `--mcp-config` (`config_mcp`), un
-`secrets.token_urlsafe` mintato UNA volta per turno (non per invocazione
-della CLI), a prescindere da quante invocazioni il turno finira' per avere
-(Task 4). E' il gancio con cui `api/handlers_mcp.py` tiene
-il tetto ai giri di strumento per turno (`MAX_TOOL_ROUNDS`): il freno che
-sostituisce un `--max-turns` che la CLI non
-ha (verificato su `claude --help`) -- l'unico che l'abbonamento abbia, visto
-che `chat_daily_cap` conta i turni accodati e non i giri dentro ciascuno.
+**Il tetto ai giri.** Il ponte manda `X-HIRIS-Turno` dentro la `--mcp-config`
+(`config_mcp`), un `secrets.token_urlsafe` coniato UNA volta per turno, non per
+invocazione della CLI. E' il gancio con cui `api/handlers_mcp.py` tiene il
+tetto ai giri di strumento per turno (`MAX_TOOL_ROUNDS`), che conta un giro per
+OGNI `tools/call` arrivata sulla rotta, comprese quelle parallele della stessa
+risposta della CLI. Il tetto sincrono (`MAX_TOOL_ITERATIONS`) conta invece un
+giro per risposta del modello: vedi il commento su `MAX_TOOL_ROUNDS`.
 
-Fix "il ponte muore a 9" (2026-08-21): `MAX_TOOL_ROUNDS` era rimasto a 10
-mentre la fetta "i riferimenti" alzava a 50 solo `MAX_TOOL_ITERATIONS` del
-ramo sincrono -- un turno reale (8 stanze + 1 `cerca` + la `prometti`
-finale) moriva sul ponte esattamente come sarebbe morto il sincrono col
-vecchio tetto. La decisione del proprietario era "50 per chat e promessa",
-non "50 solo sul ramo sincrono": i due tetti tornano allo stesso numero.
-Cio' che resta diverso, e va tenuto a mente, e' COSA contano: il tetto
-sincrono conta un giro per risposta del modello (N blocchi `tool_use`
-paralleli costano una iterazione sola), questo tetto del ponte conta un
-giro per OGNI `tools/call` che arriva sulla rotta, comprese quelle
-parallele della stessa risposta della CLI -- vedi il commento su
-`MAX_TOOL_ROUNDS` in `api/handlers_mcp.py` per il dettaglio.
+**Le specie.** Qui arrivano la chat, le promesse e i turni degli attori
+(`RAGIONABILI`), tutti per `_reason_chat`. Gli attori non ricevono ne' il
+nucleo ne' gli strumenti (`_SELF_CONTAINED_KINDS`).
 
-Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
-ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
-AGIRE». La fetta l'ha cambiata. Gli strumenti sono sedici (hiris/app/home_space/
-tools.py): il ponte agisce quando la sonda dice di si', esattamente come
-la chat sincrona, per la porta dei servizi (`esegui`) o, dalla fetta
-«costruire», per quella della configurazione (`costruisci`/`conferma`).
-
-Cio' che resta vero e' il confine sul GIUDIZIO: nessun turno decide di agire
-o cosa dire senza una frase scritta da una persona. Non e' piu' vero -- dalla
-fetta «schedulare» -- che nessuna esecuzione possa partire senza una frase
-IN QUESTA conversazione: `prometti` lascia una frase di adesso eseguire piu'
-tardi, e questo e' esattamente il modulo da cui puo' partire. Un turno
-`chiedi` di una promessa arriva QUI (`keeper/exchange.py::interpreta_promise`
--> `who_answers` -> `_enqueue_to_bridge`, quando il ponte e' la via) tanto
-quanto un turno di chat vero: il battito dello schedulatore
-(`keeper/sweeper.py`, ogni 15 s) lo sveglia da solo, ore dopo la
-promessa e senza nessuno in chat in quel momento. Il giudizio (cosa fare, e
-se) resta della persona che ha promesso; il MOMENTO in cui accade no --
-vedi `README.md`, sezione «What HIRIS 2.0 is», per la stessa distinzione
-scritta per l'utente."""
+**Il confine sul GIUDIZIO.** Nessun turno di chat o di promessa decide di agire
+senza una frase scritta da una persona. Non e' vero pero' che nessuna
+esecuzione parta senza una frase IN QUESTA conversazione: `promise` lascia una
+frase di adesso eseguire piu' tardi. Un turno `chiedi` di una promessa arriva
+QUI (`keeper/exchange.py::interpreta_promise` -> `who_answers` ->
+`_enqueue_to_bridge`, quando il ponte e' la via) tanto quanto un turno di
+chat: il battito dello schedulatore (`keeper/sweeper.py`) lo sveglia da solo,
+ore dopo la promessa e senza nessuno in chat in quel momento. Il giudizio
+(cosa fare, e se) resta della persona che ha promesso; il MOMENTO in cui
+accade no."""
 import asyncio
 import json
 import logging
@@ -153,8 +105,8 @@ _LOCAL_TOOLS_DENY = (
 # -- fetta "il ponte riceve gli strumenti" (parita' B, Task 3): L'INTERRUTTORE -
 # Da qui in giu' vive un solo booleano. Lo decide `probe_tools` un istante
 # prima che si componga qualsiasi cosa, e alimenta INSIEME il prompt
-# (`prompts.build_chat_messages(strumenti_attivi=...)`) e l'argv
-# (`_chat_claude_args(strumenti_attivi=...)`), nella stessa funzione e a due
+# (`prompts.build_chat_messages(active_tools=...)`) e l'argv
+# (`_chat_claude_args(active_tools=...)`), nella stessa funzione e a due
 # righe di distanza (`_reason_chat`). Non esistono due decisioni da tenere
 # allineate: e' l'unica difesa strutturale contro il difetto numero uno di
 # questo prodotto -- un prompt che promette capacita' che l'invocazione non da'.
@@ -173,13 +125,11 @@ _LOCAL_TOOLS_DENY = (
 def _mcp_server_name() -> str:
     """Il nome con cui il server MCP si presenta alla CLI, dall'UNICA fonte.
 
-    L'import e' DIFFERITO -- dentro la funzione e non in cima al file -- per un
-    motivo misurato, non per stile: `api/handlers_chat.py` importa `cli_model`
-    da QUESTO modulo, e `api/handlers_mcp.py` importa `handlers_chat`. Un import
-    in cima chiude il cerchio e rompe l'avvio: verificato prima di scrivere
-    questa riga, `ImportError: cannot import name 'modello_cli' from partially
-    initialized module 'hiris.app.agent.runner' (most likely due to a circular
-    import)`.
+    L'import e' DIFFERITO -- dentro la funzione e non in cima al file. Lo
+    obbligava un ciclo che non c'e' piu': `api/handlers_chat.py` importava
+    `cli_model` da QUESTO modulo, e `api/handlers_mcp.py` importa
+    `handlers_chat`. Oggi importare `api/handlers_mcp.py` non carica questo
+    modulo (misurato il 02/10/2026), e l'import potrebbe salire in cima.
 
     Ricopiare "hiris" qui sarebbe il secondo posto da tenere allineato, e non un
     posto qualunque: da questo nome discende il prefisso `mcp__hiris__` che
@@ -202,12 +152,12 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     per chiudere (tre cataloghi divergenti della stessa cosa). Cosi' uno
     strumento che entra o esce da `home_space/tools.py` arriva qui da solo.
 
-    E' una funzione e non una costante di modulo per la stessa ragione
-    dell'import differito qui sopra: il prefisso ha bisogno del nome del server,
-    che a import-time non si puo' ancora leggere."""
+    E' una funzione e non una costante di modulo: il catalogo dipende dal
+    turno (`by_promise`), e il prefisso dal nome del server, che si legge con
+    l'import differito qui sopra."""
     prefix = f"mcp__{_mcp_server_name()}__"
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
-    # promessa ne vede sei -- i cinque lettori di `SOLA_LETTURA` piu'
+    # promessa vede i lettori di `SOLA_LETTURA` piu'
     # `conclude` -- e i due elenchi non sono l'uno il sottoinsieme dell'altro:
     # `conclude` esiste solo di la', `execute` solo di qua.
     #
@@ -230,7 +180,8 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     verso `/api/mcp`: e' cosi' che quella rotta sa QUALE turno sta chiamando
     e puo' tenere il tetto ai giri di strumento per turno
     (`api/handlers_mcp.MAX_TOOL_ROUNDS`) -- il freno che sostituisce un
-    `--max-turns` che la CLI non ha (verificato su `claude --help`). Non e'
+    `--max-turns` che la CLI non aveva quando il tetto e' nato (vedi il
+    commento su quella costante). Non e'
     un'autenticazione (quella resta il token qui sopra) e non va scambiata
     per tale: un turno sbagliato o assente non lascia entrare nessuno che
     non ci fosse gia'. **Dalla fetta «costruire» pero' non serve piu' solo a
@@ -241,9 +192,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     invariata. Toglierla o smettere di propagarla non e' piu' un dettaglio
     del conteggio: apre il cancello del consenso in silenzio, lasciando
     passare una `confirm` nello stesso turno della `propose` che l'ha
-    proposta. Resta comunque il gancio esatto su cui la fase sicurezze potra'
-    innestare il "token per-invocazione di validita' pari al turno" che il
-    progetto suggerisce (§3.3), senza dover inventare un secondo meccanismo.
+    proposta.
     Il default vuoto (nessuna intestazione aggiunta) e' cio' che permette a
     `test_tools_to_bridge.py`/`test_agent_runner_inaddon.py` di continuare
     a chiamare questa funzione coi soli due argomenti di sempre: un tetto
@@ -257,7 +206,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     silenzioso che "un tetto per-turno deve sapere cosa fa quando il turno si
     sdoppia" (Task 6) esiste per escludere. **Oggi la seconda invocazione di
     un turno ritentato riparte SEMPRE senza strumenti** (Task 4: l'`init` ha
-    smentito la sonda, e si ricompone `strumenti_attivi=False`), quindi non
+    smentito la sonda, e si ricompone `active_tools=False`), quindi non
     chiama mai `config_mcp` e questa identita' non le arriva comunque -- ma
     e' coniata una volta sola A PRESCINDERE da quel dettaglio, cosi' la
     proprieta' regge anche il giorno in cui una fetta futura ritentasse CON
@@ -278,7 +227,8 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
         mai l'evento intero -- e per questo nessun ramo di `_reason_chat`
         stampa l'argv.
     (2) **`X-Requested-With` oltre al token.** Il token da solo basterebbe --
-        `csrf_middleware` esenta chi ne porta uno valido -- ma cosi' la rotta
+        `csrf_middleware` esenta chi il confine ha riconosciuto come turno
+        (`auth_via`) -- ma cosi' la rotta
         dipenderebbe da UN SOLO ramo di UN SOLO middleware. Mandandoli entrambi
         passa da qualunque dei due sopravviva (decisione A.3; entrambi i rami
         sono pinnati in tests/test_mcp_route.py).
@@ -294,7 +244,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
     # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
     # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
-    # `promise_tools()` (i cinque lettori piu' `conclude`) e dispaccia
+    # `promise_tools()` (i lettori piu' `conclude`) e dispaccia
     # con `PromiseDispatcher`. Come `X-HIRIS-Turno` qui sopra NON e'
     # un'autenticazione -- quella resta il token -- e per questo la rotta la
     # VERIFICA contro una promessa `in_corso` invece di crederle.
@@ -458,12 +408,11 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     portano `X-HIRIS-Internal-Token`, e con un valore che il protocollo HTTP
     non accetta il client solleva **col valore dentro** (`LocalProtocolError:
     Illegal header value b'...'`, verificato contro un listener vero al fix
-    round 2 del Task 3). Fino a oggi quel canale era chiuso da una dipendenza
-    scritta in un docstring altrui -- la vecchia `invalid_token_reason`
-    rifiuta i caratteri di controllo all'avvio -- cioe' da una difesa che sta
-    in un altro file e che nessun test legava a questa riga.
+    round 2 del Task 3). Quel canale era chiuso solo da una validazione
+    all'avvio che stava in un altro file, uscita col segreto condiviso il
+    22/09/2026, e che nessun test legava a questa riga.
 
-    Qui la dipendenza smette di essere l'unica difesa: si passa dalla
+    Qui si passa dalla
     redazione che c'e' gia' (`reda_segreti` su tutte le `token_forms`),
     invece di aprire una via nuova. **Il messaggio non si butta**: perdere il
     testo dell'eccezione renderebbe illeggibile il log del giro
@@ -471,10 +420,9 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     e un log che non serve a diagnosticare e' il primo che smette di essere
     letto.
 
-    `token=None` significa "quello di produzione", letto dove lo legge
-    `build_headers` -- che e' esattamente il token che i due giri
-    (`run_loop`, `main`) mandano nell'header del claim. Chi ne avesse uno
-    diverso in mano passa il suo.
+    `token` e' la credenziale da redigere, e chi chiama la passa: `run_loop`
+    passa quella del giro in corso. Senza (`None` o vuota) non c'e' niente da
+    redigere, e il messaggio esce com'e'.
 
     **Dove NON si applica, e perche'**: `probe_tools` continua a mettere
     nel motivo il messaggio grezzo. Non e' una dimenticanza -- vedi la nota
@@ -520,24 +468,23 @@ def probe_tools(client, base_url: str, headers: dict,
     sottinteso): il ramo `except` mette nel motivo il messaggio dell'eccezione,
     e con un token che contiene CR/LF/NUL il client HTTP solleva **col valore
     dentro** -- verificato contro un listener vero, `LocalProtocolError: Illegal
-    header value b'...'`. La promessa regge perche' un token del genere non
-    arrivava fin qui: la vecchia `invalid_token_reason` lo rifiutava
-    all'avvio, lo dichiara nel log e lascia in piedi il rifiuto-per-difetto. Se
-    quella validazione sparisse, questo docstring tornerebbe falso.
+    header value b'...'`. La promessa regge perche' la credenziale e' sempre
+    un `secrets.token_urlsafe` (`api/credenziali.py`), che quei caratteri non
+    li contiene; fino al 22/09/2026 li escludeva una validazione all'avvio,
+    uscita col segreto condiviso.
 
     Task 4: **questa e' l'unica dipendenza del genere che resta scoperta**, ed
     e' scoperta di proposito. Farla passare da `_exception_reason` (la
-    redazione usata per il settimo canale, in `run_once`) chiuderebbe il buco
-    da sola -- ma renderebbe rosso
+    redazione usata per il settimo canale, in `run_loop`) chiuderebbe il buco
+    da sola -- ma renderebbe rossa la prova di `tests/test_tools_to_bridge.py`
     che pinna contro un listener VERO proprio il fatto che il valore finisce
-    nel messaggio dell'eccezione, e quel file e' fra i «cosa RESTA e non si
-    tocca» di questa fetta. Provato: la redazione funziona (il motivo diventa
-    `Illegal header value b'***'`). Si consegna al task che potra' riscrivere
-    quel pin insieme al codice, invece di scavalcarlo qui."""
+    nel messaggio dell'eccezione. Provato: la redazione funziona (il motivo
+    diventa `Illegal header value b'***'`)."""
     # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
     # stessa cosa che il turno usera': con l'intestazione della promessa la
-    # rotta serve dieci strumenti, senza ne serve sedici, e una sonda che
-    # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
+    # rotta serve il catalogo della promessa, senza quello della chat, e una
+    # sonda che chiedesse l'uno per poi usare l'altro proverebbe il turno
+    # sbagliato.
     definitions = promise_tools() if promise_id else KNOWLEDGE_TOOLS
     awaited = {d["name"] for d in definitions}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
@@ -605,7 +552,7 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     `--verbose` e' OBBLIGATORIO: senza, la CLI non emette gli eventi
     intermedi e l'`init` non arriva mai.
 
-    fetta "il ponte riceve gli strumenti" (parita' B, Task 3): `strumenti_attivi`
+    fetta "il ponte riceve gli strumenti" (parita' B, Task 3): `active_tools`
     e' la META' ARGV dell'interruttore unico -- l'altra meta' e' la guida del
     prompt, e le due si leggono dalla stessa variabile in `_reason_chat`. Con
     `True` si aggiungono due opzioni, e nessuna e' facoltativa:
@@ -653,11 +600,12 @@ def _chat_claude_args(system: str, user: str, model: str, *,
 
 
 def cli_model(resolved_model: str) -> str:
-    """Traduce il modello GIA' RISOLTO della chat (`resolve_model`, che puo'
-    restituire un modello di QUALUNQUE provider configurato in
-    `provider_models` -- claude, openai, openrouter) in un alias della CLI
-    `claude`, l'unica cosa con cui questo ponte parla (solo abbonamento, mai
-    API a consumo -- vedi `_SUBPROCESS_ENV_DENYLIST` sopra).
+    """Riduce un nome di modello a un alias della CLI `claude`, l'unica cosa
+    con cui questo ponte parla (solo abbonamento, mai API a consumo -- vedi
+    `_SUBPROCESS_ENV_DENYLIST` sotto). Oggi la chiamano il validatore del
+    campo `ponte.modello` (`handlers_models._clean_subscription_model`) e la
+    semina di quel campo in `server.py`: cio' che arriva nel job e' gia' un
+    alias.
 
     fetta "il ponte riceve il nucleo" (parita' A, Task 4): passare un modello
     non-Anthropic (es. `gpt-4o`) a `claude --model` fa fallire OGNI turno con
@@ -1177,10 +1125,8 @@ def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple
     return True, ""
 
 
-# Iniettato da `server.py` quando parte il lavoratore in-addon. Resta `None`
-# nel percorso a PROCESSO SEPARATO (`main()`, il gateway esterno), dove `/data`
-# non e' di questo processo: li' l'uso continua a finire solo nel log, ed e'
-# dichiarato invece che dimenticato.
+# Iniettato da `server.py` quando parte il lavoratore in-addon. Finche' resta
+# `None` (una suite, per esempio) l'uso finisce solo nel log.
 _log_usage = None
 
 
@@ -1475,8 +1421,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     """Chat-via-abbonamento: risponde come HIRIS CON il contesto della casa --
     il nucleo e le sessioni precedenti che il job porta nella chiave `contesto`
     (fetta "il ponte riceve il nucleo", parita' A, Task 2) -- e, dalla fetta
-    "il ponte riceve gli strumenti" (parita' B, Task 3), anche con i QUATTRO
-    STRUMENTI, serviti dalla rotta `POST /api/mcp`. Fail-safe: mode!=live ->
+    "il ponte riceve gli strumenti" (parita' B, Task 3), anche con gli
+    strumenti, serviti dalla rotta `POST /api/mcp`. Fail-safe: mode!=live ->
     mock; su errore torna sempre una {"reply": <str>}.
 
     `client`/`base_url`/`headers` sono keyword-only e con default, e i default
@@ -1706,23 +1652,15 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         return {"reply": reda_segreti(text, *forms),
                "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
 
-    # fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello non
-    # e' piu' `HIRIS_AGENT_CHAT_MODEL` (env mai esportata da run.sh --
-    # censita fra le "lette e mai esportate": in produzione era SEMPRE
-    # "sonnet", qualunque cosa l'utente scegliesse per la chat) ma quello
-    # scelto per la chat, gia' risolto e tradotto in alias CLI da
-    # `handlers_chat._enqueue_chat_job` (`resolve_model` + `cli_model`,
-    # sopra) prima di entrare nel job. L'`or` qui e' legittimo, non un
-    # errore di configurazione mascherato: copre SOLO il job legacy del
-    # Task 2 (accodato prima di questo deploy, quando il context non
-    # portava affatto la chiave `model`) -- per quel job "sonnet" e'
-    # esattamente il comportamento di prima di questo task, non un
-    # degrado nuovo, quindi non e' uno dei silenzi dichiarati della fetta.
+    # Il modello e' quello del piano (`models_config["ponte"]["modello"]`),
+    # gia' un alias della CLI: lo mette nel job chi accoda
+    # (`handlers_chat._enqueue_chat_job`). L'`or` copre un job che non porta
+    # la chiave `model`: per quello vale "sonnet".
     model = context.get("model") or "sonnet"
     invocations = 0
 
     def _invoca(active_tools: bool) -> Invocation | None:
-        """UN'invocazione intera della CLI, composta dal SOLO `strumenti_attivi`.
+        """UN'invocazione intera della CLI, composta dal SOLO `active_tools`.
 
         fetta "il ponte riceve gli strumenti" (parita' B, Task 4). Prima di
         questo task queste righe stavano distese nel corpo di `_reason_chat`;
@@ -1730,7 +1668,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         volte**, e la seconda volta deve essere la STESSA composizione con
         l'altro argomento -- non una variante scritta a parte. E' l'interruttore
         unico che regge anche al secondo giro: `mcp_config`, `system` e `argv`
-        nascono qui dentro, tutti e tre da `strumenti_attivi`, e non esiste un
+        nascono qui dentro, tutti e tre da `active_tools`, e non esiste un
         punto in cui il prompt possa restare avanti all'argv.
 
         `None` = esito (5): la CLI non parte, non c'e', o non finisce in tempo.
@@ -1979,17 +1917,6 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         return _reply(f"{MISSING_TOOLS_NOTICE}\n\n{text}")
     return _reply(text)
 
-#: Le specie di turno che il ponte sa servire. E' un'affermazione **di questo
-#: modulo su se stesso** -- «questi so ragionarli» -- non una copia dei nomi
-#: che i produttori si danno: `api/handlers_chat.py` accoda `chat`,
-#: `keeper/exchange.py` accoda `promessa`, `mind/observer.SCOPE_TURN_KIND`
-#: accoda `scope`. Tutti e tre finiscono in `_reason_chat`, perche' un turno
-#: e' un turno: cambia il CONTENUTO (la domanda, il prompt di sistema,
-#: l'intestazione MCP), e il contenuto arriva tutto dal contesto del job.
-#:
-#: `scope` entra l'11/09/2026, con la fetta «l'osservatore chiede a chi
-#: risponde davvero». Prima l'osservatore non poteva arrivare qui affatto:
-#: chiedeva a `llm_router`, dove il piano non e' un anello.
 #: Il nome della specie dell'osservatore, usato anche fuori dal dispaccio (la
 #: sonda degli strumenti, il ramo del contesto): un letterale ripetuto in tre
 #: punti di questo file sarebbe un refuso che non fallisce, solo cambia
@@ -2043,35 +1970,28 @@ _ANALYSIS_KIND = "analisi"
 _SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,
                          ACTUATION_TURN_KIND)
 
+#: Le specie di turno che il ponte sa servire. E' un'affermazione **di questo
+#: modulo su se stesso** -- «questi so ragionarli» -- non una copia dei nomi
+#: che i produttori si danno. Tutte finiscono in `_reason_chat`, perche' un
+#: turno e' un turno: cambia il CONTENUTO (la domanda, il prompt di sistema,
+#: l'intestazione MCP), e il contenuto arriva tutto dal contesto del job.
 RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND,
                _ANALYSIS_KIND, ACTUATION_TURN_KIND)
 
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",
            headers: dict | None = None) -> dict:
-    """Il runner del ponte ragiona le specie dichiarate in `RAGIONABILI`.
+    """Il runner del ponte ragiona le specie dichiarate in `RAGIONABILI`,
+    tutte per lo stesso ramo (`_reason_chat`).
 
-    fetta E4 Task 8 ("un bot solo"): il ramo olistico e' uscito, con lui
-    `prompts.build_holistic_prompt`/`_SYSTEM` e l'intero apparato che ne
-    interpretava la risposta (`Decision`, `VERDICT_*`, `_parse_decision`,
-    `parse_decision`). Il motivo e' che nessuno puo' piu' produrre un job
-    diverso da quelli in `RAGIONABILI`; il produttore dei job olistici
-    (`_holistic_reason`) e' uscito alla fetta E3 Task 4.
-
-    **Non piu' «solo i job di chat»** (correzione della review indipendente,
-    11/09/2026): il docstring diceva anche che «l'unico `enqueue` del repo e'
-    `kind="chat"`», falso da due fette -- `keeper/exchange.py` accoda
-    `promessa` dal 22/08/2026 e `mind/observer` accoda `scope` dall'11/09.
-    Tre produttori, tre specie, un ramo solo.
-
-    Silenzio dichiarato: un job di una specie che non e' in `RAGIONABILI` puo'
-    arrivare qui SOLO da un reasoning.db lasciato da un'installazione
-    precedente questo deploy.
+    Silenzio dichiarato: un job di una specie che non e' in `RAGIONABILI`
+    arriva qui da un reasoning.db lasciato da un'installazione precedente, o
+    da un produttore nuovo che accoda una specie senza dichiararla qui (il
+    cancello `tests/test_attuatore_sul_ponte.py` esiste per questo).
     Non lo si ignora in silenzio -- un pass muto sarebbe indistinguibile da
     un'assenza di problemi: un log esplicito lo dichiara e la decisione
-    restituita e' VUOTA (nessun verdetto, nessuna azione). A valle,
-    `handle_reasoning_submit` (api/handlers_reasoning.py) la registra e
-    basta: non attua piu' nulla da fetta E3 Task 9."""
+    restituita e' VUOTA. A valle, `handle_reasoning_submit`
+    (api/handlers_reasoning.py) la registra e basta."""
     kind = (job or {}).get("kind")
     if kind in RAGIONABILI:
         # Un turno di promessa E' un turno: stessa sonda degli strumenti,
@@ -2080,15 +2000,13 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
         # conversazione, il prompt del turno di promessa al posto di quello
         # della chat, e l'id della promessa nella mcp-config -- e il contenuto
         # arriva tutto dal contesto del job (`keeper/exchange.
-        # _accoda_al_ponte`). Un `_reason_promessa` gemello avrebbe duplicato
-        # trecento righe di macchinario per cambiare tre stringhe: e' la
+        # _enqueue_to_bridge`). Un gemello per le promesse avrebbe duplicato
+        # tutto il macchinario per cambiare tre stringhe: e' la
         # «funzione doppia» che CLAUDE.md vieta, e la copia sarebbe rimasta
         # indietro alla prima correzione fatta di qua.
         #
-        # Il nome della funzione resta `_reason_chat` per non toccare
-        # settantuno riferimenti scritti in prosa nei commenti di questo file
-        # e di `prompts.py`: il churn supererebbe il chiarimento. Il docstring
-        # dice cosa serve davvero.
+        # Il nome della funzione resta `_reason_chat` anche se serve ogni
+        # specie: il docstring dice cosa serve davvero.
         # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): il client e
         # la base_url del giro passano di qui SENZA essere ricostruiti. La sonda
         # degli strumenti deve girare sullo STESSO `httpx.Client` del claim e
@@ -2101,11 +2019,6 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
         "decisione vuota, il ramo olistico e' uscito con la fetta E4 Task 8",
         (job or {}).get("job_id"), kind)
     return {}
-
-# Qui viveva `build_headers()`, che leggeva `INTERNAL_TOKEN` dall'ambiente ed
-# e' uscita il 22/09/2026 col segreto condiviso (reperto A-5). Le intestazioni
-# del ponte le CONIA `server.py::_intestazioni_ponte`: una credenziale che vive
-# dieci minuti e vale solo per lui. Chi chiama `reason` porta le proprie.
 
 
 def run_once(client, base_url: str, headers: dict, mode: str) -> str:
@@ -2162,10 +2075,3 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
                 log.warning("run_once errore: %s", _exception_reason(
                     exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
             await asyncio.sleep(poll_seconds)
-
-
-# E qui viveva `main()`, il punto d'ingresso del worker come processo a se'
-# (`python -m hiris.app.agent.runner`, con `HIRIS_BASE_URL`). Niente
-# nell'immagine lo avvia -- il ponte gira dentro l'add-on, da `run_loop` -- e
-# l'unica cosa che ancora faceva era leggere il segreto condiviso. Esce con lui:
-# ogni fetta e' anche pulizia.

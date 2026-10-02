@@ -232,8 +232,8 @@ class Workshop:
         un'automazione o una scena -- Home Assistant quel corpo lo mostra
         solo agli amministratori (`/api/config/<dominio>/config/<chiave>`,
         `@require_admin` in `components/config/view.py`, Core 2026.9.3; per
-        le automazioni anche `automation/config`). Gli script restano come in
-        `view`: `script/config` non e' riservato. Il «prima» si archivia
+        le automazioni anche `automation/config`). Per gli script no:
+        `script/config` non e' riservato. Il «prima» si archivia
         comunque intero: applicare e rimettere com'era ne hanno bisogno, e
         la pagina delle costruzioni e' di chi costruisce.
 

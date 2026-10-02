@@ -2,8 +2,8 @@
 
 Gli attori e cio' su cui lavorano (ricavato da `ls` il 28/09/2026):
 
-- l'**osservatore** guarda la casa e ne ricava oggetti: `watcher`, `observer`,
-  `scope`, `cadence`, `facts`, `report`;
+- l'**osservatore** guarda la casa e ne ricava il resoconto di ogni giorno:
+  `watcher`, `observer`, `scope`, `cadence`, `facts`, `report`;
 - il **sapere** e le **ricette** -- cio' che HIRIS ha capito della casa e come
   si calcola una misura: `knowledge`, `seed`, `recipes`, `recipe_turn`,
   `operations`, `judgments`;

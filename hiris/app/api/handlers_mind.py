@@ -5,23 +5,13 @@ Sei: `watching`, `report`, `analysis`, `knowledge` e le POST `objective` e
 Nate come due (fetta «l'osservatore», `docs/design/2026-08-26-l-osservatore.md`
 §7), cresciute con la spec dei tre attori (§8, §9, §10, §11).
 
-Non serializzano niente per conto proprio. `Watcher.watching()` e gli archivi
-gia' tornano la forma che la pagina mostra -- una seconda forma costruita qui
-la farebbe divergere il primo giorno in cui qualcuno aggiunge un campo da una
-parte sola (fondamenta 3). (`ObservationsStore.facts()`, citato qui fino al
-15/09/2026, e' uscito con lo strato degli oggetti nella 3.43.0.)
-
-**L'unica eccezione, e porta il suo perche' (fetta «lo stato», 07/09/2026):
-la RESA dello stato.** L'archivio continua a scrivere lo stato GREZZO --
-`heat`, `not_home`, `triggered` -- perche' e' quello il fatto, ed e' quello
-che `mind/facts.py` confronta coi riposi e i «non lo so» del vocabolario dei
-tipi per aprire e chiudere gli episodi: scriverci «Riscaldamento»
-romperebbe l'aggregazione, e tenere
-entrambi in colonna sarebbe il doppione che le fondamenta vietano. La resa
-avviene qui, al confine, in un campo ACCANTO al grezzo e mai sopra -- la
-stessa disciplina di `nome`/`nome_dedotto` in `memory/resolver.py`. Non e'
-una seconda forma dell'oggetto: e' una chiave in piu' su quella che
-l'archivio ha gia' dato, e chi legge usa la resa se c'e' e il grezzo se no.
+`Watcher.watching()` e gli archivi gia' tornano la forma che la pagina
+mostra -- una seconda forma costruita qui la farebbe divergere il primo giorno
+in cui qualcuno aggiunge un campo da una parte sola (fondamenta 3). Cio' che
+queste rotte AGGIUNGONO sta in funzioni col loro nome, e sono chiavi ACCANTO a
+quelle dell'archivio, mai sopra: l'integrazione delle voci tecniche
+(`_with_integration`), le escluse (`_left_out`), il volume (`_volume`), i nomi
+(`_named`, `_with_device_names`), gli esiti dell'attuatore (`_with_outcomes`).
 
 **503, non un elenco vuoto, quando manca il collaboratore.** Spec §7: la
 pagina esiste perche' il proprietario possa vedere «cosa sto guardando e
@@ -65,7 +55,7 @@ async def handle_watching(request: web.Request) -> web.Response:
 
     Spec §5.1 e §11 **non sono due pagine**: l'elenco di cio' che si guarda e'
     anche la prova che l'obiettivo e' stato capito. Per questo la rotta porta
-    tutte e cinque le parti in una risposta sola -- chi legge deve poter
+    tutte le parti in una risposta sola -- chi legge deve poter
     confrontare le scelte con la domanda a cui rispondono senza cambiare
     schermata:
 
@@ -91,12 +81,12 @@ async def handle_watching(request: web.Request) -> web.Response:
       violata dalla pagina che la dichiarava;
     - `volume` -- **quante righe grezze al giorno**. E' la contropartita onesta
       dello scope: fino all'11/09/2026 nessuna porta lo esponeva, e la
-      promessa della spec non era verificabile da fuori. **Adesso lo e', e la
-      smentisce**: la spec §5.3 promette -83% (da 29.227 a 4.951 righe), e
-      questa porta ha risposto 13.945 il 15/09/2026 -- circa il triplo. La
+      promessa della spec non era verificabile da fuori. Il 15/09/2026 l'ha
+      smentita: la spec §5.3 promette -83% (da 29.227 a 4.951 righe), e
+      questa porta ha risposto 13.945 -- circa il triplo, perche' mancava la
       prima delle due regole di scrittura, «chi ha `state_class` non si
-      registra a campione», non e' mai stata scritta. E' a backlog, con questi
-      numeri.
+      registra a campione». E' stata scritta il giorno dopo
+      (`mind/watcher.Watcher.watch_reading`).
 
     **Le parti che mancano si dichiarano `None`/`[]`, non si inventano.**
     L'osservatore puo' esserci e l'archivio no (avvio a meta', o un guasto): un
@@ -207,7 +197,7 @@ async def handle_report(request: web.Request) -> web.Response:
 
     **Un giorno mai aggregato torna 404, non un resoconto vuoto**: «quel
     giorno non e' successo niente» e «quel giorno non l'abbiamo guardato» sono
-    due cose diverse, e l'analista deve poterle distinguere.
+    due cose diverse, e chi legge deve poterle distinguere.
     """
     store = request.app.get("observations")
     if store is None:

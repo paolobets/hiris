@@ -2,7 +2,7 @@
 chiamata.
 
 Perche' un file suo, e non dentro `resolver.py`: `costruisci_indice()` e'
-dichiarata PURA nel suo stesso docstring -- stessi argomenti, stesso
+PURA -- stessi argomenti, stesso
 risultato, nessuno stato che sopravvive alla chiamata -- ed e' la proprieta'
 su cui poggiano i test di B3/B4/B5. Una cache e' l'opposto per natura: STATO
 che sopravvive fra le chiamate e puo' mentire se la chiave sbaglia. Tenerle
@@ -11,10 +11,11 @@ domanda che richiede di leggere anche una classe stateful per rispondere. Qui
 `LookupCache` CHIAMA `costruisci_indice()`, non la sostituisce e non la
 modifica: nessuna riga di questo file cambia cosa contiene un `Lookup`.
 
-`ToolDispatcher` nasce a OGNI turno (`handlers_chat.py:76`, per design:
+`ToolDispatcher` nasce a OGNI turno (`handlers_chat.create_tool_dispatcher`,
+per design:
 senza un dispatcher per-chiamata i runner degradano ogni tool a un errore
 "non disponibile"). Una cache sull'istanza del dispatcher aiuterebbe solo
-DENTRO un turno -- il caso vero misurato (`cerca` chiamato quattro volte per
+DENTRO un turno -- il caso vero misurato (la ricerca chiamata quattro volte per
 le abat-jour) e' esattamente questo, ma non basta: `LookupCache` e' pensata
 per essere costruita UNA VOLTA, accanto a `entity_cache`
 (`hiris/app/server.py`), e passata al dispatcher come dipendenza a ogni
@@ -34,7 +35,7 @@ Chi chiama `get_lazy()` porta due cose:
   metodo `get()` che lo serviva. L'etichetta resta: e' cio' che impedisce a
   un secondo chiamante di ricevere l'indice di un altro.
 - `aggiornata_il`: la data dell'ultima ricostruzione dell'anagrafe
-  (`HomeSpaceStore.aggiornata_il()`), o `None` quando l'anagrafe non e' mai
+  (`HomeSpace.updated_at()`), o `None` quando l'anagrafe non e' mai
   stata letta. `_remember` decide `casa={}` esattamente quando questo valore
   e' `None` (vedi `tools.py::_remember`): passare lo STESSO valore letto
   una volta sola alla decisione e alla chiave fa si' che "anagrafe non letta"
@@ -89,7 +90,7 @@ class LookupCache:
         cambiata; la casa si legge SOLO su un miss.
 
         Fix della review indipendente del Task B7: `_remember` non ha bisogno
-        di `HomeSpaceStore.leggi()` per decidere se il colpo va a segno -- la
+        di `HomeSpace.read()` per decidere se il colpo va a segno -- la
         chiave si calcola senza. `build_home_space` (un callable a zero
         argomenti, non un valore gia' letto) si invoca solo quando la voce
         salvata non e' piu' valida: su un hit non viene MAI chiamato, e la

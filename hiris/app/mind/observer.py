@@ -205,7 +205,7 @@ def bridge_turn(store, home_space: dict, only: set[str] | None = None) -> dict:
     """Il turno da accodare al ponte: **la stessa domanda, per un'altra porta**.
 
     Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job non
-    esiste per lui (vedi `keeper/exchange._accoda_al_ponte`, che fa lo stesso
+    esiste per lui (vedi `keeper/exchange._enqueue_to_bridge`, che fa lo stesso
     per una promessa). Le due chiavi sono quelle che il turno del ponte legge
     davvero -- `agent/runner._reason_chat` -> `prompts.build_chat_messages`.
 
@@ -320,7 +320,8 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
     """Un giro intero **sulla catena**: guarda la casa, chiede, e consegna la
     risposta ad `apply_answer`.
 
-    Torna il resoconto del giro -- `{"decise", "rifiutate", "ignorate"}` -- o
+    Torna il resoconto del giro, quello di `apply_answer` -- `{"decise",
+    "rifiutate", "ignorate", "omesse", "candidate"}` -- o
     `{"errore": ...}` se non si e' potuto fare.
 
     **Questa e' la porta della catena, non l'unica porta.** Chi decide fra le

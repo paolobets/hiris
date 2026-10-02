@@ -36,11 +36,6 @@ _CIRCUIT_THRESHOLD = 3
 _CIRCUIT_COOLDOWN_SEC = 60
 
 
-# fetta E4 Task 6 ("un bot solo"): `_estimate_tokens` e' uscita -- il suo
-# unico chiamante (`_track_usage`'s per-chatbot estimate branch) e' uscito
-# con lei, vedi il commento su `_track_usage` piu' sotto.
-
-
 def _status_code(exc: Exception) -> int | None:
     """Lo stato HTTP di un errore d'API, o `None` se non ne porta uno.
 
@@ -375,14 +370,11 @@ class OpenAICompatRunner:
         timeout_s: float = 0.0,
         log_usage=None,
     ) -> None:
-        # fetta «la catena diventa l'unica verita'» (Task 10): `fixed_model`
-        # era UN parametro per TRE cose insieme -- «questo e' Ollama»,
-        # «valida l'URL», «usa sempre questo modello». Le prime due sono la
-        # MODALITA' e restano legate a `local`; la terza e' una DECISIONE
-        # dell'utente, cambia da una PUT all'altra e adesso si LEGGE al
-        # momento dell'uso (`read_model`) invece di essere cotta nel
-        # costruttore -- era il motivo per cui cambiare il modello di Ollama
-        # non poteva avere effetto senza riavviare l'add-on.
+        # `local` e' la MODALITA' («questo e' Ollama», «valida l'URL»). Il
+        # modello e' una DECISIONE dell'utente, cambia da una PUT all'altra e
+        # si LEGGE al momento dell'uso (`read_model`) invece di essere cotto
+        # nel costruttore: cosi' cambiare il modello di Ollama ha effetto
+        # senza riavviare l'add-on.
         if local:
             from ..backends.ollama import _validate_ollama_url
             _validate_ollama_url(base_url)
@@ -421,26 +413,12 @@ class OpenAICompatRunner:
         # last_tool_calls is intentionally NOT initialized here — it's a
         # per-call/per-Task class-level descriptor (see above); chat() resets
         # it at the start of every call, scoped to the calling Task.
-        # fetta «i consumi, per modello» (22/08/2026): qui vivevano i contatori
-        # globali (`total_input_tokens`, `total_output_tokens`,
-        # `total_requests`, `total_cost_usd`, `total_rate_limit_errors`,
-        # `usage_last_reset`), la loro persistenza (`_load_usage`/`_save_usage`
-        # su `usage.json`, col lock che ne serializzava le scritture) e
-        # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
-        # sommava tutto insieme e non sapeva dire di quale modello parlasse --
-        # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
-        # `usage/store.py` attraverso `log_usage`, e i vecchi
-        # `usage_*.json` ci entrano una volta sola all'avvio come riga
-        # «(prima del dettaglio)»: i file restano sul disco, mai dati
-        # dell'utente cancellati in silenzio.
+        # Il consumo non si somma qui: si scrive in `usage/store.py`
+        # attraverso `log_usage`, una riga per modello.
 
     # ------------------------------------------------------------------
     # Usage tracking
     # ------------------------------------------------------------------
-
-    # fetta E4 Task 6 ("un bot solo"): `_ensure_today_reset`/`get_chatbot_usage`/
-    # `reset_chatbot_usage` sono usciti -- stessa mossa e stessa storia del
-    # commento gemello in claude_runner.py.
 
     def _cost_state(self, usage: Any, model: str) -> tuple[str, float | None, int, int]:
         """Stato del costo, costo, token IN e OUT -- per UNA `usage` gia'
@@ -476,21 +454,11 @@ class OpenAICompatRunner:
         return cost
 
     def _track_usage(self, response: Any, model: str) -> None:
-        """Aggiorna i contatori GLOBALI (total_input_tokens/total_output_tokens/
-        total_cost_usd) e persiste. fetta E4 Task 6: la stima per-chatbot che
-        viveva qui (quando `response` non porta `usage`, tipico di OpenRouter/
-        Ollama, stimata da `est_input_chars` -- il conteggio caratteri dei
-        messaggi inviati) esisteva SOLO per far "mordere" un budget
-        per-esecuzione che leggeva `get_chatbot_usage` -- quel lettore e'
-        uscito al Task 3 (rotte usage) insieme a `server.py`'s
-        `agent_run_usage`, gia' morto prima di questo task (verificato: zero
-        occorrenze in produzione). Con lui muore anche lo scopo dell'unico
-        chiamante di `_estimate_tokens` (uscita insieme, verificato zero altri
-        chiamanti) e il parametro `est_input_chars` (nessun altro lettore):
-        senza `usage` non c'e' piu' nulla da stimare o da scrivere, solo da
-        dichiarare in log. Anche PRIMA di questo task il ramo "nessun usage"
-        non alimentava i contatori globali (solo quelli per-chatbot, ora
-        usciti): nessuna regressione sui totali globali.
+        """Scrive il consumo di UNA risposta nell'archivio dei consumi
+        (`log_usage`): token, cache, costo e stato del costo, per modello.
+
+        Una risposta senza `usage` non si stima: non si scrive niente, e lo
+        si dichiara nel log. Senza il gancio `log_usage` non si scrive niente.
         """
         usage = getattr(response, "usage", None)
         if not usage:
@@ -515,10 +483,9 @@ class OpenAICompatRunner:
     def _write_rejection(self, model: str) -> None:
         """Un 429 si conta sulla riga del modello che l'ha preso.
 
-        `richieste=0`: un rifiuto non e' una richiesta servita. Oggi
-        `total_rate_limit_errors` e' un numero solo per tutto il prodotto e
-        non dice CHI stia rifiutando -- che e' l'unica cosa che serve sapere
-        quando succede.
+        `richieste=0`: un rifiuto non e' una richiesta servita. Un numero solo
+        per tutto il prodotto non direbbe CHI stia rifiutando -- che e'
+        l'unica cosa che serve sapere quando succede.
         """
         if self._log_usage is None:
             return
@@ -624,11 +591,6 @@ class OpenAICompatRunner:
             self._conn_fail_count = 0
             self._circuit_open_until = 0.0
 
-    # fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
-    # `user_id` e' uscito da `chat()`/`chat_stream()` -- stessa mossa, stessa
-    # storia del commento gemello in claude_runner.py (il suo unico lettore
-    # era il ramo di scorta rimosso da questo stesso task, sfuggito al primo
-    # giro).
     async def chat(
         self,
         user_message: str,
@@ -713,10 +675,6 @@ class OpenAICompatRunner:
         # DEVONO precedere `context_str` (vedi sopra).
         if restrict_to_home:
             system_parts.append(RESTRICT_PROMPT)
-        # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`
-        # stesso e' uscito da `chat()`/`chat_stream()` -- vedi il commento
-        # gemello in claude_runner.py per il perche' non aveva gia' piu'
-        # alcun effetto sul system prompt da prima di questo task.
         if response_mode == "compact":
             system_parts.append(COMPACT_PROMPT)
         elif response_mode == "minimal":
@@ -732,11 +690,10 @@ class OpenAICompatRunner:
         # Build tool list
         if tools is not None:
             # Il catalogo arriva gia' deciso dal chiamante. Stessa regola di
-            # ClaudeRunner.chat() (vedi il suo commento gemello).
+            # ClaudeRunner.chat().
             tools = list(tools)
         else:
-            # fetta E3 Task 8: nessun catalogo di scorta da cui pescare --
-            # vedi il commento gemello in claude_runner.chat().
+            # Nessun catalogo di scorta da cui pescare.
             tools = []
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
@@ -933,16 +890,11 @@ class OpenAICompatRunner:
                         continue
                     if dispatcher is not None:
                         # ToolDispatcher (e affini): stessa interfaccia
-                        # minima dispatch(nome, argomenti). fetta E4 Task 6:
-                        # il ramo "dispatcher di scorta" (self._dispatcher,
-                        # con le kwargs allowed_entities/allowed_services/
-                        # allowed_endpoints/chatbot_id/visible_entity_ids/
-                        # knowledge_allow_sensitive/knowledge_kinds) e' uscito
-                        # -- vedi il commento gemello in ClaudeRunner.chat().
+                        # minima dispatch(nome, argomenti).
                         result = await dispatcher.dispatch(tc.function.name, tool_input)
                     else:
-                        # ne' un dispatcher per-chiamata -- vedi il commento
-                        # gemello in ClaudeRunner.chat().
+                        # Nessun dispatcher per-chiamata: lo strumento si
+                        # dichiara non disponibile.
                         logger.debug(
                             "Strumento '%s' richiesto ma nessun dispatcher disponibile "
                             "(degradazione dichiarata, non un errore)", tc.function.name)
@@ -971,8 +923,8 @@ class OpenAICompatRunner:
                     return TOOL_LEAK_USER_MSG
                 return raw_content
 
-        # fetta "i riferimenti" (R4, Task 6): l'esaurimento non e' piu' muto
-        # -- vedi il commento gemello in claude_runner.chat(). `self.
+        # fetta "i riferimenti" (R4, Task 6): l'esaurimento non e' muto, come
+        # in `ClaudeRunner.chat()`. `self.
         # last_tool_calls` e' gia' in mano, riusato qui, non un secondo
         # tracciamento; solo i NOMI degli strumenti, mai gli argomenti.
         logger.warning(
@@ -980,7 +932,3 @@ class OpenAICompatRunner:
             max_iter, [c["tool"] for c in self.last_tool_calls],
         )
         return _MAX_ITERATIONS_NOTICE
-
-    # fetta E3 Task 8: `run_with_actions` e' uscito -- vedi il commento
-    # gemello in claude_runner.py (stesso motivo: il suo unico chiamante, la
-    # Sentinella, e' uscito al Task 7 di questa fetta).

@@ -7,12 +7,13 @@ modello sceglie, il codice fa i conti -- la stessa divisione dell'analista, e
 la ragione per cui un numero inventato dentro un rapporto che sembra
 autorevole qui e' impossibile.
 
-**Cosa ha deciso la forma di questo modulo**: le otto osservazioni vere che
-l'analista ha scritto sulla casa il 15 e il 16/09/2026. Cinque chiedono di
-indagare («il sensore era fermo?», «a che ore e' avvenuto il prelievo?»), tre
-di riparare una ricetta di HIRIS che non si esegue piu', una di cambiare un
-comportamento, **zero di costruire un'automazione**. Il mestiere
-dell'attuatore e' stato disegnato su quei numeri, non sulla parola «attuatore».
+**Cosa ha deciso la forma di questo modulo**: le osservazioni vere che
+l'analista ha scritto sulla casa il 15 e il 16/09/2026. La maggior parte
+chiedeva di indagare («il sensore era fermo?», «a che ore e' avvenuto il
+prelievo?»), alcune di riparare una ricetta di HIRIS che non si esegue piu',
+una di cambiare un comportamento, **nessuna di costruire un'automazione**. Il
+mestiere dell'attuatore e' stato disegnato su quelle, non sulla parola
+«attuatore».
 """
 from __future__ import annotations
 
@@ -54,6 +55,8 @@ def to_handle(observations, decided: dict) -> list[dict]:
 
     `decided` e' `{impronta: prova}` per cio' che il proprietario ha gia'
     deciso: si salta una domanda **solo** se la sua prova e' rimasta la stessa.
+    In produzione `server.py` la chiama con un dizionario vuoto, quindi non
+    salta niente: le domande gia' decise le salta `_file_proposals`.
     """
     seen = []
     for observation in observations or []:

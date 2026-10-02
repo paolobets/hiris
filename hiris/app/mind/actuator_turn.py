@@ -7,11 +7,11 @@ si corregge -- si rifiuta per intero, e il giro dopo riprova.
 **Due gesti nella risposta, tre nell'archivio**, e la differenza e' esattamente
 il potere che al modello non e' stato dato:
 
-- `indagine` -- sola lettura. Cinque osservazioni su otto, sulla casa vera,
-  sono domande: «il sensore era fermo?», «a che ore e' avvenuto il prelievo?».
+- `indagine` -- sola lettura. La maggior parte delle osservazioni, sulla casa
+  vera, sono domande: «il sensore era fermo?», «a che ore e' avvenuto il prelievo?».
   Rispondere vale piu' che proporre, e una coda che non si riempie e' il primo
   obiettivo di questo attore.
-- `proposta` -- non scrive niente: passa da `costruisci`, che compone e valida
+- `proposta` -- non scrive niente: passa da `Workshop.propose`, che compone e valida
   ma non tocca la casa, e lascia i tre esiti a chi amministra la casa.
 - `riparazione` -- **la fa il codice**, non il modello: il giro riscrive la
   ricetta rotta prima di chiamarlo e aggiunge l'esito come fatto. Se potesse

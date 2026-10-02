@@ -184,28 +184,16 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
             outcome = "chat_reply_skipped"
         return web.json_response({"ok": True, "outcome": outcome})
 
-    # fetta E3 Task 9 (rilievo 1 della review indipendente sul blocco 5-8):
-    # l'hook `app["execute_decision"]` -- l'ultimo punto del prodotto in cui
-    # un callable cablato in `app` avrebbe potuto attuare una Decisione --
-    # e' uscito per intero. Era sopravvissuto al Task 7 senza una parola,
-    # benche' la review del blocco 1 lo assegnasse "al piu' tardi col Task
-    # 7" e il Task 5 lo differisse qui per iscritto. Verificato con grep
-    # (`execute_decision` su tutto `hiris/app`): server.py non lo scrive in
-    # `app[...]` da `101189a` (Task 4) -- oggi lo cablava solo la suite di
-    # test (`test_reasoning_wiring.py`, `test_reasoning_api.py`), mai
-    # produzione. Un submit non-chat puo' arrivare qui solo da un job
-    # scaduto/legacy: non tace (il silenzio non e' distinguibile da
-    # un'assenza di problemi), ma non attua piu' nulla -- resta "recorded",
-    # com'era gia' il default anche quando l'hook esisteva-ma-non-cablato.
-    # **Un turno dell'osservatore consegnato non e' un job legacy.** La sua
-    # risposta se la va a prendere il giro periodico (`server.
-    # _collect_scope_turn`, che legge la coda): qui non c'e' niente da
-    # attuare, e non c'e' niente da dichiarare. Senza questo ramo ogni
-    # consegna dell'osservatore -- cioe' il caso normale, piu' volte al giorno
-    # -- scriveva nel log che «l'attuazione remota della revisione olistica
-    # non esiste piu'», una frase su un meccanismo uscito mesi fa che con
-    # questo turno non c'entra niente (rilievo della review indipendente,
-    # 11/09/2026).
+    # Qui arrivano i turni che non sono ne' di chat ne' di promessa: quelli
+    # degli attori. Non c'e' niente da attuare -- la decisione resta
+    # "recorded" -- e la risposta se la va a prendere dalla coda il giro
+    # periodico che ha accodato il turno (`_collect_scope_turn`,
+    # `_collect_recipe_turn`, `_collect_analyst_turn`, `_collect_actuator_turn`
+    # in `server.py`).
+    #
+    # Il log qui sotto tace solo per lo scope (dall'11/09/2026). Per le altre
+    # specie degli attori scatta a ogni consegna, con una frase su un
+    # meccanismo -- la revisione olistica -- uscito da mesi.
     if (job or {}).get("kind") != SCOPE_TURN_KIND:
         logger.warning(
             "reasoning submit: nessun execute_decision wired -- l'attuazione "

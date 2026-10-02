@@ -1,6 +1,6 @@
 """Le rotte dell'ACCOPPIAMENTO dei servizi (decisione del proprietario, 22/09/2026).
 
-Cinque rotte, e una sola di esse e' speciale.
+Una sola di queste rotte e' speciale.
 
 **`POST /api/services/present` e' l'unica superficie che questo prodotto non
 puo' autenticare.** Deve esserlo: un servizio che non hai ancora approvato non

@@ -10,8 +10,8 @@ UI must always set X-Requested-With: 'fetch' (any non-empty value works).
 
 Server-to-server clients are exempt: CSRF is a browser-only attack class, and a
 request that has already proved it is a machine -- a channel signature, a turn
-credential, or the shared secret while it still exists -- is by definition not
-a forged cross-site request.
+credential, or a presentation inside the open pairing window -- is by
+definition not a forged cross-site request.
 
 **The exemption reads the verdict the auth middleware left** (`auth_via`)
 instead of comparing the secret a second time. One place decides who is
@@ -52,9 +52,9 @@ async def csrf_middleware(request: web.Request, handler) -> web.Response:
     # che il confine aveva gia' riconosciuto.
     #
     # Il CSRF e' un attacco del BROWSER: una richiesta che ha gia' provato di
-    # essere una macchina -- firma di canale, credenziale di turno, o il
-    # segreto condiviso finche' esiste -- non e', per definizione, una
-    # richiesta forgiata cross-site.
+    # essere una macchina -- firma di canale, credenziale di turno, o la
+    # presentazione dentro la finestra di accoppiamento -- non e', per
+    # definizione, una richiesta forgiata cross-site.
     if request.get("auth_via") in ("canale", "turno", "accoppiamento"):
         return await handler(request)
     if _allow_no_csrf():

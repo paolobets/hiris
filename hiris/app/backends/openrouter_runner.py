@@ -56,16 +56,9 @@ class OpenRouterRunner(OpenAICompatRunner):
         read_model=None,
         log_usage=None,
     ) -> None:
-        # `local=False`: OpenRouter expects a different model per request,
-        # selected by the user via the Designer model field. Default agent
-        # behaviour (auto-resolve to a sensible cloud model) handled by
-        # _resolve_model below.
-        #
-        # fetta E4 Task 6 ("un bot solo"): il proprio `dispatcher` "di scorta"
-        # -- una pura pass-through verso OpenAICompatRunner.__init__, uscito
-        # li' -- e' uscito anche qui, stessa mossa. Nessun chiamante di
-        # produzione lo passava (server.py costruisce sempre OpenRouterRunner
-        # senza `dispatcher=`).
+        # `local=False`: OpenRouter serve piu' modelli, e quello da usare lo
+        # sceglie l'utente nella pagina Modelli (`read_model`); senza una
+        # scelta vale `AUTO_OPENROUTER` (`_resolve_model`, qui sotto).
         super().__init__(
             base_url=_OPENROUTER_BASE_URL,
             api_key=api_key,

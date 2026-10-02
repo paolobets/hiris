@@ -175,7 +175,8 @@ class Journal:
         la riga.
 
         **`servizio` per una costruzione porta `dominio.gesto`** -- per esempio
-        `automation.create`. Non e' un servizio di Home Assistant e non va letto
+        `automation.crea` (i gesti sono `workshop.OPERATIONS`). Non e' un
+        servizio di Home Assistant e non va letto
         come tale: `genere` e' li' apposta per distinguerli. `entita` porta le
         entita' NATE o toccate dall'atto, che e' la stessa cosa che porta per
         un comando.

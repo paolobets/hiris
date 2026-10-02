@@ -64,8 +64,8 @@ def _topology_loaded(home_space_store) -> bool:
 
     `create_app()` istanzia sempre `home_space_store`: in produzione non e'
     mai `None`. Ma un archivio appena creato (Home Assistant non ancora
-    pronto all'avvio, handlers_home_space.py:27-29 lo dichiara possibile) ha
-    `aggiornata_il() is None` -- una casa vuota, non una casa cambiata.
+    pronto all'avvio: `handle_get_home_space` lo dichiara possibile) ha
+    `updated_at() is None` -- una casa vuota, non una casa cambiata.
     Trattarla come "letta e senza ancore" farebbe sparire ogni ancora
     valida al primo avvio, che e' esattamente il bug che questa funzione
     esiste per evitare.
@@ -106,7 +106,7 @@ def _unverifiable_types(home_space_store, topology_loaded: bool) -> frozenset[st
 
     Se l'anagrafe intera non e' mai stata letta, sono TUTTI i tipi. Se e'
     stata letta ma un registro specifico non ha risposto
-    (`HomeSpaceStore.non_disponibili()` -- per esempio il registro delle
+    (`home_space_store.unavailable()` -- per esempio il registro delle
     aree e' caduto ma quello delle entita' no), e' solo il tipo di quel
     registro: gli altri restano verificabili normalmente.
     """

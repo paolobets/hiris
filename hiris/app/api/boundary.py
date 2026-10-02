@@ -9,9 +9,10 @@ e' il browser, e la sua lingua e' l'inglese.
 `"errore"` quando il tentativo non e' riuscito (`action/actuator.py`). Quel dict
 attraversa DUE porte: gli strumenti del modello, dove resta italiano perche' e'
 il dominio, e HTTP, dove esce in inglese perche' e' il confine. Senza questa
-funzione le tre rotte che lo inoltrano tal quale sarebbero le uniche tre, su
-diciassette, a scrivere `errore` invece di `error` -- un doppione vero, e per
-giunta invisibile a chi legge solo il proprio handler.
+funzione le rotte che lo inoltrano tal quale (`handlers_agenda.py`,
+`handlers_constructions.py`) scriverebbero `errore` dove i loro stessi rifiuti
+scrivono `error`. Il confine non e' ancora tutto in inglese: altre rotte di
+`api/` scrivono `errore` di proprio pugno e non passano di qui.
 
 Si traduce la CHIAVE e non il valore: il messaggio e' scritto per una persona,
 e questo prodotto parla italiano alle persone.

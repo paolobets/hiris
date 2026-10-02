@@ -4,7 +4,8 @@
 lo stesso che alimenta lo specchio delle entita': due sorgenti degli stessi
 eventi sarebbero due cose che possono divergere.
 
-**Non giudica niente.** Filtra col pavimento e scrive il cambio cosi' com'e'.
+**Non giudica niente.** Lascia passare cio' che lo scope ha deciso di guardare
+(`store.is_watched`) e scrive il cambio cosi' com'e'.
 Tutto il giudizio sta nell'aggregazione (`facts.py`), che e' rifacibile per
 21 giorni; una decisione presa qui non si corregge piu'.
 """
@@ -148,10 +149,10 @@ class Watcher:
         # rilievo 5 -- prima un `set`, solo l'entity_id). L'entity_id e'
         # cosi' come l'ha dichiarato `automation_triggered`, gia' passato da
         # `_ENTITY_ID_RE` (vedi `mark_automation`). Solo aggiunte, mai
-        # tolte -- stessa sorte di `self._watched` sopra: un'automazione che
+        # tolte: un'automazione che
         # ha scattato una volta resta interessante per sempre, e non c'e'
         # bisogno di "guarirla" dall'elenco. Vive solo in RAM e non si
-        # risemina al riavvio, come `self._watched`: la raccolta delle
+        # risemina al riavvio: la raccolta delle
         # tracce (`server.py`) la rifara' da sola non appena l'automazione
         # scattera' di nuovo -- diversamente da un guasto che DURA (sotto),
         # qui non c'e' niente da perdere restando vuoti fino al prossimo
@@ -317,7 +318,7 @@ class Watcher:
             # non poteva fallire: costruiva un evento con i due istanti diversi
             # su un cambio di stato, che HA non manda mai.
             #
-            # `proxy/entity_cache.py:518-520` sceglie il contrario per la
+            # `proxy/entity_cache.py` sceglie il contrario per la
             # ragione opposta, e vale la pena leggerlo accanto a questo: li'
             # si vuole «da quando e' accesa», che un attributo non deve
             # spostare.
@@ -327,11 +328,13 @@ class Watcher:
                 # riga di solo attributo, ma resta un istante che HA dichiara.
                 when = instant_epoch(new_state.get("last_changed"))
             if when is None:
-                # Ripiego muto fino a qui: se HA cambiasse formato di
-                # `last_changed`, ogni cambio slitterebbe all'istante in cui
+                # Qui mancano o sono illeggibili TUTTI E DUE gli istanti,
+                # `last_updated` e `last_changed` (il messaggio nomina solo il
+                # secondo). Se HA cambiasse il loro formato, ogni cambio
+                # slitterebbe all'istante in cui
                 # l'abbiamo saputo e nessuno se ne accorgerebbe. DEBUG e non
-                # WARNING: capiterebbe per OGNI evento se `last_changed`
-                # mancasse sempre, e un WARNING per riga inonderebbe il
+                # WARNING: capiterebbe per OGNI evento se gli istanti
+                # mancassero sempre, e un WARNING per riga inonderebbe il
                 # registro -- a DEBUG resta comunque disponibile a chi
                 # diagnostica.
                 logger.debug(
@@ -345,8 +348,8 @@ class Watcher:
                 state_class=_text_or_none(attributes.get("state_class")),
                 source_type=_text_or_none(attributes.get("source_type")),
                 # Il nome amichevole si SALVA qui, non si risolve dopo: fra
-                # sei mesi l'entita' puo' non esistere piu' e l'oggetto
-                # resta (i `cambi` vivono 22 giorni, gli `oggetti` finche'
+                # sei mesi l'entita' puo' non esistere piu' e il resoconto
+                # resta (i `cambi` vivono 22 giorni, i resoconti finche'
                 # l'utente non li cancella -- vedi `store.py::_migration_5`).
                 # Costa zero: `attributes` e' gia' letto qui sopra e gia'
                 # spremuto per le tre classi. E' la stringa che Home

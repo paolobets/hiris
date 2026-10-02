@@ -29,8 +29,8 @@ def _categories_by_scope(home_space: dict) -> dict[str, dict[str, str]]:
     sarebbe lo stesso fatto scritto mille volte. Stessa scelta delle
     etichette, appena sopra.
 
-    La sorgente e' `anagrafe.category_names`, la stessa che usano
-    `guarda` e l'indice di `cerca`: qui si cambia solo la FORMA (le chiavi a
+    La sorgente e' `topology.category_names`, la stessa che usano
+    gli strumenti della chat (`queries.py`): qui si cambia solo la FORMA (le chiavi a
     coppia non attraversano JSON), mai il contenuto -- due mappe costruite
     ognuna per conto proprio sarebbero due nomi diversi per la stessa
     categoria a seconda della porta.
@@ -71,7 +71,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
             # e senza archivio non lo sappiamo -- resta `None`. `conteggi` e
             # `voci`, come `conteggi`/`piani` sopra, sono contenitori naturali
-            # e restano vuoti. `problemi`/`file_non_letti` restano `None` per
+            # e restano vuoti. `problemi`/`corpi_non_letti` restano `None` per
             # lo stesso motivo di `senza_corpo`: un elenco vuoto affermerebbe
             # "nessun problema", e senza archivio non lo sappiamo.
             # `None` per lo stesso motivo di tutti gli altri qui sopra: un
@@ -109,8 +109,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # di «Da controllare», una parola che l'utente non ha mai scritto e che
         # non cambierebbe nemmeno rinominando l'etichetta.
         #
-        # E' lo stesso difetto gia' chiuso su `guarda`,
-        # che pero' risolve i nomi DENTRO la risposta perche' li' esce un
+        # Gli strumenti della chat risolvono i nomi DENTRO la risposta
+        # perche' li' esce un
         # dettaglio. Qui esce l'albero intero: ripetere il nome su ogni entita'
         # etichettata sarebbe lo stesso fatto scritto mille volte. Esce la
         # mappa, una volta, e chi disegna la applica.
@@ -123,18 +123,15 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # su un id solo qui rimetterebbe in piedi l'ambiguita' che la chiave
         # `(ambito, id)` dell'archivio esiste per chiudere.
         #
-        # Perche' anche qui, e non solo in `guarda`: la fetta delle categorie
-        # ha cablato `anagrafe.categories_with_name` in `queries.py` e
-        # nell'indice di `cerca`, e ha saltato QUESTA porta -- cosi' la stessa
-        # categoria usciva col nome dallo strumento e con l'id grezzo dalla
-        # pagina. E' il pattern che la review ha nominato («una fetta unifica
-        # una regola e salta una porta»), ricomparso dentro una fetta scritta
-        # apposta per non ripeterlo.
+        # Perche' anche qui, e non solo negli strumenti
+        # (`topology.categories_with_name`, in `queries.py`): senza, la stessa
+        # categoria uscirebbe col nome dallo strumento e con l'id grezzo dalla
+        # pagina.
         "categorie": _categories_by_scope(home_space),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
         # Assistant risponde su un campione di aree
         # (`server.tree_comparison_round`, verdetto in
-        # `anagrafe.compare_with_home_assistant`).
+        # `topology.compare_with_home_assistant`).
         #
         # Esce ANCHE da qui, e non solo nel nucleo, per la stessa ragione del
         # sistema di riferimento poco sopra: e' lo stesso fatto, e se il
@@ -145,7 +142,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # che la porta.
         #
         # Esce grezzo (`aree_totali`, `guardate`, `letto_il`) e non gia' in
-        # parole: le frasi le costruisce `nucleo._comparison_notice` per chi
+        # parole: le frasi le costruisce `briefing._comparison_notice` per chi
         # legge un testo, qui serve il dato per chi disegna. `None` quando
         # nessun giro e' ancora passato -- mai `{}`, che direbbe «confrontato,
         # e non c'era niente da dire».
@@ -162,9 +159,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             "senza_corpo": sum(1 for v in behavior_entries if v["corpo"] is None),
             # Cio' che l'ultima lettura NON ha potuto concludere con
             # certezza (id duplicati, script vuoti, voci malformate) e i
-            # file che non si sono letti, con la ragione. Costruiti con
-            # cura da comportamento.compose()/reread() -- prima morivano in
-            # una riga di log, invisibili a chi guarda solo /api/home-space.
+            # file che non si sono letti, con la ragione. Li costruisce
+            # `behavior.reread()`.
             "problemi": store.behavior_problems(),
             "corpi_non_letti": store.unread_bodies(),
             "voci": behavior_entries,
@@ -183,27 +179,15 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
 def compose_briefing(app) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
 
-    Condivisa da `handle_get_briefing` (GET /api/briefing, la verifica dal vivo)
-    e da `handlers_chat.compose_chat_context` (il contesto che il modello
-    riceve davvero -- dalla fetta "il ponte riceve il nucleo", parita' A, su
-    ENTRAMBI i percorsi di chat: il sincrono e quello in abbonamento): la
-    STESSA composizione, non due che potrebbero divergere -- e' esattamente la
-    sovrapposizione n.1 della mappa del prodotto (vedi
-    docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7) che questa
-    condivisione esiste per chiudere: prima la chat vedeva una mappa senza
-    ritratto, il resto del sistema il ritratto senza la mappa.
+    Condivisa da `handle_get_briefing` (GET /api/briefing, la verifica dal vivo),
+    da `handlers_chat.compose_chat_context` (il contesto che il modello
+    riceve davvero, su ENTRAMBI i percorsi di chat: il sincrono e quello in
+    abbonamento) e dal turno di una promessa (`keeper/exchange.py`): la
+    STESSA composizione, non due che potrebbero divergere.
 
     Prende `app` (un `web.Application`, o l'equivalente `.get()`-abile nei
-    test) invece di un `web.Request`, cosi' un chiamante che non ha una
-    request in corso (nessuno oggi, ma non c'e' motivo di legarla) puo'
-    comunque chiamarla.
-
-    Il resto del ragionamento -- perche' `unavailable` va propagato,
-    perche' `MemoryStore.fetch(limit=count())` e non il default,
-    perche' `reliable_state` richiede ENTRAMBI l'archivio e un inventario
-    vivo pronto -- e' invariato da prima di questo refactor: vedi i
-    commenti storici in git blame su questa funzione (era il corpo di
-    `handle_get_briefing`) per il dettaglio di ciascuna scelta.
+    test) invece di un `web.Request`: il turno di una promessa non ha una
+    request in corso.
     """
     home_space_store = app.get("home_space_store")
     memory_store = app.get("memory_store")
@@ -281,7 +265,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # accanto a `entity_cache` -- una fotografia riletta ogni pochi minuti da
     # `server.reread_ha_problems`, mai una tabella. La ragione e' scritta per
     # esteso li'; in breve e' la stessa per cui `state` non entra nel sistema di
-    # riferimento (vedi `home_space/topology.sistema_di_riferimento`): un problema e'
+    # riferimento (vedi `home_space/topology.reference_frame`): un problema e'
     # momentaneo, l'utente lo ripara con un clic in Home Assistant, e un
     # archivio che si rilegge di rado continuerebbe ad annunciarlo per ore dopo
     # che non c'e' piu'. Un falso allarme ripetuto in ogni prompt e'
@@ -300,7 +284,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # replica si ricostruisce da sola al primo evento di registro. Una tabella
     # riletta di rado continuerebbe ad annunciare per ore una divergenza gia'
     # rientrata, che e' il falso allarme che questa fetta esiste per non
-    # produrre (stesso ragionamento di `home_space/topology.sistema_di_riferimento`
+    # produrre (stesso ragionamento di `home_space/topology.reference_frame`
     # su `state`).
     #
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro
@@ -326,10 +310,10 @@ def compose_briefing(app) -> tuple[str, dict]:
         comparison=comparison,
         attributes=attributes,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
-        # sincrona, ponte e GET /api/briefing passano tutti di qua), perche'
+        # sincrona, ponte, promesse e GET /api/briefing passano tutti di qua), perche'
         # `compose` e' pura e non legge nulla da sola. Senza questa riga il
         # parametro esisterebbe, i test di `compose` passerebbero, e il modello
-        # continuerebbe a indovinare l'ora quando `prometti` gli chiede di
+        # continuerebbe a indovinare l'ora quando `promise` gli chiede di
         # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
         now=time.time(),
     )
@@ -346,7 +330,7 @@ async def handle_get_briefing(request: web.Request) -> web.Response:
     QUESTO Home Assistant, produce un nucleo sensato.
 
     La composizione vera e' in `compose_briefing()` qui sopra, condivisa
-    con `handlers_chat.handle_chat` -- questo handler resta un guscio
+    con la chat (`handlers_chat.compose_chat_context`) -- questo handler resta un guscio
     sottile che la chiama e la serializza, cosi' i due punti non possono
     raccontare due nuclei diversi della stessa casa.
     """

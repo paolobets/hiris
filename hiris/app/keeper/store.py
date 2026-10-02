@@ -2,7 +2,7 @@
 
 Non esiste un timer per promessa. Un timer in memoria muore al riavvio e
 diventa un secondo posto che sa quando: qui la verita' e' la tabella, e
-l'orologio (`orologio.py`) non fa che chiederle chi e' scaduto.
+l'orologio (`sweeper.py`) non fa che chiederle chi e' scaduto.
 
 Non solleva mai verso il chiamante per un ingresso sbagliato: `create` e
 `cancel` rispondono con un dizionario che porta `errore`, perche' chi li
@@ -70,7 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 
 _CONCLUSI = ",".join(f"'{s}'" for s in STATES_CONCLUSI)
 # Stessa forma di `_CONCLUSI` qui sopra, per lo stesso motivo: composta UNA
-# volta dal vocabolario di `promessa.py`, mai riscritta a mano nelle due
+# volta dal vocabolario di `promise.py`, mai riscritta a mano nelle due
 # query sotto (review finale, rilievo ②).
 _SOSPESI = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 # Gli stati che sono una notizia per chi legge: `STATES_CONCLUSI` meno
@@ -362,7 +362,7 @@ class AgendaStore:
         il momento della promessa e' passato. Rieseguire «il delta rispetto a
         un'ora fa» tre ore dopo darebbe una risposta confidentemente falsa --
         la stessa ragione per cui esiste la tolleranza dei 120 secondi
-        (`promessa.TOLLERANZA_S`). Fallire e' meglio che rispondere sbagliato.
+        (`promise.TOLLERANZA_S`). Fallire e' meglio che rispondere sbagliato.
         Questo vale ancora di piu' dalla fetta «le promesse seguono la catena»,
         che ha allargato da secondi a minuti la finestra in cui una promessa e'
         `in_corso`: piu' spesso, non diversamente.
@@ -371,9 +371,9 @@ class AgendaStore:
         specie non e' la stessa cosa. Per un `fai` il dubbio e' se la casa sia
         stata toccata: una luce accesa due volte e' innocua, una serranda no.
         Per un `chiedi` la casa non e' stata toccata di sicuro -- quel turno ha
-        solo strumenti di lettura per costruzione (`turno.SOLA_LETTURA`) -- e
+        solo strumenti di lettura per costruzione (`exchange.SOLA_LETTURA`) -- e
         l'unico dubbio e' la notifica, che parte PRIMA che la promessa si
-        chiuda (`orologio.concludi_chiedi`). Due dubbi diversi, due frasi
+        chiuda (`Sweeper.concludi_chiedi`). Due dubbi diversi, due frasi
         diverse: una sola li appiattisce, e manda a cercare un problema che
         non c'e'.
         """

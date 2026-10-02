@@ -1,10 +1,9 @@
 """L'archivio della memoria -- l'unica cosa di HIRIS che non si ricostruisce.
 
-Tutto il resto (`hiris/app/home_space/store.py`) e' una REPLICA di cio' che Home
-Assistant dichiara: si cancella e si rifa' in pochi secondi. Questo archivio
-no: e' cio' che l'utente ha detto e cio' che HIRIS ne ha capito. Per questo
-vive nel suo file (`/data/memoria.db`), separato da `casa.db` -- non si mette
-una cosa usa-e-getta accanto a una irripetibile.
+L'anagrafe (`home_space/reader.py`) e' una REPLICA di cio' che Home
+Assistant dichiara: vive in memoria e si rifa' in pochi secondi. Questo
+archivio no: e' cio' che l'utente ha detto e cio' che HIRIS ne ha capito. Per
+questo vive in un file suo (`/data/memoria.db`).
 
 Vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §1, per il contratto
 completo. Tre regole guidano questo modulo:
@@ -19,8 +18,7 @@ completo. Tre regole guidano questo modulo:
    interpreta male.
 3. **Un ricordo a meta' e' peggio di nessun ricordo**, perche' non si
    distingue da uno interpretato male. Ogni scrittura multi-riga (`remember`,
-   `correggi`, `dimentica`) usa `BEGIN`/`rollback`, stessa forma di
-   `HomeSpaceStore.replace`.
+   `correggi`, `dimentica`) usa `BEGIN`/`rollback`.
 
 **Questo archivio e' nudo di proposito.** Niente `status`, niente
 `chatbot_id`, niente `sensitivity`, niente scadenza, niente ambito per
@@ -227,8 +225,8 @@ class MemoryStore:
 
         `campi` puo' contenere colonne scalari di `ricordi` (`forza`,
         `grandezza`, `minimo`, `massimo`, `unita`, `detto_da`) e/o le liste
-        `ancore`/`condizioni`, che vengono SOSTITUITE per intero (stessa
-        logica di `HomeSpaceStore.replace`: rattoppare per singola riga
+        `ancore`/`condizioni`, che vengono SOSTITUITE per intero (rattoppare
+        per singola riga
         aprirebbe una classe di derive silenziose). Alza sempre
         `corretto_da_utente`, anche se si corregge solo `ancore` o
         `condizioni`: e' comunque HIRIS che aveva interpretato male.
@@ -310,9 +308,8 @@ class MemoryStore:
                 (ricordo_id, cond["tipo"], cond["valore"]))
 
     def _compose(self, row: dict) -> dict:
-        """Un ricordo con le sue ancore e condizioni gia' sciolte -- stessa
-        idea di `HomeSpaceStore._unpack`, ma qui la lista viene da tabelle
-        proprie, non da una colonna JSON."""
+        """Un ricordo con le sue ancore e condizioni gia' sciolte: le liste
+        vengono da tabelle proprie, non da una colonna JSON."""
         ricordo_id = row["id"]
         row["ancore"] = [dict(a) for a in self._conn.execute(
             "SELECT tipo, riferimento, nome_visto FROM ancore WHERE ricordo_id = ? "
