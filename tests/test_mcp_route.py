@@ -646,11 +646,30 @@ async def test_il_solo_x_requested_with_non_basta_a_entrare(rotta):
 
 
 @pytest.mark.asyncio
+async def test_il_vecchio_segno_del_segreto_condiviso_non_apre_piu_la_rotta():
+    """Fino al 22/09/2026 la rotta accettava `auth_via == "token"`, il segreto
+    condiviso. Da quel giorno il middleware non lo assegna piu', ma l'handler
+    continuava ad accettarlo: una porta che nessuno apre, e che si riaprirebbe
+    da sola il giorno in cui un ramo nuovo scrivesse quel segno.
+
+    Si chiama l'handler con una richiesta finta, perche' dal middleware vero
+    quel segno non puo' piu' arrivare -- ed e' il punto.
+
+    Mutazione ESEGUITA: rimesso `not in ("token", "turno")` in `handle_mcp` --
+    rossa (la richiesta prosegue oltre il cancello invece di ricevere 401)."""
+    class _Request(dict):
+        remote = "127.0.0.1"
+
+    risposta = await handlers_mcp.handle_mcp(_Request(auth_via="token"))
+    assert risposta.status == 401
+
+
+@pytest.mark.asyncio
 async def test_la_valvola_di_sviluppo_non_apre_questa_rotta(aiohttp_client, monkeypatch):
     """`HIRIS_ALLOW_NO_TOKEN=1` -- che `conftest.py` accende per TUTTA la suite,
     e che in sviluppo qualcuno potrebbe accendere sul serio -- disattiva
     l'autenticazione su tutta la API. Su questa rotta NO: l'handler accetta la
-    sola `auth_via == "token"`, quindi il ramo aperto del middleware non basta.
+    sola `auth_via == "turno"`, quindi il ramo aperto del middleware non basta.
     E' cio' che impedisce alla rotta di dipendere da un ramo solo."""
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     monkeypatch.setenv("HIRIS_ALLOW_NO_CSRF", "1")

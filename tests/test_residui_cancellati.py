@@ -148,3 +148,74 @@ def test_l_elenco_combacia_con_quello_che_il_codice_DICHIARA_morto():
     for nome in RESIDUI_DISMESSI:
         assert f"{nome} presente in" in sorgente or nome in sorgente, (
             f"«{nome}» non è dichiarato morto da nessuna parte nel codice")
+
+
+def _startup_messages(tmp_path) -> list[str]:
+    """Le righe che l'AVVIO VERO scrive nel registro, con gli undici residui
+    gia' sul disco. Si monta l'app con `_on_startup` intero su una casa
+    sintetica -- la stessa montatura della fotografia delle porte -- invece di
+    estrarre un blocco dal sorgente: una frase scritta in un punto e smentita
+    da una riga piu' sotto si vede solo eseguendo l'avvio per intero."""
+    import asyncio
+    import logging
+    import sys
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "scripts"))
+    import fotografia_porte
+
+    from tests._casa_sintetica import synthetic_inputs
+
+    for nome in RESIDUI_DISMESSI:
+        _fai(tmp_path, nome)
+
+    messages: list[str] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record) -> None:
+            messages.append(record.getMessage())
+
+    handler = _Collect(level=logging.DEBUG)
+    registro = logging.getLogger("hiris.app.server")
+    earlier = registro.level
+    registro.addHandler(handler)
+    registro.setLevel(logging.DEBUG)
+
+    async def boot() -> None:
+        async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)):
+            pass
+
+    try:
+        asyncio.run(boot())
+    finally:
+        registro.removeHandler(handler)
+        registro.setLevel(earlier)
+    return messages
+
+
+def test_nessun_messaggio_d_avvio_promette_un_file_che_sta_per_cancellare(tmp_path):
+    """**Otto frasi su undici dicevano il falso** (registro X-27, 01/10/2026).
+    L'avvio annunciava di ogni residuo «il file resta su disco, intatto», e
+    qualche riga piu' sotto `cancella_residui` lo cancellava. Le altre tre
+    frasi stavano dopo la cancellazione, e non giravano mai.
+
+    L'elenco dei nomi si CHIEDE a `server.RESIDUI_DISMESSI`: un residuo
+    aggiunto domani entra in questa prova da solo.
+
+    Mutazione ESEGUITA: rimesso in `_on_startup`, prima di `cancella_residui`,
+    l'annuncio «ha_health.json ... Il file resta su disco, intatto.» -- rossa,
+    col nome del file e la frase.
+    """
+    messages = _startup_messages(tmp_path)
+
+    assert any("cancellato" in message for message in messages), (
+        "l'avvio non ha cancellato niente: la prova non guarda cio' che crede")
+    lies = []
+    for nome in RESIDUI_DISMESSI:
+        gone = not (tmp_path / nome).exists()
+        promised = [message for message in messages
+                    if nome in message and "resta" in message]
+        if gone and promised:
+            lies.append(f"{nome}: «{promised[0][-60:]}»")
+    assert not lies, (
+        "l'avvio promette che un file resta e poi lo cancella: " + "; ".join(lies))

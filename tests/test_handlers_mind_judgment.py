@@ -128,7 +128,7 @@ async def test_corpo_storto_400_non_500(tmp_path):
     -- rossa sull'ultimo corpo."""
     s, app = _app_seminata(tmp_path)
     try:
-        conto = s.count()
+        conto = s.summary()["totale"]
         for corpo in (_ILLEGGIBILE, [], {},
                       {"soggetto_genere": "tipo", "soggetto": 3, "campo": "genere",
                        "valore": "presenza"},
@@ -138,7 +138,7 @@ async def test_corpo_storto_400_non_500(tmp_path):
             r = await handle_set_judgment(_richiesta(app, corpo))
             assert r.status == 400, corpo
             assert json.loads(r.text)["errore"]
-        assert s.count() == conto
+        assert s.summary()["totale"] == conto
     finally:
         s.close()
 

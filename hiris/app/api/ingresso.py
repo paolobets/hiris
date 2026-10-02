@@ -142,12 +142,10 @@ def perimetro_fidato(testo: str, risolutore=None) -> tuple[list, list[str], str]
     `come` è ciò che il registro dichiara all'avvio: chi legge deve poter
     sapere **quanto è largo** il perimetro di oggi senza andarlo a dedurre.
     """
-    import ipaddress as _ip
-
     indirizzo = indirizzo_proxy(risolutore)
     if indirizzo:
         try:
-            rete = _ip.ip_network(f"{indirizzo}/32", strict=False)
+            rete = ipaddress.ip_network(f"{indirizzo}/32", strict=False)
             return [rete], [], f"l’indirizzo del Supervisor, risolto: {indirizzo}"
         except (ValueError, TypeError):
             pass
@@ -158,11 +156,3 @@ def perimetro_fidato(testo: str, risolutore=None) -> tuple[list, list[str], str]
         + ", ".join(str(r) for r in reti) if reti
         else "nessuna rete: il nome «supervisor» non si è risolto e le opzioni "
              "non hanno nessuna voce valida")
-def prepara_ingresso(app) -> None:
-    """Qui nasceva la cache delle sessioni verificate col Supervisor.
-
-    È uscita con la verifica che la riempiva: `validate_session` è riservata a
-    Home Assistant Core, quindi quella cache non avrebbe mai avuto niente da
-    ricordare. La funzione resta, vuota e dichiarata, perché `server.py` la
-    chiama e perché il posto dove i contenitori nascono è uno solo.
-    """

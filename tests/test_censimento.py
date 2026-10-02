@@ -122,19 +122,6 @@ c = os.environ["HIRIS_ALTRA"]
     assert nomi == {"HIRIS_MORTA", "HIRIS_ALTRA"}
 
 
-def test_envvar_letta_con_env_bool_e_mai_esportata(tmp_path):
-    cfg = _scrivi(tmp_path, "config.yaml", _CONFIG_YAML)
-    run_sh = _scrivi(tmp_path, "run.sh", 'export HIRIS_VIVA="1"\n')
-    app = _scrivi(tmp_path, "app.py", '''
-from .env_util import env_bool
-a = env_bool("HIRIS_VIVA")
-b = env_bool("HIRIS_MORTA", True)
-''')
-    reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
-    nomi = {r.nome for r in reperti if r.categoria == "envvar-mai-esportata"}
-    assert nomi == {"HIRIS_MORTA"}
-
-
 def test_config_mancante_non_esplode(tmp_path):
     assert censimento.censisci_configurazione(
         tmp_path / "assente.yaml", tmp_path / "assente.sh", []

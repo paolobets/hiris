@@ -114,7 +114,7 @@ def _app(accesso: bool, ha):
 def test_l_opzione_si_legge_rigida_e_nel_dubbio_e_spenta(monkeypatch, grezzo, atteso):
     """Solo «true» apre. `bashio::config` di un `bool` scrive `true`/`false`:
     ogni altra forma e' un errore di chi l'ha scritta, e un errore non apre.
-    Mutazione: riusare `env_util.env_bool` (che accetta `yes`/`1`/`on`) -- rossa."""
+    Mutazione: accettare anche `yes`/`1`/`on` -- rossa."""
     if grezzo is None:
         monkeypatch.delenv("HIRIS_NON_ADMIN_ACCESS", raising=False)
     else:

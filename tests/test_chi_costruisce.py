@@ -247,7 +247,7 @@ async def test_chi_non_costruisce_riceve_403_e_niente_cambia(cliente, metodo, ro
     app = cliente.app
     c = _proposta(app)
     p = _manual_proposal(app)
-    righe_sapere = app["knowledge"].count()
+    righe_sapere = app["knowledge"].summary()["totale"]
 
     risposta = await getattr(cliente, metodo)(
         rotta.format(c=c, p=p), headers=_testate("u-ospite"),
@@ -258,7 +258,7 @@ async def test_chi_non_costruisce_riceve_403_e_niente_cambia(cliente, metodo, ro
     assert app["constructions"].read(c)["stato"] == "in_attesa"
     [manual] = app["observations"].proposals()
     assert (manual["stato"], manual["giri"]) == ("attesa", [])
-    assert app["knowledge"].count() == righe_sapere
+    assert app["knowledge"].summary()["totale"] == righe_sapere
 
 
 @pytest.mark.asyncio

@@ -35,8 +35,8 @@ SYNC_CEILING_S = 600
 
 def parse_access_flag(raw: str | None) -> bool:
     """Solo «true» apre. `bashio::config` di un `bool` scrive `true`/`false`;
-    non si usa `env_util.env_bool`, che accetta anche `yes`/`1`/`on`: su
-    un'opzione che allarga l'accesso ogni forma inattesa resta chiusa."""
+    `yes`, `1` e `on` non valgono: su un'opzione che allarga l'accesso ogni
+    forma inattesa resta chiusa."""
     return (raw or "").strip().lower() == "true"
 
 

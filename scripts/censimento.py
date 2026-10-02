@@ -382,16 +382,11 @@ def censisci_scritture(file_app: list[Path]) -> list[Reperto]:
 
 _RE_EXPORT = re.compile(r"^\s*export\s+([A-Z_][A-Z0-9_]*)=", re.MULTILINE)
 _RE_ENV = re.compile(
-    r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[|env_bool\()"""
+    r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[)"""
     r"""\s*["']([A-Z_][A-Z0-9_]*)["']"""
 )
-# `env_bool()` (hiris/app/env_util.py) e' il canale promosso dal refactor SP-2
-# per unificare gli idiomi di lettura booleana: le variabili lette solo cosi'
-# vanno viste allo stesso modo delle lette con os.environ/os.getenv. E' l'unica
-# funzione pubblica del modulo che legge l'ambiente e prende il nome come primo
-# argomento; handlers_models.py la chiama anche con un nome non letterale
-# (`env_bool(env_var)`) — quel caso resta fuori dal perimetro di questa regex,
-# dichiarato fra i limiti (vedi stampa()).
+# Fino al 02/10/2026 si riconosceva anche `env_bool("NOME")`, la funzione di
+# `hiris/app/env_util.py`: uscito il suo ultimo chiamante, e' uscita lei.
 _RE_CHIAVE_YAML = re.compile(r"^(\s+)([a-z_][a-z0-9_]*):")
 _RE_BASHIO = re.compile(r"""bashio::config\s+['"]([\w.]+)['"]""")
 
@@ -906,9 +901,8 @@ def stampa(reperti: list[Reperto]) -> None:
     print("  - il SQL nelle docstring non conta ne' come schema ne' come scrittura: e'")
     print("    documentazione, e mind/store.py ne cita uno che dichiarerebbe una tabella")
     print("    fantasma di nome «if»;")
-    print("  - le variabili d'ambiente lette con env_bool() si vedono solo se il nome e'")
-    print("    passato come stringa letterale: env_bool(env_var) con un nome indiretto")
-    print(f"    (vedi handlers_models.py) resta invisibile allo strumento.{_RESET}")
+    print("  - una variabile d'ambiente si vede solo se il suo nome e' una stringa")
+    print(f"    letterale: os.environ.get(nome) con un nome indiretto resta invisibile.{_RESET}")
 
     print(f"\nTotale reperti: {len(reperti)}")
 

@@ -1404,23 +1404,6 @@ async def backfill_one_report(app, ha_client, *,
     return None
 
 
-async def _record_repair(app, ha_client, days, timezone, *, why: str) -> None:
-    """La riparazione degli oggetti si e' saltata: si DICE perche', e si
-    scrivono comunque i resoconti mancanti.
-
-    **Perche' l'esito si conserva.** Il difetto del 14/09/2026 e' stato
-    invisibile per due rilasci per una ragione sola: le quattro uscite
-    anticipate scrivevano il loro warning nel log dell'add-on, che da fuori
-    non si legge. La casa rispondeva «nessun resoconto» e non c'era nessuna
-    domanda che dicesse quale uscita fosse scattata. Ora `/api/health` lo
-    riporta, e la prossima volta la diagnosi costa una richiesta.
-    """
-    app["ultima_riparazione"] = {
-        "oggetti": "saltata", "perche": why, "giorni": days,
-        "resoconti_scritti": await _write_missing_reports(
-            app, ha_client, days, timezone)}
-
-
 async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
     """Il resoconto dei giorni che **non ne hanno uno**, e solo quelli.
 
@@ -2784,15 +2767,11 @@ def _record_attempt(store, outcome: dict, *, route: str = "ponte",
         store.record_attempt(outcome="non_riuscito", detail=error + porta,
                              version=read_version())
     else:
-        store.record_attempt(outcome="riuscito",
-                             detail=_attempt_detail(outcome) + porta,
+        # Il riassunto di un giro riuscito, nella lingua della pagina.
+        summary = (f"{outcome.get('decise', 0)} decisioni su "
+                   f"{outcome.get('candidate', 0)} entita' guardate")
+        store.record_attempt(outcome="riuscito", detail=summary + porta,
                              version=read_version())
-
-
-def _attempt_detail(outcome: dict) -> str:
-    """Il riassunto di un giro riuscito, nella lingua della pagina."""
-    return (f"{outcome.get('decise', 0)} decisioni su "
-            f"{outcome.get('candidate', 0)} entita' guardate")
 
 
 #: Quanto si aspetta prima di riprovare, dopo un fallimento. Raddoppia a ogni
@@ -3033,12 +3012,9 @@ def behavior_reader(client, home_space, ha_folder: Path | None, find_folder=None
                             found["folder"])
         return found["folder"]
 
-    async def look(force: bool = False) -> bool:
-        """`force` resta nella firma e non fa piu' niente: i due inneschi --
-        la cadenza e l'evento di registro -- rileggono entrambi, e distinguerli
-        avrebbe senso solo se ci fosse un confronto da scavalcare. Toglierlo
-        cambierebbe la firma a `schedule_behavior_reread`, che e' il gemello di
-        `schedule_registry_rebuild` e non ha nessun motivo di divergere."""
+    async def look() -> bool:
+        """I due inneschi -- la cadenza e l'evento di registro -- rileggono
+        entrambi allo stesso modo: non c'e' un confronto da scavalcare."""
         try:
             await reread(client, home_space, _folder())
         except Exception as exc:
@@ -3050,8 +3026,8 @@ def behavior_reader(client, home_space, ha_folder: Path | None, find_folder=None
 
 
 def schedule_behavior_reread(look, delay: float = 3.0):
-    """Restituisce `trigger(event_type)`: rilegge il comportamento FORZANDO
-    il confronto sull'impronta, una volta sola per raffica.
+    """Restituisce `trigger(event_type)`: rilegge il comportamento, una
+    volta sola per raffica.
 
     Gemello di `schedule_registry_rebuild` -- stesso antirimbalzo,
     stessa tolleranza ai guasti, stesso evento (TOPOLOGY_EVENTS, via
@@ -3066,7 +3042,7 @@ def schedule_behavior_reread(look, delay: float = 3.0):
     async def _fra_poco():
         try:
             await asyncio.sleep(delay)
-            await look(force=True)
+            await look()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -3877,60 +3853,6 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.start()
     app["scheduler"] = scheduler
 
-    # fetta E3 Task 11: l'HealthMonitor esce -- il suo unico consumatore reale
-    # era `snapshot["ha_health"]`, caduto col Task 4 (deps["get_health"] non
-    # esisteva piu' nello snapshot della ronda). Le sue due rotte
-    # (GET /api/health/ha, POST /api/health/ha/refresh) non avevano alcun
-    # chiamante nel frontend. Con lui esce anche il SupervisorClient
-    # (add-on, disco, aggiornamenti): l'HealthMonitor era il suo ultimo
-    # lettore rimasto. SILENZIO DICHIARATO, stessa disciplina di advisory.db/
-    # sentinel.db/proposals.db: un ha_health.json ereditato da
-    # un'installazione precedente non viene cancellato (mai dati utente in
-    # /data) ne' incontrato in silenzio.
-    _ha_health_path = os.path.join(data_dir, "ha_health.json")
-    if os.path.exists(_ha_health_path):
-        logger.info(
-            "ha_health.json presente in %s da un'installazione precedente: "
-            "da fetta E3 Task 11 nessun codice lo legge ne' lo scrive piu' "
-            "(HealthMonitor, SupervisorClient e le rotte /api/health/ha* "
-            "sono usciti per intero). Il file resta su disco, intatto.",
-            _ha_health_path,
-        )
-
-    # fetta E3 Task 10: le proposte escono per intero -- ProposalStore,
-    # proxy/proposta_config.py (apply_ha_config), proxy/dashboard_backups.py
-    # e le rotte /api/proposals*, /api/dashboards* (handlers_proposals.py,
-    # handlers_dashboards.py). Scrivevano in HA col solo token del richiedente
-    # (nessuna verifica umana indipendente -- mappa §3.5): l'ultima via
-    # d'attuazione rimasta in un HIRIS che per decisione, ALLORA, non agiva.
-    # L'azione e' rientrata con la fetta «comandare», ma rifatta e da una parte
-    # sola: `esegui` -> `action/actuator.py`, che verifica contro l'installazione
-    # e rilegge lo stato. Queste tre vie NON sono rientrate con lei -- scrivere
-    # config, proposte e plance e' materia del progetto agenti, col perimetro
-    # e la verifica umana. SILENZIO DICHIARATO, stessa disciplina di advisory.db/
-    # sentinel.db (Task 6/7): un proposals.db o un dashboard_backups.json
-    # ereditati da un'installazione precedente non vengono ne' cancellati
-    # (mai dati utente in /data) ne' incontrati in silenzio.
-    _proposals_db_path = os.path.join(data_dir, "proposals.db")
-    if os.path.exists(_proposals_db_path):
-        logger.info(
-            "proposals.db presente in %s da un'installazione precedente: "
-            "da fetta E3 Task 10 nessun codice lo legge ne' lo scrive piu' "
-            "(ProposalStore e le rotte /api/proposals* sono uscite per "
-            "intero). Il file resta su disco, intatto.",
-            _proposals_db_path,
-        )
-    _dashboard_backups_path = os.path.join(data_dir, "dashboard_backups.json")
-    if os.path.exists(_dashboard_backups_path):
-        logger.info(
-            "dashboard_backups.json presente in %s da un'installazione "
-            "precedente: da fetta E3 Task 10 nessun codice lo legge ne' lo "
-            "scrive piu' (dashboard_backups.py e le rotte /api/dashboards* "
-            "sono uscite insieme all'apply delle proposte che salvava). Il "
-            "file resta su disco, intatto.",
-            _dashboard_backups_path,
-        )
-
     # fetta E3 Task 13 ("escono le notifiche"): `notifiche.py` e il suo intero
     # cablaggio (`notify_config`, `_fetch_addon_slug`, `_ingress_click_path`,
     # `app["ingress_click_path"]`) sono usciti -- i tre chiamanti di
@@ -3948,38 +3870,6 @@ async def _on_startup(app: web.Application) -> None:
     # un progetto proprio, con una destinazione configurabile -- non
     # `notify.notify` cablato.
     app["theme"] = os.environ.get("THEME", "auto")
-
-    # fetta E3 Task 9 ("esce il Task Engine"): il TaskEngine (il pianificatore
-    # innesco->azione, condannato dalla mappa per Legge III) e' uscito per
-    # intero -- modulo, rotte /api/tasks*, gli hook nei due engine. Era
-    # l'ULTIMO chiamante di `notifiche.send_notification` (le sue azioni
-    # residue, dopo che `call_ha_service` era uscita nella review finale E2,
-    # erano solo `send_notification`): il resto del cablaggio (notify_config
-    # e affini) e' uscito col Task 13, vedi sopra. SILENZIO DICHIARATO:
-    #  1b. `EntityCache.get_state` (proxy/entity_cache.py) e' orfano allo
-    #     stesso modo: il suo unico chiamante era
-    #     `TaskEngine._evaluate_condition()`. `proxy/entity_cache.py` NON si
-    #     tocca in questa fetta (censimento conferma) -- lo raccoglie il
-    #     Task 12.
-    #  2. un `tasks.json` con task pendenti ereditato da un'installazione
-    #     precedente non viene piu' ne' caricato ne' eseguito: nessun codice
-    #     lo incontra piu'. Review finale fetta E3, Minor: la nota precedente
-    #     diceva che "nessun log e' possibile" -- falso, come per gli altri
-    #     file di questa lista: un `os.path.exists` sul path letterale e'
-    #     esattamente cio' che si fa qui sotto, stessa disciplina di
-    #     advisory.db/sentinel.db/portrait.db/proposals.db/
-    #     dashboard_backups.json/ha_health.json. Il file resta su disco,
-    #     intatto (mai dati utente cancellati in /data): va nell'elenco /data
-    #     del Task 15 e nelle note di release.
-    _tasks_json_path = os.path.join(data_dir, "tasks.json")
-    if os.path.exists(_tasks_json_path):
-        logger.info(
-            "tasks.json presente in %s da un'installazione precedente: "
-            "da fetta E3 Task 9 nessun codice lo legge ne' lo scrive piu' "
-            "(il TaskEngine e le rotte /api/tasks* sono usciti per intero). "
-            "Il file resta su disco, intatto.",
-            _tasks_json_path,
-        )
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     # Serve solo all'importazione una-tantum dei contatori di prima
@@ -4106,89 +3996,6 @@ async def _on_startup(app: web.Application) -> None:
     # sotto (`_bridge_notices`): da uno script di avvio l'archivio non si
     # legge, e restare in silenzio avrebbe reso muta proprio la transizione che
     # questa versione produce.
-
-    # ── Fetta "esce il documentale" ────────────────────────────────────────
-    # Decisione del proprietario, 12 agosto 2026: «Al momento l'integrazione
-    # documentale puo' essere tolta, la rivedremo poi, non serve.» Con Mayan
-    # escono anche l'ARCHIVIO DI CONOSCENZA (`KnowledgeStore`, knowledge.db) e
-    # la CATTURA DELLO STORICO (`HistoryStore`/`HistoryCapture`, history.db),
-    # perche' scrivevano nello stesso posto e, letto il codice, non avevano
-    # nessun altro consumatore vivo:
-    #   - la chat prende il contesto da `compose_briefing()` (Task 3 "il
-    #     contesto della chat viene dal nucleo"), mai da `KnowledgeStore`;
-    #   - la pagina Memoria interroga `memory/store.py`, non la coda di
-    #     approvazione (config/memory-route.js lo dichiara per iscritto);
-    #   - `search()`, `declared()`, `recent()`, `upcoming_obligations()` e
-    #     `search_chunks()` non avevano gia' oggi nessun chiamante di
-    #     produzione, e le quattro rotte /api/knowledge* nessun frontend.
-    # Cioe': HIRIS registrava la casa a ogni `state_changed`, spendeva
-    # embedding ogni notte alle 04:00 (per chi aveva scelto un provider: di
-    # fabbrica l'opzione e' vuota) e ingeriva documenti in un archivio che
-    # nessuno riapriva. Escono insieme il digest storico (brain/
-    # history_digest.py), la migrazione una-tantum della memoria legacy
-    # (brain/memory_migration.py, che scriveva solo li'), la pagina
-    # Storicizzazione e le rotte /api/history/policy.
-    #
-    # Esce anche brain/privacy.py (`VaultStore`/`Pseudonymizer`, vault.db).
-    # Le traduzioni promettevano che `mayan.sensitivity: sensitive`
-    # "nasconde il contenuto all'AI cloud": era FALSO: nessun percorso
-    # chiamava piu' `pseudonymize()`, quindi `last_pseudonym_map` restava
-    # sempre vuota e i due `detokenize` lavoravano su un dizionario vuoto.
-    # Niente da detokenizzare, quindi niente da smascherare per errore -- ma
-    # la promessa non era solo non mantenuta, era contraddetta: `mayan_ingest`
-    # passava all'embedder il testo OCR INTEGRALE del documento, senza
-    # guardare `sensitivity`. Con `memory.embedding_provider` di fabbrica
-    # ("" -> NullEmbedder, zero rete) e con `model2vec`/`ollama` quel testo
-    # non usciva dall'impianto; con `openai` usciva in chiaro verso
-    # api.openai.com. Il CHANGELOG 2.1.0 lo dice all'utente per esteso, per
-    # provider. La promessa esce con l'opzione che la dichiarava.
-    #
-    # SILENZIO DICHIARATO, stessa disciplina di advisory.db/portrait.db/
-    # sentinel.db piu' sotto: i file di un'installazione precedente NON
-    # vengono cancellati (mai dati utente in /data), ma il loro incontro si
-    # dichiara nel log invece di restare muto.
-    _knowledge_db_path = os.path.join(data_dir, "knowledge.db")
-    if os.path.exists(_knowledge_db_path):
-        logger.info(
-            "knowledge.db presente in %s da un'installazione precedente: "
-            "dalla fetta \"esce il documentale\" nessun codice lo legge ne' lo "
-            "scrive piu' (l'archivio di conoscenza, la coda di approvazione, "
-            "il digest storico e l'ingest dei documenti sono usciti). "
-            "Il file resta su disco, intatto.",
-            _knowledge_db_path,
-        )
-
-    _legacy_memory_db_path = os.path.join(data_dir, "hiris_memory.db")
-    if os.path.exists(_legacy_memory_db_path):
-        logger.info(
-            "hiris_memory.db presente in %s da un'installazione precedente: "
-            "la migrazione una-tantum che lo travasava nell'archivio di "
-            "conoscenza (brain/memory_migration.py) e' uscita con l'archivio "
-            "stesso, quindi nessun codice lo legge piu'. Il file resta su "
-            "disco, intatto.",
-            _legacy_memory_db_path,
-        )
-
-    _history_db_path = os.path.join(data_dir, "history.db")
-    if os.path.exists(_history_db_path):
-        logger.info(
-            "history.db presente in %s da un'installazione precedente: "
-            "dalla fetta \"esce il documentale\" nessun codice lo legge ne' lo "
-            "scrive piu' (la cattura dello storico, la compattazione delle "
-            "03:30 e il digest delle 04:00 sono usciti). La cronaca della "
-            "casa la tiene Home Assistant. Il file resta su disco, intatto.",
-            _history_db_path,
-        )
-
-    _history_policy_path = os.path.join(data_dir, "history_policy.json")
-    if os.path.exists(_history_policy_path):
-        logger.info(
-            "history_policy.json presente in %s da un'installazione "
-            "precedente: la pagina Storicizzazione e le rotte "
-            "/api/history/policy che lo leggevano e scrivevano sono uscite. "
-            "Il file resta su disco, intatto.",
-            _history_policy_path,
-        )
 
     decidi_vault(data_dir)
     cancella_residui(data_dir)
@@ -4626,81 +4433,6 @@ async def _on_startup(app: web.Application) -> None:
 
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
-
-    # fetta E3 Task 6: l'AdvisoryStore (le segnalazioni del Brain -- batterie
-    # scariche, entita' non disponibili, automazioni rotte, domini pericolosi,
-    # entita' senza area) esce insieme a tutti i suoi lettori/scrittori: il
-    # resoconto delle 08:00, i solleciti ogni 6 ore e la scansione di salute
-    # ogni 30 minuti che la popolava. SILENZIO DICHIARATO: nessuno slot app
-    # "advisory_store", nessuna rotta /api/brain/advisories*, nessuna
-    # scrittura. Un'installazione precedente puo' avere un advisory.db
-    # popolato su disco -- non lo cancelliamo (mai dati utente in /data), ma
-    # se c'e' lo diciamo esplicitamente nel log invece di incontrarlo in
-    # silenzio: un pass muto sarebbe indistinguibile da un guasto.
-    _advisory_db_path = os.path.join(data_dir, "advisory.db")
-    if os.path.exists(_advisory_db_path):
-        logger.info(
-            "advisory.db presente in %s da un'installazione precedente: "
-            "da fetta E3 Task 6 nessun codice lo legge ne' lo scrive piu' "
-            "(il Brain che parlava -- resoconto, solleciti, scansione di "
-            "salute -- e' uscito). Il file resta su disco, intatto.",
-            _advisory_db_path,
-        )
-
-    # fetta E3 Task 12 ("esce il ritratto"): PortraitStore/portrait.py sono
-    # usciti per intero -- i loro unici lettori (il Brain, la Sentinella)
-    # erano gia' caduti nei Task 4-7, e l'unico scrittore era il job
-    # schedulato "hiris_portrait_observe" (cancellato piu' sotto insieme al
-    # resto del cablaggio). SILENZIO DICHIARATO, stessa disciplina di
-    # advisory.db/sentinel.db (Task 6/7): un portrait.db ereditato da
-    # un'installazione precedente non viene cancellato (mai dati utente in
-    # /data) ma il suo incontro va dichiarato nel log, non muto.
-    _portrait_db_path = os.path.join(data_dir, "portrait.db")
-    if os.path.exists(_portrait_db_path):
-        logger.info(
-            "portrait.db presente in %s da un'installazione precedente: "
-            "da fetta E3 Task 12 nessun codice lo legge ne' lo scrive piu' "
-            "(il ritratto della casa -- portrait.py, portrait_store.py, il "
-            "job schedulato 'hiris_portrait_observe' -- e' uscito per "
-            "intero). Il file resta su disco, intatto.",
-            _portrait_db_path,
-        )
-
-    # fetta E3 Task 7 ("esce la Sentinella intera, e il semaforo che la E2 le
-    # aveva promesso"): guardiano (Guardian), ragionatore (watcher/
-    # reasoner.py::reason/_llm_reason/_gather_context), esecutore (watcher/
-    # executor.py::execute) e le closure che li collegavano (_notify,
-    # _propose, _on_wake) sono usciti per intero, insieme a `sentinel_store`
-    # (sentinel.db), al job "hiris_sentinel_reset" e al listener su
-    # `ha_client`. Con Agentbot (T3), ronda (T4) e Brain (T5-6) gia' usciti,
-    # il guardiano svegliava un ragionatore la cui Decisione arrivava a un
-    # `executor.execute()` che da fetta E2 "propone, non agisce" -- l'ultimo
-    # pezzo che poteva decidere qualcosa da solo. `hiris/app/watcher/` e
-    # `hiris/app/security/` (il semaforo, DANGEROUS_DOMAINS/effective_tier/
-    # summarize_autonomy) sono cancellati per intero: verificato con grep che
-    # nessun modulo vivo li importa piu' (i lettori del semaforo erano
-    # `watcher/executor.py` e `api/handlers_gateway_policy.py`, entrambi
-    # usciti con lui; vedi il report del task). L'unico chiamante vivo che
-    # importava qualcosa da `watcher/` -- `agent/runner.py`, il ponte push,
-    # che riusava `watcher.reasoner.parse_decision` -- si e' portato dietro
-    # quella funzione (ora vive li', non e' stata cancellata).
-    #
-    # Silenzio dichiarato: un `sentinel.db` popolato da un'installazione
-    # precedente non incontra piu' nessun lettore/scrittore (nessuno slot
-    # app, nessuna rotta, nessun listener). Il file non viene cancellato
-    # (mai dati utente in /data), ma se c'e' lo diciamo esplicitamente nel
-    # log invece di incontrarlo in silenzio -- stessa disciplina di
-    # advisory.db (Task 6): un pass muto sarebbe indistinguibile da un
-    # guasto.
-    _sentinel_db_path = os.path.join(data_dir, "sentinel.db")
-    if os.path.exists(_sentinel_db_path):
-        logger.info(
-            "sentinel.db presente in %s da un'installazione precedente: "
-            "da fetta E3 Task 7 nessun codice lo legge ne' lo scrive piu' "
-            "(la Sentinella -- guardiano, ragionatore, esecutore -- e' "
-            "uscita per intero). Il file resta su disco, intatto.",
-            _sentinel_db_path,
-        )
 
     # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
     # runner remoto. Resta -- lo usa il ramo chat sotto (Slice 4b) -- ma
@@ -5575,8 +5307,8 @@ def create_app() -> web.Application:
     # COSA NON E': una superficie remota. Vive sul listener che c'e' gia',
     # raggiungibile su `127.0.0.1` dall'interno del container -- nessuna porta
     # nuova, nessun port mapping, nessuna opzione `Network`, nessuna opzione
-    # dell'add-on. L'handler accetta inoltre la SOLA autenticazione a token
-    # interno (`auth_via == "token"`): ne' l'ingress del Supervisor ne' la
+    # dell'add-on. L'handler accetta inoltre la SOLA credenziale di un turno
+    # del ponte (`auth_via == "turno"`): ne' l'ingress del Supervisor ne' la
     # valvola di sviluppo `HIRIS_ALLOW_NO_TOKEN` la aprono.
     from .api.handlers_mcp import create_rounds_per_exchange, handle_mcp
     app.router.add_post("/api/mcp", handle_mcp)
@@ -5612,10 +5344,6 @@ def create_app() -> web.Application:
     # un riavvio e' una finestra che ti sei dimenticato aperta.
     from .api.servizi import prepara_finestra
     prepara_finestra(app)
-    # I ricordi delle sessioni di ingress gia' verificate col Supervisor (A-2).
-    from .api.ingresso import prepara_ingresso
-    prepara_ingresso(app)
-
     from .api.canali import prepara_canali
     prepara_canali(app)
 

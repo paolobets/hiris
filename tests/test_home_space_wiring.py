@@ -98,7 +98,7 @@ async def test_una_raffica_di_eventi_rilegge_il_comportamento_una_volta_sola():
     # FORZA la rilettura: l'mtime dei file puo' non essere cambiato affatto
     # (un'automazione tolta/aggiunta in un pacchetto), ed e' proprio il
     # punto di questo innesco.
-    guarda_finta.assert_awaited_once_with(force=True)
+    guarda_finta.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

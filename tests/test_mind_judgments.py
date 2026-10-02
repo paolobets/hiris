@@ -96,7 +96,7 @@ def test_riga_che_l_archivio_SALTA_e_NOMINATA_dalla_salute(tmp_path):
     c'era.
 
     E' precisamente il caso che la porta del sapere esiste per mostrare, ed e'
-    la stessa lezione del difetto del 14/09/2026 (`_record_repair`): un esito
+    la stessa lezione del difetto del 14/09/2026 (la riparazione d'avvio): un esito
     scritto solo nel log e' un esito perso.
 
     **L'istantanea resta buona** -- la riga saltata non la sporca, quindi

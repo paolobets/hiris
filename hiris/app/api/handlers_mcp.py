@@ -654,11 +654,13 @@ async def handle_mcp(request: web.Request) -> web.Response:
     """L'adattatore: `initialize`, `tools/list`, `tools/call`, piu' le notifiche.
 
     **L'autenticazione non riposa su un ramo solo.** `internal_auth_middleware`
-    lascia passare tre categorie di richieste -- ingress genuino del Supervisor,
-    token interno valido, e (nella sola suite di test) la valvola
-    `HIRIS_ALLOW_NO_TOKEN`. Questa rotta ne accetta **una sola**: il token, cioe'
-    esattamente cio' che il worker del ponte manda gia'
-    (`agent/runner.py::build_headers`). Il controllo e' su `request["auth_via"]`,
+    lascia passare piu' categorie di richieste -- l'ingress genuino del
+    Supervisor, un canale firmato, la credenziale di un turno del ponte, e
+    (nella sola suite di test) la valvola `HIRIS_ALLOW_NO_TOKEN`. Questa rotta
+    ne accetta **una sola**: `turno`, la credenziale effimera che il worker del
+    ponte manda (`agent/runner.py::build_headers`). Fino al 22/09/2026 era il
+    segreto condiviso (`auth_via == "token"`), che da quel giorno il middleware
+    non assegna piu'. Il controllo e' su `request["auth_via"]`,
     che il middleware scrive: non si ricopia qui un secondo confronto di segreti
     (sarebbe un secondo posto da tenere allineato), si restringe. Se il
     middleware non ha girato affatto, la chiave non c'e' e la rotta nega: chiuso
@@ -678,10 +680,10 @@ async def handle_mcp(request: web.Request) -> web.Response:
     # «turno» e' la credenziale EFFIMERA del ponte, che dal 22/09/2026
     # sostituisce il segreto condiviso su questo percorso: stessa rotta,
     # stesso portatore, credenziale che muore col turno.
-    if request.get("auth_via") not in ("token", "turno"):
+    if request.get("auth_via") != "turno":
         logger.warning(
-            "MCP: richiesta rifiutata da %s -- questa rotta accetta solo "
-            "l'X-HIRIS-Internal-Token dell'add-on (autenticazione vista: %s)",
+            "MCP: richiesta rifiutata da %s -- questa rotta accetta solo la "
+            "credenziale di un turno del ponte (autenticazione vista: %s)",
             request.remote, request.get("auth_via"),
         )
         return web.json_response({"error": "unauthorized"}, status=401)

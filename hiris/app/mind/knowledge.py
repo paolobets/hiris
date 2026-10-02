@@ -522,7 +522,7 @@ def _facts_and_skipped(rows) -> tuple[list[Fact], list[str]]:
     """Come `_facts`, ma dice anche **quali** righe ha saltato.
 
     Il registro dell'add-on da fuori non si legge, ed e' la stessa lezione del
-    difetto del 14/09/2026 (`server._record_repair`): un esito scritto solo
+    difetto del 14/09/2026 (la riparazione d'avvio di `server.py`): un esito scritto solo
     nel log e' un esito perso. Chi ha bisogno di **mostrare** le righe saltate
     -- la porta dei giudizi, che le porta in `/api/health` (giro di correzioni
     1, punto 6) -- chiede questa, e non ripete ne' la query ne' il ciclo:
