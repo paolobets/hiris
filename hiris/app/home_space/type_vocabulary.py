@@ -14,32 +14,20 @@ come vuole la seconda fondamenta. Una coppia il cui dominio non ha una riga
 non si puo' costruire: e' un errore di costruzione, non un buco che si scopre
 leggendo.
 
-**Tre domande, una casa.** Le metriche non sono elenchi: sono modi di
-interrogare la stessa riga. Erano quattro, e i numeri qui sotto restano quelli
-delle sezioni del modulo: la 1 (la gamba, «serve all'obiettivo?») e' uscita
-il 17/09/2026, intera, con la spec 2026-09-16 §11, insieme a `aspect_of`,
-`ASPECT`, `ASPECT_GUARD` e `ASPECTS` (vive dall'11/09/2026, quando avevano
-preso il posto di `mind/baseline.py::aspect` e delle sue otto costanti
-satellite). La gamba decideva UNA cosa che ancora
-conta -- il genere di un episodio -- e quella cosa vive nel campo `genre`
-(spec 2026-09-16 §5); le altre cinque domande che poneva (`chi c'e'`,
-`comfort`, `dispersione`, `energia`, `buono stato`) non avevano nessun
-lettore di produzione rimasto: la sesta, `sicurezza`, e' l'unica che il
-genere ha ereditato.
+**Le domande, una casa.** Le metriche non sono elenchi: sono modi di
+interrogare la stessa riga, e ogni sezione del modulo ne porta una.
 
-2. «Si accende e si spegne, e qual e' il suo riposo, e come lavora?» -> i
-   campi `operable`, `resting_states`, `working_states`. Prima erano
-   `_OPERABLE`, `_RESTING` e `_UNKNOWN` in `mind/facts.py`; oggi chi legge in
-   produzione non li chiede piu' a questo modulo, li chiede all'istantanea
-   dei giudizi (`home_space/type_judgments.TypeJudgments`) di cui questi
-   campi sono il seme.
-3. «Cosa sa fare?» -> `capability_names`. Prima era `_FEATURE_NAMES` in
-   `home_space/topology.py`.
-4. «Merita un annuncio?» -> il campo `notable`. Prima erano `_EVENT_DOMAINS`
-   e `_EVENT_CLASSES` in `home_space/briefing.py`: DUE elenchi per una
-   domanda sola, uno per dominio e uno per coppia, che nessuno teneva
-   allineati. Qui sono un campo solo sulle due granularita' del tipo, ed e'
-   il caso che dimostra perche' il soggetto e' il tipo e non il dominio.
+- «Si accende e si spegne, e qual e' il suo riposo, e come lavora?» -> i
+  campi `operable`, `resting_states`, `working_states`. Chi legge in
+  produzione non li chiede a questo modulo: li chiede all'istantanea dei
+  giudizi (`home_space/type_judgments.TypeJudgments`), di cui questi campi
+  sono il seme.
+- «Cosa sa fare?» -> `capability_names`.
+- «Merita un annuncio?» -> il campo `notable`: un campo solo sulle due
+  granularita' del tipo, ed e' il caso che dimostra perche' il soggetto e' il
+  tipo e non il dominio.
+- «Quali attributi dicono cosa puo' fare, quali com'e' adesso, e quali di
+  cosa e' fatta?» -> le tabelle degli attributi.
 
 **Ogni campo dichiara da dove viene, e non c'e' modo di scriverne uno che non
 lo dichiari** -- vedi `Field` qui sotto. Le provenienze sono tre e non di piu'
@@ -71,7 +59,7 @@ per unirle e' misurabile e va scritto: `DEVICE_CLASS_MEANING` e' indicizzato
 per `(dominio, classe)` -- **la stessa chiave che qui e' il TIPO** -- quindi il
 suo posto naturale e' un campo `meaning` sulle righe di questo modulo, con
 provenienza `importato`. Farlo adesso vorrebbe dire toccare un modulo che
-nessuna delle tre metriche di questa fetta legge; il piano lo prevede gia'
+nessuna delle metriche di quella fetta leggeva; il piano lo prevede gia'
 (fetta 6: «le tre di `ha_vocabulary.py` sono gia' nella forma giusta e vanno
 COLLEGATE, non riscritte»). Fino ad allora il confine e' questo: **una frase
 che spiega cosa significa un valore sta in `ha_vocabulary.py`; un giudizio su
@@ -342,7 +330,7 @@ class TypeVocabulary:
                **fields: Field) -> TypeRow:
         """Campi IN PIU' su una riga che esiste gia'.
 
-        Le tre metriche si dichiarano in tre punti diversi di questo modulo --
+        Le metriche si dichiarano in punti diversi di questo modulo --
         si leggono meglio cosi' -- ma restano tre campi della STESSA riga: un
         secondo `TypeRow` per lo stesso tipo sarebbe la seconda casa che
         il vocabolario esiste per non avere. Un campo gia' presente non si
@@ -425,7 +413,7 @@ RESTING_STATES = "resting_states"
 #: riposi ne' ignoti, e nessuno poteva dire se fosse una decisione o una
 #: dimenticanza: il censore li ha nominati proprio perche' nessuna riga li
 #: rivendicava. Dichiararli qui e' la risposta «li abbiamo guardati, e
-#: funzionano» -- l'altra meta' del riposo, senza la quale la metrica 2 sa dire
+#: funzionano» -- l'altra meta' del riposo, senza la quale la metrica dell'accensione sa dire
 #: soltanto quando una cosa ha finito.
 WORKING_STATES = "working_states"
 
@@ -617,7 +605,7 @@ _vocabulary.add("sensor", "battery")
 _vocabulary.add_all("sensor", ("energy", "power", "gas", "water"))
 
 
-# -- metrica 2: accendibile, e il suo riposo --------------------------------
+# -- la metrica dell'accensione: accendibile, e il suo riposo ----------------
 #
 # **LA REGOLA (spec §6, corretta il 26 agosto): un tipo accendibile porta i
 # suoi stati di riposo NELLA STESSA MODIFICA.** Non e' piu' una
@@ -649,7 +637,7 @@ _vocabulary.add_all("sensor", ("energy", "power", "gas", "water"))
 # l'unica forma in cui il censore puo' vedere la differenza.
 #
 # `climate` e `cover` hanno gia' la loro riga sopra (portano un genere): la
-# seconda metrica si aggiunge alla stessa riga, non ne apre una seconda.
+# metrica dell'accensione si aggiunge alla stessa riga, non ne apre una seconda.
 
 # I sei modi operativi di un termostato acceso. Non sono sei riposi travestiti:
 # `heat_cool` e `auto` sono precisamente il termostato che LAVORA senza che
@@ -748,7 +736,7 @@ _vocabulary.add("lawn_mower", operable=Ours(True),
 # la spec §4 li metteva fra le sette esclusioni motivate da «li' `on` significa
 # 'abilitata', non 'accesa' -- il difetto che `briefing._EVENT_DOMAINS`
 # documenta di aver gia' pagato», e **per questi due quella frase era smentita
-# dal codice che citava**: quell'elenco -- oggi la metrica 4 qui sotto -- li
+# dal codice che citava**: quell'elenco -- oggi la metrica dell'annuncio qui sotto -- li
 # CONTIENE entrambi, cioe' il prodotto quel `on` lo annunciava gia' come
 # un'accensione mentre l'esclusione affermava il contrario. L'esclusione cade.
 #
@@ -841,9 +829,9 @@ ABSENT_STATE_FORMS = Ours({"none", ""})
 UNKNOWN_STATES = Ours({"unavailable", "unknown"})
 
 
-# -- metrica 4: merita un annuncio? -----------------------------------------
+# -- la metrica dell'annuncio: merita un annuncio? -------------------------
 #
-# **La quarta domanda, e non e' la seconda travestita.** «Sta funzionando?»
+# **Non e' la domanda dell'accensione travestita.** «Sta funzionando?»
 # guarda un episodio -- nasce, dura, finisce; «merita un annuncio?» guarda il
 # nucleo, cioe' il testo che il modello ha sempre davanti, e chiede se un
 # cambiamento di questo tipo vale le poche righe di «Notevole adesso» oppure e'
@@ -965,7 +953,7 @@ for _device_class in ("smoke", "gas", "carbon_monoxide", "heat", "cold", "moistu
 
 
 
-# -- metrica 3: cosa sa fare ------------------------------------------------
+# -- la metrica delle capacita': cosa sa fare -------------------------------
 #
 # **I nomi dei bit sono IMPORTATI, e questa e' l'unica metrica che non e'
 # nostra.** Home Assistant non li pubblica da nessuna API -- sono `IntFlag`
@@ -1221,7 +1209,7 @@ for _domain, _bits in _FEATURE_TABLES.items():
 del _domain, _bits, _table
 
 
-# -- metrica 5: quali attributi dicono cosa puo' fare, quali com'e' adesso,
+# -- la metrica degli attributi: quali dicono cosa puo' fare, quali com'e' adesso,
 # -- e quali DI COSA e' fatta -----------------------------------------------
 #
 # **La separazione e' di Home Assistant, non nostra, e non c'era niente da
@@ -1671,7 +1659,7 @@ def unknown_states() -> frozenset[str]:
 
 
 def capability_names(domain: str) -> Mapping[int, str] | None:
-    """**Metrica 3** -- i nomi dei bit di `supported_features` per questo
+    """**La metrica delle capacita'** -- i nomi dei bit di `supported_features` per questo
     dominio, o `None` se non ne abbiamo una tabella verificata alla fonte.
 
     `None` e non un dizionario vuoto: «non lo so» e «so che non ne ha» sono due
@@ -1681,7 +1669,7 @@ def capability_names(domain: str) -> Mapping[int, str] | None:
 
 
 def capability_attributes(domain: str) -> frozenset[str]:
-    """**Metrica 4, prima meta'** -- i nomi degli attributi che, per questo
+    """**La metrica degli attributi** -- i nomi degli attributi che, per questo
     dominio, dicono COSA L'ENTITA' PUO' FARE.
 
     **L'unica voce valida su OGNI entita' che Home Assistant dichiara
@@ -1705,7 +1693,7 @@ def capability_attributes(domain: str) -> frozenset[str]:
 
 
 def group_membership_attributes() -> frozenset[str]:
-    """**Metrica 4, quarta meta'** -- i nomi degli attributi che dicono DI
+    """**La metrica degli attributi** -- i nomi degli attributi che dicono DI
     COSA questa entita' e' fatta: i membri di un gruppo.
 
     Senza dominio, e non per pigrizia: un gruppo e' un gruppo su qualunque
@@ -1722,7 +1710,7 @@ def group_membership_attributes() -> frozenset[str]:
 
 
 def assumable_attributes(domain: str) -> frozenset[str]:
-    """**Metrica 4, terza meta'** -- i nomi degli attributi che, per questo
+    """**La metrica degli attributi** -- i nomi degli attributi che, per questo
     dominio, dicono cosa l'entita' puo' ASSUMERE: non un campo di manovra, ma
     l'elenco di cio' che si potra' leggere.
 
@@ -1735,7 +1723,7 @@ def assumable_attributes(domain: str) -> frozenset[str]:
 
 
 def state_attributes(domain: str) -> frozenset[str]:
-    """**Metrica 4, seconda meta'** -- i nomi degli attributi che, per questo
+    """**La metrica degli attributi** -- i nomi degli attributi che, per questo
     dominio, dicono COM'E' ADESSO.
 
     **Non e' una lista di ammessi, ed e' la differenza che regge tutto il
@@ -1799,7 +1787,7 @@ def _verify_no_state_is_both_rest_and_work() -> None:
     """Nessuno stato di un tipo vale insieme «ha finito» e «sta funzionando».
 
     Gira all'importazione, come la regola qui sopra e per la stessa ragione: le
-    due meta' della metrica 2 si scrivono in due punti diversi del modulo, ed e'
+    due meta' della metrica dell'accensione si scrivono in due punti diversi del modulo, ed e'
     esattamente la distanza in cui una contraddizione passa inosservata. Uno
     stato in tutt'e due direbbe a `mind/facts.py` di chiudere l'episodio e al
     censore che quel tipo lo tiene aperto -- due risposte alla stessa domanda,

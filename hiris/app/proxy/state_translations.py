@@ -274,8 +274,8 @@ def _class_steps(device_class) -> tuple[str, ...]:
 #: Home Assistant: mostra il grezzo, senza annunciare un guasto che non c'e'.
 #:
 #: Sta QUI e non nel lettore perche' e' vocabolario delle traduzioni: i
-#: lettori erano due (il nucleo e `guarda`) fino al 29/09/2026, quando il
-#: nucleo ha smesso di rendere stati; oggi e' uno, `queries.py`.
+#: lettori erano due (il nucleo e `queries.view`) fino al 29/09/2026, quando
+#: il nucleo ha smesso di rendere stati; oggi e' uno, `queries.py`.
 TABLE_MISSING_SILENCES = (SILENCE_UNREACHABLE, SILENCE_UNDEFINED)
 
 
@@ -477,13 +477,6 @@ class StateTranslations:
     chiave a `entity_component_key` qui sopra: sono le due domande diverse
     sulla stessa lettura -- «come si rende uno stato» qui dentro, «cosa questa
     casa dichiara di avere» li'.
-    (R6, revisione del tratto v3.23.0..HEAD, 08/09/2026: fino a questa
-    correzione questa classe portava anche `published()` e `PublishedTypes`,
-    un secondo wrapper con gli stessi tre silenzi ma NESSUN chiamante di
-    produzione -- il censore e lo script non li usavano mai. Codice vivo per
-    le prove e morto per il prodotto, cancellato: se un domani un consumatore
-    vero avesse bisogno della cache invece della lettura diretta, si
-    ricostruisce da queste quattro funzioni pure, che restano.)
     """
 
     def __init__(self, client, *, category: str = STATE_TRANSLATIONS_CATEGORY) -> None:

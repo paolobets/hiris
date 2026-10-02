@@ -146,11 +146,9 @@ _FOLDERS = ("/config", "/homeassistant")
 def home_assistant_folder() -> str | None:
     """La cartella di configurazione di Home Assistant, o `None`.
 
-    **Viveva in `server.py` come `_find_ha_config_dir`**, e `home_space/` non
-    poteva chiamarla senza un import circolare: il 22/09/2026 il sigillo dei
-    segreti è servito anche a `home_space/tools.py` (reperto B-1), e riscriverla
-    lì sarebbe stata la stessa ricerca in due posti, libera di divergere. Sta
-    qui, accanto a chi la usa per trovare `secrets.yaml`.
+    Fa la stessa ricerca di `server._find_ha_config_dir`, che `home_space/` non
+    può chiamare senza un import circolare. Sta qui, accanto a chi la usa per
+    trovare `secrets.yaml` (`home_space/tools.py`).
     """
     import os
 

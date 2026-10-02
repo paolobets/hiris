@@ -9,8 +9,8 @@ mostra: la pagina dei giudizi (`api/handlers_mind.py`) le elenca accanto ai
 tipi a cui chiedono una risposta.
 
 Il resto del censore -- il confronto, le eccezioni motivate, la forma
-dell'istantaneo -- non ha lettori nel prodotto e sta fra gli attrezzi dal
-02/10/2026. Fino a quel giorno tutto viveva in `home_space/type_census.py`.
+dell'istantaneo -- non ha lettori nel prodotto e sta fra gli attrezzi
+(`scripts/`).
 
 Spec: `docs/design/2026-09-07-l-anagrafe-dei-tipi.md` §5.
 """

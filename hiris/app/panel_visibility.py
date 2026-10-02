@@ -44,7 +44,7 @@ async def read_own_slug(token: str) -> dict:
     """`{"slug": ...}` oppure `{"errore": ...}`.
 
     `GET /addons/self/info` risolve l'add-on che chiama (Supervisor 2026.09.2,
-    `api/apps.py::get_app_for_request`, verificato il 27/09/2026) e risponde
+    `supervisor/api/apps.py::get_app_for_request`, verificato il 27/09/2026) e risponde
     `{"result": "ok", "data": {...}}`. **Il corpo non si scrive mai nel
     registro**: `data` porta anche le opzioni dell'add-on, chiavi API comprese.
     Nell'errore vanno solo lo stato HTTP o il nome dell'eccezione.

@@ -56,7 +56,7 @@ def _bridge_on(app) -> bool:
     (nell'archivio) governa la spazzata e `app["bridge_active"]`, non
     l'esistenza dell'oggetto coda. Quindi la presenza della chiave e' il
     segnale giusto -- ed e' anche il modo in cui i test entrano e escono dal
-    ramo senza toccare variabili d'ambiente.
+    ramo senza toccare la configurazione.
     """
     return app.get("reasoning_queue") is not None
 
@@ -87,18 +87,6 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     return True, ""
 
 
-#: **Le sei specie di turno di HIRIS**, in un posto solo.
-#:
-#: Erano sei stringhe sparse nei chiamanti di `declare_downgrade`, e dal
-#: 23/09/2026 servono anche al registro dei turni: due elenchi liberi di
-#: divergere sarebbero diventati due verita' sulla stessa cosa.
-#:
-#: **Non e' `agent_type`**, e la differenza morde. `agent_type` ha quattro
-#: valori e risponde a «quale modello scelgo» (`AUTO_MODEL_MAP`); questa
-#: risponde a «chi sta chiedendo». `mind/observer.py` e `mind/recipe_turn.py`
-#: passano tutti e due `agent_type="observer"`, quindi misurando su quello
-#: l'osservatore e le ricette sarebbero indistinguibili -- proprio la
-#: distinzione che il proprietario vuole vedere.
 #: Il tetto di giri di strumento. **Si importa, non si ricopia**: il numero
 #: vive in `claude_runner`, che e' chi lo fa rispettare, e una seconda
 #: costante qui direbbe «esaurito» a un turno che non lo e' il giorno in cui
@@ -107,6 +95,15 @@ from .claude_runner import MAX_TOOL_ITERATIONS as MAX_GIRI
 from .claude_runner import posa_misura as _posa_misura
 from .claude_runner import togli_misura as _togli_misura
 
+#: **Le specie di turno di HIRIS**, in un posto solo: `misura_turno` rifiuta
+#: una specie che non sta qui.
+#:
+#: **Non e' `agent_type`**, e la differenza morde. `agent_type` risponde a
+#: «quale modello scelgo» (`AUTO_MODEL_MAP`); questa risponde a «chi sta
+#: chiedendo». `mind/observer.py` e `mind/recipe_turn.py` passano tutti e due
+#: `agent_type="observer"`, quindi misurando su quello l'osservatore e le
+#: ricette sarebbero indistinguibili -- proprio la distinzione che il
+#: proprietario vuole vedere.
 SPECIE = frozenset({"analista", "attuatore", "chat", "osservatore",
                     "promessa", "ricette"})
 

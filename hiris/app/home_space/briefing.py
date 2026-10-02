@@ -1,13 +1,8 @@
 """Il nucleo -- il testo che il modello ha SEMPRE davanti.
 
-E' il punto in cui muore la sovrapposizione n.1 della mappa del prodotto:
-la chat riceveva una mappa senza il ritratto, il Brain il ritratto senza
-la mappa -- due intelligenze nella stessa casa che ne vedono due diverse
-(vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7). Ritratto e
-Brain sono usciti per intero nella fetta E3 ("esce la casa vecchia"): oggi
-il nucleo e' l'unica rappresentazione della casa rimasta, e resta
-**lo stesso per chiunque ragioni**: chat, e un domani Brain e agenti, quando
-torneranno con un progetto proprio.
+E' l'unica rappresentazione della casa, **la stessa per chiunque ragioni**
+(vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7): due intelligenze
+nella stessa casa non devono vederne due diverse.
 
 Con trecento entita' elencarle tutte sfonderebbe il contesto a ogni
 messaggio: il nucleo CONTA, non elenca -- "Cucina: 2 luci, 1 sensore", non i
@@ -22,14 +17,13 @@ tests/test_briefing.py.
 
 **Un nucleo troncato in silenzio e' un HIRIS che crede di sapere.** Quando il
 tetto di caratteri costringe a tagliare, il taglio e' scritto DENTRO il
-nucleo (sezione 5, "cio' che HIRIS ignora"), non solo in un riepilogo che
+nucleo (sezione "cio' che HIRIS ignora"), non solo in un riepilogo che
 nessuno legge.
 
 La priorita' di taglio NON e' "cosa e' recuperabile": tutto qui dentro lo e',
 un ricordo tagliato incluso -- sta in SQLite e si raggiunge con
-`search(genere="ricordo", riferimento=id)`, esattamente come un'area o un dispositivo (una
-versione precedente di questo commento affermava il contrario: era falso, e
-motivava con una bugia una scelta che una ragione vera ha comunque). La
+`search(genere="ricordo", riferimento=id)`, esattamente come un'area o un
+dispositivo. La
 priorita' vera e' "cosa il modello perde la possibilita' di SAPERE che
 esiste", perche' il nucleo e' l'unico posto da cui puo' scoprirlo: un
 ricordo mai comparso qui non e' uno che il modello sa di dover cercare (vedi
@@ -150,8 +144,8 @@ _DOMAIN_NAMES = {
     "group": ("gruppo", "gruppi"),
     "sun": ("sole", "sole"),
     # "tag" NON e' "etichetta": in HIRIS quella parola significa gia' le label
-    # che l'utente scrive in Home Assistant (che ora escono da `view` e si
-    # cercano). Due significati per la stessa parola nella stessa risposta e'
+    # che l'utente scrive in Home Assistant (che escono dal dettaglio di
+    # `search`). Due significati per la stessa parola nella stessa risposta e'
     # esattamente cio' che la consistenza vieta.
     "tag": ("tag NFC", "tag NFC"),
     "plant": ("pianta", "piante"),
@@ -224,7 +218,7 @@ def _carriers(area_entities: list[dict], domain: str) -> tuple[list[str], int]:
     helper `input_boolean` in cucina sono davvero dieci cose).
 
     Gli id si accumulano in una lista e non in un `set` per la stessa ragione
-    per cui `_conta_per_dominio` ordina: l'ordine dev'essere quello
+    per cui `_count_per_domain` ordina: l'ordine dev'essere quello
     dell'anagrafe, non quello dell'hash, o due letture della stessa casa
     producono due nuclei diversi."""
     devices: list[str] = []
@@ -253,8 +247,8 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
 
     `device_names` a `None` significa «non ho potuto guardare», non
     «nessun dispositivo»: col registro "dispositivi" caduto la tabella e'
-    VUOTA (home_space/store.py::sostituisci cancella tutto e reinserisce cio'
-    che e' arrivato), quindi un dizionario vuoto renderebbe ogni
+    VUOTA (`reader.build_home_space` costruisce da cio' che e' arrivato),
+    quindi un dizionario vuoto renderebbe ogni
     `dispositivo_id` un riferimento al nulla e l'annotazione stamperebbe
     "(id: ...)" su tutta la casa. La lacuna e' gia' dichiarata in "cio' che
     HIRIS ignora": qui non si aggiunge un secondo silenzio."""
@@ -266,18 +260,18 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
         return ""
     if without or len(devices) > _MAX_DEVICE_NAMES_IN_LINE:
         # Piu' di un portatore: si conta, non si elenca (vedi la costante).
-        # `senza` non nullo con un solo dispositivo e' lo stesso caso visto da
+        # `without` non nullo con un solo dispositivo e' lo stesso caso visto da
         # un'altra parte -- il nome coprirebbe solo una parte delle entita'
         # contate, e un'annotazione parziale afferma piu' di quel che sa.
         return ""
     if not devices:
         # Irraggiungibile da `_home_space_lines`, che conta e raggruppa sulla STESSA
-        # lista con lo STESSO `_dominio`: con zero portatori e zero entita'
-        # senza dispositivo, `quante` e' zero e il confronto `>= quante` ha gia'
+        # lista con lo STESSO `domain_of`: con zero portatori e zero entita'
+        # senza dispositivo, `count` e' zero e il confronto `>= count` ha gia'
         # deciso. La guardia c'e' lo stesso perche' qui sbagliarsi non costa un
         # conteggio storto: questo testo entra nel prompt di OGNI messaggio,
         # quindi un `IndexError` non degrada il nucleo -- SPEGNE LA CHAT. Un
-        # chiamante futuro che passasse un `quante` preso da un'altra parte (un
+        # chiamante futuro che passasse un `count` preso da un'altra parte (un
         # totale d'area, un conteggio precalcolato) qui trova una riga senza
         # annotazione invece di una casa senza assistente.
         return ""
@@ -285,10 +279,10 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
     name = (device_names.get(device_id) or "").strip()
     if name:
         return f" ({name})"
-    # Un dispositivo senza nome esiste davvero: `home_space/store.py` scrive
+    # Un dispositivo senza nome esiste davvero: `reader._device` scrive
     # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
     # MARCATO come id -- la stessa convenzione di `name_with_id` per le aree
-    # (IMPORTANT ⑦) -- perche' e' l'unica chiave con cui
+    # -- perche' e' l'unica chiave con cui
     # `search(riferimento=...)` lo ritrova, e perche' un id tecnico non va
     # mai spacciato per un nome dichiarato dall'utente.
     return f" (id: {device_id})"
@@ -324,10 +318,9 @@ def _count_per_domain(entity: list[dict]) -> dict[str, int]:
     return {domain: counts[domain] for domain in sorted(counts)}
 
 
-# `name_with_id` (R1, fetta "i riferimenti", incidente 2026-08-20) ora vive in
-# `topology.py`: T8 (R2) la riusa per le etichette di `view`, e una regola
-# che deve valere per OGNI riferimento della casa non puo' avere due sedi --
-# scritta due volte sarebbe la stessa forma di difetto che sta chiudendo.
+# `name_with_id` vive in `topology.py`: la usano anche le etichette del
+# dettaglio (`queries.py`), e una regola che deve valere per OGNI riferimento
+# della casa non puo' avere due sedi.
 
 
 def _tree_area_name(area: dict) -> str:
@@ -335,12 +328,7 @@ def _tree_area_name(area: dict) -> str:
     accanto SEMPRE che differisca dal nome, reale o pseudo che sia -- e' il
     reperto R1 dell'incidente 2026-08-20: l'albero mostrava solo nomi,
     `search(riferimento=...)`/`execute` pretendono l'id esatto e vietano di
-    indovinarlo dal nome mostrato. Il costo e' una riga per area.
-
-    Fino al 29/09/2026 esisteva un secondo nome d'area, `_displayed_area_name`,
-    che teneva l'id fuori dal prefisso di ogni riga di «Notevole adesso» (una
-    riga per ENTITA', non per area: li' l'id costava troppo). E' uscito con
-    quella sezione."""
+    indovinarlo dal nome mostrato. Il costo e' una riga per area."""
     return name_with_id(area["nome"], area["id"])
 
 
@@ -544,16 +532,16 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
 
     - il chiamante lo dichiara esplicitamente (`reliable_state=False`) --
       per esempio una lettura iniziata ma non ancora conclusa;
-    - il registro "entita" non ha risposto (in `non_disponibili`): dopo un
-      `replace` parziale la tabella e' VUOTA, non piccola. Senza questo
-      controllo, `casa.get("entita", [])` vuota fa scattare il ramo "casa
+    - il registro "entita" non ha risposto (in `unavailable`): dopo una
+      lettura parziale la tabella e' VUOTA, non piccola. Senza questo
+      controllo, la lista delle entita' vuota fa scattare il ramo "casa
       senza entita' = niente da guardare" qui sotto -- ma non e' una casa
       senza entita', e' un registro che non ha risposto: cinque luci accese
       nella cache viva (che non passa da questa lista) resterebbero "niente
       di notevole", contraddette due sezioni dopo dall'avviso sul registro
       caduto;
     - lo si deduce: se in anagrafe ci sono entita' ma NESSUNA ha uno stato
-      leggibile (assente da `stato`, o "unknown" -- lo stato comunissimo di
+      leggibile (assente da `state`, o "unknown" -- lo stato comunissimo di
       un'entita' subito dopo un riavvio di Home Assistant, prima che il
       primo aggiornamento arrivi), il nucleo non ha visto una casa tranquilla:
       non ha visto niente.
@@ -707,14 +695,14 @@ def _capability_lines(attributes: dict[str, dict] | None,
                       visible_entity_ids: frozenset[str]) -> tuple[list[str], list[int], bool]:
     """Cosa si puo' CHIEDERE alle cose di questa casa, aggregato per firma.
 
-    Restituisce `(righe, pesi, aggregabile)`. `pesi` e' parallelo a `righe`:
+    Restituisce `(righe, pesi, aggregabile)`. I pesi sono paralleli alle righe:
     quante entita' ogni riga rappresenta -- serve al taglio, che dichiara
     ENTITA' escluse e non righe (stessa disciplina dei conteggi della casa).
-    `aggregabile` e' falso in due casi diversi, e nessuno dei due entra
+    L'ultimo e' falso in due casi diversi, e nessuno dei due entra
     nell'ordine di taglio: quando la sezione porta una DICHIARAZIONE invece
     delle capacita' (lo stato non e' stato letto, oppure nessuna entita' ne
     dichiara) -- tagliare la frase «non ho guardato» ricrea esattamente il
-    silenzio che quella frase esiste per rompere; e quando `attributi` e'
+    silenzio che quella frase esiste per rompere; e quando `attributes` e'
     `None`, dove le righe sono zero e la sezione non compare affatto.
 
     **Perche' questa sezione esiste.** Dalla 3.23.0 HIRIS sa dire che
@@ -730,14 +718,11 @@ def _capability_lines(attributes: dict[str, dict] | None,
     termostato per definizione -- e infatti restano fuori dal nucleo, dove
     sono sempre stati.
 
-    `visible_entity_ids` (R1, revisione del tratto v3.23.0..HEAD, 08/09/2026):
-    prima di questa correzione questa funzione iterava `attributi` -- lo
-    specchio INTERO della cache -- senza ricevere l'anagrafe, quindi contava
-    nascoste, entita' di servizio (`categoria`) e perfino entita' presenti in
-    cache ma assenti dall'anagrafe. «Notevole adesso» (uscita dal nucleo il
-    29/09/2026) filtrava gia' le prime due: la stessa casa raccontava due
-    totali diversi per la stessa parola, nello stesso testo. Vedi
-    `digest_visible_entity_ids`, l'unica fonte di questa regola ora."""
+    `visible_entity_ids`: senza, la funzione itererebbe `attributes` -- lo
+    specchio INTERO della cache -- e conterebbe nascoste, entita' di servizio
+    (`categoria`) e perfino entita' presenti in cache ma assenti
+    dall'anagrafe. Vedi `digest_visible_entity_ids`, l'unica fonte di questa
+    regola."""
     if unreliable_state:
         return ([
             ("Stato non letto (o dichiarato non attendibile): non si puo' dire cosa "
@@ -746,7 +731,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
         ], [1], False)
     if attributes is None:
         # Il chiamante non ha guardato. **Silenzio**, e non una frase: e' la
-        # stessa regola gia' scritta per `problemi` e per `confronto` -- «e'
+        # stessa regola gia' scritta per `problems` e per `comparison` -- «e'
         # l'unico caso in cui tacere non afferma niente». Una sezione che
         # dicesse «non lette» su ogni composizione che non le cabla
         # occuperebbe il posto piu' letto del prodotto per dichiarare un
@@ -1036,9 +1021,9 @@ def _problems_notice(problems: dict | None) -> str | None:
     questo dice cosa HA ha diagnosticato in generale. Nessuno dei due e' un
     evento -- sono condizioni, e restano vere finche' qualcuno non le ripara.
 
-    `problemi` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
-    da `app["ha_problems"]`), esattamente come `stato` e
-    `sistema_di_riferimento`: `compose()` resta PURA.
+    `problems` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
+    da `app["ha_problems"]`), esattamente come `state` e
+    `reference_frame`: `compose()` resta PURA.
 
     I tre valori, e sono tre cose diverse:
     - `None`: il chiamante non ha chiesto. Silenzio -- e' l'unico caso in cui
@@ -1159,14 +1144,14 @@ def _cited_entities(identifiers: list[str]) -> str:
 def _comparison_notice(comparison: dict | None) -> str | None:
     """L'albero raccontato da HIRIS contro la casa che Home Assistant risolve.
 
-    Fino a questa fetta `hierarchy()` era un'AFFERMAZIONE che niente
-    verificava. `HAClient.extract_from_target` chiede a Home Assistant cosa
-    contiene un'area davvero, e `anagrafe.compare_with_home_assistant` mette
+    `hierarchy()` da sola e' un'AFFERMAZIONE che niente verifica.
+    `HAClient.extract_from_target` chiede a Home Assistant cosa
+    contiene un'area davvero, e `topology.compare_with_home_assistant` mette
     le due liste una accanto all'altra su un campione di aree.
 
-    `confronto` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
-    da `app["tree_comparison"]`), esattamente come `stato`, `problemi` e
-    `sistema_di_riferimento`: `compose()` resta PURA.
+    `comparison` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
+    da `app["tree_comparison"]`), esattamente come `state`, `problems` e
+    `reference_frame`: `compose()` resta PURA.
 
     **TRE ESITI, TRE DICITURE DIVERSE** -- la stessa disciplina con cui
     `hierarchy()` distingue «Senza area» da «Area sconosciuta» da «Aree non
@@ -1289,14 +1274,8 @@ def _memory_lines(memories: list[dict]) -> list[str]:
     codice, non il caso con cui arrivano gli argomenti."""
     if not memories:
         return ["Nessun ricordo registrato."]
-    # N1 (review indipendente 25/08/2026): questa riga chiamava
-    # `sanitize_text` inline invece di `ricordi_sanificati()` -- la funzione
-    # CONDIVISA introdotta apposta perche' un ricordo non potesse piu' uscire
-    # filtrato da una porta e grezzo da un'altra (I1). Il nucleo era filtrato
-    # comunque, ma smentiva l'argomento stesso con cui la funzione condivisa
-    # e' nata: "un punto solo, non una terza copia". Ora e' un punto solo
-    # anche qui -- il docstring di `_sanitize.py` che elenca le porte diventa
-    # vero da se', non per una lista da tenere aggiornata a mano.
+    # `sanitized_memories()` e' la funzione CONDIVISA: un ricordo non deve
+    # poter uscire filtrato da una porta e grezzo da un'altra.
     #
     # C-2 (L1-sicurezza.md): il ricordo e' l'UNICA cosa che entra intera
     # nel nucleo, a OGNI turno, senza che il modello lo richieda -- e'
@@ -1426,32 +1405,20 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     taglio). Fra la casa e le capacita', quando ci sono, i guasti che Home
     Assistant ha diagnosticato.
 
-    **Il nucleo porta cio' che e' STABILE, non lo stato del momento** (dal
-    29/09/2026, spec «una porta sola per la casa» §5). Fino a quel giorno la
-    seconda sezione era «Notevole adesso» -- cio' che era acceso, aperto, in
-    allarme -- e il modello la prendeva per la risposta: la #18 della
-    batteria («come sta la casa») e' stata risposta da quella fotografia,
-    senza strumenti, e sbagliata. Lo stato vivo si chiede a `search`, che lo
-    legge nel momento in cui serve. Il riepilogo (secondo elemento) non ha
-    mai avuto una chiave per quella sezione: cambia solo l'avviso di taglio,
-    che non conta piu' «elementi notevoli».
+    **Il nucleo porta cio' che e' STABILE, non lo stato del momento** (spec
+    «una porta sola per la casa» §5): una fotografia di cio' che e' acceso o
+    aperto il modello la prenderebbe per la risposta. Lo stato vivo si chiede
+    a `search`, che lo legge nel momento in cui serve.
 
-    **Quattro argomenti servivano solo a quella sezione** -- le traduzioni
-    degli stati, i nomi e le classi dello specchio, l'istantanea dei giudizi
-    sui tipi -- e sono usciti dalla firma lo stesso giorno, insieme alla
-    lettura che il chiamante (`handlers_home_space.compose_briefing`) ne
-    faceva per nessuno (decisione del proprietario: il codice morto si
-    elimina).
-
-    `attributi` sono le ceste degli attributi vivi, entita' per entita', come
+    `attributes` sono le ceste degli attributi vivi, entita' per entita', come
     `topology.live_mirror` le consegna gia' al chiamante. Servono a una cosa
     sola qui dentro: la sezione «cosa si puo' chiedere», che aggrega le
     CAPACITA' (mai i valori correnti -- vedi `_capability_lines`). `None`
     significa «il chiamante non ha guardato» e NON «nessuna entita' sa fare
-    niente»: la sezione lo dichiara, come `problemi` e `confronto` qui sopra.
+    niente»: la sezione lo dichiara, come `problems` e `comparison` qui sotto.
 
-    `non_disponibili` sono i registri dell'anagrafe che non hanno risposto
-    all'ultima lettura (`HomeSpaceStore.non_disponibili()`). Senza, ne' "La
+    `unavailable` sono i registri dell'anagrafe che non hanno risposto
+    all'ultima lettura (`HomeSpace.unavailable()`). Senza, ne' "La
     casa" ne' "cio' che HIRIS ignora" potrebbero nominare la lacuna piu'
     grave che esista: una casa letta a meta' che il nucleo racconterebbe
     come una casa piccola (o senz'area) invece che come una casa non letta
@@ -1460,39 +1427,39 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     incompatibile. Una casa
     non ancora letta non e' una casa cambiata.
 
-    `reliable_state=False` dichiara esplicitamente che `stato` non ci si
+    `reliable_state=False` dichiara esplicitamente che di `state` non ci si
     puo' fidare (es. una lettura iniziata ma non ancora conclusa): senza un
     modo per dirlo, il chiamante non avrebbe potuto distinguere "ho letto lo
     stato ed e' vuoto/sospetto" da "questo e' lo stato vero". Anche senza
     dichiararlo, il nucleo lo deduce da solo se in anagrafe ci sono entita'
     ma nessuna ha uno stato leggibile, o se il registro "entita" stesso non
-    ha risposto (CRITICAL ②, tabella vuota dopo un `replace` parziale) --
+    ha risposto (tabella vuota dopo una lettura parziale) --
     vedi `_unreliable_state`.
 
-    `problemi` sono i guasti che Home Assistant ha GIA' diagnosticato
+    `problems` sono i guasti che Home Assistant ha GIA' diagnosticato
     (`repairs/list_issues`, letti da `HAClient.problems()`), nella forma in cui
     quella funzione li restituisce: `{"problemi": [...]}` o `{"errore": ...}`.
-    Arrivano come ARGOMENTO, come `stato` e `sistema_di_riferimento`, perche'
+    Arrivano come ARGOMENTO, come `state` e `reference_frame`, perche'
     questa funzione non apre connessioni. `None` significa «il chiamante non ha
     chiesto» e non «non c'e' niente che non va»: vedi `_problems_notice`, che
     decide anche cosa dire e cosa tacere.
 
-    `confronto` e' l'esito dell'ultimo giro di verifica dell'albero contro
-    Home Assistant (`anagrafe.compare_with_home_assistant`, alimentato da
+    `comparison` e' l'esito dell'ultimo giro di verifica dell'albero contro
+    Home Assistant (`topology.compare_with_home_assistant`, alimentato da
     `server.tree_comparison_round`). Arriva come ARGOMENTO per la stessa
-    ragione di `problemi`: questa funzione non apre connessioni, e chiedere a
+    ragione di `problems`: questa funzione non apre connessioni, e chiedere a
     HA cosa contiene un'area e' una chiamata di rete. `None` significa «il
     chiamante non ha chiesto», e NON «l'albero combacia»: vedi
     `_comparison_notice`, che tiene separati i tre esiti e il non-letto.
 
     `behavior_problems`/`unread_bodies` sono le
-    dichiarazioni che `comportamento.reread()` costruisce gia' e che
-    `/api/home-space` espone (`HomeSpaceStore.behavior_problems()`/
-    `.file_non_letti()`): senza un parametro per riceverle, il PERCHE' di
-    un'automazione sconosciuta (id duplicato, file malformato) non arrivava
-    mai al modello (IMPORTANT ⑧).
+    dichiarazioni che `behavior.reread()` costruisce gia' e che
+    `/api/home-space` espone (`HomeSpace.behavior_problems()`/
+    `.unread_bodies()`): senza un parametro per riceverle, il PERCHE' di
+    un'automazione di cui non si conosce il corpo non arriverebbe
+    mai al modello.
 
-    Quando serve tagliare per stare sotto `tetto`, si tagliano prima le
+    Quando serve tagliare per stare sotto `ceiling`, si tagliano prima le
     capacita', poi cio' che la casa fa da sola, poi -- fino a una riserva
     minima che non si tocca mai (`_MIN_HOME_SPACE_LINES_RESERVE`, IMPORTANT
     ⑥) -- i conteggi della casa, e per ultimi i ricordi. Il PERCHE' di quest'ordine e' nel
@@ -1643,14 +1610,12 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             "sono e come si chiamano, non cosa fanno.")
 
     # `compose()` resta PURA. I nomi dei dispositivi non si vanno a prendere:
-    # sono gia' in `casa["dispositivi"]`, la stessa struttura che il chiamante
-    # ha letto con `HomeSpaceStore.leggi()` (handlers_home_space.compose_briefing) e
-    # che questa funzione riceve da sempre -- fino a oggi ne buttava via un
-    # campo. Nessun archivio aperto, nessuna rete.
+    # sono gia' in `home_space["dispositivi"]`, la stessa struttura che il
+    # chiamante ha letto con `HomeSpace.read()`
+    # (handlers_home_space.compose_briefing). Nessun archivio aperto, nessuna rete.
     #
     # `None` e non `{}` col registro caduto: la tabella "dispositivi" caduta e'
-    # VUOTA, non piccola (`archivio.replace` cancella tutto e reinserisce
-    # cio' che e' arrivato), quindi `{}` renderebbe ogni `dispositivo_id` un
+    # VUOTA, non piccola, quindi `{}` renderebbe ogni `dispositivo_id` un
     # riferimento al nulla e l'annotazione stamperebbe "(id: ...)" su tutta la
     # casa. La lacuna e' gia' dichiarata negli avvisi e in "cio' che HIRIS
     # ignora": qui si tace, non si inventa. Vedi `_device_annotation`.

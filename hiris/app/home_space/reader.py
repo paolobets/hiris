@@ -1,14 +1,12 @@
 """Il lettore: i registri di Home Assistant diventano l'anagrafe, **senza una
 copia in mezzo**.
 
-Sostituisce `HomeSpaceStore.replace()`. Non e' un rifacimento dei lettori: la
-forma che questo modulo produce e' **la stessa** che `HomeSpaceStore.read()`
-produceva, perche' `queries.py` (`search`, `view`, `hierarchy`,
-`_view_entity`, `_view_device`) non contiene nemmeno una riga di SQL — sono
-funzioni pure sopra un dizionario, e `briefing.compose()` pure. Cambia il
-fornitore del dizionario, non chi lo legge.
+L'anagrafe e' un dizionario di tabelle (`TABLES`). Chi la legge --
+`queries.view`, `topology.hierarchy`, `briefing.compose()` -- sono funzioni
+sopra quel dizionario: questo modulo ne e' il fornitore.
 
-**Perche' esiste.** La copia buttava via cio' che Home Assistant dichiara:
+**Perche' senza copia.** Una copia su disco buttava via cio' che Home
+Assistant dichiara:
 `translation_key`, `unique_id`, `original_name`. E soprattutto **non poteva
 tenere la classe**: `config/entity_registry/list` risponde con
 `RegistryEntry.as_partial_dict` (`helpers/entity_registry.py`), che
@@ -18,11 +16,9 @@ tenere la classe**: `config/entity_registry/list` risponde con
 inerte in produzione, e la piu' costosa di quelle inerzie e' stato il bilancio
 dell'energia: zero oggetti in cinque giorni su cinque.
 
-**Il confine di sanificazione resta qui.** `replace()` era l'unico scrittore
-dell'anagrafe e sanificava al momento della scrittura, cosi' che ogni lettore
-ereditasse la difesa senza ripeterla (C-2, `proxy/_sanitize.py`). Tolta la
-scrittura, il confine e' **la costruzione**: le stesse funzioni, nello stesso
-punto del flusso, un posto solo.
+**Il confine di sanificazione e' la costruzione.** Si sanifica qui, mentre
+l'anagrafe si costruisce, cosi' che ogni lettore erediti la difesa senza
+ripeterla (C-2, `proxy/_sanitize.py`): un posto solo.
 """
 from __future__ import annotations
 
@@ -44,9 +40,9 @@ logger = logging.getLogger(__name__)
 
 #: Il sistema di riferimento della casa e' l'unica cosa che sopravvive ai
 #: riavvii, e sta in un file suo invece che in un archivio: e' un dizionario di
-#: sei campi che si scrive tutto insieme, e per quello SQLite era un motore
-#: acceso per niente. Il nome e' inglese perche' e' un file nuovo (regola del
-#: 04/09/2026); il suo contenuto parla la lingua dell'anagrafe, come sempre.
+#: pochi campi che si scrive tutto insieme, e per quello SQLite sarebbe un
+#: motore acceso per niente. Il nome e' inglese perche' e' un file nuovo (regola
+#: del 04/09/2026); il suo contenuto parla la lingua dell'anagrafe, come sempre.
 REFERENCE_FRAME_FILE = "reference_frame.json"
 
 
@@ -56,7 +52,7 @@ def clean_name(value):
     C-2 (L1-sicurezza.md): un nome/alias/titolo e' testo che HIRIS non
     controlla (un dispositivo di rete ostile, un'integrazione compromessa, un
     ospite che rinomina qualcosa). Sanificare QUI, e non a valle, significa
-    che ogni lettore dell'anagrafe (il nucleo, `guarda`, `cerca`, la pagina)
+    che ogni lettore dell'anagrafe (il nucleo, `search`, la pagina)
     eredita la difesa senza doverla ripetere -- un punto solo, non cinque.
 
     `None`/non-stringa passano invariati: un campo assente non deve diventare
@@ -190,10 +186,9 @@ def _entity(row: dict, live_classes: dict, live_units: dict) -> dict:
         # proposto: e' il primo posto in cui HIRIS deve chiamare le cose come
         # le chiama lui.
         "nome": clean_name(row.get("name") or row.get("original_name")),
-        # I tre campi che la copia buttava. `translation_key` e' cio' che
-        # l'integrazione dichiara di se' -- `energy_generating_today`, non
-        # «Potenza autoconsumata» da indovinare -- ed e' la ragione per cui il
-        # riconoscimento non era il problema. `original_name` accanto a `nome`
+        # `translation_key` e' cio' che l'integrazione dichiara di se' --
+        # `energy_generating_today`, non «Potenza autoconsumata» da
+        # indovinare. `original_name` accanto a `nome`
         # dice CHI ha chiamato cosi' questa cosa: l'integrazione o il
         # proprietario.
         "translation_key": row.get("translation_key"),
@@ -244,9 +239,8 @@ def build_home_space(registries: dict[str, list[dict]], *,
 
 
 class HomeSpace:
-    """L'anagrafe viva: tiene l'ultima lettura e la serve dalla superficie che
-    i suoi chiamanti gia' usano — `read()`, `reference_frame()`,
-    `unavailable()`, `updated_at()`. Nessuno di loro cambia una riga.
+    """L'anagrafe viva: tiene l'ultima lettura e la serve — `read()`,
+    `reference_frame()`, `unavailable()`, `updated_at()`.
 
     **Cosa si perde, ed e' una scelta dichiarata** (spec §4). Prima l'anagrafe
     sopravviveva ai riavvii su disco, e con Home Assistant irraggiungibile
@@ -264,12 +258,8 @@ class HomeSpace:
     chiamante la modifica**, tutti i lettori (`hierarchy`, `queries`,
     `briefing`) costruiscono dizionari nuovi.
 
-    **Il vecchio archivio resta qui dentro, e per una ragione sola**:
-    `comportamento` e `plance` non vengono dai registri di Home Assistant
-    (vengono da `automations.yaml`/`scripts.yaml` e dalle plance) e non sono
-    ancora state portate dal vivo. Sono l'unica ragione per cui `casa.db`
-    esiste ancora. **Questa delega muore con la Fetta 1-bis**, e con lei il
-    file.
+    Il comportamento e le plance si tengono allo stesso modo, in memoria
+    (`hold_behavior`, `hold_dashboards`).
     """
 
     def __init__(self, data_dir: str = "/data") -> None:
@@ -281,7 +271,7 @@ class HomeSpace:
         # NOSTRO archivio, non una copia di un fatto di HA. La riparazione
         # d'avvio gira prima che Home Assistant abbia risposto, e senza il fuso
         # attribuirebbe gli episodi notturni al giorno sbagliato -- vedi
-        # `HomeSpaceStore.remember_reference_frame`.
+        # `_write_reference_frame`.
         self._reference_frame: dict = self._read_reference_frame()
         self._updated_at: str | None = None
         self._behavior_entries: list[dict] = []
@@ -312,8 +302,8 @@ class HomeSpace:
 
         E' l'unica cosa dell'anagrafe che sopravvive ai riavvii, e non e'
         un'eccezione arbitraria: il fuso non e' la copia di un fatto di Home
-        Assistant, e' **la cornice in cui e' scritto il nostro archivio**. I
-        22 giorni di grezzo sono istanti; senza il fuso non si sanno nemmeno
+        Assistant, e' **la cornice in cui e' scritto il nostro archivio**. Il
+        grezzo e' fatto di istanti; senza il fuso non si sanno nemmeno
         dividere in giorni.
 
         Si scrive di fianco e si sposta: un riavvio a meta' scrittura
@@ -381,17 +371,9 @@ class HomeSpace:
                       unread_bodies: dict[str, str] | None = None) -> None:
         """Prende in consegna il comportamento appena letto da Home Assistant.
 
-        **`unread_bodies` sostituisce `file_non_letti`, e non e' una
-        rinomina.** Quello mappava il NOME DI UN FILE alla ragione per cui non
-        si era letto; questo mappa l'ENTITA' alla ragione per cui non se ne
-        conosce il corpo -- e sono la stessa domanda («cosa mi sta
-        sfuggendo?») posta alla fonte giusta. Con la lettura dal vivo un file
-        non c'e' piu': quello che puo' mancare e' il corpo di una singola
-        automazione, e adesso si sa **quale**.
-
-        Da qui viene anche `senza_corpo`, che prima era un conteggio a parte
-        ricavato dai corpi nulli: due campi per un fatto solo sono due campi
-        che possono divergere.
+        `unread_bodies` mappa l'ENTITA' alla ragione per cui non se ne
+        conosce il corpo: con la lettura dal vivo quello che puo' mancare e'
+        il corpo di una singola automazione, e cosi' si sa **quale**.
         """
         self._behavior_entries = list(entries)
         self._behavior_problems = list(problems or [])
@@ -416,8 +398,8 @@ class HomeSpace:
         """
         return dict(self._unread_bodies)
 
-    # -- Le plance: gia' lette dal vivo (`behavior.reread_dashboards`), da
-    # oggi anche tenute a memoria come l'anagrafe e il comportamento.
+    # -- Le plance: lette dal vivo (`behavior.reread_dashboards`) e tenute a
+    # memoria come l'anagrafe e il comportamento.
     def hold_dashboards(self, entries: list[dict],
                         unavailable: list[str] | None = None) -> None:
         self._dashboard_entries = list(entries)
@@ -434,8 +416,7 @@ class HomeSpace:
         return list(self._unavailable_dashboards)
 
     def close(self) -> None:
-        """Non c'e' piu' niente da chiudere: l'anagrafe, il comportamento e le
+        """Non c'e' niente da chiudere: l'anagrafe, il comportamento e le
         plance vivono in memoria, e la cornice e' un file che si apre e si
-        chiude a ogni scrittura. Il metodo resta perche' i suoi chiamanti sono
-        decine e non hanno nessuna ragione di sapere che l'archivio sotto non
-        c'e' piu'."""
+        chiude a ogni scrittura. Il metodo resta per chi lo chiama alla
+        chiusura (`server.py`, le prove)."""

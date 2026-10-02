@@ -26,14 +26,6 @@ _current_provider: ContextVar[str] = ContextVar(
     "hiris_provider_corrente", default="")
 
 
-# `backend_is_cloud` e' USCITO (censimento del 17/08/2026, zero chiamanti di
-# produzione). Diceva se un modello uscisse verso un provider cloud, e serviva
-# alle STRATEGIE -- il preset che sceglieva l'ordine dei provider. Quel concetto
-# e' uscito con la fetta «la catena diventa l'unica verita'»: l'ordine adesso e'
-# esplicito e si riordina dalla pagina Modelli. La funzione era rimasta a
-# rispondere a una domanda che nessuno fa piu'.
-
-
 _STRATEGY_ORDER = {
     # cost_first: prefer free local (Ollama) → cheap cloud → full cloud
     "cost_first":    ["ollama", "openrouter", "openai", "claude"],
@@ -71,36 +63,20 @@ class LLMRouter:
 
     Backends: Claude (anthropic), OpenAI cloud, OpenRouter proxy, Ollama local.
 
-    strategy controls the default backend preference order when model="auto":
+    strategy controls the default backend preference order:
       - "quality_first": Claude → OpenAI → OpenRouter → Ollama
       - "balanced": Claude → OpenRouter → OpenAI → Ollama
       - "cost_first": Ollama → OpenRouter → OpenAI → Claude
-    Fallback: if the primary backend raises an exception and model="auto",
-    the next backend in the policy chain is tried automatically.
+    Fallback: if a backend raises, the next backend in the chain is tried
+    automatically.
 
-    A single ordered policy, chat_policy, selects the backend chain when
-    model="auto". If not supplied (None/empty), it derives from
-    _STRATEGY_ORDER[strategy] — unchanged behavior for existing callers.
+    A single ordered policy, chat_policy, selects the backend chain. If not
+    supplied (None/empty), it derives from _STRATEGY_ORDER[strategy].
     When the caller instead passes `model_chain` (the chain the user ordered,
     filtered to credentialed providers by model_activation.providers_in_chain
     — see server.py), that list supersedes chat_policy, and it does so ALSO
     when it is empty: an explicit empty chain means "nobody is in the chain",
     not "fall back to the strategy order".
-
-    fetta E4 Task 7 ("un bot solo"): la modalità "automatic" (usata dai bot
-    proattivi/schedulati per instradare su una politica diversa da quella
-    della chat interattiva) è uscita insieme all'ultimo chiamante che
-    passava mode="automatic" a chat()/chat_stream() — il Test Run
-    (chatbot_engine.py, uscito al Task 4 di questa fetta). Con lei sono
-    uscite la seconda policy (automatic_policy) e automatic_allows_sensitive()
-    (già solo-test dal censimento prima di questo task, senza chiamante di
-    produzione).
-
-    Explicit model routing (when model != "auto"):
-      - 'claude-*'                  → Claude runner
-      - 'gpt-*' or 'o[1-9]'         → OpenAI runner
-      - 'openrouter:*' or 'openrouter/*' → OpenRouter runner (prefix stripped)
-      - anything else               → Ollama runner
     """
 
     def __init__(
@@ -117,32 +93,24 @@ class LLMRouter:
         # `registro` è `provider_occurrences.OccurrenceRegistry` (app["occurrence_registry"]).
         # Facoltativo perché `LLMRouter` è costruito anche da test e da codice
         # di libreria che non ha una app intorno; quando c'è, ogni giro del
-        # ciclo di ripiego ci scrive che cosa ha visto. È l'UNICO scrittore:
-        # i runner non lo ricevono, perché il turno vero passa di qui e due
-        # scrittori della stessa osservazione sarebbero due rappresentazioni
-        # dello stesso fatto.
+        # ciclo di ripiego ci scrive che cosa ha visto. I runner non lo
+        # ricevono: il turno della catena passa di qui, e due scrittori della
+        # stessa osservazione sarebbero due rappresentazioni dello stesso
+        # fatto. I turni del ponte, che di qui non passano, li registra chi li
+        # raccoglie (`server.py`, `api/`).
         self._registry = registry
         self._claude = claude
         self._openai = openai
         self._openrouter = openrouter
         self._ollama = ollama
         self._strategy = strategy if strategy in _STRATEGY_ORDER else "balanced"
-        # Se model_chain è fornito, sostituisce chat_policy col suo ordine
-        # (fetta E4 Task 7: non esiste più una seconda policy da tenere
-        # allineata -- automatic_policy è uscita con l'ultimo chiamante che
-        # passava mode="automatic").
-        #
-        # fetta «la catena diventa l'unica verità»: una catena ESPLICITA vale
-        # per quello che dice, anche quando è vuota. Fino alla 2.4.1 il ramo
-        # era `if model_chain:` e una catena vuota ricadeva sull'ordine di
-        # strategia -- innocuo finché `reconcile_chain` non poteva restituire
-        # una lista vuota, letale adesso che può: la pagina avrebbe detto
-        # «la catena è vuota, HIRIS non può rispondere» mentre il router
-        # rispondeva usando OGNI provider con una credenziale. Sarebbe stata
-        # la regola `legacy` appena tolta, rientrata da dentro il router --
-        # cioè lo stesso difetto, per un'altra porta. `model_chain=None`
-        # (nessuna catena passata) resta il ramo di libreria e ripiega come
-        # prima.
+        # Se model_chain è fornito, sostituisce chat_policy col suo ordine.
+        # Una catena ESPLICITA vale per quello che dice, anche quando è vuota
+        # (`is not None`, non la verità della lista): ricadendo sull'ordine di
+        # strategia, la pagina direbbe «la catena è vuota, HIRIS non può
+        # rispondere» mentre il router risponde con ogni provider che ha una
+        # credenziale. `model_chain=None` (nessuna catena passata) resta il
+        # ramo di libreria e ripiega sulla strategia.
         if model_chain is not None:
             self._chat_policy = [n for n in model_chain if n in _VALID_BACKEND_NAMES]
         else:
@@ -179,10 +147,8 @@ class LLMRouter:
     def provider_name(self) -> str:
         """Chi ha risposto in questa chiamata, o "" se ancora nessuno.
 
-        La legge `steering.misura_turno`, che scriveva `ignoto` su ogni
-        turno della catena perche' nessuno dei sette punti che misurano
-        puo' saperlo: chiamano il router, e il router e' un proxy. Lo sa
-        lui, e fino al 24/09/2026 lo teneva per se'.
+        La legge `steering.misura_turno`: chi misura chiama il router, che e'
+        un proxy, e solo il router sa quale backend ha risposto.
         """
         return _current_provider.get()
 
@@ -203,11 +169,10 @@ class LLMRouter:
                     "catena.")
         last_friendly: str | None = None
         for backend_name, runner in ordered:
-            # Il ciclo di ripiego è il SOLO posto in cui HIRIS vede davvero
-            # come si comporta un provider, e fino a questa fetta lo buttava
-            # via: un `logger.warning` e avanti. La pagina Modelli poteva dire
-            # «Claude è primo in catena» e non «e sta rifiutando da quaranta
-            # richieste» -- che è il caso del proprietario per intero.
+            # Il ciclo di ripiego è dove HIRIS vede come si comporta un
+            # provider della catena: ogni esito va nel registro, così la
+            # pagina Modelli può dire «sta rifiutando da quaranta richieste» e
+            # non solo «è primo in catena».
             start = time.monotonic()
             try:
                 answer = await runner.chat(**kwargs)
@@ -242,24 +207,8 @@ class LLMRouter:
                 return answer
         return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 
-    # fetta E3 Task 8: `run_with_actions` e' uscito. Il "sole real caller" che
-    # il commento qui sopra citava (server.py's `_llm_reason`) era la
-    # Sentinella, uscita per intero al Task 7 di questa fetta -- senza di lei
-    # nessun chiamante di produzione arrivava piu' fin qui.
-
-    # fetta «la catena diventa l'unica verita'»: `simple_chat` e' uscita.
-    # Sceglieva con `self._claude or self._openai or self._ollama` scritto a
-    # mano -- OpenRouter escluso, nessun ripiego, catena ignorata: una SECONDA
-    # regola di instradamento, che aspettava solo di contraddire la pagina.
-    # Nessun chiamante di produzione la raggiungeva (le sole altre occorrenze
-    # del nome sono le implementazioni nei backend, che restano: `base.py`,
-    # `ollama.py`, `claude_runner.py`, `openai_compat_runner.py` -- li' e' la
-    # firma di un backend, non una decisione di instradamento). Il censimento
-    # non l'aveva segnalata: il nome e' definito in cinque punti e lo strumento
-    # salta gli omonimi, limite che dichiara da se'.
-
     # ------------------------------------------------------------------
-    # Usage (aggregated across all runners)
+    # Per-call state (ContextVar-backed)
     # ------------------------------------------------------------------
 
     @property
@@ -284,21 +233,3 @@ class LLMRouter:
         isolation, shared with ClaudeRunner/OpenAICompatRunner."""
         val = _current_thinking_blocks.get()
         return val if val is not None else []
-
-    # Fetta "esce il documentale": qui viveva la proprieta'
-    # `last_pseudonym_map`, che rileggeva la ContextVar omonima di
-    # claude_runner.py. Esce con la pseudonimizzazione (brain/privacy.py).
-
-    # fetta E4 Task 6 ("un bot solo"): `get_chatbot_usage`/`reset_chatbot_usage`
-    # sono usciti -- aggregavano la stessa contabilita' per-chatbot uscita dai
-    # due runner (claude_runner.py/openai_compat_runner.py, stessa mossa),
-    # zero chiamanti di produzione.
-    #
-    # fetta «i consumi, per modello» (22/08/2026): con loro escono anche le SEI
-    # proprieta' aggreganti (`total_input_tokens`, `total_output_tokens`,
-    # `total_requests`, `total_cost_usd`, `total_rate_limit_errors`,
-    # `usage_last_reset`) e `reset_usage`. Sommavano i contatori dei runner,
-    # e quei contatori non esistono piu': il consumo ha una casa sola,
-    # `usage/store.py`, che sa anche DI CHI sia -- cosa che questa somma
-    # buttava via per costruzione. Zero chiamanti di produzione al momento
-    # della cancellazione (`handlers_usage` legge l'archivio).

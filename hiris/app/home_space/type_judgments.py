@@ -353,7 +353,7 @@ class TypeJudgments:
         lettura successiva e senza rilascio.
 
         **Presuppone una voce di cronaca gia' filtrata**: `unavailable` e
-        `unknown` non arrivano mai da li', perche' `mind/facts.py:592` li salta
+        `unknown` non arrivano mai da li', perche' `mind/facts.py` li salta
         prima di scriverla (`unknown_states()`: «non lo so», non un riposo ne'
         un fatto sulla casa). Se questo metodo li ricevesse comunque, un tipo
         senza `lavoro` li leggerebbe come «non e' un riposo» e li farebbe
@@ -368,8 +368,8 @@ class TypeJudgments:
         esiste per evitare. Chi scrive `["Jammed"]` scrive una riga che non
         morde, esattamente come chi lo scrive in un riposo.
 
-        Lo stato si confronta **normalizzato come lo confronta `mind/facts.py`
-        alla riga 594** (spazi tolti, minuscolo): due letture della stessa
+        Lo stato si confronta **normalizzato come lo confronta
+        `mind/facts.py`** (spazi tolti, minuscolo): due letture della stessa
         lista non devono poter divergere su `"None"` contro `"none"`. Questa
         normalizzazione copre anche `state=None` (il metodo e' pubblico):
         `str(None).strip().lower()` e' `"none"`, gia' una forma dell'assenza --

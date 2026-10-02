@@ -8,18 +8,6 @@ from typing import Any
 
 import anthropic
 
-# fetta E3 Task 8 ("esce l'ultimo catalogo"): la E2 aveva lasciato vive le 18
-# definizioni sotto (`EVALUATION_ONLY_TOOLS`/`EVALUATION_TOOL_DEFS`) perche'
-# erano l'unico catalogo che la Sentinella usava, via `run_with_actions` --
-# dichiarato per iscritto: "escono con lei". La Sentinella e' uscita al Task
-# 7 di questa fetta: `run_with_actions` non aveva piu' un solo chiamante, e i
-# 12 moduli di `tools/` (da cui venivano importate queste definizioni)
-# sopravvivevano solo per donargliele. Cataloghi, `run_with_actions` e
-# `tools/` escono qui insieme -- la chat riceve il suo catalogo da fuori
-# (`strumenti=KNOWLEDGE_TOOLS`, home_space/tools.py: quattro strumenti che
-# conoscono la casa, piu' `execute` che la comanda per la porta unica) da prima
-# di questo task.
-#
 # fetta «cosa è successo davvero»: la classificazione dell'errore vive in
 # `provider_occurrences`, che non importa niente da qui a livello di modulo (il suo
 # unico import di `openai_compat_runner` è dentro `error_family`) -- quindi
@@ -117,8 +105,8 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # Review finale fetta E3, Important #1: la versione precedente dichiarava al
 # modello «strumenti per leggere stati, controllare dispositivi, inviare
 # notifiche, gestire automazioni, calendario, task» e ordinava di chiamare
-# `save_memory` -- uno strumento che non esiste piu' (il catalogo di oggi e'
-# SOLO cerca/guarda/ricorda/richiama, home_space/tools.py). Un prompt che
+# `save_memory` -- uno strumento che non esisteva piu' (il catalogo di allora
+# era solo cerca/guarda/ricorda/richiama). Un prompt che
 # ordina di chiamare uno strumento inesistente riapre dal lato del prompt
 # esattamente il bug per cui `remember` e' nato (vedi il docstring in cima a
 # home_space/tools.py): il modello puo' rispondere "preso nota" senza aver
@@ -142,7 +130,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # regole del PRODOTTO, e questa meta' e' l'unico testo emesso SE E SOLO SE
 # gli strumenti esistono -- sempre sul percorso sincrono (che le guide non le
 # vede MAI: `chat()` qui sotto compone `BASE_SYSTEM_PROMPT`) e sul ponte solo
-# con `strumenti_attivi=True`. Scritte nella guida sarebbero arrivate al
+# con `active_tools=True`. Scritte nella guida sarebbero arrivate al
 # ponte e non alla chat vera, cioe' la divergenza fra i due percorsi che la
 # fetta «parita'» ha passato due task a chiudere. Alla guida resta il suo
 # mestiere: i nomi PREFISSATI, che qui non avrebbero senso.
@@ -353,37 +341,14 @@ BASE_TOOL_RULES = (
 
 BASE_SYSTEM_PROMPT = BASE_IDENTITY + BASE_TOOL_RULES
 
-# fetta E3 Task 8: `EVALUATION_TOOL_DEFS` (ex `ALL_TOOL_DEFS`, il catalogo da
-# 34) e `EVALUATION_ONLY_TOOLS` (le 18 letture concesse alla Sentinella) sono
-# uscite insieme a `run_with_actions`, il loro unico chiamante -- vedi il
-# commento in testa al file. La chat non ha mai smesso di ricevere il suo
-# catalogo dall'esterno (`strumenti=KNOWLEDGE_TOOLS`); ora e' l'UNICO
-# modo in cui `chat()` vede dei tool, non piu' il ramo di scorta.
-
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 # Tetto d'uscita piu' alto per la chat interattiva: una risposta lunga (il
 # riepilogo di una casa grande, un elenco di ricordi) supera legittimamente il
-# default da 4096 di `chat()` -- `MAX_TOKENS` qui sopra,
-# ereditato dall'agente di valutazione uscito con la fetta E3 Task 8
-# (`run_with_actions`, vedi il commento su `EVALUATION_TOOL_DEFS` poco sopra;
-# stessa uscita annotata in llm_router.py e in backends/openai_compat_runner.py).
-# Quel default oggi non lo raggiunge nessun chiamante di produzione:
-# `handlers_chat.py` passa SEMPRE `CHAT_MAX_TOKENS`. Kept well under the model
-# max so the non-streaming SDK path doesn't hit the request-timeout guard.
-#
-# fetta E4 Task 8, Step 2: questo commento diceva "complex requests (a
-# multi-view dashboard, a long script)" e "per le plance molto grandi il
-# modello propone poche viste per volta" -- una dichiarazione falsa al
-# presente: HIRIS 2.0 LEGGE le plance (proxy/ha_client.py, casa/
-# comportamento.py) e non ne scrive nessuna, e il catalogo della chat e'
-# quello di home_space/tools.py -- che dalla fetta «comandare» chiama servizi di
-# Home Assistant (`execute`) ma continua a non scrivere plance.
-# fix round 1: la riscrittura aveva lasciato dentro un secondo soggetto morto
-# -- diceva "il tetto da 4096 dell'agente di valutazione" al PRESENTE, ma
-# quell'agente non esiste piu' (fetta E3 Task 8, commento poco sopra): 4096 e'
-# rimasto solo come default di firma. Il tetto (16000) non e' mai cambiato in
-# nessuno dei due giri: cambia la ragione dichiarata, che ora e' vera.
+# default di `chat()` (`MAX_TOKENS` qui sopra), che resta per i chiamanti che
+# non passano `max_tokens`. `handlers_chat.py` passa `CHAT_MAX_TOKENS`. Kept
+# well under the model max so the non-streaming SDK path doesn't hit the
+# request-timeout guard.
 CHAT_MAX_TOKENS = 16000
 # fetta "i riferimenti" (R3): misurato che 8 stanze da guardare una a una
 # servono 10 round-trip minimi contro un tetto di 10 -- morte garantita anche
@@ -614,47 +579,15 @@ RESTRICT_PROMPT = (
     "Per qualsiasi altro argomento, rispondi educatamente che non puoi aiutare su quel tema."
 )
 
-# fetta "il ponte riceve il nucleo" (parita' A, Task 3): i due modificatori di
-# `response_mode` erano ricopiati TRE volte -- qui sotto (uso originale) e nei
-# due punti gemelli di backends/openai_compat_runner.py (`chat` e
-# `chat_stream`). Farli attraversare anche il ponte (agent/prompts.py) senza
-# prima unificarli avrebbe aggiunto la QUARTA copia -- il doppione che
-# CLAUDE.md:70-72 vieta. Estratti qui accanto a RESTRICT_PROMPT (stessa
-# natura: testo di prompt, non logica) e importati dai tre punti d'uso
-# esistenti PIU' il quarto (prompts.build_chat_messages). Testo spostato alla
-# lettera, byte per byte: invariato rispetto a prima di questo task.
+# I due modificatori di `response_mode` stanno qui accanto a RESTRICT_PROMPT
+# (stessa natura: testo di prompt, non logica) e li importano gli altri punti
+# che compongono un prompt (`backends/openai_compat_runner.py`,
+# `agent/prompts.py`): una copia per punto d'uso sarebbe un doppione.
 COMPACT_PROMPT = "Rispondi in modo conciso, massimo 2-3 frasi."
 MINIMAL_PROMPT = (
     "Rispondi SOLO in formato chiave: valore, una riga per dato. "
     "Esempio:\nStato: acceso\nTemperatura: 21°C"
 )
-
-# Review finale fetta E2, I-5: `CONFIRMATION_COVERED_TOOLS` e
-# `REQUIRE_CONFIRMATION_PROMPT` sono uscite. Nominavano cinque strumenti che
-# ATTUANO (call_ha_service, trigger_automation, toggle_automation,
-# set_input_helper, create_ha_config): nessuno dei cinque esiste in un
-# catalogo raggiungibile da nessun runner (chat = KNOWLEDGE_TOOLS;
-# Sentinella = soli read + task, ne' l'uno ne' l'altro li offre; e quando
-# l'azione e' rientrata, alla fetta «comandare», e' rientrata come UNO
-# strumento solo, `execute`, e senza conferme -- vedi i vincoli della fetta).
-# L'iniezione nel system prompt (qui sotto e nei
-# due punti gemelli di backends/openai_compat_runner.py) istruiva il modello
-# a chiedere conferma prima di strumenti che non puo' comunque chiamare --
-# una promessa vuota. fetta E4 Task 6 ("un bot solo"): il parametro
-# `require_confirmation` stesso e' uscito da `chat()`/`chat_stream()` -- il
-# `Chatbot` di cui era un campo di configurazione era gia' uscito al Task 4.
-
-
-# Review finale fetta E2, I-4: `_redact_stream_tool_calls` e' uscita.
-# Redigeva l'OTP di `confirm_pending` prima di emetterlo in un evento SSE
-# "done" -- ma `confirm_pending` non e' dichiarato in nessun catalogo
-# raggiungibile (KNOWLEDGE_TOOLS, EVALUATION_TOOL_DEFS): un modello non
-# puo' emettere un tool_use per un tool mai offerto, quindi il ramo che
-# redigeva non era mai raggiungibile da nessun input reale -- un OTP dentro
-# un tool input non esiste piu' in tutto il prodotto (l'impianto OTP e'
-# uscito col Task 5). `handlers_chat.py`'s `_debug_input` (la controparte
-# non-streaming) e' uscita per lo stesso motivo.
-
 
 # ── Per-call tool-call / thinking-block isolation (review A/#3) ────────────
 # ClaudeRunner and OpenAICompatRunner are long-lived singletons shared by
@@ -726,12 +659,6 @@ def togli_misura(gettone) -> None:
 
 def _misura_corrente():
     return _current_measure.get()
-# Fetta "esce il documentale": qui viveva `_current_pseudonym_map`, la
-# ContextVar per-Task della mappa token->PII di ogni scambio. Esce con
-# brain/privacy.py (VaultStore/Pseudonymizer): il suo unico scrittore -- il
-# ramo del dispatcher che passava `pseudonym_map=` a `dispatch()` -- era gia'
-# uscito con la fetta E2 Task 7, e i due `detokenize` che la leggevano
-# (handlers_chat.py) lavoravano da allora su un dizionario sempre vuoto.
 
 
 class _PerCallList:
@@ -762,10 +689,6 @@ class _PerCallList:
     def __set__(self, obj, value) -> None:
         self._var.set(value)
 
-
-# Fetta "esce il documentale": qui viveva `_PerCallDict`, il descriptor
-# gemello di `_PerCallList` per un attributo dict. Il suo unico uso era
-# `last_pseudonym_map`, uscito con la pseudonimizzazione.
 
 
 class ClaudeRunner:
@@ -799,31 +722,10 @@ class ClaudeRunner:
         # `None` = nessuna lettura, cioe' il comportamento che aveva
         # `default_model=""` (ripiego su AUTO_MODEL_MAP).
         self._read_model = read_model
-        # Fetta "esce il documentale": qui c'era `self._is_cloud = True`, con
-        # accanto la dichiarazione (gia' corretta dalla fetta E4 Task 9) che
-        # nessuno lo leggeva e che serviva a un "always pseudonymize
-        # sensitive content" che il prodotto non faceva. L'attributo era
-        # scritto e mai letto in QUESTA classe -- verificato con grep: gli
-        # unici `_is_cloud` vivi sono quelli di OpenAICompatRunner/
-        # OpenRouterRunner, letti da `_backend_noun`. Il Task 9 lo aveva
-        # lasciato solo perche' era fuori dal suo perimetro (solo commenti);
-        # esce qui, insieme alla pseudonimizzazione che lo giustificava.
         # last_tool_calls / last_thinking_blocks are intentionally NOT
         # initialized here — they are per-call/per-Task class-level
         # descriptors (see above); chat() resets them at the start of every
         # call, scoped to the calling Task.
-        # fetta «i consumi, per modello» (22/08/2026): qui vivevano i contatori
-        # globali (`total_input_tokens`, `total_output_tokens`,
-        # `total_requests`, `total_cost_usd`, `total_rate_limit_errors`,
-        # `usage_last_reset`), la loro persistenza (`_load_usage`/`_save_usage`
-        # su `usage.json`, col lock che ne serializzava le scritture) e
-        # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
-        # sommava tutto insieme e non sapeva dire di quale modello parlasse --
-        # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
-        # `usage/store.py` attraverso `log_usage`, e i vecchi
-        # `usage_*.json` ci entrano una volta sola all'avvio come riga
-        # «(prima del dettaglio)»: i file restano sul disco, mai dati
-        # dell'utente cancellati in silenzio.
 
     def _chosen_model(self) -> str:
         """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
@@ -835,20 +737,6 @@ class ClaudeRunner:
         Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo
         di provarla sarebbe intercettare la chiamata all'API."""
         return resolve_model("auto", "chat", self._chosen_model())
-
-    # fetta E4 Task 6 ("un bot solo"): il costruttore perdeva un `dispatcher`
-    # "di scorta" -- usato SOLO dal ramo `elif self._dispatcher is not None`
-    # dentro `chat()`, uscito con lui in questo stesso task. Nessun chiamante
-    # di produzione lo passava mai (fetta E2 Task 7, commit 68d3670: la chat
-    # passa SEMPRE il proprio ToolDispatcher per-chiamata, il parametro
-    # `dispatcher`/`strumenti` che invece resta -- vedi `chat()` sotto). Un
-    # tool richiesto senza un dispatcher per-chiamata degrada comunque a "non
-    # disponibile", come faceva gia' prima con `self._dispatcher` sempre
-    # `None` per costruzione: nessun comportamento osservabile cambia.
-    #
-    # fetta E3 Task 8: `set_task_engine` era gia' uscito per lo stesso motivo
-    # (zero chiamanti di produzione, inoltrava a un metodo che nessun
-    # dispatcher di produzione ha mai avuto).
 
     def _write_usage(self, model: str, inp: int, out: int,
                      cache_write: int, cache_read: int,
@@ -889,13 +777,6 @@ class ClaudeRunner:
             "claude", model, richieste=0, errori_rate_limit=1,
             cost_usd=None, cost_state="non_noto", now=time.time())
 
-    # fetta E4 Task 6 ("un bot solo"): `_ensure_today_reset`/`get_chatbot_usage`/
-    # `reset_chatbot_usage` sono usciti -- zero lettori di produzione (le
-    # rotte usage sono uscite al Task 3, ChatbotEngine al Task 4, MQTT in E3;
-    # LLMRouter aveva gli stessi due metodi SOLO per aggregarli su piu'
-    # runner, usciti con loro). Vedi il commento sul costruttore per la
-    # storia completa.
-
     async def chat(
         self,
         user_message: str,
@@ -931,22 +812,11 @@ class ClaudeRunner:
         if system_prompt:
             system_blocks.append({"type": "text", "text": system_prompt})
         # Behaviour modifiers — stable per agent config, must precede context_str.
-        # Fix m-4 della review totale della fetta "il ponte riceve il nucleo":
-        # questa invariante era dichiarata QUI e violata negli altri due punti
-        # che compongono la stessa cosa (backends/openai_compat_runner.py,
-        # `chat` e `chat_stream`, mettevano i modificatori DOPO `context_str`).
-        # Verificata invece di essere data per buona -- e' vera, e la ragione
-        # e' il caching per prefisso: qui il breakpoint cumulativo va posato
-        # sull'ultimo blocco stabile, di la' e' il prefix caching implicito di
-        # OpenAI/Ollama. I due punti gemelli sono stati allineati, non il
-        # commento, e l'ordine e' ora pinnato per tutti e tre i composers
-        # (`tests/test_composition_order.py`).
+        # La ragione e' il caching per prefisso: qui il breakpoint cumulativo
+        # va posato sull'ultimo blocco stabile. L'ordine e' pinnato per tutti
+        # i composers (`tests/test_composition_order.py`).
         if restrict_to_home:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
-        # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`
-        # stesso e' uscito -- vedi il commento sopra `CONFIRMATION_COVERED_
-        # TOOLS` (Review finale fetta E2, I-5) per il perche' non aveva gia'
-        # piu' alcun effetto sul system prompt da prima di questo task.
         if response_mode == "compact":
             system_blocks.append({"type": "text", "text": COMPACT_PROMPT})
         elif response_mode == "minimal":
@@ -962,17 +832,8 @@ class ClaudeRunner:
             # strumenti di ToolDispatcher, home_space/tools.py).
             tools = list(tools)
         else:
-            # fetta E3 Task 8: non esiste piu' un catalogo di scorta da cui
-            # pescare qui. `EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS`
-            # (il catalogo a 18 letture della Sentinella, filtrato con
-            # `allowed_tools`) sono usciti insieme al loro unico chiamante,
-            # `run_with_actions` -- la Sentinella e' uscita al Task 7. Nessun
-            # chiamante di produzione arriva fin qui senza passare
-            # `strumenti` (verificato: api/handlers_chat.py, l'unico
-            # chiamante di produzione rimasto dalla fetta E4 Task 4, lo passa
-            # sempre); i test del "loop mechanic" che chiamano `chat()` senza
-            # `strumenti` provano apposta che la conversazione regge
-            # comunque, senza tool_use.
+            # Nessun catalogo di scorta: senza `tools` la conversazione
+            # procede senza tool_use.
             tools = []
         # Cache tool definitions — stable per agent config, reused across turns
         if tools:
@@ -1096,13 +957,6 @@ class ClaudeRunner:
                         if dispatcher is not None:
                             # ToolDispatcher (e affini) espone la stessa
                             # interfaccia minima -- dispatch(nome, argomenti).
-                            # fetta E4 Task 6: il ramo "dispatcher di scorta"
-                            # (self._dispatcher, con le kwargs allowed_entities/
-                            # allowed_services/allowed_endpoints/chatbot_id/
-                            # visible_entity_ids/knowledge_allow_sensitive/
-                            # knowledge_kinds) e' uscito -- zero chiamanti di
-                            # produzione lo popolavano (fetta E2 Task 7,
-                            # commit 68d3670).
                             result = await dispatcher.dispatch(block.name, block.input)
                         else:
                             # ne' un dispatcher per-chiamata: lo strumento non
@@ -1142,15 +996,6 @@ class ClaudeRunner:
             MAX_TOOL_ITERATIONS, [c["tool"] for c in self.last_tool_calls],
         )
         return _MAX_ITERATIONS_NOTICE
-
-    # fetta E3 Task 8: `run_with_actions` e' uscito. Girava un passaggio
-    # agentico ristretto a `EVALUATION_ONLY_TOOLS` (le 18 letture) per conto
-    # di UN solo chiamante: `watcher/reasoner.py::_llm_reason`, la Sentinella
-    # -- uscita per intero al Task 7 di questa fetta. Senza quel chiamante,
-    # `run_with_actions` non aveva piu' nessuno a cui rispondere; usciva
-    # insieme ai due cataloghi che esistevano solo per lui
-    # (`EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS`, sopra) e alla cartella
-    # `tools/` da cui quei cataloghi pescavano le 18 definizioni.
 
     async def _call_api(self, **kwargs) -> Any:
         for attempt in range(MAX_RETRIES + 1):

@@ -1,8 +1,8 @@
 """L'anagrafe: i registri grezzi di Home Assistant diventano LA CASA.
 
-Quattro livelli di gerarchia — piano → area → dispositivo → entita' — dove
-HIRIS ne conosceva uno solo. Il significato non si deduce e non si compra: e'
-gia' dichiarato dall'utente in Home Assistant.
+L'albero ha tre livelli — piano → area → entita' — e il dispositivo da'
+all'entita' l'area che non ha di suo. Il significato non si deduce e non si
+compra: e' gia' dichiarato dall'utente in Home Assistant.
 """
 from __future__ import annotations
 
@@ -41,11 +41,10 @@ async def rebuild(client, store, entity_cache) -> dict:
 
     Se TUTTI i registri sono in `non_disponibili` (Home Assistant
     irraggiungibile: riavvio, blip di rete, il ritardo dell'antirimbalzo
-    scaduto a HA spento), non si sostituisce niente. `archivio.replace`
+    scaduto a HA spento), non si sostituisce niente. `store.hold_registries`
     e' incondizionato: chiamato lo stesso, rimpiazzerebbe la casa buona di
-    ieri con dieci liste vuote, e la casa resterebbe vuota finche' qualcuno
-    non ritocca un registro — anche per settimane, se il ② (rilettura ad ogni
-    riconnessione) non basta a farla ritentare subito. Una replica vecchia e
+    prima con liste vuote, e la casa resterebbe vuota finche' qualcuno
+    non ritocca un registro. Una replica vecchia e
     dichiarata stantia e' meglio di una vuota spacciata per fresca.
     """
     registries, unavailable = await client.read_registries()
@@ -80,7 +79,7 @@ async def rebuild(client, store, entity_cache) -> dict:
 # I campi di `get_config` che HIRIS tiene, e sotto quale nome. La chiave a
 # sinistra e' quella di Home Assistant (`Config.as_dict()` in
 # `homeassistant/core_config.py`), quella a destra e' il nome italiano con cui
-# vive nell'archivio: l'anagrafe parla la lingua di HIRIS ovunque -- `nome`,
+# vive nell'anagrafe: l'anagrafe parla la lingua di HIRIS ovunque -- `nome`,
 # `alias`, `etichette` -- e un dizionario meta' inglese sarebbe l'unico posto
 # in cui non lo fa.
 _REFERENCE_FRAME_FIELDS = {
@@ -162,13 +161,13 @@ _ID_WITHOUT_FLOOR = "__senza_piano__"
 _ID_UNLOADED_FLOOR = "__piani_non_letti__"
 _ID_OUTSIDE_AREAS = "__fuori_dalle_aree__"
 
-# Le pseudo-aree che una vista di dettaglio (`domande.guarda("area", ...)`)
+# Le pseudo-aree che una vista di dettaglio (`queries.view("area", ...)`)
 # sa raggiungere per ID -- MAI per nome: "Senza area" e' un nome che due case
 # diverse possono condividere (e' generico, non dichiarato dall'utente), e
-# `cerca()`/l'indice (resolver.py) non lo indicizzano perche' non
+# l'indice dei nomi (`memory/resolver.py`) non lo indicizza perche' non
 # esistono nell'anagrafe grezza di Home Assistant, solo nell'albero che
-# `hierarchy()` costruisce. Chi mostra il nome da solo (IMPORTANT ⑦) mostra
-# un vicolo cieco: il nome non porta a nessun `guarda()` che funzioni.
+# `hierarchy()` costruisce. Chi mostra il nome da solo mostra
+# un vicolo cieco: il nome non porta a nessun dettaglio che funzioni.
 _ID_PSEUDO_AREA = frozenset(
     {_ID_WITHOUT_AREA, _ID_UNLOADED_AREA, _ID_UNKNOWN_AREA, _ID_UNLOADED_DEVICE})
 
@@ -176,8 +175,8 @@ _ID_PSEUDO_AREA = frozenset(
 def is_pseudo_area(area_id: str) -> bool:
     """Vero se `area_id` e' una pseudo-area generata da `hierarchy()` (non
     un'area vera di Home Assistant): chi la mostra per nome deve mostrare
-    anche l'id, l'unica chiave con cui `guarda('area', ...)` la ritrova
-    davvero (IMPORTANT ⑦)."""
+    anche l'id, l'unica chiave con cui `queries.view('area', ...)` la ritrova
+    davvero."""
     return area_id in _ID_PSEUDO_AREA
 
 
@@ -192,43 +191,28 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
     ha, `attributes`.
 
     Una passata sola per tutti i dizionari, e in un posto solo per tutti i
-    chiamanti. Prima lo specchio si leggeva in `home_space/tools.py` e basta: chi
-    stava altrove (la correzione di un ricordo dalla pagina, per esempio) o
-    rileggeva la cache per conto suo, o faceva a meno di cio' che ci sta
-    dentro. Nel secondo caso la stessa domanda dava due risposte diverse a
-    seconda della porta -- l'unita' dedotta in chat e non dedotta dalla pagina.
+    chiamanti: letto in due posti, lo specchio darebbe alla stessa domanda due
+    risposte diverse a seconda della porta.
 
     Nomi, unita', classi e istanti vuoti si saltano: una stringa vuota non e'
     un nome e non e' un'unita', e' l'assenza dell'una e dell'altra.
 
-    `classi` (entity_id -> `device_class`) e' arrivata per ultima ed e' la piu'
-    importante: il registro delle entita' NON manda la classe (vedi
-    `actual_class`), quindi finche' nessuno leggeva questa nessun sensore
-    binario ha mai avuto una classe in tutto il prodotto.
+    `classi` (entity_id -> `device_class`) e' la piu' importante: il registro
+    delle entita' NON manda la classe (vedi `actual_class`), e questa e'
+    l'unica fonte da cui un sensore binario ne riceve una.
 
-    `da_quando` (entity_id -> `last_changed`) e' l'ultima arrivata: il campo
-    che Home Assistant manda a ogni cambio di stato e che la proiezione della
-    cache (`entity_cache._to_minimal`) scartava. HIRIS sapeva che in camera ci
-    sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire «e'
-    fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
+    `da_quando` (entity_id -> `last_changed`) e' il campo che Home Assistant
+    manda a ogni cambio di stato: senza, HIRIS saprebbe che in camera ci sono
+    22,4 gradi e non da quando. Costa un campo e zero chiamate a Home
+    Assistant.
 
-    `attributi` (entity_id -> le CINQUE CESTE di `_to_minimal`, quando
-    l'entita' ne ha almeno una) e' il difetto misurato dal proprietario, fetta
-    "attributi al modello" (2026-08-25): `entity_cache._to_minimal` raccoglieva
-    gia' `hvac_action` e la temperatura di un termostato, e QUESTA funzione --
-    l'unico punto da cui passano `guarda`, `cerca` e il nucleo -- li buttava
-    tutti tenendo solo `state`. Un termostato IMPOSTATO su riscaldamento e
-    FERMO (`hvac_mode: heat`, `hvac_action: idle`) usciva da `guarda` come
-    `stato: "heat"` e basta -- indistinguibile da uno che sta scaldando
-    davvero. Il modello ha risposto con quell'unica informazione, ed era vera
-    solo a meta'.
-
-    Dalla fetta dell'eredita' (07/09/2026) quel dizionario non e' piu' piatto:
-    porta `capabilities`/`values`/`uninterpreted`/`credentials`
-    (`entity_cache.inherited_attributes`). Questa funzione continua a non
-    guardarci dentro -- lo specchio trasporta, non interpreta -- ma chi cerca
-    un attributo per nome usa `entity_cache.disclosable_attributes` invece di
-    frugare nelle ceste a mano.
+    `attributi` (entity_id -> le ceste di `entity_cache.inherited_attributes`,
+    quando l'entita' ne ha almeno una). Senza, un termostato IMPOSTATO su
+    riscaldamento e FERMO (`hvac_mode: heat`, `hvac_action: idle`) uscirebbe
+    come `stato: "heat"` e basta -- indistinguibile da uno che sta scaldando
+    davvero. Questa funzione non ci guarda dentro -- lo specchio trasporta,
+    non interpreta -- e chi cerca un attributo per nome usa
+    `entity_cache.disclosable_attributes` invece di frugare nelle ceste a mano.
     """
     state: dict[str, str] = {}
     names: dict[str, str] = {}
@@ -301,7 +285,7 @@ def label_names(home_space: dict) -> dict[str, str]:
     continuerebbe a dire il vecchio nome per sempre.
 
     Qui, e non in `queries.py`, perche' la stessa unione serve anche
-    all'indice di `cerca` (`memory/resolver.py`): scritta due volte
+    all'indice dei nomi (`memory/resolver.py`): scritta due volte
     sarebbe una ricerca che trova per un nome e una risposta che ne mostra un
     altro.
     """
@@ -359,7 +343,7 @@ def category_names(home_space: dict) -> dict[tuple[str, str], str]:
     rispondesse per l'altra.
 
     Qui, e non in `queries.py`, per la stessa ragione di
-    `label_names`: la stessa unione serve all'indice di `cerca`
+    `label_names`: la stessa unione serve all'indice dei nomi
     (`memory/resolver.py`), e scritta due volte sarebbe una ricerca che
     trova per un nome e una risposta che ne mostra un altro.
     """
@@ -455,8 +439,8 @@ def _readable_climate_state(value, hvac_action, *, translations, resources) -> d
 
     **Il difetto che questa funzione esiste per chiudere e' misurato**
     (proprietario, 25/08/2026): due termostati impostati su riscaldamento e
-    FERMI (`hvac_action: idle`, obiettivo 17, temperatura vera 25) uscivano da
-    `guarda` come «heat», e il modello leggeva «in modalita' riscaldamento»
+    FERMI (`hvac_action: idle`, obiettivo 17, temperatura vera 25) uscivano
+    dal dettaglio come «heat», e il modello leggeva «in modalita' riscaldamento»
     come se stessero scaldando davvero. Un termostato ha DUE fatti, non uno.
 
     **Le parole sono tutte di Home Assistant, la frase e' nostra.** HA pubblica
@@ -571,11 +555,11 @@ def domain_of(entity_id) -> str:
 
     Lo DICHIARA Home Assistant nell'id stesso -- non e' un elenco nostro -- e
     per questo la lettura e' banale. Il punto non e' la logica: e' che era
-    scritta SEI volte (in sei moduli, uno dei quali uscito da allora) e due copie non
+    scritta in piu' moduli e due copie non
     erano d'accordo. Su un id senza punto -- una riga di registro corrotta, un
     id sintetico di un'integrazione mal formata -- una restituiva l'id intero e
     l'altra la stringa vuota, cosi' il nucleo stampava «1 unknown» fra i
-    conteggi della casa e `cerca` sulla stessa entita' rispondeva
+    conteggi della casa e la ricerca sulla stessa entita' rispondeva
     `dominio: ""`. Due porte, due risposte sullo stesso oggetto.
 
     Vince l'ID INTERO, che era anche la scelta del nucleo: un dominio vuoto
@@ -657,20 +641,11 @@ def actual_class(declared: str | None, live: str | None) -> str | None:
     `aliases`. Quei campi stanno solo in `extended_dict` (`:369`), servito da
     `config/entity_registry/get` e `.../get_entries`.
 
-    Quindi la colonna `classe` dell'anagrafe e' sempre NULL, su ogni casa, e
-    per tutto il tempo in cui e' stata l'unica fonte:
-
-    - `nucleo._is_event("binary_sensor", None, "on")` era sempre falso:
-      NESSUN sensore binario e' mai entrato in «Notevole adesso» (la sezione
-      e `_is_event` sono uscite dal nucleo il 29/09/2026). Un allagamento, un
-      principio d'incendio, il monossido: muti;
-    - le rese per CLASSE -- l'intera fetta 3.4.0, con `carbon_monoxide`
-      verificato una riga per volta -- erano irraggiungibili;
-    - `guarda` prometteva la classe e rispondeva `null` su ogni entita'.
-
-    E nessuna prova poteva accorgersene, perche' ogni finta scriveva
-    `device_class` dentro la riga del registro: un campo che Home Assistant li'
-    non mette. La finta non sapeva produrre il difetto.
+    Quindi dal solo registro la `classe` sarebbe sempre nulla, su ogni casa:
+    le rese per CLASSE sarebbero irraggiungibili (un allagamento, un principio
+    d'incendio, il monossido: muti) e il dettaglio di un'entita' risponderebbe
+    `null`. Una finta che scrive `device_class` dentro la riga del registro --
+    un campo che Home Assistant li' non mette -- non sa produrre il difetto.
 
     Il rimedio non costa nessuna chiamata in piu': `device_class` e' gia' in
     RAM in ogni voce dello specchio dello stato (`entity_cache._to_minimal`),
@@ -699,15 +674,15 @@ def actual_unit(declared: str | None, live: str | None) -> str | None:
     e' quella che conta.
 
     Esiste come funzione, e non come due righe scritte dove servono, perche'
-    questa decisione la prendono DUE posti diversi: cosa mostrare
-    (`domande._con_nome_dedotto`) e cosa dedurre
-    (`memory.interpretation.deduci_unit`). Scritta due volte sarebbe la
-    stessa forma di difetto che ha reso la pagina Modelli vera riga per riga e
-    falsa nel complesso: due copie di una regola che nessuno tiene allineate.
+    questa decisione la prendono piu' posti: cosa tenere nell'anagrafe
+    (`reader._entity`), cosa mostrare (`queries._enrich_entity`) e cosa
+    dedurre (`memory.interpretation.deduci_unit`). Scritta piu' volte sarebbe
+    la forma di difetto che ha reso la pagina Modelli vera riga per riga e
+    falsa nel complesso: copie di una regola che nessuno tiene allineate.
 
     Una stringa vuota o di soli spazi non e' un'unita': e' l'assenza di
     un'unita', esattamente come `None`. E se non c'e' ne' l'una ne' l'altra,
-    resta `None`: **non si inventa** -- vedi `sistema_di_riferimento`, che
+    resta `None`: **non si inventa** -- vedi `reference_frame`, che
     descrive la casa e non le sue entita'.
     """
     for candidate in (live, declared):
@@ -773,19 +748,19 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     Home Assistant e non funzionano, quindi contarle come stanze arredate
     ingannerebbe chi legge. Restano pero' raggiungibili per area, nella chiave
     parallela `entita_disabilitate` di ogni area (mai in `entita`, che conta):
-    una vista di DETTAGLIO su un'area (`domande.guarda`) deve poter mostrare
+    una vista di DETTAGLIO su un'area (`queries.view`) deve poter mostrare
     "questa luce c'e' ma e' disabilitata", marcata, non farla sparire in
-    silenzio come se non esistesse (IMPORTANT ⑦-adiacente, Minor).
+    silenzio come se non esistesse.
 
     Le entita' NASCOSTE (`hidden_by` non nullo: l'utente le ha tolte dalle
     proprie viste in Home Assistant) prendono la STESSA forma, dalla fetta
     "nascoste fuori dagli elenchi" (2026-08-25): fuori da `entita` -- che
-    conta, e che alimenta anche "La casa" del nucleo (`nucleo._home_space_lines`
+    conta, e che alimenta anche "La casa" del nucleo (`briefing._home_space_lines`
     legge `area["entita"]` cosi' com'e') -- dentro una terza chiave
     parallela, `entita_nascoste`. Il proprietario ha misurato in produzione
-    che `guarda("area", "sala_da_pranzo")` restituiva sette luci mescolate,
+    che il dettaglio dell'area `sala_da_pranzo` restituiva sette luci mescolate,
     quattro delle quali nascoste: il campo `nascosta` c'era gia' su ogni
-    entita' (`domande._enrich_entity`), ma stare nella STESSA lista non
+    entita' (`queries._enrich_entity`), ma stare nella STESSA lista non
     ha impedito che venissero elencate lo stesso -- la prova che un dato
     presente non basta, la sua POSIZIONE deve escluderlo da chi legge solo
     "cosa c'e' in questa stanza". Regola del proprietario: "HIRIS non prende
@@ -831,13 +806,8 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     `unloaded_device_disabled`, `unloaded_device_hidden`).
 
     Effetto collaterale voluto, non un caso: "La casa" del nucleo, che legge
-    lo stesso `area["entita"]`, smette anch'essa di contare le nascoste nei
-    conteggi per dominio -- allineandosi a "Notevole adesso"
-    (`nucleo._highlight_lines`), che le escludeva gia' da prima con un `if
-    e.get("nascosta"): continue` esplicito. Prima di questa fetta le due
-    sezioni del nucleo si contraddicevano fra loro: una le contava, l'altra
-    no. (Quella sezione e' uscita dal nucleo il 29/09/2026; la regola resta
-    in «La casa» e in `briefing.digest_visible_entity_ids`.)
+    lo stesso `area["entita"]`, non conta le nascoste nei conteggi per
+    dominio. La stessa regola vale in `briefing.digest_visible_entity_ids`.
     """
     device_loaded = "dispositivi" not in unavailable
     device_area = device_areas(home_space.get("dispositivi"))
@@ -888,7 +858,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             "entita_umidita": area.get("entita_umidita"),
             "entita": per_area.get(area["id"], []),
             # Non nei conteggi (vedi il docstring), ma raggiungibili nel
-            # dettaglio di un'area -- vedi `domande._view_area`.
+            # dettaglio di un'area -- vedi `queries._view_area`.
             "entita_disabilitate": per_area_disabled.get(area["id"], []),
             # Stessa forma, per le nascoste: non nei conteggi, raggiungibili
             # a parte -- vedi il docstring qui sopra.

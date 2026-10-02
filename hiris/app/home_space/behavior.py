@@ -223,14 +223,14 @@ async def reread_dashboards(client, home_space) -> dict:
 
     Se NESSUNA plancia risulta leggibile (`config` a `None` su tutte, o
     l'elenco stesso vuoto) NON si sostituisce: stessa regola dell'anagrafe
-    (`anagrafe.rebuild`) — una replica vecchia e dichiarata e' meglio
+    (`topology.rebuild`) — una replica vecchia e dichiarata e' meglio
     di una vuota e falsa. Una plancia leggibile e una in modalita' YAML
     convivono invece senza problemi: quella YAML resta con `config` a
     `None`, visibile in `non_disponibili`, le altre si aggiornano.
 
     Stessa regola anche quando e' l'ELENCO stesso a non arrivare (timeout su
-    `lovelace/dashboards/list`): la predefinita si legge da un'altra
-    connessione e puo' risultare leggibile da sola, ma sostituire in quel
+    `lovelace/dashboards/list`): la predefinita si legge con un'altra
+    richiesta e puo' risultare leggibile da sola, ma sostituire in quel
     caso rimpiazzerebbe la replica con la sola predefinita — le plance
     aggiuntive sparirebbero senza nemmeno finire fra i non disponibili,
     perche' l'elenco che le nominerebbe non e' mai arrivato.
@@ -240,7 +240,7 @@ async def reread_dashboards(client, home_space) -> dict:
     dashboards, unavailable = await client.read_dashboards()
     # L'elenco stesso ("lovelace/dashboards/list") puo' fallire (timeout,
     # disconnessione) mentre la config della predefinita si legge lo stesso —
-    # e' un'altra connessione WS. Senza distinguere questo caso, `plance`
+    # e' un'altra richiesta. Senza distinguere questo caso, `dashboards`
     # conterrebbe la sola predefinita leggibile: la guardia sotto ("nessuna
     # leggibile") non scatterebbe, e la replica verrebbe sostituita con la
     # sola predefinita — Cucina, Camera, Tablet sparirebbero senza finire
@@ -257,8 +257,8 @@ async def reread_dashboards(client, home_space) -> dict:
     # **La forma e' quella dell'anagrafe, non quella di Home Assistant.** Le
     # chiavi inglesi (`url_path`, `title`, `mode`) sono il vocabolario del
     # sistema esterno e si traducono al confine, come ogni altra cosa che entra:
-    # chi legge le plance -- la pagina, `view`, il nucleo -- conosce
-    # `percorso`/`titolo`/`modalita` da sempre, e una seconda forma sarebbe la
+    # chi legge le plance conosce
+    # `percorso`/`titolo`/`modalita`, e una seconda forma sarebbe la
     # stessa cosa detta in due modi (fondamenta 3).
     entries = [{"percorso": p.get("url_path"), "titolo": p.get("title"),
                 "modalita": p.get("mode"), "config": p.get("config"),

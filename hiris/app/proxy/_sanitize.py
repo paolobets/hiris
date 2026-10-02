@@ -17,7 +17,7 @@ using, and an automation/script name arriving over the network was uncovered
 can enter the model's context calls one of the two functions below:
 
 - `proxy/entity_cache.py::_to_minimal` -- the single point where a raw HA
-  state becomes what every reader sees (`live_mirror`, `guarda`, `cerca`,
+  state becomes what every reader sees (`live_mirror`, `search`,
   the nucleo). Sanitizes `state`, `name` (friendly_name) and -- since the
   inheritance slice of 07/09/2026 -- EVERY string among the inherited
   attributes, at any depth (`entity_cache._sanitized`). The hand-picked
@@ -35,34 +35,31 @@ can enter the model's context calls one of the two functions below:
   of WHATEVER entity was asked for, not a number by construction. (The
   logbook boundary that stood here left on 30/09/2026 with the four time
   tools.)
-- `home_space/store.py::HomeSpaceStore.replace` -- the SOLE writer of the
-  house registry mirror. Sanitizes `nome`/`alias`/`titolo`/`motivo` for
+- `home_space/reader.py::build_home_space` -- the single point where the
+  registries become the house registry. Sanitizes `nome`/`alias`/`titolo`/`motivo` for
   piani, aree, dispositivi (incl. produttore/modello), entita, etichette,
-  categorie and integrazioni at write time, so every reader (`leggi()`, the
-  nucleo, `guarda`, `cerca`, the config page) inherits the defense for free
+  categorie and integrazioni as it builds them, so every reader (`HomeSpace.read()`, the
+  nucleo, `search`, the config page) inherits the defense for free
   instead of each caller having to remember to filter. `nome`/`alias`/
   `titolo` go through `sanitize_ha_value` (255 -- they are HA's
   friendly_name/title, `state`-shaped); `integrazioni.motivo` (why an
   integration failed, not a `state`) goes through `sanitize_ha_free_text`
   (500) since M2, correzioni-minori.md.
-- `home_space/store.py::HomeSpaceStore.replace_behavior` -- a SECOND,
-  separate writer (different cadence, different source, see its docstring)
-  for automations/scripts. Sanitizes `nome` only. `nome` is Home Assistant's
-  `friendly_name`, read by `comportamento.reread()` via a RAW
-  `get_states([])` call that does NOT go through `entity_cache._to_minimal`
-  -- the same network-controllable text C-2 sanitizes everywhere else it
-  surfaces, missed here on a first pass because the file it lives next to
-  (`corpo`, the automation/script body) genuinely comes from a local YAML
-  file the house owner edits. Two fields, two sources, two answers: `corpo`
-  is left alone (see below), `nome` is not.
-- `home_space/queries.py::ricordi_sanificati` -- a memory is the one thing that
+- `home_space/behavior.py::reread` -- a SECOND, separate builder (different
+  cadence, different source) for automations/scripts. Sanitizes `nome` only
+  (`reader.clean_name`). `nome` is Home Assistant's `friendly_name`, read
+  from a RAW state that does NOT go through `entity_cache._to_minimal` -- the
+  same network-controllable text C-2 sanitizes everywhere else it surfaces.
+  `corpo` is not filtered here but where it is composed for the model (see
+  below).
+- `home_space/queries.py::sanitized_memories` -- a memory is the one thing that
   re-enters the model's context on every subsequent turn without being asked
   for (I-1: a `remember()` call from an injected turn would otherwise plant a
   permanent backdoor). ONE shared function, called from `home_space/briefing.py::
-  _righe_ricordi` (the always-on channel), `home_space/queries.py::guarda` (by id
+  _memory_lines` (the always-on channel), `home_space/queries.py::view` (by id
   or anchored to an area/entity/device), AND `home_space/tools.py::_recall`
-  (`MemoryStore.per_tether`, a THIRD read path the first pass missed --
-  it does not go through `guarda`, so the same memory came out filtered from
+  (`MemoryStore.per_tether`, a THIRD read path -- it does not go through
+  `view`, so without it the same memory would come out filtered from
   one door and raw from another). A single shared function, not three copies
   of the same line, is what makes a fourth door impossible to forget: import
   it, do not re-derive it. Sanitized where the text becomes part of what the
@@ -78,9 +75,9 @@ can enter the model's context calls one of the two functions below:
   as an integration's failure `motivo`): a calendar's summary/description/location are
   written by a PERSON in a calendar that can be shared, exactly the vector
   L1-sicurezza.md names. `HAClient.calendar_events()` deliberately leaves
-  these three fields raw (see its own docstring: "questo metodo non ha oggi
-  nessun consumatore ... chi consuma questo metodo per metterlo in un prompt
-  deve passare da `sanitize_ha_free_text` da solo") -- this tool is that
+  these three fields raw (see its own docstring: "chi consuma questo metodo
+  per metterlo in un prompt deve passare da `sanitize_ha_free_text` ... da
+  solo") -- this tool is that
   consumer, and the boundary lives here, not in the client. Also sanitizes
   the calendar's own `name` (`HAClient.calendars()`'s `state.name`, a
   `friendly_name` a person picks and a Google Calendar can share) via

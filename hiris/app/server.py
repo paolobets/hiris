@@ -155,7 +155,7 @@ def _close_expired_promise(app, job: dict) -> None:
     # terza strada delle promesse sul ponte, dopo il successo (`api/
     # handlers_mcp`) e il turno finito senza «conclude» (`api/
     # handlers_reasoning`). Stessa famiglia `scaduto` del ramo chat
-    # (`handlers_chat.py:477`): il piano non ha rifiutato, non ha risposto.
+    # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
     registry = app.get("occurrence_registry")
     if registry is not None:
         registry.fallimento(
@@ -169,7 +169,7 @@ def _close_expired_promise(app, job: dict) -> None:
 
 
 def _promise_delivery(app) -> dict:
-    """I tre collaboratori con cui l'orologio consegna l'esito di una
+    """I collaboratori con cui l'orologio consegna l'esito di una
     promessa (spec 2026-09-26 §2.4): chiusure su `app`, lette a ogni
     risveglio -- l'orologio non sa ne' di Home Assistant ne' della chat.
 
@@ -291,22 +291,6 @@ def _bridge_notices(bridge_active: bool, token_presente: bool) -> list[str]:
                 "di HIRIS, col bottone accanto alla riga «Il Piano Claude Max ha il "
                 "token, lo paghi, ed e' fuori dalla catena».")]
     return []
-
-
-# fetta «la pagina di configurazione» (2.3.0): `_parse_policy_csv` esce con la
-# sua unica ragione di esistere, l'opzione add-on `chat_policy`. La funzione
-# leggeva un CSV di nomi di backend e lo passava a `LLMRouter(chat_policy=...)`,
-# dove `__init__` lo scartava ogni volta: il ramo `else` che lo usa esiste solo
-# quando `model_chain` e' vuota. Fino alla 2.4.1 quel ramo era irraggiungibile
-# perche' `reconcile_chain` restituiva sempre almeno un nome; dalla fetta «la
-# catena diventa l'unica verita'» la catena PUO' essere vuota, ed e' uno stato
-# che significa qualcosa -- «HIRIS non ha a chi chiedere». Percio' `LLMRouter`
-# ha smesso di ripiegare sull'ordine di strategia quando la catena arriva
-# esplicita e vuota: ripiegare avrebbe rimesso in piedi, dentro al router, la
-# regola `legacy` appena tolta -- la pagina avrebbe detto «catena vuota» mentre
-# la chat rispondeva usando tutto cio' che aveva una credenziale. Il parametro
-# `chat_policy` di `LLMRouter` RESTA: e' il default di libreria quando nessuno
-# passa una catena (`model_chain=None`), ed e' pinnato dai suoi test.
 
 
 def _chain_as_it_was(credentials: dict) -> list[str]:
@@ -605,43 +589,6 @@ async def _disinstalla_card_lovelace(ha_base_url: str, token: str,
     _rimuovi_file_card(slug)
 
 
-# fetta E3 Task 7: `_reasoning_runner(app)` -- risolveva l'oggetto a cui il
-# percorso di ragionamento proattivo parlava (llm_router, poi
-# engine._claude_runner) -- e' uscita: il suo unico chiamante era
-# `_llm_reason`, la closure della Sentinella cancellata per intero piu' sotto
-# (vedi il blocco "Sentinella" in _on_startup). Stessa sorte di
-# `_reason_memory_context`, che viveva subito sotto (leggeva reasoner_
-# memory.relevant_memory per il contesto memoria del ragionatore): il suo
-# unico chiamante era `_gather_context`, un'altra closure dello stesso
-# blocco. `MemoryRecall`/`relevant_memory` (brain/reasoner_memory.py) non
-# avevano altri chiamanti: il modulo e' cancellato con loro.
-
-
-# fetta E3 Task 12 ("esce il ritratto"): `_osserva_la_casa` (l'unico
-# scrittore della linea di base, sul job schedulato "hiris_portrait_observe")
-# e `_portrait_context` (il testo reso, gia' ORFANO DICHIARATO dal Task 7 --
-# il suo ultimo chiamante di produzione, `_gather_context` dentro il blocco
-# Sentinella, era caduto li') sono usciti insieme a tutto il ritratto:
-# `brain/portrait.py`, `brain/portrait_store.py`, il job e il suo cablaggio
-# piu' sotto. I lettori del TESTO composto erano gia' tutti caduti nei Task
-# 4-7 (server.py:1777,1801,1805,2390 nella ricognizione -> prompt di
-# watcher/reasoner.py e coverage_review.py, entrambi cancellati); la chat non
-# lo ha mai letto (handlers_chat.py non lo chiama). Con lui esce il concetto
-# di "delta dall'ultima osservazione", che il nucleo oggi non ha: e'
-# materiale che tornera' nella conoscenza 2.0 se il nucleo vorra' imparare il
-# delta -- con un progetto, non trascinando portrait.db.
-
-
-# fetta E3 Task 6: `run_daily_briefing` (resoconto delle 08:00),
-# `_format_nudge_message`/`run_urgent_nudges` (solleciti ogni 6 ore) sono
-# uscite qui insieme al canale che le portava all'utente. Leggevano
-# `knowledge_store.upcoming_obligations` e `advisory_store` -- due basi che
-# questa fetta svuota di senso (l'advisory_store muore in questo stesso
-# task, il resoconto sulla conoscenza 2.0 tornera' quando avra' il nucleo da
-# leggere). SILENZIO DICHIARATO: da qui HIRIS smette di parlare da solo,
-# vedi il commento sopra il cablaggio dello scheduler, piu' sotto.
-
-
 async def reload_entity_inventory(cache, ha_client) -> bool:
     """Ritenta il caricamento iniziale dell'inventario delle entita', e SOLO
     quello. Ritorna True se questo giro l'ha rimesso in piedi.
@@ -688,28 +635,28 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     """Rilegge i guasti che Home Assistant ha gia' diagnosticato e li mette in
     `app["ha_problems"]`. Ritorna cio' che ha scritto (`None` senza client).
 
-    DOVE VIVONO I PROBLEMI, e perche' qui e non in `home_space/store.py`.
+    DOVE VIVONO I PROBLEMI, e perche' qui e non dentro l'anagrafe
+    (`HomeSpace`, `home_space/reader.py`).
 
     Un `repair` e' momentaneo. L'utente apre Home Assistant, clicca «ripara»,
-    e quel problema non esiste piu': un archivio SQLite riletto solo quando i
+    e quel problema non esiste piu': un'anagrafe riletta solo quando i
     registri cambiano continuerebbe ad annunciarlo per ore -- e un falso
-    allarme ripetuto in ogni prompt e' precisamente il rumore che questa fetta
-    esiste per non produrre. E' lo stesso ragionamento, sullo stesso genere di
-    dato, per cui `state` non entra nel sistema di riferimento della casa
-    (`home_space/topology.sistema_di_riferimento`: «in un archivio che si rilegge di
-    rado mentirebbe poche ore dopo, ed e' peggio che non saperlo»).
+    allarme ripetuto in ogni prompt e' precisamente il rumore che questa
+    lettura esiste per non produrre. E' lo stesso ragionamento, sullo stesso
+    genere di dato, per cui `state` non entra nel sistema di riferimento della
+    casa (`home_space.topology.reference_frame`: «in un archivio che si
+    rilegge di rado mentirebbe poche ore dopo, ed e' peggio che non saperlo»).
 
     C'e' anche una ragione meccanica, e da sola basterebbe: l'anagrafe si
     ricostruisce sugli eventi dei REGISTRI (`TOPOLOGY_EVENTS`), e il registro
-    dei problemi non ne emette nessuno. Messo in archivio, nessun innesco lo
-    aggiornerebbe: sarebbe una tabella scritta all'avvio e vecchia da li' in
-    poi.
+    dei problemi non ne emette nessuno. Messo nell'anagrafe, nessun innesco lo
+    aggiornerebbe: sarebbe un dato letto all'avvio e vecchio da li' in poi.
 
-    Quindi in RAM, accanto a `entity_cache` -- che e' l'altra fotografia
-    momentanea del prodotto -- e riletta da un lavoro periodico. Cinque
-    minuti: e' la cadenza della sentinella del comportamento, il costo e' un
-    solo comando WebSocket, e un guasto riparato sparisce dal nucleo entro il
-    giro successivo invece che al riavvio dell'add-on.
+    Quindi in `app`, accanto a `entity_cache` -- che e' l'altra fotografia
+    momentanea del prodotto -- e riletta da un lavoro periodico
+    (`hiris_ha_problems`): il costo e' un solo comando WebSocket, e un guasto
+    riparato sparisce dal nucleo entro il giro successivo invece che al
+    riavvio dell'add-on.
 
     La strada migliore esisterebbe: Home Assistant emette
     `repairs_issue_registry_updated`, e ascoltarlo renderebbe il numero esatto
@@ -928,8 +875,8 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     mai un `entity_id`. Una lettura fallita per UN'automazione
     (Home Assistant che non risponde a quella richiesta, o un errore di
     rete transitorio) non deve impedire di leggere le altre: si salta
-    QUELLA automazione, si continua con le prossime -- la stessa disciplina
-    del "parziale tollerato" di `build_companions`, non quella del "tutto o
+    QUELLA automazione, si continua con le prossime -- il "parziale
+    tollerato", non il "tutto o
     niente" delle tre letture di sistema (che sono UNA lettura sola
     ciascuna, non una per soggetto).
 
@@ -1094,7 +1041,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     verificava. Qui la stessa domanda va all'originale --
     `HAClient.extract_from_target({"area_id": [...]}) `, che e' Home Assistant
     a risolvere -- e le due liste si mettono una accanto all'altra
-    (`anagrafe.compare_with_home_assistant`, pura).
+    (`topology.compare_with_home_assistant`, pura).
 
     **OGNI QUANTO, e perche' non a ogni ricostruzione dell'anagrafe.** La
     strada ovvia sarebbe agganciarsi alla ricostruzione. Sarebbe anche il
@@ -1114,7 +1061,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     replica si rifa' da sola al primo evento di registro -- e un archivio
     riletto di rado continuerebbe ad annunciare per ore una divergenza gia'
     rientrata. E' lo stesso ragionamento per cui `state` non entra nel sistema
-    di riferimento della casa (`home_space/topology.sistema_di_riferimento`).
+    di riferimento della casa (`home_space.topology.reference_frame`).
 
     Si tiene SOLO l'ultimo giro, non un archivio di verdetti che si accumula:
     cosi' ogni verdetto che il nucleo legge e' vecchio al massimo quanto la
@@ -1129,8 +1076,8 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
 
     Lo stato della rotazione (`dopo`) vive in una chiusura e non in `app`: e'
     un dettaglio di questo lavoro, non un fatto sulla casa, e nessun altro ha
-    motivo di leggerlo. Stessa forma di `behavior_sentinel` e di
-    `schedule_registry_rebuild` qui sopra.
+    motivo di leggerlo. Stessa forma di `behavior_reader` e di
+    `schedule_registry_rebuild`.
     """
     state: dict[str, str | None] = {"dopo": None}
 
@@ -1184,55 +1131,18 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     return run_round
 
 
-# **`build_companions` e' uscito** (15/09/2026, con gli oggetti). Chiedeva
-# a Home Assistant, un soggetto alla volta, chi stava con chi, e il suo
-# unico lettore era il corpo di un oggetto. Misurato sulla casa vera prima di
-# cancellarlo: **zero comprimari su 200 oggetti**. Con lui e' uscita la
-# lettura delle direzioni dell'energia (`energy_directions`, il metodo del
-# client e' uscito il 30/09/2026).
-#
-# **`build_balances` e `_balance_recipe_for` sono usciti il 01/10/2026.**
-# Dal 15/09/2026 l'unico chiamante passava `directions={}`: nessun
-# dispositivo diventava candidato, e la funzione tornava `([], 0)` senza
-# seminare niente. Misurato sulla casa vera il 01/10/2026: i 7 dispositivi
-# con un contatore di energia hanno gia' la loro ricetta nel sapere, e il
-# resoconto la calcola. Le ricette esistenti non si toccano; un dispositivo
-# di energia nuovo riceve la sua dal modello (`mind/recipe_turn.py`), come
-# e' successo il 15/09/2026.
-
-
 def _timezone_from_home_space_store(home_space_store) -> str | None:
     """Il fuso della casa, letto da `reference_frame()` -- `None` se
     `home_space_store` non c'e' ancora (avvio a meta', o un test che non lo
     costruisce).
 
     Un aiutante per una domanda che il codice faceva ripetendo la stessa
-    lettura in piu' punti (cablaggio-pulizia-brief.md, punto 4). **Il
-    conteggio di quanti e' stato sbagliato per DIFETTO tre volte in questo
-    progetto** -- qui e' la terza correzione (riparazione-impoverisce-
-    brief.md, appendice punti 5 e 6): prima si contavano "tre punti, tutte e
-    tre dentro `_on_startup`", frase in parte falsa (sotto); poi la caccia
-    attiva ne ha trovata una quarta viva altrove. Chi conta la prossima
-    volta riparta da questo elenco, verificato con una ricerca su tutto
-    `hiris/`, non da un ricordo:
+    lettura in piu' punti: lo chiamano i giri di questo modulo e, fuori di
+    qui, `api/handlers_usage.py` e `api/handlers_mind.py`.
 
-    - `_aggrega_ieri` e la costruzione di `UsageStore` (il `lambda`
-      passato a `read_timezone`) leggono il fuso DAVVERO dentro `_on_startup`
-      -- sono scritte li', a livello di codice, non solo chiamate da li';
-    - `reaggregate_last_two_days`, qui sotto, e' una funzione a se':
-      solo la sua CHIAMATA sta dentro `_on_startup`, il corpo che legge il
-      fuso no. La frase che c'era prima diceva «tutte e tre dentro
-      `_on_startup`» senza questa distinzione, ed era falsa per questo caso;
-    - `handle_usage` (`api/handlers_usage.py`) e' la quarta: gira a ogni
-      `GET /api/usage`, mai dentro `_on_startup`. Prima di usare questo
-      aiutante leggeva `app["fuso_casa"]` per prima cosa -- una chiave che
-      nessun codice di produzione popolava (riparazione-impoverisce-
-      brief.md, appendice punto 7): il ramo e' uscito insieme alla chiave.
-
-    **Una quinta lettura resta fuori, deliberatamente**: `casa/
-    strumenti.py::_fuso` (il campo dichiarativo di una promessa) ha un
-    docstring suo che dice perche' non si unifica qui. Non toccarla senza
-    leggerlo prima.
+    **Una lettura resta fuori**: `ToolDispatcher._timezone`
+    (`home_space/tools.py`, il campo dichiarativo di una promessa) chiede lo
+    stesso `reference_frame()` al proprio `HomeSpace`, e ha un docstring suo.
     """
     return home_space_store.reference_frame().get("fuso") if home_space_store else None
 
@@ -1457,15 +1367,11 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
     """La riparazione d'avvio, **che dice sempre com'e' andata**.
 
     Il corpo vero e' `_reaggregate_days` qui sotto: questa e' la sola cosa che
-    gli sta attorno, e c'e' per una ragione misurata. Le cinque uscite
-    dichiarate scrivevano gia' il loro esito, ma **una cosa che solleva prima
-    di arrivarci** -- la lettura del fuso e' la prima riga e la sua query SQL
-    non e' protetta, come il docstring del corpo dice da mesi -- risaliva al
-    chiamante, che la ingoia in un warning, e `GET /api/health` restava a
-    `riparazione: null`. Cioe' «non e' girata»: **falso**, ed era proprio la
-    domanda che doveva rispondere.
-
-    Misurato sulla casa vera il 14/09/2026, con la 3.33.2 gia' installata.
+    gli sta attorno. Il corpo scrive il proprio esito in
+    `app["ultima_riparazione"]` solo se arriva in fondo; **se solleva prima**,
+    l'eccezione risale al chiamante, che la ingoia in un warning, e senza
+    questo involucro `GET /api/health` resterebbe a `riparazione: null`. Cioe'
+    «non e' girata»: falso, ed e' proprio la domanda a cui deve rispondere.
 
     **L'eccezione continua a propagare**: il contratto col chiamante non
     cambia, e' lui a decidere se contenerla. Qui si aggiunge solo la memoria
@@ -1485,20 +1391,10 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
     """All'avvio, scrive il resoconto degli ultimi due giorni pieni che non ce
     l'hanno (oggi escluso: non e' ancora finito).
 
-    **Era molto piu' grande, e il 15/09/2026 e' diventata questa.** Con gli
-    oggetti (spec §13) e' uscita tutta la macchina che li proteggeva: due
-    letture di rete per giornata -- i comprimari e le direzioni dell'energia --
-    e **quattro uscite anticipate**, tutte per la regola *«chi SOSTITUISCE non
-    tollera il parziale»*, perche' scrivere oggetti poveri sopra oggetti ricchi
-    era un impoverimento.
-
-    Quella regola non ha piu' oggetto: **qui il resoconto non si sostituisce
-    mai**, si scrive solo dove manca (l'unica sostituzione, dal 17/09/2026, e'
-    la sola cronaca nata con un altro giudizio, e la fa il recupero:
-    `backfill_one_report`). L'asimmetria e' rimasta, spostata dentro
-    `_write_missing_reports`, che e' l'unica cosa che questa funzione fa
-    adesso. E le quattro uscite erano proprio cio' che, fino alla 3.33.2,
-    impediva a qualunque resoconto di nascere su quella casa.
+    **Qui il resoconto non si sostituisce mai**: si scrive solo dove manca, ed
+    e' `_write_missing_reports` a farlo. L'unica sostituzione e' la sola
+    cronaca nata con un altro giudizio, e la fa il recupero
+    (`backfill_one_report`).
 
     **Perche' esiste ancora, accanto al recupero periodico.** Il recupero
     (`backfill_one_report`) scrive un giorno ogni cinque minuti dal
@@ -1509,8 +1405,7 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
     **L'eccezione si lascia propagare**, come prima: e' il chiamante a
     decidere se contenerla.
 
-    `adesso` e' iniettabile per i test, come `Watcher.__init__`: nella vita
-    vera nessuno lo passa.
+    `now` e' iniettabile per i test: nella vita vera nessuno lo passa.
     """
     timezone = _timezone_from_home_space_store(app.get("home_space_store"))
     today = now(home_space_zone(timezone)).date()
@@ -1599,7 +1494,7 @@ def schedule_dashboards_reread(client, store, delay: float = 3.0):
 
     Gemello di `schedule_registry_rebuild` — stesso antirimbalzo,
     stessa tolleranza ai guasti — ma per un innesco DIVERSO (DASHBOARD_EVENT,
-    non i registri): le plance non stanno in _TABELLE e non vanno confuse con
+    non i registri): le plance non stanno in `reader.TABLES` e non vanno confuse con
     l'anagrafe, che questa funzione non tocca.
     """
     state: dict[str, asyncio.Task | None] = {"attesa": None}
@@ -1631,9 +1526,9 @@ async def reconsideration_round(app, ha_client) -> dict | None:
     `cadence.reason_to_reconsider`: qui non se ne decide nessuno, o sarebbero
     due posti da cui dimenticarne uno.
 
-    **La domanda «è ora?» deve costare zero.** Questo giro scatta ogni dieci
-    minuti; misurare la memoria di Home Assistant a ogni passaggio sarebbero
-    144 misure al giorno -- 80 MB di traffico -- per rispondere «no». Quindi si
+    **La domanda «è ora?» deve costare zero.** Questo giro scatta ogni
+    minuto; misurare la memoria di Home Assistant a ogni passaggio sarebbe
+    traffico speso per rispondere «no». Quindi si
     usa la cadenza **dell'ultimo giro**, scritta accanto a quello, e la finestra
     si **rimisura solo quando si gira davvero**: e' anche piu' giusta, perche'
     il proprietario puo' aver cambiato il recorder nel frattempo.
@@ -1668,14 +1563,12 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             return collected
         if letto:
             # **Una raccolta fallita chiude il passaggio: non si richiede
-            # subito.** La prima stesura riaccodava nello stesso giro, e la
-            # review indipendente ha fatto il conto: con la scadenza a dieci
-            # minuti e il giro ogni dieci, un guasto stabile produce fino a
-            # **144 turni al giorno** da ~11.500 token l'uno. `count_exchanges_
-            # today` conta ogni specie e il tetto di fabbrica e' 150: un
-            # osservatore rotto svuoterebbe da solo il tetto del piano, e da
-            # li' in poi ogni turno -- chat compresa -- passerebbe ai provider
-            # a pagamento.
+            # subito.** Riaccodando nello stesso giro, un guasto stabile
+            # produrrebbe un turno a ogni scadenza del ponte.
+            # `count_exchanges_today` conta ogni specie contro il tetto
+            # giornaliero del piano: un osservatore rotto lo svuoterebbe da
+            # solo, e da li' in poi ogni turno -- chat compresa -- passerebbe
+            # ai provider a pagamento.
             return None
         if _turn_in_flight(app, SCOPE_TURN_KIND):
             # Questo giro scatta ogni minuto e un turno del piano ne dura
@@ -1778,10 +1671,10 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     una, o il sapere non e' collegato -- fanno un resoconto con la meta' delle
     misure vuota, ed e' un fatto vero su quella casa: si scrive.
 
-    **Una lettura di rete sola per tutte le ricette**: le
-    entita' che ogni ricetta nomina si raccolgono prima, e le statistiche si
-    chiedono una volta. Una richiesta per dispositivo sarebbe una connessione
-    per dispositivo, ogni notte.
+    **Le statistiche si chiedono una volta per tutte le ricette**: le entita'
+    che ogni ricetta nomina si raccolgono prima, invece di una richiesta per
+    dispositivo. Una seconda chiamata chiede a Home Assistant quali di quelle
+    entita' hanno statistiche (`statistic_ids`).
     """
     sapere = app.get("knowledge")
     casa = app.get("home_space_store")
@@ -2033,10 +1926,9 @@ async def actuator_round(app) -> dict | None:
         if done.get("su_fondamento") == stamp:
             return None
 
-        # Nel rilascio A non esistono ancora proposte, quindi non c'e' niente
-        # di gia' deciso da saltare: l'elenco arriva tutto. La porta e' quella
-        # (`actuator.to_handle`), e il rilascio B le portera' le proposte
-        # chiuse col loro fondamento di prova.
+        # Qui l'elenco arriva tutto: a `actuator.to_handle` si passa un
+        # dizionario vuoto, quindi non salta niente. Le domande che hanno gia'
+        # una proposta -- in attesa o decisa -- le salta `_file_proposals`.
         pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
         if not pending:
             return None
@@ -2153,7 +2045,7 @@ async def _settle_actuation(app, store, day: str, stamp: str | None,
 async def _file_proposals(app, store, esito: dict, pending) -> None:
     """Mette in coda le proposte del turno: **due forme, due archivi**.
 
-    - **costruibile** -> passa dall'officina (`costruisci`), che compone e
+    - **costruibile** -> passa dall'officina (`Workshop.propose`), che compone e
       valida contro QUESTA casa e **non scrive niente**: ne esce un'anteprima
       col diff, e la scrittura resta dove sta -- un turno diverso, col si' del
       proprietario. E' il confine del 25/08: «l'attuatore non guadagna un
@@ -2439,9 +2331,9 @@ async def recipe_round(app) -> dict | None:
 
     **Uno per volta, e non e' prudenza generica.** Trenta dispositivi che
     pesano sono trenta turni del modello: chiesti insieme, svuoterebbero da
-    soli il tetto giornaliero del piano (`count_exchanges_today`, tetto di
-    fabbrica 150) e da li' in poi ogni turno -- chat compresa -- passerebbe ai
-    provider a pagamento. Uno per giro, ogni dieci minuti, copre trenta
+    soli il tetto giornaliero del piano (`count_exchanges_today` contro
+    `ponte.tetto_giornaliero`) e da li' in poi ogni turno -- chat compresa --
+    passerebbe ai provider a pagamento. Uno per giro, ogni dieci minuti, copre trenta
     dispositivi in cinque ore e non si vede nella bolletta. E' anche la
     ragione per cui `devices_to_ask` guarda **tutti e due** i campi: un
     dispositivo che il modello non ha saputo leggere non si richiede mai piu'.
@@ -2537,11 +2429,10 @@ async def recipe_round(app) -> dict | None:
 #: **Un'ora, e il numero viene da un conto.** Una risposta vuota da un ponte
 #: che SA ragionare quella specie non e' piu' un rifiuto istantaneo: vuol dire
 #: che la CLI non ha risposto, e quel giro e' costato. Richiedere a ogni
-#: passaggio dell'anello sarebbero **144 turni al giorno**, e il tetto di
-#: fabbrica del piano e' 150: un ponte rotto svuoterebbe da solo la quota, e da
+#: passaggio dell'anello sarebbero **144 turni al giorno** contro il tetto
+#: giornaliero del piano: un ponte rotto svuoterebbe da solo la quota, e da
 #: li' in poi ogni turno -- chat compresa -- passerebbe ai provider a
-#: pagamento. E' lo stesso conto che la review indipendente aveva fatto
-#: sull'osservatore l'11/09/2026.
+#: pagamento.
 #:
 #: Un'ora sono 24 tentativi al giorno nel caso peggiore, e un solo giro di
 #: attesa quando il guasto e' passato.
@@ -2777,12 +2668,6 @@ def _record_attempt(store, outcome: dict, *, route: str = "ponte",
                              version=read_version())
 
 
-#: Quanto si aspetta prima di riprovare, dopo un fallimento. Raddoppia a ogni
-#: fallimento di fila e si ferma alla cadenza di riconsiderazione, che e' il
-#: tempo oltre il quale aspettare ancora significherebbe perdere cio' che Home
-#: Assistant ricorda. Il primo gradino e' il giro stesso: un guasto isolato --
-#: un turno storto, una raffica persa -- si riprova subito, e solo l'insistenza
-#: costa attesa.
 #: Quante entita' si chiedono in un turno solo. **Misurato dal vivo
 #: l'11/09/2026**: 381 giudizi in una domanda sola producono ~30 KB di
 #: risposta (~8.000 token) e la CLI del piano viene uccisa dal tetto di 300
@@ -2802,6 +2687,9 @@ def _record_attempt(store, outcome: dict, *, route: str = "ponte",
 #: scadere, questo e' il primo valore da abbassare.
 SCOPE_BATCH = 100
 
+#: Quanto si aspetta prima di riprovare, dopo un fallimento: `RETRY_BASE_S`,
+#: che raddoppia a ogni fallimento di fila e si ferma a `RETRY_MAX_S` (vedi
+#: `_retry_hold`).
 RETRY_BASE_S = 600.0
 RETRY_MAX_S = 6 * 3600.0
 
@@ -2809,10 +2697,9 @@ RETRY_MAX_S = 6 * 3600.0
 def _retry_hold(store, *, now: float) -> bool:
     """Se il freno e' tirato: **si e' appena fallito, e si aspetta**.
 
-    Nasce dal conto della review indipendente (11/09/2026): senza, un
-    osservatore che fallisce stabilmente chiede al piano a ogni passaggio, per
-    sempre -- e siccome
-    `count_exchanges_today` conta ogni specie contro un tetto di 150, **svuota
+    Senza, un osservatore che fallisce stabilmente chiede al piano a ogni
+    passaggio, per sempre -- e siccome `count_exchanges_today` conta ogni
+    specie contro lo stesso tetto (`ponte.tetto_giornaliero`), **svuota
     da solo il tetto giornaliero**: da li' in poi anche la chat scende ai
     provider a pagamento. Il freno non spegne niente, rallenta: un guasto che
     passa da solo dev'essere comunque scoperto.
@@ -3112,10 +2999,9 @@ def _govern_bridge_worker(app) -> None:
             _agent_runner.set_turn_logger(_registra_turno_ponte(
                 app["usage"], app.get(BRIDGE_LOADS_KEY)))
         # **Le intestazioni del ponte si coniano, non si leggono** (spec §5).
-        # Prima veniva `build_headers`, che legge `INTERNAL_TOKEN`
-        # dall'ambiente: un segreto unico, eterno, condiviso con ogni altra
-        # integrazione, che finiva nella riga di comando del sottoprocesso --
-        # leggibile per trecento secondi da qualunque processo del container.
+        # Un segreto letto dall'ambiente sarebbe unico, eterno, condiviso con
+        # ogni altra integrazione, e finirebbe nella riga di comando del
+        # sottoprocesso -- leggibile da qualunque processo del container.
         #
         # Adesso e' una credenziale che vive dieci minuti e vale solo per il
         # ponte. Il sottoprocesso la riceve dalle STESSE intestazioni (vedi
@@ -3178,7 +3064,7 @@ def _recompute_chain(app) -> None:
     from .model_activation import providers_in_chain
     cfg = app.get("models_config") or {}
     # Un valore solo, derivato una volta, letto da tutti: la spazzata
-    # (`_reasoning_sweep`), l'instradamento (`handlers_chat.handle_chat`), la
+    # (`_reasoning_sweep`), l'instradamento (`steering.who_answers`), la
     # pagina Consumi, il gate del lavoratore qui sotto. Nessuno dei quattro
     # ricalcola niente, quindi nessuno dei quattro puo' dire una cosa diversa.
     app["bridge_active"] = _bridge_active(cfg)
@@ -3195,7 +3081,7 @@ def _recompute_chain(app) -> None:
     # Chi può rispondere ADESSO: la stessa regola dell'avvio (`_risponde`),
     # RILETTA invece che ricordata. Un backend costruito, e -- per Ollama -- un
     # modello scelto: il runner locale esiste con il solo indirizzo, ma senza
-    # un modello sarebbe un anello che `_ordered_backends` salta in silenzio
+    # un modello sarebbe un anello che `_ordered_backends_with_name` salta in silenzio
     # mentre la pagina lo disegna numerato (il buco che il Task 9 ha chiuso).
     risponde = {name: b is not None for name, b in mappa.items()}
     if risponde.get("ollama"):
@@ -3291,9 +3177,7 @@ def _open_knowledge(app, data_dir: str) -> None:
 
 
 async def _on_startup(app: web.Application) -> None:
-    # fetta E3 Task 7: `import time as _time` viveva fra gli import della
-    # Sentinella (cancellati con lei), ma serve ancora qui sotto a
-    # `_reasoning_sweep` (ponte push, vivo) -- spostato invece di perso.
+    # Serve ai lavori dello schedulatore, piu' sotto.
     import time as _time
 
     from .claude_runner import ClaudeRunner
@@ -3304,14 +3188,9 @@ async def _on_startup(app: web.Application) -> None:
     # _inject_version() on every render anyway.
     _read_static_pages(app)
 
-    # fetta E4 Task 4 ("un bot solo"): prima `data_dir` si derivava da
-    # `CHATBOTS_DATA_PATH` (un file per l'entita' Chatbot che non esiste
-    # piu'). Ne' l'una ne' l'altra erano un'opzione dell'add-on (nessuna voce
-    # in config.yaml/run.sh: solo un varco interno per i test) -- lo stesso
-    # varco, letto direttamente come directory.
-    #
-    # Sta qui in cima, e non piu' sotto insieme al resto degli store, perche'
-    # va risolta prima che qualunque middleware possa servire una richiesta.
+    # `data_dir` si risolve qui in cima, e non piu' sotto insieme al resto degli
+    # store: va risolta prima che qualunque middleware possa servire una
+    # richiesta.
     data_dir = os.environ.get("HIRIS_DATA_DIR", "/data")
     app["data_dir"] = data_dir
     # CR-1: le reti sorgenti fidate. Il bypass dell'ingress vale solo per le
@@ -3338,14 +3217,6 @@ async def _on_startup(app: web.Application) -> None:
             "nelle opzioni dell'add-on, oppure svuotalo per tornare al "
             "predefinito")
     app["supervisor_ingress_cidrs"] = [str(r) for r in _reti]
-    # fetta E3 Task 7: `app["execute_policy"]` (tiers/entity_tiers) e' uscita.
-    # Era il semaforo condiviso fra la superficie remota (execute-API, uscita
-    # fetta E2 Task 4) e la Sentinella (watcher/executor.py::execute, uscita
-    # in questo task): con entrambe morte non resta nessun lettore. Con lei
-    # esce `api/handlers_gateway_policy.py` (apply_saved_policy, che la
-    # costruiva dalla policy UI-managed) e `hiris/app/security/semaphore.py`
-    # (DANGEROUS_DOMAINS/effective_tier/summarize_autonomy) -- verificato con
-    # grep che nessun modulo vivo li importa piu' (vedi il report del task).
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning(
@@ -3434,7 +3305,7 @@ async def _on_startup(app: web.Application) -> None:
     # subito: si ripagava ogni volta la lettura dell'anagrafe E la
     # compilazione di un'espressione regolare per termine (misurato: la
     # compilazione domina il costo, non la lettura -- vedi il rapporto del
-    # task). Costruita vuota qui, si riempie alla prima `cerca`/`remember`.
+    # task). Costruita vuota qui, si riempie alla prima `search`/`remember`.
     app["tools_lookup_cache"] = LookupCache()
 
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
@@ -3518,7 +3389,7 @@ async def _on_startup(app: web.Application) -> None:
     # L'archivio delle promesse (`keeper/store.py`): l'unica casa di
     # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
     # di questo cablaggio. La legge sia la chat (via
-    # `create_tool_dispatcher`, per `prometti`/`promesse`/`cancel`)
+    # `create_tool_dispatcher`, per `promise`/`agenda`/`cancel`)
     # sia lo schedulatore -- l'orologio, montato piu' sotto insieme al
     # battito, perche' gli serve prima lo scheduler, costruito piu' avanti in
     # questa funzione.
@@ -3554,14 +3425,8 @@ async def _on_startup(app: web.Application) -> None:
         ha_client, app["constructions"], app["journal"],
         read_timezone=lambda: _timezone_from_home_space_store(app.get("home_space_store")))
 
-    # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
-    # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
-    # stata spostata).
-    # SP-2 Task 4: models-config store (chain_order), letta prima della
-    # costruzione LLMRouter più sotto così il chain-build (Task 2 Step 5) può
-    # leggere chain_order. Portava anche brain_model, uscito alla fetta E5
-    # Task 7: il Brain (_holistic_reason) che l'avrebbe letto è già uscito
-    # con la E3 -- vedi handlers_models.py.
+    # L'archivio dei modelli si legge prima di costruire `LLMRouter`, piu' sotto:
+    # la catena si compone da `chain_order`.
     from .api.handlers_models import load_models_config, save_models_config
     # Qui c'era la semina delle opzioni dell'add-on (`options_migration.seed`):
     # copiava nell'archivio, una volta sola, sette valori che arrivavano
@@ -3584,12 +3449,7 @@ async def _on_startup(app: web.Application) -> None:
     # non e' riuscita -- e la riparazione d'avvio, qui sotto, ne ha bisogno:
     # `_report_ingredients` cerca le ricette dei dispositivi elencati
     # nell'anagrafe, e su una casa vuota non ne trova nessuna, quindi il
-    # resoconto riparato nascerebbe senza misure. **Misurato dal vivo sulla
-    # v3.24.0**, quando a leggerla era `build_balances` (uscito il
-    # 01/10/2026): i due giorni riparati all'avvio nascevano senza bilancio, e
-    # `replace_day` li sostituiva a quelli buoni della notte. Finche' la copia
-    # stava su disco il difetto non si vedeva: la riparazione leggeva quella
-    # di ieri.
+    # resoconto riparato nascerebbe senza misure.
     try:
         await rebuild(ha_client, home_space_store, entity_cache)
     except Exception as exc:
@@ -3598,46 +3458,21 @@ async def _on_startup(app: web.Application) -> None:
         schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
     ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
 
-    # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
-    # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
-    # -- vedi il docstring di `reaggregate_last_two_days` per il perche'
-    # di "due" e non "i giorni senza oggetti", e per quando si salta per
-    # intero invece di scrivere oggetti impoveriti.
+    # La riparazione d'avvio: scrive il resoconto degli ultimi due giorni
+    # pieni che non ce l'hanno (vedi `_reaggregate_days`).
     #
-    # **QUI, subito dopo `app["home_space_store"]` (cancello-rilascio-brief.md,
-    # punto 1, CRITICAL -- la terza volta che questa stessa fondamenta si
-    # rompe sulla stessa funzione).** Fino a questo giro la chiamata stava 87
-    # righe piu' in alto, PRIMA che `home_space_store` esistesse:
-    # `_timezone_from_home_space_store(app.get("home_space_store"))` leggeva sempre
-    # `None`, e questa riparazione lavorava SEMPRE in UTC -- mentre
-    # l'aggregazione notturna (`_aggrega_ieri`, piu' sotto in questa stessa
-    # funzione, che gira alle 00:20 quando `home_space_store` c'e' gia' da ore)
-    # lavora col fuso VERO della casa. Le due porte, sullo stesso grezzo,
-    # potevano quindi produrre oggetti diversi: un episodio a cavallo della
-    # mezzanotte UTC (che non e' la mezzanotte della casa) finiva nel giorno
-    # sbagliato, o spariva da entrambi, a OGNI riavvio dell'add-on -- cioe' a
-    # ogni aggiornamento. Prova per esecuzione in
-    # `test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti`
+    # **QUI, dopo `app["home_space_store"]` e dopo `rebuild`**: la riparazione
+    # chiede all'anagrafe il fuso della casa e i dispositivi di cui cercare le
+    # ricette. Chiamata prima lavorerebbe in UTC e su una casa vuota, mentre
+    # l'aggregazione notturna (`_aggrega_ieri`, piu' sotto) lavora col fuso
+    # vero: le due porte, sullo stesso grezzo, darebbero resoconti diversi.
+    # L'ordine lo sorveglia, eseguendo questo blocco,
+    # `test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito`
     # (`tests/test_mind_wiring.py`).
     #
-    # Nasce PRIMA di `UsageStore` qui sotto e prima di `rebuild`
-    # (la rilettura dell'anagrafe): non ha bisogno di aspettarli, perche'
-    # `reference_frame()` legge il fuso GIA' PERSISTITO su disco dalle
-    # sessioni precedenti (`casa.db` sopravvive ai riavvii) -- aspettare
-    # `rebuild()`, che parla con Home Assistant, legherebbe questa
-    # riparazione a un servizio di rete che non le serve.
-    #
-    # **La lezione**: il test che sorvegliava l'ordine (ora
-    # `test_le_due_porte_...`, prima
-    # `test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_
-    # e_non_blocca_l_avvio`) verificava che una STRINGA comparisse in un certo
-    # ordine nel sorgente, non che il collaboratore di cui la funzione ha
-    # davvero bisogno (`home_space_store`) esistesse in quel punto -- e le finte
-    # di questa stessa funzione, in ogni altro test di questo file, passano
-    # `"archivio_casa": None`: fedeli alla produzione ROTTA, non lo
-    # sorvegliavano nemmeno per caso. Attesa, e in un try/except che non deve
-    # bloccare l'avvio: un cervello che non riparte perche' non e' riuscito a
-    # rifare l'altro ieri sarebbe peggio del buco che sta chiudendo.
+    # Attesa, e in un try/except che non deve bloccare l'avvio: un cervello
+    # che non riparte perche' non e' riuscito a rifare l'altro ieri sarebbe
+    # peggio del buco che sta chiudendo.
     try:
         await reaggregate_last_two_days(app, ha_client)
     except Exception as exc:
@@ -3652,7 +3487,7 @@ async def _on_startup(app: web.Application) -> None:
     # e non avrebbe letto niente. Qui `rebuild()` e' gia' passata; e anche
     # quando non riesce, il sistema di riferimento e' l'unica cosa
     # dell'anagrafe che resta su disco fra un riavvio e l'altro
-    # (`HomeSpaceStore.remember_reference_frame`, e il suo docstring dice
+    # (`HomeSpace._write_reference_frame`, e il suo docstring dice
     # perche' proprio quella).
     #
     # E **dopo** la riparazione d'avvio, non in mezzo: quel blocco e' eseguito
@@ -3714,7 +3549,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # Task 5 SDD casa: le plance, compresa la predefinita (url_path nullo)
     # che HIRIS non aveva mai visto. Cadenza propria (DASHBOARD_EVENT, non i
-    # registri): non stanno in _TABELLE, quindi una ricostruzione
+    # registri): non stanno in `reader.TABLES`, quindi una ricostruzione
     # dell'anagrafe non le tocca e viceversa. Come l'anagrafe, la prima
     # lettura non deve poter impedire il boot.
     try:
@@ -3735,32 +3570,21 @@ async def _on_startup(app: web.Application) -> None:
     _service_registry = app["service_registry"]
     ha_client.add_service_listener(lambda _type: _service_registry.invalidate())
 
-    # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
-    # (memoria.db), separato da casa.db -- e' cio' che l'utente ha detto e
-    # cio' che HIRIS ne ha capito, non una REPLICA ricostruibile da HA (vedi
-    # memory/store.py). Nessuna lettura iniziale da fare qui: a
-    # differenza dell'anagrafe non c'e' nulla da ricostruire all'avvio.
+    # L'archivio della memoria vive nel suo file (memoria.db): e' cio' che
+    # l'utente ha detto e cio' che HIRIS ne ha capito, non una REPLICA
+    # ricostruibile da HA (vedi memory/store.py). Nessuna lettura iniziale da
+    # fare qui: a differenza dell'anagrafe non c'e' nulla da ricostruire
+    # all'avvio.
     memory_store = MemoryStore(os.path.join(data_dir, "memoria.db"))
     app["memory_store"] = memory_store
 
-    # Task 1 fetta E4: il WebSocket verso HA parte qui -- non e' mai stato
-    # dentro un "engine.start()" da quando quel task lo ha spostato (e ora
-    # l'entita' Chatbot, con l'engine che la portava, e' uscita per intero:
-    # fetta E4 Task 4, "un bot solo"). Deve stare dopo la registrazione di
-    # tutti i listener sopra (state/anagrafe/plance, :633-690): aprirlo prima
-    # lascerebbe una finestra di eventi senza nessuno ad ascoltarli.
+    # Il WebSocket verso Home Assistant parte qui, dopo la registrazione di
+    # tutti i listener qui sopra: aprirlo prima lascerebbe una finestra di
+    # eventi senza nessuno ad ascoltarli.
     await ha_client.start_websocket()
 
-    # fetta E4 Task 4: l'entita' Chatbot esce, sostituita dalle impostazioni
-    # della chat -- un bot solo, senza id, coi default nel codice (mai
-    # "assente": e' la chiusura per costruzione del degrado silenzioso che
-    # handlers_chat.py aveva prima -- vedi chat_settings.py). Gli ex
-    # `engine.set_entity_cache(entity_cache)`/`set_archivi(home_space_store,
-    # memory_store)` non hanno bisogno di un successore: erano gia'
-    # orfani prima di questo task (nessun lettore in produzione dalla fetta
-    # E4 Task 2 -- ToolDispatcher legge `app["entity_cache"]`/
-    # `app["home_space_store"]`/`app["memory_store"]` direttamente, gia'
-    # valorizzati sopra).
+    # Le impostazioni della chat: un bot solo, senza id, coi default nel codice
+    # (vedi `chat_settings.py`).
     chat_settings = ChatSettings.load(data_dir)
     app["chat_settings"] = chat_settings
 
@@ -3854,22 +3678,6 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.start()
     app["scheduler"] = scheduler
 
-    # fetta E3 Task 13 ("escono le notifiche"): `notifiche.py` e il suo intero
-    # cablaggio (`notify_config`, `_fetch_addon_slug`, `_ingress_click_path`,
-    # `app["ingress_click_path"]`) sono usciti -- i tre chiamanti di
-    # `send_notification` (health_scan.py Task 6, task_engine.py Task 9, il
-    # ponte Sentinella/briefing di questo file Task 6/7) erano gia' tutti
-    # usciti; questo cablaggio, lasciato intatto dal Task 9 con silenzio
-    # dichiarato (vedi sotto, ora chiuso), era l'ultimo residuo -- mai piu'
-    # letto da nessuno. Con lui escono le sei strade per dire una cosa a una
-    # persona (mappa, elefante n.2) e la destinazione fissa HA_NOTIFY_SERVICE,
-    # che nessuna interfaccia poteva cambiare: da qui in avanti HIRIS non
-    # parla piu' senza essere interrogato -- esiste solo la chat. SILENZIO
-    # DICHIARATO: notifiche.py era senza stato (chiamava HA/apprise/
-    # retropanel dal vivo, nessuna scrittura in /data), quindi non c'e' alcun
-    # file ereditato da controllare al boot. La settima strada nascera' con
-    # un progetto proprio, con una destinazione configurabile -- non
-    # `notify.notify` cablato.
     app["theme"] = os.environ.get("THEME", "auto")
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
@@ -4180,7 +3988,7 @@ async def _on_startup(app: web.Application) -> None:
     #
     # Dieci minuti e non uno, e uno per volta, per una ragione di costo che si
     # vede solo facendo il conto: trenta dispositivi che pesano sono trenta
-    # turni del modello, e il tetto giornaliero del piano e' 150 -- chiesti
+    # turni del modello contro il tetto giornaliero del piano -- chiesti
     # insieme lo svuoterebbero da soli, e da li' in poi ogni turno (chat
     # compresa) passerebbe ai provider a pagamento. Uno ogni dieci minuti
     # copre trenta dispositivi in cinque ore, e poi **smette**: una ricetta
@@ -4255,23 +4063,16 @@ async def _on_startup(app: web.Application) -> None:
     # oggetto nasce mai.
     async def _aggrega_ieri() -> None:
         try:
-            # `fuso`/`ieri` DENTRO il try (task-5-fix-brief.md, punto 2a):
-            # `reference_frame()` fa una query SQL non protetta, e se
-            # solleva FUORI da qui il warning contestualizzato non parte --
-            # l'eccezione finisce nel registro di apscheduler senza il
-            # prefisso «cervello:», e la notte salta in silenzio.
+            # `timezone`/`ieri` DENTRO il try: se il loro calcolo sollevasse
+            # FUORI da qui il warning contestualizzato non partirebbe --
+            # l'eccezione finirebbe nel registro di apscheduler senza il
+            # prefisso «cervello:», e la notte salterebbe in silenzio.
             timezone = _timezone_from_home_space_store(app.get("home_space_store"))
             ieri = (datetime.now(home_space_zone(timezone))
                     - timedelta(days=1)).strftime("%Y-%m-%d")
-            # **I comprimari e le direzioni sono usciti con gli oggetti**
-            # (15/09/2026), e **i bilanci il 01/10/2026**: da due settimane
-            # la loro chiamata riceveva `directions={}` e non seminava
-            # nessuna ricetta. I numeri dell'energia arrivano al resoconto
-            # dalle ricette del sapere, come tutti gli altri.
-            #
             # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
-            # delle entita' che nominano lette in UNA connessione sola (una
-            # lettura per giro, non una per dispositivo).
+            # delle entita' che nominano chieste una volta per giro, non una
+            # per dispositivo.
             ricette, serie, nomi, without = await _report_ingredients(
                 app, ha_client, giorno=ieri, timezone=timezone)
             count = aggregate_day(
@@ -4346,7 +4147,7 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
 
     # L'orologio (`keeper/sweeper.py`): non conosce ne' la chat ne' il
-    # modello, riceve solo `esegui` (la porta unica, costruita sopra) e
+    # modello, riceve solo `execute` (la porta unica, costruita sopra) e
     # `interpreta` (il turno di `chiedi`, `keeper/exchange.py`).
     # `interpreta_promise` prende DUE argomenti (`app`, `promessa`); l'orologio
     # chiama `interpreta(promessa)` con uno solo -- la chiusura qui sotto e'
@@ -4411,29 +4212,10 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
-    # Fetta "esce il documentale": qui vivevano tre lavori schedulati, usciti
-    # insieme ai loro soggetti.
-    #   - "hiris_history_compact" (03:30) compattava history.db;
-    #   - "hiris_history_digest" (04:00) chiamava il provider di embedding per
-    #     ogni entita' storicizzata e scriveva insight `status="approved"`
-    #     nell'archivio di conoscenza -- che nessun lettore di produzione
-    #     riapriva. Era la spesa notturna senza consumatore;
-    #   - "hiris_mayan_ingest" (ogni `mayan.poll_minutes`) piu' il giro
-    #     iniziale all'avvio: ingeriva i documenti taggati in Mayan nello
-    #     stesso archivio, con lo stesso esito.
-    # Nessuno slot app "mayan_client"/"knowledge_store"/"history_store",
-    # nessun listener `state_changed` per la cattura, nessuna rotta.
-
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
 
-    # ── Ponte push (Piano A, fetta 3): coda di lavori di reasoning per il
-    # runner remoto. Resta -- lo usa il ramo chat sotto (Slice 4b) -- ma
-    # `_execute_decision`/`app["execute_decision"]` sono usciti qui (fetta
-    # E3 Task 4): applicavano una Decisione del runner attraverso lo stesso
-    # executor.execute()/semaforo/adapters della revisione olistica, che non
-    # esiste piu'. handlers_reasoning.py (il consumer di questo slot) non
-    # trova piu' nulla in `app["execute_decision"]` -- vedi il commento li'.
+    # Il ponte: la coda dei turni di ragionamento. La usa il ramo chat qui sotto.
     from .reasoning.queue import ReasoningQueue
 
     reasoning_queue = ReasoningQueue(
@@ -4456,15 +4238,6 @@ async def _on_startup(app: web.Application) -> None:
         # Final-review Fix 3 (Slice 4b): mirror the sync path's persistence
         # guard (handlers_chat.py) so a reply that arrived via the async
         # runner gets the same treatment as one from the local runner.
-        #
-        # Fetta "esce il documentale": qui c'era anche una detokenizzazione
-        # (`app["pseudonymizer"].detokenize(reply_text, {})`), uscita con
-        # brain/privacy.py. Era gia' un no-op dichiarato: la si chiamava
-        # sempre con una mappa VUOTA -- questo percorso non pseudonimizza
-        # nulla di suo -- e dopo l'uscita del dispatcher che popolava
-        # `last_pseudonym_map` nessun percorso del prodotto pseudonimizzava
-        # piu' niente. Toglierla non cambia il testo persistito di un
-        # carattere.
         if _is_toxic_chat_reply(reply_text):
             # Drop silently from the history, same as the sync path: the next
             # turn must not inherit a poisoned/leaked history. There's no
@@ -4522,75 +4295,6 @@ async def _on_startup(app: web.Application) -> None:
         _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir,
                               thread=thread)
     app["submit_chat_reply"] = _submit_chat_reply
-
-    # Qui viveva `app["chat_daily_cap"]`, copia di `CHAT_DAILY_CAP` presa
-    # all'avvio e unico lettore di quell'ambiente per il comportamento. E'
-    # CANCELLATA dal Task 14: il tetto giornaliero del ponte si legge adesso
-    # dall'archivio (`ponte.tetto_giornaliero`, `handlers_chat.
-    # _piano_puo_rispondere`), dove l'utente lo cambia e dove il Task 6 lo
-    # aveva gia' copiato senza dargli lettori. Erano due rappresentazioni dello
-    # stesso numero (invariante 1) e la copia in memoria era pure ferma
-    # all'avvio: chi salvava dalla pagina Modelli non cambiava il tetto che il
-    # turno subiva. Stessa strada del Task 10 per `ponte.scadenza_min` e
-    # `ollama.timeout_s`, e stesso residuo dichiarato: `CHAT_DAILY_CAP` resta
-    # letta -- solo dalla semina qui sopra, per copiare il valore com'era --
-    # finche' il Task 13 non toglie l'opzione dallo schema.
-
-    # fetta E3 Task 5: esce il Brain auto-proponente. Il Task 4 aveva lasciato
-    # orfani DI PROPOSITO `brain.coverage_review`, `brain.suggestions`,
-    # `brain.cognitive_loop`, `brain.learned_thresholds`, `brain.brain_trace`,
-    # `brain.reasoning_log`, `brain.feed` e `api.handlers_suggestions` --
-    # proponevano a un `_execute_decision` che il Task 4 stesso aveva gia'
-    # cancellato. Tutti e otto i moduli sono usciti qui, insieme al loro
-    # cablaggio (SuggestionStore/ReasoningLog sopra, rotte /api/suggestions*
-    # e /api/brain/feed+reasoning piu' sotto). SILENZIO DICHIARATO:
-    # un'installazione con suggestions.db o brain_reasoning.db popolati da
-    # prima di questo task non incontra piu' nessun codice -- nessuno slot
-    # app, nessuna rotta, nessun log possibile perche' nessun codice li
-    # apre piu' (vedi il commento sopra dove prima viveva questo cablaggio).
-    # `tools.proposal_tools.create_automation_proposal` restava orfano qui
-    # (il modulo non era nel perimetro del Task 5): nessun chiamante di
-    # produzione, solo citazioni in commenti/metadata (handlers_gateway_
-    # policy.py's PROPOSE_TOOLS, gia' morto da prima) e nella lista UI del
-    # Designer (static/config/templates.js: era una checkbox inerte, ed e'
-    # uscita col file alla fetta E5 Task 6).
-    # Il Task 8 di questa fetta ha cancellato l'intera cartella `tools/`,
-    # `proposal_tools.py` incluso: la citazione sopra e' storica.
-    # `watcher.policy.apply_brain_detector/remove_brain_detector/
-    # apply_brain_tuning/remove_brain_tuning` perdevano qui il loro ultimo
-    # chiamante di produzione (`brain.suggestions`/`brain.cognitive_loop`):
-    # non erano nel perimetro del Task 5 (non nel file-list del brief),
-    # dichiarati orfani per chi avrebbe toccato la Sentinella/il semaforo.
-    # Il Task 7 di questa fetta li ha raccolti: `watcher/policy.py` e'
-    # uscito per intero insieme al resto di `watcher/` -- la nota sopra e'
-    # storica.
-
-    # fetta E3 Task 6, SILENZIO DICHIARATO: qui viveva il job schedulato
-    # "hiris_health_scan" (interval `HIRIS_HEALTH_SCAN_MINUTES`, 30' di
-    # default -- 8 controlli, 5 sulla casa e 3 sul sistema via Supervisor,
-    # riconciliati nell'AdvisoryStore con push delle sole segnalazioni gravi
-    # nuove o riaperte, l'opzione add-on `brain_notify_high`). `health_
-    # checks.py` importava il semaforo (la casa vecchia); l'archivio che
-    # scriveva (`brain/advisory_store.py`) e' uscito sopra, insieme al
-    # canale (`notifiche.py`) che portava le sue segnalazioni gravi
-    # all'utente. Da questo task nessuna scansione di salute gira piu' --
-    # comportamento deciso, non un guasto: vedi il commit e il report.
-    # `HIRIS_HEALTH_SCAN_MINUTES` esce con il suo unico lettore (non era
-    # un'opzione add-on: nessuna voce in config.yaml/run.sh/translations).
-    # fetta E3 Task 5: la prune notturna del reasoning capture log era gia'
-    # uscita insieme a `reasoning_log`/ReasoningLog (nessun job
-    # `hiris_reasoning_prune`).
-
-    # fetta E3 Task 12 ("esce il ritratto"), SILENZIO DICHIARATO: qui viveva
-    # il job schedulato "hiris_portrait_observe" (interval
-    # HIRIS_PORTRAIT_OBSERVE_MINUTES, 15' di default), che chiamava
-    # `_osserva_la_casa` per aggiornare la linea di base del ritratto in
-    # `portrait.db`. Con `_osserva_la_casa`/`_portrait_context`/
-    # PortraitStore/portrait.py usciti per intero, nessuna osservazione gira
-    # piu' -- comportamento deciso, non un guasto: vedi il commit e il
-    # report. `HIRIS_PORTRAIT_OBSERVE_MINUTES` esce con il suo unico
-    # lettore (non era un'opzione add-on: nessuna voce in
-    # config.yaml/run.sh/translations).
 
     # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal
     # runner remoto. Il ramo chat resta (Slice 4b): un job "chat" scaduto
@@ -4695,25 +4399,13 @@ async def _on_startup(app: web.Application) -> None:
     # riprodotto per il ponte il difetto che il Task 10 ha chiuso per la
     # catena -- salvataggio accettato con 200, effetto solo al riavvio.
     #
-    # `handlers_chat._bridge_on` verifica soltanto che `app["reasoning_queue"]`
+    # `steering._bridge_on` verifica soltanto che `app["reasoning_queue"]`
     # sia agganciata -- e in produzione lo e' sempre, perche' la coda si crea
-    # incondizionatamente poche righe piu' su -- quindi da sola non dice che
+    # incondizionatamente piu' su -- quindi da sola non dice che
     # qualcuno reclami o spazzi quei job. E' `app["bridge_active"]` a dirlo:
     # tenere il gate li', invece di insegnare l'archivio a `_bridge_on`, lascia
-    # ai test di handlers_chat.py la possibilita' di agganciare o sganciare la
+    # ai test la possibilita' di agganciare o sganciare la
     # coda senza toccare la configurazione.
-    #
-    # Fusione dei due interruttori (2.4.0): qui c'erano DUE derivazioni --
-    # `_bridge_enabled` e `_chat_via_subscription_cfg` -- combinate da un AND,
-    # ed era quello il fail-safe. Poi UNA espressione condivisa (2.5.0). Adesso
-    # e' UN VALORE condiviso: il fail-safe non e' sparito, ha finito di
-    # cambiare natura -- da regola da non sbagliare, a struttura.
-
-    # fetta E3 Task 4: l'arrivo serale (watcher/arrival.py, ArrivalWatcher)
-    # e' uscito -- riusava lo stesso adapter `_on_situation` della ronda,
-    # uscito con lei (vedi il commento piu' in alto). Nessun sostituto:
-    # nessun path di actuation restava dietro, solo una proposta che ora
-    # nessuno genera piu'.
 
     # Il modello per provider, come LETTURA e non come valore. È la metà
     # nascosta del difetto peggiore trovato dal progetto: fino alla 2.4.1 qui
@@ -4754,7 +4446,7 @@ async def _on_startup(app: web.Application) -> None:
     # il Task 7 aveva dichiarato: con la sola credenziale, Ollama poteva finire
     # in `model_chain` senza un runner dietro, cioè comparire come anello
     # numerato in una pagina che descrive il runtime mentre
-    # `LLMRouter._ordered_backends` lo saltava in silenzio.
+    # `LLMRouter._ordered_backends_with_name` lo saltava in silenzio.
     _risponde = {**_credentials,
                  "ollama": bool(local_model_url and _ollama_model)}
 
@@ -4798,7 +4490,7 @@ async def _on_startup(app: web.Application) -> None:
     # niente -- il backend non esiste, e servirebbe un riavvio, cioè la
     # didascalia che questa fetta toglie. Chi può RISPONDERE resta `_risponde`
     # (indirizzo E modello) e governa la catena: senza modello il runner c'è ma
-    # nessuno lo mette in catena, quindi `_ordered_backends` non lo incontra.
+    # nessuno lo mette in catena, quindi `_ordered_backends_with_name` non lo incontra.
     if local_model_url:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
@@ -5058,11 +4750,7 @@ async def _on_cleanup(app: web.Application) -> None:
     # presenza della chiave.
     if app.get("knowledge") is not None:
         app["knowledge"].close()
-    # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
-    # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
-    # uscita per intero. `wait=False`, stessa disciplina di
-    # `ChatbotEngine.stop()` (chatbot_engine.py, uscito con lei): non
-    # aspettare i job in corso al momento dello shutdown.
+    # `wait=False`: non si aspettano i job in corso al momento dello shutdown.
     if "scheduler" in app:
         app["scheduler"].shutdown(wait=False)
     await app["ha_client"].stop()
@@ -5162,11 +4850,6 @@ def create_app() -> web.Application:
     app.router.add_get("/", _serve_index)
     app.router.add_get("/config", _serve_config)
     app.router.add_get("/api/health", _handle_health)
-    # fetta E4 Task 4 ("un bot solo"): GET /api/status esce insieme
-    # all'entita' Chatbot -- il suo unico contenuto era `agents.total`/
-    # `agents.enabled` (handlers_status.py, cancellato), un conteggio che non
-    # significa piu' niente con un bot solo. Nessun chiamante frontend (era
-    # gia' una rotta solo-test nel censimento, prima di questo task).
     app.router.add_get("/api/config", handle_config)
     # **ROTTA TEMPORANEA** (3.66.x): i due registri in lettura, per la
     # fase delle misure. Esce quando i verdetti hanno deciso le tre leve
@@ -5177,29 +4860,8 @@ def create_app() -> web.Application:
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
-    # fetta E4 Task 3 ("un bot solo"): le rotte di creazione/CRUD (POST
-    # /api/chatbots, GET/PUT/DELETE /api/chatbots/{agent_id}, .../usage,
-    # .../usage/reset) sono uscite -- erano le tre strade sopravvissute alla
-    # E3 (wizard, editor vuoto, onboarding della chat) che creavano tutte
-    # l'entita' gia' attiva, il contrario di quanto prescrive lo scope.
-    # GET /api/chatbots e' restata come superficie di compatibilita'
-    # dichiarata (Global Constraints) finche' avesse un chiamante: la chat
-    # se n'e' staccata al Task 3 di questa fetta (nome e tetto di turni da
-    # GET /api/chat-settings, il "connesso" da GET api/health), la card
-    # e' uscita dal prodotto al Task 5, e i tre chiamanti rimasti nella SPA
-    # di configurazione (config/dashboard.js, config/models-route.js,
-    # config/usage-route.js) sono usciti ai Task 7 e 8. Col gate verde
-    # (`grep -rn "api/chatbots" hiris/app/static/` a zero fetch, solo
-    # commenti storici) la rotta e il suo handler sono usciti col Task 10.
-    # fetta E5 Task 4 ("il frontend"): erano
-    # GET/DELETE /api/chatbots/{agent_id}/chat-history -- un placeholder
-    # {agent_id} che il handler non leggeva mai da match_info (c'e' UNA
-    # cronologia dalla E4 Task 5). Rotta onesta: nessun identificatore nel
-    # percorso, perche' non c'e' niente da identificare. Chiamante unico e
-    # vivo: static/chat/agents.js (ripristino della cronologia). La card Lovelace non le
-    # ha mai chiamate (teneva la propria cronologia in localStorage) ed e'
-    # comunque uscita per intero con la E5 Task 5. Gli handler non cambiano:
-    # non hanno mai visto l'id, cambia solo la firma pubblica della rotta.
+    # Una cronologia sola, senza identificatore nel percorso: la legge
+    # `static/chat/agents.js` per ripristinare la conversazione.
     app.router.add_get("/api/chat/history", handle_get_chat_history)
     # Fetta «il seguito delle chat divise» (spec 2026-09-26 §4): piu'
     # conversazioni nel filo. `GET /api/chat/history` resta -- e' la
@@ -5211,11 +4873,6 @@ def create_app() -> web.Application:
     app.router.add_post("/api/chat/conversations", handle_new_conversation)
     app.router.add_post("/api/chat/conversations/{id}/resume", handle_resume_conversation)
     app.router.add_delete("/api/chat/conversations/{id}", handle_delete_conversation)
-    # fetta E3 Task 9: le tre rotte /api/tasks* sono uscite insieme al Task
-    # Engine -- hanno lasciato rotte la pagina #/tasks (tasks-route.js) e il
-    # pannello Task della chat (chat/tasks.js) per due fette. Il Task 6
-    # della E5 le ha cancellate entrambe, con le due voci di menu che ci
-    # portavano.
     # fetta E5 Task 2 ("il frontend"): le impostazioni della chat hanno di
     # nuovo una superficie. Fino a qui i sette campi di `ChatSettings` si
     # cambiavano solo scrivendo a mano `/data/impostazioni_chat.json`
@@ -5228,38 +4885,6 @@ def create_app() -> web.Application:
     app.router.add_get("/api/models", handle_list_models)
     app.router.add_get("/api/models/config", handle_get_models_config)
     app.router.add_put("/api/models/config", handle_save_models_config)
-    # fetta E3 Task 11: le rotte /api/health/ha e /api/health/ha/refresh sono
-    # uscite con l'HealthMonitor -- vedi il silenzio dichiarato su
-    # ha_health.json in _on_startup. /api/health (poco sopra, il build
-    # stamp) e' un'altra cosa e resta.
-    # fetta E3 Task 10: le rotte /api/proposals* e /api/dashboards*
-    # (backups/restore) sono uscite con le proposte -- vedi il commento
-    # sopra la ProposalStore che viveva qui. Restano rotte, senza rimpiazzo
-    # in questa fetta: #/proposals, il pannello Proposte della chat e le
-    # card/badge in Dashboard (elenco E5).
-    # Fetta "esce il documentale": escono le quattro rotte /api/knowledge*
-    # (coda di approvazione, approva, rifiuta, aggiunta manuale -- nessun
-    # frontend le chiamava piu' da quando la pagina Memoria interroga
-    # /api/memories) e le due /api/history/policy con la pagina
-    # Storicizzazione che le disegnava.
-
-    # fetta E3 Task 3: le quattro rotte CRUD /api/agentbots sono uscite
-    # insieme ad api/handlers_agentbots.py. La pagina #/agentbots
-    # (agentbot-route.js), il suo editor (agentbot-editor.js) e il wizard
-    # (create-wizard.js: POST /api/agentbots) sono rimasti per due fette a
-    # ricevere 404 -- non riparati, per costruzione. Il Task 6 della E5 li
-    # ha cancellati: nessuna interfaccia nomina piu' queste rotte.
-    #
-    # fetta E3 Task 7: /api/gateway/policy, /api/gateway/autonomy-summary
-    # (api/handlers_gateway_policy.py) e /api/sentinel/policy,
-    # /api/sentinel/timeline (api/handlers_sentinel.py) sono uscite insieme
-    # alla Sentinella e al semaforo che le serviva -- entrambi i moduli
-    # handler sono cancellati per intero. La pagina #/gateway
-    # (gateway-route.js) e il riquadro "Autonomia" dell'editor Chatbot
-    # (chatbot-editor.js -> POST /api/gateway/autonomy-summary) sono rimasti
-    # per due fette a ricevere 404 -- non riparati, per costruzione. Il
-    # Task 6 della E5 li ha cancellati entrambi, insieme alla voce di menu
-    # "Accessi Gateway" che portava alla pagina.
 
     # L'accoppiamento dei servizi esterni (spec 2026-09-21 §7, rifatta il
     # 22/09). `present` e' l'unica rotta esente dal confine, e solo mentre la
@@ -5340,18 +4965,6 @@ def create_app() -> web.Application:
     from .api.canali import prepara_canali
     prepara_canali(app)
 
-    # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col
-    # Brain auto-proponente (handle_brain_feed componeva reasoning_log/
-    # brain.feed, handle_brain_reasoning leggeva il solo reasoning_log --
-    # entrambi usciti).
-    # fetta E3 Task 6: /api/brain/advisories* e' uscita con loro --
-    # `handlers_brain.py` (che a questo punto conteneva solo le advisories)
-    # e' cancellato per intero. La Dashboard e il badge della nav le
-    # chiamavano ancora, e degradavano in silenzio; la fetta E5 Task 8 ha
-    # raccolto quel debito: la home e' stata riscritta come «Cosa HIRIS sa»
-    # e il badge e' uscito con la sua fonte. Nessun chiamante superstite in
-    # `static/` -- verificato col grep in quel task.
-
     # Task 6 SDD casa: sola lettura, per guardare dal vivo cio' che l'archivio
     # ha ricostruito -- la suite verde non prova che la lettura funzioni.
     # Dalla fetta E5 Task 8 e' anche la fonte della home della
@@ -5373,7 +4986,7 @@ def create_app() -> web.Application:
 
     # Task 8 SDD schedulatore: le promesse -- la faccia dello schedulatore
     # legge di qui, e disdice di qui. Le stesse due operazioni che il
-    # modello ha come strumenti (`promesse`/`cancel` in
+    # modello ha come strumenti (`agenda`/`cancel` in
     # `home_space/tools.py`), sulla stessa serializzazione
     # (`keeper/promise.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
@@ -5473,8 +5086,6 @@ def create_app() -> web.Application:
         handle_watching,
     )
     app.router.add_get("/api/mind/watching", handle_watching)
-    # `/api/mind/facts` e' uscita col suo strato (spec §13, 15/09/2026):
-    # gli episodi vivono dentro `/api/mind/report`, e la pagina li legge da li'.
     # Il resoconto (spec §9): un giorno, lo stesso giorno come documento, o le
     # misure degli ultimi trenta. Tre forme, un archivio.
     app.router.add_get("/api/mind/report", handle_report)
@@ -5500,7 +5111,7 @@ _NO_CACHE = {"Cache-Control": "no-store"}
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 _ASSET_FP_CACHE: dict[str, tuple[float, str]] = {}
 # Matches local asset refs like  src="static/config/main.js"  /  href="static/hiris.css"
-# External URLs (Google Fonts, https://…) and query-stringed refs are left untouched.
+# External URLs (https://…) and query-stringed refs are left untouched.
 _ASSET_REF_RE = re.compile(r'(src|href)="(static/[^"?]+\.(?:js|css))"')
 
 

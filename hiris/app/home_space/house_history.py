@@ -222,7 +222,7 @@ def parse_query(arguments: dict, *, now: float,
 
 
 #: Quanto possono distare un atto della cronaca e il cambio che ne e'
-#: l'effetto (da `historian.MATCH_TOLERANCE_S`, 24/08/2026): Home Assistant
+#: l'effetto (scelto il 24/08/2026): Home Assistant
 #: non firma i cambi, l'unico aggancio e' entita' + istante vicino, ed e' per
 #: questo che l'abbinamento si dice «probabile».
 MATCH_TOLERANCE_S = 60
@@ -407,7 +407,7 @@ def _changes(entity_id: str, points: list[dict],
 
 
 def _by_hand(entity_id: str, epoch: float, acts: list[dict] | None) -> dict:
-    """«Per mano di HIRIS» (da `historian._match`, 24/08/2026): l'atto della
+    """«Per mano di HIRIS»: l'atto della
     cronaca su questa entita' piu' vicino al cambio, entro
     `MATCH_TOLERANCE_S`, detto `probabile`. Nessun atto: niente -- il cambio
     non e' di HIRIS, e chi l'abbia fatto la storia non lo sa."""
@@ -551,8 +551,8 @@ _CYCLES_UNSEEN = ("questo contatore riparte a ogni ciclo (ha last_reset) e i pun
 
 
 def value_surface(query: HistoryQuery, state_class: str | None) -> str:
-    """`dettaglio` o `oraria`, e nient'altro puo' deciderlo (da
-    `historian.choose_surface`, 24/08/2026). Oltre `DETAIL_MAX_HOURS` solo chi
+    """`dettaglio` o `oraria`, e nient'altro puo' deciderlo.
+    Oltre `DETAIL_MAX_HOURS` solo chi
     ha statistiche va a fasce (`ha_vocabulary.produces_statistics`: non
     `bool(state_class)`, o una banderuola `measurement_angle` riceverebbe un
     elenco vuoto -- «non e' mai cambiata»). Le ore sono quelle VERE,
@@ -716,8 +716,8 @@ def _band_activity(bands: list[dict]) -> float | None:
 
 
 def _sample(points: list[dict], count: int) -> list[dict]:
-    """Un campione distribuito nel tempo, primo e ultimo sempre compresi (da
-    `historian._sample`). Non una media: perdere punti si dichiara,
+    """Un campione distribuito nel tempo, primo e ultimo sempre compresi.
+    Non una media: perdere punti si dichiara,
     inventarne uno mai esistito no."""
     if len(points) <= count:
         return list(points)

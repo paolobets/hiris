@@ -27,9 +27,9 @@ vietano, quindi non compaiono qui. Restano in questo modulo le 27 coppie
 che non traducono ancora il proprio significato da nessuna parte:
 `button` (22), `media_player` (6), `number` (4), `sensor` (105), `switch`
 (18), `update` (9), `valve` (4). 22+6+4+105+18+9+4 fa 168, non 164: il
-conteggio sbagliava per un'assenza (`valve`, gia' in tabella a riga 302 e
-nelle 27 coppie della prova, solo non nominata qui), corretto in questo
-giro dalla review indipendente. 33 + 168 fa 201: nessuna entita' misurata
+conteggio sbagliava per un'assenza (`valve`, gia' in tabella e
+nelle 27 coppie della prova, solo non nominata qui), corretto
+dalla review indipendente. 33 + 168 fa 201: nessuna entita' misurata
 resta scoperta, nessuna coppia qui e' inventata
 (`tests/test_ha_vocabulary.py` pinna entrambe le direzioni).
 
@@ -42,7 +42,7 @@ misurato lo stesso per verificare il metodo di misura, non perche' desse
 un proprio perimetro da importare.
 
 **Le quattro tabelle di significati non le consuma il digesto, e non le
-consuma nemmeno `view`** (corretto il 09/09/2026: la frase precedente diceva
+consuma nemmeno `queries.view`** (corretto il 09/09/2026: la frase precedente diceva
 il contrario, ed era falsa il giorno stesso in cui l'ha letta un revisore).
 `STATE_CLASS_MEANING` ha oggi UN lettore -- `scripts/censore_tipi.py`, che lo usa per
 elencare le coppie (dominio, classe) censite. `DEVICE_CLASS_MEANING` ne ha
@@ -96,7 +96,7 @@ from __future__ import annotations
 # --- la fonte, coi tag rilasciati (mai `dev`) ------------------------------
 #
 # Ogni voce di questo modulo e' stata verificata sul sorgente vero di Home
-# Assistant al tag `2026.9.1` -- lo stesso gia' citato da `topology._FEATURE_NAMES`
+# Assistant al tag `2026.9.1` -- lo stesso gia' citato dalle tabelle di `type_vocabulary`
 # e da `tests/test_feature_tables_pinned_to_source.py` per lo stesso principio:
 # mai `dev`, mai un ricordo. Le frasi che descrivono ogni classe (non solo il
 # nome della costante) sono citate cosi' come compaiono nella documentazione

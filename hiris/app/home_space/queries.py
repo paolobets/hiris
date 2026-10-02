@@ -1,6 +1,6 @@
 """Le due domande di dettaglio: guardare una cosa, chiedere i legami.
 
-Il nucleo (nucleo.py) dice DOVE sono le cose -- conta, non elenca. Le due
+Il nucleo (briefing.py) dice DOVE sono le cose -- conta, non elenca. Le due
 funzioni qui sotto danno il DETTAGLIO, quando il modello (o l'utente dalla
 pagina) lo chiede esplicitamente:
 
@@ -27,12 +27,14 @@ Un tipo nuovo di "cosa" si aggiunge come un altro `if` dentro view, non
 come uno strumento in piu' (vedi docs/design/2026-08-05-la-conoscenza-di-
 hiris.md: trentaquattro strumenti con tre copie divergenti).
 
-Tutte e due sono PURE: prendono dati gia' letti dal chiamante (la casa, il
+Tutte e due prendono dati gia' letti dal chiamante (la casa, il
 comportamento, i ricordi, lo stato vivo, la risposta che Home Assistant ha
-gia' dato) e non aprono archivi ne' chiamano la rete -- la stessa scelta che
-rende `compose()` del nucleo verificabile senza finti elaborati (nucleo.py).
-Vale anche per `related`: la chiamata WebSocket la fa il chiamante
-(`home_space/tools.py`), qui arriva solo cio' che ha risposto.
+gia' dato) e non chiamano la rete -- la stessa scelta che rende `compose()`
+del nucleo verificabile senza finti elaborati (briefing.py). Vale anche per
+`related`: la chiamata WebSocket la fa il chiamante (`home_space/tools.py`),
+qui arriva solo cio' che ha risposto. **Una lettura d'archivio c'e'**: sul
+ramo `entita`, `view` chiede al sapere cosa significa la classe
+(`_class_meaning`), quando il chiamante gli passa `knowledge`.
 
 **Un silenzio non dichiarato e' indistinguibile da un'assenza di
 problemi** (pagato sedici volte su questo ramo, sempre trovato da una
@@ -76,9 +78,9 @@ from .topology import (
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
 
-# I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
+# I tipi di comportamento che `view` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
-# (comportamento.py), non due archivi diversi: la distinzione e' nel campo
+# (behavior.py), non due archivi diversi: la distinzione e' nel campo
 # `tipo` della voce, non nella provenienza.
 _BEHAVIOR_TYPES = {"automazione", "script"}
 
@@ -88,10 +90,10 @@ _BEHAVIOR_TYPES = {"automazione", "script"}
 #
 # A sinistra il nome vero di Home Assistant, che e' quello che va dentro il
 # comando; a destra il nome italiano con cui quella cosa vive qui dentro.
-# Stessa disciplina di `anagrafe._REFERENCE_FRAME_FIELDS`: l'anagrafe parla la
+# Stessa disciplina di `topology._REFERENCE_FRAME_FIELDS`: l'anagrafe parla la
 # lingua di HIRIS ovunque, e una risposta meta' inglese sarebbe l'unico posto
 # in cui non lo fa -- per giunta proprio quella da cui il modello ricava un
-# `riferimento` da passare a `guarda`, che i tipi li nomina in italiano.
+# `riferimento` da passare a `view`, che i tipi li nomina in italiano.
 #
 # Si legge nei DUE versi (`HA_LINK_TYPE` piu' sotto e' la stessa tabella
 # rovesciata, non una seconda): il modello nomina «entita», Home Assistant
@@ -99,9 +101,9 @@ _BEHAVIOR_TYPES = {"automazione", "script"}
 # vocabolari, cioe' la forma di difetto che le fondamenta chiamano doppione.
 #
 # Cinque di questi nomi -- area, entita, dispositivo, automazione, script --
-# sono esattamente i tipi che `guarda` sa aprire; gli altri nove no, e
-# `guarda` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
-# di `guarda`): un id vero preso da qui non deve poter diventare
+# sono esattamente i tipi che `view` sa aprire; gli altri nove no, e
+# `view` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
+# di `view`): un id vero preso da qui non deve poter diventare
 # un'affermazione falsa sulla casa.
 LINK_NAME = {
     "area": "area",
@@ -125,9 +127,9 @@ HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
 
 
 def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]:
-    """I ricordi di `ricordi` che portano un'ancora (tipo, riferimento)
+    """I ricordi di `memories` che portano un'ancora (tipo, riferimento)
     uguale a quella cercata -- stessa chiave di `MemoryStore.per_tether`
-    (memory/store.py), ma su una lista gia' in memoria: `guarda` e'
+    (memory/store.py), ma su una lista gia' in memoria: `view` e'
     pura, non interroga l'archivio da sola.
 
     E' il senso delle ancore: «quali preferenze riguardano questa stanza».
@@ -171,7 +173,7 @@ def _find_area(floors: list[dict], reference) -> dict | None:
 # 27` su un sensore), o un doppione per chi ce l'ha (`capacita': [...]` E
 # `attributi: {"supported_features": 36}` per la stessa cosa). Misurato in
 # produzione dalla review indipendente di questa fetta: la catena vera
-# (`_to_minimal` -> `live_mirror` -> `guarda`) lo faceva davvero, e nessuna
+# (`_to_minimal` -> `live_mirror` -> `view`) lo faceva davvero, e nessuna
 # prova se ne accorgeva perche' tutte costruivano `reported_attributes` a
 # mano, saltando `_to_minimal`.
 _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR = frozenset({"supported_features", "assumed_state"})
@@ -242,7 +244,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     adesso. La chiave compare solo quando c'e' un'unita': una lampada non ne
     ha, e `unita: null` su ogni luce sarebbe rumore in ogni risposta.
 
-    Condivisa fra i TRE rami di `guarda` che elencano entita' (I1, review
+    Condivisa fra i TRE rami di `view` che elencano entita' (I1, review
     finale): prima di quel fix solo `_view_entity` applicava il nome dedotto,
     e le altre due porte mostravano `nome: null` secco. L'unita' entra dalla
     stessa porta unica, per non ripetere quella storia.
@@ -261,7 +263,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     if unit:
         entity_detail["unita"] = unit
     # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
-    # manda affatto (`anagrafe.actual_class`). Prima questa riga usciva
+    # manda affatto (`topology.actual_class`). Prima questa riga usciva
     # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
     # dei significati.
     device_class = actual_class(entry.get("classe"), (reported_classes or {}).get(entity_id))
@@ -271,8 +273,8 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # `stato` e' il fatto, `readable_state` e' l'interpretazione, e non si
     # sovrascrivono (stessa disciplina di `nome`/`nome_dedotto`).
     #
-    # Senza, `guarda` rispondeva `on` e basta: un allagamento aveva la forma di
-    # una lampadina accesa. Il digesto lo rendeva gia', ma `guarda` e' la
+    # Senza, `view` rispondeva `on` e basta: un allagamento aveva la forma di
+    # una lampadina accesa. Il digesto lo rendeva gia', ma `view` e' la
     # porta che il modello usa quando la domanda e' PRECISA, o quando il
     # digesto ha tagliato, o quando l'entita' e' `config`/`diagnostic` e nel
     # digesto non entra affatto. **La fonte e' la stessa** -- le traduzioni che
@@ -280,7 +282,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # sarebbero due significati, e fino all'08/09/2026 erano scritte a mano.
     #
     # Il DOMINIO e l'`hvac_action` (dallo specchio vivo, mai dal registro:
-    # `anagrafe.actual_class` vale anche qui) alimentano il solo caso in
+    # `topology.actual_class` vale anche qui) alimentano il solo caso in
     # cui uno stato grezzo mente da solo -- un termostato IMPOSTATO su
     # riscaldamento e FERMO che si legge «heat» com'e' il difetto misurato dal
     # proprietario (2026-08-25, `topology.readable_state`). Passati anche
@@ -288,10 +290,10 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # ogni altro dominio, e ricalcolarli qui una volta e' piu' semplice che
     # farlo condizionale.
     value = entity_detail.get("stato")
-    # `disclosable_attributes` e non una lettura diretta: dalla fetta
-    # dell'eredita' (07/09/2026) lo specchio porta CINQUE ceste
-    # (`capabilities`/`values`/`uninterpreted`/`credentials`), e chi cerca un
-    # attributo per nome non deve sapere in quale sta -- ne' inciampare nelle
+    # `disclosable_attributes` e non una lettura diretta: lo specchio porta
+    # gli attributi divisi in ceste (`entity_cache.inherited_attributes`), e
+    # chi cerca un attributo per nome non deve sapere in quale sta -- ne'
+    # inciampare nelle
     # credenziali, che di qui non passano mai.
     attributes = disclosable_attributes((reported_attributes or {}).get(entity_id))
     if value is not None:
@@ -316,7 +318,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
             # intero, 431 entita' su 841 -- ogni `sensor`, ogni `number`, ogni
             # `select` -- non hanno una resa e non devono averla, perche'
             # MISURANO invece di stare in uno stato. Dichiararle una per una
-            # avrebbe messo 431 blocchi di scusa dentro le risposte di `guarda`
+            # avrebbe messo 431 blocchi di scusa dentro le risposte di `view`
             # per dire ogni volta la stessa cosa non-notizia, contro la legge di
             # questo prodotto («una chiave senza niente da dire non esce»). La
             # distinzione non si perde, e si legge come proprio qui, dentro
@@ -357,8 +359,8 @@ def _enrich_entity(entity_detail: dict, entry: dict,
         entity_detail["stato_presunto"] = True
     # NASCOSTA e CATEGORIA: fuori dalle gestioni, dentro la conoscenza.
     #
-    # Il digesto conta le nascoste e scrive «esistono, e `guarda` le riporta se
-    # gliele chiedi» -- una promessa che `guarda` non poteva mantenere, perche'
+    # Il digesto conta le nascoste e scrive «esistono, e `view` le riporta se
+    # gliele chiedi» -- una promessa che `view` non poteva mantenere, perche'
     # il campo non usciva da nessuna porta. Alla domanda «quali sono?» il
     # modello o si contraddiceva o inventava.
     #
@@ -394,7 +396,7 @@ def _add_categories(detail: dict, entry: dict,
     non la salvava nemmeno. Costo pieno, resa zero.
 
     Escono col NOME, non col `category_id`: l'unione la fa
-    `anagrafe.categories_with_name`, la stessa che usa l'indice dei nomi.
+    `topology.categories_with_name`, la stessa che usa l'indice dei nomi.
     Senza, HIRIS riferirebbe all'utente un identificativo che l'utente non ha
     mai scritto -- ed e' la trappola gia' pagata una volta con le etichette.
 
@@ -425,13 +427,13 @@ def _add_labels(detail: dict, entry: dict, label_lookup: dict[str, str]) -> dict
     parole cio' che aveva gia' dichiarato una volta.
 
     Escono col NOME protagonista, col `label_id` accanto come dato
-    ACCESSORIO -- `Nome (id: X)`, la stessa forma di `anagrafe.name_with_id`
+    ACCESSORIO -- `Nome (id: X)`, la stessa forma di `topology.name_with_id`
     (T8, R2: fino a questa fetta il `label_id` non usciva da NESSUNA porta,
     eppure `esegui(bersaglio.etichette=[...])` lo pretende -- il vicolo cieco
     piu' radicale della famiglia, docs/design/2026-08-20-i-riferimenti.md).
     La scelta di leggibilita' di questo modulo NON cambia: la parentesi entra
     solo perche' l'id serve, non al posto del nome. L'unione la fa
-    `anagrafe.label_names`, la stessa che usa l'indice dei nomi
+    `topology.label_names`, la stessa che usa l'indice dei nomi
     (`memory/resolver.py::costruisci_indice`).
 
     Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
@@ -448,16 +450,16 @@ def _search_suggestion(reference) -> str:
     """Il messaggio che accompagna un `esiste: False` sui tre rami che
     possono confondere un NOME con un id -- area, entita', dispositivo.
 
-    R5 (2026-08-20, misurato dal vivo): il modello chiama `guarda` con un
+    R5 (2026-08-20, misurato dal vivo): il modello chiama `view` con un
     nome («Soggiorno») al posto dell'id (`soggiorno`), e riceveva
     `{"esiste": False}` nudo -- indistinguibile da "quest'area non esiste
-    davvero", nessun invito a `cerca`. E' il meccanismo diretto
+    davvero", nessun invito a `search`. E' il meccanismo diretto
     dell'incidente che ha generato questa fetta: il modello ritenta uguale
     finche' il turno muore.
 
     Il pattern esiste gia' in `action/verification.py::_no` per il bersaglio
     non risolto («Usa «search» per trovare il nome giusto e ripeti il
-    comando») -- questa funzione lo estende a `guarda`, non lo reinventa:
+    comando») -- questa funzione lo estende a `view`, non lo reinventa:
     UNA sola sorgente per i tre rami (fondamenta 3, "stessa forma"), cosi'
     che togliere il richiamo da un ramo solo non lascia gli altri due
     invariati -- si nota, perche' la frase e' la stessa ovunque.
@@ -477,10 +479,10 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     che lo conterrebbe non ha risposto. Sono anche due RIMEDI diversi, non
     solo due dichiarazioni:
 
-    - riferimento assente -> `suggerimento` (invita a `cerca`, potrebbe
+    - riferimento assente -> `suggerimento` (invita a `search`, potrebbe
       essere un nome scambiato per un id);
     - registro caduto -> SOLO `non_disponibile`, MAI `suggerimento`:
-      `cerca` legge la STESSA anagrafe incompleta, quindi "prova a
+      `search` legge la STESSA anagrafe incompleta, quindi "prova a
       cercare" sarebbe una strada altrettanto cieca -- e diluirebbe
       proprio la distinzione che `non_disponibile` esiste per marcare
       (review indipendente Task 3, confermata: suggerire quando la causa
@@ -489,15 +491,7 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     Un punto solo per questa scelta: i rami non portano una copia ciascuno
     della stessa condizione, e chi la cambia la cambia qui una volta sola.
 
-    T7 (R2): fino a questa fetta `_view_behavior` costruiva il suo
-    `esiste: False` a mano, SENZA `suggerimento` -- una scelta deliberata
-    del Task 3 (review indipendente, confermata), perche' allora `cerca`
-    non indicizzava automazioni/script: suggerire "chiama cerca" sarebbe
-    stato un invito a una strada cieca. Da quando `cerca` li indicizza
-    (`memory/resolver.py::costruisci_indice`), quella ragione non
-    vale piu', e il confine si sposta: `_view_behavior` chiama
-    questa funzione come gli altri tre rami, invece di duplicarne la
-    logica con un `file_non_letti` scambiato per `unavailable`.
+    `_view_behavior` chiama questa funzione come gli altri tre rami.
     """
     detail = {"esiste": False, "tipo": kind, "riferimento": reference}
     if kind is None:
@@ -599,7 +593,7 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
                  reported_since_when: dict[str, str] | None = None,
                  reported_attributes: dict[str, dict] | None = None,
                  translations: dict | None = None) -> dict:
-    # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `hierarchy()`
+    # `unavailable` va PROPAGATO, non solo ricevuto: senza, `hierarchy()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
     # "Senza area" invece che in "Dispositivi non letti". Risultato: una
@@ -631,7 +625,7 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
     # elenchi", 2026-08-25). Il proprietario ha misurato in produzione che
-    # `guarda("area", "sala_da_pranzo")` elencava sette luci mescolate,
+    # `view("area", "sala_da_pranzo")` elencava sette luci mescolate,
     # quattro nascoste, col campo `nascosta` gia' presente su ognuna: stare
     # nella STESSA lista non ha impedito che venissero nominate lo stesso.
     # La regola voluta -- "HIRIS non considera le nascoste, a meno che non
@@ -1064,12 +1058,9 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
                  judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
     if entity is None:
-        # CRITICAL ③: col registro "entita" caduto (`replace` parziale
-        # lascia la tabella vuota), un'entita' vera non trovata qui non e'
+        # Col registro "entita" caduto (una lettura parziale lascia la
+        # tabella vuota), un'entita' vera non trovata qui non e'
         # un'entita' che non esiste -- e' un registro che non ha risposto.
-        # Prima di questo fix la firma non aveva nemmeno un punto d'ingresso
-        # per dirlo: `non_disponibili` era ricevuto da `guarda()` ma
-        # inoltrato SOLO a `_view_area`.
         return _not_found_detail("entita", reference, "entita" in unavailable)
     detail = {
         "esiste": True, "tipo": "entita", "id": entity["id"], "nome": entity.get("nome"),
@@ -1085,8 +1076,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
         # `unita`, assente nella stessa identica condizione, non compariva.
         # Un'entita' disabilitata resta in anagrafe (e' in Home Assistant e
         # non funziona) ma sparisce dall'albero di `hierarchy()` -- questo
-        # campo dice perche' `guarda` la trova comunque, senza far credere
-        # che sia una stanza arredata (stesso principio di anagrafe.py).
+        # campo dice perche' `view` la trova comunque, senza far credere
+        # che sia una stanza arredata (stesso principio di topology.py).
         "disabilitata": bool(entity.get("disabilitata")),
         "stato": state.get(entity["id"]),
         "da_quando": (reported_since_when or {}).get(entity["id"]),
@@ -1168,13 +1159,13 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # booleano invece di un bitmask) finisce fra i non interpretati, e non
     # deve ricomparire da quella porta.
     #
-    # LE CESTE, e perche' sono quattro chiavi e non un dizionario piatto
-    # (fetta dell'eredita', 07/09/2026): «cosa puo' fare», «com'e' adesso» e
-    # «non so cosa sia» sono tre fatti di qualita' diversa, e appiattirli
+    # LE CESTE, e perche' sono chiavi distinte e non un dizionario piatto:
+    # «cosa puo' fare», «cosa puo' assumere», «com'e' adesso» e «non so cosa
+    # sia» sono fatti di qualita' diversa (`_BASKET_NAMES`), e appiattirli
     # consegnerebbe `ave_window_state: 0` accanto a `hvac_modes` come se
-    # fossero la stessa qualita' di sapere. La quarta -- `trattenuti` -- e' la
-    # sola trattenuta di questo prodotto resa VISIBILE: nome e ragione, mai il
-    # valore, mai un silenzio.
+    # fossero la stessa qualita' di sapere. In piu' c'e' `trattenuti`: la
+    # sola trattenuta di questo prodotto resa VISIBILE -- nome e ragione, mai
+    # il valore, mai un silenzio.
     attributes = (reported_attributes or {}).get(entity["id"])
     if isinstance(attributes, dict) and attributes:
         baskets: dict = {}
@@ -1322,28 +1313,13 @@ def _view_behavior(behavior: list[dict], memories: list[dict],
     entry = next(
         (v for v in behavior if v.get("id") == reference and v.get("tipo") == kind), None)
     if entry is None:
-        # CRITICAL ③, quinto ramo: se un file di comportamento non si e'
-        # letto (`automations.yaml`/`scripts.yaml`, o uno incluso in un
-        # pacchetto), "non trovato" non e' "non esiste" -- potrebbe essere
-        # scritto proprio li'. Non si prova a indovinare QUALE file avrebbe
-        # contenuto QUESTA voce (le automazioni scritte a mano non stanno
-        # per forza nel file principale, vedi comportamento.py): se un file
-        # qualsiasi non si e' letto, l'incertezza si dichiara comunque,
-        # invece di tacerla come prima -- la firma non aveva nemmeno un
-        # punto d'ingresso per riceverlo.
-        #
-        # T7 (R2): `_not_found_detail`, non piu' un dict a mano --
-        # `file_non_letti` gioca lo stesso ruolo di `unavailable` per
-        # area/entita'/dispositivo (un guasto di lettura, non l'assenza
-        # della cosa), e ora che `cerca` indicizza automazioni e script un
-        # NOME al posto dell'id e' un errore possibile anche qui: merita lo
-        # stesso `suggerimento` degli altri tre rami, con la stessa frase.
-        #
-        # **Ogni voce di `unread_bodies` conta.** Fino al 10/09/2026 la fonte
-        # era un file, e il file genuinamente assente non nascondeva niente --
-        # non c'era contenuto scritto da poter mancare. Adesso il soggetto e'
-        # un'entita' che Home Assistant ha caricato per davvero: se non se ne
-        # conosce il corpo, cio' che fa e' nascosto, sempre.
+        # "Non trovato" non e' "non esiste" quando di qualche automazione o
+        # script non si conosce il corpo: `unread_bodies` gioca lo stesso
+        # ruolo di `unavailable` per area/entita'/dispositivo (un guasto di
+        # lettura, non l'assenza della cosa). Non si prova a indovinare se
+        # QUESTA voce sia fra quelle: se una qualsiasi manca, l'incertezza si
+        # dichiara. Altrimenti il `suggerimento` e' lo stesso degli altri
+        # rami, con la stessa frase (`_not_found_detail`).
         return _not_found_detail(kind, reference, bool(unread_bodies))
     return {
         "esiste": True, "tipo": kind, "id": entry["id"], "nome": entry.get("nome"),
@@ -1375,13 +1351,13 @@ def _view_memory(memories: list[dict], reference) -> dict:
     if memory is None:
         return {"esiste": False, "tipo": "ricordo", "riferimento": reference}
     # La forma e' PIATTA, la stessa di `fetch` e dei `ricordi` che ogni
-    # altro ramo di `guarda` gia' restituisce (`_tethered_memories`).
+    # altro ramo di `view` gia' restituisce (`_tethered_memories`).
     #
     # Prima l'interpretazione era annidata sotto una chiave `interpretazione`
     # e `detto_il` non usciva affatto: lo stesso ricordo aveva due forme a
     # seconda della porta. Il modello ne imparava una dentro
-    # `guarda("area", ...)`, poi chiedeva il dettaglio con
-    # `guarda("ricordo", id)` e leggeva `r["forza"]` -> assente, e riferiva
+    # `view("area", ...)`, poi chiedeva il dettaglio con
+    # `view("ricordo", id)` e leggeva `r["forza"]` -> assente, e riferiva
     # «di questo ricordo non so la forza» su un ricordo che ce l'ha. E alla
     # domanda «quando te l'ho detto?» la risposta dipendeva da quale strumento
     # il modello avesse scelto.
@@ -1412,7 +1388,7 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
     non una riga ripetuta a ogni porta che restituisce ricordi al modello.
 
     C-2/I1 (L1-sicurezza.md, review indipendente del 25/08/2026): la prima
-    versione di questa correzione sanificava il testo dentro `guarda()` ma
+    versione di questa correzione sanificava il testo dentro `view()` ma
     non dentro `tools.py::_recall` (che legge `MemoryStore.per_tether`
     direttamente, senza passare da qui) -- lo stesso ricordo usciva filtrato
     da una porta e grezzo dall'altra: la fondamenta 3 (consistenza fra porte)
@@ -1421,7 +1397,7 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
     con una terza porta futura.
 
     Il testo ARCHIVIATO non cambia (`memory/store.py`, regola 1): questa
-    e' una copia, non una riscrittura -- vedi il docstring di `guarda()`."""
+    e' una copia, non una riscrittura -- vedi il docstring di `view()`."""
     return [dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
            for r in (memories or [])]
 
@@ -1655,7 +1631,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     un'area, di un dispositivo e di un'integrazione, si CONTANO
     (`entita_disabilitate`, dal 30/09/2026: Telecamere ne elencava 120 con lo
     stato vuoto), perche' non hanno uno stato da dire; le nascoste sono una scelta
-    di VISTA dell'utente, e la misura in produzione (`guarda("area",
+    di VISTA dell'utente, e la misura in produzione (`view("area",
     "sala_da_pranzo")`, sette luci mescolate, quattro nascoste) ha mostrato
     che marcarle SENZA separarle non basta -- il campo c'era gia' e non ha
     impedito che venissero elencate. Una singola entita' guardata da sola
@@ -1663,25 +1639,16 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     chiave a parte: non c'e' un elenco da cui separarla, hai chiesto
     esplicitamente proprio lei.
 
-    R5: sui rami che possono confondere un NOME con un id -- area, entita',
-    dispositivo, e da T7 (R2) anche automazione e script -- `esiste: False`
+    Sui rami che possono confondere un NOME con un id -- area, entita',
+    dispositivo, automazione e script -- `esiste: False`
     porta anche `suggerimento` (`_search_suggestion`): invita a chiamare
-    `cerca` col riferimento ricevuto. STESSA chiave, STESSA frase su tutti
+    `search` col riferimento ricevuto. STESSA chiave, STESSA frase su tutti
     questi rami (fondamenta 3) -- non su `_view_memory`, il solo tipo il
     cui id (numerico, interno a HIRIS, mai uno slug di Home Assistant) non
     si scrive mai al posto di un nome.
 
-    Fino a T7 automazione e script restavano fuori apposta (decisione del
-    Task 3, review indipendente): `cerca` non li indicizzava ancora, e
-    suggerirlo sarebbe stato un invito a una strada che non portava da
-    nessuna parte. Da quando `cerca` li indicizza
-    (`memory/resolver.py::costruisci_indice`), quella ragione e'
-    caduta, e il confine si e' spostato con lei: vedi il docstring di
-    `_not_found_detail`, che ora e' anche la porta di
-    `_view_behavior`.
-
     MA non quando `non_disponibile` e' vero (`_not_found_detail`): se
-    il registro e' caduto, `cerca` legge la STESSA anagrafe incompleta --
+    il registro e' caduto, `search` legge la STESSA anagrafe incompleta --
     suggerirlo sarebbe una strada altrettanto cieca, e diluirebbe la
     distinzione fra "non trovato" e "non ho potuto guardare" che questo
     modulo marca come critica. Le due chiavi sono quindi mutuamente
@@ -1695,18 +1662,17 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     ha appena mostrato esistono eccome, e dirne «non esiste» sarebbe una
     risposta sbagliata detta con sicurezza.
 
-    `non_disponibili` (registri dell'anagrafe caduti: "aree", "dispositivi",
-    "entita") e `file_non_letti` (i file di comportamento non letti, stessa
-    forma di `HomeSpaceStore.file_non_letti()`) vanno propagati a OGNI ramo,
+    `unavailable` (registri dell'anagrafe caduti: "aree", "dispositivi",
+    "entita") e `unread_bodies` (i corpi non letti, stessa
+    forma di `HomeSpace.unread_bodies()`) vanno propagati a OGNI ramo,
     non solo a quello dell'area: un "non trovato" e un "non ho potuto
-    guardare" sono due fatti diversi, e prima di questo fix solo l'area
-    poteva dirlo (CRITICAL ③ -- sbagliato quattro volte su questo ramo). Chi
+    guardare" sono due fatti diversi. Chi
     non li passa non e' punito con un errore: resta silenziosamente onesto,
     non silenziosamente sbagliato -- vedi `dettaglio["non_disponibile"]`,
-    presente solo quando `esiste` e' `False` E il registro/file pertinente
+    presente solo quando `esiste` e' `False` E il registro pertinente
     non ha risposto.
 
-    `nomi_di_ripiego` (entity_id -> friendly_name dallo specchio dello
+    `fallback_names` (entity_id -> friendly_name dallo specchio dello
     stato, stessa forma usata da `costruisci_indice`) conta
     per OGNI ramo che elenca entita' -- `entita` da sola, ma anche le
     entita' di un'`area` e di un `dispositivo` (I1, review finale: la stessa
@@ -1715,17 +1681,15 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     sopra `nome` -- dichiarato e dedotto restano due fatti diversi.
 
     `reported_since_when` (entity_id -> `last_changed` dallo specchio dello stato,
-    stessa forma di `unita_vive`/`reported_classes`) accompagna OGNI `"stato"` che
+    stessa forma di `reported_units`/`reported_classes`) accompagna OGNI `"stato"` che
     esce da questa funzione: il campo che Home Assistant manda a ogni cambio
     di stato e che la proiezione della cache scartava (fondamenta 3 -- la
     stessa domanda non puo' avere due risposte diverse a seconda di quale
-    ramo di `guarda` la porta).
+    ramo di `view` la porta).
 
-    `reported_attributes` (entity_id -> le CINQUE CESTE dello specchio dello
-    stato, `proxy/entity_cache.inherited_attributes`: cosa l'entita' puo' fare,
-    com'e' adesso, cio' di cui nessuna fonte dichiara il significato, e le
-    credenziali che non escono di qui) alimenta DUE cose diverse, e non allo
-    stesso modo:
+    `reported_attributes` (entity_id -> le ceste dello specchio dello
+    stato, `proxy/entity_cache.inherited_attributes`) alimenta DUE cose
+    diverse, e non allo stesso modo:
 
     - `readable_state` lo legge SEMPRE, su ogni ramo che elenca entita'
       (dentro `_enrich_entity`), perche' e' un campo che gia' usciva
@@ -1751,9 +1715,11 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     l'ha riceve la stessa vista senza la chiave `comandi`, mai una chiave
     vuota che direbbe «non c'e' niente da chiedere».
 
-    Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
-    dal chiamante (`HomeSpaceStore`, `MemoryStore`, lo stato vivo di Home
-    Assistant), non apre archivi ne' chiama la rete.
+    Legge `home_space`/`behavior`/`memories`/`state` cosi' come arrivano
+    dal chiamante (`HomeSpace`, `MemoryStore`, lo stato vivo di Home
+    Assistant) e non chiama la rete. Un archivio lo apre in un caso solo: sul
+    ramo `entita`, con `knowledge` passato, `_class_meaning` chiede al sapere
+    cosa significa la classe.
 
     C-2 (L1-sicurezza.md): il testo di un ricordo passa dal sanitizzatore
     UNA volta, qui, prima di qualunque ramo -- per id diretto
@@ -1768,9 +1734,9 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     `judgments` e' l'istantanea dei giudizi sui tipi (spec 2026-09-16 §3):
     la inoltra soltanto, a `_view_entity` -> `commands_for` ->
     `_command_parameters` -> `_limits_of_entity` (il solo ramo che li legge).
-    Arriva come ARGOMENTO come `stato`: questa funzione e' pura. In
+    Arriva come ARGOMENTO, come `state`. In
     produzione e' sempre l'istantanea viva, `app["type_judgments"]` (via
-    `home_space/tools.py::ToolDispatcher._view`); il predefinito
+    `home_space/tools.py::ToolDispatcher._full_detail_sync`); il predefinito
     `REPO_JUDGMENTS` -- il solo seme del repo -- serve alle prove. Una prova
     strutturale (`tests/test_judgments_passed_in_production.py`) boccia ogni
     chiamata di produzione a questa funzione senza `judgments=`; una prova dal
@@ -1810,8 +1776,8 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     # `non_so_guardare`: la causa e' un LIMITE DI HIRIS, non un fatto sulla
     # casa, e da quando esistono i legami quella differenza costa. `legami`
     # restituisce identificatori veri di cose vere -- una scena, un gruppo,
-    # una persona -- che `guarda` non sa aprire: senza questa chiave il
-    # modello chiedeva `guarda("scena", ...)`, leggeva `esiste: false` e
+    # una persona -- che `view` non sa aprire: senza questa chiave il
+    # modello chiedeva `view("scena", ...)`, leggeva `esiste: false` e
     # riferiva all'utente «quella scena non esiste», che e' una risposta
     # sbagliata detta con sicurezza su una cosa che Home Assistant gli aveva
     # appena mostrato. Stessa disciplina di `non_disponibile`: «non l'ho
@@ -1838,7 +1804,7 @@ def related(answer: dict, kind: str, reference) -> dict:
 
     **La traduzione.** Le chiavi arrivano come le manda Home Assistant
     (`entity`, `automation`, ...) ed escono come le nomina HIRIS (`entita`,
-    `automazione`): sono gli stessi nomi di `cerca` e di `guarda`, cosi' un
+    `automazione`): sono gli stessi nomi di `search` e di `view`, cosi' un
     `riferimento` letto qui si passa di li' senza tradurlo a mano -- e senza
     che il modello debba imparare due vocabolari per la stessa casa
     (fondamenta: consistenza). Una chiave che Home Assistant aggiungesse

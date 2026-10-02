@@ -519,7 +519,7 @@ def _to_minimal(raw: dict) -> dict:
         # nome di un dispositivo che un ospite ha messo in rete, lo stato di
         # un sensore-messaggio (email/ntfy/SMS). Sanificarli QUI, nell'unico
         # punto in cui uno stato grezzo diventa cio' che ogni lettore vede
-        # (`live_mirror`, `guarda`, `cerca`, il nucleo), significa che
+        # (`live_mirror`, `search`, il nucleo), significa che
         # nessun consumatore a valle deve ricordarsene da solo (C-2,
         # L1-sicurezza.md).
         "state": sanitize_ha_value(raw.get("state", "unknown")),
@@ -585,12 +585,12 @@ def _to_minimal(raw: dict) -> dict:
 class EntityCache:
     def __init__(self) -> None:
         self._states: dict[str, dict] = {}
-        # False finche' load() non ha completato almeno una volta. Serve a
+        # False finche' una lettura intera non e' arrivata in fondo. Serve a
         # distinguere "inventario non ancora pronto" da "casa senza entita'":
-        # server.py logga e prosegue se il caricamento iniziale fallisce, e i
-        # tool che leggono da qui rispondevano con un elenco vuoto in entrambi
-        # i casi ("la casa e' vuota"). Il controllo comune era
-        # `ToolDispatcher._cache_non_leggibile`, uscito -- fetta E2 Task 7.
+        # server.py logga e prosegue se il caricamento iniziale fallisce, e
+        # senza la bandiera chi legge risponderebbe con un elenco vuoto in
+        # entrambi i casi ("la casa e' vuota"). Il controllo comune e'
+        # `inventory_is_readable`, qui sopra.
         self._loaded = False
         # Tampone della rilettura (`reload`): None fuori dalla rilettura; durante
         # l'await sulla fotografia raccoglie gli eventi che arrivano, per
@@ -603,7 +603,8 @@ class EntityCache:
 
     @property
     def loaded(self) -> bool:
-        """True quando `load()` e' andata a buon fine almeno una volta.
+        """True quando una lettura intera (`load()` o `reload()`) e' andata a
+        buon fine almeno una volta.
 
         Solo allora un inventario vuoto significa davvero "nessuna entita'".
         `on_state_changed` NON alza questa bandiera di proposito: gli eventi
@@ -634,8 +635,8 @@ class EntityCache:
         il riavvio delle 09:11). Qui si rilegge tutto, e gli eventi che
         arrivano DURANTE la rilettura si tengono da parte e si riapplicano
         sopra la fotografia: una fotografia presa prima di loro non puo'
-        cancellarli. `loaded` non cambia: chi legge nel frattempo vede lo
-        specchio di prima, che e' meglio di nessuno.
+        cancellarli. Chi legge nel frattempo vede lo specchio di prima, che
+        e' meglio di nessuno; una rilettura riuscita alza `loaded`.
 
         Le riletture si serializzano (`_reload_lock`): due riconnessioni di
         fila non condividono il tampone.
@@ -710,8 +711,7 @@ class EntityCache:
         self._states[eid] = _to_minimal(new_state)
 
     def all_states(self) -> list[dict]:
-        """Return all cached entity states as a list (read-only access for the entity
-        inventory API)."""
+        """Return all cached entity states as a list."""
         return list(self._states.values())
 
 

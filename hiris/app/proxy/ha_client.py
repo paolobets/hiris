@@ -59,7 +59,7 @@ SERVICE_EVENTS = ("service_registered", "service_removed")
 
 # L'evento delle plance (Task 5): porta il PERCORSO di quella cambiata, ma
 # innesca comunque una rilettura completa (sono poche, e la replica si rifa'
-# invece di rattopparsi — vedi rileggi_plance). Deliberatamente FUORI da
+# invece di rattopparsi — vedi `behavior.reread_dashboards`). Deliberatamente FUORI da
 # TOPOLOGY_EVENTS: quello innesca la ricostruzione dei *registri*, che e'
 # un'altra cosa — le plance hanno un proprio ascoltatore.
 DASHBOARD_EVENT = "lovelace_updated"
@@ -152,8 +152,8 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     """`{statistic_id: [fascia HA, ...]}` -> lo stesso, in italiano.
 
     **L'UNICO punto che traduce le chiavi di `recorder/statistics_during_
-    period`** (`HAClient._richiedi_statistiche`, l'UNICO chiamante):
-    `hourly_statistics()` la usa attraverso `_request_statistics`, e una
+    period`** (`HAClient._request_statistics`, l'UNICO chiamante):
+    `hourly_statistics()` passa di li', e una
     seconda entrata userebbe questa invece di una propria copia -- una seconda tabella di
     traduzione sarebbe il doppione che questo progetto ha gia' pagato altrove
     (fondamenta 2).
@@ -849,9 +849,7 @@ class HAClient:
 
         Un percorso duplicato nell'elenco, o uguale alla chiave sentinella
         della predefinita, finisce anche lui fra i `non_disponibili` (con una
-        ragione leggibile) invece di far fallire `replace_dashboards` con
-        `UNIQUE constraint failed` — che altrimenti ferma silenziosamente
-        l'aggiornamento della replica delle plance.
+        ragione leggibile) invece di entrare due volte nell'elenco.
 
         Se l'elenco stesso non arriva (timeout, disconnessione), lo si
         dichiara come `"elenco: ..."` in `non_disponibili` — invece di
@@ -874,14 +872,8 @@ class HAClient:
                 "aggiuntive potrebbero non essere tutte qui"
             )
 
-        # `None` = la predefinita, sempre in testa. Un percorso vero deve
-        # essere sia UNICO (la tabella `plance` lo usa come chiave primaria:
-        # due voci con lo stesso percorso mandano `replace_dashboards` in
-        # `UNIQUE constraint failed`, e l'aggiornamento della replica smette
-        # silenziosamente) sia DIVERSO dalla chiave sentinella della
-        # predefinita (altrimenti le due collidono nello stesso modo quando
-        # l'archivio traduce `None` in quella chiave per lo storage). Niente
-        # `INSERT OR REPLACE`: un percorso scartato va dichiarato in
+        # `None` = la predefinita, sempre in testa. Un percorso vero entra
+        # una volta sola: quello duplicato va dichiarato in
         # `non_disponibili`, non nascosto sovrascrivendo in silenzio.
         # `is not None` (non verita' booleana): un url_path vuoto ("") e'
         # falsy ma e' un percorso legittimo, non un'assenza.
@@ -906,7 +898,7 @@ class HAClient:
 
         # setdefault, non un comprehension che sovrascrive: un percorso
         # duplicato deve accoppiarsi al PRIMO dizionario visto (coerente con
-        # `visti` sopra), non all'ultimo — altrimenti la voce tenuta e quella
+        # `seen` sopra), non all'ultimo — altrimenti la voce tenuta e quella
         # dichiarata scartata si scambierebbero i dati.
         by_path: dict[str | None, dict] = {}
         for d in listing:
@@ -1084,7 +1076,7 @@ class HAClient:
 
         **Trasporto verificato alla fonte, non assunto.** I tre fratelli di
         questo metodo -- `system_log()`, `automation_traces()`,
-        `trace()` qui sopra -- leggono via WebSocket; i calendari
+        `trace()` piu' sotto -- leggono via WebSocket; i calendari
         no. Verificato su `home-assistant/core`,
         `homeassistant/components/calendar/__init__.py`, classe
         `CalendarListView` (`url = "/api/calendars"`), sui tag RILASCIATI che
@@ -1172,16 +1164,13 @@ class HAClient:
         risponderebbero la stessa identica cosa.
 
         **`summary`, `description` e `location` escono GREZZI, non
-        sanificati.** E' una scelta deliberata e non un'omissione: questo
-        metodo non ha oggi nessun consumatore (arriva nel task successivo,
-        lo strumento della chat), quindi non c'e' oggi una fuga possibile.
-        Ma e' diversa dalla scelta del diario (uscito il 30/09/2026), che
-        sanificava `nome`/`stato`/`messaggio` AL CONFINE proprio perche' un consumatore
-        futuro potrebbe dimenticarsene: un calendario condiviso e' un
-        vettore di testo iniettato quanto un sensore-messaggio (L1-
-        sicurezza.md). **Chi consuma questo metodo per metterlo in un
-        prompt deve passare da `sanitize_ha_free_text` (o equivalente) da
-        solo** -- il client qui non lo fa.
+        sanificati.** E' una scelta deliberata e non un'omissione: li
+        sanifica il consumatore, lo strumento `calendar` della chat
+        (`home_space/tools.py::ToolDispatcher._calendar`). Un calendario
+        condiviso e' un vettore di testo iniettato quanto un
+        sensore-messaggio (L1-sicurezza.md). **Chi consuma questo metodo per
+        metterlo in un prompt deve passare da `sanitize_ha_free_text` (o
+        equivalente) da solo** -- il client qui non lo fa.
 
         Valida `entity_id` PRIMA di fare rete (stessa guardia di `history()`
         qui sopra): un identificatore ostile o malformato non
@@ -1371,21 +1360,18 @@ class HAClient:
 
     async def hourly_statistics(self, identifiers: list[str],
                                 from_iso: str, to_iso: str) -> dict:
-        """Le statistiche ORARIE di una finestra ESPLICITA -- nata per il
-        bilancio dell'energia (mandato 27/08/2026), che ha bisogno di UN
-        giorno preciso, gia' chiuso, e non di «N giorni indietro da adesso»
-        (la sorella «N giorni da adesso» e' uscita il 30/09/2026: nessuno la chiamava piu').
+        """Le statistiche ORARIE di una finestra ESPLICITA: chi chiama (il
+        resoconto di un giorno, la storia dei valori) ha bisogno di istanti
+        precisi, non di «N giorni indietro da adesso».
 
-        `da_iso`/`a_iso` sono istanti ISO gia' calcolati dal chiamante --
+        `from_iso`/`to_iso` sono istanti ISO gia' calcolati dal chiamante --
         stesso contratto di `history()` qui sopra: il fuso della casa e il
         confine di un «giorno» sono decisioni di CHI CHIAMA (`home_space/
         historian.py::day_boundaries`), non di questo client, che parla solo
         di istanti espliciti.
 
-        `period="hour"` fisso: e' la grana su cui si costruisce il bilancio
-        (spec, §2 -- «e' la grana delle decisioni... e' la grana che HA gia'
-        calcola»), e renderlo un parametro per un solo chiamante sarebbe
-        generalita' speculativa.
+        `period="hour"` fisso: e' la grana che i chiamanti usano, e renderlo
+        un parametro sarebbe generalita' speculativa.
 
         Richiesta e traduzione passano da `_request_statistics` (l'UNICO
         confine): contratto `{"serie": ...}` o `{"errore": ...}`.
@@ -1904,7 +1890,7 @@ class HAClient:
         """Il sistema di riferimento della casa, da `get_config` di HA.
 
         Restituisce il dizionario grezzo di Home Assistant ({} se la risposta
-        non e' un dizionario). A distillarlo e' `anagrafe.riferimento_dalla_config`:
+        non e' un dizionario). A distillarlo e' `topology.reference_frame`:
         qui si LEGGE soltanto, cosi' il client non ha un'opinione su cosa
         della casa valga la pena tenere.
 
@@ -2017,7 +2003,7 @@ class HAClient:
         Conseguenza, finche' nessuno l'ha chiamato: la colonna `alias` delle
         entita' era vuota su ogni casa, sempre. Gli alias sono le parole con
         cui l'utente ha DICHIARATO come chiama le sue cose -- la spina dorsale
-        di `cerca` -- e reggevano solo per le aree, che invece li mandano
+        di `search` -- e reggevano solo per le aree, che invece li mandano
         davvero nel proprio registro. Un utente che aveva scritto «lampada
         della nonna» come alias non trovava niente cercandola.
 
@@ -2061,7 +2047,7 @@ class HAClient:
             # ha scritto.
             #
             # Preso alla lettera ha riempito l'archivio: 1030 entita' su 1223
-            # con `alias: [null]`, e `cerca` e `remember` -- gli unici due che
+            # con `alias: [null]`, e `search` e `remember` -- gli unici due che
             # costruiscono l'indice -- morivano con
             # «'NoneType' object has no attribute 'lower'» su ogni chiamata.
             #

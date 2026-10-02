@@ -67,10 +67,7 @@ def subscription_has_token() -> bool:
     """
     return bool(os.environ.get(SUBSCRIPTION_TOKEN_VAR, "").strip())
 
-# Un nome per provider, mai due. Prima di questa fetta l'abbonamento ne aveva
-# tre -- «Abbonamento (Claude Max)» (models-route.js), «Abbonamento Claude
-# (subscription)» (handlers_models.py), «Piano Claude Max» (translations) --
-# uno per ogni file che aveva bisogno di nominarlo.
+# Il nome leggibile di ogni provider.
 DISPLAY_NAMES: dict[str, str] = {
     "subscription": "Piano Claude Max",
     "claude": "Claude API",
@@ -145,9 +142,8 @@ MISSING_REASONS: dict[str, str] = {
 CHAIN_END = "ultimo della catena: se non risponde, la chat dà errore"
 
 # L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
-# quindi non può contraddire niente. È lo STESSO di `config.yaml` (l'ordine di
-# ripiego di `balanced`, con il piano subito dopo Claude API): una terza lista
-# con un terzo ordine sarebbe la stessa incoerenza che questa fetta chiude.
+# quindi non può contraddire niente. È l'ordine di ripiego di `balanced`
+# (`llm_router._STRATEGY_ORDER`), con il piano subito dopo Claude API.
 FIXED_ORDER: tuple[str, ...] = (
     "claude", "subscription", "openrouter", "openai", "ollama",
 )
@@ -645,10 +641,8 @@ def compose_topology(
     nomi), quindi un «Usa» sulla riga del piano scriverebbe una PUT che il
     server accetta con 200 e butta via -- un bottone che non fa niente, cioè il
     difetto che questa fetta esiste per chiudere, ricomparso nell'interfaccia.
-    Il piano entrerà in catena da un'AZIONE dichiarata dal backend
-    (`compose_now` -> `diagnosi[].azione`, oggi `None`), quando ci sarà
-    qualcosa da fare: Task 13 (`ponte.attivo` letto dall'archivio) e Task 14
-    (il ripiego).
+    Il piano entra in catena da un'AZIONE dichiarata dal backend
+    (`compose_now` -> `diagnosi[].azione`, `ACTION_PUT_SUBSCRIPTION_FIRST`).
 
     `connettore` è LA FRASE CHE STA SOTTO LA RIGA, e dice l'unica cosa che
     serve per scegliere un ordine: quanto costa passare oltre. Sta qui, e non
@@ -723,7 +717,7 @@ def compose_topology(
         `server.py` non costruisce il runner senza un modello -- e fra i due
         fatti si apriva un buco dichiarato dal Task 7: Ollama poteva stare in
         catena senza un backend dietro, cioè comparire come anello numerato in
-        una pagina che descrive il runtime mentre `LLMRouter._ordered_backends`
+        una pagina che descrive il runtime mentre `LLMRouter._ordered_backends_with_name`
         lo saltava in silenzio. Un anello a schermo che nessuno consulta è
         esattamente la bugia che questa fetta ritira.
 

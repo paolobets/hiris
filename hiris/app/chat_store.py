@@ -291,8 +291,7 @@ def _reset(conn: sqlite3.Connection) -> None:
     il difetto che questo prodotto ripete -- un azzeramento muto sarebbe
     indistinguibile da un guasto. Logga quante righe scarta, cosi' chi
     aggiorna da 1.x lo legge nei log invece di scoprirlo dalla chat vuota
-    (pinnato da tests/test_chat_store_azzeramento.py, stessa disciplina di
-    tests/test_startup_legacy_db_silence.py).
+    (stessa disciplina di tests/test_startup_legacy_db_silence.py).
 
     Idempotente se richiamata due volte in sequenza sullo stesso DB (caso
     limite: `init_schema` la richiama per i target 2 E 3 quando parte da un

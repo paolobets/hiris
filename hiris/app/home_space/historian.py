@@ -7,14 +7,10 @@ leggere da HA sempre» -- e non e' una preferenza: HIRIS ha gia' avuto un
 archivio storico suo (`history.db`), e' uscito perche' scriveva senza che
 nessuno leggesse.
 
-**Cosa ne e' uscito, e quando.** Fino al 30/09/2026 qui vivevano anche i due
-strumenti del tempo della chat, la scelta della superficie e l'abbinamento
-degli atti di HIRIS: la fetta «la storia» (`docs/design/2026-09-30-la-
-storia.md`) li ha sostituiti con uno strumento solo, e cio' che ne restava di
-vivo (la superficie, il campione, «per mano di HIRIS») vive in
-`home_space/house_history.py`. Qui restano le funzioni che il resto del
-prodotto usa: `home_space_zone` in otto moduli, `instant_epoch` in cinque,
-`day_boundaries` (arrivata da `mind/facts.py` lo stesso giorno) in quattro.
+Qui stanno le funzioni che il resto del prodotto usa: `home_space_zone`,
+`instant_epoch`, `day_boundaries`. La storia che la chat interroga (la
+superficie, il campione, «per mano di HIRIS») vive in
+`home_space/house_history.py`.
 """
 from __future__ import annotations
 
@@ -31,11 +27,10 @@ def home_space_zone(timezone: str | None):
     accorga: e' peggio di non averlo. Con UTC almeno l'offset e' scritto
     nell'istante, e chi legge puo' fare i conti.
 
-    **Pubblica (giro di correzioni, punto 4):** prima era `_zona`, privata,
-    e `mind/facts.py` la importava comunque per calcolare i confini
-    del giorno -- un nome con underscore attraversato da fuori e' esattamente
-    come nascono i doppioni, perche' il prossimo che ne ha bisogno o importa
-    il nome privato o riscrive il calcolo.
+    **Pubblica**: la importano altri moduli, e un nome con underscore
+    attraversato da fuori e' esattamente come nascono i doppioni -- il
+    prossimo che ne ha bisogno o importa il nome privato o riscrive il
+    calcolo.
     """
     if not timezone:
         return UTC
