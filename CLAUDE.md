@@ -29,8 +29,9 @@ un'etichetta che mente. Nessuno degli attrezzi dipendeva da quella separazione �
 rilascio dal **contenuto** di `hiris/config.yaml`, non dal nome del ramo.
 
 Tutto ciò che sta in `docs/out-of-scope/` (compreso `docs/out-of-scope/pre-2.0/`, l'ex
-`docs/archive/`) e in `docs/superpowers/_archivio-pre-refactor-2.0/` è **storia,
-non specifica**: descrive il prodotto precedente. Non usarlo come fonte.
+`docs/archive/`) e in `docs/superpowers/_archivio-pre-refactor-2.0/` (cartella solo locale:
+`docs/superpowers/` è ignorata da git) è **storia, non specifica**: descrive il prodotto
+precedente. Non usarlo come fonte.
 
 ---
 
@@ -112,7 +113,9 @@ memoria **da solo**, apre questioni e **propone**; non tocca la casa senza un s�
 (unici esecutori, autosufficienti, nascono da un comando testuale o da una proposta del Brain,
 attivi solo dopo un sì).
 
-**Dove sta oggi il prodotto in quell'impianto.** ① c'è. ② e ③ no. Dalla fetta «comandare»
+**Dove sta oggi il prodotto in quell'impianto.** ① c'è. ② c'è in parte: in `mind/` l'osservatore,
+le ricette e l'analista girano a cadenza, chiamano il modello e propongono; l'attuatore è in pausa
+dal 1° ottobre 2026 (voce «Gli attori si riparano dal basso» del BACKLOG). ③ no. Dalla fetta «comandare»
 (agosto 2026) la **chat** esegue: chiede a `hiris/app/action/actuator.py`, che verifica la chiamata
 contro l'installazione, la esegue e rilegge lo stato. Non è ③ — non c'è nessun agente, nessuna
 autonomia, nessun perimetro da approvare — è la chat che fa una cosa sola quando gliela chiedi.
@@ -123,6 +126,10 @@ Sono canali diversi in tutto — rotta, verifica, «dopo» — e condividono ci�
 l'`origine` e la forma del rifiuto motivato, che vivono **una volta sola** e hanno la **stessa
 forma da entrambi**. Un terzo punto che scriva su Home Assistant fuori da queste due porte è un
 difetto, non un'ottimizzazione. Spec: `docs/design/2026-08-22-costruire-in-home-assistant.md` §2.1.
+
+Due scritture stanno fuori dalle due porte, e sono dichiarate: la voce di menu dell'add-on
+(`frontend/update_panel`, all'avvio) e la disinstallazione della card Lovelace. Nessuna delle due
+tocca i servizi né la configurazione di automazioni, script e scene.
 
 **Non si scrive mai `automations.yaml`, `scripts.yaml` o `scenes.yaml` in proprio.** Scrive Home
 Assistant, attraverso l'API di configurazione, trovando la voce per `id` e sostituendola. È questa
@@ -162,8 +169,8 @@ Le protezioni della `1.x` — filtri di riservatezza, ambito per proprietario, `
 approvazione, semaforo — sono state costruite per **un altro prodotto**: uno con un Brain che
 produceva duecento insight, chatbot multipli e un gateway esposto verso l'esterno. Portarle avanti
 significa portarsi dietro **il modello di minaccia di quel prodotto**, e smettere di cercare i rischi
-veri del nuovo. `sensitivity` lo ammette per iscritto: nasce da un'epoca in cui la memoria era
-per-chatbot.
+veri del nuovo. `sensitivity` lo ammetteva per iscritto (il campo è uscito): nasceva da un'epoca
+in cui la memoria era per-chatbot.
 
 Quindi: **si costruisce la struttura nuda, e le difese si derivano dopo, dai rischi che la struttura
 nuova ha davvero.**
@@ -256,9 +263,11 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── api/            handlers_* — la superficie HTTP; ingresso, soffitto, canali,
     │                   servizi, credenziali: chi entra e cosa puo'
     ├── home_space/     l'anagrafe dal vivo (reader, topology), il nucleo (briefing), le tre
-    │                   domande (queries), gli strumenti della chat (tools), il tempo della casa
-    │                   (historian), i giudizi sui tipi e le loro domande aperte, il sigillo
-    │                   dei segreti (redaction)
+    │                   domande (queries), la porta che interroga la casa e la sua storia
+    │                   (house_query, house_history), gli strumenti della chat (tools), il
+    │                   tempo della casa (historian), i giudizi sui tipi e le loro domande
+    │                   aperte, il filtro di riservatezza (privacy), il sigillo dei segreti
+    │                   (redaction)
     ├── action/         «cosa questa casa sa fare, e il farlo»: actuator.py — i SERVIZI, l'unica
     │                   porta sul canale — verification.py, registry.py, journal.py, rhythm.py;
     │                   construction/ — workshop.py, l'unica porta sul canale della
@@ -268,7 +277,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     │                   analista (analyst, analyst_turn), attuatore (actuator, actuator_turn)
     ├── memory/         cio' che le persone hanno detto: store, interpretation, resolver
     ├── keeper/         le promesse dell'utente: promise, store, sweeper, exchange, outcome
-    ├── agent/          runner.py (il ponte push) + prompts.py
+    ├── agent/          runner.py (il lavoratore del ponte: polla la coda) + prompts.py
     ├── reasoning/      queue.py — la coda dei turni del ponte
     ├── usage/          l'archivio dei consumi e le sue parole
     ├── proxy/          ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
@@ -277,7 +286,8 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     └── static/         index.html · config.html · chat/*.js · config/*.js
 scripts/                  # gli ATTREZZI: non entrano nell'immagine, e il prodotto non li importa
                           # (lo prova tests/test_import_boundary.py). release.py, cancelli.py,
-                          # censimento.py, doppioni.py, registro.py, verifica_componenti.py; casa.py
+                          # censimento.py, doppioni.py, registro.py, sponde_js.py,
+                          # verifica_componenti.py; casa.py
                           # (l'unica porta degli attrezzi verso la casa, di sola lettura),
                           # sonda_parita.py, fotografia_porte.py, le batterie di misura;
                           # censore_tipi.py e istantaneo_pubblicato.py (l'anagrafe dei tipi)
@@ -294,7 +304,8 @@ Dalla Tappa 0 dello sprint «Una fonte sola di verità» (ottobre 2026) non esis
 Dalla fetta «esce il documentale» (2.1.0) non esistono più nemmeno le cartelle `app/brain/` e
 `app/history/`, né `api/handlers_knowledge.py` e `api/handlers_history_policy.py`: l'integrazione
 documentale (Mayan), l'archivio di conoscenza (`knowledge.db`), la cattura dello storico
-(`history.db`) e la pseudonimizzazione (`privacy.py`, `vault.db`) sono uscite insieme — nessuna
+(`history.db`) e la pseudonimizzazione (il vecchio `brain/privacy.py`, `vault.db`; da non
+confondere con `home_space/privacy.py`, il filtro di riservatezza nato il 29/09/2026) sono uscite insieme — nessuna
 aveva più un consumatore vivo. La conoscenza vive in `home_space/` (l'anagrafe, il nucleo) e in
 `memory/` (ciò che le persone hanno detto).
 Dalla fetta E5 (Task 5) non esiste più nemmeno `static/hiris-chat-card.js`, la card Lovelace:
@@ -351,9 +362,10 @@ gli stati di un dominio, cosa un'entita' dichiara — l'ordine e' questo, e non 
 2. **Si interroga la documentazione ufficiale** — `developers.home-assistant.io`, o direttamente il
    sorgente di Home Assistant / del Supervisor quando la documentazione tace.
 3. **Poi si interroga Home Assistant vero**, perche' **per noi e' fattibile**: la casa e' raggiungibile,
-   le API REST e WebSocket sono aperte, i token stanno su disco fuori dai repo
-   (`~/.ha-token` per HA, `~/.hiris-debug-token` per l'add-on). Vedi «Come si entra» nelle note di
-   debug live.
+   le API REST e WebSocket sono aperte, e le credenziali stanno su disco fuori dai repo:
+   `~/.ha-token` per HA; per l'add-on si firma con `~/.hiris-canale-sviluppo.key` (il vecchio
+   `~/.hiris-debug-token` da' 401 dal 22/09/2026). La porta degli attrezzi verso la casa e'
+   `scripts/casa.py`, di sola lettura, che dichiara le sue variabili in testa al file.
 4. **Si scrive nel codice cosa e' stato misurato e quando.** «Misurato il 26/08/2026» accanto a un
    valore vale piu' di qualunque ragionamento.
 
@@ -495,8 +507,6 @@ Due condizioni, perché una rinomina di massa è l'operazione che rompe le cose 
 - **Cache**: la shell HTML è `no-store`, gli asset sono fingerprintati per contenuto. Se un
   comportamento non cambia dopo un aggiornamento, il sospetto n.1 è Cloudflare o un container non
   ricostruito — non il codice. `/api/health` espone un `build` stamp per distinguere.
-- `save_policy` ricostruisce da `DEFAULT_POLICY` e **strippa ogni chiave top-level sconosciuta**:
-  lo stato del Brain vive in file sidecar, non nella policy.
 - Alcune funzioni sono **inerti di fabbrica**. Prima di dare la caccia a un bug, verifica che la
   funzione sia accesa.
 
@@ -504,15 +514,17 @@ Due condizioni, perché una rinomina di massa è l'operazione che rompe le cose 
 
 ## I cancelli del push, e quello del rilascio
 
-`.githooks/pre-push` fa tre cose. A **ogni** push lancia il linter (`ruff`, `oxlint`) e i quattro
-cancelli della fonte unica (`python scripts/cancelli.py`: il registro dei doppioni è leggibile,
-nessun doppione nuovo, nessun codice morto nuovo, nessuna lettura o regola ricopiata fuori dalla
-sua casa). Le eccezioni note di ognuno stanno in un file con la ragione scritta, e possono solo
+`.githooks/pre-push` fa due cose. A **ogni** push lancia `ruff` (obbligatorio: senza, si ferma),
+le sponde del frontend (`python scripts/sponde_js.py`), `oxlint` se il clone ha `node_modules`, e i
+quattro cancelli della fonte unica (`python scripts/cancelli.py`: il registro dei doppioni è
+leggibile, nessun doppione nuovo, nessun codice morto nuovo, nessuna lettura o regola ricopiata
+fuori dalla sua casa). Le eccezioni note di ognuno stanno in un file con la ragione scritta, e possono solo
 diminuire. Gli stessi cancelli girano nella CI.
 
 E ferma ogni push che contiene un bump di `hiris/config.yaml` finché non hai
 guardato i componenti: la **CLI del ponte** (pin esatto, quindi le patch non arrivano da sole), le
-**azioni CI**, un **major nuovo sopra un tetto** di `requirements.txt` (che congelerebbe una
+**azioni CI**, l'**immagine di base** fissata per impronta nel `Dockerfile`, un **major nuovo sopra
+un tetto** di `requirements.txt` (che congelerebbe una
 dipendenza in silenzio) e i **pacchetti installati sotto i pavimenti dichiarati**.
 
 **Va attivato una volta per clone:**
@@ -558,5 +570,6 @@ passo fallito e **non ritentare automaticamente**.
 
 > **Se lo script fallisce dopo aver già creato commit e tag**: non rilanciarlo (fallirebbe perché il
 > tag esiste). Diagnosticare il passo specifico — push rifiutato →
-> `git push origin master --tags`; `gh` mancante → creare la Release a mano su
+> `git push origin HEAD:master --tags` (da un ramo di lavoro `master` locale non è il commit del
+> rilascio); `gh` mancante → creare la Release a mano su
 > `https://github.com/paolobets/hiris/releases/new`.

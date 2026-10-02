@@ -69,7 +69,7 @@ paragraph for what that means in practice.
 
 Periodic work *does* run — the scheduler registers **sixteen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
-the paragraph above needed the caveat. Fourteen are internal bookkeeping — none of
+the paragraph above needed the caveat. Most are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
 reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
@@ -104,24 +104,25 @@ translations Home Assistant publishes, every 5 minutes
 it almost never does, and the read costs nothing while the house keeps the
 same version and language — but because the *first* read can fail against a
 Home Assistant that is not ready yet, and since the four hand-written
-translation tables were deleted those words are what the briefing renders
-every notable state with.
+translation tables were deleted those words are what HIRIS renders a state
+with.
 
-The twelfth was added by "the three actors" slice: the observer's loop,
-every 10 minutes (`server.py::reconsideration_round`). Ten minutes is not the
-reconsideration cadence — that one is *measured*, and on the owner's house it
-is 84 hours, half of the seven days Home Assistant's recorder still remembers.
-Ten minutes is how often HIRIS *asks itself* whether it is time, and the
+Another was added by "the three actors" slice: the observer's loop,
+every minute (`server.py::reconsideration_round`; it was ten minutes until
+11/09/2026). One minute is not the reconsideration cadence — that one is
+*measured*, and on the owner's house it is 84 hours, half of the seven days
+Home Assistant's recorder still remembers. One minute is how often HIRIS
+*asks itself* whether it is time, and the
 question is local: two reads of its own archive. The expensive part — probing
 how far back Home Assistant remembers, then reading the whole house to the
 model — is paid only when a run actually starts, which happens on the first
 boot, when the objective changes, when an entity appears that nobody has
 judged yet, or when the measured cadence has elapsed. It does not speak to you
-and does not touch the house — but unlike the other eleven it *spends*: one
+and does not touch the house — but unlike the bookkeeping jobs it *spends*: one
 whole-house read to the model, about 11,500 tokens, every time it runs. The
 page it feeds says both what it decided and what that costs per day.
 
-The thirteenth — the one that is not housekeeping — is the promise
+The one that is not housekeeping is the promise
 scheduler's heartbeat, every 15 seconds
 (`server.py::_battito` → `keeper/sweeper.py::Sweeper.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
@@ -190,13 +191,13 @@ It ran on the same hourly beat and did
 nothing until today's analysis exists and has not been acted on yet: *one
 analysis, one actuation* — keyed to the analysis's own foundation, not to the
 day, so an analysis redone after a recovered report gets a new actuation. Its
-shape was decided by measurement, not by the word "actuator": of the eight
+shape was decided by measurement, not by the word "actuator": of the
 observations the analyst really wrote on the owner's house on 15 and 16/09/2026,
-**five ask to investigate**, three ask to repair one of HIRIS's own recipes,
+**most ask to investigate**, some ask to repair one of HIRIS's own recipes,
 one asks to change a habit, and **none asks to build an automation**. So it
 investigates first — read-only — and answers next to the question; it rewrites
 a recipe that no longer executes, which is the one thing it writes without
-asking, and the same act the nightly recipe round already performs; and it
+asking, and the same act the recipe round already performs; and it
 proposes only when there is something to propose. It never writes to the house:
 that path goes through `costruisci`, which composes and validates but does not
 write, and through the owner's yes.
@@ -219,9 +220,10 @@ governs the refactor:
 On startup, and again whenever Home Assistant tells it something changed, HIRIS
 re-reads the HA registries over the WebSocket API — floors, areas, devices,
 entities, labels, categories, config entries — and rebuilds the house from them
-(`hiris/app/home_space/topology.py:14-50`, `hiris/app/proxy/ha_client.py:564-572`; the
-registry-update subscriptions live at `hiris/app/proxy/ha_client.py:26-31`, the
-debounced rebuild at `hiris/app/server.py:403`). The meaning is never guessed:
+(`hiris/app/home_space/topology.py::rebuild`,
+`hiris/app/proxy/ha_client.py::HAClient.read_registries`; the registry-update
+subscriptions are `TOPOLOGY_EVENTS` in the same file, the debounced rebuild is
+`hiris/app/server.py::schedule_registry_rebuild`). The meaning is never guessed:
 it is whatever you already declared in Home Assistant.
 
 If a registry fails to answer, HIRIS keeps the previous copy and records the
@@ -230,36 +232,38 @@ gap rather than replacing a good house with ten empty lists
 
 ### What the house already does by itself
 
-HIRIS reads `automations.yaml` and `scripts.yaml` from your HA config directory
-and cross-references them with live state
-(`hiris/app/home_space/behavior.py`). The file says what is *written*; the state
-says what *exists* — and the difference is information. Automations written by
-hand outside those files are known by name but not by body, and HIRIS says so
-instead of pretending they are empty.
+HIRIS reads the body of every automation and script from Home Assistant itself
+(`automation/config`, `script/config`; `hiris/app/home_space/behavior.py`),
+whatever file or package it lives in. The only file it still reads from disk is
+`secrets.yaml`, to seal secrets. What this loses is declared: an automation
+that is written but that Home Assistant did not load is no longer seen —
+HIRIS knows what exists, not what is written.
 
 ### The nucleo — one compact house, in every prompt
 
 Everything above is condensed into a single text that goes into the model's
 context on every turn (`hiris/app/home_space/briefing.py`, shared with the chat via
-`hiris/app/api/handlers_chat.py:317`). With three hundred entities, listing them
+`hiris/app/api/handlers_chat.py::compose_chat_context`). With three hundred entities, listing them
 all would blow the context window, so the nucleo **counts** rather than
 enumerates — "Cucina: 2 luci, 1 sensore", not the entity ids.
 
-It has five sections (`hiris/app/home_space/briefing.py:545-548,648`):
+Its sections (`hiris/app/home_space/briefing.py::compose`):
 
 | Section | What it holds |
 |---|---|
 | `## La casa` | floors → areas → devices → entities, as counts |
-| `## Notevole adesso` | what is currently on, open, playing, triggered… |
+| `## Cosa non va in casa` | the issues Home Assistant itself has diagnosed |
+| `## Cosa si puo' chiedere alle cose di casa` | what the things in the house can be asked to do (only when there is something to say) |
 | `## Cio' che la casa fa gia' da sola` | automations and scripts |
 | `## Cio' che le persone hanno detto` | the memories, in full |
 | `## Cio' che HIRIS ignora` | **what HIRIS could not read** |
 
+The nucleo carries what is **stable**. What is on, open or playing right now is
+not in it (the «Notevole adesso» section left on 29/09/2026): the current
+state is asked through `search`, when it is needed.
+
 That last section is the point, not a footnote: **HIRIS declares what it does
-not know instead of faking it.** When HA is unreachable, the nucleo says
-*"Stato non letto (o dichiarato non attendibile): non si puo' dire se in
-questo momento c'e' qualcosa di notevole -- non e' lo stesso di 'niente di
-notevole'"* (`hiris/app/home_space/briefing.py:321-324`). The same discipline applies when the text
+not know instead of faking it.** The same discipline applies when the text
 has to be truncated to fit: the cut is written *inside* the nucleo, not only in
 a summary nobody reads.
 
@@ -268,7 +272,7 @@ a summary nobody reads.
 Tell the chat something about the house and it is actually stored — with its
 strength (preference, prohibition, fact, rule), an optional value or range,
 optional conditions, and anchors to the areas/entities/devices it refers to
-(`hiris/app/memory/store.py:86`). An anchor that does not exist in the house
+(`hiris/app/memory/store.py`). An anchor that does not exist in the house
 is not written, and the response says which one was dropped and why — the
 memory itself is still saved in full.
 
@@ -300,7 +304,7 @@ The chat is the only surface. The model gets the nucleo plus exactly twelve tool
 Two of the twelve write to Home Assistant the moment they are called. `execute` does it
 immediately, through the services door (`action/actuator.py`), with no confirmation step — verified
 against your installation, not approved by you first. `confirm` does it through the configuration
-door (`azione/construction/workshop.py`), applying a proposal `propose` already composed and
+door (`action/construction/workshop.py`), applying a proposal `propose` already composed and
 validated, and only in a turn after the one where you saw the preview. A third, `promise`, does
 not touch the house when it is called — a `fai` promise only verifies and stores a service call —
 but it *will*, through the same services door, once the time you named arrives: see
@@ -311,7 +315,7 @@ each with its own verification, not a catalogue with a gate — plus a scheduler
 through the services door on its own, later, for a promise you made.
 
 Answers arrive in one JSON response: the streaming branch of `POST /api/chat`
-was removed in 3.73.0 (no page ever asked for it), and a client that still asks
+was removed with the release after 3.72.2 (no page ever asked for it), and a client that still asks
 for `text/event-stream` gets the same JSON answer. Closed sessions are
 summarised back into the next conversation.
 
@@ -319,7 +323,8 @@ summarised back into the next conversation.
 
 ## AI providers
 
-Four pay-per-use providers, plus the Claude subscription. The add-on page only
+Three pay-per-use providers, a local one (Ollama), plus the Claude subscription.
+The add-on page only
 keeps their **credentials**; whether a provider is used, and in what order, is
 decided inside HIRIS, on the **Models** page.
 
@@ -350,8 +355,9 @@ Token counts and cumulative cost are tracked and readable at `GET /api/usage`.
 
 ### The second chat path: the subscription bridge
 
-There is a second chat path. When it is active, a chat turn is handed to an
-external subscription runner through a queue instead of being answered locally.
+There is a second chat path. When it is active, a chat turn is handed, through
+a queue, to a runner that lives inside the add-on and drives the Claude CLI with
+your subscription, instead of being answered through the chain.
 
 It is active if and only if the bridge is switched on on the Models page
 (`ponte.attivo` in `/data/models_config.json`; `hiris/app/server.py::_bridge_active`).
@@ -391,8 +397,7 @@ Models page: `ponte.scadenza_min`, `ponte.tetto_giornaliero`).
 1. **Settings → Add-ons → Add-on Store** → ⋮ → **Repositories**
 2. Add: `https://github.com/paolobets/hiris`
 3. Find **HIRIS** → Install
-4. Enable at least one provider and set its credential in the configuration
-   tab, then start
+4. Set at least one credential in the configuration tab, then start
 
 ### HACS
 
@@ -511,7 +516,8 @@ The option is read once at startup: after changing it, restart the add-on.
 
 ### Removed options
 
-`memory.embedding_provider` and `memory.embedding_model` were removed in 3.73.0:
+`memory.embedding_provider` and `memory.embedding_model` were removed with the
+release after 3.72.2:
 nothing in HIRIS computed an embedding, and the two fields configured nothing.
 A value already saved for them is ignored. The `mayan.*` block and
 `memory.rag_k` were removed in 2.1.0 together with the document integration and
@@ -548,7 +554,7 @@ Opening the add-on shows the chat. A configuration panel is served at
 | `#/memory` | **Memory** — the remembered facts: read them, correct them, forget them — with the anchors resolved against today's registry |
 | `#/agenda` | **Commitments** — what you asked HIRIS to do or check later, pending and history — cancel what has not fired yet |
 | `#/constructions` | **Proposals** — what HIRIS proposes to create, modify or delete in this home (an automation, a script or a scene): approve, reject, or restore a previous version |
-| `#/watcher` | **The observer** — what HIRIS is watching in the home right now, and the episodes the nightly aggregation has built from it — the first slice of the brain: it observes, it does not conclude, speak, or act |
+| `#/watcher` | **The observer** — what HIRIS is watching in the home right now, and the episodes the nightly aggregation has built from it — four tabs: the day, what to do, what HIRIS understood, how the observer is working. It observes, measures and proposes; it does not act on the house |
 | `#/settings` | **Chat settings** — seven of them (name, system prompt, answer shape, reasoning budget, turn cap, retention days, home restriction). The model is **not** chosen here — it is chosen per provider in `#/models`, so one page decides who answers |
 | `#/models` | **Models** — active providers, the automatic chain and the default model per provider |
 | `#/usage` | **Usage** — tokens and cost, or the reason why they cannot be measured |
@@ -586,9 +592,11 @@ rewritten, with a design of its own.
 - **The semaforo** — tiers, denylists, step-up confirmations, per-action gating.
   Action returned without it, on purpose: safeguards are a designed phase of
   their own, not an inheritance from 1.x
-- **Agentbot / Sentinella / agents** — nothing is triggered by a schedule or an
-  event to reason on its own
-- **The Brain**, its proposals and its advisories
+- **Agentbot / Sentinella / agents** — nothing acts on the house on its own
+  judgment. The brain does reason on a schedule (the observer, the recipes, the
+  analyst — see above), but it writes only its own archive, and proposes
+- **The 1.x Brain**, its insights and its advisories; what exists today is
+  `mind/`, described above
 - **Multiple chatbots**, their editors, their per-bot budgets and allowlists
 - **Notifications** — HIRIS has no notification channel of its own: no
   Apprise, no HA push, no Telegram/ntfy/… That is a statement about HIRIS, not
@@ -599,7 +607,7 @@ rewritten, with a design of its own.
   in the chat — it is the one way this add-on can, on a channel you chose
   yourself, not one of its own
 - **MQTT**, the external gateway (and `GET /api/entities`, the route it used —
-  removed in 3.73.0), Test Run, the sandbox
+  removed with the release after 3.72.2), Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
 - **The thirty-four-tool catalogue** — replaced by the twelve above
 
@@ -624,10 +632,11 @@ either — and a banner on top of a wrong page is still a wrong page. Git keeps
 them all: `git log --diff-filter=D -- docs/` finds them if you ever need one.
 
 What is left under `docs/` is `docs/design/` — the living record of the 2.0
-refactor, dated document by dated document — and `docs/out-of-scope/`, the one
-archive: everything superseded, executed, or describing a product that no longer
-exists, indexed by its own README (the former `docs/archive/` lives inside it,
-as `pre-2.0/`).
+refactor, dated document by dated document — the backlog and the glossary
+(`docs/BACKLOG.md`, `docs/GLOSSARIO.md`), the measurements (`docs/misure/`), the
+test guides, and `docs/out-of-scope/`, the one archive: everything superseded,
+executed, or describing a product that no longer exists, indexed by its own
+README (the former `docs/archive/` lives inside it, as `pre-2.0/`).
 
 ---
 
