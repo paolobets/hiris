@@ -100,8 +100,8 @@ _BEHAVIOR_TYPES = {"automazione", "script"}
 # vuole «entity». Due elenchi da tenere allineati a mano sarebbero due
 # vocabolari, cioe' la forma di difetto che le fondamenta chiamano doppione.
 #
-# Cinque di questi nomi -- area, entita, dispositivo, automazione, script --
-# sono esattamente i tipi che `view` sa aprire; gli altri nove no, e
+# Alcuni di questi nomi -- area, entita, dispositivo, automazione, script,
+# integrazione -- sono tipi che `view` sa aprire; gli altri no, e
 # `view` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
 # di `view`): un id vero preso da qui non deve poter diventare
 # un'affermazione falsa sulla casa.
@@ -1656,7 +1656,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     `non_disponibile`.
 
     E `esiste: False` ha due cause diverse, che da questa fetta si vedono:
-    il riferimento non c'e' (le cinque funzioni qui sopra), oppure il TIPO
+    il riferimento non c'e' (le funzioni `_view_*` qui sopra), oppure il TIPO
     non e' fra quelli che HIRIS sa aprire -- e allora esce anche
     `non_so_guardare: True`, perche' una scena o un gruppo che `related()`
     ha appena mostrato esistono eccome, e dirne «non esiste» sarebbe una

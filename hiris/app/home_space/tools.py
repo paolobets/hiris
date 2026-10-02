@@ -2200,7 +2200,7 @@ class ToolDispatcher:
         valore di partenza. Un rifiuto alle 17 sarebbe arrivato quando non
         c'e' piu' nessuno a correggerlo. `quando_ts` e i tetti (30 giorni, 50
         in sospeso per filo, il totale della casa) restano a
-        `promessa.validate` / `archivio.create`: sono verifiche sulla FORMA
+        `keeper/promise.validate` / `AgendaStore.create`: sono verifiche sulla FORMA
         della promessa, non su questa installazione, e vivono gia' li'.
 
         **La promessa e' del filo di questo turno** (fetta «il seguito delle

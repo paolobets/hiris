@@ -843,11 +843,12 @@ UNKNOWN_STATES = Ours({"unavailable", "unknown"})
 # unico lettore, `TypeJudgments.is_notable`. **Dal 02/10/2026 non e' piu' un
 # giudizio del sapere**: non si semina, la porta dei giudizi non lo accetta e
 # la pagina non lo mostra (le righe gia' scritte le toglie
-# `mind/knowledge._migration_9`). Le dichiarazioni qui sotto restano perche'
-# le legge il censore dei tipi (`scripts/censore_tipi.py`): una coppia
-# dichiarata e' una coppia rivendicata, e le ragioni scritte accanto sono
-# quelle che le sue eccezioni citano. Se ridare loro una domanda o toglierle
-# -- riaprendo quelle voci nel censore -- lo decide il proprietario.
+# `mind/knowledge._migration_9`). **Le dichiarazioni qui sotto non le legge
+# nessun codice**: le leggono solo delle prove, e il censore dei tipi
+# (`scripts/censore_tipi.py`) non guarda il campo -- le sue eccezioni citano,
+# in prosa, le ragioni scritte qui accanto. Restano in attesa del
+# proprietario (voce M-17 del registro): ridare loro una domanda, o toglierle
+# insieme alle loro prove e riscrivere quelle citazioni.
 #
 # Fino all'08/09/2026 la risposta viveva in due insiemi di `briefing.py`,
 # `_EVENT_DOMAINS` e `_EVENT_CLASSES`, che rispondevano alla stessa domanda a
@@ -1828,7 +1829,7 @@ _verify_no_state_is_both_rest_and_work()
 #: **`notable` non c'e'**, dal 02/10/2026: non e' piu' un giudizio del sapere
 #: (nessuna domanda lo consultava dal 29/09), quindi non si semina, non passa
 #: dalla porta e non compare nella pagina. Le sue dichiarazioni restano piu'
-#: sopra, lette dal solo censore dei tipi.
+#: sopra, senza lettori nel codice (voce M-17 del registro).
 JUDGMENT_FIELDS = MappingProxyType({
     GENRE: GENRE_FIELD, RESTING_STATES: RESTING_FIELD, WORKING_STATES: WORKING_FIELD,
     OPERABLE: OPERABLE_FIELD,

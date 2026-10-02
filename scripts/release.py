@@ -158,7 +158,6 @@ def check_git_clean() -> None:
         "hiris/translations/",  # git reports new untracked dirs with trailing slash
         "hiris/Dockerfile",
         "hiris/requirements.txt",
-        "hiris/app/backends/embeddings.py",
         "hiris/app/static/index.html",
         "CHANGELOG.md",
         "README.md",
@@ -212,7 +211,7 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
         p for p in [
             "hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt",
             "hiris/translations/en.yaml", "hiris/translations/it.yaml",
-            "hiris/app/backends/embeddings.py", "hiris/app/static/index.html",
+            "hiris/app/static/index.html",
             "README.md", "scripts/release.py",
         ] if (ROOT / p).exists()
     ]

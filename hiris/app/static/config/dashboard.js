@@ -195,11 +195,11 @@ window.HirisDashboard = (function () {
 
   /* Il fatto «questa sezione è stata letta» non sta nel campo: sta nella sua
      DATA. I getter dell'archivio NON distinguono i due casi -- su un archivio
-     esistente ma mai riempito (nessuna riga in `meta`) `non_disponibili()`
-     torna `[]` (archivio.py:173-183), `behavior_problems()` `[]`
-     (:256-268), `file_non_letti()` `{}` (:270-281),
-     `unavailable_dashboards()` `[]` (:332-344), e `senza_corpo` è un `sum()`
-     su zero voci, cioè `0` (handlers_home_space.py:75). Solo le tre date tornano
+     esistente ma mai riempito (nessuna riga in `meta`) `unavailable()`
+     torna `[]`, `behavior_problems()` `[]`, `unread_bodies()` `{}`,
+     `unavailable_dashboards()` `[]` (tutti in `home_space/reader.py`), e
+     `senza_corpo` è un `sum()` su zero voci, cioè `0`
+     (`handlers_home_space.py`). Solo le tre date tornano
      `None`.
 
      Quindi un elenco vuoto è prova di «controllato, niente da segnalare»

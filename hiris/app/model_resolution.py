@@ -397,7 +397,7 @@ def downgrade_note(*, reason: str, who_answered: str) -> str:
     """La riga che dichiara un ripiego dal piano a forfait alla catena.
 
     E' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla causa:
-    la stessa regola scritta in `action/actuator.py` per gli avvisi di `esegui`, e
+    la stessa regola scritta in `action/actuator.py` per gli avvisi di `execute`, e
     per lo stesso motivo -- la' una frase che affermava piu' del misurato
     («nessuno stato e' cambiato») produsse sulla casa vera una diagnosi
     inventata («probabile problema di comunicazione col dispositivo») che mando'
@@ -435,7 +435,7 @@ def synchronous_door_note(*, who_answered: str) -> str:
 
     Dire «il Piano Claude Max non ha risposto» sarebbe **falso**, e manderebbe
     il proprietario a cercare un guasto che non esiste: e' esattamente il
-    difetto che `downgrade_note` documenta per gli avvisi di `esegui`.
+    difetto che `downgrade_note` documenta per gli avvisi di `execute`.
 
     Stesso silenzio delle altre: un provider di cui non si conosce la natura
     non produce una frase approssimativa. La natura e' la meta' che riguarda i

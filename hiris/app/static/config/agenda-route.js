@@ -31,7 +31,7 @@
 
    Il vocabolario mostrato non e' quello del backend (guida di disegno,
    scritta da ux-ui-specialist dopo aver letto handlers_agenda.py e
-   archivio.py): `saltata` -> «Non eseguita», `fallita` -> «Non riuscita».
+   keeper/store.py): `saltata` -> «Non eseguita», `fallita` -> «Non riuscita».
    Sono scelte apposta per non fare rima e non condividere la prima parola --
    la stessa distinzione che la spec (§7) chiama «non e' un guasto, e' la
    Legge del mai-in-ritardo»: una promessa scaduta oltre tolleranza non
@@ -42,7 +42,7 @@
    Tre cose che la guida chiede esplicitamente:
    1. `in_corso` sta nella sezione «In sospeso» insieme a `in_attesa` (non e'
       ancora concluso), ma SOLO `in_attesa` ha il bottone disdici:
-      `archivio.cancel()` scrive `WHERE stato='in_attesa'`, quindi un
+      `AgendaStore.cancel()` scrive `WHERE stato='in_attesa'`, quindi un
       bottone su una riga `in_corso` sarebbe piu' confuso di nessun bottone.
    2. Nessun `window.confirm()`: disdire non distrugge niente, la riga passa
       allo storico con `stato:'disdetta'`, resta leggibile per sempre ed e'
@@ -257,8 +257,8 @@ window.HirisAgendaRoute = (function () {
      esecuzione_id": la spec (§8) mostra questo caso per un `fai`, ed e' il
      solo in cui la sfumatura vale la richiesta in piu' -- una `chiedi`
      mantenuta mostra gia' la sua risposta (§6), e per un `fai` `fallita` il
-     `motivo` che l'utente vede e' gia' `esito.errore` (`orologio.py::
-     _mantieni_fai`): la stessa frase, non un secondo dettaglio da aprire. */
+     `motivo` che l'utente vede e' gia' `esito.errore` (`keeper/sweeper.py::
+     _keep_fai`): la stessa frase, non un secondo dettaglio da aprire. */
   function addExecutionDetail(line, p) {
     if (!(p.specie === 'fai' && p.stato === 'mantenuta' && p.esecuzione_id)) return;
 
@@ -337,7 +337,7 @@ window.HirisAgendaRoute = (function () {
 
     /* Condizione ESATTA `stato === 'in_attesa'`, non "riga in questa
        sezione": `in_corso` ci sta (non e' ancora concluso) ma non e'
-       disdicibile (`archivio.cancel` scrive WHERE stato='in_attesa'). */
+       disdicibile (`AgendaStore.cancel` scrive WHERE stato='in_attesa'). */
     if (p.stato === 'in_attesa') {
       var btn = el('button', 'btn btn-ghost btn-ghost-danger btn-sm', 'Disdici');
       btn.type = 'button';
@@ -355,7 +355,7 @@ window.HirisAgendaRoute = (function () {
                200 con un corpo, MAI 204 come /api/memories/{id} -- si
                guarda `res.ok`, non uno status specifico. 404 e 409
                arrivano gia' col testo giusto dal server (handlers_
-               promesse.py / archivio.py::disdici): si mostra quello,
+               agenda.py / keeper/store.py::cancel): si mostra quello,
                verbatim, non un errore generico -- dicono cose diverse
                (non esiste vs. gia' concluso) e l'utente deve poterle
                distinguere. */

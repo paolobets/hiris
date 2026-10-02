@@ -132,18 +132,36 @@ def test_un_guasto_NON_ferma_l_avvio(tmp_path, monkeypatch):
     cancella_residui(str(tmp_path))  # non deve sollevare
 
 
-def _string_constants_in_the_product() -> dict[str, list[str]]:
-    """Ogni letterale stringa del prodotto -> i file in cui compare."""
+def _string_literals_in_the_product() -> list[tuple[str, str]]:
+    """Ogni letterale stringa del prodotto, col file in cui sta. I docstring
+    non sono letterali che il programma usa: restano fuori."""
     import ast
 
-    found: dict[str, list[str]] = {}
+    found: list[tuple[str, str]] = []
     app = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
     for source in sorted(app.rglob("*.py")):
         tree = ast.parse(source.read_text(encoding="utf-8"))
+        docstrings = set()
         for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                found.setdefault(node.value, []).append(source.name)
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+                first = node.body[0] if node.body else None
+                if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                        and isinstance(first.value.value, str)):
+                    docstrings.add(id(first.value))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                    and id(node) not in docstrings):
+                found.append((node.value, source.name))
     return found
+
+
+def _named_by(name: str, literals: list[tuple[str, str]]) -> list[str]:
+    """I file in cui un letterale NOMINA il file `name`: da solo, o in fondo a
+    un percorso (`"/data/usage.json"`). `hiris_memory.db` non nomina
+    `memory.db`: prima del nome ci vuole l'inizio o una barra."""
+    return [where for value, where in literals
+            if value == name or value.endswith("/" + name)]
 
 
 def test_nessun_residuo_dell_elenco_e_un_archivio_che_il_prodotto_apre():
@@ -156,12 +174,19 @@ def test_nessun_residuo_dell_elenco_e_un_archivio_che_il_prodotto_apre():
     l'elenco stesso e' scritto: non poteva fallire (misurato dal revisore il
     02/10/2026, con la mutazione che il suo docstring dichiarava rossa).
 
-    Mutazione ESEGUITA: aggiunto `"consumi.db"` a `RESIDUI_DISMESSI` -- rossa,
-    col nome dell'archivio e dei punti che lo nominano."""
-    constants = _string_constants_in_the_product()
-    assert len(constants) > 1000, "la raccolta dei letterali si e' rotta"
-    alive = {name: constants.get(name, []) for name in RESIDUI_DISMESSI
-             if len(constants.get(name, [])) != 1}
+    **Anche quando il nome sta in fondo a un percorso** (revisione del
+    02/10/2026): `server.py` apre `"/data/usage.json"`, e un confronto fra
+    letterali interi non lo vedeva.
+
+    Mutazioni ESEGUITE, entrambe rosse col nome e i punti che lo nominano:
+    aggiunto `"consumi.db"` a `RESIDUI_DISMESSI`; aggiunto `"usage.json"`
+    (la seconda, prima, restava verde)."""
+    literals = _string_literals_in_the_product()
+    assert len(literals) > 5000, "la raccolta dei letterali si e' rotta"
+    assert _named_by("usage.json", literals), (
+        "la prova non vede piu' un nome in fondo a un percorso")
+    alive = {name: _named_by(name, literals) for name in RESIDUI_DISMESSI
+             if len(_named_by(name, literals)) != 1}
     assert not alive, (
         "nomi dell'elenco dei residui che il prodotto nomina anche altrove "
         f"(o non nomina affatto): {alive}")

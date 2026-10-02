@@ -111,15 +111,16 @@ ports_description:
 #
 # Cio' che resta qui e' cio' che si CUSTODISCE: le quattro credenziali,
 # l'indirizzo di Ollama, e le tre voci avanzate che governano il perimetro
-# d'accesso. Piu' `theme` e i due campi `memory.*`, dichiarati inerti: sono
-# rimasti deliberatamente, perche' toglierli avrebbe fatto perdere il valore
-# salvato in cambio di niente. E una DECISIONE sola, `non_admin_access`
+# d'accesso. Piu' `theme`, dichiarato inerte: e' rimasto deliberatamente,
+# perche' toglierlo avrebbe fatto perdere il valore salvato in cambio di
+# niente (i due campi `memory.*`, rimasti a lungo per la stessa ragione, sono
+# usciti: sezione 3). E una DECISIONE sola, `non_admin_access`
 # (sezione 4, 27/09/2026): la sua ragione e' scritta accanto a lei.
 #
 # L'ORDINE DI QUESTO FILE E' LA PAGINA CHE L'UTENTE VEDE. Il Supervisor non sa
 # rendere separatori ne' campi condizionali, e i commenti `# ── N.` di questo
 # file li vede solo chi apre il file. L'unica sezione che rende a schermo e' il
-# dizionario annidato (`local_model:`, `memory:`) -- che pero' fa parte del
+# dizionario annidato (`local_model:`) -- che pero' fa parte del
 # NOME dell'opzione: annidare una voce piatta ne cambia la chiave, e il
 # Supervisor NON migra i valori. Percio' si annida solo dove perdere il valore
 # costa poco, e tutto il resto si raggruppa per VICINANZA e per PREFISSO

@@ -1,7 +1,7 @@
 /* HIRIS · Configurazione · «Albero della casa» (route #/tree)
 
    Chiude il reperto 26: `GET /api/home-space` manda gia' l'albero completo che
-   `anagrafe.hierarchy()` costruisce -- piani -> aree -> entita', col
+   `topology.hierarchy()` costruisce -- piani -> aree -> entita', col
    comportamento, la piattaforma, la categoria, la classe, l'unita', se
    un'entita' e' nascosta, i suoi alias e le sue etichette -- ed e' il
    payload piu' ricco che HIRIS produce. Prima usciva verso nessuno:
@@ -14,7 +14,7 @@
    cosi' l'utente si accorge quando HIRIS sbaglia.
 
    Tre distinzioni che la pagina DEVE rendere visibili, perche' sono la
-   parte che conta (vedi il docstring di `anagrafe.hierarchy()`, che resta
+   parte che conta (vedi il docstring di `topology.hierarchy()`, che resta
    la spiegazione migliore che esista):
 
    1) Le pseudo-aree/pseudo-piani che `hierarchy()` crea per dichiarare i
@@ -121,7 +121,7 @@ window.HirisTreeRoute = (function () {
   }
 
   /* Le unità del sistema di riferimento, stessa mappa e stesso ordine di
-     `nucleo._MEASUREMENT_NAMES` -- cosi' la stessa casa si legge uguale sul
+     `briefing._MEASUREMENT_NAMES` -- cosi' la stessa casa si legge uguale sul
      nucleo del modello e su questa pagina. Una chiave che HA manda e che
      questa mappa non conosce ancora NON sparisce: compare col suo nome
      grezzo, stessa regola di `NOMI_REGISTRI` sopra e delle "chiavi

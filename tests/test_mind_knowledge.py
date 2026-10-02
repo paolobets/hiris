@@ -640,8 +640,16 @@ def test_la_migrazione_toglie_le_righe_che_nessuno_legge_e_solo_quelle(tmp_path,
     **Ogni riga tolta si nomina nel registro**: cancellare in silenzio un dato
     della casa e' proibito, e una rotta che le elenchi non c'e'.
 
-    Mutazione ESEGUITA: la migrazione cancella con `field LIKE '%'` -- rossa
-    (spariscono anche `significato` e `accendibile`)."""
+    **I quasi omonimi restano** (revisione del 02/10/2026): `da_sapere_subito`
+    comincia per `d`, `direzione` non ha i due punti, `notevole_x` non e'
+    `notevole`. Sulla casa vera un prefisso troppo largo porterebbe via i
+    giudizi «da sapere subito» e le loro correzioni.
+
+    Mutazioni ESEGUITE, tutte rosse: la migrazione cancella con
+    `field LIKE '%'` (spariscono anche `significato` e `accendibile`);
+    `_DEAD_FIELD_PREFIX = "d"` (spariscono `da_sapere_subito` e `direzione`);
+    un `OR field = 'da_sapere_subito'` in piu' nel `DELETE`. Le ultime due,
+    prima dei quasi omonimi, restavano verdi."""
     import logging
 
     path = _archive_at_v8(tmp_path, [
@@ -649,12 +657,18 @@ def test_la_migrazione_toglie_le_righe_che_nessuno_legge_e_solo_quelle(tmp_path,
         ("tipo", "light", "accendibile", "si", "nostro"),
         ("integrazione", "un_inverter", "direzione:power_importing", "prelievo", "dedotto"),
         ("tipo", "sensor:temperature", "significato", "la temperatura", "importato"),
+        ("tipo", "lock", "da_sapere_subito", "jammed", "nostro"),
+        ("tipo", "lock", "direzione", "senza i due punti", "nostro"),
+        ("tipo", "lock", "notevole_x", "un altro campo", "nostro"),
     ])
 
     with caplog.at_level(logging.INFO):
         store = sap.KnowledgeStore(path)
     try:
         assert _fields(store) == [("light", "accendibile"),
+                                  ("lock", "da_sapere_subito"),
+                                  ("lock", "direzione"),
+                                  ("lock", "notevole_x"),
                                   ("sensor:temperature", "significato")]
         said = "\n".join(record.getMessage() for record in caplog.records)
         assert "notevole" in said and "light" in said
@@ -664,16 +678,31 @@ def test_la_migrazione_toglie_le_righe_che_nessuno_legge_e_solo_quelle(tmp_path,
 
 
 def test_la_migrazione_non_gira_due_volte_e_non_parla_se_non_toglie_niente(tmp_path, caplog):
+    """Una migrazione gira UNA volta, al passaggio di versione. Per vederlo
+    serve una riga che la seconda esecuzione toglierebbe: la si scrive a mano
+    nell'archivio gia' alla 9, e alla riapertura deve esserci ancora. Senza
+    quella riga la prova non poteva fallire (revisione del 02/10/2026: una
+    seconda esecuzione non aveva niente da togliere ne' da dire).
+
+    Mutazione ESEGUITA: `_migration_9` chiamata a ogni apertura, in
+    `KnowledgeStore.__init__` -- rossa (la riga scritta a mano sparisce)."""
     import logging
 
     path = _archive_at_v8(tmp_path, [
         ("tipo", "sensor:temperature", "significato", "la temperatura", "importato")])
-    sap.KnowledgeStore(path).close()
     with caplog.at_level(logging.INFO):
         store = sap.KnowledgeStore(path)
+    assert "riga tolta" not in caplog.text, "ha parlato senza togliere niente"
+    store._conn.execute(
+        "INSERT INTO knowledge (subject_kind, subject, field, value, provenance,"
+        " who, when_ts) VALUES ('tipo', 'light', 'notevole', 'si', 'nostro', 'a mano', 1.0)")
+    store._conn.commit()
+    store.close()
+
+    store = sap.KnowledgeStore(path)
     try:
-        assert _fields(store) == [("sensor:temperature", "significato")]
-        assert "riga tolta" not in caplog.text
+        assert _fields(store) == [("light", "notevole"),
+                                  ("sensor:temperature", "significato")]
     finally:
         store.close()
 

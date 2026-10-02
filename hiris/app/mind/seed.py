@@ -220,12 +220,13 @@ def judgment_seed(when_ts: float | None = None) -> list[Fact]:
     cui una riga sparisse da `judgment_seed_rows()`, sulle installazioni
     esistenti resterebbe sul disco, `judgment_listing` la mostrerebbe come
     `da: altro` (nessuno dei due la rivendica) e l'istantanea continuerebbe a
-    leggerla. Oggi non succede: nessuna riga e' mai stata ritirata. Non si
-    costruisce niente adesso perche' **cancellare righe del seme e' una
-    decisione del proprietario**, non un effetto collaterale di un
-    aggiornamento -- e una cancellazione automatica porterebbe via anche la
-    riga che il proprietario avesse corretto a mano sulla stessa terna. Voce
-    in `docs/BACKLOG.md`.
+    leggerla. Un meccanismo generale non c'e', e non si costruisce:
+    **cancellare righe del seme e' una decisione del proprietario**, non un
+    effetto collaterale di un aggiornamento. E' successo una volta, il
+    02/10/2026, per il campo `notevole`: l'ha tolto una migrazione scritta
+    apposta (`knowledge._migration_9`), che cancella OGNI riga di quel campo
+    -- anche quella che la casa avesse corretto a mano -- e la nomina nel
+    registro. Voce in `docs/BACKLOG.md`.
     """
     from ..home_space.type_vocabulary import judgment_seed_rows
 

@@ -489,6 +489,11 @@ def _migration_9(conn) -> None:
     casa del proprietario il 02/10/2026: 23 righe `notevole`, tutte del seme
     del repo, e 14 `direzione:*`, tutte dedotte.
 
+    **Toglie anche una riga corretta a mano**: il `DELETE` guarda il campo,
+    non la provenienza ne' l'autore. E' la decisione del proprietario
+    (dichiarazione D4): un campo senza lettori non ha un valore da difendere,
+    di chiunque sia.
+
     **Ogni riga tolta si nomina nel registro, col suo valore**: cancellare in
     silenzio un dato della casa e' proibito dalle fondamenta, e nessuna rotta
     le elencava una per una.

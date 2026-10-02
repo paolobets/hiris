@@ -368,7 +368,7 @@ def test_una_forma_porta_il_suo_nome_e_la_sua_unita_come_una_misura():
 
 def test_cio_che_non_si_e_potuto_calcolare_resta_fra_le_MISURE():
     """Un rifiuto non ha una forma: sta dove l'analista guarda cio' che manca,
-    cioe' fra le misure -- da cui `as_document` costruisce «cosa non si sa».
+    cioe' fra le misure -- da cui la pagina costruisce «cosa non si sa».
     Spostarlo in `forme` lo nasconderebbe.
 
     Mutazione: mandare in `forme` tutto cio' che non ha un valore numerico,

@@ -41,7 +41,7 @@ function misura(extra) {
 }
 
 /* Una misura che NON si e' potuta fare: `valore` va **tolta**, non messa a
-   `undefined` -- la pagina (come `as_document`) separa le due liste con
+   `undefined` -- la pagina separa le due liste con
    `'valore' in m`, e una chiave presente a `undefined` sarebbe «calcolata». */
 function nonCalcolabile(nome, perche) {
   const m = misura({ misura: nome, non_calcolabile: perche });

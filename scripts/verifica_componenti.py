@@ -71,7 +71,7 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
 
     PURA: nessuna rete, nessun `os.environ`, nessun orologio, nessun
     filesystem. Chi la chiama porta i fatti gia' misurati -- stessa divisione di
-    `app/decisione_modelli.py`, e per la stessa ragione: uno scarto si fabbrica
+    `app/model_resolution.py`, e per la stessa ragione: uno scarto si fabbrica
     passando due dizionari, quindi le prove possono PRODURRE il difetto invece
     di descriverlo.
 

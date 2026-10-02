@@ -954,18 +954,28 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
     assert cens.COPERTURA_SIMBOLI["illeggibili"] == 0, (
         f"{cens.COPERTURA_SIMBOLI['illeggibili']} file del prodotto non si leggono: "
         "le loro definizioni sono fuori dal cancello")
+    assert cens.COPERTURA_SCRITTURE["illeggibili"] == 0, (
+        f"{cens.COPERTURA_SCRITTURE['illeggibili']} file del prodotto non si leggono: "
+        "le loro scritture sono fuori dal cancello")
 
 
 # ── Le eccezioni non crescono da sole (revisione indipendente del 02/10/2026) ─
 
-#: Quante sono le eccezioni scritte. Scende quando una guarisce; per farlo
-#: SALIRE bisogna toccare questo numero, cioe' deciderlo davanti a tutti.
-EXCEPTIONS_CEILING = 4
-
-#: Il segno con cui un'eccezione dichiara di non essere codice morto ma un
-#: errore del rilevatore: non ha una voce del registro perche' non c'e' niente
-#: da togliere.
-_FALSE_POSITIVE = "Falso positivo"
+#: Le eccezioni AMMESSE, per nome, ognuna con la voce del registro che la
+#: giustifica -- o `None` per l'unico errore del rilevatore, che non ha una
+#: voce perche' non c'e' niente da togliere. E' una lista di ammissione: non
+#: ricopia il file delle eccezioni, enuncia il cancello. Chiude per difetto:
+#: un'eccezione nuova, o una che cambia voce, si decide QUI, davanti a tutti.
+#:
+#: Prima c'erano un tetto e un prefisso libero («Falso positivo»), e bastava
+#: scrivere quelle due parole -- o citare una voce aperta qualunque -- per
+#: passare (eseguito dal revisore il 02/10/2026).
+ADMITTED_EXCEPTIONS = {
+    ("simbolo-solo-test", "actuator_round"): "M-20",
+    ("simbolo-solo-test", "get_config"): None,
+    ("simbolo-solo-test", "operable_domains"): "M-61",
+    ("rotta-solo-test", "/api/misure"): "M-22",
+}
 
 
 def _written_exceptions():
@@ -983,12 +993,12 @@ def test_le_eccezioni_del_censimento_hanno_un_tetto():
     qui, e una in meno obbliga ad abbassare il tetto.
 
     Mutazione ESEGUITA: aggiunta a `censimento_eccezioni.json` l'eccezione
-    «_orfana»: «serve, fidati di me.» -- rossa (`5 == 4`)."""
-    written = _written_exceptions()
-    assert len(written) == EXCEPTIONS_CEILING, (
-        f"le eccezioni del censimento sono {len(written)}, il tetto e' "
-        f"{EXCEPTIONS_CEILING}: una in piu' si decide alzando il tetto, una in "
-        "meno lo abbassa")
+    «_orfana»: «serve, fidati di me.» -- rossa, col nome."""
+    written = {(category, name) for category, name, _ in _written_exceptions()}
+    assert written == set(ADMITTED_EXCEPTIONS), (
+        "le eccezioni scritte non sono quelle ammesse -- in piu': "
+        f"{sorted(written - set(ADMITTED_EXCEPTIONS))}; guarite, da togliere "
+        f"dall'ammissione: {sorted(set(ADMITTED_EXCEPTIONS) - written)}")
 
 
 def test_ogni_eccezione_cita_una_voce_aperta_del_registro_o_si_dichiara_falso_positivo():
@@ -996,8 +1006,10 @@ def test_ogni_eccezione_cita_una_voce_aperta_del_registro_o_si_dichiara_falso_po
     voce APERTA, o e' un errore del rilevatore e lo dice. Stessa forma di
     `test_fonte_unica.py`.
 
-    Mutazione ESEGUITA: tolta «Voce M-61» dalla ragione di `operable_domains`
-    -- rossa, col nome dell'eccezione."""
+    Mutazioni ESEGUITE, tutte rosse col nome dell'eccezione: tolta «Voce
+    M-61» dalla ragione di `operable_domains`; la stessa ragione riscritta
+    «Serve. Voce X-12 del registro.» (aperta, ma un'altra); la ragione di
+    `actuator_round` riscritta «Falso positivo: fidati di me, serve.»."""
     import re
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -1008,11 +1020,14 @@ def test_ogni_eccezione_cita_una_voce_aperta_del_registro_o_si_dichiara_falso_po
     assert still_open, "il registro non ha voci aperte: la prova non guarda niente"
     loose = []
     for category, name, reason in _written_exceptions():
-        if reason.startswith(_FALSE_POSITIVE):
-            continue
+        expected = ADMITTED_EXCEPTIONS.get((category, name))
         cited = set(re.findall(r"\b[A-Z]-\d{2}\b", reason))
-        if not cited & still_open:
-            loose.append(f"{category}/{name} (cita: {sorted(cited) or 'niente'})")
+        if expected is None:
+            if cited:
+                loose.append(f"{category}/{name} (falso positivo che cita {sorted(cited)})")
+        elif cited != {expected} or expected not in still_open:
+            loose.append(f"{category}/{name} (cita: {sorted(cited) or 'niente'}, "
+                         f"ammessa per {expected})")
     assert not loose, (
         "eccezioni che non citano una voce APERTA del registro e non si "
         "dichiarano falso positivo: " + "; ".join(loose))
