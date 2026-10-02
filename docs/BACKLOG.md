@@ -1067,7 +1067,17 @@ Terza fetta della sequenza (leggere la casa, la storia, **relazioni e promesse**
 dei turni (ora con gli argomenti, §7) mostrano che quegli strumenti costano giri o sbagliano; se
 non lo mostrano, restano come sono, come dice §8.
 
-### Il campo `notevole` del giudizio di tipo non ha più un lettore — DOMANDA AL PROPRIETARIO — aperta il 30/09/2026
+### ~~Il campo `notevole` del giudizio di tipo non ha più un lettore~~ — CHIUSA il 02/10/2026 (Tappa 0 dello sprint «Una fonte sola di verità»)
+
+**Come si è chiusa.** Il proprietario ha messo «le righe morte del sapere (`notevole`, `direzione`),
+con la loro migrazione» fra ciò che esce con la Tappa 0, e ha approvato la dichiarazione D4. Il
+campo è uscito dai giudizi: non si semina, la porta non lo accetta, la pagina «Cosa ho capito» non
+lo mostra, e la migrazione 9 del sapere toglie le righe già scritte (in casa erano 23, tutte del
+seme). **Resta una coda**: le 23 dichiarazioni `notable` nel vocabolario dei tipi, che legge il
+solo censore; ridare loro una domanda o toglierle è la voce M-17 del registro dei doppioni.
+
+*Il testo della domanda, com'era:*
+
 
 `origine: costruzione della fetta «una porta sola», Task 6` · `hiris/app/home_space/type_vocabulary.py:880` · `type_judgments.py`, `mind/judgments.py:72`, `static/config/watcher-sapere.js`
 
