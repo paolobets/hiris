@@ -46,23 +46,6 @@ def test_scrivere_un_obiettivo_lo_data(archivio):
     assert corrente["scritto_ts"] == 1000.0
 
 
-def test_la_storia_conserva_quello_di_prima(archivio):
-    """**Il punto per cui questa tabella esiste.** Non basta sapere qual e'
-    l'obiettivo adesso: serve sapere quale valeva il giorno che si sta
-    leggendo.
-
-    Mutazione che la uccide: sostituire invece di accodare -- la storia
-    avrebbe una riga sola e nessun resoconto potrebbe piu' dire a quale
-    domanda rispondeva.
-    """
-    archivio.set_objective("primo", when_ts=1000.0)
-    archivio.set_objective("secondo", when_ts=2000.0)
-
-    storia = archivio.objective_history()
-    assert [v["testo"] for v in storia] == ["secondo", "primo"]
-    assert archivio.objective()["testo"] == "secondo"
-
-
 def test_quale_obiettivo_valeva_quel_giorno(archivio):
     """La domanda che il resoconto porra' a ogni giornata. Un giorno PRIMA del
     primo obiettivo scritto vale il default: la casa c'era comunque, e
@@ -88,7 +71,6 @@ def test_riscrivere_lo_stesso_testo_non_sporca_la_storia(archivio):
     archivio.set_objective("uguale", when_ts=1000.0)
     archivio.set_objective("uguale", when_ts=2000.0)
 
-    assert len(archivio.objective_history()) == 1
     assert archivio.objective()["scritto_ts"] == 1000.0
 
 

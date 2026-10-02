@@ -66,26 +66,6 @@ from types import MappingProxyType
 #: la regola esiste.
 MINIMUM_COVERAGE = 0.75
 
-#: L'unita' che **non si sa**, detta invece che taciuta.
-#:
-#: `Measurement` rifiuta un'unita' vuota, e ha ragione: un numero nudo e' un
-#: frammento. Ma c'e' un posto, oggi, dove l'unita' non si sa davvero --
-#: l'oggetto di energia di `mind/facts.aggregate_day`, che nasce dal grezzo
-#: (`mind/store.py`, tabella `cambi`), e **quella tabella non ha una colonna
-#: per l'unita'**: registra `device_class`, `state_class`, `source_type`,
-#: `domain`, `title`, `friendly_name`, e butta via `unit_of_measurement`, che
-#: Home Assistant dichiara per ogni entita'. E' esattamente la tesi della spec
-#: dei tre attori -- *«Home Assistant dichiara gia' tutto, la copia lo butta»*
-#: -- su un attributo che nessuna fetta ha ancora raccolto (a backlog,
-#: 12/09/2026).
-#:
-#: Finche' dura, qui si dice «non dichiarata» invece di inventare `kWh`: un
-#: contatore di quella tabella puo' essere in Wh, in kWh o in m3, e sceglierne
-#: uno sarebbe una motivazione falsa scritta accanto al codice. **Non e' un
-#: permesso generico**: chi ha l'unita' la passa, e `Measurement` continua a
-#: rifiutare il vuoto.
-UNKNOWN_UNIT = "non dichiarata"
-
 
 class Period:
     """**Su quando** si calcola: un elenco di finestre, non un intervallo solo.

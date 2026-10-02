@@ -24,6 +24,11 @@ def _riga(**cambi):
     return sap.Fact(**base)
 
 
+def _letta(sapere, subject="zcsazzurro", field="direzione:energy_generating_today"):
+    """La riga di `_riga()` come il prodotto la rilegge: un campo per nome."""
+    return sapere.get("integrazione", subject, field)
+
+
 # -- Il costruttore e' il cancello ------------------------------------------
 
 def test_una_riga_del_sapere_porta_i_due_assi_separati():
@@ -140,7 +145,7 @@ def sapere(tmp_path):
 def test_si_scrive_e_si_rilegge_uguale(sapere):
     sapere.write(_riga())
 
-    [letta] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    letta = _letta(sapere)
 
     assert letta.field == "direzione:energy_generating_today"
     assert letta.value == "produzione"
@@ -160,11 +165,11 @@ def test_la_chiave_e_la_TERNA_e_riscrivere_SOSTITUISCE(sapere):
     sapere.write(_riga(value="immissione", who="proprietario",
                        provenance="chiesto", evidence=None))
 
-    righe = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
 
-    assert len(righe) == 1
-    assert righe[0].value == "immissione"
-    assert righe[0].provenance == "chiesto"
+    assert sapere.summary()["totale"] == 1
+    assert riga.value == "immissione"
+    assert riga.provenance == "chiesto"
 
 
 def test_soggetti_diversi_con_lo_STESSO_campo_sono_righe_diverse(sapere):
@@ -172,12 +177,9 @@ def test_soggetti_diversi_con_lo_STESSO_campo_sono_righe_diverse(sapere):
     sapere.write(_riga(subject="zcsazzurro"))
     sapere.write(_riga(subject="solaredge"))
 
-    assert len(sapere.read(subject_kind="integrazione", subject="zcsazzurro")) == 1
-    assert len(sapere.read(subject_kind="integrazione", subject="solaredge")) == 1
-
-
-def test_leggere_un_soggetto_che_non_c_e_torna_VUOTO_non_un_errore(sapere):
-    assert sapere.read(subject_kind="entita", subject="sensor.mai_vista") == []
+    assert _letta(sapere, "zcsazzurro") is not None
+    assert _letta(sapere, "solaredge") is not None
+    assert sapere.summary()["totale"] == 2
 
 
 def test_un_campo_solo_si_chiede_per_nome(sapere):
@@ -206,7 +208,7 @@ def test_il_seme_del_repo_si_carica_e_NON_schiaccia_la_casa(sapere):
     sapere.seed([_riga(value="produzione", provenance="nostro",
                        verification=None, evidence=None)])
 
-    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
 
     assert riga.value == "immissione", "il seme ha schiacciato cio' che la casa sapeva"
     assert riga.provenance == "chiesto"
@@ -216,7 +218,7 @@ def test_il_seme_scrive_cio_che_ANCORA_non_c_e(sapere):
     """L'altra meta': un seme che non scrivesse mai non servirebbe a niente."""
     sapere.seed([_riga(provenance="nostro", verification=None, evidence=None)])
 
-    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
 
     assert riga.value == "produzione"
     assert riga.provenance == "nostro"
@@ -249,7 +251,7 @@ def test_il_seme_CORREGGE_le_righe_che_sono_ancora_SUE(sapere):
                                   verification=None, evidence=None,
                                   who="seme del repo")])
 
-    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
     assert riga.value == "immissione"
     assert corrette == 1
 
@@ -270,7 +272,7 @@ def test_il_seme_NON_tocca_una_riga_su_cui_qualcun_altro_ha_scritto(sapere):
     sapere.seed([_riga(value="produzione", provenance="nostro",
                        verification=None, evidence=None, who="seme del repo")])
 
-    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
     assert riga.value == "immissione"
     assert riga.who == "proprietario"
 
@@ -300,9 +302,11 @@ def test_una_riga_STORTA_sul_disco_non_fa_cadere_la_lettura(sapere, caplog):
     sapere._conn.commit()
 
     with caplog.at_level(logging.WARNING):
-        righe = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+        buona = _letta(sapere, field="buona")
+        storta = _letta(sapere, field="storta")
 
-    assert [r.field for r in righe] == ["buona"]
+    assert buona is not None and buona.field == "buona"
+    assert storta is None
     assert any("storta" in r.getMessage() for r in caplog.records)
 
 
@@ -330,7 +334,7 @@ def test_una_correzione_A_MANO_non_torna_indietro_al_riavvio(sapere):
     sapere.seed([_riga(value="produzione", provenance="nostro",
                        verification=None, evidence=None, who="seme del repo")])
 
-    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
     assert riga.value == "consumo_lordo", "il seme ha schiacciato una correzione a mano"
 
 
@@ -364,7 +368,7 @@ def test_un_seme_di_PRIORITA_ALTA_corregge_uno_di_priorita_bassa(sapere):
     sapere.seed([_riga(value="Indice AQI", provenance="importato",
                        evidence=None, who="l'installazione")], priority=1)
 
-    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
     assert riga.value.startswith("l'indice")
 
 
@@ -377,7 +381,7 @@ def test_un_seme_di_PRIORITA_BASSA_non_tocca_quello_del_repo(sapere):
     sapere.seed([_riga(value="Nome", provenance="importato",
                        evidence=None, who="l'installazione")], priority=1)
 
-    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    riga = _letta(sapere)
     assert riga.value == "la frase del repo"
 
 def test_migration_4_toglie_le_ricette_che_il_registro_rifiuta(tmp_path):

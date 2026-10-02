@@ -689,12 +689,6 @@ def _reading_row(r) -> dict:
             "first_occurred": None if first_occurred is None else float(first_occurred)}
 
 
-def _fact_row(r) -> dict:
-    return {"id": r["id"], "giorno": r["giorno"], "genere": r["genere"],
-            "protagonista": r["protagonista"], "inizio_ts": r["inizio_ts"],
-            "fine_ts": r["fine_ts"], "corpo": json.loads(r["corpo_json"])}
-
-
 class ObservationsStore:
     """La memoria dell'osservatore. Il lock e' lo stesso delle scritture anche
     in lettura: la connessione e' condivisa fra thread (`check_same_thread=
@@ -845,8 +839,7 @@ class ObservationsStore:
                 "SELECT MIN(quando_ts) AS primo FROM cambi").fetchone()
         return None if row is None or row["primo"] is None else float(row["primo"])
 
-    def readings_count(self, *, from_ts: float, to_ts: float,
-                       source: str | None = None) -> int:
+    def readings_count(self, *, from_ts: float, to_ts: float) -> int:
         """Quante righe grezze sono state scritte in questa finestra.
 
         **E' un numero del prodotto, non una diagnostica.** La spec dei tre
@@ -868,13 +861,10 @@ class ObservationsStore:
         """
         sql = "SELECT count(*) AS n FROM cambi WHERE quando_ts >= ? AND quando_ts < ?"
         args: list = [float(from_ts), float(to_ts)]
-        if source is not None:
-            sql += " AND fonte = ?"
-            args.append(source)
         with self._lock:
             return int(self._conn.execute(sql, args).fetchone()["n"])
 
-    def readings(self, *, from_ts: float, to_ts: float, subject: str | None = None,
+    def readings(self, *, from_ts: float, to_ts: float,
               source: str | None = None, limit: int = 200_000) -> list[dict]:
         """I cambi di una finestra, **dal piu' vecchio**.
 
@@ -898,9 +888,6 @@ class ObservationsStore:
         """
         sql = "SELECT * FROM cambi WHERE quando_ts >= ? AND quando_ts < ?"
         args: list = [float(from_ts), float(to_ts)]
-        if subject is not None:
-            sql += " AND soggetto = ?"
-            args.append(subject)
         if source is not None:
             sql += " AND fonte = ?"
             args.append(source)
@@ -1153,15 +1140,6 @@ class ObservationsStore:
                 (clean, float(when_ts if when_ts is not None else _time.time())))
             self._conn.commit()
         return True
-
-    def objective_history(self) -> list[dict]:
-        """Tutti gli obiettivi, **dal piu' recente**: e' una cronaca, e una
-        cronaca si legge da adesso all'indietro."""
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT text, written_ts FROM objective "
-                "ORDER BY written_ts DESC, id DESC").fetchall()
-        return [{"testo": r["text"], "scritto_ts": r["written_ts"]} for r in rows]
 
     def objective_at(self, ts: float) -> dict:
         """L'obiettivo che valeva a quell'istante -- la domanda che il resoconto

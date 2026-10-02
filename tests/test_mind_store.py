@@ -75,13 +75,6 @@ def test_i_cambi_tornano_dal_PIU_VECCHIO(archivio):
         [ADESSO, ADESSO + 10, ADESSO + 30]
 
 
-def test_si_puo_chiedere_un_soggetto_solo(archivio):
-    archivio.record(quando_ts=ADESSO, source="entita", subject="a", da=None, a="1")
-    archivio.record(quando_ts=ADESSO, source="entita", subject="b", da=None, a="1")
-    righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1, subject="a")
-    assert [r["soggetto"] for r in righe] == ["a"]
-
-
 def test_cambi_finestra_semiaperta_da_incluso_a_escluso(archivio):
     """La finestra e' [from_ts, to_ts): from_ts dentro, to_ts fuori. E' la
     convenzione che fa combaciare i giorni adiacenti senza sovrapporli --
@@ -310,7 +303,8 @@ def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):
         a.record(quando_ts=ADESSO + 1, source="entita",
                 subject="binary_sensor.fumo", da="off", a="on",
                 device_class="smoke")
-        riga_nuova = a.readings(from_ts=0.0, to_ts=ADESSO + 2, subject="binary_sensor.fumo")[0]
+        riga_nuova = next(r for r in a.readings(from_ts=0.0, to_ts=ADESSO + 2)
+                          if r["soggetto"] == "binary_sensor.fumo")
         assert riga_nuova["device_class"] == "smoke"
     finally:
         a.close()
@@ -429,7 +423,8 @@ def test_migration_5_adds_friendly_name_to_an_old_archive(tmp_path):
         # E la scrittura NUOVA, col nome, funziona sullo stesso archivio.
         store.record(quando_ts=1000.0, source="entita", subject="person.paolo",
                      da="home", a="not_home", friendly_name="Paolo")
-        nuova = store.readings(from_ts=0, to_ts=2000, subject="person.paolo")[0]
+        nuova = next(r for r in store.readings(from_ts=0, to_ts=2000)
+                     if r["soggetto"] == "person.paolo")
         assert nuova["friendly_name"] == "Paolo"
     finally:
         store.close()

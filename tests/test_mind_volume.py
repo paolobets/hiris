@@ -59,20 +59,6 @@ def test_si_contano_le_righe_della_finestra_e_solo_quelle(archivio):
     assert archivio.readings_count(from_ts=1000.0, to_ts=2000.0) == 2
 
 
-def test_si_puo_contare_una_sola_famiglia(archivio):
-    """Le entita' e le condizioni di sistema sono due volumi diversi con due
-    storie diverse: sulla casa vera le seconde sono poche centinaia su 22
-    giorni, le prime centinaia di migliaia. Sommarle nasconderebbe il -83%,
-    che riguarda le entita'."""
-    _scrivi(archivio, 1000.0, "sensor.x", "entita")
-    _scrivi(archivio, 1100.0, "sensor.y", "entita")
-    _scrivi(archivio, 1200.0, "problema:sonos.x", "sistema")
-
-    assert archivio.readings_count(from_ts=0.0, to_ts=GIORNO) == 3
-    assert archivio.readings_count(from_ts=0.0, to_ts=GIORNO, source="entita") == 2
-    assert archivio.readings_count(from_ts=0.0, to_ts=GIORNO, source="sistema") == 1
-
-
 def test_il_conto_non_ha_il_tetto_di_readings(archivio):
     """**Il difetto che questa porta esiste per non avere.** `readings()`
     tronca a 200.000 righe: contare la lunghezza della sua lista darebbe il

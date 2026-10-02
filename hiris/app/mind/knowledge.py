@@ -691,16 +691,6 @@ class KnowledgeStore:
 
     # -- lettura -----------------------------------------------------------
 
-    def read(self, *, subject_kind: str, subject: str) -> list[Fact]:
-        """Tutto cio' che si sa di un soggetto. Vuoto se non se ne sa niente --
-        **non un errore**: «non lo so» e' una risposta legittima."""
-        with self._lock:
-            rows = self._conn.execute(
-                f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
-                "WHERE subject_kind = ? AND subject = ? ORDER BY field",
-                (subject_kind, subject)).fetchall()
-        return _facts(rows)
-
     def get(self, subject_kind: str, subject: str, field: str) -> Fact | None:
         """Un campo solo, o `None` se non c'e'."""
         with self._lock:
@@ -815,11 +805,6 @@ class KnowledgeStore:
             deleted = self._delete(subject_kind, subject, field)
             self._conn.commit()
         return bool(deleted)
-
-    def count(self) -> int:
-        with self._lock:
-            return self._conn.execute("SELECT count(*) FROM knowledge").fetchone()[0]
-
 
 def now_ts() -> float:
     """L'orologio, in un posto solo: le prove lo sostituiscono senza toccare

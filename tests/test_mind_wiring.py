@@ -1561,7 +1561,7 @@ def test_se_le_traduzioni_NON_si_leggono_il_sapere_resta_com_era(tmp_path):
 
         asyncio.run(server.prime_state_translations(app))
 
-        assert sapere.count() == 0
+        assert sapere.summary()["totale"] == 0
     finally:
         sapere.close()
 

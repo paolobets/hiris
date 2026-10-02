@@ -61,8 +61,8 @@ class _FintoArchivioScope:
         e' il difetto n.3 di questo progetto."""
         return []
 
-    def readings_count(self, *, from_ts, to_ts, source=None):
-        self.finestre.append((from_ts, to_ts, source))
+    def readings_count(self, *, from_ts, to_ts):
+        self.finestre.append((from_ts, to_ts))
         return int(to_ts - from_ts)      # una riga al secondo: distingue i giorni
 
 
@@ -193,7 +193,7 @@ async def test_la_pagina_dice_QUANTO_SCRIVE_al_giorno():
 
     assert len(volume) >= 7
     assert all("giorno" in v and "righe" in v for v in volume)
-    assert len({giorno for giorno, _, _ in archivio.finestre}) == len(archivio.finestre)
+    assert len({giorno for giorno, _ in archivio.finestre}) == len(archivio.finestre)
     assert [v["giorno"] for v in volume] == sorted(v["giorno"] for v in volume)
 
 
