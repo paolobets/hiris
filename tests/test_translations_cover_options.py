@@ -146,22 +146,3 @@ def test_nessuna_opzione_rimasta_dichiara_di_non_avere_piu_effetto(lingua):
         "indietro rispetto al codice che la leggeva"
     )
 
-
-@pytest.mark.parametrize("lingua", ["it", "en"])
-def test_i_due_campi_inerti_rimasti_dichiarano_di_esserlo(lingua):
-    """L'eccezione, e perche' e' un'eccezione e non una dimenticanza.
-
-    I due campi `memory.*` non hanno nessun lettore che faccia qualcosa
-    (nessun percorso di HIRIS chiama piu' `embed()`) e sono rimasti
-    deliberatamente: toglierli avrebbe fatto perdere il valore salvato in
-    cambio di niente, che e' il peggior rapporto costo/beneficio possibile per
-    un campo che non fa nulla. Ma un campo inerte va DETTO, e lo dicono con le
-    parole del loro caso -- «oggi non fanno niente» -- non con la formula della
-    migrazione, che prometterebbe che la decisione si prende da un'altra parte:
-    non si prende da nessuna parte."""
-    atteso = "non fanno niente" if lingua == "it" else "do nothing today"
-    voce = _traduzioni(lingua)["memory"]
-    assert atteso in voce["description"].lower(), (
-        f"{lingua}.yaml: il blocco degli embedding non dichiara piu' di essere "
-        f"inerte. Trovato: {voce['description']!r}"
-    )

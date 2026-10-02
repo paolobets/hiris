@@ -723,7 +723,7 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # eccezioni, e il canarino a grana fine e' stato tolto invece che
     # aggiornato -- e' la disciplina scritta per `memory/resolver.py`.
     ("backends", "backends", frozenset()),
-    ("memory", "memory", frozenset({Path("resolver.py")})),
+    ("memory", "memory", frozenset()),
     ("usage", "usage", frozenset()),
     ("mind", "mind", frozenset()),
     ("action", "action", frozenset({Path("construction/composer.py")})),
@@ -762,30 +762,6 @@ def test_gli_ambiti_chiusi_restano_idempotenti(tmp_path):
         etichetta = percorso.replace("/", "_")
         _verifica_idempotenza(ROOT / "hiris" / "app" / percorso, ambito,
                               tmp_path / etichetta, residui_noti)
-
-
-def test_il_residuo_di_memoria_resolver_e_solo_inizio_start(tmp_path):
-    """La grana FINE del residuo noto di `memory/resolver.py` (sopra, in
-    `_SORVEGLIATI`): non basta sapere che il file diverge, serve sapere
-    COSA cambia -- l'eccezione a grana di file l'ha gia' nascosto una volta
-    (vedi `_sostituzioni_di_identificatori`). Se domani un'altra parola di
-    `resolver.py` entra nel glossario per un altro lotto, questa prova
-    arrossisce ANCHE SE il file resta nell'elenco dei cambiati sopra."""
-    import shutil
-
-    from _comune import ROOT
-    base = ROOT / "hiris" / "app" / "memory" / "resolver.py"
-    copia = tmp_path / "resolver.py"
-    shutil.copy(base, copia)
-    prima = copia.read_text(encoding="utf-8")
-    rinomina.applica(copia, "memory", scrivi=True)
-    dopo = copia.read_text(encoding="utf-8")
-    sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
-    assert sostituzioni == {("inizio", "start")}, (
-        f"memory/resolver.py diverge su {sostituzioni}, atteso solo "
-        "{('inizio', 'start')} -- un nuovo nome e' comparso: decidilo "
-        "davvero (applicalo, o traccialo qui) invece di lasciarlo dentro "
-        "un'eccezione a grana di file")
 
 
 def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
@@ -1796,13 +1772,14 @@ def test_l_ottava_rete_chiede_l_INOLTRO_e_non_solo_la_chiave(tmp_path):
                                       radice=tmp_path) == []
 
 
-def test_l_ottava_rete_conta_cinque_siti_nel_prodotto():
+def test_l_ottava_rete_conta_tre_siti_nel_prodotto():
     """Il perimetro si misura come il contenuto (regola scritta il 01/09 dopo
-    il caso di `buchi`). Cinque involucri con `**kwargs` inoltrato in tutto il
-    repo: tre `kwargs.get("model")` (`claude_runner.py`, `llm_router.py` due
-    volte) e i due dell'involucro di `tests/test_model_resolution.py`. Se ne
-    nasce un sesto, questo test lo dice: e' un posto dove una rinomina futura
-    puo' rompersi in silenzio.
+    il caso di `buchi`). Tre involucri con `**kwargs` inoltrato in tutto il
+    repo: un `kwargs.get("model")` (`claude_runner.py`) e i due dell'involucro
+    di `tests/test_model_resolution.py`. Erano cinque fino alla 3.72.2: i due
+    di `llm_router.py` sono usciti con la Tappa 0 (il ramo del modello
+    esplicito di `chat` e `chat_stream`). Se ne nasce un quarto, questo test
+    lo dice: e' un posto dove una rinomina futura puo' rompersi in silenzio.
     """
     import ast
 
@@ -1816,8 +1793,6 @@ def test_l_ottava_rete_conta_cinque_siti_nel_prodotto():
                     for chiave, _, _ in rinomina._letterali_inoltrati(albero)]
     assert sorted(trovati) == [
         ("hiris/app/claude_runner.py", "model"),
-        ("hiris/app/llm_router.py", "model"),
-        ("hiris/app/llm_router.py", "model"),
         ("tests/test_model_resolution.py", "now"),
         ("tests/test_model_resolution.py", "occurrences")], trovati
 
