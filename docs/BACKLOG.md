@@ -107,8 +107,7 @@ la Tappa 0; l'ordine **a scaglioni** -- tappe 0-3, poi gli strati 1 e 2 degli at
 4-6, poi gli strati 3 e 4, poi 7-8. In corso la Tappa 0, «Si toglie e si prepara».
 
 **Stato (02/10/2026, sera).** La Tappa 0 e' scritta per intero sul ramo
-`claude/project-thread-6h94lt` (PR 44), **non ancora rilasciata**: se rilasciarla subito o
-attendere lo decide il proprietario. Cosa c'e' dentro: la rete (registro leggibile da un
+`claude/project-thread-6h94lt` (PR 44) ed **esce come 3.73.0**, per decisione del proprietario. Cosa c'e' dentro: la rete (registro leggibile da un
 programma, sonda di parita', fotografia delle porte, due batterie con la prima misura in token e
 tempi, quattro cancelli nel pre-push e nella CI); le uscite (l'MCP esterno, lo streaming della
 chat, l'embedder, il codice senza chiamanti, il censore dei tipi fra gli attrezzi, la semina delle
@@ -1077,7 +1076,7 @@ regola di Cloudflare, cancellare `/opt/hiris-mcp-gateway`, e cercare nel repo ci
 (prove, guida, glossario) per toglierlo. **Da verificare prima**: che nessun client del
 proprietario lo chiami ancora.
 
-**02/10/2026: la parte nel repo e' fatta**, in attesa di rilascio (Tappa 0 dello sprint «Una
+**02/10/2026: la parte nel repo e' fatta**, con la 3.73.0 (Tappa 0 dello sprint «Una
 fonte sola di verita'»): `GET /api/entities`, `api/handlers_entities.py` e le loro prove sono
 usciti; il ponte interno (`/api/mcp`, `/api/reasoning/claim`, `/api/reasoning/submit`) resta. La
 parte sulla macchina .31 (fermare il servizio, la regola di Cloudflare, la cartella) resta da fare

@@ -628,7 +628,7 @@ In `docs/superpowers/audit-2026-10-01/` — cartella fuori da git, archivio dell
   Le misure della tappa: `docs/misure/2026-10-tappa-0.md`.
   L'ordine dopo la Tappa 3 (domanda (b)): **a scaglioni** -- tappe 0-3, strati 1 e 2 degli attori,
   tappe 4-6, strati 3 e 4, tappe 7-8. Ogni strato nasce sul pezzo gia' unificato.
-- **02/10/2026** — **Tappa 0 chiusa sul ramo**, in rilascio come 3.73.0. La fotografia a freddo delle
+- **02/10/2026** — **Tappa 0 chiusa**, rilasciata come 3.73.0. La fotografia a freddo delle
   porte e' identica a quella di partenza dopo ogni passo; i quattro cancelli sono nel pre-push e
   nella CI; le misure di partenza sono in `docs/misure/2026-10-tappa-0.md`. Decisioni del
   proprietario dello stesso giorno: i numeri di R18 sono approvati (scritti qui sopra, al requisito);

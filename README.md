@@ -315,7 +315,7 @@ each with its own verification, not a catalogue with a gate — plus a scheduler
 through the services door on its own, later, for a promise you made.
 
 Answers arrive in one JSON response: the streaming branch of `POST /api/chat`
-was removed with the release after 3.72.2 (no page ever asked for it), and a client that still asks
+was removed in 3.73.0 (no page ever asked for it), and a client that still asks
 for `text/event-stream` gets the same JSON answer. Closed sessions are
 summarised back into the next conversation.
 
@@ -516,8 +516,7 @@ The option is read once at startup: after changing it, restart the add-on.
 
 ### Removed options
 
-`memory.embedding_provider` and `memory.embedding_model` were removed with the
-release after 3.72.2:
+`memory.embedding_provider` and `memory.embedding_model` were removed in 3.73.0:
 nothing in HIRIS computed an embedding, and the two fields configured nothing.
 A value already saved for them is ignored. The `mayan.*` block and
 `memory.rag_k` were removed in 2.1.0 together with the document integration and
@@ -607,7 +606,7 @@ rewritten, with a design of its own.
   in the chat — it is the one way this add-on can, on a channel you chose
   yourself, not one of its own
 - **MQTT**, the external gateway (and `GET /api/entities`, the route it used —
-  removed with the release after 3.72.2), Test Run, the sandbox
+  removed in 3.73.0), Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
 - **The thirty-four-tool catalogue** — replaced by the twelve above
 
