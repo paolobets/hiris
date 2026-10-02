@@ -46,12 +46,23 @@ def test_la_lettura_non_si_e_svuotata():
     assert not thin, thin
 
 
+def _an_open_entry(path) -> str:
+    """Una voce ancora aperta, CHIESTA al registro. Scritta a mano («M-13»)
+    era giusta finche' quella voce non e' stata chiusa davvero, il 02/10/2026:
+    quel giorno due prove sono diventate rosse per aver fatto il loro lavoro."""
+    still_open = [entry.id for entry in registro.read_entries(path)
+                  if not entry.closed and entry.chapter == "M"]
+    assert still_open, "nessuna voce aperta nel capitolo M: la prova non guarda niente"
+    return still_open[0]
+
+
 def test_una_voce_chiusa_non_e_anche_aperta(tmp_path):
     copy = tmp_path / "registro.md"
     copy.write_text(REGISTER.read_text(encoding="utf-8"), encoding="utf-8")
-    registro.close(copy, "M-13", version="3.73.0", commit="abc1234",
+    chosen = _an_open_entry(copy)
+    registro.close(copy, chosen, version="3.73.0", commit="abc1234",
                    note="costante cancellata")
-    found = [entry for entry in registro.read_entries(copy) if entry.id == "M-13"]
+    found = [entry for entry in registro.read_entries(copy) if entry.id == chosen]
     assert len(found) == 1
     assert found[0].closed
     assert found[0].chapter == "M"
@@ -60,9 +71,10 @@ def test_una_voce_chiusa_non_e_anche_aperta(tmp_path):
 def test_chiudere_due_volte_o_una_voce_che_non_c_e_si_rifiuta(tmp_path):
     copy = tmp_path / "registro.md"
     copy.write_text(REGISTER.read_text(encoding="utf-8"), encoding="utf-8")
-    registro.close(copy, "M-13", version="3.73.0", commit="abc1234", note="x")
-    with pytest.raises(SystemExit, match="M-13"):
-        registro.close(copy, "M-13", version="3.73.0", commit="abc1234", note="x")
+    chosen = _an_open_entry(copy)
+    registro.close(copy, chosen, version="3.73.0", commit="abc1234", note="x")
+    with pytest.raises(SystemExit, match=chosen):
+        registro.close(copy, chosen, version="3.73.0", commit="abc1234", note="x")
     with pytest.raises(SystemExit, match="Z-99"):
         registro.close(copy, "Z-99", version="3.73.0", commit="abc1234", note="x")
 
