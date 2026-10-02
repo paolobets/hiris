@@ -361,14 +361,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Reperto | Righe | Corretta da | Fonti |
 |---|---|---|---|---|
-| M-01 | `backends/embeddings.py` intero (259 righe): `app["embedding_provider"]` scritto e mai letto, `embed()` mai chiamato | `backends/embeddings.py`; `server.py:4166-4176`; `config.yaml:197-198,277-278`; `run.sh:48-49` |  | reg · cop-2 M4 |
-| M-02 | `simple_chat` x4 e `_resolve_current_model` (due runner) senza chiamanti | `claude_runner.py:900`; `openai_compat_runner.py:629`; `backends/ollama.py:38`; `backends/base.py:8` | cop-7 (incompleta) | reg · cop-7 |
-| M-03 | `backends/ollama.OllamaBackend` e `backends/base.LLMBackend` (55 + 9 righe): solo test | `backends/ollama.py`; `backends/base.py` |  | reg |
-| M-04 | `chat_stream` (due runner, router, ramo `wants_stream` di `handle_chat`): nessun JS lo chiede | `claude_runner.py:1207-1214`; `openai_compat_runner.py:1022-1346`; `llm_router.py:296-327`; `handlers_chat.py:1258-1325` |  | reg · cop-7 · cop-8 |
-| M-05 | `LLMRouter` ramo `model != "auto"` con `_route`, `_is_openrouter_model`, `_is_openai_model` | `llm_router.py:234-242` |  | reg |
-| M-06 | `AUTO_MODEL_MAP["agent"]` in entrambe le mappe: nessun `agent_type="agent"` | `claude_runner.py:485`; `openai_compat_runner.py:114` |  | reg |
+| M-02 | `_resolve_current_model` (due runner) senza chiamanti di produzione: lo usano 15 asserzioni di `tests/test_provider_default_model.py` come cucitura di prova. Esce alla Tappa 1, quando quelle prove passano da `chat()`. La parte `simple_chat` x4 e' USCITA con la Tappa 0, Task 10 (38684dae) | `claude_runner.py`; `openai_compat_runner.py` | cop-7 (incompleta) | reg · cop-7 |
 | M-07 | `llm_router._STRATEGY_ORDER`/`_norm_policy`/`chat_policy`/`strategy`: solo ramo «libreria» e `_chain_as_it_was` | `llm_router.py:52-62`; `server.py:3240,5258-5266` |  | reg · cop-2 |
-| M-08 | `memory/resolver.Lookup.find` e l'indice dei termini: zero chiamanti di produzione | `memory/resolver.py:13,197,243,247,289,296,363,384` | cop-9 (incompleta, imprecisa) | reg · cop-9 |
 | M-09 | `action/registry.capability_bits` e `switchable_domains` con sei ausiliarie (~150 righe): solo uno script e le prove | `action/registry.py:404,498,523` |  | reg |
 | M-10 | `home_space/type_census.py` (907 righe): strumento di prova nel pacchetto di produzione | `home_space/type_census.py`; `handlers_mind.py:45,575` |  | reg |
 | M-11 | L'attuatore in pausa dal 3.72.2: 318 righe in `server.py`, `mind/actuator.py` 82, `actuator_turn.py` 221 | `server.py:2001-2336,4508` | cop-1 (incompleta) | reg · cop-1 · cop-2 |
@@ -403,7 +397,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-40 | Residui per tabelle: `casa.db` non aperto da nessun codice, `cambi.state_class`/`source_type` (vedi G-12, G-06) | — |  | reg |
 | M-41 | `server.py` «Disinstallazione della card Lovelace»: ~190 righe eseguite a ogni avvio (vedi E-01, E-08) | `server.py:353-603,3399` |  | reg · cop-1 · cop-2 |
 | M-42 | `_attempt_detail`: un solo chiamante, una riga di formattazione (indirezione, non morta) | `server.py:2795-2798` |  | cop-1 M2 |
-| M-43 | `agent/runner.poll_seconds()` senza chiamanti; la stessa lettura scritta a mano in `server.py:3160` | `agent/runner.py:2128-2132` |  | cop-2 M2 · cop-7 N-M1 |
 | M-44 | `import time as _time` dentro `_on_startup` accanto a `time` di modulo | `server.py:3321` contro `:9` |  | cop-2 M3 |
 | M-45 | `resolved.get("entity")`: chiave che il risolutore non restituisce mai | `tools.py:2491`; `ha_client.py:830` |  | cop-3 M-n1 |
 | M-46 | `Subject.last` calcolato per stati e valori e mai letto | `house_history.py:340-343` |  | cop-3 M-n2 |
@@ -428,18 +421,14 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-65 | `as_document`, `measured_value` e tre forme di rotta (`formato=documento`, senza `day`): nessun lettore | `mind/report.py:450-472,486-551`; `handlers_mind.py:227-241,254-259,442-446` |  | cop-6 N-16 |
 | M-66 | `KnowledgeStore.read` e `KnowledgeStore.count`: solo test | `mind/knowledge.py:694-702,819-821` |  | cop-6 N-17 |
 | M-67 | Costanti e parametri senza lettori: `OUTCOME_GESTURES`, `facts.GENRES`, `readings(subject=)`, `readings_count(source=)` | `actuator_turn.py:41`; `facts.py:75`; `mind/store.py:849,877` |  | cop-6 N-18 |
-| M-68 | `OpenAICompatRunner.circuit_state()`: nessun lettore esterno (dato che c'è e nessuno può chiedere) | `openai_compat_runner.py:596-609` |  | cop-7 N-M2 |
-| M-69 | `openai_compat_runner._TOOL_LEAK_RE = LEAKED_TOOL_NAME_RE`: alias privato, un solo lettore | `openai_compat_runner.py:159,180` |  | cop-7 N-M3 |
-| M-70 | Import locali ridondanti nei runner (`json as _json`, `hashlib as _hashlib`, costanti già importate in testa) | `claude_runner.py:1252`; `openai_compat_runner.py:267,999,1248` |  | cop-7 N-M4 |
+| M-68 | `OpenAICompatRunner.circuit_state()`: NON e' codice morto (la chiama `_circuit_is_open`, riletto il 02/10/2026); resta vero che nessuno fuori dal runner puo' chiedere lo stato del circuito: e' un dato che c'e' e nessuno puo' chiedere, Tappa 6 | `openai_compat_runner.py` |  | cop-7 N-M2 |
 | M-71 | `servizi.STATI`: definita, mai letta (stati come letterali nell'SQL) | `api/servizi.py:51` |  | cop-8 M1 |
 | M-72 | `outcome` della consegna al ponte: otto valori che nessuno legge (`error` esce con `ok: true`) | `api/handlers_reasoning.py:88-184` |  | cop-8 M2 |
 | M-73 | Il ramo «ruolo non l'ho potuto sapere (trattato come utente)» irraggiungibile [D] | `api/handlers_chat.py:359-363`; `soffitto.py:150-164` |  | cop-8 M3 |
 | M-74 | Segnali e cuciture di prova nel prodotto (`app["_clock"]`, `"input"`, `thread_to_context`, rami dichiarati irraggiungibili) | `handlers_reasoning.py:50-51`; `handlers_chat.py:53-54,544,1400`; `chat_thread.py:78-85`; `handlers_home_space.py:46-84,216-228` |  | cop-8 M4 |
 | M-75 | Il ramo «ripristino dalla chat» di `Workshop.restore` non ha chiamanti di produzione | `workshop.py:987-1001` |  | cop-9 N-M-1 |
 | M-76 | `REASON_DISDETTA`, il `motivo` delle righe `disdetta` e `_migration_3`: scritti, mai letti | `revisions.py:50,110-130,404-406`; `constructions-route.js:633-644` |  | cop-9 N-M-2 |
-| M-77 | `nomi_di_ripiego` e `nome_dedotto` di `costruisci_indice` senza lettore: la correzione della pagina Memoria non ha mai funzionato | `memory/resolver.py:384-461`; `handlers_memory.py:121-157` |  | cop-9 N-M-3 |
 | M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso | `mind/operations.py` |  | compl N-2 |
-| M-79 | `LLMRouter._all`: nessun chiamante | `llm_router.py` |  | compl N-7 |
 
 ---
 
@@ -554,6 +543,7 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-19 | `ChatSettings.load` solleva (`[1,2]` → `AttributeError`; `thinking_budget: "abc"` → `ValueError`) e `server.py:3809` la chiama senza `try` |  | ESEGUITO | già nel registro v1 dentro X-10 (docstring «non solleva mai»); nessun rapporto di copertura l'ha riletta | reg X-10 (d7 §1.9) |
 | S-20 | L'avviso «il bersaglio è cambiato» di una promessa non può mai partire: lo spazzino legge `occurrence["anteprima"]` (`sweeper.py:202-205`), la porta scrive `"bersaglio"` (`actuator.py:816`); alla nascita `_count_target` passa il bersaglio non tradotto, quindi `entities_at_birth` è sempre NULL |  | LETTO (non eseguito) | Stato DIVERGENTE, Unirla CC; la prova usa una porta finta | compl N-1 |
 | S-21 | Nessuna prova fissa che un servizio firmato (`auth_via="canale"`) non arrivi a `/api/mcp`: il codice lo impedisce, ma senza sorveglianza |  | LETTO | dal censimento dell'MCP esterno (`mcp-esterno.md`, «Non stabilito»); e' un comportamento dei permessi: Tappa 7 | Tappa 0, Task 9 |
+| S-22 | La pagina Memoria mostra il nome di un'entita' ancorata solo se il REGISTRO ne ha uno: per le entita' col nome solo nel `friendly_name` (la norma su questa casa) l'ancora esce senza nome. I nomi di ripiego che dovevano rimediare entravano solo nell'indice di `find()` e non hanno mai avuto effetto |  | LETTO | `api/handlers_memory.py::_resolve_tether` legge `nome`; dichiarazione D8 della Tappa 0: si ripara con la resa unica (Tappa 4) | Tappa 0, Task 13 |
 
 ---
 
@@ -816,3 +806,14 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 
 | Id | Voce | Chiusa con | Commit | Cosa è stato cancellato |
 |---|---|---|---|---|
+| M-01 | `backends/embeddings.py` intero (259 righe): `app["embedding_provider"]` scritto e mai letto, `embed()` mai chiamato | 3.73.0 (da rilasciare) | 508a104f | backends/embeddings.py, le opzioni memory.*, le traduzioni e gli export di run.sh |
+| M-03 | `backends/ollama.OllamaBackend` e `backends/base.LLMBackend` (55 + 9 righe): solo test | 3.73.0 (da rilasciare) | 38684dae | la classe OllamaBackend e backends/base.py; resta in ollama.py la guardia sull'indirizzo, che il registro non vedeva e che tre punti del prodotto chiamano |
+| M-04 | `chat_stream` (due runner, router, ramo `wants_stream` di `handle_chat`): nessun JS lo chiede | 3.73.0 (da rilasciare) | 38684dae | chat_stream nei due runner e nel router, il ramo SSE di handle_chat |
+| M-05 | `LLMRouter` ramo `model != "auto"` con `_route`, `_is_openrouter_model`, `_is_openai_model` | 3.73.0 (da rilasciare) | 38684dae | il ramo del modello esplicito di LLMRouter.chat, _route, _is_openai_model, _is_openrouter_model, _backend_name, _ordered_backends |
+| M-06 | `AUTO_MODEL_MAP["agent"]` in entrambe le mappe: nessun `agent_type="agent"` | 3.73.0 (da rilasciare) | 38684dae | la voce agent delle due AUTO_MODEL_MAP e le prove che la fissavano |
+| M-08 | `memory/resolver.Lookup.find` e l'indice dei termini: zero chiamanti di produzione | 3.73.0 (da rilasciare) | fa268542 | Lookup.find, l'indice dei termini, _compila, _normalize_con_mappa |
+| M-43 | `agent/runner.poll_seconds()` senza chiamanti; la stessa lettura scritta a mano in `server.py:3160` | 3.73.0 (da rilasciare) | 38684dae | agent/runner.poll_seconds |
+| M-69 | `openai_compat_runner._TOOL_LEAK_RE = LEAKED_TOOL_NAME_RE`: alias privato, un solo lettore | 3.73.0 (da rilasciare) | 38684dae | l'alias _TOOL_LEAK_RE |
+| M-70 | Import locali ridondanti nei runner (`json as _json`, `hashlib as _hashlib`, costanti già importate in testa) | 3.73.0 (da rilasciare) | 38684dae | gli import locali dentro chat_stream, usciti con lei; l'alias hashlib di modulo in openai_compat_runner non e' un import locale e resta |
+| M-77 | `nomi_di_ripiego` e `nome_dedotto` di `costruisci_indice` senza lettore: la correzione della pagina Memoria non ha mai funzionato | 3.73.0 (da rilasciare) | fa268542 | il parametro nomi_di_ripiego e nome_dedotto dell'indice; il difetto della pagina Memoria e' la voce S-22 |
+| M-79 | `LLMRouter._all`: nessun chiamante | 3.73.0 (da rilasciare) | 38684dae | LLMRouter._all |
