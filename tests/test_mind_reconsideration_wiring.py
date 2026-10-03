@@ -746,6 +746,36 @@ async def test_i_lotti_successivi_partono_SENZA_aspettare_la_cadenza(
 
 
 @pytest.mark.asyncio
+async def test_un_lotto_della_campagna_in_corso_NON_cala_la_sonda(
+        archivio, coda, piano_acceso):
+    """A-19 (Tappa 2, Task 8): la finestra di memoria serve solo al lotto che
+    ANNOTA la riconsiderazione (il primo: `apply_answer` la scrive solo con
+    `record=True`, e il turno del ponte porta `annota = not in_corso`). I
+    lotti successivi della stessa campagna la misuravano lo stesso -- su
+    tutte le entita' dell'anagrafe -- e la buttavano.
+
+    Contato sul codice del 04/10/2026: la misura e' una raffica di dieci
+    sonde, piu' sette se la memoria finisce dentro la scala
+    (`LADDER_RUNGS = 10`, `FINE_STEPS = 8`); con la casa finta di questo file
+    (sette giorni di memoria) sono diciassette.
+
+    Mutazione (verificata eseguendola): misurare anche quando la campagna e'
+    in corso -- rossa (`assert 17 == 0`)."""
+    from hiris.app.server import SCOPE_BATCH
+
+    anagrafe = _Anagrafe(_entita_molte(SCOPE_BATCH + 3))
+    app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
+    await _lotto_servito(app, coda, archivio)
+
+    house = _house()
+    esito = await reconsideration_round(app, house)
+
+    assert esito == {"accodata": True}
+    assert coda.latest("scope")["wake"]["annota"] is False
+    assert _probes(house) == 0
+
+
+@pytest.mark.asyncio
 async def test_la_riconsiderazione_si_annota_UNA_volta_per_campagna(
         archivio, coda, piano_acceso):
     """Mutazione che la uccide: annotare a ogni lotto -- la cadenza risulterebbe

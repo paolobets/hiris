@@ -1736,7 +1736,13 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         logger.info("osservatore: riconsidero la casa (%s), lotto di %d -- %s",
                     route, len(lotto), why)
         campagna_ts = time.time()
-        window_s = await measure_memory_window(
+        # **La finestra si misura solo per il lotto che la annota** (A-19,
+        # Tappa 2, Task 8): la riconsiderazione la scrive solo il primo lotto
+        # della campagna (`apply_answer` con `record=True`, il turno del ponte
+        # con `annota`). I lotti successivi la misuravano su tutte le entita'
+        # -- dieci sonde, piu' sette se la memoria cade dentro la scala -- e
+        # la buttavano.
+        window_s = None if in_corso else await measure_memory_window(
             ha_client, sorted(e["id"] for e in home_space.get("entita", []) if e.get("id")))
         if route == "ponte":
             return _enqueue_scope_turn(app, store, home_space, reason=why,
