@@ -912,6 +912,32 @@ class Watcher:
             written += 1
         return written
 
+    def _reseal_archived_titles(self) -> None:
+        """I titoli `log:` scritti prima che `watch_system` li sigillasse
+        (fino alla 3.73.2), sigillati ora con la stessa regola
+        (`redaction.seal_free_text`) -- decisione del proprietario del
+        03/10/2026. Il registro dice **quanti**, mai quali: il valore di un
+        titolo e' proprio cio' che non deve uscire. Tace quando non c'e'
+        niente da sigillare, cioe' da ogni avvio dopo il primo.
+
+        Non solleva mai, come `rebuild_conditions`: un archivio che non
+        risponde lascia i titoli com'erano, non ferma l'avvio. Senza
+        `secrets.yaml` non sigilla niente.
+        """
+        seal = home_assistant_seal()
+        if not seal.readable:
+            return
+        try:
+            rows, reports = self._store.reseal_titles(
+                lambda text: seal_free_text(text, seal))
+        except Exception as error:
+            logger.warning("osservatore: titoli archiviati non sigillati (%s)",
+                           type(error).__name__)
+            return
+        if rows or reports:
+            logger.info("osservatore: sigillati i segreti in %d titoli archiviati "
+                        "e %d resoconti", rows, reports)
+
     def rebuild_conditions(self) -> None:
         """Risemina `self._conditions` **e** `self._automation_faults` da
         cio' che l'archivio gia' sa (Task 4 di «le tracce e il log»: prima
@@ -965,7 +991,13 @@ class Watcher:
         filtrarle a monte, nella query, e' insieme la correzione del difetto e
         il modo di non caricare inutilmente tutto il resto in dizionari
         Python a ogni avvio.
+
+        **Prima, il sigillo dei segreti sui titoli gia' archiviati**
+        (`_reseal_archived_titles`, Tappa 3, Task 0): questo e' l'unico
+        passo dell'avvio in cui l'osservatore rilegge il proprio archivio, e
+        quelle righe sono sue.
         """
+        self._reseal_archived_titles()
         try:
             # La finestra e' quella intera che l'archivio puo' avere: da zero
             # (l'inizio dei tempi, per un archivio che comunque pota da solo)

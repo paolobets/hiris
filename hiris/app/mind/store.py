@@ -793,6 +793,64 @@ class ObservationsStore:
                 (day, json.dumps(report, ensure_ascii=False), _time.time()))
             self._conn.commit()
 
+    def reseal_titles(self, seal_text) -> tuple[int, int]:
+        """Ripassa `seal_text` sui titoli GIA' scritti delle condizioni `log:`
+        e sui `titolo` dei resoconti, e torna quante righe e quanti resoconti
+        ha cambiato.
+
+        **Perche' esiste** (Tappa 3, Task 0, decisione del proprietario del
+        03/10/2026). Fino alla 3.73.2 l'osservatore archiviava il titolo di
+        una voce del registro di Home Assistant senza il sigillo dei segreti;
+        le righe scritte allora restano nell'archivio ventidue giorni, e i
+        resoconti che le citano piu' a lungo. Le sigilla l'add-on, all'avvio.
+
+        `seal_text` e' una funzione testo -> testo (il sigillo lo sceglie chi
+        chiama): l'archivio sa dove stanno i titoli, non cosa sia segreto.
+
+        **Dei resoconti si sigilla ogni `titolo`**, a qualunque profondita':
+        dentro la cronaca e il primo piano, anche quello di un'integrazione,
+        che e' un nome scritto dal proprietario -- lo stesso prezzo dichiarato
+        dal sigillo, un pezzo identico a un segreto viene oscurato.
+        **`scritto_ts` non cambia**: sigillare non e' rifare il giorno, e
+        l'istante e' cio' che sveglia il giro dell'analista
+        (`report_stamps`).
+
+        Idempotente: un testo gia' sigillato non cambia, e dal secondo avvio
+        torna `(0, 0)` senza scrivere niente.
+        """
+        def resealed(value):
+            if isinstance(value, dict):
+                return {key: (seal_text(item) if key == "titolo" and isinstance(item, str)
+                              else resealed(item))
+                        for key, item in value.items()}
+            if isinstance(value, list):
+                return [resealed(item) for item in value]
+            return value
+
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, title FROM cambi WHERE fonte = 'sistema' "
+                "AND soggetto LIKE 'log:%' AND title IS NOT NULL").fetchall()
+            changed_rows = [(sealed, r["id"]) for r in rows
+                            if (sealed := seal_text(r["title"])) != r["title"]]
+            reports = self._conn.execute(
+                "SELECT giorno, corpo_json FROM resoconto").fetchall()
+            changed_reports = []
+            for r in reports:
+                body = json.loads(r["corpo_json"])
+                sealed = resealed(body)
+                if sealed != body:
+                    changed_reports.append(
+                        (json.dumps(sealed, ensure_ascii=False), r["giorno"]))
+            if changed_rows or changed_reports:
+                self._conn.executemany("UPDATE cambi SET title = ? WHERE id = ?",
+                                       changed_rows)
+                self._conn.executemany(
+                    "UPDATE resoconto SET corpo_json = ? WHERE giorno = ?",
+                    changed_reports)
+                self._conn.commit()
+        return len(changed_rows), len(changed_reports)
+
     def report(self, day: str) -> dict | None:
         """Il resoconto di un giorno, o `None` se quel giorno non e' mai stato
         aggregato. **Non e' un resoconto vuoto**: «non e' successo niente» e
