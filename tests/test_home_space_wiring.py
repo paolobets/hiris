@@ -6,10 +6,11 @@ Home Assistant, dove lo si interroga, e' il client vero sulla casa finta
 costruito al volo con `get_states`. Cio' che il codice ha chiesto si legge in
 `house.calls`.
 
-Restano sul trasporto finto le prove dello SMISTAMENTO degli eventi
-(`_FintoWSEventi` dato come sessione a `_ws_loop`): la connessione di lunga
-vita della casa finta (`SilentConnection`) tace per costruzione -- una casa
-congelata non manda eventi -- e non sa ne' consegnarne ne' cadere.
+Le prove dello SMISTAMENTO degli eventi girano `_ws_loop` sulla connessione
+di lunga vita della casa finta (`SilentConnection`): dal Task 7 della Tappa 2
+sa consegnare gli eventi nella forma di Home Assistant e cadere. Fino ad
+allora avevano un trasporto finto loro (`_FintoWSEventi`), che consegnava
+eventi senza id d'iscrizione anche a chi non si era iscritto.
 """
 import asyncio
 import sqlite3
@@ -17,7 +18,6 @@ import sys
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-import aiohttp
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
@@ -33,7 +33,7 @@ from tests._casa_sintetica import synthetic_inputs
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from casa_finta import CasaFinta
+from casa_finta import CasaFinta, SilentConnection
 
 # La config minima che Home Assistant restituisce a `get_config`: da questa
 # fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
@@ -168,55 +168,34 @@ async def test_una_rilettura_del_comportamento_fallita_non_uccide_l_ascoltatore(
     assert guarda_finta.await_count == 2
 
 
-class _MsgFinto:
-    """Un messaggio TEXT del WebSocket di HA che porta un evento."""
-
-    def __init__(self, event_type: str, data: dict):
-        self.type = aiohttp.WSMsgType.TEXT
-        self._payload = {"type": "event", "event": {"event_type": event_type, "data": data}}
-
-    def json(self):
-        return self._payload
-
-
-class _FintoWSEventi:
-    """Consegna auth_required/auth_ok, poi la sequenza di eventi data, poi si
-    blocca -- il test cancella il task invece di aspettare una fine che in
-    produzione non arriva mai. Stessa forma di _FakeWS in test_ha_client_invio.py."""
-
-    def __init__(self, eventi: list[tuple[str, dict]]):
-        self._auth = [{"type": "auth_required"}, {"type": "auth_ok"}]
-        self._eventi = list(eventi)
-        self.comandi: list[dict] = []
-
-    async def receive_json(self):
-        return self._auth.pop(0)
-
-    async def send_json(self, payload):
-        self.comandi.append(payload)
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return False
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if self._eventi:
-            event_type, data = self._eventi.pop(0)
-            return _MsgFinto(event_type, data)
-        await asyncio.sleep(3600)  # nessun altro evento: si blocca finche' il test non cancella
+async def _listening(client: HAClient, events: list[tuple[str, dict]]) -> SilentConnection:
+    """Apre il websocket di lunga vita di `client` su una connessione finta,
+    aspetta che ascolti, gli fa mandare `events` da Home Assistant e lascia
+    che li smisti. La prima connessione non avvisa nessuno (D2 della Tappa 2):
+    cio' che gli ascoltatori sentono viene solo dagli eventi."""
+    connection = client._session
+    await client.start_websocket()
+    await asyncio.wait_for(client.ws_ready.wait(), 2)
+    for event_type, data in events:
+        assert connection.push_event(event_type, data), (
+            f"il client non si e' iscritto a {event_type}")
+    for _ in range(20):
+        await asyncio.sleep(0)
+    return connection
 
 
-class _FintaSessioneEventi:
-    def __init__(self, ws: _FintoWSEventi):
-        self._ws = ws
+async def _stop(client: HAClient) -> None:
+    client._ws_task.cancel()
+    try:
+        await client._ws_task
+    except asyncio.CancelledError:
+        pass
 
-    def ws_connect(self, url):
-        return self._ws
+
+def _client_on_silent_connection() -> HAClient:
+    client = HAClient(base_url="http://ha.test", token="t")
+    client._session = SilentConnection()
+    return client
 
 
 @pytest.mark.asyncio
@@ -233,31 +212,24 @@ async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti()
     verso `add_registry_listener` (filtrato su action=="create"): e' uscito
     con la context map, il suo unico chiamante di produzione (vedi
     task-2-report.md) -- il caso resta, l'assert sul registro no.
+
+    Dal Task 7 della Tappa 2 l'evento arriva solo se il client si e' iscritto
+    (`push_event` lo rifiuta altrimenti, come Home Assistant), e la prima
+    connessione non apre piu' la lista con «riconnessione».
     """
-    ws = _FintoWSEventi([
+    client = _client_on_silent_connection()
+    anagrafe_chiamate: list[str] = []
+    client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+
+    await _listening(client, [
         ("floor_registry_updated", {}),
         ("entity_registry_updated", {"action": "create", "entity_id": "light.nuova"}),
         ("entity_registry_updated", {"action": "update", "entity_id": "light.rinominata"}),
     ])
-    client = HAClient(base_url="http://ha.test", token="t")
-    client._session = _FintaSessioneEventi(ws)
+    await _stop(client)
 
-    anagrafe_chiamate: list[str] = []
-    client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
-
-    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
-    await asyncio.sleep(0.05)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-    # "riconnessione" (fix Task 6, punto 2) apre la lista: ogni connessione
-    # riuscita rifa' l'anagrafe, non solo gli eventi ricevuti mentre era su.
     assert anagrafe_chiamate == [
-        "riconnessione", "floor_registry_updated",
-        "entity_registry_updated", "entity_registry_updated",
+        "floor_registry_updated", "entity_registry_updated", "entity_registry_updated",
     ]
 
 
@@ -268,34 +240,18 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
     lasciare solo quello dell'anagrafe) farebbe cadere questo test da solo --
     a differenza di un confronto TOPOLOGY_EVENTS-con-se-stesso, che non si
     accorgerebbe di niente."""
-    ws = _FintoWSEventi([("lovelace_updated", {"url_path": "cucina"})])
-    client = HAClient(base_url="http://ha.test", token="t")
-    client._session = _FintaSessioneEventi(ws)
-
+    client = _client_on_silent_connection()
     anagrafe_chiamate: list[str] = []
     plance_chiamate: list[dict] = []
     client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
     client.add_dashboard_listener(lambda dati: plance_chiamate.append(dati))
 
-    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
-    await asyncio.sleep(0.05)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    await _listening(client, [("lovelace_updated", {"url_path": "cucina"})])
+    await _stop(client)
 
-    # "riconnessione" (stesso principio del Task 6 per l'anagrafe): una
-    # disconnessione perde per sempre un DASHBOARD_EVENT emesso nel frattempo.
-    assert plance_chiamate == [{}, {"url_path": "cucina"}]
-    # DASHBOARD_EVENT non deve innescare la ricostruzione dei REGISTRI: solo
-    # "riconnessione" tocca l'ascoltatore dell'anagrafe qui.
-    assert anagrafe_chiamate == ["riconnessione"]
-
-    tipi_sottoscritti = {
-        c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"
-    }
-    assert "lovelace_updated" in tipi_sottoscritti
+    assert plance_chiamate == [{"url_path": "cucina"}]
+    # DASHBOARD_EVENT non deve innescare la ricostruzione dei REGISTRI.
+    assert anagrafe_chiamate == []
 
 
 # --- I servizi si rinfrescano su EVENTO, non a scadenza --------------------
@@ -314,33 +270,21 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
 async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
     """Terza famiglia di eventi, accanto ad anagrafe e plance -- e separata per
     la stessa ragione: innescano una rilettura diversa."""
-    ws = _FintoWSEventi([
-        ("service_registered", {"domain": "luce_nuova", "service": "accendi"}),
-        ("service_removed", {"domain": "vecchia", "service": "spegni"}),
-    ])
-    client = HAClient(base_url="http://ha.test", token="t")
-    client._session = _FintaSessioneEventi(ws)
-
+    client = _client_on_silent_connection()
     servizi_chiamate: list[str] = []
     anagrafe_chiamate: list[str] = []
     client.add_service_listener(lambda tipo: servizi_chiamate.append(tipo))
     client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
 
-    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
-    await asyncio.sleep(0.05)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    await _listening(client, [
+        ("service_registered", {"domain": "luce_nuova", "service": "accendi"}),
+        ("service_removed", {"domain": "vecchia", "service": "spegni"}),
+    ])
+    await _stop(client)
 
-    # "riconnessione" apre la lista per la stessa ragione dell'anagrafe: gli
-    # eventi emessi mentre la connessione era giu' non tornano piu', e un
-    # registro stantio direbbe «non esiste» di un servizio che esiste.
-    assert servizi_chiamate == [
-        "riconnessione", "service_registered", "service_removed"]
+    assert servizi_chiamate == ["service_registered", "service_removed"]
     # E NON devono finire nell'anagrafe: un servizio nuovo non cambia la casa.
-    assert anagrafe_chiamate == ["riconnessione"]
+    assert anagrafe_chiamate == []
 
 
 @pytest.mark.asyncio
@@ -349,48 +293,32 @@ async def test_automation_triggered_reaches_only_the_automation_listener():
     anagrafe/plance/servizi -- e separata per la stessa ragione, un'
     automazione scattata non cambia la casa ne' i servizi.
 
-    Nessuna "riconnessione" sintetica per questa famiglia (a differenza di
-    anagrafe/plance/servizi qui sopra): `mark_automation` non ha bisogno di
-    "recuperare" un evento perso durante una disconnessione -- un'automazione
-    gia' segnata resta segnata per sempre (vedi il docstring di
-    `Watcher._marked_automations`, ora un dizionario entity_id->nome, non
-    piu' un insieme, ma con la stessa sorte: solo aggiunte, mai tolte), e
-    una segnata perso durante il distacco tornera' a segnarsi da sola al
-    primo scatto successivo. Verificato qui guardando che l'elenco NON
-    contenga "riconnessione", a differenza degli altri tre.
+    Nessuna "riconnessione" per questa famiglia (a differenza di
+    anagrafe/plance/servizi, vedi la prova della seconda connessione qui
+    sotto): `mark_automation` non ha bisogno di "recuperare" un evento perso
+    durante una disconnessione -- un'automazione gia' segnata resta segnata
+    per sempre (vedi il docstring di `Watcher._marked_automations`), e una
+    segnata persa durante il distacco tornera' a segnarsi da sola al primo
+    scatto successivo.
 
     Mutazione provata a mano: cancellare il ramo
     `elif event_type == AUTOMATION_TRIGGERED_EVENT` nello smistamento fa
     arrossire `assert automation_calls == [...]` (tornerebbe `[]`)."""
-    ws = _FintoWSEventi([
-        ("automation_triggered", {"name": "Luci sera", "entity_id": "automation.luci_sera"}),
-    ])
-    client = HAClient(base_url="http://ha.test", token="t")
-    client._session = _FintaSessioneEventi(ws)
-
+    client = _client_on_silent_connection()
     automation_calls: list[dict] = []
     anagrafe_chiamate: list[str] = []
     client.add_automation_listener(lambda dati: automation_calls.append(dati))
     client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
 
-    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
-    await asyncio.sleep(0.05)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    await _listening(client, [
+        ("automation_triggered", {"name": "Luci sera", "entity_id": "automation.luci_sera"}),
+    ])
+    await _stop(client)
 
     assert automation_calls == [
         {"name": "Luci sera", "entity_id": "automation.luci_sera"}]
-    # E NON deve finire nell'anagrafe, ne' innescare la "riconnessione"
-    # sintetica delle altre tre famiglie -- vedi il docstring sopra.
-    assert anagrafe_chiamate == ["riconnessione"]
-
-    subscribed_types = {
-        c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"
-    }
-    assert "automation_triggered" in subscribed_types
+    # E NON deve finire nell'anagrafe.
+    assert anagrafe_chiamate == []
 
 
 @pytest.mark.asyncio
@@ -435,60 +363,37 @@ def test_invalidare_non_svuota_cio_che_si_sapeva():
     assert not r.empty()
 
 
-class _FintoWSCheCade(_FintoWSEventi):
-    """La connessione si rompe subito dopo l'handshake: `_ws_loop` ne apre
-    un'altra (la riconnessione)."""
-
-    async def __anext__(self):
-        raise ConnectionError("giu'")
-
-
-class _FintaSessioneDueConnessioni:
-    def __init__(self, *connessioni):
-        self._connessioni = list(connessioni)
-
-    def ws_connect(self, url):
-        return self._connessioni.pop(0)
-
-
 @pytest.mark.asyncio
-async def test_alla_seconda_connessione_lo_specchio_si_rilegge(monkeypatch):
-    """Spec «una porta sola» §6. Ogni connessione emette «riconnessione», la
-    PRIMA compresa (all'avvio, dopo il `load`, segue quindi un `reload` in
-    piu', innocuo). Qui la prima connessione cade e ne segue una seconda:
-    `get_states` deve girare una volta PER CONNESSIONE, cioe' due -- la
-    seconda e' la rilettura dopo la riconnessione.
+async def test_alla_seconda_connessione_lo_specchio_si_rilegge():
+    """Spec «una porta sola» §6. Dalla Tappa 2 (Task 7, D2 «prima
+    l'iscrizione») la PRIMA connessione non avvisa: l'avvio si iscrive e poi
+    legge la casa una volta. Qui la prima connessione cade e ne segue una
+    seconda: `get_states` gira UNA volta, ed e' la rilettura dopo la
+    riconnessione.
 
     Mutazione ESEGUITA: non registrare `mirror_reload_listener` sul client --
     rossa (nessuna chiamata a `get_states`). Che l'avvio lo registri davvero
     lo prova l'app avviata
     (`tests/test_cablaggio_dell_avvio.py::test_a_reconnection_rereads_the_state_mirror`)."""
-    vero_sleep = asyncio.sleep
-
-    async def _backoff_istantaneo(_secondi):
-        await vero_sleep(0)   # il backoff di 10s fra due connessioni
-
-    monkeypatch.setattr("hiris.app.proxy.ha_client.asyncio.sleep", _backoff_istantaneo)
-
-    client = HAClient(base_url="http://ha.test", token="t")
-    client._session = _FintaSessioneDueConnessioni(
-        _FintoWSCheCade([]), _FintoWSEventi([]))
+    client = _client_on_silent_connection()
     # Il client che rilegge lo specchio e' la casa finta; quello che ascolta
-    # gli eventi resta sul trasporto finto (vedi il docstring del modulo).
+    # gli eventi gira sulla connessione finta di lunga vita.
     house = CasaFinta(synthetic_inputs())
     cache = _specchio_caricato()
     client.add_topology_listener(mirror_reload_listener(house, cache))
 
-    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
-    await vero_sleep(0.2)
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    connection = await _listening(client, [])
+    assert _state_reads(house) == 0
+    connection.drop()
+    for _ in range(50):
+        if _state_reads(house):
+            break
+        await asyncio.sleep(0)
+    await asyncio.sleep(0.05)
+    await _stop(client)
 
-    # una per connessione: la prima all'avvio, la seconda alla riconnessione
-    assert _state_reads(house) == 2
+    assert connection.opened == 2
+    assert _state_reads(house) == 1
     # E la rilettura e' arrivata nello specchio, che prima era vuoto.
     assert {e["id"] for e in cache.all_states()} == {
         s["entity_id"] for s in synthetic_inputs()["states"]}

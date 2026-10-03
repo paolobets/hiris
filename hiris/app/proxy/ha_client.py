@@ -89,6 +89,33 @@ DASHBOARD_EVENT = "lovelace_updated"
 # c'e' sempre, ed e' sempre quello dell'automazione che e' scattata.
 AUTOMATION_TRIGGERED_EVENT = "automation_triggered"
 
+# L'iscrizione alle integrazioni (Tappa 2, Task 7, decisione di Paolo del
+# 03/10/2026, «avviso»): lo stato di ogni voce di integrazione arriva per
+# evento invece di rileggersi ogni dieci minuti. Letto il 03/10/2026 nel
+# sorgente di Home Assistant al tag `2026.9.4`:
+# `components/config/config_entries.py`, `config_entries_subscribe` (righe
+# 660-711): conferma (`send_result`), poi UN evento con l'elenco intero,
+# `[{"type": None, "entry": voce}]`, e da li' un evento per ogni cambio,
+# `[{"type": "added" | "removed" | "updated", "entry": voce}]`
+# (`ConfigEntryChange`, `homeassistant/config_entries.py` righe 224-229). La
+# voce e' `ConfigEntry.as_json_fragment` (stesso file, righe 658-685): la
+# STESSA forma delle righe di `config_entries/get`, che servono lo stesso
+# frammento (`_async_matching_config_entries_json_fragments`). Nessun
+# `require_admin` sul comando. L'evento porta una LISTA in `event`, non un
+# evento del bus: si smista per id dell'iscrizione, non per `event_type`.
+CONFIG_ENTRIES_SUBSCRIPTION = "config_entries/subscribe"
+
+# Le attese del websocket di lunga vita, in secondi. Dopo una caduta si
+# riprova dopo `RECONNECT_DELAY_S`. Dopo un gettone RIFIUTATO (S-04) l'attesa
+# parte da `AUTH_RETRY_FIRST_S` e raddoppia fino a `AUTH_RETRY_CEILING_S`:
+# ogni rifiuto e' una notifica «Login attempt failed» fra quelle di Home
+# Assistant (`components/http/ban.py`, `process_wrong_login`, righe 115-145
+# al tag 2026.9.4) -- l'indirizzo del Supervisor non viene mai bandito
+# (righe 153-155), ma un tentativo ogni dieci secondi riempirebbe le notifiche.
+RECONNECT_DELAY_S = 10
+AUTH_RETRY_FIRST_S = 10
+AUTH_RETRY_CEILING_S = 300
+
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
 # Cap sui punti di storico dettagliato riportati per SINGOLA entita' -- non
@@ -350,12 +377,19 @@ class HAClient:
         self._dashboard_listeners: list[Callable[[dict], None]] = []
         self._service_listeners: list[Callable[[str], None]] = []
         self._automation_listeners: list[Callable[[dict], None]] = []
-        #: Acceso quando il WebSocket di lunga vita si e' autenticato la prima
-        #: volta: e' il segno che il nucleo di Home Assistant risponde. Serve a
-        #: chi deve fare UNA chiamata all'avvio (`panel_visibility`): l'add-on
-        #: parte prima del nucleo (`startup: services`), e senza aspettare la
-        #: chiamata fallirebbe a ogni riavvio della macchina.
+        self._integration_listeners: list[Callable[[list], None]] = []
+        #: Acceso mentre il WebSocket di lunga vita e' su: si accende quando
+        #: Home Assistant conferma l'iscrizione agli stati, si spegne quando la
+        #: connessione cade o il gettone e' rifiutato (S-04, 03/10/2026; prima
+        #: si accendeva una volta e non si spegneva mai). E' il segno che il
+        #: nucleo di Home Assistant risponde: lo aspetta l'avvio prima di
+        #: leggere la casa (D2 della Tappa 2), e chi deve fare UNA chiamata
+        #: all'avvio (`panel_visibility`) -- l'add-on parte prima del nucleo
+        #: (`startup: services`).
         self.ws_ready = asyncio.Event()
+        #: Le connessioni autenticate finora: la prima non avvisa «riconnessione».
+        self._connections = 0
+        self._reread_at_first_connection = False
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -2284,149 +2318,270 @@ class HAClient:
         chi ascolta decide da solo cosa farne, questo client legge e basta."""
         self._automation_listeners.append(callback)
 
+    def add_integration_listener(self, callback: Callable[[list], None]) -> None:
+        """callback(cambi) a ogni messaggio dell'iscrizione alle integrazioni
+        (`CONFIG_ENTRIES_SUBSCRIPTION`): la lista cosi' come Home Assistant la
+        manda, `[{"type": None | "added" | "removed" | "updated", "entry":
+        voce}]`. Un messaggio le cui voci hanno `type` nullo e' l'ELENCO
+        INTERO -- arriva a ogni connessione, la prima e le seguenti -- e chi
+        ascolta sostituisce cio' che sapeva: e' cosi' che una voce tolta
+        mentre la connessione era giu' sparisce. Questo client legge e non
+        giudica: non tiene l'elenco."""
+        self._integration_listeners.append(callback)
+
+    def reread_after_first_connection(self) -> None:
+        """Anche la PRIMA connessione avvisera' gli ascoltatori come una
+        riconnessione («riconnessione»: specchio, anagrafe, comportamento,
+        plance e servizi si rileggono).
+
+        Di regola la prima connessione non avvisa nessuno (D2 della Tappa 2,
+        «prima l'iscrizione»): l'avvio apre il websocket, aspetta che Home
+        Assistant confermi l'iscrizione (`ws_ready`) e POI legge la casa una
+        volta -- una rilettura alla prima connessione sarebbe la stessa casa
+        letta due volte. Ma se Home Assistant non risponde entro il tetto
+        dell'attesa, l'avvio legge lo stesso (e trova il vuoto): allora e' la
+        prima connessione a dover far rileggere, e l'avvio lo chiede qui.
+
+        Se la prima connessione e' GIA' avvenuta -- l'avvio ha smesso di
+        aspettare nell'istante in cui arrivava -- l'avviso parte subito invece
+        di perdersi.
+        """
+        if self._connections:
+            self._announce_reconnection()
+        else:
+            self._reread_at_first_connection = True
+
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
         self._ws_task = asyncio.create_task(self._ws_loop(ws_url))
 
     async def _ws_loop(self, ws_url: str) -> None:
+        """Il websocket di lunga vita: si connette, si autentica, si iscrive,
+        ascolta; se cade, riprova. Non finisce mai da solo.
+
+        **Un gettone rifiutato non lo ferma** (S-04, 03/10/2026). Fino a quel
+        giorno un `auth_invalid` faceva `return`: il ciclo usciva, e l'add-on
+        restava sordo -- niente stato vivo, niente anagrafe aggiornata -- fino
+        al riavvio. Adesso si riprova, con un'attesa che cresce
+        (`AUTH_RETRY_FIRST_S` .. `AUTH_RETRY_CEILING_S`) e torna alla prima
+        dopo un'autenticazione riuscita. Cosa manda Home Assistant, letto il
+        03/10/2026 al tag 2026.9.4 (`websocket_api/auth.py`, righe 44-46 e
+        125-129): `{"type": "auth_invalid", "message": ...}`, poi chiude la
+        connessione. Il messaggio va nel registro, cosi' com'e'.
+
+        **`ws_ready` dice se la connessione c'e' ADESSO**: si accende quando
+        Home Assistant conferma l'iscrizione agli stati (chi legge la casa
+        dopo non perde un cambio), si spegne appena la connessione cade o
+        l'autenticazione e' rifiutata.
+        """
+        auth_wait = AUTH_RETRY_FIRST_S
         while True:
+            pause = 0
             try:
                 async with self._session.ws_connect(ws_url) as ws:
-                    auth_req = await ws.receive_json()
-                    if auth_req.get("type") == "auth_required":
-                        token = self._headers["Authorization"].removeprefix("Bearer ")
-                        await ws.send_json({"type": "auth", "access_token": token})
-                        auth_resp = await ws.receive_json()
-                        if auth_resp.get("type") != "auth_ok":
-                            logger.error("HA WebSocket auth failed")
-                            return
-
-                    self.ws_ready.set()
-                    await ws.send_json(
-                        {"id": 1, "type": "subscribe_events", "event_type": "state_changed"}
-                    )
-                    await ws.send_json(
-                        {"id": 2, "type": "subscribe_events",
-                         "event_type": "entity_registry_updated"}
-                    )
-                    # Gli altri registri dell'anagrafe (Task 5): entity_registry_updated
-                    # e' gia' sottoscritto sopra (id 2) e va verso add_anagrafe_listener,
-                    # che copre anche rinomini, spostamenti, disabilitazioni e cancellazioni
-                    # (non solo le creazioni: quel filtro apparteneva al meccanismo storico
-                    # verso add_registry_listener, uscito con la context map che lo chiamava
-                    # -- fetta E3 Task 2, 2.0).
-                    msg_id = 2
-                    for event_type in (
-                        t for t in TOPOLOGY_EVENTS if t != "entity_registry_updated"
-                    ):
-                        msg_id += 1
-                        await ws.send_json(
-                            {"id": msg_id, "type": "subscribe_events", "event_type": event_type}
-                        )
-                    # Task 5: le plance hanno un ascoltatore proprio, separato
-                    # dall'anagrafe (vedi DASHBOARD_EVENT in cima al modulo).
-                    msg_id += 1
-                    await ws.send_json(
-                        {"id": msg_id, "type": "subscribe_events", "event_type": DASHBOARD_EVENT}
-                    )
-                    # Task 4 di «le tracce e il log»: l'evento che segna
-                    # l'inizio delle azioni di un'automazione scattata --
-                    # vedi AUTOMATION_TRIGGERED_EVENT in cima al modulo per
-                    # la fonte e per il perche' non porta un esito.
-                    msg_id += 1
-                    await ws.send_json(
-                        {"id": msg_id, "type": "subscribe_events",
-                         "event_type": AUTOMATION_TRIGGERED_EVENT}
-                    )
-                    for event_type in SERVICE_EVENTS:
-                        msg_id += 1
-                        await ws.send_json({"id": msg_id, "type": "subscribe_events",
-                                            "event_type": event_type})
-
-                    # Task 6: ogni (ri)connessione riuscita rifa' l'anagrafe, non solo
-                    # gli eventi di registro ricevuti mentre la connessione era su. Un
-                    # distacco (riavvio di HA, blip di rete, i 10s di backoff sotto)
-                    # perde gli eventi emessi nel frattempo per sempre: nessuna
-                    # rilettura successiva li recupera da sola, e l'anagrafe resta
-                    # stantia in silenzio mentre `aggiornata_il` continua a raccontare
-                    # l'ultima ricostruzione come se fosse il presente. Questo chiude
-                    # anche la micro-finestra fra la lettura iniziale di _on_startup e
-                    # la prima sottoscrizione qui sopra. L'antirimbalzo di
-                    # programma_ricostruzione_anagrafe assorbe le riconnessioni
-                    # ravvicinate, quindi non costa una lettura extra ad ogni giro.
-                    # Stessa ragione del giro sull'anagrafe qui sotto: gli eventi
-                    # emessi mentre la connessione era giu' non tornano, e un
-                    # registro dei servizi stantio direbbe «non esiste in questa
-                    # casa» di un servizio che esiste.
-                    for cb in self._service_listeners:
-                        try:
-                            cb("riconnessione")
-                        except Exception:
-                            logger.exception("servizi_listener callback raised")
-                    for cb in self._topology_listeners:
-                        try:
-                            cb("riconnessione")
-                        except Exception:
-                            logger.exception("anagrafe_listener callback raised")
-                    # Stessa logica per le plance: una disconnessione perde per
-                    # sempre un eventuale DASHBOARD_EVENT emesso nel frattempo.
-                    for cb in self._dashboard_listeners:
-                        try:
-                            cb({})
-                        except Exception:
-                            logger.exception("plance_listener callback raised")
-
-                    async for msg in ws:
-                        if msg.type == aiohttp.WSMsgType.TEXT:
-                            data = msg.json()
-                            if data.get("type") != "event":
-                                continue
-                            event = data.get("event", {})
-                            event_type = event.get("event_type")
-                            if event_type == "state_changed":
-                                for cb in self._state_listeners:
-                                    try:
-                                        cb(event["data"])
-                                    except Exception:
-                                        logger.exception("state_listener callback raised")
-                            elif event_type == DASHBOARD_EVENT:
-                                # Il percorso della plancia cambiata sta in
-                                # event["data"], ma non lo si usa per filtrare:
-                                # chi ascolta rilegge tutte le plance (vedi
-                                # DASHBOARD_EVENT e rileggi_plance).
-                                for cb in self._dashboard_listeners:
-                                    try:
-                                        cb(event.get("data", {}))
-                                    except Exception:
-                                        logger.exception("plance_listener callback raised")
-                            elif event_type == AUTOMATION_TRIGGERED_EVENT:
-                                # `event["data"]` porta almeno `entity_id`
-                                # (vedi AUTOMATION_TRIGGERED_EVENT): chi
-                                # ascolta decide da solo cosa farne.
-                                for cb in self._automation_listeners:
-                                    try:
-                                        cb(event.get("data", {}))
-                                    except Exception:
-                                        logger.exception("automation_listener callback raised")
-                            if event_type in SERVICE_EVENTS:
-                                for cb in self._service_listeners:
-                                    try:
-                                        cb(event_type)
-                                    except Exception:
-                                        logger.exception("servizi_listener callback raised")
-                            if event_type in TOPOLOGY_EVENTS:
-                                # La casa e' cambiata (create/update/move/remove, su
-                                # qualsiasi registro): l'anagrafe va rifatta. Nessun
-                                # filtro per action ne' per tipo di registro — vedi
-                                # TOPOLOGY_EVENTS in cima al modulo.
-                                for cb in self._topology_listeners:
-                                    try:
-                                        cb(event_type)
-                                    except Exception:
-                                        logger.exception("anagrafe_listener callback raised")
+                    refusal = await self._authenticate(ws)
+                    if refusal is None:
+                        auth_wait = AUTH_RETRY_FIRST_S
+                        await self._listen(ws)
+                    else:
+                        logger.error(
+                            "HA WebSocket: autenticazione rifiutata da Home Assistant "
+                            "(%s) -- riprovo fra %ds", refusal, auth_wait)
+                        pause = auth_wait
+                        auth_wait = min(auth_wait * 2, AUTH_RETRY_CEILING_S)
             except asyncio.CancelledError:
                 return
             except Exception as exc:
-                logger.warning("HA WebSocket disconnected: %s — reconnecting in 10s", exc)
-                await asyncio.sleep(10)
+                logger.warning("HA WebSocket disconnected: %s — reconnecting in %ds",
+                               exc, RECONNECT_DELAY_S)
+                pause = RECONNECT_DELAY_S
+            finally:
+                self.ws_ready.clear()
+            if pause:
+                await asyncio.sleep(pause)
+
+    async def _authenticate(self, ws) -> str | None:
+        """`None` se Home Assistant ha accettato il gettone, altrimenti cio'
+        che ha scritto nel rifiuto."""
+        auth_req = await ws.receive_json()
+        if auth_req.get("type") == "auth_required":
+            token = self._headers["Authorization"].removeprefix("Bearer ")
+            await ws.send_json({"type": "auth", "access_token": token})
+            auth_resp = await ws.receive_json()
+            if auth_resp.get("type") != "auth_ok":
+                return str(auth_resp.get("message") or auth_resp.get("type"))
+        return None
+
+    async def _listen(self, ws) -> None:
+        """Una connessione autenticata: le iscrizioni, l'avviso di
+        riconnessione, poi gli eventi finche' la connessione regge."""
+        msg_id = 1
+        states_subscription = msg_id
+        await ws.send_json(
+            {"id": msg_id, "type": "subscribe_events", "event_type": "state_changed"}
+        )
+        msg_id += 1
+        await ws.send_json(
+            {"id": msg_id, "type": "subscribe_events",
+             "event_type": "entity_registry_updated"}
+        )
+        # Gli altri registri dell'anagrafe (Task 5): entity_registry_updated
+        # e' gia' sottoscritto sopra (id 2) e va verso add_anagrafe_listener,
+        # che copre anche rinomini, spostamenti, disabilitazioni e cancellazioni
+        # (non solo le creazioni: quel filtro apparteneva al meccanismo storico
+        # verso add_registry_listener, uscito con la context map che lo chiamava
+        # -- fetta E3 Task 2, 2.0).
+        for event_type in (
+            t for t in TOPOLOGY_EVENTS if t != "entity_registry_updated"
+        ):
+            msg_id += 1
+            await ws.send_json(
+                {"id": msg_id, "type": "subscribe_events", "event_type": event_type}
+            )
+        # Task 5: le plance hanno un ascoltatore proprio, separato
+        # dall'anagrafe (vedi DASHBOARD_EVENT in cima al modulo).
+        msg_id += 1
+        await ws.send_json(
+            {"id": msg_id, "type": "subscribe_events", "event_type": DASHBOARD_EVENT}
+        )
+        # Task 4 di «le tracce e il log»: l'evento che segna
+        # l'inizio delle azioni di un'automazione scattata --
+        # vedi AUTOMATION_TRIGGERED_EVENT in cima al modulo per
+        # la fonte e per il perche' non porta un esito.
+        msg_id += 1
+        await ws.send_json(
+            {"id": msg_id, "type": "subscribe_events",
+             "event_type": AUTOMATION_TRIGGERED_EVENT}
+        )
+        for event_type in SERVICE_EVENTS:
+            msg_id += 1
+            await ws.send_json({"id": msg_id, "type": "subscribe_events",
+                                "event_type": event_type})
+        # Le integrazioni (Task 7): l'elenco intero arriva subito, poi i
+        # cambi -- vedi CONFIG_ENTRIES_SUBSCRIPTION in cima al modulo.
+        msg_id += 1
+        entries_subscription = msg_id
+        await ws.send_json({"id": msg_id, "type": CONFIG_ENTRIES_SUBSCRIPTION})
+
+        # L'avviso «riconnessione»: gli eventi emessi mentre la connessione
+        # era giu' non tornano piu', e chi tiene una copia di cio' che Home
+        # Assistant sa (specchio, anagrafe, comportamento, plance, servizi)
+        # deve rileggere. NON alla prima connessione (D2 della Tappa 2,
+        # «prima l'iscrizione», 03/10/2026): l'avvio si iscrive, aspetta
+        # `ws_ready`, e POI legge la casa una volta -- la micro-finestra fra
+        # lettura e iscrizione, che la rilettura alla prima connessione
+        # copriva, non c'e' piu' perche' l'ordine e' rovesciato. Se l'avvio ha
+        # dovuto leggere PRIMA (Home Assistant non rispondeva), lo chiede con
+        # `reread_after_first_connection`.
+        self._connections += 1
+        if self._connections > 1 or self._reread_at_first_connection:
+            self._announce_reconnection()
+
+        async for msg in ws:
+            if msg.type != aiohttp.WSMsgType.TEXT:
+                continue
+            data = msg.json()
+            kind = data.get("type")
+            if kind == "result":
+                self._subscription_confirmed(data, states_subscription,
+                                             entries_subscription)
+            elif kind == "event" and data.get("id") == entries_subscription:
+                self._dispatch_integrations(data.get("event"))
+            elif kind == "event":
+                self._dispatch_bus_event(data.get("event"))
+
+    def _subscription_confirmed(self, data: dict, states_subscription: int,
+                                entries_subscription: int) -> None:
+        """La conferma di un'iscrizione. Quella agli stati accende `ws_ready`;
+        un rifiuto di quella alle integrazioni si dice, perche' senza di lei
+        lo stato delle integrazioni resta fermo all'ultima ricostruzione e il
+        giro delle condizioni non parte."""
+        if data.get("id") == states_subscription:
+            if data.get("success"):
+                self.ws_ready.set()
+            else:
+                logger.error("HA WebSocket: iscrizione agli stati rifiutata: %s",
+                             data.get("error"))
+        elif data.get("id") == entries_subscription and not data.get("success"):
+            error = data.get("error") if isinstance(data.get("error"), dict) else {}
+            logger.error("HA WebSocket: %s rifiutata da Home Assistant: %s (%s)",
+                         CONFIG_ENTRIES_SUBSCRIPTION, error.get("message"),
+                         error.get("code"))
+
+    def _announce_reconnection(self) -> None:
+        # Stessa ragione per l'anagrafe, i servizi e le plance: un registro
+        # dei servizi stantio direbbe «non esiste in questa casa» di un
+        # servizio che esiste, e una disconnessione perde per sempre un
+        # DASHBOARD_EVENT emesso nel frattempo. L'antirimbalzo delle riletture
+        # assorbe le riconnessioni ravvicinate.
+        for cb in self._service_listeners:
+            try:
+                cb("riconnessione")
+            except Exception:
+                logger.exception("servizi_listener callback raised")
+        for cb in self._topology_listeners:
+            try:
+                cb("riconnessione")
+            except Exception:
+                logger.exception("anagrafe_listener callback raised")
+        for cb in self._dashboard_listeners:
+            try:
+                cb({})
+            except Exception:
+                logger.exception("plance_listener callback raised")
+
+    def _dispatch_integrations(self, changes) -> None:
+        if not isinstance(changes, list):
+            logger.warning("HA WebSocket: %s ha mandato un evento in forma inattesa: %r",
+                           CONFIG_ENTRIES_SUBSCRIPTION, type(changes).__name__)
+            return
+        for cb in self._integration_listeners:
+            try:
+                cb(changes)
+            except Exception:
+                logger.exception("integration_listener callback raised")
+
+    def _dispatch_bus_event(self, event) -> None:
+        if not isinstance(event, dict):
+            return
+        event_type = event.get("event_type")
+        if event_type == "state_changed":
+            for cb in self._state_listeners:
+                try:
+                    cb(event["data"])
+                except Exception:
+                    logger.exception("state_listener callback raised")
+        elif event_type == DASHBOARD_EVENT:
+            # Il percorso della plancia cambiata sta in event["data"], ma non
+            # lo si usa per filtrare: chi ascolta rilegge tutte le plance (vedi
+            # DASHBOARD_EVENT e rileggi_plance).
+            for cb in self._dashboard_listeners:
+                try:
+                    cb(event.get("data", {}))
+                except Exception:
+                    logger.exception("plance_listener callback raised")
+        elif event_type == AUTOMATION_TRIGGERED_EVENT:
+            # `event["data"]` porta almeno `entity_id` (vedi
+            # AUTOMATION_TRIGGERED_EVENT): chi ascolta decide da solo cosa
+            # farne.
+            for cb in self._automation_listeners:
+                try:
+                    cb(event.get("data", {}))
+                except Exception:
+                    logger.exception("automation_listener callback raised")
+        if event_type in SERVICE_EVENTS:
+            for cb in self._service_listeners:
+                try:
+                    cb(event_type)
+                except Exception:
+                    logger.exception("servizi_listener callback raised")
+        if event_type in TOPOLOGY_EVENTS:
+            # La casa e' cambiata (create/update/move/remove, su qualsiasi
+            # registro): l'anagrafe va rifatta. Nessun filtro per action ne'
+            # per tipo di registro — vedi TOPOLOGY_EVENTS in cima al modulo.
+            for cb in self._topology_listeners:
+                try:
+                    cb(event_type)
+                except Exception:
+                    logger.exception("anagrafe_listener callback raised")

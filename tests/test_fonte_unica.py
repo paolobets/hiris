@@ -79,7 +79,11 @@ KNOWN_DUPLICATES = ROOT / "scripts" / "doppioni_noti.json"
 #: I metodi del client che non sono domande alla casa: lo accendono e lo
 #: spengono. Lista di AMMISSIONE, con la ragione: chi avvia l'add-on deve
 #: poterli chiamare, e contarli sarebbe contare `scheduler.start()`.
-LIFECYCLE = frozenset({"start", "stop", "start_websocket"})
+#: `reread_after_first_connection` (Tappa 2, Task 7) dice al websocket di
+#: lunga vita che anche la prima connessione deve far rileggere: lo chiama
+#: l'avvio quando Home Assistant non risponde, e non manda niente alla casa.
+LIFECYCLE = frozenset({"start", "stop", "start_websocket",
+                       "reread_after_first_connection"})
 
 
 def _module_of(function) -> str:
@@ -99,7 +103,7 @@ OWNERS = {
 #: Il tetto delle eccezioni: la somma dei conti. Si ABBASSA quando una copia
 #: esce, nello stesso commit. Alzarlo e' una riga di diff che una revisione
 #: vede -- ed e' il punto.
-CEILING = 67
+CEILING = 66
 
 #: Le letture del client che il cancello NON puo' attribuire, perche' il nome
 #: e' anche di un'altra funzione del prodotto. Lista di AMMISSIONE: una voce

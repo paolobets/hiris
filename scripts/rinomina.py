@@ -460,6 +460,9 @@ _METODI_HA_CLIENT = frozenset({
     "add_state_listener", "remove_state_listener", "add_topology_listener",
     "add_service_listener", "add_dashboard_listener",
     "add_automation_listener", "start_websocket", "_ws_loop",
+    "add_integration_listener", "reread_after_first_connection", "_authenticate",
+    "_listen", "_subscription_confirmed", "_announce_reconnection",
+    "_dispatch_integrations", "_dispatch_bus_event",
 })
 
 # La STESSA guardia, per una specie diversa di confine (Task 9, `api/`):

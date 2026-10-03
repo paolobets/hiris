@@ -250,3 +250,123 @@ def test_ogni_ingresso_catturato_serve_almeno_un_comando():
     for name in casa.INPUTS:
         without = {key: value for key, value in synthetic_inputs().items() if key != name}
         assert CasaFinta(without).served() < whole, f"l'ingresso `{name}` non serve niente"
+
+
+# ── il websocket di lunga vita: eventi, iscrizioni, caduta, autenticazione ──
+#
+# La forma dei messaggi e' quella di Home Assistant al tag `2026.9.4`, letta il
+# 03/10/2026 (`websocket_api/auth.py`, `websocket_api/messages.py`,
+# `websocket_api/commands.py`, `core.py`, `config/config_entries.py`): vedi il
+# docstring di `casa_finta.SilentConnection`.
+
+async def _open(connection) -> list[dict]:
+    """Apre una connessione come fa il client: chiede, si autentica, e rende
+    i due messaggi dell'autenticazione."""
+    ws = connection.ws_connect("ws://casa.invalid/api/websocket")
+    required = await ws.receive_json()
+    await ws.send_json({"type": "auth", "access_token": "segreto"})
+    return [required, await ws.receive_json()]
+
+
+async def _next(connection) -> dict:
+    return (await asyncio.wait_for(connection.__anext__(), 1)).json()
+
+
+def test_l_autenticazione_si_rifiuta_come_la_rifiuta_home_assistant():
+    connection = casa_finta.SilentConnection()
+    connection.refuse_next_auth()
+
+    async def two():
+        return await _open(connection), await _open(connection)
+
+    refused, accepted = _run(two())
+    assert refused[0]["type"] == "auth_required" and "ha_version" in refused[0]
+    assert refused[1] == {"type": "auth_invalid",
+                          "message": "Invalid access token or password"}
+    assert accepted[1]["type"] == "auth_ok"
+    assert connection.opened == 2
+    # Il gettone non si registra: e' una credenziale.
+    assert all(message.get("type") != "auth" for message in connection.sent)
+
+
+def test_un_evento_arriva_solo_a_chi_si_e_iscritto_con_l_id_dell_iscrizione():
+    connection = casa_finta.SilentConnection()
+
+    async def scenario():
+        await _open(connection)
+        await connection.send_json({"id": 7, "type": "subscribe_events",
+                                    "event_type": "state_changed"})
+        aiter(connection)
+        confirmed = await _next(connection)
+        delivered = connection.push_event("state_changed", {"entity_id": "light.uno"})
+        refused = connection.push_event("lovelace_updated", {})
+        return confirmed, delivered, refused, await _next(connection)
+
+    confirmed, delivered, refused, event = _run(scenario())
+    assert confirmed == {"id": 7, "type": "result", "success": True, "result": None}
+    assert delivered and not refused
+    assert event["id"] == 7 and event["type"] == "event"
+    assert set(event["event"]) == {"event_type", "data", "origin", "time_fired", "context"}
+    assert event["event"]["event_type"] == "state_changed"
+    assert event["event"]["data"] == {"entity_id": "light.uno"}
+
+
+def test_l_iscrizione_alle_integrazioni_manda_l_elenco_poi_i_cambi():
+    rows = synthetic_inputs()["registries"]["integrazioni"]
+    house = CasaFinta(synthetic_inputs())
+    connection = house._session
+
+    async def scenario():
+        await _open(connection)
+        await connection.send_json({"id": 9, "type": "config_entries/subscribe"})
+        aiter(connection)
+        confirmed, snapshot = await _next(connection), await _next(connection)
+        changed = {**rows[0], "state": "setup_retry"}
+        connection.push_config_entry_change("updated", changed)
+        return confirmed, snapshot, await _next(connection)
+
+    confirmed, snapshot, change = _run(scenario())
+    assert confirmed == {"id": 9, "type": "result", "success": True, "result": None}
+    assert snapshot == {"id": 9, "type": "event",
+                        "event": [{"type": None, "entry": row} for row in rows]}
+    assert change["id"] == 9
+    assert change["event"] == [{"type": "updated",
+                                "entry": {**rows[0], "state": "setup_retry"}}]
+
+
+def test_le_integrazioni_senza_ingresso_non_si_servono():
+    inputs = synthetic_inputs()
+    del inputs["registries"]["integrazioni"]
+    connection = CasaFinta(inputs)._session
+
+    async def scenario():
+        await _open(connection)
+        await connection.send_json({"id": 9, "type": "config_entries/subscribe"})
+
+    with pytest.raises(UnservedCommand, match="config_entries/subscribe"):
+        _run(scenario())
+
+
+def test_un_comando_sconosciuto_sulla_connessione_lunga_si_nomina():
+    connection = casa_finta.SilentConnection()
+
+    async def scenario():
+        await _open(connection)
+        await connection.send_json({"id": 3, "type": "ghost/subscribe"})
+
+    with pytest.raises(UnservedCommand, match="ghost/subscribe"):
+        _run(scenario())
+
+
+def test_la_connessione_cade_quando_la_si_fa_cadere():
+    connection = casa_finta.SilentConnection()
+
+    async def scenario():
+        await _open(connection)
+        aiter(connection)
+        connection.drop()
+        with pytest.raises(StopAsyncIteration):
+            await asyncio.wait_for(connection.__anext__(), 1)
+        return connection.listening
+
+    assert _run(scenario()) == 1

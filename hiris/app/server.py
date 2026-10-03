@@ -781,12 +781,14 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     prima della prima lettura) si fa quella lettura, una volta, e resta in
     `app["ha_problems"]` per tutti.
 
-    **Le integrazioni si leggono da sole** (`read_registry("integrazioni")`,
-    A-01): prima si chiedeva l'anagrafe intera -- dieci comandi piu' gli alias
-    di ogni entita' -- per usarne una tabella. E le righe appena lette
-    vanno all'anagrafe (`HomeSpace.hold_integrations`, A-11): lo stato di
-    un'integrazione che il nucleo dice e' vecchio al piu' un giro, non fino
-    al prossimo evento di registro.
+    **Le integrazioni NON si leggono qui** (Task 7 della Tappa 2, decisione di
+    Paolo del 03/10/2026, «avviso»): arrivano per evento, dall'iscrizione
+    `config_entries/subscribe` (`integration_follower`), in
+    `app["ha_integrations"]` e nell'anagrafe. Fino a quel giorno questo giro le
+    rileggeva (`read_registry("integrazioni")`, Task 5) e le consegnava
+    all'anagrafe ogni dieci minuti: una seconda lettura della stessa cosa,
+    vecchia fino a un giro. Se l'elenco non e' ancora arrivato (l'iscrizione
+    non ha ancora risposto), il giro si salta come per una lettura fallita.
 
     **Se una delle TRE letture fallisce, il giro si salta INTERAMENTE**
     (`task-5-correzioni.md`, punto A.1 -- la stessa disciplina, estesa al
@@ -801,9 +803,9 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     fila, scriverebbe comunque «chiuso» su OGNI guasto aperto (una voce di
     log compresa): l'archivio registrerebbe che tutto si e' risolto nel
     momento esatto in cui abbiamo smesso di poterlo vedere.
-    Vale identico per le integrazioni: un registro non letto e' la busta,
-    non un elenco vuoto che direbbe «va tutto bene». Meglio un buco nella
-    storia che una bugia nella storia.
+    Vale identico per le integrazioni: un elenco che l'iscrizione non ha
+    ancora mandato manca, non e' un elenco vuoto che direbbe «va tutto bene».
+    Meglio un buco nella storia che una bugia nella storia.
 
     Chiamata una volta all'avvio (subito dopo `rebuild_conditions`) e
     ogni dieci minuti dal lavoro periodico registrato piu' sotto in
@@ -827,16 +829,13 @@ async def watch_system_conditions(app, ha_client) -> int | None:
             problems_report.get("errore") if isinstance(problems_report, dict)
             else "nessun lettore")
         return None
-    integrations = await ha_client.read_registry("integrazioni")
-    if "errore" in integrations:
+    integrations = app.get("ha_integrations")
+    if integrations is None:
         logger.warning(
-            "cervello: condizioni di sistema non lette, il registro delle "
-            "integrazioni non e' disponibile (%s) -- giro saltato",
-            integrations.get("causa"))
+            "cervello: condizioni di sistema non lette, l'elenco delle "
+            "integrazioni non e' ancora arrivato dall'iscrizione "
+            "(config_entries/subscribe) -- giro saltato")
         return None
-    home_space_store = app.get("home_space_store")
-    if home_space_store is not None:
-        home_space_store.hold_integrations(integrations["integrazioni"])
     log_report = await ha_client.system_log()
     if "errore" in log_report:
         logger.warning(
@@ -845,8 +844,68 @@ async def watch_system_conditions(app, ha_client) -> int | None:
         return None
     return watcher.watch_system(
         problems=problems_report.get("problemi") or [],
-        integrations=integrations["integrazioni"],
+        integrations=list(integrations),
         log_entries=log_report.get("voci") or [])
+
+
+def integration_follower(app):
+    """Restituisce l'ascoltatore dell'iscrizione alle integrazioni
+    (`HAClient.add_integration_listener`, Task 7 della Tappa 2): riceve i
+    cambi cosi' come Home Assistant li manda e tiene le voci in
+    `app["ha_integrations"]` -- le righe grezze, la stessa forma di
+    `config_entries/get` (`ConfigEntry.as_json_fragment`, vedi
+    `CONFIG_ENTRIES_SUBSCRIPTION` in `proxy/ha_client.py`) -- e nell'anagrafe,
+    con lo stesso costruttore della ricostruzione
+    (`HomeSpace.hold_integrations`).
+
+    **Dove vivono, e perche' due posti.** `app["ha_integrations"]` e' il
+    grezzo che il giro delle condizioni passa all'osservatore
+    (`Watcher.watch_system` legge `state`, `source`, `domain`, `title` di
+    Home Assistant), accanto ad `app["ha_problems"]` che e' la stessa specie
+    di dato; l'anagrafe ne tiene la forma di HIRIS (`dominio`, `stato`,
+    `motivo`), come per ogni altra tabella. L'ascoltatore non ha una memoria
+    sua: il suo stato E' `app["ha_integrations"]`.
+
+    **L'elenco intero sostituisce, i cambi si applicano.** Un messaggio con
+    voci a `type` nullo -- o vuoto: una casa senza integrazioni -- e' l'elenco
+    iniziale, che l'iscrizione manda a ogni connessione: sostituisce cio' che
+    si sapeva, cosi' una voce tolta mentre la connessione era giu' sparisce
+    alla riconnessione. `added`/`updated` mettono la voce al suo posto per
+    `entry_id`, `removed` la toglie. Un cambio arrivato prima di un elenco
+    (Home Assistant non lo fa: conferma, poi manda l'elenco) si ignora: un
+    elenco fatto di soli cambi direbbe che la casa ha una integrazione sola.
+
+    **Cosa NON copre, dichiarato.** Anche la ricostruzione dell'anagrafe
+    (`topology.rebuild`) legge le integrazioni, con tutti i registri; se un
+    annuncio arriva fra la sua lettura e la sua consegna, l'anagrafe tiene la
+    lettura fino al prossimo annuncio. `app["ha_integrations"]` no: lo scrive
+    solo l'iscrizione.
+    """
+    def follow(changes) -> None:
+        if not isinstance(changes, list):
+            return
+        listing = not changes or any(
+            isinstance(change, dict) and change.get("type") is None for change in changes)
+        if not listing and "ha_integrations" not in app:
+            logger.debug("integrazioni: un cambio prima dell'elenco iniziale, ignorato")
+            return
+        entries = {} if listing else {
+            row.get("entry_id"): row for row in app["ha_integrations"]}
+        for change in changes:
+            entry = change.get("entry") if isinstance(change, dict) else None
+            if not isinstance(entry, dict) or not entry.get("entry_id"):
+                continue
+            if change.get("type") == "removed":
+                entries.pop(entry["entry_id"], None)
+            else:
+                entries[entry["entry_id"]] = entry
+        rows = list(entries.values())
+        app["ha_integrations"] = rows
+        home_space_store = app.get("home_space_store")
+        if home_space_store is not None:
+            home_space_store.hold_integrations(rows)
+
+    return follow
 
 
 async def watch_automation_outcomes(app, ha_client) -> int | None:
@@ -1513,8 +1572,9 @@ def mirror_reload_listener(client, entity_cache):
 
     Spec «una porta sola» §6: il quarto avvisato, dopo anagrafe, servizi e
     plance. Gli altri eventi dell'anagrafe non lo toccano. `_ws_loop` emette
-    «riconnessione» a OGNI connessione riuscita, la prima compresa: all'avvio
-    segue al `load` una rilettura in piu', innocua.
+    «riconnessione» a ogni connessione riuscita DOPO la prima (Tappa 2, Task
+    7, D2): alla prima l'avvio legge lo specchio una volta da se'
+    (`entity_cache.load`), dopo essersi iscritto.
     """
     def _mirror_on_reconnect(event_type: str) -> None:
         if event_type == "riconnessione":
@@ -3304,6 +3364,38 @@ def _chat_reply_submitter(app, data_dir: str):
     return _submit_chat_reply
 
 
+#: Quanto l'avvio aspetta che Home Assistant confermi l'iscrizione prima di
+#: leggere la casa (D2 della Tappa 2). Con Home Assistant su la conferma
+#: arriva in una frazione di secondo; il tetto conta per l'avvio della
+#: macchina, quando l'add-on parte prima del nucleo (`startup: services`) e
+#: il websocket riprova ogni `RECONNECT_DELAY_S` (dieci secondi): oltre il
+#: tetto l'avvio legge lo stesso, e lascia la rilettura alla prima connessione.
+FIRST_CONNECTION_CEILING_S = 10
+
+
+async def _open_websocket(ha_client) -> bool:
+    """Apre il websocket di lunga vita e aspetta, col tetto, che Home
+    Assistant confermi l'iscrizione agli stati. Vero se e' arrivata.
+
+    Se non arriva, l'avvio prosegue lo stesso -- non deve poter restare
+    appeso a un nucleo che non c'e' -- e chiede al client che la PRIMA
+    connessione, quando arrivera', faccia rileggere specchio, anagrafe,
+    comportamento e plance (`HAClient.reread_after_first_connection`): cio'
+    che l'avvio legge senza Home Assistant e' il vuoto, e senza quella
+    rilettura resterebbe vuoto fino al primo evento di registro.
+    """
+    await ha_client.start_websocket()
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(ha_client.ws_ready.wait(), FIRST_CONNECTION_CEILING_S)
+    if ha_client.ws_ready.is_set():
+        return True
+    logger.warning(
+        "Home Assistant non ha confermato l'iscrizione entro %ss: leggo la casa "
+        "lo stesso, e la rileggo alla prima connessione", FIRST_CONNECTION_CEILING_S)
+    ha_client.reread_after_first_connection()
+    return False
+
+
 async def _on_startup(app: web.Application) -> None:
     # Serve ai lavori dello schedulatore, piu' sotto.
     import time as _time
@@ -3388,13 +3480,36 @@ async def _on_startup(app: web.Application) -> None:
     # solo da `data_dir`, risolto in cima a questo avvio.
     _open_knowledge(app, data_dir)
 
+    # **Prima l'iscrizione, poi la lettura** (D2 della Tappa 2, Task 7,
+    # 03/10/2026). Fino a quel giorno l'avvio leggeva la casa e apriva il
+    # websocket alla fine; la prima connessione rileggeva tutto -- specchio,
+    # anagrafe, comportamento, plance -- per coprire gli eventi persi fra la
+    # lettura e l'iscrizione: la casa letta due volte (R18). Adesso nascono
+    # lo specchio e l'anagrafe, con i loro ascoltatori, si apre il websocket,
+    # si aspetta che Home Assistant confermi l'iscrizione agli stati
+    # (`ws_ready`), e POI si legge una volta: un evento arrivato durante la
+    # lettura dello specchio finisce nel suo tampone (`EntityCache._reread`),
+    # uno arrivato prima e' gia' nella fotografia. La prima connessione non
+    # rilegge (`HAClient._listen`).
     entity_cache = EntityCache()
+    ha_client.add_state_listener(entity_cache.on_state_changed)
+    app["entity_cache"] = entity_cache
+
+    # L'anagrafe nasce qui, vuota, e non piu' accanto alla sua prima
+    # lettura (piu' sotto): l'iscrizione alle integrazioni le consegna le
+    # voci appena il websocket si apre, e l'ascoltatore deve esserci prima.
+    # Finche' la prima ricostruzione non e' riuscita le tiene solo in
+    # `app["ha_integrations"]` (`HomeSpace.hold_integrations`).
+    home_space_store = HomeSpace(data_dir)
+    app["home_space_store"] = home_space_store
+    ha_client.add_integration_listener(integration_follower(app))
+
+    await _open_websocket(ha_client)
+
     try:
         await entity_cache.load(ha_client)
     except Exception as exc:
         logger.warning("EntityCache load failed: %s", exc)
-    ha_client.add_state_listener(entity_cache.on_state_changed)
-    app["entity_cache"] = entity_cache
 
     # Come si RENDE uno stato di Home Assistant (fetta «lo stato»,
     # 07/09/2026). Costruito vuoto, come il registro dei servizi qui sopra, e
@@ -3564,13 +3679,19 @@ async def _on_startup(app: web.Application) -> None:
     # predefiniti di `load_models_config`.
     app["models_config"] = load_models_config(data_dir)
 
-    # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
-    # casa cambia. La costruzione iniziale non deve poter impedire il boot: un
-    # Home Assistant non ancora pronto lascia l'anagrafe vuota con un avviso
-    # nel log, non fa fallire l'add-on -- il primo evento di registro la
-    # ricostruira' comunque.
-    home_space_store = HomeSpace(data_dir)
-    app["home_space_store"] = home_space_store
+    # Task 5 SDD casa: l'anagrafe (nata piu' sopra, prima del websocket) si
+    # costruisce all'avvio e si rifa' quando la casa cambia. La costruzione
+    # iniziale non deve poter impedire il boot: un Home Assistant non ancora
+    # pronto lascia l'anagrafe vuota con un avviso nel log, non fa fallire
+    # l'add-on -- la prima connessione (`reread_after_first_connection`) o il
+    # primo evento di registro la ricostruiranno.
+    #
+    # Gli ascoltatori si iscrivono PRIMA della lettura: il websocket e' gia'
+    # aperto, e un cambio di registro arrivato mentre si legge deve far
+    # ricostruire (con l'antirimbalzo) invece di perdersi.
+    ha_client.add_topology_listener(
+        schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
+    ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
 
     # **L'anagrafe si legge SUBITO, prima di chi la usa.** Da quando la casa
     # non e' piu' replicata su disco, `read()` torna `{}` finche' una lettura
@@ -3582,9 +3703,6 @@ async def _on_startup(app: web.Application) -> None:
         await rebuild(ha_client, home_space_store, entity_cache)
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
-    ha_client.add_topology_listener(
-        schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
-    ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
 
     # La riparazione d'avvio: scrive il resoconto degli ultimi due giorni
     # pieni che non ce l'hanno (vedi `_reaggregate_days`).
@@ -3664,28 +3782,34 @@ async def _on_startup(app: web.Application) -> None:
     # La cartella di Home Assistant serve ancora, per `secrets.yaml`: e' la
     # dichiarazione del proprietario su cosa sia segreto, e senza di essa i
     # corpi non si archiviano.
+    #
+    # **Una lettura sola all'avvio, questa** (Task 7 della Tappa 2, passo 3):
+    # la prima connessione non fa piu' rileggere (D2), e la rilettura
+    # sull'evento resta per i cambi e le riconnessioni. L'ascoltatore si
+    # iscrive prima della lettura, per la stessa ragione dell'anagrafe.
     ha_config_dir = _find_ha_config_dir()
     watch_behavior = behavior_reader(
         ha_client, app["entity_cache"], home_space_store,
         Path(ha_config_dir) if ha_config_dir else None,
     )
+    ha_client.add_topology_listener(
+        schedule_behavior_reread(watch_behavior))
     try:
         await watch_behavior()
     except Exception as exc:
         logger.warning("prima lettura del comportamento fallita: %s", exc)
-    ha_client.add_topology_listener(
-        schedule_behavior_reread(watch_behavior))
 
     # Task 5 SDD casa: le plance, compresa la predefinita (url_path nullo)
     # che HIRIS non aveva mai visto. Cadenza propria (DASHBOARD_EVENT, non i
     # registri): non stanno in `reader.TABLES`, quindi una ricostruzione
     # dell'anagrafe non le tocca e viceversa. Come l'anagrafe, la prima
-    # lettura non deve poter impedire il boot.
+    # lettura non deve poter impedire il boot. Una lettura sola all'avvio,
+    # questa, come per il comportamento; l'ascoltatore prima della lettura.
+    ha_client.add_dashboard_listener(schedule_dashboards_reread(ha_client, home_space_store))
     try:
         await reread_dashboards(ha_client, home_space_store)
     except Exception as exc:
         logger.warning("prima lettura delle plance fallita: %s", exc)
-    ha_client.add_dashboard_listener(schedule_dashboards_reread(ha_client, home_space_store))
 
     # I servizi si rinfrescano su EVENTO, non a scadenza. Prima si ricaricavano
     # solo dopo 300 secondi, e per quei cinque minuti HIRIS rifiutava i servizi
@@ -3707,10 +3831,11 @@ async def _on_startup(app: web.Application) -> None:
     memory_store = MemoryStore(os.path.join(data_dir, "memoria.db"))
     app["memory_store"] = memory_store
 
-    # Il WebSocket verso Home Assistant parte qui, dopo la registrazione di
-    # tutti i listener qui sopra: aprirlo prima lascerebbe una finestra di
-    # eventi senza nessuno ad ascoltarli.
-    await ha_client.start_websocket()
+    # Il WebSocket verso Home Assistant e' gia' aperto (`_open_websocket`, piu'
+    # sopra, prima della prima lettura). Gli ascoltatori iscritti dopo
+    # l'apertura -- l'osservatore, le automazioni, i servizi -- non perdono
+    # niente che prima ricevessero: fino al Task 7 il websocket si apriva
+    # qui, e prima di qui nessun evento arrivava a nessuno.
 
     # Le impostazioni della chat: un bot solo, senza id, coi default nel codice
     # (vedi `chat_settings.py`).

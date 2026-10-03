@@ -23,20 +23,23 @@ contava 2 e 2: meno del vero.
 Supervisor per conto suo (voce E-06 del registro): quelle chiamate qui vanno a
 un indirizzo che rifiuta subito, e l'avvio prosegue come fa in produzione.
 
-I TETTI sono i numeri misurati il 03/10/2026 (v3.73.2): sono quelli di
-PARTENZA della Tappa 2, che li porta a 1 e 1 (R18). Alzarli e' una riga di
-diff che una revisione vede. Il Task 5 (03/10/2026) ha tolto i registri interi
-dal primo giro delle condizioni: `read_registries` scende da 3 a 2. Il Task 6
-(03/10/2026) fa leggere il comportamento dallo specchio (A-03): `get_states`
-scende da 4 a 2 -- restano il caricamento dello specchio e la sua rilettura
-alla prima connessione, che il Task 7 porta a una.
+I TETTI sono l'obiettivo di R18: **la casa si legge una volta**,
+`get_states` 1 e `read_registries` 1 (Task 7 della Tappa 2, 03/10/2026). Alzarli
+e' una riga di diff che una revisione vede. La storia, misurata: 4 e 3 al
+03/10/2026 (v3.73.2, l'avvio intero); il Task 5 ha tolto i registri interi dal
+primo giro delle condizioni (`read_registries` 2), il Task 6 ha fatto leggere
+il comportamento dallo specchio (`get_states` 2); il Task 7 ha rovesciato
+l'ordine (D2, «prima l'iscrizione»): l'avvio apre il websocket, aspetta che
+Home Assistant confermi l'iscrizione, e POI legge -- la prima connessione non
+rilegge piu'.
 
 Mutazione ESEGUITA: aggiunta in `_on_startup` una seconda
 `await entity_cache.load(ha_client)` -- rossa (`get_states`: 3, tetto 2).
 Rieseguita il 03/10/2026 sull'avvio intero: rossa (`get_states`: 5, tetto 4).
 Rieseguita il 03/10/2026 sulla casa finta col client vero (Tappa 2, Task 4):
 rossa (`get_states`: 5, tetto 4). Rieseguita col tetto sceso (Task 6): rossa
-(`get_states`: 3, tetto 2).
+(`get_states`: 3, tetto 2). Rieseguita col tetto del Task 7: rossa
+(`get_states`: 2, tetto 1).
 """
 import asyncio
 import collections
@@ -53,7 +56,7 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
 
 #: Le letture dell'INTERA casa: stati e registri. Sono quelle che R18 vuole a una.
-WHOLE_HOUSE_CEILINGS = {"get_states": 2, "read_registries": 2}
+WHOLE_HOUSE_CEILINGS = {"get_states": 1, "read_registries": 1}
 #: Cio' che non e' una domanda alla casa: il ciclo di vita, gli ascoltatori
 #: (iscriversi non e' bussare) e cio' che la casa finta registra.
 NOT_QUESTIONS = ("ws_ready", "start", "stop", "start_websocket", "calls", "connections",
@@ -112,30 +115,44 @@ def test_l_avvio_legge_la_casa_intera_non_piu_di_oggi(tmp_path, capsys):
     assert not over, f"letture dell'intera casa oltre il tetto {WHOLE_HOUSE_CEILINGS}: {over}"
 
 
-# ── la prima connessione: la casa finta avvisa come il client vero ─────────
+# ── le connessioni: la casa finta avvisa come il client vero ────────────────
 
-#: Il tetto dell'attesa della prima connessione. Una connessione finta non fa
-#: I/O e si chiude in pochi passaggi del ciclo: il tetto serve solo a non
-#: restare appesi se la connessione non avviene affatto.
+#: Il tetto dell'attesa di una connessione. Una connessione finta non fa I/O
+#: e si chiude in pochi passaggi del ciclo: il tetto serve solo a non restare
+#: appesi se la connessione non avviene affatto.
 CONNECTION_TIMEOUT_S = 5
 
 
-async def _heard_at_first_connection(house) -> dict[str, list]:
-    """Chi ascolta cosa, dalla sola prima connessione di `house`."""
+async def _until_listening(connection, count: int) -> None:
+    async def poll():
+        while connection.listening < count:
+            await asyncio.sleep(0)
+    await asyncio.wait_for(poll(), CONNECTION_TIMEOUT_S)
+
+
+async def _heard_over_two_connections(house) -> dict[str, list]:
+    """Chi ascolta cosa, dalla prima connessione di `house` e da una seconda,
+    dopo una caduta."""
     heard: dict[str, list] = {kind: [] for kind in casa_finta.listener_kinds()}
     for kind, received in heard.items():
         getattr(house, f"add_{kind}_listener")(received.append)
     await house.start_websocket()
-    await asyncio.wait_for(house._session.connected.wait(), CONNECTION_TIMEOUT_S)
+    await _until_listening(house._session, 1)
+    house._session.drop()
+    await _until_listening(house._session, 2)
+    for _ in range(20):
+        await asyncio.sleep(0)
     await house.stop()
     return heard
 
 
-def test_la_prima_connessione_della_casa_finta_avvisa_come_il_client_vero():
+def test_le_connessioni_della_casa_finta_avvisano_come_il_client_vero():
     """La casa finta ignorava gli ascoltatori: la rilettura che la prima
-    connessione fa fare a specchio, anagrafe, comportamento e plance non
+    connessione faceva fare a specchio, anagrafe, comportamento e plance non
     passava mai, e il contatore d'avvio contava meno del vero (misurato il
-    03/10/2026: 2 e 2 invece di 4 e 3, piano della Tappa 2, D1).
+    03/10/2026: 2 e 2 invece di 4 e 3, piano della Tappa 2, D1). Dal Task 7 la
+    prima connessione non avvisa piu' (D2): l'avviso viene dalla seconda, e la
+    prova le guarda tutte e due.
 
     Mutazioni ESEGUITE (03/10/2026): `start_websocket` della casa finta torna
     a non aprire niente -- rossa (la connessione non avviene); la casa finta
@@ -148,40 +165,86 @@ def test_la_prima_connessione_della_casa_finta_avvisa_come_il_client_vero():
     lista che `_ws_loop` percorre, e la connessione non arriva in fondo)."""
     async def real() -> dict[str, list]:
         client = HAClient("http://casa.invalid", "token")
-        client._session = casa_finta.SilentConnection()
-        return await _heard_at_first_connection(client)
+        # La stessa casa dall'altra parte del filo: l'elenco iniziale delle
+        # integrazioni viene dagli stessi ingressi.
+        client._session = casa_finta.CasaFinta(synthetic_inputs())._session
+        return await _heard_over_two_connections(client)
 
     async def frozen() -> dict[str, list]:
-        return await _heard_at_first_connection(
+        return await _heard_over_two_connections(
             fotografia_porte.FrozenHouse(synthetic_inputs()))
 
     expected = asyncio.run(real())
     # La derivazione non si e' svuotata: il client vero avvisa qualcuno alla
-    # prima connessione, o il confronto qui sotto sarebbe vuoto contro vuoto.
-    assert any(expected.values()), expected
+    # seconda connessione, o il confronto qui sotto sarebbe vuoto contro vuoto.
+    assert expected["topology"] == ["riconnessione"], expected
     assert asyncio.run(frozen()) == expected
 
 
-def test_il_montaggio_consegna_l_app_a_riletture_della_prima_connessione_finite(tmp_path):
-    """`startup_calls` conta fino a quando i lavori rimandati dalla prima
-    connessione sono finiti: lo garantisce `mounted`, che consegna l'app solo
-    dopo. Senza, le riletture con antirimbalzo partirebbero mentre l'app e'
-    gia' in uso, e il contatore -- che ha solo tetti -- le perderebbe in
-    silenzio, restando verde.
+def test_l_avvio_si_iscrive_prima_di_leggere_e_la_prima_connessione_non_rilegge(tmp_path):
+    """D2 della Tappa 2, «prima l'iscrizione» (03/10/2026): l'avvio apre il
+    websocket, si iscrive agli stati, aspetta che Home Assistant confermi
+    (`ws_ready`), e POI legge la casa una volta. Fino a quel giorno leggeva
+    prima e si iscriveva alla fine, e la prima connessione rileggeva tutto
+    per coprire la finestra fra le due.
 
-    Mutazioni ESEGUITE (03/10/2026): `_first_connection_settled` aspetta la
-    connessione ma non i lavori rimandati -- rossa (anagrafe, comportamento e
-    plance ancora in volo); `mounted` non chiama `_first_connection_settled`
-    -- rossa (nessun lavoro rimandato: la connessione non e' ancora
-    avvenuta)."""
-    async def boot() -> tuple[list[str], list[str]]:
+    `mounted` consegna l'app solo dopo la prima connessione e i lavori che ha
+    rimandato (`_first_connection_settled`): qui la prova che non ne ha
+    rimandato nessuno.
+
+    Mutazioni ESEGUITE (03/10/2026, Task 7): `await entity_cache.load(...)`
+    rimessa prima dell'apertura del websocket -- rossa (la lettura degli
+    stati precede l'iscrizione); tolto il salto della prima connessione in
+    `_ws_loop` -- rossa (anagrafe, comportamento e plance rimandati)."""
+    async def boot():
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            deferred = app["ha_client"]._session.deferred_work
-            return (sorted(task.get_name() for task in deferred),
-                    sorted(task.get_name() for task in deferred if not task.done()))
+            house = app["ha_client"]
+            return (list(house._session.sent), list(house._session.sent_after),
+                    [command for command, _extra in house.calls],
+                    sorted(task.get_name() for task in house._session.deferred_work),
+                    house._session.listening)
 
-    deferred, unfinished = asyncio.run(boot())
-    # La prima connessione rimanda qualcosa: se non rimandasse niente la prova
-    # sotto guarderebbe un insieme vuoto.
-    assert deferred, "la prima connessione non ha rimandato nessun lavoro"
-    assert not unfinished, f"lavori della prima connessione ancora in volo: {unfinished}"
+    sent, sent_after, calls, deferred, listening = asyncio.run(boot())
+    subscription = next(i for i, message in enumerate(sent)
+                        if message.get("event_type") == "state_changed")
+    assert "/api/states" in calls, calls
+    # Quante domande erano gia' partite quando ci si e' iscritti: nessuna
+    # lettura degli stati fra quelle.
+    assert "/api/states" not in calls[:sent_after[subscription]]
+    assert listening == 1
+    assert deferred == [], f"la prima connessione ha rimandato: {deferred}"
+
+
+def test_l_avvio_finisce_anche_se_home_assistant_non_risponde(tmp_path, monkeypatch):
+    """«Cosa guardare in revisione», 3: l'add-on parte prima del nucleo
+    (`startup: services`). L'attesa della prima connessione ha un tetto,
+    l'avvio finisce lo stesso, e chiede che la prima connessione -- quando
+    arrivera' -- faccia rileggere cio' che l'avvio ha letto nel vuoto.
+
+    Mutazione ESEGUITA (03/10/2026, Task 7): tolta la chiamata a
+    `reread_after_first_connection` -- rossa (la prima connessione non
+    rileggerebbe)."""
+    from hiris.app import server
+    from hiris.app.proxy import ha_client as ha_client_module
+
+    monkeypatch.setattr(server, "FIRST_CONNECTION_CEILING_S", 0.05)
+    # Dopo il rifiuto il client aspetta: la connessione non arriva durante
+    # l'avvio, come quando il nucleo non e' ancora su.
+    monkeypatch.setattr(ha_client_module, "AUTH_RETRY_FIRST_S", 3600)
+
+    def unreachable(base_url=None, token=None):
+        house = fotografia_porte.FrozenHouse(synthetic_inputs())
+        house._session.refuse_next_auth("Home Assistant is starting")
+        return house
+
+    async def boot():
+        async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
+                                            unreachable) as app:
+            return app["ha_client"]._reread_at_first_connection, \
+                app["entity_cache"].loaded
+
+    asked, loaded = asyncio.run(boot())
+    assert asked
+    # La casa finta risponde alle letture anche senza websocket: l'avvio ha
+    # letto lo stesso, non ha aspettato la connessione per sempre.
+    assert loaded

@@ -877,6 +877,10 @@ async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(aiohttp_client, tmp_
                    refuse={"frontend/update_panel": rotto, "get_panels": rotto})
     chiusa = await aiohttp_client(app)
     ha = app["ha_client"]
+    # Il nucleo collegato: la casa finta non accende `ws_ready` alla nascita
+    # (Tappa 2, Task 7), lo accende il websocket di lunga vita, che qui non
+    # si apre.
+    ha.ws_ready.set()
 
     async def slug(_token):
         return {"slug": "6354e165_hiris"}

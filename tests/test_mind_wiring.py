@@ -32,7 +32,7 @@ from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
-from hiris.app.server import watch_system_conditions
+from hiris.app.server import integration_follower, watch_system_conditions
 from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
@@ -160,12 +160,12 @@ class _OsservatoreFinto:
         return len(problems) + len(integrations) + len(log_entries)
 
 
-#: I comandi delle tre letture di sistema, come il client vero li manda:
-#: `problems()` -> `repairs/list_issues`, `read_registry("integrazioni")` ->
-#: la tabella `HAClient._REGISTRIES` (`config_entries/get`), e
-#: `system_log()` -> `system_log/list` (letti in `proxy/ha_client.py`).
+#: I comandi delle due letture di sistema, come il client vero li manda:
+#: `problems()` -> `repairs/list_issues`, `system_log()` -> `system_log/list`
+#: (letti in `proxy/ha_client.py`). Le integrazioni non si leggono: arrivano
+#: dall'iscrizione `config_entries/subscribe` (Tappa 2, Task 7), qui
+#: `_announced`.
 _PROBLEMS = "repairs/list_issues"
-_INTEGRATIONS = "config_entries/get"
 _LOG = "system_log/list"
 
 #: Il rifiuto che Home Assistant manda quando il gestore di un comando
@@ -197,6 +197,14 @@ def _system_house(problems, integrations, log_entries=(), **faults) -> CasaFinta
     inputs["registries"]["integrazioni"] = list(integrations)
     inputs["system_log"] = {"voci": list(log_entries)}
     return CasaFinta(inputs, **faults)
+
+
+def _announced(app: dict, integrations) -> dict:
+    """L'elenco iniziale dell'iscrizione alle integrazioni, nella forma di
+    Home Assistant, passato all'ascoltatore che l'avvio iscrive: e' cosi' che
+    le integrazioni arrivano in `app["ha_integrations"]`."""
+    integration_follower(app)([{"type": None, "entry": row} for row in integrations])
+    return app
 
 
 def _asked(house: CasaFinta) -> list[str]:
@@ -232,9 +240,8 @@ def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono(
     all'osservatore). La finta di prima restituiva l'esito gia' tradotto, e
     quella traduzione non la guardava."""
     osservatore = _OsservatoreFinto()
-    app = {"watcher": osservatore}
-    house = _system_house([{"domain": "hue", "issue_id": "x"}],
-                          [{"entry_id": "y", "state": "not_loaded"}])
+    app = _announced({"watcher": osservatore}, [{"entry_id": "y", "state": "not_loaded"}])
+    house = _system_house([{"domain": "hue", "issue_id": "x"}], [])
 
     esito = asyncio.run(watch_system_conditions(app, house))
 
@@ -256,7 +263,7 @@ def test_un_errore_di_problemi_salta_il_giro_per_intero(failure):
     silenzio e il rifiuto di Home Assistant), e la busta la fa il client. E il
     giro si salta PRIMA delle altre due letture: `house.calls` lo dice."""
     osservatore = _OsservatoreFinto()
-    app = {"watcher": osservatore}
+    app = _announced({"watcher": osservatore}, [])
     house = _system_house([], [], **_FAILURES[failure](_PROBLEMS))
 
     esito = asyncio.run(watch_system_conditions(app, house))
@@ -266,21 +273,19 @@ def test_un_errore_di_problemi_salta_il_giro_per_intero(failure):
     assert _asked(house) == [_PROBLEMS]
 
 
-@pytest.mark.parametrize("failure", sorted(_FAILURES))
-def test_le_integrazioni_non_disponibili_saltano_il_giro_per_intero(failure):
-    """Identico per `read_registry("integrazioni")`: se risponde con la
-    busta del guasto, non c'e' una lista da passare -- una lista vuota per
-    guasto chiuderebbe ogni integrazione gia' rotta come se si fosse appena
-    risolta.
+def test_le_integrazioni_non_ancora_annunciate_saltano_il_giro_per_intero():
+    """Identico per le integrazioni: finche' l'iscrizione non ha mandato
+    l'elenco iniziale non c'e' una lista da passare -- una lista vuota
+    chiuderebbe ogni integrazione gia' rotta come se si fosse appena risolta.
+    Fino al Task 7 (03/10/2026) il guasto era `read_registry("integrazioni")`
+    che rendeva la busta; adesso il giro non le legge piu'.
 
-    Mutazione ESEGUITA (03/10/2026, unione del Task 12 sul Task 5): in
-    `HAClient.read_registry` il `return read` della busta diventato
-    `continue` -- rossa nei due casi (`assert 0 is None`: il giro gira sulle
-    integrazioni vuote)."""
+    Mutazione ESEGUITA (03/10/2026, Task 7): in `watch_system_conditions`
+    `app.get("ha_integrations")` diventato `app.get("ha_integrations", [])`
+    -- rossa (`assert 0 is None`: il giro gira sulle integrazioni vuote)."""
     osservatore = _OsservatoreFinto()
     app = {"watcher": osservatore}
-    house = _system_house([], [{"entry_id": "y", "state": "not_loaded"}],
-                          **_FAILURES[failure](_INTEGRATIONS))
+    house = _system_house([], [])
 
     esito = asyncio.run(watch_system_conditions(app, house))
 
@@ -308,7 +313,9 @@ def test_a_broken_log_read_skips_the_round_entirely(failure):
     `{"voci": []}` -- rossa nei due casi (`assert 0 is None`).
     """
     osservatore = _OsservatoreFinto()
-    app = {"watcher": osservatore}
+    # Le integrazioni annunciate: senza, il giro si salterebbe PRIMA di
+    # leggere il registro di errori, e la prova sarebbe verde a vuoto.
+    app = _announced({"watcher": osservatore}, [])
     house = _system_house([], [], **_FAILURES[failure](_LOG))
 
     esito = asyncio.run(watch_system_conditions(app, house))

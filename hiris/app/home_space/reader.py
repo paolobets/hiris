@@ -238,6 +238,37 @@ def build_home_space(registries: dict[str, list[dict]], *,
     }
 
 
+def _carried_over(built: dict[str, list[dict]], previous: dict[str, list[dict]],
+                  unavailable: list[str]) -> dict[str, list[dict]]:
+    """L'anagrafe appena costruita, con le tabelle dei registri che non hanno
+    risposto riprese da quella di prima (A-10).
+
+    I nomi sono quelli di `HAClient.read_registries` e di `topology.rebuild`:
+    una tabella intera (`aree`), gli alias delle entita' (`entita:alias`, il
+    secondo giro `get_entries`), un ambito delle categorie
+    (`categorie:script`). Gli altri (`specchio_vivo`,
+    `sistema_di_riferimento`) non sono tabelle e non si toccano. Le righe
+    riprese sono gia' nella forma dell'anagrafe: nessuna seconda costruzione.
+    """
+    result = dict(built)
+    for name in unavailable:
+        table, _, part = name.partition(":")
+        if table not in TABLES or table not in previous:
+            continue
+        if not part:
+            result[table] = list(previous[table])
+        elif table == "entita" and part == "alias":
+            known = {row["id"]: row.get("alias") for row in previous["entita"]}
+            result["entita"] = [
+                {**row, "alias": known[row["id"]]} if not row.get("alias") and known.get(row["id"])
+                else row
+                for row in result["entita"]]
+        elif table == "categorie":
+            result["categorie"] = list(result["categorie"]) + [
+                row for row in previous["categorie"] if row.get("ambito") == part]
+    return result
+
+
 class HomeSpace:
     """L'anagrafe viva: tiene l'ultima lettura e la serve — `read()`,
     `reference_frame()`, `unavailable()`, `updated_at()`.
@@ -348,23 +379,33 @@ class HomeSpace:
         consegna. **E' l'unica porta**: la ricostruzione vera e ogni prova
         passano di qui, quindi una finta non puo' seminare una casa che il
         lettore non saprebbe produrre.
+
+        **Un registro caduto non svuota la sua tabella** (A-10, Task 7 della
+        Tappa 2, 03/10/2026): si tiene cio' che la ricostruzione precedente
+        sapeva (`_carried_over`), e il nome resta in `unavailable` -- la
+        tabella e' marcata come non riletta, e chi la dichiara incompleta
+        continua a farlo. Fino a quel giorno un `get_entries` caduto toglieva
+        dall'anagrafe TUTTI gli alias, e la ricerca smetteva di trovare cio'
+        che il proprietario aveva chiamato a modo suo, per un comando fallito.
         """
-        self.hold(build_home_space(registries, live_classes=live_classes,
-                                   live_units=live_units),
-                  unavailable, reference_frame)
+        built = build_home_space(registries, live_classes=live_classes,
+                                 live_units=live_units)
+        if self._updated_at is not None:
+            built = _carried_over(built, self._home_space, unavailable or [])
+        self.hold(built, unavailable, reference_frame)
 
     def hold_integrations(self, rows: list[dict]) -> None:
-        """Le integrazioni appena lette dal giro delle condizioni, al posto di
-        quelle dell'ultima ricostruzione (A-11, 03/10/2026).
+        """Le integrazioni appena annunciate da Home Assistant, al posto di
+        quelle dell'ultima ricostruzione (A-11, 03/10/2026; dal Task 7 della
+        Tappa 2 le annuncia l'iscrizione `config_entries/subscribe`, vedi
+        `server.integration_follower`).
 
         **Perche'.** L'anagrafe si ricostruisce sugli eventi dei registri, e lo
         stato di un'integrazione (`loaded`, `setup_error`, `not_loaded`...)
         restava quello letto all'ultima ricostruzione: un'integrazione che
-        smette di partire puo' non far nascere nessun evento di registro. Il
-        giro delle condizioni legge comunque `config_entries/get` ogni dieci
-        minuti: le righe che ha gia' in mano vengono qui invece di essere una
-        seconda copia che sa una cosa diversa (fondamenta 2). Vecchio al piu'
-        un giro, non fino al prossimo evento.
+        smette di partire puo' non far nascere nessun evento di registro.
+        L'iscrizione annuncia ogni cambio di stato di una voce: arriva qui, e
+        il nucleo lo dice subito.
 
         Le righe passano dallo stesso costruttore della ricostruzione
         (`_integration`): stessa forma da tutte e due le porte. Una tabella

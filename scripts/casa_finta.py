@@ -127,29 +127,150 @@ def listener_kinds() -> tuple[str, ...]:
                         if name.startswith("add_") and name.endswith("_listener")))
 
 
+#: La versione di Home Assistant il cui sorgente descrive i messaggi qui sotto:
+#: viaggia nei messaggi dell'autenticazione come `ha_version`, come fa il vero.
+HA_SOURCE_VERSION = "2026.9.4"
+
+#: Cio' che Home Assistant scrive a un gettone che non riconosce
+#: (`websocket_api/auth.py`, `async_handle`, righe 125-129 al tag 2026.9.4).
+INVALID_TOKEN = "Invalid access token or password"
+
+#: Il segno che chiude la connessione viva: dopo di lui l'iterazione finisce,
+#: come quando Home Assistant chiude il websocket.
+_DROPPED = object()
+
+
+class _Text:
+    """Un messaggio di testo del websocket, come aiohttp lo da' ad `async for`."""
+
+    type = aiohttp.WSMsgType.TEXT
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def json(self) -> dict:
+        return self._payload
+
+
 class SilentConnection:
-    """Il websocket di una casa ferma: chiede l'autenticazione, la accetta, e
-    poi tace -- una casa congelata non manda eventi.
+    """Il websocket di lunga vita di una casa ferma: chiede l'autenticazione,
+    la accetta, conferma le iscrizioni, e poi tace -- una casa congelata non
+    manda eventi finche' una prova non glieli fa mandare.
 
     E' la `ClientSession` su cui gira il codice VERO del client
-    (`HAClient._ws_loop`): cosi' la prima connessione fa cio' che fa in
-    produzione -- l'iscrizione agli eventi e l'avviso «riconnessione» agli
-    ascoltatori -- senza che qui se ne ricopi una riga. Le prove la danno
-    anche al client vero, per confrontarlo con la casa finta sulla stessa
-    connessione (`tests/test_costi_avvio.py`).
+    (`HAClient._ws_loop`): le iscrizioni, lo smistamento degli eventi,
+    l'avviso «riconnessione» agli ascoltatori sono quelli di produzione, senza
+    che qui se ne ricopi una riga. Le prove la danno anche al client vero, per
+    confrontarlo con la casa finta sulla stessa connessione
+    (`tests/test_costi_avvio.py`).
+
+    **La forma dei messaggi, letta e non indovinata** (sorgente di Home
+    Assistant al tag `2026.9.4`, letto il 03/10/2026):
+
+    - l'autenticazione: `{"type": "auth_required", "ha_version"}`, poi
+      `{"type": "auth_ok", "ha_version"}` oppure `{"type": "auth_invalid",
+      "message"}`, e la connessione si chiude (`websocket_api/auth.py`:
+      `AUTH_REQUIRED_MESSAGE`/`AUTH_OK_MESSAGE` righe 38-41,
+      `auth_invalid_message` righe 44-46, il gettone sconosciuto righe
+      125-129 con `raise Disconnect`);
+    - un'iscrizione si conferma con `{"id", "type": "result", "success":
+      true, "result": null}` (`commands.py`, `handle_subscribe_events`,
+      `connection.send_result(msg["id"])` riga 220; `messages.py`,
+      `result_message` righe 61-63);
+    - un evento arriva con l'id DELL'ISCRIZIONE: `{"id", "type": "event",
+      "event": {"event_type", "data", "origin", "time_fired", "context"}}`
+      (`messages.py`, `cached_event_message` righe 123-139; `core.py`,
+      `Event._as_dict` righe 1397-1412). Un evento a cui il client non si e'
+      iscritto non arriva: `push_event` lo dice rendendo `False`;
+    - `config_entries/subscribe` conferma, poi manda UN evento con l'elenco
+      intero, `[{"type": null, "entry": ...}]`, e da li' un evento per ogni
+      cambio, `[{"type": "added" | "removed" | "updated", "entry": ...}]`
+      (`components/config/config_entries.py`, `config_entries_subscribe`
+      righe 660-711; i tre valori: `ConfigEntryChange` in
+      `homeassistant/config_entries.py` righe 224-229; la voce e'
+      `ConfigEntry.as_json_fragment`, righe 658-685). Non chiede
+      l'amministratore: nessun `require_admin` su quel comando.
+
+    Cosa sa fare per le prove: `refuse_next_auth()` (il gettone rifiutato
+    alla prossima connessione), `push_event(tipo, dati)` e
+    `push_config_entry_change(cambio, voce)` (Home Assistant che parla),
+    `drop()` (la connessione che cade). Registra `opened` (le connessioni
+    aperte), `listening` (quelle arrivate in ascolto degli eventi) e `sent`
+    (cio' che il client ha mandato dopo l'autenticazione, il gettone escluso:
+    e' una credenziale). Un comando che non sa servire solleva
+    `UnservedCommand` col suo nome.
     """
 
     def __init__(self) -> None:
         self._replies: list[dict] = []
         self._tasks_before: set[asyncio.Task] = set()
-        #: Acceso quando il client ha finito di avvisare gli ascoltatori della
-        #: connessione e si mette in ascolto degli eventi.
+        self._auth_refusals: list[str] = []
+        self._inbox: asyncio.Queue = asyncio.Queue()
+        self._subscriptions: dict[str, int] = {}
+        self._entries_subscription: int | None = None
+        #: Acceso quando il client si mette in ascolto degli eventi.
         self.connected = asyncio.Event()
-        #: I compiti nati mentre il client avvisava gli ascoltatori.
+        #: I compiti nati fra l'apertura dell'ultima connessione e l'ascolto:
+        #: i lavori che il client ha rimandato avvisando gli ascoltatori.
         self.deferred_work: set[asyncio.Task] = set()
+        self.opened = 0
+        self.listening = 0
+        self.sent: list[dict] = []
+
+    # ── cio' che una prova fa fare a Home Assistant ─────────────────────────
+
+    def refuse_next_auth(self, message: str = INVALID_TOKEN) -> None:
+        """La prossima connessione si vede rifiutare il gettone."""
+        self._auth_refusals.append(message)
+
+    def push_event(self, event_type: str, data: dict) -> bool:
+        """Home Assistant manda un evento del bus. `False` se il client non si
+        e' iscritto a quel tipo: il vero non glielo manderebbe."""
+        subscription = self._subscriptions.get(event_type)
+        if subscription is None:
+            return False
+        self._inbox.put_nowait({
+            "id": subscription, "type": "event",
+            "event": {"event_type": event_type, "data": data, "origin": "LOCAL",
+                      "time_fired": "2026-10-03T12:00:00+00:00",
+                      "context": {"id": "01CASAFINTA", "parent_id": None,
+                                  "user_id": None}}})
+        return True
+
+    def push_config_entry_change(self, change: str, entry: dict) -> bool:
+        """Home Assistant annuncia un cambio di una voce di integrazione.
+        `False` se il client non si e' iscritto a `config_entries/subscribe`."""
+        if self._entries_subscription is None:
+            return False
+        self._inbox.put_nowait({"id": self._entries_subscription, "type": "event",
+                                "event": [{"type": change, "entry": entry}]})
+        return True
+
+    def drop(self) -> None:
+        """La connessione viva cade: l'ascolto del client finisce."""
+        self._inbox.put_nowait(_DROPPED)
+
+    # ── cio' che Home Assistant ha in casa ──────────────────────────────────
+
+    def config_entries(self) -> list[dict]:
+        """Le voci delle integrazioni dell'elenco iniziale. Una casa ferma
+        senza ingressi non ne ha."""
+        return []
+
+    # ── il trasporto, visto dal client ──────────────────────────────────────
 
     def ws_connect(self, url, **kwargs):
-        self._replies = [{"type": "auth_required"}, {"type": "auth_ok"}]
+        self.opened += 1
+        refusal = self._auth_refusals.pop(0) if self._auth_refusals else None
+        self._replies = [
+            {"type": "auth_required", "ha_version": HA_SOURCE_VERSION},
+            {"type": "auth_invalid", "message": refusal} if refusal is not None
+            else {"type": "auth_ok", "ha_version": HA_SOURCE_VERSION}]
+        # Una connessione nuova non porta niente della vecchia: ne' messaggi
+        # in attesa, ne' iscrizioni.
+        self._inbox = asyncio.Queue()
+        self._subscriptions = {}
+        self._entries_subscription = None
         self._tasks_before = asyncio.all_tasks()
         return self
 
@@ -163,21 +284,44 @@ class SilentConnection:
         return self._replies.pop(0)
 
     async def send_json(self, payload):
-        return None
+        if payload.get("type") == "auth":
+            return
+        self.sent.append(payload)
+        command = payload.get("type")
+        if command == "subscribe_events":
+            self._subscriptions[payload.get("event_type")] = payload["id"]
+            self._confirm(payload["id"])
+        elif command == "config_entries/subscribe":
+            entries = self.config_entries()
+            self._entries_subscription = payload["id"]
+            self._confirm(payload["id"])
+            self._inbox.put_nowait({"id": payload["id"], "type": "event",
+                                    "event": [{"type": None, "entry": entry}
+                                              for entry in entries]})
+        else:
+            raise UnservedCommand(str(command), "la connessione di lunga vita non lo serve")
+
+    def _confirm(self, subscription: int) -> None:
+        self._inbox.put_nowait({"id": subscription, "type": "result",
+                                "success": True, "result": None})
 
     def __aiter__(self):
-        # Il client vero comincia ad ascoltare gli eventi solo DOPO aver
-        # avvisato gli ascoltatori della connessione. Fra `ws_connect` e qui
-        # non cede mai il passo al ciclo (la connessione finta non fa I/O):
-        # i compiti nati nel frattempo sono tutti e soli i lavori che gli
-        # ascoltatori hanno rimandato -- le riletture con antirimbalzo.
+        # Il client vero comincia ad ascoltare gli eventi solo DOPO essersi
+        # iscritto e (alle riconnessioni) aver avvisato gli ascoltatori. Fra
+        # `ws_connect` e qui non cede mai il passo al ciclo (la connessione
+        # finta non fa I/O): i compiti nati nel frattempo sono tutti e soli i
+        # lavori che gli ascoltatori hanno rimandato -- le riletture con
+        # antirimbalzo.
         self.deferred_work = asyncio.all_tasks() - self._tasks_before
+        self.listening += 1
         self.connected.set()
         return self
 
     async def __anext__(self):
-        await asyncio.Event().wait()
-        raise StopAsyncIteration
+        message = await self._inbox.get()
+        if message is _DROPPED:
+            raise StopAsyncIteration
+        return _Text(message)
 
     async def close(self) -> None:
         return None
@@ -209,6 +353,22 @@ class _HouseSession(SilentConnection):
     def __init__(self, house: CasaFinta) -> None:
         super().__init__()
         self._house = house
+        #: Per ogni messaggio di `sent`, quante chiamate la casa aveva gia'
+        #: ricevuto quando e' partito: dice cosa e' venuto prima, l'iscrizione
+        #: o la lettura (D2 della Tappa 2).
+        self.sent_after: list[int] = []
+
+    async def send_json(self, payload):
+        if payload.get("type") != "auth":
+            self.sent_after.append(len(self._house.calls))
+        return await super().send_json(payload)
+
+    def config_entries(self) -> list[dict]:
+        """L'elenco iniziale delle integrazioni: le voci che `config_entries/get`
+        ha reso alla cattura (`registries.integrazioni`), la stessa forma
+        (`ConfigEntry.as_json_fragment`). Senza quell'ingresso l'iscrizione non
+        e' servita."""
+        return self._house._input("config_entries/subscribe", "registries.integrazioni")
 
     def get(self, url: str, **kwargs):
         return self._house._rest_reply(url.removeprefix(self._house._base_url))
@@ -255,10 +415,11 @@ class CasaFinta(HAClient):
         self._refuse = dict(refuse or {})
         self._silence = set(silence)
         self._session = _HouseSession(self)
-        # Acceso dalla nascita, come lo era in `FrozenHouse`: chi aspetta il
-        # nucleo di Home Assistant (`panel_visibility`) non aspetta una casa
-        # che c'e' gia'. La prima connessione lo riaccende comunque.
-        self.ws_ready.set()
+        # `ws_ready` NON si accende alla nascita (fino al Task 7 della Tappa 2
+        # si'): lo accende il client vero quando la casa conferma l'iscrizione
+        # agli stati, come in produzione. Acceso prima, l'avvio leggerebbe la
+        # casa prima di essersi iscritto, e la prova dell'ordine (D2) non
+        # vedrebbe niente.
         self.calls: list[tuple[str, object]] = []
         self.connections: list[tuple[str, object]] = []
 
@@ -281,10 +442,24 @@ class CasaFinta(HAClient):
         che l'avvio e' finito davvero («avvio intero», D1 della Tappa 2). Si
         aspetta l'evento, non un tempo: l'antirimbalzo delle riletture e' di
         qualche secondo, e un `sleep` sarebbe o troppo corto o sprecato.
-        Un websocket mai aperto non ha niente da aspettare."""
+
+        Non c'e' niente da aspettare se il websocket non e' mai stato aperto,
+        o se l'avvio ha smesso di aspettarlo (`reread_after_first_connection`:
+        la casa non rispondeva) -- l'avvio e' finito senza. Se il ciclo del
+        websocket e' morto -- un comando che la casa non serve
+        (`UnservedCommand`) -- si solleva la sua eccezione invece di
+        aspettare per sempre."""
         if self._ws_task is None:
             return
-        await self._session.connected.wait()
+        if self._reread_at_first_connection and not self._session.connected.is_set():
+            return
+        connected = asyncio.ensure_future(self._session.connected.wait())
+        done, _pending = await asyncio.wait({connected, self._ws_task},
+                                            return_when=asyncio.FIRST_COMPLETED)
+        if self._ws_task in done:
+            connected.cancel()
+            self._ws_task.result()
+            return
         await asyncio.gather(*self._session.deferred_work, return_exceptions=True)
 
     # ── il trasporto ────────────────────────────────────────────────────────
@@ -353,6 +528,8 @@ class CasaFinta(HAClient):
             raise UnservedCommand(command, f"manca l'ingresso `{source}`")
         value = self._inputs
         for key in source.split("."):
+            if not isinstance(value, dict) or key not in value:
+                raise UnservedCommand(command, f"manca l'ingresso `{source}`")
             value = value[key]
         return value
 

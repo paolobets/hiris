@@ -85,13 +85,15 @@ def _casa(pannelli=None, *, refuse=None, silence=(), pronto: bool = True) -> Cas
     `null`, come `websocket_update_panel`) e rilegge `pannelli`. `refuse` e
     `silence` sono il rifiuto vero (`{"code", "message"}`) e il silenzio.
     `pronto=False` finge un nucleo non ancora collegato: `ws_ready` resta
-    spento finche' la prova non lo accende."""
+    spento finche' la prova non lo accende. Con `pronto` si accende qui: la
+    casa finta non lo accende piu' alla nascita (Tappa 2, Task 7), lo accende
+    il websocket di lunga vita, che queste prove non aprono."""
     pannelli = _PANNELLI if pannelli is None else pannelli
     ha = CasaFinta({}, answers={"frontend/update_panel": lambda extra: None,
                                 "get_panels": lambda extra: pannelli},
                    refuse=refuse, silence=silence)
-    if not pronto:
-        ha.ws_ready.clear()
+    if pronto:
+        ha.ws_ready.set()
     return ha
 
 

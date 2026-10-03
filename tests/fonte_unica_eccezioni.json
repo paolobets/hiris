@@ -104,7 +104,6 @@
     "extract_from_target": 1,
     "hourly_statistics": 1,
     "problems": 1,
-    "read_registry": 1,
     "statistic_ids": 2,
     "system_log": 1
    },
