@@ -32,3 +32,20 @@ async def started_app(tmp_path_factory):
     data_dir = str(tmp_path_factory.mktemp("avvio"))
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
         yield app
+
+
+def router_routes(app=None) -> dict[str, str]:
+    """`"METODO modello" -> nome del gestore`, dal router VERO dell'app.
+
+    Il router e' il fatto, il sorgente una sua descrizione: una rotta
+    registrata in un'altra forma (`add_route`, una funzione di `api/`, un
+    modulo nuovo) qui compare, una regex su `server.py` no. Basta
+    `create_app()`, senza avvio: le rotte si registrano li'. HEAD resta fuori
+    (aiohttp la aggiunge da se' accanto a ogni GET)."""
+    from hiris.app.server import create_app
+
+    app = app if app is not None else create_app()
+    return {f"{route.method} {route.resource.canonical}":
+            getattr(route.handler, "__name__", repr(route.handler))
+            for route in app.router.routes()
+            if route.resource is not None and route.method != "HEAD"}

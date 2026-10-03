@@ -26,13 +26,25 @@ import ast
 import pathlib
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
-_SERVER = RADICE / "hiris" / "app" / "server.py"
+_APP = RADICE / "hiris" / "app"
+_SERVER = _APP / "server.py"
 
 
 def archivi_aperti() -> dict[str, str]:
-    """`{«nome in app», «classe»}` per ogni archivio che il server costruisce."""
-    albero = ast.parse(_SERVER.read_text(encoding="utf-8"))
+    """`{«nome in app», «classe»}` per ogni archivio che il PRODOTTO costruisce.
+
+    Si guarda tutto `hiris/app`, non il solo `server.py` (Tappa 1 dello
+    sprint «Una fonte sola di verita'»): quando il cablaggio esce da
+    `server.py`, un cancello che guarda un file solo si restringe e resta
+    verde. Mutazione ESEGUITA (03/10/2026): `app["prova"] = ProvaStore(...)`
+    scritto in un modulo di `api/` -- rossa (prima restava verde)."""
     trovati = {}
+    for percorso in sorted(_APP.rglob("*.py")):
+        _archivi_in(ast.parse(percorso.read_text(encoding="utf-8")), trovati)
+    return trovati
+
+
+def _archivi_in(albero: ast.AST, trovati: dict[str, str]) -> None:
     for nodo in ast.walk(albero):
         if not isinstance(nodo, ast.Assign) or not isinstance(nodo.value, ast.Call):
             continue
@@ -47,7 +59,6 @@ def archivi_aperti() -> dict[str, str]:
                     and bersaglio.value.id == "app"
                     and isinstance(bersaglio.slice, ast.Constant)):
                 trovati[bersaglio.slice.value] = classe
-    return trovati
 
 
 def _corpo_pulizia() -> str:

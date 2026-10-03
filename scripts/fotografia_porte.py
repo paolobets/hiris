@@ -69,7 +69,6 @@ Uso:
 from __future__ import annotations
 
 import argparse
-import ast
 import asyncio
 import contextlib
 import json
@@ -110,32 +109,30 @@ PORTS = ("albero", "visibili", "nucleo", "schede", "selezioni", "osservatore",
          "ricette", "strumenti", "catalogo", "prompt")
 
 
-SERVER = ROOT / "hiris" / "app" / "server.py"
 
 #: Le rotte `GET` che `forme` NON chiede. Lista di AMMISSIONE al contrario:
 #: ogni esclusione col suo perche'; una rotta nuova entra da sola.
 EXCLUDED_ROUTES: dict[str, str] = {}
 
 
-def live_routes(source: str | None = None, *, excluded=None) -> tuple[str, ...]:
-    """Le rotte `GET` dell'API, lette dal sorgente del server.
+def live_routes(app=None, *, excluded=None) -> tuple[str, ...]:
+    """Le rotte `GET` dell'API, chieste al router vero dell'app.
 
-    Solo quelle sotto `/api/` e senza un segnaposto nel percorso: le pagine
-    HTML non hanno una forma JSON, e una rotta con `{id}` vuole un id vero
-    della casa. `excluded=()` restituisce tutto, per chi verifica le esclusioni.
+    Dal router e non dal sorgente di `server.py` (03/10/2026, Tappa 1 dello
+    sprint «Una fonte sola di verita'»): quando le rotte usciranno da
+    `server.py` la fotografia continuera' a vederle, invece di vederne meno e
+    restare «identica». Solo quelle sotto `/api/` e senza un segnaposto nel
+    percorso: le pagine HTML non hanno una forma JSON, e una rotta con `{id}`
+    vuole un id vero della casa. `excluded=()` restituisce tutto, per chi
+    verifica le esclusioni.
     """
-    tree = ast.parse(SERVER.read_text(encoding="utf-8") if source is None else source)
+    app = app if app is not None else server.create_app()
     skipped = EXCLUDED_ROUTES if excluded is None else excluded
-    routes = []
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "add_get" and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str)):
-            route = node.args[0].value
-            if route.startswith("/api/") and "{" not in route and route not in skipped:
-                routes.append(route)
-    return tuple(sorted(set(routes)))
+    routes = {route.resource.canonical for route in app.router.routes()
+              if route.resource is not None and route.method == "GET"}
+    return tuple(sorted(route for route in routes
+                        if route.startswith("/api/") and "{" not in route
+                        and route not in skipped))
 
 
 #: Oltre questo numero di chiavi un dizionario non e' un oggetto con dei

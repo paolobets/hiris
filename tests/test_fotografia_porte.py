@@ -197,17 +197,24 @@ def test_un_elenco_vuoto_contro_uno_pieno_non_e_un_cambio_di_forma():
     assert fotografia_porte.compare(full, empty, shapes_only=True) == []
 
 
-def test_le_rotte_dal_vivo_si_derivano_dal_server():
-    """Mutazione ESEGUITA: aggiunta in `server.py` la riga
+def test_le_rotte_dal_vivo_si_derivano_dal_router():
+    """Mutazioni ESEGUITE: aggiunta in `server.py` la riga
     `app.router.add_get("/api/prova-mutazione", handle_usage)` -- entra in
-    `live_routes()` senza toccare questa prova; tolta, esce."""
-    source = """
-app.router.add_get("/api/uno", a)
-app.router.add_get("/api/cose/{id}", b)
-app.router.add_post("/api/scrive", c)
-app.router.add_get("/", d)
-"""
-    assert fotografia_porte.live_routes(source) == ("/api/uno",)
+    `live_routes()` senza toccare questa prova; tolta, esce. E dal 03/10/2026
+    la stessa rotta registrata con `add_route("GET", ...)`, che la lettura del
+    sorgente non vedeva: entra anche lei."""
+    from aiohttp import web
+
+    async def handler(request):
+        return web.json_response({})
+
+    app = web.Application()
+    app.router.add_get("/api/uno", handler)
+    app.router.add_get("/api/cose/{id}", handler)
+    app.router.add_post("/api/scrive", handler)
+    app.router.add_get("/", handler)
+    app.router.add_route("GET", "/api/due", handler)
+    assert fotografia_porte.live_routes(app) == ("/api/due", "/api/uno")
     real = fotografia_porte.live_routes()
     assert "/api/home-space" in real and "/api/health" in real
     assert len(real) >= 15, real

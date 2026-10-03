@@ -30,6 +30,7 @@ wiring is gone with its subject, not moved.
 import ast
 import asyncio
 import inspect
+from pathlib import Path
 
 import pytest
 
@@ -98,33 +99,70 @@ def _find_spawn_def(tree: ast.Module) -> ast.FunctionDef:
     )
 
 
-def test_only_spawn_itself_calls_asyncio_create_task():
-    """No other call site in server.py may call asyncio.create_task(...)
-    directly -- every fire-and-forget task must go through _spawn() so it
-    gets a strong reference. AST-based (not text/grep-based) so comments
-    mentioning 'asyncio.create_task' in prose don't produce false positives."""
-    source = inspect.getsource(server)
-    tree = ast.parse(source)
-    spawn_def = _find_spawn_def(tree)
-    spawn_line_range = range(spawn_def.lineno, spawn_def.end_lineno + 1)
+def _is_create_task(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    return ((isinstance(func, ast.Attribute) and func.attr == "create_task")
+            or (isinstance(func, ast.Name) and func.id == "create_task"))
 
-    offending_lines = []
+
+def _held_by_an_attribute(tree: ast.AST) -> set[int]:
+    """Gli `id()` delle chiamate a `create_task` il cui risultato si tiene in un
+    attributo (`self._ws_task = asyncio.create_task(...)`): un riferimento
+    forte c'e', ed e' la stessa ragione per cui esiste `_spawn`."""
+    held = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        is_create_task_call = (
-            (isinstance(func, ast.Attribute) and func.attr == "create_task")
-            or (isinstance(func, ast.Name) and func.id == "create_task")
-        )
-        if is_create_task_call and node.lineno not in spawn_line_range:
-            offending_lines.append(node.lineno)
+        if (isinstance(node, ast.Assign) and _is_create_task(node.value)
+                and all(isinstance(target, ast.Attribute) for target in node.targets)):
+            held.add(id(node.value))
+    return held
 
-    assert offending_lines == [], (
-        f"asyncio.create_task(...) called outside _spawn() at line(s): "
-        f"{offending_lines} -- route these through _spawn() so the task "
-        f"gets a strong reference (review C/#15)."
+
+def test_only_spawn_itself_calls_asyncio_create_task():
+    """No call site in the PRODUCT may call asyncio.create_task(...) and drop
+    the result -- every fire-and-forget task must go through server._spawn()
+    so it gets a strong reference. A task kept in an attribute
+    (`self._ws_task = ...`, the HA websocket loop) already has one.
+    AST-based (not text/grep-based) so comments mentioning
+    'asyncio.create_task' in prose don't produce false positives.
+
+    Since 03/10/2026 (Tappa 1 of «Una fonte sola di verita'») the gate
+    looks at all of `hiris/app`, not at server.py alone: code moving out of
+    server.py would otherwise leave the gate green and blind.
+    Mutation EXECUTED: a bare `asyncio.create_task(...)` in
+    `api/handlers_chat.py` -- red (it was green before)."""
+    app_dir = Path(server.__file__).resolve().parent
+    offending = []
+    for path in sorted(app_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if path.name == "server.py" and path.parent == app_dir:
+            spawn_def = _find_spawn_def(tree)
+            allowed = range(spawn_def.lineno, spawn_def.end_lineno + 1)
+        else:
+            allowed = range(0)
+        held = _held_by_an_attribute(tree)
+        for node in ast.walk(tree):
+            if _is_create_task(node) and node.lineno not in allowed and id(node) not in held:
+                offending.append(f"{path.relative_to(app_dir).as_posix()}:{node.lineno}")
+
+    assert offending == [], (
+        f"asyncio.create_task(...) called outside _spawn() at: {offending} -- "
+        "route these through _spawn() so the task gets a strong reference "
+        "(review C/#15)."
     )
+
+
+def test_the_create_task_gate_still_sees_the_product():
+    """The derivation did not break: it finds the one call inside _spawn and
+    the one held by the HA client. An empty walk would be a green gate that
+    looks at nothing."""
+    app_dir = Path(server.__file__).resolve().parent
+    found = []
+    for path in sorted(app_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        found += [path.name for node in ast.walk(tree) if _is_create_task(node)]
+    assert "server.py" in found and "ha_client.py" in found, found
 
 
 def test_spawn_body_adds_to_background_tasks_and_wires_done_callback():

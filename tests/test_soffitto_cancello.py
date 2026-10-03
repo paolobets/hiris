@@ -17,10 +17,10 @@ classificata fa diventare rosso questo file.
 """
 import ast
 import pathlib
-import re
+
+from tests._avvio import router_routes
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
-_SERVER = RADICE / "hiris" / "app" / "server.py"
 
 #: Le rotte mutanti che PASSANO dal soffitto, perche' toccano Home Assistant
 #: in un modo che Home Assistant stesso negherebbe a chi non e' amministratore.
@@ -143,11 +143,12 @@ ESENTI = {
 
 
 def rotte_mutanti() -> set[str]:
-    """Ogni rotta che scrive, DERIVATA dal router — mai elencata a mano."""
-    sorgente = _SERVER.read_text(encoding="utf-8")
-    trovate = {f"{metodo.upper()} {percorso}"
-               for metodo, percorso in re.findall(
-                   r'router\.add_(post|put|patch|delete)\("([^"]+)"', sorgente)}
+    """Ogni rotta che scrive, DERIVATA dal router vero — mai elencata a mano,
+    e mai letta dal testo di `server.py` (Tappa 1 dello sprint «Una fonte
+    sola di verita'»: una rotta registrata altrove o in un'altra forma la
+    regex non la vedeva, e il cancello restava verde)."""
+    trovate = {rotta for rotta in router_routes()
+               if rotta.split(" ", 1)[0] in ("POST", "PUT", "PATCH", "DELETE")}
     assert len(trovate) > 10, (
         f"ne ho derivate solo {len(trovate)}: la derivazione si è rotta, e un "
         "cancello che deriva male sembra vivo mentre non guarda più niente")
@@ -161,8 +162,10 @@ def test_ogni_rotta_mutante_e_CLASSIFICATA():
     Qui non puo' succedere: la rotta compare da sola nell'insieme derivato, e
     finche' nessuno decide cosa farne questo file e' rosso.
 
-    Mutazione ESEGUITA: aggiunta una `router.add_post("/api/prova", ...)` a
-    `server.py` -- rossa, col nome della rotta nel messaggio.
+    Mutazioni ESEGUITE, rosse col nome della rotta nel messaggio: aggiunta una
+    `router.add_post("/api/prova", ...)` a `server.py`; aggiunta una
+    `app.router.add_route("POST", "/api/prova", ...)`, che la regex di prima
+    non vedeva (03/10/2026).
     """
     classificate = set(SOFFITTATE) | set(ESENTI)
     indecise = rotte_mutanti() - classificate
@@ -233,15 +236,11 @@ _API = RADICE / "hiris" / "app" / "api"
 
 
 def builder_routes() -> dict[str, str]:
-    """`"METODO percorso" -> nome del gestore`, DERIVATO dal router: ogni
+    """`"METODO percorso" -> nome del gestore`, DERIVATO dal router vero: ogni
     metodo, letture comprese -- la pagina e' di chi costruisce anche quando
     guarda."""
-    sorgente = _SERVER.read_text(encoding="utf-8")
-    trovate = {f"{metodo.upper()} {percorso}": gestore
-               for metodo, percorso, gestore in re.findall(
-                   r'router\.add_(get|post|put|patch|delete)\("([^"]+)",\s*(\w+)\)',
-                   sorgente)
-               if percorso.startswith(_BUILDER_PREFIXES)}
+    trovate = {rotta: gestore for rotta, gestore in router_routes().items()
+               if rotta.split(" ", 1)[1].startswith(_BUILDER_PREFIXES)}
     for prefisso in _BUILDER_PREFIXES:
         assert any(r.split(" ", 1)[1].startswith(prefisso) for r in trovate), (
             f"nessuna rotta derivata sotto {prefisso}: la derivazione si è "
@@ -315,9 +314,8 @@ def test_la_derivazione_delle_rotte_di_chi_costruisce_VEDE_le_rotte_vere():
     `server.py` cambiasse, la regex non ne troverebbe piu' e la prova sopra
     sarebbe verde su un insieme vuoto.
 
-    Mutazione ESEGUITA: `add_(post|put|patch|delete)` al posto di
-    `add_(get|post|put|patch|delete)` nella regex -- rossa (le due GET
-    mancano)."""
+    Mutazione ESEGUITA (03/10/2026, sulla derivazione dal router): tolte le
+    GET da `builder_routes` -- rossa (le due GET mancano)."""
     derivate = set(builder_routes())
 
     assert {"GET /api/constructions", "GET /api/constructions/{id}",
