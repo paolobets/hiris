@@ -1,6 +1,8 @@
 """I tre strumenti delle promesse, e le verifiche che fanno ALLA NASCITA."""
 import os
+import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import ClassVar
 
 import pytest
@@ -10,7 +12,11 @@ from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
+from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 # NON un `pytestmark` di modulo: a differenza di `test_keeper_sweeper.py`
 # (dove ogni test e' async), qui un test e' sincrono
@@ -244,13 +250,15 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     col recapito, uscito con la fetta «il seguito delle chat divise»; oggi
     il registro lo interroga il `fai`, e la prova passa da li'.)
 
-    `_HaConServizi` deve saper rispondere `get_services()` per DAVVERO (una
-    lista non vuota, nella forma vera di `/api/services`): se rispondesse un
-    errore o niente il registro resterebbe vuoto comunque, e questo test
-    passerebbe per il motivo sbagliato -- non proverebbe che il registro si
-    e' scaldato, solo che non e' esploso.
+    La casa (`_house_with_services`) deve saper rispondere a
+    `GET /api/services` per DAVVERO (una lista non vuota, nella forma vera):
+    se rispondesse un errore o niente il registro resterebbe vuoto comunque,
+    e questo test passerebbe per il motivo sbagliato -- non proverebbe che
+    il registro si e' scaldato, solo che non e' esploso. Sotto c'e' il
+    client VERO (`CasaFinta`, D8 della Tappa 2): `get_services()` e la sua
+    busta sono quelli di produzione.
     """
-    ha = _HaConServizi()
+    ha = _house_with_services()
     registry = ServiceRegistry()
     assert registry.empty()  # la premessa esatta del difetto: mai caricato
     d = _dispatcher(promesse, registry=registry, ha=ha, cache=_CacheFinta())
@@ -260,7 +268,7 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
         "chiamata": {"servizio": "light.turn_on",
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" not in esito
-    assert ha.chiamate_get_services == 1
+    assert [path for path, _extra in ha.calls] == ["/api/services"]
     assert not registry.empty()  # scaldato per davvero, non solo tollerato
 
 
@@ -476,35 +484,36 @@ def test_i_registri_finti_combaciano_con_la_firma_vera():
                         _RegistroTracciaScaldamento.ensure_fresh, nome="ensure_fresh")
 
 
-class _HaConServizi:
-    """Il doppio del canale HA che risponde a `get_services()` per davvero
-    -- quello che `ServiceRegistry.ensure_fresh` chiama per scaldarsi.
+def _house_with_services() -> CasaFinta:
+    """Home Assistant che risponde a `GET /api/services` per davvero -- la
+    lettura che `ServiceRegistry.ensure_fresh` fa, attraverso il client
+    vero, per scaldarsi.
 
     Deve saper PRODURRE il difetto: `light`/`notify` con almeno un
     servizio ciascuno, nella stessa forma di `RISPOSTA_HA`
-    (`tests/test_action_actuator.py`) -- una lista vuota o un'eccezione
+    (`tests/test_action_actuator.py`) -- una lista vuota o un rifiuto
     lascerebbe il registro vuoto comunque, e nasconderebbe che
     `ensure_fresh` non e' mai stata chiamata invece di provarlo.
+
+    Il corpo e' quello di `APIServicesView` (`homeassistant/components/api/
+    __init__.py`, tag `2026.9.4`: `async_services_json`, una lista di
+    `{"domain", "services"}`); `CasaFinta` lo serve dall'ingresso `services`.
     """
-
-    def __init__(self):
-        self.chiamate_get_services = 0
-
-    async def get_services(self):
-        self.chiamate_get_services += 1
-        return [
-            {"domain": "light", "services": {
-                "turn_on": {"target": {"entity": [{"domain": ["light"]}]}}}},
-            # Nella forma MISURATA (vedi `_RegistroFinto._SERVIZI`): un
-            # `notify.*` vero dichiara i suoi `fields`. Con `{}` questo
-            # doppio diceva «non accetta parametri», e la notifica dello
-            # schedulatore sarebbe stata rifiutata a scadenza -- cioe' la
-            # finta rendeva verde un caso che in casa non funziona.
-            {"domain": "notify", "services": {
-                "mobile_app_x": {
-                    "fields": {"data": {}, "message": {}, "target": {},
-                               "title": {}}}}},
-        ]
+    inputs = synthetic_inputs()
+    inputs["services"] = [
+        {"domain": "light", "services": {
+            "turn_on": {"target": {"entity": [{"domain": ["light"]}]}}}},
+        # Nella forma MISURATA (vedi `_RegistroFinto._SERVIZI`): un
+        # `notify.*` vero dichiara i suoi `fields`. Con `{}` questo
+        # doppio diceva «non accetta parametri», e la notifica dello
+        # schedulatore sarebbe stata rifiutata a scadenza -- cioe' la
+        # finta rendeva verde un caso che in casa non funziona.
+        {"domain": "notify", "services": {
+            "mobile_app_x": {
+                "fields": {"data": {}, "message": {}, "target": {},
+                           "title": {}}}}},
+    ]
+    return CasaFinta(inputs)
 
 
 class _RegistroTracciaScaldamento:

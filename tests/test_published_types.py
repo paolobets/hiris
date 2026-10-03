@@ -30,8 +30,10 @@ from hiris.app.proxy.state_translations import (
     StateTranslations,
     published_device_classes,
 )
+from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 from istantaneo_pubblicato import (
     capability_bits,
     published_domains,
@@ -67,7 +69,16 @@ RISORSE = {
 
 class _ClienteFinto:
     """Un client di Home Assistant che risponde cio' che gli si dice, e conta
-    le volte in cui gli e' stato chiesto. Nessuna rete."""
+    le volte in cui gli e' stato chiesto. Nessuna rete.
+
+    **Resta una finta a mano, e non `CasaFinta` (Tappa 2, Task 12).** La prova
+    che la usa ha bisogno di una casa che risponde a `frontend/get_translations`
+    e POI, alla stessa domanda (stessa lingua, stessa categoria: la versione
+    di Home Assistant non viaggia nel comando), tace. `CasaFinta` decide
+    silenzi e rifiuti alla nascita (`silence=`, `refuse=`), e una risposta
+    iniettata (`answers=`) puo' solo riuscire: una sequenza «prima risponde,
+    poi tace» non si esprime.
+    """
 
     def __init__(self, risposte) -> None:
         self.risposte = list(risposte)
@@ -80,19 +91,22 @@ class _ClienteFinto:
         return self.risposte.pop(0)
 
 
-class _RegistroFinto:
-    """`/api/services` in forma di lista, come Home Assistant lo manda."""
-
-    def __init__(self, righe) -> None:
-        self.righe = righe
-
-    async def get_services(self):
-        return self.righe
-
-
 def _registro(righe) -> ServiceRegistry:
+    """Il registro letto da una casa che risponde `righe` a `GET
+    /api/services` -- attraverso il client VERO (`CasaFinta`, D8 della
+    Tappa 2), non una finta di `get_services`: il corpo passa dalla stessa
+    busta e dallo stesso controllo di forma che in produzione.
+
+    Il corpo e' quello di `APIServicesView` (`homeassistant/components/api/
+    __init__.py`, tag `2026.9.4`): `async_services_json`, una lista di
+    `{"domain", "services"}`. Un rinfresco che non riesce non resta muto:
+    `refresh` restituisce il guasto, e qui la prova si ferma."""
+    inputs = synthetic_inputs()
+    inputs["services"] = righe
+    house = CasaFinta(inputs)
     registro = ServiceRegistry()
-    asyncio.run(registro.refresh(_RegistroFinto(righe)))
+    assert asyncio.run(registro.refresh(house)) is None
+    assert [path for path, _extra in house.calls] == ["/api/services"]
     return registro
 
 

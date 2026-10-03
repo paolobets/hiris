@@ -7,9 +7,16 @@ chiavi usate nelle prove non sono inventate: sono state LETTE dalla casa vera
 il 07/09/2026 (`frontend/get_translations`, `language: "it"`,
 `category: "entity_component"`, 801 chiavi).
 """
+import sys
+from pathlib import Path
+
 import pytest
 
 from hiris.app.proxy.state_translations import StateTranslations, state_translation
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 # Le chiavi e i testi sono quelli MISURATI sulla casa, non plausibili.
 RISORSE_COMPONENTE = {
@@ -151,9 +158,35 @@ def test_uno_stato_vuoto_o_non_testuale_non_produce_una_resa():
 # La cache: quando legge, quando rilegge, e cosa dice quando non ci riesce
 # ---------------------------------------------------------------------------
 
+#: Il comando e la sua domanda, come il client vero li manda
+#: (`HAClient.get_translations`): la categoria e' quella della cache.
+TRANSLATIONS_COMMAND = "frontend/get_translations"
+ASKED_IN_ITALIAN = (TRANSLATIONS_COMMAND, {"language": "it", "category": "entity_component"})
+
+
+def _translations_house(resources=RISORSE_COMPONENTE, **injected) -> CasaFinta:
+    """Home Assistant che traduce in italiano, sotto il client VERO
+    (`CasaFinta`, D8 della Tappa 2): `frontend/get_translations` risponde
+    `{"resources": ...}` -- la forma di `websocket_get_translations`
+    (`homeassistant/components/frontend/__init__.py:1007-1030`, tag
+    `2026.9.4`, letto il 03/10/2026). `injected` passa `answers`, `refuse`,
+    `silence` a `CasaFinta` cosi' come sono."""
+    inputs = synthetic_inputs()
+    inputs["translations"] = {"language": "it", "category": "entity_component",
+                              "report": {"risorse": dict(resources)}}
+    return CasaFinta(inputs, **injected)
+
+
 class _FintoClient:
     """Il solo metodo che la cache usa, con lo stesso contratto del vero
-    (`HAClient.get_translations`: `{"risorse": ...}` oppure `{"errore": ...}`)."""
+    (`HAClient.get_translations`: `{"risorse": ...}` oppure `{"errore": ...}`).
+
+    **Resta una finta a mano, per una prova sola, e non `CasaFinta`** (Tappa
+    2, Task 12): `test_dopo_un_guasto_si_ritenta_alla_lettura_successiva`
+    vuole una casa che alla STESSA domanda prima tace e poi risponde.
+    `CasaFinta` decide silenzi e rifiuti alla nascita (`silence=`,
+    `refuse=`), e una risposta iniettata (`answers=`) puo' solo riuscire:
+    la sequenza «prima tace, poi risponde» non si esprime."""
 
     def __init__(self, esiti):
         self.esiti = list(esiti)
@@ -173,15 +206,15 @@ async def test_la_tabella_si_legge_una_volta_sola_finche_la_casa_non_cambia():
     Mutazione ESEGUITA: togliere il controllo
     `if self._resources is not None and self._key == key` da dentro il lock di
     `read` (l'unico che c'e') -- il test torna rosso su
-    `assert client.chiamate == [("it", "entity_component")]`, che ne conta tre.
+    `assert house.calls == [ASKED_IN_ITALIAN]`, che ne conta tre.
     """
-    client = _FintoClient([{"risorse": RISORSE_COMPONENTE}])
-    cache = StateTranslations(client)
+    house = _translations_house()
+    cache = StateTranslations(house)
     for _ in range(3):
         esito = await cache.read(ha_version="2026.9.1", language="it")
         assert esito["lette"] is True
         assert esito["risorse"] == RISORSE_COMPONENTE
-    assert client.chiamate == [("it", "entity_component")]
+    assert house.calls == [ASKED_IN_ITALIAN]
 
 
 @pytest.mark.asyncio
@@ -197,13 +230,19 @@ async def test_la_tabella_si_RILEGGE_quando_la_casa_cambia_lingua():
     tabella italiana a una casa che ha cambiato lingua.
     """
     inglese = {"component.climate.entity_component._.state.heat": "Heating"}
-    client = _FintoClient([{"risorse": RISORSE_COMPONENTE}, {"risorse": inglese}])
-    cache = StateTranslations(client)
+    # La casa risponde nella lingua CHIESTA: la tabella la sceglie il
+    # comando, non l'ordine delle domande.
+    by_language = {"it": RISORSE_COMPONENTE, "en": inglese}
+    house = _translations_house(answers={TRANSLATIONS_COMMAND: lambda extra: {
+        "resources": dict(by_language[extra["language"]])}})
+    cache = StateTranslations(house)
     primo = await cache.read(ha_version="2026.9.1", language="it")
     secondo = await cache.read(ha_version="2026.9.1", language="en")
     assert primo["risorse"]["component.climate.entity_component._.state.heat"] == "Riscaldamento"
     assert secondo["risorse"]["component.climate.entity_component._.state.heat"] == "Heating"
-    assert client.chiamate == [("it", "entity_component"), ("en", "entity_component")]
+    assert house.calls == [ASKED_IN_ITALIAN,
+                           (TRANSLATIONS_COMMAND, {"language": "en",
+                                                   "category": "entity_component"})]
 
 
 @pytest.mark.asyncio
@@ -218,13 +257,18 @@ async def test_la_tabella_si_RILEGGE_quando_la_casa_cambia_versione_di_HA():
     """
     nuova = dict(RISORSE_COMPONENTE)
     nuova["component.climate.entity_component._.state.heat"] = "Riscaldamento (nuovo)"
-    client = _FintoClient([{"risorse": RISORSE_COMPONENTE}, {"risorse": nuova}])
-    cache = StateTranslations(client)
+    # La versione di Home Assistant non viaggia nel comando: e' la casa ad
+    # essersi aggiornata fra una domanda e l'altra, e la seconda risposta e'
+    # quella della versione nuova.
+    tables = iter([RISORSE_COMPONENTE, nuova])
+    house = _translations_house(answers={TRANSLATIONS_COMMAND: lambda extra: {
+        "resources": dict(next(tables))}})
+    cache = StateTranslations(house)
     await cache.read(ha_version="2026.9.1", language="it")
     dopo = await cache.read(ha_version="2026.10.0", language="it")
     assert dopo["risorse"]["component.climate.entity_component._.state.heat"] \
         == "Riscaldamento (nuovo)"
-    assert len(client.chiamate) == 2
+    assert house.calls == [ASKED_IN_ITALIAN, ASKED_IN_ITALIAN]
 
 
 @pytest.mark.asyncio
@@ -235,14 +279,14 @@ async def test_senza_la_lingua_della_casa_non_si_chiede_niente_e_lo_si_DICHIARA(
     lo farebbe in silenzio.
 
     Mutazione ESEGUITA: `language = language or "en"` in cima a `read` -- il
-    test torna rosso su `assert client.chiamate == []`.
+    test torna rosso su `assert house.calls == []`.
     """
-    client = _FintoClient([{"risorse": RISORSE_COMPONENTE}])
-    cache = StateTranslations(client)
+    house = _translations_house()
+    cache = StateTranslations(house)
     esito = await cache.read(ha_version="2026.9.1", language=None)
     assert esito["lette"] is False
     assert "lingua" in esito["motivo"]
-    assert client.chiamate == []
+    assert house.calls == []
 
 
 @pytest.mark.asyncio
@@ -250,15 +294,24 @@ async def test_una_lettura_fallita_porta_il_MOTIVO_di_home_assistant():
     """Il motivo lo produce chi lo conosce e viaggia etichettato: chi legge
     non deve dedurlo da un dizionario vuoto.
 
+    Il rifiuto e' quello vero di Home Assistant per un comando che non
+    conosce: `unknown_command` / «Unknown command.»
+    (`websocket_api/connection.py:236-240`, tag `2026.9.4`). Il motivo che
+    il client porta e' il `message` di Home Assistant (`_ws_occurrence`);
+    il codice viaggia a parte, in `codice`. Fino al Task 12 la finta
+    rispondeva `{"errore": "unknown_command"}` -- il codice al posto del
+    messaggio, una busta che il client non produce.
+
     Mutazione ESEGUITA: `return {"lette": False}` senza `motivo` nel ramo di
     guasto -- il test torna rosso su
-    `assert esito["motivo"] == "unknown_command"` (`KeyError: 'motivo'`).
+    `assert esito["motivo"] == "Unknown command."` (`KeyError: 'motivo'`).
     """
-    client = _FintoClient([{"errore": "unknown_command"}])
-    cache = StateTranslations(client)
+    house = _translations_house(refuse={TRANSLATIONS_COMMAND: {
+        "code": "unknown_command", "message": "Unknown command."}})
+    cache = StateTranslations(house)
     esito = await cache.read(ha_version="2026.9.1", language="it")
     assert esito["lette"] is False
-    assert esito["motivo"] == "unknown_command"
+    assert esito["motivo"] == "Unknown command."
     assert "risorse" not in esito
 
 
@@ -267,10 +320,11 @@ async def test_una_lettura_fallita_non_diventa_mai_una_tabella_VUOTA():
     """Una tabella vuota direbbe «questa casa non traduce niente», che e'
     un'altra cosa dal non aver potuto chiedere. E' la stessa distinzione che
     `read_registries` difende fra un registro vuoto e un registro caduto."""
-    client = _FintoClient([{"errore": "Home Assistant non ha risposto"}])
-    esito = await StateTranslations(client).read(ha_version="2026.9.1", language="it")
+    house = _translations_house(silence={TRANSLATIONS_COMMAND})
+    esito = await StateTranslations(house).read(ha_version="2026.9.1", language="it")
     assert esito.get("risorse") is None
     assert esito["lette"] is False
+    assert esito["motivo"] == "Home Assistant non ha risposto"
 
 
 @pytest.mark.asyncio
