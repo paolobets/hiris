@@ -29,8 +29,9 @@ from tests.test_ha_client_invio import _arguments
 #: una lettura nuova senza busta e' rossa finche' qualcuno non la scrive qui.
 NOT_ENVELOPED = {
     "read_configuration": "canale della configurazione: con le scritture, Tappa 7",
-    "read_registries": "(registri, non_disponibili): ogni registro caduto si "
-                       "nomina da se'; diventa `read_registry` al Task 5",
+    "read_registries": "(registri, non_disponibili): la lettura dell'anagrafe, "
+                       "dove ogni registro caduto si nomina da se'; il registro "
+                       "solo, con la busta, e' `read_registry`",
     "read_dashboards": "(plance, non_disponibili): la plancia che manca si "
                        "nomina da se', e una casa con l'elenco caduto resta "
                        "quella di prima (`behavior.reread_dashboards`)",
@@ -46,18 +47,13 @@ PER_ITEM = {
     "recorded_changes": "una finestra senza risposta e' `None`",
 }
 
-#: Le letture la cui forma sbagliata non e' (ancora) un guasto.
-SHAPE_TOLERATED = {
-    "list_labels": "un risultato che non e' una lista diventa `[]` (A-33): "
-                   "`list_labels` esce al Task 5",
-}
-
 #: I risultati con cui Home Assistant risponde a ogni comando che le letture
 #: mandano, nella forma vera minima. Un comando che non e' qui SOLLEVA
 #: nominandosi: una lettura nuova non passa mai a vuoto.
 SUCCESS = {
     "validate_config": {},
     "config/label_registry/list": [],
+    "config/category_registry/list": [],
     "config/auth/list": [],
     "get_panels": {},
     "extract_from_target": {},
@@ -191,7 +187,7 @@ async def test_un_rifiuto_di_home_assistant_e_un_rifiuto(name):
 @pytest.mark.asyncio
 async def test_una_forma_inattesa_e_una_forma(name):
     answer = await _ask(name, "forma")
-    if name in PER_ITEM or name in SHAPE_TOLERATED:
+    if name in PER_ITEM:
         assert not (isinstance(answer, dict) and "errore" in answer), (name, answer)
         return
     assert _is_envelope(answer, "forma"), (

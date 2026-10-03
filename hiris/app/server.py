@@ -763,12 +763,28 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     di errori e' Task 2 di «le tracce e il log»). Torna quante ne ha scritte,
     o `None` se il giro e' stato saltato.
 
+    **I problemi NON si rileggono qui** (A-02, 03/10/2026): li legge gia' il
+    giro dei cinque minuti (`reread_ha_problems`, `hiris_ha_problems`) verso
+    `app["ha_problems"]`, e questo giro, ogni dieci, prende quelli -- vecchi
+    al piu' cinque minuti dentro una cadenza di dieci. Fino a quel giorno
+    `repairs/list_issues` si chiedeva due volte, ed era scritto qui sotto
+    come «doppione tollerato». Se la chiave non c'e' ancora (un giro partito
+    prima della prima lettura) si fa quella lettura, una volta, e resta in
+    `app["ha_problems"]` per tutti.
+
+    **Le integrazioni si leggono da sole** (`read_registry("integrazioni")`,
+    A-01): prima si chiedeva l'anagrafe intera -- dieci comandi piu' gli alias
+    di ogni entita' -- per usarne una tabella. E le righe appena lette
+    vanno all'anagrafe (`HomeSpace.hold_integrations`, A-11): lo stato di
+    un'integrazione che il nucleo dice e' vecchio al piu' un giro, non fino
+    al prossimo evento di registro.
+
     **Se una delle TRE letture fallisce, il giro si salta INTERAMENTE**
     (`task-5-correzioni.md`, punto A.1 -- la stessa disciplina, estesa al
-    registro di errori). `HAClient.problems()` torna `{"errore": ...}` quando
-    Home Assistant non risponde, e il suo docstring dice perche' un elenco
-    vuoto non e' un ripiego accettabile: significherebbe «non c'e' niente
-    che non va». `HAClient.system_log()` dichiara la stessa cosa per la
+    registro di errori). `HAClient.problems()` torna la busta del guasto
+    quando Home Assistant non risponde, e il suo docstring dice perche' un
+    elenco vuoto non e' un ripiego accettabile: significherebbe «non c'e'
+    niente che non va». `HAClient.system_log()` dichiara la stessa cosa per la
     stessa ragione (vedi il suo docstring). `Watcher.watch_system` chiude una
     condizione dopo DUE giri consecutivi in cui non la trova piu' nell'elenco
     che riceve (l'isteresi contro i buchi di un giro solo, misurati il 03/09)
@@ -776,9 +792,9 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     fila, scriverebbe comunque «chiuso» su OGNI guasto aperto (una voce di
     log compresa): l'archivio registrerebbe che tutto si e' risolto nel
     momento esatto in cui abbiamo smesso di poterlo vedere.
-    Vale identico per `read_registries`: se `"integrazioni"` compare in
-    `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
-    tutto bene. Meglio un buco nella storia che una bugia nella storia.
+    Vale identico per le integrazioni: un registro non letto e' la busta,
+    non un elenco vuoto che direbbe «va tutto bene». Meglio un buco nella
+    storia che una bugia nella storia.
 
     Chiamata una volta all'avvio (subito dopo `rebuild_conditions`) e
     ogni dieci minuti dal lavoro periodico registrato piu' sotto in
@@ -792,18 +808,26 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     watcher = app.get("watcher")
     if watcher is None:
         return None
-    problems_report = await ha_client.problems()
-    if "errore" in problems_report:
+    problems_report = app.get("ha_problems")
+    if problems_report is None:
+        problems_report = await reread_ha_problems(app, ha_client)
+    if not isinstance(problems_report, dict) or "errore" in problems_report:
         logger.warning(
-            "cervello: condizioni di sistema non lette, problemi() ha "
-            "fallito (%s) -- giro saltato", problems_report["errore"])
+            "cervello: condizioni di sistema non lette, i problemi non sono "
+            "stati letti (%s) -- giro saltato",
+            problems_report.get("errore") if isinstance(problems_report, dict)
+            else "nessun lettore")
         return None
-    registries, unavailable = await ha_client.read_registries()
-    if "integrazioni" in unavailable:
+    integrations = await ha_client.read_registry("integrazioni")
+    if "errore" in integrations:
         logger.warning(
             "cervello: condizioni di sistema non lette, il registro delle "
-            "integrazioni non e' disponibile -- giro saltato")
+            "integrazioni non e' disponibile (%s) -- giro saltato",
+            integrations.get("causa"))
         return None
+    home_space_store = app.get("home_space_store")
+    if home_space_store is not None:
+        home_space_store.hold_integrations(integrations["integrazioni"])
     log_report = await ha_client.system_log()
     if "errore" in log_report:
         logger.warning(
@@ -812,7 +836,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
         return None
     return watcher.watch_system(
         problems=problems_report.get("problemi") or [],
-        integrations=registries.get("integrazioni") or [],
+        integrations=integrations["integrazioni"],
         log_entries=log_report.get("voci") or [])
 
 
@@ -3986,17 +4010,9 @@ async def _on_startup(app: web.Application) -> None:
     # di errori -- il terzo e' Task 2 di «le tracce e il log»;
     # task-5-correzioni.md, punto A.1, ne discuteva due perche' il registro
     # di errori non esisteva ancora): un errore letto come lista vuota
-    # chiuderebbe ogni condizione aperta, che e' peggio di non saperlo.
-    #
-    # **Un doppione tollerato, dichiarato (task-5-fix-brief.md, punto 5).**
-    # Questo lavoro interroga `repairs/list_issues` per conto proprio, ogni
-    # dieci minuti, verso l'archivio -- ma `hiris_ha_problems` qui sopra lo
-    # interroga GIA', ogni cinque minuti, verso `app["ha_problems"]` in RAM
-    # (che gia' porta la forma d'errore, `{"errore": ...}`, letta identica
-    # da entrambi). Non si unificano ora: la lettura diretta del cervello
-    # era mandata apposta, e legare il cervello a una cache di un altro
-    # pezzo del prodotto e' una dipendenza che oggi non serve. Ma va detto
-    # qui, o la seconda lettura sembra una svista a chi la trova dopo.
+    # chiuderebbe ogni condizione aperta, che e' peggio di non saperlo. I
+    # problemi li prende da `app["ha_problems"]`, che `hiris_ha_problems` qui
+    # sopra rilegge ogni cinque minuti (A-02).
     async def _watch_conditions() -> None:
         try:
             await watch_system_conditions(app, ha_client)

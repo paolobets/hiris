@@ -927,28 +927,23 @@ class Workshop:
         con `platform` e `unique_id`, e `entity_id == platform.unique_id` su
         tutte -- la coincidenza che l'audit chiama fortuna.
 
-        Si passa da `read_registries`, che e' la porta unica dei registri:
-        `get_entity_registry` era gia' uscita una volta perche' emetteva lo
-        stesso comando WS che quella manda gia' (review dei doppioni, 17/08).
-        Rifarne una seconda per un helper sarebbe la stessa fondamenta 2
-        violata due volte.
+        Si passa da `read_registry("entita")`, la porta dei registri presi
+        uno per uno: `get_entity_registry` era gia' uscita una volta perche'
+        emetteva lo stesso comando WS per conto suo (review dei doppioni,
+        17/08), e fino al 03/10/2026 qui si leggeva l'anagrafe intera, alias
+        compresi, per usarne una tabella (A-06).
         """
         if not born:
             return [], []
         composti = [f"{domain}.{helper_id}" for domain, helper_id in born]
-        try:
-            registries, unavailable = await self._ha.read_registries()
-        except Exception as exc:
+        registry = await self._ha.read_registry("entita")
+        if "errore" in registry:
             logger.warning("registro delle entita' non letto dopo la nascita di %s "
-                           "(%s: %s): nessuna etichetta applicata",
-                           composti, type(exc).__name__, exc)
-            return [], composti
-        if "entita" in (unavailable or []):
-            logger.warning("registro delle entita' non disponibile dopo la nascita "
-                           "di %s: nessuna etichetta applicata", composti)
+                           "(%s): nessuna etichetta applicata",
+                           composti, registry.get("causa"))
             return [], composti
         per_unico: dict[tuple[str, str], str] = {}
-        for row in registries.get("entita") or []:
+        for row in registry["entita"]:
             platform, unique = row.get("platform"), row.get("unique_id")
             entity_id = row.get("entity_id")
             if platform and unique is not None and entity_id:
@@ -993,7 +988,7 @@ class Workshop:
         """Trova o crea il `label_id` di HIRIS in Home Assistant, aggiornando
         la cache dell'istanza. Restituisce True se una `label_id` valida e'
         nota dopo la chiamata."""
-        response = await self._ha.list_labels()
+        response = await self._ha.read_registry("etichette")
         if "errore" in response:
             logger.debug("etichette non lette: %s", response["errore"])
             return False

@@ -698,16 +698,6 @@ class HAClient:
         occurrence = self._ws_occurrence(msg, "_")
         return occurrence if "errore" in occurrence else {"cancellato": True}
 
-    @cost(ws=1)
-    async def list_labels(self) -> dict:
-        """Le etichette del registro di Home Assistant."""
-        (msg,) = await self._ws_send([("config/label_registry/list", None)])
-        occurrence = self._ws_occurrence(msg, "etichette")
-        if "errore" in occurrence:
-            return occurrence
-        rows = occurrence["etichette"]
-        return {"etichette": rows if isinstance(rows, list) else []}
-
     #: I gruppi di sistema di Home Assistant. Verificato il 21/09/2026 sul
     #: sorgente (`components/config/auth.py`): `config/auth/list` restituisce
     #: `group_ids` e **non** `is_admin`, che si ricava di qui. Riverificato il
@@ -2050,9 +2040,10 @@ class HAClient:
     # spina dorsale del significato per HIRIS: piani, aree, dispositivi,
     # etichette e categorie sono la tassonomia che ha scelto lui — non serve
     # dedurla, e dedurla costerebbe token e sbaglierebbe in silenzio.
-    # Le voci "categorie" sono una per ambito (vedi _AMBITI_CATEGORIA) e
-    # condividono tutte la chiave "categorie": leggi_registri le fonde in
-    # un'unica lista, marcando ogni riga con il proprio ambito.
+    # Le voci "categorie" sono una per ambito (vedi _CATEGORY_SCOPES) e
+    # condividono tutte la chiave "categorie": `read_registries` e
+    # `read_registry` le fondono in un'unica lista, marcando ogni riga con il
+    # proprio ambito (`_registry_rows`).
     _REGISTRIES: list[tuple[str, str, dict | None]] = [
         ("piani",        "config/floor_registry/list",        None),
         ("aree",         "config/area_registry/list",         None),
@@ -2065,9 +2056,67 @@ class HAClient:
         for scope in _CATEGORY_SCOPES
     ]
 
+    def _registry_rows(self, entry: tuple[str, str, dict | None],
+                       msg: dict | None) -> dict:
+        """Le righe di UN comando di registro, `{"righe": [...]}`, o la busta
+        del guasto.
+
+        L'unico posto in cui si legge la risposta di un registro: la usano
+        `read_registry` e `read_registries`, cosi' un registro letto da solo e
+        lo stesso letto con gli altri hanno la stessa forma (fondamenta 3). Le
+        categorie escono marcate col proprio `ambito`: Home Assistant non lo
+        riporta nelle righe (vedi `read_registries`).
+        """
+        key, _msg_type, extra = entry
+        occurrence = self._ws_occurrence(msg, "righe")
+        if "errore" in occurrence:
+            return occurrence
+        rows = occurrence["righe"]
+        if not isinstance(rows, list):
+            return _failure(SHAPE, f"il registro «{key}» non e' arrivato come elenco")
+        scope = extra.get("scope") if key == "categorie" and extra else None
+        if scope:
+            rows = [{**row, "ambito": scope} for row in rows]
+        return {"righe": rows}
+
+    @cost(ws=1)
+    async def read_registry(self, registry: str) -> dict:
+        """UN registro della casa: `{nome: righe}`, oppure la busta del guasto.
+
+        Per chi ha bisogno di un registro e non dell'anagrafe intera (A-01,
+        A-06, 03/10/2026): il recapito delle promesse, l'officina, il giro
+        delle condizioni. I nomi e i comandi sono quelli di `_REGISTRIES` --
+        la stessa tabella di `read_registries`, non una seconda -- e un
+        registro costa un comando (le categorie uno per ambito, sulla stessa
+        connessione). **Niente alias**: il secondo giro
+        `config/entity_registry/get_entries` serve solo all'anagrafe, e resta
+        in `read_registries`.
+
+        A differenza di `read_registries`, un registro caduto non diventa una
+        lista vuota: e' la busta, con la sua causa. Chi chiede un registro solo
+        non ha un'anagrafe da costruire comunque, e un elenco vuoto direbbe «la
+        casa non ne ha». E' la ragione per cui `list_labels`, che rendeva `[]`
+        muto a una risposta in forma inattesa, e' uscita al suo posto (A-33).
+        """
+        entries = [entry for entry in self._REGISTRIES if entry[0] == registry]
+        if not entries:
+            known = ", ".join(dict.fromkeys(key for key, _, _ in self._REGISTRIES))
+            return _failure(REQUEST, f"«{registry}» non e' un registro che so leggere. "
+                                     f"Registri: {known}.")
+        replies = await self._ws_send([(msg_type, extra) for _, msg_type, extra in entries])
+        rows: list[dict] = []
+        for entry, msg in zip(entries, replies):
+            read = self._registry_rows(entry, msg)
+            if "errore" in read:
+                return read
+            rows.extend(read["righe"])
+        return {registry: rows}
+
     @cost(ws=2)
     async def read_registries(self) -> tuple[dict[str, list[dict]], list[str]]:
-        """Tutti i registri della casa, su una connessione sola.
+        """Tutti i registri della casa, su una connessione sola, piu' il giro
+        degli alias. **E' la lettura dell'anagrafe** (`topology.rebuild`): chi
+        vuole un registro solo usa `read_registry`.
 
         Restituisce `(registri, non_disponibili)`. Un registro che manca o
         fallisce diventa una lista vuota — un Home Assistant senza piani deve
@@ -2087,39 +2136,31 @@ class HAClient:
         replies = await self._ws_send(commands)
         registries: dict[str, list[dict]] = {}
         unavailable: list[str] = []
-        for (key, msg_type, extra), msg in zip(self._REGISTRIES, replies):
-            result = msg.get("result") if msg else None
-            if not isinstance(result, list):
+        for entry, msg in zip(self._REGISTRIES, replies):
+            key, msg_type, extra = entry
+            read = self._registry_rows(entry, msg)
+            if "errore" in read:
                 scope = extra.get("scope") if extra else None
                 name = f"{key}:{scope}" if key == "categorie" and scope else key
-                # Tre guasti diversi, tre diciture: `msg` porta il messaggio
-                # WS intero ({success, result, error} -- vedi il docstring di
-                # `_ws_send`), e prima d'ora si guardava solo `result`,
-                # buttando via il motivo che HA aveva gia' scritto in `error`.
-                error = msg.get("error") if msg else None
-                if error:
-                    # HA e' arrivato e ha rifiutato il comando: il motivo e'
-                    # suo, non il nome del comando che gia' sapevamo.
-                    reason = error.get("message") or error.get("code") or error
+                # Tre guasti diversi, tre diciture, scelte dalla causa della
+                # busta di `_registry_rows`: il rifiuto porta il motivo che
+                # Home Assistant ha scritto, non il nome del comando che gia'
+                # sapevamo; la forma inattesa mostra cosa e' arrivato; il
+                # silenzio dice che HA non ha mai parlato.
+                if read["causa"] == REFUSAL:
                     logger.debug("registro %s rifiutato da Home Assistant: %s (%s)",
-                                 name, reason, msg_type)
-                elif msg is not None:
-                    # HA e' arrivato, non ha rifiutato nulla, ma `result` non
-                    # e' la lista attesa: guasto diverso dal rifiuto.
+                                 name, read["errore"], msg_type)
+                elif read["causa"] == SHAPE:
                     logger.debug("registro %s risposta in forma inattesa (%s): %r",
-                                 name, msg_type, result)
+                                 name, msg_type, msg.get("result"))
                 else:
-                    # Il comando non ha mai avuto risposta -- la connessione
-                    # non si e' aperta o la risposta non e' arrivata: nessun
-                    # `error` da mostrare perche' HA non ha mai parlato.
-                    logger.debug("registro %s non disponibile: nessuna risposta dal comando (%s)",
-                                 name, msg_type)
+                    logger.debug("registro %s non disponibile: nessuna risposta "
+                                 "dal comando (%s)", name, msg_type)
                 unavailable.append(name)
-                result = []
-            if key == "categorie" and extra:
-                scope = extra.get("scope")
-                result = [{**row, "ambito": scope} for row in result]
-            registries.setdefault(key, []).extend(result)
+                rows = []
+            else:
+                rows = read["righe"]
+            registries.setdefault(key, []).extend(rows)
 
         await self._add_extended_fields(registries, unavailable)
         return registries, unavailable

@@ -353,6 +353,34 @@ class HomeSpace:
                                    live_units=live_units),
                   unavailable, reference_frame)
 
+    def hold_integrations(self, rows: list[dict]) -> None:
+        """Le integrazioni appena lette dal giro delle condizioni, al posto di
+        quelle dell'ultima ricostruzione (A-11, 03/10/2026).
+
+        **Perche'.** L'anagrafe si ricostruisce sugli eventi dei registri, e lo
+        stato di un'integrazione (`loaded`, `setup_error`, `not_loaded`...)
+        restava quello letto all'ultima ricostruzione: un'integrazione che
+        smette di partire puo' non far nascere nessun evento di registro. Il
+        giro delle condizioni legge comunque `config_entries/get` ogni dieci
+        minuti: le righe che ha gia' in mano vengono qui invece di essere una
+        seconda copia che sa una cosa diversa (fondamenta 2). Vecchio al piu'
+        un giro, non fino al prossimo evento.
+
+        Le righe passano dallo stesso costruttore della ricostruzione
+        (`_integration`): stessa forma da tutte e due le porte. Una tabella
+        nuova, non una modifica di quella tenuta: chi ha gia' letto l'anagrafe
+        tiene la sua (vedi il docstring della classe, «di sola lettura»).
+
+        **Un'anagrafe mai letta non nasce da qui**: senza le altre sei tabelle
+        sarebbe una casa fatta di sole integrazioni, che i lettori leggerebbero
+        come una casa vuota. La prima ricostruzione le legge da se'.
+        """
+        if self._updated_at is None:
+            return
+        self._home_space = {**self._home_space,
+                            "integrazioni": [_integration(row) for row in rows]}
+        self._unavailable = [name for name in self._unavailable if name != "integrazioni"]
+
     def read(self) -> dict[str, list[dict]]:
         """L'anagrafe intera. `{}` finche' nessuna lettura e' riuscita."""
         return self._home_space

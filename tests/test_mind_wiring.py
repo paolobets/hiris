@@ -169,8 +169,15 @@ class _ClienteFinto:
     async def problems(self):
         return self._problemi_esito
 
-    async def read_registries(self):
-        return self._registri_esito
+    async def read_registry(self, registry):
+        # La coppia di `read_registries` letta come la busta di
+        # `read_registry` (Tappa 2, Task 5): un registro fra i non
+        # disponibili e' un guasto, non un elenco vuoto.
+        registries, unavailable = self._registri_esito
+        if registry in unavailable:
+            return {"errore": "Home Assistant non ha risposto", "causa": "silenzio",
+                    "codice": None}
+        return {registry: registries.get(registry) or []}
 
     async def system_log(self):
         return self._log_outcome
@@ -201,8 +208,8 @@ def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
     rischio e' basso, ma la guardia costa una riga e vale per ogni
     modifica futura a `HAClient.read_registries`."""
     from hiris.app.proxy.ha_client import HAClient
-    assert_stessa_firma(HAClient.read_registries, _ClienteFinto.read_registries,
-                        nome="HAClient.read_registries")
+    assert_stessa_firma(HAClient.read_registry, _ClienteFinto.read_registry,
+                        nome="HAClient.read_registry")
 
 
 def test_the_fake_client_matches_haclient_system_log():

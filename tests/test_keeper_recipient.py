@@ -1,7 +1,7 @@
 """`recipients_for` -- il recapito del soggetto (spec §2.3, Task 1).
 
-Una finta `ha` che riproduce solo i tre lettori che la funzione usa davvero
-(`get_states`, `read_registries`, `get_services`), con la stessa forma
+Una finta `ha` che riproduce solo i lettori che la funzione usa davvero
+(`get_states`, `read_registry`, `get_services`), con la stessa forma
 misurata sulla casa vera (vedi `hiris/app/keeper/recipient.py` per le fonti e
 la misura del 25/09/2026)."""
 import logging
@@ -49,11 +49,14 @@ class FintaHA:
             return dict(_SILENT)
         return self.stati
 
-    async def read_registries(self):
-        self.chiamate.append("read_registries")
-        if self.guasto == "read_registries":
-            raise TimeoutError("Home Assistant non ha risposto")
-        return {"entita": self.entita, "dispositivi": self.dispositivi}, self.non_disponibili
+    async def read_registry(self, registry):
+        # Un registro solo, come `HAClient.read_registry` (Tappa 2, Task 5):
+        # un guasto o un registro fra i non disponibili e' la busta.
+        self.chiamate.append(f"read_registry:{registry}")
+        if self.guasto == "read_registry" or registry in self.non_disponibili:
+            return dict(_SILENT)
+        return {registry: {"entita": self.entita,
+                           "dispositivi": self.dispositivi}[registry]}
 
     async def get_services(self):
         self.chiamate.append("get_services")
@@ -372,7 +375,7 @@ async def test_guasto_get_states_il_testo_dell_eccezione_non_finisce_nel_registr
 @pytest.mark.asyncio
 async def test_guasto_read_registries_zero_con_motivo_mai_eccezione():
     ha = FintaHA(stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
-                 guasto="read_registries")
+                 guasto="read_registry")
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
@@ -393,7 +396,7 @@ async def test_guasto_get_services_zero_con_motivo_mai_eccezione():
 
 @pytest.mark.asyncio
 async def test_registro_entita_non_disponibile_zero_con_motivo():
-    """`read_registries` risponde ma dichiara `entita` fra i `non_disponibili`
+    """Il registro delle entita' risponde con la busta del guasto
     (lo stesso segnale che usa `workshop.py`): non si inventano candidati da
     un registro che non e' arrivato."""
     ha = FintaHA(stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
@@ -407,7 +410,7 @@ async def test_registro_entita_non_disponibile_zero_con_motivo():
 
 @pytest.mark.asyncio
 async def test_una_sola_lettura_per_lettore():
-    """`get_states`, `read_registries` e `get_services` si chiamano UNA volta
+    """`get_states`, i due registri e `get_services` si chiamano UNA volta
     sola a esecuzione -- non un poll, non una rilettura per tracker."""
     ha = FintaHA(
         stati=[_stato_persona(USER_ID, [
@@ -416,7 +419,8 @@ async def test_una_sola_lettura_per_lettore():
 
     await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert ha.chiamate == ["get_states", "read_registries", "get_services"]
+    assert ha.chiamate == ["get_states", "read_registry:entita",
+                           "read_registry:dispositivi", "get_services"]
 
 
 @pytest.mark.asyncio

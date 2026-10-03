@@ -25,7 +25,8 @@ un indirizzo che rifiuta subito, e l'avvio prosegue come fa in produzione.
 
 I TETTI sono i numeri misurati il 03/10/2026 (v3.73.2): sono quelli di
 PARTENZA della Tappa 2, che li porta a 1 e 1 (R18). Alzarli e' una riga di
-diff che una revisione vede.
+diff che una revisione vede. Il Task 5 (03/10/2026) ha tolto i registri interi
+dal primo giro delle condizioni: `read_registries` scende da 3 a 2.
 
 Mutazione ESEGUITA: aggiunta in `_on_startup` una seconda
 `await entity_cache.load(ha_client)` -- rossa (`get_states`: 3, tetto 2).
@@ -48,7 +49,7 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
 
 #: Le letture dell'INTERA casa: stati e registri. Sono quelle che R18 vuole a una.
-WHOLE_HOUSE_CEILINGS = {"get_states": 4, "read_registries": 3}
+WHOLE_HOUSE_CEILINGS = {"get_states": 4, "read_registries": 2}
 #: Cio' che non e' una domanda alla casa: il ciclo di vita, gli ascoltatori
 #: (iscriversi non e' bussare) e cio' che la casa finta registra.
 NOT_QUESTIONS = ("ws_ready", "start", "stop", "start_websocket", "calls", "connections",

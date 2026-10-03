@@ -180,19 +180,17 @@ class FintoHA:
                                         and v["unique_id"] == helper_id)]
         return {"cancellato": True}
 
-    async def read_registries(self):
-        """La porta unica dei registri (`HAClient.read_registries`): la coppia
-        `(registri, non_disponibili)`. Le voci di `entita` portano
-        `entity_id`, `platform` e `unique_id`, i tre campi che
-        `config/entity_registry/list` manda davvero -- misurati dal vivo il
-        09/09/2026 sulla casa del proprietario, 1.225 voci di cui 11 di
-        helper."""
+    async def read_registry(self, registry):
+        """Un registro solo (`HAClient.read_registry`): `{nome: righe}`, o la
+        busta del guasto. Le voci di `entita` portano `entity_id`, `platform`
+        e `unique_id`, i tre campi che `config/entity_registry/list` manda
+        davvero -- misurati dal vivo il 09/09/2026 sulla casa del
+        proprietario, 1.225 voci di cui 11 di helper."""
+        if registry == "etichette":
+            return {"etichette": [{"label_id": "hiris", "name": "HIRIS"}]}
         if "registri" in self._override:
             return self._override["registri"]
-        return ({"entita": [dict(v) for v in self.registro_entita]}, [])
-
-    async def list_labels(self):
-        return {"etichette": [{"label_id": "hiris", "name": "HIRIS"}]}
+        return {"entita": [dict(v) for v in self.registro_entita]}
 
     async def create_label(self, name):
         return {"etichetta": {"label_id": "hiris", "name": name}}
@@ -989,7 +987,8 @@ async def test_se_il_registro_non_risponde_l_etichetta_MANCATA_si_dichiara(tmp_p
     (fondamenta 2 e 4: la cronaca non elenca gli helper nati, `_reread`
     filtra per `{dominio}.`), tacerlo lascerebbe l'archivio dire «e' tutto a
     posto» su un oggetto che da HIRIS non risulta piu' suo."""
-    ha = FintoHA(registri=({"entita": []}, ["entita"]))
+    ha = FintoHA(registri={"errore": "Home Assistant non ha risposto",
+                           "causa": "silenzio", "codice": None})
     officina, archivio, _cronaca = _bench_for(ha, tmp_path)
     intento = _intento(helper=[{"dominio": "input_boolean",
                                 "dati": {"name": "Modalita notte"}}])

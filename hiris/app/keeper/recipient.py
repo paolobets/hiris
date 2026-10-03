@@ -204,10 +204,11 @@ class Recipients:
 async def recipients_for(subject: dict | None, ha) -> Recipients:
     """Il recapito di CHI ha chiesto -- mai scelto dal modello (spec §2.3).
 
-    Una lettura sola per ciascuno dei tre lettori che `ha` gia' ha
-    (`get_states`, `read_registries`, `get_services`), e solo quelle che
-    servono: una persona senza `id`, senza `person` collegata o senza
-    `device_trackers` non arriva mai a leggere i registri o i servizi.
+    Una lettura sola per ciascuno dei lettori che `ha` gia' ha
+    (`get_states`, `read_registry` per le entita' e per i dispositivi,
+    `get_services`), e solo quelle che servono: una persona senza `id`, senza
+    `person` collegata o senza `device_trackers` non arriva mai a leggere i
+    registri o i servizi.
 
     Un guasto di una qualunque lettura torna **zero servizi col motivo del
     guasto**, mai un'eccezione: la promessa che stava per nascere (o
@@ -275,31 +276,27 @@ async def recipients_for(subject: dict | None, ha) -> Recipients:
     if not trackers:
         return Recipients((), _REASON_NO_MOBILE_APP_DEVICE)
 
-    # Un batch WS solo (`read_registries` gia' fa cosi': un comando per
-    # registro, una connessione), ma resta un costo ad OGNI risveglio di
-    # promessa -- l'intera anagrafe della casa per risolvere due o tre
-    # tracker. Accettabile oggi (i registri sono nell'ordine delle migliaia
-    # di righe, non milioni); un lettore piu' leggero, mirato ai soli
-    # `entity_id`/`device_id` richiesti, e' una fetta successiva se la
-    # cadenza dei risvegli lo rendesse un problema misurato.
-    try:
-        registries, unavailable = await ha.read_registries()
-    except Exception as exc:
-        logger.warning("recipients_for: registri non letti da Home Assistant (%s)",
-                       type(exc).__name__)
-        return Recipients((), _REASON_HA_DOWN)
-    if "entita" in (unavailable or []):
-        logger.warning("recipients_for: registro delle entita' non disponibile")
-        return Recipients((), _REASON_HA_DOWN)
+    # I due registri che servono, uno per comando (A-01, A-06, 03/10/2026):
+    # fino a quel giorno si leggeva l'anagrafe intera -- dieci comandi piu' il
+    # giro degli alias su ogni entita' della casa -- a ogni risveglio di
+    # promessa, per usarne due tabelle. Le entita' sono indispensabili: se
+    # mancano, i dispositivi non si chiedono nemmeno.
+    tables: dict[str, dict] = {}
+    for registry in ("entita", "dispositivi"):
+        tables[registry] = await ha.read_registry(registry)
+        if registry == "entita" and "errore" in tables[registry]:
+            # Solo la causa, come per gli stati qui sopra.
+            logger.warning("recipients_for: registro delle entita' non letto (%s)",
+                           tables[registry].get("causa"))
+            return Recipients((), _REASON_HA_DOWN)
 
-    entities = registries.get("entita") if isinstance(registries, dict) else None
-    by_entity_id = {e.get("entity_id"): e for e in (entities or [])
+    by_entity_id = {e.get("entity_id"): e for e in tables["entita"]["entita"]
                     if isinstance(e, dict)}
-    # Il registro dei dispositivi puo' mancare (`non_disponibili`) senza
+    # Il registro dei dispositivi puo' mancare (la busta del guasto) senza
     # essere fatale: senza di lui si degrada sul solo candidato
     # dell'entity_id, che regge finche' nessun dispositivo e' stato
     # rinominato (vedi il docstring del modulo).
-    devices = registries.get("dispositivi") if isinstance(registries, dict) else None
+    devices = tables["dispositivi"].get("dispositivi")
     by_device_id = {d.get("id"): d for d in (devices or []) if isinstance(d, dict)}
 
     mobile_app_trackers = [

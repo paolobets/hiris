@@ -11,13 +11,11 @@
   "hiris/app/action/construction/workshop.py": {
    "conti": {
     "get_states": 1,
-    "list_labels": 1,
     "read_configuration": 1,
-    "read_registries": 1,
+    "read_registry": 2,
     "validate_config": 1
    },
    "voci": [
-    "A-01",
     "A-15"
    ]
   },
@@ -69,7 +67,6 @@
     "read_registries": 1
    },
    "voci": [
-    "A-01",
     "A-07"
    ]
   },
@@ -77,7 +74,7 @@
    "conti": {
     "get_services": 1,
     "get_states": 1,
-    "read_registries": 1
+    "read_registry": 1
    },
    "voci": [
     "A-03",
@@ -105,14 +102,12 @@
     "automation_traces": 1,
     "extract_from_target": 1,
     "hourly_statistics": 1,
-    "problems": 2,
-    "read_registries": 1,
+    "problems": 1,
+    "read_registry": 1,
     "statistic_ids": 2,
     "system_log": 1
    },
    "voci": [
-    "A-01",
-    "A-02",
     "A-05",
     "A-08",
     "A-21"

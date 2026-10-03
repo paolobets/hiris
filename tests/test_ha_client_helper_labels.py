@@ -74,7 +74,7 @@ async def test_l_etichetta_si_crea_e_si_elenca(monkeypatch):
             "label_id": "hiris", "name": "HIRIS"}},
     })
     monkeypatch.setattr(c, "_ws_send", ws_send_from_messages(finto))
-    assert (await c.list_labels())["etichette"][0]["label_id"] == "hiris"
+    assert (await c.read_registry("etichette"))["etichette"][0]["label_id"] == "hiris"
     assert (await c.create_label("HIRIS"))["etichetta"]["label_id"] == "hiris"
     assert visti[1] == ("config/label_registry/create", {"name": "HIRIS"})
 
