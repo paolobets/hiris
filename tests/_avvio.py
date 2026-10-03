@@ -26,11 +26,46 @@ import fotografia_porte
 from tests._casa_sintetica import synthetic_inputs
 
 
+class RecordingHouse(fotografia_porte.FrozenHouse):
+    """La casa congelata che ricorda chi si e' iscritto ai suoi eventi, e in
+    che ordine, e quante volte le si sono chiesti gli stati.
+
+    E' la casa che l'avvio trova in `app["ha_client"]`: una prova chiede a lei
+    QUALI ascoltatori l'avvio ha registrato -- e li chiama -- invece di cercare
+    `add_state_listener(` nel testo di `server.py`. La firma e' quella con cui
+    `_on_startup` costruisce `HAClient`."""
+
+    def __init__(self, base_url=None, token=None) -> None:
+        super().__init__(synthetic_inputs())
+        #: `(nome del metodo, ascoltatore)`, nell'ordine dell'iscrizione.
+        self.listeners: list[tuple[str, object]] = []
+        self.state_reads = 0
+
+    async def get_states(self, entity_ids):
+        self.state_reads += 1
+        return await super().get_states(entity_ids)
+
+    def registered(self, kind: str) -> list:
+        """Gli ascoltatori iscritti con `add_<kind>_listener`, in ordine."""
+        return [callback for name, callback in self.listeners
+                if name == f"add_{kind}_listener"]
+
+    def __getattr__(self, name: str):
+        if name.startswith("add_") and name.endswith("_listener"):
+            def register(callback, *args, **kwargs):
+                self.listeners.append((name, callback))
+            return register
+        return super().__getattr__(name)
+
+
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def started_app(tmp_path_factory):
-    """L'app avviata sulla casa sintetica, spenta alla fine del file."""
+    """L'app avviata sulla casa sintetica, spenta alla fine del file. La casa
+    e' una `RecordingHouse`: `app["ha_client"].listeners` dice chi l'avvio ha
+    iscritto ai suoi eventi."""
     data_dir = str(tmp_path_factory.mktemp("avvio"))
-    async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
+    async with fotografia_porte.mounted(synthetic_inputs(), data_dir,
+                                        RecordingHouse) as app:
         yield app
 
 

@@ -13,7 +13,7 @@ cresce, la copia no, e il cancello resta verde mentre il buco si apre.
 
 **Adesso l'elenco si CHIEDE, non si scrive.** Alle porte lo chiede il sorgente di
 `ha_client`; ai moduli dell'attuatore lo chiede il grafo delle chiamate di
-`server.py`; alle due porte-modulo lo chiede `CLAUDE.md`, che le dichiara. Una
+tutto `hiris/app`; alle due porte-modulo lo chiede `CLAUDE.md`, che le dichiara. Una
 porta nuova e una funzione nuova entrano nel cancello **il giorno in cui
 nascono**, non il giorno in cui qualcuno se ne ricorda.
 
@@ -40,7 +40,8 @@ OGGI = datetime.datetime.now(
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 _CLIENT = RADICE / "hiris" / "app" / "proxy" / "ha_client.py"
-_SERVER = RADICE / "hiris" / "app" / "server.py"
+_APP = RADICE / "hiris" / "app"
+_SERVER = _APP / "server.py"
 
 #: Il gesto dell'attuatore che PUO' toccare una porta, e perche'.
 #:
@@ -112,6 +113,21 @@ def porte_dichiarate() -> tuple[pathlib.Path, ...]:
     return tuple(vivi)
 
 
+def _funzioni(moduli) -> dict[str, list[tuple[str, ast.AST, str]]]:
+    """`{nome: [(modulo, definizione, sorgente del modulo)]}` per ogni funzione
+    di primo livello dei `moduli`. Una lista per nome: due moduli possono
+    definire lo stesso nome, e il grafo li segue tutti e due -- meglio
+    sorvegliare una funzione di troppo che perderne una."""
+    funzioni: dict[str, list[tuple[str, ast.AST, str]]] = {}
+    for percorso in moduli:
+        sorgente = percorso.read_text(encoding="utf-8")
+        modulo = percorso.relative_to(_APP).as_posix()
+        for nodo in ast.parse(sorgente).body:
+            if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                funzioni.setdefault(nodo.name, []).append((modulo, nodo, sorgente))
+    return funzioni
+
+
 def _chiamate_dirette(funzioni: dict, radice: str) -> set[str]:
     """I nomi raggiungibili da `radice` seguendo le sole chiamate dirette."""
     visti: set[str] = set()
@@ -120,43 +136,52 @@ def _chiamate_dirette(funzioni: dict, radice: str) -> set[str]:
         if nome in visti or nome not in funzioni:
             return
         visti.add(nome)
-        for nodo in ast.walk(funzioni[nome]):
-            if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name):
-                scendi(nodo.func.id)
+        for _, definizione, _ in funzioni[nome]:
+            for nodo in ast.walk(definizione):
+                if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name):
+                    scendi(nodo.func.id)
 
     scendi(radice)
     return visti
 
 
-def superficie_attuatore() -> dict[str, str]:
+def superficie_attuatore(moduli=None) -> dict[str, str]:
     """Il sorgente che appartiene all'attuatore, DERIVATO — `{nome: sorgente}`.
 
     Due pezzi, e il secondo e' quello che il cancello vecchio non vedeva:
 
     1. i moduli `mind/actuator*.py`, presi **dalla cartella** e non elencati;
-    2. il **giro** in `server.py`, che la spec §6 dichiara parte dell'attuatore
-       (`actuator_round`) e dove `ha_client` e' a portata di mano dovunque. Si
-       ricava dal grafo delle chiamate, **meno** cio' che raggiungono anche gli
-       altri giri: una funzione condivisa non e' dell'attuatore, e sorvegliarla
-       qui farebbe diventare rosso questo cancello per colpa di qualcun altro.
+    2. il **giro** (`actuator_round`, che la spec §6 dichiara parte
+       dell'attuatore) e cio' che chiama, dove `ha_client` e' a portata di mano
+       dovunque. Si ricava dal grafo delle chiamate, **meno** cio' che
+       raggiungono anche gli altri giri (le funzioni pubbliche `*_round`): una
+       funzione condivisa non e' dell'attuatore, e sorvegliarla qui farebbe
+       diventare rosso questo cancello per colpa di qualcun altro.
+
+    Il grafo si costruisce su **tutto `hiris/app`**, non sul solo `server.py`
+    (Tappa 1 dello sprint «Una fonte sola di verita'», 03/10/2026): un gesto
+    dell'attuatore spostato in un altro modulo usciva dal grafo -- `scendi` si
+    fermava al primo nome che `server.py` non definiva -- e il cancello restava
+    verde guardando meno. `moduli` restringe il grafo: serve solo alla prova
+    che la derivazione larga contenga quella stretta.
     """
     superficie = {p.name: p.read_text(encoding="utf-8")
-                  for p in sorted((RADICE / "hiris" / "app" / "mind").glob("actuator*.py"))}
+                  for p in sorted((_APP / "mind").glob("actuator*.py"))}
     assert superficie, "non trovo nessun modulo `mind/actuator*.py`"
 
-    albero = _albero(_SERVER)
-    funzioni = {n.name: n for n in albero.body
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    altri_giri = {n for n in funzioni if n.endswith("_round") and n != "actuator_round"}
+    funzioni = _funzioni(moduli if moduli is not None else sorted(_APP.rglob("*.py")))
+    altri_giri = {n for n in funzioni
+                  if n.endswith("_round") and not n.startswith("_")
+                  and n != "actuator_round"}
     condivise: set[str] = set()
     for giro in altri_giri:
         condivise |= _chiamate_dirette(funzioni, giro)
 
     sole_sue = _chiamate_dirette(funzioni, "actuator_round") - condivise
     assert "actuator_round" in sole_sue
-    sorgente = _SERVER.read_text(encoding="utf-8")
     for nome in sorted(sole_sue):
-        superficie[f"server.py::{nome}"] = ast.get_source_segment(sorgente, funzioni[nome]) or ""
+        for modulo, definizione, sorgente in funzioni[nome]:
+            superficie[f"{modulo}::{nome}"] = ast.get_source_segment(sorgente, definizione) or ""
     return superficie
 
 
@@ -209,6 +234,26 @@ def test_la_superficie_comprende_il_GIRO_nel_server_non_solo_i_due_moduli():
     for gesto in ("_repair_recipes", "_file_proposals", "_write_actuation"):
         assert f"server.py::{gesto}" in superficie, (
             f"`{gesto}` e' un gesto dell'attuatore e non e' sorvegliato")
+
+
+def test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_server():
+    """**La derivazione larga non si e' svuotata.** Il grafo delle chiamate
+    costruito su tutto `hiris/app` deve vedere almeno cio' che vedeva quello
+    costruito sul solo `server.py`: se la derivazione larga si rompesse (un
+    altro `actuator_round`, una funzione condivisa di troppo), il cancello
+    guarderebbe meno e resterebbe verde.
+
+    Mutazione ESEGUITA (03/10/2026): un gesto dell'attuatore scritto in
+    `action/rhythm.py` -- `_prova_scrive(app)`, che chiama
+    `app["ha_client"].call_service(...)` -- e chiamato da `actuator_round`: il
+    cancello di `test_l_attuatore_non_tocca_MAI_home_assistant` col grafo del
+    solo `server.py` restava VERDE, col grafo di tutto il prodotto e' rosso.
+    """
+    stretta = superficie_attuatore([_SERVER])
+    larga = superficie_attuatore()
+
+    assert set(stretta) <= set(larga), sorted(set(stretta) - set(larga))
+    assert any(nome.startswith("server.py::") for nome in larga)
 
 
 def test_le_due_porte_si_leggono_da_CLAUDE_md():

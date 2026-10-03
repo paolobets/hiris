@@ -1,5 +1,4 @@
 """La porta dei giudizi: costruzione dall'archivio (spec 2026-09-16 §3, §8)."""
-import inspect
 import json
 from types import SimpleNamespace
 
@@ -134,22 +133,6 @@ def test_sapere_assente_torna_seme_DICHIARANDO_perche():
     j, stato = build_judgments(None)
     assert stato["provenienza_istantanea"] == "solo seme" and stato["perche"]
     assert j is tv.REPO_JUDGMENTS
-
-
-def test_sapere_nasce_PRIMA_cache_entita():
-    """Strutturale, dichiarata: non esiste un modo economico di avviare
-    `_on_startup` in prova, quindi si guarda l'ordine nel sorgente.
-    L'ordine e' prescritto dalla spec §8 («Il sapere, il suo seme e
-    l'istantanea nascono prima della EntityCache»); oggi nessun lettore vivo
-    della cache lo pretende (spec §2, §3).
-    Mutazione: rimettere il blocco del sapere dopo `EntityCache()` -- rossa.
-
-    Dal Task 7b il blocco vive in `_open_knowledge`, e l'ordine si cerca dentro
-    `_on_startup`: cercato nel modulo intero, la definizione della funzione (che
-    sta sopra) lo renderebbe vero per sempre."""
-    src = inspect.getsource(server._on_startup)
-    assert (src.index("_open_knowledge(app, data_dir)")
-            < src.index("entity_cache = EntityCache("))
 
 
 # -- l'avvio col sapere che non si apre (spec §8, Task 7b) ---------------------

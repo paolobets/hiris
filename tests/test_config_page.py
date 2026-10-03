@@ -218,10 +218,10 @@ def test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti():
     for lingua in ("it", "en"):
         assert "chat_policy" not in _traduzioni(lingua)
 
-    # Nei due file di codice si guardano le righe VIVE: sia `run.sh` sia
-    # `server.py` spiegano in un commento perche' l'opzione e' uscita, e un
-    # commento che RACCONTA una cosa morta non e' quella cosa viva. (Stesso
-    # criterio di `test_action_prompt._testi_che_legge_l_utente`.)
+    # Nel codice si guardano le righe VIVE: sia `run.sh` sia `server.py`
+    # spiegano in un commento perche' l'opzione e' uscita, e un commento che
+    # RACCONTA una cosa morta non e' quella cosa viva. (Stesso criterio di
+    # `test_action_prompt._testi_che_legge_l_utente`.)
     def _righe_vive(percorso: Path) -> list[str]:
         return [r for r in percorso.read_text(encoding="utf-8").splitlines()
                 if not r.lstrip().startswith("#")]
@@ -229,9 +229,19 @@ def test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti():
     assert not [r for r in _righe_vive(BASE / "run.sh") if "CHAT_POLICY" in r], (
         "run.sh esporta ancora la variabile d'ambiente di un'opzione uscita"
     )
-    assert not [r for r in _righe_vive(BASE / "app" / "server.py")
-                if "CHAT_POLICY" in r], (
-        "server.py legge ancora la variabile d'ambiente di un'opzione uscita"
+    # Tutto il prodotto, non il solo `server.py` (Tappa 1 dello sprint «Una
+    # fonte sola di verita'», 03/10/2026): la lettura di un'opzione uscita e'
+    # un difetto in qualunque modulo nasca, e un cancello su un file solo si
+    # restringe quando il cablaggio ne esce. Mutazione ESEGUITA:
+    # `os.environ.get("CHAT_POLICY")` scritta in `hiris/app/config.py` -- rossa
+    # (col solo `server.py` restava verde).
+    moduli = sorted((BASE / "app").rglob("*.py"))
+    assert BASE / "app" / "server.py" in moduli and len(moduli) > 50, (
+        f"la derivazione dei moduli si e' rotta: {len(moduli)}")
+    lette = [f"{m.relative_to(BASE).as_posix()}: {r.strip()}" for m in moduli
+             for r in _righe_vive(m) if "CHAT_POLICY" in r]
+    assert not lette, (
+        f"il prodotto legge ancora la variabile d'ambiente di un'opzione uscita: {lette}"
     )
 
 

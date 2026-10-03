@@ -75,19 +75,37 @@ def test_il_foglio_punta_a_file_CHE_ESISTONO():
         assert (STATICI / percorso).exists(), f"manca il file «{percorso}»"
 
 
-def test_la_politica_dei_contenuti_si_CHIUDE_verso_l_esterno():
+@pytest.mark.asyncio
+async def test_la_politica_dei_contenuti_si_CHIUDE_verso_l_esterno():
     """La meta' che il reperto chiamava per nome: finche' il foglio poteva
     venire da fuori, `style-src` e `font-src` dovevano ammetterlo. Adesso non
     devono piu', e un permesso che non serve e' debito.
 
-    Mutazione ESEGUITA: lasciare i domini nella politica -- rossa."""
-    sorgente = (RADICE / "hiris/app/server.py").read_text(encoding="utf-8")
-    inizio = sorgente.index("Content-Security-Policy")
-    politica = sorgente[inizio:inizio + 700]
+    Si legge la politica che una risposta VERA porta -- il foglio dei caratteri,
+    servito dall'app di `create_app` -- non 700 caratteri di `server.py` intorno
+    alla parola (Tappa 1 dello sprint «Una fonte sola di verita'», 03/10/2026):
+    la risposta e' cio' che il browser applica, ovunque l'intestazione nasca.
+
+    Mutazione ESEGUITA: rimesso `https://fonts.googleapis.com` in `style-src`
+    -- rossa."""
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from hiris.app.server import create_app
+
+    # L'avvio no: questa prova guarda un'intestazione, e l'avvio parlerebbe con
+    # Home Assistant.
+    app = create_app()
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+    async with TestClient(TestServer(app)) as client:
+        risposta = await client.get("/static/hiris-fonts.css")
+        assert risposta.status == 200
+        politica = risposta.headers["Content-Security-Policy"]
 
     assert "fonts.googleapis.com" not in politica
     assert "fonts.gstatic.com" not in politica
-    assert "font-src 'self'" in politica
+    direttive = {d.split()[0]: d.split()[1:] for d in politica.split(";") if d.strip()}
+    assert direttive["font-src"] == ["'self'"], politica
 
 
 def test_le_LICENZE_viaggiano_coi_caratteri():

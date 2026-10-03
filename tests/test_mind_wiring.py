@@ -12,7 +12,6 @@ avrebbe lasciato nascere (task-5-correzioni.md):
   A.1. un errore di lettura passato a `watch_system` come lista vuota --
        peggio di non sapere, sapere il falso e scriverlo nell'archivio.
 """
-import ast
 import asyncio
 import inspect
 import logging
@@ -34,53 +33,13 @@ from hiris.app.server import watch_system_conditions
 from tests._contracts import assert_stessa_firma
 
 # --------------------------------------------------------------------------
-# Il cablaggio dichiarato dal mandato (task-5-brief.md, Step 1)
+# Il cablaggio dichiarato dal mandato (task-5-brief.md, Step 1) -- l'archivio
+# e l'osservatore, il rubinetto degli stati, la ricostruzione delle condizioni
+# prima del primo giro, l'ordine col sapere e con la riparazione d'avvio, la
+# chiusura allo spegnimento -- si guarda sull'app avviata, in
+# `tests/test_cablaggio_dell_avvio.py`. I lavori periodici si chiedono allo
+# schedulatore dell'app avviata (`tests/test_lavori_periodici.py`).
 # --------------------------------------------------------------------------
-
-def test_l_archivio_e_l_osservatore_sono_cablati():
-    sorgente = inspect.getsource(server)
-    assert 'app["observations"] = ObservationsStore(' in sorgente
-    assert 'app["watcher"] = Watcher(' in sorgente
-
-
-def test_l_osservatore_e_agganciato_allo_STESSO_rubinetto_dello_specchio():
-    """Non si apre un secondo rubinetto: due sorgenti degli stessi eventi
-    sarebbero due cose che possono divergere."""
-    sorgente = inspect.getsource(server)
-    assert "ha_client.add_state_listener(app[\"watcher\"].watch_reading)" in sorgente
-    assert sorgente.index("ha_client.add_state_listener(entity_cache.on_state_changed)") \
-        < sorgente.index("ha_client.add_state_listener(app[\"watcher\"].watch_reading)")
-
-
-def test_l_osservatore_nasce_dopo_il_suo_archivio():
-    sorgente = inspect.getsource(server)
-    assert sorgente.index('app["observations"] = ObservationsStore(') \
-        < sorgente.index('app["watcher"] = Watcher(')
-
-
-def test_l_archivio_si_chiude_nello_spegnimento():
-    sorgente = inspect.getsource(server._on_cleanup)
-    assert 'if "observations" in app:' in sorgente
-    assert 'app["observations"].close()' in sorgente
-
-
-# --------------------------------------------------------------------------
-# Correzioni A e B: le condizioni di sistema. Il lavoro periodico che da' un
-# chiamante vero a `watch_system`, e la lettura una volta all'avvio, si
-# chiedono allo schedulatore dell'app avviata (`tests/test_lavori_periodici.py`).
-# --------------------------------------------------------------------------
-
-def test_l_osservatore_ricostruisce_le_condizioni_all_avvio():
-    """Punto B: senza questa chiamata, a ogni riavvio dell'add-on -- che
-    succede a ogni aggiornamento -- i guasti gia' aperti verrebbero
-    riscritti come nati adesso, e l'oggetto «guasto» perderebbe la sua unica
-    informazione utile: da quando dura."""
-    sorgente = inspect.getsource(server._on_startup)
-    assert 'app["watcher"].rebuild_conditions()' in sorgente
-    assert sorgente.index('app["watcher"] = Watcher(') \
-        < sorgente.index('app["watcher"].rebuild_conditions()') \
-        < sorgente.index('watch_system_conditions(app, ha_client)')
-
 
 def _estrai_funzione_innestata(nome_funzione: str) -> str:
     """Il sorgente VERO di una funzione innestata in `_on_startup` (`async
@@ -555,33 +514,6 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         archivio.close()
 
 
-def test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non_blocca_l_avvio():
-    """Punto 2(b): due vincoli separati, entrambi nel mandato -- l'ordine nel
-    sorgente ('dopo la ricostruzione delle condizioni') e la protezione
-    ('non deve bloccare l'avvio').
-
-    **Cosa NON sorveglia** (cancello-rilascio-brief.md, punto 1, «la
-    lezione»): questo test guarda una STRINGA in un certo ordine nel
-    sorgente. Non sa dire se, nel punto in cui la chiamata compare, il
-    collaboratore di cui la funzione ha davvero bisogno --
-    `app["home_space_store"]` -- esiste gia'. E' esattamente cosi' che il
-    CRITICAL del punto 1 e' rimasto invisibile per due giri: la chiamata
-    stava "dopo le condizioni" (verificato, verde) ma anche 87 righe PRIMA
-    della creazione di `home_space_store` (non verificato, mai stato rosso).
-    La sorveglianza vera, per COMPORTAMENTO, e' il test qui sotto,
-    `test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito`, che
-    esegue la fetta reale del sorgente e legge cosa la riparazione riceve
-    DAVVERO."""
-    sorgente = inspect.getsource(server._on_startup)
-    assert "reaggregate_last_two_days(app, ha_client)" in sorgente
-    assert sorgente.index('app["watcher"].rebuild_conditions()') \
-        < sorgente.index("reaggregate_last_two_days(app, ha_client)")
-    pos = sorgente.index("reaggregate_last_two_days(app, ha_client)")
-    blocco = sorgente[pos - 80:pos + 200]
-    assert "try:" in blocco
-    assert "except Exception" in blocco
-
-
 def _estrai_blocco_riparazione_avvio() -> str:
     """Il sorgente VERO di `_on_startup`, dalla creazione di `home_space_store`
     alla fine del try/except della riparazione all'avvio -- stessa tecnica di
@@ -802,55 +734,13 @@ def _sapere(tmp_path):
     return sapere
 
 
-def test_il_doppione_con_hiris_ha_problems_e_documentato():
-    sorgente = inspect.getsource(server)
-    pos = sorgente.index('id="hiris_mind_conditions"')
-    blocco = sorgente[pos - 1000:pos]
-    assert "hiris_ha_problems" in blocco
-    assert 'app["ha_problems"]' in blocco
-
-
 # --------------------------------------------------------------------------
 # Task 4 di «le tracce e il log»: l'evento segna, la cadenza breve raccoglie
-# l'errore. Stessa disciplina del blocco sopra -- meta' cablaggio (il
-# sorgente), meta' comportamento (`watch_automation_outcomes` esercitata per
-# davvero con dei finti).
-#
-# Giro di correzioni (rilievo 6, primo punto): una prova di sola presenza
-# nel sorgente (`"..." in inspect.getsource(server)`) passa verde anche se
-# la riga vera e' commentata via -- un commento e' comunque testo, e la
-# ricerca di sottostringa non distingue codice VIVO da un commento morto.
-# `_chiamate_reali` sotto parsa il sorgente con `ast` invece di cercarci
-# dentro: un commento non esiste per il parser, quindi una riga commentata
-# semplicemente non produce nessuna `ast.Call` da trovare.
+# l'errore. Qui il comportamento (`watch_automation_outcomes` esercitata per
+# davvero con dei finti); che l'avvio iscriva l'evento all'osservatore lo
+# prova l'app avviata
+# (`tests/test_cablaggio_dell_avvio.py::test_the_automation_event_marks_the_automation`).
 # --------------------------------------------------------------------------
-
-def _real_calls(source_obj) -> list[str]:
-    """Ogni chiamata di funzione REALMENTE presente nel sorgente di
-    `source_obj` (non in un commento), come testo (`ast.unparse`)."""
-    tree = ast.parse(inspect.getsource(source_obj))
-    return [ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.Call)]
-
-
-def test_the_automation_event_is_wired_to_mark_automation():
-    """Senza questo cablaggio `Watcher.mark_automation` non ha nessun
-    chiamante di produzione: l'evento HA scatterebbe, `_ws_loop` lo
-    dispaccerebbe ai suoi ascoltatori, e nessuno lo riceverebbe mai --
-    nessuna automazione verrebbe mai segnata.
-
-    Mutazione (verificata eseguendola): commentare via
-    `ha_client.add_automation_listener(_mark_triggered_automation)`
-    (lasciando il testo nel file, come farebbe chiunque disabiliti una
-    riga senza cancellarla) -- il test torna rosso perche' `_real_calls`
-    non trova piu' nessuna `ast.Call` che inizi con
-    `"ha_client.add_automation_listener("`, mentre una ricerca di
-    sottostringa sul sorgente grezzo resterebbe verde."""
-    calls = _real_calls(server._on_startup)
-    assert any(c.startswith("ha_client.add_automation_listener(") for c in calls)
-    # `ast.unparse` normalizza le stringhe in apici singoli, quindi si cerca
-    # `'watcher'` e non `"watcher"` (che e' come appare nel sorgente vero).
-    assert any("['watcher'].mark_automation(entity_id" in c for c in calls)
-
 
 class _FakeAutomationWatcher:
     """Un `Watcher` finto per `watch_automation_outcomes`: `marked` e' cio'
@@ -1378,32 +1268,6 @@ def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
     assert store.count == 2
 
 
-def test_il_sapere_nasce_PRIMA_della_riparazione_all_avvio():
-    """**Un ordine di costruzione, difeso sul sorgente.**
-
-    Dal 12/09/2026 la riparazione all'avvio legge le direzioni dal sapere
-    (`app["knowledge"]`). Se qualcuno spostasse la creazione del sapere sotto
-    la riparazione, quest'ultima prenderebbe `KeyError`, e il suo `except`
-    largo lo inghiottirebbe: nel log comparirebbe «comprimari non costruiti,
-    riparazione saltata» -- un messaggio che parla di un'ALTRA cosa, e due
-    giorni di oggetti non si rifarebbero senza che nessuno capisca perche'.
-
-    E' la stessa forma del controllo gia' in questo file su
-    `home_space_store`, e nasce dalla stessa lezione: un ordine che vive solo
-    nella testa di chi ha scritto il file non e' un ordine.
-
-    Mutazione ESEGUITA: spostare `app["knowledge"] = KnowledgeStore(...)`
-    sotto la chiamata a `reaggregate_last_two_days` -- rossa.
-
-    Dal Task 7b il sapere nasce in `_open_knowledge`, chiamata da `_on_startup`:
-    l'ordine si cerca sulla chiamata, dentro `_on_startup`.
-    """
-    sorgente = inspect.getsource(server._on_startup)
-
-    assert (sorgente.index("_open_knowledge(app, data_dir)")
-            < sorgente.index("reaggregate_last_two_days(app, ha_client)"))
-
-
 # --------------------------------------------------------------------------
 # Il sapere: i significati entrano da dove le traduzioni si leggono gia'
 # --------------------------------------------------------------------------
@@ -1489,23 +1353,6 @@ def test_senza_sapere_la_lettura_delle_traduzioni_non_si_rompe(tmp_path):
     esito = asyncio.run(server.prime_state_translations(app))
 
     assert esito["lette"] is True
-
-
-def test_l_osservatore_riceve_il_sapere_e_nasce_DOPO_di_lui():
-    """L'osservatore legge dal sapere quali attributi tenere (spec §5.4): se
-    nascesse prima, prenderebbe `KeyError` all'avvio.
-
-    Mutazione ESEGUITA: spostare `app["watcher"] = Watcher(...)` sopra la
-    creazione del sapere -- rossa.
-
-    Dal Task 7b il sapere nasce in `_open_knowledge` e la chiave c'e' sempre,
-    anche quando vale `None` (il Watcher lo regge: non chiede attributi).
-    """
-    sorgente = inspect.getsource(server._on_startup)
-
-    assert 'Watcher(app["observations"], knowledge=app["knowledge"])' in sorgente
-    assert (sorgente.index("_open_knowledge(app, data_dir)")
-            < sorgente.index('app["watcher"] = Watcher('))
 
 
 def test_L_AGGREGAZIONE_NOTTURNA_scrive_anche_il_RESOCONTO(tmp_path):
@@ -2186,9 +2033,11 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
     che aiohttp esegue PRIMA del `freeze` (`AppRunner._make_server`).
 
     Due meta', perche' una sola non basta: (1) il giro su un'app VERA congelata,
-    con la chiave gia' creata, non emette l'avviso; (2) `_on_startup` crea la
-    chiave. Con la chiave gia' presente anche `setdefault` tacerebbe: la meta'
-    che lo scopre e' la (2).
+    con la chiave gia' creata, non emette l'avviso -- questa prova; (2)
+    `_on_startup` crea la chiave -- l'app avviata,
+    `tests/test_cablaggio_dell_avvio.py::test_backfill_quiet_is_born_at_startup`.
+    Con la chiave gia' presente anche `setdefault` tacerebbe: la meta' che lo
+    scopre e' la (2).
     Mutazioni ESEGUITE: (a) `setdefault` nel giro e niente chiave in
     `_on_startup` -- rossa sulla (2); (b) il giro che riassegna
     `app["backfill_quiet"]` -- rossa sulla (1)."""
@@ -2220,8 +2069,6 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
         assert app["backfill_quiet"] is quiet and "2026-08-23" in quiet
     finally:
         archivio.close()
-
-    assert 'app["backfill_quiet"] = {}' in inspect.getsource(server._on_startup)
 
 def test_i_punti_orari_NON_buttano_media_minimo_e_massimo():
     """**La frase fondativa della spec, dentro il codice nuovo.** Il client
