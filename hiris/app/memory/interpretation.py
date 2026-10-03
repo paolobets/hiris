@@ -44,6 +44,7 @@ riesce a dedurla, resta `None`: inventarla sarebbe peggio di non averla.
 from __future__ import annotations
 
 from ..home_space.topology import actual_area, actual_unit, device_areas
+from .resolver import STORE_KEY_PER_TYPE
 
 # Le tre caselle con un vocabolario chiuso: "che forza ha", "quando vale" e
 # "a chi si riferisce". "Cosa chiede" non ha voce perche' il suo
@@ -51,10 +52,16 @@ from ..home_space.topology import actual_area, actual_unit, device_areas
 # Assistant (device_class), non uno nostro -- vedi la docstring del
 # modulo. "Quando vale" aggiunge "stagione" alle condizioni che HA gia'
 # conosce.
+#
+# «A chi si riferisce» non si scrive qui: sono i tipi dell'anagrafe che
+# `Lookup.verify()` sa verificare (`resolver._ARCHIVI`). Fino alla Tappa 3
+# (Task 9, B-51) erano scritti a mano in tutti e due i posti, e un tipo
+# aggiunto a uno solo dei due era un'ancora che si accettava e non si
+# poteva verificare, o il contrario.
 VOCABULARY: dict[str, frozenset[str]] = {
     "forza": frozenset({"preferenza", "divieto", "fatto", "regola"}),
     "condizioni": frozenset({"ora", "giorno", "presenza", "sole", "meteo", "stagione"}),
-    "ancore": frozenset({"area", "entita", "dispositivo"}),
+    "ancore": frozenset(STORE_KEY_PER_TYPE),
 }
 
 

@@ -1040,9 +1040,12 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
 # qualificata, e la mutezza e' la risposta giusta. **Questo insieme non cala.**
 _MUTE_VOLUTE = {
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
-    # per intero o dentro residui gia' dichiarati (`memory/resolver.py`,
-    # `keeper/exchange.py::_senza_conclusione`).
-    ("senza", "api"), ("senza", "action"), ("senza", "memory"),
+    # per intero o dentro residui gia' dichiarati
+    # (`keeper/exchange.py::_senza_conclusione`). `("senza", "memory")` e'
+    # uscita con la Tappa 3, Task 9: era `senza_accenti` in
+    # `memory/resolver._normalize`, che e' diventata `home_space/reference.
+    # fold_accents`.
+    ("senza", "api"), ("senza", "action"),
     ("senza", "keeper"),
     # `note (home_space)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `home_space/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.

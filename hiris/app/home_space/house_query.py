@@ -19,11 +19,11 @@ import time
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from ..memory.resolver import name_matches
 from . import topology
 from .behavior import BEHAVIOR_DOMAINS
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
+from .reference import name_matches, normalize
 
 DETAIL_MEDIUM_MAX = 10
 KINDS = ("entita", "area", "dispositivo", "automazione", "script",
@@ -182,17 +182,28 @@ def _area_name(area: dict) -> str | None:
 def _place_matches(f: HouseFilters, entry: dict, area: dict, floor: dict) -> bool:
     """`area`, `piano`, `integrazione`: dove sta e da dove viene. Vale per le
     entita' e per automazioni e script, che li prendono dalla propria entita'
-    di registro."""
+    di registro.
+
+    I tre si confrontano dopo `normalize` (D5 della Tappa 3: maiuscole,
+    accenti e spazi non contano, gli articoli si'). Fino al Task 9 l'area e
+    il piano avevano un `.lower()` loro e l'integrazione il confronto esatto:
+    «Hydrawise» dava zero righe."""
     if f.area:
-        wanted = f.area.strip().lower()
+        wanted = normalize(f.area)
         if wanted == "senza area":
             if _area_name(area) is not None:
                 return False
-        elif (area.get("nome") or "").lower() != wanted and area.get("id") != wanted:
+        elif wanted not in (normalize(area.get("nome") or ""),
+                            normalize(str(area.get("id") or ""))):
             return False
-    if f.floor and (floor.get("nome") or "").lower() != f.floor.strip().lower():
+    if f.floor and not _floor_matches(f.floor, floor):
         return False
-    return not (f.platform and entry.get("piattaforma") != f.platform)
+    return not (f.platform
+                and normalize(entry.get("piattaforma") or "") != normalize(f.platform))
+
+
+def _floor_matches(wanted: str, floor: dict) -> bool:
+    return normalize(floor.get("nome") or "") == normalize(wanted)
 
 
 def _any_name_matches(query: str, name: str, aliases) -> bool:
@@ -321,7 +332,7 @@ def _area_rows(f: HouseFilters, home_space, unavailable):
             if f.name and not _any_name_matches(f.name, area.get("nome") or "",
                                                 area.get("alias")):
                 continue
-            if f.floor and (floor.get("nome") or "").lower() != f.floor.strip().lower():
+            if f.floor and not _floor_matches(f.floor, floor):
                 continue
             rows.append({"id": area["id"], "nome": area.get("nome"),
                          "genere": "area", "piano": floor.get("nome")})
@@ -342,7 +353,8 @@ def _device_rows(f: HouseFilters, home_space, unavailable, excluded: dict) -> li
     platforms: dict = {}
     for entity in home_space.get("entita") or []:
         if entity.get("dispositivo_id") and entity.get("piattaforma"):
-            platforms.setdefault(entity["dispositivo_id"], set()).add(entity["piattaforma"])
+            platforms.setdefault(entity["dispositivo_id"], set()).add(
+                normalize(entity["piattaforma"]))
     where = replace(f, platform=None)
     rows = []
     for device in home_space.get("dispositivi") or []:
@@ -355,7 +367,7 @@ def _device_rows(f: HouseFilters, home_space, unavailable, excluded: dict) -> li
         area, floor = places.get(device.get("area_id"), _NOWHERE[1:])
         if not _place_matches(where, {}, area, floor):
             continue
-        if f.platform and f.platform not in platforms.get(device["id"], ()):
+        if f.platform and normalize(f.platform) not in platforms.get(device["id"], ()):
             continue
         if device.get("disabilitato"):
             excluded["disabilitate"] += 1
@@ -410,9 +422,9 @@ def _missing_reference(f: HouseFilters, home_space, detail, unavailable) -> dict
         return detail(f.kind, reference)
     if reference.strip().isdigit():
         return detail("ricordo", reference)
-    wanted = reference.strip().lower()
-    platforms = ({(e.get("piattaforma") or "").lower() for e in home_space.get("entita") or []}
-                 | {(i.get("dominio") or "").lower()
+    wanted = normalize(reference)
+    platforms = ({normalize(e.get("piattaforma") or "") for e in home_space.get("entita") or []}
+                 | {normalize(i.get("dominio") or "")
                     for i in home_space.get("integrazioni") or []})
     if wanted in platforms - {""}:
         return detail("integrazione", reference)

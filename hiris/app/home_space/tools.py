@@ -138,10 +138,11 @@ from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
-# `memory/interpretation.VOCABULARY["ancore"]` -- la fonte vera, non
-# `STORE_KEY_PER_TYPE`: quella e' la mappa dei registri dell'anagrafe, un
-# altro vocabolario con un altro scopo, anche quando i due elenchi
-# coincidono. Ordinati perche' un frozenset non promette un ordine stabile
+# `memory/interpretation.VOCABULARY["ancore"]`, che a sua volta li chiede
+# all'anagrafe (`resolver.STORE_KEY_PER_TYPE`): un'ancora vale solo se
+# `Lookup.verify()` la sa verificare, quindi i due elenchi non «coincidono»
+# -- sono lo stesso fatto, e dalla Tappa 3 (Task 9, B-51) si scrive una
+# volta. Ordinati perche' un frozenset non promette un ordine stabile
 # fra due letture, ed e' l'ordine in cui `fetch` cerca quando il modello non
 # specifica un `tipo` -- vedi `_recall`.
 _TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))

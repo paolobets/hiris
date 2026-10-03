@@ -48,7 +48,6 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 from __future__ import annotations
 
 from ..action.registry import field_applies
-from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_structure, sanitize_text
 from ..proxy.entity_cache import (
     ASSUMABLE,
@@ -62,6 +61,7 @@ from ..proxy.entity_cache import (
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
 from .ha_vocabulary import entity_category_measure_rule
 from .historian import instant_epoch
+from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
     actual_class,
@@ -1492,10 +1492,10 @@ def _view_integration(home_space: dict, state: dict, reference,
     istante valido, la chiave non esce affatto: l'assenza e' assenza, mai
     un `None` ne' una sentinella spacciata per un fatto.
 
-    `reference` si normalizza (`_normalize`, quella dell'indice dei nomi)
+    `reference` si normalizza (`reference.normalize`, quella del riferimento)
     prima del confronto -- passata da `str()` prima, perche' lo schema dello
     strumento ammette anche un intero (`riferimento: ["string", "integer"]`,
-    tools.py) e `_normalize` chiama `.lower()`, che un intero non ha. Il
+    tools.py) e `normalize` chiama `.lower()`, che un intero non ha. Il
     modello puo' scrivere questo `riferimento` a mano -- ed e' l'UNICO ramo di
     `view` dove il riferimento e' un dominio tecnico (sempre minuscolo, senza
     accenti, in Home Assistant) invece di un id-slug come per
@@ -1545,12 +1545,12 @@ def _view_integration(home_space: dict, state: dict, reference,
     `piattaforma`, `categoria`, `nascosta`. Fondamenta 3 e 2 insieme (audit
     delle fondamenta, rilievo 3).
     """
-    domain = _normalize(str(reference or ""))
+    domain = normalize(str(reference or ""))
     matching = [e for e in home_space.get("entita") or []
-                if _normalize(e.get("piattaforma") or "") == domain]
+                if normalize(e.get("piattaforma") or "") == domain]
     entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
                for i in home_space.get("integrazioni") or []
-               if _normalize(i.get("dominio") or "") == domain]
+               if normalize(i.get("dominio") or "") == domain]
     if not matching and not entries:
         return _not_found_detail("integrazione", reference,
                                   "entita" in unavailable or "integrazioni" in unavailable)

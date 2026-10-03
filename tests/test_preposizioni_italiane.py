@@ -242,11 +242,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # Preposizioni semplici e articolate, articoli e congiunzioni che NON sono
 # anche parole inglesi. `in` e `per` sono esclusi di proposito: vedi il
 # docstring del modulo, con la misura degli usi inglesi veri.
-# La lista vive in `memory/resolver.py` dal 24/09/2026: la usa anche il
-# prodotto (`memory/resolver.name_matches`), e un cancello chiede il suo
+# La lista vive nel prodotto dal 24/09/2026 (in `home_space/reference.py`
+# dalla Tappa 3, Task 9): la usa anche `name_matches`, e un cancello chiede il suo
 # elenco invece di ricopiarlo -- due copie sono due posti in cui la stessa
 # aggiunta si dimentica di uno.
-from hiris.app.memory.resolver import (
+from hiris.app.home_space.reference import (
     ITALIAN_FUNCTION_WORDS as _PIANE,
 )
 
@@ -421,7 +421,7 @@ _NOTE_ITALIANE = frozenset({
     "resp_senza", "riepilogo_non_chiesto",
     "riepilogo_non_letto", "riga_di", "rompe_dalla_lettura",
     "rotta_senza_archivi", "runner_con", "runner_senza",
-    "senza_accenti", "senza_area", "senza_causa", "senza_id",
+    "senza_area", "senza_causa", "senza_id",
     "senza_registro_caduto", "senza_token", "specchio_al_ritorno",
     "strumenti_che_scrivono", "su_disco", "tipi_non_verificabili", "toks_dopo", "toks_prima",
     "uno_grave", "uno_oltre_il_tetto", "usa_e_getta",
