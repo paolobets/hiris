@@ -58,11 +58,14 @@ class _FiloHA(HAClient):
         self._sospeso = sospeso
         self.mandati: list[tuple[str, dict | None]] = []
 
-    async def _ws_command(self, msg_type, extra=None, timeout=10.0):
-        self.mandati.append((msg_type, extra))
-        if msg_type == self._sospeso:
-            await asyncio.Event().wait()
-        return self._risposte.get(msg_type)
+    async def _ws_send(self, commands, timeout=10.0):
+        replies = []
+        for msg_type, extra in commands:
+            self.mandati.append((msg_type, extra))
+            if msg_type == self._sospeso:
+                await asyncio.Event().wait()
+            replies.append(self._risposte.get(msg_type))
+        return replies
 
 
 _PANNELLI = {

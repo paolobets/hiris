@@ -15,14 +15,14 @@ class _Finto:
         self.risposta = risposta
         self.comandi = []
 
-    async def _ws_batch(self, commands, timeout=10.0):
+    async def _ws_send(self, commands, timeout=10.0):
         self.comandi.extend(commands)
         return [self.risposta]
 
 
 def _client(finto):
     c = HAClient.__new__(HAClient)
-    c._ws_batch = finto._ws_batch
+    c._ws_send = finto._ws_send
     return c
 
 

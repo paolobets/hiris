@@ -56,11 +56,11 @@ class _FakeConnection:
 
     def __init__(self, response=None, replies=None):
         self.response = response
-        self.replies = replies  # una risposta per comando, come `_ws_batch` vero
+        self.replies = replies  # una risposta per comando, come `_ws_send` vero
         self.commands = []
         self.batches = []
 
-    async def _ws_batch(self, commands, timeout=10.0):
+    async def _ws_send(self, commands, timeout=10.0):
         self.commands.extend(commands)
         self.batches.append(list(commands))
         if self.replies is not None:
@@ -70,7 +70,7 @@ class _FakeConnection:
 
 def _client(fake):
     c = HAClient.__new__(HAClient)
-    c._ws_batch = fake._ws_batch
+    c._ws_send = fake._ws_send
     return c
 
 
@@ -168,7 +168,7 @@ async def test_a_failed_traces_read_says_error_not_an_empty_list():
     girato»: la stessa bugia che `system_log()` e `problems()` evitano.
 
     La connessione caduta e' `replies=[None]`, come la torna il vero
-    `_ws_batch`, che non solleva mai. Ha DUE guardie (il controllo
+    `_ws_send`, che non solleva mai. Ha DUE guardie (il controllo
     `all(reply is None ...)` in `traces` e il ramo `non_letti` di
     `automation_traces`): ciascuna da sola la copre l'altra.
 
@@ -306,7 +306,7 @@ async def test_the_runs_of_many_automations_travel_in_one_batch():
     """Spec «la storia» §1 e §8 punto 3: «perche' sono partite le automazioni dei
     rifiuti» erano cinque chiamate. Ora una raffica, N comandi.
 
-    Mutazione ESEGUITA: un `_ws_batch` per chiave -- rossa su
+    Mutazione ESEGUITA: un `_ws_send` per chiave -- rossa su
     `len(fake.batches)`."""
     fake = _FakeConnection(replies=[{"result": [_short_trace(run_id="a")]}, {"result": []}])
     outcome = await _client(fake).traces([("automation", _CONFIG_ID),
@@ -339,8 +339,8 @@ async def test_a_refused_key_is_named_and_the_others_answer():
 
 @pytest.mark.asyncio
 async def test_a_dead_connection_says_error_never_no_runs():
-    """`_ws_batch` vero NON solleva: connessione caduta, auth rifiutata o
-    timeout totale tornano `[None, None, ...]` (`tests/test_ws_batch.py`). Una
+    """`_ws_send` vero NON solleva: connessione caduta, auth rifiutata o
+    timeout totale tornano `[None, None, ...]` (`tests/test_ha_client_invio.py`). Una
     raffica in cui nessuno ha risposto e' un `errore`, mai «nessuna
     esecuzione» ne' un `non_letti` di tutte le chiavi.
 
@@ -365,7 +365,7 @@ async def test_a_silent_tail_is_named_as_not_answered_in_time():
 
 @pytest.mark.asyncio
 async def test_a_single_run_with_no_reply_says_error():
-    """`trace/get` senza risposta (`[None]`, come da `_ws_batch` vero) e'
+    """`trace/get` senza risposta (`[None]`, come da `_ws_send` vero) e'
     `errore`, non una forma inattesa.
 
     Mutazione ESEGUITA: `None` cade nel ramo «forma inattesa» -- rossa sul
@@ -397,8 +397,8 @@ async def test_a_single_run_of_a_script_is_asked_under_the_script_domain():
 
 @pytest.mark.asyncio
 async def test_the_real_batch_on_a_dead_network_ends_in_error():
-    """La strada VERA, senza finta di `_ws_batch`: rete assente -> il vero
-    `_ws_batch` torna `[None, None]` senza sollevare -> `traces` e `trace`
+    """La strada VERA, senza finta di `_ws_send`: rete assente -> il vero
+    `_ws_send` torna `[None, None]` senza sollevare -> `traces` e `trace`
     dicono `errore`.
 
     Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` in

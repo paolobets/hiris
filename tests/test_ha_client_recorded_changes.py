@@ -32,7 +32,7 @@ class _Finto:
         #: dieci comandi sono dieci comandi sia in una raffica sia in dieci.
         self.raffiche = 0
 
-    async def _ws_batch(self, commands, timeout=10.0):
+    async def _ws_send(self, commands, timeout=10.0):
         self.raffiche += 1
         self.comandi.extend(commands)
         if self.solleva:
@@ -44,7 +44,7 @@ class _Finto:
 
 def _client(finto):
     client = HAClient.__new__(HAClient)
-    client._ws_batch = finto._ws_batch
+    client._ws_send = finto._ws_send
     return client
 
 
@@ -92,7 +92,7 @@ async def test_una_sonda_che_non_risponde_non_e_una_casa_senza_memoria():
 @pytest.mark.asyncio
 async def test_tutte_le_sonde_partono_in_una_raffica_sola():
     """Dieci profondita' sono dieci domande, non dieci connessioni: la scala
-    grossa della misura le manda tutte insieme (`_ws_batch`), e la casa vera
+    grossa della misura le manda tutte insieme (`_ws_send`), e la casa vera
     ci mette **264 ms in tutto**. Ogni raffica in piu' e' un handshake e
     un'autenticazione in piu'.
 
@@ -100,7 +100,7 @@ async def test_tutte_le_sonde_partono_in_una_raffica_sola():
     in una raffica quanto in tre, e la prima stesura di questa prova contava
     proprio quelli -- restava verde con la mutazione sotto, eseguita.
 
-    Mutazione che la uccide: un `_ws_batch` per finestra.
+    Mutazione che la uccide: un `_ws_send` per finestra.
     """
     finto = _Finto([{"success": True, "result": {}}] * 3)
 
@@ -138,14 +138,14 @@ async def test_la_connessione_caduta_non_solleva_e_non_inventa():
     finto = _Finto(solleva=True)
 
     with pytest.raises(RuntimeError):
-        await finto._ws_batch([], 10.0)
+        await finto._ws_send([], 10.0)
 
     client = HAClient.__new__(HAClient)
 
     async def _batch(commands, timeout=10.0):
         return [None] * len(commands)
 
-    client._ws_batch = _batch
+    client._ws_send = _batch
     assert await client.recorded_changes(["a"], [(1.0, 2.0), (3.0, 4.0)]) == [None, None]
 
 

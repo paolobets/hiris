@@ -46,6 +46,7 @@ from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import TARGETS, translate_target, verification
 from hiris.app.proxy.ha_client import HAClient
+from tests._ha_fakes import ws_send_from_messages
 
 # Come in `test_action_actuator.py`: cio' che si misura qui non e' la DURATA
 # dell'attesa ma cosa si tocca, e due secondi per test non li paga nessuno.
@@ -350,7 +351,7 @@ class FintoWs:
 def _client(risposta) -> tuple[HAClient, FintoWs]:
     client = HAClient("http://ha.local:8123", "token")
     ws = FintoWs(risposta)
-    client._ws_command = ws
+    client._ws_send = ws_send_from_messages(ws)
     return client, ws
 
 

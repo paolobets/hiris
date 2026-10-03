@@ -2,6 +2,7 @@
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
+from tests._ha_fakes import ws_send_from_messages
 
 
 class FintaRisposta:
@@ -137,7 +138,7 @@ async def test_valida_manda_solo_le_chiavi_presenti_e_riporta_l_esito(monkeypatc
         return {"success": True, "result": {
             "triggers": {"valid": False, "error": "Unknown trigger 'quando'"}}}
 
-    monkeypatch.setattr(c, "_ws_command", finto)
+    monkeypatch.setattr(c, "_ws_send", ws_send_from_messages(finto))
     esito = await c.validate_config(triggers=[{"trigger": "quando"}])
     assert visti["tipo"] == "validate_config"
     assert visti["extra"] == {"triggers": [{"trigger": "quando"}]}
@@ -153,7 +154,7 @@ async def test_valida_senza_risposta_non_dichiara_valido(monkeypatch):
     async def muto(msg_type, extra=None, timeout=10.0):
         return None
 
-    monkeypatch.setattr(c, "_ws_command", muto)
+    monkeypatch.setattr(c, "_ws_send", ws_send_from_messages(muto))
     esito = await c.validate_config(actions=[{"action": "light.turn_on"}])
     assert "errore" in esito
     assert "valid" not in str(esito.get("actions", ""))

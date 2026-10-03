@@ -434,7 +434,7 @@ from _comune import file_py, rel
 #
 # Elenco letto a mano da `proxy/ha_client.py` (non importato: questo
 # script non dipende dal resto del pacchetto) -- va aggiornato se quel
-# file guadagna o perde un metodo. Include anche i privati (`_ws_batch` e
+# file guadagna o perde un metodo. Include anche i privati (`_ws_send` e
 # simili): non c'e' svantaggio a proteggerli anche se oggi nessuna parola
 # del glossario li tocca, e un domani in cui una collidesse non
 # richiederebbe di ricordarsi di questa lista. **Riletto il 01/10/2026**:
@@ -450,8 +450,8 @@ _METODI_HA_CLIENT = frozenset({
     "_ws_occurrence", "create_helper", "delete_helper", "list_labels",
     "create_label", "add_label_to", "extract_from_target",
     "read_dashboards", "update_panel", "panels", "users", "_user_row",
-    "history", "recorded_changes", "_ws_batch",
-    "_ws_request", "_ws_command", "hourly_statistics",
+    "history", "recorded_changes", "_ws_send", "_rest_get",
+    "hourly_statistics",
     "statistic_ids", "_request_statistics", "related", "problems",
     "system_log", "automation_traces", "traces", "trace", "behavior_configs",
     "calendars", "calendar_events", "get_translations",

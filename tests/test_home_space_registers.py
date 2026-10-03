@@ -26,7 +26,7 @@ def _msg_errore(codice, messaggio):
 async def test_leggi_registri_chiede_tutti_i_registri_in_un_colpo():
     client = _client()
     finto = AsyncMock(return_value=[_msg([{"a": 1}]) for _ in range(10)])
-    with patch.object(HAClient, "_ws_batch", finto):
+    with patch.object(HAClient, "_ws_send", finto):
         registri, _ = await client.read_registries()
     (comandi,), _ = finto.call_args
     tipi = [t for t, _ in comandi]
@@ -50,7 +50,7 @@ async def test_leggi_registri_chiede_tutti_i_registri_in_un_colpo():
 async def test_un_registro_mancante_diventa_lista_vuota_non_un_guasto():
     """Un HA senza piani risponde comunque: il resto dell'anagrafe deve reggere."""
     risposte = [None] + [_msg([{"a": 1}]) for _ in range(9)]
-    with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
+    with patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)):
         registri, _ = await _client().read_registries()
     assert registri["piani"] == []
     assert registri["aree"] == [{"a": 1}]
@@ -61,7 +61,7 @@ async def test_un_registro_caduto_si_distingue_da_uno_vuoto():
     """La casa senza piani e il registro dei piani caduto danno la stessa lista
     vuota: solo `non_disponibili` dice quale dei due e' successo."""
     risposte = [None] + [_msg([]) for _ in range(9)]
-    with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
+    with patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)):
         registri, non_disponibili = await _client().read_registries()
     assert registri["piani"] == []
     assert "piani" in non_disponibili
@@ -70,7 +70,7 @@ async def test_un_registro_caduto_si_distingue_da_uno_vuoto():
 
 @pytest.mark.asyncio
 async def test_una_casa_sana_non_ha_registri_non_disponibili():
-    with patch.object(HAClient, "_ws_batch",
+    with patch.object(HAClient, "_ws_send",
                       AsyncMock(return_value=[_msg([{"a": 1}]) for _ in range(10)])):
         _, non_disponibili = await _client().read_registries()
     assert non_disponibili == []
@@ -79,7 +79,7 @@ async def test_una_casa_sana_non_ha_registri_non_disponibili():
 @pytest.mark.asyncio
 async def test_le_categorie_si_chiedono_per_tutti_gli_ambiti():
     finto = AsyncMock(return_value=[_msg([]) for _ in range(10)])
-    with patch.object(HAClient, "_ws_batch", finto):
+    with patch.object(HAClient, "_ws_send", finto):
         await _client().read_registries()
     (comandi,), _ = finto.call_args
     ambiti = [extra["scope"] for tipo, extra in comandi
@@ -91,7 +91,7 @@ async def test_le_categorie_si_chiedono_per_tutti_gli_ambiti():
 async def test_ogni_categoria_porta_il_proprio_ambito():
     risposte = [_msg([]) for _ in range(6)]                       # i sei registri non-categoria
     risposte += [_msg([{"category_id": f"c{i}", "name": f"C{i}"}]) for i in range(4)]
-    with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
+    with patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)):
         registri, _ = await _client().read_registries()
     assert [c["ambito"] for c in registri["categorie"]] == [
         "automation", "script", "scene", "helpers"]
@@ -101,13 +101,13 @@ async def test_ogni_categoria_porta_il_proprio_ambito():
 async def test_un_ambito_di_categorie_caduto_si_dice_quale():
     risposte = [_msg([]) for _ in range(6)]
     risposte += [_msg([]), None, _msg([]), _msg([])]
-    with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
+    with patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)):
         _, non_disponibili = await _client().read_registries()
     assert non_disponibili == ["categorie:script"]
 
 
 # Task B6: un registro che non risponde deve dire PERCHE', non solo che e'
-# caduto. `_ws_batch` restituisce il messaggio INTERO (il suo docstring lo
+# caduto. `_ws_send` restituisce il messaggio INTERO (il suo docstring lo
 # dichiara): {success, result, error}, oppure None se il comando non ha mai
 # avuto risposta. Sono tre guasti diversi con la stessa faccia in
 # `non_disponibili` -- ma il log deve poterli distinguere. Le tre finte sotto
@@ -125,7 +125,7 @@ async def test_registro_rifiutato_il_log_porta_il_motivo_di_ha(caplog):
     portare il motivo di HA, non il nome del comando che gia' sapevamo."""
     risposte = [_msg_errore("not_found", "Unknown command.")] + [_msg([]) for _ in range(9)]
     with (
-        patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
+        patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)),
         caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
     ):
         _, non_disponibili = await _client().read_registries()
@@ -140,7 +140,7 @@ async def test_registro_forma_inattesa_il_log_lo_dice(caplog):
     guasto diverso dal rifiuto, e il log deve dirlo in modo diverso."""
     risposte = [_msg("non-sono-una-lista")] + [_msg([]) for _ in range(9)]
     with (
-        patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
+        patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)),
         caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
     ):
         _, non_disponibili = await _client().read_registries()
@@ -152,12 +152,12 @@ async def test_registro_forma_inattesa_il_log_lo_dice(caplog):
 
 @pytest.mark.asyncio
 async def test_registro_mai_partito_il_log_lo_dice(caplog):
-    """Il batch non e' mai partito (connessione non aperta): `_ws_batch`
+    """Il batch non e' mai partito (connessione non aperta): `_ws_send`
     restituisce `None` per il comando. Terzo guasto, terza dicitura -- non
     quella del rifiuto, non quella della forma inattesa."""
     risposte = [None] + [_msg([]) for _ in range(9)]
     with (
-        patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
+        patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)),
         caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
     ):
         _, non_disponibili = await _client().read_registries()

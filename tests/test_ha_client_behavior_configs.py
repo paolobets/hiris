@@ -21,7 +21,7 @@ from hiris.app.proxy.ha_client import HAClient
 
 
 class _Finto:
-    """La finta di `_ws_batch`: `risposte` sono i messaggi INTERI che il
+    """La finta di `_ws_send`: `risposte` sono i messaggi INTERI che il
     client vero riceverebbe, nell'ordine dei comandi mandati -- `{success,
     result, error}` oppure `None` (comando senza risposta, o connessione
     fallita del tutto). Fedele al contratto vero, non alla forma comoda."""
@@ -30,7 +30,7 @@ class _Finto:
         self.risposte = risposte
         self.comandi = []
 
-    async def _ws_batch(self, commands, timeout=10.0):
+    async def _ws_send(self, commands, timeout=10.0):
         self.comandi.extend(commands)
         if self.risposte is None:
             return [None] * len(commands)
@@ -39,7 +39,7 @@ class _Finto:
 
 def _client(finto):
     client = HAClient.__new__(HAClient)
-    client._ws_batch = finto._ws_batch
+    client._ws_send = finto._ws_send
     return client
 
 
@@ -92,7 +92,7 @@ async def test_un_guasto_della_connessione_e_un_errore_non_un_elenco_vuoto():
     """Stessa disciplina di `legami` e `problemi`: mai un
     dizionario vuoto che significherebbe «questa casa non ha automazioni»
     quando il websocket e' giu'. La connessione caduta e' `None` per ogni
-    comando, come la torna il vero `_ws_batch` (che non solleva mai).
+    comando, come la torna il vero `_ws_send` (che non solleva mai).
 
     Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` -- rossa
     (torna `{"configurazioni": {}}`)."""

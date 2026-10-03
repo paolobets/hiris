@@ -126,7 +126,7 @@ class _MsgFinto:
 class _FintoWSEventi:
     """Consegna auth_required/auth_ok, poi la sequenza di eventi data, poi si
     blocca -- il test cancella il task invece di aspettare una fine che in
-    produzione non arriva mai. Stessa forma di _FintoWS in test_ws_batch.py."""
+    produzione non arriva mai. Stessa forma di _FakeWS in test_ha_client_invio.py."""
 
     def __init__(self, eventi: list[tuple[str, dict]]):
         self._auth = [{"type": "auth_required"}, {"type": "auth_ok"}]

@@ -16,6 +16,31 @@ chiedeva. Resta lo strumento `related`.
 from hiris.app.proxy.ha_client import HAClient
 
 
+def ws_send_from_messages(fake):
+    """Un `_ws_send` finto da una finta che risponde UN messaggio intero per
+    comando (`{success, result, error}`, o `None` per «la connessione non
+    c'e'»): `fake(msg_type, extra)`. Era la forma di `_ws_command`, uscito
+    con A-28: le prove che fingevano un comando solo restano scritte cosi'."""
+    async def ws_send(commands, timeout=10.0):
+        return [await fake(msg_type, extra) for msg_type, extra in commands]
+    return ws_send
+
+
+def ws_send_from_results(fake):
+    """Un `_ws_send` finto da una finta che risponde il solo `result` di un
+    comando: `fake(msg_type, extra)`. `None` e' la connessione caduta (il
+    messaggio non c'e'), ogni altro valore un successo con quel `result`. Era
+    la forma di `_ws_request`, uscito con A-28."""
+    async def ws_send(commands, timeout=10.0):
+        replies = []
+        for msg_type, extra in commands:
+            result = await fake(msg_type, extra)
+            replies.append(None if result is None else
+                           {"type": "result", "success": True, "result": result})
+        return replies
+    return ws_send
+
+
 class _ClienteLegami:
     """L'UNICA finta di `HAClient` per `legami`, importata da
     `test_related_tools.py`.

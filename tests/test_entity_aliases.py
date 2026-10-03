@@ -24,29 +24,27 @@ class _Client:
         self.solleva = solleva
         self.chiamate = []
 
-    async def _ws_batch(self, commands, timeout=10.0):
+    async def _ws_send(self, commands, timeout=10.0):
         risposte = []
-        for tipo, _extra in commands:
+        for tipo, extra in commands:
             if tipo == "config/entity_registry/list":
                 risposte.append({"result": [
                     {"entity_id": "light.salotto", "name": "Piantana"},
                 ]})
+            elif tipo == "config/entity_registry/get_entries":
+                self.chiamate.append((tipo, extra))
+                if self.solleva:
+                    raise OSError("HA muto")
+                risposte.append({"result": self.estese})
             else:
                 risposte.append({"result": []})
         return risposte
-
-    async def _ws_request(self, msg_type, extra=None, timeout=10.0):
-        self.chiamate.append((msg_type, extra))
-        if self.solleva:
-            raise OSError("HA muto")
-        return self.estese
 
 
 def _client_vero(finto):
     from hiris.app.proxy.ha_client import HAClient
     c = HAClient.__new__(HAClient)
-    c._ws_batch = finto._ws_batch
-    c._ws_request = finto._ws_request
+    c._ws_send = finto._ws_send
     return c
 
 

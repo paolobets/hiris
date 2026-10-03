@@ -1,6 +1,7 @@
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
+from tests._ha_fakes import ws_send_from_results
 
 _DA = "2026-08-26T00:00:00+00:00"
 _A = "2026-08-27T00:00:00+00:00"
@@ -27,7 +28,7 @@ async def test_stato_e_cambio_sono_tradotti(monkeypatch):
              "sum": 173.77, "state": 0.27, "change": 0.27,
              "last_reset": None}]}
 
-    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
     out = await ha.hourly_statistics(["sensor.energia_prodotta_oggi"], _DA, _A)
     [voce] = out["serie"]["sensor.energia_prodotta_oggi"]
     assert voce["stato"] == 0.27
@@ -57,7 +58,7 @@ async def test_stato_e_cambio_assenti_non_diventano_null(monkeypatch):
              "min": 10.0, "max": 20.0, "mean": 15.0,
              "sum": None, "state": None, "change": None}]}
 
-    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
     out = await ha.hourly_statistics(["sensor.potenza"], _DA, _A)
     [voce] = out["serie"]["sensor.potenza"]
     assert "stato" not in voce
@@ -82,7 +83,7 @@ async def test_statistiche_orarie_manda_la_finestra_esplicita(monkeypatch):
         captured["extra"] = extra
         return {"sensor.a": [{"start": "2026-08-26T00:00:00+00:00", "mean": 21.6}]}
 
-    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
     out = await ha.hourly_statistics(
         ["sensor.a", "sensor.b"], "2026-08-26T00:00:00+02:00", "2026-08-27T00:00:00+02:00")
     assert captured["msg_type"] == "recorder/statistics_during_period"
@@ -102,7 +103,7 @@ async def test_statistiche_orarie_un_guasto_e_dichiarato(monkeypatch):
     async def fake_ws_request(msg_type, extra=None, timeout=10.0):
         return None
 
-    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
     out = await ha.hourly_statistics(["sensor.a"], "2026-08-26T00:00:00+00:00",
                                       "2026-08-27T00:00:00+00:00")
     assert "serie" not in out
@@ -133,7 +134,7 @@ async def test_le_entita_con_statistiche_si_sanno_chiedere(monkeypatch):
         return [{"statistic_id": "sensor.energia", "unit_of_measurement": "kWh"},
                 {"statistic_id": "sensor.potenza", "unit_of_measurement": "W"}]
 
-    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
     out = await ha.statistic_ids()
     assert captured["msg_type"] == "recorder/list_statistic_ids"
     assert out == {"sensor.energia", "sensor.potenza"}
@@ -153,5 +154,5 @@ async def test_un_guasto_NON_dice_che_nessuna_entita_ha_statistiche(monkeypatch)
     async def fake_ws_request(msg_type, extra=None, timeout=10.0):
         return None
 
-    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
     assert await ha.statistic_ids() is None

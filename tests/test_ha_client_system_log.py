@@ -31,14 +31,14 @@ class _FakeConnection:
         self.response = response
         self.commands = []
 
-    async def _ws_batch(self, commands, timeout=10.0):
+    async def _ws_send(self, commands, timeout=10.0):
         self.commands.extend(commands)
         return [self.response]
 
 
 def _client(fake):
     c = HAClient.__new__(HAClient)
-    c._ws_batch = fake._ws_batch
+    c._ws_send = fake._ws_send
     return c
 
 

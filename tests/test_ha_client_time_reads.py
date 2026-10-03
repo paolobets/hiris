@@ -16,6 +16,7 @@ sono questi test a doversi correggere, non il codice a doversi difendere.
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
+from tests._ha_fakes import ws_send_from_results
 
 _DA = "2026-08-26T00:00:00+00:00"
 _A = "2026-08-27T00:00:00+00:00"
@@ -220,7 +221,7 @@ async def test_statistiche_distinguono_il_vuoto_dal_guasto(monkeypatch):
             {"start": "2026-07-24T13:00:00+00:00", "mean": 26.5, "min": 26.0, "max": 27.1},
         ]}
 
-    monkeypatch.setattr(c, "_ws_request", _ok)
+    monkeypatch.setattr(c, "_ws_send", ws_send_from_results(_ok))
     esito = await c.hourly_statistics(["sensor.camera"], _DA, _A)
     assert esito["serie"]["sensor.camera"][0]["media"] == 26.5
     assert esito["serie"]["sensor.camera"][0]["inizio"] == "2026-07-24T13:00:00+00:00"
@@ -228,7 +229,7 @@ async def test_statistiche_distinguono_il_vuoto_dal_guasto(monkeypatch):
     async def _giu(_tipo, extra=None, timeout=10.0):
         return None  # il websocket non ha risposto
 
-    monkeypatch.setattr(c, "_ws_request", _giu)
+    monkeypatch.setattr(c, "_ws_send", ws_send_from_results(_giu))
     esito = await c.hourly_statistics(["sensor.camera"], _DA, _A)
     assert "serie" not in esito and "errore" in esito
 
@@ -260,7 +261,7 @@ async def test_statistiche_lo_start_e_un_epoch_in_MILLISECONDI(monkeypatch):
              "max": 25.2, "mean": 25.2, "min": 25.2, "last_reset": None},
         ]}
 
-    monkeypatch.setattr(c, "_ws_request", _reale)
+    monkeypatch.setattr(c, "_ws_send", ws_send_from_results(_reale))
     esito = await c.hourly_statistics(["sensor.camera"], _DA, _A)
     fascia = esito["serie"]["sensor.camera"][0]
     assert fascia["inizio"] == "2026-08-21T20:00:00+00:00"
@@ -276,7 +277,7 @@ async def test_statistiche_reggono_anche_lo_start_gia_in_ISO(monkeypatch):
     async def _iso(_tipo, extra=None, timeout=10.0):
         return {"sensor.camera": [{"start": "2026-08-21T20:00:00+00:00", "mean": 25.2}]}
 
-    monkeypatch.setattr(c, "_ws_request", _iso)
+    monkeypatch.setattr(c, "_ws_send", ws_send_from_results(_iso))
     esito = await c.hourly_statistics(["sensor.camera"], _DA, _A)
     assert esito["serie"]["sensor.camera"][0]["inizio"] == "2026-08-21T20:00:00+00:00"
 
@@ -291,6 +292,6 @@ async def test_statistiche_un_istante_illeggibile_resta_illeggibile(monkeypatch)
     async def _strano(_tipo, extra=None, timeout=10.0):
         return {"sensor.camera": [{"start": {"non": "un istante"}, "mean": 1.0}]}
 
-    monkeypatch.setattr(c, "_ws_request", _strano)
+    monkeypatch.setattr(c, "_ws_send", ws_send_from_results(_strano))
     esito = await c.hourly_statistics(["sensor.camera"], _DA, _A)
     assert esito["serie"]["sensor.camera"][0]["inizio"] == {"non": "un istante"}

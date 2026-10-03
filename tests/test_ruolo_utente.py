@@ -44,9 +44,9 @@ class _Finto(HAClient):
         self._messaggio = messaggio
         self.chiesto = []
 
-    async def _ws_command(self, msg_type, extra=None, timeout=10.0):
-        self.chiesto.append(msg_type)
-        return self._messaggio
+    async def _ws_send(self, commands, timeout=10.0):
+        self.chiesto.extend(msg_type for msg_type, _extra in commands)
+        return [self._messaggio for _command in commands]
 
 
 @pytest.mark.asyncio

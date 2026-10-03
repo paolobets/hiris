@@ -31,14 +31,14 @@ class _Finto:
         self.risposta = risposta
         self.comandi = []
 
-    async def _ws_batch(self, commands, timeout=10.0):
+    async def _ws_send(self, commands, timeout=10.0):
         self.comandi.extend(commands)
         return [self.risposta]
 
 
 def _client(finto):
     c = HAClient.__new__(HAClient)
-    c._ws_batch = finto._ws_batch
+    c._ws_send = finto._ws_send
     return c
 
 
@@ -85,7 +85,7 @@ async def test_un_rifiuto_di_HA_porta_il_SUO_motivo_non_uno_nostro():
 
 @pytest.mark.asyncio
 async def test_nessuna_risposta_NON_diventa_una_tabella_vuota():
-    """Connessione o autenticazione fallita: `_ws_batch` torna `[None]`. Una
+    """Connessione o autenticazione fallita: `_ws_send` torna `[None]`. Una
     tabella vuota direbbe «questa casa non traduce niente».
 
     Mutazione ESEGUITA: `return {"risorse": {}}` al posto di `{"errore": ...}`
