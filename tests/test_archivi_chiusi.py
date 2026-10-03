@@ -24,8 +24,12 @@ che si possa verificare senza indovinare.
 """
 import ast
 import pathlib
+import sys
 
 import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 _APP = RADICE / "hiris" / "app"
@@ -125,13 +129,6 @@ async def test_ogni_archivio_aperto_viene_anche_CHIUSO(tmp_path):
         "come le altre")
 
 
-class _House:
-    """La casa che lo spegnimento ferma: basta che sappia fermarsi."""
-
-    async def stop(self) -> None:
-        return None
-
-
 @pytest.mark.asyncio
 async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     """`_on_cleanup` gira anche quando l'avvio si è fermato a metà — un archivio
@@ -154,7 +151,7 @@ async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     nomi = sorted(archivi_aperti())
     for mancante in nomi:
         presenti = {nome: MagicMock() for nome in nomi if nome != mancante}
-        await server._on_cleanup({**presenti, "ha_client": _House()})
+        await server._on_cleanup({**presenti, "ha_client": CasaFinta({})})
         aperti = [nome for nome, archivio in presenti.items()
                   if not archivio.close.called]
         assert not aperti, (

@@ -24,9 +24,14 @@ d'iniezione**, poi il **tetto**. Il sigillo per primo perché lavora sul valore
 esatto: filtrare o tagliare prima potrebbe alterarlo e fargli mancare
 l'impronta, e un segreto mancato è un segreto pubblicato.
 """
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.home_space.redaction import SecretSeal
 from hiris.app.proxy import _sanitize
@@ -221,41 +226,34 @@ class _CasaFinta:
         return {}
 
 
-class _CanaleFinto:
-    """Il canale verso Home Assistant, ridotto alle tre risposte che servono.
+def _hostile_house():
+    """Home Assistant ridotto alle tre risposte che servono -- `system_log/list`,
+    `trace/list`, `trace/get` -- sotto il client vero.
 
-    Torna testo OSTILE, e proprio nei campi che la storia porta nelle righe
-    (`last_step`, `error`): una finta che lo nascondesse in un campo scartato
-    renderebbe verdi queste prove anche senza nessun confine."""
-
-    def __init__(self):
-        self.voci = [{"name": "custom_components.x", "message": INIEZIONE,
-                      "exception": "Traceback:" + chr(10) + "ValueError: " + INIEZIONE,
-                      "level": "ERROR"}]
-        adesso = datetime.now(UTC).isoformat()
-        self.tracce = {"automation.1234567890": [
-            {"run_id": "r1", "timestamp": {"start": adesso}, "script_execution": "error",
-             "last_step": INIEZIONE, "error": INIEZIONE}]}
-
-    async def system_log(self):
-        return {"voci": self.voci}
-
-    async def traces(self, keys):
-        return {"tracce": {f"{d}.{i}": self.tracce.get(f"{d}.{i}", []) for d, i in keys},
-                "non_letti": {}}
-
-    async def trace(self, domain, item_id, run_id):
-        return {"traccia": {"config": {"alias": INIEZIONE},
-                            "variables": {"trigger": {"payload": INIEZIONE}}}}
+    Risponde testo OSTILE, e proprio nei campi che la storia porta nelle righe
+    (`last_step`, `error`): una casa che lo nascondesse in un campo scartato
+    renderebbe verdi queste prove anche senza nessun confine. Una chiave di
+    traccia sconosciuta risponde `[]`, come Home Assistant
+    (`trace/util.py::_get_debug_traces`, docstring di `HAClient.traces`)."""
+    log_rows = [{"name": "custom_components.x", "message": INIEZIONE,
+                 "exception": "Traceback:" + chr(10) + "ValueError: " + INIEZIONE,
+                 "level": "ERROR"}]
+    now = datetime.now(UTC).isoformat()
+    runs = {"automation.1234567890": [
+        {"run_id": "r1", "timestamp": {"start": now}, "script_execution": "error",
+         "last_step": INIEZIONE, "error": INIEZIONE}]}
+    return CasaFinta({"system_log": {"voci": log_rows}}, answers={
+        "trace/list": lambda extra: runs.get(f"{extra['domain']}.{extra['item_id']}", []),
+        "trace/get": lambda extra: {"config": {"alias": INIEZIONE},
+                                    "variables": {"trigger": {"payload": INIEZIONE}}}})
 
 
 async def _chiedi(argomenti):
-    """Chiama la storia vera col canale finto, senza montare tutto il resto."""
+    """Chiama la storia vera sulla casa ostile, senza montare tutto il resto."""
     from hiris.app.home_space import tools as _t
 
     dispatcher = _t.ToolDispatcher.__new__(_t.ToolDispatcher)
-    canale = _CanaleFinto()
-    dispatcher._ha = canale
+    dispatcher._ha = _hostile_house()
     dispatcher._seal = lambda: None
     # Nessuna persona ha aperto questo turno: il soffitto non si pronuncia.
     dispatcher._soffitto = None

@@ -19,7 +19,13 @@ in questo istante*. Sono due fatti diversi detti con la stessa parola, e
 darli allo stesso campo insegnerebbe al modello a leggere uno script fermo
 -- cioe' ogni script, quasi sempre -- come uno script spento.
 """
+import sys
+from pathlib import Path
+
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.home_space.behavior import BEHAVIOR_DOMAINS, reread
 
@@ -37,18 +43,6 @@ class FintoHomeSpace:
         self.voci = entries
 
 
-class FintoClient:
-    def __init__(self, states):
-        self._states = states
-
-    async def get_states(self, entity_ids):
-        # `[]` significa «tutte»: la convenzione di `HAClient.get_states`.
-        return self._states
-
-    async def behavior_configs(self, entity_ids):
-        return {"configurazioni": {e: {"alias": "x"} for e in entity_ids}}
-
-
 def _stato(entity_id: str, state: str, nome: str) -> dict:
     return {"entity_id": entity_id, "state": state,
             "attributes": {"friendly_name": nome}}
@@ -61,25 +55,29 @@ def casa():
 
 async def _rileggi(casa, states, tmp_path):
     (tmp_path / "secrets.yaml").write_text("", encoding="utf-8")
-    return await reread(FintoClient(states), casa, tmp_path)
+    # Gli stati e, per ognuno, un corpo: cio' che Home Assistant
+    # risponderebbe a `automation/config` e `script/config`.
+    house = CasaFinta({"states": states, "behavior": {"configurazioni": {
+        state["entity_id"]: {"alias": "x"} for state in states}}})
+    return await reread(house, casa, tmp_path)
 
 
 @pytest.mark.asyncio
 async def test_un_automazione_spenta_si_dichiara(casa, tmp_path):
-    """Il caso vero: l'antimosche."""
+    """Il caso vero dell'antimosche, con nomi sintetici."""
     await _rileggi(casa, [
-        _stato("automation.attiva_antimosche_alba", "off", "Gestione antimosche"),
-        _stato("automation.rifiuti_carta", "on", "Gestione Rifiuto Carta"),
+        _stato("automation.automazione_spenta", "off", "Automazione spenta"),
+        _stato("automation.automazione_accesa", "on", "Automazione accesa"),
     ], tmp_path)
     per_id = {v["id"]: v for v in casa.behavior()}
-    assert per_id["automation.attiva_antimosche_alba"]["attiva"] is False
-    assert per_id["automation.rifiuti_carta"]["attiva"] is True
+    assert per_id["automation.automazione_spenta"]["attiva"] is False
+    assert per_id["automation.automazione_accesa"]["attiva"] is True
 
 
 @pytest.mark.asyncio
 async def test_uno_script_non_porta_il_campo(casa, tmp_path):
     """Uno script «off» non e' spento: e' semplicemente fermo adesso."""
-    await _rileggi(casa, [_stato("script.buonanotte", "off", "Buonanotte")], tmp_path)
+    await _rileggi(casa, [_stato("script.script_uno", "off", "Script uno")], tmp_path)
     voce = casa.behavior()[0]
     assert voce["tipo"] == "script"
     assert "attiva" not in voce
