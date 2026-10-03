@@ -15,7 +15,9 @@ si chiama per davvero, come fa implicitamente ogni altro test che passa da
 from __future__ import annotations
 
 import os
+import sys
 import time as _time_module
+from pathlib import Path
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
 
@@ -29,6 +31,9 @@ from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 # ── L'avvio vero, con gli `add_job` registrati ─────────────────────────────
 #
@@ -169,12 +174,13 @@ async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(reco
 
 @pytest.mark.asyncio
 async def test_il_cleanup_chiude_promesse_e_cronaca():
-    """`_on_cleanup` non fa I/O di rete oltre a fermare `ha_client` (gia'
-    finto qui): si puo' chiamare per davvero, senza estrazioni."""
+    """`_on_cleanup` non fa I/O di rete oltre a fermare `ha_client` (qui la
+    casa finta, che e' il client vero: `stop` e' il suo): si puo' chiamare per
+    davvero, senza estrazioni."""
     promesse_finte = MagicMock()
     cronaca_finta = MagicMock()
     app = {
-        "ha_client": AsyncMock(stop=AsyncMock()),
+        "ha_client": CasaFinta({}),
         "agenda": promesse_finte,
         "journal": cronaca_finta,
     }
@@ -191,7 +197,7 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
     costruiscono l'app a mano, vedi `tests/test_api.py::client`) non deve
     rompersi al cleanup: stessa disciplina di `archivio_casa`/
     `archivio_memoria` qui sotto."""
-    app = {"ha_client": AsyncMock(stop=AsyncMock())}
+    app = {"ha_client": CasaFinta({})}
     await server._on_cleanup(app)  # non deve sollevare
 
 
@@ -216,7 +222,7 @@ async def test_il_cleanup_chiude_casa_e_memoria_con_lo_stesso_metodo():
     archivio_casa_finto = MagicMock()
     archivio_memoria_finto = MagicMock()
     app = {
-        "ha_client": AsyncMock(stop=AsyncMock()),
+        "ha_client": CasaFinta({}),
         "home_space_store": archivio_casa_finto,
         "memory_store": archivio_memoria_finto,
     }
@@ -271,12 +277,13 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
         # Senza Home Assistant nessun proprietario: un'orfana resta orfana.
         assert await collaboratori["owner_thread"]() is None
 
-        class _Utenti:
-            async def users(self):
-                return {"utenti": [{"id": "marta", "proprietario": False},
-                                   {"id": "paolo", "proprietario": True}]}
-
-        app["ha_client"] = _Utenti()
+        # Chi e' il proprietario lo dice Home Assistant, nelle righe GREZZE di
+        # `config/auth/list` (Tappa 2, Task 12): `is_owner`, letto dal client.
+        app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
+            {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
+             "system_generated": False, "group_ids": ["system-users"]},
+            {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
+             "system_generated": False, "group_ids": ["system-admin"]}]})
         assert await collaboratori["owner_thread"]() == paolo
     finally:
         close_all_stores()

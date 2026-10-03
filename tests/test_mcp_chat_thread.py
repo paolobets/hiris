@@ -24,8 +24,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import time
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -42,6 +43,9 @@ from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
 from tests.test_construction_workshop import FintoHA, _intento
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
+
 TOKEN = "token-di-prova-del-turno-di-chat"
 INTESTAZIONI_CLI = {"X-HIRIS-Internal-Token": TOKEN}
 
@@ -57,14 +61,15 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
 
     app = server.create_app()
-    mock_ha = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    # Chi e' amministratore lo dice Home Assistant: Paolo si', Marta no.
-    mock_ha.users = AsyncMock(return_value={"utenti": [
-        {"id": "paolo", "amministratore": True, "proprietario": True},
-        {"id": "marta", "amministratore": False, "proprietario": False},
+    # Chi e' amministratore lo dice Home Assistant: Paolo si', Marta no. Le
+    # righe sono quelle GREZZE di `config/auth/list`, e la regola che ne fa un
+    # ruolo e' quella del client vero (Tappa 2, Task 12).
+    app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
+        {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
+         "system_generated": False, "group_ids": ["system-admin"]},
+        {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
+         "system_generated": False, "group_ids": ["system-users"]},
     ]})
-    app["ha_client"] = mock_ha
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"

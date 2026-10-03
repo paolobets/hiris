@@ -12,11 +12,15 @@ quella rotta risponde 401 come qualunque altra.
 Una difesa permanente invecchia. Una porta chiusa no.
 """
 import base64
-from unittest.mock import AsyncMock, MagicMock
+import sys
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
@@ -28,11 +32,14 @@ from hiris.app.server import create_app
 _INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
             "X-Requested-With": "fetch",
 }
-_UTENTI = {"utenti": [
-    {"id": "u-admin", "nome": "Paolo", "amministratore": True,
-     "proprietario": True, "sistema": False},
-    {"id": "u-ospite", "nome": "Ospite", "amministratore": False,
-     "proprietario": False, "sistema": False}]}
+#: Chi c'e' in casa, nelle righe GREZZE di `config/auth/list` (Core 2026.9.3,
+#: `components/config/auth.py::_user_info`): chi amministra lo decide la regola
+#: del client vero, non la finta (Tappa 2, Task 12).
+_UTENTI = [
+    {"id": "u-admin", "name": "Paolo", "is_owner": True, "is_active": True,
+     "system_generated": False, "group_ids": ["system-admin"]},
+    {"id": "u-ospite", "name": "Ospite", "is_owner": False, "is_active": True,
+     "system_generated": False, "group_ids": ["system-users"]}]
 
 
 @pytest.fixture(autouse=True)
@@ -66,13 +73,7 @@ def _chiave() -> str:
 @pytest_asyncio.fixture
 async def cliente(aiohttp_client, tmp_path):
     app = create_app()
-    ha = AsyncMock()
-    ha.start = AsyncMock()
-    ha.stop = AsyncMock()
-    ha.add_state_listener = MagicMock()
-    ha.start_websocket = AsyncMock()
-    ha.users = AsyncMock(return_value=_UTENTI)
-    app["ha_client"] = ha
+    app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: _UTENTI})
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"

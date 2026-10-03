@@ -22,7 +22,13 @@ per tutti -- chi e' di sola lettura, o senza gruppi, in HA non comanda -- e dal
 fix round 1 del Task 2 (spec 2026-09-27, ruling L-4) vale `lettore`: legge, e
 basta, finche' non si sa.
 """
+import sys
+from pathlib import Path
+
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.api.soffitto import consente, ruolo_letto
 
@@ -153,10 +159,14 @@ def test_ogni_esito_risponde_a_TUTTI_i_gesti():
                     f"{gesto} senza risposta per {soggetto['specie']}/{ruolo}")
 
 
-class _HA:
-    async def users(self):
-        return {"utenti": [{"id": "u-1", "amministratore": False},
-                           {"id": "u-2", "amministratore": True}]}
+def _house() -> CasaFinta:
+    """`u-1` utente, `u-2` amministratore: le righe GREZZE di
+    `config/auth/list`, lette dal client vero (Tappa 2, Task 12)."""
+    return CasaFinta({}, answers={"config/auth/list": lambda extra: [
+        {"id": "u-1", "name": "Uno", "is_owner": False, "is_active": True,
+         "system_generated": False, "group_ids": ["system-users"]},
+        {"id": "u-2", "name": "Due", "is_owner": False, "is_active": True,
+         "system_generated": False, "group_ids": ["system-admin"]}]})
 
 
 class _Richiesta(dict):
@@ -181,7 +191,7 @@ async def test_ceiling_for_e_request_ceiling_sono_UNA_regola(soggetto):
         request_ceiling,
     )
 
-    app: dict = {"ha_client": _HA()}
+    app: dict = {"ha_client": _house()}
     prepara_ruoli(app)
     by_subject = await ceiling_for(app, soggetto)
     request = _Richiesta(soggetto=soggetto)
@@ -197,7 +207,7 @@ async def test_ceiling_for_e_request_ceiling_sono_UNA_regola(soggetto):
 async def test_ceiling_for_legge_il_ruolo_da_home_assistant():
     from hiris.app.api.soffitto import ceiling_for, prepara_ruoli
 
-    app: dict = {"ha_client": _HA()}
+    app: dict = {"ha_client": _house()}
     prepara_ruoli(app)
     assert (await ceiling_for(app, _PERSONA))["costruire"] is False
     assert (await ceiling_for(app, {"specie": "persona", "id": "u-2"}))[

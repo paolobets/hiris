@@ -22,9 +22,14 @@ contesto). I test qui sopra non parlano di CHI scrive -- passano
 `soggetto=None` e verificano solo che la sezione ci sia (senza fermarsi sul
 suo contenuto); i test dedicati stanno in fondo al file.
 """
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_chat import compose_chat_context
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
@@ -274,16 +279,12 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
 
     persona = {"specie": "persona", "id": "paolo", "nome": "Paolo", "utente": "paolo"}
 
-    class _FintoHA:
-        async def users(self):
-            return {"utenti": [{"id": "paolo", "amministratore": True,
-                                "proprietario": True}]}
 
     @web.middleware
     async def _finto_confine(request, handler):
         request["auth_via"] = "ingress"
         request["soggetto"] = persona
-        # Il ruolo che il cancello al confine avrebbe letto da `_FintoHA`.
+        # Il ruolo che il cancello al confine avrebbe letto dalla casa.
         request["ruolo"] = "amministratore"
         return await handler(request)
 
@@ -306,7 +307,12 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
             name="t", system_prompt="Sei HIRIS.", max_chat_turns=0)
         app["data_dir"] = data_dir
         app["bridge_active"] = ponte_attivo
-        app["ha_client"] = _FintoHA()
+        # La casa che non serve niente (Tappa 2, Task 12): il ruolo lo porta
+        # il confine finto qui sopra, e la chat non rilegge Home Assistant.
+        # Prima qui c'era una finta di `users()` che nessuno chiamava
+        # (misurato il 03/10/2026: zero comandi); una lettura nuova su questo
+        # percorso ora fa cadere la prova col suo nome.
+        app["ha_client"] = CasaFinta({})
         app["ruoli"] = {"quando": 0.0, "per_id": {}}
         q = ReasoningQueue(str(tmp_sub / "reasoning.db"))
         app["reasoning_queue"] = q

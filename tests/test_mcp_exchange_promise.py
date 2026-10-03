@@ -16,10 +16,14 @@ mostrando un identificatore qualunque.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+import sys
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
@@ -69,12 +73,13 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
 
     app = server.create_app()
-    mock_ha = AsyncMock()
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-    app["ha_client"] = mock_ha
+    # Home Assistant dice chi e' di casa: Paolo, il proprietario. Le righe
+    # sono quelle GREZZE di `config/auth/list` (Tappa 2, Task 12): prima il
+    # client era un `AsyncMock`, e `users()` rendeva un oggetto finto che
+    # nessuna casa manda.
+    app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
+        {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
+         "system_generated": False, "group_ids": ["system-admin"]}]})
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"

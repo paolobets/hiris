@@ -9,11 +9,15 @@ TUTTA la pagina, `reject` compreso: la coda delle proposte e' di chi costruisce
 (spec 2026-09-26 §0, decisione 5). Le prove del cancello sulle altre rotte
 stanno in `test_chi_costruisce.py`.
 """
+import sys
 import time
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
@@ -23,11 +27,14 @@ from hiris.app.server import create_app
 #: Supervisor che lo riconosca (fixture `supervisor_ingress`).
 _INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
 }
-_UTENTI = {"utenti": [
-    {"id": "u-admin", "nome": "Paolo", "amministratore": True,
-     "proprietario": True, "sistema": False},
-    {"id": "u-ospite", "nome": "Ospite", "amministratore": False,
-     "proprietario": False, "sistema": False}]}
+#: Chi c'e' in casa, nelle righe GREZZE di `config/auth/list` (Core 2026.9.3,
+#: `components/config/auth.py::_user_info`): chi amministra lo decide la regola
+#: del client vero, non la finta (Tappa 2, Task 12).
+_UTENTI = [
+    {"id": "u-admin", "name": "Paolo", "is_owner": True, "is_active": True,
+     "system_generated": False, "group_ids": ["system-admin"]},
+    {"id": "u-ospite", "name": "Ospite", "is_owner": False, "is_active": True,
+     "system_generated": False, "group_ids": ["system-users"]}]
 
 
 
@@ -64,16 +71,9 @@ class _Archivio:
         return {"id": ident, "stato": "in_attesa"}
 
 
-@pytest_asyncio.fixture
-async def cliente(aiohttp_client, tmp_path):
+async def _cliente(aiohttp_client, tmp_path, house: CasaFinta):
     app = create_app()
-    ha = AsyncMock()
-    ha.start = AsyncMock()
-    ha.stop = AsyncMock()
-    ha.add_state_listener = MagicMock()
-    ha.start_websocket = AsyncMock()
-    ha.users = AsyncMock(return_value=_UTENTI)
-    app["ha_client"] = ha
+    app["ha_client"] = house
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
@@ -85,6 +85,19 @@ async def cliente(aiohttp_client, tmp_path):
     app.on_startup.clear()
     app.on_cleanup.clear()
     return await aiohttp_client(app)
+
+
+@pytest_asyncio.fixture
+async def cliente(aiohttp_client, tmp_path):
+    return await _cliente(aiohttp_client, tmp_path, CasaFinta(
+        {}, answers={"config/auth/list": lambda extra: _UTENTI}))
+
+
+def _role_reads(cliente) -> int:
+    """Quante volte la casa ha letto gli utenti: la casa lo sa, la prova non
+    lo conta da se'."""
+    return [command for command, _extra in cliente.app["ha_client"].calls].count(
+        "config/auth/list")
 
 
 def _testate(utente):
@@ -154,14 +167,14 @@ async def test_RIFIUTARE_e_di_chi_costruisce(cliente):
 
 
 @pytest.mark.asyncio
-async def test_se_il_ruolo_non_si_legge_si_NEGA(cliente):
+async def test_se_il_ruolo_non_si_legge_si_NEGA(aiohttp_client, tmp_path):
     """Il verso del dubbio, fino in fondo alla porta: Home Assistant muto non
     vale «e' amministratore».
 
     Mutazione ESEGUITA: ripiegare su «permesso» quando la lettura fallisce --
     rossa."""
-    cliente.app["ha_client"].users = AsyncMock(
-        return_value={"errore": "Home Assistant non ha risposto"})
+    cliente = await _cliente(aiohttp_client, tmp_path,
+                             CasaFinta({}, silence={"config/auth/list"}))
 
     risposta = await cliente.post("/api/constructions/c1/confirm",
                                   headers=_testate("u-admin"))
@@ -181,7 +194,7 @@ async def test_il_ruolo_non_si_richiede_a_ogni_CLIC(cliente):
         await cliente.post("/api/constructions/c1/confirm",
                            headers=_testate("u-admin"))
 
-    assert cliente.app["ha_client"].users.await_count == 1
+    assert _role_reads(cliente) == 1
 
 
 @pytest.mark.asyncio
@@ -196,7 +209,7 @@ async def test_la_cache_dei_ruoli_SCADE(cliente):
     cliente.app["ruoli"]["quando"] = time.time() - soffitto.RUOLI_VALIDI_S - 1
     await cliente.post("/api/constructions/c1/confirm", headers=_testate("u-admin"))
 
-    assert cliente.app["ha_client"].users.await_count == 2
+    assert _role_reads(cliente) == 2
 
 
 # --- la stessa porta, dal lato del MODELLO ----------------------------------
