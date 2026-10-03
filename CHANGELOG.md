@@ -1,5 +1,45 @@
 # HIRIS — Changelog
 
+## [3.73.1] — Una modifica fatta a mano non si perde, e il corpo delle automazioni resta a chi amministra (2026-10-03)
+
+### Perche'
+
+L'analisi dello sprint «Una fonte sola di verita'» ha trovato due difetti che toccano dati e
+permessi. Il proprietario ha deciso di correggerli subito, in un rilascio a se', prima delle tappe
+che spostano il codice.
+
+### Corretto
+
+- **Una proposta confermata non sovrascrive piu' una modifica fatta a mano** (S-17). Una proposta
+  di costruzione vive fino a sette giorni, e prima la conferma scriveva il corpo calcolato allora
+  anche se nel frattempo qualcuno aveva cambiato l'automazione in Home Assistant: quella modifica
+  andava persa. Adesso, prima di scrivere, HIRIS rilegge l'oggetto e lo confronta con com'era alla
+  proposta. Se e' cambiato, se e' stato cancellato, o se una chiave nuova nel frattempo e' stata
+  occupata, non scrive niente e dice perche': la proposta va rifatta. Un guasto di rete durante la
+  rilettura resta un guasto di rete (la pagina risponde «non raggiungibile», non «e' cambiato»), e
+  come per un guasto durante la scrittura la proposta va rifatta.
+- **«Rimetti com'era» non porta via una modifica fatta dopo.** Il ripristino passa dalla stessa
+  conferma, quindi eredita lo stesso controllo: se dopo la costruzione l'oggetto e' cambiato ancora,
+  non si rimette niente. Rimettere com'era una cancellazione ricrea l'oggetto, salvo che qualcuno
+  l'abbia gia' rifatto a mano.
+- **`GET /api/home-space` non consegna piu' il corpo delle automazioni a chi non amministra.** Un
+  servizio firmato con ruolo «lettore» o «utente» riceveva tutti i corpi, mentre lo strumento della
+  chat li negava a chi non amministra. Adesso la regola e' una, nello stesso posto, e la chiamano
+  tutte e due le porte: chi non amministra vede nome e tipo dell'automazione, non cosa fa. Gli script
+  restano visibili a tutti, perche' Home Assistant non li riserva. Chi amministra non vede differenze.
+
+### Dentro
+
+Le tre letture della configurazione dell'officina passano da un metodo solo, e un cancello della
+fonte unica ha un'eccezione in meno.
+
+### Prove
+
+Cominciata la Tappa 1 dello sprint («le prove smettono di leggere il testo»): le prove che
+leggevano il sorgente dell'avvio per sapere cosa fa lo chiedono all'app avviata davvero, e i
+cancelli sul soffitto, sugli archivi da chiudere e sui compiti in background guardano tutto il
+prodotto e non un file solo. Niente cambia per chi usa HIRIS.
+
 ## [3.73.0] — Si toglie e si prepara: la Tappa 0 di «Una fonte sola di verità» (2026-10-02)
 
 ### Perche'
