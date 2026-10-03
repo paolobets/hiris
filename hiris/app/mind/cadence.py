@@ -106,7 +106,8 @@ async def measure_memory_window(client, entity_ids: list[str], *,
 
     coarse = [DAY * 2 ** k for k in range(LADDER_RUNGS)]
     counts = await client.recorded_changes(entity_ids, _windows(coarse))
-    if all(c is None for c in counts):
+    if isinstance(counts, dict) or all(c is None for c in counts):
+        # La busta (la raffica non e' partita) o nessuna finestra leggibile.
         return None
     full, empty = _deepest_remembered(coarse, counts)
     if empty is None:
@@ -116,6 +117,9 @@ async def measure_memory_window(client, entity_ids: list[str], *,
 
     fine = [full + (empty - full) * k / FINE_STEPS for k in range(1, FINE_STEPS)]
     counts = await client.recorded_changes(entity_ids, _windows(fine))
+    if isinstance(counts, dict):
+        # La seconda raffica non e' partita: resta il gradino gia' provato.
+        return full or None
     finer, _ = _deepest_remembered(fine, counts)
     return max(full, finer) or None
 

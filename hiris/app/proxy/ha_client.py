@@ -115,9 +115,47 @@ MAX_CALENDAR_EVENTS = 2000
 
 logger = logging.getLogger(__name__)
 
-# Il motivo di una lettura di tracce in cui Home Assistant non ha risposto
-# affatto (`_ws_send` non solleva: torna `None` per comando).
+# Le cause di un guasto di lettura (decisione D3 del 03/10/2026, A-29/A-30).
+# Prima «Home Assistant non ha risposto» si diceva in nove modi e otto forme:
+# un'eccezione, `{}`, `None`, «risposta in forma inattesa» per una connessione
+# caduta. Adesso la causa e' un campo, e ogni lettore la legge allo stesso modo.
+#: La domanda non ha avuto risposta: connessione caduta, autenticazione
+#: rifiutata, tempo scaduto.
+SILENCE = "silenzio"
+#: Home Assistant ha risposto di no: il motivo e il codice sono i suoi.
+REFUSAL = "rifiuto"
+#: Home Assistant ha risposto di si', con una forma che il client non sa leggere.
+SHAPE = "forma"
+#: La domanda non e' partita: HIRIS l'ha fermata prima della rete (un
+#: identificatore malformato, un tipo che Home Assistant non conosce).
+REQUEST = "richiesta"
+
+#: Il motivo di un comando rimasto senza risposta.
 _HA_SILENT = "Home Assistant non ha risposto"
+
+
+def _failure(cause: str, text: str, code=None) -> dict:
+    """La busta di un guasto: L'UNICO costruttore.
+
+    `{"errore": testo, "causa": una delle quattro qui sopra, "codice": il
+    codice di Home Assistant (`error.code` del WebSocket), lo stato HTTP, o
+    `None`}`. Le tre chiavi ci sono sempre: un lettore che le trova da una
+    porta le trova da tutte (fondamenta 3). Il successo di una lettura NON
+    passa di qui: tiene la sua forma.
+    """
+    return {"errore": text, "causa": cause, "codice": code}
+
+
+class HAReadError(Exception):
+    """Una lettura non riuscita, per chi DEVE sollevare: lo specchio al primo
+    caricamento, la rilettura del comportamento, il registro dei servizi mai
+    caricato. Il client non solleva (D3); chi ha un contratto che solleva
+    trasforma la busta in questa eccezione, e la busta intera resta in
+    `failure`."""
+
+    def __init__(self, failure: dict) -> None:
+        super().__init__(f"{failure.get('errore')} ({failure.get('causa')})")
+        self.failure = failure
 
 
 def _instant_from_ha(raw):
@@ -328,27 +366,49 @@ class HAClient:
         if self._session:
             await self._session.close()
 
-    def _rest_get(self, path: str):
+    async def _rest_get(self, path: str) -> dict:
         """L'UNICA lettura REST verso Home Assistant: `GET <base><path>` sulla
-        sessione del client. Restituisce la richiesta da aprire con
-        `async with`, e chi chiama legge la risposta come prima.
+        sessione del client. Rende `{"corpo": json}` oppure la busta del
+        guasto, e non solleva: uno stato diverso da 200 e' un rifiuto (col suo
+        numero in `codice`), un corpo che non e' JSON e' una forma, ogni altro
+        guasto del trasporto e' un silenzio.
 
         Le tre primitive della configurazione (`read_configuration`,
         `save_configuration`, `delete_configuration`) e `call_service` non
         passano di qui: sono il canale delle scritture (Tappa 7)."""
-        return self._session.get(f"{self._base_url}{path}")
+        try:
+            async with self._session.get(f"{self._base_url}{path}") as resp:
+                if resp.status != 200:
+                    return _failure(REFUSAL, f"Home Assistant ha risposto {resp.status}",
+                                    resp.status)
+                try:
+                    return {"corpo": await resp.json()}
+                except (aiohttp.ContentTypeError, ValueError):
+                    return _failure(SHAPE, "Home Assistant ha risposto con un corpo "
+                                           "che non e' JSON")
+        except Exception as exc:
+            logger.debug("lettura REST %s non riuscita: %s", path.split("?")[0], exc)
+            return _failure(SILENCE,
+                            f"{_HA_SILENT}: {_truncate(str(exc) or type(exc).__name__, 200)}")
 
     @cost(rest=1)
-    async def get_states(self, entity_ids: list[str]) -> list[dict]:
-        async with self._rest_get("/api/states") as resp:
-            resp.raise_for_status()
-            all_states: list[dict] = await resp.json()
+    async def get_states(self, entity_ids: list[str]) -> list[dict] | dict:
+        """Gli stati della casa, tutti (`[]`) o quelli chiesti: una lista, o la
+        busta del guasto. Non solleva (D3, 03/10/2026: prima sollevava, unico
+        con `get_services` fra le letture)."""
+        reply = await self._rest_get("/api/states")
+        if "errore" in reply:
+            return reply
+        all_states = reply["corpo"]
+        if not isinstance(all_states, list):
+            return _failure(SHAPE, "gli stati non sono arrivati come elenco")
         if entity_ids:
-            return [s for s in all_states if s["entity_id"] in entity_ids]
+            return [s for s in all_states
+                    if isinstance(s, dict) and s.get("entity_id") in entity_ids]
         return all_states
 
     @cost(rest=1)
-    async def get_services(self) -> list[dict]:
+    async def get_services(self) -> list[dict] | dict:
         """Il registro dei servizi di QUESTA installazione.
 
         E' la fonte del «meccanismo» (spec dell'azione, §1): cosa e'
@@ -357,10 +417,17 @@ class HAClient:
         nessun catalogo scritto a mano potrebbe conoscere.
 
         Legge e basta: nessuna scrittura verso HA vive in questo metodo.
+
+        Una lista, o la busta del guasto: non solleva (D3). Un guasto non deve
+        diventare un registro vuoto -- «nessun servizio» e' un'affermazione
+        sulla casa, «non ho letto» no.
         """
-        async with self._rest_get("/api/services") as resp:
-            resp.raise_for_status()
-            return await resp.json()
+        reply = await self._rest_get("/api/services")
+        if "errore" in reply:
+            return reply
+        if not isinstance(reply["corpo"], list):
+            return _failure(SHAPE, "i servizi non sono arrivati come elenco")
+        return reply["corpo"]
 
     @cost(rest=1)
     async def call_service(self, domain: str, service: str, data: dict) -> list[dict]:
@@ -562,14 +629,14 @@ class HAClient:
         if actions is not None:
             extra["actions"] = actions
         if not extra:
-            return {"errore": "niente da validare"}
+            return _failure(REQUEST, "niente da validare")
         (msg,) = await self._ws_send([("validate_config", extra)])
         occurrence = self._ws_occurrence(msg, "risultato")
         if "errore" in occurrence:
             return occurrence
         result = occurrence["risultato"]
         if not isinstance(result, dict):
-            return {"errore": "risposta in forma inattesa dalla validazione"}
+            return _failure(SHAPE, "risposta in forma inattesa dalla validazione")
         return result
 
     # Gli helper che questa fetta sa creare. Sono collezioni gestite da
@@ -583,14 +650,27 @@ class HAClient:
 
     @staticmethod
     def _ws_occurrence(msg: dict | None, key: str) -> dict:
-        """Il `result` di un comando WS, oppure il motivo -- mai un successo muto."""
+        """Il `result` di un comando WS come `{key: result}`, oppure la busta
+        del guasto -- mai un successo muto.
+
+        `None` (il comando non ha avuto risposta: `_ws_send` non solleva) e'
+        un silenzio; un `error` di Home Assistant e' un rifiuto, col SUO
+        motivo e il SUO codice. La forma del `result` la giudica chi chiama:
+        il client non sa, qui, cosa ogni comando dovrebbe rispondere.
+        """
         if msg is None:
-            return {"errore": "Home Assistant non ha risposto"}
-        if msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        if not msg.get("success"):
-            return {"errore": "Home Assistant ha rifiutato il comando"}
+            return _failure(SILENCE, _HA_SILENT)
+        error = msg.get("error")
+        if error:
+            error = error if isinstance(error, dict) else {}
+            return _failure(REFUSAL,
+                            error.get("message") or error.get("code") or "rifiutato",
+                            error.get("code"))
+        # `success: false` senza `error` e' un rifiuto senza motivo; un
+        # messaggio che `success` non lo porta affatto si legge dal suo
+        # `result` (Home Assistant lo porta sempre: le finte non sempre).
+        if msg.get("success") is False:
+            return _failure(REFUSAL, "Home Assistant ha rifiutato il comando")
         return {key: msg.get("result")}
 
     @cost(ws=1)
@@ -603,8 +683,8 @@ class HAClient:
         un passo dalla fine.
         """
         if domain not in self.HELPER_DOMAINS:
-            return {"errore": (f"«{domain}» non e' un helper che so creare. "
-                               f"Helper: {', '.join(self.HELPER_DOMAINS)}.")}
+            return _failure(REQUEST, f"«{domain}» non e' un helper che so creare. "
+                                     f"Helper: {', '.join(self.HELPER_DOMAINS)}.")
         (msg,) = await self._ws_send([(f"{domain}/create", dict(data))])
         return self._ws_occurrence(msg, "helper")
 
@@ -613,10 +693,10 @@ class HAClient:
         """Cancella un helper. Serve alla DISFATTA (spec §3.1): se l'automazione
         viene rifiutata dopo che gli helper sono nati, l'officina li toglie."""
         if domain not in self.HELPER_DOMAINS:
-            return {"errore": f"«{domain}» non e' un helper che so cancellare."}
+            return _failure(REQUEST, f"«{domain}» non e' un helper che so cancellare.")
         (msg,) = await self._ws_send([(f"{domain}/delete", {f"{domain}_id": helper_id})])
         occurrence = self._ws_occurrence(msg, "_")
-        return {"errore": occurrence["errore"]} if "errore" in occurrence else {"cancellato": True}
+        return occurrence if "errore" in occurrence else {"cancellato": True}
 
     @cost(ws=1)
     async def list_labels(self) -> dict:
@@ -660,7 +740,7 @@ class HAClient:
             return occurrence
         rows = occurrence["utenti"]
         if not isinstance(rows, list):
-            return {"errore": "l’elenco degli utenti non è arrivato come elenco"}
+            return _failure(SHAPE, "l’elenco degli utenti non è arrivato come elenco")
         return {"utenti": [self._user_row(r) for r in rows if isinstance(r, dict)]}
 
     @classmethod
@@ -708,10 +788,7 @@ class HAClient:
             "frontend/update_panel",
             {"url_path": url_path, "require_admin": require_admin})])
         occurrence = self._ws_occurrence(msg, "_")
-        if "errore" not in occurrence:
-            return {"aggiornato": True}
-        error = (msg or {}).get("error") or {}
-        return {"errore": occurrence["errore"], "codice": error.get("code")}
+        return occurrence if "errore" in occurrence else {"aggiornato": True}
 
     @cost(ws=1)
     async def panels(self) -> dict:
@@ -724,7 +801,7 @@ class HAClient:
         if "errore" in occurrence:
             return occurrence
         if not isinstance(occurrence["pannelli"], dict):
-            return {"errore": "l'elenco dei pannelli non è arrivato come oggetto"}
+            return _failure(SHAPE, "l'elenco dei pannelli non è arrivato come oggetto")
         return occurrence
 
     @cost(ws=1)
@@ -753,8 +830,8 @@ class HAClient:
                                        {"entity_id": entity_id})])
         loaded = self._ws_occurrence(msg, "voce")
         if "errore" in loaded:
-            return {"errore": f"non ho potuto leggere le etichette di {entity_id}: "
-                              f"{loaded['errore']}"}
+            return {**loaded, "errore": f"non ho potuto leggere le etichette di "
+                                        f"{entity_id}: {loaded['errore']}"}
         entry = loaded["voce"] if isinstance(loaded["voce"], dict) else {}
         current_labels = entry.get("labels")
         current_labels = list(current_labels) if isinstance(current_labels, list) else []
@@ -764,7 +841,7 @@ class HAClient:
             "config/entity_registry/update",
             {"entity_id": entity_id, "labels": current_labels + [label_id]})])
         occurrence = self._ws_occurrence(msg, "_")
-        return {"errore": occurrence["errore"]} if "errore" in occurrence else {"applicata": True}
+        return occurrence if "errore" in occurrence else {"applicata": True}
 
     # I cinque campi con cui Home Assistant accetta un bersaglio: sono le
     # chiavi di `cv.TARGET_FIELDS` (homeassistant/helpers/config_validation.py),
@@ -820,7 +897,7 @@ class HAClient:
         chi chiama deve poterlo dichiarare invece di toccare «quasi tutto».
         """
         if not isinstance(target, dict):
-            return {"errore": "il bersaglio non e' un oggetto"}
+            return _failure(REQUEST, "il bersaglio non e' un oggetto")
         cleaned = {}
         for field in self.TARGET_FIELDS:
             entries = target.get(field)
@@ -832,29 +909,24 @@ class HAClient:
             if entries:
                 cleaned[field] = entries
         if not cleaned:
-            return {"errore": "il bersaglio non nomina niente che Home Assistant "
-                              "sappia risolvere"}
+            return _failure(REQUEST, "il bersaglio non nomina niente che Home "
+                                     "Assistant sappia risolvere")
 
         (msg,) = await self._ws_send([("extract_from_target",
                                        {"target": cleaned,
                                         "expand_group": True,
                                         "primary_entities_only": True})])
-        # Tre modi di non aver saputo, tre frasi diverse: la connessione non
+        # Tre modi di non aver saputo, tre cause diverse: la connessione non
         # c'e' stata, Home Assistant ha detto di no (e allora si riporta cosa
-        # ha detto: un `unknown_command` su una versione vecchia si legge
-        # qui), la risposta non era leggibile. Un solo «non lo so» li avrebbe
-        # confusi, e sono guasti con rimedi diversi.
-        if not msg:
-            return {"errore": "Home Assistant non ha risposto"}
-        if not msg.get("success"):
-            fault = msg.get("error")
-            fault = fault if isinstance(fault, dict) else {}
-            return {"errore": f"Home Assistant ha rifiutato «extract_from_target» "
-                              f"({fault.get('code') or 'senza codice'}: "
-                              f"{fault.get('message') or 'senza messaggio'})"}
-        result = msg.get("result")
+        # ha detto, col suo codice: un `unknown_command` su una versione
+        # vecchia si legge qui), la risposta non era leggibile. Un solo «non
+        # lo so» li avrebbe confusi, e sono guasti con rimedi diversi.
+        occurrence = self._ws_occurrence(msg, "bersaglio")
+        if "errore" in occurrence:
+            return occurrence
+        result = occurrence["bersaglio"]
         if not isinstance(result, dict):
-            return {"errore": "la risposta di «extract_from_target» non e' un oggetto"}
+            return _failure(SHAPE, "la risposta di «extract_from_target» non e' un oggetto")
 
         # I dispositivi che non esistono arrivano ANCHE in
         # `referenced_devices`: `_resolve_referenced_devices`
@@ -909,9 +981,12 @@ class HAClient:
 
         unavailable: list[str] = []
         if not listing_arrived:
+            # La causa e' quella della busta (D3): «non ha risposto» e «ha
+            # detto di no» non sono piu' la stessa frase.
             unavailable.append(
-                "elenco: lovelace/dashboards/list non ha risposto — le plance "
-                "aggiuntive potrebbero non essere tutte qui"
+                f"elenco: lovelace/dashboards/list -- "
+                f"{self._ws_occurrence(got, 'elenco')['errore']}"
+                " — le plance aggiuntive potrebbero non essere tutte qui"
             )
 
         # `None` = la predefinita, sempre in testa. Un percorso vero entra
@@ -996,22 +1071,18 @@ class HAClient:
         invalid = [e for e in entities if not _ENTITY_ID_RE.match(str(e))]
         if invalid:
             logger.warning("storico: entita' non valide: %r", invalid)
-            return {"errore": _truncate(f"entita' non valide: {invalid!r}", 200)}
+            return _failure(REQUEST, _truncate(f"entita' non valide: {invalid!r}", 200))
         entity_filter = quote(",".join(entities), safe="")
         path = (f"/api/history/period/{from_iso}"
                 f"?end_time={quote(to_iso, safe='')}"
                 f"&filter_entity_id={entity_filter}"
                 f"&minimal_response&no_attributes")
-        try:
-            async with self._rest_get(path) as resp:
-                if resp.status != 200:
-                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
-                data = await resp.json()
-        except Exception as exc:
-            logger.debug("storico: non disponibile (%s)", exc)
-            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
+        reply = await self._rest_get(path)
+        if "errore" in reply:
+            return reply
+        data = reply["corpo"]
         if not isinstance(data, list):
-            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
+            return _failure(SHAPE, "Home Assistant ha risposto in una forma non attesa")
         raw: dict[str, list[dict]] = {}
         for group in data:
             if not isinstance(group, list):
@@ -1057,7 +1128,7 @@ class HAClient:
 
     @cost(ws=1)
     async def recorded_changes(self, entity_ids: list[str],
-                               windows: list[tuple[float, float]]) -> list[int | None]:
+                               windows: list[tuple[float, float]]) -> list[int | None] | dict:
         """Per ogni finestra, quante righe Home Assistant ha ancora REGISTRATO
         li' dentro. `None` dove la domanda non ha ricevuto risposta.
 
@@ -1084,7 +1155,8 @@ class HAClient:
 
         Tutte le finestre partono in **una raffica sola**: sono la scala di una
         misura, non letture indipendenti (casa vera: dieci profondita' in
-        264 ms).
+        264 ms). Se la raffica non parte affatto (nessuna risposta) il
+        risultato e' la busta del silenzio, non una scala di `None` (D3).
         """
         if not windows:
             return []
@@ -1100,6 +1172,9 @@ class HAClient:
             for start, end in windows
         ]
         replies = await self._ws_send(commands)
+        if all(reply is None for reply in replies):
+            # La raffica non e' partita: un guasto, non dieci finestre mute.
+            return _failure(SILENCE, _HA_SILENT)
         counts: list[int | None] = []
         for (start, _end), msg in zip(windows, replies, strict=True):
             series = msg.get("result") if msg and msg.get("success") else None
@@ -1152,16 +1227,12 @@ class HAClient:
         ha calendari», un'affermazione diversa da «non sono riuscito a
         chiederlo».
         """
-        try:
-            async with self._rest_get("/api/calendars") as resp:
-                if resp.status != 200:
-                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
-                data = await resp.json()
-        except Exception as exc:
-            logger.debug("calendari: non disponibili (%s)", exc)
-            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
+        reply = await self._rest_get("/api/calendars")
+        if "errore" in reply:
+            return reply
+        data = reply["corpo"]
         if not isinstance(data, list):
-            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
+            return _failure(SHAPE, "Home Assistant ha risposto in una forma non attesa")
         return {"calendari": data}
 
     @cost(rest=1)
@@ -1290,19 +1361,19 @@ class HAClient:
         """
         if not _ENTITY_ID_RE.match(str(entity_id)):
             logger.warning("calendario: entity_id non valido: %r", entity_id)
-            return {"errore": _truncate(f"entity_id non valido: {entity_id!r}", 200)}
-        try:
-            path = (f"/api/calendars/{quote(entity_id, safe='')}"
-                    f"?start={quote(start, safe='')}&end={quote(end, safe='')}")
-            async with self._rest_get(path) as resp:
-                if resp.status != 200:
-                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
-                data = await resp.json()
-        except Exception as exc:
-            logger.debug("eventi di %s non letti: %s", entity_id, exc)
-            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
+            return _failure(REQUEST, _truncate(f"entity_id non valido: {entity_id!r}", 200))
+        if not isinstance(start, str) or not isinstance(end, str):
+            # `quote()` solleverebbe su un istante che non e' scritto: la
+            # domanda si ferma qui, con la busta, e non parte.
+            return _failure(REQUEST, "la finestra non e' fatta di due istanti scritti")
+        reply = await self._rest_get(
+            f"/api/calendars/{quote(entity_id, safe='')}"
+            f"?start={quote(start, safe='')}&end={quote(end, safe='')}")
+        if "errore" in reply:
+            return reply
+        data = reply["corpo"]
         if not isinstance(data, list):
-            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
+            return _failure(SHAPE, "Home Assistant ha risposto in una forma non attesa")
 
         def _chrono_key(event):
             begin = event.get("start") if isinstance(event, dict) else None
@@ -1376,7 +1447,7 @@ class HAClient:
         return replies
 
     @cost(ws=1)
-    async def statistic_ids(self) -> set[str] | None:
+    async def statistic_ids(self) -> set[str] | dict:
         """Le entita' per cui Home Assistant TIENE statistiche, per nome.
 
         Home Assistant calcola statistiche di lungo periodo solo per le entita'
@@ -1391,15 +1462,18 @@ class HAClient:
         Nel resoconto del 14/09/2026, **18 rifiuti su 28** erano della seconda
         specie e dicevano la prima.
 
-        **`None` e non `set()` quando la lettura fallisce.** Un insieme vuoto
+        **La busta e non `set()` quando la lettura fallisce.** Un insieme vuoto
         affermerebbe «nessuna entita' di questa casa ha statistiche», e con
-        quella affermazione ogni misura del resoconto rifiuterebbe. Stessa
-        disciplina di `_request_statistics`, che torna `{"errore"}` e mai `{}`.
+        quella affermazione ogni misura del resoconto rifiuterebbe. Fino al
+        03/10/2026 il guasto era `None`, una forma sua (D3).
         """
         (msg,) = await self._ws_send([("recorder/list_statistic_ids", None)])
-        raw = msg.get("result") if msg else None
+        occurrence = self._ws_occurrence(msg, "statistiche")
+        if "errore" in occurrence:
+            return occurrence
+        raw = occurrence["statistiche"]
         if not isinstance(raw, list):
-            return None
+            return _failure(SHAPE, "l'elenco delle statistiche non e' arrivato come elenco")
         return {str(r["statistic_id"]) for r in raw
                 if isinstance(r, dict) and r.get("statistic_id")}
 
@@ -1476,7 +1550,7 @@ class HAClient:
         replies = await self._ws_send(
             [(command, {"entity_id": eid}) for eid, command in wanted])
         if all(reply is None for reply in replies):
-            return {"errore": "Home Assistant non ha risposto"}
+            return _failure(SILENCE, _HA_SILENT)
         configs: dict[str, dict] = {}
         unread: dict[str, str] = {}
         for index, (eid, _command) in enumerate(wanted):
@@ -1484,11 +1558,11 @@ class HAClient:
             if msg is None:
                 unread[eid] = "Home Assistant non ha risposto in tempo"
                 continue
-            if msg.get("error"):
-                error = msg["error"]
-                unread[eid] = error.get("message") or error.get("code") or "rifiutato"
+            occurrence = self._ws_occurrence(msg, "corpo")
+            if "errore" in occurrence:
+                unread[eid] = occurrence["errore"]
                 continue
-            result = msg.get("result")
+            result = occurrence["corpo"]
             body = result.get("config") if isinstance(result, dict) else None
             if isinstance(body, dict):
                 configs[eid] = body
@@ -1548,9 +1622,12 @@ class HAClient:
             "recorder/statistics_during_period",
             {"statistic_ids": list(identifiers), **window},
         )])
-        raw = msg.get("result") if msg else None
+        occurrence = self._ws_occurrence(msg, "serie")
+        if "errore" in occurrence:
+            return occurrence
+        raw = occurrence["serie"]
         if not isinstance(raw, dict):
-            return {"errore": "Home Assistant non ha risposto alla richiesta di statistiche"}
+            return _failure(SHAPE, "le statistiche non sono arrivate come oggetto")
         return {"serie": _translate_statistics(raw)}
 
     # I tipi che `search/related` accetta, coi VALORI di `ItemType`
@@ -1586,15 +1663,15 @@ class HAClient:
         «niente».
         """
         if item_type not in self.RELATED_ITEM_TYPES:
-            return {"errore": f"tipo non riconosciuto da Home Assistant: {item_type}"}
+            return _failure(REQUEST, f"tipo non riconosciuto da Home Assistant: {item_type}")
         (msg,) = await self._ws_send(
             [("search/related", {"item_type": item_type, "item_id": identifier})])
-        if msg and msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
+        occurrence = self._ws_occurrence(msg, "legami")
+        if "errore" in occurrence:
+            return occurrence
+        result = occurrence["legami"]
         if not isinstance(result, dict):
-            return {"errore": "risposta in forma inattesa"}
+            return _failure(SHAPE, "risposta in forma inattesa")
         return {key: sorted(str(v) for v in values)
                 for key, values in result.items() if values}
 
@@ -1621,12 +1698,12 @@ class HAClient:
         elenco vuoto significherebbe «non c'e' niente che non va».
         """
         (msg,) = await self._ws_send([("repairs/list_issues", None)])
-        if msg and msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
+        occurrence = self._ws_occurrence(msg, "problemi")
+        if "errore" in occurrence:
+            return occurrence
+        result = occurrence["problemi"]
         if not isinstance(result, dict) or not isinstance(result.get("issues"), list):
-            return {"errore": "risposta in forma inattesa"}
+            return _failure(SHAPE, "risposta in forma inattesa")
         return {"problemi": [p for p in result["issues"]
                              if isinstance(p, dict) and not p.get("ignored")]}
 
@@ -1665,12 +1742,12 @@ class HAClient:
         registro», che e' un'affermazione, non un silenzio.
         """
         (msg,) = await self._ws_send([("system_log/list", None)])
-        if msg and msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
+        occurrence = self._ws_occurrence(msg, "voci")
+        if "errore" in occurrence:
+            return occurrence
+        result = occurrence["voci"]
         if not isinstance(result, list):
-            return {"errore": "risposta in forma inattesa"}
+            return _failure(SHAPE, "risposta in forma inattesa")
         return {"voci": result}
 
     @cost(ws=1)
@@ -1731,7 +1808,7 @@ class HAClient:
             [("trace/list", {"domain": domain, "item_id": item_id})
              for domain, item_id in keys])
         if all(reply is None for reply in replies):
-            return {"errore": _HA_SILENT}
+            return _failure(SILENCE, _HA_SILENT)
         found: dict[str, list] = {}
         unread: dict[str, str] = {}
         for index, (domain, item_id) in enumerate(keys):
@@ -1740,16 +1817,23 @@ class HAClient:
             if msg is None:
                 unread[key] = "Home Assistant non ha risposto in tempo"
                 continue
-            if msg.get("error"):
-                error = msg["error"]
-                unread[key] = error.get("message") or error.get("code") or "rifiutato"
+            reading = self._trace_list(msg)
+            if "errore" in reading:
+                unread[key] = reading["errore"]
                 continue
-            result = msg.get("result")
-            if not isinstance(result, list):
-                unread[key] = "risposta in forma inattesa"
-                continue
-            found[key] = result
+            found[key] = reading["tracce"]
         return {"tracce": found, "non_letti": unread}
+
+    @classmethod
+    def _trace_list(cls, msg: dict | None) -> dict:
+        """UNA risposta di `trace/list` -> `{"tracce": [...]}` o la busta. La
+        forma e' una LISTA NUDA (vedi `automation_traces`)."""
+        occurrence = cls._ws_occurrence(msg, "tracce")
+        if "errore" in occurrence:
+            return occurrence
+        if not isinstance(occurrence["tracce"], list):
+            return _failure(SHAPE, "risposta in forma inattesa")
+        return occurrence
 
     @cost(ws=1)
     async def trace(self, domain: str, item_id: str, run_id: str) -> dict:
@@ -1766,15 +1850,12 @@ class HAClient:
         (msg,) = await self._ws_send(
             [("trace/get", {"domain": domain, "item_id": item_id,
                             "run_id": run_id})])
-        if msg is None:
-            return {"errore": _HA_SILENT}
-        if msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result")
-        if not isinstance(result, dict):
-            return {"errore": "risposta in forma inattesa"}
-        return {"traccia": result}
+        occurrence = self._ws_occurrence(msg, "traccia")
+        if "errore" in occurrence:
+            return occurrence
+        if not isinstance(occurrence["traccia"], dict):
+            return _failure(SHAPE, "risposta in forma inattesa")
+        return occurrence
 
     @cost(ws=1)
     async def automation_traces(self, automation_id: str) -> dict:
@@ -1891,13 +1972,9 @@ class HAClient:
         `voci`: un elenco vuoto affermerebbe «questa automazione non ha mai
         girato», che e' un'affermazione, non un silenzio.
         """
-        answer = await self.traces([("automation", automation_id)])
-        if "errore" in answer:
-            return answer
-        key = f"automation.{automation_id}"
-        if key in answer["non_letti"]:
-            return {"errore": answer["non_letti"][key]}
-        return {"tracce": answer["tracce"][key]}
+        (msg,) = await self._ws_send(
+            [("trace/list", {"domain": "automation", "item_id": automation_id})])
+        return self._trace_list(msg)
 
     @cost(ws=1)
     async def get_translations(self, language: str,
@@ -1926,23 +2003,22 @@ class HAClient:
         (msg,) = await self._ws_send([(
             "frontend/get_translations",
             {"language": language, "category": category})])
-        if msg is None:
-            return {"errore": "Home Assistant non ha risposto"}
-        if msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result")
+        occurrence = self._ws_occurrence(msg, "risorse")
+        if "errore" in occurrence:
+            return occurrence
+        result = occurrence["risorse"]
         resources = result.get("resources") if isinstance(result, dict) else None
         if not isinstance(resources, dict):
-            return {"errore": "risposta in forma inattesa"}
+            return _failure(SHAPE, "risposta in forma inattesa")
         return {"risorse": resources}
 
     @cost(ws=1)
     async def get_config(self) -> dict:
         """Il sistema di riferimento della casa, da `get_config` di HA.
 
-        Restituisce il dizionario grezzo di Home Assistant ({} se la risposta
-        non e' un dizionario). A distillarlo e' `topology.reference_frame`:
+        Restituisce il dizionario grezzo di Home Assistant, oppure la busta del
+        guasto -- fino al 03/10/2026 era `{}`, che si leggeva come «la casa
+        non dichiara niente» (D3). A distillarlo e' `topology.reference_frame`:
         qui si LEGGE soltanto, cosi' il client non ha un'opinione su cosa
         della casa valga la pena tenere.
 
@@ -1956,8 +2032,12 @@ class HAClient:
         e la forma della risposta e' `Config.as_dict()` in `core_config.py`.
         """
         (msg,) = await self._ws_send([("get_config", None)])
-        result = msg.get("result") if msg else None
-        return result if isinstance(result, dict) else {}
+        occurrence = self._ws_occurrence(msg, "sistema")
+        if "errore" in occurrence:
+            return occurrence
+        if not isinstance(occurrence["sistema"], dict):
+            return _failure(SHAPE, "il sistema di riferimento non e' arrivato come oggetto")
+        return occurrence["sistema"]
 
     # Gli ambiti delle categorie di Home Assistant. Sono partizionate per
     # ambito: chiederne uno solo farebbe sparire la tassonomia che l'utente ha
@@ -2079,13 +2159,10 @@ class HAClient:
         ids = [e.get("entity_id") for e in entities if e.get("entity_id")]
         if not ids:
             return
-        try:
-            (msg,) = await self._ws_send(
-                [("config/entity_registry/get_entries", {"entity_ids": ids})])
-            extended_by_id = msg.get("result") if msg else None
-        except Exception as e:
-            logger.debug("campi estesi delle entita' non letti: %s", e)
-            extended_by_id = None
+        # `_ws_send` non solleva: un comando senza risposta e' `None`.
+        (msg,) = await self._ws_send(
+            [("config/entity_registry/get_entries", {"entity_ids": ids})])
+        extended_by_id = msg.get("result") if msg else None
         if not isinstance(extended_by_id, dict):
             unavailable.append("entita:alias")
             return

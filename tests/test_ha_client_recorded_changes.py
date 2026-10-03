@@ -133,8 +133,10 @@ async def test_la_domanda_chiede_il_minimo_indispensabile():
 
 @pytest.mark.asyncio
 async def test_la_connessione_caduta_non_solleva_e_non_inventa():
-    """Stessa disciplina di ogni lettura del ponte: un guasto e' `None` per
-    ogni sonda, mai un'eccezione che fermi il lavoro periodico."""
+    """Stessa disciplina di ogni lettura del ponte: mai un'eccezione che
+    fermi il lavoro periodico. Una raffica che non parte affatto e' la busta
+    del silenzio (D3), non una scala di `None` che si leggerebbe come «nessuna
+    finestra ricorda niente»."""
     finto = _Finto(solleva=True)
 
     with pytest.raises(RuntimeError):
@@ -146,7 +148,9 @@ async def test_la_connessione_caduta_non_solleva_e_non_inventa():
         return [None] * len(commands)
 
     client._ws_send = _batch
-    assert await client.recorded_changes(["a"], [(1.0, 2.0), (3.0, 4.0)]) == [None, None]
+    answer = await client.recorded_changes(["a"], [(1.0, 2.0), (3.0, 4.0)])
+    assert answer == {"errore": "Home Assistant non ha risposto",
+                      "causa": "silenzio", "codice": None}
 
 
 @pytest.mark.asyncio

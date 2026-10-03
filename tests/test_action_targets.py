@@ -429,7 +429,11 @@ async def test_un_rifiuto_di_home_assistant_e_un_errore_non_un_bersaglio_vuoto()
                                    "message": "non conosco questo comando"}})
     risolto = await client.extract_from_target({"area_id": ["cucina"]})
     assert "errore" in risolto
-    assert "unknown_command" in risolto["errore"]
+    # La busta (D3): il motivo di Home Assistant nella frase, il suo codice
+    # nel campo `codice`.
+    assert risolto["errore"] == "non conosco questo comando"
+    assert risolto["codice"] == "unknown_command"
+    assert risolto["causa"] == "rifiuto"
     assert "entita" not in risolto
 
 

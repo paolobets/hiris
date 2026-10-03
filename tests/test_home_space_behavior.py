@@ -50,7 +50,7 @@ class _ClienteFinto:
         self.errore = errore
         self.chiesti = None
 
-    async def get_states(self, entity_ids: list[str]) -> list[dict]:
+    async def get_states(self, entity_ids: list[str]) -> list[dict] | dict:
         return list(self.stati)
 
     async def behavior_configs(self, entity_ids: list[str]) -> dict:

@@ -510,14 +510,17 @@ async def test_durante_la_rilettura_lo_specchio_resta_pronto():
 
 @pytest.mark.asyncio
 async def test_se_home_assistant_non_risponde_lo_specchio_resta_com_era():
-    """Mutazione ESEGUITA: togliere il `try/except` di `reload` -- rossa
-    (l'errore risale al chiamante)."""
+    """`get_states` non solleva (D3): il guasto e' la busta, e lo specchio
+    non si tocca. Mutazione ESEGUITA (Tappa 2, Task 3): togliere il controllo
+    della busta in `reload` -- rossa (lo specchio prova a leggere la busta come
+    elenco di stati)."""
     cache = EntityCache()
     await cache.load(_FotografiaFissa([_stato("light.a", "off")]))
 
     class _Rotto:
         async def get_states(self, _):
-            raise ConnectionError("giu'")
+            return {"errore": "Home Assistant non ha risposto: giu'",
+                    "causa": "silenzio", "codice": None}
 
     await cache.reload(_Rotto())
     assert cache.all_states()[0]["state"] == "off"
@@ -532,7 +535,8 @@ async def test_dopo_una_rilettura_fallita_gli_eventi_non_si_accumulano():
 
     class _Rotto:
         async def get_states(self, _):
-            raise ConnectionError("giu'")
+            return {"errore": "Home Assistant non ha risposto: giu'",
+                    "causa": "silenzio", "codice": None}
 
     await cache.reload(_Rotto())
     assert cache._pending is None

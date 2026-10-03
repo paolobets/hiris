@@ -33,9 +33,8 @@ class _Client:
                 ]})
             elif tipo == "config/entity_registry/get_entries":
                 self.chiamate.append((tipo, extra))
-                if self.solleva:
-                    raise OSError("HA muto")
-                risposte.append({"result": self.estese})
+                # Il comando senza risposta: `_ws_send` non solleva, rende `None`.
+                risposte.append(None if self.solleva else {"result": self.estese})
             else:
                 risposte.append({"result": []})
         return risposte

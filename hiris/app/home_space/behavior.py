@@ -33,6 +33,7 @@ import logging
 import re
 from pathlib import Path
 
+from ..proxy.ha_client import HAReadError
 from .reader import clean_name
 from .redaction import SecretSeal
 from .topology import domain_of
@@ -99,7 +100,11 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
     e' meglio di una vuota e falsa.
     """
     # `[]` significa «tutte»: e' la convenzione di `HAClient.get_states`.
-    states = await client.get_states([]) or []
+    states = await client.get_states([])
+    if isinstance(states, dict):
+        # La busta del guasto (D3): la rilettura si ferma e la replica resta
+        # quella di prima -- chi chiama (`server.watch_behavior`) lo registra.
+        raise HAReadError(states)
     behavior_states = [s for s in states
                        if domain_of(s.get("entity_id", "")) in BEHAVIOR_DOMAINS]
 

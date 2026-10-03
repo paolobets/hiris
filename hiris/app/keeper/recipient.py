@@ -236,18 +236,19 @@ async def recipients_for(subject: dict | None, ha) -> Recipients:
     if not user_id:
         return Recipients((), _REASON_LINK_PERSON)
 
-    try:
-        states = await ha.get_states([])
-    except Exception as exc:
-        # Solo il TIPO del guasto, mai il suo testo: un messaggio di
-        # eccezione di rete puo' portare dentro di se' un frammento della
-        # richiesta che l'ha causato (security review, 26/09/2026, vincolo
-        # 1.2 -- niente che non sia `subject_key`, id, conteggi nei log).
-        logger.warning("recipients_for: stati non letti da Home Assistant (%s)",
-                       type(exc).__name__)
+    if ha is None:
+        # Nessun client (l'app senza Home Assistant, `server.py` passa
+        # `app.get("ha_client")`): prima lo copriva l'`except` attorno alla
+        # lettura, che il client non solleva piu' (D3).
         return Recipients((), _REASON_HA_DOWN)
+    states = await ha.get_states([])
     if not isinstance(states, list):
-        logger.warning("recipients_for: gli stati non sono arrivati come lista")
+        # Solo la CAUSA del guasto, mai il suo testo: un messaggio di
+        # rete puo' portare dentro di se' un frammento della richiesta che
+        # l'ha causato (security review, 26/09/2026, vincolo 1.2 -- niente
+        # che non sia `subject_key`, id, conteggi nei log).
+        logger.warning("recipients_for: stati non letti da Home Assistant (%s)",
+                       states.get("causa") if isinstance(states, dict) else "forma")
         return Recipients((), _REASON_HA_DOWN)
 
     # **Uguaglianza ESATTA su `user_id`, e si contano TUTTE le corrispondenze
@@ -309,15 +310,14 @@ async def recipients_for(subject: dict | None, ha) -> Recipients:
     if not mobile_app_trackers:
         return Recipients((), _REASON_NO_MOBILE_APP_DEVICE)
 
-    try:
-        services = await ha.get_services()
-    except Exception as exc:
+    services = await ha.get_services()
+    if not isinstance(services, list):
         logger.warning("recipients_for: servizi non letti da Home Assistant (%s)",
-                       type(exc).__name__)
+                       services.get("causa") if isinstance(services, dict) else "forma")
         return Recipients((), _REASON_HA_DOWN)
 
     notify_services: set[str] = set()
-    for entry in (services or []):
+    for entry in services:
         if isinstance(entry, dict) and entry.get("domain") == "notify":
             declared = entry.get("services")
             if isinstance(declared, dict):

@@ -347,7 +347,8 @@ async def test_a_dead_connection_says_error_never_no_runs():
     Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` -- rossa."""
     fake = _FakeConnection(replies=[None, None])
     outcome = await _client(fake).traces([("automation", "1"), ("script", "s")])
-    assert outcome == {"errore": "Home Assistant non ha risposto"}
+    assert outcome == {"errore": "Home Assistant non ha risposto",
+        "causa": "silenzio", "codice": None}
 
 
 @pytest.mark.asyncio
@@ -371,7 +372,8 @@ async def test_a_single_run_with_no_reply_says_error():
     Mutazione ESEGUITA: `None` cade nel ramo «forma inattesa» -- rossa sul
     testo."""
     outcome = await _client(_FakeConnection(replies=[None])).trace("script", "s", "r")
-    assert outcome == {"errore": "Home Assistant non ha risposto"}
+    assert outcome == {"errore": "Home Assistant non ha risposto",
+        "causa": "silenzio", "codice": None}
 
 
 @pytest.mark.asyncio
@@ -412,5 +414,5 @@ async def test_the_real_batch_on_a_dead_network_ends_in_error():
     with patch("aiohttp.ClientSession", esplode):
         many = await client.traces([("automation", "1"), ("script", "s")])
         one = await client.trace("script", "s", "r")
-    assert many == {"errore": "Home Assistant non ha risposto"}
-    assert one == {"errore": "Home Assistant non ha risposto"}
+    assert many == {"errore": "Home Assistant non ha risposto", "causa": "silenzio", "codice": None}
+    assert one == {"errore": "Home Assistant non ha risposto", "causa": "silenzio", "codice": None}

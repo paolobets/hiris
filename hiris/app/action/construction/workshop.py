@@ -872,14 +872,13 @@ class Workshop:
         chiesto (spec §2.3)."""
         if operation == "cancella":
             return [], None
-        try:
-            states = await self._ha.get_states([])
-        except Exception as exc:
-            logger.debug("rilettura dopo la scrittura fallita: %s", exc)
+        states = await self._ha.get_states([])
+        if isinstance(states, dict):  # la busta del guasto (D3)
+            logger.debug("rilettura dopo la scrittura fallita: %s", states.get("errore"))
             return [], ("ho scritto, ma non sono riuscito a rileggere lo stato: "
                         "controlla in Home Assistant.")
         trovate = []
-        for state in states or []:
+        for state in states:
             eid = state.get("entity_id") or ""
             if not eid.startswith(f"{domain}."):
                 continue

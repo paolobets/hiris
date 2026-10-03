@@ -141,11 +141,12 @@ async def _read_reference_frame(client) -> tuple[dict, bool]:
     reader = getattr(client, "get_config", None)
     if reader is None:
         return {}, False
-    try:
-        frame = reference_frame(await reader())
-    except Exception as e:  # rete caduta, comando rifiutato, HA a meta' avvio
-        logger.warning("sistema di riferimento della casa non letto: %s", e)
+    config = await reader()
+    if "errore" in config:  # la busta (D3): rete caduta, rifiuto, HA a meta' avvio
+        logger.warning("sistema di riferimento della casa non letto (%s): %s",
+                       config.get("causa"), config.get("errore"))
         return {}, False
+    frame = reference_frame(config)
     return frame, bool(frame)
 
 

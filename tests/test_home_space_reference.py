@@ -150,7 +150,8 @@ async def test_ricostruisci_legge_anche_il_riferimento(archivio):
 async def test_un_riferimento_non_letto_si_dichiara(archivio):
     """Non si ingoia: finisce nella stessa lista con cui l'anagrafe dichiara
     ogni altro silenzio -- niente meccanismo nuovo per dire la stessa cosa."""
-    client = _client(get_config_error=OSError("HA muto"))
+    client = _client(config={"errore": "Home Assistant non ha risposto",
+                             "causa": "silenzio", "codice": None})
     esito = await rebuild(client, archivio, await _specchio())
     assert "sistema_di_riferimento" in esito["non_disponibili"]
 

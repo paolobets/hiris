@@ -44,6 +44,8 @@ test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
 import logging
 import time
 
+from ..proxy.ha_client import HAReadError
+
 logger = logging.getLogger(__name__)
 
 
@@ -245,15 +247,21 @@ class ServiceRegistry:
         # metodo dichiara di volere.
         self._da_rileggere = False
 
-    async def refresh(self, ha_client) -> None:
+    async def refresh(self, ha_client) -> dict | None:
         """Rilegge `/api/services` e **sostituisce** cio' che sapevamo.
 
         Sostituisce, non fonde: un'integrazione disinstallata deve sparire
         anche da qui, altrimenti il registro smetterebbe di essere lo
         specchio di HA e diventerebbe un archivio di cio' che un tempo era
         possibile.
+
+        Se la lettura non riesce **non sostituisce niente** e rende la busta
+        del guasto (`HAClient.get_services`, D3): un guasto non e' un registro
+        vuoto. Altrimenti `None`.
         """
         reading = await ha_client.get_services()
+        if isinstance(reading, dict):
+            return reading
         new: dict[str, dict[str, dict]] = {}
         for entry in reading or []:
             if not isinstance(entry, dict):
@@ -280,6 +288,7 @@ class ServiceRegistry:
                            "vuota (%s voci) ma non se ne e' capita nessuna -- la sua "
                            "forma non e' quella attesa (lista di {domain, services})",
                            len(reading) if isinstance(reading, list) else "?")
+        return None
 
     async def ensure_fresh(self, ha_client) -> None:
         """Ricarica se serve. Un guasto NON svuota cio' che sapevamo.
@@ -299,14 +308,14 @@ class ServiceRegistry:
                else time.monotonic() - self._caricato_a)
         if age is not None and age < self._max_age_s and not self._da_rileggere:
             return
-        try:
-            await self.refresh(ha_client)
-        except Exception as error:
-            if self.empty():
-                raise
-            logger.warning("registro servizi: rinfresco fallito (%s: %s), "
-                           "tengo quello di %.0fs fa",
-                           type(error).__name__, error, age or 0.0)
+        failure = await self.refresh(ha_client)
+        if failure is None:
+            return
+        if self.empty():
+            raise HAReadError(failure)
+        logger.warning("registro servizi: rinfresco fallito (%s: %s), "
+                       "tengo quello di %.0fs fa",
+                       failure.get("causa"), failure.get("errore"), age or 0.0)
 
     def invalidate(self) -> None:
         """«Rileggi appena serve», non «dimentica».

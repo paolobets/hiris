@@ -142,10 +142,11 @@ async def test_le_entita_con_statistiche_si_sanno_chiedere(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_un_guasto_NON_dice_che_nessuna_entita_ha_statistiche(monkeypatch):
-    """`None`, non l'insieme vuoto. Un insieme vuoto direbbe «nessuna entita'
-    di questa casa ha statistiche», e con quella affermazione **ogni misura
-    del resoconto rifiuterebbe**. Stessa regola di `statistics` qui sopra: un
-    guasto e' un guasto, non un dato.
+    """La busta, non l'insieme vuoto. Un insieme vuoto direbbe «nessuna
+    entita' di questa casa ha statistiche», e con quella affermazione **ogni
+    misura del resoconto rifiuterebbe**. Stessa regola di `statistics` qui
+    sopra: un guasto e' un guasto, non un dato. Fino al 03/10/2026 il guasto
+    era `None`, una forma sua (D3).
 
     Mutazione ESEGUITA: tornare `set()` quando il websocket tace -- rossa.
     """
@@ -155,4 +156,5 @@ async def test_un_guasto_NON_dice_che_nessuna_entita_ha_statistiche(monkeypatch)
         return None
 
     monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
-    assert await ha.statistic_ids() is None
+    answer = await ha.statistic_ids()
+    assert answer["causa"] == "silenzio" and answer["errore"]

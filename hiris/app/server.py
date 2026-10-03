@@ -1711,7 +1711,10 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     # `None` -- non l'insieme vuoto -- se non si e' potuto leggere: affermare
     # «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
     with_statistics = await ha_client.statistic_ids()
-    without = (None if with_statistics is None
+    if isinstance(with_statistics, dict):  # la busta del guasto (D3)
+        logger.warning("resoconto: elenco delle statistiche non letto (%s): %s",
+                       with_statistics.get("causa"), with_statistics.get("errore"))
+    without = (None if isinstance(with_statistics, dict)
              else {e for e in entita if e not in with_statistics})
     if without:
         logger.info(
@@ -2374,7 +2377,12 @@ async def recipe_round(app) -> dict | None:
         with_series = None
         cliente = app.get("ha_client")
         if cliente is not None:
-            with_series = await cliente.statistic_ids()
+            reading = await cliente.statistic_ids()
+            if isinstance(reading, dict):  # la busta del guasto (D3)
+                logger.info("ricette: elenco delle statistiche non letto (%s): %s",
+                            reading.get("causa"), reading.get("errore"))
+            else:
+                with_series = reading
 
         # **Prima di scegliere a chi chiedere**: le ricette scritte contro
         # entita' che non possono avere statistiche non producono un numero e

@@ -298,13 +298,12 @@ async def test_calendar_events_never_raises_even_with_a_malformed_window():
     un'eccezione» -- vale anche per `start`/`end`, non solo per la rete.
     `quote()` (usato per comporre la query) solleva un `TypeError` su un
     valore che non e' una stringa ne' `bytes` -- qui il chiamante ha
-    passato un intero -- e quel `TypeError` deve restare dentro il `try`,
-    o il metodo solleverebbe invece di rispondere.
+    passato un intero. Dalla Tappa 2 (D3) la finestra si guarda PRIMA di
+    comporre l'URL, e la risposta e' la busta con `causa: richiesta`.
 
-    Mutazione: comporre l'URL (e quindi chiamare `quote(start, ...)`)
-    FUORI dal `try` -- il test torna rosso non su un `AssertionError` ma su
-    un `TypeError` non catturato che esce da `await
-    c.calendar_events(...)`, prima ancora di raggiungere il primo assert.
+    Mutazione: togliere il controllo della finestra -- il test torna rosso
+    non su un `AssertionError` ma su un `TypeError` non catturato che esce
+    da `await c.calendar_events(...)`, prima ancora del primo assert.
     """
     c = _client([])
     outcome = await c.calendar_events("calendar.casa", 123,

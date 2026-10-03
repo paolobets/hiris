@@ -98,7 +98,8 @@ async def test_un_guasto_della_connessione_e_un_errore_non_un_elenco_vuoto():
     (torna `{"configurazioni": {}}`)."""
     esito = await _client(_Finto()).behavior_configs(["automation.x", "script.y"])
 
-    assert esito == {"errore": "Home Assistant non ha risposto"}
+    assert esito == {"errore": "Home Assistant non ha risposto",
+        "causa": "silenzio", "codice": None}
 
 
 @pytest.mark.asyncio

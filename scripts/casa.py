@@ -238,11 +238,13 @@ async def _read_all(house, hiris) -> dict[str, object]:
     if unread:
         _stop(f"Registri non letti: {', '.join(unread)}.")
     states = await house.get_states([])
+    if isinstance(states, dict):
+        _stop(f"Gli stati non sono stati letti: {states.get('errore')}.")
     if not states:
         _stop("Home Assistant non ha restituito nessuno degli stati.")
     statistics = await house.statistic_ids()
-    if statistics is None:
-        _stop("L'elenco delle statistiche non e' stato letto.")
+    if isinstance(statistics, dict):
+        _stop(f"L'elenco delle statistiche non e' stato letto: {statistics.get('errore')}.")
     # Quali domini hanno un corpo lo dice il prodotto, non un elenco scritto qui.
     from hiris.app.home_space.behavior import BEHAVIOR_DOMAINS
     from hiris.app.proxy.state_translations import STATE_TRANSLATIONS_CATEGORY
@@ -254,6 +256,8 @@ async def _read_all(house, hiris) -> dict[str, object]:
     if behavior.get("non_letti"):
         _stop(f"{len(behavior['non_letti'])} corpi di automazioni o script non letti.")
     ha_config = await house.get_config()
+    if "errore" in ha_config:
+        _stop(f"Il sistema di riferimento non e' stato letto: {ha_config['errore']}.")
     if not ha_config:
         _stop("Il sistema di riferimento di Home Assistant e' vuoto.")
     language = ha_config.get("language")
@@ -276,9 +280,12 @@ async def _read_all(house, hiris) -> dict[str, object]:
         home_space = json.loads(hiris("/api/home-space"))
     except ValueError:
         _stop("HIRIS ha risposto qualcosa che non e' JSON.")
+    services = await house.get_services()
+    if isinstance(services, dict):
+        _stop(f"I servizi non sono stati letti: {services.get('errore')}.")
     read = {"registries": registries, "states": states,
             "statistic_ids": sorted(statistics), "behavior": behavior,
-            "ha_config": ha_config, "services": await house.get_services(),
+            "ha_config": ha_config, "services": services,
             "translations": {"language": language,
                              "category": STATE_TRANSLATIONS_CATEGORY, "report": words},
             "problems": problems, "system_log": system_log,

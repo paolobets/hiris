@@ -21,7 +21,11 @@ import inspect
 import pytest
 
 from hiris.app.action.registry import ServiceRegistry
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy.ha_client import HAClient, HAReadError
+
+#: Come risponde `HAClient.get_services` quando Home Assistant tace (D3: la
+#: busta, non un'eccezione).
+SILENT = {"errore": "Home Assistant non ha risposto", "causa": "silenzio", "codice": None}
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
@@ -134,7 +138,7 @@ async def test_se_il_rinfresco_fallisce_si_tiene_il_vecchio():
         async def get_services(self):
             self.chiamate += 1
             if self.chiamate > 1:
-                raise RuntimeError("HA non risponde")
+                return dict(SILENT)
             return self.risposta
 
     finto = ClientCheRompe(RISPOSTA_HA)
@@ -156,10 +160,10 @@ async def test_se_il_primo_caricamento_fallisce_il_guasto_si_vede():
     class ClientSempreRotto(FintoClient):
         async def get_services(self):
             self.chiamate += 1
-            raise RuntimeError("HA non risponde")
+            return dict(SILENT)
 
     registro = ServiceRegistry(max_age_s=100)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(HAReadError):
         await registro.ensure_fresh(ClientSempreRotto(RISPOSTA_HA))
     assert registro.empty() is True
 
@@ -170,21 +174,30 @@ async def test_get_services_legge_l_endpoint_dei_servizi():
     l'URL sbagliato passerebbe la suite e fallirebbe solo sulla casa vera."""
     from unittest.mock import AsyncMock, MagicMock
 
-    client = HAClient(base_url="http://supervisor/core", token="t")
-    risposta = AsyncMock()
-    risposta.raise_for_status = MagicMock()
-    risposta.json = AsyncMock(return_value=RISPOSTA_HA)
-    client._session = MagicMock()
-    client._session.get = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(return_value=risposta),
-        __aexit__=AsyncMock(return_value=False),
-    ))
+    def _client(status):
+        client = HAClient(base_url="http://supervisor/core", token="t")
+        risposta = AsyncMock()
+        risposta.status = status
+        risposta.json = AsyncMock(return_value=RISPOSTA_HA)
+        client._session = MagicMock()
+        client._session.get = MagicMock(return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=risposta),
+            __aexit__=AsyncMock(return_value=False),
+        ))
+        return client
 
+    client = _client(200)
     assert await client.get_services() == RISPOSTA_HA
     (url,), _ = client._session.get.call_args
     assert url == "http://supervisor/core/api/services"
-    assert risposta.raise_for_status.called, (
-        "un 401/500 deve sollevare, non diventare un registro vuoto")
+    # Un 401/500 non diventa un registro vuoto: e' la busta del rifiuto (D3,
+    # prima sollevava), e il registro non si sostituisce.
+    registro = ServiceRegistry()
+    await registro.ensure_fresh(_client(200))
+    registro._caricato_a -= 10_000
+    await registro.ensure_fresh(_client(500))
+    assert (await _client(500).get_services())["causa"] == "rifiuto"
+    assert registro.service("light", "turn_on") is not None
 
 
 # --- la forma di `fields`, un livello piu' sotto ----------------------------
@@ -263,8 +276,9 @@ async def test_una_risposta_letta_e_non_capita_lo_dice(caplog):
     import logging
     registro = ServiceRegistry()
     with caplog.at_level(logging.WARNING, logger="hiris.app.action.registry"):
-        # un dizionario, non una lista
-        await registro.refresh(FintoClient({"light": {"turn_on": {}}}))
+        # una lista, ma di voci che non sono {domain, services} (un
+        # dizionario intero e' gia' una forma sbagliata per il client: D3)
+        await registro.refresh(FintoClient([{"light": {"turn_on": {}}}]))
     assert registro.domains() == []
     assert any("non e' quella attesa" in r.getMessage() for r in caplog.records), caplog.text
 

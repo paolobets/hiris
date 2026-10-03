@@ -18,6 +18,11 @@ def _stato_persona(user_id, trackers):
             "attributes": {"user_id": user_id, "device_trackers": trackers}}
 
 
+#: Come risponde `HAClient` quando Home Assistant tace (D3: la busta, non
+#: un'eccezione).
+_SILENT = {"errore": "Home Assistant non ha risposto", "causa": "silenzio", "codice": None}
+
+
 class FintaHA:
     """Le tre letture che `recipients_for` usa, misurate sulla casa vera
     (192.168.1.95, 25/09/2026): tre tracker `mobile_app` di cui uno -- il
@@ -35,13 +40,13 @@ class FintaHA:
                 "mobile_app_iphone_bet": {}, "mobile_app_ipad_mini": {},
                 "mobile_app_iphone_di_marta": {}, "mobile_app_nbbet_001": {},
             }}]
-        self.guasto = guasto  # nome del lettore che deve sollevare, o None
+        self.guasto = guasto  # nome del lettore che deve fallire, o None
         self.chiamate = []
 
     async def get_states(self, entity_ids):
         self.chiamate.append("get_states")
         if self.guasto == "get_states":
-            raise TimeoutError("Home Assistant non ha risposto")
+            return dict(_SILENT)
         return self.stati
 
     async def read_registries(self):
@@ -53,7 +58,7 @@ class FintaHA:
     async def get_services(self):
         self.chiamate.append("get_services")
         if self.guasto == "get_services":
-            raise TimeoutError("Home Assistant non ha risposto")
+            return dict(_SILENT)
         return self.servizi
 
 
@@ -345,14 +350,16 @@ async def test_guasto_get_states_zero_con_motivo_mai_eccezione():
 
 @pytest.mark.asyncio
 async def test_guasto_get_states_il_testo_dell_eccezione_non_finisce_nel_registro(caplog):
-    """Vincolo di sicurezza 1.2: il registro porta il TIPO del guasto, mai il
+    """Vincolo di sicurezza 1.2: il registro porta la CAUSA del guasto, mai il
     suo testo -- un messaggio di eccezione di rete potrebbe portare dentro
     di se' un frammento sensibile della richiesta che l'ha causato."""
 
     class FintaConSegreto(FintaHA):
         async def get_states(self, entity_ids):
             self.chiamate.append("get_states")
-            raise TimeoutError("connessione persa (token=SEKRET-TOKEN-123)")
+            return {"errore": "Home Assistant non ha risposto: connessione persa "
+                              "(token=SEKRET-TOKEN-123)",
+                    "causa": "silenzio", "codice": None}
 
     with caplog.at_level(logging.WARNING):
         esito = await recipients_for({"specie": "persona", "id": USER_ID},

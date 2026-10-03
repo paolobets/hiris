@@ -76,11 +76,12 @@ async def test_un_rifiuto_di_HA_porta_il_SUO_motivo_non_uno_nostro():
 
     Mutazione ESEGUITA: `return {"errore": "rifiutato"}` fisso nel ramo
     dell'errore -- il test torna rosso su
-    `assert esito == {"errore": "Unknown command."}`.
+    `assert esito == {"errore": "Unknown command.", ...}`.
     """
     finto = _Finto({"success": False,
                     "error": {"code": "unknown_command", "message": "Unknown command."}})
-    assert await _client(finto).get_translations("it") == {"errore": "Unknown command."}
+    assert await _client(finto).get_translations("it") == {
+        "errore": "Unknown command.", "causa": "rifiuto", "codice": "unknown_command"}
 
 
 @pytest.mark.asyncio

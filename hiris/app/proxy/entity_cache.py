@@ -7,6 +7,7 @@ import re
 from ..home_space import type_vocabulary
 from ..home_space.topology import domain_of
 from ._sanitize import sanitize_ha_value
+from .ha_client import HAReadError
 
 logger = logging.getLogger(__name__)
 
@@ -615,15 +616,22 @@ class EntityCache:
         return self._loaded
 
     async def load(self, ha_client) -> None:
+        """La prima lettura dello specchio. SOLLEVA se Home Assistant non ha
+        dato gli stati: chi la chiama all'avvio lo dichiara, e il giro dei due
+        minuti (`reload_entity_inventory`) riprova."""
         raw_states = await ha_client.get_states([])
+        if isinstance(raw_states, dict):
+            # La busta del guasto (D3): `get_states` non solleva piu', `load`
+            # si' -- e' il suo contratto.
+            raise HAReadError(raw_states)
         self._states = {}
         for raw in raw_states:
             eid = raw.get("entity_id")
             if not eid:
                 continue
             self._states[eid] = _to_minimal(raw)
-        # Solo dopo che la lettura e' arrivata in fondo: se get_states solleva,
-        # la cache resta dichiaratamente non pronta.
+        # Solo dopo che la lettura e' arrivata in fondo: se gli stati non sono
+        # arrivati, la cache resta dichiaratamente non pronta.
         self._loaded = True
 
     async def reload(self, ha_client) -> None:
@@ -650,11 +658,11 @@ class EntityCache:
             # aperto e cresceva a ogni evento, per sempre (review finale, M2,
             # 30/09/2026).
             try:
-                try:
-                    raw_states = await ha_client.get_states([])
-                except Exception as error:  # lo specchio resta com'era
+                raw_states = await ha_client.get_states([])
+                if isinstance(raw_states, dict):  # la busta: lo specchio resta com'era
                     logger.warning("specchio: rilettura dopo la riconnessione fallita "
-                                   "(%s: %s)", type(error).__name__, error)
+                                   "(%s: %s)", raw_states.get("causa"),
+                                   raw_states.get("errore"))
                     return
                 fresh = {}
                 for raw in raw_states:
