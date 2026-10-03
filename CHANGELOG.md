@@ -1,5 +1,35 @@
 # HIRIS — Changelog
 
+## [3.73.2] — Le prove smettono di leggere il testo: la Tappa 1 di «Una fonte sola di verità» (2026-10-03)
+
+### Perche'
+
+121 prove leggevano il testo di `server.py` per sapere cosa facesse l'avvio: ne fissavano l'ordine
+delle righe, la presenza di una stringa, o ne ritagliavano un pezzo per eseguirlo. Spostare codice
+le avrebbe rotte senza che niente cambiasse, e le tappe che vengono ora spostano proprio il codice
+fuori da `server.py`. Prima di cominciare, quindi, le prove imparano a chiedere all'app.
+
+### Cosa cambia per chi usa HIRIS
+
+Niente. La fotografia a freddo delle porte e' identica a quella della 3.73.1.
+
+### Cosa cambia dentro
+
+- Le prove avviano l'app davvero e chiedono a lei: quali lavori periodici ci sono e quando girano,
+  quali rotte esistono, quale oggetto e' collegato a quale, cosa scrive il registro all'avvio.
+- I cancelli che guardavano un file solo (il soffitto delle rotte che scrivono, gli archivi da
+  chiudere, i compiti in background, le rotte della fotografia) guardano il router vero o tutto il
+  prodotto: quando il codice uscira' da `server.py`, continueranno a vederlo.
+- Un cancello nuovo ferma ogni prova che torni a leggere il testo di `server.py`; ne resta ammessa
+  una, che lo legge solo come termine di paragone.
+- Nel prodotto, una sola modifica: la consegna delle risposte del ponte nella chat esce
+  dall'avvio in una funzione propria, con lo stesso codice e chiamata dallo stesso punto.
+
+### Da sapere
+
+La suite e' piu' lenta: circa 18 minuti contro 12, perche' molte prove avviano l'app intera. Un
+terzo di ogni avvio e' la risoluzione di un nome di rete; e' annotato per la tappa che tocca l'avvio.
+
 ## [3.73.1] — Una modifica fatta a mano non si perde, e il corpo delle automazioni resta a chi amministra (2026-10-03)
 
 ### Perche'
