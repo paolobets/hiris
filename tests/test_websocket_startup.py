@@ -21,124 +21,58 @@ questo: `ChatbotEngine` e il file che lo conteneva sono usciti per intero,
 parte) e' diventato `app["scheduler"]`, costruito direttamente in
 `_on_startup`.
 
-**Cosa e' cambiato in questo file, e perche' non poteva restare fermo.**
-L'estrazione originale cercava per testo letterale
-`"engine = ChatbotEngine(ha_client=ha_client, data_path=data_path)"` e
-`'app["engine"] = engine'`: entrambe le stringhe sono sparite dal sorgente
-vero insieme all'entita' che descrivevano -- `src.index(...)` su quel
-marcatore solleva `ValueError` (sottostringa non trovata), non un fallimento
-dell'assert che il pin vuole dimostrare. Tenere in vita quelle due stringhe
-solo per soddisfare l'estrazione avrebbe significato lasciare un
-`ChatbotEngine` fantasma nel codice di produzione -- esattamente il difetto
-che il Task 4 esiste per chiudere. I marcatori sono stati ripuntati sul
-codice che c'e' oggi (`await ha_client.start_websocket()` fino ad
-`app["scheduler"] = scheduler`), la tecnica (estrazione del sorgente VERO via
-`inspect.getsource`, eseguito isolato) e l'invariante pinnato sono rimasti
-identici: il WebSocket si apre incondizionatamente in `_on_startup`, PRIMA di
-qualunque cosa possa dipenderne (oggi: lo scheduler) -- e lo dimostra
-ANCHE quando quel "qualunque cosa" e' un doppio finto che non tocca affatto
-il websocket, la stessa identica prova che il Task 1 aveva scritto.
+**Dal 03/10/2026 l'avvio gira davvero** (Tappa 1 dello sprint «Una fonte
+sola di verita'»). Prima il blocco si ritagliava dal testo di `_on_startup`
+fra due marcatori (`await ha_client.start_websocket()` e
+`app["scheduler"] = scheduler`) e si eseguiva isolato con doppi: un marcatore
+sparito -- e' successo una volta, con `ChatbotEngine` -- rompeva la prova
+senza che niente fosse cambiato. Adesso la casa dell'avvio
+(`tests/_avvio.py::RecordingHouse`) ricorda quando le si apre il websocket,
+e una spia che AVVOLGE i metodi veri ricorda quando lo schedulatore parte e
+quando si leggono le impostazioni della chat. L'invariante e' lo stesso: il
+WebSocket si apre una volta, incondizionatamente, PRIMA di qualunque cosa
+possa dipenderne.
 """
-import inspect
-import textwrap
-from unittest.mock import AsyncMock, MagicMock
+from unittest import mock
 
 import pytest
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from hiris.app import server
-
-
-def _load_avvio_websocket():
-    """Estrae dal sorgente vero di `_on_startup` il blocco che apre il
-    websocket e costruisce le impostazioni della chat + lo scheduler -- da
-    `await ha_client.start_websocket()` fino (inclusa) ad
-    `app["scheduler"] = scheduler`. Lo incapsula in una funzione che riceve
-    `ha_client`/`data_dir`/`app`/`ChatSettings`/`AsyncIOScheduler`/`os`/
-    `logger` dall'esterno, cosi' da poterla eseguire isolata senza il resto
-    del boot (Supervisor/MQTT/deploy della card...)."""
-    src = inspect.getsource(server._on_startup)
-    start = src.index("    await ha_client.start_websocket()")
-    end_marker = 'app["scheduler"] = scheduler'
-    end = src.index(end_marker, start) + len(end_marker)
-    body = textwrap.dedent(src[start:end])
-    func_src = (
-        "async def _check(ha_client, data_dir, app, ChatSettings, "
-        "AsyncIOScheduler, os, logger, file_lacks_retention_days):\n"
-        + textwrap.indent(body, "    ")
-    )
-    namespace: dict = {}
-    exec(compile(func_src, "<_on_startup avvio websocket>", "exec"), namespace)
-    return namespace["_check"]
-
-
-class _SchedulerFinto:
-    """Sostituto minimo di `AsyncIOScheduler`: il suo `start()` NON tocca il
-    websocket -- e' apposta, e' cio' che il test vuole dimostrare: e' il
-    server ad aprirlo, non lo scheduler (ne' l'entita' Chatbot che lo
-    ospitava prima del Task 4 di questa fetta, e che non esiste piu' del
-    tutto)."""
-
-    def __init__(self, ordine, *a, **kw):
-        self._ordine = ordine
-
-    def start(self) -> None:
-        self._ordine.append("scheduler.start")
-
-
-class _ImpostazioniChatFinte:
-    """`load()` non deve toccare il disco per davvero in questo test
-    isolato -- solo dimostrare che viene chiamata dopo il websocket, mai
-    prima.
-
-    `save()` e `retention_days` esistono perche' dalla chiusura C2 il
-    blocco estratto PERSISTE `retention_days` quando il file non lo
-    porta ancora (versione A della migrazione applicata a quel campo). Qui non
-    tocca il disco e non compare nell'ordine: cio' che questo test misura e'
-    solo che il websocket parta per primo."""
-
-    retention_days = 90
-
-    @classmethod
-    def load(cls, data_dir):
-        return cls()
-
-    def save(self, data_dir):
-        return None
+from hiris.app.chat_settings import ChatSettings
+from tests._avvio import RecordingHouse, started_with
 
 
 @pytest.mark.asyncio
 async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
-    check = _load_avvio_websocket()
-
+    """Mutazione ESEGUITA (03/10/2026): `await ha_client.start_websocket()`
+    spostata subito dopo `scheduler.start()` -- rossa (l'ordine registrato
+    diventa `chat_settings.load, scheduler.start, start_websocket`)."""
     ordine: list[str] = []
-    ha_client = MagicMock()
-    ha_client.start_websocket = AsyncMock(side_effect=lambda: ordine.append("start_websocket"))
 
-    def _fabbrica_scheduler(**kwargs):
-        return _SchedulerFinto(ordine, **kwargs)
+    class House(RecordingHouse):
+        async def start_websocket(self) -> None:
+            ordine.append("start_websocket")
+            await super().start_websocket()
 
-    app: dict = {}
-    import logging
-    import os as os_module
+    real_start = AsyncIOScheduler.start
+    real_load = ChatSettings.load.__func__
 
-    await check(
-        ha_client=ha_client,
-        data_dir=str(tmp_path),
-        app=app,
-        ChatSettings=_ImpostazioniChatFinte,
-        AsyncIOScheduler=_fabbrica_scheduler,
-        os=os_module,
-        logger=logging.getLogger("test_websocket_startup"),
-        file_lacks_retention_days=lambda data_dir: True,
-    )
+    def start(self, *args, **kwargs):
+        ordine.append("scheduler.start")
+        return real_start(self, *args, **kwargs)
 
-    ha_client.start_websocket.assert_awaited_once()
-    assert "chat_settings" in app, (
-        "il blocco estratto deve comunque valorizzare le impostazioni"
-    )
-    assert "scheduler" in app, "il blocco estratto deve comunque avviare lo scheduler"
-    # Il punto del pin: il websocket parte una volta, e PRIMA di qualunque
-    # altra cosa nel blocco che potrebbe dipenderne (oggi: lo scheduler) --
-    # indipendentemente dal fatto che lo scheduler iniettato tocchi il
-    # websocket lui stesso (qui non lo fa affatto).
-    assert ordine == ["start_websocket", "scheduler.start"]
+    def load(cls, data_dir):
+        ordine.append("chat_settings.load")
+        return real_load(cls, data_dir)
+
+    with mock.patch.object(AsyncIOScheduler, "start", start), \
+            mock.patch.object(ChatSettings, "load", classmethod(load)):
+        async with started_with(tmp_path, house_class=House) as app:
+            assert isinstance(app["chat_settings"], ChatSettings)
+            assert isinstance(app["scheduler"], AsyncIOScheduler)
+
+    # Il punto del pin: il websocket parte UNA volta, e PRIMA di qualunque
+    # altra cosa che potrebbe dipenderne (oggi: le impostazioni e lo
+    # schedulatore) -- indipendentemente dal fatto che lo schedulatore tocchi
+    # il websocket lui stesso (non lo fa).
+    assert ordine == ["start_websocket", "chat_settings.load", "scheduler.start"]

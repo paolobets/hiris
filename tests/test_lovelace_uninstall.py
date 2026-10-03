@@ -20,9 +20,7 @@ Cosa difendono i test nuovi -- le tre regole di
 """
 import asyncio
 import contextlib
-import inspect
 import os
-import textwrap
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -469,49 +467,57 @@ def test_find_ha_config_dir_not_mounted():
 # I test qui sopra esercitano le tre funzioni, ma nessuno verificava che
 # l'avvio le invocasse: un rewire futuro che perdesse quella riga avrebbe
 # spento la disinstallazione **a suite verde**, ed e' esattamente la classe di
-# difetto che questo ramo continua a trovare. Il pin non e' un `in` sul
-# sorgente: estrae il blocco VERO da `_on_startup` (stessa tecnica di
-# `tests/test_websocket_startup.py`) e lo **esegue** isolato, cosi' prova anche
-# che gli argomenti siano quelli giusti.
+# difetto che questo ramo continua a trovare. Fino al 03/10/2026 il blocco si
+# ritagliava dal testo di `_on_startup` e si eseguiva isolato; adesso l'app si
+# avvia davvero (`tests/_avvio.py::started_with`), con la funzione di modulo
+# sostituita da un doppio che ricorda con cosa l'avvio l'ha chiamata.
 
-def _carica_blocco_disinstallazione():
-    """Estrae da `_on_startup` il blocco che disinstalla la card e lo compila."""
-    src = inspect.getsource(server._on_startup)
-    inizio = src.index('    hiris_slug = os.environ.get("HIRIS_SLUG"')
-    fine_marcatore = "        hiris_slug,\n    )"
-    fine = src.index(fine_marcatore, inizio) + len(fine_marcatore)
-    corpo = textwrap.dedent(src[inizio:fine])
-    sorgente = (
-        "async def _check(os, ha_base_url, _disinstalla_card_lovelace):\n"
-        + textwrap.indent(corpo, "    ")
-    )
-    spazio: dict = {}
-    exec(compile(sorgente, "<_on_startup disinstalla card>", "exec"), spazio)
-    return spazio["_check"]
+async def _uninstall_call():
+    """Gli argomenti con cui l'avvio vero ha chiamato la disinstallazione."""
+    import tempfile
+
+    from tests._avvio import started_with
+
+    disinstalla = AsyncMock()
+    with patch.object(server, "_disinstalla_card_lovelace", disinstalla), \
+            tempfile.TemporaryDirectory() as data_dir:
+        async with started_with(data_dir):
+            pass
+    disinstalla.assert_awaited_once()
+    return disinstalla.await_args
 
 
 @pytest.mark.asyncio
 async def test_l_avvio_disinstalla_la_card_con_gli_argomenti_giusti(monkeypatch):
-    """Il blocco vero di `_on_startup`, eseguito: chiama, e con cosa."""
+    """L'avvio vero: chiama, e con cosa. L'indirizzo e' quello che l'avvio
+    legge da `HA_BASE_URL` (il montaggio lo punta a un posto che non
+    risponde).
+
+    Mutazione ESEGUITA (03/10/2026): tolta da `_on_startup` la chiamata a
+    `_disinstalla_card_lovelace` -- rossa (`Expected mock to have been
+    awaited once. Awaited 0 times.`)."""
+    from tests._avvio import fotografia_porte
+
     monkeypatch.setenv("HIRIS_SLUG", "hiris-di-casa")
     monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
-    check = _carica_blocco_disinstallazione()
-    disinstalla = AsyncMock()
 
-    await check(os, "http://supervisor/core", disinstalla)
+    chiamata = await _uninstall_call()
 
-    disinstalla.assert_awaited_once_with(
-        "http://supervisor/core", "token-del-supervisor", "hiris-di-casa")
+    assert chiamata.args == (fotografia_porte.NOWHERE, "token-del-supervisor",
+                             "hiris-di-casa")
 
 
 @pytest.mark.asyncio
 async def test_l_avvio_usa_lo_slug_predefinito_se_HIRIS_SLUG_non_c_e(monkeypatch):
-    """Senza la variabile d'ambiente si disinstalla comunque, da `hiris`."""
+    """Senza la variabile d'ambiente si disinstalla comunque, da `hiris`.
+
+    Mutazione ESEGUITA (03/10/2026): predefinito di `HIRIS_SLUG` `"hiris"` ->
+    `"hiris-card"` -- rossa."""
+    from tests._avvio import fotografia_porte
+
     monkeypatch.delenv("HIRIS_SLUG", raising=False)
     monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
-    check = _carica_blocco_disinstallazione()
-    disinstalla = AsyncMock()
 
-    await check(os, "http://supervisor/core", disinstalla)
+    chiamata = await _uninstall_call()
 
-    disinstalla.assert_awaited_once_with("http://supervisor/core", "", "hiris")
+    assert chiamata.args == (fotografia_porte.NOWHERE, "", "hiris")

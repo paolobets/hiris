@@ -379,7 +379,7 @@ _NOTE_ITALIANE = frozenset({
     "_app_col_ponte", "_archivio_con_una_casa",
     "_casa_con_aree", "_casa_con_sensore",
     "_casa_sala_da_pranzo",
-    "_casa_senza_nomi", "_che_solleva", "_chiamate_a_salva",
+    "_casa_senza_nomi", "_chiamate_a_salva",
     "_chiavi_lette_da_run_sh", "_chiavi_prodotte_dalla_porta",
     "_codice_senza_commenti", "_con_registro", "_con_strumenti_e_processo",
     "_cosa_non_esiste", "_da_consegnare", "_da_quando", "_da_rileggere", "_da_salvare",

@@ -93,17 +93,7 @@ ADMITTED: dict[str, str] = {
     "test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon":
         _NOT_IN_PLAN + " (variabili d'ambiente cercate nel solo `server.py`)",
     "test_config_page.py::test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti": _TASK_7,
-    "test_construction_wiring.py::_blocco_risanamento_costruzioni": _TASK_6,
-    "test_keeper_wiring.py::_load_costruzione_archivi": _TASK_6,
-    "test_keeper_wiring.py::_load_battito_avvio": _TASK_6,
-    "test_keeper_wiring.py::_load_battito_closure": _TASK_6,
-    "test_lovelace_uninstall.py::_carica_blocco_disinstallazione": _TASK_6,
-    "test_mind_wiring.py::_estrai_funzione_innestata": _TASK_5,
-    "test_mind_wiring.py::_estrai_blocco_riparazione_avvio": _TASK_6,
-    "test_mind_wiring.py::test_se_la_riaggregazione_solleva_l_avvio_prosegue": _TASK_6,
-    "test_startup_legacy_db_silence.py::_load_silence_check": _TASK_6,
     "test_submit_chat_reply_guards.py::_load_real_submit_chat_reply": _TASK_6,
-    "test_websocket_startup.py::_load_avvio_websocket": _TASK_6,
 }
 
 

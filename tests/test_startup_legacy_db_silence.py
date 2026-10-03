@@ -13,62 +13,60 @@ Resta `chatbots.json` (con il suo predecessore `agents.json`): non e' fra i
 residui che si cancellano, per decisione del proprietario, e il suo annuncio
 dice il vero.
 
-Il blocco si estrae dal sorgente REALE di `_on_startup` (`inspect.getsource`)
-invece di tenerne una copia a mano che potrebbe divergere in silenzio dal
-codice spedito.
+Fino al 03/10/2026 il blocco si ritagliava dal testo di `_on_startup` e si
+eseguiva isolato; adesso l'app si avvia davvero (`tests/_avvio.py`) sulla
+`data_dir` della prova, e si legge il registro di `server.py`.
 """
-import inspect
 import logging
-import textwrap
 
-from hiris.app import server
-
-
-def _load_silence_check(path_literal: str, next_marker: str):
-    """Estrae dal sorgente vero di `_on_startup` il blocco che controlla
-    `os.path.exists(..., "<path_literal>")` e logga se presente, fino a
-    (esclusa) `next_marker`. Lo incapsula in `def _check(data_dir, os,
-    logger): ...` cosi' da poterlo eseguire isolato."""
-    src = inspect.getsource(server._on_startup)
-    start = src.index(f'    _{path_literal}')
-    end = src.index(next_marker, start)
-    body = textwrap.dedent(src[start:end])
-    func_src = "def _check(data_dir, os, logger):\n" + textwrap.indent(body, "    ")
-    namespace: dict = {}
-    exec(compile(func_src, f"<_on_startup {path_literal} silence check>", "exec"), namespace)
-    return namespace["_check"]
+import pytest
 
 
-def test_chatbots_json_presence_logged_when_file_exists(tmp_path, caplog):
-    check = _load_silence_check(
-        "chatbots_json_path", "scheduler = AsyncIOScheduler()",
-    )
+async def _startup_lines(data_dir, caplog) -> list[str]:
+    """Le righe che l'avvio vero ha scritto nel registro di `server.py`."""
+    from tests._avvio import SERVER_LOGGER, started_with
+
+    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+        async with started_with(data_dir):
+            pass
+    return [rec.getMessage() for rec in caplog.records
+            if rec.name == SERVER_LOGGER]
+
+
+def _announced(lines) -> bool:
+    return any("chatbots.json" in line and "installazione precedente" in line
+               for line in lines)
+
+
+@pytest.mark.asyncio
+async def test_chatbots_json_presence_logged_when_file_exists(tmp_path, caplog):
+    """Mutazione ESEGUITA (03/10/2026): tolto il `logger.info` del silenzio
+    dichiarato -- rossa."""
     (tmp_path / "chatbots.json").write_text("{}")
-    with caplog.at_level("INFO"):
-        check(str(tmp_path), __import__("os"), logging.getLogger("test_chatbots_json_silence"))
-    assert any("chatbots.json" in rec.message and "installazione precedente" in rec.message
-               for rec in caplog.records)
+    assert _announced(await _startup_lines(tmp_path, caplog))
 
 
-def test_agents_json_legacy_presence_logged_when_file_exists(tmp_path, caplog):
+@pytest.mark.asyncio
+async def test_agents_json_legacy_presence_logged_when_file_exists(tmp_path, caplog):
     """Il predecessore di chatbots.json (prima della rinomina SP-4 Fase A)
-    deve dichiararsi anche da solo, senza che chatbots.json esista."""
-    check = _load_silence_check(
-        "chatbots_json_path", "scheduler = AsyncIOScheduler()",
-    )
+    deve dichiararsi anche da solo, senza che chatbots.json esista.
+
+    Mutazione ESEGUITA (03/10/2026): la condizione guarda il solo
+    `chatbots.json` -- rossa."""
     (tmp_path / "agents.json").write_text("{}")
-    with caplog.at_level("INFO"):
-        check(str(tmp_path), __import__("os"), logging.getLogger("test_agents_json_legacy_silence"))
-    assert any("chatbots.json" in rec.message and "installazione precedente" in rec.message
-               for rec in caplog.records)
+    assert _announced(await _startup_lines(tmp_path, caplog))
 
 
-def test_chatbots_json_silent_when_both_files_absent(tmp_path, caplog):
-    check = _load_silence_check(
-        "chatbots_json_path", "scheduler = AsyncIOScheduler()",
-    )
-    with caplog.at_level("INFO"):
-        check(str(tmp_path), __import__("os"), logging.getLogger("test_chatbots_json_silence"))
-    assert not caplog.records, (
-        "ne' chatbots.json ne' agents.json sul disco -- nessun log deve uscire"
+@pytest.mark.asyncio
+async def test_chatbots_json_silent_when_both_files_absent(tmp_path, caplog):
+    """Sull'avvio intero il registro scrive altre righe: si guarda che non
+    scriva QUESTA (la prova di prima, sul blocco isolato, guardava il
+    silenzio totale del blocco -- che e' la stessa cosa, perche' il blocco
+    scrive solo lei).
+
+    Mutazione ESEGUITA (03/10/2026): la condizione resa `if True:` -- rossa."""
+    lines = await _startup_lines(tmp_path, caplog)
+    assert lines, "il registro dell'avvio non ha catturato niente"
+    assert not _announced(lines), (
+        "ne' chatbots.json ne' agents.json sul disco -- nessun annuncio"
     )

@@ -13,12 +13,10 @@ avrebbe lasciato nascere (task-5-correzioni.md):
        peggio di non sapere, sapere il falso e scriverlo nell'archivio.
 """
 import asyncio
-import inspect
 import logging
 import re
-import textwrap
 from datetime import UTC
-from unittest.mock import create_autospec
+from unittest import mock
 
 import pytest
 
@@ -27,9 +25,9 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
-from hiris.app.proxy.entity_cache import EntityCache, _to_minimal
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.server import watch_system_conditions
+from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
 from tests._contracts import assert_stessa_firma
 
 # --------------------------------------------------------------------------
@@ -41,29 +39,17 @@ from tests._contracts import assert_stessa_firma
 # schedulatore dell'app avviata (`tests/test_lavori_periodici.py`).
 # --------------------------------------------------------------------------
 
-def _estrai_funzione_innestata(nome_funzione: str) -> str:
-    """Il sorgente VERO di una funzione innestata in `_on_startup` (`async
-    def <nome_funzione>...`), dalla sua riga di definizione alla riga vuota
-    che la separa dal codice seguente (tipicamente `scheduler.add_job(...)`)
-    -- la stessa tecnica di `tests/test_websocket_startup.py` e
-    `tests/test_nightly_pruning.py`: si esegue il sorgente vero isolato,
-    non un suo doppione riscritto a mano che potrebbe divergere da cio' che
-    gira davvero."""
-    src = inspect.getsource(server._on_startup)
-    inizio = src.index(f"async def {nome_funzione}(")
-    fine = src.index("\n\n", inizio)
-    return textwrap.dedent(src[inizio:fine])
+def _job(app, job_id: str):
+    """Il lavoro VERO che l'avvio ha registrato sullo schedulatore. Fino al
+    03/10/2026 la funzione si ritagliava dal testo di `_on_startup` e si
+    eseguiva con le sue variabili libere ricopiate a mano in un dizionario."""
+    job = app["scheduler"].get_job(job_id)
+    assert job is not None, f"il lavoro {job_id} non e' registrato"
+    return job.func
 
 
-def _carica_funzione_innestata(nome_funzione: str, globali: dict):
-    """Compila il blocco estratto in un namespace con le variabili libere
-    (closure di `_on_startup`: `app`, `logger`, `_time`, ...) gia' dentro
-    `globali` -- cosi' la funzione, una volta chiamata, le risolve da li'
-    esattamente come farebbe dentro `_on_startup` vera."""
-    namespace = dict(globali)
-    exec(compile(_estrai_funzione_innestata(nome_funzione),
-                f"<_on_startup {nome_funzione}>", "exec"), namespace)
-    return namespace[nome_funzione]
+def _server_lines(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == SERVER_LOGGER]
 
 
 class _ArchivioOsservazioniFinto:
@@ -84,82 +70,67 @@ class _ArchivioOsservazioniFinto:
         return self._quanti
 
 
-def _tempo_fisso(valore: float):
-    class _Tempo:
-        @staticmethod
-        def time():
-            return valore
-    return _Tempo()
+async def _prune_with(app, finto, caplog, level):
+    """Il lavoro `hiris_mind_pruning` dell'app avviata, con l'archivio delle
+    osservazioni sostituito per la durata della prova."""
+    with mock.patch.dict(app, {"observations": finto}), \
+            caplog.at_level(level, logger=SERVER_LOGGER):
+        await _job(app, "hiris_mind_pruning")()
 
 
-def test_la_potatura_logga_il_numero_vero_di_giorni(caplog):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_potatura_logga_il_numero_vero_di_giorni(started_app, caplog):
     """Punto 1, seconda meta' (task-5-fix-brief.md): il test precedente
     verificava che la riga `giorni = READING_RETENTION_S // 86400`
     ESISTESSE nel sorgente, non che la riga di log la USASSE davvero -- un
     mutante che tiene l'assegnazione morta e passa `21` letterale al posto
-    di `giorni` restava verde. Qui si esegue la funzione vera e si legge il
+    di `giorni` restava verde. Qui si esegue il lavoro vero e si legge il
     messaggio prodotto.
 
-    Mutazione provata a mano: nella riga di log, `giorni` sostituito con
-    `21` letterale (l'assegnazione morta restava). Rosso:
-    `AssertionError: assert 'cervello: 5 cambi oltre i 21 giorni sono
-    usciti' == 'cervello: 5 cambi oltre i 22 giorni sono usciti'`.
-    Ripristinato subito dopo."""
+    Mutazione ESEGUITA (03/10/2026, sul lavoro dell'app avviata): nella riga
+    di log `days` sostituito con `21` letterale -- rossa (`'... oltre i 21
+    giorni ...' == '... oltre i 22 giorni ...'`)."""
     assert READING_RETENTION_S // 86400 == 22
     finto = _ArchivioOsservazioniFinto(quanti=5)
-    logger_test = logging.getLogger("test_potatura_giorni")
-    job = _carica_funzione_innestata("_prune_observations", {
-        "app": {"observations": finto}, "_time": _tempo_fisso(0.0),
-        "logger": logger_test, "READING_RETENTION_S": READING_RETENTION_S,
-    })
 
-    with caplog.at_level(logging.INFO, logger="test_potatura_giorni"):
-        asyncio.run(job())
+    await _prune_with(started_app, finto, caplog, logging.INFO)
 
     assert finto.chiamate == 1
-    [messaggio] = [r.getMessage() for r in caplog.records]
+    [messaggio] = _server_lines(caplog)
     assert messaggio == "cervello: 5 cambi oltre i 22 giorni sono usciti"
 
 
-def test_la_potatura_non_logga_niente_quando_non_pota_niente(caplog):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_potatura_non_logga_niente_quando_non_pota_niente(started_app, caplog):
     """`if quanti:` -- una notte senza niente da potare non deve produrre
-    una riga di log vuota di significato."""
+    una riga di log vuota di significato.
+
+    Mutazione ESEGUITA (03/10/2026): `if count:` -> `if True:` -- rossa."""
     finto = _ArchivioOsservazioniFinto(quanti=0)
-    logger_test = logging.getLogger("test_potatura_silenziosa")
-    job = _carica_funzione_innestata("_prune_observations", {
-        "app": {"observations": finto}, "_time": _tempo_fisso(0.0),
-        "logger": logger_test, "READING_RETENTION_S": READING_RETENTION_S,
-    })
 
-    with caplog.at_level(logging.INFO, logger="test_potatura_silenziosa"):
-        asyncio.run(job())
+    await _prune_with(started_app, finto, caplog, logging.INFO)
 
-    assert caplog.records == []
+    assert finto.chiamate == 1
+    assert _server_lines(caplog) == []
 
 
-def test_la_potatura_non_lascia_uscire_l_eccezione(caplog):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_potatura_non_lascia_uscire_l_eccezione(started_app, caplog):
     """Punto 3 del mandato: `_prune_observations` era l'unico dei tre lavori
     SENZA un try/except suo -- un guasto di SQLite alle tre di notte finiva
     nel registro di apscheduler senza il prefisso 'cervello:', a differenza
     dei due lavori fratelli. Qui si prova che un errore di `prune()` sia
     catturato e loggato con quel prefisso, non lasciato propagare.
 
-    La mutazione, qui, e' lo stato originale (nessun try/except): e' cio'
-    che questo test trova rosso PRIMA della correzione -- `asyncio.run(job())`
-    solleva `RuntimeError('disco pieno')` invece di tornare, e il test fallisce
-    con quell'eccezione."""
+    Mutazione ESEGUITA (03/10/2026): la rete del lavoro ristretta
+    (`except Exception` -> `except KeyError`) -- rossa (`RuntimeError: disco
+    pieno` esce dal lavoro)."""
     finto = _ArchivioOsservazioniFinto(pota_solleva=True)
-    logger_test = logging.getLogger("test_potatura_rete")
-    job = _carica_funzione_innestata("_prune_observations", {
-        "app": {"observations": finto}, "_time": _tempo_fisso(0.0),
-        "logger": logger_test, "READING_RETENTION_S": READING_RETENTION_S,
-    })
 
-    with caplog.at_level(logging.WARNING, logger="test_potatura_rete"):
-        asyncio.run(job())  # non deve sollevare
+    await _prune_with(started_app, finto, caplog, logging.WARNING)  # non solleva
 
     assert finto.chiamate == 1
-    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
+    assert any(line.startswith("cervello:") for line in _server_lines(caplog))
 
 
 # --------------------------------------------------------------------------
@@ -351,49 +322,37 @@ assert_stessa_firma(HomeSpace.reference_frame, _ArchivioCasaCheSolleva.reference
                      nome="reference_frame")
 
 
-def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_non_si_legge(caplog):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_non_si_legge(
+        started_app, caplog):
     """Punto 2(a): se `reference_frame()` solleva, il warning
     contestualizzato ('cervello: ...') deve partire comunque -- non finire
     nel registro di apscheduler senza prefisso, cosa che succede quando
     `fuso`/`ieri` sono calcolati FUORI dal try.
 
-    Prima della correzione questo test e' rosso per davvero, non per un
-    assert: `asyncio.run(job())` solleva `RuntimeError`, perche' l'eccezione
-    di `reference_frame()` esce dalla funzione innestata prima ancora
-    di entrare nel try.
+    L'assert e' sul messaggio preciso, non sul solo prefisso: un errore
+    diverso inghiottito dallo stesso `except` (un `NameError`, un refuso)
+    produrrebbe anche lui un messaggio che inizia per 'cervello:'.
 
-    **Correzione di riparazione-impoverisce-brief.md, appendice punto 4.**
-    Prima assertava SOLO il prefisso, come il test gemello sotto assertava
-    SOLO 'cervello:' prima della sua correzione: un `NameError` dentro la
-    funzione estratta (una variabile libera mancante in `globali`, per un
-    refuso futuro in questa lista) e' anch'esso un'`Exception`, viene
-    inghiottito dallo stesso `except`, e produce un messaggio che INIZIA per
-    'cervello:' esattamente come il `RuntimeError` che questo test dichiara
-    di provare -- indistinguibile con un `assert ... .startswith(...)`. Qui
-    l'assert e' sul messaggio preciso, come nel test gemello."""
-    logger_test = logging.getLogger("test_aggrega_ieri_fuso")
-    job = _carica_funzione_innestata("_aggrega_ieri", {
-        "app": {"home_space_store": _ArchivioCasaCheSolleva()},
-        "ha_client": None, "logger": logger_test,
-        "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-        "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
-        "day_boundaries": server.day_boundaries,
-        "_report_ingredients": server._report_ingredients,
-        "_timezone_from_home_space_store": server._timezone_from_home_space_store,
-    })
+    Fino al 03/10/2026 la funzione si ritagliava dal testo e si eseguiva con
+    le sue variabili libere ricopiate a mano; adesso gira il lavoro
+    `hiris_mind_aggregation` dell'app avviata, con l'anagrafe sostituita.
 
-    with caplog.at_level(logging.WARNING, logger="test_aggrega_ieri_fuso"):
-        asyncio.run(job())  # non deve sollevare
+    Mutazione ESEGUITA (03/10/2026): la riga del fuso spostata FUORI dal
+    try -- rossa (`RuntimeError` esce dal lavoro)."""
+    with mock.patch.dict(started_app, {"home_space_store": _ArchivioCasaCheSolleva()}), \
+            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+        await _job(started_app, "hiris_mind_aggregation")()  # non deve sollevare
 
     assert any(
         "cervello: aggregazione notturna fallita (RuntimeError: sqlite del "
-        "sistema di riferimento irraggiungibile)" in r.getMessage()
-        for r in caplog.records)
+        "sistema di riferimento irraggiungibile)" in line
+        for line in _server_lines(caplog))
 
 
-def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, caplog):
-    """**Il giro della notte, eseguito fino in fondo**, con le sole variabili
-    libere che il suo corpo nomina oggi.
+@pytest.mark.asyncio
+async def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, caplog):
+    """**Il giro della notte, eseguito fino in fondo.**
 
     Nessuna prova lo eseguiva fino al resoconto: quella sopra solleva alla
     prima riga. E il corpo e' tutto dentro un `except Exception` che logga e
@@ -401,35 +360,35 @@ def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, caplog):
     dopo la sua uscita, il 01/10/2026) diventerebbe un `NameError` ogni notte,
     inghiottito, e nessun resoconto nascerebbe senza che niente diventi rosso.
 
-    Mutazione ESEGUITA: rimettere la chiamata
+    Dal 03/10/2026 gira il lavoro VERO dell'app avviata (un'app sua: scrive
+    un resoconto nel suo archivio), sulla casa sintetica -- con l'anagrafe
+    vera, che la prova di prima sostituiva con `None`. La casa congelata non
+    ha statistiche: l'anagrafe e' tolta per la durata del giro, come prima,
+    perche' `_report_ingredients` non le chieda; e la riparazione d'avvio e'
+    spenta, perche' il resoconto di ieri lo scriva il giro e non lei.
+
+    Mutazione ESEGUITA (03/10/2026): rimessa la chiamata
     `await build_balances(ha_client, ...)` prima di `_report_ingredients` --
     rossa (il resoconto di ieri non c'e', e il log dice `NameError`).
     """
-    from hiris.app.mind.store import ObservationsStore
+    from tests._avvio import started_with
 
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    logger_test = logging.getLogger("test_aggrega_ieri_fino_in_fondo")
-    try:
-        job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": None, "knowledge": None,
-                    "observations": archivio, "type_judgments": REPO_JUDGMENTS},
-            "ha_client": None, "logger": logger_test,
-            "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
-            "_report_ingredients": server._report_ingredients,
-            "_timezone_from_home_space_store": server._timezone_from_home_space_store,
-        })
+    async def _no_repair(app, ha_client, **kwargs):
+        """La riparazione d'avvio scriverebbe gia' ieri e l'altro ieri: qui
+        si guarda cio' che scrive il giro della notte, e lui solo."""
 
-        with caplog.at_level(logging.INFO, logger="test_aggrega_ieri_fino_in_fondo"):
-            asyncio.run(job())
-
-        ieri = (server.datetime.now(server.home_space_zone(None))
-                - server.timedelta(days=1)).strftime("%Y-%m-%d")
-        assert not [r for r in caplog.records if r.levelno >= logging.WARNING], (
-            [r.getMessage() for r in caplog.records])
-        assert [r["giorno"] for r in archivio.reports(limit=5)] == [ieri]
-    finally:
-        archivio.close()
+    with mock.patch.object(server, "reaggregate_last_two_days", _no_repair):
+        async with started_with(tmp_path) as app:
+            assert app["observations"].reports(limit=5) == []
+            with mock.patch.dict(app, {"home_space_store": None}), \
+                caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+                await _job(app, "hiris_mind_aggregation")()
+            ieri = (server.datetime.now(server.home_space_zone(None))
+                    - server.timedelta(days=1)).strftime("%Y-%m-%d")
+            avvisi = [r.getMessage() for r in caplog.records
+                      if r.name == SERVER_LOGGER and r.levelno >= logging.WARNING]
+            assert not avvisi, avvisi
+            assert [r["giorno"] for r in app["observations"].reports(limit=5)] == [ieri]
 
 
 def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tmp_path):
@@ -514,156 +473,59 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         archivio.close()
 
 
-def _estrai_blocco_riparazione_avvio() -> str:
-    """Il sorgente VERO di `_on_startup`, dalla creazione di `home_space_store`
-    alla fine del try/except della riparazione all'avvio -- stessa tecnica di
-    `_estrai_funzione_innestata`, ma su una FETTA contigua invece che su una
-    funzione innestata: e' il modo di eseguire per davvero l'ordine fra le
-    due righe, invece di dedurlo confrontando due indici di stringa.
-
-    Se la chiamata alla riparazione torna a stare PRIMA della creazione di
-    `home_space_store` (la regressione del punto 1), il marcatore di fine non si
-    trova piu' DOPO quello di inizio, e `sorgente.index(marcatore_fine,
-    inizio)` solleva `ValueError` -- un rosso esplicito sull'estrazione
-    stessa, non un'asserzione che potrebbe passare per la ragione sbagliata."""
-    src = inspect.getsource(server._on_startup)
-    marcatore_inizio = 'home_space_store = HomeSpace(data_dir)'
-    marcatore_fine = '"fallita (%s: %s)", type(exc).__name__, exc)'
-    inizio = src.index(marcatore_inizio)
-    # Dall'INIZIO DELLA RIGA, non dal marcatore: altrimenti la prima riga
-    # perderebbe la sua indentazione (il marcatore comincia dopo gli spazi)
-    # e `textwrap.dedent` calcolerebbe un prefisso comune vuoto -- ogni riga
-    # successiva, ancora indentata, diventerebbe un `IndentationError`.
-    inizio_riga = src.rfind("\n", 0, inizio) + 1
-    fine = src.index(marcatore_fine, inizio) + len(marcatore_fine)
-    return textwrap.dedent(src[inizio_riga:fine])
-
-
-def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path):
+@pytest.mark.asyncio
+async def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path):
     """La sorveglianza per COMPORTAMENTO del punto 1 (CRITICAL,
-    cancello-rilascio-brief.md): si esegue la fetta VERA di `_on_startup` che
-    crea `home_space_store`, lo mette in `app`, e subito dopo chiama la
-    riparazione -- con la riparazione sostituita da una spia che registra
-    cosa ha ricevuto. Non un `assert` su una posizione di stringa: la prova
-    che, quando la riparazione gira per davvero, il collaboratore che le
-    serve per leggere il fuso della casa (`home_space_store`, non `None`) e'
-    gia' li'.
+    cancello-rilascio-brief.md): quando la riparazione gira per davvero, il
+    collaboratore che le serve per leggere il fuso della casa
+    (`home_space_store`, non `None`) e' gia' li' -- e l'anagrafe e' gia'
+    LETTA, non solo costruita.
 
-    Le finte di TUTTI gli altri test di questo file (sopra) passano
-    `"home_space_store": None` a `reaggregate_last_two_days` -- fedeli
-    alla produzione ROTTA, come rilevato dal cancello del rilascio: nessuna
-    di loro poteva vedere questo difetto, per costruzione. Questo test e' il
-    solo che guarda l'ORDINE VERO invece di darlo per assunto.
+    Fino al 03/10/2026 la prova ritagliava dal testo di `_on_startup` la
+    fetta fra la creazione dell'anagrafe e la riparazione, e la eseguiva con
+    doppi. Adesso l'avvio gira davvero (`tests/_avvio.py::started_with`, sulla
+    casa sintetica), con la riparazione sostituita da una spia che registra
+    cosa ha ricevuto. (Che l'anagrafe e il sapere esistano gia' in `app` lo
+    guarda anche `test_cablaggio_dell_avvio.py`; questa guarda che l'anagrafe
+    sia PIENA e sia quella dell'app.)
 
-    Mutazione ESEGUITA: spostando a mano la chiamata alla riparazione (e il
-    suo blocco di commento) di nuovo sopra la riga `home_space_store =
-    HomeSpace(...)`, com'era prima di questo giro -- `_estrai_blocco_
-    riparazione_avvio` solleva `ValueError: substring not found`, perche' il
-    marcatore di fine non compare piu' dopo quello di inizio. Rosso,
-    esplicito. Ripristinato subito dopo."""
-    import os as os_reale
+    Mutazione ESEGUITA (03/10/2026, sull'avvio vero): la riparazione (col
+    suo try/except) spostata sopra `await rebuild(...)` dell'anagrafe --
+    rossa («la riparazione ha ricevuto un'anagrafe vuota»)."""
+    from tests._avvio import started_with
 
     ricevuto: dict = {}
 
-    async def _spia(app, ha_client):
+    async def _spia(app, ha_client, **kwargs):
         casa = app.get("home_space_store")
         ricevuto["home_space_store"] = casa
         ricevuto["anagrafe"] = casa.read() if casa is not None else None
 
-    cliente = create_autospec(HAClient, instance=True)
-    cliente.read_registries.return_value = (
-        {"entita": [{"entity_id": "sensor.frigo", "device_id": "d1"}],
-         "dispositivi": [{"id": "d1", "name": "Frigo"}],
-         "piani": [], "aree": [], "etichette": [], "categorie": [], "integrazioni": []},
-        [])
-    cliente.get_config.return_value = {"time_zone": "Europe/Rome"}
-    specchio = EntityCache()
-    specchio._loaded = True
-
-    namespace = {
-        "os": os_reale, "data_dir": str(tmp_path), "HomeSpace": server.HomeSpace,
-        "app": {}, "ha_client": cliente, "entity_cache": specchio,
-        "rebuild": server.rebuild,
-        "schedule_registry_rebuild": lambda *a, **k: (lambda *_: None),
-        "mirror_reload_listener": lambda *a, **k: (lambda *_: None),
-        "reaggregate_last_two_days": _spia,
-        "logger": logging.getLogger("test_riparazione_riceve_home_space_store"),
-    }
-    corpo = _estrai_blocco_riparazione_avvio()
-    func_src = "async def _check():\n" + textwrap.indent(corpo, "    ")
-    exec(compile(func_src, "<_on_startup riparazione avvio>", "exec"), namespace)
-
-    try:
-        asyncio.run(namespace["_check"]())
-        assert ricevuto.get("home_space_store") is not None
-        assert isinstance(ricevuto["home_space_store"], server.HomeSpace)
-        assert ricevuto["home_space_store"] is namespace["app"]["home_space_store"]
-        # **E l'anagrafe dev'essere gia' LETTA, non solo costruita.** Misurato
-        # dal vivo il 10/09/2026 sulla v3.24.0: la riparazione girava prima di
-        # `rebuild`, quindi leggeva una casa vuota -- e `build_balances`
-        # (uscito il 01/10/2026) non trovava un solo candidato: i due giorni
-        # riparati all'avvio nascevano SENZA bilancio. Oggi a leggerla e'
-        # `_report_ingredients`, che su una casa vuota non trova nessun
-        # dispositivo e quindi nessuna ricetta: il resoconto riparato
-        # nascerebbe senza misure.
-        assert ricevuto["anagrafe"].get("entita"), (
-            "la riparazione ha ricevuto un'anagrafe vuota: gira prima di rebuild")
-    finally:
-        namespace["app"]["home_space_store"].close()
+    with mock.patch.object(server, "reaggregate_last_two_days", _spia):
+        async with started_with(tmp_path) as app:
+            assert ricevuto.get("home_space_store") is not None
+            assert isinstance(ricevuto["home_space_store"], server.HomeSpace)
+            assert ricevuto["home_space_store"] is app["home_space_store"]
+    # **E l'anagrafe dev'essere gia' LETTA, non solo costruita.** Misurato
+    # dal vivo il 10/09/2026 sulla v3.24.0: la riparazione girava prima di
+    # `rebuild`, quindi leggeva una casa vuota -- e `build_balances`
+    # (uscito il 01/10/2026) non trovava un solo candidato: i due giorni
+    # riparati all'avvio nascevano SENZA bilancio. Oggi a leggerla e'
+    # `_report_ingredients`, che su una casa vuota non trova nessun
+    # dispositivo e quindi nessuna ricetta: il resoconto riparato
+    # nascerebbe senza misure.
+    assert ricevuto["anagrafe"].get("entita"), (
+        "la riparazione ha ricevuto un'anagrafe vuota: gira prima di rebuild")
 
 
-def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
-    """Comportamento, non testo: si esegue il VERO try/except del punto di
-    chiamata, con `reaggregate_last_two_days` sostituita da una finta
-    che solleva `RuntimeError`, e si legge che l'avvio prosegue E logga quel
-    preciso errore -- non solo un qualunque messaggio con prefisso
-    'cervello:' (quella riga sola non distinguerebbe un `RuntimeError`
-    catturato per davvero da un errore diverso catturato per sbaglio).
-
-    **Correzione di cablaggio-pulizia-brief.md, punto 2.** La versione
-    precedente ancorava il blocco con `sorgente.rindex("try:", 0,
-    sorgente.index(chiamata))` -- "il `try:` piu' vicino prima della
-    chiamata". Con la correzione presente (il `try/except` qui sotto) quel
-    `try:` e' quello giusto, e il test passa -- ma per la ragione sbagliata:
-    verificato a mano togliendo il `try/except` che avvolge la chiamata
-    (mutazione naturale, lo stato pre-correzione), il `rindex` risale al
-    `try:` PRECEDENTE (quello di `watch_system_conditions`, qui
-    accanto), e il blocco che ne esce contiene un `await` fuori da una
-    funzione `async` -- il test arrossisce con `SyntaxError`, non con
-    `RuntimeError`. Rosso per accidente: se il blocco precedente diventasse
-    sincrono, o un altro `try` si frapponesse, sarebbe tornato verde senza
-    provare niente.
-
-    Qui l'ancora e' il blocco stesso -- il testo letterale che contiene sia
-    `try:` sia la chiamata, non "il try piu' vicino" -- quindi non puo' mai
-    agganciare un try estraneo: se il `try/except` sparisse, l'ancora non si
-    troverebbe piu' e `sorgente.index` solleverebbe, fermando il test con un
-    errore invece di un falso verde."""
-    sorgente = inspect.getsource(server._on_startup)
-    marcatore = ('    try:\n'
-                '        await reaggregate_last_two_days(app, ha_client)')
-    inizio = sorgente.index(marcatore)
-    fine = sorgente.index("\n\n", inizio)
-    corpo = textwrap.dedent(sorgente[inizio:fine])
-
-    async def _che_solleva(app, ha_client):
-        raise RuntimeError("archivio irraggiungibile")
-
-    logger_test = logging.getLogger("test_riaggrega_avvio_non_blocca")
-    namespace = {"app": {}, "ha_client": None,
-                "reaggregate_last_two_days": _che_solleva,
-                "logger": logger_test}
-    func_src = "async def _check():\n" + textwrap.indent(corpo, "    ")
-    exec(compile(func_src, "<_on_startup riaggregazione>", "exec"), namespace)
-
-    with caplog.at_level(logging.WARNING, logger="test_riaggrega_avvio_non_blocca"):
-        asyncio.run(namespace["_check"]())  # non deve sollevare
-
-    # Il comportamento vero: quel preciso RuntimeError e' stato catturato e
-    # loggato, non un altro errore qualsiasi.
-    assert any("RuntimeError: archivio irraggiungibile" in r.getMessage()
-              for r in caplog.records)
-    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
+# Qui stava `test_se_la_riaggregazione_solleva_l_avvio_prosegue`, che
+# ritagliava dal testo il try/except intorno alla riparazione d'avvio. E'
+# uscito il 03/10/2026: la stessa cosa la guarda, sull'avvio vero,
+# `tests/test_cablaggio_dell_avvio.py::
+# test_a_failing_startup_repair_does_not_stop_startup` -- la riparazione
+# solleva, l'avvio arriva in fondo, e il registro porta quel preciso errore
+# col prefisso «cervello:» (l'ultima parte e' stata aggiunta li', perche'
+# questa la guardava e quella no).
 
 
 #: I sapere aperti dalle prove, chiusi alla fine della sessione.
@@ -1778,7 +1640,8 @@ def test_una_cronaca_che_NON_si_rifa_NON_ferma_i_giorni_dopo(tmp_path, monkeypat
         archivio.close()
 
 
-def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(caplog):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(started_app, caplog):
     """Giro di correzioni 1, punto 8 (MEDIO): **il lavoro periodico non era
     pinnato da nessuna prova**.
 
@@ -1791,16 +1654,14 @@ def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(caplog):
     sempre: la casa smetterebbe di recuperare i giorni e **tutta la suite
     resterebbe verde**.
 
-    Si carica la funzione innestata col meccanismo gia' in uso qui sopra
-    (`_carica_funzione_innestata`), con una finta al posto di
-    `backfill_one_report`: se il nome nel sorgente non e' quello, la finta non
-    viene chiamata e il ramo di guardia scrive il suo warning.
+    Dal 03/10/2026 gira il lavoro VERO dello schedulatore dell'app avviata,
+    con una finta al posto di `backfill_one_report` nel modulo: se il nome
+    nel corpo non e' quello, la finta non viene chiamata e il ramo di
+    guardia scrive il suo warning.
 
-    Mutazione ESEGUITA: in `server.py`, `await backfill_one_report(app,
+    Mutazione ESEGUITA (03/10/2026): `await backfill_one_report(app,
     ha_client)` -> `await backfill_one_missing_report(app, ha_client)` --
-    rossa (`assert [] != []` sulle chiamate, e il warning «recupero dei
-    resoconti fallito (NameError: ...)»); ripristinata con l'editor, sha256
-    identico.
+    rossa (`assert [] == [...]` sulle chiamate).
     """
     chiamate = []
 
@@ -1808,21 +1669,15 @@ def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(caplog):
         chiamate.append((app, ha_client))
         return "2026-08-23"
 
-    logger_test = logging.getLogger("test_recupero_pinnato")
-    app_finta, cliente_finto = {"observations": None}, object()
-    job = _carica_funzione_innestata("_recupero_resoconti", {
-        "app": app_finta, "ha_client": cliente_finto,
-        "backfill_one_report": _finta, "logger": logger_test,
-    })
+    with mock.patch.object(server, "backfill_one_report", _finta), \
+            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+        await _job(started_app, "hiris_mind_backfill")()
 
-    with caplog.at_level(logging.WARNING, logger="test_recupero_pinnato"):
-        asyncio.run(job())
-
-    assert chiamate == [(app_finta, cliente_finto)], (
+    assert chiamate == [(started_app, started_app["ha_client"])], (
         "il giro deve chiamare `backfill_one_report` con l'app e il cliente di HA")
-    assert caplog.records == [], (
+    assert _server_lines(caplog) == [], (
         "un nome che non esiste finisce nel ramo di guardia invece che in un errore: "
-        f"{[r.getMessage() for r in caplog.records]}")
+        f"{_server_lines(caplog)}")
 
 
 def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_giorno(

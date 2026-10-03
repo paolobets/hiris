@@ -187,7 +187,7 @@ async def test_unfinished_constructions_heal_before_the_heartbeat(startup_steps)
             < _first(startup_steps, "add_job:hiris_keeper_heartbeat"))
 
 
-async def test_a_failing_startup_repair_does_not_stop_startup(tmp_path):
+async def test_a_failing_startup_repair_does_not_stop_startup(tmp_path, caplog):
     """La riparazione d'avvio sta in un `try/except` che non deve bloccare
     l'avvio: un cervello che non riparte perche' non e' riuscito a rifare
     l'altro ieri sarebbe peggio del buco che sta chiudendo. La prova vecchia
@@ -195,15 +195,30 @@ async def test_a_failing_startup_repair_does_not_stop_startup(tmp_path):
     qui la riparazione SOLLEVA, e l'avvio deve arrivare in fondo (l'ultimo
     passo dell'avvio pubblica `recompute_chain`).
 
+    E il registro porta QUEL preciso errore, col prefisso «cervello:»: un
+    errore diverso catturato per sbaglio dallo stesso `except` non si
+    distinguerebbe dal solo prefisso. (Questa meta' la guardava
+    `test_mind_wiring.py::test_se_la_riaggregazione_solleva_l_avvio_prosegue`,
+    uscita il 03/10/2026 perche' ritagliava il blocco dal testo.)
+
     Mutazione ESEGUITA: tolto il `try/except` intorno alla chiamata -- rossa
-    (l'avvio solleva `RuntimeError`)."""
+    (l'avvio solleva `RuntimeError`). Mutazione ESEGUITA (03/10/2026): il
+    `logger.warning` del ramo d'errore tolto -- rossa."""
+    import logging
+
+    from tests._avvio import SERVER_LOGGER
+
     async def broken(app, ha_client, **kwargs):
         raise RuntimeError("riparazione rotta")
 
-    with mock.patch.object(server, "reaggregate_last_two_days", broken):
+    with mock.patch.object(server, "reaggregate_last_two_days", broken), \
+            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                             RecordingHouse) as app:
             assert callable(app["recompute_chain"])
+    lines = [r.getMessage() for r in caplog.records if r.name == SERVER_LOGGER]
+    assert any(line.startswith("cervello:")
+               and "RuntimeError: riparazione rotta" in line for line in lines), lines
 
 
 # --------------------------------------------------------------------------

@@ -3,19 +3,10 @@ gli oggetti nuovi esistono, il battito e' registrato, le prese a meta' si
 risanano PRIMA che il battito possa girare, e tutto si chiude in
 `_on_cleanup`.
 
-Nessun test qui avvia `_on_startup` per intero -- e' la stessa disciplina
-gia' scritta in `tests/test_websocket_startup.py` ("review finale E3: nessun
-test avvia il boot vero", perche' `_on_startup` tocca il Supervisor, il
-websocket di Home Assistant, e una lunga catena di migrazioni una-tantum che
-non hanno niente a che fare con lo schedulatore). Chi ha scritto questo file
-lo ha verificato di persona: `server.create_app()` non accetta un parametro
-`data_dir` (a differenza di quanto ipotizzava il brief del task), e nessun
-test esistente chiama mai `server._on_startup(app)` per davvero -- l'unica
-convenzione che lo fa (`test_websocket_startup.py`) ESTRAE dal sorgente vero il
-solo blocco che le serve e lo esegue isolato, con doppi al posto di Home
-Assistant/scheduler. Questo file adotta la STESSA tecnica per i due blocchi
-nuovi di questo task (costruzione di cronaca/promesse/porta, e
-risana+orologio+battito), invece di inventarne una seconda maniera.
+Dal 03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'») l'avvio
+gira davvero (`tests/_avvio.py`): prima i blocchi si ritagliavano dal testo di
+`_on_startup` e si eseguivano isolati, perche' «nessun test avvia il boot
+vero». Il montaggio della fotografia delle porte lo fa, su una casa congelata.
 
 `_on_cleanup`, al contrario, e' una funzione piccola e senza I/O di rete: la
 si chiama per davvero, come fa implicitamente ogni altro test che passa da
@@ -23,137 +14,81 @@ si chiama per davvero, come fa implicitamente ogni altro test che passa da
 """
 from __future__ import annotations
 
-import inspect
 import os
-import textwrap
 import time as _time_module
+from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 
 from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.chat_thread import ChatThread
-from hiris.app.keeper.exchange import interpreta_promise
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 
-# ── Estrazione 1: cronaca + promesse + porta (con cronaca) ──────────────────
+# ── L'avvio vero, con gli `add_job` registrati ─────────────────────────────
+#
+# Fino al 03/10/2026 i blocchi dell'avvio (costruzione di cronaca, promesse e
+# porta; risanamento, orologio e battito; la chiusura `_battito`) si
+# ritagliavano dal testo di `_on_startup` e si eseguivano isolati, con doppi
+# al posto dello schedulatore. Adesso l'app si avvia davvero
+# (`tests/_avvio.py::started_with`): lo schedulatore e' quello vero, e una
+# spia che AVVOLGE `AsyncIOScheduler.add_job` ne ricorda gli argomenti --
+# `replace_existing` non resta scritto sul lavoro, e la prova di prima lo
+# guardava.
 
 
-def _load_costruzione_archivi():
-    """Estrae dal sorgente vero di `_on_startup` il blocco che costruisce
-    `app["journal"]`, `app["agenda"]` e passa la cronaca alla porta -- da
-    `app["journal"] = Journal(` fino (incluso) alla chiamata a `ActionActuator`.
-    """
-    src = inspect.getsource(server._on_startup)
-    start = src.index('    app["journal"] = Journal(')
-    end_marker = 'app.get("entity_cache"), app["journal"])'
-    end = src.index(end_marker, start) + len(end_marker)
-    body = textwrap.dedent(src[start:end])
-    func_src = (
-        "async def _check(app, data_dir, os, ha_client, Journal, "
-        "AgendaStore, ActionActuator):\n" + textwrap.indent(body, "    ")
-    )
-    namespace: dict = {}
-    exec(compile(func_src, "<_on_startup costruzione archivi>", "exec"), namespace)
-    return namespace["_check"]
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def recorded_startup(tmp_path_factory):
+    """`(app, lavori)`: l'app avviata, e `{id: argomenti di add_job}`."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+    from tests._avvio import started_with
+
+    jobs: dict[str, dict] = {}
+    real = AsyncIOScheduler.add_job
+
+    def add_job(self, func, *args, id=None, **kwargs):  # noqa: A002
+        jobs[id] = {"args": args, **kwargs}
+        return real(self, func, *args, id=id, **kwargs)
+
+    with mock.patch.object(AsyncIOScheduler, "add_job", add_job):
+        async with started_with(tmp_path_factory.mktemp("custode")) as app:
+            yield app, jobs
 
 
-@pytest.mark.asyncio
-async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(tmp_path):
-    check = _load_costruzione_archivi()
-    app: dict = {"service_registry": object()}  # sentinella: la porta la deve
-    # ricevere TALE E QUALE, non ricalcolata.
-    ha_client = object()  # ActionActuator non lo chiama alla costruzione (solo lo
-    # conserva): un oggetto qualunque basta a dimostrare che e' quello passato.
+@pytest.mark.asyncio(loop_scope="module")
+async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(recorded_startup):
+    """La porta deve aver ricevuto la STESSA cronaca appena costruita, non
+    `None` (il difetto che questo test esiste per impedire: una porta
+    costruita a tre argomenti scriverebbe di nuovo solo nel log), e lo stesso
+    registro dei servizi e la stessa casa che l'app tiene.
 
-    await check(app, str(tmp_path), os, ha_client, Journal, AgendaStore,
-                ActionActuator)
-
+    Mutazione ESEGUITA (03/10/2026): `ActionActuator(...)` costruita con
+    `None` al posto di `app["journal"]` -- rossa (`None is <Journal>`)."""
+    app, _jobs = recorded_startup
     assert isinstance(app["journal"], Journal)
     assert isinstance(app["agenda"], AgendaStore)
-    try:
-        porta = app["action_actuator"]
-        assert isinstance(porta, ActionActuator)
-        # La porta deve aver ricevuto la STESSA cronaca appena costruita, non
-        # `None` (il difetto che questo test esiste per impedire: una porta
-        # costruita a tre argomenti scriverebbe di nuovo solo nel log).
-        assert porta._journal is app["journal"]
-        assert porta._ha is ha_client
-        assert porta._registry is app["service_registry"]
-    finally:
-        app["journal"].close()
-        app["agenda"].close()
+    porta = app["action_actuator"]
+    assert isinstance(porta, ActionActuator)
+    assert porta._journal is app["journal"]
+    assert porta._ha is app["ha_client"]
+    assert porta._registry is app["service_registry"]
 
 
-# ── Estrazione 2: risana + orologio + battito ────────────────────────────────
-
-
-def _load_battito_avvio():
-    """Estrae dal sorgente vero di `_on_startup` il blocco che risana le
-    promesse a meta', monta l'orologio e registra il battito -- dal `try:`
-    del risanamento fino (incluso) alla chiusura di `scheduler.add_job(...)`
-    del battito."""
-    src = inspect.getsource(server._on_startup)
-    start = src.index('    try:\n        app["agenda"].risana(')
-    end_marker = '        misfire_grace_time=30,\n    )'
-    end = src.index(end_marker, start) + len(end_marker)
-    body = textwrap.dedent(src[start:end])
-    func_src = (
-        "async def _check(app, scheduler, _time, logger, Sweeper, "
-        "interpreta_promise, _promise_delivery):\n" + textwrap.indent(body, "    ")
-    )
-    namespace: dict = {}
-    exec(compile(func_src, "<_on_startup battito>", "exec"), namespace)
-    return namespace["_check"]
-
-
-class _SchedulerRegistratore:
-    """Registra ogni `add_job(...)` senza schedulare nulla per davvero --
-    stesso principio del `_SchedulerFinto` di `test_websocket_startup.py`, solo
-    che qui serve leggere GLI ARGOMENTI della chiamata, non l'ordine."""
-
-    def __init__(self) -> None:
-        self.chiamate: list[dict] = []
-
-    def add_job(self, func, **kwargs):
-        self.chiamate.append({"func": func, **kwargs})
-
-
-@pytest.fixture()
-def promesse(tmp_path):
-    a = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
-    yield a
-    a.close()
-
-
-@pytest.fixture()
-def porta_finta():
-    """Un doppio minimo della porta: solo `esegui`, mai chiamato in questi
-    test (nessuna promessa e' scaduta)."""
-    finta = MagicMock()
-    finta.esegui = AsyncMock(return_value={"eseguito": True})
-    return finta
-
-
-@pytest.mark.asyncio
-async def test_il_battito_e_registrato_come_lavoro(promesse, porta_finta):
-    check = _load_battito_avvio()
-    app = {"agenda": promesse, "action_actuator": porta_finta}
-    scheduler = _SchedulerRegistratore()
-
-    await check(app, scheduler, _time_module, server.logger, Sweeper,
-                interpreta_promise, server._promise_delivery)
-
+@pytest.mark.asyncio(loop_scope="module")
+async def test_il_battito_e_registrato_come_lavoro(recorded_startup):
+    """Mutazione ESEGUITA (03/10/2026): `seconds=15` -> `seconds=60` nel
+    lavoro del battito -- rossa."""
+    app, jobs = recorded_startup
     assert isinstance(app["sweeper"], Sweeper)
-    battiti = [c for c in scheduler.chiamate if c.get("id") == "hiris_keeper_heartbeat"]
-    assert len(battiti) == 1, (
-        "il battito deve essere registrato UNA volta, con questo id -- "
-        f"lavori registrati: {[c.get('id') for c in scheduler.chiamate]}")
-    battito = battiti[0]
+    assert app["scheduler"].get_job("hiris_keeper_heartbeat") is not None, (
+        f"il battito non e' registrato -- lavori: {sorted(jobs)}")
+    battito = jobs["hiris_keeper_heartbeat"]
     assert battito["trigger"] == "interval"
     assert battito["seconds"] == 15
     assert battito["replace_existing"] is True
@@ -161,84 +96,68 @@ async def test_il_battito_e_registrato_come_lavoro(promesse, porta_finta):
 
 
 @pytest.mark.asyncio
-async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_finta):
+async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
     """Una promessa lasciata `in_corso` da un add-on morto non deve ripartire
-    (spec §7, «mai due volte»): al prossimo avvio deve leggersi `fallita`."""
-    # `quando_ts` entro il tetto dei 30 giorni da `adesso` (spec §9.1.6,
-    # `promessa.ORIZZONTE_S`): una data fissa lontana avrebbe fatto rifiutare
-    # `create()` con "non tengo promesse oltre 30 giorni" invece di crearla --
-    # lo stesso difetto di date-a-mano gia' documentato in
-    # `test_keeper_tools.py::_fra`.
-    ident = promesse.create({
-        "specie": "fai", "frase": "x", "quando_ts": 1_000.0 + 3600.0,
-        "chiamata": {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.x"]}},
-    }, thread=ChatThread("persona:paolo", "pannello"), now=1_000.0)["promessa"]["id"]
-    promesse.prendi(ident, now=1_100.0)
-    assert promesse.read(ident)["stato"] == "in_corso"  # precondizione del test
+    (spec §7, «mai due volte»): al prossimo avvio deve leggersi `fallita`.
 
-    check = _load_battito_avvio()
-    app = {"agenda": promesse, "action_actuator": porta_finta}
-    scheduler = _SchedulerRegistratore()
+    L'archivio si prepara sul disco PRIMA dell'avvio, nella `data_dir` che
+    l'avvio apre; la porta vera e' avvolta perche' si veda che nessuno l'ha
+    chiamata.
 
-    await check(app, scheduler, _time_module, server.logger, Sweeper,
-                interpreta_promise, server._promise_delivery)
+    Mutazione ESEGUITA (03/10/2026): tolta la chiamata
+    `app["agenda"].risana(...)` dall'avvio -- rossa (`'in_corso' ==
+    'fallita'`)."""
+    from tests._avvio import started_with
 
-    assert promesse.read(ident)["stato"] == "fallita"
-    # E il battito NON deve averla toccata: risana() deve essere finita
-    # prima che qualunque cosa la prenda di nuovo in mano.
-    porta_finta.esegui.assert_not_awaited()
+    promesse = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
+    try:
+        # `quando_ts` entro il tetto dei 30 giorni da `adesso` (spec §9.1.6,
+        # `promessa.ORIZZONTE_S`): una data fissa lontana farebbe rifiutare
+        # `create()` invece di crearla.
+        adesso = _time_module.time()
+        ident = promesse.create({
+            "specie": "fai", "frase": "x", "quando_ts": adesso + 3600.0,
+            "chiamata": {"servizio": "light.turn_on",
+                         "bersaglio": {"entita": ["light.x"]}},
+        }, thread=ChatThread("persona:paolo", "pannello"), now=adesso)["promessa"]["id"]
+        promesse.prendi(ident, now=adesso + 100.0)
+        assert promesse.read(ident)["stato"] == "in_corso"  # precondizione
+    finally:
+        promesse.close()
+
+    with mock.patch.object(ActionActuator, "execute", AsyncMock()) as execute:
+        async with started_with(tmp_path) as app:
+            assert app["agenda"].read(ident)["stato"] == "fallita"
+    # E nessuno l'ha eseguita: risana() deve finire prima che qualunque cosa
+    # la prenda di nuovo in mano.
+    execute.assert_not_awaited()
 
 
-# ── L'ultimo anello: la chiusura `_battito` chiama DAVVERO `orologio.batti` ──
+# ── L'ultimo anello: il lavoro del battito chiama DAVVERO `orologio.batti` ──
 #
-# Review Task 7, Rilievo 2 (Minor, richiesto lo stesso): nessuno dei test qui
-# sopra invoca la chiusura `_battito` -- `_load_battito_avvio()` prova che
-# viene REGISTRATA su APScheduler con l'id/trigger giusti, non che il suo
-# CORPO faccia la cosa giusta quando lo scheduler la chiama davvero, quindici
-# secondi dopo. E' l'unico anello fra il job e l'orologio: se dicesse
-# `orologio.batti()` a vuoto (o chiamasse un altro metodo), l'intera fetta
-# sarebbe verde e nessuna promessa scatterebbe mai in produzione -- nessun
-# test degli altri file se ne accorgerebbe, perche' il resto della catena e'
-# provato a pezzi separati (Sweeper per conto suo in
-# `test_keeper_sweeper.py`, la registrazione del job qui sopra).
+# Review Task 7, Rilievo 2: la registrazione del lavoro non prova che il suo
+# CORPO faccia la cosa giusta quando lo schedulatore lo chiama, quindici
+# secondi dopo. E' l'unico anello fra il lavoro e l'orologio: se dicesse
+# `orologio.batti()` a vuoto (o chiamasse un altro metodo), nessuna promessa
+# scatterebbe mai in produzione. Qui si chiama il lavoro VERO dello
+# schedulatore, con l'orologio dell'app sostituito per la durata della prova.
 
 
-def _load_battito_closure():
-    """Estrae SOLO la chiusura `_battito` (non l'intero blocco di
-    `_load_battito_avvio`) dal sorgente vero di `_on_startup`, e la
-    restituisce pronta per essere chiamata con un `app` e un `_time` finti.
-    Stessa tecnica delle altre estrazioni di questo file (e di
-    `test_websocket_startup.py`): il corpo vero, non una sua imitazione."""
-    src = inspect.getsource(server._on_startup)
-    start = src.index('    async def _battito() -> None:')
-    end_marker = 'await app["sweeper"].batti(_time.time())'
-    end = src.index(end_marker, start) + len(end_marker)
-    body = textwrap.dedent(src[start:end])
-    func_src = (
-        "async def _wrap(app, _time):\n" + textwrap.indent(body, "    ")
-        + "\n    return _battito\n"
-    )
-    namespace: dict = {}
-    exec(compile(func_src, "<_on_startup battito closure>", "exec"), namespace)
-    return namespace["_wrap"]
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(recorded_startup):
+    """Mutazione ESEGUITA (03/10/2026): `_battito` chiama
+    `app["sweeper"].batti()` senza l'istante -- rossa."""
+    app, _jobs = recorded_startup
+    battito = app["scheduler"].get_job("hiris_keeper_heartbeat").func
+    with mock.patch.object(app["sweeper"], "batti", AsyncMock()) as batti:
+        await battito()
 
-
-@pytest.mark.asyncio
-async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante():
-    orologio_finto = MagicMock()
-    orologio_finto.batti = AsyncMock()
-    app = {"sweeper": orologio_finto}
-
-    wrap = _load_battito_closure()
-    battito = await wrap(app, _time_module)
-    await battito()
-
-    orologio_finto.batti.assert_awaited_once()
+    batti.assert_awaited_once()
     # "CON un istante", non a vuoto: una chiusura che chiamasse
     # `orologio.batti()` senza argomenti supererebbe un `assert_awaited()`
     # generico ma non `Sweeper.batti(self, adesso)`, che lo richiede -- il
-    # doppio qui non lo impone (e' un MagicMock), quindi lo impone il test.
-    args, kwargs = orologio_finto.batti.await_args
+    # doppio qui non lo impone, quindi lo impone il test.
+    args, kwargs = batti.await_args
     assert len(args) == 1 and isinstance(args[0], float), (
         "la chiusura deve passare un istante (`_time.time()`), non chiamare "
         "`batti` a vuoto")
