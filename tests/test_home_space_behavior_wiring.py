@@ -12,26 +12,30 @@ si rilegge e basta.
 
 Restano le tre proprieta' che non dipendevano dall'impronta.
 """
+import sys
+from pathlib import Path
+
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.server import behavior_reader
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
-class _Cliente:
-    def __init__(self, *, solleva=False):
-        self.solleva = solleva
-        self.giri = 0
 
-    async def get_states(self, entity_ids):
-        self.giri += 1
-        if self.solleva:
-            raise RuntimeError("Home Assistant non risponde")
-        return [{"entity_id": "automation.sveglia", "state": "on",
-                 "attributes": {"friendly_name": "Sveglia"}}]
+def _house(**faults):
+    """La casa finta (`scripts/casa_finta.py`), il client VERO col trasporto
+    sostituito: un'automazione accesa, e il suo corpo."""
+    return CasaFinta({"states": [{"entity_id": "automation.sveglia", "state": "on",
+                                  "attributes": {"friendly_name": "Sveglia"}}],
+                      "behavior": {"configurazioni": {
+                          "automation.sveglia": {"alias": "Sveglia"}}}}, **faults)
 
-    async def behavior_configs(self, entity_ids):
-        return {"configurazioni": {e: {"alias": "Sveglia"} for e in entity_ids}}
+
+def _rounds(house):
+    """Quante volte il lettore ha chiesto gli stati a Home Assistant."""
+    return sum(1 for command, _extra in house.calls if command == "/api/states")
 
 
 @pytest.fixture
@@ -49,12 +53,12 @@ async def test_ogni_giro_rilegge(casa, tmp_path):
 
     Mutazione che la uccide: rimettere un confronto che salti il secondo giro.
     """
-    client = _Cliente()
+    client = _house()
     guarda = behavior_reader(client, casa, tmp_path)
 
     assert await guarda() is True
     assert await guarda() is True
-    assert client.giri == 2
+    assert _rounds(client) == 2
 
 
 @pytest.mark.asyncio
@@ -62,7 +66,7 @@ async def test_senza_cartella_non_esplode(casa):
     """La cartella serve solo per `secrets.yaml`: senza, il comportamento si
     legge lo stesso e i corpi restano non archiviati (dichiarati). Non
     sollevare e' cio' che tiene in piedi il giro periodico."""
-    guarda = behavior_reader(_Cliente(), casa, None, find_folder=lambda: None)
+    guarda = behavior_reader(_house(), casa, None, find_folder=lambda: None)
 
     assert await guarda() is True
     assert casa.behavior()[0]["corpo"] is None
@@ -85,7 +89,7 @@ async def test_la_cartella_comparsa_dopo_l_avvio_si_trova(casa, tmp_path):
     def _trova():
         return apparsa["quando"]
 
-    guarda = behavior_reader(_Cliente(), casa, None, find_folder=_trova)
+    guarda = behavior_reader(_house(), casa, None, find_folder=_trova)
     await guarda()
     assert casa.behavior()[0]["corpo"] is None      # ancora senza cartella
 
@@ -99,11 +103,18 @@ async def test_la_cartella_comparsa_dopo_l_avvio_si_trova(casa, tmp_path):
 @pytest.mark.asyncio
 async def test_una_rilettura_fallita_non_blocca_le_successive(casa, tmp_path):
     """Un guasto passeggero -- Home Assistant che si riavvia -- non deve
-    congelare il comportamento: si riprova al giro dopo, e lo si dice."""
-    client = _Cliente(solleva=True)
+    congelare il comportamento: si riprova al giro dopo, e lo si dice.
+
+    Il guasto e' quello vero: `GET /api/states` rifiutato (il client non
+    solleva, rende la busta, e `reread` la fa diventare un `HAReadError`).
+    La casa finta non sa cambiare un rifiuto nel tempo: lo si toglie dal
+    suo `_refuse` fra un giro e l'altro (Tappa 2, Task 12)."""
+    client = _house(refuse={"/api/states": 503})
     guarda = behavior_reader(client, casa, tmp_path)
 
     assert await guarda() is False
+    assert casa.behavior() == []
 
-    client.solleva = False
+    del client._refuse["/api/states"]
     assert await guarda() is True
+    assert [voce["id"] for voce in casa.behavior()] == ["automation.sveglia"]
