@@ -39,14 +39,22 @@ nessuna fixture asincrona -- la suite gira in modalita' `strict` di
 pytest-asyncio, quindi ogni test async porta il suo `@pytest.mark.asyncio` e
 la preparazione sta in un helper `await`ato.
 """
+import sys
+from pathlib import Path
+
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app.action import actuator as porta_modulo
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import TARGETS, translate_target, verification
 from hiris.app.proxy.ha_client import HAClient
-from tests._ha_fakes import ws_send_from_messages
+from tests._casa_sintetica import synthetic_inputs
+from tests.test_action_registry import _house
 
 # Come in `test_action_actuator.py`: cio' che si misura qui non e' la DURATA
 # dell'attesa ma cosa si tocca, e due secondi per test non li paga nessuno.
@@ -66,14 +74,9 @@ RISPOSTA_HA = [
 ]
 
 
-class FintoRegistroClient:
-    async def get_services(self):
-        return RISPOSTA_HA
-
-
 async def _registro_pronto() -> ServiceRegistry:
     r = ServiceRegistry()
-    await r.refresh(FintoRegistroClient())
+    await r.refresh(_house(RISPOSTA_HA))
     return r
 
 
@@ -331,36 +334,24 @@ async def test_un_bersaglio_di_sole_entita_non_chiede_niente_a_nessuno():
 
 # ── 3. Il client: il comando che parte davvero ─────────────────────────────
 
-class FintoWs:
-    """Il websocket di Home Assistant visto da `extract_from_target`.
-
-    Registra il messaggio INTERO che gli si manda: e' l'unico modo di provare
-    che i due parametri partono davvero, e non che il codice li nomina in un
-    commento.
-    """
-
-    def __init__(self, risposta):
-        self.mandati = []
-        self._risposta = risposta
-
-    async def __call__(self, msg_type, extra=None, timeout=10.0):
-        self.mandati.append((msg_type, extra))
-        return self._risposta
+def _target_house(result=None, **faults) -> CasaFinta:
+    """Il client vero, con `result` come risposta grezza di Home Assistant a
+    `extract_from_target` (il campo `result` del messaggio). `house.calls`
+    registra il messaggio INTERO che parte: e' l'unico modo di provare che i
+    due parametri partono davvero, e non che il codice li nomina in un
+    commento."""
+    answers = {} if result is None else {"extract_from_target": lambda extra: result}
+    return CasaFinta(synthetic_inputs(), answers=answers, **faults)
 
 
-def _client(risposta) -> tuple[HAClient, FintoWs]:
-    client = HAClient("http://ha.local:8123", "token")
-    ws = FintoWs(risposta)
-    client._ws_send = ws_send_from_messages(ws)
-    return client, ws
-
-
-def _successo(**risultato) -> dict:
+def _extracted(**risultato) -> dict:
+    """Il `result` di `extract_from_target` nella sua forma piena
+    (websocket_api/commands.py): le sette chiavi ci sono sempre."""
     pieno = {"referenced_entities": [], "referenced_devices": [],
              "referenced_areas": [], "missing_devices": [], "missing_areas": [],
              "missing_floors": [], "missing_labels": []}
     pieno.update(risultato)
-    return {"id": 1, "type": "result", "success": True, "result": pieno}
+    return pieno
 
 
 @pytest.mark.asyncio
@@ -377,9 +368,10 @@ async def test_il_comando_e_quello_di_home_assistant_coi_suoi_due_parametri():
     fetta in una forma nuova, ed e' per questo che il test guarda il messaggio
     che parte.
     """
-    client, ws = _client(_successo())
-    await client.extract_from_target({"area_id": ["cucina"]})
-    tipo, extra = ws.mandati[0]
+    house = _target_house(_extracted())
+    await house.extract_from_target({"area_id": ["cucina"]})
+    assert house.connections == [("ws", ("extract_from_target",))]
+    tipo, extra = house.calls[0]
     assert tipo == "extract_from_target"
     assert extra["target"] == {"area_id": ["cucina"]}
     assert extra["expand_group"] is True
@@ -391,12 +383,12 @@ async def test_le_due_meta_arrivano_tradotte_e_in_ordine():
     """Dall'altra parte quei campi sono `set` di Python e arrivano in ordine
     arbitrario: senza ordinarli la stessa domanda fatta due volte darebbe due
     anteprime diverse senza che in casa sia cambiato niente."""
-    client, _ = _client(_successo(
+    house = _target_house(_extracted(
         referenced_entities=["light.cucina_2", "light.cucina_1"],
         referenced_areas=["cucina"],
         missing_areas=["tinello"], missing_floors=["attico"],
         missing_labels=["notturne"]))
-    risolto = await client.extract_from_target({"area_id": ["cucina", "tinello"]})
+    risolto = await house.extract_from_target({"area_id": ["cucina", "tinello"]})
     assert risolto["entita"] == ["light.cucina_1", "light.cucina_2"]
     assert risolto["aree"] == ["cucina"]
     assert risolto["aree_mancanti"] == ["tinello"]
@@ -412,9 +404,9 @@ async def test_un_dispositivo_che_non_esiste_non_finisce_fra_quelli_toccati():
     lasciarlo fra i toccati direbbe «questo dispositivo si tocca» di un
     dispositivo che non c'e'. Togliendolo non si nasconde niente, perche'
     resta intero fra i mancanti."""
-    client, _ = _client(_successo(referenced_devices=["vero", "fantasma"],
-                                  missing_devices=["fantasma"]))
-    risolto = await client.extract_from_target({"device_id": ["vero", "fantasma"]})
+    house = _target_house(_extracted(referenced_devices=["vero", "fantasma"],
+                                     missing_devices=["fantasma"]))
+    risolto = await house.extract_from_target({"device_id": ["vero", "fantasma"]})
     assert risolto["dispositivi"] == ["vero"]
     assert risolto["dispositivi_mancanti"] == ["fantasma"]
 
@@ -424,10 +416,9 @@ async def test_un_rifiuto_di_home_assistant_e_un_errore_non_un_bersaglio_vuoto()
     """Un `unknown_command` su una versione vecchia di Home Assistant si legge
     qui. Se diventasse `{"entita": []}` la porta direbbe «l'area e' vuota» di
     un'area piena: una frase falsa detta con sicurezza."""
-    client, _ = _client({"id": 1, "success": False,
-                         "error": {"code": "unknown_command",
-                                   "message": "non conosco questo comando"}})
-    risolto = await client.extract_from_target({"area_id": ["cucina"]})
+    house = _target_house(refuse={"extract_from_target": {
+        "code": "unknown_command", "message": "non conosco questo comando"}})
+    risolto = await house.extract_from_target({"area_id": ["cucina"]})
     assert "errore" in risolto
     # La busta (D3): il motivo di Home Assistant nella frase, il suo codice
     # nel campo `codice`.
@@ -439,34 +430,33 @@ async def test_un_rifiuto_di_home_assistant_e_un_errore_non_un_bersaglio_vuoto()
 
 @pytest.mark.asyncio
 async def test_nessuna_risposta_e_un_errore_non_un_bersaglio_vuoto():
-    client, _ = _client(None)
-    risolto = await client.extract_from_target({"area_id": ["cucina"]})
-    assert "errore" in risolto and "entita" not in risolto
+    house = _target_house(silence={"extract_from_target"})
+    risolto = await house.extract_from_target({"area_id": ["cucina"]})
+    assert "entita" not in risolto
+    assert risolto == {"errore": "Home Assistant non ha risposto",
+                       "causa": "silenzio", "codice": None}
 
 
 # ── 4. La porta: la sequenza intera ────────────────────────────────────────
 
 class FintoClientPorta:
-    """Home Assistant visto dalla porta, con in piu' la bocca nuova.
+    """Home Assistant visto dalla porta, per le prove in cui la chiamata di
+    servizio deve RIUSCIRE: `call_service` e' una scrittura REST, e la casa
+    finta non la serve (`scripts/casa_finta.py`). Dove la porta si ferma prima
+    di scrivere, le prove usano la casa finta.
 
     `sequenza` registra l'ORDINE in cui le due domande partono: l'anteprima
     deve essere calcolata PRIMA della chiamata, o non e' un'anteprima.
     """
 
-    def __init__(self, risolve=None, solleva=False):
+    def __init__(self, risolve=None):
         self.sequenza = []
         self.chiamate = []
         self.ascoltatori = []
         self._risolve = risolve
-        self._solleva = solleva
-
-    async def get_services(self):
-        return RISPOSTA_HA
 
     async def extract_from_target(self, target):
         self.sequenza.append(("risolvi", target))
-        if self._solleva:
-            raise RuntimeError("websocket caduto")
         return self._risolve
 
     def add_state_listener(self, callback):
@@ -504,7 +494,7 @@ class FintaCache:
 
 async def _porta(client) -> ActionActuator:
     registro = ServiceRegistry()
-    await registro.refresh(FintoRegistroClient())
+    await registro.refresh(_house(RISPOSTA_HA))
     return ActionActuator(client, registro, FintaCache(STATI_CUCINA))
 
 
@@ -597,36 +587,39 @@ async def test_un_bersaglio_non_risolto_non_diventa_un_bersaglio_vuoto():
     """Home Assistant risponde, ma con un errore: e' la terza guardia di
     questo modulo, la stessa forma delle due che gia' c'erano (registro muto,
     specchio cieco)."""
-    client = FintoClientPorta(risolve={"errore": "Home Assistant non ha risposto"})
-    porta = await _porta(client)
+    house = _target_house(silence={"extract_from_target"})
+    porta = await _porta(house)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is False
-    assert client.chiamate == []
+    assert [what for what, _ in house.calls] == ["extract_from_target"], (
+        "non si tocca niente se non si e' potuto risolvere")
     assert "non ha risposto" in esito["errore"]
 
 
 @pytest.mark.asyncio
 async def test_una_risoluzione_che_esplode_diventa_un_rifiuto_leggibile():
     """La porta non solleva mai: il suo chiamante e' uno strumento che parla a
-    un modello."""
-    client = FintoClientPorta(solleva=True)
-    porta = await _porta(client)
+    un modello. Il client vero non solleva nemmeno lui (D3): cio' che arriva
+    alla porta e' il rifiuto di Home Assistant, col suo motivo."""
+    house = _target_house(refuse={"extract_from_target": {
+        "code": "unknown_command", "message": "Unknown command."}})
+    porta = await _porta(house)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is False
-    assert client.chiamate == []
-    assert "RuntimeError" in esito["errore"]
+    assert [what for what, _ in house.calls] == ["extract_from_target"]
+    assert "Unknown command." in esito["errore"]
 
 
 @pytest.mark.asyncio
 async def test_un_area_che_non_esiste_non_tocca_niente():
     """La meta' `missing_*` della risposta arriva fino al rifiuto, e nessuna
     chiamata parte."""
-    client = FintoClientPorta(risolve=_risolto([], aree_mancanti=["tinello"]))
-    porta = await _porta(client)
+    house = _target_house(_extracted(missing_areas=["tinello"]))
+    porta = await _porta(house)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"aree": ["tinello"]}}, actor="prova")
     assert esito["eseguito"] is False
-    assert client.chiamate == []
+    assert [what for what, _ in house.calls] == ["extract_from_target"]
     assert "tinello" in esito["errore"]

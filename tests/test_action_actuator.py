@@ -43,9 +43,15 @@ gira in modalita' `strict` di pytest-asyncio, quindi ogni test async porta il
 suo `@pytest.mark.asyncio` e la preparazione sta in un helper `await`ato.
 """
 import asyncio
+import sys
 import time
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app.action import actuator as porta_modulo
 from hiris.app.action.actuator import ActionActuator
@@ -55,6 +61,8 @@ from hiris.app.proxy.entity_cache import (
     _to_minimal,
     inherited_attributes,
 )
+from tests._casa_sintetica import synthetic_inputs
+from tests.test_action_registry import _house
 
 # La scadenza vera e' 2 secondi, e il perche' sta scritto accanto alla
 # costante (`porta.STATE_WAIT_S`). Qui si accorcia a 50 ms perche' cio' che
@@ -98,6 +106,11 @@ RISPOSTA_HA = [
 class FintoClient:
     """Home Assistant visto dalla porta, con le **tre bocche** che ha davvero.
 
+    Resta una finta per una ragione sola: `call_service` e' una scrittura
+    REST, e la casa finta (`scripts/casa_finta.py`) non scrive. Le prove in
+    cui la porta si ferma PRIMA di chiamare usano la casa finta, cioe' il
+    client vero; il registro dei servizi si legge sempre da li'.
+
     1. **Il ritorno di `call_service`** (`cambiati`): gli stati completi che
        Home Assistant dichiara cambiati durante l'esecuzione. Sull'impianto
        del proprietario e' stato misurato **vuoto**, anche a comando riuscito
@@ -131,6 +144,9 @@ class FintoClient:
         self._specchio = specchio
 
     async def get_services(self):
+        # Le prove di questo file leggono il registro dalla casa finta
+        # (`_registro_pronto`); questa bocca resta per chi importa la finta e
+        # ci legge il registro (`tests/test_action_prompt.py`).
         return RISPOSTA_HA
 
     def add_state_listener(self, callback):
@@ -305,10 +321,18 @@ HA_RIPORTA_LA_CAMERA_A_19_5 = [
 ]
 
 
-async def _registro_pronto(client):
+async def _registro_pronto():
+    """Il registro VERO, letto dal client vero sulla casa finta."""
     registro = ServiceRegistry()
-    await registro.refresh(client)
+    await registro.refresh(_house(RISPOSTA_HA))
     return registro
+
+
+def _asked(house: CasaFinta) -> list[str]:
+    """Cosa la porta ha chiesto a Home Assistant, in ordine. Una chiamata di
+    servizio comparirebbe qui come `/api/services/<dominio>/<servizio>` (la
+    casa finta registra la scrittura, e poi la rifiuta)."""
+    return [what for what, _extra in house.calls]
 
 
 async def _porta_pronta():
@@ -319,7 +343,7 @@ async def _porta_pronta():
     aspettarlo per vederlo.
     """
     client, cache = _casa(SALOTTO_ACCESO, annuncia=ANNUNCIA_IL_SALOTTO_SPENTO)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     return ActionActuator(client, registro, cache), client, cache
 
 
@@ -349,20 +373,21 @@ async def test_esegue_e_racconta_cosa_e_cambiato():
 
 @pytest.mark.asyncio
 async def test_un_rifiuto_non_chiama_home_assistant():
-    porta, client, _ = await _porta_pronta()
+    house = CasaFinta(synthetic_inputs())
+    porta = ActionActuator(house, await _registro_pronto(), FintaCache(SALOTTO_ACCESO))
     esito = await porta.execute(
         {"servizio": "light.esplodi", "bersaglio": {"entita": ["light.salotto"]}},
         actor="chat")
     assert esito["eseguito"] is False
     assert "non esiste" in esito["errore"]
-    assert client.chiamate == [], (
+    assert _asked(house) == [], (
         "una chiamata rifiutata NON deve arrivare a Home Assistant")
 
 
 @pytest.mark.asyncio
 async def test_se_nulla_cambia_lo_dichiara():
     client = FintoClient()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))  # non cambia
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is True
@@ -389,7 +414,7 @@ async def test_un_guasto_di_home_assistant_diventa_un_errore_leggibile():
             raise RuntimeError("HTTP 500")
 
     client = ClientCheRompe()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
@@ -397,18 +422,19 @@ async def test_un_guasto_di_home_assistant_diventa_un_errore_leggibile():
 
 
 @pytest.mark.asyncio
-async def test_un_registro_illeggibile_diventa_un_errore_leggibile():
-    """`ensure_fresh` solleva al primissimo caricamento (contratto del Task 1)."""
-    class ClientSenzaServizi(FintoClient):
-        async def get_services(self):
-            raise RuntimeError("connessione rifiutata")
-
-    client = ClientSenzaServizi()
-    porta = ActionActuator(client, ServiceRegistry(), FintaCache(SALOTTO_ACCESO))
+@pytest.mark.parametrize("fault, reason", [
+    ({"silence": {"/api/services"}}, "Home Assistant non ha risposto"),
+    ({"refuse": {"/api/services": 401}}, "Home Assistant ha risposto 401")])
+async def test_un_registro_illeggibile_diventa_un_errore_leggibile(fault, reason):
+    """`ensure_fresh` solleva al primissimo caricamento (contratto del Task 1):
+    il client non solleva (D3), il registro trasforma la busta del guasto in
+    `HAReadError`, e la porta ne fa una frase col motivo di Home Assistant."""
+    house = CasaFinta(synthetic_inputs(), **fault)
+    porta = ActionActuator(house, ServiceRegistry(), FintaCache(SALOTTO_ACCESO))
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
-    assert "connessione rifiutata" in esito["errore"]
-    assert client.chiamate == []
+    assert reason in esito["errore"]
+    assert _asked(house) == ["/api/services"]
 
 
 @pytest.mark.asyncio
@@ -433,20 +459,17 @@ async def test_un_registro_vuoto_non_diventa_una_casa_che_non_sa_fare_niente():
     """Buco (a). `verifica()` con un registro vuoto rifiuta dicendo «Domini
     disponibili: .» — una frase falsa detta con sicurezza. La porta deve dire
     che non ha letto, non che Home Assistant non sa fare niente."""
-    class ClientMuto(FintoClient):
-        async def get_services(self):
-            return []
-
-    client = ClientMuto()
-    registro = await _registro_pronto(client)
+    house = _house([])
+    registro = ServiceRegistry()
+    await registro.refresh(house)
     assert registro.domains() == [], "premessa: il registro e' davvero vuoto"
-    porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
+    porta = ActionActuator(house, registro, FintaCache(SALOTTO_ACCESO))
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
     assert "Domini disponibili" not in esito["errore"]
     assert "non so" in esito["errore"], (
         "il motivo dev'essere «non l'ho letto», non «non esiste»")
-    assert client.chiamate == []
+    assert _asked(house) == ["/api/services"], "nessuna chiamata di servizio"
 
 
 @pytest.mark.asyncio
@@ -454,14 +477,14 @@ async def test_uno_specchio_vuoto_non_nega_un_entita_che_esiste():
     """Buco (b), forma «vuoto». Con `stati == {}` la verifica rifiuta ogni
     entita' con «non esiste in questa casa»: il motivo piu' fuorviante
     possibile, perche' suona definitivo."""
-    client = FintoClient()
-    registro = await _registro_pronto(client)
-    porta = ActionActuator(client, registro, FintaCache({}))
+    house = CasaFinta(synthetic_inputs())
+    registro = await _registro_pronto()
+    porta = ActionActuator(house, registro, FintaCache({}))
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
     assert "non esiste in questa casa" not in esito["errore"]
     assert "non vedo" in esito["errore"]
-    assert client.chiamate == []
+    assert _asked(house) == []
 
 
 @pytest.mark.asyncio
@@ -469,30 +492,15 @@ async def test_uno_specchio_non_ancora_pronto_non_nega_un_entita_che_esiste():
     """Buco (b), forma «a meta'». `loaded is False` significa che la prima
     lettura da Home Assistant non e' mai arrivata in fondo: cio' che c'e'
     dentro sono le poche entita' mosse dagli eventi, non la casa."""
-    client = FintoClient()
-    registro = await _registro_pronto(client)
-    porta = ActionActuator(client, registro,
+    house = CasaFinta(synthetic_inputs())
+    registro = await _registro_pronto()
+    porta = ActionActuator(house, registro,
                         FintaCache({"light.cucina": "on"}, loaded=False))
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
     assert "non esiste in questa casa" not in esito["errore"]
     assert "non vedo" in esito["errore"]
-    assert client.chiamate == []
-
-
-class _StatesSource:
-    """Il minimo che serve a `EntityCache.load()`: la lista degli stati.
-
-    Serve alla cucitura qui sotto, che usa lo specchio VERO invece di
-    `FintaCache` -- una finta dello specchio non puo' dimostrare niente sul
-    comportamento dello specchio.
-    """
-
-    def __init__(self, stati):
-        self._stati = list(stati)
-
-    async def get_states(self, _ids):
-        return list(self._stati)
+    assert _asked(house) == []
 
 
 @pytest.mark.asyncio
@@ -512,15 +520,19 @@ async def test_un_entita_CANCELLATA_in_home_assistant_non_arriva_piu_a_HA():
     non «non vedo» -- lo specchio HA guardato, ed e' proprio per questo che
     sa che quell'entita' non c'e' piu'.
     """
-    specchio = EntityCache()
-    await specchio.load(_StatesSource([
+    # Lo specchio VERO, caricato dal client vero: una finta dello specchio
+    # non puo' dimostrare niente sul comportamento dello specchio.
+    inputs = synthetic_inputs()
+    inputs["states"] = [
         {"entity_id": "light.salotto", "state": "on",
          "attributes": {"friendly_name": "Salotto"}},
         {"entity_id": "light.cucina", "state": "off",
          "attributes": {"friendly_name": "Cucina"}},
-    ]))
+    ]
+    specchio = EntityCache()
+    await specchio.load(CasaFinta(inputs))
     client = FintoClient()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, specchio)
 
     # Finche' c'e', il comando arriva davvero a Home Assistant.
@@ -548,13 +560,13 @@ async def test_un_entita_CANCELLATA_in_home_assistant_non_arriva_piu_a_HA():
 @pytest.mark.asyncio
 async def test_senza_specchio_del_tutto_non_nega_un_entita_che_esiste():
     """Terza forma dello stesso buco: la cache non e' proprio cablata."""
-    client = FintoClient()
-    registro = await _registro_pronto(client)
-    porta = ActionActuator(client, registro, None)
+    house = CasaFinta(synthetic_inputs())
+    registro = await _registro_pronto()
+    porta = ActionActuator(house, registro, None)
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
     assert "non vedo" in esito["errore"]
-    assert client.chiamate == []
+    assert _asked(house) == []
 
 
 @pytest.mark.asyncio
@@ -562,7 +574,7 @@ async def test_se_la_rilettura_non_riesce_non_inventa_cosa_e_cambiato():
     """La chiamata **e' partita**: negarlo sarebbe falso quanto affermare un
     cambiamento che non si e' potuto vedere. Si dice l'una e l'altra cosa."""
     client = FintoClient()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     cache = FintaCache(SALOTTO_ACCESO, rompe_dalla_lettura=2)
     porta = ActionActuator(client, registro, cache)
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -587,7 +599,7 @@ async def test_se_la_rilettura_non_riesce_non_inventa_cosa_e_cambiato():
 @pytest.mark.asyncio
 async def test_un_comando_parametrico_non_viene_raccontato_come_nulla_e_cambiato():
     client, cache = _casa(CLIMA_A_19, annuncia=ANNUNCIA_IL_CLIMA_A_21)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
     esito = await porta.execute(METTI_A_21, actor="chat")
     assert esito["eseguito"] is True
@@ -605,7 +617,7 @@ async def test_prima_e_dopo_mostrano_la_differenza_che_cambiato_dichiara():
     differenza che gli altri due non mostrano il modello avrebbe in mano un
     racconto che si contraddice."""
     client, cache = _casa(CLIMA_A_19, annuncia=ANNUNCIA_IL_CLIMA_A_21)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
     esito = await porta.execute(METTI_A_21, actor="chat")
     assert esito["prima"] == {"climate.salotto": {"state": "heat", "temperature": 19}}
@@ -621,7 +633,7 @@ async def test_un_parametrico_che_davvero_non_cambia_niente_lo_dichiara_ancora()
     si muovono, e Home Assistant non riporta niente, l'avviso resta -- ed e'
     il caso della valvola termostatica gia' a 21."""
     client = FintoClient()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(CLIMA_A_21))
     esito = await porta.execute(METTI_A_21, actor="chat")
     assert esito["eseguito"] is True
@@ -701,7 +713,7 @@ async def test_un_comando_riuscito_e_raccontato_come_riuscito_con_lo_specchio_in
     nel momento giusto -- e infatti non si aspetta niente: un'entita' che la
     chiamata ha gia' riportato non ha piu' nessun annuncio da attendere."""
     client = FintoClient(cambiati=HA_RIPORTA_IL_SALOTTO_SPENTO)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     specchio_fermo = FintaCache(SALOTTO_ACCESO)  # nessun annuncio: non si muove mai
     porta = ActionActuator(client, registro, specchio_fermo)
 
@@ -732,7 +744,7 @@ async def test_lo_stesso_vale_per_un_attributo_e_prima_e_dopo_restano_ricchi():
     impoverisce, perche' cio' che arriva da Home Assistant passa per la stessa
     `_to_minimal` dello specchio."""
     client = FintoClient(cambiati=HA_RIPORTA_LA_CAMERA_A_19_5)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(CAMERA_A_17_5))
 
     esito = await porta.execute(METTI_LA_CAMERA_A_19_5, actor="chat")
@@ -766,7 +778,7 @@ async def test_lo_specchio_resta_il_ripiego_di_cio_di_cui_nessuno_ha_detto_nient
     distingue «non e' ancora cambiato» da «non l'ho visto»."""
     client, cache = _casa({"light.salotto": "on", "light.cucina": "on"},
                           cambiati=[], annuncia=ANNUNCIA_IL_SALOTTO_SPENTO)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
 
     esito = await porta.execute(
@@ -794,7 +806,7 @@ async def test_l_avviso_di_nessun_cambiamento_non_accusa_il_dispositivo():
     fatto su cio' che Home Assistant ha detto, mai un'ipotesi sulla causa --
     e nemmeno un'affermazione sulla CASA, che HIRIS non e' in grado di fare."""
     client = FintoClient(cambiati=[])
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_SPENTO))
 
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -824,7 +836,7 @@ async def test_un_dispositivo_lento_resta_un_caso_vero():
     differenza sola, ed e' tutta a favore di chi legge: adesso l'avviso dice
     che si e' aspettato, e per quanto."""
     client, cache = _casa(SALOTTO_ACCESO, cambiati=[])  # nessun annuncio: non si muove
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
 
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -856,7 +868,7 @@ async def test_un_cambiamento_che_l_impronta_non_sa_mostrare_non_diventa_nulla_e
     client = FintoClient(cambiati=[
         {"entity_id": "light.salotto", "state": "on",
          "attributes": {"entity_picture": "/api/image_proxy/light.salotto?token=b1"}}])
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -875,7 +887,7 @@ async def test_una_voce_riportata_illeggibile_non_rompe_e_non_inventa():
     sullo specchio -- invece di sollevare o di essere indovinato."""
     client = FintoClient(cambiati=["non un dizionario", {"senza": "entity_id"},
                                    {"entity_id": "light.salotto", "state": "off"}])
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -892,7 +904,7 @@ async def test_cio_che_nessuna_delle_tre_fonti_vede_resta_dichiarato_sconosciuto
     l'entita' -- contarla direbbe che TUTTO e' cambiato -- e l'avviso dichiara
     di non sapere invece di scegliere una delle due frasi false."""
     client = FintoClient(cambiati=[])
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro,
                         FintaCache(SALOTTO_ACCESO, rompe_dalla_lettura=2))
 
@@ -957,7 +969,7 @@ async def test_le_luci_si_accendono_e_hiris_lo_racconta_anche_se_la_chiamata_tac
                           cambiati=[],  # la lista vuota misurata dal vivo
                           annuncia=ANNUNCIA_LE_ABAT_JOUR_ACCESE,
                           ritardo=0.02)  # l'annuncio arriva DOPO la chiamata
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
 
     esito = await porta.execute(ACCENDI_LE_ABAT_JOUR, actor="chat")
@@ -995,7 +1007,7 @@ async def test_un_annuncio_arrivato_durante_la_chiamata_non_si_perde():
     client, cache = _casa(SALOTTO_ACCESO, cambiati=[],
                           annuncia=ANNUNCIA_IL_SALOTTO_SPENTO,
                           ritardo=None)  # DENTRO la chiamata
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
 
     inizio = time.monotonic()
@@ -1023,7 +1035,7 @@ async def test_se_l_annuncio_non_arriva_entro_la_scadenza_l_avviso_lo_dichiara()
     una forma nuova.
     """
     client, cache = _casa(SALOTTO_ACCESO, cambiati=[])  # nessuno annuncia niente
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
 
     inizio = time.monotonic()
@@ -1064,7 +1076,7 @@ async def test_gli_annunci_delle_altre_entita_non_svegliano_l_attesa():
                              "attributes": {"friendly_name": "Cucina"}}]
     client, cache = _casa({"light.salotto": "on", "light.cucina": "on"},
                           cambiati=[], annuncia=annuncio_di_un_altra)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
 
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -1082,7 +1094,7 @@ async def test_l_ascoltatore_effimero_si_toglie_sempre():
     percorre tutta. Vale anche -- soprattutto -- quando la chiamata fallisce,
     che e' il ramo in cui ci si dimentica."""
     client, cache = _casa(SALOTTO_ACCESO, annuncia=ANNUNCIA_IL_SALOTTO_SPENTO)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
 
     await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -1093,7 +1105,7 @@ async def test_l_ascoltatore_effimero_si_toglie_sempre():
             raise RuntimeError("HTTP 500")
 
     client_rotto = ClientCheRompe()
-    registro_rotto = await _registro_pronto(client_rotto)
+    registro_rotto = await _registro_pronto()
     porta_rotta = ActionActuator(client_rotto, registro_rotto,
                               FintaCache(SALOTTO_ACCESO))
     esito = await porta_rotta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -1114,7 +1126,7 @@ async def test_un_client_che_non_annuncia_non_blocca_e_non_rifiuta():
         remove_state_listener = None
 
     client = ClientSordo(cambiati=HA_RIPORTA_IL_SALOTTO_SPENTO)
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     inizio = time.monotonic()
@@ -1152,7 +1164,7 @@ async def test_un_client_sordo_non_dichiara_un_attesa_mai_fatta():
         remove_state_listener = None
 
     client = ClientSordo(cambiati=[])
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     cache = FintaCache(SALOTTO_ACCESO)
     porta = ActionActuator(client, registro, cache)
 
@@ -1186,7 +1198,7 @@ async def _porta_di_prova(*, cronaca=None) -> ActionActuator:
     solo se chi chiama la vuole."""
     client, cache = _casa({"light.studio": "off"}, annuncia=[
         {"entity_id": "light.studio", "state": "on", "attributes": {}}])
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     return ActionActuator(client, registro, cache, journal=cronaca)
 
 
@@ -1238,7 +1250,7 @@ async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_pa
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     try:
         client = ClientCheRompe()
-        registro = await _registro_pronto(client)
+        registro = await _registro_pronto()
         porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO),
                             journal=cronaca)
 
@@ -1275,12 +1287,15 @@ async def test_un_rifiuto_della_verifica_non_finisce_in_cronaca(tmp_path):
     db_path = os.path.join(str(tmp_path), "azioni.db")
     cronaca = Journal(db_path)
     try:
-        porta = await _porta_di_prova(cronaca=cronaca)
+        house = CasaFinta(synthetic_inputs())
+        porta = ActionActuator(house, await _registro_pronto(),
+                               FintaCache({"light.studio": "off"}), journal=cronaca)
         esito = await porta.execute(
             {"servizio": "light.esplodi", "bersaglio": {"entita": ["light.studio"]}},
             actor="chat")
         assert esito["eseguito"] is False
         assert "esecuzione_id" not in esito
+        assert _asked(house) == []
 
         ispezione = sqlite3.connect(db_path)
         try:
@@ -1357,7 +1372,7 @@ class ClientCheRegistraGliAscoltatori(FintoClient):
 @pytest.mark.asyncio
 async def test_una_notifica_non_inietta_entity_id():
     client = FintoClient()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     esito = await porta.execute(NOTIFICA_HIRIS, actor="schedulatore")
@@ -1373,7 +1388,7 @@ async def test_una_notifica_non_inietta_entity_id():
 @pytest.mark.asyncio
 async def test_una_notifica_non_apre_un_ascolto():
     client = ClientCheRegistraGliAscoltatori()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     await porta.execute(NOTIFICA_HIRIS, actor="schedulatore")
@@ -1391,7 +1406,7 @@ async def test_l_esito_di_una_notifica_e_onesto_non_una_misura_inventata():
     NON c'e' nessuno stato da rileggere, e l'esito non deve fingere di
     averlo guardato."""
     client = FintoClient()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     esito = await porta.execute(NOTIFICA_HIRIS, actor="schedulatore")
@@ -1416,7 +1431,7 @@ async def test_una_notifica_fallita_e_un_errore_leggibile():
             raise RuntimeError("il servizio di notifica non risponde")
 
     client = ClientCheRompe()
-    registro = await _registro_pronto(client)
+    registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     esito = await porta.execute(NOTIFICA_HIRIS, actor="schedulatore")
@@ -1436,7 +1451,7 @@ async def test_una_notifica_riuscita_finisce_in_cronaca_con_entita_vuote(tmp_pat
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     try:
         client = FintoClient()
-        registro = await _registro_pronto(client)
+        registro = await _registro_pronto()
         porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO),
                             journal=cronaca)
 
@@ -1457,9 +1472,10 @@ async def test_il_bersaglio_dichiara_un_target_ancora_richiesto():
     `RISPOSTA_HA`), quindi il rifiuto di sempre resta -- questo test cade se
     la review finale avesse allargato il bypass oltre i servizi che non
     hanno davvero un bersaglio."""
-    porta, client, _ = await _porta_pronta()
+    house = CasaFinta(synthetic_inputs())
+    porta = ActionActuator(house, await _registro_pronto(), FintaCache(SALOTTO_ACCESO))
     esito = await porta.execute(
         {"servizio": "light.turn_off"}, actor="chat")
     assert esito["eseguito"] is False
     assert "serve un bersaglio" in esito["errore"]
-    assert client.chiamate == []
+    assert _asked(house) == []
