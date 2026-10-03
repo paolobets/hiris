@@ -279,7 +279,7 @@ class Workshop:
         if operation in ("modifica", "cancella"):
             if not key:
                 return {"errore": f"per {operation} serve la chiave dell'oggetto da toccare."}
-            loaded = await self._rete(self._ha.read_configuration(domain, key))
+            loaded = await self._read_now(domain, key)
             if loaded.get("assente"):
                 # `read_configuration` ha TRE forme (`corpo`, `errore`,
                 # `assente`), non due: indicizzare `letto["corpo"]` su questo
@@ -341,7 +341,7 @@ class Workshop:
         else:
             candidata = composer.new_id(occupate, seme=_seme_da(intent))
         for _ in range(5):
-            loaded = await self._rete(self._ha.read_configuration(domain, candidata))
+            loaded = await self._read_now(domain, candidata)
             if loaded.get("assente"):
                 return {"chiave": candidata}
             if "errore" in loaded:
@@ -493,6 +493,16 @@ class Workshop:
         if "errore" in claimed:
             return {"errore": "quella proposta e' gia' stata presa in carico da "
                               "un’altra richiesta."}
+
+        # S-17: la casa e' ancora com'era quando la proposta e' nata? Dopo la
+        # rivendicazione, perche' due conferme insieme non rileggano e
+        # scrivano tutte e due; prima degli helper, perche' un rifiuto non
+        # lasci niente da disfare.
+        changed = await self._changed_since(proposal)
+        if changed is not None:
+            return self._fallita(proposal, now, actor, changed["errore"],
+                                 guasto_rete=bool(changed.get("guasto_rete")),
+                                 subject=subject)
 
         domain, key, operation = proposal["dominio"], proposal["chiave"], proposal["gesto"]
         nati: list[tuple[str, str]] = []
@@ -695,6 +705,69 @@ class Workshop:
                     "apri la pagina Costruzioni e conferma di la'.")
         if proposal["turno"] == exchange:
             return _BORN_THIS_TURN
+        return None
+
+    async def _read_now(self, domain: str, key: str) -> dict:
+        """Com'e' adesso un oggetto in Home Assistant: la sola lettura della
+        configurazione di questa officina. La chiamano la proposta (il
+        «prima»), la ricerca di una chiave libera e la conferma (S-17): tre
+        domande, una porta, con la stessa guardia sui guasti di rete."""
+        return await self._rete(self._ha.read_configuration(domain, key))
+
+    async def _changed_since(self, proposal: dict) -> dict | None:
+        """La casa e' ancora com'era quando la proposta e' nata? (S-17)
+
+        Una proposta vive fino a sette giorni, e il suo `dopo` e' stato
+        calcolato sul `prima` di allora. Scriverlo su un oggetto che nel
+        frattempo e' cambiato cancella il lavoro di chi l'ha cambiato. Si
+        rilegge dalla STESSA porta da cui `propose` ha letto il `prima`, e si
+        confronta: uguale, si scrive; diverso, non si scrive e si dice
+        (decisione del proprietario, 02/10/2026: rifiutare, non avvisare).
+
+        Il confronto fra dizionari regge: misurato sulla casa il 02/10/2026,
+        le due automazioni scritte da HIRIS ancora esistenti si rileggono
+        identiche a come sono state scritte. Per script e scene non c'era una
+        costruzione da misurare.
+
+        **Si decide sul «prima» atteso, non sul gesto.** Un «prima» assente
+        vuol dire che l'oggetto non deve esserci: e' la creazione, ma anche il
+        ripristino di una cancellazione, che ricrea cio' che HIRIS ha tolto.
+
+        `None` se e' com'era. Un guasto di rete resta un guasto di rete
+        (`guasto_rete`), non diventa «e' cambiato»; la proposta pero' si
+        chiude, come per un guasto durante la scrittura, e va rifatta.
+
+        **Resta una finestra**, fra questa rilettura e la scrittura: Home
+        Assistant non offre una scrittura condizionata su
+        `/api/config/<dominio>/config/<chiave>`, quindi una modifica a mano in
+        quel momento si perderebbe ancora. E' di millisecondi, non di giorni.
+        """
+        domain, key = proposal["dominio"], proposal["chiave"]
+        loaded = await self._read_now(domain, key)
+        if loaded.get("guasto_rete"):
+            return loaded
+        if proposal["prima"] is None:
+            if loaded.get("assente"):
+                return None
+            if "errore" in loaded:
+                return {"errore": f"non ho potuto controllare se {domain}.{key} "
+                                  f"esiste gia': {loaded['errore']}"}
+            if proposal["gesto"] == "crea":
+                return {"errore": (f"{domain}.{key} esiste gia': e' nato dopo la mia "
+                                   "proposta, e scrivere lo sovrascriverebbe. "
+                                   "Riproponi e gli do un altro nome.")}
+            return {"errore": (f"{domain}.{key} esiste di nuovo: qualcuno l’ha "
+                               "rifatto dopo che l’avevo cancellato, e rimetterlo "
+                               "com’era lo sovrascriverebbe.")}
+        if loaded.get("assente"):
+            return {"errore": (f"{domain}.{key} non c’e' piu' in casa tua: e' stato "
+                               "cancellato dopo la mia proposta. Non lo ricreo.")}
+        if "errore" in loaded:
+            return {"errore": f"non ho potuto rileggere com’e' adesso: {loaded['errore']}"}
+        if loaded["corpo"] != proposal["prima"]:
+            return {"errore": (f"{domain}.{key} e' cambiato da quando te l’ho "
+                               "proposto: scrivere adesso cancellerebbe quella "
+                               "modifica. Riproponi e riparto da com’e' ora.")}
         return None
 
     async def _rete(self, call) -> dict:
@@ -946,6 +1019,10 @@ class Workshop:
         Non e' una scorciatoia che scrive diretta: valida come tutte le altre,
         e se nel frattempo quel corpo non e' piu' valido lo dice invece di
         scriverlo (spec §6).
+
+        **Se dopo quella costruzione l'oggetto e' cambiato ancora, non si
+        rimette niente**: il «prima» di questa proposta e' il `dopo` di allora,
+        e `apply` lo confronta con la casa (`_changed_since`, S-17).
         """
         row = self._store.read(construction_id)
         if row is None:

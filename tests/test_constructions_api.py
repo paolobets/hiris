@@ -447,6 +447,10 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
         preview="anteprima", now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
+    # La casa e' com'era stata lasciata da quella costruzione: dal 03/10/2026
+    # (S-17) il ripristino lo rilegge, e su un oggetto cambiato rifiuta.
+    client.app["_fake_ha"].esistenti.add("tapparelle_rip_ok")
+    client.app["_fake_ha"].corpi["tapparelle_rip_ok"] = {"alias": "Dopo"}
 
     risposta = await client.post(
         f"/api/constructions/{ident}/restore",
@@ -489,3 +493,48 @@ async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client,
                                  headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident)["stato"] == "disdetta"
+
+
+def _edit_proposal(archivio, chiave):
+    return archivio.propose(
+        operation="modifica", domain="automation", key=chiave,
+        actor="chat", exchange="turno-1", phrase="modifica",
+        prima={"id": chiave, "alias": "Prima"}, dopo={"id": chiave, "alias": "Dopo"},
+        helper=[], preview="anteprima", now=ADESSO_HTTP)["id"]
+
+
+@pytest.mark.asyncio
+async def test_conferma_su_un_oggetto_cambiato_e_409_e_non_scrive(client, csrf_stretto):
+    """S-17 dalla pagina: il rifiuto e' un conflitto, non un guasto.
+
+    Mutazione ESEGUITA: tolta la chiamata a `_changed_since` da `apply` --
+    rossa (200 e una scrittura)."""
+    ha = client.app["_fake_ha"]
+    ident = _edit_proposal(client.app["constructions"], "tapparelle_s17")
+    ha.esistenti.add("tapparelle_s17")
+    ha.corpi["tapparelle_s17"] = {"id": "tapparelle_s17", "alias": "cambiata a mano"}
+
+    risposta = await client.post(
+        f"/api/constructions/{ident}/confirm",
+        headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
+
+    assert risposta.status == 409
+    assert "cambiat" in (await risposta.json())["error"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_conferma_con_la_rilettura_in_guasto_e_503_e_non_scrive(client, csrf_stretto):
+    """Un guasto di rete durante la rilettura e' indisponibilita' (503), non
+    un conflitto, e il flag interno non trapela nella risposta."""
+    ha = client.app["_fake_ha"]
+    ident = _edit_proposal(client.app["constructions"], "tapparelle_s17_rete")
+    ha._solleva.add("read_configuration")
+
+    risposta = await client.post(
+        f"/api/constructions/{ident}/confirm",
+        headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
+
+    assert risposta.status == 503
+    assert "guasto_rete" not in await risposta.json()
+    assert ha.salvate == []

@@ -127,6 +127,7 @@ from .house_history import (
 )
 from .house_history import KINDS as HISTORY_KINDS
 from .house_query import KINDS, ORDERS, ROWS_MAX, parse_filters, query_house
+from .privacy import cover_automation_body
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
@@ -1248,17 +1249,6 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
 #: manutenzione del nucleo, non un comando di casa.
 _HA_CORE_USER_SERVICES = frozenset({"turn_on", "turn_off", "toggle", "update_entity"})
 
-
-#: Perche' il dettaglio non mostra il corpo di un'automazione a chi non amministra.
-#: Verificato il 27/09/2026 su Core 2026.9.3 (fix round 1 del Task 2, L-2):
-#: `automation/config` (`components/automation/__init__.py`) e'
-#: `@websocket_api.require_admin`; `script/config` no, e il corpo degli
-#: script resta visibile a tutti. Il nucleo della chat non porta i corpi --
-#: solo il nome e se il corpo c'e' -- quindi il solo punto da chiudere e' qui.
-_AUTOMATION_BODY_ADMIN_ONLY = ("Home Assistant mostra il corpo delle "
-                               "automazioni solo agli amministratori: si sa "
-                               "che c'e' e come si chiama, non cosa fa")
-
 #: Quanti byte di identificatori (gia' codificati per l'URL, virgole
 #: comprese) vanno in UNA richiesta a `/api/history/period`. Il server aiohttp
 #: di Home Assistant, e il proxy del Supervisor che gli sta davanti, rifiutano
@@ -1856,11 +1846,12 @@ class ToolDispatcher:
             del detail["ricordi"]
             detail["ricordi_non_letti"] = ("l'archivio della memoria non e' "
                                            "ancora stato caricato")
-        if (kind == "automazione" and isinstance(detail, dict)
-                and detail.get("corpo") is not None
-                and self._ceiling_denies("amministrare")):
-            detail = {**detail, "corpo": None,
-                      "corpo_non_disponibile": _AUTOMATION_BODY_ADMIN_ONLY}
+        # Il corpo di un'automazione solo a chi amministra: la regola e la sua
+        # ragione vivono in `privacy.cover_automation_body`, che chiama anche
+        # la rotta `GET /api/home-space`. Il nucleo della chat non porta i
+        # corpi -- solo il nome e se il corpo c'e'.
+        if isinstance(detail, dict) and self._ceiling_denies("amministrare"):
+            detail = cover_automation_body(detail, kind=kind)
         return detail
 
     def _mirror(self, rows_out: list | None = None

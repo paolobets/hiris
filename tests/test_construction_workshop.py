@@ -62,6 +62,9 @@ class FintoHA:
         # assente -- ed e' cosi' che `_free_key` puo' dire «e' libera»
         # senza inventare.
         self.esistenti = {"1771"}
+        # I corpi che questa casa finta custodisce: cio' che si salva si
+        # rilegge, come in Home Assistant.
+        self.corpi: dict[str, dict] = {"1771": {"id": "1771", "alias": "com'era"}}
         # Gli id di ARCHIVIO degli helper, per dominio (dominio -> lista), e le
         # voci del registro delle ENTITA'. Sono due cose diverse apposta: e'
         # la distinzione che il rilievo 9 dell’audit delle fondamenta ha
@@ -99,6 +102,7 @@ class FintoHA:
             return self._override["salva"]
         self.salvate.append((domain, key, body))
         self.esistenti.add(key)
+        self.corpi[key] = dict(body)
         # Dopo la scrittura l'entita' esiste, e porta l'id appena scritto:
         # senza questo il finto Home Assistant direbbe sempre «non e'
         # comparsa», e il test dell'etichetta misurerebbe il fake, non il codice.
@@ -114,6 +118,8 @@ class FintoHA:
     async def delete_configuration(self, domain, key):
         self._forse_solleva("delete_configuration")
         self.cancellate.append((domain, key))
+        self.esistenti.discard(key)
+        self.corpi.pop(key, None)
         return {"cancellato": True}
 
     async def read_configuration(self, domain, key):
@@ -128,7 +134,7 @@ class FintoHA:
             # del client vero, non nascosto da una finta piu' permissiva.
             return {"errore": "la chiave non ha una forma ammessa"}
         if key in self.esistenti:
-            return {"corpo": {"id": key, "alias": "com'era"}}
+            return {"corpo": dict(self.corpi.get(key) or {"id": key, "alias": "com'era"})}
         return {"assente": True}
 
     async def create_helper(self, domain, data):
@@ -1136,11 +1142,11 @@ def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
 
     tutte = [n for n in ast.walk(albero) if _e_chiamata_a_primitiva_rest(n)]
     # Se questa lista fosse vuota il test passerebbe SEMPRE, a vuoto: un
-    # test che non trova mai niente da controllare non protegge niente. I
-    # quattro siti di oggi (due `read_configuration`, una
-    # `save_configuration`, una `delete_configuration`) la tengono
-    # popolata.
-    assert len(tutte) >= 4, (
+    # test che non trova mai niente da controllare non protegge niente. Si
+    # pretende che ognuna delle tre primitive compaia, non un numero di siti:
+    # dal 03/10/2026 (S-17) le tre letture passano da `_read_now`, e il
+    # numero era sceso senza che niente si fosse rotto.
+    assert {n.func.attr for n in tutte} == set(_PRIMITIVE_REST), (
         "le primitive REST non compaiono piu' nel sorgente atteso: "
         "questo test non ha piu' niente da proteggere -- controllare a mano")
 
@@ -1413,3 +1419,188 @@ async def test_ripristinare_dalla_pagina_di_una_proposta_nata_con_filo_non_si_re
 
     assert "errore" not in esito
     assert esito["applicata"] is True
+
+
+@pytest.mark.asyncio
+async def test_la_finta_restituisce_cio_che_le_e_stato_scritto():
+    """La finta deve comportarsi come Home Assistant: cio' che si salva si
+    rilegge, cio' che si cancella non c'e' piu' (misurato sulla casa il
+    02/10/2026: due automazioni scritte da HIRIS su due si rileggono
+    identiche). Prima rispondeva sempre «com'era»: una finta cosi' non poteva
+    mostrare una modifica fatta a mano fra la proposta e la conferma."""
+    ha = FintoHA()
+    assert (await ha.read_configuration("automation", "1771"))["corpo"]["alias"] == "com'era"
+    await ha.save_configuration("automation", "1771", {"id": "1771", "alias": "nuovo"})
+    assert (await ha.read_configuration("automation", "1771"))["corpo"]["alias"] == "nuovo"
+    await ha.delete_configuration("automation", "1771")
+    assert (await ha.read_configuration("automation", "1771")) == {"assente": True}
+
+
+# -- S-17: la conferma rilegge la casa prima di scrivere ----------------------
+
+_HAND_EDITED = {"id": "1771", "alias": "cambiata a mano in Home Assistant"}
+
+
+@pytest.mark.asyncio
+async def test_una_modifica_confermata_su_un_oggetto_cambiato_a_mano_NON_scrive(banco):
+    """S-17. Fra la proposta e la conferma (fino a sette giorni) qualcuno ha
+    cambiato l'automazione in Home Assistant: scrivere il corpo calcolato
+    allora cancellerebbe il suo lavoro. Decisione del proprietario
+    (02/10/2026): si rifiuta, e la proposta va rifatta.
+
+    Mutazione ESEGUITA: tolta la chiamata a `_changed_since` da `apply` --
+    rossa (la scrittura avviene)."""
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    ha.corpi["1771"] = dict(_HAND_EDITED)
+
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+
+    assert "cambiat" in esito["errore"]
+    assert ha.salvate == [], "ha scritto sopra una modifica fatta a mano"
+    assert ha.corpi["1771"] == _HAND_EDITED
+    assert archivio.read(p["proposta_id"])["stato"] != "applicata"
+
+
+@pytest.mark.asyncio
+async def test_una_cancellazione_confermata_su_un_oggetto_cambiato_NON_cancella(banco):
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="cancella", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    ha.corpi["1771"] = dict(_HAND_EDITED)
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert "cambiat" in esito["errore"]
+    assert ha.cancellate == []
+
+
+@pytest.mark.asyncio
+async def test_una_modifica_su_un_oggetto_cancellato_a_mano_NON_lo_ricrea(banco):
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    ha.esistenti.discard("1771")
+    ha.corpi.pop("1771")
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert "non c’e' piu'" in esito["errore"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_una_creazione_su_una_chiave_occupata_nel_frattempo_NON_sovrascrive(banco):
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    chiave = archivio.read(p["proposta_id"])["chiave"]
+    ha.esistenti.add(chiave)
+    ha.corpi[chiave] = {"id": chiave, "alias": "nata a mano con lo stesso id"}
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert "esiste gia'" in esito["errore"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_se_la_rilettura_non_risponde_non_si_scrive_e_si_dice_guasto(banco):
+    """Un guasto di rete non e' «e' cambiato»: la pagina deve poter rispondere
+    503, e il motivo scritto e' il guasto, non un cambiamento che non c'e'.
+    La proposta si chiude come per un guasto durante la scrittura."""
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    ha._solleva.add("read_configuration")
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert esito.get("guasto_rete") is True
+    assert "cambiat" not in esito["errore"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_un_oggetto_rimasto_com_era_si_scrive_come_prima(banco):
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert esito["applicata"] is True
+    assert len(ha.salvate) == 1
+
+
+@pytest.mark.asyncio
+async def test_ripristinare_dopo_un_altra_modifica_a_mano_NON_la_cancella(banco):
+    """HIRIS modifica, poi qualcuno modifica ancora a mano: «rimetti com'era»
+    porterebbe via anche la seconda modifica, che HIRIS non ha mai visto.
+
+    Mutazione ESEGUITA: tolta la chiamata a `_changed_since` da `apply` --
+    rossa (il ripristino scrive)."""
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
+    ha.salvate.clear()
+    ha.corpi["1771"] = dict(_HAND_EDITED)
+
+    esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+
+    assert "cambiat" in esito["errore"]
+    assert ha.salvate == [] and ha.corpi["1771"] == _HAND_EDITED
+
+
+@pytest.mark.asyncio
+async def test_ripristinare_una_creazione_cambiata_a_mano_NON_la_cancella(banco):
+    """Mutazione ESEGUITA: tolta la chiamata a `_changed_since` da `apply` --
+    rossa (la creazione viene cancellata)."""
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
+    chiave = archivio.read(p["proposta_id"])["chiave"]
+    ha.corpi[chiave] = {**ha.corpi[chiave], "alias": "rinominata a mano"}
+
+    esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+
+    assert "cambiat" in esito["errore"]
+    assert ha.cancellate == []
+
+
+@pytest.mark.asyncio
+async def test_ripristinare_una_cancellazione_rimette_l_oggetto(banco):
+    """Rimettere com'era una CANCELLAZIONE vuol dire ricrearla: l'oggetto e'
+    assente proprio perche' lo ha tolto HIRIS, e l'assenza e' cio' che ci si
+    aspetta. La prima stesura del controllo S-17 decideva sul gesto e non sul
+    «prima» atteso: rifiutava sempre, dicendo «e' stato cancellato dopo la mia
+    proposta» (revisione indipendente del 03/10/2026, misurato).
+
+    Mutazione ESEGUITA: rimesso `if proposal["gesto"] == "crea":` in
+    `_changed_since` -- rossa."""
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="cancella", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
+    assert "1771" not in ha.corpi
+
+    esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+
+    assert esito.get("applicata") is True, esito
+    assert ha.corpi["1771"]["alias"] == "com'era"
+
+
+@pytest.mark.asyncio
+async def test_ripristinare_una_cancellazione_su_un_oggetto_rinato_NON_lo_sovrascrive(banco):
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="cancella", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
+    ha.esistenti.add("1771")
+    ha.corpi["1771"] = {"id": "1771", "alias": "rifatta a mano"}
+
+    esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+
+    assert "esiste di nuovo" in esito["errore"]
+    assert ha.corpi["1771"]["alias"] == "rifatta a mano"

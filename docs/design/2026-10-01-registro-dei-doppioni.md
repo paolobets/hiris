@@ -302,6 +302,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | F-19 | La forma del soggetto: quattro costruttori nel middleware, tre fuori, due forme | E | PS |  |  | cop-8 F5 |
 | F-20 | Costanti piccole del permesso scritte due volte (metodi sicuri, specie ignota, «nessun gesto») | E | PS |  |  | cop-8 F6 |
 | F-21 | `FINESTRA_S`: un nome, due fatti (600 s accoppiamento, 30 s firma) | D | PS |  |  | cop-8 F7 |
+| F-22 | «Il corpo si mostra solo a chi amministra», due regole: `privacy.cover_automation_body` (automazioni, per chat e `GET /api/home-space`, dalla 3.73.1) e `workshop._BODY_ADMIN_ONLY` (automazioni e scene, per l'anteprima di una costruzione). Oggi non c'è una falla: il comportamento letto non porta scene | D | CC |  |  | revisione 3.73.1 |
 
 ---
 

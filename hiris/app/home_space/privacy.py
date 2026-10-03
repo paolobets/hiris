@@ -140,3 +140,28 @@ def redact_nested(value):
         out["attributes"] = {key: item for key, item in out["attributes"].items()
                              if key not in POSITION_ATTRIBUTES}
     return out
+
+
+#: Perche' il corpo di un'automazione non va a chi non amministra. Verificato
+#: il 27/09/2026 su Core 2026.9.3 (fix round 1 del Task 2, L-2):
+#: `automation/config` (`components/automation/__init__.py`) e'
+#: `@websocket_api.require_admin`; `script/config` no, e il corpo degli
+#: script resta visibile a tutti.
+AUTOMATION_BODY_ADMIN_ONLY = ("Home Assistant mostra il corpo delle "
+                              "automazioni solo agli amministratori: si sa "
+                              "che c'e' e come si chiama, non cosa fa")
+
+
+def cover_automation_body(entry: dict, *, kind: str) -> dict:
+    """La voce com'e' per chi non amministra: un'automazione col corpo lo
+    perde e dice perche'. Tutto il resto -- uno script, un'automazione di cui
+    il corpo non si conosce -- resta com'e': «coperto» e «non letto» sono due
+    fatti diversi.
+
+    **Una regola, due porte**: la chiamano lo strumento della chat
+    (`tools.py`, il dettaglio di `view`) e la rotta `GET /api/home-space`,
+    che fino alla 3.73.0 consegnava i corpi a un servizio firmato «lettore».
+    """
+    if kind != "automazione" or entry.get("corpo") is None:
+        return entry
+    return {**entry, "corpo": None, "corpo_non_disponibile": AUTOMATION_BODY_ADMIN_ONLY}

@@ -401,3 +401,83 @@ async def test_senza_archivio_etichette_e_categorie_sono_None(aiohttp_client):
     corpo = await (await client.get("/api/home-space")).json()
     assert corpo["etichette"] is None
     assert corpo["categorie"] is None
+
+
+# -- il corpo delle automazioni solo a chi amministra (3.73.1) ---------------
+
+def _app_with_behavior(tmp_path, soggetto):
+    archivio = HomeSpace(str(tmp_path))
+    archivio.hold_registries({"piani": [], "aree": [], "dispositivi": [], "entita": [],
+                              "etichette": [], "categorie": [], "integrazioni": []})
+    archivio.hold_behavior([
+        {"tipo": "automazione", "id": "a1", "nome": "Luci", "corpo": {"triggers": [1]}},
+        {"tipo": "automazione", "id": "a2", "nome": "Senza corpo", "corpo": None},
+        {"tipo": "script", "id": "s1", "nome": "Buonanotte", "corpo": {"sequence": [1]}},
+    ])
+
+    @web.middleware
+    async def confine(request, handler):
+        # Un servizio firmato, come lo lascia `middleware_internal_auth`.
+        request["auth_via"] = "canale"
+        request["soggetto"] = soggetto
+        return await handler(request)
+
+    app = web.Application(middlewares=[confine])
+    app["home_space_store"] = archivio
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    return app, archivio
+
+
+def _servizio(ruolo):
+    return {"specie": "servizio", "id": "un servizio", "nome": "un servizio",
+            "utente": None, "ruolo": ruolo}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ruolo", ["lettore", "utente", None])
+async def test_chi_non_amministra_non_riceve_il_corpo_delle_automazioni(
+        aiohttp_client, tmp_path, ruolo):
+    """Lo strumento della chat lo negava gia' (`tools.py`); la rotta lo
+    consegnava a un servizio firmato «lettore» (spec «una fonte sola di
+    verita'» §1.6). Stessa regola, dalla stessa funzione, con la stessa frase.
+
+    Mutazioni ESEGUITE, rosse tutte e due: tolta la copertura dalla rotta;
+    coperti anche gli script (tolto il controllo sul tipo)."""
+    app, archivio = _app_with_behavior(tmp_path, _servizio(ruolo))
+    client = await aiohttp_client(app)
+    voci = (await (await client.get("/api/home-space")).json())["comportamento"]["voci"]
+    per_id = {v["id"]: v for v in voci}
+    assert per_id["a1"]["corpo"] is None
+    assert "amministratori" in per_id["a1"]["corpo_non_disponibile"]
+    assert per_id["a1"]["nome"] == "Luci"
+    # Un'automazione di cui HIRIS non ha il corpo resta «senza corpo», non «coperta».
+    assert "corpo_non_disponibile" not in per_id["a2"]
+    # Gli script Home Assistant non li riserva.
+    assert per_id["s1"]["corpo"] == {"sequence": [1]}
+    archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_chi_amministra_riceve_i_corpi_come_prima(aiohttp_client, tmp_path):
+    app, archivio = _app_with_behavior(tmp_path, _servizio("amministratore"))
+    client = await aiohttp_client(app)
+    risposta = await (await client.get("/api/home-space")).json()
+    voci = {v["id"]: v for v in risposta["comportamento"]["voci"]}
+    assert voci["a1"]["corpo"] == {"triggers": [1]}
+    assert "corpo_non_disponibile" not in voci["a1"]
+    assert risposta["comportamento"]["senza_corpo"] == 1
+    archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_corpo_conta_cio_che_HIRIS_non_sa_non_cio_che_copre(aiohttp_client, tmp_path):
+    """`senza_corpo` e' «quante voci HIRIS conosce solo di nome»: coprire un
+    corpo a chi guarda non cambia cio' che HIRIS sa.
+
+    Mutazione ESEGUITA: `senza_corpo` contato dopo la copertura -- rossa
+    (2 invece di 1)."""
+    app, archivio = _app_with_behavior(tmp_path, _servizio("lettore"))
+    client = await aiohttp_client(app)
+    risposta = await (await client.get("/api/home-space")).json()
+    assert risposta["comportamento"]["senza_corpo"] == 1
+    archivio.close()

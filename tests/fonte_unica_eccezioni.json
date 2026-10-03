@@ -12,7 +12,7 @@
    "conti": {
     "get_states": 1,
     "list_labels": 1,
-    "read_configuration": 2,
+    "read_configuration": 1,
     "read_registries": 1,
     "validate_config": 1
    },
