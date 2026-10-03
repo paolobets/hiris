@@ -22,7 +22,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-05 | `recorder/list_statistic_ids` letto due volte da due giri | E | PS |  |  | reg |
 | A-07 | Avvio e riconnessione: la stessa casa riletta 3-4 volte nei primi secondi | E | PS |  | cop-2 (incompleta, conteggio) | reg · cop-2 |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
-| A-09 | Lo specchio non riprova se `get_states` fallisce dopo il riavvio di HA | NV | CC |  |  | reg · cop-5 |
 | A-10 | Anagrafe parziale che sostituisce quella buona: spariscono gli alias di tutta la casa | NV | CC |  |  | reg · cop-4 · cop-5 |
 | A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | D | CC |  | cop-3 (imprecisa) | reg · cop-3 · cop-4 |
 | A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 |
@@ -36,17 +35,14 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-21 | `watch_automation_outcomes`: una lettura WS per automazione segnata, ogni 2 minuti, per sempre | NV | CC |  |  | cop-1 A3 |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 |
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 |
-| A-24 | `tools._state_readings` copia riga per riga di `ActionActuator._states` (specchio per id) | E | PS |  |  | cop-3 A-n1 |
 | A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | E | PS |  |  | cop-3 A-n2 |
 | A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 |
 | A-27 | Il taglio dell'URL dello storico vive nello strumento, non in `HAClient.history` | NV | PS |  |  | cop-3 A-n4 |
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
-| A-31 | `load` e `reload` dello specchio: due riletture, una sola protegge gli eventi | D | PS |  |  | cop-5 A4 |
 | A-32 | Le tracce lette un'automazione alla volta (`automation_traces`) quando la raffica `traces` esiste | E | PS |  |  | cop-5 A5 |
 | A-34 | `calendars()` chiede a HA ciò che lo specchio ha già; eventi letti in fila | NV | CC |  |  | cop-5 A7 |
-| A-35 | Lo specchio non risponde per id: tutti scandiscono `all_states()` | E | PS |  |  | cop-5 A8 |
 | A-36 | Due modi di leggere lo storico dettagliato (REST `history`, WS `recorded_changes`) | NV | DP |  |  | cop-5 A9 |
 | A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 |
 | A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | E | PS |  |  | cop-6 N-03 |
@@ -826,3 +822,7 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-06 | `config/entity_registry/get_entries` scaricato per intero, usato solo `aliases` | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
 | A-11 | `integrazioni.stato` dell'anagrafe: nessun evento la aggiorna | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
 | A-33 | Le etichette lette con lo stesso comando da due metodi e due buste | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
+| A-35 | Lo specchio non risponde per id: tutti scandiscono `all_states()` | Tappa 2 (da rilasciare) | beb20431 | Tappa 2, Task 6: lo specchio risponde per id (get, states_for, states_by_id); rilettura unica sotto lucchetto con tampone; riprova se l'ultima rilettura e' fallita |
+| A-24 | `tools._state_readings` copia riga per riga di `ActionActuator._states` (specchio per id) | Tappa 2 (da rilasciare) | beb20431 | Tappa 2, Task 6: lo specchio risponde per id (get, states_for, states_by_id); rilettura unica sotto lucchetto con tampone; riprova se l'ultima rilettura e' fallita |
+| A-31 | `load` e `reload` dello specchio: due riletture, una sola protegge gli eventi | Tappa 2 (da rilasciare) | beb20431 | Tappa 2, Task 6: lo specchio risponde per id (get, states_for, states_by_id); rilettura unica sotto lucchetto con tampone; riprova se l'ultima rilettura e' fallita |
+| A-09 | Lo specchio non riprova se `get_states` fallisce dopo il riavvio di HA | Tappa 2 (da rilasciare) | beb20431 | Tappa 2, Task 6: lo specchio risponde per id (get, states_for, states_by_id); rilettura unica sotto lucchetto con tampone; riprova se l'ultima rilettura e' fallita |
