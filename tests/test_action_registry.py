@@ -187,18 +187,6 @@ async def test_get_services_legge_l_endpoint_dei_servizi():
         "un 401/500 deve sollevare, non diventare un registro vuoto")
 
 
-def test_il_registro_e_agganciato_all_app():
-    """Pin sorgente sull'aggancio in `_on_startup` (stessa tecnica dei pin
-    di wiring gia' presenti in `tests/test_coverage_wiring.py`): senza
-    questa riga il registro esiste ma nessuno lo trova, e HIRIS resta cieco
-    su cio' che HA sa fare."""
-    from hiris.app import server
-
-    assert server.ServiceRegistry is ServiceRegistry
-    assert 'app["service_registry"] = ServiceRegistry()' in inspect.getsource(
-        server._on_startup)
-
-
 # --- la forma di `fields`, un livello piu' sotto ----------------------------
 #
 # R-1 e R-2 della review della fetta. Il parser era difensivo sulla forma

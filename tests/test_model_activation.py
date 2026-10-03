@@ -427,31 +427,6 @@ def test_il_ricalcolo_regge_un_archivio_assente():
     assert app["model_chain"] == []
 
 
-def test_l_avvio_pubblica_il_ricalcolo_FUORI_dai_due_rami():
-    """Il ramo `else` (nessun runner) deve pubblicarlo quanto l'altro, e con UNA
-    implementazione sola: due funzioni sarebbero due regole da tenere allineate,
-    cioe' il difetto di questa fetta un piano piu' sotto. La riga vive dentro
-    `_on_startup`, che ogni fixture azzera: si legge dal sorgente vero, stessa
-    tecnica dei pin gemelli in questo file."""
-    import inspect
-
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    righe = [r for r in src.splitlines()
-             if 'app["recompute_chain"]' in r and not r.lstrip().startswith("#")]
-    assert len(righe) == 1, righe
-    assert righe[0].startswith('    app["recompute_chain"]'), (
-        "pubblicata con un rientro maggiore = dentro un ramo: l'altro resta "
-        "senza, e la prima PUT di chi installa HIRIS solleva TypeError"
-    )
-    assert "    _rimetti_in_vigore()" in src, (
-        "l'avvio deve passare dalla STESSA strada che rimette in vigore: se le "
-        "due derivazioni della catena potessero divergere, devono divergere "
-        "all'avvio, dove ogni prova le guarda"
-    )
-
-
 def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello():
     """Il runner locale nasce con la credenziale (l'indirizzo) e non con
     `address AND modello`. Se nascesse col modello, scegliere un modello

@@ -1,57 +1,12 @@
-"""L'officina esiste nell'app vera, e nasce DOPO cio' di cui ha bisogno."""
+"""Le costruzioni rimaste a meta' si risanano all'avvio.
+
+Il cablaggio dell'officina -- chi tiene cosa, l'ordine col battito, la
+chiusura allo spegnimento, le cinque rotte -- si guarda sull'app avviata, in
+`tests/test_cablaggio_dell_avvio.py` (Tappa 1 dello sprint «Una fonte sola di
+verita'»): fino al 03/10/2026 stava qui, come testo cercato in `server.py`."""
 import inspect
 
 from hiris.app import server
-
-
-def test_l_officina_e_l_archivio_sono_cablati():
-    sorgente = inspect.getsource(server)
-    assert 'app["constructions"] = ConstructionStore(' in sorgente
-    assert 'app["workshop"] = Workshop(' in sorgente
-
-
-def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
-    """«un canale, una porta» (spec §2.1): l'officina scrive automazioni,
-    la porta esegue servizi -- sono due canali di scrittura diversi e non
-    devono confondersi. Si assert la chiamata INTERA, argomenti compresi,
-    non solo il suo prefisso: un domani in cui qualcuno aggiungesse
-    `app["action_actuator"]` come quarto argomento (il difetto che il brief
-    nomina per nome) farebbe arrossire questo test, non uno che si accontenta
-    di vedere 'Workshop(' da qualche parte.
-
-    Dal Task 11 la chiamata porta anche `read_timezone` (il fuso della casa,
-    non del container, nella data dell'anteprima di ripristino): l'assert
-    resta sull'intera chiamata, ora su piu' righe."""
-    sorgente = inspect.getsource(server)
-    inizio = sorgente.index('app["workshop"] = Workshop(')
-    fine = sorgente.index(")\n", inizio) + 1
-    chiamata = sorgente[inizio:fine]
-    assert chiamata == (
-        'app["workshop"] = Workshop(\n'
-        '        ha_client, app["constructions"], app["journal"],\n'
-        '        read_timezone=lambda: '
-        '_timezone_from_home_space_store(app.get("home_space_store")))'
-    )
-    assert "action_actuator" not in chiamata
-
-
-def test_l_officina_nasce_dopo_la_cronaca_che_le_serve():
-    """La cronaca e' un ingresso dell'officina: se nascesse dopo, ogni atto
-    resterebbe senza riga di registro -- in silenzio."""
-    sorgente = inspect.getsource(server)
-    assert sorgente.index('app["journal"] = Journal(') < sorgente.index(
-        'app["workshop"] = Workshop(')
-
-
-def test_i_due_archivi_si_chiudono_nel_gestore_di_spegnimento():
-    """Le due `close()` devono stare DENTRO `_on_cleanup`, il gestore che
-    aiohttp chiama davvero allo spegnimento -- non semplicemente da qualche
-    parte nel modulo, dove una `close()` scritta in un gestore mai registrato
-    (o mai chiamato) passerebbe comunque. Si ispeziona il sorgente della
-    SOLA funzione di cleanup, non del modulo intero."""
-    sorgente_cleanup = inspect.getsource(server._on_cleanup)
-    assert 'if "constructions" in app:' in sorgente_cleanup
-    assert 'app["constructions"].close()' in sorgente_cleanup
 
 
 def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path):
@@ -140,38 +95,3 @@ def _blocco_risanamento_costruzioni():
     return namespace["_risana"]
 
 
-def test_il_risanamento_delle_costruzioni_precede_il_battito_dello_schedulatore():
-    """L'ordine e' la proprieta' per cui questo task esiste: se il
-    risanamento delle proposte `in_corso` scattasse DOPO che il battito
-    dello schedulatore e' stato registrato, un giro dello scheduler potrebbe
-    partire (durante lo stesso `_on_startup`, prima che questa riga corra) e
-    toccare una riga che `risana()` avrebbe dovuto dichiarare incerta --
-    riaprendo in silenzio lo stato fantasma che questo stesso task chiude.
-    L'ancora e' l'id del job di battito (univoco nel file), non la
-    formattazione multilinea della chiamata a `scheduler.add_job`."""
-    sorgente = inspect.getsource(server)
-    assert sorgente.index('app["constructions"].risana(') < sorgente.index(
-        'id="hiris_keeper_heartbeat"')
-
-
-def test_le_cinque_rotte_sono_registrate():
-    """Ondata finale, punto 6: la registrazione di `/reject` non era pinnata
-    da nessun test, e le altre quattro erano pinnate solo per SOTTOSTRINGA
-    (`'"/api/constructions/{id}/confirm"' in sorgente`), che una registrazione
-    commentata avrebbe lasciato passare -- la sottostringa combacia UGUALE
-    dentro un commento (`# app.router.add_post(...)` la contiene per intero),
-    quindi `in sorgente` da solo non basta: serve una riga, non solo un
-    frammento (misurato mutando `add_post(".../reject"...)` in un
-    commento -- la vecchia forma restava verde). Si cerca la riga ESATTA
-    (spogliata dell'indentazione) fra le righe del sorgente, non un
-    sottinsieme di caratteri al suo interno."""
-    sorgente = inspect.getsource(server)
-    righe = [r.strip() for r in sorgente.splitlines()]
-    for attesa in (
-        'app.router.add_get("/api/constructions", handle_get_constructions)',
-        'app.router.add_get("/api/constructions/{id}", handle_get_construction)',
-        'app.router.add_post("/api/constructions/{id}/confirm", handle_confirm_construction)',
-        'app.router.add_post("/api/constructions/{id}/restore", handle_restore_construction)',
-        'app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)',
-    ):
-        assert attesa in righe, f"rotta non registrata (o commentata): {attesa}"

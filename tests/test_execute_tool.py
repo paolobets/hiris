@@ -13,7 +13,6 @@ test. Qui si pinnano tre cose che nessun altro test copre:
 3. `dispatch()` ora attende i gestori che sono coroutine -- e i quattro che
    NON lo sono continuano a funzionare: e' l'unica modifica invasiva del task.
 """
-import inspect
 
 import pytest
 
@@ -162,22 +161,3 @@ def test_un_app_SENZA_la_chiave_costruisce_il_dispatcher_sul_SOLO_SEME():
     assert d._judgments is REPO_JUDGMENTS
 
 
-def test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato():
-    """Pin sorgente sull'aggancio in `_on_startup` (stessa tecnica di
-    `tests/test_action_registry.py::test_il_registro_e_agganciato_all_app`).
-
-    Due cose in un test solo perche' sono una: la riga deve esserci **e**
-    deve stare DOPO `app["entity_cache"]`. Il brief la collocava accanto a
-    `registro_servizi`, dove pero' la cache non esiste ancora: `app.get(
-    "entity_cache")` avrebbe dato `None`, e una porta senza specchio rifiuta
-    OGNI azione con «non vedo lo stato di questa casa» (guardia (b) di
-    `action/actuator.py`) -- per sempre, e senza che nulla sollevi. E' il tipo di
-    difetto che si vede solo sulla casa vera: qui lo si vede subito."""
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    assert 'app["action_actuator"] = ActionActuator(' in src
-    assert src.index('app["entity_cache"] = entity_cache') < src.index(
-        'app["action_actuator"] = ActionActuator('), (
-        "la porta si costruisce PRIMA dello specchio dello stato: nascerebbe "
-        "con cache=None e rifiuterebbe ogni azione")

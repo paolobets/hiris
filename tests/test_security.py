@@ -331,7 +331,7 @@ async def test_csrf_esenta_chi_si_e_gia_autenticato_ALTROVE(csrf_strict):
 
 
 @pytest.mark.asyncio
-async def test_il_csrf_gira_DOPO_l_autenticazione_e_non_prima():
+async def test_il_csrf_gira_DOPO_l_autenticazione_e_non_prima(monkeypatch):
     """**L'ordine dei due middleware e' portante**, dal 22/09/2026.
 
     Il CSRF esenta chi ha gia' provato di essere una macchina, e lo sa
@@ -340,26 +340,44 @@ async def test_il_csrf_gira_DOPO_l_autenticazione_e_non_prima():
     ogni chiamata da macchina -- il ponte, il gateway, il pannello -- con un 403
     che parla di CSRF mentre il problema e' un ordine in una lista.
 
-    Si guarda la lista vera di `create_app`: e' un cancello di FORMA, e la forma
-    e' cio' che si rompe quando qualcuno riordina «per pulizia».
+    Fino al 03/10/2026 la prova cercava la lista nel testo di `server.py`; adesso
+    guarda l'app VERA di `create_app` (Tappa 1 dello sprint «Una fonte sola di
+    verita'»): la sua lista, e due richieste vere. Senza credenziali e senza
+    intestazione CSRF la risposta e' il 401 del confine, non il 403 del CSRF; il
+    ponte con la sua credenziale di turno, senza intestazione CSRF, passa.
 
-    Mutazione ESEGUITA: scambiati i due nella lista -- rossa.
+    Mutazione ESEGUITA: scambiati i due nella lista di `create_app` -- rossa
+    (sulla lista, e sulle due richieste: 403 al posto di 401, 403 al ponte).
     """
-    import ast
-    import pathlib
+    from conftest import credenziale_ponte
+    from hiris.app.api.middleware_csrf import csrf_middleware
+    from hiris.app.api.middleware_internal_auth import internal_auth_middleware
+    from hiris.app.server import create_app
 
-    sorgente = (pathlib.Path(__file__).resolve().parents[1]
-                / "hiris" / "app" / "server.py").read_text(encoding="utf-8")
-    albero = ast.parse(sorgente)
-    lista = None
-    for nodo in ast.walk(albero):
-        if (isinstance(nodo, ast.Call)
-                and getattr(nodo.func, "attr", None) == "Application"):
-            for chiave in nodo.keywords:
-                if chiave.arg == "middlewares":
-                    lista = [getattr(e, "id", "") for e in chiave.value.elts]
-    assert lista, "non trovo la lista dei middleware in `create_app`"
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "")
+    monkeypatch.setenv("HIRIS_ALLOW_NO_CSRF", "")
+    app = create_app()
+    lista = list(app.middlewares)
+    assert lista.index(internal_auth_middleware) < lista.index(csrf_middleware), (
+        f"i middleware sono nell'ordine {[m.__name__ for m in lista]}: il CSRF "
+        "legge `auth_via`, che lo scrive l'autenticazione — invertirli spegne "
+        "ogni integrazione")
 
-    assert lista.index("internal_auth_middleware") < lista.index("csrf_middleware"), (
-        f"i middleware sono nell'ordine {lista}: il CSRF legge `auth_via`, che "
-        "lo scrive l'autenticazione — invertirli spegne ogni integrazione")
+    async def accepted(request):
+        return web.json_response({"ok": True})
+
+    app.router.add_post("/api/prova-ordine", accepted)
+    # L'avvio no: qui si guarda il confine, e l'avvio parlerebbe con Home
+    # Assistant.
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+    turno = credenziale_ponte(app, "segreto-di-turno-ordine")
+    async with TestClient(TestServer(app)) as c:
+        anonimo = await c.post("/api/prova-ordine")
+        ponte = await c.post("/api/prova-ordine", headers=turno)
+    assert anonimo.status == 401, (
+        f"senza credenziali la risposta e' {anonimo.status}: il CSRF ha parlato "
+        "prima del confine")
+    assert ponte.status == 200, (
+        f"il ponte con la sua credenziale ha avuto {ponte.status}: il CSRF non ha "
+        "trovato il verdetto del confine")

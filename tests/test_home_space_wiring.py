@@ -382,26 +382,6 @@ def test_invalidare_non_svuota_cio_che_si_sapeva():
     assert not r.empty()
 
 
-def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():
-    """Senza questa prova, `invalidate()` e la famiglia di eventi sarebbero un
-    meccanismo che nessuno collega -- e in produzione il registro continuerebbe
-    a rinfrescarsi solo a scadenza, con la suite tutta verde.
-
-    Si legge il blocco dal sorgente vero di `_on_startup`, come fa
-    `tests/test_websocket_startup.py` e per la stessa ragione: provare la
-    funzione non dimostra che qualcuno la chiami."""
-    import inspect
-
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    assert "add_service_listener" in src, (
-        "nessuno registra l'ascoltatore dei servizi: gli eventi arrivano e "
-        "non invalidano niente")
-    assert ".invalidate()" in src, (
-        "l'ascoltatore c'e' ma non invalida: il registro resta vecchio")
-
-
 class _FintoWSCheCade(_FintoWSEventi):
     """La connessione si rompe subito dopo l'handshake: `_ws_loop` ne apre
     un'altra (la riconnessione)."""
@@ -428,7 +408,8 @@ async def test_alla_seconda_connessione_lo_specchio_si_rilegge(monkeypatch):
 
     Mutazione ESEGUITA: non registrare `mirror_reload_listener` sul client --
     rossa (nessuna chiamata a `get_states`). Che l'avvio lo registri davvero
-    lo prova la prova sul sorgente qui sotto."""
+    lo prova l'app avviata
+    (`tests/test_cablaggio_dell_avvio.py::test_a_reconnection_rereads_the_state_mirror`)."""
     vero_sleep = asyncio.sleep
 
     async def _backoff_istantaneo(_secondi):
@@ -454,17 +435,6 @@ async def test_alla_seconda_connessione_lo_specchio_si_rilegge(monkeypatch):
 
     # una per connessione: la prima all'avvio, la seconda alla riconnessione
     assert ha_letture.await_count == 2
-
-
-def test_l_avvio_CABLA_davvero_l_ascoltatore_dello_specchio():
-    """Provare `mirror_reload_listener` non prova che qualcuno lo registri.
-    Mutazione ESEGUITA: togliere la riga in `_on_startup` -- rossa."""
-    import inspect
-
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    assert "mirror_reload_listener(ha_client, entity_cache)" in src
 
 
 @pytest.mark.asyncio
