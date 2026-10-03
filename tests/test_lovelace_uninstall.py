@@ -7,9 +7,10 @@ la scrittura di `hiris-ingress.json` e la registrazione della risorsa
 Lovelace. Nessuno di quei tre comportamenti esiste piu' -- i 22 test che li
 difendevano fallivano per costruzione (ImportError su `_register_lovelace_card`
 e `_deploy_card_to_www`, FileNotFoundError su `hiris-chat-card.js`), verificato
-prima di cancellarli. I 3 test su `_find_ha_config_dir` invece **passavano**:
-quella funzione sopravvive (la usa la sentinella del comportamento) e i suoi
-test si sono spostati qui, non buttati.
+prima di cancellarli. I 3 test sulla ricerca della cartella di Home Assistant invece
+**passavano**: quella ricerca sopravvive (la usa la rilettura del
+comportamento) e i suoi test si sono spostati qui, non buttati. Dal 03/10/2026
+(A-40) la ricerca e' una sola, `home_space.redaction.home_assistant_folder`.
 
 Cosa difendono i test nuovi -- le tre regole di
 `server._disinstalla_card_lovelace`:
@@ -183,7 +184,7 @@ async def test_al_secondo_avvio_non_cancella_niente():
 
 def test_file_gia_assenti_non_si_rimuovono_due_volte(tmp_path):
     """Secondo giro su una cartella gia' pulita: nessun `os.remove`."""
-    with patch("hiris.app.server._find_ha_config_dir", return_value=str(tmp_path)), \
+    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)), \
          patch("hiris.app.server.os.remove") as rimuovi:
         from hiris.app.server import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
@@ -363,7 +364,7 @@ def test_toglie_i_due_file_della_card(tmp_path, caplog):
     (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
     (cartella / "hiris-ingress.json").write_text("{}", encoding="utf-8")
 
-    with patch("hiris.app.server._find_ha_config_dir", return_value=str(tmp_path)), \
+    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)), \
          caplog.at_level("INFO"):
         from hiris.app.server import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
@@ -381,7 +382,7 @@ def test_la_cartella_con_roba_dell_utente_non_si_tocca(tmp_path):
     (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
     (cartella / "sfondo-cucina.png").write_bytes(b"\x89PNG")
 
-    with patch("hiris.app.server._find_ha_config_dir", return_value=str(tmp_path)):
+    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)):
         from hiris.app.server import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
 
@@ -392,7 +393,7 @@ def test_la_cartella_con_roba_dell_utente_non_si_tocca(tmp_path):
 
 def test_cartella_ha_non_montata_non_solleva():
     """Senza volume di configurazione non c'e' niente da togliere."""
-    with patch("hiris.app.server._find_ha_config_dir", return_value=None), \
+    with patch("hiris.app.server.home_assistant_folder", return_value=None), \
          patch("hiris.app.server.os.remove") as rimuovi:
         from hiris.app.server import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
@@ -405,7 +406,7 @@ def test_file_non_cancellabile_lo_dichiara_e_non_solleva(tmp_path, caplog):
     cartella.mkdir(parents=True)
     (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
 
-    with patch("hiris.app.server._find_ha_config_dir", return_value=str(tmp_path)), \
+    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)), \
          patch("hiris.app.server.os.remove", side_effect=PermissionError("read-only")), \
          caplog.at_level("WARNING"):
         from hiris.app.server import _rimuovi_file_card
@@ -414,9 +415,11 @@ def test_file_non_cancellabile_lo_dichiara_e_non_solleva(tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
-# `_find_ha_config_dir` — sopravvive alla card: i suoi test si sono SPOSTATI
-# qui, non cancellati. La usa anche la sentinella del comportamento
-# (`server.py`, `behavior_sentinel`).
+# `home_assistant_folder` — sopravvive alla card: i suoi test si sono SPOSTATI
+# qui, non cancellati. La usano anche la rilettura del comportamento
+# (`server.behavior_reader`) e il sigillo dei segreti
+# (`redaction.home_assistant_seal`). Fino al 03/10/2026 questi tre test
+# guardavano la copia di `server`, `_find_ha_config_dir` (A-40).
 # ---------------------------------------------------------------------------
 
 def _patch_ha_mounted(ha_config_dir: str | None = "/config"):
@@ -432,33 +435,33 @@ def _patch_ha_mounted(ha_config_dir: str | None = "/config"):
         return path == os.path.join(ha_config_dir, ".storage")
 
     return (
-        patch("hiris.app.server.os.path.exists", side_effect=_exists),
-        patch("hiris.app.server.os.path.isdir", side_effect=_isdir),
+        patch("hiris.app.home_space.redaction.os.path.exists", side_effect=_exists),
+        patch("hiris.app.home_space.redaction.os.path.isdir", side_effect=_isdir),
     )
 
 
-def test_find_ha_config_dir_config_path():
-    """_find_ha_config_dir restituisce /config se lì c'e' configuration.yaml."""
+def test_home_assistant_folder_config_path():
+    """home_assistant_folder restituisce /config se lì c'e' configuration.yaml."""
     exists_patch, isdir_patch = _patch_ha_mounted("/config")
     with exists_patch, isdir_patch:
-        from hiris.app.server import _find_ha_config_dir
-        assert _find_ha_config_dir() == "/config"
+        from hiris.app.home_space.redaction import home_assistant_folder
+        assert home_assistant_folder() == "/config"
 
 
-def test_find_ha_config_dir_homeassistant_fallback():
+def test_home_assistant_folder_homeassistant_fallback():
     """Ripiega su /homeassistant se /config non ha i file di Home Assistant."""
     exists_patch, isdir_patch = _patch_ha_mounted("/homeassistant")
     with exists_patch, isdir_patch:
-        from hiris.app.server import _find_ha_config_dir
-        assert _find_ha_config_dir() == "/homeassistant"
+        from hiris.app.home_space.redaction import home_assistant_folder
+        assert home_assistant_folder() == "/homeassistant"
 
 
-def test_find_ha_config_dir_not_mounted():
+def test_home_assistant_folder_not_mounted():
     """None quando nessuno dei due percorsi somiglia alla configurazione HA."""
     exists_patch, isdir_patch = _patch_ha_mounted(None)
     with exists_patch, isdir_patch:
-        from hiris.app.server import _find_ha_config_dir
-        assert _find_ha_config_dir() is None
+        from hiris.app.home_space.redaction import home_assistant_folder
+        assert home_assistant_folder() is None
 
 
 # ---------------------------------------------------------------------------
@@ -521,3 +524,25 @@ async def test_l_avvio_usa_lo_slug_predefinito_se_HIRIS_SLUG_non_c_e(monkeypatch
     chiamata = await _uninstall_call()
 
     assert chiamata.args == (fotografia_porte.NOWHERE, "", "hiris")
+
+
+# ---------------------------------------------------------------------------
+# A-40 (Tappa 2, Task 11) — una cartella sola: quella di `home_space/redaction`
+# ---------------------------------------------------------------------------
+
+def test_rimuovi_file_card_cerca_la_cartella_dove_la_cerca_il_sigillo(tmp_path, monkeypatch):
+    """La disinstallazione trova la cartella di Home Assistant nello stesso
+    posto in cui la trova il sigillo dei segreti: `redaction._FOLDERS`. Fino
+    al 03/10/2026 `server` aveva una sua copia della ricerca
+    (`_find_ha_config_dir`), e spostare l'elenco in un punto non lo spostava
+    nell'altro."""
+    from hiris.app.home_space import redaction
+    (tmp_path / "configuration.yaml").write_text("", encoding="utf-8")
+    cartella = tmp_path / "www" / SLUG
+    cartella.mkdir(parents=True)
+    (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
+    monkeypatch.setattr(redaction, "_FOLDERS", (str(tmp_path),))
+
+    server._rimuovi_file_card(SLUG)
+
+    assert not (cartella / "hiris-chat-card.js").exists()

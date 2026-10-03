@@ -148,9 +148,11 @@ _FOLDERS = ("/config", "/homeassistant")
 def home_assistant_folder() -> str | None:
     """La cartella di configurazione di Home Assistant, o `None`.
 
-    Fa la stessa ricerca di `server._find_ha_config_dir`, che `home_space/` non
-    può chiamare senza un import circolare. Sta qui, accanto a chi la usa per
-    trovare `secrets.yaml` (`home_assistant_seal`, qui sotto).
+    E' l'unica ricerca di quella cartella nel prodotto (A-40, 03/10/2026:
+    `server` ne aveva una copia, `_find_ha_config_dir`, ed e' uscita). Sta qui,
+    accanto a chi la usa per trovare `secrets.yaml` (`home_assistant_seal`, qui
+    sotto); `server` la importa per la rilettura del comportamento e per
+    togliere i file della vecchia card.
     """
     for candidate in _FOLDERS:
         if (os.path.exists(os.path.join(candidate, "configuration.yaml"))
