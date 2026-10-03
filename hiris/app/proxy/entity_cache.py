@@ -51,7 +51,7 @@ def automation_config_id(cache, entity_id: str) -> str | None:
     **Perche' esiste, e perche' sta qui.** Home Assistant archivia le tracce
     di un'automazione sotto `automation.<id della configurazione>`, non sotto
     il suo `object_id` (catena verificata sui tag `2024.7.0` e `2026.9.0`,
-    scritta per esteso in `HAClient.automation_traces()`). L'unico posto in
+    scritta per esteso in `HAClient.traces()`). L'unico posto in
     cui quell'id vive gia', senza aprire un secondo rubinetto verso Home
     Assistant, e' lo specchio dello stato: `_to_minimal` lo porta in
     `automation_id`. I due chiamanti che devono risolverlo -- il collettore
@@ -579,7 +579,7 @@ def _to_minimal(raw: dict) -> dict:
     # nella proiezione. E' la chiave con cui Home Assistant archivia le
     # tracce (`automation.<id di configurazione>`, catena verificata sui tag
     # `2024.7.0` e `2026.9.0` nel docstring di
-    # `HAClient.automation_traces()`), quindi senza di essa lo specchio non
+    # `HAClient.traces()`), quindi senza di essa lo specchio non
     # puo' rispondere alla domanda «come e' andata questa automazione?».
     #
     # E' PROMOSSA a chiave propria, e per questo esce dalle ceste degli

@@ -99,17 +99,16 @@
   },
   "hiris/app/server.py": {
    "conti": {
-    "automation_traces": 1,
     "extract_from_target": 1,
     "hourly_statistics": 1,
     "problems": 1,
     "statistic_ids": 2,
-    "system_log": 1
+    "system_log": 1,
+    "traces": 1
    },
    "voci": [
     "A-05",
-    "A-08",
-    "A-21"
+    "A-08"
    ]
   }
  },

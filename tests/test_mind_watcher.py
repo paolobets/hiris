@@ -1081,9 +1081,9 @@ def test_mark_automation_rejects_a_malformed_entity_id(coppia):
     cadenza breve di `server.py` -- e non c'e' nessun altro punto in cui
     filtrarlo dopo.
 
-    (Dal Task 6 non e' piu' vero che raggiungerebbe `HAClient.
-    automation_traces()`: quel metodo prende l'id di CONFIGURAZIONE, non
-    l'`entity_id`, e un identificatore malformato non si risolve contro lo
+    (Dal Task 6 non e' piu' vero che raggiungerebbe le tracce: il
+    collettore le chiede (`HAClient.traces()`) per id di CONFIGURAZIONE, non
+    per `entity_id`, e un identificatore malformato non si risolve contro lo
     specchio. La guardia resta per la ragione detta sopra -- vedi il
     docstring di `mark_automation`.)
 

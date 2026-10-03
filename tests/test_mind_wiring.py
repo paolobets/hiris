@@ -676,8 +676,9 @@ class _FakeAutomationWatcher:
         return self._result
 
 
-#: Il comando che `HAClient.automation_traces()` manda (`proxy/ha_client.py`):
-#: `trace/list` con `{"domain": "automation", "item_id": <id>}`.
+#: Il comando che `HAClient.traces()` manda per ogni automazione
+#: (`proxy/ha_client.py`): `trace/list` con `{"domain": "automation",
+#: "item_id": <id>}`.
 _TRACE_LIST = "trace/list"
 
 
@@ -690,7 +691,7 @@ def _traces_house(traces_by_automation_id) -> CasaFinta:
     della finta: e' la proprieta' che questi test sorvegliano. Home Assistant
     archivia le tracce sotto `automation.<id della configurazione>` (catena
     verificata sui tag `2024.7.0` e `2026.9.0`, nel docstring di
-    `HAClient.automation_traces()`), quindi un collettore che passasse
+    `HAClient.traces()`), quindi un collettore che passasse
     l'`entity_id` -- come faceva la prima stesura -- non troverebbe nessuna
     traccia qui, esattamente come non ne trova nessuna sulla casa vera.
 
@@ -709,7 +710,8 @@ def _traces_house(traces_by_automation_id) -> CasaFinta:
 
     Mutazione ESEGUITA (03/10/2026, Tappa 2, Task 12), un difetto che la
     finta di prima non poteva vedere perche' sostituiva il client: in
-    `HAClient.automation_traces()` l'`item_id` mandato come
+    `HAClient.automation_traces()` (uscito il 04/10/2026: oggi le tracce si
+    leggono con `HAClient.traces()`) l'`item_id` mandato come
     `f"automation.{automation_id}"` -- rosse sei prove (`assert 0 == 3`,
     `['automation.1771346155970'] == ['1771346155970']`, ...)."""
     traces = dict(traces_by_automation_id)
@@ -724,28 +726,6 @@ def _traces_house(traces_by_automation_id) -> CasaFinta:
 def _traces_asked(house: CasaFinta) -> list[str]:
     """Gli id di configurazione chiesti a `trace/list`, nell'ordine."""
     return [extra["item_id"] for command, extra in house.calls if command == _TRACE_LIST]
-
-
-class _FakeTracesClient:
-    """Un `HAClient` finto per `automation_traces()`, rimasto per UNA prova
-    sola (`test_a_failed_read_for_one_automation_does_not_stop_the_others`):
-    una lettura che fallisce per un'automazione e riesce per l'altra.
-
-    Sulla casa vera e' un caso ordinario -- ogni `automation_traces()` e' una
-    connessione sua, e una puo' cadere mentre l'altra no -- ma
-    `scripts/casa_finta.py` non lo sa dire: `silence=` e `refuse=` valgono
-    per il COMANDO (`trace/list`) per tutta la vita della casa, non per
-    l'`item_id` di una chiamata. Esce quando la casa finta sapra' rifiutare
-    (o tacere) secondo l'`extra` (Tappa 2, Task 12)."""
-
-    def __init__(self, traces_by_automation_id):
-        self._traces = dict(traces_by_automation_id)
-        self.calls: list[str] = []
-
-    async def automation_traces(self, automation_id):
-        self.calls.append(automation_id)
-        return self._traces.get(
-            automation_id, {"errore": f"nessuna finta per {automation_id}"})
 
 
 class _FakeMirror(MirrorById):
@@ -799,20 +779,14 @@ def test_fake_automation_watcher_matches_watcher_watch_automation_outcome():
         nome="Watcher.watch_automation_outcome")
 
 
-def test_fake_traces_client_matches_haclient_automation_traces():
-    from hiris.app.proxy.ha_client import HAClient
-    assert_stessa_firma(HAClient.automation_traces, _FakeTracesClient.automation_traces,
-                        nome="HAClient.automation_traces")
-
-
 def test_without_a_watcher_the_traces_round_returns_none():
     result = asyncio.run(server.watch_automation_outcomes({}, _traces_house({})))
     assert result is None
 
 
 def test_no_marked_automation_reads_no_trace():
-    """`marked_automations()` vuota: il giro non deve chiamare
-    `automation_traces` nemmeno una volta -- non c'e' niente da rileggere.
+    """`marked_automations()` vuota: il giro non deve chiedere
+    nessuna traccia, nemmeno una connessione -- non c'e' niente da rileggere.
     (Giro di correzioni, rilievo 6, secondo punto: le chiamate si
     registrano -- oggi `house.calls` della casa finta, letta da
     `_traces_asked` -- quindi questa promessa e' davvero sorvegliata, non
@@ -823,12 +797,13 @@ def test_no_marked_automation_reads_no_trace():
     assert result == 0
     assert watcher.calls == []
     assert _traces_asked(client) == []
+    assert client.connections == []
 
 
 def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
     """Tre tracce nella stessa risposta, con `run_id` diversi (nuovi al
     cursore): ognuna deve arrivare a `watch_automation_outcome`,
-    nell'ordine in cui `automation_traces()` le ha restituite -- l'ordine
+    nell'ordine in cui `traces()` le ha restituite -- l'ordine
     conta (vedi il docstring di `watch_automation_outcomes` per la fonte HA
     che lo garantisce), e questa prova lo sorveglia direttamente
     sull'inoltro, non sul giudizio (quello e' provato su `Watcher` vero,
@@ -922,21 +897,32 @@ def test_a_trace_older_than_process_boot_is_not_forwarded():
 
 
 def test_a_failed_read_for_one_automation_does_not_stop_the_others():
-    """Una delle due automazioni segnate legge un `{"errore": ...}`: quella
-    si salta, l'altra si legge lo stesso -- e' la disciplina del "parziale
-    tollerato" (come `build_companions`), non quella del "tutto o niente"
-    delle tre letture di sistema di `watch_system_conditions`.
+    """Una delle due automazioni segnate non si legge: quella si salta,
+    l'altra si legge lo stesso -- e' la disciplina del "parziale tollerato"
+    (come `build_companions`), non quella del "tutto o niente" delle tre
+    letture di sistema di `watch_system_conditions`.
+
+    Dalla Tappa 2, Task 8 (A-21) le tracce arrivano in una raffica sola
+    (`HAClient.traces`), e una chiave che non si legge sta in `non_letti` col
+    suo motivo. Qui Home Assistant manda per l'automazione rotta una
+    risposta che non e' la lista nuda di `trace/list`: il client vero la
+    mette in `non_letti` («risposta in forma inattesa»). Prima la casa finta
+    non sapeva far fallire una chiave sola, e la prova usava un client finto
+    (`_FakeTracesClient`), uscito con questa conversione.
 
     Mutazione (verificata eseguendola): `return written` invece di
-    `continue` sul ramo `"errore" in report` -- interrompe il giro INTERO
+    `continue` sul ramo della chiave non letta -- interrompe il giro INTERO
     alla prima automazione rotta invece di saltare solo quella. Il test
     torna rosso su `assert result == 1` (tornerebbe `0`: `automation.buona`
     non verrebbe mai raggiunta, `watcher.calls` resterebbe vuota)."""
     watcher = _FakeAutomationWatcher(["automation.rotta", "automation.buona"])
-    client = _FakeTracesClient({
-        "1771346155970": {"errore": "Home Assistant non ha risposto"},
-        "1771346155971": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
-    })
+
+    def _trace_list(extra):
+        if extra["item_id"] == "1771346155970":
+            return {"non": "una lista nuda"}
+        return [{"run_id": "1", "script_execution": "error"}]
+
+    client = CasaFinta(synthetic_inputs(), answers={_TRACE_LIST: _trace_list})
     app = {"watcher": watcher, "entity_cache": _FakeMirror({
         "automation.rotta": "1771346155970",
         "automation.buona": "1771346155971"})}
@@ -945,6 +931,68 @@ def test_a_failed_read_for_one_automation_does_not_stop_the_others():
 
     assert result == 1
     assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
+    # Il cursore dell'automazione non letta non si tocca: resta quello
+    # dell'ultimo giro riuscito (qui: nessuno).
+    assert "automation.rotta" not in app["automation_trace_cursors"]
+
+
+def test_marked_automations_are_read_in_one_connection():
+    """A-21 (Tappa 2, Task 8): tre automazioni segnate, UNA connessione per
+    giro, con i tre `trace/list` dentro.
+
+    Contato sul codice del 04/10/2026, prima di questa prova: il giro
+    chiamava `HAClient.automation_traces` una volta per automazione segnata,
+    e ognuna era un `_ws_send` suo -- una connessione WebSocket nuova, con
+    handshake e autenticazione -- ogni due minuti; e l'insieme dei segnati
+    non si svuota mai (`Watcher.marked_automations`).
+
+    Mutazione (verificata eseguendola): rimettere una lettura per
+    automazione dentro il ciclo -- rossa sulle connessioni (`assert 4 ==
+    1`)."""
+    watcher = _FakeAutomationWatcher(
+        ["automation.a", "automation.b", "automation.c"])
+    client = _traces_house({
+        "1771346155970": [{"run_id": "1", "script_execution": "error"}],
+        "1771346155971": [{"run_id": "1", "script_execution": "error"}],
+        "1771346155972": [{"run_id": "1", "script_execution": "error"}],
+    })
+    app = {"watcher": watcher, "entity_cache": _FakeMirror({
+        "automation.a": "1771346155970",
+        "automation.b": "1771346155971",
+        "automation.c": "1771346155972"})}
+
+    result = asyncio.run(server.watch_automation_outcomes(app, client))
+
+    assert len(client.connections) == 1
+    assert client.connections == [("ws", (_TRACE_LIST, _TRACE_LIST, _TRACE_LIST))]
+    assert _traces_asked(client) == ["1771346155970", "1771346155971", "1771346155972"]
+    assert result == 3
+    assert [c[:2] for c in watcher.calls] == [
+        ("automation.a", "error"), ("automation.b", "error"), ("automation.c", "error")]
+
+
+def test_a_silent_batch_writes_nothing_and_keeps_every_cursor(caplog):
+    """La raffica intera non parte (Home Assistant muto): nessun fatto, e
+    nessun cursore toccato -- per nessuna automazione. E' «non ho potuto
+    guardare», non «non e' successo niente».
+
+    Mutazione (verificata eseguendola): togliere il ritorno sul ramo
+    `"errore" in report` -- rossa (`KeyError: 'tracce'`)."""
+    watcher = _FakeAutomationWatcher(["automation.a", "automation.b"])
+    client = CasaFinta(synthetic_inputs(), silence={_TRACE_LIST})
+    app = {"watcher": watcher,
+           "automation_trace_cursors": {"automation.a": {"vecchio"}},
+           "entity_cache": _FakeMirror({
+               "automation.a": "1771346155970",
+               "automation.b": "1771346155971"})}
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+        result = asyncio.run(server.watch_automation_outcomes(app, client))
+
+    assert result == 0
+    assert watcher.calls == []
+    assert app["automation_trace_cursors"] == {"automation.a": {"vecchio"}}
+    assert any("non lette" in r.getMessage() for r in caplog.records)
 
 
 def test_traces_are_asked_for_by_configuration_id_not_by_entity_id():
@@ -961,11 +1009,12 @@ def test_traces_are_asked_for_by_configuration_id_not_by_entity_id():
     si sbaglia UNA traccia, non se ne legge mai nessuna. Qui l'`entity_id` e
     l'id sono deliberatamente diversi, cosi' la differenza si vede.
 
-    Mutazione (verificata eseguendola): `report = await
-    ha_client.automation_traces(entity_id)` invece di `(automation_id)` -- il
-    test torna rosso su `assert _traces_asked(client) == ["1771346155970"]`, che
-    riceve `["automation.luci_sera"]`; e anche su `assert result == 1`, che
-    riceve `0`, perche' la finta non ha nessuna traccia sotto quella chiave
+    Mutazione (verificata eseguendola il 04/10/2026, sulla raffica
+    `traces`): `resolved.append((entity_id, entity_id))` invece di
+    `(entity_id, automation_id)` -- il test torna rosso su
+    `assert _traces_asked(client) == ["1771346155970"]`, che riceve
+    `["automation.luci_sera"]`; e anche su `assert result == 1`, che riceve
+    `0`, perche' la finta non ha nessuna traccia sotto quella chiave
     (proprio come HA non ne ha).
     """
     watcher = _FakeAutomationWatcher(["automation.luci_sera"])

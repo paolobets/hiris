@@ -428,12 +428,13 @@ class Watcher:
         l'unico, quindi basta controllare qui.
 
         **Cosa NON e' piu' vero, dal Task 6.** Questa guardia era stata
-        scritta perche' `HAClient.automation_traces()` e lo
-        `automation_trace()` singolare che la affiancava (uscito il
+        scritta perche' `HAClient.automation_traces()` (uscito il
+        04/10/2026: il collettore legge con la raffica `HAClient.traces`) e
+        lo `automation_trace()` singolare che la affiancava (uscito il
         30/09/2026) spaccavano l'`entity_id` sul primo punto: un
         identificatore malformato ci produceva un elenco vuoto silenzioso.
-        `automation_traces()`, che resta, non prende piu' un `entity_id` ma
-        l'id di CONFIGURAZIONE, risolto dal collettore contro lo specchio (`proxy/entity_cache.
+        Le tracce si chiedono per id di CONFIGURAZIONE, risolto dal
+        collettore contro lo specchio (`proxy/entity_cache.
         automation_config_id`), e un identificatore malformato non si
         risolve. La guardia resta per la ragione detta sopra -- non
         sporcare l'insieme dei segnati -- non piu' per quella.
@@ -496,7 +497,7 @@ class Watcher:
         falsa sta funzionando (la legge in testa al piano). `outcome` e' il
         valore GREZZO che HA scrive in `script_execution` sulla traccia
         (`ActionTrace.as_short_dict()`, verificato in `HAClient.
-        automation_traces()`); questo metodo legge e non giudica quali
+        traces()`); questo metodo legge e non giudica quali
         ALTRI valori esistano.
 
         **Il costo di «solo `error` apre», itemizzato (giro di correzioni,

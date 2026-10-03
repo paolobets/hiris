@@ -22,7 +22,7 @@ Mutazioni ESEGUITE (03/10/2026, Tappa 2, Task 4):
   finta ha sollevato `UnservedCommand` nominando `ghost/command`;
 - la finta torna a rispondere `{"success": true, "result": {}}` a un comando
   WebSocket che non conosce (cio' che faceva `CountingHouse`): rossa su dieci
-  letture -- `automation_traces`, `extract_from_target`, `hourly_statistics`,
+  letture -- `automation_traces` (uscito il 04/10/2026), `extract_from_target`, `hourly_statistics`,
   `panels`, `recorded_changes`, `related`, `trace`, `traces`, `users`,
   `validate_config` -- «ha risposto a un comando che gli ingressi non
   servono»;

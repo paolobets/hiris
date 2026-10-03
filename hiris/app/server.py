@@ -909,7 +909,7 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     `Watcher.marked_automations()` restituisce; ma la chiave con cui HA
     archivia le tracce e' `automation.<id della configurazione>`
     (`config_block.get(CONF_ID)`, catena verificata sui tag `2024.7.0` e
-    `2026.9.0` nel docstring di `HAClient.automation_traces()`). Su una casa
+    `2026.9.0` nel docstring di `HAClient.traces()`). Su una casa
     vera i due valori non coincidono quasi mai -- l'interfaccia di HA genera
     id numerici come `"1771346155970"` -- e chiedere le tracce con
     l'`object_id` non ne sbaglia una: non ne legge MAI nessuna, per nessuna
@@ -941,24 +941,23 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     che torna a risolversi ne ESCE -- cosi' un guasto nuovo, dopo un periodo
     di normalita', si fa sentire di nuovo invece di restare muto per sempre.
 
-    **Un'automazione per volta, non un giro solo per tutte.** A differenza
-    di `watch_system_conditions` qui sopra -- che legge le TRE condizioni di
-    sistema con un numero fisso di chiamate e salta il giro intero se una
-    fallisce -- qui il numero di chiamate dipende da quante automazioni
-    sono segnate, e ognuna e' una lettura a se': un `entity_id` diverso
-    risolto nel proprio id di configurazione (vedi il blocco qui sopra) e
-    passato COSI' a `HAClient.automation_traces()` -- al client non arriva
-    mai un `entity_id`. Una lettura fallita per UN'automazione
-    (Home Assistant che non risponde a quella richiesta, o un errore di
-    rete transitorio) non deve impedire di leggere le altre: si salta
-    QUELLA automazione, si continua con le prossime -- il "parziale
-    tollerato", non il "tutto o
-    niente" delle tre letture di sistema (che sono UNA lettura sola
-    ciascuna, non una per soggetto).
+    **Una raffica sola per tutte, e ogni automazione fallisce da sola.**
+    Ogni `entity_id` segnato si risolve nel proprio id di configurazione
+    (vedi il blocco qui sopra), e gli id risolti partono insieme in
+    `HAClient.traces()` -- una connessione per giro, non una per
+    automazione (A-21 e A-32, Tappa 2, Task 8: fino al 04/10/2026 ogni
+    automazione segnata era una connessione sua, ogni due minuti). Al
+    client non arriva mai un `entity_id`. Una chiave che Home Assistant
+    rifiuta, o che non risponde in tempo, sta in `non_letti` e non deve
+    impedire di leggere le altre: si salta QUELLA automazione, si continua
+    con le prossime -- il "parziale tollerato", non il "tutto o niente"
+    delle tre letture di sistema di `watch_system_conditions`. Se non parte
+    la raffica intera, il giro si salta tutto, senza toccare nessun
+    cursore.
 
     **Il cursore per automazione, e perche' esiste (giro di correzioni,
     rilievo 1 -- CRITICO, dimostrato dal revisore col `Watcher` vero).**
-    `HAClient.automation_traces()` non toglie mai una traccia dalla sua
+    `HAClient.traces()` non toglie mai una traccia dalla sua
     risposta finche' HA non la espelle da solo (tetto `stored_traces`):
     senza un cursore, OGNI giro di due minuti rivedrebbe ancora una volta
     OGNI traccia ancora conservata, e `watch_automation_outcome` decide
@@ -1011,7 +1010,7 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     dict.py`, `LimitedSizeDict._check_size_limit`: evizione FIFO via
     `popitem(last=False)`; `trace/util.py::async_store_trace`:
     `bucket[trace.run_id] = trace`, che in un `OrderedDict` appende in
-    coda) -- la lista che `automation_traces()` restituisce e' dal PIU'
+    coda) -- la lista che `traces()` restituisce per una chiave e' dal PIU'
     VECCHIO al piu' recente. Processarla in quest'ordine, chiamando
     `watch_automation_outcome` una volta per traccia NUOVA (secondo il
     cursore), fa si' che l'ultima chiamata rifletta sempre l'esito piu'
@@ -1028,8 +1027,8 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     identico a ogni chiamata per la stessa automazione: e' il metodo che
     decide se scriverlo (solo sull'apertura), non questa funzione.
 
-    Non solleva mai per la lettura delle tracce (`automation_traces()` la
-    dichiara gia' cosi', vedi il suo docstring): un guasto di rete per
+    Non solleva mai per la lettura delle tracce (`traces()` la dichiara
+    gia' cosi', vedi il suo docstring): un guasto di rete per
     un'automazione diventa un WARNING e un `continue`, non un'eccezione che
     fermerebbe le altre. Se la lettura fallisce, il cursore di
     QUELL'automazione non si tocca -- resta quello dell'ultimo giro
@@ -1044,6 +1043,10 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     cache = app.get("entity_cache")
     unresolved = app.setdefault("automation_trace_unresolved", set())
     written = 0
+    # Prima si risolvono tutte, poi si chiede UNA volta (A-21, Tappa 2, Task
+    # 8): fino al 04/10/2026 ogni automazione segnata era una lettura sua,
+    # cioe' una connessione WebSocket nuova ogni due minuti per ognuna.
+    resolved: list[tuple[str, str]] = []
     for entity_id in watcher.marked_automations():
         automation_id = automation_config_id(cache, entity_id)
         if automation_id is None:
@@ -1075,17 +1078,31 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
         # domani (inventario ricaricato male, HA riavviato) torna a farsi
         # sentire una volta, invece di restare muta per sempre.
         unresolved.discard(entity_id)
-        report = await ha_client.automation_traces(automation_id)
-        if "errore" in report:
+        resolved.append((entity_id, automation_id))
+    if not resolved:
+        return written
+    report = await ha_client.traces(
+        list(dict.fromkeys(("automation", automation_id)
+                           for _entity_id, automation_id in resolved)))
+    if "errore" in report:
+        # La raffica intera non e' partita: nessuna automazione si e' potuta
+        # guardare, e nessun cursore si tocca.
+        logger.warning("cervello: tracce delle automazioni segnate non lette "
+                       "(%s) -- il giro si salta", report["errore"])
+        return written
+    for entity_id, automation_id in resolved:
+        key = f"automation.{automation_id}"
+        if key not in report["tracce"]:
             logger.warning(
                 "cervello: tracce di %s (id di configurazione %s) non lette "
                 "(%s) -- questa automazione si salta, le altre proseguono",
-                entity_id, automation_id, report["errore"])
+                entity_id, automation_id,
+                report["non_letti"].get(key, "nessuna risposta"))
             continue
         already_seen = cursors.get(entity_id) or set()
         seen_this_round: set[str] = set()
         title = watcher.automation_title(entity_id)
-        for trace in report.get("tracce") or []:
+        for trace in report["tracce"][key]:
             if not isinstance(trace, dict):
                 continue
             outcome = trace.get("script_execution")
@@ -4156,7 +4173,7 @@ async def _on_startup(app: web.Application) -> None:
     # tracce e il log»). `stored_traces` e' un tetto di CINQUE tracce in
     # TOTALE per automazione sulla gran parte della finestra di versioni che
     # `hiris/config.yaml:22` dichiara supportata (per secchio solo da HA
-    # 2026.7.0 in poi -- vedi il docstring di `HAClient.automation_traces()`
+    # 2026.7.0 in poi -- vedi il docstring di `HAClient.traces()`
     # per i tag verificati; questo lavoro si disegna sul caso conservativo,
     # tetto totale, e non dipende dal secchio `not_triggered`). Un'automazione
     # innescata dal movimento puo' bruciare cinque tracce in pochi minuti.

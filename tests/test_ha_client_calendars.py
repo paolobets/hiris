@@ -2,7 +2,7 @@
 
 `HAClient.calendars()` legge `GET /api/calendars`, `HAClient.calendar_events()`
 legge `GET /api/calendars/<entity_id>?start=&end=` -- stessa disciplina dei
-tre fratelli (`system_log()`, `automation_traces()`, `trace()`,
+tre fratelli (`system_log()`, `traces()`, `trace()`,
 `ha_client.py`):
 
 1. **il client legge, non giudica**: le righe escono coi campi di HA, senza

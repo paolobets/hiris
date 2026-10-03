@@ -158,7 +158,7 @@ def test_to_minimal_no_extra_attrs_for_binary_sensor():
 # Home Assistant archivia le tracce di un'automazione sotto
 # `automation.<id della configurazione>`, non sotto il suo `object_id`:
 # catena verificata sui tag rilasciati `2024.7.0` e `2026.9.0`, scritta
-# anello per anello nel docstring di `HAClient.automation_traces()`. Lo
+# anello per anello nel docstring di `HAClient.traces()`. Lo
 # specchio e' l'unico posto da cui quell'id si puo' ricavare senza aprire una
 # seconda lettura verso HA, e senza queste righe la proiezione lo buttava.
 # --------------------------------------------------------------------------

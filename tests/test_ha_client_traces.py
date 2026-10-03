@@ -1,7 +1,7 @@
 """«Com'e' andata questa automazione?»
 
-`HAClient.automation_traces()` legge `trace/list` (le esecuzioni RECENTI, in
-breve), `HAClient.trace()` legge `trace/get` (UNA esecuzione,
+`HAClient.traces()` legge `trace/list` (le esecuzioni RECENTI, in breve, di
+una o piu' chiavi in una raffica), `HAClient.trace()` legge `trace/get` (UNA esecuzione,
 per intero) -- stessa disciplina di `problems()` e `system_log()`, verificata
 identica alla fonte (`homeassistant/components/trace/websocket_api.py`,
 funzioni `websocket_trace_list`/`websocket_trace_get`; `trace/util.py`,
@@ -30,12 +30,12 @@ produrlo -- e restava verde mentre sulla casa vera `trace/list` rispondeva
 `automation.<id della CONFIGURAZIONE>` (`config_block.get(CONF_ID)`, non
 l'`object_id`): la catena e' verificata sui tag rilasciati `2024.7.0` e
 `2026.9.0` e scritta anello per anello nel docstring di
-`HAClient.automation_traces()`.
+`HAClient.traces()`.
 
 La proprieta' che questi test sorvegliano adesso e' quindi: **cio' che il
 chiamante passa arriva a `item_id` TALE E QUALE, senza essere spaccato,
-tagliato o ricomposto**, e il `domain` e' quello che il chiamante passa (`"automation"` per i vecchi
-lettori, che delegano a `traces`/`trace`; `"script"` per gli script). Per
+tagliato o ricomposto**, e il `domain` e' quello che il chiamante passa
+(`"automation"` per le automazioni, `"script"` per gli script). Per
 poterla vedere davvero, l'id usato in tutto il file e' un timbro numerico
 come quelli che l'interfaccia di HA genera (`"1771346155970"`) e che NON
 somiglia a nessun `object_id`: con `"luci_sera"` sia da una parte sia
@@ -120,113 +120,40 @@ def _extended_trace(**fields):
 
 
 # --------------------------------------------------------------------------
-# automation_traces() -- trace/list
+# traces() -- trace/list, per una o piu' chiavi
+#
+# Fino al 04/10/2026 qui stavano anche le prove di `automation_traces()`, la
+# stessa lettura per UNA automazione: e' uscito senza chiamanti quando il giro
+# delle tracce e' passato alla raffica (Tappa 2, Task 8, A-21 e A-32). Cio'
+# che quelle prove sorvegliavano e' qui, sulla raffica: le righe tali e quali
+# (sotto), l'id passato a `item_id` tale e quale
+# (`test_the_runs_of_many_automations_travel_in_one_batch`), il silenzio come
+# errore e mai come vuoto (`test_a_dead_connection_says_error_never_no_runs`),
+# il rifiuto e la forma inattesa nominati per chiave
+# (`test_a_refused_key_is_named_and_the_others_answer`), il vuoto che resta
+# vuoto (`script.buonanotte: []` nella prova della raffica).
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_automation_traces_are_read_as_home_assistant_sends_them():
+async def test_traces_are_read_as_home_assistant_sends_them():
     """Il client legge e non giudica: le righe escono coi campi di HA.
 
     Mutazione: proiettare le righe su un sottoinsieme di campi che scarta
     `script_execution` -- il test torna rosso su
     `assert trace["script_execution"] == "failed"`. Una proiezione che
     scartasse solo `last_step`, o che modificasse le righe SUL POSTO,
-    arrossisce piu' in basso, su `assert outcome["tracce"] == [expected]`.
+    arrossisce piu' in basso, su `assert outcome["tracce"] == {...}`.
     """
     row = _short_trace(run_id="xyz", state="stopped",
                        script_execution="failed")
     # Copia fatta PRIMA della chiamata: un client che modificasse la riga sul
     # posto passerebbe verde se confrontato con `row` stesso.
     expected = copy.deepcopy(row)
-    outcome = await _answering(LIST, [row]).automation_traces(_CONFIG_ID)
-    trace = outcome["tracce"][0]
+    outcome = await _answering(LIST, [row]).traces([("automation", _CONFIG_ID)])
+    trace = outcome["tracce"][f"automation.{_CONFIG_ID}"][0]
     assert trace["run_id"] == "xyz"
     assert trace["script_execution"] == "failed"
-    assert outcome["tracce"] == [expected]
-
-
-@pytest.mark.asyncio
-async def test_traces_are_asked_for_by_configuration_id_verbatim():
-    """L'argomento arriva a `item_id` TALE E QUALE, e il `domain` e' la
-    costante `"automation"`.
-
-    E' la proprieta' che il vecchio test non sorvegliava: pinnava
-    `item_id: "luci_sera"` mentre il metodo spaccava un `entity_id`, cioe'
-    il fatto che la finta gli aveva messo davanti. Qui l'argomento e' un id
-    di configurazione che NON somiglia a un `entity_id` (nessun punto, tutte
-    cifre), quindi un metodo che tornasse a spaccare, a tagliare un prefisso
-    o a ricomporre una chiave non potrebbe piu' passare per caso.
-
-    Fonte della chiave (tag rilasciati `2024.7.0` e `2026.9.0`):
-    `components/automation/__init__.py` traccia con `self.unique_id`, che e'
-    `config_block.get(CONF_ID)`; `trace/models.py` ne fa
-    `f"{self._domain}.{item_id}"`; `websocket_trace_list` ricompone
-    `f"{msg['domain']}.{msg['item_id']}"` e fa un `.get(key)` nudo.
-
-    Mutazione: `automation_id.partition(".")[2]` come `item_id` (cioe' il
-    vecchio comportamento, che su un id senza punto restituisce `""`) -- il
-    test torna rosso su `assert house.calls == [("trace/list", {"domain":
-    "automation", "item_id": _CONFIG_ID})]`, che riceve `item_id: ""`.
-    """
-    house = _answering(LIST, [])
-    await house.automation_traces(_CONFIG_ID)
-    assert house.calls == [
-        ("trace/list", {"domain": "automation", "item_id": _CONFIG_ID})]
-
-
-@pytest.mark.asyncio
-async def test_a_failed_traces_read_says_error_not_an_empty_list():
-    """Un elenco vuoto significherebbe «questa automazione non ha mai
-    girato»: la stessa bugia che `system_log()` e `problems()` evitano.
-
-    La connessione caduta e' il silenzio della casa finta: il vero `_ws_send`
-    torna `[None]`, e non solleva mai. Ha DUE guardie (il controllo
-    `all(reply is None ...)` in `traces` e il ramo `non_letti` di
-    `automation_traces`): ciascuna da sola la copre l'altra.
-
-    Mutazione ESEGUITA: togliere TUTTE E DUE le guardie (`{"tracce": []}`
-    per una chiave non letta) -- rossa su `assert "errore" in outcome`.
-    """
-    outcome = await CasaFinta({}, silence={LIST}).automation_traces(_CONFIG_ID)
-    assert "errore" in outcome
-    assert "tracce" not in outcome
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("injected,why", [
-    ({"silence": {LIST}}, "connessione caduta"),
-    ({"refuse": {LIST: {"code": "not_found", "message": "non trovato"}}},
-     "HA ha rifiutato"),
-    ({"answers": {LIST: lambda extra: {"issues": "non una lista nuda"}}},
-     "forma inattesa: trace/list non manda un dizionario qui"),
-])
-async def test_every_traces_failure_shape_says_error_not_an_empty_list(injected, why):
-    """Le tre forme di guasto gia' sorvegliate per `system_log()`, ripetute
-    qui: connessione caduta, rifiuto esplicito di HA, e una risposta di forma
-    inattesa (un dizionario al posto della lista nuda che manda davvero
-    `async_list_traces`).
-
-    Mutazione: togliere il controllo `isinstance(result, list)` -- solo il
-    terzo caso (forma inattesa) tocca quel ramo e torna rosso su
-    `assert "errore" in outcome, why`.
-    """
-    outcome = await CasaFinta({}, **injected).automation_traces(_CONFIG_ID)
-    assert "errore" in outcome, why
-    assert "tracce" not in outcome
-
-
-@pytest.mark.asyncio
-async def test_an_empty_traces_list_stays_empty_not_an_error():
-    """L'altra meta' della disciplina: il vuoto non e' un errore, quanto
-    l'errore non e' un vuoto. Un'automazione mai scattata ha davvero
-    `async_list_traces(...) == []`, e deve restare `{"tracce": []}`.
-
-    Mutazione: `if not result: return {"errore": "..."}` subito dopo il
-    controllo di forma -- il test torna rosso su
-    `assert outcome == {"tracce": []}`.
-    """
-    outcome = await _answering(LIST, []).automation_traces(_CONFIG_ID)
-    assert outcome == {"tracce": []}
+    assert outcome["tracce"] == {f"automation.{_CONFIG_ID}": [expected]}
 
 
 # --------------------------------------------------------------------------
