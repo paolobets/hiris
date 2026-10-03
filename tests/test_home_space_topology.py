@@ -1,4 +1,15 @@
-from unittest.mock import create_autospec
+"""L'anagrafe della casa: la sua ricostruzione da Home Assistant e l'albero.
+
+Le ricostruzioni girano sul client vero sopra la casa finta
+(`scripts/casa_finta.py::CasaFinta`, Tappa 2, Task 12): fino ad allora il
+client era un `create_autospec(HAClient)` con `read_registries`, `get_config`
+e `get_states` riempiti a mano -- la forma della risposta e i registri «non
+disponibili» erano scritti una seconda volta, anche in forme che il client
+vero non rende (`categorie` senza ambito). Ora i registri arrivano dai
+messaggi grezzi di Home Assistant, e un registro caduto e' il suo silenzio.
+"""
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -6,6 +17,11 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import device_areas, hierarchy, rebuild
 from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import HAClient
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
 
 _REGISTRI = {
     "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
@@ -29,25 +45,27 @@ _REGISTRI = {
 
 # La config minima che Home Assistant restituisce a `get_config`: da questa
 # fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
-# della casa (unita', fuso, valuta). Un finto che non la dichiara e' un HA che
+# della casa (unita', fuso, valuta). Una casa che non la dichiara e' un HA che
 # non ha risposto -- e infatti `non_disponibili` lo direbbe. Che sia questo il
 # comportamento e' provato a parte, in tests/test_home_space_reference.py.
 _CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
            "unit_system": {"temperature": "C", "length": "km"}}
 
 
-def _client(registries, unavailable=(), config=_CONFIG):
-    """Un `HAClient` finto, autospec'd sulla classe VERA -- misurato dal
-    vivo (review lotto 5): un `AsyncMock()` nudo lasciava passare
-    `await client.registers_extra()` (un metodo che `HAClient` non ha)
-    in silenzio, `2922 passed` inclusi. `create_autospec` chiude lo stesso
-    buco di `_METODI_HA_CLIENT` (`scripts/rinomina.py`) dal lato dei test:
-    chiamare un attributo che la classe vera non ha solleva
-    `AttributeError` invece di restituire un altro Mock qualunque."""
-    client = create_autospec(HAClient, instance=True)
-    client.read_registries.return_value = (registries, list(unavailable))
-    client.get_config.return_value = config
-    return client
+def _registry_commands(key: str) -> list[str]:
+    """I comandi WS del registro `key`, chiesti alla tabella del client."""
+    return [msg_type for name, msg_type, _extra in HAClient._REGISTRIES if name == key]
+
+
+def _client(registries, silent=(), states=()):
+    """Il client vero sulla casa finta: `registries` sono le righe grezze dei
+    registri, `silent` i registri che Home Assistant lascia senza risposta.
+    Un metodo che `HAClient` non ha solleva `AttributeError` per costruzione
+    (prima lo garantiva `create_autospec`)."""
+    return CasaFinta({"registries": registries, "ha_config": _CONFIG,
+                      "states": list(states)},
+                     silence={command for key in silent
+                              for command in _registry_commands(key)})
 
 
 async def _specchio(stati=()):
@@ -56,9 +74,7 @@ async def _specchio(stati=()):
     dichiara `specchio_vivo` fra i non disponibili -- vedi il suo docstring.
     """
     cache = EntityCache()
-    client = create_autospec(HAClient, instance=True)
-    client.get_states.return_value = list(stati)
-    await cache.load(client)
+    await cache.load(_client({}, states=stati))
     return cache
 
 
@@ -83,7 +99,7 @@ async def test_ricostruisci_riempie_l_archivio_e_riepiloga(archivio):
 async def test_ricostruisci_riporta_i_registri_caduti(archivio):
     """Un registro caduto non ferma l'anagrafe, ma non deve sparire: la casa
     senza piani e il registro dei piani caduto danno la stessa lista vuota."""
-    client = _client(dict(_REGISTRI, piani=[]), ["piani"])
+    client = _client(_REGISTRI, silent=["piani"])
     esito = await rebuild(client, archivio, await _specchio())
     assert esito["non_disponibili"] == ["piani"]
     assert esito["conteggi"]["aree"] == 2   # il resto e' passato lo stesso
@@ -93,17 +109,21 @@ async def test_ricostruisci_riporta_i_registri_caduti(archivio):
 async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
     """L'utente rinomina un'entita' e subito riavvia HA: l'antirimbalzo scade a
     HA spento. La casa buona di ieri non deve sparire."""
-    client = _client(_REGISTRI)
-    await rebuild(client, archivio, await _specchio())
+    await rebuild(_client(_REGISTRI), archivio, await _specchio())
     prima = archivio.updated_at()
 
-    vuoti = {chiave: [] for chiave in _REGISTRI}
-    client.read_registries.return_value = (vuoti, list(_REGISTRI))
-    esito = await rebuild(client, archivio, await _specchio())
+    # Home Assistant spento: nessun registro risponde.
+    esito = await rebuild(_client(_REGISTRI, silent=_REGISTRI), archivio,
+                          await _specchio())
 
     assert archivio.read()["aree"]           # la casa di ieri e' ancora li'
     assert archivio.updated_at() == prima  # e non finge di essere fresca
-    assert esito["non_disponibili"] == list(_REGISTRI)
+    # Un nome per registro, e per le categorie uno per ambito: come li
+    # dichiara `read_registries`, chiesti alla sua tabella. (La finta di prima
+    # rendeva `categorie` nudo, che il client vero non rende mai.)
+    assert esito["non_disponibili"] == [
+        f"{key}:{extra['scope']}" if extra else key
+        for key, _msg_type, extra in HAClient._REGISTRIES]
 
 
 def test_l_entita_eredita_l_area_dal_proprio_dispositivo(archivio):
@@ -491,12 +511,9 @@ async def test_la_ricostruzione_porta_nell_anagrafe_la_classe_che_solo_lo_specch
 
     Mutazione che la uccide: in `rebuild`, non passare lo specchio al lettore.
     """
-    specchio = EntityCache()
-    stati = create_autospec(HAClient, instance=True)
-    stati.get_states.return_value = [
+    specchio = await _specchio([
         {"entity_id": "sensor.frigo_temp", "state": "4.2",
-         "attributes": {"device_class": "temperature", "unit_of_measurement": "°C"}}]
-    await specchio.load(stati)
+         "attributes": {"device_class": "temperature", "unit_of_measurement": "°C"}}])
 
     await rebuild(_client(_REGISTRI), archivio, specchio)
 

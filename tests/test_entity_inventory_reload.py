@@ -11,34 +11,47 @@ prima, ma peggiore da usare.
 Qui si pinna il ricaricamento periodico: finche' `load()` non e' mai riuscita
 si riprova; appena riesce, il lavoro diventa un controllo di una bandiera e
 non tocca piu' Home Assistant.
+
+Home Assistant e' `scripts/casa_finta.py::CasaFinta` sugli ingressi sintetici
+(Tappa 2, Task 12). Fino ad allora era una classe che imitava `get_states` e,
+«giu'», SOLLEVAVA `RuntimeError`: il client vero non solleva (D3), rende la
+busta del guasto, ed e' `EntityCache.load` a trasformarla in `HAReadError`.
+Ora «giu'» e' il silenzio vero su `GET /api/states`.
 """
 from __future__ import annotations
 
+import sys
 from contextlib import suppress
+from pathlib import Path
 
 import pytest
 
 from hiris.app import server
 from hiris.app.proxy.entity_cache import EntityCache, unreadable_inventory_error
+from hiris.app.proxy.ha_client import HAReadError
+from tests._casa_sintetica import synthetic_inputs
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
+
+_STATES = "/api/states"
 
 
-class _HA:
-    """Home Assistant finto che sa essere giu' e poi tornare.
+def _house(*, down: bool = False) -> CasaFinta:
+    """La casa sintetica; `down` = Home Assistant che non risponde agli stati."""
+    return CasaFinta(synthetic_inputs(), silence={_STATES} if down else ())
 
-    Conta le chiamate perche' il test piu' importante e' su cio' che NON deve
-    succedere: nessuna lettura quando la cache e' gia' viva.
-    """
 
-    def __init__(self, *, giu: bool = False) -> None:
-        self.giu = giu
-        self.chiamate_stati = 0
+def _state_reads(house: CasaFinta) -> int:
+    """Le letture degli stati che il codice ha chiesto alla casa: il test piu'
+    importante e' su cio' che NON deve succedere."""
+    return sum(1 for path, _ in house.calls if path == _STATES)
 
-    async def get_states(self, ids):
-        self.chiamate_stati += 1
-        if self.giu:
-            raise RuntimeError("connessione rifiutata su http://supervisor/core")
-        return [{"entity_id": "light.cucina", "state": "on",
-                 "attributes": {"friendly_name": "Cucina"}}]
+
+def _ids(states) -> list[str]:
+    return sorted(s["entity_id"] for s in states)
 
 
 @pytest.mark.asyncio
@@ -47,17 +60,16 @@ async def test_ricarica_linventario_dopo_un_avvio_senza_home_assistant():
     caricata. Quando HA torna, il lavoro periodico deve rimetterla in piedi
     senza che l'utente riavvii nulla."""
     cache = EntityCache()
-    ha_giu = _HA(giu=True)
-    with suppress(RuntimeError):
-        await cache.load(ha_giu)
+    with suppress(HAReadError):
+        await cache.load(_house(down=True))
     assert cache.loaded is False
 
-    ha = _HA()
-    ricaricato = await server.reload_entity_inventory(cache, ha)
+    ricaricato = await server.reload_entity_inventory(cache, _house())
 
     assert ricaricato is True
     assert cache.loaded is True
-    assert [e["id"] for e in cache.all_states()] == ["light.cucina"]
+    assert sorted(e["id"] for e in cache.all_states()) == \
+        _ids(synthetic_inputs()["states"])
 
 
 async def _get_entities_on_come_lo_strumento(cache):
@@ -84,10 +96,12 @@ async def test_dopo_la_ricarica_gli_strumenti_tornano_a_rispondere():
     prima = await _get_entities_on_come_lo_strumento(cache)
     assert isinstance(prima, dict) and "pront" in prima.get("error", "").lower()
 
-    await server.reload_entity_inventory(cache, _HA())
+    await server.reload_entity_inventory(cache, _house())
 
     dopo = await _get_entities_on_come_lo_strumento(cache)
-    assert [e["id"] for e in dopo] == ["light.cucina"]
+    accese = [s for s in synthetic_inputs()["states"] if s["state"] == "on"]
+    assert accese, "gli ingressi sintetici devono avere qualcosa di acceso"
+    assert sorted(e["id"] for e in dopo) == _ids(accese)
 
 
 @pytest.mark.asyncio
@@ -96,14 +110,15 @@ async def test_non_ricarica_quando_la_cache_e_gia_viva():
     aggiorna gia' dagli eventi di stato, e rileggere tutta la casa a ogni giro
     sarebbe traffico inutile verso Home Assistant."""
     cache = EntityCache()
-    ha = _HA()
-    await cache.load(ha)
-    letture_iniziali = ha.chiamate_stati
+    house = _house()
+    await cache.load(house)
+    letture_iniziali = _state_reads(house)
+    assert letture_iniziali == 1
 
-    ricaricato = await server.reload_entity_inventory(cache, ha)
+    ricaricato = await server.reload_entity_inventory(cache, house)
 
     assert ricaricato is False
-    assert ha.chiamate_stati == letture_iniziali, (
+    assert _state_reads(house) == letture_iniziali, (
         "cache gia' caricata: nessuna lettura aggiuntiva verso Home Assistant"
     )
 
@@ -114,19 +129,20 @@ async def test_home_assistant_ancora_giu_non_solleva_e_lascia_riprovare():
     salire. E la cache deve restare dichiaratamente non pronta, cosi' il giro
     successivo riprova."""
     cache = EntityCache()
-    ha_giu = _HA(giu=True)
+    house_down = _house(down=True)
 
-    ricaricato = await server.reload_entity_inventory(cache, ha_giu)
+    ricaricato = await server.reload_entity_inventory(cache, house_down)
 
     assert ricaricato is False
     assert cache.loaded is False
+    # Ci ha provato davvero: non e' tornato `False` prima di chiedere.
+    assert _state_reads(house_down) == 1
 
     # Il giro dopo, con HA tornato, deve funzionare.
-    assert await server.reload_entity_inventory(cache, _HA()) is True
+    assert await server.reload_entity_inventory(cache, _house()) is True
 
 
 @pytest.mark.asyncio
 async def test_senza_cache_o_senza_client_non_solleva():
-    assert await server.reload_entity_inventory(None, _HA()) is False
+    assert await server.reload_entity_inventory(None, _house()) is False
     assert await server.reload_entity_inventory(EntityCache(), None) is False
-
