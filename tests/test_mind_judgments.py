@@ -1,8 +1,14 @@
 """La porta dei giudizi: costruzione dall'archivio (spec 2026-09-16 §3, §8)."""
 import json
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app import server
 from hiris.app.home_space import type_vocabulary as tv
@@ -17,6 +23,7 @@ from hiris.app.mind.judgments import (
 )
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
+from tests._casa_sintetica import synthetic_inputs
 
 #: Chi scrive i giudizi di queste prove: il nome e la chiave che la rotta
 #: ricava dal soggetto. Dal 26/09/2026 `write_judgment` registra l'autore
@@ -207,14 +214,21 @@ def test_sapere_che_si_apre_arriva_in_app_seminato(tmp_path):
 
 def test_chiusura_regge_il_sapere_assente():
     """`_on_cleanup` con `app["knowledge"] = None` (l'avvio qui sopra). Mutazione
-    ESEGUITA: tornare a `if "knowledge" in app` -- rossa (`None.close()`)."""
+    ESEGUITA: tornare a `if "knowledge" in app` -- rossa (`None.close()`).
+
+    Il client e' quello vero sulla casa sintetica (`scripts/casa_finta.py`),
+    non piu' una classe con un `stop` che non faceva niente: lo spegnimento
+    chiama il `HAClient.stop` vero, e non chiede niente a Home Assistant.
+    Mutazione ESEGUITA anche qui (03/10/2026, Tappa 2, Task 12): la stessa
+    riga tornata a `if "knowledge" in app` -- rossa (`AttributeError:
+    'NoneType' object has no attribute 'close'`)."""
     import asyncio
 
-    class _Client:
-        async def stop(self):
-            return None
+    house = CasaFinta(synthetic_inputs())
 
-    asyncio.run(server._on_cleanup({"knowledge": None, "ha_client": _Client()}))
+    asyncio.run(server._on_cleanup({"knowledge": None, "ha_client": house}))
+
+    assert house.calls == []
 
 
 # -- la porta di scrittura (spec §4) -------------------------------------------

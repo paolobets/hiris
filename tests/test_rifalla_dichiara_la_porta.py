@@ -25,8 +25,13 @@ interrogare). Sta in `docs/BACKLOG.md` con questa ragione accanto; fino ad
 allora il giro si paga a consumo, e **si dice**.
 """
 import json
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_proposals import handle_proposal_redo
 from hiris.app.mind.store import ObservationsStore
@@ -73,10 +78,6 @@ def _piano_acceso(monkeypatch) -> None:
 AMMINISTRATORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
 
 
-class _RuoliFinti:
-    async def users(self):
-        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
-                            "amministratore": True, "proprietario": True}]}
 
 
 def _richiesta(app, ident, corpo):
@@ -117,7 +118,12 @@ def casa(tmp_path):
         "reasoning_queue": _Coda(),
         "models_config": {"ponte": {"tetto_giornaliero": 50}},
         "bridge_active": False,
-        "ha_client": _RuoliFinti(),
+        # La casa che non serve niente (Tappa 2, Task 12): «Rifalla» non legge
+        # Home Assistant -- il ruolo e' quello che il confine ha lasciato nella
+        # richiesta. Prima qui c'era una finta di `users()` che nessuno
+        # chiamava (misurato il 03/10/2026: zero comandi); una lettura nuova
+        # su questo percorso ora fa cadere la prova col suo nome.
+        "ha_client": CasaFinta({}),
         "ruoli": {"quando": 0.0, "per_id": {}},
     }
     try:

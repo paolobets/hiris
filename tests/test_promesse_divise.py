@@ -17,11 +17,16 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import time
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from aiohttp import web
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_agenda import (
@@ -39,6 +44,7 @@ from hiris.app.home_space.tools import PROMISE_TOOL_DEF, ToolDispatcher
 from hiris.app.keeper import promise as promise_module
 from hiris.app.keeper.recipient import _REASON_LINK_PERSON
 from hiris.app.keeper.store import AgendaStore
+from tests._casa_sintetica import INSTANT, synthetic_inputs
 from tests.test_mcp_chat_thread import rotta as rotta_chat  # noqa: F401
 
 PAOLO = ChatThread("persona:paolo", "pannello")
@@ -240,12 +246,19 @@ def _fra(minuti: int) -> str:
     return (datetime.now(UTC) + timedelta(minutes=minuti)).isoformat()
 
 
-class _HaSenzaPersona:
+def _house_without_person() -> CasaFinta:
     """Home Assistant in cui nessuna `person` porta l'utente di chi parla:
-    la persona non e' collegata (Marta sulla casa vera, 25/09/2026)."""
-
-    async def get_states(self, _ids):
-        return [{"entity_id": "sun.sun", "state": "above_horizon", "attributes": {}}]
+    la persona non e' collegata (Marta sulla casa vera, 25/09/2026). La casa
+    sintetica, piu' la `person` di UN ALTRO utente: chi cerca la persona di
+    Marta deve guardare `user_id`, non accontentarsi della prima `person`
+    (Tappa 2, Task 12: prima la finta rendeva solo `sun.sun`)."""
+    inputs = synthetic_inputs()
+    inputs["states"].append({
+        "entity_id": "person.paolo", "state": "home",
+        "attributes": {"friendly_name": "Paolo", "user_id": "paolo",
+                       "device_trackers": ["device_tracker.telefono_paolo"]},
+        "last_changed": INSTANT, "last_updated": INSTANT})
+    return CasaFinta(inputs)
 
 
 def _dispatcher(archivio, thread, soggetto=None, **extra):
@@ -317,7 +330,7 @@ async def test_chi_non_ha_una_strada_se_lo_sente_dire_alla_nascita(archivio):
     """§2 «Nascita»: la promessa nasce, e il risultato dice perche' non ci
     sara' una notifica -- il testo di `Recipients.reason`."""
     esito = await _dispatcher(archivio, MARTA, MARTA_SOGGETTO,
-                              ha=_HaSenzaPersona()).dispatch(
+                              ha=_house_without_person()).dispatch(
         "promise", _chiedi_argomenti())
     assert "errore" not in esito, esito
     assert _REASON_LINK_PERSON in esito["avviso"]
@@ -384,14 +397,14 @@ async def _finto_confine(request, handler):
     return await handler(request)
 
 
-class _UtentiHA:
-    """`paolo` proprietario e amministratore, `marta` utente."""
-
-    async def users(self):
-        return {"utenti": [
-            {"id": "paolo", "amministratore": True, "proprietario": True},
-            {"id": "marta", "amministratore": False, "proprietario": False},
-        ]}
+#: `paolo` proprietario e amministratore, `marta` utente: le righe GREZZE di
+#: `config/auth/list`, lette dal client vero (Tappa 2, Task 12).
+_HOUSE_USERS = [
+    {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
+     "system_generated": False, "group_ids": ["system-admin"]},
+    {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
+     "system_generated": False, "group_ids": ["system-users"]},
+]
 
 
 class _CostruzioniVuote:
@@ -409,7 +422,8 @@ async def rotte(aiohttp_client, tmp_path):
     app["constructions"] = _CostruzioniVuote()
     app["data_dir"] = data_dir
     app["chat_settings"] = ChatSettings(name="t", system_prompt="Sei HIRIS.")
-    app["ha_client"] = _UtentiHA()
+    app["ha_client"] = CasaFinta({}, answers={"config/auth/list":
+                                              lambda extra: _HOUSE_USERS})
     app["ruoli"] = {"quando": 0.0, "per_id": {}}
     app.router.add_get("/api/agenda", handle_get_agenda)
     app.router.add_delete("/api/agenda/{id}", handle_delete_promise)

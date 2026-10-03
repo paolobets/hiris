@@ -20,12 +20,16 @@ lasciar fallire in silenzio ogni promessa servita dal ponte.
 """
 from __future__ import annotations
 
+import sys
 import time
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from aiohttp import web
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app import server
 from hiris.app.chat_settings import ChatSettings
@@ -63,12 +67,7 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
 
     app = server.create_app()
-    mock_ha = AsyncMock()
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-    app["ha_client"] = mock_ha
+    app["ha_client"] = CasaFinta({})
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"

@@ -21,9 +21,13 @@ comporta come col grado piu' basso. Il contrario -- ripiegare su amministratore
 quando la lettura fallisce -- renderebbe un guasto di rete un aumento di
 privilegi.
 """
+import sys
+from pathlib import Path
+
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 #: La forma VERA di `config/auth/list` (Core 2026.9.3,
 #: `components/config/auth.py::_user_info`): porta anche `is_active`.
@@ -39,25 +43,21 @@ _UTENTI = [
 ]
 
 
-class _Finto(HAClient):
-    def __init__(self, messaggio):
-        self._messaggio = messaggio
-        self.chiesto = []
-
-    async def _ws_send(self, commands, timeout=10.0):
-        self.chiesto.extend(msg_type for msg_type, _extra in commands)
-        return [self._messaggio for _command in commands]
+def _casa(utenti):
+    """Home Assistant che risponde `utenti` a `config/auth/list`: il client vero
+    sulla casa finta (Tappa 2, Task 12), non un `_ws_send` scritto qui."""
+    return CasaFinta({}, answers={"config/auth/list": lambda extra: utenti})
 
 
 @pytest.mark.asyncio
 async def test_il_ruolo_si_chiede_a_home_assistant():
     """Mutazione: dedurre l'amministratore dal nome o dall'ordine invece che dal
     gruppo -- rossa."""
-    client = _Finto({"success": True, "result": _UTENTI})
+    client = _casa(_UTENTI)
 
     esito = await client.users()
 
-    assert client.chiesto == ["config/auth/list"]
+    assert client.calls == [("config/auth/list", None)]
     per_id = {u["id"]: u for u in esito["utenti"]}
     assert per_id["u-owner"]["amministratore"] is True
     assert per_id["u-admin"]["amministratore"] is True
@@ -71,7 +71,7 @@ async def test_il_proprietario_si_distingue_dagli_altri_amministratori():
     a chi e' di chi la casa senza chiederlo due volte.
 
     Mutazione: appiattire `proprietario` su `amministratore` -- rossa."""
-    client = _Finto({"success": True, "result": _UTENTI})
+    client = _casa(_UTENTI)
 
     per_id = {u["id"]: u for u in (await client.users())["utenti"]}
 
@@ -87,7 +87,7 @@ async def test_gli_utenti_di_SISTEMA_si_riconoscono():
 
     Mutazione: non riportare `sistema` -- rossa."""
     per_id = {u["id"]: u
-              for u in (await _Finto({"success": True, "result": _UTENTI}).users())["utenti"]}
+              for u in (await _casa(_UTENTI).users())["utenti"]}
 
     assert per_id["u-sistema"]["sistema"] is True
     assert per_id["u-owner"]["sistema"] is False
@@ -102,13 +102,22 @@ async def test_se_home_assistant_NON_risponde_non_si_inventa_un_ruolo():
     -- rossa (chi legge non distinguerebbe «nessun amministratore» da «non ho
     potuto guardare», e sono la stessa forma del difetto che questo prodotto
     insegue ovunque).
-    """
-    for messaggio in (None,
-                      {"success": False},
-                      {"error": {"message": "unauthorized"}}):
-        esito = await _Finto(messaggio).users()
 
-        assert "errore" in esito, f"{messaggio!r} non ha prodotto un errore"
+    I due modi in cui Home Assistant non risponde davvero: tace (la connessione
+    cade) o rifiuta nella busta vera -- `config/auth/list` e'
+    `@websocket_api.require_admin`, e il rifiuto e' `unauthorized` /
+    «Unauthorized» (`websocket_api/connection.py`, letto sul tag 2026.9.4 il
+    03/10/2026). Fino alla Tappa 2 la finta mandava anche
+    `{"success": false}` senza `error` e un `error` senza `success`: forme che
+    Home Assistant non produce (`websocket_api/messages.py::error_message`), e
+    che il client legge comunque come il rifiuto.
+    """
+    for casa in (CasaFinta({}, silence={"config/auth/list"}),
+                 CasaFinta({}, refuse={"config/auth/list": {
+                     "code": "unauthorized", "message": "Unauthorized"}})):
+        esito = await casa.users()
+
+        assert "errore" in esito, f"{casa.calls!r} non ha prodotto un errore"
         assert "utenti" not in esito, (
             "un elenco vuoto accanto a un errore si legge come «non ce n'erano»")
 
@@ -120,7 +129,7 @@ async def test_una_risposta_STORTA_non_fa_cadere_la_lettura():
     il pannello invece di negare un permesso.
 
     Mutazione: iterare il `result` senza guardarne la forma -- rossa."""
-    esito = await _Finto({"success": True, "result": {"non": "un elenco"}}).users()
+    esito = await _casa({"non": "un elenco"}).users()
 
     assert "errore" in esito
 
@@ -128,7 +137,7 @@ async def test_una_risposta_STORTA_non_fa_cadere_la_lettura():
 # --- chi e' amministratore lo dice la regola di Home Assistant (R-2.10) -----
 
 async def _per_id(righe):
-    esito = await _Finto({"success": True, "result": righe}).users()
+    esito = await _casa(righe).users()
     return {u["id"]: u for u in esito["utenti"]}
 
 

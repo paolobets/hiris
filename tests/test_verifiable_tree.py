@@ -36,6 +36,8 @@ fa fallire il gruppo 3; togliere la coda del campione fa fallire il gruppo 2;
 far ripiegare un'area non letta su liste vuote fa fallire il gruppo 4.
 """
 import asyncio
+import sys
+from pathlib import Path
 
 import pytest
 from aiohttp import web
@@ -50,6 +52,10 @@ from hiris.app.home_space.topology import (
     tree_areas,
 )
 from hiris.app.server import tree_comparison_round
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 # --------------------------------------------------------------------------
 # I finti: l'anagrafe da una parte, cio' che Home Assistant risponde dall'altra
@@ -363,22 +369,40 @@ def test_gli_elenchi_lunghi_si_tagliano_dichiarando_il_resto():
 # 5. La catena: dall'app fino al testo, senza rete
 # --------------------------------------------------------------------------
 
-class _ClienteFinto:
-    """Home Assistant visto da `tree_comparison_round`: risponde per area,
-    e per le aree che non conosce restituisce un errore invece di una lista
-    corta -- come fa `extract_from_target` davvero."""
+def _tree_house(entities_by_area: dict, **injected) -> CasaFinta:
+    """Home Assistant visto da `tree_comparison_round`, sotto il client VERO
+    (`CasaFinta`, D8 della Tappa 2): risponde al comando `extract_from_target`
+    col messaggio GREZZO, e la traduzione nei nomi della casa (`entita`,
+    `aree_mancanti`, ...) la fa `HAClient.extract_from_target`, non la prova.
 
-    def __init__(self, per_area: dict, guasto: str | None = None) -> None:
-        self.per_area = per_area
-        self.guasto = guasto
-        self.chieste: list[str] = []
+    La forma e' quella di `handle_extract_from_target`
+    (`homeassistant/components/websocket_api/commands.py`, tag `2026.9.4`,
+    letto il 03/10/2026): le sette chiavi `referenced_entities`,
+    `referenced_devices`, `referenced_areas`, `missing_devices`,
+    `missing_areas`, `missing_floors`, `missing_labels`. Un'area chiesta sta
+    SEMPRE in `referenced_areas` (`helpers/target.py`,
+    `async_extract_referenced_entity_ids`:
+    `selected.referenced_areas.update(target_selection.area_ids)`).
 
-    async def extract_from_target(self, target):
-        identificativo = target["area_id"][0]
-        self.chieste.append(identificativo)
-        if self.guasto:
-            return {"errore": self.guasto}
-        return _risposta(self.per_area.get(identificativo, []))
+    Un'area che la prova non nomina risponde senza entita' -- l'area vuota,
+    non un guasto: il guasto si inietta (`silence=`, `refuse=`)."""
+
+    def answer(extra):
+        (area_id,) = extra["target"]["area_id"]
+        return {"referenced_entities": list(entities_by_area.get(area_id, [])),
+                "referenced_devices": [], "referenced_areas": [area_id],
+                "missing_devices": [], "missing_areas": [], "missing_floors": [],
+                "missing_labels": []}
+
+    return CasaFinta(synthetic_inputs(), answers={"extract_from_target": answer},
+                     **injected)
+
+
+def _asked_areas(house: CasaFinta) -> list[str]:
+    """Le aree chieste a Home Assistant, nell'ordine, lette da cio' che il
+    client ha davvero mandato."""
+    return [area_id for command, extra in house.calls if command == "extract_from_target"
+            for area_id in extra["target"]["area_id"]]
 
 
 def _archivio_con_una_casa(tmp_path, entita=(), aree=("cucina", "bagno", "sala")):
@@ -402,9 +426,9 @@ def test_il_giro_scrive_la_fotografia_in_ram(tmp_path):
         {"entity_id": "light.cucina", "name": "Luce", "area_id": "cucina"},
     ])
     app = {"home_space_store": archivio}
-    cliente = _ClienteFinto({"cucina": ["light.cucina"]})
+    house = _tree_house({"cucina": ["light.cucina"]})
 
-    esito = asyncio.run(tree_comparison_round(app, cliente, count=1)())
+    esito = asyncio.run(tree_comparison_round(app, house, count=1)())
     assert esito is app["tree_comparison"]
     assert app["tree_comparison"]["aree_totali"] == 3
     assert app["tree_comparison"]["letto_il"]
@@ -414,23 +438,26 @@ def test_il_giro_scrive_la_fotografia_in_ram(tmp_path):
 
 def test_il_giro_ruota_fra_una_chiamata_e_l_altra(tmp_path):
     archivio = _archivio_con_una_casa(tmp_path)
-    cliente = _ClienteFinto({})
-    giro = tree_comparison_round({"home_space_store": archivio}, cliente, count=1)
+    house = _tree_house({})
+    giro = tree_comparison_round({"home_space_store": archivio}, house, count=1)
 
     asyncio.run(giro())
     asyncio.run(giro())
     asyncio.run(giro())
     asyncio.run(giro())
-    assert cliente.chieste == ["bagno", "cucina", "sala", "bagno"]
+    assert _asked_areas(house) == ["bagno", "cucina", "sala", "bagno"]
     archivio.close()
 
 
 def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
+    """Il guasto e' quello vero: la connessione non porta risposta al
+    comando, e il client ne fa la busta del silenzio."""
     archivio = _archivio_con_una_casa(tmp_path)
-    cliente = _ClienteFinto({}, guasto="Home Assistant non ha risposto")
+    house = _tree_house({}, silence={"extract_from_target"})
     app = {"home_space_store": archivio}
 
-    asyncio.run(tree_comparison_round(app, cliente, count=2)())
+    asyncio.run(tree_comparison_round(app, house, count=2)())
+    assert len(app["tree_comparison"]["guardate"]) == 2
     assert all(g["errore"] for g in app["tree_comparison"]["guardate"])
     testo, _ = compose_briefing(app)
     assert "non si sono potute controllare" in testo
