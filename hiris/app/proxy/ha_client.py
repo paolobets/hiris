@@ -128,6 +128,15 @@ AUTH_RETRY_CEILING_S = 300
 # di tacere -- la stessa regola che il diario di Home Assistant aveva
 # insegnato (uscito il 30/09/2026).
 MAX_HISTORY_POINTS = 5000
+#: Quanti byte di identificatori (gia' codificati per l'URL, virgole
+#: comprese) vanno in UNA richiesta a `/api/history/period`. Il server aiohttp
+#: di Home Assistant, e il proxy del Supervisor che gli sta davanti, rifiutano
+#: una riga di richiesta oltre 8.190 byte (`max_line_size`); il resto della
+#: riga -- metodo, percorso, i due istanti, i parametri fissi -- sta sotto i
+#: 200. 6.000 lascia margine anche a un percorso di base piu' lungo di
+#: `/core`. Scelto, non misurato: la misura dal vivo e' la verifica
+#: (30/09/2026, ~300 entita' vere superano il tetto in un pezzo solo).
+_HISTORY_FILTER_MAX = 6000
 # Cap sugli eventi restituiti da UNA chiamata a `calendar_events()`.
 # Misurato sulla casa vera il 06/09/2026: 297 eventi in tutto, su una
 # finestra di QUATTRO ANNI (91 nel calendario `personale`, 206 in
@@ -346,6 +355,27 @@ def cost(*, ws: int = 0, rest: int = 0):
         method.cost = {"ws": ws, "rest": rest}
         return method
     return declare
+
+
+def _history_chunks(entity_ids: list[str]) -> list[list[str]]:
+    """Gli identificatori in pezzi che stanno ognuno sotto
+    `_HISTORY_FILTER_MAX`, nell'ordine dato. Il costo di ognuno e' quello che
+    `HAClient.history` gli fa pagare nell'URL: `quote(..., safe="")`, e `%2C`
+    per la virgola che lo separa dal precedente. Un identificatore da solo piu'
+    lungo del tetto fa un pezzo suo: rifiutarlo qui sarebbe tacerlo."""
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for ident in entity_ids:
+        cost = len(quote(ident, safe=""))
+        if current and size + len("%2C") + cost > _HISTORY_FILTER_MAX:
+            chunks.append(current)
+            current, size = [], 0
+        size += cost + (len("%2C") if current else 0)
+        current.append(ident)
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def _identifiers(raw) -> list[str]:
@@ -1061,14 +1091,27 @@ class HAClient:
     @cost(rest=1)
     async def history(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
         """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
-        GET /api/history/period/<da>.
+        GET /api/history/period/<da>, A PEZZI (`_history_chunks`), uniti.
+
+        **Perche' a pezzi** (30/09/2026): gli identificatori stanno nell'URL,
+        e con ~300 entita' vere la riga di richiesta supera gli 8.190 byte che
+        il server aiohttp di Home Assistant (e del Supervisor) accetta. Un
+        pezzo solo non e' una risposta lenta: e' nessuna risposta. Il taglio
+        vive qui, non nel chiamante (A-27, Tappa 2): una lettura che si rompe
+        oltre un certo numero di id non e' una porta, e' una trappola per chi
+        la chiama. Il costo dichiarato (`rest=1`) e' quello di UN pezzo: una
+        richiesta ogni `_HISTORY_FILTER_MAX` byte di filtro, partite insieme.
+        Nessun identificatore, nessuna richiesta: le serie sono vuote.
 
         Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}, "troncato":
         bool}`. `troncato` c'e' SEMPRE (mai omesso quando falso) ed e' vero se il cap
         sui punti e' scattato su almeno un'entita'. In caso di guasto ritorna
         `{"errore": str}` e NON la chiave `serie`: una serie vuota afferma «il
         valore non e' mai cambiato», che e' una cosa che non sappiamo quando
-        la domanda non e' nemmeno arrivata (spec §3.3).
+        la domanda non e' nemmeno arrivata (spec §3.3). Un pezzo che non
+        risponde e' il guasto di tutti: le serie di meta' casa si leggerebbero
+        «l'altra meta' non e' cambiata». `troncato` e' vero se Home Assistant
+        ha tagliato in ALMENO un pezzo.
 
         Non solleva mai: ogni guasto diventa `errore`.
 
@@ -1096,6 +1139,20 @@ class HAClient:
         if invalid:
             logger.warning("storico: entita' non valide: %r", invalid)
             return _failure(REQUEST, _truncate(f"entita' non valide: {invalid!r}", 200))
+        answers = await asyncio.gather(*(self._history_piece(chunk, from_iso, to_iso)
+                                         for chunk in _history_chunks(entities)))
+        series: dict[str, list[dict]] = {}
+        truncated = False
+        for answer in answers:
+            if "errore" in answer:
+                return answer
+            series.update(answer["serie"])
+            truncated = truncated or answer["troncato"]
+        return {"serie": series, "troncato": truncated}
+
+    async def _history_piece(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
+        """UN pezzo di `history`: una richiesta, gia' validata e sotto il
+        tetto della riga. Stessa forma di `history`."""
         entity_filter = quote(",".join(entities), safe="")
         path = (f"/api/history/period/{from_iso}"
                 f"?end_time={quote(to_iso, safe='')}"

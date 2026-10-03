@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1599,6 +1600,40 @@ async def test_an_unreadable_calendar_is_named_not_dropped():
     assert result["non_letti"] == ["Personale"]
     assert result["impegni"] == []
     assert set(result["non_letti"]) <= set(result["calendari_guardati"])
+
+
+@pytest.mark.asyncio
+async def test_i_calendari_si_leggono_insieme(monkeypatch):
+    """A-34 (Tappa 2): gli eventi dei calendari si chiedono tutti insieme, non
+    uno dopo l'altro -- con due calendari lenti l'attesa e' quella del piu'
+    lento, non la somma. Si conta quante letture sono in volo nello stesso
+    momento, invece di misurare un tempo: due, non una.
+
+    L'ordine delle risposte resta quello di Home Assistant (per nome):
+    `calendari_guardati` e `non_letti` non dipendono da chi risponde prima.
+
+    Mutazione ESEGUITA: il ciclo che attende un calendario alla volta --
+    rossa (`in_volo` massimo 1)."""
+    house = _calendar_house([_PERSONALE, _FAMIGLIA], {"calendar.personale": []},
+                            refuse={"/api/calendars/calendar.famiglia": 500})
+    vero = house.calendar_events
+    in_volo, massimo = 0, 0
+
+    async def lento(entity_id, start, end):
+        nonlocal in_volo, massimo
+        in_volo += 1
+        massimo = max(massimo, in_volo)
+        # Il primo chiesto (Famiglia) risponde per ultimo.
+        await asyncio.sleep(0.05 if entity_id == "calendar.famiglia" else 0.01)
+        in_volo -= 1
+        return await vero(entity_id, start, end)
+
+    monkeypatch.setattr(house, "calendar_events", lento)
+    result = await ToolDispatcher(None, None, ha=house).dispatch("calendar", {})
+    assert massimo == 2
+    assert result["calendari_guardati"] == ["Famiglia", "Personale"]
+    assert result["non_letti"] == ["Famiglia"]
+    assert result["impegni"] == []
 
 
 @pytest.mark.asyncio
