@@ -27,9 +27,12 @@ fra due marcatori (`await ha_client.start_websocket()` e
 `app["scheduler"] = scheduler`) e si eseguiva isolato con doppi: un marcatore
 sparito -- e' successo una volta, con `ChatbotEngine` -- rompeva la prova
 senza che niente fosse cambiato. Adesso la casa dell'avvio
-(`tests/_avvio.py::RecordingHouse`) ricorda quando le si apre il websocket,
-e una spia che AVVOLGE i metodi veri ricorda quando lo schedulatore parte e
-quando si leggono le impostazioni della chat. L'invariante e' lo stesso: il
+(`tests/_avvio.py::RecordingHouse`) e' la casa finta comune, e una spia che
+AVVOLGE i metodi veri ricorda quando le si apre il websocket, quando lo
+schedulatore parte e quando si leggono le impostazioni della chat. Dalla
+Tappa 2 (Task 12) la spia del websocket avvolge `start_websocket` sulla casa
+come le altre due: prima era una sottoclasse della casa che lo ridefiniva,
+cioe' una classe di prova con un metodo di `HAClient`. L'invariante e' lo stesso: il
 WebSocket si apre una volta, incondizionatamente, PRIMA di qualunque cosa
 possa dipenderne.
 """
@@ -49,13 +52,13 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
     diventa `chat_settings.load, scheduler.start, start_websocket`)."""
     ordine: list[str] = []
 
-    class House(RecordingHouse):
-        async def start_websocket(self) -> None:
-            ordine.append("start_websocket")
-            await super().start_websocket()
-
+    real_websocket = RecordingHouse.start_websocket
     real_start = AsyncIOScheduler.start
     real_load = ChatSettings.load.__func__
+
+    async def start_websocket(self) -> None:
+        ordine.append("start_websocket")
+        await real_websocket(self)
 
     def start(self, *args, **kwargs):
         ordine.append("scheduler.start")
@@ -65,9 +68,10 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
         ordine.append("chat_settings.load")
         return real_load(cls, data_dir)
 
-    with mock.patch.object(AsyncIOScheduler, "start", start), \
+    with mock.patch.object(RecordingHouse, "start_websocket", start_websocket), \
+            mock.patch.object(AsyncIOScheduler, "start", start), \
             mock.patch.object(ChatSettings, "load", classmethod(load)):
-        async with started_with(tmp_path, house_class=House) as app:
+        async with started_with(tmp_path) as app:
             assert isinstance(app["chat_settings"], ChatSettings)
             assert isinstance(app["scheduler"], AsyncIOScheduler)
 
