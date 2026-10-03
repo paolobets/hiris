@@ -30,6 +30,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import casa
+from casa_finta import CasaFinta
+
+from hiris.app.proxy.ha_client import HAClient
 
 DOOR = ROOT / "scripts" / "casa.py"
 #: I verbi con cui un metodo del client SCRIVE. Non e' l'elenco dei metodi
@@ -81,77 +84,48 @@ def test_i_dati_della_casa_non_si_scrivono_dentro_il_repo(tmp_path):
     with pytest.raises(SystemExit, match="pubblico"):
         casa.outside_repo(ROOT / "docs" / "ingressi")
     with pytest.raises(SystemExit, match="pubblico"):
-        asyncio.run(casa.capture(ROOT / "ingressi", house=_House(), hiris=_hiris))
+        asyncio.run(casa.capture(ROOT / "ingressi", house=CasaFinta(synthetic_inputs()),
+                                 hiris=_hiris))
     assert not (ROOT / "ingressi").exists()
     assert casa.outside_repo(tmp_path / "fuori") == (tmp_path / "fuori").resolve()
-
-
-class _House:
-    """La casa sintetica dietro i metodi che la cattura chiede."""
-
-    def __init__(self, *, unread=(), states=None, behavior=None) -> None:
-        self._inputs = synthetic_inputs()
-        self._unread = list(unread)
-        self._states = self._inputs["states"] if states is None else states
-        self._behavior = self._inputs["behavior"] if behavior is None else behavior
-
-    async def read_registries(self):
-        return self._inputs["registries"], self._unread
-
-    async def get_states(self, entity_ids):
-        return self._states
-
-    async def statistic_ids(self):
-        return set(self._inputs["statistic_ids"])
-
-    async def behavior_configs(self, entity_ids):
-        return self._behavior
-
-    async def get_config(self):
-        return self._inputs["ha_config"]
-
-    async def get_services(self):
-        return self._inputs["services"]
-
-    async def get_translations(self, language, category="entity_component"):
-        return self._inputs["translations"]["report"]
-
-    async def problems(self):
-        return self._inputs["problems"]
-
-    async def system_log(self):
-        return self._inputs["system_log"]
-
-    async def read_dashboards(self):
-        dashboards = self._inputs["dashboards"]
-        return dashboards["entries"], dashboards["unavailable"]
 
 
 def _hiris(path):
     return json.dumps({"version": "3.72.2", "piani": []}).encode()
 
 
-def _capture(tmp_path, **house):
-    return asyncio.run(casa.capture(tmp_path / "ingressi", house=_House(**house),
+def _capture(tmp_path, house=None):
+    """La cattura sulla casa sintetica, servita dal client vero
+    (`scripts/casa_finta.py`): cio' che la cattura salva e' cio' che i metodi
+    veri rendono. Fino al Task 4 della Tappa 2 qui c'era `_House`, una copia
+    a mano di `FrozenHouse`."""
+    return asyncio.run(casa.capture(tmp_path / "ingressi",
+                                    house=house or CasaFinta(synthetic_inputs()),
                                     hiris=_hiris))
+
+
+def _command(registry: str) -> str:
+    """Il comando WebSocket di un registro, chiesto al client."""
+    return next(msg_type for key, msg_type, _extra in HAClient._REGISTRIES
+                if key == registry)
 
 
 def test_un_registro_non_letto_ferma_la_cattura(tmp_path):
     with pytest.raises(SystemExit, match="piani"):
-        _capture(tmp_path, unread=["piani"])
+        _capture(tmp_path, CasaFinta(synthetic_inputs(), silence={_command("piani")}))
     assert not (tmp_path / "ingressi").exists(), "un ingresso monco e' stato salvato"
 
 
 def test_una_casa_senza_stati_ferma_la_cattura(tmp_path):
     with pytest.raises(SystemExit, match="stati"):
-        _capture(tmp_path, states=[])
+        _capture(tmp_path, CasaFinta({**synthetic_inputs(), "states": []}))
     assert not (tmp_path / "ingressi").exists()
 
 
 def test_un_corpo_di_automazione_non_letto_ferma_la_cattura(tmp_path):
-    partial = {"configurazioni": {}, "non_letti": {"automation.automazione_uno": "rifiutato"}}
+    refused = {"automation/config": {"code": "unauthorized", "message": "rifiutato"}}
     with pytest.raises(SystemExit, match="non letti"):
-        _capture(tmp_path, behavior=partial)
+        _capture(tmp_path, CasaFinta(synthetic_inputs(), refuse=refused))
     assert not (tmp_path / "ingressi").exists()
 
 

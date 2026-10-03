@@ -18,10 +18,13 @@ deve essere identica byte per byte, e ogni differenza e' del codice.
 
 ## La casa la monta l'avvio vero del prodotto
 
-`FrozenHouse` risponde come `HAClient` -- ma dagli ingressi congelati -- e
-l'app si monta chiamando `server._on_startup`, cioe' l'avvio vero: archivi,
-giudizi dei tipi, traduzioni, registro dei servizi, guasti, tutto cablato come
-in produzione, in una cartella dati temporanea. Il nucleo esce da
+La casa e' `CasaFinta` (`scripts/casa_finta.py`): il client VERO di Home
+Assistant, col solo trasporto sostituito, che risponde dagli ingressi
+congelati nella forma grezza di Home Assistant (Tappa 2, Task 4, 03/10/2026:
+prima era `FrozenHouse`, che imitava i metodi pubblici a mano). L'app si monta
+chiamando `server._on_startup`, cioe' l'avvio vero: archivi, giudizi dei
+tipi, traduzioni, registro dei servizi, guasti, tutto cablato come in
+produzione, in una cartella dati temporanea. Il nucleo esce da
 `compose_briefing` e gli strumenti da `create_tool_dispatcher`, gli unici due
 punti in cui il prodotto li costruisce. **Il cablaggio non e' ricopiato qui**:
 una prima versione montava a mano cinque oggetti e lasciava fuori giudizi e
@@ -29,8 +32,9 @@ traduzioni, e una modifica che toccava solo quelli avrebbe dato «0
 differenze» (rilievo I1 della revisione del 01/10/2026).
 
 Una porta che comincia a chiedere a Home Assistant qualcosa che gli ingressi
-non hanno si vede: `FrozenHouse` solleva nominando il metodo, e il prodotto --
-che non si fida di Home Assistant -- lo dichiara nella sua risposta.
+non hanno si vede: `CasaFinta` solleva `UnservedCommand` col nome del comando,
+e non e' un'eccezione che il prodotto possa inghiottire -- lo scatto si
+ferma.
 
 ## Cosa NON fotografa, dichiarato
 
@@ -87,6 +91,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import casa
+from casa_finta import NOWHERE, CasaFinta
 
 from hiris.app import claude_runner, server
 from hiris.app.agent import prompts as bridge_prompts
@@ -94,14 +99,9 @@ from hiris.app.api import handlers_chat, handlers_home_space
 from hiris.app.home_space import briefing, house_query, queries, topology
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.mind import actuator_turn, analyst_turn, observer, recipe_turn
-from hiris.app.proxy.ha_client import HAClient
 
 DIFFERENCES_SHOWN = 200
 STARTUP_TIMEOUT_S = 120
-#: Un indirizzo che rifiuta subito: chi nell'avvio parla con Home Assistant o
-#: col Supervisor senza passare dal client (voce E-06 del registro) non deve
-#: ne' uscire sulla rete ne' aspettare un DNS. La porta 9 e' «discard».
-NOWHERE = "http://127.0.0.1:9"
 SAMPLED_ENTITIES = 5
 BUSIEST_DOMAINS = 5
 
@@ -210,175 +210,30 @@ def live_shapes(fetch) -> dict:
     return shapes
 
 
-def listener_kinds() -> tuple[str, ...]:
-    """I generi di ascoltatori del client vero: i suoi `add_<genere>_listener`.
-
-    Chiesti a `HAClient`, non ricopiati: un genere nuovo entra da solo nella
-    casa congelata, e nelle prove che la confrontano col client vero."""
-    return tuple(sorted(name.removeprefix("add_").removesuffix("_listener")
-                        for name in dir(HAClient)
-                        if name.startswith("add_") and name.endswith("_listener")))
-
-
-class SilentConnection:
-    """Il websocket di una casa ferma: chiede l'autenticazione, la accetta, e
-    poi tace -- una casa congelata non manda eventi.
-
-    E' la `ClientSession` che la casa congelata da' al codice VERO del client
-    (`HAClient._ws_loop`): cosi' la prima connessione fa cio' che fa in
-    produzione -- l'iscrizione agli eventi e l'avviso «riconnessione» agli
-    ascoltatori -- senza che qui se ne ricopi una riga. Le prove la danno
-    anche al client vero, per confrontarlo con la casa congelata sulla stessa
-    connessione (`tests/test_costi_avvio.py`).
-    """
-
-    def __init__(self) -> None:
-        self._replies: list[dict] = []
-        self._tasks_before: set[asyncio.Task] = set()
-        #: Acceso quando il client ha finito di avvisare gli ascoltatori della
-        #: connessione e si mette in ascolto degli eventi.
-        self.connected = asyncio.Event()
-        #: I compiti nati mentre il client avvisava gli ascoltatori.
-        self.deferred_work: set[asyncio.Task] = set()
-
-    def ws_connect(self, url, **kwargs):
-        self._replies = [{"type": "auth_required"}, {"type": "auth_ok"}]
-        self._tasks_before = asyncio.all_tasks()
-        return self
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc_info):
-        return False
-
-    async def receive_json(self):
-        return self._replies.pop(0)
-
-    async def send_json(self, payload):
-        return None
-
-    def __aiter__(self):
-        # Il client vero comincia ad ascoltare gli eventi solo DOPO aver
-        # avvisato gli ascoltatori della connessione. Fra `ws_connect` e qui
-        # non cede mai il passo al ciclo (la connessione finta non fa I/O):
-        # i compiti nati nel frattempo sono tutti e soli i lavori che gli
-        # ascoltatori hanno rimandato -- le riletture con antirimbalzo.
-        self.deferred_work = asyncio.all_tasks() - self._tasks_before
-        self.connected.set()
-        return self
-
-    async def __anext__(self):
-        await asyncio.Event().wait()
-        raise StopAsyncIteration
-
-    async def close(self) -> None:
-        return None
+#: I metodi del client che la casa congelata NON ha. Lista di AMMISSIONE:
+#: ogni voce col suo perche'. Il prodotto li chiede con
+#: `getattr(ha_client, nome, None)` e, se mancano, tace senza affermare
+#: niente: e' la forma che dichiara «questa casa non risponde a questo».
+UNCAPTURED: dict[str, str] = {
+    "extract_from_target": (
+        "il confronto dell'albero con Home Assistant: la risposta dipende dal "
+        "bersaglio e la cattura non la congela. Con `FrozenHouse` di prima il "
+        "primo giro falliva intero e non scriveva niente; con la sola casa "
+        "finta che TACE (`silence=`) il giro si chiude e il nucleo dice «su 3 "
+        "aree il confronto non si e' potuto fare» -- misurato il 03/10/2026, "
+        "4 differenze nello scatto della casa vera. Una casa congelata non e' "
+        "una casa che tace: e' una casa a cui questa domanda non si fa"),
+}
 
 
-class FrozenHouse:
-    """Home Assistant, fermo al momento della cattura.
+class FrozenHouse(CasaFinta):
+    """Home Assistant fermo al momento della cattura: `CasaFinta` sugli
+    ingressi congelati (Tappa 2, Task 4, 03/10/2026), meno i metodi di
+    `UNCAPTURED`. Tutto il resto e' il client vero."""
 
-    Risponde ai soli metodi che gli ingressi congelati sanno servire. Ogni
-    altro attributo solleva nominandosi: e' cosi' che una porta che allarga le
-    sue letture verso HA si fa vedere nello scatto invece di ricevere un vuoto.
 
-    **Gli ascoltatori e il websocket sono quelli del client vero** (Tappa 2,
-    Task 1, 03/10/2026). Prima gli ascoltatori si buttavano e il websocket non
-    si apriva: la prima connessione -- che in produzione fa rileggere
-    specchio, anagrafe, comportamento e plance -- qui non succedeva, e il
-    contatore d'avvio contava meno del vero (2 e 2 invece di 4 e 3). Adesso
-    iscrizione, `start_websocket`, `_ws_loop` e `stop` sono i metodi di
-    `HAClient`, su una connessione che tace (`SilentConnection`).
-    """
-
-    def __init__(self, inputs: dict) -> None:
-        self._inputs = inputs
-        self.ws_ready = asyncio.Event()
-        self.ws_ready.set()
-        # Cio' che il codice del client vero legge dal suo oggetto per aprire
-        # il websocket. L'indirizzo e' quello che rifiuta: nessuno lo usa,
-        # perche' la connessione e' finta.
-        self._base_url = NOWHERE
-        self._headers = {"Authorization": "Bearer casa-congelata"}
-        self._session = SilentConnection()
-        self._ws_task: asyncio.Task | None = None
-        for kind in listener_kinds():
-            setattr(self, f"_{kind}_listeners", [])
-
-    async def start(self) -> None:
-        return None
-
-    async def stop(self) -> None:
-        await HAClient.stop(self)
-
-    async def start_websocket(self) -> None:
-        await HAClient.start_websocket(self)
-
-    async def _ws_loop(self, ws_url: str) -> None:
-        await HAClient._ws_loop(self, ws_url)
-
-    async def _first_connection_settled(self) -> None:
-        """Aspetta la prima connessione e i lavori che ha rimandato: e' li'
-        che l'avvio e' finito davvero («avvio intero», D1 della Tappa 2). Si
-        aspetta l'evento, non un tempo: l'antirimbalzo delle riletture e' di
-        qualche secondo, e un `sleep` sarebbe o troppo corto o sprecato.
-        Un websocket mai aperto non ha niente da aspettare."""
-        if self._ws_task is None:
-            return
-        await self._session.connected.wait()
-        await asyncio.gather(*self._session.deferred_work, return_exceptions=True)
-
-    async def get_services(self):
-        return self._inputs["services"]
-
-    async def get_translations(self, language, category="entity_component"):
-        held = self._inputs["translations"]
-        if (language, category) != (held["language"], held["category"]):
-            raise AssertionError(
-                f"traduzioni chieste per ({language}, {category}), congelate per "
-                f"({held['language']}, {held['category']})")
-        return held["report"]
-
-    async def problems(self):
-        return self._inputs["problems"]
-
-    async def system_log(self):
-        return self._inputs["system_log"]
-
-    async def read_dashboards(self):
-        held = self._inputs["dashboards"]
-        return held["entries"], held["unavailable"]
-
-    async def get_states(self, entity_ids):
-        states = self._inputs["states"]
-        if entity_ids:
-            return [row for row in states if row["entity_id"] in entity_ids]
-        return list(states)
-
-    async def read_registries(self):
-        return self._inputs["registries"], []
-
-    async def get_config(self):
-        return self._inputs["ha_config"]
-
-    async def behavior_configs(self, entity_ids):
-        known = self._inputs["behavior"].get("configurazioni", {})
-        return {"configurazioni": {key: known[key] for key in entity_ids if key in known}}
-
-    async def statistic_ids(self):
-        return set(self._inputs["statistic_ids"])
-
-    def __getattr__(self, name: str):
-        if (name.startswith(("add_", "remove_")) and name.endswith("_listener")
-                and hasattr(HAClient, name)):
-            # Chi si iscrive agli eventi non chiede niente alla casa: si
-            # iscrive col metodo del client vero, che lo mette nella lista
-            # che `_ws_loop` percorre.
-            return getattr(HAClient, name).__get__(self)
-        raise AssertionError(
-            f"una porta ha chiesto `{name}` a Home Assistant, e gli ingressi "
-            "congelati non lo portano: o si cattura, o la porta non e' a freddo")
+for _name in UNCAPTURED:
+    setattr(FrozenHouse, _name, None)
 
 
 @contextlib.contextmanager
@@ -402,10 +257,11 @@ async def mounted(inputs: dict, data_dir: str, house_class=None):
     """L'app del prodotto, avviata davvero su una casa congelata.
 
     Consegnata dopo l'avvio INTERO: `_on_startup`, la prima connessione del
-    websocket e le riletture che quella ha rimandato (`FrozenHouse`).
+    websocket e le riletture che quella ha rimandato.
 
-    `house_class` e' la classe messa al posto di `HAClient` (le prove ne
-    passano una che conta); senza, e' `FrozenHouse` sugli `inputs`.
+    `house_class` e' la classe messa al posto di `HAClient`, costruita con la
+    firma di `HAClient` (le prove ne passano una che conta o che ricorda);
+    senza, e' `FrozenHouse` sugli `inputs`.
     """
     def frozen(base_url=None, token=None):
         return FrozenHouse(inputs)

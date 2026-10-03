@@ -84,6 +84,8 @@ READ_METHODS: dict[str, str] = {
     "read_registries": "l'anagrafe: aree, dispositivi, entita', integrazioni",
     "get_states": "lo specchio degli stati",
     "statistic_ids": "chi ha statistiche di lungo periodo",
+    "hourly_statistics": ("le statistiche orarie di una finestra esplicita: le misure "
+                          "che il piano degli attori congela (strato 1, Task 1.0)"),
     "behavior_configs": "i corpi di automazioni e script",
     "get_config": "il sistema di riferimento: fuso, versione, lingua",
     "get_services": "il registro dei servizi: cosa si puo' comandare",

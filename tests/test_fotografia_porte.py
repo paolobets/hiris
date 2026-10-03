@@ -117,22 +117,28 @@ def test_il_confronto_dice_dove_e_cosa_e_tronca_dichiarandolo():
 
 
 def test_una_porta_che_chiede_altro_a_home_assistant_si_vede():
+    """La casa congelata e' il client vero (`scripts/casa_finta.py`): una
+    domanda che gli ingressi non portano solleva col suo nome, e non e' un
+    `Exception` che il prodotto possa inghiottire."""
+    from casa_finta import UnservedCommand
+
     async def ask():
         house = fotografia_porte.FrozenHouse(synthetic_inputs())
-        await house.call_service("light", "turn_on")
+        await house.call_service("light", "turn_on", {})
 
-    with pytest.raises(AssertionError, match="call_service"):
+    with pytest.raises(UnservedCommand, match="/api/services/light/turn_on"):
         asyncio.run(ask())
 
 
-def test_la_casa_congelata_serve_ogni_ingresso_catturato():
-    # Un ingresso catturato che la casa congelata non serve a nessuno e' un
-    # file scritto e mai letto.
-    import casa
-    served = set(casa.INPUTS)
-    source = (ROOT / "scripts" / "fotografia_porte.py").read_text(encoding="utf-8")
-    unread = sorted(name for name in served if f'self._inputs["{name}"]' not in source)
-    assert not unread, f"ingressi catturati che la casa congelata non serve: {unread}"
+def test_la_casa_congelata_non_ha_cio_che_la_cattura_non_congela():
+    """`UNCAPTURED` e' una lista di ammissione: ogni nome e' un metodo vero del
+    client, e la casa congelata non lo ha."""
+    from hiris.app.proxy.ha_client import HAClient
+
+    assert fotografia_porte.UNCAPTURED
+    for name in fotografia_porte.UNCAPTURED:
+        assert callable(getattr(HAClient, name)), name
+        assert getattr(fotografia_porte.FrozenHouse(synthetic_inputs()), name) is None
 
 
 def test_l_app_fotografata_e_quella_dell_avvio_vero():

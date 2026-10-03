@@ -12,6 +12,13 @@ in piccolo, e con i casi che contano messi apposta:
 - nomi di registro senza il prefisso del dispositivo, e `friendly_name` vivo
   col prefisso -- che e' la forma vera di Home Assistant.
 
+Le righe delle entita' NON portano `aliases`: e' la forma che
+`HAClient.read_registries` restituisce quando l'utente non ne ha scritti
+(`config/entity_registry/list` non li manda, e il client li aggiunge solo se
+non sono vuoti; sulla casa vera, 03/10/2026: 0 righe su 1410). Fino al Task 4
+della Tappa 2 portavano `aliases: []`, una forma che il client non produce:
+`scripts/casa_finta.py`, che risponde coi messaggi grezzi, l'ha fatta vedere.
+
 **La forma e' quella dei file catturati** (`casa.INPUTS`): `registries` ha le
 chiavi che `HAClient.read_registries` restituisce e le righe grezze di Home
 Assistant; `states` sono le righe di `GET /api/states`; il resto e' cio' che i
@@ -32,7 +39,7 @@ def _entity(entity_id: str, platform: str, **fields) -> dict:
     return {"entity_id": entity_id, "platform": platform, "name": None,
             "original_name": None, "area_id": None, "device_id": None,
             "entity_category": None, "disabled_by": None, "hidden_by": None,
-            "aliases": [], "labels": [], "categories": {}, **fields}
+            "labels": [], "categories": {}, **fields}
 
 
 def synthetic_inputs() -> dict:
@@ -132,5 +139,11 @@ def synthetic_inputs() -> dict:
                                  "Chiusa"}}},
         "problems": {"problemi": []},
         "system_log": {"voci": []},
-        "dashboards": {"entries": [], "unavailable": []},
+        # La forma che il client restituisce sulla casa vera (01/10/2026): la
+        # principale c'e' sempre, e in modalita' automatica non ha un corpo.
+        # Prima era `{"entries": [], "unavailable": []}`, che il client non
+        # produce mai: chiede sempre la principale.
+        "dashboards": {"entries": [{"url_path": None, "title": "Principale",
+                                    "config": None}],
+                       "unavailable": ["principale"]},
     }

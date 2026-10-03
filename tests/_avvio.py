@@ -30,37 +30,37 @@ from tests._casa_sintetica import synthetic_inputs
 
 
 class RecordingHouse(fotografia_porte.FrozenHouse):
-    """La casa congelata che ricorda chi si e' iscritto ai suoi eventi, e in
-    che ordine.
+    """La casa congelata dell'avvio: il client vero sugli ingressi sintetici
+    (`scripts/casa_finta.py`), che dice chi si e' iscritto ai suoi eventi.
 
     E' la casa che l'avvio trova in `app["ha_client"]`: una prova chiede a lei
     QUALI ascoltatori l'avvio ha registrato -- e li chiama -- invece di cercare
     `add_state_listener(` nel testo di `server.py`. La firma e' quella con cui
-    `_on_startup` costruisce `HAClient`."""
+    `_on_startup` costruisce `HAClient`.
+
+    **Segue la prima connessione** (Tappa 2, Task 4, 03/10/2026). Fino a qui
+    teneva gli ascoltatori in una lista sua e non li dava al client: la prima
+    connessione non avvisava nessuno, e le prove che montavano l'avvio con
+    questa casa giravano su un avvio diverso da quello della fotografia e del
+    contatore -- senza le riletture che in produzione la prima connessione fa
+    fare a specchio, anagrafe, comportamento e plance. Due idee di «avvio»
+    sono quello che questo file esiste per non avere. Adesso l'iscrizione e'
+    quella del client vero, e chi si e' iscritto lo dicono le sue liste."""
 
     def __init__(self, base_url=None, token=None) -> None:
         super().__init__(synthetic_inputs())
-        #: `(nome del metodo, ascoltatore)`, nell'ordine dell'iscrizione.
-        self.listeners: list[tuple[str, object]] = []
 
     def registered(self, kind: str) -> list:
-        """Gli ascoltatori iscritti con `add_<kind>_listener`, in ordine."""
-        return [callback for name, callback in self.listeners
-                if name == f"add_{kind}_listener"]
-
-    def __getattr__(self, name: str):
-        if name.startswith("add_") and name.endswith("_listener"):
-            def register(callback, *args, **kwargs):
-                self.listeners.append((name, callback))
-            return register
-        return super().__getattr__(name)
+        """Gli ascoltatori iscritti con `add_<kind>_listener`, in ordine: la
+        lista che il client vero percorre."""
+        return list(getattr(self, f"_{kind}_listeners"))
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def started_app(tmp_path_factory):
     """L'app avviata sulla casa sintetica, spenta alla fine del file. La casa
-    e' una `RecordingHouse`: `app["ha_client"].listeners` dice chi l'avvio ha
-    iscritto ai suoi eventi."""
+    e' una `RecordingHouse`: `app["ha_client"].registered(genere)` dice chi
+    l'avvio ha iscritto ai suoi eventi."""
     data_dir = str(tmp_path_factory.mktemp("avvio"))
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir,
                                         RecordingHouse) as app:

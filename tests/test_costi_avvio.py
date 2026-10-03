@@ -30,6 +30,8 @@ diff che una revisione vede.
 Mutazione ESEGUITA: aggiunta in `_on_startup` una seconda
 `await entity_cache.load(ha_client)` -- rossa (`get_states`: 3, tetto 2).
 Rieseguita il 03/10/2026 sull'avvio intero: rossa (`get_states`: 5, tetto 4).
+Rieseguita il 03/10/2026 sulla casa finta col client vero (Tappa 2, Task 4):
+rossa (`get_states`: 5, tetto 4).
 """
 import asyncio
 import collections
@@ -39,6 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import casa_finta
 import fotografia_porte
 
 from hiris.app.proxy.ha_client import HAClient
@@ -46,34 +49,31 @@ from tests._casa_sintetica import synthetic_inputs
 
 #: Le letture dell'INTERA casa: stati e registri. Sono quelle che R18 vuole a una.
 WHOLE_HOUSE_CEILINGS = {"get_states": 4, "read_registries": 3}
-NOT_QUESTIONS = ("ws_ready", "start", "stop", "start_websocket")
+#: Cio' che non e' una domanda alla casa: il ciclo di vita, gli ascoltatori
+#: (iscriversi non e' bussare) e cio' che la casa finta registra.
+NOT_QUESTIONS = ("ws_ready", "start", "stop", "start_websocket", "calls", "connections",
+                 "served")
 
 
 def _counting_house(calls: collections.Counter):
     class CountingHouse(fotografia_porte.FrozenHouse):
-        """La casa congelata, col contatore. Un metodo che non sa servire
-        risponde vuoto invece di sollevare: qui non si fotografa una porta, si
-        conta chi bussa."""
+        """La casa congelata -- il client vero sugli ingressi sintetici
+        (`scripts/casa_finta.py`) --, col contatore dei metodi chiesti.
+
+        Fino al Task 4 della Tappa 2 un metodo che non sapeva servire
+        rispondeva `{}`: una lettura nuova all'avvio sarebbe passata contata
+        ma con una risposta inventata. Adesso un comando che gli ingressi non
+        portano solleva col suo nome (`UnservedCommand`), e l'avvio si ferma."""
 
         def __init__(self, base_url=None, token=None) -> None:
             super().__init__(synthetic_inputs())
 
         def __getattribute__(self, name: str):
             attribute = object.__getattribute__(self, name)
-            if not name.startswith("_") and name not in NOT_QUESTIONS:
+            if (not name.startswith("_") and name not in NOT_QUESTIONS
+                    and not name.endswith("_listener")):
                 calls[name] += 1
             return attribute
-
-        def __getattr__(self, name: str):
-            if name.endswith("_listener"):
-                # Iscriversi non e' bussare: l'iscrizione e' quella del client
-                # vero, e la prima connessione avvisa chi si e' iscritto.
-                return super().__getattr__(name)
-            calls[name] += 1
-
-            async def nothing(*args, **kwargs):
-                return {}
-            return nothing
 
     return CountingHouse
 
@@ -117,7 +117,7 @@ CONNECTION_TIMEOUT_S = 5
 
 async def _heard_at_first_connection(house) -> dict[str, list]:
     """Chi ascolta cosa, dalla sola prima connessione di `house`."""
-    heard: dict[str, list] = {kind: [] for kind in fotografia_porte.listener_kinds()}
+    heard: dict[str, list] = {kind: [] for kind in casa_finta.listener_kinds()}
     for kind, received in heard.items():
         getattr(house, f"add_{kind}_listener")(received.append)
     await house.start_websocket()
@@ -143,7 +143,7 @@ def test_la_prima_connessione_della_casa_finta_avvisa_come_il_client_vero():
     lista che `_ws_loop` percorre, e la connessione non arriva in fondo)."""
     async def real() -> dict[str, list]:
         client = HAClient("http://casa.invalid", "token")
-        client._session = fotografia_porte.SilentConnection()
+        client._session = casa_finta.SilentConnection()
         return await _heard_at_first_connection(client)
 
     async def frozen() -> dict[str, list]:
