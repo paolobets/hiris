@@ -52,6 +52,7 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
+from tests._avvio import started_app  # noqa: F401
 
 # Fetta «le chat divise»: `handle_chat` calcola il filo della richiesta una
 # volta (`request_thread`) e lo usa per cronologia, limite, 409 e job. L'app
@@ -783,8 +784,8 @@ async def test_il_ponte_segue_l_archivio_all_avvio_e_dopo(tmp_path):
         assert app["bridge_active"] is False
 
 
-@pytest.mark.asyncio
-async def test_la_spazzata_LEGGE_il_valore_e_non_lo_ricalcola(tmp_path):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_spazzata_LEGGE_il_valore_e_non_lo_ricalcola(started_app):
     """La spazzata e l'instradamento leggono lo STESSO slot: se la spazzata
     rideriva il valore dall'archivio, le due derivazioni possono divergere --
     ed e' esattamente il buco che l'AND di prima serviva a chiudere. Qui lo
@@ -795,27 +796,24 @@ async def test_la_spazzata_LEGGE_il_valore_e_non_lo_ricalcola(tmp_path):
     `if not app.get("bridge_active"):` ->
     `if not _bridge_active(app.get("models_config")):` -- rossa.
 
-    Un avvio suo, non la fixture di modulo: il montaggio tiene il registro
-    `hiris` a CRITICAL finche' l'app e' accesa, e le prove di registro di
-    questo file che vengono dopo non vedrebbero niente."""
+    L'app condivisa del file: `mock.patch.dict` rimette lo slot e l'archivio
+    come li ha trovati, e la coda finta non tocca quella vera."""
     from unittest import mock
 
-    from tests._avvio import started_with
-
-    async with started_with(tmp_path) as app:
-        sweep = app["scheduler"].get_job("hiris_reasoning_sweep").func
-        queue = app["reasoning_queue"]
-        for slot, archivio, spazza in ((True, False, True), (False, True, False)):
-            with mock.patch.dict(app, {
-                    "bridge_active": slot,
-                    "models_config": {**app["models_config"],
-                                      "ponte": {"attivo": archivio}}}), \
-                    mock.patch.object(queue, "sweep_expired", return_value=[]) as expired:
-                await sweep()
-            assert expired.called is spazza, (
-                f"slot {slot}, archivio {archivio}: la spazzata "
-                f"{'non ha' if spazza else 'ha'} spazzato -- non legge il valore condiviso"
-            )
+    app = started_app
+    sweep = app["scheduler"].get_job("hiris_reasoning_sweep").func
+    queue = app["reasoning_queue"]
+    for slot, archivio, spazza in ((True, False, True), (False, True, False)):
+        with mock.patch.dict(app, {
+                "bridge_active": slot,
+                "models_config": {**app["models_config"],
+                                  "ponte": {"attivo": archivio}}}), \
+                mock.patch.object(queue, "sweep_expired", return_value=[]) as expired:
+            await sweep()
+        assert expired.called is spazza, (
+            f"slot {slot}, archivio {archivio}: la spazzata "
+            f"{'non ha' if spazza else 'ha'} spazzato -- non legge il valore condiviso"
+        )
 
 
 def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():

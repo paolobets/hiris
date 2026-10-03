@@ -15,8 +15,9 @@ uscita insieme a ``brain/privacy.py``, e con lei i tre test che la
 pinnavano. Vedi la nota in fondo al file: cadevano per costruzione, e cio'
 che provavano era gia' un no-op nel prodotto.
 
-``_submit_chat_reply`` is a closure defined inside ``server._on_startup``,
-published as ``app["submit_chat_reply"]``. Fino al 03/10/2026 la si
+``_submit_chat_reply`` is a closure built by ``server._chat_reply_submitter``
+(called from ``server._on_startup``), published as
+``app["submit_chat_reply"]``. Fino al 03/10/2026 la si
 ritagliava dal testo di ``_on_startup`` e la si eseguiva con le sue variabili
 libere ricopiate a mano; adesso l'app si avvia davvero
 (``tests/_avvio.py::started_with``) e si chiama la funzione che l'avvio ha
@@ -175,8 +176,9 @@ async def test_empty_reply_still_short_circuits(submitted):
 #
 # Cadono PER COSTRUZIONE: il loro soggetto -- la chiamata
 # `app["pseudonymizer"].detokenize(reply_text, {})` dentro
-# `_submit_chat_reply` -- non esiste piu' nel sorgente che
-# `_load_real_submit_chat_reply` estrae via `inspect.getsource`. I primi due
+# `_submit_chat_reply` -- non esisteva piu' nel sorgente che l'allora
+# `_load_real_submit_chat_reply` estraeva via `inspect.getsource` (uscita il
+# 03/10/2026: oggi si chiama la chiusura che l'avvio pubblica). I primi due
 # asserivano su `pseudonymizer.calls`, che ora resta vuoto sempre; il terzo
 # provava il ramo `if pseudonymizer is not None` con `app = {}`, cioe'
 # esattamente cio' che oggi fa `test_clean_reply_is_persisted` -- sarebbe

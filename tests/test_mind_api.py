@@ -66,14 +66,6 @@ class _FintoArchivioScope:
         return int(to_ts - from_ts)      # una riga al secondo: distingue i giorni
 
 
-def _decidi(archivio, *soggetti):
-    """Mette nello scope i soggetti che le prove d'insieme fanno passare dal
-    rubinetto. Il default e' l'entita' che usano quasi tutte."""
-    for soggetto in soggetti or ("climate.bagno_1p_t_bagno_1p_t",):
-        archivio.decide_scope(soggetto, inside=True,
-                              reason="la prova la guarda", author="observer")
-
-
 class _FintaCasa:
     """L'anagrafe dal lato di chi legge i nomi: una  e basta."""
 
@@ -224,29 +216,11 @@ def _corpo(response):
 
 
 # ---------------------------------------------------------------------------
-# La strada vera, per intero: l'evento di Home Assistant -> `Watcher` ->
-# l'archivio SQLite -> l'aggregazione -> `GET /api/mind/facts`. Nessuna
-# finta in mezzo: e' la prova che il nome ARRIVA alla riga che il
-# proprietario legge, non che un pezzo isolato lo sappia trasportare.
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Lo stato reso (fetta «lo stato», 07/09/2026). Il grezzo resta nell'archivio,
 # la resa nasce QUI, al confine -- e i due silenzi («non ho potuto leggere le
 # traduzioni» e «questo stato non ha traduzione») non producono la stessa
 # risposta.
 # ---------------------------------------------------------------------------
-
-# Le chiavi sono quelle MISURATE sulla casa vera il 07/09/2026
-# (`frontend/get_translations`, `language: "it"`, `category:
-# "entity_component"`), non plausibili.
-_RISORSE = {
-    "component.climate.entity_component._.state.heat": "Riscaldamento",
-    "component.person.entity_component._.state.not_home": "Fuori casa",
-    "component.binary_sensor.entity_component.smoke.state.on": "Rilevato",
-    "component.binary_sensor.entity_component._.state.on": "Acceso",
-}
-
 
 class _FinteTraduzioni:
     """La cache, con lo stesso contratto della vera: un esito ETICHETTATO."""
@@ -266,11 +240,6 @@ class _FintaAnagrafe:
 
     def reference_frame(self):
         return self._frame
-
-
-class _ClientCheNonRisponde:
-    async def get_translations(self, language, category="entity_component"):
-        raise AssertionError("senza lingua non si deve chiedere niente a Home Assistant")
 
 
 # **La sezione della rotta `api/mind/facts` e' uscita** (spec §13,

@@ -8,6 +8,8 @@ sprint «Una fonte sola di verita'»). Adesso l'app si avvia davvero
 (`tests/_avvio.py`) e si chiede allo schedulatore cosa c'e', quando gira, e
 cosa fa.
 """
+import asyncio
+import contextlib
 import pathlib
 import sys
 from unittest import mock
@@ -114,14 +116,24 @@ async def test_l_attuatore_e_in_pausa_e_niente_lo_fa_girare(tmp_path):
     registrato, e niente all'avvio lo chiama. Chi lo riaccende toglie questa
     prova insieme alla pausa, non la aggira.
 
-    Mutazione ESEGUITA: rimesso l'`add_job` di `hiris_mind_actuator` --
-    rossa."""
+    Non basta guardare gli `id`: l'attuatore potrebbe tornare sotto il nome di
+    un altro lavoro. Quindi si ESEGUE il corpo di ognuno dei sedici, con
+    `actuator_round` sostituito, e si pretende che nessuno lo chiami.
+
+    Mutazioni ESEGUITE il 03/10/2026: rimesso l'`add_job` di
+    `hiris_mind_actuator` -- rossa, «assert 17 == 16»; `await actuator_round(app)` dentro
+    `_anello_analista` (id `hiris_mind_analyst`) -- rossa, «Expected mock to
+    not have been awaited. Awaited 1 times.»"""
     called = mock.AsyncMock()
     with mock.patch.object(server, "actuator_round", called):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            assert app["scheduler"].get_job("hiris_mind_actuator") is None
-            for job in app["scheduler"].get_jobs():
-                assert "actuator" not in job.id
+            jobs = app["scheduler"].get_jobs()
+            assert len(jobs) == 16, sorted(job.id for job in jobs)
+            for job in jobs:
+                # I giri veri possono fallire sulla casa sintetica: qui conta
+                # solo chi chiamano, non se riescono.
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(job.func(*job.args, **job.kwargs), 20)
     called.assert_not_awaited()
 
 

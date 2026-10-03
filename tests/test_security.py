@@ -279,28 +279,6 @@ async def test_csrf_does_not_apply_to_non_api_paths(csrf_strict):
         assert resp.status == 200
 
 
-def _make_csrf_app_with_token(token="srv-secret"):
-    """CSRF app with BOTH middlewares, in the production order.
-
-    From 22/09/2026 the CSRF exemption reads the verdict the auth middleware
-    left (`auth_via`) instead of comparing the shared secret a second time:
-    one place decides who is authenticated, not two. That makes the ORDER of
-    the two middlewares load-bearing -- so this fixture composes them exactly
-    as `create_app` does, or it would be proving something the product never
-    runs.
-    """
-    from aiohttp import web
-
-    from hiris.app.api.middleware_csrf import csrf_middleware
-    from hiris.app.api.middleware_internal_auth import internal_auth_middleware
-    app = web.Application(middlewares=[internal_auth_middleware, csrf_middleware])
-    app["internal_token"] = token
-    app["credenziali"] = {}
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
-    app.router.add_post("/api/x", lambda r: web.json_response({"ok": True}))
-    return app
-
-
 @pytest.mark.asyncio
 async def test_csrf_esenta_chi_si_e_gia_autenticato_ALTROVE(csrf_strict):
     """Il CSRF esenta chi il confine ha gia' riconosciuto per un'altra strada

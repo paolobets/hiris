@@ -18,8 +18,8 @@ Adesso l'app si avvia davvero (`tests/_avvio.py`) e si guardano quattro cose:
   momento;
 - lo SPEGNIMENTO: dopo l'uscita dall'app, gli archivi sono chiusi davvero.
 """
-import asyncio
 import contextlib
+import inspect
 import sqlite3
 import sys
 from pathlib import Path
@@ -57,7 +57,7 @@ def _recorded(steps: list, label: str, real, *, app_keys: bool = False):
     def note(args):
         steps.append((label, frozenset(args[0]) if app_keys else None))
 
-    if asyncio.iscoroutinefunction(real):
+    if inspect.iscoroutinefunction(real):
         async def recorded(*args, **kwargs):
             note(args)
             return await real(*args, **kwargs)

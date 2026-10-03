@@ -310,15 +310,24 @@ async def mounted(inputs: dict, data_dir: str, house_class=None):
     with mock.patch.dict(os.environ, _environment(data_dir)), \
             mock.patch.object(server, "HAClient", house_class or frozen):
         app = server.create_app()
+        # Zitto SOLO mentre l'avvio e lo spegnimento girano: chi usa l'app nel
+        # mezzo (le prove con `caplog`) deve vedere i log di `hiris.*` al
+        # livello di sempre, o un «non logga X» sarebbe verde a vuoto.
         quiet = logging.getLogger("hiris")
         level = quiet.level
-        quiet.setLevel(logging.CRITICAL)
         try:
-            await asyncio.wait_for(server._on_startup(app), timeout=STARTUP_TIMEOUT_S)
+            quiet.setLevel(logging.CRITICAL)
+            try:
+                await asyncio.wait_for(server._on_startup(app), timeout=STARTUP_TIMEOUT_S)
+            finally:
+                quiet.setLevel(level)
             yield app
         finally:
-            await asyncio.wait_for(server._on_cleanup(app), timeout=STARTUP_TIMEOUT_S)
-            quiet.setLevel(level)
+            quiet.setLevel(logging.CRITICAL)
+            try:
+                await asyncio.wait_for(server._on_cleanup(app), timeout=STARTUP_TIMEOUT_S)
+            finally:
+                quiet.setLevel(level)
 
 
 def _ordered(value):

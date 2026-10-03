@@ -31,7 +31,7 @@ from tests._casa_sintetica import synthetic_inputs
 
 class RecordingHouse(fotografia_porte.FrozenHouse):
     """La casa congelata che ricorda chi si e' iscritto ai suoi eventi, e in
-    che ordine, e quante volte le si sono chiesti gli stati.
+    che ordine.
 
     E' la casa che l'avvio trova in `app["ha_client"]`: una prova chiede a lei
     QUALI ascoltatori l'avvio ha registrato -- e li chiama -- invece di cercare
@@ -42,11 +42,6 @@ class RecordingHouse(fotografia_porte.FrozenHouse):
         super().__init__(synthetic_inputs())
         #: `(nome del metodo, ascoltatore)`, nell'ordine dell'iscrizione.
         self.listeners: list[tuple[str, object]] = []
-        self.state_reads = 0
-
-    async def get_states(self, entity_ids):
-        self.state_reads += 1
-        return await super().get_states(entity_ids)
 
     def registered(self, kind: str) -> list:
         """Gli ascoltatori iscritti con `add_<kind>_listener`, in ordine."""
@@ -89,9 +84,11 @@ UNREACHABLE_OLLAMA = "http://127.0.0.1:9"
 
 
 #: Il registro di `server.py`, per chi legge cio' che l'avvio scrive. Il
-#: montaggio mette `hiris` a CRITICAL mentre l'avvio gira: un livello dato al
-#: FIGLIO vale per il figlio (`caplog.at_level(livello, logger=SERVER_LOGGER)`),
-#: e i suoi record risalgono comunque fino al gestore di `caplog`.
+#: montaggio mette `hiris` a CRITICAL durante `_on_startup` e `_on_cleanup`, e
+#: lo rimette com'era mentre l'app e' accesa. Chi vuole vedere cio' che scrive
+#: L'AVVIO stesso da' quindi il livello al FIGLIO, che vale per il figlio
+#: (`caplog.at_level(livello, logger=SERVER_LOGGER)`), e i suoi record
+#: risalgono comunque fino al gestore di `caplog`.
 SERVER_LOGGER = "hiris.app.server"
 
 

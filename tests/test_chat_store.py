@@ -415,7 +415,8 @@ def test_is_toxic_detects_synthetic_error_strings():
 # Il ponte (agent/runner.py) risponde con dei SENTINELLA quando non ha una
 # risposta: `[errore runner rc=...]`, `[runner non disponibile]`, `[vuoto]`,
 # `[mock] risposta di prova`. Non erano in nessun insieme qui sopra, quindi
-# `server._submit_chat_reply` -- che filtra proprio con `_is_toxic_assistant`
+# `_submit_chat_reply` (costruita da `server._chat_reply_submitter`) -- che
+# filtra proprio con `_is_toxic_assistant`
 # -- li scriveva in chat_history.db: la review ne ha trovati due dal vivo
 # (`[errore runner rc=3221226505]`), riletti e rimandati al modello a ogni
 # turno successivo.
