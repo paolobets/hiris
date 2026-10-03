@@ -18,6 +18,7 @@ import time
 
 from ..home_space.ha_vocabulary import config_entry_is_healthy
 from ..home_space.historian import instant_epoch
+from ..home_space.redaction import home_assistant_seal, seal_free_text
 from .knowledge import attributes_wanted_for
 
 logger = logging.getLogger(__name__)
@@ -772,6 +773,12 @@ class Watcher:
         # lo dichiarano mai) e l'epoch che HA dichiara per una voce di log --
         # va nella colonna omonima, MAI in `quando_ts` (vedi il docstring).
         open_now: dict[str, tuple[str, str | None, str | None, float | None]] = {}
+        # Il sigillo dei segreti per i titoli delle voci di registro, qui
+        # sotto: lo stesso della chat (`redaction.home_assistant_seal`), letto
+        # una volta per giro -- uno ogni dieci minuti, quindi un
+        # `secrets.yaml` cambiato vale dal giro dopo. Non solleva mai: senza
+        # il file non sigilla niente, e il giro va avanti.
+        seal = home_assistant_seal()
         for p in problems or []:
             if not isinstance(p, dict):
                 continue
@@ -820,7 +827,13 @@ class Watcher:
                     and isinstance(source_line, int) and not isinstance(source_line, bool)):
                 continue
             message = entry.get("message")
-            title = (_text_or_none(message[0])
+            # Il titolo passa dal sigillo dei segreti PRIMA di entrare
+            # nell'archivio (Tappa 3, Task 0, 03/10/2026): e' testo libero
+            # scritto da un componente qualunque, anche di terze parti, e da
+            # qui arriva al resoconto del giorno e alla pagina
+            # dell'osservatore. La regola e' quella della chat, una sola
+            # (`redaction.seal_free_text`).
+            title = (_text_or_none(seal_free_text(message[0], seal))
                      if isinstance(message, list) and message else None)
             raw_first_occurred = entry.get("first_occurred")
             # Verificato alla fonte (vedi il docstring del metodo):
@@ -899,6 +912,32 @@ class Watcher:
             written += 1
         return written
 
+    def _reseal_archived_titles(self) -> None:
+        """I titoli `log:` scritti prima che `watch_system` li sigillasse
+        (fino alla 3.73.2), sigillati ora con la stessa regola
+        (`redaction.seal_free_text`) -- decisione del proprietario del
+        03/10/2026. Il registro dice **quanti**, mai quali: il valore di un
+        titolo e' proprio cio' che non deve uscire. Tace quando non c'e'
+        niente da sigillare, cioe' da ogni avvio dopo il primo.
+
+        Non solleva mai, come `rebuild_conditions`: un archivio che non
+        risponde lascia i titoli com'erano, non ferma l'avvio. Senza
+        `secrets.yaml` non sigilla niente.
+        """
+        seal = home_assistant_seal()
+        if not seal.readable:
+            return
+        try:
+            rows, reports = self._store.reseal_titles(
+                lambda text: seal_free_text(text, seal))
+        except Exception as error:
+            logger.warning("osservatore: titoli archiviati non sigillati (%s)",
+                           type(error).__name__)
+            return
+        if rows or reports:
+            logger.info("osservatore: sigillati i segreti in %d titoli archiviati "
+                        "e %d resoconti", rows, reports)
+
     def rebuild_conditions(self) -> None:
         """Risemina `self._conditions` **e** `self._automation_faults` da
         cio' che l'archivio gia' sa (Task 4 di «le tracce e il log»: prima
@@ -952,7 +991,13 @@ class Watcher:
         filtrarle a monte, nella query, e' insieme la correzione del difetto e
         il modo di non caricare inutilmente tutto il resto in dizionari
         Python a ogni avvio.
+
+        **Prima, il sigillo dei segreti sui titoli gia' archiviati**
+        (`_reseal_archived_titles`, Tappa 3, Task 0): questo e' l'unico
+        passo dell'avvio in cui l'osservatore rilegge il proprio archivio, e
+        quelle righe sono sue.
         """
+        self._reseal_archived_titles()
         try:
             # La finestra e' quella intera che l'archivio puo' avere: da zero
             # (l'inizio dei tempi, per un archivio che comunque pota da solo)
