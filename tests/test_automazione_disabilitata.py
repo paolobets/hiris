@@ -22,6 +22,7 @@ darli allo stesso campo insegnerebbe al modello a leggere uno script fermo
 import pytest
 
 from hiris.app.home_space.behavior import BEHAVIOR_DOMAINS, reread
+from hiris.app.proxy.entity_cache import EntityCache
 
 
 class FintoHomeSpace:
@@ -61,7 +62,11 @@ def casa():
 
 async def _rileggi(casa, states, tmp_path):
     (tmp_path / "secrets.yaml").write_text("", encoding="utf-8")
-    return await reread(FintoClient(states), casa, tmp_path)
+    # Dal 03/10/2026 (Tappa 2, Task 6, A-03) gli stati arrivano dallo specchio.
+    client = FintoClient(states)
+    mirror = EntityCache()
+    await mirror.load(client)
+    return await reread(client, mirror, casa, tmp_path)
 
 
 @pytest.mark.asyncio

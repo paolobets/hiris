@@ -33,8 +33,7 @@ import logging
 import re
 from pathlib import Path
 
-from ..proxy.ha_client import HAReadError
-from .reader import clean_name
+from ..proxy.entity_cache import unreadable_inventory_error
 from .redaction import SecretSeal
 from .topology import domain_of
 
@@ -80,7 +79,7 @@ BODY_NOT_READ = "configurazione non letta da Home Assistant"
 SECRETS_UNCHECKABLE = "segreti non controllabili: il corpo non si archivia"
 
 
-async def reread(client, home_space, ha_folder: Path | None) -> dict:
+async def reread(client, mirror, home_space, ha_folder: Path | None) -> dict:
     """Rilegge il comportamento da Home Assistant e lo consegna all'anagrafe.
 
     Restituisce `{"conteggi": {...}, "senza_corpo": n, "corpi_non_letti":
@@ -98,15 +97,22 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
     stesso -- e' un successo, non un errore -- e sostituire trasformerebbe
     dodici automazioni vive in zero. Una replica vecchia e dichiarata stantia
     e' meglio di una vuota e falsa.
+
+    **Quali automazioni e script ci sono, lo dice lo specchio** (`mirror`,
+    A-03, 03/10/2026): fino a quel giorno si rileggeva da Home Assistant
+    l'intera casa (`GET /api/states`, centinaia di entita') per tenerne lo
+    stato e il nome di una ventina -- cose che lo specchio sa gia', aggiornate
+    a ogni evento. Da Home Assistant si chiede solo cio' che lo specchio non
+    porta: il corpo (`behavior_configs`).
     """
-    # `[]` significa «tutte»: e' la convenzione di `HAClient.get_states`.
-    states = await client.get_states([])
-    if isinstance(states, dict):
-        # La busta del guasto (D3): la rilettura si ferma e la replica resta
-        # quella di prima -- chi chiama (`server.watch_behavior`) lo registra.
-        raise HAReadError(states)
-    behavior_states = [s for s in states
-                       if domain_of(s.get("entity_id", "")) in BEHAVIOR_DOMAINS]
+    failure = unreadable_inventory_error(mirror)
+    if failure is not None:
+        # Uno specchio che non si legge non e' una casa senza automazioni: la
+        # rilettura si ferma e la replica resta quella di prima -- chi chiama
+        # (`server.watch_behavior`) lo registra.
+        raise RuntimeError(failure["error"])
+    behavior_states = [s for s in mirror.all_states()
+                       if domain_of(s.get("id", "")) in BEHAVIOR_DOMAINS]
 
     if not behavior_states and home_space.behavior():
         message = (
@@ -126,7 +132,7 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
 
     seal = (SecretSeal.from_file(ha_folder / _SECRETS) if ha_folder is not None
             else SecretSeal({}, readable=False))
-    report = await client.behavior_configs([s["entity_id"] for s in behavior_states])
+    report = await client.behavior_configs([s["id"] for s in behavior_states])
     configs = report.get("configurazioni") or {}
     failure = report.get("errore")
 
@@ -139,7 +145,7 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
             "segreto risolto da Home Assistant finirebbe in chiaro nell'archivio "
             "e nel contesto del modello")
     for state in behavior_states:
-        entity_id = state["entity_id"]
+        entity_id = state["id"]
         body = configs.get(entity_id)
         if body is None:
             unread[entity_id] = (failure or (report.get("non_letti") or {}).get(entity_id)
@@ -152,9 +158,10 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
         entry = {
             "id": entity_id,
             "tipo": BEHAVIOR_DOMAINS[domain_of(entity_id)],
-            # Il nome amichevole e' quello che Home Assistant mostra: la
-            # sanificazione sta dove sta sempre, al confine (`clean_name`).
-            "nome": clean_name((state.get("attributes") or {}).get("friendly_name")),
+            # Il nome amichevole e' quello che Home Assistant mostra, gia'
+            # sanificato al confine dallo specchio (`_to_minimal`). La sua
+            # stringa vuota e' «senza nome», e qui si e' sempre scritto `None`.
+            "nome": state.get("name") or None,
             "corpo": body,
         }
         # `attiva` (24/09/2026). Lo stato arrivava fin qui dentro

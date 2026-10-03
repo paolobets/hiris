@@ -17,7 +17,8 @@
    },
    "voci": [
     "A-15"
-   ]
+   ],
+   "ragione": "D4 della Tappa 2 (03/10/2026, «restano»): `_reread` rilegge gli stati SUBITO dopo una scrittura, e lo specchio arriva per evento, dopo. Ai modelli escono solo gli `entity_id` del dominio scritto e una frase di HIRIS. Si riguarda alla Tappa 7 («rileggere prima di scrivere»)."
   },
   "hiris/app/action/registry.py": {
    "conti": {
@@ -38,7 +39,6 @@
   "hiris/app/home_space/behavior.py": {
    "conti": {
     "behavior_configs": 1,
-    "get_states": 1,
     "read_dashboards": 1
    },
    "voci": [
@@ -79,7 +79,8 @@
    "voci": [
     "A-03",
     "A-04"
-   ]
+   ],
+   "ragione": "D4 della Tappa 2 (03/10/2026, «restano», con la condizione di Paolo: nessun dato sensibile ai modelli): `recipients_for` cerca le `person` per `user_id`, che lo specchio trattiene come credenziale. `user_id` e tracker restano nella funzione: la prova e' `tests/test_specchio_per_id.py` (recapito e strumento della chat)."
   },
   "hiris/app/mind/cadence.py": {
    "conti": {

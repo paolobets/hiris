@@ -29,6 +29,7 @@ from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.server import watch_system_conditions
 from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
 from tests._contracts import assert_stessa_firma
+from tests._mirror_by_id import MirrorById
 
 # --------------------------------------------------------------------------
 # Il cablaggio dichiarato dal mandato (task-5-brief.md, Step 1) -- l'archivio
@@ -673,7 +674,7 @@ class _FakeTracesClient:
             automation_id, {"errore": f"nessuna finta per {automation_id}"})
 
 
-class _FakeMirror:
+class _FakeMirror(MirrorById):
     """Lo specchio dello stato, ridotto a cio' che il collettore gli chiede:
     `loaded` e `all_states()`.
 

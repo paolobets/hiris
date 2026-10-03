@@ -71,21 +71,51 @@ def automation_config_id(cache, entity_id: str) -> str | None:
     deve DIRLO, non ripiegare sull'`object_id`: un elenco vuoto e un id
     irrisolto sono due cose diverse.
 
-    `getattr(..., None)` su `all_states` per la stessa ragione di
-    `inventory_is_readable`: una cache finta senza quel metodo non deve far
-    sollevare un lettore, deve risultare «non risolvibile».
+    **Si chiede per id** (`EntityCache.get`, A-35): fino al 03/10/2026 qui
+    si scandiva lo specchio intero per trovare una riga. `getattr(..., None)`
+    su `get` per la stessa ragione di `inventory_is_readable`: un oggetto che
+    non e' uno specchio non deve far sollevare un lettore, deve risultare
+    «non risolvibile».
     """
     if not inventory_is_readable(cache):
         return None
-    all_states = getattr(cache, "all_states", None)
-    if not callable(all_states):
+    get = getattr(cache, "get", None)
+    if not callable(get):
         return None
-    for state in all_states() or []:
-        if not isinstance(state, dict) or state.get("id") != entity_id:
-            continue
-        automation_id = state.get("automation_id")
-        return automation_id if isinstance(automation_id, str) and automation_id else None
-    return None
+    state = get(entity_id)
+    if not isinstance(state, dict):
+        return None
+    automation_id = state.get("automation_id")
+    return automation_id if isinstance(automation_id, str) and automation_id else None
+
+
+def states_by_id(cache) -> dict[str, dict] | None:
+    """Lo specchio dello stato vivo per id -- `entity_id -> riga minimale` --
+    o `None` se non l'ho potuto leggere.
+
+    `None` non e' `{}`: uno significa «non ho guardato», l'altro «ho guardato
+    e non c'era niente». E' precisamente la distinzione che la verifica di
+    una chiamata (`action/verification.py`) -- pura -- non puo' fare.
+
+    Tre modi di non aver guardato, un solo esito: specchio non cablato,
+    specchio mai caricato (`loaded is False`: cio' che ha dentro sono le
+    entita' mosse dagli eventi, non la casa) e lettura che solleva.
+
+    **Una funzione sola, accanto a `inventory_is_readable`** (A-24, A-35):
+    fino al 03/10/2026 la scrivevano due volte, riga per riga, l'attuatore
+    (`ActionActuator._states`) e gli strumenti della chat
+    (`ToolDispatcher._state_readings`), e tutte e due si costruivano la mappa
+    scandendo `all_states()`. E' una COPIA (`EntityCache.states_for`): chi
+    confronta il «prima» col «dopo» di un'azione deve poter tenere il prima.
+    """
+    if not inventory_is_readable(cache):
+        return None
+    try:
+        return cache.states_for()
+    except Exception as error:
+        logger.warning("specchio dello stato illeggibile (%s: %s)",
+                       type(error).__name__, error)
+        return None
 
 
 def unreadable_inventory_error(cache) -> dict | None:
@@ -593,13 +623,18 @@ class EntityCache:
         # entrambi i casi ("la casa e' vuota"). Il controllo comune e'
         # `inventory_is_readable`, qui sopra.
         self._loaded = False
-        # Tampone della rilettura (`reload`): None fuori dalla rilettura; durante
-        # l'await sulla fotografia raccoglie gli eventi che arrivano, per
-        # riapplicarli sopra di essa.
+        # True quando l'ultima rilettura intera e' fallita (A-09): lo specchio
+        # e' quello di prima, e chi riprova (`server.reload_entity_inventory`,
+        # il giro dei due minuti) lo sa. Vedi la proprieta' `stale`.
+        self._stale = False
+        # Tampone della rilettura (`_reread`): None fuori dalla rilettura;
+        # durante l'await sulla fotografia raccoglie gli eventi che arrivano,
+        # per riapplicarli sopra di essa.
         self._pending: list | None = None
-        # Due riconnessioni ravvicinate lanciano due `reload` che si
-        # sovrappongono: il secondo azzerava il tampone del primo e il primo,
-        # finendo, lo metteva a None -- il secondo poi iterava None.
+        # Due riletture che si sovrappongono -- due riconnessioni ravvicinate,
+        # o il primo caricamento e la prima connessione -- condividerebbero il
+        # tampone: il secondo azzerava quello del primo e il primo, finendo,
+        # lo metteva a None -- il secondo poi iterava None.
         self._reload_lock = asyncio.Lock()
 
     @property
@@ -615,27 +650,43 @@ class EntityCache:
         """
         return self._loaded
 
+    @property
+    def stale(self) -> bool:
+        """True quando l'ultima rilettura intera non e' riuscita (A-09).
+
+        Non e' il contrario di `loaded`: uno specchio caricato e poi non
+        riletto dopo un riavvio di Home Assistant e' LEGGIBILE -- e' la casa di
+        prima, meglio di nessuna -- ma ha perso gli eventi di quando la
+        connessione era giu'. Fino al 03/10/2026 nessuno lo riprovava: il giro
+        dei due minuti guardava solo `loaded`, e lo specchio restava vecchio
+        fino alla riconnessione successiva. Lo guarda
+        `server.reload_entity_inventory`.
+        """
+        return self._stale
+
     async def load(self, ha_client) -> None:
-        """La prima lettura dello specchio. SOLLEVA se Home Assistant non ha
-        dato gli stati: chi la chiama all'avvio lo dichiara, e il giro dei due
-        minuti (`reload_entity_inventory`) riprova."""
-        raw_states = await ha_client.get_states([])
-        if isinstance(raw_states, dict):
-            # La busta del guasto (D3): `get_states` non solleva piu', `load`
-            # si' -- e' il suo contratto.
-            raise HAReadError(raw_states)
-        self._states = {}
-        for raw in raw_states:
-            eid = raw.get("entity_id")
-            if not eid:
-                continue
-            self._states[eid] = _to_minimal(raw)
-        # Solo dopo che la lettura e' arrivata in fondo: se gli stati non sono
-        # arrivati, la cache resta dichiaratamente non pronta.
-        self._loaded = True
+        """La prima lettura dello specchio: la stessa rilettura di `reload`,
+        che SOLLEVA se Home Assistant non ha dato gli stati. Chi la chiama
+        all'avvio lo dichiara, e il giro dei due minuti
+        (`reload_entity_inventory`) riprova."""
+        failure = await self._reread(ha_client)
+        if failure is not None:
+            # La busta del guasto (D3): `get_states` non solleva, `load` si'
+            # -- e' il suo contratto.
+            raise HAReadError(failure)
 
     async def reload(self, ha_client) -> None:
-        """Rilegge lo specchio dopo una riconnessione (spec §6).
+        """Rilegge lo specchio dopo una riconnessione (spec §6): la stessa
+        rilettura di `load`, che non solleva. Un guasto lascia lo specchio
+        com'era, dichiarato `stale`, e lo dice nel log."""
+        failure = await self._reread(ha_client)
+        if failure is not None:
+            logger.warning("specchio: rilettura dopo la riconnessione fallita "
+                           "(%s: %s)", failure.get("causa"), failure.get("errore"))
+
+    async def _reread(self, ha_client) -> dict | None:
+        """L'UNICA rilettura intera dello specchio. Torna `None` se e' riuscita,
+        la busta del guasto se no (e allora lo specchio resta com'era).
 
         Gli eventi emessi mentre la connessione era giu' non tornano: fino
         alla 3.70 lo specchio restava stantio fino al riavvio dell'add-on
@@ -646,24 +697,30 @@ class EntityCache:
         cancellarli. Chi legge nel frattempo vede lo specchio di prima, che
         e' meglio di nessuno; una rilettura riuscita alza `loaded`.
 
-        Le riletture si serializzano (`_reload_lock`): due riconnessioni di
-        fila non condividono il tampone.
+        **Una sola, per `load` e per `reload`** (A-31, 03/10/2026): fino a quel
+        giorno `load` era una seconda rilettura, senza tampone e senza
+        lucchetto, e un evento arrivato mentre Home Assistant rispondeva al
+        primo caricamento si perdeva -- la fotografia, presa prima, lo
+        cancellava.
+
+        Le riletture si serializzano (`_reload_lock`): due riletture di fila
+        non condividono il tampone.
         """
         async with self._reload_lock:
             self._pending = []
+            succeeded = False
             # Il tampone si chiude su OGNI uscita, `finally`: anche quando la
             # rilettura viene CANCELLATA durante l'await (l'ascoltatore che si
             # chiude, una riconnessione abbandonata). `CancelledError` non e'
             # un `Exception` e scavalcava il ramo d'errore: il tampone restava
             # aperto e cresceva a ogni evento, per sempre (review finale, M2,
-            # 30/09/2026).
+            # 30/09/2026). E per la stessa ragione `stale` si decide li': una
+            # rilettura che non e' arrivata in fondo, per qualunque motivo,
+            # lascia lo specchio vecchio.
             try:
                 raw_states = await ha_client.get_states([])
                 if isinstance(raw_states, dict):  # la busta: lo specchio resta com'era
-                    logger.warning("specchio: rilettura dopo la riconnessione fallita "
-                                   "(%s: %s)", raw_states.get("causa"),
-                                   raw_states.get("errore"))
-                    return
+                    return raw_states
                 fresh = {}
                 for raw in raw_states:
                     eid = raw.get("entity_id")
@@ -673,9 +730,15 @@ class EntityCache:
                 self._states = fresh
                 for event_data in pending:
                     self.on_state_changed(event_data)
+                # Solo dopo che la lettura e' arrivata in fondo: se gli stati
+                # non sono arrivati, lo specchio resta dichiaratamente non
+                # pronto (o vecchio).
                 self._loaded = True
+                succeeded = True
+                return None
             finally:
                 self._pending = None
+                self._stale = not succeeded
 
     def on_state_changed(self, event_data: dict) -> None:
         """L'unico rubinetto che tiene vivo lo specchio: `state_changed`.
@@ -719,7 +782,28 @@ class EntityCache:
         self._states[eid] = _to_minimal(new_state)
 
     def all_states(self) -> list[dict]:
-        """Return all cached entity states as a list."""
+        """Tutte le righe dello specchio, per chi guarda la casa INTERA (la
+        ricerca, le pagine, `topology.live_mirror`). Chi cerca un'entita' la
+        chiede per id (`get`, `states_for`): scandire questo elenco per un id
+        e' cio' che `tests/test_specchio_per_id.py` vieta fuori da qui."""
         return list(self._states.values())
+
+    def get(self, entity_id: str) -> dict | None:
+        """La riga minimale di `entity_id`, o `None` se lo specchio non la
+        conosce. Non guarda `loaded`: chi deve distinguere «non c'e'» da «non
+        ho guardato» chiede prima `inventory_is_readable`."""
+        return self._states.get(entity_id)
+
+    def states_for(self, entity_ids=None) -> dict[str, dict]:
+        """`entity_id -> riga minimale`: degli id chiesti che lo specchio
+        conosce, o di tutte le entita' senza `entity_ids`.
+
+        E' una COPIA del dizionario, non una vista: le righe non si
+        modificano sul posto (`on_state_changed` le SOSTITUISCE), quindi chi
+        la tiene ha la casa di quell'istante -- il «prima» di un'azione resta
+        il prima anche dopo che la luce si e' accesa."""
+        if entity_ids is None:
+            return dict(self._states)
+        return {eid: self._states[eid] for eid in entity_ids if eid in self._states}
 
 

@@ -47,6 +47,7 @@ from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import TARGETS, translate_target, verification
 from hiris.app.proxy.ha_client import HAClient
 from tests._ha_fakes import ws_send_from_messages
+from tests._mirror_by_id import MirrorById
 
 # Come in `test_action_actuator.py`: cio' che si misura qui non e' la DURATA
 # dell'attesa ma cosa si tocca, e due secondi per test non li paga nessuno.
@@ -489,7 +490,7 @@ class FintoClientSenzaBocca(FintoClientPorta):
     extract_from_target = None
 
 
-class FintaCache:
+class FintaCache(MirrorById):
     """Lo specchio: una lista di voci minimali con chiave `id`, come
     `EntityCache.all_states()`. Fermo -- si muove solo se qualcuno annuncia,
     e qui nessuno annuncia."""

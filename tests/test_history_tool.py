@@ -25,6 +25,7 @@ from hiris.app.proxy.entity_cache import (
 )
 from hiris.app.proxy.ha_client import HAClient
 from tests._contracts import assert_stessa_firma
+from tests._mirror_by_id import MirrorById
 from tests.test_briefing import _CASA
 from tests.test_knowledge_tools import _semina_casa
 
@@ -69,7 +70,7 @@ def _riga(eid, stato, **altro):
             "last_changed": "2026-09-29T07:11:00+00:00", **altro}
 
 
-class _Specchio:
+class _Specchio(MirrorById):
     """Lo specchio nella forma di `entity_cache._to_minimal`: `unit`,
     `state_class`, e `automation_id` per le automazioni."""
 

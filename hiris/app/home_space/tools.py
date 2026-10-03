@@ -101,6 +101,7 @@ from ..proxy._sanitize import (
 from ..proxy.entity_cache import (
     automation_config_id,
     inventory_is_readable,
+    states_by_id,
     unreadable_inventory_error,
 )
 from . import historian
@@ -2381,7 +2382,7 @@ class ToolDispatcher:
             return ("non posso ancora prometterlo: non so cosa questa casa sa "
                     "fare, perche' il registro dei servizi non e' pronto. "
                     "Riprova fra un momento.")
-        states = self._state_readings()
+        states = states_by_id(self._cache)
         if not states:
             # Terza occorrenza dello stesso schema (review finale, rilievo
             # minore): il registro assente si rifiuta (Task 6), il recapito
@@ -2410,7 +2411,7 @@ class ToolDispatcher:
 
         Estratta (Task 2, spec R7) perche' `_verify_now` e
         `_verify_comparison_targets` fanno la STESSA domanda a
-        `_state_readings()` -- una seconda stringa scritta a mano in un
+        `states_by_id()` -- una seconda stringa scritta a mano in un
         secondo posto sarebbe un doppione appena creato (fondamenta n.2),
         lo stesso rilievo gia' fatto per `_registry_not_ready`.
         """
@@ -2448,7 +2449,7 @@ class ToolDispatcher:
         """
         if not entities:
             return None
-        states = self._state_readings()
+        states = states_by_id(self._cache)
         if not states:
             return self._blind_mirror_refusal()
         unknown = [str(e) for e in entities if e not in states]
@@ -2478,7 +2479,7 @@ class ToolDispatcher:
         paragone e il modello se lo inventerebbe. E' la fondamenta n.1: il `72`
         che non si sa se sia Celsius o Fahrenheit.
 
-        `stati` (da `_state_readings()`) e' la forma MINIMALE vera di
+        `stati` (da `states_by_id()`) e' la forma MINIMALE vera di
         `proxy/entity_cache.py::_to_minimal` -- non lo stato grezzo di Home
         Assistant. L'unita' vive li' nella chiave `unit` DI PRIMO LIVELLO,
         non dentro `attributes.unit_of_measurement` (quello e' HA grezzo, mai
@@ -2489,7 +2490,7 @@ class ToolDispatcher:
         """
         import time as _time
 
-        states = self._state_readings() or {}
+        states = states_by_id(self._cache) or {}
         now = _time.time()
         measurements = []
         for identifier in entities:
@@ -2503,37 +2504,6 @@ class ToolDispatcher:
                            "unita": state.get("unit") or None,
                            "misurato_ts": now})
         return measurements
-
-    def _state_readings(self) -> dict[str, dict] | None:
-        """Lo specchio dello stato vivo, GREZZO: entity_id -> `{state, attributes, ...}`.
-
-        `_mirror()` ritorna mappe GIA' DERIVATE (nomi, unita', classi) per
-        chi le vuole cosi'; qui serve invece la forma minima di
-        `EntityCache.all_states()`, la stessa che legge
-        `action/actuator.py::ActionActuator._states` per verificare una chiamata prima di
-        eseguirla. La guardia (`inventory_is_readable`) e' la STESSA di
-        `ActionActuator._states`: la regola «cache assente o mai
-        caricata non e' un inventario leggibile» si paga in un posto solo,
-        non in un terzo qui.
-
-        `None` quando non si e' potuto guardare (cache assente, non caricata,
-        o una lettura che solleva); non e' `{}`, che direbbe «guardato, casa
-        vuota».
-        """
-        if not inventory_is_readable(self._cache):
-            return None
-        try:
-            readings = self._cache.all_states()
-        except Exception as error:
-            logger.warning("specchio grezzo illeggibile (%s: %s)",
-                           type(error).__name__, error)
-            return None
-        states: dict[str, dict] = {}
-        for entry in readings or []:
-            eid = entry.get("id") if isinstance(entry, dict) else None
-            if eid:
-                states[eid] = entry
-        return states
 
     def _timezone(self) -> str | None:
         """Il fuso della casa, dalla stessa fonte del nucleo.
@@ -2645,7 +2615,7 @@ class ToolDispatcher:
         if query.kind == "esecuzioni":
             return await self._run_history(query, chosen, home)
         if query.kind == "valori":
-            # La stessa guardia di `_state_readings`: da un inventario non
+            # La stessa guardia di `states_by_id`: da un inventario non
             # leggibile non si prende nemmeno lo `state_class`.
             readable = inventory_is_readable(self._cache)
             state_classes = {row.get("id"): row.get("state_class")

@@ -11,27 +11,35 @@ dentro un pacchetto non li tocca affatto -- e un giro costa **66 ms misurati**:
 si rilegge e basta.
 
 Restano le tre proprieta' che non dipendevano dall'impronta.
+
+**Dal 03/10/2026 quali automazioni ci sono lo dice lo specchio** (Tappa 2,
+Task 6, A-03): a Home Assistant si chiede solo il corpo, e un giro si conta
+dalle domande dei corpi.
 """
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.server import behavior_reader
 
 
 class _Cliente:
-    def __init__(self, *, solleva=False):
-        self.solleva = solleva
+    def __init__(self):
         self.giri = 0
 
     async def get_states(self, entity_ids):
-        self.giri += 1
-        if self.solleva:
-            raise RuntimeError("Home Assistant non risponde")
         return [{"entity_id": "automation.sveglia", "state": "on",
                  "attributes": {"friendly_name": "Sveglia"}}]
 
     async def behavior_configs(self, entity_ids):
+        self.giri += 1
         return {"configurazioni": {e: {"alias": "Sveglia"} for e in entity_ids}}
+
+
+async def _specchio(client) -> EntityCache:
+    mirror = EntityCache()
+    await mirror.load(client)
+    return mirror
 
 
 @pytest.fixture
@@ -50,7 +58,7 @@ async def test_ogni_giro_rilegge(casa, tmp_path):
     Mutazione che la uccide: rimettere un confronto che salti il secondo giro.
     """
     client = _Cliente()
-    guarda = behavior_reader(client, casa, tmp_path)
+    guarda = behavior_reader(client, await _specchio(client), casa, tmp_path)
 
     assert await guarda() is True
     assert await guarda() is True
@@ -62,7 +70,9 @@ async def test_senza_cartella_non_esplode(casa):
     """La cartella serve solo per `secrets.yaml`: senza, il comportamento si
     legge lo stesso e i corpi restano non archiviati (dichiarati). Non
     sollevare e' cio' che tiene in piedi il giro periodico."""
-    guarda = behavior_reader(_Cliente(), casa, None, find_folder=lambda: None)
+    client = _Cliente()
+    guarda = behavior_reader(client, await _specchio(client), casa, None,
+                             find_folder=lambda: None)
 
     assert await guarda() is True
     assert casa.behavior()[0]["corpo"] is None
@@ -85,7 +95,9 @@ async def test_la_cartella_comparsa_dopo_l_avvio_si_trova(casa, tmp_path):
     def _trova():
         return apparsa["quando"]
 
-    guarda = behavior_reader(_Cliente(), casa, None, find_folder=_trova)
+    client = _Cliente()
+    guarda = behavior_reader(client, await _specchio(client), casa, None,
+                             find_folder=_trova)
     await guarda()
     assert casa.behavior()[0]["corpo"] is None      # ancora senza cartella
 
@@ -98,12 +110,14 @@ async def test_la_cartella_comparsa_dopo_l_avvio_si_trova(casa, tmp_path):
 
 @pytest.mark.asyncio
 async def test_una_rilettura_fallita_non_blocca_le_successive(casa, tmp_path):
-    """Un guasto passeggero -- Home Assistant che si riavvia -- non deve
-    congelare il comportamento: si riprova al giro dopo, e lo si dice."""
-    client = _Cliente(solleva=True)
-    guarda = behavior_reader(client, casa, tmp_path)
+    """Un guasto passeggero -- Home Assistant che si riavvia, e lo specchio non
+    ancora caricato -- non deve congelare il comportamento: si riprova al giro
+    dopo, e lo si dice."""
+    client = _Cliente()
+    mirror = EntityCache()
+    guarda = behavior_reader(client, mirror, casa, tmp_path)
 
     assert await guarda() is False
 
-    client.solleva = False
+    await mirror.load(client)
     assert await guarda() is True

@@ -590,8 +590,10 @@ async def _disinstalla_card_lovelace(ha_base_url: str, token: str,
 
 
 async def reload_entity_inventory(cache, ha_client) -> bool:
-    """Ritenta il caricamento iniziale dell'inventario delle entita', e SOLO
-    quello. Ritorna True se questo giro l'ha rimesso in piedi.
+    """Ritenta la rilettura dello specchio delle entita' quando l'ultima non e'
+    riuscita: il caricamento iniziale, o la rilettura dopo una riconnessione
+    (`EntityCache.stale`, A-09). Ritorna True se questo giro l'ha rimesso in
+    piedi.
 
     `_on_startup` logga e prosegue quando `EntityCache.load` fallisce (Home
     Assistant che parte dopo l'addon, riavvio del core, rete che balbetta):
@@ -600,9 +602,16 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
     riprovi resterebbe cosi' fino al riavvio dell'addon: piu' onesto di prima
     e piu' scomodo. Questo e' quel qualcuno.
 
-    Non tocca una cache gia' viva: da quel momento la mantengono aggiornata gli
-    eventi di stato, e rileggere tutta la casa a ogni giro sarebbe traffico
-    inutile verso Home Assistant. Modulo-level (non chiuso dentro
+    **Anche la rilettura della riconnessione, dal 03/10/2026** (A-09): dopo un
+    riavvio di Home Assistant lo specchio rilegge la casa (`reload`), e se in
+    quel momento Home Assistant non risponde ancora lo specchio resta quello
+    di prima -- leggibile, ma senza gli eventi di quando la connessione era
+    giu'. Fino a quel giorno questo giro guardava solo `loaded`, ed era vero:
+    lo specchio restava vecchio fino alla riconnessione successiva.
+
+    Non tocca una cache viva e fresca: da quel momento la mantengono
+    aggiornata gli eventi di stato, e rileggere tutta la casa a ogni giro
+    sarebbe traffico inutile verso Home Assistant. Modulo-level (non chiuso dentro
     `_on_startup`) per essere unit-testabile con un semplice dict al posto
     di `app`: si prova senza avviare l'applicazione.
 
@@ -612,7 +621,7 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
     """
     if cache is None or ha_client is None:
         return False
-    if getattr(cache, "loaded", True):
+    if cache.loaded and not cache.stale:
         return False
     try:
         await cache.load(ha_client)
@@ -620,7 +629,7 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
         logger.warning("Ricarica dell'inventario entita' non riuscita: %s", exc)
         return False
     logger.info(
-        "Inventario entita' ricaricato: %d entita' (la lettura iniziale era fallita)",
+        "Inventario entita' ricaricato: %d entita' (l'ultima lettura era fallita)",
         len(cache.all_states()) if hasattr(cache, "all_states") else -1,
     )
     # Qui c'erano due chiamate WebSocket per ricostruire una mappa area->entita'
@@ -2896,8 +2905,12 @@ def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
     return {"accodata": True}
 
 
-def behavior_reader(client, home_space, ha_folder: Path | None, find_folder=None):
+def behavior_reader(client, mirror, home_space, ha_folder: Path | None, find_folder=None):
     """Restituisce `look()`: rilegge il comportamento da Home Assistant.
+
+    `mirror` e' lo specchio dello stato: dice QUALI automazioni e script ci
+    sono, e il loro stato (A-03, 03/10/2026); a Home Assistant si chiede solo
+    il corpo.
 
     **Non c'e' piu' niente da sorvegliare, e per questo non e' piu' una
     sentinella.** Fino al 10/09/2026 il comportamento veniva dai due file, e
@@ -2938,7 +2951,7 @@ def behavior_reader(client, home_space, ha_folder: Path | None, find_folder=None
         """I due inneschi -- la cadenza e l'evento di registro -- rileggono
         entrambi allo stesso modo: non c'e' un confronto da scavalcare."""
         try:
-            await reread(client, home_space, _folder())
+            await reread(client, mirror, home_space, _folder())
         except Exception as exc:
             logger.warning("rilettura del comportamento fallita: %s", exc)
             return False
@@ -3653,7 +3666,8 @@ async def _on_startup(app: web.Application) -> None:
     # corpi non si archiviano.
     ha_config_dir = _find_ha_config_dir()
     watch_behavior = behavior_reader(
-        ha_client, home_space_store, Path(ha_config_dir) if ha_config_dir else None
+        ha_client, app["entity_cache"], home_space_store,
+        Path(ha_config_dir) if ha_config_dir else None,
     )
     try:
         await watch_behavior()

@@ -98,7 +98,7 @@ import time
 from ..proxy.entity_cache import (
     _to_minimal,
     disclosable_attributes,
-    inventory_is_readable,
+    states_by_id,
 )
 from .rhythm import too_often
 from .verification import verification
@@ -481,38 +481,6 @@ class ActionActuator:
         # sua riga di log, e questa e' la stessa riga resa CHIEDIBILE.
         self._journal = journal
 
-    def _states(self) -> dict[str, dict] | None:
-        """Lo specchio dello stato vivo, o `None` se non l'ho potuto leggere.
-
-        `None` non e' `{}`: uno significa «non ho guardato», l'altro «ho
-        guardato e non c'era niente». E' precisamente la distinzione che
-        `verification()` -- pura -- non puo' fare.
-
-        Tre modi di non aver guardato, un solo esito: cache non cablata,
-        cache mai caricata (`loaded is False`: cio' che ha dentro sono le
-        entita' mosse dagli eventi, non la casa) e lettura che solleva.
-        `inventory_is_readable` copre i primi due ed e' la stessa funzione che
-        usa `home_space/tools.py` -- duplicarne la regola era il modo in cui
-        questo difetto e' gia' sopravvissuto altrove.
-
-        La forma e' quella vera di `EntityCache.all_states()`: una lista di
-        dizionari minimali con chiave `id` (non `entity_id`).
-        """
-        if not inventory_is_readable(self._cache):
-            return None
-        try:
-            reading = self._cache.all_states()
-        except Exception as error:
-            logger.warning("specchio dello stato illeggibile (%s: %s)",
-                           type(error).__name__, error)
-            return None
-        states: dict[str, dict] = {}
-        for entry in reading or []:
-            eid = entry.get("id") if isinstance(entry, dict) else None
-            if eid:
-                states[eid] = entry
-        return states
-
     async def _resolve(self, target: dict) -> dict:
         """Cosa contiene questo bersaglio, chiesto a Home Assistant.
 
@@ -663,7 +631,11 @@ class ActionActuator:
                            actor)
             return {"eseguito": False, "errore": _MUTE_REGISTRY}
 
-        states_before = self._states()
+        # Lo specchio per id, o `None` se non l'ho potuto leggere
+        # (`entity_cache.states_by_id`, la stessa domanda degli strumenti della
+        # chat): `None` non e' `{}`, ed e' la distinzione che `verification()`
+        # -- pura -- non puo' fare.
+        states_before = states_by_id(self._cache)
         # Guardia (b). `None` e `{}` insieme, di proposito: una casa che
         # davvero non ha nessuna entita' non ha nemmeno l'entita' bersaglio,
         # quindi non c'e' chiamata legittima che questa guardia possa
@@ -784,7 +756,7 @@ class ActionActuator:
         #     l'ultimo valore noto -- «non e' ancora cambiato» -- invece di un
         #     `None`, che vuol dire «non l'ho visto». Si legge ADESSO, dopo
         #     l'attesa, perche' nel frattempo puo' essersi mosso da solo.
-        states_after = self._states()
+        states_after = states_by_id(self._cache)
 
         prima = {e: _fingerprint(states_before.get(e)) for e in verdict.entity}
         dopo: dict[str, dict | None] = {}

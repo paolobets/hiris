@@ -10,6 +10,7 @@ from hiris.app.keeper.recipient import _REASON_LINK_PERSON, Recipients
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from tests._contracts import assert_stessa_firma
+from tests._mirror_by_id import MirrorById
 
 ADESSO = 1_755_600_000.0
 pytestmark = pytest.mark.asyncio
@@ -384,7 +385,7 @@ class _ClientSoloNotifica:
         return []
 
 
-class _CasaMinima:
+class _CasaMinima(MirrorById):
     """Lo specchio dello stato vivo, con una sola entita' -- basta a
     soddisfare la guardia (b) di `ActionActuator.execute` (uno specchio VUOTO e
     uno MAI CALDO valgono uguale, vedi il suo docstring); la notifica non

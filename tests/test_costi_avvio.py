@@ -26,13 +26,17 @@ un indirizzo che rifiuta subito, e l'avvio prosegue come fa in produzione.
 I TETTI sono i numeri misurati il 03/10/2026 (v3.73.2): sono quelli di
 PARTENZA della Tappa 2, che li porta a 1 e 1 (R18). Alzarli e' una riga di
 diff che una revisione vede. Il Task 5 (03/10/2026) ha tolto i registri interi
-dal primo giro delle condizioni: `read_registries` scende da 3 a 2.
+dal primo giro delle condizioni: `read_registries` scende da 3 a 2. Il Task 6
+(03/10/2026) fa leggere il comportamento dallo specchio (A-03): `get_states`
+scende da 4 a 2 -- restano il caricamento dello specchio e la sua rilettura
+alla prima connessione, che il Task 7 porta a una.
 
 Mutazione ESEGUITA: aggiunta in `_on_startup` una seconda
 `await entity_cache.load(ha_client)` -- rossa (`get_states`: 3, tetto 2).
 Rieseguita il 03/10/2026 sull'avvio intero: rossa (`get_states`: 5, tetto 4).
 Rieseguita il 03/10/2026 sulla casa finta col client vero (Tappa 2, Task 4):
-rossa (`get_states`: 5, tetto 4).
+rossa (`get_states`: 5, tetto 4). Rieseguita col tetto sceso (Task 6): rossa
+(`get_states`: 3, tetto 2).
 """
 import asyncio
 import collections
@@ -49,7 +53,7 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
 
 #: Le letture dell'INTERA casa: stati e registri. Sono quelle che R18 vuole a una.
-WHOLE_HOUSE_CEILINGS = {"get_states": 4, "read_registries": 2}
+WHOLE_HOUSE_CEILINGS = {"get_states": 2, "read_registries": 2}
 #: Cio' che non e' una domanda alla casa: il ciclo di vita, gli ascoltatori
 #: (iscriversi non e' bussare) e cio' che la casa finta registra.
 NOT_QUESTIONS = ("ws_ready", "start", "stop", "start_websocket", "calls", "connections",

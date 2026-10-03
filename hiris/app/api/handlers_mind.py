@@ -33,6 +33,7 @@ from aiohttp import web
 from ..chat_thread import subject_key_for
 from ..home_space.historian import day_boundaries, home_space_zone
 from ..home_space.open_questions import OPEN_QUESTIONS
+from ..home_space.topology import live_mirror
 from ..mind.judgments import (
     JudgmentNotInEffect,
     JudgmentRefused,
@@ -433,13 +434,16 @@ def _entity_names(app) -> dict:
     casa vera il 18/09/2026, 7 voci di cronaca su 75 erano senza, e fra loro
     l'allarme del piano terra. Sei le risolve il `dominio` che portano con se';
     la settima e' un'entita', e il suo nome vive qui.
+
+    **I nomi li legge `topology.live_mirror`**, la stessa lettura dello
+    specchio della ricerca e delle pagine (A-35, 03/10/2026): fino a quel
+    giorno questa funzione se li ricavava da se', scandendo lo specchio con la
+    sua regola su cosa sia un nome.
     """
     cache = app.get("entity_cache")
     if cache is None:
         return {}
-    return {str(s.get("id")): s.get("name")
-            for s in cache.all_states() or []
-            if s.get("id") and s.get("name")}
+    return live_mirror(cache.all_states() or [])[1]
 
 
 def _named(names: dict, lines) -> list:

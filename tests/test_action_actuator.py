@@ -55,6 +55,7 @@ from hiris.app.proxy.entity_cache import (
     _to_minimal,
     inherited_attributes,
 )
+from tests._mirror_by_id import MirrorById
 
 # La scadenza vera e' 2 secondi, e il perche' sta scritto accanto alla
 # costante (`porta.STATE_WAIT_S`). Qui si accorcia a 50 ms perche' cio' che
@@ -165,7 +166,7 @@ class FintoClient:
                           "new_state": stato})
 
 
-class FintaCache:
+class FintaCache(MirrorById):
     """Lo specchio dello stato vivo. **Si muove solo quando l'evento arriva.**
 
     Imita `EntityCache`: `all_states()` restituisce una lista di dizionari

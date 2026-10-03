@@ -466,8 +466,11 @@ suite verde.
 ### Tappa 2 — Un solo lettore di Home Assistant
 
 Un solo invio WebSocket con una sola forma di ritorno (oggi sette modi di dire «è andata?»); i
-registri leggibili uno per uno; lo stato per id dallo specchio, che toglie tre letture intere su
-cinque; le segnalazioni e il registro degli errori letti una volta per giro e riusati; le tracce a
+registri leggibili uno per uno; lo stato per id dallo specchio, che toglie una lettura intera su
+tre (*corretto il 03/10/2026, D4 del piano della Tappa 2:* «tre su cinque» non reggeva sul codice
+— l'officina rilegge subito dopo una scrittura, e lo specchio arriva per evento, dopo; il recapito
+cerca le `person` per `user_id`, che lo specchio trattiene come credenziale. Le due letture restano,
+dichiarate in `tests/fonte_unica_eccezioni.json` con la ragione); le segnalazioni e il registro degli errori letti una volta per giro e riusati; le tracce a
 raffica; lo stato delle integrazioni tenuto vivo; la casa letta una volta all'avvio; il motivo di un
 rifiuto di HA conservato. *Misura:* connessioni al giorno e all'avvio, prima e dopo; sonda a zero.
 

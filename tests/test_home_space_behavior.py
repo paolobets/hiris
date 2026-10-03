@@ -21,9 +21,20 @@ import inspect
 import pytest
 import yaml
 
-from hiris.app.home_space.behavior import BODY_NOT_READ, SECRETS_UNCHECKABLE, reread
+from hiris.app.home_space import behavior
+from hiris.app.home_space.behavior import BODY_NOT_READ, SECRETS_UNCHECKABLE
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import HAClient
+
+
+async def reread(client, casa, cartella):
+    """`behavior.reread` sullo specchio caricato dagli stati della finta: dal
+    03/10/2026 (Tappa 2, Task 6, A-03) il comportamento legge lo specchio, e a
+    Home Assistant chiede solo i corpi."""
+    mirror = EntityCache()
+    await mirror.load(client)
+    return await behavior.reread(client, mirror, casa, cartella)
 
 
 def _stato(entity_id, nome=None, stato="on"):

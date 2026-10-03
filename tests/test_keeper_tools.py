@@ -11,6 +11,7 @@ from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests._contracts import assert_stessa_firma
+from tests._mirror_by_id import MirrorById
 
 # NON un `pytestmark` di modulo: a differenza di `test_keeper_sweeper.py`
 # (dove ogni test e' async), qui un test e' sincrono
@@ -530,7 +531,7 @@ class _RegistroTracciaScaldamento:
             "ensure_fresh non doveva essere chiamato senza un canale HA")
 
 
-class _CacheFinta:
+class _CacheFinta(MirrorById):
     """Il doppio dello specchio dello stato.
 
     `loaded` guida `inventory_is_readable` (`proxy/entity_cache.py`); il
