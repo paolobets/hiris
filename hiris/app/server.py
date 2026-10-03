@@ -48,6 +48,7 @@ from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
 from .home_space.historian import day_boundaries, home_space_zone, instant_epoch
 from .home_space.reader import HomeSpace
+from .home_space.redaction import home_assistant_folder
 from .home_space.topology import (
     AREAS_PER_ROUND,
     choose_sample,
@@ -336,23 +337,6 @@ def _chain_as_it_was(credentials: dict) -> list[str]:
             if name not in ("subscription", "ollama") and credentials.get(name)]
 
 
-def _find_ha_config_dir() -> str | None:
-    """Return the HA config directory path inside the container, or None if not mounted.
-
-    Different Supervisor versions mount the config volume at different paths:
-    - /config  (documented standard, most Supervisor versions)
-    - /homeassistant  (used in some older/newer variants)
-    We probe both and return the first that looks like the real HA config.
-    """
-    for candidate in ("/config", "/homeassistant"):
-        if (
-            os.path.exists(os.path.join(candidate, "configuration.yaml"))
-            or os.path.isdir(os.path.join(candidate, ".storage"))
-        ):
-            return candidate
-    return None
-
-
 async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
     """Read WebSocket messages until we get the one matching msg_id."""
     loop = asyncio.get_running_loop()
@@ -546,7 +530,7 @@ async def _deregistra_risorsa_card(ha_base_url: str, token: str, slug: str) -> b
 
 def _rimuovi_file_card(slug: str) -> None:
     """Toglie i due file della card da <config-ha>/www/{slug}/, se ci sono."""
-    ha_config = _find_ha_config_dir()
+    ha_config = home_assistant_folder()
     if ha_config is None:
         # Senza cartella montata non c'e' niente da togliere e niente da dire:
         # non e' un guasto, e' una installazione che la copia non l'ha mai
@@ -2936,7 +2920,7 @@ def behavior_reader(client, mirror, home_space, ha_folder: Path | None, find_fol
     Restituisce `True` se ha riletto, `False` se la rilettura e' fallita.
     """
     found: dict[str, Path | None] = {"folder": ha_folder}
-    _find = find_folder if find_folder is not None else _find_ha_config_dir
+    _find = find_folder if find_folder is not None else home_assistant_folder
 
     def _folder() -> Path | None:
         if found["folder"] is None:
@@ -3664,7 +3648,7 @@ async def _on_startup(app: web.Application) -> None:
     # La cartella di Home Assistant serve ancora, per `secrets.yaml`: e' la
     # dichiarazione del proprietario su cosa sia segreto, e senza di essa i
     # corpi non si archiviano.
-    ha_config_dir = _find_ha_config_dir()
+    ha_config_dir = home_assistant_folder()
     watch_behavior = behavior_reader(
         ha_client, app["entity_cache"], home_space_store,
         Path(ha_config_dir) if ha_config_dir else None,
