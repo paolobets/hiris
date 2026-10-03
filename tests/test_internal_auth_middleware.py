@@ -2,7 +2,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
+from aiohttp import web
+from aiohttp.test_utils import make_mocked_request
 
+from hiris.app.api.middleware_internal_auth import _is_supervisor_ingress
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
@@ -51,7 +54,14 @@ def _make_app(tmp_path, cidrs=None):
     # X-Ingress-Path alone must not bypass auth (that is the CR-1 fix).
     # L'indirizzo esatto del proxy: e' cio' che in produzione
     # `reti_di_fiducia` risolve dal nome «supervisor» (reperto A-2).
-    app["supervisor_ingress_cidrs"] = cidrs or ["172.30.32.2/32"]
+    #
+    # `is None`, non `or` (reperto T-14, 03/10/2026): con `or` un elenco VUOTO
+    # diventava in silenzio l'indirizzo del proxy, e nessuna prova poteva
+    # chiedere al confine cosa fa quando l'avvio non si fida di nessuno --
+    # proprio il caso che l'avvio produce quando le opzioni sono tutte
+    # sbagliate (`server.py`, «nessuna rete è fidata»).
+    app["supervisor_ingress_cidrs"] = (
+        ["172.30.32.2/32"] if cidrs is None else cidrs)
     app.on_startup.clear()
     app.on_cleanup.clear()
     return app
@@ -158,7 +168,11 @@ async def test_a2_un_indirizzo_che_non_e_il_proxy_non_passa(client):
     `reti_di_fiducia` risolve dal nome «supervisor» -- e la suite chiama da
     loopback.
 
-    Mutazione ESEGUITA: rimessa la rete `/23` fra quelle fidate -- rossa."""
+    Qui fino al 03/10/2026 si dichiarava «mutazione ESEGUITA: rimessa la rete
+    `/23` fra quelle fidate -- rossa». Rieseguita il 03/10/2026: resta
+    VERDE, perche' il loopback non sta nemmeno nella `/23`. Il vicino nella
+    rete Docker, che e' il caso di A-2, lo guarda
+    `test_a_neighbour_in_the_docker_network_is_not_the_proxy`."""
     resp = await client.get(
         "/api/health", headers={"X-Ingress-Path": "/api/hassio_ingress/hiris"})
 
@@ -231,3 +245,74 @@ async def test_ingress_path_real_supervisor_token_pattern_passes(
                  "X-Remote-User-Id": "u-admin"},
     )
     assert resp.status == 200
+
+
+def _ingress_request_from(remote: str, trusted: list[str]):
+    """Una richiesta d'ingress che arriva da `remote`.
+
+    Il client di prova chiama sempre da loopback, e il loopback non sta in
+    nessuna rete di Docker: per guardare il confine dall'indirizzo di un
+    vicino serve una richiesta costruita, col suo indirizzo sorgente."""
+    app = web.Application()
+    app["supervisor_ingress_cidrs"] = trusted
+    transport = MagicMock()
+    transport.get_extra_info = MagicMock(
+        side_effect=lambda key, default=None: (
+            (remote, 40000) if key == "peername" else default))
+    return make_mocked_request(
+        "GET", "/api/health", app=app, transport=transport,
+        headers={"X-Ingress-Path": "/api/hassio_ingress/hiris"})
+
+
+@pytest.mark.asyncio
+async def test_the_proxy_address_is_trusted():
+    """Il controllo delle due prove sotto: la richiesta costruita porta
+    davvero il suo indirizzo fino al confine. Senza questa, una richiesta che
+    arrivasse senza indirizzo sarebbe rifiutata per un'altra ragione, e le
+    prove sotto sarebbero verdi (o attese rosse) per niente."""
+    request = _ingress_request_from("172.30.32.2", ["172.30.32.2/32"])
+
+    assert await _is_supervisor_ingress(request) is True
+
+
+@pytest.mark.asyncio
+async def test_a_neighbour_in_the_docker_network_is_not_the_proxy():
+    """**Il reperto A-2, dall'indirizzo giusto.** Un add-on vicino vive nella
+    rete Docker del Supervisor e puo' scrivere l'intestazione: se l'avvio si
+    fida del solo indirizzo del proxy, il vicino resta fuori.
+
+    Mutazione ESEGUITA il 03/10/2026: `_supervisor_cidrs` che torna sempre
+    `_DEFAULT_SUPERVISOR_CIDRS` (la `/23`) -- rossa (`assert True is False`),
+    mentre `test_a2_un_indirizzo_che_non_e_il_proxy_non_passa` resta verde."""
+    request = _ingress_request_from("172.30.32.5", ["172.30.32.2/32"])
+
+    assert await _is_supervisor_ingress(request) is False
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "S-15 del registro dei doppioni: `_supervisor_cidrs` legge l'elenco VUOTO "
+    "come «nessuna scelta» e ripiega sulla rete Docker intera, mentre l'avvio "
+    "scrive l'elenco vuoto proprio per dire «non fidarti di nessuno». Il "
+    "difetto del codice si ripara nella sua tappa; la prova fissa gia' cio' "
+    "che serve"))
+@pytest.mark.asyncio
+async def test_an_empty_trusted_list_trusts_no_network():
+    """**Il reperto T-14: la prova dice cio' che serve, non cio' che c'e'.**
+
+    Quando ogni voce di `supervisor_ingress_cidr` e' sbagliata, l'avvio scrive
+    `[]` e dichiara nel registro che «NESSUNA rete è fidata e ogni richiesta
+    dovrà autenticarsi» (`server.py`, accanto a `perimetro_fidato`). Il
+    confine pero' ripiega sulla `/23`: scrivere male le opzioni ALLARGA il
+    perimetro, che e' esattamente cio' che `api/ingresso.py::reti_fidate`
+    dice di non fare.
+
+    Attesa rossa finche' S-15 resta aperto (`strict=True`: il giorno che il
+    codice si ripara, la prova diventa verde e la suite chiede di togliere
+    l'`xfail`).
+
+    Mutazione ESEGUITA il 03/10/2026: riparato il codice
+    (`cidrs if cidrs is not None else _DEFAULT_SUPERVISOR_CIDRS`) -- la prova
+    passa, e la suite la segna `XPASS(strict)`, rossa."""
+    request = _ingress_request_from("172.30.32.5", [])
+
+    assert await _is_supervisor_ingress(request) is False
