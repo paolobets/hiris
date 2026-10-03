@@ -1,14 +1,27 @@
-from unittest.mock import AsyncMock, MagicMock
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
+
 from hiris.app.api.middleware_internal_auth import _is_supervisor_ingress
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
+
+#: La persona che entra dall'ingress, come la manda `config/auth/list`: attiva
+#: e nel gruppo degli amministratori (`HAClient.ADMIN_GROUP`).
+ADMIN_ROW = {"id": "u-admin", "name": "Amministratrice", "is_owner": False,
+             "is_active": True, "system_generated": False,
+             "group_ids": ["system-admin"]}
 
 
 @pytest.fixture(autouse=True)
@@ -33,18 +46,13 @@ def confine_vero(monkeypatch):
 
 def _make_app(tmp_path, cidrs=None):
     app = create_app()
-    mock_ha = AsyncMock()
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
     # Dal 27/09/2026 dietro l'ingress c'e' il cancello al confine (spec
     # 2026-09-27 §3): la persona che entra qui e' un'amministratrice, perche'
     # queste prove guardano la STRADA, non la lista di ammissione
-    # (`tests/test_admission.py`).
-    mock_ha.users = AsyncMock(return_value={"utenti": [
-        {"id": "u-admin", "amministratore": True}]})
-    app["ha_client"] = mock_ha
+    # (`tests/test_admission.py`). La casa e' quella finta: il ruolo lo legge
+    # il client vero da `config/auth/list`.
+    app["ha_client"] = CasaFinta(synthetic_inputs(), answers={
+        "config/auth/list": lambda extra: [ADMIN_ROW]})
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
@@ -157,6 +165,9 @@ async def test_ingress_path_from_trusted_source_bypasses_auth(
                  "X-Remote-User-Id": "u-admin"},
     )
     assert resp.status == 200
+    # Il ruolo l'ha detto Home Assistant: il cancello l'ha chiesto davvero.
+    house = client_trust_loopback.app["ha_client"]
+    assert ("config/auth/list", None) in house.calls
 
 
 @pytest.mark.asyncio
