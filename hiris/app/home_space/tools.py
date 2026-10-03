@@ -83,7 +83,6 @@ import math
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, ClassVar
-from urllib.parse import quote
 
 from ..action.construction.advisor import STRUCTURES
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
@@ -1247,38 +1246,6 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
 #: `save_persistent_states` resta fuori per decisione (fix round 1, M-1): e'
 #: manutenzione del nucleo, non un comando di casa.
 _HA_CORE_USER_SERVICES = frozenset({"turn_on", "turn_off", "toggle", "update_entity"})
-
-#: Quanti byte di identificatori (gia' codificati per l'URL, virgole
-#: comprese) vanno in UNA richiesta a `/api/history/period`. Il server aiohttp
-#: di Home Assistant, e il proxy del Supervisor che gli sta davanti, rifiutano
-#: una riga di richiesta oltre 8.190 byte (`max_line_size`); il resto della
-#: riga -- metodo, percorso, i due istanti, i parametri fissi -- sta sotto i
-#: 200. 6.000 lascia margine anche a un percorso di base piu' lungo di
-#: `/core`. Scelto, non misurato: la misura dal vivo e' la verifica
-#: (30/09/2026, ~300 entita' vere superano il tetto in un pezzo solo).
-_HISTORY_FILTER_MAX = 6000
-
-
-def _history_chunks(entity_ids: list[str]) -> list[list[str]]:
-    """Gli identificatori in pezzi che stanno ognuno sotto
-    `_HISTORY_FILTER_MAX`, nell'ordine dato. Il costo di ognuno e' quello che
-    `HAClient.history` gli fara' pagare: `quote(..., safe="")`, e `%2C` per la
-    virgola che lo separa dal precedente. Un identificatore da solo piu' lungo
-    del tetto fa un pezzo suo: rifiutarlo qui sarebbe tacerlo."""
-    chunks: list[list[str]] = []
-    current: list[str] = []
-    size = 0
-    for ident in entity_ids:
-        cost = len(quote(ident, safe=""))
-        if current and size + len("%2C") + cost > _HISTORY_FILTER_MAX:
-            chunks.append(current)
-            current, size = [], 0
-        size += cost + (len("%2C") if current else 0)
-        current.append(ident)
-    if current:
-        chunks.append(current)
-    return chunks
-
 
 class ToolDispatcher:
     """Collega i dodici strumenti agli archivi, alla porta, all'officina e al
@@ -2631,37 +2598,19 @@ class ToolDispatcher:
         return response
 
     async def _read_history(self, entity_ids: list[str], query: HistoryQuery) -> dict:
-        """Lo storico di tutti i soggetti, A PEZZI (`_history_chunks`), uniti:
-        `{"serie", "troncato"}` o `{"errore"}`.
-
-        **Perche' a pezzi** (30/09/2026): `HAClient.history` mette gli
-        identificatori nell'URL di `/api/history/period`, e con ~300 entita'
-        vere la riga di richiesta supera gli 8.190 byte che il server aiohttp
-        di Home Assistant (e del Supervisor) accetta. Un pezzo solo non e'
-        una risposta lenta: e' nessuna risposta.
-
-        `troncato` e' vero se Home Assistant ha tagliato in ALMENO un pezzo:
-        il taglio e' per entita' (`MAX_HISTORY_POINTS`), e un pezzo non lo
-        cambia. Un pezzo che non risponde e' un `errore` di tutti: una
-        risposta con le serie di meta' casa si leggerebbe «l'altra meta' non
-        e' cambiata» (Review Focus 5).
+        """Lo storico di tutti i soggetti: `{"serie", "troncato"}` o
+        `{"errore"}`. Quanti che siano: il taglio dell'URL vive in
+        `HAClient.history` (A-27, Tappa 2).
 
         Gli istanti passano col loro ISO intero, secondi e microsecondi: la
         finestra delle righe (`dal`, con un secondo di scarto) e' calcolata
         sugli stessi."""
-        ha = self._ha
         start, end = query.start.isoformat(), query.end.isoformat()
-        answers = await asyncio.gather(*(ha.history(chunk, start, end)
-                                         for chunk in _history_chunks(entity_ids)))
-        series: dict[str, list[dict]] = {}
-        truncated = False
-        for answer in answers:
-            if not isinstance(answer, dict) or "serie" not in answer:
-                return {"errore": (answer or {}).get(
-                    "errore", "lo storico di Home Assistant non ha risposto")}
-            series.update(answer["serie"])
-            truncated = truncated or bool(answer.get("troncato"))
-        return {"serie": series, "troncato": truncated}
+        answer = await self._ha.history(entity_ids, start, end)
+        if not isinstance(answer, dict) or "serie" not in answer:
+            return {"errore": (answer or {}).get(
+                "errore", "lo storico di Home Assistant non ha risposto")}
+        return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
 
     async def _state_history(self, query: HistoryQuery, chosen: Chosen,
                              mirror: tuple) -> dict:
@@ -2943,15 +2892,17 @@ class ToolDispatcher:
         examined: list[str] = []
         unreadable: list[str] = []
         truncated = False
-        for entry in calendars:
-            if not isinstance(entry, dict):
-                continue
-            entity_id = entry.get("entity_id")
-            if not entity_id:
-                continue
-            name = sanitize_ha_value(entry.get("name") or entity_id)
+        readable = [entry for entry in calendars
+                    if isinstance(entry, dict) and entry.get("entity_id")]
+        # Tutti insieme (A-34, Tappa 2): l'attesa e' quella del calendario
+        # piu' lento, non la somma. `gather` rende nell'ordine chiesto, cioe'
+        # quello di Home Assistant: `calendari_guardati` e `non_letti` non
+        # dipendono da chi risponde prima. `calendar_events` non solleva.
+        answers = await asyncio.gather(*(ha.calendar_events(entry["entity_id"], start, end)
+                                         for entry in readable))
+        for entry, events in zip(readable, answers, strict=True):
+            name = sanitize_ha_value(entry.get("name") or entry["entity_id"])
             examined.append(name)
-            events = await ha.calendar_events(entity_id, start, end)
             if "errore" in events:
                 unreadable.append(name)
                 continue

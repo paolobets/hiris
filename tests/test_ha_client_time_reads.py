@@ -13,6 +13,8 @@ pinnano il CONTRATTO che il resto della fetta si aspetta, non la verita' su
 Home Assistant: quella si misura dal vivo, e se la forma vera fosse diversa
 sono questi test a doversi correggere, non il codice a doversi difendere.
 """
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
@@ -210,6 +212,117 @@ async def test_storico_un_corpo_di_forma_inattesa_non_e_una_serie_vuota():
                             "2026-08-24T10:00:00+00:00")
     assert "serie" not in esito
     assert "errore" in esito
+
+
+# --- I pezzi: il tetto della riga di richiesta (A-27, Tappa 2) -----------------
+#
+# `HAClient.history` mette gli identificatori nell'URL di
+# `/api/history/period`. Il server aiohttp di Home Assistant, e il proxy del
+# Supervisor davanti, rifiutano una riga di richiesta oltre 8.190 byte
+# (`max_line_size`): con ~300 entita' vere un URL solo li supera (30/09/2026).
+# Il taglio viveva nel chiamante (`home_space/tools.py`); qui si prova che
+# vive nel client, cosi' che nessun chiamante possa dimenticarlo.
+
+#: Il tetto della riga di richiesta di aiohttp (`max_line_size`).
+_RIGA_MAX = 8190
+
+#: Il client in produzione parla con `http://supervisor/core` (`HA_BASE_URL`
+#: in `server.py`): la riga che il Supervisor riceve porta il prefisso.
+_BASE_SUPERVISOR = "http://supervisor/core"
+
+
+class _SessionePerUrl:
+    """Risponde a ogni URL con `rispondi(url)`, e lo registra: i pezzi partono
+    insieme, l'ordine delle richieste non e' un contratto."""
+
+    def __init__(self, rispondi):
+        self._rispondi = rispondi
+        self.url_chiesti = []
+
+    def get(self, url):
+        self.url_chiesti.append(url)
+        return self._rispondi(url)
+
+
+def _id_chiesti(url):
+    return parse_qs(urlsplit(url).query)["filter_entity_id"][0].split(",")
+
+
+def _storico_minimo(url):
+    return _FintaRisposta(200, [[{"entity_id": e, "state": "on",
+                                  "last_changed": "2026-08-24T09:00:00+00:00"}]
+                                for e in _id_chiesti(url)])
+
+
+#: Quattrocento identificatori lunghi: insieme ben oltre il tetto della riga.
+_QUATTROCENTO = [f"sensor.consumo_elettrico_della_presa_intelligente_numero_{n:03d}"
+                 for n in range(400)]
+
+
+@pytest.mark.asyncio
+async def test_storico_di_quattrocento_entita_resta_sotto_il_tetto_della_riga():
+    """Ogni richiesta sta sotto gli 8.190 byte, ogni identificatore e' chiesto
+    una volta sola, e le serie di tutti i pezzi arrivano unite.
+
+    Mutazione ESEGUITA: un pezzo solo con tutti gli identificatori (la
+    divisione tolta) -- rossa sul tetto della riga."""
+    c = HAClient(_BASE_SUPERVISOR, "token")
+    c._session = _SessionePerUrl(_storico_minimo)
+    esito = await c.history(_QUATTROCENTO, "2026-08-24T08:00:00+00:00",
+                            "2026-08-24T10:00:00+00:00")
+    for url in c._session.url_chiesti:
+        parti = urlsplit(url)
+        riga = f"GET {parti.path}?{parti.query} HTTP/1.1"
+        assert len(riga.encode()) <= _RIGA_MAX, len(riga)
+    assert len(c._session.url_chiesti) > 1
+    chiesti = [e for url in c._session.url_chiesti for e in _id_chiesti(url)]
+    assert sorted(chiesti) == sorted(_QUATTROCENTO)
+    assert sorted(esito["serie"]) == sorted(_QUATTROCENTO)
+    assert esito["troncato"] is False
+
+
+@pytest.mark.asyncio
+async def test_storico_un_pezzo_che_non_risponde_e_un_guasto_di_tutti():
+    """Le serie di meta' casa si leggerebbero «l'altra meta' non e' cambiata»:
+    un pezzo che fallisce rende il guasto, non una risposta parziale.
+
+    Mutazione ESEGUITA: saltare i pezzi in errore e unire gli altri -- rossa."""
+    def rispondi(url):
+        if _QUATTROCENTO[-1] in _id_chiesti(url):
+            return _FintaRisposta(500)
+        return _storico_minimo(url)
+
+    c = HAClient(_BASE_SUPERVISOR, "token")
+    c._session = _SessionePerUrl(rispondi)
+    esito = await c.history(_QUATTROCENTO, "2026-08-24T08:00:00+00:00",
+                            "2026-08-24T10:00:00+00:00")
+    assert len(c._session.url_chiesti) > 1
+    assert "serie" not in esito
+    assert esito["causa"] == "rifiuto"
+
+
+@pytest.mark.asyncio
+async def test_storico_il_tetto_sui_punti_di_un_pezzo_si_dichiara_per_tutti():
+    """`troncato` e' vero se Home Assistant ha tagliato in ALMENO un pezzo.
+
+    Mutazione ESEGUITA: `troncato` preso dall'ultimo pezzo soltanto -- rossa."""
+    chiacchierone = _QUATTROCENTO[0]
+
+    def rispondi(url):
+        chiesti = _id_chiesti(url)
+        if chiacchierone not in chiesti:
+            return _storico_minimo(url)
+        return _FintaRisposta(200, [[{"entity_id": chiacchierone, "state": str(i),
+                                      "last_changed": "2026-08-24T09:00:00+00:00"}
+                                     for i in range(6000)]])
+
+    c = HAClient(_BASE_SUPERVISOR, "token")
+    c._session = _SessionePerUrl(rispondi)
+    esito = await c.history(_QUATTROCENTO, "2026-08-24T08:00:00+00:00",
+                            "2026-08-24T10:00:00+00:00")
+    assert len(c._session.url_chiesti) > 1
+    assert esito["troncato"] is True
+    assert len(esito["serie"][chiacchierone]) == 5000
 
 
 @pytest.mark.asyncio
