@@ -17,17 +17,13 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| A-01 | Il registro di HA letto da quattro percorsi (`read_registries`: 11 comandi su 2 connessioni) | E | CC |  | cop-5 (conteggio); cop-9 (incompleta) | reg · cop-5 · cop-9 |
-| A-02 | `repairs/list_issues` letto da due giri (5 e 10 minuti: 432 letture al giorno) | E | PS |  | cop-1 (conteggio) | reg · cop-1 · cop-2 |
 | A-03 | `GET /api/states` intero riletto da tre percorsi oltre allo specchio | NV | DP |  | cop-9 (incompleta) | reg · cop-9 |
 | A-04 | `GET /api/services`: il registro servizi e il bypass di `recipient` | E | CC |  | cop-9 (incompleta) | reg · cop-9 |
 | A-05 | `recorder/list_statistic_ids` letto due volte da due giri | E | PS |  |  | reg |
-| A-06 | `config/entity_registry/get_entries` scaricato per intero, usato solo `aliases` | E | CC |  | cop-5 (incompleta) | reg · cop-5 |
 | A-07 | Avvio e riconnessione: la stessa casa riletta 3-4 volte nei primi secondi | E | PS |  | cop-2 (incompleta, conteggio) | reg · cop-2 |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
 | A-09 | Lo specchio non riprova se `get_states` fallisce dopo il riavvio di HA | NV | CC |  |  | reg · cop-5 |
 | A-10 | Anagrafe parziale che sostituisce quella buona: spariscono gli alias di tutta la casa | NV | CC |  |  | reg · cop-4 · cop-5 |
-| A-11 | `integrazioni.stato` dell'anagrafe: nessun evento la aggiorna | D | CC |  |  | reg · cop-4 · cop-5 |
 | A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | D | CC |  | cop-3 (imprecisa) | reg · cop-3 · cop-4 |
 | A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 |
 | A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | NV | CC |  |  | reg |
@@ -49,7 +45,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
 | A-31 | `load` e `reload` dello specchio: due riletture, una sola protegge gli eventi | D | PS |  |  | cop-5 A4 |
 | A-32 | Le tracce lette un'automazione alla volta (`automation_traces`) quando la raffica `traces` esiste | E | PS |  |  | cop-5 A5 |
-| A-33 | Le etichette lette con lo stesso comando da due metodi e due buste | E | CC |  |  | cop-5 A6 |
 | A-34 | `calendars()` chiede a HA ciò che lo specchio ha già; eventi letti in fila | NV | CC |  |  | cop-5 A7 |
 | A-35 | Lo specchio non risponde per id: tutti scandiscono `all_states()` | E | PS |  |  | cop-5 A8 |
 | A-36 | Due modi di leggere lo storico dettagliato (REST `history`, WS `recorded_changes`) | NV | DP |  |  | cop-5 A9 |
@@ -826,3 +821,8 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | T-16 | Nessuna prova di freschezza all'applicazione o al ripristino di una costruzione | 3.73.1 | e94f3b01 | Prove di freschezza su conferma, ripristino e rotta HTTP, con mutazioni eseguite |
 | T-07 | Prove fragili sul testo del sorgente di `server.py` | 3.73.2 | 004f8533 | Tappa 1: le prove chiedono all'app avviata, al router e allo schedulatore; un cancello ferma ogni prova nuova che legga server.py (ne resta ammessa una, come termine di paragone) |
 | T-13 | Un test (`test_queries.py:390-405`) descrive una mutazione su codice inesistente e passa per altra ragione | 3.73.2 | 3406c3a6 | La prova descrive la funzione vera, con la mutazione eseguita |
+| A-01 | Il registro di HA letto da quattro percorsi (`read_registries`: 11 comandi su 2 connessioni) | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
+| A-02 | `repairs/list_issues` letto da due giri (5 e 10 minuti: 432 letture al giorno) | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
+| A-06 | `config/entity_registry/get_entries` scaricato per intero, usato solo `aliases` | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
+| A-11 | `integrazioni.stato` dell'anagrafe: nessun evento la aggiorna | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
+| A-33 | Le etichette lette con lo stesso comando da due metodi e due buste | Tappa 2 (da rilasciare) | 028dc407 | Tappa 2, Task 5: i registri si leggono uno per uno (read_registry), il giro delle condizioni riusa i problemi del giro dei 5 minuti e passa le integrazioni all'anagrafe |
