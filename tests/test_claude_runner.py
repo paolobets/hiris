@@ -77,14 +77,6 @@ def _sys_text(system) -> str:
 
 
 @pytest.fixture
-def mock_ha():
-    ha = AsyncMock()
-    ha.get_states = AsyncMock(return_value=[])
-    ha.call_service = AsyncMock(return_value=True)
-    return ha
-
-
-@pytest.fixture
 def rifiuti():
     """Le righe di rifiuto (429) che il runner scrive nell'archivio dei consumi.
 
@@ -97,7 +89,7 @@ def rifiuti():
 
 
 @pytest.fixture
-def runner(mock_ha, rifiuti):
+def runner(rifiuti):
     # Nessun dispatcher di scorta (ToolDispatcher e' uscito): i test qui
     # sotto non ne hanno bisogno -- vedi il docstring del modulo.
     def _registra(provider, modello, **kw):
@@ -105,7 +97,6 @@ def runner(mock_ha, rifiuti):
 
     with patch("anthropic.AsyncAnthropic"):
         r = ClaudeRunner(api_key="test-key", log_usage=_registra)
-    r._ha = mock_ha  # shortcut for tests
     return r
 
 
@@ -126,11 +117,9 @@ async def test_chat_returns_text_response(runner):
 
 
 @pytest.fixture
-def restricted_runner(mock_ha):
+def restricted_runner():
     with patch("anthropic.AsyncAnthropic"):
-        r = ClaudeRunner(api_key="test-key")
-    r._ha = mock_ha
-    return r
+        return ClaudeRunner(api_key="test-key")
 
 
 @pytest.mark.asyncio
@@ -500,7 +489,6 @@ async def test_chat_populates_last_tool_calls_single_call(runner):
     msg1 = MagicMock(stop_reason="tool_use", content=[tool_block])
     text_block = MagicMock(type="text", text="ok")
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
-    runner._ha.get_states = AsyncMock(return_value=[])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     await runner.chat("ciao")
     assert runner.last_tool_calls == [

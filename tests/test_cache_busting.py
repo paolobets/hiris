@@ -11,7 +11,8 @@ that file's cache automatically.
 import logging
 import os
 import shutil
-from unittest.mock import AsyncMock, MagicMock
+import sys
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -19,6 +20,10 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 
 @pytest.fixture(autouse=True)
@@ -33,13 +38,7 @@ async def client(aiohttp_client, tmp_path):
     senza avviare ha_client/scheduler/ecc -- questi test riguardano solo il
     guscio HTML e il servizio statico, non il resto del boot."""
     app = create_app()
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-    app["ha_client"] = mock_ha
+    app["ha_client"] = CasaFinta(synthetic_inputs())
     app["data_dir"] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()

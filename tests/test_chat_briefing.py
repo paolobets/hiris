@@ -45,7 +45,9 @@ def _strumenti_loggati(caplog):
     return " | ".join(righe)
 
 
+import sys
 from datetime import UTC
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -65,8 +67,12 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 from tests.test_knowledge_tools import _semina_casa as _semina_casa_con_comportamento
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 
 @pytest.fixture(autouse=True)
@@ -99,18 +105,11 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     e' cio' da cui la chat legge adesso."""
     app = create_app()
 
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="ok")
     mock_runner.last_tool_calls = []
 
-    app["ha_client"] = mock_ha
+    app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
@@ -397,13 +396,6 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     risposta) invece di un finto che si limita a restituire una stringa."""
     app = create_app()
 
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
     # Solo il client HTTP verso Anthropic e' finto (`anthropic.AsyncAnthropic`
     # patchato in costruzione, stessa forma della fixture `claude_runner` di
     # tests/test_runner_catalog.py) -- il resto del runner (il loop
@@ -411,7 +403,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     with patch("anthropic.AsyncAnthropic"):
         runner = ClaudeRunner(api_key="test-key")
 
-    app["ha_client"] = mock_ha
+    app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = runner
     app["theme"] = "auto"

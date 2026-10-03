@@ -10,7 +10,9 @@ verita'» (dichiarazione D2 del piano, voce M-04 del registro).
 Mutazione ESEGUITA: rimesso in `handle_chat` il ramo `wants_stream` che
 risponde `text/event-stream` -- rossa (`text/event-stream` nel Content-Type).
 """
-from unittest.mock import AsyncMock, MagicMock
+import sys
+from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -18,6 +20,10 @@ import pytest_asyncio
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 
 @pytest.fixture(autouse=True)
@@ -29,15 +35,10 @@ def reset_chat_stores():
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    mock_ha = AsyncMock()
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="risposta di prova")
     mock_runner.last_tool_calls = []
-    app["ha_client"] = mock_ha
+    app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = mock_runner
     app["llm_router"] = mock_runner

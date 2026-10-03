@@ -1,7 +1,8 @@
 import pathlib
 import re
+import sys
 from datetime import UTC
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -10,6 +11,10 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import thread_for
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 
 def _cfg_version() -> str:
@@ -40,18 +45,11 @@ def reset_chat_stores():
 async def client(aiohttp_client, tmp_path):
     app = create_app()
 
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="Test response")
     mock_runner.last_tool_calls = []
 
-    app["ha_client"] = mock_ha
+    app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
@@ -114,11 +112,7 @@ async def test_chat_missing_message(client):
 @pytest.mark.asyncio
 async def test_chat_no_runner(aiohttp_client):
     app = create_app()
-    mock_ha = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
-    app["ha_client"] = mock_ha
+    app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app.on_startup.clear()
@@ -237,17 +231,11 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
     differirebbero per `conversation_history` a prescindere da `chatbot_id`
     -- un rumore che nasconderebbe il confronto, non lo farebbe."""
     def _build(data_dir_name):
-        mock_ha = AsyncMock()
-        mock_ha.get_states = AsyncMock(return_value=[])
-        mock_ha.start = AsyncMock()
-        mock_ha.stop = AsyncMock()
-        mock_ha.add_state_listener = MagicMock()
-        mock_ha.start_websocket = AsyncMock()
         mock_runner = AsyncMock()
         mock_runner.chat = AsyncMock(return_value="stessa risposta")
         mock_runner.last_tool_calls = []
         app = create_app()
-        app["ha_client"] = mock_ha
+        app["ha_client"] = CasaFinta(synthetic_inputs())
         app["chat_settings"] = ChatSettings(system_prompt="Prompt fisso.")
         app["claude_runner"] = mock_runner
         app["theme"] = "auto"
