@@ -1,3 +1,6 @@
+import pytest
+
+from hiris.app.home_space.behavior import BODY_NOT_READ, SECRETS_UNCHECKABLE
 from hiris.app.home_space.queries import view
 from hiris.app.proxy.entity_cache import inherited_attributes
 from tests._house_translations import house_translations
@@ -387,19 +390,33 @@ def test_uno_script_che_non_esiste_con_un_corpo_non_letto_dichiara_l_incertezza(
     assert dettaglio["non_disponibile"] is True
 
 
-def test_a_not_found_automation_with_an_unreachable_folder_declares_uncertainty():
-    """Il gemello del test sopra, sul verso opposto: la cartella di Home
-    Assistant stessa irraggiungibile («cartella non raggiungibile») NON e'
-    un'assenza -- i due file potrebbero esserci ed essere scritti, HIRIS non
-    ha potuto nemmeno controllare. Deve restare `non_disponibile`.
+@pytest.mark.parametrize("reason", [
+    BODY_NOT_READ,
+    SECRETS_UNCHECKABLE,
+    "errore di rete: Home Assistant non risponde",
+])
+def test_a_not_found_script_declares_uncertainty_whatever_the_unread_reason(reason):
+    """Ogni ragione per cui un corpo non si e' letto dichiara l'incertezza:
+    nessuna ragione vale come «assenza».
 
-    Mutazione che uccide: escludere ANCHE «cartella non raggiungibile» dal
-    calcolo di `unavailable_files` in `_view_behavior` (non solo
-    «assente») -- il test torna rosso su `assert
-    detail["non_disponibile"] is True` (`KeyError: 'non_disponibile'`)."""
+    Le ragioni sono quelle che il prodotto scrive davvero in `unread_bodies`
+    (`home_space/behavior.py`): le due costanti, importate e non ricopiate,
+    piu' il testo libero di un guasto di `behavior_configs`. La chiave e'
+    l'ENTITA', come dal 10/09/2026.
+
+    Fino al 03/10/2026 al posto di questa prova c'era il «gemello» con la
+    cartella irraggiungibile, che descriveva una mutazione su
+    `unavailable_files`: una variabile che in `_view_behavior` non esiste
+    piu' da quando il corpo arriva per entita' (reperto T-13 del registro).
+
+    Mutazione ESEGUITA il 03/10/2026: in `_view_behavior`, passare a
+    `_not_found_detail` `bool({k: v for k, v in (unread_bodies or {}).items()
+    if v != SECRETS_UNCHECKABLE})` -- cioe' trattare «segreti non
+    controllabili» come un corpo che non nasconde niente. Rossa sul solo caso
+    `SECRETS_UNCHECKABLE`, con `KeyError: 'non_disponibile'`."""
     detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-                    "script", "script.scritto_a_mano",
-                    unread_bodies={"scripts.yaml": "cartella non raggiungibile"})
+                  "script", "script.mai_visto",
+                  unread_bodies={"script.buonanotte": reason})
     assert detail["esiste"] is False
     assert detail["non_disponibile"] is True
 
