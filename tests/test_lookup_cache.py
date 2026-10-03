@@ -10,6 +10,8 @@ metodo `get()` che lo serviva sono usciti con la vecchia ricerca per nome
 (spec «una porta sola per la casa»), e con loro le prove sui nomi di
 ripiego, sul comportamento e sui due spazi che non si scambiano indici.
 """
+import pytest
+
 from hiris.app.memory.lookup_cache import LookupCache
 from hiris.app.memory.resolver import Lookup
 
@@ -135,65 +137,50 @@ def test_e_davvero_un_oggetto_indice():
 #   3. `lookup_cache=app.get(...)` tolta del tutto da `create_tool_dispatcher`
 #      -- la mutazione che dice «la cache non serve».
 
-def _estrai_riga_cache_indice() -> str:
-    """La riga VERA di `_on_startup` che mette la cache dell'indice in `app`.
-
-    Letta dal sorgente per poterla ESEGUIRE, non per confrontarla con una
-    stringa: un `assert "tools_lookup_cache" in sorgente` passerebbe anche
-    se il lettore chiedesse un altro nome, ed e' esattamente il difetto che
-    questo test esiste per non ripetere.
-
-    Se la riga sparisce, `str.index` solleva `ValueError: substring not
-    found` -- un rosso esplicito sull'estrazione, non un'asserzione che
-    potrebbe passare per la ragione sbagliata.
-    """
-    import inspect
-    import textwrap
-
-    from hiris.app import server
-
-    sorgente = inspect.getsource(server._on_startup)
-    marcatore = "LookupCache()"
-    fine = sorgente.index(marcatore) + len(marcatore)
-    inizio = sorgente.rfind("\n", 0, fine) + 1
-    return textwrap.dedent(sorgente[inizio:fine])
-
-
-def test_la_cache_dell_indice_arriva_davvero_al_dispatcher(monkeypatch):
+@pytest.mark.asyncio
+async def test_la_cache_dell_indice_arriva_davvero_al_dispatcher(monkeypatch, tmp_path):
     """Un indice per DUE turni, non due.
 
     `ToolDispatcher` nasce a ogni turno (per progetto): il riuso fra i turni
     esiste solo se la cache che riceve e' la STESSA istanza, quella che
-    l'avvio ha messo in `app`. Qui si eseguono due costruzioni del dispatcher
-    -- due turni -- e si conta quante volte `costruisci_indice` gira.
+    l'avvio ha messo in `app`. Qui si avvia l'app davvero
+    (`fotografia_porte.mounted`, dal 03/10/2026: prima si ritagliava la riga
+    dal sorgente di `_on_startup` e la si eseguiva), si costruisce il
+    dispatcher due volte -- due turni -- e si conta quante volte
+    `costruisci_indice` gira.
+
+    Mutazione ESEGUITA: la cache messa in `app` sotto un altro nome -- rossa
+    (il dispatcher non riceve nessuna cache).
     """
+    import sys
+    from pathlib import Path
+
     from hiris.app.api.handlers_chat import create_tool_dispatcher
-    from hiris.app.server import LookupCache as LookupCacheDiAvvio
+    from tests._casa_sintetica import synthetic_inputs
 
-    namespace: dict = {"app": {}, "LookupCache": LookupCacheDiAvvio}
-    exec(compile(_estrai_riga_cache_indice(),
-                 "<_on_startup cache dell'indice>", "exec"), namespace)
-    app = namespace["app"]
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import fotografia_porte
 
-    turno_1 = create_tool_dispatcher(app)
-    turno_2 = create_tool_dispatcher(app)
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        turno_1 = create_tool_dispatcher(app)
+        turno_2 = create_tool_dispatcher(app)
 
-    assert turno_1._lookup_cache is not None, (
-        "il dispatcher non ha ricevuto nessuna cache: l'avvio la scrive sotto "
-        "un nome e `create_tool_dispatcher` ne chiede un altro"
-    )
-    assert turno_1._lookup_cache is turno_2._lookup_cache, (
-        "due turni hanno due cache diverse: il riuso vale solo DENTRO un "
-        "turno, che e' meta' del punto"
-    )
+        assert turno_1._lookup_cache is not None, (
+            "il dispatcher non ha ricevuto nessuna cache: l'avvio la scrive sotto "
+            "un nome e `create_tool_dispatcher` ne chiede un altro"
+        )
+        assert turno_1._lookup_cache is turno_2._lookup_cache, (
+            "due turni hanno due cache diverse: il riuso vale solo DENTRO un "
+            "turno, che e' meta' del punto"
+        )
 
-    chiamate = _spia(monkeypatch)
+        chiamate = _spia(monkeypatch)
 
-    casa = _casa([_entita("light.a", "Luce A")])
-    turno_1._lookup_cache.get_lazy("ricorda", lambda: casa, "2026-01-01")
-    turno_2._lookup_cache.get_lazy("ricorda", lambda: casa, "2026-01-01")
+        casa = _casa([_entita("light.a", "Luce A")])
+        turno_1._lookup_cache.get_lazy("ricorda", lambda: casa, "2026-01-01")
+        turno_2._lookup_cache.get_lazy("ricorda", lambda: casa, "2026-01-01")
 
-    assert len(chiamate) == 1, (
-        f"l'indice e' stato costruito {len(chiamate)} volte per due turni: "
-        "la cache non sopravvive al turno"
-    )
+        assert len(chiamate) == 1, (
+            f"l'indice e' stato costruito {len(chiamate)} volte per due turni: "
+            "la cache non sopravvive al turno"
+        )

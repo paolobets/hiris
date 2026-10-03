@@ -14,43 +14,32 @@ merita un pin: se il numero tornasse a essere catturato una volta sola
 all'avvio (o a leggere una costante fissa), un utente che abbassa la
 conservazione dalla pagina vedrebbe la potatura di stanotte ignorarlo.
 
-Tecnica di `tests/test_websocket_startup.py`: si estrae dal sorgente VERO di
-`_on_startup` il blocco che costruisce `_run_retention` (da
-`from .chat_store import delete_old_messages as _delete_old_messages` alla
-fine della funzione), isolato dal resto del boot (Supervisor/scheduler/
-websocket)."""
-import inspect
-import textwrap
+Dal 03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'») la prova
+non ritaglia piu' il blocco dal sorgente di `_on_startup` per eseguirlo: avvia
+l'app davvero (`fotografia_porte.mounted`) e fa girare il lavoro
+`hiris_retention` che lo schedulatore ha registrato. Un blocco spostato non la
+rompe piu'; un lavoro che non pota, si'."""
+import sys
 from datetime import UTC
+from pathlib import Path
 
-from hiris.app import server
+import pytest
+
 from hiris.app.chat_settings import ChatSettings
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import fotografia_porte
 
 
-def _load_run_retention():
-    src = inspect.getsource(server._on_startup)
-    start_marker = "    from .chat_store import delete_old_messages as _delete_old_messages"
-    end_marker = 'logger.info("Retention: deleted %d old chat messages", n)'
-    start = src.index(start_marker)
-    end = src.index(end_marker, start) + len(end_marker)
-    body = textwrap.dedent(src[start:end])
-    func_src = (
-        "def _check(app, data_dir, logger):\n" + textwrap.indent(body, "    ")
-        + "\n    return _run_retention\n"
-    )
-    # `__package__` va dato esplicitamente: il blocco estratto contiene un
-    # `from .chat_store import ...` relativo, e senza un pacchetto risolto
-    # exec() lo rifiuta (KeyError su '__name__' assente da globals) prima
-    # ancora di arrivare al corpo che vogliamo provare.
-    namespace: dict = {"__package__": "hiris.app", "__name__": "hiris.app._test_potatura"}
-    exec(compile(func_src, "<_on_startup potatura notturna>", "exec"), namespace)
-    return namespace["_check"]
-
-
-def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_path):
     """Il PUT che cambia `giorni_conservazione` a caldo riassegna
     `app["chat_settings"]` (handlers_settings.py): la potatura di
-    stanotte deve vedere QUEL valore, non uno catturato all'avvio."""
+    stanotte deve vedere QUEL valore, non uno catturato all'avvio.
+
+    Mutazione ESEGUITA (03/10/2026): i giorni letti una volta sola all'avvio,
+    fuori da `_run_retention` -- rossa."""
     from datetime import datetime, timedelta
 
     from hiris.app.chat_store import append_messages, close_all_stores, load_history
@@ -73,29 +62,27 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     store._conn.execute("UPDATE chat_messages SET timestamp = ?", (vecchio_ts,))
     store._conn.commit()
 
-    check = _load_run_retention()
-    import logging
+    async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
+        run_retention = app["scheduler"].get_job("hiris_retention").func
+        app["chat_settings"] = ChatSettings(retention_days=5)
+        run_retention()
+        assert load_history(data_dir, thread=T) == [], (
+            "5 giorni: il messaggio di 10 giorni fa doveva sparire")
 
-    app = {"chat_settings": ChatSettings(retention_days=5)}
-    run_retention = check(app=app, data_dir=data_dir, logger=logging.getLogger("test"))
-    run_retention()
-    assert load_history(data_dir, thread=T) == [], (
-        "5 giorni: il messaggio di 10 giorni fa doveva sparire")
-
-    # Ora lo stesso oggetto app, ma con la chiave riassegnata a un valore che
-    # NON pota niente (com'e' dopo un PUT che alza la soglia): _run_retention
-    # deve vederlo, non un 5 catturato alla costruzione della chiusura.
-    append_messages([{"role": "user", "content": "recente"}], data_dir, thread=T)
-    store2 = _get_store(data_dir)
-    vecchio_ts2 = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    store2._conn.execute(
-        "UPDATE chat_messages SET timestamp = ? WHERE content = ?",
-        (vecchio_ts2, "recente"),
-    )
-    store2._conn.commit()
-    app["chat_settings"] = ChatSettings(retention_days=0)
-    run_retention()
-    assert load_history(data_dir, thread=T) == [{"role": "user", "content": "recente"}], (
-        "0: la potatura non deve aver toccato niente"
-    )
+        # Ora lo stesso oggetto app, ma con la chiave riassegnata a un valore che
+        # NON pota niente (com'e' dopo un PUT che alza la soglia): _run_retention
+        # deve vederlo, non un 5 catturato alla costruzione della chiusura.
+        append_messages([{"role": "user", "content": "recente"}], data_dir, thread=T)
+        store2 = _get_store(data_dir)
+        vecchio_ts2 = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        store2._conn.execute(
+            "UPDATE chat_messages SET timestamp = ? WHERE content = ?",
+            (vecchio_ts2, "recente"),
+        )
+        store2._conn.commit()
+        app["chat_settings"] = ChatSettings(retention_days=0)
+        run_retention()
+        assert load_history(data_dir, thread=T) == [{"role": "user", "content": "recente"}], (
+            "0: la potatura non deve aver toccato niente"
+        )
     close_all_stores()

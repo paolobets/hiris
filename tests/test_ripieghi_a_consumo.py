@@ -182,10 +182,18 @@ def test_i_TRE_giri_automatici_passano_dall_imbuto():
     che resta e' una chiamata scritta e mai raggiunta, e lo copre la verifica
     dal vivo.
 
-    Mutazione ESEGUITA: togliere la chiamata dall'analista -- rossa."""
+    Mutazione ESEGUITA: togliere la chiamata dall'analista -- rossa.
+
+    Dal 03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'») si guarda
+    tutto `hiris/app` e non il solo `server.py`: quando i giri usciranno da
+    quel file, la prova li seguira' invece di diventare rossa per un trasloco
+    o, peggio, di restare verde guardando un file svuotato.
+    Mutazione ESEGUITA: la chiamata dell'analista spostata in un modulo di
+    `mind/` -- verde (la prova segue il codice)."""
     import pathlib
-    sorgente = (pathlib.Path(__file__).resolve().parents[1]
-                / "hiris/app/server.py").read_text(encoding="utf-8")
+    app_dir = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
+    sorgente = "\n".join(path.read_text(encoding="utf-8")
+                         for path in sorted(app_dir.rglob("*.py")))
 
     for agente in ("analista", "attuatore", "ricette", "osservatore"):
         assert f'declare_downgrade(app, agent="{agente}"' in sorgente, (

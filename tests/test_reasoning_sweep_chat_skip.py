@@ -16,102 +16,61 @@ in the product, so the test adapts to what replaced it rather than being
 deleted outright -- the subject (the sweep's per-kind branching) survives,
 only its outcome for non-chat kinds changed.
 
-``_reasoning_sweep`` is a closure defined inside ``server._on_startup`` (same
-reason test_reasoning_wiring.py mirrors ``_execute_decision``'s verdict logic
-rather than instantiating the whole app -- full startup wires Supervisor/
-MQTT/etc and every existing fixture calls ``app.on_startup.clear()`` before
-use). Rather than hand-maintaining a mirror copy that could silently drift
-from the shipped code, this test extracts the REAL function source via
-``inspect.getsource`` and executes it against a test double for its one
-remaining free variable of interest (``reasoning_queue``) -- everything else
-it references (``_time``, ``logger``, ``app``) is either a plain importable
-symbol in server.py or a simple closure value supplied directly, not
-per-instance state, so binding them is exact, not a guess.
-
-Dalla 2.4.0 la spazzata passava dal combinatore condiviso con l'instradamento
-(``_bridge_active``), e il namespace glielo forniva insieme a ``env_bool`` e
-``_sub_first_class``. Dalla VERSIONE B (3.0.0) non deriva piu' niente: LEGGE
-``app["bridge_active"]``, che ``_recompute_chain`` ha gia' scritto -- una
-lettura sola invece di due derivazioni. I tre simboli sono usciti dal
-namespace, e uscirne e' la difesa: rimettere una derivazione dentro la
-spazzata farebbe fallire l'exec con un NameError, invece di lasciarla passare
-su un valore di comodo.
+Dal 03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'») la
+spazzata non si ritaglia piu' dal sorgente di ``_on_startup`` per eseguirla
+in un namespace preparato a mano: si avvia l'app davvero
+(``fotografia_porte.mounted``) e si fa girare il lavoro
+``hiris_reasoning_sweep`` che lo schedulatore ha registrato, sulla coda vera
+dell'app (``app["reasoning_queue"]``). Cio' che il namespace di prima
+garantiva -- la spazzata LEGGE ``app["bridge_active"]`` invece di derivarlo --
+qui si prova cambiando quella chiave e guardando la spazzata obbedire.
 """
-import inspect
-import logging
-import textwrap
+import contextlib
+import sys
 import time as _time
+from pathlib import Path
 
 import pytest
 
 from hiris.app import server
-from hiris.app.reasoning.queue import ReasoningQueue
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import fotografia_porte
 
 
-def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
-                               scadenza_min=None, archivio=None):
-    src = inspect.getsource(server._on_startup)
-    start = src.index("    async def _reasoning_sweep() -> None:")
-    end_marker = "reasoning_queue.prune(_time.time() - 7 * 86400)"
-    end = src.index(end_marker, start) + len(end_marker)
-    func_src = textwrap.dedent(src[start:end])
+@contextlib.asynccontextmanager
+async def _started_sweep(tmp_path, *, bridge_active=True, deadline_min=None):
+    """La spazzata VERA, sull'app avviata: `(spazzata, coda, app)`.
 
-    # VERSIONE B (3.0.0): il namespace ha perso TRE simboli -- `env_bool`,
-    # `_sub_first_class` e `_bridge_active` -- e ne ha guadagnato una chiave.
-    # La spazzata non deriva piu' niente: LEGGE `app["bridge_active"]`, che
-    # `_recompute_chain` ha gia' scritto. Toglierli invece di lasciarli per
-    # sicurezza e' deliberato ed e' la virtu' di questo file: se qualcuno
-    # rimettesse una derivazione dentro la spazzata, l'exec fallirebbe con un
-    # NameError rumoroso invece di passare su un valore di comodo.
-    # `SCOPE_TURN_KIND` entra con la fetta «l'osservatore chiede a chi
-    # risponde davvero» (11/09/2026): la spazzata ha un ramo suo per il turno
-    # dell'osservatore scaduto, che annota il guasto invece di lasciarlo
-    # passare per un job orfano. E' un simbolo importabile di `server.py`, non
-    # uno stato per istanza: legarlo e' esatto, non una supposizione.
-    namespace = {
-        "_time": _time,
-        "logger": logging.getLogger("test_reasoning_sweep_chat_skip"),
-        "reasoning_queue": reasoning_queue,
-        "SCOPE_TURN_KIND": server.SCOPE_TURN_KIND,
-        # `read_version` entra con la colonna `version` dei tentativi: il
-        # freno conta solo i fallimenti della versione in esecuzione, e un
-        # turno scaduto va annotato con la sua. Simbolo importabile di
-        # `server.py`, come gli altri: legarlo e' esatto.
-        "read_version": server.read_version,
-        # Task 14: la spazzata legge anche `app["models_config"]`, per sapere
-        # dopo quanto un ripiego preso in carico e mai finito e' uno schianto.
-        # Il confine e' il DOPPIO della scadenza, perche' il ripiego COMINCIA
-        # alla scadenza: il margine e' il tempo che la catena ha per
-        # rispondere. `app` e' un dizionario perche' e' cosi' che la spazzata
-        # lo usa (`app.get(...)`), non perche' sia comodo.
-        "app": ({"bridge_active": ponte_attivo, "observations": archivio}
-                if scadenza_min is None else {
-            "bridge_active": ponte_attivo,
-            "observations": archivio,
-            "models_config": {"ponte": {"scadenza_min": scadenza_min}},
-        }),
-    }
-    exec(compile(func_src, "<_reasoning_sweep extracted from server.py>", "exec"), namespace)
-    return namespace["_reasoning_sweep"]
+    `bridge_active` e `deadline_min` si scrivono nelle chiavi che la spazzata
+    legge (`app["bridge_active"]`, `app["models_config"]["ponte"]`), come le
+    lascerebbero `_recompute_chain` e la pagina Modelli."""
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        app["bridge_active"] = bridge_active
+        if deadline_min is not None:
+            config = dict(app.get("models_config") or {})
+            config["ponte"] = {**(config.get("ponte") or {}), "scadenza_min": deadline_min}
+            app["models_config"] = config
+        sweep = app["scheduler"].get_job("hiris_reasoning_sweep").func
+        yield sweep, app["reasoning_queue"], app
 
 
 @pytest.mark.asyncio
 async def test_expired_chat_job_left_expired_without_warning(tmp_path, monkeypatch, caplog):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    now = _time.time()
-    q.enqueue(
-        "chat", {}, {"chatbot_id": "a1", "history": [], "system_prompt": ""},
-        now - 10, job_id="chat-job", now=now - 100,
-    )
+    async with _started_sweep(tmp_path) as (sweep, q, _app):
+        now = _time.time()
+        q.enqueue(
+            "chat", {}, {"chatbot_id": "a1", "history": [], "system_prompt": ""},
+            now - 10, job_id="chat-job", now=now - 100,
+        )
+        with caplog.at_level("WARNING", logger="hiris"):
+            await sweep()
 
-    sweep = _load_real_reasoning_sweep(q)
-    with caplog.at_level("WARNING"):
-        await sweep()
-
-    job = q.get("chat-job")
-    assert job["status"] == "expired"
-    assert not caplog.records, "chat jobs must never trigger the orphan-kind warning"
-    q.close()
+        job = q.get("chat-job")
+        assert job["status"] == "expired"
+        assert not [r for r in caplog.records if "chat-job" in r.getMessage()], (
+            "chat jobs must never trigger the orphan-kind warning")
 
 
 @pytest.mark.asyncio
@@ -121,23 +80,20 @@ async def test_expired_holistic_job_is_logged_and_left_expired(tmp_path, monkeyp
     anymore, `_holistic_reason` is gone) is no longer reasoned locally: it
     is declared via an explicit warning and left to expire, never silently
     dropped."""
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    now = _time.time()
-    q.enqueue(
-        "holistic",
-        {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info"},
-        {"snapshot": {"foo": "bar"}},
-        now - 10, job_id="holistic-job", now=now - 100,
-    )
+    async with _started_sweep(tmp_path) as (sweep, q, _app):
+        now = _time.time()
+        q.enqueue(
+            "holistic",
+            {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info"},
+            {"snapshot": {"foo": "bar"}},
+            now - 10, job_id="holistic-job", now=now - 100,
+        )
+        with caplog.at_level("WARNING", logger="hiris"):
+            await sweep()
 
-    sweep = _load_real_reasoning_sweep(q)
-    with caplog.at_level("WARNING"):
-        await sweep()
-
-    job = q.get("holistic-job")
-    assert job["status"] == "expired"
-    assert any("holistic-job" in rec.message for rec in caplog.records)
-    q.close()
+        job = q.get("holistic-job")
+        assert job["status"] == "expired"
+        assert any("holistic-job" in rec.getMessage() for rec in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -145,38 +101,39 @@ async def test_mixed_sweep_only_non_chat_kind_logged(tmp_path, monkeypatch, capl
     """Both kinds expire in the same sweep pass: only the non-chat one is
     logged as orphaned; the chat one is simply left in 'expired' state
     (surfaced to the user via the poll route, Fix 2), silently."""
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    now = _time.time()
-    q.enqueue("chat", {}, {"chatbot_id": "a1", "history": [], "system_prompt": ""},
-              now - 10, job_id="chat-job", now=now - 100)
-    q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info"},
-              {"snapshot": {}}, now - 10, job_id="holistic-job", now=now - 100)
+    async with _started_sweep(tmp_path) as (sweep, q, _app):
+        now = _time.time()
+        q.enqueue("chat", {}, {"chatbot_id": "a1", "history": [], "system_prompt": ""},
+                  now - 10, job_id="chat-job", now=now - 100)
+        q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home",
+                               "severity_hint": "info"},
+                  {"snapshot": {}}, now - 10, job_id="holistic-job", now=now - 100)
+        with caplog.at_level("WARNING", logger="hiris"):
+            await sweep()
 
-    sweep = _load_real_reasoning_sweep(q)
-    with caplog.at_level("WARNING"):
-        await sweep()
-
-    assert q.get("chat-job")["status"] == "expired"
-    assert q.get("holistic-job")["status"] == "expired"
-    messages = [rec.message for rec in caplog.records]
-    assert any("holistic-job" in m for m in messages)
-    assert not any("chat-job" in m for m in messages)
-    q.close()
+        assert q.get("chat-job")["status"] == "expired"
+        assert q.get("holistic-job")["status"] == "expired"
+        messages = [rec.getMessage() for rec in caplog.records]
+        assert any("holistic-job" in m for m in messages)
+        assert not any("chat-job" in m for m in messages)
 
 
 @pytest.mark.asyncio
 async def test_sweep_no_op_when_bridge_and_subscription_both_off(tmp_path, monkeypatch):
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    now = _time.time()
-    q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info"},
-              {"snapshot": {}}, now - 10, job_id="holistic-job", now=now - 100)
+    """The sweep READS `app["bridge_active"]` (written by `_recompute_chain`)
+    instead of deriving it: switching that key off stops it.
 
-    sweep = _load_real_reasoning_sweep(q, ponte_attivo=False)
-    await sweep()
+    Mutation EXECUTED: the early return removed from `_reasoning_sweep` --
+    red (the job expires)."""
+    async with _started_sweep(tmp_path, bridge_active=False) as (sweep, q, _app):
+        now = _time.time()
+        q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home",
+                               "severity_hint": "info"},
+                  {"snapshot": {}}, now - 10, job_id="holistic-job", now=now - 100)
+        await sweep()
 
-    # Early return before sweep_expired: the job is untouched (still 'pending').
-    assert q.get("holistic-job")["status"] == "pending"
-    q.close()
+        # Early return before sweep_expired: the job is untouched (still 'pending').
+        assert q.get("holistic-job")["status"] == "pending"
 
 
 # ---------------------------------------------------------------------------
@@ -197,16 +154,13 @@ async def test_lo_sweep_non_tocca_un_ripiego_in_corso(tmp_path, monkeypatch):
     ('pending','claimed')` di `sweep_expired` esclude 'ripiego' da sola. E'
     proprio questa la ragione per cui e' sicura, ed e' per questo che si
     verifica invece di assumerla."""
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    now = _time.time()
-    q.enqueue("chat", {}, {"history": []}, now - 10, job_id="chat-job", now=now - 100)
-    assert q.reclaim_expired("chat-job", now) is not None
+    async with _started_sweep(tmp_path, deadline_min=5) as (sweep, q, _app):
+        now = _time.time()
+        q.enqueue("chat", {}, {"history": []}, now - 10, job_id="chat-job", now=now - 100)
+        assert q.reclaim_expired("chat-job", now) is not None
+        await sweep()
 
-    sweep = _load_real_reasoning_sweep(q, scadenza_min=5)
-    await sweep()
-
-    assert q.get("chat-job")["status"] == "ripiego"
-    q.close()
+        assert q.get("chat-job")["status"] == "ripiego"
 
 
 @pytest.mark.asyncio
@@ -219,26 +173,23 @@ async def test_lo_sweep_raccoglie_i_ripieghi_schiantati(tmp_path, monkeypatch):
     L'orologio non avanza da solo: si finge un ripiego reclamato molto tempo
     fa (oltre il doppio della scadenza) invece di aspettare, che e' l'unico
     modo di provare un confine."""
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    now = _time.time()
-    # Scadenza 5 minuti -> il confine e' 10 minuti fa. Questo ripiego e' stato
-    # reclamato 11 minuti fa: e' uno schianto.
-    q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="vecchio",
-              now=now - 16 * 60)
-    q.reclaim_expired("vecchio", now - 11 * 60)
-    # E questo un minuto fa: sta ancora lavorando, e non si tocca.
-    q.enqueue("chat", {}, {"history": []}, now - 60, job_id="fresco", now=now - 6 * 60)
-    q.reclaim_expired("fresco", now - 60)
+    async with _started_sweep(tmp_path, deadline_min=5) as (sweep, q, _app):
+        now = _time.time()
+        # Scadenza 5 minuti -> il confine e' 10 minuti fa. Questo ripiego e'
+        # stato reclamato 11 minuti fa: e' uno schianto.
+        q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="vecchio",
+                  now=now - 16 * 60)
+        q.reclaim_expired("vecchio", now - 11 * 60)
+        # E questo un minuto fa: sta ancora lavorando, e non si tocca.
+        q.enqueue("chat", {}, {"history": []}, now - 60, job_id="fresco", now=now - 6 * 60)
+        q.reclaim_expired("fresco", now - 60)
+        await sweep()
 
-    sweep = _load_real_reasoning_sweep(q, scadenza_min=5)
-    await sweep()
-
-    assert q.get("vecchio")["status"] == "failed"
-    assert q.get("vecchio")["context"] == {}
-    assert q.get("fresco")["status"] == "ripiego", (
-        "il confine e' il DOPPIO della scadenza: un ripiego cominciato un "
-        "minuto fa non e' uno schianto")
-    q.close()
+        assert q.get("vecchio")["status"] == "failed"
+        assert q.get("vecchio")["context"] == {}
+        assert q.get("fresco")["status"] == "ripiego", (
+            "il confine e' il DOPPIO della scadenza: un ripiego cominciato un "
+            "minuto fa non e' uno schianto")
 
 
 @pytest.mark.asyncio
@@ -248,19 +199,22 @@ async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_pa
     valore che `_enqueue_chat_job` usa per scrivere la scadenza. Con una
     scadenza lunga il margine cresce con lei, altrimenti un ripiego legittimo
     verrebbe ucciso mentre lavora."""
-    q = ReasoningQueue(str(tmp_path / "r.db"))
-    now = _time.time()
-    q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="j", now=now - 71 * 60)
-    q.reclaim_expired("j", now - 11 * 60)
+    async with _started_sweep(tmp_path, deadline_min=60) as (sweep, q, app):
+        now = _time.time()
+        q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="j", now=now - 71 * 60)
+        q.reclaim_expired("j", now - 11 * 60)
 
-    # Scadenza 60 minuti -> confine a 120 minuti fa: undici minuti non bastano.
-    await _load_real_reasoning_sweep(q, scadenza_min=60)()
-    assert q.get("j")["status"] == "ripiego"
+        # Scadenza 60 minuti -> confine a 120 minuti fa: undici minuti non bastano.
+        await sweep()
+        assert q.get("j")["status"] == "ripiego"
 
-    # Scadenza 5 minuti -> confine a 10 minuti fa: undici bastano.
-    await _load_real_reasoning_sweep(q, scadenza_min=5)()
-    assert q.get("j")["status"] == "failed"
-    q.close()
+        # Scadenza 5 minuti -> confine a 10 minuti fa: undici bastano. La
+        # stessa app, la stessa spazzata: cambia solo cio' che la pagina
+        # Modelli scriverebbe.
+        app["models_config"] = {**app["models_config"],
+                                "ponte": {**app["models_config"]["ponte"], "scadenza_min": 5}}
+        await sweep()
+        assert q.get("j")["status"] == "failed"
 
 
 @pytest.mark.asyncio
@@ -277,24 +231,14 @@ async def test_un_turno_di_scope_scaduto_lascia_scritto_che_e_scaduto(tmp_path):
     Mutazione che la uccide: togliere il ramo `SCOPE_TURN_KIND` dalla
     spazzata -- il turno ricade fra i job orfani, che si loggano e basta.
     """
-    import os
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(os.path.join(str(tmp_path), "osservazioni.db"))
-    coda = ReasoningQueue(str(tmp_path / "r.db"))
-    try:
+    async with _started_sweep(tmp_path) as (spazzata, coda, app):
         adesso = _time.time()
         coda.enqueue(server.SCOPE_TURN_KIND, {}, {}, deadline_ts=adesso - 1,
                      job_id="S1", now=adesso - 601)
-        spazzata = _load_real_reasoning_sweep(coda, archivio=archivio)
 
         await spazzata()
 
-        ultimo = archivio.recent_attempts()[0]
+        ultimo = app["observations"].recent_attempts()[0]
         assert ultimo["esito"] == "scaduta"
         assert "non ha risposto" in ultimo["dettaglio"]
         assert coda.get("S1")["status"] == "expired"
-    finally:
-        coda.close()
-        archivio.close()
