@@ -71,7 +71,11 @@ _NOT_IN_PLAN = ("da convertire nella Tappa 1, ma il piano non la nomina: "
 #: `«file»::«funzione»` -> perche' oggi puo' ancora leggere il testo di
 #: `server.py`. Si accorcia, non si allunga.
 ADMITTED: dict[str, str] = {
-    "test_action_registry.py::test_il_registro_e_agganciato_all_app": _TASK_4,
+    "test_mind_actuator_guards.py::"
+    "test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_server":
+        ("prova che la derivazione allargata a tutto hiris/app (Task 7) contiene "
+         "quella vecchia del solo server.py: legge server.py per costruire il "
+         "termine di paragone, e resta vera anche quando il file si svuota"),
     "test_agent_runner_inaddon.py::"
     "test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno": _TASK_7,
     "test_api_proposte.py::test_le_TRE_rotte_delle_proposte_sono_registrate":
@@ -83,8 +87,6 @@ ADMITTED: dict[str, str] = {
     "test_spawn_body_adds_to_background_tasks_and_wires_done_callback":
         _NOT_IN_PLAN + " (il corpo di `_spawn`, letterale)",
     "test_bridge_success_occurrence.py::_load_real_submit_chat_reply": _TASK_6,
-    "test_caratteri_in_casa.py::test_la_politica_dei_contenuti_si_CHIUDE_verso_l_esterno":
-        _TASK_7,
     "test_chat_settings.py::_blocco_giorni_dallo_startup": _TASK_6,
     "test_chat_subscription_path.py::test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento":
         _TASK_7,
@@ -95,69 +97,27 @@ ADMITTED: dict[str, str] = {
     "test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon":
         _NOT_IN_PLAN + " (variabili d'ambiente cercate nel solo `server.py`)",
     "test_config_page.py::test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti": _TASK_7,
-    "test_construction_wiring.py::test_l_officina_e_l_archivio_sono_cablati": _TASK_4,
-    "test_construction_wiring.py::test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta":
-        _TASK_4,
-    "test_construction_wiring.py::test_l_officina_nasce_dopo_la_cronaca_che_le_serve":
-        _TASK_4,
-    "test_construction_wiring.py::test_i_due_archivi_si_chiudono_nel_gestore_di_spegnimento":
-        _TASK_4,
     "test_construction_wiring.py::_blocco_risanamento_costruzioni": _TASK_6,
-    "test_construction_wiring.py::"
-    "test_il_risanamento_delle_costruzioni_precede_il_battito_dello_schedulatore": _TASK_4,
-    "test_construction_wiring.py::test_le_cinque_rotte_sono_registrate": _TASK_4,
-    "test_execute_tool.py::test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato":
-        _TASK_4,
     "test_handlers_mind_judgment.py::test_rotta_REGISTRATA":
         _NOT_IN_PLAN + " (rotta registrata: si chiede a `router_routes`)",
-    "test_home_space_wiring.py::test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi":
-        _TASK_4,
-    "test_home_space_wiring.py::test_l_avvio_CABLA_davvero_l_ascoltatore_dello_specchio":
-        _TASK_4,
     "test_keeper_wiring.py::_load_costruzione_archivi": _TASK_6,
     "test_keeper_wiring.py::_load_battito_avvio": _TASK_6,
     "test_keeper_wiring.py::_load_battito_closure": _TASK_6,
-    "test_lookup_cache.py::_estrai_riga_cache_indice": _TASK_5,
     "test_lovelace_uninstall.py::_carica_blocco_disinstallazione": _TASK_6,
-    "test_mind_actuator_guards.py::superficie_attuatore": _TASK_7,
     "test_mind_api.py::test_le_porte_del_cervello_sono_REGISTRATE_non_solo_scritte":
         _NOT_IN_PLAN + " (rotte registrate: si chiedono a `router_routes`)",
-    "test_mind_judgments.py::test_sapere_nasce_PRIMA_cache_entita": _TASK_4,
-    "test_mind_wiring.py::test_l_archivio_e_l_osservatore_sono_cablati": _TASK_4,
-    "test_mind_wiring.py::test_l_osservatore_e_agganciato_allo_STESSO_rubinetto_dello_specchio":
-        _TASK_4,
-    "test_mind_wiring.py::test_l_osservatore_nasce_dopo_il_suo_archivio": _TASK_4,
-    "test_mind_wiring.py::test_l_archivio_si_chiude_nello_spegnimento": _TASK_4,
-    "test_mind_wiring.py::test_l_osservatore_ricostruisce_le_condizioni_all_avvio": _TASK_4,
     "test_mind_wiring.py::_estrai_funzione_innestata": _TASK_5,
-    "test_mind_wiring.py::"
-    "test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non_blocca_l_avvio":
-        _TASK_4,
     "test_mind_wiring.py::_estrai_blocco_riparazione_avvio": _TASK_6,
     "test_mind_wiring.py::test_se_la_riaggregazione_solleva_l_avvio_prosegue": _TASK_6,
-    "test_mind_wiring.py::test_il_doppione_con_hiris_ha_problems_e_documentato":
-        _TASK_4 + " (T-06: asserisce testo di un commento, si cancella)",
-    "test_mind_wiring.py::test_the_automation_event_is_wired_to_mark_automation": _TASK_4,
-    "test_mind_wiring.py::test_il_sapere_nasce_PRIMA_della_riparazione_all_avvio": _TASK_4,
-    "test_mind_wiring.py::test_l_osservatore_riceve_il_sapere_e_nasce_DOPO_di_lui": _TASK_4,
-    "test_mind_wiring.py::test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata":
-        _TASK_4,
     "test_model_activation.py::_blocco_catena_dallo_startup": _TASK_6,
     "test_model_activation.py::_blocco_risponde_dallo_startup": _TASK_6,
-    "test_model_activation.py::test_l_avvio_pubblica_il_ricalcolo_FUORI_dai_due_rami": _TASK_4,
     "test_model_activation.py::"
     "test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello": _TASK_4,
     "test_model_activation.py::test_ogni_runner_riceve_la_lettura_del_SUO_provider": _TASK_4,
     "test_models_api.py::test_l_avvio_consegna_al_router_IL_registro_dell_app":
         _NOT_IN_PLAN + " (identita' fra oggetti: la forma del Task 4)",
-    "test_nightly_pruning.py::_load_run_retention": _TASK_5,
     "test_options_migration.py::_blocco_semina_catena_dallo_startup": _TASK_6,
-    "test_panel_visibility.py::test_l_opzione_ha_una_casa_sola": _TASK_7,
     "test_provider_default_model.py::_letture_dallo_startup": _TASK_6,
-    "test_reasoning_sweep_chat_skip.py::_load_real_reasoning_sweep": _TASK_5,
-    "test_reasoning_wiring.py::_estrai_costruzione_reasoning_queue": _TASK_5,
-    "test_ripieghi_a_consumo.py::test_i_TRE_giri_automatici_passano_dall_imbuto": _TASK_5,
-    "test_security.py::test_il_csrf_gira_DOPO_l_autenticazione_e_non_prima": _TASK_4,
     "test_startup_legacy_db_silence.py::_load_silence_check": _TASK_6,
     "test_submit_chat_reply_guards.py::_load_real_submit_chat_reply": _TASK_6,
     "test_subscription_model.py::_carica_blocco_semina": _TASK_6,
