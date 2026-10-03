@@ -20,9 +20,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-03 | `GET /api/states` intero riletto da tre percorsi oltre allo specchio | NV | DP |  | cop-9 (incompleta) | reg · cop-9 |
 | A-04 | `GET /api/services`: il registro servizi e il bypass di `recipient` | E | CC |  | cop-9 (incompleta) | reg · cop-9 |
 | A-05 | `recorder/list_statistic_ids` letto due volte da due giri | E | PS |  |  | reg |
-| A-07 | Avvio e riconnessione: la stessa casa riletta 3-4 volte nei primi secondi | E | PS |  | cop-2 (incompleta, conteggio) | reg · cop-2 |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
-| A-10 | Anagrafe parziale che sostituisce quella buona: spariscono gli alias di tutta la casa | NV | CC |  |  | reg · cop-4 · cop-5 |
 | A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | D | CC |  | cop-3 (imprecisa) | reg · cop-3 · cop-4 |
 | A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 |
 | A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | NV | CC |  |  | reg |
@@ -425,7 +423,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-01 | Turno dell'attuatore raccolto dal ponte: gli indici del modello applicati a un elenco rifatto «adesso» (oggi dormiente, giro in pausa) | 1° dei «5 più gravi» di cop-1 | DEDOTTO | cap. proposto D; Stato del rapporto: DIVERGENTE [D]; Unirla CC | cop-1 D6 |
 | S-02 | `_close_expired_promise` dice «ho aspettato N minuti» con la `scadenza_min` di adesso, non la durata del job | 5° dei «5 più gravi» di cop-1 | LETTO | cap. proposto X (la parte di commento è X-24); Stato DIVERGENTE, Unirla CC; si lega a D-09 | cop-1 X4 |
 | S-03 | «Per mano di HIRIS» (`_by_hand`) abbina anche gli atti NON eseguiti: ignora `eseguito` |  | LETTO (effetto DEDOTTO) | cap. proposto B; Stato NV, Unirla CC; era «fuori perimetro» di `db` nel registro v1 | cop-3 B-n7 |
-| S-04 | Autenticazione WS fallita → `return`: il ciclo eventi non riparte fino al riavvio; `ws_ready` non si azzera |  | LETTO | `ha_client.py:2287-2291` | cop-5 S1 |
 | S-05 | `read_dashboards`: `d.get("url_path")` senza `isinstance(d, dict)` |  | LETTO | `ha_client.py:966` (la `:985` lo ha) | cop-5 S2 |
 | S-06 | `history`: `from_iso` entra nel percorso dell'URL senza `quote` |  | LETTO | `ha_client.py:1045`; oggi i chiamanti passano `isoformat()` | cop-5 S3 |
 | S-07 | `context` (chi ha causato il cambio) non entra nello specchio |  | LETTO | `entity_cache.py:516-587`; vedi correzione a B-25 | cop-5 S4 |
@@ -826,3 +823,6 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-24 | `tools._state_readings` copia riga per riga di `ActionActuator._states` (specchio per id) | Tappa 2 (da rilasciare) | beb20431 | Tappa 2, Task 6: lo specchio risponde per id (get, states_for, states_by_id); rilettura unica sotto lucchetto con tampone; riprova se l'ultima rilettura e' fallita |
 | A-31 | `load` e `reload` dello specchio: due riletture, una sola protegge gli eventi | Tappa 2 (da rilasciare) | beb20431 | Tappa 2, Task 6: lo specchio risponde per id (get, states_for, states_by_id); rilettura unica sotto lucchetto con tampone; riprova se l'ultima rilettura e' fallita |
 | A-09 | Lo specchio non riprova se `get_states` fallisce dopo il riavvio di HA | Tappa 2 (da rilasciare) | beb20431 | Tappa 2, Task 6: lo specchio risponde per id (get, states_for, states_by_id); rilettura unica sotto lucchetto con tampone; riprova se l'ultima rilettura e' fallita |
+| A-07 | Avvio e riconnessione: la stessa casa riletta 3-4 volte nei primi secondi | Tappa 2 (da rilasciare) | daaa8826 | Tappa 2, Task 7: la casa si legge una volta all'avvio (get_states 1, read_registries 1, prima l'iscrizione); un registro caduto tiene la tabella precedente, marcata; autenticazione WebSocket rifiutata: si riprova con attesa crescente e ws_ready si spegne |
+| A-10 | Anagrafe parziale che sostituisce quella buona: spariscono gli alias di tutta la casa | Tappa 2 (da rilasciare) | daaa8826 | Tappa 2, Task 7: la casa si legge una volta all'avvio (get_states 1, read_registries 1, prima l'iscrizione); un registro caduto tiene la tabella precedente, marcata; autenticazione WebSocket rifiutata: si riprova con attesa crescente e ws_ready si spegne |
+| S-04 | Autenticazione WS fallita → `return`: il ciclo eventi non riparte fino al riavvio; `ws_ready` non si azzera | Tappa 2 (da rilasciare) | daaa8826 | Tappa 2, Task 7: la casa si legge una volta all'avvio (get_states 1, read_registries 1, prima l'iscrizione); un registro caduto tiene la tabella precedente, marcata; autenticazione WebSocket rifiutata: si riprova con attesa crescente e ws_ready si spegne |
