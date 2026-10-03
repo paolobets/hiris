@@ -21,6 +21,14 @@ regola verso la casa e' «solo letture».
 - gli stati vivi di Home Assistant -- per sapere quali soggetti guardati non
   esistono piu'.
 
+## Le cause (piano degli strati 1-2 degli attori, Task 1.7)
+
+I soggetti morti e le misure non calcolabili si contano anche **per causa**,
+dal campo `causa` della riga quando c'e'. Il campo nasce col Task 1.2 (le
+misure) e col Task 1.5 (i soggetti): prima, tutto finisce sotto «senza causa»,
+ed e' il numero che lo strato 1 deve portare a zero. Le misure «ferme» sono i
+rifiuti con la causa del dato fermo.
+
 ## Cosa NON misura, dichiarato
 
 - **Il giudizio sulle osservazioni** («vera, banale, artefatto»): l'ha dato
@@ -42,6 +50,7 @@ import json
 import re
 import statistics
 import sys
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,6 +64,19 @@ if hasattr(sys.stdout, "reconfigure"):
 #: `integrazione:...`) non hanno uno stato in Home Assistant da cercare.
 _ENTITY_SUBJECT = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 SUCCEEDED = "riuscito"
+#: L'etichetta di chi non porta una causa. E' della batteria, non del prodotto:
+#: il prodotto non ha una causa che si chiami cosi'.
+UNCAUSED = "senza causa"
+#: La causa del dato fermo. Vive nel prodotto, nella regola del dato fermo (il
+#: suo `FROZEN`, Task 1.1, su un ramo non ancora unito): finche' il vocabolario
+#: non c'e', e' scritta qui. Il Task 1.7, passo 2, la CHIEDE al vocabolario e
+#: toglie questa copia.
+FROZEN = "ferma"
+
+
+def _by_cause(rows) -> dict[str, int]:
+    """Quante righe per causa; una causa assente o vuota e' «senza causa»."""
+    return dict(Counter(str(row.get("causa") or "") or UNCAUSED for row in rows))
 
 
 def measure(*, data: list, watching: list[dict], reports: list[dict],
@@ -86,18 +108,27 @@ def measure(*, data: list, watching: list[dict], reports: list[dict],
 
     subjects = [row.get("soggetto") or "" for row in watching]
     entities = [subject for subject in subjects if _ENTITY_SUBJECT.match(subject)]
+    dead = [row for row in watching
+            if _ENTITY_SUBJECT.match(row.get("soggetto") or "")
+            and row.get("soggetto") not in live_ids]
     ordered = sorted(reports, key=lambda report: report.get("giorno") or "")
     uncomputable = [sum(1 for item in report.get("misure") or []
                         if item.get("non_calcolabile")) for report in ordered]
+    refusals = _by_cause(item for report in ordered
+                         for item in report.get("misure") or []
+                         if item.get("non_calcolabile"))
     result = {
         "turni_letti": len(data),
         "attori": actors,
         "soggetti_guardati": len(subjects),
         "soggetti_entita": len(entities),
-        "soggetti_morti": sum(1 for subject in entities if subject not in live_ids),
+        "soggetti_morti": len(dead),
+        "soggetti_morti_per_causa": _by_cause(dead),
         "resoconti": len(ordered),
         "misure_totali": sum(len(report.get("misure") or []) for report in ordered),
         "misure_non_calcolabili": sum(uncomputable),
+        "misure_non_calcolabili_per_causa": refusals,
+        "misure_ferme": refusals.get(FROZEN, 0),
     }
     if ordered:
         result["ultimo_giorno"] = {"giorno": ordered[-1].get("giorno"),
