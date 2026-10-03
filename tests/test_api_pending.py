@@ -21,16 +21,22 @@ deve passare dagli stessi middleware di ogni altra, o il test non direbbe
 niente su cio' che accade in produzione.
 """
 import os
+import sys
 import time
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` che conftest.py
 # mette per l'intera suite): stesso riuso cross-file gia' praticato da
@@ -50,10 +56,10 @@ _INGRESS_ADMIN = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
                   "X-Remote-User-Id": "u-admin"}
 
 
-class _RuoliFinti:
-    async def users(self):
-        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
-                            "amministratore": True, "proprietario": True}]}
+#: La riga grezza di `config/auth/list` (la forma che `HAClient._user_row`
+#: legge): il proprietario, amministratore per Home Assistant.
+_ADMIN = {"id": "u-admin", "name": "Paolo", "is_owner": True, "is_active": True,
+          "system_generated": False, "group_ids": ["system-admin"]}
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +75,8 @@ async def client(aiohttp_client, tmp_path):
     app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     app["constructions"] = ConstructionStore(
         os.path.join(str(tmp_path), "costruzioni.db"))
-    app["ha_client"] = _RuoliFinti()
+    app["ha_client"] = CasaFinta(synthetic_inputs(),
+                                 answers={"config/auth/list": lambda extra: [_ADMIN]})
     app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]  # il client di prova e' locale
     app.on_startup.clear()
     app.on_cleanup.clear()
