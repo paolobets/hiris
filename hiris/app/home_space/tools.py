@@ -80,8 +80,6 @@ import asyncio
 import inspect
 import logging
 import math
-import os
-import re
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, ClassVar
@@ -133,7 +131,7 @@ from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
-from .redaction import SecretSeal, home_assistant_folder
+from .redaction import home_assistant_seal, seal_free_text
 from .topology import live_mirror
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -1279,74 +1277,6 @@ def _history_chunks(entity_ids: list[str]) -> list[list[str]]:
     if current:
         chunks.append(current)
     return chunks
-
-
-#: I separatori di un `chiave=valore`, delle virgolette e delle parentesi. Il
-#: sigillo riconosce un segreto per impronta del valore ESATTO
-#: (`redaction.SecretSeal.redact`): su un messaggio di registro intero non
-#: combacia mai, perche' il segreto sta DENTRO la frase
-#: («credenziali 'Zq9-...' rifiutate»).
-_SEAL_NARROW_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>]+")
-#: Anche i separatori di un indirizzo e di una query (`/`, `@`, `&`, `?`,
-#: `#`, `|`, `\`), il punto e il `!`. Revisione del Task 7 (30/09/2026):
-#: col solo elenco stretto quattro prove su un `secrets.yaml` vero passavano
-#: in chiaro -- «rifiutato per Zq9-segreto-77.» (il punto a fine frase, la
-#: forma piu' comune di un registro), `http://admin:hunter2@host`,
-#: `token=X&y=1`, `X/retry`. Da solo pero' questo elenco spezzerebbe una
-#: password che il punto o il `!` li contiene: per questo si provano tutte e
-#: due le grane (`_sealed_token`).
-_SEAL_BROAD_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>/&@?!.#|\\]+")
-#: La punteggiatura che si toglie dai bordi di un pezzo: tutta, oppure tutta
-#: tranne `!` e `?`, che in una password stanno spesso in fondo.
-_SEAL_EDGES = ("'\"`.,;:!?()[]{}<>", "'\"`.,;:()[]{}<>")
-
-
-def _sealed_token(token: str, seal) -> str:
-    """Una parola (cio' che sta fra due spazi) col sigillo passato su ogni
-    lettura plausibile di dove il segreto cominci e finisca: la parola
-    intera, i pezzi fra i separatori stretti e quelli larghi, e ognuno anche
-    senza la punteggiatura dei bordi. Una quindicina di impronte per parola,
-    non una per ogni sottostringa: il sigillo tiene solo impronte, e cercare
-    davvero una sottostringa vorrebbe il testo dei segreti in memoria.
-
-    Il piu' lungo si sostituisce per primo: un segreto che ne contiene un
-    altro non si spezza a meta'."""
-    candidates = set()
-    for piece in {token, *_SEAL_NARROW_RE.split(token), *_SEAL_BROAD_RE.split(token)}:
-        candidates.add(piece)
-        candidates.update(piece.strip(edges) for edges in _SEAL_EDGES)
-    for candidate in sorted(candidates, key=len, reverse=True):
-        if not candidate:
-            continue
-        sealed = seal.redact(candidate)
-        if sealed != candidate:
-            token = token.replace(candidate, sealed)
-    return token
-
-
-def _sealed_free_text(text, seal):
-    """Il testo libero di un registro col sigillo passato tre volte: il testo
-    intero, ogni riga, ogni parola (`_sealed_token`). Il prezzo e' quello gia'
-    dichiarato dal sigillo: un pezzo innocente IDENTICO a un segreto viene
-    oscurato. Resta fuori un segreto che contiene uno spazio, dentro una
-    frase: il limite di un sigillo che tiene solo impronte, dichiarato qui e
-    non taciuto.
-
-    `seal` puo' essere `None` (un dispatcher costruito a meta' nei test del
-    confine): il testo torna com'e'."""
-    if seal is None or not isinstance(text, str):
-        return text
-    whole = seal.redact(text)
-    if whole != text:
-        return whole
-    lines = []
-    for line in text.split("\n"):
-        sealed_line = seal.redact(line.strip())
-        if sealed_line != line.strip():
-            lines.append(sealed_line)
-            continue
-        lines.append(re.sub(r"\S+", lambda word: _sealed_token(word.group(0), seal), line))
-    return "\n".join(lines)
 
 
 class ToolDispatcher:
@@ -2657,10 +2587,7 @@ class ToolDispatcher:
         protezione, non nessuna, e il resto del confine vale comunque.
         """
         if self._remembered_seal is None:
-            folder = home_assistant_folder()
-            self._remembered_seal = (
-                SecretSeal.from_file(os.path.join(folder, "secrets.yaml"))
-                if folder else SecretSeal({}, readable=False))
+            self._remembered_seal = home_assistant_seal()
         return self._remembered_seal
 
     # -- la storia ------------------------------------------------------
@@ -2888,7 +2815,7 @@ class ToolDispatcher:
         `sanitize_traceback`, una password
         rifiutata scritta nel messaggio dell'eccezione arriverebbe al fornitore
         del modello. Il sigillo guarda il testo PEZZO PER PEZZO
-        (`_sealed_free_text`), perche' un segreto in un registro sta dentro una
+        (`redaction.seal_free_text`), perche' un segreto in un registro sta dentro una
         frase. Poi `sanitize_traceback` (il filtro delle istruzioni e il
         tetto).
 
@@ -2905,13 +2832,13 @@ class ToolDispatcher:
                 continue
             plain = {key: value for key, value in entry.items() if key != "exception"}
             if isinstance(plain.get("message"), list):
-                plain["message"] = [_sealed_free_text(m, seal) for m in plain["message"]]
+                plain["message"] = [seal_free_text(m, seal) for m in plain["message"]]
             elif "message" in plain:
-                plain["message"] = _sealed_free_text(plain["message"], seal)
+                plain["message"] = seal_free_text(plain["message"], seal)
             clean = sanitize_structure(plain, seal=seal)
             tail = last_line(entry["exception"]) if entry.get("exception") else None
             if tail is not None:
-                clean["exception"] = sanitize_traceback(_sealed_free_text(tail, seal))
+                clean["exception"] = sanitize_traceback(seal_free_text(tail, seal))
             sealed.append(clean)
         return sealed
 

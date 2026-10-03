@@ -18,6 +18,7 @@ import time
 
 from ..home_space.ha_vocabulary import config_entry_is_healthy
 from ..home_space.historian import instant_epoch
+from ..home_space.redaction import home_assistant_seal, seal_free_text
 from .knowledge import attributes_wanted_for
 
 logger = logging.getLogger(__name__)
@@ -772,6 +773,12 @@ class Watcher:
         # lo dichiarano mai) e l'epoch che HA dichiara per una voce di log --
         # va nella colonna omonima, MAI in `quando_ts` (vedi il docstring).
         open_now: dict[str, tuple[str, str | None, str | None, float | None]] = {}
+        # Il sigillo dei segreti per i titoli delle voci di registro, qui
+        # sotto: lo stesso della chat (`redaction.home_assistant_seal`), letto
+        # una volta per giro -- uno ogni dieci minuti, quindi un
+        # `secrets.yaml` cambiato vale dal giro dopo. Non solleva mai: senza
+        # il file non sigilla niente, e il giro va avanti.
+        seal = home_assistant_seal()
         for p in problems or []:
             if not isinstance(p, dict):
                 continue
@@ -820,7 +827,13 @@ class Watcher:
                     and isinstance(source_line, int) and not isinstance(source_line, bool)):
                 continue
             message = entry.get("message")
-            title = (_text_or_none(message[0])
+            # Il titolo passa dal sigillo dei segreti PRIMA di entrare
+            # nell'archivio (Tappa 3, Task 0, 03/10/2026): e' testo libero
+            # scritto da un componente qualunque, anche di terze parti, e da
+            # qui arriva al resoconto del giorno e alla pagina
+            # dell'osservatore. La regola e' quella della chat, una sola
+            # (`redaction.seal_free_text`).
+            title = (_text_or_none(seal_free_text(message[0], seal))
                      if isinstance(message, list) and message else None)
             raw_first_occurred = entry.get("first_occurred")
             # Verificato alla fonte (vedi il docstring del metodo):

@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import re
 from pathlib import Path
 
 import yaml
@@ -148,12 +150,100 @@ def home_assistant_folder() -> str | None:
 
     Fa la stessa ricerca di `server._find_ha_config_dir`, che `home_space/` non
     può chiamare senza un import circolare. Sta qui, accanto a chi la usa per
-    trovare `secrets.yaml` (`home_space/tools.py`).
+    trovare `secrets.yaml` (`home_assistant_seal`, qui sotto).
     """
-    import os
-
     for candidate in _FOLDERS:
         if (os.path.exists(os.path.join(candidate, "configuration.yaml"))
                 or os.path.isdir(os.path.join(candidate, ".storage"))):
             return candidate
     return None
+
+
+def home_assistant_seal() -> SecretSeal:
+    """Il sigillo dei segreti della casa: `secrets.yaml` nella cartella di Home
+    Assistant. Non solleva mai: senza cartella, o con un file illeggibile, il
+    sigillo e' `readable=False` e non sigilla niente -- meno protezione, non un
+    giro fermo.
+
+    Due chiamanti, e nessuno lo costruisce per ogni voce di registro: la chat
+    (`tools.ToolDispatcher._seal`) lo ricorda per tutto il dispatcher,
+    l'osservatore (`Watcher.watch_system`) lo legge una volta per giro.
+    """
+    folder = home_assistant_folder()
+    if folder is None:
+        return SecretSeal({}, readable=False)
+    return SecretSeal.from_file(os.path.join(folder, "secrets.yaml"))
+
+
+#: I separatori di un `chiave=valore`, delle virgolette e delle parentesi. Il
+#: sigillo riconosce un segreto per impronta del valore ESATTO
+#: (`SecretSeal.redact`): su un messaggio di registro intero non
+#: combacia mai, perche' il segreto sta DENTRO la frase
+#: («credenziali 'Zq9-...' rifiutate»).
+_SEAL_NARROW_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>]+")
+#: Anche i separatori di un indirizzo e di una query (`/`, `@`, `&`, `?`,
+#: `#`, `|`, `\`), il punto e il `!`. Revisione del Task 7 (30/09/2026):
+#: col solo elenco stretto quattro prove su un `secrets.yaml` vero passavano
+#: in chiaro -- «rifiutato per Zq9-segreto-77.» (il punto a fine frase, la
+#: forma piu' comune di un registro), `http://admin:hunter2@host`,
+#: `token=X&y=1`, `X/retry`. Da solo pero' questo elenco spezzerebbe una
+#: password che il punto o il `!` li contiene: per questo si provano tutte e
+#: due le grane (`_seal_token`).
+_SEAL_BROAD_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>/&@?!.#|\\]+")
+#: La punteggiatura che si toglie dai bordi di un pezzo: tutta, oppure tutta
+#: tranne `!` e `?`, che in una password stanno spesso in fondo.
+_SEAL_EDGES = ("'\"`.,;:!?()[]{}<>", "'\"`.,;:()[]{}<>")
+
+
+def _seal_token(token: str, seal) -> str:
+    """Una parola (cio' che sta fra due spazi) col sigillo passato su ogni
+    lettura plausibile di dove il segreto cominci e finisca: la parola
+    intera, i pezzi fra i separatori stretti e quelli larghi, e ognuno anche
+    senza la punteggiatura dei bordi. Una quindicina di impronte per parola,
+    non una per ogni sottostringa: il sigillo tiene solo impronte, e cercare
+    davvero una sottostringa vorrebbe il testo dei segreti in memoria.
+
+    Il piu' lungo si sostituisce per primo: un segreto che ne contiene un
+    altro non si spezza a meta'."""
+    candidates = set()
+    for piece in {token, *_SEAL_NARROW_RE.split(token), *_SEAL_BROAD_RE.split(token)}:
+        candidates.add(piece)
+        candidates.update(piece.strip(edges) for edges in _SEAL_EDGES)
+    for candidate in sorted(candidates, key=len, reverse=True):
+        if not candidate:
+            continue
+        sealed = seal.redact(candidate)
+        if sealed != candidate:
+            token = token.replace(candidate, sealed)
+    return token
+
+
+def seal_free_text(text, seal):
+    """Il testo libero di un registro col sigillo passato tre volte: il testo
+    intero, ogni riga, ogni parola (`_seal_token`). Il prezzo e' quello gia'
+    dichiarato dal sigillo: un pezzo innocente IDENTICO a un segreto viene
+    oscurato. Resta fuori un segreto che contiene uno spazio, dentro una
+    frase: il limite di un sigillo che tiene solo impronte, dichiarato qui e
+    non taciuto.
+
+    **Una regola, due chiamanti** (Tappa 3, Task 0, 03/10/2026): la chat
+    (`tools.ToolDispatcher._sealed_log`) e l'osservatore
+    (`mind/watcher.Watcher.watch_system`, il titolo di una condizione `log:`)
+    leggono lo stesso registro di Home Assistant. Fino ad allora la funzione
+    viveva dentro `tools.py` e l'osservatore archiviava il titolo in chiaro.
+
+    `seal` puo' essere `None` (un dispatcher costruito a meta' nei test del
+    confine): il testo torna com'e'."""
+    if seal is None or not isinstance(text, str):
+        return text
+    whole = seal.redact(text)
+    if whole != text:
+        return whole
+    lines = []
+    for line in text.split("\n"):
+        sealed_line = seal.redact(line.strip())
+        if sealed_line != line.strip():
+            lines.append(sealed_line)
+            continue
+        lines.append(re.sub(r"\S+", lambda word: _seal_token(word.group(0), seal), line))
+    return "\n".join(lines)
