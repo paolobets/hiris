@@ -16,7 +16,8 @@ def test_build_chat_messages_available():
     assert "Sei HIRIS." in system and "Utente: ciao" in user
 
 
-def test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno():
+@pytest.mark.asyncio
+async def test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno(monkeypatch):
     """L'API della reasoning e' su loopback: viaggia la credenziale del turno
     e nient'altro -- mai una credenziale di servizio CF-Access, mai un
     `Authorization` generico.
@@ -26,22 +27,39 @@ def test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno():
     il 22/09/2026 con la fetta 3 dello sprint sicurezza. Si guarda dove
     nascono davvero.
 
-    Mutazione ESEGUITA: aggiunto un `Authorization` alle intestazioni del
-    ponte in `server.py` -- rossa."""
-    import inspect
+    Fino al 03/10/2026 si leggevano 400 caratteri del sorgente di
+    `_govern_bridge_worker`. Adesso si fa partire il lavoratore del ponte
+    davvero (`_govern_bridge_worker`, ponte acceso e token presente), con
+    `run_loop` sostituito da una spia che riceve la funzione delle
+    intestazioni, e la si CHIAMA: le chiavi devono essere esattamente le due
+    del turno, e la credenziale quella che `credenziale_ponte_viva` conia.
+    Non e' servito estrarre niente dal prodotto.
 
+    Mutazione ESEGUITA (03/10/2026): aggiunto `"Authorization": "x"` alle
+    intestazioni del ponte in `server.py` -- rossa."""
     from hiris.app import server
+    from hiris.app.api import credenziali
 
-    sorgente = inspect.getsource(server._govern_bridge_worker)
-    inizio = sorgente.index("def _intestazioni_ponte()")
-    corpo = sorgente[inizio:inizio + 400]
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-del-piano")
+    monkeypatch.setattr(credenziali, "credenziale_ponte_viva",
+                        lambda app, *, adesso: "credenziale-di-turno")
+    ricevute = {}
 
-    assert "credenziale_ponte_viva" in corpo, (
-        "il ponte non conia piu' una credenziale di turno: se legge un "
+    def _run_loop(base_url, get_headers, mode, poll_seconds):
+        ricevute["get_headers"] = get_headers
+        return asyncio.sleep(0)
+
+    monkeypatch.setattr(runner, "run_loop", _run_loop)
+    app = {"bridge_active": True}
+    server._govern_bridge_worker(app)
+    await app["agent_worker_task"]
+
+    assert ricevute, "il lavoratore del ponte non e' partito"
+    assert ricevute["get_headers"]() == {
+        "X-HIRIS-Internal-Token": "credenziale-di-turno",
+        "X-Requested-With": "hiris-agent",
+    }, ("il ponte non porta piu' SOLO la credenziale di turno: se legge un "
         "segreto da qualche parte, il reperto A-5 e' tornato")
-    for vietata in ("CF-Access-Client-Id", "CF-Access-Client-Secret",
-                    "Authorization"):
-        assert vietata not in corpo, f"viaggia anche {vietata}"
 
 
 def test_safe_subprocess_env_excludes_metered_api_keys(monkeypatch):
