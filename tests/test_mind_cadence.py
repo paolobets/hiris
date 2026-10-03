@@ -19,44 +19,133 @@ Si cala una sonda e si guarda se torna su con qualcosa
 **3,5 giorni (84 ore)**, in due raffiche da 646 ms e 557 KB in tutto.
 """
 import os
+import sys
+from datetime import datetime
+from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
+
 from hiris.app.mind import cadence
 from hiris.app.mind.store import ObservationsStore
+from tests._casa_sintetica import synthetic_inputs
 
 GIORNO = 86400.0
 ORA = 1_000_000.0
 
+#: Il comando di ogni sonda: `HAClient.recorded_changes` manda una raffica di
+#: `history/history_during_period`, una per finestra (`proxy/ha_client.py`).
+_HISTORY = "history/history_during_period"
+
+#: Quanti cambi registra una finestra che la memoria copre ancora: quanti
+#: siano non conta, conta che non siano zero.
+_CHANGES = 42
+
+#: Il rifiuto di Home Assistant per un gestore che solleva:
+#: `websocket_api/connection.py::ActiveConnection.async_handle_exception`
+#: (tag `2026.9.4`, letto il 03/10/2026).
+_UNKNOWN_ERROR = {"code": "unknown_error", "message": "Unknown error"}
+
+
+def _history_answer(memory_s, holes=(), *, now=lambda: ORA):
+    """`history/history_during_period` come lo manda Home Assistant, calcolato
+    da una memoria di durata NOTA.
+
+    Non porge conteggi scritti a mano: risponde col messaggio grezzo, e il
+    conteggio lo fa il client vero (`HAClient.recorded_changes`). Cosi' la
+    prova esercita l'algoritmo della misura -- e la lettura della risposta --
+    invece di ricevere il risultato gia' fatto. Fino al 03/10/2026 era
+    `_Casa`, che imitava `recorded_changes` e rendeva i conteggi.
+
+    La forma, letta sul tag `2026.9.4` il 03/10/2026 (la richiesta del client
+    porta `minimal_response`, `no_attributes` e il formato compresso):
+    `history/websocket_api.py::ws_get_history_during_period` risponde `{}`
+    quando non ci sono stati prima della fine della finestra
+    (`has_states_before`); altrimenti `recorder/history/__init__.py::
+    _sorted_states_to_dict` da' a ogni entita' chiesta la sua lista, con lo
+    stato all'INIZIO della finestra in testa -- `lu` e' l'istante d'inizio,
+    perche' la riga di partenza ha `last_updated_ts` 0 e
+    `models/state.py::row_to_compressed_state` ripiega su `start_time_ts` --
+    e poi i cambi come `{"s": stato, "lu": istante}`, senza i ripetuti.
+
+    Una profondita' oltre `memory_s` e' «niente prima della fine» (`{}`; la
+    sonda e' larga dieci minuti, `cadence.PROBE_SECONDS`, contro gradini di
+    giorni); dentro un buco (`holes`, tratti di profondita' spenti) c'e' solo
+    lo stato d'inizio, che il client non conta. `now` e' l'istante da cui si
+    misurano le profondita': `ORA` qui, l'orologio vero per chi misura senza
+    passare `now=` (`tests/test_mind_reconsideration_wiring.py`).
+
+    Mutazioni ESEGUITE (03/10/2026, Tappa 2, Task 12) su questa casa: in
+    `cadence._deepest_remembered` l'uscita alla prima sonda vuota -- rossa su
+    `test_un_buco_nella_memoria_non_accorcia_la_finestra` (`assert 118800.0
+    == (7 * 86400.0)`: il buco, fatto dello stato d'inizio che il client vero
+    non conta, e' letto come il confine); la seconda raffica che divide
+    `(0, hi)` invece di `(lo, hi)` -- rossa su
+    `test_la_seconda_raffica_cerca_dentro_il_tratto_trovato_dalla_prima`."""
+    def answer(extra):
+        start = datetime.fromisoformat(extra["start_time"]).timestamp()
+        end = datetime.fromisoformat(extra["end_time"]).timestamp()
+        depth = now() - start
+        if depth > memory_s:
+            return {}
+        rows = [{"s": "off", "lu": start}]
+        if not any(low <= depth <= high for low, high in holes):
+            step = (end - start) / (_CHANGES + 1)
+            rows += [{"s": "on" if k % 2 == 0 else "off", "lu": start + step * (k + 1)}
+                     for k in range(_CHANGES)]
+        return {entity_id: [dict(row) for row in rows]
+                for entity_id in extra["entity_ids"]}
+    return answer
+
+
+def _house(memory_s, *, holes=(), **faults) -> CasaFinta:
+    """Il client vero (`scripts/casa_finta.py`) su una casa che ricorda
+    `memory_s` secondi; `faults` sono `silence=`/`refuse=` della casa finta."""
+    return CasaFinta(synthetic_inputs(),
+                     answers={_HISTORY: _history_answer(memory_s, holes)}, **faults)
+
+
+def _bursts(house: CasaFinta) -> list[list[float]]:
+    """Le raffiche, ognuna con le profondita' delle sue sonde: una connessione
+    WebSocket per raffica (`house.connections`), i suoi comandi in
+    `house.calls`, nell'ordine."""
+    calls = iter(house.calls)
+    bursts = []
+    for kind, commands in house.connections:
+        if kind != "ws":
+            continue
+        asked = [next(calls) for _ in commands]
+        bursts.append([ORA - datetime.fromisoformat(extra["start_time"]).timestamp()
+                       for command, extra in asked if command == _HISTORY])
+    return bursts
+
 
 class _Casa:
-    """Una casa finta con una memoria di durata NOTA.
+    """Una casa finta che imita `recorded_changes`, rimasta per UNA prova
+    sola (`test_una_sola_sonda_caduta_non_diventa_il_confine`): una sonda
+    che cade dentro una raffica che per il resto risponde.
 
-    Non porge risposte scritte a mano: risponde come risponderebbe Home
-    Assistant, cioe' «c'e' qualcosa registrato qui?» calcolato dalla memoria
-    che ha davvero. Cosi' la prova esercita l'algoritmo della misura invece di
-    ricevere il risultato gia' fatto -- e un algoritmo sbagliato sbaglia.
+    `scripts/casa_finta.py` non lo sa dire: `silence=` e `refuse=` valgono per
+    il COMANDO (`history/history_during_period`), cioe' per tutte le sonde
+    insieme, non per quella a una profondita' data. Esce quando la casa finta
+    sapra' tacere o rifiutare secondo l'`extra` (Tappa 2, Task 12).
     """
 
-    def __init__(self, memoria_s, *, buchi=(), muta=False, sonde_mute=()):
+    def __init__(self, memoria_s, *, sonde_mute=()):
         self.memoria_s = memoria_s
-        self.buchi = buchi          # tratti (da_profondita', a_profondita') spenti
-        self.muta = muta            # Home Assistant non risponde affatto
         self.sonde_mute = sonde_mute  # profondita' a cui la singola domanda cade
-        self.raffiche = []
 
     async def recorded_changes(self, entity_ids, windows):
-        self.raffiche.append([ORA - start for start, _ in windows])
-        if self.muta:
-            return [None] * len(windows)
         out = []
         for start, _fine in windows:
             profondita = ORA - start
             if any(abs(profondita - m) < 1.0 for m in self.sonde_mute):
                 out.append(None)
                 continue
-            spenta = any(a <= profondita <= b for a, b in self.buchi)
-            out.append(0 if (profondita > self.memoria_s or spenta) else 42)
+            out.append(0 if profondita > self.memoria_s else 42)
         return out
 
 
@@ -81,7 +170,7 @@ async def test_la_finestra_misurata_non_e_mai_piu_lunga_di_quella_vera():
     invece dell'ultima piena.
     """
     for veri in (7 * GIORNO, 10 * GIORNO, 30 * GIORNO, 12 * 3600.0):
-        casa = _Casa(veri)
+        casa = _house(veri)
         misurata = await cadence.measure_memory_window(casa, ["a"], now=ORA)
         assert misurata is not None
         assert misurata <= veri, f"memoria vera {veri}, misurata {misurata}"
@@ -97,7 +186,7 @@ async def test_e_non_e_nemmeno_inutilmente_corta():
     vivo: la scala grossa ferma il tratto fra 4 e 8, la seconda raffica lo
     divide in otto.
     """
-    casa = _Casa(7 * GIORNO)
+    casa = _house(7 * GIORNO)
     assert await cadence.measure_memory_window(casa, ["a"], now=ORA) == 7 * GIORNO
 
 
@@ -121,7 +210,7 @@ async def test_un_buco_nella_memoria_non_accorcia_la_finestra():
 
     Mutazione che la uccide: uscire dal giro al primo conteggio zero.
     """
-    casa = _Casa(7 * GIORNO, buchi=[(1.5 * GIORNO, 3.5 * GIORNO)])
+    casa = _house(7 * GIORNO, holes=[(1.5 * GIORNO, 3.5 * GIORNO)])
 
     misurata = await cadence.measure_memory_window(casa, ["a"], now=ORA)
 
@@ -133,19 +222,38 @@ async def test_una_casa_che_non_ricorda_niente_non_si_scrive_come_misurata():
     """`None`, e chi chiama lo sa. Un `0` sarebbe una cadenza di zero secondi:
     l'osservatore rileggerebbe tutta la casa a ogni giro del lavoro periodico.
     """
-    assert await cadence.measure_memory_window(_Casa(0.0), ["a"], now=ORA) is None
+    assert await cadence.measure_memory_window(_house(0.0), ["a"], now=ORA) is None
 
 
 @pytest.mark.asyncio
-async def test_una_sonda_muta_non_diventa_una_memoria_corta():
+@pytest.mark.parametrize("faults", [{"silence": {_HISTORY}},
+                                    {"refuse": {_HISTORY: _UNKNOWN_ERROR}}],
+                         ids=["silenzio", "rifiuto"])
+async def test_una_sonda_muta_non_diventa_una_memoria_corta(faults):
     """Se Home Assistant non risponde, non si e' misurato niente: la
     differenza fra «non ricorda» e «non ha risposto» e' la stessa che
     `recorded_changes` tiene con `None` invece di `0`, e va fino in fondo.
 
     Mutazione che la uccide: leggere `None` come «vuoto», cioe' come confine.
+
+    **Dal 03/10/2026 i due guasti sono quelli veri**, e arrivano in due forme
+    diverse: il silenzio dell'intera raffica e' la BUSTA del client (`{"errore":
+    ...}`, D3), il rifiuto di ogni sonda e' una scala di `None`. La finta di
+    prima rendeva `[None, ...]` anche per il silenzio -- una forma che il
+    client vero non produce -- e il ramo della busta in `measure_memory_window`
+    non lo provava nessuno.
+
+    Mutazione ESEGUITA (03/10/2026, Tappa 2, Task 12): in `cadence.py` tolto
+    `isinstance(counts, dict) or` dalla prima guardia -- rossa sul silenzio
+    (`ValueError: zip() argument 2 is shorter than argument 1` in
+    `_deepest_remembered`: la busta letta come una scala), verde sul rifiuto.
+    La stessa mutazione sulla prova di prima, con `_Casa(muta=True)`: 18
+    verdi su 18.
     """
-    assert await cadence.measure_memory_window(_Casa(7 * GIORNO, muta=True),
-                                               ["a"], now=ORA) is None
+    casa = _house(7 * GIORNO, **faults)
+
+    assert await cadence.measure_memory_window(casa, ["a"], now=ORA) is None
+    assert len(_bursts(casa)) == 1
 
 
 @pytest.mark.asyncio
@@ -178,13 +286,13 @@ async def test_una_memoria_lunghissima_torna_un_limite_inferiore_non_un_niente()
     dentro la memoria vera. Tornare `None` qui fermerebbe la riconsiderazione
     proprio sulla casa che ricorda di piu'.
     """
-    casa = _Casa(10 * 365 * GIORNO)
+    casa = _house(10 * 365 * GIORNO)
 
     misurata = await cadence.measure_memory_window(casa, ["a"], now=ORA)
 
     assert misurata is not None
     assert misurata >= 256 * GIORNO
-    assert len(casa.raffiche) == 1     # nessun tratto da dividere: niente seconda raffica
+    assert len(_bursts(casa)) == 1     # nessun tratto da dividere: niente seconda raffica
 
 
 @pytest.mark.asyncio
@@ -195,12 +303,12 @@ async def test_la_seconda_raffica_cerca_dentro_il_tratto_trovato_dalla_prima():
 
     Mutazione che la uccide: dividere `(0, hi)` invece di `(lo, hi)`.
     """
-    casa = _Casa(7 * GIORNO)
+    casa = _house(7 * GIORNO)
 
     await cadence.measure_memory_window(casa, ["a"], now=ORA)
 
-    assert len(casa.raffiche) == 2
-    fine = casa.raffiche[1]
+    assert len(_bursts(casa)) == 2
+    fine = _bursts(casa)[1]
     assert all(4 * GIORNO < p < 8 * GIORNO for p in fine), fine
 
 
@@ -208,11 +316,11 @@ async def test_la_seconda_raffica_cerca_dentro_il_tratto_trovato_dalla_prima():
 async def test_le_sonde_non_scendono_nel_futuro():
     """Ogni finestra parte indietro nel tempo: una sonda calata in avanti
     tornerebbe sempre vuota e falserebbe il confine."""
-    casa = _Casa(7 * GIORNO)
+    casa = _house(7 * GIORNO)
 
     await cadence.measure_memory_window(casa, ["a"], now=ORA)
 
-    assert all(p > 0 for raffica in casa.raffiche for p in raffica)
+    assert all(p > 0 for raffica in _bursts(casa) for p in raffica)
 
 
 # -- la regola ---------------------------------------------------------

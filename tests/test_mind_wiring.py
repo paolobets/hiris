@@ -15,10 +15,16 @@ avrebbe lasciato nascere (task-5-correzioni.md):
 import asyncio
 import logging
 import re
+import sys
 from datetime import UTC
+from pathlib import Path
 from unittest import mock
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app import server
 from hiris.app.home_space.reader import HomeSpace
@@ -28,6 +34,7 @@ from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.server import watch_system_conditions
 from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
+from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 
 # --------------------------------------------------------------------------
@@ -152,28 +159,48 @@ class _OsservatoreFinto:
         return len(problems) + len(integrations) + len(log_entries)
 
 
-class _ClienteFinto:
-    """Un `HAClient` finto: `problemi_esito` e' cio' che torna `problems()`,
-    `registri_esito` la coppia `(registri, non_disponibili)` di
-    `read_registries()`, `log_outcome` cio' che torna `system_log()` (Task 2)
-    -- di default un registro vuoto, cosi' i chiamanti esistenti che non
-    hanno nulla da dire sul registro di errori non devono aggiornarsi.
-    `log_outcome` e' in inglese (i due fratelli qui sopra sono debito, non
-    un modello da imitare -- identificatori nuovi in inglese)."""
+#: I comandi delle tre letture di sistema, come il client vero li manda:
+#: `problems()` -> `repairs/list_issues`, `read_registries()` -> la tabella
+#: `HAClient._REGISTRIES` (le integrazioni sono `config_entries/get`), e
+#: `system_log()` -> `system_log/list` (letti in `proxy/ha_client.py`).
+_PROBLEMS = "repairs/list_issues"
+_INTEGRATIONS = "config_entries/get"
+_LOG = "system_log/list"
 
-    def __init__(self, problemi_esito, registri_esito, log_outcome=None):
-        self._problemi_esito = problemi_esito
-        self._registri_esito = registri_esito
-        self._log_outcome = log_outcome if log_outcome is not None else {"voci": []}
+#: Il rifiuto che Home Assistant manda quando il gestore di un comando
+#: solleva un'eccezione qualunque: `websocket_api/connection.py`,
+#: `ActiveConnection.async_handle_exception` -- `ERR_UNKNOWN_ERROR`
+#: («unknown_error») e il messaggio «Unknown error» (letto sul tag `2026.9.4`
+#: il 03/10/2026).
+_UNKNOWN_ERROR = {"code": "unknown_error", "message": "Unknown error"}
 
-    async def problems(self):
-        return self._problemi_esito
+#: I due modi in cui una lettura non riesce davvero: Home Assistant tace, o
+#: risponde con un rifiuto. Prima del 03/10/2026 la finta tornava a mano
+#: `{"errore": "Home Assistant non ha risposto"}`, cioe' solo il primo.
+_FAILURES = {"silenzio": lambda command: {"silence": {command}},
+             "rifiuto": lambda command: {"refuse": {command: _UNKNOWN_ERROR}}}
 
-    async def read_registries(self):
-        return self._registri_esito
 
-    async def system_log(self):
-        return self._log_outcome
+def _system_house(problems, integrations, log_entries=(), **faults) -> CasaFinta:
+    """La casa sintetica col client vero sopra (`scripts/casa_finta.py`), con
+    i problemi, le integrazioni e le voci di log dati qui.
+
+    Fino al 03/10/2026 era `_ClienteFinto`, che imitava a mano `problems()`,
+    `read_registries()` e `system_log()` e ne restituiva gli esiti gia'
+    tradotti: la traduzione dal messaggio grezzo (e il guasto come busta) non
+    era provata. Qui gli ingressi sono cio' che Home Assistant manda, e la
+    busta del guasto la costruisce il client vero (`faults`: `silence=` o
+    `refuse=` della casa finta)."""
+    inputs = synthetic_inputs()
+    inputs["problems"] = {"problemi": list(problems)}
+    inputs["registries"]["integrazioni"] = list(integrations)
+    inputs["system_log"] = {"voci": list(log_entries)}
+    return CasaFinta(inputs, **faults)
+
+
+def _asked(house: CasaFinta) -> list[str]:
+    """I comandi che il giro ha chiesto, nell'ordine."""
+    return [command for command, _extra in house.calls]
 
 
 def test_the_fake_observer_matches_watcher_watch_system():
@@ -192,36 +219,23 @@ def test_the_fake_observer_matches_watcher_watch_system():
                         nome="Watcher.watch_system")
 
 
-def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
-    """Guardia contro il buco misurato dal vivo (review lotto 5,
-    `home_space/topology.py`): un finto duck-typed puo' rinominare i suoi
-    parametri o cambiarne il conteggio senza che nessuno se ne accorga,
-    perche' Python non controlla un'interfaccia -- solo che il nome
-    esista. Qui `read_registries` non ha parametri oltre `self`, quindi il
-    rischio e' basso, ma la guardia costa una riga e vale per ogni
-    modifica futura a `HAClient.read_registries`."""
-    from hiris.app.proxy.ha_client import HAClient
-    assert_stessa_firma(HAClient.read_registries, _ClienteFinto.read_registries,
-                        nome="HAClient.read_registries")
-
-
-def test_the_fake_client_matches_haclient_system_log():
-    """Stessa guardia, per la terza lettura (Task 2, «le tracce e il
-    log»): se `HAClient.system_log()` acquisisse un parametro, questa finta
-    duck-typed lo ignorerebbe in silenzio."""
-    from hiris.app.proxy.ha_client import HAClient
-    assert_stessa_firma(HAClient.system_log, _ClienteFinto.system_log,
-                        nome="HAClient.system_log")
+# Qui stavano due guardie di firma (`HAClient.read_registries` e
+# `HAClient.system_log` contro `_ClienteFinto`): la finta e' uscita il
+# 03/10/2026, e con lei le guardie -- il client delle prove E' `HAClient`.
 
 
 def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono():
+    """Mutazione ESEGUITA (03/10/2026, Tappa 2, Task 12): in
+    `HAClient.problems()` il filtro delle ignorate rovesciato (`and
+    p.get("ignored")`) -- rossa (`assert 1 == 2`: il problema non arriva
+    all'osservatore). La finta di prima restituiva l'esito gia' tradotto, e
+    quella traduzione non la guardava."""
     osservatore = _OsservatoreFinto()
     app = {"watcher": osservatore}
-    cliente = _ClienteFinto(
-        {"problemi": [{"domain": "hue", "issue_id": "x"}]},
-        ({"integrazioni": [{"entry_id": "y", "state": "not_loaded"}]}, []))
+    house = _system_house([{"domain": "hue", "issue_id": "x"}],
+                          [{"entry_id": "y", "state": "not_loaded"}])
 
-    esito = asyncio.run(watch_system_conditions(app, cliente))
+    esito = asyncio.run(watch_system_conditions(app, house))
 
     assert esito == 2
     assert len(osservatore.chiamate) == 1
@@ -229,61 +243,73 @@ def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono(
     assert osservatore.chiamate[0]["integrazioni"] == [{"entry_id": "y", "state": "not_loaded"}]
 
 
-def test_un_errore_di_problemi_salta_il_giro_per_intero():
+@pytest.mark.parametrize("failure", sorted(_FAILURES))
+def test_un_errore_di_problemi_salta_il_giro_per_intero(failure):
     """La prova per mutazione (task-5-correzioni.md, punto A.1): con
-    `problems()` che torna `{"errore": ...}`, `watch_system` non viene
-    chiamato. La mutazione (passare `[]` invece di saltare il giro) e' stata
-    provata a mano durante l'implementazione e fa arrossire questa prova --
-    non e' un'affermazione a vuoto."""
+    `problems()` che non riesce, `watch_system` non viene chiamato. La
+    mutazione (passare `[]` invece di saltare il giro) e' stata provata a
+    mano durante l'implementazione e fa arrossire questa prova -- non e'
+    un'affermazione a vuoto.
+
+    Dal 03/10/2026 il guasto e' quello vero, nei due modi in cui arriva (il
+    silenzio e il rifiuto di Home Assistant), e la busta la fa il client. E il
+    giro si salta PRIMA delle altre due letture: `house.calls` lo dice."""
     osservatore = _OsservatoreFinto()
     app = {"watcher": osservatore}
-    cliente = _ClienteFinto(
-        {"errore": "Home Assistant non ha risposto"},
-        ({"integrazioni": []}, []))
+    house = _system_house([], [], **_FAILURES[failure](_PROBLEMS))
 
-    esito = asyncio.run(watch_system_conditions(app, cliente))
+    esito = asyncio.run(watch_system_conditions(app, house))
 
     assert esito is None
     assert osservatore.chiamate == []
+    assert _asked(house) == [_PROBLEMS]
 
 
-def test_le_integrazioni_non_disponibili_saltano_il_giro_per_intero():
+@pytest.mark.parametrize("failure", sorted(_FAILURES))
+def test_le_integrazioni_non_disponibili_saltano_il_giro_per_intero(failure):
     """Identico per `read_registries`: se `"integrazioni"` e' in
     `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
     tutto bene -- passarla cosi' com'e' chiuderebbe ogni integrazione gia'
-    rotta come se si fosse appena risolta."""
+    rotta come se si fosse appena risolta.
+
+    Mutazione ESEGUITA (03/10/2026, Tappa 2, Task 12): in
+    `HAClient.read_registries` tolto `unavailable.append(name)` -- rossa nei
+    due casi (`assert 0 is None`: il giro gira sulle integrazioni vuote)."""
     osservatore = _OsservatoreFinto()
     app = {"watcher": osservatore}
-    cliente = _ClienteFinto(
-        {"problemi": []},
-        ({"integrazioni": []}, ["integrazioni"]))
+    house = _system_house([], [{"entry_id": "y", "state": "not_loaded"}],
+                          **_FAILURES[failure](_INTEGRATIONS))
 
-    esito = asyncio.run(watch_system_conditions(app, cliente))
+    esito = asyncio.run(watch_system_conditions(app, house))
 
     assert esito is None
     assert osservatore.chiamate == []
+    assert _LOG not in _asked(house)
 
 
-def test_a_broken_log_read_skips_the_round_entirely():
+@pytest.mark.parametrize("failure", sorted(_FAILURES))
+def test_a_broken_log_read_skips_the_round_entirely(failure):
     """Stessa disciplina di `test_un_errore_di_problemi_salta_il_giro_per_intero`,
     estesa alla terza lettura (Task 2, «le tracce e il log»): se
-    `system_log()` torna `{"errore": ...}`, `watch_system` non viene
-    chiamato -- un registro non letto trattato come vuoto chiuderebbe ogni
-    voce di log gia' aperta al secondo giro di isteresi.
+    `system_log()` non riesce, `watch_system` non viene chiamato -- un
+    registro non letto trattato come vuoto chiuderebbe ogni voce di log gia'
+    aperta al secondo giro di isteresi.
 
     Mutazione: togliere il controllo `if "errore" in log_report` da
     `watch_system_conditions` -- `log_entries` diventa `[]` (nessuna voce
     nel report d'errore) e il giro NON si salta piu': il test torna rosso
     su `assert esito is None` (diventa `0`, il conteggio di
     `_OsservatoreFinto.watch_system` su tre liste vuote).
+
+    Mutazione ESEGUITA (03/10/2026, Tappa 2, Task 12), lo stesso difetto un
+    piano piu' sotto: in `HAClient.system_log()` il guasto reso come
+    `{"voci": []}` -- rossa nei due casi (`assert 0 is None`).
     """
     osservatore = _OsservatoreFinto()
     app = {"watcher": osservatore}
-    cliente = _ClienteFinto(
-        {"problemi": []}, ({"integrazioni": []}, []),
-        {"errore": "Home Assistant non ha risposto"})
+    house = _system_house([], [], **_FAILURES[failure](_LOG))
 
-    esito = asyncio.run(watch_system_conditions(app, cliente))
+    esito = asyncio.run(watch_system_conditions(app, house))
 
     assert esito is None
     assert osservatore.chiamate == []
@@ -291,12 +317,14 @@ def test_a_broken_log_read_skips_the_round_entirely():
 
 def test_senza_osservatore_non_scrive_niente():
     """Un `app` senza `"watcher"` (avvio a meta', o un test che non lo
-    costruisce): il giro tace invece di sollevare."""
-    cliente = _ClienteFinto({"problemi": []}, ({"integrazioni": []}, []))
+    costruisce): il giro tace invece di sollevare -- e non chiede niente a
+    Home Assistant."""
+    house = _system_house([], [])
 
-    esito = asyncio.run(watch_system_conditions({}, cliente))
+    esito = asyncio.run(watch_system_conditions({}, house))
 
     assert esito is None
+    assert house.calls == []
 
 
 # --------------------------------------------------------------------------
@@ -397,9 +425,9 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
     senza oggetti' (un giorno senza oggetti e' un esito legittimo, vedi il
     mandato). Si popola il grezzo di QUATTRO giorni, OGGI compreso, e si
     verifica che solo i due piu' recenti FRA I FINITI vengano scritti come
-    oggetti. Qui `ha_client=_ClienteStatistiche()`: senza `mappa`, ogni `legami`
-    torna vuoto (nessun legame, non un guasto -- vedi il suo docstring),
-    quindi nessun soggetto fallisce e la riparazione gira per intero come se
+    oggetti. Qui `ha_client=_repair_house()`, il client vero sulla casa
+    sintetica (vedi il suo docstring): senza anagrafe non gli si chiede
+    niente, quindi nessun soggetto fallisce e la riparazione gira per intero come se
     fosse incondizionata. Deliberatamente non e' `ha_client=None`: con
     `None`, `build_companions` chiamerebbe `None.related(...)`,
     prenderebbe `AttributeError`, la CONTERREBBE e conterebbe ogni soggetto
@@ -434,7 +462,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
              "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
-            ha_client=_ClienteStatistiche(),
+            ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz)))
 
         giorni_scritti = {o["giorno"] for o in _cronaca_intera(archivio)}
@@ -458,7 +486,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
              "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
-            ha_client=_ClienteStatistiche(),
+            ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz)))
         dopo = _cronaca_intera(archivio)
 
@@ -550,24 +578,28 @@ def _cronaca_intera(archivio):
             for r in archivio.reports(limit=50) for v in (r.get("cronaca") or [])]
 
 
-class _ClienteStatistiche:
-    """La finta di `HAClient` che la riparazione d'avvio usa adesso.
+def _repair_house() -> CasaFinta:
+    """Il client che la riparazione d'avvio riceve: la casa sintetica col
+    client vero sopra (`scripts/casa_finta.py`).
 
-    Era `_ClienteLegami`, ed e' uscita coi comprimari (15/09/2026): la
-    riparazione non chiede piu' `legami` a nessuno. Le resta `hourly_
-    statistics`, che `_report_ingredients` chiama solo quando c'e' un'anagrafe
-    -- e in queste prove `home_space_store` e' `None`, quindi non ci arriva
-    mai. La finta c'e' lo stesso perche' `None` non e' un client: passarlo
-    nasconderebbe un `AttributeError` dietro un `except`.
+    Era `_ClienteStatistiche`, una finta che imitava `hourly_statistics` e
+    rispondeva `{"serie": {}}` a qualunque domanda (prima ancora
+    `_ClienteLegami`, uscita coi comprimari il 15/09/2026). `_report_
+    ingredients` chiede le statistiche solo quando c'e' un'anagrafe -- e in
+    queste prove `home_space_store` e' `None`, quindi non ci arriva mai.
+    Adesso quella promessa e' sorvegliata invece di essere scritta: gli
+    ingressi sintetici NON servono `recorder/statistics_during_period`, e una
+    domanda di statistiche solleverebbe `UnservedCommand` (che non e' un
+    `Exception`: nessun `except` del giro la inghiotte). `None` resta
+    escluso per la stessa ragione di prima: non e' un client, e un
+    `AttributeError` finirebbe dietro un `except`.
+
+    Mutazione ESEGUITA (03/10/2026, Tappa 2, Task 12): in `server.py::
+    _report_ingredients` una richiesta di `hourly_statistics` PRIMA della
+    guardia sull'anagrafe -- rossa (`UnservedCommand: la casa finta non serve
+    recorder/statistics_during_period`); con la finta di prima era verde.
     """
-
-    async def hourly_statistics(self, identifiers: list[str],
-                                from_iso: str, to_iso: str) -> dict:
-        # La firma e' quella VERA, non `*args`: il cancello dei contratti
-        # (`test_ha_client_contract.py`) non accetta una finta che accetti
-        # qualunque cosa -- una finta piu' permissiva del vero nasconde
-        # proprio i difetti che sta li' a prendere.
-        return {"serie": {}}
+    return CasaFinta(synthetic_inputs())
 
 
 def _sapere(tmp_path):
@@ -635,10 +667,15 @@ class _FakeAutomationWatcher:
         return self._result
 
 
-class _FakeTracesClient:
-    """Un `HAClient` finto per `automation_traces()`: `traces_by_automation_id`
-    mappa **l'id di CONFIGURAZIONE** -- non l'`entity_id` -- al dizionario che
-    il metodo vero deve tornare (`{"tracce": [...]}` o `{"errore": ...}`).
+#: Il comando che `HAClient.automation_traces()` manda (`proxy/ha_client.py`):
+#: `trace/list` con `{"domain": "automation", "item_id": <id>}`.
+_TRACE_LIST = "trace/list"
+
+
+def _traces_house(traces_by_automation_id) -> CasaFinta:
+    """Il client vero di Home Assistant (`scripts/casa_finta.py`) con le
+    tracce di `traces_by_automation_id`: **l'id di CONFIGURAZIONE** -- non
+    l'`entity_id` -- mappato alle righe che `trace/list` manda.
 
     **La chiave e' l'id di configurazione dal Task 6**, e non e' un dettaglio
     della finta: e' la proprieta' che questi test sorvegliano. Home Assistant
@@ -646,15 +683,51 @@ class _FakeTracesClient:
     verificata sui tag `2024.7.0` e `2026.9.0`, nel docstring di
     `HAClient.automation_traces()`), quindi un collettore che passasse
     l'`entity_id` -- come faceva la prima stesura -- non troverebbe nessuna
-    chiave qui, esattamente come non ne trova nessuna sulla casa vera.
+    traccia qui, esattamente come non ne trova nessuna sulla casa vera.
 
-    Un id non presente nella mappa torna un guasto, non una lista vuota -- una
-    finta che rispondesse `{"tracce": []}` di default nasconderebbe un
-    errore di battitura nel test che la usa, e (peggio) farebbe passare verde
-    proprio il difetto che questa fetta corregge. `calls` (giro di
-    correzioni, rilievo 6, secondo punto) ricorda ogni id chiesto: senza,
-    «`automation_traces` non deve mai essere chiamata» era una promessa nel
-    docstring del test senza un assert che la sorvegliasse."""
+    **Un id che non c'e' rende una lista VUOTA**, perche' e' cio' che Home
+    Assistant fa: `trace/websocket_api.py::websocket_trace_list` ricompone
+    `key = f"{domain}.{item_id}"` e `trace/util.py::_get_debug_traces` torna
+    `[]` quando `hass.data[DATA_TRACE].get(key)` non trova niente (letto sul
+    tag `2026.9.4` il 03/10/2026). Fino al 03/10/2026 la finta
+    (`_FakeTracesClient`) rendeva un guasto, «per non nascondere un errore di
+    battitura»: era un caso che Home Assistant non produce. L'errore di
+    battitura lo prende adesso `_traces_asked`, che dice quale id e' stato
+    chiesto.
+
+    Le righe passano dal client vero: la busta `{"tracce": ...}` la fa lui
+    (`HAClient._trace_list`), non la prova.
+
+    Mutazione ESEGUITA (03/10/2026, Tappa 2, Task 12), un difetto che la
+    finta di prima non poteva vedere perche' sostituiva il client: in
+    `HAClient.automation_traces()` l'`item_id` mandato come
+    `f"automation.{automation_id}"` -- rosse sei prove (`assert 0 == 3`,
+    `['automation.1771346155970'] == ['1771346155970']`, ...)."""
+    traces = dict(traces_by_automation_id)
+
+    def _trace_list(extra):
+        assert extra.get("domain") == "automation", extra
+        return list(traces.get(extra.get("item_id"), []))
+
+    return CasaFinta(synthetic_inputs(), answers={_TRACE_LIST: _trace_list})
+
+
+def _traces_asked(house: CasaFinta) -> list[str]:
+    """Gli id di configurazione chiesti a `trace/list`, nell'ordine."""
+    return [extra["item_id"] for command, extra in house.calls if command == _TRACE_LIST]
+
+
+class _FakeTracesClient:
+    """Un `HAClient` finto per `automation_traces()`, rimasto per UNA prova
+    sola (`test_a_failed_read_for_one_automation_does_not_stop_the_others`):
+    una lettura che fallisce per un'automazione e riesce per l'altra.
+
+    Sulla casa vera e' un caso ordinario -- ogni `automation_traces()` e' una
+    connessione sua, e una puo' cadere mentre l'altra no -- ma
+    `scripts/casa_finta.py` non lo sa dire: `silence=` e `refuse=` valgono
+    per il COMANDO (`trace/list`) per tutta la vita della casa, non per
+    l'`item_id` di una chiamata. Esce quando la casa finta sapra' rifiutare
+    (o tacere) secondo l'`extra` (Tappa 2, Task 12)."""
 
     def __init__(self, traces_by_automation_id):
         self._traces = dict(traces_by_automation_id)
@@ -724,22 +797,23 @@ def test_fake_traces_client_matches_haclient_automation_traces():
 
 
 def test_without_a_watcher_the_traces_round_returns_none():
-    result = asyncio.run(server.watch_automation_outcomes({}, _FakeTracesClient({})))
+    result = asyncio.run(server.watch_automation_outcomes({}, _traces_house({})))
     assert result is None
 
 
 def test_no_marked_automation_reads_no_trace():
     """`marked_automations()` vuota: il giro non deve chiamare
     `automation_traces` nemmeno una volta -- non c'e' niente da rileggere.
-    (Giro di correzioni, rilievo 6, secondo punto: `_FakeTracesClient` ora
-    registra le sue chiamate, quindi questa promessa e' davvero
-    sorvegliata, non solo scritta nel docstring.)"""
+    (Giro di correzioni, rilievo 6, secondo punto: le chiamate si
+    registrano -- oggi `house.calls` della casa finta, letta da
+    `_traces_asked` -- quindi questa promessa e' davvero sorvegliata, non
+    solo scritta nel docstring.)"""
     watcher = _FakeAutomationWatcher([])
-    client = _FakeTracesClient({})
+    client = _traces_house({})
     result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
     assert result == 0
     assert watcher.calls == []
-    assert client.calls == []
+    assert _traces_asked(client) == []
 
 
 def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
@@ -757,12 +831,12 @@ def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
     (`("automation.luci_sera", "error")` al posto di
     `("automation.luci_sera", "finished")`)."""
     watcher = _FakeAutomationWatcher(["automation.luci_sera"])
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [
+    client = _traces_house({
+        "1771346155970": [
             {"run_id": "1", "script_execution": "finished"},
             {"run_id": "2", "script_execution": "failed_conditions"},
             {"run_id": "3", "script_execution": "error"},
-        ]},
+        ],
     })
     app = {"watcher": watcher,
            "entity_cache": _FakeMirror({"automation.luci_sera": "1771346155970"})}
@@ -794,10 +868,10 @@ def test_a_not_triggered_trace_is_not_forwarded():
     l'`outcome` come il `Watcher` vero, riceverebbe comunque `None` e lo
     conterebbe come inoltrato)."""
     watcher = _FakeAutomationWatcher(["automation.x"])
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [
+    client = _traces_house({
+        "1771346155970": [
             {"run_id": "1", "script_execution": None},
-        ]},
+        ],
     })
     app = {"watcher": watcher,
            "entity_cache": _FakeMirror({"automation.x": "1771346155970"})}
@@ -823,11 +897,11 @@ def test_a_trace_older_than_process_boot_is_not_forwarded():
     `assert result == 0` (tornerebbe `1`: la traccia di sei anni fa
     aprirebbe comunque un episodio, come se fosse appena successa)."""
     watcher = _FakeAutomationWatcher(["automation.x"])
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [
+    client = _traces_house({
+        "1771346155970": [
             {"run_id": "1", "script_execution": "error",
              "timestamp": {"start": "2020-01-01T00:00:00+00:00"}},
-        ]},
+        ],
     })
     app = {"watcher": watcher, "automation_traces_boot_ts": 1787572800.0,
            "entity_cache": _FakeMirror({"automation.x": "1771346155970"})}
@@ -880,21 +954,21 @@ def test_traces_are_asked_for_by_configuration_id_not_by_entity_id():
 
     Mutazione (verificata eseguendola): `report = await
     ha_client.automation_traces(entity_id)` invece di `(automation_id)` -- il
-    test torna rosso su `assert client.calls == ["1771346155970"]`, che
+    test torna rosso su `assert _traces_asked(client) == ["1771346155970"]`, che
     riceve `["automation.luci_sera"]`; e anche su `assert result == 1`, che
     riceve `0`, perche' la finta non ha nessuna traccia sotto quella chiave
     (proprio come HA non ne ha).
     """
     watcher = _FakeAutomationWatcher(["automation.luci_sera"])
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    client = _traces_house({
+        "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
     app = {"watcher": watcher,
            "entity_cache": _FakeMirror({"automation.luci_sera": "1771346155970"})}
 
     result = asyncio.run(server.watch_automation_outcomes(app, client))
 
-    assert client.calls == ["1771346155970"]
+    assert _traces_asked(client) == ["1771346155970"]
     assert result == 1
     # Il `Watcher` continua a ragionare per `entity_id`: la traduzione serve
     # a Home Assistant, non all'osservatore, che deve poter ricollegare il
@@ -915,15 +989,16 @@ def test_an_unresolvable_automation_is_skipped_without_writing_anything():
     Mutazione (verificata eseguendola): ripiegare sull'`object_id` quando la
     risoluzione fallisce (`automation_id = automation_config_id(...) or
     entity_id.partition(".")[2]`) -- il test torna rosso su
-    `assert client.calls == ["1771346155971"]`, che riceve
-    `["scritta_a_mano", "1771346155971"]`: la finta risponderebbe con un
-    guasto inventato per quella chiave, cioe' esattamente il silenzio che
-    Home Assistant produrrebbe davvero.
+    `assert _traces_asked(client) == ["1771346155971"]`, che riceve
+    `["scritta_a_mano", "1771346155971"]`: Home Assistant risponderebbe con
+    una lista vuota per quella chiave (e la casa finta con lui), cioe' un
+    «non ha mai girato» detto di un'automazione che non si e' potuta
+    guardare.
     """
     watcher = _FakeAutomationWatcher(
         ["automation.scritta_a_mano", "automation.buona"])
-    client = _FakeTracesClient({
-        "1771346155971": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    client = _traces_house({
+        "1771346155971": [{"run_id": "1", "script_execution": "error"}],
     })
     app = {"watcher": watcher, "entity_cache": _FakeMirror({
         "automation.scritta_a_mano": None,
@@ -931,7 +1006,7 @@ def test_an_unresolvable_automation_is_skipped_without_writing_anything():
 
     result = asyncio.run(server.watch_automation_outcomes(app, client))
 
-    assert client.calls == ["1771346155971"]
+    assert _traces_asked(client) == ["1771346155971"]
     assert result == 1
     assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
 
@@ -954,7 +1029,7 @@ def test_an_unresolvable_automation_is_shouted_once_then_whispered(caplog):
     `["WARNING", "WARNING", "WARNING"]`.
     """
     watcher = _FakeAutomationWatcher(["automation.scritta_a_mano"])
-    client = _FakeTracesClient({})
+    client = _traces_house({})
     app = {"watcher": watcher,
            "entity_cache": _FakeMirror({"automation.scritta_a_mano": None})}
 
@@ -965,7 +1040,7 @@ def test_an_unresolvable_automation_is_shouted_once_then_whispered(caplog):
     levels = [r.levelname for r in caplog.records
               if "non si risolve dallo specchio" in r.getMessage()]
     assert levels == ["WARNING", "DEBUG", "DEBUG"]
-    assert client.calls == []
+    assert _traces_asked(client) == []
 
 
 def test_an_automation_that_starts_resolving_again_is_shouted_again(caplog):
@@ -982,8 +1057,8 @@ def test_an_automation_that_starts_resolving_again_is_shouted_again(caplog):
     `["WARNING", "DEBUG"]`.
     """
     watcher = _FakeAutomationWatcher(["automation.luci_sera"])
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    client = _traces_house({
+        "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
     blind = _FakeMirror({"automation.luci_sera": None})
     seeing = _FakeMirror({"automation.luci_sera": "1771346155970"})
@@ -1020,15 +1095,15 @@ def test_an_unresolvable_automation_does_not_touch_its_cursor():
     {})`.
     """
     watcher = _FakeAutomationWatcher(["automation.luci_sera"])
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    client = _traces_house({
+        "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
     app = {"watcher": watcher,
            "entity_cache": _FakeMirror({"automation.luci_sera": None})}
 
     blind_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert blind_round == 0
-    assert client.calls == []
+    assert _traces_asked(client) == []
     assert "automation.luci_sera" not in app.get("automation_trace_cursors", {})
 
     # Lo specchio arriva: la traccia gia' conservata da HA e' NUOVA per il
@@ -1036,7 +1111,7 @@ def test_an_unresolvable_automation_does_not_touch_its_cursor():
     app["entity_cache"] = _FakeMirror({"automation.luci_sera": "1771346155970"})
     seeing_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert seeing_round == 1
-    assert client.calls == ["1771346155970"]
+    assert _traces_asked(client) == ["1771346155970"]
 
 
 # --------------------------------------------------------------------------
@@ -1077,11 +1152,11 @@ def test_rereading_a_fixed_finished_then_error_window_stays_at_one_write():
     store = _CountingStore()
     watcher = Watcher(store, now=lambda: 1787572800.0)
     watcher.mark_automation("automation.rotta")
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [
+    client = _traces_house({
+        "1771346155970": [
             {"run_id": "1", "script_execution": "finished"},
             {"run_id": "2", "script_execution": "error"},
-        ]},
+        ],
     })
     app = {"watcher": watcher,
            "entity_cache": _FakeMirror({"automation.rotta": "1771346155970"})}
@@ -1112,11 +1187,11 @@ def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
     store = _CountingStore()
     watcher = Watcher(store, now=lambda: 1787572800.0)
     watcher.mark_automation("automation.guarita")
-    client = _FakeTracesClient({
-        "1771346155970": {"tracce": [
+    client = _traces_house({
+        "1771346155970": [
             {"run_id": "1", "script_execution": "error"},
             {"run_id": "2", "script_execution": "finished"},
-        ]},
+        ],
     })
     app = {"watcher": watcher,
            "entity_cache": _FakeMirror({"automation.guarita": "1771346155970"})}
@@ -1285,7 +1360,7 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
              "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
-            ha_client=_ClienteStatistiche(),
+            ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz)))
 
         for giorno in ("2026-08-22", "2026-08-23"):
@@ -1343,13 +1418,13 @@ def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio
                "backfill_quiet": {}}
 
         scritto = asyncio.run(server.backfill_one_report(
-            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+            app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-22", scritto
         assert archivio.report("2026-08-22") is not None
 
         # Il giro dopo prende il successivo, e salta quello gia' scritto.
         assert asyncio.run(server.backfill_one_report(
-            app, ha_client=_ClienteStatistiche(),
+            app, ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
         archivio.close()
@@ -1385,7 +1460,7 @@ def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
                "backfill_quiet": {}}
 
         assert asyncio.run(server.backfill_one_report(
-            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz))) is None
+            app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz))) is None
     finally:
         archivio.close()
 
@@ -1414,7 +1489,7 @@ def test_il_recupero_NON_va_oltre_il_grezzo(tmp_path):
                "backfill_quiet": {}}
 
         assert asyncio.run(server.backfill_one_report(
-            app, ha_client=_ClienteStatistiche(),
+            app, ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
         archivio.close()
@@ -1459,7 +1534,7 @@ def test_il_recupero_rifa_la_CRONACA_di_un_giorno_con_un_altra_impronta(tmp_path
                "backfill_quiet": {}}
         with caplog.at_level(logging.INFO, logger=server.logger.name):
             scritto = asyncio.run(server.backfill_one_report(
-                app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+                app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-23"
         rifatto = archivio.report("2026-08-23")
         assert rifatto["misure"]
@@ -1531,7 +1606,7 @@ def test_il_recupero_NON_rifa_il_giorno_a_cavallo_della_potatura_e_TIENE_gli_ere
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
         scritto = asyncio.run(server.backfill_one_report(
-            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+            app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
 
         assert scritto == "2026-08-24"
         assert archivio.report("2026-08-23") == scritti["2026-08-23"]
@@ -1588,7 +1663,7 @@ def test_su_una_casa_GIOVANE_il_primo_giorno_rifa_la_cronaca(tmp_path):
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
         giri = [asyncio.run(server.backfill_one_report(
-            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+            app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
             for _ in range(3)]
 
         assert giri == ["2026-09-10", "2026-09-11", None]
@@ -1633,7 +1708,7 @@ def test_una_cronaca_che_NON_si_rifa_NON_ferma_i_giorni_dopo(tmp_path, monkeypat
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
         scritto = asyncio.run(server.backfill_one_report(
-            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+            app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-24"
         assert archivio.report("2026-08-23")["giudizio"] == {"impronta": "vecchia"}
     finally:
@@ -1722,7 +1797,7 @@ def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_gio
             clock = start + after
             with caplog.at_level(logging.WARNING, logger=server.logger.name):
                 asyncio.run(server.backfill_one_report(
-                    app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+                    app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return sorted(re.search(r"cronaca di (\S+) non rifatta", r.getMessage()).group(1)
                           for r in caplog.records if "non rifatta" in r.getMessage())
 
@@ -1789,7 +1864,7 @@ def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplo
             clock = start + after
             with caplog.at_level(logging.WARNING, logger=server.logger.name):
                 asyncio.run(server.backfill_one_report(
-                    app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+                    app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return [r for r in caplog.records if "non rifatta" in r.getMessage()]
 
         assert len(_warnings(timedelta(0))) == 1
@@ -1855,7 +1930,7 @@ def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
             clock = start + after
             with caplog.at_level(logging.WARNING, logger=server.logger.name):
                 done = asyncio.run(server.backfill_one_report(
-                    app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+                    app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return done, [r.getMessage() for r in caplog.records
                           if "non recuperato" in r.getMessage()
                           or "non rifatta" in r.getMessage()]
@@ -1918,7 +1993,7 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             asyncio.run(server.backfill_one_report(
-                app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+                app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
         assert not [w for w in caught if "Changing state" in str(w.message)], \
             [str(w.message) for w in caught]
         assert app["backfill_quiet"] is quiet and "2026-08-23" in quiet

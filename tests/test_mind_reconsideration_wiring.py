@@ -8,12 +8,21 @@ stanno in `test_mind_impronta.py`, quelle del giro in `test_mind_observer.py`.
 """
 import json
 import os
+import sys
+import time
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app.mind.scope import OBSERVER
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.server import reconsideration_round
+from tests._casa_sintetica import synthetic_inputs
+from tests.test_mind_cadence import _HISTORY, _UNKNOWN_ERROR, _history_answer
 
 GIORNO = 86400.0
 
@@ -51,18 +60,36 @@ class _Modello:
         return self.risposta
 
 
-class _Ponte:
-    """Il client di Home Assistant, dal lato della misura della memoria."""
+def _house(memory_s=7 * GIORNO, **faults) -> CasaFinta:
+    """Il client di Home Assistant, dal lato della misura della memoria: il
+    client VERO sulla casa sintetica (`scripts/casa_finta.py`), che a
+    `history/history_during_period` risponde col messaggio grezzo di una casa
+    che ricorda `memory_s` secondi, contati dall'orologio vero (il giro misura
+    senza `now=`). La risposta e' quella di `tests/test_mind_cadence.py::
+    _history_answer`, dove sta scritto dove se ne e' letta la forma.
 
-    def __init__(self, memoria_s=7 * GIORNO):
-        self.memoria_s = memoria_s
-        self.sonde = 0
+    Fino al 03/10/2026 era `_Ponte`, che imitava `recorded_changes` e rendeva
+    i conteggi gia' fatti; `faults` sono `silence=`/`refuse=` della casa
+    finta.
 
-    async def recorded_changes(self, entity_ids, windows):
-        self.sonde += len(windows)
-        import time
-        adesso = time.time()
-        return [0 if (adesso - inizio) > self.memoria_s else 9 for inizio, _ in windows]
+    Mutazioni ESEGUITE (03/10/2026, Tappa 2, Task 12): in
+    `HAClient.recorded_changes` contate le righe `< start` invece di `>
+    start` -- rosse le due prove della finestra misurata (`ultima
+    ["finestra_s"]` e' `None`), e cinque di `test_mind_cadence.py`; con il
+    `_Ponte` e la `_Casa` di prima, che sostituivano il metodo, i due file
+    erano verdi: 49 prove su 49. In `server.py::reconsideration_round` la misura spostata
+    prima della domanda «e' ora?» -- rossa
+    `test_se_non_e_ora_NON_si_paga_ne_il_modello_ne_la_sonda` (`assert 17 ==
+    0`: dieci sonde della scala grossa e sette della seconda raffica)."""
+    return CasaFinta(synthetic_inputs(),
+                     answers={_HISTORY: _history_answer(memory_s, now=time.time)},
+                     **faults)
+
+
+def _probes(house: CasaFinta) -> int:
+    """Quante sonde il giro ha calato: le domande di storia registrate dalla
+    casa finta (era il contatore `sonde` del `_Ponte`)."""
+    return sum(1 for command, _extra in house.calls if command == _HISTORY)
 
 
 def _app(archivio, anagrafe, modello):
@@ -75,7 +102,7 @@ async def test_al_primo_avvio_l_osservatore_gira_e_lascia_traccia(archivio):
     modello = _Modello('[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]')
     anagrafe = _Anagrafe([_entita("climate.x")])
 
-    esito = await reconsideration_round(_app(archivio, anagrafe, modello), _Ponte())
+    esito = await reconsideration_round(_app(archivio, anagrafe, modello), _house())
 
     assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "omesse": 0,
                      "candidate": 1}
@@ -94,13 +121,13 @@ async def test_la_finestra_si_MISURA_al_giro_e_finisce_nella_traccia(archivio):
 
     Mutazione che la uccide: scrivere una cadenza fissa.
     """
-    ponte = _Ponte(memoria_s=7 * GIORNO)
+    ponte = _house(memory_s=7 * GIORNO)
     anagrafe = _Anagrafe([_entita("climate.x")])
 
     await reconsideration_round(_app(archivio, anagrafe, _Modello()), ponte)
 
     ultima = archivio.last_reconsideration()
-    assert ponte.sonde > 0
+    assert _probes(ponte) > 0
     # La tolleranza e' **mezza giornata, e non e' generosita'**: e' la
     # risoluzione della misura. La scala grossa lascia un tratto di quattro
     # giorni e la seconda raffica lo divide in otto, quindi il risultato cade
@@ -129,14 +156,14 @@ async def test_se_non_e_ora_NON_si_paga_ne_il_modello_ne_la_sonda(archivio):
                                     cadence_s=3.5 * GIORNO, reason="fatta")
     archivio.decide_scope("climate.x", inside=True, reason="pesa", author=OBSERVER)
     modello = _Modello()
-    ponte = _Ponte()
+    ponte = _house()
 
     esito = await reconsideration_round(
         _app(archivio, _Anagrafe([_entita("climate.x")]), modello), ponte)
 
     assert esito is None
     assert modello.chiamate == 0
-    assert ponte.sonde == 0
+    assert _probes(ponte) == 0
 
 
 @pytest.mark.asyncio
@@ -155,7 +182,7 @@ async def test_un_entita_NUOVA_fa_girare_senza_aspettare_la_cadenza(archivio):
     modello = _Modello('[{"id": "light.nuova", "dentro": true, "motivo": "si accende"}]')
     anagrafe = _Anagrafe([_entita("climate.x"), _entita("light.nuova")])
 
-    await reconsideration_round(_app(archivio, anagrafe, modello), _Ponte())
+    await reconsideration_round(_app(archivio, anagrafe, modello), _house())
 
     assert modello.chiamate == 1
     assert "light.nuova" in archivio.scope()
@@ -187,7 +214,7 @@ async def test_le_entita_di_servizio_non_sono_MAI_novita(archivio):
                           _entita("sensor.wifi", categoria="diagnostic"),
                           _entita("light.vecchia", nascosta=1)])
 
-    esito = await reconsideration_round(_app(archivio, anagrafe, modello), _Ponte())
+    esito = await reconsideration_round(_app(archivio, anagrafe, modello), _house())
 
     assert esito is None
     assert modello.chiamate == 0
@@ -200,27 +227,31 @@ async def test_senza_modello_o_senza_archivio_il_giro_non_solleva(archivio):
     anagrafe = _Anagrafe([_entita("climate.x")])
 
     assert await reconsideration_round({"observations": archivio,
-                                        "home_space_store": anagrafe}, _Ponte()) is None
-    assert await reconsideration_round({"llm_router": _Modello()}, _Ponte()) is None
+                                        "home_space_store": anagrafe}, _house()) is None
+    assert await reconsideration_round({"llm_router": _Modello()}, _house()) is None
     assert await reconsideration_round({}, None) is None
 
 
 @pytest.mark.asyncio
-async def test_una_memoria_non_misurabile_non_ferma_il_primo_giro(archivio):
+@pytest.mark.parametrize("faults", [{"silence": {_HISTORY}},
+                                    {"refuse": {_HISTORY: _UNKNOWN_ERROR}}],
+                         ids=["silenzio", "rifiuto"])
+async def test_una_memoria_non_misurabile_non_ferma_il_primo_giro(archivio, faults):
     """Home Assistant muto alla sonda non deve lasciare una casa senza scope:
     il giro si fa lo stesso, e la riconsiderazione **dichiara** che la finestra
     non si e' misurata invece di inventarne una.
 
     Mutazione che la uccide: fermarsi quando la finestra e' `None`.
-    """
-    class _Muto:
-        async def recorded_changes(self, entity_ids, windows):
-            return [None] * len(windows)
 
+    Dal 03/10/2026 il guasto e' quello vero, nelle due forme in cui arriva: il
+    silenzio della raffica (la busta del client) e il rifiuto di ogni sonda.
+    La finta di prima (`_Muto`) rendeva `[None, ...]` per il silenzio, una
+    forma che il client vero non produce.
+    """
     modello = _Modello('[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]')
 
     await reconsideration_round(
-        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _Muto())
+        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _house(**faults))
 
     assert modello.chiamate == 1
     ultima = archivio.last_reconsideration()
@@ -282,7 +313,7 @@ async def test_piano_acceso_acceso_il_giro_ACCODA_invece_di_chiamare_la_catena(
     anagrafe = _Anagrafe([_entita("climate.x")])
 
     esito = await reconsideration_round(
-        _app_ponte_acceso(archivio, anagrafe, modello, coda), _Ponte())
+        _app_ponte_acceso(archivio, anagrafe, modello, coda), _house())
 
     assert modello.chiamate == 0, "la catena non doveva essere consultata"
     assert esito == {"accodata": True}
@@ -302,14 +333,14 @@ async def test_la_risposta_del_ponte_si_raccoglie_al_giro_dopo(
     Mutazione che la uccide: non guardare la coda all'inizio del giro.
     """
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"],
                 {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
                 now=2.0)
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "omesse": 0,
                      "candidate": 1}
@@ -332,7 +363,7 @@ async def test_la_finestra_MISURATA_alla_domanda_arriva_alla_raccolta(
     Mutazione che la uccide: raccogliere con `window_s=None`.
     """
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
-    ponte = _Ponte(memoria_s=7 * GIORNO)
+    ponte = _house(memory_s=7 * GIORNO)
     await reconsideration_round(app, ponte)
 
     preso = coda.claim(now=1.0)
@@ -356,8 +387,8 @@ async def test_mentre_un_turno_e_in_volo_non_se_ne_accoda_un_secondo(
     """
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
 
-    await reconsideration_round(app, _Ponte())
-    esito = await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
+    esito = await reconsideration_round(app, _house())
 
     assert esito is None
     assert coda.count_exchanges_today() == 1
@@ -375,10 +406,10 @@ async def test_un_turno_SCADUTO_non_blocca_l_osservatore_per_sempre(
     """
     import time
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     coda.sweep_expired(now=time.time() + 3600)
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito == {"accodata": True}
     assert coda.count_exchanges_today() == 2
@@ -396,15 +427,15 @@ async def test_una_risposta_del_ponte_gia_raccolta_non_si_riscrive_ogni_giro(
     se la riconsiderazione e' gia' piu' recente della sua domanda.
     """
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"],
                 {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
                 now=2.0)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     prima = archivio.last_reconsideration()["quando_ts"]
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito is None
     assert archivio.last_reconsideration()["quando_ts"] == prima
@@ -425,7 +456,7 @@ async def test_un_giro_fallito_sulla_catena_LASCIA_DETTO_che_e_fallito(archivio)
     modello = _Modello("non sono un JSON")
 
     await reconsideration_round(
-        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _Ponte())
+        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _house())
 
     assert archivio.last_reconsideration() is None, (
         "un giro fallito non e' una riconsiderazione: annotarlo come tale "
@@ -447,7 +478,7 @@ async def test_un_turno_accodato_al_piano_si_annota_come_IN_ATTESA(
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
 
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     assert archivio.recent_attempts()[0]["esito"] == "accodata"
 
@@ -457,13 +488,13 @@ async def test_un_turno_raccolto_si_annota_come_RIUSCITO(
         archivio, coda, piano_acceso):
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"],
                 {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
                 now=2.0)
 
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     assert archivio.recent_attempts()[0]["esito"] == "riuscito"
 
@@ -479,12 +510,12 @@ async def test_una_risposta_del_piano_inservibile_si_annota_come_FALLITA(
     """
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"], {"reply": "mi spiace, non posso"},
                 now=2.0)
 
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     # Il fallimento resta scritto **in cima**, e il passaggio si chiude li':
     # non si richiede nello stesso giro (vedi il freno, sotto). Se il guasto
@@ -518,11 +549,11 @@ async def test_dopo_una_raccolta_fallita_NON_si_richiede_nello_stesso_giro(
     """
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"], {"reply": "non un JSON"}, now=2.0)
 
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     assert coda.count_exchanges_today() == 1, "il secondo turno non doveva partire"
     assert archivio.recent_attempts()[0]["esito"] == "non_riuscito"
@@ -540,13 +571,13 @@ async def test_la_stessa_risposta_storta_non_si_annota_due_volte(
     """
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"], {"reply": "non un JSON"}, now=2.0)
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
-    await reconsideration_round(app, _Ponte())
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
+    await reconsideration_round(app, _house())
 
     falliti = [t for t in archivio.recent_attempts() if t["esito"] == "non_riuscito"]
     assert len(falliti) == 1
@@ -575,7 +606,7 @@ async def test_l_attesa_fra_un_tentativo_e_l_altro_CRESCE_coi_fallimenti(
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito is None
     assert coda.count_exchanges_today() == 0
@@ -591,7 +622,7 @@ async def test_passato_il_freno_si_riprova(archivio, coda, piano_acceso):
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito == {"accodata": True}
 
@@ -608,7 +639,7 @@ async def test_il_giro_annota_da_quale_PORTA_e_passato(archivio):
     modello = _Modello('[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]')
 
     await reconsideration_round(
-        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _Ponte())
+        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _house())
 
     assert "catena" in archivio.recent_attempts()[0]["dettaglio"]
 
@@ -624,7 +655,7 @@ async def test_senza_nessun_modello_a_cui_chiedere_lo_dice(archivio):
     app = {"observations": archivio,
            "home_space_store": _Anagrafe([_entita("climate.x")])}
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito is None
     assert archivio.recent_attempts()[0]["esito"] == "non_riuscito"
@@ -648,13 +679,13 @@ async def test_il_piano_che_serve_l_osservatore_finisce_nel_REGISTRO_degli_esiti
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
     app["occurrence_registry"] = registro
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"],
                 {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
                 now=2.0)
 
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     assert registro.occurrence("subscription")["tipo"] == "risposto"
 
@@ -686,7 +717,7 @@ async def test_si_chiede_un_LOTTO_per_volta_non_la_casa_intera(archivio, coda,
     anagrafe = _Anagrafe(_entita_molte(SCOPE_BATCH + 50))
     app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
 
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     chiesto = coda.latest("scope")["context"]["history"][0]["content"]
     righe = [r for r in chiesto.splitlines() if r.startswith("light.n")]
@@ -707,7 +738,7 @@ async def test_i_lotti_successivi_partono_SENZA_aspettare_la_cadenza(
     app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
     await _lotto_servito(app, coda, archivio)
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito == {"accodata": True}
     chiesto = coda.latest("scope")["context"]["history"][0]["content"]
@@ -741,13 +772,13 @@ async def test_coperta_la_casa_la_campagna_si_ferma(archivio, coda, piano_acceso
     app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
     await _lotto_servito(app, coda, archivio)
 
-    assert await reconsideration_round(app, _Ponte()) is None
+    assert await reconsideration_round(app, _house()) is None
 
 
 async def _lotto_servito(app, coda, archivio):
     """Un giro intero: si accoda, il piano risponde su tutto il lotto, si
     raccoglie."""
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
     preso = coda.claim(now=_orologio())
     chiesti = [r.split(" · ")[0] for r in
                preso["context"]["history"][0]["content"].splitlines()
@@ -756,7 +787,7 @@ async def _lotto_servito(app, coda, archivio):
                            for e in chiesti])
     coda.submit(preso["job_id"], preso["nonce"], {"reply": risposta},
                 now=_orologio())
-    return await reconsideration_round(app, _Ponte())
+    return await reconsideration_round(app, _house())
 
 
 def _orologio():
@@ -788,7 +819,7 @@ async def test_il_freno_NON_conta_i_fallimenti_di_una_versione_precedente(
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
 
-    esito = await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _house())
 
     assert esito == {"accodata": True}
 
@@ -808,7 +839,7 @@ async def test_il_freno_conta_eccome_i_fallimenti_di_QUESTA_versione(
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
 
-    assert await reconsideration_round(app, _Ponte()) is None
+    assert await reconsideration_round(app, _house()) is None
 
 
 @pytest.mark.asyncio
@@ -821,6 +852,6 @@ async def test_ogni_tentativo_annota_la_versione_su_cui_e_avvenuto(
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
 
-    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _house())
 
     assert archivio.recent_attempts()[0]["versione"] == "3.27.1"
