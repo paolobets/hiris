@@ -16,24 +16,35 @@ Restano le tre proprieta' che non dipendevano dall'impronta.
 Task 6, A-03): a Home Assistant si chiede solo il corpo, e un giro si conta
 dalle domande dei corpi.
 """
+import sys
+from pathlib import Path
+
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.server import behavior_reader
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
-class _Cliente:
-    def __init__(self):
-        self.giri = 0
 
-    async def get_states(self, entity_ids):
-        return [{"entity_id": "automation.sveglia", "state": "on",
-                 "attributes": {"friendly_name": "Sveglia"}}]
 
-    async def behavior_configs(self, entity_ids):
-        self.giri += 1
-        return {"configurazioni": {e: {"alias": "Sveglia"} for e in entity_ids}}
+def _house(**faults):
+    """La casa finta (`scripts/casa_finta.py`), il client VERO col trasporto
+    sostituito: un'automazione accesa, e il suo corpo."""
+    return CasaFinta({"states": [{"entity_id": "automation.sveglia", "state": "on",
+                                  "attributes": {"friendly_name": "Sveglia"}}],
+                      "behavior": {"configurazioni": {
+                          "automation.sveglia": {"alias": "Sveglia"}}}}, **faults)
+
+
+def _rounds(house):
+    """Quante volte il lettore ha chiesto a Home Assistant il corpo
+    dell'automazione: dal 03/10/2026 un giro si conta da li', perche' gli
+    stati li dice lo specchio."""
+    return sum(1 for command, _extra in house.calls
+               if command == "automation/config")
 
 
 async def _specchio(client) -> EntityCache:
@@ -57,12 +68,12 @@ async def test_ogni_giro_rilegge(casa, tmp_path):
 
     Mutazione che la uccide: rimettere un confronto che salti il secondo giro.
     """
-    client = _Cliente()
+    client = _house()
     guarda = behavior_reader(client, await _specchio(client), casa, tmp_path)
 
     assert await guarda() is True
     assert await guarda() is True
-    assert client.giri == 2
+    assert _rounds(client) == 2
 
 
 @pytest.mark.asyncio
@@ -70,7 +81,7 @@ async def test_senza_cartella_non_esplode(casa):
     """La cartella serve solo per `secrets.yaml`: senza, il comportamento si
     legge lo stesso e i corpi restano non archiviati (dichiarati). Non
     sollevare e' cio' che tiene in piedi il giro periodico."""
-    client = _Cliente()
+    client = _house()
     guarda = behavior_reader(client, await _specchio(client), casa, None,
                              find_folder=lambda: None)
 
@@ -95,7 +106,7 @@ async def test_la_cartella_comparsa_dopo_l_avvio_si_trova(casa, tmp_path):
     def _trova():
         return apparsa["quando"]
 
-    client = _Cliente()
+    client = _house()
     guarda = behavior_reader(client, await _specchio(client), casa, None,
                              find_folder=_trova)
     await guarda()
@@ -113,11 +124,13 @@ async def test_una_rilettura_fallita_non_blocca_le_successive(casa, tmp_path):
     """Un guasto passeggero -- Home Assistant che si riavvia, e lo specchio non
     ancora caricato -- non deve congelare il comportamento: si riprova al giro
     dopo, e lo si dice."""
-    client = _Cliente()
+    client = _house()
     mirror = EntityCache()
     guarda = behavior_reader(client, mirror, casa, tmp_path)
 
     assert await guarda() is False
+    assert casa.behavior() == []
 
     await mirror.load(client)
     assert await guarda() is True
+    assert [voce["id"] for voce in casa.behavior()] == ["automation.sveglia"]

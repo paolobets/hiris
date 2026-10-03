@@ -18,10 +18,19 @@ Il successo tiene la sua forma di oggi.
 una lettura nuova entra qui il giorno in cui nasce. Le sole voci scritte a
 mano sono liste di AMMISSIONE, ognuna con la sua ragione.
 """
+import sys
+from pathlib import Path
+
 import aiohttp
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
+
 from tests.test_fonte_unica import _client_reads
 from tests.test_ha_client_invio import _arguments
 
@@ -107,7 +116,15 @@ class _Session:
 
 def _client(state: str) -> HAClient:
     """Un `HAClient` vero con il solo trasporto finto, in uno dei quattro
-    stati: `successo`, `rifiuto`, `silenzio`, `forma`."""
+    stati: `successo`, `rifiuto`, `silenzio`, `forma`.
+
+    **Resta un trasporto finto, e non la casa finta** (Tappa 2, Task 12): le
+    prove parametriche chiedono OGNI lettura derivata in uno stato solo, e
+    sul REST lo stato vale per ogni percorso -- la storia, un calendario, la
+    configurazione hanno percorsi che portano gli argomenti. `CasaFinta`
+    risponde per prefisso (`answers`), ma rifiuta e tace solo sul percorso
+    esatto (`refuse`, `silence`). Le prove singole, in fondo al file, sono
+    sulla casa finta."""
     client = HAClient(base_url="http://ha.test", token="t")
 
     async def ws_send(commands, timeout=10.0):
@@ -197,21 +214,25 @@ async def test_una_forma_inattesa_e_una_forma(name):
 
 @pytest.mark.asyncio
 async def test_il_rifiuto_conserva_il_motivo_e_il_codice_di_home_assistant():
-    answer = await _ask("problems", "rifiuto")
+    house = CasaFinta({}, refuse={"repairs/list_issues": dict(HA_ERROR)})
+    answer = await house.problems()
     assert answer == {"errore": "rifiutato per prova", "causa": "rifiuto",
                       "codice": "unknown_error"}
 
 
 @pytest.mark.asyncio
 async def test_il_rifiuto_REST_porta_lo_stato_http():
-    answer = await _ask("get_states", "rifiuto")
+    answer = await CasaFinta({}, refuse={"/api/states": 500}).get_states(["light.a"])
     assert answer["codice"] == 500
+    assert answer["causa"] == "rifiuto"
 
 
 @pytest.mark.asyncio
 async def test_le_voci_rifiutate_di_una_raffica_portano_il_motivo():
-    traces = await _ask("traces", "rifiuto")
-    configs = await _ask("behavior_configs", "rifiuto")
+    house = CasaFinta({}, refuse={"trace/list": dict(HA_ERROR),
+                                  "automation/config": dict(HA_ERROR)})
+    traces = await house.traces([("automation", "1")])
+    configs = await house.behavior_configs(["automation.a"])
     assert traces["non_letti"] == {"automation.1": "rifiutato per prova"}
     assert configs["non_letti"] == {"automation.a": "rifiutato per prova"}
 
@@ -221,18 +242,13 @@ async def test_una_domanda_malformata_non_parte():
     """Un identificatore che non ha la forma di un entity_id si ferma prima
     della rete, con la stessa busta e la causa `richiesta`: non e' Home
     Assistant ad aver detto di no."""
-    client = _client("silenzio")
-    answer = await client.history(["non valido"], "a", "b")
+    house = CasaFinta({})
+    answer = await house.history(["non valido"], "a", "b")
     assert _is_envelope(answer, "richiesta")
+    assert house.connections == []
 
 
 @pytest.mark.asyncio
 async def test_get_states_filtra_ancora():
-    client = _client("successo")
-
-    class _Full(_Session):
-        def get(self, url):
-            return _Response(200, [{"entity_id": "light.a"}, {"entity_id": "light.b"}])
-
-    client._session = _Full("successo")
-    assert await client.get_states(["light.b"]) == [{"entity_id": "light.b"}]
+    house = CasaFinta({"states": [{"entity_id": "light.a"}, {"entity_id": "light.b"}]})
+    assert await house.get_states(["light.b"]) == [{"entity_id": "light.b"}]

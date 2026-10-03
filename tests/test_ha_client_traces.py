@@ -43,29 +43,42 @@ dall'altra, un metodo che tornasse a spaccare un `entity_id` passerebbe
 verde di nuovo.
 """
 import copy
+import sys
+from pathlib import Path
 
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
+
+LIST = "trace/list"
+GET = "trace/get"
+
+
+def _answering(command, result, **injected) -> CasaFinta:
+    """La casa finta (D8), come in `test_ha_client_system_log.py`: il client
+    vero, e Home Assistant che risponde `result` a `command` -- o
+    `result(extra)`, se e' una funzione."""
+    answer = result if callable(result) else (lambda extra: result)
+    return CasaFinta({}, answers={command: answer}, **injected)
+
 
 class _FakeConnection:
-    """La stessa finta di `test_ha_client_system_log.py` (e di
-    `test_ha_client_related_problems.py`): non se ne inventa una nuova per
-    verticale."""
+    """Il trasporto finto che resta, per DUE prove sole sulle raffiche di
+    `traces`: servono chiavi dello stesso comando (`trace/list`) con esiti
+    diversi -- una rifiutata, una muta, una buona -- e la casa finta fa
+    tacere o rifiutare un comando per intero, non una chiave (Tappa 2,
+    Task 12)."""
 
-    def __init__(self, response=None, replies=None):
-        self.response = response
+    def __init__(self, replies):
         self.replies = replies  # una risposta per comando, come `_ws_send` vero
-        self.commands = []
-        self.batches = []
 
     async def _ws_send(self, commands, timeout=10.0):
-        self.commands.extend(commands)
-        self.batches.append(list(commands))
-        if self.replies is not None:
-            return list(self.replies)
-        return [self.response]
+        return list(self.replies)
 
 
 def _client(fake):
@@ -125,8 +138,7 @@ async def test_automation_traces_are_read_as_home_assistant_sends_them():
     # Copia fatta PRIMA della chiamata: un client che modificasse la riga sul
     # posto passerebbe verde se confrontato con `row` stesso.
     expected = copy.deepcopy(row)
-    fake = _FakeConnection({"result": [row]})
-    outcome = await _client(fake).automation_traces(_CONFIG_ID)
+    outcome = await _answering(LIST, [row]).automation_traces(_CONFIG_ID)
     trace = outcome["tracce"][0]
     assert trace["run_id"] == "xyz"
     assert trace["script_execution"] == "failed"
@@ -153,12 +165,12 @@ async def test_traces_are_asked_for_by_configuration_id_verbatim():
 
     Mutazione: `automation_id.partition(".")[2]` come `item_id` (cioe' il
     vecchio comportamento, che su un id senza punto restituisce `""`) -- il
-    test torna rosso su `assert fake.commands == [("trace/list", {"domain":
+    test torna rosso su `assert house.calls == [("trace/list", {"domain":
     "automation", "item_id": _CONFIG_ID})]`, che riceve `item_id: ""`.
     """
-    fake = _FakeConnection({"result": []})
-    await _client(fake).automation_traces(_CONFIG_ID)
-    assert fake.commands == [
+    house = _answering(LIST, [])
+    await house.automation_traces(_CONFIG_ID)
+    assert house.calls == [
         ("trace/list", {"domain": "automation", "item_id": _CONFIG_ID})]
 
 
@@ -167,28 +179,28 @@ async def test_a_failed_traces_read_says_error_not_an_empty_list():
     """Un elenco vuoto significherebbe «questa automazione non ha mai
     girato»: la stessa bugia che `system_log()` e `problems()` evitano.
 
-    La connessione caduta e' `replies=[None]`, come la torna il vero
-    `_ws_send`, che non solleva mai. Ha DUE guardie (il controllo
+    La connessione caduta e' il silenzio della casa finta: il vero `_ws_send`
+    torna `[None]`, e non solleva mai. Ha DUE guardie (il controllo
     `all(reply is None ...)` in `traces` e il ramo `non_letti` di
     `automation_traces`): ciascuna da sola la copre l'altra.
 
     Mutazione ESEGUITA: togliere TUTTE E DUE le guardie (`{"tracce": []}`
     per una chiave non letta) -- rossa su `assert "errore" in outcome`.
     """
-    fake = _FakeConnection(replies=[None])
-    outcome = await _client(fake).automation_traces(_CONFIG_ID)
+    outcome = await CasaFinta({}, silence={LIST}).automation_traces(_CONFIG_ID)
     assert "errore" in outcome
     assert "tracce" not in outcome
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fake,why", [
-    (_FakeConnection(replies=[None]), "connessione caduta"),
-    (_FakeConnection({"error": {"message": "non trovato"}}), "HA ha rifiutato"),
-    (_FakeConnection({"result": {"issues": "non una lista nuda"}}),
+@pytest.mark.parametrize("injected,why", [
+    ({"silence": {LIST}}, "connessione caduta"),
+    ({"refuse": {LIST: {"code": "not_found", "message": "non trovato"}}},
+     "HA ha rifiutato"),
+    ({"answers": {LIST: lambda extra: {"issues": "non una lista nuda"}}},
      "forma inattesa: trace/list non manda un dizionario qui"),
 ])
-async def test_every_traces_failure_shape_says_error_not_an_empty_list(fake, why):
+async def test_every_traces_failure_shape_says_error_not_an_empty_list(injected, why):
     """Le tre forme di guasto gia' sorvegliate per `system_log()`, ripetute
     qui: connessione caduta, rifiuto esplicito di HA, e una risposta di forma
     inattesa (un dizionario al posto della lista nuda che manda davvero
@@ -198,7 +210,7 @@ async def test_every_traces_failure_shape_says_error_not_an_empty_list(fake, why
     terzo caso (forma inattesa) tocca quel ramo e torna rosso su
     `assert "errore" in outcome, why`.
     """
-    outcome = await _client(fake).automation_traces(_CONFIG_ID)
+    outcome = await CasaFinta({}, **injected).automation_traces(_CONFIG_ID)
     assert "errore" in outcome, why
     assert "tracce" not in outcome
 
@@ -213,8 +225,7 @@ async def test_an_empty_traces_list_stays_empty_not_an_error():
     controllo di forma -- il test torna rosso su
     `assert outcome == {"tracce": []}`.
     """
-    fake = _FakeConnection({"result": []})
-    outcome = await _client(fake).automation_traces(_CONFIG_ID)
+    outcome = await _answering(LIST, []).automation_traces(_CONFIG_ID)
     assert outcome == {"tracce": []}
 
 
@@ -232,8 +243,7 @@ async def test_a_single_trace_is_read_as_home_assistant_sends_it():
     """
     row = _extended_trace(run_id="xyz", state="stopped")
     expected = copy.deepcopy(row)
-    fake = _FakeConnection({"result": row})
-    outcome = await _client(fake).trace("automation", _CONFIG_ID, "xyz")
+    outcome = await _answering(GET, row).trace("automation", _CONFIG_ID, "xyz")
     trace = outcome["traccia"]
     assert trace["run_id"] == "xyz"
     assert trace["trace"] == row["trace"]
@@ -254,9 +264,9 @@ async def test_a_single_trace_is_asked_for_by_configuration_id_verbatim():
     "run_id": automation_id`) -- il test torna rosso sull'unico assert,
     che riceve `item_id: "xyz"` e `run_id: _CONFIG_ID`.
     """
-    fake = _FakeConnection({"result": _extended_trace()})
-    await _client(fake).trace("automation", _CONFIG_ID, "xyz")
-    assert fake.commands == [
+    house = _answering(GET, _extended_trace())
+    await house.trace("automation", _CONFIG_ID, "xyz")
+    assert house.calls == [
         ("trace/get", {"domain": "automation", "item_id": _CONFIG_ID,
                        "run_id": "xyz"})]
 
@@ -270,22 +280,20 @@ async def test_a_failed_trace_read_says_error_not_an_empty_dict():
     Mutazione ESEGUITA: `{"traccia": {}}` invece di `{"errore": ...}` su
     risposta assente -- rossa su `assert "errore" in outcome`.
     """
-    fake = _FakeConnection(replies=[None])
-    outcome = await _client(fake).trace("automation", _CONFIG_ID, "xyz")
+    outcome = await CasaFinta({}, silence={GET}).trace("automation", _CONFIG_ID, "xyz")
     assert "errore" in outcome
     assert "traccia" not in outcome
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fake,why", [
-    (_FakeConnection(replies=[None]), "connessione caduta"),
-    (_FakeConnection({"error": {"code": "not_found",
-                                "message": "The trace could not be found"}}),
+@pytest.mark.parametrize("injected,why", [
+    ({"silence": {GET}}, "connessione caduta"),
+    ({"refuse": {GET: {"code": "not_found", "message": "The trace could not be found"}}},
      "run_id caduto fuori dalle tracce conservate"),
-    (_FakeConnection({"result": ["non un dizionario"]}),
+    ({"answers": {GET: lambda extra: ["non un dizionario"]}},
      "forma inattesa: trace/get non manda una lista qui"),
 ])
-async def test_every_trace_failure_shape_says_error_not_an_empty_dict(fake, why):
+async def test_every_trace_failure_shape_says_error_not_an_empty_dict(injected, why):
     """Le tre forme di guasto: connessione caduta, il rifiuto VERO che HA
     manda quando `run_id` e' gia' caduto fuori dalle tracce conservate
     (`ERR_NOT_FOUND`, verificato alla fonte in `websocket_trace_get`), e una
@@ -296,7 +304,7 @@ async def test_every_trace_failure_shape_says_error_not_an_empty_dict(fake, why)
     terzo caso (forma inattesa) tocca quel ramo e torna rosso su
     `assert "errore" in outcome, why`.
     """
-    outcome = await _client(fake).trace("automation", _CONFIG_ID, "xyz")
+    outcome = await CasaFinta({}, **injected).trace("automation", _CONFIG_ID, "xyz")
     assert "errore" in outcome, why
     assert "traccia" not in outcome
 
@@ -306,13 +314,13 @@ async def test_the_runs_of_many_automations_travel_in_one_batch():
     """Spec «la storia» §1 e §8 punto 3: «perche' sono partite le automazioni dei
     rifiuti» erano cinque chiamate. Ora una raffica, N comandi.
 
-    Mutazione ESEGUITA: un `_ws_send` per chiave -- rossa su
-    `len(fake.batches)`."""
-    fake = _FakeConnection(replies=[{"result": [_short_trace(run_id="a")]}, {"result": []}])
-    outcome = await _client(fake).traces([("automation", _CONFIG_ID),
-                                          ("script", "buonanotte")])
-    assert len(fake.batches) == 1
-    assert fake.batches[0] == [
+    Mutazione ESEGUITA: un `_ws_send` per chiave -- rossa sulle connessioni
+    della casa finta."""
+    house = _answering(LIST, lambda extra: (
+        [_short_trace(run_id="a")] if extra["domain"] == "automation" else []))
+    outcome = await house.traces([("automation", _CONFIG_ID), ("script", "buonanotte")])
+    assert house.connections == [("ws", (LIST, LIST))]
+    assert house.calls == [
         ("trace/list", {"domain": "automation", "item_id": _CONFIG_ID}),
         ("trace/list", {"domain": "script", "item_id": "buonanotte"})]
     assert outcome == {"tracce": {f"automation.{_CONFIG_ID}": [_short_trace(run_id="a")],
@@ -324,11 +332,16 @@ async def test_the_runs_of_many_automations_travel_in_one_batch():
 async def test_a_refused_key_is_named_and_the_others_answer():
     """Una chiave rifiutata non spegne le altre, e non diventa `[]`.
 
+    Resta sul trasporto finto: quattro chiavi dello stesso comando, quattro
+    esiti diversi (vedi `_FakeConnection`).
+
     Mutazione ESEGUITA: il primo rifiuto rende `errore` tutta la risposta
     -- rossa."""
-    fake = _FakeConnection(replies=[{"error": {"message": "non trovato"}},
-                                    {"result": [_short_trace()]}, None,
-                                    {"result": {"non": "una lista"}}])
+    fake = _FakeConnection(replies=[
+        {"type": "result", "success": False,
+         "error": {"code": "not_found", "message": "non trovato"}},
+        {"type": "result", "success": True, "result": [_short_trace()]}, None,
+        {"type": "result", "success": True, "result": {"non": "una lista"}}])
     outcome = await _client(fake).traces([("automation", "1"), ("automation", "2"),
                                           ("automation", "3"), ("automation", "4")])
     assert outcome["non_letti"] == {"automation.1": "non trovato",
@@ -345,8 +358,8 @@ async def test_a_dead_connection_says_error_never_no_runs():
     esecuzione» ne' un `non_letti` di tutte le chiavi.
 
     Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` -- rossa."""
-    fake = _FakeConnection(replies=[None, None])
-    outcome = await _client(fake).traces([("automation", "1"), ("script", "s")])
+    house = CasaFinta({}, silence={LIST})
+    outcome = await house.traces([("automation", "1"), ("script", "s")])
     assert outcome == {"errore": "Home Assistant non ha risposto",
         "causa": "silenzio", "codice": None}
 
@@ -356,9 +369,12 @@ async def test_a_silent_tail_is_named_as_not_answered_in_time():
     """Il timeout taglia la coda: le chiavi senza risposta sono nominate col
     motivo giusto (non «forma inattesa»), le altre rispondono.
 
+    Resta sul trasporto finto: due chiavi dello stesso comando, una buona e
+    una muta (vedi `_FakeConnection`).
+
     Mutazione ESEGUITA: `None` trattato come forma inattesa -- rossa sul
     motivo."""
-    fake = _FakeConnection(replies=[{"result": []}, None])
+    fake = _FakeConnection(replies=[{"type": "result", "success": True, "result": []}, None])
     outcome = await _client(fake).traces([("automation", "1"), ("script", "s")])
     assert outcome["tracce"] == {"automation.1": []}
     assert outcome["non_letti"] == {"script.s": "Home Assistant non ha risposto in tempo"}
@@ -371,7 +387,7 @@ async def test_a_single_run_with_no_reply_says_error():
 
     Mutazione ESEGUITA: `None` cade nel ramo «forma inattesa» -- rossa sul
     testo."""
-    outcome = await _client(_FakeConnection(replies=[None])).trace("script", "s", "r")
+    outcome = await CasaFinta({}, silence={GET}).trace("script", "s", "r")
     assert outcome == {"errore": "Home Assistant non ha risposto",
         "causa": "silenzio", "codice": None}
 
@@ -381,18 +397,18 @@ async def test_no_keys_ask_nothing():
     """Nessuna chiave, nessuna rete.
 
     Mutazione ESEGUITA: tolto il ritorno anticipato su `not keys` -- rossa
-    su `fake.batches == []`."""
-    fake = _FakeConnection(replies=[])
-    assert await _client(fake).traces([]) == {"tracce": {}, "non_letti": {}}
-    assert fake.batches == []
+    su `house.connections == []`."""
+    house = CasaFinta({})
+    assert await house.traces([]) == {"tracce": {}, "non_letti": {}}
+    assert house.connections == []
 
 
 @pytest.mark.asyncio
 async def test_a_single_run_of_a_script_is_asked_under_the_script_domain():
     """Mutazione ESEGUITA: `domain` fisso a `automation` in `trace` -- rossa."""
-    fake = _FakeConnection({"result": _extended_trace()})
-    outcome = await _client(fake).trace("script", "buonanotte", "r1")
-    assert fake.commands == [("trace/get", {"domain": "script", "item_id": "buonanotte",
+    house = _answering(GET, _extended_trace())
+    outcome = await house.trace("script", "buonanotte", "r1")
+    assert house.calls == [("trace/get", {"domain": "script", "item_id": "buonanotte",
                                             "run_id": "r1"})]
     assert outcome["traccia"]["run_id"] == "abc123"
 

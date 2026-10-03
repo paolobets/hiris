@@ -13,7 +13,8 @@ l'unita' vera e' quella dell'entita', e la casa dice solo come la casa
 ragiona. Chi le confondesse scriverebbe "gradi Celsius" sotto un numero che
 non lo e'.
 """
-from unittest.mock import create_autospec
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -23,7 +24,10 @@ from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import rebuild, reference_frame
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import EntityCache
-from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS, HAClient
+from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 # La risposta vera di `get_config` di Home Assistant, ridotta ai campi che
 # HIRIS legge piu' due che deve buttare via (`components`, `latitude`) --
@@ -43,15 +47,14 @@ _CONFIG = {
 }
 
 
-async def _specchio(stati=()):
+async def _specchio(house):
     """Uno specchio dello stato VERO (`EntityCache`), caricato come in
-    produzione: `load()` alza `loaded`, e senza quella bandiera `rebuild`
-    dichiara `specchio_vivo` fra i non disponibili -- vedi il suo docstring.
+    produzione dalla stessa casa: `load()` alza `loaded`, e senza quella
+    bandiera `rebuild` dichiara `specchio_vivo` fra i non disponibili -- vedi
+    il suo docstring.
     """
     cache = EntityCache()
-    client = create_autospec(HAClient, instance=True)
-    client.get_states.return_value = list(stati)
-    await cache.load(client)
+    await cache.load(house)
     return cache
 
 
@@ -124,35 +127,35 @@ def test_una_lettura_fallita_non_cancella_il_riferimento_buono(archivio):
 
 # --- la ricostruzione: chi lo va a prendere -------------------------------
 
-def _client(registries=None, unavailable=(), config=_CONFIG,
-           get_config_error=None):
-    """Un `HAClient` finto, autospec'd sulla classe VERA -- stessa guardia di
-    `test_home_space_topology.py::_client` (review lotto 5: un `AsyncMock()` nudo
-    non si accorge di un metodo chiamato per errore che `HAClient` non ha)."""
-    client = create_autospec(HAClient, instance=True)
-    client.read_registries.return_value = (registries or {"entita": []}, list(unavailable))
-    if get_config_error is not None:
-        client.get_config.side_effect = get_config_error
-    else:
-        client.get_config.return_value = config
-    return client
+def _house(**faults):
+    """La casa finta (`scripts/casa_finta.py`): il client VERO col trasporto
+    sostituito. Registri tutti presenti e vuoti, nessuno stato, e `get_config`
+    che risponde `_CONFIG` -- il messaggio grezzo di Home Assistant, che il
+    client legge come in produzione. `faults` sono i guasti iniettati
+    (`silence=`, `refuse=`)."""
+    return CasaFinta({"registries": {"piani": [], "aree": [], "dispositivi": [],
+                                     "entita": [], "etichette": [], "categorie": [],
+                                     "integrazioni": []},
+                      "states": [], "ha_config": _CONFIG}, **faults)
 
 
 @pytest.mark.asyncio
 async def test_ricostruisci_legge_anche_il_riferimento(archivio):
-    client = _client()
-    esito = await rebuild(client, archivio, await _specchio())
+    house = _house()
+    esito = await rebuild(house, archivio, await _specchio(house))
     assert esito["non_disponibili"] == []
     assert archivio.reference_frame()["valuta"] == "EUR"
+    assert ("get_config", None) in house.calls
 
 
 @pytest.mark.asyncio
 async def test_un_riferimento_non_letto_si_dichiara(archivio):
     """Non si ingoia: finisce nella stessa lista con cui l'anagrafe dichiara
-    ogni altro silenzio -- niente meccanismo nuovo per dire la stessa cosa."""
-    client = _client(config={"errore": "Home Assistant non ha risposto",
-                             "causa": "silenzio", "codice": None})
-    esito = await rebuild(client, archivio, await _specchio())
+    ogni altro silenzio -- niente meccanismo nuovo per dire la stessa cosa.
+    Il silenzio e' quello vero: `get_config` senza risposta, e la busta la
+    scrive il client."""
+    house = _house(silence={"get_config"})
+    esito = await rebuild(house, archivio, await _specchio(house))
     assert "sistema_di_riferimento" in esito["non_disponibili"]
 
 

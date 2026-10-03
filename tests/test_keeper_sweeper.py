@@ -1,7 +1,13 @@
 """Il battito: mai in ritardo, mai due volte, e il silenzio e' un esito riuscito."""
 import os
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.chat_thread import ChatThread
@@ -9,6 +15,7 @@ from hiris.app.keeper.promise import TOLLERANZA_S
 from hiris.app.keeper.recipient import _REASON_LINK_PERSON, Recipients
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
+from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 from tests._mirror_by_id import MirrorById
 
@@ -355,14 +362,27 @@ async def test_un_turno_che_non_conclude_lascia_la_promessa_fallita(archivio):
 # assert su una stringa isolata, ma perche' la promessa non risulterebbe piu'
 # "mantenuta" con un motivo onesto.
 
+#: DUE servizi, nella forma MISURATA il 09/09/2026 su HA 2026.9.1 (`GET
+#: /api/services`, casa del proprietario). `notify.mobile_app_x` non dichiara
+#: un `target`, come tutti i `notify.mobile_app_*` veri; `notify.send_message`
+#: lo dichiara (`{"entity": [{"domain": ["notify"]}]}`), ed e' il recapito che
+#: l'audit ha trovato: nasceva verificato e a scadenza veniva rifiutato.
+NOTIFY_SERVICES = [{"domain": "notify", "services": {
+    "mobile_app_x": {"fields": {"data": {}, "message": {},
+                                "target": {}, "title": {}}},
+    "send_message": {"target": {"entity": [{"domain": ["notify"]}]},
+                     "fields": {"message": {}, "title": {}}}}}]
+
+
 class _ClientSoloNotifica:
-    """Home Assistant, ridotto al minimo che serve a questa cucitura: DUE
-    servizi, nella forma MISURATA il 09/09/2026 su HA 2026.9.1 (`GET
-    /api/services`, casa del proprietario). `notify.mobile_app_x` non
-    dichiara un `target`, come tutti i `notify.mobile_app_*` veri;
-    `notify.send_message` lo dichiara (`{"entity": [{"domain":
-    ["notify"]}]}`), ed e' il recapito che l'audit ha trovato: nasceva
-    verificato e a scadenza veniva rifiutato.
+    """Home Assistant, ridotto al minimo che serve a questa cucitura: i
+    servizi di `NOTIFY_SERVICES`, e una `call_service` che RIESCE.
+
+    Resta una finta scritta a mano, e non la casa finta, per una ragione
+    sola: la prova che la usa ha bisogno che la notifica ARRIVI, e la casa
+    finta non esegue le scritture (`call_service` e' una `POST`: la registra
+    e solleva `UnservedCommand`). La prova del rifiuto, che non deve
+    scrivere niente, usa la casa finta.
 
     Nessun `add_state_listener`/`remove_state_listener`: la
     riparazione di `actuator.py` non deve aprirne uno per una chiamata senza
@@ -374,11 +394,7 @@ class _ClientSoloNotifica:
         self.chiamate = []
 
     async def get_services(self):
-        return [{"domain": "notify", "services": {
-            "mobile_app_x": {"fields": {"data": {}, "message": {},
-                                        "target": {}, "title": {}}},
-            "send_message": {"target": {"entity": [{"domain": ["notify"]}]},
-                             "fields": {"message": {}, "title": {}}}}}]
+        return NOTIFY_SERVICES
 
     async def call_service(self, domain, service, data):
         self.chiamate.append((domain, service, data))
@@ -437,13 +453,21 @@ async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archi
     rifiuta, la notifica non parte, e il motivo della promessa nomina il
     servizio che non e' arrivato (vincolo 3.5). Dalla fetta «il seguito delle
     chat divise» il recapito sono i `notify.mobile_app_*` della persona, ma e'
-    la verifica a decidere -- non la fiducia in chi ha scelto il servizio."""
+    la verifica a decidere -- non la fiducia in chi ha scelto il servizio.
+
+    Home Assistant e' la casa finta: il registro dei servizi lo legge il
+    client vero da `GET /api/services`, e una chiamata che partisse sarebbe
+    una `POST` registrata in `house.calls` (e la casa finta, che non scrive,
+    solleverebbe)."""
     from hiris.app.action.registry import ServiceRegistry
 
-    client = _ClientSoloNotifica()
+    inputs = synthetic_inputs()
+    inputs["services"] = NOTIFY_SERVICES
+    house = CasaFinta(inputs)
     registro = ServiceRegistry()
-    await registro.refresh(client)
-    porta = ActionActuator(client, registro, _CasaMinima())
+    await registro.refresh(house)
+    assert registro.service("notify", "send_message") is not None
+    porta = ActionActuator(house, registro, _CasaMinima())
     ident = _crea_chiedi(archivio, quando=ADESSO + 10)
 
     await _orologio(
@@ -452,7 +476,8 @@ async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archi
         recipients=RecapitoFinto(["notify.send_message"]),
     ).batti(ADESSO + 11)
 
-    assert client.chiamate == [], "niente e' partito verso Home Assistant"
+    assert house.calls == [("/api/services", None)], (
+        "niente e' partito verso Home Assistant: solo la lettura dei servizi")
     p = archivio.read(ident)
     assert p["stato"] == "mantenuta"
     assert "notify.send_message" in (p["motivo"] or ""), p

@@ -5,25 +5,33 @@ stessa: **un guasto non deve avere la forma di un «niente»**. Un elenco vuoto
 significa «questa cosa non la tocca nessuno» o «non c'e' niente che non va»,
 che sono affermazioni; un guasto e' un silenzio, e va dichiarato.
 """
+import sys
+from pathlib import Path
+
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
+
+RELATED = "search/related"
+ISSUES = "repairs/list_issues"
 
 
-class _Finto:
-    def __init__(self, risposta=None):
-        self.risposta = risposta
-        self.comandi = []
-
-    async def _ws_send(self, commands, timeout=10.0):
-        self.comandi.extend(commands)
-        return [self.risposta]
+def _answering(command, result) -> dict:
+    """Gli argomenti della casa finta (D8) che risponde `result` a `command`."""
+    return {"answers": {command: lambda extra: result}}
 
 
-def _client(finto):
-    c = HAClient.__new__(HAClient)
-    c._ws_send = finto._ws_send
-    return c
+#: I tre guasti di una lettura, nella forma che la casa finta inietta sul
+#: trasporto vero: la connessione caduta, il rifiuto di Home Assistant (la
+#: busta d'errore vera, `{"code", "message"}`), una forma inattesa.
+def _failures(command, wrong_shape):
+    return [({"silence": {command}}, "connessione caduta"),
+            ({"refuse": {command: {"code": "not_found", "message": "non trovato"}}},
+             "HA ha rifiutato"),
+            (_answering(command, wrong_shape), "forma inattesa")]
 
 
 # --- i legami -------------------------------------------------------------
@@ -33,12 +41,12 @@ async def test_i_legami_arrivano_ordinati():
     """HA manda INSIEMI, che in JSON viaggiano come liste in ordine
     arbitrario: senza ordinare, due letture della stessa casa producono due
     risposte diverse e nessuno capisce perche'."""
-    finto = _Finto({"result": {"automation": ["automation.b", "automation.a"],
-                               "scene": []}})
-    esito = await _client(finto).related("entity", "light.corridoio")
+    house = CasaFinta({}, **_answering(RELATED, {
+        "automation": ["automation.b", "automation.a"], "scene": []}))
+    esito = await house.related("entity", "light.corridoio")
     assert esito == {"automation": ["automation.a", "automation.b"]}
-    assert finto.comandi[0] == ("search/related",
-                                {"item_type": "entity", "item_id": "light.corridoio"})
+    assert house.calls == [(RELATED,
+                            {"item_type": "entity", "item_id": "light.corridoio"})]
 
 
 @pytest.mark.asyncio
@@ -46,20 +54,16 @@ async def test_un_tipo_che_home_assistant_non_conosce_si_rifiuta_prima():
     """I quattordici tipi sono quelli veri di `ItemType`. Mandarne uno
     inventato produrrebbe un rifiuto di HA che arriva come «errore generico»:
     meglio dire subito qual e' il problema."""
-    finto = _Finto({"result": {}})
-    esito = await _client(finto).related("stanza", "cucina")
+    house = CasaFinta({}, **_answering(RELATED, {}))
+    esito = await house.related("stanza", "cucina")
     assert "errore" in esito
-    assert finto.comandi == [], "non si chiama HA per un tipo che non accetta"
+    assert house.connections == [], "non si chiama HA per un tipo che non accetta"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("finto,perche", [
-    (_Finto(None), "connessione caduta"),
-    (_Finto({"error": {"message": "non trovato"}}), "HA ha rifiutato"),
-    (_Finto({"result": "non un dizionario"}), "forma inattesa"),
-])
-async def test_un_legame_non_letto_non_diventa_un_elenco_vuoto(finto, perche):
-    esito = await _client(finto).related("entity", "light.x")
+@pytest.mark.parametrize("injected,perche", _failures(RELATED, "non un dizionario"))
+async def test_un_legame_non_letto_non_diventa_un_elenco_vuoto(injected, perche):
+    esito = await CasaFinta({}, **injected).related("entity", "light.x")
     assert "errore" in esito, perche
 
 
@@ -70,11 +74,11 @@ async def test_i_problemi_arrivano_come_home_assistant_li_manda():
     """La scelta di cosa dire e cosa tacere non e' del client: e' di chi
     compone. Qui si legge soltanto -- severita', riparabilita' e la versione
     in cui qualcosa si rompera' restano tutte."""
-    finto = _Finto({"result": {"issues": [
+    house = CasaFinta({}, **_answering(ISSUES, {"issues": [
         {"domain": "reolink", "issue_id": "x", "severity": "error",
          "is_fixable": True, "breaks_in_ha_version": "2026.9", "ignored": False},
-    ]}})
-    esito = await _client(finto).problems()
+    ]}))
+    esito = await house.problems()
     assert esito["problemi"][0]["severity"] == "error"
     assert esito["problemi"][0]["breaks_in_ha_version"] == "2026.9"
 
@@ -84,23 +88,19 @@ async def test_un_problema_IGNORATO_non_esce():
     """L'utente ha gia' detto «non dirmelo», in Home Assistant. Ripeterglielo
     sarebbe disobbedire a una scelta che ha espresso -- ed e' l'unico filtro
     che il client si permette."""
-    finto = _Finto({"result": {"issues": [
+    house = CasaFinta({}, **_answering(ISSUES, {"issues": [
         {"domain": "a", "issue_id": "1", "severity": "warning", "ignored": True},
         {"domain": "b", "issue_id": "2", "severity": "warning", "ignored": False},
-    ]}})
-    esito = await _client(finto).problems()
+    ]}))
+    esito = await house.problems()
     assert [p["domain"] for p in esito["problemi"]] == ["b"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("finto,perche", [
-    (_Finto(None), "connessione caduta"),
-    (_Finto({"error": {"code": "unknown_command"}}), "HA ha rifiutato"),
-    (_Finto({"result": {"issues": "non una lista"}}), "forma inattesa"),
-])
-async def test_un_guasto_di_lettura_non_diventa_una_casa_sana(finto, perche):
+@pytest.mark.parametrize("injected,perche", _failures(ISSUES, {"issues": "non una lista"}))
+async def test_un_guasto_di_lettura_non_diventa_una_casa_sana(injected, perche):
     """La prova che conta: `{"problemi": []}` significa «non c'e' niente che
     non va», ed e' la bugia piu' facile da dire davanti a un guasto."""
-    esito = await _client(finto).problems()
+    esito = await CasaFinta({}, **injected).problems()
     assert "errore" in esito, perche
     assert "problemi" not in esito

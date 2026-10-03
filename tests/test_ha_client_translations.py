@@ -16,9 +16,17 @@ Stessa disciplina di `problems()`/`system_log()`: `{"errore": ...}` su guasto,
 mai un dizionario vuoto -- che significherebbe «questa casa non traduce
 niente», un'altra cosa dal non aver potuto chiedere.
 """
+import sys
+from pathlib import Path
+
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
+
+TRANSLATIONS = "frontend/get_translations"
 
 RISPOSTA_VERA = {
     "component.climate.entity_component._.state.heat": "Riscaldamento",
@@ -26,20 +34,14 @@ RISPOSTA_VERA = {
 }
 
 
-class _Finto:
-    def __init__(self, risposta=None):
-        self.risposta = risposta
-        self.comandi = []
-
-    async def _ws_send(self, commands, timeout=10.0):
-        self.comandi.extend(commands)
-        return [self.risposta]
-
-
-def _client(finto):
-    c = HAClient.__new__(HAClient)
-    c._ws_send = finto._ws_send
-    return c
+def _house(**injected) -> CasaFinta:
+    """La casa finta (D8): il client vero, e Home Assistant che pubblica
+    `RISPOSTA_VERA` in italiano per `entity_component` -- e solo per quella
+    coppia: una domanda con un'altra lingua o un'altra categoria non e'
+    servita, e solleva nominandosi."""
+    return CasaFinta({"translations": {"language": "it", "category": "entity_component",
+                                       "report": {"risorse": dict(RISPOSTA_VERA)}}},
+                     **injected)
 
 
 @pytest.mark.asyncio
@@ -49,12 +51,14 @@ async def test_manda_lingua_e_categoria_perche_HA_le_vuole_entrambe():
     comando.
 
     Mutazione ESEGUITA: togliere `"category": category` dal payload in
-    `get_translations` -- il test torna rosso su
-    `assert extra == {"language": "it", "category": "entity_component"}`.
+    `get_translations` -- il test torna rosso (dal Task 12 della Tappa 2,
+    insieme a quello sulle risorse) gia' sulla casa finta, che non serve la
+    domanda: «chieste per ('it', None), gli ingressi le portano per (it,
+    entity_component)».
     """
-    finto = _Finto({"success": True, "result": {"resources": RISPOSTA_VERA}})
-    await _client(finto).get_translations("it")
-    (msg_type, extra), = finto.comandi
+    house = _house()
+    await house.get_translations("it")
+    (msg_type, extra), = house.calls
     assert msg_type == "frontend/get_translations"
     assert extra == {"language": "it", "category": "entity_component"}
 
@@ -63,8 +67,7 @@ async def test_manda_lingua_e_categoria_perche_HA_le_vuole_entrambe():
 async def test_le_risorse_arrivano_cosi_come_HA_le_manda():
     """Qui si LEGGE soltanto: nessuna chiave viene riscritta, filtrata o
     normalizzata. Chi decide cosa farne e' `proxy/state_translations.py`."""
-    finto = _Finto({"success": True, "result": {"resources": RISPOSTA_VERA}})
-    esito = await _client(finto).get_translations("it")
+    esito = await _house().get_translations("it")
     assert esito == {"risorse": RISPOSTA_VERA}
 
 
@@ -78,9 +81,9 @@ async def test_un_rifiuto_di_HA_porta_il_SUO_motivo_non_uno_nostro():
     dell'errore -- il test torna rosso su
     `assert esito == {"errore": "Unknown command.", ...}`.
     """
-    finto = _Finto({"success": False,
-                    "error": {"code": "unknown_command", "message": "Unknown command."}})
-    assert await _client(finto).get_translations("it") == {
+    house = _house(refuse={TRANSLATIONS: {"code": "unknown_command",
+                                          "message": "Unknown command."}})
+    assert await house.get_translations("it") == {
         "errore": "Unknown command.", "causa": "rifiuto", "codice": "unknown_command"}
 
 
@@ -93,7 +96,7 @@ async def test_nessuna_risposta_NON_diventa_una_tabella_vuota():
     quando `msg is None` -- il test torna rosso su
     `assert "risorse" not in esito`.
     """
-    esito = await _client(_Finto(None)).get_translations("it")
+    esito = await _house(silence={TRANSLATIONS}).get_translations("it")
     assert "risorse" not in esito
     assert esito["errore"]
 
@@ -103,7 +106,6 @@ async def test_una_risposta_in_forma_inattesa_e_un_guasto_dichiarato():
     """`result` senza `resources`, o `resources` che non e' un dizionario: e'
     un guasto diverso dal rifiuto, e si dichiara invece di far esplodere il
     primo `in` del gradino successivo."""
-    assert "risorse" not in await _client(
-        _Finto({"success": True, "result": {}})).get_translations("it")
-    assert "risorse" not in await _client(
-        _Finto({"success": True, "result": []})).get_translations("it")
+    for wrong_shape in ({}, []):
+        house = _house(answers={TRANSLATIONS: lambda extra, shape=wrong_shape: shape})
+        assert "risorse" not in await house.get_translations("it"), wrong_shape

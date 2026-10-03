@@ -20,13 +20,20 @@ fa fallire il gruppo 2, togliere il conteggio fa fallire il gruppo 3, togliere
 il ramo dell'errore fa fallire il gruppo 1.
 """
 import asyncio
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_home_space import compose_briefing
 from hiris.app.home_space.briefing import compose
 from hiris.app.home_space.topology import PROBLEM_SEVERITY
 from hiris.app.server import reread_ha_problems
+from tests._casa_sintetica import synthetic_inputs
 
 
 def _nucleo(problemi):
@@ -338,30 +345,52 @@ def test_senza_la_chiave_il_nucleo_non_afferma_che_la_casa_e_sana():
 def test_rileggi_problemi_mette_la_fotografia_in_ram():
     """Vive in RAM e non in archivio: un `repair` e' momentaneo, e un archivio
     riletto solo sugli eventi dei registri -- che il registro dei problemi NON
-    emette -- lo annuncerebbe per ore dopo che l'utente l'ha riparato."""
+    emette -- lo annuncerebbe per ore dopo che l'utente l'ha riparato.
 
-    class _ClienteFinto:
-        async def problems(self):
-            return {"problemi": [_p(domain="caldaia", issue_id="x")]}
+    La casa e' quella finta (`scripts/casa_finta.py`): il client VERO, che
+    chiede `repairs/list_issues` e scarta da se' le voci ignorate."""
+    inputs = synthetic_inputs()
+    inputs["problems"]["problemi"] = [
+        _p(domain="caldaia", issue_id="x"),
+        _p(domain="hue", issue_id="ignorato", ignored=True)]
+    house = CasaFinta(inputs)
 
     app: dict = {}
-    esito = asyncio.run(reread_ha_problems(app, _ClienteFinto()))
+    esito = asyncio.run(reread_ha_problems(app, house))
     assert esito == app["ha_problems"]
-    assert app["ha_problems"]["problemi"][0]["domain"] == "caldaia"
+    assert [p["domain"] for p in app["ha_problems"]["problemi"]] == ["caldaia"]
+    assert house.calls == [("repairs/list_issues", None)]
 
 
 def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
     """Un guasto di lettura e' un'informazione da consegnare al modello, non
-    un'eccezione da far sparire nello schedulatore."""
+    un'eccezione da far sparire nello schedulatore.
 
-    class _ClienteRotto:
-        async def problems(self):
-            return {"errore": "Home Assistant non ha risposto"}
+    Home Assistant tace sul comando (`silence=`): la busta e' quella vera del
+    client, con la causa e il codice."""
+    house = CasaFinta(synthetic_inputs(), silence={"repairs/list_issues"})
 
     app: dict = {}
-    asyncio.run(reread_ha_problems(app, _ClienteRotto()))
-    assert app["ha_problems"] == {"errore": "Home Assistant non ha risposto"}
+    asyncio.run(reread_ha_problems(app, house))
+    assert app["ha_problems"] == {"errore": "Home Assistant non ha risposto",
+                                  "causa": "silenzio", "codice": None}
     testo, _ = compose_briefing(app)
+    assert "non si e' potuto guardare" in testo
+    assert "Home Assistant non ha risposto" in testo
+
+
+def test_rileggi_problemi_porta_anche_il_rifiuto_col_suo_motivo():
+    """Il rifiuto e' un altro guasto: HA e' arrivato e ha detto no, col SUO
+    motivo, che deve arrivare al nucleo invece di un elenco vuoto."""
+    house = CasaFinta(synthetic_inputs(), refuse={"repairs/list_issues": {
+        "code": "unknown_command", "message": "Unknown command."}})
+
+    app: dict = {}
+    asyncio.run(reread_ha_problems(app, house))
+    assert app["ha_problems"] == {"errore": "Unknown command.", "causa": "rifiuto",
+                                  "codice": "unknown_command"}
+    testo, _ = compose_briefing(app)
+    assert "Unknown command." in testo
     assert "non si e' potuto guardare" in testo
 
 

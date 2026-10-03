@@ -15,32 +15,22 @@ scritte a mano -- un punto cieco che il prodotto dichiarava di avere
 **Misurato sulla casa vera il 10/09/2026**: 18 automazioni su 18 e 2 script su
 2, tutti in **una raffica sola da 18 ms** (0,9 ms a chiamata, 44 KB).
 """
+import sys
+from pathlib import Path
+
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
 
 
-class _Finto:
-    """La finta di `_ws_send`: `risposte` sono i messaggi INTERI che il
-    client vero riceverebbe, nell'ordine dei comandi mandati -- `{success,
-    result, error}` oppure `None` (comando senza risposta, o connessione
-    fallita del tutto). Fedele al contratto vero, non alla forma comoda."""
-
-    def __init__(self, risposte=None):
-        self.risposte = risposte
-        self.comandi = []
-
-    async def _ws_send(self, commands, timeout=10.0):
-        self.comandi.extend(commands)
-        if self.risposte is None:
-            return [None] * len(commands)
-        return list(self.risposte)
-
-
-def _client(finto):
-    client = HAClient.__new__(HAClient)
-    client._ws_send = finto._ws_send
-    return client
+def _house(configs=None, **injected) -> CasaFinta:
+    """La casa finta (D8): il client vero, e Home Assistant che risponde ai
+    comandi `automation/config` e `script/config` con il corpo di `configs`,
+    e con il suo rifiuto vero (`not_found`) per un'entita' che non c'e'."""
+    return CasaFinta({"behavior": {"configurazioni": dict(configs or {})}}, **injected)
 
 
 @pytest.mark.asyncio
@@ -51,16 +41,13 @@ async def test_ogni_dominio_chiede_il_comando_suo():
 
     Mutazione che la uccide: usare `automation/config` per tutti.
     """
-    finto = _Finto([
-        {"success": True, "result": {"config": {"alias": "Sveglia"}}},
-        {"success": True, "result": {"config": {"alias": "Saluta"}}},
-    ])
+    house = _house({"automation.sveglia": {"alias": "Sveglia"},
+                    "script.saluta": {"alias": "Saluta"}})
 
-    esito = await _client(finto).behavior_configs(
-        ["automation.sveglia", "script.saluta"])
+    esito = await house.behavior_configs(["automation.sveglia", "script.saluta"])
 
-    assert [tipo for tipo, _ in finto.comandi] == ["automation/config", "script/config"]
-    assert finto.comandi[0][1] == {"entity_id": "automation.sveglia"}
+    assert house.calls == [("automation/config", {"entity_id": "automation.sveglia"}),
+                           ("script/config", {"entity_id": "script.saluta"})]
     assert esito["configurazioni"] == {
         "automation.sveglia": {"alias": "Sveglia"},
         "script.saluta": {"alias": "Saluta"}}
@@ -75,13 +62,10 @@ async def test_una_configurazione_non_letta_manca_invece_di_essere_vuota():
 
     Mutazione che la uccide: mettere `{}` per le voci senza risposta.
     """
-    finto = _Finto([
-        {"success": True, "result": {"config": {"alias": "Sveglia"}}},
-        {"success": False, "error": {"code": "not_found"}},
-        None,
-    ])
+    house = _house({"automation.sveglia": {"alias": "Sveglia"}},
+                   silence={"script/config"})
 
-    esito = await _client(finto).behavior_configs(
+    esito = await house.behavior_configs(
         ["automation.sveglia", "automation.sparita", "script.muto"])
 
     assert set(esito["configurazioni"]) == {"automation.sveglia"}
@@ -96,7 +80,9 @@ async def test_un_guasto_della_connessione_e_un_errore_non_un_elenco_vuoto():
 
     Mutazione ESEGUITA: tolto il controllo `all(reply is None ...)` -- rossa
     (torna `{"configurazioni": {}}`)."""
-    esito = await _client(_Finto()).behavior_configs(["automation.x", "script.y"])
+    house = _house(silence={"automation/config", "script/config"})
+
+    esito = await house.behavior_configs(["automation.x", "script.y"])
 
     assert esito == {"errore": "Home Assistant non ha risposto",
         "causa": "silenzio", "codice": None}
@@ -104,47 +90,55 @@ async def test_un_guasto_della_connessione_e_un_errore_non_un_elenco_vuoto():
 
 @pytest.mark.asyncio
 async def test_le_voci_non_lette_si_nominano_col_motivo_e_le_altre_restano():
-    """Un guasto PARZIALE non spegne le voci lette ne' resta muto: chi non ha
-    risposto, chi e' stato rifiutato e chi ha risposto in una forma
-    inattesa finiscono in `non_letti` col loro motivo (come `traces`).
+    """Un guasto PARZIALE non spegne le voci lette ne' resta muto: chi e'
+    stato rifiutato e chi ha risposto in una forma inattesa finiscono in
+    `non_letti` col loro motivo (come `traces`). Il rifiuto e' quello vero di
+    Home Assistant per un'entita' che non c'e' (`not_found`, «Entity not
+    found»).
 
     Mutazione ESEGUITA: togliere `non_letti` dalla risposta -- rossa."""
-    finto = _Finto([
-        {"success": True, "result": {"config": {"alias": "Sveglia"}}},
-        None,
-        {"success": False, "error": {"code": "not_found", "message": "sparita"}},
-        {"success": True, "result": {"config": "non un dizionario"}},
-    ])
+    house = _house({"automation.a": {"alias": "Sveglia"}},
+                   answers={"script/config": lambda extra: {"config": "non un dizionario"}})
 
-    esito = await _client(finto).behavior_configs(
-        ["automation.a", "automation.b", "automation.c", "script.d"])
+    esito = await house.behavior_configs(["automation.a", "automation.c", "script.d"])
 
     assert esito["configurazioni"] == {"automation.a": {"alias": "Sveglia"}}
     assert esito["non_letti"] == {
-        "automation.b": "Home Assistant non ha risposto in tempo",
-        "automation.c": "sparita",
+        "automation.c": "Entity not found",
         "script.d": "risposta in forma inattesa"}
+
+
+@pytest.mark.asyncio
+async def test_la_voce_senza_risposta_si_nomina_e_le_altre_restano():
+    """Il terzo motivo di `non_letti`, in una raffica a parte: la casa finta
+    fa tacere un COMANDO intero, non una voce sola, e qui tace `script/config`
+    mentre `automation/config` risponde."""
+    house = _house({"automation.a": {"alias": "Sveglia"}}, silence={"script/config"})
+
+    esito = await house.behavior_configs(["automation.a", "script.b"])
+
+    assert esito["configurazioni"] == {"automation.a": {"alias": "Sveglia"}}
+    assert esito["non_letti"] == {"script.b": "Home Assistant non ha risposto in tempo"}
 
 
 @pytest.mark.asyncio
 async def test_senza_entita_non_si_apre_nessuna_connessione():
     """Una casa senza automazioni non deve costare un handshake."""
-    finto = _Finto()
+    house = _house()
 
-    esito = await _client(finto).behavior_configs([])
+    esito = await house.behavior_configs([])
 
     assert esito == {"configurazioni": {}}
-    assert finto.comandi == []
+    assert house.connections == []
 
 
 @pytest.mark.asyncio
 async def test_un_dominio_che_non_ha_un_comando_di_configurazione_si_salta():
     """`light.cucina` non ha una configurazione da chiedere: non si inventa un
     comando `light/config` che Home Assistant rifiuterebbe."""
-    finto = _Finto([{"success": True, "result": {"config": {"alias": "Sveglia"}}}])
+    house = _house({"automation.sveglia": {"alias": "Sveglia"}})
 
-    esito = await _client(finto).behavior_configs(
-        ["automation.sveglia", "light.cucina"])
+    esito = await house.behavior_configs(["automation.sveglia", "light.cucina"])
 
-    assert [tipo for tipo, _ in finto.comandi] == ["automation/config"]
+    assert [command for command, _ in house.calls] == ["automation/config"]
     assert set(esito["configurazioni"]) == {"automation.sveglia"}

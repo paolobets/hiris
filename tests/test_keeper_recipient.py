@@ -1,97 +1,98 @@
 """`recipients_for` -- il recapito del soggetto (spec §2.3, Task 1).
 
-Una finta `ha` che riproduce solo i lettori che la funzione usa davvero
-(`get_states`, `read_registry`, `get_services`), con la stessa forma
-misurata sulla casa vera (vedi `hiris/app/keeper/recipient.py` per le fonti e
-la misura del 25/09/2026)."""
+Home Assistant e' la casa finta (`scripts/casa_finta.py`): il client VERO
+col trasporto sostituito, che serve `GET /api/states`, i registri e `GET
+/api/services` da ingressi sintetici costruiti qui. La forma delle tre letture
+che la funzione usa (`get_states`, `read_registry`, `get_services`) e' quindi
+quella del client per costruzione, guasti compresi: la busta, mai
+un'eccezione (D3). I casi che contano -- un orologio `mobile_app` senza
+servizio notify proprio, un tracker che non e' `mobile_app` -- vengono dalla
+misura sulla casa vera del 25/09/2026 (vedi `hiris/app/keeper/recipient.py`),
+con nomi sintetici."""
 import logging
+import sys
+from pathlib import Path
 
+import aiohttp
 import pytest
 
-from hiris.app.keeper.recipient import Recipients, _slugify, recipients_for
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-USER_ID = "18ee7ec3dfa443929b3b760b30e3ac37"
+from casa_finta import CasaFinta
+
+from hiris.app.keeper.recipient import (
+    _REASON_HA_DOWN,
+    Recipients,
+    _slugify,
+    recipients_for,
+)
+from hiris.app.proxy.ha_client import HAClient
+from tests._casa_sintetica import synthetic_inputs
+
+USER_ID = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+
+#: I comandi dei registri, chiesti alla tabella del client: tacerli tutti e'
+#: Home Assistant che non risponde alla lettura dei registri.
+REGISTRY_COMMANDS = tuple(msg_type for _key, msg_type, _extra in HAClient._REGISTRIES)
 
 
-def _stato_persona(user_id, trackers):
-    return {"entity_id": "person.paolo_bettinelli", "state": "home",
+def _registry_commands(registry):
+    """I comandi che `HAClient.read_registry(registry)` manda, chiesti alla
+    stessa tabella del client (Tappa 2, Task 5: un registro, un comando)."""
+    return tuple(msg_type for key, msg_type, _extra in HAClient._REGISTRIES
+                 if key == registry)
+
+#: I servizi notify della casa sintetica: tre dispositivi `mobile_app` con il
+#: proprio servizio, e uno (`portatile_uno`) senza tracker fra quelli provati.
+NOTIFY_SERVICES = [{"domain": "notify", "services": {
+    "mobile_app_telefono_uno": {}, "mobile_app_tablet_uno": {},
+    "mobile_app_telefono_due": {}, "mobile_app_portatile_uno": {}}}]
+
+
+def _person_state(user_id, trackers):
+    return {"entity_id": "person.persona_uno", "state": "home",
             "attributes": {"user_id": user_id, "device_trackers": trackers}}
 
 
-#: Come risponde `HAClient` quando Home Assistant tace (D3: la busta, non
-#: un'eccezione).
-_SILENT = {"errore": "Home Assistant non ha risposto", "causa": "silenzio", "codice": None}
+def _house(*, states=(), entities=(), devices=(), services=None, **faults):
+    """La casa finta sugli ingressi sintetici, con gli stati, le entita', i
+    dispositivi e i servizi della prova al posto dei loro. `faults` sono i
+    `refuse=`/`silence=`/`answers=` di `CasaFinta`."""
+    inputs = synthetic_inputs()
+    inputs["states"] = list(states)
+    inputs["registries"]["entita"] = list(entities)
+    inputs["registries"]["dispositivi"] = list(devices)
+    inputs["services"] = NOTIFY_SERVICES if services is None else services
+    return CasaFinta(inputs, **faults)
 
 
-class FintaHA:
-    """Le tre letture che `recipients_for` usa, misurate sulla casa vera
-    (192.168.1.95, 25/09/2026): tre tracker `mobile_app` di cui uno -- il
-    Watch -- senza servizio notify proprio, e un quarto tracker di controllo
-    che non e' `mobile_app`."""
-
-    def __init__(self, *, stati=None, entita=None, dispositivi=None,
-                 non_disponibili=None, servizi=None, guasto=None):
-        self.stati = stati if stati is not None else []
-        self.entita = entita if entita is not None else []
-        self.dispositivi = dispositivi if dispositivi is not None else []
-        self.non_disponibili = non_disponibili if non_disponibili is not None else []
-        self.servizi = servizi if servizi is not None else [
-            {"domain": "notify", "services": {
-                "mobile_app_iphone_bet": {}, "mobile_app_ipad_mini": {},
-                "mobile_app_iphone_di_marta": {}, "mobile_app_nbbet_001": {},
-            }}]
-        self.guasto = guasto  # nome del lettore che deve fallire, o None
-        self.chiamate = []
-
-    async def get_states(self, entity_ids):
-        self.chiamate.append("get_states")
-        if self.guasto == "get_states":
-            return dict(_SILENT)
-        return self.stati
-
-    async def read_registry(self, registry):
-        # Un registro solo, come `HAClient.read_registry` (Tappa 2, Task 5):
-        # un guasto o un registro fra i non disponibili e' la busta.
-        self.chiamate.append(f"read_registry:{registry}")
-        if self.guasto == "read_registry" or registry in self.non_disponibili:
-            return dict(_SILENT)
-        return {registry: {"entita": self.entita,
-                           "dispositivi": self.dispositivi}[registry]}
-
-    async def get_services(self):
-        self.chiamate.append("get_services")
-        if self.guasto == "get_services":
-            return dict(_SILENT)
-        return self.servizi
-
-
-_ENTITA_TRE_TRACKER = [
-    {"entity_id": "device_tracker.iphone_bet", "platform": "mobile_app",
+_THREE_TRACKERS = [
+    {"entity_id": "device_tracker.telefono_uno", "platform": "mobile_app",
      "device_id": "d1"},
-    {"entity_id": "device_tracker.ipad_mini", "platform": "mobile_app",
+    {"entity_id": "device_tracker.tablet_uno", "platform": "mobile_app",
      "device_id": "d2"},
-    {"entity_id": "device_tracker.iphone_bet_apple_watch", "platform": "mobile_app",
+    {"entity_id": "device_tracker.telefono_uno_orologio", "platform": "mobile_app",
      "device_id": "d3"},
 ]
 
 
 @pytest.mark.asyncio
-async def test_persona_collegata_due_servizi_il_watch_cade_da_se():
-    """Tre tracker `mobile_app`, uno (il Watch) senza servizio notify proprio
-    -- misurato sulla casa vera: `notify.mobile_app_iphone_bet_apple_watch`
-    non esiste. Il risultato porta i DUE servizi che esistono davvero, e
-    nessun motivo (non e' un fallimento)."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, [
-            "device_tracker.iphone_bet", "device_tracker.ipad_mini",
-            "device_tracker.iphone_bet_apple_watch"])],
-        entita=_ENTITA_TRE_TRACKER)
+async def test_persona_collegata_due_servizi_l_orologio_cade_da_se():
+    """Tre tracker `mobile_app`, uno (l'orologio) senza servizio notify
+    proprio -- com'era misurato sulla casa vera il 25/09/2026. Il risultato
+    porta i DUE servizi che esistono davvero, e nessun motivo (non e' un
+    fallimento)."""
+    ha = _house(
+        states=[_person_state(USER_ID, [
+            "device_tracker.telefono_uno", "device_tracker.tablet_uno",
+            "device_tracker.telefono_uno_orologio"])],
+        entities=_THREE_TRACKERS)
     subject = {"specie": "persona", "id": USER_ID}
 
     esito = await recipients_for(subject, ha)
 
     assert esito == Recipients(
-        services=("notify.mobile_app_iphone_bet", "notify.mobile_app_ipad_mini"),
+        services=("notify.mobile_app_telefono_uno", "notify.mobile_app_tablet_uno"),
         reason=None)
 
 
@@ -100,16 +101,16 @@ async def test_tracker_non_mobile_app_ignorato():
     """Un tracker che NON e' `mobile_app` (un'altra integrazione di
     geolocalizzazione) non genera nessun candidato: non si prova nemmeno a
     indovinargli un servizio notify."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, [
-            "device_tracker.iphone_bet", "device_tracker.gps_logger_esterno"])],
-        entita=_ENTITA_TRE_TRACKER + [
+    ha = _house(
+        states=[_person_state(USER_ID, [
+            "device_tracker.telefono_uno", "device_tracker.gps_logger_esterno"])],
+        entities=_THREE_TRACKERS + [
             {"entity_id": "device_tracker.gps_logger_esterno",
              "platform": "gpslogger", "device_id": "d9"}])
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert esito == Recipients(services=("notify.mobile_app_iphone_bet",), reason=None)
+    assert esito == Recipients(services=("notify.mobile_app_telefono_uno",), reason=None)
 
 
 @pytest.mark.asyncio
@@ -118,12 +119,12 @@ async def test_entity_id_con_suffisso_non_slug_non_diventa_un_candidato():
     rispettasse la forma slug (mai vera su una casa reale, ma il registro
     potrebbe mentire) non deve MAI diventare un servizio da chiamare, anche
     se per assurdo un servizio con quel nome esistesse davvero."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, ["device_tracker.iPhone Strano!"])],
-        entita=[{"entity_id": "device_tracker.iPhone Strano!",
-                 "platform": "mobile_app", "device_id": "d1"}],
-        servizi=[{"domain": "notify",
-                  "services": {"mobile_app_iPhone Strano!": {}}}])
+    ha = _house(
+        states=[_person_state(USER_ID, ["device_tracker.Telefono Strano!"])],
+        entities=[{"entity_id": "device_tracker.Telefono Strano!",
+                   "platform": "mobile_app", "device_id": "d1"}],
+        services=[{"domain": "notify",
+                   "services": {"mobile_app_Telefono Strano!": {}}}])
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
@@ -133,12 +134,12 @@ async def test_entity_id_con_suffisso_non_slug_non_diventa_un_candidato():
 
 @pytest.mark.asyncio
 async def test_persona_senza_user_id_collegato_zero_con_motivo_di_collegamento():
-    """`person.marta` ha `user_id` vuoto (misurato sulla casa vera): nessuno
-    stato corrisponde all'id del soggetto, e il motivo dice di collegare la
-    persona all'utente in Home Assistant."""
-    ha = FintaHA(stati=[_stato_persona(None, ["device_tracker.iphone_di_marta"])])
+    """Una `person` con `user_id` vuoto (un caso misurato sulla casa vera):
+    nessuno stato corrisponde all'id del soggetto, e il motivo dice di
+    collegare la persona all'utente in Home Assistant."""
+    ha = _house(states=[_person_state(None, ["device_tracker.telefono_due"])])
 
-    esito = await recipients_for({"specie": "persona", "id": "id-di-marta"}, ha)
+    esito = await recipients_for({"specie": "persona", "id": "id-della-persona-due"}, ha)
 
     assert esito.services == ()
     assert esito.reason is not None
@@ -151,11 +152,11 @@ async def test_due_persone_collegate_allo_stesso_utente_zero_con_motivo_ambiguo(
     `user_id`: la prima trovata sarebbe una scelta indovinata, non dedotta
     (security review 26/09/2026, vincolo 1.5) -- zero servizi, un motivo
     distinto da quello di «non collegata»."""
-    stato_2 = {"entity_id": "person.paolo_secondo", "state": "home",
+    stato_2 = {"entity_id": "person.persona_uno_bis", "state": "home",
                "attributes": {"user_id": USER_ID,
-                              "device_trackers": ["device_tracker.ipad_mini"]}}
-    ha = FintaHA(stati=[
-        _stato_persona(USER_ID, ["device_tracker.iphone_bet"]), stato_2])
+                              "device_trackers": ["device_tracker.tablet_uno"]}}
+    ha = _house(states=[
+        _person_state(USER_ID, ["device_tracker.telefono_uno"]), stato_2])
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
@@ -172,31 +173,31 @@ async def test_soggetto_persona_senza_id_stesso_motivo_di_collegamento():
     """Una persona anonima (l'ingress non ha portato `X-Remote-User-Id`): non
     c'e' nessun id da cercare, il motivo e' lo stesso della mancata
     collega."""
-    ha = FintaHA()
+    ha = _house()
 
     esito = await recipients_for({"specie": "persona", "id": None}, ha)
 
     assert esito.services == ()
     assert "collega" in esito.reason
-    assert ha.chiamate == []  # nessuna lettura: non c'e' niente da cercare
+    assert ha.calls == []  # nessuna lettura: non c'e' niente da cercare
 
 
 @pytest.mark.asyncio
 async def test_soggetto_luogo_zero_con_motivo_del_servizio():
     """Retro Panel (`specie == "luogo"`): nessuna strada oggi, e il motivo e'
     esattamente quello della spec §2.3."""
-    ha = FintaHA()
+    ha = _house()
 
     esito = await recipients_for({"specie": "luogo", "id": "retro-panel"}, ha)
 
     assert esito == Recipients((), "il servizio non ha ancora dichiarato come si avvisa.")
-    assert ha.chiamate == []
+    assert ha.calls == []
 
 
 @pytest.mark.asyncio
 async def test_soggetto_integrazione_zero_con_motivo_del_servizio():
     """Un'integrazione firmata: stessa frase di `luogo`, stessa non-strada."""
-    ha = FintaHA()
+    ha = _house()
 
     esito = await recipients_for({"specie": "integrazione", "id": "mcp-gateway"}, ha)
 
@@ -208,7 +209,7 @@ async def test_soggetto_integrazione_zero_con_motivo_del_servizio():
 async def test_soggetto_nessuno_zero_con_motivo():
     """Il ponte (`specie == "nessuno"`, es. lo schedulatore): non e' una
     persona, zero servizi, un motivo leggibile."""
-    ha = FintaHA()
+    ha = _house()
 
     esito = await recipients_for({"specie": "nessuno", "id": None}, ha)
 
@@ -220,7 +221,7 @@ async def test_soggetto_nessuno_zero_con_motivo():
 async def test_soggetto_none_zero_con_motivo():
     """Nessun soggetto affatto (mai dovrebbe capitare in produzione, ma la
     funzione non deve sollevare)."""
-    esito = await recipients_for(None, FintaHA())
+    esito = await recipients_for(None, _house())
 
     assert esito.services == ()
     assert esito.reason
@@ -232,7 +233,7 @@ async def test_persona_senza_device_trackers_zero_con_motivo_app():
     servizi, il motivo parla di app collegata (non di notifiche attive --
     qui non c'e' nessuna app da attivare, fix round 1, 26/09/2026, vincolo
     4: i due motivi ora si distinguono)."""
-    ha = FintaHA(stati=[_stato_persona(USER_ID, [])])
+    ha = _house(states=[_person_state(USER_ID, [])])
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
@@ -241,14 +242,14 @@ async def test_persona_senza_device_trackers_zero_con_motivo_app():
 
 
 @pytest.mark.asyncio
-async def test_persona_solo_watch_notifiche_non_attive():
-    """La persona ha un dispositivo `mobile_app` (il Watch), ma nessuno dei
+async def test_persona_solo_orologio_notifiche_non_attive():
+    """La persona ha un dispositivo `mobile_app` (l'orologio), ma nessuno dei
     suoi tracker risolve a un servizio notify esistente: qui l'app C'E',
     manca l'attivazione -- motivo diverso da «nessun dispositivo» (fix round
     1, 26/09/2026, vincolo 4)."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet_apple_watch"])],
-        entita=[_ENTITA_TRE_TRACKER[2]])  # solo il Watch
+    ha = _house(
+        states=[_person_state(USER_ID, ["device_tracker.telefono_uno_orologio"])],
+        entities=[_THREE_TRACKERS[2]])  # solo l'orologio
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
@@ -261,25 +262,25 @@ async def test_persona_solo_watch_notifiche_non_attive():
 async def test_dispositivo_rinominato_risolve_dal_nome_del_registro_dispositivi():
     """Il dispositivo e' stato rinominato nell'app Companion DOPO la prima
     registrazione: l'entity_id resta congelato al nome vecchio
-    (`device_tracker.iphone_bet`, mai piu' cambiato da Home Assistant --
+    (`device_tracker.telefono_uno`, mai piu' cambiato da Home Assistant --
     `mobile_app/config_flow.py::async_step_registration`), ma Home Assistant
     registra il servizio SUL NOME NUOVO
     (`mobile_app/webhook.py::webhook_update_registration` riscrive
     `device_registry.name` e ricarica notify -- vedi il docstring del
     modulo). Il candidato giusto viene dal registro dei DISPOSITIVI, non
     dalla coda dell'entity_id (fix round 1, 26/09/2026, vincolo 1)."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
-        entita=[{"entity_id": "device_tracker.iphone_bet", "platform": "mobile_app",
-                 "device_id": "d1"}],
-        dispositivi=[{"id": "d1", "name": "Il Telefono Nuovo di Paolo"}],
-        servizi=[{"domain": "notify", "services": {
-            "mobile_app_il_telefono_nuovo_di_paolo": {}}}])
+    ha = _house(
+        states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+        entities=[{"entity_id": "device_tracker.telefono_uno", "platform": "mobile_app",
+                   "device_id": "d1"}],
+        devices=[{"id": "d1", "name": "Il Telefono Nuovo di Casa"}],
+        services=[{"domain": "notify", "services": {
+            "mobile_app_il_telefono_nuovo_di_casa": {}}}])
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
     assert esito == Recipients(
-        services=("notify.mobile_app_il_telefono_nuovo_di_paolo",), reason=None)
+        services=("notify.mobile_app_il_telefono_nuovo_di_casa",), reason=None)
 
 
 @pytest.mark.asyncio
@@ -288,15 +289,15 @@ async def test_dispositivo_mai_rinominato_degrada_sull_entity_id():
     si degrada sul secondo candidato, l'entity_id -- che regge finche' il
     dispositivo non e' mai stato rinominato (il caso comune, misurato sulla
     casa vera)."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
-        entita=[{"entity_id": "device_tracker.iphone_bet", "platform": "mobile_app",
-                 "device_id": "d1"}],
-        dispositivi=[])  # nessun dispositivo "d1" nel registro
+    ha = _house(
+        states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+        entities=[{"entity_id": "device_tracker.telefono_uno", "platform": "mobile_app",
+                   "device_id": "d1"}],
+        devices=[])  # nessun dispositivo "d1" nel registro
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert esito == Recipients(services=("notify.mobile_app_iphone_bet",), reason=None)
+    assert esito == Recipients(services=("notify.mobile_app_telefono_uno",), reason=None)
 
 
 @pytest.mark.asyncio
@@ -305,13 +306,13 @@ async def test_nome_dispositivo_preferito_al_entity_id_quando_entrambi_esistono(
     (un registro incoerente: il vecchio servizio non e' ancora sparito dopo
     una rinomina), si sceglie UNO solo -- quello dal nome del dispositivo,
     che e' la fonte di oggi -- mai due push per lo stesso telefono."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
-        entita=[{"entity_id": "device_tracker.iphone_bet", "platform": "mobile_app",
-                 "device_id": "d1"}],
-        dispositivi=[{"id": "d1", "name": "Nome Nuovo"}],
-        servizi=[{"domain": "notify", "services": {
-            "mobile_app_nome_nuovo": {}, "mobile_app_iphone_bet": {}}}])
+    ha = _house(
+        states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+        entities=[{"entity_id": "device_tracker.telefono_uno", "platform": "mobile_app",
+                   "device_id": "d1"}],
+        devices=[{"id": "d1", "name": "Nome Nuovo"}],
+        services=[{"domain": "notify", "services": {
+            "mobile_app_nome_nuovo": {}, "mobile_app_telefono_uno": {}}}])
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
@@ -341,86 +342,120 @@ def test_slugify_vuoto_e_solo_simboli():
 
 @pytest.mark.asyncio
 async def test_guasto_get_states_zero_con_motivo_mai_eccezione():
-    """Un guasto di Home Assistant durante la prima lettura non deve MAI
-    diventare un'eccezione che risale: zero servizi, motivo del guasto."""
-    ha = FintaHA(guasto="get_states")
+    """Home Assistant tace sugli stati: il client rende la busta del silenzio,
+    e non deve MAI diventare un'eccezione che risale -- zero servizi, il
+    motivo del guasto, e nessuna lettura dopo."""
+    ha = _house(silence={"/api/states"})
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert esito.services == ()
-    assert esito.reason
+    assert esito == Recipients((), _REASON_HA_DOWN)
+    assert [command for command, _extra in ha.calls] == ["/api/states"]
 
 
 @pytest.mark.asyncio
 async def test_guasto_get_states_il_testo_dell_eccezione_non_finisce_nel_registro(caplog):
     """Vincolo di sicurezza 1.2: il registro porta la CAUSA del guasto, mai il
     suo testo -- un messaggio di eccezione di rete potrebbe portare dentro
-    di se' un frammento sensibile della richiesta che l'ha causato."""
+    di se' un frammento sensibile della richiesta che l'ha causato.
 
-    class FintaConSegreto(FintaHA):
-        async def get_states(self, entity_ids):
-            self.chiamate.append("get_states")
-            return {"errore": "Home Assistant non ha risposto: connessione persa "
-                              "(token=SEKRET-TOKEN-123)",
-                    "causa": "silenzio", "codice": None}
+    Il trasporto cade con un testo che porta un segreto: il client vero lo
+    mette nella busta (`errore`), e la prova lo verifica prima di guardare il
+    registro -- altrimenti sarebbe verde perche' il segreto non c'era."""
+
+    def _dropped(path):
+        raise aiohttp.ClientConnectionError(
+            "connessione persa (token=SEKRET-TOKEN-123)")
+
+    ha = _house(answers={"/api/states": _dropped})
+    assert "SEKRET-TOKEN-123" in (await ha.get_states([]))["errore"]
 
     with caplog.at_level(logging.WARNING):
-        esito = await recipients_for({"specie": "persona", "id": USER_ID},
-                                     FintaConSegreto())
+        esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert esito.services == ()
+    assert esito == Recipients((), _REASON_HA_DOWN)
+    assert "recipients_for" in caplog.text
     assert "SEKRET-TOKEN-123" not in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_guasto_read_registries_zero_con_motivo_mai_eccezione():
-    ha = FintaHA(stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
-                 guasto="read_registry")
+    """Home Assistant tace su tutti i registri. Il client vero non solleva:
+    `read_registry` rende la busta del guasto, ed e' quel segnale a fermare
+    la funzione -- non un'eccezione, che non arriva piu' (D3)."""
+    ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+                entities=_THREE_TRACKERS, silence=set(REGISTRY_COMMANDS))
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert esito.services == ()
-    assert esito.reason
+    assert esito == Recipients((), _REASON_HA_DOWN)
+    assert "/api/services" not in [command for command, _extra in ha.calls]
 
 
 @pytest.mark.asyncio
 async def test_guasto_get_services_zero_con_motivo_mai_eccezione():
-    ha = FintaHA(stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
-                 entita=_ENTITA_TRE_TRACKER, guasto="get_services")
+    ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+                entities=_THREE_TRACKERS, silence={"/api/services"})
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert esito.services == ()
-    assert esito.reason
+    assert esito == Recipients((), _REASON_HA_DOWN)
+
+
+@pytest.mark.asyncio
+async def test_servizi_rifiutati_zero_con_motivo():
+    """Il rifiuto (HA risponde 500) e' un guasto come il silenzio: nessun
+    servizio si inventa da un registro che non e' arrivato."""
+    ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+                entities=_THREE_TRACKERS, refuse={"/api/services": 500})
+
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+
+    assert esito == Recipients((), _REASON_HA_DOWN)
 
 
 @pytest.mark.asyncio
 async def test_registro_entita_non_disponibile_zero_con_motivo():
-    """Il registro delle entita' risponde con la busta del guasto
-    (lo stesso segnale che usa `workshop.py`): non si inventano candidati da
-    un registro che non e' arrivato."""
-    ha = FintaHA(stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet"])],
-                 entita=[], non_disponibili=["entita"])
+    """Home Assistant rifiuta il SOLO registro delle entita':
+    `read_registry("entita")` risponde con la busta del guasto (lo stesso
+    segnale che usa `workshop.py`): non si inventano candidati da un registro
+    che non e' arrivato, anche se gli altri registri ci sono."""
+    ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+                entities=_THREE_TRACKERS,
+                refuse={"config/entity_registry/list": {
+                    "code": "unknown_error", "message": "Unknown error"}})
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert esito.services == ()
-    assert esito.reason
+    assert esito == Recipients((), _REASON_HA_DOWN)
 
 
 @pytest.mark.asyncio
 async def test_una_sola_lettura_per_lettore():
     """`get_states`, i due registri e `get_services` si chiamano UNA volta
-    sola a esecuzione -- non un poll, non una rilettura per tracker."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, [
-            "device_tracker.iphone_bet", "device_tracker.ipad_mini"])],
-        entita=_ENTITA_TRE_TRACKER)
+    sola a esecuzione, in quest'ordine -- non un poll, non una rilettura per
+    tracker.
+
+    Le connessioni attese non si ricopiano: sono quelle che le quattro letture
+    aprono, chiamate una volta ciascuna, su una casa identica."""
+    def house():
+        return _house(
+            states=[_person_state(USER_ID, [
+                "device_tracker.telefono_uno", "device_tracker.tablet_uno"])],
+            entities=_THREE_TRACKERS)
+
+    once = house()
+    await once.get_states([])
+    await once.read_registry("entita")
+    await once.read_registry("dispositivi")
+    await once.get_services()
+    ha = house()
 
     await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
-    assert ha.chiamate == ["get_states", "read_registry:entita",
-                           "read_registry:dispositivi", "get_services"]
+    assert ha.connections == once.connections
+    assert ("ws", _registry_commands("entita")) in ha.connections
+    assert ("ws", _registry_commands("dispositivi")) in ha.connections
 
 
 @pytest.mark.asyncio
@@ -430,22 +465,22 @@ async def test_due_tracker_che_convergono_sullo_stesso_servizio_danno_un_servizi
     preso il nome di quello vecchio, che resta collegato alla persona) non
     devono dare due push per un esito. Deduplicato qui, all'origine, in
     ordine stabile: il primo tracker che lo trova lo tiene."""
-    ha = FintaHA(
-        stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet",
+    ha = _house(
+        states=[_person_state(USER_ID, ["device_tracker.telefono_uno",
                                         "device_tracker.telefono_nuovo",
-                                        "device_tracker.ipad_mini"])],
-        entita=[{"entity_id": "device_tracker.iphone_bet", "platform": "mobile_app",
-                 "device_id": "d1"},
-                {"entity_id": "device_tracker.telefono_nuovo",
-                 "platform": "mobile_app", "device_id": "d2"},
-                {"entity_id": "device_tracker.ipad_mini", "platform": "mobile_app",
-                 "device_id": "d3"}],
-        dispositivi=[{"id": "d1", "name": "iPhone Bet"},
-                     {"id": "d2", "name": "iPhone Bet"},
-                     {"id": "d3", "name": "iPad mini"}])
+                                        "device_tracker.tablet_uno"])],
+        entities=[{"entity_id": "device_tracker.telefono_uno", "platform": "mobile_app",
+                   "device_id": "d1"},
+                  {"entity_id": "device_tracker.telefono_nuovo",
+                   "platform": "mobile_app", "device_id": "d2"},
+                  {"entity_id": "device_tracker.tablet_uno", "platform": "mobile_app",
+                   "device_id": "d3"}],
+        devices=[{"id": "d1", "name": "Telefono Uno"},
+                 {"id": "d2", "name": "Telefono Uno"},
+                 {"id": "d3", "name": "Tablet Uno"}])
 
     esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
     assert esito == Recipients(
-        services=("notify.mobile_app_iphone_bet", "notify.mobile_app_ipad_mini"),
+        services=("notify.mobile_app_telefono_uno", "notify.mobile_app_tablet_uno"),
         reason=None)

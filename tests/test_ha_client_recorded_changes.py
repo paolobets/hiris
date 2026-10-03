@@ -18,27 +18,39 @@ direbbe «qui c'e' memoria» in un punto dove la memoria non arriva piu'.
 839 entita' costa 25-45 ms e 25 KB dove c'e' memoria, **8 ms e 2 byte** dove
 non ce n'e'.
 """
+import sys
+from pathlib import Path
+
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
+
+HISTORY = "history/history_during_period"
+
+
+def _house(series=None, **injected) -> CasaFinta:
+    """La casa finta (D8): il client vero, e Home Assistant che risponde a
+    ogni finestra con `series(extra)` -- la serie che rimanderebbe per quella
+    domanda. Le connessioni si contano su `house.connections`: dieci comandi
+    sono dieci comandi sia in una raffica sia in dieci."""
+    answers = {} if series is None else {HISTORY: series}
+    return CasaFinta({}, answers=answers, **injected)
+
 
 class _Finto:
-    def __init__(self, risposte=None, *, solleva=False):
+    """Il trasporto finto che resta, per UNA prova sola: la casa finta fa
+    tacere o rifiutare un COMANDO intero, e qui servono tre finestre dello
+    stesso comando con tre esiti diversi (vedi la prova)."""
+
+    def __init__(self, risposte):
         self.risposte = risposte
-        self.solleva = solleva
-        self.comandi = []
-        #: Quante VOLTE si e' aperta una connessione. `comandi` non lo direbbe:
-        #: dieci comandi sono dieci comandi sia in una raffica sia in dieci.
-        self.raffiche = 0
 
     async def _ws_send(self, commands, timeout=10.0):
-        self.raffiche += 1
-        self.comandi.extend(commands)
-        if self.solleva:
-            raise RuntimeError("websocket giu'")
-        if self.risposte is None:
-            return [None] * len(commands)
         return list(self.risposte)
 
 
@@ -58,13 +70,13 @@ async def test_lo_stato_all_inizio_della_finestra_non_e_memoria_dentro_la_finest
 
     Mutazione che la uccide: contare tutte le righe invece di quelle dopo `da`.
     """
-    finto = _Finto([{"success": True, "result": {
+    house = _house(lambda extra: {
         "climate.bagno": [{"s": "heat", "lu": 900.0},     # prima: non conta
                           {"s": "off", "lu": 1500.0}],    # dentro: conta
         "person.marta": [{"s": "home", "lu": 500.0}],     # solo il fossile
-    }}])
+    })
 
-    conti = await _client(finto).recorded_changes(
+    conti = await house.recorded_changes(
         ["climate.bagno", "person.marta"], [(1000.0, 1600.0)])
 
     assert conti == [1]
@@ -78,6 +90,10 @@ async def test_una_sonda_che_non_risponde_non_e_una_casa_senza_memoria():
     stretta, senza che nessuno sappia perche'.
 
     Mutazione che la uccide: tornare `0` per una risposta mancante.
+
+    **Resta sul trasporto finto** (Tappa 2, Task 12): servono una finestra
+    senza risposta, una rifiutata e una buona nella STESSA raffica, e la casa
+    finta fa tacere o rifiutare un comando per intero, non una finestra.
     """
     finto = _Finto([None,
                     {"success": False, "error": {"message": "boom"}},
@@ -96,21 +112,18 @@ async def test_tutte_le_sonde_partono_in_una_raffica_sola():
     ci mette **264 ms in tutto**. Ogni raffica in piu' e' un handshake e
     un'autenticazione in piu'.
 
-    **Si conta `raffiche`, non `comandi`**: tre comandi sono tre comandi tanto
-    in una raffica quanto in tre, e la prima stesura di questa prova contava
-    proprio quelli -- restava verde con la mutazione sotto, eseguita.
+    **Si contano le connessioni, non i comandi**: tre comandi sono tre
+    comandi tanto in una raffica quanto in tre, e la prima stesura di questa
+    prova contava proprio quelli -- restava verde con la mutazione sotto,
+    eseguita.
 
     Mutazione che la uccide: un `_ws_send` per finestra.
     """
-    finto = _Finto([{"success": True, "result": {}}] * 3)
+    house = _house(lambda extra: {})
 
-    await _client(finto).recorded_changes(
-        ["a", "b"], [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)])
+    await house.recorded_changes(["a", "b"], [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)])
 
-    assert finto.raffiche == 1
-    assert len(finto.comandi) == 3
-    tipi = {t for t, _ in finto.comandi}
-    assert tipi == {"history/history_during_period"}
+    assert house.connections == [("ws", (HISTORY, HISTORY, HISTORY))]
 
 
 @pytest.mark.asyncio
@@ -119,11 +132,11 @@ async def test_la_domanda_chiede_il_minimo_indispensabile():
     della risposta: senza `no_attributes`, Home Assistant rimanda il
     dizionario intero a ogni riga. Misurato: 25 KB con, contro le centinaia
     che costerebbe senza."""
-    finto = _Finto([{"success": True, "result": {}}])
+    house = _house(lambda extra: {})
 
-    await _client(finto).recorded_changes(["a"], [(1000.0, 1600.0)])
+    await house.recorded_changes(["a"], [(1000.0, 1600.0)])
 
-    _, extra = finto.comandi[0]
+    ((_, extra),) = house.calls
     assert extra["entity_ids"] == ["a"]
     assert extra["minimal_response"] is True
     assert extra["no_attributes"] is True
@@ -136,25 +149,20 @@ async def test_la_connessione_caduta_non_solleva_e_non_inventa():
     """Stessa disciplina di ogni lettura del ponte: mai un'eccezione che
     fermi il lavoro periodico. Una raffica che non parte affatto e' la busta
     del silenzio (D3), non una scala di `None` che si leggerebbe come «nessuna
-    finestra ricorda niente»."""
-    finto = _Finto(solleva=True)
+    finestra ricorda niente».
 
-    with pytest.raises(RuntimeError):
-        await finto._ws_send([], 10.0)
+    Fino al Task 12 della Tappa 2 la prova cominciava provando che il
+    trasporto FINTO sollevasse: un'asserzione sulla finta, non sul client
+    (il vero `_ws_send` non solleva). E' uscita con la finta."""
+    house = _house(silence={HISTORY})
 
-    client = HAClient.__new__(HAClient)
-
-    async def _batch(commands, timeout=10.0):
-        return [None] * len(commands)
-
-    client._ws_send = _batch
-    answer = await client.recorded_changes(["a"], [(1.0, 2.0), (3.0, 4.0)])
+    answer = await house.recorded_changes(["a"], [(1.0, 2.0), (3.0, 4.0)])
     assert answer == {"errore": "Home Assistant non ha risposto",
                       "causa": "silenzio", "codice": None}
 
 
 @pytest.mark.asyncio
 async def test_senza_finestre_non_si_va_in_rete():
-    finto = _Finto([])
-    assert await _client(finto).recorded_changes(["a"], []) == []
-    assert finto.comandi == []
+    house = _house()
+    assert await house.recorded_changes(["a"], []) == []
+    assert house.connections == []

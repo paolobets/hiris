@@ -15,8 +15,14 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app.chat_store import (
     _get_store,
@@ -34,6 +40,7 @@ from hiris.app.keeper.promise import (
 from hiris.app.keeper.recipient import _REASON_LINK_PERSON, Recipients
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
+from tests._casa_sintetica import synthetic_inputs
 
 ADESSO = 1_755_600_000.0
 PAOLO = ChatThread("persona:paolo", "pannello")
@@ -530,19 +537,32 @@ async def test_un_fai_orfano_non_si_esegue(archivio, cartella):
 # ---------------------------------------------------------------------------
 
 
-class _UtentiHA:
-    def __init__(self, utenti):
-        self._utenti = utenti
+def _ha_user(user_id, *, admin, owner=False):
+    """Una riga di `config/auth/list` come la manda Home Assistant: il ruolo
+    (`amministratore`, `proprietario`) lo ricava il client vero
+    (`HAClient._user_row`), non la prova."""
+    return {"id": user_id, "name": None, "is_owner": owner, "is_active": True,
+            "system_generated": False,
+            "group_ids": ["system-admin"] if admin else ["system-users"]}
 
-    async def users(self):
-        return {"utenti": self._utenti}
+
+def _house_with_users(rows):
+    """La casa finta sugli ingressi sintetici, con le persone di `rows`."""
+    return CasaFinta(synthetic_inputs(), answers={
+        "config/auth/list": lambda extra: list(rows)})
+
+
+def _silent_house():
+    """Home Assistant che tace sulle persone: `users()` rende la busta vera
+    del silenzio, e il ruolo non si sa."""
+    return CasaFinta(synthetic_inputs(), silence={"config/auth/list"})
 
 
 def _app_with_ceiling(tmp_path, *, utenti=()):
     from hiris.app.api.servizi import ServiziStore
     from hiris.app.api.soffitto import prepara_ruoli
 
-    app = {"ha_client": _UtentiHA(list(utenti)),
+    app = {"ha_client": _house_with_users(utenti),
            "servizi": ServiziStore(str(tmp_path / "servizi.db"))}
     prepara_ruoli(app)
     return app
@@ -557,7 +577,7 @@ def _approva(app, nome, chiave, *, ruolo, specie="luogo"):
 async def test_al_risveglio_una_persona_amministratrice_comanda_come_prima(tmp_path):
     from hiris.app.api.soffitto import ceiling_at_wake
 
-    app = _app_with_ceiling(tmp_path, utenti=[{"id": "paolo", "amministratore": True}])
+    app = _app_with_ceiling(tmp_path, utenti=[_ha_user("paolo", admin=True)])
     try:
         soffitto = await ceiling_at_wake(app, {"specie": "persona", "id": "paolo"})
         assert soffitto["comandare"] is True
@@ -681,11 +701,6 @@ async def test_un_orfana_che_fallisce_non_scrive_in_nessun_filo(archivio, cartel
 # ---------------------------------------------------------------------------
 
 
-class _UtentiGuasti:
-    async def users(self):
-        return {"errore": "Home Assistant non ha risposto"}
-
-
 def _sweeper_with_real_ceiling(archivio, cartella, app, porta):
     from hiris.app.api.soffitto import ceiling_at_wake
 
@@ -706,9 +721,9 @@ async def test_un_fai_di_una_persona_non_verificabile_non_si_esegue(
         archivio, cartella, tmp_path, caso):
     from hiris.app.api.soffitto import WAKE_UNVERIFIED_PERSON
 
-    app = _app_with_ceiling(tmp_path, utenti=[{"id": "marta", "amministratore": True}])
+    app = _app_with_ceiling(tmp_path, utenti=[_ha_user("marta", admin=True)])
     if caso == "ha_guasto":
-        app["ha_client"] = _UtentiGuasti()
+        app["ha_client"] = _silent_house()
     thread = ChatThread("persona:-", "pannello") if caso == "senza_id" else PAOLO
     try:
         ident = _crea_fai(archivio, thread=thread)
@@ -726,7 +741,7 @@ async def test_un_fai_di_una_persona_non_verificabile_non_si_esegue(
 
 async def test_un_fai_di_una_persona_amministratrice_si_esegue_al_risveglio(
         archivio, cartella, tmp_path):
-    app = _app_with_ceiling(tmp_path, utenti=[{"id": "paolo", "amministratore": True}])
+    app = _app_with_ceiling(tmp_path, utenti=[_ha_user("paolo", admin=True)])
     try:
         ident = _crea_fai(archivio)
         porta = PortaFinta()
@@ -839,8 +854,8 @@ async def test_l_errore_di_home_assistant_entra_nella_chat_ripulito(archivio, ca
 # chat e' vera su disco.
 # ---------------------------------------------------------------------------
 
-_PAOLO_PROPRIETARIO = {"id": "paolo", "amministratore": True, "proprietario": True}
-_MARTA = {"id": "marta", "amministratore": False, "proprietario": False}
+_PAOLO_PROPRIETARIO = _ha_user("paolo", admin=True, owner=True)
+_MARTA = _ha_user("marta", admin=False)
 
 
 def _orologio_montato(archivio, cartella, app, *, porta, turno=None, recapito=None):
@@ -889,12 +904,12 @@ async def test_un_fai_orfano_che_matura_prima_di_ogni_accesso_si_esegue_nel_filo
 async def test_un_fai_orfano_senza_UN_proprietario_verificato_fallisce_come_prima(
         archivio, cartella, tmp_path, caso):
     utenti = {"ha_guasto": [_PAOLO_PROPRIETARIO],
-              "due_proprietari": [_PAOLO_PROPRIETARIO, {**_MARTA, "proprietario": True}],
-              "nessun_proprietario": [_MARTA, {**_PAOLO_PROPRIETARIO,
-                                               "proprietario": False}]}[caso]
+              "due_proprietari": [_PAOLO_PROPRIETARIO,
+                                  _ha_user("marta", admin=False, owner=True)],
+              "nessun_proprietario": [_MARTA, _ha_user("paolo", admin=True)]}[caso]
     app = _app_with_ceiling(tmp_path, utenti=utenti)
     if caso == "ha_guasto":
-        app["ha_client"] = _UtentiGuasti()
+        app["ha_client"] = _silent_house()
     ident = _semina_orfana(archivio, "fai")
     porta = PortaFinta()
     try:

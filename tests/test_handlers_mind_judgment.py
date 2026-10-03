@@ -4,6 +4,8 @@ Stile delle prove della rotta dell'obiettivo (`tests/test_mind_api.py`): il
 gestore si chiama direttamente con una richiesta finta; la registrazione sul
 router si prova a parte, chiedendola al router vero."""
 import json
+import sys
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -15,6 +17,10 @@ from hiris.app.home_space.open_questions import OPEN_QUESTIONS
 from hiris.app.mind.judgments import build_judgments
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 _ILLEGGIBILE = object()
 
@@ -27,10 +33,20 @@ AUTORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
 AUTORE_STORICO = "proprietario"
 
 
-class _RuoliFinti:
-    async def users(self):
-        return {"utenti": [{"id": AUTORE["id"], "nome": AUTORE["nome"],
-                            "amministratore": True, "proprietario": True}]}
+#: Il nome che Home Assistant da' all'autore: DIVERSO da quello che il
+#: confine ha attaccato al soggetto, perche' la prova veda da quale delle due
+#: fonti arriva (`soffitto.subject_name` preferisce chi lo sa: HA).
+HA_NAME = "Amministratore uno"
+
+
+def _house():
+    """La casa finta (`scripts/casa_finta.py`), il client VERO col trasporto
+    sostituito: `config/auth/list` risponde con la riga GREZZA di Home
+    Assistant (`is_owner`, `is_active`, `group_ids`), e il client la legge
+    come in produzione."""
+    return CasaFinta(synthetic_inputs(), answers={"config/auth/list": lambda extra: [
+        {"id": AUTORE["id"], "name": HA_NAME, "is_owner": True, "is_active": True,
+         "group_ids": ["system-admin"]}]})
 
 
 def _richiesta(app, corpo=None):
@@ -47,7 +63,7 @@ def _richiesta(app, corpo=None):
             # finto resta per il NOME dell'autore (`subject_name`).
             super().__init__(soggetto=AUTORE, auth_via="ingress",
                              ruolo="amministratore")
-            app.setdefault("ha_client", _RuoliFinti())
+            app.setdefault("ha_client", _house())
             app.setdefault("ruoli", {"quando": 0.0, "per_id": {}})
             self.app = app
             self.query = {}
@@ -70,7 +86,9 @@ def _app_seminata(tmp_path):
 @pytest.mark.asyncio
 async def test_scrivere_giudizio_200_impronta_nuova(tmp_path):
     """Mutazione: il gestore torna 200 con l'impronta di prima senza chiamare
-    `write_judgment` -- rossa."""
+    `write_judgment` -- rossa. Mutazione ESEGUITA (Tappa 2, Task 12): il nome
+    dell'autore preso solo dal soggetto, senza chiedere a Home Assistant --
+    rossa (`chi` vale il nome del confine, non quello di HA)."""
     s, app = _app_seminata(tmp_path)
     try:
         prima = app["type_judgments_status"]["impronta"]
@@ -83,7 +101,7 @@ async def test_scrivere_giudizio_200_impronta_nuova(tmp_path):
         assert corpo["impronta"] == app["type_judgments_status"]["impronta"]
         assert corpo["provenienza_istantanea"] == "sapere"
         assert corpo["riga"]["valore"] == "presenza"
-        assert corpo["riga"]["chi"] == "Paolo"
+        assert corpo["riga"]["chi"] == HA_NAME
     finally:
         s.close()
 

@@ -1,4 +1,20 @@
+"""Il cablaggio dell'anagrafe: antirimbalzi, smistamento degli eventi, specchio.
+
+Home Assistant, dove lo si interroga, e' il client vero sulla casa finta
+(`scripts/casa_finta.py::CasaFinta`, Tappa 2, Task 12): fino ad allora era un
+`AsyncMock()` senza spec, o una classe che imitava `get_services`, o un tipo
+costruito al volo con `get_states`. Cio' che il codice ha chiesto si legge in
+`house.calls`.
+
+Restano sul trasporto finto le prove dello SMISTAMENTO degli eventi
+(`_FintoWSEventi` dato come sessione a `_ws_loop`): la connessione di lunga
+vita della casa finta (`SilentConnection`) tace per costruzione -- una casa
+congelata non manda eventi -- e non sa ne' consegnarne ne' cadere.
+"""
 import asyncio
+import sqlite3
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import aiohttp
@@ -12,10 +28,16 @@ from hiris.app.server import (
     schedule_behavior_reread,
     schedule_registry_rebuild,
 )
+from tests._casa_sintetica import synthetic_inputs
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
 
 # La config minima che Home Assistant restituisce a `get_config`: da questa
 # fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
-# della casa (unita', fuso, valuta). Un finto che non la dichiara e' un HA che
+# della casa (unita', fuso, valuta). Una casa che non la dichiara e' un HA che
 # non ha risposto -- e infatti `non_disponibili` lo direbbe. Che sia questo il
 # comportamento e' provato a parte, in tests/test_home_space_reference.py.
 _CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
@@ -24,6 +46,23 @@ _CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
 
 _VUOTI = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
           "etichette": [], "categorie": [], "integrazioni": []}
+
+#: Il primo comando di `read_registries`, chiesto alla sua tabella: una
+#: ricostruzione lo manda una volta, quindi contarlo conta le ricostruzioni.
+_FIRST_REGISTRY = HAClient._REGISTRIES[0][1]
+
+
+def _empty_house() -> CasaFinta:
+    """Una casa con i registri vuoti e il sistema di riferimento."""
+    return CasaFinta({"registries": dict(_VUOTI), "ha_config": _CONFIG})
+
+
+def _rebuilds(house: CasaFinta) -> int:
+    return sum(1 for command, _ in house.calls if command == _FIRST_REGISTRY)
+
+
+def _state_reads(house: CasaFinta) -> int:
+    return sum(1 for path, _ in house.calls if path == "/api/states")
 
 
 def _specchio_caricato():
@@ -44,27 +83,23 @@ def archivio(tmp_path):
 
 @pytest.mark.asyncio
 async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
-    client = AsyncMock()
-    client.read_registries = AsyncMock(return_value=(_VUOTI, []))
-    client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = schedule_registry_rebuild(client, archivio, _specchio_caricato(), delay=0.05)
+    house = _empty_house()
+    innesca = schedule_registry_rebuild(house, archivio, _specchio_caricato(), delay=0.05)
     for _ in range(10):
         innesca("area_registry_updated")
     await asyncio.sleep(0.2)
-    assert client.read_registries.await_count == 1
+    assert _rebuilds(house) == 1
 
 
 @pytest.mark.asyncio
 async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
-    client = AsyncMock()
-    client.read_registries = AsyncMock(return_value=(_VUOTI, []))
-    client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = schedule_registry_rebuild(client, archivio, _specchio_caricato(), delay=0.05)
+    house = _empty_house()
+    innesca = schedule_registry_rebuild(house, archivio, _specchio_caricato(), delay=0.05)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
-    assert client.read_registries.await_count == 2
+    assert _rebuilds(house) == 2
     # Contare le chiamate non basta: `_fra_poco` ingoia ogni eccezione per non
     # uccidere l'ascoltatore, quindi due ricostruzioni FALLITE darebbero lo
     # stesso conteggio. Solo l'archivio scritto prova che sono riuscite.
@@ -72,16 +107,37 @@ async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
 
 
 @pytest.mark.asyncio
-async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
-    client = AsyncMock()
-    client.read_registries = AsyncMock(side_effect=[OSError("HA giu'"), (_VUOTI, [])])
-    client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = schedule_registry_rebuild(client, archivio, _specchio_caricato(), delay=0.05)
+async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio, monkeypatch):
+    """Fino alla Tappa 2 il guasto era `read_registries` che SOLLEVAVA
+    `OSError("HA giu'")`: il client vero non solleva (D3), un Home Assistant
+    giu' gli rende registri «non disponibili». Cio' che puo' ancora sollevare
+    dentro la ricostruzione e' l'archivio -- un disco pieno, un database
+    bloccato --, ed e' quello il guasto che l'ascoltatore deve reggere.
+
+    Limite misurato il 03/10/2026: restringere l'`except Exception` di
+    `_fra_poco` a `except RuntimeError` lascia questa prova VERDE (come la
+    lasciava verde la finta di prima): ogni innesco fa nascere un compito
+    nuovo, e il guasto del precedente non lo tocca. La prova difende che la
+    seconda ricostruzione parta e riesca, non l'`except`."""
+    house = _empty_house()
+    hold = archivio.hold_registries
+    failures = iter([sqlite3.OperationalError("database is locked")])
+
+    def _hold_failing_once(*args, **kwargs):
+        error = next(failures, None)
+        if error is not None:
+            raise error
+        return hold(*args, **kwargs)
+
+    monkeypatch.setattr(archivio, "hold_registries", _hold_failing_once)
+    innesca = schedule_registry_rebuild(house, archivio, _specchio_caricato(), delay=0.05)
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
+    assert archivio.updated_at() is None   # la prima e' fallita davvero
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
-    assert client.read_registries.await_count == 2
+    assert _rebuilds(house) == 2
+    assert archivio.updated_at() is not None
 
 
 @pytest.mark.asyncio
@@ -343,26 +399,23 @@ async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
     l'eta' e torna subito: l'evento non servirebbe a niente."""
     from hiris.app.action.registry import ServiceRegistry
 
-    class _Ha:
-        def __init__(self):
-            self.letture = 0
+    house = CasaFinta(synthetic_inputs())
 
-        async def get_services(self):
-            self.letture += 1
-            return [{"domain": "light", "services": {"turn_on": {}}}]
+    def letture():
+        return sum(1 for path, _ in house.calls if path == "/api/services")
 
-    ha = _Ha()
     r = ServiceRegistry()
-    await r.ensure_fresh(ha)
-    assert ha.letture == 1
+    await r.ensure_fresh(house)
+    assert letture() == 1
+    assert r.service("light", "turn_on") is not None   # la lettura e' arrivata
 
     # Senza invalidare: nessuna seconda lettura, l'eta' e' minima.
-    await r.ensure_fresh(ha)
-    assert ha.letture == 1
+    await r.ensure_fresh(house)
+    assert letture() == 1
 
     r.invalidate()
-    await r.ensure_fresh(ha)
-    assert ha.letture == 2, (
+    await r.ensure_fresh(house)
+    assert letture() == 2, (
         "dopo un `service_registered` il registro deve rileggere, altrimenti "
         "HIRIS continua a dire «non esiste in questa casa» per 5 minuti")
 
@@ -420,10 +473,11 @@ async def test_alla_seconda_connessione_lo_specchio_si_rilegge(monkeypatch):
     client = HAClient(base_url="http://ha.test", token="t")
     client._session = _FintaSessioneDueConnessioni(
         _FintoWSCheCade([]), _FintoWSEventi([]))
-    ha_letture = AsyncMock(return_value=[])
-    finto_ha = type("HA", (), {"get_states": ha_letture})()
+    # Il client che rilegge lo specchio e' la casa finta; quello che ascolta
+    # gli eventi resta sul trasporto finto (vedi il docstring del modulo).
+    house = CasaFinta(synthetic_inputs())
     cache = _specchio_caricato()
-    client.add_topology_listener(mirror_reload_listener(finto_ha, cache))
+    client.add_topology_listener(mirror_reload_listener(house, cache))
 
     task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
     await vero_sleep(0.2)
@@ -434,17 +488,19 @@ async def test_alla_seconda_connessione_lo_specchio_si_rilegge(monkeypatch):
         pass
 
     # una per connessione: la prima all'avvio, la seconda alla riconnessione
-    assert ha_letture.await_count == 2
+    assert _state_reads(house) == 2
+    # E la rilettura e' arrivata nello specchio, che prima era vuoto.
+    assert {e["id"] for e in cache.all_states()} == {
+        s["entity_id"] for s in synthetic_inputs()["states"]}
 
 
 @pytest.mark.asyncio
 async def test_gli_altri_eventi_dell_anagrafe_non_rileggono_lo_specchio():
     """Mutazione ESEGUITA: togliere il `if event_type == "riconnessione"` --
     rossa (ogni evento di registro rilegge tutti gli stati)."""
-    letture = AsyncMock(return_value=[])
-    finto_ha = type("HA", (), {"get_states": letture})()
-    ascoltatore = mirror_reload_listener(finto_ha, _specchio_caricato())
+    house = CasaFinta(synthetic_inputs())
+    ascoltatore = mirror_reload_listener(house, _specchio_caricato())
     ascoltatore("floor_registry_updated")
     ascoltatore("entity_registry_updated")
     await asyncio.sleep(0.05)
-    assert letture.await_count == 0
+    assert _state_reads(house) == 0

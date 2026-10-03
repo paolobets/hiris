@@ -17,29 +17,24 @@ hass.data[DOMAIN].records.to_list())`), non un dizionario con una chiave
 come `{"issues": [...]}`. Le prove sulla forma inattesa lo sorvegliano.
 """
 import copy
+import sys
+from pathlib import Path
 
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from casa_finta import CasaFinta
+
+SYSTEM_LOG = "system_log/list"
 
 
-class _FakeConnection:
-    """La stessa finta di `test_ha_client_related_problems.py` (che copre
-    `related()` e `problems()`): non se ne inventa una nuova per verticale."""
-
-    def __init__(self, response=None):
-        self.response = response
-        self.commands = []
-
-    async def _ws_send(self, commands, timeout=10.0):
-        self.commands.extend(commands)
-        return [self.response]
-
-
-def _client(fake):
-    c = HAClient.__new__(HAClient)
-    c._ws_send = fake._ws_send
-    return c
+def _house(rows=None, **injected) -> CasaFinta:
+    """La casa finta (D8), la stessa di `test_ha_client_related_problems.py`:
+    il client vero, e Home Assistant che manda `rows` come lista nuda."""
+    inputs = {} if rows is None else {"system_log": {"voci": rows}}
+    return CasaFinta(inputs, **injected)
 
 
 def _entry(**fields):
@@ -73,15 +68,15 @@ async def test_the_system_log_is_read_as_home_assistant_sends_it():
     # lo STESSO oggetto, e un `r.pop("message")` dentro il client passerebbe
     # verde -- misurato, non temuto.
     expected = copy.deepcopy(row)
-    fake = _FakeConnection({"result": [row]})
-    outcome = await _client(fake).system_log()
+    house = _house([row])
+    outcome = await house.system_log()
     entry = outcome["voci"][0]
     assert entry["name"] == "zwave_js.const"
     assert entry["level"] == "WARNING"
     assert entry["count"] == 3
     assert entry["first_occurred"] == 1699999000.0
     assert entry["timestamp"] == 1700000500.0
-    assert fake.commands[0] == ("system_log/list", None)
+    assert house.calls == [(SYSTEM_LOG, None)]
     # La proprieta' che la docstring dichiara e' «senza proiezioni»: gli
     # assert sopra bastano a coprire la mutazione dichiarata, ma non a
     # sorvegliare `message`, `source`, `exception` -- una proiezione che
@@ -100,30 +95,29 @@ async def test_a_failed_read_says_error_not_an_empty_log():
     Mutazione: tornare `{"voci": []}` invece di `{"errore": ...}` -- il test
     torna rosso su `assert "errore" in outcome`.
     """
-    fake = _FakeConnection(None)
-    outcome = await _client(fake).system_log()
+    outcome = await _house(silence={SYSTEM_LOG}).system_log()
     assert "errore" in outcome
     assert "voci" not in outcome
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fake,why", [
-    (_FakeConnection(None), "connessione caduta"),
-    (_FakeConnection({"error": {"message": "non trovato"}}), "HA ha rifiutato"),
-    (_FakeConnection({"result": {"issues": "non una lista nuda"}}),
+@pytest.mark.parametrize("injected,why", [
+    ({"silence": {SYSTEM_LOG}}, "connessione caduta"),
+    ({"refuse": {SYSTEM_LOG: {"code": "not_found", "message": "non trovato"}}},
+     "HA ha rifiutato"),
+    ({"answers": {SYSTEM_LOG: lambda extra: {"issues": "non una lista nuda"}}},
      "forma inattesa: HA non manda un dizionario qui"),
 ])
-async def test_every_failure_shape_says_error_not_an_empty_log(fake, why):
+async def test_every_failure_shape_says_error_not_an_empty_log(injected, why):
     """Le tre forme di guasto che `problems()` e `related()` gia' sorvegliano,
     ripetute qui: connessione caduta, rifiuto esplicito di HA, e una risposta
     di forma inattesa (qui il caso proprio del log: un dizionario al posto
     della lista nuda che manda davvero `list_errors`).
 
     Mutazione: togliere il controllo `isinstance(result, list)` -- il caso
-    `fake2` (forma inattesa) torna rosso su
-    `assert "errore" in outcome, why`.
+    della forma inattesa torna rosso su `assert "errore" in outcome, why`.
     """
-    outcome = await _client(fake).system_log()
+    outcome = await _house(**injected).system_log()
     assert "errore" in outcome, why
     assert "voci" not in outcome
 
@@ -141,6 +135,5 @@ async def test_an_empty_log_stays_empty_not_an_error():
     controllo di forma -- il test torna rosso su
     `assert outcome == {"voci": []}`.
     """
-    fake = _FakeConnection({"result": []})
-    outcome = await _client(fake).system_log()
+    outcome = await _house([]).system_log()
     assert outcome == {"voci": []}
