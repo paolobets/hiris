@@ -902,8 +902,8 @@ da ottimizzare sui numeri veri:
 
 - **Lo spezzettamento della richiesta allo storico.** `/api/history/period` porta gli id nell'URL e
   il server aiohttp rifiuta una riga di richiesta oltre 8.190 byte: con ~300 entita' si
-  sfora. Il gestore legge a pezzi (`_HISTORY_FILTER_MAX = 6000` byte di filtro per richiesta,
-  `home_space/tools.py`). Il 6.000 e' un margine scelto, **non misurato**: va provato con una
+  sfora. `HAClient.history` legge a pezzi (`_HISTORY_FILTER_MAX = 6000` byte di filtro per richiesta,
+  `proxy/ha_client.py`). Il 6.000 e' un margine scelto, **non misurato**: va provato con una
   ricerca che scelga ~300 entita' (per esempio `history(genere=valori, tipo=sensor)` su tutta la casa).
 - **Le domande #14 e #26 della batteria**, le due che la spec nomina: #14 (`da="ieri"`, consumato,
   fasce orarie di Home Assistant oltre le 24 ore) e #26. Si leggono coi cinque criteri di §8.

@@ -1099,8 +1099,11 @@ class HAClient:
         pezzo solo non e' una risposta lenta: e' nessuna risposta. Il taglio
         vive qui, non nel chiamante (A-27, Tappa 2): una lettura che si rompe
         oltre un certo numero di id non e' una porta, e' una trappola per chi
-        la chiama. Il costo dichiarato (`rest=1`) e' quello di UN pezzo: una
-        richiesta ogni `_HISTORY_FILTER_MAX` byte di filtro, partite insieme.
+        la chiama. Il costo dichiarato (`rest=1`) e' quello di UN pezzo, non
+        della chiamata: **una richiesta per pezzo di identificatori**
+        (`_history_chunks`, uno ogni `_HISTORY_FILTER_MAX` byte di filtro),
+        partite insieme. `@cost` non sa dire un costo variabile, e la prova
+        (`tests/test_ha_client_invio.py`) chiama con un identificatore solo.
         Nessun identificatore, nessuna richiesta: le serie sono vuote.
 
         Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}, "troncato":
