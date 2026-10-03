@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 
-
 def _house(**faults):
     """La casa finta (`scripts/casa_finta.py`), il client VERO col trasporto
     sostituito: un'automazione accesa, e il suo corpo."""

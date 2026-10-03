@@ -817,7 +817,7 @@ async def test_ruoli_ILLEGGIBILI_chiudono_anche_owner_col_suo_testo(
     assert rifiuti == [True, True, True]
     assert len(errori) == 1
     # Home Assistant torna a rispondere: si toglie il silenzio iniettato.
-    ha._silence.discard("config/auth/list")
+    ha.unmute("config/auth/list")
     adesso[0] += soffitto.GATE_FAILURE_HOLD_S
     assert (await _risposta(aperta, "GET", "/api/config", _persona("u-admin")))[0] == 200
 

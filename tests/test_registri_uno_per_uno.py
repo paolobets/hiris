@@ -255,7 +255,7 @@ def test_il_recapito_legge_entita_e_dispositivi_e_basta():
 
 def test_il_recapito_senza_registro_delle_entita_non_legge_i_dispositivi():
     house = _recipient_house()
-    house._silence.add("config/entity_registry/list")
+    house.mute("config/entity_registry/list")
 
     found = _run(recipients_for({"specie": "persona", "id": _USER}, house))
 

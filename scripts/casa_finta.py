@@ -265,6 +265,17 @@ class CasaFinta(HAClient):
     async def start(self) -> None:
         return None
 
+    def mute(self, *commands: str) -> None:
+        """Da qui in poi questi comandi (o percorsi REST) tacciono, come
+        `silence=` alla nascita: per la casa che smette di rispondere a meta'
+        prova."""
+        self._silence.update(commands)
+
+    def unmute(self, *commands: str) -> None:
+        """Da qui in poi questi comandi tornano a rispondere: Home Assistant
+        che si riprende dopo un silenzio."""
+        self._silence.difference_update(commands)
+
     async def _first_connection_settled(self) -> None:
         """Aspetta la prima connessione e i lavori che ha rimandato: e' li'
         che l'avvio e' finito davvero («avvio intero», D1 della Tappa 2). Si
