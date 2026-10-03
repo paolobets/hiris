@@ -11,6 +11,17 @@ e osservatore -- rossa (`fuori`: 0 disaccordi, attesi 4).
 Mutazione ESEGUITA: in `sonda_parita._entity_ids` tolto il controllo sugli id
 -- rossa (`dove` torna 0 disaccordi con un separatore sbagliato, invece di
 dichiararsi non eseguita: era il rilievo I6 della revisione del 01/10/2026).
+
+Le due domande della Tappa 3 (`fuori_con_causa`, `fonte`), mutazioni ESEGUITE
+il 03/10/2026 e ripristinate (`git status` pulito):
+- in `action/verification.py` il rifiuto di un'entita' senza stato dice «non
+  ha uno stato» invece di «non esiste in questa casa» -- rossa
+  (`test_la_fonte_vede_la_verifica_che_nega_un_entita_disabilitata`: nessun
+  caso, attesa `sensor.sensore_d_spento`);
+- in `mind/recipes.py` il motivo «senza statistiche» non incolpa piu' lo
+  `state_class` -- rosse le due prove sul motivo delle ricette;
+- in `sonda_parita._causes_by_device` tolte le disabilitate che la scheda
+  conta e non elenca -- rossa (`_view_device` risponde per 9 entita', non 10).
 """
 import sys
 from pathlib import Path
@@ -114,3 +125,114 @@ def test_una_riga_che_cambia_forma_ferma_la_domanda_invece_di_darle_ragione(monk
     assert any(line.startswith("dove: non eseguita")
                for line in sonda_parita.worse_than_expected(outcome, {"dove": 3}))
 
+
+
+# ── le due domande della Tappa 3 (piano, Task 1) ────────────────────────────
+
+def _with_universal_domain(inputs: dict) -> dict:
+    """La casa sintetica col dominio universale di Home Assistant: senza, la
+    verifica di un comando su un `sensor` non si puo' chiedere (nessun servizio
+    lo nomina), e la porta che dice «non esiste» non si vedrebbe."""
+    inputs["services"].append({"domain": "homeassistant", "services": {
+        "update_entity": {"name": "Update entity", "fields": {},
+                          "target": {"entity": [{}]}}}})
+    return inputs
+
+
+def test_fuori_con_causa_chiede_alle_sei_copie_e_sulla_casa_sintetica_concordano(result):
+    verdict = result["fuori_con_causa"]
+    assert set(verdict["chiamate"]) == {
+        "digest_visible_entity_ids", "not _excluded_from_comparison", "select_subjects",
+        "hierarchy", "hierarchy (dispositivi non letti)", "_view_device",
+        "select_subjects (con le opzioni)"}
+    assert verdict["disaccordi"] == 0, verdict["casi"]
+    # La derivazione non si e' svuotata: ogni classe ha qualcuno dentro.
+    assert all(verdict["per_classe"].values()), verdict["per_classe"]
+    # E ogni copia ha risposto per tutte le entita' che conosce: la scheda
+    # del dispositivo solo per quelle che un dispositivo ce l'hanno.
+    answered = verdict["risposte_per_copia"]
+    assert answered.pop("_view_device") == 10
+    assert set(answered.values()) == {12}, answered
+
+
+def test_fuori_con_causa_vede_una_copia_che_sbaglia_la_classe(monkeypatch):
+    """Mutazione dentro una copia sola: la partizione di `hierarchy` che
+    scatta quando i dispositivi non sono stati letti mette le nascoste fra le
+    visibili. Le altre copie non cambiano, quindi il disaccordo e' suo."""
+    from hiris.app.home_space import topology
+
+    real = topology.hierarchy
+
+    def wrong(home_space, unavailable=()):
+        floors = real(home_space, unavailable)
+        if "dispositivi" in unavailable:
+            for floor in floors:
+                for area in floor.get("aree") or []:
+                    area["entita"] = area["entita"] + area.get("entita_nascoste", [])
+                    area["entita_nascoste"] = []
+        return floors
+
+    monkeypatch.setattr(topology, "hierarchy", wrong)
+    outcome = sonda_parita.excluded_with_cause(
+        sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
+    assert [(case["id"], case["risposte"]["hierarchy (dispositivi non letti)"])
+            for case in outcome["casi"]] == [("sensor.sensore_c_riserva", "il resto")]
+
+
+def test_fuori_con_causa_vede_un_digesto_che_lascia_entrare_le_nascoste(monkeypatch):
+    from hiris.app.home_space import briefing
+
+    real = briefing.digest_visible_entity_ids
+    monkeypatch.setattr(briefing, "digest_visible_entity_ids", lambda home_space: (
+        real(home_space) | {"sensor.sensore_c_riserva"}))
+    outcome = sonda_parita.excluded_with_cause(
+        sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
+    assert [(case["id"], case["famiglia"]) for case in outcome["casi"]] == [
+        ("sensor.sensore_c_riserva", "dentro o fuori")]
+
+
+def test_la_fonte_vede_il_motivo_delle_ricette_che_da_la_colpa_sbagliata(result):
+    """`sensor.sensore_d_spento` e' disabilitata e negli stati non c'e': il
+    motivo delle ricette dice che le manca uno `state_class`."""
+    verdict = result["fonte"]
+    assert [(case["id"], case["porta"]) for case in verdict["casi"]] == [
+        ("sensor.sensore_d_spento", "ricette")]
+    assert verdict["casi"][0]["fatti"]["disabled_by"] == "user"
+    assert verdict["chieste"]["digesto"] == 12
+
+
+def test_la_fonte_vede_la_verifica_che_nega_un_entita_disabilitata():
+    """Il trovato 2 del piano (S-27): l'anagrafe conosce l'entita', la
+    verifica del comando dice che non esiste."""
+    outcome = sonda_parita.source(sonda_parita.build_inputs(
+        _with_universal_domain(synthetic_inputs()), clock=CLOCK))
+    denied = [case for case in outcome["casi"] if case["porta"] == "verification"]
+    assert [case["id"] for case in denied] == ["sensor.sensore_d_spento"]
+    assert outcome["non_interrogabili_dalla_verifica"] == 0
+
+
+def test_la_fonte_vede_il_digesto_che_tiene_dentro_un_entita_sparita():
+    inputs = synthetic_inputs()
+    inputs["states"] = [row for row in inputs["states"]
+                        if row["entity_id"] != "light.luce_uno"]
+    outcome = sonda_parita.source(sonda_parita.build_inputs(inputs, clock=CLOCK))
+    assert [(case["id"], case["porta"]) for case in outcome["casi"]
+            if case["porta"] == "digesto"] == [("light.luce_uno", "digesto")]
+
+
+def test_la_fonte_vede_il_motivo_falso_su_un_sensore_che_dichiara_lo_state_class():
+    """Fuori da `statistic_ids` ma con `state_class: measurement`: «le tiene
+    solo per le entita' che dichiarano uno `state_class`» e' falso."""
+    inputs = synthetic_inputs()
+    inputs["statistic_ids"].remove("sensor.sensore_b_segnale")
+    outcome = sonda_parita.source(sonda_parita.build_inputs(inputs, clock=CLOCK))
+    assert "sensor.sensore_b_segnale" in {case["id"] for case in outcome["casi"]
+                                          if case["porta"] == "ricette"}
+
+
+def test_la_fonte_senza_servizi_non_finge_di_aver_chiesto():
+    inputs = synthetic_inputs()
+    del inputs["services"]
+    outcome = sonda_parita.run(sonda_parita.build_inputs(inputs, clock=CLOCK))
+    assert outcome["fonte"]["disaccordi"] is None
+    assert "servizi" in outcome["fonte"]["errore"]

@@ -56,7 +56,6 @@
     "traces": 1
    },
    "voci": [
-    "A-27",
     "A-34",
     "A-36"
    ]
@@ -67,7 +66,7 @@
     "read_registries": 1
    },
    "voci": [
-    "A-07"
+    "A-08"
    ]
   },
   "hiris/app/keeper/recipient.py": {

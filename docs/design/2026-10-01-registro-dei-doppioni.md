@@ -35,7 +35,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 |
 | A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | E | PS |  |  | cop-3 A-n2 |
 | A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 |
-| A-27 | Il taglio dell'URL dello storico vive nello strumento, non in `HAClient.history` | NV | PS |  |  | cop-3 A-n4 |
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
@@ -54,34 +53,33 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | B-01 | «Questa entità è fuori?»: partizione, digesto e le loro copie | E | PS | 10 coppie di copie identiche su 1525 entità; hierarchy visibile 954 contro digesto 324 (per costruzione) | cop-3 (incompleta); cop-4 (righe) | reg · cop-3 · cop-4 |
-| B-02 | Regole «fuori» più strette per scelta: `_view_integration`, `_unreliable_state`, conteggi, «senza nome» | D | DP | totali diversi in 17 integrazioni su 39 (974 contro 324); 35 senza nome, 10 fuori dal digesto | cop-4 (righe) | reg · cop-3 · cop-4 |
+| B-02 | Regole «fuori» più larghe per scelta: `_view_integration`, `_unreliable_state`, conteggi, «senza nome» | D | DP | totali diversi in 17 integrazioni su 39 (974 contro 324); 35 senza nome, 10 fuori dal digesto | cop-4 (righe); Tappa 3 (imprecisa) | reg · cop-3 · cop-4 |
 | B-03 | Le entità di un dispositivo senza filtro: `recipe_turn.device_lines` | D | CC | 1138 entità in più di `house_lines` su 1413; 548 disabilitate contate | cop-6 (nome) | reg · cop-6 |
 | B-04 | `action/verification.py:613-625`: «ha uno stato» al posto di «è disabilitata» | D | DP | differisce dal digesto per 650 entità (974 contro 324) |  | reg |
 | B-05 | Come si chiama un'entità: più politiche (3-4 vive, più quella delle automazioni) | D | CC | nome di `guarda` ≠ `search` per 944 entità su 1525; nome davvero diverso: 0 casi | cop-3 (incompleta); cop-4 (righe); cop-6 (incompleta); cop-9 (conteggio) | reg · cop-3 · cop-4 · cop-6 · cop-9 |
 | B-06 | Nome del dispositivo: derivazioni e campo senza lettori | E | PS |  |  | reg · cop-4 |
 | B-07 | «È un valore o un non-valore?»: `privacy._NEUTRAL_STATES` | E | PS | 0 stati cambiati su 169 entità mobili |  | reg · cop-5 · cop-6 |
 | B-08 | `briefing._unreliable_state` conta solo `unknown` | D | CC | 328 entità `unavailable` su 974; esito invariato sulla casa (diverge solo la controprova sintetica) |  | reg · cop-4 |
-| B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | E | DP | 0 integrazioni su 39 |  | reg · cop-4 · cop-5 |
+| B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | E | PS | 0 integrazioni su 39 | Tappa 3 (verdetto) | reg · cop-4 · cop-5 |
 | B-10 | In che area sta un'entità | D | CC | 194 entità guardabili su 324 arrivano all'osservatore senza area |  | reg · cop-4 · cop-6 |
 | B-11 | «Quali entità sono di un dispositivo»: `dispositivo_id` in linea | E | PS |  |  | reg · cop-3 · cop-4 · cop-6 |
-| B-12 | «Ha statistiche?»: tre formule | E | CC | 0 casi su 232 entità watcher |  | reg · cop-3 · cop-5 · cop-6 |
+| B-12 | «Ha statistiche?»: tre formule | D | CC | 0 casi su 232 entità watcher | Tappa 3 (verdetto) | reg · cop-3 · cop-5 · cop-6 |
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
 | B-14 | Integrazione sana: due lettori, una costante doppia | E | PS |  | cop-4 (righe) | reg · cop-4 · cop-5 · cop-6 |
-| B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 |
+| B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta); Tappa 3 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 |
 | B-16 | L'etichetta di data delle sessioni passate in UTC | D | CC | 3450 campioni sbagliati su 52560 nel 2026 |  | reg · cop-8 |
 | B-17 | Unità e classe: il vivo batte il registro, applicato due volte | E | CC | 0 casi | cop-4 (incompleta); cop-6 (imprecisa) | reg · cop-3 · cop-4 · cop-6 |
 | B-18 | Riferimento testuale: `search` contro `guarda`/resolver | D | CC | 118 casi su 39 integrazioni; 12 casi su 10 aree; «senza accenti» 0 casi | cop-3 (incompleta) | reg · cop-3 |
-| B-19 | Due motori di ricerca per nome: `name_matches` e `Lookup.find` | D | PS | un solo candidato: 450 `search` (134 anche `find`), 21 solo `find`, 408 nessuno |  | reg · cop-3 |
 | B-20 | Piegatura degli accenti in tre posti | D | CC |  |  | reg · cop-9 |
 | B-21 | Slug: `composer.available_slug` e `recipient._slugify` | D | CC |  |  | reg · cop-9 |
 | B-22 | Vocabolari dei tipi: giudizi e significati in più case | NV | DP |  | cop-5 (incompleta); cop-6 (righe) | reg · cop-5 · cop-6 |
 | B-23 | Tabelle di nomi italiani di domini e struttura «automazione/script/scena» | E | PS |  | cop-4 (conteggio); cop-5 (imprecisa) | reg · cop-4 · cop-5 · cop-9 |
-| B-24 | Identificatori e costanti piccole: `_ENTITY_ID_RE`, dominio da entity_id, tetti | E | PS |  | cop-3 (incompleta); cop-5 (incompleta); cop-6 (incompleta) | reg · cop-3 · cop-4 · cop-5 · cop-6 · cop-9 |
-| B-25 | Stato della fonte: dove il dato c'è e si perde | NV | DP | 44 delle 95 entità «DENTRO» (46%) non sono fonte sana | cop-5 (imprecisa) | reg · cop-4 · cop-5 · cop-6 |
+| B-24 | Identificatori e costanti piccole: `_ENTITY_ID_RE`, dominio da entity_id, tetti | E | PS |  | cop-3 (incompleta); cop-5 (incompleta); cop-6 (incompleta); Tappa 3 (incompleta) | reg · cop-3 · cop-4 · cop-5 · cop-6 · cop-9 |
+| B-25 | Stato della fonte: dove il dato c'è e si perde | NV | DP | 44 delle 95 entità «DENTRO» (46%) non sono fonte sana | cop-5 (imprecisa); Tappa 3 (incompleta) | reg · cop-4 · cop-5 · cop-6 |
 | B-26 | Motivo scritto per le misure non calcolabili: cinque stringhe, cause vere che non coincidono | D | CC | 74 misure non calcolabili; il motivo «manca `state_class`» falso in 21/21 |  | reg |
 | B-27 | Dentro `mind/operations` e `mind/analyst`: controlli ripetuti e due forme di «non lo so» | E | PS |  |  | reg |
-| B-28 | Ordinamento degli appuntamenti e due semantiche di `fine` | E | PS |  |  | reg · cop-5 |
-| B-29 | Quote FV: «autoconsumo» esclude la batteria | D | CC | 29/09: quota_autoconsumo 31% contro 74,7% di FV non immesso |  | reg |
+| B-28 | Ordinamento degli appuntamenti e due semantiche di `fine` | E | CC |  | Tappa 3 (verdetto) | reg · cop-5 |
+| B-29 | Quote FV: «autoconsumo» esclude la batteria | D | CC | 29/09: quota_autoconsumo 31% contro 74,7% di FV non immesso | Tappa 3 (imprecisa) | reg |
 | B-30 | La regola della profondità scritta due volte (`search`, `history`), e una terza fissa | D | CC |  |  | cop-3 B-n1 |
 | B-31 | `tipo=automation/script` → genere: conversione in due posti | E | PS |  |  | cop-3 B-n2 |
 | B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | NV | PS |  |  | cop-3 B-n3 |
@@ -106,7 +104,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | E | PS |  |  | cop-9 N-B-2 |
 | B-52 | `ChatThread` ricostruito in tre archivi; la condizione SQL del filo in undici posti | E | PS |  |  | cop-9 N-B-3 |
 | B-53 | Costante «64» duplicata con legame solo a commento (`MAX_TRACKED`, `_MAX_TRACKED_EXCHANGES`) | E | PS |  |  | cop-9 N-B-4 |
-| B-54 | «300» per i motivi che entrano in un racconto: tre nomi in tre moduli | E | PS |  |  | cop-9 N-B-5 |
+| B-54 | «300» per i motivi che entrano in un racconto: tre nomi in tre moduli | E | CC |  | Tappa 3 (verdetto) | cop-9 N-B-5 |
+| B-55 | Tre definizioni di «non disponibile»: `queries._view_integration`, `facts`, `privacy._NEUTRAL_STATES` | D | — |  |  | Tappa 3, piano del 03/10/2026, trovato 4 |
 
 ---
 
@@ -170,6 +169,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-54 | Lo stato grezzo arriva al modello: `READABLE_STATE` solo per le costruzioni, `cancel` scrive `in_corso` | D | PS |  |  | cop-9 N-C-3 |
 | C-55 | Troncamenti a mano (`…`) accanto a `truncate_with_marker` (` [troncato]`): due marcatori | D | CC |  |  | cop-9 N-C-4 |
 | C-56 | Nota «il Piano non ha risposto» due volte; nome del provider in nove stringhe | D | CC |  |  | cop-9 N-C-5 |
+| C-57 | «Disabilitata» con due significati: entità spenta nel registro, automazione `off` nel nucleo | D | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 3 |
 
 ---
 
@@ -220,7 +220,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-41 | La risorsa che serve a uno strumento decisa in due posti | E | PS |  |  | cop-3 D-n3 |
 | D-42 | Il rifiuto «nessun filo» ripetuto in tre gestori | E | PS |  |  | cop-3 D-n4 |
 | D-43 | «Cosa HA riserva agli amministratori» in due moduli, tre case | E | PS |  |  | cop-3 D-n5 |
-| D-44 | Il sigillo del registro errori vive in `tools.py`: `mind/watcher` lo salta | D | CC |  |  | cop-3 D-n6 |
 | D-45 | `search` non sa elencare integrazioni né ricordi; per solo nome non li cerca | D | CC |  |  | cop-3 D-n7 |
 | D-46 | Il confine di sanificazione protegge i nomi, non gli altri testi di HA | NV | CC |  |  | cop-4 N-11 |
 | D-47 | La sezione dei guasti del nucleo non ha tetto (dichiara 6.800 caratteri) | D | CC |  |  | cop-4 N-12 |
@@ -243,6 +242,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-64 | Il nucleo che non si compone: tre chiamanti, tre comportamenti | D | CC |  |  | cop-8 D2 · cop-9 N-D-1 |
 | D-65 | «Qual è la conversazione attiva di questo filo» chiesta tre volte per turno | NV | CC |  |  | cop-8 D3 |
 | D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | D | PS |  |  | cop-8 D4 |
+| D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | E | PS |  |  | Tappa 3, piano del 03/10/2026, trovato 11 |
+| D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 |
 
 ---
 
@@ -363,7 +364,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-31 | Segnali in uscita senza lettore: `debug.thinking_blocks`, `tools_called`, `"input"`. Riletta il 02/10 (Task 17): `debug.thinking_blocks` esce nella risposta di `POST /api/chat` e `tools_called`/`input` viaggiano nella decisione del ponte: cambio di forma, e i due rami sono dichiarati gemelli | `handlers_chat.py:1399-1400,1413` | cop-8 (incompleta) | reg · cop-8 |
 | M-32 | `queries._view_behavior` chiede `ricordi` per automazione/script: ramo sempre `[]` [D]. Riletta il 02/10 (Task 17): la cura è togliere la chiave `ricordi` dalla risposta di `view`, cioè un cambio di forma (Tappa 4) | `queries.py:1369` | cop-4 (doppio conteggio) | reg · cop-4 |
 | M-34 | `LookupCache` per `slot`: la generalità non ha un secondo cliente | `memory/lookup_cache.py` |  | reg |
-| M-35 | `reader`: `unique_id`, `config_entry_id`, `original_name` senza lettori fuori da `reader.py`, ma escono in `GET /api/home-space` (misurato sulla casa il 01/10: 1.457 volte ciascuno): toglierli cambia una forma (Tappa 4, e tocca il difetto della rotta al «lettore»). `nome_utente` è uscito (`2e3ab864`); `dispositivo_id` TOLTO: ha 6 lettori di produzione | `reader.py:143-145` | cop-4 (SBAGLIATA in parte) | reg · cop-4 |
+| M-35 | `reader`: `unique_id`, `config_entry_id`, `original_name` senza lettori fuori da `reader.py`, ma escono in `GET /api/home-space` (misurato sulla casa il 01/10: 1.457 volte ciascuno): toglierli cambia una forma (Tappa 4, e tocca il difetto della rotta al «lettore»). `nome_utente` è uscito (`2e3ab864`); `dispositivo_id` TOLTO: ha 6 lettori di produzione. Riletta il 03/10 (Tappa 3): `config_entry_id` dell'entità non si toglie, è il legame che darà la causa del muto (B-25, Tappa 3, Task 8) | `reader.py:143-145` | cop-4 (SBAGLIATA in parte) | reg · cop-4 |
 | M-37 | CSS definito e mai citato: 92 classi su 292; `hiris-config-override.css` quasi tutto vecchia UI [D da script] | `hiris-config.css`; `hiris-theme.css`; `hiris-config-override.css` |  | reg |
 | M-38 | `scripts/`: `backup-nas.ps1` senza riferimenti; `censimento.py` e `doppioni.py` non agganciati a hook né CI | `scripts/` |  | reg |
 | M-39 | Prompt in `agent/prompts.py`: nessun prompt morto (voce negativa, conservata) | `agent/prompts.py` |  | reg · cop-7 |
@@ -385,6 +386,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso. Riletto il 02/10: sono il vocabolario delle sette domande del proprietario dell'11/09 (`docs/design/2026-09-11-le-domande-del-proprietario.md`), le eseguono le prove di quel cancello. Misurato in casa il 02/10: le 21 ricette archiviate usano 7 operazioni, nessuna delle dieci. **Resta, per decisione del proprietario del 02/10/2026** (serve al refactor degli agenti che segue lo sprint): è costruito per l'analista, e cosa fa è scritto nel BACKLOG, voce sugli attori | `mind/operations.py` |  | compl N-2 |
 | M-80 | La chiave `seminato` di `GET /api/models/config` (e `_MIGRATION_FLAGS`): dal 02/10 nessuno la scrive né la legge; toglierla cambia la forma di una rotta, quindi va dichiarata | `api/handlers_models.py` (`_store_keys`, `_MIGRATION_FLAGS`) |  | Tappa 0, Task 16 |
 | M-81 | `provider_occurrences.FAMILIES`: la legge solo una prova (le famiglie sono rami di `occurrence_phrase`, che non legge l'elenco). Il censimento non esamina le costanti di modulo: trovata dalla revisione indipendente del blocco B | `provider_occurrences.py` (`FAMILIES`) |  | revisione del blocco B, 02/10/2026 |
+| M-82 | Il ritorno di `behavior.reread()` (conteggi, `senza_corpo`) scartato in produzione: due copie di B-39 senza lettori | `server.py` (`reread(client, mirror, …)`); `home_space/behavior.py:130,194` |  | Tappa 3, piano del 03/10/2026, trovato 5 |
+| M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | `home_space/type_vocabulary.py:206-230` |  | Tappa 3, piano del 03/10/2026, trovato 6 |
 
 ---
 
@@ -444,6 +447,8 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-24 | Un turno lungo del ponte potrebbe consegnare con la credenziale scaduta: si rinnova a metà vita, a inizio turno le restano fra 5 e 10 minuti, e un turno può durare due invocazioni da 300 s |  | DEDOTTO | letto in `api/credenziali.py` e `agent/runner.py`, non provato dal vivo: da misurare sul registro dei turni prima di toccare qualcosa | Task 21 |
 | S-25 | Otto file di `api/` scrivono `errore` su HTTP di proprio pugno invece di passare da `boundary.py` (`admission`, `handlers_mcp`, `handlers_mind`, `handlers_proposals`, `handlers_reasoning`, `handlers_servizi`, `middleware_internal_auth`, `soffitto`) |  | LETTO | il commento di `boundary.py` diceva «le uniche tre»: corretto il commento, il fatto resta (si lega al capitolo C) | Task 21 |
 | S-26 | Una proposta gia' decisa non torna nemmeno a prova cambiata: `_file_proposals` (`server.py`) salta ogni domanda che ha gia' una proposta senza confrontare la prova, e il confronto di `actuator.to_handle` non riceve quel dizionario. La voce X-15 ha corretto il docstring che diceva il contrario; il comportamento resta |  | LETTO | trovato dalla revisione finale del 02/10/2026; l'attuatore e' in pausa, si decide con lo strato degli attori che lo riaccende | revisione finale |
+| S-27 | `verification` dice «non esiste in questa casa» per un'entità disabilitata nominata dal modello: l'anagrafe la conosce |  | LETTO | `action/verification.py:523`; si lega a B-04; si ripara con D8 della Tappa 3 (la causa da `House.source`), Task 8 | Tappa 3, piano del 03/10/2026, trovato 2 |
+| S-28 | Un guasto di `hourly_statistics` è scritto come «serie vuota» nel resoconto, e il commento accanto dice il contrario |  | LETTO | `server.py` (`_report_ingredients`, ramo `"errore" in report`); è una causa sbagliata della fonte: Tappa 3, Task 8 (B-26) | Tappa 3, piano del 03/10/2026, trovato 7 |
 
 ---
 
@@ -700,6 +705,60 @@ una voce scritta fuori dal suo capitolo è una voce che un lettore dei capitoli 
 
 ---
 
+## 7. La Tappa 3 (piano del 03/10/2026): voci spostate, verdetti corretti, reperti ricondotti
+
+Fonte: il piano `piani/2026-10-tappa-3-la-casa-un-oggetto.md` (cartella del progetto), allegato A,
+verificato sul codice di `378a3df1`; decisioni del proprietario del 03/10/2026. Nella colonna
+`Corretta da` dei capitoli, «Tappa 3» rimanda a questa sezione.
+
+### 7a. Le voci del capitolo B che non sono «la casa» (D10: si spostano)
+
+Restano aperte nel capitolo B: cambia solo la tappa che le chiude.
+
+- **B-21** → Tappa 7 (scrivere): lo slug delle chiavi che l'officina scrive
+- **B-22** → Tappa 8: i vocabolari dei tipi, la cui casa unica è il sapere
+- **B-27** → strato 2 degli attori (la voce del BACKLOG): i controlli dentro `mind/operations`
+- **B-28** → Tappa 5: il calendario, l'ordine e `fine`
+- **B-29** → strato 2 degli attori: la quota FV
+- **B-30** → Tappa 5: la profondità, regola degli strumenti
+- **B-32** → Tappa 5: i filtri per genere, regola degli strumenti
+- **B-33** → Tappa 5: la durata, regola degli strumenti
+- **B-42** → Tappa 7: credenziale contro attributo dichiarato, cioè riservatezza
+- **B-47** → Tappa 8: le provenienze, la cui casa unica è il sapere
+- **B-52** → Tappa 6: il filo della chat
+- **B-53** → Tappa 6: il tetto del ponte
+- **B-54** → Tappa 8 (archivi): il «300» dei motivi, dove cambia anche l'algoritmo
+
+### 7b. Verdetti e testi corretti
+
+- **B-02** · imprecisa — le regole sono più LARGHE del digesto, non più strette: tolgono solo le disabilitate (`queries.py:1557`, `briefing.py:1535,1563`, `tools.py:1753`). Corretto il titolo
+- **B-09** · verdetto — `Unirla` da DP a PS: due costanti con nome per due stati, nessuna scelta da fare
+- **B-12** · verdetto — `Stato` da E a D: le formule divergono di regola (il `state_class` contro ciò che HA tiene in `statistic_ids`: una banderuola con `measurement_angle` si perde), anche se sulla casa i casi sono 0
+- **B-15** · incompleta — due copie in più: `ZoneInfo` costruito da sé in `briefing.py:370-374` e `usage/vocabulary.py:85-88` (trovato 8 del piano)
+- **B-24** · incompleta — `_ENTITY_ID_RE` si usa con `.match` in tre punti e con `.fullmatch` in `mind/judgments.py:212`: divergono su un `\n` finale (trovato 9 del piano)
+- **B-25** · incompleta — il dato si perde anche in `reader.py:160-170` (l'integrazione butta il proprio `disabled_by`), e il `config_entry_id` dell'entità non ha lettori (trovato 1 del piano, vedi M-35)
+- **B-28** · verdetto — `Unirla` da PS a CC: ordine e `fine` cambiano ciò che il modello legge
+- **B-29** · imprecisa — non è un doppione di codice: la definizione vive nelle ricette archiviate
+- **B-54** · verdetto — `Unirla` da PS a CC: le tre copie usano algoritmi diversi
+- **B-19** — chiusa nei fatti dal commit `fa268542` (`Lookup.find` uscito con M-08): spostata in «Chiuse» con `registro.py chiudi`
+
+### 7c. I dodici trovati per strada del piano
+
+Otto sono voci nuove, nel loro capitolo: **B-55** (trovato 4, Tappa 3 Task 8) · **C-57**
+(trovato 3, Tappa 4) · **D-67** (trovato 11, Tappa 6) · **D-68** (trovato 12, Tappa 5; i filtri
+ripetuti in prosa sono già B-32) · **M-82** (trovato 5, Tappa 3 Task 7) · **M-83** (trovato 6,
+Tappa 3 Task 7) · **S-27** (trovato 2, Tappa 3 Task 8) · **S-28** (trovato 7, Tappa 3 Task 8).
+
+Quattro stavano già nel registro, e una seconda riga sarebbe stata un doppione del registro
+stesso: si sono annotate le voci che c'erano.
+
+- trovato 1 (`config_entry_id` dell'entità scritto e mai letto) = **M-35** e **B-25**: annotata M-35
+- trovato 8 (`ZoneInfo` costruito da sé) = due copie in più di **B-15**: Tappa 3, Task 10
+- trovato 9 (`match` contro `fullmatch`) = **B-24**: Tappa 3, Task 7
+- trovato 10 (il titolo del registro degli errori archiviato dall'osservatore senza sigillo) = **D-44**. Lo cancella il Task 0 della Tappa 3 (ramo `claude/tappa-3-task-0-sigillo-segreti-hl1f6u`, `935b08b`): la voce resta aperta finché quel ramo non è unito
+
+---
+
 ## Chiuse
 
 Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copia è cancellata.
@@ -826,3 +885,6 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-07 | Avvio e riconnessione: la stessa casa riletta 3-4 volte nei primi secondi | Tappa 2 (da rilasciare) | daaa8826 | Tappa 2, Task 7: la casa si legge una volta all'avvio (get_states 1, read_registries 1, prima l'iscrizione); un registro caduto tiene la tabella precedente, marcata; autenticazione WebSocket rifiutata: si riprova con attesa crescente e ws_ready si spegne |
 | A-10 | Anagrafe parziale che sostituisce quella buona: spariscono gli alias di tutta la casa | Tappa 2 (da rilasciare) | daaa8826 | Tappa 2, Task 7: la casa si legge una volta all'avvio (get_states 1, read_registries 1, prima l'iscrizione); un registro caduto tiene la tabella precedente, marcata; autenticazione WebSocket rifiutata: si riprova con attesa crescente e ws_ready si spegne |
 | S-04 | Autenticazione WS fallita → `return`: il ciclo eventi non riparte fino al riavvio; `ws_ready` non si azzera | Tappa 2 (da rilasciare) | daaa8826 | Tappa 2, Task 7: la casa si legge una volta all'avvio (get_states 1, read_registries 1, prima l'iscrizione); un registro caduto tiene la tabella precedente, marcata; autenticazione WebSocket rifiutata: si riprova con attesa crescente e ws_ready si spegne |
+| B-19 | Due motori di ricerca per nome: `name_matches` e `Lookup.find` | 3.73.0 | fa268542 | Lookup.find e il suo indice dei termini (uscito con M-08); resta name_matches, l'unico motore per nome. Chiusa nel registro con la Tappa 3, Task 1 (03/10/2026) |
+| A-27 | Il taglio dell'URL dello storico vive nello strumento, non in `HAClient.history` | Tappa 2 (da rilasciare) | ad91db1 | Tappa 2, Task 9: il taglio dell'URL dello storico vive in HAClient.history |
+| D-44 | Il sigillo del registro errori vive in `tools.py`: `mind/watcher` lo salta | Tappa 2 (da rilasciare) | 0dcac7a | Tappa 3, Task 0: la regola del sigillo vive in home_space/redaction.py e la usano chat e osservatore |
