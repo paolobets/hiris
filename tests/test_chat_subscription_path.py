@@ -777,6 +777,8 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
 
     Mutazione ESEGUITA: aggiunta in `server.py` la riga
     `os.environ.get("BRIDGE_ENABLED")` -- rossa, col nome della variabile.
+    Dal 03/10/2026 la ricerca guarda tutto `hiris/app`, non il solo
+    `server.py`.
     """
     import pathlib as _pl
 
@@ -801,8 +803,17 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
         assert "ponte" not in tradotte
         assert "provider_subscription" not in tradotte
 
-    app_py = (base / "app" / "server.py").read_text(encoding="utf-8").splitlines()
-    codice = [r for r in app_py if not r.lstrip().startswith("#")]
+    # Tutto il prodotto, non il solo `server.py` (Tappa 1 dello sprint «Una
+    # fonte sola di verita'», 03/10/2026): una leva che rientra da un altro
+    # modulo e' la stessa leva. Mutazione ESEGUITA: `os.environ.get(
+    # "BRIDGE_ENABLED")` scritta in `hiris/app/steering.py` -- rossa (col solo
+    # `server.py` restava verde).
+    moduli = sorted((base / "app").rglob("*.py"))
+    assert base / "app" / "server.py" in moduli and len(moduli) > 50, (
+        f"la derivazione dei moduli si e' rotta: {len(moduli)}")
+    codice = [r for m in moduli
+              for r in m.read_text(encoding="utf-8").splitlines()
+              if not r.lstrip().startswith("#")]
     for variabile in ("CHAT_VIA_SUBSCRIPTION", "PROVIDER_SUBSCRIPTION", "BRIDGE_ENABLED"):
         lette = [r.strip() for r in codice
                  if f'"{variabile}"' in r or f"'{variabile}'" in r]

@@ -136,20 +136,29 @@ def test_l_opzione_nasce_in_create_app_e_non_si_rilegge(monkeypatch):
 
 
 def test_l_opzione_ha_una_casa_sola():
-    """Una lettura dell'ambiente e una scrittura in `app[...]`, entrambe in
-    `create_app`; nessuna rotta la riscrive. Il conteggio si fa sul sorgente
-    di tutta l'app, cosi' una seconda lettura aggiunta domani lo rompe."""
+    """Una lettura dell'ambiente e una scrittura in `app[...]`, in tutto il
+    prodotto; nessuna rotta la riscrive. Il conteggio si fa sul sorgente di
+    tutta l'app, cosi' una seconda lettura aggiunta domani lo rompe.
+
+    CHE quella lettura e quella scrittura siano di `create_app` lo provano le
+    due prove qui sopra, chiamandola: `create_app()` porta il valore, e
+    cambiare l'ambiente dopo non lo cambia. Fino al 03/10/2026 questa prova lo
+    cercava anche nel testo di `server.py`, da `def create_app(` in giu' --
+    cioe' pretendeva che l'app si costruisse in QUEL file (Tappa 1 dello sprint
+    «Una fonte sola di verita'»).
+
+    Mutazione ESEGUITA: una seconda lettura di `"HIRIS_NON_ADMIN_ACCESS"` in
+    `hiris/app/api/handlers_config.py` -- rossa."""
     letture, scritture = [], []
-    for f in (ROOT / "hiris" / "app").rglob("*.py"):
+    moduli = sorted((ROOT / "hiris" / "app").rglob("*.py"))
+    assert len(moduli) > 50, f"la derivazione dei moduli si e' rotta: {len(moduli)}"
+    for f in moduli:
         testo = f.read_text(encoding="utf-8")
         letture += [f.name for _ in re.finditer(r'"HIRIS_NON_ADMIN_ACCESS"', testo)]
         scritture += [f.name for _ in re.finditer(
             r'\[\s*"non_admin_access"\s*\]\s*=(?!=)', testo)]
-    assert letture == ["server.py"], letture
-    assert scritture == ["server.py"], scritture
-    create_app = (ROOT / "hiris" / "app" / "server.py").read_text(encoding="utf-8")
-    corpo = create_app[create_app.index("def create_app("):]
-    assert '"HIRIS_NON_ADMIN_ACCESS"' in corpo and 'app["non_admin_access"] =' in corpo
+    assert len(letture) == 1, letture
+    assert len(scritture) == 1, scritture
 
 
 def test_l_opzione_arriva_dal_manifest_al_codice():
