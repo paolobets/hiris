@@ -29,7 +29,6 @@ wiring is gone with its subject, not moved.
 """
 import ast
 import asyncio
-import inspect
 from pathlib import Path
 
 import pytest
@@ -165,12 +164,11 @@ def test_the_create_task_gate_still_sees_the_product():
     assert "server.py" in found and "ha_client.py" in found, found
 
 
-def test_spawn_body_adds_to_background_tasks_and_wires_done_callback():
-    """Sanity-check _spawn()'s own implementation does what the docstring/
-    comment claims, so the AST check above isn't the only thing standing
-    between us and a regression (e.g. someone 'fixing' _spawn to no longer
-    track the task)."""
-    source = inspect.getsource(server._spawn)
-    assert "_background_tasks.add(" in source
-    assert "add_done_callback(" in source
-    assert "_background_tasks.discard" in source
+# Qui stava `test_spawn_body_adds_to_background_tasks_and_wires_done_callback`,
+# che cercava `_background_tasks.add(`, `add_done_callback(` e
+# `_background_tasks.discard` nel sorgente di `_spawn`. E' uscita il
+# 03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'»): lo stesso lo
+# guarda, eseguendo `_spawn`, la prima prova di questo file
+# (`test_spawn_keeps_strong_ref_while_pending_and_discards_on_done`).
+# Mutazioni ESEGUITE su quella: tolto `_background_tasks.add(task)` -- rossa;
+# tolto `task.add_done_callback(...)` -- rossa.

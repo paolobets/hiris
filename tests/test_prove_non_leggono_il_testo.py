@@ -61,11 +61,8 @@ PATH_BUILDERS = {"Path", "PurePath", "open", "join"}
 FOLDER_ANCHORS = {"parent", "parents", "dirname"}
 TEMPORARY_ROOTS = {"tmp_path", "tmpdir"}
 
-_TASK_5 = "da convertire, Task 5 della Tappa 1 (estrai ed esegui un lavoro periodico)"
 _TASK_6 = "da convertire, Task 6 della Tappa 1 (estrai ed esegui un blocco d'avvio)"
 _TASK_7 = "da convertire, Task 7 della Tappa 1 (cancello buono che guarda un file solo)"
-_NOT_IN_PLAN = ("da convertire nella Tappa 1, ma il piano non la nomina: "
-                "la assegna lo sprint")
 
 #: `«file»::«funzione»` -> perche' oggi puo' ancora leggere il testo di
 #: `server.py`. Si accorcia, non si allunga.
@@ -77,22 +74,7 @@ ADMITTED: dict[str, str] = {
          "termine di paragone, e resta vera anche quando il file si svuota"),
     "test_agent_runner_inaddon.py::"
     "test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno": _TASK_7,
-    "test_archivi_chiusi.py::_corpo_pulizia":
-        _NOT_IN_PLAN + " (il Task 2 ha allargato la costruzione degli archivi; "
-                       "il corpo di `_on_cleanup` si legge ancora)",
-    "test_background_tasks_wiring.py::"
-    "test_spawn_body_adds_to_background_tasks_and_wires_done_callback":
-        _NOT_IN_PLAN + " (il corpo di `_spawn`, letterale)",
     "test_bridge_success_occurrence.py::_load_real_submit_chat_reply": _TASK_6,
-    "test_chat_subscription_path.py::test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento":
-        _TASK_7,
-    "test_chat_subscription_path.py::"
-    "test_gli_avvisi_del_ponte_vengono_STAMPATI_e_non_solo_composti":
-        _NOT_IN_PLAN + " (letterale di una chiamata in `_on_startup`)",
-    "test_chat_subscription_path.py::"
-    "test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon":
-        _NOT_IN_PLAN + " (variabili d'ambiente cercate nel solo `server.py`)",
-    "test_config_page.py::test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti": _TASK_7,
     "test_submit_chat_reply_guards.py::_load_real_submit_chat_reply": _TASK_6,
 }
 

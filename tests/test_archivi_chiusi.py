@@ -25,9 +25,10 @@ che si possa verificare senza indovinare.
 import ast
 import pathlib
 
+import pytest
+
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 _APP = RADICE / "hiris" / "app"
-_SERVER = _APP / "server.py"
 
 
 def archivi_aperti() -> dict[str, str]:
@@ -61,14 +62,6 @@ def _archivi_in(albero: ast.AST, trovati: dict[str, str]) -> None:
                 trovati[bersaglio.slice.value] = classe
 
 
-def _corpo_pulizia() -> str:
-    sorgente = _SERVER.read_text(encoding="utf-8")
-    albero = ast.parse(sorgente)
-    pulizia = next(n for n in ast.walk(albero)
-                   if isinstance(n, ast.AsyncFunctionDef) and n.name == "_on_cleanup")
-    return ast.get_source_segment(sorgente, pulizia) or ""
-
-
 def test_la_derivazione_trova_davvero_qualcosa():
     """Un cancello che deriva male sembra vivo mentre non guarda piu' niente:
     e' il modo in cui una difesa si spegne senza dirlo.
@@ -81,23 +74,50 @@ def test_la_derivazione_trova_davvero_qualcosa():
         "si è rotta, e un cancello che deriva male passa senza guardare")
 
 
-def test_ogni_archivio_aperto_viene_anche_CHIUSO():
+@pytest.mark.asyncio
+async def test_ogni_archivio_aperto_viene_anche_CHIUSO(tmp_path):
     """**Il cancello.**
 
     Il file resta bloccato e il difetto compare al riavvio successivo, cioè
     lontano da chi ha scritto la riga. Qui non può succedere: l'archivio
-    compare da solo nell'insieme derivato, e finché `_on_cleanup` non lo
-    nomina questo file è rosso.
+    compare da solo nell'insieme derivato, e finché lo spegnimento non lo
+    chiude questo file è rosso.
 
-    Mutazione ESEGUITA: tolta la chiusura di `agenda` da `_on_cleanup` --
-    rossa, col nome dell'archivio nel messaggio. E alla prima scrittura questa
-    prova era rossa su `usage` e `servizi`, che è la ragione per cui esiste.
+    Fino al 03/10/2026 si cercava `app["nome"].close()` nel testo di
+    `_on_cleanup`; adesso l'app si avvia davvero (`tests/_avvio.py`), ogni
+    archivio derivato viene avvolto da una spia sul suo `close`, e dopo lo
+    spegnimento si guarda chi e' stato chiuso. Una chiusura spostata in un
+    altro modulo resta vista; una scritta in un ramo mai preso, no.
+
+    Mutazione ESEGUITA (03/10/2026): tolta la chiusura di `agenda` da
+    `_on_cleanup` -- rossa, col nome dell'archivio nel messaggio. E alla prima
+    scrittura (22/09) questa prova era rossa su `usage` e `servizi`, che è la
+    ragione per cui esiste.
     """
-    pulizia = _corpo_pulizia()
+    import contextlib
+    from unittest import mock
 
-    scordati = [nome for nome in archivi_aperti()
-                if f'app["{nome}"].close()' not in pulizia]
+    from tests._avvio import started_with
 
+    chiusi: list[str] = []
+
+    def _spy(nome, close):
+        def spia(*args, **kwargs):
+            chiusi.append(nome)
+            return close(*args, **kwargs)
+        return spia
+
+    with contextlib.ExitStack() as stack:
+        async with started_with(tmp_path) as app:
+            assenti = [nome for nome in archivi_aperti() if app.get(nome) is None]
+            assert not assenti, (
+                f"archivi derivati che l'avvio non ha aperto: {sorted(assenti)} -- "
+                "la prova non saprebbe dire se si chiudono")
+            for nome in archivi_aperti():
+                stack.enter_context(mock.patch.object(
+                    app[nome], "close", _spy(nome, app[nome].close)))
+
+    scordati = [nome for nome in archivi_aperti() if nome not in chiusi]
     assert not scordati, (
         f"archivi aperti e mai chiusi: {sorted(scordati)}. Il file sqlite "
         "resta bloccato e il difetto compare al riavvio successivo — aggiungi "
@@ -105,18 +125,38 @@ def test_ogni_archivio_aperto_viene_anche_CHIUSO():
         "come le altre")
 
 
-def test_la_chiusura_e_GUARDATA_sulla_presenza():
+class _House:
+    """La casa che lo spegnimento ferma: basta che sappia fermarsi."""
+
+    async def stop(self) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     """`_on_cleanup` gira anche quando l'avvio si è fermato a metà — un archivio
     che non c'è farebbe cadere la pulizia, e con lei le chiusure che seguono.
 
-    Mutazione ESEGUITA: tolto l'`if` da una delle chiusure -- rossa."""
-    pulizia = _corpo_pulizia()
+    Fino al 03/10/2026 si cercava `if "nome" in app:` nel testo; adesso si
+    CHIAMA lo spegnimento vero (`server._on_cleanup`) su un'app a cui manca
+    un archivio alla volta. Lo spegnimento non deve cadere, e deve chiudere
+    tutti gli altri. (Il sapere puo' anche esserci e valere `None`: quel
+    caso ha la sua guardia, `app.get(...) is not None`, e la sua prova in
+    `test_mind_judgments.py` -- la forma vecchia accettava l'una o l'altra
+    guardia, e cosi' questa.)
 
-    scoperti = [nome for nome in archivi_aperti()
-                if f'if "{nome}" in app:' not in pulizia
-                and f'if app.get("{nome}") is not None:' not in pulizia]
+    Mutazione ESEGUITA (03/10/2026): `if "usage" in app:` -> `if True:` in
+    `_on_cleanup` -- rossa (`KeyError: 'usage'`)."""
+    from unittest.mock import MagicMock
 
-    assert not scoperti, (
-        f"chiusure non guardate: {sorted(scoperti)}. Se l'avvio si ferma "
-        "prima di quell'archivio, la pulizia cade lì e non chiude più niente "
-        "di ciò che viene dopo")
+    from hiris.app import server
+
+    nomi = sorted(archivi_aperti())
+    for mancante in nomi:
+        presenti = {nome: MagicMock() for nome in nomi if nome != mancante}
+        await server._on_cleanup({**presenti, "ha_client": _House()})
+        aperti = [nome for nome, archivio in presenti.items()
+                  if not archivio.close.called]
+        assert not aperti, (
+            f"senza `{mancante}` lo spegnimento non ha chiuso {aperti}: la "
+            "pulizia e' caduta prima")

@@ -724,42 +724,98 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
     una regola da non sbagliare: due opzioni distinte, combinate a mano nel
     punto giusto. Poi due chiamate alla stessa funzione. Adesso e' una
     struttura: `_recompute_chain` e' l'UNICO posto che deriva il valore, e
-    `_reasoning_sweep` lo legge invece di ricalcolarlo. Se qualcuno riscrivesse
-    uno dei due a mano, l'invariante tornerebbe a dipendere dall'attenzione:
-    questo test lo impedisce, e guarda tutti e tre i lati.
-    """
-    import inspect
+    `_reasoning_sweep` lo legge invece di ricalcolarlo.
+
+    Fino al 03/10/2026 questa prova guardava il testo di `_recompute_chain` e
+    di `_on_startup`; adesso guarda il comportamento, in tre prove:
+    questa (il ricalcolo passa dal combinatore condiviso), e le due qui sotto
+    sull'app avviata (il valore segue l'archivio, all'avvio e dopo; la
+    spazzata LEGGE il valore invece di ricalcolarlo).
+
+    Mutazione ESEGUITA (03/10/2026): in `_recompute_chain`
+    `app["bridge_active"] = _bridge_active(cfg)` ->
+    `= bool((cfg.get("ponte") or {}).get("attivo"))` (la regola riscritta a
+    mano) -- rossa."""
+    from unittest import mock
 
     from hiris.app import server
 
-    ricalcola = inspect.getsource(server._recompute_chain)
-    riga_cablaggio = [r for r in ricalcola.splitlines()
-                      if 'app["bridge_active"] =' in r]
-    assert len(riga_cablaggio) == 1, riga_cablaggio
-    assert "_bridge_active(" in riga_cablaggio[0], (
+    deciso = object()
+    with mock.patch.object(server, "_bridge_active", return_value=deciso) as combinatore:
+        app: dict = {"models_config": {"ponte": {"attivo": True}}}
+        server._recompute_chain(app)
+    combinatore.assert_called_once_with(app["models_config"])
+    assert app["bridge_active"] is deciso, (
         "il cablaggio non passa piu' dal combinatore condiviso: la logica "
         "booleana e' stata riscritta a mano nel punto di assegnazione"
     )
 
-    src = inspect.getsource(server._on_startup)
-    assert 'app["bridge_active"] =' not in src, (
-        "il ponte e' tornato a essere cablato UNA volta all'avvio: da li' non "
-        "puo' seguire un salvataggio della pagina Modelli, e accendere il "
-        "ponte tornerebbe a essere una PUT che risponde 200 e non fa niente "
-        "fino al riavvio"
-    )
 
-    sweep_pos = src.index("async def _reasoning_sweep()")
-    corpo_sweep = src[sweep_pos:sweep_pos + 900]
-    assert 'app.get("bridge_active")' in corpo_sweep, (
-        "la spazzata non legge piu' il valore condiviso: puo' tornare a essere "
-        "in disaccordo con l'instradamento, ed e' esattamente il buco che l'AND "
-        "di prima serviva a chiudere"
-    )
-    assert "_bridge_active(" not in corpo_sweep, (
-        "la spazzata RIDERIVA il valore invece di leggerlo: due derivazioni "
-        "possono divergere, una lettura sola no"
-    )
+def _models_config_with_bridge(data_dir, attivo: bool) -> None:
+    import json
+
+    (data_dir / "models_config.json").write_text(json.dumps({
+        "ponte": {"attivo": attivo}, "chain_order": [],
+        "seminato": True, "catena_seminata": True, "piano_seminato": True,
+    }), encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_il_ponte_segue_l_archivio_all_avvio_e_dopo(tmp_path):
+    """Il ponte NON e' cablato una volta all'avvio: da li' non potrebbe
+    seguire un salvataggio della pagina Modelli, e accendere il ponte
+    tornerebbe a essere una PUT che risponde 200 e non fa niente fino al
+    riavvio. Si avvia l'app vera col ponte acceso in archivio (e senza token:
+    il lavoratore non parte), poi l'archivio cambia e si ricalcola come fa la
+    PUT.
+
+    Mutazione ESEGUITA (03/10/2026): tolta l'assegnazione di
+    `app["bridge_active"]` da `_recompute_chain` -- rossa. Mutazione ESEGUITA:
+    `app["bridge_active"] = False` aggiunta in fondo a `_on_startup` (un
+    cablaggio d'avvio) -- rossa."""
+    from tests._avvio import credential_environment, started_with
+
+    _models_config_with_bridge(tmp_path, True)
+    async with started_with(tmp_path, credential_environment(())) as app:
+        assert app["bridge_active"] is True
+        app["models_config"] = {**app["models_config"], "ponte": {"attivo": False}}
+        app["recompute_chain"]()
+        assert app["bridge_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_la_spazzata_LEGGE_il_valore_e_non_lo_ricalcola(tmp_path):
+    """La spazzata e l'instradamento leggono lo STESSO slot: se la spazzata
+    rideriva il valore dall'archivio, le due derivazioni possono divergere --
+    ed e' esattamente il buco che l'AND di prima serviva a chiudere. Qui lo
+    slot e l'archivio dicono cose OPPOSTE apposta, e si guarda a chi
+    obbedisce il lavoro vero (`hiris_reasoning_sweep`).
+
+    Mutazione ESEGUITA (03/10/2026): nella spazzata
+    `if not app.get("bridge_active"):` ->
+    `if not _bridge_active(app.get("models_config")):` -- rossa.
+
+    Un avvio suo, non la fixture di modulo: il montaggio tiene il registro
+    `hiris` a CRITICAL finche' l'app e' accesa, e le prove di registro di
+    questo file che vengono dopo non vedrebbero niente."""
+    from unittest import mock
+
+    from tests._avvio import started_with
+
+    async with started_with(tmp_path) as app:
+        sweep = app["scheduler"].get_job("hiris_reasoning_sweep").func
+        queue = app["reasoning_queue"]
+        for slot, archivio, spazza in ((True, False, True), (False, True, False)):
+            with mock.patch.dict(app, {
+                    "bridge_active": slot,
+                    "models_config": {**app["models_config"],
+                                      "ponte": {"attivo": archivio}}}), \
+                    mock.patch.object(queue, "sweep_expired", return_value=[]) as expired:
+                await sweep()
+            assert expired.called is spazza, (
+                f"slot {slot}, archivio {archivio}: la spazzata "
+                f"{'non ha' if spazza else 'ha'} spazzato -- non legge il valore condiviso"
+            )
 
 
 def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
@@ -809,7 +865,7 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
     # "BRIDGE_ENABLED")` scritta in `hiris/app/steering.py` -- rossa (col solo
     # `server.py` restava verde).
     moduli = sorted((base / "app").rglob("*.py"))
-    assert base / "app" / "server.py" in moduli and len(moduli) > 50, (
+    assert base / "app" / "main.py" in moduli and len(moduli) > 50, (
         f"la derivazione dei moduli si e' rotta: {len(moduli)}")
     codice = [r for m in moduli
               for r in m.read_text(encoding="utf-8").splitlines()
@@ -872,43 +928,42 @@ def test_il_token_senza_ponte_si_sente_dire_all_avvio_DOVE_si_accende():
     )
 
 
-def test_gli_avvisi_del_ponte_vengono_STAMPATI_e_non_solo_composti():
+@pytest.mark.asyncio
+async def test_gli_avvisi_del_ponte_vengono_STAMPATI_e_non_solo_composti(tmp_path, caplog):
     """**C3 della revisione del commit 3.0.0: il nodo era pinnato, l'arco no.**
 
-    I tre test qui sopra provano `_bridge_notices` come funzione pura -- le
+    I test qui sopra provano `_bridge_notices` come funzione pura -- le
     stringhe che restituisce. Nessuno provava che qualcuno le stampasse:
     sostituire il ciclo di `_on_startup` con `pass` lasciava la suite intera
     verde (1612 passed), e con lui spariva il PRIMO dei tre segnali della
     perdita del ponte -- l'unico che arriva a chi non apre la pagina Modelli di
-    sua iniziativa. Gli altri due (la frase in cima alla pagina e il bottone)
-    l'utente li incontra solo se va a cercarli: la chat, dopo l'aggiornamento,
-    risponde normalmente e la differenza si vede sulla fattura.
+    sua iniziativa.
 
-    Si guarda il sorgente, come `test_lo_stesso_gate_governa_la_spazzata_e_l_
-    instradamento`: `_on_startup` non e' eseguibile nei test (ogni fixture fa
-    `app.on_startup.clear()`), quindi un test di comportamento qui proverebbe
-    un avvio che nessuno esegue.
-    """
-    import inspect
+    Fino al 03/10/2026 si guardava il sorgente («`_on_startup` non e'
+    eseguibile nei test»). Adesso l'avvio gira davvero col ponte acceso e
+    senza token, e ogni avviso che `_bridge_notices` compone per quello stato
+    deve comparire nel registro come WARNING (col livello `info` predefinito
+    un `logger.debug` non si vedrebbe).
 
-    from hiris.app import server
+    Mutazione ESEGUITA (03/10/2026): il corpo del ciclo degli avvisi
+    sostituito da `pass` -- rossa. Mutazione ESEGUITA: `logger.warning(_notice)` ->
+    `logger.debug(_notice)` -- rossa."""
+    import logging
 
-    # Solo le righe VIVE: un commento che spiega perche' l'avviso sta in fondo
-    # all'avvio cita il nome, e citarlo non e' stamparlo.
-    righe = [r for r in inspect.getsource(server._on_startup).splitlines()
-             if not r.lstrip().startswith("#")]
-    chiamata = [r for r in righe if "_bridge_notices(" in r]
-    assert chiamata, (
-        "nessuno chiama piu' `_bridge_notices` all'avvio: la funzione resta "
-        "corretta e provata, e non la esegue nessuno -- chi aggiorna con il "
-        "token e il ponte spento non riceve piu' nessun segnale che non sia "
-        "andato a cercarsi"
-    )
-    assert [r for r in righe if "logger.warning(_notice)" in r], (
-        "gli avvisi si compongono e non finiscono piu' nel registro, o non ci "
-        "finiscono piu' come warning: col livello `info` predefinito un "
-        "`logger.debug` non si vedrebbe"
-    )
+    from tests._avvio import SERVER_LOGGER, credential_environment, started_with
+
+    attesi = _bridge_notices(True, False)
+    assert attesi, "lo stato preparato deve avere qualcosa da dire"
+    _models_config_with_bridge(tmp_path, True)
+    with caplog.at_level(logging.DEBUG, logger=SERVER_LOGGER):
+        async with started_with(tmp_path, credential_environment(())):
+            pass
+    avvisi = [r.getMessage() for r in caplog.records
+              if r.name == SERVER_LOGGER and r.levelno == logging.WARNING]
+    mancanti = [a for a in attesi if a not in avvisi]
+    assert not mancanti, (
+        "gli avvisi si compongono e non finiscono piu' nel registro come "
+        f"warning: {mancanti}")
 
 
 @pytest.mark.parametrize("ponte,token", [(True, True), (False, False)])

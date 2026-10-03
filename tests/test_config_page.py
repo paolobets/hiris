@@ -236,7 +236,7 @@ def test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti():
     # `os.environ.get("CHAT_POLICY")` scritta in `hiris/app/config.py` -- rossa
     # (col solo `server.py` restava verde).
     moduli = sorted((BASE / "app").rglob("*.py"))
-    assert BASE / "app" / "server.py" in moduli and len(moduli) > 50, (
+    assert BASE / "app" / "main.py" in moduli and len(moduli) > 50, (
         f"la derivazione dei moduli si e' rotta: {len(moduli)}")
     lette = [f"{m.relative_to(BASE).as_posix()}: {r.strip()}" for m in moduli
              for r in _righe_vive(m) if "CHAT_POLICY" in r]

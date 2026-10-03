@@ -489,9 +489,10 @@ async def test_every_store_is_closed_after_shutdown(tmp_path):
     succede a ogni aggiornamento. Si spegne l'app vera e si prova a usare ogni
     connessione che teneva.
 
-    `tests/test_archivi_chiusi.py` guarda il testo di `_on_cleanup` per gli
-    archivi costruiti come `app["x"] = XStore(...)`; questa prova guarda lo
-    spegnimento vero, per ogni connessione che l'app tiene, comunque sia nata.
+    `tests/test_archivi_chiusi.py` guarda che gli archivi costruiti come
+    `app["x"] = XStore(...)` ricevano `close` allo spegnimento; questa prova
+    guarda, per ogni connessione che l'app tiene comunque sia nata, che non
+    si possa piu' usare.
 
     Mutazione ESEGUITA: tolta `app["observations"].close()` da `_on_cleanup` --
     rossa. Tolta `app["constructions"].close()` -- rossa."""
