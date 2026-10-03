@@ -61,9 +61,7 @@ def test_il_campo_nuovo_non_cancella_gli_altri_tre_del_ponte():
 
 # ── La semina: una volta sola, con un segno proprio ────────────────────────
 
-import inspect
 import logging
-import textwrap
 
 from hiris.app import options_migration
 
@@ -131,33 +129,25 @@ def test_il_segno_sopravvive_al_giro_load_save(tmp_path):
     assert handlers_models.load_models_config(d)["piano_seminato"] is True
 
 
-# ── Il CABLAGGIO: il blocco dell'avvio, eseguito davvero ───────────────────
+# ── Il CABLAGGIO: l'avvio vero ────────────────────────────────────────────
 #
-# La suite non avvia l'app intera per provare `_on_startup` (servirebbero
-# Supervisor, WebSocket di HA, MQTT). L'idioma del repo e' estrarre il blocco
-# dal sorgente vero ed eseguirlo isolato: `tests/test_websocket_startup.py`.
 # Provare la FUNZIONE non dimostra che qualcuno la chiami, e un cablaggio che
-# non c'e' e' esattamente il modo in cui una migrazione non avviene.
+# non c'e' e' esattamente il modo in cui una migrazione non avviene. Fino al
+# 03/10/2026 il blocco si ritagliava dal testo di `_on_startup` («la suite
+# non avvia l'app intera»); adesso l'app si avvia davvero
+# (`tests/_avvio.py::started_with`) sull'archivio che la prova scrive, senza
+# nessuna credenziale (il token del piano assente: il lavoratore del ponte
+# non parte anche col ponte acceso).
 
 
-def _carica_blocco_semina():
-    from hiris.app import server
-    src = inspect.getsource(server._on_startup)
-    start = src.index("    from .options_migration import seed_subscription_model")
-    fine = 'app["models_config"] = load_models_config(data_dir)'
-    end = src.index(fine, start) + len(fine)
-    corpo = textwrap.dedent(src[start:end])
-    func_src = ("def _check(app, data_dir, save_models_config, "
-                "load_models_config, logger):\n"
-                + textwrap.indent(corpo, "    "))
-    # `__name__`/`__package__` del modulo vero: il blocco fa import RELATIVI
-    # (`from .options_migration import ...`), e senza il pacchetto d'origine
-    # non si risolvono. Prenderli da `server` invece di scriverli a mano
-    # significa che il test segue il modulo se un giorno cambiasse casa.
-    namespace: dict = {"__name__": server.__name__,
-                       "__package__": server.__package__}
-    exec(compile(func_src, "<_on_startup semina del piano>", "exec"), namespace)
-    return namespace["_check"]
+async def _start(d) -> dict:
+    """L'archivio dei modelli come l'avvio vero lo lascia in `app`."""
+    import copy
+
+    from tests._avvio import credential_environment, started_with
+
+    async with started_with(d, credential_environment(())) as app:
+        return copy.deepcopy(app["models_config"])
 
 
 def _archivio_pre_fetta(tmp_path, modello_claude, modello_piano="sonnet"):
@@ -171,35 +161,38 @@ def _archivio_pre_fetta(tmp_path, modello_claude, modello_piano="sonnet"):
     return d
 
 
-def test_l_avvio_semina_il_modello_che_l_installazione_stava_usando(tmp_path):
+@pytest.mark.asyncio
+async def test_l_avvio_semina_il_modello_che_l_installazione_stava_usando(tmp_path):
     """Il metro dell'aggiornamento: sull'impianto del proprietario
     `provider_models.claude` e' haiku, quindi il campo nuovo nasce `haiku` e
-    NIENTE cambia sotto di lui."""
+    NIENTE cambia sotto di lui.
+
+    Mutazione ESEGUITA (03/10/2026, sull'avvio vero): il
+    `save_models_config` della semina del piano sostituito da `pass` -- rossa
+    (`'sonnet' == 'haiku'`: senza il salvataggio l'archivio non si rilegge)."""
     d = _archivio_pre_fetta(tmp_path, "claude-haiku-4-5-20251001")
-    app = {"models_config": handlers_models.load_models_config(d)}
-    _carica_blocco_semina()(app, d, handlers_models.save_models_config,
-                            handlers_models.load_models_config, log)
-    assert app["models_config"]["ponte"]["modello"] == "haiku"
-    assert app["models_config"]["piano_seminato"] is True
+    models_config = await _start(d)
+    assert models_config["ponte"]["modello"] == "haiku"
+    assert models_config["piano_seminato"] is True
     assert handlers_models.load_models_config(d)["ponte"]["modello"] == "haiku", (
         "e finisce sul DISCO: una semina che resta in memoria rigira al riavvio")
 
 
-def test_un_secondo_avvio_non_ricopre_la_scelta(tmp_path):
+@pytest.mark.asyncio
+async def test_un_secondo_avvio_non_ricopre_la_scelta(tmp_path):
     """L'utente sceglie opus e cambia anche il modello di Claude API. Al
-    riavvio il piano resta opus: e' l'indipendenza, provata dove serve."""
+    riavvio il piano resta opus: e' l'indipendenza, provata dove serve.
+
+    Mutazione ESEGUITA (03/10/2026): la guardia dell'avvio
+    `if not ...get("piano_seminato"):` resa `if True:` -- verde, perche'
+    `seed_subscription_model` guarda il segno da se'; con anche la sua
+    guardia tolta -- rossa (`'sonnet' == 'opus'`)."""
     d = _archivio_pre_fetta(tmp_path, "claude-haiku-4-5-20251001")
-    blocco = _carica_blocco_semina()
-    app = {"models_config": handlers_models.load_models_config(d)}
-    blocco(app, d, handlers_models.save_models_config,
-           handlers_models.load_models_config, log)
+    await _start(d)
 
     archivio = handlers_models.load_models_config(d)
     archivio["ponte"]["modello"] = "opus"
     archivio["provider_models"]["claude"] = "claude-sonnet-4-6"
     handlers_models.save_models_config(d, archivio)
 
-    app2 = {"models_config": handlers_models.load_models_config(d)}
-    blocco(app2, d, handlers_models.save_models_config,
-           handlers_models.load_models_config, log)
-    assert app2["models_config"]["ponte"]["modello"] == "opus"
+    assert (await _start(d))["ponte"]["modello"] == "opus"

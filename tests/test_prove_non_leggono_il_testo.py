@@ -84,7 +84,6 @@ ADMITTED: dict[str, str] = {
     "test_spawn_body_adds_to_background_tasks_and_wires_done_callback":
         _NOT_IN_PLAN + " (il corpo di `_spawn`, letterale)",
     "test_bridge_success_occurrence.py::_load_real_submit_chat_reply": _TASK_6,
-    "test_chat_settings.py::_blocco_giorni_dallo_startup": _TASK_6,
     "test_chat_subscription_path.py::test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento":
         _TASK_7,
     "test_chat_subscription_path.py::"
@@ -102,11 +101,8 @@ ADMITTED: dict[str, str] = {
     "test_mind_wiring.py::_estrai_funzione_innestata": _TASK_5,
     "test_mind_wiring.py::_estrai_blocco_riparazione_avvio": _TASK_6,
     "test_mind_wiring.py::test_se_la_riaggregazione_solleva_l_avvio_prosegue": _TASK_6,
-    "test_options_migration.py::_blocco_semina_catena_dallo_startup": _TASK_6,
-    "test_provider_default_model.py::_letture_dallo_startup": _TASK_6,
     "test_startup_legacy_db_silence.py::_load_silence_check": _TASK_6,
     "test_submit_chat_reply_guards.py::_load_real_submit_chat_reply": _TASK_6,
-    "test_subscription_model.py::_carica_blocco_semina": _TASK_6,
     "test_websocket_startup.py::_load_avvio_websocket": _TASK_6,
 }
 

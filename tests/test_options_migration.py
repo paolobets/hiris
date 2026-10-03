@@ -8,6 +8,8 @@ prove con lei.
 import io
 import logging
 
+import pytest
+
 from hiris.app.options_migration import seed_chain
 
 VUOTO = {
@@ -167,56 +169,32 @@ def test_una_catena_svuotata_di_proposito_non_si_ripopola_al_riavvio():
 
 
 # ---------------------------------------------------------------------------
-# La semina della CATENA, cablata nell'avvio. Stessa tecnica del blocco qui
-# sopra, e per la stessa ragione: `_on_startup` non e' eseguibile nei test
-# (ogni fixture fa `app.on_startup.clear()`), quindi si ESTRAE il blocco dal
-# sorgente vero e lo si esegue isolato.
+# La semina della CATENA, cablata nell'avvio.
+#
+# Fino al 03/10/2026 il blocco si ritagliava dal testo di `_on_startup` e si
+# eseguiva isolato, perche' «`_on_startup` non e' eseguibile nei test». Non e'
+# piu' vero: `tests/_avvio.py::started_with` avvia l'app davvero, su una
+# `data_dir` vera (tmp_path) e con le sole credenziali che la prova da'. Le
+# funzioni d'archivio sono quelle di produzione, e il blocco gira dove gira
+# in produzione -- dopo le letture delle credenziali, prima del router.
 #
 # Il brief del Task 7 proponeva di verificare questo cablaggio con
 # `pytest tests/test_api.py`, «che costruisce l'app vera». Non lo verifica:
 # quella fixture azzera `on_startup`, quindi il blocco non gira mai e il test
 # passerebbe anche se il blocco non esistesse. Sesto test-che-non-puo-fallire
-# di questa fetta, e il piu' pericoloso, perche' cio' che protegge e' la sola
+# di quella fetta, e il piu' pericoloso, perche' cio' che protegge e' la sola
 # cosa che impedisce alla chat del proprietario di morire al riavvio.
-#
-# Il disco e' vero (tmp_path) e le funzioni di archivio sono quelle di
-# produzione. Il blocco non legge piu' l'ambiente (dal 02/10/2026): preset,
-# Ollama e ponte valgono il silenzio che avevano su ogni installazione.
 # ---------------------------------------------------------------------------
 
 
-def _blocco_semina_catena_dallo_startup():
-    import inspect
-    import textwrap
+async def _start_seeding_the_chain(tmp_path, credenziali) -> dict:
+    """L'archivio dei modelli come l'avvio vero lo lascia in `app`."""
+    import copy
 
-    from hiris.app import server
+    from tests._avvio import credential_environment, started_with
 
-    src = inspect.getsource(server._on_startup)
-    start = src.index("    from .options_migration import seed_chain")
-    marker = 'app["models_config"] = load_models_config(data_dir)'
-    end = src.index(marker, start) + len(marker)
-    corpo = textwrap.dedent(src[start:end])
-    firma = "def _avvio(app, logger, data_dir, _credentials):\n"
-    func_src = firma + textwrap.indent(corpo, "    ")
-    namespace: dict = {
-        "__package__": "hiris.app",
-        "__name__": "hiris.app.server",
-        "_chain_as_it_was": server._chain_as_it_was,
-    }
-    from hiris.app.api.handlers_models import load_models_config, save_models_config
-    namespace["load_models_config"] = load_models_config
-    namespace["save_models_config"] = save_models_config
-    exec(compile(func_src, "<_on_startup seed_chain>", "exec"), namespace)
-    return namespace["_avvio"]
-
-
-def _avvia_la_semina_della_catena(tmp_path, credenziali):
-    from hiris.app.api.handlers_models import load_models_config
-
-    avvio = _blocco_semina_catena_dallo_startup()
-    app = {"models_config": load_models_config(str(tmp_path))}
-    avvio(app, logging.getLogger("t"), str(tmp_path), credenziali)
-    return app
+    async with started_with(tmp_path, credential_environment(credenziali)) as app:
+        return copy.deepcopy(app["models_config"])
 
 
 CREDENZIALI_DEL_PROPRIETARIO = {
@@ -228,22 +206,27 @@ CREDENZIALI_DEL_PROPRIETARIO = {
 }
 
 
-def test_l_impianto_del_proprietario_non_passa_da_due_provider_a_zero(tmp_path):
+@pytest.mark.asyncio
+async def test_l_impianto_del_proprietario_non_passa_da_due_provider_a_zero(tmp_path):
     """Il caso vero, e l'unico che esista al mondo: cinque interruttori a
     false, credenziali presenti. Con la vecchia regola `legacy` lavoravano
     Claude API e OpenRouter mentre la pagina li mostrava spenti. Se la catena
     non venisse seminata PRIMA che quella regola sparisca, al riavvio HIRIS
     resterebbe con zero provider e la chat morirebbe."""
-    app = _avvia_la_semina_della_catena(
+    models_config = await _start_seeding_the_chain(
         tmp_path, CREDENZIALI_DEL_PROPRIETARIO,
     )
-    assert app["models_config"]["chain_order"] == ["claude", "openrouter"]
+    assert models_config["chain_order"] == ["claude", "openrouter"]
 
 
-def test_la_catena_seminata_finisce_sul_disco_non_solo_in_memoria(tmp_path):
+@pytest.mark.asyncio
+async def test_la_catena_seminata_finisce_sul_disco_non_solo_in_memoria(tmp_path):
+    """Mutazione ESEGUITA (03/10/2026): il `save_models_config` della semina
+    della catena sostituito da `pass` -- rossa (`[] == ['claude',
+    'openrouter']`)."""
     import json
 
-    _avvia_la_semina_della_catena(
+    await _start_seeding_the_chain(
         tmp_path, CREDENZIALI_DEL_PROPRIETARIO)
     disco = json.loads((tmp_path / "models_config.json").read_text(encoding="utf-8"))
     assert disco["chain_order"] == ["claude", "openrouter"], (
@@ -264,39 +247,44 @@ def test_la_catena_seminata_finisce_sul_disco_non_solo_in_memoria(tmp_path):
 # parametro morto.
 
 
-def test_il_piano_non_entra_mai_in_chain_order(tmp_path):
+@pytest.mark.asyncio
+async def test_il_piano_non_entra_mai_in_chain_order(tmp_path):
     """Il piano non e' un membro della catena: sta in testa quando il ponte e'
     acceso, e questo lo dice `ponte.attivo`, non l'appartenenza."""
-    app = _avvia_la_semina_della_catena(
+    models_config = await _start_seeding_the_chain(
         tmp_path, CREDENZIALI_DEL_PROPRIETARIO,
     )
-    assert "subscription" not in app["models_config"]["chain_order"]
+    assert "subscription" not in models_config["chain_order"]
 
 
-def test_ollama_senza_modello_non_entra_in_catena_per_migrazione(tmp_path):
+@pytest.mark.asyncio
+async def test_ollama_senza_modello_non_entra_in_catena_per_migrazione(tmp_path):
     """La semina della catena non mette MAI Ollama, anche quando la sua
     credenziale di oggi (il solo indirizzo) c'e'. La vecchia regola lo voleva
     con indirizzo E modello, e il modello arrivava da una variabile d'ambiente
     che nessuna installazione riceve piu': un'installazione con l'indirizzo si
     ritroverebbe in catena un provider senza modello.
 
-    Mutazione ESEGUITA: tolto `"ollama"` dai nomi che
-    `server._chain_as_it_was` tiene fuori -- rossa."""
-    app = _avvia_la_semina_della_catena(
+    Mutazione ESEGUITA (03/10/2026, sull'avvio vero): tolto `"ollama"` dai
+    nomi che `server._chain_as_it_was` tiene fuori -- rossa (`'ollama' not in
+    ['claude', 'openrouter', 'ollama']`)."""
+    models_config = await _start_seeding_the_chain(
         tmp_path, {**CREDENZIALI_DEL_PROPRIETARIO, "ollama": True})
-    assert "ollama" not in app["models_config"]["chain_order"]
+    assert "ollama" not in models_config["chain_order"]
 
 
-def test_una_catena_gia_scelta_sopravvive_all_avvio(tmp_path):
+@pytest.mark.asyncio
+async def test_una_catena_gia_scelta_sopravvive_all_avvio(tmp_path):
     from hiris.app.api.handlers_models import save_models_config
 
     save_models_config(str(tmp_path), {"chain_order": ["ollama"]})
-    app = _avvia_la_semina_della_catena(
+    models_config = await _start_seeding_the_chain(
         tmp_path, CREDENZIALI_DEL_PROPRIETARIO)
-    assert app["models_config"]["chain_order"] == ["ollama"]
+    assert models_config["chain_order"] == ["ollama"]
 
 
-def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato(tmp_path):
+@pytest.mark.asyncio
+async def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato(tmp_path):
     """**C3 cablato nell'avvio vero**, col disco vero in mezzo: il test di
     `seed_chain` da solo sopravviverebbe a un `server.py` che si dimentica
     di guardare il segno, ed e' esattamente la guardia che questa chiusura
@@ -309,21 +297,27 @@ def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato
     restare sul piano che ha gia' pagato. Riavvio -- e prima di questa
     chiusura se li ritrovava in catena, con la spesa a consumo che ripartiva.
 
-    Rimettere il difetto (`if not app["models_config"].get("chain_order")` al
-    posto di `catena_seminata`) fa cadere questo test."""
+    Mutazioni ESEGUITE (03/10/2026, sull'avvio vero):
+    - la guardia dell'avvio su `chain_order` invece che su `catena_seminata`,
+      DA SOLA -- verde, e verde anche sulla prova di prima (estratta dal
+      testo): `seed_chain` guarda il segno da se' (`options_migration.py`),
+      e le due guardie si coprono a vicenda. La frase che stava qui («rimettere
+      il difetto fa cadere questo test») non era piu' vera;
+    - la stessa, con anche la guardia di `seed_chain` resa `if False:` --
+      rossa (`['claude', 'openrouter'] == []`)."""
     from hiris.app.api.handlers_models import save_models_config
 
-    primo = _avvia_la_semina_della_catena(
+    primo = await _start_seeding_the_chain(
         tmp_path, CREDENZIALI_DEL_PROPRIETARIO)
-    assert primo["models_config"]["chain_order"] == ["claude", "openrouter"]
+    assert primo["chain_order"] == ["claude", "openrouter"]
 
     # Il gesto dell'utente: la ✕ su tutte e due le righe. E' una PUT, quindi
     # `flags` resta falso -- come dalla pagina.
     save_models_config(str(tmp_path), {"chain_order": []})
 
-    secondo = _avvia_la_semina_della_catena(
+    secondo = await _start_seeding_the_chain(
         tmp_path, CREDENZIALI_DEL_PROPRIETARIO)
-    assert secondo["models_config"]["chain_order"] == [], (
+    assert secondo["chain_order"] == [], (
         "al riavvio la catena svuotata di proposito si e' ripopolata da "
         "`_chain_as_it_was`: la regola di compatibilita' e' rientrata dalla "
         "quarta porta, e la spesa a consumo riparte da sola"

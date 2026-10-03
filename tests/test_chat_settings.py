@@ -285,46 +285,24 @@ def test_salva_scrive_i_giorni_di_conservazione(tmp_path):
 # l'avvio, una volta sola.
 #
 # Si pinna il CABLAGGIO, non solo la funzione: la scrittura vive in
-# `_on_startup`, quindi si estrae il blocco dal sorgente vero e lo si esegue
-# isolato -- stessa tecnica (e stessa ragione: ogni fixture fa
-# `app.on_startup.clear()`) di `tests/test_websocket_startup.py` e
-# `tests/test_options_migration.py`.
+# `_on_startup`. Fino al 03/10/2026 si ritagliava il blocco dal testo e lo si
+# eseguiva isolato; adesso l'app si avvia davvero
+# (`tests/_avvio.py::started_with`) sulla `data_dir` della prova, due volte
+# quando serve.
 # ---------------------------------------------------------------------------
-def _blocco_giorni_dallo_startup():
-    import inspect
-    import textwrap
+async def _start(tmp_path):
+    from tests._avvio import started_with
 
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    start = src.index("    chat_settings = ChatSettings.load(data_dir)")
-    end = src.index('    _chatbots_json_path = os.path.join(', start)
-    corpo = textwrap.dedent(src[start:end])
-    firma = ("def _avvio(app, data_dir, logger, ChatSettings, "
-             "file_lacks_retention_days):\n")
-    namespace: dict = {}
-    exec(compile(firma + textwrap.indent(corpo, "    "),
-                 "<_on_startup giorni_conservazione>", "exec"), namespace)
-    return namespace["_avvio"]
+    async with started_with(tmp_path) as app:
+        return app["chat_settings"]
 
 
-def _avvia(tmp_path):
-    import logging
-
-    from hiris.app.chat_settings import file_lacks_retention_days
-
-    app: dict = {}
-    _blocco_giorni_dallo_startup()(
-        app, str(tmp_path), logging.getLogger("t"),
-        ChatSettings, file_lacks_retention_days,
-    )
-    return app["chat_settings"]
-
-
-def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path):
-    """Rimettere il difetto -- togliere da `_on_startup` la chiamata a
-    `save()` -- fa cadere questo test."""
-    assert _avvia(tmp_path).retention_days == 90
+@pytest.mark.asyncio
+async def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path):
+    """Mutazione ESEGUITA (03/10/2026, sull'avvio vero): tolta da
+    `_on_startup` la chiamata a `chat_settings.save(data_dir)` -- rossa
+    (`FileNotFoundError`: il file non c'e')."""
+    assert (await _start(tmp_path)).retention_days == 90
     su_disco = json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
     assert su_disco["giorni_conservazione"] == 90, (
         "il primo avvio non ha scritto la chiave: chi non apre mai la pagina "
@@ -332,17 +310,30 @@ def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path):
     )
 
 
-def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, caplog):
+@pytest.mark.asyncio
+async def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, caplog):
     """Finche' la chiave non arriva sul disco, la riga che lo annuncia
-    ricompare a OGNI riavvio. Dal primo avvio in poi il file la porta."""
+    ricompare a OGNI riavvio. Dal primo avvio in poi il file la porta.
+
+    Il primo avvio la riga la DEVE scrivere: senza, l'assenza al secondo non
+    proverebbe niente (un registro che non cattura e' sempre muto).
+
+    Mutazione ESEGUITA (03/10/2026): la guardia
+    `if file_lacks_retention_days(data_dir):` resa `if True:` -- rossa (la
+    riga ricompare al secondo avvio)."""
     import logging
 
-    _avvia(tmp_path)
+    from tests._avvio import SERVER_LOGGER
+
+    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+        await _start(tmp_path)
+    assert "giorni_conservazione" in caplog.text
+    caplog.clear()
     # Fra i due avvii l'utente cambia il valore dalla pagina: il secondo avvio
     # non deve riportarlo al default.
     ChatSettings(retention_days=7).save(str(tmp_path))
-    with caplog.at_level(logging.INFO):
-        assert _avvia(tmp_path).retention_days == 7
+    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+        assert (await _start(tmp_path)).retention_days == 7
     assert "giorni_conservazione" not in caplog.text, (
         "la migrazione ha parlato di nuovo al secondo avvio: non era piu' il "
         "suo momento"

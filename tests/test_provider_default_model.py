@@ -13,10 +13,10 @@ frase. I runner ricevono una LETTURA (`read_model`), e la pagina non ha piu'
 nessuna didascalia da fare -- l'assenza di didascalie e' la cosa piu' onesta
 che possa dire di se'.
 """
-import inspect
-import textwrap
+import contextlib
 
 import pytest
+import pytest_asyncio
 
 from hiris.app.backends.openai_compat_runner import AUTO_MODEL_MAP as AUTO_COMPAT
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
@@ -134,59 +134,102 @@ def test_una_lettura_che_torna_None_non_rompe_il_turno(tmp_path):
 
 # ---------------------------------------------------------------------------
 # Il CABLAGGIO: la lettura che ogni runner riceve chiude su `app`, non su un
-# valore. Vive dentro `_on_startup`, che ogni fixture azzera
-# (`app.on_startup.clear()` in tests/test_api.py), quindi si ESTRAE dal
-# sorgente vero -- stessa tecnica di tests/test_model_activation.py.
+# valore. Vive dentro `_on_startup`: fino al 03/10/2026 si ritagliava dal
+# testo e si eseguiva isolata; adesso l'app si avvia davvero, con le
+# credenziali di Claude API e di Ollama perche' i due runner nascano, e si
+# chiede la lettura AL RUNNER che l'ha ricevuta (`_read_model`).
+#
+# L'app e' una per file: le prove riassegnano `app["models_config"]` e lo
+# rimettono com'era alla fine (`_assigned`).
 # ---------------------------------------------------------------------------
 
 
-def _letture_dallo_startup():
-    from hiris.app import server
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def started_runners(tmp_path_factory):
+    from tests._avvio import credential_environment, started_with
 
-    src = inspect.getsource(server._on_startup)
-    start = src.index("    def _model_of(provider: str):")
-    marker = '.get("ollama", {}).get("modello", "")'
-    end = src.index(marker, start) + len(marker)
-    corpo = textwrap.dedent(src[start:end])
-    func_src = ("def _avvio(app):\n" + textwrap.indent(corpo, "    ")
-                + "\n    return _model_of, _local_model")
-    spazio: dict = {}
-    exec(compile(func_src, "<_on_startup letture>", "exec"), spazio)
-    return spazio["_avvio"]
+    data_dir = tmp_path_factory.mktemp("letture")
+    async with started_with(data_dir,
+                            credential_environment(["claude", "ollama"])) as app:
+        yield app
 
 
-def test_la_lettura_dell_avvio_vede_l_archivio_RIASSEGNATO():
+def _reader(app, provider):
+    runner = app["llm_router"]._backend_map()[provider]
+    assert runner is not None, f"l'avvio non ha costruito il runner di {provider}"
+    return runner._read_model
+
+
+@contextlib.contextmanager
+def _assigned(app, models_config):
+    """`app["models_config"]` RIASSEGNATO (come fa la PUT), e rimesso alla
+    fine: l'app e' condivisa dalle prove del file."""
+    before = app.get("models_config", _MISSING)
+    if models_config is _MISSING:
+        app.pop("models_config", None)
+    else:
+        app["models_config"] = models_config
+    try:
+        yield
+    finally:
+        if before is _MISSING:
+            app.pop("models_config", None)
+        else:
+            app["models_config"] = before
+
+
+_MISSING = object()
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_lettura_dell_avvio_vede_l_archivio_RIASSEGNATO(started_runners):
     """`handle_save_models_config` non muta il dizionario, lo SOSTITUISCE. Se
     la chiusura si fosse portata via il dizionario (o peggio il valore) invece
     di `app`, ogni salvataggio sarebbe rimasto invisibile ai runner -- che e'
-    esattamente il difetto da cui questo task esiste."""
-    modello_di, _ = _letture_dallo_startup()(
-        app := {"models_config": {"provider_models": {"claude": "claude-opus-4-7"}}})
-    leggi = modello_di("claude")
-    assert leggi() == "claude-opus-4-7"
-    app["models_config"] = {"provider_models": {"claude": "claude-sonnet-4-6"}}
-    assert leggi() == "claude-sonnet-4-6"
+    esattamente il difetto da cui questo task esiste.
+
+    Mutazione ESEGUITA (03/10/2026): `_model_of` legge il dizionario preso
+    alla costruzione (`cfg = app.get("models_config")` fuori da `read`) --
+    rossa."""
+    leggi = _reader(started_runners, "claude")
+    with _assigned(started_runners,
+                   {"provider_models": {"claude": "claude-opus-4-7"}}):
+        assert leggi() == "claude-opus-4-7"
+        started_runners["models_config"] = {
+            "provider_models": {"claude": "claude-sonnet-4-6"}}
+        assert leggi() == "claude-sonnet-4-6"
 
 
-def test_la_lettura_del_locale_NON_passa_da_provider_models():
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_lettura_del_locale_NON_passa_da_provider_models(started_runners):
     """Il modello di Ollama non vive in `provider_models` (`_clean_provider_models`
     lo scarta in lettura E in scrittura): la sua unica casa e'
     `models_config["ollama"]["modello"]`. Una lettura che lo cercasse fra gli
-    altri troverebbe sempre "" e il runner locale partirebbe senza modello."""
-    _, modello_locale = _letture_dallo_startup()(
-        app := {"models_config": {"ollama": {"modello": "llama3.1:8b"},
-                                  "provider_models": {"ollama": "un-fantasma"}}})
-    assert modello_locale() == "llama3.1:8b"
-    app["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
-    assert modello_locale() == "qwen2.5:14b"
+    altri troverebbe sempre "" e il runner locale partirebbe senza modello.
+
+    Mutazione ESEGUITA (03/10/2026): il runner locale costruito con
+    `read_model=_model_of("ollama")` -- rossa (`'un-fantasma'`)."""
+    modello_locale = _reader(started_runners, "ollama")
+    with _assigned(started_runners,
+                   {"ollama": {"modello": "llama3.1:8b"},
+                    "provider_models": {"ollama": "un-fantasma"}}):
+        assert modello_locale() == "llama3.1:8b"
+        started_runners["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
+        assert modello_locale() == "qwen2.5:14b"
 
 
-def test_la_lettura_regge_un_archivio_che_non_c_e_ancora():
-    """`_on_startup` puo' non essere girato (ogni fixture lo azzera) e un turno
-    puo' comunque arrivare: la lettura deve rispondere "" invece di sollevare."""
-    modello_di, modello_locale = _letture_dallo_startup()({})
-    assert modello_di("claude")() == ""
-    assert modello_locale() == ""
+@pytest.mark.asyncio(loop_scope="module")
+async def test_la_lettura_regge_un_archivio_che_non_c_e_ancora(started_runners):
+    """Un turno puo' arrivare con l'archivio assente: la lettura deve
+    rispondere "" invece di sollevare.
+
+    Mutazione ESEGUITA (03/10/2026): `app.get("models_config") or {}` ->
+    `app["models_config"]` in `_model_of` -- rossa (`KeyError`)."""
+    modello_di = _reader(started_runners, "claude")
+    modello_locale = _reader(started_runners, "ollama")
+    with _assigned(started_runners, _MISSING):
+        assert modello_di() == ""
+        assert modello_locale() == ""
 
 
 # ---------------------------------------------------------------------------
