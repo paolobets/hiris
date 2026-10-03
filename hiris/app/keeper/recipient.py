@@ -87,8 +87,9 @@ from __future__ import annotations
 
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass
+
+from ..home_space.reference import fold_accents
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +106,9 @@ def _slugify(text: str | None) -> str:
     Latini con accenti che un dispositivo smart-home porta nella pratica --
     niente dipendenza nuova per una funzione di poche righe.
 
-    NFKD scompone un carattere accentato nella lettera base piu' il segno
-    diacritico, che si scarta con la codifica ASCII: `"é"` -> `"e"`,
+    La piegatura degli accenti e' quella di tutto il prodotto
+    (`home_space/reference.fold_accents`, Tappa 3, Task 9, B-20); il filtro
+    ASCII che segue resta di qui, perche' e' la forma dello slug: `"é"` -> `"e"`,
     `"à"` -> `"a"`. Copre il range Latino che un nome di dispositivo usa in
     pratica; **non** e' una traslitterazione fonetica come quella che
     `python-slugify` usa per altri alfabeti (cirillico, greco, CJK
@@ -125,8 +127,7 @@ def _slugify(text: str | None) -> str:
     """
     if text is None or text == "":
         return ""
-    decomposed = unicodedata.normalize("NFKD", text)
-    ascii_only = decomposed.encode("ascii", "ignore").decode("ascii")
+    ascii_only = fold_accents(text).encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^a-z0-9]+", "_", ascii_only.lower()).strip("_")
     return slug or "unknown"
 

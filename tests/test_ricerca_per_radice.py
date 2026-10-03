@@ -3,7 +3,7 @@
 Misurato il 29/09/2026: «rifiuti» e «indifferenziata» davano zero, «rifiuto»
 dava tutte e cinque le automazioni.
 """
-from hiris.app.memory.resolver import name_matches
+from hiris.app.home_space.reference import name_matches
 
 
 def test_il_plurale_trova_il_singolare():

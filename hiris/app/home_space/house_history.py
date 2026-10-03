@@ -39,6 +39,7 @@ from .house_query import (
 )
 from .privacy import MOVING_DOMAINS, redact_nested, redact_state
 from .queries import ROWS_MAX
+from .reference import normalize
 
 KINDS = ("stati", "valori", "esecuzioni", "errori")
 #: Un giorno: la finestra che la parola «oggi» significa per chi chiede
@@ -1241,7 +1242,7 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
             continue
         found = integration_of(str(entry.get("name") or ""))
         integration = found[1] if found else None
-        if query.who.platform and integration != query.who.platform:
+        if query.who.platform and normalize(integration or "") != normalize(query.who.platform):
             continue
         last = _epoch(entry.get("timestamp"))
         if last is not None and not start_ts <= last <= end_ts:

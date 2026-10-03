@@ -17,7 +17,8 @@ Puro: niente rete, niente orologio, niente archivio.
 from __future__ import annotations
 
 import re
-import unicodedata
+
+from ...home_space.reference import fold_accents
 
 _NON_SLUG = re.compile(r"[^a-z0-9_]+")
 
@@ -44,10 +45,10 @@ def new_id(existing: set[str], seme: int) -> str:
 
 def available_slug(base: str, existing: set[str]) -> str:
     """Una chiave di script che non collide. `cv.slug` la valida lato HA."""
-    # Traslittera gli accenti prima di applicare la regex, altrimenti
-    # "perché" → "perch" invece di "perche".
-    base_clean = unicodedata.normalize("NFKD", base or "")
-    base_ascii = base_clean.encode("ascii", "ignore").decode("ascii")
+    # Piega gli accenti prima di applicare la regex, altrimenti "perché" →
+    # "perch" invece di "perche". La piegatura e' quella di tutto il prodotto
+    # (`home_space/reference.fold_accents`, B-20); il filtro ASCII e' dello slug.
+    base_ascii = fold_accents(base or "").encode("ascii", "ignore").decode("ascii")
     reading = _NON_SLUG.sub("_", base_ascii.strip().lower()).strip("_")
     if not reading:
         # Uno slug vuoto finirebbe in `/api/config/script/config/`, che e'
