@@ -31,9 +31,9 @@ si attribuisce alle funzioni che la usano: la lettura vera e' li'.
 **La lista di AMMISSIONE e' scritta a mano, e chiude per difetto** (CLAUDE.md,
 «Un cancello CHIEDE il suo elenco, non lo ricopia»: le liste di ammissione
 non ricopiano niente, enunciano il cancello). Una lettura nuova e' vietata
-finche' qualcuno non la ammette per iscritto, con la ragione. Le ammesse di
-oggi sono le prove che gli altri task della Tappa 1 devono ancora
-convertire: la lista **puo' solo accorciarsi**, e la seconda prova qui sotto
+finche' qualcuno non la ammette per iscritto, con la ragione. Dal
+03/10/2026 (Task 6 della Tappa 1) ne restano due: una ammessa per scelta,
+l'altra in attesa di conversione: la lista **puo' solo accorciarsi**, e la seconda prova qui sotto
 pretende che ogni ammissione serva ancora -- una prova convertita che resta
 nella lista e' un buco che aspetta una lettura nuova con lo stesso nome.
 
@@ -61,7 +61,7 @@ PATH_BUILDERS = {"Path", "PurePath", "open", "join"}
 FOLDER_ANCHORS = {"parent", "parents", "dirname"}
 TEMPORARY_ROOTS = {"tmp_path", "tmpdir"}
 
-_TASK_6 = "da convertire, Task 6 della Tappa 1 (estrai ed esegui un blocco d'avvio)"
+
 _TASK_7 = "da convertire, Task 7 della Tappa 1 (cancello buono che guarda un file solo)"
 
 #: `«file»::«funzione»` -> perche' oggi puo' ancora leggere il testo di
@@ -74,8 +74,6 @@ ADMITTED: dict[str, str] = {
          "termine di paragone, e resta vera anche quando il file si svuota"),
     "test_agent_runner_inaddon.py::"
     "test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno": _TASK_7,
-    "test_bridge_success_occurrence.py::_load_real_submit_chat_reply": _TASK_6,
-    "test_submit_chat_reply_guards.py::_load_real_submit_chat_reply": _TASK_6,
 }
 
 

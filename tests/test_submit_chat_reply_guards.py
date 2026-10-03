@@ -15,31 +15,28 @@ uscita insieme a ``brain/privacy.py``, e con lei i tre test che la
 pinnavano. Vedi la nota in fondo al file: cadevano per costruzione, e cio'
 che provavano era gia' un no-op nel prodotto.
 
-``_submit_chat_reply`` is a closure defined inside ``server._on_startup``
-(same situation as ``_reasoning_sweep`` -- see
-test_reasoning_sweep_chat_skip.py / test_coverage_wiring.py for the same
-convention). Rather than hand-maintain a mirror copy that could silently
-drift from the shipped code, this test extracts the REAL function source via
-``inspect.getsource`` and executes it against test doubles for its free
-variables (``app``, ``data_dir``, ``_append_chat_messages``,
-``_is_toxic_chat_reply``).
+``_submit_chat_reply`` is a closure defined inside ``server._on_startup``,
+published as ``app["submit_chat_reply"]``. Fino al 03/10/2026 la si
+ritagliava dal testo di ``_on_startup`` e la si eseguiva con le sue variabili
+libere ricopiate a mano; adesso l'app si avvia davvero
+(``tests/_avvio.py::started_with``) e si chiama la funzione che l'avvio ha
+pubblicato. ``chat_store.append_messages`` e' avvolta, PRIMA dell'avvio (la
+chiusura la importa li'), da una spia che la registra e poi la chiama:
+cosi' si vede che una risposta tossica non arriva nemmeno a chiederla --
+``load_context`` la purgherebbe comunque in lettura, e una prova sulla
+cronologia passerebbe anche senza la guardia.
 
 fetta E4 Task 5 ("un bot solo"): ``_submit_chat_reply`` perde il parametro
 ``chatbot_id`` -- chat_store non ha piu' un id per cui instradare, c'e' UNA
 cronologia. Ogni fake/call qui sotto passa/riceve solo ``reply_text``.
 """
-import inspect
-import textwrap
+from unittest import mock
 
 import pytest
+import pytest_asyncio
 
-from hiris.app import server
-from hiris.app.chat_store import (
-    _is_toxic_assistant,
-    append_messages,
-    close_all_stores,
-    load_history,
-)
+from hiris.app import chat_store
+from hiris.app.chat_store import close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
 
 # Fetta «le chat divise»: la consegna scrive nel filo del job.
@@ -53,27 +50,28 @@ def reset_stores():
     close_all_stores()
 
 
-def _load_real_submit_chat_reply(app, data_dir, append_fn=None):
-    src = inspect.getsource(server._on_startup)
-    start = src.index(
-        "    async def _submit_chat_reply(reply_text: str, thread: ChatThread) -> None:")
-    end_marker = "thread=thread)"
-    end = src.index(end_marker, start) + len(end_marker)
-    func_src = textwrap.dedent(src[start:end])
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def submitted(tmp_path_factory):
+    """`(consegna, chiamate, data_dir)`: la consegna che l'avvio vero ha
+    pubblicato in `app["submit_chat_reply"]`, e le chiamate ad
+    `append_messages` che ha fatto (svuotate da ogni prova)."""
+    from tests._avvio import started_with
 
-    namespace = {
-        "app": app,
-        "data_dir": data_dir,
-        "_append_chat_messages": append_fn if append_fn is not None else append_messages,
-        "_is_toxic_chat_reply": _is_toxic_assistant,
-        "ChatThread": ChatThread,
-    }
-    exec(compile(func_src, "<_submit_chat_reply extracted from server.py>", "exec"), namespace)
-    return namespace["_submit_chat_reply"]
+    calls: list = []
+    real = chat_store.append_messages
+
+    def recording(messages, data_dir, *, thread):
+        calls.append(messages)
+        return real(messages, data_dir, thread=thread)
+
+    data_dir = tmp_path_factory.mktemp("consegna")
+    with mock.patch.object(chat_store, "append_messages", recording):
+        async with started_with(data_dir) as app:
+            yield app["submit_chat_reply"], calls, str(data_dir)
 
 
-@pytest.mark.asyncio
-async def test_toxic_reply_is_dropped_not_persisted(tmp_path):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_toxic_reply_is_dropped_not_persisted(submitted):
     """Uses a recording fake for _append_chat_messages (rather than routing
     through the real chat_store and reading back via load_history) because
     chat_store's own load_context() ALSO purges toxic assistant turns at
@@ -83,23 +81,21 @@ async def test_toxic_reply_is_dropped_not_persisted(tmp_path):
     the append function at all for toxic content -- e.g. because raw rows
     are also read elsewhere without purging (ChatStore._close_session's
     session-digest builder), so a toxic reply that reaches the DB can still
-    leak into a later get_past_summaries() prompt injection."""
-    data_dir = str(tmp_path / "data")
-    calls = []
+    leak into a later get_past_summaries() prompt injection.
 
-    def _fake_append(messages, data_dir, *, thread):
-        calls.append(messages)
-
-    app = {}
-    submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
+    Mutazione ESEGUITA (03/10/2026, sulla consegna dell'app avviata): la
+    guardia `if _is_toxic_chat_reply(reply_text):` resa `if False:` -- rossa
+    (la risposta tossica arriva ad `append_messages`)."""
+    submit, calls, _data_dir = submitted
+    calls.clear()
 
     await submit("Errore temporaneo del servizio AI. Riprova tra poco.", T)
 
     assert calls == []
 
 
-@pytest.mark.asyncio
-async def test_bridge_error_sentinel_is_dropped_not_persisted(tmp_path):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_bridge_error_sentinel_is_dropped_not_persisted(submitted):
     """fetta E4, fix della review totale (I5): il sentinella che il RUNNER DEL
     PONTE produce quando `claude -p` esce con rc != 0 arriva qui -- e' la
     ``reply`` del job di chat -- e prima di questo fix veniva scritto in
@@ -126,14 +122,8 @@ async def test_bridge_error_sentinel_is_dropped_not_persisted(tmp_path):
             {"kind": "chat", "context": {"history": [], "system_prompt": "S"}},
             "live")["reply"]
 
-    data_dir = str(tmp_path / "data")
-    calls = []
-
-    def _fake_append(messages, data_dir, *, thread):
-        calls.append(messages)
-
-    app = {}
-    submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
+    submit, calls, _data_dir = submitted
+    calls.clear()
 
     await submit(sentinella, T)
 
@@ -142,33 +132,33 @@ async def test_bridge_error_sentinel_is_dropped_not_persisted(tmp_path):
         "tornerebbe al modello a ogni turno successivo")
 
 
-@pytest.mark.asyncio
-async def test_clean_reply_is_persisted(tmp_path):
-    data_dir = str(tmp_path / "data")
-    app = {}
-    submit = _load_real_submit_chat_reply(app, data_dir)
+@pytest.mark.asyncio(loop_scope="module")
+async def test_clean_reply_is_persisted(submitted):
+    """Mutazione ESEGUITA (03/10/2026): la scrittura in cronologia della
+    consegna tolta -- rossa (`[] == [...]`)."""
+    submit, calls, data_dir = submitted
+    calls.clear()
 
     await submit("ecco la risposta", T)
 
+    assert calls == [[{"role": "assistant", "content": "ecco la risposta"}]]
     assert load_history(data_dir, thread=T) == [
         {"role": "assistant", "content": "ecco la risposta"},
     ]
 
 
-@pytest.mark.asyncio
-async def test_empty_reply_still_short_circuits(tmp_path):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_empty_reply_still_short_circuits(submitted):
     """Pre-existing guard must survive the refactor: fetta E4 Task 5 dropped
     the `chatbot_id` half of this guard (there's nothing left to be empty/
     None on that side -- the parameter itself is gone), the empty-reply half
-    survives unchanged."""
-    data_dir = str(tmp_path / "data")
-    calls = []
+    survives unchanged.
 
-    def _fake_append(messages, data_dir, *, thread):
-        calls.append(messages)
-
-    app = {}
-    submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
+    Mutazione ESEGUITA (03/10/2026): `if not reply_text:` -> `if False:` --
+    rossa (`TypeError`: la consegna `None` arriva fino al filtro di
+    tossicita')."""
+    submit, calls, _data_dir = submitted
+    calls.clear()
 
     await submit("", T)
     await submit(None, T)

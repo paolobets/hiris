@@ -23,7 +23,7 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
 from hiris.app.reasoning.queue import ReasoningQueue
-from tests.test_submit_chat_reply_guards import _load_real_submit_chat_reply
+from hiris.app.server import _chat_reply_submitter
 
 PAOLO = ChatThread("persona:paolo", "pannello")
 MARTA = ChatThread("persona:marta", "pannello")
@@ -88,7 +88,9 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     app["ruoli"] = {"quando": 0.0, "per_id": {}}
     q = ReasoningQueue(str(tmp_path / "reasoning.db"))
     app["reasoning_queue"] = q
-    app["submit_chat_reply"] = _load_real_submit_chat_reply(app, data_dir)
+    # La consegna VERA del ponte, costruita su quest'app e questa cartella
+    # (fino al 03/10/2026 la si ritagliava dal testo di `_on_startup`).
+    app["submit_chat_reply"] = _chat_reply_submitter(app, data_dir)
 
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)

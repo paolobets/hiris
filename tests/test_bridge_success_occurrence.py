@@ -12,25 +12,24 @@ diceva «non l'hai ancora usato» con 105 turni riusciti sul ponte in
 
 Il percorso vero, dall'HTTP in giu': `POST /api/reasoning/submit` (job
 `kind="chat"`) -> `handle_reasoning_submit` -> `app["submit_chat_reply"]` --
-che qui e' la funzione REALE di `server._on_startup`, estratta via
-`inspect.getsource` come gia' fa `test_submit_chat_reply_guards.py`, non una
-copia a mano che potrebbe divergere in silenzio dal codice spedito. Nessuna
+che qui e' la funzione REALE che l'avvio vero pubblica (dal 03/10/2026 l'app
+si avvia davvero, `tests/_avvio.py::started_with`; prima la si ritagliava dal
+testo di `_on_startup`), non una copia a mano che potrebbe divergere in
+silenzio dal codice spedito. Nessuna
 riga di questo file chiama `registry.successo(...)` a mano: se il
 collegamento sparisse dal sorgente vero, il primo test qui sotto tornerebbe
 rosso da solo.
 """
-import inspect
-import textwrap
+import contextlib
+from unittest import mock
 
 import pytest
 from aiohttp import web
 
-from hiris.app import server
 from hiris.app.api.handlers_reasoning import (
     handle_reasoning_claim,
     handle_reasoning_submit,
 )
-from hiris.app.chat_store import _is_toxic_assistant, append_messages
 from hiris.app.chat_thread import ChatThread
 from hiris.app.provider_occurrences import OccurrenceRegistry
 from hiris.app.reasoning.queue import ReasoningQueue
@@ -55,27 +54,16 @@ async def _finto_worker(request, handler):
 
 
 
-def _load_real_submit_chat_reply(app, data_dir):
-    """Stessa estrazione di `test_submit_chat_reply_guards.py`: la funzione
-    VERA di `server._on_startup`, non una copia a mano che potrebbe
-    divergere dal codice spedito senza che nessun test se ne accorga."""
-    src = inspect.getsource(server._on_startup)
-    start = src.index(
-        "    async def _submit_chat_reply(reply_text: str, thread: ChatThread) -> None:")
-    end_marker = "thread=thread)"
-    end = src.index(end_marker, start) + len(end_marker)
-    func_src = textwrap.dedent(src[start:end])
+@contextlib.asynccontextmanager
+async def _real_submit(tmp_path, registry):
+    """La consegna VERA che l'avvio pubblica in `app["submit_chat_reply"]`,
+    con il registro degli esiti dell'app sostituito da `registry` (la
+    consegna lo chiede all'app a ogni chiamata)."""
+    from tests._avvio import started_with
 
-    namespace = {
-        "app": app,
-        "data_dir": data_dir,
-        "_append_chat_messages": append_messages,
-        "_is_toxic_chat_reply": _is_toxic_assistant,
-        "ChatThread": ChatThread,
-    }
-    exec(compile(func_src, "<_submit_chat_reply extracted from server.py>",
-                 "exec"), namespace)
-    return namespace["_submit_chat_reply"]
+    async with started_with(tmp_path / "avvio") as started:
+        with mock.patch.dict(started, {"occurrence_registry": registry}):
+            yield started["submit_chat_reply"]
 
 
 @pytest.mark.asyncio
@@ -85,9 +73,11 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
     """Accoda un job `kind="chat"` nella coda del ponte, lo reclama come
     farebbe il lavoratore in-addon, e lo consegna con una risposta pulita
     attraverso l'endpoint HTTP reale -- fino a `handle_reasoning_submit`, che
-    chiama `app["submit_chat_reply"]`: qui la funzione VERA di `server.py`,
-    non la riga isolata che questa fetta ha aggiunto."""
-    data_dir = str(tmp_path / "data")
+    chiama `app["submit_chat_reply"]`: qui la funzione VERA che l'avvio
+    pubblica, non la riga isolata che questa fetta ha aggiunto.
+
+    Mutazione ESEGUITA (03/10/2026): tolto `registry.successo("subscription")`
+    dalla consegna -- rossa."""
     registry = OccurrenceRegistry(clock=lambda: 999.0)
 
     app = web.Application(middlewares=[_finto_worker])
@@ -95,20 +85,21 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
     app["occurrence_registry"] = registry
     q = ReasoningQueue(str(tmp_path / "r.db"))
     app["reasoning_queue"] = q
-    app["submit_chat_reply"] = _load_real_submit_chat_reply(app, data_dir)
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
     q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J1", now=1.0, thread=T)
-    client = await aiohttp_client(app)
-    claimed = await (await client.post("/api/reasoning/claim")).json()
-    assert claimed["job"]["job_id"] == "J1"
+    async with _real_submit(tmp_path, registry) as submit:
+        app["submit_chat_reply"] = submit
+        client = await aiohttp_client(app)
+        claimed = await (await client.post("/api/reasoning/claim")).json()
+        assert claimed["job"]["job_id"] == "J1"
 
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "J1", "nonce": claimed["job"]["nonce"],
-        "decision": {"reply": "ecco la risposta del ponte"},
-    })
-    assert (await r.json()) == {"ok": True, "outcome": "chat_reply_recorded"}
+        r = await client.post("/api/reasoning/submit", json={
+            "job_id": "J1", "nonce": claimed["job"]["nonce"],
+            "decision": {"reply": "ecco la risposta del ponte"},
+        })
+        assert (await r.json()) == {"ok": True, "outcome": "chat_reply_recorded"}
 
     esito = registry.occurrence("subscription")
     assert esito is not None, (
@@ -139,8 +130,10 @@ async def test_un_sentinella_di_errore_del_ponte_registra_un_fallimento(
     giusto avrebbe fatto arrossire proprio il test che doveva festeggiarlo.
     Un turno del ponte che produce un sentinella e' un turno che HA PROVATO
     ed E' FALLITO: un silenzio sul registro sarebbe la stessa bugia che il
-    Task 6 aveva chiuso per la chat riuscita, spostata sul fallimento."""
-    data_dir = str(tmp_path / "data")
+    Task 6 aveva chiuso per la chat riuscita, spostata sul fallimento.
+
+    Mutazione ESEGUITA (03/10/2026): tolto il `registry.fallimento(...)` del
+    ramo tossico -- rossa."""
     registry = OccurrenceRegistry(clock=lambda: 999.0)
 
     app = web.Application(middlewares=[_finto_worker])
@@ -148,19 +141,20 @@ async def test_un_sentinella_di_errore_del_ponte_registra_un_fallimento(
     app["occurrence_registry"] = registry
     q = ReasoningQueue(str(tmp_path / "r.db"))
     app["reasoning_queue"] = q
-    app["submit_chat_reply"] = _load_real_submit_chat_reply(app, data_dir)
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
     q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J2", now=1.0, thread=T)
-    client = await aiohttp_client(app)
-    claimed = await (await client.post("/api/reasoning/claim")).json()
+    async with _real_submit(tmp_path, registry) as submit:
+        app["submit_chat_reply"] = submit
+        client = await aiohttp_client(app)
+        claimed = await (await client.post("/api/reasoning/claim")).json()
 
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "J2", "nonce": claimed["job"]["nonce"],
-        "decision": {"reply": "[errore runner rc=1] boom"},
-    })
-    assert (await r.json()) == {"ok": True, "outcome": "chat_reply_recorded"}
+        r = await client.post("/api/reasoning/submit", json={
+            "job_id": "J2", "nonce": claimed["job"]["nonce"],
+            "decision": {"reply": "[errore runner rc=1] boom"},
+        })
+        assert (await r.json()) == {"ok": True, "outcome": "chat_reply_recorded"}
 
     esito = registry.occurrence("subscription")
     assert esito is not None, (
