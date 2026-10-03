@@ -5,9 +5,10 @@ brief, uno per uno, piu' i tre rami che il codice ha e che la tabella non
 elenca (il servizio senza dettaglio, l'entita' passata come stringa, `dati`
 che non e' un oggetto).
 
-Nessun Home Assistant, nessuna rete, nessun mock di rete: `verifica` e' una
-funzione pura, e questo file e' la dimostrazione che la parte che decide se
-toccare la casa non ha bisogno della casa per essere provata.
+Nessun Home Assistant, nessuna rete: il registro si carica dal client vero
+sulla casa finta (`scripts/casa_finta.py`), e `verifica` e' una funzione
+pura: questo file e' la dimostrazione che la parte che decide se toccare la
+casa non ha bisogno della casa per essere provata.
 
 Ogni test qui e' stato provato per mutazione -- tolto il controllo che
 difende, il test cade. L'esito e' nel rapporto del task.
@@ -17,6 +18,7 @@ import pytest
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import verification
 from tests._contracts import assert_stessa_firma
+from tests.test_action_registry import _house
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
@@ -52,14 +54,6 @@ STATI = {
 }
 
 
-class FintoClient:
-    def __init__(self, risposta=None):
-        self.risposta = RISPOSTA_HA if risposta is None else risposta
-
-    async def get_services(self):
-        return self.risposta
-
-
 # NON una fixture asincrona: la suite gira in modalita' `strict` di
 # pytest-asyncio (nessun `asyncio_mode = auto` nella configurazione, e ogni
 # test async porta il suo `@pytest.mark.asyncio`). In strict mode una
@@ -68,7 +62,7 @@ class FintoClient:
 # dipende dalla versione di pytest-asyncio installata.
 async def _registro_pronto(risposta=None) -> ServiceRegistry:
     r = ServiceRegistry()
-    await r.refresh(FintoClient(risposta))
+    await r.refresh(_house(RISPOSTA_HA if risposta is None else risposta))
     return r
 
 

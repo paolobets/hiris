@@ -1,9 +1,14 @@
 """Le cinque rotte: guardare, guardarne una, confermare, rimettere com'era, rifiutare."""
 import os
+import sys
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from aiohttp import web
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
@@ -17,6 +22,7 @@ from hiris.app.api.handlers_constructions import (
 )
 from hiris.app.chat_thread import ChatThread
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 from tests.test_construction_workshop import FintoHA
 
@@ -90,11 +96,17 @@ AMMINISTRATORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo",
                   "utente": "paolo"}
 
 
-class _RuoliFinti:
-    async def users(self):
-        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
-                            "amministratore": True, "proprietario": True,
-                            "sistema": False}]}
+#: La sua riga grezza di `config/auth/list` (la forma che `HAClient._user_row`
+#: legge): il proprietario, amministratore per Home Assistant.
+_ADMIN = {"id": "u-admin", "name": "Paolo", "is_owner": True, "is_active": True,
+          "system_generated": False, "group_ids": ["system-admin"]}
+
+
+def _admin_house() -> CasaFinta:
+    """La casa che sa chi amministra: il client vero, e `config/auth/list`
+    servito con la riga dell'amministratore."""
+    return CasaFinta(synthetic_inputs(),
+                     answers={"config/auth/list": lambda extra: [_ADMIN]})
 
 
 def _app(archivio=None, officina=None):
@@ -103,7 +115,7 @@ def _app(archivio=None, officina=None):
         app["constructions"] = archivio
     if officina is not None:
         app["workshop"] = officina
-    app["ha_client"] = _RuoliFinti()
+    app["ha_client"] = _admin_house()
     app["ruoli"] = {"quando": 0.0, "per_id": {}}
     return app
 
@@ -370,7 +382,7 @@ async def client(aiohttp_client, tmp_path):
     # queste prove parlano del CSRF e dei codici di stato, non del soffitto,
     # quindi dichiarano la premessa -- un amministratore, dall'ingress -- invece
     # di subirla.
-    app["ha_client"] = _RuoliFinti()
+    app["ha_client"] = _admin_house()
     app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]
     app.on_startup.clear()
     app.on_cleanup.clear()

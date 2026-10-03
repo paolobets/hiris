@@ -14,29 +14,53 @@ sviluppo il cancello non deve cambiare niente.
 import asyncio
 import base64
 import re
+import sys
 import time
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from aiohttp import web
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
+
 from conftest import credenziale_ponte, firma, servizio_approvato
 from hiris.app.api.servizi import ServiziStore
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.memory.store import MemoryStore
+from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import create_app
+from tests._casa_sintetica import synthetic_inputs
 
 _INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/"}
-_UTENTI = {"utenti": [
-    {"id": "u-admin", "nome": "Paolo", "amministratore": True,
-     "proprietario": True, "sistema": False},
-    {"id": "u-marta", "nome": "Marta", "amministratore": False,
-     "proprietario": False, "sistema": False},
-    {"id": "u-lettore", "nome": "Lia", "amministratore": False,
-     "sola_lettura": True, "proprietario": False, "sistema": False}]}
+#: Gli utenti di Home Assistant, righe grezze di `config/auth/list` (la forma
+#: che `HAClient._user_row` legge): il proprietario amministra, `u-marta` e'
+#: un utente, `u-lettore` sta nel solo gruppo di sola lettura.
+_UTENTI = [
+    {"id": "u-admin", "name": "Paolo", "is_owner": True, "is_active": True,
+     "system_generated": False, "group_ids": ["system-admin"]},
+    {"id": "u-marta", "name": "Marta", "is_owner": False, "is_active": True,
+     "system_generated": False, "group_ids": ["system-users"]},
+    {"id": "u-lettore", "name": "Lia", "is_owner": False, "is_active": True,
+     "system_generated": False, "group_ids": ["system-read-only"]}]
+
+
+def _house(utenti=None, **casa) -> CasaFinta:
+    """Home Assistant per queste prove: il client vero sugli ingressi
+    sintetici, con gli utenti di `config/auth/list` (`utenti`, o `_UTENTI`) e
+    una voce nel registro degli errori. `casa` passa `refuse`/`silence`."""
+    inputs = synthetic_inputs()
+    inputs["system_log"]["voci"] = [{"level": "ERROR", "message": "zigbee giu'"}]
+    rows = _UTENTI if utenti is None else utenti
+    return CasaFinta(inputs, answers={"config/auth/list": lambda extra: rows}, **casa)
+
+
+def _asked(house: CasaFinta) -> list[str]:
+    """I comandi e i percorsi che la casa ha ricevuto, in ordine."""
+    return [name for name, _extra in house.calls]
 
 
 @pytest.fixture(autouse=True)
@@ -47,17 +71,16 @@ def confine_vero(monkeypatch):
     close_all_stores()
 
 
-def _compose(tmp_path, *, access=None):
+def _compose(tmp_path, *, access=None, **casa):
+    """L'app vera. Gli utenti che Home Assistant risponde sono la lista in
+    `app["_utenti_ha"]`: una prova che la cambia prima di avviare il client
+    cambia cio' che `config/auth/list` dice. `casa` va a `_house`."""
     app = create_app()
     if access is not None:
         app["non_admin_access"] = access
-    ha = AsyncMock()
-    ha.start = AsyncMock()
-    ha.stop = AsyncMock()
-    ha.add_state_listener = MagicMock()
-    ha.start_websocket = AsyncMock()
-    ha.users = AsyncMock(return_value=_UTENTI)
-    app["ha_client"] = ha
+    utenti = [dict(riga) for riga in _UTENTI]
+    app["_utenti_ha"] = utenti
+    app["ha_client"] = _house(utenti, **casa)
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
@@ -263,7 +286,7 @@ async def test_PIN_il_ruolo_NON_si_legge_per_chi_non_e_una_persona(casa, monkeyp
     app = casa.app
     privata, pubblica = servizio_approvato(app, "lettore")
     await casa.post("/api/services/window/open", headers=_persona("u-admin"))
-    app["ha_client"].users.reset_mock()
+    prima = len(app["ha_client"].calls)
 
     firmata = await casa.get("/api/health",
                              headers=firma(privata, pubblica, "GET", "/api/health"))
@@ -275,7 +298,7 @@ async def test_PIN_il_ruolo_NON_si_legge_per_chi_non_e_una_persona(casa, monkeyp
 
     assert [firmata.status, turno.status, presentata.status, sviluppo.status] == [
         200, 200, 200, 200]
-    assert app["ha_client"].users.await_count == 0
+    assert "config/auth/list" not in _asked(app["ha_client"])[prima:]
 
 
 def _service_key() -> str:
@@ -316,6 +339,17 @@ def _pagina(testo: str) -> bytes:
 async def aperta(aiohttp_client, tmp_path):
     """L'opzione accesa: chi non amministra entra dove la lista lo ammette."""
     app = _compose(tmp_path, access=True)
+    client = await aiohttp_client(app)
+    yield client
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+@pytest_asyncio.fixture
+async def aperta_muta(aiohttp_client, tmp_path):
+    """L'opzione accesa, e `config/auth/list` senza risposta: il silenzio
+    vero di Home Assistant, sotto il client vero."""
+    app = _compose(tmp_path, access=True, silence={"config/auth/list"})
     client = await aiohttp_client(app)
     yield client
     app["memory_store"].close()
@@ -760,7 +794,7 @@ async def test_senza_il_client_di_HA_nessuna_persona_entra(aiohttp_client, tmp_p
 
 @pytest.mark.asyncio
 async def test_ruoli_ILLEGGIBILI_chiudono_anche_owner_col_suo_testo(
-        aperta, caplog, monkeypatch):
+        aperta_muta, caplog, monkeypatch):
     """R-2.8: il proprietario e' chiuso fuori, col testo che dice perche'; la
     riga d'errore esce una volta; e appena Home Assistant risponde, si
     rientra.
@@ -770,8 +804,8 @@ async def test_ruoli_ILLEGGIBILI_chiudono_anche_owner_col_suo_testo(
     from hiris.app.api import soffitto
 
     caplog.set_level("ERROR", logger="hiris.app.api.soffitto")
+    aperta = aperta_muta
     ha = aperta.app["ha_client"]
-    ha.users = AsyncMock(return_value={"errore": "Home Assistant non ha risposto"})
     adesso = [1_000_000.0]
     monkeypatch.setattr(soffitto.time, "time", lambda: adesso[0])
 
@@ -782,43 +816,40 @@ async def test_ruoli_ILLEGGIBILI_chiudono_anche_owner_col_suo_testo(
 
     assert rifiuti == [True, True, True]
     assert len(errori) == 1
-    ha.users = AsyncMock(return_value=_UTENTI)
+    # Home Assistant torna a rispondere: si toglie il silenzio iniettato.
+    ha._silence.discard("config/auth/list")
     adesso[0] += soffitto.GATE_FAILURE_HOLD_S
     assert (await _risposta(aperta, "GET", "/api/config", _persona("u-admin")))[0] == 200
 
 
 @pytest.mark.asyncio
-async def test_un_guasto_NON_si_moltiplica_per_ogni_asset(aperta):
+async def test_un_guasto_NON_si_moltiplica_per_ogni_asset(aperta_muta):
     """R-2.9: venti file della pagina durante un guasto, UNA chiamata a
     `config/auth/list`.
 
     Mutazione ESEGUITA: `hold_failure_s` a zero nel cancello -- rossa
     (venti chiamate)."""
-    ha = aperta.app["ha_client"]
-    ha.users = AsyncMock(return_value={"errore": "Home Assistant non ha risposto"})
+    ha = aperta_muta.app["ha_client"]
 
     for _ in range(20):
-        await aperta.get("/static/hiris-icon.svg", headers=_persona("u-marta"))
+        await aperta_muta.get("/static/hiris-icon.svg", headers=_persona("u-marta"))
 
-    assert ha.users.await_count <= 2
+    assert _asked(ha).count("config/auth/list") <= 2
 
 
 @pytest.mark.asyncio
-async def test_una_lettura_dei_ruoli_che_SOLLEVA_e_un_guasto_come_gli_altri(
-        aperta, caplog, monkeypatch):
-    """Review finale, punto 3: se `users()` solleva invece di rispondere
-    `{"errore"}` il cancello non dipende da come e' scritto l'altro modulo --
-    stesso rifiuto col testo dei ruoli illeggibili (non un 500), stessa riga
-    d'errore una volta sola, e i file della pagina non richiamano Home
-    Assistant per tutta l'attesa.
-
-    Mutazione ESEGUITA: tolto il `try/except` intorno a `client.users()` in
-    `soffitto._refresh_users` -- rossa (500 invece del 403)."""
+async def test_una_lettura_dei_ruoli_SENZA_RISPOSTA_si_chiede_una_volta_per_attesa(
+        aperta_muta, caplog, monkeypatch):
+    """Review finale, punto 3, riletta sul client vero: `users()` non solleva
+    (D3) -- una connessione che cade arriva come la busta del silenzio. Il
+    rifiuto ha il testo dei ruoli illeggibili (non un 500), la riga d'errore
+    esce una volta sola col motivo di Home Assistant, e i file della pagina
+    non richiamano Home Assistant per tutta l'attesa."""
     from hiris.app.api import soffitto
 
     caplog.set_level("ERROR", logger="hiris.app.api.soffitto")
+    aperta = aperta_muta
     ha = aperta.app["ha_client"]
-    ha.users = AsyncMock(side_effect=RuntimeError("socket chiuso"))
     # L'orologio fermo: tutte le richieste cadono dentro l'attesa del guasto.
     monkeypatch.setattr(soffitto.time, "time", lambda: 1_000_000.0)
 
@@ -829,23 +860,23 @@ async def test_una_lettura_dei_ruoli_che_SOLLEVA_e_un_guasto_come_gli_altri(
     errori = [r for r in caplog.records
               if r.name == "hiris.app.api.soffitto" and r.levelname == "ERROR"]
 
-    assert ha.users.await_count == 1
-    assert len(errori) == 1 and "RuntimeError" in errori[0].getMessage()
+    assert _asked(ha).count("config/auth/list") == 1
+    assert len(errori) == 1 and "Home Assistant non ha risposto" in errori[0].getMessage()
 
 
 @pytest.mark.asyncio
-async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(chiusa, monkeypatch):
+async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(aiohttp_client, tmp_path,
+                                                            monkeypatch):
     """1.7: il cancello legge l'opzione e il ruolo, mai l'esito della voce di
     menu. `update_panel` fallisce, l'opzione e' spenta: chi non amministra
     resta fuori."""
     from hiris.app import panel_visibility
 
-    app = chiusa.app
+    rotto = {"code": "unknown_error", "message": "rotto"}
+    app = _compose(tmp_path, access=False,
+                   refuse={"frontend/update_panel": rotto, "get_panels": rotto})
+    chiusa = await aiohttp_client(app)
     ha = app["ha_client"]
-    ha.ws_ready = asyncio.Event()
-    ha.ws_ready.set()
-    ha.update_panel = AsyncMock(return_value={"errore": "rotto", "codice": "unknown_error"})
-    ha.panels = AsyncMock(return_value={"errore": "rotto"})
 
     async def slug(_token):
         return {"slug": "6354e165_hiris"}
@@ -855,9 +886,11 @@ async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(chiusa, monkeypatch)
     monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
     await panel_visibility.sync_panel_visibility(app)
 
-    assert ha.update_panel.await_count == 1
+    assert _asked(ha).count("frontend/update_panel") == 1
     assert await _gate_refused(chiusa, "GET", "/api/config", _persona("u-marta"),
                                testo=OPTION_OFF)
+    app["memory_store"].close()
+    app["servizi"].close()
 
 
 def test_il_cancello_non_conosce_la_VOCE_DI_MENU():
@@ -925,25 +958,6 @@ from hiris.app.api.soffitto import (
 from hiris.app.home_space.tools import ToolDispatcher
 
 
-class _HaLettore:
-    """Home Assistant che risponde: conta cosa gli si chiede."""
-
-    def __init__(self):
-        self.chiesto = []
-
-    async def system_log(self):
-        self.chiesto.append("system_log/list")
-        return {"voci": [{"level": "ERROR", "message": "zigbee giu'"}]}
-
-    async def traces(self, keys):
-        self.chiesto.append("trace/list")
-        return {"tracce": {}, "non_letti": {}}
-
-    async def trace(self, domain, item_id, run_id):
-        self.chiesto.append("trace/get")
-        return {"traccia": {}}
-
-
 class _Porta:
     def __init__(self):
         self.eseguite = []
@@ -978,12 +992,12 @@ async def test_le_letture_RISERVATE_agli_amministratori_non_escono_dalla_chat(
 
     Mutazione ESEGUITA: tolto il controllo del soffitto da `_history` --
     rossa (la voce del registro arriva al modello)."""
-    ha = _HaLettore()
+    ha = _house()
 
     esito = await _chat(ruolo, ha=ha).dispatch("history", argomenti)
 
     assert esito == {"errore": ADMIN_READS_REFUSAL}
-    assert ha.chiesto == [], "Home Assistant e' stato interrogato lo stesso"
+    assert ha.calls == [], "Home Assistant e' stato interrogato lo stesso"
 
 
 @pytest.mark.asyncio
@@ -991,7 +1005,7 @@ async def test_le_letture_RISERVATE_agli_amministratori_non_escono_dalla_chat(
 async def test_l_amministratore_e_i_turni_senza_persona_leggono_come_prima(ruolo):
     """Il metro opposto: chi amministra, e i turni che nessuna persona ha
     aperto (`soffitto=None`: promesse, osservatore), leggono il registro."""
-    ha = _HaLettore()
+    ha = _house()
 
     esito = await _chat(ruolo, ha=ha).dispatch("history", {"genere": "errori"})
 
@@ -1049,7 +1063,7 @@ async def test_lo_SVILUPPO_non_si_restringe_per_ruolo(monkeypatch):
     (e rossa anche `test_chat_briefing::test_conversazione_4`)."""
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     sviluppo = {"specie": "sviluppo", "id": None}
-    ha, porta = _HaLettore(), _Porta()
+    ha, porta = _house(), _Porta()
     chat = ToolDispatcher(None, None, ha=ha, actuator=porta,
                           soffitto=consente(sviluppo, ruolo=None), subject=sviluppo)
 
@@ -1130,10 +1144,9 @@ async def test_senza_GRUPPI_in_HA_non_si_entra(aiohttp_client, tmp_path, caplog)
     Mutazione ESEGUITA: `_role_of` senza il ramo `senza_gruppi` -- rossa."""
     caplog.set_level("INFO", logger="hiris.app.api.admission")
     app = _compose(tmp_path, access=True)
-    app["ha_client"].users = AsyncMock(return_value={"utenti": [
-        *_UTENTI["utenti"],
-        {"id": "u-vuoto", "nome": "Vuoto", "amministratore": False,
-         "senza_gruppi": True, "proprietario": False, "sistema": False}]})
+    app["_utenti_ha"].append({"id": "u-vuoto", "name": "Vuoto", "is_owner": False,
+                              "is_active": True, "system_generated": False,
+                              "group_ids": []})
     client = await aiohttp_client(app)
 
     assert await _gate_refused(client, "GET", "/api/config", _persona("u-vuoto"))
@@ -1144,29 +1157,43 @@ async def test_senza_GRUPPI_in_HA_non_si_entra(aiohttp_client, tmp_path, caplog)
     app["servizi"].close()
 
 
+class _RuoliLenti:
+    """`users()` che risponde solo quando la prova apre `entrata`.
+
+    Resta una finta, e non la casa finta: la lettura condivisa conta solo se
+    la risposta di Home Assistant si fa ATTENDERE, e il trasporto della casa
+    finta risponde senza mai cedere il passo al ciclo -- con lei la mutazione
+    qui sotto resta verde (eseguita il 03/10/2026). Le righe sono quelle del
+    client vero (`HAClient._user_row`)."""
+
+    def __init__(self):
+        self.entrata = asyncio.Event()
+        self.letture = 0
+
+    async def users(self):
+        self.letture += 1
+        await self.entrata.wait()
+        return {"utenti": [HAClient._user_row(riga) for riga in _UTENTI]}
+
+
 @pytest.mark.asyncio
-async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme(casa):
+async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme():
     """I2: una pagina chiede i suoi file tutti insieme; a copia scaduta, una
     sola `config/auth/list` per tutti.
 
     Mutazione ESEGUITA: tolta la lettura condivisa (ogni chiamante chiama
     `users()`) -- rossa (otto chiamate)."""
-    from hiris.app.api.soffitto import _ha_users
+    from hiris.app.api.soffitto import _ha_users, prepara_ruoli
 
-    ha = casa.app["ha_client"]
-    entrata = asyncio.Event()
-
-    async def lenta():
-        await entrata.wait()
-        return _UTENTI
-
-    ha.users = AsyncMock(side_effect=lenta)
-    letture = [asyncio.ensure_future(_ha_users(casa.app)) for _ in range(8)]
+    ha = _RuoliLenti()
+    app = {"ha_client": ha}
+    prepara_ruoli(app)
+    letture = [asyncio.ensure_future(_ha_users(app)) for _ in range(8)]
     await asyncio.sleep(0)
-    entrata.set()
+    ha.entrata.set()
     esiti = await asyncio.gather(*letture)
 
-    assert ha.users.await_count == 1
+    assert ha.letture == 1
     assert all(e is not None and "u-marta" in e for e in esiti)
 
 
@@ -1233,11 +1260,6 @@ def test_nello_statico_non_ci_sono_segreti():
 
 # --- H-1: il turno di una promessa porta il soffitto di chi l'ha chiesta ------
 
-class _HaDiMarta(_HaLettore):
-    async def users(self):
-        return _UTENTI
-
-
 class _RunnerCheLegge:
     """Chiede il registro e le tracce, poi conclude: cio' che un modello
     farebbe se glielo si chiedesse in una promessa."""
@@ -1266,7 +1288,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_il_registro():
     from hiris.app.chat_thread import ChatThread
     from hiris.app.keeper.exchange import interpreta_promise
 
-    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    ha, runner = _house(), _RunnerCheLegge()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "fra un'ora guarda il registro",
@@ -1277,7 +1299,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_il_registro():
 
     assert esito["testo"] == "fatto"
     assert runner.risposte[0] == {"errore": ADMIN_READS_REFUSAL}
-    assert ha.chiesto == []
+    assert set(_asked(ha)) <= {"config/auth/list"}, "solo chi e' la persona"
 
 
 @pytest.mark.asyncio
@@ -1286,7 +1308,7 @@ async def test_la_promessa_dell_amministratore_legge_come_prima():
     from hiris.app.chat_thread import ChatThread
     from hiris.app.keeper.exchange import interpreta_promise
 
-    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    ha, runner = _house(), _RunnerCheLegge()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
@@ -1294,7 +1316,7 @@ async def test_la_promessa_dell_amministratore_legge_come_prima():
 
     await interpreta_promise(app, promessa)
 
-    assert "system_log/list" in ha.chiesto
+    assert "system_log/list" in _asked(ha)
 
 
 @pytest.mark.asyncio
@@ -1309,9 +1331,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_dal_PONTE(casa):
     from hiris.app.keeper.store import AgendaStore
 
     app = casa.app
-    ha = _HaDiMarta()
-    ha.users = AsyncMock(return_value=_UTENTI)
-    app["ha_client"] = ha
+    ha = app["ha_client"]
     agenda = AgendaStore(str(pathlib_tmp(app) / "promesse.db"))
     app["agenda"] = agenda
     adesso = time.time()
@@ -1330,7 +1350,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_dal_PONTE(casa):
     agenda.close()
 
     assert ADMIN_READS_REFUSAL in json_text(corpo)
-    assert ha.chiesto == []
+    assert set(_asked(ha)) <= {"config/auth/list"}, "solo chi e' la persona"
 
 
 def pathlib_tmp(app):
@@ -1474,7 +1494,7 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
     from hiris.app.keeper.exchange import interpreta_promise
 
     monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
-    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    ha, runner = _house(), _RunnerCheLegge()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
@@ -1483,14 +1503,14 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
     await interpreta_promise(app, promessa)
 
     assert runner.risposte[0] == {"errore": ADMIN_READS_REFUSAL}
-    assert ha.chiesto == []
+    assert set(_asked(ha)) <= {"config/auth/list"}, "solo chi e' la persona"
 
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
-    ha2, runner2 = _HaDiMarta(), _RunnerCheLegge()
+    ha2, runner2 = _house(), _RunnerCheLegge()
     app2 = {"llm_router": runner2, "ha_client": ha2}
     prepara_ruoli(app2)
     await interpreta_promise(app2, promessa)
-    assert "system_log/list" in ha2.chiesto, "con l'interruttore acceso, come ieri"
+    assert "system_log/list" in _asked(ha2), "con l'interruttore acceso, come ieri"
 
 
 @pytest.mark.asyncio
@@ -1505,7 +1525,7 @@ async def test_l_orfana_ADOTTATA_dal_proprietario_legge_coi_suoi_diritti(tmp_pat
     from hiris.app.keeper.store import AgendaStore
     from hiris.app.keeper.sweeper import Sweeper
 
-    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    ha, runner = _house(), _RunnerCheLegge()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     agenda = AgendaStore(str(tmp_path / "promesse.db"))
@@ -1534,4 +1554,4 @@ async def test_l_orfana_ADOTTATA_dal_proprietario_legge_coi_suoi_diritti(tmp_pat
 
     assert riga["thread"] == proprietario
     assert runner.risposte and runner.risposte[0].get("voci"), runner.risposte
-    assert "system_log/list" in ha.chiesto
+    assert "system_log/list" in _asked(ha)

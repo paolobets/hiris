@@ -45,6 +45,7 @@ from hiris.app.home_space.topology import live_mirror
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import _to_minimal, disclosable_attributes
 from tests import _vocabulary_tables
+from tests.test_action_registry import _house
 
 # --------------------------------------------------------------------------
 # I PAYLOAD VERI
@@ -206,11 +207,6 @@ _HOME_SPACE = {
 }
 
 
-class FintoClient:
-    async def get_services(self):
-        return HA_SERVICES
-
-
 async def _registro() -> ServiceRegistry:
     """Il registro VERO, costruito dal payload vero di `/api/services`.
 
@@ -220,7 +216,7 @@ async def _registro() -> ServiceRegistry:
     l'unico pezzo di questo giro che sa sbagliare.
     """
     registry = ServiceRegistry()
-    await registry.refresh(FintoClient())
+    await registry.refresh(_house(HA_SERVICES))
     return registry
 
 
@@ -490,12 +486,8 @@ async def test_un_servizio_i_cui_parametri_non_si_sono_letti_non_diventa_senza_p
     niente."""
     registry = ServiceRegistry()
 
-    class Storto:
-        async def get_services(self):
-            return [{"domain": "light", "services": {
-                "turn_on": {"target": {}, "fields": ["una", "lista"]}}}]
-
-    await registry.refresh(Storto())
+    await registry.refresh(_house([{"domain": "light", "services": {
+        "turn_on": {"target": {}, "fields": ["una", "lista"]}}}]))
     comandi = commands_for("light.alberello", registry, _attributes(LIGHT_ALBERELLO))
     assert comandi["light.turn_on"] == {"parametri_non_letti": True}
 
@@ -676,8 +668,9 @@ async def test_guardare_una_entita_scalda_il_registro_dei_servizi(tmp_path):
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     registro = ServiceRegistry()
     assert registro.empty() is True, "questa prova parte da un registro MAI letto"
+    house = _house(HA_SERVICES)
     dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
-                                ha=FintoClient(), registry=registro)
+                                ha=house, registry=registro)
     try:
         risposta = await dispatcher.dispatch(
             "search", {"genere": "entita", "riferimento": "light.alberello"})
@@ -691,6 +684,7 @@ async def test_guardare_una_entita_scalda_il_registro_dei_servizi(tmp_path):
         "dice cosa si puo' chiedere solo dopo che qualcosa e' gia' stato chiesto")
     assert "light.turn_on" in esito["comandi"]
     assert registro.empty() is False
+    assert house.calls == [("/api/services", None)], "una lettura sola, del registro"
 
 
 @pytest.mark.asyncio
@@ -709,8 +703,9 @@ async def test_guardare_un_ricordo_non_scalda_niente(tmp_path):
                         comportamento=[])
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     registro = ServiceRegistry()
+    house = _house(HA_SERVICES)
     dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
-                                ha=FintoClient(), registry=registro)
+                                ha=house, registry=registro)
     try:
         risposta = await dispatcher.dispatch(
             "search", {"genere": "ricordo", "riferimento": 1})
@@ -721,3 +716,4 @@ async def test_guardare_un_ricordo_non_scalda_niente(tmp_path):
     # verde anche con uno strumento rifiutato, che non scalda niente.
     assert risposta["profondita"] == "completa"
     assert registro.empty() is True
+    assert house.calls == [], "un ricordo non chiede niente a Home Assistant"

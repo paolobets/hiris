@@ -8,8 +8,13 @@ sono due -- rifiuta e «fatta fuori da HA» -- e una terza le rifa'.
 Home Assistant. Quella strada e' l'officina, e ha gia' le sue.
 """
 import json
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_proposals import (
     handle_proposal_done,
@@ -17,6 +22,7 @@ from hiris.app.api.handlers_proposals import (
     handle_proposal_reject,
 )
 from hiris.app.mind.store import ObservationsStore
+from tests._casa_sintetica import synthetic_inputs
 
 #: Chi decide, in queste prove: un amministratore. Dal 26/09/2026 le
 #: proposte sono di chi costruisce (spec 2026-09-26 §3, decisione 5) e ogni
@@ -26,10 +32,10 @@ from hiris.app.mind.store import ObservationsStore
 AMMINISTRATORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
 
 
-class _RuoliFinti:
-    async def users(self):
-        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
-                            "amministratore": True, "proprietario": True}]}
+#: La sua riga grezza di `config/auth/list` (la forma che `HAClient._user_row`
+#: legge): il proprietario, amministratore per Home Assistant.
+_ADMIN = {"id": "u-admin", "name": "Paolo", "is_owner": True, "is_active": True,
+          "system_generated": False, "group_ids": ["system-admin"]}
 
 
 def _richiesta(app, match=None, corpo=None):
@@ -66,7 +72,8 @@ def casa(tmp_path):
         fingerprint="dev1|prelievo|None|1",
         prova={"base": 19}, chi_applica="tu", now_ts=100.0)
     try:
-        yield ({"observations": store, "ha_client": _RuoliFinti(),
+        yield ({"observations": store, "ha_client": CasaFinta(
+                   synthetic_inputs(), answers={"config/auth/list": lambda extra: [_ADMIN]}),
                 "ruoli": {"quando": 0.0, "per_id": {}}}, store, ident)
     finally:
         store.close()

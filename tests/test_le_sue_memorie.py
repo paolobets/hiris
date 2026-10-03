@@ -374,7 +374,9 @@ async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa, method, path, ute
     ogni lettura, una seconda domanda nel gestore farebbe due letture per
     richiesta."""
     app = casa.app
-    app["ha_client"].users.reset_mock()
+    # La casa e' il client vero (`tests/test_admission.py::_compose`): le
+    # letture dei ruoli sono i `config/auth/list` che ha ricevuto.
+    app["ha_client"].calls.clear()
     ruoli = app["ruoli"]
 
     class _SempreScaduta(dict):
@@ -388,7 +390,8 @@ async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa, method, path, ute
         app["ruoli"] = ruoli
 
     assert risposta.status == 200
-    assert app["ha_client"].users.await_count == 1
+    assert [name for name, _extra in app["ha_client"].calls].count(
+        "config/auth/list") == 1
 
 
 # --- le impostazioni della chat (ruling R-2.24) -------------------------------

@@ -16,16 +16,18 @@ deve restare difensivo, ed esiste
 `test_una_risposta_malformata_non_solleva`: se la forma vera differisce,
 HIRIS resta muto invece di rompersi.
 """
-import inspect
+import sys
+from pathlib import Path
 
 import pytest
 
-from hiris.app.action.registry import ServiceRegistry
-from hiris.app.proxy.ha_client import HAClient, HAReadError
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-#: Come risponde `HAClient.get_services` quando Home Assistant tace (D3: la
-#: busta, non un'eccezione).
-SILENT = {"errore": "Home Assistant non ha risposto", "causa": "silenzio", "codice": None}
+from casa_finta import CasaFinta
+
+from hiris.app.action.registry import ServiceRegistry
+from hiris.app.proxy.ha_client import HAReadError
+from tests._casa_sintetica import synthetic_inputs
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
@@ -37,29 +39,21 @@ RISPOSTA_HA = [
 ]
 
 
-class FintoClient:
-    def __init__(self, risposta):
-        self.risposta = risposta
-        self.chiamate = 0
-
-    async def get_services(self):
-        self.chiamate += 1
-        return self.risposta
+def _house(services, **faults) -> CasaFinta:
+    """Il client vero, con `services` come corpo di `GET /api/services`."""
+    inputs = synthetic_inputs()
+    inputs["services"] = services
+    return CasaFinta(inputs, **faults)
 
 
-def test_il_finto_combacia_con_la_firma_vera():
-    """La rete contro la deriva: se `HAClient.get_services` cambia firma,
-    questo test cade invece di lasciare che il finto menta -- stesso metodo
-    gia' usato per `get_states` in `test_home_space_behavior.py`."""
-    vera = inspect.signature(HAClient.get_services)
-    finta = inspect.signature(FintoClient.get_services)
-    assert list(vera.parameters) == list(finta.parameters)
+def _service_reads(house: CasaFinta) -> int:
+    return sum(1 for what, _extra in house.calls if what == "/api/services")
 
 
 @pytest.mark.asyncio
 async def test_il_registro_conosce_i_servizi_che_esistono():
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient(RISPOSTA_HA))
+    await registro.refresh(_house(RISPOSTA_HA))
     assert registro.service("light", "turn_on") is not None
     assert sorted(registro.services_for("light")) == ["turn_off", "turn_on"]
     assert "switch" in registro.domains()
@@ -68,7 +62,7 @@ async def test_il_registro_conosce_i_servizi_che_esistono():
 @pytest.mark.asyncio
 async def test_il_registro_non_inventa_cio_che_non_c_e():
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient(RISPOSTA_HA))
+    await registro.refresh(_house(RISPOSTA_HA))
     assert registro.service("light", "esplodi") is None
     assert registro.service("inesistente", "turn_on") is None
     assert registro.services_for("inesistente") == []
@@ -86,7 +80,7 @@ async def test_un_registro_mai_caricato_lo_dichiara():
 @pytest.mark.asyncio
 async def test_una_risposta_malformata_non_solleva():
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient([{"domain": "light"}, {"services": {}}, "spazzatura"]))
+    await registro.refresh(_house([{"domain": "light"}, {"services": {}}, "spazzatura"]))
     assert registro.service("light", "turn_on") is None
     assert registro.empty() is False  # ha caricato: e' vuoto di CONTENUTO, non di tentativo
 
@@ -98,7 +92,7 @@ async def test_una_voce_di_servizio_che_non_e_un_dizionario_non_solleva():
     servizio deve restare *conoscibile* -- esiste, non sappiamo com'e'
     fatto -- e non far cadere l'intero dominio."""
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient(
+    await registro.refresh(_house(
         [{"domain": "light", "services": {"turn_on": "non un dizionario", "turn_off": {}}}]
     ))
     assert registro.service("light", "turn_on") == {}
@@ -111,60 +105,56 @@ async def test_un_aggiornamento_sostituisce_e_non_accumula():
     cresce: un'integrazione disinstallata deve sparire anche da qui, o HIRIS
     continuerebbe a credere possibile un servizio che non c'e' piu'."""
     registro = ServiceRegistry()
-    finto = FintoClient(RISPOSTA_HA)
-    await registro.refresh(finto)
-    finto.risposta = [{"domain": "light", "services": {"turn_on": {}}}]
-    await registro.refresh(finto)
+    inputs = synthetic_inputs()
+    inputs["services"] = RISPOSTA_HA
+    house = CasaFinta(inputs)
+    await registro.refresh(house)
+    inputs["services"] = [{"domain": "light", "services": {"turn_on": {}}}]
+    await registro.refresh(house)
     assert registro.domains() == ["light"]
     assert registro.services_for("light") == ["turn_on"]
 
 
 @pytest.mark.asyncio
 async def test_il_registro_si_rinfresca_quando_e_vecchio():
-    finto = FintoClient(RISPOSTA_HA)
+    house = _house(RISPOSTA_HA)
     registro = ServiceRegistry(max_age_s=100)
-    await registro.ensure_fresh(finto)
-    await registro.ensure_fresh(finto)
-    assert finto.chiamate == 1, "un registro fresco non si ricarica"
+    await registro.ensure_fresh(house)
+    await registro.ensure_fresh(house)
+    assert _service_reads(house) == 1, "un registro fresco non si ricarica"
 
     registro._caricato_a -= 200  # lo invecchiamo a mano
-    await registro.ensure_fresh(finto)
-    assert finto.chiamate == 2, "un registro vecchio si ricarica"
+    await registro.ensure_fresh(house)
+    assert _service_reads(house) == 2, "un registro vecchio si ricarica"
 
 
 @pytest.mark.asyncio
-async def test_se_il_rinfresco_fallisce_si_tiene_il_vecchio():
-    class ClientCheRompe(FintoClient):
-        async def get_services(self):
-            self.chiamate += 1
-            if self.chiamate > 1:
-                return dict(SILENT)
-            return self.risposta
-
-    finto = ClientCheRompe(RISPOSTA_HA)
+@pytest.mark.parametrize("fault", [{"silence": {"/api/services"}},
+                                   {"refuse": {"/api/services": 500}}])
+async def test_se_il_rinfresco_fallisce_si_tiene_il_vecchio(fault):
     registro = ServiceRegistry(max_age_s=100)
-    await registro.ensure_fresh(finto)
+    await registro.ensure_fresh(_house(RISPOSTA_HA))
     registro._caricato_a -= 200
-    await registro.ensure_fresh(finto)   # non deve sollevare
+    broken = _house(RISPOSTA_HA, **fault)
+    await registro.ensure_fresh(broken)   # non deve sollevare
+    assert _service_reads(broken) == 1, "il rinfresco doveva essere tentato"
     assert registro.service("light", "turn_on") is not None, (
         "un rinfresco fallito non deve svuotare cio' che sapevamo")
 
 
 @pytest.mark.asyncio
-async def test_se_il_primo_caricamento_fallisce_il_guasto_si_vede():
+@pytest.mark.parametrize("fault", [{"silence": {"/api/services"}},
+                                   {"refuse": {"/api/services": 500}}])
+async def test_se_il_primo_caricamento_fallisce_il_guasto_si_vede(fault):
     """L'altra faccia del test qui sopra: tenersi il vecchio ha senso solo
     se un vecchio c'e'. Al primo caricamento non c'e' niente da proteggere,
     e ingoiare l'errore renderebbe un registro mai caricato
     indistinguibile da uno caricato e vuoto -- il silenzio non dichiarato
     che questo ramo esiste per chiudere."""
-    class ClientSempreRotto(FintoClient):
-        async def get_services(self):
-            self.chiamate += 1
-            return dict(SILENT)
-
     registro = ServiceRegistry(max_age_s=100)
-    with pytest.raises(HAReadError):
-        await registro.ensure_fresh(ClientSempreRotto(RISPOSTA_HA))
+    with pytest.raises(HAReadError) as raised:
+        await registro.ensure_fresh(_house(RISPOSTA_HA, **fault))
+    assert set(raised.value.failure) == {"errore", "causa", "codice"}
     assert registro.empty() is True
 
 
@@ -172,31 +162,17 @@ async def test_se_il_primo_caricamento_fallisce_il_guasto_si_vede():
 async def test_get_services_legge_l_endpoint_dei_servizi():
     """Il lettore vero: `/api/services` e nient'altro. Senza questo test
     l'URL sbagliato passerebbe la suite e fallirebbe solo sulla casa vera."""
-    from unittest.mock import AsyncMock, MagicMock
-
-    def _client(status):
-        client = HAClient(base_url="http://supervisor/core", token="t")
-        risposta = AsyncMock()
-        risposta.status = status
-        risposta.json = AsyncMock(return_value=RISPOSTA_HA)
-        client._session = MagicMock()
-        client._session.get = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=risposta),
-            __aexit__=AsyncMock(return_value=False),
-        ))
-        return client
-
-    client = _client(200)
-    assert await client.get_services() == RISPOSTA_HA
-    (url,), _ = client._session.get.call_args
-    assert url == "http://supervisor/core/api/services"
+    house = _house(RISPOSTA_HA)
+    assert await house.get_services() == RISPOSTA_HA
+    assert house.connections == [("rest", "/api/services")]
     # Un 401/500 non diventa un registro vuoto: e' la busta del rifiuto (D3,
     # prima sollevava), e il registro non si sostituisce.
     registro = ServiceRegistry()
-    await registro.ensure_fresh(_client(200))
+    await registro.ensure_fresh(_house(RISPOSTA_HA))
     registro._caricato_a -= 10_000
-    await registro.ensure_fresh(_client(500))
-    assert (await _client(500).get_services())["causa"] == "rifiuto"
+    await registro.ensure_fresh(_house(RISPOSTA_HA, refuse={"/api/services": 500}))
+    assert await _house(RISPOSTA_HA, refuse={"/api/services": 500}).get_services() == {
+        "errore": "Home Assistant ha risposto 500", "causa": "rifiuto", "codice": 500}
     assert registro.service("light", "turn_on") is not None
 
 
@@ -215,7 +191,7 @@ async def test_i_campi_a_sezioni_salgono_di_un_livello():
     veri»: un rifiuto sbagliato e un nome interno spacciato per parametro,
     nella stessa frase."""
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient([{"domain": "light", "services": {"turn_on": {"fields": {
+    await registro.refresh(_house([{"domain": "light", "services": {"turn_on": {"fields": {
         "brightness_pct": {"selector": {}},
         "advanced_fields": {"collapsed": True, "fields": {"rgbw_color": {}, "effect": {}}},
     }}}}]))
@@ -231,7 +207,7 @@ async def test_appiattire_non_tocca_i_campi_gia_piatti():
     """La difesa dev'essere innocua dove le sezioni non ci sono -- che e' la
     sola forma che qualcuno abbia mai scritto in una finta."""
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient(RISPOSTA_HA))
+    await registro.refresh(_house(RISPOSTA_HA))
     assert sorted(registro.service("light", "turn_on")["fields"]) == [
         "brightness_pct", "transition"]
     assert registro.service("switch", "turn_on")["fields"] == {}
@@ -247,7 +223,7 @@ async def test_un_campo_che_non_e_una_mappa_diventa_none_e_non_solleva():
     `None`, non `{}`: `{}` significa «letto, nessun parametro» e autorizza a
     rifiutare un parametro in piu'. Qui non abbiamo letto niente."""
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient(
+    await registro.refresh(_house(
         [{"domain": "light", "services": {"turn_on": {"fields": [{"name": "brightness_pct"}]}}}]))
     assert registro.service("light", "turn_on")["fields"] is None
     assert registro.services_for("light") == ["turn_on"], (
@@ -259,7 +235,7 @@ async def test_un_servizio_senza_campi_non_ne_guadagna_uno_finto():
     """Il registro e' lo SPECCHIO di `/api/services`: aggiungere una chiave che
     Home Assistant non ha mandato sarebbe insegnare invece di specchiare."""
     registro = ServiceRegistry()
-    await registro.refresh(FintoClient(
+    await registro.refresh(_house(
         [{"domain": "light", "services": {"turn_on": {"target": {}}, "toggle": {}}}]))
     assert registro.service("light", "turn_on") == {"target": {}}
     assert registro.service("light", "toggle") == {}
@@ -278,7 +254,7 @@ async def test_una_risposta_letta_e_non_capita_lo_dice(caplog):
     with caplog.at_level(logging.WARNING, logger="hiris.app.action.registry"):
         # una lista, ma di voci che non sono {domain, services} (un
         # dizionario intero e' gia' una forma sbagliata per il client: D3)
-        await registro.refresh(FintoClient([{"light": {"turn_on": {}}}]))
+        await registro.refresh(_house([{"light": {"turn_on": {}}}]))
     assert registro.domains() == []
     assert any("non e' quella attesa" in r.getMessage() for r in caplog.records), caplog.text
 
@@ -290,5 +266,5 @@ async def test_una_casa_senza_servizi_non_viene_dichiarata_un_guasto(caplog):
     import logging
     registro = ServiceRegistry()
     with caplog.at_level(logging.WARNING, logger="hiris.app.action.registry"):
-        await registro.refresh(FintoClient([]))
+        await registro.refresh(_house([]))
     assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []

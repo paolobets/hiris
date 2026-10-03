@@ -10,11 +10,16 @@ leggendo CHI dall'intestazione di prova `X-Chi`. Le prove guardano il fatto --
 lo status, il contenuto restituito, cio' che sta nell'archivio.
 """
 import os
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.api.handlers_chat_history import handle_get_chat_history
@@ -24,6 +29,7 @@ from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.server import _chat_reply_submitter
+from tests._casa_sintetica import synthetic_inputs
 
 PAOLO = ChatThread("persona:paolo", "pannello")
 MARTA = ChatThread("persona:marta", "pannello")
@@ -59,14 +65,14 @@ def il_piano_puo_rispondere(monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
 
 
-class _FintoHA:
-    """Gli utenti di Home Assistant: `paolo` proprietario, `marta` no."""
-
-    async def users(self):
-        return {"utenti": [
-            {"id": "paolo", "amministratore": True, "proprietario": True},
-            {"id": "marta", "amministratore": False, "proprietario": False},
-        ]}
+#: Gli utenti di Home Assistant, righe grezze di `config/auth/list` (la forma
+#: che `HAClient._user_row` legge): `paolo` proprietario, `marta` no.
+_UTENTI = [
+    {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
+     "system_generated": False, "group_ids": ["system-admin"]},
+    {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
+     "system_generated": False, "group_ids": ["system-users"]},
+]
 
 
 def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
@@ -84,7 +90,8 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
         name="t", system_prompt="Sei HIRIS.", max_chat_turns=max_chat_turns)
     app["data_dir"] = data_dir
     app["bridge_active"] = ponte_attivo
-    app["ha_client"] = _FintoHA()
+    app["ha_client"] = CasaFinta(synthetic_inputs(),
+                                 answers={"config/auth/list": lambda extra: _UTENTI})
     app["ruoli"] = {"quando": 0.0, "per_id": {}}
     q = ReasoningQueue(str(tmp_path / "reasoning.db"))
     app["reasoning_queue"] = q
