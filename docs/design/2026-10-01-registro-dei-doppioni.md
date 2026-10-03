@@ -355,7 +355,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | T-13 | Un test (`test_queries.py:390-405`) descrive una mutazione su codice inesistente e passa per altra ragione | D | PS |  |  | cop-4 N-31 |
 | T-14 | Due prove che fissano il contrario di ciò che serve (`test_shared_chat_context.py:233-241`, `test_internal_auth_middleware.py:54`) | NV | PS |  |  | cop-8 T1 |
 | T-15 | Prove che pinnano codice senza chiamante di produzione o un comportamento da decidere | E | — |  |  | cop-9 N-T-1 |
-| T-16 | Nessuna prova di freschezza all'applicazione o al ripristino di una costruzione | NV | — |  |  | cop-9 N-T-2 |
 
 ---
 
@@ -450,7 +449,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-14 | `OpenAICompatRunner` ignora le chiamate di strumento quando `finish_reason == "stop"` |  | DEDOTTO | cap. proposto D; Stato NV, Unirla CC | cop-7 N-D12 |
 | S-15 | Perimetro dell'ingress: l'elenco VUOTO di reti fidate ripiega sulla rete Docker intera (`172.30.32.0/23`) |  | LETTO | cap. proposto F; Stato DIVERGENTE, Unirla CC; scatta solo se il nome `supervisor` non si risolve e il campo è tutto sbagliato | cop-8 F1 |
 | S-16 | L'identità di un servizio firmato è la chiave, ma il suo `id` nel soggetto è il NOME (due servizi omonimi = stesso filo) |  | LETTO | cap. proposto F; Stato DIVERGENTE, Unirla DP (serve migrazione dei fili) | cop-8 F2 |
-| S-17 | Costruire: il «prima» non si rilegge all'applicazione (fino a 7 giorni) né al ripristino: una modifica fatta a mano è sovrascritta e persa |  | LETTO | cap. proposto E; Stato DIVERGENTE, Unirla CC (rifiuto contro avviso: DP) | cop-9 N-E-1 |
 | S-18 | `importa_legacy` non è atomica: due commit, un crash in mezzo raddoppia i totali ereditati |  | DEDOTTO | cap. proposto G; Stato NV, Unirla PS (una transazione) | cop-9 N-G-6 |
 | S-19 | `ChatSettings.load` solleva (`[1,2]` → `AttributeError`; `thinking_budget: "abc"` → `ValueError`) e `server.py:3809` la chiama senza `try` |  | ESEGUITO | già nel registro v1 dentro X-10 (docstring «non solleva mai»); nessun rapporto di copertura l'ha riletta | reg X-10 (d7 §1.9) |
 | S-20 | L'avviso «il bersaglio è cambiato» di una promessa non può mai partire: lo spazzino legge `occurrence["anteprima"]` (`sweeper.py:202-205`), la porta scrive `"bersaglio"` (`actuator.py:816`); alla nascita `_count_target` passa il bersaglio non tradotto, quindi `entities_at_birth` è sempre NULL |  | LETTO (non eseguito) | Stato DIVERGENTE, Unirla CC; la prova usa una porta finta | compl N-1 |
@@ -826,3 +824,5 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | X-05 | `scripts/doppioni.py:51` «per .githooks/pre-push»: l'hook non lo invoca | 3.73.0 | 07dd7b50 | il pre-push lancia scripts/cancelli.py, che invoca doppioni.py: la frase e' tornata vera |
 | X-03 | `CLAUDE.md`: righe di `server.py`, conteggi dei moduli, «nessun linter», «due porte», numero dei test (CONTRADDIZIONE sui conteggi) | 3.73.0 | c8231bed | Task 22 della Tappa 0, con la rilettura indipendente |
 | X-04 | `README.md`: `## AI providers` descrive il mondo pre-3.0.0 e contraddice `## Configuration` | 3.73.0 | c8231bed | Task 22 della Tappa 0, con la rilettura indipendente |
+| S-17 | Costruire: il «prima» non si rilegge all'applicazione (fino a 7 giorni) né al ripristino: una modifica fatta a mano è sovrascritta e persa | 3.73.1 (da rilasciare) | e94f3b01 | La conferma e il ripristino rileggono l'oggetto prima di scrivere e rifiutano se e' cambiato (decisione del proprietario: rifiutare) |
+| T-16 | Nessuna prova di freschezza all'applicazione o al ripristino di una costruzione | 3.73.1 (da rilasciare) | e94f3b01 | Prove di freschezza su conferma, ripristino e rotta HTTP, con mutazioni eseguite |
