@@ -34,7 +34,11 @@ from hiris.app.mind.store import ObservationsStore
 from tests._casa_sintetica import synthetic_inputs
 
 GIORNO = 86400.0
-ORA = 1_000_000.0
+#: Un istante lontano dall'epoca: le sonde scendono di settimane sotto `ORA`, e
+#: il client le scrive con `datetime.fromtimestamp`, che su Windows rifiuta un
+#: istante negativo (`OSError: [Errno 22]`, visto il 03/10/2026 con `ORA` a un
+#: milione di secondi). In produzione (Linux, l'orologio vero) non succede.
+ORA = 1_800_000_000.0
 
 #: Il comando di ogni sonda: `HAClient.recorded_changes` manda una raffica di
 #: `history/history_during_period`, una per finestra (`proxy/ha_client.py`).
