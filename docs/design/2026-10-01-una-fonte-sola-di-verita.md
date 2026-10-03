@@ -636,3 +636,15 @@ In `docs/superpowers/audit-2026-10-01/` — cartella fuori da git, archivio dell
   degli agenti che seguira' lo sprint (voce nel BACKLOG); le 23 dichiarazioni `notable` del
   vocabolario dei tipi **escono**, con le prove che le leggevano. **Prossimo passo:** il rilascio a
   se' per S-17 e `GET /api/home-space` al «lettore», poi la Tappa 1.
+- **03/10/2026** — Rilasciata la **3.73.1**: S-17 (la conferma e il ripristino rileggono la casa
+  prima di scrivere; scelta del proprietario: rifiutare) e il corpo delle automazioni coperto a chi
+  non amministra anche da `GET /api/home-space`. **Tappa 1 chiusa**, rilasciata come 3.73.2: le prove
+  che leggevano il testo di `server.py` sono scese da 121 a 1 (ammessa, come termine di paragone);
+  le prove chiedono all'app avviata (`tests/_avvio.py`), al router e allo schedulatore; i cancelli che
+  guardavano un file solo guardano il prodotto; un cancello nuovo
+  (`tests/test_prove_non_leggono_il_testo.py`) ferma ogni prova che torni a leggere `server.py`.
+  Una sola modifica al prodotto, pura sostituzione con la fotografia a freddo identica: la consegna
+  delle risposte del ponte esce in `server._chat_reply_submitter`. Il costo dichiarato: la suite
+  passa da circa 12 a circa 18 minuti. Parte del lavoro e' stata fatta da thread cloud paralleli
+  (Task 4, 7, 8, 9) e unita sul ramo dello sprint. **Prossimo passo:** la Tappa 2, col piano
+  approvato in `/mnt/project-files/piani/2026-10-tappa-2-un-solo-lettore.md`.

@@ -346,14 +346,12 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | T-04 | Finte che rispondono in forma diversa dal vero | D | CC |  |  | reg · cop-5 |
 | T-05 | Test orfani: provano codice senza chiamanti di produzione | E | PS |  |  | reg |
 | T-06 | Test che non possono fallire o non discriminano | NV | DP |  |  | reg · cop-3 |
-| T-07 | Prove fragili sul testo del sorgente di `server.py` | D | PS |  |  | reg · cop-1 |
 | T-08 | Cancelli utili: da non toccare | E | PS |  |  | reg |
 | T-09 | Moduli di produzione senza test che li importino | NV | DP |  |  | reg |
 | T-10 | La suite ha congelato la duplicazione del JS | E | PS |  |  | reg |
 | T-11 | Ridondanza fra test e prove che pinnano nomi vecchi | NV | DP |  |  | reg |
 | T-12 | Cosa i test non hanno mai confrontato | NV | DP |  |  | reg |
-| T-13 | Un test (`test_queries.py:390-405`) descrive una mutazione su codice inesistente e passa per altra ragione | D | PS |  |  | cop-4 N-31 |
-| T-14 | Due prove che fissano il contrario di ciò che serve (`test_shared_chat_context.py:233-241`, `test_internal_auth_middleware.py:54`) | NV | PS |  |  | cop-8 T1 |
+| T-14 | Due prove che fissano il contrario di ciò che serve (`test_shared_chat_context.py:233-241`, `test_internal_auth_middleware.py:54`). La metà del confine è fatta (`3406c3a6`, Tappa 1: elenco vuoto di reti fidate provato con xfail strict su S-15); resta da stabilire se la coppia `utente`/`role_known=False` di `test_shared_chat_context.py` sia generabile in produzione | NV | PS |  |  | cop-8 T1 |
 | T-15 | Prove che pinnano codice senza chiamante di produzione o un comportamento da decidere | E | — |  |  | cop-9 N-T-1 |
 
 ---
@@ -372,7 +370,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-22 | Rotta senza chiamante di produzione: `GET /api/misure`. **Resta per scelta** (dichiarazione D5 della Tappa 0): la usano `scripts/misure.py` e le batterie. La parte `GET /api/entities` (tutto `handlers_entities.py`) e' USCITA con la Tappa 0, Task 9 | `server.py` (rotta `/api/misure`) | cop-8 (conteggio, incompleta) | reg · cop-2 · cop-3 · cop-8 |
 | M-26 | `model_activation.py` (51 righe, una funzione): si fonde in `model_resolution`. Riletta il 02/10 (Task 17): `tests/test_model_activation.py` fissa il nome del modulo: si sposta con la Tappa 7 | `model_activation.py` |  | reg |
 | M-27 | `model_resolution` campo `quando: ""`: chiave sempre vuota. Riletta il 02/10 (Task 17): `quando` esce da `GET /api/models` e `models-route.js` la legge: cambio di forma | `model_resolution.py:1129` |  | reg |
-| M-30 | `app["model_chain"]` scritto in due punti (all'avvio e alla ricomposizione della catena): due momenti, da ricondurre a una funzione sola con la Tappa 1. `app["ultima_riparazione"]`: la scrittura in codice morto è uscita (`a507a2c7`), restano le due vive | `server.py` (`app["model_chain"]`) | cop-1 (conteggio); cop-2 (conteggio) | reg · cop-1 · cop-2 |
+| M-30 | `app["model_chain"]` scritto in due punti (all'avvio e alla ricomposizione della catena): due momenti, da ricondurre a una funzione sola con la Tappa 1. Misurato nella Tappa 1 (commit `1a1cdc0c`, 03/10/2026): la scrittura dell'avvio (`app["model_chain"] = list(_chain)`) e' morta, perche' `_recompute_chain` la riscrive poche righe dopo prima che qualcuno la legga; togliendola la suite resta verde. `app["ultima_riparazione"]`: la scrittura in codice morto è uscita (`a507a2c7`), restano le due vive | `server.py` (`app["model_chain"]`) | cop-1 (conteggio); cop-2 (conteggio) | reg · cop-1 · cop-2 |
 | M-31 | Segnali in uscita senza lettore: `debug.thinking_blocks`, `tools_called`, `"input"`. Riletta il 02/10 (Task 17): `debug.thinking_blocks` esce nella risposta di `POST /api/chat` e `tools_called`/`input` viaggiano nella decisione del ponte: cambio di forma, e i due rami sono dichiarati gemelli | `handlers_chat.py:1399-1400,1413` | cop-8 (incompleta) | reg · cop-8 |
 | M-32 | `queries._view_behavior` chiede `ricordi` per automazione/script: ramo sempre `[]` [D]. Riletta il 02/10 (Task 17): la cura è togliere la chiave `ricordi` dalla risposta di `view`, cioè un cambio di forma (Tappa 4) | `queries.py:1369` | cop-4 (doppio conteggio) | reg · cop-4 |
 | M-34 | `LookupCache` per `slot`: la generalità non ha un secondo cliente | `memory/lookup_cache.py` |  | reg |
@@ -826,3 +824,5 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | X-04 | `README.md`: `## AI providers` descrive il mondo pre-3.0.0 e contraddice `## Configuration` | 3.73.0 | c8231bed | Task 22 della Tappa 0, con la rilettura indipendente |
 | S-17 | Costruire: il «prima» non si rilegge all'applicazione (fino a 7 giorni) né al ripristino: una modifica fatta a mano è sovrascritta e persa | 3.73.1 | e94f3b01 | La conferma e il ripristino rileggono l'oggetto prima di scrivere e rifiutano se e' cambiato (decisione del proprietario: rifiutare) |
 | T-16 | Nessuna prova di freschezza all'applicazione o al ripristino di una costruzione | 3.73.1 | e94f3b01 | Prove di freschezza su conferma, ripristino e rotta HTTP, con mutazioni eseguite |
+| T-07 | Prove fragili sul testo del sorgente di `server.py` | 3.73.2 | 004f8533 | Tappa 1: le prove chiedono all'app avviata, al router e allo schedulatore; un cancello ferma ogni prova nuova che legga server.py (ne resta ammessa una, come termine di paragone) |
+| T-13 | Un test (`test_queries.py:390-405`) descrive una mutazione su codice inesistente e passa per altra ragione | 3.73.2 | 3406c3a6 | La prova descrive la funzione vera, con la mutazione eseguita |
