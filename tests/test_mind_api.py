@@ -855,26 +855,26 @@ def test_le_porte_del_cervello_sono_REGISTRATE_non_solo_scritte():
     possa chiamare. «Un dato che nessuno puo' chiedere non esiste» era
     esattamente la proprieta' non protetta.
 
-    Si legge il sorgente e non si costruisce l'applicazione: `create_app()`
-    apre archivi, semina e parla con Home Assistant -- qui serve sapere una
-    cosa sola, e va saputa senza montare il mondo.
+    Dal 03/10/2026 si chiede al router VERO dell'app
+    (`tests/_avvio.py::router_routes`): basta `create_app()`, senza avvio, e
+    una registrazione spostata in un altro modulo resta vista -- il testo di
+    `server.py` non la vedeva.
 
-    Mutazione ESEGUITA: togliere una qualunque delle cinque registrazioni --
-    rossa.
+    Mutazione ESEGUITA (03/10/2026): tolta da `create_app` la registrazione
+    di `/api/mind/knowledge` -- rossa, «la porta /api/mind/knowledge non e'
+    registrata».
     """
-    import pathlib
+    from tests._avvio import router_routes
 
-    from hiris.app import server
-
-    sorgente = pathlib.Path(server.__file__).read_text(encoding="utf-8")
+    routes = router_routes()
     for rotta, gestore in (("/api/mind/watching", "handle_watching"),
                            ("/api/mind/report", "handle_report"),
                            ("/api/mind/analysis", "handle_analysis"),
                            ("/api/mind/knowledge", "handle_knowledge")):
-        assert f'add_get("{rotta}", {gestore})' in sorgente, (
+        assert routes.get(f"GET {rotta}") == gestore, (
             f"la porta {rotta} non e' registrata: il gestore esiste ma "
             "nessuno puo' chiamarlo")
-    assert 'add_post("/api/mind/objective", handle_set_objective)' in sorgente, (
+    assert routes.get("POST /api/mind/objective") == "handle_set_objective", (
         "senza questa, l'obiettivo si puo' leggere e non scrivere")
 
 

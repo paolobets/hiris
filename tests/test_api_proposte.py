@@ -276,14 +276,20 @@ def test_le_TRE_rotte_delle_proposte_sono_registrate():
     """Un gestore che esiste e che nessuno puo' chiamare e' la fondamenta 4
     rotta: se un dato c'e' e nessuno puo' chiederlo, non esiste.
 
-    Mutazione ESEGUITA: togliere una delle tre registrazioni -- rossa."""
-    import pathlib
+    Si chiede al router VERO dell'app (`tests/_avvio.py::router_routes`),
+    non al testo di `server.py`: una registrazione spostata in un altro
+    modulo resta vista, una riga commentata no.
 
-    sorgente = pathlib.Path("hiris/app/server.py").read_text(encoding="utf-8")
+    Mutazione ESEGUITA (03/10/2026, sul router): tolta da `create_app` la
+    registrazione di `/api/proposals/{id}/done` -- rossa, «la porta
+    /api/proposals/{id}/done non e' registrata»."""
+    from tests._avvio import router_routes
+
+    routes = router_routes()
     for rotta, gestore in (
-            ("/api/proposals/{id}/reject", "handle_proposal_reject"),
-            ("/api/proposals/{id}/done", "handle_proposal_done"),
-            ("/api/proposals/{id}/redo", "handle_proposal_redo")):
-        assert f'add_post("{rotta}", {gestore})' in sorgente, (
+            ("/api/proposals/{id}/reject", handle_proposal_reject),
+            ("/api/proposals/{id}/done", handle_proposal_done),
+            ("/api/proposals/{id}/redo", handle_proposal_redo)):
+        assert routes.get(f"POST {rotta}") == gestore.__name__, (
             f"la porta {rotta} non e' registrata: il gestore esiste e nessuno "
             "puo' chiamarlo")

@@ -2,9 +2,8 @@
 
 Stile delle prove della rotta dell'obiettivo (`tests/test_mind_api.py`): il
 gestore si chiama direttamente con una richiesta finta; la registrazione sul
-router si prova a parte, leggendo il sorgente."""
+router si prova a parte, chiedendola al router vero."""
 import json
-import pathlib
 
 import pytest
 import pytest_asyncio
@@ -229,9 +228,14 @@ async def test_da_sapere_subito_compare_in_giudizi_e_la_rotta_lo_scrive(tmp_path
 
 
 def test_rotta_REGISTRATA():
-    """Mutazione: togliere la registrazione da `server.py` -- rossa."""
-    sorgente = pathlib.Path(server.__file__).read_text(encoding="utf-8")
-    assert 'add_post("/api/mind/judgment", handle_set_judgment)' in sorgente
+    """Si chiede al router VERO dell'app, non al testo di `server.py`.
+
+    Mutazione ESEGUITA (03/10/2026): tolta da `create_app` la registrazione
+    di `/api/mind/judgment` -- rossa, `None == 'handle_set_judgment'`."""
+    from tests._avvio import router_routes
+
+    assert (router_routes().get("POST /api/mind/judgment")
+            == handle_set_judgment.__name__)
 
 
 # -- la lettura per la pagina (spec §7, §11) ------------------------------------

@@ -61,7 +61,6 @@ PATH_BUILDERS = {"Path", "PurePath", "open", "join"}
 FOLDER_ANCHORS = {"parent", "parents", "dirname"}
 TEMPORARY_ROOTS = {"tmp_path", "tmpdir"}
 
-_TASK_4 = "da convertire, Task 4 della Tappa 1 (ordine e identita' del cablaggio)"
 _TASK_5 = "da convertire, Task 5 della Tappa 1 (estrai ed esegui un lavoro periodico)"
 _TASK_6 = "da convertire, Task 6 della Tappa 1 (estrai ed esegui un blocco d'avvio)"
 _TASK_7 = "da convertire, Task 7 della Tappa 1 (cancello buono che guarda un file solo)"
@@ -78,8 +77,6 @@ ADMITTED: dict[str, str] = {
          "termine di paragone, e resta vera anche quando il file si svuota"),
     "test_agent_runner_inaddon.py::"
     "test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno": _TASK_7,
-    "test_api_proposte.py::test_le_TRE_rotte_delle_proposte_sono_registrate":
-        _NOT_IN_PLAN + " (rotte registrate: si chiedono a `router_routes`)",
     "test_archivi_chiusi.py::_corpo_pulizia":
         _NOT_IN_PLAN + " (il Task 2 ha allargato la costruzione degli archivi; "
                        "il corpo di `_on_cleanup` si legge ancora)",
@@ -98,24 +95,13 @@ ADMITTED: dict[str, str] = {
         _NOT_IN_PLAN + " (variabili d'ambiente cercate nel solo `server.py`)",
     "test_config_page.py::test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti": _TASK_7,
     "test_construction_wiring.py::_blocco_risanamento_costruzioni": _TASK_6,
-    "test_handlers_mind_judgment.py::test_rotta_REGISTRATA":
-        _NOT_IN_PLAN + " (rotta registrata: si chiede a `router_routes`)",
     "test_keeper_wiring.py::_load_costruzione_archivi": _TASK_6,
     "test_keeper_wiring.py::_load_battito_avvio": _TASK_6,
     "test_keeper_wiring.py::_load_battito_closure": _TASK_6,
     "test_lovelace_uninstall.py::_carica_blocco_disinstallazione": _TASK_6,
-    "test_mind_api.py::test_le_porte_del_cervello_sono_REGISTRATE_non_solo_scritte":
-        _NOT_IN_PLAN + " (rotte registrate: si chiedono a `router_routes`)",
     "test_mind_wiring.py::_estrai_funzione_innestata": _TASK_5,
     "test_mind_wiring.py::_estrai_blocco_riparazione_avvio": _TASK_6,
     "test_mind_wiring.py::test_se_la_riaggregazione_solleva_l_avvio_prosegue": _TASK_6,
-    "test_model_activation.py::_blocco_catena_dallo_startup": _TASK_6,
-    "test_model_activation.py::_blocco_risponde_dallo_startup": _TASK_6,
-    "test_model_activation.py::"
-    "test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello": _TASK_4,
-    "test_model_activation.py::test_ogni_runner_riceve_la_lettura_del_SUO_provider": _TASK_4,
-    "test_models_api.py::test_l_avvio_consegna_al_router_IL_registro_dell_app":
-        _NOT_IN_PLAN + " (identita' fra oggetti: la forma del Task 4)",
     "test_options_migration.py::_blocco_semina_catena_dallo_startup": _TASK_6,
     "test_provider_default_model.py::_letture_dallo_startup": _TASK_6,
     "test_startup_legacy_db_silence.py::_load_silence_check": _TASK_6,

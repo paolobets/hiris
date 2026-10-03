@@ -1045,26 +1045,26 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
     assert righe["openrouter"]["stato_testo"].startswith("ha risposto ")
 
 
-def test_l_avvio_consegna_al_router_IL_registro_dell_app():
-    """Il cablaggio vero vive in `_on_startup`, che ogni fixture azzera
-    (`app.on_startup.clear()`): senza questa guardia sul sorgente,
-    `registro=app["occurrence_registry"]` si potrebbe cancellare e la suite
-    resterebbe verde -- e' la tecnica del Task 6/7 per lo stesso problema.
-    Un router costruito SENZA registro non registra niente, e la pagina
-    tornerebbe a non sapere niente senza che un solo test cada."""
-    import ast
-    import inspect
+@pytest.mark.asyncio
+async def test_l_avvio_consegna_al_router_IL_registro_dell_app(tmp_path):
+    """Un router costruito SENZA registro non registra niente, e la pagina
+    tornerebbe a non sapere niente senza che un solo test cada: il cablaggio
+    vero vive in `_on_startup`, che le fixture di questo file azzerano
+    (`app.on_startup.clear()`).
 
-    from hiris.app import server as modulo
+    Fino al 03/10/2026 la prova cercava la parola chiave `registry` in ogni
+    `LLMRouter(...)` del testo di `server.py`. Adesso l'app si avvia davvero,
+    con una credenziale perche' il router nasca, e si guarda l'IDENTITA': il
+    router tiene lo STESSO registro che l'app pubblica alla pagina -- non
+    «un registro», che la vecchia prova avrebbe lasciato passare.
 
-    albero = ast.parse(inspect.getsource(modulo))
-    costruzioni = [n for n in ast.walk(albero)
-                   if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                   and n.func.id == "LLMRouter"]
-    assert costruzioni, "nessuna costruzione di LLMRouter trovata in server.py"
-    for chiamata in costruzioni:
-        nomi = {k.arg for k in chiamata.keywords}
-        assert "registry" in nomi, (
+    Mutazione ESEGUITA (03/10/2026): tolto `registry=app["occurrence_registry"]`
+    dalla costruzione del router -- rossa (`None is <OccurrenceRegistry>`)."""
+    from tests._avvio import credential_environment, started_with
+
+    async with started_with(tmp_path, credential_environment(["claude"])) as app:
+        assert app["llm_router"] is not None, "con una credenziale il router nasce"
+        assert app["llm_router"]._registry is app["occurrence_registry"], (
             "ogni LLMRouter costruito dall'avvio deve ricevere il registro "
             "degli esiti, o il ciclo di ripiego torna a buttare via cio' che "
             "vede"

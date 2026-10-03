@@ -15,8 +15,11 @@ dell'avvio usa `fotografia_porte.mounted` direttamente, dentro la prova.
 
 Si importa nel file di prova: `from tests._avvio import started_app`.
 """
+import contextlib
+import os
 import sys
 from pathlib import Path
+from unittest import mock
 
 import pytest_asyncio
 
@@ -67,6 +70,54 @@ async def started_app(tmp_path_factory):
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir,
                                         RecordingHouse) as app:
         yield app
+
+
+#: Da quale variabile d'ambiente l'avvio legge la credenziale di ogni
+#: provider. E' l'INGRESSO delle prove che preparano le credenziali, non una
+#: regola: `credential_environment` le scrive TUTTE, vuote quelle assenti,
+#: perche' una credenziale nell'ambiente di chi lancia la suite non entri
+#: nell'avvio.
+CREDENTIAL_VARIABLES = {"subscription": "CLAUDE_CODE_OAUTH_TOKEN",
+                        "claude": "CLAUDE_API_KEY",
+                        "openai": "OPENAI_API_KEY",
+                        "openrouter": "OPENROUTER_API_KEY",
+                        "ollama": "LOCAL_MODEL_URL"}
+
+#: Un indirizzo di Ollama che non risponde: la verifica di raggiungibilita'
+#: dell'avvio fallisce subito invece di uscire dalla macchina.
+UNREACHABLE_OLLAMA = "http://127.0.0.1:9"
+
+
+#: Il registro di `server.py`, per chi legge cio' che l'avvio scrive. Il
+#: montaggio mette `hiris` a CRITICAL mentre l'avvio gira: un livello dato al
+#: FIGLIO vale per il figlio (`caplog.at_level(livello, logger=SERVER_LOGGER)`),
+#: e i suoi record risalgono comunque fino al gestore di `caplog`.
+SERVER_LOGGER = "hiris.app.server"
+
+
+def credential_environment(present) -> dict[str, str]:
+    """L'ambiente in cui hanno una credenziale i SOLI provider in `present`
+    (un nome, o un dizionario `provider -> bool`)."""
+    if isinstance(present, dict):
+        present = [name for name, there in present.items() if there]
+    values = {"ollama": UNREACHABLE_OLLAMA}
+    return {variable: (values.get(provider, "credenziale-di-prova")
+                       if provider in present else "")
+            for provider, variable in CREDENTIAL_VARIABLES.items()}
+
+
+@contextlib.asynccontextmanager
+async def started_with(data_dir, environment: dict | None = None,
+                       house_class=RecordingHouse):
+    """L'app avviata DENTRO la prova, su una `data_dir` che la prova ha gia'
+    preparato e con le variabili d'ambiente che la prova le da'
+    (`environment`, sopra quelle del montaggio). Per chi deve guardare cosa
+    l'avvio fa di cio' che trova: un archivio scritto prima, una credenziale
+    presente o assente. Spenta all'uscita dal blocco `async with`."""
+    with mock.patch.dict(os.environ, environment or {}):
+        async with fotografia_porte.mounted(synthetic_inputs(), str(data_dir),
+                                            house_class) as app:
+            yield app
 
 
 def router_routes(app=None) -> dict[str, str]:
