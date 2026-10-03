@@ -29,6 +29,13 @@ regola per non rompersi confronterebbe il prodotto con se stesso di ieri.
 - **`Lookup.find`** come motore di ricerca per nome: nessun chiamante di
   produzione (M-08), esce con la Tappa 0.
 
+## Le due domande della Tappa 3
+
+Entrate prima del codice che le chiude (piano della Tappa 3, Task 1):
+`fuori_con_causa` chiede la classe del fuori alle SEI copie della regola
+(B-01), non piu' solo a quattro; `fonte` chiede a tre porte perche' una fonte
+tace, e confronta la loro risposta con i fatti del registro (B-25, B-26, B-04).
+
 Nasce da `docs/superpowers/audit-2026-10-01/sonda_parita.py` (01/10/2026).
 
 Uso:
@@ -39,6 +46,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 import time
@@ -54,6 +62,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import casa
 
+from hiris.app.action.registry import ServiceRegistry
+from hiris.app.action.verification import verification
 from hiris.app.home_space import (
     briefing,
     ha_vocabulary,
@@ -65,6 +75,7 @@ from hiris.app.home_space import (
     type_vocabulary,
 )
 from hiris.app.mind import observer, recipe_turn
+from hiris.app.mind.recipes import ENTITY_MARK, Recipe
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
 
@@ -74,6 +85,14 @@ from hiris.app.proxy.entity_cache import _to_minimal
 #: Se cambiasse la, le righe non si spezzerebbero piu' e gli id letti non
 #: sarebbero id: `_entity_ids` se ne accorge e ferma la domanda.
 LINE_SEPARATOR = " · "
+#: Le parole con cui due porte dicono oggi la causa di una fonte muta. **Sono
+#: copie, dichiarate**: la causa vive solo nel testo (e' il difetto che la
+#: Tappa 3, Task 8, toglie dandole un campo). Se il testo cambia, `fonte` non
+#: vede piu' la pretesa e conta zero: chi cambia quel testo rilegge la domanda.
+#: `verification` nega l'esistenza dell'entita'; il motivo delle ricette da' la
+#: colpa al `state_class` che manca.
+DENIES_EXISTENCE = "non esiste"
+BLAMES_STATE_CLASS = "state_class"
 CASES_KEPT = 40
 
 
@@ -93,6 +112,7 @@ def build_inputs(source: Path | dict, *, clock: float | None = None) -> dict:
     return {"home_space": home_space, "mirror": mirror, "rows": rows,
             "raw_states": raw["states"], "registries": raw["registries"],
             "statistic_ids": set(raw["statistic_ids"]),
+            "services": raw.get("services"),
             "behavior": raw["behavior"], "ha_config": raw["ha_config"],
             "clock": time.time() if clock is None else clock}
 
@@ -171,6 +191,242 @@ def excluded(inputs: dict) -> dict:
     return _verdict(cases, names + ["recipe_turn.device_lines"],
                     {"incluse": {name: len(members) for name, members in copies.items()},
                      "righe_della_ricetta": len(recipe_lines)})
+
+
+def _causes_by_tree(floors: list[dict]) -> dict[str, str]:
+    """La classe che l'albero di `hierarchy` da' a ogni entita': la chiave in
+    cui la mette (`entita`, `entita_nascoste`, `entita_disabilitate`)."""
+    causes: dict[str, str] = {}
+    for floor in floors:
+        for area in floor.get("aree") or []:
+            for key, cause in (("entita", "dentro"), ("entita_nascoste", "nascosta"),
+                               ("entita_disabilitate", "disabilitata")):
+                for entry in area.get(key) or []:
+                    if isinstance(entry, dict) and entry.get("id"):
+                        causes[entry["id"]] = cause
+    return causes
+
+
+def _causes_by_device(inputs: dict) -> tuple[dict[str, str], int]:
+    """La classe che la scheda di un dispositivo (`queries._view_device`) da'
+    a ogni sua entita'. Le disabilitate la scheda le CONTA e non le elenca:
+    sono le entita' del dispositivo che non compaiono in nessuna lista, e
+    devono essere tante quante il conto dichiara -- altrimenti la domanda si
+    ferma. Una scheda tagliata dal tetto (`oltre`) non si legge: si conta."""
+    home_space, mirror = inputs["home_space"], inputs["mirror"]
+    by_device: dict[str, list[str]] = {}
+    for entity in home_space["entita"]:
+        if entity.get("dispositivo_id"):
+            by_device.setdefault(entity["dispositivo_id"], []).append(entity["id"])
+    causes: dict[str, str] = {}
+    cut = 0
+    for device in home_space["dispositivi"]:
+        detail = queries.view(home_space, [], [], mirror[0], "dispositivo", device["id"],
+                              **_mirror_keywords(mirror))
+        if detail.get("oltre"):
+            cut += 1
+            continue
+        listed = {row["id"]: "dentro" for row in detail.get("entita") or []}
+        listed |= {row["id"]: "nascosta" for row in detail.get("entita_nascoste") or []}
+        unlisted = [key for key in by_device.get(device["id"], []) if key not in listed]
+        if len(unlisted) != (detail.get("entita_disabilitate") or 0):
+            raise ValueError(f"_view_device: {len(unlisted)} entita' fuori dalle liste del "
+                             f"dispositivo, {detail.get('entita_disabilitate') or 0} "
+                             "disabilitate contate. La forma della scheda e' cambiata.")
+        causes |= listed | dict.fromkeys(unlisted, "disabilitata")
+    return causes, cut
+
+
+def _causes_by_selection(inputs: dict) -> dict[str, str]:
+    """La classe che `search` da' a ogni entita', chiesta alla funzione vera
+    con le quattro combinazioni delle sue due opzioni: cio' che manca anche
+    con tutte e due accese e' disabilitato, cio' che entra solo con le
+    nascoste e' nascosto, cio' che entra solo con quelle di servizio e' di
+    servizio. La precedenza e' quella di `select_subjects`, non della sonda."""
+    def chosen(hidden: bool, service: bool) -> set[str]:
+        selection = house_query.select_subjects(
+            house_query.HouseFilters(include_hidden=hidden, include_service=service),
+            ("entita",), inputs["home_space"], [], inputs["mirror"], unavailable=(),
+            now=inputs["clock"])
+        return {entry["id"] for entry, _area, _where in selection.entities}
+
+    plain, both, service_only = chosen(False, False), chosen(True, True), chosen(False, True)
+    causes = {}
+    for entity in inputs["home_space"]["entita"]:
+        key = entity["id"]
+        causes[key] = ("disabilitata" if key not in both else
+                       "nascosta" if key not in service_only else
+                       "servizio" if key not in plain else "dentro")
+    return causes
+
+
+def excluded_with_cause(inputs: dict) -> dict:
+    """«E' fuori, e perche'?» -- le SEI copie della regola (B-01).
+
+    Due famiglie, perche' le copie non dichiarano le stesse classi:
+
+    - **dentro o fuori** (disabilitata, nascosta o di servizio, senza dire
+      quale): il digesto, il complemento di `_excluded_from_comparison`, e
+      `search` senza opzioni. Si confronta l'appartenenza;
+    - **con la causa** (disabilitata prima di nascosta): l'albero di
+      `hierarchy` nelle sue DUE partizioni -- quella delle aree e quella che
+      scatta quando il registro dei dispositivi non ha risposto -- la scheda
+      del dispositivo e `search` con le sue opzioni. Di servizio, per l'albero
+      e per la scheda, e' dentro: e' la regola piu' larga che dichiarano (D7
+      del piano della Tappa 3), quindi si confronta la classe fra
+      disabilitata, nascosta e il resto.
+
+    Un caso per entita' e per famiglia, con la risposta di ogni copia.
+    """
+    home_space = inputs["home_space"]
+    entities = _entities(inputs)
+    by_selection = _causes_by_selection(inputs)
+    binary = {
+        "digest_visible_entity_ids": {
+            key: "dentro" if key in visible else "fuori" for visible in
+            [briefing.digest_visible_entity_ids(home_space)] for key in entities},
+        "not _excluded_from_comparison": {
+            key: "fuori" if topology._excluded_from_comparison(entity) else "dentro"
+            for key, entity in entities.items()},
+        "select_subjects": {key: "dentro" if cause == "dentro" else "fuori"
+                            for key, cause in by_selection.items()},
+    }
+    by_device, cut = _causes_by_device(inputs)
+    caused = {
+        "hierarchy": _causes_by_tree(topology.hierarchy(home_space)),
+        "hierarchy (dispositivi non letti)": _causes_by_tree(
+            topology.hierarchy(home_space, ("dispositivi",))),
+        "_view_device": by_device,
+        "select_subjects (con le opzioni)": {
+            key: cause if cause in ("disabilitata", "nascosta") else "il resto"
+            for key, cause in by_selection.items()},
+    }
+    for name in ("hierarchy", "hierarchy (dispositivi non letti)", "_view_device"):
+        caused[name] = {key: "il resto" if cause == "dentro" else cause
+                        for key, cause in caused[name].items()}
+    cases = []
+    for family, copies in (("dentro o fuori", binary), ("con la causa", caused)):
+        for key in sorted(entities):
+            answers = {name: answer[key] for name, answer in copies.items() if key in answer}
+            if len(set(answers.values())) > 1:
+                cases.append({"id": key, "famiglia": family, "risposte": answers})
+    called = sorted(binary) + sorted(caused)
+    return _verdict(cases, called, {
+        "dispositivi_tagliati_dal_tetto": cut,
+        "risposte_per_copia": {name: len(answer) for copies in (binary, caused)
+                               for name, answer in copies.items()},
+        "per_classe": {cause: sum(1 for value in by_selection.values() if value == cause)
+                       for cause in ("dentro", "servizio", "nascosta", "disabilitata")}})
+
+
+class _Services:
+    """Il client, ridotto alla sola lettura che il registro dei servizi fa."""
+
+    def __init__(self, services) -> None:
+        self._services = services
+
+    async def get_services(self):
+        return self._services
+
+
+def _verifier(inputs: dict):
+    """La verifica di una chiamata (`action/verification.py`) su un'entita'
+    sola, col registro dei servizi riempito dalla sua funzione vera. Il
+    servizio si sceglie fra quelli del dominio universale e poi del dominio
+    dell'entita': senza nessuno dei due la porta non si puo' interrogare
+    (torna `None`), e la domanda lo conta."""
+    if not isinstance(inputs.get("services"), list):
+        raise TypeError("fonte: gli ingressi non portano i servizi, la verifica non "
+                         "si puo' interrogare")
+    registry = ServiceRegistry()
+    failure = asyncio.run(registry.refresh(_Services(inputs["services"])))
+    if failure is not None or not registry.domains():
+        raise ValueError(f"fonte: il registro dei servizi non si e' riempito ({failure})")
+    states = {row["id"]: row for row in inputs["rows"]}
+
+    def verify(key: str):
+        for domain in ("homeassistant", topology.domain_of(key)):
+            names = registry.services_for(domain) if domain in registry.domains() else []
+            if names:
+                call = {"servizio": f"{domain}.{min(names)}",
+                        "bersaglio": {"entita": [key]}}
+                return verification(call, registry, states)
+        return None
+    return verify
+
+
+def _recipe_reason(key: str) -> str:
+    """Il motivo che una ricetta da' per un'entita' fuori da `statistic_ids`:
+    una ricetta di un passo, eseguita con la funzione vera."""
+    recipe = Recipe({"why": "sonda", "steps": [
+        {"name": "misura", "operation": "somma_periodo",
+         "inputs": [f"{ENTITY_MARK}{key}"], "params": {"unit": "h"}}]})
+    return recipe.run(series={key: []}, without_statistics={key})["misura"].reason
+
+
+def source(inputs: dict) -> dict:
+    """«Perche' questa fonte tace?» -- la causa che danno tre porte, contro i
+    fatti che Home Assistant scrive.
+
+    I fatti si LEGGONO, non si deducono: `disabled_by` della riga grezza del
+    registro, l'assenza dagli stati, `state_class` vivo, l'appartenenza a
+    `statistic_ids`. Le porte si CHIAMANO:
+
+    - **il digesto** dice «dentro»: e' falso per un'entita' disabilitata o
+      che negli stati non c'e' (sparita);
+    - **la verifica di un comando** nominato dal modello: quando dice che
+      l'entita' non esiste, e' falso per ogni entita' del registro (trovato 2
+      del piano, S-27);
+    - **il motivo delle ricette** per le entita' fuori da `statistic_ids`:
+      quando incolpa il `state_class`, e' falso per un'entita' che lo
+      dichiara, che e' disabilitata o che negli stati non c'e' (B-26, X-12).
+
+    Le entita' che stanno negli stati e non nel registro si chiedono alla
+    verifica e alle ricette; il digesto non le conosce.
+    """
+    registry_rows = {row["entity_id"]: row for row in inputs["registries"]["entita"]
+                     if row.get("entity_id")}
+    states = {row["entity_id"]: row for row in inputs["raw_states"] if row.get("entity_id")}
+    statistic = inputs["statistic_ids"]
+    visible = briefing.digest_visible_entity_ids(inputs["home_space"])
+    verify = _verifier(inputs)
+    cases = []
+    asked = {"digesto": 0, "verification": 0, "ricette": 0}
+    not_askable = 0
+    for key in sorted(set(registry_rows) | set(states)):
+        row, live = registry_rows.get(key), states.get(key)
+        facts = {"nel_registro": row is not None,
+                 "disabled_by": (row or {}).get("disabled_by"),
+                 "negli_stati": live is not None,
+                 "state_class": ((live or {}).get("attributes") or {}).get("state_class"),
+                 "statistiche": key in statistic}
+        silent_for_other_reasons = bool(facts["disabled_by"]) or not facts["negli_stati"]
+        if row is not None:
+            asked["digesto"] += 1
+            if key in visible and silent_for_other_reasons:
+                cases.append({"id": key, "porta": "digesto", "dice": "dentro",
+                              "fatti": facts})
+        verdict = verify(key)
+        if verdict is None:
+            not_askable += 1
+        else:
+            asked["verification"] += 1
+            if (row is not None and not verdict.ok and key in verdict.reason
+                    and DENIES_EXISTENCE in verdict.reason):
+                cases.append({"id": key, "porta": "verification",
+                              "dice": verdict.reason, "fatti": facts})
+        if not facts["statistiche"]:
+            asked["ricette"] += 1
+            reason = _recipe_reason(key)
+            if BLAMES_STATE_CLASS in reason and (facts["state_class"]
+                                                 or silent_for_other_reasons):
+                cases.append({"id": key, "porta": "ricette", "dice": reason,
+                              "fatti": facts})
+    return _verdict(cases, ["briefing.digest_visible_entity_ids",
+                            "verification.verification", "Recipe.run"],
+                    {"chieste": asked, "non_interrogabili_dalla_verifica": not_askable,
+                     "per_porta": {port: sum(1 for case in cases if case["porta"] == port)
+                                   for port in asked}})
 
 
 def names(inputs: dict) -> dict:
@@ -391,9 +647,9 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
 
 #: Le domande, per nome. E' un elenco di AMMISSIONE: una domanda esce di qui
 #: quando la sua copia e' cancellata, nello stesso commit.
-QUESTIONS = {"fuori": excluded, "nomi": names, "dove": areas, "valore": values,
-             "statistiche": statistics, "unita": units, "riferimenti": references,
-             "oggi": today}
+QUESTIONS = {"fuori": excluded, "fuori_con_causa": excluded_with_cause, "nomi": names,
+             "dove": areas, "valore": values, "statistiche": statistics, "unita": units,
+             "riferimenti": references, "oggi": today, "fonte": source}
 
 
 def run(inputs: dict) -> dict[str, dict]:
