@@ -58,92 +58,17 @@ def test_l_osservatore_nasce_dopo_il_suo_archivio():
         < sorgente.index('app["watcher"] = Watcher(')
 
 
-def test_i_due_lavori_periodici_sono_registrati():
-    """L'aggregazione notturna e la potatura. Senza il primo il grezzo si
-    accumula e nessun oggetto nasce; senza il secondo l'archivio cresce per
-    sempre."""
-    sorgente = inspect.getsource(server)
-    assert 'id="hiris_mind_aggregation"' in sorgente
-    assert 'id="hiris_mind_pruning"' in sorgente
-
-
 def test_l_archivio_si_chiude_nello_spegnimento():
     sorgente = inspect.getsource(server._on_cleanup)
     assert 'if "observations" in app:' in sorgente
     assert 'app["observations"].close()' in sorgente
 
 
-def _kwargs_add_job(sorgente: str, job_id: str) -> dict:
-    """Gli argomenti dell'`add_job` che registra `job_id`, letti dal blocco
-    fra `scheduler.add_job(` e la parentesi che lo chiude -- non un pezzo di
-    sorgente tagliato a un numero fisso di caratteri (task-5-fix-brief.md,
-    punto 1): un `blocco` ritagliato a mano intorno all'`id` puo' contenere
-    la parola `"cron"` anche quando l'ORA dentro quel blocco e' sbagliata --
-    ed e' esattamente il difetto, ricomparso cinque volte in questa fetta,
-    che questa funzione chiude leggendo `hour`/`minute` per davvero."""
-    marcatore = f'id="{job_id}"'
-    pos = sorgente.index(marcatore)
-    inizio = sorgente.rindex("scheduler.add_job(", 0, pos)
-    fine = sorgente.index(")", pos)
-    blocco = sorgente[inizio:fine]
-    assert 'trigger="cron"' in blocco, f"{job_id} non e' un lavoro a orario fisso"
-    kwargs = {}
-    for nome in ("hour", "minute"):
-        m = re.search(rf"\b{nome}=(\d+)", blocco)
-        if m:
-            kwargs[nome] = int(m.group(1))
-    return kwargs
-
-
-def test_l_aggregazione_gira_alle_00_20_della_casa():
-    """Aggregare a mezzanotte esatta prenderebbe un giorno ancora aperto: le
-    00:20 sono l'ora vera, non solo un blocco che contiene la parola 'cron'
-    (task-5-fix-brief.md, punto 1 -- la quinta ricomparsa del difetto n.1 in
-    questa fetta: un `hour=23` sarebbe restato verde col test precedente,
-    perche' 'cron' resta comunque nel blocco).
-
-    Mutazione provata a mano: `hour=0` -> `hour=23` in `server.py` fa
-    fallire questo test (`{'hour': 23, 'minute': 20} != {'hour': 0,
-    'minute': 20}`); ripristinato subito dopo."""
-    sorgente = inspect.getsource(server)
-    assert _kwargs_add_job(sorgente, "hiris_mind_aggregation") == {
-        "hour": 0, "minute": 20}
-
-
-def test_la_potatura_gira_alle_03_00():
-    """Stessa tecnica, stesso difetto possibile: qui l'ora e' quella della
-    notte (03:00), lontana dall'aggregazione (00:20) apposta -- l'una deve
-    finire prima che l'altra cominci a leggere il grezzo."""
-    sorgente = inspect.getsource(server)
-    assert _kwargs_add_job(sorgente, "hiris_mind_pruning") == {
-        "hour": 3, "minute": 0}
-
-
 # --------------------------------------------------------------------------
-# Correzione A: la terza voce che il mandato originale dimenticava --
-# `watch_system` deve avere un chiamante vero, non restare morto.
+# Correzioni A e B: le condizioni di sistema. Il lavoro periodico che da' un
+# chiamante vero a `watch_system`, e la lettura una volta all'avvio, si
+# chiedono allo schedulatore dell'app avviata (`tests/test_lavori_periodici.py`).
 # --------------------------------------------------------------------------
-
-def test_il_terzo_lavoro_periodico_delle_condizioni_e_registrato():
-    """Senza questo lavoro `watch_system` non ha nessun chiamante di
-    produzione: nasce codice morto lo stesso giorno in cui viene scritto, e
-    la spec §6 (i guasti diventano oggetti dal primo giorno) diventa una
-    frase falsa (task-5-correzioni.md, punto A)."""
-    sorgente = inspect.getsource(server)
-    assert 'id="hiris_mind_conditions"' in sorgente
-    blocco = sorgente[sorgente.index('id="hiris_mind_conditions"') - 400:
-                      sorgente.index('id="hiris_mind_conditions"') + 200]
-    assert "minutes=10" in blocco
-    assert "watch_system_conditions" in sorgente
-
-
-def test_le_condizioni_si_leggono_anche_una_volta_all_avvio():
-    """«Ogni 10 minuti, e una volta all'avvio» (punto A): senza la prima
-    lettura all'avvio, un guasto gia' aperto da prima del boot resterebbe
-    invisibile fino a dieci minuti dopo."""
-    sorgente = inspect.getsource(server._on_startup)
-    assert sorgente.count("watch_system_conditions(app, ha_client)") >= 2
-
 
 def test_l_osservatore_ricostruisce_le_condizioni_all_avvio():
     """Punto B: senza questa chiamata, a ogni riavvio dell'add-on -- che
@@ -925,18 +850,6 @@ def test_the_automation_event_is_wired_to_mark_automation():
     # `ast.unparse` normalizza le stringhe in apici singoli, quindi si cerca
     # `'watcher'` e non `"watcher"` (che e' come appare nel sorgente vero).
     assert any("['watcher'].mark_automation(entity_id" in c for c in calls)
-
-
-def test_the_fourth_periodic_job_for_automation_traces_is_registered():
-    """Senza questo lavoro `watch_automation_outcomes` non ha nessun
-    chiamante di produzione: le automazioni segnate resterebbero segnate per
-    sempre senza che nessuno rileggesse mai le loro tracce."""
-    source = inspect.getsource(server)
-    assert 'id="hiris_mind_automation_traces"' in source
-    block = source[source.index('id="hiris_mind_automation_traces"') - 400:
-                   source.index('id="hiris_mind_automation_traces"') + 200]
-    assert "minutes=2" in block
-    assert "watch_automation_outcomes" in source
 
 
 class _FakeAutomationWatcher:

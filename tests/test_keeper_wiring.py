@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import inspect
 import os
-import pathlib
 import textwrap
 import time as _time_module
 from unittest.mock import AsyncMock, MagicMock
@@ -326,101 +325,6 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 
     assert dispatcher._registry is registro_sentinella
     assert dispatcher._agenda is promesse_sentinella
-
-
-# ── Il README dichiara UN NUMERO di lavori periodici -- deve restare vero ───
-#
-# Audit 2026-08-24, Critical C1 (L3-architettura.md): il README diceva
-# «four APScheduler jobs», il codice ne registrava sette, e uno di essi (il
-# battito dello schedulatore delle promesse) TOCCA la casa -- non e' pura
-# manutenzione interna come gli altri. Corretto in README.md il 25/08/2026,
-# col numero vero e l'elenco di cosa fa ognuno.
-#
-# Fetta «l'osservatore», Task 5 (26/08/2026): il cablaggio aggiunge tre
-# lavori (`hiris_mind_conditions`, `hiris_mind_aggregation`,
-# `hiris_mind_pruning`), sette diventano dieci -- e il README e'
-# aggiornato con loro, non dopo.
-#
-# Fetta «le tracce e il log», Task 4 (05/09/2026): un quarto lavoro del
-# cervello, `hiris_mind_automation_traces` (la cadenza breve delle tracce di
-# automazione, ogni due minuti) -- dieci diventano undici, stessa
-# disciplina: README aggiornato insieme al codice.
-#
-# Fetta «le tabelle» (08/09/2026): un dodicesimo, `hiris_state_translations`
-# -- la rilettura delle parole con cui uno stato si rende. Non e' li' perche'
-# quella tabella cambi (non cambia quasi mai: `read` risponde dalla cache
-# finche' la casa non cambia versione o lingua), ma perche' la PRIMA lettura
-# puo' fallire con un Home Assistant non ancora pronto, e da quando le quattro
-# tabelle scritte a mano non esistono piu' il nucleo direbbe «traduzioni non
-# lette» a ogni turno finche' qualcuno non riprova.
-#
-# Questo test ancora quel numero al codice, non lo ripete a mano: se una
-# fetta futura aggiunge o toglie un `add_job`, questo test si rompe PRIMA
-# che la documentazione torni a mentire in silenzio -- lo stesso principio
-# di `test_js_suite_wired.py::_MIN_JS_TEST_FILES` (M4 dello stesso audit):
-# un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
-# frase che invecchia senza avvisare.
-
-def test_the_registered_periodic_jobs_are_sixteen_as_the_readme_declares():
-    """**Erano diciassette fino al 01/10/2026: il diciassettesimo, l'attuatore,
-    e' in pausa** (vedi la prova qui sotto), e il numero scende con lui.
-
-    **Il quattordicesimo e' l'anello delle ricette** (13/09/2026, spec §7):
-    ogni dieci minuti chiede al modello come si misura UN dispositivo che pesa
-    e di cui non si sa ancora niente, e poi smette -- una ricetta scritta, o un
-    rifiuto registrato, non si richiede mai piu'.
-
-    **Il quindicesimo e' il recupero dei resoconti** (14/09/2026): ogni cinque
-    minuti scrive il resoconto di UN giorno che non ce l'ha, dal piu' vecchio,
-    e smette quando non ne manca piu' nessuno.
-
-    **Il sedicesimo e' l'analista** (15/09/2026, spec §10): ogni ora legge le
-    misure di trenta giorni e dice cosa si potrebbe fare. E' il piu' caro dei
-    tre lavori che SPENDONO -- ~35.000 token a domanda, misurati -- e un giorno
-    ha UNA analisi sola: quando ce l'ha, il giro non fa niente.
-
-    Il numero sta qui perche' un lavoro periodico e' una cosa che gira per
-    sempre e costa per sempre: aggiungerne uno senza accorgersene e' il modo
-    in cui una casa comincia a fare rumore di notte.
-
-    **E questa prova ha gia' mancato il suo scopo una volta.** Quando il
-    quattordicesimo e' entrato, il numero qui e' salito e il README no: diceva
-    ancora «thirteen». La prova asseriva il conteggio del sorgente e citava il
-    README senza leggerlo -- cioe' sorvegliava meta' di cio' che prometteva.
-    Ora lo legge.
-    """
-    src = inspect.getsource(server._on_startup)
-    n = src.count("scheduler.add_job(")
-    assert n == 16, (
-        f"server.py registra {n} lavori periodici (scheduler.add_job), non 16: "
-        "il README dichiara un numero preciso e va aggiornato insieme al "
-        "codice, non dopo.")
-    readme = (pathlib.Path(__file__).resolve().parents[1] / "README.md").read_text(
-        encoding="utf-8")
-    assert "registers **sixteen** APScheduler jobs" in readme, (
-        "il README non dichiara piu' sedici lavori periodici: il numero "
-        "vive in due posti e questa prova esiste perche' non divergano.")
-
-
-def test_l_attuatore_e_in_pausa_e_nessun_lavoro_periodico_lo_fa_girare():
-    """**L'attuatore e' fermo dal 01/10/2026, per decisione del proprietario.**
-
-    L'audit di quel giorno, sulla casa vera: zero indagini su dodici riportano
-    un fatto letto dalla casa -- il turno parte senza strumenti di lettura --,
-    zero proposte utili su nove, e le riparazioni delle ricette si ripetono a
-    ogni giro senza che nessuno guardi se la misura torna a calcolarsi.
-
-    Si ferma togliendo il suo lavoro dallo schedulatore: `actuator_round` e i
-    moduli `mind/actuator*.py` restano, perche' si riaccende quando avra' gli
-    strumenti (voce «L'attuatore e' in pausa» in `docs/BACKLOG.md`). Chi lo
-    riaccende toglie questa prova insieme alla pausa, non la aggira.
-    """
-    src = inspect.getsource(server._on_startup)
-    assert "hiris_mind_actuator" not in src, (
-        "l'attuatore e' in pausa: il suo lavoro periodico non va registrato")
-    assert "actuator_round(" not in src, (
-        "l'attuatore e' in pausa: niente all'avvio deve farlo girare, nemmeno "
-        "sotto un altro id")
 
 
 @pytest.mark.asyncio

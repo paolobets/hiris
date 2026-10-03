@@ -14,7 +14,6 @@ non tocca piu' Home Assistant.
 """
 from __future__ import annotations
 
-import inspect
 from contextlib import suppress
 
 import pytest
@@ -131,19 +130,3 @@ async def test_senza_cache_o_senza_client_non_solleva():
     assert await server.reload_entity_inventory(None, _HA()) is False
     assert await server.reload_entity_inventory(EntityCache(), None) is False
 
-
-def test_il_lavoro_periodico_e_registrato_come_gli_altri():
-    """Convenzione degli altri lavori periodici (scansione di salute, spazzata
-    del ponte, potatura): `engine._scheduler.add_job` con un id `hiris_*` e
-    `replace_existing`."""
-    sorgente = inspect.getsource(server._on_startup)
-
-    assert "hiris_entity_cache_reload" in sorgente
-    assert "reload_entity_inventory" in sorgente
-    # Cadenza breve: un'indisponibilita' passeggera di Home Assistant deve
-    # rientrare in pochi minuti, non alla prossima notte.
-    blocco = sorgente[sorgente.index("hiris_entity_cache_reload") - 400:
-                      sorgente.index("hiris_entity_cache_reload") + 200]
-    assert 'trigger="interval"' in blocco
-    assert "minutes=2" in blocco
-    assert "replace_existing=True" in blocco
