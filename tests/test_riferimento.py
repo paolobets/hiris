@@ -111,7 +111,7 @@ def test_gli_accenti_si_piegano_in_un_posto_solo():
 
     Mutazione ESEGUITA: rimettere `unicodedata.normalize("NFKD", ...)` in
     `keeper/recipient._slugify` -- rossa."""
-    trovate = {str(p.relative_to(APP)): n for p in sorted(APP.rglob("*.py"))
+    trovate = {p.relative_to(APP).as_posix(): n for p in sorted(APP.rglob("*.py"))
                if (n := _unicodedata_normalize_calls(
                    ast.parse(p.read_text(encoding="utf-8"))))}
     assert trovate == {"home_space/reference.py": 1}
