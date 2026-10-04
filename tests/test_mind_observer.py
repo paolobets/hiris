@@ -11,14 +11,15 @@ della metà del prompt.
 **Le entità di servizio e le nascoste non entrano di default** (decisione del
 proprietario, 10/09/2026), ed è la stessa legge che il nucleo applica già al
 digesto: fuori da ciò che si dice senza che sia stato chiesto, dentro quando
-qualcuno lo chiede. La regola non si riscrive qui -- si chiama quella del
-nucleo (`briefing.digest_visible_entity_ids`), o le due divergerebbero al
-primo cambiamento.
+qualcuno lo chiede. La regola non si riscrive qui -- si chiede alla casa
+(`House.visible_entities`, che compone la regola unica del fuori,
+`topology.visibility_classes`), o le due divergerebbero al primo cambiamento.
 """
 import os
 
 import pytest
 
+from hiris.app.home_space import topology
 from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import observer
@@ -104,16 +105,16 @@ def test_le_entita_di_servizio_le_nascoste_e_le_disabilitate_restano_fuori():
     assert len(righe) == 2
 
 
-def test_la_regola_e_QUELLA_DEL_NUCLEO_non_una_seconda_uguale(monkeypatch):
-    """Il nucleo applica gia' questa legge al digesto
-    (`briefing.digest_visible_entity_ids`). Riscriverla qui la farebbe
-    divergere al primo cambiamento da una parte sola -- la seconda fondamenta,
-    e questo prodotto l'ha gia' violata esattamente cosi' (`_highlight_lines`,
-    uscita dal nucleo il 29/09/2026, contro `_capability_lines`, rilievo R1
-    dell'08/09/2026: due totali diversi per la stessa parola nella stessa
-    pagina).
+def test_la_regola_e_QUELLA_DELLA_CASA_non_una_seconda_uguale(monkeypatch):
+    """La regola del fuori e' una (`topology.visibility_classes`, Tappa 3,
+    Task 5) e l'osservatore la chiede alla casa (`House.visible_entities`,
+    Task 12). Riscriverla qui la farebbe divergere al primo cambiamento da una
+    parte sola -- la seconda fondamenta, e questo prodotto l'ha gia' violata
+    esattamente cosi' (`_highlight_lines`, uscita dal nucleo il 29/09/2026,
+    contro `_capability_lines`, rilievo R1 dell'08/09/2026: due totali
+    diversi per la stessa parola nella stessa pagina).
 
-    **Si cambia la regola del nucleo e si guarda se l'osservatore la segue.**
+    **Si cambia la regola e si guarda se l'osservatore la segue.**
     Confrontare i due risultati non basterebbe: una COPIA fedele dei tre
     controlli darebbe lo stesso elenco e la prova resterebbe verde -- e' il
     difetto n.1 di questo progetto, la prova che non puo' fallire. Qui la
@@ -122,8 +123,9 @@ def test_la_regola_e_QUELLA_DEL_NUCLEO_non_una_seconda_uguale(monkeypatch):
 
     Mutazione che la uccide: ricopiare i tre controlli dentro `house_lines`.
     """
-    monkeypatch.setattr(observer, "digest_visible_entity_ids",
-                        lambda casa: frozenset({"sensor.wifi_signal"}))
+    monkeypatch.setattr(topology, "visibility_classes",
+                        lambda e: () if e["id"] == "sensor.wifi_signal"
+                        else (("servizio", "finta"),))
 
     righe = observer.house_lines(_casa())
 

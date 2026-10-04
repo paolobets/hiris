@@ -20,6 +20,10 @@ Mutazioni ESEGUITE il 04/10/2026 e ripristinate (`git status` pulito):
   `sensor.sensore_a_temperatura` (vera `stanza_uno`, emessa `__senza_area__`);
 - la derivazione: un `_ID_PROVA = "__prova__"` nuovo in `topology` e lo stesso
   letterale in `house_query` -- rossa, senza toccare la prova.
+
+La prova sulla domanda `dove` della sonda e' uscita col Task 12 (04/10/2026),
+insieme alla domanda: l'osservatore chiede l'area a `House.where`, e non c'e'
+piu' una seconda copia da confrontare.
 """
 import ast
 import sys
@@ -98,14 +102,6 @@ def test_la_scheda_di_un_entita_dice_dove_sta(house):
     detail = view(house, [], [], "entita", "sensor.sensore_a_temperatura",
                   judgments=None)
     assert detail["dove"] == house.where("sensor.sensore_a_temperatura")
-
-
-def test_la_sonda_non_trova_disaccordi_fra_il_dove_e_la_regola():
-    """La domanda `dove` della sonda chiama anche `House.where`: i disaccordi
-    che restano sono solo quelli dell'osservatore (Task 12)."""
-    result = sonda_parita.run(sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
-    assert "house.where" in result["dove"]["chiamate"]
-    assert [case for case in result["dove"]["casi"] if "area_dove" in case] == []
 
 
 # --- i cancelli: ogni regola dalla sua funzione ---------------------------

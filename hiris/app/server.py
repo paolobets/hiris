@@ -46,7 +46,6 @@ from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
 from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
-from .home_space.briefing import digest_visible_entity_ids
 from .home_space.historian import (
     day_boundaries,
     house_timezone,
@@ -60,7 +59,6 @@ from .home_space.topology import (
     AREAS_PER_ROUND,
     choose_sample,
     compare_with_home_assistant,
-    device_name,
     hierarchy,
     rebuild,
     tree_areas,
@@ -1659,7 +1657,6 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # La casa di questo giro (R13): l'anagrafe e lo specchio di adesso,
         # una volta. Vale il giro e basta.
         house = House.read(home_space_store, app.get("entity_cache"))
-        home_space = house.home_space
         collected, letto = _collect_scope_turn(app, store, house)
         if collected is not None:
             return collected
@@ -1681,7 +1678,9 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         if _retry_hold(store, now=time.time()):
             return None
 
-        candidates = sorted(digest_visible_entity_ids(home_space))
+        # Chi l'osservatore guarda lo dice la casa (Task 12): la stessa
+        # scelta di `observer.watched_ids`, non una seconda lettura.
+        candidates = sorted(house.visible_entities())
         last = store.last_reconsideration()
         objective = store.objective()
         # **Una riconsiderazione e' una CAMPAGNA di piu' lotti.** La domanda
@@ -1750,8 +1749,11 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # con `annota`). I lotti successivi la misuravano su tutte le entita'
         # -- dieci sonde, piu' sette se la memoria cade dentro la scala -- e
         # la buttavano.
+        # **L'insieme e' quello del registratore, non quello dell'osservatore**
+        # (Task 12): la memoria e' di Home Assistant, e la provano anche le
+        # entita' che nessuno guarda. Ogni entita' del registro, come prima.
         window_s = None if in_corso else await measure_memory_window(
-            ha_client, sorted(e["id"] for e in home_space.get("entita", []) if e.get("id")))
+            ha_client, sorted(house.entity_ids()))
         if route == "ponte":
             return _enqueue_scope_turn(app, store, house, reason=why,
                                        window_s=window_s, lotto=lotto,
@@ -1788,9 +1790,11 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     casa = app.get("home_space_store")
     if sapere is None or casa is None:
         return {}, {}, {}, None
-    home_space = casa.read()
-    nomi = {str(d.get("id")): device_name(d)
-            for d in home_space.get("dispositivi") or [] if d.get("id")}
+    # I dispositivi e i loro nomi li dice la casa (Task 12): il nome,
+    # altrimenti l'id (`House.name`).
+    house = House.read(casa, app.get("entity_cache"))
+    nomi = {device_id: house.name("dispositivo", device_id)
+            for device_id in house.device_ids()}
     ricette = {}
     for device_id in nomi:
         scritta = recipe_turn.recipe_for(sapere, device_id)

@@ -19,9 +19,11 @@ la casa cambia sotto di lui: l'anagrafe ricostruita (un altro oggetto da
 I metodi del §4.1 della spec arrivano un task alla volta: qui ci sono la
 gerarchia, la scelta di «di chi» (`select`, l'ex `house_query.select_subjects`),
 la VISIBILITA' con la causa (`visibility`) e l'IDENTITA' (`name`), dal Task 5, e
-il dove (`where`), dal Task 6. Le regole stanno in `topology` (`visibility`,
-`live_name`, `device_name`), che sta SOTTO questo modulo: la gerarchia le applica
-e non puo' importare la casa.
+il dove (`where`), dal Task 6; il tipo (`kind_of`, `has_statistics`), dal
+Task 7; cio' che gli attori compongono (`visible_entities`, `entities_of`,
+`device_entities`, `device_ids`, `entity_ids`), dal Task 12. Le regole stanno
+in `topology` (`visibility`, `live_name`, `device_name`), che sta SOTTO questo
+modulo: la gerarchia le applica e non puo' importare la casa.
 """
 from __future__ import annotations
 
@@ -31,6 +33,7 @@ from . import topology
 from .ha_vocabulary import domain_of, has_statistics
 from .house_query import (
     _BEHAVIOR_KINDS,
+    HouseFilters,
     Selection,
     _behavior_matches,
     _entity_matches,
@@ -64,6 +67,9 @@ class House:
         self._places: dict[str, tuple[dict, dict, dict]] | None = None
         self._device_index: dict[str, dict] | None = None
         self._entities: dict[str, dict] | None = None
+        self._visible: list[str] | None = None
+        self._by_device: dict[str, list[dict]] | None = None
+        self._visible_set: frozenset[str] | None = None
 
     @classmethod
     def read(cls, home_space_store, cache, statistic_ids=None) -> House:
@@ -190,12 +196,16 @@ class House:
                                                   self.mirror, now, places))
         return Selection(matched, behaving, excluded)
 
-    def _entity(self, entity_id: str) -> dict | None:
-        """La voce dell'anagrafe di un'entita', per id; l'indice si fa una volta."""
+    def _entity_index(self) -> dict[str, dict]:
+        """Le voci dell'anagrafe per id, nell'ordine dell'anagrafe; una volta."""
         if self._entities is None:
             self._entities = {e["id"]: e for e in self.home_space.get("entita") or []
                               if isinstance(e, dict) and e.get("id")}
-        return self._entities.get(entity_id)
+        return self._entities
+
+    def _entity(self, entity_id: str) -> dict | None:
+        """La voce dell'anagrafe di un'entita', per id."""
+        return self._entity_index().get(entity_id)
 
     def visibility(self, entity_id: str) -> tuple[str, str | None] | None:
         """VISIBILITA' (§4.1): la classe di un'entita' con la sua causa --
@@ -246,6 +256,10 @@ class House:
                                               self.mirror.classes.get(entity_id)),
                 "unita": topology.live_first(entry.get("unita"),
                                              self.mirror.units.get(entity_id)),
+                # Cio' che l'integrazione dichiara di se' (`energy_today`, non
+                # «Potenza» da indovinare): fa parte del tipo, e l'osservatore
+                # lo manda al modello (Task 12).
+                "translation_key": entry.get("translation_key"),
                 "statistiche": self.has_statistics(entity_id),
                 # Da dove viene la risposta (atomicita'): l'elenco di Home
                 # Assistant, o la regola del sorgente quando l'elenco manca.
@@ -259,3 +273,61 @@ class House:
         che usa il watcher)."""
         return has_statistics(entity_id, self.mirror.state_classes.get(entity_id),
                               self.statistic_ids)
+
+    # -- cio' che gli attori compongono (Tappa 3, Task 12; R13) -------------
+    #
+    # Fino al 04/10/2026 osservatore, ricette e giri del server scorrevano le
+    # tabelle dell'anagrafe da se': chi guarda, di chi e' un'entita', quali
+    # dispositivi ci sono. Ogni regola nuova della casa (il nome vivo, l'area
+    # ereditata, il fuori) li lasciava indietro. Ora chiedono qui, e il
+    # cancello `tests/test_attori_compongono.py` vieta che tornino a scorrere.
+
+    def entity_ids(self) -> list[str]:
+        """Ogni entita' che il registro conosce, nell'ordine dell'anagrafe:
+        anche disabilitate, nascoste e di servizio. Per chi chiede a Home
+        Assistant una cosa che vale per il registratore intero (la finestra
+        della memoria, `cadence.measure_memory_window`), non per chi guarda."""
+        return list(self._entity_index())
+
+    def visible_entities(self) -> list[str]:
+        """Le entita' che un attore guarda di suo: quelle che `select` senza
+        filtri lascia dentro -- la regola del fuori, `topology.visibility_
+        classes`: niente disabilitate, nascoste o di servizio --
+        nell'ordine dell'anagrafe (l'ordine in cui il modello le leggeva
+        fino a ieri; quale sia l'ordine giusto e' della resa, Tappa 4).
+
+        L'osservatore la applicava chiamando `briefing.digest_visible_entity_
+        ids`, le ricette non la applicavano affatto (B-03, D2)."""
+        if self._visible is None:
+            # `now` non conta: senza filtri sull'eta' `select` non lo legge.
+            chosen = {entry["id"] for entry, _area, _where
+                      in self.select(HouseFilters(), ("entita",), None, now=0.0).entities}
+            self._visible = [eid for eid in self._entity_index() if eid in chosen]
+        return self._visible
+
+    def device_entities(self, device_id: str) -> list[dict]:
+        """Le voci dell'anagrafe di un dispositivo, TUTTE -- disabilitate,
+        nascoste e di servizio comprese -- nell'ordine dell'anagrafe (B-11):
+        per la porta che le mostra separate e contate (`queries._view_device`).
+        «Di chi e' un'entita'» si chiedeva in linea in due posti."""
+        if self._by_device is None:
+            self._by_device = {}
+            for entry in self._entity_index().values():
+                if entry.get("dispositivo_id"):
+                    self._by_device.setdefault(entry["dispositivo_id"], []).append(entry)
+        return self._by_device.get(device_id, [])
+
+    def entities_of(self, device_id: str) -> list[str]:
+        """Le entita' di un dispositivo che un attore guarda (B-03, B-11; D2
+        «si'», decisione del proprietario del 03/10/2026): quelle di
+        `device_entities` che la regola del fuori di `visible_entities` lascia
+        dentro, nell'ordine dell'anagrafe."""
+        if self._visible_set is None:
+            self._visible_set = frozenset(self.visible_entities())
+        return [entry["id"] for entry in self.device_entities(device_id)
+                if entry["id"] in self._visible_set]
+
+    def device_ids(self) -> list[str]:
+        """I dispositivi del registro, nell'ordine dell'anagrafe (chi ruota
+        su di loro, `recipe_turn.who_to_ask`, ruota su quest'ordine)."""
+        return list(self._devices())

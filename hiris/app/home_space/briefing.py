@@ -590,8 +590,9 @@ def digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
     testo che dava due totali diversi per la stessa parola. Una funzione sola
     era l'unico modo per cui le due sezioni non potessero tornare a divergere
     in silenzio: e' la terza fondamenta, consistenza, dentro un'unica pagina.
-    Dal 29/09/2026 nel nucleo la legge solo `_capability_lines`; fuori,
-    l'osservatore e `server.py` (qui sotto).
+    Dal 29/09/2026 nel nucleo la legge solo `_capability_lines`; fuori, dal
+    04/10/2026 (Tappa 3, Task 12), l'osservatore e il suo giro chiedono la
+    stessa regola a `House.visible_entities` (`topology.visibility_classes`).
 
     **Pubblica dall'11/09/2026**, e per la stessa ragione per cui lo divento'
     `historian.home_space_zone`: l'osservatore (`mind/observer.py`) applica la

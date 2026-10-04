@@ -48,7 +48,6 @@ import logging
 import re
 
 from ..home_space.house import House
-from ..home_space.topology import device_name
 from ..steering import misura_turno
 from .knowledge import Fact
 from .operations import REGISTRY_VERSION
@@ -155,34 +154,29 @@ Se non sai cosa misurare, rispondi con {"why": "...", "steps": []}.
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
-def _device_entities(house: House, device_id: str) -> list[dict]:
-    return [e for e in (house.home_space.get("entita") or [])
-            if e.get("dispositivo_id") == device_id]
-
-
-def _device_name(house: House, device_id: str) -> str:
-    for d in house.home_space.get("dispositivi") or []:
-        if d.get("id") == device_id:
-            return device_name(d)
-    return device_id
-
-
 def device_lines(house: House, device_id: str) -> list[str]:
     """Una riga per entita' del dispositivo: identificatore, nome, classe,
     unita'.
 
+    **Le entita' sono quelle che la casa guarda** (`House.entities_of`, D2
+    «si'», decisione del proprietario del 03/10/2026; B-03, B-11): niente
+    disabilitate, nascoste o di servizio, la stessa regola del fuori
+    dell'osservatore. Fino al 04/10/2026 la ricetta riceveva ogni entita' del
+    dispositivo: sulla cattura del 01/10 sera 1.125 righe che l'osservatore
+    esclude, su 1.400. Il nome e il tipo li dice la casa (`House.name`, D1;
+    `House.kind_of`).
+
     Stesso separatore di `observer.house_lines` e i suoi primi quattro campi,
-    ma NON e' la stessa riga: qui mancano l'area e il `translation_key`, e non
-    si filtra per cio' che compete all'osservatore. Sono due composizioni
-    scritte a mano, libere di divergere.
+    ma NON e' la stessa riga: qui mancano l'area e il `translation_key`. Le
+    due rese le unifica la Tappa 4.
     """
     lines = []
-    for e in _device_entities(house, device_id):
-        parts = [str(e.get("id") or "")]
-        # Classe e unita' DI ADESSO (B-17): l'anagrafe porta solo cio' che il
-        # registro dichiara.
-        kind = house.kind_of(str(e.get("id") or "")) or {}
-        for value in (e.get("nome"), kind.get("classe"), kind.get("unita")):
+    for entity_id in house.entities_of(device_id):
+        parts = [entity_id]
+        kind = house.kind_of(entity_id) or {}
+        name = house.name("entita", entity_id)
+        for value in (None if name == entity_id else name, kind.get("classe"),
+                      kind.get("unita")):
             if value:
                 parts.append(str(value))
         lines.append(" · ".join(parts))
@@ -253,9 +247,12 @@ def build_device_question(objective: str, house: House, device_id: str,
     lines = device_lines(house, device_id)
     if not lines:
         return None
+    # Il nome, altrimenti l'id (`House.name`); l'id anche per un dispositivo
+    # che l'anagrafe non conosce.
+    name = house.name("dispositivo", device_id) or device_id
     return (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
-        f"Il dispositivo si chiama «{_device_name(house, device_id)}» e ha "
+        f"Il dispositivo si chiama «{name}» e ha "
         f"{len(lines)} entita'. Ogni riga e':\n"
         "identificatore · nome · classe · unita'\n"
         "(i campi che mancano sono assenti, non vuoti).\n\n"
@@ -275,7 +272,7 @@ def _series_block(house: House, device_id: str,
     """
     if with_series is None:
         return ""
-    ids = [str(e.get("id") or "") for e in _device_entities(house, device_id)]
+    ids = house.entities_of(device_id)
     con = [i for i in ids if i in with_series]
     mute = [i for i in ids if i and i not in with_series]
     if not mute:
@@ -372,7 +369,7 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
             "capito»)", device_id)
         return {"scritta": False, "problemi": ["il modello non ha risposto"],
                 "risposta": False}
-    entities = {str(e.get("id")) for e in _device_entities(house, device_id)}
+    entities = set(house.entities_of(device_id))
     data, reason = read_recipe(answer)
     problems = [reason] if reason else []
     if data is not None:
@@ -442,9 +439,10 @@ def devices_to_ask(store, house: House, watched: set[str]) -> list[str]:
     """I dispositivi che **pesano** e non hanno ancora una risposta.
 
     «Pesa» = almeno una sua entita' e' dentro lo scope, cioe' l'osservatore ha
-    gia' deciso che quello che fa conta. Chiedere per un dispositivo che
-    nessuno guarda sarebbe un giro del modello per un numero che nessuno
-    leggera'.
+    gia' deciso che quello che fa conta. Le entita' sono quelle che la casa
+    guarda (`House.entities_of`, D2): le stesse che la domanda mostrerebbe.
+    Chiedere per un dispositivo che nessuno guarda sarebbe un giro del modello
+    per un numero che nessuno leggera'.
 
     «Non ha ancora una risposta» guarda **tutti e tre** i campi: una ricetta
     scritta, un rifiuto ragionato, oppure un «non capito» gia' registrato.
@@ -458,12 +456,8 @@ def devices_to_ask(store, house: House, watched: set[str]) -> list[str]:
     dispositivo non e' cambiato, e' cambiato cio' che sappiamo calcolare.
     """
     to_ask = []
-    for device in house.home_space.get("dispositivi") or []:
-        device_id = str(device.get("id") or "")
-        if not device_id:
-            continue
-        entities = {str(e.get("id")) for e in _device_entities(house, device_id)}
-        if not entities & watched:
+    for device_id in house.device_ids():
+        if not set(house.entities_of(device_id)) & watched:
             continue
         if store.get("dispositivo", device_id, RECIPE_FIELD) is not None:
             continue
@@ -541,10 +535,7 @@ def _named_recipes(store, house: House):
     """`(device_id, entita' nominate)` per ogni dispositivo dell'anagrafe con
     una ricetta che nomina almeno un'entita': le sole che la potatura puo'
     togliere."""
-    for device in house.home_space.get("dispositivi") or []:
-        device_id = str(device.get("id") or "")
-        if not device_id:
-            continue
+    for device_id in house.device_ids():
         written = recipe_for(store, device_id)
         if written is None:
             continue

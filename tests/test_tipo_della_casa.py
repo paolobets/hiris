@@ -62,10 +62,10 @@ def test_kind_of_da_dominio_classe_e_unita_dello_specchio():
     house = _house()
     assert house.kind_of(TERMOMETRO) == {
         "dominio": "sensor", "classe": "temperature", "unita": "°C",
-        "statistiche": True, "statistiche_da": "regola"}
+        "translation_key": None, "statistiche": True, "statistiche_da": "regola"}
     assert house.kind_of("light.luce_uno") == {
         "dominio": "light", "classe": None, "unita": None,
-        "statistiche": False, "statistiche_da": "regola"}
+        "translation_key": None, "statistiche": False, "statistiche_da": "regola"}
 
 
 def test_kind_of_non_inventa_un_entita_che_nessuno_conosce():

@@ -1191,8 +1191,7 @@ def _view_device(house: House, memories: list[dict], reference,
     # elencate dentro `entita` spendevano il tetto di `ROWS_MAX` righe con
     # voci senza stato. La regola della porta e' una: «disabilitate sempre
     # escluse e contate» (spec §2.4). `disabilitato` del dispositivo resta.
-    raw_device_entities = [
-        e for e in home_space.get("entita") or [] if e.get("dispositivo_id") == reference]
+    raw_device_entities = house.device_entities(reference)
     # La classe dalla regola unica (B-01): qui era scritta in linea.
     classes = [(e, visibility(e)[0]) for e in raw_device_entities]
     disabled_count = sum(1 for _e, cls in classes if cls == "disabilitata")
