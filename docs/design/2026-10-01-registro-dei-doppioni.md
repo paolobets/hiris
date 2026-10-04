@@ -43,12 +43,9 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| B-01 | «Questa entità è fuori?»: partizione, digesto e le loro copie | E | PS | 10 coppie di copie identiche su 1525 entità; hierarchy visibile 954 contro digesto 324 (per costruzione) | cop-3 (incompleta); cop-4 (righe) | reg · cop-3 · cop-4 |
-| B-02 | Regole «fuori» più larghe per scelta: `_view_integration`, `_unreliable_state`, conteggi, «senza nome» | D | DP | totali diversi in 17 integrazioni su 39 (974 contro 324); 35 senza nome, 10 fuori dal digesto | cop-4 (righe); Tappa 3 (imprecisa) | reg · cop-3 · cop-4 |
 | B-03 | Le entità di un dispositivo senza filtro: `recipe_turn.device_lines` | D | CC | 1138 entità in più di `house_lines` su 1413; 548 disabilitate contate | cop-6 (nome) | reg · cop-6 |
 | B-04 | `action/verification.py:613-625`: «ha uno stato» al posto di «è disabilitata» | D | DP | differisce dal digesto per 650 entità (974 contro 324) |  | reg |
 | B-05 | Come si chiama un'entità: più politiche (3-4 vive, più quella delle automazioni) | D | CC | nome di `guarda` ≠ `search` per 944 entità su 1525; nome davvero diverso: 0 casi | cop-3 (incompleta); cop-4 (righe); cop-6 (incompleta); cop-9 (conteggio) | reg · cop-3 · cop-4 · cop-6 · cop-9 |
-| B-06 | Nome del dispositivo: derivazioni e campo senza lettori | E | PS |  |  | reg · cop-4 |
 | B-07 | «È un valore o un non-valore?»: `privacy._NEUTRAL_STATES` | E | PS | 0 stati cambiati su 169 entità mobili |  | reg · cop-5 · cop-6 |
 | B-08 | `briefing._unreliable_state` conta solo `unknown` | D | CC | 328 entità `unavailable` su 974; esito invariato sulla casa (diverge solo la controprova sintetica) |  | reg · cop-4 |
 | B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | E | PS | 0 integrazioni su 39 | Tappa 3 (verdetto) | reg · cop-4 · cop-5 |
@@ -897,3 +894,6 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-35 | `house_history` importa da `mind` (`integration_of`), contro «`home_space` non importa da `mind`» | Tappa 3 (da rilasciare) | f6edebd | integration_of in home_space/log_source.py, type_subject e MEANING_FIELD in home_space/type_judgments.py; tests/test_confine_home_space.py vieta home_space -> mind, senza eccezioni. Tappa 3, Task 7 (04/10/2026) |
 | B-41 | Lo specchio vivo in due forme: tupla di sei dizionari e sei argomenti separati | Tappa 3 (da rilasciare) | fdad925 | topology.Mirror: lo specchio in una forma, coi campi per nome; la tupla di sei, la settupla di ToolDispatcher._mirror e i sei argomenti di queries.view sono usciti |
 | A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | Tappa 3 (da rilasciare) | fdad925 | readable si compone in topology.read_mirror; uscite le cinque composizioni a mano di tools.py, la copia di compose_briefing e handlers_memory._page_mirror. actuator.py passava gia' da states_by_id (Tappa 2) |
+| B-01 | «Questa entità è fuori?»: partizione, digesto e le loro copie | Tappa 3 (da rilasciare) | cb84c86 | una regola, topology.visibility_classes (classe con la causa); le sei copie la chiamano; il cancello regola-del-fuori ha la funzione come proprietario e zero eccezioni. Tappa 3, Task 5 (04/10/2026) |
+| B-02 | Regole «fuori» più larghe per scelta: `_view_integration`, `_unreliable_state`, conteggi, «senza nome» | Tappa 3 (da rilasciare) | cb84c86 | le tre porte larghe dichiarano le classi che contano (D7); il conteggio doppio «nascosta e di servizio» del nucleo e' singolo. Tappa 3, Task 5 (04/10/2026) |
+| B-06 | Nome del dispositivo: derivazioni e campo senza lettori | Tappa 3 (da rilasciare) | cb84c86 | topology.device_name, il nome altrimenti l'id, in nucleo, pagine del cervello, resoconto, ricette e guarda. Tappa 3, Task 5 (04/10/2026) |
