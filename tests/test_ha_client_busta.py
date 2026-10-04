@@ -79,6 +79,7 @@ SUCCESS = {
     "trace/get": {},
     "frontend/get_translations": {"resources": {}},
     "get_config": {},
+    "energy/get_prefs": {"energy_sources": [], "device_consumption": []},
 }
 
 HA_ERROR = {"code": "unknown_error", "message": "rifiutato per prova"}

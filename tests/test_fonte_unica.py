@@ -217,6 +217,11 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
     "read_registries": (
         "home_space/topology.py",
         "l'anagrafe: i registri letti insieme per costruire la casa"),
+    "energy_prefs": (
+        "home_space/energy.py",
+        ("la dashboard Energia come oggetto della casa (piano degli attori, Task "
+         "2.2): letta una volta per giro dell'anagrafe, chiesta dal giro delle "
+         "ricette")),
     "get_config": (
         "home_space/topology.py",
         ("l'anagrafe: il sistema di riferimento della casa "

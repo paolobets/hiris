@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app import server
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind import recipe_turn
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
@@ -54,7 +55,13 @@ RICETTA = {
 }
 
 
-class _Anagrafe:
+class _Anagrafe(HomeSpace):
+    """L'anagrafe vera con la casa di queste prove: serve intera, perche' il
+    giro le chiede anche la dashboard Energia (Task 2.2 degli attori)."""
+
+    def __init__(self):
+        super().__init__("/percorso/che/non/esiste")
+
     def read(self):
         return CASA
 
@@ -250,7 +257,10 @@ async def test_una_ricetta_potata_si_richiede_nello_stesso_giro(stores):
     _with_recipe(sapere)
     archivio.decide_scope("sensor.prodotta", inside=True, reason="pesa",
                           author="proprietario")
-    house = CasaFinta(synthetic_inputs(), answers={_LIST: lambda extra: []})
+    # Una casa senza dashboard Energia: la domanda resta quella di prima.
+    house = CasaFinta(synthetic_inputs(), answers={_LIST: lambda extra: []},
+                      refuse={"energy/get_prefs": {"code": "not_found",
+                                                   "message": "No prefs"}})
     modello = _Modello()
     app = {**_app(stores, house), "llm_router": modello}
 

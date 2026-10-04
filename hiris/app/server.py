@@ -47,6 +47,7 @@ from .chat_thread import SyncTurnsInFlight, thread_for
 from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
+from .home_space.energy import energy_dashboard
 from .home_space.historian import (
     day_boundaries,
     house_timezone,
@@ -2550,13 +2551,19 @@ async def recipe_round(app) -> dict | None:
         if device_id is None:
             return None
         objective = store.objective()["testo"]
+        # **La dashboard Energia, citata a parte** (piano degli attori, Task
+        # 2.2-2.3, D6): letta una volta per giro dell'anagrafe, qui solo
+        # quando c'e' davvero una domanda da fare.
+        dashboard = (await energy_dashboard(cliente, home_space_store,
+                                            with_series=with_series)
+                     if cliente is not None else None)
 
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
         if route == "ponte":
             return _enqueue_recipe_turn(app, home_space, device_id,
                                         objective=objective,
-                                        with_series=with_series)
+                                        with_series=with_series, energy=dashboard)
         if runner is None:
             logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
             return None
@@ -2565,8 +2572,8 @@ async def recipe_round(app) -> dict | None:
         esito = await recipe_turn.ask(
             runner, sapere, home_space, device_id, objective=objective,
             who=f"modello ({route})", when_ts=time.time(),
-            with_series=with_series, measurements=app.get("usage"),
-            species="ricette")
+            with_series=with_series, energy=dashboard,
+            measurements=app.get("usage"), species="ricette")
         logger.info("ricette: giro finito -- %s", esito)
         return esito
     except Exception as exc:
@@ -2601,11 +2608,12 @@ def _troppo_presto_per_richiedere(app) -> bool:
 
 def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
                          objective: str,
-                         with_series: set[str] | None = None) -> dict | None:
+                         with_series: set[str] | None = None,
+                         energy: dict | None = None) -> dict | None:
     """Accoda al piano la domanda su un dispositivo, e torna subito."""
     from .api.handlers_models import _STORE_DEFAULTS
     job = recipe_turn.bridge_turn(objective, home_space, device_id,
-                                  with_series=with_series)
+                                  with_series=with_series, energy=energy)
     if job is None:
         return None
     deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
