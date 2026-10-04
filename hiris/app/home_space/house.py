@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from ..memory.resolver import Lookup, costruisci_indice
 from . import topology
 from .ha_vocabulary import domain_of, has_statistics
 from .house_query import (
@@ -70,6 +71,7 @@ class House:
         self._visible: list[str] | None = None
         self._by_device: dict[str, list[dict]] | None = None
         self._visible_set: frozenset[str] | None = None
+        self._lookup: Lookup | None = None
 
     @classmethod
     def read(cls, home_space_store, cache, statistic_ids=None) -> House:
@@ -331,3 +333,19 @@ class House:
         """I dispositivi del registro, nell'ordine dell'anagrafe (chi ruota
         su di loro, `recipe_turn.who_to_ask`, ruota su quest'ordine)."""
         return list(self._devices())
+
+    def lookup(self) -> Lookup:
+        """L'indice con cui la memoria verifica le sue ancore
+        (`memory.resolver.costruisci_indice`), da QUESTA anagrafe, una volta
+        per casa (A-13, Tappa 3, Task 12).
+
+        Fino al 04/10/2026 si costruiva in tre posti con tre ingressi:
+        `remember` in chat dietro una cache di vita lunga (`LookupCache`,
+        con la data dell'anagrafe come chiave), le due rotte dei ricordi da
+        capo a ogni richiesta. Ora viene dalla stessa istantanea del turno
+        che da' lo specchio delle unita': l'indice e le unita' non possono
+        guardare due anagrafi diverse. Un'anagrafe mai letta e' `{}`, e il
+        suo indice e' vuoto -- come prima."""
+        if self._lookup is None:
+            self._lookup = costruisci_indice(self.home_space)
+        return self._lookup

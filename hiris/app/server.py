@@ -67,7 +67,6 @@ from .keeper.exchange import interpreta_promise
 from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
-from .memory.lookup_cache import LookupCache
 from .memory.store import MemoryStore
 from .mind import actuator, actuator_turn, analyst, analyst_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
@@ -3652,17 +3651,6 @@ async def _on_startup(app: web.Application) -> None:
     # e il nucleo lo dichiara: la finestra in cui HIRIS tace su questo e' larga
     # quanto il boot.
     await reread_ha_problems(app, ha_client)
-
-    # Task B7: la cache del Lookup (`memory/lookup_cache.py`), di vita
-    # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
-    # `ToolDispatcher` che la riceve (`create_tool_dispatcher`
-    # in `api/handlers_chat.py`). Prima di questo task `_search`/`_remember`
-    # ricostruivano un `Lookup` da zero A OGNI chiamata e lo buttavano
-    # subito: si ripagava ogni volta la lettura dell'anagrafe E la
-    # compilazione di un'espressione regolare per termine (misurato: la
-    # compilazione domina il costo, non la lettura -- vedi il rapporto del
-    # task). Costruita vuota qui, si riempie alla prima `search`/`remember`.
-    app["tools_lookup_cache"] = LookupCache()
 
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
     # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui

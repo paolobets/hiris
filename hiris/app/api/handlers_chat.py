@@ -201,13 +201,6 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     turno del ponte che non e' di chat, l'officina non restringe PER FILO
     (vedi `Workshop.apply`): il soffitto (chi puo' costruire) resta invariato
     e continua a mordere.
-
-    Task B7 -- `lookup_cache=app.get("tools_lookup_cache")`: l'oggetto di
-    vita lunga costruito accanto a `entity_cache` in `server.py`, non uno
-    nuovo per turno. Il dispatcher stesso nasce a ogni turno (e' il motivo per
-    cui questa funzione esiste), ma la cache dell'indice che gli si passa
-    dentro no -- e' cosi' che il riuso vale FRA i turni, non solo dentro uno
-    (vedi `memory/lookup_cache.py` per la chiave e il perche').
     """
     return ToolDispatcher(
         app.get("home_space_store"),
@@ -227,7 +220,6 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         phrase=frase,
         cache=app.get("entity_cache"),
         actuator=app.get("action_actuator"),
-        lookup_cache=app.get("tools_lookup_cache"),
         # Il canale verso Home Assistant, per `related`: quello strumento non
         # legge l'archivio, chiede a HA chi tocca una cosa
         # (`search/related`). Senza questa riga sarebbe uno strumento sempre
