@@ -63,6 +63,56 @@ manca diventerebbe «Home Assistant non ha risposto», e una prova verde per la
 ragione sbagliata (piano della Tappa 2, «Cosa guardare in revisione», 2).
 Chi vuole il silenzio lo inietta (`silence=`), e allora e' il silenzio vero.
 
+## Le scritture si registrano, e non si eseguono
+
+`call_service`, le tre primitive della configurazione (`read_configuration`
+compresa: passa dallo stesso canale), gli helper, le etichette, il pannello:
+il client vero le manda, la casa finta le REGISTRA in `calls` e risponde cio'
+che la prova le ha detto di rispondere. Non esegue niente: una casa che
+«ricorda» cio' che si e' salvato la scrive la prova, dentro la sua risposta.
+Le scritture REST si nominano col metodo davanti al percorso (`"POST
+/api/services/light/turn_on"`, `"DELETE /api/config/automation/config/1"`):
+lo stesso percorso e' una lettura con `GET` e una scrittura con `POST`. Una
+`GET` resta il percorso nudo.
+
+**La forma delle risposte, letta sul tag `2026.9.4` il 04/10/2026**
+(`helpers/http.py::HomeAssistantView.json_message`,
+`components/config/view.py`, `components/api/__init__.py`):
+
+- un rifiuto REST di Home Assistant e' `{"message": testo}` (piu' `"code"`
+  quando c'e') con lo stato HTTP: `GET` di una chiave che non c'e' -> 404
+  «Resource not found», `DELETE` di una chiave che non c'e' -> 400
+  «Resource not found», un corpo non valido -> 400 «Message malformed: ...»;
+  un servizio sconosciuto o dati non validi -> `HTTPBadRequest`, cioe' 400
+  col corpo di testo «400: Bad Request», che non e' JSON. `Refused(stato)`
+  senza testo e' quella forma; `Refused(stato, testo)` la prima;
+- una scrittura di configurazione riuscita: `{"result": "ok"}`;
+- `POST /api/services/<dominio>/<servizio>` riuscita: la lista degli stati
+  cambiati durante la chiamata (senza `?return_response`, che il client non
+  chiede).
+
+## Le risposte nel tempo
+
+- **Per argomento**: una risposta e' una funzione di cio' che e' stato
+  chiesto (`extra` per un comando WS, il percorso per una `GET`, percorso e
+  corpo per una scrittura), e puo' rendere `Refused(...)` o `SILENT` invece di
+  un risultato: un rifiuto o un silenzio per quella domanda sola, anche dentro
+  una raffica che per il resto risponde. `Silence(motivo)` e' il silenzio con
+  un motivo suo (la connessione che cade con quel messaggio).
+- **Per chiamata successiva**: `in_turn(a, b, ...)` risponde `a` alla prima
+  domanda, `b` alla seconda; finita la sequenza solleva `UnservedCommand`.
+- **Dopo un ritardo, o mai**: `delay={nome: secondi}` fa arrivare la risposta
+  dopo quei secondi; `math.inf` non la fa arrivare mai; un `asyncio.Event` la
+  trattiene finche' la prova non lo accende. Sul WebSocket vale il tetto
+  `timeout` del vero `_ws_send`: oltre, la risposta e' `None` come dal vero
+  (il tetto vale per la connessione intera, non per messaggio). Una `GET` o
+  una scrittura non hanno tetto nel client: aspettano.
+- **Gli annunci**: `announce(tipo, dati)` fa arrivare un evento del bus agli
+  ascoltatori del client, dallo smistamento vero (`_dispatch_bus_event`), in
+  modo sincrono: e' cio' che serve a far arrivare un `state_changed` DENTRO
+  una chiamata. Il ciclo d'ascolto vero (`_listen`) si prova con
+  `SilentConnection.push_event`.
+
 Uso (dalle prove e dagli attrezzi):
     house = CasaFinta(inputs)                                   # gli ingressi
     house = CasaFinta(inputs, refuse={"repairs/list_issues":
@@ -70,11 +120,18 @@ Uso (dalle prove e dagli attrezzi):
                                       "/api/states": 500})
     house = CasaFinta(inputs, silence={"system_log/list"})
     house = CasaFinta(inputs, answers={"search/related": lambda extra: {...}})
+    house = CasaFinta(inputs, answers={
+        "POST /api/services/": lambda path, body: [],
+        "frontend/get_translations": in_turn(SILENT, {"resources": {}})},
+        delay={"/api/states": math.inf})
     house.calls, house.connections                             # cosa ha chiesto
 """
 from __future__ import annotations
 
 import asyncio
+import http
+import json
+import math
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -84,6 +141,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import aiohttp
+from multidict import CIMultiDict, CIMultiDictProxy
+from yarl import URL
 
 from hiris.app.proxy.ha_client import HAClient
 
@@ -115,6 +174,79 @@ class UnservedCommand(BaseException):
                ": gli ingressi non lo portano. Lo si aggiunge con `answers=`, "
                "`refuse=` o `silence=`, o la prova chiede qualcosa di nuovo"))
         self.command = command
+
+
+class Refused:
+    """Un rifiuto di Home Assistant per UNA domanda, reso da una risposta
+    (`answers=`) o scritto in `refuse=`.
+
+    Sul WebSocket `code` e' il codice d'errore (`"not_found"`) e `message` il
+    testo: `{"success": false, "error": {"code", "message"}}`. Su REST `code`
+    e' lo stato HTTP; con `message` il corpo e' `{"message": message}`
+    (`json_message`), senza e' il testo di `HTTPBadRequest` e simili --
+    «400: Bad Request», che non e' JSON."""
+
+    def __init__(self, code, message: str = "") -> None:
+        self.code = code
+        self.message = message
+
+    def __repr__(self) -> str:
+        return f"Refused({self.code!r}, {self.message!r})"
+
+
+class Silence:
+    """Il silenzio per UNA domanda, reso da una risposta: sul WebSocket nessun
+    messaggio (`None` dal vero `_ws_send`), su REST la connessione che cade --
+    `aiohttp.ClientConnectionError` col motivo `reason`, che e' cio' che il
+    chiamante vede risalire da una scrittura (il client non la avvolge)."""
+
+    def __init__(self, reason: str = "casa finta: silenzio iniettato") -> None:
+        self.reason = reason
+
+    def __repr__(self) -> str:
+        return f"Silence({self.reason!r})"
+
+
+#: Il silenzio col motivo di sempre.
+SILENT = Silence()
+
+
+def in_turn(*replies) -> Callable:
+    """Una risposta per chiamata successiva: la prima domanda riceve
+    `replies[0]`, la seconda `replies[1]`. Ognuna e' un risultato, una
+    funzione della domanda (chiamata con gli stessi argomenti), `Refused(...)`
+    o `SILENT`. Finita la sequenza, la domanda in piu' solleva
+    `UnservedCommand`: una prova che chiede piu' di quanto ha scritto lo deve
+    vedere."""
+    pending = list(replies)
+
+    def reply(*asked):
+        if not pending:
+            raise UnservedCommand(
+                "in_turn", f"la sequenza di {len(replies)} risposte e' finita")
+        nxt = pending.pop(0)
+        return nxt(*asked) if callable(nxt) else nxt
+    return reply
+
+
+async def _arrives(delay, timeout: float | None) -> bool:
+    """Aspetta un ritardo iniettato: secondi, `math.inf` (mai) o un
+    `asyncio.Event` (finche' non si accende). `False` se il tetto `timeout`
+    scade prima."""
+    if isinstance(delay, asyncio.Event):
+        waiter = delay.wait()
+    elif delay == math.inf:
+        waiter = asyncio.Event().wait()
+    else:
+        waiter = asyncio.sleep(delay)
+    if timeout is None:
+        await waiter
+        return True
+    try:
+        await asyncio.wait_for(waiter, timeout)
+    except TimeoutError:
+        return False
+    return True
 
 
 def listener_kinds() -> tuple[str, ...]:
@@ -327,18 +459,52 @@ class SilentConnection:
         return None
 
 
-class _Response:
-    """Una risposta HTTP finta: lo stato e il corpo JSON, come li legge il
-    vero `_rest_get`."""
+#: Un corpo che non e' JSON: quello di `HTTPBadRequest` e simili.
+_NOT_JSON = object()
 
-    def __init__(self, status: int, body=None) -> None:
+
+class _Response:
+    """Una risposta HTTP finta: lo stato e il corpo, come li leggono il vero
+    `_rest_get`, `_http_reason` e `call_service` (`json()`, `text()`,
+    `raise_for_status()`). Arriva dopo `delay`, se ce n'e' uno."""
+
+    def __init__(self, status: int, body=None, *, url: str = NOWHERE,
+                 method: str = "GET", delay=None) -> None:
         self.status = status
+        self.reason = http.HTTPStatus(status).phrase
         self._body = body
+        self._delay = delay
+        self.request_info = aiohttp.RequestInfo(
+            URL(url), method, CIMultiDictProxy(CIMultiDict()), URL(url))
+
+    @classmethod
+    def refused(cls, refusal: Refused, **request) -> _Response:
+        if refusal.message:
+            return cls(int(refusal.code), {"message": refusal.message}, **request)
+        return cls(int(refusal.code), _NOT_JSON, **request)
 
     async def json(self):
+        if self._body is _NOT_JSON:
+            raise aiohttp.ContentTypeError(self.request_info, (), status=self.status,
+                                           message="Attempt to decode JSON with "
+                                                   "unexpected mimetype: text/plain")
         return self._body
 
+    async def text(self) -> str:
+        if self._body is _NOT_JSON:
+            return f"{self.status}: {self.reason}"
+        return "" if self._body is None else json.dumps(self._body)
+
+    def raise_for_status(self) -> None:
+        """Come `aiohttp.ClientResponse.raise_for_status`: da 400 in su
+        solleva `ClientResponseError` con lo stato e la sua frase."""
+        if self.status >= 400:
+            raise aiohttp.ClientResponseError(self.request_info, (), status=self.status,
+                                              message=self.reason)
+
     async def __aenter__(self):
+        if self._delay is not None:
+            await _arrives(self._delay, None)
         return self
 
     async def __aexit__(self, *exc_info):
@@ -348,7 +514,8 @@ class _Response:
 class _HouseSession(SilentConnection):
     """La sessione della casa finta: il websocket di lunga vita che tace, e le
     `GET` del vero `_rest_get` servite dagli ingressi. Una scrittura (`post`,
-    `delete`) non e' servita: solleva nominando il percorso."""
+    `delete`) si registra e riceve la risposta che la prova ha iniettato;
+    senza, solleva nominando metodo e percorso."""
 
     def __init__(self, house: CasaFinta) -> None:
         super().__init__()
@@ -373,12 +540,11 @@ class _HouseSession(SilentConnection):
     def get(self, url: str, **kwargs):
         return self._house._rest_reply(url.removeprefix(self._house._base_url))
 
-    def _write(self, url: str, **kwargs):
-        path = url.removeprefix(self._house._base_url)
-        self._house.calls.append((path, kwargs.get("json")))
-        raise UnservedCommand(path, "e' una scrittura, e la casa finta non scrive")
+    def post(self, url: str, **kwargs):
+        return self._house._rest_write("POST", url, kwargs.get("json"))
 
-    post = delete = _write
+    def delete(self, url: str, **kwargs):
+        return self._house._rest_write("DELETE", url, kwargs.get("json"))
 
 
 def _ok(result) -> dict:
@@ -395,25 +561,32 @@ class CasaFinta(HAClient):
     `inputs` ha la forma di `casa.read_inputs` (le chiavi di `casa.INPUTS`): un
     ingresso che manca rende non servito il comando che lo legge, e basta.
     `answers` aggiunge comandi WS o percorsi REST (`{nome: f(extra) ->
-    result}`; per un percorso `f(percorso)` -> corpo, e la chiave vale anche
-    come prefisso); `refuse` li fa rifiutare (WS: `{"code", "message"}`, il
-    corpo d'errore di Home Assistant; REST: lo stato HTTP); `silence` li fa
-    tacere (WS: nessuna risposta; REST: la connessione cade).
+    result}`; per una `GET` `f(percorso)` -> corpo, per una scrittura
+    (`"POST <percorso>"`, `"DELETE <percorso>"`) `f(percorso, corpo)` -> corpo;
+    la chiave di un percorso vale anche come prefisso). Una risposta puo'
+    rendere `Refused(...)` o `SILENT` per quella domanda sola, e
+    `in_turn(...)` ne fa una sequenza. `refuse` li fa rifiutare sempre (WS:
+    `{"code", "message"}` o `Refused`, il corpo d'errore di Home Assistant;
+    REST: lo stato HTTP o `Refused`); `silence` li fa tacere (WS: nessuna
+    risposta; REST: la connessione cade); `delay` fa arrivare la risposta
+    tardi o mai (vedi il docstring del modulo).
 
-    Registra `calls` -- `(comando o percorso, extra)` nell'ordine -- e
-    `connections` -- `("ws", comandi)` per ogni `_ws_send`, `("rest",
-    percorso)` per ogni `GET`.
+    Registra `calls` -- `(comando o percorso, extra o corpo)` nell'ordine, le
+    scritture REST col metodo davanti -- e `connections` -- `("ws", comandi)`
+    per ogni `_ws_send`, `("rest", percorso)` per ogni richiesta HTTP.
     """
 
     def __init__(self, inputs: dict, *,
                  answers: dict[str, Callable] | None = None,
                  refuse: dict[str, object] | None = None,
-                 silence=()) -> None:
+                 silence=(),
+                 delay: dict[str, object] | None = None) -> None:
         super().__init__(NOWHERE, "casa-finta")
         self._inputs = inputs
         self._answers = dict(answers or {})
         self._refuse = dict(refuse or {})
         self._silence = set(silence)
+        self._delay = dict(delay or {})
         self._session = _HouseSession(self)
         # `ws_ready` NON si accende alla nascita (fino al Task 7 della Tappa 2
         # si'): lo accende il client vero quando la casa conferma l'iscrizione
@@ -436,6 +609,34 @@ class CasaFinta(HAClient):
         """Da qui in poi questi comandi tornano a rispondere: Home Assistant
         che si riprende dopo un silenzio."""
         self._silence.difference_update(commands)
+
+    def announce(self, event_type: str, data: dict) -> None:
+        """Home Assistant annuncia un evento del bus, e gli ascoltatori del
+        client lo ricevono SUBITO: lo smista il codice vero
+        (`_dispatch_bus_event`), senza il ciclo d'ascolto del websocket. E'
+        cio' che serve per un annuncio che arriva DENTRO una chiamata; il ciclo
+        vero si prova con `SilentConnection.push_event`.
+
+        L'evento ha la forma di `Event._as_dict` (`core.py`, tag `2026.9.4`,
+        vedi `SilentConnection`); per `state_changed` `data` e'
+        `{"entity_id", "old_state", "new_state"}`."""
+        self._dispatch_bus_event({
+            "event_type": event_type, "data": data, "origin": "LOCAL",
+            "time_fired": "2026-10-03T12:00:00+00:00",
+            "context": {"id": "01CASAFINTA", "parent_id": None, "user_id": None}})
+
+    def announce_state(self, new_state: dict | None, old_state: dict | None = None) -> None:
+        """Un `state_changed`: lo stato nuovo (`None` per un'entita' tolta)."""
+        entity_id = (new_state or old_state or {}).get("entity_id")
+        self.announce("state_changed", {"entity_id": entity_id, "old_state": old_state,
+                                        "new_state": new_state})
+
+    def listeners(self, kind: str) -> list:
+        """Gli ascoltatori di un genere (`listener_kinds()`) registrati adesso
+        sul client vero: chi si e' iscritto e non si e' tolto."""
+        if kind not in listener_kinds():
+            raise ValueError(f"genere di ascoltatori sconosciuto: {kind}")
+        return list(getattr(self, f"_{kind}_listeners"))
 
     async def _first_connection_settled(self) -> None:
         """Aspetta la prima connessione e i lavori che ha rimandato: e' li'
@@ -471,41 +672,99 @@ class CasaFinta(HAClient):
             return []
         self.connections.append(("ws", tuple(msg_type for msg_type, _ in commands)))
         replies: list[dict | None] = []
+        delays: list[tuple[int, object]] = []
         for msg_id, (msg_type, extra) in enumerate(commands, start=1):
             self.calls.append((msg_type, extra))
             reply = self._ws_reply(msg_type, extra)
             replies.append(None if reply is None else {"id": msg_id, **reply})
+            if reply is not None and msg_type in self._delay:
+                delays.append((msg_id - 1, self._delay[msg_type]))
+        # Le risposte in ritardo si aspettano insieme, sotto il tetto del vero:
+        # quella che non arriva in tempo e' `None`, come dal vero `_ws_send`.
+        arrived = await asyncio.gather(*(_arrives(wait, timeout) for _i, wait in delays))
+        for (index, _wait), came in zip(delays, arrived, strict=True):
+            if not came:
+                replies[index] = None
         return replies
 
     def _ws_reply(self, msg_type: str, extra: dict | None) -> dict | None:
         if msg_type in self._silence:
             return None
         if msg_type in self._refuse:
-            error = self._refuse[msg_type]
-            return _refused(error.get("code"), error.get("message"))
+            return self._ws_wrap(self._refuse[msg_type])
         if msg_type in self._answers:
-            return _ok(self._answers[msg_type](extra))
+            return self._ws_wrap(self._answers[msg_type](extra), answered=True)
         if msg_type not in self._ws_served():
             raise UnservedCommand(msg_type)
         source, reply = self._ws_served()[msg_type]
         return reply(extra, self._input(msg_type, source))
 
+    @staticmethod
+    def _ws_wrap(outcome, *, answered: bool = False) -> dict | None:
+        """Il messaggio per un esito iniettato: `SILENT` nessuno, un rifiuto
+        la busta d'errore, ogni altro valore (di una risposta) il `result`."""
+        if isinstance(outcome, Silence):
+            return None
+        if isinstance(outcome, Refused):
+            return _refused(outcome.code, outcome.message)
+        if not answered:
+            return _refused(outcome.get("code"), outcome.get("message"))
+        return _ok(outcome)
+
+    def _rest_answer(self, key: str):
+        """La risposta per `key` (un percorso, o `METODO percorso`): esatta, o
+        la chiave piu' lunga che ne e' un prefisso."""
+        method = key.split(" ", 1)[0] + " " if " " in key else ""
+        return self._answers.get(key) or next(
+            (f for name, f in sorted(self._answers.items(), key=lambda item: -len(item[0]))
+             if name.startswith(f"{method}/") and key.startswith(name)), None)
+
+    def _rest_outcome(self, key: str, asked: tuple, *, method: str, url: str):
+        """L'esito di una richiesta REST, o `None` se nessuno l'ha iniettato:
+        il silenzio fa cadere la connessione, un rifiuto e' lo stato (e il
+        corpo) di Home Assistant, una risposta il corpo di un 200."""
+        request = {"url": url, "method": method, "delay": self._delay.get(key)}
+        if key in self._silence:
+            raise aiohttp.ClientConnectionError(SILENT.reason)
+        if key in self._refuse:
+            refusal = self._refuse[key]
+            return _Response.refused(refusal if isinstance(refusal, Refused)
+                                     else Refused(refusal), **request)
+        answer = self._rest_answer(key)
+        if answer is None:
+            return None
+        outcome = answer(*asked)
+        if isinstance(outcome, Silence):
+            raise aiohttp.ClientConnectionError(outcome.reason)
+        if isinstance(outcome, Refused):
+            return _Response.refused(outcome, **request)
+        return _Response(200, outcome, **request)
+
     def _rest_reply(self, path: str) -> _Response:
         self.connections.append(("rest", path))
         self.calls.append((path, None))
         bare = path.split("?", 1)[0]
-        if bare in self._silence:
-            raise aiohttp.ClientConnectionError("casa finta: silenzio iniettato")
-        if bare in self._refuse:
-            return _Response(int(self._refuse[bare]))
-        answer = self._answers.get(bare) or next(
-            (f for key, f in sorted(self._answers.items(), key=lambda item: -len(item[0]))
-             if key.startswith("/") and bare.startswith(key)), None)
-        if answer is not None:
-            return _Response(200, answer(path))
+        url = f"{self._base_url}{path}"
+        response = self._rest_outcome(bare, (path,), method="GET", url=url)
+        if response is not None:
+            return response
         if bare not in self._REST_SERVED:
             raise UnservedCommand(bare)
-        return _Response(200, self._input(bare, self._REST_SERVED[bare]))
+        return _Response(200, self._input(bare, self._REST_SERVED[bare]), url=url,
+                         delay=self._delay.get(bare))
+
+    def _rest_write(self, method: str, url: str, body) -> _Response:
+        """Una scrittura REST: si REGISTRA (`calls`, `connections`) e si
+        risponde cio' che la prova ha iniettato. Non si esegue niente."""
+        path = url.removeprefix(self._base_url)
+        key = f"{method} {path.split('?', 1)[0]}"
+        self.connections.append(("rest", key))
+        self.calls.append((key, body))
+        response = self._rest_outcome(key, (path, body), method=method, url=url)
+        if response is None:
+            raise UnservedCommand(key, "e' una scrittura, e la casa finta non scrive: "
+                                       "la risposta la inietta la prova (`answers=`)")
+        return response
 
     # ── cio' che gli ingressi servono ───────────────────────────────────────
 

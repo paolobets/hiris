@@ -30,12 +30,37 @@ Mutazioni ESEGUITE (03/10/2026, Tappa 2, Task 4):
   cosi' come sono): rosse quattro prove -- la sovrascrittura non e' il
   trasporto; il filtro non c'e' piu'; il rifiuto iniettato su `/api/states`
   non arriva; la lettura REST non si registra.
+
+Mutazioni ESEGUITE (04/10/2026, Tappa 2, Task 12), sulle capacita' nuove,
+ognuna rossa per la sua ragione e ripristinata:
+
+- la scrittura non si registra in `calls` -- rossa (`[] == [('POST
+  /api/services/light/turn_off', ...)]`);
+- `Refused(stato, testo)` perde il testo -- rossa (`Home Assistant ha
+  risposto 400. 400: Bad Request` invece di `Message malformed`);
+  `raise_for_status` che non solleva -- rossa (l'errore arriva dal corpo, non
+  dallo stato);
+- `SILENT` di una risposta trattato come un risultato -- rossa (il messaggio
+  grezzo non e' `None`; la sola asserzione sui conteggi era VERDE, ed e' per
+  questo che la prova guarda anche il messaggio); `Refused` di una risposta
+  trattato come un risultato -- rossa;
+- `in_turn` che ripete l'ultima risposta invece di nominarsi -- rossa;
+- il tetto del websocket ignorato -- rossa; il ritardo ignorato -- rossa
+  (la lettura trattenuta e' gia' finita); il ritardo di una `GET` ignorato --
+  rossa;
+- `announce` che non smista -- rossa; il silenzio di una scrittura ignorato
+  -- rossa (`UnservedCommand` invece della connessione caduta); il motivo di
+  `Silence(motivo)` perso -- rossa (`'casa finta: silenzio iniettato'` non
+  contiene `8404`).
 """
 import asyncio
 import inspect
+import math
 import sys
+import time
 from pathlib import Path
 
+import aiohttp
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -221,8 +246,179 @@ def test_un_comando_non_servito_solleva_nominandosi_anche_sotto_un_except():
 
 def test_una_scrittura_non_servita_solleva_nominandosi():
     house = CasaFinta(synthetic_inputs())
-    with pytest.raises(UnservedCommand, match="/api/services/light/turn_on"):
+    with pytest.raises(UnservedCommand, match="POST /api/services/light/turn_on"):
         _run(house.call_service("light", "turn_on", {"entity_id": "light.luce_uno"}))
+
+
+# ── le scritture: si registrano, e rispondono cio' che la prova inietta ─────
+#
+# Le forme sono quelle di Home Assistant al tag `2026.9.4`, lette il
+# 04/10/2026: vedi il docstring di `scripts/casa_finta.py`, «Le scritture si
+# registrano, e non si eseguono».
+
+def test_una_scrittura_si_registra_e_riceve_la_risposta_iniettata():
+    """`POST /api/services/<dominio>/<servizio>` risponde la lista degli stati
+    cambiati: il client vero la legge (`_changed_states`), la casa la
+    registra col metodo davanti, e non esegue niente."""
+    changed = [{"entity_id": "light.luce_uno", "state": "off", "attributes": {}}]
+    house = CasaFinta(synthetic_inputs(), answers={
+        "POST /api/services/": lambda path, body: changed})
+    body = {"entity_id": ["light.luce_uno"]}
+    assert _run(house.call_service("light", "turn_off", body)) == changed
+    assert house.calls == [("POST /api/services/light/turn_off", body)]
+    assert house.connections == [("rest", "POST /api/services/light/turn_off")]
+
+
+def test_una_scrittura_rifiutata_arriva_come_la_manda_home_assistant():
+    """Lo stato e il corpo di Home Assistant, letti dal client vero: `call_service`
+    solleva come `raise_for_status` di aiohttp, la configurazione legge il
+    motivo dal corpo (`_http_reason`), un 404 della lettura e' «assente»."""
+    key = "/api/config/automation/config/1771"
+    house = CasaFinta(synthetic_inputs(), refuse={
+        "POST /api/services/light/turn_off": 500,
+        f"POST {key}": casa_finta.Refused(400, "Message malformed: extra keys"),
+        f"DELETE {key}": casa_finta.Refused(400),
+        key: casa_finta.Refused(404, "Resource not found")})
+    with pytest.raises(aiohttp.ClientResponseError) as refused:
+        _run(house.call_service("light", "turn_off", {}))
+    assert refused.value.status == 500
+    assert "Internal Server Error" in str(refused.value)
+    assert _run(house.save_configuration("automation", "1771", {})) == {
+        "errore": "Message malformed: extra keys"}
+    # Senza testo e' il corpo di `HTTPBadRequest`, che non e' JSON.
+    assert _run(house.delete_configuration("automation", "1771")) == {
+        "errore": "Home Assistant ha risposto 400. 400: Bad Request"}
+    assert _run(house.read_configuration("automation", "1771")) == {"assente": True}
+
+
+def test_una_scrittura_silenziata_fa_cadere_la_connessione():
+    """Il client vero non avvolge le scritture: cio' che rompe il trasporto
+    risale (`call_service`, e le primitive della configurazione per la guardia
+    dell'officina)."""
+    house = CasaFinta(synthetic_inputs(), silence={"POST /api/services/light/turn_off"})
+    with pytest.raises(aiohttp.ClientConnectionError):
+        _run(house.call_service("light", "turn_off", {}))
+    assert house.calls == [("POST /api/services/light/turn_off", {})]
+    # Il silenzio di UNA domanda, col suo motivo: e' cio' che risale.
+    reason = "Cannot connect to host 192.168.1.95:8404"
+    house = CasaFinta(synthetic_inputs(), answers={
+        "POST /api/config/": lambda path, body: casa_finta.Silence(reason)})
+    with pytest.raises(aiohttp.ClientConnectionError, match="8404"):
+        _run(house.save_configuration("automation", "1771", {}))
+
+
+# ── le risposte nel tempo: per argomento, in sequenza, in ritardo ───────────
+
+def test_una_risposta_rifiuta_o_tace_per_UNA_domanda_della_raffica():
+    """Tre finestre dello stesso comando, tre esiti: tace, rifiuta, risponde.
+    Il vero `_ws_send` rende `None` per quella che tace, il messaggio d'errore
+    per quella rifiutata, e il client conta solo la buona."""
+    outcomes = {1000.0: casa_finta.SILENT,
+                2000.0: casa_finta.Refused("unknown_error", "Unknown error"),
+                3000.0: {"x": [{"s": "1", "lu": 3500.0}]}}
+
+    def answer(extra):
+        from datetime import datetime
+        return outcomes[datetime.fromisoformat(extra["start_time"]).timestamp()]
+
+    house = CasaFinta({}, answers={"history/history_during_period": answer})
+    counts = _run(house.recorded_changes(
+        ["x"], [(1000.0, 1600.0), (2000.0, 2600.0), (3000.0, 3600.0)]))
+    assert counts == [None, None, 1]
+    # Il messaggio grezzo: niente per quella che tace, la busta d'errore di
+    # Home Assistant per quella rifiutata.
+    silent, refused = _run(house._ws_send([
+        ("history/history_during_period", {"start_time": "1970-01-01T00:16:40+00:00"}),
+        ("history/history_during_period", {"start_time": "1970-01-01T00:33:20+00:00"})]))
+    assert silent is None
+    assert refused["success"] is False
+    assert refused["error"] == {"code": "unknown_error", "message": "Unknown error"}
+
+
+def test_in_turn_risponde_una_volta_per_domanda_e_poi_si_nomina():
+    house = CasaFinta({}, answers={"frontend/get_translations": casa_finta.in_turn(
+        casa_finta.SILENT, {"resources": {"k": "v"}})})
+    assert _run(house.get_translations("it"))["causa"] == "silenzio"
+    assert _run(house.get_translations("it")) == {"risorse": {"k": "v"}}
+    with pytest.raises(UnservedCommand, match="sequenza di 2 risposte"):
+        _run(house.get_translations("it"))
+
+
+def test_un_ritardo_oltre_il_tetto_del_websocket_e_un_silenzio():
+    """Sotto il tetto la risposta arriva, tardi; oltre e' `None`, come dal vero
+    `_ws_send` -- che non aspetta per sempre."""
+    async def scenario():
+        house = CasaFinta({}, answers={"lento": lambda extra: 1, "mai": lambda extra: 2},
+                          delay={"lento": 0.01, "mai": math.inf})
+        start = time.monotonic()
+        slow = await house._ws_send([("lento", None)], timeout=1.0)
+        took = time.monotonic() - start
+        never = await house._ws_send([("lento", None), ("mai", None)], timeout=0.05)
+        return slow, took, never
+
+    slow, took, never = _run(scenario())
+    assert slow[0]["result"] == 1 and took >= 0.01
+    assert never[0]["result"] == 1 and never[1] is None
+
+
+def test_una_risposta_trattenuta_arriva_quando_la_prova_la_lascia():
+    """Un `asyncio.Event` trattiene la risposta: chi chiede resta in attesa
+    DENTRO la lettura finche' la prova non lo accende."""
+    async def scenario():
+        gate = asyncio.Event()
+        house = CasaFinta({}, answers={"config/auth/list": lambda extra: []},
+                          delay={"config/auth/list": gate})
+        reading = asyncio.ensure_future(house.users())
+        await asyncio.sleep(0.02)
+        held = reading.done()
+        gate.set()
+        return held, await reading
+
+    held, users = _run(scenario())
+    assert held is False
+    assert users == {"utenti": []}
+
+
+def test_una_get_in_ritardo_porta_cio_che_c_era_quando_e_partita_o_non_arriva():
+    """Il corpo si calcola alla domanda e arriva dopo il ritardo; `math.inf`
+    non arriva mai, e chi aspetta lo puo' solo cancellare."""
+    async def scenario():
+        now = {"state": "off"}
+        house = CasaFinta({}, answers={"/api/states": lambda path: [
+            {"entity_id": "light.a", "state": now["state"]}]},
+                          delay={"/api/states": 0.02})
+        reading = asyncio.ensure_future(house.get_states([]))
+        await asyncio.sleep(0)
+        now["state"] = "on"
+        late = await reading
+        stuck = CasaFinta({"states": []}, delay={"/api/states": math.inf})
+        pending = asyncio.ensure_future(stuck.get_states([]))
+        await asyncio.sleep(0.02)
+        hanging = not pending.done()
+        pending.cancel()
+        return late, hanging
+
+    late, hanging = _run(scenario())
+    assert late == [{"entity_id": "light.a", "state": "off"}]
+    assert hanging
+
+
+# ── gli annunci e gli ascoltatori ───────────────────────────────────────────
+
+def test_un_annuncio_arriva_agli_ascoltatori_dallo_smistamento_vero():
+    house = CasaFinta({})
+    heard = []
+    house.add_state_listener(heard.append)
+    new = {"entity_id": "light.a", "state": "on", "attributes": {}}
+    house.announce_state(new)
+    house.announce_state(None, old_state=new)
+    assert heard == [{"entity_id": "light.a", "old_state": None, "new_state": new},
+                     {"entity_id": "light.a", "old_state": new, "new_state": None}]
+    assert house.listeners("state") == [heard.append]
+    house.remove_state_listener(heard.append)
+    assert house.listeners("state") == []
+    with pytest.raises(ValueError):
+        house.listeners("stato")
 
 
 # ── registra chiamate e connessioni ─────────────────────────────────────────
