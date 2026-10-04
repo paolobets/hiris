@@ -6,15 +6,14 @@ comandi per POSIZIONE. Ora girano su `scripts/casa_finta.py::CasaFinta`, che
 risponde dagli ingressi coi messaggi grezzi di Home Assistant: cio' che il
 client ha chiesto si legge in `house.calls`.
 
-Resta sul trasporto finto una prova sola, `test_un_ambito_di_categorie_caduto_
-si_dice_quale`: tace UN ambito delle categorie e non gli altri, cioe' lo
-stesso comando (`config/category_registry/list`) con argomenti diversi -- e
-`silence=` della casa finta vale per comando, non per argomento.
+Dal Task 12 anche `test_un_ambito_di_categorie_caduto_si_dice_quale`, che
+restava sul trasporto finto (`patch.object(HAClient, "_ws_send", ...)`): tace
+UN ambito delle categorie e non gli altri, e la casa finta adesso sa tacere
+per argomento (una risposta che rende `SILENT`).
 """
 import logging
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -24,7 +23,7 @@ from tests._casa_sintetica import synthetic_inputs
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from casa_finta import CasaFinta
+from casa_finta import SILENT, CasaFinta
 
 #: I comandi dei registri, chiesti alla tabella del client: chi li ricopiasse
 #: qui dovrebbe tenerli allineati a mano.
@@ -34,10 +33,6 @@ _FLOORS = "config/floor_registry/list"
 
 def _house(**kwargs) -> CasaFinta:
     return CasaFinta(synthetic_inputs(), **kwargs)
-
-
-def _msg(risultato):
-    return {"id": 1, "type": "result", "success": True, "result": risultato}
 
 
 @pytest.mark.asyncio
@@ -114,12 +109,9 @@ async def test_ogni_categoria_porta_il_proprio_ambito():
 
 @pytest.mark.asyncio
 async def test_un_ambito_di_categorie_caduto_si_dice_quale():
-    # Resta sul trasporto finto: vedi il docstring del modulo.
-    risposte = [_msg([]) for _ in range(6)]
-    risposte += [_msg([]), None, _msg([]), _msg([])]
-    with patch.object(HAClient, "_ws_send", AsyncMock(return_value=risposte)):
-        _, non_disponibili = await HAClient(base_url="http://ha.test",
-                                            token="t").read_registries()
+    house = _house(answers={"config/category_registry/list": lambda extra: (
+        SILENT if extra["scope"] == "script" else [])})
+    _, non_disponibili = await house.read_registries()
     assert non_disponibili == ["categorie:script"]
 
 

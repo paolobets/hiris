@@ -1,105 +1,75 @@
-"""Le primitive del canale di configurazione: nude, e il rifiuto porta il motivo."""
+"""Le primitive del canale di configurazione: nude, e il rifiuto porta il motivo.
+
+Dal Task 12 della Tappa 2 girano sul client VERO (`scripts/casa_finta.py`):
+prima sostituivano la sessione HTTP con una `FintaSessione` scritta qui, e
+`_ws_send` coi costruttori di `tests/_ha_fakes.py`, uscito con loro. La casa finta registra in
+`calls` il metodo e il percorso -- tolto l'indirizzo della casa, che una
+richiesta deve portare o non e' servita -- e risponde nella forma di Home
+Assistant (`json_message`, `components/config/view.py`, tag `2026.9.4`).
+"""
+import sys
+from pathlib import Path
+
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
-from tests._ha_fakes import ws_send_from_messages
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import SILENT, CasaFinta, Refused
+
+from tests._casa_sintetica import synthetic_inputs
+
+CONFIG = "/api/config/"
 
 
-class FintaRisposta:
-    def __init__(self, payload, stato=200, testo=None):
-        self._payload = payload
-        self._testo = testo
-        self.status = stato
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return False
-
-    async def json(self):
-        return self._payload
-
-    async def text(self):
-        if self._testo is not None:
-            return self._testo
-        import json as _json
-        return _json.dumps(self._payload)
-
-
-class FintaSessione:
-    """Registra le chiamate e risponde sempre la stessa cosa."""
-
-    def __init__(self, payload, stato=200, testo=None):
-        self._payload = payload
-        self._stato = stato
-        self._testo = testo
-        self.chiamate = []
-
-    def post(self, url, json=None):
-        self.chiamate.append(("POST", url, json))
-        return FintaRisposta(self._payload, self._stato, self._testo)
-
-    def get(self, url):
-        self.chiamate.append(("GET", url, None))
-        return FintaRisposta(self._payload, self._stato, self._testo)
-
-    def delete(self, url):
-        self.chiamate.append(("DELETE", url, None))
-        return FintaRisposta(self._payload, self._stato, self._testo)
-
-
-def _client():
-    return HAClient("http://ha.local:8123", "token")
+def _house(**answers) -> CasaFinta:
+    """`answers` per metodo: `post`, `get`, `delete` (l'esito della rotta di
+    configurazione) e `validate` (il `result` di `validate_config`)."""
+    routes = {"post": f"POST {CONFIG}", "get": CONFIG, "delete": f"DELETE {CONFIG}",
+              "validate": "validate_config"}
+    return CasaFinta(synthetic_inputs(), answers={
+        routes[name]: answer for name, answer in answers.items()})
 
 
 @pytest.mark.asyncio
 async def test_salva_compone_la_rotta_dell_editor():
-    c = _client()
-    c._session = FintaSessione({"result": "ok"})
-    esito = await c.save_configuration("automation", "1771346155970", {"alias": "X"})
-    metodo, url, corpo = c._session.chiamate[0]
-    assert metodo == "POST"
-    assert url == "http://ha.local:8123/api/config/automation/config/1771346155970"
-    assert corpo == {"alias": "X"}
+    house = _house(post=lambda path, body: {"result": "ok"})
+    esito = await house.save_configuration("automation", "1771346155970", {"alias": "X"})
+    assert house.calls == [("POST /api/config/automation/config/1771346155970",
+                            {"alias": "X"})]
     assert esito == {"salvato": True}
 
 
 @pytest.mark.asyncio
 async def test_il_rifiuto_di_home_assistant_torna_col_motivo_non_come_eccezione():
     """Il 400 di HA E' il valore di prodotto (spec §2.5): non si solleva, si legge."""
-    c = _client()
-    c._session = FintaSessione(
-        {"message": "Message malformed: required key not provided @ data['triggers']"},
-        stato=400)
-    esito = await c.save_configuration("automation", "123", {})
+    house = _house(post=lambda path, body: Refused(
+        400, "Message malformed: required key not provided @ data['triggers']"))
+    esito = await house.save_configuration("automation", "123", {})
     assert "salvato" not in esito
     assert "triggers" in esito["errore"]
 
 
 @pytest.mark.asyncio
 async def test_una_chiave_ostile_non_arriva_mai_nell_url():
-    c = _client()
-    c._session = FintaSessione({"result": "ok"})
-    esito = await c.save_configuration("automation", "../../core/config", {})
-    assert c._session.chiamate == []
+    house = _house(post=lambda path, body: {"result": "ok"})
+    esito = await house.save_configuration("automation", "../../core/config", {})
+    assert house.calls == []
     assert "chiave" in esito["errore"]
 
 
 @pytest.mark.asyncio
 async def test_un_dominio_fuori_dai_tre_non_si_scrive():
-    c = _client()
-    c._session = FintaSessione({"result": "ok"})
-    esito = await c.save_configuration("light", "x", {})
-    assert c._session.chiamate == []
+    house = _house(post=lambda path, body: {"result": "ok"})
+    esito = await house.save_configuration("light", "x", {})
+    assert house.calls == []
     assert "light" in esito["errore"]
 
 
 @pytest.mark.asyncio
 async def test_leggi_restituisce_il_corpo():
-    c = _client()
-    c._session = FintaSessione({"id": "123", "alias": "Tapparelle"})
-    assert (await c.read_configuration("automation", "123"))["corpo"]["alias"] == "Tapparelle"
+    house = _house(get=lambda path: {"id": "123", "alias": "Tapparelle"})
+    assert (await house.read_configuration("automation", "123"))["corpo"]["alias"] == "Tapparelle"
+    assert house.calls == [("/api/config/automation/config/123", None)]
 
 
 @pytest.mark.asyncio
@@ -107,54 +77,35 @@ async def test_leggi_distingue_il_non_c_e_dal_non_ho_potuto_leggere():
     """«Assente» e «errore» non sono la stessa cosa: chi genera un id nuovo usa
     questa differenza per non scrivere sopra un'automazione esistente quando
     Home Assistant sta rispondendo male."""
-    c = _client()
-    c._session = FintaSessione({"message": "not found"}, stato=404)
-    assert await c.read_configuration("automation", "999") == {"assente": True}
-    c._session = FintaSessione({"message": "boom"}, stato=500)
-    esito = await c.read_configuration("automation", "999")
-    assert "errore" in esito
-    assert "assente" not in esito
+    house = _house(get=lambda path: Refused(404, "Resource not found"))
+    assert await house.read_configuration("automation", "999") == {"assente": True}
+    house = _house(get=lambda path: Refused(500, "boom"))
+    esito = await house.read_configuration("automation", "999")
+    assert esito == {"errore": "boom"}
 
 
 @pytest.mark.asyncio
 async def test_cancella_usa_il_metodo_delete():
-    c = _client()
-    c._session = FintaSessione({"result": "ok"})
-    esito = await c.delete_configuration("script", "buonanotte")
-    metodo, url, _ = c._session.chiamate[0]
-    assert metodo == "DELETE"
-    assert url == "http://ha.local:8123/api/config/script/config/buonanotte"
+    house = _house(delete=lambda path, body: {"result": "ok"})
+    esito = await house.delete_configuration("script", "buonanotte")
+    assert [what for what, _body in house.calls] == [
+        "DELETE /api/config/script/config/buonanotte"]
     assert esito == {"cancellato": True}
 
 
 @pytest.mark.asyncio
-async def test_valida_manda_solo_le_chiavi_presenti_e_riporta_l_esito(monkeypatch):
-    c = _client()
-    visti = {}
-
-    async def finto(msg_type, extra=None, timeout=10.0):
-        visti["tipo"] = msg_type
-        visti["extra"] = extra
-        return {"success": True, "result": {
-            "triggers": {"valid": False, "error": "Unknown trigger 'quando'"}}}
-
-    monkeypatch.setattr(c, "_ws_send", ws_send_from_messages(finto))
-    esito = await c.validate_config(triggers=[{"trigger": "quando"}])
-    assert visti["tipo"] == "validate_config"
-    assert visti["extra"] == {"triggers": [{"trigger": "quando"}]}
-    assert "conditions" not in visti["extra"]
+async def test_valida_manda_solo_le_chiavi_presenti_e_riporta_l_esito():
+    house = _house(validate=lambda extra: {
+        "triggers": {"valid": False, "error": "Unknown trigger 'quando'"}})
+    esito = await house.validate_config(triggers=[{"trigger": "quando"}])
+    assert house.calls == [("validate_config", {"triggers": [{"trigger": "quando"}]})]
     assert esito["triggers"]["valid"] is False
 
 
 @pytest.mark.asyncio
-async def test_valida_senza_risposta_non_dichiara_valido(monkeypatch):
+async def test_valida_senza_risposta_non_dichiara_valido():
     """Il silenzio di HA non e' un «va bene»: e' un errore dichiarato."""
-    c = _client()
-
-    async def muto(msg_type, extra=None, timeout=10.0):
-        return None
-
-    monkeypatch.setattr(c, "_ws_send", ws_send_from_messages(muto))
-    esito = await c.validate_config(actions=[{"action": "light.turn_on"}])
-    assert "errore" in esito
+    house = _house(validate=lambda extra: SILENT)
+    esito = await house.validate_config(actions=[{"action": "light.turn_on"}])
+    assert esito["causa"] == "silenzio"
     assert "valid" not in str(esito.get("actions", ""))

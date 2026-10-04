@@ -17,7 +17,20 @@ Home Assistant, i silenzi, le sequenze, i ritardi).
    ombreggia (`add_state_listener = None`) -- un nome di `vars(HAClient)`;
 2. un `AsyncMock`/`MagicMock`/`Mock`/`create_autospec` e' assegnato a un nome
    di client: `ha`, `ha_client`, `mock_ha`, `client`, un attributo
-   `.ha_client`, una voce `[...]["ha_client"]`.
+   `.ha_client`, una voce `[...]["ha_client"]`;
+3. un `setattr` -- `monkeypatch.setattr(x, "<nome>", ...)` o il `setattr`
+   di Python -- sostituisce su un oggetto qualunque un nome di
+   `vars(HAClient)` scritto per esteso (`"_ws_send"`, `"calendar_events"`):
+   e' un metodo del client rimpiazzato a mano;
+4. si sostituisce qualcosa SU `HAClient` stesso: `patch.object(HAClient,
+   ...)`, `monkeypatch.setattr(HAClient, ...)`, o la forma col percorso
+   (`patch("...HAClient...")`, `monkeypatch.setattr("...HAClient...", ...)`).
+
+Le forme 3 e 4 sono entrate il 04/10/2026, quando gli ultimi trasporti finti
+(quattro file `test_ha_client_*.py`, `test_home_space_registers.py`,
+`test_knowledge_tools.py`) sono passati alla casa finta. Misurato quel giorno
+prima di convertirli: la forma 3 trovava solo finte vere del client, nessun
+oggetto d'altro genere con un metodo omonimo.
 
 **I nomi si DERIVANO** da `vars(HAClient)`, non si ricopiano (CLAUDE.md, «Un
 cancello CHIEDE il suo elenco»): un metodo nuovo del client entra nel
@@ -31,20 +44,21 @@ ragione. Il 04/10/2026 e' vuota: le prove del trasporto
 client vero la connessione finta di `scripts/casa_finta.py`
 (`SilentConnection`), che e' fuori da `tests/` e non imita nessun metodo.
 
-**Cosa NON vede, dichiarato.** Un trasporto finto messo con
-`monkeypatch.setattr(client, "_ws_send", ...)`: non e' una classe ne' un
-mock. Il 04/10/2026 lo fanno quattro file di prove del client
-(`test_ha_client_configuration.py`, `test_ha_client_helper_labels.py`,
-`test_ha_client_statistics.py`, `test_ha_client_time_reads.py`, coi
-costruttori di `tests/_ha_fakes.py`), e un attributo d'istanza messo a `None`
-per provare un ramo difensivo (`tests/test_action_targets.py::_without`, che
-controlla il nome su `HAClient`).
+**Cosa NON vede, dichiarato.** Un `setattr` il cui nome non e' scritto per
+esteso: l'attributo d'istanza messo a `None` per provare un ramo difensivo
+(`tests/test_action_targets.py::_without`, che controlla lui il nome su
+`HAClient`). E un `c._session = ...` -- la sessione HTTP non e' un nome di
+`vars(HAClient)`, e' un attributo d'istanza: il 04/10/2026 non ce n'e' piu'
+nessuno nelle prove.
 
 Mutazione ESEGUITA (04/10/2026): aggiunta a `tests/test_entity_cache.py` una
 classe `_Ghost` con `async def get_states(self, entity_ids)` -- rossa, col
 messaggio che nomina file, riga, classe e metodo; poi una funzione con
 `app["ha_client"] = MagicMock()` -- rossa allo stesso modo. Ripristinato il
-file dalla copia, identico byte per byte (`cmp`).
+file dalla copia, identico byte per byte (`cmp`). Sulle forme nuove, stesso
+giorno e stesso file: `monkeypatch.setattr(house, "get_states", ...)` --
+rossa; `patch.object(HAClient, "_ws_send", ...)` -- rossa; ripristinato
+identico (`cmp`).
 """
 import ast
 import sys
@@ -103,12 +117,44 @@ def _mock_factory(value: ast.expr | None) -> str | None:
     return name if name in MOCK_FACTORIES else None
 
 
+def _names_haclient(node: ast.expr) -> bool:
+    """`HAClient`, `modulo.HAClient`, o un percorso scritto che lo nomina."""
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, str) and "HAClient" in node.value
+    return ast.unparse(node).split(".")[-1] == "HAClient"
+
+
+def _replacement(node: ast.Call, methods: frozenset[str]) -> tuple[str, str] | None:
+    """`(bersaglio, nome)` se la chiamata sostituisce un pezzo del client."""
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+    if not node.args:
+        return None
+    first = node.args[0]
+    if name in {"setattr", "patch", "object"} and _names_haclient(first):
+        if name == "object" and not (isinstance(func, ast.Attribute)
+                                     and ast.unparse(func.value).split(".")[-1] == "patch"):
+            return None
+        member = node.args[1].value if len(node.args) > 1 and isinstance(
+            node.args[1], ast.Constant) else ast.unparse(first)
+        return f"{ast.unparse(func)}({ast.unparse(first)})", str(member)
+    if (name == "setattr" and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value in methods):
+        return f"{ast.unparse(func)}({ast.unparse(first)})", node.args[1].value
+    return None
+
+
 def scan_source(source: str, methods: frozenset[str]) -> list[tuple[int, str, str, str]]:
     """Le finte di un sorgente: `(riga, genere, classe o bersaglio, nome)`,
-    genere `"class"` (una classe che definisce un nome del client) o `"mock"`
-    (un mock assegnato a un client)."""
+    genere `"class"` (una classe che definisce un nome del client), `"mock"`
+    (un mock assegnato a un client) o `"replace"` (un `setattr`/`patch` che
+    sostituisce un pezzo del client)."""
     found = []
     for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            replaced = _replacement(node, methods)
+            if replaced is not None:
+                found.append((node.lineno, "replace", *replaced))
         if isinstance(node, ast.ClassDef):
             found += [(line, "class", node.name, name)
                       for name, line in _class_members(node) if name in methods]
@@ -144,8 +190,9 @@ def test_nessuna_finta_di_haclient_fuori_dalla_casa_finta():
         "finte di HAClient fuori da `scripts/casa_finta.py`: "
         + "; ".join(f"tests/{file}:{found[(file, owner, name)]} {owner} -> {name}"
                     for file, owner, name in new)
-        + " -- una classe che imita un metodo del client, o un mock al posto del "
-          "client, riscrive a mano cio' che il client vero fa (forma, filtro, "
+        + " -- una classe che imita un metodo del client, un mock al posto del "
+          "client o un setattr/patch che ne sostituisce un pezzo riscrive a mano "
+          "cio' che il client vero fa (forma, filtro, "
           "busta dell'errore). Usa `CasaFinta(inputs, answers=..., refuse=..., "
           "silence=..., delay=...)`; se e' davvero una prova del trasporto, "
           "scrivila in `ADMITTED` con la ragione.")
@@ -173,7 +220,9 @@ def test_la_scansione_vede_le_forme_che_vieta():
     `ADMITTED` vuota non c'e' una voce ammessa su cui provarla, e una
     scansione che non trova mai niente sarebbe un cancello che sembra vivo e
     non guarda piu' niente. E non vede cio' che non vieta: una classe con un
-    nome che il client non ha, un mock dato a qualcos'altro."""
+    nome che il client non ha, un mock dato a qualcos'altro, un `setattr` di
+    un nome che il client non ha o non scritto per esteso, un `patch.object`
+    di un'altra classe."""
     source = '''
 class FakeClient:
     async def get_states(self, entity_ids):
@@ -195,6 +244,21 @@ def build(app, runner):
     runner._client = MagicMock()
     openai_client = MagicMock()
     ha_client: object = AsyncMock()
+
+
+def replace(monkeypatch, house, cache):
+    monkeypatch.setattr(house, "_ws_send", fake)
+    setattr(house, "calendar_events", fake)
+    monkeypatch.setattr(HAClient, "users", fake)
+    monkeypatch.setattr("hiris.app.proxy.ha_client.HAClient.panels", fake)
+    with patch.object(HAClient, "_ws_send", AsyncMock()):
+        pass
+    with unittest.mock.patch("hiris.app.proxy.ha_client.HAClient"):
+        pass
+    monkeypatch.setattr(cache, "loaded", True)
+    monkeypatch.setattr(house, method_name, None)
+    with patch.object(EntityCache, "load", fake):
+        pass
 '''
     found = {(kind, owner, name) for _line, kind, owner, name
              in scan_source(source, client_methods())}
@@ -207,6 +271,14 @@ def build(app, runner):
         ("mock", "app['ha_client']", "Mock"),
         ("mock", "runner.ha_client", "MagicMock"),
         ("mock", "ha_client", "AsyncMock"),
+        ("replace", "monkeypatch.setattr(house)", "_ws_send"),
+        ("replace", "setattr(house)", "calendar_events"),
+        ("replace", "monkeypatch.setattr(HAClient)", "users"),
+        ("replace", "monkeypatch.setattr('hiris.app.proxy.ha_client.HAClient.panels')",
+         "'hiris.app.proxy.ha_client.HAClient.panels'"),
+        ("replace", "patch.object(HAClient)", "_ws_send"),
+        ("replace", "unittest.mock.patch('hiris.app.proxy.ha_client.HAClient')",
+         "'hiris.app.proxy.ha_client.HAClient'"),
     }
 
 

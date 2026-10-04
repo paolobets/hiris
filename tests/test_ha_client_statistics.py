@@ -1,7 +1,30 @@
+"""Le statistiche di Home Assistant, lette dal client VERO.
+
+Dal Task 12 della Tappa 2 girano su `scripts/casa_finta.py`: prima `_ws_send`
+era sostituito coi costruttori di `tests/_ha_fakes.py`, uscito con loro. La risposta di Home
+Assistant e' il `result` del comando (o `SILENT`); cio' che parte si legge in
+`house.calls`.
+"""
+import sys
+from pathlib import Path
+
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
-from tests._ha_fakes import ws_send_from_results
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import SILENT, CasaFinta
+
+from tests._casa_sintetica import synthetic_inputs
+
+_STATS = "recorder/statistics_during_period"
+_IDS = "recorder/list_statistic_ids"
+
+
+def _house(command: str, result) -> CasaFinta:
+    """Home Assistant che a `command` risponde `result` (il `result` grezzo, o
+    `SILENT`)."""
+    return CasaFinta(synthetic_inputs(), answers={command: lambda extra: result})
+
 
 _DA = "2026-08-26T00:00:00+00:00"
 _A = "2026-08-27T00:00:00+00:00"
@@ -13,22 +36,17 @@ _A = "2026-08-27T00:00:00+00:00"
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_stato_e_cambio_sono_tradotti(monkeypatch):
+async def test_stato_e_cambio_sono_tradotti():
     """**Misurato il 27/08/2026 sull'impianto vero**: senza `types` esplicito
     Home Assistant manda gia' `state`/`change` insieme a `min`/`max`/`mean`/
     `sum` -- prima di questa correzione il traduttore li scartava in
     silenzio. Forma vera, misurata su `sensor.ze1es030n5e528_energia_
     prodotta_oggi`, ora 07-08."""
-    ha = HAClient("http://ha.local:8123", "tok")
-
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        return {"sensor.energia_prodotta_oggi": [
-            {"start": 1787724000000, "end": 1787727600000,
-             "min": None, "max": None, "mean": None,
-             "sum": 173.77, "state": 0.27, "change": 0.27,
-             "last_reset": None}]}
-
-    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
+    ha = _house(_STATS, {"sensor.energia_prodotta_oggi": [
+        {"start": 1787724000000, "end": 1787727600000,
+         "min": None, "max": None, "mean": None,
+         "sum": 173.77, "state": 0.27, "change": 0.27,
+         "last_reset": None}]})
     out = await ha.hourly_statistics(["sensor.energia_prodotta_oggi"], _DA, _A)
     [voce] = out["serie"]["sensor.energia_prodotta_oggi"]
     assert voce["stato"] == 0.27
@@ -38,7 +56,7 @@ async def test_stato_e_cambio_sono_tradotti(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stato_e_cambio_assenti_non_diventano_null(monkeypatch):
+async def test_stato_e_cambio_assenti_non_diventano_null():
     """Una misura istantanea (`state_class: measurement`, es. la potenza) non
     ha ne' `state` ne' `change` in HA -- **misurato**: entrambi tornano
     `None` dalla WS. Devono restare OMESSI dalla voce tradotta, come gia'
@@ -50,15 +68,10 @@ async def test_stato_e_cambio_assenti_non_diventano_null(monkeypatch):
     f.get("state")`) in `_translate_statistics` -- arrossisce, perche' "stato"
     compare nella voce con valore `None` invece di mancare del tutto.
     Ripristinato subito dopo."""
-    ha = HAClient("http://ha.local:8123", "tok")
-
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        return {"sensor.potenza": [
-            {"start": 1787724000000, "end": 1787727600000,
-             "min": 10.0, "max": 20.0, "mean": 15.0,
-             "sum": None, "state": None, "change": None}]}
-
-    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
+    ha = _house(_STATS, {"sensor.potenza": [
+        {"start": 1787724000000, "end": 1787727600000,
+         "min": 10.0, "max": 20.0, "mean": 15.0,
+         "sum": None, "state": None, "change": None}]})
     out = await ha.hourly_statistics(["sensor.potenza"], _DA, _A)
     [voce] = out["serie"]["sensor.potenza"]
     assert "stato" not in voce
@@ -68,42 +81,28 @@ async def test_stato_e_cambio_assenti_non_diventano_null(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_statistiche_orarie_manda_la_finestra_esplicita(monkeypatch):
+async def test_statistiche_orarie_manda_la_finestra_esplicita():
     """`hourly_statistics` non calcola nessuna finestra da sola: prende
     `da_iso`/`a_iso` gia' pronti dal chiamante (come `history()`), e chiede
     sempre `period="hour"`; e la serie tradotta arriva in `serie`.
 
     Mutazione ESEGUITA: `"period": "day"` in `hourly_statistics` -- rossa
-    sull'uguaglianza di `captured["extra"]`."""
-    ha = HAClient("http://ha.local:8123", "tok")
-    captured = {}
-
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        captured["msg_type"] = msg_type
-        captured["extra"] = extra
-        return {"sensor.a": [{"start": "2026-08-26T00:00:00+00:00", "mean": 21.6}]}
-
-    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
+    sull'uguaglianza di `ha.calls`."""
+    ha = _house(_STATS, {"sensor.a": [{"start": "2026-08-26T00:00:00+00:00", "mean": 21.6}]})
     out = await ha.hourly_statistics(
         ["sensor.a", "sensor.b"], "2026-08-26T00:00:00+02:00", "2026-08-27T00:00:00+02:00")
-    assert captured["msg_type"] == "recorder/statistics_during_period"
-    assert captured["extra"] == {
+    assert ha.calls == [(_STATS, {
         "statistic_ids": ["sensor.a", "sensor.b"],
         "start_time": "2026-08-26T00:00:00+02:00",
         "end_time": "2026-08-27T00:00:00+02:00",
         "period": "hour",
-    }
+    })]
     assert "sensor.a" in out["serie"]
 
 
 @pytest.mark.asyncio
-async def test_statistiche_orarie_un_guasto_e_dichiarato(monkeypatch):
-    ha = HAClient("http://ha.local:8123", "tok")
-
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        return None
-
-    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
+async def test_statistiche_orarie_un_guasto_e_dichiarato():
+    ha = _house(_STATS, SILENT)
     out = await ha.hourly_statistics(["sensor.a"], "2026-08-26T00:00:00+00:00",
                                       "2026-08-27T00:00:00+00:00")
     assert "serie" not in out
@@ -116,7 +115,7 @@ async def test_statistiche_orarie_un_guasto_e_dichiarato(monkeypatch):
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_le_entita_con_statistiche_si_sanno_chiedere(monkeypatch):
+async def test_le_entita_con_statistiche_si_sanno_chiedere():
     """Il registro delle statistiche di Home Assistant, per nome.
 
     Serve a dire il primo dei due «rifiuta se» della spec §6: una serie vuota
@@ -126,22 +125,15 @@ async def test_le_entita_con_statistiche_si_sanno_chiedere(monkeypatch):
     Mutazione ESEGUITA: tornare i messaggi interi invece dei soli nomi --
     rossa.
     """
-    ha = HAClient("http://ha.local:8123", "tok")
-    captured = {}
-
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        captured["msg_type"] = msg_type
-        return [{"statistic_id": "sensor.energia", "unit_of_measurement": "kWh"},
-                {"statistic_id": "sensor.potenza", "unit_of_measurement": "W"}]
-
-    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
+    ha = _house(_IDS, [{"statistic_id": "sensor.energia", "unit_of_measurement": "kWh"},
+                       {"statistic_id": "sensor.potenza", "unit_of_measurement": "W"}])
     out = await ha.statistic_ids()
-    assert captured["msg_type"] == "recorder/list_statistic_ids"
+    assert ha.calls == [(_IDS, None)]
     assert out == {"sensor.energia", "sensor.potenza"}
 
 
 @pytest.mark.asyncio
-async def test_un_guasto_NON_dice_che_nessuna_entita_ha_statistiche(monkeypatch):
+async def test_un_guasto_NON_dice_che_nessuna_entita_ha_statistiche():
     """La busta, non l'insieme vuoto. Un insieme vuoto direbbe «nessuna
     entita' di questa casa ha statistiche», e con quella affermazione **ogni
     misura del resoconto rifiuterebbe**. Stessa regola di `statistics` qui
@@ -150,11 +142,6 @@ async def test_un_guasto_NON_dice_che_nessuna_entita_ha_statistiche(monkeypatch)
 
     Mutazione ESEGUITA: tornare `set()` quando il websocket tace -- rossa.
     """
-    ha = HAClient("http://ha.local:8123", "tok")
-
-    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
-        return None
-
-    monkeypatch.setattr(ha, "_ws_send", ws_send_from_results(fake_ws_request))
+    ha = _house(_IDS, SILENT)
     answer = await ha.statistic_ids()
     assert answer["causa"] == "silenzio" and answer["errore"]

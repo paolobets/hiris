@@ -1456,7 +1456,7 @@ async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
 # -- il calendario -- fetta «i calendari», Task 3
 # ---------------------------------------------------------------------------
 
-def _calendar_house(listing, events_by_entity, *, refuse=None, silence=()):
+def _calendar_house(listing, events_by_entity, *, refuse=None, silence=(), delay=None):
     """Home Assistant coi calendari dati, sotto il client VERO (`CasaFinta`,
     D8 della Tappa 2): i due percorsi REST che `HAClient.calendars()` e
     `HAClient.calendar_events()` chiedono, con i corpi GREZZI.
@@ -1488,7 +1488,7 @@ def _calendar_house(listing, events_by_entity, *, refuse=None, silence=()):
         return events_by_entity[entity_id]
 
     return CasaFinta(synthetic_inputs(), answers={"/api/calendars": answer},
-                     refuse=refuse, silence=silence)
+                     refuse=refuse, silence=silence, delay=delay)
 
 
 def _asked_window(house):
@@ -1603,34 +1603,37 @@ async def test_an_unreadable_calendar_is_named_not_dropped():
 
 
 @pytest.mark.asyncio
-async def test_i_calendari_si_leggono_insieme(monkeypatch):
+async def test_i_calendari_si_leggono_insieme():
     """A-34 (Tappa 2): gli eventi dei calendari si chiedono tutti insieme, non
     uno dopo l'altro -- con due calendari lenti l'attesa e' quella del piu'
-    lento, non la somma. Si conta quante letture sono in volo nello stesso
-    momento, invece di misurare un tempo: due, non una.
+    lento, non la somma. Si guarda se le due domande sono in volo nello stesso
+    momento, invece di misurare un tempo: Home Assistant trattiene entrambe le
+    risposte (`delay=` con un `asyncio.Event` per calendario, Tappa 2, Task
+    12: prima la prova sostituiva `calendar_events` del client), e mentre le
+    trattiene devono essere partite tutte e due.
 
     L'ordine delle risposte resta quello di Home Assistant (per nome):
-    `calendari_guardati` e `non_letti` non dipendono da chi risponde prima.
+    `calendari_guardati` e `non_letti` non dipendono da chi risponde prima --
+    qui il primo chiesto (Famiglia) risponde per ultimo.
 
     Mutazione ESEGUITA: il ciclo che attende un calendario alla volta --
-    rossa (`in_volo` massimo 1)."""
+    rossa (una domanda sola in volo)."""
+    famiglia, personale = "/api/calendars/calendar.famiglia", "/api/calendars/calendar.personale"
+    gates = {famiglia: asyncio.Event(), personale: asyncio.Event()}
     house = _calendar_house([_PERSONALE, _FAMIGLIA], {"calendar.personale": []},
-                            refuse={"/api/calendars/calendar.famiglia": 500})
-    vero = house.calendar_events
-    in_volo, massimo = 0, 0
-
-    async def lento(entity_id, start, end):
-        nonlocal in_volo, massimo
-        in_volo += 1
-        massimo = max(massimo, in_volo)
-        # Il primo chiesto (Famiglia) risponde per ultimo.
-        await asyncio.sleep(0.05 if entity_id == "calendar.famiglia" else 0.01)
-        in_volo -= 1
-        return await vero(entity_id, start, end)
-
-    monkeypatch.setattr(house, "calendar_events", lento)
-    result = await ToolDispatcher(None, None, ha=house).dispatch("calendar", {})
-    assert massimo == 2
+                            refuse={famiglia: 500}, delay=gates)
+    reading = asyncio.ensure_future(
+        ToolDispatcher(None, None, ha=house).dispatch("calendar", {}))
+    for _ in range(100):
+        await asyncio.sleep(0)
+    in_flight = {urlsplit(path).path for path, _extra in house.calls} - {"/api/calendars"}
+    assert in_flight == {famiglia, personale}, (
+        f"in volo insieme: {sorted(in_flight)} -- i calendari si leggono uno alla volta")
+    assert not reading.done()
+    gates[personale].set()
+    await asyncio.sleep(0.01)
+    gates[famiglia].set()
+    result = await reading
     assert result["calendari_guardati"] == ["Famiglia", "Personale"]
     assert result["non_letti"] == ["Famiglia"]
     assert result["impegni"] == []

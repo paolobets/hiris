@@ -538,7 +538,7 @@ class _HouseSession(SilentConnection):
         return self._house._input("config_entries/subscribe", "registries.integrazioni")
 
     def get(self, url: str, **kwargs):
-        return self._house._rest_reply(url.removeprefix(self._house._base_url))
+        return self._house._rest_reply(self._house._house_path("GET", url))
 
     def post(self, url: str, **kwargs):
         return self._house._rest_write("POST", url, kwargs.get("json"))
@@ -753,10 +753,19 @@ class CasaFinta(HAClient):
         return _Response(200, self._input(bare, self._REST_SERVED[bare]), url=url,
                          delay=self._delay.get(bare))
 
+    def _house_path(self, method: str, url: str) -> str:
+        """Il percorso di una richiesta HTTP, tolto l'indirizzo della casa. Una
+        richiesta che non porta l'indirizzo della casa (`base_url` del client)
+        non arriverebbe a Home Assistant: non e' servita, e si nomina."""
+        if not url.startswith(f"{self._base_url}/"):
+            raise UnservedCommand(f"{method} {url}",
+                                  f"non e' indirizzata alla casa ({self._base_url})")
+        return url.removeprefix(self._base_url)
+
     def _rest_write(self, method: str, url: str, body) -> _Response:
         """Una scrittura REST: si REGISTRA (`calls`, `connections`) e si
         risponde cio' che la prova ha iniettato. Non si esegue niente."""
-        path = url.removeprefix(self._base_url)
+        path = self._house_path(method, url)
         key = f"{method} {path.split('?', 1)[0]}"
         self.connections.append(("rest", key))
         self.calls.append((key, body))

@@ -269,6 +269,19 @@ def test_una_scrittura_si_registra_e_riceve_la_risposta_iniettata():
     assert house.connections == [("rest", "POST /api/services/light/turn_off")]
 
 
+def test_una_richiesta_che_non_porta_l_indirizzo_della_casa_non_e_servita():
+    """`calls` registra il percorso tolto l'indirizzo della casa: chi lo legge
+    deve poter contare sul fatto che la richiesta lo portava. Un URL composto
+    senza `base_url` non arriverebbe a Home Assistant, e si nomina."""
+    house = CasaFinta(synthetic_inputs(), answers={
+        "POST /api/config/": lambda path, body: {"result": "ok"}})
+    with pytest.raises(UnservedCommand, match="non e' indirizzata alla casa"):
+        house._session.post("/api/config/automation/config/1", json={})
+    with pytest.raises(UnservedCommand, match="GET http://altrove/api/states"):
+        house._session.get("http://altrove/api/states")
+    assert house.calls == []
+
+
 def test_una_scrittura_rifiutata_arriva_come_la_manda_home_assistant():
     """Lo stato e il corpo di Home Assistant, letti dal client vero: `call_service`
     solleva come `raise_for_status` di aiohttp, la configurazione legge il
