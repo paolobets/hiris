@@ -18,8 +18,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | A-03 | `GET /api/states` intero riletto da tre percorsi oltre allo specchio | NV | DP |  | cop-9 (incompleta) | reg · cop-9 |
-| A-04 | `GET /api/services`: il registro servizi e il bypass di `recipient` | E | CC |  | cop-9 (incompleta) | reg · cop-9 |
-| A-05 | `recorder/list_statistic_ids` letto due volte da due giri | E | PS |  |  | reg |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
 | A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | D | CC |  | cop-3 (imprecisa) | reg · cop-3 · cop-4 |
 | A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 |
@@ -28,9 +26,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 |
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 |
 | A-18 | Contenitori che invecchiano per scelta dichiarata | E | DP |  | cop-6 (incompleta, righe) | reg · cop-4 · cop-6 |
-| A-19 | La finestra di memoria rimisurata a ogni lotto della campagna, su tutte le entità | NV (cop-1) · E (cop-6) — CONTRADDIZIONE | CC (cop-1) · PS (cop-6) — CONTRADDIZIONE |  |  | cop-1 A1 · cop-6 N-01 |
-| A-20 | `recipe_round` paga `statistic_ids()` ogni 10 minuti anche senza niente da chiedere | NV | CC |  |  | cop-1 A2 |
-| A-21 | `watch_automation_outcomes`: una lettura WS per automazione segnata, ogni 2 minuti, per sempre | NV | CC |  |  | cop-1 A3 |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 |
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 |
 | A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | E | PS |  |  | cop-3 A-n2 |
@@ -38,7 +33,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
-| A-32 | Le tracce lette un'automazione alla volta (`automation_traces`) quando la raffica `traces` esiste | E | PS |  |  | cop-5 A5 |
 | A-34 | `calendars()` chiede a HA ciò che lo specchio ha già; eventi letti in fila | NV | CC |  |  | cop-5 A7 |
 | A-36 | Due modi di leggere lo storico dettagliato (REST `history`, WS `recorded_changes`) | NV | DP |  |  | cop-5 A9 |
 | A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 |
@@ -888,3 +882,9 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-19 | Due motori di ricerca per nome: `name_matches` e `Lookup.find` | 3.73.0 | fa268542 | Lookup.find e il suo indice dei termini (uscito con M-08); resta name_matches, l'unico motore per nome. Chiusa nel registro con la Tappa 3, Task 1 (03/10/2026) |
 | A-27 | Il taglio dell'URL dello storico vive nello strumento, non in `HAClient.history` | Tappa 2 (da rilasciare) | ad91db1 | Tappa 2, Task 9: il taglio dell'URL dello storico vive in HAClient.history |
 | D-44 | Il sigillo del registro errori vive in `tools.py`: `mind/watcher` lo salta | Tappa 2 (da rilasciare) | 0dcac7a | Tappa 3, Task 0: la regola del sigillo vive in home_space/redaction.py e la usano chat e osservatore |
+| A-21 | `watch_automation_outcomes`: una lettura WS per automazione segnata, ogni 2 minuti, per sempre | Tappa 2 (da rilasciare) | 31719924 | Tappa 2, Task 8: le tracce delle automazioni segnate in una raffica sola |
+| A-32 | Le tracce lette un'automazione alla volta (`automation_traces`) quando la raffica `traces` esiste | Tappa 2 (da rilasciare) | 31719924 | Tappa 2, Task 8: automation_traces esce, resta la raffica traces |
+| A-19 | La finestra di memoria rimisurata a ogni lotto della campagna, su tutte le entità | Tappa 2 (da rilasciare) | 5c648e20 | Tappa 2, Task 8: la finestra di memoria si misura solo quando il valore si usa |
+| A-05 | `recorder/list_statistic_ids` letto due volte da due giri | Tappa 2 (da rilasciare) | d9374bac | Tappa 2, Task 8: statistic_ids letto una volta per giro e condiviso fra ricette e recupero |
+| A-20 | `recipe_round` paga `statistic_ids()` ogni 10 minuti anche senza niente da chiedere | Tappa 2 (da rilasciare) | d9374bac | Tappa 2, Task 8: il giro delle ricette non legge statistic_ids se non ha niente da chiedere o da controllare |
+| A-04 | `GET /api/services`: il registro servizi e il bypass di `recipient` | Tappa 2 (da rilasciare) | b748f3c1 | Tappa 2, Task 8: il recapito usa il registro dei servizi |
