@@ -37,7 +37,9 @@ from tests.test_ha_client_invio import _arguments
 #: Le letture che NON rispondono con la busta, e perche'. Chiude per difetto:
 #: una lettura nuova senza busta e' rossa finche' qualcuno non la scrive qui.
 NOT_ENVELOPED = {
-    "read_configuration": "canale della configurazione: con le scritture, Tappa 7",
+    "read_configuration": "canale della configurazione: il rifiuto e la richiesta "
+                          "hanno la busta (`test_ha_client_configuration.py`), "
+                          "il silenzio solleva con le scritture (Tappa 7)",
     "read_registries": "(registri, non_disponibili): la lettura dell'anagrafe, "
                        "dove ogni registro caduto si nomina da se'; il registro "
                        "solo, con la busta, e' `read_registry`",

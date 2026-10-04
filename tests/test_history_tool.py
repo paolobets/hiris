@@ -317,7 +317,10 @@ async def test_un_guasto_dello_storico_non_e_una_giornata_tranquilla(tmp_path):
         "history", {"riferimento": "light.cucina_1"})
     guasto = await ha.history(["light.cucina_1"], "2026-09-29T00:00:00+00:00",
                               "2026-09-30T00:00:00+00:00")
-    assert esito == {"errore": guasto["errore"]}
+    # La busta INTERA del client, non il solo `errore` (fondamenta 3): la
+    # `causa` dice al modello se Home Assistant ha taciuto o ha detto di no.
+    assert esito == guasto
+    assert esito["causa"] == "forma"
 
 
 @pytest.mark.asyncio
@@ -331,7 +334,8 @@ async def test_un_guasto_dello_storico_dei_valori_e_un_errore(tmp_path):
         "history", {"genere": "valori", "riferimento": "sensor.cucina_t"})
     guasto = await ha.history(["sensor.cucina_t"], "2026-09-29T00:00:00+00:00",
                               "2026-09-30T00:00:00+00:00")
-    assert esito == {"errore": guasto["errore"]}
+    assert esito == guasto
+    assert esito["causa"] == "forma"
 
 
 @pytest.mark.asyncio
@@ -682,7 +686,41 @@ async def test_il_registro_che_non_risponde_si_dice():
     ha = _house(refuse={"system_log/list": {"code": "unknown_error", "message": "giu'"}})
     esito = await ToolDispatcher(None, None, ha=ha).dispatch(
         "history", {"genere": "errori"})
-    assert esito == {"errore": "giu'"}
+    assert esito == {"errore": "giu'", "causa": "rifiuto", "codice": "unknown_error"}
+
+
+_REFUSED = {"code": "unknown_error", "message": "giu'"}
+_REFUSED_ENVELOPE = {"errore": "giu'", "causa": "rifiuto", "codice": "unknown_error"}
+
+
+@pytest.mark.asyncio
+async def test_le_fasce_orarie_rifiutate_arrivano_con_la_busta_intera(tmp_path):
+    """Le statistiche orarie che Home Assistant rifiuta: la busta del client
+    arriva intera, come quella di `calendar` (fondamenta 3)."""
+    ha = _house(refuse={"recorder/statistics_during_period": dict(_REFUSED)})
+    esito = await _history_dispatcher(tmp_path, ha).dispatch(
+        "history", {"genere": "valori", "nome": "energia consumata oggi", "da": "ieri"})
+    assert esito == _REFUSED_ENVELOPE
+
+
+@pytest.mark.asyncio
+async def test_una_esecuzione_rifiutata_arriva_con_la_busta_intera(tmp_path):
+    ha = _house(refuse={"trace/get": dict(_REFUSED)})
+    esito = await _history_dispatcher(tmp_path, ha).dispatch(
+        "history", {"genere": "esecuzioni", "riferimento": "automation.rifiuto_vetro",
+                    "esecuzione": "r1"})
+    assert esito == _REFUSED_ENVELOPE
+
+
+@pytest.mark.asyncio
+async def test_le_esecuzioni_senza_risposta_arrivano_con_la_busta_intera(tmp_path):
+    """Una raffica di `trace/list` senza nessuna risposta e' un silenzio: la
+    busta del client, intera."""
+    ha = _house(silence=("trace/list",))
+    esito = await _history_dispatcher(tmp_path, ha).dispatch(
+        "history", {"genere": "esecuzioni", "riferimento": "script.buonanotte"})
+    assert esito["causa"] == "silenzio"
+    assert set(esito) == {"errore", "causa", "codice"}
 
 
 @pytest.mark.asyncio

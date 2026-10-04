@@ -178,6 +178,14 @@ def _failure(cause: str, text: str, code=None) -> dict:
     `None`}`. Le tre chiavi ci sono sempre: un lettore che le trova da una
     porta le trova da tutte (fondamenta 3). Il successo di una lettura NON
     passa di qui: tiene la sua forma.
+
+    **Dove la promessa non vale ancora** (canale della configurazione, Tappa
+    7): il rifiuto di Home Assistant a `save_configuration` e
+    `delete_configuration` e' ancora il solo `{"errore": motivo}`, e le tre
+    primitive della configurazione (con `read_configuration`) sollevano sul
+    trasporto invece di rendere il silenzio. Il rifiuto prima della rete
+    (`_config_route`) e il rifiuto di HA a `read_configuration` hanno gia' la
+    busta intera.
     """
     return {"errore": text, "causa": cause, "codice": code}
 
@@ -552,14 +560,18 @@ class HAClient:
     # esotica e' una decisione di sicurezza, non una pulizia.
     _KEY_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-    def _config_route(self, domain: str, key: str) -> tuple[str | None, str | None]:
-        """L'URL della rotta di configurazione, oppure il motivo del rifiuto."""
+    def _config_route(self, domain: str, key: str) -> tuple[str | None, dict | None]:
+        """L'URL della rotta di configurazione, oppure la busta del rifiuto:
+        una domanda fermata prima della rete (`causa: richiesta`), la stessa
+        per le tre primitive che passano di qui."""
         if domain not in self.CONFIGURABLE_DOMAINS:
-            return None, (f"il dominio «{domain}» non si configura da qui. "
-                          f"Domini configurabili: {', '.join(self.CONFIGURABLE_DOMAINS)}.")
+            return None, _failure(REQUEST, (
+                f"il dominio «{domain}» non si configura da qui. "
+                f"Domini configurabili: {', '.join(self.CONFIGURABLE_DOMAINS)}."))
         if not self._KEY_RE.match(key or ""):
-            return None, (f"la chiave «{key}» non ha una forma ammessa "
-                          "(lettere, cifre, trattino e trattino basso, max 64).")
+            return None, _failure(REQUEST, (
+                f"la chiave «{key}» non ha una forma ammessa "
+                "(lettere, cifre, trattino e trattino basso, max 64)."))
         return f"{self._base_url}/api/config/{domain}/config/{key}", None
 
     @staticmethod
@@ -597,11 +609,14 @@ class HAClient:
         `home_space/behavior.py` al suo posto: quello e' l'archivio di HIRIS,
         aggiornato a cadenza propria, e potrebbe essere vecchio di minuti.
 
-        Solleva solo cio' che rompe il trasporto.
+        Un rifiuto di Home Assistant e una domanda fermata prima della rete
+        hanno la busta di ogni altra lettura (`_failure`). Solleva solo cio'
+        che rompe il trasporto: il silenzio lo fa busta `guasto_rete` il suo
+        unico chiamante (`Workshop._rete`), con le due scritture (Tappa 7).
         """
         url, rejection = self._config_route(domain, key)
         if url is None:
-            return {"errore": rejection}
+            return rejection
         async with self._session.get(url) as resp:
             if resp.status == 404:
                 # «Non c'e'» e' un FATTO, non un guasto, ed e' anche il modo
@@ -611,7 +626,7 @@ class HAClient:
                 # SOSTITUIRE l'automazione che c'era.
                 return {"assente": True}
             if resp.status != 200:
-                return {"errore": await self._http_reason(resp)}
+                return _failure(REFUSAL, await self._http_reason(resp), resp.status)
             return {"corpo": await resp.json()}
 
     @cost(rest=1)
@@ -637,7 +652,7 @@ class HAClient:
         """
         url, rejection = self._config_route(domain, key)
         if url is None:
-            return {"errore": rejection}
+            return rejection
         async with self._session.post(url, json=body) as resp:
             if resp.status != 200:
                 return {"errore": await self._http_reason(resp)}
@@ -657,7 +672,7 @@ class HAClient:
         """
         url, rejection = self._config_route(domain, key)
         if url is None:
-            return {"errore": rejection}
+            return rejection
         async with self._session.delete(url) as resp:
             if resp.status != 200:
                 return {"errore": await self._http_reason(resp)}

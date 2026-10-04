@@ -81,7 +81,39 @@ async def test_leggi_distingue_il_non_c_e_dal_non_ho_potuto_leggere():
     assert await house.read_configuration("automation", "999") == {"assente": True}
     house = _house(get=lambda path: Refused(500, "boom"))
     esito = await house.read_configuration("automation", "999")
-    assert esito == {"errore": "boom"}
+    assert esito == {"errore": "boom", "causa": "rifiuto", "codice": 500}
+
+
+@pytest.mark.asyncio
+async def test_leggi_una_chiave_ostile_e_una_richiesta_con_la_busta_intera():
+    """La lettura della configurazione ha la busta di ogni altra lettura
+    (fondamenta 3): una chiave che non ha la forma ammessa si ferma prima
+    della rete, con `causa: richiesta`, come `history` su un entity_id
+    malformato."""
+    house = _house(get=lambda path: {"id": "x"})
+    esito = await house.read_configuration("automation", "../../core/config")
+    assert house.calls == []
+    assert esito["causa"] == "richiesta"
+    assert esito["codice"] is None
+    assert "chiave" in esito["errore"]
+    esito = await house.read_configuration("light", "x")
+    assert esito["causa"] == "richiesta"
+    assert "light" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_le_scritture_fermate_prima_della_rete_hanno_la_stessa_busta():
+    """Il rifiuto di `_config_route` e' uno solo, condiviso dalle tre
+    primitive: anche le due scritture lo rendono con la busta intera. Il
+    rifiuto di Home Assistant su una scrittura resta invece `{"errore"}`
+    (Tappa 7): lo dichiara il docstring di `_failure`."""
+    house = _house(post=lambda path, body: {"result": "ok"},
+                   delete=lambda path, body: {"result": "ok"})
+    for esito in (await house.save_configuration("automation", "a/b", {}),
+                  await house.delete_configuration("light", "x")):
+        assert esito["causa"] == "richiesta"
+        assert "codice" in esito
+    assert house.calls == []
 
 
 @pytest.mark.asyncio

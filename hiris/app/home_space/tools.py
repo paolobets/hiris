@@ -103,6 +103,7 @@ from ..proxy.entity_cache import (
     states_by_id,
     unreadable_inventory_error,
 )
+from ..proxy.ha_client import SHAPE, _failure
 from . import historian
 from .appointments import read_appointment, sort_appointments
 from .house_history import (
@@ -186,6 +187,21 @@ def _fallen_stores_message(stores: list[str]) -> str:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _read_failure(answer, fallback: str) -> dict:
+    """La busta di una lettura del client che non e' riuscita, INTERA.
+
+    Il client dice ogni guasto con `errore`, `causa` e `codice`
+    (`proxy/ha_client.py::_failure`): ridurla al solo `errore` qui toglierebbe
+    al modello la differenza fra «Home Assistant ha taciuto» e «ha detto di
+    no», e farebbe uscire uno strumento in una forma diversa da `calendar`,
+    che la gira com'e' (fondamenta 3). Una risposta che non e' la busta e non
+    ha la forma attesa diventa una busta di `forma`, dallo stesso costruttore.
+    """
+    if isinstance(answer, dict) and "errore" in answer:
+        return answer
+    return _failure(SHAPE, fallback)
 
 
 SEARCH_TOOL_DEF = {
@@ -2562,8 +2578,7 @@ class ToolDispatcher:
         if query.kind == "errori":
             answer = await self._ha.system_log()
             if not isinstance(answer.get("voci"), list):
-                return {"errore": answer.get("errore",
-                                             "il registro di Home Assistant non ha risposto")}
+                return _read_failure(answer, "il registro di Home Assistant non ha risposto")
             return error_rows(query, self._sealed_log(answer["voci"]))
         if self._home_space is None:
             return {"errore": "`history` non e' disponibile: la conoscenza della casa "
@@ -2600,8 +2615,8 @@ class ToolDispatcher:
         return response
 
     async def _read_history(self, entity_ids: list[str], query: HistoryQuery) -> dict:
-        """Lo storico di tutti i soggetti: `{"serie", "troncato"}` o
-        `{"errore"}`. Quanti che siano: il taglio dell'URL vive in
+        """Lo storico di tutti i soggetti: `{"serie", "troncato"}` o la busta
+        del guasto, intera (`_read_failure`). Quanti che siano: il taglio dell'URL vive in
         `HAClient.history` (A-27, Tappa 2).
 
         Gli istanti passano col loro ISO intero, secondi e microsecondi: la
@@ -2610,8 +2625,7 @@ class ToolDispatcher:
         start, end = query.start.isoformat(), query.end.isoformat()
         answer = await self._ha.history(entity_ids, start, end)
         if not isinstance(answer, dict) or "serie" not in answer:
-            return {"errore": (answer or {}).get(
-                "errore", "lo storico di Home Assistant non ha risposto")}
+            return _read_failure(answer, "lo storico di Home Assistant non ha risposto")
         return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
 
     async def _state_history(self, query: HistoryQuery, chosen: Chosen,
@@ -2651,7 +2665,7 @@ class ToolDispatcher:
             band_ids, query.start.isoformat(), query.end.isoformat()) if band_ids
             else {"serie": {}})
         if not isinstance(bands, dict) or "serie" not in bands:
-            return {"errore": (bands or {}).get("errore", "Home Assistant non ha risposto")}
+            return _read_failure(bands, "le statistiche orarie non sono arrivate")
         return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
                           truncated=detail["troncato"], surfaces=surfaces,
                           units=mirror[2], state_classes=state_classes,
@@ -2712,14 +2726,13 @@ class ToolDispatcher:
                 return {"errore": f"«{subject.ident}»: {UNRESOLVED_RUNS}."}
             answer = await ha.trace(key[0], key[1], query.run_id)
             if not isinstance(answer, dict) or "traccia" not in answer:
-                return {"errore": (answer or {}).get("errore",
-                                                     "Home Assistant non ha risposto")}
+                return _read_failure(answer, "la traccia non e' arrivata")
             return run_detail(query, chosen,
                               sanitize_structure(answer["traccia"], seal=seal))
         wanted = [key for key in keys.values() if key is not None]
         answer = (await ha.traces(wanted)) if wanted else {"tracce": {}, "non_letti": {}}
         if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
-            return {"errore": (answer or {}).get("errore", "Home Assistant non ha risposto")}
+            return _read_failure(answer, "le esecuzioni non sono arrivate")
         traces = {name: sanitize_structure(runs, seal=seal)
                   for name, runs in answer["tracce"].items()}
         return run_rows(query, chosen, traces=traces,
