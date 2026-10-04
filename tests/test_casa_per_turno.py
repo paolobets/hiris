@@ -242,3 +242,57 @@ async def test_dopo_un_comando_lo_stesso_turno_rilegge_lo_specchio():
     assert dispatcher._mirror().state["light.cucina"] == "off"
     await dispatcher._execute({"servizio": "light.turn_on"})
     assert dispatcher._mirror().state["light.cucina"] == "on"
+
+
+# -- la casa si legge in un modo solo ------------------------------------------
+
+PRODUCT = Path(__file__).resolve().parents[1] / "hiris" / "app"
+HOUSE_MODULE = PRODUCT / "home_space" / "house.py"
+
+
+def _house_constructions() -> dict[str, list[str]]:
+    """Ogni `House(...)` e ogni `House.read(...)` del prodotto, per file. I
+    file si chiedono alla cartella, non a un elenco."""
+    import ast
+
+    found: dict[str, list[str]] = {"costruita": [], "letta": []}
+    for path in sorted(PRODUCT.rglob("*.py")):
+        if path == HOUSE_MODULE:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            where = f"{path.relative_to(PRODUCT)}:{node.lineno}"
+            if isinstance(node.func, ast.Name) and node.func.id == "House":
+                found["costruita"].append(where)
+            elif (isinstance(node.func, ast.Attribute) and node.func.attr == "read"
+                  and isinstance(node.func.value, ast.Name) and node.func.value.id == "House"):
+                found["letta"].append(where)
+    return found
+
+
+def test_la_casa_si_legge_solo_con_house_read():
+    """La casa si compone in un posto: `House.read` mette insieme l'anagrafe,
+    lo specchio (`topology.read_mirror`) e i registri caduti. Una porta che
+    scrive `House(home_space, read_mirror(cache), unavailable)` a mano ripete
+    quella composizione, e la prima volta che `House.read` impara un pezzo
+    nuovo (l'elenco delle statistiche del giro, la fonte) quella porta guarda
+    un'altra casa (fondamenta 2). Trovato dalla revisione della Tappa 3
+    (Task 14, 04/10/2026): `handle_get_home_space` era l'ultima.
+
+    Le prove possono costruirla a mano: la regola vale per il prodotto.
+
+    Derivazione viva: la scansione trova le letture vere (`House.read` sta in
+    `server.py` e nei gestori), quindi non e' un cancello che non guarda
+    niente.
+
+    Rossa sul codice di prima (`ee4c7ab`), letta il 04/10/2026:
+    «['api/handlers_home_space.py:146']». Mutazione ESEGUITA dopo la
+    correzione, senza toccare la prova: `House(casa.read(), read_mirror(...))`
+    al posto di `House.read` in `handlers_mind._device_names` -- rossa,
+    «['api/handlers_mind.py:423']». Ripristinata, `git status` pulito.
+    """
+    found = _house_constructions()
+    assert len(found["letta"]) >= 3, found
+    assert found["costruita"] == [], found["costruita"]
