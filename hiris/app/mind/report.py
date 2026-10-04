@@ -56,15 +56,8 @@ from __future__ import annotations
 import logging
 
 from ..home_space.ha_vocabulary import domain_of
-
-# `integration_of` e' riesportata, non usata qui: `home_space/house_history.py`
-# la importa ancora da questo modulo. Quel file era riservato alla fetta di `House` quando la
-# regola e' traslocata (04/10/2026, B-35); il giorno che lo si apre, l'import
-# passa a `home_space.log_source`, questa riga esce, ed esce anche l'eccezione
-# di `tests/test_confine_home_space.py`.
 from ..home_space.log_source import (
     integration_name,
-    integration_of,  # noqa: F401
     integration_slug,
 )
 from ..home_space.type_vocabulary import SYSTEM_GENRE, unknown_states

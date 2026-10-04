@@ -16,9 +16,8 @@ lista di AMMISSIONE, ognuna con la ragione, e possono solo diminuire.
 Mutazione ESEGUITA: in `home_space/queries.py` aggiunto
 `from ..mind.report import as_page` dentro `_class_meaning` -- rossa
 (`home_space/queries.py` fra i trasgressori).
-Mutazione ESEGUITA: tolta l'importazione di `integration_of` da
-`home_space/house_history.py` (nella copia di lavoro, non nel commit) -- rossa
-(l'eccezione ammessa non serve piu', e il cancello lo dice).
+Mutazione ESEGUITA: rimesso in `home_space/house_history.py`
+`from ..mind.report import integration_of` -- rossa.
 """
 import ast
 from pathlib import Path
@@ -28,15 +27,9 @@ from hiris.app import home_space
 FOLDER = Path(home_space.__file__).resolve().parent
 APP = FOLDER.parent
 
-#: I moduli di `home_space` AMMESSI a importare da `mind`, con la ragione.
-AMMESSI = {
-    # `integration_of` e' traslocata in `home_space/log_source.py` il
-    # 04/10/2026 (B-35), ma questo file era riservato alla fetta di `House`
-    # (Tappa 3, Task 1 e seguenti) e il brief chiedeva di non toccarlo:
-    # `mind/report.py` la riesporta. Il giorno che lo si apre, l'import passa
-    # a `.log_source` e questa riga esce.
-    "house_history.py",
-}
+#: I moduli di `home_space` AMMESSI a importare da `mind`, con la ragione. Vuoto
+#: dal 04/10/2026: chiude per difetto, una voce nuova si scrive qui con la ragione.
+AMMESSI: set[str] = set()
 
 
 def _imports_mind(tree) -> bool:
