@@ -1,5 +1,60 @@
 # HIRIS — Changelog
 
+## [3.74.0] — Un solo lettore di Home Assistant: la Tappa 2 di «Una fonte sola di verità» (2026-10-04)
+
+### Perche'
+
+HIRIS leggeva Home Assistant da molte porte, ognuna a modo suo: sette modi diversi di dire «è
+andata?», la casa intera riletta da percorsi che ne usavano una ventina di righe, una connessione
+nuova per ogni automazione da controllare, e copie della casa che invecchiavano per cinque minuti.
+Questa tappa fa passare ogni lettura da un client solo, con una forma sola per l'esito, e chiede
+ogni fatto alla sua fonte invece di tenerne una copia.
+
+### Cosa cambia per chi usa HIRIS
+
+- Un'automazione che spegni o rinomini in Home Assistant risulta disabilitata, o col nome nuovo, in
+  HIRIS dal primo evento, non fino a cinque minuti dopo.
+- Se cambi la lingua della casa, le parole degli stati arrivano nella lingua nuova subito, senza
+  aspettare il giro dei cinque minuti.
+- Lo stato delle integrazioni arriva da Home Assistant per evento, appena cambia, invece che dal
+  giro dei dieci minuti.
+- Quando Home Assistant rifiuta una lettura, HIRIS conserva il motivo vero invece di una frase
+  generica, e la configurazione o l'elenco delle statistiche non tacciono più su un guasto. Gli
+  strumenti della chat (storia, statistiche, tracce, registro degli errori) passano al modello la
+  causa del guasto, non solo una frase.
+- All'avvio HIRIS si mette in ascolto dei cambi della casa prima di aprire la connessione a Home
+  Assistant: se la connessione arriva subito, nessuna copia della casa perde l'avviso.
+- Un registro di Home Assistant che non risponde non svuota più la sua tabella: HIRIS tiene quella
+  di prima e lo dichiara (gli alias non spariscono tutti per un comando fallito).
+- Se l'autenticazione del WebSocket fallisce, la connessione riprova da sola invece di restare giù
+  fino al riavvio dell'add-on.
+- Lo specchio dello stato, se una rilettura fallisce, riprova entro un paio di minuti invece di
+  aspettare la riconnessione successiva.
+- La ricerca e la storia trovano area, piano e integrazione anche se li scrivi con maiuscole,
+  accenti o spazi diversi da come li scrive Home Assistant.
+- I titoli d'errore dell'osservatore passano dal sigillo dei segreti, anche quelli già archiviati
+  (sigillati all'avvio; il registro dell'add-on dice quanti).
+
+### Cosa cambia dentro
+
+- Un solo invio WebSocket e una sola busta d'errore (`errore`, `causa`, `codice`) per tutte le
+  letture; i registri si leggono uno per uno; lo stato per id dallo specchio.
+- All'avvio la casa si legge una volta: gli stati 1 volta invece di 4, i registri 1 invece di 3.
+- I giri non rileggono ciò che non usano: le tracce delle automazioni in una raffica sola, l'elenco
+  delle statistiche una volta per giro e solo se serve, la finestra di memoria solo quando si usa.
+- Lo storico dettagliato si chiede a pezzi quando gli identificatori sono tanti, e i calendari
+  insieme invece che uno alla volta.
+- Nelle prove, ogni finta di Home Assistant è diventata una casa finta sotto il client vero; un
+  cancello ferma le finte nuove, e un altro vuole un solo modulo per ogni lettura del client.
+
+### Da sapere
+
+La fotografia a freddo delle porte è identica a quella della 3.73.2: i cambi qui sopra agiscono nel
+tempo (un evento, una riconnessione, un registro caduto) e li sorvegliano le loro prove.
+
+Con Home Assistant spento, l'avvio di HIRIS aspetta fino a dieci secondi la prima connessione prima
+di leggere la casa.
+
 ## [3.73.2] — Le prove smettono di leggere il testo: la Tappa 1 di «Una fonte sola di verità» (2026-10-03)
 
 ### Perche'
