@@ -96,7 +96,6 @@ _RESIDUI_NOTI: frozenset[str] = frozenset({
     # Inglese tecnico dentro una frase italiana, scritto apposta: e' la lingua
     # con cui questo prodotto parla di Home Assistant, e mettere «registratore»
     # al posto di `logger` renderebbe la frase piu' difficile, non piu' pulita.
-    "entity_id",   # `mind/watcher.py`: «l'entity_id e' ...»
     "logger",      # `mind/watcher.py`: la chiave con cui HA deduplica
     "runner",      # `mind/observer.py`: «il runner vero»
     # Citazioni di codice che il ripulitore non vede perche' i backtick si
@@ -104,7 +103,6 @@ _RESIDUI_NOTI: frozenset[str] = frozenset({
     # dichiarato: chiudere anche quelle vorrebbe dire ricostruire il testo del
     # docstring intero, e il guadagno non vale la macchina.
     "log_entries",
-    "self",
 })
 
 

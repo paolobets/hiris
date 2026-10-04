@@ -1106,9 +1106,8 @@ def test_marked_automations_is_sorted_and_has_no_duplicates(coppia):
     voce sola da rileggere.
 
     Mutazione (verificata eseguendola): `self._marked_automations` come
-    `list` invece di `dict` (init `= []`, `mark_automation` con
-    `.append(entity_id)` incondizionato invece del controllo "gia'
-    presente? non toccare") -- il test torna rosso su
+    `list` invece di un insieme (init `= []`, `mark_automation` con
+    `.append(entity_id)` incondizionato) -- il test torna rosso su
     `assert osservatore.marked_automations() ==
     ["automation.alfa", "automation.zeta"]` (tornerebbe una lista con
     `"automation.alfa"` ripetuta due volte)."""
@@ -1117,49 +1116,6 @@ def test_marked_automations_is_sorted_and_has_no_duplicates(coppia):
     osservatore.mark_automation("automation.alfa")
     osservatore.mark_automation("automation.alfa")
     assert osservatore.marked_automations() == ["automation.alfa", "automation.zeta"]
-
-
-def test_mark_automation_records_the_name_from_the_event(coppia):
-    """L'evento porta gia' il nome amichevole (`ATTR_NAME`, verificato alla
-    fonte sui due estremi della finestra supportata,
-    `automation/__init__.py` tag `2024.7.0` e `2026.9.0`): non usarlo
-    ripeterebbe il difetto che questo sprint esiste per chiudere -- un
-    soggetto raccontato dall'archivio senza che nessuna riga dica di cosa
-    si tratti.
-
-    Mutazione (verificata eseguendola): non salvare `name` (lasciare
-    `self._marked_automations[entity_id] = None` incondizionato) -- il
-    test torna rosso su
-    `assert osservatore.automation_title("automation.luci_sera") ==
-    "Luci sera"` (tornerebbe `None`)."""
-    _archivio, osservatore = coppia
-    osservatore.mark_automation("automation.luci_sera", name="Luci sera")
-    assert osservatore.automation_title("automation.luci_sera") == "Luci sera"
-
-
-def test_automation_title_is_none_for_an_unmarked_automation(coppia):
-    """Nessuna mutazione onesta da dichiarare qui: e' il caso base di un
-    `dict.get` su una chiave assente, non un ramo di codice dedicato."""
-    _archivio, osservatore = coppia
-    assert osservatore.automation_title("automation.mai_segnata") is None
-
-
-def test_the_name_freezes_at_the_first_mark(coppia):
-    """Un'automazione rinominata in HA dopo essere gia' stata segnata resta
-    col nome VECCHIO fino al prossimo riavvio dell'add-on (quando l'insieme
-    riparte vuoto e il prossimo scatto legge il nome nuovo): e' grezzo
-    dichiarato, non un difetto -- lo stesso compromesso di
-    `rebuild_conditions` con la data d'inizio oltre i 21 giorni di potatura.
-
-    Mutazione (verificata eseguendola): togliere `if entity_id not in
-    self._marked_automations:` (aggiornare il nome a ogni chiamata) -- il
-    test torna rosso su
-    `assert osservatore.automation_title("automation.x") == "Nome vecchio"`
-    (tornerebbe `"Nome nuovo"`)."""
-    _archivio, osservatore = coppia
-    osservatore.mark_automation("automation.x", name="Nome vecchio")
-    osservatore.mark_automation("automation.x", name="Nome nuovo")
-    assert osservatore.automation_title("automation.x") == "Nome vecchio"
 
 
 def test_watch_automation_outcome_writes_the_title_only_on_opening(coppia):

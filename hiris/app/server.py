@@ -1030,10 +1030,13 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     `"error"`, `"failed_conditions"`, ...): questa funzione non lo giudica,
     lo passa cosi' com'e' -- il giudizio (quale valore apre, quale chiude,
     quale non fa niente) vive tutto in `Watcher.watch_automation_outcome`.
-    `title` viene da `Watcher.automation_title(entity_id)` -- il nome
-    amichevole che `mark_automation` ha segnato dall'evento -- e viaggia
-    identico a ogni chiamata per la stessa automazione: e' il metodo che
-    decide se scriverlo (solo sull'apertura), non questa funzione.
+    `title` e' il nome che la casa da' all'automazione ADESSO (`House.name`,
+    D1: quello che si vede in Home Assistant; A-18, Tappa 3, Task 12) --
+    fino al 04/10/2026 era quello che l'evento portava al primo scatto, e
+    non seguiva le rinomine. Un'automazione che la casa sa nominare solo con
+    l'id viaggia senza titolo, come prima senza nome. Viaggia identico a
+    ogni chiamata per la stessa automazione: e' il metodo che decide se
+    scriverlo (solo sull'apertura), non questa funzione.
 
     Non solleva mai per la lettura delle tracce (`traces()` la dichiara
     gia' cosi', vedi il suo docstring): un guasto di rete per
@@ -1092,6 +1095,8 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     report = await ha_client.traces(
         list(dict.fromkeys(("automation", automation_id)
                            for _entity_id, automation_id in resolved)))
+    # La casa di questo giro, per i nomi (A-18): letta una volta.
+    house = House.read(app.get("home_space_store"), cache)
     if "errore" in report:
         # La raffica intera non e' partita: nessuna automazione si e' potuta
         # guardare, e nessun cursore si tocca.
@@ -1109,7 +1114,8 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
             continue
         already_seen = cursors.get(entity_id) or set()
         seen_this_round: set[str] = set()
-        title = watcher.automation_title(entity_id)
+        name = house.name("automazione", entity_id)
+        title = None if name == entity_id else name
         for trace in report["tracce"][key]:
             if not isinstance(trace, dict):
                 continue
@@ -3696,18 +3702,16 @@ async def _on_startup(app: web.Application) -> None:
     # AUTOMATION_TRIGGERED_EVENT in `proxy/ha_client.py`): segna soltanto,
     # non scrive -- vedi il docstring di `Watcher.mark_automation` per il
     # perche'. Il glue e' qui e non un metodo di `Watcher` apposta:
-    # l'interfaccia che questo task produce e' `mark_automation(entity_id,
-    # *, name=None)` -- estrarre `entity_id`/`name` dal dizionario grezzo
-    # dell'evento e' cablaggio di questo file, non un giudizio
-    # dell'osservatore. `name` (giro di correzioni, rilievo 5): l'evento
-    # porta gia' il nome amichevole dell'automazione (`ATTR_NAME`, vedi
-    # `AUTOMATION_TRIGGERED_EVENT`) -- non serve `EntityCache` per averlo.
+    # l'interfaccia che questo task produce e' `mark_automation(entity_id)`
+    # -- estrarre `entity_id` dal dizionario grezzo dell'evento e' cablaggio
+    # di questo file, non un giudizio dell'osservatore. Il nome che l'evento
+    # porta non si tiene (A-18): lo dice la casa all'esito.
     def _mark_triggered_automation(event_data: dict) -> None:
         if not isinstance(event_data, dict):
             return
         entity_id = event_data.get("entity_id")
         if isinstance(entity_id, str):
-            app["watcher"].mark_automation(entity_id, name=event_data.get("name"))
+            app["watcher"].mark_automation(entity_id)
     ha_client.add_automation_listener(_mark_triggered_automation)
 
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +

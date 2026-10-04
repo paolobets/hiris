@@ -602,6 +602,24 @@ class KnowledgeStore:
                                 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
                                 9: _migration_9})
+        self._version = 0
+
+    def version(self) -> int:
+        """Quante scritture questo archivio ha fatto da quando e' aperto: un
+        numero che cambia a ogni riga scritta, seminata o tolta (A-18, Tappa
+        3, Task 12). Chi tiene in memoria una risposta del sapere lo
+        confronta per sapere se e' ancora vera (`Watcher._wanted_attributes`),
+        invece di tenerla fino al riavvio. Vale per le scritture di QUESTO
+        processo -- le sole che il prodotto fa; una riga corretta a mano sul
+        disco con l'add-on acceso si vede al riavvio, come prima."""
+        return self._version
+
+    def _commit(self) -> None:
+        """Il commit di una scrittura, e la versione che avanza: in un posto
+        solo, cosi' nessuna scrittura nuova puo' dimenticarla. Si chiama col
+        lock gia' preso."""
+        self._conn.commit()
+        self._version += 1
 
     def close(self) -> None:
         with self._lock:
@@ -621,7 +639,7 @@ class KnowledgeStore:
                 "source=excluded.source, who=excluded.who, when_ts=excluded.when_ts, "
                 "said_by=excluded.said_by",
                 tuple(getattr(fact, c) for c in _COLUMNS))
-            self._conn.commit()
+            self._commit()
 
     def _delete(self, subject_kind: str, subject: str, field: str) -> int:
         """La cancellazione di una terna, **senza lock e senza commit**: e' la
@@ -679,7 +697,7 @@ class KnowledgeStore:
                 existed = self._delete(subject_kind, subject, field)
                 for fact in facts:
                     self._seed_one(fact, priority)
-                self._conn.commit()
+                self._commit()
             except Exception:
                 # Senza il `rollback` la `DELETE` resterebbe nella transazione
                 # aperta e la prima scrittura riuscita dopo di lei la
@@ -727,7 +745,7 @@ class KnowledgeStore:
         with self._lock:
             for fact in facts:
                 written += self._seed_one(fact, priority)
-            self._conn.commit()
+            self._commit()
         return written
 
     # -- lettura -----------------------------------------------------------
@@ -857,7 +875,7 @@ class KnowledgeStore:
         """
         with self._lock:
             deleted = self._delete(subject_kind, subject, field)
-            self._conn.commit()
+            self._commit()
         return bool(deleted)
 
 def now_ts() -> float:
