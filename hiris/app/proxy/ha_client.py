@@ -2099,6 +2099,53 @@ class HAClient:
             return _failure(SHAPE, "il sistema di riferimento non e' arrivato come oggetto")
         return occurrence["sistema"]
 
+    @cost(ws=1)
+    async def energy_prefs(self) -> dict:
+        """Cio' che la dashboard Energia dichiara: chi e' rete, sole, batteria,
+        gas, acqua, e quali dispositivi consumano -- dichiarato dall'utente,
+        mai indovinato dal nome dei sensori (CLAUDE.md, «su Home Assistant non
+        si ipotizza mai»: l'energia prodotta letta come «consumo» e' nata qui).
+
+        Restituisce le preferenze di Home Assistant COME SONO, oppure la busta
+        del guasto. Il client legge soltanto: quale entita' abbia quale ruolo
+        lo dice la casa (piano degli attori, Task 2.2), non questo metodo.
+
+        **La forma, letta sul sorgente al tag `2026.9.4` il 04/10/2026, non
+        ancora misurata su questa casa** (Task 2.0 del piano degli attori).
+        `ws_get_prefs` (`components/energy/websocket_api.py`) manda
+        `manager.data` intero: `{"energy_sources": [...], "device_consumption":
+        [...], "device_consumption_water": [...]}` (`data.py`,
+        `EnergyPreferences`). Ogni sorgente ha un `type` -- `grid`, `solar`,
+        `battery`, `gas`, `water` -- e porta i suoi sensori in campi SINGOLI:
+        la rete `stat_energy_from` (prelievo) e `stat_energy_to` (immissione),
+        entrambi anche `None`; la batteria `stat_energy_from` (scarica),
+        `stat_energy_to` (carica) e, se dichiarati, `stat_soc` e `capacity`.
+
+        **La trappola di `grid`.** Il formato vecchio della rete portava liste
+        (`flow_from`/`flow_to`); Home Assistant lo migra al formato a campi
+        singoli quando carica le preferenze (`_EnergyPreferencesStore`,
+        `STORAGE_MINOR_VERSION = 3`), quindi al tag letto non esce piu'. Il
+        client non lo traduce e non lo rifiuta: lo passa com'e', e a giudicarlo
+        e' chi legge. Che la rete di QUESTA casa arrivi a campi singoli era
+        gia' stato misurato il 27/08/2026 (docstring di `energy_directions`,
+        uscita il 30/09/2026 senza chiamanti).
+
+        **Una casa senza dashboard Energia** non ha preferenze: Home Assistant
+        rifiuta il comando con `not_found` / «No prefs». E' la busta del
+        rifiuto, col codice di Home Assistant: «non dichiarato» e «non ho
+        potuto leggere» restano distinguibili dal `codice`, e una dashboard
+        vuota non si inventa.
+        """
+        (msg,) = await self._ws_send([("energy/get_prefs", None)])
+        occurrence = self._ws_occurrence(msg, "preferenze")
+        if "errore" in occurrence:
+            return occurrence
+        prefs = occurrence["preferenze"]
+        if not isinstance(prefs, dict) or not isinstance(prefs.get("energy_sources"), list):
+            return _failure(SHAPE, "le preferenze della dashboard Energia non sono "
+                                   "arrivate nella forma di Home Assistant")
+        return prefs
+
     # Gli ambiti delle categorie di Home Assistant. Sono partizionate per
     # ambito: chiederne uno solo farebbe sparire la tassonomia che l'utente ha
     # scritto sugli script o sugli helper, contro il principio per cui il

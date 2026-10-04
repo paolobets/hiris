@@ -40,6 +40,13 @@ Assistant, letta sul tag `2026.9.4` il 03/10/2026:
   None}`, e `extended_dict` e' la riga parziale piu' `aliases`
   (`helpers/entity_registry.py`, `config/entity_registry.py`).
 
+- `energy/get_prefs`: `manager.data` intero, `{"energy_sources",
+  "device_consumption", "device_consumption_water"}`, la rete a campi singoli
+  (`components/energy/data.py`, `websocket_api.py::ws_get_prefs`). Il suo
+  ingresso, `energy_prefs`, la cattura ancora non lo prende (non e' in
+  `casa.INPUTS`): lo da' la prova che lo chiede, e senza il comando resta non
+  servito, come per ogni ingresso che manca.
+
 **Cio' che gli ingressi non portano, dichiarato.** Gli ingressi sono cio' che i
 metodi del client hanno RESTITUITO, non i messaggi interi. Dove il client
 scarta qualcosa, qui non c'e':
@@ -805,6 +812,7 @@ class CasaFinta(HAClient):
         """`{comando: (ingresso, risposta(extra, valore dell'ingresso))}`."""
         served: dict[str, tuple[str, Callable]] = {
             "get_config": ("ha_config", lambda extra, config: _ok(config)),
+            "energy/get_prefs": ("energy_prefs", lambda extra, prefs: _ok(prefs)),
             "recorder/list_statistic_ids": ("statistic_ids", lambda extra, ids: _ok(
                 [{"statistic_id": identifier} for identifier in ids])),
             "repairs/list_issues": ("problems.problemi",
