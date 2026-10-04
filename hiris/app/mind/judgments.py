@@ -16,6 +16,7 @@ import re
 import sqlite3
 import time as _time
 
+from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.type_judgments import (
     _SUBJECT_KINDS,
     DA_SAPERE_SUBITO_FIELD,
@@ -35,14 +36,6 @@ from ..home_space.type_vocabulary import (
     REPO_JUDGMENTS,
     judgment_seed_rows,
 )
-
-# Nome privato importato da un altro modulo, di proposito: la guardia stretta
-# sulla forma `dominio.oggetto` vive in tre copie (docs/BACKLOG.md, voce
-# «`_ENTITY_ID_RE` vive in tre copie»; erano quattro fino al 30/09/2026) e
-# una quarta peggiorerebbe il debito.
-# `proxy/ha_client.py` e' la prima e il confine con Home Assistant, e non
-# importa nessun modulo di `mind`: nessun ciclo.
-from ..proxy.ha_client import _ENTITY_ID_RE
 from .knowledge import Fact
 from .seed import REPO_PRIORITY, SEED_AUTHOR
 
@@ -193,7 +186,7 @@ def _status(source: str, why: str | None, judgments: TypeJudgments) -> dict:
 
 #: La forma di un soggetto `tipo`: un dominio di Home Assistant, da solo o con
 #: `.device_class` (minuscole, cifre, `_`). NON e' la forma di un entity_id:
-#: quella e' `_ENTITY_ID_RE`, importata qui sotto.
+#: quella e' `ha_vocabulary.is_entity_id`.
 _TYPE_SUBJECT_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)?")
 #: Lo slug di un'integrazione: un segmento solo, come lo scrive Home
 #: Assistant nel manifest (`hacs`, `websocket_api`, `homeassistant`).
@@ -209,7 +202,7 @@ def _level(subject_kind: str, subject: str) -> str | None:
     di domini, classi ed entity_id di Home Assistant -- incontrera' mai, cioe'
     una correzione che la casa non vede (revisione del Task 7)."""
     if subject_kind == "entita":
-        return "entita" if _ENTITY_ID_RE.fullmatch(subject) else None
+        return "entita" if is_entity_id(subject) else None
     if subject_kind == "integrazione":
         # Lo SLUG, non il percorso del logger: `hacs`, `websocket_api`.
         # `custom_components.hacs` sarebbe una riga accettata che nessuna

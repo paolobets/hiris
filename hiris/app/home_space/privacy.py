@@ -16,6 +16,7 @@ profondita' -- decisione del proprietario, 29/09/2026:
 from __future__ import annotations
 
 from ..proxy.entity_cache import CREDENTIALS
+from .ha_vocabulary import domain_of
 from .queries import WITHHELD_BASKET
 from .type_vocabulary import domains_by_genre
 
@@ -33,12 +34,8 @@ HOME_ZONE = "zone.home"
 _NEUTRAL_STATES = frozenset({"home", "not_home", "unavailable", "unknown"})
 
 
-def _domain(entity_id: str) -> str:
-    return entity_id.split(".", 1)[0]
-
-
 def redact_state(entity_id: str, state: str | None) -> str | None:
-    if state is None or _domain(entity_id) not in MOVING_DOMAINS:
+    if state is None or domain_of(entity_id) not in MOVING_DOMAINS:
         return state
     return state if state in _NEUTRAL_STATES else "not_home"
 
@@ -54,7 +51,7 @@ def _hides_position(entity_id: str) -> bool:
     """Chi perde le coordinate: persone e dispositivi che si spostano, e zone
     che non siano `zone.home` (le altre direbbero dove vanno le persone). Un
     punto solo per `redact_attributes` e `redact_nested` (30/09/2026)."""
-    domain = _domain(entity_id)
+    domain = domain_of(entity_id)
     return domain in MOVING_DOMAINS or (domain == "zone" and entity_id != HOME_ZONE)
 
 

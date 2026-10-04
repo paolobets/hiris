@@ -551,28 +551,6 @@ def decoded_capabilities(domain: str, supported_features) -> list[str]:
     return [name for bit, name in sorted(table.items()) if supported_features & bit]
 
 
-def domain_of(entity_id) -> str:
-    """Il dominio di un `entity_id`: `light.cucina` -> `light`.
-
-    Lo DICHIARA Home Assistant nell'id stesso -- non e' un elenco nostro -- e
-    per questo la lettura e' banale. Il punto non e' la logica: e' che era
-    scritta in piu' moduli e due copie non
-    erano d'accordo. Su un id senza punto -- una riga di registro corrotta, un
-    id sintetico di un'integrazione mal formata -- una restituiva l'id intero e
-    l'altra la stringa vuota, cosi' il nucleo stampava «1 unknown» fra i
-    conteggi della casa e la ricerca sulla stessa entita' rispondeva
-    `dominio: ""`. Due porte, due risposte sullo stesso oggetto.
-
-    Vince l'ID INTERO, che era anche la scelta del nucleo: un dominio vuoto
-    sparisce dai raggruppamenti e dai conteggi -- cioe' fa raccontare una casa
-    piu' piccola di com'e' -- mentre un dominio strano si vede e si va a
-    guardare. Stesso principio per cui `_domain_name` lascia uscire un
-    dominio che non sa tradurre invece di saltare la riga.
-    """
-    text = str(entity_id)
-    return text.split(".", 1)[0] if "." in text else text
-
-
 def actual_area(entity: dict, device_area: dict[str, str | None]) -> str | None:
     """L'area di un'entita': la PROPRIA se ce l'ha, altrimenti quella del suo
     dispositivo.

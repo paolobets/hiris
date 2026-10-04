@@ -9,21 +9,14 @@ from urllib.parse import quote
 
 import aiohttp
 
+# La forma di un entity_id (dominio.oggetto) vive una volta sola, nel
+# vocabolario di Home Assistant (`ha_vocabulary.is_entity_id`): qui serve a
+# rifiutare un entity_id ostile PRIMA di comporlo in un URL, ed e' una GUARDIA.
+# Chi volesse allargarla per riconoscere di piu' altrove si fa la propria
+# espressione: allentare questa e' una decisione di sicurezza.
+from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ._sanitize import sanitize_ha_value
 from ._sanitize import truncate_with_marker as _truncate
-
-# entity_id canonico (dominio.oggetto). Serve a rifiutare un entity_id
-# ostile PRIMA di comporlo in un URL: e' una GUARDIA, e va tenuta la piu'
-# STRETTA possibile.
-#
-# In `home_space/behavior.py` c'e' oggi la stessa espressione, ma per l'esigenza
-# opposta -- riconoscere gli entity_id dentro una plancia, il piu' LARGAMENTE
-# possibile. Non sono due copie da tenere allineate: allentare questa per
-# seguire quella e' una falla, non una pulizia.
-# DOPPIONE DICHIARATO: due esigenze contrapposte, non due copie --
-#   una guardia contro l'iniezione (stretta) e un riconoscitore
-#   (largo). Allinearle sarebbe una falla, non una pulizia.
-_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # I registri che HIRIS replica. Prima se ne ascoltava UNO — quello delle
 # entita' — e per giunta solo con action="create": rinomini, cambi d'area,
@@ -1153,7 +1146,7 @@ class HAClient:
         `entities` e' una LISTA: tutti gli
         elementi devono avere una forma valida, o nessuna richiesta parte.
         """
-        invalid = [e for e in entities if not _ENTITY_ID_RE.match(str(e))]
+        invalid = [e for e in entities if not is_entity_id(str(e))]
         if invalid:
             logger.warning("storico: entita' non valide: %r", invalid)
             return _failure(REQUEST, _truncate(f"entita' non valide: {invalid!r}", 200))
@@ -1461,7 +1454,7 @@ class HAClient:
         (stessa chiave, presenza diversa) tracciata in `docs/BACKLOG.md` --
         non corretta qui sui fratelli: e' fuori dal mio perimetro.
         """
-        if not _ENTITY_ID_RE.match(str(entity_id)):
+        if not is_entity_id(str(entity_id)):
             logger.warning("calendario: entity_id non valido: %r", entity_id)
             return _failure(REQUEST, _truncate(f"entity_id non valido: {entity_id!r}", 200))
         if not isinstance(start, str) or not isinstance(end, str):
@@ -1644,7 +1637,7 @@ class HAClient:
         automazioni scritte nei pacchetti o negli `include` -- il punto cieco
         che questa lettura esiste per chiudere.
         """
-        wanted = [(eid, self._CONFIG_COMMAND_BY_DOMAIN.get(str(eid).split(".")[0]))
+        wanted = [(eid, self._CONFIG_COMMAND_BY_DOMAIN.get(domain_of(eid)))
                   for eid in entity_ids]
         wanted = [(eid, command) for eid, command in wanted if command]
         if not wanted:

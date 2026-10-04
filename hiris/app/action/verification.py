@@ -129,7 +129,7 @@ serve ADESSO (la notifica dello Schedulatore), non un'ipotesi sul resto.
 """
 from dataclasses import dataclass, field
 
-from ..home_space.topology import domain_of
+from ..home_space.ha_vocabulary import domain_of
 from ..home_space.type_vocabulary import capability_names
 from ..proxy.entity_cache import disclosable_attributes
 from .registry import field_applies, field_filter
@@ -523,7 +523,7 @@ def verification(call: dict, registry, states: dict[str, dict],
             return _no(f"l'entita' «{eid}» non esiste in questa casa.")
         if domain not in _DOMINI_UNIVERSALI and domain_of(eid) != domain:
             return _no(f"«{reading}» non si applica a «{eid}», che e' del "
-                       f"dominio «{eid.split('.')[0]}».")
+                       f"dominio «{domain_of(eid)}».")
 
     data = call.get("dati") or {}
     if not isinstance(data, dict):

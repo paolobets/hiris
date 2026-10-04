@@ -30,12 +30,11 @@ frase piu' utile che esista -- «non serve, ce l'hai gia', si chiama cosi'».
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 from ..proxy.entity_cache import unreadable_inventory_error
+from .ha_vocabulary import domain_of, is_entity_id
 from .redaction import SecretSeal
-from .topology import domain_of
 
 logger = logging.getLogger(__name__)
 
@@ -43,26 +42,6 @@ logger = logging.getLogger(__name__)
 #: Home Assistant, perche' e' la dichiarazione del proprietario su cosa
 #: sia segreto -- e nessuna API la espone.
 _SECRETS = "secrets.yaml"
-
-# entity_id canonico (dominio.oggetto). Qui serve a RICONOSCERE, dentro una
-# configurazione di plancia, quali stringhe sono un entity_id.
-#
-# NON e' «la stessa forma usata da ha_client» e non va tenuta allineata a
-# quella: e' la stessa espressione oggi e per caso, ma le due hanno esigenze
-# CONTRAPPOSTE. Quella di `proxy/ha_client` e' una GUARDIA -- rifiuta un
-# entity_id ostile prima di comporlo in un URL -- e vuole essere il piu'
-# STRETTA possibile. Questa vuole essere abbastanza LARGA da riconoscere
-# tutto, o le entita' di una plancia spariscono dall'archivio.
-#
-# Il commento di prima diceva «stessa forma usata da ha_client», e quella frase
-# era un invito: chi avesse allargato questa per far comparire una plancia
-# incompleta avrebbe potuto «riallineare» anche l'altra, allentando la guardia
-# contro l'iniezione senza che nessun test lo dicesse. Allargare QUESTA e'
-# libero; allargare quella e' una decisione di sicurezza, e va presa sapendolo.
-# DOPPIONE DICHIARATO: due esigenze contrapposte, non due copie --
-#   una guardia contro l'iniezione (stretta) e un riconoscitore
-#   (largo). Allinearle sarebbe una falla, non una pulizia.
-_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 #: I due domini che portano un comportamento. Le scene non entrano in questa
 #: fetta: `scene/config` esiste, ma il vocabolario di `tipo` ha due valori e
@@ -226,7 +205,7 @@ def _entities_in(config) -> list[str]:
     found: set[str] = set()
 
     def _add_if_entity(value) -> None:
-        if isinstance(value, str) and _ENTITY_ID_RE.match(value):
+        if is_entity_id(value):
             found.add(value)
 
     def _walk(node) -> None:

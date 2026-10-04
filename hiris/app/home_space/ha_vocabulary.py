@@ -93,6 +93,63 @@ invece di continuare a fidarsi in silenzio.
 """
 from __future__ import annotations
 
+import re
+
+# --- la forma di un `entity_id` ---------------------------------------------
+#
+# `dominio.oggetto`, minuscole, cifre e `_`. **Una espressione sola, e sempre
+# `fullmatch`** (Tappa 3, Task 7, B-24, 04/10/2026). Fino a quel giorno viveva
+# in tre copie -- il client (`proxy/ha_client.py`), l'osservatore
+# (`mind/watcher.py`), le plance (`home_space/behavior.py`) -- piu' una
+# quarta che la importava (`mind/judgments.py`). Tre la provavano con
+# `.match` e l'ancora `$`, che in Python accetta anche un `\n` finale
+# (`"light.x\n"` passava); la quarta con `.fullmatch`, che no. Due porte, due
+# risposte sullo stesso identificatore. Vince `fullmatch`: un id col ritorno a
+# capo non e' un id di Home Assistant (cambio dichiarato nel piano).
+#
+# I commenti delle copie le dicevano «due esigenze contrapposte» -- una
+# guardia stretta contro l'iniezione, un riconoscitore largo per le plance --
+# ma l'espressione era la stessa carattere per carattere. Il giorno in cui il
+# riconoscitore delle plance dovra' davvero essere piu' largo, avra' la sua
+# espressione con la sua ragione: oggi sarebbe una copia che aspetta di
+# divergere.
+#
+# NON e' la regola di Home Assistant (`core.valid_entity_id` vieta anche i
+# `__` e il `_` ai bordi): e' la guardia di HIRIS, la stessa di prima.
+ENTITY_ID_SHAPE = re.compile(r"[a-z][a-z0-9_]*\.[a-z0-9_]+")
+
+
+def is_entity_id(value) -> bool:
+    """Se `value` ha la forma di un `entity_id` (`ENTITY_ID_SHAPE`, intera)."""
+    return isinstance(value, str) and ENTITY_ID_SHAPE.fullmatch(value) is not None
+
+
+def domain_of(entity_id) -> str:
+    """Il dominio di un `entity_id`: `light.cucina` -> `light`.
+
+    Lo DICHIARA Home Assistant nell'id stesso -- non e' un elenco nostro -- e
+    per questo la lettura e' banale, e sta nel suo vocabolario. Il punto non e'
+    la logica: e' che era scritta in piu' moduli e due copie non
+    erano d'accordo. Viveva in `topology` fino al 04/10/2026 (Tappa 3, Task
+    7, B-24), quando le copie in linea (`split(".")[0]`) hanno cominciato a
+    chiamarla: `type_judgments` non poteva importarla da li' senza un ciclo.
+
+    Su un id senza punto -- una riga di registro corrotta, un
+    id sintetico di un'integrazione mal formata -- una restituiva l'id intero e
+    l'altra la stringa vuota, cosi' il nucleo stampava «1 unknown» fra i
+    conteggi della casa e la ricerca sulla stessa entita' rispondeva
+    `dominio: ""`. Due porte, due risposte sullo stesso oggetto.
+
+    Vince l'ID INTERO, che era anche la scelta del nucleo: un dominio vuoto
+    sparisce dai raggruppamenti e dai conteggi -- cioe' fa raccontare una casa
+    piu' piccola di com'e' -- mentre un dominio strano si vede e si va a
+    guardare. Stesso principio per cui `_domain_name` lascia uscire un
+    dominio che non sa tradurre invece di saltare la riga.
+    """
+    text = str(entity_id)
+    return text.split(".", 1)[0] if "." in text else text
+
+
 # --- la fonte, coi tag rilasciati (mai `dev`) ------------------------------
 #
 # Ogni voce di questo modulo e' stata verificata sul sorgente vero di Home

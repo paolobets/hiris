@@ -503,7 +503,7 @@ def test_r1_mutazione_senza_il_filtro_dell_anagrafe_i_due_totali_divergono():
         capabilities = baskets.get(CAPABILITIES)
         if not capabilities:
             continue
-        from hiris.app.home_space.topology import domain_of
+        from hiris.app.home_space.ha_vocabulary import domain_of
         conteggio_grezzo[domain_of(entity_id)] = conteggio_grezzo.get(domain_of(entity_id), 0) + 1
     assert conteggio_grezzo == {"light": 3, "number": 1}, (
         "l'oracolo di questa prova: senza filtro dell'anagrafe la cache "

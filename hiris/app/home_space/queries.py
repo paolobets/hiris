@@ -59,7 +59,7 @@ from ..proxy.entity_cache import (
     withheld_credentials,
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
-from .ha_vocabulary import entity_category_measure_rule
+from .ha_vocabulary import domain_of, entity_category_measure_rule
 from .historian import instant_epoch
 from .reference import normalize
 from .topology import (
@@ -69,7 +69,6 @@ from .topology import (
     categories_with_name,
     category_names,
     decoded_capabilities,
-    domain_of,
     hierarchy,
     label_names,
     labels_with_id,

@@ -43,12 +43,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ..proxy.entity_cache import CAPABILITIES
 from .ha_vocabulary import (
     config_entry_is_broken,
+    domain_of,
     house_is_newer_than_vocabulary,
 )
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
-    domain_of,
     hierarchy,
     name_with_id,
 )

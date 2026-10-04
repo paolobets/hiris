@@ -13,10 +13,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 
-from ..home_space.ha_vocabulary import config_entry_is_healthy
+from ..home_space.ha_vocabulary import config_entry_is_healthy, domain_of, is_entity_id
 from ..home_space.historian import instant_epoch
 from ..home_space.redaction import home_assistant_seal, seal_free_text
 from .knowledge import attributes_wanted_for
@@ -70,15 +69,11 @@ _IGNORED_INTEGRATION_SOURCE = "ignore"
 # l'archivio porta oggi.
 _ROUNDS_BEFORE_CLOSING = 2
 
-# La forma canonica `dominio.oggetto` di un `entity_id`. DOPPIONE
-# DICHIARATO con `proxy/ha_client.py::_ENTITY_ID_RE` (stessa espressione,
-# stessa intenzione: una GUARDIA, la piu' STRETTA possibile) -- non
-# importata perche' quella e' privata al suo modulo, e questo file non deve
-# dipendere da un dettaglio interno del client HA per una guardia che gli
-# appartiene comunque (Task 4 di «le tracce e il log»: «il client non valida
-# i propri argomenti, come i fratelli» -- la validazione va garantita A
+# La forma canonica `dominio.oggetto` di un `entity_id`: una GUARDIA, la piu'
+# STRETTA possibile, e la stessa del client (`ha_vocabulary.is_entity_id`,
+# un'espressione sola dal 04/10/2026, B-24). La validazione va garantita A
 # MONTE, qui, prima che un identificatore malformato possa entrare in
-# `_marked_automations` e vivere li' dentro come se fosse un'automazione).
+# `_marked_automations` e vivere li' dentro come se fosse un'automazione.
 #
 # Dal Task 6 il client non prende piu' un `entity_id` ma l'id di
 # CONFIGURAZIONE, risolto dal collettore contro lo specchio: un
@@ -87,7 +82,6 @@ _ROUNDS_BEFORE_CLOSING = 2
 # segnati e' cio' che il collettore rilegge a ogni cadenza, e tenerci dentro
 # un identificatore che non e' un identificatore significherebbe un WARNING
 # ogni due minuti, per sempre, su una cosa che non esiste.
-_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 
 def _text_or_none(value) -> str | None:
@@ -149,7 +143,7 @@ class Watcher:
         # log»): `entity_id -> nome amichevole` (giro di correzioni,
         # rilievo 5 -- prima un `set`, solo l'entity_id). L'entity_id e'
         # cosi' come l'ha dichiarato `automation_triggered`, gia' passato da
-        # `_ENTITY_ID_RE` (vedi `mark_automation`). Solo aggiunte, mai
+        # `is_entity_id` (vedi `mark_automation`). Solo aggiunte, mai
         # tolte: un'automazione che
         # ha scattato una volta resta interessante per sempre, e non c'e'
         # bisogno di "guarirla" dall'elenco. Vive solo in RAM e non si
@@ -378,7 +372,7 @@ class Watcher:
         """
         if self._knowledge is None:
             return ()
-        domain = entity_id.split(".", 1)[0]
+        domain = domain_of(entity_id)
         device_class = _text_or_none(attributes.get("device_class"))
         cached = self._wanted_cache.get((domain, device_class))
         if cached is not None:
@@ -460,7 +454,7 @@ class Watcher:
         valida) -- utile a chi chiama per accorgersi del rifiuto, non
         necessario a chi non se ne cura.
         """
-        if not isinstance(entity_id, str) or not _ENTITY_ID_RE.match(entity_id):
+        if not is_entity_id(entity_id):
             logger.warning(
                 "osservatore: entity_id di automazione malformato, non "
                 "segnato (%r)", entity_id)

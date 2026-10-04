@@ -345,7 +345,7 @@ def _verifier(inputs: dict):
     states = {row["id"]: row for row in inputs["rows"]}
 
     def verify(key: str):
-        for domain in ("homeassistant", topology.domain_of(key)):
+        for domain in ("homeassistant", ha_vocabulary.domain_of(key)):
             names = registry.services_for(domain) if domain in registry.domains() else []
             if names:
                 call = {"servizio": f"{domain}.{min(names)}",

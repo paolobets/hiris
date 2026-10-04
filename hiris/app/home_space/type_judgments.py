@@ -12,6 +12,8 @@ import json
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 
+from .ha_vocabulary import domain_of
+
 Row = tuple[str, str, str, str]
 
 GENRE_FIELD = "genere"
@@ -255,7 +257,7 @@ class TypeJudgments:
         return None
 
     def genre_of(self, entity_id: str, device_class: str | None) -> str | None:
-        domain = str(entity_id).split(".")[0]
+        domain = domain_of(entity_id)
         genre = self._lookup(GENRE_FIELD, domain, device_class, entity_id)
         return None if genre in (None, NO_GENRE) else genre
 

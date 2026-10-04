@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import logging
 
+from ..home_space.ha_vocabulary import domain_of
 from ..home_space.type_vocabulary import SYSTEM_GENRE, unknown_states
 from .recipes import Recipe
 
@@ -641,7 +642,7 @@ def _front_page_mark(entry: dict, judgments) -> dict | None:
     subject = str(entry.get("chi") or "")
     if judgments is None or "." not in subject:
         return None
-    domain = subject.split(".")[0]
+    domain = domain_of(subject)
     device_class = entry.get("classe")
     # **La condizione d'uso di `stato_da_sapere_subito`, custodita qui invece
     # che data per scontata**: `mind/facts.py` non scrive mai una cronaca con

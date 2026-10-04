@@ -2572,7 +2572,11 @@ player, valvole...) oggi non producono nessun oggetto — il pavimento non li la
 nell'immagine Docker pubblicata, mentre `LICENSE` dice «PROPRIETARY SOFTWARE LICENSE». Da sanare
 prima di un rilascio.
 
-### `_ENTITY_ID_RE` vive in tre copie
+### ~~`_ENTITY_ID_RE` vive in tre copie~~ — **CHIUSA il 04/10/2026** (Tappa 3, Task 7, B-24)
+
+Un'espressione sola, `home_space/ha_vocabulary.py::ENTITY_ID_SHAPE`, provata sempre con
+`fullmatch` da `is_entity_id`; le tre copie e l'importazione del nome privato sono uscite. Sotto,
+la voce com'era.
 
 `origine: rilevata nel giro di correzioni del Task 5 di «le tracce e il log», 05/09/2026` ·
 `nessun documento`
