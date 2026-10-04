@@ -15,7 +15,12 @@ import json
 import logging
 import time
 
-from ..home_space.ha_vocabulary import config_entry_is_healthy, domain_of, is_entity_id
+from ..home_space.ha_vocabulary import (
+    config_entry_is_healthy,
+    domain_of,
+    has_statistics,
+    is_entity_id,
+)
 from ..home_space.historian import instant_epoch
 from ..home_space.redaction import home_assistant_seal, seal_free_text
 from .knowledge import attributes_wanted_for
@@ -120,11 +125,13 @@ class Watcher:
         # (24 us su uno scope di 833 righe); questo non lo aveva, ed e' la
         # ragione per cui la memoria c'e' (revisione indipendente, 13/09/2026).
         #
-        # Vive quanto l'osservatore: una riga del sapere cambiata a caldo si
-        # legge al prossimo riavvio. E' la stessa sorte di `self._conditions`
-        # qui sotto, ed e' accettabile perche' «quali attributi contano per un
-        # tipo» e' un giudizio che cambia con una fetta, non con un turno.
+        # **Vale finche' il sapere non cambia** (A-18, Tappa 3, Task 12): si
+        # svuota quando la versione del sapere avanza (`KnowledgeStore.
+        # version`). Fino al 04/10/2026 viveva quanto l'osservatore, e un
+        # giudizio cambiato a caldo -- «per i termostati tieni anche
+        # `hvac_action`» -- si vedeva solo al riavvio.
         self._wanted_cache: dict[tuple[str, str | None], tuple[str, ...]] = {}
+        self._wanted_version: int | None = None
         # Le condizioni di sistema aperte all'ultimo giro. Serve a scrivere un
         # cambio quando NASCONO e quando FINISCONO, invece di riscriverle a
         # ogni passaggio del lavoro periodico. Vive solo in RAM: al riavvio
@@ -140,27 +147,23 @@ class Watcher:
         # contatore si azzera), la chiusura pure: non cresce senza limite.
         self._missing_rounds: dict[str, int] = {}
         # Le automazioni SEGNATE dall'evento (Task 4 di «le tracce e il
-        # log»): `entity_id -> nome amichevole` (giro di correzioni,
-        # rilievo 5 -- prima un `set`, solo l'entity_id). L'entity_id e'
-        # cosi' come l'ha dichiarato `automation_triggered`, gia' passato da
-        # `is_entity_id` (vedi `mark_automation`). Solo aggiunte, mai
-        # tolte: un'automazione che
+        # log»): gli `entity_id` cosi' come li ha dichiarati
+        # `automation_triggered`, gia' passati da `is_entity_id` (vedi
+        # `mark_automation`). Solo aggiunte, mai tolte: un'automazione che
         # ha scattato una volta resta interessante per sempre, e non c'e'
         # bisogno di "guarirla" dall'elenco. Vive solo in RAM e non si
-        # risemina al riavvio: la raccolta delle
-        # tracce (`server.py`) la rifara' da sola non appena l'automazione
-        # scattera' di nuovo -- diversamente da un guasto che DURA (sotto),
-        # qui non c'e' niente da perdere restando vuoti fino al prossimo
-        # scatto.
+        # risemina al riavvio: la raccolta delle tracce (`server.py`) la
+        # rifara' da sola non appena l'automazione scattera' di nuovo --
+        # diversamente da un guasto che DURA (sotto), qui non c'e' niente da
+        # perdere restando vuoti fino al prossimo scatto.
         #
-        # **Il nome si fissa al PRIMO scatto e non si aggiorna piu'**
-        # (`mark_automation` sotto): se l'automazione viene rinominata in
-        # HA dopo essere gia' stata segnata, il nome vecchio resta fino al
-        # prossimo riavvio dell'add-on (quando l'insieme riparte vuoto e il
-        # prossimo scatto legge il nome nuovo). E' grezzo dichiarato, non un
-        # difetto -- lo stesso compromesso di `rebuild_conditions`, che
-        # perde la data d'inizio vera oltre i 21 giorni di potatura.
-        self._marked_automations: dict[str, str | None] = {}
+        # **Il nome non si tiene qui** (A-18, Tappa 3, Task 12, 04/10/2026).
+        # Fino a quel giorno era un `entity_id -> nome` fissato al PRIMO
+        # scatto, dal nome che l'evento porta: un'automazione rinominata in
+        # Home Assistant restava col nome vecchio fino al riavvio. Ora il
+        # nome lo dice la casa all'esito (`server.watch_automation_outcomes`
+        # chiede `House.name`), e segue le rinomine.
+        self._marked_automations: set[str] = set()
         # Le automazioni la cui ultima esecuzione VISTA e' un errore
         # (`watch_automation_outcome`, sotto): un sottoinsieme di soggetti
         # `automazione:` -- SEPARATO da `self._conditions` sopra, non lo
@@ -180,6 +183,10 @@ class Watcher:
         # STESSA ragione: un'automazione rotta non deve dimenticare di
         # esserlo a ogni riavvio dell'add-on.
         self._automation_faults: set[str] = set()
+        # Le entita' per cui Home Assistant tiene statistiche, dall'ultima
+        # lettura buona di un giro (`hold_statistic_ids`); `None` finche'
+        # nessun giro l'ha letta, e allora vale la regola del sorgente (B-12).
+        self._statistic_ids: frozenset[str] | None = None
 
     # -- il rubinetto --------------------------------------------------
 
@@ -275,19 +282,21 @@ class Watcher:
             # loquaci. E **zero delle 44 voci di cronaca** del 14/09 venivano
             # da loro: non si perde niente di leggibile.
             #
-            # **Solo il dominio `sensor`, e non e' un dettaglio.** Home
-            # Assistant calcola le statistiche di lungo periodo per quel
-            # dominio soltanto: misurato con `recorder/list_statistic_ids`,
-            # **130 entita', tutte `sensor`**. Un `binary_sensor` che
-            # dichiarasse `state_class` non ne avrebbe nessuna, e filtrarlo lo
-            # farebbe sparire da tutte e due le parti.
+            # **Chi ha statistiche lo dice Home Assistant** (B-12, Tappa 3,
+            # Task 7, 04/10/2026): l'elenco `recorder/list_statistic_ids`
+            # dell'ultimo giro che l'ha letto, e la regola del sorgente
+            # (`ha_vocabulary.has_statistics`: un `sensor` con uno dei quattro
+            # `state_class`) solo finche' nessun giro l'ha letto. Fino a quel
+            # giorno qui c'era una formula sua -- `sensor.` e uno
+            # `state_class` qualunque -- e un `sensor` che il recorder non
+            # registra (escluso dal filtro, stato non numerico) si perdeva da
+            # tutte e due le parti: non scritto qui, e senza statistiche la'.
             #
             # **Dopo il controllo degli attributi, non prima**: le statistiche
             # portano il NUMERO, non gli attributi (spec §5.4). Un attributo
             # che qualcuno ha deciso valga la pena dice qualcosa che nessuna
             # statistica direbbe, e passa anche qui.
-            if (str(eid).startswith("sensor.")
-                    and attributes.get("state_class")
+            if (has_statistics(str(eid), attributes.get("state_class"), self._statistic_ids)
                     and not self._wanted_changed(wanted, old_attributes, attributes)):
                 return False
             # L'istante e' quello del CAMBIO, non della scrittura: `last_changed`
@@ -374,6 +383,10 @@ class Watcher:
             return ()
         domain = domain_of(entity_id)
         device_class = _text_or_none(attributes.get("device_class"))
+        version = self._knowledge.version()
+        if version != self._wanted_version:
+            self._wanted_cache.clear()
+            self._wanted_version = version
         cached = self._wanted_cache.get((domain, device_class))
         if cached is not None:
             return cached
@@ -401,7 +414,7 @@ class Watcher:
 
     # -- le automazioni --------------------------------------------------
 
-    def mark_automation(self, entity_id: str, *, name: str | None = None) -> bool:
+    def mark_automation(self, entity_id: str) -> bool:
         """Segna un'automazione come scattata. **Non scrive niente**: e' il
         callback (indiretto: vedi il glue in `server.py::_on_startup`, che
         estrae `entity_id`/`name` da `event_data` di
@@ -433,22 +446,10 @@ class Watcher:
         risolve. La guardia resta per la ragione detta sopra -- non
         sporcare l'insieme dei segnati -- non piu' per quella.
 
-        **`name` (giro di correzioni, rilievo 5).** L'evento porta gia' il
-        nome amichevole (`ATTR_NAME`, verificato alla fonte agli estremi
-        della finestra supportata -- `automation/__init__.py`, tag
-        `2024.7.0` e `2026.9.0`: `event_data = {ATTR_NAME: self.name,
-        ATTR_ENTITY_ID: self.entity_id}`, sempre una stringa non vuota, il
-        nome che l'utente vede in HA): non usarlo ripeterebbe esattamente
-        il difetto che questo sprint esiste per chiudere -- il soggetto piu'
-        raccontato dell'archivio era un identificatore opaco, senza che
-        nessuna riga dicesse di che cosa si trattasse (vedi il docstring di
-        `watch_system` sull'apertura di `open_now`, stessa lezione). Passa
-        da `_text_or_none` come ogni testo grezzo che arriva da HA.
-        **Si fissa alla PRIMA segnatura e non si aggiorna piu'** (vedi il
-        commento su `self._marked_automations` in `__init__`): una
-        chiamata successiva per un entity_id gia' segnato non tocca il nome
-        gia' salvato, nemmeno se questa porta un nome diverso (rinominata)
-        o `None` (un chiamante che non lo sa).
+        **Il nome non si segna** (A-18, Tappa 3, Task 12): l'evento lo
+        porta (`ATTR_NAME`), ma e' il nome di quell'istante. Lo dice la casa
+        all'esito, quando si scrive (vedi il commento su
+        `self._marked_automations` in `__init__`).
 
         Torna `True` se l'ha segnata, `False` se l'ha respinta (forma non
         valida) -- utile a chi chiama per accorgersi del rifiuto, non
@@ -459,8 +460,7 @@ class Watcher:
                 "osservatore: entity_id di automazione malformato, non "
                 "segnato (%r)", entity_id)
             return False
-        if entity_id not in self._marked_automations:
-            self._marked_automations[entity_id] = _text_or_none(name)
+        self._marked_automations.add(entity_id)
         return True
 
     def marked_automations(self) -> list[str]:
@@ -469,14 +469,6 @@ class Watcher:
         (non l'ordine di scoperta) perche' chi legge i log di due giri
         successivi possa confrontarli a colpo d'occhio."""
         return sorted(self._marked_automations)
-
-    def automation_title(self, entity_id: str) -> str | None:
-        """Il nome amichevole segnato per `entity_id` da `mark_automation`,
-        o `None` se non e' mai stata segnata o non portava un nome
-        leggibile. E' cio' che la cadenza breve di `server.py` passa come
-        `title=` a `watch_automation_outcome` -- vedi il docstring di
-        `mark_automation` per da dove viene e perche' non si aggiorna."""
-        return self._marked_automations.get(entity_id)
 
     def watch_automation_outcome(self, entity_id: str, outcome: str, *,
                                    domain: str | None = None,
@@ -582,11 +574,11 @@ class Watcher:
         `problema:`/`integrazione:`, il dominio di un'automazione non
         varia mai -- e' sempre "automation", gia' nel prefisso del
         soggetto, e non aggiunge niente da scrivere due volte). `title`
-        (giro di correzioni, rilievo 5) e' il nome amichevole segnato da
-        `mark_automation` (`Watcher.automation_title(entity_id)`, che
-        `server.py::watch_automation_outcomes` legge e passa qui) -- senza,
-        il soggetto piu' raccontato dell'archivio sarebbe di nuovo un
-        identificatore opaco.
+        (giro di correzioni, rilievo 5) e' il nome dell'automazione che la
+        casa da' all'esito (`House.name`, chiesto da
+        `server.py::watch_automation_outcomes`; A-18) -- senza, il soggetto
+        piu' raccontato dell'archivio sarebbe di nuovo un identificatore
+        opaco.
 
         `outcome != "error" and outcome != "finished"` non tocca ne'
         l'archivio ne' `self._automation_faults`: torna `False` senza fare
@@ -1100,3 +1092,15 @@ class Watcher:
                        "autore": None, "da_quando_ts": None}
                       for s in self._automation_faults)
         return sorted([*entity, *system, *automation], key=lambda o: o["soggetto"])
+
+    def hold_statistic_ids(self, reading) -> None:
+        """L'elenco delle entita' con statistiche letto da un giro
+        (`server.statistic_ids_for_round`), per `watch_reading` (B-12).
+
+        Una lettura fallita -- la busta del guasto (D3), o `None` -- non
+        sostituisce l'ultima buona: un guasto del websocket non deve far
+        tornare il watcher alla regola, ne' fargli credere che nessuna
+        entita' abbia statistiche (con l'insieme vuoto registrerebbe ogni
+        `sensor`, il triplo delle righe misurato il 15/09/2026)."""
+        if isinstance(reading, (set, frozenset)):
+            self._statistic_ids = frozenset(reading)

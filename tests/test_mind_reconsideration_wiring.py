@@ -41,6 +41,9 @@ class _Anagrafe:
     def read(self):
         return {"entita": self._entita, "aree": []}
 
+    def unavailable(self):
+        return []
+
 
 def _entita(eid, **extra):
     riga = {"id": eid, "nome": eid, "classe": None, "unita": None,
@@ -885,3 +888,28 @@ async def test_ogni_tentativo_annota_la_versione_su_cui_e_avvenuto(
     await reconsideration_round(app, _house())
 
     assert archivio.recent_attempts()[0]["versione"] == "3.27.1"
+
+
+@pytest.mark.asyncio
+async def test_la_memoria_si_misura_su_tutto_il_registro_e_si_giudica_cio_che_si_guarda(
+        archivio):
+    """Tappa 3, Task 12: il giro chiede alla casa due insiemi diversi, e la
+    prova dice quali. **Chi si giudica** e' cio' che la casa guarda
+    (`House.visible_entities`: niente nascoste, disabilitate, di servizio).
+    **Su chi si misura la memoria** e' ogni entita' del registro
+    (`House.entity_ids`): la memoria e' del registratore di Home Assistant, e
+    la prova anche un'entita' che nessuno guarda -- come prima, quando il giro
+    scorreva l'anagrafe intera da se'.
+
+    Mutazione ESEGUITA (04/10/2026): la finestra misurata su
+    `house.visible_entities()` -- rossa (la sonda chiede solo `climate.x`)."""
+    anagrafe = _Anagrafe([_entita("climate.x"), _entita("light.nascosta", nascosta=1),
+                          _entita("switch.spento", disabilitata=1)])
+    casa = _house()
+
+    esito = await reconsideration_round(_app(archivio, anagrafe, _Modello("[]")), casa)
+
+    assert esito["candidate"] == 1
+    asked = {tuple(extra["entity_ids"]) for command, extra in casa.calls
+             if command == _HISTORY}
+    assert asked == {("climate.x", "light.nascosta", "switch.spento")}

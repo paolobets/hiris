@@ -75,6 +75,10 @@ class _FintaCasa:
     def read(self):
         return self._home_space
 
+    def unavailable(self):
+        """I registri caduti: nessuno. La casa del giro li chiede (`House.read`)."""
+        return ()
+
 
 def _richiesta(app, query=None):
     class _R:

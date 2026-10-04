@@ -37,8 +37,22 @@ risposta con i fatti del registro (B-25, B-26, B-04). `fuori_con_causa`
 chiedeva la classe del fuori alle SEI copie della regola (B-01): e' uscita
 col Task 5 (04/10/2026), quando le sei copie sono diventate
 `topology.visibility` -- ora la sorveglia il cancello `regola-del-fuori`
-(`tests/test_fonte_unica.py`). Le copie che `fuori` confronta ancora sono
-l'osservatore e le ricette (Task 12).
+(`tests/test_fonte_unica.py`). `fuori`, `nomi` e `dove`
+sono uscite col Task 12 (04/10/2026), quando l'osservatore e le ricette hanno
+smesso di scorrere l'anagrafe e chiedono alla casa chi guardare
+(`House.visible_entities`, `House.entities_of`), come si chiama (`House.name`)
+e dove sta (`House.where`). Sulla casa sintetica, prima di toglierle:
+`fuori` e `dove` 0 disaccordi; `nomi` contava 8 perche' il suo marcatore sul
+nome del registro non compare piu' in nessuna riga -- confrontata a mano la
+riga con `House.name`, 0 su 8. La sorveglianza passa al cancello
+`tests/test_attori_compongono.py`. `unita` confrontava l'anagrafe, lo
+specchio e la riga di `search`: e' uscita col Task 7 (B-17, 04/10/2026), quando
+l'anagrafe ha smesso di congelare classe e unita' e `search` le chiede con la
+regola di `House.kind_of` (`topology.live_first`). `statistiche` confrontava la
+regola sullo `state_class`, il watcher e l'elenco di Home Assistant: e' uscita
+con B-12 (04/10/2026), quando il watcher e la casa hanno smesso di avere una
+formula loro e chiedono `ha_vocabulary.has_statistics` (l'elenco, e la regola
+del sorgente solo come ripiego).
 
 Nasce da `docs/superpowers/audit-2026-10-01/sonda_parita.py` (01/10/2026).
 
@@ -79,17 +93,9 @@ from hiris.app.home_space import (
     type_vocabulary,
 )
 from hiris.app.home_space.house import House
-from hiris.app.mind import observer, recipe_turn
 from hiris.app.mind.recipes import ENTITY_MARK, Recipe
-from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
 
-#: Il separatore dei campi nelle righe che osservatore e ricette mandano al
-#: modello. **E' una copia, dichiarata**: il prodotto lo scrive in linea, non
-#: ha una costante da chiedere (e' una delle forme che la Tappa 4 unifica).
-#: Se cambiasse la, le righe non si spezzerebbero piu' e gli id letti non
-#: sarebbero id: `_entity_ids` se ne accorge e ferma la domanda.
-LINE_SEPARATOR = " · "
 #: Le parole con cui due porte dicono oggi la causa di una fonte muta. **Sono
 #: copie, dichiarate**: la causa vive solo nel testo (e' il difetto che la
 #: Tappa 3, Task 8, toglie dandole un campo). Se il testo cambia, `fonte` non
@@ -106,14 +112,14 @@ def build_inputs(source: Path | dict, *, clock: float | None = None) -> dict:
 
     `source` e' la cartella degli ingressi congelati, oppure un dizionario con
     le stesse chiavi (le prove passano la casa sintetica). Lo specchio passa da
-    `_to_minimal` e `live_mirror`, l'anagrafe da `reader.build_home_space` con
-    classi e unita' vive: e' cio' che fa `HomeSpace.rebuild()`.
+    `_to_minimal` e `live_mirror`, l'anagrafe da `reader.build_home_space`: e'
+    cio' che fa `HomeSpace.rebuild()`. Le classi e le unita' vive non entrano
+    nell'anagrafe dal 04/10/2026 (B-17): le dice `House.kind_of`.
     """
     raw = source if isinstance(source, dict) else casa.read_inputs(source)
     rows = [_to_minimal(row) for row in raw["states"] if row.get("entity_id")]
     mirror = topology.live_mirror(rows)
-    home_space = reader.build_home_space(raw["registries"], live_classes=mirror.classes,
-                                         live_units=mirror.units)
+    home_space = reader.build_home_space(raw["registries"])
     return {"home_space": home_space, "mirror": mirror, "rows": rows,
             "raw_states": raw["states"], "registries": raw["registries"],
             "statistic_ids": set(raw["statistic_ids"]),
@@ -128,68 +134,7 @@ def _verdict(cases: list, called: list[str], extra: dict | None = None) -> dict:
             **(extra or {})}
 
 
-def _entities(inputs: dict) -> dict[str, dict]:
-    return {entity["id"]: entity for entity in inputs["home_space"]["entita"]}
-
-
-def _entity_ids(lines: list[str], inputs: dict, where: str) -> list[str]:
-    """Gli id in testa alle righe di `where`, verificati contro l'anagrafe.
-
-    Una riga il cui primo campo non e' un'entita' vuol dire che la forma della
-    riga e' cambiata: la domanda si FERMA. Proseguire darebbe «zero disaccordi»
-    perche' non si confronta piu' niente -- parita' raggiunta, e falsa.
-    """
-    known = {entity["id"] for entity in inputs["home_space"]["entita"]}
-    read = [line.split(LINE_SEPARATOR)[0] for line in lines]
-    strangers = [key for key in read if key not in known]
-    if strangers:
-        raise ValueError(f"{where}: {len(strangers)} righe non cominciano con un id di "
-                         "entita'. La forma della riga e' cambiata, la sonda va riletta.")
-    return read
-
-
 # ── le domande ──────────────────────────────────────────────────────────────
-
-def excluded(inputs: dict) -> dict:
-    """«E' fuori?» -- chi include un'entita' che un'altra copia esclude.
-
-    Quattro copie dichiarano la STESSA regola (digesto, complemento di
-    `_excluded_from_comparison`, `search` senza opzioni, osservatore): ogni
-    entita' su cui due di loro non concordano e' un disaccordo. In piu' il
-    caso misurato: le righe che la ricetta manda al modello e che
-    l'osservatore non guarda.
-    """
-    home_space, mirror, entities = inputs["home_space"], inputs["mirror"], _entities(inputs)
-    selection = House(home_space, mirror).select(
-        house_query.HouseFilters(), ("entita",), [], now=inputs["clock"])
-    copies = {
-        "digest_visible_entity_ids": set(briefing.digest_visible_entity_ids(home_space)),
-        "not _excluded_from_comparison": {
-            key for key, entity in entities.items()
-            if not topology._excluded_from_comparison(entity)},
-        "House.select": {entry["id"] for entry, _area, _where in selection.entities},
-        "observer.house_lines": set(_entity_ids(
-            observer.house_lines(home_space), inputs, "observer.house_lines")),
-    }
-    names = sorted(copies)
-    cases = []
-    for position, first in enumerate(names):
-        for second in names[position + 1:]:
-            for key in sorted(copies[first] ^ copies[second]):
-                cases.append({"id": key, "solo_in": first if key in copies[first] else second,
-                              "non_in": second if key in copies[first] else first})
-    recipe_lines: set[str] = set()
-    for device in home_space["dispositivi"]:
-        recipe_lines |= set(_entity_ids(
-            recipe_turn.device_lines(home_space, device["id"]), inputs,
-            "recipe_turn.device_lines"))
-    for key in sorted(recipe_lines - copies["observer.house_lines"]):
-        cases.append({"id": key, "solo_in": "recipe_turn.device_lines",
-                      "non_in": "observer.house_lines"})
-    return _verdict(cases, names + ["recipe_turn.device_lines"],
-                    {"incluse": {name: len(members) for name, members in copies.items()},
-                     "righe_della_ricetta": len(recipe_lines)})
-
 
 class _Services:
     """Il client, ridotto alla sola lettura che il registro dei servizi fa."""
@@ -301,79 +246,6 @@ def source(inputs: dict) -> dict:
                                    for port in asked}})
 
 
-def names(inputs: dict) -> dict:
-    """«Come si chiama?» -- il nome che la casa da' (`House.name`, D1 «vivo»: lo
-    usano la scheda, `search` e la storia) contro quello che l'osservatore
-    manda al modello, per ogni entita' che l'osservatore guarda.
-
-    Fino al Task 5 della Tappa 3 la domanda confrontava la scheda con la riga
-    di `search`: da quel giorno le due chiamano la stessa regola
-    (`topology.live_name`), e la seconda copia viva e' l'osservatore, che usa
-    il nome del registro fino al Task 12. I nomi del registro sono sostituiti
-    in copia da un marcatore, per leggere QUALE nome la riga porta (la
-    funzione chiamata e' la stessa; un'entita' senza nome nel registro non ne
-    porta nessuno).
-    """
-    home_space, mirror = inputs["home_space"], inputs["mirror"]
-    house = House(home_space, mirror)
-    marked = dict(home_space)
-    marked["entita"] = [dict(entity, nome=f"@@{entity['nome']}@@") if entity.get("nome")
-                        else entity for entity in home_space["entita"]]
-    lines = observer.house_lines(marked)
-    cases = []
-    for key, line in zip(_entity_ids(lines, inputs, "observer.house_lines"), lines,
-                         strict=True):
-        marks = [part[2:-2] for part in line.split(LINE_SEPARATOR)[1:]
-                 if part.startswith("@@") and part.endswith("@@")]
-        emitted = marks[0] if marks else None
-        named = house.name("entita", key)
-        if emitted != named:
-            cases.append({"id": key, "casa": named, "osservatore": emitted})
-    return _verdict(cases, ["House.name", "observer.house_lines"], {"entita": len(lines)})
-
-
-def areas(inputs: dict) -> dict:
-    """«In che area sta?» -- l'area che l'osservatore emette contro
-    `topology.actual_area`, sulle entita' che l'osservatore guarda; e
-    `House.where` (Tappa 3, Task 6) contro la stessa regola, su ogni entita'
-    del registro la cui area la casa conosce (un'area sconosciuta o un
-    registro non letto `where` li dice con la pseudo-area, e non si
-    confrontano con un id).
-
-    I nomi delle aree sono sostituiti in copia da un marcatore, per leggere
-    QUALE area la riga porta: la funzione chiamata e' la stessa.
-    """
-    home_space = inputs["home_space"]
-    device_area = topology.device_areas(home_space["dispositivi"])
-    marked = dict(home_space)
-    marked["aree"] = [dict(area, nome=f"@@{area['id']}@@") for area in home_space["aree"]]
-    emitted: dict[str, str | None] = {}
-    lines = observer.house_lines(marked)
-    for key, line in zip(_entity_ids(lines, inputs, "observer.house_lines"), lines,
-                         strict=True):
-        parts = line.split(LINE_SEPARATOR)
-        marks = [part for part in parts[1:] if part.startswith("@@") and part.endswith("@@")]
-        emitted[key] = marks[0][2:-2] if marks else None
-    cases = []
-    for key, entity in _entities(inputs).items():
-        if key not in emitted:
-            continue
-        actual = topology.actual_area(entity, device_area)
-        if emitted[key] != actual:
-            cases.append({"id": key, "area_vera": actual, "area_emessa": emitted[key]})
-    house = House(home_space, inputs["mirror"])
-    known = {area["id"] for area in home_space["aree"]}
-    for key, entity in _entities(inputs).items():
-        actual = topology.actual_area(entity, device_area)
-        if actual is not None and actual not in known:
-            continue
-        area = house.where(key)["area"]["id"]
-        if (None if topology.is_pseudo_area(area) else area) != actual:
-            cases.append({"id": key, "area_vera": actual, "area_dove": area})
-    return _verdict(cases, ["topology.actual_area", "observer.house_lines", "house.where"],
-                    {"guardate": len(emitted)})
-
-
 def values(inputs: dict) -> dict:
     """«E' un valore?» -- le entita' che `briefing._unreliable_state` legge
     come valore e il vocabolario (`unknown_states`) come non-valore.
@@ -402,67 +274,6 @@ def values(inputs: dict) -> dict:
             cases.append({"id": entity["id"], "stato": current})
     return _verdict(cases, ["type_vocabulary.unknown_states", "briefing._unreliable_state"],
                     {"esito_sulla_casa": briefing._unreliable_state(home_space, state, True, ())})
-
-
-class _AlwaysWatching:
-    """L'archivio dell'osservatore, ridotto a cio' che `watch_reading` chiede."""
-
-    def is_watched(self, subject):
-        return True
-
-    def record(self, **_):
-        return None
-
-    def scope(self):
-        return {}
-
-
-def statistics(inputs: dict) -> dict:
-    """«Ha statistiche?» -- tre risposte per entita': la regola sul
-    `state_class`, cio' che il watcher crede coperto, cio' che Home Assistant
-    tiene davvero."""
-    watcher = Watcher(_AlwaysWatching(), now=lambda: inputs["clock"])
-    truth = inputs["statistic_ids"]
-    cases = []
-    examined = 0
-    for raw in inputs["raw_states"]:
-        key = raw["entity_id"]
-        attributes = raw.get("attributes") or {}
-        state_class = attributes.get("state_class")
-        if not (key.startswith("sensor.") or state_class or key in truth):
-            continue
-        examined += 1
-        reading = {"state": "1", "attributes": dict(attributes),
-                   "last_updated": "2026-10-01T10:00:00+00:00",
-                   "last_changed": "2026-10-01T10:00:00+00:00"}
-        event = {"entity_id": key, "new_state": reading,
-                 "old_state": {"state": "0", "attributes": dict(attributes)}}
-        answers = {"regola": ha_vocabulary.produces_statistics(state_class),
-                   "watcher": not watcher.watch_reading(event),
-                   "home_assistant": key in truth}
-        if len(set(answers.values())) > 1:
-            cases.append({"id": key, "state_class": state_class, **answers})
-    return _verdict(cases, ["ha_vocabulary.produces_statistics", "Watcher.watch_reading"],
-                    {"esaminate": examined})
-
-
-def units(inputs: dict) -> dict:
-    """«Che unita' e classe ha?» -- anagrafe, specchio vivo, riga di `search`."""
-    home_space, mirror = inputs["home_space"], inputs["mirror"]
-    live_units, live_classes = mirror.units, mirror.classes
-    cases = []
-    for entry, area, _floor, place in House(home_space, mirror).entity_entries():
-        key = entry["id"]
-        row = house_query._entity_row(entry, area, place, mirror, True)
-        unit = {entry.get("unita") or None, live_units.get(key) or None,
-                row.get("unita") or None}
-        kind = {entry.get("classe") or None, live_classes.get(key) or None,
-                row.get("classe") or None}
-        if len(unit) > 1 or len(kind) > 1:
-            cases.append({"id": key, "unita": sorted(map(str, unit)),
-                          "classe": sorted(map(str, kind))})
-    return _verdict(cases, ["reader.build_home_space", "topology.live_mirror",
-                            "house_query._entity_row"])
 
 
 def _selected(inputs: dict, **filters) -> set[str]:
@@ -551,8 +362,7 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
 
 #: Le domande, per nome. E' un elenco di AMMISSIONE: una domanda esce di qui
 #: quando la sua copia e' cancellata, nello stesso commit.
-QUESTIONS = {"fuori": excluded, "nomi": names,
-             "dove": areas, "valore": values, "statistiche": statistics, "unita": units,
+QUESTIONS = {"valore": values,
              "riferimenti": references, "oggi": today, "fonte": source}
 
 

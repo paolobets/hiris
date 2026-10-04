@@ -338,3 +338,38 @@ def test_L_ESEMPIO_FONDATIVO_il_riscaldamento_parte_e_la_casa_si_scalda(
     assert apertura["quando_ts"] == 1789219800.0
     assert arrivo["valori"] == {"hvac_action": "idle"}
     assert arrivo["quando_ts"] == 1789223400.0
+
+
+def test_un_giudizio_cambiato_A_CALDO_si_vede_senza_riavvio(archivio, sapere):
+    """A-18 (Tappa 3, Task 12): la memoria degli attributi voluti vale finche'
+    il sapere non cambia (`KnowledgeStore.version`). Fino al 04/10/2026
+    viveva quanto l'osservatore: una riga del sapere scritta con l'add-on
+    acceso si vedeva solo al riavvio.
+
+    Qui il sapere non vuole niente per `light`; il primo evento lo chiede e
+    lo tiene in memoria; poi qualcuno decide che `brightness` conta, e il
+    secondo evento lo porta nel grezzo.
+
+    Mutazione ESEGUITA (04/10/2026): la memoria che non guarda la versione
+    -- rossa (il secondo evento non porta `brightness`)."""
+    archivio.decide_scope("light.cucina", inside=True,
+                          reason="la luce della cucina dice chi c'e'", author="prova")
+    osservatore = Watcher(archivio, knowledge=sapere)
+
+    def evento(prima: str, dopo: str, luminosita: int) -> dict:
+        return {"entity_id": "light.cucina",
+                "old_state": {"state": prima, "attributes": {"brightness": 10}},
+                "new_state": {"state": dopo, "attributes": {"brightness": luminosita},
+                              "last_changed": QUANDO_CAMBIO_STATO,
+                              "last_updated": QUANDO_CAMBIO_STATO}}
+
+    assert osservatore.watch_reading(evento("off", "on", 200)) is True
+    sapere.write(Fact(
+        subject_kind="tipo", subject="light", field="attributi",
+        value="brightness", provenance="nostro",
+        evidence=None, who="la prova", when_ts=1789000000.0))
+    assert osservatore.watch_reading(evento("on", "off", 0)) is True
+
+    righe = archivio.readings(from_ts=0, to_ts=2e9)
+    assert [json.loads(r["attributes"]) if r["attributes"] else None
+            for r in righe] == [None, {"brightness": 0}]

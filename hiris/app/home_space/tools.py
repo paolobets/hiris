@@ -88,8 +88,7 @@ from ..action.construction.advisor import STRUCTURES
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
 from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
-from ..memory.lookup_cache import LookupCache
-from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
+from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
@@ -1241,7 +1240,7 @@ class ToolDispatcher:
     """
 
     def __init__(self, home_space_store: HomeSpace, memory_store: MemoryStore,
-                 cache=None, actuator=None, lookup_cache: LookupCache | None = None,
+                 cache=None, actuator=None,
                  ha=None, registry=None, agenda=None, workshop=None,
                  exchange: str | None = None, journal=None,
                  translations=None, knowledge=None,
@@ -1312,15 +1311,6 @@ class ToolDispatcher:
         # (contratto della classe), e senza porta `execute` dichiara un errore
         # invece di sollevare -- come gli altri quattro fanno senza archivi.
         self._actuator = actuator
-        # Task B7: la cache del Lookup (`memory/lookup_cache.py`), di vita
-        # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
-        # vedi `handlers_chat.py::create_tool_dispatcher`) ma vive
-        # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
-        # dipendenza. Default `None`: nessuna cache, `_remember` ricostruisce
-        # l'indice ogni volta come faceva prima di questo
-        # task -- ogni chiamante esistente (i test, e ogni altro punto del
-        # prodotto che non la passa esplicitamente) non cambia comportamento.
-        self._lookup_cache = lookup_cache
         # Il canale verso Home Assistant, per `related` e per cio' che dopo di
         # esso chiedera' un fatto MOMENTANEO (i legami non si archiviano --
         # vedi il docstring del modulo). In SOLA LETTURA come `_cache`: chi
@@ -1794,25 +1784,11 @@ class ToolDispatcher:
         updated_at = self._home_space.updated_at()
         topology_loaded = updated_at is not None
 
-        def _home_space_for_lookup() -> dict:
-            # PIGRA (fix review indipendente, Task B7): la chiave basta a
-            # decidere un colpo a segno, e su un hit questa funzione non viene
-            # chiamata. Il costo che evitava -- la lettura SQL vera, con
-            # json.loads per riga -- non c'e' piu' da quando l'anagrafe si
-            # tiene a memoria (`HomeSpace.read` rende il dizionario tenuto); e
-            # dal 04/10/2026 lo specchio delle unita', qui sotto, viene dalla
-            # casa del turno, che l'anagrafe la guarda comunque.
-            return self._home_space.read() if topology_loaded else {}
-
-        # Task B7, spazio "ricorda": MAI nomi di ripiego, e `aggiornata_il`
-        # porta gia' la distinzione fra "anagrafe letta" e "non letta" --
-        # `None` qui e un valore vero non sono mai la
-        # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
-        # della casa piena non si confondono mai (memory/lookup_cache.py).
-        if self._lookup_cache is not None:
-            lookup = self._lookup_cache.get_lazy("ricorda", _home_space_for_lookup, updated_at)
-        else:
-            lookup = costruisci_indice(_home_space_for_lookup())
+        # L'indice dalla casa del turno (A-13, Tappa 3, Task 12): la stessa
+        # istantanea dello specchio delle unita' qui sotto, costruito una
+        # volta per casa. Un'anagrafe mai letta e' `{}`, e il suo indice e'
+        # vuoto.
+        lookup = self._turn_house().lookup()
         if not topology_loaded:
             # L'anagrafe non e' mai stata letta: NESSUNA ancora si puo'
             # verificare, non solo quelle il cui registro e' caduto -- stessa
@@ -1845,7 +1821,7 @@ class ToolDispatcher:
         # solo se l'utente le ha forzate a mano), quindi senza questo la
         # deduzione dell'unita' di un ricordo non e' mai scattata.
         cleaned, problems, corrections = validate(
-            interpretation, lookup, unverifiable_kinds, self._mirror().units)
+            interpretation, lookup, unverifiable_kinds, self._mirror())
 
         # L'autore viene dal SOGGETTO del turno (decisione 5, Task 6), mai da
         # un argomento del modello -- `arguments.get("detto_da")` non si legge

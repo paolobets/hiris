@@ -134,7 +134,7 @@ def _snapshot(rows) -> list[dict]:
 def _conditions_app(tmp_path, house, *, problems=None, rebuilt=True, followed=True):
     store = HomeSpace(str(tmp_path))
     if rebuilt:
-        _run(rebuild(house, store, None))
+        _run(rebuild(house, store))
     house.calls.clear()
     house.connections.clear()
     app = {"watcher": _Observer(), "home_space_store": store}
@@ -279,7 +279,7 @@ def test_un_anagrafe_mai_letta_non_nasce_dalle_sole_integrazioni(tmp_path):
 def test_le_integrazioni_tornate_escono_dai_non_disponibili(tmp_path):
     house = CasaFinta(synthetic_inputs(), silence={"config_entries/get"})
     store = HomeSpace(str(tmp_path))
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
     assert "integrazioni" in store.unavailable()
 
     store.hold_integrations(synthetic_inputs()["registries"]["integrazioni"])
@@ -405,12 +405,12 @@ def test_una_ricostruzione_senza_alias_tiene_gli_alias_della_precedente(tmp_path
     ripresa dalla precedente -- rossa (gli alias vuoti)."""
     house = CasaFinta(_with_alias())
     store = HomeSpace(str(tmp_path))
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
     first = _aliases(store)
     assert first, "la prima ricostruzione non ha alias: la prova guarderebbe il vuoto"
 
     house.mute("config/entity_registry/get_entries")
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
 
     assert "entita:alias" in store.unavailable()
     assert _aliases(store) == first
@@ -419,12 +419,12 @@ def test_una_ricostruzione_senza_alias_tiene_gli_alias_della_precedente(tmp_path
 def test_un_registro_caduto_tiene_la_tabella_della_precedente(tmp_path):
     house = CasaFinta(synthetic_inputs())
     store = HomeSpace(str(tmp_path))
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
     areas = store.read()["aree"]
     assert areas
 
     house.mute("config/area_registry/list")
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
 
     assert "aree" in store.unavailable()
     assert store.read()["aree"] == areas
@@ -451,12 +451,12 @@ def test_un_ambito_di_categorie_caduto_tiene_le_sue_categorie(tmp_path):
         {"category_id": "cat_notte", "name": "Notte", "ambito": "script"}]
     house = _ScopeFallsSilent(inputs)
     store = HomeSpace(str(tmp_path))
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
     before = sorted(row["id"] for row in store.read()["categorie"])
     assert before == ["cat_luci", "cat_notte"]
 
     house.silent_scope = "automation"
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
 
     assert "categorie:automation" in store.unavailable()
     assert sorted(row["id"] for row in store.read()["categorie"]) == before
@@ -465,7 +465,7 @@ def test_un_ambito_di_categorie_caduto_tiene_le_sue_categorie(tmp_path):
 def test_la_prima_ricostruzione_non_ha_niente_da_riprendere(tmp_path):
     house = CasaFinta(_with_alias(), silence={"config/entity_registry/get_entries"})
     store = HomeSpace(str(tmp_path))
-    _run(rebuild(house, store, None))
+    _run(rebuild(house, store))
 
     assert "entita:alias" in store.unavailable()
     assert _aliases(store) == {}

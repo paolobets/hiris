@@ -602,6 +602,24 @@ class KnowledgeStore:
                                 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
                                 9: _migration_9})
+        self._version = 0
+
+    def version(self) -> int:
+        """Quante scritture questo archivio ha fatto da quando e' aperto: un
+        numero che cambia a ogni riga scritta, seminata o tolta (A-18, Tappa
+        3, Task 12). Chi tiene in memoria una risposta del sapere lo
+        confronta per sapere se e' ancora vera (`Watcher._wanted_attributes`),
+        invece di tenerla fino al riavvio. Vale per le scritture di QUESTO
+        processo -- le sole che il prodotto fa; una riga corretta a mano sul
+        disco con l'add-on acceso si vede al riavvio, come prima."""
+        return self._version
+
+    def _commit(self) -> None:
+        """Il commit di una scrittura, e la versione che avanza: in un posto
+        solo, cosi' nessuna scrittura nuova puo' dimenticarla. Si chiama col
+        lock gia' preso."""
+        self._conn.commit()
+        self._version += 1
 
     def close(self) -> None:
         with self._lock:
@@ -621,7 +639,7 @@ class KnowledgeStore:
                 "source=excluded.source, who=excluded.who, when_ts=excluded.when_ts, "
                 "said_by=excluded.said_by",
                 tuple(getattr(fact, c) for c in _COLUMNS))
-            self._conn.commit()
+            self._commit()
 
     def _delete(self, subject_kind: str, subject: str, field: str) -> int:
         """La cancellazione di una terna, **senza lock e senza commit**: e' la
@@ -679,7 +697,7 @@ class KnowledgeStore:
                 existed = self._delete(subject_kind, subject, field)
                 for fact in facts:
                     self._seed_one(fact, priority)
-                self._conn.commit()
+                self._commit()
             except Exception:
                 # Senza il `rollback` la `DELETE` resterebbe nella transazione
                 # aperta e la prima scrittura riuscita dopo di lei la
@@ -727,7 +745,7 @@ class KnowledgeStore:
         with self._lock:
             for fact in facts:
                 written += self._seed_one(fact, priority)
-            self._conn.commit()
+            self._commit()
         return written
 
     # -- lettura -----------------------------------------------------------
@@ -820,6 +838,31 @@ class KnowledgeStore:
                 # soggetto, che e' stabile e leggibile.
                 "ORDER BY when_ts DESC, subject").fetchall()
         return _facts(rows)
+    def device_answers(self, fields) -> dict[str, dict[str, Fact]]:
+        """Le righe di TUTTI i dispositivi per i campi dati, in una lettura
+        sola (A-38, Tappa 3, Task 12): `{dispositivo: {campo: Fact}}`, solo i
+        dispositivi che ne hanno almeno una.
+
+        Fino al 04/10/2026 «chi ha gia' una risposta?» era una SELECT per
+        dispositivo e per campo -- tre per dispositivo a ogni giro delle
+        ricette, una nel resoconto e una nella potatura -- mentre l'anagrafe
+        si scorreva accanto. L'ordine dei dispositivi resta di chi chiede
+        (`House.device_ids`, su cui ruota `recipe_turn.who_to_ask`): qui non
+        se ne promette nessuno."""
+        wanted = sorted(set(fields))
+        if not wanted:
+            return {}
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
+                "WHERE subject_kind = 'dispositivo' "
+                f"AND field IN ({', '.join('?' for _ in wanted)})",
+                wanted).fetchall()
+        answers: dict[str, dict[str, Fact]] = {}
+        for fact in _facts(rows):
+            answers.setdefault(fact.subject, {})[fact.field] = fact
+        return answers
+
     def forget(self, subject_kind: str, subject: str, field: str) -> bool:
         """Toglie una riga. Torna `True` se c'era.
 
@@ -832,7 +875,7 @@ class KnowledgeStore:
         """
         with self._lock:
             deleted = self._delete(subject_kind, subject, field)
-            self._conn.commit()
+            self._commit()
         return bool(deleted)
 
 def now_ts() -> float:

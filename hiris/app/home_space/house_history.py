@@ -571,11 +571,12 @@ _CYCLES_UNSEEN = ("questo contatore riparte a ogni ciclo (ha last_reset) e i pun
 
 def value_surface(query: HistoryQuery, state_class: str | None) -> str:
     """`dettaglio` o `oraria`, e nient'altro puo' deciderlo.
-    Oltre `DETAIL_MAX_HOURS` solo chi
-    ha statistiche va a fasce (`ha_vocabulary.produces_statistics`: non
-    `bool(state_class)`, o una banderuola `measurement_angle` riceverebbe un
-    elenco vuoto -- «non e' mai cambiata»). Le ore sono quelle VERE,
-    dall'epoch (`HistoryQuery.hours`).
+    Oltre `DETAIL_MAX_HOURS` va a fasce solo chi ha fasce che i conti di
+    HIRIS sanno leggere (`ha_vocabulary.bands_are_arithmetic`): una
+    banderuola `measurement_angle` ha statistiche, ma con la sola media
+    circolare (sorgente di Home Assistant, tag 2026.9.1, letto il
+    04/10/2026), e resta sul dettaglio. Le ore sono quelle VERE, dall'epoch
+    (`HistoryQuery.hours`).
 
     Il prezzo di `oraria` (revisione finale della fetta, 30/09/2026): le
     fasce sono solo le ore gia' compilate da Home Assistant, e l'ora in corso
@@ -583,7 +584,7 @@ def value_surface(query: HistoryQuery, state_class: str | None) -> str:
     (`_bands_until`)."""
     if query.hours <= DETAIL_MAX_HOURS:
         return "dettaglio"
-    return "oraria" if ha_vocabulary.produces_statistics(state_class) else "dettaglio"
+    return "oraria" if ha_vocabulary.bands_are_arithmetic(state_class) else "dettaglio"
 
 
 def _number(raw) -> float | None:

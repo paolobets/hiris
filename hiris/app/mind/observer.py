@@ -12,10 +12,11 @@ della meta' del prompt.
 
 **Le entita' di servizio e le nascoste non entrano di default** (decisione del
 proprietario, 10/09/2026); se qualcuno le chiede esplicitamente, passano. E'
-la stessa legge che il nucleo applica gia' al digesto, e si CHIAMA la sua
-(`briefing.digest_visible_entity_ids`) invece di riscriverla: due copie della
-stessa regola divergono al primo cambiamento da una parte sola, ed e' gia'
-successo in questo prodotto (rilievo R1 dell'08/09/2026).
+la stessa legge che il nucleo applica gia' al digesto, e si CHIEDE alla casa
+(`House.visible_entities`, che compone `topology.visibility_classes`) invece
+di riscriverla: due copie della stessa regola divergono al primo cambiamento
+da una parte sola, ed e' gia' successo in questo prodotto (rilievo R1
+dell'08/09/2026).
 
 **Quando gira** lo decide `cadence.reason_to_reconsider`: al primo avvio,
 quando cambia l'obiettivo, quando compare qualcosa di nuovo, e alla cadenza di
@@ -28,7 +29,8 @@ import json
 import logging
 import re
 
-from ..home_space.briefing import digest_visible_entity_ids
+from ..home_space.house import House
+from ..home_space.topology import is_pseudo_area
 from ..steering import misura_turno
 from .scope import OBSERVER
 
@@ -69,17 +71,21 @@ italiano, in una riga, concreto: «scalda la camera, e il riscaldamento e' la
 voce piu' pesante» va bene; «utile» no, «non rilevante» nemmeno."""
 
 
-def _area_names(home_space: dict) -> dict[str, str]:
-    return {a["id"]: a.get("nome") for a in home_space.get("aree", []) if a.get("id")}
+def watched_ids(house: House, only: set[str] | None = None) -> list[str]:
+    """Le entita' che competono all'osservatore in questo turno: quelle che
+    la casa guarda (`House.visible_entities`, la regola del fuori), ristrette
+    al lotto.
+
+    `only` restringe al **lotto** e non puo' allargare: si INTERSECA con la
+    regola del fuori, non la sostituisce. Un'entita' di servizio chiesta per
+    nome resta fuori lo stesso, perche' cosa competa all'osservatore lo decide
+    una legge sola e non chi compone il lotto."""
+    return [eid for eid in house.visible_entities() if only is None or eid in only]
 
 
-def house_lines(home_space: dict, only: set[str] | None = None) -> list[str]:
-    """Una riga per entita', **solo quelle che competono all'osservatore**.
-
-    `only` restringe al **lotto** di questo turno e non puo' allargare: si
-    INTERSECA con la regola del nucleo, non la sostituisce. Un'entita' di
-    servizio chiesta per nome resta fuori lo stesso, perche' cosa competa
-    all'osservatore lo decide una legge sola e non chi compone il lotto.
+def house_lines(house: House, only: set[str] | None = None) -> list[str]:
+    """Una riga per entita', **solo quelle che competono all'osservatore**
+    (`watched_ids`).
 
     Ogni riga porta cio' che serve a giudicare e nient'altro: identificatore,
     nome, classe dichiarata da Home Assistant, unita', area, e il
@@ -91,21 +97,28 @@ def house_lines(home_space: dict, only: set[str] | None = None) -> list[str]:
     `config_entry_id`, `dispositivo_id`, `piattaforma` sono identificatori
     opachi che non aiutano nessun giudizio e costerebbero token su 381 righe.
 
+    **Ogni campo lo chiede alla casa** (Tappa 3, Task 12, 04/10/2026): il nome
+    a `House.name` (D1 «vivo»: quello che si vede in Home Assistant), il tipo a
+    `House.kind_of` (classe e unita' di adesso), l'area a `House.where` (D3:
+    anche quella ereditata dal dispositivo). Fino a quel giorno l'osservatore
+    scorreva l'anagrafe da se', col nome del registro e il solo `area_id`
+    proprio: 194 entita' guardate su 324 gli arrivavano senza area (cattura
+    del 01/10/2026).
+
     L'area si mostra col **nome**: un `area_id` grezzo in mezzo a un prompt in
-    italiano e' rumore, e un'area cancellata non deve far comparire una stringa
-    che sembra un luogo.
+    italiano e' rumore. Una pseudo-area («Senza area», «Aree non lette») non
+    si mostra: non e' un luogo, e la riga dice gia' l'assenza tacendo. Un nome
+    che e' solo l'id ripetuto non si ripete.
     """
-    visible = digest_visible_entity_ids(home_space)
-    areas = _area_names(home_space)
     lines = []
-    for entity in home_space.get("entita", []):
-        if entity.get("id") not in visible:
-            continue
-        if only is not None and entity["id"] not in only:
-            continue
-        parts = [entity["id"]]
-        for value in (entity.get("nome"), entity.get("classe"), entity.get("unita"),
-                      areas.get(entity.get("area_id")), entity.get("translation_key")):
+    for entity_id in watched_ids(house, only):
+        kind = house.kind_of(entity_id) or {}
+        room = ((house.where(entity_id) or {}).get("area")) or {}
+        area_name = None if is_pseudo_area(room.get("id")) else room.get("nome")
+        name = house.name("entita", entity_id)
+        parts = [entity_id]
+        for value in (None if name == entity_id else name, kind.get("classe"),
+                      kind.get("unita"), area_name, kind.get("translation_key")):
             if value:
                 parts.append(str(value))
         lines.append(" · ".join(parts))
@@ -201,7 +214,7 @@ def read_decisions(answer: str) -> tuple[list[dict], str | None]:
     return decisions, None
 
 
-def bridge_turn(store, home_space: dict, only: set[str] | None = None) -> dict:
+def bridge_turn(store, house: House, only: set[str] | None = None) -> dict:
     """Il turno da accodare al ponte: **la stessa domanda, per un'altra porta**.
 
     Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job non
@@ -220,7 +233,7 @@ def bridge_turn(store, home_space: dict, only: set[str] | None = None) -> dict:
     return {
         "history": [{"role": "user",
                      "content": build_house_question(store.objective()["testo"],
-                                                     house_lines(home_space, only))}],
+                                                     house_lines(house, only))}],
         "system_prompt": SYSTEM,
         # **Senza questa chiave il ponte gli impone il contrario.** L'istruzione
         # che chiude ogni turno di chat dice «usa testo semplice: niente
@@ -242,7 +255,7 @@ def bridge_turn(store, home_space: dict, only: set[str] | None = None) -> dict:
 OMITTED_REASON = "l'osservatore l'ha guardata e non ha saputo decidere"
 
 
-def apply_answer(store, home_space: dict, answer: str, *, reason: str = "",
+def apply_answer(store, house: House, answer: str, *, reason: str = "",
                  window_s: float | None = None, cadence_s: float | None = None,
                  asked: set[str] | None = None,
                  record: bool = True,
@@ -266,13 +279,14 @@ def apply_answer(store, home_space: dict, answer: str, *, reason: str = "",
     nessun evento potra' mai accendere e che la pagina mostrerebbe come
     osservata.
     """
-    lines = house_lines(home_space, asked)
+    # L'insieme valido e' quello che la casa ha scelto per la domanda, non le
+    # righe rilette (Task 12): il separatore e' della resa, non del giudizio.
+    known = set(watched_ids(house, asked))
     decisions, failure = read_decisions(answer)
     if failure is not None:
         logger.warning("osservatore: %s", failure)
         return {"errore": failure}
 
-    known = {line.split(" · ", 1)[0] for line in lines}
     decided = refused = ignored = 0
     for decision in decisions:
         if decision["id"] not in known:
@@ -309,10 +323,10 @@ def apply_answer(store, home_space: dict, answer: str, *, reason: str = "",
             when_ts=campaign_ts if campaign_ts is not None else now,
             window_s=window_s, cadence_s=cadence_s, reason=reason)
     return {"decise": decided, "rifiutate": refused, "ignorate": ignored,
-            "omesse": omitted, "candidate": len(lines)}
+            "omesse": omitted, "candidate": len(known)}
 
 
-async def reconsider(runner, store, home_space: dict, *, reason: str,
+async def reconsider(runner, store, house: House, *, reason: str,
                      window_s: float | None = None, cadence_s: float | None = None,
                      model: str = "auto", only: set[str] | None = None,
                      record: bool = True, campaign_ts: float | None = None,
@@ -329,7 +343,7 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
     chat e per le promesse; quando risponde «ponte», il giro passa da
     `bridge_turn` e questa funzione non viene chiamata affatto.
     """
-    lines = house_lines(home_space, only)
+    lines = house_lines(house, only)
     objective = store.objective()["testo"]
     question = build_question(objective, lines)
     try:
@@ -357,7 +371,7 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
 
-    return apply_answer(store, home_space, answer, reason=reason,
+    return apply_answer(store, house, answer, reason=reason,
                         window_s=window_s, cadence_s=cadence_s,
                         asked={line.split(" · ", 1)[0] for line in lines},
                         record=record, campaign_ts=campaign_ts, now=now)

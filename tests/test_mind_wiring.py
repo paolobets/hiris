@@ -655,21 +655,15 @@ class _FakeAutomationWatcher:
     cosi' il conteggio di ritorno di `watch_automation_outcomes` combacia
     col numero di tracce forgiate, senza dover replicare qui il giudizio
     vero (aperto/chiuso/ignorato) che appartiene al `Watcher` reale e che
-    questo file NON riprova. `titles` (giro di correzioni, rilievo 5) e'
-    cio' che torna `automation_title()` per entity_id -- vuoto di
-    default."""
+    questo file NON riprova."""
 
-    def __init__(self, marked, *, result=True, titles=None):
+    def __init__(self, marked, *, result=True):
         self._marked = list(marked)
         self.calls: list[tuple] = []
         self._result = result
-        self._titles = dict(titles or {})
 
     def marked_automations(self):
         return list(self._marked)
-
-    def automation_title(self, entity_id):
-        return self._titles.get(entity_id)
 
     def watch_automation_outcome(self, entity_id, outcome, *, domain=None, title=None):
         self.calls.append((entity_id, outcome, domain, title))
@@ -747,10 +741,10 @@ class _FakeMirror(MirrorById):
 
     loaded = True
 
-    def __init__(self, config_id_by_entity):
+    def __init__(self, config_id_by_entity, names=None):
         self._rows = []
         for entity_id, config_id in config_id_by_entity.items():
-            attributes = {"friendly_name": entity_id}
+            attributes = {"friendly_name": (names or {}).get(entity_id, entity_id)}
             if config_id is not None:
                 attributes["id"] = config_id
             self._rows.append(_to_minimal(
@@ -764,12 +758,6 @@ def test_fake_automation_watcher_matches_watcher_marked_automations():
     assert_stessa_firma(
         Watcher.marked_automations, _FakeAutomationWatcher.marked_automations,
         nome="Watcher.marked_automations")
-
-
-def test_fake_automation_watcher_matches_watcher_automation_title():
-    assert_stessa_firma(
-        Watcher.automation_title, _FakeAutomationWatcher.automation_title,
-        nome="Watcher.automation_title")
 
 
 def test_fake_automation_watcher_matches_watcher_watch_automation_outcome():
@@ -833,6 +821,32 @@ def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
         ("automation.luci_sera", "failed_conditions"),
         ("automation.luci_sera", "error"),
     ]
+
+
+def test_the_title_is_the_name_the_house_gives_at_the_outcome():
+    """A-18 (Tappa 3, Task 12): il titolo dell'automazione e' il nome che la
+    casa da' ADESSO (`House.name`: il `friendly_name` dello specchio), non
+    quello che l'evento portava al primo scatto -- un'automazione rinominata
+    in Home Assistant si scrive col nome nuovo. Un'automazione che la casa
+    sa nominare solo con l'id viaggia senza titolo, come prima.
+
+    Mutazione ESEGUITA (04/10/2026): il titolo sempre `None` (il collettore
+    che non chiede alla casa) -- rossa."""
+    watcher = _FakeAutomationWatcher(["automation.luci_sera", "automation.senza_nome"])
+    client = _traces_house({
+        "1771346155970": [{"run_id": "1", "script_execution": "error"}],
+        "1771346155971": [{"run_id": "2", "script_execution": "error"}],
+    })
+    app = {"watcher": watcher, "entity_cache": _FakeMirror(
+        {"automation.luci_sera": "1771346155970",
+         "automation.senza_nome": "1771346155971"},
+        names={"automation.luci_sera": "Luci della sera (rinominata)"})}
+
+    asyncio.run(server.watch_automation_outcomes(app, client))
+
+    assert {c[0]: c[3] for c in watcher.calls} == {
+        "automation.luci_sera": "Luci della sera (rinominata)",
+        "automation.senza_nome": None}
 
 
 def test_a_not_triggered_trace_is_not_forwarded():

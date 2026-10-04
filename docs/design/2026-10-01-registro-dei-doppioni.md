@@ -19,11 +19,9 @@ File relativi a `hiris/app/` salvo diverso avviso.
 |---|---|---|---|---|---|---|
 | A-03 | `GET /api/states` intero riletto da tre percorsi oltre allo specchio | NV | DP |  | cop-9 (incompleta) | reg · cop-9 |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
-| A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 · Tappa 3 (D5) |
 | A-15 | `workshop._reread`: la terza casa dello stato | NV | DP |  |  | reg · cop-9 |
 | A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 · Tappa 3 (D5) |
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 · Tappa 8 (D5) |
-| A-18 | Contenitori che invecchiano per scelta dichiarata | E | DP |  | cop-6 (incompleta, righe) | reg · cop-4 · cop-6 · Tappa 3 (D5) |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 · Tappa 6 (D5) |
 | A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 · Tappa 4 (D5) |
@@ -33,7 +31,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-34 | `calendars()` chiede a HA ciò che lo specchio ha già; eventi letti in fila | NV | CC |  |  | cop-5 A7 |
 | A-36 | Due modi di leggere lo storico dettagliato (REST `history`, WS `recorded_changes`) | NV | DP |  |  | cop-5 A9 |
 | A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 · Tappa 8 (D5) |
-| A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | E | PS |  |  | cop-6 N-03 · Tappa 3 (D5) |
 | A-39 | `last_before` eseguita due volte quando si rifà una cronaca (`day_boundaries` pure) | E | PS |  |  | cop-6 N-04 · Tappa 8 (D5) |
 | A-41 | `system_log`, `traces`, `hourly_statistics` letti dai giri di `server.py` e dagli strumenti della chat | E | DP |  |  | Tappa 2, Task 13 (04/10/2026): `server.py:826`, `:1087`, `:1809` contro `home_space/tools.py:2563`, `:2720`, `:2650`; si chiude con R13 |
 
@@ -43,20 +40,14 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| B-03 | Le entità di un dispositivo senza filtro: `recipe_turn.device_lines` | D | CC | 1138 entità in più di `house_lines` su 1413; 548 disabilitate contate | cop-6 (nome) | reg · cop-6 |
 | B-04 | `action/verification.py:613-625`: «ha uno stato» al posto di «è disabilitata» | D | DP | differisce dal digesto per 650 entità (974 contro 324) |  | reg |
-| B-05 | Come si chiama un'entità: più politiche (3-4 vive, più quella delle automazioni) | D | CC | nome di `guarda` ≠ `search` per 944 entità su 1525; nome davvero diverso: 0 casi | cop-3 (incompleta); cop-4 (righe); cop-6 (incompleta); cop-9 (conteggio) | reg · cop-3 · cop-4 · cop-6 · cop-9 |
 | B-07 | «È un valore o un non-valore?»: `privacy._NEUTRAL_STATES` | E | PS | 0 stati cambiati su 169 entità mobili |  | reg · cop-5 · cop-6 |
 | B-08 | `briefing._unreliable_state` conta solo `unknown` | D | CC | 328 entità `unavailable` su 974; esito invariato sulla casa (diverge solo la controprova sintetica) |  | reg · cop-4 |
 | B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | E | PS | 0 integrazioni su 39 | Tappa 3 (verdetto) | reg · cop-4 · cop-5 |
-| B-10 | In che area sta un'entità | D | CC | 194 entità guardabili su 324 arrivano all'osservatore senza area |  | reg · cop-4 · cop-6 |
-| B-11 | «Quali entità sono di un dispositivo»: `dispositivo_id` in linea | E | PS |  |  | reg · cop-3 · cop-4 · cop-6 |
-| B-12 | «Ha statistiche?»: tre formule | D | CC | 0 casi su 232 entità watcher | Tappa 3 (verdetto) | reg · cop-3 · cop-5 · cop-6 |
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
 | B-14 | Integrazione sana: due lettori, una costante doppia | E | PS |  | cop-4 (righe) | reg · cop-4 · cop-5 · cop-6 |
 | B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta); Tappa 3 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 |
 | B-16 | L'etichetta di data delle sessioni passate in UTC | D | CC | 3450 campioni sbagliati su 52560 nel 2026 |  | reg · cop-8 |
-| B-17 | Unità e classe: il vivo batte il registro, applicato due volte | E | CC | 0 casi | cop-4 (incompleta); cop-6 (imprecisa) | reg · cop-3 · cop-4 · cop-6 |
 | B-18 | Riferimento testuale: `search` contro `guarda`/resolver | D | CC | 118 casi su 39 integrazioni; 12 casi su 10 aree; «senza accenti» 0 casi | cop-3 (incompleta) | reg · cop-3 |
 | B-20 | Piegatura degli accenti in tre posti | D | CC |  |  | reg · cop-9 |
 | B-21 | Slug: `composer.available_slug` e `recipient._slugify` | D | CC |  |  | reg · cop-9 |
@@ -338,7 +329,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-30 | `app["model_chain"]` scritto in due punti (all'avvio e alla ricomposizione della catena): due momenti, da ricondurre a una funzione sola con la Tappa 1. Misurato nella Tappa 1 (commit `1a1cdc0c`, 03/10/2026): la scrittura dell'avvio (`app["model_chain"] = list(_chain)`) e' morta, perche' `_recompute_chain` la riscrive poche righe dopo prima che qualcuno la legga; togliendola la suite resta verde. `app["ultima_riparazione"]`: la scrittura in codice morto è uscita (`a507a2c7`), restano le due vive | `server.py` (`app["model_chain"]`) | cop-1 (conteggio); cop-2 (conteggio) | reg · cop-1 · cop-2 |
 | M-31 | Segnali in uscita senza lettore: `debug.thinking_blocks`, `tools_called`, `"input"`. Riletta il 02/10 (Task 17): `debug.thinking_blocks` esce nella risposta di `POST /api/chat` e `tools_called`/`input` viaggiano nella decisione del ponte: cambio di forma, e i due rami sono dichiarati gemelli | `handlers_chat.py:1399-1400,1413` | cop-8 (incompleta) | reg · cop-8 |
 | M-32 | `queries._view_behavior` chiede `ricordi` per automazione/script: ramo sempre `[]` [D]. Riletta il 02/10 (Task 17): la cura è togliere la chiave `ricordi` dalla risposta di `view`, cioè un cambio di forma (Tappa 4) | `queries.py:1369` | cop-4 (doppio conteggio) | reg · cop-4 |
-| M-34 | `LookupCache` per `slot`: la generalità non ha un secondo cliente | `memory/lookup_cache.py` |  | reg |
 | M-35 | `reader`: `unique_id`, `config_entry_id`, `original_name` senza lettori fuori da `reader.py`, ma escono in `GET /api/home-space` (misurato sulla casa il 01/10: 1.457 volte ciascuno): toglierli cambia una forma (Tappa 4, e tocca il difetto della rotta al «lettore»). `nome_utente` è uscito (`2e3ab864`); `dispositivo_id` TOLTO: ha 6 lettori di produzione. Riletta il 03/10 (Tappa 3): `config_entry_id` dell'entità non si toglie, è il legame che darà la causa del muto (B-25, Tappa 3, Task 8) | `reader.py:143-145` | cop-4 (SBAGLIATA in parte) | reg · cop-4 |
 | M-37 | CSS definito e mai citato: 92 classi su 292; `hiris-config-override.css` quasi tutto vecchia UI [D da script] | `hiris-config.css`; `hiris-theme.css`; `hiris-config-override.css` |  | reg |
 | M-38 | `scripts/`: `backup-nas.ps1` senza riferimenti; `censimento.py` e `doppioni.py` non agganciati a hook né CI | `scripts/` |  | reg |
@@ -897,3 +887,13 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-01 | «Questa entità è fuori?»: partizione, digesto e le loro copie | Tappa 3 (da rilasciare) | cb84c86 | una regola, topology.visibility_classes (classe con la causa); le sei copie la chiamano; il cancello regola-del-fuori ha la funzione come proprietario e zero eccezioni. Tappa 3, Task 5 (04/10/2026) |
 | B-02 | Regole «fuori» più larghe per scelta: `_view_integration`, `_unreliable_state`, conteggi, «senza nome» | Tappa 3 (da rilasciare) | cb84c86 | le tre porte larghe dichiarano le classi che contano (D7); il conteggio doppio «nascosta e di servizio» del nucleo e' singolo. Tappa 3, Task 5 (04/10/2026) |
 | B-06 | Nome del dispositivo: derivazioni e campo senza lettori | Tappa 3 (da rilasciare) | cb84c86 | topology.device_name, il nome altrimenti l'id, in nucleo, pagine del cervello, resoconto, ricette e guarda. Tappa 3, Task 5 (04/10/2026) |
+| B-17 | Unità e classe: il vivo batte il registro, applicato due volte | Tappa 3, Task 7 | 8e710f9 | l'anagrafe porta solo la dichiarazione del registro; il vivo da House.kind_of e topology.live_first |
+| B-12 | «Ha statistiche?»: tre formule | Tappa 3, Task 7 | 274409a | una regola, ha_vocabulary.has_statistics: statistic_ids del giro, la regola del sorgente solo come ripiego |
+| B-03 | Le entità di un dispositivo senza filtro: `recipe_turn.device_lines` | Tappa 3, Task 12 | 85b9af0 | le ricette ricevono House.entities_of (D2, la regola del fuori); _device_entities uscito |
+| B-11 | «Quali entità sono di un dispositivo»: `dispositivo_id` in linea | Tappa 3, Task 12 | 85b9af0 | House.device_entities: le voci di un dispositivo in un posto; ricette e queries._view_device lo chiedono |
+| B-10 | In che area sta un'entità | Tappa 3, Task 12 | 85b9af0 | House.where (Task 6) con l'area ereditata; l'osservatore lo usa (D3), _area_names uscito |
+| B-05 | Come si chiama un'entità: più politiche (3-4 vive, più quella delle automazioni) | Tappa 3, Task 12 | 85b9af0 | House.name (Task 5) anche in osservatore e ricette, l'ultima seconda copia viva; report._resolved_name resta il nome archiviato prima, per decisione |
+| A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | Tappa 3, Task 12 | 6fedac1 | KnowledgeStore.device_answers, una SELECT; recipe_turn.recipes al posto di recipe_for; l'anagrafe da House.device_ids |
+| A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | Tappa 3, Task 12 | bd0bc5e | House.lookup, una volta per casa; remember e le due rotte dei ricordi lo chiedono alla casa |
+| M-34 | `LookupCache` per `slot`: la generalità non ha un secondo cliente | Tappa 3, Task 12 | bd0bc5e | LookupCache uscita con A-13: l'indice e' della casa del turno |
+| A-18 | Contenitori che invecchiano per scelta dichiarata | Tappa 3, Task 12 | 0b6fc80 | il titolo delle automazioni da House.name all'esito; _wanted_cache invalidata da KnowledgeStore.version. _missing_rounds e _automation_faults sono stato del giro, non copie: restano |

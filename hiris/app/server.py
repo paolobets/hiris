@@ -46,7 +46,6 @@ from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
 from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
-from .home_space.briefing import digest_visible_entity_ids
 from .home_space.energy import energy_dashboard
 from .home_space.historian import (
     day_boundaries,
@@ -54,13 +53,13 @@ from .home_space.historian import (
     instant_epoch,
     local_date,
 )
+from .home_space.house import House
 from .home_space.reader import HomeSpace
 from .home_space.redaction import home_assistant_folder
 from .home_space.topology import (
     AREAS_PER_ROUND,
     choose_sample,
     compare_with_home_assistant,
-    device_name,
     hierarchy,
     rebuild,
     tree_areas,
@@ -69,7 +68,6 @@ from .keeper.exchange import interpreta_promise
 from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
-from .memory.lookup_cache import LookupCache
 from .memory.store import MemoryStore
 from .mind import actuator, actuator_turn, analyst, analyst_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
@@ -1033,10 +1031,13 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     `"error"`, `"failed_conditions"`, ...): questa funzione non lo giudica,
     lo passa cosi' com'e' -- il giudizio (quale valore apre, quale chiude,
     quale non fa niente) vive tutto in `Watcher.watch_automation_outcome`.
-    `title` viene da `Watcher.automation_title(entity_id)` -- il nome
-    amichevole che `mark_automation` ha segnato dall'evento -- e viaggia
-    identico a ogni chiamata per la stessa automazione: e' il metodo che
-    decide se scriverlo (solo sull'apertura), non questa funzione.
+    `title` e' il nome che la casa da' all'automazione ADESSO (`House.name`,
+    D1: quello che si vede in Home Assistant; A-18, Tappa 3, Task 12) --
+    fino al 04/10/2026 era quello che l'evento portava al primo scatto, e
+    non seguiva le rinomine. Un'automazione che la casa sa nominare solo con
+    l'id viaggia senza titolo, come prima senza nome. Viaggia identico a
+    ogni chiamata per la stessa automazione: e' il metodo che decide se
+    scriverlo (solo sull'apertura), non questa funzione.
 
     Non solleva mai per la lettura delle tracce (`traces()` la dichiara
     gia' cosi', vedi il suo docstring): un guasto di rete per
@@ -1095,6 +1096,8 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     report = await ha_client.traces(
         list(dict.fromkeys(("automation", automation_id)
                            for _entity_id, automation_id in resolved)))
+    # La casa di questo giro, per i nomi (A-18): letta una volta.
+    house = House.read(app.get("home_space_store"), cache)
     if "errore" in report:
         # La raffica intera non e' partita: nessuna automazione si e' potuta
         # guardare, e nessun cursore si tocca.
@@ -1112,7 +1115,8 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
             continue
         already_seen = cursors.get(entity_id) or set()
         seen_this_round: set[str] = set()
-        title = watcher.automation_title(entity_id)
+        name = house.name("automazione", entity_id)
+        title = None if name == entity_id else name
         for trace in report["tracce"][key]:
             if not isinstance(trace, dict):
                 continue
@@ -1527,7 +1531,7 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
     return bridge_active and subscription_has_token()
 
 
-def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0, *,
+def schedule_registry_rebuild(client, store, delay: float = 3.0, *,
                               then=None):
     """Restituisce `trigger(event_type)`: ricostruisce l'anagrafe, una volta sola.
 
@@ -1553,7 +1557,7 @@ def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0, *
     async def _fra_poco():
         try:
             await asyncio.sleep(delay)
-            await rebuild(client, store, entity_cache)
+            await rebuild(client, store)
             if then is not None:
                 await then()
         except asyncio.CancelledError:
@@ -1656,8 +1660,10 @@ async def reconsideration_round(app, ha_client) -> dict | None:
     if store is None or home_space_store is None:
         return None
     try:
-        home_space = home_space_store.read()
-        collected, letto = _collect_scope_turn(app, store, home_space)
+        # La casa di questo giro (R13): l'anagrafe e lo specchio di adesso,
+        # una volta. Vale il giro e basta.
+        house = House.read(home_space_store, app.get("entity_cache"))
+        collected, letto = _collect_scope_turn(app, store, house)
         if collected is not None:
             return collected
         if letto:
@@ -1678,7 +1684,9 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         if _retry_hold(store, now=time.time()):
             return None
 
-        candidates = sorted(digest_visible_entity_ids(home_space))
+        # Chi l'osservatore guarda lo dice la casa (Task 12): la stessa
+        # scelta di `observer.watched_ids`, non una seconda lettura.
+        candidates = sorted(house.visible_entities())
         last = store.last_reconsideration()
         objective = store.objective()
         # **Una riconsiderazione e' una CAMPAGNA di piu' lotti.** La domanda
@@ -1747,15 +1755,18 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # con `annota`). I lotti successivi la misuravano su tutte le entita'
         # -- dieci sonde, piu' sette se la memoria cade dentro la scala -- e
         # la buttavano.
+        # **L'insieme e' quello del registratore, non quello dell'osservatore**
+        # (Task 12): la memoria e' di Home Assistant, e la provano anche le
+        # entita' che nessuno guarda. Ogni entita' del registro, come prima.
         window_s = None if in_corso else await measure_memory_window(
-            ha_client, sorted(e["id"] for e in home_space.get("entita", []) if e.get("id")))
+            ha_client, sorted(house.entity_ids()))
         if route == "ponte":
-            return _enqueue_scope_turn(app, store, home_space, reason=why,
+            return _enqueue_scope_turn(app, store, house, reason=why,
                                        window_s=window_s, lotto=lotto,
                                        annota=not in_corso,
                                        campagna_ts=campagna_ts)
         outcome = await observer_reconsider(
-            runner, store, home_space, reason=why,
+            runner, store, house, reason=why,
             window_s=window_s, cadence_s=cadence_from(window_s),
             only=lotto, record=not in_corso, campaign_ts=campagna_ts,
             measurements=app.get("usage"))
@@ -1785,14 +1796,15 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     casa = app.get("home_space_store")
     if sapere is None or casa is None:
         return {}, {}, {}, None
-    home_space = casa.read()
-    nomi = {str(d.get("id")): device_name(d)
-            for d in home_space.get("dispositivi") or [] if d.get("id")}
-    ricette = {}
-    for device_id in nomi:
-        scritta = recipe_turn.recipe_for(sapere, device_id)
-        if scritta is not None:
-            ricette[device_id] = scritta
+    # I dispositivi e i loro nomi li dice la casa (Task 12): il nome,
+    # altrimenti l'id (`House.name`).
+    house = House.read(casa, app.get("entity_cache"))
+    nomi = {device_id: house.name("dispositivo", device_id)
+            for device_id in house.device_ids()}
+    # Le ricette di tutti in una lettura (A-38), nell'ordine dell'anagrafe.
+    scritte = recipe_turn.recipes(sapere)
+    ricette = {device_id: scritte[device_id] for device_id in nomi
+               if device_id in scritte}
     if not ricette:
         return {}, {}, nomi, None
     entita = sorted({e for r in ricette.values() for e in Recipe(r).entities()})
@@ -1858,6 +1870,21 @@ async def statistic_ids_for_round(app, ha_client, *,
     if not isinstance(reading, dict):
         app["statistic_ids_held"] = (now, reading)
     return reading
+
+
+async def hold_watcher_statistic_ids(app, ha_client) -> None:
+    """L'elenco delle entita' con statistiche consegnato al watcher (B-12,
+    Tappa 3, Task 7, 04/10/2026), dalla stessa lettura condivisa dei giri
+    (`statistic_ids_for_round`): il watcher decide su ogni evento se una
+    lettura la tiene gia' Home Assistant, e non puo' chiederlo evento per
+    evento. Lo fa il giro delle condizioni, ogni dieci minuti; prima del primo
+    giro il watcher usa la regola del sorgente (`ha_vocabulary.has_statistics`).
+    Una lettura fallita non tocca l'ultima buona (`Watcher.hold_statistic_ids`).
+    """
+    watcher = app.get("watcher")
+    if watcher is None or ha_client is None:
+        return
+    watcher.hold_statistic_ids(await statistic_ids_for_round(app, ha_client))
 
 
 def _punti_orari(punti) -> list[dict]:
@@ -2130,7 +2157,7 @@ async def _repair_recipes(app, broken) -> list[dict]:
     runner = app.get("llm_router") or app.get("claude_runner")
     if not broken or sapere is None or home_space_store is None or runner is None:
         return []
-    home_space = home_space_store.read() or {}
+    house = House.read(home_space_store, app.get("entity_cache"))
     store = app.get("observations")
     objective = ((store.objective() or {}).get("testo") or "") if store is not None else ""
     done = []
@@ -2139,7 +2166,7 @@ async def _repair_recipes(app, broken) -> list[dict]:
         if not device_id:
             continue
         esito = await recipe_turn.ask(
-            runner, sapere, home_space, device_id,
+            runner, sapere, house, device_id,
             objective=objective, who=ACTUATOR_AUTHOR, when_ts=time.time(),
             # **La riparazione e' lavoro dell'ATTUATORE**, non delle ricette:
             # e' lui che l'ha chiesta. Attribuirla a «ricette» perche' passa
@@ -2491,8 +2518,8 @@ async def recipe_round(app) -> dict | None:
     if store is None or sapere is None or home_space_store is None:
         return None
     try:
-        home_space = home_space_store.read()
-        collected = _collect_recipe_turn(app, sapere, home_space)
+        house = House.read(home_space_store, app.get("entity_cache"))
+        collected = _collect_recipe_turn(app, sapere, house)
         if collected is not None and collected.get("risposta"):
             return collected
         # **Una risposta che non c'e' non chiude il giro**, e senza questa riga
@@ -2508,11 +2535,11 @@ async def recipe_round(app) -> dict | None:
 
         watched = {s for s, riga in (store.scope() or {}).items()
                    if riga.get("dentro")}
-        to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
+        to_ask = recipe_turn.devices_to_ask(sapere, house, watched)
         # **Niente da potare ne' da chiedere: niente da leggere** (A-20, Tappa
         # 2, Task 8). Fino al 04/10/2026 l'elenco delle statistiche si leggeva
         # qui sotto a ogni passaggio, prima di sapere se servisse.
-        if not to_ask and not recipe_turn.has_prunable_recipes(sapere, home_space):
+        if not to_ask and not recipe_turn.has_prunable_recipes(sapere, house):
             return None
 
         # **Quali entita' sanno produrre una serie**: serve due volte, e si
@@ -2536,12 +2563,12 @@ async def recipe_round(app) -> dict | None:
         # richiesto. Trovato dalla revisione indipendente il 15/09/2026:
         # dieci dispositivi sulla casa vera.
         tolte = recipe_turn.drop_recipes_without_series(
-            sapere, home_space, with_series=with_series)
+            sapere, house, with_series=with_series)
         if tolte:
             logger.info("ricette: %d ricette tolte -- nessuna delle loro "
                         "entita' ha una serie; quei dispositivi tornano "
                         "domande aperte", tolte)
-            to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
+            to_ask = recipe_turn.devices_to_ask(sapere, house, watched)
         if not to_ask:
             return None
         # A chi chiedere: **si ruota**, o un dispositivo che non risponde
@@ -2561,7 +2588,7 @@ async def recipe_round(app) -> dict | None:
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
         if route == "ponte":
-            return _enqueue_recipe_turn(app, home_space, device_id,
+            return _enqueue_recipe_turn(app, house, device_id,
                                         objective=objective,
                                         with_series=with_series, energy=dashboard)
         if runner is None:
@@ -2570,7 +2597,7 @@ async def recipe_round(app) -> dict | None:
         declare_downgrade(app, agent="ricette", reason=downgrade)
         logger.info("ricette: chiedo come si misura «%s» (%s)", device_id, route)
         esito = await recipe_turn.ask(
-            runner, sapere, home_space, device_id, objective=objective,
+            runner, sapere, house, device_id, objective=objective,
             who=f"modello ({route})", when_ts=time.time(),
             with_series=with_series, energy=dashboard,
             measurements=app.get("usage"), species="ricette")
@@ -2606,13 +2633,13 @@ def _troppo_presto_per_richiedere(app) -> bool:
     return (time.time() - deciso) < RECIPE_RETRY_HOLD_S
 
 
-def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
+def _enqueue_recipe_turn(app, house: House, device_id: str, *,
                          objective: str,
                          with_series: set[str] | None = None,
                          energy: dict | None = None) -> dict | None:
     """Accoda al piano la domanda su un dispositivo, e torna subito."""
     from .api.handlers_models import _STORE_DEFAULTS
-    job = recipe_turn.bridge_turn(objective, home_space, device_id,
+    job = recipe_turn.bridge_turn(objective, house, device_id,
                                   with_series=with_series, energy=energy)
     if job is None:
         return None
@@ -2631,7 +2658,7 @@ def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
     return {"accodata": True, "dispositivo": device_id}
 
 
-def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
+def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
     """La risposta che il piano ha dato alla domanda su un dispositivo.
 
     **Un turno gia' letto non si rilegge**, e qui la traccia e' il sapere
@@ -2657,7 +2684,7 @@ def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
         if riga is not None and riga.when_ts >= decided_ts:
             return None
     reply = (turn.get("decision") or {}).get("reply") or ""
-    esito = recipe_turn.apply_recipe(sapere, home_space, device_id, reply,
+    esito = recipe_turn.apply_recipe(sapere, house, device_id, reply,
                                      who="modello (ponte)", when_ts=time.time())
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
@@ -2905,7 +2932,7 @@ def _to_judge(store, candidates: list[str], last: dict | None) -> list[str]:
     return mai + vecchi
 
 
-def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool]:
+def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     """La risposta che il piano ha dato al turno di scope, e **se si e'
     letta**: `(esito, letto)`.
 
@@ -2955,7 +2982,7 @@ def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool
     wake = turn.get("wake") or {}
     lotto = wake.get("lotto")
     outcome = observer_apply_answer(
-        store, home_space, reply,
+        store, house, reply,
         reason=wake.get("motivo") or "il piano ha risposto",
         window_s=wake.get("finestra_s"), cadence_s=wake.get("cadenza_s"),
         asked=set(lotto) if lotto else None,
@@ -2983,7 +3010,7 @@ def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool
     return outcome, True
 
 
-def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
+def _enqueue_scope_turn(app, store, house: House, *, reason: str,
                         window_s: float | None, lotto: set[str],
                         annota: bool, campagna_ts: float) -> dict:
     """Accoda al piano il turno dell'osservatore, e torna subito.
@@ -3007,7 +3034,7 @@ def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
         {"motivo": reason, "finestra_s": window_s,
          "cadenza_s": cadence_from(window_s),
          "lotto": sorted(lotto), "annota": annota, "campagna_ts": campagna_ts},
-        observer_bridge_turn(store, home_space, lotto),
+        observer_bridge_turn(store, house, lotto),
         now + deadline_min * 60,
         now=now)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
@@ -3577,7 +3604,7 @@ async def _on_startup(app: web.Application) -> None:
     # sua nascita, piu' sotto, lo dice e non solleva). Lo specchio si rilegge
     # alla riconnessione.
     ha_client.add_topology_listener(
-        schedule_registry_rebuild(ha_client, home_space_store, entity_cache,
+        schedule_registry_rebuild(ha_client, home_space_store,
                                   then=lambda: prime_state_translations(app)))
     ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
     # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
@@ -3639,17 +3666,6 @@ async def _on_startup(app: web.Application) -> None:
     # quanto il boot.
     await reread_ha_problems(app, ha_client)
 
-    # Task B7: la cache del Lookup (`memory/lookup_cache.py`), di vita
-    # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
-    # `ToolDispatcher` che la riceve (`create_tool_dispatcher`
-    # in `api/handlers_chat.py`). Prima di questo task `_search`/`_remember`
-    # ricostruivano un `Lookup` da zero A OGNI chiamata e lo buttavano
-    # subito: si ripagava ogni volta la lettura dell'anagrafe E la
-    # compilazione di un'espressione regolare per termine (misurato: la
-    # compilazione domina il costo, non la lettura -- vedi il rapporto del
-    # task). Costruita vuota qui, si riempie alla prima `search`/`remember`.
-    app["tools_lookup_cache"] = LookupCache()
-
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
     # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui
     # perche' e' il suo unico ingresso.
@@ -3694,18 +3710,16 @@ async def _on_startup(app: web.Application) -> None:
     # AUTOMATION_TRIGGERED_EVENT in `proxy/ha_client.py`): segna soltanto,
     # non scrive -- vedi il docstring di `Watcher.mark_automation` per il
     # perche'. Il glue e' qui e non un metodo di `Watcher` apposta:
-    # l'interfaccia che questo task produce e' `mark_automation(entity_id,
-    # *, name=None)` -- estrarre `entity_id`/`name` dal dizionario grezzo
-    # dell'evento e' cablaggio di questo file, non un giudizio
-    # dell'osservatore. `name` (giro di correzioni, rilievo 5): l'evento
-    # porta gia' il nome amichevole dell'automazione (`ATTR_NAME`, vedi
-    # `AUTOMATION_TRIGGERED_EVENT`) -- non serve `EntityCache` per averlo.
+    # l'interfaccia che questo task produce e' `mark_automation(entity_id)`
+    # -- estrarre `entity_id` dal dizionario grezzo dell'evento e' cablaggio
+    # di questo file, non un giudizio dell'osservatore. Il nome che l'evento
+    # porta non si tiene (A-18): lo dice la casa all'esito.
     def _mark_triggered_automation(event_data: dict) -> None:
         if not isinstance(event_data, dict):
             return
         entity_id = event_data.get("entity_id")
         if isinstance(entity_id, str):
-            app["watcher"].mark_automation(entity_id, name=event_data.get("name"))
+            app["watcher"].mark_automation(entity_id)
     ha_client.add_automation_listener(_mark_triggered_automation)
 
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +
@@ -3794,7 +3808,7 @@ async def _on_startup(app: web.Application) -> None:
     # nell'anagrafe, e su una casa vuota non ne trova nessuna, quindi il
     # resoconto riparato nascerebbe senza misure.
     try:
-        await rebuild(ha_client, home_space_store, entity_cache)
+        await rebuild(ha_client, home_space_store)
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
 
@@ -4231,6 +4245,7 @@ async def _on_startup(app: web.Application) -> None:
     async def _watch_conditions() -> None:
         try:
             await watch_system_conditions(app, ha_client)
+            await hold_watcher_statistic_ids(app, ha_client)
         except Exception as exc:
             logger.warning(
                 "cervello: giro delle condizioni di sistema fallito (%s: %s)",

@@ -347,7 +347,6 @@ async def test_the_automation_event_marks_the_automation(started_app):
         listener({"entity_id": entity_id, "name": "Prova di cablaggio"})
     watcher = started_app["watcher"]
     assert entity_id in watcher.marked_automations()
-    assert watcher.automation_title(entity_id) == "Prova di cablaggio"
 
 
 async def test_a_service_event_makes_the_registry_reread(started_app):

@@ -451,3 +451,38 @@ async def test_senza_archivio_le_rotte_dichiarano_il_guasto_con_la_chiave_del_co
     risposta = await handle_get_memories(richiesta())
     assert risposta.status == 200
     assert json.loads(risposta.body) == {"available": False, "memories": []}
+
+
+@pytest.mark.asyncio
+async def test_le_rotte_dei_ricordi_chiedono_l_indice_alla_casa(
+        aiohttp_client, tmp_path, monkeypatch):
+    """A-13 (Tappa 3, Task 12): l'indice con cui si verificano le ancore si
+    costruiva in tre posti con tre ingressi; ora uno, `House.lookup`, lo
+    stesso di `remember` in chat. Si conta dove si costruisce: una volta per
+    richiesta, dalla casa.
+
+    Mutazione ESEGUITA (04/10/2026): la rotta GET che torna a chiamare
+    `costruisci_indice` da se' -- rossa (nessuna costruzione dalla casa)."""
+    import hiris.app.home_space.house as house_module
+
+    built = []
+    original = house_module.costruisci_indice
+    monkeypatch.setattr(house_module, "costruisci_indice",
+                        lambda casa: built.append(1) or original(casa))
+    home_space = HomeSpace(str(tmp_path))
+    home_space.hold_registries({
+        "piani": [], "dispositivi": [], "entita": [], "etichette": [], "categorie": [],
+        "integrazioni": [], "aree": [{"area_id": "cucina", "name": "Cucina"}]})
+    memory = MemoryStore(str(tmp_path / "memoria.db"))
+    ident = memory.remember("mi piace il caffe' forte", detto_da="paolo")
+    client = await aiohttp_client(_app(archivio_memoria=memory, archivio_casa=home_space))
+
+    assert (await client.get("/api/memories")).status == 200
+    assert built == [1]
+    resp = await client.patch(f"/api/memories/{ident}", json={
+        "ancore": [{"tipo": "area", "riferimento": "cucina", "nome_visto": "cucina"}]})
+    assert resp.status == 200
+    assert built == [1, 1]
+
+    home_space.close()
+    memory.close()

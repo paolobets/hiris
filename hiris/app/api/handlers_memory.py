@@ -37,9 +37,9 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
-from ..home_space.topology import read_mirror
+from ..home_space.house import House
 from ..memory.interpretation import deduci_unit, validate
-from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
+from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..proxy._sanitize import sanitize_ha_value
 from .soffitto import restricted_person
 
@@ -124,7 +124,9 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     # Non hanno mai avuto effetto: entravano solo nell'indice di `find()`, e
     # `_resolve_tether` legge `nome`. E' un difetto della pagina, scritto nel
     # registro (capitolo S); il parametro inerte e' uscito con la Tappa 0.
-    lookup = (costruisci_indice(home_space_store.read())
+    # L'indice dalla casa di questa richiesta (A-13): la stessa funzione e
+    # la stessa istantanea di `remember` in chat.
+    lookup = (House.read(home_space_store, request.app.get("entity_cache")).lookup()
               if topology_loaded else None)
     unverifiable = _unverifiable_types(home_space_store, topology_loaded)
 
@@ -205,17 +207,18 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     # arriva all'utente deve dirlo com'e' (`unverifiable_types`, sotto):
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
-    lookup = (costruisci_indice(home_space_store.read())
-              if topology_loaded else costruisci_indice({}))
+    house = House.read(home_space_store if topology_loaded else None,
+                       request.app.get("entity_cache"))
+    lookup = house.lookup()
     unverifiable_types = _unverifiable_types(home_space_store, topology_loaded)
-    # Le unita' vive, dalla stessa fonte che usa `remember` in chat. Senza,
+    # Classi e unita' vive, dalla stessa fonte che usa `remember` in chat. Senza,
     # correggere la grandezza di un ricordo DA QUESTA PAGINA avrebbe dedotto
     # un'unita' diversa da quella dedotta dalla chat sullo stesso ricordo: lo
     # stesso fatto con due forme a seconda della porta. Lo specchio guasto o
     # assente non fa fallire la correzione: le unita' restano vuote
     # (`read_mirror`, che fino al 04/10/2026 questa pagina ricopiava in
     # `_page_mirror`).
-    reported_units = read_mirror(request.app.get("entity_cache")).units
+    mirror = house.mirror
 
     # Un intervallo e' una coppia, non due campi indipendenti: se la
     # richiesta tocca solo `minimo` o solo `massimo`, la coerenza (minimo
@@ -243,7 +246,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         "condizioni": fields.get("condizioni") or [],
     }
     cleaned, problems, corrections = validate(
-        interpretation, lookup, unverifiable_types, reported_units)
+        interpretation, lookup, unverifiable_types, mirror)
     if problems:
         # Rifiutata con la ragione, non accettata a meta' (regola 2 di
         # MemoryStore): nessuna delle correzioni si scrive, il ricordo
@@ -296,7 +299,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         quantity_for_deduction = cleaned["grandezza"] if "grandezza" in fields \
             else existing["grandezza"]
         updates["unita"] = deduci_unit(
-            tethers_for_deduction, quantity_for_deduction, lookup, reported_units)
+            tethers_for_deduction, quantity_for_deduction, lookup, mirror)
     if "ancore" in fields:
         updates["ancore"] = cleaned["ancore"]
     if "condizioni" in fields:

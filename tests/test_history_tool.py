@@ -385,10 +385,11 @@ async def test_la_quattordici_e_una_chiamata_sola(tmp_path):
 @pytest.mark.asyncio
 async def test_una_banderuola_resta_sul_dettaglio_oltre_le_ventiquattro_ore(tmp_path):
     """Da `test_historian_tools.py` (F4 dell'onda finale): `measurement_angle`
-    non produce statistiche.
+    ha la sola media circolare (B-12, 04/10/2026: le statistiche le ha, le
+    fasce non si leggono coi conti di HIRIS).
 
     Mutazione ESEGUITA: `value_surface` con `bool(state_class)` al posto di
-    `produces_statistics` -- rossa."""
+    `bands_are_arithmetic` -- rossa."""
     ha = _house(serie={"sensor.vento_direzione": [{"quando": _ADESSO.isoformat(),
                                                    "valore": "180"}]})
     esito = await _history_dispatcher(tmp_path, ha).dispatch(

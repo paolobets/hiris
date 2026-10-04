@@ -249,6 +249,9 @@ class _FintaAnagrafe:
     def read(self):
         return {"dispositivi": [{"id": "dev2", "nome": "Inverter"}]}
 
+    def unavailable(self):
+        return []
+
     def reference_frame(self):
         return {}
 

@@ -15,22 +15,16 @@ from . import type_vocabulary
 logger = logging.getLogger(__name__)
 
 
-async def rebuild(client, store, entity_cache) -> dict:
+async def rebuild(client, store) -> dict:
     """Rilegge tutti i registri da HA e sostituisce l'anagrafe.
 
-    **`entity_cache` non e' un di piu' opzionale: senza, l'anagrafe nasce
-    senza classi.** `config/entity_registry/list` risponde con
-    `RegistryEntry.as_partial_dict`, che `device_class` non ce l'ha --
-    misurato sulla casa vera il 10/09/2026, assente su 1.227 righe su 1.227 --
-    e la classe vive solo nello specchio dello stato. Chiederla come argomento
-    obbligatorio e' cio' che impedisce a un chiamante di ricostruire una casa
-    muta senza accorgersene.
-
-    Se lo specchio **non e' pronto** (`load()` fallita all'avvio: il suo
-    `try/except` logga e prosegue), `specchio_vivo` entra fra i non
-    disponibili. Non si costruisce lo stesso in silenzio: «non ho potuto
-    leggere le classi» e «questa casa non ha classi» sono due fatti diversi, ed
-    e' la stessa dottrina per cui `EntityCache.loaded` esiste.
+    **Solo i registri** (B-17, Tappa 3, Task 7, 04/10/2026). Fino a quel
+    giorno la ricostruzione chiedeva anche lo specchio dello stato, per
+    scrivere nell'anagrafe la classe e l'unita' vive di quel momento -- e
+    dichiarava `specchio_vivo` fra i non disponibili quando la cache non era
+    pronta. Erano un fatto vivo congelato fino alla ricostruzione dopo: ora
+    la classe e l'unita' di adesso le dice `House.kind_of`, dallo specchio di
+    adesso, e la ricostruzione non ha piu' niente da chiedergli.
 
     Restituisce `{"conteggi": {...}, "non_disponibili": [...]}`.
 
@@ -52,13 +46,6 @@ async def rebuild(client, store, entity_cache) -> dict:
     frame, frame_loaded = await _read_reference_frame(client)
     if not frame_loaded:
         unavailable = list(unavailable) + ["sistema_di_riferimento"]
-    live_classes: dict[str, str] = {}
-    live_units: dict[str, str] = {}
-    if entity_cache is not None and entity_cache.loaded:
-        mirror = live_mirror(entity_cache.all_states())
-        live_units, live_classes = mirror.units, mirror.classes
-    else:
-        unavailable = list(unavailable) + ["specchio_vivo"]
     counts = {key: len(value) for key, value in registries.items()}
     # "categorie:script" fallisce per un solo ambito, non per l'intero
     # registro "categorie": si confronta il nome del registro (prima dei
@@ -69,8 +56,7 @@ async def rebuild(client, store, entity_cache) -> dict:
             "lettura dei registri fallita per intero (%s): la casa precedente resta "
             "quella di prima, non sostituita da un vuoto", unavailable)
     else:
-        store.hold_registries(registries, unavailable, reference_frame=frame,
-                              live_classes=live_classes, live_units=live_units)
+        store.hold_registries(registries, unavailable, reference_frame=frame)
         if unavailable:
             logger.warning("anagrafe ricostruita, ma questi registri non hanno risposto: %s",
                            unavailable)

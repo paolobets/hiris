@@ -20,7 +20,7 @@ from aiohttp import web
 from ..home_space.briefing import compose
 from ..home_space.house import House
 from ..home_space.privacy import cover_automation_body
-from ..home_space.topology import category_names, hierarchy, label_names
+from ..home_space.topology import category_names, label_names, read_mirror
 from .soffitto import denies, request_ceiling
 
 
@@ -41,6 +41,37 @@ def _categories_by_scope(home_space: dict) -> dict[str, dict[str, str]]:
     for (scope, category_id), name in category_names(home_space).items():
         categories.setdefault(scope, {})[category_id] = name
     return categories
+
+
+def _live_kinds(house: House) -> list[dict]:
+    """L'albero della casa con la classe e l'unita' DI ADESSO su ogni entita'
+    (B-17, Tappa 3, Task 7, 04/10/2026).
+
+    L'anagrafe porta solo cio' che il registro dichiara, e il registro la
+    classe quasi non la manda: fino a quel giorno la pagina mostrava quella
+    che la ricostruzione aveva copiato dallo specchio, ferma fino alla
+    ricostruzione dopo. Qui la si chiede a `House.kind_of`, come fanno
+    osservatore e ricette. Le voci dell'albero sono quelle dell'anagrafe e
+    non si toccano: escono copie."""
+    floors = house.hierarchy()
+    out = []
+    for floor in floors:
+        areas = []
+        for area in floor.get("aree") or []:
+            area = dict(area)
+            for key in ("entita", "entita_nascoste", "entita_disabilitate"):
+                if key in area:
+                    area[key] = [_with_live_kind(house, entry) for entry in area[key]]
+            areas.append(area)
+        out.append({**floor, "aree": areas})
+    return out
+
+
+def _with_live_kind(house: House, entry):
+    if not isinstance(entry, dict) or not entry.get("id"):
+        return entry
+    kind = house.kind_of(entry["id"]) or {}
+    return {**entry, "classe": kind.get("classe"), "unita": kind.get("unita")}
 
 
 async def handle_get_home_space(request: web.Request) -> web.Response:
@@ -112,7 +143,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,
         # sono due case diverse a seconda della porta da cui entri.
         "sistema_di_riferimento": store.reference_frame(),
-        "piani": hierarchy(home_space, unavailable),
+        "piani": _live_kinds(House(home_space, read_mirror(request.app.get("entity_cache")),
+                                   tuple(unavailable))),
         # I NOMI delle etichette, id -> nome.
         #
         # `hierarchy()` mette sulle aree e sulle entita' i soli `label_id` --

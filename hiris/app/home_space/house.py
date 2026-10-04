@@ -19,17 +19,22 @@ la casa cambia sotto di lui: l'anagrafe ricostruita (un altro oggetto da
 I metodi del §4.1 della spec arrivano un task alla volta: qui ci sono la
 gerarchia, la scelta di «di chi» (`select`, l'ex `house_query.select_subjects`),
 la VISIBILITA' con la causa (`visibility`) e l'IDENTITA' (`name`), dal Task 5, e
-il dove (`where`), dal Task 6. Le regole stanno in `topology` (`visibility`,
-`live_name`, `device_name`), che sta SOTTO questo modulo: la gerarchia le applica
-e non puo' importare la casa.
+il dove (`where`), dal Task 6; il tipo (`kind_of`, `has_statistics`), dal
+Task 7; cio' che gli attori compongono (`visible_entities`, `entities_of`,
+`device_entities`, `device_ids`, `entity_ids`), dal Task 12. Le regole stanno
+in `topology` (`visibility`, `live_name`, `device_name`), che sta SOTTO questo
+modulo: la gerarchia le applica e non puo' importare la casa.
 """
 from __future__ import annotations
 
 from dataclasses import replace
 
+from ..memory.resolver import Lookup, costruisci_indice
 from . import topology
+from .ha_vocabulary import domain_of, has_statistics
 from .house_query import (
     _BEHAVIOR_KINDS,
+    HouseFilters,
     Selection,
     _behavior_matches,
     _entity_matches,
@@ -51,24 +56,33 @@ class House:
     """
 
     def __init__(self, home_space: dict, mirror: Mirror,
-                 unavailable: tuple[str, ...] = ()) -> None:
+                 unavailable: tuple[str, ...] = (),
+                 statistic_ids: frozenset[str] | set[str] | None = None) -> None:
         self.home_space = home_space
         self.mirror = mirror
         self.unavailable = tuple(unavailable)
+        # Le entita' per cui Home Assistant tiene statistiche, lette dal giro
+        # (`server.statistic_ids_for_round`); `None` = non lette (B-12).
+        self.statistic_ids = None if statistic_ids is None else frozenset(statistic_ids)
         self._floors: list[dict] | None = None
         self._places: dict[str, tuple[dict, dict, dict]] | None = None
         self._device_index: dict[str, dict] | None = None
         self._entities: dict[str, dict] | None = None
+        self._visible: list[str] | None = None
+        self._by_device: dict[str, list[dict]] | None = None
+        self._visible_set: frozenset[str] | None = None
+        self._lookup: Lookup | None = None
 
     @classmethod
-    def read(cls, home_space_store, cache) -> House:
+    def read(cls, home_space_store, cache, statistic_ids=None) -> House:
         """La casa di adesso, dagli archivi vivi. Senza archivio, una casa
         vuota (non inventata): chi la legge lo dichiara, come faceva prima
-        ciascuno per conto suo."""
+        ciascuno per conto suo. `statistic_ids` e' la lettura del giro, se il
+        giro l'ha fatta (B-12)."""
         if home_space_store is None:
-            return cls({}, read_mirror(cache))
+            return cls({}, read_mirror(cache), statistic_ids=statistic_ids)
         return cls(home_space_store.read(), read_mirror(cache),
-                   tuple(home_space_store.unavailable()))
+                   tuple(home_space_store.unavailable()), statistic_ids)
 
     def hierarchy(self) -> list[dict]:
         """L'albero piano -> area -> entita' di `topology.hierarchy`, con i
@@ -184,12 +198,16 @@ class House:
                                                   self.mirror, now, places))
         return Selection(matched, behaving, excluded)
 
-    def _entity(self, entity_id: str) -> dict | None:
-        """La voce dell'anagrafe di un'entita', per id; l'indice si fa una volta."""
+    def _entity_index(self) -> dict[str, dict]:
+        """Le voci dell'anagrafe per id, nell'ordine dell'anagrafe; una volta."""
         if self._entities is None:
             self._entities = {e["id"]: e for e in self.home_space.get("entita") or []
                               if isinstance(e, dict) and e.get("id")}
-        return self._entities.get(entity_id)
+        return self._entities
+
+    def _entity(self, entity_id: str) -> dict | None:
+        """La voce dell'anagrafe di un'entita', per id."""
+        return self._entity_index().get(entity_id)
 
     def visibility(self, entity_id: str) -> tuple[str, str | None] | None:
         """VISIBILITA' (§4.1): la classe di un'entita' con la sua causa --
@@ -219,3 +237,115 @@ class House:
         if row is None:
             return None
         return topology.device_name(row) if kind == "dispositivo" else row.get("nome")
+
+    def kind_of(self, entity_id: str) -> dict | None:
+        """TIPO (§4.1; Tappa 3, Task 7, B-17): il dominio, la classe e l'unita'
+        di un'entita' **di adesso** -- dallo specchio di questa casa, col
+        registro come ripiego (`topology.live_first`, la viva vince).
+
+        Fino al 04/10/2026 l'anagrafe scriveva classe e unita' dello specchio
+        al momento della ricostruzione e le teneva ferme: osservatore e
+        ricette vedevano l'unita' dell'ultima ricostruzione, non quella che
+        Home Assistant usa adesso. Ora l'anagrafe porta solo cio' che il
+        registro dichiara, e il vivo si chiede qui. `None` per un id che ne'
+        il registro ne' lo specchio conoscono."""
+        entry = self._entity(entity_id)
+        if entry is None and entity_id not in self.mirror.state:
+            return None
+        entry = entry or {}
+        return {"dominio": domain_of(entity_id),
+                "classe": topology.live_first(entry.get("classe"),
+                                              self.mirror.classes.get(entity_id)),
+                "unita": topology.live_first(entry.get("unita"),
+                                             self.mirror.units.get(entity_id)),
+                # Cio' che l'integrazione dichiara di se' (`energy_today`, non
+                # «Potenza» da indovinare): fa parte del tipo, e l'osservatore
+                # lo manda al modello (Task 12).
+                "translation_key": entry.get("translation_key"),
+                "statistiche": self.has_statistics(entity_id),
+                # Da dove viene la risposta (atomicita'): l'elenco di Home
+                # Assistant, o la regola del sorgente quando l'elenco manca.
+                "statistiche_da": ("home_assistant" if self.statistic_ids is not None
+                                   else "regola")}
+
+    def has_statistics(self, entity_id: str) -> bool:
+        """«Ha statistiche?» (B-12): l'elenco che Home Assistant tiene, se il
+        giro l'ha letto; altrimenti la regola del sorgente sullo
+        `state_class` di adesso (`ha_vocabulary.has_statistics`, la stessa
+        che usa il watcher)."""
+        return has_statistics(entity_id, self.mirror.state_classes.get(entity_id),
+                              self.statistic_ids)
+
+    # -- cio' che gli attori compongono (Tappa 3, Task 12; R13) -------------
+    #
+    # Fino al 04/10/2026 osservatore, ricette e giri del server scorrevano le
+    # tabelle dell'anagrafe da se': chi guarda, di chi e' un'entita', quali
+    # dispositivi ci sono. Ogni regola nuova della casa (il nome vivo, l'area
+    # ereditata, il fuori) li lasciava indietro. Ora chiedono qui, e il
+    # cancello `tests/test_attori_compongono.py` vieta che tornino a scorrere.
+
+    def entity_ids(self) -> list[str]:
+        """Ogni entita' che il registro conosce, nell'ordine dell'anagrafe:
+        anche disabilitate, nascoste e di servizio. Per chi chiede a Home
+        Assistant una cosa che vale per il registratore intero (la finestra
+        della memoria, `cadence.measure_memory_window`), non per chi guarda."""
+        return list(self._entity_index())
+
+    def visible_entities(self) -> list[str]:
+        """Le entita' che un attore guarda di suo: quelle che `select` senza
+        filtri lascia dentro -- la regola del fuori, `topology.visibility_
+        classes`: niente disabilitate, nascoste o di servizio --
+        nell'ordine dell'anagrafe (l'ordine in cui il modello le leggeva
+        fino a ieri; quale sia l'ordine giusto e' della resa, Tappa 4).
+
+        L'osservatore la applicava chiamando `briefing.digest_visible_entity_
+        ids`, le ricette non la applicavano affatto (B-03, D2)."""
+        if self._visible is None:
+            # `now` non conta: senza filtri sull'eta' `select` non lo legge.
+            chosen = {entry["id"] for entry, _area, _where
+                      in self.select(HouseFilters(), ("entita",), None, now=0.0).entities}
+            self._visible = [eid for eid in self._entity_index() if eid in chosen]
+        return self._visible
+
+    def device_entities(self, device_id: str) -> list[dict]:
+        """Le voci dell'anagrafe di un dispositivo, TUTTE -- disabilitate,
+        nascoste e di servizio comprese -- nell'ordine dell'anagrafe (B-11):
+        per la porta che le mostra separate e contate (`queries._view_device`).
+        «Di chi e' un'entita'» si chiedeva in linea in due posti."""
+        if self._by_device is None:
+            self._by_device = {}
+            for entry in self._entity_index().values():
+                if entry.get("dispositivo_id"):
+                    self._by_device.setdefault(entry["dispositivo_id"], []).append(entry)
+        return self._by_device.get(device_id, [])
+
+    def entities_of(self, device_id: str) -> list[str]:
+        """Le entita' di un dispositivo che un attore guarda (B-03, B-11; D2
+        «si'», decisione del proprietario del 03/10/2026): quelle di
+        `device_entities` che la regola del fuori di `visible_entities` lascia
+        dentro, nell'ordine dell'anagrafe."""
+        if self._visible_set is None:
+            self._visible_set = frozenset(self.visible_entities())
+        return [entry["id"] for entry in self.device_entities(device_id)
+                if entry["id"] in self._visible_set]
+
+    def device_ids(self) -> list[str]:
+        """I dispositivi del registro, nell'ordine dell'anagrafe (chi ruota
+        su di loro, `recipe_turn.who_to_ask`, ruota su quest'ordine)."""
+        return list(self._devices())
+
+    def lookup(self) -> Lookup:
+        """L'indice con cui la memoria verifica le sue ancore
+        (`memory.resolver.costruisci_indice`), da QUESTA anagrafe, una volta
+        per casa (A-13, Tappa 3, Task 12).
+
+        Fino al 04/10/2026 si costruiva in tre posti con tre ingressi:
+        `remember` in chat dietro una cache di vita lunga (`LookupCache`,
+        con la data dell'anagrafe come chiave), le due rotte dei ricordi da
+        capo a ogni richiesta. Ora viene dalla stessa istantanea del turno
+        che da' lo specchio delle unita': l'indice e le unita' non possono
+        guardare due anagrafi diverse. Un'anagrafe mai letta e' `{}`, e il
+        suo indice e' vuoto -- come prima."""
+        if self._lookup is None:
+            self._lookup = costruisci_indice(self.home_space)
+        return self._lookup

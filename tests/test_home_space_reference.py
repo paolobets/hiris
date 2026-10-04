@@ -23,7 +23,6 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import rebuild, reference_frame
 from hiris.app.memory.store import MemoryStore
-from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -45,17 +44,6 @@ _CONFIG = {
     "latitude": 45.4642, "longitude": 9.19,
     "state": "RUNNING",
 }
-
-
-async def _specchio(house):
-    """Uno specchio dello stato VERO (`EntityCache`), caricato come in
-    produzione dalla stessa casa: `load()` alza `loaded`, e senza quella
-    bandiera `rebuild` dichiara `specchio_vivo` fra i non disponibili -- vedi
-    il suo docstring.
-    """
-    cache = EntityCache()
-    await cache.load(house)
-    return cache
 
 
 @pytest.fixture
@@ -142,7 +130,7 @@ def _house(**faults):
 @pytest.mark.asyncio
 async def test_ricostruisci_legge_anche_il_riferimento(archivio):
     house = _house()
-    esito = await rebuild(house, archivio, await _specchio(house))
+    esito = await rebuild(house, archivio)
     assert esito["non_disponibili"] == []
     assert archivio.reference_frame()["valuta"] == "EUR"
     assert ("get_config", None) in house.calls
@@ -155,7 +143,7 @@ async def test_un_riferimento_non_letto_si_dichiara(archivio):
     Il silenzio e' quello vero: `get_config` senza risposta, e la busta la
     scrive il client."""
     house = _house(silence={"get_config"})
-    esito = await rebuild(house, archivio, await _specchio(house))
+    esito = await rebuild(house, archivio)
     assert "sistema_di_riferimento" in esito["non_disponibili"]
 
 

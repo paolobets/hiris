@@ -1244,28 +1244,22 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
 # mutazione lo fa cadere: il difetto numero uno di questa campagna e' un
 # test che non puo' fallire.
 
-import hiris.app.home_space.tools as _modulo_strumenti
-import hiris.app.memory.lookup_cache as _lookup_cache_modulo
-from hiris.app.memory.lookup_cache import LookupCache
+import hiris.app.home_space.house as _modulo_casa
 
 
 def _conta_costruzioni(monkeypatch):
-    """Spia su `costruisci_indice`, in ENTRAMBI i posti in cui e' importato
-    per nome (`tools.py`, per il ramo senza cache, e
-    `memory/lookup_cache.py`, per il ramo con cache -- un monkeypatch su un
-    solo modulo non vedrebbe le chiamate che passano dall'altro): conta le
-    costruzioni vere, non i risultati di `search` -- la mutazione 'non usare
-    mai la cache anche quando c'e'' lascia i risultati identici e solo un
-    conteggio la scopre (brief B7, penultimo punto)."""
+    """Spia su `costruisci_indice` dove la casa lo chiama (`House.lookup`, dal
+    04/10/2026 l'unico posto: A-13, Tappa 3, Task 12): conta le costruzioni
+    vere, non i risultati -- un indice ricostruito a ogni `remember` darebbe
+    risultati identici, e solo un conteggio lo scopre (brief B7)."""
     chiamate = []
-    originale = _modulo_strumenti.costruisci_indice
+    originale = _modulo_casa.costruisci_indice
 
     def spia(casa):
         chiamate.append(1)
         return originale(casa)
 
-    monkeypatch.setattr(_modulo_strumenti, "costruisci_indice", spia)
-    monkeypatch.setattr(_lookup_cache_modulo, "costruisci_indice", spia)
+    monkeypatch.setattr(_modulo_casa, "costruisci_indice", spia)
     return chiamate
 
 
@@ -1345,9 +1339,14 @@ async def test_una_search_in_mezzo_non_invalida_l_indice_di_remember(
     """Fino al 29/09/2026 `_search` e `_remember` tenevano due spazi nella
     cache dell'indice. Da allora `search` non costruisce indici (vedi la
     prova sopra): resta quello di `_remember`, costruito una volta e poi
-    riusato -- una `search` in mezzo non deve invalidarlo."""
+    riusato -- una `search` in mezzo non deve invalidarlo. Dal 04/10/2026
+    l'indice e' della casa del turno (`House.lookup`, A-13): una per
+    dispatcher, finche' l'anagrafe non cambia.
+
+    Mutazione ESEGUITA (04/10/2026): `House.lookup` senza memoria (ricostruito
+    a ogni chiamata) -- rossa (2 costruzioni invece di 1)."""
     chiamate = _conta_costruzioni(monkeypatch)
-    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
+    d = ToolDispatcher(archivio_casa, memoria)
     await d.dispatch("search", {"nome": "cucina"})
     await d.dispatch("remember", {"testo": "una frase qualsiasi"})
     await d.dispatch("search", {"nome": "sala"})
@@ -1367,7 +1366,7 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     chiamate = _conta_costruzioni(monkeypatch)
     # Nessun `replace()` ancora: `aggiornata_il()` e' `None` davvero.
     vuoto = HomeSpace(str(tmp_path / "vuota.db"))
-    d = ToolDispatcher(vuoto, memoria, lookup_cache=LookupCache())
+    d = ToolDispatcher(vuoto, memoria)
     await d.dispatch("remember", {"testo": "prima, anagrafe non letta"})
     assert len(chiamate) == 1
 

@@ -54,8 +54,9 @@ una tabella: e' il commento accanto alla sua fonte, piu' sotto. **Le tre voci
 arrivate l'08/09/2026 invece hanno
 un lettore vivo ciascuna, e non e' lo stesso**: `config_entry_is_broken` la
 usa il digesto, per la riga degli avvisi; `config_entry_is_healthy`
-l'osservatore, per decidere cosa scrive nell'archivio; `produces_statistics`
-la storia (`house_history.value_surface`), per dire su quale superficie si leggono i valori. Sono
+l'osservatore, per decidere cosa scrive nell'archivio; `bands_are_arithmetic`
+la storia (`house_history.value_surface`), per dire su quale superficie si leggono i
+valori, e `has_statistics` la casa del giro e il watcher. Sono
 qui perche' sono vocabolario del fornitore, non perche' nessuno le legga.
 Ma `entity_category_measure_rule()` (sotto, insieme a
 `ENTITY_CATEGORY_MEANING`) e' il PRIMO consumatore vero a runtime: `queries.
@@ -597,48 +598,80 @@ def config_entry_is_healthy(state: str | None) -> bool:
 #   `recorder/list_statistic_ids` della casa, e la regola sopra e' solo il
 #   ripiego per quando quella lettura manca (B-12).
 #
-# **Cio' che il sorgente smentisce**: questo commento diceva che
-# `measurement_angle` NON produce statistiche, e l'insieme qui sotto la lascia
-# fuori. Al tag `2026.9.1` le produce (la media circolare, senza minimo ne'
-# massimo). L'insieme NON si cambia qui: cambierebbe la superficie che la
-# storia sceglie per una banderuola, cioe' un comportamento, e la regola delle
-# statistiche e' la voce B-12 (classificata CC), che il piano mette dopo
-# `House`. Fino ad allora l'insieme e' quello di prima, dichiarato divergente
-# dalla fonte su questa classe sola.
+# **Cio' che il sorgente smentiva** fino al 04/10/2026: questo commento diceva
+# che `measurement_angle` NON produce statistiche, e l'insieme qui sotto la
+# lasciava fuori. Al tag `2026.9.1` le produce (la media circolare, senza
+# minimo ne' massimo): con B-12 l'insieme e' quello del sorgente, e la scelta
+# della superficie della storia -- che di quella media circolare non sa che
+# farsene -- e' diventata una domanda sua (`bands_are_arithmetic`, sotto).
 #
-# **Un'appartenenza, non un'esclusione della sola `measurement_angle`**: il
-# vocabolario di HA non si arrotonda, e domani potrebbe crescere di un'altra
-# classe che non aggrega.
+# **Un'appartenenza, non un'esclusione**: il vocabolario di HA non si
+# arrotonda, e domani potrebbe crescere di un'altra classe che non aggrega.
 #
 # **Perche' qui e non accanto a chi lo consuma.** Fino all'08/09/2026 questo
-# insieme viveva in `home_space/historian.py`, dove lo leggeva la scelta della superficie (oggi
-# `house_history.value_surface`).
-# E' vocabolario di Home Assistant, e questo modulo e' la casa del vocabolario
-# di Home Assistant: `state_class` ce l'ha gia', due righe piu' su. Che le due
-# chiavi coincidano oggi con quelle di `STATE_CLASS_MEANING` NON le rende lo
-# stesso fatto -- «cosa significa» e «aggrega» sono due domande, e una classe
-# nuova puo' benissimo avere un significato e non produrre statistiche:
-# derivare l'uno dall'altro sarebbe un'identita' assunta, non misurata.
+# insieme viveva in `home_space/historian.py`. E' vocabolario di Home
+# Assistant, e questo modulo e' la casa del vocabolario di Home Assistant. Che
+# le chiavi coincidano oggi con quelle di `STATE_CLASS_MEANING` NON le rende lo
+# stesso fatto -- «cosa significa» e «aggrega» sono due domande.
 STATE_CLASSES_WITH_STATISTICS = frozenset({
-    "measurement", "total", "total_increasing"})
+    "measurement", "measurement_angle", "total", "total_increasing"})
+
+#: L'unico dominio che compila statistiche (vedi sopra: `sensor/recorder.py`
+#: dichiara `compile_statistics`, `stream` no).
+STATISTICS_DOMAIN = "sensor"
+
+#: Le classi le cui fasce orarie portano la media CIRCOLARE e basta:
+#: `DEFAULT_STATISTICS` in `components/sensor/recorder.py` (tag `2026.9.1`,
+#: righe 64-73, letto il 04/10/2026) da' a `measurement_angle`
+#: `{"mean"}` con `StatisticMeanType.CIRCULAR` -- niente minimo, niente
+#: massimo, e una media di angoli che i conti di HIRIS (aritmetici) non sanno
+#: leggere.
+CIRCULAR_MEAN_STATE_CLASSES = frozenset({"measurement_angle"})
 
 
 def produces_statistics(state_class) -> bool:
-    """Se questo `state_class` produce DAVVERO una statistica a lungo termine.
+    """Se questo `state_class` fa compilare a Home Assistant una statistica a
+    lungo termine -- per un `sensor` (vedi `has_statistics`). Le quattro
+    classi di `SensorStateClass`, lette nel sorgente il 04/10/2026.
 
-    Non `bool(state_class)`: quel cablaggio manderebbe ANCHE
-    `measurement_angle` sul ramo statistiche, e una banderuola interrogata
-    oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
-    cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
-    **Smentito dal sorgente il 04/10/2026** (commento sopra): al tag
-    `2026.9.1` il recorder tiene per `measurement_angle` la media circolare.
-    La scelta della superficie per quella classe si rifa' con B-12.
-
-    Il consumatore e' `house_history.value_surface`, che la chiede quando
-    deve scegliere fra il dettaglio e le fasce: questa e' la funzione che
-    risolve la domanda dal vocabolario di HA, non un booleano gia' pronto.
-    """
+    **E' il ripiego, non la verita'**: la verita' e' l'elenco che Home
+    Assistant tiene (`recorder/list_statistic_ids`), e questa regola serve
+    solo quando quella lettura manca (B-12)."""
     return state_class in STATE_CLASSES_WITH_STATISTICS
+
+
+def has_statistics(entity_id, state_class, statistic_ids) -> bool:
+    """«Ha statistiche?» (B-12, Tappa 3, Task 7, 04/10/2026): LA regola, per
+    chiunque.
+
+    `statistic_ids` e' l'elenco che Home Assistant tiene, letto dal giro
+    (`server.statistic_ids_for_round`): quando c'e', la risposta e' la sua --
+    comprese le statistiche importate da un'integrazione sotto un
+    `entity_id` (`async_import_statistics`), che nessuna regola sul
+    `state_class` saprebbe vedere, e esclusi i `sensor` che il recorder non
+    registra. `None` vuol dire «non letto»: allora, e solo allora, la regola
+    del sorgente -- un `sensor` con uno dei quattro `state_class`.
+
+    Fino a quel giorno le formule erano tre (registro B-12): il watcher
+    (`sensor.` e uno `state_class` qualunque), `produces_statistics` (tre
+    classi su quattro) e `statistic_ids`."""
+    if statistic_ids is not None:
+        return entity_id in statistic_ids
+    return domain_of(entity_id) == STATISTICS_DOMAIN and produces_statistics(state_class)
+
+
+def bands_are_arithmetic(state_class) -> bool:
+    """Se le fasce orarie di Home Assistant per questo `state_class` portano
+    numeri che i conti di HIRIS sanno leggere: media, minimo e massimo
+    aritmetici, o la somma. Lo chiede la storia (`house_history.
+    value_surface`) per scegliere fra il dettaglio e le fasce.
+
+    Non e' «ha statistiche»: una banderuola (`measurement_angle`) le ha, ma
+    con la sola media circolare (`CIRCULAR_MEAN_STATE_CLASSES`), e la
+    superficie che la storia le sceglie resta il dettaglio, com'era prima
+    di B-12."""
+    return (produces_statistics(state_class)
+            and state_class not in CIRCULAR_MEAN_STATE_CLASSES)
 
 
 # --- cosa significa un `entity_category` -----------------------------------

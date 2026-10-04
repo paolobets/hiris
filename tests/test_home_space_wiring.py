@@ -66,8 +66,7 @@ def _state_reads(house: CasaFinta) -> int:
 
 
 def _specchio_caricato():
-    """Uno specchio dello stato VERO gia' caricato: senza `loaded`, `rebuild`
-    dichiara `specchio_vivo` fra i non disponibili (vedi il suo docstring)."""
+    """Uno specchio dello stato VERO gia' caricato."""
     cache = EntityCache()
     cache._states = {}
     cache._loaded = True
@@ -84,7 +83,7 @@ def archivio(tmp_path):
 @pytest.mark.asyncio
 async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
     house = _empty_house()
-    innesca = schedule_registry_rebuild(house, archivio, _specchio_caricato(), delay=0.05)
+    innesca = schedule_registry_rebuild(house, archivio, delay=0.05)
     for _ in range(10):
         innesca("area_registry_updated")
     await asyncio.sleep(0.2)
@@ -94,7 +93,7 @@ async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
 @pytest.mark.asyncio
 async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
     house = _empty_house()
-    innesca = schedule_registry_rebuild(house, archivio, _specchio_caricato(), delay=0.05)
+    innesca = schedule_registry_rebuild(house, archivio, delay=0.05)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
     innesca("floor_registry_updated")
@@ -130,7 +129,7 @@ async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio, monk
         return hold(*args, **kwargs)
 
     monkeypatch.setattr(archivio, "hold_registries", _hold_failing_once)
-    innesca = schedule_registry_rebuild(house, archivio, _specchio_caricato(), delay=0.05)
+    innesca = schedule_registry_rebuild(house, archivio, delay=0.05)
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
     assert archivio.updated_at() is None   # la prima e' fallita davvero

@@ -11,14 +11,17 @@ della metà del prompt.
 **Le entità di servizio e le nascoste non entrano di default** (decisione del
 proprietario, 10/09/2026), ed è la stessa legge che il nucleo applica già al
 digesto: fuori da ciò che si dice senza che sia stato chiesto, dentro quando
-qualcuno lo chiede. La regola non si riscrive qui -- si chiama quella del
-nucleo (`briefing.digest_visible_entity_ids`), o le due divergerebbero al
-primo cambiamento.
+qualcuno lo chiede. La regola non si riscrive qui -- si chiede alla casa
+(`House.visible_entities`, che compone la regola unica del fuori,
+`topology.visibility_classes`), o le due divergerebbero al primo cambiamento.
 """
 import os
 
 import pytest
 
+from hiris.app.home_space import topology
+from hiris.app.home_space.house import House
+from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import observer
 from hiris.app.mind.scope import OBSERVER
 from hiris.app.mind.store import ObservationsStore
@@ -32,7 +35,8 @@ def archivio(tmp_path):
 
 
 def _casa(**extra):
-    """Un'anagrafe minima nella forma vera di `home_space/reader.py`."""
+    """La casa di un giro (`House`) su un'anagrafe minima nella forma vera di
+    `home_space/reader.py`, con lo specchio vuoto."""
     entita = [
         {"id": "climate.camera_t", "nome": "Termostato Camera", "classe": None,
          "unita": None, "translation_key": None, "categoria": None,
@@ -55,7 +59,7 @@ def _casa(**extra):
     casa = {"entita": entita, "aree": [{"id": "camera", "nome": "Camera"},
                                        {"id": "cucina", "nome": "Cucina"}]}
     casa.update(extra)
-    return casa
+    return House(casa, Mirror())
 
 
 class _Modello:
@@ -101,16 +105,16 @@ def test_le_entita_di_servizio_le_nascoste_e_le_disabilitate_restano_fuori():
     assert len(righe) == 2
 
 
-def test_la_regola_e_QUELLA_DEL_NUCLEO_non_una_seconda_uguale(monkeypatch):
-    """Il nucleo applica gia' questa legge al digesto
-    (`briefing.digest_visible_entity_ids`). Riscriverla qui la farebbe
-    divergere al primo cambiamento da una parte sola -- la seconda fondamenta,
-    e questo prodotto l'ha gia' violata esattamente cosi' (`_highlight_lines`,
-    uscita dal nucleo il 29/09/2026, contro `_capability_lines`, rilievo R1
-    dell'08/09/2026: due totali diversi per la stessa parola nella stessa
-    pagina).
+def test_la_regola_e_QUELLA_DELLA_CASA_non_una_seconda_uguale(monkeypatch):
+    """La regola del fuori e' una (`topology.visibility_classes`, Tappa 3,
+    Task 5) e l'osservatore la chiede alla casa (`House.visible_entities`,
+    Task 12). Riscriverla qui la farebbe divergere al primo cambiamento da una
+    parte sola -- la seconda fondamenta, e questo prodotto l'ha gia' violata
+    esattamente cosi' (`_highlight_lines`, uscita dal nucleo il 29/09/2026,
+    contro `_capability_lines`, rilievo R1 dell'08/09/2026: due totali
+    diversi per la stessa parola nella stessa pagina).
 
-    **Si cambia la regola del nucleo e si guarda se l'osservatore la segue.**
+    **Si cambia la regola e si guarda se l'osservatore la segue.**
     Confrontare i due risultati non basterebbe: una COPIA fedele dei tre
     controlli darebbe lo stesso elenco e la prova resterebbe verde -- e' il
     difetto n.1 di questo progetto, la prova che non puo' fallire. Qui la
@@ -119,8 +123,9 @@ def test_la_regola_e_QUELLA_DEL_NUCLEO_non_una_seconda_uguale(monkeypatch):
 
     Mutazione che la uccide: ricopiare i tre controlli dentro `house_lines`.
     """
-    monkeypatch.setattr(observer, "digest_visible_entity_ids",
-                        lambda casa: frozenset({"sensor.wifi_signal"}))
+    monkeypatch.setattr(topology, "visibility_classes",
+                        lambda e: () if e["id"] == "sensor.wifi_signal"
+                        else (("servizio", "finta"),))
 
     righe = observer.house_lines(_casa())
 
@@ -153,7 +158,7 @@ def test_un_area_senza_nome_non_diventa_un_identificatore_nudo():
     grezzo in mezzo a un prompt in italiano e' rumore, e un'area che non esiste
     piu' non deve far comparire una stringa che sembra un luogo."""
     casa = _casa()
-    casa["entita"][0]["area_id"] = "01K2CK4GG287VKK18M5J788MRQ"
+    casa.home_space["entita"][0]["area_id"] = "01K2CK4GG287VKK18M5J788MRQ"
 
     riga = next(r for r in observer.house_lines(casa) if r.startswith("climate.camera_t"))
 
