@@ -72,10 +72,14 @@ from .topology import (
     category_names,
     clean_text,
     decoded_capabilities,
+    device_name,
     label_names,
     labels_with_id,
     live_first,
+    live_name,
     readable_state,
+    visibility,
+    visibility_classes,
 )
 from .type_judgments import MEANING_FIELD, TypeJudgments, type_subject
 from .type_vocabulary import REPO_JUDGMENTS
@@ -182,7 +186,7 @@ def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
     """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
 
     Arricchisce `entity_detail` con cio' che lo SPECCHIO VIVO sa e il
-    registro no (il nome dedotto e l'unita' di misura) e con cio' che il
+    registro no (l'unita' di misura, la classe) e con cio' che il
     registro sa e la proiezione lascerebbe indietro (la piattaforma, le
     etichette e le categorie).
 
@@ -193,11 +197,13 @@ def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
     `piattaforma` ed `etichette`, uscite da una porta su tre: lo stesso
     difetto (I1) per cui questa funzione era nata.
 
-    `nome_dedotto` con la disciplina di B5: solo quando `nome` e' vuoto nel
-    registro, e mai scritto sopra `nome` -- dichiarato e dedotto restano due
-    fatti diversi.
+    Il NOME non passa di qui: lo scrive chi costruisce la riga, con
+    `topology.live_name` (D1 «vivo», 04/10/2026). Fino a quel giorno questa
+    funzione aggiungeva `nome_dedotto` -- il `friendly_name` -- solo quando il
+    registro non aveva un nome, mentre `search` dava il `friendly_name`
+    sempre: due nomi per la stessa entita' da due porte.
 
-    `unita` con la stessa disciplina, e per la stessa ragione: `_to_minimal`
+    `unita`: `_to_minimal`
     la conserva (`proxy/entity_cache.py`) e nessuno la rileggeva, cosi' il
     modello riceveva `72` senza sapere se fossero gradi Celsius o Fahrenheit.
     L'unita' VIVA vince su quella del registro: Home Assistant converte le
@@ -208,8 +214,8 @@ def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
 
     Condivisa fra i TRE rami di `view` che elencano entita' (I1, review
     finale): prima di quel fix solo `_view_entity` applicava il nome dedotto,
-    e le altre due porte mostravano `nome: null` secco. L'unita' entra dalla
-    stessa porta unica, per non ripetere quella storia.
+    e le altre due porte mostravano `nome: null` secco. L'unita' entra da
+    questa porta unica, per non ripetere quella storia.
 
     `capacita` e `stato_presunto` vengono dallo SPECCHIO VIVO come `unita`, e
     per la stessa ragione: `_to_minimal` li conserva gia'
@@ -217,10 +223,6 @@ def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
     compone la risposta -- vedi i due commenti sotto, accanto a dove
     escono davvero."""
     entity_id = entry.get("id")
-    if not (entity_detail.get("nome") or "").strip():
-        deduced = (mirror.names.get(entity_id) or "").strip()
-        if deduced:
-            entity_detail["nome_dedotto"] = deduced
     unit = live_first(entry.get("unita"), mirror.units.get(entity_id))
     if unit:
         entity_detail["unita"] = unit
@@ -233,7 +235,7 @@ def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
         entity_detail["classe"] = device_class
     # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
     # `stato` e' il fatto, `readable_state` e' l'interpretazione, e non si
-    # sovrascrivono (stessa disciplina di `nome`/`nome_dedotto`).
+    # sovrascrivono.
     #
     # Senza, `view` rispondeva `on` e basta: un allagamento aveva la forma di
     # una lampadina accesa. Il digesto lo rendeva gia', ma `view` e' la
@@ -328,11 +330,14 @@ def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
     #
     # Solo quando sono vere: `nascosta: false` su ogni entita' di una casa da
     # trecento sarebbe rumore in ogni risposta, e `categoria: null` pure.
-    if entry.get("nascosta"):
+    #
+    # Dalla regola del fuori (`topology.visibility_classes`, B-01): la causa
+    # della classe `servizio` E' l'`entity_category`.
+    outside = dict(visibility_classes(entry))
+    if "nascosta" in outside:
         entity_detail["nascosta"] = True
-    category = (entry.get("categoria") or "").strip()
-    if category:
-        entity_detail["categoria"] = category
+    if outside.get("servizio"):
+        entity_detail["categoria"] = outside["servizio"]
     # `regola` NON esce da questa porta -- review indipendente (Task 5,
     # rigiro): questa funzione e' condivisa da `_view_area`/`_view_device`
     # (elencano entita' a decine) E da `_view_entity` (una sola). Un
@@ -493,7 +498,7 @@ def _entity_rows(entries: list[dict], mirror: Mirror, disabled: bool,
     mute trattate in due modi dalla stessa porta."""
     return [
         _enrich_entity(
-            {"id": e["id"], "nome": e.get("nome"),
+            {"id": e["id"], "nome": live_name(e["id"], e.get("nome"), mirror),
              "stato": mirror.state.get(e["id"]),
              "da_quando": mirror.since.get(e["id"]),
              "disabilitata": disabled},
@@ -1009,7 +1014,8 @@ def _view_entity(house: House, memories: list[dict], reference,
         # un'entita' che non esiste -- e' un registro che non ha risposto.
         return _not_found_detail("entita", reference, "entita" in unavailable)
     detail = {
-        "esiste": True, "tipo": "entita", "id": entity["id"], "nome": entity.get("nome"),
+        "esiste": True, "tipo": "entita", "id": entity["id"],
+        "nome": live_name(entity["id"], entity.get("nome"), mirror),
         # Ne' `unita` ne' `classe` vengono da qui: `config/entity_registry/
         # list` risponde con `as_partial_dict`, che non contiene ne' l'una ne'
         # l'altra ne' gli alias (verificato sul sorgente di HA). Le aggiunge
@@ -1024,16 +1030,11 @@ def _view_entity(house: House, memories: list[dict], reference,
         # non funziona) ma sparisce dall'albero di `hierarchy()` -- questo
         # campo dice perche' `view` la trova comunque, senza far credere
         # che sia una stanza arredata (stesso principio di topology.py).
-        "disabilitata": bool(entity.get("disabilitata")),
+        "disabilitata": visibility(entity)[0] == "disabilitata",
         "stato": mirror.state.get(entity["id"]),
         "da_quando": mirror.since.get(entity["id"]),
         "ricordi": _tethered_memories(memories, "entita", reference),
     }
-    # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
-    # questa casa `name` e `original_name` sono entrambi vuoti per un'intera
-    # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
-    # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
-    # `nome`: dichiarato e dedotto restano due fatti (`_enrich_entity`).
     detail = _enrich_entity(detail, entity, mirror, label_names(home_space),
                             category_names(home_space), translations)
     # `regola`: la vista CITA il vocabolario (Task 4, `ha_vocabulary.py`)
@@ -1053,7 +1054,7 @@ def _view_entity(house: House, memories: list[dict], reference,
     # vera (batteria, tensione: 24 diagnostiche su 89 misurate il
     # 07/09/2026) -- il difetto misurato dal revisore su questo stesso task.
     rule = entity_category_measure_rule(
-        domain_of(entity["id"]), detail.get("categoria"),
+        domain_of(entity["id"]), dict(visibility_classes(entity)).get("servizio"),
         detail.get("classe"), detail.get("unita"))
     if rule:
         detail["regola"] = rule
@@ -1185,11 +1186,11 @@ def _view_device(house: House, memories: list[dict], reference,
     # escluse e contate» (spec §2.4). `disabilitato` del dispositivo resta.
     raw_device_entities = [
         e for e in home_space.get("entita") or [] if e.get("dispositivo_id") == reference]
-    disabled_count = sum(1 for e in raw_device_entities if e.get("disabilitata"))
-    raw_hidden = [e for e in raw_device_entities
-                       if e.get("nascosta") and not e.get("disabilitata")]
-    raw_visible = [e for e in raw_device_entities
-                       if not e.get("nascosta") and not e.get("disabilitata")]
+    # La classe dalla regola unica (B-01): qui era scritta in linea.
+    classes = [(e, visibility(e)[0]) for e in raw_device_entities]
+    disabled_count = sum(1 for _e, cls in classes if cls == "disabilitata")
+    raw_hidden = [e for e, cls in classes if cls == "nascosta"]
+    raw_visible = [e for e, cls in classes if cls not in ("disabilitata", "nascosta")]
     device_entities = [
         _enrich_entity(
             # `stato` come dall'area: la stessa entita' e' la stessa cosa da
@@ -1201,10 +1202,10 @@ def _view_device(house: House, memories: list[dict], reference,
             # stessa correzione di `_entity_rows` e `_view_entity` qui sopra):
             # `_enrich_entity` la scrive dallo specchio vivo, e solo quando
             # c'e' -- esattamente come fa gia' per `unita`.
-            {"id": e["id"], "nome": e.get("nome"),
+            {"id": e["id"], "nome": live_name(e["id"], e.get("nome"), mirror),
              "stato": mirror.state.get(e["id"]),
              "da_quando": mirror.since.get(e["id"]),
-             "disabilitata": bool(e.get("disabilitata"))},
+             "disabilitata": False},
             e, mirror, label_lookup, category_lookup, translations)
         for e in raw_visible
     ]
@@ -1212,7 +1213,7 @@ def _view_device(house: House, memories: list[dict], reference,
         raw_hidden, mirror, False, label_lookup, category_lookup, translations)
     detail = {
         "esiste": True, "tipo": "dispositivo", "id": device["id"],
-        "nome": device.get("nome"),
+        "nome": device_name(device),
         "disabilitato": bool(device.get("disabilitato")),
         "entita": device_entities,
         "ricordi": _tethered_memories(memories, "dispositivo", reference),
@@ -1485,8 +1486,10 @@ def _view_integration(house: House, reference,
     if not matching and not entries:
         return _not_found_detail("integrazione", reference,
                                   "entita" in unavailable or "integrazioni" in unavailable)
-    own = [e for e in matching if not e.get("disabilitata")]
-    disabled = [e for e in matching if e.get("disabilitata")]
+    # D7: questa porta conta ogni classe tranne le disabilitate (i totali
+    # dell'integrazione sono tutte le sue entita' che hanno uno stato).
+    own = [e for e in matching if visibility(e)[0] != "disabilitata"]
+    disabled = [e for e in matching if visibility(e)[0] == "disabilitata"]
     mute = [e for e in own if mirror.state.get(e["id"]) == "unavailable"]
     unknown = [e for e in own if mirror.state.get(e["id"]) == "unknown"]
     detail = {
@@ -1603,11 +1606,11 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     argomenti separati, B-41). Dello specchio:
 
     `mirror.names` (entity_id -> friendly_name, stessa forma usata da
-    `costruisci_indice`) conta per OGNI ramo che elenca entita' -- `entita` da sola, ma anche le
-    entita' di un'`area` e di un `dispositivo` (I1, review finale: la stessa
-    entita' e' la stessa cosa da tutte le porte) -- e solo quando il
-    registro non ha un nome: se c'e' esce come `nome_dedotto`, mai scritto
-    sopra `nome` -- dichiarato e dedotto restano due fatti diversi.
+    `costruisci_indice`) da' il `nome` in OGNI ramo che elenca entita' --
+    `entita` da sola, ma anche le entita' di un'`area` e di un `dispositivo`
+    (I1, review finale: la stessa entita' e' la stessa cosa da tutte le
+    porte) -- con la regola di `topology.live_name` (D1, 04/10/2026): il
+    nome che Home Assistant mostra, poi quello del registro, poi l'id.
 
     `mirror.since` (entity_id -> `last_changed`, stessa forma di
     `mirror.units`/`mirror.classes`) accompagna OGNI `"stato"` che

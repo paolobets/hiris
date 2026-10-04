@@ -116,29 +116,30 @@ def test_classe_assente_non_esce_come_null_ne_da_view_ne_da_area_ne_da_dispositi
     assert "classe" not in per_id_dispositivo["light.faretto_extra"]
 
 
-def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto():
-    """Stessa porta di `search` (B3/B4), qui su `view`: un'entita' senza
-    nome nel registro non deve uscire con `nome: null` secco quando lo
-    specchio dello stato sa come Home Assistant la chiama."""
+def test_guarda_un_entita_senza_nome_nel_registro_usa_il_nome_vivo():
+    """D1 «vivo» (Tappa 3, Task 5): il nome e' cio' che Home Assistant mostra.
+    Fino al 04/10/2026 `view` dava `nome: null` e il `friendly_name` a parte
+    come `nome_dedotto`, mentre `search` lo dava come `nome`."""
     casa = {"entita": [{"id": "light.a", "nome": None, "classe": None, "unita": None}]}
     d = view(House(casa, Mirror(state={"light.a": "off"}, names={"light.a": "Abat-jour"})), [], [],
              "entita", "light.a")
-    assert d["nome"] is None and d["nome_dedotto"] == "Abat-jour"
+    assert d["nome"] == "Abat-jour" and "nome_dedotto" not in d
 
 
-def test_guarda_non_deduce_un_nome_che_c_e_gia():
-    """Dichiarato e dedotto sono due fatti diversi: un nome che l'utente ha
-    scelto non si sostituisce mai con uno dedotto, anche se il ripiego lo
-    porta."""
+def test_guarda_da_il_nome_vivo_anche_quando_il_registro_ne_ha_uno():
+    """Il nome del registro e' il ripiego, non il primo: sulla casa vera la
+    differenza e' il prefisso del dispositivo (898 entita' su 1.457)."""
     casa = {"entita": [{"id": "light.a", "nome": "Piantana", "classe": None, "unita": None}]}
-    d = view(House(casa, Mirror(names={"light.a": "Lampada da terra"})), [], [], "entita",
+    d = view(House(casa, Mirror(names={"light.a": "Soggiorno Piantana"})), [], [], "entita",
              "light.a")
-    assert d["nome"] == "Piantana" and "nome_dedotto" not in d
+    assert d["nome"] == "Soggiorno Piantana"
 
 
-def test_guarda_senza_ripiego_si_comporta_come_prima():
-    casa = {"entita": [{"id": "light.a", "nome": None, "classe": None, "unita": None}]}
-    assert "nome_dedotto" not in view(House(casa, Mirror()), [], [], "entita", "light.a")
+def test_guarda_senza_specchio_ripiega_sul_registro_poi_sull_id():
+    casa = {"entita": [{"id": "light.a", "nome": "Piantana", "classe": None, "unita": None},
+                       {"id": "light.b", "nome": None, "classe": None, "unita": None}]}
+    assert view(House(casa, Mirror()), [], [], "entita", "light.a")["nome"] == "Piantana"
+    assert view(House(casa, Mirror()), [], [], "entita", "light.b")["nome"] == "light.b"
 
 
 # --- I1 (review finale): la stessa disciplina anche per area e dispositivo -
@@ -159,7 +160,7 @@ def _casa_area_dispositivo():
     }
 
 
-def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita():
+def test_guarda_un_area_da_il_nome_vivo_delle_sue_entita():
     """Stessa disciplina di `_view_entity` (B5), qui su `_view_area`:
     prima di questo fix `nomi_di_ripiego` non arrivava affatto a questo
     ramo -- l'entita' usciva con `nome: null` secco anche quando lo
@@ -168,11 +169,11 @@ def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita():
                            Mirror(names={"switch.irr_1": "Valvola prato"})),
                      [], [], "area", "giardino")
     entita = {e["id"]: e for e in dettaglio["entita"]}
-    assert entita["switch.irr_1"]["nome"] is None
-    assert entita["switch.irr_1"]["nome_dedotto"] == "Valvola prato"
+    assert entita["switch.irr_1"]["nome"] == "Valvola prato"
+    assert "nome_dedotto" not in entita["switch.irr_1"]
 
 
-def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita():
+def test_guarda_un_dispositivo_da_il_nome_vivo_delle_sue_entita():
     """Stesso rilievo I1, sul ramo `_view_device`: e' il percorso che
     la specifica mette come metro della fetta -- la domanda dell'irrigazione
     passa da qui."""
@@ -180,8 +181,8 @@ def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita():
                            Mirror(names={"switch.irr_2": "Valvola giardino"})),
                      [], [], "dispositivo", "dev_irr")
     entita = {e["id"]: e for e in dettaglio["entita"]}
-    assert entita["switch.irr_2"]["nome"] is None
-    assert entita["switch.irr_2"]["nome_dedotto"] == "Valvola giardino"
+    assert entita["switch.irr_2"]["nome"] == "Valvola giardino"
+    assert "nome_dedotto" not in entita["switch.irr_2"]
 
 
 def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
@@ -611,8 +612,8 @@ def test_guarda_un_dispositivo_porta_l_unita_delle_sue_entita():
 
 def test_un_entita_senza_unita_non_guadagna_la_chiave():
     """Una lampada non ha un'unita', e una chiave `unita: null` su ogni luce
-    della casa sarebbe rumore in ogni risposta. Stessa disciplina di
-    `nome_dedotto`: la chiave compare solo quando il fatto c'e'."""
+    della casa sarebbe rumore in ogni risposta: la chiave compare solo
+    quando il fatto c'e'."""
     d = view(House(_casa_con_sensore(), Mirror(state={"light.sala": "on"},
                                                units={"sensor.sala_t": "°C"})), [], [],
                "area", "sala")
@@ -736,7 +737,7 @@ def test_guarda_un_area_non_mescola_le_nascoste_nell_elenco_che_conta():
 
 
 def test_guarda_un_area_riporta_le_nascoste_complete_in_una_chiave_a_parte():
-    """Non sparite: raggiungibili e COMPLETE (nome_dedotto compreso) in
+    """Non sparite: raggiungibili e COMPLETE (il nome vivo compreso) in
     `entita_nascoste` -- "questa cosa c'e' ma l'hai nascosta" e' informazione,
     non un'assenza."""
     dettaglio = view(House(_casa_sala_da_pranzo(), Mirror(names=_ripiego_sala_da_pranzo())), [], [],
@@ -746,8 +747,8 @@ def test_guarda_un_area_riporta_le_nascoste_complete_in_una_chiave_a_parte():
         "light.lampadario", "light.lampadario_2", "light.lampadario_3",
         "light.lampadario_fake"}
     per_id = {e["id"]: e for e in dettaglio["entita_nascoste"]}
-    assert per_id["light.lampadario_fake"]["nome_dedotto"] == "Lampadario fake"
-    assert per_id["light.lampadario"]["nome_dedotto"] == "Lampadario"
+    assert per_id["light.lampadario_fake"]["nome"] == "Lampadario fake"
+    assert per_id["light.lampadario"]["nome"] == "Lampadario"
 
 
 def test_guarda_un_area_senza_nascoste_non_porta_la_chiave():
@@ -765,7 +766,7 @@ def test_guarda_un_entita_nascosta_resta_raggiungibile_da_sola():
                      "entita", "light.lampadario_fake")
     assert dettaglio["esiste"] is True
     assert dettaglio["nascosta"] is True
-    assert dettaglio["nome_dedotto"] == "Lampadario fake"
+    assert dettaglio["nome"] == "Lampadario fake"
 
 
 def test_guarda_un_dispositivo_non_mescola_le_nascoste_nell_elenco_che_conta():
@@ -781,7 +782,7 @@ def test_guarda_un_dispositivo_riporta_le_nascoste_complete_in_una_chiave_a_part
     ids_nascoste = {e["id"] for e in dettaglio["entita_nascoste"]}
     assert ids_nascoste == {"light.lampadario", "light.lampadario_2", "light.lampadario_3"}
     per_id = {e["id"]: e for e in dettaglio["entita_nascoste"]}
-    assert per_id["light.lampadario_2"]["nome_dedotto"] == "Lampadario 2"
+    assert per_id["light.lampadario_2"]["nome"] == "Lampadario 2"
 
 
 def test_guarda_un_dispositivo_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
@@ -889,7 +890,7 @@ def test_le_entita_di_un_integrazione_passano_dalla_PORTA_UNICA():
                   "integrazione", "hydrawise", translations=house_translations())
 
     riga = detail["entita"][0]
-    assert riga["nome_dedotto"] == "Aiuola nord", (
+    assert riga["nome"] == "Aiuola nord", (
         "otto valvole senza nome nel registro si chiamavano tutte "
         "«Irrigazione»: il nome vero e' nello specchio")
     assert riga["piattaforma"] == "hydrawise", (
@@ -924,7 +925,7 @@ def test_un_entita_muta_ha_la_STESSA_forma_da_view_integrazione_e_da_view_entita
 
     riga = from_integration["entita"][0]
     comuni = set(riga) & set(from_entity)
-    assert "nome_dedotto" in comuni and "piattaforma" in comuni
+    assert "nome" in comuni and "piattaforma" in comuni
     for chiave in comuni:
         assert riga[chiave] == from_entity[chiave], (
             f"«{chiave}» vale {riga[chiave]!r} da `integrazione` e "

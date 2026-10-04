@@ -47,6 +47,7 @@ import json
 import logging
 import re
 
+from ..home_space.topology import device_name
 from ..steering import misura_turno
 from .knowledge import Fact
 from .operations import REGISTRY_VERSION
@@ -161,7 +162,7 @@ def _device_entities(home_space: dict, device_id: str) -> list[dict]:
 def _device_name(home_space: dict, device_id: str) -> str:
     for d in home_space.get("dispositivi") or []:
         if d.get("id") == device_id:
-            return str(d.get("nome") or device_id)
+            return device_name(d)
     return device_id
 
 

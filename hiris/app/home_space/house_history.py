@@ -41,6 +41,7 @@ from .log_source import integration_of
 from .privacy import MOVING_DOMAINS, redact_nested, redact_state
 from .queries import ROWS_MAX
 from .reference import normalize
+from .topology import live_name
 
 if TYPE_CHECKING:
     from .house import House
@@ -334,14 +335,13 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen
     else:
         kinds = ("entita",)
     selection = select_subjects(f, kinds, house, behavior, now=now)
-    names = house.mirror.names
     if query.kind == "esecuzioni":
-        subjects = [Subject(item["id"], item.get("nome") or item["id"],
+        subjects = [Subject(item["id"], live_name(item["id"], item.get("nome"), house.mirror),
                             values.get("last_triggered"))
                     for item, values in selection.behavior]
     else:
         subjects = [Subject(entry["id"],
-                            names.get(entry["id"]) or entry.get("nome") or entry["id"])
+                            live_name(entry["id"], entry.get("nome"), house.mirror))
                     for entry, _area, _where in selection.entities]
     if query.run_id is not None and len(subjects) != 1:
         return {"errore": f"esecuzione vale per UNA sola automazione, e questi filtri "

@@ -53,51 +53,5 @@
    "non_e_un_doppione": "la versione dell'add-on quando config.yaml non si legge: non e' uno stato di Home Assistant"
   }
  },
- "regola-del-fuori": {
-  "hiris/app/home_space/house.py": {
-   "conti": {
-    "categoria": 1
-   },
-   "voci": [
-    "B-01"
-   ]
-  },
-  "hiris/app/home_space/house_query.py": {
-   "conti": {
-    "nascosta": 1
-   },
-   "voci": [
-    "B-01"
-   ]
-  },
-  "hiris/app/home_space/queries.py": {
-   "conti": {
-    "categoria": 3,
-    "disabilitata": 7,
-    "nascosta": 4
-   },
-   "voci": [
-    "B-01",
-    "B-02"
-   ]
-  },
-  "hiris/app/home_space/tools.py": {
-   "conti": {
-    "disabilitata": 1
-   },
-   "voci": [
-    "B-02"
-   ]
-  },
-  "hiris/app/home_space/topology.py": {
-   "conti": {
-    "categoria": 1,
-    "disabilitata": 3,
-    "nascosta": 3
-   },
-   "voci": [
-    "B-01"
-   ]
-  }
- }
+ "regola-del-fuori": {}
 }

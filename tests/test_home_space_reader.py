@@ -136,7 +136,7 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
         "id", "nome", "translation_key", "unique_id", "original_name",
         "area_id", "dispositivo_id", "piattaforma", "config_entry_id",
         "categoria", "classe", "unita", "disabilitata", "nascosta",
-        "alias", "etichette", "categorie"}
+        "disabilitata_da", "nascosta_da", "alias", "etichette", "categorie"}
     assert set(anagrafe["etichette"][0]) == {"id", "nome"}
     assert set(anagrafe["categorie"][0]) == {"id", "nome", "ambito"}
     assert set(anagrafe["integrazioni"][0]) == {

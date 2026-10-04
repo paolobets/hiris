@@ -100,6 +100,10 @@ def test_un_nome_cambiato_negli_ingressi_si_vede_nelle_schede(shot):
     target = next(row for row in changed["registries"]["entita"]
                   if row["entity_id"] == "light.luce_uno")
     target["name"] = "Nome cambiato"
+    # Rinominare in Home Assistant cambia anche il `friendly_name`, ed e'
+    # quello che le schede mostrano dal Task 5 della Tappa 3 (D1 «vivo»).
+    live = next(row for row in changed["states"] if row["entity_id"] == "light.luce_uno")
+    live["attributes"]["friendly_name"] = "Nome cambiato"
     differences = fotografia_porte.compare(shot, _shot(changed))
     assert any(line.startswith("schede") for line in differences), differences[:5]
 

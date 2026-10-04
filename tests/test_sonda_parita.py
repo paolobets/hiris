@@ -13,7 +13,8 @@ Mutazione ESEGUITA: in `sonda_parita._entity_ids` tolto il controllo sugli id
 dichiararsi non eseguita: era il rilievo I6 della revisione del 01/10/2026).
 
 Le due domande della Tappa 3 (`fuori_con_causa`, `fonte`), mutazioni ESEGUITE
-il 03/10/2026 e ripristinate (`git status` pulito):
+il 03/10/2026 e ripristinate (`git status` pulito; `fuori_con_causa` e le sue
+prove sono uscite col Task 5, quando le sei copie sono diventate una):
 - in `action/verification.py` il rifiuto di un'entita' senza stato dice «non
   ha uno stato» invece di «non esiste in questa casa» -- rossa
   (`test_la_fonte_vede_la_verifica_che_nega_un_entita_disabilitata`: nessun
@@ -22,6 +23,11 @@ il 03/10/2026 e ripristinate (`git status` pulito):
   `state_class` -- rosse le due prove sul motivo delle ricette;
 - in `sonda_parita._causes_by_device` tolte le disabilitate che la scheda
   conta e non elenca -- rossa (`_view_device` risponde per 9 entita', non 10).
+
+`nomi`, dal Task 5 (04/10/2026): mutazione ESEGUITA, `topology.live_name` col
+nome del registro prima di quello vivo -- rossa
+(`test_la_sonda_vede_il_nome_col_prefisso_del_dispositivo`: la casa e
+l'osservatore danno lo stesso nome, il caso sparisce).
 """
 import sys
 from pathlib import Path
@@ -68,9 +74,11 @@ def test_la_sonda_vede_le_righe_che_la_ricetta_manda_e_l_osservatore_no(result):
 
 
 def test_la_sonda_vede_il_nome_col_prefisso_del_dispositivo(result):
+    """Il nome della casa (D1) e' quello vivo, col prefisso; l'osservatore usa
+    ancora quello del registro, fino al Task 12."""
     renamed = {case["id"]: case for case in result["nomi"]["casi"]}
-    assert renamed["sensor.sensore_a_temperatura"]["scheda"] == "Temperatura"
-    assert renamed["sensor.sensore_a_temperatura"]["riga"] == "Sensore A Temperatura"
+    assert renamed["sensor.sensore_a_temperatura"]["osservatore"] == "Temperatura"
+    assert renamed["sensor.sensore_a_temperatura"]["casa"] == "Sensore A Temperatura"
     assert "light.luce_uno" not in renamed, "stesso nome dalle due porte: non e' un disaccordo"
 
 
@@ -137,58 +145,6 @@ def _with_universal_domain(inputs: dict) -> dict:
         "update_entity": {"name": "Update entity", "fields": {},
                           "target": {"entity": [{}]}}}})
     return inputs
-
-
-def test_fuori_con_causa_chiede_alle_sei_copie_e_sulla_casa_sintetica_concordano(result):
-    verdict = result["fuori_con_causa"]
-    assert set(verdict["chiamate"]) == {
-        "digest_visible_entity_ids", "not _excluded_from_comparison", "select_subjects",
-        "hierarchy", "hierarchy (dispositivi non letti)", "_view_device",
-        "select_subjects (con le opzioni)"}
-    assert verdict["disaccordi"] == 0, verdict["casi"]
-    # La derivazione non si e' svuotata: ogni classe ha qualcuno dentro.
-    assert all(verdict["per_classe"].values()), verdict["per_classe"]
-    # E ogni copia ha risposto per tutte le entita' che conosce: la scheda
-    # del dispositivo solo per quelle che un dispositivo ce l'hanno.
-    answered = verdict["risposte_per_copia"]
-    assert answered.pop("_view_device") == 10
-    assert set(answered.values()) == {12}, answered
-
-
-def test_fuori_con_causa_vede_una_copia_che_sbaglia_la_classe(monkeypatch):
-    """Mutazione dentro una copia sola: la partizione di `hierarchy` che
-    scatta quando i dispositivi non sono stati letti mette le nascoste fra le
-    visibili. Le altre copie non cambiano, quindi il disaccordo e' suo."""
-    from hiris.app.home_space import topology
-
-    real = topology.hierarchy
-
-    def wrong(home_space, unavailable=()):
-        floors = real(home_space, unavailable)
-        if "dispositivi" in unavailable:
-            for floor in floors:
-                for area in floor.get("aree") or []:
-                    area["entita"] = area["entita"] + area.get("entita_nascoste", [])
-                    area["entita_nascoste"] = []
-        return floors
-
-    monkeypatch.setattr(topology, "hierarchy", wrong)
-    outcome = sonda_parita.excluded_with_cause(
-        sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
-    assert [(case["id"], case["risposte"]["hierarchy (dispositivi non letti)"])
-            for case in outcome["casi"]] == [("sensor.sensore_c_riserva", "il resto")]
-
-
-def test_fuori_con_causa_vede_un_digesto_che_lascia_entrare_le_nascoste(monkeypatch):
-    from hiris.app.home_space import briefing
-
-    real = briefing.digest_visible_entity_ids
-    monkeypatch.setattr(briefing, "digest_visible_entity_ids", lambda home_space: (
-        real(home_space) | {"sensor.sensore_c_riserva"}))
-    outcome = sonda_parita.excluded_with_cause(
-        sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
-    assert [(case["id"], case["famiglia"]) for case in outcome["casi"]] == [
-        ("sensor.sensore_c_riserva", "dentro o fuori")]
 
 
 def test_la_fonte_vede_il_motivo_delle_ricette_che_da_la_colpa_sbagliata(result):

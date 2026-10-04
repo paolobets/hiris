@@ -34,7 +34,7 @@ from ..chat_thread import subject_key_for
 from ..home_space import historian
 from ..home_space.log_source import integration_of
 from ..home_space.open_questions import OPEN_QUESTIONS
-from ..home_space.topology import read_mirror
+from ..home_space.topology import device_name, read_mirror
 from ..mind.judgments import (
     JudgmentNotInEffect,
     JudgmentRefused,
@@ -416,9 +416,11 @@ def _device_names(app) -> dict:
     casa = app.get("home_space_store")
     if casa is None:
         return {}
-    return {str(d.get("id")): d.get("nome")
-            for d in (casa.read() or {}).get("dispositivi") or []
-            if d.get("id") and d.get("nome")}
+    # Il nome, altrimenti l'id (`topology.device_name`, A-16, 04/10/2026):
+    # fino a quel giorno un dispositivo senza nome usciva dalla mappa, e la
+    # pagina lo mostrava senza niente.
+    return {str(d.get("id")): device_name(d)
+            for d in (casa.read() or {}).get("dispositivi") or [] if d.get("id")}
 
 
 def _entity_names(app) -> dict:

@@ -334,6 +334,80 @@ def name_with_id(name: str, id_: str | None) -> str:
     return f"{name} (id: {id_})"
 
 
+#: La classe di un'entita' che nessuna regola del fuori tocca.
+VISIBLE = "visibile"
+
+
+def visibility_classes(entity: dict) -> tuple[tuple[str, str | None], ...]:
+    """Le classi del fuori di un'entita' dell'anagrafe, ognuna con la sua
+    CAUSA, nell'ordine di precedenza: `disabilitata` > `nascosta` >
+    `servizio` (B-01, D7; Tappa 3, Task 5, 04/10/2026). Vuota = visibile.
+
+    **LA regola del fuori, in un posto solo.** Fino a quel giorno le copie
+    erano sei (il digesto, le due partizioni di `hierarchy`, il confronto con
+    Home Assistant, `select_subjects`, `_view_device` in linea) e tre porte ne
+    usavano di proposito una piu' larga, scritta a mano. Ora ogni porta chiede
+    qui e dichiara quali classi conta (decisione del proprietario D7, 03/10).
+
+    La causa e' il valore di Home Assistant, col nome del confine: per la
+    disabilitata `disabled_by` (`user`, `integration`, `config_entry`,
+    `device`, `hass`: `RegistryEntryDisabler`, letto in
+    `helpers/entity_registry.py` il 04/10/2026), per la nascosta `hidden_by`
+    (`user`, `integration`: `RegistryEntryHider`), per quella di servizio
+    l'`entity_category` (`config`, `diagnostic`). `None` quando la voce non
+    la porta (un'anagrafe scritta a mano): la classe resta, la causa tace.
+
+    **Tutte, non solo la prima**: un'entita' nascosta E di servizio e' fuori
+    per due ragioni, e una porta che ammette le nascoste la tiene fuori lo
+    stesso perche' e' di servizio (`House.select`, `includi_nascoste` senza
+    `includi_servizio`). La prima e' la classe (`visibility`)."""
+    found: list[tuple[str, str | None]] = []
+    if entity.get("disabilitata"):
+        found.append(("disabilitata", entity.get("disabilitata_da")))
+    if entity.get("nascosta"):
+        found.append(("nascosta", entity.get("nascosta_da")))
+    category = str(entity.get("categoria") or "").strip()
+    if category:
+        found.append(("servizio", category))
+    return tuple(found)
+
+
+def visibility(entity: dict) -> tuple[str, str | None]:
+    """La classe di un'entita' -- `visibile`, `disabilitata`, `nascosta` o
+    `servizio` -- con la sua causa: la prima di `visibility_classes`."""
+    classes = visibility_classes(entity)
+    return classes[0] if classes else (VISIBLE, None)
+
+
+def live_name(entity_id: str, declared: str | None, mirror: Mirror) -> str:
+    """Il nome di un'entita', di un'automazione o di uno script: cio' che Home
+    Assistant mostra (il `friendly_name` dello specchio), altrimenti il nome
+    del registro, altrimenti l'id (D1 «vivo», decisione del proprietario del
+    03/10/2026; B-05, A-16).
+
+    Fino al 04/10/2026 le politiche vive erano cinque: `guarda` dava il nome
+    del registro e, quando mancava, il `friendly_name` a parte come
+    `nome_dedotto`; `search` e la storia il `friendly_name`; `search` rendeva
+    un'automazione senza nome con `nome: null` e la storia col suo id. La
+    differenza era quasi sempre il prefisso del dispositivo (898 entita' su
+    1.457 sulla cattura del 01/10). Ora il nome e' uno, quello che si vede in
+    Home Assistant, da ogni porta."""
+    return mirror.names.get(entity_id) or declared or entity_id
+
+
+def device_name(device: dict) -> str:
+    """Il nome di un dispositivo dell'anagrafe, altrimenti il suo id (A-16).
+
+    Il ripiego era quattro cose diverse -- `None`, la chiave assente, `""`,
+    l'id -- in quattro porte (il nucleo, le pagine del cervello, il
+    resoconto, le ricette). `reader._device` lascia il nome vuoto quando Home
+    Assistant non ne ha (`name_by_user` e `name` sono entrambi nullable), e
+    non lo riempie con l'id: l'indice dei nomi della memoria lo leggerebbe
+    come un nome. Chi deve segnare l'id COME id lo riconosce dal fatto che
+    il nome e' l'id (`briefing._device_annotation`)."""
+    return str(device.get("nome") or "").strip() or str(device.get("id") or "")
+
+
 def label_names(home_space: dict) -> dict[str, str]:
     """label_id -> nome, dal registro delle etichette dell'anagrafe.
 
@@ -868,20 +942,16 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             # nascoste nella stessa condizione sono raggiungibili a parte,
             # nelle chiavi parallele -- stessa forma delle altre tre pseudo-
             # aree "fuori dalle aree note" (R3, revisione v3.22.2..HEAD).
-            if entity.get("disabilitata"):
-                unloaded_device_disabled.append(entity)
-            elif entity.get("nascosta"):
-                unloaded_device_hidden.append(entity)
-            else:
-                unloaded_device.append(entity)
+            {"disabilitata": unloaded_device_disabled,
+             "nascosta": unloaded_device_hidden}.get(
+                visibility(entity)[0], unloaded_device).append(entity)
             continue
         area_id = actual_area(entity, device_area)
-        if entity.get("disabilitata"):
-            per_area_disabled.setdefault(area_id, []).append(entity)
-        elif entity.get("nascosta"):
-            per_area_hidden.setdefault(area_id, []).append(entity)
-        else:
-            per_area.setdefault(area_id, []).append(entity)
+        # La partizione chiede la classe (B-01): le disabilitate e le nascoste
+        # nelle chiavi parallele, le visibili e quelle di servizio in
+        # `entita`, che conta (le capacita' e `search` le tolgono a parte).
+        {"disabilitata": per_area_disabled, "nascosta": per_area_hidden}.get(
+            visibility(entity)[0], per_area).setdefault(area_id, []).append(entity)
 
     areas_per_floor: dict[str | None, list[dict]] = {}
     known_areas = set()
@@ -1137,9 +1207,7 @@ def _excluded_from_comparison(entity: dict | None) -> bool:
     """
     if not isinstance(entity, dict):
         return False
-    return bool(entity.get("nascosta")
-                or entity.get("disabilitata")
-                or str(entity.get("categoria") or "").strip())
+    return visibility(entity)[0] != VISIBLE
 
 
 def _compare_area(area: dict | None, identifier: str, answer,
