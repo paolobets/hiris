@@ -42,7 +42,7 @@ from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import PHRASE_MAX, Workshop
 from hiris.app.action.journal import Journal
 from hiris.app.home_space.tools import ToolDispatcher
-from tests.test_construction_workshop import FintoHA, _intento
+from tests.test_construction_workshop import WorkshopHouse, _intento
 
 ADESSO = 1_756_000_000.0
 SOGGETTO = {"specie": "persona", "id": "u1", "nome": "Paolo",
@@ -53,7 +53,7 @@ SOGGETTO = {"specie": "persona", "id": "u1", "nome": "Paolo",
 def banco(tmp_path):
     archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
-    officina = Workshop(FintoHA(), archivio, cronaca)
+    officina = Workshop(WorkshopHouse().client, archivio, cronaca)
     yield officina, archivio, cronaca
     archivio.close()
     cronaca.close()

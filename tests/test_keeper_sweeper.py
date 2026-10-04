@@ -374,31 +374,26 @@ NOTIFY_SERVICES = [{"domain": "notify", "services": {
                      "fields": {"message": {}, "title": {}}}}}]
 
 
-class _ClientSoloNotifica:
-    """Home Assistant, ridotto al minimo che serve a questa cucitura: i
-    servizi di `NOTIFY_SERVICES`, e una `call_service` che RIESCE.
+def _notify_house(during_call: list) -> CasaFinta:
+    """Home Assistant sotto il client VERO (`scripts/casa_finta.py`): i servizi
+    di `NOTIFY_SERVICES` da `GET /api/services`, e una chiamata di servizio
+    che RIESCE -- la casa la registra in `calls` e risponde la lista vuota
+    degli stati cambiati (una notifica non ne cambia). In `during_call` la
+    risposta annota quanti ascoltatori di stato erano aperti mentre la
+    chiamata girava: la porta non deve aprirne uno per una chiamata senza
+    bersaglio.
 
-    Resta una finta scritta a mano, e non la casa finta, per una ragione
-    sola: la prova che la usa ha bisogno che la notifica ARRIVI, e la casa
-    finta non esegue le scritture (`call_service` e' una `POST`: la registra
-    e solleva `UnservedCommand`). La prova del rifiuto, che non deve
-    scrivere niente, usa la casa finta.
-
-    Nessun `add_state_listener`/`remove_state_listener`: la
-    riparazione di `actuator.py` non deve aprirne uno per una chiamata senza
-    bersaglio, e questo doppio lo dimostra non avendoli affatto -- se la
-    porta provasse a chiamarli, la sospensione griderebbe `AttributeError`
-    invece di restare silenziosa."""
-
-    def __init__(self) -> None:
-        self.chiamate = []
-
-    async def get_services(self):
-        return NOTIFY_SERVICES
-
-    async def call_service(self, domain, service, data):
-        self.chiamate.append((domain, service, data))
-        return []
+    Fino al Task 12 della Tappa 2 qui c'era `_ClientSoloNotifica`, una finta
+    di `get_services` e `call_service` scritta a mano perche' la casa finta
+    non sapeva rispondere a una scrittura; quella finta provava l'assenza
+    dell'ascolto NON avendo i metodi degli ascoltatori, cioe' un client che
+    in produzione non esiste. Qui il client li ha, e si guarda che non
+    servano."""
+    inputs = synthetic_inputs()
+    inputs["services"] = NOTIFY_SERVICES
+    house = CasaFinta(inputs, answers={"POST /api/services/": lambda path, body: (
+        during_call.append(len(house.listeners("state"))) or [])})
+    return house
 
 
 class _CasaMinima(MirrorById):
@@ -424,7 +419,8 @@ async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archiv
     se parte e' `verification()` dentro `ActionActuator.execute`."""
     from hiris.app.action.registry import ServiceRegistry
 
-    client = _ClientSoloNotifica()
+    listening = []
+    client = _notify_house(listening)
     registro = ServiceRegistry()
     await registro.refresh(client)
     porta = ActionActuator(client, registro, _CasaMinima())
@@ -436,11 +432,12 @@ async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archiv
         recipients=RecapitoFinto(["notify.mobile_app_x"]),
     ).batti(ADESSO + 11)
 
-    assert client.chiamate == [
-        ("notify", "mobile_app_x",
+    assert client.calls[1:] == [
+        ("POST /api/services/notify/mobile_app_x",
          {"message": "e' salita di 2 gradi", "title": "HIRIS"})], (
         "la chiamata non e' arrivata a Home Assistant: la guardia sul "
         "bersaglio vuoto ha rifiutato una notifica che non ha un bersaglio")
+    assert listening == [0], "la porta ha aperto un ascolto per una notifica senza bersaglio"
     p = archivio.read(ident)
     assert (p["stato"], p["motivo"]) == ("mantenuta", None), p
 
@@ -457,8 +454,8 @@ async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archi
 
     Home Assistant e' la casa finta: il registro dei servizi lo legge il
     client vero da `GET /api/services`, e una chiamata che partisse sarebbe
-    una `POST` registrata in `house.calls` (e la casa finta, che non scrive,
-    solleverebbe)."""
+    una `POST` registrata in `house.calls`, e qui nessuna risposta e'
+    iniettata: la casa finta solleverebbe."""
     from hiris.app.action.registry import ServiceRegistry
 
     inputs = synthetic_inputs()

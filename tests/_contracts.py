@@ -53,30 +53,24 @@ qui perche' chi legge sappia cosa questa guardia non promette.
    che accetta qualunque parola chiave NON puo' sollevare il `TypeError` che
    questa guardia esiste per prevenire, quindi pretendere che elenchi gli
    stessi keyword-only del vero segnalerebbe un finto CORRETTO --
-   `FintoHA.validate_config(self, **kw)` contro
+   `FintoHA.validate_config(self, **kw)` (finta uscita il 04/10/2026) contro
    `HAClient.validate_config(self, *, triggers=None, conditions=None,
    actions=None)`. Il costo e'
    dichiarato: su un finto cosi' i nomi dei keyword-only non li confronta
    piu' nessuno. E' la stessa scelta del punto 4 -- meglio cieco che
    rumoroso -- con la stessa scritta accanto.
 
-## `doppi`: l'elenco dei doppi si DERIVA, non si trascrive
+## Le finte di `HAClient` non passano piu' di qui
 
-`assert_stessa_firma` va chiamata una volta per coppia, e per tre giorni
-quell'elenco e' stato scritto a mano: sui doppi di `HAClient` ne copriva
-**sei**, e non i piu' pericolosi -- il lotto 16 della rinomina ha riscritto
-20 firme finte passando accanto alla guardia che esisteva proprio per quel
-caso, e sono rimaste allineate perche' qualcuno e' stato attento, non perche'
-una rete lo garantisse.
-
-`doppi` non tiene nessun elenco: legge le classi dei moduli e trova i
-doppi da se'. Un elenco scritto a mano e' silenziosamente incompleto per
-costruzione -- la stessa frase che `scripts/rinomina.py` dice di se' sui
-percorsi di import e che `tests/test_preposizioni_italiane.py` dice dei
-sottosistemi -- mentre una derivazione dimenticata non esiste: una finta
-nuova, in un file nuovo, e' coperta senza che nessuno se ne ricordi.
+Fino al 04/10/2026 questo modulo portava anche `doppi` e `buchi`: trovavano
+da se' le finte di `HAClient` nelle prove e ne confrontavano le firme
+(`tests/test_ha_client_contract.py`). Con la Tappa 2 (Task 12) quelle finte
+sono uscite tutte -- le prove usano `scripts/casa_finta.py`, che E' il client
+vero -- e `tests/test_finte_convergono.py` vieta che ne nascano di nuove: non
+c'erano piu' firme da confrontare, e le due funzioni sono uscite col loro
+test. `assert_stessa_firma` resta per i doppi degli ALTRI oggetti (la porta,
+l'officina, il registro dei servizi, i runner).
 """
-import ast
 import inspect
 
 _VUOTO = object()  # sentinella: "nessun default", per distinguerlo da default=None
@@ -117,142 +111,6 @@ def _accetta_qualunque_chiave(func) -> bool:
     """Vero se `func` dichiara `**kwargs`: vedi il punto 5 del docstring."""
     return any(p.kind is inspect.Parameter.VAR_KEYWORD
                for p in inspect.signature(func).parameters.values())
-
-
-def doppi(reale, moduli) -> list[tuple[str, str]]:
-    """`[(«modulo.Classe», «metodo»), ...]` per ogni doppio di `reale` che
-    vive nei `moduli` dati, piu' l'asserzione gia' fatta su ognuno.
-
-    **Derivato, non elencato** -- vedi il docstring del modulo. Il criterio e'
-    strutturale: una classe DEFINITA in uno di quei moduli (non importata:
-    `cls.__module__` deve combaciare, o lo stesso doppio si conterebbe una
-    volta per ogni file che lo importa) che non erediti da `reale` (una
-    sottoclasse non e' un doppio, e' la cosa vera) e che porti un attributo
-    chiamabile col nome di un metodo di `reale`.
-
-    **`__init__` e' l'unica esclusione, ed e' l'unica che serve**: ce l'hanno
-    tutte le classi del mondo -- una finta della cache, di una sessione, di un
-    messaggio WS -- e il costruttore di una finta non ha nessun obbligo di
-    somigliare a quello del vero. Senza questa riga l'enumerazione raccoglie
-    ogni classe di ogni file di test; con questa riga raccoglie solo chi
-    imita davvero un metodo. Nessun'altra esclusione e' stata necessaria:
-    verificato eseguendo, non presunto -- il conto vero lo stampa
-    `tests/test_ha_client_contract.py`, che e' il posto dove non puo'
-    invecchiare.
-    """
-    metodi = {nome for nome, valore in vars(reale).items()
-              if callable(valore) and nome != "__init__"}
-    trovati = []
-    for modulo in moduli:
-        imitatori = {nome for nome, c in vars(modulo).items()
-                     if inspect.isclass(c) and c.__module__ == modulo.__name__
-                     and not issubclass(c, reale) and (set(vars(c)) & metodi)}
-        for nome_cls, cls in vars(modulo).items():
-            if not inspect.isclass(cls) or cls.__module__ != modulo.__name__:
-                continue
-            if issubclass(cls, reale):
-                continue
-            _assert_sottoclasse_ridichiara_solo_membri_veri(
-                reale, metodi, imitatori, modulo, nome_cls, cls)
-            for nome_metodo in sorted(vars(cls)):
-                if nome_metodo not in metodi or not callable(vars(cls)[nome_metodo]):
-                    continue
-                assert_stessa_firma(
-                    getattr(reale, nome_metodo), getattr(cls, nome_metodo),
-                    nome=f"{reale.__name__}.{nome_metodo} contro "
-                         f"{modulo.__name__}.{nome_cls}.{nome_metodo}")
-                trovati.append((f"{modulo.__name__}.{nome_cls}", nome_metodo))
-    return trovati
-
-
-def buchi(reale, file) -> list[tuple[str, str, int]]:
-    """`[(«Classe», «membro», riga), ...]`: ogni ATTRIBUTO di classe che porta
-    il nome di un metodo di `reale` senza esserne uno -- un BUCO deliberato
-    (`add_state_listener = None`, «il client che non annuncia»).
-
-    **Perche' non basta `assert_stessa_firma`, e perche' non basta nemmeno
-    `doppi`.** Un buco non ha una firma da confrontare: `doppi` lo scarta
-    (`not callable(...)`) e la guardia sulle sottoclassi lo vede solo se il
-    nome NON e' piu' un membro del vero. Il caso pericoloso e' l'opposto:
-    finche' il nome resta valido il buco funziona, ma il giorno in cui il
-    metodo vero viene rinominato **il buco smette di essere un buco** -- la
-    finta torna a ereditare il metodo vero, e cio' che il test credeva di
-    misurare non lo misura piu'. Successo davvero (lotto 19c,
-    `estrai_dal_bersaglio = None`), con la suite verde prima e dopo.
-
-    **Si legge il SORGENTE, non le classi importate**, e non e' un dettaglio:
-    due dei tre buchi di oggi vivono in una classe definita DENTRO il corpo di
-    una funzione di test (`ClientSordo`, `test_action_actuator.py`), che non e' un
-    attributo del modulo e che nessuna introspezione a runtime raggiunge.
-    Misurato: l'enumerazione a runtime ne trova **uno su tre**.
-
-    Il criterio e' un'assegnazione a livello di CLASSE il cui bersaglio si
-    chiama come un metodo del vero. Misurato su tutta la suite: tre voci, zero
-    falsi positivi.
-    """
-    metodi = {nome for nome, valore in vars(reale).items()
-              if callable(valore) and nome != "__init__"}
-    trovati = []
-    for percorso in file:
-        try:
-            albero = ast.parse(percorso.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
-            continue
-        for nodo in ast.walk(albero):
-            if not isinstance(nodo, ast.ClassDef):
-                continue
-            for corpo in nodo.body:
-                if isinstance(corpo, ast.Assign):
-                    bersagli = [t.id for t in corpo.targets if isinstance(t, ast.Name)]
-                elif isinstance(corpo, ast.AnnAssign) and isinstance(corpo.target, ast.Name):
-                    bersagli = [corpo.target.id]
-                else:
-                    continue
-                for b in bersagli:
-                    if b in metodi:
-                        trovati.append((nodo.name, b, corpo.lineno))
-    return sorted(trovati)
-
-
-def _assert_sottoclasse_ridichiara_solo_membri_veri(reale, metodi, imitatori,
-                                                    modulo, nome_cls, cls) -> None:
-    """La QUARTA specie di sponda: un ATTRIBUTO di classe che ombreggia un
-    metodo vero, e che smette di ombreggiarlo quando il metodo cambia nome.
-
-    **Misurata dal vivo, e con un test verde su entrambi i lati** (fetta «la
-    rinomina», lotto 19c): `tests/test_action_targets.py::
-    FintoClientSenzaBocca` porta `estrai_dal_bersaglio = None` per dichiarare
-    il client che NON sa risolvere i bersagli. Rinominato
-    `HAClient.estrai_dal_bersaglio` in `extract_from_target`, quell'attributo
-    e' rimasto indietro: non e' un `def` (i rinominatori guardano `def` e
-    `.attributo`), non e' una parola chiave (il controllo di chiusura guarda
-    quelle), non e' un import (`sponde_per_nome` guarda quelli) e non e' un
-    metodo (`assert_stessa_firma` confronta firme, e `None` non ne ha una).
-    La finta ha ricominciato a EREDITARE il metodo vero dalla sua base, e il
-    test e' rimasto verde -- prima e dopo, provato per mutazione. Non provava
-    piu' il ramo che il suo docstring prometteva.
-
-    **Il criterio e' stretto apposta, e misurato**: si guarda SOLO una classe
-    che eredita da un imitatore definito nello stesso modulo. Ridichiarare un
-    nome li' ha una ragione sola -- ombreggiare un membro della classe
-    imitata -- quindi ogni nome ridichiarato deve essere un membro VERO.
-    Misurato prima di scrivere la riga: due sottoclassi di questa specie in
-    tutta la suite, zero falsi positivi. La regola piu' larga (ogni attributo
-    di classe di ogni imitatore) ne dava uno su due, e un cancello che
-    arrossisce su un nome corretto viene indebolito, non corretto.
-    """
-    if not any(b.__name__ in imitatori for b in cls.__bases__):
-        return
-    for attr in sorted(vars(cls)):
-        if attr.startswith("__"):
-            continue
-        assert attr in metodi, (
-            f"{modulo.__name__}.{nome_cls} eredita da una finta di "
-            f"{reale.__name__} e ridichiara «{attr}», che {reale.__name__} "
-            "non ha: o il membro vero e' stato rinominato e questo e' rimasto "
-            "indietro (allora la finta ha ripreso a EREDITARE il metodo vero, "
-            "e cio' che credeva di provare non lo prova piu'), oppure il nome "
-            "e' sbagliato da sempre")
 
 
 def assert_stessa_firma(reale, finto, *, nome: str = "") -> None:

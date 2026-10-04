@@ -24,7 +24,7 @@ from hiris.app.chat_thread import ChatThread
 from hiris.app.server import create_app
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
-from tests.test_construction_workshop import FintoHA
+from tests.test_construction_workshop import WorkshopHouse
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` che conftest.py
 # mette per l'intera suite), senza niente di specifico alle impostazioni:
@@ -373,8 +373,8 @@ async def client(aiohttp_client, tmp_path):
     app["constructions"] = ConstructionStore(
         os.path.join(str(tmp_path), "costruzioni_http.db"))
     app["journal"] = Journal(os.path.join(str(tmp_path), "azioni_http.db"))
-    ha = FintoHA()
-    app["workshop"] = Workshop(ha, app["constructions"], app["journal"])
+    ha = WorkshopHouse()
+    app["workshop"] = Workshop(ha.client, app["constructions"], app["journal"])
     # Solo per i test: leggere cosa e' stato scritto DAVVERO su Home
     # Assistant, senza toccare l'attributo privato dell'officina.
     app["_fake_ha"] = ha
@@ -461,7 +461,6 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
     # La casa e' com'era stata lasciata da quella costruzione: dal 03/10/2026
     # (S-17) il ripristino lo rilegge, e su un oggetto cambiato rifiuta.
-    client.app["_fake_ha"].esistenti.add("tapparelle_rip_ok")
     client.app["_fake_ha"].corpi["tapparelle_rip_ok"] = {"alias": "Dopo"}
 
     risposta = await client.post(
@@ -523,7 +522,6 @@ async def test_conferma_su_un_oggetto_cambiato_e_409_e_non_scrive(client, csrf_s
     rossa (200 e una scrittura)."""
     ha = client.app["_fake_ha"]
     ident = _edit_proposal(client.app["constructions"], "tapparelle_s17")
-    ha.esistenti.add("tapparelle_s17")
     ha.corpi["tapparelle_s17"] = {"id": "tapparelle_s17", "alias": "cambiata a mano"}
 
     risposta = await client.post(

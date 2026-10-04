@@ -118,7 +118,7 @@ import os
 
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
-from tests.test_construction_workshop import FintoHA, _intento
+from tests.test_construction_workshop import WorkshopHouse, _intento
 
 _ADESSO = 1_756_000_000.0
 
@@ -127,7 +127,7 @@ _ADESSO = 1_756_000_000.0
 def officina(tmp_path):
     archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     registro = Journal(os.path.join(str(tmp_path), "azioni.db"))
-    banco = Workshop(FintoHA(), archivio, registro)
+    banco = Workshop(WorkshopHouse().client, archivio, registro)
     yield banco, registro
     archivio.close()
     registro.close()

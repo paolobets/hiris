@@ -440,44 +440,48 @@ async def test_nessuna_risposta_e_un_errore_non_un_bersaglio_vuoto():
 
 # ── 4. La porta: la sequenza intera ────────────────────────────────────────
 
-class FintoClientPorta:
+def _door_house(result) -> CasaFinta:
     """Home Assistant visto dalla porta, per le prove in cui la chiamata di
-    servizio deve RIUSCIRE: `call_service` e' una scrittura REST, e la casa
-    finta non la serve (`scripts/casa_finta.py`). Dove la porta si ferma prima
-    di scrivere, le prove usano la casa finta.
+    servizio deve RIUSCIRE: il client VERO (`scripts/casa_finta.py`), con
+    `result` come risposta grezza a `extract_from_target` e la chiamata di
+    servizio registrata (`POST /api/services/...`) e accettata con la lista
+    vuota degli stati cambiati -- il valore misurato sull'impianto vero.
 
-    `sequenza` registra l'ORDINE in cui le due domande partono: l'anteprima
-    deve essere calcolata PRIMA della chiamata, o non e' un'anteprima.
-    """
-
-    def __init__(self, risolve=None):
-        self.sequenza = []
-        self.chiamate = []
-        self.ascoltatori = []
-        self._risolve = risolve
-
-    async def extract_from_target(self, target):
-        self.sequenza.append(("risolvi", target))
-        return self._risolve
-
-    def add_state_listener(self, callback):
-        self.ascoltatori.append(callback)
-
-    def remove_state_listener(self, callback):
-        if callback in self.ascoltatori:
-            self.ascoltatori.remove(callback)
-
-    async def call_service(self, domain, service, data):
-        self.sequenza.append(("chiama", f"{domain}.{service}"))
-        self.chiamate.append((domain, service, data))
-        return []
+    `house.calls` registra l'ORDINE in cui le due domande partono:
+    l'anteprima deve essere calcolata PRIMA della chiamata, o non e'
+    un'anteprima. Fino al Task 12 della Tappa 2 qui c'era `FintoClientPorta`,
+    una finta di `extract_from_target` e `call_service` che rendeva il
+    bersaglio gia' tradotto: adesso la traduzione e' quella del client."""
+    return CasaFinta(synthetic_inputs(), answers={
+        "extract_from_target": lambda extra: result,
+        "POST /api/services/": lambda path, body: []})
 
 
-class FintoClientSenzaBocca(FintoClientPorta):
-    """Il client che non sa risolvere i bersagli -- chi cablasse questa porta
-    su un altro client di Home Assistant. `None` e non un metodo: e'
-    esattamente cio' che `getattr` trova e cio' che `callable` rifiuta."""
-    extract_from_target = None
+def _steps(house: CasaFinta) -> list[str]:
+    """Le domande partite, in ordine: «risolvi» o «chiama»."""
+    return ["risolvi" if what == "extract_from_target" else "chiama"
+            for what, _extra in house.calls]
+
+
+def _service_calls(house: CasaFinta) -> list[tuple[str, str, dict]]:
+    """Le chiamate di servizio partite: `(dominio, servizio, dati)`."""
+    return [(*what.removeprefix("POST /api/services/").split("/", 1), body)
+            for what, body in house.calls if what.startswith("POST /api/services/")]
+
+
+def _without(house: CasaFinta, method: str) -> CasaFinta:
+    """Il client senza `method`: `None` e non un metodo, che e' esattamente
+    cio' che `getattr` trova e cio' che `callable` rifiuta. **Un caso che in
+    produzione non esiste** (la porta riceve sempre un `HAClient`): prova il
+    ramo difensivo di `ActionActuator._resolve`.
+
+    Il nome si controlla su `HAClient`: se il metodo venisse rinominato,
+    l'attributo resterebbe indietro e il client tornerebbe a risolvere -- la
+    prova verde senza provare piu' niente (successo davvero, lotto 19c della
+    rinomina, quando questo era un attributo di classe di una finta)."""
+    assert method in vars(HAClient), f"`HAClient.{method}` non esiste piu'"
+    setattr(house, method, None)
+    return house
 
 
 class FintaCache(MirrorById):
@@ -503,12 +507,13 @@ async def _porta(client) -> ActionActuator:
 async def test_la_porta_spegne_tutte_e_nove_le_luci_della_cucina():
     """La sequenza intera, dal bersaglio del modello alla chiamata: nove luci
     in cucina, nove entity_id nella chiamata a Home Assistant."""
-    client = FintoClientPorta(risolve=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
+    client = _door_house(_extracted(referenced_entities=TUTTA_LA_CUCINA,
+                                    referenced_areas=["cucina"]))
     porta = await _porta(client)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is True, esito.get("errore")
-    _dominio, _servizio, dati = client.chiamate[0]
+    _dominio, _servizio, dati = _service_calls(client)[0]
     assert sorted(dati["entity_id"]) == sorted(LUCI_CUCINA)
     assert len(dati["entity_id"]) == 9
 
@@ -518,11 +523,12 @@ async def test_l_anteprima_si_calcola_prima_di_toccare_qualcosa():
     """«Prima» e' letterale: la domanda a Home Assistant su cosa contiene il
     bersaglio parte PRIMA della chiamata di servizio, non dopo per raccontarla
     meglio."""
-    client = FintoClientPorta(risolve=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
+    client = _door_house(_extracted(referenced_entities=TUTTA_LA_CUCINA,
+                                    referenced_areas=["cucina"]))
     porta = await _porta(client)
     await porta.execute({"servizio": "light.turn_off",
                         "bersaglio": {"aree": ["cucina"]}}, actor="prova")
-    assert [passo for passo, _ in client.sequenza] == ["risolvi", "chiama"]
+    assert _steps(client) == ["risolvi", "chiama"]
 
 
 @pytest.mark.asyncio
@@ -530,7 +536,8 @@ async def test_l_esito_dice_cosa_conteneva_il_bersaglio_e_cosa_e_rimasto_fuori()
     """Senza queste voci un elenco piu' corto passerebbe per l'elenco intero,
     ed e' esattamente il difetto: `toccate` piu' corto di `risolte` e' un
     fatto che l'utente deve sentirsi dire."""
-    client = FintoClientPorta(risolve=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
+    client = _door_house(_extracted(referenced_entities=TUTTA_LA_CUCINA,
+                                    referenced_areas=["cucina"]))
     porta = await _porta(client)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"aree": ["cucina"]}}, actor="prova")
@@ -548,13 +555,13 @@ async def test_un_bersaglio_di_sole_entita_non_costa_un_giro_di_rete():
     """E l'esito non porta l'anteprima: non ci sarebbe niente da raccontare
     che `entita` non dica gia', e una chiave in piu' con dentro la copia di
     un'altra e' un doppione."""
-    client = FintoClientPorta(risolve=_risolto([]))
+    client = _door_house(_extracted())
     porta = await _porta(client)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"entita": ["light.cucina_1"]}},
                                actor="prova")
     assert esito["eseguito"] is True
-    assert [passo for passo, _ in client.sequenza] == ["chiama"]
+    assert _steps(client) == ["chiama"]
     assert "bersaglio" not in esito
 
 
@@ -562,23 +569,20 @@ async def test_un_bersaglio_di_sole_entita_non_costa_un_giro_di_rete():
 async def test_un_client_che_non_sa_risolvere_non_esegue_e_lo_dichiara():
     """Il silenzio si dichiara. L'alternativa -- proseguire con le sole
     entita' nominate, che qui sono zero -- sarebbe una chiamata su niente
-    raccontata come riuscita."""
-    client = FintoClientSenzaBocca()
-    # La finta deve DAVVERO non avere la bocca, o questo test non prova
-    # niente. Provato per mutazione durante la fetta «la rinomina» (lotto
-    # 19c): rinominato `HAClient.extract_from_target` in
-    # `extract_from_target`, questo attributo e' rimasto indietro e la
-    # finta ha ricominciato a EREDITARE il metodo vero da
-    # `FintoClientPorta` -- e il test e' rimasto verde lo stesso, cioe'
-    # non misurava piu' cio' che il suo docstring promette.
+    raccontata come riuscita.
+
+    Il client che non sa risolvere in produzione non c'e' (`_without`): la
+    prova sorveglia il ramo difensivo della porta, scritto per chi la
+    cablasse su un altro client."""
+    client = _without(_door_house(_extracted()), "extract_from_target")
     assert not callable(getattr(client, "extract_from_target", None)), (
-        "la finta ha di nuovo una bocca: questo test non sta piu' "
+        "il client ha di nuovo una bocca: questo test non sta piu' "
         "provando il ramo del client che non sa risolvere")
     porta = await _porta(client)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is False
-    assert client.chiamate == [], "non si tocca niente se non si e' potuto risolvere"
+    assert client.calls == [], "non si tocca niente se non si e' potuto risolvere"
     assert "bersaglio.entita" in esito["errore"], (
         "il rifiuto deve dire cosa fare invece, non solo che non si puo'")
 

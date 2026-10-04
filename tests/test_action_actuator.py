@@ -64,6 +64,7 @@ from hiris.app.proxy.entity_cache import (
 from tests._casa_sintetica import synthetic_inputs
 from tests._mirror_by_id import MirrorById
 from tests.test_action_registry import _house
+from tests.test_action_targets import _without
 
 # La scadenza vera e' 2 secondi, e il perche' sta scritto accanto alla
 # costante (`porta.STATE_WAIT_S`). Qui si accorcia a 50 ms perche' cio' che
@@ -104,82 +105,84 @@ RISPOSTA_HA = [
 ]
 
 
-class FintoClient:
-    """Home Assistant visto dalla porta, con le **tre bocche** che ha davvero.
-
-    Resta una finta per una ragione sola: `call_service` e' una scrittura
-    REST, e la casa finta (`scripts/casa_finta.py`) non scrive. Le prove in
-    cui la porta si ferma PRIMA di chiamare usano la casa finta, cioe' il
-    client vero; il registro dei servizi si legge sempre da li'.
+def _client(cambiati=None, annuncia=None, ritardo=0.0, specchio=None,
+            durante=None, **faults) -> CasaFinta:
+    """Home Assistant visto dalla porta, con le **tre bocche** che ha davvero
+    -- sotto il client VERO (`scripts/casa_finta.py`, Tappa 2, Task 12).
 
     1. **Il ritorno di `call_service`** (`cambiati`): gli stati completi che
-       Home Assistant dichiara cambiati durante l'esecuzione. Sull'impianto
-       del proprietario e' stato misurato **vuoto**, anche a comando riuscito
-       -- ed e' per questo che qui il valore predefinito e' la lista vuota.
+       Home Assistant dichiara cambiati durante l'esecuzione -- il corpo di
+       `POST /api/services/<dominio>/<servizio>`, che la casa finta registra
+       in `calls` e non esegue. Sull'impianto del proprietario e' stato
+       misurato **vuoto**, anche a comando riuscito -- ed e' per questo che
+       qui il valore predefinito e' la lista vuota.
     2. **L'annuncio del websocket** (`annuncia`): gli stati, sempre nella
        forma di Home Assistant, che arrivano agli ascoltatori **dopo** il
        ritorno della chiamata -- fra `ritardo` secondi, mai prima. Con
        `ritardo=None` arrivano invece DENTRO la chiamata: e' l'altro caso
        vero, la casa veloce, e serve a provare che un annuncio arrivato
-       presto non si perde.
-    3. **Il rubinetto** (`add_state_listener`/`remove_state_listener`): vero,
-       con la lista ispezionabile in `ascoltatori`. Un ascoltatore effimero
-       che non si togliesse resterebbe li' a farsi contare.
+       presto non si perde. Li smista il codice vero del client
+       (`CasaFinta.announce_state`).
+    3. **Il rubinetto** (`add_state_listener`/`remove_state_listener`): quello
+       vero del client, ispezionabile con `house.listeners("state")`. Un
+       ascoltatore effimero che non si togliesse resterebbe li' a farsi
+       contare. In `durante` si annota chi ascoltava mentre la chiamata
+       girava.
 
     L'annuncio muove lo **specchio** prima di svegliare gli ascoltatori,
     perche' quello e' l'ordine della produzione: `EntityCache` si iscrive
-    all'avvio, la porta molto dopo.
+    all'avvio, la porta molto dopo. E al ritorno della chiamata lo specchio
+    si fotografa (`FintaCache.at_return`): se li' si vedesse gia' lo stato
+    nuovo, la freschezza sarebbe di nuovo regalata e questo file tornerebbe a
+    confermare chi l'ha scritto.
+
+    Fino al Task 12 della Tappa 2 qui c'era `FintoClient`, una finta di
+    `get_services`, `call_service` e dei due ascoltatori scritta a mano,
+    perche' la casa finta non sapeva rispondere a una scrittura. `faults`
+    sono `refuse=`/`silence=` della casa finta: un rifiuto o un silenzio
+    della chiamata si iniettano li', nella forma vera.
     """
+    def reply(path, body):
+        if durante is not None:
+            durante.append(house.listeners("state"))
+        if annuncia and ritardo is None:
+            _annuncia(house, annuncia, specchio)
+        elif annuncia:
+            asyncio.get_running_loop().call_later(
+                ritardo, _annuncia, house, annuncia, specchio)
+        if specchio is not None:
+            specchio.at_return = specchio.sbircia()
+        return list(cambiati or [])
 
-    def __init__(self, cambiati=None, annuncia=None, ritardo=0.0, specchio=None):
-        self.chiamate = []
-        self.ascoltatori = []
-        # Cosa mostrava lo specchio nell'istante in cui `call_service` e'
-        # tornata. E' il campione che smaschera una finta troppo gentile: se
-        # qui si vedesse gia' lo stato nuovo, la freschezza sarebbe di nuovo
-        # regalata e questo file tornerebbe a confermare chi l'ha scritto.
-        self.specchio_al_ritorno = None
-        self._cambiati = cambiati if cambiati is not None else []
-        self._annuncia = list(annuncia or [])
-        self._ritardo = ritardo
-        self._specchio = specchio
+    house = _house(RISPOSTA_HA, answers={"POST /api/services/": reply}, **faults)
+    return house
 
-    async def get_services(self):
-        # Le prove di questo file leggono il registro dalla casa finta
-        # (`_registro_pronto`); questa bocca resta per chi importa la finta e
-        # ci legge il registro (`tests/test_action_prompt.py`).
-        return RISPOSTA_HA
 
-    def add_state_listener(self, callback):
-        self.ascoltatori.append(callback)
+def _annuncia(house: CasaFinta, stati, specchio) -> None:
+    for stato in stati:
+        # Prima lo specchio, poi chi ascolta: e' l'ordine con cui il ciclo
+        # websocket vero percorre `_state_listeners`.
+        if specchio is not None:
+            specchio.annuncio(stato)
+        house.announce_state(stato)
 
-    def remove_state_listener(self, callback):
-        if callback in self.ascoltatori:
-            self.ascoltatori.remove(callback)
 
-    async def call_service(self, domain, service, data):
-        self.chiamate.append((domain, service, data))
-        if self._annuncia and self._ritardo is None:
-            self._annuncia_ora()
-        elif self._annuncia:
-            asyncio.get_running_loop().create_task(self._annuncia_fra_poco())
-        if self._specchio is not None:
-            self.specchio_al_ritorno = self._specchio.sbircia()
-        return list(self._cambiati)
+#: Home Assistant che risponde 500 allo spegnimento: un rifiuto nella forma
+#: vera, che il client vero solleva (`raise_for_status`).
+TURN_OFF_REFUSED = {"POST /api/services/light/turn_off": 500}
 
-    async def _annuncia_fra_poco(self):
-        await asyncio.sleep(self._ritardo)
-        self._annuncia_ora()
 
-    def _annuncia_ora(self):
-        for stato in self._annuncia:
-            # Prima lo specchio, poi chi ascolta: e' l'ordine con cui il ciclo
-            # websocket vero percorre `_state_listeners`.
-            if self._specchio is not None:
-                self._specchio.annuncio(stato)
-            for callback in list(self.ascoltatori):
-                callback({"entity_id": stato["entity_id"], "old_state": None,
-                          "new_state": stato})
+def _sordo(house: CasaFinta) -> CasaFinta:
+    """Il client senza il rubinetto degli annunci. **Un caso che in
+    produzione non esiste** (la porta riceve sempre un `HAClient`, che i due
+    metodi li ha): prova il ramo difensivo di `ActionActuator._open_listen`."""
+    return _without(_without(house, "add_state_listener"), "remove_state_listener")
+
+
+def _chiamate(house: CasaFinta) -> list[tuple[str, str, dict]]:
+    """Le chiamate di servizio partite: `(dominio, servizio, dati)`."""
+    return [(*what.removeprefix("POST /api/services/").split("/", 1), body)
+            for what, body in house.calls if what.startswith("POST /api/services/")]
 
 
 class FintaCache(MirrorById):
@@ -200,6 +203,10 @@ class FintaCache(MirrorById):
         self.loaded = loaded
         self._rompe_dalla_lettura = rompe_dalla_lettura
         self.letture = 0
+        # Cosa mostrava lo specchio nell'istante in cui `call_service` e'
+        # tornata: lo scrive la casa di `_client`. E' il campione che smaschera
+        # una finta troppo gentile.
+        self.at_return = None
 
     def all_states(self):
         self.letture += 1
@@ -254,8 +261,8 @@ def _casa(stati, *, cambiati=None, annuncia=None, ritardo=0.0, loaded=True,
     a poterli interrogare entrambi dopo."""
     cache = FintaCache(stati, loaded=loaded,
                        rompe_dalla_lettura=rompe_dalla_lettura)
-    client = FintoClient(cambiati=cambiati, annuncia=annuncia, ritardo=ritardo,
-                         specchio=cache)
+    client = _client(cambiati=cambiati, annuncia=annuncia, ritardo=ritardo,
+                     specchio=cache)
     return client, cache
 
 
@@ -331,8 +338,9 @@ async def _registro_pronto():
 
 def _asked(house: CasaFinta) -> list[str]:
     """Cosa la porta ha chiesto a Home Assistant, in ordine. Una chiamata di
-    servizio comparirebbe qui come `/api/services/<dominio>/<servizio>` (la
-    casa finta registra la scrittura, e poi la rifiuta)."""
+    servizio comparirebbe qui come `POST /api/services/<dominio>/<servizio>`
+    (la casa finta registra la scrittura; qui nessuna risposta e' iniettata,
+    e solleverebbe)."""
     return [what for what, _extra in house.calls]
 
 
@@ -355,7 +363,7 @@ async def test_esegue_e_racconta_cosa_e_cambiato():
     porta, client, cache = await _porta_pronta()
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is True
-    assert client.chiamate == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
+    assert _chiamate(client) == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
     assert esito["servizio"] == "light.turn_off"
     assert esito["entita"] == ["light.salotto"]
     assert esito["prima"] == {"light.salotto": {"state": "on"}}
@@ -387,7 +395,7 @@ async def test_un_rifiuto_non_chiama_home_assistant():
 
 @pytest.mark.asyncio
 async def test_se_nulla_cambia_lo_dichiara():
-    client = FintoClient()
+    client = _client()
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))  # non cambia
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
@@ -404,22 +412,20 @@ async def test_i_parametri_della_chiamata_arrivano_a_home_assistant():
     esito = await porta.execute(dict(SPEGNI_IL_SALOTTO, dati={"transition": 5}),
                                actor="chat")
     assert esito["eseguito"] is True
-    assert client.chiamate == [
+    assert _chiamate(client) == [
         ("light", "turn_off", {"transition": 5, "entity_id": ["light.salotto"]})]
 
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_home_assistant_diventa_un_errore_leggibile():
-    class ClientCheRompe(FintoClient):
-        async def call_service(self, domain, service, data):
-            raise RuntimeError("HTTP 500")
-
-    client = ClientCheRompe()
+    """Home Assistant risponde 500: il client vero solleva come
+    `raise_for_status` di aiohttp, e la porta ne fa una frase col motivo."""
+    client = _client(refuse=TURN_OFF_REFUSED)
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
-    assert "HTTP 500" in esito["errore"]
+    assert "500" in esito["errore"] and "Internal Server Error" in esito["errore"]
 
 
 @pytest.mark.asyncio
@@ -449,7 +455,7 @@ async def test_l_origine_non_cambia_l_esito():
     for origine in ("chat", "schedulatore", "brain"):
         porta, client, _ = await _porta_pronta()
         esiti.append(await porta.execute(SPEGNI_IL_SALOTTO, actor=origine))
-        assert client.chiamate == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
+        assert _chiamate(client) == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
     assert esiti[0] == esiti[1] == esiti[2]
 
 
@@ -532,14 +538,14 @@ async def test_un_entita_CANCELLATA_in_home_assistant_non_arriva_piu_a_HA():
     ]
     specchio = EntityCache()
     await specchio.load(CasaFinta(inputs))
-    client = FintoClient()
+    client = _client()
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, specchio)
 
     # Finche' c'e', il comando arriva davvero a Home Assistant.
     primo = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert primo["eseguito"] is True
-    assert len(client.chiamate) == 1
+    assert len(_chiamate(client)) == 1
 
     # Home Assistant la cancella: e' l'unico segnale che manda.
     specchio.on_state_changed({
@@ -553,7 +559,7 @@ async def test_un_entita_CANCELLATA_in_home_assistant_non_arriva_piu_a_HA():
 
     assert esito["eseguito"] is False
     assert "non esiste in questa casa" in esito["errore"]
-    assert len(client.chiamate) == 1, (
+    assert len(_chiamate(client)) == 1, (
         "la seconda chiamata non deve mai partire: HA risponderebbe 200 senza "
         "fare niente e l'esito parlerebbe di un'entita' che non c'e'")
 
@@ -574,13 +580,13 @@ async def test_senza_specchio_del_tutto_non_nega_un_entita_che_esiste():
 async def test_se_la_rilettura_non_riesce_non_inventa_cosa_e_cambiato():
     """La chiamata **e' partita**: negarlo sarebbe falso quanto affermare un
     cambiamento che non si e' potuto vedere. Si dice l'una e l'altra cosa."""
-    client = FintoClient()
+    client = _client()
     registro = await _registro_pronto()
     cache = FintaCache(SALOTTO_ACCESO, rompe_dalla_lettura=2)
     porta = ActionActuator(client, registro, cache)
     esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is True
-    assert client.chiamate == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
+    assert _chiamate(client) == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
     assert esito["cambiato"] == []
     assert "rileggere" in esito["avviso"]
     assert esito["dopo"] == {"light.salotto": None}
@@ -633,7 +639,7 @@ async def test_un_parametrico_che_davvero_non_cambia_niente_lo_dichiara_ancora()
     trasformare l'avviso in un ramo morto. Se ne' lo stato ne' gli attributi
     si muovono, e Home Assistant non riporta niente, l'avviso resta -- ed e'
     il caso della valvola termostatica gia' a 21."""
-    client = FintoClient()
+    client = _client()
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(CLIMA_A_21))
     esito = await porta.execute(METTI_A_21, actor="chat")
@@ -713,7 +719,7 @@ async def test_un_comando_riuscito_e_raccontato_come_riuscito_con_lo_specchio_in
     girava. Vince Home Assistant, perche' e' l'unica delle due misure presa
     nel momento giusto -- e infatti non si aspetta niente: un'entita' che la
     chiamata ha gia' riportato non ha piu' nessun annuncio da attendere."""
-    client = FintoClient(cambiati=HA_RIPORTA_IL_SALOTTO_SPENTO)
+    client = _client(cambiati=HA_RIPORTA_IL_SALOTTO_SPENTO)
     registro = await _registro_pronto()
     specchio_fermo = FintaCache(SALOTTO_ACCESO)  # nessun annuncio: non si muove mai
     porta = ActionActuator(client, registro, specchio_fermo)
@@ -744,7 +750,7 @@ async def test_lo_stesso_vale_per_un_attributo_e_prima_e_dopo_restano_ricchi():
     `dopo`, quindi il cambio di fonte non deve impoverirli -- e non li
     impoverisce, perche' cio' che arriva da Home Assistant passa per la stessa
     `_to_minimal` dello specchio."""
-    client = FintoClient(cambiati=HA_RIPORTA_LA_CAMERA_A_19_5)
+    client = _client(cambiati=HA_RIPORTA_LA_CAMERA_A_19_5)
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(CAMERA_A_17_5))
 
@@ -806,7 +812,7 @@ async def test_l_avviso_di_nessun_cambiamento_non_accusa_il_dispositivo():
     proprietario a cercare un guasto che non c'era. L'avviso dev'essere un
     fatto su cio' che Home Assistant ha detto, mai un'ipotesi sulla causa --
     e nemmeno un'affermazione sulla CASA, che HIRIS non e' in grado di fare."""
-    client = FintoClient(cambiati=[])
+    client = _client(cambiati=[])
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_SPENTO))
 
@@ -866,7 +872,7 @@ async def test_un_cambiamento_che_l_impronta_non_sa_mostrare_non_diventa_nulla_e
     telecamera risulterebbe cambiata a ogni comando (vedi
     `entity_cache.disclosable_attributes`). Il ramo serve ancora, e questo e'
     il caso che lo raggiunge."""
-    client = FintoClient(cambiati=[
+    client = _client(cambiati=[
         {"entity_id": "light.salotto", "state": "on",
          "attributes": {"entity_picture": "/api/image_proxy/light.salotto?token=b1"}}])
     registro = await _registro_pronto()
@@ -886,7 +892,7 @@ async def test_una_voce_riportata_illeggibile_non_rompe_e_non_inventa():
     """La forma della risposta di `call_service` non e' mai stata misurata su
     un impianto vero. Cio' che non si sa leggere si salta -- l'entita' ricade
     sullo specchio -- invece di sollevare o di essere indovinato."""
-    client = FintoClient(cambiati=["non un dizionario", {"senza": "entity_id"},
+    client = _client(cambiati=["non un dizionario", {"senza": "entity_id"},
                                    {"entity_id": "light.salotto", "state": "off"}])
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
@@ -904,7 +910,7 @@ async def test_cio_che_nessuna_delle_tre_fonti_vede_resta_dichiarato_sconosciuto
     specchio non e' rileggibile. `cambiato` non prende
     l'entita' -- contarla direbbe che TUTTO e' cambiato -- e l'avviso dichiara
     di non sapere invece di scegliere una delle due frasi false."""
-    client = FintoClient(cambiati=[])
+    client = _client(cambiati=[])
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro,
                         FintaCache(SALOTTO_ACCESO, rompe_dalla_lettura=2))
@@ -975,7 +981,7 @@ async def test_le_luci_si_accendono_e_hiris_lo_racconta_anche_se_la_chiamata_tac
 
     esito = await porta.execute(ACCENDI_LE_ABAT_JOUR, actor="chat")
 
-    assert client.specchio_al_ritorno == {eid: "off" for eid in ABAT_JOUR}, (
+    assert cache.at_return == {eid: "off" for eid in ABAT_JOUR}, (
         "la finta sta regalando la freschezza: al ritorno di `call_service` lo "
         "specchio mostra gia' lo stato nuovo, che e' l'unica cosa che la "
         "produzione non puo' fare -- ed e' il motivo per cui 1207 test "
@@ -1099,19 +1105,15 @@ async def test_l_ascoltatore_effimero_si_toglie_sempre():
     porta = ActionActuator(client, registro, cache)
 
     await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
-    assert client.ascoltatori == [], "ascoltatore rimasto dopo un comando riuscito"
+    assert client.listeners("state") == [], "ascoltatore rimasto dopo un comando riuscito"
 
-    class ClientCheRompe(FintoClient):
-        async def call_service(self, domain, service, data):
-            raise RuntimeError("HTTP 500")
-
-    client_rotto = ClientCheRompe()
+    client_rotto = _client(refuse=TURN_OFF_REFUSED)
     registro_rotto = await _registro_pronto()
     porta_rotta = ActionActuator(client_rotto, registro_rotto,
                               FintaCache(SALOTTO_ACCESO))
     esito = await porta_rotta.execute(SPEGNI_IL_SALOTTO, actor="chat")
     assert esito["eseguito"] is False
-    assert client_rotto.ascoltatori == [], (
+    assert client_rotto.listeners("state") == [], (
         "ascoltatore rimasto dopo una chiamata fallita: e' il ramo in cui una "
         "perdita non si vede mai")
 
@@ -1122,11 +1124,7 @@ async def test_un_client_che_non_annuncia_non_blocca_e_non_rifiuta():
     degli annunci, l'esito varrebbe meno -- ma il comando resta legittimo, e
     non si aspetta un annuncio che non puo' arrivare. Rifiutarlo sarebbe
     negare una cosa che si sa fare; aspettarlo sarebbe la `sleep` vietata."""
-    class ClientSordo(FintoClient):
-        add_state_listener = None
-        remove_state_listener = None
-
-    client = ClientSordo(cambiati=HA_RIPORTA_IL_SALOTTO_SPENTO)
+    client = _sordo(_client(cambiati=HA_RIPORTA_IL_SALOTTO_SPENTO))
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
@@ -1160,11 +1158,7 @@ async def test_un_client_sordo_non_dichiara_un_attesa_mai_fatta():
     vecchio corpo che ignora `listened`) -- questa prova e' diventata rossa
     su `"ho aspettato" not in avviso`, e ripristinata riscrivendo il file.
     """
-    class ClientSordo(FintoClient):
-        add_state_listener = None
-        remove_state_listener = None
-
-    client = ClientSordo(cambiati=[])
+    client = _sordo(_client(cambiati=[]))
     registro = await _registro_pronto()
     cache = FintaCache(SALOTTO_ACCESO)
     porta = ActionActuator(client, registro, cache)
@@ -1244,13 +1238,9 @@ async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_pa
 
     from hiris.app.action.journal import Journal
 
-    class ClientCheRompe(FintoClient):
-        async def call_service(self, domain, service, data):
-            raise RuntimeError("HTTP 500")
-
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     try:
-        client = ClientCheRompe()
+        client = _client(refuse=TURN_OFF_REFUSED)
         registro = await _registro_pronto()
         porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO),
                             journal=cronaca)
@@ -1261,7 +1251,7 @@ async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_pa
         assert "esecuzione_id" in esito
         riga = cronaca.read(esito["esecuzione_id"])
         assert riga["eseguito"] is False
-        assert "HTTP 500" in riga["errore"]
+        assert "Internal Server Error" in riga["errore"]
         assert riga["entita"] == ["light.salotto"]
     finally:
         cronaca.close()
@@ -1354,32 +1344,16 @@ NOTIFICA_HIRIS = {"servizio": "notify.mobile_app_x", "bersaglio": {},
                   "dati": {"message": "ciao", "title": "HIRIS"}}
 
 
-class ClientCheRegistraGliAscoltatori(FintoClient):
-    """Fotografa `self.ascoltatori` nell'ISTANTE in cui `call_service` gira --
-    prima che `_close_listen` (nel `finally` della porta) possa svuotarli.
-    E' l'unico modo per provare che un ascolto NON e' stato aperto: guardare
-    `client.ascoltatori` DOPO `esegui()` sarebbe vuoto comunque, aperto o no,
-    perche' la porta lo chiude sempre prima di tornare."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.ascoltatori_durante_la_chiamata: list | None = None
-
-    async def call_service(self, domain, service, data):
-        self.ascoltatori_durante_la_chiamata = list(self.ascoltatori)
-        return await super().call_service(domain, service, data)
-
-
 @pytest.mark.asyncio
 async def test_una_notifica_non_inietta_entity_id():
-    client = FintoClient()
+    client = _client()
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     esito = await porta.execute(NOTIFICA_HIRIS, actor="schedulatore")
 
     assert esito["eseguito"] is True
-    assert client.chiamate == [
+    assert _chiamate(client) == [
         ("notify", "mobile_app_x", {"message": "ciao", "title": "HIRIS"})], (
         "`entity_id` non deve comparire: iniettare `entity_id: []` direbbe "
         "una cosa diversa da «nessun bersaglio», e questo servizio non ne ha "
@@ -1388,16 +1362,21 @@ async def test_una_notifica_non_inietta_entity_id():
 
 @pytest.mark.asyncio
 async def test_una_notifica_non_apre_un_ascolto():
-    client = ClientCheRegistraGliAscoltatori()
+    # Chi ascoltava nell'ISTANTE in cui la chiamata gira -- prima che
+    # `_close_listen` (nel `finally` della porta) possa svuotare la lista. E'
+    # l'unico modo per provare che un ascolto NON e' stato aperto: guardare
+    # gli ascoltatori DOPO `esegui()` sarebbe vuoto comunque, aperto o no.
+    durante = []
+    client = _client(durante=durante)
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     await porta.execute(NOTIFICA_HIRIS, actor="schedulatore")
 
-    assert client.ascoltatori_durante_la_chiamata == [], (
+    assert durante == [[]], (
         "l'ascolto si apre PRIMA della chiamata (vedi il docstring del "
         "modulo): se qualcuno lo riaprisse anche per zero entita', lo si "
-        "vedrebbe qui -- guardare `client.ascoltatori` DOPO `esegui()` non "
+        "vedrebbe qui -- guardare gli ascoltatori DOPO `esegui()` non "
         "basterebbe, perche' la porta lo chiude sempre prima di tornare")
 
 
@@ -1406,7 +1385,7 @@ async def test_l_esito_di_una_notifica_e_onesto_non_una_misura_inventata():
     """Il punto piu' delicato del rilievo: per un servizio senza bersaglio
     NON c'e' nessuno stato da rileggere, e l'esito non deve fingere di
     averlo guardato."""
-    client = FintoClient()
+    client = _client()
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
@@ -1427,18 +1406,19 @@ async def test_l_esito_di_una_notifica_e_onesto_non_una_misura_inventata():
 
 @pytest.mark.asyncio
 async def test_una_notifica_fallita_e_un_errore_leggibile():
-    class ClientCheRompe(FintoClient):
-        async def call_service(self, domain, service, data):
-            raise RuntimeError("il servizio di notifica non risponde")
-
-    client = ClientCheRompe()
+    """La connessione cade durante la chiamata (il silenzio della casa finta):
+    il client vero lascia risalire l'errore del trasporto, e la porta lo
+    dice col suo motivo."""
+    client = _client(silence={"POST /api/services/notify/mobile_app_x"})
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
     esito = await porta.execute(NOTIFICA_HIRIS, actor="schedulatore")
 
     assert esito["eseguito"] is False
-    assert "non risponde" in esito["errore"]
+    assert "silenzio iniettato" in esito["errore"]
+    assert _chiamate(client) == [
+        ("notify", "mobile_app_x", {"message": "ciao", "title": "HIRIS"})]
 
 
 @pytest.mark.asyncio
@@ -1451,7 +1431,7 @@ async def test_una_notifica_riuscita_finisce_in_cronaca_con_entita_vuote(tmp_pat
 
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     try:
-        client = FintoClient()
+        client = _client()
         registro = await _registro_pronto()
         porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO),
                             journal=cronaca)

@@ -41,7 +41,7 @@ from hiris.app.api.soffitto import _SOLO_AMMINISTRATORI
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
-from tests.test_construction_workshop import FintoHA, _intento
+from tests.test_construction_workshop import WorkshopHouse, _intento
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -77,11 +77,11 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     from conftest import credenziale_ponte
     credenziale_ponte(app, TOKEN)
 
-    casa_ha = FintoHA()
+    casa_ha = WorkshopHouse()
     archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     coda = ReasoningQueue(os.path.join(str(tmp_path), "reasoning.db"))
-    app["workshop"] = Workshop(casa_ha, archivio, cronaca)
+    app["workshop"] = Workshop(casa_ha.client, archivio, cronaca)
     app["journal"] = cronaca
     app["reasoning_queue"] = coda
     app.on_startup.clear()

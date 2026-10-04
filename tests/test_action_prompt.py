@@ -365,8 +365,8 @@ async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
         SALOTTO_SPENTO,
         SPEGNI_IL_SALOTTO,
         FintaCache,
-        FintoClient,
         _casa,
+        _client,
     )
 
     monkeypatch.setattr(porta_modulo, "STATE_WAIT_S", 0.05)
@@ -380,7 +380,7 @@ async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
     chiavi |= set(await porta.execute(SPEGNI_IL_SALOTTO, actor="test"))
 
     # giro 2: la chiamata riesce e non cambia niente -> compare `avviso`
-    client2 = FintoClient()
+    client2 = _client()
     registro2 = ServiceRegistry()
     await registro2.refresh(client2)
     porta2 = ActionActuator(client2, registro2, FintaCache(SALOTTO_SPENTO))

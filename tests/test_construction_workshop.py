@@ -4,27 +4,26 @@ import inspect
 import logging
 import os
 import re
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import SILENT, CasaFinta, Refused, Silence
 
 from hiris.app.action.construction import workshop as officina_modulo
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.journal import Journal
 from hiris.app.chat_thread import ChatThread
+from hiris.app.proxy.ha_client import HAClient
+from tests._casa_sintetica import synthetic_inputs
 
 ADESSO = 1_756_000_000.0
 PAOLO = ChatThread("persona:p", "pannello")
 MARTA = ChatThread("persona:m", "pannello")
-
-# La stessa guardia di `HAClient._KEY_RE` (hiris/app/proxy/ha_client.py):
-# `key or ""` sostituisce SOLO i valori falsy (None, "") con la stringa
-# vuota -- un intero o un dizionario, essendo truthy, arrivano intatti a
-# `.match()`, che solleva `TypeError` su qualunque cosa non sia str/bytes.
-# Una finta che accettasse una chiave non testuale nasconderebbe esattamente
-# il difetto che il cliente vero produce (review round 3, IMPORTANT 6).
-_CHIAVE_RE_FINTA = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-
 
 def _slug(name: str) -> str:
     """`slugify` ridotta a cio’ che questi test usano: minuscole, e tutto cio’
@@ -48,8 +47,38 @@ def _libero(base: str, presi) -> str:
     return proposta
 
 
-class FintoHA:
-    """Un Home Assistant che dice sempre di si', salvo istruzioni contrarie."""
+class WorkshopHouse:
+    """Un Home Assistant che dice sempre di si', salvo istruzioni contrarie --
+    sotto il client VERO (`scripts/casa_finta.py`, Tappa 2, Task 12).
+
+    `client` e' cio' che si da' all'officina: un `HAClient` col trasporto
+    sostituito, quindi le rotte, la guardia sulla chiave (`_KEY_RE`), il
+    motivo letto dal corpo (`_http_reason`), il «leggi, unisci, riscrivi»
+    delle etichette e le buste del guasto sono quelle di produzione. Questa
+    classe tiene solo cio' che Home Assistant RICORDA (i corpi salvati, gli
+    helper, il registro delle entita'), e risponde ai messaggi grezzi come
+    lui -- forme lette sul tag `2026.9.4` il 04/10/2026, vedi il docstring di
+    `scripts/casa_finta.py`.
+
+    Fino al Task 12 qui c'era `FintoHA`, una finta dei dieci metodi del
+    client scritta a mano: rispondeva gia' nella busta del client
+    (`{"errore": ...}`, `{"assente": True}`) e copiava la guardia sulla
+    chiave. Le istruzioni contrarie (`_override`) adesso sono ESITI DI HOME
+    ASSISTANT, non del client: un corpo, `Refused(stato, motivo)`, `SILENT` o
+    `Silence(motivo)` -- e la busta la costruisce il client vero:
+
+    - `valida`: il `result` di `validate_config`;
+    - `salva`: l'esito di `POST /api/config/...` (riuscita: `{"result": "ok"}`);
+    - `leggi`: l'esito di `GET /api/config/...` (un corpo, o `Refused(404,
+      "Resource not found")` per la chiave che non c'e');
+    - `crea_helper`: il `result` di `<dominio>/create`;
+    - `cancella_helper`: l'esito di `<dominio>/delete`;
+    - `registri`: l'esito di `config/entity_registry/list`.
+
+    `_solleva` sono i nomi delle tre primitive REST la cui richiesta CADE (la
+    connessione, non Home Assistant): il client vero lascia risalire
+    l'eccezione, e la guardia dell'officina (`_rete`) la deve prendere.
+    """
 
     def __init__(self, **override):
         self.salvate = []
@@ -58,17 +87,14 @@ class FintoHA:
         self.helper_cancellati = []
         self.etichettate = []
         self._override = override
-        # Le chiavi che questa casa finta ha DAVVERO. Tutto il resto e'
-        # assente -- ed e' cosi' che `_free_key` puo' dire «e' libera»
-        # senza inventare.
-        self.esistenti = {"1771"}
-        # I corpi che questa casa finta custodisce: cio' che si salva si
-        # rilegge, come in Home Assistant.
+        # I corpi che questa casa custodisce: cio' che si salva si rilegge,
+        # come in Home Assistant. Le chiavi che non sono qui sono assenti --
+        # ed e' cosi' che `_free_key` puo' dire «e' libera» senza inventare.
         self.corpi: dict[str, dict] = {"1771": {"id": "1771", "alias": "com'era"}}
         # Gli id di ARCHIVIO degli helper, per dominio (dominio -> lista), e le
         # voci del registro delle ENTITA'. Sono due cose diverse apposta: e'
-        # la distinzione che il rilievo 9 dell’audit delle fondamenta ha
-        # scoperto mancante nel codice, e che una finta che non la modelli non
+        # la distinzione che il rilievo 9 dell'audit delle fondamenta ha
+        # scoperto mancante nel codice, e che una casa che non la modelli non
         # puo' provare.
         self.helper_ids: dict[str, list[str]] = dict(
             override.get("helper_ids") or {})
@@ -76,139 +102,151 @@ class FintoHA:
             dict(v) for v in (override.get("registro_entita") or [])]
         self.stati = [{"entity_id": "automation.tapparelle_all_alba",
                        "state": "on", "attributes": {"id": "1771"}}]
-        self.CONFIGURABLE_DOMAINS = ("automation", "script", "scene")
-        # Ondata finale, punto 1: prima di questa riga `FintoHA` non
-        # sollevava MAI, e nessun test poteva vedere cosa succede quando Home
-        # Assistant e' irraggiungibile durante un'`apply` -- il difetto n.1
-        # (`test_che_non_possono_fallire`) applicato al livello della finta
-        # intera, non della singola asserzione. `self._solleva` e' l'insieme
-        # dei nomi dei metodi REST (`read_configuration`,
-        # `save_configuration`, `delete_configuration`) che devono
-        # sollevare invece di rispondere, fedele a cio' che il client vero fa
-        # su un guasto di trasporto (`ClientConnectorError`, timeout).
         self._solleva: set[str] = set()
+        answers = {
+            "validate_config": self._validate,
+            "/api/config/": self._read,
+            "POST /api/config/": self._save,
+            "DELETE /api/config/": self._delete,
+            "/api/states": lambda _path: self.stati,
+            "config/entity_registry/list": self._entity_rows,
+            "config/label_registry/list": lambda extra: [{"label_id": "hiris",
+                                                          "name": "HIRIS"}],
+            "config/label_registry/create": lambda extra: {"label_id": "hiris",
+                                                           "name": extra["name"]},
+            "config/entity_registry/get": lambda extra: {
+                "entity_id": extra["entity_id"], "labels": []},
+            "config/entity_registry/update": self._label,
+        }
+        # Gli helper si chiedono al client, non si ricopiano.
+        for domain in HAClient.HELPER_DOMAINS:
+            answers[f"{domain}/create"] = self._helper_maker(domain)
+            answers[f"{domain}/delete"] = self._helper_remover(domain)
+        self.client = CasaFinta(synthetic_inputs(), answers=answers)
 
-    def _forse_solleva(self, nome: str) -> None:
-        if nome in self._solleva:
-            raise ConnectionError(f"finta interruzione di rete durante {nome}")
+    def _broken(self, primitive: str):
+        if primitive in self._solleva:
+            return Silence(f"finta interruzione di rete durante {primitive}")
+        return None
 
-    async def validate_config(self, **kw):
+    @staticmethod
+    def _parts(path: str) -> tuple[str, str]:
+        """`/api/config/<dominio>/config/<chiave>` -> `(dominio, chiave)`."""
+        pieces = path.split("/")
+        return pieces[3], pieces[-1]
+
+    def _validate(self, extra):
         return self._override.get("valida", {
-            k: {"valid": True, "error": None} for k in kw})
+            k: {"valid": True, "error": None} for k in extra})
 
-    async def save_configuration(self, domain, key, body):
-        self._forse_solleva("save_configuration")
-        if "salva" in self._override:
-            return self._override["salva"]
-        self.salvate.append((domain, key, body))
-        self.esistenti.add(key)
-        self.corpi[key] = dict(body)
-        # Dopo la scrittura l'entita' esiste, e porta l'id appena scritto:
-        # senza questo il finto Home Assistant direbbe sempre «non e'
-        # comparsa», e il test dell'etichetta misurerebbe il fake, non il codice.
-        # Guardia aggiunta rispetto al brief: quando un test svuota `stati`
-        # apposta per simulare che l'entita' non compaia mai (vedi
-        # test_se_l_entita_non_compare_lo_dice_invece_di_dichiarare_riuscito),
-        # non c'e' nessuna voce da aggiornare -- indicizzare stati[0] a vuoto
-        # sollevava IndexError, un guasto della finta e non del codice.
-        if self.stati:
-            self.stati[0]["attributes"]["id"] = key
-        return {"salvato": True}
-
-    async def delete_configuration(self, domain, key):
-        self._forse_solleva("delete_configuration")
-        self.cancellate.append((domain, key))
-        self.esistenti.discard(key)
-        self.corpi.pop(key, None)
-        return {"cancellato": True}
-
-    async def read_configuration(self, domain, key):
-        self._forse_solleva("read_configuration")
+    def _read(self, path):
+        broken = self._broken("read_configuration")
+        if broken is not None:
+            return broken
         if "leggi" in self._override:
             return self._override["leggi"]
-        if not _CHIAVE_RE_FINTA.match(key or ""):
-            # Fedele a `HAClient._KEY_RE.match(key or "")`: una chiave
-            # falsy (None, "") diventa "" e fallisce il match normalmente; una
-            # chiave truthy non testuale (un intero, un dizionario) arriva
-            # intatta a `.match()` e solleva `TypeError` -- lo stesso crash
-            # del client vero, non nascosto da una finta piu' permissiva.
-            return {"errore": "la chiave non ha una forma ammessa"}
-        if key in self.esistenti:
-            return {"corpo": dict(self.corpi.get(key) or {"id": key, "alias": "com'era"})}
-        return {"assente": True}
+        _domain, key = self._parts(path)
+        if key in self.corpi:
+            return dict(self.corpi[key])
+        return Refused(404, "Resource not found")
 
-    async def create_helper(self, domain, data):
-        """Nascita di un helper come la fa Home Assistant: DUE identificatori.
+    def _save(self, path, body):
+        broken = self._broken("save_configuration")
+        if broken is not None:
+            return broken
+        if "salva" in self._override:
+            return self._override["salva"]
+        domain, key = self._parts(path)
+        self.salvate.append((domain, key, body))
+        self.corpi[key] = dict(body)
+        # Dopo la scrittura l'entita' esiste, e porta l'id appena scritto:
+        # senza questo Home Assistant direbbe sempre «non e' comparsa», e il
+        # test dell'etichetta misurerebbe la casa, non il codice. Quando un
+        # test svuota `stati` apposta (l'entita' che non compare mai) non c'e'
+        # nessuna voce da aggiornare.
+        if self.stati:
+            self.stati[0]["attributes"]["id"] = key
+        return {"result": "ok"}
 
-        Fino all’ 09/09/2026 questa finta rendeva `{"helper": {"id":
-        "modalita_notte"}}` e basta, e il codice componeva l’entita' come
-        `input_boolean.modalita_notte`: la finta produceva esattamente l’id
-        che il codice supponeva, quindi la prova non poteva vedere il
-        difetto. Adesso i due identificatori si generano come al tag
-        `2026.9.1`, con i due insiemi di collisione VERI e distinti:
+    def _delete(self, path, body):
+        broken = self._broken("delete_configuration")
+        if broken is not None:
+            return broken
+        domain, key = self._parts(path)
+        if key not in self.corpi:
+            return Refused(400, "Resource not found")
+        self.cancellate.append((domain, key))
+        self.corpi.pop(key, None)
+        return {"result": "ok"}
 
-        - l’id di ARCHIVIO (`helpers/collection.py::IDManager.generate_id`):
-          `slugify(nome)` + `_2` se e' gia' preso fra gli id di quel dominio
-          -- YAML e storage insieme, che si spartiscono un `IDManager`;
-        - l’`entity_id` (`helpers/entity_registry.py`): `dominio.slugify(nome)`
-          + `_2` se e' gia' preso fra gli `entity_id` del registro.
+    def _helper_maker(self, domain):
+        def create(data):
+            """Nascita di un helper come la fa Home Assistant: DUE identificatori.
 
-        Coincidono quasi sempre, e mai per costruzione.
-        """
-        if "crea_helper" in self._override:
-            return self._override["crea_helper"]
-        self.helper_creati.append((domain, data))
-        base = _slug(data.get("name") or "")
-        archivio = self.helper_ids.setdefault(domain, [])
-        helper_id = _libero(base, archivio)
-        archivio.append(helper_id)
-        presi = [voce["entity_id"] for voce in self.registro_entita]
-        entity_id = f"{domain}." + _libero(base, [e.split(".", 1)[1] for e in presi
-                                                  if e.startswith(f"{domain}.")])
-        self.registro_entita.append({"entity_id": entity_id, "platform": domain,
-                                     "unique_id": helper_id})
-        return {"helper": {"id": helper_id}}
+            Fino all'09/09/2026 questa casa rendeva l'id e basta, e il codice
+            componeva l'entita' come `input_boolean.modalita_notte`: la casa
+            produceva esattamente l'id che il codice supponeva, quindi la prova
+            non poteva vedere il difetto. Adesso i due identificatori si
+            generano come al tag `2026.9.1`, con i due insiemi di collisione
+            VERI e distinti:
 
-    async def delete_helper(self, domain, helper_id):
-        if "cancella_helper" in self._override:
-            return self._override["cancella_helper"]
-        self.helper_cancellati.append((domain, helper_id))
-        if helper_id in self.helper_ids.get(domain, []):
-            self.helper_ids[domain].remove(helper_id)
-        self.registro_entita = [v for v in self.registro_entita
-                                if not (v["platform"] == domain
-                                        and v["unique_id"] == helper_id)]
-        return {"cancellato": True}
+            - l'id di ARCHIVIO (`helpers/collection.py::IDManager.generate_id`):
+              `slugify(nome)` + `_2` se e' gia' preso fra gli id di quel dominio;
+            - l'`entity_id` (`helpers/entity_registry.py`): `dominio.slugify(nome)`
+              + `_2` se e' gia' preso fra gli `entity_id` del registro.
 
-    async def read_registry(self, registry):
-        """Un registro solo (`HAClient.read_registry`): `{nome: righe}`, o la
-        busta del guasto. Le voci di `entita` portano `entity_id`, `platform`
+            Coincidono quasi sempre, e mai per costruzione.
+            """
+            if "crea_helper" in self._override:
+                return self._override["crea_helper"]
+            self.helper_creati.append((domain, data))
+            base = _slug(data.get("name") or "")
+            archivio = self.helper_ids.setdefault(domain, [])
+            helper_id = _libero(base, archivio)
+            archivio.append(helper_id)
+            presi = [voce["entity_id"] for voce in self.registro_entita]
+            entity_id = f"{domain}." + _libero(base, [e.split(".", 1)[1] for e in presi
+                                                      if e.startswith(f"{domain}.")])
+            self.registro_entita.append({"entity_id": entity_id, "platform": domain,
+                                         "unique_id": helper_id})
+            return {**data, "id": helper_id}
+        return create
+
+    def _helper_remover(self, domain):
+        def delete(extra):
+            if "cancella_helper" in self._override:
+                return self._override["cancella_helper"]
+            helper_id = extra[f"{domain}_id"]
+            self.helper_cancellati.append((domain, helper_id))
+            if helper_id in self.helper_ids.get(domain, []):
+                self.helper_ids[domain].remove(helper_id)
+            self.registro_entita = [v for v in self.registro_entita
+                                    if not (v["platform"] == domain
+                                            and v["unique_id"] == helper_id)]
+            return None
+        return delete
+
+    def _entity_rows(self, extra):
+        """Le voci del registro delle entita' portano `entity_id`, `platform`
         e `unique_id`, i tre campi che `config/entity_registry/list` manda
         davvero -- misurati dal vivo il 09/09/2026 sulla casa del
         proprietario, 1.225 voci di cui 11 di helper."""
-        if registry == "etichette":
-            return {"etichette": [{"label_id": "hiris", "name": "HIRIS"}]}
         if "registri" in self._override:
             return self._override["registri"]
-        return {"entita": [dict(v) for v in self.registro_entita]}
+        return [dict(v) for v in self.registro_entita]
 
-    async def create_label(self, name):
-        return {"etichetta": {"label_id": "hiris", "name": name}}
-
-    async def add_label_to(self, entity_id, label_id):
-        self.etichettate.append((entity_id, label_id))
-        return {"applicata": True}
-
-    async def get_states(self, entity_ids):
-        return self.stati
+    def _label(self, extra):
+        self.etichettate.append((extra["entity_id"], extra["labels"][-1]))
+        return {"entity_entry": {"entity_id": extra["entity_id"],
+                                 "labels": extra["labels"]}}
 
 
 @pytest.fixture()
 def banco(tmp_path):
     archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
-    ha = FintoHA()
-    officina = Workshop(ha, archivio, cronaca)
+    ha = WorkshopHouse()
+    officina = Workshop(ha.client, archivio, cronaca)
     yield officina, ha, archivio, cronaca
     archivio.close()
     cronaca.close()
@@ -357,7 +395,7 @@ async def test_un_identificatore_non_verificabile_ferma_la_proposta(banco):
     """Se non so se un id e' libero non scrivo: un id occupato non darebbe un
     errore, farebbe SOSTITUIRE l'automazione che c'era."""
     officina, ha, archivio, _ = banco
-    ha._override["leggi"] = {"errore": "Home Assistant non ha risposto"}
+    ha._override["leggi"] = Refused(500)
     esito = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "alla cieca" in esito["errore"]
@@ -383,7 +421,7 @@ async def test_se_l_automazione_cade_gli_helper_appena_nati_si_disfano(banco):
     officina, ha, archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
-    ha._override["salva"] = {"errore": "Message malformed: bad actions"}
+    ha._override["salva"] = Refused(400, "Message malformed: bad actions")
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
     assert "errore" in esito
@@ -429,7 +467,7 @@ async def test_modificare_un_oggetto_esistente_lo_dichiara_nell_preview(banco):
 async def test_una_struttura_gestita_a_mano_non_diventa_un_guasto(banco):
     """Se l'API dice che non si scrive, si dice PERCHE' (spec §6)."""
     officina, ha, _, _ = banco
-    ha._override["salva"] = {"errore": "404: Not Found"}
+    ha._override["salva"] = Refused(404)
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
@@ -483,7 +521,7 @@ async def test_modificare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banc
     (l'utente l'ha cancellata nel frattempo) deve tornare un rifiuto motivato,
     non sollevare `KeyError: 'corpo'` fuori dal modulo."""
     officina, ha, archivio, _ = banco
-    ha._override["leggi"] = {"assente": True}
+    ha._override["leggi"] = Refused(404, "Resource not found")
     esito = await officina.propose(_intento(gesto="modifica", chiave="9999"),
                                    actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
@@ -496,7 +534,7 @@ async def test_modificare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banc
 async def test_cancellare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banco):
     """Stesso guasto, stessa guardia, sull'altro gesto che legge il «prima»."""
     officina, ha, archivio, _ = banco
-    ha._override["leggi"] = {"assente": True}
+    ha._override["leggi"] = Refused(404, "Resource not found")
     esito = await officina.propose(_intento(gesto="cancella", chiave="9999"),
                                    actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
@@ -541,7 +579,7 @@ async def test_la_disfatta_dell_helper_e_dichiarata_nel_motivo(banco):
     officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
-    ha._override["salva"] = {"errore": "Message malformed: bad actions"}
+    ha._override["salva"] = Refused(400, "Message malformed: bad actions")
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
     assert "errore" in esito
@@ -556,8 +594,8 @@ async def test_se_la_disfatta_fallisce_lo_dice_invece_di_tacere(banco):
     officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
-    ha._override["salva"] = {"errore": "Message malformed: bad actions"}
-    ha._override["cancella_helper"] = {"errore": "Home Assistant non ha risposto"}
+    ha._override["salva"] = Refused(400, "Message malformed: bad actions")
+    ha._override["cancella_helper"] = SILENT
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
     assert "errore" in esito
@@ -573,8 +611,8 @@ async def test_un_helper_senza_id_restituito_viene_dichiarato(banco):
     officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
-    ha._override["crea_helper"] = {"helper": {}}  # nessun id
-    ha._override["salva"] = {"errore": "Message malformed: bad actions"}
+    ha._override["crea_helper"] = {}  # nessun id
+    ha._override["salva"] = Refused(400, "Message malformed: bad actions")
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
     assert "errore" in esito
@@ -702,15 +740,18 @@ async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     invece di `"1771"` e' l'errore di forma piu' probabile che un modello
     faccia su questo campo -- `HAClient._KEY_RE.match(key or "")`
     riceve un intero intatto (e' truthy: `or ""` non lo tocca) e solleva
-    `TypeError`. La finta ora e' fedele su questo punto (vedi
-    `FintoHA.read_configuration`), quindi questo test misura il codice
-    vero, non un fake troppo permissivo."""
+    `TypeError`. A rifiutarla e' l'officina, PRIMA di chiedere a Home
+    Assistant: nessuna domanda parte (provato il 04/10/2026, Tappa 2, Task
+    12: con la guardia del client vero resa permissiva la prova resta verde,
+    perche' il client non viene mai raggiunto). Fino al Task 12 la finta
+    teneva una copia di quella guardia; adesso, se l'officina la lasciasse
+    passare, la chiave arriverebbe al client vero."""
     officina, ha, _archivio, _ = banco
     esito = await officina.propose(_intento(gesto="modifica", chiave=1771),
                                    actor="chat", exchange="t1", now=ADESSO)
     assert "errore" in esito
     assert "chiave" in esito["errore"]
-    assert ha.salvate == []
+    assert ha.client.calls == [], "una chiave non testuale e' arrivata a Home Assistant"
 
 
 @pytest.mark.asyncio
@@ -775,8 +816,8 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
     """Punto 1: con Home Assistant irraggiungibile durante un'`apply`, le
     tre conseguenze che il ledger nomina -- (a) un esito, non un'eccezione,
     (b) gli helper appena nati si disfano, (c) la proposta non resta bloccata
-    `in_corso`. La finta solleva DAVVERO (vedi `_forse_solleva`), non un
-    override che restituisce un dizionario: senza questa capacita' nessun
+    `in_corso`. La connessione cade DAVVERO (vedi `WorkshopHouse._solleva`),
+    non un override che restituisce un dizionario: senza questa capacita' nessun
     test poteva vedere il difetto, ed e' esattamente la ragione per cui la
     review dei nove rischi del Task 7 non l'ha visto."""
     officina, ha, archivio, _ = banco
@@ -899,7 +940,7 @@ def _bench_for(ha, tmp_path):
     esiste gia'."""
     archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
-    return Workshop(ha, archivio, cronaca), archivio, cronaca
+    return Workshop(ha.client, archivio, cronaca), archivio, cronaca
 
 
 @pytest.mark.asyncio
@@ -922,7 +963,7 @@ async def test_l_etichetta_va_sull_entita_LETTA_non_su_quella_supposta(tmp_path)
     l'archivio gli da' `vacanza_2` e il registro gli da'
     `input_boolean.vacanza`. Componendo, l'etichetta finiva su
     `input_boolean.vacanza_2`, che non esiste."""
-    ha = FintoHA(helper_ids={"input_boolean": ["vacanza"]},
+    ha = WorkshopHouse(helper_ids={"input_boolean": ["vacanza"]},
                  registro_entita=[{"entity_id": "input_boolean.ferie",
                                    "platform": "input_boolean",
                                    "unique_id": "vacanza"}])
@@ -950,7 +991,7 @@ async def test_l_etichetta_di_ogni_helper_nato_va_sulla_SUA_entita(tmp_path):
     assegnato -- ne' uno di piu', ne' uno di meno, ne' uno composto. Regge
     anche il giorno in cui Home Assistant cambiasse il modo di generare uno
     dei due identificatori."""
-    ha = FintoHA(helper_ids={"input_boolean": ["vacanza"], "counter": ["giri"]},
+    ha = WorkshopHouse(helper_ids={"input_boolean": ["vacanza"], "counter": ["giri"]},
                  registro_entita=[{"entity_id": "input_boolean.ferie",
                                    "platform": "input_boolean",
                                    "unique_id": "vacanza"},
@@ -987,8 +1028,7 @@ async def test_se_il_registro_non_risponde_l_etichetta_MANCATA_si_dichiara(tmp_p
     (fondamenta 2 e 4: la cronaca non elenca gli helper nati, `_reread`
     filtra per `{dominio}.`), tacerlo lascerebbe l'archivio dire «e' tutto a
     posto» su un oggetto che da HIRIS non risulta piu' suo."""
-    ha = FintoHA(registri={"errore": "Home Assistant non ha risposto",
-                           "causa": "silenzio", "codice": None})
+    ha = WorkshopHouse(registri=SILENT)
     officina, archivio, _cronaca = _bench_for(ha, tmp_path)
     intento = _intento(helper=[{"dominio": "input_boolean",
                                 "dati": {"name": "Modalita notte"}}])
@@ -1180,10 +1220,8 @@ async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(ban
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
 
-    async def _guasto_con_404(dominio, chiave, corpo):
-        raise ConnectionError(
-            "Cannot connect to host 192.168.1.95:8404 ssl:default [Connect call failed]")
-    ha.save_configuration = _guasto_con_404
+    ha._override["salva"] = Silence(
+        "Cannot connect to host 192.168.1.95:8404 ssl:default [Connect call failed]")
 
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
@@ -1230,9 +1268,7 @@ async def test_il_messaggio_dell_eccezione_e_troncato(banco):
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     lunghissimo = "x" * 1000
 
-    async def _guasto_lungo(dominio, chiave, corpo):
-        raise ConnectionError(lunghissimo)
-    ha.save_configuration = _guasto_lungo
+    ha._override["salva"] = Silence(lunghissimo)
 
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
@@ -1427,7 +1463,7 @@ async def test_la_finta_restituisce_cio_che_le_e_stato_scritto():
     02/10/2026: due automazioni scritte da HIRIS su due si rileggono
     identiche). Prima rispondeva sempre «com'era»: una finta cosi' non poteva
     mostrare una modifica fatta a mano fra la proposta e la conferma."""
-    ha = FintoHA()
+    ha = WorkshopHouse().client
     assert (await ha.read_configuration("automation", "1771"))["corpo"]["alias"] == "com'era"
     await ha.save_configuration("automation", "1771", {"id": "1771", "alias": "nuovo"})
     assert (await ha.read_configuration("automation", "1771"))["corpo"]["alias"] == "nuovo"
@@ -1480,7 +1516,6 @@ async def test_una_modifica_su_un_oggetto_cancellato_a_mano_NON_lo_ricrea(banco)
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
                                actor="chat", exchange="t1", now=ADESSO)
-    ha.esistenti.discard("1771")
     ha.corpi.pop("1771")
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
@@ -1493,7 +1528,6 @@ async def test_una_creazione_su_una_chiave_occupata_nel_frattempo_NON_sovrascriv
     officina, ha, archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     chiave = archivio.read(p["proposta_id"])["chiave"]
-    ha.esistenti.add(chiave)
     ha.corpi[chiave] = {"id": chiave, "alias": "nata a mano con lo stesso id"}
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
@@ -1595,7 +1629,6 @@ async def test_ripristinare_una_cancellazione_su_un_oggetto_rinato_NON_lo_sovras
     p = await officina.propose(_intento(gesto="cancella", chiave="1771"),
                                actor="chat", exchange="t1", now=ADESSO)
     await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
-    ha.esistenti.add("1771")
     ha.corpi["1771"] = {"id": "1771", "alias": "rifatta a mano"}
 
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,

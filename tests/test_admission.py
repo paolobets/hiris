@@ -31,7 +31,6 @@ from hiris.app.api.servizi import ServiziStore
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.memory.store import MemoryStore
-from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import create_app
 from tests._casa_sintetica import synthetic_inputs
 
@@ -1161,25 +1160,6 @@ async def test_senza_GRUPPI_in_HA_non_si_entra(aiohttp_client, tmp_path, caplog)
     app["servizi"].close()
 
 
-class _RuoliLenti:
-    """`users()` che risponde solo quando la prova apre `entrata`.
-
-    Resta una finta, e non la casa finta: la lettura condivisa conta solo se
-    la risposta di Home Assistant si fa ATTENDERE, e il trasporto della casa
-    finta risponde senza mai cedere il passo al ciclo -- con lei la mutazione
-    qui sotto resta verde (eseguita il 03/10/2026). Le righe sono quelle del
-    client vero (`HAClient._user_row`)."""
-
-    def __init__(self):
-        self.entrata = asyncio.Event()
-        self.letture = 0
-
-    async def users(self):
-        self.letture += 1
-        await self.entrata.wait()
-        return {"utenti": [HAClient._user_row(riga) for riga in _UTENTI]}
-
-
 @pytest.mark.asyncio
 async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme():
     """I2: una pagina chiede i suoi file tutti insieme; a copia scaduta, una
@@ -1189,15 +1169,24 @@ async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme():
     `users()`) -- rossa (otto chiamate)."""
     from hiris.app.api.soffitto import _ha_users, prepara_ruoli
 
-    ha = _RuoliLenti()
+    # Home Assistant che trattiene la risposta a `config/auth/list` finche'
+    # la prova non apre `entrata` (`delay=` della casa finta): la lettura
+    # condivisa conta solo se la risposta si fa ATTENDERE. Le righe le legge
+    # il client vero (`HAClient.users`). Fino al Task 12 della Tappa 2 era
+    # una finta di `users()`, perche' la casa finta rispondeva senza mai
+    # cedere il passo.
+    entrata = asyncio.Event()
+    ha = CasaFinta(synthetic_inputs(),
+                   answers={"config/auth/list": lambda extra: [dict(r) for r in _UTENTI]},
+                   delay={"config/auth/list": entrata})
     app = {"ha_client": ha}
     prepara_ruoli(app)
     letture = [asyncio.ensure_future(_ha_users(app)) for _ in range(8)]
     await asyncio.sleep(0)
-    ha.entrata.set()
+    entrata.set()
     esiti = await asyncio.gather(*letture)
 
-    assert ha.letture == 1
+    assert ha.connections == [("ws", ("config/auth/list",))]
     assert all(e is not None and "u-marta" in e for e in esiti)
 
 
@@ -1423,12 +1412,12 @@ def _officina(tmp_path):
     from hiris.app.action.construction.revisions import ConstructionStore
     from hiris.app.action.construction.workshop import Workshop
     from hiris.app.action.journal import Journal
-    from tests.test_construction_workshop import FintoHA
+    from tests.test_construction_workshop import WorkshopHouse
 
     archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
     cronaca = Journal(str(tmp_path / "azioni.db"))
-    ha = FintoHA(leggi={"corpo": dict(_CORPO_ATTUALE)})
-    return Workshop(ha, archivio, cronaca), archivio, cronaca
+    ha = WorkshopHouse(leggi=dict(_CORPO_ATTUALE))
+    return Workshop(ha.client, archivio, cronaca), archivio, cronaca
 
 
 @pytest.mark.asyncio
