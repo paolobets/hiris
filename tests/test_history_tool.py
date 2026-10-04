@@ -626,7 +626,7 @@ async def test_per_mano_di_hiris_arriva_dalla_cronaca_del_dispatcher(tmp_path):
     ha = _house(serie={"light.cucina_1": [{"quando": quando.isoformat(), "valore": "on"}]})
     cronaca = _Cronaca([{"id": 9, "entita": ["light.cucina_1"],
                          "quando_ts": quando.timestamp() + 2, "origine": "chat",
-                         "servizio": "light.turn_on"}])
+                         "servizio": "light.turn_on", "eseguito": True}])
     esito = await _history_dispatcher(tmp_path, ha, journal=cronaca).dispatch(
         "history", {"riferimento": "light.cucina_1"})
     assert esito["voci"][0]["per_mano_di"] == "HIRIS"
