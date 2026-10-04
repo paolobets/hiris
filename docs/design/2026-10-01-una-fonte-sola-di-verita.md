@@ -157,8 +157,12 @@ lavori: 432 connessioni al giorno invece di 288. Le tracce lette un'automazione 
 minuti. All'avvio: circa 17 connessioni più 4 letture intere degli stati nei primi secondi.
 
 **Ricalcoli in memoria:** la gerarchia della casa si rifà da capo 1 volta per turno di chat e da 1 a
-4 per ogni `search`; lo specchio costruisce 6 mappe per usarne 1 o 2; i ricordi si rileggono con
-1 + 2N letture a ogni turno; sul ponte permessi e dispatcher si rifanno a ogni chiamata di
+4 per ogni `search`; lo specchio costruisce 6 mappe per usarne 1 o 2 (*corretto il 04/10/2026,
+piano della Tappa 3:* lo specchio vero, `EntityCache`, tiene una mappa sola; le sei sono di
+`topology.live_mirror`, ricostruite a ogni chiamata -- `search` le usava tutte, il nucleo 2,
+`remember` 1. Misurato sulla casa sintetica, un turno col nucleo, tre `search` e una `history`
+faceva 10 gerarchie e 5 specchi: dalla Tappa 3 ne fa 1 e 1, `docs/misure/2026-10-tappa-3.md`);
+i ricordi si rileggono con 1 + 2N letture a ogni turno; sul ponte permessi e dispatcher si rifanno a ogni chiamata di
 strumento, fino a 50 volte per turno; la tabella dello scope è riletta ~102 volte per lotto.
 
 **Dove si perde tempo** (dichiarato dal revisore dei runner, in ordine): il ponte aggiunge ~3,3 s
@@ -339,12 +343,12 @@ specchio, e che tutti leggono da un solo punto di giunzione.
 | **DOVE** — area, piano, dispositivo, integrazione | 3 risposte, più una porta che non risponde | `topology.actual_area` | `{area, piano, dispositivo, integrazione}` con l'area ereditata |
 | **TIPO** — dominio, classe, unità, statistiche | 3 formule per le statistiche, 9 copie del dominio | lo specchio, con la lettura per id | classe e unità vive; «ha statistiche» da una regola |
 | **STATO** — adesso, in parole, da quando | 12 renditori su 4 proiezioni dello specchio | `EntityCache.all_states` + `rendered_state` | stato grezzo e in parole, da quando, con l'unità; lettura per id |
-| **VISIBILITÀ** — è fuori? | 8 copie della regola | `digest_visible_entity_ids` | una classe per entità (**visibile · di servizio · nascosta · disabilitata**) **con la causa** e chi l'ha disabilitata |
+| **VISIBILITÀ** — è fuori? | 8 copie della regola (*corretto il 04/10/2026:* sei, più tre porte che ne usano di proposito una più larga — D7 della Tappa 3) | `digest_visible_entity_ids` | una classe per entità (**visibile · di servizio · nascosta · disabilitata**) **con la causa** e chi l'ha disabilitata |
 | **SALUTE** — fonte viva? integrazione sana? | 3 risposte per l'integrazione, 2 per gli errori | `HAClient.problems`, `system_log` | lo stato della fonte (R11); le integrazioni con `disabled_by`; una lettura sola per giro |
 | **STORIA** — stati, valori, esecuzioni, errori | 3 storie, 2 case dei conti | `tools._read_history`, `HAClient.traces` | uno storico richiamabile da chiunque; **i conti in una casa sola** |
 | **COMPORTAMENTO** — automazioni, script, scene | 3 risposte per «attiva / ultima esecuzione» | `HAClient.behavior_configs` | corpo, stato, ultima esecuzione nella stessa risposta |
 | **SERVIZI** — cosa si può comandare | 2 registri, 2 controlli prima del volo | `queries.commands_for` | i comandi, e **«verifica senza eseguire»** come metodo della porta |
-| **RIFERIMENTO** — da un testo a un oggetto | 3 motori | `Lookup.verify`, `name_matches` | un motore solo, che normalizza maiuscole, accenti e articoli |
+| **RIFERIMENTO** — da un testo a un oggetto | 3 motori | `Lookup.verify`, `name_matches` | un motore solo, che normalizza maiuscole, accenti e spazi (*corretto il 04/10/2026, D5 della Tappa 3:* gli articoli no — nessuna copia li toglieva, e toglierli sarebbe una regola nuova) |
 | **TEMPO** — fuso, oggi, confini del giorno | 3 politiche (casa, browser, UTC), 9 punti | `historian.day_boundaries` | un «giorno della casa»; **un solo formato dell'istante** in uscita |
 
 In più, tenuti unici già oggi o quasi: **CALENDARIO**, **PLANCE**, **LEGAMI** (a cui mancano i nomi).
@@ -487,6 +491,15 @@ I metodi del §4.1. Osservatore e ricette smettono di elencare, nominare e collo
 codice loro. **Lo stato della fonte nasce qui**, come campo dell'oggetto — è lo «strato 1a» degli
 attori, che a quel punto è quasi tutto fatto. *Decisioni del proprietario:* §7, da 2 a 6. *Misura:*
 sonda a zero su tutte le domande; batteria degli attori.
+
+*Corretto il 04/10/2026, D10 del piano della Tappa 3* (`piani/2026-10-tappa-3-la-casa-un-oggetto.md`,
+cartella del progetto): tredici voci del capitolo B non riguardano l'oggetto casa ma strumenti,
+chat, ponte o archivi, e si spostano, come la Tappa 2 aveva fatto col capitolo A: B-28, B-30,
+B-32, B-33 alla **Tappa 5** (regole degli strumenti; B-28 è CC, non PS); B-52, B-53 alla
+**Tappa 6**; B-21, B-42 alla **Tappa 7**; B-22, B-47, B-54 alla **Tappa 8**; B-27, B-29 allo
+**strato 2 degli attori** (B-29 non è un doppione di codice: la definizione vive nelle ricette
+archiviate). Restano aperte nel registro con la tappa nuova accanto. Dalla Tappa 2 la tappa ha
+ricevuto A-13, A-16, A-18, A-25, A-38 e S-07; S-07 resta fuori per scelta (nessun lettore).
 
 ### Tappa 4 — Una resa, un vocabolario
 
@@ -658,3 +671,17 @@ In `docs/superpowers/audit-2026-10-01/` — cartella fuori da git, archivio dell
   passa da circa 12 a circa 18 minuti. Parte del lavoro e' stata fatta da thread cloud paralleli
   (Task 4, 7, 8, 9) e unita sul ramo dello sprint. **Prossimo passo:** la Tappa 2, col piano
   approvato in `/mnt/project-files/piani/2026-10-tappa-2-un-solo-lettore.md`.
+- **04/10/2026** — Rilasciata la **3.74.0**: la **Tappa 2**. Piano della **Tappa 3** approvato
+  (`/mnt/project-files/piani/2026-10-tappa-3-la-casa-un-oggetto.md`; D1-D10 come consigliato, e il
+  sigillo dei segreti sui titoli d'errore dell'osservatore anticipato come Task 0). Sono già nella
+  3.74.0 il Task 0, il registro e la sonda (Task 1) e il contatore della casa per turno (Task 2,
+  allora rosso e marcato `xfail`). Sono **fatti e uniti sul ramo dello sprint, non rilasciati**: lo
+  specchio in una forma e l'istantanea `home_space/house.py` (Task 3 e 4: da 10 gerarchie e 5 specchi per turno a 1 e 1),
+  VISIBILITÀ con la causa e IDENTITÀ (Task 5), DOVE (Task 6), TIPO (Task 7), RIFERIMENTO (Task 9),
+  TEMPO (Task 10), S-03 della STORIA (Task 11), gli attori che compongono la casa (Task 12), le
+  letture fuori dall'oggetto per turno (Task 13), e la parte a freddo della chiusura (Task 14:
+  revisione del ramo, registro, questa spec, `docs/misure/2026-10-tappa-3.md`). **Restano aperti:**
+  il **Task 8** (STATO, SALUTE e la fonte: `House.source`, R11, D6, D8), la parte **D4 del Task 11**
+  (i conti in una casa sola, che aspetta la misura sugli ingressi congelati), le misure **dal vivo**
+  della chiusura (sonda sulla cattura nuova, batterie della chat e degli attori, censimento delle
+  fonti, fotografia sugli ingressi veri) e i **due rilasci** della tappa, col sì del proprietario.
