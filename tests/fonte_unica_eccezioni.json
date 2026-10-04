@@ -39,9 +39,7 @@
     "behavior_configs": 1,
     "read_dashboards": 1
    },
-   "voci": [
-    "A-12"
-   ]
+   "non_e_un_doppione": "l'unico lettore del corpo delle automazioni (`behavior_configs`) e delle plance (`read_dashboards`): nessun'altra parte del prodotto chiede queste due cose a Home Assistant (verificato il 04/10/2026). Citava A-12, chiusa con il Task 10 della Tappa 2: A-12 parlava dello stato copiato nella voce, non di queste letture."
   },
   "hiris/app/home_space/tools.py": {
    "conti": {

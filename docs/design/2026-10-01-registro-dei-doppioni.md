@@ -19,9 +19,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 |---|---|---|---|---|---|---|
 | A-03 | `GET /api/states` intero riletto da tre percorsi oltre allo specchio | NV | DP |  | cop-9 (incompleta) | reg · cop-9 |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
-| A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | D | CC |  | cop-3 (imprecisa) | reg · cop-3 · cop-4 |
 | A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 |
-| A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | NV | CC |  |  | reg |
 | A-15 | `workshop._reread`: la terza casa dello stato | NV | DP |  |  | reg · cop-9 |
 | A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 |
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 |
@@ -888,3 +886,5 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-20 | `recipe_round` paga `statistic_ids()` ogni 10 minuti anche senza niente da chiedere | Tappa 2 (da rilasciare) | d9374bac | Tappa 2, Task 8: il giro delle ricette non legge statistic_ids se non ha niente da chiedere o da controllare |
 | A-04 | `GET /api/services`: il registro servizi e il bypass di `recipient` | Tappa 2 (da rilasciare) | b748f3c1 | Tappa 2, Task 8: il recapito usa il registro dei servizi |
 | S-06 | `history`: `from_iso` entra nel percorso dell'URL senza `quote` | Tappa 2 (da rilasciare) | 8d093e66 | quote(from_iso, safe=''); stessa risposta misurata dal vivo il 04/10/2026 |
+| A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | Tappa 2 (da rilasciare) | 567f520b | attiva dallo specchio alla lettura; il nome resta quello della rilettura |
+| A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | Tappa 2 (da rilasciare) | 567f520b | le parole degli stati si rileggono dopo ogni ricostruzione dell'anagrafe |
