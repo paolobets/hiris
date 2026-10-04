@@ -56,7 +56,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-14 | Integrazione sana: due lettori, una costante doppia | E | PS |  | cop-4 (righe) | reg · cop-4 · cop-5 · cop-6 |
 | B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta); Tappa 3 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 |
 | B-16 | L'etichetta di data delle sessioni passate in UTC | D | CC | 3450 campioni sbagliati su 52560 nel 2026 |  | reg · cop-8 |
-| B-17 | Unità e classe: il vivo batte il registro, applicato due volte | E | CC | 0 casi | cop-4 (incompleta); cop-6 (imprecisa) | reg · cop-3 · cop-4 · cop-6 |
 | B-18 | Riferimento testuale: `search` contro `guarda`/resolver | D | CC | 118 casi su 39 integrazioni; 12 casi su 10 aree; «senza accenti» 0 casi | cop-3 (incompleta) | reg · cop-3 |
 | B-20 | Piegatura degli accenti in tre posti | D | CC |  |  | reg · cop-9 |
 | B-21 | Slug: `composer.available_slug` e `recipient._slugify` | D | CC |  |  | reg · cop-9 |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-01 | «Questa entità è fuori?»: partizione, digesto e le loro copie | Tappa 3 (da rilasciare) | cb84c86 | una regola, topology.visibility_classes (classe con la causa); le sei copie la chiamano; il cancello regola-del-fuori ha la funzione come proprietario e zero eccezioni. Tappa 3, Task 5 (04/10/2026) |
 | B-02 | Regole «fuori» più larghe per scelta: `_view_integration`, `_unreliable_state`, conteggi, «senza nome» | Tappa 3 (da rilasciare) | cb84c86 | le tre porte larghe dichiarano le classi che contano (D7); il conteggio doppio «nascosta e di servizio» del nucleo e' singolo. Tappa 3, Task 5 (04/10/2026) |
 | B-06 | Nome del dispositivo: derivazioni e campo senza lettori | Tappa 3 (da rilasciare) | cb84c86 | topology.device_name, il nome altrimenti l'id, in nucleo, pagine del cervello, resoconto, ricette e guarda. Tappa 3, Task 5 (04/10/2026) |
+| B-17 | Unità e classe: il vivo batte il registro, applicato due volte | Tappa 3, Task 7 | 8e710f9 | l'anagrafe porta solo la dichiarazione del registro; il vivo da House.kind_of e topology.live_first |
