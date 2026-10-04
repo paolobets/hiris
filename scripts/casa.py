@@ -93,6 +93,8 @@ READ_METHODS: dict[str, str] = {
     "problems": "i guasti che Home Assistant ha gia' diagnosticato",
     "system_log": "il registro degli errori",
     "read_dashboards": "le plance",
+    "energy_prefs": ("cio' che la dashboard Energia dichiara: la forma della rete e le "
+                     "sorgenti che il piano degli attori misura (strato 2, Task 2.0)"),
 }
 
 #: Gli INGRESSI: cio' che `capture` congela dalla casa e che sonda e
