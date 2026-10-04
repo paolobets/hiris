@@ -421,7 +421,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-02 | `_close_expired_promise` dice «ho aspettato N minuti» con la `scadenza_min` di adesso, non la durata del job | 5° dei «5 più gravi» di cop-1 | LETTO | cap. proposto X (la parte di commento è X-24); Stato DIVERGENTE, Unirla CC; si lega a D-09 | cop-1 X4 |
 | S-03 | «Per mano di HIRIS» (`_by_hand`) abbina anche gli atti NON eseguiti: ignora `eseguito` |  | LETTO (effetto DEDOTTO) | cap. proposto B; Stato NV, Unirla CC; era «fuori perimetro» di `db` nel registro v1 | cop-3 B-n7 |
 | S-05 | `read_dashboards`: `d.get("url_path")` senza `isinstance(d, dict)` |  | LETTO | `ha_client.py:966` (la `:985` lo ha) | cop-5 S2 |
-| S-06 | `history`: `from_iso` entra nel percorso dell'URL senza `quote` |  | LETTO | `ha_client.py:1045`; oggi i chiamanti passano `isoformat()` | cop-5 S3 |
 | S-07 | `context` (chi ha causato il cambio) non entra nello specchio |  | LETTO | `entity_cache.py:516-587`; vedi correzione a B-25 | cop-5 S4 |
 | S-08 | L'argomento unico `-p` oltre 128 KiB: la CLI del ponte non parte (domanda dell'analista 136.822 caratteri) |  | DEDOTTO | cap. proposto D; Stato NV (limite del kernel noto, non provato); il guasto esce come «runner non disponibile» | cop-7 N-D1 |
 | S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda |  | LETTO (comportamento DEDOTTO) | cap. proposto D; Stato DIVERGENTE, Unirla CC | cop-7 N-D2 |
@@ -888,3 +887,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-05 | `recorder/list_statistic_ids` letto due volte da due giri | Tappa 2 (da rilasciare) | d9374bac | Tappa 2, Task 8: statistic_ids letto una volta per giro e condiviso fra ricette e recupero |
 | A-20 | `recipe_round` paga `statistic_ids()` ogni 10 minuti anche senza niente da chiedere | Tappa 2 (da rilasciare) | d9374bac | Tappa 2, Task 8: il giro delle ricette non legge statistic_ids se non ha niente da chiedere o da controllare |
 | A-04 | `GET /api/services`: il registro servizi e il bypass di `recipient` | Tappa 2 (da rilasciare) | b748f3c1 | Tappa 2, Task 8: il recapito usa il registro dei servizi |
+| S-06 | `history`: `from_iso` entra nel percorso dell'URL senza `quote` | Tappa 2 (da rilasciare) | 8d093e66 | quote(from_iso, safe=''); stessa risposta misurata dal vivo il 04/10/2026 |
