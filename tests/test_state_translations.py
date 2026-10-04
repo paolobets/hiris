@@ -16,7 +16,7 @@ from hiris.app.proxy.state_translations import StateTranslations, state_translat
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from casa_finta import CasaFinta
+from casa_finta import SILENT, CasaFinta, in_turn
 
 # Le chiavi e i testi sono quelli MISURATI sulla casa, non plausibili.
 RISORSE_COMPONENTE = {
@@ -177,26 +177,6 @@ def _translations_house(resources=RISORSE_COMPONENTE, **injected) -> CasaFinta:
     return CasaFinta(inputs, **injected)
 
 
-class _FintoClient:
-    """Il solo metodo che la cache usa, con lo stesso contratto del vero
-    (`HAClient.get_translations`: `{"risorse": ...}` oppure `{"errore": ...}`).
-
-    **Resta una finta a mano, per una prova sola, e non `CasaFinta`** (Tappa
-    2, Task 12): `test_dopo_un_guasto_si_ritenta_alla_lettura_successiva`
-    vuole una casa che alla STESSA domanda prima tace e poi risponde.
-    `CasaFinta` decide silenzi e rifiuti alla nascita (`silence=`,
-    `refuse=`), e una risposta iniettata (`answers=`) puo' solo riuscire:
-    la sequenza «prima tace, poi risponde» non si esprime."""
-
-    def __init__(self, esiti):
-        self.esiti = list(esiti)
-        self.chiamate = []
-
-    async def get_translations(self, language, category="entity_component"):
-        self.chiamate.append((language, category))
-        return self.esiti.pop(0) if len(self.esiti) > 1 else self.esiti[0]
-
-
 @pytest.mark.asyncio
 async def test_la_tabella_si_legge_una_volta_sola_finche_la_casa_non_cambia():
     """801 chiavi a ogni apertura della pagina sarebbero una lettura di rete
@@ -332,8 +312,9 @@ async def test_dopo_un_guasto_si_ritenta_alla_lettura_successiva():
     """Un blip di rete non deve spegnere le traduzioni per tutta la vita del
     processo: la coppia non e' stata memorizzata, quindi la prossima lettura
     riprova."""
-    client = _FintoClient([{"errore": "rete giu'"}, {"risorse": RISORSE_COMPONENTE}])
-    cache = StateTranslations(client)
+    house = _translations_house(answers={TRANSLATIONS_COMMAND: in_turn(
+        SILENT, {"resources": dict(RISORSE_COMPONENTE)})})
+    cache = StateTranslations(house)
     assert (await cache.read(ha_version="2026.9.1", language="it"))["lette"] is False
     assert (await cache.read(ha_version="2026.9.1", language="it"))["lette"] is True
-    assert len(client.chiamate) == 2
+    assert house.calls == [ASKED_IN_ITALIAN, ASKED_IN_ITALIAN]

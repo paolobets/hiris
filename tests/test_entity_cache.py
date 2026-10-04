@@ -1,4 +1,5 @@
 import asyncio
+import math
 import sys
 from pathlib import Path
 
@@ -538,16 +539,12 @@ async def test_una_rilettura_cancellata_non_lascia_il_tampone_aperto():
     None` nel solo ramo d'errore -- rossa."""
     cache = EntityCache()
     await cache.load(_house([_stato("light.a", "off")]))
-    mai = asyncio.Event()
+    # Home Assistant che non risponde mai a `GET /api/states` (`math.inf`):
+    # la rilettura resta appesa DENTRO il client vero finche' non la si
+    # cancella. Fino al Task 12 della Tappa 2 era una finta di `get_states`.
+    appesa = CasaFinta({"states": []}, delay={"/api/states": math.inf})
 
-    # Resta una finta: `CasaFinta` risponde senza mai cedere il passo, e una
-    # risposta che non arriva (l'attesa da cancellare) non la sa dare.
-    class _Appeso:
-        async def get_states(self, _):
-            await mai.wait()
-            return []
-
-    rilettura = asyncio.create_task(cache.reload(_Appeso()))
+    rilettura = asyncio.create_task(cache.reload(appesa))
     await asyncio.sleep(0.01)
     rilettura.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -570,17 +567,16 @@ async def test_due_riletture_sovrapposte_non_si_rompono_e_non_perdono_eventi():
 
     accesa = []   # l'evento e' avvenuto: ogni fotografia PRESA dopo lo vede
 
-    # Resta una finta: le due riletture devono sovrapporsi DENTRO la lettura,
-    # e `CasaFinta` risponde senza mai cedere il passo.
-    class _Lento:
-        async def get_states(self, _):
-            presa = "on" if accesa else "off"
-            await asyncio.sleep(0.02)
-            return [_stato("light.a", presa)]
+    # Home Assistant lento: la fotografia e' presa quando la domanda parte, e
+    # arriva 20 ms dopo (`delay=`). Le due riletture si sovrappongono DENTRO
+    # la lettura del client vero. Fino al Task 12 della Tappa 2 era una finta
+    # di `get_states`.
+    lenta = CasaFinta({}, answers={"/api/states": lambda _path: [
+        _stato("light.a", "on" if accesa else "off")]}, delay={"/api/states": 0.02})
 
-    primo = asyncio.create_task(cache.reload(_Lento()))
+    primo = asyncio.create_task(cache.reload(lenta))
     await asyncio.sleep(0.005)
-    secondo = asyncio.create_task(cache.reload(_Lento()))
+    secondo = asyncio.create_task(cache.reload(lenta))
     await asyncio.sleep(0.005)
     accesa.append(True)
     cache.on_state_changed(

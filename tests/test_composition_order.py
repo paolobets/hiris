@@ -61,9 +61,9 @@ def _fake_openai_client():
         usage = None
         choices: ClassVar[list] = [_FakeChoice()]
 
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=_FakeResponse())
-    return client
+    openai_client = MagicMock()
+    openai_client.chat.completions.create = AsyncMock(return_value=_FakeResponse())
+    return openai_client
 
 
 def _runner(tmp_path):

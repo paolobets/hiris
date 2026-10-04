@@ -33,7 +33,7 @@ from hiris.app.proxy.state_translations import (
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
-from casa_finta import CasaFinta
+from casa_finta import SILENT, CasaFinta, in_turn
 from istantaneo_pubblicato import (
     capability_bits,
     published_domains,
@@ -66,29 +66,22 @@ RISORSE = {
     "total_increasing": "Totale crescente",
 }
 
+#: Il comando di `HAClient.get_translations`.
+TRANSLATIONS_COMMAND = "frontend/get_translations"
 
-class _ClienteFinto:
-    """Un client di Home Assistant che risponde cio' che gli si dice, e conta
-    le volte in cui gli e' stato chiesto. Nessuna rete.
 
-    **Resta una finta a mano, e non `CasaFinta` (Tappa 2, Task 12).** La prova
-    che la usa ha bisogno di una casa che risponde a `frontend/get_translations`
-    e POI, alla stessa domanda (stessa lingua, stessa categoria: la versione
-    di Home Assistant non viaggia nel comando), tace. `CasaFinta` decide
-    silenzi e rifiuti alla nascita (`silence=`, `refuse=`), e una risposta
-    iniettata (`answers=`) puo' solo riuscire: una sequenza «prima risponde,
-    poi tace» non si esprime.
-    """
+def _translations_house(*replies) -> CasaFinta:
+    """Home Assistant sotto il client VERO (`scripts/casa_finta.py`): a
+    `frontend/get_translations` risponde le `replies` una per domanda
+    (`in_turn`) -- un `result` grezzo (`{"resources": ...}`, la forma di
+    `websocket_get_translations`, `components/frontend/__init__.py`, tag
+    `2026.9.4`) o `SILENT`.
 
-    def __init__(self, risposte) -> None:
-        self.risposte = list(risposte)
-        self.chiamate = 0
-
-    async def get_translations(self, language, category="entity_component"):
-        self.chiamate += 1
-        if not self.risposte:
-            return {"errore": "Home Assistant non ha risposto"}
-        return self.risposte.pop(0)
+    Fino al Task 12 della Tappa 2 qui c'era `_ClienteFinto`, che imitava
+    `get_translations` e rendeva la busta gia' fatta: la sequenza «prima
+    risponde, poi tace» la casa finta non la sapeva dire."""
+    return CasaFinta(synthetic_inputs(), answers={
+        TRANSLATIONS_COMMAND: in_turn(*replies)})
 
 
 def _registro(righe) -> ServiceRegistry:
@@ -129,7 +122,9 @@ def test_un_guasto_non_svuota_la_tabella_gia_letta():
     `return {"lette": False, ...}`) -- la terza lettura torna
     `lette: False` e la prova arrossisce su `ancora["lette"] is True`.
     """
-    cliente = _ClienteFinto([{"risorse": dict(RISORSE)}])
+    # La terza risposta (tace) arriva solo se la tabella buona e' andata persa:
+    # e' la mutazione qui sopra, che allora arrossisce su `lette`.
+    cliente = _translations_house({"resources": dict(RISORSE)}, SILENT, SILENT)
     cache = StateTranslations(cliente)
     buona = asyncio.run(cache.read(ha_version="2026.9.1", language="it"))
     assert buona["lette"] is True
@@ -142,7 +137,7 @@ def test_un_guasto_non_svuota_la_tabella_gia_letta():
     assert ancora["risorse"] == RISORSE
     # E non e' stata chiesta una seconda volta a Home Assistant: la coppia non
     # e' cambiata, quindi la tabella si serve dalla memoria.
-    assert cliente.chiamate == 2
+    assert [command for command, _extra in cliente.calls] == [TRANSLATIONS_COMMAND] * 2
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from casa_finta import CasaFinta
+from casa_finta import SILENT, CasaFinta
 
 from hiris.app.mind import cadence
 from hiris.app.mind.store import ObservationsStore
@@ -54,7 +54,7 @@ _CHANGES = 42
 _UNKNOWN_ERROR = {"code": "unknown_error", "message": "Unknown error"}
 
 
-def _history_answer(memory_s, holes=(), *, now=lambda: ORA):
+def _history_answer(memory_s, holes=(), *, now=lambda: ORA, mute=()):
     """`history/history_during_period` come lo manda Home Assistant, calcolato
     da una memoria di durata NOTA.
 
@@ -88,11 +88,16 @@ def _history_answer(memory_s, holes=(), *, now=lambda: ORA):
     == (7 * 86400.0)`: il buco, fatto dello stato d'inizio che il client vero
     non conta, e' letto come il confine); la seconda raffica che divide
     `(0, hi)` invece di `(lo, hi)` -- rossa su
-    `test_la_seconda_raffica_cerca_dentro_il_tratto_trovato_dalla_prima`."""
+    `test_la_seconda_raffica_cerca_dentro_il_tratto_trovato_dalla_prima`.
+
+    `mute` sono le profondita' a cui la SINGOLA sonda non riceve risposta
+    (`SILENT`): il resto della raffica risponde."""
     def answer(extra):
         start = datetime.fromisoformat(extra["start_time"]).timestamp()
         end = datetime.fromisoformat(extra["end_time"]).timestamp()
         depth = now() - start
+        if any(abs(depth - muted) < 1.0 for muted in mute):
+            return SILENT
         if depth > memory_s:
             return {}
         rows = [{"s": "off", "lu": start}]
@@ -105,11 +110,12 @@ def _history_answer(memory_s, holes=(), *, now=lambda: ORA):
     return answer
 
 
-def _house(memory_s, *, holes=(), **faults) -> CasaFinta:
+def _house(memory_s, *, holes=(), mute=(), **faults) -> CasaFinta:
     """Il client vero (`scripts/casa_finta.py`) su una casa che ricorda
     `memory_s` secondi; `faults` sono `silence=`/`refuse=` della casa finta."""
     return CasaFinta(synthetic_inputs(),
-                     answers={_HISTORY: _history_answer(memory_s, holes)}, **faults)
+                     answers={_HISTORY: _history_answer(memory_s, holes, mute=mute)},
+                     **faults)
 
 
 def _bursts(house: CasaFinta) -> list[list[float]]:
@@ -125,32 +131,6 @@ def _bursts(house: CasaFinta) -> list[list[float]]:
         bursts.append([ORA - datetime.fromisoformat(extra["start_time"]).timestamp()
                        for command, extra in asked if command == _HISTORY])
     return bursts
-
-
-class _Casa:
-    """Una casa finta che imita `recorded_changes`, rimasta per UNA prova
-    sola (`test_una_sola_sonda_caduta_non_diventa_il_confine`): una sonda
-    che cade dentro una raffica che per il resto risponde.
-
-    `scripts/casa_finta.py` non lo sa dire: `silence=` e `refuse=` valgono per
-    il COMANDO (`history/history_during_period`), cioe' per tutte le sonde
-    insieme, non per quella a una profondita' data. Esce quando la casa finta
-    sapra' tacere o rifiutare secondo l'`extra` (Tappa 2, Task 12).
-    """
-
-    def __init__(self, memoria_s, *, sonde_mute=()):
-        self.memoria_s = memoria_s
-        self.sonde_mute = sonde_mute  # profondita' a cui la singola domanda cade
-
-    async def recorded_changes(self, entity_ids, windows):
-        out = []
-        for start, _fine in windows:
-            profondita = ORA - start
-            if any(abs(profondita - m) < 1.0 for m in self.sonde_mute):
-                out.append(None)
-                continue
-            out.append(0 if profondita > self.memoria_s else 42)
-        return out
 
 
 @pytest.fixture
@@ -272,9 +252,12 @@ async def test_una_sola_sonda_caduta_non_diventa_il_confine():
     vero resta oltre, e la misura deve superare il gradino caduto.
 
     Mutazione che la uccide (eseguita, ed era VERDE prima di questa prova):
-    `not count` invece di `count == 0` nella ricerca del confine.
+    `not count` invece di `count == 0` nella ricerca del confine. Rieseguita
+    il 04/10/2026 sulla casa finta (Tappa 2, Task 12: la sonda muta e' un
+    `SILENT` per quella profondita' sola, e il `None` lo produce il client
+    vero): rossa, `assert 324000.0 > (4 * 86400.0)`.
     """
-    casa = _Casa(7 * GIORNO, sonde_mute=[4 * GIORNO])
+    casa = _house(7 * GIORNO, mute=[4 * GIORNO])
 
     misurata = await cadence.measure_memory_window(casa, ["a"], now=ORA)
 

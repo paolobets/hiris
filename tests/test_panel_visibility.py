@@ -28,9 +28,11 @@ registra in `calls`, non la esegue.
 """
 import asyncio
 import logging
+import math
 import pathlib
 import re
 import sys
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -39,7 +41,6 @@ from aiohttp import web
 
 from hiris.app import panel_visibility, server
 from hiris.app.chat_settings import ChatSettings
-from hiris.app.proxy.ha_client import HAClient
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -48,28 +49,18 @@ from casa_finta import CasaFinta
 HOUSE_SLUG = "6354e165_hiris"   # lo slug vero sulla casa, 27/09/2026
 
 
-class _FiloAppeso(HAClient):
-    """Un `HAClient` vero il cui filo WebSocket resta appeso su un comando.
-
-    E' il solo caso che la casa finta comune non sa fare (Tappa 2, Task 12): un
-    comando che non risponde e non cade. Serve a provare che l'avvio non
-    aspetta Home Assistant, e il tetto della sincronia. `calls` registra cio'
-    che parte, con lo stesso nome della casa finta."""
-
-    def __init__(self, sospeso: str):
-        super().__init__("http://supervisor/core", "token-finto")
-        self.ws_ready.set()
-        self._sospeso = sospeso
-        self.calls: list[tuple[str, dict | None]] = []
-
-    async def _ws_send(self, commands, timeout=10.0):
-        replies = []
-        for msg_type, extra in commands:
-            self.calls.append((msg_type, extra))
-            if msg_type == self._sospeso:
-                await asyncio.Event().wait()
-            replies.append(None)
-        return replies
+def _filo_appeso(sospeso: str) -> CasaFinta:
+    """Home Assistant collegato (`ws_ready` acceso) che non risponde mai a
+    `sospeso` (`delay=` della casa finta, `math.inf`): il comando parte, e il
+    client vero aspetta sotto il suo tetto. Serve a provare che l'avvio non
+    aspetta Home Assistant, e il tetto della sincronia. Fino al Task 12 della
+    Tappa 2 era `_FiloAppeso`, un `HAClient` col `_ws_send` sostituito a mano,
+    che restava appeso anche oltre il tetto del vero."""
+    ha = CasaFinta({}, answers={sospeso: lambda extra: None,
+                                "get_panels": lambda extra: _PANNELLI},
+                   delay={sospeso: math.inf})
+    ha.ws_ready.set()
+    return ha
 
 
 _PANNELLI = {
@@ -391,7 +382,7 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     monkeypatch.setenv("HIRIS_NON_ADMIN_ACCESS", "true")
     app = server.create_app()
     app.on_startup.remove(server._on_startup)
-    ha = _FiloAppeso(sospeso="frontend/update_panel")
+    ha = _filo_appeso("frontend/update_panel")
     app["ha_client"] = ha
     app["chat_settings"] = ChatSettings()
     runner = AsyncMock()
@@ -469,7 +460,7 @@ async def test_un_nucleo_collegato_che_non_risponde_si_dice_e_non_solleva(
     Mutazione ESEGUITA: i due rami del tetto scambiati (`if
     ha.ws_ready.is_set()`) -- rossa (la riga dice «non si è collegato»)."""
     monkeypatch.setattr(panel_visibility, "SYNC_CEILING_S", 0.2)
-    ha = _FiloAppeso(sospeso="frontend/update_panel")
+    ha = _filo_appeso("frontend/update_panel")
 
     with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
         await asyncio.wait_for(
@@ -488,8 +479,17 @@ async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
     lo ferma e lo aspetta.
 
     Mutazione ESEGUITA: tolto l'arresto di `panel_sync_task` da
-    `_on_cleanup` -- rossa (il compito e' ancora vivo dopo la chiusura)."""
-    ha = _FiloAppeso(sospeso="frontend/update_panel")
+    `_on_cleanup` -- rossa (il compito e' ancora vivo dopo la chiusura).
+
+    **Rieseguita il 04/10/2026 (Tappa 2, Task 12), ed era VERDE** -- anche
+    sulla prova com'era, con la finta di prima: `wait_for(_on_cleanup, 5)`
+    alla scadenza CANCELLA `_on_cleanup`, la cancellazione scende nel
+    compito che stava aspettando, e il `suppress(CancelledError)` di
+    `_on_cleanup` la inghiotte -- il compito risultava fermo e la prova verde,
+    in cinque secondi invece che subito. Adesso si misura il tempo della
+    chiusura, senza tetto che cancelli: con la mutazione la chiusura aspetta
+    il tetto del client vero sul comando appeso (10 s) -- rossa."""
+    ha = _filo_appeso("frontend/update_panel")
     app = _app(True, ha)
     await server._start_panel_sync(app)
     for _ in range(100):
@@ -498,8 +498,10 @@ async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
         await asyncio.sleep(0.01)
     assert ha.calls, "precondizione: la sincronia e' appesa su update_panel"
 
-    await asyncio.wait_for(server._on_cleanup(app), timeout=5)
+    start = time.monotonic()
+    await server._on_cleanup(app)
 
+    assert time.monotonic() - start < 1.0, "la chiusura ha aspettato la sincronia appesa"
     assert app["panel_sync_task"].done()
 
 

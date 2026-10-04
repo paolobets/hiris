@@ -53,7 +53,7 @@ from hiris.app.proxy.ha_client import HAClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from casa_finta import CasaFinta
+from casa_finta import SILENT, CasaFinta, Refused
 
 LIST = "trace/list"
 GET = "trace/get"
@@ -67,24 +67,13 @@ def _answering(command, result, **injected) -> CasaFinta:
     return CasaFinta({}, answers={command: answer}, **injected)
 
 
-class _FakeConnection:
-    """Il trasporto finto che resta, per DUE prove sole sulle raffiche di
-    `traces`: servono chiavi dello stesso comando (`trace/list`) con esiti
-    diversi -- una rifiutata, una muta, una buona -- e la casa finta fa
-    tacere o rifiutare un comando per intero, non una chiave (Tappa 2,
-    Task 12)."""
-
-    def __init__(self, replies):
-        self.replies = replies  # una risposta per comando, come `_ws_send` vero
-
-    async def _ws_send(self, commands, timeout=10.0):
-        return list(self.replies)
-
-
-def _client(fake):
-    c = HAClient.__new__(HAClient)
-    c._ws_send = fake._ws_send
-    return c
+def _per_key(outcomes: dict, **injected) -> CasaFinta:
+    """Home Assistant che a `trace/list` risponde per CHIAVE: `outcomes[item_id]`
+    e' il `result` grezzo, `SILENT` o `Refused(...)`. Fino al Task 12 della
+    Tappa 2 era un trasporto finto che rendeva i messaggi interi; adesso i
+    messaggi li costruisce la casa finta e li legge il client vero."""
+    return CasaFinta({}, answers={LIST: lambda extra: outcomes[extra["item_id"]]},
+                     **injected)
 
 
 # L'id di CONFIGURAZIONE di un'automazione, nella forma che l'interfaccia di
@@ -259,18 +248,15 @@ async def test_the_runs_of_many_automations_travel_in_one_batch():
 async def test_a_refused_key_is_named_and_the_others_answer():
     """Una chiave rifiutata non spegne le altre, e non diventa `[]`.
 
-    Resta sul trasporto finto: quattro chiavi dello stesso comando, quattro
-    esiti diversi (vedi `_FakeConnection`).
+    Quattro chiavi dello stesso comando, quattro esiti: rifiutata, buona,
+    muta, in forma inattesa.
 
     Mutazione ESEGUITA: il primo rifiuto rende `errore` tutta la risposta
     -- rossa."""
-    fake = _FakeConnection(replies=[
-        {"type": "result", "success": False,
-         "error": {"code": "not_found", "message": "non trovato"}},
-        {"type": "result", "success": True, "result": [_short_trace()]}, None,
-        {"type": "result", "success": True, "result": {"non": "una lista"}}])
-    outcome = await _client(fake).traces([("automation", "1"), ("automation", "2"),
-                                          ("automation", "3"), ("automation", "4")])
+    house = _per_key({"1": Refused("not_found", "non trovato"), "2": [_short_trace()],
+                      "3": SILENT, "4": {"non": "una lista"}})
+    outcome = await house.traces([("automation", "1"), ("automation", "2"),
+                                  ("automation", "3"), ("automation", "4")])
     assert outcome["non_letti"] == {"automation.1": "non trovato",
                                     "automation.3": "Home Assistant non ha risposto in tempo",
                                     "automation.4": "risposta in forma inattesa"}
@@ -296,13 +282,12 @@ async def test_a_silent_tail_is_named_as_not_answered_in_time():
     """Il timeout taglia la coda: le chiavi senza risposta sono nominate col
     motivo giusto (non «forma inattesa»), le altre rispondono.
 
-    Resta sul trasporto finto: due chiavi dello stesso comando, una buona e
-    una muta (vedi `_FakeConnection`).
+    Due chiavi dello stesso comando, una buona e una muta.
 
     Mutazione ESEGUITA: `None` trattato come forma inattesa -- rossa sul
     motivo."""
-    fake = _FakeConnection(replies=[{"type": "result", "success": True, "result": []}, None])
-    outcome = await _client(fake).traces([("automation", "1"), ("script", "s")])
+    outcome = await _per_key({"1": [], "s": SILENT}).traces(
+        [("automation", "1"), ("script", "s")])
     assert outcome["tracce"] == {"automation.1": []}
     assert outcome["non_letti"] == {"script.s": "Home Assistant non ha risposto in tempo"}
 

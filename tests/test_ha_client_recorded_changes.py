@@ -19,16 +19,15 @@ direbbe «qui c'e' memoria» in un punto dove la memoria non arriva piu'.
 non ce n'e'.
 """
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from casa_finta import CasaFinta
+from casa_finta import SILENT, CasaFinta, Refused
 
 HISTORY = "history/history_during_period"
 
@@ -40,24 +39,6 @@ def _house(series=None, **injected) -> CasaFinta:
     sono dieci comandi sia in una raffica sia in dieci."""
     answers = {} if series is None else {HISTORY: series}
     return CasaFinta({}, answers=answers, **injected)
-
-
-class _Finto:
-    """Il trasporto finto che resta, per UNA prova sola: la casa finta fa
-    tacere o rifiutare un COMANDO intero, e qui servono tre finestre dello
-    stesso comando con tre esiti diversi (vedi la prova)."""
-
-    def __init__(self, risposte):
-        self.risposte = risposte
-
-    async def _ws_send(self, commands, timeout=10.0):
-        return list(self.risposte)
-
-
-def _client(finto):
-    client = HAClient.__new__(HAClient)
-    client._ws_send = finto._ws_send
-    return client
 
 
 @pytest.mark.asyncio
@@ -91,15 +72,17 @@ async def test_una_sonda_che_non_risponde_non_e_una_casa_senza_memoria():
 
     Mutazione che la uccide: tornare `0` per una risposta mancante.
 
-    **Resta sul trasporto finto** (Tappa 2, Task 12): servono una finestra
-    senza risposta, una rifiutata e una buona nella STESSA raffica, e la casa
-    finta fa tacere o rifiutare un comando per intero, non una finestra.
+    Tre finestre dello stesso comando, tre esiti: una tace, una e' rifiutata,
+    una risponde. Fino al Task 12 della Tappa 2 era un trasporto finto che
+    rendeva i tre messaggi; adesso e' la casa finta, che risponde per
+    argomento (`SILENT`, `Refused`), e i messaggi li legge il client vero.
     """
-    finto = _Finto([None,
-                    {"success": False, "error": {"message": "boom"}},
-                    {"success": True, "result": {"x": [{"s": "1", "lu": 3500.0}]}}])
+    outcomes = {1000.0: SILENT, 2000.0: Refused("unknown_error", "boom"),
+                3000.0: {"x": [{"s": "1", "lu": 3500.0}]}}
+    house = _house(lambda extra: outcomes[
+        datetime.fromisoformat(extra["start_time"]).timestamp()])
 
-    conti = await _client(finto).recorded_changes(
+    conti = await house.recorded_changes(
         ["x"], [(1000.0, 1600.0), (2000.0, 2600.0), (3000.0, 3600.0)])
 
     assert conti == [None, None, 1]

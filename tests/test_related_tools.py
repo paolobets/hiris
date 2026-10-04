@@ -19,26 +19,45 @@ non si archiviano**. Sono momentanei quanto lo stato, e una tabella riletta
 di rado mentirebbe poche ore dopo.
 """
 import hashlib
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from casa_finta import CasaFinta
 
 from hiris.app.home_space.queries import LINK_NAME, related, view
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
-from tests._ha_fakes import _ClienteLegami
+from tests._casa_sintetica import synthetic_inputs
 
-# La finta di `HAClient.related` usata qui e' `_ClienteLegami`, importata da
-# `tests/_ha_fakes.py` -- l'UNICA del progetto (vedi il suo
-# docstring). Prima di questa correzione questo file ne aveva una propria
-# (`_FintoHA`), che accettava QUALUNQUE `tipo` e rispondeva sempre la stessa
-# mappa: la nona finta dello stesso contratto, la stessa infedelta' che ha
-# reso invisibile il Critical dei comprimari. Qui non serve estenderla: ogni
-# prova sotto chiede sempre lo stesso `riferimento` per chiamata, quindi
-# `_ClienteLegami(default=...)` -- che risponde a QUALUNQUE identificatore,
-# ma valida `tipo` contro `HAClient.RELATED_ITEM_TYPES` prima di rispondere -- basta
-# senza bisogno di popolare `mappa` per identificatore.
+#: Il comando che `HAClient.related` manda.
+RELATED = "search/related"
+
+
+def _house(links=None, **faults) -> CasaFinta:
+    """Home Assistant sotto il client VERO (`scripts/casa_finta.py`, Tappa 2,
+    Task 12): `search/related` risponde `links` -- il `result` grezzo, chiavi
+    inglesi, come lo manda Home Assistant -- a qualunque domanda. Il tipo lo
+    valida il client vero (`HAClient.RELATED_ITEM_TYPES`), e la busta del
+    guasto e' la sua.
+
+    Fino al Task 12 qui c'era `_ClienteLegami` (`tests/_ha_fakes.py`), che
+    imitava `related` a mano: validava il tipo con una copia del controllo
+    del client e rispondeva la mappa gia' fatta. `faults` sono `silence=` e
+    `refuse=` della casa finta."""
+    answers = {RELATED: lambda extra: dict(links or {})}
+    return CasaFinta(synthetic_inputs(), answers=answers, **faults)
+
+
+def _asked(house: CasaFinta) -> list[tuple[str, str]]:
+    """Cio' che e' partito verso Home Assistant: `(item_type, item_id)`."""
+    return [(extra["item_type"], extra["item_id"])
+            for command, extra in house.calls if command == RELATED]
 
 
 class _FintaPorta:
@@ -84,7 +103,7 @@ async def test_i_legami_escono_nel_vocabolario_della_casa_e_ordinati(casa, memor
     `automation` dovrebbe imparare due vocabolari per la stessa casa, e il
     `riferimento` che passa a `view` verrebbe da una risposta scritta in
     un'altra lingua."""
-    ha = _ClienteLegami(default={"script": ["script.sera"], "automation": ["automation.a"],
+    ha = _house({"script": ["script.sera"], "automation": ["automation.a"],
                                   "entity": ["light.corridoio"]})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "related", {"tipo": "entita", "riferimento": "light.corridoio"})
@@ -102,21 +121,21 @@ async def test_il_tipo_si_traduce_verso_home_assistant(casa, memoria):
     """Il verso opposto della stessa tabella. Senza, il comando partirebbe con
     `item_type: "entita"` e Home Assistant lo rifiuterebbe -- un guasto
     prodotto da noi che arriva al modello come un errore suo."""
-    ha = _ClienteLegami()
+    ha = _house()
     await _dispatcher(casa, memoria, ha=ha).dispatch(
         "related", {"tipo": "dispositivo", "riferimento": "abc123"})
-    assert ha.chiesti == [("device", "abc123")]
+    assert _asked(ha) == [("device", "abc123")]
 
 
 @pytest.mark.asyncio
 async def test_un_tipo_che_home_assistant_non_conosce_si_ferma_prima_della_rete(
         casa, memoria):
-    ha = _ClienteLegami()
+    ha = _house()
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "related", {"tipo": "stanza", "riferimento": "cucina"})
     assert "errore" in esito
     assert "legami" not in esito
-    assert ha.chiesti == [], "non si disturba Home Assistant per un tipo che rifiuterebbe"
+    assert ha.calls == [], "non si disturba Home Assistant per un tipo che rifiuterebbe"
 
 
 def test_un_tipo_nuovo_di_home_assistant_non_si_perde_per_strada():
@@ -133,7 +152,7 @@ def test_un_tipo_nuovo_di_home_assistant_non_si_perde_per_strada():
 async def test_un_guasto_non_diventa_un_elenco_vuoto(casa, memoria):
     """La prova centrale. `legami: {}` significa «non la tocca nessuno»: e'
     un'affermazione, e su un canale caduto e' falsa."""
-    ha = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
+    ha = _house(silence={RELATED})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "errore" in esito
@@ -147,7 +166,7 @@ async def test_nessun_legame_resta_dicibile(casa, memoria):
     """L'altra meta': una cosa che davvero non tocca nessuno deve poterlo
     dire. Se il guasto e l'assenza avessero la stessa forma, il rimedio
     sarebbe peggiore del male."""
-    ha = _ClienteLegami()
+    ha = _house()
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "related", {"tipo": "entita", "riferimento": "light.mai_usata"})
     assert esito["legami"] == {}
@@ -190,7 +209,7 @@ async def test_senza_canale_lo_strumento_lo_DICHIARA_e_non_lo_cerca_altrove(casa
     muto perche' non ha la connessione e uno muto perche' non ci sono legami
     direbbero la stessa cosa, e sono opposti.
     """
-    porta_con_canale = _FintaPorta(_ClienteLegami(default={"automation": ["automation.a"]}))
+    porta_con_canale = _FintaPorta(_house({"automation": ["automation.a"]}))
     esito = await _dispatcher(casa, memoria, actuator=porta_con_canale).dispatch(
         "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "legami" not in esito, (
@@ -204,7 +223,7 @@ async def test_senza_canale_lo_strumento_lo_DICHIARA_e_non_lo_cerca_altrove(casa
 async def test_col_canale_passato_lo_strumento_risponde(casa, memoria):
     """Il verso positivo, e serve quanto l'altro: senza, un dispatcher che non
     risponde MAI farebbe passare la prova qui sopra per il motivo sbagliato."""
-    ha = _ClienteLegami(default={"automation": ["automation.a"]})
+    ha = _house({"automation": ["automation.a"]})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert esito["legami"] == {"automazione": ["automation.a"]}
@@ -237,7 +256,7 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
             return hashlib.sha256(f"{tenuto}{attorno}".encode()).hexdigest()
 
         prima = _impronta()
-        ha = _ClienteLegami(default={"automation": ["automation.a"], "scene": ["scene.sera"]})
+        ha = _house({"automation": ["automation.a"], "scene": ["scene.sera"]})
         esito = await _dispatcher(archivio, memoria, ha=ha).dispatch(
             "related", {"tipo": "entita", "riferimento": "light.corridoio"})
         assert esito["legami"]
