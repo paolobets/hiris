@@ -16,9 +16,9 @@ per un turno -- `ToolDispatcher`, che nasce a ogni turno -- la butta quando
 la casa cambia sotto di lui: l'anagrafe ricostruita (un altro oggetto da
 `HomeSpace.read()`), o un suo comando eseguito (vedi `ToolDispatcher`).
 
-I metodi del §4.1 della spec (`visibility`, `name`, `where`, `kind_of`,
-`source`...) arrivano con i task che seguono; qui ci sono la gerarchia e la
-scelta di «di chi» (`select`, l'ex `house_query.select_subjects`).
+I metodi del §4.1 della spec (`visibility`, `name`, `kind_of`, `source`...)
+arrivano con i task che seguono; qui ci sono la gerarchia, la scelta di «di
+chi» (`select`, l'ex `house_query.select_subjects`) e il dove (`where`, Task 6).
 """
 from __future__ import annotations
 
@@ -49,6 +49,8 @@ class House:
         self.mirror = mirror
         self.unavailable = tuple(unavailable)
         self._floors: list[dict] | None = None
+        self._places: dict[str, tuple[dict, dict, dict]] | None = None
+        self._device_index: dict[str, dict] | None = None
 
     @classmethod
     def read(cls, home_space_store, cache) -> House:
@@ -81,6 +83,55 @@ class House:
                         if isinstance(entry, dict) and entry.get("id"):
                             out.append((entry, area, floor, where))
         return out
+
+    def where(self, entity_id: str) -> dict | None:
+        """DOVE sta un'entita' (spec §4.1; Tappa 3, Task 6, B-10, D3): area,
+        se l'area e' ereditata dal dispositivo, piano, dispositivo e
+        integrazione. `None` se il registro delle entita' non la conosce.
+
+        **Compone, non decide.** Il posto viene dall'albero di `hierarchy()`,
+        che lo calcola con `topology.actual_area` -- l'area propria, altrimenti
+        quella del dispositivo: la regola di Home Assistant -- e che sa gia'
+        dire «Dispositivi non letti» o «Aree non lette» quando un registro non
+        ha risposto. Rifare qui quelle cause sarebbe una seconda copia della
+        regola, la stessa che `observer.house_lines` ha (legge il solo
+        `area_id` proprio: 194 entita' guardate su 324 senza area, cattura del
+        01/10/2026) e che il Task 12 toglie.
+
+        Ogni parte porta `id` e `nome` (atomicita': un id senza nome e' un
+        frammento, un nome senza id e' un vicolo cieco per `search` e `view`).
+        Una pseudo-area resta col suo id (`view("area", "__senza_area__")` la
+        ritrova) e il piano allora tace: il contenitore «Fuori dalle aree»
+        ripeterebbe solo che l'area non c'e'. `area_ereditata` e' vera solo
+        quando l'area c'e', e' vera, e la voce non ne dichiara una propria.
+        """
+        place = self._entity_places().get(entity_id)
+        if place is None:
+            return None
+        entry, area, floor = place
+        pseudo = topology.is_pseudo_area(area.get("id"))
+        device_id = entry.get("dispositivo_id")
+        device = self._devices().get(device_id) if device_id else None
+        return {
+            "area": {"id": area.get("id"), "nome": area.get("nome")},
+            "area_ereditata": not pseudo and not entry.get("area_id"),
+            "piano": None if pseudo else {"id": floor.get("id"), "nome": floor.get("nome")},
+            "dispositivo": ({"id": device_id, "nome": (device or {}).get("nome")}
+                            if device_id else None),
+            "integrazione": entry.get("piattaforma"),
+        }
+
+    def _entity_places(self) -> dict[str, tuple[dict, dict, dict]]:
+        if self._places is None:
+            self._places = {entry["id"]: (entry, area, floor)
+                            for entry, area, floor, _w in self.entity_entries()}
+        return self._places
+
+    def _devices(self) -> dict[str, dict]:
+        if self._device_index is None:
+            self._device_index = {d["id"]: d for d in self.home_space.get("dispositivi") or []
+                                  if isinstance(d, dict) and d.get("id")}
+        return self._device_index
 
     def select(self, f, kinds: tuple[str, ...], behavior, *, now: float) -> Selection:
         """Le entita' e i comportamenti che passano i filtri, per i generi dati.

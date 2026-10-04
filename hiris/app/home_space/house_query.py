@@ -24,7 +24,7 @@ from .behavior import BEHAVIOR_DOMAINS
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
-from .topology import Mirror
+from .topology import _ID_WITHOUT_AREA, Mirror, is_pseudo_area
 
 if TYPE_CHECKING:
     from .house import House
@@ -165,7 +165,7 @@ def _age_s(iso: str | None, now: float) -> float | None:
 
 
 def _area_name(area: dict) -> str | None:
-    return None if str(area.get("id", "")).startswith("__") else area.get("nome")
+    return None if is_pseudo_area(area.get("id")) else area.get("nome")
 
 
 def _place_matches(f: HouseFilters, entry: dict, area: dict, floor: dict) -> bool:
@@ -263,7 +263,7 @@ def _entity_row(entry, area, where, mirror: Mirror, medium: bool) -> dict:
 
 #: Dove sta un'automazione che il registro delle entita' non conosce: in
 #: nessuna area, su nessun piano, da nessuna integrazione.
-_NOWHERE = ({}, {"id": "__senza_area__"}, {})
+_NOWHERE = ({}, {"id": _ID_WITHOUT_AREA}, {})
 
 
 def _behavior_matches(f: HouseFilters, behavior, mirror: Mirror, now,
@@ -312,7 +312,7 @@ def _area_rows(f: HouseFilters, house: House):
     rows = []
     for floor in house.hierarchy():
         for area in floor.get("aree") or []:
-            if str(area.get("id", "")).startswith("__"):
+            if is_pseudo_area(area.get("id")):
                 continue
             if f.reference and area.get("id") != f.reference:
                 continue

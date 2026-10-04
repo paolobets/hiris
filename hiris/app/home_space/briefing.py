@@ -50,6 +50,7 @@ from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
     hierarchy,
+    id_marker,
     name_with_id,
 )
 
@@ -281,11 +282,11 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
         return f" ({name})"
     # Un dispositivo senza nome esiste davvero: `reader._device` scrive
     # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
-    # MARCATO come id -- la stessa convenzione di `name_with_id` per le aree
-    # -- perche' e' l'unica chiave con cui
+    # MARCATO come id -- lo stesso segno di `name_with_id` per le aree
+    # (`topology.id_marker`) -- perche' e' l'unica chiave con cui
     # `search(riferimento=...)` lo ritrova, e perche' un id tecnico non va
     # mai spacciato per un nome dichiarato dall'utente.
-    return f" (id: {device_id})"
+    return f" {id_marker(device_id)}"
 
 
 def _domain_name(domain: str, n: int) -> str:

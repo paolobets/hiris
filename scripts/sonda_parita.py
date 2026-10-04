@@ -445,7 +445,11 @@ def names(inputs: dict) -> dict:
 
 def areas(inputs: dict) -> dict:
     """«In che area sta?» -- l'area che l'osservatore emette contro
-    `topology.actual_area`, sulle entita' che l'osservatore guarda.
+    `topology.actual_area`, sulle entita' che l'osservatore guarda; e
+    `House.where` (Tappa 3, Task 6) contro la stessa regola, su ogni entita'
+    del registro la cui area la casa conosce (un'area sconosciuta o un
+    registro non letto `where` li dice con la pseudo-area, e non si
+    confrontano con un id).
 
     I nomi delle aree sono sostituiti in copia da un marcatore, per leggere
     QUALE area la riga porta: la funzione chiamata e' la stessa.
@@ -468,7 +472,16 @@ def areas(inputs: dict) -> dict:
         actual = topology.actual_area(entity, device_area)
         if emitted[key] != actual:
             cases.append({"id": key, "area_vera": actual, "area_emessa": emitted[key]})
-    return _verdict(cases, ["topology.actual_area", "observer.house_lines"],
+    house = House(home_space, inputs["mirror"])
+    known = {area["id"] for area in home_space["aree"]}
+    for key, entity in _entities(inputs).items():
+        actual = topology.actual_area(entity, device_area)
+        if actual is not None and actual not in known:
+            continue
+        area = house.where(key)["area"]["id"]
+        if (None if topology.is_pseudo_area(area) else area) != actual:
+            cases.append({"id": key, "area_vera": actual, "area_dove": area})
+    return _verdict(cases, ["topology.actual_area", "observer.house_lines", "house.where"],
                     {"guardate": len(emitted)})
 
 
@@ -625,7 +638,7 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
     replaced = (handlers_chat.get_past_summaries, handlers_chat.compose_briefing,
                 handlers_chat._who_is_speaking)
     handlers_chat.get_past_summaries = lambda data_dir, *, thread, n=10: [session["row"]]
-    handlers_chat.compose_briefing = lambda app: ("", {})
+    handlers_chat.compose_briefing = lambda app, house=None: ("", {})
     handlers_chat._who_is_speaking = lambda *args, **kwargs: ""
     cases = []
     samples = 0
