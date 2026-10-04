@@ -22,7 +22,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-15 | `workshop._reread`: la terza casa dello stato | NV | DP |  |  | reg · cop-9 |
 | A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 · Tappa 3 (D5) |
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 · Tappa 8 (D5) |
-| A-18 | Contenitori che invecchiano per scelta dichiarata | E | DP |  | cop-6 (incompleta, righe) | reg · cop-4 · cop-6 · Tappa 3 (D5) |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 · Tappa 6 (D5) |
 | A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 · Tappa 4 (D5) |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | Tappa 3, Task 12 | 6fedac1 | KnowledgeStore.device_answers, una SELECT; recipe_turn.recipes al posto di recipe_for; l'anagrafe da House.device_ids |
 | A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | Tappa 3, Task 12 | bd0bc5e | House.lookup, una volta per casa; remember e le due rotte dei ricordi lo chiedono alla casa |
 | M-34 | `LookupCache` per `slot`: la generalità non ha un secondo cliente | Tappa 3, Task 12 | bd0bc5e | LookupCache uscita con A-13: l'indice e' della casa del turno |
+| A-18 | Contenitori che invecchiano per scelta dichiarata | Tappa 3, Task 12 | 0b6fc80 | il titolo delle automazioni da House.name all'esito; _wanted_cache invalidata da KnowledgeStore.version. _missing_rounds e _automation_faults sono stato del giro, non copie: restano |
