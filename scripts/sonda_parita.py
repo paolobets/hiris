@@ -38,7 +38,10 @@ chiedeva la classe del fuori alle SEI copie della regola (B-01): e' uscita
 col Task 5 (04/10/2026), quando le sei copie sono diventate
 `topology.visibility` -- ora la sorveglia il cancello `regola-del-fuori`
 (`tests/test_fonte_unica.py`). Le copie che `fuori` confronta ancora sono
-l'osservatore e le ricette (Task 12).
+l'osservatore e le ricette (Task 12). `unita` confrontava l'anagrafe, lo
+specchio e la riga di `search`: e' uscita col Task 7 (B-17, 04/10/2026), quando
+l'anagrafe ha smesso di congelare classe e unita' e `search` le chiede con la
+regola di `House.kind_of` (`topology.live_first`).
 
 Nasce da `docs/superpowers/audit-2026-10-01/sonda_parita.py` (01/10/2026).
 
@@ -106,14 +109,14 @@ def build_inputs(source: Path | dict, *, clock: float | None = None) -> dict:
 
     `source` e' la cartella degli ingressi congelati, oppure un dizionario con
     le stesse chiavi (le prove passano la casa sintetica). Lo specchio passa da
-    `_to_minimal` e `live_mirror`, l'anagrafe da `reader.build_home_space` con
-    classi e unita' vive: e' cio' che fa `HomeSpace.rebuild()`.
+    `_to_minimal` e `live_mirror`, l'anagrafe da `reader.build_home_space`: e'
+    cio' che fa `HomeSpace.rebuild()`. Le classi e le unita' vive non entrano
+    nell'anagrafe dal 04/10/2026 (B-17): le dice `House.kind_of`.
     """
     raw = source if isinstance(source, dict) else casa.read_inputs(source)
     rows = [_to_minimal(row) for row in raw["states"] if row.get("entity_id")]
     mirror = topology.live_mirror(rows)
-    home_space = reader.build_home_space(raw["registries"], live_classes=mirror.classes,
-                                         live_units=mirror.units)
+    home_space = reader.build_home_space(raw["registries"])
     return {"home_space": home_space, "mirror": mirror, "rows": rows,
             "raw_states": raw["states"], "registries": raw["registries"],
             "statistic_ids": set(raw["statistic_ids"]),
@@ -170,7 +173,8 @@ def excluded(inputs: dict) -> dict:
             if not topology._excluded_from_comparison(entity)},
         "select_subjects": {entry["id"] for entry, _area, _where in selection.entities},
         "observer.house_lines": set(_entity_ids(
-            observer.house_lines(home_space), inputs, "observer.house_lines")),
+            observer.house_lines(House(home_space, mirror)), inputs,
+            "observer.house_lines")),
     }
     names = sorted(copies)
     cases = []
@@ -182,7 +186,7 @@ def excluded(inputs: dict) -> dict:
     recipe_lines: set[str] = set()
     for device in home_space["dispositivi"]:
         recipe_lines |= set(_entity_ids(
-            recipe_turn.device_lines(home_space, device["id"]), inputs,
+            recipe_turn.device_lines(House(home_space, mirror), device["id"]), inputs,
             "recipe_turn.device_lines"))
     for key in sorted(recipe_lines - copies["observer.house_lines"]):
         cases.append({"id": key, "solo_in": "recipe_turn.device_lines",
@@ -320,7 +324,7 @@ def names(inputs: dict) -> dict:
     marked = dict(home_space)
     marked["entita"] = [dict(entity, nome=f"@@{entity['nome']}@@") if entity.get("nome")
                         else entity for entity in home_space["entita"]]
-    lines = observer.house_lines(marked)
+    lines = observer.house_lines(House(marked, mirror))
     cases = []
     for key, line in zip(_entity_ids(lines, inputs, "observer.house_lines"), lines,
                          strict=True):
@@ -349,7 +353,7 @@ def areas(inputs: dict) -> dict:
     marked = dict(home_space)
     marked["aree"] = [dict(area, nome=f"@@{area['id']}@@") for area in home_space["aree"]]
     emitted: dict[str, str | None] = {}
-    lines = observer.house_lines(marked)
+    lines = observer.house_lines(House(marked, inputs["mirror"]))
     for key, line in zip(_entity_ids(lines, inputs, "observer.house_lines"), lines,
                          strict=True):
         parts = line.split(LINE_SEPARATOR)
@@ -447,25 +451,6 @@ def statistics(inputs: dict) -> dict:
                     {"esaminate": examined})
 
 
-def units(inputs: dict) -> dict:
-    """«Che unita' e classe ha?» -- anagrafe, specchio vivo, riga di `search`."""
-    home_space, mirror = inputs["home_space"], inputs["mirror"]
-    live_units, live_classes = mirror.units, mirror.classes
-    cases = []
-    for entry, area, _floor, place in House(home_space, mirror).entity_entries():
-        key = entry["id"]
-        row = house_query._entity_row(entry, area, place, mirror, True)
-        unit = {entry.get("unita") or None, live_units.get(key) or None,
-                row.get("unita") or None}
-        kind = {entry.get("classe") or None, live_classes.get(key) or None,
-                row.get("classe") or None}
-        if len(unit) > 1 or len(kind) > 1:
-            cases.append({"id": key, "unita": sorted(map(str, unit)),
-                          "classe": sorted(map(str, kind))})
-    return _verdict(cases, ["reader.build_home_space", "topology.live_mirror",
-                            "house_query._entity_row"])
-
-
 def _selected(inputs: dict, **filters) -> set[str]:
     selection = house_query.select_subjects(
         house_query.HouseFilters(include_hidden=True, include_service=True, **filters),
@@ -554,7 +539,7 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
 #: Le domande, per nome. E' un elenco di AMMISSIONE: una domanda esce di qui
 #: quando la sua copia e' cancellata, nello stesso commit.
 QUESTIONS = {"fuori": excluded, "nomi": names,
-             "dove": areas, "valore": values, "statistiche": statistics, "unita": units,
+             "dove": areas, "valore": values, "statistiche": statistics,
              "riferimenti": references, "oggi": today, "fonte": source}
 
 

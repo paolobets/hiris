@@ -145,7 +145,7 @@ def test_deduci_unita_usa_la_fonte_viva(casa):
     assert deduci_unit(ancore, "temperature", indice) is None, (
         "senza fonte viva non c'e' niente da dedurre: e' il caso di oggi")
     assert deduci_unit(ancore, "temperature", indice,
-                        {"sensor.frigo_temp": "C"}) == "C"
+                        Mirror(units={"sensor.frigo_temp": "C"})) == "C"
 
 
 def test_deduci_unita_da_un_area_vede_l_area_EREDITATA_dal_dispositivo(casa):
@@ -164,7 +164,7 @@ def test_deduci_unita_da_un_area_vede_l_area_EREDITATA_dal_dispositivo(casa):
     indice = costruisci_indice(casa)
     ancore = [{"tipo": "area", "riferimento": "cucina"}]
     assert deduci_unit(ancore, "temperature", indice,
-                        {"sensor.frigo_temp": "C"}) == "C"
+                        Mirror(units={"sensor.frigo_temp": "C"})) == "C"
 
 
 def test_deduci_unita_da_un_area_usa_la_fonte_viva(casa):
@@ -174,7 +174,7 @@ def test_deduci_unita_da_un_area_usa_la_fonte_viva(casa):
     indice = costruisci_indice(casa)
     ancore = [{"tipo": "area", "riferimento": "cucina"}]
     assert deduci_unit(ancore, "temperature", indice,
-                        {"sensor.frigo_temp": "C"}) == "C"
+                        Mirror(units={"sensor.frigo_temp": "C"})) == "C"
 
 
 # --- la stessa risposta da tutte le porte ---------------------------------

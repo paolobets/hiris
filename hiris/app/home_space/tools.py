@@ -1880,7 +1880,7 @@ class ToolDispatcher:
         # solo se l'utente le ha forzate a mano), quindi senza questo la
         # deduzione dell'unita' di un ricordo non e' mai scattata.
         cleaned, problems, corrections = validate(
-            interpretation, lookup, unverifiable_kinds, self._mirror().units)
+            interpretation, lookup, unverifiable_kinds, self._mirror())
 
         # L'autore viene dal SOGGETTO del turno (decisione 5, Task 6), mai da
         # un argomento del modello -- `arguments.get("detto_da")` non si legge

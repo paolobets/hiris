@@ -61,27 +61,23 @@ def _entita(home_space, entity_id):
     return next(e for e in home_space["entita"] if e["id"] == entity_id)
 
 
-def test_la_classe_viene_dallo_specchio_vivo_perche_il_registro_non_la_manda():
-    """**La prova che il bilancio non aveva.** Il registro delle entita' non
-    porta `device_class` — misurato: assente su 1.227 righe su 1.227 — e lo
-    specchio dello stato lo porta per ogni entita'. Se il lettore leggesse solo
-    il registro, `classe` resterebbe `None` su OGNI entita' di OGNI casa, e
-    ogni lettore che decide su quel campo (`house_query`, il filtro per
-    classe; `memory/interpretation`) sarebbe inerte in produzione. Fino al
-    01/10/2026 lo era anche `server.build_balances`, uscito.
-
-    Mutazione che la uccide: in `build_home_space`, leggere la classe dalla
-    sola riga di registro (`e.get("device_class")`) invece che da
-    `live_first(dichiarata, viva)`.
-    """
-    home_space = build_home_space(
-        _REGISTRI,
-        live_classes={"sensor.ze1es030n5e528_energia_prodotta_oggi": "energy"},
-        live_units={"sensor.ze1es030n5e528_energia_prodotta_oggi": "kWh"})
-
+def test_l_anagrafe_porta_solo_la_classe_e_l_unita_che_il_registro_dichiara():
+    """Il registro delle entita' non porta `device_class` -- misurato: assente
+    su 1.227 righe su 1.227 -- e lo specchio dello stato lo porta per ogni
+    entita'. Fino al 04/10/2026 il lettore copiava nell'anagrafe la classe e
+    l'unita' dello specchio al momento della ricostruzione, e le teneva ferme
+    (B-17). Ora l'anagrafe porta la dichiarazione del registro e basta; il
+    vivo lo dice `House.kind_of` (`tests/test_home_space_topology.py`).
+    Una riga che dichiara la classe la porta."""
+    home_space = build_home_space(_REGISTRI)
     entita = _entita(home_space, "sensor.ze1es030n5e528_energia_prodotta_oggi")
-    assert entita["classe"] == "energy"
-    assert entita["unita"] == "kWh"
+    assert entita["classe"] is None
+    assert entita["unita"] is None
+
+    dichiarata = {**_ENTITA_VERA, "original_device_class": " energy ",
+                  "unit_of_measurement": "kWh"}
+    entita = build_home_space({"entita": [dichiarata]})["entita"][0]
+    assert (entita["classe"], entita["unita"]) == ("energy", "kWh")
 
 
 # Righe VERE, misurate il 10/09/2026 con i comandi che HIRIS usa davvero

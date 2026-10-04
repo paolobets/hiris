@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from .behavior import automation_active
-from .topology import live_first
+from .topology import clean_text
 
 #: Le sette tabelle che l'anagrafe espone, sempre tutte e sette. Chi legge ci
 #: conta -- `hierarchy()` cerca `dispositivi` per risolvere le aree ereditate --
@@ -171,14 +171,18 @@ def _integration(row: dict) -> dict:
             "origine": row.get("source")}
 
 
-def _entity(row: dict, live_classes: dict, live_units: dict) -> dict:
+def _entity(row: dict) -> dict:
     """Una riga del registro delle entita', come l'anagrafe la espone.
 
-    `classe` e `unita` **non vengono dalla riga**: vengono dallo specchio vivo
-    (`topology.live_first`, che fanno vincere la viva). Sul
-    campo e' l'unica fonte che esista per la classe -- vedi il docstring del
-    modulo -- e per l'unita' e' quella che conta, perche' Home Assistant
-    converte le unita' solo alla prima aggiunta del sensore.
+    `classe` e `unita` sono **cio' che il registro dichiara**, e nient'altro
+    (B-17, Tappa 3, Task 7, 04/10/2026). Fino a quel giorno l'anagrafe ci
+    scriveva quelle dello specchio vivo AL MOMENTO della ricostruzione, e le
+    teneva ferme fino alla ricostruzione dopo: un'unita' cambiata in Home
+    Assistant arrivava all'osservatore e alle ricette solo dopo un evento di
+    registro. La classe e l'unita' DI ADESSO le dice `House.kind_of`, che
+    compone questa dichiarazione con lo specchio (`topology.live_first`, la
+    viva vince). Il registro la classe quasi non la manda -- vedi il
+    docstring del modulo -- e l'unita' la porta solo se l'utente l'ha forzata.
     """
     entity_id = row["entity_id"]
     return {
@@ -203,9 +207,8 @@ def _entity(row: dict, live_classes: dict, live_units: dict) -> dict:
         # `config` o `diagnostic`, deciso dall'INTEGRAZIONE -- e non c'entra
         # niente con `categorie` (plurale), la tassonomia dell'UTENTE.
         "categoria": row.get("entity_category"),
-        "classe": live_first(row.get("device_class") or row.get("original_device_class"),
-                            live_classes.get(entity_id)),
-        "unita": live_first(row.get("unit_of_measurement"), live_units.get(entity_id)),
+        "classe": clean_text(row.get("device_class") or row.get("original_device_class")),
+        "unita": clean_text(row.get("unit_of_measurement")),
         "disabilitata": 1 if row.get("disabled_by") else 0,
         "nascosta": 1 if row.get("hidden_by") else 0,
         # CHI l'ha spenta o nascosta, col valore di Home Assistant (Tappa 3,
@@ -226,23 +229,15 @@ def _entity(row: dict, live_classes: dict, live_units: dict) -> dict:
     }
 
 
-def build_home_space(registries: dict[str, list[dict]], *,
-                     live_classes: dict[str, str] | None = None,
-                     live_units: dict[str, str] | None = None) -> dict[str, list[dict]]:
-    """L'anagrafe, costruita dai registri appena letti.
-
-    `live_classes`/`live_units` sono le due mappe che `topology.live_mirror()`
-    estrae gia' dallo specchio dello stato: si passano di qui invece di
-    rileggere la cache, perche' la stessa domanda non deve avere due risposte
-    a seconda della porta.
-    """
-    classes = live_classes or {}
-    units = live_units or {}
+def build_home_space(registries: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """L'anagrafe, costruita dai registri appena letti: solo da loro. Lo
+    specchio dello stato non entra (B-17): cio' che e' vivo si chiede vivo,
+    a `House`."""
     return {
         "piani": [_floor(p) for p in registries.get("piani", []) if p.get("floor_id")],
         "aree": [_area(a) for a in registries.get("aree", []) if a.get("area_id")],
         "dispositivi": [_device(d) for d in registries.get("dispositivi", []) if d.get("id")],
-        "entita": [_entity(e, classes, units)
+        "entita": [_entity(e)
                    for e in registries.get("entita", []) if e.get("entity_id")],
         "etichette": [_label(e) for e in registries.get("etichette", []) if e.get("label_id")],
         "categorie": [_category(c) for c in registries.get("categorie", [])
@@ -259,8 +254,8 @@ def _carried_over(built: dict[str, list[dict]], previous: dict[str, list[dict]],
     I nomi sono quelli di `HAClient.read_registries` e di `topology.rebuild`:
     una tabella intera (`aree`), gli alias delle entita' (`entita:alias`, il
     secondo giro `get_entries`), un ambito delle categorie
-    (`categorie:script`). Gli altri (`specchio_vivo`,
-    `sistema_di_riferimento`) non sono tabelle e non si toccano. Le righe
+    (`categorie:script`). Gli altri (`sistema_di_riferimento`)
+    non sono tabelle e non si toccano. Le righe
     riprese sono gia' nella forma dell'anagrafe: nessuna seconda costruzione.
     """
     result = dict(built)
@@ -389,9 +384,7 @@ class HomeSpace:
 
     def hold_registries(self, registries: dict[str, list[dict]],
                         unavailable: list[str] | None = None,
-                        reference_frame: dict | None = None, *,
-                        live_classes: dict[str, str] | None = None,
-                        live_units: dict[str, str] | None = None) -> None:
+                        reference_frame: dict | None = None) -> None:
         """Costruisce l'anagrafe dai registri appena letti e la prende in
         consegna. **E' l'unica porta**: la ricostruzione vera e ogni prova
         passano di qui, quindi una finta non puo' seminare una casa che il
@@ -405,8 +398,7 @@ class HomeSpace:
         dall'anagrafe TUTTI gli alias, e la ricerca smetteva di trovare cio'
         che il proprietario aveva chiamato a modo suo, per un comando fallito.
         """
-        built = build_home_space(registries, live_classes=live_classes,
-                                 live_units=live_units)
+        built = build_home_space(registries)
         if self._updated_at is not None:
             built = _carried_over(built, self._home_space, unavailable or [])
         self.hold(built, unavailable, reference_frame)

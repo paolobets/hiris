@@ -43,7 +43,7 @@ riesce a dedurla, resta `None`: inventarla sarebbe peggio di non averla.
 """
 from __future__ import annotations
 
-from ..home_space.topology import actual_area, device_areas, live_first
+from ..home_space.topology import Mirror, actual_area, device_areas, live_first
 from .resolver import STORE_KEY_PER_TYPE
 
 # Le tre caselle con un vocabolario chiuso: "che forza ha", "quando vale" e
@@ -67,7 +67,7 @@ VOCABULARY: dict[str, frozenset[str]] = {
 
 def validate(interpretation: dict, lookup,
            tipi_non_verificabili: frozenset[str] = frozenset(),
-           reported_unit: dict[str, str] | None = None
+           mirror: Mirror | None = None
            ) -> tuple[dict, list[str], list[str]]:
     """Ripulisce un'interpretazione proposta dal modello, contro il
     vocabolario chiuso e l'anagrafe di `indice`.
@@ -110,7 +110,7 @@ def validate(interpretation: dict, lookup,
     ancore = _validate_ancore(interpretation.get("ancore") or [], lookup,
                              tipi_non_verificabili, problemi)
     conditions = _validate_conditions(interpretation.get("condizioni") or [], problemi)
-    unit = deduci_unit(ancore, grandezza, lookup, reported_unit)
+    unit = deduci_unit(ancore, grandezza, lookup, mirror)
 
     pulita = {
         "forza": modality,
@@ -242,7 +242,7 @@ def _validate_conditions(conditions, problemi: list[str]) -> list[dict]:
 
 
 def deduci_unit(ancore: list[dict], grandezza, lookup,
-                 reported_unit: dict[str, str] | None = None) -> str | None:
+                 mirror: Mirror | None = None) -> str | None:
     """L'unita' non si chiede al modello, si deduce da cio' che l'anagrafe
     gia' sa:
 
@@ -260,12 +260,12 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
 
     Se non si trova nulla, resta `None`: **non si inventa**.
     """
-    reported = reported_unit or {}
+    mirror = mirror or Mirror()
     for tether in ancore:
         if tether["tipo"] == "entita":
             entity = lookup.verify("entita", tether["riferimento"])
             if entity:
-                unit = live_first(entity.get("unita"), reported.get(entity.get("id")))
+                unit = live_first(entity.get("unita"), mirror.units.get(entity.get("id")))
                 if unit is not None:
                     return unit
         elif tether["tipo"] == "area" and grandezza is not None:
@@ -277,11 +277,14 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
             # `area_id` proprio, e su una casa vera non si trovava mai niente.
             device_area = device_areas(lookup.tutti("dispositivo"))
             for entity in lookup.tutti("entita"):
-                if entity.get("classe") != grandezza:
+                # La classe DI ADESSO (B-17): l'anagrafe porta solo quella
+                # che il registro dichiara, quasi mai una.
+                if live_first(entity.get("classe"),
+                              mirror.classes.get(entity.get("id"))) != grandezza:
                     continue
                 if actual_area(entity, device_area) != area_id:
                     continue
-                unit = live_first(entity.get("unita"), reported.get(entity.get("id")))
+                unit = live_first(entity.get("unita"), mirror.units.get(entity.get("id")))
                 if unit is not None:
                     return unit
     return None

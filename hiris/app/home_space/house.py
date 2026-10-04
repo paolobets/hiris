@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from . import topology
+from .ha_vocabulary import domain_of
 from .house_query import (
     _BEHAVIOR_KINDS,
     Selection,
@@ -219,3 +220,24 @@ class House:
         if row is None:
             return None
         return topology.device_name(row) if kind == "dispositivo" else row.get("nome")
+
+    def kind_of(self, entity_id: str) -> dict | None:
+        """TIPO (§4.1; Tappa 3, Task 7, B-17): il dominio, la classe e l'unita'
+        di un'entita' **di adesso** -- dallo specchio di questa casa, col
+        registro come ripiego (`topology.live_first`, la viva vince).
+
+        Fino al 04/10/2026 l'anagrafe scriveva classe e unita' dello specchio
+        al momento della ricostruzione e le teneva ferme: osservatore e
+        ricette vedevano l'unita' dell'ultima ricostruzione, non quella che
+        Home Assistant usa adesso. Ora l'anagrafe porta solo cio' che il
+        registro dichiara, e il vivo si chiede qui. `None` per un id che ne'
+        il registro ne' lo specchio conoscono."""
+        entry = self._entity(entity_id)
+        if entry is None and entity_id not in self.mirror.state:
+            return None
+        entry = entry or {}
+        return {"dominio": domain_of(entity_id),
+                "classe": topology.live_first(entry.get("classe"),
+                                              self.mirror.classes.get(entity_id)),
+                "unita": topology.live_first(entry.get("unita"),
+                                             self.mirror.units.get(entity_id))}

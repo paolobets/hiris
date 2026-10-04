@@ -41,6 +41,9 @@ class _Anagrafe:
     def read(self):
         return {"entita": self._entita, "aree": []}
 
+    def unavailable(self):
+        return []
+
 
 def _entita(eid, **extra):
     riga = {"id": eid, "nome": eid, "classe": None, "unita": None,

@@ -53,6 +53,7 @@ from .home_space.historian import (
     instant_epoch,
     local_date,
 )
+from .home_space.house import House
 from .home_space.reader import HomeSpace
 from .home_space.redaction import home_assistant_folder
 from .home_space.topology import (
@@ -1526,7 +1527,7 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
     return bridge_active and subscription_has_token()
 
 
-def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0, *,
+def schedule_registry_rebuild(client, store, delay: float = 3.0, *,
                               then=None):
     """Restituisce `trigger(event_type)`: ricostruisce l'anagrafe, una volta sola.
 
@@ -1552,7 +1553,7 @@ def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0, *
     async def _fra_poco():
         try:
             await asyncio.sleep(delay)
-            await rebuild(client, store, entity_cache)
+            await rebuild(client, store)
             if then is not None:
                 await then()
         except asyncio.CancelledError:
@@ -1655,8 +1656,11 @@ async def reconsideration_round(app, ha_client) -> dict | None:
     if store is None or home_space_store is None:
         return None
     try:
-        home_space = home_space_store.read()
-        collected, letto = _collect_scope_turn(app, store, home_space)
+        # La casa di questo giro (R13): l'anagrafe e lo specchio di adesso,
+        # una volta. Vale il giro e basta.
+        house = House.read(home_space_store, app.get("entity_cache"))
+        home_space = house.home_space
+        collected, letto = _collect_scope_turn(app, store, house)
         if collected is not None:
             return collected
         if letto:
@@ -1749,12 +1753,12 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         window_s = None if in_corso else await measure_memory_window(
             ha_client, sorted(e["id"] for e in home_space.get("entita", []) if e.get("id")))
         if route == "ponte":
-            return _enqueue_scope_turn(app, store, home_space, reason=why,
+            return _enqueue_scope_turn(app, store, house, reason=why,
                                        window_s=window_s, lotto=lotto,
                                        annota=not in_corso,
                                        campagna_ts=campagna_ts)
         outcome = await observer_reconsider(
-            runner, store, home_space, reason=why,
+            runner, store, house, reason=why,
             window_s=window_s, cadence_s=cadence_from(window_s),
             only=lotto, record=not in_corso, campaign_ts=campagna_ts,
             measurements=app.get("usage"))
@@ -2129,7 +2133,7 @@ async def _repair_recipes(app, broken) -> list[dict]:
     runner = app.get("llm_router") or app.get("claude_runner")
     if not broken or sapere is None or home_space_store is None or runner is None:
         return []
-    home_space = home_space_store.read() or {}
+    house = House.read(home_space_store, app.get("entity_cache"))
     store = app.get("observations")
     objective = ((store.objective() or {}).get("testo") or "") if store is not None else ""
     done = []
@@ -2138,7 +2142,7 @@ async def _repair_recipes(app, broken) -> list[dict]:
         if not device_id:
             continue
         esito = await recipe_turn.ask(
-            runner, sapere, home_space, device_id,
+            runner, sapere, house, device_id,
             objective=objective, who=ACTUATOR_AUTHOR, when_ts=time.time(),
             # **La riparazione e' lavoro dell'ATTUATORE**, non delle ricette:
             # e' lui che l'ha chiesta. Attribuirla a «ricette» perche' passa
@@ -2490,8 +2494,8 @@ async def recipe_round(app) -> dict | None:
     if store is None or sapere is None or home_space_store is None:
         return None
     try:
-        home_space = home_space_store.read()
-        collected = _collect_recipe_turn(app, sapere, home_space)
+        house = House.read(home_space_store, app.get("entity_cache"))
+        collected = _collect_recipe_turn(app, sapere, house)
         if collected is not None and collected.get("risposta"):
             return collected
         # **Una risposta che non c'e' non chiude il giro**, e senza questa riga
@@ -2507,11 +2511,11 @@ async def recipe_round(app) -> dict | None:
 
         watched = {s for s, riga in (store.scope() or {}).items()
                    if riga.get("dentro")}
-        to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
+        to_ask = recipe_turn.devices_to_ask(sapere, house, watched)
         # **Niente da potare ne' da chiedere: niente da leggere** (A-20, Tappa
         # 2, Task 8). Fino al 04/10/2026 l'elenco delle statistiche si leggeva
         # qui sotto a ogni passaggio, prima di sapere se servisse.
-        if not to_ask and not recipe_turn.has_prunable_recipes(sapere, home_space):
+        if not to_ask and not recipe_turn.has_prunable_recipes(sapere, house):
             return None
 
         # **Quali entita' sanno produrre una serie**: serve due volte, e si
@@ -2535,12 +2539,12 @@ async def recipe_round(app) -> dict | None:
         # richiesto. Trovato dalla revisione indipendente il 15/09/2026:
         # dieci dispositivi sulla casa vera.
         tolte = recipe_turn.drop_recipes_without_series(
-            sapere, home_space, with_series=with_series)
+            sapere, house, with_series=with_series)
         if tolte:
             logger.info("ricette: %d ricette tolte -- nessuna delle loro "
                         "entita' ha una serie; quei dispositivi tornano "
                         "domande aperte", tolte)
-            to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
+            to_ask = recipe_turn.devices_to_ask(sapere, house, watched)
         if not to_ask:
             return None
         # A chi chiedere: **si ruota**, o un dispositivo che non risponde
@@ -2554,7 +2558,7 @@ async def recipe_round(app) -> dict | None:
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
         if route == "ponte":
-            return _enqueue_recipe_turn(app, home_space, device_id,
+            return _enqueue_recipe_turn(app, house, device_id,
                                         objective=objective,
                                         with_series=with_series)
         if runner is None:
@@ -2563,7 +2567,7 @@ async def recipe_round(app) -> dict | None:
         declare_downgrade(app, agent="ricette", reason=downgrade)
         logger.info("ricette: chiedo come si misura «%s» (%s)", device_id, route)
         esito = await recipe_turn.ask(
-            runner, sapere, home_space, device_id, objective=objective,
+            runner, sapere, house, device_id, objective=objective,
             who=f"modello ({route})", when_ts=time.time(),
             with_series=with_series, measurements=app.get("usage"),
             species="ricette")
@@ -2599,12 +2603,12 @@ def _troppo_presto_per_richiedere(app) -> bool:
     return (time.time() - deciso) < RECIPE_RETRY_HOLD_S
 
 
-def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
+def _enqueue_recipe_turn(app, house: House, device_id: str, *,
                          objective: str,
                          with_series: set[str] | None = None) -> dict | None:
     """Accoda al piano la domanda su un dispositivo, e torna subito."""
     from .api.handlers_models import _STORE_DEFAULTS
-    job = recipe_turn.bridge_turn(objective, home_space, device_id,
+    job = recipe_turn.bridge_turn(objective, house, device_id,
                                   with_series=with_series)
     if job is None:
         return None
@@ -2623,7 +2627,7 @@ def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
     return {"accodata": True, "dispositivo": device_id}
 
 
-def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
+def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
     """La risposta che il piano ha dato alla domanda su un dispositivo.
 
     **Un turno gia' letto non si rilegge**, e qui la traccia e' il sapere
@@ -2649,7 +2653,7 @@ def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
         if riga is not None and riga.when_ts >= decided_ts:
             return None
     reply = (turn.get("decision") or {}).get("reply") or ""
-    esito = recipe_turn.apply_recipe(sapere, home_space, device_id, reply,
+    esito = recipe_turn.apply_recipe(sapere, house, device_id, reply,
                                      who="modello (ponte)", when_ts=time.time())
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
@@ -2897,7 +2901,7 @@ def _to_judge(store, candidates: list[str], last: dict | None) -> list[str]:
     return mai + vecchi
 
 
-def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool]:
+def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     """La risposta che il piano ha dato al turno di scope, e **se si e'
     letta**: `(esito, letto)`.
 
@@ -2947,7 +2951,7 @@ def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool
     wake = turn.get("wake") or {}
     lotto = wake.get("lotto")
     outcome = observer_apply_answer(
-        store, home_space, reply,
+        store, house, reply,
         reason=wake.get("motivo") or "il piano ha risposto",
         window_s=wake.get("finestra_s"), cadence_s=wake.get("cadenza_s"),
         asked=set(lotto) if lotto else None,
@@ -2975,7 +2979,7 @@ def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool
     return outcome, True
 
 
-def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
+def _enqueue_scope_turn(app, store, house: House, *, reason: str,
                         window_s: float | None, lotto: set[str],
                         annota: bool, campagna_ts: float) -> dict:
     """Accoda al piano il turno dell'osservatore, e torna subito.
@@ -2999,7 +3003,7 @@ def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
         {"motivo": reason, "finestra_s": window_s,
          "cadenza_s": cadence_from(window_s),
          "lotto": sorted(lotto), "annota": annota, "campagna_ts": campagna_ts},
-        observer_bridge_turn(store, home_space, lotto),
+        observer_bridge_turn(store, house, lotto),
         now + deadline_min * 60,
         now=now)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
@@ -3569,7 +3573,7 @@ async def _on_startup(app: web.Application) -> None:
     # sua nascita, piu' sotto, lo dice e non solleva). Lo specchio si rilegge
     # alla riconnessione.
     ha_client.add_topology_listener(
-        schedule_registry_rebuild(ha_client, home_space_store, entity_cache,
+        schedule_registry_rebuild(ha_client, home_space_store,
                                   then=lambda: prime_state_translations(app)))
     ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
     # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
@@ -3786,7 +3790,7 @@ async def _on_startup(app: web.Application) -> None:
     # nell'anagrafe, e su una casa vuota non ne trova nessuna, quindi il
     # resoconto riparato nascerebbe senza misure.
     try:
-        await rebuild(ha_client, home_space_store, entity_cache)
+        await rebuild(ha_client, home_space_store)
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
 

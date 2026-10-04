@@ -24,7 +24,14 @@ from .behavior import BEHAVIOR_DOMAINS
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
-from .topology import _ID_WITHOUT_AREA, Mirror, device_name, is_pseudo_area, live_name
+from .topology import (
+    _ID_WITHOUT_AREA,
+    Mirror,
+    device_name,
+    is_pseudo_area,
+    live_first,
+    live_name,
+)
 
 if TYPE_CHECKING:
     from .house import House
@@ -216,7 +223,8 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) ->
     # persona esce come `not_home`, e `stato=not_home` deve trovarla.
     if f.state and redact_state(eid, mirror.state.get(eid)) != f.state:
         return False
-    if f.device_class and (mirror.classes.get(eid) or entry.get("classe")) != f.device_class:
+    if f.device_class and live_first(entry.get("classe"),
+                                     mirror.classes.get(eid)) != f.device_class:
         return False
     if not _place_matches(f, entry, area, floor):
         return False
@@ -249,10 +257,15 @@ def _entity_row(entry, area, where, mirror: Mirror, medium: bool) -> dict:
         row["nascosta"] = True
     if medium:
         row["genere"] = "entita"
-        if mirror.units.get(eid):
-            row["unita"] = mirror.units[eid]
-        if mirror.classes.get(eid) or entry.get("classe"):
-            row["classe"] = mirror.classes.get(eid) or entry.get("classe")
+        # Classe e unita' di adesso, con la regola di `House.kind_of`
+        # (`live_first`, B-17): fino al 04/10/2026 l'unita' era la sola viva,
+        # la classe la viva o quella che l'anagrafe aveva congelato.
+        unit = live_first(entry.get("unita"), mirror.units.get(eid))
+        if unit:
+            row["unita"] = unit
+        device_class = live_first(entry.get("classe"), mirror.classes.get(eid))
+        if device_class:
+            row["classe"] = device_class
         if entry.get("piattaforma"):
             row["integrazione"] = entry["piattaforma"]
         if mirror.attributes.get(eid):

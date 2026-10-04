@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import device_areas, hierarchy, rebuild
 from hiris.app.proxy.entity_cache import EntityCache
@@ -70,9 +71,7 @@ def _client(registries, silent=(), states=()):
 
 async def _specchio(stati=()):
     """Uno specchio dello stato VERO (`EntityCache`), caricato come in
-    produzione: `load()` alza `loaded`, e senza quella bandiera `rebuild`
-    dichiara `specchio_vivo` fra i non disponibili -- vedi il suo docstring.
-    """
+    produzione."""
     cache = EntityCache()
     await cache.load(_client({}, states=stati))
     return cache
@@ -88,7 +87,7 @@ def archivio(tmp_path):
 @pytest.mark.asyncio
 async def test_ricostruisci_riempie_l_archivio_e_riepiloga(archivio):
     client = _client(_REGISTRI)
-    esito = await rebuild(client, archivio, await _specchio())
+    esito = await rebuild(client, archivio)
     assert esito["conteggi"]["aree"] == 2
     assert esito["conteggi"]["entita"] == 4
     assert esito["non_disponibili"] == []
@@ -100,7 +99,7 @@ async def test_ricostruisci_riporta_i_registri_caduti(archivio):
     """Un registro caduto non ferma l'anagrafe, ma non deve sparire: la casa
     senza piani e il registro dei piani caduto danno la stessa lista vuota."""
     client = _client(_REGISTRI, silent=["piani"])
-    esito = await rebuild(client, archivio, await _specchio())
+    esito = await rebuild(client, archivio)
     assert esito["non_disponibili"] == ["piani"]
     assert esito["conteggi"]["aree"] == 2   # il resto e' passato lo stesso
 
@@ -109,12 +108,11 @@ async def test_ricostruisci_riporta_i_registri_caduti(archivio):
 async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
     """L'utente rinomina un'entita' e subito riavvia HA: l'antirimbalzo scade a
     HA spento. La casa buona di ieri non deve sparire."""
-    await rebuild(_client(_REGISTRI), archivio, await _specchio())
+    await rebuild(_client(_REGISTRI), archivio)
     prima = archivio.updated_at()
 
     # Home Assistant spento: nessun registro risponde.
-    esito = await rebuild(_client(_REGISTRI, silent=_REGISTRI), archivio,
-                          await _specchio())
+    esito = await rebuild(_client(_REGISTRI, silent=_REGISTRI), archivio)
 
     assert archivio.read()["aree"]           # la casa di ieri e' ancora li'
     assert archivio.updated_at() == prima  # e non finge di essere fresca
@@ -498,47 +496,31 @@ def test_una_riga_di_registro_senza_id_non_fa_saltare_l_albero():
 
 
 @pytest.mark.asyncio
-async def test_la_ricostruzione_porta_nell_anagrafe_la_classe_che_solo_lo_specchio_conosce(
-        archivio):
-    """**La classe non e' nei registri: e' nello stato.** Misurato sulla casa
+async def test_la_ricostruzione_non_congela_la_classe_e_l_unita_dello_specchio(archivio):
+    """**La classe non e' nei registri: e' nello stato** (misurato sulla casa
     vera il 10/09/2026: `config/entity_registry/list` non manda
-    `device_class` su nessuna delle 1.227 righe, e lo specchio dello stato ce
-    l'ha per ogni entita' che ne dichiara una.
+    `device_class` su nessuna delle 1.227 righe). Fino al 04/10/2026 la
+    ricostruzione la copiava dallo specchio nell'anagrafe, e ce la teneva
+    ferma fino alla ricostruzione dopo (B-17). Ora l'anagrafe porta solo cio'
+    che il registro dichiara, e la classe e l'unita' DI ADESSO le dice
+    `House.kind_of`, dallo specchio di adesso: cambiata l'unita' nello
+    specchio dopo la ricostruzione, la casa la vede.
 
-    La ricostruzione deve unirli, o l'anagrafe rinasce senza classi -- ed e'
-    l'anagrafe su cui `house_query` filtra per classe e
-    `memory/interpretation` riconosce le grandezze.
-
-    Mutazione che la uccide: in `rebuild`, non passare lo specchio al lettore.
+    Mutazione ESEGUITA: `reader._entity` che rimette nell'anagrafe la classe
+    e l'unita' dello specchio (`live_first`) -- rossa sulla prima `assert`.
     """
+    await rebuild(_client(_REGISTRI), archivio)
+    entita = next(e for e in archivio.read()["entita"] if e["id"] == "sensor.frigo_temp")
+    assert entita["classe"] is None and entita["unita"] is None
+
     specchio = await _specchio([
         {"entity_id": "sensor.frigo_temp", "state": "4.2",
          "attributes": {"device_class": "temperature", "unit_of_measurement": "°C"}}])
+    house = House.read(archivio, specchio)
+    assert house.kind_of("sensor.frigo_temp") == {
+        "dominio": "sensor", "classe": "temperature", "unita": "°C"}
 
-    await rebuild(_client(_REGISTRI), archivio, specchio)
-
-    entita = next(e for e in archivio.read()["entita"] if e["id"] == "sensor.frigo_temp")
-    assert entita["classe"] == "temperature"
-    assert entita["unita"] == "°C"
-
-
-@pytest.mark.asyncio
-async def test_senza_specchio_vivo_la_ricostruzione_lo_dichiara_invece_di_tacere(archivio):
-    """**La trappola dello stato condiviso caricato pigramente.**
-    `entity_cache.load()` all'avvio e' dentro un `try/except` che logga e
-    prosegue: se fallisce, lo specchio resta vuoto e ogni entita' nascerebbe
-    senza classe -- lo stesso identico difetto di prima, con la stessa
-    firma silenziosa.
-
-    Non deve essere silenzioso: `specchio_vivo` entra fra i registri non
-    disponibili, accanto a quelli veri, perche' «non ho potuto leggere le
-    classi» e «questa casa non ha classi» sono due fatti diversi. E' la stessa
-    dottrina di `EntityCache.loaded`, che esiste per non spacciare un
-    inventario non pronto per una casa vuota.
-
-    Mutazione che la uccide: costruire lo specchio comunque quando
-    `cache.loaded` e' falso.
-    """
-    esito = await rebuild(_client(_REGISTRI), archivio, EntityCache())
-
-    assert "specchio_vivo" in esito["non_disponibili"]
+    await specchio.load(_client({}, states=[
+        {"entity_id": "sensor.frigo_temp", "state": "39.6",
+         "attributes": {"device_class": "temperature", "unit_of_measurement": "°F"}}]))
+    assert House.read(archivio, specchio).kind_of("sensor.frigo_temp")["unita"] == "°F"

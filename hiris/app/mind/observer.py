@@ -29,6 +29,7 @@ import logging
 import re
 
 from ..home_space.briefing import digest_visible_entity_ids
+from ..home_space.house import House
 from ..steering import misura_turno
 from .scope import OBSERVER
 
@@ -73,7 +74,7 @@ def _area_names(home_space: dict) -> dict[str, str]:
     return {a["id"]: a.get("nome") for a in home_space.get("aree", []) if a.get("id")}
 
 
-def house_lines(home_space: dict, only: set[str] | None = None) -> list[str]:
+def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     """Una riga per entita', **solo quelle che competono all'osservatore**.
 
     `only` restringe al **lotto** di questo turno e non puo' allargare: si
@@ -95,6 +96,7 @@ def house_lines(home_space: dict, only: set[str] | None = None) -> list[str]:
     italiano e' rumore, e un'area cancellata non deve far comparire una stringa
     che sembra un luogo.
     """
+    home_space = house.home_space
     visible = digest_visible_entity_ids(home_space)
     areas = _area_names(home_space)
     lines = []
@@ -104,7 +106,10 @@ def house_lines(home_space: dict, only: set[str] | None = None) -> list[str]:
         if only is not None and entity["id"] not in only:
             continue
         parts = [entity["id"]]
-        for value in (entity.get("nome"), entity.get("classe"), entity.get("unita"),
+        # Classe e unita' DI ADESSO (B-17): l'anagrafe porta solo cio' che il
+        # registro dichiara.
+        kind = house.kind_of(entity["id"]) or {}
+        for value in (entity.get("nome"), kind.get("classe"), kind.get("unita"),
                       areas.get(entity.get("area_id")), entity.get("translation_key")):
             if value:
                 parts.append(str(value))
@@ -201,7 +206,7 @@ def read_decisions(answer: str) -> tuple[list[dict], str | None]:
     return decisions, None
 
 
-def bridge_turn(store, home_space: dict, only: set[str] | None = None) -> dict:
+def bridge_turn(store, house: House, only: set[str] | None = None) -> dict:
     """Il turno da accodare al ponte: **la stessa domanda, per un'altra porta**.
 
     Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job non
@@ -220,7 +225,7 @@ def bridge_turn(store, home_space: dict, only: set[str] | None = None) -> dict:
     return {
         "history": [{"role": "user",
                      "content": build_house_question(store.objective()["testo"],
-                                                     house_lines(home_space, only))}],
+                                                     house_lines(house, only))}],
         "system_prompt": SYSTEM,
         # **Senza questa chiave il ponte gli impone il contrario.** L'istruzione
         # che chiude ogni turno di chat dice «usa testo semplice: niente
@@ -242,7 +247,7 @@ def bridge_turn(store, home_space: dict, only: set[str] | None = None) -> dict:
 OMITTED_REASON = "l'osservatore l'ha guardata e non ha saputo decidere"
 
 
-def apply_answer(store, home_space: dict, answer: str, *, reason: str = "",
+def apply_answer(store, house: House, answer: str, *, reason: str = "",
                  window_s: float | None = None, cadence_s: float | None = None,
                  asked: set[str] | None = None,
                  record: bool = True,
@@ -266,7 +271,7 @@ def apply_answer(store, home_space: dict, answer: str, *, reason: str = "",
     nessun evento potra' mai accendere e che la pagina mostrerebbe come
     osservata.
     """
-    lines = house_lines(home_space, asked)
+    lines = house_lines(house, asked)
     decisions, failure = read_decisions(answer)
     if failure is not None:
         logger.warning("osservatore: %s", failure)
@@ -312,7 +317,7 @@ def apply_answer(store, home_space: dict, answer: str, *, reason: str = "",
             "omesse": omitted, "candidate": len(lines)}
 
 
-async def reconsider(runner, store, home_space: dict, *, reason: str,
+async def reconsider(runner, store, house: House, *, reason: str,
                      window_s: float | None = None, cadence_s: float | None = None,
                      model: str = "auto", only: set[str] | None = None,
                      record: bool = True, campaign_ts: float | None = None,
@@ -329,7 +334,7 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
     chat e per le promesse; quando risponde «ponte», il giro passa da
     `bridge_turn` e questa funzione non viene chiamata affatto.
     """
-    lines = house_lines(home_space, only)
+    lines = house_lines(house, only)
     objective = store.objective()["testo"]
     question = build_question(objective, lines)
     try:
@@ -357,7 +362,7 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
 
-    return apply_answer(store, home_space, answer, reason=reason,
+    return apply_answer(store, house, answer, reason=reason,
                         window_s=window_s, cadence_s=cadence_s,
                         asked={line.split(" · ", 1)[0] for line in lines},
                         record=record, campaign_ts=campaign_ts, now=now)

@@ -47,6 +47,7 @@ import json
 import logging
 import re
 
+from ..home_space.house import House
 from ..home_space.topology import device_name
 from ..steering import misura_turno
 from .knowledge import Fact
@@ -154,19 +155,19 @@ Se non sai cosa misurare, rispondi con {"why": "...", "steps": []}.
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
-def _device_entities(home_space: dict, device_id: str) -> list[dict]:
-    return [e for e in (home_space.get("entita") or [])
+def _device_entities(house: House, device_id: str) -> list[dict]:
+    return [e for e in (house.home_space.get("entita") or [])
             if e.get("dispositivo_id") == device_id]
 
 
-def _device_name(home_space: dict, device_id: str) -> str:
-    for d in home_space.get("dispositivi") or []:
+def _device_name(house: House, device_id: str) -> str:
+    for d in house.home_space.get("dispositivi") or []:
         if d.get("id") == device_id:
             return device_name(d)
     return device_id
 
 
-def device_lines(home_space: dict, device_id: str) -> list[str]:
+def device_lines(house: House, device_id: str) -> list[str]:
     """Una riga per entita' del dispositivo: identificatore, nome, classe,
     unita'.
 
@@ -176,11 +177,14 @@ def device_lines(home_space: dict, device_id: str) -> list[str]:
     scritte a mano, libere di divergere.
     """
     lines = []
-    for e in _device_entities(home_space, device_id):
+    for e in _device_entities(house, device_id):
         parts = [str(e.get("id") or "")]
-        for field in ("nome", "classe", "unita"):
-            if e.get(field):
-                parts.append(str(e[field]))
+        # Classe e unita' DI ADESSO (B-17): l'anagrafe porta solo cio' che il
+        # registro dichiara.
+        kind = house.kind_of(str(e.get("id") or "")) or {}
+        for value in (e.get("nome"), kind.get("classe"), kind.get("unita")):
+            if value:
+                parts.append(str(value))
         lines.append(" · ".join(parts))
     return lines
 
@@ -220,7 +224,7 @@ def _operations_catalogue() -> str:
     return "\n".join(lines)
 
 
-def build_device_question(objective: str, home_space: dict, device_id: str,
+def build_device_question(objective: str, house: House, device_id: str,
                           *, with_series: set[str] | None = None) -> str | None:
     """La domanda intera per un dispositivo, o `None` se non c'e' da chiedere.
 
@@ -246,24 +250,24 @@ def build_device_question(objective: str, home_space: dict, device_id: str,
     chiedere»: allora non si dice niente, invece di affermare che nessuna
     entita' ha una serie.
     """
-    lines = device_lines(home_space, device_id)
+    lines = device_lines(house, device_id)
     if not lines:
         return None
     return (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
-        f"Il dispositivo si chiama «{_device_name(home_space, device_id)}» e ha "
+        f"Il dispositivo si chiama «{_device_name(house, device_id)}» e ha "
         f"{len(lines)} entita'. Ogni riga e':\n"
         "identificatore · nome · classe · unita'\n"
         "(i campi che mancano sono assenti, non vuoti).\n\n"
         + "\n".join(lines)
-        + _series_block(home_space, device_id, with_series)
+        + _series_block(house, device_id, with_series)
         + "\n\nLe operazioni che sai chiedere sono queste, e nessun'altra:\n\n"
         + _operations_catalogue()
         + "\n" + ANSWER_CONTRACT
     )
 
 
-def _series_block(home_space: dict, device_id: str,
+def _series_block(house: House, device_id: str,
                  with_series: set[str] | None) -> str:
     """Quali entita' del dispositivo hanno una serie, e quali non l'avranno.
 
@@ -271,7 +275,7 @@ def _series_block(home_space: dict, device_id: str,
     """
     if with_series is None:
         return ""
-    ids = [str(e.get("id") or "") for e in _device_entities(home_space, device_id)]
+    ids = [str(e.get("id") or "") for e in _device_entities(house, device_id)]
     con = [i for i in ids if i in with_series]
     mute = [i for i in ids if i and i not in with_series]
     if not mute:
@@ -337,7 +341,7 @@ def _only_answer(store, device_id: str, kept: str) -> None:
             store.forget("dispositivo", device_id, field)
 
 
-def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
+def apply_recipe(store, house: House, device_id: str, answer: str, *,
                  who: str, when_ts: float) -> dict:
     """Cosa si fa della risposta: si valida, e si scrive cio' che ne esce.
 
@@ -368,7 +372,7 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
             "capito»)", device_id)
         return {"scritta": False, "problemi": ["il modello non ha risposto"],
                 "risposta": False}
-    entities = {str(e.get("id")) for e in _device_entities(home_space, device_id)}
+    entities = {str(e.get("id")) for e in _device_entities(house, device_id)}
     data, reason = read_recipe(answer)
     problems = [reason] if reason else []
     if data is not None:
@@ -434,7 +438,7 @@ def _is_declined(data: dict) -> bool:
             and bool(str(data.get("why") or "").strip()))
 
 
-def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
+def devices_to_ask(store, house: House, watched: set[str]) -> list[str]:
     """I dispositivi che **pesano** e non hanno ancora una risposta.
 
     «Pesa» = almeno una sua entita' e' dentro lo scope, cioe' l'osservatore ha
@@ -454,11 +458,11 @@ def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
     dispositivo non e' cambiato, e' cambiato cio' che sappiamo calcolare.
     """
     to_ask = []
-    for device in home_space.get("dispositivi") or []:
+    for device in house.home_space.get("dispositivi") or []:
         device_id = str(device.get("id") or "")
         if not device_id:
             continue
-        entities = {str(e.get("id")) for e in _device_entities(home_space, device_id)}
+        entities = {str(e.get("id")) for e in _device_entities(house, device_id)}
         if not entities & watched:
             continue
         if store.get("dispositivo", device_id, RECIPE_FIELD) is not None:
@@ -493,7 +497,7 @@ def who_to_ask(to_ask: list[str], turn: int) -> tuple[str | None, int]:
     return to_ask[turn % len(to_ask)], turn + 1
 
 
-def drop_recipes_without_series(store, home_space: dict,
+def drop_recipes_without_series(store, house: House,
                                *, with_series: set[str] | None) -> int:
     """Toglie le ricette le cui entita' **non hanno nessuna serie**, e torna
     quante ne ha tolte.
@@ -521,7 +525,7 @@ def drop_recipes_without_series(store, home_space: dict,
     if with_series is None:
         return 0
     dropped = 0
-    for device_id, named in _named_recipes(store, home_space):
+    for device_id, named in _named_recipes(store, house):
         if not (named & with_series):
             store.forget("dispositivo", device_id, RECIPE_FIELD)
             dropped += 1
@@ -533,11 +537,11 @@ def drop_recipes_without_series(store, home_space: dict,
     return dropped
 
 
-def _named_recipes(store, home_space: dict):
+def _named_recipes(store, house: House):
     """`(device_id, entita' nominate)` per ogni dispositivo dell'anagrafe con
     una ricetta che nomina almeno un'entita': le sole che la potatura puo'
     togliere."""
-    for device in home_space.get("dispositivi") or []:
+    for device in house.home_space.get("dispositivi") or []:
         device_id = str(device.get("id") or "")
         if not device_id:
             continue
@@ -549,11 +553,11 @@ def _named_recipes(store, home_space: dict):
             yield device_id, named
 
 
-def has_prunable_recipes(store, home_space: dict) -> bool:
+def has_prunable_recipes(store, house: House) -> bool:
     """Se `drop_recipes_without_series` ha qualcosa da guardare: senza, il
     giro delle ricette non ha bisogno di chiedere a Home Assistant quali
     entita' abbiano statistiche (A-20, Tappa 2, Task 8)."""
-    return next(_named_recipes(store, home_space), None) is not None
+    return next(_named_recipes(store, house), None) is not None
 
 
 def _still_valid(rejection) -> bool:
@@ -580,7 +584,7 @@ def recipe_for(store, device_id: str) -> dict | None:
         return None
 
 
-def bridge_turn(objective: str, home_space: dict, device_id: str,
+def bridge_turn(objective: str, house: House, device_id: str,
                 *, with_series: set[str] | None = None) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere.
 
@@ -588,7 +592,7 @@ def bridge_turn(objective: str, home_space: dict, device_id: str,
     gira altrove e non ha gli archivi, e `istruzione` serve perche' altrimenti
     l'istruzione di chiusura della chat gli vieta il JSON che qui si chiede.
     """
-    question = build_device_question(objective, home_space, device_id,
+    question = build_device_question(objective, house, device_id,
                                      with_series=with_series)
     if question is None:
         return None
@@ -597,7 +601,7 @@ def bridge_turn(objective: str, home_space: dict, device_id: str,
             "istruzione": ANSWER_CONTRACT}
 
 
-async def ask(runner, store, home_space: dict, device_id: str, *,
+async def ask(runner, store, house: House, device_id: str, *,
               objective: str, who: str, when_ts: float,
               model: str = "auto",
               with_series: set[str] | None = None,
@@ -608,7 +612,7 @@ async def ask(runner, store, home_space: dict, device_id: str, *,
     `steering.who_answers` risponde «ponte», il giro passa da `bridge_turn` e
     questa funzione non viene chiamata affatto.
     """
-    question = build_device_question(objective, home_space, device_id,
+    question = build_device_question(objective, house, device_id,
                                      with_series=with_series)
     if question is None:
         return {"scritta": False, "problemi": ["il dispositivo non ha entita'"]}
@@ -630,5 +634,5 @@ async def ask(runner, store, home_space: dict, device_id: str, *,
         logger.warning("ricetta: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
-    return apply_recipe(store, home_space, device_id, answer,
+    return apply_recipe(store, house, device_id, answer,
                         who=who, when_ts=when_ts)

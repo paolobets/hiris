@@ -17,10 +17,12 @@ import json
 
 import pytest
 
+from hiris.app.home_space.house import House
+from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 
-CASA = {
+CASA = House({
     "dispositivi": [{"id": "dev1", "nome": "Inverter ZCS"},
                     {"id": "dev2", "nome": "Lavatrice"}],
     "entita": [
@@ -31,7 +33,7 @@ CASA = {
         {"id": "switch.lavatrice", "nome": "Lavatrice",
          "dispositivo_id": "dev2"},
     ],
-}
+}, Mirror())
 
 RICETTA_BUONA = {
     "why": "l'inverter e' la fonte di casa e pesa sul risparmio energetico",

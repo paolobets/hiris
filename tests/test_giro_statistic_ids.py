@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app import server
+from hiris.app.home_space.house import House
+from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import recipe_turn
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
@@ -58,6 +60,9 @@ class _Anagrafe:
     def read(self):
         return CASA
 
+    def unavailable(self):
+        return []
+
 
 @pytest.fixture
 def stores(tmp_path):
@@ -88,7 +93,7 @@ def _asked(house: CasaFinta) -> int:
 
 
 def _with_recipe(sapere):
-    recipe_turn.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA),
+    recipe_turn.apply_recipe(sapere, House(CASA, Mirror()), "dev1", json.dumps(RICETTA),
                              who="prova", when_ts=1789000000.0)
     assert recipe_turn.recipe_for(sapere, "dev1") is not None
 

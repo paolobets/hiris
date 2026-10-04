@@ -1,6 +1,7 @@
 import pytest
 
 from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.topology import Mirror
 from hiris.app.memory.interpretation import VOCABULARY, validate
 from hiris.app.memory.resolver import costruisci_indice
 
@@ -18,9 +19,10 @@ from hiris.app.memory.resolver import costruisci_indice
 _HOME_SPACE = build_home_space(
     {"aree": [{"area_id": "sala_pranzo", "name": "Sala da pranzo"}],
      "entita": [{"entity_id": "climate.sala", "device_id": None,
-                 "area_id": "sala_pranzo", "original_name": "Termostato"}]},
-    live_classes={"climate.sala": "temperature"},
-    live_units={"climate.sala": "°C"})
+                 "area_id": "sala_pranzo", "original_name": "Termostato"}]})
+#: Lo specchio dello stato: la classe e l'unita' DI ADESSO, che l'anagrafe non
+#: porta piu' (B-17, 04/10/2026).
+_MIRROR = Mirror(classes={"climate.sala": "temperature"}, units={"climate.sala": "°C"})
 
 
 @pytest.fixture
@@ -35,7 +37,7 @@ def test_una_interpretazione_buona_passa_intera(lookup):
         "ancore": [{"tipo": "area", "riferimento": "sala_pranzo", "nome_visto": "sala da pranzo"}],
         "condizioni": [{"tipo": "stagione", "valore": "inverno"}],
     }
-    pulita, problemi, _correzioni = validate(proposal, lookup)
+    pulita, problemi, _correzioni = validate(proposal, lookup, mirror=_MIRROR)
     assert problemi == []
     assert pulita["forza"] == "preferenza"
     assert pulita["unita"] == "°C"          # dedotta dall'entita' dell'area, non inventata

@@ -19,6 +19,8 @@ import os
 
 import pytest
 
+from hiris.app.home_space.house import House
+from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import observer
 from hiris.app.mind.scope import OBSERVER
 from hiris.app.mind.store import ObservationsStore
@@ -32,7 +34,8 @@ def archivio(tmp_path):
 
 
 def _casa(**extra):
-    """Un'anagrafe minima nella forma vera di `home_space/reader.py`."""
+    """La casa di un giro (`House`) su un'anagrafe minima nella forma vera di
+    `home_space/reader.py`, con lo specchio vuoto."""
     entita = [
         {"id": "climate.camera_t", "nome": "Termostato Camera", "classe": None,
          "unita": None, "translation_key": None, "categoria": None,
@@ -55,7 +58,7 @@ def _casa(**extra):
     casa = {"entita": entita, "aree": [{"id": "camera", "nome": "Camera"},
                                        {"id": "cucina", "nome": "Cucina"}]}
     casa.update(extra)
-    return casa
+    return House(casa, Mirror())
 
 
 class _Modello:
@@ -153,7 +156,7 @@ def test_un_area_senza_nome_non_diventa_un_identificatore_nudo():
     grezzo in mezzo a un prompt in italiano e' rumore, e un'area che non esiste
     piu' non deve far comparire una stringa che sembra un luogo."""
     casa = _casa()
-    casa["entita"][0]["area_id"] = "01K2CK4GG287VKK18M5J788MRQ"
+    casa.home_space["entita"][0]["area_id"] = "01K2CK4GG287VKK18M5J788MRQ"
 
     riga = next(r for r in observer.house_lines(casa) if r.startswith("climate.camera_t"))
 

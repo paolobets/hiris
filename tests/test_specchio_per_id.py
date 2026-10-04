@@ -438,10 +438,12 @@ def test_nobody_outside_the_mirror_scans_it_for_an_id():
 
 def test_the_derivation_still_sees_the_readers_of_the_mirror():
     """La derivazione non si e' svuotata: chi legge tutto lo specchio c'e'
-    ancora (la ricerca, le pagine, il conteggio d'avvio), e una scansione per
-    id scritta apposta si vede."""
+    ancora (lo specchio per turno, il comportamento, il conteggio d'avvio), e
+    una scansione per id scritta apposta si vede. Erano quattro fino al
+    04/10/2026: la ricostruzione dell'anagrafe (`topology.rebuild`) ha smesso
+    di leggere lo specchio con B-17."""
     readers, _scanners = mirror_scans(_product())
-    assert len(readers) >= 4, sorted(readers)
+    assert len(readers) >= 3, sorted(readers)
     _readers, planted = mirror_scans({f"mind/prova_{n}.py": ast.parse(source)
                                       for n, source in enumerate(_PLANTED_SCANS)})
     assert planted == {f"mind/prova_{n}.py::f" for n in range(len(_PLANTED_SCANS))}
