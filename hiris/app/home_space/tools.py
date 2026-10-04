@@ -106,6 +106,7 @@ from ..proxy.entity_cache import (
 from ..proxy.ha_client import SHAPE, _failure
 from . import historian
 from .appointments import read_appointment, sort_appointments
+from .ha_vocabulary import HA_LINK_TYPE
 from .house_history import (
     ADMIN_KINDS,
     LEVELS,
@@ -127,7 +128,6 @@ from .house_history import (
 from .house_history import KINDS as HISTORY_KINDS
 from .house_query import KINDS, ORDERS, ROWS_MAX, parse_filters, query_house
 from .privacy import cover_automation_body
-from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
@@ -1785,7 +1785,7 @@ class ToolDispatcher:
 
         `classi` e' entity_id -> `device_class`, ed e' l'UNICA fonte che
         esista: il registro delle entita' non la manda affatto (vedi
-        `topology.actual_class`).
+        `topology.live_first`).
 
         `unita` e' entity_id -> `unit_of_measurement`, saltando i vuoti, e
         arriva dalla STESSA lettura per la stessa ragione dei nomi: la

@@ -32,6 +32,7 @@ from aiohttp import web
 
 from ..chat_thread import subject_key_for
 from ..home_space import historian
+from ..home_space.log_source import integration_of
 from ..home_space.open_questions import OPEN_QUESTIONS
 from ..home_space.topology import live_mirror
 from ..mind.judgments import (
@@ -41,7 +42,7 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from ..mind.report import as_page, integration_of
+from ..mind.report import as_page
 from .soffitto import require_builder, subject_name
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
@@ -117,7 +118,7 @@ def _with_integration(lines: list[dict]) -> list[dict]:
     elencava uno per uno col percorso del sorgente in chiaro: trentanove righe
     per dirne ventitre.
 
-    **La regola e' quella del primo piano** (`mind/report.integration_of`), e
+    **La regola e' quella del primo piano** (`home_space/log_source.integration_of`), e
     non una seconda scritta qui o in JavaScript: due letture dello stesso
     logger darebbero due nomi per la stessa cosa nelle due schede della stessa
     pagina -- il difetto che la 3.46.0 ha gia' chiuso fra misure e cronaca.

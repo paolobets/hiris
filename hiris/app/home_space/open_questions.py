@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+from .type_judgments import type_subject
+
 
 class Subject(Enum):
     """Le materie su cui il censore gira.
@@ -40,13 +42,11 @@ class Subject(Enum):
 def state_key(domain: str, device_class: str | None, state: str) -> str:
     """Il nome con cui il censore chiama uno stato. Un tipo con classe si
     nomina per intero: `binary_sensor.door=on` non e' `binary_sensor=on`."""
-    if device_class:
-        return f"{domain}.{device_class}={state}"
-    return f"{domain}={state}"
+    return f"{type_subject(domain, device_class)}={state}"
 
 
 def class_key(domain: str, device_class: str) -> str:
-    return f"{domain}.{device_class}"
+    return type_subject(domain, device_class)
 
 
 # --------------------------------------------------------------------------

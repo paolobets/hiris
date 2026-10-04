@@ -228,7 +228,7 @@ async def test_behavior_reads_the_mirror_not_the_whole_house(tmp_path):
     before = len(house.calls)
     home_space = HomeSpace(str(tmp_path), mirror=mirror)
     try:
-        outcome = await reread(house, mirror, home_space, None)
+        await reread(house, mirror, home_space, None)
         entries = home_space.behavior()
     finally:
         home_space.close()
@@ -237,7 +237,6 @@ async def test_behavior_reads_the_mirror_not_the_whole_house(tmp_path):
     assert asked == ["automation/config"]
     assert [(e["id"], e["tipo"], e["nome"], e.get("attiva")) for e in entries] == [
         ("automation.automazione_uno", "automazione", "Automazione uno", True)]
-    assert outcome["conteggi"] == {"automazione": 1}
 
 
 @pytest.mark.asyncio

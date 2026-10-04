@@ -12,7 +12,32 @@ import json
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 
+from .ha_vocabulary import domain_of
+
 Row = tuple[str, str, str, str]
+
+#: Il campo sotto cui vive il significato di un tipo. Il soggetto e' il tipo
+#: stesso -- `sensor`, oppure `sensor.power` per una coppia dominio/classe --
+#: esattamente come la spec §8 lo scrive nel suo esempio. Non e' un giudizio
+#: (lo si importa da Home Assistant), ma e' un nome di campo del sapere come
+#: quelli sopra, e il dettaglio di un'entita' (`queries`) lo legge: per questo
+#: sta in `home_space` e non in `mind/knowledge.py`, dove viveva fino al
+#: 04/10/2026 (B-35).
+MEANING_FIELD = "significato"
+
+
+def type_subject(domain: str, device_class: str | None = None) -> str:
+    """Il soggetto di un tipo: `sensor`, oppure `sensor.power`.
+
+    **Il solo posto dove si compone** (B-49, Tappa 3, Task 7, 04/10/2026),
+    perche' due composizioni divergono al primo dominio con un punto nel nome.
+    Fino a quel giorno lo stesso `dominio.classe` si componeva a mano anche
+    qui sotto (`_lookup`), in `open_questions.py` e in `type_vocabulary.py`
+    (il seme dei giudizi); la funzione viveva in `mind/knowledge.py`, e
+    `queries` la importava dal cervello (B-35).
+    """
+    return f"{domain}.{device_class}" if device_class else domain
+
 
 GENRE_FIELD = "genere"
 RESTING_FIELD = "riposo"
@@ -247,7 +272,7 @@ class TypeJudgments:
         if entity_id:
             keys.append(("entita", entity_id, field))
         if device_class:
-            keys.append(("tipo", f"{domain}.{device_class}", field))
+            keys.append(("tipo", type_subject(domain, device_class), field))
         keys.append(("tipo", domain, field))
         for key in keys:
             if key in self._by_key:
@@ -255,7 +280,7 @@ class TypeJudgments:
         return None
 
     def genre_of(self, entity_id: str, device_class: str | None) -> str | None:
-        domain = str(entity_id).split(".")[0]
+        domain = domain_of(entity_id)
         genre = self._lookup(GENRE_FIELD, domain, device_class, entity_id)
         return None if genre in (None, NO_GENRE) else genre
 

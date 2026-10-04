@@ -5,7 +5,7 @@ import logging
 import re
 
 from ..home_space import type_vocabulary
-from ..home_space.topology import domain_of
+from ..home_space.ha_vocabulary import domain_of
 from ._sanitize import sanitize_ha_value
 from .ha_client import HAReadError
 
@@ -136,7 +136,7 @@ def unreadable_inventory_error(cache) -> dict | None:
     return None
 
 
-# Una lettura sola per tutti, in `home_space/topology.domain_of`: era scritta sei
+# Una lettura sola per tutti, in `home_space/ha_vocabulary.domain_of`: era scritta sei
 # volte, e due copie non erano d'accordo su un id senza punto.
 _domain = domain_of
 

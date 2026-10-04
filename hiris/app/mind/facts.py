@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import json
 
+from ..home_space.ha_vocabulary import domain_of
 from ..home_space.historian import day_boundaries
 from ..home_space.type_judgments import TypeJudgments
 from ..home_space.type_vocabulary import (
@@ -137,7 +138,7 @@ def _is_on(value, subject: str, device_class: str | None,
     l'episodio e' ancora in corso. Il riposo e' quello che l'istantanea
     dichiara per l'entita', la coppia o il dominio (vedi il commento sopra
     `genre_for`: misurato, nessuna riga della casa cambia esito)."""
-    domain = subject.split(".")[0]
+    domain = domain_of(subject)
     state = str(value or "").strip().lower()
     return state not in judgments.resting_of(domain, device_class, subject)
 

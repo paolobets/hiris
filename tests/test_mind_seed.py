@@ -11,8 +11,9 @@ pubblica tutti, nella lingua dell'utente.
 import pytest
 
 from hiris.app.home_space.ha_vocabulary import VOCABULARY_HA_VERSION
+from hiris.app.home_space.type_judgments import type_subject
 from hiris.app.mind import seed
-from hiris.app.mind.knowledge import KnowledgeStore, type_subject
+from hiris.app.mind.knowledge import KnowledgeStore
 
 
 @pytest.fixture

@@ -98,14 +98,13 @@ async def test_un_automazione_caricata_porta_il_suo_corpo(casa, cartella):
         stati=[_stato("automation.sveglia", "Sveglia")],
         configurazioni={"automation.sveglia": {"alias": "Sveglia", "mode": "single"}})
 
-    esito = await reread(client, casa, cartella)
+    await reread(client, casa, cartella)
 
     voce = _per_id(casa.behavior())["automation.sveglia"]
     assert voce["corpo"] == {"alias": "Sveglia", "mode": "single"}
     assert voce["tipo"] == "automazione"
     assert voce["nome"] == "Sveglia"
-    assert esito["senza_corpo"] == 0
-    assert esito["conteggi"] == {"automazione": 1}
+    assert casa.unread_bodies() == {}
 
 
 @pytest.mark.asyncio
@@ -141,11 +140,10 @@ async def test_un_corpo_non_letto_si_dichiara_con_la_sua_ragione(casa, cartella)
         stati=[_stato("automation.muta"), _stato("automation.parlante")],
         configurazioni={"automation.parlante": {"alias": "Parlante"}})
 
-    esito = await reread(client, casa, cartella)
+    await reread(client, casa, cartella)
 
     assert _per_id(casa.behavior())["automation.muta"]["corpo"] is None
     assert casa.unread_bodies() == {"automation.muta": "Entity not found"}
-    assert esito["senza_corpo"] == 1
 
 
 @pytest.mark.asyncio
@@ -182,11 +180,11 @@ async def test_senza_il_file_dei_segreti_il_corpo_non_si_archivia(casa, tmp_path
         stati=[_stato("automation.avvisa")],
         configurazioni={"automation.avvisa": {"data": {"token": "qualunque"}}})
 
-    esito = await reread(client, casa, tmp_path)   # nessun secrets.yaml qui
+    await reread(client, casa, tmp_path)   # nessun secrets.yaml qui
 
     assert _per_id(casa.behavior())["automation.avvisa"]["corpo"] is None
     assert casa.unread_bodies() == {"automation.avvisa": SECRETS_UNCHECKABLE}
-    assert any("secrets.yaml" in p for p in esito["problemi"])
+    assert any("secrets.yaml" in p for p in casa.behavior_problems())
 
 
 @pytest.mark.asyncio
@@ -230,7 +228,7 @@ async def test_il_motivo_per_voce_di_un_guasto_parziale_arriva_alla_replica(casa
 
 
 @pytest.mark.asyncio
-async def test_uno_stato_senza_automazioni_non_sostituisce_la_replica(casa, cartella):
+async def test_uno_stato_senza_automazioni_non_sostituisce_la_replica(casa, cartella, caplog):
     """Home Assistant riparte (o va in safe mode dopo un `configuration.yaml`
     rotto) e per qualche secondo non ha caricato nessuna automazione:
     `get_states` risponde lo stesso -- e' un successo, non un errore.
@@ -242,21 +240,23 @@ async def test_uno_stato_senza_automazioni_non_sostituisce_la_replica(casa, cart
                           configurazioni={"automation.sveglia": {"alias": "Sveglia"}})
     await reread(pieno, casa, cartella)
 
-    esito = await reread(_house(stati=[_stato("light.cucina")]), casa, cartella)
+    with caplog.at_level("WARNING", logger=behavior.__name__):
+        await reread(_house(stati=[_stato("light.cucina")]), casa, cartella)
 
     assert set(_per_id(casa.behavior())) == {"automation.sveglia"}
-    assert esito["conteggi"] == {"automazione": 1}
-    assert any("non ha ancora caricato" in p for p in esito["problemi"])
+    # Il problema della guardia va solo nel registro dell'add-on: fino al
+    # 04/10/2026 tornava anche al chiamante, che lo buttava (trovato 5).
+    assert any("non ha ancora caricato" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
 async def test_su_una_casa_senza_automazioni_non_si_dichiara_un_guasto(casa, cartella):
     """La guardia sopra non deve accendersi su una casa che davvero non ha
     automazioni: li' l'elenco vuoto e' un fatto, non un guasto."""
-    esito = await reread(_house(stati=[_stato("light.cucina")]), casa, cartella)
+    await reread(_house(stati=[_stato("light.cucina")]), casa, cartella)
 
     assert casa.behavior() == []
-    assert esito["problemi"] == []
+    assert casa.behavior_problems() == []
 
 
 @pytest.mark.asyncio

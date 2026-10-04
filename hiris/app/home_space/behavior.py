@@ -30,12 +30,11 @@ frase piu' utile che esista -- «non serve, ce l'hai gia', si chiama cosi'».
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 from ..proxy.entity_cache import unreadable_inventory_error
+from .ha_vocabulary import LINK_NAME, domain_of, is_entity_id
 from .redaction import SecretSeal
-from .topology import domain_of
 
 logger = logging.getLogger(__name__)
 
@@ -44,31 +43,15 @@ logger = logging.getLogger(__name__)
 #: sia segreto -- e nessuna API la espone.
 _SECRETS = "secrets.yaml"
 
-# entity_id canonico (dominio.oggetto). Qui serve a RICONOSCERE, dentro una
-# configurazione di plancia, quali stringhe sono un entity_id.
-#
-# NON e' «la stessa forma usata da ha_client» e non va tenuta allineata a
-# quella: e' la stessa espressione oggi e per caso, ma le due hanno esigenze
-# CONTRAPPOSTE. Quella di `proxy/ha_client` e' una GUARDIA -- rifiuta un
-# entity_id ostile prima di comporlo in un URL -- e vuole essere il piu'
-# STRETTA possibile. Questa vuole essere abbastanza LARGA da riconoscere
-# tutto, o le entita' di una plancia spariscono dall'archivio.
-#
-# Il commento di prima diceva «stessa forma usata da ha_client», e quella frase
-# era un invito: chi avesse allargato questa per far comparire una plancia
-# incompleta avrebbe potuto «riallineare» anche l'altra, allentando la guardia
-# contro l'iniezione senza che nessun test lo dicesse. Allargare QUESTA e'
-# libero; allargare quella e' una decisione di sicurezza, e va presa sapendolo.
-# DOPPIONE DICHIARATO: due esigenze contrapposte, non due copie --
-#   una guardia contro l'iniezione (stretta) e un riconoscitore
-#   (largo). Allinearle sarebbe una falla, non una pulizia.
-_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
-
 #: I due domini che portano un comportamento. Le scene non entrano in questa
 #: fetta: `scene/config` esiste, ma il vocabolario di `tipo` ha due valori e
 #: allargarlo tocca la pagina, il nucleo e le ricerche -- si fa quando serve,
 #: non "gia' che ci siamo".
-BEHAVIOR_DOMAINS = {"automation": "automazione", "script": "script"}
+#:
+#: Il nome italiano di ognuno e' quello della tabella dei legami di Home
+#: Assistant (`ha_vocabulary.LINK_NAME`), che lo scriveva gia': si chiede a
+#: lei (B-23, Tappa 3, Task 7, 04/10/2026), non si riscrive.
+BEHAVIOR_DOMAINS = {domain: LINK_NAME[domain] for domain in ("automation", "script")}
 
 #: Le due ragioni per cui un corpo puo' mancare. Sono due, non una: la prima e'
 #: un guasto di adesso (Home Assistant non ha risposto per quella voce), la
@@ -113,15 +96,16 @@ def automation_active(entity_id: str, row: dict | None) -> bool | None:
     return state == "on"
 
 
-async def reread(client, mirror, home_space, ha_folder: Path | None) -> dict:
+async def reread(client, mirror, home_space, ha_folder: Path | None) -> None:
     """Rilegge il comportamento da Home Assistant e lo consegna all'anagrafe.
 
-    Restituisce `{"conteggi": {...}, "senza_corpo": n, "corpi_non_letti":
-    {...}, "problemi": [...]}`. `senza_corpo` non e' un dettaglio: dice di
-    quante automazioni HIRIS vede il nome senza poter dire cosa fanno, ed e'
-    l'unica misura onesta di quanto sa davvero. **Adesso e' derivato da
-    `corpi_non_letti`**, non contato a parte: due campi per lo stesso fatto
-    sono due campi che possono divergere.
+    **Non restituisce niente** (trovato 5 della Tappa 3, 04/10/2026): fino a
+    quel giorno restituiva conteggi per tipo, `senza_corpo`, i corpi non letti
+    e i problemi, e l'unico chiamante di produzione (`server.watch_behavior`)
+    li buttava. Cio' che serve vive nell'anagrafe, dove questa funzione lo
+    consegna (`hold_behavior`): chi vuole sapere quali corpi mancano e perche'
+    lo chiede a `home_space.unread_bodies()`, i problemi a
+    `behavior_problems()`. Erano due copie dei conteggi di B-39 senza lettori.
 
     **La guardia dello stato resta, e cambia termine di paragone.** Se lo stato
     non porta nessuna entita' `automation.*`/`script.*` mentre la replica
@@ -156,13 +140,7 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> dict:
             "sostituito, mantenuta la replica precedente"
         )
         logger.warning("comportamento: %s", message)
-        current = home_space.behavior()
-        counts: dict[str, int] = {}
-        for v in current:
-            counts[v["tipo"]] = counts.get(v["tipo"], 0) + 1
-        unread = home_space.unread_bodies()
-        return {"conteggi": counts, "senza_corpo": len(unread),
-                "corpi_non_letti": unread, "problemi": [message]}
+        return
 
     seal = (SecretSeal.from_file(ha_folder / _SECRETS) if ha_folder is not None
             else SecretSeal({}, readable=False))
@@ -201,15 +179,9 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> dict:
         entries.append(entry)
 
     home_space.hold_behavior(entries, problems=problems, unread_bodies=unread)
-
-    counts = {}
-    for v in entries:
-        counts[v["tipo"]] = counts.get(v["tipo"], 0) + 1
     if unread:
         logger.info("comportamento: %d voci di cui %d senza corpo",
                     len(entries), len(unread))
-    return {"conteggi": counts, "senza_corpo": len(unread),
-            "corpi_non_letti": unread, "problemi": problems}
 
 
 def _entities_in(config) -> list[str]:
@@ -226,7 +198,7 @@ def _entities_in(config) -> list[str]:
     found: set[str] = set()
 
     def _add_if_entity(value) -> None:
-        if isinstance(value, str) and _ENTITY_ID_RE.match(value):
+        if is_entity_id(value):
             found.add(value)
 
     def _walk(node) -> None:

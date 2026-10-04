@@ -94,7 +94,7 @@ from ..proxy.ha_client import HAReadError
 
 logger = logging.getLogger(__name__)
 
-#: La forma di UNA meta' di uno slug (`proxy/ha_client.py::_ENTITY_ID_RE`
+#: La forma di UNA meta' di uno slug (`home_space/ha_vocabulary.is_entity_id`
 #: impone la stessa cosa sull'intero entity_id): una guardia contro un
 #: candidato che non potrebbe mai essere un servizio notify vero, non una
 #: fonte -- l'esistenza si accerta comunque contro il registro dei servizi.

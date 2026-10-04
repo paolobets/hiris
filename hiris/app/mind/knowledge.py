@@ -43,7 +43,8 @@ import threading
 import time as _time
 from dataclasses import dataclass
 
-from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES
+from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES, type_subject
+from ..home_space.type_vocabulary import Provenance
 from ..storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,13 @@ SUBJECT_KINDS = ("tipo", "integrazione", "entita", "dispositivo")
 #: - `nostro`     -- un giudizio nostro, che nessuna API puo' darci;
 #: - `dedotto`    -- il modello l'ha inferito da cio' che ha letto;
 #: - `ereditato`  -- viene da un soggetto piu' generale (il tipo, l'integrazione).
-PROVENANCES = ("chiesto", "importato", "nostro", "dedotto", "ereditato")
+#:
+#: `importato` e `nostro` sono le due provenienze del vocabolario dei tipi
+#: (`type_vocabulary.Provenance`): la parola e' la stessa perche' il seme le
+#: copia qui, e si prende da li' invece di riscriverla (B-43, Tappa 3, Task 7,
+#: 04/10/2026). Le altre tre il vocabolario non le ha: nascono solo qui.
+PROVENANCES = ("chiesto", Provenance.IMPORTED.value, Provenance.OURS.value,
+               "dedotto", "ereditato")
 
 #: Cosa ha detto il controllo. `None` e' il quarto esito e significa «nessun
 #: controllo era possibile», che e' diverso da «non capito».
@@ -89,23 +96,6 @@ VERIFICATIONS = ("confermata", "non_confermabile", "non_capito")
 # come si chiama una cosa e come si compone il soggetto -- e chi legge ne ha
 # bisogno quanto chi semina. Tenerli nel seme obbligava il lettore a
 # importarli da li', cioe' a dipendere da chi scrive per poter leggere.
-
-#: Il campo sotto cui vive il significato di un tipo. Il soggetto e' il tipo
-#: stesso -- `sensor`, oppure `sensor.power` per una coppia dominio/classe --
-#: esattamente come la spec §8 lo scrive nel suo esempio.
-MEANING_FIELD = "significato"
-
-
-def type_subject(domain: str, device_class: str | None = None) -> str:
-    """Il soggetto di un tipo: `sensor`, oppure `sensor.power`.
-
-    Dovrebbe essere il solo posto dove si compone, perche' due composizioni
-    divergono al primo dominio con un punto nel nome. Oggi lo stesso
-    `dominio.classe` si compone a mano anche in `home_space/type_judgments.py`
-    e in `home_space/open_questions.py`.
-    """
-    return f"{domain}.{device_class}" if device_class else domain
-
 
 #: Il campo sotto cui vive l'elenco degli attributi da tenere per un tipo.
 #:

@@ -23,7 +23,7 @@ import pytest
 
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.reader import HomeSpace
-from hiris.app.home_space.topology import actual_unit
+from hiris.app.home_space.topology import live_first
 from hiris.app.memory.interpretation import deduci_unit
 from hiris.app.memory.resolver import costruisci_indice
 from tests._house_translations import house_translations
@@ -123,15 +123,15 @@ def test_senza_etichette_la_chiave_non_compare(casa):
 # --- l'unita': la fonte viva, non il registro muto ------------------------
 
 def test_la_regola_dell_unita_sta_in_un_posto_solo():
-    """`actual_unit` e' l'UNICO punto in cui e' scritto che l'unita' viva
+    """`live_first` e' l'UNICO punto in cui e' scritto che l'unita' viva
     vince su quella del registro. Prima la stessa decisione era presa a mano
     in due funzioni diverse: la stessa forma di difetto per cui la pagina
     Modelli era vera riga per riga e falsa nel complesso."""
-    assert actual_unit(None, "C") == "C"
-    assert actual_unit("F", "C") == "C", "la viva vince: HA converte all'ingresso"
-    assert actual_unit("F", None) == "F", "senza viva, resta cio' che il registro dice"
-    assert actual_unit(None, None) is None, "non si inventa"
-    assert actual_unit("F", "   ") == "F", "una stringa vuota non e' un'unita'"
+    assert live_first(None, "C") == "C"
+    assert live_first("F", "C") == "C", "la viva vince: HA converte all'ingresso"
+    assert live_first("F", None) == "F", "senza viva, resta cio' che il registro dice"
+    assert live_first(None, None) is None, "non si inventa"
+    assert live_first("F", "   ") == "F", "una stringa vuota non e' un'unita'"
 
 
 def test_deduci_unita_usa_la_fonte_viva(casa):

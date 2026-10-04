@@ -101,14 +101,17 @@ from collections.abc import Iterable, Mapping
 from enum import Enum
 from types import MappingProxyType
 
+from .ha_vocabulary import VOCABULARY_HA_VERSION
 from .type_judgments import (
     DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
     OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD,
     RESTING_FIELD,
+    SCAFFOLDING_FIELD,
     WORKING_FIELD,
     TypeJudgments,
+    type_subject,
 )
 
 
@@ -196,22 +199,27 @@ class Field(ABC):
 class Imported(Field):
     """Copiato dal sorgente o dalla documentazione di Home Assistant.
 
-    **La versione non e' facoltativa.** Un fatto importato senza la versione da
-    cui viene non si sa vecchio, e un fatto che non si sa vecchio si continua a
-    credere per sempre: e' misurato, non temuto -- lo stesso bit (64) e' stato
-    rimosso in due domini indipendenti fra `2024.7.0` e `2026.9.1`. Il
-    costruttore la esige, come `Field` esige la provenienza.
+    **La fonte non e' facoltativa, e porta la versione.** Un fatto importato
+    senza la versione da cui viene non si sa vecchio, e un fatto che non si sa
+    vecchio si continua a credere per sempre: e' misurato, non temuto -- lo
+    stesso bit (64) e' stato rimosso in due domini indipendenti fra `2024.7.0`
+    e `2026.9.1`. Il costruttore esige la fonte, come `Field` esige la
+    provenienza, e la fonte cita il tag (`FEATURE_SOURCE`,
+    `CAPABILITY_ATTRIBUTE_SOURCE`, composte da `VOCABULARY_HA_VERSION`).
+
+    Fino al 04/10/2026 la versione era anche un argomento a parte,
+    `ha_version`, che nessuno leggeva: lo stesso tag scritto due volte in ogni
+    campo, nella fonte e accanto (trovato 6 della Tappa 3, B-44). E' uscito.
     """
 
-    __slots__ = ("_ha_version", "_source")
+    __slots__ = ("_source",)
 
-    def __init__(self, value, *, ha_version: str, source: str) -> None:
-        if not ha_version or not source:
+    def __init__(self, value, *, source: str) -> None:
+        if not source:
             raise ValueError(
-                "un campo importato senza versione o senza fonte non si sa "
-                "vecchio, e un fatto che non si sa vecchio si crede per sempre")
+                "un campo importato senza fonte non si sa vecchio, e un fatto "
+                "che non si sa vecchio si crede per sempre")
         super().__init__(value)
-        self._ha_version = ha_version
         self._source = source
 
     @property
@@ -219,19 +227,14 @@ class Imported(Field):
         return Provenance.IMPORTED
 
     @property
-    def ha_version(self) -> str:
-        return self._ha_version
-
-    @property
     def source(self) -> str:
         return self._source
 
     def __eq__(self, other) -> bool:
-        return (super().__eq__(other) and self._ha_version == other.ha_version
-                and self._source == other.source)
+        return super().__eq__(other) and self._source == other.source
 
     def __hash__(self) -> int:
-        return hash((type(self).__name__, self._value, self._ha_version))
+        return hash((type(self).__name__, self._value, self._source))
 
 
 class Ours(Field):
@@ -447,10 +450,6 @@ PARAMETER_LIMITS = "parameter_limits"
 #: regola esiste per far scattare.
 DA_SAPERE_SUBITO = "da_sapere_subito"
 
-#: Il campo `impalcatura` (20/09/2026). Vive su un'INTEGRAZIONE, non su un
-#: tipo: e' l'unico giudizio il cui soggetto non e' una cosa di casa.
-SCAFFOLDING = "impalcatura"
-
 #: Il genere di un episodio: a quale forma della cronaca appartiene. Sostituisce
 #: la gamba (spec 2026-09-16 §5): e' la sola cosa che la gamba decideva davvero.
 GENRE = "genre"
@@ -477,10 +476,13 @@ SYSTEM_GENRE = "guasto"
 # La fonte dei campi importati.
 # --------------------------------------------------------------------------
 
-FEATURE_SOURCE_HA_VERSION = "2026.9.1"
-
+# La versione e' quella del vocabolario di Home Assistant
+# (`ha_vocabulary.VOCABULARY_HA_VERSION`), l'unica che si confronta con la
+# casa: fino al 04/10/2026 questo modulo ne pinnava altre due uguali, mai
+# confrontate con niente (B-44). `2024.7.0` resta scritto: e' il minimo che
+# l'add-on dichiara (`hiris/config.yaml: homeassistant`), un fatto diverso.
 FEATURE_SOURCE = (
-    "home-assistant/core, tag 2024.7.0 e 2026.9.1 -- "
+    f"home-assistant/core, tag 2024.7.0 e {VOCABULARY_HA_VERSION} -- "
     "homeassistant/components/<dominio>/const.py (o __init__.py) per ogni "
     "`*EntityFeature`, scaricati e confrontati riga per riga sui DUE tag, mai "
     "su `dev`. Vedi `tests/test_feature_tables_pinned_to_source.py`, che "
@@ -1092,8 +1094,7 @@ _FEATURE_TABLES: dict[str, dict[int, str]] = {
 }
 
 for _domain, _bits in _FEATURE_TABLES.items():
-    _table = Imported(_bits, ha_version=FEATURE_SOURCE_HA_VERSION,
-                      source=FEATURE_SOURCE)
+    _table = Imported(_bits, source=FEATURE_SOURCE)
     if _vocabulary.row(_domain) is None:
         _vocabulary.add(_domain, capability_names=_table)
     else:
@@ -1158,10 +1159,8 @@ del _domain, _bits, _table
 # I due nomi restano qui perche' a `2026.9.1` sono ancora quelli che arrivano
 # nel payload; il giorno in cui spariscono, la prova pinnata lo dice.
 
-CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION = "2026.9.1"
-
 CAPABILITY_ATTRIBUTE_SOURCE = (
-    "home-assistant/core, tag 2026.9.1 -- "
+    f"home-assistant/core, tag {VOCABULARY_HA_VERSION} -- "
     "homeassistant/components/<dominio>/const.py, classi "
     "`<Dominio>EntityCapabilityAttribute` e `<Dominio>EntityStateAttribute` "
     "(`WaterHeaterCapabilityAttribute`/`WaterHeaterStateAttribute` senza "
@@ -1174,7 +1173,6 @@ CAPABILITY_ATTRIBUTE_SOURCE = (
 #: `EntityCapabilityAttribute`. Una sola voce, ed e' il gruppo.
 UNIVERSAL_CAPABILITY_ATTRIBUTES = Imported(
     {"group_entities"},
-    ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
     source=CAPABILITY_ATTRIBUTE_SOURCE)
 
 # L'APPARTENENZA A UN GRUPPO NON E' UN CAMPO DI MANOVRA.
@@ -1234,7 +1232,6 @@ UNIVERSAL_STATE_ATTRIBUTES = Imported(
     {"assumed_state", "attribution", "device_class", "entity_picture",
      "friendly_name", "icon", "latitude", "longitude", "restored",
      "supported_features", "unit_of_measurement"},
-    ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
     source=CAPABILITY_ATTRIBUTE_SOURCE)
 
 
@@ -1521,12 +1518,10 @@ for _domain in sorted(set(_CAPABILITY_ATTRIBUTE_TABLES)
     if _domain in _CAPABILITY_ATTRIBUTE_TABLES:
         _new_fields[CAPABILITY_ATTRIBUTES] = Imported(
             _CAPABILITY_ATTRIBUTE_TABLES[_domain],
-            ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
             source=CAPABILITY_ATTRIBUTE_SOURCE)
     if _domain in _STATE_ATTRIBUTE_TABLES:
         _new_fields[STATE_ATTRIBUTES] = Imported(
             _STATE_ATTRIBUTE_TABLES[_domain],
-            ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
             source=CAPABILITY_ATTRIBUTE_SOURCE)
     if _domain in _CAPABILITY_ATTRIBUTES_DROPPED:
         _new_fields[CAPABILITY_ATTRIBUTES_DROPPED] = Ours(
@@ -1720,6 +1715,14 @@ _verify_no_state_is_both_rest_and_work()
 #: Nome del campo in questo modulo -> nome del campo nel sapere. **La traduzione
 #: vive qui e solo qui.** Solo i giudizi nostri: i fatti copiati dal sorgente di
 #: HA restano codice, con le loro prove ancorate alla fonte.
+#:
+#: **Ne salta uno, e di proposito: `impalcatura`** (`SCAFFOLDING_FIELD`). Vive
+#: su un'INTEGRAZIONE, non su un tipo, quindi nessuna riga di questo modulo lo
+#: porta e non ha un nome qui: il seme lo scrive col nome del sapere
+#: (`judgment_seed_rows`). Fino al 04/10/2026 aveva anche un secondo nome qui,
+#: `SCAFFOLDING = "impalcatura"`, la stessa parola scritta due volte (B-46);
+#: una prova pinna che la mappa piu' l'impalcatura sia esattamente
+#: `JUDGMENT_FIELD_NAMES`.
 JUDGMENT_FIELDS = MappingProxyType({
     GENRE: GENRE_FIELD, RESTING_STATES: RESTING_FIELD, WORKING_STATES: WORKING_FIELD,
     OPERABLE: OPERABLE_FIELD,
@@ -1777,10 +1780,10 @@ SCAFFOLDING_INTEGRATIONS = Ours(("frontend", "habluetooth", "hacs", "hassio",
 
 def judgment_seed_rows() -> tuple[tuple[str, str, str, str], ...]:
     """I giudizi del letterale, come righe del sapere: `(tipo, soggetto, campo, valore)`."""
-    rows = [("integrazione", slug, SCAFFOLDING, "si")
+    rows = [("integrazione", slug, SCAFFOLDING_FIELD, "si")
             for slug in SCAFFOLDING_INTEGRATIONS.value]
     for row in _vocabulary.rows():
-        subject = row.domain + (f".{row.device_class}" if row.device_class else "")
+        subject = type_subject(row.domain, row.device_class)
         for name, field in row.fields.items():
             if name in JUDGMENT_FIELDS and field.provenance is Provenance.OURS:
                 rows.append(("tipo", subject, JUDGMENT_FIELDS[name],

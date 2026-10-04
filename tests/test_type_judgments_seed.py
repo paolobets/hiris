@@ -95,7 +95,7 @@ def test_i_fatti_di_HA_non_entrano_nel_seme():
     # qui e' il punto: la prova continua a dire «nessun fatto importato da
     # Home Assistant diventa un giudizio», e non «il seme ha una sorgente
     # sola», che dal 20/09 sarebbe falso.
-    assert campi <= set(tv.JUDGMENT_FIELDS.values()) | {tv.SCAFFOLDING}
+    assert campi <= set(tv.JUDGMENT_FIELDS.values()) | {tv.SCAFFOLDING_FIELD}
     assert "capability_names" not in campi and "state_attributes" not in campi
     assert "attributi_assumibili" not in campi  # D1: resta codice
 

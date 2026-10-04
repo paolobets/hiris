@@ -59,71 +59,32 @@ from ..proxy.entity_cache import (
     withheld_credentials,
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
-from .ha_vocabulary import entity_category_measure_rule
+from .behavior import BEHAVIOR_DOMAINS
+from .ha_vocabulary import LINK_NAME, domain_of, entity_category_measure_rule
 from .historian import instant_epoch
 from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
-    actual_class,
-    actual_unit,
     categories_with_name,
     category_names,
+    clean_text,
     decoded_capabilities,
-    domain_of,
     hierarchy,
     label_names,
     labels_with_id,
+    live_first,
     readable_state,
 )
-from .type_judgments import TypeJudgments
+from .type_judgments import MEANING_FIELD, TypeJudgments, type_subject
 from .type_vocabulary import REPO_JUDGMENTS
 
 # I tipi di comportamento che `view` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
 # (behavior.py), non due archivi diversi: la distinzione e' nel campo
-# `tipo` della voce, non nella provenienza.
-_BEHAVIOR_TYPES = {"automazione", "script"}
+# `tipo` della voce, non nella provenienza. I due nomi si chiedono a
+# `behavior.BEHAVIOR_DOMAINS` (B-23, 04/10/2026), non si riscrivono.
+_BEHAVIOR_TYPES = frozenset(BEHAVIOR_DOMAINS.values())
 
-# I quattordici tipi che `search/related` sa collegare -- i VALORI di
-# `ItemType` (`homeassistant/components/search/__init__.py`, letti sul
-# sorgente, non a memoria) -- nel vocabolario di HIRIS.
-#
-# A sinistra il nome vero di Home Assistant, che e' quello che va dentro il
-# comando; a destra il nome italiano con cui quella cosa vive qui dentro.
-# Stessa disciplina di `topology._REFERENCE_FRAME_FIELDS`: l'anagrafe parla la
-# lingua di HIRIS ovunque, e una risposta meta' inglese sarebbe l'unico posto
-# in cui non lo fa -- per giunta proprio quella da cui il modello ricava un
-# `riferimento` da passare a `view`, che i tipi li nomina in italiano.
-#
-# Si legge nei DUE versi (`HA_LINK_TYPE` piu' sotto e' la stessa tabella
-# rovesciata, non una seconda): il modello nomina «entita», Home Assistant
-# vuole «entity». Due elenchi da tenere allineati a mano sarebbero due
-# vocabolari, cioe' la forma di difetto che le fondamenta chiamano doppione.
-#
-# Alcuni di questi nomi -- area, entita, dispositivo, automazione, script,
-# integrazione -- sono tipi che `view` sa aprire; gli altri no, e
-# `view` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
-# di `view`): un id vero preso da qui non deve poter diventare
-# un'affermazione falsa sulla casa.
-LINK_NAME = {
-    "area": "area",
-    "automation": "automazione",
-    "automation_blueprint": "progetto_di_automazione",
-    "config_entry": "voce_di_configurazione",
-    "device": "dispositivo",
-    "entity": "entita",
-    "floor": "piano",
-    "group": "gruppo",
-    "integration": "integrazione",
-    "label": "etichetta",
-    "person": "persona",
-    "scene": "scena",
-    "script": "script",
-    "script_blueprint": "progetto_di_script",
-}
-
-# La stessa tabella dal verso del modello. Derivata, mai riscritta.
-HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
 
 
 def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]:
@@ -259,14 +220,14 @@ def _enrich_entity(entity_detail: dict, entry: dict,
         deduced = ((fallback_names or {}).get(entity_id) or "").strip()
         if deduced:
             entity_detail["nome_dedotto"] = deduced
-    unit = actual_unit(entry.get("unita"), (reported_units or {}).get(entity_id))
+    unit = live_first(entry.get("unita"), (reported_units or {}).get(entity_id))
     if unit:
         entity_detail["unita"] = unit
     # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
-    # manda affatto (`topology.actual_class`). Prima questa riga usciva
+    # manda affatto (`topology.live_first`). Prima questa riga usciva
     # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
     # dei significati.
-    device_class = actual_class(entry.get("classe"), (reported_classes or {}).get(entity_id))
+    device_class = live_first(entry.get("classe"), (reported_classes or {}).get(entity_id))
     if device_class:
         entity_detail["classe"] = device_class
     # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
@@ -282,7 +243,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # sarebbero due significati, e fino all'08/09/2026 erano scritte a mano.
     #
     # Il DOMINIO e l'`hvac_action` (dallo specchio vivo, mai dal registro:
-    # `topology.actual_class` vale anche qui) alimentano il solo caso in
+    # `topology.live_first` vale anche qui) alimentano il solo caso in
     # cui uno stato grezzo mente da solo -- un termostato IMPOSTATO su
     # riscaldamento e FERMO che si legge «heat» com'e' il difetto misurato dal
     # proprietario (2026-08-25, `topology.readable_state`). Passati anche
@@ -804,9 +765,9 @@ def _limits_of_selector(detail: dict) -> dict:
         step = _number(shape.get("step"))
         if step is not None:
             limits["passo"] = step
-        unit = shape.get("unit_of_measurement") or shape.get("unit")
-        if isinstance(unit, str) and unit.strip():
-            limits["unita"] = unit.strip()
+        unit = clean_text(shape.get("unit_of_measurement") or shape.get("unit"))
+        if unit is not None:
+            limits["unita"] = unit
         if limits:
             limits["limiti_da"] = _LIMITS_FROM_SERVICE
         return limits
@@ -1031,12 +992,10 @@ def _class_meaning(knowledge, domain: str, device_class) -> str | None:
     if knowledge is None or not device_class:
         return None
     # `type_subject` e `MEANING_FIELD` si IMPORTANO, non si riscrivono:
-    # `mind/knowledge.type_subject` porta scritto «un posto solo dove si
-    # compone, perche' due composizioni divergono al primo dominio con un
-    # punto nel nome» -- e finche' questo lettore ricomponeva a mano, quella
-    # garanzia non esisteva (revisione indipendente, 13/09/2026).
-    from ..mind.knowledge import MEANING_FIELD, type_subject
-
+    # `type_judgments.type_subject` e' il solo posto dove il soggetto si
+    # compone -- e finche' questo lettore ricomponeva a mano, quella garanzia
+    # non esisteva (revisione indipendente, 13/09/2026). Fino al 04/10/2026
+    # si importavano da `mind/`, qui dentro la funzione (B-35).
     try:
         fact = knowledge.get("tipo", type_subject(domain, device_class),
                              MEANING_FIELD)

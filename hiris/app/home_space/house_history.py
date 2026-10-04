@@ -24,7 +24,6 @@ import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from ..mind.report import integration_of
 from ..proxy.entity_cache import VALUES
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
@@ -37,6 +36,7 @@ from .house_query import (
     parse_filters,
     select_subjects,
 )
+from .log_source import integration_of
 from .privacy import MOVING_DOMAINS, redact_nested, redact_state
 from .queries import ROWS_MAX
 from .reference import normalize
@@ -1231,7 +1231,7 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
     chiacchierona diceva «nessun altro errore» a finestra intera.
 
     `integrazione` e' la stessa lettura del logger del primo piano
-    (`mind.report.integration_of`), non una seconda."""
+    (`log_source.integration_of`), non una seconda."""
     zone = query.start.tzinfo
     start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
     ranked = []

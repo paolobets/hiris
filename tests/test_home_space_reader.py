@@ -72,7 +72,7 @@ def test_la_classe_viene_dallo_specchio_vivo_perche_il_registro_non_la_manda():
 
     Mutazione che la uccide: in `build_home_space`, leggere la classe dalla
     sola riga di registro (`e.get("device_class")`) invece che da
-    `actual_class(dichiarata, viva)`.
+    `live_first(dichiarata, viva)`.
     """
     home_space = build_home_space(
         _REGISTRI,
