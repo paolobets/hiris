@@ -133,7 +133,7 @@ def meanings_from_translations(resources, *, ha_version: str, language: str,
     volte. `confermata` si riserva a un controllo fatto contro una fonte
     DIVERSA -- che e' l'unica cosa per cui avere due assi serva a qualcosa.
     """
-    from ..proxy.state_translations import published_device_classes
+    from ..proxy.state_translations import component_key, published_device_classes
 
     when = when_ts if when_ts is not None else now_ts()
     citation = (f"frontend/get_translations «entity_component», lingua "
@@ -141,8 +141,7 @@ def meanings_from_translations(resources, *, ha_version: str, language: str,
     facts = []
     for domain, classes in sorted(published_device_classes(resources).items()):
         for device_class in sorted(classes):
-            name = resources.get(
-                f"component.{domain}.entity_component.{device_class}.name")
+            name = resources.get(component_key(domain, device_class, "name"))
             if not name:
                 continue
             facts.append(Fact(

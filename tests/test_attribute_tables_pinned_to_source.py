@@ -199,20 +199,18 @@ def test_the_two_classes_that_hold_for_every_entity_are_pinned_too():
 def test_the_imported_tables_declare_the_version_they_come_from():
     """Un fatto importato senza la versione da cui viene non si sa vecchio, e
     un fatto che non si sa vecchio si continua a credere per sempre. Il tipo
-    `Imported` lo esige alla costruzione; questa prova verifica che la
-    versione sia quella del sorgente letto, non una qualunque.
+    `Imported` esige la fonte alla costruzione, e la fonte cita il tag; questa
+    prova verifica che sia quello del sorgente letto, non uno qualunque.
 
     Mutazione: costruire una delle due tabelle con `Ours(...)` invece di
-    `Imported(...)` -- il test torna rosso su `ha_version`
-    (`AttributeError`)."""
+    `Imported(...)` -- il test torna rosso su `source` (`AttributeError`)."""
     from hiris.app.home_space import type_vocabulary as tv
     for domain in _PINNED_CAPABILITIES:
         field = tv._vocabulary.field(domain, None, tv.CAPABILITY_ATTRIBUTES)
-        assert field.ha_version == "2026.9.1"
-        assert "2026.9.1" in field.source
+        assert "tag 2026.9.1" in field.source
     for domain in _PINNED_STATES:
         field = tv._vocabulary.field(domain, None, tv.STATE_ATTRIBUTES)
-        assert field.ha_version == "2026.9.1"
+        assert "tag 2026.9.1" in field.source
 
 
 # --------------------------------------------------------------------------

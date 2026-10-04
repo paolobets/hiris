@@ -28,7 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
-from hiris.app.home_space.queries import LINK_NAME, related, view
+from hiris.app.home_space.ha_vocabulary import LINK_NAME
+from hiris.app.home_space.queries import related, view
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.memory.store import MemoryStore
@@ -88,12 +89,26 @@ def _dispatcher(casa, memoria, ha=None, actuator=None):
 
 # --- il vocabolario -------------------------------------------------------
 
+#: I valori di `ItemType` (`homeassistant/components/search/__init__.py`, tag
+#: `2026.9.1`), RISCRITTI qui e non importati: e' la prova che riporta la
+#: tabella alla fonte, e una mutazione della tabella non deve poter muovere
+#: anche il proprio metro.
+_ITEM_TYPES_AT_SOURCE = {
+    "area", "automation", "automation_blueprint", "config_entry", "device",
+    "entity", "floor", "group", "integration", "label", "person", "scene",
+    "script", "script_blueprint"}
+
+
 def test_il_vocabolario_copre_ESATTAMENTE_i_tipi_di_home_assistant():
-    """La tabella di `queries.py` e i quattordici tipi del client sono lo
-    stesso elenco visto da due parti. Se Home Assistant ne aggiunge uno e il
-    client lo accetta mentre la tabella no, il modello riceve un tipo che non
-    sa nominare e non puo' richiedere: questa prova cade prima."""
-    assert set(LINK_NAME) == set(HAClient.RELATED_ITEM_TYPES)
+    """La tabella dei legami (`ha_vocabulary.LINK_NAME`) porta i quattordici
+    tipi di Home Assistant, e il client accetta esattamente quelli perche' li
+    chiede a lei (B-48, 04/10/2026: prima erano due elenchi, e questa prova li
+    confrontava fra loro).
+
+    Mutazione ESEGUITA: tolta la voce `"label"` da `LINK_NAME` -- rossa sul
+    confronto con la fonte (e il client smette di accettarla con lei)."""
+    assert set(LINK_NAME) == _ITEM_TYPES_AT_SOURCE
+    assert HAClient.RELATED_ITEM_TYPES == tuple(LINK_NAME)
 
 
 @pytest.mark.asyncio

@@ -52,6 +52,19 @@ STATE_TRANSLATIONS_CATEGORY = "entity_component"
 NO_DEVICE_CLASS = "_"
 
 
+def component_key(domain: str, written_class: str, *rest: str) -> str:
+    """La chiave di una traduzione di `entity_component`:
+    `component.{dominio}.entity_component.{classe|_}.{resto...}`.
+
+    Scritta una volta (B-45, Tappa 3, Task 7, 04/10/2026): era composta a mano
+    in cinque punti di questo modulo e in `mind/seed.py`, e uno dei cinque
+    scriveva il `_` per conto suo invece di `NO_DEVICE_CLASS`. La lettura
+    inversa e' `entity_component_key`, qui sotto.
+    """
+    return ".".join(("component", domain, STATE_TRANSLATIONS_CATEGORY, written_class,
+                     *rest))
+
+
 # --------------------------------------------------------------------------
 # I TRE SILENZI di una lettura da Home Assistant
 # --------------------------------------------------------------------------
@@ -191,13 +204,10 @@ def state_translation(state, *, domain, device_class=None,
         return None
     if not isinstance(component_resources, dict):
         return None
-    if device_class:
-        key = f"component.{domain}.entity_component.{device_class}.state.{state}"
+    for written_class in _class_steps(device_class):
+        key = component_key(domain, written_class, "state", state)
         if key in component_resources:
             return component_resources[key]
-    key = f"component.{domain}.entity_component._.state.{state}"
-    if key in component_resources:
-        return component_resources[key]
     return None
 
 
@@ -226,8 +236,8 @@ def attribute_value_translation(value, *, domain, attribute, device_class=None,
     if not isinstance(component_resources, dict):
         return None
     for written_class in _class_steps(device_class):
-        key = (f"component.{domain}.entity_component.{written_class}."
-               f"state_attributes.{attribute}.state.{value}")
+        key = component_key(domain, written_class, "state_attributes", attribute,
+                            "state", value)
         if key in component_resources:
             return component_resources[key]
     return None
@@ -248,8 +258,7 @@ def attribute_name_translation(*, domain, attribute, device_class=None,
     if not isinstance(component_resources, dict):
         return None
     for written_class in _class_steps(device_class):
-        key = (f"component.{domain}.entity_component.{written_class}."
-               f"state_attributes.{attribute}.name")
+        key = component_key(domain, written_class, "state_attributes", attribute, "name")
         if key in component_resources:
             return component_resources[key]
     return None
@@ -308,7 +317,7 @@ def published_pair(component_resources, *, domain, device_class=None) -> dict:
     written_class = device_class or NO_DEVICE_CLASS
     words = {}
     for state in PAIR_STATES:
-        key = f"component.{domain}.entity_component.{written_class}.state.{state}"
+        key = component_key(domain, written_class, "state", state)
         if key in component_resources:
             words[state] = component_resources[key]
     written = f"({domain}, {device_class})" if device_class else domain
@@ -422,7 +431,8 @@ def entity_component_key(key) -> list[str] | None:
     if not isinstance(key, str):
         return None
     parts = key.split(".")
-    if len(parts) < 4 or parts[0] != "component" or parts[2] != "entity_component":
+    if (len(parts) < 4 or parts[0] != "component"
+            or parts[2] != STATE_TRANSLATIONS_CATEGORY):
         return None
     return parts
 

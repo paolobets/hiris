@@ -44,6 +44,7 @@ import time as _time
 from dataclasses import dataclass
 
 from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES, type_subject
+from ..home_space.type_vocabulary import Provenance
 from ..storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,13 @@ SUBJECT_KINDS = ("tipo", "integrazione", "entita", "dispositivo")
 #: - `nostro`     -- un giudizio nostro, che nessuna API puo' darci;
 #: - `dedotto`    -- il modello l'ha inferito da cio' che ha letto;
 #: - `ereditato`  -- viene da un soggetto piu' generale (il tipo, l'integrazione).
-PROVENANCES = ("chiesto", "importato", "nostro", "dedotto", "ereditato")
+#:
+#: `importato` e `nostro` sono le due provenienze del vocabolario dei tipi
+#: (`type_vocabulary.Provenance`): la parola e' la stessa perche' il seme le
+#: copia qui, e si prende da li' invece di riscriverla (B-43, Tappa 3, Task 7,
+#: 04/10/2026). Le altre tre il vocabolario non le ha: nascono solo qui.
+PROVENANCES = ("chiesto", Provenance.IMPORTED.value, Provenance.OURS.value,
+               "dedotto", "ereditato")
 
 #: Cosa ha detto il controllo. `None` e' il quarto esito e significa «nessun
 #: controllo era possibile», che e' diverso da «non capito».

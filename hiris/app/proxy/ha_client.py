@@ -14,7 +14,7 @@ import aiohttp
 # rifiutare un entity_id ostile PRIMA di comporlo in un URL, ed e' una GUARDIA.
 # Chi volesse allargarla per riconoscere di piu' altrove si fa la propria
 # espressione: allentare questa e' una decisione di sicurezza.
-from ..home_space.ha_vocabulary import domain_of, is_entity_id
+from ..home_space.ha_vocabulary import LINK_NAME, domain_of, is_entity_id
 from ._sanitize import sanitize_ha_value
 from ._sanitize import truncate_with_marker as _truncate
 
@@ -1726,10 +1726,10 @@ class HAClient:
         return {"serie": _translate_statistics(raw)}
 
     # I tipi che `search/related` accetta, coi VALORI di `ItemType`
-    # (`components/search/__init__.py`), non coi nomi delle costanti.
-    RELATED_ITEM_TYPES = ("area", "automation", "automation_blueprint", "config_entry",
-                          "device", "entity", "floor", "group", "integration",
-                          "label", "person", "scene", "script", "script_blueprint")
+    # (`components/search/__init__.py`), non coi nomi delle costanti. Chiesti
+    # alla tabella che li traduce (`ha_vocabulary.LINK_NAME`): scritti una
+    # volta sola (B-48, 04/10/2026).
+    RELATED_ITEM_TYPES = tuple(LINK_NAME)
 
     @cost(ws=1)
     async def related(self, item_type: str, identifier: str) -> dict:

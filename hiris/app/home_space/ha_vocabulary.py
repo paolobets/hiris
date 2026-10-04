@@ -150,6 +150,55 @@ def domain_of(entity_id) -> str:
     return text.split(".", 1)[0] if "." in text else text
 
 
+# I quattordici tipi che `search/related` sa collegare -- i VALORI di
+# `ItemType` (`homeassistant/components/search/__init__.py`, letti sul
+# sorgente, non a memoria) -- nel vocabolario di HIRIS.
+#
+# A sinistra il nome vero di Home Assistant, che e' quello che va dentro il
+# comando; a destra il nome italiano con cui quella cosa vive qui dentro.
+# Stessa disciplina di `topology._REFERENCE_FRAME_FIELDS`: l'anagrafe parla la
+# lingua di HIRIS ovunque, e una risposta meta' inglese sarebbe l'unico posto
+# in cui non lo fa -- per giunta proprio quella da cui il modello ricava un
+# `riferimento` da passare a `view`, che i tipi li nomina in italiano.
+#
+# Si legge nei DUE versi (`HA_LINK_TYPE` piu' sotto e' la stessa tabella
+# rovesciata, non una seconda): il modello nomina «entita», Home Assistant
+# vuole «entity». Due elenchi da tenere allineati a mano sarebbero due
+# vocabolari, cioe' la forma di difetto che le fondamenta chiamano doppione.
+#
+# Alcuni di questi nomi -- area, entita, dispositivo, automazione, script,
+# integrazione -- sono tipi che `view` sa aprire; gli altri no, e
+# `view` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
+# di `view`): un id vero preso da qui non deve poter diventare
+# un'affermazione falsa sulla casa.
+#
+# **Le chiavi sono anche cio' che il client accetta** (`HAClient.
+# RELATED_ITEM_TYPES` le chiede a questa tabella): fino al 04/10/2026 i
+# quattordici valori di `ItemType` erano scritti due volte, qui (in
+# `home_space/queries.py`) e nel client, e una prova ne confrontava le due
+# copie (B-48). Sta in questo modulo perche' e' il vocabolario di Home
+# Assistant e il client lo puo' importare senza tirarsi dietro `queries`.
+LINK_NAME = {
+    "area": "area",
+    "automation": "automazione",
+    "automation_blueprint": "progetto_di_automazione",
+    "config_entry": "voce_di_configurazione",
+    "device": "dispositivo",
+    "entity": "entita",
+    "floor": "piano",
+    "group": "gruppo",
+    "integration": "integrazione",
+    "label": "etichetta",
+    "person": "persona",
+    "scene": "scena",
+    "script": "script",
+    "script_blueprint": "progetto_di_script",
+}
+
+# La stessa tabella dal verso del modello. Derivata, mai riscritta.
+HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
+
+
 # --- la fonte, coi tag rilasciati (mai `dev`) ------------------------------
 #
 # Ogni voce di questo modulo e' stata verificata sul sorgente vero di Home

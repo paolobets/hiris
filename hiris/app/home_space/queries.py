@@ -59,7 +59,8 @@ from ..proxy.entity_cache import (
     withheld_credentials,
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
-from .ha_vocabulary import domain_of, entity_category_measure_rule
+from .behavior import BEHAVIOR_DOMAINS
+from .ha_vocabulary import LINK_NAME, domain_of, entity_category_measure_rule
 from .historian import instant_epoch
 from .reference import normalize
 from .topology import (
@@ -80,49 +81,10 @@ from .type_vocabulary import REPO_JUDGMENTS
 # I tipi di comportamento che `view` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
 # (behavior.py), non due archivi diversi: la distinzione e' nel campo
-# `tipo` della voce, non nella provenienza.
-_BEHAVIOR_TYPES = {"automazione", "script"}
+# `tipo` della voce, non nella provenienza. I due nomi si chiedono a
+# `behavior.BEHAVIOR_DOMAINS` (B-23, 04/10/2026), non si riscrivono.
+_BEHAVIOR_TYPES = frozenset(BEHAVIOR_DOMAINS.values())
 
-# I quattordici tipi che `search/related` sa collegare -- i VALORI di
-# `ItemType` (`homeassistant/components/search/__init__.py`, letti sul
-# sorgente, non a memoria) -- nel vocabolario di HIRIS.
-#
-# A sinistra il nome vero di Home Assistant, che e' quello che va dentro il
-# comando; a destra il nome italiano con cui quella cosa vive qui dentro.
-# Stessa disciplina di `topology._REFERENCE_FRAME_FIELDS`: l'anagrafe parla la
-# lingua di HIRIS ovunque, e una risposta meta' inglese sarebbe l'unico posto
-# in cui non lo fa -- per giunta proprio quella da cui il modello ricava un
-# `riferimento` da passare a `view`, che i tipi li nomina in italiano.
-#
-# Si legge nei DUE versi (`HA_LINK_TYPE` piu' sotto e' la stessa tabella
-# rovesciata, non una seconda): il modello nomina «entita», Home Assistant
-# vuole «entity». Due elenchi da tenere allineati a mano sarebbero due
-# vocabolari, cioe' la forma di difetto che le fondamenta chiamano doppione.
-#
-# Alcuni di questi nomi -- area, entita, dispositivo, automazione, script,
-# integrazione -- sono tipi che `view` sa aprire; gli altri no, e
-# `view` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
-# di `view`): un id vero preso da qui non deve poter diventare
-# un'affermazione falsa sulla casa.
-LINK_NAME = {
-    "area": "area",
-    "automation": "automazione",
-    "automation_blueprint": "progetto_di_automazione",
-    "config_entry": "voce_di_configurazione",
-    "device": "dispositivo",
-    "entity": "entita",
-    "floor": "piano",
-    "group": "gruppo",
-    "integration": "integrazione",
-    "label": "etichetta",
-    "person": "persona",
-    "scene": "scena",
-    "script": "script",
-    "script_blueprint": "progetto_di_script",
-}
-
-# La stessa tabella dal verso del modello. Derivata, mai riscritta.
-HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
 
 
 def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]:

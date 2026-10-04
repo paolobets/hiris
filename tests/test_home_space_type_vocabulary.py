@@ -98,19 +98,19 @@ def test_una_riga_rifiuta_un_valore_nudo():
         TypeVocabulary().add("sensor", operable="comfort")
 
 
-def test_un_importato_senza_la_sua_versione_non_si_costruisce():
+def test_un_importato_senza_la_sua_fonte_non_si_costruisce():
     """Un fatto importato senza la versione da cui viene non si sa vecchio, e
     un fatto che non si sa vecchio si crede per sempre. E' misurato: lo stesso
-    bit (64) e' stato rimosso in due domini fra `2024.7.0` e `2026.9.1`.
+    bit (64) e' stato rimosso in due domini fra `2024.7.0` e `2026.9.1`. La
+    versione sta nella fonte (dal 04/10/2026 `ha_version` non c'e' piu': nessuno
+    la leggeva, e ripeteva il tag della fonte).
 
-    Mutazione: dare un valore predefinito a `ha_version` in
+    Mutazione: dare un valore predefinito a `source` in
     `Imported.__init__` -- il primo `pytest.raises` arrossisce."""
     with pytest.raises(TypeError):
-        Imported({1: "x"})  # senza `ha_version` ne' `source`
+        Imported({1: "x"})  # senza `source`
     with pytest.raises(ValueError):
-        Imported({1: "x"}, ha_version="", source="una fonte")
-    with pytest.raises(ValueError):
-        Imported({1: "x"}, ha_version="2026.9.1", source="")
+        Imported({1: "x"}, source="")
 
 
 def test_ogni_campo_di_ogni_riga_dichiara_la_propria_provenienza():
@@ -152,8 +152,8 @@ def test_i_giudizi_sono_nostri_e_le_capacita_sono_importate():
         field = row.fields.get(CAPABILITY_NAMES)
         if field is not None:
             assert field.provenance is Provenance.IMPORTED, row.key
-            assert field.ha_version == "2026.9.1"
             assert "home-assistant/core" in field.source
+            assert "2026.9.1" in field.source
 
 
 # --- una coppia si collega al suo dominio, non lo copia -------------------
@@ -740,3 +740,17 @@ def test_le_letture_del_prodotto_passano_dall_vocabolario():
     assert facts.genre_for("light.cucina", None) == "funzionamento"
     assert topology.decoded_capabilities("light", 4 | 32) == ["effetti", "transizione"]
     assert entity_cache is not None  # importato per il vocabolario dichiarato sopra
+
+
+def test_la_mappa_dei_giudizi_salta_solo_l_impalcatura():
+    """`JUDGMENT_FIELDS` traduce i nomi dei campi di questo modulo nei nomi del
+    sapere; l'impalcatura non ha un nome qui (vive su un'integrazione, nessuna
+    riga la porta). Tutti gli altri campi dei giudizi devono passare dalla
+    mappa, o il seme li perde in silenzio (B-46, 04/10/2026).
+
+    Mutazione ESEGUITA: tolta la voce `OPERABLE` da `JUDGMENT_FIELDS` --
+    rossa (`accendibile` manca)."""
+    from hiris.app.home_space.type_judgments import JUDGMENT_FIELD_NAMES, SCAFFOLDING_FIELD
+    from hiris.app.home_space.type_vocabulary import JUDGMENT_FIELDS
+    assert set(JUDGMENT_FIELDS.values()) | {SCAFFOLDING_FIELD} == JUDGMENT_FIELD_NAMES
+    assert SCAFFOLDING_FIELD not in JUDGMENT_FIELDS.values()
