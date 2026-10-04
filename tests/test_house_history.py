@@ -233,10 +233,10 @@ def test_una_cosa_sola_da_ogni_cambio_dal_piu_recente():
     assert "cronaca_non_letta" not in uscita
 
 
-def _atto(ident, entita, ritardo, quando="2026-09-29T10:00:00+00:00"):
+def _atto(ident, entita, ritardo, quando="2026-09-29T10:00:00+00:00", eseguito=True):
     base = datetime.fromisoformat(quando).timestamp()
     return {"id": ident, "entita": [entita], "quando_ts": base + ritardo,
-            "origine": "chat", "servizio": "light.turn_on"}
+            "origine": "chat", "servizio": "light.turn_on", "eseguito": eseguito}
 
 
 def test_per_mano_di_hiris_e_probabile_e_il_piu_vicino():
@@ -256,6 +256,25 @@ def test_per_mano_di_hiris_e_probabile_e_il_piu_vicino():
     assert "per_mano_di" not in mezzogiorno
     assert mattina["per_mano_di"] == "HIRIS"
     assert mattina["abbinamento"] == "probabile"
+    assert mattina["atto"]["id"] == 2
+
+
+def test_un_atto_non_eseguito_non_e_per_mano_di_hiris():
+    """S-03: la cronaca scrive anche gli atti rifiutati (`eseguito` falso:
+    Home Assistant ha detto no, o il freno ha fermato la chiamata). Un atto
+    che non e' avvenuto non ha cambiato niente: il cambio a 10 secondi da
+    lui NON e' per mano di HIRIS -- e fra un rifiutato piu' vicino e un
+    eseguito entro la tolleranza vince l'eseguito."""
+    query = _q(riferimento="light.soggiorno_1")
+    rifiutato = [_atto(1, "light.soggiorno_1", 10, eseguito=False)]
+    uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
+                           truncated=False, acts=rifiutato, current=STATI)
+    assert all("per_mano_di" not in voce for voce in uscita["voci"])
+
+    entrambi = rifiutato + [_atto(2, "light.soggiorno_1", 40)]
+    uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
+                           truncated=False, acts=entrambi, current=STATI)
+    _mezzogiorno, mattina = uscita["voci"]
     assert mattina["atto"]["id"] == 2
 
 

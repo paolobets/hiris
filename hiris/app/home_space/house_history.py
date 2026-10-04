@@ -411,10 +411,14 @@ def _by_hand(entity_id: str, epoch: float, acts: list[dict] | None) -> dict:
     """«Per mano di HIRIS»: l'atto della
     cronaca su questa entita' piu' vicino al cambio, entro
     `MATCH_TOLERANCE_S`, detto `probabile`. Nessun atto: niente -- il cambio
-    non e' di HIRIS, e chi l'abbia fatto la storia non lo sa."""
+    non e' di HIRIS, e chi l'abbia fatto la storia non lo sa.
+
+    Solo gli atti ESEGUITI: la cronaca scrive anche quelli rifiutati
+    (`eseguito` falso, `action/actuator.py`), e un atto che non e' avvenuto
+    non ha cambiato niente (S-03)."""
     best, best_gap = None, None
     for act in acts or []:
-        if entity_id not in (act.get("entita") or []):
+        if not act.get("eseguito") or entity_id not in (act.get("entita") or []):
             continue
         gap = abs(float(act.get("quando_ts") or 0.0) - epoch)
         if gap <= MATCH_TOLERANCE_S and (best_gap is None or gap < best_gap):
