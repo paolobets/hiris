@@ -455,15 +455,30 @@ class HomeSpace:
         self._behavior_loaded_at = datetime.now(UTC).isoformat(timespec="seconds")
 
     def behavior(self) -> list[dict]:
-        """Le voci del comportamento, con `attiva` chiesta allo specchio ADESSO
-        (`behavior.automation_active`): la voce tenuta porta il corpo e il
-        nome letti alla rilettura, lo stato no -- ha una casa sola, lo
-        specchio, e una sua copia qui invecchierebbe fino a cinque minuti."""
+        """Le voci del comportamento, con `attiva` e `nome` chiesti allo
+        specchio ADESSO (A-12): la voce tenuta porta il corpo letto alla
+        rilettura; lo stato e il nome hanno una casa sola, lo specchio, e una
+        loro copia qui invecchierebbe fino a cinque minuti -- un'automazione
+        spenta o rinominata in Home Assistant restava accesa, o col nome
+        vecchio, fino alla rilettura.
+
+        Senza la riga nello specchio (la voce e' sparita fra due riletture,
+        o lo specchio non c'e') la voce resta quella letta: `attiva` manca, e
+        il nome e' l'ultimo visto. Un «non lo so» non diventa «senza nome».
+        Il nome dello specchio e' il `friendly_name` gia' sanificato al
+        confine (`_to_minimal`); la stringa vuota e' «senza nome», `None`,
+        come alla rilettura."""
         result = []
         for entry in self._behavior_entries:
             row = self._mirror.get(entry["id"]) if self._mirror is not None else None
+            if row is None:
+                result.append(entry)
+                continue
+            live = {**entry, "nome": row.get("name") or None}
             active = automation_active(entry["id"], row)
-            result.append(entry if active is None else {**entry, "attiva": active})
+            if active is not None:
+                live["attiva"] = active
+            result.append(live)
         return result
 
     def behavior_loaded_at(self) -> str | None:

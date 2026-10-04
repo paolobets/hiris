@@ -103,6 +103,31 @@ async def test_spenta_dopo_la_rilettura_si_dichiara_subito(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_rinominata_dopo_la_rilettura_si_vede_subito(tmp_path):
+    """A-12, il nome (sì di Paolo, 04/10/2026): una rinomina in Home
+    Assistant cambia il `friendly_name`, e lo specchio lo sa dal primo
+    evento. Il nucleo la dice col nome nuovo senza aspettare la rilettura."""
+    casa, mirror = await _rileggi([
+        _stato("automation.da_rinominare", "on", "Nome vecchio")], tmp_path)
+    assert casa.behavior()[0]["nome"] == "Nome vecchio"
+    mirror.on_state_changed({"entity_id": "automation.da_rinominare",
+                             "new_state": _stato("automation.da_rinominare", "on",
+                                                 "Nome nuovo")})
+    assert casa.behavior()[0]["nome"] == "Nome nuovo"
+
+
+@pytest.mark.asyncio
+async def test_senza_la_riga_nello_specchio_resta_il_nome_letto(tmp_path):
+    """Una voce che lo specchio non ha piu' (rimossa fra due riletture)
+    tiene il nome letto alla rilettura: «non lo so» non diventa «senza
+    nome»."""
+    casa, mirror = await _rileggi([
+        _stato("automation.sparita", "on", "Sparita")], tmp_path)
+    mirror.on_state_changed({"entity_id": "automation.sparita", "new_state": None})
+    assert casa.behavior()[0]["nome"] == "Sparita"
+
+
+@pytest.mark.asyncio
 async def test_la_voce_archiviata_non_porta_lo_stato(tmp_path):
     """Lo stato ha una casa sola, lo specchio: la voce che l'anagrafe tiene
     non ne porta una copia che invecchia (fondamenta 2)."""
