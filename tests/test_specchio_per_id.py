@@ -226,7 +226,7 @@ async def test_behavior_reads_the_mirror_not_the_whole_house(tmp_path):
     mirror = EntityCache()
     await mirror.load(house)
     before = len(house.calls)
-    home_space = HomeSpace(str(tmp_path))
+    home_space = HomeSpace(str(tmp_path), mirror=mirror)
     try:
         outcome = await reread(house, mirror, home_space, None)
         entries = home_space.behavior()

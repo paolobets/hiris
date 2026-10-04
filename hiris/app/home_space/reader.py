@@ -28,6 +28,7 @@ import os
 from datetime import UTC, datetime
 
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from .behavior import automation_active
 from .topology import actual_class, actual_unit
 
 #: Le sette tabelle che l'anagrafe espone, sempre tutte e sette. Chi legge ci
@@ -293,7 +294,11 @@ class HomeSpace:
     (`hold_behavior`, `hold_dashboards`).
     """
 
-    def __init__(self, data_dir: str = "/data") -> None:
+    def __init__(self, data_dir: str = "/data", *, mirror=None) -> None:
+        # Lo specchio dello stato: `behavior()` gli chiede se un'automazione
+        # e' attiva al momento della lettura (A-12). Senza specchio la voce
+        # non lo dice: e' un «non lo so», non un «spenta».
+        self._mirror = mirror
         self._frame_path = os.path.join(data_dir, REFERENCE_FRAME_FILE)
         self._home_space: dict[str, list[dict]] = {}
         self._unavailable: list[str] = []
@@ -450,7 +455,16 @@ class HomeSpace:
         self._behavior_loaded_at = datetime.now(UTC).isoformat(timespec="seconds")
 
     def behavior(self) -> list[dict]:
-        return self._behavior_entries
+        """Le voci del comportamento, con `attiva` chiesta allo specchio ADESSO
+        (`behavior.automation_active`): la voce tenuta porta il corpo e il
+        nome letti alla rilettura, lo stato no -- ha una casa sola, lo
+        specchio, e una sua copia qui invecchierebbe fino a cinque minuti."""
+        result = []
+        for entry in self._behavior_entries:
+            row = self._mirror.get(entry["id"]) if self._mirror is not None else None
+            active = automation_active(entry["id"], row)
+            result.append(entry if active is None else {**entry, "attiva": active})
+        return result
 
     def behavior_loaded_at(self) -> str | None:
         return self._behavior_loaded_at

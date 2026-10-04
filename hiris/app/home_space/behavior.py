@@ -79,6 +79,40 @@ BODY_NOT_READ = "configurazione non letta da Home Assistant"
 SECRETS_UNCHECKABLE = "segreti non controllabili: il corpo non si archivia"
 
 
+def automation_active(entity_id: str, row: dict | None) -> bool | None:
+    """Se un'automazione e' attiva, dalla sua riga nello specchio; `None`
+    quando non lo si puo' dire.
+
+    `attiva` (24/09/2026). Lo stato arrivava fin dentro la rilettura e veniva
+    buttato via: una scelta del proprietario -- ho disabilitato questa
+    automazione -- e un guasto diventavano indistinguibili. Misurato sulla
+    casa vera: HIRIS segnalava «Gestione antimosche ferma da undici giorni»
+    come anomalia, e il proprietario ha risposto che e' giusto, l'ha spenta
+    lui. Un allarme su una cosa voluta e' il rumore sano che seppellisce la
+    rotta.
+
+    **Si chiede allo specchio quando la voce si legge** (A-12, Tappa 2), non
+    si copia nella voce alla rilettura: lo specchio cambia al primo evento, la
+    rilettura del comportamento ogni cinque minuti, e la copia diceva accesa
+    per cinque minuti un'automazione appena spenta.
+
+    **Solo per le automazioni.** Per un'automazione `off` vuol dire
+    DISABILITATA; per uno script vuol dire «non sta girando in questo
+    istante», che e' vero quasi sempre. Lo stesso campo per i due insegnerebbe
+    al modello a leggere ogni script fermo come spento.
+
+    Solo `on`/`off`: `unavailable` o `unknown` non sono una scelta del
+    proprietario, e dire «attiva: false» li spaccerebbe per tale. Una riga che
+    lo specchio non ha e' un «non lo so».
+    """
+    if domain_of(entity_id) != "automation" or row is None:
+        return None
+    state = row.get("state")
+    if state not in ("on", "off"):
+        return None
+    return state == "on"
+
+
 async def reread(client, mirror, home_space, ha_folder: Path | None) -> dict:
     """Rilegge il comportamento da Home Assistant e lo consegna all'anagrafe.
 
@@ -164,23 +198,6 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> dict:
             "nome": state.get("name") or None,
             "corpo": body,
         }
-        # `attiva` (24/09/2026). Lo stato arrivava fin qui dentro
-        # `behavior_states` e veniva buttato via: una scelta del proprietario
-        # -- ho disabilitato questa automazione -- e un guasto diventavano
-        # indistinguibili. Misurato sulla casa vera: HIRIS segnalava
-        # «Gestione antimosche ferma da undici giorni» come anomalia, e il
-        # proprietario ha risposto che e' giusto, l'ha spenta lui. Un allarme
-        # su una cosa voluta e' il rumore sano che seppellisce la rotta.
-        #
-        # **Solo per le automazioni.** Per un'automazione `off` vuol dire
-        # DISABILITATA; per uno script vuol dire «non sta girando in questo
-        # istante», che e' vero quasi sempre. Lo stesso campo per i due
-        # insegnerebbe al modello a leggere ogni script fermo come spento.
-        #
-        # Solo `on`/`off`: `unavailable` o `unknown` non sono una scelta del
-        # proprietario, e dire «attiva: false» li spaccerebbe per tale.
-        if entry["tipo"] == "automazione" and state.get("state") in ("on", "off"):
-            entry["attiva"] = state.get("state") == "on"
         entries.append(entry)
 
     home_space.hold_behavior(entries, problems=problems, unread_bodies=unread)

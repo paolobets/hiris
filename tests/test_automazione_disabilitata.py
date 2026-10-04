@@ -28,20 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.home_space.behavior import BEHAVIOR_DOMAINS, reread
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.proxy.entity_cache import EntityCache
-
-
-class FintoHomeSpace:
-    """Raccoglie cio' che `reread()` deposita, senza archivio."""
-
-    def __init__(self):
-        self.voci = None
-
-    def behavior(self):
-        return self.voci or []
-
-    def hold_behavior(self, entries, problems=None, unread_bodies=None):
-        self.voci = entries
 
 
 def _stato(entity_id: str, state: str, nome: str) -> dict:
@@ -49,12 +37,10 @@ def _stato(entity_id: str, state: str, nome: str) -> dict:
             "attributes": {"friendly_name": nome}}
 
 
-@pytest.fixture
-def casa():
-    return FintoHomeSpace()
-
-
-async def _rileggi(casa, states, tmp_path):
+async def _rileggi(states, tmp_path):
+    """L'anagrafe vera con lo specchio vero, dopo una rilettura del
+    comportamento: `attiva` non sta nella voce archiviata, si chiede allo
+    specchio quando la si legge (A-12, Tappa 2)."""
     (tmp_path / "secrets.yaml").write_text("", encoding="utf-8")
     # Gli stati e, per ognuno, un corpo: cio' che Home Assistant
     # risponderebbe a `automation/config` e `script/config`. Dal 03/10/2026
@@ -63,13 +49,15 @@ async def _rileggi(casa, states, tmp_path):
         state["entity_id"]: {"alias": "x"} for state in states}}})
     mirror = EntityCache()
     await mirror.load(house)
-    return await reread(house, mirror, casa, tmp_path)
+    casa = HomeSpace(str(tmp_path), mirror=mirror)
+    await reread(house, mirror, casa, tmp_path)
+    return casa, mirror
 
 
 @pytest.mark.asyncio
-async def test_un_automazione_spenta_si_dichiara(casa, tmp_path):
+async def test_un_automazione_spenta_si_dichiara(tmp_path):
     """Il caso vero dell'antimosche, con nomi sintetici."""
-    await _rileggi(casa, [
+    casa, _mirror = await _rileggi([
         _stato("automation.automazione_spenta", "off", "Automazione spenta"),
         _stato("automation.automazione_accesa", "on", "Automazione accesa"),
     ], tmp_path)
@@ -79,23 +67,48 @@ async def test_un_automazione_spenta_si_dichiara(casa, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_uno_script_non_porta_il_campo(casa, tmp_path):
+async def test_uno_script_non_porta_il_campo(tmp_path):
     """Uno script «off» non e' spento: e' semplicemente fermo adesso."""
-    await _rileggi(casa, [_stato("script.script_uno", "off", "Script uno")], tmp_path)
+    casa, _mirror = await _rileggi([_stato("script.script_uno", "off", "Script uno")],
+                                   tmp_path)
     voce = casa.behavior()[0]
     assert voce["tipo"] == "script"
     assert "attiva" not in voce
 
 
 @pytest.mark.asyncio
-async def test_uno_stato_sconosciuto_non_diventa_spenta(casa, tmp_path):
+async def test_uno_stato_sconosciuto_non_diventa_spenta(tmp_path):
     """`unavailable` non e' `off`: un'automazione che Home Assistant non sa
     rendere non e' stata disabilitata dal proprietario, e dire «attiva:
     false» sarebbe inventare una sua scelta.
     """
-    await _rileggi(casa, [
+    casa, _mirror = await _rileggi([
         _stato("automation.rotta", "unavailable", "Rotta")], tmp_path)
     assert "attiva" not in casa.behavior()[0]
+
+
+@pytest.mark.asyncio
+async def test_spenta_dopo_la_rilettura_si_dichiara_subito(tmp_path):
+    """A-12: il proprietario spegne un'automazione e lo specchio lo sa dal
+    primo evento. Fino alla Tappa 2 `attiva` stava nella voce archiviata, e
+    il nucleo la diceva accesa fino alla rilettura successiva del
+    comportamento -- fino a cinque minuti. Nessuna rilettura qui."""
+    casa, mirror = await _rileggi([
+        _stato("automation.da_spegnere", "on", "Da spegnere")], tmp_path)
+    assert casa.behavior()[0]["attiva"] is True
+    mirror.on_state_changed({"entity_id": "automation.da_spegnere",
+                             "new_state": _stato("automation.da_spegnere", "off",
+                                                 "Da spegnere")})
+    assert casa.behavior()[0]["attiva"] is False
+
+
+@pytest.mark.asyncio
+async def test_la_voce_archiviata_non_porta_lo_stato(tmp_path):
+    """Lo stato ha una casa sola, lo specchio: la voce che l'anagrafe tiene
+    non ne porta una copia che invecchia (fondamenta 2)."""
+    casa, _mirror = await _rileggi([
+        _stato("automation.qualunque", "off", "Qualunque")], tmp_path)
+    assert "attiva" not in casa._behavior_entries[0]
 
 
 def test_i_domini_del_comportamento_restano_due():

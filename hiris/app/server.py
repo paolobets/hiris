@@ -1536,8 +1536,17 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
     return bridge_active and subscription_has_token()
 
 
-def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0):
+def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0, *,
+                              then=None):
     """Restituisce `trigger(event_type)`: ricostruisce l'anagrafe, una volta sola.
+
+    `then`, se c'e', si attende DOPO ogni ricostruzione riuscita: e' cio' che
+    dipende dalla cornice appena letta. In produzione sono le parole degli
+    stati (`prime_state_translations`, A-14): un cambio di lingua arriva come
+    `core_config_updated`, e le parole si rileggono nella lingua nuova invece
+    di aspettare il giro dei cinque minuti. Dopo ogni ricostruzione e non solo
+    dopo quell'evento, perche' `read` risponde dalla cache finche' versione e
+    lingua non cambiano: chiederla in piu' non costa una lettura.
 
     Riorganizzare la casa in Home Assistant produce una raffica di eventi —
     spostare dieci entita' ne emette dieci. Ricostruire a ogni evento
@@ -1554,6 +1563,8 @@ def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0):
         try:
             await asyncio.sleep(delay)
             await rebuild(client, store, entity_cache)
+            if then is not None:
+                await then()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -3548,7 +3559,7 @@ async def _on_startup(app: web.Application) -> None:
     # voci appena il websocket si apre, e l'ascoltatore deve esserci prima.
     # Finche' la prima ricostruzione non e' riuscita le tiene solo in
     # `app["ha_integrations"]` (`HomeSpace.hold_integrations`).
-    home_space_store = HomeSpace(data_dir)
+    home_space_store = HomeSpace(data_dir, mirror=entity_cache)
     app["home_space_store"] = home_space_store
     ha_client.add_integration_listener(integration_follower(app))
 
@@ -3738,7 +3749,8 @@ async def _on_startup(app: web.Application) -> None:
     # aperto, e un cambio di registro arrivato mentre si legge deve far
     # ricostruire (con l'antirimbalzo) invece di perdersi.
     ha_client.add_topology_listener(
-        schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
+        schedule_registry_rebuild(ha_client, home_space_store, entity_cache,
+                                  then=lambda: prime_state_translations(app)))
     ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
 
     # **L'anagrafe si legge SUBITO, prima di chi la usa.** Da quando la casa

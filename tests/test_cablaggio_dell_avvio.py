@@ -405,6 +405,40 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
             coroutine.close()
 
 
+async def test_a_reference_change_rereads_the_state_words(started_app):
+    """A-14: il proprietario cambia la lingua della casa e Home Assistant
+    manda `core_config_updated`. L'anagrafe si ricostruisce e legge la
+    cornice nuova; le parole degli stati -- e il sapere che ne nasce -- si
+    rileggono SUBITO DOPO, nella lingua nuova. Fino alla Tappa 2 aspettavano
+    il giro dei cinque minuti, e per quel tempo il nucleo parlava la lingua
+    vecchia.
+
+    Il lavoro si cattura come nella prova qui sopra; la ricostruzione catturata
+    si fa girare senza la sua attesa, con le parole degli stati sostituite da
+    una registrazione."""
+    spawned = []
+
+    def capture(coroutine, *, name=None):
+        spawned.append(coroutine)
+
+    house = started_app["ha_client"]
+    with mock.patch.object(server, "_spawn", capture):
+        for listener in house.registered("topology"):
+            listener("core_config_updated")
+    primed = mock.AsyncMock(return_value={"lette": True})
+    try:
+        rebuilds = [c for c in spawned if c.cr_code.co_name == "_fra_poco"
+                    and "rebuild" in c.cr_code.co_names]
+        assert len(rebuilds) == 1, [c.cr_code.co_qualname for c in spawned]
+        with (mock.patch.object(server, "prime_state_translations", primed),
+              mock.patch("asyncio.sleep", mock.AsyncMock())):
+            await rebuilds[0]
+    finally:
+        for coroutine in spawned:
+            coroutine.close()
+    primed.assert_awaited_once_with(started_app)
+
+
 # --------------------------------------------------------------------------
 # Le rotte dell'officina, dal router
 # --------------------------------------------------------------------------
