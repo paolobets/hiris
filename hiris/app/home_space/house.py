@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from . import topology
-from .ha_vocabulary import domain_of
+from .ha_vocabulary import domain_of, has_statistics
 from .house_query import (
     _BEHAVIOR_KINDS,
     Selection,
@@ -52,24 +52,29 @@ class House:
     """
 
     def __init__(self, home_space: dict, mirror: Mirror,
-                 unavailable: tuple[str, ...] = ()) -> None:
+                 unavailable: tuple[str, ...] = (),
+                 statistic_ids: frozenset[str] | set[str] | None = None) -> None:
         self.home_space = home_space
         self.mirror = mirror
         self.unavailable = tuple(unavailable)
+        # Le entita' per cui Home Assistant tiene statistiche, lette dal giro
+        # (`server.statistic_ids_for_round`); `None` = non lette (B-12).
+        self.statistic_ids = None if statistic_ids is None else frozenset(statistic_ids)
         self._floors: list[dict] | None = None
         self._places: dict[str, tuple[dict, dict, dict]] | None = None
         self._device_index: dict[str, dict] | None = None
         self._entities: dict[str, dict] | None = None
 
     @classmethod
-    def read(cls, home_space_store, cache) -> House:
+    def read(cls, home_space_store, cache, statistic_ids=None) -> House:
         """La casa di adesso, dagli archivi vivi. Senza archivio, una casa
         vuota (non inventata): chi la legge lo dichiara, come faceva prima
-        ciascuno per conto suo."""
+        ciascuno per conto suo. `statistic_ids` e' la lettura del giro, se il
+        giro l'ha fatta (B-12)."""
         if home_space_store is None:
-            return cls({}, read_mirror(cache))
+            return cls({}, read_mirror(cache), statistic_ids=statistic_ids)
         return cls(home_space_store.read(), read_mirror(cache),
-                   tuple(home_space_store.unavailable()))
+                   tuple(home_space_store.unavailable()), statistic_ids)
 
     def hierarchy(self) -> list[dict]:
         """L'albero piano -> area -> entita' di `topology.hierarchy`, con i
@@ -240,4 +245,17 @@ class House:
                 "classe": topology.live_first(entry.get("classe"),
                                               self.mirror.classes.get(entity_id)),
                 "unita": topology.live_first(entry.get("unita"),
-                                             self.mirror.units.get(entity_id))}
+                                             self.mirror.units.get(entity_id)),
+                "statistiche": self.has_statistics(entity_id),
+                # Da dove viene la risposta (atomicita'): l'elenco di Home
+                # Assistant, o la regola del sorgente quando l'elenco manca.
+                "statistiche_da": ("home_assistant" if self.statistic_ids is not None
+                                   else "regola")}
+
+    def has_statistics(self, entity_id: str) -> bool:
+        """«Ha statistiche?» (B-12): l'elenco che Home Assistant tiene, se il
+        giro l'ha letto; altrimenti la regola del sorgente sullo
+        `state_class` di adesso (`ha_vocabulary.has_statistics`, la stessa
+        che usa il watcher)."""
+        return has_statistics(entity_id, self.mirror.state_classes.get(entity_id),
+                              self.statistic_ids)

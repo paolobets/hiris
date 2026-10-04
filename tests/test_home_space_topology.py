@@ -517,8 +517,8 @@ async def test_la_ricostruzione_non_congela_la_classe_e_l_unita_dello_specchio(a
         {"entity_id": "sensor.frigo_temp", "state": "4.2",
          "attributes": {"device_class": "temperature", "unit_of_measurement": "°C"}}])
     house = House.read(archivio, specchio)
-    assert house.kind_of("sensor.frigo_temp") == {
-        "dominio": "sensor", "classe": "temperature", "unita": "°C"}
+    assert house.kind_of("sensor.frigo_temp")["classe"] == "temperature"
+    assert house.kind_of("sensor.frigo_temp")["unita"] == "°C"
 
     await specchio.load(_client({}, states=[
         {"entity_id": "sensor.frigo_temp", "state": "39.6",

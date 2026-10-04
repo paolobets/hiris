@@ -15,7 +15,12 @@ import json
 import logging
 import time
 
-from ..home_space.ha_vocabulary import config_entry_is_healthy, domain_of, is_entity_id
+from ..home_space.ha_vocabulary import (
+    config_entry_is_healthy,
+    domain_of,
+    has_statistics,
+    is_entity_id,
+)
 from ..home_space.historian import instant_epoch
 from ..home_space.redaction import home_assistant_seal, seal_free_text
 from .knowledge import attributes_wanted_for
@@ -180,6 +185,10 @@ class Watcher:
         # STESSA ragione: un'automazione rotta non deve dimenticare di
         # esserlo a ogni riavvio dell'add-on.
         self._automation_faults: set[str] = set()
+        # Le entita' per cui Home Assistant tiene statistiche, dall'ultima
+        # lettura buona di un giro (`hold_statistic_ids`); `None` finche'
+        # nessun giro l'ha letta, e allora vale la regola del sorgente (B-12).
+        self._statistic_ids: frozenset[str] | None = None
 
     # -- il rubinetto --------------------------------------------------
 
@@ -275,19 +284,21 @@ class Watcher:
             # loquaci. E **zero delle 44 voci di cronaca** del 14/09 venivano
             # da loro: non si perde niente di leggibile.
             #
-            # **Solo il dominio `sensor`, e non e' un dettaglio.** Home
-            # Assistant calcola le statistiche di lungo periodo per quel
-            # dominio soltanto: misurato con `recorder/list_statistic_ids`,
-            # **130 entita', tutte `sensor`**. Un `binary_sensor` che
-            # dichiarasse `state_class` non ne avrebbe nessuna, e filtrarlo lo
-            # farebbe sparire da tutte e due le parti.
+            # **Chi ha statistiche lo dice Home Assistant** (B-12, Tappa 3,
+            # Task 7, 04/10/2026): l'elenco `recorder/list_statistic_ids`
+            # dell'ultimo giro che l'ha letto, e la regola del sorgente
+            # (`ha_vocabulary.has_statistics`: un `sensor` con uno dei quattro
+            # `state_class`) solo finche' nessun giro l'ha letto. Fino a quel
+            # giorno qui c'era una formula sua -- `sensor.` e uno
+            # `state_class` qualunque -- e un `sensor` che il recorder non
+            # registra (escluso dal filtro, stato non numerico) si perdeva da
+            # tutte e due le parti: non scritto qui, e senza statistiche la'.
             #
             # **Dopo il controllo degli attributi, non prima**: le statistiche
             # portano il NUMERO, non gli attributi (spec §5.4). Un attributo
             # che qualcuno ha deciso valga la pena dice qualcosa che nessuna
             # statistica direbbe, e passa anche qui.
-            if (str(eid).startswith("sensor.")
-                    and attributes.get("state_class")
+            if (has_statistics(str(eid), attributes.get("state_class"), self._statistic_ids)
                     and not self._wanted_changed(wanted, old_attributes, attributes)):
                 return False
             # L'istante e' quello del CAMBIO, non della scrittura: `last_changed`
@@ -1100,3 +1111,15 @@ class Watcher:
                        "autore": None, "da_quando_ts": None}
                       for s in self._automation_faults)
         return sorted([*entity, *system, *automation], key=lambda o: o["soggetto"])
+
+    def hold_statistic_ids(self, reading) -> None:
+        """L'elenco delle entita' con statistiche letto da un giro
+        (`server.statistic_ids_for_round`), per `watch_reading` (B-12).
+
+        Una lettura fallita -- la busta del guasto (D3), o `None` -- non
+        sostituisce l'ultima buona: un guasto del websocket non deve far
+        tornare il watcher alla regola, ne' fargli credere che nessuna
+        entita' abbia statistiche (con l'insieme vuoto registrerebbe ogni
+        `sensor`, il triplo delle righe misurato il 15/09/2026)."""
+        if isinstance(reading, (set, frozenset)):
+            self._statistic_ids = frozenset(reading)

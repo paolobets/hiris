@@ -556,7 +556,7 @@ def test_entro_un_giorno_i_cambi_veri_oltre_le_fasce_per_chi_le_ha():
     """Da `historian.choose_surface` (24/08/2026). La soglia e' inclusiva.
 
     Mutazione ESEGUITA: `<` al posto di `<=` -- rossa sulle 24 ore;
-    `bool(state_class)` al posto di `produces_statistics` -- rossa sulla
+    `bool(state_class)` al posto di `bands_are_arithmetic` -- rossa sulla
     banderuola."""
     assert hh.value_surface(_q(genere="valori", ore=24), "measurement") == "dettaglio"
     assert hh.value_surface(_q(genere="valori", ore=48), "measurement") == "oraria"

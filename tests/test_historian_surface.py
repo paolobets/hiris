@@ -8,7 +8,7 @@ finestra dei due strumenti del tempo (`choose_surface`, `window`,
 from datetime import UTC
 
 from hiris.app.home_space import historian
-from hiris.app.home_space.ha_vocabulary import produces_statistics
+from hiris.app.home_space.ha_vocabulary import bands_are_arithmetic, produces_statistics
 from hiris.app.home_space.historian import home_space_zone, instant_epoch
 from hiris.app.proxy.ha_client import HAClient
 
@@ -45,17 +45,24 @@ def test_i_lettori_usciti_con_i_quattro_strumenti_non_esistono_piu():
         assert not hasattr(HAClient, nome), nome
 
 
-def test_measurement_angle_does_not_produce_statistics():
-    """`measurement_angle` esiste come `state_class` (angoli, es. la
-    direzione del vento) ma NON produce statistiche: un'appartenenza al vero
-    insieme di Home Assistant, non un `bool(state_class)`. Il consumatore e'
-    `house_history.value_surface`.
+def test_measurement_angle_has_statistics_but_not_arithmetic_bands():
+    """`measurement_angle` (angoli, es. la direzione del vento) PRODUCE
+    statistiche -- la media circolare: `DEFAULT_STATISTICS` in
+    `components/sensor/recorder.py`, tag 2026.9.1, letto il 04/10/2026 (B-12).
+    Fino a quel giorno l'insieme la lasciava fuori. Le sue fasce non portano
+    ne' minimo ne' massimo, e una media di angoli che i conti di HIRIS non
+    sanno leggere: la storia la tiene sul dettaglio (`bands_are_arithmetic`,
+    il consumatore e' `house_history.value_surface`).
 
-    Mutazione ESEGUITA: `produces_statistics` ridotta a `bool(state_class)`
-    -- rossa sul primo `assert ... is False`."""
-    assert produces_statistics("measurement_angle") is False
+    Mutazione ESEGUITA: `bands_are_arithmetic` ridotta a
+    `produces_statistics` -- rossa sull'ultimo `assert ... is False`."""
+    assert produces_statistics("measurement_angle") is True
     assert produces_statistics("measurement") is True
     assert produces_statistics("total") is True
     assert produces_statistics("total_increasing") is True
     assert produces_statistics(None) is False
     assert produces_statistics("") is False
+    assert bands_are_arithmetic("measurement") is True
+    assert bands_are_arithmetic("total_increasing") is True
+    assert bands_are_arithmetic(None) is False
+    assert bands_are_arithmetic("measurement_angle") is False

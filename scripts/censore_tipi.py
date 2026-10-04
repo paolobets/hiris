@@ -411,14 +411,10 @@ EXCEPTIONS: dict[tuple[Subject, str], str] = {
         "ragione tutte le volte -- un apparecchio che si accende e si spegne "
         "ma che HA comanda con verbi propri."),
 
-    # -- i valori di `state_class`
-    (Subject.STATE_CLASS, "measurement_angle"): (
-        "Escluso di proposito e gia' documentato accanto a entrambe le voci "
-        "di `ha_vocabulary` che lo riguardano (`STATE_CLASS_MEANING` e "
-        "`STATE_CLASSES_WITH_STATISTICS`): zero entita' di "
-        "questa casa lo usano, e la regola di quel vocabolario e' «si importa "
-        "cio' che la casa usa davvero», non «tutto cio' che esiste». Il giorno "
-        "in cui un'entita' lo porta, il censore lo rinomina."),
+    # -- i valori di `state_class`: nessuna eccezione dal 04/10/2026. L'unico
+    # che c'era, `measurement_angle`, e' rivendicato da
+    # `ha_vocabulary.STATE_CLASSES_WITH_STATISTICS` da quando la regola delle
+    # statistiche e' quella del sorgente di Home Assistant (B-12).
 
     # -- i bit di capacita'
     (Subject.CAPABILITY_BIT, "button=2"): (

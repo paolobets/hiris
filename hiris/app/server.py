@@ -1863,6 +1863,21 @@ async def statistic_ids_for_round(app, ha_client, *,
     return reading
 
 
+async def hold_watcher_statistic_ids(app, ha_client) -> None:
+    """L'elenco delle entita' con statistiche consegnato al watcher (B-12,
+    Tappa 3, Task 7, 04/10/2026), dalla stessa lettura condivisa dei giri
+    (`statistic_ids_for_round`): il watcher decide su ogni evento se una
+    lettura la tiene gia' Home Assistant, e non puo' chiederlo evento per
+    evento. Lo fa il giro delle condizioni, ogni dieci minuti; prima del primo
+    giro il watcher usa la regola del sorgente (`ha_vocabulary.has_statistics`).
+    Una lettura fallita non tocca l'ultima buona (`Watcher.hold_statistic_ids`).
+    """
+    watcher = app.get("watcher")
+    if watcher is None or ha_client is None:
+        return
+    watcher.hold_statistic_ids(await statistic_ids_for_round(app, ha_client))
+
+
 def _punti_orari(punti) -> list[dict]:
     """Le statistiche orarie nella forma che le operazioni leggono.
 
@@ -4227,6 +4242,7 @@ async def _on_startup(app: web.Application) -> None:
     async def _watch_conditions() -> None:
         try:
             await watch_system_conditions(app, ha_client)
+            await hold_watcher_statistic_ids(app, ha_client)
         except Exception as exc:
             logger.warning(
                 "cervello: giro delle condizioni di sistema fallito (%s: %s)",

@@ -334,8 +334,9 @@ def test_il_censore_su_questa_casa_ha_trovato_davvero_qualcosa(casa):
 
     Sono 181 voci (121 classi del dispositivo, 51 stati, 1 valore di
     `state_class`, 1 bit di capacita', 7 domini accendibili -- misurato
-    l'08/09/2026), in cinque materie su sei -- i domini sono l'unica materia
-    coperta per intero, e lo e' perche' `briefing._DOMAIN_NAMES` era gia' stata
+    l'08/09/2026), in cinque materie su sei; dal 04/10/2026 (B-12) quattro,
+    perche' anche i valori di `state_class` sono coperti -- i domini erano
+    l'unica materia coperta per intero, e lo e' perche' `briefing._DOMAIN_NAMES` era gia' stata
     estesa a mano oltre le 45 piattaforme di Home Assistant.
 
     Mutazione ESEGUITA: svuotare `tests/data/pubblicato-dalla-casa.json` di
@@ -345,7 +346,10 @@ def test_il_censore_su_questa_casa_ha_trovato_davvero_qualcosa(casa):
     assert len(tutte[Subject.DEVICE_CLASS]) >= 100
     assert len(tutte[Subject.STATE]) >= 40
     assert tutte[Subject.CAPABILITY_BIT]
-    assert tutte[Subject.STATE_CLASS]
+    # I valori di `state_class` sono coperti per intero dal 04/10/2026: il
+    # solo che mancava, `measurement_angle`, e' entrato nella regola delle
+    # statistiche letta nel sorgente di Home Assistant (B-12).
+    assert not tutte[Subject.STATE_CLASS]
     assert tutte[Subject.SWITCHABLE]
 
 

@@ -41,7 +41,11 @@ col Task 5 (04/10/2026), quando le sei copie sono diventate
 l'osservatore e le ricette (Task 12). `unita` confrontava l'anagrafe, lo
 specchio e la riga di `search`: e' uscita col Task 7 (B-17, 04/10/2026), quando
 l'anagrafe ha smesso di congelare classe e unita' e `search` le chiede con la
-regola di `House.kind_of` (`topology.live_first`).
+regola di `House.kind_of` (`topology.live_first`). `statistiche` confrontava la
+regola sullo `state_class`, il watcher e l'elenco di Home Assistant: e' uscita
+con B-12 (04/10/2026), quando il watcher e la casa hanno smesso di avere una
+formula loro e chiedono `ha_vocabulary.has_statistics` (l'elenco, e la regola
+del sorgente solo come ripiego).
 
 Nasce da `docs/superpowers/audit-2026-10-01/sonda_parita.py` (01/10/2026).
 
@@ -84,7 +88,6 @@ from hiris.app.home_space import (
 from hiris.app.home_space.house import House
 from hiris.app.mind import observer, recipe_turn
 from hiris.app.mind.recipes import ENTITY_MARK, Recipe
-from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
 
 #: Il separatore dei campi nelle righe che osservatore e ricette mandano al
@@ -409,48 +412,6 @@ def values(inputs: dict) -> dict:
                     {"esito_sulla_casa": briefing._unreliable_state(home_space, state, True, ())})
 
 
-class _AlwaysWatching:
-    """L'archivio dell'osservatore, ridotto a cio' che `watch_reading` chiede."""
-
-    def is_watched(self, subject):
-        return True
-
-    def record(self, **_):
-        return None
-
-    def scope(self):
-        return {}
-
-
-def statistics(inputs: dict) -> dict:
-    """«Ha statistiche?» -- tre risposte per entita': la regola sul
-    `state_class`, cio' che il watcher crede coperto, cio' che Home Assistant
-    tiene davvero."""
-    watcher = Watcher(_AlwaysWatching(), now=lambda: inputs["clock"])
-    truth = inputs["statistic_ids"]
-    cases = []
-    examined = 0
-    for raw in inputs["raw_states"]:
-        key = raw["entity_id"]
-        attributes = raw.get("attributes") or {}
-        state_class = attributes.get("state_class")
-        if not (key.startswith("sensor.") or state_class or key in truth):
-            continue
-        examined += 1
-        reading = {"state": "1", "attributes": dict(attributes),
-                   "last_updated": "2026-10-01T10:00:00+00:00",
-                   "last_changed": "2026-10-01T10:00:00+00:00"}
-        event = {"entity_id": key, "new_state": reading,
-                 "old_state": {"state": "0", "attributes": dict(attributes)}}
-        answers = {"regola": ha_vocabulary.produces_statistics(state_class),
-                   "watcher": not watcher.watch_reading(event),
-                   "home_assistant": key in truth}
-        if len(set(answers.values())) > 1:
-            cases.append({"id": key, "state_class": state_class, **answers})
-    return _verdict(cases, ["ha_vocabulary.produces_statistics", "Watcher.watch_reading"],
-                    {"esaminate": examined})
-
-
 def _selected(inputs: dict, **filters) -> set[str]:
     selection = house_query.select_subjects(
         house_query.HouseFilters(include_hidden=True, include_service=True, **filters),
@@ -539,7 +500,7 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
 #: Le domande, per nome. E' un elenco di AMMISSIONE: una domanda esce di qui
 #: quando la sua copia e' cancellata, nello stesso commit.
 QUESTIONS = {"fuori": excluded, "nomi": names,
-             "dove": areas, "valore": values, "statistiche": statistics,
+             "dove": areas, "valore": values,
              "riferimenti": references, "oggi": today, "fonte": source}
 
 
