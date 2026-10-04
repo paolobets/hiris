@@ -102,12 +102,11 @@
     "extract_from_target": 1,
     "hourly_statistics": 1,
     "problems": 1,
-    "statistic_ids": 2,
+    "statistic_ids": 1,
     "system_log": 1,
     "traces": 1
    },
    "voci": [
-    "A-05",
     "A-08"
    ]
   }

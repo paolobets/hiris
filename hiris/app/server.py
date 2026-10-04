@@ -1773,8 +1773,8 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
 
     **Le statistiche si chiedono una volta per tutte le ricette**: le entita'
     che ogni ricetta nomina si raccolgono prima, invece di una richiesta per
-    dispositivo. Una seconda chiamata chiede a Home Assistant quali di quelle
-    entita' hanno statistiche (`statistic_ids`).
+    dispositivo. Quali di quelle entita' hanno statistiche lo dice
+    `statistic_ids_for_round`, la lettura condivisa col giro delle ricette.
     """
     sapere = app.get("knowledge")
     casa = app.get("home_space_store")
@@ -1810,7 +1810,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     # registro di Home Assistant e' un elenco di nomi, non una serie.
     # `None` -- non l'insieme vuoto -- se non si e' potuto leggere: affermare
     # «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
-    with_statistics = await ha_client.statistic_ids()
+    with_statistics = await statistic_ids_for_round(app, ha_client)
     if isinstance(with_statistics, dict):  # la busta del guasto (D3)
         logger.warning("resoconto: elenco delle statistiche non letto (%s): %s",
                        with_statistics.get("causa"), with_statistics.get("errore"))
@@ -1822,6 +1822,37 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
             "statistiche in Home Assistant -- le loro misure lo diranno",
             len(without), len(entita))
     return ricette, serie, nomi, without
+
+
+#: Quanto vale una lettura di `statistic_ids` per i giri che la condividono
+#: (A-05, Tappa 2, Task 8): quattro minuti, cioe' meno del giro piu' frequente
+#: che la usa (il recupero dei resoconti, ogni cinque; le ricette, ogni dieci).
+#: Cosi' un giro non riusa mai la propria lettura precedente -- ogni giro
+#: vede l'elenco fresco di Home Assistant -- ma due giri vicini ne fanno una
+#: sola. La prova (`tests/test_giro_statistic_ids.py`) chiede i giri allo
+#: schedulatore e al grafo delle chiamate, non li ricopia.
+STATISTIC_IDS_MEMORY_S = 240.0
+
+
+async def statistic_ids_for_round(app, ha_client, *,
+                                  now: float | None = None) -> set[str] | dict:
+    """Le entita' con statistiche (`HAClient.statistic_ids`), lette UNA volta
+    per i giri vicini.
+
+    Fino al 04/10/2026 il giro delle ricette e gli ingredienti del resoconto
+    leggevano lo stesso elenco ognuno per conto suo (A-05). La lettura buona
+    si tiene in `app["statistic_ids_held"]` per `STATISTIC_IDS_MEMORY_S`;
+    **un guasto non si tiene mai**: la busta (D3) torna al chiamante, e il
+    giro dopo richiede.
+    """
+    now = time.monotonic() if now is None else now
+    held = app.get("statistic_ids_held")
+    if held is not None and now - held[0] < STATISTIC_IDS_MEMORY_S:
+        return held[1]
+    reading = await ha_client.statistic_ids()
+    if not isinstance(reading, dict):
+        app["statistic_ids_held"] = (now, reading)
+    return reading
 
 
 def _punti_orari(punti) -> list[dict]:
@@ -2470,14 +2501,24 @@ async def recipe_round(app) -> dict | None:
         if _turn_in_flight(app, recipe_turn.RECIPE_TURN_KIND):
             return None
 
+        watched = {s for s, riga in (store.scope() or {}).items()
+                   if riga.get("dentro")}
+        to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
+        # **Niente da potare ne' da chiedere: niente da leggere** (A-20, Tappa
+        # 2, Task 8). Fino al 04/10/2026 l'elenco delle statistiche si leggeva
+        # qui sotto a ogni passaggio, prima di sapere se servisse.
+        if not to_ask and not recipe_turn.has_prunable_recipes(sapere, home_space):
+            return None
+
         # **Quali entita' sanno produrre una serie**: serve due volte, e si
-        # legge una sola (spec §6, primo «rifiuta se»). `None` se non si e'
-        # potuto leggere, e allora non si dice niente al modello e non si
+        # legge una sola (spec §6, primo «rifiuta se»), condivisa con gli
+        # ingredienti del resoconto (`statistic_ids_for_round`). `None` se non
+        # si e' potuto leggere, e allora non si dice niente al modello e non si
         # cancella niente.
         with_series = None
         cliente = app.get("ha_client")
         if cliente is not None:
-            reading = await cliente.statistic_ids()
+            reading = await statistic_ids_for_round(app, cliente)
             if isinstance(reading, dict):  # la busta del guasto (D3)
                 logger.info("ricette: elenco delle statistiche non letto (%s): %s",
                             reading.get("causa"), reading.get("errore"))
@@ -2495,10 +2536,7 @@ async def recipe_round(app) -> dict | None:
             logger.info("ricette: %d ricette tolte -- nessuna delle loro "
                         "entita' ha una serie; quei dispositivi tornano "
                         "domande aperte", tolte)
-
-        watched = {s for s, riga in (store.scope() or {}).items()
-                   if riga.get("dentro")}
-        to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
+            to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
         if not to_ask:
             return None
         # A chi chiedere: **si ruota**, o un dispositivo che non risponde

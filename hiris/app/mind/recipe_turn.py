@@ -520,15 +520,8 @@ def drop_recipes_without_series(store, home_space: dict,
     if with_series is None:
         return 0
     dropped = 0
-    for device in home_space.get("dispositivi") or []:
-        device_id = str(device.get("id") or "")
-        if not device_id:
-            continue
-        written = recipe_for(store, device_id)
-        if written is None:
-            continue
-        named = Recipe(written).entities()
-        if named and not (named & with_series):
+    for device_id, named in _named_recipes(store, home_space):
+        if not (named & with_series):
             store.forget("dispositivo", device_id, RECIPE_FIELD)
             dropped += 1
             logger.info(
@@ -537,6 +530,29 @@ def drop_recipes_without_series(store, home_space: dict,
                 "produrre nemmeno un numero. Torna fra quelle da chiedere",
                 device_id, len(named))
     return dropped
+
+
+def _named_recipes(store, home_space: dict):
+    """`(device_id, entita' nominate)` per ogni dispositivo dell'anagrafe con
+    una ricetta che nomina almeno un'entita': le sole che la potatura puo'
+    togliere."""
+    for device in home_space.get("dispositivi") or []:
+        device_id = str(device.get("id") or "")
+        if not device_id:
+            continue
+        written = recipe_for(store, device_id)
+        if written is None:
+            continue
+        named = Recipe(written).entities()
+        if named:
+            yield device_id, named
+
+
+def has_prunable_recipes(store, home_space: dict) -> bool:
+    """Se `drop_recipes_without_series` ha qualcosa da guardare: senza, il
+    giro delle ricette non ha bisogno di chiedere a Home Assistant quali
+    entita' abbiano statistiche (A-20, Tappa 2, Task 8)."""
+    return next(_named_recipes(store, home_space), None) is not None
 
 
 def _still_valid(rejection) -> bool:
