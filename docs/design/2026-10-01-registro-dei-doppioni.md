@@ -416,7 +416,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 |---|---|---|---|---|---|
 | S-01 | Turno dell'attuatore raccolto dal ponte: gli indici del modello applicati a un elenco rifatto «adesso» (oggi dormiente, giro in pausa) | 1° dei «5 più gravi» di cop-1 | DEDOTTO | cap. proposto D; Stato del rapporto: DIVERGENTE [D]; Unirla CC | cop-1 D6 |
 | S-02 | `_close_expired_promise` dice «ho aspettato N minuti» con la `scadenza_min` di adesso, non la durata del job | 5° dei «5 più gravi» di cop-1 | LETTO | cap. proposto X (la parte di commento è X-24); Stato DIVERGENTE, Unirla CC; si lega a D-09 | cop-1 X4 |
-| S-03 | «Per mano di HIRIS» (`_by_hand`) abbina anche gli atti NON eseguiti: ignora `eseguito` |  | LETTO (effetto DEDOTTO) | cap. proposto B; Stato NV, Unirla CC; era «fuori perimetro» di `db` nel registro v1 | cop-3 B-n7 |
 | S-05 | `read_dashboards`: `d.get("url_path")` senza `isinstance(d, dict)` |  | LETTO | `ha_client.py:1056` (04/10/2026; la `:1077` lo ha) | cop-5 S2 |
 | S-07 | `context` (chi ha causato il cambio) non entra nello specchio |  | LETTO | `entity_cache.py:516-587`; vedi correzione a B-25 | cop-5 S4 · Tappa 3 (D5) |
 | S-08 | L'argomento unico `-p` oltre 128 KiB: la CLI del ponte non parte (domanda dell'analista 136.822 caratteri) |  | DEDOTTO | cap. proposto D; Stato NV (limite del kernel noto, non provato); il guasto esce come «runner non disponibile» | cop-7 N-D1 |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | Tappa 2 (da rilasciare) | 567f520b | le parole degli stati si rileggono dopo ogni ricostruzione dell'anagrafe |
 | A-40 | La cartella di configurazione di Home Assistant si cerca in due punti: `home_space/redaction.home_assistant_folder` e `server._find_ha_config_dir`, entrambe vive | Tappa 2 (da rilasciare) | 6001018b | server.py importa home_assistant_folder; _find_ha_config_dir uscita, le patch delle prove puntano alla funzione unica |
 | T-01 | Finte di `HAClient` ripetute (68 classi in 41 file) | Tappa 2 (da rilasciare) | 5fb9a8e5 | ogni finta di HAClient e' CasaFinta sotto il client vero; tests/_ha_fakes.py e test_ha_client_contract.py usciti; cancello tests/test_finte_convergono.py con ammissione vuota |
+| S-03 | «Per mano di HIRIS» (`_by_hand`) abbina anche gli atti NON eseguiti: ignora `eseguito` | Tappa 3 (da rilasciare) | 56d95758 | _by_hand considera solo gli atti con eseguito vero |
