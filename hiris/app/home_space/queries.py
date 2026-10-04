@@ -72,6 +72,7 @@ from .topology import (
     category_names,
     clean_text,
     decoded_capabilities,
+    is_pseudo_area,
     label_names,
     labels_with_id,
     live_first,
@@ -608,7 +609,7 @@ def _view_area(house: House, memories: list[dict], reference,
         detail["entita_disabilitate"] = disabled_count
     # Il filtro della porta si scrive col nome che il nucleo usa: le
     # pseudo-aree (`__senza_area__` e le sorelle) sono tutte «senza area».
-    where = "senza area" if str(area["id"]).startswith("__") else area["id"]
+    where = "senza area" if is_pseudo_area(area["id"]) else area["id"]
     _within_ceiling(detail, f"chiedi «search» con area=\"{where}\" e un filtro "
                             "(tipo, stato, classe): l'insieme si restringe, e "
                             "la porta lo pagina con `oltre` e `salta`")
@@ -1028,6 +1029,12 @@ def _view_entity(house: House, memories: list[dict], reference,
         "stato": mirror.state.get(entity["id"]),
         "da_quando": mirror.since.get(entity["id"]),
         "ricordi": _tethered_memories(memories, "entita", reference),
+        # DOVE sta (Tappa 3, Task 6, B-10): area -- ereditata dal
+        # dispositivo, se non ne ha una propria --, piano, dispositivo e
+        # integrazione, da `House.where`. Fino al 04/10/2026 la scheda di
+        # un'entita' non diceva in che stanza fosse: il modello doveva
+        # cercarla nell'albero del nucleo, dove una disabilitata non c'e'.
+        "dove": house.where(entity["id"]),
     }
     # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
     # questa casa `name` e `original_name` sono entrambi vuoti per un'intera

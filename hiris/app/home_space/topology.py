@@ -175,11 +175,15 @@ _ID_PSEUDO_AREA = frozenset(
     {_ID_WITHOUT_AREA, _ID_UNLOADED_AREA, _ID_UNKNOWN_AREA, _ID_UNLOADED_DEVICE})
 
 
-def is_pseudo_area(area_id: str) -> bool:
+def is_pseudo_area(area_id: str | None) -> bool:
     """Vero se `area_id` e' una pseudo-area generata da `hierarchy()` (non
     un'area vera di Home Assistant): chi la mostra per nome deve mostrare
     anche l'id, l'unica chiave con cui `queries.view('area', ...)` la ritrova
-    davvero."""
+    davvero.
+
+    LA domanda «e' una pseudo-area?», per chiunque (B-37): fino al 04/10/2026
+    tre porte se la rifacevano con `startswith("__")`, e questa funzione non
+    aveva chiamanti fuori da qui."""
     return area_id in _ID_PSEUDO_AREA
 
 
@@ -331,7 +335,15 @@ def name_with_id(name: str, id_: str | None) -> str:
     """
     if not id_ or id_ == name:
         return name
-    return f"{name} (id: {id_})"
+    return f"{name} {id_marker(id_)}"
+
+
+def id_marker(id_: str) -> str:
+    """«(id: X)»: il segno che dice «questo e' un id, non un nome», in un
+    posto solo (B-40). Lo usa `name_with_id` accanto a un nome, e
+    `briefing._device_annotation` da solo, per un dispositivo che un nome non
+    ce l'ha: fino al 04/10/2026 quel ramo lo riscriveva a mano."""
+    return f"(id: {id_})"
 
 
 def label_names(home_space: dict) -> dict[str, str]:

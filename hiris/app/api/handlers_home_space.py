@@ -20,7 +20,7 @@ from aiohttp import web
 from ..home_space.briefing import compose
 from ..home_space.house import House
 from ..home_space.privacy import cover_automation_body
-from ..home_space.topology import category_names, hierarchy
+from ..home_space.topology import category_names, hierarchy, label_names
 from .soffitto import denies, request_ceiling
 
 
@@ -125,9 +125,10 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # perche' li' esce un
         # dettaglio. Qui esce l'albero intero: ripetere il nome su ogni entita'
         # etichettata sarebbe lo stesso fatto scritto mille volte. Esce la
-        # mappa, una volta, e chi disegna la applica.
-        "etichette": {e["id"]: e.get("nome") or e["id"]
-                      for e in home_space.get("etichette") or [] if e.get("id")},
+        # mappa, una volta, e chi disegna la applica. La mappa e' quella di
+        # `topology.label_names`, la stessa dell'indice dei nomi e delle
+        # schede: fino al 04/10/2026 (B-38) era ricopiata qui riga per riga.
+        "etichette": label_names(home_space),
         # Le CATEGORIE, con la stessa forma e per la stessa ragione -- ma
         # annidate per AMBITO, perche' il registro di Home Assistant e'
         # partizionato (`automation`, `script`, `scene`, `helpers`) e due
