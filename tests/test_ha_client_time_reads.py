@@ -408,3 +408,17 @@ async def test_statistiche_un_istante_illeggibile_resta_illeggibile(monkeypatch)
     monkeypatch.setattr(c, "_ws_send", ws_send_from_results(_strano))
     esito = await c.hourly_statistics(["sensor.camera"], _DA, _A)
     assert esito["serie"]["sensor.camera"][0]["inizio"] == {"non": "un istante"}
+
+
+@pytest.mark.asyncio
+async def test_storico_codifica_l_istante_nel_percorso():
+    """S-06: l'istante d'inizio entra nel PERCORSO dell'URL, e il suo `+`
+    del fuso, lasciato com'e', si legge come uno spazio in qualunque punto
+    che decodifichi alla maniera dei moduli. Codificato, Home Assistant
+    risponde lo stesso: misurato il 04/10/2026 sulla casa vera (sun.sun, tre
+    ore, +02:00), con e senza codifica la risposta e' identica."""
+    c = _client([_FintaRisposta(200, [])])
+    await c.history(["sensor.camera"], "2026-08-24T08:00:00+02:00",
+                    "2026-08-24T10:00:00+02:00")
+    percorso = urlsplit(c._session.url_chiesti[0]).path
+    assert percorso == "/api/history/period/2026-08-24T08%3A00%3A00%2B02%3A00"

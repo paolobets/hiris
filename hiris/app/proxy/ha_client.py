@@ -1157,7 +1157,10 @@ class HAClient:
         """UN pezzo di `history`: una richiesta, gia' validata e sotto il
         tetto della riga. Stessa forma di `history`."""
         entity_filter = quote(",".join(entities), safe="")
-        path = (f"/api/history/period/{from_iso}"
+        # S-06: l'istante va nel PERCORSO, e il `+` del fuso non deve
+        # arrivarci nudo. Codificato, Home Assistant risponde uguale:
+        # misurato il 04/10/2026 sulla casa vera.
+        path = (f"/api/history/period/{quote(from_iso, safe='')}"
                 f"?end_time={quote(to_iso, safe='')}"
                 f"&filter_entity_id={entity_filter}"
                 f"&minimal_response&no_attributes")
