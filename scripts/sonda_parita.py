@@ -625,7 +625,7 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
     replaced = (handlers_chat.get_past_summaries, handlers_chat.compose_briefing,
                 handlers_chat._who_is_speaking)
     handlers_chat.get_past_summaries = lambda data_dir, *, thread, n=10: [session["row"]]
-    handlers_chat.compose_briefing = lambda app: ("", {})
+    handlers_chat.compose_briefing = lambda app, house=None: ("", {})
     handlers_chat._who_is_speaking = lambda *args, **kwargs: ""
     cases = []
     samples = 0
