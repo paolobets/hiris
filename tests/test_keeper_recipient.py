@@ -436,6 +436,30 @@ async def test_registro_entita_non_disponibile_zero_con_motivo():
 
 
 @pytest.mark.asyncio
+async def test_registro_dispositivi_rifiutato_degrada_sull_entity_id():
+    """Il registro dei DISPOSITIVI non e' fatale (al contrario di quello delle
+    entita', qui sopra): Home Assistant lo rifiuta, la busta del guasto arriva,
+    e si degrada sul solo candidato dell'entity_id -- che regge finche' il
+    dispositivo non e' mai stato rinominato. Il registro c'e' e porta il
+    dispositivo col nome NUOVO: se il rifiuto non arrivasse, il servizio
+    trovato sarebbe l'altro."""
+    (command,) = _registry_commands("dispositivi")
+    ha = _house(
+        states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+        entities=[{"entity_id": "device_tracker.telefono_uno", "platform": "mobile_app",
+                   "device_id": "d1"}],
+        devices=[{"id": "d1", "name": "Il Telefono Nuovo di Casa"}],
+        services=[{"domain": "notify", "services": {
+            "mobile_app_telefono_uno": {}, "mobile_app_il_telefono_nuovo_di_casa": {}}}],
+        refuse={command: {"code": "unknown_error", "message": "Unknown error"}})
+
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
+
+    assert esito == Recipients(services=("notify.mobile_app_telefono_uno",), reason=None)
+    assert command in [name for name, _extra in ha.calls]
+
+
+@pytest.mark.asyncio
 async def test_una_sola_lettura_per_lettore():
     """`get_states`, i due registri e `get_services` si chiamano UNA volta
     sola a esecuzione, in quest'ordine -- non un poll, non una rilettura per
