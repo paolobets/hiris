@@ -126,8 +126,12 @@ async def test_la_derivazione_avvolge_chi_tiene_le_funzioni_e_vede_il_turno(
     calls, wrapped = counted
     for label in COUNTED:
         assert "hiris.app.home_space.topology" in wrapped[label], wrapped
-        assert len(wrapped[label]) >= 2, (
-            f"{label}: avvolto solo dove nasce -- chi l'importa per nome sfugge al conto")
+    # La gerarchia la importano per nome altri moduli: senza cercarli, le
+    # loro chiamate sfuggirebbero. Lo specchio no, dal 04/10/2026 (B-41):
+    # i lettori passano da `topology.read_mirror`, che lo costruisce dentro
+    # `topology`, e il conto lo vede da li'.
+    assert len(wrapped["hierarchy"]) >= 2, (
+        "hierarchy: avvolto solo dove nasce -- chi l'importa per nome sfugge al conto")
     answers = await _chat_turn(started_app)
     failed = [answer for answer in answers if "errore" in answer]
     assert not failed, failed

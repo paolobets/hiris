@@ -33,13 +33,13 @@ def test_uno_stato_senza_istante_non_inventa_niente():
 
 
 def test_lo_specchio_porta_l_istante_accanto_allo_stato():
-    stato, _n, _u, _c, da_quando, _a = live_mirror([
+    mirror = live_mirror([
         {"id": "sensor.camera", "state": "22.4", "name": "Camera",
          "unit": "°C", "device_class": "temperature",
          "last_changed": "2026-08-24T11:00:00+00:00"},
     ])
-    assert stato["sensor.camera"] == "22.4"
-    assert da_quando["sensor.camera"] == "2026-08-24T11:00:00+00:00"
+    assert mirror.state["sensor.camera"] == "22.4"
+    assert mirror.since["sensor.camera"] == "2026-08-24T11:00:00+00:00"
 
 
 def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
@@ -47,7 +47,7 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
 
     Un'asserzione che si accontentasse di vedere «da_quando» da qualche parte
     nel file non difenderebbe niente: qui si LEGA ogni occorrenza di
-    `"stato": state.get(` alla presenza del suo gemello nelle righe
+    `"stato": mirror.state.get(` alla presenza del suo gemello nelle righe
     immediatamente seguenti.
 
     Erano quattro occorrenze TESTUALI il 24/08/2026 (una per lista di
@@ -60,10 +60,13 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
     `entita_nascoste` di un'area e di un dispositivo), non uno. Il conteggio
     resta una guardia contro una regex che non trova NIENTE, non una
     proiezione 1:1 sui punti logici: la difesa vera e' il ciclo qui sotto.
+
+    Dal 04/10/2026 (B-41) lo stato si legge dallo specchio in una forma,
+    `mirror.state.get(`: la regex segue il nome nuovo.
     """
     sorgente = _SORGENTE_DOMANDE.read_text(encoding="utf-8")
     righe = sorgente.splitlines()
-    punti = [i for i, r in enumerate(righe) if re.search(r'"stato":\s*state\.get\(', r)]
+    punti = [i for i, r in enumerate(righe) if re.search(r'"stato":\s*mirror\.state\.get\(', r)]
     # Tre, verificati col grep sul sorgente vero al 25/08/2026 (righe 447 --
     # `_entity_rows`, condivisa --, 565 -- `_view_entity` --, 636 --
     # `_view_device` --). Il conteggio serve solo a impedire che una

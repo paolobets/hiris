@@ -231,11 +231,8 @@ def _attributes(payload: dict) -> dict:
 
 def _detail(payload: dict, registry) -> dict:
     """La catena vera fino a cio' che `view` consegna al modello."""
-    state, names, unit, classes, since, attributes = live_mirror([_to_minimal(payload)])
-    return view(_HOME_SPACE, [], [], state, "entita", payload["entity_id"],
-                fallback_names=names, reported_units=unit,
-                reported_classes=classes, reported_since_when=since,
-                reported_attributes=attributes, registry=registry)
+    mirror = live_mirror([_to_minimal(payload)])
+    return view(_HOME_SPACE, [], [], mirror, "entita", payload["entity_id"], registry=registry)
 
 
 # --------------------------------------------------------------------------

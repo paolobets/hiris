@@ -5,6 +5,7 @@ import json
 import pytest
 
 from hiris.app.home_space import house_query as hq
+from hiris.app.home_space.topology import Mirror
 from tests.test_briefing import _casa_grande  # 20 aree x 15 entita'
 
 T0 = 1_790_700_000.0
@@ -62,8 +63,8 @@ ATTRIBUTI = {"person.marta": {"values": {"latitude": 45.0, "source": "x"}}}
 
 def _specchio(stati):
     nomi = {k: k.split(".")[1].replace("_", " ") for k in stati}
-    return (dict(stati), nomi, {}, {}, {k: "2026-09-29T07:11:00+00:00" for k in stati},
-            ATTRIBUTI)
+    return Mirror(dict(stati), nomi, since={k: "2026-09-29T07:11:00+00:00" for k in stati},
+                  attributes=ATTRIBUTI)
 
 
 STATI = {"light.soggiorno_1": "on", "light.soggiorno_2": "off",
@@ -97,7 +98,7 @@ def _automazioni(*coppie):
     attributi = {f"automation.{n}": {"values": {"last_triggered": t}}
                  for n, t in coppie if t}
     stati = {f"automation.{n}": "on" for n, _ in coppie}
-    return comportamento, (stati, {}, {}, {}, {}, attributi)
+    return comportamento, Mirror(stati, attributes=attributi)
 
 
 def _chiedi_automazioni(coppie, argomenti: dict, casa=None):
@@ -359,7 +360,7 @@ def test_nella_profondita_corta_il_comportamento_sta_in_una_riga():
     """Mutazione ESEGUITA: `modalita` scritta anche nelle righe corte -- rossa."""
     coppie = [(f"a{i:02}", "2026-09-28T10:00:00+00:00") for i in range(11)]
     comportamento, specchio = _automazioni(*coppie)
-    for voce in specchio[5].values():
+    for voce in specchio.attributes.values():
         voce["values"]["mode"] = "single"
     r = hq.query_house(_casa(), comportamento, specchio,
                        hq.parse_filters({"genere": "automazione"}),
@@ -433,7 +434,7 @@ def test_il_nome_di_un_automazione_si_cerca_anche_nell_id():
     Mutazione ESEGUITA: confrontare solo il nome -- rossa."""
     comportamento = [{"id": "automation.sveglia_mattina", "tipo": "automazione",
                       "nome": "Buongiorno"}]
-    specchio = ({"automation.sveglia_mattina": "on"}, {}, {}, {}, {}, {})
+    specchio = Mirror({"automation.sveglia_mattina": "on"})
     r = hq.query_house(_casa(), comportamento, specchio,
                        hq.parse_filters({"nome": "sveglia"}),
                        detail=_dettaglio, now=T0)

@@ -19,8 +19,7 @@ from aiohttp import web
 
 from ..home_space.briefing import compose
 from ..home_space.privacy import cover_automation_body
-from ..home_space.topology import category_names, hierarchy, live_mirror
-from ..proxy.entity_cache import inventory_is_readable
+from ..home_space.topology import category_names, hierarchy, read_mirror
 from .soffitto import denies, request_ceiling
 
 
@@ -203,11 +202,6 @@ def compose_briefing(app) -> tuple[str, dict]:
     """
     home_space_store = app.get("home_space_store")
     memory_store = app.get("memory_store")
-    cache = app.get("entity_cache")
-    # Una cache finta senza `all_states` (o assente) non e' un inventario
-    # leggibile.
-    if cache is not None and not hasattr(cache, "all_states"):
-        cache = None
 
     if home_space_store is None:
         # Difesa, non stato atteso: come in `handle_get_home_space` qui sopra,
@@ -250,8 +244,12 @@ def compose_briefing(app) -> tuple[str, dict]:
         memories = []
 
     # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
-    # `home_space.topology.live_mirror` e' la stessa che usano `search` e la
-    # correzione dei ricordi.
+    # `home_space.topology.read_mirror` e' la stessa che usano `search` e la
+    # correzione dei ricordi, e compone lei se lo specchio e' leggibile (una
+    # cache assente, finta senza `all_states`, mai caricata o guasta non lo
+    # e'). Fino al 04/10/2026 una lettura che sollevava lasciava lo stato
+    # «affidabile» e le capacita' «non guardate»: ora e' non leggibile e
+    # basta, come gli altri tre casi.
     #
     # Dal 29/09/2026 il nucleo non porta piu' lo stato del momento («Notevole
     # adesso» e' uscita): dello specchio servono due cose sole. `state`, perche'
@@ -259,17 +257,9 @@ def compose_briefing(app) -> tuple[str, dict]:
     # (CRITICAL ②); `attributes`, per la sezione «cosa si puo' chiedere alle
     # cose di casa», che aggrega le CAPACITA'. Le classi e i nomi dello
     # specchio -- che servivano solo alle righe di quella sezione -- non si
-    # leggono piu' qui. `attributes` resta `None` quando lo specchio non si e'
-    # potuto leggere: «non ho guardato» e «non c’e' niente da chiedere» sono
-    # due fatti diversi, e `compose()` li dice diversi.
-    state: dict[str, str] = {}
-    attributes: dict[str, dict] | None = None
-    if cache is not None:
-        try:
-            state, _names, _units, _classes, _since_when, attributes = (
-                live_mirror(cache.all_states()))
-        except Exception:
-            state, attributes = {}, None
+    # leggono piu' qui. Con lo specchio non leggibile `compose()` dice «non ho
+    # guardato» e non legge gli attributi (`reliable_state`, sotto).
+    mirror = read_mirror(app.get("entity_cache"))
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
@@ -309,10 +299,10 @@ def compose_briefing(app) -> tuple[str, dict]:
     # due sole non basta: un archivio letto ma una cache non ancora caricata
     # produrrebbe uno stato vuoto che il nucleo leggerebbe come "niente da
     # dire" invece di "non ho potuto guardare".
-    reliable_state = home_space_store is not None and inventory_is_readable(cache)
+    reliable_state = home_space_store is not None and mirror.readable
 
     return compose(
-        home_space, behavior, memories, state,
+        home_space, behavior, memories, mirror.state,
         unavailable=unavailable,
         reliable_state=reliable_state,
         behavior_problems=behavior_problems,
@@ -320,7 +310,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         reference_frame=reference_frame,
         problems=problems,
         comparison=comparison,
-        attributes=attributes,
+        attributes=mirror.attributes,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte, promesse e GET /api/briefing passano tutti di qua), perche'
         # `compose` e' pura e non legge nulla da sola. Senza questa riga il

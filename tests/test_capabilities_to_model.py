@@ -82,11 +82,8 @@ def test_the_real_chain_decodes_capabilities_and_does_not_leak_the_raw_bit():
     raw = {"entity_id": "light.con_capacita", "state": "on",
            "attributes": {"friendly_name": "Luce con capacita'",
                           "supported_features": 36, "assumed_state": True}}
-    state, names, unit, classes, since, attributes = _mirror_of(raw)
-    detail = view(_CASA, [], [], state, "entita", "light.con_capacita",
-                   fallback_names=names, reported_units=unit,
-                   reported_classes=classes, reported_since_when=since,
-                   reported_attributes=attributes)
+    mirror = _mirror_of(raw)
+    detail = view(_CASA, [], [], mirror, "entita", "light.con_capacita")
     assert sorted(detail["capacita"]) == ["effetti", "transizione"]
     assert detail["stato_presunto"] is True
     shown = _every_attribute_shown(detail)
@@ -107,11 +104,8 @@ def test_supported_features_zero_does_not_come_out_anywhere():
     raw = {"entity_id": "light.senza_bit", "state": "off",
            "attributes": {"friendly_name": "Luce senza bit acceso",
                           "supported_features": 0}}
-    state, names, unit, classes, since, attributes = _mirror_of(raw)
-    detail = view(_CASA, [], [], state, "entita", "light.senza_bit",
-                   fallback_names=names, reported_units=unit,
-                   reported_classes=classes, reported_since_when=since,
-                   reported_attributes=attributes)
+    mirror = _mirror_of(raw)
+    detail = view(_CASA, [], [], mirror, "entita", "light.senza_bit")
     assert "capacita" not in detail
     assert "attributi" not in detail
 
@@ -129,11 +123,8 @@ def test_a_raw_number_never_reaches_the_model_for_an_uncovered_domain():
     raw = {"entity_id": "sensor.senza_tabella", "state": "21.5",
            "attributes": {"friendly_name": "Sensore senza tabella",
                           "supported_features": 27}}
-    state, names, unit, classes, since, attributes = _mirror_of(raw)
-    detail = view(_CASA, [], [], state, "entita", "sensor.senza_tabella",
-                   fallback_names=names, reported_units=unit,
-                   reported_classes=classes, reported_since_when=since,
-                   reported_attributes=attributes)
+    mirror = _mirror_of(raw)
+    detail = view(_CASA, [], [], mirror, "entita", "sensor.senza_tabella")
     assert "capacita" not in detail
     assert "attributi" not in detail
 
@@ -156,11 +147,8 @@ def test_options_is_the_one_lawful_door_even_next_to_the_other_two():
            "attributes": {"friendly_name": "Select con opzioni",
                           "options": ["eco", "comfort"],
                           "supported_features": 0, "assumed_state": True}}
-    state, names, unit, classes, since, attributes = _mirror_of(raw)
-    detail = view(_CASA, [], [], state, "entita", "select.con_opzioni",
-                   fallback_names=names, reported_units=unit,
-                   reported_classes=classes, reported_since_when=since,
-                   reported_attributes=attributes)
+    mirror = _mirror_of(raw)
+    detail = view(_CASA, [], [], mirror, "entita", "select.con_opzioni")
     assert detail["attributi"]["campo_di_manovra"]["options"] == ["eco", "comfort"]
     shown = _every_attribute_shown(detail)
     assert "supported_features" not in shown

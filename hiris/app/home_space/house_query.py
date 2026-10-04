@@ -24,6 +24,7 @@ from .behavior import BEHAVIOR_DOMAINS
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
+from .topology import Mirror
 
 DETAIL_MEDIUM_MAX = 10
 KINDS = ("entita", "area", "dispositivo", "automazione", "script",
@@ -216,8 +217,7 @@ def _any_name_matches(query: str, name: str, aliases) -> bool:
                for candidate in (name, *(aliases or [])) if isinstance(candidate, str))
 
 
-def _entity_matches(f: HouseFilters, entry, area, floor, mirror, now) -> bool:
-    stato, nomi, _unita, classi, da_quando, _attributi = mirror
+def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) -> bool:
     eid = entry["id"]
     domain = eid.split(".", 1)[0]
     if f.reference and eid != f.reference:
@@ -226,23 +226,24 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror, now) -> bool:
         return False
     # Lo stato che il lettore VEDE, non quello grezzo: «Lavoro» di una
     # persona esce come `not_home`, e `stato=not_home` deve trovarla.
-    if f.state and redact_state(eid, stato.get(eid)) != f.state:
+    if f.state and redact_state(eid, mirror.state.get(eid)) != f.state:
         return False
-    if f.device_class and (classi.get(eid) or entry.get("classe")) != f.device_class:
+    if f.device_class and (mirror.classes.get(eid) or entry.get("classe")) != f.device_class:
         return False
     if not _place_matches(f, entry, area, floor):
         return False
-    if f.name and not _any_name_matches(f.name, nomi.get(eid) or entry.get("nome") or eid,
+    if f.name and not _any_name_matches(f.name,
+                                        mirror.names.get(eid) or entry.get("nome") or eid,
                                         entry.get("alias")):
         return False
-    age = _age_s(da_quando.get(eid), now)
+    age = _age_s(mirror.since.get(eid), now)
     if f.idle_for_s is not None and (age is None or age < f.idle_for_s):
         return False
     if f.changed_within_s is not None and (age is None or age > f.changed_within_s):
         return False
     if f.above is not None or f.below is not None:
         try:
-            value = float(stato.get(eid))
+            value = float(mirror.state.get(eid))
         except (TypeError, ValueError):
             return False
         if f.above is not None and value <= f.above:
@@ -252,24 +253,23 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror, now) -> bool:
     return True
 
 
-def _entity_row(entry, area, where, mirror, medium: bool) -> dict:
-    stato, nomi, unita, classi, da_quando, attributi = mirror
+def _entity_row(entry, area, where, mirror: Mirror, medium: bool) -> dict:
     eid = entry["id"]
-    row = {"id": eid, "nome": nomi.get(eid) or entry.get("nome") or eid,
-           "area": _area_name(area), "stato": stato.get(eid),
-           "ultimo_cambio": da_quando.get(eid)}
+    row = {"id": eid, "nome": mirror.names.get(eid) or entry.get("nome") or eid,
+           "area": _area_name(area), "stato": mirror.state.get(eid),
+           "ultimo_cambio": mirror.since.get(eid)}
     if where == "nascosta":
         row["nascosta"] = True
     if medium:
         row["genere"] = "entita"
-        if unita.get(eid):
-            row["unita"] = unita[eid]
-        if classi.get(eid) or entry.get("classe"):
-            row["classe"] = classi.get(eid) or entry.get("classe")
+        if mirror.units.get(eid):
+            row["unita"] = mirror.units[eid]
+        if mirror.classes.get(eid) or entry.get("classe"):
+            row["classe"] = mirror.classes.get(eid) or entry.get("classe")
         if entry.get("piattaforma"):
             row["integrazione"] = entry["piattaforma"]
-        if attributi.get(eid):
-            row["attributi"] = attributi[eid]
+        if mirror.attributes.get(eid):
+            row["attributi"] = mirror.attributes[eid]
     return row
 
 
@@ -278,13 +278,12 @@ def _entity_row(entry, area, where, mirror, medium: bool) -> dict:
 _NOWHERE = ({}, {"id": "__senza_area__"}, {})
 
 
-def _behavior_matches(f: HouseFilters, behavior, mirror, now,
+def _behavior_matches(f: HouseFilters, behavior, mirror: Mirror, now,
                       places: dict) -> list[tuple[dict, dict]]:
     """(voce, valori dello specchio) per ogni automazione o script che passa
     i filtri: la riga si scrive dopo, quando si sa quante sono. `places` e'
     `{id: (entry, area, piano)}` dell'albero: area, piano e integrazione di
     un'automazione sono quelli della sua entita' di registro."""
-    stato, _n, _u, _c, _d, attributi = mirror
     out = []
     for item in behavior or []:
         if f.kind and item.get("tipo") != f.kind:
@@ -296,13 +295,13 @@ def _behavior_matches(f: HouseFilters, behavior, mirror, now,
             continue
         if not _place_matches(f, *places.get(item["id"], _NOWHERE)):
             continue
-        values = (attributi.get(item["id"]) or {}).get("values") or {}
+        values = (mirror.attributes.get(item["id"]) or {}).get("values") or {}
         age = _age_s(values.get("last_triggered"), now)
         if f.idle_for_s is not None and age is not None and age < f.idle_for_s:
             continue
         if f.changed_within_s is not None and (age is None or age > f.changed_within_s):
             continue
-        if f.state and stato.get(item["id"]) != f.state:
+        if f.state and mirror.state.get(item["id"]) != f.state:
             continue
         if f.running is not None and bool(values.get("current")) != f.running:
             continue
@@ -310,9 +309,9 @@ def _behavior_matches(f: HouseFilters, behavior, mirror, now,
     return out
 
 
-def _behavior_row(item, values, mirror, medium: bool) -> dict:
+def _behavior_row(item, values, mirror: Mirror, medium: bool) -> dict:
     row = {"id": item["id"], "nome": item.get("nome"), "genere": item.get("tipo"),
-           "stato": mirror[0].get(item["id"]),
+           "stato": mirror.state.get(item["id"]),
            "ultima_esecuzione": values.get("last_triggered") or "mai"}
     if medium:
         for key, label in (("mode", "modalita"), ("current", "in_esecuzione")):

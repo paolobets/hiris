@@ -21,6 +21,7 @@ import pathlib
 
 from hiris.app.home_space import topology
 from hiris.app.home_space.queries import view
+from hiris.app.home_space.topology import Mirror
 from hiris.app.proxy import state_translations
 from tests._house_translations import house_translations, unread_translations
 
@@ -238,7 +239,8 @@ def test_guarda_dice_il_motivo_al_posto_dello_stato_in_parole():
     grezzo quando la resa manca -- la prova arrossisce sulla prima asserzione,
     e il modello leggerebbe «on» credendo che sia la parola di Home Assistant.
     """
-    dettaglio = view(_HOUSE_WITH_ONE_LIGHT, [], [], _ONE_LIGHT_ON, "entita", "light.cucina",
+    dettaglio = view(_HOUSE_WITH_ONE_LIGHT, [], [], Mirror(state=_ONE_LIGHT_ON), "entita",
+                     "light.cucina",
                      translations=unread_translations("la casa non ha detto la sua lingua"))
     assert "stato_leggibile" not in dettaglio
     assert dettaglio["stato"] == "on"
@@ -275,7 +277,7 @@ def test_i_tre_silenzi_non_collassano_fino_al_lettore():
     # su 841 (ogni `sensor`, ogni `number`, ogni `select`) non hanno una resa e
     # non devono averla, e dichiararle una per una avrebbe messo 431 blocchi di
     # scusa dentro le risposte.
-    dettaglio = view(casa, [], [], stato, "entita", "cover.tapparella",
+    dettaglio = view(casa, [], [], Mirror(state=stato), "entita", "cover.tapparella",
                      translations=house_translations())
     assert "stato_non_reso" not in dettaglio
     assert "stato_leggibile" not in dettaglio

@@ -99,7 +99,6 @@ from ..proxy._sanitize import (
 )
 from ..proxy.entity_cache import (
     automation_config_id,
-    inventory_is_readable,
     states_by_id,
     unreadable_inventory_error,
 )
@@ -133,7 +132,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal, seal_free_text
-from .topology import live_mirror
+from .topology import Mirror, read_mirror
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
 
@@ -1553,27 +1552,25 @@ class ToolDispatcher:
         # letture in istanti diversi sarebbero la divergenza che `_mirror`
         # esiste per chiudere.
         mirror = self._mirror()
-        mirror_loaded = mirror[6]
 
         def detail(kind: str, reference) -> dict:
             return self._full_detail_sync(kind, reference, mirror=mirror,
                                           translations=translations)
 
         response = query_house(self._home_space.read(), self._home_space.behavior(),
-                               mirror[:6], filters, detail=detail,
+                               mirror, filters, detail=detail,
                                unavailable=tuple(self._home_space.unavailable()))
         if "errore" in response:
             return response
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
-        # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
-        # fine) va OR-ato con `inventory_is_readable` (cosa dichiara la cache
-        # di se stessa), non sostituito. Sulla risposta e non sulla voce:
-        # vale per ogni riga, a qualunque profondita'.
-        if not mirror_loaded or not inventory_is_readable(self._cache):
+        # Fix E1-③: la lettura di QUESTA chiamata e cio' che la cache dichiara
+        # di se stessa, composti in `read_mirror` (A-25). Sulla risposta e non
+        # sulla voce: vale per ogni riga, a qualunque profondita'.
+        if not mirror.readable:
             response["stato_non_letto"] = True
         if filters.name:
-            self._declare_name_gaps(response, filters, mirror[1], mirror_loaded)
+            self._declare_name_gaps(response, filters, mirror)
         elif filters.floor and "piani" in self._home_space.unavailable():
             # Una domanda per `piano` senza nome: col registro dei piani
             # caduto nessuna area ha un piano, e `trovate: 0` sarebbe un
@@ -1581,8 +1578,7 @@ class ToolDispatcher:
             response["non_ho_potuto_guardare"] = [_fallen_stores_message(["piani"])]
         return response
 
-    def _declare_name_gaps(self, response: dict, filters, reported_names: dict,
-                           mirror_loaded: bool) -> None:
+    def _declare_name_gaps(self, response: dict, filters, mirror: Mirror) -> None:
         """Cio' che una ricerca per NOME non ha potuto guardare, e il divieto
         di concludere «non esiste» (24/09/2026) quando nessun nome combacia.
 
@@ -1599,8 +1595,8 @@ class ToolDispatcher:
         adesso contro limite stabile) sono quelle di prima: vedi il suo
         docstring."""
         found_nothing = response["trovate"] == 0
-        entries = self._blind_spots(self._home_space.read(), mirror_loaded,
-                                    reported_names, found_nothing=found_nothing)
+        entries = self._blind_spots(self._home_space.read(), mirror,
+                                    found_nothing=found_nothing)
         current_gap = any(not stable for _message, stable in entries)
         only_the_name = replace(filters, kind=None).only_by_name
         if (found_nothing and not any(response["escluse"].values())
@@ -1610,9 +1606,8 @@ class ToolDispatcher:
         if entries:
             response["non_ho_potuto_guardare"] = [message for message, _s in entries]
 
-    def _blind_spots(self, home_space: dict, mirror_loaded: bool,
-                reported_names: dict[str, str] | None = None, *,
-                found_nothing: bool = True) -> list[tuple[str, bool]]:
+    def _blind_spots(self, home_space: dict, mirror: Mirror, *,
+                     found_nothing: bool = True) -> list[tuple[str, bool]]:
         """Perche' una ricerca per nome potrebbe non trovare SENZA che la cosa
         manchi.
 
@@ -1667,20 +1662,19 @@ class ToolDispatcher:
 
         unnamed = [e for e in home_space.get("entita") or []
                      if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
-        mirror_ok = mirror_loaded and inventory_is_readable(self._cache)
-        if unnamed and not mirror_ok:
+        if unnamed and not mirror.readable:
             message = (
                 f"{len(unnamed)} entita' non hanno un nome nel registro di Home Assistant e "
                 "lo specchio dello stato non e' leggibile: il ripiego sul nome che Home "
                 "Assistant mostra non e' disponibile, quindi quelle entita' non sono "
                 "cercabili per nome in questo momento.")
             entries.append((message, False))
-        elif unnamed and mirror_ok:
+        elif unnamed:
             # Il caso PARZIALE: lo specchio e' leggibile (altrimenti il ramo
             # sopra avrebbe gia' parlato), ma per QUESTE entita' non porta un
             # friendly_name -- non sono cercabili per nome.
             unnamed_even_live = [e for e in unnamed
-                               if not ((reported_names or {}).get(e["id"]) or "").strip()]
+                                 if not (mirror.names.get(e["id"]) or "").strip()]
             # E' un fatto stabile (`True`): si dichiara solo quando serve a
             # spiegare una ricerca senza esito, vedi il docstring.
             if unnamed_even_live and found_nothing:
@@ -1695,7 +1689,7 @@ class ToolDispatcher:
 
     # -- il dettaglio completo, la voce di `search` quando e' una sola ----
 
-    def _full_detail_sync(self, kind: str, reference, *, mirror: tuple,
+    def _full_detail_sync(self, kind: str, reference, *, mirror: Mirror,
                           translations: dict) -> dict:
         """Il dettaglio completo di UNA cosa di casa -- quello che fino al
         29/09/2026 dava lo strumento `view`, oggi la voce di `search` quando
@@ -1725,8 +1719,6 @@ class ToolDispatcher:
                 reference = int(reference)
             except (TypeError, ValueError):
                 return {"esiste": False, "tipo": "ricordo", "riferimento": reference}
-        (state, reported_names, reported_units, reported_classes,
-         reported_since_when, reported_attributes, _loaded) = mirror
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
@@ -1734,14 +1726,9 @@ class ToolDispatcher:
         memories = ([] if self._memory is None
                     else self._memory.fetch(limit=self._memory.count()))
         detail = _view_detail(self._home_space.read(), self._home_space.behavior(),
-                              memories, state, kind, reference,
+                              memories, mirror, kind, reference,
                               unavailable=tuple(self._home_space.unavailable()),
                               unread_bodies=self._home_space.unread_bodies(),
-                              fallback_names=reported_names,
-                              reported_units=reported_units,
-                              reported_classes=reported_classes,
-                              reported_since_when=reported_since_when,
-                              reported_attributes=reported_attributes,
                               # Il registro dei servizi: con lui il dettaglio
                               # di UNA entita' dice anche cosa le si puo'
                               # CHIEDERE, coi limiti veri (spec §13). `None`
@@ -1769,62 +1756,25 @@ class ToolDispatcher:
             detail = cover_automation_body(detail, kind=kind)
         return detail
 
-    def _mirror(self, rows_out: list | None = None
-                ) -> tuple[dict[str, str], dict[str, str], dict[str, str],
-                           dict[str, str], dict[str, str], dict[str, dict], bool]:
-        """Lo specchio vivo in UNA lettura:
-        `(stato, nomi, unita, classi, da_quando, attributi, letto)`.
+    def _mirror(self, rows_out: list | None = None) -> Mirror:
+        """Lo specchio vivo in UNA lettura (`topology.Mirror`), con
+        `readable` gia' composto da `topology.read_mirror`.
 
         Una lettura sola: la ricerca ha bisogno dei `friendly_name` e il
         dettaglio dello stato, e due metodi che chiamano `all_states()` a
         turno sarebbero due letture della stessa cosa in istanti diversi.
+        Cosa porta ogni campo, e perche', sta in `topology.live_mirror`.
 
-        `nomi` e' entity_id -> `friendly_name`, saltando i vuoti: la chiave
-        "name" di `entity_cache._to_minimal` e' `friendly_name or ""`, e una
-        stringa vuota non e' un nome, e' l'assenza di un nome.
-
-        `classi` e' entity_id -> `device_class`, ed e' l'UNICA fonte che
-        esista: il registro delle entita' non la manda affatto (vedi
-        `topology.actual_class`).
-
-        `unita` e' entity_id -> `unit_of_measurement`, saltando i vuoti, e
-        arriva dalla STESSA lettura per la stessa ragione dei nomi: la
-        conserva `_to_minimal` (`proxy/entity_cache.py`), e senza il modello
-        riceverebbe `72` senza sapere
-        se fossero gradi Celsius o Fahrenheit. Non basta il sistema di unita'
-        della casa: Home Assistant converte **solo alla prima aggiunta del
-        sensore**, quindi `unit_system` non descrive le entita' gia' presenti.
-
-        `da_quando` e' entity_id -> `last_changed`, saltando i vuoti, e arriva
-        dalla STESSA lettura per lo stesso motivo: senza, HIRIS saprebbe che
-        in camera ci sono 22,4 gradi e non da quando. Costa un campo e zero
-        chiamate a Home Assistant.
-
-        `attributi` e' entity_id -> le ceste che
-        `entity_cache.inherited_attributes` costruisce.
-
-        `letto` e' False solo
-        quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
-        resta `True` -- non e' successo niente di male, e a dire che
-        l'inventario non e' guardabile ci pensa `inventory_is_readable`.
+        Fino al 04/10/2026 restituiva sette valori in fila, `letto` per
+        ultimo, e ognuno dei cinque chiamanti lo componeva a mano con
+        `inventory_is_readable` (A-25). Con la cache assente diceva «letto»;
+        `read_mirror` dice di no, che e' cio' che la composizione dava gia'.
 
         `rows_out`, se c'e', riceve le righe GREZZE della stessa lettura: la
         storia ci legge `state_class`, che lo specchio derivato non porta, e
         una seconda `all_states()` sarebbe la divergenza che questo metodo
         esiste per chiudere (revisione del Task 7, 30/09/2026)."""
-        if self._cache is None or not hasattr(self._cache, "all_states"):
-            return {}, {}, {}, {}, {}, {}, True
-        try:
-            # La lettura vera e' in `topology.live_mirror`, condivisa con chi
-            # legge lo specchio da fuori dal dispatcher: qui restano solo la
-            # difesa sulla cache assente e la semantica di `letto`.
-            rows = self._cache.all_states()
-            state, names, units, classes, since_when, attributes = live_mirror(rows)
-        except Exception:
-            return {}, {}, {}, {}, {}, {}, False
-        if rows_out is not None:
-            rows_out.extend(row for row in rows or [] if isinstance(row, dict))
-        return state, names, units, classes, since_when, attributes, True
+        return read_mirror(self._cache, rows_out)
 
     # -- legami --------------------------------------------------------
 
@@ -1919,9 +1869,8 @@ class ToolDispatcher:
         # Le unita' VIVE: il registro di Home Assistant non le manda (le riempie
         # solo se l'utente le ha forzate a mano), quindi senza questo la
         # deduzione dell'unita' di un ricordo non e' mai scattata.
-        _state, _names, reported_units, _classes, _since_when, _attributes, _loaded = self._mirror()
         cleaned, problems, corrections = validate(
-            interpretation, lookup, unverifiable_kinds, reported_units)
+            interpretation, lookup, unverifiable_kinds, self._mirror().units)
 
         # L'autore viene dal SOGGETTO del turno (decisione 5, Task 6), mai da
         # un argomento del modello -- `arguments.get("detto_da")` non si legge
@@ -2590,7 +2539,7 @@ class ToolDispatcher:
         mirror = self._mirror(rows_out=rows)
         home = self._home_space.read()
         chosen = choose(query, home, self._home_space.behavior(),
-                        mirror[:6], unavailable=tuple(self._home_space.unavailable()),
+                        mirror, unavailable=tuple(self._home_space.unavailable()),
                         now=now)
         if isinstance(chosen, dict):
             return chosen
@@ -2601,16 +2550,14 @@ class ToolDispatcher:
         if query.kind == "valori":
             # La stessa guardia di `states_by_id`: da un inventario non
             # leggibile non si prende nemmeno lo `state_class`.
-            readable = inventory_is_readable(self._cache)
             state_classes = {row.get("id"): row.get("state_class")
-                             for row in rows if readable}
+                             for row in rows if mirror.readable}
             response = await self._value_history(query, chosen, mirror, state_classes)
         else:
             response = await self._state_history(query, chosen, mirror)
         # Come in `search`: senza specchio leggibile lo stato di adesso e
         # l'unita' sarebbero `None` ambigui fra «non c'e'» e «non ho guardato».
-        if "errore" not in response and (not mirror[6]
-                                         or not inventory_is_readable(self._cache)):
+        if "errore" not in response and not mirror.readable:
             response["stato_non_letto"] = True
         return response
 
@@ -2629,7 +2576,7 @@ class ToolDispatcher:
         return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
 
     async def _state_history(self, query: HistoryQuery, chosen: Chosen,
-                             mirror: tuple) -> dict:
+                             mirror: Mirror) -> dict:
         """Gli stati, dallo storico: le serie di tutti i soggetti, con la
         finestra esplicita («ieri» incluso). Il diario di Home Assistant non si
         usa piu': sa solo «N ore da adesso», un'entita' alla volta, e non
@@ -2638,10 +2585,10 @@ class ToolDispatcher:
         if "errore" in answer:
             return answer
         return state_rows(query, chosen, answer["serie"], truncated=answer["troncato"],
-                          acts=self._journal_acts(query), current=mirror[0])
+                          acts=self._journal_acts(query), current=mirror.state)
 
     async def _value_history(self, query: HistoryQuery, chosen: Chosen,
-                             mirror: tuple, known_classes: dict[str, str | None]) -> dict:
+                             mirror: Mirror, known_classes: dict[str, str | None]) -> dict:
         """I valori: lo `state_class` dallo specchio decide la superficie
         (chiederlo al modello sarebbe chiedergli un fatto che abbiamo noi, spec
         «la storia» §3.1), e ogni superficie e' UNA lettura per tutte le serie
@@ -2649,7 +2596,7 @@ class ToolDispatcher:
         di `mirror` (revisione del Task 7: una seconda `all_states()` poteva
         dare un'altra casa).
 
-        `attributes` sono le ceste dello specchio (`mirror[5]`) com'erano:
+        `attributes` sono le ceste dello specchio (`mirror.attributes`) com'erano:
         `value_rows` ci guarda se un `total` ha `last_reset` (revisione del
         Task 4)."""
         state_classes = {s.ident: known_classes.get(s.ident) for s in chosen.subjects}
@@ -2668,8 +2615,8 @@ class ToolDispatcher:
             return _read_failure(bands, "le statistiche orarie non sono arrivate")
         return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
                           truncated=detail["troncato"], surfaces=surfaces,
-                          units=mirror[2], state_classes=state_classes,
-                          attributes=mirror[5])
+                          units=mirror.units, state_classes=state_classes,
+                          attributes=mirror.attributes)
 
     def _run_key(self, ident: str, registry: dict[str, dict]) -> tuple[str, str] | None:
         """La chiave con cui Home Assistant conserva le esecuzioni di `ident`,

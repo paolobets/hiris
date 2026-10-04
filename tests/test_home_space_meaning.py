@@ -15,6 +15,7 @@ traduzioni direttamente da qui perderebbe proprio quella meta'.
 import pytest
 
 from hiris.app.home_space import queries
+from hiris.app.home_space.topology import Mirror
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 
 
@@ -38,9 +39,9 @@ def _casa():
 
 def _dettaglio(sapere, *, classe="aqi"):
     return queries.view(
-        _casa(), [], [], {"sensor.salotto_aqi": "42"},
+        _casa(), [], [], Mirror(state={"sensor.salotto_aqi": "42"},
+                                classes={"sensor.salotto_aqi": classe} if classe else {}),
         "entita", "sensor.salotto_aqi",
-        reported_classes={"sensor.salotto_aqi": classe} if classe else None,
         knowledge=sapere)
 
 
@@ -108,9 +109,9 @@ def test_SENZA_sapere_il_dettaglio_esce_come_prima():
     """Il dettaglio non dipende dal sapere per esistere: senza, tace e basta.
     Un componente che si rompe quando un altro manca non e' autonomo."""
     dettaglio = queries.view(
-        _casa(), [], [], {"sensor.salotto_aqi": "42"},
-        "entita", "sensor.salotto_aqi",
-        reported_classes={"sensor.salotto_aqi": "aqi"})
+        _casa(), [], [], Mirror(state={"sensor.salotto_aqi": "42"},
+                                classes={"sensor.salotto_aqi": "aqi"}),
+        "entita", "sensor.salotto_aqi")
 
     assert "significato" not in dettaglio
     assert dettaglio["id"] == "sensor.salotto_aqi"

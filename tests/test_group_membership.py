@@ -140,16 +140,13 @@ def _detail(target: dict, *present: dict) -> dict:
     `_to_minimal` -> `live_mirror` -> `view`. Mai uno specchio scritto a mano:
     e' la trappola dello stato condiviso pigro, e in questo prodotto ha gia'
     lasciato passare un difetto che nessuna prova vedeva."""
-    state, names, unit, classes, since, attributes = live_mirror(
+    mirror = live_mirror(
         [_to_minimal(r) for r in present])
-    return view(_house(*present), [], [], state, "entita", target["entity_id"],
-                fallback_names=names, reported_units=unit,
-                reported_classes=classes, reported_since_when=since,
-                reported_attributes=attributes)
+    return view(_house(*present), [], [], mirror, "entita", target["entity_id"])
 
 
 def _mirror(*present: dict) -> dict:
-    return live_mirror([_to_minimal(r) for r in present])[5]
+    return live_mirror([_to_minimal(r) for r in present]).attributes
 
 
 # --------------------------------------------------------------------------

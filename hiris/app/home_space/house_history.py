@@ -332,7 +332,7 @@ def choose(query: HistoryQuery, home_space: dict, behavior, mirror, *,
         kinds = ("entita",)
     selection = select_subjects(f, kinds, home_space, behavior, mirror,
                                 unavailable=unavailable, now=now)
-    names = mirror[1]
+    names = mirror.names
     if query.kind == "esecuzioni":
         subjects = [Subject(item["id"], item.get("nome") or item["id"],
                             values.get("last_triggered"))
@@ -846,7 +846,7 @@ def value_rows(query: HistoryQuery, chosen: Chosen, *, detail: dict[str, list[di
     (`_declare_gaps`); una serie nata dopo lo dice con `dal`.
 
     `attributes` sono gli attributi ADESSO di ogni entita', nelle ceste dello
-    specchio (`mirror[5]`): servono a sapere se un `total` ha `last_reset`,
+    specchio (`mirror.attributes`): servono a sapere se un `total` ha `last_reset`,
     che i punti dello storico non portano (revisione del Task 4)."""
     out = _frame(query, chosen)
     ranked = []

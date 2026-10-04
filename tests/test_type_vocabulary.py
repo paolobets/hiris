@@ -39,6 +39,8 @@ from hiris.app.home_space.briefing import compose
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 import censore_tipi
 
+from hiris.app.home_space.topology import Mirror
+
 # Le finte vivono gia' in `test_briefing.py`: si riusano invece di riscriverle.
 # Due finte che fingono la stessa casa sono la seconda rappresentazione in
 # miniatura, e divergono come tutte le seconde rappresentazioni.
@@ -179,7 +181,7 @@ def test_un_telefono_in_casa_chi_chiede_lo_vede():
 
     casa = dict(_CASA, entita=_CASA["entita"] + [voce])
     dettaglio = view(casa, _COMPORTAMENTO, _RICORDI,
-                       dict(_STATO, **{"device_tracker.paolo": "home"}),
+                       Mirror(state=dict(_STATO, **{"device_tracker.paolo": "home"})),
                        "area", "sala")
     assert any(e["id"] == "device_tracker.paolo" for e in dettaglio["entita"]), (
         "il digesto tace, ma chi CHIEDE deve vedere: e' la differenza fra "

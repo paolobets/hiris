@@ -64,6 +64,7 @@ from .historian import instant_epoch
 from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
+    Mirror,
     actual_class,
     actual_unit,
     categories_with_name,
@@ -209,14 +210,10 @@ _WITHHELD_BASKET = "trattenuti"
 WITHHELD_BASKET = _WITHHELD_BASKET
 
 
-def _enrich_entity(entity_detail: dict, entry: dict,
-                        fallback_names: dict[str, str] | None,
-                        reported_units: dict[str, str] | None = None,
-                        label_lookup: dict[str, str] | None = None,
-                        reported_classes: dict[str, str] | None = None,
-                        category_lookup: dict[tuple[str, str], str] | None = None,
-                        reported_attributes: dict[str, dict] | None = None,
-                        translations: dict | None = None) -> dict:
+def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
+                   label_lookup: dict[str, str] | None = None,
+                   category_lookup: dict[tuple[str, str], str] | None = None,
+                   translations: dict | None = None) -> dict:
     """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
 
     Arricchisce `entity_detail` con cio' che lo SPECCHIO VIVO sa e il
@@ -256,17 +253,17 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     escono davvero."""
     entity_id = entry.get("id")
     if not (entity_detail.get("nome") or "").strip():
-        deduced = ((fallback_names or {}).get(entity_id) or "").strip()
+        deduced = (mirror.names.get(entity_id) or "").strip()
         if deduced:
             entity_detail["nome_dedotto"] = deduced
-    unit = actual_unit(entry.get("unita"), (reported_units or {}).get(entity_id))
+    unit = actual_unit(entry.get("unita"), mirror.units.get(entity_id))
     if unit:
         entity_detail["unita"] = unit
     # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
     # manda affatto (`topology.actual_class`). Prima questa riga usciva
     # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
     # dei significati.
-    device_class = actual_class(entry.get("classe"), (reported_classes or {}).get(entity_id))
+    device_class = actual_class(entry.get("classe"), mirror.classes.get(entity_id))
     if device_class:
         entity_detail["classe"] = device_class
     # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
@@ -295,7 +292,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # chi cerca un attributo per nome non deve sapere in quale sta -- ne'
     # inciampare nelle
     # credenziali, che di qui non passano mai.
-    attributes = disclosable_attributes((reported_attributes or {}).get(entity_id))
+    attributes = disclosable_attributes(mirror.attributes.get(entity_id))
     if value is not None:
         hvac_action = attributes.get(HVAC_ACTION_ATTRIBUTE)
         rendered = readable_state(
@@ -505,13 +502,10 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     return detail
 
 
-def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str, str] | None,
-                  disabled: bool, fallback_names: dict[str, str] | None,
-                  reported_units: dict[str, str] | None, label_lookup: dict[str, str],
-                  reported_classes: dict[str, str] | None,
-                  category_lookup: dict[tuple[str, str], str],
-                  reported_attributes: dict[str, dict] | None,
-                  translations: dict | None = None) -> list[dict]:
+def _entity_rows(entries: list[dict], mirror: Mirror, disabled: bool,
+                 label_lookup: dict[str, str],
+                 category_lookup: dict[tuple[str, str], str],
+                 translations: dict | None = None) -> list[dict]:
     """Un elenco grezzo di voci dell'anagrafe (`entita`/`entita_disabilitate`/
     `entita_nascoste` di `hierarchy()`) arricchito UNA riga alla volta con
     `_enrich_entity` -- il ciclo si scriveva tre volte in `_view_area`
@@ -535,11 +529,10 @@ def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str
     return [
         _enrich_entity(
             {"id": e["id"], "nome": e.get("nome"),
-             "stato": state.get(e["id"]),
-             "da_quando": (reported_since_when or {}).get(e["id"]),
+             "stato": mirror.state.get(e["id"]),
+             "da_quando": mirror.since.get(e["id"]),
              "disabilitata": disabled},
-            e, fallback_names, reported_units, label_lookup, reported_classes,
-            category_lookup, reported_attributes, translations)
+            e, mirror, label_lookup, category_lookup, translations)
         for e in entries
     ]
 
@@ -585,14 +578,9 @@ def _within_ceiling(detail: dict, hint: str) -> dict:
     return detail
 
 
-def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
-                 unavailable: tuple[str, ...] = (),
-                 fallback_names: dict[str, str] | None = None,
-                 reported_units: dict[str, str] | None = None,
-                 reported_classes: dict[str, str] | None = None,
-                 reported_since_when: dict[str, str] | None = None,
-                 reported_attributes: dict[str, dict] | None = None,
-                 translations: dict | None = None) -> dict:
+def _view_area(home_space: dict, memories: list[dict], mirror: Mirror, reference,
+               unavailable: tuple[str, ...] = (),
+               translations: dict | None = None) -> dict:
     # `unavailable` va PROPAGATO, non solo ricevuto: senza, `hierarchy()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -618,9 +606,8 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
     # il dettaglio a ~64.000 caratteri, oltre il limite del ponte. E' la
     # regola della porta per ogni insieme («disabilitate sempre escluse e
     # contate», spec §2.4), e `_view_integration` la applicava gia'.
-    entity = _entity_rows(area["entita"], state, reported_since_when, False, fallback_names,
-                          reported_units, label_lookup, reported_classes, category_lookup,
-                          reported_attributes, translations)
+    entity = _entity_rows(area["entita"], mirror, False, label_lookup, category_lookup,
+                          translations)
     disabled_count = len(area.get("entita_disabilitate") or [])
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
@@ -635,10 +622,8 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
     # un campo. Restano pero' COMPLETE e raggiungibili qui, per la stessa
     # domanda esplicita -- "cosa hai nascosto?" -- che il campo `nascosta`
     # serviva gia' quando l'entita' si guarda da sola (`_view_entity`).
-    hidden_entities = _entity_rows(area.get("entita_nascoste", []), state, reported_since_when,
-                                    False, fallback_names, reported_units, label_lookup,
-                                    reported_classes, category_lookup, reported_attributes,
-                                    translations)
+    hidden_entities = _entity_rows(area.get("entita_nascoste", []), mirror, False,
+                                   label_lookup, category_lookup, translations)
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incomplete = sorted(set(unavailable) & {"aree", "dispositivi", "entita"})
     detail = {
@@ -1045,13 +1030,8 @@ def _class_meaning(knowledge, domain: str, device_class) -> str | None:
     return fact.value if fact is not None else None
 
 
-def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
-                   unavailable: tuple[str, ...] = (),
-                   fallback_names: dict[str, str] | None = None,
-                   reported_units: dict[str, str] | None = None,
-                 reported_classes: dict[str, str] | None = None,
-                 reported_since_when: dict[str, str] | None = None,
-                 reported_attributes: dict[str, dict] | None = None,
+def _view_entity(home_space: dict, memories: list[dict], mirror: Mirror, reference,
+                 unavailable: tuple[str, ...] = (),
                  registry=None,
                  translations: dict | None = None,
                  knowledge=None,
@@ -1079,8 +1059,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
         # campo dice perche' `view` la trova comunque, senza far credere
         # che sia una stanza arredata (stesso principio di topology.py).
         "disabilitata": bool(entity.get("disabilitata")),
-        "stato": state.get(entity["id"]),
-        "da_quando": (reported_since_when or {}).get(entity["id"]),
+        "stato": mirror.state.get(entity["id"]),
+        "da_quando": mirror.since.get(entity["id"]),
         "ricordi": _tethered_memories(memories, "entita", reference),
     }
     # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
@@ -1088,10 +1068,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
     # `nome`: dichiarato e dedotto restano due fatti (`_enrich_entity`).
-    detail = _enrich_entity(detail, entity, fallback_names, reported_units,
-                                    label_names(home_space), reported_classes,
-                                    category_names(home_space), reported_attributes,
-                                    translations)
+    detail = _enrich_entity(detail, entity, mirror, label_names(home_space),
+                            category_names(home_space), translations)
     # `regola`: la vista CITA il vocabolario (Task 4, `ha_vocabulary.py`)
     # invece di lasciare che il modello indovini dal nome -- SOLO qui, sul
     # dettaglio di UNA entita' sola, stessa decisione e stessa ragione di
@@ -1166,7 +1144,7 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # fossero la stessa qualita' di sapere. In piu' c'e' `trattenuti`: la
     # sola trattenuta di questo prodotto resa VISIBILE -- nome e ragione, mai
     # il valore, mai un silenzio.
-    attributes = (reported_attributes or {}).get(entity["id"])
+    attributes = mirror.attributes.get(entity["id"])
     if isinstance(attributes, dict) and attributes:
         baskets: dict = {}
         for basket, italian_name in _BASKET_NAMES.items():
@@ -1186,7 +1164,7 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # ragione di `attributi` e di `regola`. La chiave non compare su cio' che
     # un gruppo non e': `membri: []` su ogni luce della casa sarebbe rumore in
     # ogni risposta.
-    membership = group_membership(entity["id"], reported_attributes)
+    membership = group_membership(entity["id"], mirror.attributes)
     if membership:
         detail[_MEMBERS_KEY] = membership
     # I COMANDI (`commands_for`, poco sopra): cosa si puo' CHIEDERE a questa
@@ -1202,21 +1180,15 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # sarebbe rumore, e per giunta indistinguibile da «questa entita' non si
     # comanda».
     commands = commands_for(entity["id"], registry,
-                            disclosable_attributes(
-                                (reported_attributes or {}).get(entity["id"])),
+                            disclosable_attributes(mirror.attributes.get(entity["id"])),
                             judgments=judgments)
     if commands:
         detail["comandi"] = commands
     return detail
 
 
-def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
-                        unavailable: tuple[str, ...] = (),
-                        fallback_names: dict[str, str] | None = None,
-                        reported_units: dict[str, str] | None = None,
-                 reported_classes: dict[str, str] | None = None,
-                 reported_since_when: dict[str, str] | None = None,
-                 reported_attributes: dict[str, dict] | None = None,
+def _view_device(home_space: dict, memories: list[dict], mirror: Mirror, reference,
+                 unavailable: tuple[str, ...] = (),
                  translations: dict | None = None) -> dict:
     label_lookup = label_names(home_space)
     category_lookup = category_names(home_space)
@@ -1264,16 +1236,14 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
             # `_enrich_entity` la scrive dallo specchio vivo, e solo quando
             # c'e' -- esattamente come fa gia' per `unita`.
             {"id": e["id"], "nome": e.get("nome"),
-             "stato": state.get(e["id"]),
-             "da_quando": (reported_since_when or {}).get(e["id"]),
+             "stato": mirror.state.get(e["id"]),
+             "da_quando": mirror.since.get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
-            e, fallback_names, reported_units, label_lookup, reported_classes,
-            category_lookup, reported_attributes, translations)
+            e, mirror, label_lookup, category_lookup, translations)
         for e in raw_visible
     ]
     device_hidden_entities = _entity_rows(
-        raw_hidden, state, reported_since_when, False, fallback_names, reported_units,
-        label_lookup, reported_classes, category_lookup, reported_attributes, translations)
+        raw_hidden, mirror, False, label_lookup, category_lookup, translations)
     detail = {
         "esiste": True, "tipo": "dispositivo", "id": device["id"],
         "nome": device.get("nome"),
@@ -1417,13 +1387,8 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
 _SYNCHRONY_WINDOW_SECONDS = 2.0
 
 
-def _view_integration(home_space: dict, state: dict, reference,
-                      reported_since_when: dict[str, str] | None,
+def _view_integration(home_space: dict, mirror: Mirror, reference,
                       unavailable: tuple[str, ...] = (),
-                      fallback_names: dict[str, str] | None = None,
-                      reported_units: dict[str, str] | None = None,
-                      reported_classes: dict[str, str] | None = None,
-                      reported_attributes: dict[str, dict] | None = None,
                       translations: dict | None = None) -> dict:
     """Un'integrazione con le sue entita' e quante di esse rispondono.
 
@@ -1556,8 +1521,8 @@ def _view_integration(home_space: dict, state: dict, reference,
                                   "entita" in unavailable or "integrazioni" in unavailable)
     own = [e for e in matching if not e.get("disabilitata")]
     disabled = [e for e in matching if e.get("disabilitata")]
-    mute = [e for e in own if state.get(e["id"]) == "unavailable"]
-    unknown = [e for e in own if state.get(e["id"]) == "unknown"]
+    mute = [e for e in own if mirror.state.get(e["id"]) == "unavailable"]
+    unknown = [e for e in own if mirror.state.get(e["id"]) == "unknown"]
     detail = {
         "esiste": True, "tipo": "integrazione", "dominio": domain,
         "voci": entries,
@@ -1565,10 +1530,8 @@ def _view_integration(home_space: dict, state: dict, reference,
         "entita_mute": len(mute),
         # `disabilitata=False` non e' un'ipotesi: `mute` esce da `own`, che
         # ha gia' tolto le disabilitate qualche riga sopra.
-        "entita": _entity_rows(mute, state, reported_since_when, False,
-                               fallback_names, reported_units,
-                               label_names(home_space), reported_classes,
-                               category_names(home_space), reported_attributes,
+        "entita": _entity_rows(mute, mirror, False, label_names(home_space),
+                               category_names(home_space),
                                translations),
     }
     # `entita` sono le mute, e `entita_mute` resta il loro numero intero.
@@ -1582,7 +1545,7 @@ def _view_integration(home_space: dict, state: dict, reference,
     incomplete = sorted(set(unavailable) & {"entita", "integrazioni"})
     if incomplete:
         detail["elenco_incompleto"] = incomplete
-    moments = [(reported_since_when or {}).get(e["id"]) for e in mute]
+    moments = [mirror.since.get(e["id"]) for e in mute]
     if moments and all(moments):
         epochs = [instant_epoch(m) for m in moments]
         if all(ep is not None for ep in epochs):
@@ -1590,25 +1553,20 @@ def _view_integration(home_space: dict, state: dict, reference,
             if latest - earliest <= _SYNCHRONY_WINDOW_SECONDS:
                 detail["mute_da"] = moments[epochs.index(earliest)]
     if "mute_da" in detail:
-        ha_start = state.get("sensor.uptime")
+        ha_start = mirror.state.get("sensor.uptime")
         if ha_start and instant_epoch(ha_start) is not None:
             detail["avvio_home_assistant"] = ha_start
     return detail
 
 
-def view(home_space: dict, behavior: list[dict], memories: list[dict], state: dict,
-           kind: str, reference,
-           unavailable: tuple[str, ...] = (),
-           unread_bodies: dict[str, str] | None = None,
-           fallback_names: dict[str, str] | None = None,
-           reported_units: dict[str, str] | None = None,
-           reported_classes: dict[str, str] | None = None,
-           reported_since_when: dict[str, str] | None = None,
-           reported_attributes: dict[str, dict] | None = None,
-           registry=None,
-           translations: dict | None = None,
-           knowledge=None,
-           judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+def view(home_space: dict, behavior: list[dict], memories: list[dict], mirror: Mirror,
+         kind: str, reference,
+         unavailable: tuple[str, ...] = (),
+         unread_bodies: dict[str, str] | None = None,
+         registry=None,
+         translations: dict | None = None,
+         knowledge=None,
+         judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -1672,23 +1630,25 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     presente solo quando `esiste` e' `False` E il registro pertinente
     non ha risposto.
 
-    `fallback_names` (entity_id -> friendly_name dallo specchio dello
-    stato, stessa forma usata da `costruisci_indice`) conta
-    per OGNI ramo che elenca entita' -- `entita` da sola, ma anche le
+    `mirror` e' lo specchio dello stato in una forma (`topology.Mirror`, dal
+    04/10/2026: fino ad allora erano sei argomenti separati, B-41). Di lui:
+
+    `mirror.names` (entity_id -> friendly_name, stessa forma usata da
+    `costruisci_indice`) conta per OGNI ramo che elenca entita' -- `entita` da sola, ma anche le
     entita' di un'`area` e di un `dispositivo` (I1, review finale: la stessa
     entita' e' la stessa cosa da tutte le porte) -- e solo quando il
     registro non ha un nome: se c'e' esce come `nome_dedotto`, mai scritto
     sopra `nome` -- dichiarato e dedotto restano due fatti diversi.
 
-    `reported_since_when` (entity_id -> `last_changed` dallo specchio dello stato,
-    stessa forma di `reported_units`/`reported_classes`) accompagna OGNI `"stato"` che
+    `mirror.since` (entity_id -> `last_changed`, stessa forma di
+    `mirror.units`/`mirror.classes`) accompagna OGNI `"stato"` che
     esce da questa funzione: il campo che Home Assistant manda a ogni cambio
     di stato e che la proiezione della cache scartava (fondamenta 3 -- la
     stessa domanda non puo' avere due risposte diverse a seconda di quale
     ramo di `view` la porta).
 
-    `reported_attributes` (entity_id -> le ceste dello specchio dello
-    stato, `proxy/entity_cache.inherited_attributes`) alimenta DUE cose
+    `mirror.attributes` (entity_id -> le ceste di
+    `proxy/entity_cache.inherited_attributes`) alimenta DUE cose
     diverse, e non allo stesso modo:
 
     - `readable_state` lo legge SEMPRE, su ogni ramo che elenca entita'
@@ -1715,7 +1675,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     l'ha riceve la stessa vista senza la chiave `comandi`, mai una chiave
     vuota che direbbe «non c'e' niente da chiedere».
 
-    Legge `home_space`/`behavior`/`memories`/`state` cosi' come arrivano
+    Legge `home_space`/`behavior`/`memories`/`mirror` cosi' come arrivano
     dal chiamante (`HomeSpace`, `MemoryStore`, lo stato vivo di Home
     Assistant) e non chiama la rete. Un archivio lo apre in un caso solo: sul
     ramo `entita`, con `knowledge` passato, `_class_meaning` chiede al sapere
@@ -1734,7 +1694,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     `judgments` e' l'istantanea dei giudizi sui tipi (spec 2026-09-16 §3):
     la inoltra soltanto, a `_view_entity` -> `commands_for` ->
     `_command_parameters` -> `_limits_of_entity` (il solo ramo che li legge).
-    Arriva come ARGOMENTO, come `state`. In
+    Arriva come ARGOMENTO, come `mirror`. In
     produzione e' sempre l'istantanea viva, `app["type_judgments"]` (via
     `home_space/tools.py::ToolDispatcher._full_detail_sync`); il predefinito
     `REPO_JUDGMENTS` -- il solo seme del repo -- serve alle prove. Una prova
@@ -1747,26 +1707,19 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     """
     memories = sanitized_memories(memories)
     if kind == "area":
-        return _view_area(home_space, memories, state, reference, unavailable,
-                            fallback_names, reported_units, reported_classes,
-                            reported_since_when, reported_attributes, translations)
+        return _view_area(home_space, memories, mirror, reference, unavailable, translations)
     if kind == "entita":
-        return _view_entity(home_space, memories, state, reference, unavailable,
-                              fallback_names, reported_units, reported_classes,
-                              reported_since_when, reported_attributes, registry,
-                              translations, knowledge, judgments=judgments)
+        return _view_entity(home_space, memories, mirror, reference, unavailable, registry,
+                            translations, knowledge, judgments=judgments)
     if kind == "dispositivo":
-        return _view_device(home_space, memories, state, reference, unavailable,
-                                   fallback_names, reported_units, reported_classes,
-                                   reported_since_when, reported_attributes, translations)
+        return _view_device(home_space, memories, mirror, reference, unavailable,
+                            translations)
     if kind in _BEHAVIOR_TYPES:
         return _view_behavior(behavior, memories, kind, reference, unread_bodies)
     if kind == "ricordo":
         return _view_memory(memories, reference)
     if kind == "integrazione":
-        return _view_integration(home_space, state, reference, reported_since_when,
-                                 unavailable, fallback_names, reported_units,
-                                 reported_classes, reported_attributes, translations)
+        return _view_integration(home_space, mirror, reference, unavailable, translations)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
     # stesso caso di "non l'ho trovato", solo con una causa diversa (il
     # modello ha nominato un tipo che non esiste, non un riferimento che

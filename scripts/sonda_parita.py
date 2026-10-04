@@ -107,8 +107,8 @@ def build_inputs(source: Path | dict, *, clock: float | None = None) -> dict:
     raw = source if isinstance(source, dict) else casa.read_inputs(source)
     rows = [_to_minimal(row) for row in raw["states"] if row.get("entity_id")]
     mirror = topology.live_mirror(rows)
-    home_space = reader.build_home_space(raw["registries"], live_classes=mirror[3],
-                                         live_units=mirror[2])
+    home_space = reader.build_home_space(raw["registries"], live_classes=mirror.classes,
+                                         live_units=mirror.units)
     return {"home_space": home_space, "mirror": mirror, "rows": rows,
             "raw_states": raw["states"], "registries": raw["registries"],
             "statistic_ids": set(raw["statistic_ids"]),
@@ -141,12 +141,6 @@ def _entity_ids(lines: list[str], inputs: dict, where: str) -> list[str]:
         raise ValueError(f"{where}: {len(strangers)} righe non cominciano con un id di "
                          "entita'. La forma della riga e' cambiata, la sonda va riletta.")
     return read
-
-
-def _mirror_keywords(mirror) -> dict:
-    return {"fallback_names": mirror[1], "reported_units": mirror[2],
-            "reported_classes": mirror[3], "reported_since_when": mirror[4],
-            "reported_attributes": mirror[5]}
 
 
 # ── le domande ──────────────────────────────────────────────────────────────
@@ -221,8 +215,7 @@ def _causes_by_device(inputs: dict) -> tuple[dict[str, str], int]:
     causes: dict[str, str] = {}
     cut = 0
     for device in home_space["dispositivi"]:
-        detail = queries.view(home_space, [], [], mirror[0], "dispositivo", device["id"],
-                              **_mirror_keywords(mirror))
+        detail = queries.view(home_space, [], [], mirror, "dispositivo", device["id"])
         if detail.get("oltre"):
             cut += 1
             continue
@@ -433,14 +426,13 @@ def names(inputs: dict) -> dict:
     """«Come si chiama?» -- il nome della scheda contro il nome della riga di
     `search`, per la stessa entita'."""
     home_space, mirror = inputs["home_space"], inputs["mirror"]
-    state, live_names = mirror[0], mirror[1]
     where = {entry["id"]: (entry, area, place)
              for entry, area, _floor, place in house_query._entity_entries(home_space, ())}
     cases = []
     for key, entity in _entities(inputs).items():
         detail = queries._enrich_entity(
-            {"id": key, "nome": entity.get("nome"), "stato": state.get(key)},
-            entity, live_names)
+            {"id": key, "nome": entity.get("nome"), "stato": mirror.state.get(key)},
+            entity, mirror)
         card = (detail.get("nome") or "").strip() or (detail.get("nome_dedotto") or "").strip()
         entry, area, place = where[key]
         row = house_query._entity_row(entry, area, place, mirror, False)["nome"]
@@ -492,7 +484,7 @@ def values(inputs: dict) -> dict:
     Divergenza di REGOLA: sull'esito della funzione pesa solo quando ogni
     entita' e' in quello stato (dopo la caduta di tutte le integrazioni).
     """
-    home_space, state = inputs["home_space"], inputs["mirror"][0]
+    home_space, state = inputs["home_space"], inputs["mirror"].state
     unknown = type_vocabulary.unknown_states()
     cases = []
     for entity in home_space["entita"]:
@@ -554,7 +546,7 @@ def statistics(inputs: dict) -> dict:
 def units(inputs: dict) -> dict:
     """«Che unita' e classe ha?» -- anagrafe, specchio vivo, riga di `search`."""
     home_space, mirror = inputs["home_space"], inputs["mirror"]
-    live_units, live_classes = mirror[2], mirror[3]
+    live_units, live_classes = mirror.units, mirror.classes
     cases = []
     for entry, area, _floor, place in house_query._entity_entries(home_space, ()):
         key = entry["id"]
@@ -602,8 +594,8 @@ def references(inputs: dict) -> dict:
         for label, text in (("esatto", platform), ("capitalizzato", platform.capitalize()),
                             ("maiuscolo", platform.upper()), ("con spazi", f" {platform} ")):
             by_search = bool(_selected(inputs, platform=text))
-            by_card = bool(queries.view(home_space, [], [], mirror[0], "integrazione", text,
-                                        **_mirror_keywords(mirror)).get("esiste"))
+            by_card = bool(queries.view(home_space, [], [], mirror, "integrazione",
+                                        text).get("esiste"))
             if by_search != by_card:
                 cases.append({"genere": "integrazione", "id": platform, "variante": label,
                               "search": by_search, "scheda": by_card})

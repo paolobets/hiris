@@ -37,7 +37,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
-from ..home_space.topology import live_mirror
+from ..home_space.topology import read_mirror
 from ..memory.interpretation import deduci_unit, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..proxy._sanitize import sanitize_ha_value
@@ -71,33 +71,6 @@ def _topology_loaded(home_space_store) -> bool:
     esiste per evitare.
     """
     return home_space_store is not None and home_space_store.updated_at() is not None
-
-
-def _page_mirror(request) -> tuple[dict, dict, dict, dict, dict, dict]:
-    """Lo specchio dello stato per questa pagina:
-    `(stato, nomi, unita, classi, da_quando, attributi)`.
-
-    La lettura vera sta in `home_space.topology.live_mirror`, la stessa che usa il
-    dispatcher: qui c'e' solo la difesa su una cache assente o guasta, perche'
-    ne' la vista ne' la correzione di un ricordo devono fallire per colpa dello
-    specchio.
-
-    Restituisce la SESTINA (era la cinquina, `attributi` e' l'ultimo arrivato)
-    e non il solo pezzo che serviva prima: i nomi, le unita' e l'istante
-    arrivano dalla stessa lettura, e chiamarla due volte per prenderne un
-    pezzo per volta avrebbe voluto dire leggere lo specchio in due istanti
-    diversi -- la stessa classe di divergenza che `live_mirror` esiste per
-    chiudere. Questa pagina non legge `attributi` (non ne ha bisogno: mostra
-    ricordi, non il dettaglio di un'entita'), ma la forma resta la stessa di
-    chi lo chiama -- fondamenta 3.
-    """
-    cache = request.app.get("entity_cache")
-    if cache is None or not hasattr(cache, "all_states"):
-        return {}, {}, {}, {}, {}, {}
-    try:
-        return live_mirror(cache.all_states())
-    except Exception:
-        return {}, {}, {}, {}, {}, {}
 
 
 def _unverifiable_types(home_space_store, topology_loaded: bool) -> frozenset[str]:
@@ -232,15 +205,17 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     # arriva all'utente deve dirlo com'e' (`unverifiable_types`, sotto):
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
-    live_state = _page_mirror(request)
     lookup = (costruisci_indice(home_space_store.read())
               if topology_loaded else costruisci_indice({}))
     unverifiable_types = _unverifiable_types(home_space_store, topology_loaded)
     # Le unita' vive, dalla stessa fonte che usa `remember` in chat. Senza,
     # correggere la grandezza di un ricordo DA QUESTA PAGINA avrebbe dedotto
     # un'unita' diversa da quella dedotta dalla chat sullo stesso ricordo: lo
-    # stesso fatto con due forme a seconda della porta.
-    reported_units = live_state[2]
+    # stesso fatto con due forme a seconda della porta. Lo specchio guasto o
+    # assente non fa fallire la correzione: le unita' restano vuote
+    # (`read_mirror`, che fino al 04/10/2026 questa pagina ricopiava in
+    # `_page_mirror`).
+    reported_units = read_mirror(request.app.get("entity_cache")).units
 
     # Un intervallo e' una coppia, non due campi indipendenti: se la
     # richiesta tocca solo `minimo` o solo `massimo`, la coerenza (minimo
