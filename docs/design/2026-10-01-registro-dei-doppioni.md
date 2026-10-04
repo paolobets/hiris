@@ -43,14 +43,10 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| B-03 | Le entità di un dispositivo senza filtro: `recipe_turn.device_lines` | D | CC | 1138 entità in più di `house_lines` su 1413; 548 disabilitate contate | cop-6 (nome) | reg · cop-6 |
 | B-04 | `action/verification.py:613-625`: «ha uno stato» al posto di «è disabilitata» | D | DP | differisce dal digesto per 650 entità (974 contro 324) |  | reg |
-| B-05 | Come si chiama un'entità: più politiche (3-4 vive, più quella delle automazioni) | D | CC | nome di `guarda` ≠ `search` per 944 entità su 1525; nome davvero diverso: 0 casi | cop-3 (incompleta); cop-4 (righe); cop-6 (incompleta); cop-9 (conteggio) | reg · cop-3 · cop-4 · cop-6 · cop-9 |
 | B-07 | «È un valore o un non-valore?»: `privacy._NEUTRAL_STATES` | E | PS | 0 stati cambiati su 169 entità mobili |  | reg · cop-5 · cop-6 |
 | B-08 | `briefing._unreliable_state` conta solo `unknown` | D | CC | 328 entità `unavailable` su 974; esito invariato sulla casa (diverge solo la controprova sintetica) |  | reg · cop-4 |
 | B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | E | PS | 0 integrazioni su 39 | Tappa 3 (verdetto) | reg · cop-4 · cop-5 |
-| B-10 | In che area sta un'entità | D | CC | 194 entità guardabili su 324 arrivano all'osservatore senza area |  | reg · cop-4 · cop-6 |
-| B-11 | «Quali entità sono di un dispositivo»: `dispositivo_id` in linea | E | PS |  |  | reg · cop-3 · cop-4 · cop-6 |
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
 | B-14 | Integrazione sana: due lettori, una costante doppia | E | PS |  | cop-4 (righe) | reg · cop-4 · cop-5 · cop-6 |
 | B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta); Tappa 3 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 |
@@ -897,3 +893,7 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-06 | Nome del dispositivo: derivazioni e campo senza lettori | Tappa 3 (da rilasciare) | cb84c86 | topology.device_name, il nome altrimenti l'id, in nucleo, pagine del cervello, resoconto, ricette e guarda. Tappa 3, Task 5 (04/10/2026) |
 | B-17 | Unità e classe: il vivo batte il registro, applicato due volte | Tappa 3, Task 7 | 8e710f9 | l'anagrafe porta solo la dichiarazione del registro; il vivo da House.kind_of e topology.live_first |
 | B-12 | «Ha statistiche?»: tre formule | Tappa 3, Task 7 | 274409a | una regola, ha_vocabulary.has_statistics: statistic_ids del giro, la regola del sorgente solo come ripiego |
+| B-03 | Le entità di un dispositivo senza filtro: `recipe_turn.device_lines` | Tappa 3, Task 12 | 85b9af0 | le ricette ricevono House.entities_of (D2, la regola del fuori); _device_entities uscito |
+| B-11 | «Quali entità sono di un dispositivo»: `dispositivo_id` in linea | Tappa 3, Task 12 | 85b9af0 | House.device_entities: le voci di un dispositivo in un posto; ricette e queries._view_device lo chiedono |
+| B-10 | In che area sta un'entità | Tappa 3, Task 12 | 85b9af0 | House.where (Task 6) con l'area ereditata; l'osservatore lo usa (D3), _area_names uscito |
+| B-05 | Come si chiama un'entità: più politiche (3-4 vive, più quella delle automazioni) | Tappa 3, Task 12 | 85b9af0 | House.name (Task 5) anche in osservatore e ricette, l'ultima seconda copia viva; report._resolved_name resta il nome archiviato prima, per decisione |
