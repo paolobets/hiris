@@ -1785,7 +1785,7 @@ class ToolDispatcher:
 
         `classi` e' entity_id -> `device_class`, ed e' l'UNICA fonte che
         esista: il registro delle entita' non la manda affatto (vedi
-        `topology.actual_class`).
+        `topology.live_first`).
 
         `unita` e' entity_id -> `unit_of_measurement`, saltando i vuoti, e
         arriva dalla STESSA lettura per la stessa ragione dei nomi: la

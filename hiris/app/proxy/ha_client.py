@@ -2246,7 +2246,7 @@ class HAClient:
         della nonna» come alias non trovava niente cercandola.
 
         La classe non si prende da qui: arriva gia' dallo specchio dello stato
-        (`home_space.topology.actual_class`), che ce l'ha per ogni entita' e non
+        (`home_space.topology.live_first`), che ce l'ha per ogni entita' e non
         costa nessuna chiamata. Questo comando serve per cio' che lo specchio
         NON ha.
 

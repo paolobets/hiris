@@ -644,8 +644,8 @@ def entity_category_measure_rule(domain: str, category: str | None,
     `None`, correttamente).
 
     `classe`/`unita'` vanno passati COSI' COME `queries._enrich_entity` li
-    ha gia' risolti (specchio vivo sopra il registro, `actual_class`/
-    `actual_unit`): il registro delle entita' non manda ne' l'uno ne'
+    ha gia' risolti (specchio vivo sopra il registro,
+    `topology.live_first`): il registro delle entita' non manda ne' l'uno ne'
     l'altro (`topology.py`, il docstring di `live_mirror`), quindi una
     chiamata che leggesse solo il registro troverebbe sempre classe/unita'
     assenti, anche su una diagnostica che una VERA classe/unita' vive

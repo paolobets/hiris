@@ -43,7 +43,7 @@ riesce a dedurla, resta `None`: inventarla sarebbe peggio di non averla.
 """
 from __future__ import annotations
 
-from ..home_space.topology import actual_area, actual_unit, device_areas
+from ..home_space.topology import actual_area, device_areas, live_first
 from .resolver import STORE_KEY_PER_TYPE
 
 # Le tre caselle con un vocabolario chiuso: "che forza ha", "quando vale" e
@@ -265,7 +265,7 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
         if tether["tipo"] == "entita":
             entity = lookup.verify("entita", tether["riferimento"])
             if entity:
-                unit = actual_unit(entity.get("unita"), reported.get(entity.get("id")))
+                unit = live_first(entity.get("unita"), reported.get(entity.get("id")))
                 if unit is not None:
                     return unit
         elif tether["tipo"] == "area" and grandezza is not None:
@@ -281,7 +281,7 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
                     continue
                 if actual_area(entity, device_area) != area_id:
                     continue
-                unit = actual_unit(entity.get("unita"), reported.get(entity.get("id")))
+                unit = live_first(entity.get("unita"), reported.get(entity.get("id")))
                 if unit is not None:
                     return unit
     return None

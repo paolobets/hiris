@@ -95,6 +95,7 @@ import asyncio
 import logging
 import time
 
+from ..home_space.topology import clean_text
 from ..proxy.entity_cache import (
     _to_minimal,
     disclosable_attributes,
@@ -333,9 +334,9 @@ def _fingerprint(entry) -> dict | None:
     # puo' nemmeno dedurla, perche' il nucleo gli vieta esplicitamente di
     # applicare l'unita' della casa a una singola entita'. Sta nella voce
     # dello specchio (`entity_cache._to_minimal`) e costava solo il leggerla.
-    unit = entry.get("unit")
-    if isinstance(unit, str) and unit.strip():
-        fingerprint["unit"] = unit.strip()
+    unit = clean_text(entry.get("unit"))
+    if unit is not None:
+        fingerprint["unit"] = unit
     # `disclosable_attributes` appiattisce le quattro ceste che raccontano la
     # casa (`capabilities`/`values`/`uninterpreted`) e LASCIA FUORI le
     # credenziali. Non e' prudenza generica: un token di telecamera RUOTA, e

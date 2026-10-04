@@ -64,14 +64,14 @@ from .historian import instant_epoch
 from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
-    actual_class,
-    actual_unit,
     categories_with_name,
     category_names,
+    clean_text,
     decoded_capabilities,
     hierarchy,
     label_names,
     labels_with_id,
+    live_first,
     readable_state,
 )
 from .type_judgments import TypeJudgments
@@ -258,14 +258,14 @@ def _enrich_entity(entity_detail: dict, entry: dict,
         deduced = ((fallback_names or {}).get(entity_id) or "").strip()
         if deduced:
             entity_detail["nome_dedotto"] = deduced
-    unit = actual_unit(entry.get("unita"), (reported_units or {}).get(entity_id))
+    unit = live_first(entry.get("unita"), (reported_units or {}).get(entity_id))
     if unit:
         entity_detail["unita"] = unit
     # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
-    # manda affatto (`topology.actual_class`). Prima questa riga usciva
+    # manda affatto (`topology.live_first`). Prima questa riga usciva
     # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
     # dei significati.
-    device_class = actual_class(entry.get("classe"), (reported_classes or {}).get(entity_id))
+    device_class = live_first(entry.get("classe"), (reported_classes or {}).get(entity_id))
     if device_class:
         entity_detail["classe"] = device_class
     # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
@@ -281,7 +281,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # sarebbero due significati, e fino all'08/09/2026 erano scritte a mano.
     #
     # Il DOMINIO e l'`hvac_action` (dallo specchio vivo, mai dal registro:
-    # `topology.actual_class` vale anche qui) alimentano il solo caso in
+    # `topology.live_first` vale anche qui) alimentano il solo caso in
     # cui uno stato grezzo mente da solo -- un termostato IMPOSTATO su
     # riscaldamento e FERMO che si legge «heat» com'e' il difetto misurato dal
     # proprietario (2026-08-25, `topology.readable_state`). Passati anche
@@ -803,9 +803,9 @@ def _limits_of_selector(detail: dict) -> dict:
         step = _number(shape.get("step"))
         if step is not None:
             limits["passo"] = step
-        unit = shape.get("unit_of_measurement") or shape.get("unit")
-        if isinstance(unit, str) and unit.strip():
-            limits["unita"] = unit.strip()
+        unit = clean_text(shape.get("unit_of_measurement") or shape.get("unit"))
+        if unit is not None:
+            limits["unita"] = unit
         if limits:
             limits["limiti_da"] = _LIMITS_FROM_SERVICE
         return limits

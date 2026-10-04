@@ -199,7 +199,7 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
     un nome e non e' un'unita', e' l'assenza dell'una e dell'altra.
 
     `classi` (entity_id -> `device_class`) e' la piu' importante: il registro
-    delle entita' NON manda la classe (vedi `actual_class`), e questa e'
+    delle entita' NON manda la classe (vedi `live_first`), e questa e'
     l'unica fonte da cui un sensore binario ne riceve una.
 
     `da_quando` (entity_id -> `last_changed`) e' il campo che Home Assistant
@@ -228,18 +228,11 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
         if not entity_id:
             continue
         state[entity_id] = e.get("state")
-        name = e.get("name")
-        if isinstance(name, str) and name.strip():
-            names[entity_id] = name.strip()
-        measurement = e.get("unit")
-        if isinstance(measurement, str) and measurement.strip():
-            unit[entity_id] = measurement.strip()
-        device_class = e.get("device_class")
-        if isinstance(device_class, str) and device_class.strip():
-            classes[entity_id] = device_class.strip()
-        instant = e.get("last_changed")
-        if isinstance(instant, str) and instant.strip():
-            since_when[entity_id] = instant.strip()
+        for field, table in (("name", names), ("unit", unit),
+                             ("device_class", classes), ("last_changed", since_when)):
+            text = clean_text(e.get(field))
+            if text is not None:
+                table[entity_id] = text
         extra = e.get("attributes")
         if isinstance(extra, dict) and extra:
             attributes[entity_id] = extra
@@ -559,7 +552,7 @@ def actual_area(entity: dict, device_area: dict[str, str | None]) -> str | None:
     sparire meta' della casa: moltissime entita' non hanno un'area propria, e
     la portano dal dispositivo -- e' il caso NORMALE, non l'eccezione.
 
-    Esiste come funzione per la stessa ragione di `actual_unit`: la
+    Esiste come funzione per la stessa ragione di `live_first`: la
     prendono due posti diversi. `hierarchy()` la usa per costruire l'albero, e
     `memory.interpretation.deduci_unit` per capire quale entita' di
     un'area puo' dare l'unita' a un ricordo. Scritta due volte lo era gia': il
@@ -609,64 +602,59 @@ def device_areas(devices) -> dict[str, str | None]:
     return {d["id"]: d.get("area_id") for d in devices or [] if d.get("id")}
 
 
-def actual_class(declared: str | None, live: str | None) -> str | None:
-    """La classe di un'entita' (`device_class`): la VIVA vince su quella del
-    registro -- e sul campo e' l'unica che esista.
+def clean_text(value) -> str | None:
+    """Una stringa non vuota, ripulita dagli spazi ai bordi; altrimenti `None`.
 
-    IL PUNTO, misurato sul sorgente di Home Assistant: il comando con cui
+    Una stringa vuota o di soli spazi non e' un nome, ne' un'unita', ne' una
+    classe: e' l'assenza dell'una e dell'altra, esattamente come `None`. Era
+    scritta in linea sei volte in questo modulo e due fuori (B-36, Tappa 3,
+    Task 7, 04/10/2026).
+    """
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def live_first(declared: str | None, live: str | None) -> str | None:
+    """La classe (`device_class`) o l'unita' vera di un'entita': la VIVA vince
+    su quella del registro. Erano due funzioni con lo stesso corpo,
+    `actual_class` e `actual_unit` (B-36, Tappa 3, Task 7, 04/10/2026): una
+    regola sola, due ragioni per cui vale.
+
+    **La classe.** Misurato sul sorgente di Home Assistant: il comando con cui
     HIRIS legge le entita', `config/entity_registry/list`, risponde con
     `RegistryEntry.as_partial_dict` (`helpers/entity_registry.py:335`), che
     **non contiene `device_class`**, ne' `original_device_class`, ne'
     `aliases`. Quei campi stanno solo in `extended_dict` (`:369`), servito da
-    `config/entity_registry/get` e `.../get_entries`.
+    `config/entity_registry/get` e `.../get_entries`. Quindi dal solo registro
+    la `classe` sarebbe sempre nulla, su ogni casa: le rese per CLASSE
+    sarebbero irraggiungibili (un allagamento, un principio d'incendio, il
+    monossido: muti) e il dettaglio di un'entita' risponderebbe `null`. Una
+    finta che scrive `device_class` dentro la riga del registro -- un campo che
+    Home Assistant li' non mette -- non sa produrre il difetto. Il rimedio non
+    costa nessuna chiamata in piu': `device_class` e' gia' in RAM in ogni voce
+    dello specchio dello stato (`entity_cache._to_minimal`), perche' HA lo
+    scrive fra gli attributi di OGNI entita'. Ed e' anche la fonte che Home
+    Assistant stesso preferisce (`helpers/entity.py::get_device_class`). Il
+    ripiego sul registro resta per il giorno in cui HIRIS chiamera'
+    `get_entries`.
 
-    Quindi dal solo registro la `classe` sarebbe sempre nulla, su ogni casa:
-    le rese per CLASSE sarebbero irraggiungibili (un allagamento, un principio
-    d'incendio, il monossido: muti) e il dettaglio di un'entita' risponderebbe
-    `null`. Una finta che scrive `device_class` dentro la riga del registro --
-    un campo che Home Assistant li' non mette -- non sa produrre il difetto.
-
-    Il rimedio non costa nessuna chiamata in piu': `device_class` e' gia' in
-    RAM in ogni voce dello specchio dello stato (`entity_cache._to_minimal`),
-    perche' HA lo scrive fra gli attributi di OGNI entita'. Ed e' anche la
-    fonte che Home Assistant stesso preferisce
-    (`helpers/entity.py::get_device_class`).
-
-    Il ripiego sul registro resta per il giorno in cui HIRIS chiamera'
-    `get_entries`: allora le due fonti coesisteranno, e questa funzione dira'
-    gia' quale vince.
-    """
-    for candidate in (live, declared):
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate.strip()
-    return None
-
-
-def actual_unit(declared: str | None, live: str | None) -> str | None:
-    """L'unita' vera di un'entita': la VIVA vince su quella del registro.
-
-    Home Assistant converte le unita' **solo alla prima aggiunta del sensore**:
-    il registro puo' quindi portare quella vecchia mentre lo specchio dello
-    stato porta quella che HA sta usando adesso. Sul campo il registro non ne
-    porta quasi mai una -- e' un campo che HA riempie solo se l'utente l'ha
-    forzata a mano (misurato: NULL su 842 entita' su 842) -- ma dove c'e', non
-    e' quella che conta.
+    **L'unita'.** Home Assistant converte le unita' **solo alla prima aggiunta
+    del sensore**: il registro puo' quindi portare quella vecchia mentre lo
+    specchio dello stato porta quella che HA sta usando adesso. Sul campo il
+    registro non ne porta quasi mai una -- e' un campo che HA riempie solo se
+    l'utente l'ha forzata a mano (misurato: NULL su 842 entita' su 842) -- ma
+    dove c'e', non e' quella che conta.
 
     Esiste come funzione, e non come due righe scritte dove servono, perche'
     questa decisione la prendono piu' posti: cosa tenere nell'anagrafe
     (`reader._entity`), cosa mostrare (`queries._enrich_entity`) e cosa
-    dedurre (`memory.interpretation.deduci_unit`). Scritta piu' volte sarebbe
-    la forma di difetto che ha reso la pagina Modelli vera riga per riga e
-    falsa nel complesso: copie di una regola che nessuno tiene allineate.
-
-    Una stringa vuota o di soli spazi non e' un'unita': e' l'assenza di
-    un'unita', esattamente come `None`. E se non c'e' ne' l'una ne' l'altra,
-    resta `None`: **non si inventa** -- vedi `reference_frame`, che
+    dedurre (`memory.interpretation.deduci_unit`). Se non c'e' ne' l'una ne'
+    l'altra, resta `None`: **non si inventa** -- vedi `reference_frame`, che
     descrive la casa e non le sue entita'.
     """
     for candidate in (live, declared):
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate.strip()
+        text = clean_text(candidate)
+        if text is not None:
+            return text
     return None
 
 

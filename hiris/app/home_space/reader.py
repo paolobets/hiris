@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from .behavior import automation_active
-from .topology import actual_class, actual_unit
+from .topology import live_first
 
 #: Le sette tabelle che l'anagrafe espone, sempre tutte e sette. Chi legge ci
 #: conta -- `hierarchy()` cerca `dispositivi` per risolvere le aree ereditate --
@@ -175,7 +175,7 @@ def _entity(row: dict, live_classes: dict, live_units: dict) -> dict:
     """Una riga del registro delle entita', come l'anagrafe la espone.
 
     `classe` e `unita` **non vengono dalla riga**: vengono dallo specchio vivo
-    (`topology.actual_class`/`actual_unit`, che fanno vincere la viva). Sul
+    (`topology.live_first`, che fanno vincere la viva). Sul
     campo e' l'unica fonte che esista per la classe -- vedi il docstring del
     modulo -- e per l'unita' e' quella che conta, perche' Home Assistant
     converte le unita' solo alla prima aggiunta del sensore.
@@ -203,9 +203,9 @@ def _entity(row: dict, live_classes: dict, live_units: dict) -> dict:
         # `config` o `diagnostic`, deciso dall'INTEGRAZIONE -- e non c'entra
         # niente con `categorie` (plurale), la tassonomia dell'UTENTE.
         "categoria": row.get("entity_category"),
-        "classe": actual_class(row.get("device_class") or row.get("original_device_class"),
-                               live_classes.get(entity_id)),
-        "unita": actual_unit(row.get("unit_of_measurement"), live_units.get(entity_id)),
+        "classe": live_first(row.get("device_class") or row.get("original_device_class"),
+                            live_classes.get(entity_id)),
+        "unita": live_first(row.get("unit_of_measurement"), live_units.get(entity_id)),
         "disabilitata": 1 if row.get("disabled_by") else 0,
         "nascosta": 1 if row.get("hidden_by") else 0,
         "alias": clean_aliases(row.get("aliases")),

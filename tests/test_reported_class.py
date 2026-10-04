@@ -35,7 +35,7 @@ un'entita' (`test_guarda_dice_la_classe_che_prometteva`).
 """
 
 from hiris.app.home_space.queries import view
-from hiris.app.home_space.topology import actual_class, live_mirror
+from hiris.app.home_space.topology import live_first, live_mirror
 from tests._house_translations import house_translations
 
 # L'anagrafe COM'E' DAVVERO: `classe` a None, perche' HA non la manda.
@@ -52,11 +52,11 @@ _SPECCHIO = [{"id": "binary_sensor.perdita_lavatrice", "state": "on",
 
 
 def test_la_regola_sta_in_un_posto_solo():
-    assert actual_class(None, "moisture") == "moisture"
-    assert actual_class("door", "moisture") == "moisture", "la viva vince"
-    assert actual_class("door", None) == "door"
-    assert actual_class(None, None) is None
-    assert actual_class("door", "  ") == "door"
+    assert live_first(None, "moisture") == "moisture"
+    assert live_first("door", "moisture") == "moisture", "la viva vince"
+    assert live_first("door", None) == "door"
+    assert live_first(None, None) is None
+    assert live_first("door", "  ") == "door"
 
 
 def test_lo_specchio_porta_anche_le_classi():
