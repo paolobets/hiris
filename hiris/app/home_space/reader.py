@@ -329,6 +329,10 @@ class HomeSpace:
         self._dashboard_entries: list[dict] = []
         self._unavailable_dashboards: list[str] = []
         self._dashboards_loaded_at: str | None = None
+        # La dashboard Energia (`home_space/energy.py`): letta alla prima
+        # domanda dopo ogni ricostruzione, non a ogni domanda.
+        self._energy: dict | None = None
+        self._energy_current = False
 
     def _read_reference_frame(self) -> dict:
         """La cornice, dal file suo. `{}` se non c'e' o non si legge: chi legge
@@ -386,6 +390,9 @@ class HomeSpace:
             self._reference_frame = reference_frame
             self._write_reference_frame(reference_frame)
         self._updated_at = datetime.now(UTC).isoformat(timespec="seconds")
+        # Un giro nuovo dell'anagrafe: la dashboard Energia si rilegge alla
+        # prossima domanda (`energy.energy_dashboard`).
+        self._energy_current = False
 
     def hold_registries(self, registries: dict[str, list[dict]],
                         unavailable: list[str] | None = None,
@@ -524,6 +531,24 @@ class HomeSpace:
 
     def unavailable_dashboards(self) -> list[str]:
         return list(self._unavailable_dashboards)
+
+    # -- La dashboard Energia (`home_space/energy.py`, piano degli attori,
+    # Task 2.2): un oggetto della casa suo, tenuto come le plance.
+    def hold_energy(self, roles: list[dict] | None) -> None:
+        """Prende in consegna i ruoli appena letti (`energy.declared_roles`);
+        `None` e' una casa che una dashboard Energia non l'ha (`not_found`):
+        «nessuna dashboard dichiarata», che non e' «non l'ho letta»."""
+        self._energy = {"ruoli": list(roles or []), "dichiarata": roles is not None,
+                        "letta_alle": datetime.now(UTC).isoformat(timespec="seconds")}
+        self._energy_current = True
+
+    def energy(self) -> dict | None:
+        """L'ultima dashboard tenuta, o `None` se nessuna lettura e' riuscita."""
+        return self._energy
+
+    def energy_current(self) -> bool:
+        """Se la dashboard tenuta e' stata letta in questo giro dell'anagrafe."""
+        return self._energy_current
 
     def close(self) -> None:
         """Non c'e' niente da chiudere: l'anagrafe, il comportamento e le

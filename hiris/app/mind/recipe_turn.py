@@ -221,7 +221,8 @@ def _operations_catalogue() -> str:
 
 
 def build_device_question(objective: str, home_space: dict, device_id: str,
-                          *, with_series: set[str] | None = None) -> str | None:
+                          *, with_series: set[str] | None = None,
+                          energy: dict | None = None) -> str | None:
     """La domanda intera per un dispositivo, o `None` se non c'e' da chiedere.
 
     `None` quando il dispositivo non ha entita': non ci sarebbe niente da
@@ -245,6 +246,9 @@ def build_device_question(objective: str, home_space: dict, device_id: str,
     `None` -- e non l'insieme vuoto -- vuol dire «non l'abbiamo potuto
     chiedere»: allora non si dice niente, invece di affermare che nessuna
     entita' ha una serie.
+
+    **`energy` e' la dashboard Energia** (`home_space.energy.energy_dashboard`),
+    citata a parte con la stessa regola (`_energy_block`).
     """
     lines = device_lines(home_space, device_id)
     if not lines:
@@ -257,6 +261,7 @@ def build_device_question(objective: str, home_space: dict, device_id: str,
         "(i campi che mancano sono assenti, non vuoti).\n\n"
         + "\n".join(lines)
         + _series_block(home_space, device_id, with_series)
+        + _energy_block(home_space, device_id, energy)
         + "\n\nLe operazioni che sai chiedere sono queste, e nessun'altra:\n\n"
         + _operations_catalogue()
         + "\n" + ANSWER_CONTRACT
@@ -289,6 +294,38 @@ def _series_block(home_space: dict, device_id: str,
                      "rispondi con `steps: []` e scrivi nel `why` che non c'e' "
                      "niente da misurare: e' una risposta giusta, non una resa.")
     return "\n".join(parts)
+
+
+def _energy_block(home_space: dict, device_id: str, energy: dict | None) -> str:
+    """I ruoli che la dashboard Energia dichiara per le entita' di QUESTO
+    dispositivo (piano degli attori, Task 2.3, Passi 1a e 2; D6).
+
+    A parte dalle righe delle entita', come `_series_block`, e per la stessa
+    ragione. Solo le entita' del dispositivo: la ricetta non puo' nominarne
+    altre (`ANSWER_CONTRACT`). Vuoto quando la dashboard non e' stata letta o
+    non nomina niente di questo dispositivo: la domanda resta quella di prima.
+    Nessuna formula scritta qui: il modello sceglie i passi, il codice calcola.
+    """
+    if not energy:
+        return ""
+    ids = {e.get("id") for e in _device_entities(home_space, device_id)}
+    mine = [r for r in energy.get("ruoli") or [] if r.get("entita") in ids]
+    if not mine:
+        return ""
+    lines = ["\n\nLa dashboard Energia di Home Assistant dichiara:"]
+    for role in mine:
+        line = f"- {role['entita']}: {role['ruolo']}"
+        if role.get("nome"):
+            line += f" ({role['nome']})"
+        if role.get("unita"):
+            line += f" [{role['unita']}]"
+        if role.get("compreso_in"):
+            line += f", compreso in {role['compreso_in']}"
+        lines.append(line)
+    lines.append("Questi ruoli li ha dichiarati il proprietario in Home Assistant, "
+                 "e valgono piu' del nome dell'entita': se il nome dice altro, "
+                 "vale il ruolo.")
+    return "\n".join(lines)
 
 
 def read_recipe(answer: str) -> tuple[dict | None, str | None]:
@@ -581,7 +618,8 @@ def recipe_for(store, device_id: str) -> dict | None:
 
 
 def bridge_turn(objective: str, home_space: dict, device_id: str,
-                *, with_series: set[str] | None = None) -> dict | None:
+                *, with_series: set[str] | None = None,
+                energy: dict | None = None) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere.
 
     Stessa forma di `observer.bridge_turn`, e per le stesse ragioni: il ponte
@@ -589,7 +627,7 @@ def bridge_turn(objective: str, home_space: dict, device_id: str,
     l'istruzione di chiusura della chat gli vieta il JSON che qui si chiede.
     """
     question = build_device_question(objective, home_space, device_id,
-                                     with_series=with_series)
+                                     with_series=with_series, energy=energy)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],
@@ -601,6 +639,7 @@ async def ask(runner, store, home_space: dict, device_id: str, *,
               objective: str, who: str, when_ts: float,
               model: str = "auto",
               with_series: set[str] | None = None,
+              energy: dict | None = None,
               measurements=None, species: str = "ricette") -> dict:
     """Un giro intero sulla catena: mostra il dispositivo, chiede, applica.
 
@@ -609,7 +648,7 @@ async def ask(runner, store, home_space: dict, device_id: str, *,
     questa funzione non viene chiamata affatto.
     """
     question = build_device_question(objective, home_space, device_id,
-                                     with_series=with_series)
+                                     with_series=with_series, energy=energy)
     if question is None:
         return {"scritta": False, "problemi": ["il dispositivo non ha entita'"]}
     try:
