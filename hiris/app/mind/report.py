@@ -82,7 +82,7 @@ _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts")
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
                  names: dict, objective: dict | None = None,
-                 without_statistics: set[str] | None = None,
+                 silent: dict[str, str] | None = None,
                  judgment: dict | None = None) -> dict:
     """Il resoconto di un giorno: `{giorno, obiettivo, misure, forme, cronaca,
     giudizio}`.
@@ -106,10 +106,11 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     la stessa legge gia' pagata da `friendly_name` e dall'ancora della
     cronaca.
 
-    **`without_statistics`** porta le entita' per cui Home Assistant non tiene
-    statistiche affatto (spec §6, primo «rifiuta se»): le loro misure escono
-    «non calcolabile» dicendo QUELLO, invece di «la serie e' vuota». `None`
-    vuol dire «non l'abbiamo potuto chiedere», e allora non si afferma niente.
+    **`silent`** porta le entita' che non daranno una serie, ognuna col suo
+    perche' (spec §6, primo «rifiuta se»; `recipes.silent_entities`,
+    `recipes.unread_series_reason`): le loro misure escono «non calcolabile»
+    dicendo QUELLO, invece di «la serie e' vuota». `None` vuol dire «non
+    l'abbiamo potuto chiedere», e allora non si afferma niente.
 
     **`judgment` e' l'impronta dei giudizi con cui e' nata la cronaca**
     (`{"impronta": ...}`, spec `docs/design/2026-09-16-il-giudizio-dei-tipi.md`
@@ -117,15 +118,14 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     `facts.rebuild_chronicle`. Come `objective`, `None` resta `None`: nessuna
     impronta inventata per una cronaca che non dice con quale giudizio e' nata.
     """
-    measured, shapes = _measurements(series, recipes, names,
-                                     without_statistics)
+    measured, shapes = _measurements(series, recipes, names, silent)
     return {"giorno": day, "obiettivo": objective, "misure": measured,
             "forme": shapes, "cronaca": [_entry(e) for e in episodes or []],
             "giudizio": judgment}
 
 
 def _measurements(series: dict, recipes: dict, names: dict,
-                  without_statistics: set[str] | None = None
+                  silent: dict[str, str] | None = None
                   ) -> tuple[list[dict], list[dict]]:
     """Le misure e le **forme**, separate: `(misure, forme)`.
 
@@ -161,8 +161,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
             base["nome"] = names[subject]
         needed = {e: series.get(e) or [] for e in recipe.entities()}
         try:
-            outcomes = recipe.run(series=needed,
-                                  without_statistics=without_statistics)
+            outcomes = recipe.run(series=needed, silent=silent)
         except ValueError as error:
             # **Una ricetta storta non fa perdere il giorno intero.** Puo'
             # essere stata corretta male a mano, o scritta da un modello che ha

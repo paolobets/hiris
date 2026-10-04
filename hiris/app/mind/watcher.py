@@ -17,6 +17,7 @@ import time
 
 from ..home_space.ha_vocabulary import (
     config_entry_is_healthy,
+    config_entry_is_ignored,
     domain_of,
     has_statistics,
     is_entity_id,
@@ -55,12 +56,9 @@ _SYSTEM_REASON = "una condizione di sistema aperta si guarda finche' dura"
 # giusto (un guasto che non c'era smette di essere aperto), ma resta un evento
 # scritto nell'archivio, e chi legge la storia di quel giorno deve saperlo.
 
-# `source: "ignore"` e' una DECISIONE del proprietario, non un guasto: Home
-# Assistant lo scrive quando qualcuno usa «ignora» sulla scoperta di
-# un'integrazione, e quella voce non si caricherà più per scelta sua
-# (developers.home-assistant.io/docs/config_entries_config_flow_handler/).
-# Si scarta in qualunque stato, come nel nucleo.
-_IGNORED_INTEGRATION_SOURCE = "ignore"
+# `source: "ignore"` e' una DECISIONE del proprietario, non un guasto: si
+# scarta in qualunque stato, come nel nucleo. La domanda vive in
+# `ha_vocabulary.config_entry_is_ignored` (B-14; Tappa 3, Task 8, 04/10/2026).
 
 # Quanti giri consecutivi una condizione deve mancare prima di dirla finita.
 #
@@ -701,7 +699,7 @@ class Watcher:
 
         Le condizioni che non sono un guasto (`config_entry_is_healthy`) e le
         voci che il proprietario ha scelto di ignorare
-        (`_IGNORED_INTEGRATION_SOURCE`) non contano: vedi i commenti accanto
+        (`config_entry_is_ignored`) non contano: vedi i commenti accanto
         alla funzione e alla costante.
 
         **`open_now` porta la condizione vera, non solo il soggetto.** Prima
@@ -790,7 +788,7 @@ class Watcher:
                 continue
             if config_entry_is_healthy(state):
                 continue
-            if str(i.get("source") or "").strip() == _IGNORED_INTEGRATION_SOURCE:
+            if config_entry_is_ignored(i.get("source")):
                 continue
             ident = str(i.get("entry_id") or "").strip()
             if ident:

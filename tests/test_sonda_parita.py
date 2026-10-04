@@ -10,6 +10,15 @@ e le ricette chiedono alla casa chi guardare, il nome e il posto, e non c'e'
 piu' una seconda copia da confrontare. Le sorveglia
 `tests/test_attori_compongono.py`.
 
+`valore` e le sue prove sono uscite col Task 8 della Tappa 3 (04/10/2026,
+B-08): il nucleo chiede al vocabolario, e non c'e' piu' una seconda copia.
+
+Col Task 8 le porte di `fonte` dicono la causa da `House.source`, e sulla
+casa sintetica non discordano piu'. Le prove qui sotto producono a comando lo
+stato difettoso di prima (la verifica senza la casa, il motivo unico delle
+ricette, una casa che dice «viva» di tutto) e verificano che la domanda lo
+veda: e' cio' che le tiene discriminanti.
+
 Le due domande della Tappa 3 (`fuori_con_causa`, `fonte`), mutazioni ESEGUITE
 il 03/10/2026 e ripristinate (`git status` pulito; `fuori_con_causa` e le sue
 prove sono uscite col Task 5, quando le sei copie sono diventate una):
@@ -55,18 +64,19 @@ def test_ogni_domanda_gira_e_dichiara_le_copie_che_ha_chiamato(result):
 def test_un_peggioramento_supera_l_atteso_e_un_miglioramento_no(result):
     expected = {name: verdict["disaccordi"] for name, verdict in result.items()}
     assert sonda_parita.worse_than_expected(result, expected) == []
-    stricter = dict(expected, valore=expected["valore"] - 1)
+    stricter = dict(expected, riferimenti=expected["riferimenti"] - 1)
     assert sonda_parita.worse_than_expected(result, stricter) == [
-        f"valore: {expected['valore']} disaccordi, attesi al massimo {expected['valore'] - 1}"]
-    looser = dict(expected, valore=expected["valore"] + 5)
+        (f"riferimenti: {expected['riferimenti']} disaccordi, attesi al massimo "
+         f"{expected['riferimenti'] - 1}")]
+    looser = dict(expected, riferimenti=expected["riferimenti"] + 5)
     assert sonda_parita.worse_than_expected(result, looser) == []
 
 
 def test_una_domanda_senza_atteso_ferma_il_cancello(result):
     expected = {name: verdict["disaccordi"] for name, verdict in result.items()}
-    del expected["valore"]
+    del expected["oggi"]
     assert sonda_parita.worse_than_expected(result, expected) == [
-        "valore: nessun atteso scritto"]
+        "oggi: nessun atteso scritto"]
 
 
 def test_una_domanda_che_solleva_non_ferma_le_altre_e_si_dichiara(monkeypatch):
@@ -79,16 +89,10 @@ def test_una_domanda_che_solleva_non_ferma_le_altre_e_si_dichiara(monkeypatch):
     outcome = sonda_parita.run(sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
     assert outcome["riferimenti"]["disaccordi"] is None
     assert "copia sparita" in outcome["riferimenti"]["errore"]
-    assert outcome["valore"]["disaccordi"] == 1
+    assert outcome["fonte"]["disaccordi"] == 0
     complaints = sonda_parita.worse_than_expected(outcome, {"riferimenti": 0})
     assert [line for line in complaints if line.startswith("riferimenti:")] == [
         "riferimenti: non eseguita (RuntimeError: copia sparita)"]
-
-
-def test_il_valore_si_chiede_alla_copia_vera_del_nucleo(result):
-    # `binary_sensor.porta_uno` e' `unavailable`: il nucleo lo legge come un
-    # valore, il vocabolario no.
-    assert [case["id"] for case in result["valore"]["casi"]] == ["binary_sensor.porta_uno"]
 
 
 # ── le due domande della Tappa 3 (piano, Task 1) ────────────────────────────
@@ -103,24 +107,51 @@ def _with_universal_domain(inputs: dict) -> dict:
     return inputs
 
 
-def test_la_fonte_vede_il_motivo_delle_ricette_che_da_la_colpa_sbagliata(result):
-    """`sensor.sensore_d_spento` e' disabilitata e negli stati non c'e': il
-    motivo delle ricette dice che le manca uno `state_class`."""
+def test_la_fonte_sulla_casa_sintetica_non_discorda(result):
+    """Dal Task 8 le tre porte e la casa dicono la stessa causa."""
     verdict = result["fonte"]
-    assert [(case["id"], case["porta"]) for case in verdict["casi"]] == [
-        ("sensor.sensore_d_spento", "ricette")]
-    assert verdict["casi"][0]["fatti"]["disabled_by"] == "user"
+    assert verdict["disaccordi"] == 0, verdict["casi"]
     assert verdict["chieste"]["digesto"] == 12
+    assert verdict["chieste"]["casa"] >= 12
+    # Col dominio universale la verifica si chiede anche sui `sensor`, e la
+    # disabilitata della casa sintetica arriva davvero alla porta.
+    universal = sonda_parita.source(sonda_parita.build_inputs(
+        _with_universal_domain(synthetic_inputs()), clock=CLOCK))
+    assert universal["disaccordi"] == 0, universal["casi"]
 
 
-def test_la_fonte_vede_la_verifica_che_nega_un_entita_disabilitata():
-    """Il trovato 2 del piano (S-27): l'anagrafe conosce l'entita', la
-    verifica del comando dice che non esiste."""
+def test_la_fonte_vede_il_motivo_delle_ricette_che_da_la_colpa_sbagliata(monkeypatch):
+    """Lo stato di prima, prodotto a comando: un motivo solo per tutte, che
+    incolpa lo `state_class` anche di una disabilitata
+    (`sensor.sensore_d_spento`)."""
+    monkeypatch.setattr(sonda_parita, "silent_entities", lambda house, keys: {
+        key: f"{key} {sonda_parita.BLAMES_STATE_CLASS}" for key in keys})
+    verdict = sonda_parita.source(sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
+    blamed = [case for case in verdict["casi"] if case["porta"] == "ricette"]
+    assert "sensor.sensore_d_spento" in {case["id"] for case in blamed}
+    spenta = next(case for case in blamed if case["id"] == "sensor.sensore_d_spento")
+    assert spenta["fatti"]["disabled_by"] == "user"
+
+
+def test_la_fonte_vede_la_verifica_che_nega_un_entita_disabilitata(monkeypatch):
+    """Il trovato 2 del piano (S-27), prodotto a comando: la verifica senza la
+    casa dice «non esiste» di un'entita' che l'anagrafe conosce."""
+    real = sonda_parita.verification
+    monkeypatch.setattr(sonda_parita, "verification",
+                        lambda call, registry, states, **_kw: real(call, registry, states))
     outcome = sonda_parita.source(sonda_parita.build_inputs(
         _with_universal_domain(synthetic_inputs()), clock=CLOCK))
     denied = [case for case in outcome["casi"] if case["porta"] == "verification"]
     assert [case["id"] for case in denied] == ["sensor.sensore_d_spento"]
     assert outcome["non_interrogabili_dalla_verifica"] == 0
+
+
+def test_la_fonte_vede_una_casa_che_dice_viva_di_una_disabilitata(monkeypatch):
+    monkeypatch.setattr(sonda_parita.House, "source",
+                        lambda self, key: {"stato": "viva"})
+    outcome = sonda_parita.source(sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
+    assert "sensor.sensore_d_spento" in {case["id"] for case in outcome["casi"]
+                                         if case["porta"] == "casa"}
 
 
 def test_la_fonte_vede_il_digesto_che_tiene_dentro_un_entita_sparita():
@@ -132,14 +163,14 @@ def test_la_fonte_vede_il_digesto_che_tiene_dentro_un_entita_sparita():
             if case["porta"] == "digesto"] == [("light.luce_uno", "digesto")]
 
 
-def test_la_fonte_vede_il_motivo_falso_su_un_sensore_che_dichiara_lo_state_class():
-    """Fuori da `statistic_ids` ma con `state_class: measurement`: «le tiene
-    solo per le entita' che dichiarano uno `state_class`» e' falso."""
+def test_un_sensore_che_dichiara_lo_state_class_non_e_incolpato():
+    """Fuori da `statistic_ids` ma con `state_class: measurement`: fino al
+    04/10/2026 il motivo diceva che le tiene «solo per le entita' che
+    dichiarano uno `state_class`», ed era falso. Ora no."""
     inputs = synthetic_inputs()
     inputs["statistic_ids"].remove("sensor.sensore_b_segnale")
     outcome = sonda_parita.source(sonda_parita.build_inputs(inputs, clock=CLOCK))
-    assert "sensor.sensore_b_segnale" in {case["id"] for case in outcome["casi"]
-                                          if case["porta"] == "ricette"}
+    assert "sensor.sensore_b_segnale" not in {case["id"] for case in outcome["casi"]}
 
 
 def test_la_fonte_senza_servizi_non_finge_di_aver_chiesto():

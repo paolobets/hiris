@@ -123,14 +123,17 @@ OWNERS = {
 }
 
 #: Il tetto delle eccezioni: la somma dei conti di `fonte_unica_eccezioni.json`
-#: (10) piu' i secondi chiamanti ammessi da `SHARED_READS` (7). Si ABBASSA
+#: (6) piu' i secondi chiamanti ammessi da `SHARED_READS` (7). Si ABBASSA
 #: quando una copia esce, nello stesso commit. Alzarlo e' una riga di diff che
 #: una revisione vede -- ed e' il punto. Era 64 prima di R1 stretto: i 30 conti
 #: delle letture del client sono usciti dall'elenco, e chi chiama cosa sta ora
 #: in `READ_OWNERS` e `SHARED_READS`. Era 41 prima della Tappa 3, Task 5: le
 #: 24 copie della regola del fuori (B-01, B-02) chiedono ora a
-#: `topology.visibility`.
-CEILING = 17
+#: `topology.visibility`. Era 17 prima della Tappa 3, Task 8: i sei letterali
+#: di stato di B-07, B-08, B-09 chiedono ora al vocabolario, ed e' entrato il
+#: campo omonimo dell'istanza (`disabilitata_da`, due letture in `house.py`,
+#: dichiarate nell'elenco con la ragione).
+CEILING = 13
 
 #: Le letture del client che il cancello NON puo' attribuire, perche' il nome
 #: e' anche di un'altra funzione del prodotto. Lista di AMMISSIONE: una voce

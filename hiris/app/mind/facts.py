@@ -524,7 +524,7 @@ def build_episodes(*, store, day: str, timezone: str | None,
 
 def aggregate_day(*, store, day: str, timezone: str | None,
                   recipes=None, series=None, names=None,
-                  without_statistics=None,
+                  silent=None,
                   judgments: TypeJudgments = REPO_JUDGMENTS) -> int:
     """Scrive il resoconto di un giorno. Torna quante voci di cronaca porta.
 
@@ -533,9 +533,10 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     l'istantanea `judgments`; le misure arrivano gia' lette dal chiamante --
     `recipes` (le ricette dal sapere), `series` (le serie delle entita' che le
     ricette nominano), `names` (i nomi dei DISPOSITIVI, per chiave l'id) e
-    `without_statistics` -- e si incontrano in `report.build_report`, che e'
-    pura. L'obiettivo e' quello che valeva alla fine di QUEL giorno
-    (`store.objective_at`), non quello di oggi.
+    `silent` (le entita' che non daranno una serie, col perche') -- e si
+    incontrano in `report.build_report`, che e' pura. L'obiettivo e' quello
+    che valeva alla fine di QUEL giorno (`store.objective_at`), non quello di
+    oggi.
 
     **Sincrona, nessuna lettura di rete**: tutto cio' che viene da Home
     Assistant l'ha gia' letto il chiamante (`server.py::_report_ingredients`).
@@ -575,7 +576,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     store.replace_report(day, build_report(
         day=day, episodes=episodes, series=series or {},
         recipes=recipes or {}, names=names or {},
-        without_statistics=without_statistics,
+        silent=silent,
         objective=store.objective_at(to_ts),
         judgment={"impronta": judgments.chronicle_fingerprint()}))
     # **Torna quante voci di cronaca ha scritto.** Prima tornava quanti

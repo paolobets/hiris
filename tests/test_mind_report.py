@@ -103,7 +103,8 @@ def test_il_resoconto_dice_quali_entita_NON_AVRANNO_MAI_una_serie():
     """
     r = rep.build_report(day="2026-09-13", episodes=[], series=SERIE,
                          recipes={"dev1": RICETTA}, names={},
-                         without_statistics={"sensor.prodotta"})
+                         silent={"sensor.prodotta":
+                                 "sensor.prodotta non ha statistiche in Home Assistant"})
 
     prodotta = next(m for m in r["misure"] if m["misura"] == "prodotta")
     assert "valore" not in prodotta
@@ -123,7 +124,7 @@ def test_senza_l_insieme_il_resoconto_non_afferma_niente_sulle_statistiche():
     non muta nessuna entita' -- e scriverlo come «la mutazione» sarebbe
     nominare un colpo che non arriva.
 
-    Mutazione ESEGUITA: `mute = set(series) if without_statistics is None` --
+    Mutazione ESEGUITA: `mute = set(series) if without_statistics is None` (oggi `silent`) --
     cioe' l'assenza letta come «nessuna entita' ha statistiche» -- **rossa**,
     ed e' il verso che romperebbe la casa: ogni misura rifiuterebbe.
     """

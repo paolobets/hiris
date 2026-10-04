@@ -29,6 +29,11 @@ regola per non rompersi confronterebbe il prodotto con se stesso di ieri.
 - **`Lookup.find`** come motore di ricerca per nome: nessun chiamante di
   produzione (M-08), esce con la Tappa 0.
 
+`valore` confrontava `briefing._unreliable_state` col vocabolario
+(`unknown_states`): e' uscita col Task 8 della Tappa 3 (04/10/2026, B-08),
+quando il nucleo ha smesso di contare il solo `unknown` (e in minuscolo) e
+chiede al vocabolario. Sui congelati del 03/10 contava 145; dopo, 0.
+
 ## Le domande della Tappa 3
 
 Entrate prima del codice che le chiude (piano della Tappa 3, Task 1):
@@ -90,20 +95,20 @@ from hiris.app.home_space import (
     queries,
     reader,
     topology,
-    type_vocabulary,
 )
 from hiris.app.home_space.house import House
-from hiris.app.mind.recipes import ENTITY_MARK, Recipe
+from hiris.app.mind.recipes import ENTITY_MARK, Recipe, silent_entities
 from hiris.app.proxy.entity_cache import _to_minimal
 
-#: Le parole con cui due porte dicono oggi la causa di una fonte muta. **Sono
-#: copie, dichiarate**: la causa vive solo nel testo (e' il difetto che la
-#: Tappa 3, Task 8, toglie dandole un campo). Se il testo cambia, `fonte` non
-#: vede piu' la pretesa e conta zero: chi cambia quel testo rilegge la domanda.
-#: `verification` nega l'esistenza dell'entita'; il motivo delle ricette da' la
-#: colpa al `state_class` che manca.
+#: Le parole con cui due porte dicono la causa di una fonte muta. **Sono
+#: copie, dichiarate**: la causa la porta `House.source`, ma alle porte arriva
+#: come testo. Se il testo cambia, `fonte` non vede piu' la pretesa e conta
+#: zero: chi cambia quel testo rilegge la domanda (riletta il 04/10/2026, Tappa
+#: 3, Task 8: `verification` nega l'esistenza solo di cio' che la casa non
+#: conosce; il motivo delle ricette incolpa lo `state_class` con questa frase,
+#: in `recipes.silence_reason`).
 DENIES_EXISTENCE = "non esiste"
-BLAMES_STATE_CLASS = "state_class"
+BLAMES_STATE_CLASS = "non dichiara uno `state_class`"
 CASES_KEPT = 40
 
 
@@ -146,6 +151,12 @@ class _Services:
         return self._services
 
 
+def _house(inputs: dict) -> House:
+    """La casa del prodotto sugli ingressi, con l'elenco delle statistiche."""
+    return House(inputs["home_space"], inputs["mirror"],
+                 statistic_ids=inputs["statistic_ids"])
+
+
 def _verifier(inputs: dict):
     """La verifica di una chiamata (`action/verification.py`) su un'entita'
     sola, col registro dei servizi riempito dalla sua funzione vera. Il
@@ -160,6 +171,8 @@ def _verifier(inputs: dict):
     if failure is not None or not registry.domains():
         raise ValueError(f"fonte: il registro dei servizi non si e' riempito ({failure})")
     states = {row["id"]: row for row in inputs["rows"]}
+    # La causa dalla casa, come la passa la porta (`ActionActuator`, D8).
+    source = _house(inputs).source
 
     def verify(key: str):
         for domain in ("homeassistant", ha_vocabulary.domain_of(key)):
@@ -167,18 +180,21 @@ def _verifier(inputs: dict):
             if names:
                 call = {"servizio": f"{domain}.{min(names)}",
                         "bersaglio": {"entita": [key]}}
-                return verification(call, registry, states)
+                return verification(call, registry, states, source=source)
         return None
     return verify
 
 
-def _recipe_reason(key: str) -> str:
+def _recipe_reason(house: House, key: str) -> str:
     """Il motivo che una ricetta da' per un'entita' fuori da `statistic_ids`:
-    una ricetta di un passo, eseguita con la funzione vera."""
+    una ricetta di un passo, eseguita con la funzione vera, col perche' che
+    il resoconto le passa (`recipes.silent_entities`, come
+    `server._report_ingredients`)."""
     recipe = Recipe({"why": "sonda", "steps": [
         {"name": "misura", "operation": "somma_periodo",
          "inputs": [f"{ENTITY_MARK}{key}"], "params": {"unit": "h"}}]})
-    return recipe.run(series={key: []}, without_statistics={key})["misura"].reason
+    return recipe.run(series={key: []},
+                      silent=silent_entities(house, [key]))["misura"].reason
 
 
 def source(inputs: dict) -> dict:
@@ -198,8 +214,13 @@ def source(inputs: dict) -> dict:
       quando incolpa il `state_class`, e' falso per un'entita' che lo
       dichiara, che e' disabilitata o che negli stati non c'e' (B-26, X-12).
 
+    - **la casa** (`House.source`, Tappa 3, Task 8): quando dice «viva»,
+      «non disponibile» o «senza valore» di un'entita' disabilitata nel
+      registro, o non dice «spenta» di una che lo e', o dice «sparita» di
+      una che negli stati c'e'.
+
     Le entita' che stanno negli stati e non nel registro si chiedono alla
-    verifica e alle ricette; il digesto non le conosce.
+    verifica, alle ricette e alla casa; il digesto non le conosce.
     """
     registry_rows = {row["entity_id"]: row for row in inputs["registries"]["entita"]
                      if row.get("entity_id")}
@@ -207,8 +228,9 @@ def source(inputs: dict) -> dict:
     statistic = inputs["statistic_ids"]
     visible = briefing.digest_visible_entity_ids(inputs["home_space"])
     verify = _verifier(inputs)
+    house = _house(inputs)
     cases = []
-    asked = {"digesto": 0, "verification": 0, "ricette": 0}
+    asked = {"digesto": 0, "verification": 0, "ricette": 0, "casa": 0}
     not_askable = 0
     for key in sorted(set(registry_rows) | set(states)):
         row, live = registry_rows.get(key), states.get(key)
@@ -223,6 +245,17 @@ def source(inputs: dict) -> dict:
             if key in visible and silent_for_other_reasons:
                 cases.append({"id": key, "porta": "digesto", "dice": "dentro",
                               "fatti": facts})
+        asked["casa"] += 1
+        said = (house.source(key) or {}).get("stato")
+        switched_off = str(said or "").startswith("spenta_")
+        if facts["disabled_by"]:
+            wrong = not switched_off
+        elif facts["negli_stati"]:
+            wrong = switched_off or said == "sparita"
+        else:
+            wrong = said not in ("sparita", "integrazione_ferma")
+        if wrong:
+            cases.append({"id": key, "porta": "casa", "dice": said, "fatti": facts})
         verdict = verify(key)
         if verdict is None:
             not_askable += 1
@@ -234,46 +267,17 @@ def source(inputs: dict) -> dict:
                               "dice": verdict.reason, "fatti": facts})
         if not facts["statistiche"]:
             asked["ricette"] += 1
-            reason = _recipe_reason(key)
+            reason = _recipe_reason(house, key)
             if BLAMES_STATE_CLASS in reason and (facts["state_class"]
                                                  or silent_for_other_reasons):
                 cases.append({"id": key, "porta": "ricette", "dice": reason,
                               "fatti": facts})
     return _verdict(cases, ["briefing.digest_visible_entity_ids",
-                            "verification.verification", "Recipe.run"],
+                            "verification.verification", "Recipe.run",
+                            "House.source"],
                     {"chieste": asked, "non_interrogabili_dalla_verifica": not_askable,
                      "per_porta": {port: sum(1 for case in cases if case["porta"] == port)
                                    for port in asked}})
-
-
-def values(inputs: dict) -> dict:
-    """«E' un valore?» -- le entita' che `briefing._unreliable_state` legge
-    come valore e il vocabolario (`unknown_states`) come non-valore.
-
-    La copia del nucleo non e' chiamabile per una entita' sola: risponde per
-    la casa intera («non ho letto niente»). La si chiama quindi su una casa
-    di UNA entita' -- la funzione vera, non la sua riga riscritta qui: una
-    prima versione ricopiava il confronto col letterale, e avrebbe continuato
-    a dire 287 anche dopo che il prodotto fosse stato corretto.
-
-    Divergenza di REGOLA: sull'esito della funzione pesa solo quando ogni
-    entita' e' in quello stato (dopo la caduta di tutte le integrazioni).
-    """
-    home_space, state = inputs["home_space"], inputs["mirror"].state
-    unknown = type_vocabulary.unknown_states()
-    cases = []
-    for entity in home_space["entita"]:
-        current = state.get(entity["id"])
-        if entity.get("disabilitata") or current is None:
-            continue
-        alone = {**home_space, "entita": [entity]}
-        read_by_briefing = not briefing._unreliable_state(
-            alone, {entity["id"]: current}, True, ())
-        read_by_vocabulary = current not in unknown
-        if read_by_briefing != read_by_vocabulary:
-            cases.append({"id": entity["id"], "stato": current})
-    return _verdict(cases, ["type_vocabulary.unknown_states", "briefing._unreliable_state"],
-                    {"esito_sulla_casa": briefing._unreliable_state(home_space, state, True, ())})
 
 
 def _selected(inputs: dict, **filters) -> set[str]:
@@ -362,8 +366,7 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
 
 #: Le domande, per nome. E' un elenco di AMMISSIONE: una domanda esce di qui
 #: quando la sua copia e' cancellata, nello stesso commit.
-QUESTIONS = {"valore": values,
-             "riferimenti": references, "oggi": today, "fonte": source}
+QUESTIONS = {"riferimenti": references, "oggi": today, "fonte": source}
 
 
 def run(inputs: dict) -> dict[str, dict]:

@@ -127,7 +127,7 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
         "entita_temperatura", "entita_umidita"}
     assert set(anagrafe["dispositivi"][0]) == {
         "id", "nome", "produttore", "modello", "area_id",
-        "disabilitato", "etichette"}
+        "disabilitato", "disabilitato_da", "etichette"}
     assert set(anagrafe["entita"][0]) == {
         "id", "nome", "translation_key", "unique_id", "original_name",
         "area_id", "dispositivo_id", "piattaforma", "config_entry_id",
@@ -136,7 +136,8 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
     assert set(anagrafe["etichette"][0]) == {"id", "nome"}
     assert set(anagrafe["categorie"][0]) == {"id", "nome", "ambito"}
     assert set(anagrafe["integrazioni"][0]) == {
-        "entry_id", "dominio", "titolo", "stato", "motivo", "origine"}
+        "entry_id", "dominio", "titolo", "stato", "motivo", "origine",
+        "disabilitata_da"}
 
 
 def test_cio_che_home_assistant_dichiara_non_si_butta():

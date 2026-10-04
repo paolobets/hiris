@@ -298,12 +298,12 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # cinque intervalli, compreso `_not_seen` con ENTRAMBI i suoi rami --
     # il cancello arrossisce in 5 casi su 5.
     "action/actuator.py": (
-        (137, 139),    # _BLIND_MIRROR
-        (150, 153),    # _NO_TARGET_RESOLVER
-        (193, 205),    # _not_seen -- entrambi i rami, listened=False e =True
-        (227, 231),    # _CHANGED_NOT_SHOWABLE
-        (242, 244),    # _NO_STATE_TO_REREAD
-        (557, 559),    # _open_listen: l'annuncio di ascolto assente
+        (138, 140),    # _BLIND_MIRROR
+        (151, 154),    # _NO_TARGET_RESOLVER
+        (194, 206),    # _not_seen -- entrambi i rami, listened=False e =True
+        (228, 232),    # _CHANGED_NOT_SHOWABLE
+        (243, 245),    # _NO_STATE_TO_REREAD
+        (577, 579),    # _open_listen: l'annuncio di ascolto assente
     ),
 }
 

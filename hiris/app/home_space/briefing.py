@@ -42,6 +42,7 @@ from datetime import UTC, datetime
 from ..proxy.entity_cache import CAPABILITIES
 from .ha_vocabulary import (
     config_entry_is_broken,
+    config_entry_is_ignored,
     domain_of,
     house_is_newer_than_vocabulary,
 )
@@ -56,6 +57,7 @@ from .topology import (
     name_with_id,
     visibility,
 )
+from .type_vocabulary import unknown_states
 
 # **Perche' questa tabella e' rimasta qui mentre le altre traslocavano**
 # (08/09/2026). I nomi sono vocabolario di un tipo, e la loro casa naturale e'
@@ -547,9 +549,10 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
       di notevole", contraddette due sezioni dopo dall'avviso sul registro
       caduto;
     - lo si deduce: se in anagrafe ci sono entita' ma NESSUNA ha uno stato
-      leggibile (assente da `state`, o "unknown" -- lo stato comunissimo di
-      un'entita' subito dopo un riavvio di Home Assistant, prima che il
-      primo aggiornamento arrivi), il nucleo non ha visto una casa tranquilla:
+      leggibile (assente da `state`, o uno dei due «non lo so» del
+      vocabolario: `unknown` -- lo stato comunissimo di un'entita' subito
+      dopo un riavvio di Home Assistant, prima che il primo aggiornamento
+      arrivi -- o `unavailable`), il nucleo non ha visto una casa tranquilla:
       non ha visto niente.
 
     Una casa senza entita' non ci finisce: li' "niente di notevole" e'
@@ -564,9 +567,17 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
                        if visibility(e)[0] != "disabilitata"]
     if not active_entities:
         return False
+    # «Leggibile» = non uno dei due «non lo so» del vocabolario (B-08; Tappa 3,
+    # Task 8, 04/10/2026). Fino a quel giorno qui contava solo `unknown`, e
+    # una casa tutta `unavailable` -- ogni integrazione caduta -- si
+    # dichiarava «guardata e tranquilla». Sulla casa l'esito non cambia. Il
+    # confronto e' esatto, come lo fa il vocabolario: Home Assistant scrive i
+    # due stati in minuscolo (`homeassistant/const.py`), e un sensore di testo
+    # che dice «Unknown» sta dicendo un valore (uno sui congelati del 03/10).
+    unread = unknown_states()
     for e in active_entities:
         value = state.get(e["id"])
-        if value is not None and str(value).lower() != "unknown":
+        if value is not None and str(value) not in unread:
             return False
     return True
 
@@ -868,7 +879,8 @@ def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
 # deciso di spegnere. Si scartano in QUALUNQUE stato, non solo in
 # `not_loaded`: una voce ignorata che finisse in `setup_error` resterebbe
 # comunque una cosa che il proprietario ha chiesto di non sentire piu'.
-_IGNORED_INTEGRATION_SOURCE = "ignore"
+# La costante e la domanda vivono in `ha_vocabulary.config_entry_is_ignored`
+# (B-14; Tappa 3, Task 8, 04/10/2026), la stessa che usa l'osservatore.
 
 
 def _integrations_notice(integrations: list[dict]) -> str | None:
@@ -894,11 +906,11 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
     **Due filtri, non uno, e sono domande diverse.** Lo STATO dice se
     l'integrazione e' rotta; l'ORIGINE dice se il proprietario ha chiesto di
     non sentirne piu' parlare. Una voce ignorata si scarta anche se lo stato
-    la direbbe rotta -- vedi `_IGNORED_INTEGRATION_SOURCE`.
+    la direbbe rotta -- vedi `ha_vocabulary.config_entry_is_ignored`.
     """
     broken = [i for i in integrations or []
              if config_entry_is_broken(i.get("stato"))
-             and (i.get("origine") or "") != _IGNORED_INTEGRATION_SOURCE]
+             and not config_entry_is_ignored(i.get("origine"))]
     if not broken:
         return None
     # Una voce per NOME+STATO+MOTIVO, non una per config entry.

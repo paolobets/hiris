@@ -573,6 +573,78 @@ def config_entry_is_healthy(state: str | None) -> bool:
     return (state or "") in CONFIG_ENTRY_STATES - CONFIG_ENTRY_FAILURE_STATES
 
 
+#: La condizione di un'istanza caricata: l'unica in cui le sue entita' sono
+#: state aggiunte alla macchina degli stati (`ConfigEntryState.LOADED`).
+CONFIG_ENTRY_LOADED = "loaded"
+
+#: `source: "ignore"` e' una DECISIONE del proprietario, non un guasto: Home
+#: Assistant lo scrive quando qualcuno usa «ignora» sulla scoperta di
+#: un'integrazione, e quella voce non si carichera' piu' per scelta sua
+#: (developers.home-assistant.io/docs/config_entries_config_flow_handler/).
+#: Fino al 04/10/2026 la costante stava due volte, nel nucleo e
+#: nell'osservatore, e il secondo toglieva gli spazi e il primo no (B-14).
+CONFIG_ENTRY_SOURCE_IGNORE = "ignore"
+
+
+def config_entry_is_ignored(source: str | None) -> bool:
+    """Se il proprietario ha detto a Home Assistant di ignorare questa voce
+    (B-14: un lettore solo per il nucleo e per l'osservatore)."""
+    return str(source or "").strip() == CONFIG_ENTRY_SOURCE_IGNORE
+
+
+# --- chi spegne un'entita', e cosa scrive Home Assistant di chi tace ---------
+#
+# **Letto nel sorgente il 04/10/2026, tag `2026.9.4`** (Tappa 3, Task 8,
+# passo 1; B-25, D6):
+#
+# - `RegistryEntryDisabler` (`helpers/entity_registry.py:123-130`): `user`,
+#   `integration`, `config_entry`, `device`, `hass`. `config_entry` e `device`
+#   NON dicono chi: dicono che la decisione e' stata presa sopra.
+#   `entity_registry.async_config_entry_disabled_by_changed` (`:2578-2604`)
+#   spegne con `config_entry` le entita' di un'istanza spenta, e le riaccende
+#   solo se portano quel valore.
+# - `ConfigEntryDisabler` (`config_entries.py:232-235`): UN valore, `user`.
+#   Un'istanza la spegne solo il proprietario. `as_json_fragment`
+#   (`config_entries.py:659-685`, la forma di `config_entries/get`) porta
+#   `disabled_by` accanto a `state`.
+# - `DeviceEntryDisabler` (`helpers/device_registry.py:118-125`):
+#   `config_entry`, `device` (il genitore e' spento), `integration`, `user`.
+# - **`restored: true`** lo scrive `RegistryEntry.write_unavailable_state`
+#   (`helpers/entity_registry.py:443-468`), SEMPRE con lo stato
+#   `unavailable`, in tre casi: all'avvio, per ogni voce del registro NON
+#   disabilitata che nessuna integrazione ha aggiunto
+#   (`_write_unavailable_states`, `:2708-2718`); quando un'entita' viene tolta
+#   ma la sua voce resta e non e' disabilitata -- per esempio l'istanza
+#   scaricata (`Entity.async_remove`, `helpers/entity.py:1449-1504`); quando
+#   un'entita' ricreata cambia id. E' quindi la risposta a «cosa dice lo stato
+#   di un'entita' la cui istanza non e' caricata»: `unavailable` con
+#   `restored: true`, oppure nessuno stato se l'entita' e' disabilitata
+#   (una disabilitata non entra nella macchina degli stati,
+#   `helpers/entity_platform.py`, «Not adding entity ... because it's
+#   disabled»).
+# - Un'entita' senza `unique_id` non entra nel registro
+#   (`helpers/entity_platform.py`, ramo `entity.unique_id is None`): negli
+#   stati e non nel registro non vuol dire «sparita».
+#
+# **Misurato sulla casa il 04/10/2026** (`scripts/casa.py`, sola lettura; i
+# congelati del 03/10 in parentesi): 1.530 entita' nel registro (1.410);
+# `disabled_by` `integration` 441 (401), `config_entry` 69, `device` 22,
+# `user` 20, nessuno 978 (898). Le 69 `config_entry` stanno TUTTE su
+# un'istanza spenta dal proprietario (2 istanze `disabled_by: user`, su 56), le
+# 22 `device` TUTTE su un dispositivo spento da lui. 56 stati con `restored`
+# (60), tutti `unavailable`, tutti di istanze `loaded`. Istanze: 45 `loaded`,
+# 10 `not_loaded` (8 ignorate, 2 spente), 1 in avvio (`setup_retry` nei
+# congelati). 552 voci del registro senza stato (512), tutte disabilitate; 3
+# stati senza voce, tutti vivi.
+ENTITY_DISABLED_BY_USER = "user"
+#: I due valori di `disabled_by` che rimandano a chi sta SOPRA l'entita'.
+ENTITY_DISABLED_BY_CONFIG_ENTRY = "config_entry"
+ENTITY_DISABLED_BY_DEVICE = "device"
+#: L'attributo di uno stato che Home Assistant scrive per chi non ha aggiunto
+#: nessuno (`EntityStateAttribute.RESTORED`).
+RESTORED_ATTRIBUTE = "restored"
+
+
 # --- quali `state_class` producono statistiche a lungo termine --------------
 #
 # **La regola di Home Assistant, letta nel sorgente il 04/10/2026** (tag
