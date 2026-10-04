@@ -118,10 +118,19 @@ def declared_roles(prefs: dict) -> list[dict]:
     return [role for role in found if role is not None]
 
 
-def describe(held: dict | None, home_space: dict,
+def describe(held: dict | None, house,
              with_series: set[str] | None) -> dict | None:
-    """L'oggetto intero: per ogni ruolo l'entita' e la sua unita' (dall'anagrafe),
-    e se ha statistiche.
+    """L'oggetto intero: per ogni ruolo l'entita', la sua unita' e se ha
+    statistiche.
+
+    **L'unita' e' quella di adesso**, chiesta alla casa (`House.kind_of`: lo
+    specchio, col registro come ripiego -- `topology.live_first`). Fino al
+    04/10/2026 si leggeva dalla voce dell'anagrafe, che allora teneva l'unita'
+    viva del momento della ricostruzione; dal Task 7 (B-17) l'anagrafe porta
+    solo cio' che il registro dichiara (quasi mai un'unita'), e il vivo ha una
+    casa sola. L'entita' e' tale quando l'anagrafe la conosce
+    (`House.entity_ids`), come prima: una statistica esterna (`dominio:nome`)
+    non ha ne' entita' ne' unita'.
 
     `ha_statistiche` e' la regola di oggi del giro delle ricette: l'id sta
     nell'elenco di `recorder/list_statistic_ids` (`server.statistic_ids_for_round`).
@@ -131,16 +140,16 @@ def describe(held: dict | None, home_space: dict,
     """
     if held is None:
         return None
-    entities = {e["id"]: e for e in home_space.get("entita") or []
-                if isinstance(e, dict) and e.get("id")}
+    known = set(house.entity_ids())
     roles = []
     for role in held["ruoli"]:
-        entry = entities.get(role["statistica"])
+        statistic = role["statistica"]
+        kind = house.kind_of(statistic) if statistic in known else None
         roles.append({**role,
-                      "entita": role["statistica"] if entry is not None else None,
-                      "unita": (entry or {}).get("unita"),
+                      "entita": statistic if kind is not None else None,
+                      "unita": (kind or {}).get("unita"),
                       "ha_statistiche": (None if with_series is None
-                                         else role["statistica"] in with_series)})
+                                         else statistic in with_series)})
     return {"provenienza": PROVENANCE, "dichiarata": held["dichiarata"],
             "letta_alle": held["letta_alle"], "ruoli": roles}
 
@@ -163,13 +172,15 @@ async def reread_energy(client, home_space) -> None:
                     prefs.get("errore"))
 
 
-async def energy_dashboard(client, home_space, *,
+async def energy_dashboard(client, home_space, house, *,
                            with_series: set[str] | None = None) -> dict | None:
     """Cosa dichiara la dashboard Energia di questa casa: la domanda della casa.
 
     Legge da Home Assistant solo se l'anagrafe e' stata ricostruita dopo
-    l'ultima lettura buona; `None` se non e' mai stata letta.
+    l'ultima lettura buona; `None` se non e' mai stata letta. `home_space`
+    tiene la dashboard (`HomeSpace.hold_energy`); `house`, la casa del giro
+    (`home_space.house.House`), dice entita' e unita' dei suoi ruoli.
     """
     if not home_space.energy_current():
         await reread_energy(client, home_space)
-    return describe(home_space.energy(), home_space.read(), with_series)
+    return describe(home_space.energy(), house, with_series)

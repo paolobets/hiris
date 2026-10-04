@@ -309,13 +309,16 @@ def _energy_block(house: House, device_id: str, energy: dict | None) -> str:
     """
     if not energy:
         return ""
+    # Di chi e' una statistica lo dice la casa (`House.entities_of`: le
+    # entita' del dispositivo che un attore guarda), non il campo `entita`
+    # che la dashboard ha ricavato dall'anagrafe: una risposta sola.
     ids = set(house.entities_of(device_id))
-    mine = [r for r in energy.get("ruoli") or [] if r.get("entita") in ids]
+    mine = [r for r in energy.get("ruoli") or [] if r.get("statistica") in ids]
     if not mine:
         return ""
     lines = ["\n\nLa dashboard Energia di Home Assistant dichiara:"]
     for role in mine:
-        line = f"- {role['entita']}: {role['ruolo']}"
+        line = f"- {role['statistica']}: {role['ruolo']}"
         if role.get("nome"):
             line += f" ({role['nome']})"
         if role.get("unita"):

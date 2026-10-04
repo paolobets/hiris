@@ -27,7 +27,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.home_space import energy
+from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.topology import live_mirror
 from hiris.app.mind import recipe_turn
 
 
@@ -85,16 +87,31 @@ REGISTRIES = {
           "original_name": "Energia"}],
 }
 
+#: Le unita' VIVE: stanno nello specchio dello stato (`unit_of_measurement`
+#: fra gli attributi), non nel registro -- che non le porta quasi mai
+#: (`topology.live_first`). Dal Task 7 (B-17) l'anagrafe non le copia piu'.
 UNITS = {"sensor.inverter_prelievo": "kWh", "sensor.inverter_immissione": "kWh",
          "sensor.inverter_produzione": "kWh", "sensor.inverter_scarica": "kWh",
          "sensor.inverter_carica": "kWh", "sensor.inverter_soc": "%",
          "sensor.lavatrice_energia": "kWh"}
 
 
+class _Cache:
+    """La cache dello stato, nella forma di `entity_cache.all_states`."""
+
+    def all_states(self) -> list[dict]:
+        return [{"id": eid, "state": "1", "unit": unit} for eid, unit in UNITS.items()]
+
+
 def _store(tmp_path) -> HomeSpace:
     store = HomeSpace(str(tmp_path))
-    store.hold_registries(REGISTRIES, live_units=UNITS)
+    store.hold_registries(REGISTRIES)
     return store
+
+
+def _house(store: HomeSpace) -> House:
+    """La casa del giro: l'anagrafe del negozio e lo specchio vivo."""
+    return House(store.read(), live_mirror(_Cache().all_states()))
 
 
 def _roles(answer) -> dict[str, str]:
@@ -167,7 +184,7 @@ def test_object_carries_what_it_needs_to_be_read_alone(tmp_path):
     """Fondamenta 1: ruolo, entita', unita', statistiche, provenienza."""
     store = _store(tmp_path)
     house = CasaFinta({"energy_prefs": PREFS})
-    answer = _run(energy.energy_dashboard(house, store,
+    answer = _run(energy.energy_dashboard(house, store, _house(store),
                                           with_series={"sensor.inverter_prelievo"}))
 
     assert answer["provenienza"] == "dashboard Energia di Home Assistant"
@@ -178,6 +195,8 @@ def test_object_carries_what_it_needs_to_be_read_alone(tmp_path):
         "entita": "sensor.inverter_prelievo", "unita": "kWh", "ha_statistiche": True,
         "tipo": "grid", "campo": "stat_energy_from"}
     assert by_id["sensor.inverter_soc"]["unita"] == "%"
+    # L'unita' e' quella viva: il registro di questa casa non ne porta.
+    assert all(e.get("unita") is None for e in store.read()["entita"])
     assert by_id["sensor.inverter_immissione"]["ha_statistiche"] is False
     # Una statistica esterna non e' un'entita' dell'anagrafe: non si finge.
     assert by_id["contatore:gas"]["entita"] is None
@@ -188,7 +207,7 @@ def test_unknown_statistics_stay_unknown():
     """`with_series` a `None` e' «non l'ho potuto chiedere»: `ha_statistiche`
     resta `None`, non diventa un «no»."""
     roles = energy.describe({"ruoli": energy.declared_roles(PREFS), "dichiarata": True,
-                             "letta_alle": "x"}, {}, None)["ruoli"]
+                             "letta_alle": "x"}, House({}, live_mirror([])), None)["ruoli"]
     assert {r["ha_statistiche"] for r in roles} == {None}
 
 
@@ -201,8 +220,9 @@ def test_no_battery_no_role_guessed_from_names(tmp_path):
     rossa, coi due ruoli inventati."""
     prefs = {**PREFS, "energy_sources": [s for s in PREFS["energy_sources"]
                                          if s["type"] != "battery"]}
+    store = _store(tmp_path)
     answer = _run(energy.energy_dashboard(CasaFinta({"energy_prefs": prefs}),
-                                          _store(tmp_path), with_series=None))
+                                          store, _house(store), with_series=None))
     assert not {"sensor.inverter_scarica", "sensor.inverter_carica",
                 "sensor.inverter_soc"} & set(_roles(answer))
     assert not {"carica", "scarica", "stato di carica"} & set(_roles(answer).values())
@@ -220,13 +240,13 @@ def test_read_once_per_registry_rebuild(tmp_path):
     store = _store(tmp_path)
     house = CasaFinta({"energy_prefs": PREFS})
 
-    first = _run(energy.energy_dashboard(house, store))
-    second = _run(energy.energy_dashboard(house, store))
+    first = _run(energy.energy_dashboard(house, store, _house(store)))
+    second = _run(energy.energy_dashboard(house, store, _house(store)))
     assert _asked(house) == 1
     assert first == second
 
-    store.hold_registries(REGISTRIES, live_units=UNITS)
-    _run(energy.energy_dashboard(house, store))
+    store.hold_registries(REGISTRIES)
+    _run(energy.energy_dashboard(house, store, _house(store)))
     assert _asked(house) == 2
 
 
@@ -236,9 +256,9 @@ def test_house_without_dashboard_says_so_and_does_not_ask_again(tmp_path):
     store = _store(tmp_path)
     house = CasaFinta({}, refuse={"energy/get_prefs": {"code": "not_found",
                                                        "message": "No prefs"}})
-    answer = _run(energy.energy_dashboard(house, store))
+    answer = _run(energy.energy_dashboard(house, store, _house(store)))
     assert answer["dichiarata"] is False and answer["ruoli"] == []
-    _run(energy.energy_dashboard(house, store))
+    _run(energy.energy_dashboard(house, store, _house(store)))
     assert _asked(house) == 1
 
 
@@ -250,43 +270,44 @@ def test_failure_keeps_previous_and_asks_again(tmp_path):
     (`dichiarata` diventa falsa)."""
     store = _store(tmp_path)
     house = CasaFinta({"energy_prefs": PREFS})
-    assert _run(energy.energy_dashboard(house, store))["dichiarata"] is True
+    assert _run(energy.energy_dashboard(house, store, _house(store)))["dichiarata"] is True
 
-    store.hold_registries(REGISTRIES, live_units=UNITS)
+    store.hold_registries(REGISTRIES)
     house.mute("energy/get_prefs")
-    kept = _run(energy.energy_dashboard(house, store))
+    kept = _run(energy.energy_dashboard(house, store, _house(store)))
     assert kept["dichiarata"] is True and kept["ruoli"]
-    _run(energy.energy_dashboard(house, store))
+    _run(energy.energy_dashboard(house, store, _house(store)))
     assert _asked(house) == 3
 
 
 def test_never_read_and_failing_is_no_object(tmp_path):
     house = CasaFinta({}, silence={"energy/get_prefs"})
-    assert _run(energy.energy_dashboard(house, _store(tmp_path))) is None
+    store = _store(tmp_path)
+    assert _run(energy.energy_dashboard(house, store, _house(store))) is None
 
 
 # -- il lettore: il giro delle ricette (Task 2.3, Passo 1a e 2) --------------
 
 def _home(tmp_path):
     store = _store(tmp_path)
-    return store, _run(energy.energy_dashboard(CasaFinta({"energy_prefs": PREFS}), store,
-                                               with_series=None))
+    house = _house(store)
+    return house, _run(energy.energy_dashboard(CasaFinta({"energy_prefs": PREFS}), store,
+                                               house, with_series=None))
 
 
 def test_recipe_question_carries_roles_apart(tmp_path):
     """Il blocco sta a parte dalle righe delle entita', che non cambiano.
 
     Mutazione ESEGUITA: `_energy_block` che torna sempre "" -- rossa."""
-    store, dashboard = _home(tmp_path)
-    home_space = store.read()
-    question = recipe_turn.build_device_question("risparmiare", home_space, "inv",
+    casa, dashboard = _home(tmp_path)
+    question = recipe_turn.build_device_question("risparmiare", casa, "inv",
                                                  energy=dashboard)
     assert "La dashboard Energia di Home Assistant dichiara:" in question
     assert "- sensor.inverter_prelievo: prelievo [kWh]" in question
     assert "- sensor.inverter_produzione: produzione (Tetto) [kWh]" in question
     assert "valgono piu' del nome" in question
     # Le righe delle entita' sono quelle di sempre.
-    for line in recipe_turn.device_lines(home_space, "inv"):
+    for line in recipe_turn.device_lines(casa, "inv"):
         assert line in question
     # Solo le entita' DI QUESTO dispositivo: la lavatrice non c'e'.
     assert "sensor.lavatrice_energia" not in question
@@ -294,25 +315,24 @@ def test_recipe_question_carries_roles_apart(tmp_path):
 
 def test_device_outside_dashboard_keeps_old_question(tmp_path):
     """Cambia solo la domanda dei dispositivi con entita' della dashboard."""
-    store, dashboard = _home(tmp_path)
-    home_space = store.read()
+    casa, dashboard = _home(tmp_path)
     prefs_without_device = {**dashboard, "ruoli": [
         r for r in dashboard["ruoli"] if r["statistica"] != "sensor.lavatrice_energia"]}
-    assert (recipe_turn.build_device_question("x", home_space, "lav",
+    assert (recipe_turn.build_device_question("x", casa, "lav",
                                               energy=prefs_without_device)
-            == recipe_turn.build_device_question("x", home_space, "lav"))
+            == recipe_turn.build_device_question("x", casa, "lav"))
 
 
 def test_consumption_device_says_what_includes_it(tmp_path):
-    store, dashboard = _home(tmp_path)
-    question = recipe_turn.build_device_question("x", store.read(), "lav", energy=dashboard)
+    casa, dashboard = _home(tmp_path)
+    question = recipe_turn.build_device_question("x", casa, "lav", energy=dashboard)
     assert ("- sensor.lavatrice_energia: consumo di un dispositivo [kWh], "
             "compreso in sensor.quadro_energia") in question
 
 
 def test_bridge_turn_carries_the_same_block(tmp_path):
-    store, dashboard = _home(tmp_path)
-    job = recipe_turn.bridge_turn("x", store.read(), "inv", energy=dashboard)
+    casa, dashboard = _home(tmp_path)
+    job = recipe_turn.bridge_turn("x", casa, "inv", energy=dashboard)
     assert "La dashboard Energia di Home Assistant dichiara:" in job["history"][0]["content"]
 
 
@@ -350,7 +370,7 @@ def test_recipe_round_asks_with_dashboard(tmp_path):
         runner = _Runner()
         app = {"observations": archivio, "knowledge": sapere,
                "home_space_store": _store(tmp_path), "ha_client": house,
-               "llm_router": runner}
+               "entity_cache": _Cache(), "llm_router": runner}
 
         _run(server.recipe_round(app))
 

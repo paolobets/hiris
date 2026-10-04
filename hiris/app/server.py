@@ -2581,7 +2581,7 @@ async def recipe_round(app) -> dict | None:
         # **La dashboard Energia, citata a parte** (piano degli attori, Task
         # 2.2-2.3, D6): letta una volta per giro dell'anagrafe, qui solo
         # quando c'e' davvero una domanda da fare.
-        dashboard = (await energy_dashboard(cliente, home_space_store,
+        dashboard = (await energy_dashboard(cliente, home_space_store, house,
                                             with_series=with_series)
                      if cliente is not None else None)
 
