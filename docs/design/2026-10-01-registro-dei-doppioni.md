@@ -78,20 +78,13 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-33 | Una durata, tre grammatiche; `calendar` taglia in silenzio, gli altri rifiutano | D | CC |  |  | cop-3 B-n4 |
 | B-34 | «Tipi di ancora non verificabili adesso»: scritto due volte (`_remember`, `_unverifiable_types`) | NV | PS |  |  | cop-3 B-n5 |
 | B-35 | `house_history` importa da `mind` (`integration_of`), contro «`home_space` non importa da `mind`» | D (cop-3) · E (cop-6) — CONTRADDIZIONE | PS |  |  | cop-3 B-n6 · cop-6 N-07 |
-| B-36 | `actual_class` e `actual_unit` sono la stessa funzione; «stringa non vuota ripulita» sei volte | E | PS |  |  | cop-4 N-01 |
 | B-37 | «È una pseudo-area?» scritto a mano tre volte; `is_pseudo_area` senza chiamanti esterni | NV | PS |  |  | cop-4 N-02 |
 | B-38 | La mappa etichette `{label_id: nome}` riscritta a mano in `handlers_home_space` | E | PS |  |  | cop-4 N-03 · cop-8 C1 |
 | B-39 | Conteggio per tipo del comportamento in tre punti, `senza_corpo` in quattro | NV | PS |  |  | cop-4 N-04 · cop-8 C2 |
 | B-40 | Il formato «(id: X)» scritto a mano in `_device_annotation` | E | PS |  |  | cop-4 N-05 |
 | B-41 | Lo specchio vivo in due forme: tupla di sei dizionari e sei argomenti separati | E | PS |  |  | cop-4 N-06 |
 | B-42 | Credenziale o attributo dichiarato: lo decide l'ordine dei rami (9 nomi in due tabelle) | E | DP |  |  | cop-5 B1 |
-| B-43 | Le provenienze: tre in `type_vocabulary`, cinque in `mind/knowledge`, stesso nome `PROVENANCES` | D | PS |  |  | cop-5 B2 |
-| B-44 | La versione di HA pinnata in tre costanti; una sola confrontata con la casa | E | PS |  |  | cop-5 B3 |
-| B-45 | Il trattino di «senza classe» (`NO_DEVICE_CLASS`) e la chiave di traduzione scritti più volte | E | PS |  |  | cop-5 B4 |
-| B-46 | I nomi dei campi dei giudizi in due vocabolari; la mappa ne salta uno | E | PS |  |  | cop-5 B5 |
 | B-47 | Provenienza non dichiarata, o dichiarata per il pezzo sbagliato (`ha_vocabulary`, `_FEATURE_TABLES`) | NV | DP |  |  | cop-5 B6 |
-| B-48 | I quattordici tipi di `related` scritti due volte (`RELATED_ITEM_TYPES`, `LINK_NAME`) | E | PS |  |  | cop-5 B7 |
-| B-49 | Il soggetto di un tipo (`dominio.classe`) composto in tre posti; docstring «un posto solo» | E | PS |  |  | cop-6 N-05 |
 | B-50 | Il nome di un'integrazione inventato dallo slug, mentre l'anagrafe ha il titolo vero | D | DP |  |  | cop-6 N-06 |
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | E | PS |  |  | cop-9 N-B-2 |
 | B-52 | `ChatThread` ricostruito in tre archivi; la condizione SQL del filo in undici posti | E | PS |  |  | cop-9 N-B-3 |
@@ -897,3 +890,10 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | Tappa 2 (da rilasciare) | 567f520b | le parole degli stati si rileggono dopo ogni ricostruzione dell'anagrafe |
 | A-40 | La cartella di configurazione di Home Assistant si cerca in due punti: `home_space/redaction.home_assistant_folder` e `server._find_ha_config_dir`, entrambe vive | Tappa 2 (da rilasciare) | 6001018b | server.py importa home_assistant_folder; _find_ha_config_dir uscita, le patch delle prove puntano alla funzione unica |
 | T-01 | Finte di `HAClient` ripetute (68 classi in 41 file) | Tappa 2 (da rilasciare) | 5fb9a8e5 | ogni finta di HAClient e' CasaFinta sotto il client vero; tests/_ha_fakes.py e test_ha_client_contract.py usciti; cancello tests/test_finte_convergono.py con ammissione vuota |
+| B-36 | `actual_class` e `actual_unit` sono la stessa funzione; «stringa non vuota ripulita» sei volte | Tappa 3 (da rilasciare) | 88b9bb1 | actual_class e actual_unit diventano topology.live_first; l'idioma diventa topology.clean_text (resta watcher._text_or_none, che non ripulisce: dichiarato). Tappa 3, Task 7 (04/10/2026) |
+| B-49 | Il soggetto di un tipo (`dominio.classe`) composto in tre posti; docstring «un posto solo» | Tappa 3 (da rilasciare) | 3722c3d | il soggetto dominio.classe si compone solo in type_judgments.type_subject. Tappa 3, Task 7 (04/10/2026) |
+| B-43 | Le provenienze: tre in `type_vocabulary`, cinque in `mind/knowledge`, stesso nome `PROVENANCES` | Tappa 3 (da rilasciare) | c80cba1 | knowledge.PROVENANCES prende importato e nostro da type_vocabulary.Provenance. Tappa 3, Task 7 (04/10/2026) |
+| B-44 | La versione di HA pinnata in tre costanti; una sola confrontata con la casa | Tappa 3 (da rilasciare) | c80cba1 | una costante sola, ha_vocabulary.VOCABULARY_HA_VERSION; esce Imported.ha_version (trovato 6). Tappa 3, Task 7 (04/10/2026) |
+| B-45 | Il trattino di «senza classe» (`NO_DEVICE_CLASS`) e la chiave di traduzione scritti più volte | Tappa 3 (da rilasciare) | c80cba1 | state_translations.component_key compone la chiave; NO_DEVICE_CLASS ovunque. Tappa 3, Task 7 (04/10/2026) |
+| B-46 | I nomi dei campi dei giudizi in due vocabolari; la mappa ne salta uno | Tappa 3 (da rilasciare) | c80cba1 | esce type_vocabulary.SCAFFOLDING; una prova pinna che JUDGMENT_FIELDS salti solo l'impalcatura. Tappa 3, Task 7 (04/10/2026) |
+| B-48 | I quattordici tipi di `related` scritti due volte (`RELATED_ITEM_TYPES`, `LINK_NAME`) | Tappa 3 (da rilasciare) | c80cba1 | LINK_NAME in ha_vocabulary; HAClient.RELATED_ITEM_TYPES = tuple(LINK_NAME). Tappa 3, Task 7 (04/10/2026) |
