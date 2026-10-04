@@ -36,7 +36,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 |
 | A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | E | PS |  |  | cop-6 N-03 |
 | A-39 | `last_before` eseguita due volte quando si rifà una cronaca (`day_boundaries` pure) | E | PS |  |  | cop-6 N-04 |
-| A-40 | La cartella di configurazione di Home Assistant si cerca in due punti: `home_space/redaction.home_assistant_folder` e `server._find_ha_config_dir`, entrambe vive | NV | PS |  |  | Task 21, 02/10/2026 |
 
 ---
 
@@ -888,3 +887,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | S-06 | `history`: `from_iso` entra nel percorso dell'URL senza `quote` | Tappa 2 (da rilasciare) | 8d093e66 | quote(from_iso, safe=''); stessa risposta misurata dal vivo il 04/10/2026 |
 | A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | Tappa 2 (da rilasciare) | 567f520b | attiva dallo specchio alla lettura; il nome resta quello della rilettura |
 | A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | Tappa 2 (da rilasciare) | 567f520b | le parole degli stati si rileggono dopo ogni ricostruzione dell'anagrafe |
+| A-40 | La cartella di configurazione di Home Assistant si cerca in due punti: `home_space/redaction.home_assistant_folder` e `server._find_ha_config_dir`, entrambe vive | Tappa 2 (da rilasciare) | 6001018b | server.py importa home_assistant_folder; _find_ha_config_dir uscita, le patch delle prove puntano alla funzione unica |
