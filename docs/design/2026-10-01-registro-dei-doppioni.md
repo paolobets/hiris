@@ -33,7 +33,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-34 | `calendars()` chiede a HA ciò che lo specchio ha già; eventi letti in fila | NV | CC |  |  | cop-5 A7 |
 | A-36 | Due modi di leggere lo storico dettagliato (REST `history`, WS `recorded_changes`) | NV | DP |  |  | cop-5 A9 |
 | A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 · Tappa 8 (D5) |
-| A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | E | PS |  |  | cop-6 N-03 · Tappa 3 (D5) |
 | A-39 | `last_before` eseguita due volte quando si rifà una cronaca (`day_boundaries` pure) | E | PS |  |  | cop-6 N-04 · Tappa 8 (D5) |
 | A-41 | `system_log`, `traces`, `hourly_statistics` letti dai giri di `server.py` e dagli strumenti della chat | E | DP |  |  | Tappa 2, Task 13 (04/10/2026): `server.py:826`, `:1087`, `:1809` contro `home_space/tools.py:2563`, `:2720`, `:2650`; si chiude con R13 |
 
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-11 | «Quali entità sono di un dispositivo»: `dispositivo_id` in linea | Tappa 3, Task 12 | 85b9af0 | House.device_entities: le voci di un dispositivo in un posto; ricette e queries._view_device lo chiedono |
 | B-10 | In che area sta un'entità | Tappa 3, Task 12 | 85b9af0 | House.where (Task 6) con l'area ereditata; l'osservatore lo usa (D3), _area_names uscito |
 | B-05 | Come si chiama un'entità: più politiche (3-4 vive, più quella delle automazioni) | Tappa 3, Task 12 | 85b9af0 | House.name (Task 5) anche in osservatore e ricette, l'ultima seconda copia viva; report._resolved_name resta il nome archiviato prima, per decisione |
+| A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | Tappa 3, Task 12 | 6fedac1 | KnowledgeStore.device_answers, una SELECT; recipe_turn.recipes al posto di recipe_for; l'anagrafe da House.device_ids |
