@@ -321,7 +321,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| T-01 | Finte di `HAClient` ripetute (68 classi in 41 file) | E | PS |  |  | reg · cop-5 |
 | T-02 | Altre finte duplicate (specchio, store, scheduler, runner, mock) | E | PS |  |  | reg |
 | T-03 | Finte fetch del JS: 78 assegnazioni, `stubFetch` che risponde 200 a tutto | E | PS |  |  | reg |
 | T-04 | Finte che rispondono in forma diversa dal vero | D | CC |  |  | reg · cop-5 |
@@ -888,3 +887,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-12 | Comportamento delle automazioni (`attiva`, `nome`) in RAM fino a 5 minuti contro lo specchio | Tappa 2 (da rilasciare) | 567f520b | attiva dallo specchio alla lettura; il nome resta quello della rilettura |
 | A-14 | Traduzioni degli stati: lingua vecchia fino a 5 minuti dopo un cambio di riferimento | Tappa 2 (da rilasciare) | 567f520b | le parole degli stati si rileggono dopo ogni ricostruzione dell'anagrafe |
 | A-40 | La cartella di configurazione di Home Assistant si cerca in due punti: `home_space/redaction.home_assistant_folder` e `server._find_ha_config_dir`, entrambe vive | Tappa 2 (da rilasciare) | 6001018b | server.py importa home_assistant_folder; _find_ha_config_dir uscita, le patch delle prove puntano alla funzione unica |
+| T-01 | Finte di `HAClient` ripetute (68 classi in 41 file) | Tappa 2 (da rilasciare) | 5fb9a8e5 | ogni finta di HAClient e' CasaFinta sotto il client vero; tests/_ha_fakes.py e test_ha_client_contract.py usciti; cancello tests/test_finte_convergono.py con ammissione vuota |
