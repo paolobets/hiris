@@ -636,7 +636,7 @@ def test_un_riferimento_con_altri_filtri_senza_esito_resta_un_insieme_vuoto():
 # --- un punto solo che decide «di chi» (spec «la storia» §2, 30/09/2026) ---
 
 def test_la_scelta_di_chi_e_una_funzione_sola_per_search_e_per_la_storia_del_tempo():
-    """`search` e la storia scelgono i soggetti con `select_subjects`: le voci
+    """`search` e la storia scelgono i soggetti con `House.select`: le voci
     della porta sono esattamente le entita' scelte, e le escluse le stesse.
 
     Mutazione ESEGUITA: in `_select`, non sommare `chosen.excluded` alle
@@ -646,8 +646,7 @@ def test_la_scelta_di_chi_e_una_funzione_sola_per_search_e_per_la_storia_del_tem
                       {"tipo": "light", "includi_nascoste": True},
                       {"area": "soggiorno"}):
         filtri = hq.parse_filters(argomenti)
-        scelta = hq.select_subjects(filtri, ("entita",), House(_casa(), _specchio(STATI)), [],
-                                    now=T0)
+        scelta = House(_casa(), _specchio(STATI)).select(filtri, ("entita",), [], now=T0)
         porta = hq.query_house(House(_casa(), _specchio(STATI)), [], filtri,
                                detail=_dettaglio, now=T0)
         assert porta["escluse"] == scelta.excluded, argomenti
@@ -658,13 +657,13 @@ def test_la_scelta_di_chi_e_una_funzione_sola_per_search_e_per_la_storia_del_tem
 def test_la_scelta_delle_automazioni_passa_dalla_stessa_funzione():
     """«rifiuti» trova «Rifiuto» per radice, come in `search`.
 
-    Mutazione ESEGUITA: in `select_subjects`, non scendere nei generi di
+    Mutazione ESEGUITA: in `select_subjects` (oggi `House.select`), non scendere nei generi di
     comportamento (`behaving` sempre vuoto) -- rossa."""
     comportamento, specchio = _automazioni(("rifiuto_carta", T_IERI),
                                            ("rifiuto_vetro", None),
                                            ("luci", T_IERI))
-    scelta = hq.select_subjects(hq.parse_filters({"nome": "rifiuti"}),
-                                ("automazione",), House(_casa(), specchio), comportamento, now=T0)
+    scelta = House(_casa(), specchio).select(hq.parse_filters({"nome": "rifiuti"}),
+                                             ("automazione",), comportamento, now=T0)
     assert sorted(voce["id"] for voce, _valori in scelta.behavior) == [
         "automation.rifiuto_carta", "automation.rifiuto_vetro"]
     assert scelta.entities == []
@@ -675,9 +674,9 @@ def test_search_chiama_la_scelta_della_casa_e_non_ne_tiene_una_copia(monkeypatch
     resterebbe verde con la logica duplicata dentro `_select`. Qui si prova la
     chiamata.
 
-    Dal 04/10/2026 (Tappa 3, Task 4) la scelta e' `House.select`, e
-    `select_subjects` ne e' il rimando per la storia fino al Task 13: la spia
-    sta sulla funzione vera, che e' quella che entrambe chiamano.
+    Dal 04/10/2026 (Tappa 3, Task 4) la scelta e' `House.select`, e dal
+    Task 13 la storia la chiama senza rimandi: la spia sta sulla funzione
+    vera, che e' quella che entrambe chiamano.
 
     Mutazione ESEGUITA: in `_select`, ricopiare il ciclo di scelta al posto di
     `select_subjects(...)` -- rossa (nessuna chiamata registrata). Rieseguita

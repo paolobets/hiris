@@ -56,7 +56,7 @@ def automation_config_id(cache, entity_id: str) -> str | None:
     Assistant, e' lo specchio dello stato: `_to_minimal` lo porta in
     `automation_id`. I due chiamanti che devono risolverlo -- il collettore
     delle tracce in `server.py` e la storia in
-    `home_space/tools.py` (`ToolDispatcher._run_key`) -- farebbero
+    `home_space/house_history.py` (`run_key`) -- farebbero
     altrimenti la stessa scansione due volte, in due file diversi: e' un solo posto, come per
     `inventory_is_readable` qui sopra.
 

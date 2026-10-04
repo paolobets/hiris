@@ -183,7 +183,7 @@ def test_gli_errori_accettano_integrazione_e_livello():
 def test_la_storia_non_ha_una_sua_scelta_di_chi():
     """Spec §2: «un solo punto che decide di chi, non due». Questo modulo non
     confronta nomi e non scende l'albero della casa: lo fa
-    `house_query.select_subjects`.
+    `House.select`.
 
     Mutazione ESEGUITA: importare `name_matches` in house_history.py -- rossa."""
     import inspect

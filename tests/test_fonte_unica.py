@@ -160,28 +160,31 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
         "home_space/tools.py",
         "lo stesso strumento calendario: gli impegni di ogni calendario (A-34)"),
     "history": (
-        "home_space/tools.py",
-        ("lo storico dettagliato per lo strumento della chat, fino alla Tappa 3; "
+        "home_space/house_history.py",
+        ("lo storico dettagliato, letto da `read_series` per lo strumento della "
+         "chat e per chi non e' un turno (Tappa 3, Task 13: era in `tools.py`); "
          "l'altro modo di leggere lo storico (`recorded_changes`) e' A-36")),
     "recorded_changes": (
         "mind/cadence.py",
         ("la cadenza dell'osservatore conta i cambi per finestra; con `history` "
          "sono due comandi per la stessa domanda, A-36")),
     "trace": (
-        "home_space/tools.py",
-        "la traccia passo per passo di un'esecuzione, solo dallo strumento"),
+        "home_space/house_history.py",
+        ("la traccia passo per passo di un'esecuzione (`read_runs`; fino al "
+         "Task 13 della Tappa 3 in `tools.py`)")),
     "traces": (
-        "home_space/tools.py",
-        ("la raffica delle tracce per lo strumento della chat (Task 8 della "
-         "Tappa 2); il secondo chiamante e' in `SHARED_READS`")),
+        "home_space/house_history.py",
+        ("la raffica delle tracce della storia (Task 8 della Tappa 2; "
+         "`read_runs` dal Task 13 della Tappa 3); il secondo chiamante e' in "
+         "`SHARED_READS`")),
     "system_log": (
-        "home_space/tools.py",
-        ("il registro degli errori per lo strumento della chat; il giro delle "
-         "condizioni e' in `SHARED_READS`")),
+        "home_space/house_history.py",
+        ("il registro degli errori della storia (`read_errors`, dal Task 13 "
+         "della Tappa 3); il giro delle condizioni e' in `SHARED_READS`")),
     "hourly_statistics": (
-        "home_space/tools.py",
-        ("le statistiche orarie per lo strumento della chat; il resoconto del "
-         "giorno e' in `SHARED_READS`")),
+        "home_space/house_history.py",
+        ("le statistiche orarie della storia (`read_values`, dal Task 13 della "
+         "Tappa 3); il resoconto del giorno e' in `SHARED_READS`")),
     "problems": (
         "server.py",
         ("`reread_ha_problems`, il giro dei 5 minuti: il giro delle condizioni "

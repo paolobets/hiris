@@ -439,17 +439,6 @@ class Selection:
     excluded: dict[str, int]
 
 
-def select_subjects(f: HouseFilters, kinds: tuple[str, ...], house: House,
-                    behavior, *, now: float) -> Selection:
-    """Le entita' e i comportamenti che passano i filtri: `House.select`.
-
-    Dal 04/10/2026 (Tappa 3, Task 4) la scelta vive nell'istantanea della
-    casa, che ha gia' la gerarchia calcolata; questo rimando resta finche'
-    il Task 13 non sposta anche `house_history` sui metodi della casa (il
-    piano: «per non toccare `house_history` due volte»)."""
-    return house.select(f, kinds, behavior, now=now)
-
-
 def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     """La pagina `[offset, offset+limit)` (limite tagliato a `ROWS_MAX`) e, se
     restano righe, `{"restano", "salta"}` per chiedere la successiva.

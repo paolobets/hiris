@@ -228,8 +228,8 @@ def seal_free_text(text, seal):
     frase: il limite di un sigillo che tiene solo impronte, dichiarato qui e
     non taciuto.
 
-    **Una regola, due chiamanti** (Tappa 3, Task 0, 03/10/2026): la chat
-    (`tools.ToolDispatcher._sealed_log`) e l'osservatore
+    **Una regola, due chiamanti** (Tappa 3, Task 0, 03/10/2026): la storia
+    (`house_history.sealed_log`, dal Task 13) e l'osservatore
     (`mind/watcher.Watcher.watch_system`, il titolo di una condizione `log:`)
     leggono lo stesso registro di Home Assistant. Fino ad allora la funzione
     viveva dentro `tools.py` e l'osservatore archiviava il titolo in chiaro.

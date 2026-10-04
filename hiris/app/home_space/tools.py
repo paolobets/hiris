@@ -91,18 +91,8 @@ from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..memory.store import MemoryStore
-from ..proxy._sanitize import (
-    sanitize_ha_free_text,
-    sanitize_ha_value,
-    sanitize_structure,
-    sanitize_traceback,
-)
-from ..proxy.entity_cache import (
-    automation_config_id,
-    states_by_id,
-    unreadable_inventory_error,
-)
-from ..proxy.ha_client import SHAPE, _failure
+from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ..proxy.entity_cache import states_by_id
 from . import historian
 from .appointments import read_appointment, sort_appointments
 from .ha_vocabulary import HA_LINK_TYPE
@@ -110,20 +100,10 @@ from .house import House
 from .house_history import (
     ADMIN_KINDS,
     LEVELS,
-    UNRESOLVED_RUNS,
     WINDOW_MAX_HOURS,
-    Chosen,
-    HistoryQuery,
-    choose,
-    empty_answer,
-    error_rows,
-    last_line,
     parse_query,
-    run_detail,
-    run_rows,
-    state_rows,
-    value_rows,
-    value_surface,
+    read_errors,
+    read_history,
 )
 from .house_history import KINDS as HISTORY_KINDS
 from .house_query import KINDS, ORDERS, ROWS_MAX, parse_filters, query_house
@@ -132,7 +112,7 @@ from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
-from .redaction import home_assistant_seal, seal_free_text
+from .redaction import home_assistant_seal
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -187,21 +167,6 @@ def _fallen_stores_message(stores: list[str]) -> str:
 
 
 logger = logging.getLogger(__name__)
-
-
-def _read_failure(answer, fallback: str) -> dict:
-    """La busta di una lettura del client che non e' riuscita, INTERA.
-
-    Il client dice ogni guasto con `errore`, `causa` e `codice`
-    (`proxy/ha_client.py::_failure`): ridurla al solo `errore` qui toglierebbe
-    al modello la differenza fra «Home Assistant ha taciuto» e «ha detto di
-    no», e farebbe uscire uno strumento in una forma diversa da `calendar`,
-    che la gira com'e' (fondamenta 3). Una risposta che non e' la busta e non
-    ha la forma attesa diventa una busta di `forma`, dallo stesso costruttore.
-    """
-    if isinstance(answer, dict) and "errore" in answer:
-        return answer
-    return _failure(SHAPE, fallback)
 
 
 SEARCH_TOOL_DEF = {
@@ -2511,23 +2476,23 @@ class ToolDispatcher:
     # -- la storia ------------------------------------------------------
 
     async def _history(self, arguments: dict[str, Any]) -> dict:
-        """La storia della casa (spec `2026-09-30-la-storia.md`): chiama Home
-        Assistant e passa cio' che ha letto a `house_history`, dove vivono la
-        scelta, la profondita' e le righe.
+        """La storia della casa (spec `2026-09-30-la-storia.md`): compone le
+        letture di `house_history` (`read_history`, `read_errors`) e mette il
+        permesso SOPRA di loro.
 
         Dal 30/09/2026 sostituisce quattro gestori (`_trend`, `_happened`,
         `_system_log`, `_automation_trace`): quattro forme, misurate sulla
-        v3.71.0 fra 3.600 e 35.000 caratteri a chiamata.
+        v3.71.0 fra 3.600 e 35.000 caratteri a chiamata. Dal 04/10/2026
+        (Tappa 3, Task 13) le letture non sono piu' metodi di questo oggetto:
+        non dipendono dalla persona, e un attore le chiama senza un turno.
+        Qui resta cio' che dalla persona dipende.
 
         **L'ordine dei controlli e' il contratto.** Prima gli argomenti (un
         errore si dice senza toccare niente); poi chi non amministra
         (`trace/list`, `trace/get`, `system_log/list` sono `require_admin`:
         rifiutati PRIMA di qualunque lettura, ruling R-2.25); poi la casa, che
-        serve a ogni genere fuorche' agli errori.
-
-        `choose` da' TUTTI i soggetti da leggere (vuoto solo con `limite` 0):
-        la pagina si taglia dopo la lettura, dentro le funzioni delle righe
-        (revisione del Task 3). Qui non si impagina niente."""
+        serve a ogni genere fuorche' agli errori -- per loro la casa del turno
+        non si costruisce."""
         import time as _time
 
         now = _time.time()
@@ -2539,214 +2504,14 @@ class ToolDispatcher:
             if refusal is not None:
                 return refusal
         if query.kind == "errori":
-            answer = await self._ha.system_log()
-            if not isinstance(answer.get("voci"), list):
-                return _read_failure(answer, "il registro di Home Assistant non ha risposto")
-            return error_rows(query, self._sealed_log(answer["voci"]))
+            return await read_errors(self._ha, query, seal=self._seal())
         if self._home_space is None:
             return {"errore": "`history` non e' disponibile: la conoscenza della casa "
                               "non e' ancora stata caricata."}
-        # UNA casa per tutta la chiamata, la stessa del turno: lo specchio
-        # serve ai valori (`state_classes`), l'anagrafe alle chiavi degli
-        # script (revisione del Task 7).
-        house = self._turn_house()
-        mirror, home = house.mirror, house.home_space
-        chosen = choose(query, house, self._home_space.behavior(), now=now)
-        if isinstance(chosen, dict):
-            return chosen
-        if not chosen.subjects:
-            return empty_answer(query, chosen)
-        if query.kind == "esecuzioni":
-            return await self._run_history(query, chosen, home)
-        if query.kind == "valori":
-            # La stessa guardia di `states_by_id`: da un inventario non
-            # leggibile non si prende nemmeno lo `state_class`.
-            state_classes = mirror.state_classes if mirror.readable else {}
-            response = await self._value_history(query, chosen, mirror, state_classes)
-        else:
-            response = await self._state_history(query, chosen, mirror)
-        # Come in `search`: senza specchio leggibile lo stato di adesso e
-        # l'unita' sarebbero `None` ambigui fra «non c'e'» e «non ho guardato».
-        if "errore" not in response and not mirror.readable:
-            response["stato_non_letto"] = True
-        return response
-
-    async def _read_history(self, entity_ids: list[str], query: HistoryQuery) -> dict:
-        """Lo storico di tutti i soggetti: `{"serie", "troncato"}` o la busta
-        del guasto, intera (`_read_failure`). Quanti che siano: il taglio dell'URL vive in
-        `HAClient.history` (A-27, Tappa 2).
-
-        Gli istanti passano col loro ISO intero, secondi e microsecondi: la
-        finestra delle righe (`dal`, con un secondo di scarto) e' calcolata
-        sugli stessi."""
-        start, end = query.start.isoformat(), query.end.isoformat()
-        answer = await self._ha.history(entity_ids, start, end)
-        if not isinstance(answer, dict) or "serie" not in answer:
-            return _read_failure(answer, "lo storico di Home Assistant non ha risposto")
-        return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
-
-    async def _state_history(self, query: HistoryQuery, chosen: Chosen,
-                             mirror: Mirror) -> dict:
-        """Gli stati, dallo storico: le serie di tutti i soggetti, con la
-        finestra esplicita («ieri» incluso). Il diario di Home Assistant non si
-        usa piu': sa solo «N ore da adesso», un'entita' alla volta, e non
-        registra i sensori numerici (decisione del piano, 30/09/2026)."""
-        answer = await self._read_history([s.ident for s in chosen.subjects], query)
-        if "errore" in answer:
-            return answer
-        return state_rows(query, chosen, answer["serie"], truncated=answer["troncato"],
-                          acts=self._journal_acts(query), current=mirror.state)
-
-    async def _value_history(self, query: HistoryQuery, chosen: Chosen,
-                             mirror: Mirror, known_classes: dict[str, str | None]) -> dict:
-        """I valori: lo `state_class` dallo specchio decide la superficie
-        (chiederlo al modello sarebbe chiedergli un fatto che abbiamo noi, spec
-        «la storia» §3.1), e ogni superficie e' UNA lettura per tutte le serie
-        che la usano. `known_classes` viene dalla STESSA lettura dello specchio
-        di `mirror` (revisione del Task 7: una seconda `all_states()` poteva
-        dare un'altra casa).
-
-        `attributes` sono le ceste dello specchio (`mirror.attributes`) com'erano:
-        `value_rows` ci guarda se un `total` ha `last_reset` (revisione del
-        Task 4)."""
-        state_classes = {s.ident: known_classes.get(s.ident) for s in chosen.subjects}
-        surfaces = {ident: value_surface(query, state_class)
-                    for ident, state_class in state_classes.items()}
-        detail_ids = [ident for ident, surface in surfaces.items() if surface == "dettaglio"]
-        band_ids = [ident for ident, surface in surfaces.items() if surface == "oraria"]
-        detail = (await self._read_history(detail_ids, query) if detail_ids
-                  else {"serie": {}, "troncato": False})
-        if "errore" in detail:
-            return detail
-        bands = (await self._ha.hourly_statistics(
-            band_ids, query.start.isoformat(), query.end.isoformat()) if band_ids
-            else {"serie": {}})
-        if not isinstance(bands, dict) or "serie" not in bands:
-            return _read_failure(bands, "le statistiche orarie non sono arrivate")
-        return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
-                          truncated=detail["troncato"], surfaces=surfaces,
-                          units=mirror.units, state_classes=state_classes,
-                          attributes=mirror.attributes)
-
-    def _run_key(self, ident: str, registry: dict[str, dict]) -> tuple[str, str] | None:
-        """La chiave con cui Home Assistant conserva le esecuzioni di `ident`,
-        o `None` se non si risolve (e allora non si chiede: `trace/list` con
-        una chiave sconosciuta torna `[]`, che si leggerebbe «mai partita» --
-        docstring di `HAClient.traces`).
-
-        - Un'automazione: l'id della CONFIGURAZIONE, dallo specchio
-          (`automation_config_id`, la stessa risoluzione del vecchio
-          `_automation_trace`). Una YAML senza `id:` non ne ha: `None`.
-        - Uno script: la chiave di configurazione, che Home Assistant usa come
-          `unique_id` e da cui fa l'`entity_id` (`script.<chiave>`, verificato
-          alla fonte nel Task 6). Si prende l'`unique_id` del registro, perche'
-          un'entita' RINOMINATA cambia l'`object_id` e non la chiave; senza
-          voce di registro non c'e' rinomina possibile, e l'`object_id` E' la
-          chiave."""
-        domain, _, object_id = ident.partition(".")
-        if domain == "automation":
-            config_id = automation_config_id(self._cache, ident)
-            return ("automation", config_id) if config_id else None
-        unique_id = (registry.get(ident) or {}).get("unique_id")
-        key = unique_id or object_id
-        return ("script", str(key)) if key else None
-
-    async def _run_history(self, query: HistoryQuery, chosen: Chosen,
-                           home: dict) -> dict:
-        """Le esecuzioni: la chiave di Home Assistant di ogni soggetto
-        (`_run_key`), UNA raffica per tutti (`HAClient.traces`), le righe da
-        `house_history`. Le chiavi irrisolte non si chiedono: vanno in
-        `non_letti` dalle righe (Review Focus 4).
-
-        **Senza inventario leggibile non si risolve nessuna automazione, e lo
-        si dice prima**: «non trovo quell'automazione» su una casa non
-        guardata darebbe la colpa all'identificatore (Task 6 di «le tracce e il
-        log»).
-
-        **Tutte e due le strade passano dal confine** (reperto B-1, 22/09/2026):
-        `config` porta i segreti gia' risolti da Home Assistant, e l'innesco e'
-        testo che scrive un dispositivo di rete."""
-        if any(s.ident.startswith("automation.") for s in chosen.subjects):
-            fault = unreadable_inventory_error(self._cache)
-            if fault is not None:
-                return {"errore": fault["error"]}
-        # `home` e' la casa che `choose` ha gia' letto: la stessa, non una
-        # seconda lettura.
-        registry = {e.get("id"): e for e in home.get("entita") or []}
-        keys = {s.ident: self._run_key(s.ident, registry) for s in chosen.subjects}
-        ha = self._ha
-        seal = self._seal()
-        if query.run_id is not None:
-            subject = chosen.subjects[0]
-            key = keys[subject.ident]
-            if key is None:
-                return {"errore": f"«{subject.ident}»: {UNRESOLVED_RUNS}."}
-            answer = await ha.trace(key[0], key[1], query.run_id)
-            if not isinstance(answer, dict) or "traccia" not in answer:
-                return _read_failure(answer, "la traccia non e' arrivata")
-            return run_detail(query, chosen,
-                              sanitize_structure(answer["traccia"], seal=seal))
-        wanted = [key for key in keys.values() if key is not None]
-        answer = (await ha.traces(wanted)) if wanted else {"tracce": {}, "non_letti": {}}
-        if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
-            return _read_failure(answer, "le esecuzioni non sono arrivate")
-        traces = {name: sanitize_structure(runs, seal=seal)
-                  for name, runs in answer["tracce"].items()}
-        return run_rows(query, chosen, traces=traces,
-                        keys={ident: (f"{key[0]}.{key[1]}" if key else None)
-                              for ident, key in keys.items()},
-                        unread=answer.get("non_letti") or {})
-
-    def _sealed_log(self, entries: list) -> list[dict]:
-        """Le voci del registro, sigillate e filtrate PRIMA di diventare righe
-        (reperto B-1, 22/09/2026): `message` ed `exception` arrivano da un
-        componente qualunque, anche di terze parti.
-
-        **Anche `exception` passa dal sigillo dei segreti**: col solo
-        `sanitize_traceback`, una password
-        rifiutata scritta nel messaggio dell'eccezione arriverebbe al fornitore
-        del modello. Il sigillo guarda il testo PEZZO PER PEZZO
-        (`redaction.seal_free_text`), perche' un segreto in un registro sta dentro una
-        frase. Poi `sanitize_traceback` (il filtro delle istruzioni e il
-        tetto).
-
-        **Dell'eccezione si sigilla solo l'ultima riga** (revisione finale
-        della fetta, M-3, 30/09/2026): `error_rows` porta solo quella
-        (`house_history.last_line`, la stessa regola, importata), e sigillare
-        parola per parola tutta la traccia costava una quindicina di impronte
-        a parola per righe che non arrivano mai al modello. Le righe prima
-        non si sigillano perche' si BUTTANO: la sicurezza e' la stessa."""
-        seal = self._seal()
-        sealed = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            plain = {key: value for key, value in entry.items() if key != "exception"}
-            if isinstance(plain.get("message"), list):
-                plain["message"] = [seal_free_text(m, seal) for m in plain["message"]]
-            elif "message" in plain:
-                plain["message"] = seal_free_text(plain["message"], seal)
-            clean = sanitize_structure(plain, seal=seal)
-            tail = last_line(entry["exception"]) if entry.get("exception") else None
-            if tail is not None:
-                clean["exception"] = sanitize_traceback(seal_free_text(tail, seal))
-            sealed.append(clean)
-        return sealed
-
-    def _journal_acts(self, query: HistoryQuery) -> list[dict] | None:
-        """Gli atti di HIRIS nella finestra, per dire «per mano di HIRIS».
-        `None` -- non `[]` -- quando la cronaca non c'e' o non risponde: «non
-        l'ha fatto HIRIS» e «non ho potuto guardare» hanno due facce diverse
-        (fix F3 dell'onda finale del diario, 25/08/2026)."""
-        if self._journal is None:
-            return None
-        try:
-            return self._journal.list(from_ts=query.start.timestamp(),
-                                      to_ts=query.end.timestamp())
-        except Exception as error:
-            logger.warning("cronaca illeggibile durante `history` (%s: %s)",
-                           type(error).__name__, error)
-            return None
+        # UNA casa per tutta la chiamata, la stessa del turno.
+        return await read_history(self._ha, query, self._turn_house(),
+                                  self._home_space.behavior(), cache=self._cache,
+                                  seal=self._seal(), journal=self._journal, now=now)
 
     # -- i calendari ------------------------------------------------------
 
