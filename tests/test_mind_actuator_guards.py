@@ -24,7 +24,6 @@ qualcuno non lo ammette per iscritto, con la ragione accanto.
 """
 import ast
 import asyncio
-import datetime
 import json
 import pathlib
 import re
@@ -32,11 +31,10 @@ import re
 import pytest
 
 from hiris.app import server
-from hiris.app.home_space.historian import home_space_zone
+from hiris.app.home_space import historian
 from hiris.app.mind.store import ObservationsStore
 
-OGGI = datetime.datetime.now(
-    home_space_zone(server._timezone_from_home_space_store(None))).date().isoformat()
+OGGI = historian.today(historian.house_timezone(None)).isoformat()
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 _CLIENT = RADICE / "hiris" / "app" / "proxy" / "ha_client.py"

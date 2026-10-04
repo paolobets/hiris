@@ -7,17 +7,33 @@ leggere da HA sempre» -- e non e' una preferenza: HIRIS ha gia' avuto un
 archivio storico suo (`history.db`), e' uscito perche' scriveva senza che
 nessuno leggesse.
 
-Qui stanno le funzioni che il resto del prodotto usa: `home_space_zone`,
-`instant_epoch`, `day_boundaries`. La storia che la chat interroga (la
-superficie, il campione, «per mano di HIRIS») vive in
-`home_space/house_history.py`.
+Qui stanno le funzioni che il resto del prodotto usa: `house_timezone`,
+`home_space_zone`, `local_date`, `today`, `day_boundaries`, `instant_epoch`.
+La storia che la chat interroga (la superficie, il campione, «per mano di
+HIRIS») vive in `home_space/house_history.py`.
 """
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+import time
+from datetime import UTC, date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+
+def house_timezone(home_space) -> str | None:
+    """Il NOME del fuso della casa, letto da `HomeSpace.reference_frame()` --
+    `None` se l'anagrafe non c'e' ancora (avvio a meta', o un test che non la
+    costruisce) o se non lo sa.
+
+    **L'unico lettore** del fuso della casa (Tappa 3, Task 10, B-15). Prima
+    ce n'erano due: `server._timezone_from_home_space_store`, chiamato dai
+    giri e da due gestori che lo importavano da `server` per nome privato, e
+    `ToolDispatcher._timezone`, che rileggeva lo stesso `reference_frame()` per
+    conto suo. Lo stesso fatto in due posti: se ne tiene uno, qui, accanto
+    alle funzioni che il fuso lo usano.
+    """
+    return home_space.reference_frame().get("fuso") if home_space else None
 
 
 def home_space_zone(timezone: str | None):
@@ -41,6 +57,24 @@ def home_space_zone(timezone: str | None):
     except Exception:
         logger.warning("fuso della casa non riconosciuto (%r): finestra in UTC", timezone)
         return UTC
+
+
+def local_date(ts: float, timezone: str | None) -> date:
+    """Il giorno del calendario in cui cade questo istante, **nel fuso della
+    casa** (UTC se non si sa, come `home_space_zone`).
+
+    Le 00:30 del 22 agosto a Roma sono le 22:30 UTC del 21: un giorno letto in
+    UTC sbaglierebbe data per due ore ogni notte (un'ora d'inverno). Prima
+    della Tappa 3 questo calcolo era scritto in linea in sette punti e
+    rifatto con un `ZoneInfo` costruito da se' in altri due; ora lo chiamano.
+    """
+    return datetime.fromtimestamp(ts, home_space_zone(timezone)).date()
+
+
+def today(timezone: str | None, now: float | None = None) -> date:
+    """«Oggi», nel fuso della casa. `now` (epoch) si passa nei test per
+    fermare l'orologio; in produzione nessuno lo passa."""
+    return local_date(time.time() if now is None else now, timezone)
 
 
 def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:

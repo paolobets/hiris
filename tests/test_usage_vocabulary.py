@@ -1,4 +1,8 @@
-"""Il vocabolario dei consumi: gli stati del costo, e il giorno della casa.
+"""Il vocabolario dei consumi: gli stati del costo.
+
+(Il giorno della casa, che qui si chiamava `local_day`, e' uscito con la
+Tappa 3, Task 10: vive in `historian.local_date`, e le sue prove in
+`tests/test_il_tempo_della_casa.py`.)
 
 La regola che questo file difende e' una sola, e vale per tutte e cinque le
 voci: **uno zero e' un'affermazione**. Dire «0,00 EUR» dove il prezzo non si
@@ -12,7 +16,6 @@ import pytest
 from hiris.app.usage.vocabulary import (
     STATES,
     cost_state_and_value,
-    local_day,
     piu_debole,
 )
 
@@ -85,14 +88,3 @@ def test_il_ponte_e_compreso_e_non_ha_un_costo():
         "l'abbonamento non espone il prezzo del turno: 0.0 direbbe «gratis», "
         "che e' un'altra cosa")
 
-
-def test_il_giorno_e_quello_della_casa_non_UTC():
-    """Le 00:30 del 22 agosto a Roma sono ancora il 21 in UTC: un secchiello
-    giornaliero calcolato in UTC racconterebbe una bugia ogni notte."""
-    mezzanotte_e_mezza_a_roma = 1787351400.0
-    assert local_day(mezzanotte_e_mezza_a_roma, "Europe/Rome") == "2026-08-22"
-    assert local_day(mezzanotte_e_mezza_a_roma, "") == "2026-08-21"
-
-
-def test_un_fuso_inventato_non_fa_cadere_il_conto():
-    assert local_day(1787351400.0, "Non/Esiste") == "2026-08-21"

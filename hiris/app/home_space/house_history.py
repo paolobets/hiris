@@ -28,7 +28,7 @@ from ..mind.report import integration_of
 from ..proxy.entity_cache import VALUES
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
-from .historian import day_boundaries, home_space_zone, instant_epoch
+from .historian import day_boundaries, home_space_zone, instant_epoch, local_date
 from .house_query import (
     DETAIL_MEDIUM_MAX,
     HouseFilters,
@@ -127,7 +127,7 @@ def _instant(raw, name: str, *, now: float, timezone: str | None) -> datetime | 
     zone = home_space_zone(timezone)
     word = str(raw).strip().lower()
     if word in ("oggi", "ieri"):
-        today = datetime.fromtimestamp(now, tz=zone).date()
+        today = local_date(now, timezone)
         day = today if word == "oggi" else today - timedelta(days=1)
         start_ts, end_ts = day_boundaries(day.isoformat(), timezone)
         if name == "da":

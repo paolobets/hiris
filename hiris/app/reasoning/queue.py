@@ -4,10 +4,9 @@ import json
 import secrets
 import threading
 import time
-from datetime import datetime, timedelta
 
 from ..chat_thread import ChatThread
-from ..home_space.historian import home_space_zone
+from ..home_space.historian import day_boundaries, local_date
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -443,21 +442,14 @@ class ReasoningQueue:
 
         Il confine e' mezzanotte della CASA, non del container: senza fuso
         il tetto si azzererebbe alle due di notte invece che a mezzanotte
-        (`home_space_zone` ricade su UTC quando il fuso non si sa, e non lo
-        inventa mai)."""
+        (`historian.home_space_zone` ricade su UTC quando il fuso non si sa,
+        e non lo inventa mai)."""
         ts = time.time() if now is None else now
-        dt = datetime.fromtimestamp(ts, home_space_zone(self._read_timezone()))
-        # M-3 (review finale «il linter e le best practice»): NON
-        # `day_start + 86400`. Un giorno locale non dura sempre 86400
-        # secondi -- due volte l'anno a Roma dura 23 o 25 ore (l'ora legale
-        # scatta/finisce nel mezzo). Sommare secondi all'epoch sforerebbe (o
-        # si fermerebbe prima) della mezzanotte vera in quei due giorni.
-        # Aggiungere un giorno al DATETIME consapevole del fuso lascia
-        # all'aritmetica del calendario, non a un conteggio di secondi, il
-        # compito di trovare la mezzanotte successiva.
-        midnight = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_start = midnight.timestamp()
-        day_end = (midnight + timedelta(days=1)).timestamp()
+        # I confini del giorno sono quelli di `historian.day_boundaries`
+        # (Tappa 3, Task 10, B-15): qui c'era una seconda copia del calcolo,
+        # con la stessa cura per i giorni di 23 e 25 ore.
+        timezone = self._read_timezone()
+        day_start, day_end = day_boundaries(local_date(ts, timezone).isoformat(), timezone)
         with self._lock:
             r = self._conn.execute(
                 "SELECT COUNT(*) AS c FROM reasoning_jobs "

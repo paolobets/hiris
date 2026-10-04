@@ -24,6 +24,7 @@ from ..chat_thread import ChatThread, adopt_if_owner, request_thread
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._mcp_server_name` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
+from ..home_space.historian import house_timezone, instant_epoch, local_date
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
 
@@ -404,9 +405,16 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     past = get_past_summaries(data_dir, thread=thread)
     past_str = ""
     if past:
+        # B-16 (Tappa 3, Task 10): la data e' il giorno DELLA CASA, non quello
+        # UTC in cui `started_at` e' scritto. Fra mezzanotte di Roma e
+        # mezzanotte UTC una conversazione di stanotte risultava di ieri.
+        # Un istante che non si legge esce com'e': meglio grezzo che spostato.
+        timezone = house_timezone(app.get("home_space_store"))
         lines = ["Sessioni precedenti (memory):"]
         for s in past:
-            dt = s["started_at"][:10]
+            epoch = instant_epoch(s["started_at"])
+            dt = (s["started_at"] if epoch is None
+                  else local_date(epoch, timezone).isoformat())
             lines.append(f"[{dt}] {s['summary']}")
         past_str = "\n".join(lines)
 

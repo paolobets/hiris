@@ -10,17 +10,15 @@ Il giro si aggancia allo stesso battito orario dell'analista e non fa niente
 finche' l'analisi di oggi non c'e'. Cosi' parte quando l'analisi e' finita,
 qualunque ora sia, senza inventare un orario.
 """
-import datetime
 import json
 
 import pytest
 
 from hiris.app import server
-from hiris.app.home_space.historian import home_space_zone
+from hiris.app.home_space import historian
 from hiris.app.mind.store import ObservationsStore
 
-OGGI = datetime.datetime.now(
-    home_space_zone(server._timezone_from_home_space_store(None))).date().isoformat()
+OGGI = historian.today(historian.house_timezone(None)).isoformat()
 
 
 def _oss(**extra):

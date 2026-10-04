@@ -412,7 +412,7 @@ _NOTE_ITALIANE = frozenset({
     "grave_piu_un_taciuto",
     "i_non_letta", "il_piano_puo_rispondere",
     "in_fuori", "kwargs_con", "kwargs_senza", "legami_a_self_ha",
-    "mezzanotte_e_mezza_a_roma", "mezzanotte_e_mezza_roma", "modello_di",
+    "mezzanotte_e_mezza_roma", "modello_di",
     "nei_preset", "nei_test", "nel_prompt", "nell_argv", "non_c_e", "non_chiesto",
     "non_disponibili", "non_esiste", "non_letti",
     "non_letto", "non_viste", "notte_30_oltre_confine", "parole_di_scadenza",
