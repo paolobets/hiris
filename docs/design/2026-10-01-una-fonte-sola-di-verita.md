@@ -470,9 +470,16 @@ registri leggibili uno per uno; lo stato per id dallo specchio, che toglie una l
 tre (*corretto il 03/10/2026, D4 del piano della Tappa 2:* «tre su cinque» non reggeva sul codice
 — l'officina rilegge subito dopo una scrittura, e lo specchio arriva per evento, dopo; il recapito
 cerca le `person` per `user_id`, che lo specchio trattiene come credenziale. Le due letture restano,
-dichiarate in `tests/fonte_unica_eccezioni.json` con la ragione); le segnalazioni e il registro degli errori letti una volta per giro e riusati; le tracce a
+dichiarate nell'elenco `SHARED_READS` di `tests/test_fonte_unica.py` con la ragione); le segnalazioni e il registro degli errori letti una volta per giro e riusati; le tracce a
 raffica; lo stato delle integrazioni tenuto vivo; la casa letta una volta all'avvio; il motivo di un
 rifiuto di HA conservato. *Misura:* connessioni al giorno e all'avvio, prima e dopo; sonda a zero.
+
+*Corretto il 04/10/2026, D5 del piano della Tappa 2:* undici voci del capitolo A non leggono Home
+Assistant ma archivi e strutture di HIRIS, e si spostano: A-13, A-16, A-18, A-25, A-38 e S-07 alla
+Tappa 3; A-26 alla Tappa 4; A-23 alla Tappa 6; A-17, A-22, A-37, A-39 alla Tappa 8. E-06 (piu' client
+verso HA e verso il Supervisor) resta al capitolo E, Tappa 7: le sessioni aperte fuori dal client
+sono di scrittura o verso il Supervisor, non letture. Il cancello R1 stretto (`tests/test_fonte_unica.py`,
+una lettura un modulo) ha trovato A-41, che si chiude con R13.
 
 ### Tappa 3 — La casa: un oggetto, una risposta
 

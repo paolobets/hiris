@@ -53,7 +53,7 @@ diff in due file, e una revisione la vede.
   riferimento nudo a un nome che altrove e' un campo (`problems`).
 - Non vede chi parla con Home Assistant o col Supervisor con una sessione
   propria, senza il client: e' la voce E-06 del registro, e si chiude alla
-  Tappa 2.
+  Tappa 7 (capitolo E: sono scritture o il Supervisor, non letture).
 - Non vede due funzioni che rispondono alla stessa domanda con codice diverso
   senza toccare questi tre segnali: quello resta alla sonda di parita' e agli
   occhi.

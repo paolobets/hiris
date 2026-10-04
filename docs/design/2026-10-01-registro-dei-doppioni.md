@@ -19,23 +19,23 @@ File relativi a `hiris/app/` salvo diverso avviso.
 |---|---|---|---|---|---|---|
 | A-03 | `GET /api/states` intero riletto da tre percorsi oltre allo specchio | NV | DP |  | cop-9 (incompleta) | reg · cop-9 |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
-| A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 |
+| A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | D | PS |  | cop-9 (verdetto) | reg · cop-3 · cop-8 · cop-9 N-B-1 · Tappa 3 (D5) |
 | A-15 | `workshop._reread`: la terza casa dello stato | NV | DP |  |  | reg · cop-9 |
-| A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 |
-| A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 |
-| A-18 | Contenitori che invecchiano per scelta dichiarata | E | DP |  | cop-6 (incompleta, righe) | reg · cop-4 · cop-6 |
-| A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 |
-| A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 |
-| A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | E | PS |  |  | cop-3 A-n2 |
-| A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 |
+| A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 · Tappa 3 (D5) |
+| A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 · Tappa 8 (D5) |
+| A-18 | Contenitori che invecchiano per scelta dichiarata | E | DP |  | cop-6 (incompleta, righe) | reg · cop-4 · cop-6 · Tappa 3 (D5) |
+| A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
+| A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 · Tappa 6 (D5) |
+| A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | E | PS |  |  | cop-3 A-n2 · Tappa 3 (D5) |
+| A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 · Tappa 4 (D5) |
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
 | A-34 | `calendars()` chiede a HA ciò che lo specchio ha già; eventi letti in fila | NV | CC |  |  | cop-5 A7 |
 | A-36 | Due modi di leggere lo storico dettagliato (REST `history`, WS `recorded_changes`) | NV | DP |  |  | cop-5 A9 |
-| A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 |
-| A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | E | PS |  |  | cop-6 N-03 |
-| A-39 | `last_before` eseguita due volte quando si rifà una cronaca (`day_boundaries` pure) | E | PS |  |  | cop-6 N-04 |
+| A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 · Tappa 8 (D5) |
+| A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | E | PS |  |  | cop-6 N-03 · Tappa 3 (D5) |
+| A-39 | `last_before` eseguita due volte quando si rifà una cronaca (`day_boundaries` pure) | E | PS |  |  | cop-6 N-04 · Tappa 8 (D5) |
 | A-41 | `system_log`, `traces`, `hourly_statistics` letti dai giri di `server.py` e dagli strumenti della chat | E | DP |  |  | Tappa 2, Task 13 (04/10/2026): `server.py:826`, `:1087`, `:1809` contro `home_space/tools.py:2563`, `:2720`, `:2650`; si chiude con R13 |
 
 ---
@@ -417,8 +417,8 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-01 | Turno dell'attuatore raccolto dal ponte: gli indici del modello applicati a un elenco rifatto «adesso» (oggi dormiente, giro in pausa) | 1° dei «5 più gravi» di cop-1 | DEDOTTO | cap. proposto D; Stato del rapporto: DIVERGENTE [D]; Unirla CC | cop-1 D6 |
 | S-02 | `_close_expired_promise` dice «ho aspettato N minuti» con la `scadenza_min` di adesso, non la durata del job | 5° dei «5 più gravi» di cop-1 | LETTO | cap. proposto X (la parte di commento è X-24); Stato DIVERGENTE, Unirla CC; si lega a D-09 | cop-1 X4 |
 | S-03 | «Per mano di HIRIS» (`_by_hand`) abbina anche gli atti NON eseguiti: ignora `eseguito` |  | LETTO (effetto DEDOTTO) | cap. proposto B; Stato NV, Unirla CC; era «fuori perimetro» di `db` nel registro v1 | cop-3 B-n7 |
-| S-05 | `read_dashboards`: `d.get("url_path")` senza `isinstance(d, dict)` |  | LETTO | `ha_client.py:966` (la `:985` lo ha) | cop-5 S2 |
-| S-07 | `context` (chi ha causato il cambio) non entra nello specchio |  | LETTO | `entity_cache.py:516-587`; vedi correzione a B-25 | cop-5 S4 |
+| S-05 | `read_dashboards`: `d.get("url_path")` senza `isinstance(d, dict)` |  | LETTO | `ha_client.py:1056` (04/10/2026; la `:1077` lo ha) | cop-5 S2 |
+| S-07 | `context` (chi ha causato il cambio) non entra nello specchio |  | LETTO | `entity_cache.py:516-587`; vedi correzione a B-25 | cop-5 S4 · Tappa 3 (D5) |
 | S-08 | L'argomento unico `-p` oltre 128 KiB: la CLI del ponte non parte (domanda dell'analista 136.822 caratteri) |  | DEDOTTO | cap. proposto D; Stato NV (limite del kernel noto, non provato); il guasto esce come «runner non disponibile» | cop-7 N-D1 |
 | S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda |  | LETTO (comportamento DEDOTTO) | cap. proposto D; Stato DIVERGENTE, Unirla CC | cop-7 N-D2 |
 | S-10 | Il ponte è una corsia sola: un turno lungo blocca la chat; ~3,3 s medi aggiunti per risposta | 1° per peso sulla latenza (cop-7 §5.4) | LETTO (non verificato sul vivo) | cap. proposto D; Stato NV, Unirla CC | cop-7 N-D3 |
