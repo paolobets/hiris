@@ -1795,11 +1795,10 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     house = House.read(casa, app.get("entity_cache"))
     nomi = {device_id: house.name("dispositivo", device_id)
             for device_id in house.device_ids()}
-    ricette = {}
-    for device_id in nomi:
-        scritta = recipe_turn.recipe_for(sapere, device_id)
-        if scritta is not None:
-            ricette[device_id] = scritta
+    # Le ricette di tutti in una lettura (A-38), nell'ordine dell'anagrafe.
+    scritte = recipe_turn.recipes(sapere)
+    ricette = {device_id: scritte[device_id] for device_id in nomi
+               if device_id in scritte}
     if not ricette:
         return {}, {}, nomi, None
     entita = sorted({e for r in ricette.values() for e in Recipe(r).entities()})

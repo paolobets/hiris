@@ -346,6 +346,32 @@ def test_un_dispositivo_gia_NON_CAPITO_non_si_richiede(sapere):
     assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == []
 
 
+def test_le_risposte_di_tutti_i_dispositivi_si_leggono_in_UNA_lettura(sapere):
+    """A-38 (Tappa 3, Task 12): «chi ha gia' una risposta?» era tre SELECT
+    per dispositivo a ogni giro (ricetta, non capito, rifiuto ragionato), e
+    una per dispositivo nella potatura e nel resoconto. Ora una sola
+    (`KnowledgeStore.device_answers`), qualunque sia il numero dei
+    dispositivi; l'ordine resta quello dell'anagrafe.
+
+    Mutazione ESEGUITA (04/10/2026): `devices_to_ask` che torna a chiedere
+    `store.get` per dispositivo -- rossa (8 SELECT invece di 2: tre per
+    ciascuno dei due dispositivi)."""
+    rt.apply_recipe(sapere, CASA, "dev2", "non saprei", who="x", when_ts=1789000000.0)
+    statements: list[str] = []
+    sapere._conn.set_trace_callback(statements.append)
+    try:
+        asked = rt.devices_to_ask(sapere, CASA, {"sensor.prodotta", "switch.lavatrice"})
+        pruned = rt.has_prunable_recipes(sapere, CASA)
+    finally:
+        sapere._conn.set_trace_callback(None)
+    assert asked == ["dev1"]
+    assert pruned is False
+    assert sum(1 for q in statements if q.lstrip().upper().startswith("SELECT")) == 2
+    answers = sapere.device_answers((rt.RECIPE_FIELD, rt.UNDERSTOOD_FIELD))
+    assert set(answers) == {"dev2"}
+    assert set(answers["dev2"]) == {rt.UNDERSTOOD_FIELD}
+
+
 def test_si_chiede_solo_per_i_dispositivi_che_PESANO(sapere):
     """«Pesa» vuol dire che almeno una sua entita' e' dentro lo scope --
     cioe' che l'osservatore ha deciso che quello che fa conta. Chiedere una
@@ -637,7 +663,7 @@ def test_una_ricetta_su_entita_MUTE_si_toglie_e_il_dispositivo_torna_una_domanda
     quante = rt.drop_recipes_without_series(sapere, CASA, with_series=set())
 
     assert quante == 1
-    assert rt.recipe_for(sapere, "dev1") is None
+    assert rt.recipes(sapere).get("dev1") is None
     assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == ["dev1"]
 
 
@@ -654,7 +680,7 @@ def test_una_ricetta_con_UN_SOLO_passo_buono_NON_si_toglie(sapere):
         sapere, CASA, with_series={"sensor.prodotta"})
 
     assert quante == 0
-    assert rt.recipe_for(sapere, "dev1") is not None
+    assert rt.recipes(sapere).get("dev1") is not None
 
 
 def test_senza_sapere_quali_entita_abbiano_una_serie_non_si_toglie_NIENTE(sapere):
@@ -668,7 +694,7 @@ def test_senza_sapere_quali_entita_abbiano_una_serie_non_si_toglie_NIENTE(sapere
                     who="x", when_ts=1789000000.0)
 
     assert rt.drop_recipes_without_series(sapere, CASA, with_series=None) == 0
-    assert rt.recipe_for(sapere, "dev1") is not None
+    assert rt.recipes(sapere).get("dev1") is not None
 
 
 def test_una_risposta_nuova_CANCELLA_quella_vecchia(sapere):
@@ -693,7 +719,7 @@ def test_una_risposta_nuova_CANCELLA_quella_vecchia(sapere):
     rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
                     who="x", when_ts=1789000100.0)
 
-    assert rt.recipe_for(sapere, "dev1") is not None
+    assert rt.recipes(sapere).get("dev1") is not None
     assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None, (
         "un dispositivo capito non resta fra i «non capiti» della pagina")
 

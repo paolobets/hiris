@@ -455,15 +455,18 @@ def devices_to_ask(store, house: House, watched: set[str]) -> list[str]:
     con un registro piu' povero torna una domanda aperta -- perche' il
     dispositivo non e' cambiato, e' cambiato cio' che sappiamo calcolare.
     """
+    # Le risposte di tutti, in una lettura (A-38); l'ordine e' quello
+    # dell'anagrafe, su cui ruota `who_to_ask`.
+    given = store.device_answers((RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD))
     to_ask = []
     for device_id in house.device_ids():
         if not set(house.entities_of(device_id)) & watched:
             continue
-        if store.get("dispositivo", device_id, RECIPE_FIELD) is not None:
+        answers = given.get(device_id, {})
+        if RECIPE_FIELD in answers:
             continue
-        answers = (store.get("dispositivo", device_id, UNDERSTOOD_FIELD),
-                   store.get("dispositivo", device_id, DECLINED_FIELD))
-        if any(r is not None and _still_valid(r) for r in answers):
+        if any(r is not None and _still_valid(r)
+               for r in (answers.get(UNDERSTOOD_FIELD), answers.get(DECLINED_FIELD))):
             continue
         to_ask.append(device_id)
     return to_ask
@@ -535,8 +538,9 @@ def _named_recipes(store, house: House):
     """`(device_id, entita' nominate)` per ogni dispositivo dell'anagrafe con
     una ricetta che nomina almeno un'entita': le sole che la potatura puo'
     togliere."""
+    written_by_device = recipes(store)
     for device_id in house.device_ids():
-        written = recipe_for(store, device_id)
+        written = written_by_device.get(device_id)
         if written is None:
             continue
         named = Recipe(written).entities()
@@ -563,16 +567,20 @@ def _still_valid(rejection) -> bool:
     return (rejection.source or "") == expected
 
 
-def recipe_for(store, device_id: str) -> dict | None:
-    """La ricetta di un dispositivo, o `None` se non ne ha una valida."""
-    fact = store.get("dispositivo", device_id, RECIPE_FIELD)
-    if fact is None or not fact.value:
-        return None
-    try:
-        return json.loads(fact.value)
-    except (ValueError, TypeError):  # pragma: no cover - riga corrotta a mano
-        logger.warning("sapere: la ricetta di %s non si legge come JSON", device_id)
-        return None
+def recipes(store) -> dict[str, dict]:
+    """Le ricette valide di tutti i dispositivi, `{dispositivo: ricetta}`, in
+    una lettura del sapere (`Knowledge.device_answers`, A-38). Una riga che
+    non si legge come JSON non e' una ricetta: si salta e si dichiara."""
+    found = {}
+    for device_id, answers in store.device_answers((RECIPE_FIELD,)).items():
+        fact = answers.get(RECIPE_FIELD)
+        if fact is None or not fact.value:
+            continue
+        try:
+            found[device_id] = json.loads(fact.value)
+        except (ValueError, TypeError):  # pragma: no cover - riga corrotta a mano
+            logger.warning("sapere: la ricetta di %s non si legge come JSON", device_id)
+    return found
 
 
 def bridge_turn(objective: str, house: House, device_id: str,

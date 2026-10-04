@@ -95,7 +95,7 @@ def _asked(house: CasaFinta) -> int:
 def _with_recipe(sapere):
     recipe_turn.apply_recipe(sapere, House(CASA, Mirror()), "dev1", json.dumps(RICETTA),
                              who="prova", when_ts=1789000000.0)
-    assert recipe_turn.recipe_for(sapere, "dev1") is not None
+    assert recipe_turn.recipes(sapere).get("dev1") is not None
 
 
 async def test_niente_da_potare_ne_da_chiedere_nessuna_lettura(stores):
@@ -261,7 +261,7 @@ async def test_una_ricetta_potata_si_richiede_nello_stesso_giro(stores):
 
     await server.recipe_round(app)
 
-    assert recipe_turn.recipe_for(sapere, "dev1") is None
+    assert recipe_turn.recipes(sapere).get("dev1") is None
     assert len(modello.domande) == 1
     assert "Inverter" in modello.domande[0]
     assert _asked(house) == 1

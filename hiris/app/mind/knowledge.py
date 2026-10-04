@@ -820,6 +820,31 @@ class KnowledgeStore:
                 # soggetto, che e' stabile e leggibile.
                 "ORDER BY when_ts DESC, subject").fetchall()
         return _facts(rows)
+    def device_answers(self, fields) -> dict[str, dict[str, Fact]]:
+        """Le righe di TUTTI i dispositivi per i campi dati, in una lettura
+        sola (A-38, Tappa 3, Task 12): `{dispositivo: {campo: Fact}}`, solo i
+        dispositivi che ne hanno almeno una.
+
+        Fino al 04/10/2026 «chi ha gia' una risposta?» era una SELECT per
+        dispositivo e per campo -- tre per dispositivo a ogni giro delle
+        ricette, una nel resoconto e una nella potatura -- mentre l'anagrafe
+        si scorreva accanto. L'ordine dei dispositivi resta di chi chiede
+        (`House.device_ids`, su cui ruota `recipe_turn.who_to_ask`): qui non
+        se ne promette nessuno."""
+        wanted = sorted(set(fields))
+        if not wanted:
+            return {}
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
+                "WHERE subject_kind = 'dispositivo' "
+                f"AND field IN ({', '.join('?' for _ in wanted)})",
+                wanted).fetchall()
+        answers: dict[str, dict[str, Fact]] = {}
+        for fact in _facts(rows):
+            answers.setdefault(fact.subject, {})[fact.field] = fact
+        return answers
+
     def forget(self, subject_kind: str, subject: str, field: str) -> bool:
         """Toglie una riga. Torna `True` se c'era.
 
