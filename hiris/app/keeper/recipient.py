@@ -2,7 +2,7 @@
 chat-divise.md` §2.3, Task 1): per una promessa, a chi la spinge il sistema --
 mai il modello.
 
-Un punto solo, `recipients_for(subject, ha) -> Recipients`, che risponde per
+Un punto solo, `recipients_for(subject, ha, services) -> Recipients`, che risponde per
 genere: **persona** -> i servizi notify dei suoi dispositivi `mobile_app`
 (dagli stati e dai registri di Home Assistant, VERI); **luogo**/
 **integrazione** (i servizi firmati, Retro Panel incluso) -> nessuna strada
@@ -80,8 +80,8 @@ iphone_di_marta` («iPhone di Marta») -> `notify.mobile_app_iphone_di_marta`
 esiste; `device_tracker.iphone_bet_apple_watch` («iPhone Bet Apple Watch»,
 il Watch, un device_tracker `mobile_app` senza registrazione push propria)
 -> nessun servizio esiste per lui -- la regola regge, il Watch cade da se'
-esattamente come previsto perche' la verifica contro `get_services()` lo
-scarta, non perche' lo si riconosca per nome.
+esattamente come previsto perche' la verifica contro i servizi notify
+dichiarati lo scarta, non perche' lo si riconosca per nome.
 """
 from __future__ import annotations
 
@@ -90,13 +90,14 @@ import re
 from dataclasses import dataclass
 
 from ..home_space.reference import fold_accents
+from ..proxy.ha_client import HAReadError
 
 logger = logging.getLogger(__name__)
 
 #: La forma di UNA meta' di uno slug (`proxy/ha_client.py::_ENTITY_ID_RE`
 #: impone la stessa cosa sull'intero entity_id): una guardia contro un
 #: candidato che non potrebbe mai essere un servizio notify vero, non una
-#: fonte -- l'esistenza si accerta comunque contro `get_services()`.
+#: fonte -- l'esistenza si accerta comunque contro il registro dei servizi.
 _SLUG_RE = re.compile(r"^[a-z0-9_]+$")
 
 
@@ -113,8 +114,8 @@ def _slugify(text: str | None) -> str:
     pratica; **non** e' una traslitterazione fonetica come quella che
     `python-slugify` usa per altri alfabeti (cirillico, greco, CJK
     diventerebbero stringhe vuote qui, non una resa approssimata) -- se la
-    casa vera lo richiedesse un giorno, la verifica contro `get_services()`
-    piu' sotto scarta comunque un candidato sbagliato invece di spingere al
+    casa vera lo richiedesse un giorno, la verifica contro il registro dei
+    servizi piu' sotto scarta comunque un candidato sbagliato invece di spingere al
     posto sbagliato.
 
     Stessa forma dei due casi limite di HA (`homeassistant/util/
@@ -202,14 +203,21 @@ class Recipients:
     reason: str | None = None
 
 
-async def recipients_for(subject: dict | None, ha) -> Recipients:
+async def recipients_for(subject: dict | None, ha, services) -> Recipients:
     """Il recapito di CHI ha chiesto -- mai scelto dal modello (spec §2.3).
 
     Una lettura sola per ciascuno dei lettori che `ha` gia' ha
-    (`get_states`, `read_registry` per le entita' e per i dispositivi,
-    `get_services`), e solo quelle che servono: una persona senza `id`, senza
-    `person` collegata o senza `device_trackers` non arriva mai a leggere i
-    registri o i servizi.
+    (`get_states`, `read_registry` per le entita' e per i dispositivi), e solo
+    quelle che servono: una persona senza `id`, senza `person` collegata o
+    senza `device_trackers` non arriva mai a leggere i registri o i servizi.
+
+    **I servizi `notify` vengono dal registro dei servizi** (`services`,
+    `action/registry.py::ServiceRegistry`), lo stesso che verifica i
+    comandi: `ensure_fresh` lo rilegge solo se e' vecchio (5 minuti) o se un
+    evento `service_registered`/`service_removed` lo ha invalidato. Fino al
+    04/10/2026 (A-04, Tappa 2, Task 8) qui si leggeva `/api/services` INTERO
+    a ogni chiamata, per cercarne i soli `notify.*` -- anche alla nascita
+    della promessa, subito dopo che lo strumento aveva scaldato il registro.
 
     Un guasto di una qualunque lettura torna **zero servizi col motivo del
     guasto**, mai un'eccezione: la promessa che stava per nascere (o
@@ -308,18 +316,24 @@ async def recipients_for(subject: dict | None, ha) -> Recipients:
     if not mobile_app_trackers:
         return Recipients((), _REASON_NO_MOBILE_APP_DEVICE)
 
-    services = await ha.get_services()
-    if not isinstance(services, list):
-        logger.warning("recipients_for: servizi non letti da Home Assistant (%s)",
-                       services.get("causa") if isinstance(services, dict) else "forma")
+    if services is None:
+        # Nessun registro dei servizi (uno strumento della chat costruito
+        # senza): non c'e' dove verificare che un servizio notify esista, e un
+        # nome plausibile non si inventa. Qui, e non in testa, perche' i
+        # motivi che vengono prima (persona non collegata, nessuna app) restano
+        # veri anche senza registro.
         return Recipients((), _REASON_HA_DOWN)
-
-    notify_services: set[str] = set()
-    for entry in services:
-        if isinstance(entry, dict) and entry.get("domain") == "notify":
-            declared = entry.get("services")
-            if isinstance(declared, dict):
-                notify_services.update(k for k in declared if isinstance(k, str))
+    try:
+        await services.ensure_fresh(ha)
+    except HAReadError as error:
+        # Mai letto, e la lettura e' fallita: `ensure_fresh` solleva solo
+        # cosi'. Un registro gia' letto, invece, sopravvive a un rinfresco
+        # fallito (lo dice `ensure_fresh`): meglio quello di qualche minuto fa
+        # che nessuno. Solo la causa, come per gli stati qui sopra.
+        logger.warning("recipients_for: servizi non letti da Home Assistant (%s)",
+                       error.failure.get("causa"))
+        return Recipients((), _REASON_HA_DOWN)
+    notify_services = set(services.services_for("notify"))
 
     # Per ogni tracker, DUE candidati nell'ordine giusto (vedi il docstring
     # del modulo): prima il nome VERO di oggi (dal registro dei dispositivi,

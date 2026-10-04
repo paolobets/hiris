@@ -66,7 +66,7 @@ from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space.behavior import reread
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
-from hiris.app.keeper.recipient import recipients_for
+from hiris.app.keeper.recipient import _REASON_NO_ACTIVE_NOTIFY, recipients_for
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import EntityCache, automation_config_id
 from hiris.app.server import reload_entity_inventory
@@ -296,7 +296,8 @@ async def test_the_recipient_does_not_hand_personal_data_to_the_models(house_kwa
     Mutazione ESEGUITA (03/10/2026): `_REASON_NO_ACTIVE_NOTIFY + user_id` come
     motivo -- rossa su `senza_notify` e sulla prova dello strumento qui sotto."""
     found = await recipients_for({"specie": "persona", "id": USER_ID},
-                                 _house_with_one_person(**house_kwargs))
+                                 _house_with_one_person(**house_kwargs),
+                                 ServiceRegistry())
     text = json.dumps([found.services, found.reason], ensure_ascii=False)
     assert not _leaks(text), text
     if not house_kwargs:
@@ -307,9 +308,13 @@ async def test_the_recipient_does_not_hand_personal_data_to_the_models(house_kwa
 async def test_the_chat_tool_does_not_hand_personal_data_to_the_models(tmp_path):
     agenda = AgendaStore(str(tmp_path / "promesse.db"))
     try:
+        # Il registro dei servizi c'e', come nell'app: senza, il recapito si
+        # fermerebbe prima di leggere la persona (A-04), e la prova non
+        # guarderebbe piu' la strada che porta `user_id` e tracker.
         dispatcher = ToolDispatcher(None, None, agenda=agenda,
                                     thread=ChatThread("persona:paolo", "pannello"),
                                     ha=_house_with_one_person(notify=False),
+                                    registry=ServiceRegistry(),
                                     subject={"specie": "persona", "id": USER_ID})
         outcome = await dispatcher.dispatch("promise", {
             "specie": "chiedi", "frase": "ricordamelo",
@@ -317,6 +322,7 @@ async def test_the_chat_tool_does_not_hand_personal_data_to_the_models(tmp_path)
     finally:
         agenda.close()
     assert "avviso" in outcome, outcome
+    assert outcome["avviso"].endswith(_REASON_NO_ACTIVE_NOTIFY), outcome
     text = json.dumps(outcome, ensure_ascii=False)
     assert not _leaks(text), text
 

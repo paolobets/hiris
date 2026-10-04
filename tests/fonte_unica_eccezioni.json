@@ -24,9 +24,7 @@
    "conti": {
     "get_services": 1
    },
-   "voci": [
-    "A-04"
-   ]
+   "non_e_un_doppione": "l'unico lettore di `/api/services` dal Task 8 della Tappa 2 (04/10/2026): il recapito delle promesse chiede i `notify` a questo registro invece di rileggere l'elenco per conto suo. Il proprietario di questa lettura lo dira' R1 stretto (Tappa 2, Task 13)."
   },
   "hiris/app/api/soffitto.py": {
    "conti": {
@@ -71,13 +69,11 @@
   },
   "hiris/app/keeper/recipient.py": {
    "conti": {
-    "get_services": 1,
     "get_states": 1,
     "read_registry": 1
    },
    "voci": [
-    "A-03",
-    "A-04"
+    "A-03"
    ],
    "ragione": "D4 della Tappa 2 (03/10/2026, «restano», con la condizione di Paolo: nessun dato sensibile ai modelli): `recipients_for` cerca le `person` per `user_id`, che lo specchio trattiene come credenziale. `user_id` e tracker restano nella funzione: la prova e' `tests/test_specchio_per_id.py` (recapito e strumento della chat)."
   },

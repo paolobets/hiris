@@ -2177,7 +2177,8 @@ class ToolDispatcher:
             # risveglio, dal recapito risolto allora (se nel frattempo la
             # persona si collega, funziona gia'). Il motivo e' un testo di
             # HIRIS (`Recipients.reason`), lo stesso che leggera' la pagina.
-            recipients = await recipients_for(self._subject, self._ha)
+            recipients = await recipients_for(self._subject, self._ha,
+                                              self._registry)
             if not recipients.services:
                 result["avviso"] = f"{_NO_RECIPIENT_NOTICE}{recipients.reason}"
         return result

@@ -5,7 +5,9 @@ col trasporto sostituito, che serve `GET /api/states`, i registri e `GET
 /api/services` da ingressi sintetici costruiti qui. La forma delle tre letture
 che la funzione usa (`get_states`, `read_registry`, `get_services`) e' quindi
 quella del client per costruzione, guasti compresi: la busta, mai
-un'eccezione (D3). I casi che contano -- un orologio `mobile_app` senza
+un'eccezione (D3). I servizi arrivano dal registro dei servizi
+(`ServiceRegistry`, A-04): ogni prova ne passa uno nuovo, che alla prima
+domanda legge `/api/services` dalla casa finta. I casi che contano -- un orologio `mobile_app` senza
 servizio notify proprio, un tracker che non e' `mobile_app` -- vengono dalla
 misura sulla casa vera del 25/09/2026 (vedi `hiris/app/keeper/recipient.py`),
 con nomi sintetici."""
@@ -20,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
+from hiris.app.action.registry import ServiceRegistry
 from hiris.app.keeper.recipient import (
     _REASON_HA_DOWN,
     Recipients,
@@ -89,7 +92,7 @@ async def test_persona_collegata_due_servizi_l_orologio_cade_da_se():
         entities=_THREE_TRACKERS)
     subject = {"specie": "persona", "id": USER_ID}
 
-    esito = await recipients_for(subject, ha)
+    esito = await recipients_for(subject, ha, ServiceRegistry())
 
     assert esito == Recipients(
         services=("notify.mobile_app_telefono_uno", "notify.mobile_app_tablet_uno"),
@@ -108,7 +111,7 @@ async def test_tracker_non_mobile_app_ignorato():
             {"entity_id": "device_tracker.gps_logger_esterno",
              "platform": "gpslogger", "device_id": "d9"}])
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients(services=("notify.mobile_app_telefono_uno",), reason=None)
 
@@ -126,7 +129,7 @@ async def test_entity_id_con_suffisso_non_slug_non_diventa_un_candidato():
         services=[{"domain": "notify",
                    "services": {"mobile_app_Telefono Strano!": {}}}])
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito.services == ()
     assert esito.reason
@@ -139,7 +142,8 @@ async def test_persona_senza_user_id_collegato_zero_con_motivo_di_collegamento()
     collegare la persona all'utente in Home Assistant."""
     ha = _house(states=[_person_state(None, ["device_tracker.telefono_due"])])
 
-    esito = await recipients_for({"specie": "persona", "id": "id-della-persona-due"}, ha)
+    esito = await recipients_for({"specie": "persona", "id": "id-della-persona-due"},
+                                 ha, ServiceRegistry())
 
     assert esito.services == ()
     assert esito.reason is not None
@@ -158,7 +162,7 @@ async def test_due_persone_collegate_allo_stesso_utente_zero_con_motivo_ambiguo(
     ha = _house(states=[
         _person_state(USER_ID, ["device_tracker.telefono_uno"]), stato_2])
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito.services == ()
     assert esito.reason is not None
@@ -175,7 +179,7 @@ async def test_soggetto_persona_senza_id_stesso_motivo_di_collegamento():
     collega."""
     ha = _house()
 
-    esito = await recipients_for({"specie": "persona", "id": None}, ha)
+    esito = await recipients_for({"specie": "persona", "id": None}, ha, ServiceRegistry())
 
     assert esito.services == ()
     assert "collega" in esito.reason
@@ -188,7 +192,7 @@ async def test_soggetto_luogo_zero_con_motivo_del_servizio():
     esattamente quello della spec §2.3."""
     ha = _house()
 
-    esito = await recipients_for({"specie": "luogo", "id": "retro-panel"}, ha)
+    esito = await recipients_for({"specie": "luogo", "id": "retro-panel"}, ha, ServiceRegistry())
 
     assert esito == Recipients((), "il servizio non ha ancora dichiarato come si avvisa.")
     assert ha.calls == []
@@ -199,7 +203,8 @@ async def test_soggetto_integrazione_zero_con_motivo_del_servizio():
     """Un'integrazione firmata: stessa frase di `luogo`, stessa non-strada."""
     ha = _house()
 
-    esito = await recipients_for({"specie": "integrazione", "id": "mcp-gateway"}, ha)
+    esito = await recipients_for({"specie": "integrazione", "id": "mcp-gateway"},
+                                 ha, ServiceRegistry())
 
     assert esito.reason == "il servizio non ha ancora dichiarato come si avvisa."
     assert esito.services == ()
@@ -211,7 +216,7 @@ async def test_soggetto_nessuno_zero_con_motivo():
     persona, zero servizi, un motivo leggibile."""
     ha = _house()
 
-    esito = await recipients_for({"specie": "nessuno", "id": None}, ha)
+    esito = await recipients_for({"specie": "nessuno", "id": None}, ha, ServiceRegistry())
 
     assert esito.services == ()
     assert esito.reason
@@ -221,7 +226,7 @@ async def test_soggetto_nessuno_zero_con_motivo():
 async def test_soggetto_none_zero_con_motivo():
     """Nessun soggetto affatto (mai dovrebbe capitare in produzione, ma la
     funzione non deve sollevare)."""
-    esito = await recipients_for(None, _house())
+    esito = await recipients_for(None, _house(), ServiceRegistry())
 
     assert esito.services == ()
     assert esito.reason
@@ -235,7 +240,7 @@ async def test_persona_senza_device_trackers_zero_con_motivo_app():
     4: i due motivi ora si distinguono)."""
     ha = _house(states=[_person_state(USER_ID, [])])
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito.services == ()
     assert "collegato con l'app" in esito.reason
@@ -251,7 +256,7 @@ async def test_persona_solo_orologio_notifiche_non_attive():
         states=[_person_state(USER_ID, ["device_tracker.telefono_uno_orologio"])],
         entities=[_THREE_TRACKERS[2]])  # solo l'orologio
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito.services == ()
     assert "notifiche attive" in esito.reason
@@ -277,7 +282,7 @@ async def test_dispositivo_rinominato_risolve_dal_nome_del_registro_dispositivi(
         services=[{"domain": "notify", "services": {
             "mobile_app_il_telefono_nuovo_di_casa": {}}}])
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients(
         services=("notify.mobile_app_il_telefono_nuovo_di_casa",), reason=None)
@@ -295,7 +300,7 @@ async def test_dispositivo_mai_rinominato_degrada_sull_entity_id():
                    "device_id": "d1"}],
         devices=[])  # nessun dispositivo "d1" nel registro
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients(services=("notify.mobile_app_telefono_uno",), reason=None)
 
@@ -314,7 +319,7 @@ async def test_nome_dispositivo_preferito_al_entity_id_quando_entrambi_esistono(
         services=[{"domain": "notify", "services": {
             "mobile_app_nome_nuovo": {}, "mobile_app_telefono_uno": {}}}])
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients(services=("notify.mobile_app_nome_nuovo",), reason=None)
 
@@ -347,7 +352,7 @@ async def test_guasto_get_states_zero_con_motivo_mai_eccezione():
     motivo del guasto, e nessuna lettura dopo."""
     ha = _house(silence={"/api/states"})
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients((), _REASON_HA_DOWN)
     assert [command for command, _extra in ha.calls] == ["/api/states"]
@@ -371,7 +376,7 @@ async def test_guasto_get_states_il_testo_dell_eccezione_non_finisce_nel_registr
     assert "SEKRET-TOKEN-123" in (await ha.get_states([]))["errore"]
 
     with caplog.at_level(logging.WARNING):
-        esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+        esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients((), _REASON_HA_DOWN)
     assert "recipients_for" in caplog.text
@@ -386,7 +391,7 @@ async def test_guasto_read_registries_zero_con_motivo_mai_eccezione():
     ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
                 entities=_THREE_TRACKERS, silence=set(REGISTRY_COMMANDS))
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients((), _REASON_HA_DOWN)
     assert "/api/services" not in [command for command, _extra in ha.calls]
@@ -397,7 +402,7 @@ async def test_guasto_get_services_zero_con_motivo_mai_eccezione():
     ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
                 entities=_THREE_TRACKERS, silence={"/api/services"})
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients((), _REASON_HA_DOWN)
 
@@ -409,7 +414,7 @@ async def test_servizi_rifiutati_zero_con_motivo():
     ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
                 entities=_THREE_TRACKERS, refuse={"/api/services": 500})
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients((), _REASON_HA_DOWN)
 
@@ -425,7 +430,7 @@ async def test_registro_entita_non_disponibile_zero_con_motivo():
                 refuse={"config/entity_registry/list": {
                     "code": "unknown_error", "message": "Unknown error"}})
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients((), _REASON_HA_DOWN)
 
@@ -451,7 +456,7 @@ async def test_una_sola_lettura_per_lettore():
     await once.get_services()
     ha = house()
 
-    await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert ha.connections == once.connections
     assert ("ws", _registry_commands("entita")) in ha.connections
@@ -479,8 +484,70 @@ async def test_due_tracker_che_convergono_sullo_stesso_servizio_danno_un_servizi
                  {"id": "d2", "name": "Telefono Uno"},
                  {"id": "d3", "name": "Tablet Uno"}])
 
-    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
 
     assert esito == Recipients(
         services=("notify.mobile_app_telefono_uno", "notify.mobile_app_tablet_uno"),
         reason=None)
+
+
+def _services_read(ha) -> int:
+    return sum(1 for command, _extra in ha.calls if command == "/api/services")
+
+
+@pytest.mark.asyncio
+async def test_al_risveglio_col_registro_dei_servizi_fresco_nessuna_lettura():
+    """A-04 (Tappa 2, Task 8): il recapito chiede i servizi `notify` al
+    registro dei servizi (`action/registry.py::ServiceRegistry`), lo stesso
+    che verifica i comandi -- non a Home Assistant per conto suo. Col
+    registro fresco, il risveglio di una promessa non rilegge
+    `/api/services`.
+
+    Contato sul codice del 04/10/2026, prima di questa prova: ogni
+    `recipients_for` di una persona collegata leggeva l'elenco INTERO dei
+    servizi per cercarne i soli `notify.*`, anche alla nascita della promessa,
+    subito dopo che lo strumento aveva scaldato il registro.
+
+    Mutazione (verificata eseguendola): rimettere `ha.get_services()` al
+    posto del registro -- rossa (`assert 1 == 0`)."""
+    from hiris.app import server
+    from hiris.app.action.registry import ServiceRegistry
+
+    ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+                entities=_THREE_TRACKERS)
+    registry = ServiceRegistry()
+    await registry.ensure_fresh(ha)
+    before = _services_read(ha)
+    app = {"ha_client": ha, "service_registry": registry}
+
+    esito = await server._promise_delivery(app)["recipients"](
+        {"specie": "persona", "id": USER_ID})
+
+    assert _services_read(ha) - before == 0
+    assert esito == Recipients(services=("notify.mobile_app_telefono_uno",), reason=None)
+
+
+@pytest.mark.asyncio
+async def test_un_rinfresco_fallito_tiene_il_registro_di_prima():
+    """Il cambio dichiarato di A-04: il registro gia' letto sopravvive a un
+    rinfresco fallito (`ServiceRegistry.ensure_fresh`), e il recapito usa
+    quello -- prima ogni guasto di `/api/services` dava «Home Assistant non
+    ha risposto». Un registro mai letto, invece, resta un guasto
+    (`test_guasto_get_services_zero_con_motivo_mai_eccezione`).
+
+    Mutazione (verificata eseguendola): il recapito rilegge sempre e da' il
+    guasto su ogni rinfresco fallito (`refresh` al posto di `ensure_fresh`,
+    la regola di prima) -- rossa."""
+    from hiris.app.action.registry import ServiceRegistry
+
+    ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
+                entities=_THREE_TRACKERS)
+    registry = ServiceRegistry()
+    await registry.ensure_fresh(ha)
+    registry.invalidate()          # un evento `service_registered`
+    ha.mute("/api/services")       # e Home Assistant non risponde
+
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, registry)
+
+    assert _services_read(ha) == 2
+    assert esito == Recipients(services=("notify.mobile_app_telefono_uno",), reason=None)

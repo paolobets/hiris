@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.action.construction.workshop import Workshop
+from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import rebuild
 from hiris.app.keeper.recipient import recipients_for
@@ -334,7 +335,8 @@ def _recipient_house():
 def test_il_recapito_legge_entita_e_dispositivi_e_basta():
     house = _recipient_house()
 
-    found = _run(recipients_for({"specie": "persona", "id": _USER}, house))
+    found = _run(recipients_for({"specie": "persona", "id": _USER}, house,
+                              ServiceRegistry()))
 
     assert found.services == ("notify.mobile_app_telefono_uno",), found
     registry_commands = [c for c in _commands(house) if c.startswith("config")]
@@ -346,7 +348,8 @@ def test_il_recapito_senza_registro_delle_entita_non_legge_i_dispositivi():
     house = _recipient_house()
     house.mute("config/entity_registry/list")
 
-    found = _run(recipients_for({"specie": "persona", "id": _USER}, house))
+    found = _run(recipients_for({"specie": "persona", "id": _USER}, house,
+                              ServiceRegistry()))
 
     assert found.services == ()
     assert found.reason

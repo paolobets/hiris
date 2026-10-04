@@ -174,7 +174,9 @@ def _promise_delivery(app) -> dict:
     promessa (spec 2026-09-26 §2.4): chiusure su `app`, lette a ogni
     risveglio -- l'orologio non sa ne' di Home Assistant ne' della chat.
 
-    - `recipients`: `recipients_for` sul client di Home Assistant di ADESSO;
+    - `recipients`: `recipients_for` sul client di Home Assistant di ADESSO
+      e sul registro dei servizi dell'app (A-04: i `notify` da li', non da una
+      lettura propria di `/api/services`);
     - `write_to_thread`: `chat_store.append_assistant_line` nella cartella
       dell'add-on (filtra i veleni, rifiuta un filo assente);
     - `ceiling`: `api/soffitto.py::ceiling_at_wake`, il soffitto di chi ha
@@ -189,7 +191,8 @@ def _promise_delivery(app) -> dict:
     from .keeper.recipient import recipients_for
 
     async def _recipients(subject):
-        return await recipients_for(subject, app.get("ha_client"))
+        return await recipients_for(subject, app.get("ha_client"),
+                                    app.get("service_registry"))
 
     def _write(thread, content, *, quoted=None):
         return append_assistant_line(content, app["data_dir"], thread=thread,

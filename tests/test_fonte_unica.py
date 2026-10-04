@@ -103,7 +103,7 @@ OWNERS = {
 #: Il tetto delle eccezioni: la somma dei conti. Si ABBASSA quando una copia
 #: esce, nello stesso commit. Alzarlo e' una riga di diff che una revisione
 #: vede -- ed e' il punto.
-CEILING = 65
+CEILING = 64
 
 #: Le letture del client che il cancello NON puo' attribuire, perche' il nome
 #: e' anche di un'altra funzione del prodotto. Lista di AMMISSIONE: una voce
