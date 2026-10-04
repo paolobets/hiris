@@ -890,7 +890,7 @@ async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio
 
 
 @pytest.mark.asyncio
-async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatcher(
+async def test_guarda_un_entita_senza_nome_da_il_nome_vivo_dal_dispatcher(
         archivio_casa, memoria):
     """Il test che prova la FETTA, non solo la funzione pura: i tre test di
     `test_queries.py` chiamano `view()` direttamente e le passano
@@ -906,12 +906,12 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("search", {"genere": "entita", "riferimento": "light.abat_jour_1"})
     assert esito["voci"][0]["esiste"] is True
-    assert esito["voci"][0]["nome"] is None
-    assert esito["voci"][0]["nome_dedotto"] == "Abat-jour"
+    assert esito["voci"][0]["nome"] == "Abat-jour"
+    assert "nome_dedotto" not in esito["voci"][0]
 
 
 @pytest.mark.asyncio
-async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_dispatcher(
+async def test_guarda_un_area_da_il_nome_vivo_delle_sue_entita_dal_dispatcher(
         archivio_casa, memoria):
     """I1 (review finale): il test che prova la FETTA per il ramo area, non
     solo la funzione pura -- stessa lezione di B5. I due test di
@@ -931,12 +931,12 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
     esito = await d.dispatch("search", {"genere": "area", "riferimento": "giardino"})
     assert esito["voci"][0]["esiste"] is True
     entita = {e["id"]: e for e in esito["voci"][0]["entita"]}
-    assert entita["light.abat_jour_1"]["nome"] is None
-    assert entita["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
+    assert entita["light.abat_jour_1"]["nome"] == "Abat-jour"
+    assert "nome_dedotto" not in entita["light.abat_jour_1"]
 
 
 @pytest.mark.asyncio
-async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_dal_dispatcher(
+async def test_guarda_un_dispositivo_da_il_nome_vivo_delle_sue_entita_dal_dispatcher(
         archivio_casa, memoria):
     """Stesso rilievo I1, sul ramo `_view_device` -- il percorso che
     la specifica mette come metro della fetta (§7, la domanda
@@ -952,21 +952,15 @@ async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_d
     esito = await d.dispatch("search", {"genere": "dispositivo", "riferimento": "dev_irr"})
     assert esito["voci"][0]["esiste"] is True
     entita = {e["id"]: e for e in esito["voci"][0]["entita"]}
-    assert entita["light.abat_jour_1"]["nome"] is None
-    assert entita["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
+    assert entita["light.abat_jour_1"]["nome"] == "Abat-jour"
+    assert "nome_dedotto" not in entita["light.abat_jour_1"]
 
 
-def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono():
-    """I2 (review finale): prima di questo fix `SEARCH_TOOL_DEF` descriveva
-    `nome_dedotto` come un flag booleano e `VIEW_TOOL_DEF` non lo nominava
-    affatto -- un modello che avesse imparato la forma da `search` avrebbe
-    letto male il campo di `view` (`nome: null` + una chiave non
-    descritta), concludendo «senza nome» mentre il nome c'era. Una forma
-    sola, dichiarata in entrambe le definizioni. Dal 29/09/2026 la
-    definizione e' una sola (`view` e' uscito, il suo dettaglio e' una voce
-    di `search`), e deve dichiararlo lei."""
-    assert "nome_dedotto" in SEARCH_TOOL_DEF["description"], (
-        "«search» restituisce nome_dedotto ma non lo dichiara")
+def test_nome_dedotto_non_e_piu_nella_descrizione_dello_strumento():
+    """D1 «vivo» (Tappa 3, Task 5): `nome_dedotto` e' uscito, il nome vivo
+    sta in `nome`. Una descrizione che lo nominasse ancora insegnerebbe al
+    modello un campo che non arriva mai."""
+    assert "nome_dedotto" not in SEARCH_TOOL_DEF["description"]
 
 
 @pytest.mark.asyncio

@@ -29,12 +29,16 @@ regola per non rompersi confronterebbe il prodotto con se stesso di ieri.
 - **`Lookup.find`** come motore di ricerca per nome: nessun chiamante di
   produzione (M-08), esce con la Tappa 0.
 
-## Le due domande della Tappa 3
+## Le domande della Tappa 3
 
 Entrate prima del codice che le chiude (piano della Tappa 3, Task 1):
-`fuori_con_causa` chiede la classe del fuori alle SEI copie della regola
-(B-01), non piu' solo a quattro; `fonte` chiede a tre porte perche' una fonte
-tace, e confronta la loro risposta con i fatti del registro (B-25, B-26, B-04).
+`fonte` chiede a tre porte perche' una fonte tace, e confronta la loro
+risposta con i fatti del registro (B-25, B-26, B-04). `fuori_con_causa`
+chiedeva la classe del fuori alle SEI copie della regola (B-01): e' uscita
+col Task 5 (04/10/2026), quando le sei copie sono diventate
+`topology.visibility` -- ora la sorveglia il cancello `regola-del-fuori`
+(`tests/test_fonte_unica.py`). Le copie che `fuori` confronta ancora sono
+l'osservatore e le ricette (Task 12).
 
 Nasce da `docs/superpowers/audit-2026-10-01/sonda_parita.py` (01/10/2026).
 
@@ -188,131 +192,6 @@ def excluded(inputs: dict) -> dict:
                      "righe_della_ricetta": len(recipe_lines)})
 
 
-def _causes_by_tree(floors: list[dict]) -> dict[str, str]:
-    """La classe che l'albero di `hierarchy` da' a ogni entita': la chiave in
-    cui la mette (`entita`, `entita_nascoste`, `entita_disabilitate`)."""
-    causes: dict[str, str] = {}
-    for floor in floors:
-        for area in floor.get("aree") or []:
-            for key, cause in (("entita", "dentro"), ("entita_nascoste", "nascosta"),
-                               ("entita_disabilitate", "disabilitata")):
-                for entry in area.get(key) or []:
-                    if isinstance(entry, dict) and entry.get("id"):
-                        causes[entry["id"]] = cause
-    return causes
-
-
-def _causes_by_device(inputs: dict) -> tuple[dict[str, str], int]:
-    """La classe che la scheda di un dispositivo (`queries._view_device`) da'
-    a ogni sua entita'. Le disabilitate la scheda le CONTA e non le elenca:
-    sono le entita' del dispositivo che non compaiono in nessuna lista, e
-    devono essere tante quante il conto dichiara -- altrimenti la domanda si
-    ferma. Una scheda tagliata dal tetto (`oltre`) non si legge: si conta."""
-    home_space, mirror = inputs["home_space"], inputs["mirror"]
-    by_device: dict[str, list[str]] = {}
-    for entity in home_space["entita"]:
-        if entity.get("dispositivo_id"):
-            by_device.setdefault(entity["dispositivo_id"], []).append(entity["id"])
-    causes: dict[str, str] = {}
-    cut = 0
-    for device in home_space["dispositivi"]:
-        detail = queries.view(House(home_space, mirror), [], [], "dispositivo", device["id"])
-        if detail.get("oltre"):
-            cut += 1
-            continue
-        listed = {row["id"]: "dentro" for row in detail.get("entita") or []}
-        listed |= {row["id"]: "nascosta" for row in detail.get("entita_nascoste") or []}
-        unlisted = [key for key in by_device.get(device["id"], []) if key not in listed]
-        if len(unlisted) != (detail.get("entita_disabilitate") or 0):
-            raise ValueError(f"_view_device: {len(unlisted)} entita' fuori dalle liste del "
-                             f"dispositivo, {detail.get('entita_disabilitate') or 0} "
-                             "disabilitate contate. La forma della scheda e' cambiata.")
-        causes |= listed | dict.fromkeys(unlisted, "disabilitata")
-    return causes, cut
-
-
-def _causes_by_selection(inputs: dict) -> dict[str, str]:
-    """La classe che `search` da' a ogni entita', chiesta alla funzione vera
-    con le quattro combinazioni delle sue due opzioni: cio' che manca anche
-    con tutte e due accese e' disabilitato, cio' che entra solo con le
-    nascoste e' nascosto, cio' che entra solo con quelle di servizio e' di
-    servizio. La precedenza e' quella di `select_subjects`, non della sonda."""
-    def chosen(hidden: bool, service: bool) -> set[str]:
-        selection = house_query.select_subjects(
-            house_query.HouseFilters(include_hidden=hidden, include_service=service),
-            ("entita",), House(inputs["home_space"], inputs["mirror"]), [],
-            now=inputs["clock"])
-        return {entry["id"] for entry, _area, _where in selection.entities}
-
-    plain, both, service_only = chosen(False, False), chosen(True, True), chosen(False, True)
-    causes = {}
-    for entity in inputs["home_space"]["entita"]:
-        key = entity["id"]
-        causes[key] = ("disabilitata" if key not in both else
-                       "nascosta" if key not in service_only else
-                       "servizio" if key not in plain else "dentro")
-    return causes
-
-
-def excluded_with_cause(inputs: dict) -> dict:
-    """«E' fuori, e perche'?» -- le SEI copie della regola (B-01).
-
-    Due famiglie, perche' le copie non dichiarano le stesse classi:
-
-    - **dentro o fuori** (disabilitata, nascosta o di servizio, senza dire
-      quale): il digesto, il complemento di `_excluded_from_comparison`, e
-      `search` senza opzioni. Si confronta l'appartenenza;
-    - **con la causa** (disabilitata prima di nascosta): l'albero di
-      `hierarchy` nelle sue DUE partizioni -- quella delle aree e quella che
-      scatta quando il registro dei dispositivi non ha risposto -- la scheda
-      del dispositivo e `search` con le sue opzioni. Di servizio, per l'albero
-      e per la scheda, e' dentro: e' la regola piu' larga che dichiarano (D7
-      del piano della Tappa 3), quindi si confronta la classe fra
-      disabilitata, nascosta e il resto.
-
-    Un caso per entita' e per famiglia, con la risposta di ogni copia.
-    """
-    home_space = inputs["home_space"]
-    entities = _entities(inputs)
-    by_selection = _causes_by_selection(inputs)
-    binary = {
-        "digest_visible_entity_ids": {
-            key: "dentro" if key in visible else "fuori" for visible in
-            [briefing.digest_visible_entity_ids(home_space)] for key in entities},
-        "not _excluded_from_comparison": {
-            key: "fuori" if topology._excluded_from_comparison(entity) else "dentro"
-            for key, entity in entities.items()},
-        "select_subjects": {key: "dentro" if cause == "dentro" else "fuori"
-                            for key, cause in by_selection.items()},
-    }
-    by_device, cut = _causes_by_device(inputs)
-    caused = {
-        "hierarchy": _causes_by_tree(topology.hierarchy(home_space)),
-        "hierarchy (dispositivi non letti)": _causes_by_tree(
-            topology.hierarchy(home_space, ("dispositivi",))),
-        "_view_device": by_device,
-        "select_subjects (con le opzioni)": {
-            key: cause if cause in ("disabilitata", "nascosta") else "il resto"
-            for key, cause in by_selection.items()},
-    }
-    for name in ("hierarchy", "hierarchy (dispositivi non letti)", "_view_device"):
-        caused[name] = {key: "il resto" if cause == "dentro" else cause
-                        for key, cause in caused[name].items()}
-    cases = []
-    for family, copies in (("dentro o fuori", binary), ("con la causa", caused)):
-        for key in sorted(entities):
-            answers = {name: answer[key] for name, answer in copies.items() if key in answer}
-            if len(set(answers.values())) > 1:
-                cases.append({"id": key, "famiglia": family, "risposte": answers})
-    called = sorted(binary) + sorted(caused)
-    return _verdict(cases, called, {
-        "dispositivi_tagliati_dal_tetto": cut,
-        "risposte_per_copia": {name: len(answer) for copies in (binary, caused)
-                               for name, answer in copies.items()},
-        "per_classe": {cause: sum(1 for value in by_selection.values() if value == cause)
-                       for cause in ("dentro", "servizio", "nascosta", "disabilitata")}})
-
-
 class _Services:
     """Il client, ridotto alla sola lettura che il registro dei servizi fa."""
 
@@ -424,23 +303,34 @@ def source(inputs: dict) -> dict:
 
 
 def names(inputs: dict) -> dict:
-    """«Come si chiama?» -- il nome della scheda contro il nome della riga di
-    `search`, per la stessa entita'."""
+    """«Come si chiama?» -- il nome che la casa da' (`House.name`, D1 «vivo»: lo
+    usano la scheda, `search` e la storia) contro quello che l'osservatore
+    manda al modello, per ogni entita' che l'osservatore guarda.
+
+    Fino al Task 5 della Tappa 3 la domanda confrontava la scheda con la riga
+    di `search`: da quel giorno le due chiamano la stessa regola
+    (`topology.live_name`), e la seconda copia viva e' l'osservatore, che usa
+    il nome del registro fino al Task 12. I nomi del registro sono sostituiti
+    in copia da un marcatore, per leggere QUALE nome la riga porta (la
+    funzione chiamata e' la stessa; un'entita' senza nome nel registro non ne
+    porta nessuno).
+    """
     home_space, mirror = inputs["home_space"], inputs["mirror"]
-    where = {entry["id"]: (entry, area, place)
-             for entry, area, _floor, place in House(home_space, mirror).entity_entries()}
+    house = House(home_space, mirror)
+    marked = dict(home_space)
+    marked["entita"] = [dict(entity, nome=f"@@{entity['nome']}@@") if entity.get("nome")
+                        else entity for entity in home_space["entita"]]
+    lines = observer.house_lines(marked)
     cases = []
-    for key, entity in _entities(inputs).items():
-        detail = queries._enrich_entity(
-            {"id": key, "nome": entity.get("nome"), "stato": mirror.state.get(key)},
-            entity, mirror)
-        card = (detail.get("nome") or "").strip() or (detail.get("nome_dedotto") or "").strip()
-        entry, area, place = where[key]
-        row = house_query._entity_row(entry, area, place, mirror, False)["nome"]
-        if card != row:
-            cases.append({"id": key, "scheda": card, "riga": row})
-    return _verdict(cases, ["queries._enrich_entity", "house_query._entity_row"],
-                    {"entita": len(where)})
+    for key, line in zip(_entity_ids(lines, inputs, "observer.house_lines"), lines,
+                         strict=True):
+        marks = [part[2:-2] for part in line.split(LINE_SEPARATOR)[1:]
+                 if part.startswith("@@") and part.endswith("@@")]
+        emitted = marks[0] if marks else None
+        named = house.name("entita", key)
+        if emitted != named:
+            cases.append({"id": key, "casa": named, "osservatore": emitted})
+    return _verdict(cases, ["House.name", "observer.house_lines"], {"entita": len(lines)})
 
 
 def areas(inputs: dict) -> dict:
@@ -663,7 +553,7 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
 
 #: Le domande, per nome. E' un elenco di AMMISSIONE: una domanda esce di qui
 #: quando la sua copia e' cancellata, nello stesso commit.
-QUESTIONS = {"fuori": excluded, "fuori_con_causa": excluded_with_cause, "nomi": names,
+QUESTIONS = {"fuori": excluded, "nomi": names,
              "dove": areas, "valore": values, "statistiche": statistics, "unita": units,
              "riferimenti": references, "oggi": today, "fonte": source}
 

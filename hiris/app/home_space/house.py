@@ -16,9 +16,12 @@ per un turno -- `ToolDispatcher`, che nasce a ogni turno -- la butta quando
 la casa cambia sotto di lui: l'anagrafe ricostruita (un altro oggetto da
 `HomeSpace.read()`), o un suo comando eseguito (vedi `ToolDispatcher`).
 
-I metodi del §4.1 della spec (`visibility`, `name`, `kind_of`, `source`...)
-arrivano con i task che seguono; qui ci sono la gerarchia, la scelta di «di
-chi» (`select`, l'ex `house_query.select_subjects`) e il dove (`where`, Task 6).
+I metodi del §4.1 della spec arrivano un task alla volta: qui ci sono la
+gerarchia, la scelta di «di chi» (`select`, l'ex `house_query.select_subjects`),
+la VISIBILITA' con la causa (`visibility`) e l'IDENTITA' (`name`), dal Task 5, e
+il dove (`where`), dal Task 6. Le regole stanno in `topology` (`visibility`,
+`live_name`, `device_name`), che sta SOTTO questo modulo: la gerarchia le applica
+e non puo' importare la casa.
 """
 from __future__ import annotations
 
@@ -32,6 +35,10 @@ from .house_query import (
     _entity_matches,
 )
 from .topology import Mirror, read_mirror
+
+#: La chiave di `escluse` per ogni classe del fuori (`topology.visibility`).
+_EXCLUDED_KEY = {"disabilitata": "disabilitate", "nascosta": "nascoste",
+                 "servizio": "servizio"}
 
 
 class House:
@@ -51,6 +58,7 @@ class House:
         self._floors: list[dict] | None = None
         self._places: dict[str, tuple[dict, dict, dict]] | None = None
         self._device_index: dict[str, dict] | None = None
+        self._entities: dict[str, dict] | None = None
 
     @classmethod
     def read(cls, home_space_store, cache) -> House:
@@ -150,6 +158,11 @@ class House:
         searching_behavior = any(k in _BEHAVIOR_KINDS for k in kinds)
         shadowed = {b.get("id") for b in behavior or []} if searching_behavior else set()
         excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
+        # Le classi che questa porta conta (D7): le disabilitate mai, le
+        # nascoste e quelle di servizio a richiesta. Un'entita' fuori per
+        # piu' ragioni si conta sotto la PRIMA che la porta non ammette.
+        admitted = ({"nascosta"} if f.include_hidden else set()) | (
+            {"servizio"} if f.include_service else set())
         matched = []
         if "entita" in kinds:
             for entry, area, floor, where in entries:
@@ -157,14 +170,10 @@ class House:
                     continue
                 if not _entity_matches(f, entry, area, floor, self.mirror, now):
                     continue
-                if where == "disabilitata":
-                    excluded["disabilitate"] += 1
-                    continue
-                if where == "nascosta" and not f.include_hidden:
-                    excluded["nascoste"] += 1
-                    continue
-                if entry.get("categoria") and not f.include_service:
-                    excluded["servizio"] += 1
+                refused = next((cls for cls, _cause in topology.visibility_classes(entry)
+                                if cls not in admitted), None)
+                if refused is not None:
+                    excluded[_EXCLUDED_KEY[refused]] += 1
                     continue
                 matched.append((entry, area, where))
         places = {entry["id"]: (entry, area, floor) for entry, area, floor, _w in entries}
@@ -174,3 +183,39 @@ class House:
                 behaving.extend(_behavior_matches(replace(f, kind=kind), behavior,
                                                   self.mirror, now, places))
         return Selection(matched, behaving, excluded)
+
+    def _entity(self, entity_id: str) -> dict | None:
+        """La voce dell'anagrafe di un'entita', per id; l'indice si fa una volta."""
+        if self._entities is None:
+            self._entities = {e["id"]: e for e in self.home_space.get("entita") or []
+                              if isinstance(e, dict) and e.get("id")}
+        return self._entities.get(entity_id)
+
+    def visibility(self, entity_id: str) -> tuple[str, str | None] | None:
+        """VISIBILITA' (§4.1): la classe di un'entita' con la sua causa --
+        `("disabilitata", "user")`, `("servizio", "diagnostic")`,
+        `("visibile", None)` -- dalla regola unica, `topology.visibility`.
+        `None` per un id che l'anagrafe non conosce: non e' «visibile»."""
+        entry = self._entity(entity_id)
+        return None if entry is None else topology.visibility(entry)
+
+    def name(self, kind: str, identifier: str) -> str | None:
+        """IDENTITA' (§4.1): come si chiama una cosa della casa, per genere.
+
+        Entita', automazioni e script col nome vivo (D1, `topology.live_name`):
+        hanno tutti un `entity_id`, e il nome che Home Assistant mostra sta
+        nello specchio per tutti e tre. Dispositivi col nome, altrimenti l'id
+        (`topology.device_name`); aree e piani col nome dell'anagrafe, che il
+        lettore riempie gia' con l'id quando manca. `None` per un dispositivo,
+        un'area o un piano che l'anagrafe non conosce."""
+        if kind in ("entita", *_BEHAVIOR_KINDS):
+            entry = self._entity(identifier) or {}
+            return topology.live_name(identifier, entry.get("nome"), self.mirror)
+        table = {"dispositivo": "dispositivi", "area": "aree", "piano": "piani"}.get(kind)
+        if table is None:
+            raise ValueError(f"genere sconosciuto: {kind!r}")
+        row = next((r for r in self.home_space.get(table) or []
+                    if isinstance(r, dict) and r.get("id") == identifier), None)
+        if row is None:
+            return None
+        return topology.device_name(row) if kind == "dispositivo" else row.get("nome")

@@ -61,11 +61,17 @@ diff in due file, e una revisione la vede.
 Mutazione ESEGUITA: aggiunta in `hiris/app/mind/report.py` la riga
 `_mutation = {}.get("disabilitata")` -- rossa (`regola-del-fuori:
 hiris/app/mind/report.py conta 1 in piu' dell'eccezione nota`).
-Mutazione ESEGUITA: tolte da `digest_visible_entity_ids` le tre negazioni
-(`and not e.get(...)`) -- rossa (`la regola del fuori non ha piu' campi`).
-Una prima versione di questa mutazione metteva un `return frozenset()` in
-testa lasciando sotto il corpo vecchio: era INERTE, perche' il cancello legge
-l'albero e l'albero aveva ancora i campi. Dedotta sarebbe passata per buona.
+Mutazione ESEGUITA (01/10/2026, quando la regola era il digesto del nucleo):
+tolte da `digest_visible_entity_ids` le tre negazioni (`and not e.get(...)`)
+-- rossa (`la regola del fuori non ha piu' campi`). Una prima versione di
+questa mutazione metteva un `return frozenset()` in testa lasciando sotto il
+corpo vecchio: era INERTE, perche' il cancello legge l'albero e l'albero aveva
+ancora i campi. Dedotta sarebbe passata per buona.
+Mutazione ESEGUITA (04/10/2026, la regola in `topology.visibility_classes`):
+la partizione di `hierarchy` riscritta in linea con `entity.get(...)` --
+rossa (`topology.py conta 1 in piu'`). Con il MODULO come proprietario, come
+prima, la stessa mutazione era INERTE: per questo il proprietario di questa
+regola e' la funzione (`VISIBILITY_RULE`).
 Mutazione ESEGUITA: tolta una riga dall'elenco delle eccezioni -- rossa (quel
 file «conta N in piu'»); abbassato un conto di uno -- rossa allo stesso modo.
 """
@@ -84,7 +90,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = ROOT / "hiris" / "app"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hiris.app.home_space import briefing, type_vocabulary
+from hiris.app.home_space import topology, type_vocabulary
 
 EXCEPTIONS_FILE = ROOT / "tests" / "fonte_unica_eccezioni.json"
 REGISTER = ROOT / "docs" / "design" / "2026-10-01-registro-dei-doppioni.md"
@@ -113,16 +119,18 @@ def _module_of(function) -> str:
 OWNERS = {
     "letture-del-client": ("proxy/ha_client.py",),
     "letterali-di-stato": (_module_of(type_vocabulary.unknown_states),),
-    "regola-del-fuori": (_module_of(briefing.digest_visible_entity_ids),),
+    "regola-del-fuori": (_module_of(topology.visibility_classes),),
 }
 
 #: Il tetto delle eccezioni: la somma dei conti di `fonte_unica_eccezioni.json`
-#: (34) piu' i secondi chiamanti ammessi da `SHARED_READS` (7). Si ABBASSA
+#: (10) piu' i secondi chiamanti ammessi da `SHARED_READS` (7). Si ABBASSA
 #: quando una copia esce, nello stesso commit. Alzarlo e' una riga di diff che
 #: una revisione vede -- ed e' il punto. Era 64 prima di R1 stretto: i 30 conti
 #: delle letture del client sono usciti dall'elenco, e chi chiama cosa sta ora
-#: in `READ_OWNERS` e `SHARED_READS`.
-CEILING = 41
+#: in `READ_OWNERS` e `SHARED_READS`. Era 41 prima della Tappa 3, Task 5: le
+#: 24 copie della regola del fuori (B-01, B-02) chiedono ora a
+#: `topology.visibility`.
+CEILING = 17
 
 #: Le letture del client che il cancello NON puo' attribuire, perche' il nome
 #: e' anche di un'altra funzione del prodotto. Lista di AMMISSIONE: una voce
@@ -348,19 +356,35 @@ def state_literals() -> frozenset[str]:
 
 
 def visibility_fields() -> frozenset[str]:
-    """I campi che la regola «e' fuori?» nega: letti dal corpo della funzione
-    che E' la regola, `briefing.digest_visible_entity_ids`."""
-    tree = ast.parse(textwrap.dedent(inspect.getsource(briefing.digest_visible_entity_ids)))
-    fields = set()
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not)):
-            continue
-        for call in ast.walk(node.operand):
-            if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                    and call.func.attr == "get" and call.args
-                    and isinstance(call.args[0], ast.Constant)):
-                fields.add(call.args[0].value)
-    return frozenset(fields)
+    """I campi con cui si decide «e' fuori?»: letti dal corpo della funzione
+    che E' la regola, `topology.visibility_classes` (Tappa 3, Task 5,
+    04/10/2026: fino a quel giorno la regola era il digesto del nucleo, e il
+    cancello ne leggeva i campi negati). Ci sono anche le CAUSE
+    (`disabilitata_da`, `nascosta_da`): chi le legge da se' rifa' la regola."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(VISIBILITY_RULE)))
+    return frozenset(
+        call.args[0].value for call in ast.walk(tree)
+        if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "get" and call.args
+        and isinstance(call.args[0], ast.Constant))
+
+
+#: La funzione che E' la regola del fuori: per questa regola il proprietario
+#: non e' il modulo intero ma la funzione sola. Con il modulo, una copia
+#: scritta in `topology.py` fuori dalla regola -- la partizione di `hierarchy`,
+#: che c'era fino al 04/10/2026 -- non si sarebbe contata: e' il punto cieco
+#: che il cancello aveva quando il proprietario era tutto `briefing.py`.
+VISIBILITY_RULE = topology.visibility_classes
+
+
+def _rule_body(relative: str, tree: ast.AST) -> set[int]:
+    """Gli id dei nodi DENTRO la funzione della regola del fuori, se `tree` e'
+    il suo modulo; altrimenti vuoto."""
+    if relative != OWNERS["regola-del-fuori"][0]:
+        return set()
+    return {id(inner) for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == VISIBILITY_RULE.__name__
+            for inner in ast.walk(node)}
 
 
 def _outside(relative: str, rule: str) -> bool:
@@ -389,13 +413,20 @@ def _named_by_getattr(node: ast.AST) -> str | None:
 
 
 def _key_read(node: ast.AST) -> str | None:
-    """Il campo letto da `x.get("campo")` o da `x["campo"]`."""
+    """Il campo letto da `x.get("campo")` o da `x["campo"]`.
+
+    `x["campo"] = ...` non e' una lettura: e' una porta che scrive il campo
+    nella SUA risposta (`row["nascosta"] = True`), e chiede la classe alla
+    regola per decidere se scriverlo. Contarla chiamava doppione la resa
+    (Tappa 3, Task 5). Mutazione ESEGUITA: tolta la condizione sul contesto
+    -- rossa in `test_una_scrittura_non_e_una_lettura`."""
     if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
             and node.func.attr == "get" and node.args
             and isinstance(node.args[0], ast.Constant)
             and isinstance(node.args[0].value, str)):
         return node.args[0].value
-    if (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
+    if (isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load)
+            and isinstance(node.slice, ast.Constant)
             and isinstance(node.slice.value, str)):
         return node.slice.value
     return None
@@ -417,6 +448,7 @@ def count_in(trees: dict[str, ast.AST]) -> dict[str, dict[str, dict[str, int]]]:
 
     for relative, tree in trees.items():
         documentation = _docstrings(tree)
+        rule_body = _rule_body(relative, tree)
         called = {id(node.func) for node in ast.walk(tree)
                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
         for node in ast.walk(tree):
@@ -433,7 +465,7 @@ def count_in(trees: dict[str, ast.AST]) -> dict[str, dict[str, dict[str, int]]]:
                     and isinstance(node.value, str) and node.value in literals
                     and id(node) not in documentation):
                 count("letterali-di-stato", relative, node.value)
-            if _outside(relative, "regola-del-fuori") and _key_read(node) in fields:
+            if id(node) not in rule_body and _key_read(node) in fields:
                 count("regola-del-fuori", relative, _key_read(node))
     return found
 
@@ -559,6 +591,26 @@ def test_il_cancello_vede_la_regola_del_fuori_e_i_letterali():
     path = "hiris/app/mind/prova.py"
     assert counted["regola-del-fuori"] == {path: {"disabilitata": 1, "nascosta": 1}}
     assert counted["letterali-di-stato"] == {path: {"unavailable": 1}}
+
+
+def test_una_scrittura_non_e_una_lettura():
+    counted = count_in(_fake_product(
+        "def f(e, row):\n"
+        "    row['nascosta'] = True\n"
+        "    return e['disabilitata']\n"))
+    assert counted["regola-del-fuori"] == {"hiris/app/mind/prova.py": {"disabilitata": 1}}
+
+
+def test_la_regola_del_fuori_vive_in_topology_con_le_sue_cause():
+    """La derivazione non si e' svuotata, e porta le cause: chi legge
+    `disabilitata_da` fuori dalla regola la rifa'."""
+    assert OWNERS["regola-del-fuori"] == ("home_space/topology.py",)
+    assert VISIBILITY_RULE.__name__ in {
+        node.name for node in ast.walk(ast.parse((APP / OWNERS["regola-del-fuori"][0])
+                                                 .read_text(encoding="utf-8")))
+        if isinstance(node, ast.FunctionDef)}
+    assert {"disabilitata", "nascosta", "categoria",
+            "disabilitata_da", "nascosta_da"} <= visibility_fields()
 
 
 def test_l_elenco_puo_solo_accorciarsi():

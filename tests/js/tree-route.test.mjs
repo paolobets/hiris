@@ -171,7 +171,7 @@ test('un\'entità nascosta compare SEMPRE, marcata, in una sezione propria (2026
   const casa = casaCompleta();
   casa.piani[0].aree[0].entita = [];
   casa.piani[0].aree[0].entita_nascoste = [
-    { id: 'light.lampadario_fake', nome: null, nome_dedotto: 'Lampadario fake',
+    { id: 'light.lampadario_fake', nome: null,
       piattaforma: 'ave_domina', categoria: null, classe: null, unita: null,
       disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
   ];

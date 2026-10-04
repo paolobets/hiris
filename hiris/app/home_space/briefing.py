@@ -49,9 +49,12 @@ from .historian import home_space_zone
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
+    VISIBLE,
+    device_name,
     hierarchy,
     id_marker,
     name_with_id,
+    visibility,
 )
 
 # **Perche' questa tabella e' rimasta qui mentre le altre traslocavano**
@@ -277,15 +280,16 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
         # annotazione invece di una casa senza assistente.
         return ""
     device_id = devices[0]
-    name = (device_names.get(device_id) or "").strip()
-    if name:
+    name = (device_names.get(device_id) or "").strip() or device_id
+    if name != device_id:
         return f" ({name})"
     # Un dispositivo senza nome esiste davvero: `reader._device` scrive
-    # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
-    # MARCATO come id -- lo stesso segno di `name_with_id` per le aree
-    # (`topology.id_marker`) -- perche' e' l'unica chiave con cui
-    # `search(riferimento=...)` lo ritrova, e perche' un id tecnico non va
-    # mai spacciato per un nome dichiarato dall'utente.
+    # `name_by_user or name`, ed entrambi sono nullable, e `topology.
+    # device_name` ripiega sull'id. Si mostra l'id MARCATO come id -- lo
+    # stesso segno di `name_with_id` per le aree (`topology.id_marker`) --
+    # perche' e' l'unica chiave con cui `search(riferimento=...)` lo ritrova,
+    # e perche' un id tecnico non va mai spacciato per un nome dichiarato
+    # dall'utente.
     return f" {id_marker(device_id)}"
 
 
@@ -554,7 +558,10 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
         return True
     if "entita" in unavailable:
         return True
-    active_entities = [e for e in home_space.get("entita", []) if not e.get("disabilitata")]
+    # Le disabilitate non hanno uno stato da dire: fuori. Le nascoste e quelle
+    # di servizio si' (D7: questa porta conta tutte le classi tranne una).
+    active_entities = [e for e in home_space.get("entita", [])
+                       if visibility(e)[0] != "disabilitata"]
     if not active_entities:
         return False
     for e in active_entities:
@@ -595,10 +602,7 @@ def digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
     esistere in due esemplari."""
     return frozenset(
         e["id"] for e in home_space.get("entita", [])
-        if e.get("id")
-        and not e.get("disabilitata")
-        and not e.get("categoria")
-        and not e.get("nascosta"))
+        if e.get("id") and visibility(e)[0] == VISIBLE)
 
 
 # Quante voci un elenco di capacita' puo' portare per esteso prima di
@@ -1540,8 +1544,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # NON porta nel discorso -- ed e' l'unico posto da cui la risposta si legge
     # senza chiamare uno strumento per ognuna delle sedici aree. `search` le
     # riporta con `includi_nascoste`: la conoscenza c'e', qui c'e' il numero.
-    hidden = [e for e in home_space.get("entita", [])
-                if e.get("nascosta") and not e.get("disabilitata")]
+    hidden = [e for e in home_space.get("entita", []) if visibility(e)[0] == "nascosta"]
     if hidden:
         n = len(hidden)
         entry = _plural(n, "entita' nascosta", "entita' nascoste")
@@ -1561,15 +1564,13 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # CONTA (`hierarchy()` non guarda `categoria`): restano fuori dalle
     # capacita', e da `search` finche' non le si chiede.
     #
-    # `nascoste` e `entita' di servizio` restano CONTATE separate:
-    # una disabilitata e nascosta insieme finisce fra le disabilitate
-    # (stessa precedenza di `hierarchy()`), e la stessa entita' puo' essere
-    # sia di servizio sia nascosta -- contarla due volte sarebbe un doppione,
-    # ometterla da uno dei due conteggi sarebbe una perdita. Qui si conta
-    # senza escludere le nascoste, perche' la domanda e' "quante sono di
-    # servizio", non "quante di servizio si vedono anche altrove".
-    service = [e for e in home_space.get("entita", []) if e.get("categoria")
-                and not e.get("disabilitata")]
+    # `nascoste` e `entita' di servizio` si contano per CLASSE
+    # (`topology.visibility`, D7 del 03/10/2026): una disabilitata e nascosta
+    # insieme e' fra le disabilitate, una nascosta e di servizio fra le
+    # nascoste. Fino al 04/10/2026 quest'ultima si contava in tutti e due i
+    # conteggi, e la somma delle righe del nucleo superava le entita' vere;
+    # `search` la contava gia' una volta sola, fra le nascoste.
+    service = [e for e in home_space.get("entita", []) if visibility(e)[0] == "servizio"]
     if service:
         n = len(service)
         # NON `_plural()`: "entita' di servizio" e' invariante al plurale in
@@ -1630,8 +1631,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     if "dispositivi" in unavailable:
         device_names: dict[str, str] | None = None
     else:
-        device_names = {d["id"]: (d.get("nome") or "")
-                            for d in home_space.get("dispositivi") or [] if d.get("id")}
+        device_names = {d["id"]: device_name(d)
+                        for d in home_space.get("dispositivi") or [] if d.get("id")}
 
     # Un solo albero (`hierarchy()`, con `non_disponibili` applicato): prima
     # del fix CRITICAL ① la sezione dello stato («Notevole adesso», uscita il

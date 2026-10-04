@@ -133,7 +133,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal, seal_free_text
-from .topology import Mirror
+from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
 
@@ -270,9 +270,6 @@ SEARCH_TOOL_DEF = {
         "Una voce con `nascosta: true` esiste: la persona l'ha tolta dalle "
         "proprie viste in Home Assistant, non cancellata. Non proporla di tua "
         "iniziativa; se la domanda la riguarda, usala e dillo.\n"
-        "Se compare `nome_dedotto` (una STRINGA, mai un booleano), quel testo "
-        "E' il nome: non l'ha scelto chi vive qui, viene da cio' che Home "
-        "Assistant mostra a schermo. Non concludere «senza nome».\n"
         "Le posizioni di persone e dispositivi che si spostano non escono: di "
         "una persona sai solo se e' in casa (`home`) o fuori (`not_home`). "
         "Credenziali e indirizzi di rete non escono mai.\n"
@@ -1668,8 +1665,10 @@ class ToolDispatcher:
 
 
         mirror = house.mirror
+        # D7: le disabilitate non si cercano; ogni altra classe si'.
         unnamed = [e for e in house.home_space.get("entita") or []
-                     if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
+                     if not (e.get("nome") or "").strip()
+                     and visibility(e)[0] != "disabilitata"]
         if unnamed and not mirror.readable:
             message = (
                 f"{len(unnamed)} entita' non hanno un nome nel registro di Home Assistant e "

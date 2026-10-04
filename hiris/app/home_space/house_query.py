@@ -24,7 +24,7 @@ from .behavior import BEHAVIOR_DOMAINS
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
-from .topology import _ID_WITHOUT_AREA, Mirror, is_pseudo_area
+from .topology import _ID_WITHOUT_AREA, Mirror, device_name, is_pseudo_area, live_name
 
 if TYPE_CHECKING:
     from .house import House
@@ -220,8 +220,7 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) ->
         return False
     if not _place_matches(f, entry, area, floor):
         return False
-    if f.name and not _any_name_matches(f.name,
-                                        mirror.names.get(eid) or entry.get("nome") or eid,
+    if f.name and not _any_name_matches(f.name, live_name(eid, entry.get("nome"), mirror),
                                         entry.get("alias")):
         return False
     age = _age_s(mirror.since.get(eid), now)
@@ -243,7 +242,7 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) ->
 
 def _entity_row(entry, area, where, mirror: Mirror, medium: bool) -> dict:
     eid = entry["id"]
-    row = {"id": eid, "nome": mirror.names.get(eid) or entry.get("nome") or eid,
+    row = {"id": eid, "nome": live_name(eid, entry.get("nome"), mirror),
            "area": _area_name(area), "stato": mirror.state.get(eid),
            "ultimo_cambio": mirror.since.get(eid)}
     if where == "nascosta":
@@ -298,7 +297,10 @@ def _behavior_matches(f: HouseFilters, behavior, mirror: Mirror, now,
 
 
 def _behavior_row(item, values, mirror: Mirror, medium: bool) -> dict:
-    row = {"id": item["id"], "nome": item.get("nome"), "genere": item.get("tipo"),
+    # Il nome di tutte le cose con un `entity_id` (D1): un'automazione senza
+    # nome esce col suo id, come dalla storia, non con `nome: null`.
+    row = {"id": item["id"], "nome": live_name(item["id"], item.get("nome"), mirror),
+           "genere": item.get("tipo"),
            "stato": mirror.state.get(item["id"]),
            "ultima_esecuzione": values.get("last_triggered") or "mai"}
     if medium:
@@ -360,7 +362,7 @@ def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
         if device.get("disabilitato"):
             excluded["disabilitate"] += 1
             continue
-        rows.append({"id": device["id"], "nome": device.get("nome"),
+        rows.append({"id": device["id"], "nome": device_name(device),
                      "genere": "dispositivo", "area": _area_name(area)})
     return rows
 

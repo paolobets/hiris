@@ -59,6 +59,7 @@ from .home_space.topology import (
     AREAS_PER_ROUND,
     choose_sample,
     compare_with_home_assistant,
+    device_name,
     hierarchy,
     rebuild,
     tree_areas,
@@ -1784,7 +1785,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     if sapere is None or casa is None:
         return {}, {}, {}, None
     home_space = casa.read()
-    nomi = {str(d.get("id")): d.get("nome")
+    nomi = {str(d.get("id")): device_name(d)
             for d in home_space.get("dispositivi") or [] if d.get("id")}
     ricette = {}
     for device_id in nomi:

@@ -208,6 +208,18 @@ def _entity(row: dict, live_classes: dict, live_units: dict) -> dict:
         "unita": live_first(row.get("unit_of_measurement"), live_units.get(entity_id)),
         "disabilitata": 1 if row.get("disabled_by") else 0,
         "nascosta": 1 if row.get("hidden_by") else 0,
+        # CHI l'ha spenta o nascosta, col valore di Home Assistant (Tappa 3,
+        # Task 5, 04/10/2026): `user`, `integration`, `config_entry`,
+        # `device`, `hass` per `disabled_by`; `user`, `integration` per
+        # `hidden_by` (`RegistryEntryDisabler`/`RegistryEntryHider`, letti in
+        # `helpers/entity_registry.py`). Fino a quel giorno il lettore riduceva
+        # tutto a 1/0, e «spenta dal proprietario» e «spenta dall'integrazione»
+        # non si distinguevano piu' in nessun punto. E' la causa che
+        # `topology.visibility` porta accanto alla classe. I due booleani
+        # restano finche' la Tappa 4 non decide la resa: `GET /api/home-space`
+        # li espone, e toglierli e' un cambio di forma.
+        "disabilitata_da": row.get("disabled_by") or None,
+        "nascosta_da": row.get("hidden_by") or None,
         "alias": clean_aliases(row.get("aliases")),
         "etichette": plain_list(row.get("labels")),
         "categorie": clean_categories(row.get("categories")),
