@@ -36,9 +36,8 @@ from datetime import timedelta
 
 import pytest
 
-from hiris.app.home_space import historian
+from hiris.app.home_space import historian, tools
 from hiris.app.home_space import house_history as hh
-from hiris.app.home_space import tools
 from hiris.app.home_space.house import House
 from hiris.app.home_space.redaction import home_assistant_seal
 from hiris.app.home_space.tools import ToolDispatcher
@@ -46,9 +45,9 @@ from hiris.app.home_space.topology import Mirror
 from tests.test_history_tool import (
     _ADESSO,
     _COMPORTAMENTO,
-    _house,
     _history_house,
     _history_mirror,
+    _house,
     _traccia,
 )
 from tests.test_knowledge_tools import _semina_casa
