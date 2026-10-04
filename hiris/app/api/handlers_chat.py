@@ -24,6 +24,7 @@ from ..chat_thread import ChatThread, adopt_if_owner, request_thread
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._mcp_server_name` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
+from ..home_space.house import House
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
 
@@ -33,7 +34,7 @@ from ..model_resolution import downgrade_note
 # modulo per l'elenco di dove e' gia' cablato).
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
 from ..steering import declare_downgrade, misura_turno, who_answers
-from .handlers_home_space import compose_briefing
+from .handlers_home_space import compose_briefing, house_of
 from .soffitto import ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                            soffitto: dict | None = None,
                            soggetto: dict | None = None,
                            frase: str | None = None,
-                           thread: ChatThread | None = None) -> ToolDispatcher:
+                           thread: ChatThread | None = None,
+                           house: House | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
     Gli strumenti della chat (`home_space/tools.py`): quattro conoscono la casa (`search`,
@@ -278,6 +280,9 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # Il filo di chi ha aperto il turno -- vedi il docstring qui sopra
         # per chi lo calcola e per la guardia che lo usa.
         thread=thread,
+        # La casa del turno (R18), quando il chiamante l'ha gia' letta per il
+        # nucleo: `None` e il dispatcher la legge da se' alla prima domanda.
+        house=house,
     )
 
 
@@ -366,7 +371,8 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
 def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
                          soggetto: dict | None, ruolo: str | None = None,
                          role_known: bool = True,
-                         said_before: list[str] | tuple = ()) -> str:
+                         said_before: list[str] | tuple = (),
+                         house: House | None = None) -> str:
     """Il contesto della chat -- chi parla, nucleo, sessioni precedenti -- in
     un'unica stringa.
 
@@ -393,6 +399,9 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     chiamanti calcolano gia' per il dispatcher/il ripiego -- vedi
     `soffitto.ruolo_letto()` per la distinzione che il secondo pinna (Task 8:
     il parametro non porta piu' lo stesso nome della funzione importata).
+
+    `house` e' la casa del turno (R18), da passare a `compose_briefing`
+    quando il chiamante la condivide con gli strumenti.
     """
     # Inject closed-session summaries so Claude remembers previous conversations.
     # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
@@ -427,7 +436,7 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     # guasto, come il nucleo fa per i registri caduti (`non_disponibili`) e
     # per lo stato inaffidabile (`stato_non_letto`).
     try:
-        briefing_text, _briefing_summary = compose_briefing(app)
+        briefing_text, _briefing_summary = compose_briefing(app, house)
     except Exception as exc:
         logger.warning("composizione del nucleo fallita, la chat risponde senza: %s", exc)
         briefing_text = (
@@ -1082,6 +1091,10 @@ async def handle_chat(request: web.Request) -> web.Response:
         # "Chi ti sta parlando" (compose_chat_context, qui sotto) -- una lettura
         # sola invece di due, come per il dispatcher piu' giu'.
         soffitto = request_ceiling(request)
+        # La casa di QUESTO turno (R18): una lettura dell'anagrafe e dello
+        # specchio, una gerarchia, per il nucleo e per gli strumenti. Vive in
+        # questa funzione e muore con lei: mai in `request.app[...]` (R12).
+        house = house_of(request.app)
 
         # Chi parla + nucleo + sessioni precedenti, in un'unica stringa:
         # `compose_chat_context` (Task 1 della fetta "il ponte riceve il nucleo",
@@ -1097,7 +1110,8 @@ async def handle_chat(request: web.Request) -> web.Response:
                                            ruolo=soffitto.get("ruolo"),
                                            role_known=ruolo_letto(soffitto),
                                            said_before=unanswered_assistant_lines(
-                                               history))
+                                               history),
+                                           house=house)
 
         # Gli strumenti della chat -- il perche' di ogni riga sta
         # nel docstring di `create_tool_dispatcher` (sopra), che dalla
@@ -1123,7 +1137,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             frase=message,
             # Il filo di chi scrive, calcolato in cima a questa funzione: serve
             # alla guardia dell'officina (spec §5, «confirm e' del filo»).
-            thread=thread)
+            thread=thread, house=house)
 
         # fetta "la catena diventa l'unica verita'": qui c'era
         # `agent_model = settings.model`. Il campo e' uscito con la decisione

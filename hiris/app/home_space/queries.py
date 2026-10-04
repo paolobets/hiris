@@ -47,6 +47,8 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..action.registry import field_applies
 from ..proxy._sanitize import sanitize_structure, sanitize_text
 from ..proxy.entity_cache import (
@@ -71,13 +73,15 @@ from .topology import (
     category_names,
     decoded_capabilities,
     domain_of,
-    hierarchy,
     label_names,
     labels_with_id,
     readable_state,
 )
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
+
+if TYPE_CHECKING:
+    from .house import House
 
 # I tipi di comportamento che `view` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
@@ -578,16 +582,19 @@ def _within_ceiling(detail: dict, hint: str) -> dict:
     return detail
 
 
-def _view_area(home_space: dict, memories: list[dict], mirror: Mirror, reference,
-               unavailable: tuple[str, ...] = (),
+def _view_area(house: House, memories: list[dict], reference,
                translations: dict | None = None) -> dict:
+    home_space, mirror, unavailable = house.home_space, house.mirror, house.unavailable
     # `unavailable` va PROPAGATO, non solo ricevuto: senza, `hierarchy()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
     # "Senza area" invece che in "Dispositivi non letti". Risultato: una
     # cucina con cinque luci ne mostra quattro, con `esiste: True` e nessun
     # avviso: la stessa forma di una cucina davvero piu' piccola.
-    floors = hierarchy(home_space, tuple(unavailable))
+    #
+    # L'albero e' quello dell'istantanea (`House.hierarchy`), calcolato una
+    # volta per turno: fino al 04/10/2026 questa porta se ne rifaceva uno.
+    floors = house.hierarchy()
     label_lookup = label_names(home_space)
     category_lookup = category_names(home_space)
     area = _find_area(floors, reference)
@@ -1030,12 +1037,12 @@ def _class_meaning(knowledge, domain: str, device_class) -> str | None:
     return fact.value if fact is not None else None
 
 
-def _view_entity(home_space: dict, memories: list[dict], mirror: Mirror, reference,
-                 unavailable: tuple[str, ...] = (),
+def _view_entity(house: House, memories: list[dict], reference,
                  registry=None,
                  translations: dict | None = None,
                  knowledge=None,
                  judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+    home_space, mirror, unavailable = house.home_space, house.mirror, house.unavailable
     entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
     if entity is None:
         # Col registro "entita" caduto (una lettura parziale lascia la
@@ -1187,9 +1194,9 @@ def _view_entity(home_space: dict, memories: list[dict], mirror: Mirror, referen
     return detail
 
 
-def _view_device(home_space: dict, memories: list[dict], mirror: Mirror, reference,
-                 unavailable: tuple[str, ...] = (),
+def _view_device(house: House, memories: list[dict], reference,
                  translations: dict | None = None) -> dict:
+    home_space, mirror, unavailable = house.home_space, house.mirror, house.unavailable
     label_lookup = label_names(home_space)
     category_lookup = category_names(home_space)
     device = next(
@@ -1387,8 +1394,7 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
 _SYNCHRONY_WINDOW_SECONDS = 2.0
 
 
-def _view_integration(home_space: dict, mirror: Mirror, reference,
-                      unavailable: tuple[str, ...] = (),
+def _view_integration(house: House, reference,
                       translations: dict | None = None) -> dict:
     """Un'integrazione con le sue entita' e quante di esse rispondono.
 
@@ -1510,6 +1516,7 @@ def _view_integration(home_space: dict, mirror: Mirror, reference,
     `piattaforma`, `categoria`, `nascosta`. Fondamenta 3 e 2 insieme (audit
     delle fondamenta, rilievo 3).
     """
+    home_space, mirror, unavailable = house.home_space, house.mirror, house.unavailable
     domain = normalize(str(reference or ""))
     matching = [e for e in home_space.get("entita") or []
                 if normalize(e.get("piattaforma") or "") == domain]
@@ -1559,9 +1566,8 @@ def _view_integration(home_space: dict, mirror: Mirror, reference,
     return detail
 
 
-def view(home_space: dict, behavior: list[dict], memories: list[dict], mirror: Mirror,
+def view(house: House, behavior: list[dict], memories: list[dict],
          kind: str, reference,
-         unavailable: tuple[str, ...] = (),
          unread_bodies: dict[str, str] | None = None,
          registry=None,
          translations: dict | None = None,
@@ -1620,7 +1626,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], mirror: M
     ha appena mostrato esistono eccome, e dirne «non esiste» sarebbe una
     risposta sbagliata detta con sicurezza.
 
-    `unavailable` (registri dell'anagrafe caduti: "aree", "dispositivi",
+    `house.unavailable` (registri dell'anagrafe caduti: "aree", "dispositivi",
     "entita") e `unread_bodies` (i corpi non letti, stessa
     forma di `HomeSpace.unread_bodies()`) vanno propagati a OGNI ramo,
     non solo a quello dell'area: un "non trovato" e un "non ho potuto
@@ -1630,8 +1636,12 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], mirror: M
     presente solo quando `esiste` e' `False` E il registro pertinente
     non ha risposto.
 
-    `mirror` e' lo specchio dello stato in una forma (`topology.Mirror`, dal
-    04/10/2026: fino ad allora erano sei argomenti separati, B-41). Di lui:
+    `house` e' l'istantanea della casa di questo turno (`house.House`, dal
+    04/10/2026): l'anagrafe (`house.home_space`), i registri caduti
+    (`house.unavailable`), la gerarchia calcolata una volta
+    (`house.hierarchy()`) e lo specchio dello stato in una forma
+    (`house.mirror`, `topology.Mirror`; fino a quel giorno erano sei
+    argomenti separati, B-41). Dello specchio:
 
     `mirror.names` (entity_id -> friendly_name, stessa forma usata da
     `costruisci_indice`) conta per OGNI ramo che elenca entita' -- `entita` da sola, ma anche le
@@ -1675,7 +1685,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], mirror: M
     l'ha riceve la stessa vista senza la chiave `comandi`, mai una chiave
     vuota che direbbe «non c'e' niente da chiedere».
 
-    Legge `home_space`/`behavior`/`memories`/`mirror` cosi' come arrivano
+    Legge `house`/`behavior`/`memories` cosi' come arrivano
     dal chiamante (`HomeSpace`, `MemoryStore`, lo stato vivo di Home
     Assistant) e non chiama la rete. Un archivio lo apre in un caso solo: sul
     ramo `entita`, con `knowledge` passato, `_class_meaning` chiede al sapere
@@ -1694,7 +1704,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], mirror: M
     `judgments` e' l'istantanea dei giudizi sui tipi (spec 2026-09-16 §3):
     la inoltra soltanto, a `_view_entity` -> `commands_for` ->
     `_command_parameters` -> `_limits_of_entity` (il solo ramo che li legge).
-    Arriva come ARGOMENTO, come `mirror`. In
+    Arriva come ARGOMENTO, come `house`. In
     produzione e' sempre l'istantanea viva, `app["type_judgments"]` (via
     `home_space/tools.py::ToolDispatcher._full_detail_sync`); il predefinito
     `REPO_JUDGMENTS` -- il solo seme del repo -- serve alle prove. Una prova
@@ -1707,19 +1717,18 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], mirror: M
     """
     memories = sanitized_memories(memories)
     if kind == "area":
-        return _view_area(home_space, memories, mirror, reference, unavailable, translations)
+        return _view_area(house, memories, reference, translations)
     if kind == "entita":
-        return _view_entity(home_space, memories, mirror, reference, unavailable, registry,
+        return _view_entity(house, memories, reference, registry,
                             translations, knowledge, judgments=judgments)
     if kind == "dispositivo":
-        return _view_device(home_space, memories, mirror, reference, unavailable,
-                            translations)
+        return _view_device(house, memories, reference, translations)
     if kind in _BEHAVIOR_TYPES:
         return _view_behavior(behavior, memories, kind, reference, unread_bodies)
     if kind == "ricordo":
         return _view_memory(memories, reference)
     if kind == "integrazione":
-        return _view_integration(home_space, mirror, reference, unavailable, translations)
+        return _view_integration(house, reference, translations)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
     # stesso caso di "non l'ho trovato", solo con una causa diversa (il
     # modello ha nominato un tipo che non esiste, non un riferimento che

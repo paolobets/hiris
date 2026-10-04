@@ -1,4 +1,4 @@
-"""La casa si costruisce UNA volta per turno (R18; Tappa 3, Task 2).
+"""La casa si costruisce UNA volta per turno (R18; Tappa 3, Task 2 e 4).
 
 Un turno di chat sull'app avviata davvero (la montatura di `tests/_avvio.py`,
 `fotografia_porte.mounted`, con una casa che serve anche lo storico: la casa
@@ -35,6 +35,25 @@ Mutazione ESEGUITA il 03/10/2026 sulla derivazione: avvolto il solo modulo
 derivazione («avvolto solo dove nasce»), e il conto scende a 8 gerarchie e 0
 specchi: le chiamate di chi importa per nome non si vedevano piu'.
 Ripristinata, `git status` pulito.
+
+**Verde dal 04/10/2026 (Task 4):** l'istantanea `home_space.house.House`,
+letta una volta da chi apre il turno (`handlers_home_space.house_of`) e
+passata a nucleo e dispatcher. Il marcatore `xfail` e' uscito. Le prove in
+fondo difendono l'altra meta' di R18: la casa vale UN turno -- il turno dopo
+vede lo specchio cambiato, l'anagrafe ricostruita a meta' turno si rilegge,
+un comando eseguito la butta, e nessuna `House` resta in `app[...]`.
+
+Mutazioni ESEGUITE il 04/10/2026, ognuna ripristinata (`git status`):
+- in `house_query._area_rows`, la gerarchia ricostruita con
+  `topology.hierarchy(...)` invece di `house.hierarchy()` -- rossa la prova a
+  tetto, «Counter({'hierarchy': 3, 'live_mirror': 1})» (le due `search` che
+  passano dalle aree se ne rifanno una ciascuna);
+- `house_of` che tiene la casa in `app["casa_tenuta"]` e la riusa -- rosse
+  tre prove: il tetto (Counter() -- la casa del turno prima, gia' contata),
+  «nessuna House nell'app» e il turno nuovo («'off' == 'on'»);
+- `_execute` senza `self._house = None` -- rossa la prova del comando;
+- `_turn_house` senza il confronto d'identita' sull'anagrafe -- rossa la
+  prova dell'anagrafe ricostruita.
 """
 import sys
 from collections import Counter
@@ -47,8 +66,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
 
 from hiris.app.api.handlers_chat import create_tool_dispatcher
-from hiris.app.api.handlers_home_space import compose_briefing
+from hiris.app.api.handlers_home_space import compose_briefing, house_of
 from hiris.app.home_space import topology
+from hiris.app.home_space.house import House
+from hiris.app.home_space.tools import ToolDispatcher
 from tests._casa_sintetica import INSTANT, synthetic_inputs
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -109,9 +130,13 @@ def counted(monkeypatch):
 async def _chat_turn(app) -> list[dict]:
     """Il nucleo, tre `search` e una `history` su un dispatcher solo, come in
     un turno di chat. Le risposte tornano, perche' un turno che fallisce non
-    conta niente."""
-    compose_briefing(app)
-    dispatcher = create_tool_dispatcher(app)
+    conta niente.
+
+    La casa del turno la legge chi apre il turno e la passa a nucleo e
+    strumenti, come `handlers_chat.handle_chat`."""
+    house = house_of(app)
+    compose_briefing(app, house)
+    dispatcher = create_tool_dispatcher(app, house=house)
     return [
         await dispatcher.dispatch("search", {"nome": "Sensore"}),
         await dispatcher.dispatch("search", {"genere": "area", "riferimento": "stanza_uno"}),
@@ -138,9 +163,82 @@ async def test_la_derivazione_avvolge_chi_tiene_le_funzioni_e_vede_il_turno(
     assert calls["hierarchy"] > 0 and calls["live_mirror"] > 0, calls
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="R18: la casa si rifa' a ogni porta; "
-                                       "la chiude l'istantanea House, Tappa 3 Task 4")
 async def test_un_turno_costruisce_la_casa_una_volta(started_app, counted):
     calls, _wrapped = counted
     await _chat_turn(started_app)
     assert calls == Counter(hierarchy=1, live_mirror=1), calls
+
+
+async def test_la_casa_del_turno_non_resta_nell_app(started_app):
+    """R12: l'istantanea vale un turno. Tenuta in `app[...]`, il turno dopo
+    guarderebbe la casa di prima -- la copia che invecchia in silenzio."""
+    await _chat_turn(started_app)
+    kept = [key for key, value in started_app.items() if isinstance(value, House)]
+    assert kept == []
+
+
+# -- quando la casa cambia sotto il turno ------------------------------------
+
+class _Store:
+    """L'anagrafe: `read()` restituisce un oggetto nuovo a ogni ricostruzione,
+    come `HomeSpace` (e' cio' su cui il dispatcher confronta)."""
+
+    def __init__(self) -> None:
+        self.home_space = {"entita": [], "aree": [], "dispositivi": []}
+
+    def read(self) -> dict:
+        return self.home_space
+
+    def unavailable(self) -> list[str]:
+        return []
+
+
+class _Cache:
+    loaded = True
+
+    def __init__(self, state: str) -> None:
+        self.state = state
+
+    def all_states(self) -> list[dict]:
+        return [{"id": "light.cucina", "state": self.state}]
+
+
+class _Actuator:
+    def __init__(self, cache: _Cache) -> None:
+        self._cache = cache
+
+    async def execute(self, arguments, *, actor, subject):
+        self._cache.state = "on"
+        return {"ok": True}
+
+
+async def test_un_turno_nuovo_vede_la_casa_di_adesso():
+    """Lo specchio cambia fra due turni: il secondo lo vede, sia dalla casa
+    che apre il turno (`house_of`, come `handle_chat`) sia dal dispatcher
+    che se la legge da se'."""
+    store, cache = _Store(), _Cache("off")
+    app = {"home_space_store": store, "entity_cache": cache}
+    assert house_of(app).mirror.state["light.cucina"] == "off"
+    assert ToolDispatcher(store, None, cache=cache)._mirror().state["light.cucina"] == "off"
+    cache.state = "on"
+    assert house_of(app).mirror.state["light.cucina"] == "on"
+    assert ToolDispatcher(store, None, cache=cache)._mirror().state["light.cucina"] == "on"
+
+
+async def test_l_anagrafe_ricostruita_a_meta_turno_si_rilegge():
+    store, cache = _Store(), _Cache("off")
+    dispatcher = ToolDispatcher(store, None, cache=cache)
+    first = dispatcher._turn_house()
+    assert dispatcher._turn_house() is first
+    store.home_space = {"entita": [], "aree": [], "dispositivi": []}
+    assert dispatcher._turn_house().home_space is store.home_space
+
+
+async def test_dopo_un_comando_lo_stesso_turno_rilegge_lo_specchio():
+    """La domanda dopo un `execute`, nello stesso turno, deve vedere lo stato
+    che il comando ha cambiato, non quello di prima."""
+    store, cache = _Store(), _Cache("off")
+    dispatcher = ToolDispatcher(store, None, cache=cache, actuator=_Actuator(cache))
+    assert dispatcher._mirror().state["light.cucina"] == "off"
+    await dispatcher._execute({"servizio": "light.turn_on"})
+    assert dispatcher._mirror().state["light.cucina"] == "on"

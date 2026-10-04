@@ -18,8 +18,9 @@ import time
 from aiohttp import web
 
 from ..home_space.briefing import compose
+from ..home_space.house import House
 from ..home_space.privacy import cover_automation_body
-from ..home_space.topology import category_names, hierarchy, read_mirror
+from ..home_space.topology import category_names, hierarchy
 from .soffitto import denies, request_ceiling
 
 
@@ -187,7 +188,14 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
     })
 
 
-def compose_briefing(app) -> tuple[str, dict]:
+def house_of(app) -> House:
+    """La casa di adesso (`home_space.house.House`) dagli archivi vivi di
+    `app`: anagrafe e specchio in una lettura. Vale un turno, e chi la riceve
+    non la mette mai in `app[...]` (R12): il turno dopo ne legge una nuova."""
+    return House.read(app.get("home_space_store"), app.get("entity_cache"))
+
+
+def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
 
     Condivisa da `handle_get_briefing` (GET /api/briefing, la verifica dal vivo),
@@ -199,7 +207,14 @@ def compose_briefing(app) -> tuple[str, dict]:
     Prende `app` (un `web.Application`, o l'equivalente `.get()`-abile nei
     test) invece di un `web.Request`: il turno di una promessa non ha una
     request in corso.
+
+    `house` e' la casa del turno (`house_of`), quando il chiamante la
+    condivide con gli strumenti (R18): nucleo e `search` guardano la STESSA
+    anagrafe e lo STESSO specchio, e la gerarchia si costruisce una volta.
+    Senza, se ne legge una qui.
     """
+    if house is None:
+        house = house_of(app)
     home_space_store = app.get("home_space_store")
     memory_store = app.get("memory_store")
 
@@ -210,15 +225,11 @@ def compose_briefing(app) -> tuple[str, dict]:
         # archivio non c'e' una casa da comporre -- `compose()` riceve una
         # casa vuota, non inventata -- ma soprattutto lo stato non puo'
         # essere dichiarato affidabile: vedi `reliable_state` sotto.
-        home_space: dict = {}
-        unavailable: tuple[str, ...] = ()
         behavior: list[dict] = []
         behavior_problems: tuple[str, ...] = ()
         unread_bodies: dict[str, str] = {}
         reference_frame: dict = {}
     else:
-        home_space = home_space_store.read()
-        unavailable = tuple(home_space_store.unavailable())
         behavior = home_space_store.behavior()
         # IMPORTANT ⑧: senza questi due, il PERCHE' di un'automazione
         # sconosciuta (id duplicato, file malformato) non arrivava mai al
@@ -243,13 +254,13 @@ def compose_briefing(app) -> tuple[str, dict]:
     else:
         memories = []
 
-    # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
-    # `home_space.topology.read_mirror` e' la stessa che usano `search` e la
-    # correzione dei ricordi, e compone lei se lo specchio e' leggibile (una
-    # cache assente, finta senza `all_states`, mai caricata o guasta non lo
-    # e'). Fino al 04/10/2026 una lettura che sollevava lasciava lo stato
-    # «affidabile» e le capacita' «non guardate»: ora e' non leggibile e
-    # basta, come gli altri tre casi.
+    # Lo specchio dello stato, quello della casa del turno e non riletto a mano:
+    # `house.House.read` lo prende da `home_space.topology.read_mirror`, la
+    # stessa che usano `search` e la correzione dei ricordi, che compone lei se
+    # lo specchio e' leggibile (una cache assente, finta senza `all_states`, mai
+    # caricata o guasta non lo e'). Fino al 04/10/2026 una lettura che sollevava
+    # lasciava lo stato «affidabile» e le capacita' «non guardate»: ora e' non
+    # leggibile e basta, come gli altri tre casi.
     #
     # Dal 29/09/2026 il nucleo non porta piu' lo stato del momento («Notevole
     # adesso» e' uscita): dello specchio servono due cose sole. `state`, perche'
@@ -259,7 +270,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # specchio -- che servivano solo alle righe di quella sezione -- non si
     # leggono piu' qui. Con lo specchio non leggibile `compose()` dice «non ho
     # guardato» e non legge gli attributi (`reliable_state`, sotto).
-    mirror = read_mirror(app.get("entity_cache"))
+    mirror = house.mirror
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
@@ -302,8 +313,9 @@ def compose_briefing(app) -> tuple[str, dict]:
     reliable_state = home_space_store is not None and mirror.readable
 
     return compose(
-        home_space, behavior, memories, mirror.state,
-        unavailable=unavailable,
+        house.home_space, behavior, memories, mirror.state,
+        unavailable=house.unavailable,
+        floors=house.hierarchy(),
         reliable_state=reliable_state,
         behavior_problems=behavior_problems,
         unread_bodies=unread_bodies,

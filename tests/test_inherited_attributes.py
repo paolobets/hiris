@@ -37,6 +37,7 @@ import pathlib
 
 import pytest
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.proxy.entity_cache import (
@@ -139,7 +140,7 @@ def _detail_of(raw: dict) -> dict:
     condiviso pigro, e in questo prodotto ha gia' lasciato passare un
     difetto che nessuna prova vedeva (`test_capabilities_to_model.py`)."""
     mirror = live_mirror([_to_minimal(raw)])
-    return view(_CASA, [], [], mirror, "entita", raw["entity_id"])
+    return view(House(_CASA, mirror), [], [], "entita", raw["entity_id"])
 
 
 # --------------------------------------------------------------------------

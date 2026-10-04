@@ -97,6 +97,7 @@ from hiris.app import claude_runner, server
 from hiris.app.agent import prompts as bridge_prompts
 from hiris.app.api import handlers_chat, handlers_home_space
 from hiris.app.home_space import briefing, house_query, queries, topology
+from hiris.app.home_space.house import House
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.mind import actuator_turn, analyst_turn, observer, recipe_turn
 
@@ -317,7 +318,7 @@ def _cards(home_space: dict, entries: list, mirror) -> dict:
              if entity.get("piattaforma")})])
     for kind, reference in references:
         cards[f"{kind}:{reference}"] = queries.view(
-            home_space, entries, [], mirror, kind, reference)
+            House(home_space, mirror), entries, [], kind, reference)
     return cards
 
 
@@ -332,8 +333,8 @@ def _selections(home_space: dict, entries: list, mirror, clock: float) -> dict:
     selections = {}
     for label, filters in wanted.items():
         selection = house_query.select_subjects(
-            house_query.HouseFilters(**filters), ("entita",), home_space, entries, mirror,
-            unavailable=(), now=clock)
+            house_query.HouseFilters(**filters), ("entita",), House(home_space, mirror),
+            entries, now=clock)
         selections[label] = {"entita": [entry["id"] for entry, _area, _where
                                         in selection.entities],
                              "escluse": selection.excluded}

@@ -11,6 +11,7 @@ import pytest
 
 from hiris.app.home_space import house_history as hh
 from hiris.app.home_space import house_query as hq
+from hiris.app.home_space.house import House
 from tests.test_briefing import _casa_grande
 from tests.test_house_query import (
     BRIDGE_CEILING_CHARS,
@@ -196,8 +197,8 @@ _NESSUNA = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
 
 
 def _scegli(query, casa=None, comportamento=(), stati=None):
-    chosen = hh.choose(query, casa or _casa(), list(comportamento),
-                       _specchio(stati or STATI), now=T0)
+    chosen = hh.choose(query, House(casa or _casa(), _specchio(stati or STATI)),
+                       list(comportamento), now=T0)
     assert not isinstance(chosen, dict), chosen
     return chosen
 
@@ -395,7 +396,7 @@ def test_una_esecuzione_vale_per_una_sola_automazione():
     `run_id` -- rossa (ritorna un `Chosen`, non l'errore)."""
     comportamento, specchio = _automazioni(("carta", T_IERI), ("vetro", T_IERI))
     query = _q(genere="esecuzioni", esecuzione="r1")
-    risposta = hh.choose(query, _casa(), comportamento, specchio, now=T0)
+    risposta = hh.choose(query, House(_casa(), specchio), comportamento, now=T0)
     assert "esecuzione vale per UNA sola automazione" in risposta["errore"]
 
 

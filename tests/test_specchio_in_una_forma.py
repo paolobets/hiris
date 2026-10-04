@@ -45,7 +45,7 @@ ROWS = [{"id": "light.cucina", "state": "on", "name": " Luce cucina ",
          "unit": "", "device_class": "", "last_changed": "2026-10-01T10:00:00+00:00"},
         {"id": "sensor.t", "state": "21.5", "name": "Temperatura", "unit": "°C",
          "device_class": "temperature", "last_changed": "2026-10-01T09:00:00+00:00",
-         "attributes": {"values": {"precision": 1}}}]
+         "attributes": {"values": {"precision": 1}}, "state_class": "measurement"}]
 
 
 class _Cache:
@@ -67,6 +67,8 @@ def test_lo_specchio_ha_i_campi_per_nome():
     assert mirror.classes == {"sensor.t": "temperature"}
     assert mirror.since["light.cucina"] == "2026-10-01T10:00:00+00:00"
     assert mirror.attributes == {"sensor.t": {"values": {"precision": 1}}}
+    # Dal Task 4: lo `state_class`, che la storia leggeva dalle righe grezze.
+    assert mirror.state_classes == {"sensor.t": "measurement"}
     assert mirror.readable is True
 
 
@@ -82,11 +84,9 @@ def test_leggibile_si_calcola_in_un_posto_e_dice_la_stessa_cosa_dei_chiamanti():
     # non vale come fotografia della casa.
     unloaded = read_mirror(_Cache(ROWS, loaded=False))
     assert unloaded.readable is False and unloaded.state["sensor.t"] == "21.5"
-    # Caricata: lo specchio intero, e le righe grezze a chi le chiede.
-    rows: list = []
-    loaded = read_mirror(_Cache(ROWS), rows_out=rows)
+    # Caricata: lo specchio intero.
+    loaded = read_mirror(_Cache(ROWS))
     assert loaded == live_mirror(ROWS) and loaded.readable is True
-    assert [row["id"] for row in rows] == ["light.cucina", "sensor.t"]
 
 
 def _is_mirror(node: ast.AST) -> bool:

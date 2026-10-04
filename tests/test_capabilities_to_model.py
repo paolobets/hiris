@@ -24,6 +24,7 @@ un altro anello. Questo file segue la CATENA VERA -- stato grezzo di Home
 Assistant -> `_to_minimal` -> `live_mirror` -> `view()` -- stessa disciplina
 di `test_attributes_to_model.py` (il difetto gemello sul termostato).
 """
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.proxy.entity_cache import _to_minimal
@@ -83,7 +84,7 @@ def test_the_real_chain_decodes_capabilities_and_does_not_leak_the_raw_bit():
            "attributes": {"friendly_name": "Luce con capacita'",
                           "supported_features": 36, "assumed_state": True}}
     mirror = _mirror_of(raw)
-    detail = view(_CASA, [], [], mirror, "entita", "light.con_capacita")
+    detail = view(House(_CASA, mirror), [], [], "entita", "light.con_capacita")
     assert sorted(detail["capacita"]) == ["effetti", "transizione"]
     assert detail["stato_presunto"] is True
     shown = _every_attribute_shown(detail)
@@ -105,7 +106,7 @@ def test_supported_features_zero_does_not_come_out_anywhere():
            "attributes": {"friendly_name": "Luce senza bit acceso",
                           "supported_features": 0}}
     mirror = _mirror_of(raw)
-    detail = view(_CASA, [], [], mirror, "entita", "light.senza_bit")
+    detail = view(House(_CASA, mirror), [], [], "entita", "light.senza_bit")
     assert "capacita" not in detail
     assert "attributi" not in detail
 
@@ -124,7 +125,7 @@ def test_a_raw_number_never_reaches_the_model_for_an_uncovered_domain():
            "attributes": {"friendly_name": "Sensore senza tabella",
                           "supported_features": 27}}
     mirror = _mirror_of(raw)
-    detail = view(_CASA, [], [], mirror, "entita", "sensor.senza_tabella")
+    detail = view(House(_CASA, mirror), [], [], "entita", "sensor.senza_tabella")
     assert "capacita" not in detail
     assert "attributi" not in detail
 
@@ -148,7 +149,7 @@ def test_options_is_the_one_lawful_door_even_next_to_the_other_two():
                           "options": ["eco", "comfort"],
                           "supported_features": 0, "assumed_state": True}}
     mirror = _mirror_of(raw)
-    detail = view(_CASA, [], [], mirror, "entita", "select.con_opzioni")
+    detail = view(House(_CASA, mirror), [], [], "entita", "select.con_opzioni")
     assert detail["attributi"]["campo_di_manovra"]["options"] == ["eco", "comfort"]
     shown = _every_attribute_shown(detail)
     assert "supported_features" not in shown

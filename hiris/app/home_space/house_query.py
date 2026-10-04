@@ -1,8 +1,8 @@
 """La porta che interroga la casa (spec `2026-09-29-una-porta-sola-per-la-casa.md`).
 
-Una funzione pura: l'albero dell'anagrafe (`topology.hierarchy`) e lo
-specchio degli stati (`topology.live_mirror`) entrano, un insieme di voci
-esce. La profondita' la decide lo strumento, dal numero di voci trovate:
+Una funzione pura: l'istantanea della casa (`house.House`: l'albero
+dell'anagrafe e lo specchio degli stati, una volta per turno) entra, un
+insieme di voci esce. La profondita' la decide lo strumento, dal numero di voci trovate:
 una -> il dettaglio completo (`detail`, che il dispatcher lega a
 `queries.view`); fino a `DETAIL_MEDIUM_MAX` -> media; oltre -> corta, al
 massimo `ROWS_MAX` righe e poi `oltre`.
@@ -18,13 +18,16 @@ import re
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from . import topology
 from .behavior import BEHAVIOR_DOMAINS
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
 from .topology import Mirror
+
+if TYPE_CHECKING:
+    from .house import House
 
 DETAIL_MEDIUM_MAX = 10
 KINDS = ("entita", "area", "dispositivo", "automazione", "script",
@@ -159,21 +162,6 @@ def _age_s(iso: str | None, now: float) -> float | None:
         return now - datetime.fromisoformat(iso).timestamp()
     except ValueError:
         return None
-
-
-def _entity_entries(home_space: dict, unavailable) -> list[tuple[dict, dict, dict, str]]:
-    """(entry, area, piano, dove) per ogni entita' dell'albero; `dove` e'
-    `visibile`, `nascosta` o `disabilitata`."""
-    out = []
-    for floor in topology.hierarchy(home_space, unavailable):
-        for area in floor.get("aree") or []:
-            for key, where in (("entita", "visibile"),
-                               ("entita_nascoste", "nascosta"),
-                               ("entita_disabilitate", "disabilitata")):
-                for entry in area.get(key) or []:
-                    if isinstance(entry, dict) and entry.get("id"):
-                        out.append((entry, area, floor, where))
-    return out
 
 
 def _area_name(area: dict) -> str | None:
@@ -320,9 +308,9 @@ def _behavior_row(item, values, mirror: Mirror, medium: bool) -> dict:
     return row
 
 
-def _area_rows(f: HouseFilters, home_space, unavailable):
+def _area_rows(f: HouseFilters, house: House):
     rows = []
-    for floor in topology.hierarchy(home_space, unavailable):
+    for floor in house.hierarchy():
         for area in floor.get("aree") or []:
             if str(area.get("id", "")).startswith("__"):
                 continue
@@ -338,16 +326,17 @@ def _area_rows(f: HouseFilters, home_space, unavailable):
     return rows
 
 
-def _device_rows(f: HouseFilters, home_space, unavailable, excluded: dict) -> list[dict]:
+def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
     """I dispositivi del registro, per nome: il vecchio `search` trovava «la
     lavatrice», la porta nuova non deve perderla (decisione 29/09/2026). I
     disabilitati fuori e contati, come le entita'.
 
     `area` e `piano` sono quelli dell'area del dispositivo, dallo stesso
-    albero delle entita' (`topology.hierarchy`); `integrazione` e' quella di
+    albero delle entita' (`House.hierarchy`); `integrazione` e' quella di
     una delle sue entita' -- il registro dei dispositivi non la porta."""
+    home_space = house.home_space
     places = {area.get("id"): (area, floor)
-              for floor in topology.hierarchy(home_space, unavailable)
+              for floor in house.hierarchy()
               for area in floor.get("aree") or []}
     platforms: dict = {}
     for entity in home_space.get("entita") or []:
@@ -405,7 +394,7 @@ def _only_the_reference(f: HouseFilters) -> bool:
     return bool(f.reference) and not f.name and replace(f, kind=None).only_by_name
 
 
-def _missing_reference(f: HouseFilters, home_space, detail, unavailable) -> dict:
+def _missing_reference(f: HouseFilters, house: House, detail) -> dict:
     """La voce per un `riferimento` che nessuna riga ha preso.
 
     Non un `trovate: 0` muto (review finale, I3, 30/09/2026): un riferimento
@@ -422,12 +411,14 @@ def _missing_reference(f: HouseFilters, home_space, detail, unavailable) -> dict
     if reference.strip().isdigit():
         return detail("ricordo", reference)
     wanted = normalize(reference)
+    home_space = house.home_space
     platforms = ({normalize(e.get("piattaforma") or "") for e in home_space.get("entita") or []}
                  | {normalize(i.get("dominio") or "")
                     for i in home_space.get("integrazioni") or []})
     if wanted in platforms - {""}:
         return detail("integrazione", reference)
-    return _not_found_detail(None, reference, bool(set(unavailable) & _REFERENCE_STORES))
+    return _not_found_detail(None, reference,
+                             bool(set(house.unavailable) & _REFERENCE_STORES))
 
 
 @dataclass(frozen=True)
@@ -446,44 +437,15 @@ class Selection:
     excluded: dict[str, int]
 
 
-def select_subjects(f: HouseFilters, kinds: tuple[str, ...], home_space: dict,
-                    behavior, mirror, *, unavailable=(), now: float) -> Selection:
-    """Le entita' e i comportamenti che passano i filtri, per i generi dati.
+def select_subjects(f: HouseFilters, kinds: tuple[str, ...], house: House,
+                    behavior, *, now: float) -> Selection:
+    """Le entita' e i comportamenti che passano i filtri: `House.select`.
 
-    Le disabilitate sono sempre fuori e contate; le nascoste e quelle di
-    servizio fuori e contate, salvo `includi_nascoste`/`includi_servizio`.
-    La riga di comportamento rappresenta gia' l'automazione: quando si
-    cercano anche automazioni o script, la loro entita' di registro sarebbe
-    un doppione e non si sceglie (solo quelle che il comportamento conosce:
-    un'automazione che non c'e' resta un'entita')."""
-    entries = _entity_entries(home_space, unavailable)
-    searching_behavior = any(k in _BEHAVIOR_KINDS for k in kinds)
-    shadowed = {b.get("id") for b in behavior or []} if searching_behavior else set()
-    excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
-    matched = []
-    if "entita" in kinds:
-        for entry, area, floor, where in entries:
-            if entry["id"] in shadowed:
-                continue
-            if not _entity_matches(f, entry, area, floor, mirror, now):
-                continue
-            if where == "disabilitata":
-                excluded["disabilitate"] += 1
-                continue
-            if where == "nascosta" and not f.include_hidden:
-                excluded["nascoste"] += 1
-                continue
-            if entry.get("categoria") and not f.include_service:
-                excluded["servizio"] += 1
-                continue
-            matched.append((entry, area, where))
-    places = {entry["id"]: (entry, area, floor) for entry, area, floor, _w in entries}
-    behaving = []
-    for kind in kinds:
-        if kind in _BEHAVIOR_KINDS:
-            behaving.extend(_behavior_matches(replace(f, kind=kind), behavior,
-                                              mirror, now, places))
-    return Selection(matched, behaving, excluded)
+    Dal 04/10/2026 (Tappa 3, Task 4) la scelta vive nell'istantanea della
+    casa, che ha gia' la gerarchia calcolata; questo rimando resta finche'
+    il Task 13 non sposta anche `house_history` sui metodi della casa (il
+    piano: «per non toccare `house_history` due volte»)."""
+    return house.select(f, kinds, behavior, now=now)
 
 
 def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
@@ -513,27 +475,26 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     return page, beyond
 
 
-def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
+def _select(f: HouseFilters, house: House, behavior, detail,
             now, excluded: dict) -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
     if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
         return _one(detail(f.kind, f.reference or f.name or ""))
     kinds = KINDS if f.only_by_name else ((f.kind,) if f.kind else ("entita",))
-    chosen = select_subjects(f, kinds, home_space, behavior, mirror,
-                             unavailable=unavailable, now=now)
+    chosen = house.select(f, kinds, behavior, now=now)
     for key, count in chosen.excluded.items():
         excluded[key] += count
     matched, behaving = chosen.entities, chosen.behavior
     others: list[dict] = []
     for kind in kinds:
         if kind == "area":
-            others.extend(_area_rows(f, home_space, unavailable))
+            others.extend(_area_rows(f, house))
         elif kind == "dispositivo":
-            others.extend(_device_rows(f, home_space, unavailable, excluded))
+            others.extend(_device_rows(f, house, excluded))
     found = len(matched) + len(behaving) + len(others)
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
-        return _one(_missing_reference(f, home_space, detail, unavailable))
+        return _one(_missing_reference(f, house, detail))
     if found == 1 and f.limit > 0:
         if matched:
             return 1, "completa", [detail("entita", matched[0][0]["id"])], None
@@ -541,17 +502,17 @@ def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
         kind = item.get("tipo") if behaving else item["genere"]
         return 1, "completa", [detail(kind, item["id"])], None
     medium = found <= DETAIL_MEDIUM_MAX
-    rows = ([_entity_row(entry, area, where, mirror, medium)
+    rows = ([_entity_row(entry, area, where, house.mirror, medium)
              for entry, area, where in matched]
-            + [_behavior_row(item, values, mirror, medium) for item, values in behaving]
+            + [_behavior_row(item, values, house.mirror, medium) for item, values in behaving]
             + others)
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)
     return found, "media" if medium else "corta", page, beyond
 
 
-def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
-                detail, unavailable=(), now: float | None = None) -> dict:
+def query_house(house: House, behavior, filters: HouseFilters, *,
+                detail, now: float | None = None) -> dict:
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
@@ -574,8 +535,7 @@ def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
                               + ("; in_esecuzione vale per automazioni e script"
                                  if "in_esecuzione" in wrong else "")}
     excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
-    found, depth, page, beyond = _select(f, home_space, behavior, mirror, detail,
-                                         unavailable, now, excluded)
+    found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded)
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
     result: dict = {"trovate": found, "escluse": excluded, "profondita": depth,

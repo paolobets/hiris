@@ -54,9 +54,16 @@
   }
  },
  "regola-del-fuori": {
+  "hiris/app/home_space/house.py": {
+   "conti": {
+    "categoria": 1
+   },
+   "voci": [
+    "B-01"
+   ]
+  },
   "hiris/app/home_space/house_query.py": {
    "conti": {
-    "categoria": 1,
     "nascosta": 1
    },
    "voci": [

@@ -74,6 +74,7 @@ from hiris.app.home_space import (
     topology,
     type_vocabulary,
 )
+from hiris.app.home_space.house import House
 from hiris.app.mind import observer, recipe_turn
 from hiris.app.mind.recipes import ENTITY_MARK, Recipe
 from hiris.app.mind.watcher import Watcher
@@ -156,8 +157,8 @@ def excluded(inputs: dict) -> dict:
     """
     home_space, mirror, entities = inputs["home_space"], inputs["mirror"], _entities(inputs)
     selection = house_query.select_subjects(
-        house_query.HouseFilters(), ("entita",), home_space, [], mirror,
-        unavailable=(), now=inputs["clock"])
+        house_query.HouseFilters(), ("entita",), House(home_space, mirror), [],
+        now=inputs["clock"])
     copies = {
         "digest_visible_entity_ids": set(briefing.digest_visible_entity_ids(home_space)),
         "not _excluded_from_comparison": {
@@ -215,7 +216,7 @@ def _causes_by_device(inputs: dict) -> tuple[dict[str, str], int]:
     causes: dict[str, str] = {}
     cut = 0
     for device in home_space["dispositivi"]:
-        detail = queries.view(home_space, [], [], mirror, "dispositivo", device["id"])
+        detail = queries.view(House(home_space, mirror), [], [], "dispositivo", device["id"])
         if detail.get("oltre"):
             cut += 1
             continue
@@ -239,7 +240,7 @@ def _causes_by_selection(inputs: dict) -> dict[str, str]:
     def chosen(hidden: bool, service: bool) -> set[str]:
         selection = house_query.select_subjects(
             house_query.HouseFilters(include_hidden=hidden, include_service=service),
-            ("entita",), inputs["home_space"], [], inputs["mirror"], unavailable=(),
+            ("entita",), House(inputs["home_space"], inputs["mirror"]), [],
             now=inputs["clock"])
         return {entry["id"] for entry, _area, _where in selection.entities}
 
@@ -427,7 +428,7 @@ def names(inputs: dict) -> dict:
     `search`, per la stessa entita'."""
     home_space, mirror = inputs["home_space"], inputs["mirror"]
     where = {entry["id"]: (entry, area, place)
-             for entry, area, _floor, place in house_query._entity_entries(home_space, ())}
+             for entry, area, _floor, place in House(home_space, mirror).entity_entries()}
     cases = []
     for key, entity in _entities(inputs).items():
         detail = queries._enrich_entity(
@@ -548,7 +549,7 @@ def units(inputs: dict) -> dict:
     home_space, mirror = inputs["home_space"], inputs["mirror"]
     live_units, live_classes = mirror.units, mirror.classes
     cases = []
-    for entry, area, _floor, place in house_query._entity_entries(home_space, ()):
+    for entry, area, _floor, place in House(home_space, mirror).entity_entries():
         key = entry["id"]
         row = house_query._entity_row(entry, area, place, mirror, True)
         unit = {entry.get("unita") or None, live_units.get(key) or None,
@@ -565,7 +566,7 @@ def units(inputs: dict) -> dict:
 def _selected(inputs: dict, **filters) -> set[str]:
     selection = house_query.select_subjects(
         house_query.HouseFilters(include_hidden=True, include_service=True, **filters),
-        ("entita",), inputs["home_space"], [], inputs["mirror"], unavailable=(),
+        ("entita",), House(inputs["home_space"], inputs["mirror"]), [],
         now=inputs["clock"])
     return {entry["id"] for entry, _area, _where in selection.entities}
 
@@ -594,7 +595,7 @@ def references(inputs: dict) -> dict:
         for label, text in (("esatto", platform), ("capitalizzato", platform.capitalize()),
                             ("maiuscolo", platform.upper()), ("con spazi", f" {platform} ")):
             by_search = bool(_selected(inputs, platform=text))
-            by_card = bool(queries.view(home_space, [], [], mirror, "integrazione",
+            by_card = bool(queries.view(House(home_space, mirror), [], [], "integrazione",
                                         text).get("esiste"))
             if by_search != by_card:
                 cases.append({"genere": "integrazione", "id": platform, "variante": label,

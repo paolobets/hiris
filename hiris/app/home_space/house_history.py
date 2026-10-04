@@ -23,6 +23,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from ..mind.report import integration_of
 from ..proxy.entity_cache import VALUES
@@ -40,6 +41,9 @@ from .house_query import (
 from .privacy import MOVING_DOMAINS, redact_nested, redact_state
 from .queries import ROWS_MAX
 from .reference import normalize
+
+if TYPE_CHECKING:
+    from .house import House
 
 KINDS = ("stati", "valori", "esecuzioni", "errori")
 #: Un giorno: la finestra che la parola «oggi» significa per chi chiede
@@ -312,8 +316,7 @@ def _page(rows: list, f: HouseFilters) -> tuple[list, dict | None]:
     return page_rows(rows, f.offset, f.limit)
 
 
-def choose(query: HistoryQuery, home_space: dict, behavior, mirror, *,
-           unavailable=(), now: float) -> Chosen | dict:
+def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen | dict:
     """Di chi (la scelta di `search`, `select_subjects`) e quanto.
 
     Stati e valori guardano le entita'; le esecuzioni automazioni e script.
@@ -330,9 +333,8 @@ def choose(query: HistoryQuery, home_space: dict, behavior, mirror, *,
         f = replace(f, domain=None)
     else:
         kinds = ("entita",)
-    selection = select_subjects(f, kinds, home_space, behavior, mirror,
-                                unavailable=unavailable, now=now)
-    names = mirror.names
+    selection = select_subjects(f, kinds, house, behavior, now=now)
+    names = house.mirror.names
     if query.kind == "esecuzioni":
         subjects = [Subject(item["id"], item.get("nome") or item["id"],
                             values.get("last_triggered"))

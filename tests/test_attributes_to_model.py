@@ -26,6 +26,7 @@ sparito da Home Assistant: la modalita' e' lo `state`, non un attributo
 (`components/climate/__init__.py:289-299`). Il difetto che questo file
 sorveglia e' identico: lo `state` da solo mente.
 """
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import Mirror, live_mirror, readable_state
 from hiris.app.proxy.entity_cache import _to_minimal
@@ -88,7 +89,7 @@ def test_c_guarda_su_un_entita_non_dice_piu_solo_heat():
     chiave "attributi" e "stato_leggibile" valeva "heat" -- la stessa forma
     letta dal proprietario in chat."""
     mirror = _specchio_del_termostato()
-    dettaglio = view(_CASA, [], [], mirror, "entita", "climate.matrimoniale",
+    dettaglio = view(House(_CASA, mirror), [], [], "entita", "climate.matrimoniale",
                        translations=house_translations())
     assert dettaglio["esiste"] is True
     assert dettaglio["stato"] == "heat"
@@ -114,7 +115,7 @@ def test_d_guarda_su_un_termostato_che_sta_scaldando_lo_dice_diverso():
     raw = {**_RAW_TERMOSTATO,
            "attributes": {**_RAW_TERMOSTATO["attributes"], "hvac_action": "heating"}}
     mirror = live_mirror([_to_minimal(raw)])
-    dettaglio = view(_CASA, [], [], Mirror(state=mirror.state, attributes=mirror.attributes),
+    dettaglio = view(House(_CASA, Mirror(state=mirror.state, attributes=mirror.attributes)), [], [],
                      "entita", "climate.matrimoniale",
                        translations=house_translations())
     assert dettaglio["stato_leggibile"] == (
@@ -145,7 +146,7 @@ def test_f_un_area_NON_porta_gli_attributi_di_ogni_entita():
     risposta di un dato che nessuno ha chiesto per la singola cosa. Il
     dettaglio di UNA entita' (`_view_entity`) e' l'unico posto dove esce."""
     mirror = _specchio_del_termostato()
-    dettaglio = view(_CASA, [], [], Mirror(state=mirror.state, attributes=mirror.attributes),
+    dettaglio = view(House(_CASA, Mirror(state=mirror.state, attributes=mirror.attributes)), [], [],
                      "area", "camera")
     entita = dettaglio["entita"][0]
     assert "attributi" not in entita, (
@@ -159,7 +160,7 @@ def test_g_un_area_porta_comunque_lo_stato_leggibile_onesto():
     risposte diverse a seconda che si chiami `guarda('area', ...)` o
     `guarda('entita', ...)` (fondamenta 3)."""
     mirror = _specchio_del_termostato()
-    dettaglio = view(_CASA, [], [], Mirror(state=mirror.state, attributes=mirror.attributes),
+    dettaglio = view(House(_CASA, Mirror(state=mirror.state, attributes=mirror.attributes)), [], [],
                      "area", "camera",
                        translations=house_translations())
     entita = dettaglio["entita"][0]
@@ -176,7 +177,7 @@ def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
                     "disabilitata": False}],
     }
     mirror = _specchio_del_termostato()
-    dettaglio = view(casa, [], [], Mirror(state=mirror.state, attributes=mirror.attributes),
+    dettaglio = view(House(casa, Mirror(state=mirror.state, attributes=mirror.attributes)), [], [],
                      "dispositivo", "dev_t",
                        translations=house_translations())
     entita = dettaglio["entita"][0]
@@ -190,7 +191,7 @@ def test_i_senza_attributi_vivi_guarda_si_comporta_come_prima():
     "attributi", e lo stato in parole degrada onestamente all'impostazione
     sola -- non torna "heat" nudo, che sarebbe il vecchio difetto con un'altra
     faccia."""
-    dettaglio = view(_CASA, [], [], Mirror(state={"climate.matrimoniale": "heat"}),
+    dettaglio = view(House(_CASA, Mirror(state={"climate.matrimoniale": "heat"})), [], [],
                        "entita", "climate.matrimoniale",
                        translations=house_translations())
     assert "attributi" not in dettaglio

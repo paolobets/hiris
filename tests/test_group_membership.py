@@ -30,6 +30,7 @@ omogeneo passerebbe anche con la frase mai implementata.
 """
 import pytest
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import group_membership, view
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.home_space.type_vocabulary import (
@@ -142,7 +143,7 @@ def _detail(target: dict, *present: dict) -> dict:
     lasciato passare un difetto che nessuna prova vedeva."""
     mirror = live_mirror(
         [_to_minimal(r) for r in present])
-    return view(_house(*present), [], [], mirror, "entita", target["entity_id"])
+    return view(House(_house(*present), mirror), [], [], "entita", target["entity_id"])
 
 
 def _mirror(*present: dict) -> dict:

@@ -202,6 +202,13 @@ class Mirror:
     a mano accanto a ogni lettura (A-25: erano cinque composizioni in
     `tools.py`). Il default `True` e' quello di uno specchio costruito da
     righe gia' lette (`live_mirror`), o scritto a mano in una prova.
+
+    `state_classes` (entity_id -> `state_class`) e' entrato il 04/10/2026
+    (Task 4): la storia ci sceglie la superficie dei valori, e fino a quel
+    giorno lo leggeva dalle righe GREZZE della stessa lettura, che
+    `ToolDispatcher._mirror` le consegnava a parte (`rows_out`). Con
+    l'istantanea per turno (`house.House`) le righe non viaggiano piu':
+    viaggia lo specchio, e il fatto e' suo.
     """
     state: dict[str, str] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
@@ -209,10 +216,11 @@ class Mirror:
     classes: dict[str, str] = field(default_factory=dict)
     since: dict[str, str] = field(default_factory=dict)
     attributes: dict[str, dict] = field(default_factory=dict)
+    state_classes: dict[str, str] = field(default_factory=dict)
     readable: bool = True
 
 
-def read_mirror(cache, rows_out: list | None = None) -> Mirror:
+def read_mirror(cache) -> Mirror:
     """Lo specchio vivo letto dalla cache, con `readable` calcolato QUI e in
     nessun altro posto (A-25).
 
@@ -227,10 +235,6 @@ def read_mirror(cache, rows_out: list | None = None) -> Mirror:
     diceva «letto» con la cache assente, e ogni chiamante lo correggeva
     mettendoci accanto `inventory_is_readable`, che nello stesso caso dice
     falso. Ora la risposta e' una, gia' composta.
-
-    `rows_out`, se c'e', riceve le righe GREZZE della stessa lettura: la
-    storia ci legge `state_class`, che lo specchio non porta, e una seconda
-    `all_states()` sarebbe una seconda lettura in un altro istante.
     """
     # Importata qui e non in testa: `entity_cache` importa questo modulo
     # (`domain_of`), e la regola di «leggibile» vive accanto alla cache.
@@ -238,14 +242,11 @@ def read_mirror(cache, rows_out: list | None = None) -> Mirror:
     if cache is None or not hasattr(cache, "all_states"):
         return Mirror(readable=False)
     try:
-        rows = cache.all_states()
-        mirror = live_mirror(rows)
+        mirror = live_mirror(cache.all_states())
     except Exception as error:
         logger.warning("specchio dello stato illeggibile (%s: %s)",
                        type(error).__name__, error)
         return Mirror(readable=False)
-    if rows_out is not None:
-        rows_out.extend(row for row in rows or [] if isinstance(row, dict))
     if inventory_is_readable(cache):
         return mirror
     return replace(mirror, readable=False)
@@ -289,6 +290,7 @@ def live_mirror(rows) -> Mirror:
     classes: dict[str, str] = {}
     since_when: dict[str, str] = {}
     attributes: dict[str, dict] = {}
+    state_classes: dict[str, str] = {}
     for e in rows:
         if not isinstance(e, dict):
             continue
@@ -311,7 +313,10 @@ def live_mirror(rows) -> Mirror:
         extra = e.get("attributes")
         if isinstance(extra, dict) and extra:
             attributes[entity_id] = extra
-    return Mirror(state, names, unit, classes, since_when, attributes)
+        state_class = e.get("state_class")
+        if isinstance(state_class, str) and state_class:
+            state_classes[entity_id] = state_class
+    return Mirror(state, names, unit, classes, since_when, attributes, state_classes)
 
 
 def name_with_id(name: str, id_: str | None) -> str:

@@ -1317,7 +1317,12 @@ async def test_un_nome_vivo_nuovo_si_trova_alla_ricerca_dopo(archivio_casa, memo
     """Stessa anagrafe: solo il friendly_name dello specchio dello stato
     cambia. Nata per la chiave della cache dell'indice (i nomi vivi); dal
     29/09/2026 `search` rilegge lo specchio a ogni chiamata, e la seconda
-    ricerca deve trovare il nome nuovo."""
+    ricerca deve trovare il nome nuovo.
+
+    Dal 04/10/2026 (Tappa 3, Task 4, R18) lo specchio si legge una volta per
+    TURNO (`house.House`): la ricerca dopo e' quella del turno dopo, cioe' di
+    un dispatcher nuovo. Nello stesso turno la casa resta quella letta per
+    prima (`tests/test_casa_per_turno.py`)."""
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
 
@@ -1334,6 +1339,7 @@ async def test_un_nome_vivo_nuovo_si_trova_alla_ricerca_dopo(archivio_casa, memo
     assert prima["trovate"] == 0
 
     cache_stato.nome = "Abat-jour"  # ora HA ha un nome vivo per l'entita'
+    d = ToolDispatcher(archivio_casa, memoria, cache=cache_stato)  # il turno dopo
     dopo = await d.dispatch("search", {"nome": "abat-jour"})
     riferimenti = [v.get("id") for v in dopo["voci"]]
     assert riferimenti == ["light.abat_jour_1"]
@@ -1379,37 +1385,6 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     assert len(chiamate) == 2  # ma ora si riusa, a stato invariato
 
     vuoto.close()
-
-
-@pytest.mark.asyncio
-async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(
-    archivio_casa, memoria, monkeypatch
-):
-    """Rilievo Importante della review indipendente: `_remember` chiamava
-    SEMPRE `HomeSpaceStore.read()` prima di sapere se la cache avrebbe dato un
-    colpo a segno -- su un hit quella lettura (SQL vero + json.loads per
-    riga) veniva fatta e buttata. La chiave (aggiornata_il + impronta dei
-    nomi) si calcola SENZA leggere l'anagrafe: su un hit, `read()` non deve
-    essere chiamata affatto. Un test che guarda solo il risultato di
-    `remember` passerebbe identico con la lettura ancora dentro -- serve
-    contare le chiamate vere, come per le costruzioni dell'indice."""
-    chiamate_leggi = []
-    originale = archivio_casa.read
-
-    def spia():
-        chiamate_leggi.append(1)
-        return originale()
-
-    monkeypatch.setattr(archivio_casa, "read", spia)
-    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
-
-    await d.dispatch("remember", {"testo": "prima chiamata, miss: deve leggere"})
-    assert len(chiamate_leggi) == 1
-
-    await d.dispatch(
-        "remember", {"testo": "seconda chiamata, stato invariato: hit, NON deve leggere"}
-    )
-    assert len(chiamate_leggi) == 1  # invariato: la seconda non ha letto di nuovo
 
 
 class _CacheConUnita:

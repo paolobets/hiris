@@ -34,6 +34,7 @@ classe dallo specchio resta provata dove si legge ancora, nel dettaglio di
 un'entita' (`test_guarda_dice_la_classe_che_prometteva`).
 """
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import Mirror, actual_class, live_mirror
 from tests._house_translations import house_translations
@@ -66,8 +67,8 @@ def test_lo_specchio_porta_anche_le_classi():
 
 def test_guarda_dice_la_classe_che_prometteva():
     mirror = live_mirror(_SPECCHIO)
-    d = view(_CASA, [], [],
-             Mirror(state={"binary_sensor.perdita_lavatrice": "on"}, classes=mirror.classes),
+    d = view(House(_CASA, Mirror(state={"binary_sensor.perdita_lavatrice": "on"},
+                                 classes=mirror.classes)), [], [],
                "entita", "binary_sensor.perdita_lavatrice",
                translations=house_translations())
     assert d["classe"] == "moisture"
