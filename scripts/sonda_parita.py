@@ -617,7 +617,17 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
     from hiris.app import chat_store
     from hiris.app.api import handlers_chat
 
-    zone = historian.home_space_zone(inputs["ha_config"].get("time_zone") or "UTC")
+    timezone = inputs["ha_config"].get("time_zone") or "UTC"
+    zone = historian.home_space_zone(timezone)
+
+    class _Frame:
+        """L'anagrafe, per la sola domanda che la chat le fa qui: il fuso. La
+        chat lo chiede a `historian.house_timezone` (Tappa 3, Task 10), che
+        lo legge da `reference_frame()`."""
+
+        def reference_frame(self):
+            return {"fuso": timezone}
+
     session: dict = {}
     replaced = (handlers_chat.get_past_summaries, handlers_chat.compose_briefing,
                 handlers_chat._who_is_speaking)
@@ -631,8 +641,8 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
         while instant < datetime(2027, 1, 1, tzinfo=UTC):
             session["row"] = {"started_at": instant.strftime(chat_store._TS_FMT),
                               "summary": "x"}
-            context = handlers_chat.compose_chat_context(None, "/nonexistent", thread=None,
-                                                         soggetto=None)
+            context = handlers_chat.compose_chat_context(
+                {"home_space_store": _Frame()}, "/nonexistent", thread=None, soggetto=None)
             label = context.split("[", 1)[1].split("]", 1)[0]
             samples += 1
             if label != instant.astimezone(zone).date().isoformat():

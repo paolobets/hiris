@@ -16,7 +16,7 @@ import asyncio
 import logging
 import re
 import sys
-from datetime import UTC
+from datetime import UTC, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app import server
+from hiris.app.home_space import historian
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.mind.store import READING_RETENTION_S
@@ -420,8 +421,7 @@ async def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, cap
             with mock.patch.dict(app, {"home_space_store": None}), \
                 caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
                 await _job(app, "hiris_mind_aggregation")()
-            ieri = (server.datetime.now(server.home_space_zone(None))
-                    - server.timedelta(days=1)).strftime("%Y-%m-%d")
+            ieri = (historian.today(None) - timedelta(days=1)).isoformat()
             avvisi = [r.getMessage() for r in caplog.records
                       if r.name == SERVER_LOGGER and r.levelno >= logging.WARNING]
             assert not avvisi, avvisi

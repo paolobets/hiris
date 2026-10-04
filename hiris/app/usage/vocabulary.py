@@ -1,4 +1,4 @@
-"""Le parole dei consumi: cinque stati del costo, e il giorno della casa.
+"""Le parole dei consumi: cinque stati del costo.
 
 Il costo di una riga non e' sempre un numero, e i modi in cui puo' non esserlo
 non sono lo stesso modo. Un modello in casa costa zero DAVVERO; l'abbonamento
@@ -9,9 +9,6 @@ ogni identificativo OpenRouter e, misurato il 21/08/2026 sull'installazione
 vera, anche `claude-opus-4-8`, che in `pricing.py` non c'e'.
 """
 from __future__ import annotations
-
-from datetime import UTC, datetime
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..backends.pricing import prezzo_noto
 
@@ -72,18 +69,3 @@ def cost_state_and_value(provider: str, model: str, *,
         return "misurato", float(cost_da_listino or 0.0)
     return "non_noto", None
 
-
-def local_day(now: float, timezone: str = "") -> str:
-    """Il giorno in cui cade questo istante, nel fuso della casa.
-
-    In UTC le 00:30 del 22 agosto a Roma sono ancora il 21: un secchiello
-    giornaliero calcolato in UTC racconterebbe una bugia ogni notte. Il fuso lo
-    sa l'anagrafe (`HomeSpace.reference_frame()['fuso']`), che tace
-    quando non lo sa: senza, si ripiega su UTC -- e la pagina lo dichiara,
-    invece di far passare un giorno spostato per un giorno.
-    """
-    try:
-        tz = ZoneInfo(timezone) if timezone else UTC
-    except (ZoneInfoNotFoundError, ValueError):
-        tz = UTC
-    return datetime.fromtimestamp(now, tz).strftime("%Y-%m-%d")

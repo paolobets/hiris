@@ -38,7 +38,7 @@ class _Req:
 
 
 class _ArchivioCasaFinto:
-    """Il minimo che `_timezone_from_home_space_store` (`server.py`) legge:
+    """Il minimo che `historian.house_timezone` legge:
     `reference_frame()`. Sostituisce `app["fuso_casa"]` (riparazione-
     impoverisce-brief.md, appendice punto 7): quella chiave non la popolava
     nessun codice di produzione, solo questa finta -- il difetto che questo
@@ -214,7 +214,7 @@ def test_la_storia_senza_parametri_da_gli_ultimi_trenta_giorni(app):
 def test_dopo_mezzanotte_il_giorno_CORRENTE_e_quello_della_casa(app, monkeypatch):
     """Audit delle fondamenta, rilievo 10: due lettori, due definizioni di «giorno».
 
-    I secchielli si scrivono con `local_day` (il fuso della casa) e questa
+    I secchielli si scrivono con `historian.local_date` (il fuso della casa) e questa
     rotta calcolava `to` e `from` con `datetime.fromtimestamp(..., UTC)`.
     Alle 00:30 di Roma il turno appena fatto va nel secchiello del giorno
     NUOVO e il `to` predefinito era ancora quello vecchio: il giorno corrente
@@ -237,7 +237,7 @@ def test_dopo_mezzanotte_il_giorno_CORRENTE_e_quello_della_casa(app, monkeypatch
 
 
 def test_senza_fuso_noto_la_storia_conta_in_UTC_e_non_inventa(tmp_path, monkeypatch):
-    """Il ripiego dichiarato di `local_day`: quando l'anagrafe non sa il fuso
+    """Il ripiego dichiarato di `historian.local_date`: quando l'anagrafe non sa il fuso
     si conta in UTC -- da entrambe le parti. Cio' che non deve succedere e'
     che una parte ripieghi su UTC e l'altra sull'orologio del container."""
     archivio = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: "")

@@ -17,10 +17,11 @@ import logging
 import secrets
 import threading
 
+from ..home_space.historian import local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
-from .vocabulary import local_day, piu_debole
+from .vocabulary import piu_debole
 
 logger = logging.getLogger(__name__)
 
@@ -359,7 +360,7 @@ class UsageStore:
         sulla riga del modello che l'ha preso, senza contarla come una
         richiesta servita.
         """
-        day = local_day(now, self._timezone())
+        day = local_date(now, self._timezone()).isoformat()
         with self._lock:
             row = self._conn.execute(
                 "SELECT costo_usd, costo_stato FROM consumo_giorno "
@@ -416,7 +417,7 @@ class UsageStore:
         """
         if not agent or not reason:
             return
-        day = local_day(now, self._timezone())
+        day = local_date(now, self._timezone()).isoformat()
         try:
             with self._lock:
                 self._conn.execute(
@@ -743,7 +744,7 @@ class UsageStore:
         POSIZIONE dell'ancora, espressa nelle uniche coordinate che l'archivio
         possiede. Nessun altro posto la sa.
         """
-        day = local_day(now, self._timezone())
+        day = local_date(now, self._timezone()).isoformat()
         colonne = ", ".join(CAMPI)
         with self._lock:
             self._conn.execute("DELETE FROM ancora_saldo")

@@ -31,6 +31,7 @@ import json
 import pytest
 
 from hiris.app import server
+from hiris.app.home_space import historian
 from hiris.app.mind.store import ObservationsStore
 
 
@@ -79,16 +80,11 @@ async def test_un_giorno_senza_analisi_FA_un_turno_e_scrive_il_fondamento(casa):
 
     await server.analyst_round(app)
 
-    import datetime
-
-    from hiris.app.home_space.historian import home_space_zone
-
     assert modello.chiamate == 1
     # Il giorno si calcola **come lo calcola il giro** (fuso della casa), non
     # con l'orologio di chi fa girare la suite: una prova che guarda un altro
     # giorno passerebbe o cadrebbe a seconda dell'ora.
-    fuso = server._timezone_from_home_space_store(None)
-    oggi = datetime.datetime.now(home_space_zone(fuso)).date().isoformat()
+    oggi = historian.today(historian.house_timezone(None)).isoformat()
     scritta = store.analysis(oggi)
     assert scritta is not None, "il giro non ha scritto l'analisi di oggi"
     assert scritta.get("fondamento"), "l'analisi non dice su cosa e' stata scritta"
@@ -325,8 +321,5 @@ async def test_un_turno_ANCORA_SENZA_RISPOSTA_non_si_raccoglie(casa):
 
 
 def _oggi(app):
-    from datetime import datetime
-
-    from hiris.app.home_space.historian import home_space_zone
-    fuso = server._timezone_from_home_space_store(app.get("home_space_store"))
-    return datetime.now(home_space_zone(fuso)).date().strftime("%Y-%m-%d")
+    return historian.today(
+        historian.house_timezone(app.get("home_space_store"))).isoformat()

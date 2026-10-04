@@ -2491,19 +2491,14 @@ class ToolDispatcher:
         return measurements
 
     def _timezone(self) -> str | None:
-        """Il fuso della casa, dalla stessa fonte del nucleo.
+        """Il fuso della casa, dall'unico lettore (`historian.house_timezone`).
 
-        `HomeSpace.reference_frame()` (`home_space/reader.py`) e' l'UNICO
-        accessore: rileggere `get_config` per conto proprio qui sarebbe un
-        secondo posto che sa lo stesso fatto, e i due potrebbero divergere il
-        giorno in cui uno dei due cambia. Senza `home_space_store` (i test che
-        costruiscono un dispatcher minimale) il fuso resta sconosciuto, e la
-        promessa nasce comunque -- `fuso` e' un campo dichiarativo della
-        promessa (spec §9.1), non un cancello che la blocca.
+        Senza `home_space_store` (i test che costruiscono un dispatcher
+        minimale) il fuso resta sconosciuto, e la promessa nasce comunque --
+        `fuso` e' un campo dichiarativo della promessa (spec §9.1), non un
+        cancello che la blocca.
         """
-        if self._home_space is None:
-            return None
-        return self._home_space.reference_frame().get("fuso")
+        return historian.house_timezone(self._home_space)
 
     # -- il soffitto e il sigillo -----------------------------------------
 

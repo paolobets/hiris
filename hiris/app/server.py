@@ -44,9 +44,15 @@ from .api.middleware_internal_auth import internal_auth_middleware
 from .api.soffitto import restricted_person
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
+from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
-from .home_space.historian import day_boundaries, home_space_zone, instant_epoch
+from .home_space.historian import (
+    day_boundaries,
+    house_timezone,
+    instant_epoch,
+    local_date,
+)
 from .home_space.reader import HomeSpace
 from .home_space.redaction import home_assistant_folder
 from .home_space.topology import (
@@ -1227,22 +1233,6 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     return run_round
 
 
-def _timezone_from_home_space_store(home_space_store) -> str | None:
-    """Il fuso della casa, letto da `reference_frame()` -- `None` se
-    `home_space_store` non c'e' ancora (avvio a meta', o un test che non lo
-    costruisce).
-
-    Un aiutante per una domanda che il codice faceva ripetendo la stessa
-    lettura in piu' punti: lo chiamano i giri di questo modulo e, fuori di
-    qui, `api/handlers_usage.py` e `api/handlers_mind.py`.
-
-    **Una lettura resta fuori**: `ToolDispatcher._timezone`
-    (`home_space/tools.py`, il campo dichiarativo di una promessa) chiede lo
-    stesso `reference_frame()` al proprio `HomeSpace`, e ha un docstring suo.
-    """
-    return home_space_store.reference_frame().get("fuso") if home_space_store else None
-
-
 #: Quanto tace il log per un giorno di `backfill_one_report` che non si fa, dopo
 #: averlo detto una volta. Decisioni del proprietario, 17/09/2026: prima per la
 #: cronaca che non si rifa', poi -- lo stesso giorno -- anche per il resoconto
@@ -1357,11 +1347,10 @@ async def backfill_one_report(app, ha_client, *,
     first_ts = archivio.oldest_reading_ts()
     if first_ts is None:
         return None
-    timezone = _timezone_from_home_space_store(app.get("home_space_store"))
-    zone = home_space_zone(timezone)
-    adesso = now(zone)
-    today = adesso.date()
-    first_day = datetime.fromtimestamp(first_ts, tz=zone).date()
+    timezone = house_timezone(app.get("home_space_store"))
+    adesso = now(UTC)
+    today = local_date(adesso.timestamp(), timezone)
+    first_day = local_date(first_ts, timezone)
     # Il taglio della potatura, calcolato come lo calcola lei
     # (`mind/store.prune`: `quando_ts < now - READING_RETENTION_S`). Un giorno
     # che comincia da qui in poi non puo' aver perso nessuna riga, e si rifa'.
@@ -1380,7 +1369,7 @@ async def backfill_one_report(app, ha_client, *,
                               without_statistics=without,
                               judgments=app["type_judgments"])
             except Exception as error:
-                if _backfill_warning_due(app, as_text, now(zone).timestamp()):
+                if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
                         "cervello: resoconto di %s non recuperato (%s: %s) -- per questo "
                         "giorno il log tace per %d ore", as_text, type(error).__name__,
@@ -1396,7 +1385,7 @@ async def backfill_one_report(app, ha_client, *,
                 rebuild_chronicle(store=archivio, day=as_text, timezone=timezone,
                                   judgments=app["type_judgments"])
             except Exception as error:
-                if _backfill_warning_due(app, as_text, now(zone).timestamp()):
+                if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
                         "cervello: cronaca di %s non rifatta (%s: %s) -- per questo "
                         "giorno il log tace per %d ore", as_text, type(error).__name__,
@@ -1503,8 +1492,8 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
 
     `now` e' iniettabile per i test: nella vita vera nessuno lo passa.
     """
-    timezone = _timezone_from_home_space_store(app.get("home_space_store"))
-    today = now(home_space_zone(timezone)).date()
+    timezone = house_timezone(app.get("home_space_store"))
+    today = local_date(now(UTC).timestamp(), timezone)
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
     written = await _write_missing_reports(app, ha_client, days, timezone)
     app["ultima_riparazione"] = {"oggetti": "fatta", "perche": None,
@@ -1960,8 +1949,8 @@ async def analyst_round(app) -> dict | None:
     if store is None:
         return None
     try:
-        timezone = _timezone_from_home_space_store(app.get("home_space_store"))
-        today = datetime.now(home_space_zone(timezone)).date().strftime("%Y-%m-%d")
+        timezone = house_timezone(app.get("home_space_store"))
+        today = historian.today(timezone).isoformat()
 
         collected = _collect_analyst_turn(app, store, today)
         if collected is not None and collected.get("risposta"):
@@ -2057,8 +2046,8 @@ async def actuator_round(app) -> dict | None:
         return None
     app["attuatore_in_volo"] = True
     try:
-        timezone = _timezone_from_home_space_store(app.get("home_space_store"))
-        today = datetime.now(home_space_zone(timezone)).date().strftime("%Y-%m-%d")
+        timezone = house_timezone(app.get("home_space_store"))
+        today = historian.today(timezone).isoformat()
         analysis = store.analysis(today)
         if analysis is None:
             return None
@@ -3767,7 +3756,7 @@ async def _on_startup(app: web.Application) -> None:
     app["servizi"] = ServiziStore(os.path.join(data_dir, "servizi.db"))
     app["workshop"] = Workshop(
         ha_client, app["constructions"], app["journal"],
-        read_timezone=lambda: _timezone_from_home_space_store(app.get("home_space_store")))
+        read_timezone=lambda: house_timezone(app.get("home_space_store")))
 
     # L'archivio dei modelli si legge prima di costruire `LLMRouter`, piu' sotto:
     # la catena si compone da `chain_order`.
@@ -3847,7 +3836,7 @@ async def _on_startup(app: web.Application) -> None:
 
     app["usage"] = UsageStore(
         os.path.join(data_dir, "consumi.db"),
-        read_timezone=lambda: _timezone_from_home_space_store(home_space_store))
+        read_timezone=lambda: house_timezone(home_space_store))
 
     # La verifica dell'albero: `hierarchy()` smette di essere un'affermazione
     # che nessuno controlla. Costruita QUI, subito dopo l'anagrafe, perche' e'
@@ -4391,9 +4380,8 @@ async def _on_startup(app: web.Application) -> None:
             # FUORI da qui il warning contestualizzato non partirebbe --
             # l'eccezione finirebbe nel registro di apscheduler senza il
             # prefisso «cervello:», e la notte salterebbe in silenzio.
-            timezone = _timezone_from_home_space_store(app.get("home_space_store"))
-            ieri = (datetime.now(home_space_zone(timezone))
-                    - timedelta(days=1)).strftime("%Y-%m-%d")
+            timezone = house_timezone(app.get("home_space_store"))
+            ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
             # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
             # delle entita' che nominano chieste una volta per giro, non una
             # per dispositivo.
@@ -4544,7 +4532,7 @@ async def _on_startup(app: web.Application) -> None:
 
     reasoning_queue = ReasoningQueue(
         os.path.join(data_dir, "reasoning.db"),
-        read_timezone=lambda: _timezone_from_home_space_store(home_space_store))
+        read_timezone=lambda: house_timezone(home_space_store))
     app["reasoning_queue"] = reasoning_queue
 
     app["submit_chat_reply"] = _chat_reply_submitter(app, data_dir)

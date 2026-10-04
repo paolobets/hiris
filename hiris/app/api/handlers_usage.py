@@ -38,7 +38,7 @@ from datetime import UTC, datetime
 from aiohttp import web
 
 from ..config import EUR_RATE as _EUR_RATE
-from ..usage.vocabulary import local_day
+from ..home_space.historian import house_timezone, local_date
 
 _NO_PROVIDER_MSG = (
     "Nessun provider AI configurato e nessun consumo mai registrato: non c’è "
@@ -61,12 +61,10 @@ def _house_timezone(app) -> str:
 
     UNA casa per la domanda «in che giorno vive chi legge questa pagina?»:
     la usano il riepilogo (per dichiarare `timezone`) e la storia (per
-    calcolare l'intervallo predefinito). L'aiutante di `server.py` si importa
-    QUI dentro per non chiudere il ciclo -- `server` importa gia'
-    `handle_usage` da questo modulo.
+    calcolare l'intervallo predefinito). Il fuso lo legge
+    `historian.house_timezone`, l'unico lettore.
     """
-    from ..server import _timezone_from_home_space_store
-    return _timezone_from_home_space_store(app.get("home_space_store")) or ""
+    return house_timezone(app.get("home_space_store")) or ""
 
 
 def _can_respond(app) -> bool:
@@ -250,7 +248,7 @@ async def handle_usage_history(request: web.Request) -> web.Response:
         return web.json_response({"days": [], "from": "", "to": ""})
 
     # **Lo STESSO «giorno» dei secchielli.** `usage/store.log` li scrive con
-    # `local_day` (il fuso della casa); questa rotta calcolava `to` e `from`
+    # `historian.local_date` (il fuso della casa); questa rotta calcolava `to` e `from`
     # con `fromtimestamp(..., UTC)`, e le due definizioni divergevano per due
     # ore ogni notte: alle 00:30 di Roma il turno appena fatto entra nel
     # secchiello del giorno nuovo mentre l'intervallo predefinito finiva a
@@ -258,14 +256,14 @@ async def handle_usage_history(request: web.Request) -> web.Response:
     # (audit delle fondamenta, rilievo 10). La pagina chiama questa rotta
     # senza parametri, quindi era il caso normale.
     #
-    # `local_day` ripiega su UTC quando il fuso non si sa, e ripiega cosi'
+    # `local_date` ripiega su UTC quando il fuso non si sa, e ripiega cosi'
     # anche per i secchielli: una casa senza fuso resta contata in un modo
     # solo, dichiarato, invece che in due.
     timezone = _house_timezone(request.app)
     now = time.time()
-    to = request.query.get("to") or local_day(now, timezone)
-    since = request.query.get("from") or local_day(
-        now - _HISTORY_DAYS * 86400, timezone)
+    to = request.query.get("to") or local_date(now, timezone).isoformat()
+    since = request.query.get("from") or local_date(
+        now - _HISTORY_DAYS * 86400, timezone).isoformat()
 
     days = []
     for g in store.storia(da=since, a=to):

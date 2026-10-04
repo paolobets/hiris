@@ -38,13 +38,13 @@ cui il nucleo e' l'unica via di scoperta.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..proxy.entity_cache import CAPABILITIES
 from .ha_vocabulary import (
     config_entry_is_broken,
     house_is_newer_than_vocabulary,
 )
+from .historian import home_space_zone
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
@@ -368,10 +368,11 @@ def _now_line(frame: dict | None, now: float | None) -> str:
     if now is None:
         return ""
     name = (frame or {}).get("fuso") or ""
-    try:
-        timezone, label = (ZoneInfo(name), name) if name else (UTC, "UTC")
-    except (ZoneInfoNotFoundError, ValueError):
-        timezone, label = UTC, "UTC"
+    # Il fuso lo costruisce `historian.home_space_zone`, l'unico posto
+    # (Tappa 3, Task 10): qui c'era un secondo `ZoneInfo` col suo ripiego.
+    # Quando ricade su UTC lo si scrive, invece del nome che non vale.
+    timezone = home_space_zone(name)
+    label = name if timezone is not UTC else "UTC"
     when = datetime.fromtimestamp(now, timezone)
     return "Adesso sono le {} del {} (fuso {}).".format(
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label)

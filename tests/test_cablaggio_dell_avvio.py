@@ -34,6 +34,7 @@ from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
+from hiris.app.home_space import historian
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import EntityCache
@@ -259,7 +260,7 @@ async def test_the_workshop_reads_the_house_timezone(started_app):
     dell'avvio).
 
     Mutazione ESEGUITA: `read_timezone` tolto dalla costruzione -- rossa."""
-    expected = server._timezone_from_home_space_store(started_app["home_space_store"])
+    expected = historian.house_timezone(started_app["home_space_store"])
     assert expected is not None
     assert started_app["workshop"]._read_timezone() == expected
 

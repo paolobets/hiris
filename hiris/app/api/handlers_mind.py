@@ -26,12 +26,12 @@ stessa esenzione di `GET /api/agenda`); le due POST ci passano, come ogni
 scrittura su `/api/`."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
-from ..home_space.historian import day_boundaries, home_space_zone
+from ..home_space import historian
 from ..home_space.open_questions import OPEN_QUESTIONS
 from ..home_space.topology import live_mirror
 from ..mind.judgments import (
@@ -168,14 +168,12 @@ def _volume(app, store) -> list[dict]:
     """
     if store is None:
         return []
-    from ..server import _timezone_from_home_space_store
-
-    timezone = _timezone_from_home_space_store(app.get("home_space_store"))
-    today = datetime.now(home_space_zone(timezone)).date()
+    timezone = historian.house_timezone(app.get("home_space_store"))
+    today = historian.today(timezone)
     volume = []
     for back in range(VOLUME_DAYS - 1, -1, -1):
         day = (today - timedelta(days=back)).isoformat()
-        from_ts, to_ts = day_boundaries(day, timezone)
+        from_ts, to_ts = historian.day_boundaries(day, timezone)
         volume.append({"giorno": day,
                        "righe": store.readings_count(from_ts=from_ts, to_ts=to_ts)})
     return volume
