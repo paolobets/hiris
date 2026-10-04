@@ -109,6 +109,7 @@ from .type_judgments import (
     RESTING_FIELD,
     WORKING_FIELD,
     TypeJudgments,
+    type_subject,
 )
 
 
@@ -1780,7 +1781,7 @@ def judgment_seed_rows() -> tuple[tuple[str, str, str, str], ...]:
     rows = [("integrazione", slug, SCAFFOLDING, "si")
             for slug in SCAFFOLDING_INTEGRATIONS.value]
     for row in _vocabulary.rows():
-        subject = row.domain + (f".{row.device_class}" if row.device_class else "")
+        subject = type_subject(row.domain, row.device_class)
         for name, field in row.fields.items():
             if name in JUDGMENT_FIELDS and field.provenance is Provenance.OURS:
                 rows.append(("tipo", subject, JUDGMENT_FIELDS[name],

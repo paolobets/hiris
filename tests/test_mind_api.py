@@ -975,7 +975,7 @@ async def test_senza_l_istantanea_dei_GIUDIZI_il_primo_piano_porta_solo_il_siste
 # chiaro -- trentanove righe che dicono sei cose.
 #
 # Il nome dell'integrazione lo ricava il SERVER, con la stessa regola del
-# primo piano (`mind/report._integration_slug`): una regola sola, o le due
+# primo piano (`home_space/log_source.integration_slug`): una regola sola, o le due
 # schede direbbero due nomi per la stessa cosa.
 # ---------------------------------------------------------------------------
 

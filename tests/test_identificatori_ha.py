@@ -38,7 +38,7 @@ AMMESSE = {
     "home_space/house_query.py": 1,
     # Non sono entity_id: sono i nomi dei logger di Home Assistant
     # (`homeassistant.components.hydrawise`), che hanno un'altra grammatica.
-    "mind/report.py": 2,
+    "home_space/log_source.py": 2,
 }
 
 

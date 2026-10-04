@@ -27,13 +27,8 @@ semplicemente a essere quello scritto nel repo, che sembra giusto.
 """
 from __future__ import annotations
 
-from .knowledge import (
-    ATTRIBUTE_FIELD,
-    MEANING_FIELD,
-    Fact,
-    now_ts,
-    type_subject,
-)
+from ..home_space.type_judgments import MEANING_FIELD, type_subject
+from .knowledge import ATTRIBUTE_FIELD, Fact, now_ts
 
 #: Chi ha scritto le righe del seme: il repo stesso, non un modello e non il
 #: proprietario. Serve perche' `Fact` pretende un autore, e «il repo» e' la

@@ -43,7 +43,7 @@ import threading
 import time as _time
 from dataclasses import dataclass
 
-from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES
+from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES, type_subject
 from ..storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -89,23 +89,6 @@ VERIFICATIONS = ("confermata", "non_confermabile", "non_capito")
 # come si chiama una cosa e come si compone il soggetto -- e chi legge ne ha
 # bisogno quanto chi semina. Tenerli nel seme obbligava il lettore a
 # importarli da li', cioe' a dipendere da chi scrive per poter leggere.
-
-#: Il campo sotto cui vive il significato di un tipo. Il soggetto e' il tipo
-#: stesso -- `sensor`, oppure `sensor.power` per una coppia dominio/classe --
-#: esattamente come la spec §8 lo scrive nel suo esempio.
-MEANING_FIELD = "significato"
-
-
-def type_subject(domain: str, device_class: str | None = None) -> str:
-    """Il soggetto di un tipo: `sensor`, oppure `sensor.power`.
-
-    Dovrebbe essere il solo posto dove si compone, perche' due composizioni
-    divergono al primo dominio con un punto nel nome. Oggi lo stesso
-    `dominio.classe` si compone a mano anche in `home_space/type_judgments.py`
-    e in `home_space/open_questions.py`.
-    """
-    return f"{domain}.{device_class}" if device_class else domain
-
 
 #: Il campo sotto cui vive l'elenco degli attributi da tenere per un tipo.
 #:

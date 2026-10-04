@@ -56,6 +56,17 @@ from __future__ import annotations
 import logging
 
 from ..home_space.ha_vocabulary import domain_of
+
+# `integration_of` e' riesportata, non usata qui: `home_space/house_history.py`
+# la importa ancora da questo modulo. Quel file era riservato alla fetta di `House` quando la
+# regola e' traslocata (04/10/2026, B-35); il giorno che lo si apre, l'import
+# passa a `home_space.log_source`, questa riga esce, ed esce anche l'eccezione
+# di `tests/test_confine_home_space.py`.
+from ..home_space.log_source import (
+    integration_name,
+    integration_of,  # noqa: F401
+    integration_slug,
+)
 from ..home_space.type_vocabulary import SYSTEM_GENRE, unknown_states
 from .recipes import Recipe
 
@@ -470,96 +481,6 @@ FRONT_PAGE_ORDER = ("da_sapere_subito", "guasto", "avviso")
 #: portare una riga in piu' in primo piano, mai una in meno.
 _WARNING_LEVEL = "WARNING"
 
-#: I due prefissi con cui un logger di Home Assistant nomina l'integrazione da
-#: cui viene: `homeassistant.components.hydrawise` -> «Hydrawise»,
-#: `custom_components.alarmo.alarm_control_panel` -> «Alarmo». Il segmento
-#: SUBITO DOPO il prefisso e' l'integrazione; quelli ancora dopo sono la
-#: piattaforma dentro di lei, e non sono il suo nome.
-_INTEGRATION_PREFIXES = ("homeassistant.components.", "custom_components.")
-
-#: Il nucleo di Home Assistant quando il logger non nomina nessuna
-#: integrazione (`homeassistant.helpers.entity`, misurato sulla casa vera il
-#: 17/09/2026). **E' una citazione, non una resa**: il prodotto si chiama
-#: cosi', e «Homeassistant.helpers.entity» non e' il nome di niente.
-_CORE_LOGGER_PREFIX = "homeassistant."
-_CORE_SLUG = "homeassistant"
-_CORE_NAME = "Home Assistant"
-
-
-def _integration_slug(domain: str) -> str | None:
-    """Il nome breve (**`slug`**) dell'integrazione da cui viene una voce di sistema:
-    `homeassistant.components.hassio.handler` -> `hassio`,
-    `custom_components.hacs.x` -> `hacs`, `frontend.js.modern.202608267` ->
-    `frontend`, `homeassistant.helpers.entity` -> `homeassistant`.
-
-    **Un segmento solo, sempre**, e da qui viene tutto il resto: e' il soggetto
-    su cui la casa scrive il giudizio `impalcatura`, ed e' anche cio' che il
-    nome rende leggibile. Misurato il 20/09/2026: il Supervisor ha fatto sei
-    righe di primo piano in una settimana da **tre logger diversi**, e il
-    frontend porta nel proprio la versione del pacchetto -- un giudizio scritto
-    sul percorso intero avrebbe voluto una riga per modulo, e sarebbe scaduto
-    al prossimo aggiornamento di Home Assistant.
-    """
-    domain = str(domain or "").strip()
-    if not domain:
-        return None
-    for prefix in _INTEGRATION_PREFIXES:
-        if domain.startswith(prefix):
-            found = domain[len(prefix):].split(".")[0]
-            return found or None
-    if domain.startswith(_CORE_LOGGER_PREFIX):
-        return _CORE_SLUG
-    # Una libreria di terze parti (`aioamazondevices`, `habluetooth.scanner`)
-    # non e' un'integrazione di Home Assistant, ma il primo segmento e' lo
-    # stesso appiglio stabile: `habluetooth.scanner` e `habluetooth.manager`
-    # sono la stessa cosa per chi legge.
-    return domain.split(".")[0]
-
-
-def _integration_name(domain: str) -> str | None:
-    """Il nome leggibile dell'integrazione da cui viene una voce di sistema.
-
-    **Si ricava da cio' che la voce gia' porta** -- `dominio`, scritto
-    dall'osservatore insieme al titolo -- e mai dall'identificativo del
-    soggetto: quello e' la chiave con cui Home Assistant deduplica (logger piu'
-    posizione nel sorgente), e leggerlo come un nome darebbe
-    `log:...@handler.py:108` in cima alla pagina, che e' esattamente cio' che
-    la pagina faceva prima del 18/09.
-    """
-    slug = _integration_slug(domain)
-    if slug is None:
-        return None
-    if slug == _CORE_SLUG:
-        return _CORE_NAME
-    # Una libreria di terze parti (`aioamazondevices`) non e' un'integrazione e
-    # il suo nome intero e' piu' vero di qualunque pezzo se ne possa tagliare:
-    # per lei il `slug` E' il nome.
-    return _rendered(slug)
-
-
-def _rendered(slug: str) -> str:
-    """`alexa_devices` -> «Alexa devices». Una maiuscola e gli spazi: la
-    minima resa che fa di un identificatore un nome, senza fingere di sapere
-    come quell'integrazione si scriva davvero (`FRITZ!Box` lo sa solo HA)."""
-    words = slug.replace("_", " ").strip()
-    return words[:1].upper() + words[1:]
-
-
-def integration_of(domain: str) -> tuple[str, str] | None:
-    """`(nome, identificativo)` dell'integrazione da cui viene un dominio di
-    registro, o `None` se non se ne ricava nessuno.
-
-    La porta pubblica delle due regole che questo modulo usa per il primo
-    piano (`_integration_name`, `_integration_slug`): la usa la rotta dello
-    scope per raggruppare i soggetti tecnici, cosi' le due schede della stessa
-    pagina dicono lo stesso nome per lo stesso logger.
-    """
-    identifier = _integration_slug(domain)
-    if not identifier:
-        return None
-    return _integration_name(domain), identifier
-
-
 def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
     """Il resoconto di un giorno **con il nome sempre e il primo piano**, per la
     pagina dell'osservatore (spec §3).
@@ -615,7 +536,7 @@ def _resolved_name(entry: dict, names: dict | None) -> str | None:
     if stored:
         return stored
     if entry.get("dominio"):
-        return _integration_name(entry["dominio"])
+        return integration_name(entry["dominio"])
     return (names or {}).get(entry.get("chi"))
 
 
@@ -634,7 +555,7 @@ def _front_page_mark(entry: dict, judgments) -> dict | None:
         # un giudizio sull'integrazione, non questo file: la casa lo corregge
         # da «Cosa ho capito» e la lettura dopo cambia. Senza istantanea non si
         # zittisce niente: «non lo so» non diventa «taci».
-        slug = _integration_slug(entry.get("dominio"))
+        slug = integration_slug(entry.get("dominio"))
         if judgments is not None and slug and judgments.is_scaffolding(slug):
             return None
         level = str(state or "").strip().upper()

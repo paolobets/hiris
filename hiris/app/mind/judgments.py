@@ -206,7 +206,7 @@ def _level(subject_kind: str, subject: str) -> str | None:
     if subject_kind == "integrazione":
         # Lo SLUG, non il percorso del logger: `hacs`, `websocket_api`.
         # `custom_components.hacs` sarebbe una riga accettata che nessuna
-        # chiave incontrera' mai -- `report._integration_slug` consegna sempre
+        # chiave incontrera' mai -- `log_source.integration_slug` consegna sempre
         # un segmento solo.
         return "integrazione" if _INTEGRATION_RE.fullmatch(subject) else None
     if not _TYPE_SUBJECT_RE.fullmatch(subject):

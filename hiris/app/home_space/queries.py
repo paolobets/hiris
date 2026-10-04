@@ -74,7 +74,7 @@ from .topology import (
     live_first,
     readable_state,
 )
-from .type_judgments import TypeJudgments
+from .type_judgments import MEANING_FIELD, TypeJudgments, type_subject
 from .type_vocabulary import REPO_JUDGMENTS
 
 # I tipi di comportamento che `view` sa mostrare col loro corpo. Un
@@ -1030,12 +1030,10 @@ def _class_meaning(knowledge, domain: str, device_class) -> str | None:
     if knowledge is None or not device_class:
         return None
     # `type_subject` e `MEANING_FIELD` si IMPORTANO, non si riscrivono:
-    # `mind/knowledge.type_subject` porta scritto «un posto solo dove si
-    # compone, perche' due composizioni divergono al primo dominio con un
-    # punto nel nome» -- e finche' questo lettore ricomponeva a mano, quella
-    # garanzia non esisteva (revisione indipendente, 13/09/2026).
-    from ..mind.knowledge import MEANING_FIELD, type_subject
-
+    # `type_judgments.type_subject` e' il solo posto dove il soggetto si
+    # compone -- e finche' questo lettore ricomponeva a mano, quella garanzia
+    # non esisteva (revisione indipendente, 13/09/2026). Fino al 04/10/2026
+    # si importavano da `mind/`, qui dentro la funzione (B-35).
     try:
         fact = knowledge.get("tipo", type_subject(domain, device_class),
                              MEANING_FIELD)
