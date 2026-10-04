@@ -40,12 +40,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| B-04 | `action/verification.py:613-625`: «ha uno stato» al posto di «è disabilitata» | D | DP | differisce dal digesto per 650 entità (974 contro 324) |  | reg |
-| B-07 | «È un valore o un non-valore?»: `privacy._NEUTRAL_STATES` | E | PS | 0 stati cambiati su 169 entità mobili |  | reg · cop-5 · cop-6 |
-| B-08 | `briefing._unreliable_state` conta solo `unknown` | D | CC | 328 entità `unavailable` su 974; esito invariato sulla casa (diverge solo la controprova sintetica) |  | reg · cop-4 |
-| B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | E | PS | 0 integrazioni su 39 | Tappa 3 (verdetto) | reg · cop-4 · cop-5 |
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
-| B-14 | Integrazione sana: due lettori, una costante doppia | E | PS |  | cop-4 (righe) | reg · cop-4 · cop-5 · cop-6 |
 | B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta); Tappa 3 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 |
 | B-16 | L'etichetta di data delle sessioni passate in UTC | D | CC | 3450 campioni sbagliati su 52560 nel 2026 |  | reg · cop-8 |
 | B-18 | Riferimento testuale: `search` contro `guarda`/resolver | D | CC | 118 casi su 39 integrazioni; 12 casi su 10 aree; «senza accenti» 0 casi | cop-3 (incompleta) | reg · cop-3 |
@@ -54,7 +49,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-22 | Vocabolari dei tipi: giudizi e significati in più case | NV | DP |  | cop-5 (incompleta); cop-6 (righe) | reg · cop-5 · cop-6 |
 | B-23 | Tabelle di nomi italiani di domini e struttura «automazione/script/scena» | E | PS |  | cop-4 (conteggio); cop-5 (imprecisa) | reg · cop-4 · cop-5 · cop-9 |
 | B-24 | Identificatori e costanti piccole: `_ENTITY_ID_RE`, dominio da entity_id, tetti | E | PS |  | cop-3 (incompleta); cop-5 (incompleta); cop-6 (incompleta); Tappa 3 (incompleta) | reg · cop-3 · cop-4 · cop-5 · cop-6 · cop-9 |
-| B-25 | Stato della fonte: dove il dato c'è e si perde | NV | DP | 44 delle 95 entità «DENTRO» (46%) non sono fonte sana | cop-5 (imprecisa); Tappa 3 (incompleta) | reg · cop-4 · cop-5 · cop-6 |
 | B-26 | Motivo scritto per le misure non calcolabili: cinque stringhe, cause vere che non coincidono | D | CC | 74 misure non calcolabili; il motivo «manca `state_class`» falso in 21/21 |  | reg |
 | B-27 | Dentro `mind/operations` e `mind/analyst`: controlli ripetuti e due forme di «non lo so» | E | PS |  |  | reg |
 | B-28 | Ordinamento degli appuntamenti e due semantiche di `fine` | E | CC |  | Tappa 3 (verdetto) | reg · cop-5 |
@@ -72,7 +66,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-52 | `ChatThread` ricostruito in tre archivi; la condizione SQL del filo in undici posti | E | PS |  |  | cop-9 N-B-3 |
 | B-53 | Costante «64» duplicata con legame solo a commento (`MAX_TRACKED`, `_MAX_TRACKED_EXCHANGES`) | E | PS |  |  | cop-9 N-B-4 |
 | B-54 | «300» per i motivi che entrano in un racconto: tre nomi in tre moduli | E | CC |  | Tappa 3 (verdetto) | cop-9 N-B-5 |
-| B-55 | Tre definizioni di «non disponibile»: `queries._view_integration`, `facts`, `privacy._NEUTRAL_STATES` | D | — |  |  | Tappa 3, piano del 03/10/2026, trovato 4 |
 
 ---
 
@@ -410,8 +403,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-24 | Un turno lungo del ponte potrebbe consegnare con la credenziale scaduta: si rinnova a metà vita, a inizio turno le restano fra 5 e 10 minuti, e un turno può durare due invocazioni da 300 s |  | DEDOTTO | letto in `api/credenziali.py` e `agent/runner.py`, non provato dal vivo: da misurare sul registro dei turni prima di toccare qualcosa | Task 21 |
 | S-25 | Otto file di `api/` scrivono `errore` su HTTP di proprio pugno invece di passare da `boundary.py` (`admission`, `handlers_mcp`, `handlers_mind`, `handlers_proposals`, `handlers_reasoning`, `handlers_servizi`, `middleware_internal_auth`, `soffitto`) |  | LETTO | il commento di `boundary.py` diceva «le uniche tre»: corretto il commento, il fatto resta (si lega al capitolo C) | Task 21 |
 | S-26 | Una proposta gia' decisa non torna nemmeno a prova cambiata: `_file_proposals` (`server.py`) salta ogni domanda che ha gia' una proposta senza confrontare la prova, e il confronto di `actuator.to_handle` non riceve quel dizionario. La voce X-15 ha corretto il docstring che diceva il contrario; il comportamento resta |  | LETTO | trovato dalla revisione finale del 02/10/2026; l'attuatore e' in pausa, si decide con lo strato degli attori che lo riaccende | revisione finale |
-| S-27 | `verification` dice «non esiste in questa casa» per un'entità disabilitata nominata dal modello: l'anagrafe la conosce |  | LETTO | `action/verification.py:523`; si lega a B-04; si ripara con D8 della Tappa 3 (la causa da `House.source`), Task 8 | Tappa 3, piano del 03/10/2026, trovato 2 |
-| S-28 | Un guasto di `hourly_statistics` è scritto come «serie vuota» nel resoconto, e il commento accanto dice il contrario |  | LETTO | `server.py` (`_report_ingredients`, ramo `"errore" in report`); è una causa sbagliata della fonte: Tappa 3, Task 8 (B-26) | Tappa 3, piano del 03/10/2026, trovato 7 |
 | S-29 | Il WebSocket lungo: `_authenticate` senza tetto sui `receive_json` (un server muto lo tiene appeso), e una chiusura pulita riparte senza pausa |  | DEDOTTO | `ha_client.py` (`_authenticate`, `_ws_loop`); gia' cosi' nella 3.73.2 | revisione indipendente della Tappa 2, 04/10/2026 |
 | S-30 | `statistic_ids_for_round` senza lucchetto: due giri che partono insieme a memoria vuota leggono tutti e due |  | DEDOTTO | `server.py` (`statistic_ids_for_round`) | revisione indipendente della Tappa 2, 04/10/2026 |
 | S-31 | Dopo una riconnessione il comportamento puo' leggere lo specchio di prima: la sua rilettura (3 s) non aspetta `reload` |  | DEDOTTO | `server.py` (`schedule_behavior_reread`), `entity_cache.reload`; un'automazione nata durante la caduta compare alla cadenza dopo | revisione indipendente della Tappa 2, 04/10/2026 |
@@ -897,3 +888,12 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-13 | Indice `Lookup` costruito in tre posti con tre ingressi; il di più è inerte | Tappa 3, Task 12 | bd0bc5e | House.lookup, una volta per casa; remember e le due rotte dei ricordi lo chiedono alla casa |
 | M-34 | `LookupCache` per `slot`: la generalità non ha un secondo cliente | Tappa 3, Task 12 | bd0bc5e | LookupCache uscita con A-13: l'indice e' della casa del turno |
 | A-18 | Contenitori che invecchiano per scelta dichiarata | Tappa 3, Task 12 | 0b6fc80 | il titolo delle automazioni da House.name all'esito; _wanted_cache invalidata da KnowledgeStore.version. _missing_rounds e _automation_faults sono stato del giro, non copie: restano |
+| B-25 | Stato della fonte: dove il dato c'è e si perde | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: House.source con i sette stati di D6 e la causa; il lettore tiene disabled_by di istanza e dispositivo, config_entry_id ha il suo lettore, restored si legge, senza statistiche e' un attributo (statistiche: bool|None) |
+| B-04 | `action/verification.py:613-625`: «ha uno stato» al posto di «è disabilitata» | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8, D8: la regola resta (ha uno stato, quella di HA); il rifiuto dice la causa da House.source |
+| S-27 | `verification` dice «non esiste in questa casa» per un'entità disabilitata nominata dal modello: l'anagrafe la conosce | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8, D8: un'entita' disabilitata nominata dal modello riceve la causa, non piu' «non esiste in questa casa» |
+| S-28 | Un guasto di `hourly_statistics` è scritto come «serie vuota» nel resoconto, e il commento accanto dice il contrario | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: un guasto di hourly_statistics da' a ogni misura il motivo del guasto (recipes.unread_series_reason) |
+| B-07 | «È un valore o un non-valore?»: `privacy._NEUTRAL_STATES` | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: privacy._NEUTRAL_STATES prende i due «non lo so» da unknown_states() |
+| B-08 | `briefing._unreliable_state` conta solo `unknown` | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: _unreliable_state chiede unknown_states(), confronto esatto (sonda valore 145 -> 0, domanda uscita) |
+| B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: STATE_UNAVAILABLE e STATE_UNKNOWN in type_vocabulary, usati da queries._view_integration ed entity_cache._to_minimal |
+| B-14 | Integrazione sana: due lettori, una costante doppia | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: CONFIG_ENTRY_SOURCE_IGNORE e config_entry_is_ignored in ha_vocabulary, per nucleo e osservatore |
+| B-55 | Tre definizioni di «non disponibile»: `queries._view_integration`, `facts`, `privacy._NEUTRAL_STATES` | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: le tre definizioni leggono il vocabolario (costanti con nome in queries, unknown_states in facts e privacy) |
