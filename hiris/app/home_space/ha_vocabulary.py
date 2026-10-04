@@ -468,12 +468,37 @@ def config_entry_is_healthy(state: str | None) -> bool:
 
 # --- quali `state_class` producono statistiche a lungo termine --------------
 #
-# I soli valori di `SensorStateClass` che il recorder aggrega davvero in
-# statistiche a lungo termine, verificati alla fonte (non a memoria: e' la
-# stessa trappola di `carbon_monoxide`/`co` gia' pagata da questo progetto).
-# `measurement_angle` ESISTE come `state_class` (angoli, per esempio la
-# direzione del vento) ma NON produce statistiche -- lo documenta Home
-# Assistant, non e' un'omissione nostra.
+# **La regola di Home Assistant, letta nel sorgente il 04/10/2026** (tag
+# `2026.9.1`, commit `fc034572d0216a04ed40a07154394908a594dfed`; Tappa 3,
+# Task 7, passo 1):
+#
+# - **Un dominio solo compila statistiche: `sensor`.** Il recorder chiama
+#   `compile_statistics` e `list_statistic_ids` su ogni piattaforma `recorder`
+#   che li dichiara (`components/recorder/statistics.py:775-782`), e al tag le
+#   piattaforme `recorder.py` sono due, `sensor` e `stream`: solo la prima li
+#   dichiara (`components/sensor/recorder.py:529`, `:829`).
+# - **Con quali `state_class`: tutte e quattro quelle di `SensorStateClass`**
+#   (`components/sensor/const.py:570-590`). `_get_sensor_states`
+#   (`sensor/recorder.py:106-125`) prende i `sensor` con uno `state_class`
+#   valido e non esclusi dal filtro del recorder; `DEFAULT_STATISTICS`
+#   (`:65-74`) dice cosa ne fa: `measurement` -> media, minimo, massimo;
+#   **`measurement_angle` -> media CIRCOLARE**; `total` e `total_increasing`
+#   -> somma. Uno stato non numerico non entra nel conto (`_is_numeric`,
+#   `:244`).
+# - **Non e' tutto.** `recorder.async_import_statistics` lascia a qualunque
+#   integrazione importare statistiche sotto un `entity_id`, e le statistiche
+#   «esterne» (`dominio:qualcosa`) non sono entita'. Per questo la verita' e'
+#   `recorder/list_statistic_ids` della casa, e la regola sopra e' solo il
+#   ripiego per quando quella lettura manca (B-12).
+#
+# **Cio' che il sorgente smentisce**: questo commento diceva che
+# `measurement_angle` NON produce statistiche, e l'insieme qui sotto la lascia
+# fuori. Al tag `2026.9.1` le produce (la media circolare, senza minimo ne'
+# massimo). L'insieme NON si cambia qui: cambierebbe la superficie che la
+# storia sceglie per una banderuola, cioe' un comportamento, e la regola delle
+# statistiche e' la voce B-12 (classificata CC), che il piano mette dopo
+# `House`. Fino ad allora l'insieme e' quello di prima, dichiarato divergente
+# dalla fonte su questa classe sola.
 #
 # **Un'appartenenza, non un'esclusione della sola `measurement_angle`**: il
 # vocabolario di HA non si arrotonda, e domani potrebbe crescere di un'altra
@@ -499,6 +524,9 @@ def produces_statistics(state_class) -> bool:
     `measurement_angle` sul ramo statistiche, e una banderuola interrogata
     oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
     cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
+    **Smentito dal sorgente il 04/10/2026** (commento sopra): al tag
+    `2026.9.1` il recorder tiene per `measurement_angle` la media circolare.
+    La scelta della superficie per quella classe si rifa' con B-12.
 
     Il consumatore e' `house_history.value_surface`, che la chiede quando
     deve scegliere fra il dettaglio e le fasce: questa e' la funzione che
