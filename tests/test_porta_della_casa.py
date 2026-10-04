@@ -313,7 +313,7 @@ def test_il_dettaglio_vero_senza_area_sta_sotto_la_soglia_del_ponte(big_door):
     Mutazione ESEGUITA: la stessa di sopra -- rossa."""
     from hiris.app.home_space.privacy import redact_row
     voce = redact_row(big_door._full_detail_sync(
-        "area", "__senza_area__", mirror=big_door._mirror(),
+        "area", "__senza_area__", house=big_door._turn_house(),
         translations={"lette": False, "motivo": "prova"}))
     assert voce["esiste"] is True
     assert len(voce["entita"]) == 50 and voce["oltre"]["entita"] > 0

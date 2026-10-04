@@ -30,6 +30,7 @@ omogeneo passerebbe anche con la frase mai implementata.
 """
 import pytest
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import group_membership, view
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.home_space.type_vocabulary import (
@@ -140,16 +141,13 @@ def _detail(target: dict, *present: dict) -> dict:
     `_to_minimal` -> `live_mirror` -> `view`. Mai uno specchio scritto a mano:
     e' la trappola dello stato condiviso pigro, e in questo prodotto ha gia'
     lasciato passare un difetto che nessuna prova vedeva."""
-    state, names, unit, classes, since, attributes = live_mirror(
+    mirror = live_mirror(
         [_to_minimal(r) for r in present])
-    return view(_house(*present), [], [], state, "entita", target["entity_id"],
-                fallback_names=names, reported_units=unit,
-                reported_classes=classes, reported_since_when=since,
-                reported_attributes=attributes)
+    return view(House(_house(*present), mirror), [], [], "entita", target["entity_id"])
 
 
 def _mirror(*present: dict) -> dict:
-    return live_mirror([_to_minimal(r) for r in present])[5]
+    return live_mirror([_to_minimal(r) for r in present]).attributes
 
 
 # --------------------------------------------------------------------------

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from hiris.app.home_space import house_history as hh
 from hiris.app.home_space import house_query as hq
+from hiris.app.home_space.house import House
 from tests.test_house_history import _REGISTRO, _q
 from tests.test_house_query import STATI, T0, _casa, _dettaglio, _specchio
 
@@ -22,8 +23,8 @@ APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 def _ids(home_space=None, behavior=(), mirror=None, **argomenti):
     filtri = hq.parse_filters(argomenti)
     assert not isinstance(filtri, dict), filtri
-    risposta = hq.query_house(home_space or _casa(), list(behavior),
-                              mirror or _specchio(STATI), filtri,
+    risposta = hq.query_house(House(home_space or _casa(), mirror or _specchio(STATI)),
+                              list(behavior), filtri,
                               detail=_dettaglio, now=T0)
     return sorted(v["id"] for v in risposta["voci"])
 
@@ -61,7 +62,7 @@ def test_l_area_e_il_piano_ignorano_accenti_maiuscole_e_spazi():
 def test_le_aree_si_filtrano_per_piano_con_la_stessa_regola():
     casa = _casa_accentata()
     filtri = hq.parse_filters({"genere": "area", "piano": "PRIMO  piano"})
-    voci = hq.query_house(casa, [], _specchio(STATI), filtri,
+    voci = hq.query_house(House(casa, _specchio(STATI)), [], filtri,
                           detail=_dettaglio, now=T0)["voci"]
     assert [v["id"] for v in voci] == ["soggiorno"]
 
@@ -73,7 +74,7 @@ def test_i_dispositivi_si_filtrano_per_integrazione_con_la_stessa_regola():
 
     def dispositivi(integrazione):
         filtri = hq.parse_filters({"genere": "dispositivo", "integrazione": integrazione})
-        return [v["id"] for v in hq.query_house(casa, [], _specchio(STATI), filtri,
+        return [v["id"] for v in hq.query_house(House(casa, _specchio(STATI)), [], filtri,
                                                 detail=_dettaglio, now=T0)["voci"]]
     assert dispositivi("ave") == ["dev_lavatrice"]
     assert dispositivi("AVE") == ["dev_lavatrice"]

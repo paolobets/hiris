@@ -26,7 +26,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-18 | Contenitori che invecchiano per scelta dichiarata | E | DP |  | cop-6 (incompleta, righe) | reg · cop-4 · cop-6 · Tappa 3 (D5) |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 · Tappa 6 (D5) |
-| A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | E | PS |  |  | cop-3 A-n2 · Tappa 3 (D5) |
 | A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 · Tappa 4 (D5) |
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
@@ -81,7 +80,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-38 | La mappa etichette `{label_id: nome}` riscritta a mano in `handlers_home_space` | E | PS |  |  | cop-4 N-03 · cop-8 C1 |
 | B-39 | Conteggio per tipo del comportamento in tre punti, `senza_corpo` in quattro | NV | PS |  |  | cop-4 N-04 · cop-8 C2 |
 | B-40 | Il formato «(id: X)» scritto a mano in `_device_annotation` | E | PS |  |  | cop-4 N-05 |
-| B-41 | Lo specchio vivo in due forme: tupla di sei dizionari e sei argomenti separati | E | PS |  |  | cop-4 N-06 |
 | B-42 | Credenziale o attributo dichiarato: lo decide l'ordine dei rami (9 nomi in due tabelle) | E | DP |  |  | cop-5 B1 |
 | B-47 | Provenienza non dichiarata, o dichiarata per il pezzo sbagliato (`ha_vocabulary`, `_FEATURE_TABLES`) | NV | DP |  |  | cop-5 B6 |
 | B-50 | Il nome di un'integrazione inventato dallo slug, mentre l'anagrafe ha il titolo vero | D | DP |  |  | cop-6 N-06 |
@@ -897,3 +895,5 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-46 | I nomi dei campi dei giudizi in due vocabolari; la mappa ne salta uno | Tappa 3 (da rilasciare) | c80cba1 | esce type_vocabulary.SCAFFOLDING; una prova pinna che JUDGMENT_FIELDS salti solo l'impalcatura. Tappa 3, Task 7 (04/10/2026) |
 | B-48 | I quattordici tipi di `related` scritti due volte (`RELATED_ITEM_TYPES`, `LINK_NAME`) | Tappa 3 (da rilasciare) | c80cba1 | LINK_NAME in ha_vocabulary; HAClient.RELATED_ITEM_TYPES = tuple(LINK_NAME). Tappa 3, Task 7 (04/10/2026) |
 | B-35 | `house_history` importa da `mind` (`integration_of`), contro «`home_space` non importa da `mind`» | Tappa 3 (da rilasciare) | f6edebd | integration_of in home_space/log_source.py, type_subject e MEANING_FIELD in home_space/type_judgments.py; tests/test_confine_home_space.py vieta home_space -> mind, senza eccezioni. Tappa 3, Task 7 (04/10/2026) |
+| B-41 | Lo specchio vivo in due forme: tupla di sei dizionari e sei argomenti separati | Tappa 3 (da rilasciare) | fdad925 | topology.Mirror: lo specchio in una forma, coi campi per nome; la tupla di sei, la settupla di ToolDispatcher._mirror e i sei argomenti di queries.view sono usciti |
+| A-25 | «Lo specchio è leggibile?» composto a mano cinque volte in `tools.py` | Tappa 3 (da rilasciare) | fdad925 | readable si compone in topology.read_mirror; uscite le cinque composizioni a mano di tools.py, la copia di compose_briefing e handlers_memory._page_mirror. actuator.py passava gia' da states_by_id (Tappa 2) |

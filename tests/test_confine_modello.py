@@ -261,6 +261,7 @@ async def _chiedi(argomenti):
     dispatcher._subject = None
     dispatcher._cache = _InventarioFinto()
     dispatcher._home_space = _CasaFinta()
+    dispatcher._house = None
     dispatcher._journal = None
     return await dispatcher._history(argomenti)
 

@@ -29,9 +29,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.home_space.ha_vocabulary import LINK_NAME
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import related, view
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
+from hiris.app.home_space.topology import Mirror
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
@@ -290,7 +292,7 @@ def test_guarda_dichiara_i_tipi_che_non_sa_aprire():
     restituisce scene, gruppi e persone -- cose vere, che Home Assistant ha
     appena mostrato -- e `view` non le sa aprire. Rispondere `esiste: false`
     e basta significa far dire al modello «quella scena non esiste»."""
-    dettaglio = view(_CASA_MINIMA, [], [], {}, "scena", "scene.serata")
+    dettaglio = view(House(_CASA_MINIMA, Mirror()), [], [], "scena", "scene.serata")
     assert dettaglio["esiste"] is False
     assert dettaglio["non_so_guardare"] is True
 
@@ -300,6 +302,6 @@ def test_un_tipo_che_guarda_SA_aprire_non_si_scusa():
     `non_so_guardare` comparisse sempre, un'area davvero inesistente
     diventerebbe «non l'ho saputa guardare» -- e il modello smetterebbe di
     poter dire che una cosa non c'e'."""
-    dettaglio = view(_CASA_MINIMA, [], [], {}, "area", "cucina_che_non_esiste")
+    dettaglio = view(House(_CASA_MINIMA, Mirror()), [], [], "area", "cucina_che_non_esiste")
     assert dettaglio["esiste"] is False
     assert "non_so_guardare" not in dettaglio

@@ -34,7 +34,7 @@ from ..chat_thread import subject_key_for
 from ..home_space import historian
 from ..home_space.log_source import integration_of
 from ..home_space.open_questions import OPEN_QUESTIONS
-from ..home_space.topology import live_mirror
+from ..home_space.topology import read_mirror
 from ..mind.judgments import (
     JudgmentNotInEffect,
     JudgmentRefused,
@@ -434,15 +434,13 @@ def _entity_names(app) -> dict:
     l'allarme del piano terra. Sei le risolve il `dominio` che portano con se';
     la settima e' un'entita', e il suo nome vive qui.
 
-    **I nomi li legge `topology.live_mirror`**, la stessa lettura dello
+    **I nomi li legge `topology.read_mirror`**, la stessa lettura dello
     specchio della ricerca e delle pagine (A-35, 03/10/2026): fino a quel
     giorno questa funzione se li ricavava da se', scandendo lo specchio con la
-    sua regola su cosa sia un nome.
+    sua regola su cosa sia un nome. Dal 04/10/2026 (B-41) per nome e non per
+    posizione; uno specchio guasto da' `{}` invece di far cadere la rotta.
     """
-    cache = app.get("entity_cache")
-    if cache is None:
-        return {}
-    return live_mirror(cache.all_states() or [])[1]
+    return read_mirror(app.get("entity_cache")).names
 
 
 def _named(names: dict, lines) -> list:

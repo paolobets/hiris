@@ -39,6 +39,7 @@ import pytest
 from hiris.app.action.registry import ServiceRegistry, field_applies
 from hiris.app.action.verification import verification
 from hiris.app.home_space import type_vocabulary
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import commands_for, view
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import live_mirror
@@ -231,11 +232,9 @@ def _attributes(payload: dict) -> dict:
 
 def _detail(payload: dict, registry) -> dict:
     """La catena vera fino a cio' che `view` consegna al modello."""
-    state, names, unit, classes, since, attributes = live_mirror([_to_minimal(payload)])
-    return view(_HOME_SPACE, [], [], state, "entita", payload["entity_id"],
-                fallback_names=names, reported_units=unit,
-                reported_classes=classes, reported_since_when=since,
-                reported_attributes=attributes, registry=registry)
+    mirror = live_mirror([_to_minimal(payload)])
+    return view(House(_HOME_SPACE, mirror), [], [], "entita", payload["entity_id"],
+                registry=registry)
 
 
 # --------------------------------------------------------------------------

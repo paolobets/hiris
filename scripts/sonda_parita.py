@@ -74,6 +74,7 @@ from hiris.app.home_space import (
     topology,
     type_vocabulary,
 )
+from hiris.app.home_space.house import House
 from hiris.app.mind import observer, recipe_turn
 from hiris.app.mind.recipes import ENTITY_MARK, Recipe
 from hiris.app.mind.watcher import Watcher
@@ -107,8 +108,8 @@ def build_inputs(source: Path | dict, *, clock: float | None = None) -> dict:
     raw = source if isinstance(source, dict) else casa.read_inputs(source)
     rows = [_to_minimal(row) for row in raw["states"] if row.get("entity_id")]
     mirror = topology.live_mirror(rows)
-    home_space = reader.build_home_space(raw["registries"], live_classes=mirror[3],
-                                         live_units=mirror[2])
+    home_space = reader.build_home_space(raw["registries"], live_classes=mirror.classes,
+                                         live_units=mirror.units)
     return {"home_space": home_space, "mirror": mirror, "rows": rows,
             "raw_states": raw["states"], "registries": raw["registries"],
             "statistic_ids": set(raw["statistic_ids"]),
@@ -143,12 +144,6 @@ def _entity_ids(lines: list[str], inputs: dict, where: str) -> list[str]:
     return read
 
 
-def _mirror_keywords(mirror) -> dict:
-    return {"fallback_names": mirror[1], "reported_units": mirror[2],
-            "reported_classes": mirror[3], "reported_since_when": mirror[4],
-            "reported_attributes": mirror[5]}
-
-
 # ── le domande ──────────────────────────────────────────────────────────────
 
 def excluded(inputs: dict) -> dict:
@@ -162,8 +157,8 @@ def excluded(inputs: dict) -> dict:
     """
     home_space, mirror, entities = inputs["home_space"], inputs["mirror"], _entities(inputs)
     selection = house_query.select_subjects(
-        house_query.HouseFilters(), ("entita",), home_space, [], mirror,
-        unavailable=(), now=inputs["clock"])
+        house_query.HouseFilters(), ("entita",), House(home_space, mirror), [],
+        now=inputs["clock"])
     copies = {
         "digest_visible_entity_ids": set(briefing.digest_visible_entity_ids(home_space)),
         "not _excluded_from_comparison": {
@@ -221,8 +216,7 @@ def _causes_by_device(inputs: dict) -> tuple[dict[str, str], int]:
     causes: dict[str, str] = {}
     cut = 0
     for device in home_space["dispositivi"]:
-        detail = queries.view(home_space, [], [], mirror[0], "dispositivo", device["id"],
-                              **_mirror_keywords(mirror))
+        detail = queries.view(House(home_space, mirror), [], [], "dispositivo", device["id"])
         if detail.get("oltre"):
             cut += 1
             continue
@@ -246,7 +240,7 @@ def _causes_by_selection(inputs: dict) -> dict[str, str]:
     def chosen(hidden: bool, service: bool) -> set[str]:
         selection = house_query.select_subjects(
             house_query.HouseFilters(include_hidden=hidden, include_service=service),
-            ("entita",), inputs["home_space"], [], inputs["mirror"], unavailable=(),
+            ("entita",), House(inputs["home_space"], inputs["mirror"]), [],
             now=inputs["clock"])
         return {entry["id"] for entry, _area, _where in selection.entities}
 
@@ -433,14 +427,13 @@ def names(inputs: dict) -> dict:
     """«Come si chiama?» -- il nome della scheda contro il nome della riga di
     `search`, per la stessa entita'."""
     home_space, mirror = inputs["home_space"], inputs["mirror"]
-    state, live_names = mirror[0], mirror[1]
     where = {entry["id"]: (entry, area, place)
-             for entry, area, _floor, place in house_query._entity_entries(home_space, ())}
+             for entry, area, _floor, place in House(home_space, mirror).entity_entries()}
     cases = []
     for key, entity in _entities(inputs).items():
         detail = queries._enrich_entity(
-            {"id": key, "nome": entity.get("nome"), "stato": state.get(key)},
-            entity, live_names)
+            {"id": key, "nome": entity.get("nome"), "stato": mirror.state.get(key)},
+            entity, mirror)
         card = (detail.get("nome") or "").strip() or (detail.get("nome_dedotto") or "").strip()
         entry, area, place = where[key]
         row = house_query._entity_row(entry, area, place, mirror, False)["nome"]
@@ -492,7 +485,7 @@ def values(inputs: dict) -> dict:
     Divergenza di REGOLA: sull'esito della funzione pesa solo quando ogni
     entita' e' in quello stato (dopo la caduta di tutte le integrazioni).
     """
-    home_space, state = inputs["home_space"], inputs["mirror"][0]
+    home_space, state = inputs["home_space"], inputs["mirror"].state
     unknown = type_vocabulary.unknown_states()
     cases = []
     for entity in home_space["entita"]:
@@ -554,9 +547,9 @@ def statistics(inputs: dict) -> dict:
 def units(inputs: dict) -> dict:
     """«Che unita' e classe ha?» -- anagrafe, specchio vivo, riga di `search`."""
     home_space, mirror = inputs["home_space"], inputs["mirror"]
-    live_units, live_classes = mirror[2], mirror[3]
+    live_units, live_classes = mirror.units, mirror.classes
     cases = []
-    for entry, area, _floor, place in house_query._entity_entries(home_space, ()):
+    for entry, area, _floor, place in House(home_space, mirror).entity_entries():
         key = entry["id"]
         row = house_query._entity_row(entry, area, place, mirror, True)
         unit = {entry.get("unita") or None, live_units.get(key) or None,
@@ -573,7 +566,7 @@ def units(inputs: dict) -> dict:
 def _selected(inputs: dict, **filters) -> set[str]:
     selection = house_query.select_subjects(
         house_query.HouseFilters(include_hidden=True, include_service=True, **filters),
-        ("entita",), inputs["home_space"], [], inputs["mirror"], unavailable=(),
+        ("entita",), House(inputs["home_space"], inputs["mirror"]), [],
         now=inputs["clock"])
     return {entry["id"] for entry, _area, _where in selection.entities}
 
@@ -602,8 +595,8 @@ def references(inputs: dict) -> dict:
         for label, text in (("esatto", platform), ("capitalizzato", platform.capitalize()),
                             ("maiuscolo", platform.upper()), ("con spazi", f" {platform} ")):
             by_search = bool(_selected(inputs, platform=text))
-            by_card = bool(queries.view(home_space, [], [], mirror[0], "integrazione", text,
-                                        **_mirror_keywords(mirror)).get("esiste"))
+            by_card = bool(queries.view(House(home_space, mirror), [], [], "integrazione",
+                                        text).get("esiste"))
             if by_search != by_card:
                 cases.append({"genere": "integrazione", "id": platform, "variante": label,
                               "search": by_search, "scheda": by_card})

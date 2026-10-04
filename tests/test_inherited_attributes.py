@@ -37,6 +37,7 @@ import pathlib
 
 import pytest
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.proxy.entity_cache import (
@@ -138,11 +139,8 @@ def _detail_of(raw: dict) -> dict:
     Mai un `reported_attributes` scritto a mano: e' la trappola dello stato
     condiviso pigro, e in questo prodotto ha gia' lasciato passare un
     difetto che nessuna prova vedeva (`test_capabilities_to_model.py`)."""
-    state, names, unit, classes, since, attributes = live_mirror([_to_minimal(raw)])
-    return view(_CASA, [], [], state, "entita", raw["entity_id"],
-                fallback_names=names, reported_units=unit,
-                reported_classes=classes, reported_since_when=since,
-                reported_attributes=attributes)
+    mirror = live_mirror([_to_minimal(raw)])
+    return view(House(_CASA, mirror), [], [], "entita", raw["entity_id"])
 
 
 # --------------------------------------------------------------------------

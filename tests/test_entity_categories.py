@@ -28,9 +28,10 @@ import sqlite3
 
 import pytest
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.reader import HomeSpace, build_home_space
-from hiris.app.home_space.topology import category_names
+from hiris.app.home_space.topology import Mirror, category_names
 
 # Il campo `ambito` di ogni riga NON viene da Home Assistant: lo mette
 # `ha_client.read_registries`, che chiede il registro una volta per ambito e
@@ -116,7 +117,7 @@ def test_guarda_un_entita_dice_le_sue_categorie_COL_NOME(casa):
     vorrebbe dire riferire all'utente un identificativo che non ha mai
     scritto, e che non cambia nemmeno rinominando la categoria.
     """
-    d = view(casa, [], [], {}, "entita", "automation.luci_giardino")
+    d = view(House(casa, Mirror()), [], [], "entita", "automation.luci_giardino")
     assert d["categorie"] == {"automation": "Luci esterne"}
 
 
@@ -128,7 +129,7 @@ def test_l_ambito_esce_insieme_al_nome(casa):
     risposta, «Atmosfere» e «Luci esterne» sarebbero due stringhe senza
     niente che dica a quale tassonomia appartengono.
     """
-    d = view(casa, [], [], {}, "entita", "scene.cena")
+    d = view(House(casa, Mirror()), [], [], "entita", "scene.cena")
     assert d["categorie"] == {"scene": "Atmosfere"}
 
 
@@ -136,7 +137,7 @@ def test_una_categoria_che_il_registro_non_nomina_resta_il_suo_id(casa):
     """Un riferimento penzolante -- o uno dei quattro ambiti caduto -- non fa
     sparire l'assegnazione: «sta in una categoria che non so nominare» e' piu'
     vero di «non ha categoria». Stessa scelta di `labels_with_name`."""
-    d = view(casa, [], [], {}, "entita", "script.irrigazione")
+    d = view(House(casa, Mirror()), [], [], "entita", "script.irrigazione")
     assert d["categorie"] == {"script": "01sparita"}
 
 
@@ -144,7 +145,7 @@ def test_senza_categorie_la_chiave_non_compare(casa):
     """`categorie: {}` su ogni cosa sarebbe rumore in ogni risposta e --
     peggio -- indistinguibile da un registro caduto. Stessa disciplina di
     `etichette` e di `unita`."""
-    d = view(casa, [], [], {}, "entita", "light.faretto")
+    d = view(House(casa, Mirror()), [], [], "entita", "light.faretto")
     assert "categorie" not in d
 
 
@@ -153,7 +154,7 @@ def test_categoria_e_categorie_restano_due_fatti_distinti(casa):
     `config`/`diagnostic`, decisa dall'INTEGRAZIONE. `categorie` (plurale) e'
     la tassonomia dell'UTENTE. Sulla stessa entita' convivono e non si
     sovrascrivono."""
-    d = view(casa, [], [], {}, "entita", "input_boolean.vacanza")
+    d = view(House(casa, Mirror()), [], [], "entita", "input_boolean.vacanza")
     assert d["categoria"] == "config"
     assert d["categorie"] == {"helpers": "Vacanza casa"}
 
@@ -164,10 +165,10 @@ def test_le_tre_porte_di_guarda_dicono_la_stessa_cosa(casa):
     """CONSISTENZA. `piattaforma` ed `etichette` uscivano da una porta su tre,
     ed e' il difetto per cui `_enrich_entity` e' nata: un campo nuovo che
     entra da un ramo solo lo rifa'."""
-    dall_entita = view(casa, [], [], {}, "entita", "switch.pompa")
-    dal_dispositivo = view(casa, [], [], {}, "dispositivo", "d1")
+    dall_entita = view(House(casa, Mirror()), [], [], "entita", "switch.pompa")
+    dal_dispositivo = view(House(casa, Mirror()), [], [], "dispositivo", "d1")
     pompa = next(e for e in dal_dispositivo["entita"] if e["id"] == "switch.pompa")
-    dall_area = view(casa, [], [], {}, "area", "giardino")
+    dall_area = view(House(casa, Mirror()), [], [], "area", "giardino")
     luci = next(e for e in dall_area["entita"] if e["id"] == "automation.luci_giardino")
 
     atteso = {"automation": "Luci esterne"}
@@ -181,7 +182,7 @@ def test_le_tre_porte_di_guarda_dicono_la_stessa_cosa(casa):
 def test_la_categoria_non_diventa_il_nome_di_niente(casa):
     """Entra fra i termini che `find()` riconosce, non fra i nomi: un'entita'
     continua a chiamarsi come la chiama la casa."""
-    d = view(casa, [], [], {}, "entita", "automation.luci_giardino")
+    d = view(House(casa, Mirror()), [], [], "entita", "automation.luci_giardino")
     assert d["nome"] == "Luci giardino"
     assert "nome_dedotto" not in d
 
@@ -214,7 +215,8 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
         a.close()
     voce = next(e for e in letta["entita"] if e["id"] == "automation.luci_giardino")
     assert voce["categorie"] == {"automation": "01luci"}
-    assert view(letta, [], [], {}, "entita", "automation.luci_giardino")["categorie"] == {
+    assert view(House(letta, Mirror()), [], [], "entita",
+                "automation.luci_giardino")["categorie"] == {
         "automation": "Luci esterne"}
 
 
@@ -240,6 +242,6 @@ def test_un_valore_storto_dal_registro_ripiega_su_un_dizionario():
 
     voce = next(e for e in letta["entita"] if e["id"] == _REGISTRI["entita"][0]["entity_id"])
     assert voce["categorie"] == {}
-    assert "categorie" not in view(letta, [], [], {}, "entita", voce["id"])
+    assert "categorie" not in view(House(letta, Mirror()), [], [], "entita", voce["id"])
 
 

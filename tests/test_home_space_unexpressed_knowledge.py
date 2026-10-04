@@ -21,9 +21,10 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
 """
 import pytest
 
+from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.reader import HomeSpace
-from hiris.app.home_space.topology import live_first
+from hiris.app.home_space.topology import Mirror, live_first
 from hiris.app.memory.interpretation import deduci_unit
 from hiris.app.memory.resolver import costruisci_indice
 from tests._house_translations import house_translations
@@ -70,7 +71,7 @@ def casa(tmp_path):
 def test_guarda_un_entita_dice_da_quale_integrazione_viene(casa):
     """«Questa luce e' una Hue o un template?» e' una domanda che si fa
     davvero -- per capire perche' non risponde, o cosa si puo' chiederle."""
-    d = view(casa, [], [], {}, "entita", "sensor.frigo_temp")
+    d = view(House(casa, Mirror()), [], [], "entita", "sensor.frigo_temp")
     assert d["piattaforma"] == "zwave_js"
 
 
@@ -78,7 +79,7 @@ def test_senza_piattaforma_la_chiave_non_compare(casa):
     """Stessa disciplina di `unita`: una chiave a `null` su ogni entita' e'
     rumore in ogni risposta, e non aggiunge niente a chi legge."""
     casa_senza = {"entita": [{"id": "x.y", "nome": "X"}]}
-    d = view(casa_senza, [], [], {}, "entita", "x.y")
+    d = view(House(casa_senza, Mirror()), [], [], "entita", "x.y")
     assert "piattaforma" not in d
 
 
@@ -98,25 +99,25 @@ def test_guarda_un_entita_dice_le_sue_etichette_COL_NOME(casa):
     `esegui(bersaglio.etichette=[...])` pretendeva un `label_id` che
     nessuna porta faceva uscire -- il vicolo cieco piu' radicale della
     famiglia (R2, docs/design/2026-08-20-i-riferimenti.md)."""
-    d = view(casa, [], [], {}, "entita", "sensor.frigo_temp")
+    d = view(House(casa, Mirror()), [], [], "entita", "sensor.frigo_temp")
     assert d["etichette"] == ["Da controllare (id: da_controllare)",
                               "Consumi (id: consumi)"]
 
 
 def test_guarda_un_area_dice_le_sue_etichette(casa):
-    d = view(casa, [], [], {}, "area", "cucina")
+    d = view(House(casa, Mirror()), [], [], "area", "cucina")
     assert d["etichette"] == ["Piano terra (id: piano_terra)"]
 
 
 def test_guarda_un_dispositivo_dice_le_sue_etichette(casa):
-    d = view(casa, [], [], {}, "dispositivo", "d1")
+    d = view(House(casa, Mirror()), [], [], "dispositivo", "d1")
     assert d["etichette"] == ["Elettrodomestici (id: elettrodomestici)"]
 
 
 def test_senza_etichette_la_chiave_non_compare(casa):
     """Un'etichetta assente e' il caso NORMALE: `etichette: []` su ogni cosa
     sarebbe rumore, e per giunta indistinguibile da un registro caduto."""
-    d = view(casa, [], [], {}, "entita", "light.faretto")
+    d = view(House(casa, Mirror()), [], [], "entita", "light.faretto")
     assert "etichette" not in d
 
 
@@ -248,13 +249,14 @@ def test_guarda_dice_cosa_significa_lo_stato_non_solo_il_valore():
     ], "aree": [{"id": "bagno", "nome": "Bagno"}]}
     stato = {"binary_sensor.perdita_lavatrice": "on"}
 
-    d = view(casa_perdita, [], [], stato, "entita", "binary_sensor.perdita_lavatrice",
+    d = view(House(casa_perdita, Mirror(state=stato)), [], [], "entita",
+             "binary_sensor.perdita_lavatrice",
                translations=house_translations())
     assert d["stato"] == "on"
     assert d["stato_leggibile"] == "Bagnato"
 
     # E dalla porta dell'area, che elenca: stessa entita', stessa forma.
-    a = view(casa_perdita, [], [], stato, "area", "bagno",
+    a = view(House(casa_perdita, Mirror(state=stato)), [], [], "area", "bagno",
                translations=house_translations())
     assert a["entita"][0]["stato_leggibile"] == "Bagnato"
 
@@ -265,7 +267,8 @@ def test_una_luce_accesa_resta_accesa():
     casa_luce = {"entita": [
         {"id": "light.cucina", "nome": "Cucina", "classe": None, "area_id": "c"},
     ], "aree": [{"id": "c", "nome": "Cucina"}]}
-    d = view(casa_luce, [], [], {"light.cucina": "on"}, "entita", "light.cucina",
+    d = view(House(casa_luce, Mirror(state={"light.cucina": "on"})), [], [], "entita",
+             "light.cucina",
                translations=house_translations())
     assert d["stato_leggibile"] == "Acceso"
 
@@ -274,7 +277,7 @@ def test_senza_stato_letto_non_si_traduce_il_nulla():
     """`stato: None` significa «non ho guardato». Tradurlo in «spento» sarebbe
     affermare un fatto sulla casa al posto di dichiarare un silenzio."""
     casa_muta = {"entita": [{"id": "light.x", "nome": "X"}]}
-    d = view(casa_muta, [], [], {}, "entita", "light.x")
+    d = view(House(casa_muta, Mirror()), [], [], "entita", "light.x")
     assert d["stato"] is None
     assert "stato_leggibile" not in d
 
@@ -289,10 +292,10 @@ def test_guarda_dice_se_un_entita_e_nascosta():
         {"id": "sensor.a", "nome": "A", "nascosta": True, "categoria": "diagnostic"},
         {"id": "sensor.b", "nome": "B"},
     ]}
-    a = view(casa, [], [], {}, "entita", "sensor.a")
+    a = view(House(casa, Mirror()), [], [], "entita", "sensor.a")
     assert a["nascosta"] is True
     assert a["categoria"] == "diagnostic"
-    b = view(casa, [], [], {}, "entita", "sensor.b")
+    b = view(House(casa, Mirror()), [], [], "entita", "sensor.b")
     assert "nascosta" not in b, "false su ogni entita' sarebbe rumore in ogni risposta"
     assert "categoria" not in b
 
@@ -304,7 +307,7 @@ def test_guarda_un_dispositivo_dice_marca_e_modello():
         {"id": "d1", "nome": "Valvola bagno", "produttore": "Shelly", "modello": "TRV"},
         {"id": "d2", "nome": "Ignoto"},
     ], "entita": []}
-    d = view(casa, [], [], {}, "dispositivo", "d1")
+    d = view(House(casa, Mirror()), [], [], "dispositivo", "d1")
     assert d["produttore"] == "Shelly"
     assert d["modello"] == "TRV"
-    assert "produttore" not in view(casa, [], [], {}, "dispositivo", "d2")
+    assert "produttore" not in view(House(casa, Mirror()), [], [], "dispositivo", "d2")

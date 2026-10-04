@@ -5,6 +5,8 @@ import json
 import pytest
 
 from hiris.app.home_space import house_query as hq
+from hiris.app.home_space.house import House
+from hiris.app.home_space.topology import Mirror
 from tests.test_briefing import _casa_grande  # 20 aree x 15 entita'
 
 T0 = 1_790_700_000.0
@@ -62,8 +64,8 @@ ATTRIBUTI = {"person.marta": {"values": {"latitude": 45.0, "source": "x"}}}
 
 def _specchio(stati):
     nomi = {k: k.split(".")[1].replace("_", " ") for k in stati}
-    return (dict(stati), nomi, {}, {}, {k: "2026-09-29T07:11:00+00:00" for k in stati},
-            ATTRIBUTI)
+    return Mirror(dict(stati), nomi, since={k: "2026-09-29T07:11:00+00:00" for k in stati},
+                  attributes=ATTRIBUTI)
 
 
 STATI = {"light.soggiorno_1": "on", "light.soggiorno_2": "off",
@@ -85,7 +87,7 @@ def _dettaglio(kind, reference):
 def _chiedi(**argomenti):
     filtri = hq.parse_filters(argomenti)
     assert not isinstance(filtri, dict), filtri
-    return hq.query_house(_casa(), [], _specchio(STATI), filtri,
+    return hq.query_house(House(_casa(), _specchio(STATI)), [], filtri,
                           detail=_dettaglio, now=T0)
 
 
@@ -97,12 +99,12 @@ def _automazioni(*coppie):
     attributi = {f"automation.{n}": {"values": {"last_triggered": t}}
                  for n, t in coppie if t}
     stati = {f"automation.{n}": "on" for n, _ in coppie}
-    return comportamento, (stati, {}, {}, {}, {}, attributi)
+    return comportamento, Mirror(stati, attributes=attributi)
 
 
 def _chiedi_automazioni(coppie, argomenti: dict, casa=None):
     comportamento, specchio = _automazioni(*coppie)
-    return hq.query_house(casa or _casa(), comportamento, specchio,
+    return hq.query_house(House(casa or _casa(), specchio), comportamento,
                           hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
 
 
@@ -182,8 +184,8 @@ def test_dieci_voci_sono_ancora_medie_undici_sono_corte():
     stati = {f"sensor.s{i}": str(i) for i in range(11)}
     f10 = hq.parse_filters({"limite": 50, "sotto": 10})
     f11 = hq.parse_filters({"tipo": "sensor"})
-    r10 = hq.query_house(casa, [], _specchio(stati), f10, detail=_dettaglio, now=T0)
-    r11 = hq.query_house(casa, [], _specchio(stati), f11, detail=_dettaglio, now=T0)
+    r10 = hq.query_house(House(casa, _specchio(stati)), [], f10, detail=_dettaglio, now=T0)
+    r11 = hq.query_house(House(casa, _specchio(stati)), [], f11, detail=_dettaglio, now=T0)
     assert r10["trovate"] == 10 and r10["profondita"] == "media"
     assert "genere" in r10["voci"][0]
     assert r11["trovate"] == 11 and r11["profondita"] == "corta"
@@ -199,12 +201,12 @@ def test_oltre_il_limite_si_dichiara_e_si_scorre_con_salta():
                        "categoria": None, "classe": None, "unita": None,
                        "disabilitata": 0, "nascosta": 0} for i in range(120)]
     stati = {f"sensor.s{i:03}": "1" for i in range(120)}
-    primo = hq.query_house(casa, [], _specchio(stati),
+    primo = hq.query_house(House(casa, _specchio(stati)), [],
                            hq.parse_filters({"tipo": "sensor"}),
                            detail=_dettaglio, now=T0)
     assert len(primo["voci"]) == hq.ROWS_MAX and primo["oltre"]["restano"] == 70
     assert primo["oltre"]["salta"] == 50
-    terzo = hq.query_house(casa, [], _specchio(stati),
+    terzo = hq.query_house(House(casa, _specchio(stati)), [],
                            hq.parse_filters({"tipo": "sensor", "salta": 100}),
                            detail=_dettaglio, now=T0)
     assert len(terzo["voci"]) == 20 and "oltre" not in terzo
@@ -359,9 +361,9 @@ def test_nella_profondita_corta_il_comportamento_sta_in_una_riga():
     """Mutazione ESEGUITA: `modalita` scritta anche nelle righe corte -- rossa."""
     coppie = [(f"a{i:02}", "2026-09-28T10:00:00+00:00") for i in range(11)]
     comportamento, specchio = _automazioni(*coppie)
-    for voce in specchio[5].values():
+    for voce in specchio.attributes.values():
         voce["values"]["mode"] = "single"
-    r = hq.query_house(_casa(), comportamento, specchio,
+    r = hq.query_house(House(_casa(), specchio), comportamento,
                        hq.parse_filters({"genere": "automazione"}),
                        detail=_dettaglio, now=T0)
     assert r["profondita"] == "corta"
@@ -433,8 +435,8 @@ def test_il_nome_di_un_automazione_si_cerca_anche_nell_id():
     Mutazione ESEGUITA: confrontare solo il nome -- rossa."""
     comportamento = [{"id": "automation.sveglia_mattina", "tipo": "automazione",
                       "nome": "Buongiorno"}]
-    specchio = ({"automation.sveglia_mattina": "on"}, {}, {}, {}, {}, {})
-    r = hq.query_house(_casa(), comportamento, specchio,
+    specchio = Mirror({"automation.sveglia_mattina": "on"})
+    r = hq.query_house(House(_casa(), specchio), comportamento,
                        hq.parse_filters({"nome": "sveglia"}),
                        detail=_dettaglio, now=T0)
     assert "automation.sveglia_mattina" in {v["id"] for v in r["voci"]}
@@ -445,7 +447,7 @@ def test_un_dispositivo_disabilitato_e_fuori_e_contato():
     casa = _casa()
     casa["dispositivi"].append({**casa["dispositivi"][0], "id": "dev_asciugatrice",
                                 "nome": "Asciugatrice", "disabilitato": 1})
-    r = hq.query_house(casa, [], _specchio(STATI),
+    r = hq.query_house(House(casa, _specchio(STATI)), [],
                        hq.parse_filters({"nome": "asciugatrice"}),
                        detail=_dettaglio, now=T0)
     assert r["trovate"] == 0 and r["escluse"]["disabilitate"] == 1
@@ -468,7 +470,7 @@ def test_su_una_casa_grande_nessuna_risposta_supera_la_soglia_del_ponte():
     casa = _casa_grande()
     stati = {e["id"]: "on" for e in casa["entita"]}
     for argomenti in ({}, {"stato": "on"}, {"tipo": "light"}, {"salta": 50}):
-        r = hq.query_house(casa, [], _specchio(stati),
+        r = hq.query_house(House(casa, _specchio(stati)), [],
                            hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
         assert len(json.dumps(r, ensure_ascii=False)) < BRIDGE_CEILING_CHARS, argomenti
 
@@ -498,7 +500,7 @@ def _two_rooms():
 def _ask(casa, **argomenti):
     filtri = hq.parse_filters(argomenti)
     assert not isinstance(filtri, dict), filtri
-    return hq.query_house(casa, [], _specchio(STATI), filtri, detail=_dettaglio, now=T0)
+    return hq.query_house(House(casa, _specchio(STATI)), [], filtri, detail=_dettaglio, now=T0)
 
 
 def test_un_entita_si_trova_anche_per_il_suo_alias():
@@ -555,7 +557,7 @@ def test_un_filtro_che_non_vale_per_il_genere_si_dice(argomenti):
     Mutazione ESEGUITA: togliere il controllo di `_FILTERS_BY_KIND` in
     `query_house` -- rossa su ogni caso."""
     filtri = hq.parse_filters(argomenti)
-    r = hq.query_house(_two_rooms(), [], _specchio(STATI), filtri,
+    r = hq.query_house(House(_two_rooms(), _specchio(STATI)), [], filtri,
                        detail=_dettaglio, now=T0)
     assert "errore" in r, argomenti
     assert "voci" not in r
@@ -605,8 +607,8 @@ def test_un_riferimento_non_trovato_con_un_registro_caduto_non_dice_non_esiste()
 
     Mutazione ESEGUITA: passare `False` a `_not_found_detail` -- rossa."""
     filtri = hq.parse_filters({"riferimento": "light.inesistente"})
-    r = hq.query_house(_two_rooms(), [], _specchio(STATI), filtri,
-                       detail=_dettaglio, now=T0, unavailable=("entita",))
+    r = hq.query_house(House(_two_rooms(), _specchio(STATI), ("entita",)), [], filtri,
+                       detail=_dettaglio, now=T0)
     voce, = r["voci"]
     assert voce["non_disponibile"] is True and "suggerimento" not in voce
 
@@ -618,7 +620,7 @@ def test_trovate_non_conta_una_voce_che_non_esiste():
     def nothing(kind, reference):
         return {"esiste": False, "tipo": kind, "riferimento": reference}
     filtri = hq.parse_filters({"genere": "ricordo", "riferimento": "99"})
-    r = hq.query_house(_two_rooms(), [], _specchio(STATI), filtri,
+    r = hq.query_house(House(_two_rooms(), _specchio(STATI)), [], filtri,
                        detail=nothing, now=T0)
     assert r["trovate"] == 0 and r["voci"][0]["esiste"] is False
 
@@ -644,9 +646,9 @@ def test_la_scelta_di_chi_e_una_funzione_sola_per_search_e_per_la_storia_del_tem
                       {"tipo": "light", "includi_nascoste": True},
                       {"area": "soggiorno"}):
         filtri = hq.parse_filters(argomenti)
-        scelta = hq.select_subjects(filtri, ("entita",), _casa(), [],
-                                    _specchio(STATI), now=T0)
-        porta = hq.query_house(_casa(), [], _specchio(STATI), filtri,
+        scelta = hq.select_subjects(filtri, ("entita",), House(_casa(), _specchio(STATI)), [],
+                                    now=T0)
+        porta = hq.query_house(House(_casa(), _specchio(STATI)), [], filtri,
                                detail=_dettaglio, now=T0)
         assert porta["escluse"] == scelta.excluded, argomenti
         assert {v["id"] for v in porta["voci"]} == {
@@ -662,28 +664,34 @@ def test_la_scelta_delle_automazioni_passa_dalla_stessa_funzione():
                                            ("rifiuto_vetro", None),
                                            ("luci", T_IERI))
     scelta = hq.select_subjects(hq.parse_filters({"nome": "rifiuti"}),
-                                ("automazione",), _casa(), comportamento,
-                                specchio, now=T0)
+                                ("automazione",), House(_casa(), specchio), comportamento, now=T0)
     assert sorted(voce["id"] for voce, _valori in scelta.behavior) == [
         "automation.rifiuto_carta", "automation.rifiuto_vetro"]
     assert scelta.entities == []
 
 
-def test_search_chiama_select_subjects_e_non_ne_tiene_una_copia(monkeypatch):
-    """L'accordo tra `search` e `select_subjects` non vede una COPIA: resterebbe
-    verde con la logica duplicata dentro `_select`. Qui si prova la chiamata.
+def test_search_chiama_la_scelta_della_casa_e_non_ne_tiene_una_copia(monkeypatch):
+    """L'accordo tra `search` e la scelta di «di chi» non vede una COPIA:
+    resterebbe verde con la logica duplicata dentro `_select`. Qui si prova la
+    chiamata.
+
+    Dal 04/10/2026 (Tappa 3, Task 4) la scelta e' `House.select`, e
+    `select_subjects` ne e' il rimando per la storia fino al Task 13: la spia
+    sta sulla funzione vera, che e' quella che entrambe chiamano.
 
     Mutazione ESEGUITA: in `_select`, ricopiare il ciclo di scelta al posto di
-    `select_subjects(...)` -- rossa (nessuna chiamata registrata)."""
+    `select_subjects(...)` -- rossa (nessuna chiamata registrata). Rieseguita
+    il 04/10/2026 sul bersaglio nuovo: `_select` che chiama una copia del
+    codice di `House.select` (stesso corpo, altra funzione) -- rossa."""
     chiamate = []
-    vera = hq.select_subjects
+    vera = House.select
 
-    def spia(*args, **kwargs):
-        chiamate.append(args[1])
-        return vera(*args, **kwargs)
+    def spia(self, f, kinds, *args, **kwargs):
+        chiamate.append(kinds)
+        return vera(self, f, kinds, *args, **kwargs)
 
-    monkeypatch.setattr(hq, "select_subjects", spia)
-    hq.query_house(_casa(), [], _specchio(STATI), hq.parse_filters({"tipo": "light"}),
+    monkeypatch.setattr(House, "select", spia)
+    hq.query_house(House(_casa(), _specchio(STATI)), [], hq.parse_filters({"tipo": "light"}),
                    detail=_dettaglio, now=T0)
     assert chiamate == [("entita",)]
 
@@ -750,7 +758,7 @@ def test_search_pagina_con_la_funzione_condivisa(monkeypatch):
         return vera(righe, salta, limite)
 
     monkeypatch.setattr(hq, "page_rows", spia)
-    hq.query_house(_casa(), [], _specchio(STATI),
+    hq.query_house(House(_casa(), _specchio(STATI)), [],
                    hq.parse_filters({"tipo": "light", "limite": 2}),
                    detail=_dettaglio, now=T0)
     assert chiamate == [(0, 2)]

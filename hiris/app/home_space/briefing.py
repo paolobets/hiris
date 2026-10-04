@@ -1392,7 +1392,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             problems: dict | None = None,
             comparison: dict | None = None,
             attributes: dict[str, dict] | None = None,
-            now: float | None = None) -> tuple[str, dict]:
+            now: float | None = None,
+            floors: list[dict] | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1417,6 +1418,11 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     CAPACITA' (mai i valori correnti -- vedi `_capability_lines`). `None`
     significa «il chiamante non ha guardato» e NON «nessuna entita' sa fare
     niente»: la sezione lo dichiara, come `problems` e `comparison` qui sotto.
+
+    `floors` e' l'albero di `hierarchy(home_space, unavailable)` gia'
+    calcolato dal chiamante (`house.House.hierarchy`, R18): il turno di chat
+    lo costruisce una volta e lo condivide con gli strumenti. Deve venire
+    dalla STESSA casa e dagli STESSI `unavailable`; `None` lo calcola qui.
 
     `unavailable` sono i registri dell'anagrafe che non hanno risposto
     all'ultima lettura (`HomeSpace.unavailable()`). Senza, ne' "La
@@ -1630,7 +1636,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # del fix CRITICAL ① la sezione dello stato («Notevole adesso», uscita il
     # 29/09/2026) se ne ricalcolava uno proprio a mano, che poteva dire
     # "Senza area" dove "La casa" -- correttamente -- diceva "Aree non lette".
-    floors = hierarchy(home_space, unavailable)
+    if floors is None:
+        floors = hierarchy(home_space, unavailable)
     # Il riferimento sta in testa a "La casa" e non in una sezione sua: e' una
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
     # intestazione da spendere per due righe. In testa perche' il taglio parte

@@ -97,6 +97,7 @@ from hiris.app import claude_runner, server
 from hiris.app.agent import prompts as bridge_prompts
 from hiris.app.api import handlers_chat, handlers_home_space
 from hiris.app.home_space import briefing, house_query, queries, topology
+from hiris.app.home_space.house import House
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.mind import actuator_turn, analyst_turn, observer, recipe_turn
 
@@ -306,7 +307,7 @@ def _ordered(value):
     return value
 
 
-def _cards(home_space: dict, entries: list, state: dict, mirror_words: dict) -> dict:
+def _cards(home_space: dict, entries: list, mirror) -> dict:
     cards: dict[str, dict] = {}
     references = (
         [("entita", entity["id"]) for entity in home_space["entita"]]
@@ -317,7 +318,7 @@ def _cards(home_space: dict, entries: list, state: dict, mirror_words: dict) -> 
              if entity.get("piattaforma")})])
     for kind, reference in references:
         cards[f"{kind}:{reference}"] = queries.view(
-            home_space, entries, [], state, kind, reference, **mirror_words)
+            House(home_space, mirror), entries, [], kind, reference)
     return cards
 
 
@@ -332,8 +333,8 @@ def _selections(home_space: dict, entries: list, mirror, clock: float) -> dict:
     selections = {}
     for label, filters in wanted.items():
         selection = house_query.select_subjects(
-            house_query.HouseFilters(**filters), ("entita",), home_space, entries, mirror,
-            unavailable=(), now=clock)
+            house_query.HouseFilters(**filters), ("entita",), House(home_space, mirror),
+            entries, now=clock)
         selections[label] = {"entita": [entry["id"] for entry, _area, _where
                                         in selection.entities],
                              "escluse": selection.excluded}
@@ -391,9 +392,6 @@ async def _ports(app, clock: float) -> dict:
     store, cache = app["home_space_store"], app["entity_cache"]
     home_space, entries = store.read(), store.behavior()
     mirror = topology.live_mirror(cache.all_states())
-    mirror_words = {"fallback_names": mirror[1], "reported_units": mirror[2],
-                    "reported_classes": mirror[3], "reported_since_when": mirror[4],
-                    "reported_attributes": mirror[5]}
     text, summary = handlers_home_space.compose_briefing(app)
     dispatcher = handlers_chat.create_tool_dispatcher(app)
     answers = {}
@@ -405,7 +403,7 @@ async def _ports(app, clock: float) -> dict:
         "albero": topology.hierarchy(home_space),
         "visibili": briefing.digest_visible_entity_ids(home_space),
         "nucleo": {"caratteri": len(text), "testo": text, "riepilogo": summary},
-        "schede": _cards(home_space, entries, mirror[0], mirror_words),
+        "schede": _cards(home_space, entries, mirror),
         "selezioni": _selections(home_space, entries, mirror, clock),
         "osservatore": observer.house_lines(home_space),
         "ricette": {device["id"]: recipe_turn.device_lines(home_space, device["id"])

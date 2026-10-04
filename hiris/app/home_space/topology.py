@@ -7,6 +7,7 @@ compra: e' gia' dichiarato dall'utente in Home Assistant.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field, replace
 
 from ..proxy import state_translations
 from . import type_vocabulary
@@ -54,7 +55,8 @@ async def rebuild(client, store, entity_cache) -> dict:
     live_classes: dict[str, str] = {}
     live_units: dict[str, str] = {}
     if entity_cache is not None and entity_cache.loaded:
-        _, _, live_units, live_classes, _, _ = live_mirror(entity_cache.all_states())
+        mirror = live_mirror(entity_cache.all_states())
+        live_units, live_classes = mirror.units, mirror.classes
     else:
         unavailable = list(unavailable) + ["specchio_vivo"]
     counts = {key: len(value) for key, value in registries.items()}
@@ -181,10 +183,77 @@ def is_pseudo_area(area_id: str) -> bool:
     return area_id in _ID_PSEUDO_AREA
 
 
-def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
-                               dict[str, str], dict[str, str], dict[str, dict]]:
-    """Lo specchio dello stato in sei dizionari:
-    `(stato, nomi, unita, classi, da_quando, attributi)`.
+@dataclass(frozen=True)
+class Mirror:
+    """Lo specchio dello stato in UNA forma, coi campi per nome (B-41, Tappa
+    3, Task 3, 04/10/2026).
+
+    Fino a quel giorno lo specchio aveva tre forme: la tupla di sei
+    dizionari di `live_mirror`, la settupla di `ToolDispatcher._mirror` (la
+    stessa piu' `letto`) e sei argomenti separati nelle firme di
+    `queries.view` e dei suoi rami. Chi lo riceveva lo leggeva per posizione
+    (`mirror[1]` per i nomi, `mirror[5]` per gli attributi): un campo in piu'
+    in mezzo avrebbe spostato il significato di tutti quelli dopo, in
+    silenzio.
+
+    Ogni dizionario e' entity_id -> valore, e salta i vuoti (vedi
+    `live_mirror`). `readable` dice se lo specchio vale come fotografia
+    della casa: si calcola in UN posto, `read_mirror`, e non si compone piu'
+    a mano accanto a ogni lettura (A-25: erano cinque composizioni in
+    `tools.py`). Il default `True` e' quello di uno specchio costruito da
+    righe gia' lette (`live_mirror`), o scritto a mano in una prova.
+
+    `state_classes` (entity_id -> `state_class`) e' entrato il 04/10/2026
+    (Task 4): la storia ci sceglie la superficie dei valori, e fino a quel
+    giorno lo leggeva dalle righe GREZZE della stessa lettura, che
+    `ToolDispatcher._mirror` le consegnava a parte (`rows_out`). Con
+    l'istantanea per turno (`house.House`) le righe non viaggiano piu':
+    viaggia lo specchio, e il fatto e' suo.
+    """
+    state: dict[str, str] = field(default_factory=dict)
+    names: dict[str, str] = field(default_factory=dict)
+    units: dict[str, str] = field(default_factory=dict)
+    classes: dict[str, str] = field(default_factory=dict)
+    since: dict[str, str] = field(default_factory=dict)
+    attributes: dict[str, dict] = field(default_factory=dict)
+    state_classes: dict[str, str] = field(default_factory=dict)
+    readable: bool = True
+
+
+def read_mirror(cache) -> Mirror:
+    """Lo specchio vivo letto dalla cache, con `readable` calcolato QUI e in
+    nessun altro posto (A-25).
+
+    Tre modi di non poter guardare, un solo esito (`readable=False`): cache
+    assente (o senza `all_states`, una finta che non e' uno specchio), cache
+    mai caricata (`inventory_is_readable`), lettura che solleva. Nel secondo
+    caso i dizionari restano quelli letti -- le entita' mosse dagli eventi --
+    come prima: chi li usa dichiara accanto che lo stato non e' letto. Nel
+    primo e nel terzo sono vuoti.
+
+    **Allineato il 04/10/2026:** fino a quel giorno `ToolDispatcher._mirror`
+    diceva «letto» con la cache assente, e ogni chiamante lo correggeva
+    mettendoci accanto `inventory_is_readable`, che nello stesso caso dice
+    falso. Ora la risposta e' una, gia' composta.
+    """
+    # Importata qui e non in testa: `entity_cache` importa questo modulo
+    # (`domain_of`), e la regola di «leggibile» vive accanto alla cache.
+    from ..proxy.entity_cache import inventory_is_readable
+    if cache is None or not hasattr(cache, "all_states"):
+        return Mirror(readable=False)
+    try:
+        mirror = live_mirror(cache.all_states())
+    except Exception as error:
+        logger.warning("specchio dello stato illeggibile (%s: %s)",
+                       type(error).__name__, error)
+        return Mirror(readable=False)
+    if inventory_is_readable(cache):
+        return mirror
+    return replace(mirror, readable=False)
+
+
+def live_mirror(rows) -> Mirror:
+    """Lo specchio dello stato, da righe gia' lette: un `Mirror`.
 
     `righe` e' cio' che `entity_cache.all_states()` restituisce: dizionari
     nella forma di `_to_minimal` -- chiave `id` (non `entity_id`), piu' `state`,
@@ -198,16 +267,16 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
     Nomi, unita', classi e istanti vuoti si saltano: una stringa vuota non e'
     un nome e non e' un'unita', e' l'assenza dell'una e dell'altra.
 
-    `classi` (entity_id -> `device_class`) e' la piu' importante: il registro
+    `classes` (entity_id -> `device_class`) e' la piu' importante: il registro
     delle entita' NON manda la classe (vedi `live_first`), e questa e'
     l'unica fonte da cui un sensore binario ne riceve una.
 
-    `da_quando` (entity_id -> `last_changed`) e' il campo che Home Assistant
+    `since` (entity_id -> `last_changed`) e' il campo che Home Assistant
     manda a ogni cambio di stato: senza, HIRIS saprebbe che in camera ci sono
     22,4 gradi e non da quando. Costa un campo e zero chiamate a Home
     Assistant.
 
-    `attributi` (entity_id -> le ceste di `entity_cache.inherited_attributes`,
+    `attributes` (entity_id -> le ceste di `entity_cache.inherited_attributes`,
     quando l'entita' ne ha almeno una). Senza, un termostato IMPOSTATO su
     riscaldamento e FERMO (`hvac_mode: heat`, `hvac_action: idle`) uscirebbe
     come `stato: "heat"` e basta -- indistinguibile da uno che sta scaldando
@@ -221,6 +290,7 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
     classes: dict[str, str] = {}
     since_when: dict[str, str] = {}
     attributes: dict[str, dict] = {}
+    state_classes: dict[str, str] = {}
     for e in rows:
         if not isinstance(e, dict):
             continue
@@ -228,15 +298,18 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
         if not entity_id:
             continue
         state[entity_id] = e.get("state")
-        for field, table in (("name", names), ("unit", unit),
+        for key, table in (("name", names), ("unit", unit),
                              ("device_class", classes), ("last_changed", since_when)):
-            text = clean_text(e.get(field))
+            text = clean_text(e.get(key))
             if text is not None:
                 table[entity_id] = text
         extra = e.get("attributes")
         if isinstance(extra, dict) and extra:
             attributes[entity_id] = extra
-    return state, names, unit, classes, since_when, attributes
+        state_class = e.get("state_class")
+        if isinstance(state_class, str) and state_class:
+            state_classes[entity_id] = state_class
+    return Mirror(state, names, unit, classes, since_when, attributes, state_classes)
 
 
 def name_with_id(name: str, id_: str | None) -> str:
