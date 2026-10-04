@@ -51,7 +51,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | E | PS | 0 integrazioni su 39 | Tappa 3 (verdetto) | reg · cop-4 · cop-5 |
 | B-10 | In che area sta un'entità | D | CC | 194 entità guardabili su 324 arrivano all'osservatore senza area |  | reg · cop-4 · cop-6 |
 | B-11 | «Quali entità sono di un dispositivo»: `dispositivo_id` in linea | E | PS |  |  | reg · cop-3 · cop-4 · cop-6 |
-| B-12 | «Ha statistiche?»: tre formule | D | CC | 0 casi su 232 entità watcher | Tappa 3 (verdetto) | reg · cop-3 · cop-5 · cop-6 |
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
 | B-14 | Integrazione sana: due lettori, una costante doppia | E | PS |  | cop-4 (righe) | reg · cop-4 · cop-5 · cop-6 |
 | B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta); Tappa 3 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-02 | Regole «fuori» più larghe per scelta: `_view_integration`, `_unreliable_state`, conteggi, «senza nome» | Tappa 3 (da rilasciare) | cb84c86 | le tre porte larghe dichiarano le classi che contano (D7); il conteggio doppio «nascosta e di servizio» del nucleo e' singolo. Tappa 3, Task 5 (04/10/2026) |
 | B-06 | Nome del dispositivo: derivazioni e campo senza lettori | Tappa 3 (da rilasciare) | cb84c86 | topology.device_name, il nome altrimenti l'id, in nucleo, pagine del cervello, resoconto, ricette e guarda. Tappa 3, Task 5 (04/10/2026) |
 | B-17 | Unità e classe: il vivo batte il registro, applicato due volte | Tappa 3, Task 7 | 8e710f9 | l'anagrafe porta solo la dichiarazione del registro; il vivo da House.kind_of e topology.live_first |
+| B-12 | «Ha statistiche?»: tre formule | Tappa 3, Task 7 | 274409a | una regola, ha_vocabulary.has_statistics: statistic_ids del giro, la regola del sorgente solo come ripiego |
