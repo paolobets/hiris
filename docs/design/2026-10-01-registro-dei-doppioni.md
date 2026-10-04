@@ -77,7 +77,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | NV | PS |  |  | cop-3 B-n3 |
 | B-33 | Una durata, tre grammatiche; `calendar` taglia in silenzio, gli altri rifiutano | D | CC |  |  | cop-3 B-n4 |
 | B-34 | «Tipi di ancora non verificabili adesso»: scritto due volte (`_remember`, `_unverifiable_types`) | NV | PS |  |  | cop-3 B-n5 |
-| B-35 | `house_history` importa da `mind` (`integration_of`), contro «`home_space` non importa da `mind`» | D (cop-3) · E (cop-6) — CONTRADDIZIONE | PS |  |  | cop-3 B-n6 · cop-6 N-07 |
 | B-37 | «È una pseudo-area?» scritto a mano tre volte; `is_pseudo_area` senza chiamanti esterni | NV | PS |  |  | cop-4 N-02 |
 | B-38 | La mappa etichette `{label_id: nome}` riscritta a mano in `handlers_home_space` | E | PS |  |  | cop-4 N-03 · cop-8 C1 |
 | B-39 | Conteggio per tipo del comportamento in tre punti, `senza_corpo` in quattro | NV | PS |  |  | cop-4 N-04 · cop-8 C2 |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-45 | Il trattino di «senza classe» (`NO_DEVICE_CLASS`) e la chiave di traduzione scritti più volte | Tappa 3 (da rilasciare) | c80cba1 | state_translations.component_key compone la chiave; NO_DEVICE_CLASS ovunque. Tappa 3, Task 7 (04/10/2026) |
 | B-46 | I nomi dei campi dei giudizi in due vocabolari; la mappa ne salta uno | Tappa 3 (da rilasciare) | c80cba1 | esce type_vocabulary.SCAFFOLDING; una prova pinna che JUDGMENT_FIELDS salti solo l'impalcatura. Tappa 3, Task 7 (04/10/2026) |
 | B-48 | I quattordici tipi di `related` scritti due volte (`RELATED_ITEM_TYPES`, `LINK_NAME`) | Tappa 3 (da rilasciare) | c80cba1 | LINK_NAME in ha_vocabulary; HAClient.RELATED_ITEM_TYPES = tuple(LINK_NAME). Tappa 3, Task 7 (04/10/2026) |
+| B-35 | `house_history` importa da `mind` (`integration_of`), contro «`home_space` non importa da `mind`» | Tappa 3 (da rilasciare) | f6edebd | integration_of in home_space/log_source.py, type_subject e MEANING_FIELD in home_space/type_judgments.py; tests/test_confine_home_space.py vieta home_space -> mind, senza eccezioni. Tappa 3, Task 7 (04/10/2026) |
