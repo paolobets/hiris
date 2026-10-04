@@ -3563,6 +3563,48 @@ async def _on_startup(app: web.Application) -> None:
     app["home_space_store"] = home_space_store
     ha_client.add_integration_listener(integration_follower(app))
 
+    # **Chi tiene una copia della casa si iscrive PRIMA del websocket**
+    # (revisione del ramo, 04/10/2026). Se Home Assistant non conferma entro
+    # il tetto, `_open_websocket` chiede che la prima connessione avvisi
+    # «riconnessione»; se quella connessione arriva mentre l'avvio e' ancora
+    # qui sotto, l'avviso va a chi e' iscritto IN QUEL MOMENTO. Iscritti dopo,
+    # specchio, anagrafe, comportamento, plance e servizi lo perdevano, e la
+    # loro copia letta nel vuoto restava vuota fino al primo evento di
+    # registro. Costruirli qui non legge niente: sono fabbriche di
+    # ascoltatori, e le letture partono solo all'avviso o piu' sotto.
+    #
+    # L'anagrafe: si ricostruisce quando la casa cambia, e dopo ogni
+    # ricostruzione riscalda le parole degli stati (`prime_state_translations`
+    # legge `app.get("state_translations")`: un avviso arrivato prima della
+    # sua nascita, piu' sotto, lo dice e non solleva). Lo specchio si rilegge
+    # alla riconnessione.
+    ha_client.add_topology_listener(
+        schedule_registry_rebuild(ha_client, home_space_store, entity_cache,
+                                  then=lambda: prime_state_translations(app)))
+    ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
+    # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
+    # sotto per la prima lettura, e che lo schedulatore rilegge a cadenza.
+    ha_config_dir = home_assistant_folder()
+    watch_behavior = behavior_reader(
+        ha_client, entity_cache, home_space_store,
+        Path(ha_config_dir) if ha_config_dir else None,
+    )
+    ha_client.add_topology_listener(
+        schedule_behavior_reread(watch_behavior))
+    # Le plance: cadenza propria (DASHBOARD_EVENT), non i registri.
+    ha_client.add_dashboard_listener(schedule_dashboards_reread(ha_client, home_space_store))
+    # I servizi si rinfrescano su EVENTO, non a scadenza. Prima si ricaricavano
+    # solo dopo 300 secondi, e per quei cinque minuti HIRIS rifiutava i servizi
+    # di un'integrazione appena installata dicendo «non esiste in questa casa»:
+    # una frase FALSA detta con sicurezza, che e' peggio di un «non lo so».
+    #
+    # Si INVALIDA e basta -- la rilettura la fa `ensure_fresh` al prossimo
+    # comando. Installare un'integrazione emette una raffica di eventi, e una
+    # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
+    # qualcuno chiede di agire.
+    _service_registry = app["service_registry"]
+    ha_client.add_service_listener(lambda _type: _service_registry.invalidate())
+
     await _open_websocket(ha_client)
 
     try:
@@ -3745,13 +3787,7 @@ async def _on_startup(app: web.Application) -> None:
     # l'add-on -- la prima connessione (`reread_after_first_connection`) o il
     # primo evento di registro la ricostruiranno.
     #
-    # Gli ascoltatori si iscrivono PRIMA della lettura: il websocket e' gia'
-    # aperto, e un cambio di registro arrivato mentre si legge deve far
-    # ricostruire (con l'antirimbalzo) invece di perdersi.
-    ha_client.add_topology_listener(
-        schedule_registry_rebuild(ha_client, home_space_store, entity_cache,
-                                  then=lambda: prime_state_translations(app)))
-    ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
+    # I suoi ascoltatori sono iscritti piu' sopra, prima del websocket.
 
     # **L'anagrafe si legge SUBITO, prima di chi la usa.** Da quando la casa
     # non e' piu' replicata su disco, `read()` torna `{}` finche' una lettura
@@ -3845,15 +3881,8 @@ async def _on_startup(app: web.Application) -> None:
     #
     # **Una lettura sola all'avvio, questa** (Task 7 della Tappa 2, passo 3):
     # la prima connessione non fa piu' rileggere (D2), e la rilettura
-    # sull'evento resta per i cambi e le riconnessioni. L'ascoltatore si
-    # iscrive prima della lettura, per la stessa ragione dell'anagrafe.
-    ha_config_dir = home_assistant_folder()
-    watch_behavior = behavior_reader(
-        ha_client, app["entity_cache"], home_space_store,
-        Path(ha_config_dir) if ha_config_dir else None,
-    )
-    ha_client.add_topology_listener(
-        schedule_behavior_reread(watch_behavior))
+    # sull'evento resta per i cambi e le riconnessioni. L'ascoltatore
+    # che la richiama e' iscritto piu' sopra, prima del websocket.
     try:
         await watch_behavior()
     except Exception as exc:
@@ -3864,24 +3893,12 @@ async def _on_startup(app: web.Application) -> None:
     # registri): non stanno in `reader.TABLES`, quindi una ricostruzione
     # dell'anagrafe non le tocca e viceversa. Come l'anagrafe, la prima
     # lettura non deve poter impedire il boot. Una lettura sola all'avvio,
-    # questa, come per il comportamento; l'ascoltatore prima della lettura.
-    ha_client.add_dashboard_listener(schedule_dashboards_reread(ha_client, home_space_store))
+    # questa, come per il comportamento; l'ascoltatore e' iscritto piu' sopra,
+    # prima del websocket.
     try:
         await reread_dashboards(ha_client, home_space_store)
     except Exception as exc:
         logger.warning("prima lettura delle plance fallita: %s", exc)
-
-    # I servizi si rinfrescano su EVENTO, non a scadenza. Prima si ricaricavano
-    # solo dopo 300 secondi, e per quei cinque minuti HIRIS rifiutava i servizi
-    # di un'integrazione appena installata dicendo «non esiste in questa casa»:
-    # una frase FALSA detta con sicurezza, che e' peggio di un «non lo so».
-    #
-    # Si INVALIDA e basta -- la rilettura la fa `ensure_fresh` al prossimo
-    # comando. Installare un'integrazione emette una raffica di eventi, e una
-    # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
-    # qualcuno chiede di agire.
-    _service_registry = app["service_registry"]
-    ha_client.add_service_listener(lambda _type: _service_registry.invalidate())
 
     # L'archivio della memoria vive nel suo file (memoria.db): e' cio' che
     # l'utente ha detto e cio' che HIRIS ne ha capito, non una REPLICA
@@ -3893,9 +3910,10 @@ async def _on_startup(app: web.Application) -> None:
 
     # Il WebSocket verso Home Assistant e' gia' aperto (`_open_websocket`, piu'
     # sopra, prima della prima lettura). Gli ascoltatori iscritti dopo
-    # l'apertura -- l'osservatore, le automazioni, i servizi -- non perdono
-    # niente che prima ricevessero: fino al Task 7 il websocket si apriva
-    # qui, e prima di qui nessun evento arrivava a nessuno.
+    # l'apertura -- l'osservatore e le automazioni -- non perdono niente che
+    # prima ricevessero: fino al Task 7 il websocket si apriva qui, e prima di
+    # qui nessun evento arrivava a nessuno. Nessuno dei due riceve l'avviso
+    # «riconnessione».
 
     # Le impostazioni della chat: un bot solo, senza id, coi default nel codice
     # (vedi `chat_settings.py`).

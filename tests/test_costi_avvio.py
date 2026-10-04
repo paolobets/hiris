@@ -248,3 +248,83 @@ def test_l_avvio_finisce_anche_se_home_assistant_non_risponde(tmp_path, monkeypa
     # La casa finta risponde alle letture anche senza websocket: l'avvio ha
     # letto lo stesso, non ha aspettato la connessione per sempre.
     assert loaded
+
+
+def _announced_kinds() -> list[str]:
+    """I generi di ascoltatori che l'avviso «riconnessione» raggiunge,
+    CHIESTI al client vero: uno per genere su un `HAClient` nudo, poi
+    l'avviso, e si guarda chi l'ha ricevuto. Non ricopiati da
+    `_announce_reconnection`: un genere nuovo avvisato entra da solo."""
+    client = HAClient(base_url="http://ha.test", token="t")
+    reached: list[str] = []
+    for kind in casa_finta.listener_kinds():
+        getattr(client, f"add_{kind}_listener")(
+            lambda *_args, kind=kind: reached.append(kind))
+    client._announce_reconnection()
+    return sorted(set(reached))
+
+
+def test_la_derivazione_degli_avvisati_contiene_quelli_di_oggi():
+    assert set(_announced_kinds()) >= {"topology", "dashboard", "service"}, \
+        _announced_kinds()
+
+
+def test_la_prima_connessione_subito_dopo_il_tetto_avvisa_ogni_ascoltatore(tmp_path,
+                                                                            monkeypatch):
+    """La corsa all'avvio (revisione del ramo, 04/10/2026). Se Home Assistant
+    non conferma entro il tetto, l'avvio chiede che la prima connessione
+    faccia rileggere (`reread_after_first_connection`). Se quella
+    connessione arriva SUBITO -- mentre l'avvio e' ancora fra l'apertura del
+    websocket e le iscrizioni -- l'avviso va a chi e' iscritto in quel
+    momento: chi si iscrive dopo non lo riceve, e la sua copia della casa
+    (lo specchio letto nel vuoto, l'anagrafe, il comportamento, le plance)
+    resta vuota fino al primo evento di registro.
+
+    La prova fa arrivare la connessione esattamente li': l'apertura del
+    websocket e' sostituita da un tetto gia' scaduto seguito dalla
+    connessione, e si confrontano gli ascoltatori iscritti nell'istante
+    dell'avviso con quelli iscritti a fine avvio, per ogni genere che
+    l'avviso raggiunge."""
+    from hiris.app import server
+
+    announced = _announced_kinds()
+    # Chi era iscritto quando l'avviso e' arrivato, genere per genere: lo
+    # scrive una SONDA iscritta col metodo pubblico del client nell'istante in
+    # cui l'avvio apre il websocket, e chiamata dall'avviso vero.
+    at_announcement: dict[str, list] = {}
+    probes: list = []
+
+    async def connection_right_after_the_ceiling(ha_client) -> bool:
+        for kind in announced:
+            listeners = getattr(ha_client, f"_{kind}_listeners")
+
+            def probe(*_args, kind=kind, listeners=listeners):
+                at_announcement.setdefault(kind, [cb for cb in listeners
+                                                  if cb not in probes])
+            probes.append(probe)
+            getattr(ha_client, f"add_{kind}_listener")(probe)
+        # Il tetto e' scaduto: l'avvio chiede la rilettura alla prima
+        # connessione, come `_open_websocket` ...
+        ha_client.reread_after_first_connection()
+        # ... e la connessione arriva subito, prima che l'avvio prosegua.
+        await ha_client.start_websocket()
+        await asyncio.wait_for(ha_client.ws_ready.wait(), 10)
+        return False
+
+    monkeypatch.setattr(server, "_open_websocket", connection_right_after_the_ceiling)
+
+    async def boot():
+        async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+            house = app["ha_client"]
+            return {kind: [cb for cb in getattr(house, f"_{kind}_listeners")
+                           if cb not in probes] for kind in announced}
+
+    at_end = asyncio.run(boot())
+    assert sorted(at_announcement) == announced, "la prima connessione non ha avvisato"
+    for kind in announced:
+        assert at_end[kind], f"nessun ascoltatore `{kind}` a fine avvio"
+        missed = [listener for listener in at_end[kind]
+                  if listener not in at_announcement[kind]]
+        assert not missed, (
+            f"`{kind}`: {len(missed)} ascoltatori iscritti dopo l'avviso della "
+            "prima connessione, che non l'hanno ricevuto")
