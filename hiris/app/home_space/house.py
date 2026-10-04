@@ -152,8 +152,8 @@ class House:
         un'automazione che non c'e' resta un'entita').
 
         `search` e `history` scelgono con questa STESSA funzione (spec «la
-        storia» §2): fino al 04/10/2026 era `house_query.select_subjects`, che
-        resta come rimando fino al Task 13."""
+        storia» §2): fino al 04/10/2026 era `house_query.select_subjects`,
+        uscita col Task 13 quando la storia ha smesso di chiamarla."""
         entries = self.entity_entries()
         searching_behavior = any(k in _BEHAVIOR_KINDS for k in kinds)
         shadowed = {b.get("id") for b in behavior or []} if searching_behavior else set()

@@ -1903,7 +1903,7 @@ class HAClient:
 
         **La risoluzione `entity_id -> id di configurazione` NON avviene
         qui**, ma ai chiamanti (`server.py::watch_automation_outcomes` e la
-        storia, `ToolDispatcher._run_history`), dove lo specchio dello stato
+        storia, `house_history.read_runs`), dove lo specchio dello stato
         gia' vive: il client resta «legge e non giudica». L'id sta in
         `attributes["id"]` dello stato dell'entita' --
         `BaseAutomationEntity.capability_attributes` (`{CONF_ID:

@@ -8,24 +8,33 @@ chiamata per automazione (cinque per «perche' sono partite quelle dei
 rifiuti»), e nessuno dei quattro sapeva scegliere di chi parlare coi filtri
 di `search`.
 
-Qui vivono solo funzioni PURE:
+Qui vivono, PURE:
 - `parse_query`: gli argomenti, gli errori e la finestra -- «oggi» e «ieri»
   nel fuso della casa (`historian.day_boundaries`);
 - la scelta di chi, la profondita' e le righe di ogni genere (Task 3-5).
 
-La scelta dei soggetti NON si fa qui: la fa `house_query.select_subjects`,
-la stessa di `search` (spec §2, «un solo punto che decide di chi»). Chi
-parla con Home Assistant e' il gestore di `tools.py`, che passa qui cio'
-che ha letto: come `house_query`, questo modulo non conosce la rete.
+E, in coda, le LETTURE (Tappa 3, Task 13, 04/10/2026): `read_history` e le
+sue parti chiedono a Home Assistant attraverso il canale che ricevono
+(`ha`), e passano alle funzioni pure cio' che hanno letto. Fino a quel
+giorno erano metodi del dispatcher della chat, che nasce a ogni turno e
+porta la persona; nessuna dipende dalla persona, e un attore le chiama
+senza un turno. Il permesso (chi puo' leggere `esecuzioni` ed `errori`)
+resta in chi chiama, sopra di loro.
+
+La scelta dei soggetti NON si fa qui: la fa `House.select`, la stessa di
+`search` (spec §2, «un solo punto che decide di chi»).
 """
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from ..proxy.entity_cache import VALUES
+from ..proxy._sanitize import sanitize_structure, sanitize_traceback
+from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_inventory_error
+from ..proxy.ha_client import SHAPE, _failure
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
 from .historian import day_boundaries, home_space_zone, instant_epoch, local_date
@@ -35,16 +44,19 @@ from .house_query import (
     excluded_note,
     page_rows,
     parse_filters,
-    select_subjects,
 )
 from .log_source import integration_of
 from .privacy import MOVING_DOMAINS, redact_nested, redact_state
 from .queries import ROWS_MAX
+from .redaction import seal_free_text
 from .reference import normalize
 from .topology import live_name
 
 if TYPE_CHECKING:
     from .house import House
+    from .topology import Mirror
+
+logger = logging.getLogger(__name__)
 
 KINDS = ("stati", "valori", "esecuzioni", "errori")
 #: Un giorno: la finestra che la parola «oggi» significa per chi chiede
@@ -318,7 +330,7 @@ def _page(rows: list, f: HouseFilters) -> tuple[list, dict | None]:
 
 
 def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen | dict:
-    """Di chi (la scelta di `search`, `select_subjects`) e quanto.
+    """Di chi (la scelta di `search`, `House.select`) e quanto.
 
     Stati e valori guardano le entita'; le esecuzioni automazioni e script.
 
@@ -334,7 +346,7 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen
         f = replace(f, domain=None)
     else:
         kinds = ("entita",)
-    selection = select_subjects(f, kinds, house, behavior, now=now)
+    selection = house.select(f, kinds, behavior, now=now)
     if query.kind == "esecuzioni":
         subjects = [Subject(item["id"], live_name(item["id"], item.get("nome"), house.mirror),
                             values.get("last_triggered"))
@@ -1277,3 +1289,260 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
     if beyond:
         out["oltre"] = _oltre(beyond)
     return out
+
+
+# --- le letture: chi chiede a Home Assistant (Tappa 3, Task 13) -------------
+#
+# Fino al 04/10/2026 erano metodi privati di `tools.ToolDispatcher`, l'oggetto
+# che nasce a ogni turno di chat e porta la persona. Nessuna di queste letture
+# dipende dalla persona (piano della Tappa 3, «l'oggetto per turno»): ricevono
+# la casa (`House`), il canale (`ha`), lo specchio (`cache`) e il sigillo, e un
+# attore che non e' un turno di chat le chiama da se'. **Il permesso resta
+# sopra**, nel dispatcher: il cancello di `ADMIN_KINDS` prima di chiamarle, e
+# niente qui lo rifa' ne' lo salta -- chi le chiama ha gia' deciso che puo'.
+
+
+def read_failure(answer, fallback: str) -> dict:
+    """La busta di una lettura del client che non e' riuscita, INTERA.
+
+    Il client dice ogni guasto con `errore`, `causa` e `codice`
+    (`proxy/ha_client.py::_failure`): ridurla al solo `errore` qui toglierebbe
+    al modello la differenza fra «Home Assistant ha taciuto» e «ha detto di
+    no», e farebbe uscire uno strumento in una forma diversa da `calendar`,
+    che la gira com'e' (fondamenta 3). Una risposta che non e' la busta e non
+    ha la forma attesa diventa una busta di `forma`, dallo stesso costruttore.
+    """
+    if isinstance(answer, dict) and "errore" in answer:
+        return answer
+    return _failure(SHAPE, fallback)
+
+
+async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
+    """Lo storico di tutti i soggetti: `{"serie", "troncato"}` o la busta
+    del guasto, intera (`read_failure`). Quanti che siano: il taglio dell'URL
+    vive in `HAClient.history` (A-27, Tappa 2).
+
+    Gli istanti passano col loro ISO intero, secondi e microsecondi: la
+    finestra delle righe (`dal`, con un secondo di scarto) e' calcolata
+    sugli stessi."""
+    start, end = query.start.isoformat(), query.end.isoformat()
+    answer = await ha.history(entity_ids, start, end)
+    if not isinstance(answer, dict) or "serie" not in answer:
+        return read_failure(answer, "lo storico di Home Assistant non ha risposto")
+    return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
+
+
+def journal_acts(journal, query: HistoryQuery) -> list[dict] | None:
+    """Gli atti di HIRIS nella finestra, per dire «per mano di HIRIS».
+    `None` -- non `[]` -- quando la cronaca non c'e' o non risponde: «non
+    l'ha fatto HIRIS» e «non ho potuto guardare» hanno due facce diverse
+    (fix F3 dell'onda finale del diario, 25/08/2026)."""
+    if journal is None:
+        return None
+    try:
+        return journal.list(from_ts=query.start.timestamp(),
+                            to_ts=query.end.timestamp())
+    except Exception as error:
+        logger.warning("cronaca illeggibile durante `history` (%s: %s)",
+                       type(error).__name__, error)
+        return None
+
+
+async def read_states(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror, *,
+                      journal=None) -> dict:
+    """Gli stati, dallo storico: le serie di tutti i soggetti, con la
+    finestra esplicita («ieri» incluso). Il diario di Home Assistant non si
+    usa piu': sa solo «N ore da adesso», un'entita' alla volta, e non
+    registra i sensori numerici (decisione del piano, 30/09/2026)."""
+    answer = await read_series(ha, [s.ident for s in chosen.subjects], query)
+    if "errore" in answer:
+        return answer
+    return state_rows(query, chosen, answer["serie"], truncated=answer["troncato"],
+                      acts=journal_acts(journal, query), current=mirror.state)
+
+
+async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -> dict:
+    """I valori: lo `state_class` dallo specchio decide la superficie
+    (chiederlo al modello sarebbe chiedergli un fatto che abbiamo noi, spec
+    «la storia» §3.1), e ogni superficie e' UNA lettura per tutte le serie
+    che la usano. Le classi vengono dalla STESSA lettura dello specchio di
+    `mirror` (revisione del Task 7: una seconda `all_states()` poteva dare
+    un'altra casa), con la guardia di `states_by_id`: da un inventario non
+    leggibile non si prende nemmeno lo `state_class`.
+
+    `attributes` sono le ceste dello specchio (`mirror.attributes`) com'erano:
+    `value_rows` ci guarda se un `total` ha `last_reset` (revisione del
+    Task 4)."""
+    known_classes = mirror.state_classes if mirror.readable else {}
+    state_classes = {s.ident: known_classes.get(s.ident) for s in chosen.subjects}
+    surfaces = {ident: value_surface(query, state_class)
+                for ident, state_class in state_classes.items()}
+    detail_ids = [ident for ident, surface in surfaces.items() if surface == "dettaglio"]
+    band_ids = [ident for ident, surface in surfaces.items() if surface == "oraria"]
+    detail = (await read_series(ha, detail_ids, query) if detail_ids
+              else {"serie": {}, "troncato": False})
+    if "errore" in detail:
+        return detail
+    bands = (await ha.hourly_statistics(
+        band_ids, query.start.isoformat(), query.end.isoformat()) if band_ids
+        else {"serie": {}})
+    if not isinstance(bands, dict) or "serie" not in bands:
+        return read_failure(bands, "le statistiche orarie non sono arrivate")
+    return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
+                      truncated=detail["troncato"], surfaces=surfaces,
+                      units=mirror.units, state_classes=state_classes,
+                      attributes=mirror.attributes)
+
+
+def run_key(cache, ident: str, registry: dict[str, dict]) -> tuple[str, str] | None:
+    """La chiave con cui Home Assistant conserva le esecuzioni di `ident`,
+    o `None` se non si risolve (e allora non si chiede: `trace/list` con
+    una chiave sconosciuta torna `[]`, che si leggerebbe «mai partita» --
+    docstring di `HAClient.traces`).
+
+    - Un'automazione: l'id della CONFIGURAZIONE, dallo specchio
+      (`automation_config_id`, la stessa risoluzione del vecchio
+      `_automation_trace`). Una YAML senza `id:` non ne ha: `None`.
+    - Uno script: la chiave di configurazione, che Home Assistant usa come
+      `unique_id` e da cui fa l'`entity_id` (`script.<chiave>`, verificato
+      alla fonte nel Task 6). Si prende l'`unique_id` del registro, perche'
+      un'entita' RINOMINATA cambia l'`object_id` e non la chiave; senza
+      voce di registro non c'e' rinomina possibile, e l'`object_id` E' la
+      chiave."""
+    domain, _, object_id = ident.partition(".")
+    if domain == "automation":
+        config_id = automation_config_id(cache, ident)
+        return ("automation", config_id) if config_id else None
+    unique_id = (registry.get(ident) or {}).get("unique_id")
+    key = unique_id or object_id
+    return ("script", str(key)) if key else None
+
+
+async def read_runs(ha, query: HistoryQuery, chosen: Chosen, home: dict, *,
+                    cache, seal) -> dict:
+    """Le esecuzioni: la chiave di Home Assistant di ogni soggetto
+    (`run_key`), UNA raffica per tutti (`HAClient.traces`), le righe da
+    `run_rows`. Le chiavi irrisolte non si chiedono: vanno in `non_letti`
+    dalle righe (Review Focus 4).
+
+    **Senza inventario leggibile non si risolve nessuna automazione, e lo
+    si dice prima**: «non trovo quell'automazione» su una casa non
+    guardata darebbe la colpa all'identificatore (Task 6 di «le tracce e il
+    log»).
+
+    **Tutte e due le strade passano dal confine** (reperto B-1, 22/09/2026):
+    `config` porta i segreti gia' risolti da Home Assistant, e l'innesco e'
+    testo che scrive un dispositivo di rete."""
+    if any(s.ident.startswith("automation.") for s in chosen.subjects):
+        fault = unreadable_inventory_error(cache)
+        if fault is not None:
+            return {"errore": fault["error"]}
+    # `home` e' la casa che `choose` ha gia' letto: la stessa, non una
+    # seconda lettura.
+    registry = {e.get("id"): e for e in home.get("entita") or []}
+    keys = {s.ident: run_key(cache, s.ident, registry) for s in chosen.subjects}
+    if query.run_id is not None:
+        subject = chosen.subjects[0]
+        key = keys[subject.ident]
+        if key is None:
+            return {"errore": f"«{subject.ident}»: {UNRESOLVED_RUNS}."}
+        answer = await ha.trace(key[0], key[1], query.run_id)
+        if not isinstance(answer, dict) or "traccia" not in answer:
+            return read_failure(answer, "la traccia non e' arrivata")
+        return run_detail(query, chosen,
+                          sanitize_structure(answer["traccia"], seal=seal))
+    wanted = [key for key in keys.values() if key is not None]
+    answer = (await ha.traces(wanted)) if wanted else {"tracce": {}, "non_letti": {}}
+    if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
+        return read_failure(answer, "le esecuzioni non sono arrivate")
+    traces = {name: sanitize_structure(runs, seal=seal)
+              for name, runs in answer["tracce"].items()}
+    return run_rows(query, chosen, traces=traces,
+                    keys={ident: (f"{key[0]}.{key[1]}" if key else None)
+                          for ident, key in keys.items()},
+                    unread=answer.get("non_letti") or {})
+
+
+def sealed_log(entries: list, seal) -> list[dict]:
+    """Le voci del registro, sigillate e filtrate PRIMA di diventare righe
+    (reperto B-1, 22/09/2026): `message` ed `exception` arrivano da un
+    componente qualunque, anche di terze parti.
+
+    **Anche `exception` passa dal sigillo dei segreti**: col solo
+    `sanitize_traceback`, una password
+    rifiutata scritta nel messaggio dell'eccezione arriverebbe al fornitore
+    del modello. Il sigillo guarda il testo PEZZO PER PEZZO
+    (`redaction.seal_free_text`), perche' un segreto in un registro sta dentro una
+    frase. Poi `sanitize_traceback` (il filtro delle istruzioni e il
+    tetto).
+
+    **Dell'eccezione si sigilla solo l'ultima riga** (revisione finale
+    della fetta, M-3, 30/09/2026): `error_rows` porta solo quella
+    (`last_line`, la stessa regola), e sigillare parola per parola tutta la
+    traccia costava una quindicina di impronte a parola per righe che non
+    arrivano mai al modello. Le righe prima non si sigillano perche' si
+    BUTTANO: la sicurezza e' la stessa."""
+    sealed = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        plain = {key: value for key, value in entry.items() if key != "exception"}
+        if isinstance(plain.get("message"), list):
+            plain["message"] = [seal_free_text(m, seal) for m in plain["message"]]
+        elif "message" in plain:
+            plain["message"] = seal_free_text(plain["message"], seal)
+        clean = sanitize_structure(plain, seal=seal)
+        tail = last_line(entry["exception"]) if entry.get("exception") else None
+        if tail is not None:
+            clean["exception"] = sanitize_traceback(seal_free_text(tail, seal))
+        sealed.append(clean)
+    return sealed
+
+
+async def read_errors(ha, query: HistoryQuery, *, seal) -> dict:
+    """Il registro degli errori di Home Assistant, sigillato, nelle righe di
+    `error_rows`. Non guarda la casa: gli errori si chiedono anche con
+    l'anagrafe non ancora caricata.
+
+    `system_log/list` e' `require_admin` in Home Assistant (Core 2026.9.3,
+    verificato il 27/09/2026): chi lo chiama ha GIA' deciso che puo' -- nella
+    chat, `ToolDispatcher._history` col cancello di `ADMIN_KINDS`."""
+    answer = await ha.system_log()
+    if not isinstance(answer.get("voci"), list):
+        return read_failure(answer, "il registro di Home Assistant non ha risposto")
+    return error_rows(query, sealed_log(answer["voci"], seal))
+
+
+async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache, seal,
+                       journal=None, now: float) -> dict:
+    """La storia della casa per una domanda gia' validata (`parse_query`):
+    sceglie di chi con la casa data (`choose`), legge a Home Assistant e
+    rende le righe del genere. Una casa per tutta la chiamata: lo specchio
+    serve ai valori, l'anagrafe alle chiavi degli script (revisione del
+    Task 7).
+
+    Gli errori non guardano la casa (`read_errors`); chi non vuole
+    costruirne una per loro chiama `read_errors` da se'.
+
+    **Il permesso non e' qui.** `esecuzioni` ed `errori` leggono cio' che Home
+    Assistant mostra ai soli amministratori (`ADMIN_KINDS`): il cancello sta
+    in chi chiama, prima di questa funzione."""
+    if query.kind == "errori":
+        return await read_errors(ha, query, seal=seal)
+    mirror, home = house.mirror, house.home_space
+    chosen = choose(query, house, behavior, now=now)
+    if isinstance(chosen, dict):
+        return chosen
+    if not chosen.subjects:
+        return empty_answer(query, chosen)
+    if query.kind == "esecuzioni":
+        return await read_runs(ha, query, chosen, home, cache=cache, seal=seal)
+    if query.kind == "valori":
+        response = await read_values(ha, query, chosen, mirror)
+    else:
+        response = await read_states(ha, query, chosen, mirror, journal=journal)
+    # Come in `search`: senza specchio leggibile lo stato di adesso e
+    # l'unita' sarebbero `None` ambigui fra «non c'e'» e «non ho guardato».
+    if "errore" not in response and not mirror.readable:
+        response["stato_non_letto"] = True
+    return response

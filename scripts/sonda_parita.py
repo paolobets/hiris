@@ -160,15 +160,14 @@ def excluded(inputs: dict) -> dict:
     l'osservatore non guarda.
     """
     home_space, mirror, entities = inputs["home_space"], inputs["mirror"], _entities(inputs)
-    selection = house_query.select_subjects(
-        house_query.HouseFilters(), ("entita",), House(home_space, mirror), [],
-        now=inputs["clock"])
+    selection = House(home_space, mirror).select(
+        house_query.HouseFilters(), ("entita",), [], now=inputs["clock"])
     copies = {
         "digest_visible_entity_ids": set(briefing.digest_visible_entity_ids(home_space)),
         "not _excluded_from_comparison": {
             key for key, entity in entities.items()
             if not topology._excluded_from_comparison(entity)},
-        "select_subjects": {entry["id"] for entry, _area, _where in selection.entities},
+        "House.select": {entry["id"] for entry, _area, _where in selection.entities},
         "observer.house_lines": set(_entity_ids(
             observer.house_lines(home_space), inputs, "observer.house_lines")),
     }
@@ -467,10 +466,9 @@ def units(inputs: dict) -> dict:
 
 
 def _selected(inputs: dict, **filters) -> set[str]:
-    selection = house_query.select_subjects(
+    selection = House(inputs["home_space"], inputs["mirror"]).select(
         house_query.HouseFilters(include_hidden=True, include_service=True, **filters),
-        ("entita",), House(inputs["home_space"], inputs["mirror"]), [],
-        now=inputs["clock"])
+        ("entita",), [], now=inputs["clock"])
     return {entry["id"] for entry, _area, _where in selection.entities}
 
 
@@ -503,7 +501,7 @@ def references(inputs: dict) -> dict:
             if by_search != by_card:
                 cases.append({"genere": "integrazione", "id": platform, "variante": label,
                               "search": by_search, "scheda": by_card})
-    return _verdict(cases, ["house_query.select_subjects", "queries.view"],
+    return _verdict(cases, ["House.select", "queries.view"],
                     {"integrazioni": len(platforms), "aree": len(home_space["aree"])})
 
 

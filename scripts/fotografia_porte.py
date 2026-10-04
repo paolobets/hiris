@@ -332,9 +332,8 @@ def _selections(home_space: dict, entries: list, mirror, clock: float) -> dict:
         wanted[f"integrazione:{platform}"] = {"platform": platform}
     selections = {}
     for label, filters in wanted.items():
-        selection = house_query.select_subjects(
-            house_query.HouseFilters(**filters), ("entita",), House(home_space, mirror),
-            entries, now=clock)
+        selection = House(home_space, mirror).select(
+            house_query.HouseFilters(**filters), ("entita",), entries, now=clock)
         selections[label] = {"entita": [entry["id"] for entry, _area, _where
                                         in selection.entities],
                              "escluse": selection.excluded}
