@@ -36,6 +36,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-37 | `decide_scope` rilegge TUTTA la tabella `scope` per ogni decisione | E | PS |  |  | cop-6 N-02 |
 | A-38 | «Chi ha già una ricetta?»: una SELECT e una scansione dell'anagrafe per dispositivo | E | PS |  |  | cop-6 N-03 |
 | A-39 | `last_before` eseguita due volte quando si rifà una cronaca (`day_boundaries` pure) | E | PS |  |  | cop-6 N-04 |
+| A-41 | `system_log`, `traces`, `hourly_statistics` letti dai giri di `server.py` e dagli strumenti della chat | E | DP |  |  | Tappa 2, Task 13 (04/10/2026): `server.py:826`, `:1087`, `:1809` contro `home_space/tools.py:2563`, `:2720`, `:2650`; si chiude con R13 |
 
 ---
 

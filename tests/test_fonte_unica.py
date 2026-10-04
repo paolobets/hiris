@@ -260,26 +260,25 @@ SHARED_READS: dict[str, dict[str, tuple[str, str]]] = {
     # Le tre qui sotto hanno la stessa radice, R13 della spec: le letture
     # degli strumenti sono metodi privati di un oggetto che nasce a ogni turno
     # coi permessi di una persona, e i giri del cervello non possono
-    # chiamarle -- quindi rileggono da soli. NESSUNA voce aperta del registro
-    # nomina questi tre doppioni (cercato il 04/10/2026): A-08 e' la citazione
-    # che `fonte_unica_eccezioni.json` portava per `server.py` dalla Tappa 0,
-    # e non parla di queste letture. Serve una voce propria.
+    # chiamarle -- quindi rileggono da soli. La voce e' A-41, aperta il
+    # 04/10/2026 quando questo cancello li ha trovati: fino ad allora li
+    # copriva A-08, che non parla di queste letture.
     "system_log": {
         "server.py": (
-            "A-08",
+            "A-41",
             ("il giro delle condizioni (ogni 10 minuti) legge il registro degli "
              "errori per `Watcher.watch_system`; lo strumento non e' "
              "richiamabile dal cervello (R13)")),
     },
     "traces": {
         "server.py": (
-            "A-08",
+            "A-41",
             ("`watch_automation_outcomes` legge in raffica le tracce delle "
              "automazioni segnate; lo strumento non e' richiamabile (R13)")),
     },
     "hourly_statistics": {
         "server.py": (
-            "A-08",
+            "A-41",
             ("`_report_ingredients` legge le serie orarie del resoconto del "
              "giorno; lo strumento non e' richiamabile (R13)")),
     },
