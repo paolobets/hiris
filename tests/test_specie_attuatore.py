@@ -67,7 +67,7 @@ def _literals(values) -> Counter:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and node.value in values:
-                found[(str(path.relative_to(APP)), node.value)] += 1
+                found[(path.relative_to(APP).as_posix(), node.value)] += 1
     return found
 
 

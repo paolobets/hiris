@@ -29,6 +29,14 @@ import pytest
 
 from hiris.app.agent import runner
 
+#: La CLI finta e' uno script con la riga `#!` e la soglia e' quella del
+#: kernel Linux: su Windows il sistema rifiuta di eseguirla (ENOEXEC) e i
+#: permessi del file non si leggono come su POSIX. Il ponte gira solo nel
+#: container dell'add-on, Linux: queste prove girano nella CI, non sul PC
+#: Windows (misurato il 05/10/2026: quattro rosse per ENOEXEC).
+pytestmark = pytest.mark.skipif(sys.platform == "win32",
+                                reason="la CLI finta e' uno script POSIX col #!")
+
 #: La soglia misurata: il primo argomento che il kernel rifiuta.
 THRESHOLD = 131_072
 

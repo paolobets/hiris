@@ -226,7 +226,7 @@ def _readers_of(constant: str) -> list[str]:
                 continue
             if any(isinstance(node, ast.Name) and node.id == constant
                    for node in ast.walk(function)):
-                readers.append(f"{path.relative_to(root)}:{function.name}")
+                readers.append(f"{path.relative_to(root).as_posix()}:{function.name}")
     return readers
 
 
