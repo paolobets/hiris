@@ -349,8 +349,8 @@ class _FakeAgendaStore:
     (nessun obbligatorio mancante, nessun nome ignoto) TERMINI con una
     risposta vera invece di un `errore` che nasconderebbe un falso verde."""
 
-    def list(self, *, thread, solo_in_sospeso):
-        return []
+    def page(self, *, thread, solo_in_sospeso):
+        return [], 0
 
 
 # Il filo del turno: `agenda` lavora sulle promesse di chi chiede (spec
@@ -1734,41 +1734,48 @@ async def test_calendar_default_window_is_thirty_days_ahead_zero_back():
 
 
 @pytest.mark.asyncio
-async def test_calendar_window_is_capped_at_a_year_each_direction():
-    """Un tetto sensato su entrambe le direzioni: oltre un anno la domanda
-    non e' piu' sui prossimi appuntamenti ma una scansione del calendario.
+async def test_calendar_beyond_a_year_is_refused_not_cut():
+    """B9 (approvata da Paolo il 05/10/2026; B-33): oltre un anno la domanda
+    non e' piu' sui prossimi appuntamenti ma una scansione del calendario, e
+    si RIFIUTA, come fanno gli altri strumenti sulle durate (`history` oltre
+    i 90 giorni). Fino a quel giorno `_clamp_days` tagliava a 365 in
+    silenzio: il modello credeva di aver letto la finestra che aveva chiesto.
 
-    **Mutazione che uccide l'assert**: togliere il `min(...)` in
-    `_clamp_days` (tornare direttamente `max(0.0, number)`, senza tetto).
-    Verificato eseguendo: con quella sostituzione `delta` diventa
-    `timedelta(days=20000)` (10000+10000, il valore chiesto senza taglio),
-    e `assert delta == timedelta(days=730)` arrossisce."""
+    Prima di chiedere a Home Assistant, e con tutti e due gli argomenti
+    detti insieme. Mutazione eseguita: tornato al taglio in silenzio ->
+    rossa (nessun `errore`, e la finestra chiesta e' di 730 giorni)."""
     house = _calendar_house([_PERSONALE], {"calendar.personale": []})
     d = ToolDispatcher(None, None, ha=house)
-    await d.dispatch("calendar", {"giorni_avanti": 10000, "giorni_indietro": 10000})
+    esito = await d.dispatch("calendar", {"giorni_avanti": 10000, "giorni_indietro": 400})
+    assert "giorni_avanti" in esito["errore"] and "giorni_indietro" in esito["errore"]
+    assert "365" in esito["errore"]
+    assert house.calls == []
+
+
+@pytest.mark.asyncio
+async def test_calendar_a_year_each_direction_is_still_allowed():
+    """Il confine e' compreso: 365 per parte si legge, e la finestra e' di
+    730 giorni."""
+    house = _calendar_house([_PERSONALE], {"calendar.personale": []})
+    d = ToolDispatcher(None, None, ha=house)
+    await d.dispatch("calendar", {"giorni_avanti": 365, "giorni_indietro": 365})
     _entity_id, start, end = _asked_window(house)
     delta = datetime.fromisoformat(end) - datetime.fromisoformat(start)
     assert delta == timedelta(days=730)
 
 
 @pytest.mark.asyncio
-async def test_calendar_giorni_avanti_garbage_falls_back_to_the_default():
-    """Contratto totale di `_clamp_days` (gemella di `historian.normalize_
-    hours`): qualunque cosa in ingresso -> un numero, mai un'eccezione.
-
-    **Mutazione che uccide l'assert**: togliere il `try/except` in
-    `_clamp_days` (lasciare solo `float(raw)`). Verificato eseguendo: con
-    quella sostituzione `float("non un numero")` solleva `ValueError` PRIMA
-    di qualunque chiamata al canale -- la rete di sicurezza finale di
-    `dispatch` lo trasforma in un `errore` generico, ma `house.calls`
-    resta vuota, e `_asked_window(house)` arrossisce con un `IndexError`
-    (non l'assert sul `delta`, che non viene mai raggiunto)."""
+async def test_calendar_giorni_avanti_garbage_is_refused_before_asking():
+    """Dal 05/10/2026 (Tappa 5, Task 3, D-40) un `giorni_avanti` che non e'
+    un numero lo rifiuta `dispatch` contro il `type` dello schema, prima di
+    chiedere a Home Assistant: fino ad allora `_clamp_days` lo trasformava
+    in silenzio nel predefinito, e il modello credeva di aver chiesto un'altra
+    finestra."""
     house = _calendar_house([_PERSONALE], {"calendar.personale": []})
     d = ToolDispatcher(None, None, ha=house)
-    await d.dispatch("calendar", {"giorni_avanti": "non un numero"})
-    _entity_id, start, end = _asked_window(house)
-    delta = datetime.fromisoformat(end) - datetime.fromisoformat(start)
-    assert delta == timedelta(days=30)
+    esito = await d.dispatch("calendar", {"giorni_avanti": "non un numero"})
+    assert "«giorni_avanti» vuole un numero" in esito["errore"]
+    assert house.calls == []
 
 
 @pytest.mark.asyncio

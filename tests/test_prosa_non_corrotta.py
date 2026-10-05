@@ -84,6 +84,9 @@ _PAROLE_DOMINIO = frozenset({
     # questa eccezione andrebbero fra backtick anche i «perche'» che
     # significano «poiche'».
     "perche", "prova", "testo", "richiesta", "giri", "impronta", "esito",
+    # La causa di un rifiuto (B-26, attori Task 1.2, 05/10/2026): `cause` e'
+    # il campo di `NotComputable`, e «le cause» e' il plurale italiano.
+    "cause",
 })
 
 #: I file guardati: l'ambito dove le rinomine meccaniche sono avvenute.

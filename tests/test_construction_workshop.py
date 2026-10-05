@@ -512,6 +512,32 @@ async def test_il_consiglio_del_mestiere_viaggia_nell_preview(banco):
     assert "script" in esito["anteprima"]
 
 
+@pytest.mark.asyncio
+async def test_motivo_consigliere_esce_una_volta(banco):
+    """C-53 (Tappa 4): il motivo del consigliere usciva DUE volte dalla stessa
+    risposta di `propose` -- nella riga «Nota:» dell'anteprima e in
+    `consiglio.motivo` -- e il modello lo leggeva due volte a ogni proposta.
+    La sua casa e' l'anteprima, che e' anche cio' che la pagina Costruzioni
+    archivia e mostra: `consiglio` porta il resto del verdetto.
+
+    Mutazione ESEGUITA (05/10/2026): `consiglio` restituito intero -- rossa."""
+    import json
+
+    from hiris.app.action.construction.advisor import consiglia
+
+    officina, _, _, _ = banco
+    intento = _intento(richiesto="automazione", innesco=[], ricorrente=False,
+                       azioni=[{"action": "light.turn_off"}])
+    motivo = consiglia({"richiesto": intento["richiesto"], "innesco": intento["innesco"],
+                        "passi": intento["azioni"], "stati": intento["stati"],
+                        "parametri": intento["parametri"], "riuso": intento["riuso"],
+                        "ricorrente": intento["ricorrente"]})["motivo"]
+    assert motivo, "precondizione: il consigliere ha qualcosa da dire"
+    esito = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
+    assert json.dumps(esito, ensure_ascii=False).count(motivo) == 1, esito
+    assert motivo in esito["anteprima"]
+
+
 # ==== Review 2026-08-23: CRITICAL + IMPORTANT 1-7 =========================
 
 @pytest.mark.asyncio

@@ -321,7 +321,7 @@ async def test_chat_max_turns_blocks_when_limit_reached(client):
     ], data_dir, thread=THREAD_SVILUPPO)
 
     resp = await client.post("/api/chat", json={"message": "third message"})
-    assert resp.status == 200
+    assert resp.status == 409
     data = await resp.json()
     assert data.get("error") == "max_turns_reached"
     assert data["turns"] == 2

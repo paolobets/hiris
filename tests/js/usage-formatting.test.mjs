@@ -14,15 +14,15 @@ import { loadScripts } from './helpers/dom.mjs';
       preesistente, trovato dall'audit di disegno, non introdotto qui.
 
    La funzione e' CONDIVISA col riquadro della chat: sistemarla la sistema in
-   tutti e due i posti, che e' il punto di averla in `config/api.js`. */
+   tutti e due i posti, che e' il punto di averla in `common.js`. */
 
 const HTML = '<!doctype html><body></body>';
 
 function carica() {
-  // `loadScripts` valuta col global dell'host: le funzioni di `api.js` -- che
+  // `loadScripts` valuta col global dell'host: le funzioni di `common.js` -- che
   // nel browser sono globali di pagina -- finiscono su `globalThis`, non su
   // `window`. E' lo stesso modo in cui `usage-route.js` le chiama: nude.
-  loadScripts(['config/api.js'], { html: HTML });
+  loadScripts(['common.js'], { html: HTML });
   return globalThis;
 }
 

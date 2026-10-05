@@ -21,7 +21,7 @@ const HTML = (buildLocale) => `<!doctype html><head>
   <template id="tpl-page-chrome"></template>
 </body>`;
 
-const MODULI = ['config/api.js', 'config/state.js', 'config/router.js', 'config/main.js', 'build-check.js'];
+const MODULI = ['common.js', 'config/state.js', 'config/router.js', 'config/main.js', 'build-check.js'];
 
 function avvia(buildLocale, buildRemoto) {
   const ctx = loadScripts(MODULI, { html: HTML(buildLocale) });

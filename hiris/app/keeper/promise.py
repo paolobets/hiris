@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import json
 
-from ..chat_thread import ChatThread
+from ..chat_thread import thread_from_columns
+from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
 
 VERB = ("fai", "chiedi")
@@ -280,6 +281,29 @@ def _column(row, name):
         return None
 
 
+def _snapshot_out(snapshot, timezone):
+    """L'istantanea come esce: l'istante di ogni misura nell'ora della casa
+    (decisione D3, 05/10/2026), col fuso che la promessa porta con se'.
+
+    L'archivio tiene l'epoch che `ToolDispatcher._snapshot` ha scritto: si
+    cambia la resa, non il record, e cosi' escono uguali anche le promesse
+    nate prima di oggi. Nessuna pagina legge `misurato_ts` (cercato in
+    `static/` il 05/10/2026): la pagina Impegni mostra della misura soltanto
+    entita', valore e unita'.
+    """
+    if not isinstance(snapshot, list):
+        return snapshot
+    zone = None
+    out = []
+    for measurement in snapshot:
+        if isinstance(measurement, dict) and "misurato_ts" in measurement:
+            zone = zone or home_space_zone(timezone)
+            measurement = {**measurement,
+                           "misurato_ts": instant_out(measurement["misurato_ts"], zone)}
+        out.append(measurement)
+    return out
+
+
 def serializza(row) -> dict:
     """L'unica forma di una promessa. Stesse chiavi, sempre."""
     fuori = {
@@ -291,7 +315,7 @@ def serializza(row) -> dict:
         "fuso": row["fuso"],
         "chiamata": _load(row["chiamata_json"]),
         "domanda": row["domanda"],
-        "istantanea": _load(row["istantanea_json"]),
+        "istantanea": _snapshot_out(_load(row["istantanea_json"]), row["fuso"]),
         "stato": row["stato"],
         "motivo": row["motivo"],
         "esecuzione_id": row["esecuzione_id"],
@@ -312,8 +336,8 @@ def serializza(row) -> dict:
         "esito_letto_ts": row["esito_letto_ts"],
         # `None` per le promesse nate prima delle promesse divise, finche' il
         # proprietario non le adotta (`chat_thread.adopt_if_owner`).
-        "thread": (ChatThread(row["subject_key"], row["entry_point"])
-                   if _column(row, "subject_key") else None),
+        "thread": thread_from_columns(_column(row, "subject_key"),
+                                      _column(row, "entry_point")),
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

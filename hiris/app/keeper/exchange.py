@@ -21,6 +21,7 @@ import time
 
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
+from ..proxy._sanitize import truncate_with_marker
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +145,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     """
     from ..api.handlers_chat import create_tool_dispatcher
     from ..api.handlers_home_space import compose_briefing
-    from ..steering import declare_downgrade, misura_turno, who_answers
+    from ..steering import PROMISE_SPECIES, declare_downgrade, misura_turno, who_answers
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
     # 22/08/2026 questo turno non se la faceva affatto e andava dritto al
@@ -157,7 +158,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     # Lo stesso imbuto delle altre porte (reperto C-5, 23/09/2026): la nota
     # che la pagina della promessa mostra resta dov'era, e in piu' il ripiego
     # si conta nell'archivio dei consumi.
-    declare_downgrade(app, agent="promessa", reason=downgrade_reason)
+    declare_downgrade(app, agent=PROMISE_SPECIES, reason=downgrade_reason)
     if route == "ponte":
         return _enqueue_to_bridge(app, promise)
 
@@ -180,7 +181,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
 
     try:
         async with misura_turno(app.get("usage"), runner,
-                                specie="promessa", canale="catena"):
+                                specie=PROMISE_SPECIES, canale="catena"):
             answer = await runner.chat(
                 user_message=_domanda(promise),
                 system_prompt=_system_prompt(),
@@ -238,8 +239,7 @@ def _senza_conclusione(answer) -> str:
     detto = answer.strip() if isinstance(answer, str) else ""
     if not detto:
         return "il turno non ha concluso: non so cosa dirti."
-    if len(detto) > _CEILING_RIPORTO:
-        detto = detto[:_CEILING_RIPORTO].rstrip() + "…"
+    detto = truncate_with_marker(detto, _CEILING_RIPORTO)
     return f"il turno non ha concluso. Aveva risposto a parole: «{detto}»"
 
 
@@ -303,7 +303,9 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     archivi, con la STESSA funzione del ramo sincrono.
     """
     from ..api.handlers_home_space import compose_briefing
-    from ..api.handlers_models import _STORE_DEFAULTS
+    from ..api.handlers_models import bridge_deadline_min
+    from ..reasoning.queue import PRIORITY_BACKGROUND
+    from ..steering import bridge_model
 
     try:
         briefing, _summary = compose_briefing(app)
@@ -314,8 +316,7 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
 
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
     # l'utente cambia dev'essere quella che il turno subisce.
-    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     app["reasoning_queue"].enqueue(
         "promessa",
@@ -331,6 +332,8 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
             "history": [{"role": "user", "content": _domanda(promise)}],
             "system_prompt": _system_prompt(),
             "contesto": briefing,
+            # Il modello del proprietario, come la chat (decisione 11).
+            "model": bridge_model(app),
         },
         now + deadline_min * 60,
         now=now,
@@ -340,6 +343,9 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
         # filo serve a chi consegna l'esito, e `claimed_chat` continua a non
         # vedere questo job perche' filtra `kind='chat'`.
         thread=promise.get("thread"),
+        # La promessa sta con i turni del cervello: solo la chat passa avanti
+        # (D4 della Tappa 6).
+        priority=PRIORITY_BACKGROUND,
     )
     logger.info("promessa %s: turno accodato al piano (scadenza %d min)",
                 promise["id"], deadline_min)

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 
-from ...chat_thread import ChatThread
+from ...chat_thread import ChatThread, unknown_id_text
 from ...home_space.historian import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer
@@ -69,7 +69,7 @@ _BORN_THIS_TURN = ("questa proposta e' nata in questo stesso turno: te l’ho "
 #: lato di chi chiede sono indistinguibili PER COSTRUZIONE, e due testi
 #: diversi lascerebbero trapelare che una proposta con quell'id esiste
 #: davvero, solo altrove.
-_UNKNOWN_ID = "non ho nessuna proposta con quell’identificatore."
+_UNKNOWN_ID = unknown_id_text("nessuna proposta")
 
 #: Fix round 1 (Task 7): quando la scelta implicita di QUESTO filo non trova
 #: niente, ma esistono proposte `in_attesa` ORFANE (`subject_key IS NULL`:
@@ -141,11 +141,10 @@ def _add_phrase(subject: dict | None, phrase: str | None) -> dict | None:
     detto = (phrase or "").strip()
     if not detto:
         return subject
-    if len(detto) > PHRASE_MAX:
-        # Il taglio **si dichiara**: senza il marcatore, quella sembrerebbe la
-        # frase intera, e chi legge la cronaca giudicherebbe su meta' di cio'
-        # che e' stato detto.
-        detto = detto[:PHRASE_MAX] + "…"
+    # Il taglio **si dichiara**: senza il marcatore, quella sembrerebbe la
+    # frase intera, e chi legge la cronaca giudicherebbe su meta' di cio'
+    # che e' stato detto. Il marcatore e' quello della casa (C-55).
+    detto = _truncate(detto, PHRASE_MAX)
     return {**(subject or {}), "confirm_phrase": detto}
 
 
@@ -246,12 +245,7 @@ class Workshop:
         """
         operation = intent.get("gesto")
         domain = intent.get("dominio")
-        if operation not in OPERATIONS:
-            return {"errore": f"gesto sconosciuto: {operation}. Gesti: {', '.join(OPERATIONS)}."}
-        if domain not in self._ha.CONFIGURABLE_DOMAINS:
-            return {"errore": (f"non so costruire «{domain}». So costruire: "
-                               f"{', '.join(self._ha.CONFIGURABLE_DOMAINS)}.")}
-        form_reason = _invalid_form(intent)
+        form_reason = form_refusal(intent, self._ha.CONFIGURABLE_DOMAINS)
         if form_reason is not None:
             return {"errore": form_reason}
 
@@ -319,8 +313,12 @@ class Workshop:
             now=now, thread=thread)
         if "errore" in occurrence:
             return occurrence
+        # Il motivo del consigliere vive nell'anteprima («Nota: ...»), che e'
+        # anche cio' che la pagina Costruzioni archivia: ripeterlo qui lo
+        # faceva leggere due volte al modello (C-53, Tappa 4). `consiglio`
+        # porta il resto del verdetto.
         return {"proposta_id": occurrence["id"], "anteprima": preview,
-                "consiglio": consiglio}
+                "consiglio": {k: v for k, v in consiglio.items() if k != "motivo"}}
 
     async def _free_key(self, domain: str, intent: dict) -> dict:
         """Una chiave che in questa casa non e' gia' occupata.
@@ -1020,7 +1018,7 @@ class Workshop:
         """
         row = self._store.read(construction_id)
         if row is None:
-            return {"errore": "non ho nessuna costruzione con quell’identificatore."}
+            return {"errore": unknown_id_text("nessuna costruzione")}
         if row["stato"] != "applicata":
             return {"errore": "quella costruzione non e' mai stata applicata: "
                               "non c’e' niente da rimettere."}
@@ -1070,6 +1068,42 @@ class Workshop:
             preview += ("\nSenza un turno riconoscibile non potro' confermare da "
                          "qui: apri la pagina Costruzioni e conferma di la'.")
         return {"proposta_id": proposal["id"], "anteprima": preview}
+
+
+def closed_fields(domains) -> dict[str, tuple[str, ...]]:
+    """I campi dell'intento che la porta accetta solo da un vocabolario
+    chiuso, e che lo schema dello strumento `propose` descrive soltanto a
+    parole (`home_space/tools.PROPOSE_TOOL_DEF`: «crea, modifica o
+    cancella.»). `domains` e' cio' che il client sa configurare
+    (`HAClient.CONFIGURABLE_DOMAINS`): la porta lo chiede al suo client, chi
+    compone un contratto lo chiede alla classe. «richiesto» non c'e': il suo
+    vocabolario lo schema lo enumera gia' (`advisor.STRUCTURES`).
+
+    Lo legge il contratto dell'attuatore (Tappa 6, Task 5, D5) per offrire al
+    modello le alternative che `form_refusal` poi impone: due copie degli
+    stessi elenchi divergerebbero al primo gesto nuovo."""
+    return {"gesto": OPERATIONS, "dominio": tuple(domains)}
+
+
+def form_refusal(intent: dict, domains) -> str | None:
+    """Il motivo per cui la porta rifiuta la FORMA di un intento, o `None`.
+
+    E' la prima meta' di `Workshop.propose` -- gesto, dominio, e la forma dei
+    campi (`_invalid_form`) -- separata perche' serve anche PRIMA della porta:
+    l'attuatore valida la sua `intenzione` con questa stessa funzione prima di
+    chiamare `propose` (Tappa 6, Task 5, D5). Fino al 05/10/2026 il suo
+    contratto chiedeva una forma che questa funzione rifiutava, e lo si
+    scopriva solo dopo aver speso il turno.
+    """
+    vocabularies = closed_fields(domains)
+    operation = intent.get("gesto")
+    if operation not in vocabularies["gesto"]:
+        return f"gesto sconosciuto: {operation}. Gesti: {', '.join(vocabularies['gesto'])}."
+    domain = intent.get("dominio")
+    if domain not in vocabularies["dominio"]:
+        return (f"non so costruire «{domain}». So costruire: "
+                f"{', '.join(vocabularies['dominio'])}.")
+    return _invalid_form(intent)
 
 
 def _invalid_form(intent: dict) -> str | None:

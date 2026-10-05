@@ -139,7 +139,7 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         job = q.get(body["job_id"])
         assert job["context"]["model"] == "opus"
 
-        argv = runner._chat_claude_args("SYS", "USER", job["context"]["model"])
+        argv = runner._chat_claude_args("/sistema.txt", job["context"]["model"])
         assert argv[argv.index("--model") + 1] == "opus"
     finally:
         close_all_stores()

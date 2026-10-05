@@ -78,7 +78,9 @@
             return;
           }
           if (data.status === 'error') {
-            window.HirisChatMessages.updateBubble(placeholderRow, data.message || 'Errore nella risposta.');
+            /* A6 (05/10/2026): il testo arriva in `error`, la forma comune;
+               lo stato resta 200, perche' il job e' stato letto. */
+            window.HirisChatMessages.updateBubble(placeholderRow, data.error || 'Errore nella risposta.');
             return;
           }
           /* status === 'pending' (or unexpected 404/503 body without a status)
@@ -157,9 +159,8 @@
        riaprirebbe mentre HIRIS sta ancora elaborando la risposta. */
     var handedOff = false;
     try {
-      var r = await fetch('api/chat', {
+      var r = await api('api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
         body: JSON.stringify({ message: text }),
       });
       var data = await r.json();

@@ -227,20 +227,27 @@ async def test_una_consegna_di_chat_non_tocca_le_promesse(consegna):
 
 def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
     """Una promessa `in_corso` per sempre non si vede: `risana()` la
-    chiuderebbe solo al prossimo riavvio, cioe' forse mai."""
+    chiuderebbe solo al prossimo riavvio, cioe' forse mai.
+
+    **L'attesa detta e' quella del turno, non quella di adesso** (S-02, Tappa
+    6 Task 2: la scadenza viaggia col turno). Il turno e' partito con dieci
+    minuti; nel frattempo l'utente ha portato la scadenza a tre. Fino alla
+    Tappa 6 il motivo diceva «3 minuti»: una durata che quel turno non ha
+    mai avuto."""
     from hiris.app.server import _close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
         ident = _promessa_in_corso(promesse)
         app = {"agenda": promesse,
-               "models_config": {"ponte": {"scadenza_min": 10}}}
+               "models_config": {"ponte": {"scadenza_min": 3}}}
 
-        _close_expired_promise(app, {"wake": {"promessa_id": ident}})
+        _close_expired_promise(app, {"wake": {"promessa_id": ident},
+                                     "created_ts": 100.0, "deadline_ts": 700.0})
 
         p = promesse.read(ident)
         assert p["stato"] == "fallita"
-        assert "10 minuti" in p["motivo"]
+        assert "10 minuti" in p["motivo"], p["motivo"]
     finally:
         promesse.close()
 
@@ -357,7 +364,10 @@ def test_un_turno_scaduto_sul_piano_lascia_una_riga_breve_nel_filo(tmp_path):
         app = {"agenda": promesse, "data_dir": str(tmp_path),
                "models_config": {"ponte": {"scadenza_min": 10}}}
 
-        _close_expired_promise(app, {"wake": {"promessa_id": ident}})
+        # Un job vero porta sempre i due istanti (colonne NOT NULL della
+        # coda), e l'attesa detta e' la loro differenza (S-02).
+        _close_expired_promise(app, {"wake": {"promessa_id": ident},
+                                     "created_ts": 100.0, "deadline_ts": 700.0})
 
         righe = load_history(str(tmp_path), thread=PAOLO)
         assert len(righe) == 1

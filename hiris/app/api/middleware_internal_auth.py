@@ -7,6 +7,7 @@ import time
 from aiohttp import web
 
 from .admission import admission_refusal
+from .boundary import error_response
 
 logger = logging.getLogger(__name__)
 
@@ -213,17 +214,15 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     if motivo is not None:
         logger.warning("servizio: richiesta rifiutata da %s — %s",
                        request.remote, motivo)
-        return web.json_response({"errore": motivo}, status=401)
+        return error_response(401, motivo)
     if firmato is not None:
         if not consente_metodo(firmato["ruolo"], request.method):
             logger.warning(
                 "servizio: «%s» ha ruolo «%s» e ha chiesto %s %s — negato",
                 firmato["servizio"], firmato["ruolo"], request.method,
                 request.path)
-            return web.json_response(
-                {"errore": f"il servizio «{firmato['servizio']}» ha il ruolo "
-                           f"«{firmato['ruolo']}»: legge e non scrive"},
-                status=403)
+            return error_response(403, f"il servizio «{firmato['servizio']}» ha il ruolo "
+                                       f"«{firmato['ruolo']}»: legge e non scrive")
         request["auth_via"] = "canale"
         request["soggetto"] = {"specie": firmato["specie"],
                                "id": firmato["servizio"],
@@ -292,4 +291,4 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
         request.remote, request.method, request.path,
         " — portava un segreto condiviso, che dal 22/09/2026 non apre più niente"
         if request.headers.get("X-HIRIS-Internal-Token") else "")
-    return web.json_response({"errore": _ISTRUZIONI}, status=401)
+    return error_response(401, _ISTRUZIONI)

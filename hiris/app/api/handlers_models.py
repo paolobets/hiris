@@ -16,6 +16,7 @@ from ..model_resolution import (
     compose_topology,
     subscription_has_token,
 )
+from .boundary import error_response
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,21 @@ _OUR_KEYS = (
 # `base`, che parte dal contenuto GIA' SU DISCO. Solo l'avvio li scrive, con
 # `flags=True`.
 _MIGRATION_FLAGS = ("seminato", "catena_seminata", "piano_seminato")
+
+
+def bridge_deadline_min(models_config: dict | None) -> int:
+    """Quanti minuti ha un turno accodato sul ponte per avere risposta.
+
+    **Una lettura sola** (Tappa 6, Task 2). Fino a qui la stessa espressione
+    era scritta in otto punti -- sei accodamenti, lo spazzino e la promessa
+    scaduta -- e due ripiegavano su un `5` scritto a mano invece che sul
+    predefinito di `_STORE_DEFAULTS` (spec §4.3, «scadenza riletta in 8
+    punti»). Si legge all'ACCODAMENTO: da li' in poi la scadenza viaggia col
+    turno (`deadline_ts`), e chi deve dire quanto ha aspettato un turno lo
+    legge dal turno, non da qui.
+    """
+    return int((models_config or {}).get("ponte", {}).get(
+        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
 
 
 def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
@@ -526,7 +542,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "invalid JSON body"}, status=400)
+        return error_response(400, "invalid JSON body")
     data_dir = request.app.get("data_dir") or "/data"
     clean = save_models_config(data_dir, body if isinstance(body, dict) else {})
     request.app["models_config"] = clean   # hot-update per la sessione corrente

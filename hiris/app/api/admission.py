@@ -23,6 +23,7 @@ from aiohttp import web
 from aiohttp.web_urldispatcher import StaticResource
 
 from ..chat_thread import subject_key_for
+from .boundary import error_body
 from .soffitto import _route_pattern, boundary_role, is_admin_role
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ STATIC_PREFIX = "/static"
 #: niente: le rotte si CHIEDONO al router nelle prove, la scelta di quali
 #: aprire no. Ogni voce viene da una chiamata vera delle pagine, lette il
 #: 27/09/2026: `index.html` e `static/chat/*.js`, `static/pending-badge.js`,
-#: `static/build-check.js`, `static/config/api.js`, e nel guscio `/config` gli
+#: `static/build-check.js`, `static/common.js`, e nel guscio `/config` gli
 #: Impegni (`agenda-route.js`) e la Memoria in lettura (`memory-route.js`).
 #: Niente prefissi: una rotta nuova nasce chiusa. HEAD passa solo dove passa
 #: GET (ruling R-2.13), e non si scrive.
@@ -56,7 +57,7 @@ ADMISSION: tuple[tuple[str, str, str], ...] = (
       "delle due pagine si disegna")),
     # Cio' che ogni guscio chiama all'avvio.
     ("GET", "/api/config",
-     ("il tema della pagina (`config/api.js::applyTheme`), chiamato da "
+     ("il tema della pagina (`common.js::applyTheme`), chiamato da "
       "entrambi i gusci all'avvio")),
     ("GET", "/api/health",
      ("connesso o no (`chat/main.js::checkHealth`, `config/main.js`) e "
@@ -166,7 +167,7 @@ def _refusal(request: web.Request, text: str) -> web.Response:
     pagina per i gusci. La forma si sceglie dal percorso e non dalla rotta:
     una rotta vietata e una che non esiste devono rispondere uguale (2.16)."""
     if request.path.startswith("/api/"):
-        return web.Response(body=json.dumps({"errore": text}).encode("utf-8"),
+        return web.Response(body=json.dumps(error_body(text)).encode("utf-8"),
                             status=403, content_type="application/json",
                             headers=_REFUSAL_HEADERS)
     return web.Response(body=_PAGES[text], status=403, content_type="text/html",

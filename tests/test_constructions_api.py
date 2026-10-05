@@ -548,3 +548,42 @@ async def test_conferma_con_la_rilettura_in_guasto_e_503_e_non_scrive(client, cs
     assert risposta.status == 503
     assert "guasto_rete" not in await risposta.json()
     assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path):
+    """C-12 (Tappa 4, Task 5): «In attesa» o «Storico» lo decide il server.
+
+    Le costruzioni aspettano finche' stanno in `STATES_SOSPESO` -- `in_corso`
+    compreso: rivendicata non vuol dire decisa --, le proposte a mano finche'
+    sono `PROPOSAL_PENDING`. La pagina legge `sospesa` e non sa piu' quali
+    parole lo dicano (`tests/js/constructions-route.test.mjs`). Anche la
+    singola lo porta: la stessa costruzione ha la stessa forma dalle due porte.
+
+    Mutazioni eseguite: `_construction_suspended` che guarda il solo
+    `in_attesa` -> rossa su `in_corso`; le proposte a mano sempre `False` ->
+    rossa su quella in attesa."""
+    import json
+
+    from hiris.app.mind.store import ObservationsStore
+
+    righe = [{"id": "a", "stato": "in_attesa", "creata_ts": 3},
+             {"id": "b", "stato": "in_corso", "creata_ts": 2},
+             {"id": "c", "stato": "applicata", "creata_ts": 1}]
+    app = _app(FintoArchivio(righe))
+    osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
+    attesa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f1", prova={},
+                                       chi_applica="tu", now_ts=5.0)
+    chiusa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f2", prova={},
+                                       chi_applica="tu", now_ts=4.0)
+    osservazioni.close_proposal(chiusa, osservazioni.PROPOSAL_OUTCOMES[0], now_ts=6.0)
+    app["observations"] = osservazioni
+    try:
+        corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))
+        sospese = {c["id"]: c["sospesa"] for c in corpo["constructions"]}
+        assert sospese == {attesa: True, chiusa: False, "a": True, "b": True, "c": False}
+        singola = json.loads((await handle_get_construction(
+            FintaRichiesta(app, ident="b"))).body)
+        assert singola["construction"]["sospesa"] is True
+    finally:
+        osservazioni.close()

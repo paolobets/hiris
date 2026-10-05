@@ -23,20 +23,33 @@ regola verso la casa e' «solo letture».
 
 ## Le cause (piano degli strati 1-2 degli attori, Task 1.7)
 
-I soggetti morti e le misure non calcolabili si contano anche **per causa**,
-dal campo `causa` della riga quando c'e'. Il campo nasce col Task 1.2 (le
-misure) e col Task 1.5 (i soggetti): prima, tutto finisce sotto «senza causa»,
+Le misure non calcolabili si contano anche **per causa**, dal campo `causa`
+della riga quando c'e' (Task 1.2): prima, tutto finisce sotto «senza causa»,
 ed e' il numero che lo strato 1 deve portare a zero. Le misure «ferme» sono i
 rifiuti con la causa del dato fermo.
+
+I soggetti morti (guardati, e senza uno stato in Home Assistant) si dividono
+in **marcati e non marcati** (Task 1.5): marcato e' chi porta la `fonte` che
+la pagina dell'osservatore chiede a `House.source`. Si contano anche per
+stato della fonte (`fonte.stato`); `fonte: None` -- ne' registro ne' stati lo
+conoscono -- ha un'etichetta sua, `NOT_IN_HA`. Il criterio di chiusura dello
+strato 1 e' «non marcati = 0».
 
 ## Cosa NON misura, dichiarato
 
 - **Il giudizio sulle osservazioni** («vera, banale, artefatto»): l'ha dato
   una persona leggendo, e resta a mano.
-- **La troncatura vera**: i turni non registrano perche' si sono fermati. Si
-  conta troncato un turno la cui uscita e' ESATTAMENTE il tetto di chi non ne
-  dichiara uno (`claude_runner.MAX_TOKENS`). Un attore col tetto suo non e'
-  visto: e' la voce D-58 del registro, e si chiude alla Tappa 6.
+## La troncatura (Tappa 6, Task 3; D-58)
+
+Dal 05/10/2026 il registro dei turni scrive l'esito `troncato`
+(`steering.TRUNCATED`), letto da cio' che il provider ha dichiarato: un turno
+si conta troncato da QUEL campo, col tetto proprio di ogni mestiere -- quale
+fosse il tetto non conta piu'. I turni registrati PRIMA non hanno quell'esito
+(si dicevano «riusciti»): per loro resta la regola di prima, l'uscita
+ESATTAMENTE uguale al tetto di chi non ne dichiara uno
+(`claude_runner.MAX_TOKENS`). E' la regola che ha misurato i 7 su 8
+dell'analista, e serve a confrontare il dopo con quel prima. Un troncato non
+e' un fallito: le due colonne non si sommano.
 
 Uso:
   HIRIS_URL=http://casa:8099 HIRIS_HOUSE_URL=http://casa:8123 \\
@@ -64,6 +77,11 @@ if hasattr(sys.stdout, "reconfigure"):
 #: `integrazione:...`) non hanno uno stato in Home Assistant da cercare.
 _ENTITY_SUBJECT = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 SUCCEEDED = "riuscito"
+#: L'esito del turno troncato: si CHIEDE al prodotto, che lo scrive
+#: (`steering.misura_turno`). La batteria e' un attrezzo e puo' importarlo,
+#: come fa gia' con `MAX_TOKENS`.
+from hiris.app.steering import TRUNCATED
+
 #: L'etichetta di chi non porta una causa. E' della batteria, non del prodotto:
 #: il prodotto non ha una causa che si chiami cosi'.
 UNCAUSED = "senza causa"
@@ -72,11 +90,28 @@ UNCAUSED = "senza causa"
 #: non c'e', e' scritta qui. Il Task 1.7, passo 2, la CHIEDE al vocabolario e
 #: toglie questa copia.
 FROZEN = "ferma"
+#: L'etichetta di un soggetto marcato con `fonte: None` (`House.source` non lo
+#: trova ne' nel registro ne' negli stati). Della batteria, non del prodotto:
+#: il vocabolario della fonte non ha una parola per lui (domanda del Task 1.5).
+NOT_IN_HA = "ne' nel registro ne' negli stati"
 
 
 def _by_cause(rows) -> dict[str, int]:
     """Quante righe per causa; una causa assente o vuota e' «senza causa»."""
     return dict(Counter(str(row.get("causa") or "") or UNCAUSED for row in rows))
+
+
+def _by_source(rows) -> dict[str, int]:
+    """Quanti soggetti per stato della fonte: «senza causa» chi non porta la
+    `fonte` (non marcato), `NOT_IN_HA` chi la porta vuota."""
+    def _label(row) -> str:
+        if "fonte" not in row:
+            return UNCAUSED
+        source = row["fonte"]
+        if source is None:
+            return NOT_IN_HA
+        return str(source.get("stato") or "") or UNCAUSED
+    return dict(Counter(_label(row) for row in rows))
 
 
 def measure(*, data: list, watching: list[dict], reports: list[dict],
@@ -93,8 +128,12 @@ def measure(*, data: list, watching: list[dict], reports: list[dict],
         row["turni"] += 1
         row["giri"] += len(loads)
         row["token_uscita"] += turn.get("output_tokens") or 0
-        row["troncati"] += 1 if turn.get("output_tokens") == output_ceiling else 0
-        row["falliti"] += 0 if turn.get("outcome") == SUCCEEDED else 1
+        outcome = turn.get("outcome")
+        truncated = (outcome == TRUNCATED
+                     or (outcome == SUCCEEDED
+                         and turn.get("output_tokens") == output_ceiling))
+        row["troncati"] += 1 if truncated else 0
+        row["falliti"] += 0 if outcome in (SUCCEEDED, TRUNCATED) else 1
         durations.setdefault(species, []).append((turn.get("duration_ms") or 0) / 1000)
         for load in loads:
             if load.get("input_tokens") is None:
@@ -123,7 +162,9 @@ def measure(*, data: list, watching: list[dict], reports: list[dict],
         "soggetti_guardati": len(subjects),
         "soggetti_entita": len(entities),
         "soggetti_morti": len(dead),
-        "soggetti_morti_per_causa": _by_cause(dead),
+        "soggetti_morti_marcati": sum(1 for row in dead if "fonte" in row),
+        "soggetti_morti_non_marcati": sum(1 for row in dead if "fonte" not in row),
+        "soggetti_morti_per_causa": _by_source(dead),
         "resoconti": len(ordered),
         "misure_totali": sum(len(report.get("misure") or []) for report in ordered),
         "misure_non_calcolabili": sum(uncomputable),

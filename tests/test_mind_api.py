@@ -20,9 +20,9 @@ from tests._contracts import assert_stessa_firma
 
 
 class _FintoOsservatore:
-    def watching(self):
+    def watching(self, *, house=None):
         return [{"soggetto": "climate.camera_t", "motivo": "scalda la casa",
-                 "autore": "observer", "da_quando_ts": 1787000000.0}]
+                 "autore": "observer", "quando": 1787000000.0}]
 
 
 class _FintoArchivioScope:
@@ -41,10 +41,10 @@ class _FintoArchivioScope:
     def scope(self):
         return {
             "climate.camera_t": {"dentro": True, "motivo": "scalda la casa",
-                                 "autore": "observer", "deciso_ts": 1787000000.0},
+                                 "autore": "observer", "quando": 1787000000.0},
             "sensor.uptime": {"dentro": False, "motivo": "di servizio, non dice niente"
                                                          " sulla casa",
-                              "autore": "observer", "deciso_ts": 1787000001.0},
+                              "autore": "observer", "quando": 1787000001.0},
         }
 
     def objective(self):
@@ -119,7 +119,7 @@ async def test_osservate_porta_il_perche_e_l_autore_di_ogni_voce():
     voce = _corpo(r)["watching"][0]
     assert voce["motivo"] == "scalda la casa"
     assert voce["autore"] == "observer"
-    assert voce["da_quando_ts"] == 1787000000.0
+    assert voce["quando"] == 1787000000.0
 
 
 @pytest.mark.asyncio
@@ -448,7 +448,7 @@ async def test_un_obiettivo_vuoto_si_RIFIUTA_e_non_cancella_quello_di_prima(tmp_
         r = await handle_set_objective(_richiesta_scritta(
             {"observations": archivio}, {"testo": "   "}))
         assert r.status == 400
-        assert "vuoto" in json.loads(r.text)["errore"]
+        assert "vuoto" in json.loads(r.text)["error"]
         assert archivio.objective()["testo"] == "quello buono"
     finally:
         archivio.close()
@@ -987,10 +987,10 @@ class _OsservatoreConSoggetti:
     def __init__(self, soggetti):
         self._soggetti = soggetti
 
-    def watching(self):
+    def watching(self, *, house=None):
         return [{"soggetto": s, "motivo": "una condizione di sistema aperta si guarda "
                                           "finche' dura", "autore": None,
-                 "da_quando_ts": None} for s in self._soggetti]
+                 "quando": None} for s in self._soggetti]
 
 
 @pytest.mark.asyncio
@@ -1121,5 +1121,66 @@ async def test_un_osservazione_SENZA_esito_non_ne_guadagna_uno_finto(tmp_path):
                                              {"day": "2026-09-20"}))
 
         assert "esito" not in json.loads(r.text)["analisi"]["osservazioni"][0]
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_il_404_del_resoconto_dice_QUANDO_si_scrivera():
+    """C-11 (Tappa 4, Task 5): la pagina «Il giorno» spiega un giorno senza
+    resoconto con l'ora in cui la notte lo scrivera', e la riceve qui invece
+    di tenerla scritta in prosa. E' l'ora delle costanti che lo schedulatore
+    riceve (`test_pagine_legate.py` lo verifica sull'app avviata).
+
+    Mutazione eseguita: tolto `ora_notturna` dal 404 -> rossa."""
+    from hiris.app.mind.report import NIGHTLY_HOUR, NIGHTLY_MINUTE
+
+    app = {"observations": _ArchivioConResoconto()}
+    r = await handle_report(_richiesta(app, query={"day": "2026-01-01"}))
+    assert r.status == 404
+    assert json.loads(r.text)["ora_notturna"] == f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}"
+
+
+@pytest.mark.asyncio
+async def test_il_sapere_porta_quanto_costa_rifare_la_cronaca():
+    """C-11 (Tappa 4, Task 5): «rifà la cronaca degli ultimi 22 giorni, un
+    giorno ogni 5 minuti» la pagina lo scrive coi numeri di qui, non coi suoi.
+
+    Mutazione eseguita: `un_giorno_ogni_s` scritto 300 a mano nella rotta, e
+    `BACKFILL_EVERY_MINUTES` portata a 10 -> rossa (la rotta non seguiva la
+    costante)."""
+    from hiris.app.mind.report import BACKFILL_EVERY_MINUTES
+    from hiris.app.mind.store import READING_RETENTION_S
+
+    r = await handle_knowledge(_richiesta({"knowledge": _FintoSapere()}))
+    assert json.loads(r.text)["cronaca"] == {
+        "ritenzione_s": READING_RETENTION_S,
+        "un_giorno_ogni_s": BACKFILL_EVERY_MINUTES * 60}
+
+
+@pytest.mark.asyncio
+async def test_decisione_esce_stesso_nome_watching_fuori(tmp_path):
+    """C-46 (Tappa 4): la stessa colonna (`scope.decided_ts`) usciva con due
+    nomi nella stessa risposta -- `da_quando_ts` fra le guardate, `deciso_ts`
+    fra le lasciate fuori. Ora e' `quando` da tutte e due le parti (il nome
+    di D1 per l'istante di un evento), con l'archivio e l'osservatore VERI.
+
+    Mutazione ESEGUITA (05/10/2026): rimesso `da_quando_ts` in
+    `Watcher.watching` -- rossa."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.decide_scope("climate.camera_t", inside=True, reason="scalda",
+                              author="observer", when_ts=1787000000.0)
+        archivio.decide_scope("sensor.uptime", inside=False, reason="di servizio",
+                              author="observer", when_ts=1787000001.0)
+        r = await handle_watching(_richiesta(
+            {"watcher": Watcher(archivio, now=lambda: 1787572800.0),
+             "observations": archivio}))
+        corpo = _corpo(r)
+        dentro = [v for v in corpo["watching"] if v["soggetto"] == "climate.camera_t"]
+        assert [v.get("quando") for v in dentro] == [1787000000.0]
+        assert [v.get("quando") for v in corpo["fuori"]] == [1787000001.0]
+        for voce in corpo["watching"] + corpo["fuori"]:
+            assert not {"da_quando_ts", "deciso_ts"} & set(voce), voce
     finally:
         archivio.close()

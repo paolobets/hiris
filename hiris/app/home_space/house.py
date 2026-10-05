@@ -71,6 +71,16 @@ SOURCE_GONE = "sparita"
 #: Home Assistant non scrivera' mai.
 ENDED_SOURCE_STATES = frozenset({SOURCE_SWITCHED_OFF_BY_OWNER, SOURCE_SWITCHED_OFF_BY_HA,
                                  SOURCE_GONE})
+#: Lo stato di una fonte che parla (`House.source`).
+SOURCE_LIVE = "viva"
+#: I SETTE stati della fonte (D6 del proprietario, 03/10/2026; Tappa 3, Task
+#: 8), nell'ordine del docstring di `House.source`, che dice cosa vuol dire
+#: ognuno. E' il vocabolario che le cause delle misure riusano (attori, Task
+#: 1.2, B-26: `mind.operations.CAUSES`): una causa di misura che dica lo
+#: stato della fonte con un'altra parola sarebbe una seconda copia. Che
+#: `source` non ne produca altri lo prova `tests/test_fonte_della_casa.py`.
+SOURCE_STATES = (SOURCE_LIVE, SOURCE_SWITCHED_OFF_BY_OWNER, SOURCE_SWITCHED_OFF_BY_HA,
+                 "integrazione_ferma", "non_disponibile", "senza_valore", SOURCE_GONE)
 
 
 class House:
@@ -406,7 +416,7 @@ class House:
             elif value == STATE_UNKNOWN:
                 state, cause = "senza_valore", STATE_UNKNOWN
             else:
-                state = "viva"
+                state = SOURCE_LIVE
         return {"stato": state, "causa": cause, "spenta_da": switched_off_by,
                 "istanza": instance, "nel_registro": entry is not None,
                 "negli_stati": in_states if readable else None,

@@ -157,10 +157,17 @@ veridicita' della soluzione»).
    dice il contrario); 99 serie su 168 nel prompt hanno l'ultimo valore vuoto; nessuna memoria
    delle analisi precedenti; l'obiettivo stampato «dal ... al ...» viene letto come scadenza;
    `cosa_cambierebbe` obbligatorio contraddice «il silenzio e' un esito legittimo».
+   Assorbe la voce **D-33** del registro dei doppioni (lo stesso tema ogni giorno, con parole
+   diverse: coppie gia' presenti il giorno prima 2 su 7, 3 su 8, 4 su 8), spostata qui dalla
+   Tappa 6 il 05/10/2026: e' la memoria delle analisi precedenti che manca, non un doppione di
+   codice.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
-   dell'attuatore) contro la spec §5 che gli da' la sola lettura; il contratto dell'`intenzione`
-   (`mind/actuator_turn.py:75-98`) incompatibile con l'officina (`workshop.py:1026`); «riscritta»
-   che vuol dire solo «file scritto».
+   dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
+   «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,
+   D5), con l'attuatore sempre in pausa:* il contratto dell'`intenzione` incompatibile con
+   l'officina. Oggi si deriva dallo schema di `propose` (`mind/actuator_turn._intent_contract`) e
+   la risposta passa dalla stessa porta della forma dell'officina (`workshop.form_refusal`) prima
+   di arrivarci.
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
@@ -170,6 +177,10 @@ reso ripetibile (come le 28 domande della chat) e lanciato prima e dopo ogni str
 **Dopo, non prima**: la riprogettazione della pagina dell'osservatore (analisi di leggibilita' in
 `docs/superpowers/audit-2026-10-01/pagina.md`). Ridisegnarla adesso vorrebbe dire presentare meglio
 un contenuto che non regge.
+Quando la si ridisegna, porta con se' due voci del registro dei doppioni spostate qui dalla Tappa 4
+dello sprint (D10, decisione del proprietario del 05/10/2026): **C-25** (nomi che collidono e notizie
+con due nomi nella pagina) e **C-27** (cronaca e primo piano: lo stesso fatto in piu' voci). Si
+chiudono nel registro con `python scripts/registro.py chiudi`, quando la copia e' uscita.
 
 **Argomenti di analisi per il refactor degli attori, dal confronto con i progetti «Jarvis» (02/10/2026).**
 `origine: il proprietario, 02/10/2026 («queste idee possono essere fondamentali»)` · studio in
@@ -873,6 +884,45 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### I nomi delle persone verso un modello, per tutte le porte degli attori — aperta il 05/10/2026
+
+`origine: rapporto della Tappa 6, T5-T6 («Cosa resta aperto», punto 1) dello sprint «Una fonte sola di verita'»; domanda 28 del secondo giro, approvata dal proprietario il 05/10/2026 (consigliata: «voce nel BACKLOG, da misurare sulla casa»)` · nessun altro documento
+
+La decisione 12 della spec degli attori (Tappa 6, Task 6) ha tolto il nome di una persona da **una**
+porta: le righe della casa che l'osservatore manda al modello (`mind/observer.py`, `house_lines`).
+Un `person.*` o un `device_tracker.*` (il genere «presenza», `privacy.MOVING_DOMAINS`) ci arriva
+come segnaposto `person.#N`, senza nome ne' area, e torna id vero prima di ogni controllo.
+
+Il nome ha altre strade, lette nel codice e **non ancora misurate sulla casa**:
+
+- le **entita' sorelle** del telefono, che portano il nome nell'id e nel nome dell'entita' (per
+  esempio la batteria del telefono, accanto al tracker dello stesso dispositivo);
+- i **nomi delle aree** nelle righe delle altre entita': un'area puo' chiamarsi come chi ci dorme;
+- il turno delle **ricette** (`mind/recipe_turn.py`), che per dispositivo elenca tutte le entita'
+  guardate (`House.entities_of`): un telefono con `mobile_app` porta il tracker e il nome del
+  dispositivo.
+
+Cosa chiede: **prima la misura, poi il come**. Sulla casa vera, quali di queste strade portano
+davvero un nome di persona a un modello, per ogni attore (osservatore, ricette, analista,
+attuatore). Le entita' del dispositivo di un tracker si chiedono a Home Assistant (il `device_id`
+del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo si decide se il
+segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
+alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
+
+### I fogli di stile: due sistemi di variabili, e l'override caricato prima — aperta il 05/10/2026
+
+`origine: il registro dei doppioni, voce C-24; spostata qui dalla Tappa 4 dello sprint «Una fonte sola di verita'» (D10, decisione del proprietario del 05/10/2026)` · nessun altro documento
+
+Il CSS del prodotto ha due sistemi di variabili, e `hiris-config-override.css` e' caricato
+**prima** di `hiris-config.css` (`config.html:27-28`, letto il 04/10/2026): l'override non
+sovrascrive niente di cio' che il secondo foglio ridefinisce. In piu' il JS scrive circa 130 stili
+in linea (conto del piano della Tappa 4, grep sul codice del 04/10/2026). Il dettaglio dei due
+sistemi di variabili sta nel registro v1, fuori da git (`docs/superpowers/audit-2026-10-01/`).
+
+Esce dallo sprint perche' non e' un doppione di dati: e' un doppione di forma, e la sua cura e' un
+lavoro sui fogli. Prima di toccarli si interpella `ux-ui-specialist`. Nel registro si chiude con
+`python scripts/registro.py chiudi C-24`, quando la copia e' uscita.
+
 ### La storia, con la stessa forma — la fetta successiva a «una porta sola» — **USCITA con la v3.72.0** (30/09/2026); resta la verifica dal vivo
 
 `origine: il proprietario, decisione 11 della spec del 29/09/2026` · `docs/design/2026-09-29-una-porta-sola-per-la-casa.md §8` · nessun altro documento
@@ -1221,6 +1271,11 @@ processo. Fino ad allora, il documento di esito (§8 della spec) che conta i tur
 ponte include un numero non ancora corretto di errori della CLI travestiti da successi.
 
 ### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
+
+**Superata dal Task 1.6 degli attori (05/10/2026, ramo `claude/attori-1-2-1-6-causa-jbjqlb`;
+D2 del proprietario).** La riparazione non e' piu' dell'attuatore: `_repair_recipes` e' uscito, e
+le ricette rotte le richiede il giro delle ricette (`recipe_turn.recipes_to_repair`, dalla causa
+della misura), sulla catena e sul ponte. Si sposta fra le uscite col rilascio dello strato 1.
 
 `origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
 

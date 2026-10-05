@@ -24,7 +24,7 @@ import logging
 import secrets
 import threading
 
-from ...chat_thread import ChatThread
+from ...chat_thread import ChatThread, thread_from_columns, thread_params
 from ...storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -155,8 +155,7 @@ def _row(r) -> dict:
         # forma che la coda espone (`reasoning/queue.py::_row`): un filo solo
         # fra le porte, non due campi piatti che ogni lettore ricompone a
         # modo suo. `None` per una riga nata senza filo (vedi `_SCHEMA`).
-        "thread": (ChatThread(r["subject_key"], r["entry_point"])
-                   if r["subject_key"] else None),
+        "thread": thread_from_columns(r["subject_key"], r["entry_point"]),
         "prima": _load(r["prima_json"]),
         "dopo": _load(r["dopo_json"]),
         # **Cosa chiamera'**, sui due lati (reperto B-4, 22/09/2026). La
@@ -229,8 +228,7 @@ class ConstructionStore:
                  None if prima is None else json.dumps(prima),
                  None if dopo is None else json.dumps(dopo),
                  json.dumps(list(helper)), preview,
-                 thread.subject_key if thread else None,
-                 thread.entry_point if thread else None))
+                 *thread_params(thread)))
             self._conn.commit()
         return {"id": ident}
 

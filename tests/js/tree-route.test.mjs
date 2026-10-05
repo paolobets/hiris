@@ -17,10 +17,10 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
 function rendi(casa) {
-  // `config/api.js` PRIMA di `config/tree-route.js`, come fa davvero
+  // `common.js` PRIMA di `config/tree-route.js`, come fa davvero
   // config.html: dal collaudo 3.22 (A10) tree-route.js chiama `fmtDateTime`,
   // condivisa con la pagina Consumi -- non e' piu' un file isolato.
-  const ctx = loadScripts(['config/api.js', 'config/tree-route.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/tree-route.js'], { html: HTML });
   const chiamate = [];
   ctx.window.fetch = (url) => {
     chiamate.push(String(url));
@@ -48,6 +48,9 @@ function casaCompleta(extra = {}) {
       versione_ha: '2026.8.1',
       unita: { temperature: '°C', length: 'km' },
     },
+    // I nomi delle misure li manda il server (`briefing._MEASUREMENT_NAMES`,
+    // C-09): qui una loro parte, quanto basta alla casa di prova.
+    nomi_misure: { temperature: 'temperatura', length: 'lunghezza' },
     // Una nota risolvibile (nomeEtichetta la traduce) e una PENZOLANTE
     // (nessuna voce in questa mappa): 'Luce cucina' sotto porta entrambi gli
     // id, cosi' la stessa entita' prova sia la traduzione sia il fallback.
@@ -286,12 +289,12 @@ test('un\'anagrafe mai letta non si traveste da albero vuoto', async () => {
 
 test('collaudo 3.22 (A10): «Letta il» mostra la data nel formato italiano, non l’ISO grezzo in UTC', async () => {
   const { testo } = await rendi(casaCompleta());
-  // La stessa funzione che la pagina Consumi già usa (config/api.js) --
+  // La stessa funzione che la pagina Consumi già usa (common.js) --
   // non una seconda copia della formattazione. Il difetto misurato era
   // «Letta il 2026-09-07T05:13:52+00:00.», due righe sopra un orario nel
   // fuso di casa: la stessa distanza di due ore che l'Osservatore dichiara
   // altrove.
-  // `fmtDateTime` e' un global BARE (api.js non e' un modulo, vedi il suo
+  // `fmtDateTime` e' un global BARE (common.js non e' un modulo, vedi il suo
   // commento in cima): il ponte di loadScripts() lo specchia su `window`
   // solo per le assegnazioni `window.X = ...`, non per le dichiarazioni di
   // funzione di primo livello -- quindi si legge da `globalThis`, come fa
@@ -316,6 +319,18 @@ test('sistema di riferimento: presente si legge, assente lo dichiara (mai silenz
   assert.match(assente, /Non letto: fuso, unità, valuta e lingua della casa non sono disponibili/);
 });
 
+test('i nomi delle misure arrivano dal server, nel suo ordine; una chiave che non nomina resta grezza', async () => {
+  /* C-09 (Tappa 4, Task 5): la pagina non tiene piu' una copia della tabella
+     del nucleo. Un nome che solo il server conosce ('calore') deve comparire,
+     l'ordine e' quello della mappa e non quello di `unita`, e una chiave che
+     la mappa non nomina compare col suo nome grezzo invece di sparire. */
+  const { testo } = await rendi(casaCompleta({
+    sistema_di_riferimento: { nome: 'Casa', unita: { length: 'km', ignota: 'x', temperature: '°C' } },
+    nomi_misure: { temperature: 'calore', length: 'lunghezza' },
+  }));
+  assert.match(testo, /Unità con cui ragiona la casa: calore °C, lunghezza km, ignota x \(/);
+});
+
 test("le etichette di un'entità mostrano il NOME (`casa.etichette`), non lo slug", async () => {
   // Luce cucina porta due id: 'da_controllare' (nella mappa -> 'Da controllare')
   // e 'slug_fantasma' (fuori mappa: un riferimento penzolante).
@@ -337,7 +352,7 @@ test('`etichette: null`: lo dichiara, e nel frattempo gli id restano grezzi (mai
 });
 
 test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', async () => {
-  const ctx = loadScripts(['config/tree-route.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/tree-route.js'], { html: HTML });
   const consoleVera = console.error;
   console.error = () => {};
   ctx.window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });

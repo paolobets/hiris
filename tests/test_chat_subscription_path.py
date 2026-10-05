@@ -51,7 +51,7 @@ from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import thread_for
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.reasoning.queue import PRIORITY_CHAT, ReasoningQueue
 from tests._avvio import started_app  # noqa: F401
 
 # Fetta «le chat divise»: `handle_chat` calcola il filo della richiesta una
@@ -154,6 +154,9 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
     job = q.get(body["job_id"])
     assert job["kind"] == "chat"
+    # Tappa 6, Task 2 (D4): la chat accodata sul ponte passa avanti ai turni
+    # del cervello.
+    assert job["priority"] == PRIORITY_CHAT
     # fetta E4 Task 5 ("un bot solo"): il context del job non porta piu' un
     # chatbot_id -- non c'e' piu' nulla da instradare per chiave, c'e' UNA
     # conversazione.
@@ -248,7 +251,7 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "seconda"})
-        assert resp.status == 200
+        assert resp.status == 409
         body = await resp.json()
         assert body.get("error") == "max_turns_reached"
         assert body["turns"] == 1
@@ -419,8 +422,9 @@ async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         assert poll.status == 200
         body = await poll.json()
-        assert body["status"] == "error"
-        assert body.get("message")
+        # A6 (approvata il 05/10/2026): resta 200 -- il poll ha letto il job,
+        # e il job e' fallito -- ma il testo sta in `error`, la forma comune.
+        assert body == {"status": "error", "error": "La risposta non è arrivata in tempo. Riprova."}
 
 
 @pytest.mark.asyncio
@@ -444,7 +448,7 @@ async def test_poll_route_failed_job_returns_error_not_pending(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         assert poll.status == 200
         body = await poll.json()
-        assert body["status"] == "error"
+        assert body == {"status": "error", "error": "La risposta non è arrivata in tempo. Riprova."}
 
 
 @pytest.mark.asyncio
@@ -467,7 +471,7 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         assert poll.status == 200
         body = await poll.json()
-        assert body["status"] == "error"
+        assert body == {"status": "error", "error": "La risposta non è arrivata in tempo. Riprova."}
 
 
 @pytest.mark.asyncio
@@ -1454,7 +1458,8 @@ async def test_senza_nessun_provider_in_catena_il_ripiego_lo_dice_invece_di_tace
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body["status"] == "error"
-    assert "nessun altro provider in catena" in body["message"]
+    assert "nessun altro provider in catena" in body["error"]
+    assert "message" not in body
     # E il job e' chiuso: lasciarlo in 'ripiego' farebbe ritentare ogni poll.
     assert q.get(jid)["status"] == "decided"
 

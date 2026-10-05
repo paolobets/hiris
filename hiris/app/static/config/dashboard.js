@@ -36,27 +36,12 @@ window.HirisDashboard = (function () {
   var TONE_PROBLEM = 'color:var(--err-ink)';
   var TONE_CALM = 'color:var(--text-3)';
 
-  var NOMI_REGISTRI = {
-    piani: 'Piani',
-    aree: 'Aree',
-    dispositivi: 'Dispositivi',
-    entita: 'Entità',
-    etichette: 'Etichette',
-    categorie: 'Categorie',
-    integrazioni: 'Integrazioni'
-  };
+  /* `NOMI_REGISTRI` e `nomiRegistriInItaliano` vivono in common.js. */
 
   var NOMI_COMPORTAMENTO = {
     automazione: 'Automazioni',
     script: 'Script'
   };
-
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
 
   function line(parent, text, style) {
     var p = el('p', 'sc-desc', text);
@@ -216,25 +201,12 @@ window.HirisDashboard = (function () {
     return loaded == null ? null : value;
   }
 
-  /* I registri caduti, in italiano. `non_disponibili` porta il nome grezzo
-     della tabella e, per le categorie, l'ambito che ha fallito
-     (`categorie:script` -- vedi `ha_client.read_registries`): l'ambito NON si
-     butta, è il dettaglio che dice quale delle quattro chiamate è caduta. */
-  function nomiRegistriInItaliano(voci) {
-    return voci.map(function (entry) {
-      var pezzi = String(entry).split(':');
-      var name = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
-      var scope = pezzi.slice(1).join(':');
-      return scope ? name + ' (ambito «' + scope + '»)' : name;
-    });
-  }
-
   /* ---------------------------------------------------------------- casa */
 
   /* Collaudo 3.22 (A10): le tre "Letta/Letto/Lette il" qui sotto scrivevano
      l'ISO grezzo che il server manda (`2026-09-07T05:13:52+00:00`, in UTC),
      due righe sopra un orario nel fuso di casa ("Adesso sono le 08:29...").
-     `fmtDateTime` (config/api.js) e' la STESSA funzione che gia' usa la
+     `fmtDateTime` (common.js) e' la STESSA funzione che gia' usa la
      pagina Consumi -- non se ne scrive una seconda. */
   function renderHomeSpace(outlet, home_space) {
     var body = section(outlet, 'L’anagrafe della casa',
@@ -371,7 +343,7 @@ window.HirisDashboard = (function () {
      non ha potuto leggere, e la console porta il dettaglio tecnico. Una
      pagina che tace su una fetch caduta e' indistinguibile da una casa
      senza niente dentro -- il difetto ricorrente n.1 di questo prodotto. */
-  function renderError(outlet, title, text, err) {
+  function renderSectionError(outlet, title, text, err) {
     console.error('[cosa-hiris-sa] ' + title, err);
     var body = section(outlet, title, null);
     line(body, text, TONE_PROBLEM);
@@ -409,7 +381,7 @@ window.HirisDashboard = (function () {
         return function () { renderHomeSpace(outlet, home_space); };
       }, function (err) {
         return function () {
-          renderError(outlet, 'L’anagrafe della casa',
+          renderSectionError(outlet, 'L’anagrafe della casa',
             'Non è stato possibile leggere ciò che HIRIS sa della casa. Questo non significa che la casa sia vuota: la richiesta non è andata a buon fine.', err);
         };
       }),
@@ -417,7 +389,7 @@ window.HirisDashboard = (function () {
         return function () { renderBriefing(outlet, briefing); };
       }, function (err) {
         return function () {
-          renderError(outlet, 'Cosa vede il modello a ogni turno',
+          renderSectionError(outlet, 'Cosa vede il modello a ogni turno',
             'Non è stato possibile leggere ciò che il modello vede. Questo non significa che sia vuoto: la richiesta non è andata a buon fine.', err);
         };
       })

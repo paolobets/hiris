@@ -14,7 +14,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
      per sempre da una route che non si vede piu'. */
 
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
-const SCRIPTS = ['config/api.js', 'config/services-route.js'];
+const SCRIPTS = ['common.js', 'config/services-route.js'];
 
 function risposta(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
@@ -57,7 +57,7 @@ function monta(opts = {}) {
   ctx.window.fetch = async (url, options) => {
     const u = String(url);
     chiamate.push({ url: u, opts: options || {}, corpo: (options || {}).body });
-    if (opts.rotto) return risposta({ errore: 'no' }, 403);
+    if (opts.rotto) return risposta({ error: 'no' }, 403);
     if (u.endsWith('/window/open')) {
       corpo.finestra = { aperta: true, resta_s: 600 };
       return risposta({ aperta: true, resta_s: 600 });
@@ -67,7 +67,7 @@ function monta(opts = {}) {
       return risposta({ aperta: false, resta_s: 0 });
     }
     if (u.endsWith('/approve')) {
-      if (opts.approveStatus) return risposta({ errore: 'il ruolo non esiste' }, opts.approveStatus);
+      if (opts.approveStatus) return risposta({ error: 'il ruolo non esiste' }, opts.approveStatus);
       const d = JSON.parse((options || {}).body || '{}');
       corpo.servizi = corpo.servizi.map((r) => (r.chiave === d.chiave
         ? Object.assign({}, r, { stato: 'autorizzato', ruolo: d.ruolo, specie: d.specie,

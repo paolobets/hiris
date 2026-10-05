@@ -8,7 +8,8 @@ archivio storico suo (`history.db`), e' uscito perche' scriveva senza che
 nessuno leggesse.
 
 Qui stanno le funzioni che il resto del prodotto usa: `house_timezone`,
-`home_space_zone`, `local_date`, `today`, `day_boundaries`, `instant_epoch`.
+`home_space_zone`, `local_date`, `today`, `day_boundaries`, `instant_epoch`,
+`instant_out`.
 La storia che la chat interroga (la superficie, il campione, «per mano di
 HIRIS») vive in `home_space/house_history.py`.
 """
@@ -99,21 +100,71 @@ def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
     return start.timestamp(), (start + timedelta(days=1)).timestamp()
 
 
-def instant_epoch(raw) -> float | None:
-    """Un ISO-8601 col fuso -> epoch. `None` se non si legge o se il fuso manca.
-
-    Un istante SENZA fuso viene rifiutato invece di essere letto come locale:
-    «alle 17» di quale fuso? E' la stessa regola dell'unita' di misura
-    applicata al tempo -- l'UNICA lettura di un istante nel prodotto: la usa
-    la storia per cio' che arriva da Home Assistant (`house_history`), e la
-    usa `home_space/tools.py` (`_promise`) per l'istante che arriva dalla
-    chat. Questo modulo e' leggero e non importa quasi niente, quindi resta
-    qui e gli altri la importano -- mai il contrario.
-    """
+def _moment(raw) -> datetime | None:
+    """Un ISO-8601 col fuso -> `datetime` consapevole del fuso. `None` se non
+    si legge o se il fuso manca. La lettura vera, una volta sola: la chiamano
+    `instant_epoch` e `instant_out`."""
     if not isinstance(raw, str) or not raw.strip():
         return None
     try:
         moment = datetime.fromisoformat(raw.strip())
     except ValueError:
         return None
-    return None if moment.tzinfo is None else moment.timestamp()
+    return None if moment.tzinfo is None else moment
+
+
+def instant_epoch(raw) -> float | None:
+    """Un ISO-8601 col fuso -> epoch. `None` se non si legge o se il fuso manca.
+
+    Un istante SENZA fuso viene rifiutato invece di essere letto come locale:
+    «alle 17» di quale fuso? E' la stessa regola dell'unita' di misura
+    applicata al tempo -- l'UNICA lettura di un istante nel prodotto: la usa
+    la storia per cio' che arriva da Home Assistant (`house_history`), la
+    usa `home_space/tools.py` (`_promise`) per l'istante che arriva dalla
+    chat, e dal 05/10/2026 (Tappa 4, A-26) anche l'eta' di un cambio in
+    `search` (`house_query._age_s`) e l'importazione dei consumi
+    (`usage/store.py`), che prima leggevano per conto loro con
+    `datetime.fromisoformat`. Lo sorveglia `tests/test_l_istante.py`.
+    Questo modulo e' leggero e non importa quasi niente, quindi resta qui e
+    gli altri la importano -- mai il contrario.
+    """
+    moment = _moment(raw)
+    return None if moment is None else moment.timestamp()
+
+
+def instant_out(raw, zone) -> str | None:
+    """Un istante nella forma che HIRIS manda fuori (decisione D3 del
+    proprietario, 05/10/2026): ISO 8601 **con l'offset della casa**, per
+    esempio `2026-10-04T08:15:00+02:00`.
+
+    - `raw` puo' essere un epoch (il registro di Home Assistant, i nostri
+      archivi) o un ISO col fuso (lo storico, le tracce, lo specchio, che Home
+      Assistant manda in UTC): escono uguali, perche' sono lo stesso istante.
+    - `None` esce `None`, cioe' `null`: «so che non c'e'» -- per esempio
+      un'automazione mai eseguita. «Non lo so» si dice togliendo la chiave,
+      e lo decide chi compone la risposta, non questa funzione.
+    - Cio' che non si legge (un testo senza fuso, un booleano) esce com'e',
+      come testo: meglio un formato inatteso che un istante inventato. E' la
+      regola che la storia aveva gia' (`house_history._local`, 24/08/2026),
+      e che qui diventa di tutti.
+
+    `zone` e' il fuso della casa come lo costruisce `home_space_zone` --
+    MAI il fuso del processo: il container dell'add-on ha `TZ` impostato
+    dal Supervisor, ma un test, un attrezzo o una macchina di sviluppo no,
+    e l'ora che il modello legge non deve dipendere da dove gira il codice.
+
+    Prima di qui la stessa conversione era scritta in tre posti:
+    `house_history._local`, `appointments._in_home_zone` e, senza
+    conversione, le righe di `search`, che mandavano l'UTC grezzo dello
+    specchio (C-32).
+    """
+    if raw is None:
+        return None
+    # Al secondo (A15, 05/10/2026): i microsecondi che lo specchio porta non
+    # servono a chi legge. `timespec` tronca, non arrotonda.
+    if isinstance(raw, int | float) and not isinstance(raw, bool):
+        return datetime.fromtimestamp(raw, tz=zone).isoformat(timespec="seconds")
+    moment = _moment(raw)
+    if moment is None:
+        return str(raw)
+    return moment.astimezone(zone).isoformat(timespec="seconds")

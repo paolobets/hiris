@@ -17,7 +17,7 @@ import logging
 import secrets
 import threading
 
-from ..home_space.historian import local_date
+from ..home_space.historian import instant_epoch, local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
@@ -538,17 +538,23 @@ class UsageStore:
             "(SELECT id FROM turn WHERE ts < ?)", (limit,))
         self._conn.execute("DELETE FROM turn WHERE ts < ?", (limit,))
 
-    def turns(self, *, limit: int = 500) -> list[dict]:
+    def turns(self, *, limit: int = 500, species: str | None = None) -> list[dict]:
         """I turni, dal piu' recente. `tools` torna SCIOLTO dal JSON: una
         stringa che somiglia a una lista fa dire alla prima `len()` il numero
-        di caratteri."""
+        di caratteri.
+
+        `species` restringe a una specie: il freno dei troncati
+        (`steering.brake_engaged`) chiede gli ultimi N turni di UN mestiere, e
+        gli ultimi N di tutti -- filtrati dopo -- sarebbero quasi sempre turni
+        di chat."""
+        where, args = ("WHERE species = ? ", (species,)) if species else ("", ())
         with self._lock:
             righe = self._conn.execute(
                 "SELECT id,ts,species,provider,model,channel,subject_json,"
                 "duration_ms,iterations,tools,outcome,output_tokens,"
-                "list_cost_usd,tool_args FROM turn "
+                "list_cost_usd,tool_args FROM turn " + where +
                 "ORDER BY ts DESC LIMIT ?",
-                (int(limit),)).fetchall()
+                (*args, int(limit))).fetchall()
         return [{"id": r["id"], "ts": r["ts"], "species": r["species"],
                  "provider": r["provider"], "model": r["model"],
                  "channel": r["channel"],
@@ -600,6 +606,20 @@ class UsageStore:
     # divergerebbero proprio su `partial_cost` -- il campo che impedisce
     # alla pagina di spacciare un pavimento per un costo.
 
+    #: Lo stato del costo di un insieme di righe -- un modello su piu' giorni,
+    #: un provider in un giorno --: le due colonne che lo leggono (`uno_stato`,
+    #: `ignoti`) e la regola che le combina (`_aggregate_state`). Scritte una
+    #: volta per le due somme, `sezioni` e `storia` (C-08, Tappa 4, Task 5).
+    _STATE_COLUMNS = ("MIN(costo_stato) AS uno_stato, "
+                      "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti")
+
+    @staticmethod
+    def _aggregate_state(r) -> str:
+        """`MIN(costo_stato)` e' alfabetico e non significa niente: se anche
+        una sola riga e' ignota, l'insieme lo e'. Si sceglie esplicitamente
+        invece di fidarsi dell'ordine delle lettere."""
+        return "non_noto" if r["ignoti"] else r["uno_stato"]
+
     def _where(self, da: str) -> tuple[str, tuple]:
         return ("WHERE giorno >= ?", (da,)) if da else ("", ())
 
@@ -618,8 +638,7 @@ class UsageStore:
         with self._lock:
             righe = self._conn.execute(
                 f"SELECT provider, modello, {somme}, SUM(costo_usd) AS costo_usd, "
-                "MIN(costo_stato) AS uno_stato, "
-                "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti, "
+                f"{self._STATE_COLUMNS}, "
                 "MIN(giorno) AS primo_uso, MAX(giorno) AS ultimo_uso "
                 f"FROM consumo_giorno {where} GROUP BY provider, modello "
                 "ORDER BY provider, modello", arg).fetchall()
@@ -650,10 +669,7 @@ class UsageStore:
             section["modelli"].append({
                 "modello": r["modello"],
                 "costo_usd": r["costo_usd"],
-                # `MIN(cost_state)` e' alfabetico e non significa niente: se
-                # anche un solo giorno e' ignoto, la riga lo e'. Si sceglie
-                # esplicitamente invece di fidarsi dell'ordine delle lettere.
-                "costo_stato": "non_noto" if r["ignoti"] else r["uno_stato"],
+                "costo_stato": self._aggregate_state(r),
                 "primo_uso": r["primo_uso"],
                 "ultimo_uso": r["ultimo_uso"],
                 **{c: r[c] or 0 for c in CAMPI},
@@ -706,7 +722,8 @@ class UsageStore:
         somme = ", ".join(f"SUM({c}) AS {c}" for c in CAMPI)
         with self._lock:
             righe = self._conn.execute(
-                f"SELECT giorno, provider, {somme}, SUM(costo_usd) AS costo_usd "
+                f"SELECT giorno, provider, {somme}, SUM(costo_usd) AS costo_usd, "
+                f"{self._STATE_COLUMNS} "
                 "FROM consumo_giorno WHERE giorno >= ? AND giorno <= ? "
                 "GROUP BY giorno, provider ORDER BY giorno, provider", (da, a)).fetchall()
         giorni: dict[str, dict] = {}
@@ -715,6 +732,7 @@ class UsageStore:
                                   {"giorno": r["giorno"], "per_provider": {}})
             g["per_provider"][r["provider"]] = {
                 "costo_usd": r["costo_usd"],
+                "costo_stato": self._aggregate_state(r),
                 **{c: r[c] or 0 for c in CAMPI},
             }
         return list(giorni.values())
@@ -812,7 +830,6 @@ class UsageStore:
         """
         import json as _json
         import os
-        from datetime import datetime
 
         _PROVIDER_BY_SUFFIX = {"_openai": "openai", "_openrouter": "openrouter",
                      "_ollama": "ollama"}
@@ -836,12 +853,13 @@ class UsageStore:
             base = os.path.splitext(os.path.basename(path))[0]
             provider = next((p for suff, p in _PROVIDER_BY_SUFFIX.items()
                              if base.endswith(suff)), "claude")
-            when = now
-            try:
-                when = datetime.fromisoformat(
-                    data.get("last_reset") or "").timestamp()
-            except (TypeError, ValueError):
-                pass
+            # L'istante si legge con l'unica lettura del prodotto (A-26). Il
+            # vecchio `ClaudeRunner` lo scriveva con `datetime.now(timezone.utc)
+            # .isoformat()` (letto al tag v1.0.0 il 05/10/2026): ha sempre il
+            # fuso, quindi `instant_epoch` non ne perde nessuno.
+            when = instant_epoch(data.get("last_reset"))
+            if when is None:
+                when = now
             self.log(
                 provider, "(prima del dettaglio)",
                 richieste=int(data.get("total_requests") or 0),

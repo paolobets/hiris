@@ -101,45 +101,22 @@ window.HirisTreeRoute = (function () {
     tono: TONE_UNKNOWN
   };
 
-  /* Nomi italiani dei registri di `non_disponibili` -- stessa mappa di
-     dashboard.js. Duplicata (non importata) di proposito: ogni route di
-     questa SPA e' autonoma, stesso pattern di memory-route.js e
-     usage-route.js, che duplicano a loro volta i toni qui sopra invece di
-     dipendere l'una dall'altra. */
-  var NOMI_REGISTRI = {
-    piani: 'Piani', aree: 'Aree', dispositivi: 'Dispositivi', entita: 'Entità',
-    etichette: 'Etichette', categorie: 'Categorie', integrazioni: 'Integrazioni'
-  };
-
-  function nomiRegistriInItaliano(voci) {
-    return voci.map(function (entry) {
-      var pezzi = String(entry).split(':');
-      var name = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
-      var scope = pezzi.slice(1).join(':');
-      return scope ? name + ' (ambito «' + scope + '»)' : name;
-    });
-  }
-
-  /* Le unità del sistema di riferimento, stessa mappa e stesso ordine di
-     `briefing._MEASUREMENT_NAMES` -- cosi' la stessa casa si legge uguale sul
-     nucleo del modello e su questa pagina. Una chiave che HA manda e che
-     questa mappa non conosce ancora NON sparisce: compare col suo nome
-     grezzo, stessa regola di `NOMI_REGISTRI` sopra e delle "chiavi
-     sconosciute" di dashboard.js. */
-  var CHIAVI_MISURA_NOTE = ['temperature', 'length', 'mass', 'pressure', 'volume',
-    'wind_speed', 'accumulated_precipitation', 'area'];
-  var NOMI_MISURA = {
-    temperature: 'temperatura', length: 'lunghezza', mass: 'massa', pressure: 'pressione',
-    volume: 'volume', wind_speed: 'vento', accumulated_precipitation: 'pioggia', area: 'area'
-  };
-
-  function homeMeasurements(unit) {
+  /* Le unità del sistema di riferimento, coi NOMI che manda il server
+     (`casa.nomi_misure`, `GET /api/home-space`): e' la tabella del nucleo,
+     `briefing._MEASUREMENT_NAMES`, e il suo ordine e' quello in cui la casa
+     si legge -- cosi' la stessa casa si legge uguale sul nucleo del modello e
+     su questa pagina, e la pagina non ne tiene una copia (C-09). Una chiave
+     che HA manda e che la mappa non conosce ancora NON sparisce: compare
+     col suo nome grezzo, stessa regola di `NOMI_REGISTRI` (common.js) e
+     delle "chiavi sconosciute" di dashboard.js. */
+  function homeMeasurements(unit, names) {
     if (!unit) return [];
-    var chiavi = CHIAVI_MISURA_NOTE.slice();
+    names = names || {};
+    var chiavi = Object.keys(names);
     Object.keys(unit).forEach(function (k) { if (chiavi.indexOf(k) === -1) chiavi.push(k); });
     return chiavi
       .filter(function (k) { return unit[k]; })
-      .map(function (k) { return (NOMI_MISURA[k] || k) + ' ' + unit[k]; });
+      .map(function (k) { return (names[k] || k) + ' ' + unit[k]; });
   }
 
   /* I NOMI delle etichette (`casa.etichette`, `GET /api/home-space`): mappa
@@ -160,13 +137,6 @@ window.HirisTreeRoute = (function () {
   function labelName(id, map) {
     if (map && Object.prototype.hasOwnProperty.call(map, id)) return map[id];
     return id;
-  }
-
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
   }
 
   function line(parent, text, style) {
@@ -198,7 +168,7 @@ window.HirisTreeRoute = (function () {
 
   /* --------------------------------------------------------- sistema di riferimento */
 
-  function renderSystem(body, system) {
+  function renderSystem(body, system, measurementNames) {
     var title = el('div', null, 'Sistema di riferimento');
     title.style.cssText = 'font-weight:500;margin-top:14px';
     body.appendChild(title);
@@ -217,7 +187,7 @@ window.HirisTreeRoute = (function () {
     if (system.versione_ha) identity.push('Home Assistant ' + system.versione_ha);
     line(body, identity.length ? identity.join(', ') + '.' : 'Nessun dettaglio d’identità dichiarato.', TONE_CALM);
 
-    var measurements = homeMeasurements(system.unita);
+    var measurements = homeMeasurements(system.unita, measurementNames);
     if (measurements.length) {
       line(body, 'Unità con cui ragiona la casa: ' + measurements.join(', ') +
         ' (ogni entità porta la propria: se manca, manca — non è questa).', TONE_CALM);
@@ -470,7 +440,7 @@ window.HirisTreeRoute = (function () {
     }
 
     /* Collaudo 3.22 (A10, stessa correzione di dashboard.js::renderHomeSpace):
-       ISO grezzo in UTC -> fmtDateTime (config/api.js), non una seconda
+       ISO grezzo in UTC -> fmtDateTime (common.js), non una seconda
        funzione di formattazione. */
     line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
 
@@ -490,7 +460,7 @@ window.HirisTreeRoute = (function () {
       line(body, 'Tutti i registri hanno risposto.', TONE_CALM);
     }
 
-    renderSystem(body, home_space.sistema_di_riferimento);
+    renderSystem(body, home_space.sistema_di_riferimento, home_space.nomi_misure);
 
     /* `etichette` (`casa.etichette`) e' a tre stati come `non_disponibili`:
        `null` = l'archivio manca, nessun nome risolvibile (nella pratica
@@ -519,7 +489,7 @@ window.HirisTreeRoute = (function () {
     floor.forEach(function (floor) { renderFloor(body, floor, labelMap); });
   }
 
-  function renderError(outlet, err) {
+  function renderTreeError(outlet, err) {
     console.error('[albero-della-casa] lettura fallita', err);
     var body = section(outlet, 'Albero della casa', null);
     line(body,
@@ -559,7 +529,7 @@ window.HirisTreeRoute = (function () {
       renderTree(outlet, home_space);
     }, function (err) {
       if (loading.parentNode) loading.parentNode.removeChild(loading);
-      renderError(outlet, err);
+      renderTreeError(outlet, err);
     });
   }
 

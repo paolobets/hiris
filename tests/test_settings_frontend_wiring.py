@@ -137,13 +137,15 @@ def test_la_pagina_non_dipende_dai_moduli_che_escono_al_task_6():
 
 def test_la_pagina_manda_l_header_csrf_su_ogni_scrittura():
     """Senza `X-Requested-With` il PUT si prende un 403 da `csrf_middleware`.
-    L'header e' impostato in un punto solo (`api()`), e i `fetch` diretti non
-    devono esistere: e' il modo esatto in cui questa pagina smetterebbe di
-    salvare."""
-    assert "'X-Requested-With': 'fetch'" in ROUTE
-    assert "fetch(" in ROUTE
-    # L'unico `fetch(` diretto ammesso e' quello DENTRO il wrapper api().
-    assert len(re.findall(r"\bfetch\(", ROUTE)) == 1
+    L'header e' impostato in un punto solo, `api()` di `static/common.js`
+    (Tappa 4, Task 3: prima ogni pagina ne aveva una copia, e questa prova
+    pinnava quella di qui). I `fetch` diretti non devono esistere: e' il modo
+    esatto in cui questa pagina smetterebbe di salvare. Che `api()` porti
+    l'intestazione lo provano `tests/js/common.test.mjs` e
+    `tests/js/settings-route.test.mjs`."""
+    assert "method: 'PUT'" in ROUTE
+    assert re.search(r"\bapi\(SETTINGS_URL, \{ method: 'PUT'", ROUTE)
+    assert not re.findall(r"\bfetch\(", ROUTE)
 
 
 def test_la_pagina_nomina_l_unica_rotta_che_usa():

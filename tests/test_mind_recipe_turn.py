@@ -21,6 +21,7 @@ from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
+from hiris.app.mind.operations import CAUSES, FROZEN, NotComputable
 
 CASA = House({
     "dispositivi": [{"id": "dev1", "nome": "Inverter ZCS"},
@@ -144,34 +145,12 @@ def test_un_dispositivo_SENZA_entita_non_si_chiede():
 
 
 # -- la risposta ------------------------------------------------------------
-
-def test_una_ricetta_valida_si_legge():
-    dati, motivo = rt.read_recipe(json.dumps(RICETTA_BUONA))
-
-    assert motivo is None
-    assert [p["name"] for p in dati["steps"]] == ["prodotta", "consumata",
-                                                  "quota_coperta"]
-
-
-def test_la_staccionata_del_modello_si_tollera():
-    """I modelli incorniciano il JSON anche quando si chiede di non farlo:
-    buttare il giro per un dettaglio di forma costerebbe un giro intero. E' la
-    stessa tolleranza gia' presa da `observer.read_decisions`."""
-    dati, motivo = rt.read_recipe(
-        "Ecco la ricetta:\n```json\n" + json.dumps(RICETTA_BUONA) + "\n```\n")
-
-    assert motivo is None
-    assert dati["why"]
-
-
-def test_una_risposta_ILLEGGIBILE_non_e_una_ricetta_vuota():
-    """**Un guasto e una ricetta vuota sono due cose diverse.** Appiattire il
-    primo sulla seconda scriverebbe «per questo dispositivo non c'e' niente da
-    calcolare» su un dispositivo che nessuno ha capito."""
-    dati, motivo = rt.read_recipe("mi dispiace, non saprei")
-
-    assert dati is None
-    assert motivo
+#
+# Le tre prove del lettore (`read_recipe`: la ricetta valida, la staccionata,
+# l'illeggibile che non e' una ricetta vuota) sono uscite col lettore, il
+# 05/10/2026 (Tappa 6, Task 3): il JSON lo cava `steering.read_json`, e le
+# stesse tre proprieta' le difendono `tests/test_lettore_unico.py` (ogni
+# mestiere, ogni forma) e `tests/test_turno_troncato.py` (il lettore).
 
 
 # -- si scrive nel sapere, e si rifiuta senza correggere --------------------
@@ -361,7 +340,7 @@ def test_le_risposte_di_tutti_i_dispositivi_si_leggono_in_UNA_lettura(sapere):
     sapere._conn.set_trace_callback(statements.append)
     try:
         asked = rt.devices_to_ask(sapere, CASA, {"sensor.prodotta", "switch.lavatrice"})
-        pruned = rt.has_prunable_recipes(sapere, CASA)
+        pruned = rt.has_named_recipes(sapere, CASA)
     finally:
         sapere._conn.set_trace_callback(None)
     assert asked == ["dev1"]
@@ -635,66 +614,163 @@ def test_la_migrazione_non_uccide_l_avvio_se_la_riga_nuova_ESISTE_GIA(tmp_path):
         nuovo.close()
 
 
-def test_una_ricetta_su_entita_MUTE_si_toglie_e_il_dispositivo_torna_una_domanda(sapere):
-    """**Il difetto che restava aperto dopo la 3.47.0**, trovato dalla
-    revisione indipendente: dire la verita' nel rifiuto non cambia l'esito.
+# -- la ricetta si ripara nel suo giro (attori, Task 1.6; D2) -----------------
+#
+# Mutazioni ESEGUITE (05/10/2026), ognuna rossa per la ragione giusta e
+# ripristinata (`git status`): «ferma» ammessa fra le cause riparabili; la
+# riparazione che non esclude le entita' mute dalla validazione; la ricetta
+# vecchia cancellata da una risposta storta; la guardia del «non capito» tolta;
+# `who_to_ask` che torna sempre il primo.
 
-    Il 14/09 il modello ha scritto ricette valide su entita' che non possono
-    avere statistiche -- misurato: **10 dispositivi**, 18 rifiuti al giorno.
-    `devices_to_ask` salta chi **ha** una ricetta, e nessuna migrazione la
-    toglie: quei dieci non sarebbero stati richiesti mai piu', e ogni notte
-    avrebbero prodotto lo stesso nulla, solo con una frase piu' bella.
 
-    **Si toglie la ricetta**, e il dispositivo torna una domanda aperta -- con
-    la domanda nuova, che dice quali entita' abbiano una serie. Non e'
-    un'eccezione alla regola «mai dati dell'utente»: e' una riga che questo
-    programma ha scritto su se stesso, contro una fonte che non esiste.
+def _casa_viva(spenta: bool = False) -> House:
+    """L'inverter con due entita' vive e una SPARITA (nel registro, senza
+    stato); la lavatrice con un'entita' spenta dal proprietario, se chiesto.
+    Le entita' con statistiche le dice `with_series` di ogni prova."""
+    entita = [
+        {"id": "sensor.prodotta", "nome": "Energia prodotta oggi",
+         "dispositivo_id": "dev1", "classe": "energy", "unita": "kWh"},
+        {"id": "sensor.consumata", "nome": "Energia consumata oggi",
+         "dispositivo_id": "dev1", "classe": "energy", "unita": "kWh"},
+        {"id": "sensor.vecchia", "nome": "Energia (vecchia)",
+         "dispositivo_id": "dev1", "classe": "energy", "unita": "kWh"},
+        {"id": "sensor.lavatrice", "nome": "Lavatrice energia",
+         "dispositivo_id": "dev2", "classe": "energy", "unita": "kWh",
+         **({"disabilitata": 1, "disabilitata_da": "user"} if spenta else {})},
+    ]
+    stati = {"sensor.prodotta": "1.0", "sensor.consumata": "2.0",
+             "sensor.lavatrice": "3.0"}
+    return House({"dispositivi": [{"id": "dev1", "nome": "Inverter ZCS"},
+                                  {"id": "dev2", "nome": "Lavatrice"}],
+                  "entita": entita}, Mirror(state=stati))
 
-    **Solo quando NESSUNA delle sue entita' ha una serie.** Una ricetta con un
-    passo buono e uno muto porta ancora un numero, e toglierla costerebbe una
-    misura vera per guadagnarne una possibile.
 
-    Mutazione ESEGUITA: non togliere niente -- rossa.
-    """
-    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
-                    who="x", when_ts=1789000000.0)
-    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == []
+SERIE_VIVE = {"sensor.prodotta", "sensor.consumata", "sensor.lavatrice"}
 
-    quante = rt.drop_recipes_without_series(sapere, CASA, with_series=set())
 
-    assert quante == 1
+def _ricetta(*entita):
+    return {"why": "pesa", "steps": [
+        {"name": e.split(".")[1], "operation": "somma_periodo",
+         "inputs": [f"@{e}"], "params": {"unit": "kWh"}} for e in entita]}
+
+
+def _scrivi(sapere, house, device_id, ricetta, when_ts=1789000000.0):
+    esito = rt.apply_recipe(sapere, house, device_id, json.dumps(ricetta),
+                            who="x", when_ts=when_ts)
+    assert esito["scritta"], esito
+
+
+def test_una_ricetta_su_un_entita_SPARITA_torna_una_domanda_e_dice_perche(sapere):
+    """Il caso del piano: una ricetta i cui passi rifiutano per una causa
+    riparabile torna fra le domande, e la domanda dice PERCHE'. Fino al
+    05/10/2026 nessuno la riparava: l'attuatore, che lo faceva, e' in pausa.
+    La ricetta vecchia NON si cancella: resta finche' la nuova non e' valida."""
+    casa = _casa_viva()
+    _scrivi(sapere, casa, "dev1", _ricetta("sensor.prodotta", "sensor.vecchia"))
+
+    rotte = rt.recipes_to_repair(sapere, casa, with_series=SERIE_VIVE)
+
+    assert set(rotte) == {"dev1"}
+    assert {e: r.cause for e, r in rotte["dev1"].items()} == {"sensor.vecchia": "sparita"}
+    domanda = rt.build_device_question("risparmiare", casa, "dev1",
+                                       with_series=SERIE_VIVE, repair=rotte["dev1"])
+    blocco = domanda.split("non funziona piu'", 1)[1]
+    assert "sensor.vecchia" in blocco and "non ha uno stato" in blocco
+    assert rt.recipes(sapere).get("dev1") is not None
+
+
+def test_le_cause_riparabili_sono_una_lista_chiusa_del_vocabolario():
+    """Ogni causa riparabile sta nel vocabolario unico (chiesto, non ricopiato);
+    `ferma` e le spente NON ci stanno: una fonte muta non si aggira con una
+    ricetta nuova, e una richiesta per lei sarebbe un giro del modello buttato
+    a ogni passaggio (revisione del piano, punto 4)."""
+    assert set(rt.REPAIRABLE_CAUSES) <= CAUSES
+    for cause in sorted(CAUSES):
+        refusal = NotComputable("perche' si", cause=cause)
+        assert rt.repairable(refusal, {"causa": None}) == (cause in rt.REPAIRABLE_CAUSES)
+    for mute in (FROZEN, "spenta_dal_proprietario", "integrazione_ferma"):
+        assert not rt.repairable(NotComputable("x", cause=mute), {"causa": None})
+
+
+def test_ricreata_si_ripara_irraggiungibile_no():
+    """`non_disponibile` vale due fatti: con `restored` nessuna integrazione
+    l'ha aggiunta (tolta, o ricreata con un altro id) e una ricetta nuova la
+    aggira; senza, il dispositivo e' solo irraggiungibile e torna da se'."""
+    muta = NotComputable("x", cause="non_disponibile")
+    assert rt.repairable(muta, {"causa": "restored"})
+    assert not rt.repairable(muta, {"causa": "unavailable"})
+
+
+def test_una_ricetta_su_un_entita_SPENTA_dal_proprietario_non_torna(sapere):
+    """Il confine: spenta e' una decisione, non un guasto della ricetta."""
+    scritta = _casa_viva()
+    _scrivi(sapere, scritta, "dev2", _ricetta("sensor.lavatrice"))
+    spenta = _casa_viva(spenta=True)
+
+    assert rt.recipes_to_repair(sapere, spenta,
+                                with_series=SERIE_VIVE - {"sensor.lavatrice"}) == {}
+
+
+def test_senza_sapere_chi_ha_una_serie_non_si_ripara_NIENTE(sapere):
+    """`None` vuol dire «non l'abbiamo potuto chiedere»: su quel silenzio non
+    si richiede nessuna ricetta della casa (lo diceva gia' la potatura che
+    questa funzione sostituisce)."""
+    casa = _casa_viva()
+    _scrivi(sapere, casa, "dev1", _ricetta("sensor.prodotta", "sensor.vecchia"))
+
+    assert rt.recipes_to_repair(sapere, casa, with_series=None) == {}
+
+
+def test_la_riparazione_RIFIUTA_una_ricetta_che_nomina_ancora_l_entita_muta(sapere):
+    """Una riparazione non deve produrre una ricetta rotta per la stessa
+    causa, che tornerebbe a ogni giro: la validazione esclude le entita' che
+    la domanda ha dichiarato mute. E una risposta storta NON cancella la
+    ricetta di adesso (calcola ancora `prodotta`): il «non capito» le si
+    scrive accanto, e ferma la riparazione fino al prossimo registro."""
+    casa = _casa_viva()
+    _scrivi(sapere, casa, "dev1", _ricetta("sensor.prodotta", "sensor.vecchia"))
+    rotte = rt.recipes_to_repair(sapere, casa, with_series=SERIE_VIVE)
+
+    esito = rt.apply_recipe(sapere, casa, "dev1",
+                            json.dumps(_ricetta("sensor.consumata", "sensor.vecchia")),
+                            who="x", when_ts=1789000100.0,
+                            repairing=frozenset(rotte["dev1"]))
+
+    assert not esito["scritta"]
+    assert any("sensor.vecchia" in p for p in esito["problemi"])
+    assert rt.recipes(sapere)["dev1"] == _ricetta("sensor.prodotta", "sensor.vecchia")
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is not None
+    assert rt.recipes_to_repair(sapere, casa, with_series=SERIE_VIVE) == {}, (
+        "una riparazione fallita contro questo registro si richiede a ogni giro")
+
+
+def test_una_riparazione_VALIDA_sostituisce_e_non_torna_piu(sapere):
+    casa = _casa_viva()
+    _scrivi(sapere, casa, "dev1", _ricetta("sensor.prodotta", "sensor.vecchia"))
+
+    esito = rt.apply_recipe(sapere, casa, "dev1",
+                            json.dumps(_ricetta("sensor.prodotta", "sensor.consumata")),
+                            who="x", when_ts=1789000100.0,
+                            repairing=frozenset({"sensor.vecchia"}))
+
+    assert esito["scritta"]
+    assert rt.recipes_to_repair(sapere, casa, with_series=SERIE_VIVE) == {}
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+
+
+def test_una_ricetta_TUTTA_muta_non_si_tiene_davanti_a_una_risposta_storta(sapere):
+    """Il caso che `drop_recipes_without_series` copriva: nessuna entita' della
+    ricetta da' una serie. Tenerla non vale niente -- non calcola -- e una
+    risposta storta la sostituisce col suo «non capito», come una domanda
+    nuova."""
+    casa = _casa_viva()
+    _scrivi(sapere, casa, "dev1", _ricetta("sensor.vecchia"))
+
+    rt.apply_recipe(sapere, casa, "dev1", "non saprei", who="x",
+                    when_ts=1789000100.0, repairing=frozenset({"sensor.vecchia"}))
+
     assert rt.recipes(sapere).get("dev1") is None
-    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == ["dev1"]
-
-
-def test_una_ricetta_con_UN_SOLO_passo_buono_NON_si_toglie(sapere):
-    """Il confine: basta un'entita' con una serie e la ricetta resta.
-
-    Mutazione ESEGUITA: togliere quando ANCHE UNA SOLA entita' e' muta --
-    rossa, si perderebbero misure vere.
-    """
-    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
-                    who="x", when_ts=1789000000.0)
-
-    quante = rt.drop_recipes_without_series(
-        sapere, CASA, with_series={"sensor.prodotta"})
-
-    assert quante == 0
-    assert rt.recipes(sapere).get("dev1") is not None
-
-
-def test_senza_sapere_quali_entita_abbiano_una_serie_non_si_toglie_NIENTE(sapere):
-    """`None` vuol dire «non l'abbiamo potuto chiedere», e su quel silenzio non
-    si cancella nessuna ricetta della casa.
-
-    Mutazione ESEGUITA: trattare `None` come insieme vuoto -- rossa, si
-    cancellerebbero TUTTE le ricette al primo guasto del websocket.
-    """
-    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
-                    who="x", when_ts=1789000000.0)
-
-    assert rt.drop_recipes_without_series(sapere, CASA, with_series=None) == 0
-    assert rt.recipes(sapere).get("dev1") is not None
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is not None
 
 
 def test_una_risposta_nuova_CANCELLA_quella_vecchia(sapere):
@@ -903,3 +979,37 @@ def test_il_catalogo_DICE_quali_parametri_sono_obbligatori():
     # formula vuota: sarebbe rumore su diciassette righe su diciotto.
     riga_quota = [r for r in catalogo.splitlines() if r.startswith("- `quota`")]
     assert "parametri obbligatori" not in riga_quota[0], riga_quota
+
+
+def test_sul_PONTE_la_riparazione_arriva_fino_alla_raccolta(sapere, tmp_path):
+    """Il ponte risponde minuti dopo, da un altro processo: le entita' che la
+    risposta non puo' nominare viaggiano nella sveglia del turno, e chi
+    raccoglie le applica come la catena. Senza, sul ponte una riparazione
+    accetterebbe di nuovo l'entita' muta e tornerebbe a ogni giro.
+
+    Mutazione ESEGUITA: la raccolta che non legge `riparare` dalla sveglia --
+    rossa (la ricetta con `sensor.vecchia` viene scritta)."""
+    import time
+
+    from hiris.app import server
+    from hiris.app.reasoning.queue import ReasoningQueue
+
+    casa = _casa_viva()
+    _scrivi(sapere, casa, "dev1", _ricetta("sensor.prodotta", "sensor.vecchia"))
+    rotte = rt.recipes_to_repair(sapere, casa, with_series=SERIE_VIVE)
+    coda = ReasoningQueue(str(tmp_path / "coda.db"))
+    app = {"reasoning_queue": coda, "models_config": {"ponte": {"scadenza_min": 10}}}
+
+    server._enqueue_recipe_turn(app, casa, "dev1", objective="risparmiare",
+                                with_series=SERIE_VIVE, repair=rotte["dev1"])
+    preso = coda.claim(time.time())
+    assert preso["wake"]["riparare"] == ["sensor.vecchia"]
+    assert "non funziona piu'" in preso["context"]["history"][0]["content"]
+    coda.submit(preso["job_id"], preso["nonce"],
+                {"reply": json.dumps(_ricetta("sensor.consumata", "sensor.vecchia"))},
+                time.time())
+
+    esito = server._collect_recipe_turn(app, sapere, casa)
+
+    assert not esito["scritta"]
+    assert rt.recipes(sapere)["dev1"] == _ricetta("sensor.prodotta", "sensor.vecchia")

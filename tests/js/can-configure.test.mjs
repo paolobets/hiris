@@ -341,8 +341,10 @@ for (const [hash, title] of BY_ADDRESS) {
     assert.equal(seen.exit, 'Vai agli Impegni');
     assertNoAdminData(calls);
     /* La pagina non si monta, e il rifiuto non si chiede a nessuna rotta
-       negata: le sole richieste sono quelle del guscio. */
-    assert.deepEqual(calls.map((c) => c.url).filter((u) => !/^api\/(pending|health)$/.test(u)), []);
+       negata: le sole richieste sono quelle del guscio -- il pallino, la
+       salute, e il tema (`api/config`, solo `theme`: da C-16 il guscio della
+       configurazione lo chiede come quello della chat). */
+    assert.deepEqual(calls.map((c) => c.url).filter((u) => !/^api\/(pending|health|config)$/.test(u)), []);
   });
 }
 

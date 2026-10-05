@@ -61,9 +61,25 @@ from ..home_space.log_source import (
     integration_slug,
 )
 from ..home_space.type_vocabulary import SYSTEM_GENRE, unknown_states
+from .operations import RECIPE_BROKEN, NotComputable
 from .recipes import Recipe
 
 logger = logging.getLogger(__name__)
+
+#: Quando si scrive il resoconto di ieri: l'aggregazione notturna (`server.py`,
+#: lavoro `hiris_mind_aggregation`) gira a quest'ora, nel fuso della casa. Le
+#: 00:20 e non la mezzanotte: aggregare a mezzanotte esatta prenderebbe un
+#: giorno ancora aperto. Scritte qui e non nella chiamata allo schedulatore
+#: perche' le dice anche la pagina «Il giorno», che le riceve da
+#: `GET /api/mind/report` (C-11, Tappa 4, Task 5).
+NIGHTLY_HOUR = 0
+NIGHTLY_MINUTE = 20
+
+#: Ogni quanto il recupero (`server.backfill_one_report`, lavoro
+#: `hiris_mind_backfill`) scrive, o rifa', un giorno di resoconto. Anche questa
+#: la dice una pagina: «Cosa ho capito» spiega quanto costa rifare la cronaca,
+#: e la riceve da `GET /api/mind/knowledge`.
+BACKFILL_EVERY_MINUTES = 5
 
 #: Le chiavi del corpo di un episodio che entrano nell'indice: **cio' che
 #: dopo non si recupera piu'**, perche' dipende da com'era la casa allora.
@@ -88,8 +104,9 @@ _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts",
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
                  names: dict, objective: dict | None = None,
-                 silent: dict[str, str] | None = None,
-                 judgment: dict | None = None) -> dict:
+                 silent: dict[str, NotComputable] | None = None,
+                 judgment: dict | None = None,
+                 muted: dict[str, dict] | None = None) -> dict:
     """Il resoconto di un giorno: `{giorno, obiettivo, misure, forme, cronaca,
     giudizio}`.
 
@@ -113,30 +130,40 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     cronaca.
 
     **`silent`** porta le entita' che non daranno una serie, ognuna col suo
-    perche' (spec §6, primo «rifiuta se»; `recipes.silent_entities`,
-    `recipes.unread_series_reason`): le loro misure escono «non calcolabile»
-    dicendo QUELLO, invece di «la serie e' vuota». `None` vuol dire «non
-    l'abbiamo potuto chiedere», e allora non si afferma niente.
+    rifiuto (spec §6, primo «rifiuta se»; `recipes.silent_entities`,
+    `recipes.unread_series`): le loro misure escono «non calcolabile»
+    dicendo QUELLO, con la sua causa, invece di «la serie e' vuota». `None`
+    vuol dire «non l'abbiamo potuto chiedere», e allora non si afferma niente.
 
     **`judgment` e' l'impronta dei giudizi con cui e' nata la cronaca**
     (`{"impronta": ...}`, spec `docs/design/2026-09-16-il-giudizio-dei-tipi.md`
     §6), gia' calcolata da chi chiama: `facts.aggregate_day` e
     `facts.rebuild_chronicle`. Come `objective`, `None` resta `None`: nessuna
     impronta inventata per una cronaca che non dice con quale giudizio e' nata.
+
+    **`muted`** porta le ricette che non possono produrre niente perche' ogni
+    loro entita' tace per una causa che non passa da sola
+    (`recipes.muted_recipes`, piano degli attori, Task 1.5; G-02, G-03):
+    `{dispositivo: {non_calcolabile, causa}}`. Escono con UNA riga per
+    dispositivo, non con un rifiuto per passo; chi chiama non le mette fra
+    `recipes`.
     """
-    measured, shapes = _measurements(series, recipes, names, silent)
+    measured, shapes = _measurements(series, recipes, names, silent, muted)
     return {"giorno": day, "obiettivo": objective, "misure": measured,
             "forme": shapes, "cronaca": [_entry(e) for e in episodes or []],
             "giudizio": judgment}
 
 
 def _measurements(series: dict, recipes: dict, names: dict,
-                  silent: dict[str, str] | None = None
+                  silent: dict[str, NotComputable] | None = None,
+                  muted: dict[str, dict] | None = None
                   ) -> tuple[list[dict], list[dict]]:
     """Le misure e le **forme**, separate: `(misure, forme)`.
 
     Una riga per numero, una per ogni numero che non si e' potuto fare -- col
-    suo perche' -- e a parte quelle il cui risultato **non e' un numero**.
+    suo perche', `non_calcolabile`, e la sua `causa` dal vocabolario chiuso
+    (`operations.CAUSES`, B-26) -- e a parte quelle il cui risultato **non e'
+    un numero**.
 
     **Perche' separate, col numero.** Misurato sulla casa vera il 14/09/2026:
     le misure di un giorno pesavano 17.399 byte, e 13.055 -- il **75%** --
@@ -160,11 +187,18 @@ def _measurements(series: dict, recipes: dict, names: dict,
     """
     out: list[dict] = []
     shapes: list[dict] = []
-    for subject in sorted(recipes or {}):
-        recipe = Recipe(recipes[subject])
+    muted = muted or {}
+    for subject in sorted({*(recipes or {}), *muted}):
         base = {"soggetto": subject}
         if names.get(subject):
             base["nome"] = names[subject]
+        if subject in muted:
+            # Il dispositivo tace tutto: una riga, non un rifiuto per passo.
+            out.append({**base, "misura": "(la ricetta)",
+                        "non_calcolabile": muted[subject]["non_calcolabile"],
+                        "causa": muted[subject]["causa"]})
+            continue
+        recipe = Recipe(recipes[subject])
         needed = {e: series.get(e) or [] for e in recipe.entities()}
         try:
             outcomes = recipe.run(series=needed, silent=silent)
@@ -176,7 +210,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
             # dispositivo sarebbe il contrario di cio' che questo strato
             # promette.
             out.append({**base, "misura": "(la ricetta)",
-                          "non_calcolabile": str(error)})
+                        "non_calcolabile": str(error), "causa": RECIPE_BROKEN})
             logger.warning("resoconto: ricetta non valida per %s -- %s",
                            subject, error)
             continue
@@ -209,6 +243,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
                     continue
             else:
                 row["non_calcolabile"] = outcome.reason
+                row["causa"] = outcome.cause
             out.append(row)
     return out, shapes
 
@@ -268,8 +303,10 @@ def series_of_measures(reports, names: dict | None = None) -> dict:
     se n'e' accorto. Il posto nella serie resta col suo `None`, e quando il
     resoconto diceva **perche'** quel perche' si conserva.
 
-    **I giorni senza valore si raccolgono in tratti** (`{dal, al, ragione}`),
-    non uno per giorno: vedi `_runs`, col numero che lo giustifica.
+    **I giorni senza valore si raccolgono in tratti** (`{dal, al, ragione,
+    causa}`), non uno per giorno: vedi `_runs`, col numero che lo giustifica.
+    `causa` e' la parola del vocabolario chiuso (B-26, attori Task 1.2);
+    `None` per i resoconti scritti prima che la riga la portasse.
 
     **Ordine stabile**, per soggetto e misura: due letture della stessa storia
     devono dare lo stesso ordine, o un modello che le rilegge vedrebbe un
@@ -341,7 +378,7 @@ def series_of_measures(reports, names: dict | None = None) -> dict:
                     for each in wanted:
                         slot = _slot(line, each)
                         if reason:
-                            slot["perche"][day] = reason
+                            slot["perche"][day] = (reason, line.get("causa"))
                     continue
                 slot = _slot(line, key)
                 slot["valori"][index[day]] = value
@@ -393,7 +430,8 @@ def _objective_runs(reports) -> list[dict]:
 
 
 def _runs(days: list[str], reasons: dict) -> list[dict]:
-    """I giorni senza valore, raccolti in **tratti**: `{dal, al, ragione}`.
+    """I giorni senza valore, raccolti in **tratti**: `{dal, al, ragione,
+    causa}`. `reasons` e' `{giorno: (ragione, causa)}`.
 
     **Misurato il 15/09/2026 sui venti giorni veri**: i `perche` erano il 66%
     del peso della serie, ed erano ripetizioni -- 36 serie ripetevano la stessa
@@ -407,19 +445,22 @@ def _runs(days: list[str], reasons: dict) -> list[dict]:
     **Due ragioni diverse restano due tratti** -- raggruppare e' comprimere,
     non appiattire -- e **un buco che si riapre dopo un giorno buono e' un
     tratto nuovo**: l'analista deve vedere che la misura era tornata e se n'e'
-    andata di nuovo, non un unico buco lungo che non c'e' mai stato.
+    andata di nuovo, non un unico buco lungo che non c'e' mai stato. Lo stesso
+    per due cause diverse con la stessa frase.
     """
     out: list[dict] = []
     open_run: dict | None = None
     for day in days:
-        reason = reasons.get(day)
-        if reason is None:
+        found = reasons.get(day)
+        if found is None:
             open_run = None
             continue
-        if open_run is not None and open_run["ragione"] == reason:
+        reason, cause = found
+        if (open_run is not None and open_run["ragione"] == reason
+                and open_run["causa"] == cause):
             open_run["al"] = day
             continue
-        open_run = {"dal": day, "al": day, "ragione": reason}
+        open_run = {"dal": day, "al": day, "ragione": reason, "causa": cause}
         out.append(open_run)
     return out
 

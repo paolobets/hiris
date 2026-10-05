@@ -43,7 +43,9 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from ..mind.report import as_page
+from ..mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
+from ..mind.store import READING_RETENTION_S
+from .boundary import error_response
 from .soffitto import require_builder, subject_name
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
@@ -63,7 +65,8 @@ async def handle_watching(request: web.Request) -> web.Response:
     schermata:
 
     - `watching` -- cio' che si guarda, col **motivo** e l'**autore** di ogni
-      voce (`Watcher.watching()`, che le prende dallo scope);
+      voce (`Watcher.watching()`, che le prende dallo scope), e per ogni
+      entita' la sua **fonte** (`House.source`: viva, spenta, sparita...);
     - `fuori` -- cio' che e' stato **lasciato fuori**, con la sua ragione. E'
       l'altra meta' della trasparenza, ed e' da li' che si rimette dentro una
       delle escluse: un elenco di sole cose guardate non direbbe se un'entita'
@@ -98,11 +101,20 @@ async def handle_watching(request: web.Request) -> web.Response:
     """
     watcher = request.app.get("watcher")
     if watcher is None:
-        return web.json_response(
-            {"watching": [], "error": "osservatore non disponibile"}, status=503)
+        return error_response(503, "osservatore non disponibile")
     store = request.app.get("observations")
+    # La casa del momento, per la fonte di ogni soggetto (Task 1.5, G-01).
+    # Senza anagrafe -- archivio assente, o nessuna lettura ancora riuscita
+    # (`HomeSpace.read()` torna `{}`) -- non si chiede: una casa vuota
+    # farebbe «sconosciuto» di ogni soggetto, che e' un'affermazione, non un
+    # silenzio.
+    home_space_store = request.app.get("home_space_store")
+    house = (None if home_space_store is None
+             else House.read(home_space_store, request.app.get("entity_cache")))
+    if house is not None and not house.home_space:
+        house = None
     return web.json_response({
-        "watching": _with_integration(watcher.watching()),
+        "watching": _with_integration(watcher.watching(house=house)),
         "fuori": _left_out(store),
         "obiettivo": store.objective() if store is not None else None,
         "riconsiderazione": store.last_reconsideration() if store is not None else None,
@@ -155,7 +167,7 @@ def _left_out(store) -> list[dict]:
         return []
     return sorted(
         ({"soggetto": subject, "motivo": v["motivo"], "autore": v["autore"],
-          "deciso_ts": v["deciso_ts"]}
+          "quando": v["quando"]}
          for subject, v in store.scope().items() if not v["dentro"]),
         key=lambda v: v["soggetto"])
 
@@ -202,8 +214,7 @@ async def handle_report(request: web.Request) -> web.Response:
     """
     store = request.app.get("observations")
     if store is None:
-        return web.json_response({"errore": "archivio non disponibile"},
-                                 status=503)
+        return error_response(503, "archivio non disponibile")
     day = request.query.get("day") or None
     if day is None:
         # Solo le misure: la cronaca si chiede un giorno alla volta.
@@ -222,8 +233,12 @@ async def handle_report(request: web.Request) -> web.Response:
         return web.json_response({"resoconti": serie})
     resoconto = store.report(day)
     if resoconto is None:
-        return web.json_response(
-            {"errore": f"il giorno {day} non e' stato aggregato"}, status=404)
+        # `ora_notturna`: quando il resoconto di quel giorno si scrivera'. La
+        # pagina lo dice («non e' un errore»), e lo riceve invece di saperlo
+        # (C-11, Tappa 4, Task 5).
+        return error_response(
+            404, f"il giorno {day} non e' stato aggregato",
+            ora_notturna=f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}")
     # **Misure E forme**: portano lo stesso `soggetto`, e risolverne uno solo
     # rifarebbe -- dentro la stessa risposta JSON -- il difetto che la 3.46.0
     # dichiara di aver chiuso fra le misure e la cronaca. Trovato dalla
@@ -273,23 +288,18 @@ async def handle_set_objective(request) -> web.Response:
     """
     store = request.app.get("observations")
     if store is None:
-        return web.json_response({"errore": "archivio non disponibile"},
-                                 status=503)
+        return error_response(503, "archivio non disponibile")
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"errore": "corpo non leggibile"}, status=400)
+        return error_response(400, "corpo non leggibile")
     text = body.get("testo") if isinstance(body, dict) else None
     if not isinstance(text, str):
-        return web.json_response(
-            {"errore": "serve un campo `testo` con la frase dell'obiettivo."},
-            status=400)
+        return error_response(400, "serve un campo `testo` con la frase dell'obiettivo.")
     if not text.strip():
-        return web.json_response(
-            {"errore": "un obiettivo vuoto non si scrive: e' la sola manopola "
-                       "del prodotto, e senza criterio l'osservatore non sa "
-                       "piu' cosa guardare."},
-            status=400)
+        return error_response(400, "un obiettivo vuoto non si scrive: e' la sola manopola "
+                                   "del prodotto, e senza criterio l'osservatore non sa "
+                                   "piu' cosa guardare.")
     written = store.set_objective(text)
     return web.json_response({"obiettivo": store.objective(),
                               "scritto": bool(written)})
@@ -338,18 +348,15 @@ async def handle_set_judgment(request) -> web.Response:
     if refusal is not None:
         return refusal
     if request.app.get("knowledge") is None:
-        return web.json_response({"errore": "il sapere non e' disponibile"},
-                                 status=503)
+        return error_response(503, "il sapere non e' disponibile")
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"errore": "corpo non leggibile"}, status=400)
+        return error_response(400, "corpo non leggibile")
     if (not isinstance(body, dict) or "valore" not in body
             or not all(isinstance(body.get(key), str) for key in _JUDGMENT_TEXT_KEYS)):
-        return web.json_response(
-            {"errore": "servono `soggetto_genere`, `soggetto` e `campo` come testo, e "
-                       "`valore` (testo, oppure null per tornare al seme)."},
-            status=400)
+        return error_response(400, "servono `soggetto_genere`, `soggetto` e `campo` come testo, e "
+                                   "`valore` (testo, oppure null per tornare al seme).")
     soggetto = request.get("soggetto")
     try:
         outcome = write_judgment(
@@ -359,7 +366,7 @@ async def handle_set_judgment(request) -> web.Response:
                          or UNNAMED_BUILDER),
             said_by=subject_key_for(soggetto))
     except JudgmentRefused as refused:
-        return web.json_response({"errore": str(refused)}, status=400)
+        return error_response(400, str(refused))
     except JudgmentStoreFailed as failed:
         # **503 come il sapere assente** (giro di correzioni 1, punto 8):
         # l'archivio c'e' ma non si lascia scrivere -- disco pieno, `database
@@ -368,13 +375,12 @@ async def handle_set_judgment(request) -> web.Response:
         # (riprovare), mentre un 500 col corpo HTML di aiohttp la pagina non
         # sa nemmeno leggerlo. Non e' un 400: non c'e' niente di sbagliato in
         # cio' che il proprietario ha chiesto.
-        return web.json_response({"errore": str(failed)}, status=503)
+        return error_response(503, str(failed))
     except JudgmentNotInEffect as unused:
-        return web.json_response(
-            {"errore": str(unused), "riga": unused.row,
-             "impronta": unused.status["impronta"],
-             "provenienza_istantanea": unused.status["provenienza_istantanea"]},
-            status=409)
+        return error_response(
+            409, str(unused), riga=unused.row,
+            impronta=unused.status["impronta"],
+            provenienza_istantanea=unused.status["provenienza_istantanea"])
     return web.json_response(outcome)
 
 
@@ -390,8 +396,7 @@ async def handle_analysis(request) -> web.Response:
     """
     store = request.app.get("observations")
     if store is None:
-        return web.json_response({"errore": "archivio non disponibile"},
-                                 status=503)
+        return error_response(503, "archivio non disponibile")
     day = (request.query.get("day") or "").strip()
     if not day:
         names = _device_names(request.app)
@@ -400,8 +405,7 @@ async def handle_analysis(request) -> web.Response:
             for a in store.analyses(limit=30)]})
     found = store.analysis(day)
     if found is None:
-        return web.json_response(
-            {"errore": f"il giorno {day} non e' stato analizzato"}, status=404)
+        return error_response(404, f"il giorno {day} non e' stato analizzato")
     return web.json_response({"analisi": _with_device_names(request.app, found)})
 
 
@@ -554,8 +558,7 @@ async def handle_knowledge(request) -> web.Response:
     """
     sapere = request.app.get("knowledge")
     if sapere is None:
-        return web.json_response({"errore": "il sapere non e' disponibile"},
-                                 status=503)
+        return error_response(503, "il sapere non e' disponibile")
     unexplained = [{"specie": f.subject_kind, "soggetto": f.subject,
                    "campo": f.field, "valore": f.value,
                    "provenienza": f.provenance, "prove": f.evidence,
@@ -567,4 +570,9 @@ async def handle_knowledge(request) -> web.Response:
         "giudizi": judgment_listing(sapere),
         "domande_aperte": [{"chiavi": sorted(question.keys), "domanda": question.question}
                            for question in OPEN_QUESTIONS],
+        # Quanto costa rifare la cronaca, che la pagina dice accanto a ogni
+        # giudizio che la rifa': quanti giorni ne conserva il grezzo e ogni
+        # quanto il recupero ne scrive uno (C-11, Tappa 4, Task 5).
+        "cronaca": {"ritenzione_s": READING_RETENTION_S,
+                    "un_giorno_ogni_s": BACKFILL_EVERY_MINUTES * 60},
     })

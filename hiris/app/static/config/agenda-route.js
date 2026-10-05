@@ -113,52 +113,14 @@ window.HirisAgendaRoute = (function () {
      indipendente della fetta, rilievo 5). */
   var OUTCOME_STATES = ['mantenuta', 'saltata', 'fallita'];
 
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
-  function clearEl(node) {
-    while (node && node.firstChild) node.removeChild(node.firstChild);
-    return node;
-  }
-  function byId(id) { return document.getElementById(id); }
-
-  function api(path, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign(
-      { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      opts.headers || {});
-    return fetch(path, opts);
-  }
-
   function setStatus(text) {
     var s = byId('agenda-status');
     if (s) s.textContent = text || '';
   }
 
-  /* Lo stato di un rivelatore scritto in un posto solo: `hidden` sul
-     pannello e `aria-expanded` sul bottone che lo governa non possono
-     divergere se nessuno li assegna separatamente -- ed e' proprio la
-     divergenza (il pannello aperto e lo screen reader che lo annuncia
-     chiuso) il difetto che questa riga rende impossibile. Lo usano tutti e
-     due i rivelatori della pagina, l'intestazione dello «Storico» e il
-     pannello «Cosa è cambiato»: un secondo meccanismo sarebbe un doppione.
-     Gemello di `constructions-route.js::setDisclosure`: sono due copie.
-     Non stanno in `config/api.js` per una scelta delle prove, che caricano
-     ciascuna route DA SOLA senza quel file -- non per un vincolo del
-     prodotto: le pagine lo caricano sempre. */
-  function setDisclosure(btn, panel, open) {
-    panel.hidden = !open;
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-
   /* ── Date e ore (guida §4): sempre da `quando_ts`, mai da `quando_detto`
      -- quello e' gia' dentro la `frase` verbatim. Il fuso non si mostra:
      `new Date(ts*1000)` legge gia' quello del browser di chi guarda. ──── */
-  function pad2(n) { return n < 10 ? '0' + n : String(n); }
-
   function fmtAbsoluteTime(d) {
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
@@ -214,7 +176,8 @@ window.HirisAgendaRoute = (function () {
   /* Il contenuto del pannello «Cosa è cambiato» (review finale, rilievo ①):
      legge la riga di `GET /api/executions/{id}` cosi' com'e', senza
      ricostruire un'altra forma -- la cronaca gia' porta `servizio`,
-     `entita`, `cambiato`, `avviso`, `errore` (`action/journal.py::_riga`).
+     `entita`, `cambiato`, `avviso`, e `errore` che il confine scrive `error`
+     (`action/journal.py::_row`, `api/boundary.py::occurrence_out`).
 
      Il caso «cambiato è vuoto» (guida generale del progetto, non della
      pagina: il rilievo la richiama esplicitamente) NON diventa mai «niente
@@ -226,8 +189,8 @@ window.HirisAgendaRoute = (function () {
      esattamente la distinzione per cui quel campo esiste. */
   function renderExecutionDetail(panel, execution) {
     clearEl(panel);
-    if (execution.errore) {
-      var error = el('p', null, execution.errore);
+    if (execution.error) {
+      var error = el('p', null, execution.error);
       error.style.cssText = 'font-size:var(--fs-14);color:var(--err-ink);margin:4px 0 0';
       panel.appendChild(error);
     }
@@ -241,7 +204,7 @@ window.HirisAgendaRoute = (function () {
       var notice = el('p', null, execution.avviso);
       notice.style.cssText = 'font-size:var(--fs-13);color:var(--warn-ink);margin:4px 0 0';
       panel.appendChild(notice);
-    } else if (!changed && !execution.errore) {
+    } else if (!changed && !execution.error) {
       // Difensivo: nella porta attuale (`action/actuator.py`) un `cambiato`
       // vuoto porta SEMPRE un `avviso` -- questo ramo non dovrebbe mai
       // rendersi oggi, ma se un domani smettesse di esserlo, tacere
@@ -544,7 +507,7 @@ window.HirisAgendaRoute = (function () {
         /* La guardia `if` ci vuole SOLO qui: `static/pending-badge.js` e'
            caricato da tutti e due i gusci in produzione, ma questa pagina
            gira anche nei test senza quel file (`tests/js/agenda-route.
-           test.mjs` carica `config/agenda-route.js` da solo). Senza il
+           test.mjs` carica solo `common.js` e `config/agenda-route.js`). Senza il
            rinfresco il pallino resterebbe acceso mentre l'utente sta gia'
            leggendo cio' che lo aveva acceso. */
         if (window.HirisPendingBadge) window.HirisPendingBadge.refresh();
@@ -559,17 +522,6 @@ window.HirisAgendaRoute = (function () {
      anche il 503 di `handle_get_agenda` (archivio non disponibile), che
      manda gia' `promesse: []` dentro un corpo comunque non-2xx: basta
      guardare `r.ok`, non serve leggere un campo apposito. */
-  function renderError(pendingBody, historyBody, reload) {
-    [pendingBody, historyBody].forEach(function (node) {
-      clearEl(node);
-      node.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere le promesse. Riprova più tardi.'));
-      var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-      retry.type = 'button';
-      retry.addEventListener('click', reload);
-      node.appendChild(retry);
-    });
-  }
-
   function load() {
     var pendingBody = byId('agenda-pending-body');
     var historyBody = byId('agenda-history-body');
@@ -618,7 +570,9 @@ window.HirisAgendaRoute = (function () {
       renderUnread([]);
       setHistoryCount(null);
       renumberSections();
-      renderError(pendingBody, historyBody, load);
+      [pendingBody, historyBody].forEach(function (node) {
+        renderError(node, 'Non è stato possibile leggere le promesse. Riprova più tardi.', load);
+      });
     });
   }
 

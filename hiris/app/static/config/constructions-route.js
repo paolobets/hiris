@@ -34,9 +34,12 @@
    fondo, non il livello primario di lettura.
 
    -- Gerarchia (guida §1) --
-   UNA sola `GET /api/constructions`, filtrata qui per `stato` -- non due
-   richieste, non due mondi. Due sezioni: «In attesa» (in_attesa + in_corso
-   insieme, stesso concetto "non ancora concluso", ordinate per `creata_ts`
+   UNA sola `GET /api/constructions`, divisa qui sul campo `sospesa` che il
+   server calcola per ogni riga (C-12: la regola «non ancora concluso» delle
+   due code vive in `handlers_constructions._both_queues`, non in questa
+   pagina) -- non due richieste, non due mondi. Due sezioni: «In attesa» (le
+   righe sospese: per le costruzioni in_attesa + in_corso, per le proposte a
+   mano la loro attesa; ordinate per `creata_ts`
    crescente -- chi aspetta da piu' tempo sta in cima) e «Storico» (tutto il
    resto, `creata_ts` decrescente, piu' recente in cima).
    Lo «Storico» nasce CHIUSO, con il conteggio nel titolo (fetta «i menu
@@ -130,10 +133,10 @@
    «Dimentica» in memory-route.js (azione distruttiva senza coda d'attesa).
    Testo composto solo da campi reali (mai una frase generica).
    Errori: 404/409/503 portano gia' un testo corretto dal server -- si legge
-   `errore` e si mostra verbatim, mai un messaggio sintetico per casi che il
+   `error` e si mostra verbatim, mai un messaggio sintetico per casi che il
    server ha gia' separato. Solo un vero fallimento di rete usa il messaggio
-   generico. Un fallimento della GET (rete giu', o il 503 che porta gia'
-   `costruzioni: []` e sembra una lista vuota senza esserlo) mostra un
+   generico. Un fallimento della GET (rete giu', o il 503 -- che fino al
+   05/10/2026 portava anche `constructions: []`, A10) mostra un
    messaggio distinto con "Riprova", mai lo stesso testo di "non c'e' niente
    qui". Il 403 della GET (la pagina e' di chi costruisce, spec 2026-09-26
    §3) e' un terzo caso: il motivo del server, senza "Riprova".
@@ -145,8 +148,6 @@
    403 (`hiris/app/api/middleware_csrf.py`). */
 window.HirisConstructions = (function () {
   'use strict';
-
-  var OPEN_STATES = ['in_attesa', 'in_corso', 'attesa'];
 
   var STATE_LABEL = {
     in_attesa: 'In attesa',
@@ -179,42 +180,6 @@ window.HirisConstructions = (function () {
     { chiave: 'actions', chiaveAlt: 'sequence', etichetta: 'azioni' },
     { chiave: 'entities', etichetta: 'entità' }
   ];
-
-  function el(tag, cls, text) {
-    var node = document.createElement(tag);
-    if (cls) node.className = cls;
-    if (text !== undefined && text !== null) node.textContent = String(text);
-    return node;
-  }
-
-  function clearEl(node) {
-    while (node && node.firstChild) node.removeChild(node.firstChild);
-    return node;
-  }
-
-  function api(path, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign(
-      { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      opts.headers || {});
-    return fetch(path, opts);
-  }
-
-  function pad2(n) { return n < 10 ? '0' + n : String(n); }
-
-  /* Lo stato di un rivelatore scritto in un posto solo: `hidden` sul
-     pannello e `aria-expanded` sul bottone che lo governa non possono
-     divergere se nessuno li assegna separatamente. Lo usano tutti e due i
-     rivelatori della pagina -- i «Dettagli tecnici» di una riga e
-     l'intestazione dello «Storico» -- perche' un secondo meccanismo sarebbe
-     un doppione. Gemello di `agenda-route.js::setDisclosure`: sono due
-     copie. Non stanno in `config/api.js` (il file condiviso) per una scelta
-     delle prove, che caricano ciascuna route DA SOLA senza quel file -- non
-     per un vincolo del prodotto: le pagine lo caricano sempre. */
-  function setDisclosure(btn, panel, open) {
-    panel.hidden = !open;
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
 
   function fmtData(ts) {
     var d = new Date(ts * 1000);
@@ -416,12 +381,10 @@ window.HirisConstructions = (function () {
       })
       .then(function (occurrence) {
         if (occurrence.res.ok) { reload(); return; }
-        /* guida §7: si legge `errore` verbatim, mai un messaggio sintetico
-           per casi che il server ha gia' separato (404/409/503). */
-        /* `errore` e' la chiave del cancello (403, `soffitto.require_builder`)
-           e delle rotte delle proposte; `error` quella di 404/409/503 qui. */
-        statusEl.textContent = (occurrence.corpo &&
-          (occurrence.corpo.errore || occurrence.corpo.error)) ||
+        /* guida §7: si legge `error` verbatim, mai un messaggio sintetico
+           per casi che il server ha gia' separato (403/404/409/503): dalla
+           Tappa 4 (D2) ogni errore HTTP porta quella chiave sola. */
+        statusEl.textContent = (occurrence.corpo && occurrence.corpo.error) ||
           ('Errore HTTP ' + occurrence.res.status);
         button.forEach(function (b) { b.disabled = false; });
       }, function () {
@@ -695,18 +658,6 @@ window.HirisConstructions = (function () {
       reason || 'Questa pagina è di chi può costruire.'));
   }
 
-  function renderError(openBody, historyBody, reload) {
-    [openBody, historyBody].forEach(function (node) {
-      clearEl(node);
-      node.appendChild(el('p', 'proposals-error',
-        'Non è stato possibile leggere le costruzioni. Riprova più tardi.'));
-      var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-      retry.type = 'button';
-      retry.addEventListener('click', reload);
-      node.appendChild(retry);
-    });
-  }
-
   /* Il titolo di una sezione richiudibile: il bottone sta DENTRO l'`<h2>`,
      non al suo posto. Chi naviga per intestazioni continua a trovare la
      sezione, e un `<h2>` dentro un `<button>` sarebbe comunque HTML non
@@ -790,7 +741,7 @@ window.HirisConstructions = (function () {
     return fetch('api/constructions').then(function (r) {
       if (r.status === 403) {
         return r.json().catch(function () { return {}; }).then(function (corpo) {
-          return { negato: (corpo && corpo.errore) || '' };
+          return { negato: (corpo && corpo.error) || '' };
         });
       }
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -801,8 +752,8 @@ window.HirisConstructions = (function () {
         return;
       }
       var all = (data && data.constructions) || [];
-      var open = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) !== -1; });
-      var history = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) === -1; });
+      var open = all.filter(function (c) { return c.sospesa === true; });
+      var history = all.filter(function (c) { return c.sospesa !== true; });
       renderSection(openBody, open,
         'Nessuna proposta in attesa. Quando chiedi a HIRIS di creare, modificare o cancellare ' +
         'un’automazione, uno script o una scena, la trovi qui prima che diventi reale.',
@@ -812,7 +763,9 @@ window.HirisConstructions = (function () {
       setHistoryCount(outlet, history.length);
     }).catch(function () {
       setHistoryCount(outlet, null);
-      renderError(openBody, historyBody, reload);
+      [openBody, historyBody].forEach(function (node) {
+        renderError(node, 'Non è stato possibile leggere le costruzioni. Riprova più tardi.', reload);
+      });
     });
   }
 

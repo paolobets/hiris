@@ -50,7 +50,11 @@ def test_index_html_has_no_inline_script_block():
     # guarda in che cartella sta il file, e nemmeno questo conteggio deve
     # farlo: erano piu' stretti loro del contratto che difendevano.
     literal_src_scripts = html.count('<script src="static/')
-    theme_bootstrap = html.count("localStorage.getItem('hiris-theme')")
+    # Il bootstrap del tema resta in linea (evita il lampo prima del primo
+    # disegno), ma chiama `paintSavedTheme()` di common.js invece di
+    # ricopiarne la chiave (registro C-16). Che chiami solo funzioni di
+    # common.js, caricato prima di lui, lo prova tests/js/common.test.mjs.
+    theme_bootstrap = html.count("<script>paintSavedTheme();</script>")
     assert theme_bootstrap == 1, "il bootstrap tema inline deve restare (evita il flash pre-render)"
     # Every <script> tag besides the theme-bootstrap one must be a literal
     # src= reference so _ASSET_REF_RE (per-file cache-busting) can see it.
@@ -71,8 +75,8 @@ def test_all_chat_js_files_exist_and_are_declared_in_html():
 
 def test_shared_api_js_is_reused_not_forked():
     html = INDEX.read_text(encoding="utf-8")
-    assert 'src="static/config/api.js"' in html, (
-        "la pagina chat deve caricare config/api.js (esc/applyTheme/loadUsage condivisi)"
+    assert 'src="static/common.js"' in html, (
+        "la pagina chat deve caricare common.js (esc/applyTheme/loadUsage condivisi)"
     )
 
     chat_src = "\n".join((CHAT / f).read_text(encoding="utf-8") for f in EXPECTED_CHAT_FILES)
@@ -80,10 +84,10 @@ def test_shared_api_js_is_reused_not_forked():
     # `function applyTheme(` or `function loadUsage(` redeclared anywhere
     # under static/chat/.
     assert "function esc(" not in chat_src, (
-        "esc() deve venire da config/api.js, non da una copia privata"
+        "esc() deve venire da common.js, non da una copia privata"
     )
-    assert "function applyTheme(" not in chat_src, "applyTheme() deve venire da config/api.js"
-    assert "function loadUsage(" not in chat_src, "loadUsage() deve venire da config/api.js"
+    assert "function applyTheme(" not in chat_src, "applyTheme() deve venire da common.js"
+    assert "function loadUsage(" not in chat_src, "loadUsage() deve venire da common.js"
 
 
 def test_chat_wire_non_manda_piu_chatbot_id():

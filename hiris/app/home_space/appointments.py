@@ -54,7 +54,7 @@ integrazione l'abbia creata) contro `CALENDAR_EVENT_SCHEMA`, che applica
 `_as_local_timezone("start", "end")` -- verificato alla stessa fonte,
 identico sui due tag. Il fuso locale e' un invariante dello SCHEMA di HA,
 non una scelta di una integrazione in particolare. La riscrittura qui sotto
-(`astimezone`, in `read_appointment`) e' percio' un NO-OP in pratica, non la
+(`historian.instant_out`, in `read_appointment`) e' percio' un NO-OP in pratica, non la
 correzione di una divergenza fra calendari che non esiste -- la si tiene
 comunque perche' e' la stessa disciplina che il resto del prodotto applica
 a OGNI istante uscente (`historian.day_boundaries`): il
@@ -85,7 +85,8 @@ sola.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+import logging
+from datetime import date, timedelta
 from functools import cache
 
 # Import RELATIVO, come ogni altro modulo del prodotto. Assoluto
@@ -96,16 +97,14 @@ from functools import cache
 # qualunque riga di log. E' costato il guasto in produzione della v3.22.0
 # (07/09/2026); il cancello che lo impedisce e' in
 # `tests/test_import_boundary.py`.
-from .historian import home_space_zone
+from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from .historian import home_space_zone, instant_epoch, instant_out
+
+logger = logging.getLogger(__name__)
 
 
 def _stripped_text(value) -> str:
     return (value or "").strip()
-
-
-def _in_home_zone(raw: str, zone) -> str:
-    """Un `dateTime` ISO-8601 -> lo stesso istante nel fuso della casa."""
-    return datetime.fromisoformat(raw).astimezone(zone).isoformat()
 
 
 @cache
@@ -153,8 +152,8 @@ def read_appointment(event: dict, *, timezone: str | None) -> dict:
         result["fine"] = last_day.isoformat()
     else:
         zone = _cached_zone(timezone)
-        result["inizio"] = _in_home_zone(start["dateTime"], zone)
-        result["fine"] = _in_home_zone(end["dateTime"], zone)
+        result["inizio"] = instant_out(start["dateTime"], zone)
+        result["fine"] = instant_out(end["dateTime"], zone)
 
     location = _stripped_text(event.get("location"))
     if location:
@@ -175,16 +174,168 @@ def sort_appointments(appointments: list[dict]) -> list[dict]:
     un elenco ordinato -- serve un ordinamento vero sull'unione, che e'
     esattamente cio' che c'e' qui.
 
-    L'ordinamento e' lessicografico sull'`inizio` GIA' letto (stringa ISO
-    con offset per un orario, data nuda per un giornaliero): basta, stessa
-    proprieta' di `HAClient.calendar_events` (una data e' prefisso di ogni
-    orario dello stesso giorno). **La stessa eccezione dichiarata li' resta
-    IDENTICA qui, non migliora**: l'ultima domenica di ottobre, fra le 2 e
-    le 3, `02:30+02:00` esce dopo `02:00+01:00` nel confronto
-    lessicografico, perche' si confronta l'ora SCRITTA e non l'istante. Due
-    impegni entrambi dentro quell'ora possono uscire invertiti; e'
-    dichiarato, non corretto -- stessa scelta di `calendar_events`, per la
-    stessa ragione (parsare ogni istante per un'ora l'anno costerebbe piu'
-    di quanto valga).
+    **Si ordina per istante, non per testo** (A17, approvata il 05/10/2026).
+    Fino a quel giorno l'ordine era lessicografico sull'`inizio`, e
+    l'ultima domenica di ottobre `02:30+02:00` usciva dopo `02:10+01:00`
+    perche' si confrontava l'ora SCRITTA: dichiarato e lasciato. La chiave
+    e' il giorno della casa (i primi dieci caratteri: un orario e' gia'
+    scritto nell'ora della casa da `read_appointment`, un giornaliero e' la
+    sua data), poi il giornaliero prima di ogni orario dello stesso giorno
+    (comincia a mezzanotte), poi l'istante. Un `inizio` che non si legge come
+    istante resta al suo testo, in coda agli orari del suo giorno.
     """
-    return sorted(appointments, key=lambda appointment: appointment["inizio"])
+    return sorted(appointments, key=_start_key)
+
+
+def _start_key(appointment: dict) -> tuple:
+    start = str(appointment.get("inizio") or "")
+    epoch = instant_epoch(start) if len(start) > 10 else None
+    return (start[:10], len(start) > 10, epoch is None, epoch or 0.0, start)
+
+
+def readable_calendars(listing: dict) -> list[dict]:
+    """L'elenco dei calendari di `HAClient.calendars()` -> quelli che si possono
+    provare a leggere: un dizionario con un `entity_id`. Una voce malformata
+    si salta, non solleva."""
+    calendars = listing.get("calendari")
+    calendars = calendars if isinstance(calendars, list) else []
+    return [entry for entry in calendars
+            if isinstance(entry, dict) and entry.get("entity_id")]
+
+
+def merge_calendars(calendars: list[dict], answers: list[dict], *,
+                    timezone: str | None) -> dict:
+    """I calendari provati e le loro risposte (`HAClient.calendar_events`,
+    nello stesso ordine) -> la risposta dello strumento `calendar`.
+
+    Uscita da `ToolDispatcher._calendar` il 05/10/2026 (Tappa 5, Task 4, R13):
+    li' resta la composizione -- la finestra, le due letture, il fuso -- e qui
+    la logica del calendario. E' PURA come il resto del modulo: le risposte di
+    Home Assistant arrivano gia' lette, percio' si prova senza finti client.
+
+    **Il cuore della fetta «i calendari»: la leggibilita' si verifica
+    LEGGENDO, mai dallo stato.** Un calendario rotto e uno senza impegni
+    hanno lo STESSO stato `off` in Home Assistant e tornerebbero lo
+    STESSO elenco vuoto -- solo un tentativo di lettura li distingue.
+    Percio' `_calendar` prende l'elenco dei calendari (Task 1,
+    `HAClient.calendars()`) e prova a leggere CIASCUNO (Task 1,
+    `HAClient.calendar_events()`), e qui si guarda ogni risposta, una per
+    una: nessun elenco dichiarato di calendari ammessi, nessuna decisione presa dallo stato. Un
+    calendario che fallisce NON sparisce in silenzio: il suo `name`
+    finisce in `non_letti`, che esce SOLO se c'e' almeno un calendario
+    illeggibile -- se sparisse, «non hai impegni» sarebbe una bugia detta
+    con la sicurezza di chi ha guardato tutto, ed e' il difetto che la
+    fetta precedente («le tracce e il log») ha trovato tre volte.
+
+    **`calendari_guardati` esce SEMPRE, anche vuoto -- a differenza di
+    `non_letti`/`troncato`, che tacciono quando non hanno niente da
+    dire.** Senza di lui, zero calendari e due calendari letti e
+    VUOTI sono indistinguibili: entrambi tornerebbero `{"impegni": []}`,
+    e il modello direbbe «non hai impegni segnati» quando la verita'
+    potrebbe essere «questa casa non ha calendari». E' la PROVA di cosa
+    e' stato guardato, non un dato su cosa c'e' scritto: senza di essa
+    la risposta non e' verificabile, quindi non e' condizionale come
+    gli altri due.
+
+    **Il tetto sul testo libero vive QUI, non nel client.**
+    `HAClient.calendar_events()` lascia `summary`/`description`/
+    `location` grezzi apposta (il suo docstring lo dice: nessun
+    consumatore prima di questo strumento) -- e' questo il punto in cui
+    quel testo, scritto da una persona in un calendario condiviso, entra
+    DAVVERO in un prompt. `titolo`/`luogo`/`descrizione` passano da
+    `sanitize_ha_free_text`, la stessa strada dei fratelli (`motivo` di
+    un'integrazione rotta), non una seconda. **Il NOME del calendario passa da
+    `sanitize_ha_value`** (non `sanitize_ha_free_text`: e' un
+    `friendly_name`, la stessa forma di `nome` per le altre entita', non testo
+    libero senza tetto HA) -- e' `state.name` di
+    `HAClient.calendars()`, scelto da una persona e potenzialmente
+    condiviso (un Google Calendar puo' esserlo), quindi un vettore di
+    testo iniettato quanto `summary`/`description`/`location`: sanificare
+    tre campi su quattro e lasciare il quarto grezzo sarebbe la stessa
+    fuga che l'audit di questo prodotto ha gia' pagato altrove
+    (L1-sicurezza.md). Sanificato UNA volta, prima di finire sia in
+    `calendario` sia in `non_letti` -- non due sanificazioni per due
+    destinazioni dello stesso valore.
+
+    **Ogni impegno porta `calendario`**, il nome (non l'`entity_id`) del
+    calendario da cui viene: fondendo «Personale» e «Famiglia» in un
+    unico elenco, sapere DA QUALE viene un impegno e' meta' della
+    risposta -- perderlo fondendo prima di annotarlo sarebbe
+    un'informazione che avevamo in mano e abbiamo buttato via.
+
+    **`troncato` esce SOLO se almeno un calendario lo ha dichiarato**
+    (`HAClient.calendar_events`, `MAX_CALENDAR_EVENTS`): un elenco
+    tagliato non deve poter sembrare completo, stessa legge del client
+    che lo genera -- propagarla in silenzio sarebbe ricreare lo stesso
+    difetto un livello piu' in alto. Non dice quale calendario (vedi la
+    `description` dello strumento).
+
+    **Un evento che non si sa interpretare affonda il SUO calendario,
+    non tutti quanti.** `read_appointment` puo' sollevare (un evento
+    senza ne' `start.date` ne' `start.dateTime`, per esempio): senza una
+    guardia qui, quell'eccezione risalirebbe fino alla rete di
+    sicurezza di `dispatch`, e la risposta perderebbe INSIEME gli
+    impegni gia' letti di questo calendario e quelli di ogni altro
+    calendario gia' letto bene in questo stesso giro -- il guasto di
+    UNO che costa il silenzio su TUTTI, l'esatto difetto opposto a
+    quello che questa fetta cura. Un calendario il cui evento non si sa
+    interpretare finisce quindi in `non_letti` come uno che non
+    risponde -- e i suoi impegni GIA' raccolti in questo giro si
+    scartano: un elenco parziale che si finge completo e' peggio di un
+    elenco assente, la stessa legge di `add_label_to` in
+    `proxy/ha_client.py` («non ho letto» non e' «non ce n'erano»).
+    """
+    appointments: list[dict] = []
+    examined: list[str] = []
+    unreadable: list[str] = []
+    truncated = False
+    for entry, events in zip(calendars, answers, strict=True):
+        name = sanitize_ha_value(entry.get("name") or entry["entity_id"])
+        examined.append(name)
+        if "errore" in events:
+            unreadable.append(name)
+            continue
+        if events.get("troncato"):
+            # Non gestito, DICHIARATO: se questo STESSO calendario viene
+            # anche scartato qui sotto (un evento che non si sa
+            # interpretare, `unreadable_event`), `truncated` resta vero
+            # ma i suoi impegni finiscono comunque in `non_letti`, non in
+            # `impegni` -- `troncato: true` sopravvivrebbe su un elenco
+            # che non contiene piu' nessun impegno di QUESTO calendario.
+            # Serve >MAX_CALENDAR_EVENTS eventi E un evento malformato
+            # nello stesso calendario per innescarlo: visto, deciso di
+            # non trattarlo (il caso e' cosi' raro da non giustificare
+            # il costo di un secondo stato "troncato ma poi scartato").
+            truncated = True
+        calendar_appointments: list[dict] = []
+        unreadable_event = False
+        for raw_event in events.get("eventi") or []:
+            try:
+                appointment = read_appointment(raw_event, timezone=timezone)
+            except Exception as error:
+                logger.warning(
+                    "calendario «%s»: un evento non si sa interpretare "
+                    "(%s: %s) -- l'intero calendario finisce in non_letti",
+                    name, type(error).__name__, error)
+                unreadable_event = True
+                break
+            appointment["titolo"] = sanitize_ha_free_text(appointment["titolo"])
+            if "luogo" in appointment:
+                appointment["luogo"] = sanitize_ha_free_text(appointment["luogo"])
+            if "descrizione" in appointment:
+                appointment["descrizione"] = sanitize_ha_free_text(
+                    appointment["descrizione"])
+            appointment["calendario"] = name
+            calendar_appointments.append(appointment)
+        if unreadable_event:
+            unreadable.append(name)
+            continue
+        appointments.extend(calendar_appointments)
+
+    result: dict = {"impegni": sort_appointments(appointments),
+                    "calendari_guardati": examined}
+    if unreadable:
+        result["non_letti"] = unreadable
+    if truncated:
+        result["troncato"] = True
+    return result

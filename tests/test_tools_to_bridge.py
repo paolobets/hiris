@@ -37,6 +37,7 @@ import builtins
 import json
 import logging
 import os
+import pathlib
 import sqlite3
 import time
 from unittest.mock import patch
@@ -125,7 +126,7 @@ def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
         "Sei HIRIS.", [], contesto="## La casa\nSalotto: luce accesa.",
         active_tools=strumenti_attivi)
     argv = runner._chat_claude_args(
-        "SYS", "USER", "sonnet", active_tools=strumenti_attivi,
+        "/sistema.txt", "sonnet", active_tools=strumenti_attivi,
         mcp_config=runner.config_mcp("http://127.0.0.1:8099", "TOK"))
 
     nell_argv = "mcpconfig" in _normalizza(argv)
@@ -418,7 +419,8 @@ def test_il_token_non_compare_nel_log_del_turno_degradato(caplog):
         stderr = "errore"
 
     job = {"kind": "chat", "job_id": "J-3",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with (
         caplog.at_level(logging.DEBUG),
@@ -606,6 +608,10 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             # chiama gli strumenti. Se l'add-on non servisse la callback
             # adesso, questo blocco resterebbe appeso.
             visto["argv"] = argv
+            # Il prompt di sistema vive in un file quanto l'invocazione
+            # (Tappa 6, S-08): si legge adesso.
+            visto["system"] = pathlib.Path(
+                argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8")
             with httpx.Client(timeout=30) as dentro:
                 def _rpc(corpo):
                     return dentro.post(f"{base}/api/mcp",
@@ -640,8 +646,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         assert esito == "done"
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
         assert "--mcp-config" in visto["argv"]
-        system = visto["argv"][visto["argv"].index("--system-prompt") + 1]
-        assert prompts._GUIDE_WITH_TOOLS in system
+        assert prompts._GUIDE_WITH_TOOLS in visto["system"]
 
         # la callback e' stata servita, e ha portato i nomi del catalogo
         assert visto["nomi"] == _NOMI_NUDI
@@ -727,7 +732,7 @@ def test_il_turno_senza_strumenti_lo_dichiara_all_utente_e_nel_log(caplog):
     all'utente, e sotto resta la risposta vera che il modello ha comunque
     dato sul nucleo. Il log porta il motivo."""
     job = {"kind": "chat", "job_id": "J-degrado",
-           "context": {"history": [{"role": "user", "content": "ciao"}],
+           "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
 
     with (
@@ -757,7 +762,8 @@ def test_il_turno_con_gli_strumenti_non_dichiara_nessun_degrado(caplog):
     basta. Una riga di degrado che comparisse sempre sarebbe rumore, e
     smetterebbe di significare qualcosa."""
     job = {"kind": "chat", "job_id": "J-ok",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
     catturato = {}
 
     def _run(argv, *a, **k):
@@ -790,7 +796,8 @@ def test_senza_client_non_c_e_degrado_da_dichiarare(caplog):
     comportamento, non un degrado nuovo. Un avviso qui sarebbe rumore, e il
     silenzio dichiarato smetterebbe di distinguersi."""
     job = {"kind": "chat", "job_id": "J-locale",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with (
         caplog.at_level(logging.WARNING, logger="hiris.agent"),
@@ -817,7 +824,8 @@ def test_la_riga_di_degrado_non_precede_i_sentinella_di_guasto():
         stderr = ""
 
     job = {"kind": "chat", "job_id": "J-rotto",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with patch.object(runner.subprocess, "run", lambda *a, **k: _ProcRotto()):
         esito = runner._reason_chat(
@@ -971,7 +979,8 @@ def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
     """Il turno pericoloso: strumenti ATTIVI (quindi il token E' nell'argv) e
     un sottoprocesso che riecheggia la configurazione."""
     job = {"kind": "chat", "job_id": "J-eco",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
     argv_visti = []
 
     def _run(argv, *a, **k):
@@ -1137,7 +1146,8 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
         stderr = ""
 
     job = {"kind": "chat", "job_id": "J-pulito",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
         esito = runner._reason_chat(job, "live")
 
@@ -1250,9 +1260,14 @@ class _CliFinta:
     def __init__(self, *procs):
         self.procs = list(procs)
         self.argv = []
+        self.systems = []
 
     def __call__(self, argv, *a, **k):
         self.argv.append(list(argv))
+        # Il prompt di sistema vive in un file quanto l'invocazione (Tappa 6,
+        # S-08): si legge adesso, non dopo.
+        self.systems.append(pathlib.Path(
+            argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8"))
         return self.procs[min(len(self.argv) - 1, len(self.procs) - 1)]
 
     @property
@@ -1260,15 +1275,14 @@ class _CliFinta:
         return len(self.argv)
 
     def system(self, n: int) -> str:
-        argv = self.argv[n]
-        return argv[argv.index("--system-prompt") + 1]
+        return self.systems[n]
 
 
 def _turno(cli, *, token="TOK", job_id="J-init", sonda=True):
     """Un turno del ponte con gli strumenti ATTESI (client + base_url), la
     sonda che dice di si', e la CLI finta al posto del sottoprocesso."""
     job = {"kind": "chat", "job_id": job_id,
-           "context": {"history": [{"role": "user", "content": "che luci?"}],
+           "context": {"model": "sonnet", "history": [{"role": "user", "content": "che luci?"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
     risposta = (_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200) if sonda
                 else _Risposta({"error": "unauthorized"}, 401))
@@ -1446,7 +1460,8 @@ def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
     del ramo di degrado costerebbe due invocazioni."""
     cli = _CliFinta(_proc(0, _riga_init(stato="failed") + "\n" + _RIGA_RESULT + "\n"))
     job = {"kind": "chat", "job_id": "J-nessun-cliente",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with (
         caplog.at_level(logging.WARNING, logger="hiris.agent"),

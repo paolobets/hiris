@@ -17,10 +17,10 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, replace
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .behavior import BEHAVIOR_DOMAINS
+from .historian import home_space_zone, instant_epoch, instant_out
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
@@ -126,11 +126,9 @@ def parse_filters(arguments: dict) -> HouseFilters | dict:
                       ("integrazione", "platform"), ("ordina", "order_by")):
         if a.get(key) not in (None, ""):
             fields[attr] = str(a[key])
-    if fields.get("kind") and fields["kind"] not in KINDS:
-        return {"errore": f"genere «{fields['kind']}» sconosciuto: "
-                          f"{', '.join(KINDS)}"}
-    if fields.get("order_by") and fields["order_by"] not in ORDERS:
-        return {"errore": f"ordina accetta {', '.join(ORDERS)}"}
+    # `genere` e `ordina` fuori vocabolario li rifiuta `ToolDispatcher.
+    # dispatch` contro l'`enum` dello schema (`KINDS`, `ORDERS`), prima di
+    # arrivare qui: fino al 05/10/2026 si rivalidavano anche qui (D-40).
     for key, attr in (("fermo_da", "idle_for_s"),
                       ("cambiato_da", "changed_within_s")):
         if a.get(key) is not None:
@@ -163,12 +161,10 @@ def parse_filters(arguments: dict) -> HouseFilters | dict:
 
 
 def _age_s(iso: str | None, now: float) -> float | None:
-    if not iso:
-        return None
-    try:
-        return now - datetime.fromisoformat(iso).timestamp()
-    except ValueError:
-        return None
+    """Da quanti secondi e' successo: l'istante si legge con l'unica lettura
+    del prodotto (`historian.instant_epoch`, A-26)."""
+    epoch = instant_epoch(iso)
+    return None if epoch is None else now - epoch
 
 
 def _area_name(area: dict) -> str | None:
@@ -248,11 +244,16 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) ->
     return True
 
 
-def _entity_row(entry, area, where, mirror: Mirror, medium: bool) -> dict:
+def _entity_row(entry, area, where, mirror: Mirror, medium: bool, zone) -> dict:
     eid = entry["id"]
     row = {"id": eid, "nome": live_name(eid, entry.get("nome"), mirror),
-           "area": _area_name(area), "stato": mirror.state.get(eid),
-           "ultimo_cambio": mirror.since.get(eid)}
+           "area": _area_name(area), "stato": mirror.state.get(eid)}
+    # L'istante nell'ora della casa (D3, 05/10/2026: prima l'UTC grezzo dello
+    # specchio). Senza un ultimo cambio noto la chiave non esce: e' «non lo
+    # so», e un `null` direbbe «non e' mai cambiata».
+    since = mirror.since.get(eid)
+    if since is not None:
+        row["ultimo_cambio"] = instant_out(since, zone)
     if where == "nascosta":
         row["nascosta"] = True
     if medium:
@@ -309,13 +310,20 @@ def _behavior_matches(f: HouseFilters, behavior, mirror: Mirror, now,
     return out
 
 
-def _behavior_row(item, values, mirror: Mirror, medium: bool) -> dict:
+def _behavior_row(item, values, mirror: Mirror, medium: bool, zone) -> dict:
     # Il nome di tutte le cose con un `entity_id` (D1): un'automazione senza
     # nome esce col suo id, come dalla storia, non con `nome: null`.
     row = {"id": item["id"], "nome": live_name(item["id"], item.get("nome"), mirror),
            "genere": item.get("tipo"),
-           "stato": mirror.state.get(item["id"]),
-           "ultima_esecuzione": values.get("last_triggered") or "mai"}
+           "stato": mirror.state.get(item["id"])}
+    # D3 (05/10/2026; prima l'UTC grezzo, o la parola «mai»): `last_triggered`
+    # c'e' SEMPRE fra gli attributi di automazioni e script, `None` se non
+    # sono mai partiti -- letto nel sorgente di Home Assistant, tag 2026.9.4,
+    # `components/automation/__init__.py:515-526`, `components/script/
+    # __init__.py:592-604`. Quindi `None` esce `null` («mai»), e la chiave
+    # assente (lo specchio non l'ha letta) resta assente: «non lo so».
+    if "last_triggered" in values:
+        row["ultima_esecuzione"] = instant_out(values["last_triggered"], zone)
     if medium:
         for key, label in (("mode", "modalita"), ("current", "in_esecuzione")):
             if key in values:
@@ -382,10 +390,13 @@ def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
 
 def _sort_key(order_by: str):
     if order_by == "ultimo_cambio":
-        # «mai» prima di tutto: un'automazione mai eseguita e' la piu' ferma (#31).
+        # «mai» prima di tutto: un'automazione mai eseguita e' la piu' ferma
+        # (#31), e con lei cio' che non si sa. Si ordina l'ISTANTE, non il
+        # testo: nell'ora della casa le 02:30+02:00 della notte del cambio
+        # d'ora vengono prima delle 02:10+01:00, e come stringhe dopo.
         def since(r):
-            last = r.get("ultima_esecuzione")
-            return "" if last == "mai" else (last or r.get("ultimo_cambio") or "")
+            epoch = instant_epoch(r.get("ultima_esecuzione") or r.get("ultimo_cambio"))
+            return float("-inf") if epoch is None else epoch
         return since
     if order_by == "valore":
         def key(r):
@@ -479,8 +490,18 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     return page, beyond
 
 
+def depth_for(count: int) -> str:
+    """La profondita' di una risposta dal numero di voci trovate, per
+    `search` e per `history` (spec §3): 1 -> completa, fino a
+    `DETAIL_MEDIUM_MAX` -> media, oltre -> corta. Una regola sola (B-30,
+    Tappa 5): fino al 05/10/2026 era scritta anche in `_select`."""
+    if count == 1:
+        return "completa"
+    return "media" if count <= DETAIL_MEDIUM_MAX else "corta"
+
+
 def _select(f: HouseFilters, house: House, behavior, detail,
-            now, excluded: dict) -> tuple[int, str, list[dict], dict | None]:
+            now, excluded: dict, zone) -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
     if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
@@ -499,16 +520,20 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     found = len(matched) + len(behaving) + len(others)
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
         return _one(_missing_reference(f, house, detail))
-    if found == 1 and f.limit > 0:
+    depth = depth_for(found)
+    if depth == "completa" and f.limit > 0:
         if matched:
             return 1, "completa", [detail("entita", matched[0][0]["id"])], None
         item = behaving[0][0] if behaving else others[0]
         kind = item.get("tipo") if behaving else item["genere"]
         return 1, "completa", [detail(kind, item["id"])], None
-    medium = found <= DETAIL_MEDIUM_MAX
-    rows = ([_entity_row(entry, area, where, house.mirror, medium)
+    # Con `limite` 0 la voce sola non si apre: chi chiede zero righe vuole
+    # solo il conto, e la profondita' resta quella di un elenco.
+    medium = depth != "corta"
+    rows = ([_entity_row(entry, area, where, house.mirror, medium, zone)
              for entry, area, where in matched]
-            + [_behavior_row(item, values, house.mirror, medium) for item, values in behaving]
+            + [_behavior_row(item, values, house.mirror, medium, zone)
+               for item, values in behaving]
             + others)
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)
@@ -516,7 +541,8 @@ def _select(f: HouseFilters, house: House, behavior, detail,
 
 
 def query_house(house: House, behavior, filters: HouseFilters, *,
-                detail, now: float | None = None) -> dict:
+                detail, now: float | None = None,
+                timezone: str | None = None) -> dict:
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
@@ -538,18 +564,48 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
                               f"{', '.join(valid)}"
                               + ("; in_esecuzione vale per automazioni e script"
                                  if "in_esecuzione" in wrong else "")}
-    excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
-    found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded)
+    excluded = no_exclusions()
+    # Il fuso della casa, per ogni istante che esce (D3): `timezone` e' il
+    # nome che il dispatcher legge da `historian.house_timezone`; `None` =
+    # non si sa, e si resta in UTC con l'offset scritto.
+    found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded,
+                                         home_space_zone(timezone))
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
-    result: dict = {"trovate": found, "escluse": excluded, "profondita": depth,
-                    "voci": [redact_row(v) for v in page]}
+    return envelope(found, depth, [redact_row(v) for v in page],
+                    excluded=excluded, beyond=beyond)
+
+
+def envelope(found: int, depth: str, rows: list, *, excluded: dict | None = None,
+             beyond=None) -> dict:
+    """La busta di una risposta di selezione: `trovate`, `escluse`,
+    `profondita`, `voci`, poi `oltre` e la `nota` sulle escluse quando ci sono.
+
+    **Un posto solo** (C-31, Tappa 4): fino al 05/10/2026 il dizionario era
+    scritto a mano qui, in `house_history._frame` e nella lettura del registro
+    di sistema -- la stessa forma in tre copie. `search` e `history` la
+    chiamano tutti e due: il modello legge una busta sola.
+
+    `excluded` assente vuol dire «non si esclude niente» (il registro di
+    sistema: non ha voci nascoste), e le categorie sono quelle di
+    `_EXCLUDED_WORDS`, a zero. L'ordine delle chiavi e' quello di prima: chi
+    legge la risposta la legge in quell'ordine.
+    """
+    excluded = no_exclusions() if excluded is None else excluded
+    out: dict = {"trovate": found, "escluse": excluded, "profondita": depth,
+                 "voci": rows}
     if beyond:
-        result["oltre"] = beyond
+        out["oltre"] = beyond
     note = excluded_note(found, excluded)
     if note:
-        result["nota"] = note
-    return result
+        out["nota"] = note
+    return out
+
+
+def no_exclusions() -> dict:
+    """Le escluse a zero, una per categoria: un dizionario NUOVO a ogni
+    chiamata, perche' la selezione lo riempie."""
+    return dict.fromkeys(_EXCLUDED_WORDS, 0)
 
 
 def excluded_note(found: int, excluded: dict) -> str | None:

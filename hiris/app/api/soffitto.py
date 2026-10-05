@@ -40,6 +40,7 @@ from aiohttp import web
 
 from ..chat_thread import subject_key_for
 from ..proxy._sanitize import sanitize_ha_value
+from .boundary import error_response
 from .canali import PUO, RUOLI
 from .servizi import SPECIE as SERVICE_SPECIES
 
@@ -602,7 +603,7 @@ def require_builder(request) -> web.Response | None:
         return None
     logger.info("soffitto: %s %s negato a %s — %s", request.method, _route_pattern(request),
                 subject_key_for(request.get("soggetto")), permesso["perche"])
-    return web.json_response({"errore": permesso["perche"]}, status=403)
+    return error_response(403, permesso["perche"])
 
 
 def prepara_ruoli(app) -> None:

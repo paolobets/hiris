@@ -547,7 +547,7 @@ CREATE INDEX IF NOT EXISTS idx_objective_written ON objective(written_ts);
 -- Una riga per soggetto, non una cronaca: la domanda che questa tabella deve
 -- saper rispondere in fretta e' «questo soggetto lo guardo?», e la pone il
 -- rubinetto degli eventi a ogni cambio di stato della casa. La storia di chi
--- ha cambiato idea la porta gia' `deciso_ts` insieme all'autore -- e cio' che
+-- ha cambiato idea la porta gia' `decided_ts` insieme all'autore -- e cio' che
 -- serve al proprietario («da quando guardo questa cosa») e' esattamente quello.
 --
 -- `author` non e' un dettaglio: senza, la decisione dell'analista non saprebbe
@@ -1052,7 +1052,7 @@ class ObservationsStore:
             rows = self._conn.execute(
                 "SELECT subject, inside, reason, author, decided_ts FROM scope").fetchall()
         return {r["subject"]: {"dentro": bool(r["inside"]), "motivo": r["reason"],
-                               "autore": r["author"], "deciso_ts": r["decided_ts"]}
+                               "autore": r["author"], "quando": r["decided_ts"]}
                 for r in rows}
 
     def is_watched(self, subject: str) -> bool:
@@ -1311,6 +1311,12 @@ class ObservationsStore:
     #: scrivere in Home Assistant: quella strada e' l'officina.
     PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori")
 
+    #: Lo stato di una proposta da fare a mano che aspetta la tua risposta.
+    #: Scritto una volta: lo usano le istruzioni qui sotto e la pagina delle
+    #: Proposte, che lo riceve gia' deciso (`sospesa`,
+    #: `handlers_constructions._both_queues`; C-12, Tappa 4, Task 5).
+    PROPOSAL_PENDING = "attesa"
+
     def add_proposal(self, *, text: str, perche: str, fingerprint: str,
                      prova: dict, chi_applica: str, now_ts: float) -> str:
         """Scrive una proposta da fare a mano, e torna il suo identificativo.
@@ -1325,8 +1331,9 @@ class ObservationsStore:
             self._conn.execute(
                 "INSERT INTO proposte(id,creata_ts,aggiornata_ts,stato,testo,"
                 "perche,chi_applica,impronta,prova_json,giri_json) "
-                "VALUES(?,?,?,'attesa',?,?,?,?,?,'[]')",
-                (ident, now_ts, now_ts, text, perche, chi_applica, fingerprint,
+                "VALUES(?,?,?,?,?,?,?,?,?,'[]')",
+                (ident, now_ts, now_ts, self.PROPOSAL_PENDING, text, perche,
+                 chi_applica, fingerprint,
                  json.dumps(prova or {}, ensure_ascii=False)))
             self._conn.commit()
         return ident
@@ -1336,11 +1343,13 @@ class ObservationsStore:
         sql = ("SELECT id,creata_ts,aggiornata_ts,stato,testo,perche,"
                "chi_applica,impronta,prova_json,giri_json,esito_ts,esito_nota "
                "FROM proposte")
+        args: tuple = ()
         if pending_only:
-            sql += " WHERE stato = 'attesa'"
+            sql += " WHERE stato = ?"
+            args = (self.PROPOSAL_PENDING,)
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
-            rows = self._conn.execute(sql, (int(max(1, limit)),)).fetchall()
+            rows = self._conn.execute(sql, (*args, int(max(1, limit)))).fetchall()
         return [{"id": r[0], "creata_ts": r[1], "aggiornata_ts": r[2],
                  "stato": r[3], "testo": r[4], "perche": r[5],
                  "chi_applica": r[6], "impronta": r[7],
@@ -1357,8 +1366,8 @@ class ObservationsStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE proposte SET stato=?, aggiornata_ts=?, esito_ts=?, "
-                "esito_nota=? WHERE id=? AND stato='attesa'",
-                (occurrence, now_ts, now_ts, why, ident))
+                "esito_nota=? WHERE id=? AND stato=?",
+                (occurrence, now_ts, now_ts, why, ident, self.PROPOSAL_PENDING))
             self._conn.commit()
         return cur.rowcount > 0
 

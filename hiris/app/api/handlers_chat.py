@@ -5,7 +5,7 @@ from contextlib import nullcontext
 
 from aiohttp import web
 
-from ..api.handlers_models import _STORE_DEFAULTS
+from ..api.handlers_models import bridge_deadline_min
 from ..chat_store import (
     _is_toxic_assistant,
     append_messages,
@@ -34,11 +34,18 @@ from ..model_resolution import downgrade_note
 # stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
 # modulo per l'elenco di dove e' gia' cablato).
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
-from ..steering import declare_downgrade, misura_turno, who_answers
+from ..reasoning.queue import PRIORITY_CHAT
+from ..steering import bridge_model, declare_downgrade, misura_turno, who_answers
+from .boundary import error_body, error_response
 from .handlers_home_space import compose_briefing, house_of
 from .soffitto import ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
+
+# Il testo del poll per un turno che non ha portato una risposta (scaduto,
+# fallito, deciso senza testo): uno solo, perche' a chi aspetta dice la stessa
+# cosa. Viaggia in `error` a stato 200 (A6, 05/10/2026).
+_REPLY_NOT_ARRIVED = "La risposta non è arrivata in tempo. Riprova."
 
 # Trim history by estimated token count (len/4) rather than message count.
 # Always keep an even number of messages (user+assistant pairs) to preserve
@@ -548,10 +555,7 @@ async def _enqueue_chat_job(
     # ne teneva una copia (Task 6) che nessuno leggeva e che la pagina Modelli
     # poteva riscrivere: due rappresentazioni dello stesso numero, e quella che
     # l'utente cambiava non era quella che il turno subiva.
-    _deadline_min = ((request.app.get("models_config") or {})
-                     .get("ponte", {}).get("scadenza_min",
-                                      _STORE_DEFAULTS["ponte"]["scadenza_min"]))
-    deadline = now + int(_deadline_min) * 60
+    deadline = now + bridge_deadline_min(request.app.get("models_config")) * 60
     context = {
         "history": sanitized_history,
         "system_prompt": system_prompt,
@@ -600,12 +604,13 @@ async def _enqueue_chat_job(
         # La traduzione ai tre alias non e' sparita, e' salita all'INGRESSO del
         # campo (`handlers_models._clean_subscription_model`): cio' che si
         # legge qui e' gia' un alias della CLI, e non c'e' niente da tradurre.
-        # Il predefinito `"sonnet"` e' quello di `_STORE_DEFAULTS` e vale
-        # solo per un'app senza archivio (i test): sull'impianto la semina
+        # Il predefinito e' quello di `_STORE_DEFAULTS`, e vale solo per
+        # un'app senza archivio (i test): sull'impianto la semina
         # (`options_migration.seed_subscription_model`) ha gia' scritto il
-        # campo prima che un turno possa arrivare qui.
-        "model": ((request.app.get("models_config") or {})
-                  .get("ponte", {}).get("modello", "sonnet")),
+        # campo prima che un turno possa arrivare qui. Dalla Tappa 6 (Task 4)
+        # lo legge `steering.bridge_model`, come per ogni altro turno che si
+        # accoda: qui c'era una seconda copia di «sonnet».
+        "model": bridge_model(request.app),
         # Fetta «le chat divise»: il soggetto INTERO di chi ha scritto, che il
         # soffitto e la cronaca del ripiego vogliono con specie e nome, non
         # solo la chiave -- preso dal job, non da chi per caso fa il poll
@@ -636,7 +641,7 @@ async def _enqueue_chat_job(
         )
 
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now,
-                                      thread=thread)
+                                      thread=thread, priority=PRIORITY_CHAT)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 
@@ -708,11 +713,12 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # Il job si chiude comunque, altrimenti resterebbe in 'ripiego' fino
         # allo sweep e ogni poll ritenterebbe.
         queue.resolve_downgrade(job_id, {"reply": ""}, time.time())
-        return web.json_response({
-            "status": "error",
-            "message": ("Il Piano Claude Max non ha risposto in tempo, e non c’è "
-                        "nessun altro provider in catena a cui chiedere."),
-        })
+        # 200 e non un 5xx: il poll ha letto il job, e il job e' finito male
+        # -- e' lo stato vero della risorsa (A6, 05/10/2026). Il testo sta in
+        # `error`, la forma comune del confine.
+        return web.json_response(error_body(
+            "Il Piano Claude Max non ha risposto in tempo, e non c’è "
+            "nessun altro provider in catena a cui chiedere.", status="error"))
 
     logger.warning(
         "Il Piano Claude Max non ha risposto entro la scadenza: il turno %s "
@@ -840,7 +846,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     job_id = request.match_info.get("job_id", "")
     reasoning_queue = request.app.get("reasoning_queue")
     if reasoning_queue is None:
-        return web.json_response({"error": "reasoning queue not configured"}, status=503)
+        return error_response(503, "reasoning queue not configured")
     job = reasoning_queue.get(job_id)
     # Fetta «le chat divise»: si risponde solo a chi e' dello stesso filo del
     # job. Un job di un altro filo riceve la STESSA risposta di un id che non
@@ -848,7 +854,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     # senza filo (`None`, accodato prima di questa versione): non e' di
     # nessuno, quindi non e' di chi chiede.
     if job is None or job.get("thread") != request_thread(request):
-        return web.json_response({"error": "not found"}, status=404)
+        return error_response(404, "not found")
     status = job.get("status")
     decision = job.get("decision") or {}
     reply = decision.get("reply")
@@ -856,18 +862,12 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         # Never spin forever: the sweep (server.py's `_reasoning_sweep`)
         # leaves jobs in this state without routing them anywhere else --
         # this is the only place they get surfaced to the user.
-        return web.json_response({
-            "status": "error",
-            "message": "La risposta non è arrivata in tempo. Riprova.",
-        })
+        return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
     if status == "decided" and not reply:
         # Task 1's chat_reply_skipped outcome: a decision was recorded but it
         # carries no usable reply. Same terminal treatment as expired/failed
         # -- pending-forever would strand the UI.
-        return web.json_response({
-            "status": "error",
-            "message": "La risposta non è arrivata in tempo. Riprova.",
-        })
+        return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
     if status in ("pending", "claimed") and job.get("deadline_ts", 0) <= time.time():
         # Il piano non ha risposto in tempo. Fino alla 2.4.1 finiva qui, con
         # «La risposta non è arrivata in tempo. Riprova.» -- il messaggio era
@@ -924,13 +924,13 @@ async def handle_chat(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "Invalid JSON body"}, status=400)
+        return error_response(400, "Il corpo della richiesta non è JSON valido.")
 
     message = body.get("message", "").strip()
     if not message:
-        return web.json_response({"error": "message required"}, status=400)
+        return error_response(400, "Manca il messaggio: il campo `message` è vuoto.")
     if len(message) > 4000:
-        return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
+        return error_response(413, "message too long (max 4000 chars)")
 
     data_dir = request.app.get("data_dir", "/data")
     settings = request.app["chat_settings"]
@@ -953,11 +953,13 @@ async def handle_chat(request: web.Request) -> web.Response:
     if max_turns > 0:
         turn_count = count_user_turns(data_dir, thread=thread)
         if turn_count >= max_turns:
-            return web.json_response({
-                "error": "max_turns_reached",
-                "turns": turn_count,
-                "limit": max_turns,
-            })
+            # 409 e non 200 (C-50, Tappa 4): il turno non e' stato fatto, e un
+            # 200 lo travestiva da risposta. Lo stato e' quello del «una
+            # risposta per volta» qui sotto -- la conversazione, cosi' com'e',
+            # non accetta questo messaggio. `error` resta un codice e non una
+            # frase: la pagina lo riconosce (`chat/send.js`) e scrive la sua.
+            return error_response(409, "max_turns_reached",
+                                  turns=turn_count, limit=max_turns)
 
     # Il motivo del ripiego a monte, `None` quando non c'è stato: lo legge il
     # fondo di questa funzione per comporre la nota, DOPO aver saputo chi ha
@@ -994,7 +996,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
         # cronologia da solo (`server._submit_chat_reply`).
         if reasoning_queue.has_pending_chat(thread):
-            return web.json_response({"error": PENDING_REPLY_ERROR}, status=409)
+            return error_response(409, PENDING_REPLY_ERROR)
         if _subscription_reason:
             # Ripiego a monte: il piano NON PUÒ rispondere a questo turno --
             # gli manca il token (il worker non parte, `should_start_agent_
@@ -1046,19 +1048,16 @@ async def handle_chat(request: web.Request) -> web.Response:
         # piu' a far rispondere la chat, perche' un provider e' usato se e solo
         # se sta in catena. Dirne uno solo lascerebbe l'utente davanti a una
         # chat ancora muta dopo aver fatto tutto quello che gli era stato detto.
-        return web.json_response(
-            {"error": (
-                "Nessun provider AI configurato: HIRIS non ha ancora un modello a "
-                "cui chiedere. Apri Impostazioni → Add-on → HIRIS → Configurazione "
-                "e incolla una credenziale: col piano a forfait il token in "
-                "«Provider · Piano Claude Max — token», con l’API a consumo la "
-                "chiave in «Provider · Claude API — chiave». Poi, dentro HIRIS, "
-                "apri la pagina Modelli: col piano usa «Mettilo primo» nel riquadro "
-                "in cima, con l’API a consumo usa «Usa» sulla riga di Claude API. "
-                "Un provider risponde se e solo se sta in catena."
-            )},
-            status=503,
-        )
+        return error_response(503, (
+            "Nessun provider AI configurato: HIRIS non ha ancora un modello a "
+            "cui chiedere. Apri Impostazioni → Add-on → HIRIS → Configurazione "
+            "e incolla una credenziale: col piano a forfait il token in "
+            "«Provider · Piano Claude Max — token», con l’API a consumo la "
+            "chiave in «Provider · Claude API — chiave». Poi, dentro HIRIS, "
+            "apri la pagina Modelli: col piano usa «Mettilo primo» nel riquadro "
+            "in cima, con l’API a consumo usa «Usa» sulla riga di Claude API. "
+            "Un provider risponde se e solo se sta in catena."
+        ))
 
     # Il segno del turno sincrono in volo, dalla lettura della cronologia
     # alla scrittura della risposta: finche' c'e', le scritture sulle

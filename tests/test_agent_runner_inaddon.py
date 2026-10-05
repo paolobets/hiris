@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pathlib
 import subprocess
 import time
 from unittest.mock import patch
@@ -88,7 +89,7 @@ def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
     # il CLI esce != 0) e' vivo e invariato, cambia solo la forma dello stdout.
     # Gli assert restano identici, ed e' proprio questo il punto: sono la prova
     # che il cambio di formato non ha perso questo ramo.
-    job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
+    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
 
     class _Proc:
@@ -113,7 +114,7 @@ def test_reason_chat_returns_fallback_reply_on_timeout():
     # cambio di formato non tocca, e va verificato che sia rimasto tale (con
     # `stream-json` la tentazione e' di leggere il flusso parziale del processo
     # ucciso e spacciarlo per risposta).
-    job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
+    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
 
     def _raise_timeout(*a, **k):
@@ -214,7 +215,7 @@ def test_run_once_chat_reasons_and_submits():
     `reply` che torna alla reasoning API e' la risposta del modello e basta --
     nessuna riga di degrado, perche' non c'e' nessun degrado da dichiarare."""
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
-           "context": {"system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job})
     catturato = {}
@@ -256,13 +257,17 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     sentinella del ponte -- quelli sostituiscono la risposta, questa la
     precede."""
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
-           "context": {"system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job}, mcp=False)
     catturato = {}
 
     def _run(argv, *a, **k):
         catturato["argv"] = argv
+        # Il prompt di sistema vive in un file quanto l'invocazione (Tappa 6,
+        # S-08): si legge adesso.
+        catturato["system"] = pathlib.Path(
+            argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8")
         return _ProcFelice()
 
     with patch.object(runner.subprocess, "run", _run):
@@ -274,8 +279,7 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     assert "2 luci accese" in reply
     # e il prompt e' tornato a negarli, insieme all'argv: un solo booleano
     assert "--mcp-config" not in catturato["argv"]
-    system = catturato["argv"][catturato["argv"].index("--system-prompt") + 1]
-    assert prompts._GUIDE_WITHOUT_TOOLS in system
+    assert prompts._GUIDE_WITHOUT_TOOLS in catturato["system"]
 
 
 @pytest.mark.asyncio
@@ -746,7 +750,7 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     sono esattamente quelli del catalogo unico -- ne' uno di piu' ne' uno di
     meno. Il nome del test non conta piu' «i quattro»: contava un numero che
     non conta, ed e' cambiato una volta gia' (fetta «comandare»)."""
-    argv = runner._chat_claude_args("SYS", "USER", "sonnet",
+    argv = runner._chat_claude_args("/sistema.txt", "sonnet",
                                     active_tools=True,
                                     mcp_config=runner.config_mcp("http://x", "TOK"))
     opzioni = _normalizza(argv)
@@ -814,7 +818,7 @@ def test_argv_del_ponte_senza_strumenti_resta_quello_di_prima():
     (`--strict-mcp-config`). Il pin di questo test e' stato ribaltato per
     questo -- prima chiedeva l'assenza del flag per simmetria con l'altro ramo,
     ed era l'unico assert del file senza un motivo scritto."""
-    argv = runner._chat_claude_args("SYS", "USER", "sonnet")
+    argv = runner._chat_claude_args("/sistema.txt", "sonnet")
     opzioni = _normalizza(argv)
 
     _perche = (
@@ -846,7 +850,7 @@ def test_argv_del_ponte_senza_strumenti_resta_quello_di_prima():
     # il default della firma e' False, e il ramo di degrado e' quello che si
     # ottiene quando non si sa: un default True prometterebbe strumenti a chi
     # non li ha chiesti.
-    assert argv == runner._chat_claude_args("SYS", "USER", "sonnet",
+    assert argv == runner._chat_claude_args("/sistema.txt", "sonnet",
                                             active_tools=False)
 
 
@@ -859,7 +863,7 @@ def test_argv_del_ponte_chiede_il_formato_a_flusso_e_verboso():
     MCP non e' partito (reperto dal vivo, progetto 3.4/6). Le due opzioni sono
     una cosa sola e vanno pinnate insieme, o una "pulizia" futura puo'
     togliere `--verbose` lasciando la suite verde e il ponte cieco."""
-    argv = runner._chat_claude_args("SYS", "USER", "sonnet")
+    argv = runner._chat_claude_args("/sistema.txt", "sonnet")
 
     assert "--output-format" in argv
     assert argv[argv.index("--output-format") + 1] == "stream-json"

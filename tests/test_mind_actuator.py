@@ -94,29 +94,3 @@ def test_senza_niente_di_deciso_si_prende_tutto_in_carico():
 # Le ricette rotte: il gesto che nessun altro fara' mai.
 # ---------------------------------------------------------------------------
 
-def test_una_misura_che_NON_SI_CALCOLA_PIU_e_una_ricetta_rotta():
-    """Misurato: 3 osservazioni su 8 dicono questo. `devices_to_ask` salta i
-    dispositivi che una ricetta ce l'hanno gia', anche quando e' rotta --
-    quindi nessuno la riscrive, e l'analista se ne lamenta ogni giorno.
-
-    **`broken_recipes` e' stata scritta insieme al modulo, non dopo una prova
-    rossa**: la sua tenuta e' stata provata con la mutazione qui sotto,
-    eseguita e osservata rossa -- riconoscerle dalla prosa
-    (`"non si calcola" in o["cosa"]`) invece che dall'innesco.
-    """
-    rotta = _osservazione(innesco=3, base=0,
-                          spiegato="il registro non sa piu' eseguire primo_ultimo")
-    sana = _osservazione(innesco=1)
-
-    assert act.broken_recipes([rotta, sana]) == [rotta]
-
-
-def test_un_TERZO_INNESCO_con_una_base_vera_non_e_una_ricetta_rotta():
-    """«Non c'e' piu'» puo' anche voler dire «il dispositivo e' muto»: se la
-    misura ha una storia dietro, la ricetta regge e il problema e' altrove.
-    Riscrivere la ricetta li' sarebbe curare il sintomo sbagliato.
-
-    Mutazione: togliere `and not o.get("base")` -- rossa."""
-    muto = _osservazione(innesco=3, base=12)
-
-    assert act.broken_recipes([muto]) == []

@@ -72,7 +72,7 @@ function fixtureHtml() {
    spegne tutti insieme. */
 function setupChat(t) {
   const ctx = loadScripts(
-    ['config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
+    ['common.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
      'chat/conversations.js', 'chat/send.js', 'pending-badge.js'],
     { html: fixtureHtml() },
   );
@@ -161,6 +161,34 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 
   const finalBubbles = document.querySelectorAll('.msg-row.assistant .bubble');
   assert.equal(finalBubbles[finalBubbles.length - 1].textContent, 'Risposta via abbonamento');
+});
+
+// ---------------------------------------------------------------------------
+// A6 (approvata il 05/10/2026): il poll di un turno fallito resta 200, e il
+// testo per la persona arriva in `error`, la forma comune degli errori HTTP.
+// La bolla mostra QUEL testo, non il ripiego generico.
+// Mutazione eseguita: send.js che legge ancora `data.message` -> rossa
+// (la bolla dice «Errore nella risposta.»).
+// ---------------------------------------------------------------------------
+
+test('A6: il poll fallito mostra il testo che il server manda in error', async (t) => {
+  const { window, document } = setupChat(t);
+  window.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('api/chat')) {
+      return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'job-1' }) };
+    }
+    if (u.includes('api/chat/reply/')) {
+      return { ok: true, status: 200, json: async () => ({
+        status: 'error', error: 'La risposta non è arrivata in tempo. Riprova.' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  await window.HirisChatSend.send('ci sei?');
+  await tick(3700);
+  const bubbles = document.querySelectorAll('.msg-row.assistant .bubble');
+  assert.equal(bubbles[bubbles.length - 1].textContent,
+    'La risposta non è arrivata in tempo. Riprova.');
 });
 
 // ---------------------------------------------------------------------------

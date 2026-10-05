@@ -22,7 +22,7 @@ import { loadScripts, STATIC_VIVO, tick } from './helpers/dom.mjs';
 
 test('dashboard.js: "nucleo" non compare piu\' in nessuna stringa visibile', async () => {
   const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
-  const ctx = loadScripts(['config/dashboard.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/dashboard.js'], { html: HTML });
 
   const NUCLEO_VUOTO = { text: '', summary: { chars: 0, truncated: false, excluded_memories: 0, notices: [] } };
   const CASA_VUOTA = {
@@ -86,12 +86,11 @@ test('memory-route.js: la chiave interna `forza`/`grandezza` (PATCH, docs/GLOSSA
 });
 
 test('«Categorie» resta com\'era: e\' il vocabolario di Home Assistant, non una parola nostra', () => {
-  const dashboard = readFileSync(join(STATIC_VIVO, 'config', 'dashboard.js'), 'utf8');
-  const tree = readFileSync(join(STATIC_VIVO, 'config', 'tree-route.js'), 'utf8');
-
-  assert.match(dashboard, /categorie: 'Categorie'/);
-  assert.match(tree, /categorie: 'Categorie'/);
-  // Sta ACCANTO a Etichette/Integrazioni nella stessa riga -- e' la stessa
-  // terna del vocabolario di HA, non un'invenzione del prodotto.
-  assert.match(tree, /etichette: 'Etichette', categorie: 'Categorie', integrazioni: 'Integrazioni'/);
+  /* Prima la prova leggeva il TESTO delle due copie della mappa, una in
+     dashboard.js e una in tree-route.js. La mappa vive una volta sola in
+     common.js (registro C-20), e si chiede a lei: e' la stessa che le due
+     pagine leggono. */
+  loadScripts(['common.js'], { html: '<!doctype html><body></body>' });
+  assert.deepEqual(nomiRegistriInItaliano(['etichette', 'categorie', 'integrazioni']),
+    ['Etichette', 'Categorie', 'Integrazioni']);
 });

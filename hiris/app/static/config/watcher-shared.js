@@ -23,18 +23,6 @@ window.HirisWatcherShared = (function () {
      di tree-route.js, per la stessa ragione (un `null` non e' un `[]`). */
   var TONE_UNKNOWN = 'color:var(--warn-ink)';
 
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
-
-  function clearEl(node) {
-    while (node && node.firstChild) node.removeChild(node.firstChild);
-    return node;
-  }
-
   function line(parent, text, style) {
     var p = el('p', 'sc-desc', text);
     if (style) p.style.cssText = style;
@@ -47,9 +35,8 @@ window.HirisWatcherShared = (function () {
      l'esito letto, anche su un 400: e' li' che vive la ragione del rifiuto,
      e chi ha premuto salva deve leggerla. */
   function write(path, payload) {
-    return fetch(path, {
+    return api(path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify(payload),
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
@@ -93,8 +80,6 @@ window.HirisWatcherShared = (function () {
   }
 
   /* ------------------------------------------------------------- i formati */
-
-  function pad2(n) { return n < 10 ? '0' + n : String(n); }
 
   function isoData(d) {
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
@@ -170,7 +155,7 @@ window.HirisWatcherShared = (function () {
     return hours.toLocaleString('it-IT', { maximumFractionDigits: 1 }) + (hours === 1 ? ' ora' : ' ore');
   }
 
-  /* Cifre intere, MAI abbreviate: `fmtNum` di config/api.js scrive «5.0k», e
+  /* Cifre intere, MAI abbreviate: `fmtNum` di common.js scrive «5.0k», e
      qui il numero esatto e' il punto (la promessa del -83% si verifica con
      «4.951», non con «5.0k»). `useGrouping: 'always'` perche' l'ICU
      dell'`it-IT` raggruppa solo da cinque cifre in su (misurato: 4951 ->
@@ -258,7 +243,7 @@ window.HirisWatcherShared = (function () {
   /* Il gemello di `protagonistName` per «cosa sto guardando» (rilievo del
      collaudo E2, 07/09/2026): una voce li' non ha MAI un `corpo.titolo` da
      preferire (il tipo che arriva da `/api/mind/watching` e'
-     `{soggetto, motivo, autore, da_quando_ts}`, punto), quindi non si puo' riusare
+     `{soggetto, motivo, autore, quando}`, punto), quindi non si puo' riusare
      `protagonistName` cosi' com'e' -- ma la legge resta la stessa: non
      inventare un nome che non c'e'. Se dal soggetto non si ricava altro
      (un'entita' dello scope, es. `light.cucina`), il soggetto STESSO
@@ -571,14 +556,14 @@ window.HirisWatcherShared = (function () {
   return {
     TONE_PROBLEM: TONE_PROBLEM, TONE_CALM: TONE_CALM, TONE_UNKNOWN: TONE_UNKNOWN,
     SUBJECT_IS_ID: SUBJECT_IS_ID, SUBJECT_IS_ID_PLURAL: SUBJECT_IS_ID_PLURAL,
-    el: el, clearEl: clearEl, line: line, subheading: subheading,
+    line: line, subheading: subheading,
     read: read, write: write, retryButton: retryButton,
     createDisclosure: createDisclosure, intestazioneFresca: intestazioneFresca,
     elencoLungo: elencoLungo,
     describeWatchedSubject: describeWatchedSubject, parseSubjectPrefix: parseSubjectPrefix,
     judgmentField: judgmentField, appendMarkedText: appendMarkedText,
     firstSentenceTruncated: firstSentenceTruncated,
-    pad2: pad2, isoData: isoData, ieriLocale: ieriLocale, localOggi: localOggi,
+    isoData: isoData, ieriLocale: ieriLocale, localOggi: localOggi,
     ggMmAaaa: ggMmAaaa, fmtTime: fmtTime, fmtWhenFull: fmtWhenFull,
     fmtDays: fmtDays, fmtHours: fmtHours, fmtCount: fmtCount, fmtPercent: fmtPercent,
     fmtDuration: fmtDuration, fmtAgo: fmtAgo,

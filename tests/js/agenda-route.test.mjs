@@ -21,7 +21,7 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/agenda-route.js'];
+const SCRIPTS = ['common.js', 'config/agenda-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
@@ -61,7 +61,7 @@ function esecuzione(campi) {
   return Object.assign({
     id: 'e9', quando_ts: 1755400100, origine: 'schedulatore',
     servizio: 'light.turn_on', entita: ['light.studio'], eseguito: true,
-    cambiato: ['light.studio'], errore: null, avviso: null,
+    cambiato: ['light.studio'], error: null, avviso: null,
   }, campi || {});
 }
 
@@ -456,7 +456,7 @@ test('un\'esecuzione fallita mostra l\'errore, non un pannello silenzioso', asyn
     execution: {
       execution: esecuzione({
         eseguito: false, cambiato: null, avviso: null,
-        errore: 'Home Assistant ha rifiutato la chiamata: 500',
+        error: 'Home Assistant ha rifiutato la chiamata: 500',
       }),
     },
   });

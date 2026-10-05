@@ -36,7 +36,12 @@ def archivio(tmp_path):
 
 def _casa(**extra):
     """La casa di un giro (`House`) su un'anagrafe minima nella forma vera di
-    `home_space/reader.py`, con lo specchio vuoto."""
+    `home_space/reader.py`, con uno specchio che porta solo uno stato per
+    ogni entita' (nient'altro: nomi, classi e unita' vengono dall'anagrafe).
+
+    Fino al Task 1.5 lo specchio era vuoto e LETTO, cioe' una casa in cui
+    ogni entita' e' «sparita» (`House.source`): da quando la riga dice la
+    fonte che tace, quella casa avrebbe messo «fonte: sparita» ovunque."""
     entita = [
         {"id": "climate.camera_t", "nome": "Termostato Camera", "classe": None,
          "unita": None, "translation_key": None, "categoria": None,
@@ -59,7 +64,7 @@ def _casa(**extra):
     casa = {"entita": entita, "aree": [{"id": "camera", "nome": "Camera"},
                                        {"id": "cucina", "nome": "Cucina"}]}
     casa.update(extra)
-    return House(casa, Mirror())
+    return House(casa, Mirror(state={e["id"]: "on" for e in entita}))
 
 
 class _Modello:

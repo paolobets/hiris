@@ -543,3 +543,92 @@ def test_al_riavvio_un_fai_e_un_chiedi_dicono_cose_DIVERSE(archivio):
     assert "notifica" in p_chiedi["motivo"], (
         "l'unico dubbio vero di un `chiedi`: la notifica poteva essere gia' "
         "partita, perche' parte prima che la promessa si chiuda")
+
+
+# --- S-20 (Tappa 4): «il bersaglio e' cambiato», con la porta VERA ---------
+#
+# Fino al 05/10/2026 l'avviso non poteva mai partire: lo spazzino leggeva
+# `occurrence["anteprima"]`, la porta scrive `"bersaglio"`; e alla nascita
+# `_count_target` passava a `_resolve` il bersaglio del modello NON tradotto
+# (`aree`, non `area_id`), quindi `entities_at_birth` restava vuoto. La prova
+# di allora usava una porta finta che rispondeva a qualunque bersaglio. Qui la
+# porta e il client sono quelli veri (`scripts/casa_finta.py`): nascita e
+# risveglio passano dalla stessa `extract_from_target`, e il numero si
+# confronta con lo stesso numero -- `risolte`, cio' che il bersaglio COPRE,
+# come dice la frase dell'avviso.
+
+def _target_door(answers: list):
+    """La porta vera, su una casa che risolve il bersaglio con le risposte di
+    `answers`, una per domanda (la nascita, poi il risveglio)."""
+    from hiris.app.action.registry import ServiceRegistry
+    from tests.test_action_registry import _house
+    from tests.test_action_targets import RISPOSTA_HA, STATI_CUCINA, FintaCache
+
+    house = CasaFinta(synthetic_inputs(), answers={
+        "extract_from_target": lambda extra: answers.pop(0),
+        "POST /api/services/": lambda path, body: []})
+
+    async def build():
+        registro = ServiceRegistry()
+        await registro.refresh(_house(RISPOSTA_HA))
+        return ActionActuator(house, registro, FintaCache(STATI_CUCINA))
+    return build
+
+
+async def _born_and_kept(archivio, monkeypatch, birth: list, wake: list):
+    """Una promessa «spegni le luci in cucina» nata e mantenuta con la porta
+    vera: `birth` e `wake` sono le entita' che il bersaglio copre allora e
+    adesso. Restituisce la promessa riletta e le righe del filo."""
+    from hiris.app.action import actuator as porta_modulo
+    from hiris.app.home_space.tools import ToolDispatcher
+    from tests.test_action_targets import _extracted
+
+    monkeypatch.setattr(porta_modulo, "STATE_WAIT_S", 0.01)
+    porta = await _target_door([_extracted(referenced_entities=birth,
+                                           referenced_areas=["cucina"]),
+                                _extracted(referenced_entities=wake,
+                                           referenced_areas=["cucina"])])()
+    chiamata = {"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}}
+    dispatcher = ToolDispatcher.__new__(ToolDispatcher)
+    dispatcher._actuator = porta
+    at_birth = await dispatcher._count_target(chiamata)
+    ident = archivio.create({
+        "specie": "fai", "frase": "alle 17 spegni le luci in cucina",
+        "quando_ts": ADESSO + 10, "chiamata": chiamata,
+        "entities_at_birth": at_birth}, thread=PAOLO, now=ADESSO)["promessa"]["id"]
+    righe = []
+    await _orologio(archivio, execute=porta.execute, interpreta=TurnoFinto(),
+                    righe=righe).batti(ADESSO + 11)
+    return archivio.read(ident), righe
+
+
+async def test_bersaglio_cambiato_avviso_parte(archivio, monkeypatch):
+    """Tre luci in cucina quando l'hai promesso, cinque adesso: l'avviso
+    parte, coi due numeri.
+
+    Mutazione ESEGUITA (05/10/2026): lo spazzino rilegge `anteprima` -- rossa
+    (nessun avviso); `_count_target` senza tradurre il bersaglio -- rossa."""
+    from hiris.app.keeper.sweeper import target_changed
+
+    luci = [f"light.cucina_{n}" for n in range(1, 6)]
+    promessa, righe = await _born_and_kept(archivio, monkeypatch, luci[:3], luci)
+
+    assert promessa["entities_at_birth"] == 3
+    assert promessa["stato"] == "mantenuta"
+    assert promessa["motivo"] == target_changed(3, 5)
+    assert any(target_changed(3, 5) in testo for _filo, testo in righe), righe
+
+
+async def test_bersaglio_uguale_nessun_avviso(archivio, monkeypatch):
+    """Lo stesso bersaglio, con dentro una presa che `light.turn_off` non
+    tocca: copre quattro entita' alla nascita e quattro al risveglio, e
+    l'avviso NON parte. Confrontare le TOCCATE (tre luci) con le coperte
+    (quattro) lo farebbe partire a ogni promessa su un'area mista.
+
+    Mutazione ESEGUITA (05/10/2026): lo spazzino conta `toccate` -- rossa."""
+    cucina = ["light.cucina_1", "light.cucina_2", "light.cucina_3",
+              "switch.cucina_presa"]
+    promessa, _righe = await _born_and_kept(archivio, monkeypatch, cucina, cucina)
+
+    assert promessa["entities_at_birth"] == 4
+    assert (promessa["stato"], promessa["motivo"]) == ("mantenuta", None), promessa

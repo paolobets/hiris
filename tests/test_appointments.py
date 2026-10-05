@@ -11,7 +11,12 @@ che non hanno niente da dire.
 from unittest.mock import patch
 
 from hiris.app.home_space import appointments as appointments_module
-from hiris.app.home_space.appointments import read_appointment, sort_appointments
+from hiris.app.home_space.appointments import (
+    merge_calendars,
+    read_appointment,
+    readable_calendars,
+    sort_appointments,
+)
 
 
 def _timed_event(**fields):
@@ -311,6 +316,25 @@ def test_sort_appointments_only_looks_at_inizio_not_at_a_raw_event():
     assert titles == ["a", "b"]
 
 
+def test_sort_appointments_orders_by_the_instant_the_night_the_clock_goes_back():
+    """A17 (approvata il 05/10/2026): il 25/10/2026 alle 03:00 Roma torna da
+    +02:00 a +01:00. Le 02:30+02:00 (00:30 UTC) vengono PRIMA delle
+    02:10+01:00 (01:10 UTC), ma come testo vengono dopo: l'ordine per testo
+    sbagliava una notte l'anno, dichiarato e lasciato. Ora si ordina per
+    istante, come `search` (Tappa 4, T4).
+
+    Mutazione eseguita: la chiave riportata al solo `inizio` come testo ->
+    rossa, «dopo» prima di «prima»."""
+    appointments = [
+        {"titolo": "dopo", "inizio": "2026-10-25T02:10:00+01:00"},
+        {"titolo": "prima", "inizio": "2026-10-25T02:30:00+02:00"},
+        {"titolo": "giornaliero", "inizio": "2026-10-25"},
+        {"titolo": "il giorno dopo", "inizio": "2026-10-26"},
+    ]
+    titles = [a["titolo"] for a in sort_appointments(appointments)]
+    assert titles == ["giornaliero", "prima", "dopo", "il giorno dopo"]
+
+
 def test_sort_appointments_places_an_all_day_event_before_a_timed_event_the_same_day():
     """Un giornaliero comincia a mezzanotte: nello stesso giorno precede
     qualunque orario, senza bisogno di un caso speciale -- una data ISO e'
@@ -335,3 +359,31 @@ def test_sort_appointments_places_an_all_day_event_before_a_timed_event_the_same
     merged = sort_appointments(appointments)
     titles = [appointment["titolo"] for appointment in merged]
     assert titles == ["Giornaliero", "A orario"]
+
+
+# --------------------------------------------------------------------------
+# merge_calendars -- la logica del calendario, senza client (Tappa 5, Task 4)
+# --------------------------------------------------------------------------
+
+def test_merge_calendars_si_prova_senza_un_client_finto():
+    """Uscita da `ToolDispatcher._calendar` il 05/10/2026 (R13): le risposte
+    di Home Assistant arrivano gia' lette, e la fusione si prova con due
+    dizionari. Un calendario che risponde `errore` e' nominato in
+    `non_letti`, gli impegni dell'altro escono fusi e annotati.
+
+    Mutazione ESEGUITA il 05/10/2026: tolto `unreadable.append(name)` sul
+    ramo `errore` -- rossa su `non_letti` (KeyError: la chiave non esce)."""
+    calendars = readable_calendars({"calendari": [
+        {"entity_id": "calendar.personale", "name": "Personale"},
+        {"entity_id": "calendar.rotto", "name": "Rotto"},
+        "una voce malformata",
+    ]})
+    answers = [{"eventi": [_timed_event()]}, {"errore": "non risponde"}]
+
+    result = merge_calendars(calendars, answers, timezone="Europe/Rome")
+
+    assert result["calendari_guardati"] == ["Personale", "Rotto"]
+    assert result["non_letti"] == ["Rotto"]
+    assert [(a["titolo"], a["calendario"]) for a in result["impegni"]] == [
+        ("Allenamento", "Personale")]
+    assert "troncato" not in result

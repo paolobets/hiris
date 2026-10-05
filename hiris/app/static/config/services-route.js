@@ -61,26 +61,6 @@ window.HirisServicesRoute = (function () {
   var stato = { dati: null, giro: null, aperto: null, messaggio: '',
               revocatiAperti: false };
 
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
-
-  /* Stesso involucro di settings-route.js e models-route.js: l'intestazione
-     `X-Requested-With` non e' facoltativa -- `csrf_middleware` risponde 403 a
-     ogni POST su /api/ che non la porta. Sta in un punto solo perche'
-     dimenticarla su una chiamata sola e' il modo esatto in cui questa pagina
-     smetterebbe di funzionare. */
-  function api(url, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign(
-      { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      opts.headers || {});
-    return fetch(url, opts);
-  }
-
   /* Minuti arrotondati PER ECCESSO, mai secondi. Un cronometro al secondo su
      dieci minuti e' una gara; qui i dieci minuti sono il tempo per fare una
      cosa sull'altra macchina. E il numero arriva dal server a ogni rilettura,
@@ -177,7 +157,7 @@ window.HirisServicesRoute = (function () {
       }
       /* Mai un catch muto: il rifiuto del server dice cosa manca, ed e'
          scritto per essere letto da chi sta decidendo. */
-      stato.messaggio = esito.corpo.errore || 'Non è riuscito. Controlla il log dell’add-on.';
+      stato.messaggio = esito.corpo.error || 'Non è riuscito. Controlla il log dell’add-on.';
       disegna();
     }).catch(function () {
       stato.messaggio = 'Il server non ha risposto.';

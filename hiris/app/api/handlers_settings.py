@@ -74,6 +74,7 @@ import logging
 from aiohttp import web
 
 from ..chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
+from .boundary import error_response
 from .soffitto import restricted_person
 
 # I nomi di HTTP e i nomi del FILE non sono piu' gli stessi, e la differenza e'
@@ -310,10 +311,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:
-        return web.json_response(
-            {"error": "Il corpo della richiesta non è JSON valido.", "field": ""},
-            status=400,
-        )
+        return error_response(400, "Il corpo della richiesta non è JSON valido.", field="")
 
     current = request.app.get("chat_settings") or ChatSettings()
     try:
@@ -323,9 +321,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
         # e ignorare) sarebbe esattamente il salvataggio silenzioso a meta'
         # che questo task esiste per non introdurre.
         logger.info("Impostazioni chat rifiutate: %s", rejection.reason)
-        return web.json_response(
-            {"error": rejection.reason, "field": rejection.field}, status=400,
-        )
+        return error_response(400, rejection.reason, field=rejection.field)
 
     data_dir = request.app.get("data_dir") or "/data"
     try:
@@ -339,11 +335,8 @@ async def handle_save_settings(request: web.Request) -> web.Response:
             "Le impostazioni in memoria restano quelle di prima.",
             data_dir, type(exc).__name__, exc,
         )
-        return web.json_response(
-            {"error": "Non è stato possibile scrivere le impostazioni su disco. "
-                      "Controlla il log dell’add-on.", "field": ""},
-            status=500,
-        )
+        return error_response(500, "Non è stato possibile scrivere le impostazioni su disco. "
+                                   "Controlla il log dell’add-on.", field="")
 
     # Hot-update: vedi la docstring in cima al file. Senza questa riga il
     # salvataggio riesce e la chat continua a usare i valori vecchi fino al

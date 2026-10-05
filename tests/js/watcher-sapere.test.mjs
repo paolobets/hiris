@@ -29,7 +29,7 @@ const TYPE_JUDGMENTS_PY = readFileSync(
   join(CONFIG_DIR, '..', '..', 'home_space', 'type_judgments.py'), 'utf8');
 const SORGENTE = readFileSync(join(CONFIG_DIR, 'watcher-sapere.js'), 'utf8');
 
-const SCRIPTS = ['config/watcher-shared.js', 'config/watcher-giorno.js',
+const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno.js',
   'config/watcher-cosa-fare.js', 'config/watcher-sapere.js',
   'config/watcher-lavoro.js', 'config/state.js', 'config/router.js',
   'config/watcher-route.js'];
@@ -106,6 +106,9 @@ function sapereFinto(extra) {
     // scoppiare `renderCorrections`/`renderSeedGroups`/`renderOpenQuestions`.
     giudizi: [],
     domande_aperte: [],
+    // C-11: quanto costa rifare la cronaca, come lo manda `handle_knowledge`
+    // (22 giorni di grezzo, un giorno ogni cinque minuti).
+    cronaca: { ritenzione_s: 22 * 86400, un_giorno_ogni_s: 300 },
   }, extra || {});
 }
 
@@ -299,7 +302,7 @@ test('mount: correggere il genere manda {soggetto_genere, soggetto, campo: "gene
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
     giudizioStatus: 400,
-    giudizio: { errore: 'questo soggetto non si può correggere qui' },
+    giudizio: { error: 'questo soggetto non si può correggere qui' },
   });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -335,7 +338,7 @@ test('mount: un 409 dice che la correzione è scritta ma non è in vigore, col m
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -527,7 +530,7 @@ test('mount: il messaggio del 409 mette un punto dopo {errore}, senza raddoppiar
   const ctx1 = montaConServer({
     sapere: sapereFinto({ giudizi: [g1] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx1.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -544,7 +547,7 @@ test('mount: il messaggio del 409 mette un punto dopo {errore}, senza raddoppiar
   const ctx2 = montaConServer({
     sapere: sapereFinto({ giudizi: [g2] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'il seme non ce l’ha.', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'il seme non ce l’ha.', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx2.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -610,7 +613,7 @@ test('mount: dopo un 409 il focus si sposta comunque sul titolo «Correzioni»',
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'x', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'x', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -728,7 +731,7 @@ test('mount: un 503 che porta la sua ragione mostra QUELLA, non il testo di rise
   const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.wdisk' });
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
-    giudizio: { errore: 'il sapere non ha potuto scrivere (OperationalError: disco pieno)' },
+    giudizio: { error: 'il sapere non ha potuto scrivere (OperationalError: disco pieno)' },
     giudizioStatus: 503,
   });
   ctx.window.HirisWatcherRoute.mount('sapere');
@@ -1305,4 +1308,28 @@ test('senza chi sappia se si costruisce, il modulo nasce nascosto', () => {
   const { corpo } = rendiSapere(sapereFinto());
 
   assert.equal(corpo.querySelector('form.jr-add-form').hidden, true);
+});
+
+
+test('seam _rendiSapere: il costo della cronaca si scrive coi numeri che manda il server', () => {
+  /* C-11 (Tappa 4, Task 5): i 22 giorni e i cinque minuti erano scritti in
+     prosa nella pagina. Ora arrivano in `cronaca`, e la durata e' il loro
+     prodotto. Con i valori di oggi la frase e' quella di prima, parola per
+     parola; con altri valori cambia con loro. Mutazione eseguita: la frase
+     tornata fissa («22 giorni ... 5 minuti ... due ore») -> rossa sul secondo
+     caso. */
+  const impronta = Array.from(campiDellImpronta());
+  const conCronaca = (cronaca) => rendiSapere(sapereFinto({
+    cronaca,
+    giudizi: [giudizio({ da: 'correzione', chi: 'Paolo', campo: impronta[0],
+      soggetto: 'light.a', soggetto_genere: 'entita',
+      valore: VALORE_PER_CAMPO[impronta[0]] || 'x' })],
+  })).corpo.textContent;
+
+  assert.match(conCronaca({ ritenzione_s: 22 * 86400, un_giorno_ogni_s: 300 }),
+    /rifà la cronaca degli ultimi 22 giorni, un giorno ogni 5 minuti: fino a circa due ore/);
+  const altra = conCronaca({ ritenzione_s: 10 * 86400, un_giorno_ogni_s: 1800 });
+  assert.match(altra,
+    /rifà la cronaca degli ultimi 10 giorni, un giorno ogni 30 minuti: fino a circa cinque ore/);
+  assert.doesNotMatch(altra, /22 giorni|5 minuti/);
 });

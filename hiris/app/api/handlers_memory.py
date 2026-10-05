@@ -41,6 +41,7 @@ from ..home_space.house import House
 from ..memory.interpretation import deduci_unit, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..proxy._sanitize import sanitize_ha_value
+from .boundary import error_response
 from .soffitto import restricted_person
 
 # Gli stessi campi scalari che MemoryStore.correggi() accetta
@@ -164,29 +165,25 @@ async def handle_get_memories(request: web.Request) -> web.Response:
 async def handle_patch_memory(request: web.Request) -> web.Response:
     store = request.app.get("memory_store")
     if store is None:
-        return web.json_response(
-            {"error": "l’archivio della memoria non e' disponibile"}, status=503)
+        return error_response(503, "l’archivio della memoria non e' disponibile")
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
-        return web.json_response({"error": "id non valido"}, status=400)
+        return error_response(400, "id non valido")
 
     # Verificato PRIMA di validare il corpo: un ricordo cancellato da
     # un'altra scheda (o mai esistito) non e' un problema del corpo della
     # richiesta, e' l'assenza del ricordo stesso -- 404, non 400.
     existing = store.get(memory_id)
     if existing is None:
-        return web.json_response(
-            {"error": f"nessun ricordo con id {memory_id}"}, status=404)
+        return error_response(404, f"nessun ricordo con id {memory_id}")
 
     try:
         body = await request.json()
     except Exception:
-        return web.json_response(
-            {"error": "corpo della richiesta non valido: atteso JSON"}, status=400)
+        return error_response(400, "corpo della richiesta non valido: atteso JSON")
     if not isinstance(body, dict):
-        return web.json_response(
-            {"error": "corpo della richiesta non valido: atteso un oggetto"}, status=400)
+        return error_response(400, "corpo della richiesta non valido: atteso un oggetto")
 
     # I campi della richiesta che non sono correggibili non si applicano in
     # silenzio (il testo, per esempio, resta giustamente intatto), ma la
@@ -194,8 +191,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     ignored = sorted(set(body) - _CORRECTABLE_FIELDS)
     fields = {k: v for k, v in body.items() if k in _CORRECTABLE_FIELDS}
     if not fields:
-        return web.json_response(
-            {"error": "nessun campo correggibile nella richiesta"}, status=400)
+        return error_response(400, "nessun campo correggibile nella richiesta")
 
     home_space_store = request.app.get("home_space_store")
     topology_loaded = _topology_loaded(home_space_store)
@@ -258,8 +254,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         # per giunta solo quando ne corregge meta': lo stesso intervallo
         # mandato intero veniva accettato. Due comportamenti opposti per la
         # stessa situazione, a seconda di come arrivava.
-        return web.json_response(
-            {"error": "; ".join(problems), "problemi": problems}, status=400)
+        return error_response(400, "; ".join(problems), problemi=problems)
 
     updates: dict = {}
     if "detto_da" in fields:
@@ -310,8 +305,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         # Sparito fra il controllo di sopra e la scrittura (un'altra
         # scheda l'ha cancellato nel frattempo): stesso 404, stessa
         # ragione onesta -- non e' un "ok" travestito.
-        return web.json_response(
-            {"error": f"nessun ricordo con id {memory_id}"}, status=404)
+        return error_response(404, f"nessun ricordo con id {memory_id}")
 
     answer: dict = {"ok": True}
     if ignored:
@@ -324,11 +318,10 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
 async def handle_delete_memory(request: web.Request) -> web.Response:
     store = request.app.get("memory_store")
     if store is None:
-        return web.json_response(
-            {"error": "l’archivio della memoria non e' disponibile"}, status=503)
+        return error_response(503, "l’archivio della memoria non e' disponibile")
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
-        return web.json_response({"error": "id non valido"}, status=400)
+        return error_response(400, "id non valido")
     store.dimentica(memory_id)
     return web.Response(status=204)

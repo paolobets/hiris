@@ -13,17 +13,12 @@
        `python scripts/vendora_caratteri.py`. -->
   <link rel="stylesheet" href="static/hiris-fonts.css">
   <link rel="stylesheet" href="static/hiris-theme.css">
-  <script>
-    /* paint theme before first render to avoid flash */
-    (function() {
-      try {
-        var saved = localStorage.getItem('hiris-theme');
-        if (saved === 'light' || saved === 'dark') {
-          document.documentElement.setAttribute('data-theme', saved);
-        }
-      } catch(e) {}
-    })();
-  </script>
+  <!-- Le utilita' comuni alle due pagine (static/common.js), caricate PER
+       PRIME e qui nell'<head>: la riga in linea che segue le usa per dipingere
+       il tema salvato prima del primo disegno, senza lampo all'avvio. Al
+       caricamento common.js dichiara soltanto: non tocca la pagina. -->
+  <script src="static/common.js"></script>
+  <script>paintSavedTheme();</script>
   <link rel="stylesheet" href="static/hiris-chat.css">
 </head>
 <body>
@@ -222,7 +217,6 @@
   </main>
 </div>
 
-<script src="static/config/api.js"></script>
 <script src="static/pending-badge.js"></script>
 <script src="static/build-check.js"></script>
 <script src="static/chat/state.js"></script>

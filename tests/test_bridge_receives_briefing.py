@@ -33,6 +33,7 @@ Cosa difende ciascun gruppo di test:
 """
 import logging
 import os
+import pathlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -343,7 +344,7 @@ def test_il_prompt_che_esce_davvero_dal_ponte_senza_sonda_e_quello_senza_strumen
     (il turno CON la sonda che risponde) e'
     tests/test_tools_to_bridge.py."""
     job = {"kind": "chat", "job_id": "job-senza-strumenti",
-           "context": {"history": [{"role": "user", "content": "ciao"}],
+           "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": _CONTESTO}}
 
     system = _cattura_system(job)
@@ -389,7 +390,10 @@ def _cattura_system(job, caplog=None):
 
     def _fake_run(argv, *a, **k):
         catturato["argv"] = argv
-        catturato["system"] = argv[argv.index("--system-prompt") + 1]
+        # Dalla Tappa 6 (S-08) il prompt di sistema e' in un file che vive
+        # quanto l'invocazione: si legge QUI, mentre la "CLI" gira.
+        catturato["system"] = pathlib.Path(
+            argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8")
         return _Proc()
 
     with patch.object(runner.subprocess, "run", _fake_run):
@@ -403,7 +407,7 @@ def test_il_job_legacy_senza_contesto_dichiara_il_silenzio_nel_log(caplog):
     LOGGARE, nominando il job_id -- mai un `.get("contesto") or ""` muto, che
     e' indistinguibile da un'assenza di problemi."""
     job = {"kind": "chat", "job_id": "job-legacy-1",
-           "context": {"history": [{"role": "user", "content": "ciao"}],
+           "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS."}}
 
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
@@ -431,7 +435,7 @@ def test_il_job_legacy_senza_contesto_lo_dichiara_anche_al_modello():
     turno non ha nemmeno la fotografia -- altrimenti risponderebbe come se la
     casa non esistesse, che al lettore sembra una risposta normale."""
     job = {"kind": "chat", "job_id": "job-legacy-2",
-           "context": {"history": [], "system_prompt": "Sei HIRIS."}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS."}}
 
     system = _cattura_system(job)
 
@@ -445,7 +449,7 @@ def test_il_job_con_contesto_non_logga_e_porta_la_casa(caplog):
     nessun avviso -- un log che scatta sempre e' rumore, e il silenzio
     dichiarato smette di distinguersi."""
     job = {"kind": "chat", "job_id": "job-nuovo",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO}}
 
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
@@ -473,7 +477,7 @@ def test_contesto_presente_ma_vuoto_non_e_un_job_legacy(caplog):
     gia' il testo del nucleo (`compose_chat_context`). Il prompt pero' dice
     comunque al modello che la fotografia non c'e'."""
     job = {"kind": "chat", "job_id": "job-vuoto",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": ""}}
 
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
@@ -498,7 +502,7 @@ def test_senza_sonda_il_ponte_resta_senza_strumenti_anche_col_contesto():
     strumenti attesi: l'argv deve restare quello di prima, byte per byte, o
     smentirebbe il prompt che in questo stesso turno li nega."""
     job = {"kind": "chat", "job_id": "job-nuovo",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO}}
 
     catturato = {}
@@ -620,7 +624,7 @@ def test_il_ponte_non_da_strumenti_anche_coi_modificatori_attivi():
     """La riga che separa la fetta A dalla B, vista con entrambi i
     modificatori accesi insieme: restano innocui rispetto agli strumenti."""
     job = {"kind": "chat", "job_id": "job-modificatori",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO,
                        "restrict_to_home": True, "response_mode": "minimal"}}
 
@@ -643,7 +647,7 @@ def test_reason_chat_legge_i_due_valori_dal_context_e_li_applica():
     del job e li passa a `build_chat_messages` -- non un default sempre
     disattivo che ignorerebbe l'impostazione dell'utente."""
     job = {"kind": "chat", "job_id": "job-attivi",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO,
                        "restrict_to_home": True, "response_mode": "compact"}}
 
@@ -658,7 +662,7 @@ def test_reason_chat_col_loro_default_su_un_job_senza_le_due_chiavi():
     impostazioni di default) non deve emettere nessun modificatore --
     `False`/`""`, non un errore."""
     job = {"kind": "chat", "job_id": "job-senza-chiavi",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO}}
 
     system = _cattura_system(job)

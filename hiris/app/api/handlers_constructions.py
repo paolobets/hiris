@@ -36,14 +36,15 @@ import time
 
 from aiohttp import web
 
-from ..chat_thread import subject_from_thread, without_thread
-from .boundary import occurrence_out
+from ..action.construction.revisions import STATES_SOSPESO
+from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
+from .boundary import error_response, occurrence_out
 from .soffitto import approved_services, require_builder, subject_name
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
 # incoerenza da mantenere sincronizzata a mano per sempre.
-_NOT_FOUND = "non ho nessuna costruzione con quell’identificatore."
+_NOT_FOUND = unknown_id_text("nessuna costruzione")
 
 
 def _store(request):
@@ -56,8 +57,7 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
         return refusal
     store = _store(request)
     if store is None:
-        return web.json_response(
-            {"constructions": [], "error": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     # Le scadute si segnano PRIMA di elencare, o la pagina mostrerebbe come
     # «da approvare» proposte che l'officina rifiuterebbe di applicare -- e il
     # bottone mentirebbe.
@@ -94,6 +94,14 @@ async def _out(app, row: dict, approved: list[dict]) -> dict:
                                              approved=approved)}
 
 
+def _construction_suspended(row: dict) -> bool:
+    """Se una costruzione aspetta ancora: `STATES_SOSPESO`, anche `in_corso`
+    (rivendicata e non ancora decisa). E' il campo `sospesa` delle righe
+    delle due GET (C-12, Tappa 4, Task 5): la pagina lo legge, e non sa piu'
+    quali stati lo dicano."""
+    return row["stato"] in STATES_SOSPESO
+
+
 async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     """Le due code in un elenco solo, dalla piu' recente.
 
@@ -102,12 +110,17 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     da un dettaglio di implementazione.
     """
     approved = approved_services(app)
-    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS}
+    # `sospesa` e' la regola di ciascuna coda, decisa qui e non nella pagina
+    # (C-12): le costruzioni con `_construction_suspended`, le proposte a mano
+    # finche' sono `PROPOSAL_PENDING`.
+    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
+             "sospesa": _construction_suspended(row)}
             for row in store.list(pending_only=pending_only, limit=200)]
     observations = app.get("observations")
     if observations is not None:
         rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
-                  "a_mano": True}
+                  "a_mano": True,
+                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING}
                  for row in observations.proposals(pending_only=pending_only)]
     return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 
@@ -118,12 +131,13 @@ async def handle_get_construction(request: web.Request) -> web.Response:
         return refusal
     store = _store(request)
     if store is None:
-        return web.json_response({"error": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     row = store.read(request.match_info["id"])
     if row is None:
-        return web.json_response({"error": _NOT_FOUND}, status=404)
+        return error_response(404, _NOT_FOUND)
     return web.json_response(
-        {"construction": await _out(request.app, row, approved_services(request.app))})
+        {"construction": {**await _out(request.app, row, approved_services(request.app)),
+                          "sospesa": _construction_suspended(row)}})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:
@@ -141,10 +155,10 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     store = _store(request)
     workshop = request.app.get("workshop")
     if store is None or workshop is None:
-        return web.json_response({"error": "officina non disponibile"}, status=503)
+        return error_response(503, "officina non disponibile")
     ident = request.match_info["id"]
     if store.read(ident) is None:
-        return web.json_response({"error": _NOT_FOUND}, status=404)
+        return error_response(404, _NOT_FOUND)
     method = getattr(workshop, verb)
     occurrence = await method(ident, actor="pagina", exchange=None,
                               now=time.time(),
@@ -186,10 +200,10 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
         return refusal
     store = _store(request)
     if store is None:
-        return web.json_response({"error": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     ident = request.match_info["id"]
     if store.read(ident) is None:
-        return web.json_response({"error": _NOT_FOUND}, status=404)
+        return error_response(404, _NOT_FOUND)
     occurrence = store.mark_cancelled(ident, now=time.time())
     if "errore" in occurrence:
         return web.json_response(occurrence_out(occurrence), status=409)

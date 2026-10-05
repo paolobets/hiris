@@ -263,13 +263,18 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # in 3 casi su 3. Un intervallo rimasto indietro non fa rumore: perde la
     # copertura in silenzio, ed e' il danno peggiore.
     "backends/openai_compat_runner.py": (
-        (157, 162),    # TOOL_LEAK_USER_MSG
-        (785, 788),    # RunnerBackendError, 402 OpenRouter (non-stream)
+        # Ancora per contenuto dal 05/10/2026 (B22 aggiunge righe sopra).
+        *ancora("backends/openai_compat_runner.py", "TOOL_LEAK_USER_MSG = (",
+                quante=7),
+        # +3 il 05/10/2026 (B22): le stesse righe di prima. ATTENZIONE: gia'
+        # prima puntavano a un commento, e 1062-1065 sta oltre la fine del
+        # file -- intervalli ciechi, scritti nel rapporto dell'integrazione.
+        (788, 791),    # RunnerBackendError, 402 OpenRouter (non-stream)
         # 1062-1065, non piu' 1056-1059: rinumerato il 09/09/2026 quando il
         # docstring di `chat_stream` (audit delle fondamenta, rilievo 8) e'
         # cresciuto di 6 righe sopra questo punto. Ancora per contenuto
         # (`err = (` prima della f-string), non offset.
-        (1062, 1065),  # err, 402 OpenRouter (stream)
+        (1067, 1070),  # err, 402 OpenRouter (stream)
     ),
     "api/handlers_chat.py": (
         (498, 502),    # nessun altro provider dopo la scadenza del ponte

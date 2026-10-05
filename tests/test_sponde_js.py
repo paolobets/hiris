@@ -58,9 +58,9 @@ def test_un_produttore_rinominato_da_un_lato_solo_arrossisce(albero):
 
 
 def test_una_funzione_nuda_rinominata_da_un_lato_solo_arrossisce(albero):
-    """`config/api.js` dichiara `fmtNum` senza `window`, e tre file la
+    """`common.js` dichiara `fmtNum` senza `window`, e tre file la
     chiamano. Rinominare la sola `function` lascia tre chiamate orfane."""
-    f = albero / "config" / "api.js"
+    f = albero / "common.js"
     testo = f.read_text(encoding="utf-8")
     assert "function fmtNum(" in testo
     f.write_text(testo.replace("function fmtNum(", "function fmtNumero(", 1),
@@ -71,10 +71,10 @@ def test_una_funzione_nuda_rinominata_da_un_lato_solo_arrossisce(albero):
 def test_l_ordine_dei_tag_script_e_una_dipendenza_e_si_verifica(albero):
     """L'unica dichiarazione di dipendenza che questo frontend possiede e'
     l'ordine dei `<script src>`, e prima di questo cancello non la leggeva
-    nessuno: spostare `api.js` dopo chi lo usa non rompeva nessun controllo."""
+    nessuno: spostare `common.js` dopo chi lo usa non rompeva nessun controllo."""
     html = albero / "config.html"
     testo = html.read_text(encoding="utf-8")
-    riga = '  <script src="static/config/api.js"></script>\n'
+    riga = '  <script src="static/common.js"></script>\n'
     assert riga in testo
     testo = testo.replace(riga, "", 1)
     testo = testo.replace('  <script src="static/config/main.js"></script>',
@@ -96,13 +96,24 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     assert "_mostraRigheConsumi" not in globali
     assert {"fmtNum", "HirisRouter"} <= globali
     # 25 -> 27 col collaudo 3.22 (C5): `isSubscriptionOnly` e
-    # `SUBSCRIPTION_ONLY_COST_LABEL` sono nomi nudi di config/api.js letti
+    # `SUBSCRIPTION_ONLY_COST_LABEL` sono nomi nudi di common.js letti
     # anche da config/usage-route.js (la tessera "Costo" quando l'unico uso
     # e' l'abbonamento) -- stessa specie di `fmtNum`/`fmtEuro` qui sopra, non
     # private come `_setUsageText`.
     assert {"isSubscriptionOnly", "SUBSCRIPTION_ONLY_COST_LABEL"} <= globali
+    # 34 -> 45 con `static/common.js` (Tappa 4, Task 3, 05/10/2026): le
+    # utilita' che ogni pagina si riscriveva -- `el`, `clearEl`, `byId`,
+    # `api`, `pad2`, `renderError`, `setDisclosure`, `nomiRegistriInItaliano`
+    # con la sua mappa `NOMI_REGISTRI` -- e il tema (`currentTheme`,
+    # `toggleTheme`) sono nomi nudi di common.js letti da altri file.
+    # `paintSavedTheme` NON c'e': la chiama solo lo script in linea delle due
+    # pagine, che nessun linter legge (la sua sponda la prova
+    # tests/js/common.test.mjs).
+    assert {"el", "api", "renderError", "toggleTheme"} <= globali
+    assert "paintSavedTheme" not in globali
+    #
     # 33 -> 34 con la fetta «HIRIS per chi non amministra» (27/09/2026):
-    # `configures` e' la regola di chi configura, nome nudo di config/api.js
+    # `configures` e' la regola di chi configura, nome nudo di common.js
     # letto da config/main.js e config/memory-route.js -- prima ciascuno ne
     # aveva una copia.
     #
@@ -117,7 +128,7 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # nell'elenco anche se nessuno li legge NUDI -- il guscio li risolve per
     # nome -- e' scritta accanto a loro in `.oxlintrc.json`: e' il punto 1 di
     # questo stesso cancello a sorvegliarli.
-    assert len(globali) == 34
+    assert len(globali) == 45
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():

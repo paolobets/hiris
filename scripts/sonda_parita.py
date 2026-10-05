@@ -106,7 +106,7 @@ from hiris.app.proxy.entity_cache import _to_minimal
 #: zero: chi cambia quel testo rilegge la domanda (riletta il 04/10/2026, Tappa
 #: 3, Task 8: `verification` nega l'esistenza solo di cio' che la casa non
 #: conosce; il motivo delle ricette incolpa lo `state_class` con questa frase,
-#: in `recipes.silence_reason`).
+#: in `recipes.silence`).
 DENIES_EXISTENCE = "non esiste"
 BLAMES_STATE_CLASS = "non dichiara uno `state_class`"
 CASES_KEPT = 40

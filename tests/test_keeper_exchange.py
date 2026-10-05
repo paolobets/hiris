@@ -327,13 +327,16 @@ class _CodaFinta:
         return 0
 
     def enqueue(self, kind, wake, context, deadline_ts, *, job_id=None, now,
-                thread=None):
+                thread=None, priority):
+        # `priority` obbligatorio qui, senza predefinito: la promessa la deve
+        # dichiarare (Tappa 6, Task 2), e una fake che la tacesse la
+        # nasconderebbe.
         # `thread` come la coda vera (`ReasoningQueue.enqueue`): il job di una
         # promessa porta il filo di chi l'ha chiesta (spec 2026-09-26 §2.4,
         # provato sulla coda vera in `test_promesse_divise.py`).
         self.accodati.append({"kind": kind, "context": context,
                               "deadline_ts": deadline_ts, "now": now,
-                              "thread": thread})
+                              "thread": thread, "priority": priority})
         return "job-1"
 
 
@@ -375,6 +378,9 @@ async def test_col_ponte_in_testa_il_turno_va_in_coda_e_non_al_router(col_token_
         "il piano era in testa alla catena: il router non doveva rispondere")
     assert len(coda.accodati) == 1
     assert coda.accodati[0]["kind"] == "promessa"
+    # Tappa 6, Task 2 (D4): solo la chat passa avanti.
+    from hiris.app.reasoning.queue import PRIORITY_BACKGROUND
+    assert coda.accodati[0]["priority"] == PRIORITY_BACKGROUND
 
 
 @pytest.mark.asyncio

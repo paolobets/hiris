@@ -8,7 +8,7 @@ volta, quindi per restare verde su un albero sano gli si deve DICHIARARE che
 `HirisRouter` e `fmtNum` esistono -- e quella dichiarazione e' esattamente cio'
 che lo rende cieco il giorno in cui qualcuno rinomina chi li produce.
 Provato: rinominato `window.HirisRouter` da un lato solo, oxlint col cancello
-tace, come tace senza. Idem per `function fmtNum` di `config/api.js`.
+tace, come tace senza. Idem per `function fmtNum` di `common.js`.
 
 Questo script chiude l'anello. Non guarda dentro un file: guarda i file
 INSIEME, e verifica tre cose che nessun altro cancello verifica.
@@ -135,7 +135,7 @@ def profilo(percorso: Path) -> tuple[set[str], set[str]]:
     «Prodotto» e' `window.X = ...` oppure una dichiarazione di modulo (fuori
     da ogni graffa e da ogni parentesi): in uno script classico quest'ultima
     e' un globale, che i venti file avvolti in una IIFE non producono e
-    `config/api.js` si'.
+    `common.js` si'.
     """
     t = _tokens(percorso.read_text(encoding="utf-8"))
     prodotti: set[str] = set()
@@ -185,7 +185,7 @@ def sequenza_script() -> dict[str, list[str]]:
     E' l'UNICA dichiarazione di dipendenza che questo frontend possieda: senza
     moduli, «chi viene prima» e' scritto solo qui, nei `<script src>` dei due
     `.html`. Prima di questo cancello non la leggeva nessuno -- spostare
-    `config/api.js` dopo chi lo usa non faceva arrossire niente.
+    `common.js` dopo chi lo usa non faceva arrossire niente.
     """
     fuori = {}
     for html in sorted(STATIC.glob("*.html")):

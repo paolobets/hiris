@@ -7,6 +7,7 @@ from aiohttp import web
 
 from ..chat_thread import thread_to_context
 from ..mind.observer import SCOPE_TURN_KIND
+from .boundary import error_response
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def _ponte_soltanto(request) -> web.Response | None:
             "reasoning: %s rifiutata a %s (autenticazione vista: %s)",
             request.path if hasattr(request, "path") else "?",
             getattr(request, "remote", "?"), request.get("auth_via"))
-        return web.json_response({"errore": _SOLO_PONTE}, status=401)
+        return error_response(401, _SOLO_PONTE)
     return None
 
 
@@ -76,14 +77,14 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         return negato
     q = request.app.get("reasoning_queue")
     if q is None:
-        return web.json_response({"ok": False, "error": "queue unavailable"}, status=503)
+        return error_response(503, "queue unavailable", ok=False)
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+        return error_response(400, "invalid JSON", ok=False)
     job_id = body.get("job_id"); nonce = body.get("nonce"); decision = body.get("decision") or {}
     if not q.submit(job_id, nonce, decision, _now(request)):
-        return web.json_response({"ok": False, "error": "invalid or expired"}, status=409)
+        return error_response(409, "invalid or expired", ok=False)
     job = q.get(job_id)
     outcome = "recorded"
 

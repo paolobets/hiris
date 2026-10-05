@@ -57,6 +57,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from ..home_space.house import SOURCE_LIVE, SOURCE_STATES
+
 #: Sotto questa copertura un risultato di periodo diventa «non calcolabile».
 #: **Scelta, non misurata** (vedi il docstring del modulo): tre quarti del
 #: periodo e' il punto oltre il quale un totale «del giorno» avrebbe piu' di
@@ -212,22 +214,104 @@ class Measurement(Result):
                 f"coverage={self._coverage!r})")
 
 
+# -- PERCHE' una misura non c'e': il vocabolario delle cause (B-26) -----------
+#
+# Attori, strato 1, Task 1.2 (05/10/2026). Fino ad allora il perche' era solo
+# una FRASE: chi voleva contare le misure rifiutate per causa -- la batteria
+# degli attori, l'analista, la riparazione delle ricette -- doveva leggere la
+# prosa, e cinque frasi diverse dicevano cause che non coincidevano (B-26:
+# «manca lo `state_class`» falso in 21 casi su 21). Ora la causa e' un campo,
+# e il vocabolario e' UNO:
+#
+# - gli STATI DELLA FONTE (`House.source`, Tappa 3, Task 8), tutti tranne
+#   «viva": dove la misura tace perche' la fonte tace, la causa e' la parola
+#   della fonte, non un sinonimo;
+# - le cause che la MISURA aggiunge, qui sotto, ognuna con la sua ragione.
+#   E' una lista di AMMISSIONE: una parola nuova entra scritta qui, con la
+#   ragione, o il costruttore di `NotComputable` la rifiuta.
+
+#: La fonte parla, ma Home Assistant non tiene statistiche per lei.
+NO_STATISTICS = "senza_statistiche"
+#: L'id non lo conosce nessuno: ne' il registro ne' gli stati.
+UNKNOWN_SOURCE = "assente"
+#: Le statistiche esistono forse, ma non si sono potute leggere.
+STATISTICS_UNREAD = "statistiche_non_lette"
+#: I dati del giorno sono troppo pochi per un numero onesto.
+COVERAGE_LOW = "copertura_bassa"
+#: La ricetta chiede una cosa che non si puo' fare.
+RECIPE_BROKEN = "ricetta_storta"
+#: La fonte manda un valore che non si muove mentre dovrebbe.
+FROZEN = "ferma"
+#: Coi dati giusti, la domanda non ha risposta.
+NO_ANSWER = "senza_risposta"
+
+#: Le cause che la misura aggiunge agli stati della fonte, con la ragione.
+MEASURE_CAUSES = MappingProxyType({
+    NO_STATISTICS: (
+        "la fonte parla, ma Home Assistant non la elenca fra le statistiche "
+        "(`recorder/list_statistic_ids`): un dominio che non le compila, o un "
+        "sensor senza `state_class`. Non e' uno stato della fonte -- `source` "
+        "lo porta come campo, `statistiche` -- e quindi ha una parola sua"),
+    UNKNOWN_SOURCE: (
+        "`House.source` risponde `None`: l'id non e' ne' nel registro ne' "
+        "negli stati. Non e' «sparita», che in `source` vuol dire «nel "
+        "registro e senza stato»: chiamarla cosi' direbbe un fatto diverso"),
+    STATISTICS_UNREAD: (
+        "la lettura delle statistiche orarie e' fallita (S-28, trovato 7 "
+        "della Tappa 3): non si sa se la serie ci sarebbe stata"),
+    COVERAGE_LOW: (
+        "la serie c'e' ma copre troppo poco del periodo per dare un numero "
+        "(`MINIMUM_COVERAGE`), o non ha abbastanza punti per l'operazione"),
+    RECIPE_BROKEN: (
+        "la ricetta non si esegue o chiede l'impossibile: non e' valida, "
+        "somma una misura istantanea, mescola unita', dichiara piu' parti di "
+        "quante il periodo ne abbia. Si ripara riscrivendola, non coi dati"),
+    FROZEN: (
+        "la regola del dato fermo (attori, Task 1.1 e 1.3; D3 e D4 del "
+        "proprietario, 03/10/2026): una misura su una fonte ferma si rifiuta. "
+        "Ammessa qui perche' la riparazione delle ricette (Task 1.6) la sa gia' "
+        "NON riparabile, e la batteria degli attori la conta per nome"),
+    NO_ANSWER: (
+        "i dati ci sono e sono giusti, ma la domanda non ha risposta: "
+        "denominatore nullo, rapporto negativo, serie che non varia, nessun "
+        "episodio. Non e' un guasto di nessuno, e dirlo con una delle altre "
+        "parole lo farebbe sembrare tale"),
+})
+
+#: IL vocabolario delle cause: gli stati della fonte che tacciono, piu' quelli
+#: della misura. Si compone, non si ricopia.
+CAUSES = frozenset({state for state in SOURCE_STATES if state != SOURCE_LIVE}
+                   | set(MEASURE_CAUSES))
+
+
 class NotComputable(Result):
-    """Un rifiuto **con la sua ragione**, e la ragione non e' facoltativa.
+    """Un rifiuto **con la sua ragione e la sua causa**, e nessuna delle due
+    e' facoltativa.
 
     La spec lo chiede alla lettera: il risultato diventa *«non calcolabile, E
     PERCHE'»*. Un rifiuto muto e' un silenzio, e un silenzio non e'
     distinguibile da un'assenza di problemi -- che e' il difetto che questo
     prodotto insegue in ogni sua parte.
+
+    La **ragione** e' la frase, per chi legge; la **causa** e' la parola del
+    vocabolario chiuso (`CAUSES`), per chi conta e per chi decide (B-26,
+    attori Task 1.2): la riparazione delle ricette sceglie dalla causa, non
+    dalla prosa.
     """
 
-    __slots__ = ("_reason",)
+    __slots__ = ("_cause", "_reason")
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, cause: str) -> None:
         if not str(reason or "").strip():
             raise ValueError(
                 "un «non calcolabile» senza ragione e' un silenzio, non una risposta")
+        if cause not in CAUSES:
+            raise ValueError(
+                f"causa fuori dal vocabolario: {cause!r}. Le cause sono "
+                f"{', '.join(sorted(CAUSES))}; una nuova entra in "
+                "`MEASURE_CAUSES`, con la sua ragione")
         self._reason = str(reason).strip()
+        self._cause = cause
 
     @property
     def computable(self) -> bool:
@@ -237,14 +321,19 @@ class NotComputable(Result):
     def reason(self) -> str:
         return self._reason
 
+    @property
+    def cause(self) -> str:
+        return self._cause
+
     def __eq__(self, other) -> bool:
-        return type(self) is type(other) and self._reason == other._reason
+        return (type(self) is type(other) and self._reason == other._reason
+                and self._cause == other._cause)
 
     def __hash__(self) -> int:
-        return hash(self._reason)
+        return hash((self._reason, self._cause))
 
     def __repr__(self) -> str:
-        return f"NotComputable({self._reason!r})"
+        return f"NotComputable({self._reason!r}, cause={self._cause!r})"
 
 
 # ── Il registro ────────────────────────────────────────────────────────────
@@ -539,9 +628,9 @@ def _reject_for_coverage(coverage: float, known: int,
         if points:
             return NotComputable(
                 f"la serie ha {points} punti nel periodo ma nessuno porta un "
-                "numero: e' una successione di stati, non di misure")
+                "numero: e' una successione di stati, non di misure", cause=RECIPE_BROKEN)
         return NotComputable(
-            "nessun punto con un valore nel periodo: la serie e' vuota")
+            "nessun punto con un valore nel periodo: la serie e' vuota", cause=COVERAGE_LOW)
     if coverage > 1.0:
         # Piu' punti di quanti il periodo ne preveda: e' un errore di chi
         # chiama -- la serie e il periodo non parlano dello stesso tempo.
@@ -552,12 +641,12 @@ def _reject_for_coverage(coverage: float, known: int,
         return NotComputable(
             f"i punti con un valore sono piu' delle parti attese "
             f"(copertura {coverage:.0%}): la serie e il periodo non parlano "
-            "dello stesso tempo")
+            "dello stesso tempo", cause=RECIPE_BROKEN)
     if coverage < MINIMUM_COVERAGE:
         return NotComputable(
             f"copertura {coverage:.0%}, sotto il minimo di "
             f"{MINIMUM_COVERAGE:.0%}: un totale fatto di cosi' poche parti del "
-            "periodo somiglia a un totale e non lo e'")
+            "periodo somiglia a un totale e non lo e'", cause=COVERAGE_LOW)
     return None
 
 
@@ -571,7 +660,7 @@ def _sum_period(series, *, unit: str, expected_parts: int | None = None) -> Resu
     """
     known, coverage = _known_points(series, expected_parts)
     if not known and _looks_instantaneous(series):
-        return NotComputable(_INSTANTANEOUS_REASON)
+        return NotComputable(_INSTANTANEOUS_REASON, cause=RECIPE_BROKEN)
     refusal = _reject_for_coverage(coverage, len(known),
                                    points=len(series or []))
     if refusal is not None:
@@ -620,18 +709,19 @@ def _ratio(numerator: Result, denominator: Result) -> Result:
     """
     for r in (numerator, denominator):
         if not r.computable:
-            return NotComputable(r.reason)
+            return r
     if not denominator.value:
         return NotComputable(
-            "il denominatore e' nullo: non e' «zero», e' una domanda senza risposta")
+            "il denominatore e' nullo: non e' «zero», e' una domanda senza risposta",
+            cause=NO_ANSWER)
     try:
         value = float(numerator.value) / float(denominator.value)
     except (TypeError, ValueError, ZeroDivisionError):
-        return NotComputable("i due numeri non si leggono come numeri")
+        return NotComputable("i due numeri non si leggono come numeri", cause=RECIPE_BROKEN)
     if value < 0:
         return NotComputable(
             f"il rapporto e' negativo ({value:.3f}): non si clampa a zero, "
-            "perche' zero affermerebbe una cosa che non sappiamo")
+            "perche' zero affermerebbe una cosa che non sappiamo", cause=NO_ANSWER)
     return Measurement(round(value, 3), unit="frazione",
                        coverage=min(numerator.coverage, denominator.coverage))
 
@@ -665,11 +755,11 @@ def _difference(first: Result, second: Result) -> Result:
     """
     for r in (first, second):
         if not r.computable:
-            return NotComputable(r.reason)
+            return r
     if first.unit != second.unit:
         return NotComputable(
             f"unita' diverse ({first.unit} e {second.unit}): la differenza "
-            "sarebbe un numero senza significato")
+            "sarebbe un numero senza significato", cause=RECIPE_BROKEN)
     return Measurement(round(first.value - second.value, 2), unit=first.unit,
                   coverage=min(first.coverage, second.coverage))
 
@@ -739,7 +829,9 @@ def _per_hour(series, *, unit: str, expected_parts: int | None = None) -> Result
     points = [p for p in (series or []) if isinstance(p, dict)]
     _, coverage = _known_points(points, expected_parts)
     if not points:
-        return NotComputable("nessun punto nel periodo: non c'e' nessun profilo")
+        return NotComputable(
+            "nessun punto nel periodo: non c'e' nessun profilo",
+            cause=COVERAGE_LOW)
     return Measurement([{"ora": p.get("inizio"), "valore": p.get("valore")}
                    for p in points], unit=unit, coverage=coverage)
 
@@ -773,11 +865,12 @@ def _first_last_difference(series, *, unit: str) -> Result:
     """
     known, coverage = _known_points(series)
     if not known:
-        return NotComputable("nessuna lettura con un valore nel periodo")
+        return NotComputable("nessuna lettura con un valore nel periodo", cause=COVERAGE_LOW)
     if len(known) < 2:
         return NotComputable(
             "c'e' un solo punto nel periodo: la prima e l'ultima lettura sono la "
-            "stessa, e la differenza direbbe «non e' cambiato niente» senza saperlo")
+            "stessa, e la differenza direbbe «non e' cambiato niente» senza saperlo",
+            cause=COVERAGE_LOW)
     return Measurement(round(known[-1]["valore"] - known[0]["valore"], 2),
                   unit=unit, coverage=coverage)
 
@@ -835,7 +928,7 @@ def _episode(readings, *, is_on, period_end: float) -> Result:
     if start is not None:
         windows.append((start, float(period_end)))
     if not windows:
-        return NotComputable("nessun episodio nel periodo: non si e' mai acceso")
+        return NotComputable("nessun episodio nel periodo: non si e' mai acceso", cause=NO_ANSWER)
     return Measurement(Period(windows), unit="periodo", coverage=1.0)
 
 
@@ -957,7 +1050,7 @@ def _measurements_in_period(readings, period: Period, *, unit: str) -> Result:
     if not inside:
         return NotComputable(
             "nessuna misura dentro le finestre del periodo: la grandezza non e' "
-            "stata osservata mentre succedeva")
+            "stata osservata mentre succedeva", cause=COVERAGE_LOW)
     points = []
     for instant, value in inside:
         try:
@@ -965,7 +1058,7 @@ def _measurements_in_period(readings, period: Period, *, unit: str) -> Result:
         except (TypeError, ValueError):
             points.append({"inizio": float(instant), "valore": None})
     if all(p["valore"] is None for p in points):
-        return NotComputable("le misure non si leggono come numeri")
+        return NotComputable("le misure non si leggono come numeri", cause=RECIPE_BROKEN)
     return Measurement(points, unit=unit,
                   coverage=sum(p["valore"] is not None for p in points) / len(points))
 
@@ -996,11 +1089,11 @@ def _period_comparison(first: Result, later: Result) -> Result:
     """
     for r in (first, later):
         if not r.computable:
-            return NotComputable(r.reason)
+            return r
     if first.unit != later.unit:
         return NotComputable(
             f"unita' diverse ({first.unit} e {later.unit}): i due periodi non "
-            "misurano la stessa cosa")
+            "misurano la stessa cosa", cause=RECIPE_BROKEN)
     difference = round(later.value - first.value, 2)
     variation = round(difference / first.value, 3) if first.value else None
     return Measurement({"differenza": difference, "variazione": variation},
@@ -1037,7 +1130,7 @@ def _trend_line(series, *, unit: str) -> Result:
     if len(known) < 3:
         return NotComputable(
             f"servono almeno 3 punti per una tendenza, ce ne sono {len(known)}: "
-            "due fanno sempre una retta perfetta, e non e' una tendenza")
+            "due fanno sempre una retta perfetta, e non e' una tendenza", cause=COVERAGE_LOW)
     values = [p["valore"] for p in known]
     n = len(values)
     mean_x = (n - 1) / 2
@@ -1079,12 +1172,12 @@ def _correlation(first, second) -> Result:
         return NotComputable(
             f"le due serie hanno lunghezza diversa ({len(a)} e {len(b)}): "
             "accoppiare punti che non si corrispondono produce un coefficiente "
-            "che non parla di niente")
+            "che non parla di niente", cause=RECIPE_BROKEN)
     pairs = [(x, y) for x, y in zip(a, b, strict=True)
               if x is not None and y is not None]
     if len(pairs) < 3:
         return NotComputable(
-            f"servono almeno 3 coppie di punti, ce ne sono {len(pairs)}")
+            f"servono almeno 3 coppie di punti, ce ne sono {len(pairs)}", cause=COVERAGE_LOW)
     n = len(pairs)
     mean_x = sum(x for x, _ in pairs) / n
     mean_y = sum(y for _, y in pairs) / n
@@ -1094,7 +1187,7 @@ def _correlation(first, second) -> Result:
     if not den_x or not den_y:
         return NotComputable(
             "una delle due serie non varia affatto: con una retta orizzontale "
-            "la correlazione non e' definita")
+            "la correlazione non e' definita", cause=NO_ANSWER)
     return Measurement(round(num / (den_x * den_y) ** 0.5, 3), unit="coefficiente",
                   coverage=n / len(a))
 
@@ -1135,17 +1228,17 @@ def _sum_entities(measurements) -> Result:
     """
     all_given = list(measurements or [])
     if not all_given:
-        return NotComputable("nessuna entita' da sommare")
+        return NotComputable("nessuna entita' da sommare", cause=RECIPE_BROKEN)
     computables = [m for m in all_given if m.computable]
     if not computables:
         return NotComputable(
             "nessuna delle entita' e' calcolabile: il totale sarebbe uno zero "
-            "che non significa zero")
+            "che non significa zero", cause=next(m.cause for m in all_given if not m.computable))
     unit = {m.unit for m in computables}
     if len(unit) > 1:
         return NotComputable(
             f"unita' diverse fra le entita' ({', '.join(sorted(unit))}): "
-            "sommarle produrrebbe un numero senza significato")
+            "sommarle produrrebbe un numero senza significato", cause=RECIPE_BROKEN)
     return Measurement(round(sum(m.value for m in computables), 2),
                   unit=computables[0].unit,
                   coverage=sum(m.coverage for m in computables) / len(all_given))
@@ -1179,17 +1272,17 @@ def _average_entities(measurements) -> Result:
     """
     all_given = list(measurements or [])
     if not all_given:
-        return NotComputable("nessuna entita' di cui fare la media")
+        return NotComputable("nessuna entita' di cui fare la media", cause=RECIPE_BROKEN)
     computables = [m for m in all_given if m.computable]
     if not computables:
         return NotComputable(
             "nessuna delle entita' e' calcolabile: la media sarebbe uno zero "
-            "che non significa zero")
+            "che non significa zero", cause=next(m.cause for m in all_given if not m.computable))
     unit = {m.unit for m in computables}
     if len(unit) > 1:
         return NotComputable(
             f"unita' diverse fra le entita' ({', '.join(sorted(unit))}): "
-            "la loro media non misurerebbe niente")
+            "la loro media non misurerebbe niente", cause=RECIPE_BROKEN)
     return Measurement(round(sum(m.value for m in computables) / len(computables), 2),
                   unit=computables[0].unit,
                   coverage=sum(m.coverage for m in computables) / len(all_given))
@@ -1237,12 +1330,14 @@ def _group_by(measurements: dict, *, key, reduce: str) -> Result:
             continue
         groups.setdefault(k, []).append(measurement)
     if not groups:
-        return NotComputable("nessuna entita' ha una chiave per cui raggrupparla")
+        return NotComputable(
+            "nessuna entita' ha una chiave per cui raggrupparla",
+            cause=RECIPE_BROKEN)
     riduttore = _REGISTRY.get(reduce)
     if riduttore is None:
         return NotComputable(
             f"«{reduce}» non e' un'operazione del registro: non c'e' modo di "
-            "ridurre i gruppi")
+            "ridurre i gruppi", cause=RECIPE_BROKEN)
     reduced = {k: riduttore.run(v) for k, v in groups.items()}
     coverage = 1.0 - keyless / len(entities) if entities else 1.0
     return Measurement(reduced, unit="gruppi", coverage=coverage)
@@ -1288,7 +1383,8 @@ def _within(period: Period, limit: Period) -> Result:
                 windows.append((overlap_start, overlap_end))
     if not windows:
         return NotComputable(
-            "i due periodi non si sovrappongono mai: non c'e' nessun pezzo in comune")
+            "i due periodi non si sovrappongono mai: non c'e' nessun pezzo in comune",
+            cause=NO_ANSWER)
     return Measurement(Period(windows), unit="periodo", coverage=1.0)
 
 

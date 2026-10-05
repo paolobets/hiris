@@ -9,6 +9,8 @@ from .claude_runner import (
     RunnerBackendError,
     _current_thinking_blocks,
     _current_tool_calls,
+    _current_tool_leaked,
+    _current_truncated,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,6 +159,12 @@ class LLMRouter:
         # il 02/10/2026): il turno passa dal ciclo di ripiego, nell'ordine della
         # catena. Il ramo del modello esplicito, che sceglieva un runner una volta
         # sola e non ripiegava, e' uscito con la Tappa 0 (voce M-05 del registro).
+        # Il segnale di troncatura si azzera QUI, non solo nei backend: se
+        # nessuno risponde, il router torna un testo suo, e il segnale di una
+        # chiamata precedente dello stesso compito si leggerebbe come di
+        # questa.
+        _current_truncated.set(False)
+        _current_tool_leaked.set(False)
         ordered = self._ordered_backends_with_name()
         if not ordered:
             # Da questa fetta e' uno stato RAGGIUNGIBILE e con un significato:
@@ -225,6 +233,21 @@ class LLMRouter:
         """
         val = _current_tool_calls.get()
         return val if val is not None else []
+
+    @property
+    def last_truncated(self) -> bool:
+        """Se la risposta che ha appena attraversato il router, in QUESTO
+        compito, e' stata troncata dal provider. Stessa ContextVar dei runner:
+        il backend che ha risposto e' l'ultimo ad averla scritta, perche'
+        ognuno la azzera all'ingresso di `chat()`."""
+        return _current_truncated.get()
+
+    @property
+    def last_tool_leaked(self) -> bool:
+        """Se la risposta che ha appena attraversato il router, in QUESTO
+        compito, portava uno strumento «scappato» come testo (B22). Stessa
+        ContextVar dei runner, come `last_truncated`."""
+        return _current_tool_leaked.get()
 
     @property
     def last_thinking_blocks(self) -> list:

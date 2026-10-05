@@ -66,7 +66,10 @@ import logging
 import os
 import secrets
 import subprocess
+import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import httpx
@@ -82,6 +85,13 @@ from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
 from ..mind.actuator_turn import ACTUATION_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
+from ..steering import (
+    ACTUATOR_SPECIES,
+    ANALYST_SPECIES,
+    OBSERVER_SPECIES,
+    PROMISE_SPECIES,
+    RECIPES_SPECIES,
+)
 from ..usage.giro import anthropic_turn_tokens
 from . import prompts
 
@@ -532,11 +542,51 @@ def probe_tools(client, base_url: str, headers: dict,
     return True, ""
 
 
-def _chat_claude_args(system: str, user: str, model: str, *,
+@contextmanager
+def _system_prompt_file(system: str) -> Iterator[str]:
+    """Il prompt di sistema in un file che vive quanto un'invocazione.
+
+    Tappa 6, Task 1 (S-08). Il prompt porta il nucleo della casa, e su una casa
+    grande supera il limite di un SINGOLO argomento della riga di comando
+    (131.072 byte, `MAX_ARG_STRLEN`: misurato il 05/10/2026 nel contenitore
+    della nuvola, kernel 6.18.44; sulla macchina di Home Assistant si rimisura
+    dal vivo). Dalla documentazione della CLI (code.claude.com/docs/en/
+    cli-reference, letta il 05/10/2026): «`--system-prompt-file` -- Load system
+    prompt from a file, replacing the default prompt». Verificato lo stesso
+    giorno sulla 2.1.286, la versione fissata nel `Dockerfile`, con un'API
+    finta in locale: la richiesta porta come sistema il contenuto del file
+    (150.020 byte arrivati interi), identico a cio' che `--system-prompt`
+    portava per la stessa stringa.
+
+    Un file e non un tubo: il nucleo sta gia' su disco, in `reasoning.db`,
+    finche' il turno non si chiude. Il file e' leggibile solo dal proprietario
+    (`mkstemp`, 0600) e si cancella all'uscita dell'invocazione, anche se la
+    CLI fallisce o scade.
+    """
+    fd, path = tempfile.mkstemp(prefix="hiris-sistema-", suffix=".txt")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(system)
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
+def _chat_claude_args(system_file: str, model: str, *,
                       active_tools: bool = False,
                       mcp_config: str = "",
                       by_promise: bool = False) -> list:
     """L'argv del ponte.
+
+    **Ne' la domanda ne' il prompt di sistema stanno qui** (Tappa 6, Task 1,
+    S-08): la domanda passa su stdin (`-p` senza argomento: «Input must be
+    provided either through stdin or as a prompt argument when using
+    --print», 2.1.286, 05/10/2026), il prompt di sistema da `system_file`
+    (vedi `_system_prompt_file`). Un argomento oltre 131.072 byte e il kernel
+    rifiuta di far partire la CLI.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il formato
     della risposta passa da `json` a `stream-json --verbose`, e NON e' un
@@ -585,8 +635,8 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     Con `False` l'argv resta quello del ramo di DEGRADO: nessuna
     `--mcp-config`, nessun `--allowedTools`, e il prompt che nega gli
     strumenti resta vero per costruzione invece che per fortuna."""
-    argv = [CLI_PONTE, "-p", user, "--model", model,
-            "--system-prompt", system,
+    argv = [CLI_PONTE, "-p", "--model", model,
+            "--system-prompt-file", system_file,
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default",
@@ -758,7 +808,7 @@ class StreamOccurrence:
 
       **Fix round 1, Important**: l'ASSENZA di `is_error` significa "nessun
       esito d'errore VISTO", non "prova di riuscita". Un `tool_use` il cui
-      `tool_result` non arriva MAI -- flusso troncato (`has_result`
+      `tool_result` non arriva MAI -- flusso incompleto (`has_result`
       `False`), o un `result` di errore/max-turns che chiude il flusso con una
       chiamata ancora aperta pur con `rc == 0` -- e' esattamente il caso (3)
       che questo modulo gia' dichiara altrove, e prima di questo fix
@@ -807,7 +857,7 @@ class StreamOccurrence:
 
     @property
     def has_result(self) -> bool:
-        """False = flusso troncato, processo ucciso a meta', o formato cambiato
+        """False = flusso incompleto: processo ucciso a meta', o formato cambiato
         da un aggiornamento della CLI. Chi legge DEVE dichiararlo."""
         return self.result is not None
 
@@ -872,6 +922,21 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 occurrence.init = event
         elif kind == "result":
             occurrence.result = event  # l'ULTIMO result e' quello finale
+            # **Il tetto di token: perche' qui non si legge `stop_reason`**
+            # (B25, misurato il 05/10/2026 sulla CLI 2.1.286 del `Dockerfile`,
+            # contro un finto server locale -- nessun modello vero). L'evento
+            # porta `stop_reason`, ma a fine turno non vale MAI `max_tokens`:
+            # la CLI, quando il modello si ferma al tetto, gli chiede da se'
+            # di riprendere (un evento `user` con `isSynthetic: true`, «Output
+            # token limit hit. Resume directly...»), fino a tre volte.
+            # - Se una ripresa finisce: `stop_reason: "end_turn"`, `is_error:
+            #   false`, e `result` porta SOLO l'ultimo pezzo, non il testo
+            #   intero -- un difetto aperto, scritto nel rapporto
+            #   d'integrazione delle Tappe 4-6, non corretto qui.
+            # - Se le riprese finiscono: `rc` 1, `is_error: true`,
+            #   `stop_reason: "stop_sequence"`, `api_error:
+            #   "max_output_tokens"` -- l'esito (1) qui sotto, gia' «fallito».
+            # Leggere `stop_reason` darebbe un `truncated` che non scatta mai.
         elif kind == "assistant":
             # I blocchi `tool_use` dentro il messaggio dell'assistente:
             # `{"type":"tool_use","id":...,"name":...,"input":...}`, in mezzo
@@ -939,7 +1004,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
                     # ramo sincrono (Step 2 del brief).
                     entry["is_error"] = True
     # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
-    # arrivato (flusso troncato, o un `result` di errore/max-turns che
+    # arrivato (flusso incompleto, o un `result` di errore/max-turns che
     # chiude tutto con una chiamata ancora aperta) restano senza il
     # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
     # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
@@ -1176,11 +1241,11 @@ def set_turn_logger(fn) -> None:
 #: `attuazione`, si accodava da una settimana e non stava in nessuna delle due.
 JOB_SPECIES = {
     "chat": "chat",
-    "promessa": "promessa",
-    "scope": "osservatore",
-    "ricetta": "ricette",
-    "analisi": "analista",
-    ACTUATION_TURN_KIND: "attuatore",
+    "promessa": PROMISE_SPECIES,
+    "scope": OBSERVER_SPECIES,
+    "ricetta": RECIPES_SPECIES,
+    "analisi": ANALYST_SPECIES,
+    ACTUATION_TURN_KIND: ACTUATOR_SPECIES,
 }
 
 
@@ -1444,6 +1509,26 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # PRIMA che il token sia in mano, e questa stringa e' una
         # costante che non ha mai visto ne' la CLI ne' la sua eco.
         return {"reply": MOCK_SENTINEL}
+    # Il modello e' quello del piano (`models_config["ponte"]["modello"]`),
+    # gia' un alias della CLI: lo mette nel job chi accoda, OGNI turno
+    # (`steering.bridge_model`, Tappa 6 Task 4, decisione 11).
+    #
+    # **Nessun ripiego.** Fino al 05/10/2026 qui c'era `or "sonnet"`, e solo
+    # la chat portava il modello: osservatore, ricette, analista, attuatore e
+    # promesse giravano su «sonnet» qualunque cosa il proprietario avesse
+    # scelto. Un job senza modello oggi e' un job accodato da una versione
+    # precedente, o un produttore nuovo che se n'e' dimenticato: scegliere al
+    # posto del proprietario sarebbe lo stesso difetto. Si dichiara, PRIMA di
+    # sondare gli strumenti, e la decisione e' vuota -- la stessa che riceve
+    # una specie sconosciuta (`reason`), e che chi raccoglie tratta come «il
+    # modello non ha risposto»: il giro dopo riaccoda, col modello.
+    model = context.get("model")
+    if not model:
+        log.error(
+            "job senza `model` (job_id=%s, kind=%r): nessun modello scelto "
+            "dal proprietario per questo turno -- non si ragiona, decisione "
+            "vuota", (job or {}).get("job_id"), (job or {}).get("kind"))
+        return {}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
     # solo `history` + `system_prompt`. Arriva qui senza la chiave `contesto`
@@ -1652,11 +1737,6 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         return {"reply": reda_segreti(text, *forms),
                "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
 
-    # Il modello e' quello del piano (`models_config["ponte"]["modello"]`),
-    # gia' un alias della CLI: lo mette nel job chi accoda
-    # (`handlers_chat._enqueue_chat_job`). L'`or` copre un job che non porta
-    # la chiave `model`: per quello vale "sonnet".
-    model = context.get("model") or "sonnet"
     invocations = 0
 
     def _invoca(active_tools: bool) -> Invocation | None:
@@ -1723,19 +1803,25 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "guide_chars": max(len(system) - core_chars, 0),
             "core_chars": core_chars,
             "history_chars": len(user)})
-        argv = _chat_claude_args(system, user, model,
-                                 active_tools=active_tools,
-                                 mcp_config=mcp_config,
-                                 by_promise=bool(promise_id))
         try:
             # check=False esplicito: `proc.returncode` viaggia intatto dentro
             # `Invocation.rc` e lo leggono i chiamanti (compreso il ramo di
             # verifica dell'`init` qui sotto, che tratta un rc!=0 come causa
             # plausibile e non come eccezione) -- un check=True solleverebbe
             # proprio dove oggi la gestione dell'esito funziona.
-            proc = subprocess.run(argv, capture_output=True, text=True,
-                                  timeout=300, env=_safe_subprocess_env(),
-                                  check=False)
+            #
+            # La domanda su stdin, il prompt di sistema da un file (S-08):
+            # vedi `_system_prompt_file`. `encoding` esplicito per entrambi i
+            # versi: la CLI legge e scrive UTF-8, e non deve dipendere dalla
+            # localizzazione del contenitore.
+            with _system_prompt_file(system) as system_file:
+                argv = _chat_claude_args(system_file, model,
+                                         active_tools=active_tools,
+                                         mcp_config=mcp_config,
+                                         by_promise=bool(promise_id))
+                proc = subprocess.run(argv, input=user, capture_output=True,
+                                      encoding="utf-8", timeout=300,
+                                      env=_safe_subprocess_env(), check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
             log.warning("claude non eseguibile: %s", type(exc).__name__)
             return None
@@ -1873,7 +1959,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
     if not occurrence.has_result:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
-        # 0 ma il flusso si e' chiuso senza l'evento finale: troncato, ucciso,
+        # 0 ma il flusso si e' chiuso senza l'evento finale: incompleto, ucciso,
         # o formato cambiato da un aggiornamento della CLI. Restituire "" qui
         # sarebbe indistinguibile da "il modello non ha risposto niente", e
         # restituire il testo parziale degli eventi `assistant` sarebbe peggio:
@@ -1963,8 +2049,10 @@ _ANALYSIS_KIND = "analisi"
 #: Sulla catena chiama `runner.chat` SENZA strumenti -- sul ponte uguale: e'
 #: un attore che per contratto «non tocca la casa», e col catalogo della chat
 #: avrebbe `execute`. La costante e' quella del produttore
-#: (`mind/actuator_turn`), non una copia: quel modulo non importa niente di
-#: HIRIS, e l'import non chiude nessun ciclo. Da allora il cancello
+#: (`mind/actuator_turn`), non una copia: quel modulo importa da HIRIS il solo
+#: `steering` (il lettore unico, Tappa 6), che non importa `agent` -- l'import
+#: non chiude nessun ciclo (provato il 05/10/2026 importando
+#: `mind.actuator_turn` da solo: `agent.runner` non entra). Da allora il cancello
 #: `tests/test_attuatore_sul_ponte.py` RICAVA dal codice ogni specie che si
 #: accoda e pretende che sia qui: la prossima volta non la scopre il registro.
 _SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,

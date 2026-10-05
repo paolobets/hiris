@@ -46,7 +46,7 @@ def test_una_decisione_porta_il_perche_e_chi_l_ha_presa(archivio):
     assert voce["dentro"] is True
     assert voce["motivo"] == "pesa sull'energia"
     assert voce["autore"] == OBSERVER
-    assert voce["deciso_ts"] == 1000.0
+    assert voce["quando"] == 1000.0
 
 
 def test_l_analista_puo_far_rientrare_cio_che_l_osservatore_ha_tolto(archivio):

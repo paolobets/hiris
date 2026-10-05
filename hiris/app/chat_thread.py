@@ -25,6 +25,42 @@ class ChatThread:
     entry_point: str
 
 
+# -- Il filo negli archivi (B-52, Tappa 6 Task 2) -----------------------------
+#
+# Quattro archivi portano il filo nelle stesse due colonne: `chat_sessions`,
+# `promesse`, `costruzioni`, `reasoning_jobs`. Fino al 05/10/2026 la condizione
+# «di questo filo» era scritta a mano in dodici righe di tre file (dieci in
+# `chat_store.py`, la costante di `keeper/store.py`, la coda), e il filo si
+# ricostruiva dalla riga in tre: qui vivono una volta sola. I due valori
+# viaggiano sempre come parametri (`?`), mai incollati nel testo della query.
+
+
+def thread_condition(alias: str = "") -> str:
+    """La condizione SQL «di questo filo», per `thread_params` come parametri.
+
+    `alias` e' il nome della tabella nella query (`"s"` per `... AS s`), vuoto
+    quando la query ne ha una sola."""
+    prefix = f"{alias}." if alias else ""
+    return f"{prefix}subject_key = ? AND {prefix}entry_point = ?"
+
+
+def thread_params(thread: ChatThread | None) -> tuple[str | None, str | None]:
+    """I due valori del filo nell'ordine delle colonne; `(None, None)` per una
+    riga che non ne porta uno -- non se ne inventa uno."""
+    if thread is None:
+        return (None, None)
+    return (thread.subject_key, thread.entry_point)
+
+
+def thread_from_columns(subject_key: str | None,
+                        entry_point: str | None) -> ChatThread | None:
+    """Il filo di una riga letta da un archivio; `None` per una riga scritta
+    prima che il filo esistesse (le colonne NULL)."""
+    if not subject_key:
+        return None
+    return ChatThread(subject_key, entry_point)
+
+
 class SyncTurnsInFlight:
     """I fili con un turno SINCRONO in volo (la catena, JSON o SSE).
 
@@ -97,6 +133,21 @@ def subject_from_thread(thread: ChatThread | None) -> dict | None:
         return None
     specie, _sep, ident = thread.subject_key.partition(":")
     return {"specie": specie, "id": None if ident in ("", "-") else ident}
+
+
+def unknown_id_text(nothing: str, by: str = "quell’identificatore") -> str:
+    """«Non ho nessuna X con quell'identificatore»: il rifiuto di un id che non c'e'.
+
+    Vive qui perche' e' la frase della regola del filo: un id che non esiste e
+    un id di qualcun altro rispondono con **la stessa frase**, o chi prova gli
+    id saprebbe quali sono altrui (security 6.3, spec 2026-09-25 §5). Era
+    scritta a mano in nove punti, rotte e archivi (C-07, Tappa 4): una sola
+    funzione, cosi' i nove non possono divergere.
+
+    `nothing` porta l'accordo che solo chi chiama conosce («nessuna promessa»,
+    «nessun servizio»); `by` e' cio' con cui si e' cercato.
+    """
+    return f"non ho {nothing} con {by}."
 
 
 def without_thread(row: dict) -> dict:

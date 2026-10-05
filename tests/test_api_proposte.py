@@ -300,3 +300,20 @@ def test_le_TRE_rotte_delle_proposte_sono_registrate():
         assert routes.get(f"POST {rotta}") == gestore.__name__, (
             f"la porta {rotta} non e' registrata: il gestore esiste e nessuno "
             "puo' chiamarlo")
+
+
+@pytest.mark.asyncio
+async def test_A10_senza_archivio_il_503_non_porta_un_elenco_vuoto(casa):
+    """A10 (approvata il 05/10/2026): `constructions: []` accanto al 503 diceva
+    «nessuna proposta» dove il fatto e' «non so». La rotta passa dal cancello
+    del costruttore prima dell'archivio, quindi la prova derivata dal router
+    (`test_boundary_errori.py`) qui vede il 403: questa guarda il 503.
+
+    Mutazione eseguita: rimesso `constructions=[]` -> rossa."""
+    from hiris.app.api.handlers_constructions import handle_get_constructions
+
+    app, _store, _ident = casa
+    app.pop("constructions", None)
+    r = await handle_get_constructions(_richiesta(app))
+    assert r.status == 503
+    assert json.loads(r.text) == {"error": "archivio non disponibile"}

@@ -84,7 +84,7 @@ def _flusso(*righe):
 
 def _job(job_id="J-1"):
     return {"job_id": job_id, "kind": "chat",
-            "context": {"system_prompt": "Sei HIRIS.",
+            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                         "history": [{"role": "user", "content": "che luci?"}]}}
 
 
@@ -287,7 +287,7 @@ def test_in_questo_task_i_server_mcp_sono_la_lista_vuota(caplog):
     # La condizione attesa OGGI: nessun `--mcp-config` nell'argv, quindi
     # nessun server. Se un giorno questa riga loggasse un server senza che
     # nessuno abbia attaccato gli strumenti, sarebbe una sorpresa da guardare.
-    assert "--mcp-config" not in runner._chat_claude_args("S", "U", "sonnet")
+    assert "--mcp-config" not in runner._chat_claude_args("/sistema.txt", "sonnet")
     with caplog.at_level(logging.INFO, logger="hiris.agent"):
         _reason(_flusso(_init(mcp_servers=[]), _result("ok")))
     init_log = [r.getMessage() for r in caplog.records
@@ -554,7 +554,7 @@ def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():
 
 def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
     """Fix round 1, Important. Prima di questo fix, un `tool_use` il cui
-    `tool_result` non arriva MAI (flusso troncato -- `has_result`
+    `tool_result` non arriva MAI (flusso incompleto -- `has_result`
     `False` -- o un `result` di errore/max-turns che chiude il flusso con una
     chiamata ancora aperta pur con `rc == 0`) produceva la STESSA forma di una
     chiamata riuscita: `{"tool", "input"}`, senza nessuna terza chiave. Un

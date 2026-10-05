@@ -25,7 +25,7 @@ const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..',
   'hiris', 'app', 'static', 'config');
 
 function monta() {
-  const ctx = loadScripts(['config/watcher-shared.js'],
+  const ctx = loadScripts(['common.js', 'config/watcher-shared.js'],
     { html: '<!doctype html><body><div id="x"></div></body>' });
   return { ctx, corpo: ctx.document.getElementById('x') };
 }
@@ -46,7 +46,7 @@ function elenco(ctx, corpo, extra) {
     pochi: dati(5, 'poco'),
     tutti: dati(93),
     etichetta: 'Vedi tutte',
-    rendi: function (d) { rese.push(d.testo); return S.el('div', 'sc-row', d.testo); }
+    rendi: function (d) { rese.push(d.testo); return el('div', 'sc-row', d.testo); }
   }, extra || {});
   S.elencoLungo(corpo, opzioni);
   return rese;
@@ -218,7 +218,7 @@ test("elencoLungo: l'elenco può avere la forma di chi lo usa (una griglia, non 
   S.elencoLungo(corpo, {
     titolo: 'Le misure', riassunto: '67 misure', classe: 'stat-grid',
     pochi: dati(2, 'poco'), tutti: dati(67), etichetta: 'Vedi tutte',
-    rendi: function (d) { return S.el('div', 'stat-tile', d.testo); }
+    rendi: function (d) { return el('div', 'stat-tile', d.testo); }
   });
 
   const pochi = corpo.querySelector('.stat-grid');

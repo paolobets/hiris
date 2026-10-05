@@ -41,6 +41,7 @@ from aiohttp import web
 
 from ..chat_thread import request_thread
 from .admission import NOT_ADMITTED
+from .boundary import error_response
 from .soffitto import denies, request_ceiling
 
 
@@ -60,7 +61,7 @@ async def handle_get_pending(request: web.Request) -> web.Response:
     # riceverebbe un numero e un buco, e il buco diventerebbe un pallino
     # spento -- cioe' di nuovo «non c'e' niente» al posto di «non lo so».
     if agenda is None or constructions is None:
-        return web.json_response({"error": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     # **Le Proposte sono di chi costruisce** (spec 2026-09-26 §3, decisione
     # 5): a chi non puo' deciderle il pallino conta zero, e `can_build` dice
     # al guscio se mostrare la voce -- lo decide il server a ogni risposta,
