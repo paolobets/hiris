@@ -19,11 +19,11 @@ dispositivo gia' capito e' la spesa che non si vede finche' non si guarda la
 bolletta.
 
 **Il meccanismo e' lo stesso dello scope**, non un secondo accanto: una
-`specie` di turno -- ed e' il termine esatto, non un modo di dire: dal
-23/09/2026 questa funzione ne serve DUE, le ricette e la riparazione
-dell'attuatore, e il chiamante la dichiara -- una domanda montata da funzioni
-che il ponte e la catena condividono, una risposta letta con la stessa
-tolleranza (`mind/observer.py`).
+`specie` di turno, una domanda montata da funzioni che il ponte e la catena
+condividono, una risposta letta con la stessa tolleranza (`mind/observer.py`).
+Dal 23/09 al 05/10/2026 la funzione serviva anche la riparazione
+dell'attuatore; ora la riparazione e' di questo giro (`recipes_to_repair`,
+attori Task 1.6, D2), e la specie e' una sola.
 La spec lo chiede per nome -- *«un meccanismo solo per due problemi»*.
 
 **Il soggetto e' il DISPOSITIVO**, ed e' il quarto genere del sapere. La spec
@@ -46,12 +46,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+from types import MappingProxyType
 
+from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE
 from ..home_space.house import House
 from ..steering import misura_turno
 from .knowledge import Fact
-from .operations import REGISTRY_VERSION
-from .recipes import Recipe
+from .operations import NO_STATISTICS, REGISTRY_VERSION, UNKNOWN_SOURCE, NotComputable
+from .recipes import Recipe, silent_entities
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +222,8 @@ def _operations_catalogue() -> str:
 
 def build_device_question(objective: str, house: House, device_id: str,
                           *, with_series: set[str] | None = None,
-                          energy: dict | None = None) -> str | None:
+                          energy: dict | None = None,
+                          repair: dict[str, NotComputable] | None = None) -> str | None:
     """La domanda intera per un dispositivo, o `None` se non c'e' da chiedere.
 
     `None` quando il dispositivo non ha entita': non ci sarebbe niente da
@@ -247,6 +250,10 @@ def build_device_question(objective: str, house: House, device_id: str,
 
     **`energy` e' la dashboard Energia** (`home_space.energy.energy_dashboard`),
     citata a parte con la stessa regola (`_energy_block`).
+
+    **`repair` dice PERCHE' si richiede** (attori, Task 1.6): le entita' che
+    la ricetta di adesso non puo' piu' usare, ognuna col suo rifiuto
+    (`recipes_to_repair`). Vuoto per un dispositivo chiesto la prima volta.
     """
     lines = device_lines(house, device_id)
     if not lines:
@@ -263,6 +270,7 @@ def build_device_question(objective: str, house: House, device_id: str,
         + "\n".join(lines)
         + _series_block(house, device_id, with_series)
         + _energy_block(house, device_id, energy)
+        + _repair_block(repair)
         + "\n\nLe operazioni che sai chiedere sono queste, e nessun'altra:\n\n"
         + _operations_catalogue()
         + "\n" + ANSWER_CONTRACT
@@ -332,6 +340,24 @@ def _energy_block(house: House, device_id: str, energy: dict | None) -> str:
     return "\n".join(lines)
 
 
+def _repair_block(repair: dict[str, NotComputable] | None) -> str:
+    """Perche' questo dispositivo torna una domanda: la ricetta che c'e'
+    nomina entita' che non danno piu' una serie, e il codice non accettera'
+    una ricetta nuova che le nomini (`apply_recipe`, `repairing`). La frase
+    e' quella del resoconto (`recipes.silence`): una sola, per il modello e
+    per chi legge le misure."""
+    if not repair:
+        return ""
+    lines = [("\n\n**Te lo richiedo perche' la ricetta di adesso non funziona "
+              "piu'.** Queste entita' non possono dare una serie, e una ricetta "
+              "che ne nomini una verra' rifiutata:")]
+    for entity_id in sorted(repair):
+        lines.append(f"- {entity_id}: {repair[entity_id].reason}")
+    lines.append("Riscrivila con le entita' che restano. Se senza di loro non "
+                 "c'e' niente da misurare, rispondi `steps: []` e dillo nel `why`.")
+    return "\n".join(lines)
+
+
 def read_recipe(answer: str) -> tuple[dict | None, str | None]:
     """La ricetta letta dalla risposta, e la ragione per cui NON si e' letta.
 
@@ -379,7 +405,8 @@ def _only_answer(store, device_id: str, kept: str) -> None:
 
 
 def apply_recipe(store, house: House, device_id: str, answer: str, *,
-                 who: str, when_ts: float) -> dict:
+                 who: str, when_ts: float,
+                 repairing: frozenset[str] | set[str] = frozenset()) -> dict:
     """Cosa si fa della risposta: si valida, e si scrive cio' che ne esce.
 
     Torna `{"scritta": bool, "problemi": [...]}`.
@@ -401,6 +428,15 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
     colpo, e il giro successivo richiede. Non c'e' bisogno di un freno --
     quando il ponte rifiuta una `specie` lo fa in millisecondi, senza chiamare
     nessun modello: il giro a vuoto costa zero.
+
+    **`repairing`: la risposta a una RIPARAZIONE** (attori, Task 1.6, D2).
+    Sono le entita' che non possono dare una serie (`recipes_to_repair`): una
+    ricetta nuova che ne nomini una si rifiuta, cosi' una riparazione non
+    produce una ricetta rotta per la stessa causa, che si richiederebbe a ogni
+    giro. E **la ricetta vecchia non si cancella prima della nuova**: se la
+    risposta non e' una ricetta valida, quella di adesso resta finche' calcola
+    ancora qualcosa, e il «non capito» le si scrive accanto -- e' lui che
+    ferma la riparazione fino al prossimo registro (`recipes_to_repair`).
     """
     if not str(answer or "").strip():
         logger.warning(
@@ -409,7 +445,7 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
             "capito»)", device_id)
         return {"scritta": False, "problemi": ["il modello non ha risposto"],
                 "risposta": False}
-    entities = set(house.entities_of(device_id))
+    entities = set(house.entities_of(device_id)) - set(repairing)
     data, reason = read_recipe(answer)
     problems = [reason] if reason else []
     if data is not None:
@@ -455,8 +491,20 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
         evidence=f"il modello ha risposto: {str(answer).strip()[:1500]}",
         source=f"{REFUSAL_SOURCE}{REGISTRY_VERSION}",
         verification="non_capito", who=who, when_ts=when_ts))
+    if repairing and _still_counts(store, device_id, repairing):
+        return {"scritta": False, "problemi": problems, "risposta": True,
+                "tenuta": True}
     _only_answer(store, device_id, UNDERSTOOD_FIELD)
     return {"scritta": False, "problemi": problems, "risposta": True}
+
+
+def _still_counts(store, device_id: str, repairing) -> bool:
+    """Se la ricetta di adesso nomina ancora un'entita' che puo' dare una
+    serie: allora tenerla vale una misura vera, e toglierla per una risposta
+    storta sarebbe perderla per niente. Se nessuna di quelle che nomina parla, non calcola
+    niente e non c'e' niente da tenere."""
+    written = recipes(store).get(device_id)
+    return written is not None and bool(Recipe(written).entities() - set(repairing))
 
 
 def _is_declined(data: dict) -> bool:
@@ -534,50 +582,92 @@ def who_to_ask(to_ask: list[str], turn: int) -> tuple[str | None, int]:
     return to_ask[turn % len(to_ask)], turn + 1
 
 
-def drop_recipes_without_series(store, house: House,
-                               *, with_series: set[str] | None) -> int:
-    """Toglie le ricette le cui entita' **non hanno nessuna serie**, e torna
-    quante ne ha tolte.
+#: Le cause per cui una ricetta torna una domanda (attori, Task 1.6, D2 del
+#: proprietario, 03/10/2026). Lista di AMMISSIONE: chiude per difetto, e una
+#: causa entra qui scritta, con la ragione. Sono le cause dal vocabolario
+#: unico (`operations.CAUSES`) che una ricetta NUOVA puo' aggirare -- e solo
+#: quelle, perche' una richiesta costa un giro del modello:
+REPAIRABLE_CAUSES = MappingProxyType({
+    "sparita": ("nel registro e senza stato: l'integrazione non la porta piu', "
+                "e una ricetta che la nomina non calcolera' mai"),
+    UNKNOWN_SOURCE: ("ne' registro ne' stati la conoscono: e' stata tolta o "
+                     "rinominata, e la ricetta nomina un id che non c'e'"),
+    NO_STATISTICS: ("la fonte parla ma Home Assistant non ne tiene statistiche: "
+                    "la ricetta chiede una serie che non esiste, e il dispositivo "
+                    "puo' averne un'altra che invece c'e'"),
+})
+#: Fuori, e perche': `spenta_dal_proprietario` e `spenta_da_home_assistant`
+#: (una decisione: si riaccende, e la ricetta torna a calcolare da sola);
+#: `integrazione_ferma`, `senza_valore`, `statistiche_non_lette` (passano);
+#: `ferma` (la fonte e' muta: una ricetta nuova sulla stessa fonte non
+#: calcolerebbe di piu', revisione del piano, punto 4); `copertura_bassa`,
+#: `senza_risposta`, `ricetta_storta` (non vengono dalla fonte: qui non le
+#: produce nessuno). `non_disponibile` si ripara solo con `restored` -- nessuna
+#: integrazione l'ha aggiunta, cioe' tolta o ricreata con un altro id (il
+#: commento su `restored` in `ha_vocabulary.py`) -- e non quando e' solo
+#: irraggiungibile, che passa.
 
-    **Dire la verita' nel rifiuto non bastava.** Dalla 3.47.0 una misura su
-    un'entita' senza statistiche dice perche'; ma il dispositivo ha una
-    ricetta, e `devices_to_ask` salta chi una risposta l'ha gia' data: quelle
-    ricette avrebbero prodotto lo stesso nulla ogni notte, per sempre, solo
-    con una frase migliore. Misurato sulla casa vera il 15/09/2026: **dieci
-    dispositivi**, 18 misure rifiutate al giorno.
 
-    Tolta la riga, il dispositivo torna fra quelli da chiedere -- e stavolta
-    la domanda gli dice quali entita' abbiano una serie, cosi' puo' rispondere
-    `steps: []` col suo perche', che e' la risposta giusta.
+def repairable(refusal: NotComputable, source: dict | None) -> bool:
+    """Se un'entita' muta fa tornare la ricetta una domanda: dalla CAUSA,
+    non da un'osservazione del modello. `source` e' `House.source` della
+    stessa entita'."""
+    if refusal.cause in REPAIRABLE_CAUSES:
+        return True
+    return (refusal.cause == "non_disponibile"
+            and (source or {}).get("causa") == RESTORED_ATTRIBUTE)
 
-    **Solo quando NESSUNA entita' della ricetta ha una serie.** Una ricetta
-    con un passo buono e uno muto porta ancora un numero vero: toglierla
-    costerebbe una misura certa per una possibile.
 
-    **`None` non e' l'insieme vuoto**: se non si e' potuto chiedere a Home
-    Assistant quali entita' abbiano statistiche non si cancella niente. Con
-    l'insieme vuoto si cancellerebbero tutte le ricette della casa al primo
-    guasto del websocket.
+def recipes_to_repair(store, house: House, *, with_series: set[str] | None
+                      ) -> dict[str, dict[str, NotComputable]]:
+    """Le ricette che non possono piu' calcolare per una causa RIPARABILE,
+    `{dispositivo: {entita': rifiuto}}` (attori, Task 1.6; D2).
+
+    **Chi decide e' il codice, dalla causa.** Fino al 05/10/2026 una ricetta
+    rotta la riscriveva solo l'attuatore, quando l'analista scriveva
+    un'osservazione col terzo innesco e la base vuota -- decideva il modello --
+    e dal 01/10 l'attuatore e' in pausa: nessuno riparava niente. Il caso
+    particolare «nessuna entita' ha una serie» lo copriva
+    `drop_recipes_without_series`, che toglieva la ricetta: ora e' un caso di
+    questa funzione, e la ricetta vecchia NON si toglie (resta finche' la
+    nuova non e' valida, `apply_recipe`).
+
+    Il rifiuto e' quello del resoconto (`recipes.silent_entities`): la stessa
+    regola per la misura che rifiuta e per la ricetta che si richiede. Le
+    entita' guardate sono quelle che la ricetta nomina E quelle del
+    dispositivo che la domanda mostrerebbe: una ricetta nuova non deve poter
+    passare da una muta all'altra, un giro alla volta. Si guardano TUTTE: una
+    sparita accanto a una spenta fa tornare la ricetta, anche se la riga del
+    resoconto porta la causa della prima.
+
+    **Non si ripete all'infinito**: un dispositivo che ha gia' risposto a una
+    riparazione contro QUESTO registro -- un «non capito» o un rifiuto
+    ragionato ancora validi (`_still_valid`) -- non torna, come non torna fra
+    le domande nuove. E `None` non e' l'insieme vuoto: senza l'elenco delle
+    statistiche non si sa chi tace, e non si richiede niente.
     """
     if with_series is None:
-        return 0
-    dropped = 0
+        return {}
+    house_now = house.with_statistics(with_series)
+    given = store.device_answers((UNDERSTOOD_FIELD, DECLINED_FIELD))
+    out: dict[str, dict[str, NotComputable]] = {}
     for device_id, named in _named_recipes(store, house):
-        if not (named & with_series):
-            store.forget("dispositivo", device_id, RECIPE_FIELD)
-            dropped += 1
-            logger.info(
-                "ricette: tolta la ricetta di «%s» -- nessuna delle sue %d "
-                "entita' ha statistiche in Home Assistant, quindi non poteva "
-                "produrre nemmeno un numero. Torna fra quelle da chiedere",
-                device_id, len(named))
-    return dropped
+        answers = given.get(device_id, {})
+        if any(r is not None and _still_valid(r) for r in answers.values()):
+            continue
+        looked = sorted(named | set(house.entities_of(device_id)))
+        silent = silent_entities(house_now, looked) or {}
+        broken = {e: r for e, r in silent.items()
+                  if repairable(r, house_now.source(e))}
+        if set(broken) & named:
+            out[device_id] = broken
+    return out
 
 
 def _named_recipes(store, house: House):
     """`(device_id, entita' nominate)` per ogni dispositivo dell'anagrafe con
-    una ricetta che nomina almeno un'entita': le sole che la potatura puo'
-    togliere."""
+    una ricetta che nomina almeno un'entita': le sole che si possono
+    rompere per la fonte."""
     written_by_device = recipes(store)
     for device_id in house.device_ids():
         written = written_by_device.get(device_id)
@@ -588,10 +678,10 @@ def _named_recipes(store, house: House):
             yield device_id, named
 
 
-def has_prunable_recipes(store, house: House) -> bool:
-    """Se `drop_recipes_without_series` ha qualcosa da guardare: senza, il
-    giro delle ricette non ha bisogno di chiedere a Home Assistant quali
-    entita' abbiano statistiche (A-20, Tappa 2, Task 8)."""
+def has_named_recipes(store, house: House) -> bool:
+    """Se `recipes_to_repair` ha qualcosa da guardare: senza, il giro delle
+    ricette non ha bisogno di chiedere a Home Assistant quali entita' abbiano
+    statistiche (A-20, Tappa 2, Task 8)."""
     return next(_named_recipes(store, house), None) is not None
 
 
@@ -625,7 +715,8 @@ def recipes(store) -> dict[str, dict]:
 
 def bridge_turn(objective: str, house: House, device_id: str,
                 *, with_series: set[str] | None = None,
-                energy: dict | None = None) -> dict | None:
+                energy: dict | None = None,
+                repair: dict[str, NotComputable] | None = None) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere.
 
     Stessa forma di `observer.bridge_turn`, e per le stesse ragioni: il ponte
@@ -633,7 +724,8 @@ def bridge_turn(objective: str, house: House, device_id: str,
     l'istruzione di chiusura della chat gli vieta il JSON che qui si chiede.
     """
     question = build_device_question(objective, house, device_id,
-                                     with_series=with_series, energy=energy)
+                                     with_series=with_series, energy=energy,
+                                     repair=repair)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],
@@ -646,7 +738,8 @@ async def ask(runner, store, house: House, device_id: str, *,
               model: str = "auto",
               with_series: set[str] | None = None,
               energy: dict | None = None,
-              measurements=None, species: str = "ricette") -> dict:
+              repair: dict[str, NotComputable] | None = None,
+              measurements=None) -> dict:
     """Un giro intero sulla catena: mostra il dispositivo, chiede, applica.
 
     **Questa e' la porta della catena, non l'unica porta**: quando
@@ -654,18 +747,12 @@ async def ask(runner, store, house: House, device_id: str, *,
     questa funzione non viene chiamata affatto.
     """
     question = build_device_question(objective, house, device_id,
-                                     with_series=with_series, energy=energy)
+                                     with_series=with_series, energy=energy,
+                                     repair=repair)
     if question is None:
         return {"scritta": False, "problemi": ["il dispositivo non ha entita'"]}
     try:
-        # **La `specie` la dichiara il chiamante, e qui non e' una fissa.**
-        # Questa funzione ne serve DUE: il giro delle ricette
-        # (`server.recipe_round`) e la riparazione dell'attuatore
-        # (`server._repair_recipes`). Cablare «ricette» qui dentro
-        # attribuirebbe all'una il costo dell'altra -- ed e' lo stesso
-        # difetto di `agent_type="observer"`, che schiaccia questa funzione e
-        # l'osservatore in un nome solo.
-        async with misura_turno(measurements, runner, specie=species,
+        async with misura_turno(measurements, runner, specie="ricette",
                                 canale="catena", modello=model):
             answer = await runner.chat(
                 user_message=question, system_prompt=SYSTEM,
@@ -676,4 +763,4 @@ async def ask(runner, store, house: House, device_id: str, *,
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
     return apply_recipe(store, house, device_id, answer,
-                        who=who, when_ts=when_ts)
+                        who=who, when_ts=when_ts, repairing=frozenset(repair or ()))

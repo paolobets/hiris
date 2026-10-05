@@ -229,7 +229,7 @@ def test_la_superficie_comprende_il_GIRO_nel_server_non_solo_i_due_moduli():
     superficie = superficie_attuatore()
 
     assert "actuator.py" in superficie and "actuator_turn.py" in superficie
-    for gesto in ("_repair_recipes", "_file_proposals", "_write_actuation"):
+    for gesto in ("_file_proposals", "_write_actuation"):
         assert f"server.py::{gesto}" in superficie, (
             f"`{gesto}` e' un gesto dell'attuatore e non e' sorvegliato")
 

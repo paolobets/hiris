@@ -1222,6 +1222,11 @@ ponte include un numero non ancora corretto di errori della CLI travestiti da su
 
 ### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
 
+**Superata dal Task 1.6 degli attori (05/10/2026, ramo `claude/attori-1-2-1-6-causa-jbjqlb`;
+D2 del proprietario).** La riparazione non e' piu' dell'attuatore: `_repair_recipes` e' uscito, e
+le ricette rotte le richiede il giro delle ricette (`recipe_turn.recipes_to_repair`, dalla causa
+della misura), sulla catena e sul ponte. Si sposta fra le uscite col rilascio dello strato 1.
+
 `origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
 
 Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**

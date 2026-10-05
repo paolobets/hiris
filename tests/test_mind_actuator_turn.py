@@ -32,7 +32,7 @@ def test_senza_osservazioni_non_si_fa_NESSUNA_domanda():
     `recipe_turn.build_device_question` con un dispositivo senza entita'.
 
     Mutazione: tornare sempre una domanda -- rossa."""
-    assert at.build_question([], []) is None
+    assert at.build_question([]) is None
 
 
 def test_la_domanda_porta_l_osservazione_E_cosa_cambierebbe():
@@ -40,7 +40,7 @@ def test_la_domanda_porta_l_osservazione_E_cosa_cambierebbe():
     gia' concluso, e rifarebbe il suo lavoro.
 
     Mutazione: comporre la domanda con la sola `cosa` -- rossa."""
-    domanda = at.build_question(_osservazioni(), [])
+    domanda = at.build_question(_osservazioni())
 
     assert "il prelievo si stacca dal solito" in domanda
     assert "spostare i consumi nelle ore di sole" in domanda
@@ -52,21 +52,9 @@ def test_la_domanda_NUMERA_le_osservazioni():
     esito attaccato all'osservazione sbagliata e' peggio di nessun esito.
 
     Mutazione: togliere i numeri dalla domanda -- rossa."""
-    domanda = at.build_question(_osservazioni(), [])
+    domanda = at.build_question(_osservazioni())
 
     assert "0" in domanda and "1" in domanda
-
-
-def test_le_ricette_GIA_RIPARATE_si_dicono_al_modello():
-    """La riparazione avviene prima della domanda: se il modello non lo
-    sapesse, proporrebbe di riparare una cosa gia' riparata.
-
-    Mutazione: non passare le riparazioni nella domanda -- rossa."""
-    domanda = at.build_question(_osservazioni(),
-                                [{"soggetto": "dev2", "misura": "consumo"}])
-
-    assert "dev2" in domanda
-    assert "consumo" in domanda
 
 
 def test_una_risposta_che_nomina_un_osservazione_INESISTENTE_si_rifiuta():
@@ -191,11 +179,12 @@ def test_il_prompt_NON_afferma_una_riparazione_che_sul_ponte_non_avviene():
     che afferma un fatto non avvenuto insegna al modello a non proporre cio'
     che andrebbe proposto.
 
-    Il fatto sul testo: l'affermazione incondizionata non c'e' piu', e il
-    prompt dice cosa fare quando la domanda non parla di riparazioni.
+    Il fatto sul testo: l'affermazione incondizionata non c'e' piu'. Dal
+    05/10/2026 (attori, Task 1.6) questo giro non ripara piu' niente su
+    nessuna strada, e il prompt dice chi lo fa.
 
     Mutazione ESEGUITA: rimettere la frase di prima -- rossa.
     """
     testo = " ".join(at.SYSTEM.split())
     assert "le ho gia' riscritte io prima di chiamarti" not in testo
-    assert "se la domanda non ne parla, nessuna e' stata riscritta" in testo
+    assert "non le ripara questo giro" in testo

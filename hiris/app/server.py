@@ -2122,12 +2122,9 @@ async def actuator_round(app) -> dict | None:
             return None
         declare_downgrade(app, agent="attuatore", reason=downgrade)
 
-        # **La riparazione viene PRIMA della domanda**, e il modello lo viene a
-        # sapere: se lo scoprisse dopo proporrebbe di riparare una cosa gia'
-        # riparata, e il proprietario si troverebbe in coda un consiglio su un
-        # problema che non esiste piu'.
-        repaired = await _repair_recipes(app, actuator.broken_recipes(pending))
-        question = actuator_turn.build_question(pending, repaired)
+        # Le ricette rotte non sono piu' sue: le ripara il giro delle ricette,
+        # dalla causa (attori, Task 1.6; D2 del proprietario, 03/10/2026).
+        question = actuator_turn.build_question(pending)
         if question is None:
             return None
 
@@ -2136,8 +2133,7 @@ async def actuator_round(app) -> dict | None:
             answer = await runner.chat(user_message=question,
                                        system_prompt=actuator_turn.SYSTEM)
         esito = actuator_turn.apply_actuation(pending, answer)
-        await _settle_actuation(app, store, today, stamp, esito, pending,
-                                repaired=repaired)
+        await _settle_actuation(app, store, today, stamp, esito, pending)
         return esito
     except Exception as error:
         logger.warning("attuatore: giro fallito (%s: %s) -- si riprova al giro "
@@ -2147,55 +2143,14 @@ async def actuator_round(app) -> dict | None:
         app["attuatore_in_volo"] = False
 
 
-async def _repair_recipes(app, broken) -> list[dict]:
-    """Riscrive le ricette rotte, e dice **cosa e' successo davvero**.
-
-    E' l'unico gesto dell'attuatore che scrive senza chiedere, e la ragione e'
-    che **e' lo stesso atto che il giro notturno delle ricette fa gia' senza
-    chiedere a nessuno**: non e' un potere nuovo, e' lo stesso potere applicato
-    a una riga che esiste ed e' rotta. Quella riga, oggi, non la riguarda
-    nessuno: `devices_to_ask` salta i dispositivi che una ricetta ce l'hanno
-    gia'.
-
-    **Senza il sapere o l'anagrafe non si finge niente**: l'add-on puo' essere
-    partito a meta', e una riparazione dichiarata e non avvenuta sarebbe una
-    bugia archiviata -- il giorno dopo nessuno riproverebbe.
-    """
-    sapere = app.get("knowledge")
-    home_space_store = app.get("home_space_store")
-    runner = app.get("llm_router") or app.get("claude_runner")
-    if not broken or sapere is None or home_space_store is None or runner is None:
-        return []
-    house = House.read(home_space_store, app.get("entity_cache"))
-    store = app.get("observations")
-    objective = ((store.objective() or {}).get("testo") or "") if store is not None else ""
-    done = []
-    for observation in broken:
-        device_id = str(observation.get("soggetto") or "")
-        if not device_id:
-            continue
-        esito = await recipe_turn.ask(
-            runner, sapere, house, device_id,
-            objective=objective, who=ACTUATOR_AUTHOR, when_ts=time.time(),
-            # **La riparazione e' lavoro dell'ATTUATORE**, non delle ricette:
-            # e' lui che l'ha chiesta. Attribuirla a «ricette» perche' passa
-            # dalla loro funzione gonfierebbe il costo di una specie con
-            # quello di un'altra.
-            measurements=app.get("usage"), species="attuatore")
-        done.append({"soggetto": device_id, "misura": observation.get("misura"),
-                     "impronta": actuator.observation_key(observation),
-                     "riscritta": bool(esito.get("scritta"))})
-    return done
-
-
-#: Chi firma una ricetta riscritta dall'attuatore. Non «il modello» e non «il
-#: seme»: chi legge una riga del sapere deve poter sapere **quale attore** l'ha
+#: Chi firma cio' che l'attuatore propone all'officina. Non «il modello» e non
+#: «il seme»: chi legge una proposta deve poter sapere **quale attore** l'ha
 #: messa li', o il verificatore non potrebbe attribuire niente a nessuno.
 ACTUATOR_AUTHOR = "attuatore"
 
 
 async def _settle_actuation(app, store, day: str, stamp: str | None,
-                            esito: dict, pending, *, repaired=()) -> None:
+                            esito: dict, pending) -> None:
     """La coda del turno dell'attuatore: **una sola, per le due strade.**
 
     Una risposta applicata diventa proposte in coda e un'attuazione scritta
@@ -2206,15 +2161,11 @@ async def _settle_actuation(app, store, day: str, stamp: str | None,
     all'officina. Nessuno se n'era accorto perche' il ponte non ragionava la
     specie, e la risposta era sempre vuota.
 
-    Le **riparazioni** restano un argomento: le fa solo la catena, prima della
-    domanda. Sul ponte la domanda parte con l'elenco delle riparazioni vuoto
-    (`_enqueue_actuator_turn`), e una ricetta rotta non si riscrive: e' un
-    buco dichiarato in `docs/BACKLOG.md`, non una seconda strada da inventare
-    qui.
+    Le ricette rotte non passano piu' di qui: dal 05/10/2026 le ripara il
+    giro delle ricette, sulla catena e sul ponte (attori, Task 1.6, D2).
     """
     await _file_proposals(app, store, esito, pending)
-    _write_actuation(store, day, stamp, esito, repaired=repaired,
-                     pending=pending)
+    _write_actuation(store, day, stamp, esito, pending=pending)
 
 
 async def _file_proposals(app, store, esito: dict, pending) -> None:
@@ -2272,7 +2223,7 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
 
 
 def _write_actuation(store, day: str, stamp: str | None, esito: dict,
-                     *, repaired=(), pending=()) -> None:
+                     *, pending=()) -> None:
     """Scrive l'attuazione **dentro l'analisi**, o dice perche' non l'ha fatto.
 
     Gli esiti stanno accanto alle osservazioni che li hanno generati: sono la
@@ -2308,17 +2259,6 @@ def _write_actuation(store, day: str, stamp: str | None, esito: dict,
         if row is not None:
             segnato["impronta"] = actuator.observation_key(row)
         esiti.append(segnato)
-    # Le riparazioni sono FATTI, non risposte del modello: si aggiungono qui,
-    # cosi' la pagina le legge come tutto il resto e il modello non puo'
-    # dichiararne una che non e' avvenuta.
-    esiti += [{"gesto": "riparazione", "soggetto": row.get("soggetto"),
-               "misura": row.get("misura"), "riscritta": row.get("riscritta"),
-               "impronta": row.get("impronta"),
-               "trovato": ("la ricetta non si eseguiva piu': riscritta"
-                           if row.get("riscritta")
-                           else "la ricetta non si eseguiva piu', e non sono "
-                                "riuscito a riscriverla")}
-              for row in repaired or ()]
     analysis = {**analysis, "attuazione": {"esiti": esiti, "su_fondamento": stamp}}
     store.replace_analysis(day, analysis)
     logger.info("attuatore: attuazione di %s scritta (%d esiti)",
@@ -2369,7 +2309,7 @@ def _enqueue_actuator_turn(app, day: str) -> dict | None:
     if analysis is None:
         return None
     pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-    question = actuator_turn.build_question(pending, [])
+    question = actuator_turn.build_question(pending)
     if question is None:
         return None
     job = {"history": [{"role": "user", "content": question}],
@@ -2545,17 +2485,17 @@ async def recipe_round(app) -> dict | None:
         watched = {s for s, riga in (store.scope() or {}).items()
                    if riga.get("dentro")}
         to_ask = recipe_turn.devices_to_ask(sapere, house, watched)
-        # **Niente da potare ne' da chiedere: niente da leggere** (A-20, Tappa
-        # 2, Task 8). Fino al 04/10/2026 l'elenco delle statistiche si leggeva
-        # qui sotto a ogni passaggio, prima di sapere se servisse.
-        if not to_ask and not recipe_turn.has_prunable_recipes(sapere, house):
+        # **Niente da riparare ne' da chiedere: niente da leggere** (A-20,
+        # Tappa 2, Task 8). Fino al 04/10/2026 l'elenco delle statistiche si
+        # leggeva qui sotto a ogni passaggio, prima di sapere se servisse.
+        if not to_ask and not recipe_turn.has_named_recipes(sapere, house):
             return None
 
         # **Quali entita' sanno produrre una serie**: serve due volte, e si
         # legge una sola (spec §6, primo «rifiuta se»), condivisa con gli
         # ingredienti del resoconto (`statistic_ids_for_round`). `None` se non
         # si e' potuto leggere, e allora non si dice niente al modello e non si
-        # cancella niente.
+        # ripara niente.
         with_series = None
         cliente = app.get("ha_client")
         if cliente is not None:
@@ -2566,18 +2506,22 @@ async def recipe_round(app) -> dict | None:
             else:
                 with_series = reading
 
-        # **Prima di scegliere a chi chiedere**: le ricette scritte contro
-        # entita' che non possono avere statistiche non producono un numero e
-        # non lo produrranno mai, e finche' restano il dispositivo non viene
-        # richiesto. Trovato dalla revisione indipendente il 15/09/2026:
-        # dieci dispositivi sulla casa vera.
-        tolte = recipe_turn.drop_recipes_without_series(
-            sapere, house, with_series=with_series)
-        if tolte:
-            logger.info("ricette: %d ricette tolte -- nessuna delle loro "
-                        "entita' ha una serie; quei dispositivi tornano "
-                        "domande aperte", tolte)
-            to_ask = recipe_turn.devices_to_ask(sapere, house, watched)
+        # **La ricetta rotta si ripara QUI, nel suo giro** (attori, Task 1.6;
+        # D2 del proprietario, 03/10/2026). Decide il codice, dalla causa
+        # (`recipe_turn.recipes_to_repair`): un dispositivo che pesa e la cui
+        # ricetta nomina un'entita' sparita, ricreata o senza statistiche torna
+        # fra quelli da chiedere, con la domanda che dice perche'. Fino al
+        # 05/10/2026 la riparava solo l'attuatore, in pausa dal 01/10: nessuno.
+        to_repair = {device_id: broken for device_id, broken
+                     in recipe_turn.recipes_to_repair(
+                         sapere, house, with_series=with_series).items()
+                     if set(house.entities_of(device_id)) & watched}
+        if to_repair:
+            logger.info("ricette: %d ricette da riparare -- %s", len(to_repair),
+                        ", ".join(sorted(to_repair)))
+            # Nell'ordine dell'anagrafe, su cui ruota `who_to_ask`.
+            asked = set(to_ask) | set(to_repair)
+            to_ask = [d for d in house.device_ids() if d in asked]
         if not to_ask:
             return None
         # A chi chiedere: **si ruota**, o un dispositivo che non risponde
@@ -2586,6 +2530,7 @@ async def recipe_round(app) -> dict | None:
             to_ask, int(app.get("recipe_turn_cursor") or 0))
         if device_id is None:
             return None
+        repair = to_repair.get(device_id)
         objective = store.objective()["testo"]
         # **La dashboard Energia, citata a parte** (piano degli attori, Task
         # 2.2-2.3, D6): letta una volta per giro dell'anagrafe, qui solo
@@ -2599,17 +2544,19 @@ async def recipe_round(app) -> dict | None:
         if route == "ponte":
             return _enqueue_recipe_turn(app, house, device_id,
                                         objective=objective,
-                                        with_series=with_series, energy=dashboard)
+                                        with_series=with_series, energy=dashboard,
+                                        repair=repair)
         if runner is None:
             logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
             return None
         declare_downgrade(app, agent="ricette", reason=downgrade)
-        logger.info("ricette: chiedo come si misura «%s» (%s)", device_id, route)
+        logger.info("ricette: chiedo come si misura «%s» (%s)%s", device_id, route,
+                    " -- riparazione" if repair else "")
         esito = await recipe_turn.ask(
             runner, sapere, house, device_id, objective=objective,
             who=f"modello ({route})", when_ts=time.time(),
-            with_series=with_series, energy=dashboard,
-            measurements=app.get("usage"), species="ricette")
+            with_series=with_series, energy=dashboard, repair=repair,
+            measurements=app.get("usage"))
         logger.info("ricette: giro finito -- %s", esito)
         return esito
     except Exception as exc:
@@ -2645,11 +2592,13 @@ def _troppo_presto_per_richiedere(app) -> bool:
 def _enqueue_recipe_turn(app, house: House, device_id: str, *,
                          objective: str,
                          with_series: set[str] | None = None,
-                         energy: dict | None = None) -> dict | None:
+                         energy: dict | None = None,
+                         repair: dict | None = None) -> dict | None:
     """Accoda al piano la domanda su un dispositivo, e torna subito."""
     from .api.handlers_models import _STORE_DEFAULTS
     job = recipe_turn.bridge_turn(objective, house, device_id,
-                                  with_series=with_series, energy=energy)
+                                  with_series=with_series, energy=energy,
+                                  repair=repair)
     if job is None:
         return None
     deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
@@ -2659,8 +2608,10 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
         recipe_turn.RECIPE_TURN_KIND,
         # **Nella sveglia va il dispositivo**: il ponte risponde minuti dopo,
         # da un altro processo, e chi raccoglie deve sapere di CHI era la
-        # domanda. `submit` azzera il contesto e non la sveglia.
-        {"dispositivo": device_id},
+        # domanda. `submit` azzera il contesto e non la sveglia. E, per una
+        # riparazione, le entita' che la risposta non puo' nominare: chi
+        # raccoglie le applica come la catena (`apply_recipe`, `repairing`).
+        {"dispositivo": device_id, "riparare": sorted(repair or ())},
         job, now + deadline_min * 60, now=now)
     logger.info("ricette: turno accodato al piano per «%s» (scadenza %d min)",
                 device_id, deadline_min)
@@ -2693,8 +2644,10 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
         if riga is not None and riga.when_ts >= decided_ts:
             return None
     reply = (turn.get("decision") or {}).get("reply") or ""
+    repairing = frozenset((turn.get("wake") or {}).get("riparare") or ())
     esito = recipe_turn.apply_recipe(sapere, house, device_id, reply,
-                                     who="modello (ponte)", when_ts=time.time())
+                                     who="modello (ponte)", when_ts=time.time(),
+                                     repairing=repairing)
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.
