@@ -250,7 +250,7 @@ async def test_il_cancello_decide_per_ogni_ingresso(soggetto, utenti, passa):
         assert rifiuto is None
     else:
         assert rifiuto is not None and rifiuto.status == 403
-        assert json.loads(rifiuto.body)["errore"], "un rifiuto senza motivo e' un ordine"
+        assert json.loads(rifiuto.body)["error"], "un rifiuto senza motivo e' un ordine"
 
 
 # --- le rotte, per chi non costruisce (4.1, 4.9) -----------------------------
@@ -282,7 +282,7 @@ async def test_chi_non_costruisce_riceve_403_e_niente_cambia(cliente, metodo, ro
         json={**_GIUDIZIO, "richiesta": "dopo le 14", "nota": "fatta"})
 
     assert risposta.status == 403
-    assert (await risposta.json())["errore"]
+    assert (await risposta.json())["error"]
     assert app["constructions"].read(c)["stato"] == "in_attesa"
     [manual] = app["observations"].proposals()
     assert (manual["stato"], manual["giri"]) == ("attesa", [])
@@ -302,7 +302,7 @@ async def test_il_cancello_viene_PRIMA_della_scadenza(cliente):
                                 headers=_testate("u-ospite"))
 
     assert elenco.status == 403 and singola.status == 403
-    assert (await elenco.json())["errore"]
+    assert (await elenco.json())["error"]
     assert app["constructions"].read(scaduta)["stato"] == "in_attesa"
 
 
@@ -612,7 +612,7 @@ async def test_un_guasto_di_home_assistant_si_dice_UNA_volta_per_finestra(client
                                                  headers=_testate("u-admin"))).json())
         adesso[0] += soffitto.GATE_FAILURE_HOLD_S
 
-    assert risposte == [{"errore": ROLES_UNREADABLE}] * 3
+    assert risposte == [{"error": ROLES_UNREADABLE}] * 3
     assert [c for c, _extra in ha.calls].count("config/auth/list") == 3, (
         "passato il freno, il guasto si rilegge")
     errori = [r for r in caplog.records

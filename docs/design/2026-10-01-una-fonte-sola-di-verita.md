@@ -554,7 +554,7 @@ Registro vuoto; cancello senza eccezioni; sonda a zero; le batterie non peggiora
 | 5 | Il consumato segue la regola di Home Assistant | 28 conti su 272 su 7 giorni | Sì |
 | 6 | La ricerca per nome ignora maiuscole, accenti, articoli | 39 integrazioni su 39 falliscono con una maiuscola | Sì |
 | 7 | I nomi dei campi: quale tengo per id, stato, istante | 6, 4 e 5 nomi oggi | Da scegliere insieme, sul glossario |
-| 8 | La chiave d'errore | `error` in 12 file, `errore` in 11 | `errore`: il dominio è in italiano |
+| 8 | La chiave d'errore | `error` in 12 file, `errore` in 11 | `errore`: il dominio è in italiano (*corretto il 05/10/2026, D2 della Tappa 4, decisa dal proprietario:* la chiave segue il confine — `error` su HTTP, verso le pagine e i servizi firmati, da `api/boundary.error_response`; `errore` verso il modello, nei risultati degli strumenti. È la regola che il glossario del 01/09 e `boundary.py` avevano già fissato, e che S-25 difende: «il dominio in italiano, il confine nella lingua del sistema esterno», CLAUDE.md) |
 | 9 | L'istante verso il modello | 4 forme oggi | Fuso della casa, una forma |
 | 10 | `fetch`: esce, o resta come alias di `search` | 11 chiamate contro 194 | Esce |
 | 11 | Sul ponte gli attori usano il modello che scegli tu | oggi «sonnet» fisso | Sì |

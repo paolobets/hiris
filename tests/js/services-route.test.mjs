@@ -57,7 +57,7 @@ function monta(opts = {}) {
   ctx.window.fetch = async (url, options) => {
     const u = String(url);
     chiamate.push({ url: u, opts: options || {}, corpo: (options || {}).body });
-    if (opts.rotto) return risposta({ errore: 'no' }, 403);
+    if (opts.rotto) return risposta({ error: 'no' }, 403);
     if (u.endsWith('/window/open')) {
       corpo.finestra = { aperta: true, resta_s: 600 };
       return risposta({ aperta: true, resta_s: 600 });
@@ -67,7 +67,7 @@ function monta(opts = {}) {
       return risposta({ aperta: false, resta_s: 0 });
     }
     if (u.endsWith('/approve')) {
-      if (opts.approveStatus) return risposta({ errore: 'il ruolo non esiste' }, opts.approveStatus);
+      if (opts.approveStatus) return risposta({ error: 'il ruolo non esiste' }, opts.approveStatus);
       const d = JSON.parse((options || {}).body || '{}');
       corpo.servizi = corpo.servizi.map((r) => (r.chiave === d.chiave
         ? Object.assign({}, r, { stato: 'autorizzato', ruolo: d.ruolo, specie: d.specie,

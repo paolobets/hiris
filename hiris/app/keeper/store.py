@@ -17,7 +17,7 @@ import secrets
 import threading
 import time
 
-from ..chat_thread import ChatThread
+from ..chat_thread import ChatThread, unknown_id_text
 from ..storage import connect, init_schema
 from .promise import (
     CEILING_IN_SOSPESO,
@@ -347,7 +347,7 @@ class AgendaStore:
         if riuscita:
             return {"promessa": row}
         if row is None:
-            return {"errore": "non ho nessuna promessa con quell’identificatore."}
+            return {"errore": unknown_id_text("nessuna promessa")}
         return {
             "errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(row["stato"])
         }

@@ -7,7 +7,8 @@ from ..chat_store import (
     new_conversation,
     resume_conversation,
 )
-from ..chat_thread import adopt_if_owner, request_thread
+from ..chat_thread import adopt_if_owner, request_thread, unknown_id_text
+from .boundary import error_response
 from .handlers_chat import PENDING_REPLY_ERROR
 
 # fetta E5 Task 4 ("il frontend"): la rotta e' `GET /api/chat/history`
@@ -26,7 +27,7 @@ from .handlers_chat import PENDING_REPLY_ERROR
 
 # Il corpo del 404, uno solo per «non esiste» e «non e' tuo» (security 6.3):
 # due corpi diversi direbbero a chi prova gli id quali sono di qualcun altro.
-_CONVERSATION_NOT_FOUND = {"error": "non ho nessuna conversazione con quell’identificatore."}
+_CONVERSATION_NOT_FOUND = unknown_id_text("nessuna conversazione")
 
 
 def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
@@ -42,7 +43,7 @@ def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
     sync_turns = request.app.get("sync_turns")
     if ((queue is not None and queue.has_pending_chat(thread))
             or (sync_turns is not None and sync_turns.busy(thread))):
-        return web.json_response({"error": PENDING_REPLY_ERROR}, status=409)
+        return error_response(409, PENDING_REPLY_ERROR)
     return None
 
 
@@ -96,7 +97,7 @@ async def handle_resume_conversation(request: web.Request) -> web.Response:
     if not resume_conversation(request.app["data_dir"], thread=thread,
                                session_id=request.match_info["id"],
                                days=request.app["chat_settings"].retention_days):
-        return web.json_response(_CONVERSATION_NOT_FOUND, status=404)
+        return error_response(404, _CONVERSATION_NOT_FOUND)
     return web.json_response({"ok": True})
 
 
@@ -107,5 +108,5 @@ async def handle_delete_conversation(request: web.Request) -> web.Response:
         return busy
     if not delete_conversation(request.app["data_dir"], thread=thread,
                                session_id=request.match_info["id"]):
-        return web.json_response(_CONVERSATION_NOT_FOUND, status=404)
+        return error_response(404, _CONVERSATION_NOT_FOUND)
     return web.json_response({"ok": True})

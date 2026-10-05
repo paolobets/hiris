@@ -482,7 +482,7 @@ test('la cornice: «#/watcher» nudo si riscrive su «giorno» SENZA aggiungere 
 test('la cornice: un errore in una scheda resta dentro la sua scheda', async () => {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   ctx.window.fetch = async (url) => {
-    if (String(url).indexOf('api/mind/report') === 0) return jsonResponse({ errore: 'x' }, 503);
+    if (String(url).indexOf('api/mind/report') === 0) return jsonResponse({ error: 'x' }, 503);
     return jsonResponse({ conteggi: { righe: [] }, non_capito: [], giudizi: [], domande_aperte: [] });
   };
   ctx.window.HirisWatcherRoute.mount('giorno');

@@ -16,6 +16,7 @@ from ..model_resolution import (
     compose_topology,
     subscription_has_token,
 )
+from .boundary import error_response
 
 logger = logging.getLogger(__name__)
 
@@ -526,7 +527,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "invalid JSON body"}, status=400)
+        return error_response(400, "invalid JSON body")
     data_dir = request.app.get("data_dir") or "/data"
     clean = save_models_config(data_dir, body if isinstance(body, dict) else {})
     request.app["models_config"] = clean   # hot-update per la sessione corrente

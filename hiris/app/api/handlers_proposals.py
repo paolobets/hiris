@@ -32,11 +32,13 @@ import time
 
 from aiohttp import web
 
+from ..chat_thread import unknown_id_text
+from .boundary import error_response
 from .soffitto import require_builder
 
 logger = logging.getLogger(__name__)
 
-_NOT_FOUND = "non ho nessuna proposta con quell’identificatore."
+_NOT_FOUND = unknown_id_text("nessuna proposta")
 _NOT_PENDING = "quella proposta non e’ piu’ in attesa: qualcuno l’ha gia’ decisa."
 _NO_STORE = "l’archivio delle proposte non e’ disponibile in questo momento."
 
@@ -71,18 +73,18 @@ async def _close(request, outcome: str) -> web.Response:
         return refusal
     store = _store(request)
     if store is None:
-        return web.json_response({"errore": _NO_STORE}, status=503)
+        return error_response(503, _NO_STORE)
     ident = request.match_info.get("id", "")
     row = _row(store, ident)
     if row is None:
-        return web.json_response({"errore": _NOT_FOUND}, status=404)
+        return error_response(404, _NOT_FOUND)
     try:
         body = await request.json()
     except Exception:
         body = {}
     nota = str((body or {}).get("nota") or "").strip() or None
     if not store.close_proposal(ident, outcome, why=nota, now_ts=time.time()):
-        return web.json_response({"errore": _NOT_PENDING}, status=409)
+        return error_response(409, _NOT_PENDING)
     return web.json_response({"proposta": _row(store, ident)})
 
 
@@ -115,28 +117,26 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         return refusal
     store = _store(request)
     if store is None:
-        return web.json_response({"errore": _NO_STORE}, status=503)
+        return error_response(503, _NO_STORE)
     ident = request.match_info.get("id", "")
     row = _row(store, ident)
     if row is None:
-        return web.json_response({"errore": _NOT_FOUND}, status=404)
+        return error_response(404, _NOT_FOUND)
     if row["stato"] != "attesa":
-        return web.json_response({"errore": _NOT_PENDING}, status=409)
+        return error_response(409, _NOT_PENDING)
     try:
         body = await request.json()
     except Exception:
         body = {}
     richiesta = str((body or {}).get("richiesta") or "").strip()
     if not richiesta:
-        return web.json_response(
-            {"errore": "scrivi cosa vuoi cambiare: senza, il giro rifarebbe "
-                       "la stessa cosa."}, status=400)
+        return error_response(400, "scrivi cosa vuoi cambiare: senza, il giro rifarebbe "
+                                   "la stessa cosa.")
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
-        return web.json_response(
-            {"errore": "nessun modello collegato: non posso rifare la proposta "
-                       "adesso."}, status=503)
+        return error_response(503, "nessun modello collegato: non posso rifare la proposta "
+                                   "adesso.")
 
     # **La stessa domanda che si fanno le altre sei porte, dalla stessa
     # funzione** (reperto C-5, 23/09/2026). `steering.py` dichiara dal
@@ -175,14 +175,12 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     except Exception as error:
         logger.warning("proposta: il giro di «rifalla» non e' partito (%s: %s)",
                        type(error).__name__, error)
-        return web.json_response(
-            {"errore": "il modello non ha risposto: riprova."}, status=503)
+        return error_response(503, "il modello non ha risposto: riprova.")
 
     testo, perche = _read_proposal(answer)
     if testo is None:
-        return web.json_response(
-            {"errore": "la risposta del modello non si e' potuta leggere: "
-                       "riprova."}, status=502)
+        return error_response(502, "la risposta del modello non si e' potuta leggere: "
+                                   "riprova.")
     store.add_proposal_round(ident, request=richiesta, text=testo,
                              now_ts=time.time())
     if perche:

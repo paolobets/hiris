@@ -36,8 +36,14 @@ import time
 
 from aiohttp import web
 
-from ..chat_thread import adopt_if_owner, request_thread, subject_key_for, without_thread
-from .boundary import occurrence_out
+from ..chat_thread import (
+    adopt_if_owner,
+    request_thread,
+    subject_key_for,
+    unknown_id_text,
+    without_thread,
+)
+from .boundary import error_response, occurrence_out
 from .soffitto import restricted_person
 
 # Vedi `handle_mark_read`: sta qui e non in `keeper/`, perche' e' un limite
@@ -46,15 +52,14 @@ from .soffitto import restricted_person
 _MAX_IDS = 500
 
 # Il corpo del 404, uno solo per «non esiste» e «non e' tuo».
-_PROMISE_NOT_FOUND = {"error": "non ho nessuna promessa con quell’identificatore."}
-_EXECUTION_NOT_FOUND = {"error": "non ho nessuna esecuzione con quell’identificatore."}
+_PROMISE_NOT_FOUND = unknown_id_text("nessuna promessa")
+_EXECUTION_NOT_FOUND = unknown_id_text("nessuna esecuzione")
 
 
 async def handle_get_agenda(request: web.Request) -> web.Response:
     store = request.app.get("agenda")
     if store is None:
-        return web.json_response({"agenda": [], "error": "archivio non disponibile"},
-                                 status=503)
+        return error_response(503, "archivio non disponibile", agenda=[])
     thread = request_thread(request)
     # Le promesse di prima vanno al proprietario alla sua prima lettura, con
     # la stessa regola e nello stesso gesto della cronologia. Solo qui, fra
@@ -69,11 +74,11 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
 async def handle_delete_promise(request: web.Request) -> web.Response:
     store = request.app.get("agenda")
     if store is None:
-        return web.json_response({"error": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     ident = request.match_info["id"]
     thread = request_thread(request)
     if store.read_in_thread(ident, thread) is None:
-        return web.json_response(_PROMISE_NOT_FOUND, status=404)
+        return error_response(404, _PROMISE_NOT_FOUND)
     occurrence = store.cancel(ident, thread=thread, now=time.time())
     if "errore" in occurrence:
         return web.json_response(occurrence_out(occurrence), status=409)
@@ -97,15 +102,14 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     """
     store = request.app.get("agenda")
     if store is None:
-        return web.json_response({"error": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     try:
         body = await request.json()
     except Exception:
-        return web.json_response({"error": "corpo non leggibile"}, status=400)
+        return error_response(400, "corpo non leggibile")
     ids = body.get("ids") if isinstance(body, dict) else None
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
-        return web.json_response({"error": "serve una lista `ids` di stringhe."},
-                                 status=400)
+        return error_response(400, "serve una lista `ids` di stringhe.")
     # Un tetto, perche' `mark_read` genera un segnaposto SQL per id: oltre
     # `SQLITE_MAX_VARIABLE_NUMBER` (32766) SQLite solleva, e un errore
     # d'ingresso uscirebbe come 500. Il tetto del corpo di aiohttp (1 MB)
@@ -116,9 +120,7 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     # (`promise.CONSERVAZIONE_S`): la pagina non ne disegnera' mai
     # tanti, quindi il tetto non puo' tagliare una richiesta legittima.
     if len(ids) > _MAX_IDS:
-        return web.json_response(
-            {"error": f"troppi identificatori in una volta (il tetto e' {_MAX_IDS})."},
-            status=400)
+        return error_response(400, f"troppi identificatori in una volta (il tetto e' {_MAX_IDS}).")
     return web.json_response({"marked": store.mark_read(
         ids, thread=request_thread(request), now=time.time())})
 
@@ -138,19 +140,19 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     """
     journal = request.app.get("journal")
     if journal is None:
-        return web.json_response({"error": "cronaca non disponibile"}, status=503)
+        return error_response(503, "cronaca non disponibile")
     ident = request.match_info["id"]
     row = journal.read(ident)
     if row is None:
-        return web.json_response(_EXECUTION_NOT_FOUND, status=404)
+        return error_response(404, _EXECUTION_NOT_FOUND)
     agenda = request.app.get("agenda")
     if agenda is None:
         # Senza l'archivio delle promesse non si sa di chi sia: nel dubbio non
         # si mostra, come le altre rotte di questo file senza archivio.
-        return web.json_response({"error": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     promise = agenda.read_by_execution(ident)
     if promise is not None and promise["thread"] != request_thread(request):
-        return web.json_response(_EXECUTION_NOT_FOUND, status=404)
+        return error_response(404, _EXECUTION_NOT_FOUND)
     # **A chi non amministra, solo cio' che e' suo** (spec 2026-09-27, fix
     # round 1, L-3): un'esecuzione che nessuna promessa ha prodotto -- un
     # comando dato in chat, da chiunque -- si mostra solo a chi l'ha fatta.
@@ -159,5 +161,8 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     if (promise is None and restricted_person(request)
             and subject_key_for(row.get("soggetto"))
             != subject_key_for(request.get("soggetto"))):
-        return web.json_response(_EXECUTION_NOT_FOUND, status=404)
-    return web.json_response({"execution": row})
+        return error_response(404, _EXECUTION_NOT_FOUND)
+    # La riga porta `errore` quando l'esecuzione non e' riuscita: e' il dominio,
+    # e cosi' la legge il modello; su HTTP esce `error`, come ogni altro
+    # errore che attraversa il confine (D2, Tappa 4).
+    return web.json_response({"execution": occurrence_out(row)})

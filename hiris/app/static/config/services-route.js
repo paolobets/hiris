@@ -177,7 +177,7 @@ window.HirisServicesRoute = (function () {
       }
       /* Mai un catch muto: il rifiuto del server dice cosa manca, ed e'
          scritto per essere letto da chi sta decidendo. */
-      stato.messaggio = esito.corpo.errore || 'Non è riuscito. Controlla il log dell’add-on.';
+      stato.messaggio = esito.corpo.error || 'Non è riuscito. Controlla il log dell’add-on.';
       disegna();
     }).catch(function () {
       stato.messaggio = 'Il server non ha risposto.';

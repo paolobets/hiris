@@ -492,7 +492,7 @@ test('chi arriva per indirizzo senza poter costruire legge il motivo del server'
   global.window = dom.window;
   global.document = dom.window.document;
   const motivo = 'scrivere automazioni è riservato agli amministratori <img src=x onerror=1>';
-  dom.window.fetch = async () => ({ ok: false, status: 403, json: async () => ({ errore: motivo }) });
+  dom.window.fetch = async () => ({ ok: false, status: 403, json: async () => ({ error: motivo }) });
   global.fetch = dom.window.fetch;
   new dom.window.Function(SORGENTE)();
 
@@ -511,7 +511,7 @@ test('un’azione negata dal cancello mostra il motivo del server, non «Errore 
   global.document = dom.window.document;
   dom.window.fetch = async (url, opzioni) => {
     if (opzioni && opzioni.method === 'POST') {
-      return { ok: false, status: 403, json: async () => ({ errore: 'non sei amministratore' }) };
+      return { ok: false, status: 403, json: async () => ({ error: 'non sei amministratore' }) };
     }
     return { ok: true, status: 200, json: async () => ({ constructions: [
       { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',

@@ -233,12 +233,12 @@ window.HirisWatcherSapere = (function () {
      `corpo` è quello della risposta, quando c'è: dal 17/09/2026 il 503 ha DUE
      ragioni -- il sapere non collegato, e l'archivio che c'è ma non si lascia
      scrivere (disco pieno, base occupata; vedi `handlers_mind.py`) -- e il
-     server manda la sua in `errore`. Scriverne qui una sola sarebbe una
+     server manda la sua in `error`. Scriverne qui una sola sarebbe una
      ragione falsa accanto al codice per l'altra metà dei casi. Il testo di
      riserva resta per quando il corpo non c'è (un 503 del proxy) o per un
      guasto di rete, dove non c'è nessuna risposta da leggere. */
   function judgmentWriteErrorText(status, corpo) {
-    if (corpo && corpo.errore) return corpo.errore;
+    if (corpo && corpo.error) return corpo.error;
     if (status === 503) {
       return 'Il sapere non è collegato in questo momento. Non è vuoto — è che non si può leggere.';
     }
@@ -264,12 +264,12 @@ window.HirisWatcherSapere = (function () {
       }
       ui.button.disabled = false;
       if (occurrence.status === 400) {
-        ui.esito.textContent = (occurrence.corpo && occurrence.corpo.errore) ||
+        ui.esito.textContent = (occurrence.corpo && occurrence.corpo.error) ||
           'Questa correzione non si può scrivere.';
         return;
       }
       if (occurrence.status === 409) {
-        var motivo = (occurrence.corpo && occurrence.corpo.errore) || '';
+        var motivo = (occurrence.corpo && occurrence.corpo.error) || '';
         // Fix round 1, MINOR 4: senza un punto dopo `motivo` la frase
         // successiva si leggeva attaccata («…seme non ce l'ha Il sapere
         // legge…»). Non se ne aggiunge uno se `motivo` lo porta già

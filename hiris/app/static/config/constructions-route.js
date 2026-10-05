@@ -130,7 +130,7 @@
    «Dimentica» in memory-route.js (azione distruttiva senza coda d'attesa).
    Testo composto solo da campi reali (mai una frase generica).
    Errori: 404/409/503 portano gia' un testo corretto dal server -- si legge
-   `errore` e si mostra verbatim, mai un messaggio sintetico per casi che il
+   `error` e si mostra verbatim, mai un messaggio sintetico per casi che il
    server ha gia' separato. Solo un vero fallimento di rete usa il messaggio
    generico. Un fallimento della GET (rete giu', o il 503 che porta gia'
    `costruzioni: []` e sembra una lista vuota senza esserlo) mostra un
@@ -416,12 +416,10 @@ window.HirisConstructions = (function () {
       })
       .then(function (occurrence) {
         if (occurrence.res.ok) { reload(); return; }
-        /* guida §7: si legge `errore` verbatim, mai un messaggio sintetico
-           per casi che il server ha gia' separato (404/409/503). */
-        /* `errore` e' la chiave del cancello (403, `soffitto.require_builder`)
-           e delle rotte delle proposte; `error` quella di 404/409/503 qui. */
-        statusEl.textContent = (occurrence.corpo &&
-          (occurrence.corpo.errore || occurrence.corpo.error)) ||
+        /* guida §7: si legge `error` verbatim, mai un messaggio sintetico
+           per casi che il server ha gia' separato (403/404/409/503): dalla
+           Tappa 4 (D2) ogni errore HTTP porta quella chiave sola. */
+        statusEl.textContent = (occurrence.corpo && occurrence.corpo.error) ||
           ('Errore HTTP ' + occurrence.res.status);
         button.forEach(function (b) { b.disabled = false; });
       }, function () {
@@ -790,7 +788,7 @@ window.HirisConstructions = (function () {
     return fetch('api/constructions').then(function (r) {
       if (r.status === 403) {
         return r.json().catch(function () { return {}; }).then(function (corpo) {
-          return { negato: (corpo && corpo.errore) || '' };
+          return { negato: (corpo && corpo.error) || '' };
         });
       }
       if (!r.ok) throw new Error('HTTP ' + r.status);

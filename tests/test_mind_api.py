@@ -448,7 +448,7 @@ async def test_un_obiettivo_vuoto_si_RIFIUTA_e_non_cancella_quello_di_prima(tmp_
         r = await handle_set_objective(_richiesta_scritta(
             {"observations": archivio}, {"testo": "   "}))
         assert r.status == 400
-        assert "vuoto" in json.loads(r.text)["errore"]
+        assert "vuoto" in json.loads(r.text)["error"]
         assert archivio.objective()["testo"] == "quello buono"
     finally:
         archivio.close()

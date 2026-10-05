@@ -227,7 +227,7 @@ async def test_un_ruolo_INVENTATO_si_rifiuta_con_400(cliente):
         json={"chiave": chiave, "ruolo": "capo", "specie": "luogo"})
 
     assert risposta.status == 400
-    assert "amministratore" in (await risposta.json())["errore"]
+    assert "amministratore" in (await risposta.json())["error"]
 
 
 # --- il cancello: UNA sola porta non autenticata ----------------------------

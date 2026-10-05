@@ -99,6 +99,21 @@ def subject_from_thread(thread: ChatThread | None) -> dict | None:
     return {"specie": specie, "id": None if ident in ("", "-") else ident}
 
 
+def unknown_id_text(nothing: str, by: str = "quell’identificatore") -> str:
+    """«Non ho nessuna X con quell'identificatore»: il rifiuto di un id che non c'e'.
+
+    Vive qui perche' e' la frase della regola del filo: un id che non esiste e
+    un id di qualcun altro rispondono con **la stessa frase**, o chi prova gli
+    id saprebbe quali sono altrui (security 6.3, spec 2026-09-25 §5). Era
+    scritta a mano in nove punti, rotte e archivi (C-07, Tappa 4): una sola
+    funzione, cosi' i nove non possono divergere.
+
+    `nothing` porta l'accordo che solo chi chiama conosce («nessuna promessa»,
+    «nessun servizio»); `by` e' cio' con cui si e' cercato.
+    """
+    return f"non ho {nothing} con {by}."
+
+
 def without_thread(row: dict) -> dict:
     """La riga senza il filo, per chi risponde fuori dal processo.
 

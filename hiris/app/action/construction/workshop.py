@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 
-from ...chat_thread import ChatThread
+from ...chat_thread import ChatThread, unknown_id_text
 from ...home_space.historian import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer
@@ -69,7 +69,7 @@ _BORN_THIS_TURN = ("questa proposta e' nata in questo stesso turno: te l’ho "
 #: lato di chi chiede sono indistinguibili PER COSTRUZIONE, e due testi
 #: diversi lascerebbero trapelare che una proposta con quell'id esiste
 #: davvero, solo altrove.
-_UNKNOWN_ID = "non ho nessuna proposta con quell’identificatore."
+_UNKNOWN_ID = unknown_id_text("nessuna proposta")
 
 #: Fix round 1 (Task 7): quando la scelta implicita di QUESTO filo non trova
 #: niente, ma esistono proposte `in_attesa` ORFANE (`subject_key IS NULL`:
@@ -1020,7 +1020,7 @@ class Workshop:
         """
         row = self._store.read(construction_id)
         if row is None:
-            return {"errore": "non ho nessuna costruzione con quell’identificatore."}
+            return {"errore": unknown_id_text("nessuna costruzione")}
         if row["stato"] != "applicata":
             return {"errore": "quella costruzione non e' mai stata applicata: "
                               "non c’e' niente da rimettere."}

@@ -133,7 +133,7 @@ async def test_fatto_ha_400_errore(tmp_path):
             "soggetto_genere": "tipo", "soggetto": "climate",
             "campo": "capability_names", "valore": "{}"}))
         assert r.status == 400
-        assert "capability_names" in json.loads(r.text)["errore"]
+        assert "capability_names" in json.loads(r.text)["error"]
     finally:
         s.close()
 
@@ -154,7 +154,7 @@ async def test_corpo_storto_400_non_500(tmp_path):
                       {"soggetto_genere": "tipo", "soggetto": "light", "campo": "genere"}):
             r = await handle_set_judgment(_richiesta(app, corpo))
             assert r.status == 400, corpo
-            assert json.loads(r.text)["errore"]
+            assert json.loads(r.text)["error"]
         assert s.summary()["totale"] == conto
     finally:
         s.close()
@@ -182,7 +182,7 @@ async def test_scrittura_non_in_vigore_409(tmp_path):
             "campo": "genere", "valore": "presenza"}))
         assert r.status == 409
         corpo = json.loads(r.text)
-        assert "solo seme" in corpo["errore"]
+        assert "solo seme" in corpo["error"]
         assert corpo["provenienza_istantanea"] == "solo seme"
         assert corpo["riga"]["valore"] == "presenza"
     finally:
@@ -345,7 +345,7 @@ async def test_archivio_che_SOLLEVA_scrivendo_e_503_non_500(tmp_path):
             "soggetto_genere": "tipo", "soggetto": "binary_sensor.occupancy",
             "campo": "genere", "valore": "presenza"}))
         assert r.status == 503
-        assert "disco pieno" in json.loads(r.text)["errore"]
+        assert "disco pieno" in json.loads(r.text)["error"]
     finally:
         s.close()
 
@@ -406,4 +406,4 @@ async def test_POST_giudizio_senza_token_e_401(client_vero, monkeypatch):
         "soggetto_genere": "tipo", "soggetto": "light", "campo": "genere",
         "valore": "sicurezza"}, headers={"X-Requested-With": "XMLHttpRequest"})
     assert resp.status == 401
-    assert "Servizi" in (await resp.json())["errore"]
+    assert "Servizi" in (await resp.json())["error"]

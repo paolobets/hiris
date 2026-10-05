@@ -23,6 +23,7 @@ from aiohttp import web
 from aiohttp.web_urldispatcher import StaticResource
 
 from ..chat_thread import subject_key_for
+from .boundary import error_body
 from .soffitto import _route_pattern, boundary_role, is_admin_role
 
 logger = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ def _refusal(request: web.Request, text: str) -> web.Response:
     pagina per i gusci. La forma si sceglie dal percorso e non dalla rotta:
     una rotta vietata e una che non esiste devono rispondere uguale (2.16)."""
     if request.path.startswith("/api/"):
-        return web.Response(body=json.dumps({"errore": text}).encode("utf-8"),
+        return web.Response(body=json.dumps(error_body(text)).encode("utf-8"),
                             status=403, content_type="application/json",
                             headers=_REFUSAL_HEADERS)
     return web.Response(body=_PAGES[text], status=403, content_type="text/html",
