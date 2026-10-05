@@ -53,8 +53,10 @@ def _house():
         _row("device_tracker.iphone_di_paolo", "iPhone di Paolo",
              area_id="camera", piattaforma="mobile_app"),
     ]
+    # Uno stato per entita': uno specchio vuoto e LETTO e' una casa in cui
+    # tutto e' «sparito» (Task 1.5 degli attori), e la riga lo direbbe.
     return House({"entita": rows, "aree": [{"id": "camera", "nome": "Camera"}]},
-                 Mirror())
+                 Mirror(state={row["id"]: "on" for row in rows}))
 
 
 @pytest.fixture
@@ -141,7 +143,7 @@ def test_sul_PONTE_il_turno_non_porta_i_nomi_e_la_raccolta_torna_all_id(archivio
 def test_una_casa_SENZA_persone_ha_la_domanda_di_prima():
     """Pura sostituzione dove non ci sono persone: nessuna frase in piu'."""
     house = House({"entita": [_row("climate.camera_t", "Termostato Camera")],
-                   "aree": []}, Mirror())
+                   "aree": []}, Mirror(state={"climate.camera_t": "heat"}))
     lines = observer.house_lines(house)
     assert lines == ["climate.camera_t · Termostato Camera"]
     assert "segnaposto" not in observer.build_house_question("x", lines)
