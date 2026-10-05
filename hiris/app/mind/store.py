@@ -547,7 +547,7 @@ CREATE INDEX IF NOT EXISTS idx_objective_written ON objective(written_ts);
 -- Una riga per soggetto, non una cronaca: la domanda che questa tabella deve
 -- saper rispondere in fretta e' «questo soggetto lo guardo?», e la pone il
 -- rubinetto degli eventi a ogni cambio di stato della casa. La storia di chi
--- ha cambiato idea la porta gia' `deciso_ts` insieme all'autore -- e cio' che
+-- ha cambiato idea la porta gia' `decided_ts` insieme all'autore -- e cio' che
 -- serve al proprietario («da quando guardo questa cosa») e' esattamente quello.
 --
 -- `author` non e' un dettaglio: senza, la decisione dell'analista non saprebbe
@@ -991,7 +991,7 @@ class ObservationsStore:
             rows = self._conn.execute(
                 "SELECT subject, inside, reason, author, decided_ts FROM scope").fetchall()
         return {r["subject"]: {"dentro": bool(r["inside"]), "motivo": r["reason"],
-                               "autore": r["author"], "deciso_ts": r["decided_ts"]}
+                               "autore": r["author"], "quando": r["decided_ts"]}
                 for r in rows}
 
     def is_watched(self, subject: str) -> bool:

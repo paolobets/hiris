@@ -52,7 +52,7 @@
    giudicate, e si guardano finche' durano. Attribuirle all'osservatore
    sarebbe dargli una decisione che non ha preso: qui hanno un gruppo
    proprio, senza autore, e la loro riga non porta un «dal ...» perche'
-   `da_quando_ts` e' `null` per costruzione -- mai una data inventata.
+   `quando` e' `null` per costruzione -- mai una data inventata.
 
    -- Perche' gruppi per autore e non un badge per riga --
    Sulla casa vera sono ~380 entita' decise dall'osservatore e ~30
@@ -283,7 +283,7 @@ window.HirisWatcherLavoro = (function () {
        titolo gli span si toccano senza spazio -- «sensor.uptimeil
        17/08/2026» -- e uno spazio dentro l'etichetta sarebbe una spaziatura
        scritta nel testo invece che nel foglio. */
-    var ts = v[opts.whenKey];
+    var ts = v.quando;
     if (ts != null) riga.appendChild(el('div', 'field-hint', opts.whenPrefix + ' ' + fmtWhenFull(ts)));
     if (d.secondary) riga.appendChild(el('div', 'field-hint text-mono', d.secondary));
     /* Un motivo che manca si dice, non si tace: una decisione senza il suo
@@ -339,7 +339,7 @@ window.HirisWatcherLavoro = (function () {
           tutti: g.voci,
           etichetta: 'Vedi tutte',
           rendi: function (v) {
-            return rigaDecisione(v, { whenKey: 'da_quando_ts', whenPrefix: 'dal',
+            return rigaDecisione(v, { whenPrefix: 'dal',
                                       senzaMotivo: !!comune, senzaAutore: true });
           }
         });
@@ -378,7 +378,7 @@ window.HirisWatcherLavoro = (function () {
       pochi: [],
       tutti: g.voci,
       etichetta: 'Vedi',
-      rendi: function (v) { return rigaDecisione(v, { whenKey: 'da_quando_ts', whenPrefix: 'dal' }); }
+      rendi: function (v) { return rigaDecisione(v, { whenPrefix: 'dal' }); }
     });
     return riga;
   }
@@ -426,7 +426,7 @@ window.HirisWatcherLavoro = (function () {
       pochi: [],
       tutti: g.voci,
       etichetta: 'Vedi',
-      rendi: function (v) { return rigaDecisione(v, { whenKey: 'deciso_ts', whenPrefix: 'il' }); }
+      rendi: function (v) { return rigaDecisione(v, { whenPrefix: 'il' }); }
     });
     return riga;
   }

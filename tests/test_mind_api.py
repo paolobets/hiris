@@ -22,7 +22,7 @@ from tests._contracts import assert_stessa_firma
 class _FintoOsservatore:
     def watching(self):
         return [{"soggetto": "climate.camera_t", "motivo": "scalda la casa",
-                 "autore": "observer", "da_quando_ts": 1787000000.0}]
+                 "autore": "observer", "quando": 1787000000.0}]
 
 
 class _FintoArchivioScope:
@@ -41,10 +41,10 @@ class _FintoArchivioScope:
     def scope(self):
         return {
             "climate.camera_t": {"dentro": True, "motivo": "scalda la casa",
-                                 "autore": "observer", "deciso_ts": 1787000000.0},
+                                 "autore": "observer", "quando": 1787000000.0},
             "sensor.uptime": {"dentro": False, "motivo": "di servizio, non dice niente"
                                                          " sulla casa",
-                              "autore": "observer", "deciso_ts": 1787000001.0},
+                              "autore": "observer", "quando": 1787000001.0},
         }
 
     def objective(self):
@@ -119,7 +119,7 @@ async def test_osservate_porta_il_perche_e_l_autore_di_ogni_voce():
     voce = _corpo(r)["watching"][0]
     assert voce["motivo"] == "scalda la casa"
     assert voce["autore"] == "observer"
-    assert voce["da_quando_ts"] == 1787000000.0
+    assert voce["quando"] == 1787000000.0
 
 
 @pytest.mark.asyncio
@@ -990,7 +990,7 @@ class _OsservatoreConSoggetti:
     def watching(self):
         return [{"soggetto": s, "motivo": "una condizione di sistema aperta si guarda "
                                           "finche' dura", "autore": None,
-                 "da_quando_ts": None} for s in self._soggetti]
+                 "quando": None} for s in self._soggetti]
 
 
 @pytest.mark.asyncio
@@ -1121,5 +1121,33 @@ async def test_un_osservazione_SENZA_esito_non_ne_guadagna_uno_finto(tmp_path):
                                              {"day": "2026-09-20"}))
 
         assert "esito" not in json.loads(r.text)["analisi"]["osservazioni"][0]
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_decisione_esce_stesso_nome_watching_fuori(tmp_path):
+    """C-46 (Tappa 4): la stessa colonna (`scope.decided_ts`) usciva con due
+    nomi nella stessa risposta -- `da_quando_ts` fra le guardate, `deciso_ts`
+    fra le lasciate fuori. Ora e' `quando` da tutte e due le parti (il nome
+    di D1 per l'istante di un evento), con l'archivio e l'osservatore VERI.
+
+    Mutazione ESEGUITA (05/10/2026): rimesso `da_quando_ts` in
+    `Watcher.watching` -- rossa."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.decide_scope("climate.camera_t", inside=True, reason="scalda",
+                              author="observer", when_ts=1787000000.0)
+        archivio.decide_scope("sensor.uptime", inside=False, reason="di servizio",
+                              author="observer", when_ts=1787000001.0)
+        r = await handle_watching(_richiesta(
+            {"watcher": Watcher(archivio, now=lambda: 1787572800.0),
+             "observations": archivio}))
+        corpo = _corpo(r)
+        dentro = [v for v in corpo["watching"] if v["soggetto"] == "climate.camera_t"]
+        assert [v.get("quando") for v in dentro] == [1787000000.0]
+        assert [v.get("quando") for v in corpo["fuori"]] == [1787000001.0]
+        for voce in corpo["watching"] + corpo["fuori"]:
+            assert not {"da_quando_ts", "deciso_ts"} & set(voce), voce
     finally:
         archivio.close()

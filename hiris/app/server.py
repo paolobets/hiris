@@ -2929,8 +2929,8 @@ def _to_judge(store, candidates: list[str], last: dict | None) -> list[str]:
     mai = [c for c in candidates if c not in scope]
     vecchi = [c for c in candidates
               if c in scope and last is not None
-              and (scope[c]["deciso_ts"] or 0) <= last["quando_ts"]]
-    vecchi.sort(key=lambda c: scope[c]["deciso_ts"] or 0)
+              and (scope[c]["quando"] or 0) <= last["quando_ts"]]
+    vecchi.sort(key=lambda c: scope[c]["quando"] or 0)
     return mai + vecchi
 
 

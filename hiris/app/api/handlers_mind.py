@@ -155,7 +155,7 @@ def _left_out(store) -> list[dict]:
         return []
     return sorted(
         ({"soggetto": subject, "motivo": v["motivo"], "autore": v["autore"],
-          "deciso_ts": v["deciso_ts"]}
+          "quando": v["quando"]}
          for subject, v in store.scope().items() if not v["dentro"]),
         key=lambda v: v["soggetto"])
 

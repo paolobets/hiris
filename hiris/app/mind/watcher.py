@@ -1083,13 +1083,13 @@ class Watcher:
         qualcuno una decisione che non ha preso.
         """
         entity = ({"soggetto": s, "motivo": v["motivo"], "autore": v["autore"],
-                   "da_quando_ts": v["deciso_ts"]}
+                   "quando": v["quando"]}
                   for s, v in self._store.scope().items() if v["dentro"])
         system = ({"soggetto": s, "motivo": _SYSTEM_REASON,
-                   "autore": None, "da_quando_ts": None}
+                   "autore": None, "quando": None}
                   for s in self._conditions)
         automation = ({"soggetto": s, "motivo": _SYSTEM_REASON,
-                       "autore": None, "da_quando_ts": None}
+                       "autore": None, "quando": None}
                       for s in self._automation_faults)
         return sorted([*entity, *system, *automation], key=lambda o: o["soggetto"])
 
