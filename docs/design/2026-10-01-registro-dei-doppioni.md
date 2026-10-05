@@ -103,10 +103,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-25 | Nomi che collidono e notizie con due nomi nella pagina dell'osservatore | D | DP |  |  | reg |
 | C-26 | Apostrofi `'` e `’` mischiati nello stesso messaggio | E | PS |  | cop-9 (incompleta) | reg · cop-9 N-C-7 |
 | C-27 | Cronaca e primo piano: lo stesso fatto in più voci | E | DP |  |  | reg |
-| C-28 | La specie «attuatore» in letterali sparsi invece del vocabolario di `steering.SPECIE` | E | PS |  |  | cop-1 C1 |
-| C-29 | `_serve_index` e `_serve_config` sono la stessa funzione (cambia solo la chiave) | E | PS |  |  | cop-2 C1 |
 | C-30 | `/api/health`: due forme scelte dal ruolo, tre stati di tipo diverso in un oggetto | NV | DP |  |  | cop-2 C2 |
-| C-31 | L'involucro della risposta (`trovate/escluse/…/finestra`) montato in tre posti | E | PS |  |  | cop-3 C-n1 |
 | C-32 | Un istante esce in quattro forme dagli strumenti (UTC, fuso casa, epoch, «mai») | D | CC |  |  | cop-3 C-n2 |
 | C-33 | Righe della stessa risposta con chiavi diverse; `genere` manca all'entità nella corta | D | CC |  |  | cop-3 C-n3 |
 | C-34 | Nella media `attributi` sono le ceste grezze, senza il filtro della completa | D | CC |  |  | cop-3 C-n4 |
@@ -121,16 +118,13 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-43 | Le pseudo-aree hanno forma diversa dalle aree vere; dizionario letterale scritto quattro volte | D | PS |  |  | cop-4 N-10 |
 | C-44 | Due buste nello stesso modulo `state_translations`: `letto` e `lette` | D | CC |  |  | cop-5 C1 |
 | C-45 | Tre forme dell'assenza nella stessa voce dello specchio (`""`, `None`, chiave mancante) | D | CC |  |  | cop-5 C2 |
-| C-46 | La stessa colonna (`scope.decided_ts`) esce con due nomi nella stessa risposta (`da_quando_ts`, `deciso_ts`) | E | PS |  |  | cop-6 N-08 |
 | C-47 | `as_document`: istanti come epoch grezzo sotto un'intestazione inglese | NV | DP |  |  | cop-6 N-09 |
 | C-48 | I corpi JSON dell'archivio dell'osservatore: tre letture con la guardia, quattro senza | D | CC |  |  | cop-6 N-10 |
 | C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | NV | DP |  |  | cop-6 N-11 |
 | C-50 | La chat risponde l'errore in quattro forme, due lingue, due volte con stato 200 | D | CC |  |  | cop-8 C3 |
 | C-51 | Cancellare un ricordo che non esiste è un successo (204); correggerlo è un 404 | D | CC |  |  | cop-8 C4 |
 | C-52 | `handle_services` risponde 503 con `"servizi": []`, contro la regola scritta altrove | D | PS |  |  | cop-8 C5 |
-| C-53 | `propose` restituisce il motivo del consigliere due volte (anteprima e `consiglio`) | E | CC |  |  | cop-9 N-C-1 |
 | C-54 | Lo stato grezzo arriva al modello: `READABLE_STATE` solo per le costruzioni, `cancel` scrive `in_corso` | D | PS |  |  | cop-9 N-C-3 |
-| C-55 | Troncamenti a mano (`…`) accanto a `truncate_with_marker` (` [troncato]`): due marcatori | D | CC |  |  | cop-9 N-C-4 |
 | C-56 | Nota «il Piano non ha risposto» due volte; nome del provider in nove stringhe | D | CC |  |  | cop-9 N-C-5 |
 | C-57 | «Disabilitata» con due significati: entità spenta nel registro, automazione `off` nel nucleo | D | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 3 |
 
@@ -397,7 +391,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-16 | L'identità di un servizio firmato è la chiave, ma il suo `id` nel soggetto è il NOME (due servizi omonimi = stesso filo) |  | LETTO | cap. proposto F; Stato DIVERGENTE, Unirla DP (serve migrazione dei fili) | cop-8 F2 |
 | S-18 | `importa_legacy` non è atomica: due commit, un crash in mezzo raddoppia i totali ereditati |  | DEDOTTO | cap. proposto G; Stato NV, Unirla PS (una transazione) | cop-9 N-G-6 |
 | S-19 | `ChatSettings.load` solleva (`[1,2]` → `AttributeError`; `thinking_budget: "abc"` → `ValueError`) e `server.py:3809` la chiama senza `try` |  | ESEGUITO | già nel registro v1 dentro X-10 (docstring «non solleva mai»); nessun rapporto di copertura l'ha riletta | reg X-10 (d7 §1.9) |
-| S-20 | L'avviso «il bersaglio è cambiato» di una promessa non può mai partire: lo spazzino legge `occurrence["anteprima"]` (`sweeper.py:202-205`), la porta scrive `"bersaglio"` (`actuator.py:816`); alla nascita `_count_target` passa il bersaglio non tradotto, quindi `entities_at_birth` è sempre NULL |  | LETTO (non eseguito) | Stato DIVERGENTE, Unirla CC; la prova usa una porta finta | compl N-1 |
 | S-21 | Nessuna prova fissa che un servizio firmato (`auth_via="canale"`) non arrivi a `/api/mcp`: il codice lo impedisce, ma senza sorveglianza |  | LETTO | dal censimento dell'MCP esterno (`mcp-esterno.md`, «Non stabilito»); e' un comportamento dei permessi: Tappa 7 | Tappa 0, Task 9 |
 | S-22 | La pagina Memoria mostra il nome di un'entita' ancorata solo se il REGISTRO ne ha uno: per le entita' col nome solo nel `friendly_name` (la norma su questa casa) l'ancora esce senza nome. I nomi di ripiego che dovevano rimediare entravano solo nell'indice di `find()` e non hanno mai avuto effetto |  | LETTO | `api/handlers_memory.py::_resolve_tether` legge `nome`; dichiarazione D8 della Tappa 0: si ripara con la resa unica (Tappa 4) | Tappa 0, Task 13 |
 | S-23 | `handle_reasoning_submit` scrive l'avviso sulla «revisione olistica» a ogni consegna di un turno degli attori (`ricetta`, `analisi`, `attuazione`): tace solo per `scope`. Un avviso falso a ogni giro |  | LETTO | trovato rileggendo i commenti (Task 21, 02/10/2026); è un messaggio di log, quindi si corregge con una tappa che cambia testo | Task 21 |
@@ -897,3 +890,10 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | Tappa 3 (da rilasciare) | 43d0ecc | VOCABULARY[ancore] derivato da resolver.STORE_KEY_PER_TYPE; name_matches e le sue parole spostati in home_space/reference.py. Tappa 3, Task 9 |
 | M-82 | Il ritorno di `behavior.reread()` (conteggi, `senza_corpo`) scartato in produzione: due copie di B-39 senza lettori | Tappa 3 (da rilasciare) | c80cba1 | behavior.reread non restituisce piu' niente; le prove leggono l'anagrafe e il log. Tappa 3, Task 7 (trovato 5) |
 | M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | Tappa 3 (da rilasciare) | c80cba1 | Imported.ha_version uscito; le fonti si compongono da ha_vocabulary.VOCABULARY_HA_VERSION (B-44). Tappa 3, Task 7 (trovato 6) |
+| C-28 | La specie «attuatore» in letterali sparsi invece del vocabolario di `steering.SPECIE` | Tappa 4 (da rilasciare) | fb9349b | il letterale «attuatore» fuori da steering (server.py x4, agent/runner.py JOB_SPECIES) diventa steering.ACTUATOR_SPECIES; cancello AST in tests/test_specie_attuatore.py. Tappa 4, Task 6 |
+| C-29 | `_serve_index` e `_serve_config` sono la stessa funzione (cambia solo la chiave) | Tappa 4 (da rilasciare) | 3347863 | _serve_index e _serve_config uscite; _serve_shell(key) serve i due gusci (prova: stesso __code__ dal router vero). Tappa 4, Task 6 |
+| C-31 | L'involucro della risposta (`trovate/escluse/…/finestra`) montato in tre posti | Tappa 4 (da rilasciare) | faa9f5d | la busta trovate/escluse/profondita/voci (con oltre e nota) da house_query.envelope; le escluse a zero da no_exclusions(); cancello AST in tests/test_busta_risposta.py. Resta house.py:174 (zona del Task 8 della Tappa 3). Tappa 4, Task 6 |
+| C-46 | La stessa colonna (`scope.decided_ts`) esce con due nomi nella stessa risposta (`da_quando_ts`, `deciso_ts`) | Tappa 4 (da rilasciare) | e05ef81 | da_quando_ts e deciso_ts (e la chiave deciso_ts di ObservationsStore.scope) diventano quando (D1); la pagina legge quando, esce l'opzione whenKey. Tappa 4, Task 6 |
+| C-53 | `propose` restituisce il motivo del consigliere due volte (anteprima e `consiglio`) | Tappa 4 (da rilasciare) | bd993ee | consiglio.motivo esce dalla risposta di propose: il motivo resta nella Nota dell'anteprima. Tappa 4, Task 6 |
+| C-55 | Troncamenti a mano (`…`) accanto a `truncate_with_marker` (` [troncato]`): due marcatori | Tappa 4 (da rilasciare) | 679527a | i cinque tagli a mano (house_history._short, chat_store x3, exchange._senza_conclusione, workshop._add_phrase, claude_runner) chiamano truncate_with_marker; cancello AST in tests/test_troncamenti.py. Tappa 4, Task 6 |
+| S-20 | L'avviso «il bersaglio è cambiato» di una promessa non può mai partire: lo spazzino legge `occurrence["anteprima"]` (`sweeper.py:202-205`), la porta scrive `"bersaglio"` (`actuator.py:816`); alla nascita `_count_target` passa il bersaglio non tradotto, quindi `entities_at_birth` è sempre NULL | Tappa 4 (da rilasciare) | 65f851b | lo spazzino legge bersaglio.risolte (non anteprima), _count_target traduce con translate_target: nascita e risveglio contano la stessa lista. Prova con la porta vera. Tappa 4, Task 6 (D12) |
