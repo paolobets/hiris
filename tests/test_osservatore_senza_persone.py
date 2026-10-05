@@ -147,3 +147,21 @@ def test_una_casa_SENZA_persone_ha_la_domanda_di_prima():
     lines = observer.house_lines(house)
     assert lines == ["climate.camera_t · Termostato Camera"]
     assert "segnaposto" not in observer.build_house_question("x", lines)
+
+
+def test_una_persona_che_tace_non_torna_col_suo_id_nella_domanda_che_apre(archivio):
+    """Il blocco dei soggetti dentro che tacciono (attori, Task 1.5) porta
+    l'id grezzo: per una persona l'id E' il nome. Le due fette si sono
+    incontrate all'integrazione: senza esclusione, `person.paolo` decisa
+    dentro e poi tolta da Home Assistant tornava al modello col suo nome,
+    contro la decisione 12."""
+    assert archivio.decide_scope("person.paolo", inside=True, reason="pesa",
+                                 author="observer", when_ts=1000.0)
+    assert archivio.decide_scope("device_tracker.iphone_di_paolo", inside=True,
+                                 reason="pesa", author="observer", when_ts=1000.0)
+    house = House({"entita": [_row("climate.camera_t", "Termostato Camera")],
+                   "aree": []}, Mirror(state={"climate.camera_t": "heat"}))
+    gone = observer.gone_lines(archivio, house)
+    _without_names("\n".join(gone))
+    turn = observer.bridge_turn(archivio, house, None)
+    _without_names(turn["history"][0]["content"])

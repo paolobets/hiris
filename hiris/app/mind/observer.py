@@ -203,13 +203,22 @@ def _silent_inside(store, house: House) -> list[tuple[str, dict | None]]:
     mostrava piu' (G-01). Un soggetto dentro e fuori dalla regola ma VIVO (una
     nascosta che il proprietario ha voluto) non c'entra: parla. Uno che lo
     specchio non ha potuto guardare (`stato: None`) nemmeno: non si sa.
-    `House.source` -> `None` (ne' registro ne' stati) si'."""
+    `House.source` -> `None` (ne' registro ne' stati) si'.
+
+    **Una presenza non c'e' mai** (decisione 12): questo blocco porta l'id
+    grezzo, e per una persona o un dispositivo che la segue l'id e' il nome.
+    Il segnaposto delle righe (`presence_handles`) vale per il lotto chiesto,
+    non per questi soggetti: finche' non ne hanno uno loro restano fuori, e
+    dentro allo scope come sono (D1). Trovato all'integrazione delle Tappe
+    4-6 con il Task 1.5, il 05/10/2026."""
     if not house.mirror.readable:
         return []
     shown = set(house.visible_entities())
     out = []
     for subject, decision in sorted(store.scope().items()):
         if not decision["dentro"] or not is_entity_id(subject) or subject in shown:
+            continue
+        if domain_of(subject) in MOVING_DOMAINS:
             continue
         source = house.source(subject)
         if source is None or source.get("stato") not in (None, _LIVE):
