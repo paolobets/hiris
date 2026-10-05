@@ -45,7 +45,7 @@ def _promessa(archivio, **extra):
     dati = {"specie": "fai", "frase": "spegni le luci di sopra",
             "quando_ts": 2_000_000_000.0,
             "chiamata": {"servizio": "light.turn_off",
-                         "bersaglio": {"area": "piano di sopra"}}}
+                         "bersaglio": {"aree": ["piano di sopra"]}}}
     dati.update(extra)
     esito = archivio.create(dati, thread=ChatThread("persona:paolo", "pannello"),
                             now=1_999_999_000.0)
@@ -187,10 +187,13 @@ async def test_un_bersaglio_per_AREA_si_conta_alla_nascita():
     porta = _PortaFinta(entita=["light.a", "light.b", "light.c"])
 
     quante = await _dispatcher(porta)._count_target(
-        {"servizio": "light.turn_off", "bersaglio": {"area": "piano di sopra"}})
+        {"servizio": "light.turn_off", "bersaglio": {"aree": ["piano di sopra"]}})
 
     assert quante == 3
-    assert porta.chiesto == [{"area": "piano di sopra"}]
+    # Nella forma di Home Assistant (S-20, Tappa 4): la porta risolve
+    # `area_id`, e fino al 05/10/2026 le arrivava `aree` -- con questa porta
+    # finta, che risponde a qualunque cosa, la prova restava verde.
+    assert porta.chiesto == [{"area_id": ["piano di sopra"]}]
 
 
 @pytest.mark.asyncio
@@ -219,7 +222,7 @@ async def test_se_il_conteggio_NON_RIESCE_la_promessa_nasce_lo_stesso():
     Mutazione ESEGUITA: lasciar propagare l'eccezione -- rossa."""
     for porta in (_PortaFinta(errore="area sconosciuta"), _PortaFinta(esplode=True)):
         quante = await _dispatcher(porta)._count_target(
-            {"servizio": "light.turn_off", "bersaglio": {"area": "ignota"}})
+            {"servizio": "light.turn_off", "bersaglio": {"aree": ["ignota"]}})
 
         assert quante is None
 
@@ -231,7 +234,7 @@ async def test_senza_attuatore_non_si_conta_e_non_si_cade():
 
     Mutazione: indicizzare senza difendersi -- rossa."""
     quante = await _dispatcher(None)._count_target(
-        {"servizio": "light.turn_off", "bersaglio": {"area": "x"}})
+        {"servizio": "light.turn_off", "bersaglio": {"aree": ["x"]}})
 
     assert quante is None
 

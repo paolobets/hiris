@@ -197,12 +197,18 @@ class Sweeper:
             # ed era una richiesta di chi l'ha chiesta -- si DICHIARA, perche'
             # chi legge l'esito non deve andare a contare.
             #
-            # `toccate` viene dall'anteprima che la porta produce gia': non si
-            # risolve una seconda volta.
+            # Il numero di adesso viene dal `bersaglio` che la porta scrive
+            # gia' nell'esito (`actuator._preview`): non si risolve una seconda
+            # volta. E si confronta **lo stesso numero** contato alla nascita
+            # (`tools._count_target`): `risolte`, cio' che il bersaglio COPRE --
+            # non `toccate`, che toglie cio' che il servizio non tocca e su
+            # un'area mista direbbe «e' cambiato» a ogni promessa (S-20, Tappa
+            # 4: fino al 05/10/2026 qui si leggeva `anteprima`, una chiave che
+            # la porta non scrive, e l'avviso non poteva partire mai).
+            target = occurrence.get("bersaglio")
             notice = target_changed(
                 promise.get("entities_at_birth"),
-                len((occurrence.get("anteprima") or {}).get("toccate") or [])
-                if occurrence.get("anteprima") else None)
+                len(target.get("risolte") or []) if isinstance(target, dict) else None)
             closed = self._store.concludi(
                 promise["id"], state="mantenuta", now=now,
                 execution_id=occurrence.get("esecuzione_id"), reason=notice)
