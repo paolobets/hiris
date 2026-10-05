@@ -301,6 +301,14 @@ def test_gli_stati_muti_sono_parole_della_fonte():
     assert set(MUTED_SOURCE_STATES) <= said
 
 
+def test_gli_stati_muti_sono_cause_della_misura():
+    """La riga di una ricetta muta porta `causa`: dev'essere una parola che
+    `NotComputable` accetta (`operations.CAUSES`, Task 1.2), la stessa del
+    rifiuto di un passo. Le due fette si sono unite il 05/10/2026."""
+    from hiris.app.mind.operations import CAUSES
+    assert set(MUTED_SOURCE_STATES) <= CAUSES
+
+
 def test_il_resoconto_porta_una_riga_per_il_dispositivo_muto():
     muted = muted_recipes(_house(), {"d_spenta": SPENTA})
     report = build_report(day="2026-10-04", episodes=[], series={}, recipes={},
