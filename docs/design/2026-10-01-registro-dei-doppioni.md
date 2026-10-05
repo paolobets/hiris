@@ -133,6 +133,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-55 | Troncamenti a mano (`…`) accanto a `truncate_with_marker` (` [troncato]`): due marcatori | D | CC |  |  | cop-9 N-C-4 |
 | C-56 | Nota «il Piano non ha risposto» due volte; nome del provider in nove stringhe | D | CC |  |  | cop-9 N-C-5 |
 | C-57 | «Disabilitata» con due significati: entità spenta nel registro, automazione `off` nel nucleo | D | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 3 |
+| C-65 | `genere` con tre significati: genere di oggetto (`search`), cosa chiedere (`history`), genere della cronaca | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 1 (`tools.py:253`, `:953`; glossario, «I concetti»); D3: il parametro di `history` diventa `cosa` (Task 5) |
 
 ---
 
@@ -163,10 +164,10 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-21 | Il filtro per ancora: `per_tether` e `_tethered_memories` | E | PS |  | cop-3 (incompleta) | reg · cop-3 |
 | D-22 | Altre sovrapposizioni fra strumenti (11 proprietà condivise fra `search` e `history`) | E | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
 | D-23 | Il soffitto (chi può cosa) chiesto a mano in sette punti dentro i gestori | D | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
-| D-24 | Promesse: tre archivi dell'esito, quattro frasi, tre macchine a stati, tre vie di chiusura | D | CC |  | cop-9 (righe, incompleta) | reg · cop-9 |
+| D-24 | Promesse: tre archivi dell'esito, quattro frasi, tre macchine a stati, tre vie di chiusura | D | CC |  | cop-9 (righe, incompleta) | reg · cop-9 · Tappa 8: archivi dell'esito, non forma degli strumenti (piano della Tappa 5) |
 | D-25 | Validazione dello stesso ingresso in più punti | E | DP |  |  | reg · cop-3 |
-| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa) | reg · cop-3 · cop-9 |
-| D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 |
+| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa) | reg · cop-3 · cop-9 · Tappa 7: e' lo scrivere, non la forma degli strumenti (piano della Tappa 5) |
+| D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 · Tappa 8: archivi (piano della Tappa 5) |
 | D-28 | Tre costruzioni dell'indice per «questo id esiste?» | E | PS |  |  | reg · cop-3 |
 | D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 |
 | D-30 | Strumenti di lettura nei turni degli attori: cosa manca al turno | NV | DP |  | cop-8 (righe) | reg · cop-8 |
@@ -201,12 +202,13 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-60 | Costo e nome del provider scritti due volte, con due formule (0 contro NULL) | D | CC |  |  | cop-7 N-D13 |
 | D-61 | Due pesatori del carico, una forma, tre definizioni di «guida» | D | CC |  |  | cop-7 N-D14 |
 | D-62 | `reasoning/queue.py`: `get()`/`latest()` due forme, mezzanotte ricalcolata, `SELECT *` col nucleo | D | PS |  |  | cop-7 N-D15 |
-| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | D | DP |  |  | cop-8 D1 |
+| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | D | DP |  |  | cop-8 D1 · resta alla Tappa 6; la tabella degli strumenti della Tappa 5 (Task 2) ne e' il prerequisito |
 | D-64 | Il nucleo che non si compone: tre chiamanti, tre comportamenti | D | CC |  |  | cop-8 D2 · cop-9 N-D-1 |
 | D-65 | «Qual è la conversazione attiva di questo filo» chiesta tre volte per turno | NV | CC |  |  | cop-8 D3 |
 | D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | D | PS |  |  | cop-8 D4 |
 | D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | E | PS |  |  | Tappa 3, piano del 03/10/2026, trovato 11 |
 | D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 |
+| D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 2 (`keeper/exchange.py`: le regole parlano di `execute`, `propose`, `remember`); il contenuto alla Tappa 5 (D4, Task 5), la composizione alla Tappa 6 |
 
 ---
 
