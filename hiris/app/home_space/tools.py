@@ -96,10 +96,10 @@ from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
-from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
 from . import historian
-from .appointments import read_appointment, sort_appointments
+from .appointments import merge_calendars, readable_calendars
 from .ha_vocabulary import HA_LINK_TYPE
 from .house import House
 from .house_history import (
@@ -2570,92 +2570,25 @@ class ToolDispatcher:
     async def _calendar(self, arguments: dict[str, Any]) -> dict:
         """I prossimi appuntamenti, fusi da OGNI calendario di questa casa.
 
-        **Il cuore della fetta «i calendari»: la leggibilita' si verifica
-        LEGGENDO, mai dallo stato.** Un calendario rotto e uno senza impegni
-        hanno lo STESSO stato `off` in Home Assistant e tornerebbero lo
-        STESSO elenco vuoto -- solo un tentativo di lettura li distingue.
-        Percio' questo metodo prende l'elenco dei calendari (Task 1,
-        `HAClient.calendars()`) e prova a leggere CIASCUNO (Task 1,
-        `HAClient.calendar_events()`), uno per uno: nessun elenco dichiarato
-        di calendari ammessi, nessuna decisione presa dallo stato. Un
-        calendario che fallisce NON sparisce in silenzio: il suo `name`
-        finisce in `non_letti`, che esce SOLO se c'e' almeno un calendario
-        illeggibile -- se sparisse, «non hai impegni» sarebbe una bugia detta
-        con la sicurezza di chi ha guardato tutto, ed e' il difetto che la
-        fetta precedente («le tracce e il log») ha trovato tre volte.
+        Qui resta la COMPOSIZIONE (R13, Tappa 5): la finestra chiesta, le due
+        letture da Home Assistant e il fuso. Leggere gli eventi, nominare i
+        calendari illeggibili e fondere gli impegni e' di
+        `appointments.merge_calendars`, che e' puro e dice perche'.
 
         **Se l'elenco dei calendari stesso non arriva**, non c'e' niente da
         provare a leggere: si propaga il suo `errore` cosi' com'e' (un
         passthrough puro).
 
-        **`calendari_guardati` esce SEMPRE, anche vuoto -- a differenza di
-        `non_letti`/`troncato`, che tacciono quando non hanno niente da
-        dire.** Senza di lui, zero calendari e due calendari letti e
-        VUOTI sono indistinguibili: entrambi tornerebbero `{"impegni": []}`,
-        e il modello direbbe «non hai impegni segnati» quando la verita'
-        potrebbe essere «questa casa non ha calendari». E' la PROVA di cosa
-        e' stato guardato, non un dato su cosa c'e' scritto: senza di essa
-        la risposta non e' verificabile, quindi non e' condizionale come
-        gli altri due.
-
         **Il fuso e' UNO SOLO, quello del dispatcher** (`self._timezone()`,
-        `ToolDispatcher._timezone()` qui sopra, la stessa fonte di `_history`
-        -- non se ne apre una seconda): serve due volte, una per calcolare `now` con
-        `historian.home_space_zone` (nessun doppione: e' la stessa funzione
-        che gestisce gia' un fuso non riconosciuto con un avviso e il
-        ripiego su UTC) e una passata a `read_appointment` per ogni evento.
+        la stessa fonte di `_history` -- non se ne apre una seconda): serve
+        due volte, una per calcolare `now` con `historian.home_space_zone`
+        (nessun doppione: e' la stessa funzione che gestisce gia' un fuso non
+        riconosciuto con un avviso e il ripiego su UTC) e una passata a
+        `merge_calendars`, che la passa a `read_appointment` per ogni evento.
         Fondere impegni letti con fusi DIVERSI romperebbe l'ordinamento
         lessicografico di `sort_appointments` -- non succede, perche' il
         fuso e' unico per questa chiamata, ma e' il presupposto su cui quella
         fusione poggia, e va dichiarato invece di dato per scontato.
-
-        **Il tetto sul testo libero vive QUI, non nel client.**
-        `HAClient.calendar_events()` lascia `summary`/`description`/
-        `location` grezzi apposta (il suo docstring lo dice: nessun
-        consumatore prima di questo strumento) -- e' questo il punto in cui
-        quel testo, scritto da una persona in un calendario condiviso, entra
-        DAVVERO in un prompt. `titolo`/`luogo`/`descrizione` passano da
-        `sanitize_ha_free_text`, la stessa strada dei fratelli (`motivo` di
-        un'integrazione rotta), non una seconda. **Il NOME del calendario passa da
-        `sanitize_ha_value`** (non `sanitize_ha_free_text`: e' un
-        `friendly_name`, la stessa forma di `nome` per le altre entita', non testo
-        libero senza tetto HA) -- e' `state.name` di
-        `HAClient.calendars()`, scelto da una persona e potenzialmente
-        condiviso (un Google Calendar puo' esserlo), quindi un vettore di
-        testo iniettato quanto `summary`/`description`/`location`: sanificare
-        tre campi su quattro e lasciare il quarto grezzo sarebbe la stessa
-        fuga che l'audit di questo prodotto ha gia' pagato altrove
-        (L1-sicurezza.md). Sanificato UNA volta, prima di finire sia in
-        `calendario` sia in `non_letti` -- non due sanificazioni per due
-        destinazioni dello stesso valore.
-
-        **Ogni impegno porta `calendario`**, il nome (non l'`entity_id`) del
-        calendario da cui viene: fondendo «Personale» e «Famiglia» in un
-        unico elenco, sapere DA QUALE viene un impegno e' meta' della
-        risposta -- perderlo fondendo prima di annotarlo sarebbe
-        un'informazione che avevamo in mano e abbiamo buttato via.
-
-        **`troncato` esce SOLO se almeno un calendario lo ha dichiarato**
-        (`HAClient.calendar_events`, `MAX_CALENDAR_EVENTS`): un elenco
-        tagliato non deve poter sembrare completo, stessa legge del client
-        che lo genera -- propagarla in silenzio sarebbe ricreare lo stesso
-        difetto un livello piu' in alto. Non dice quale calendario (vedi la
-        `description` dello strumento).
-
-        **Un evento che non si sa interpretare affonda il SUO calendario,
-        non tutti quanti.** `read_appointment` puo' sollevare (un evento
-        senza ne' `start.date` ne' `start.dateTime`, per esempio): senza una
-        guardia qui, quell'eccezione risalirebbe fino alla rete di
-        sicurezza di `dispatch`, e la risposta perderebbe INSIEME gli
-        impegni gia' letti di questo calendario e quelli di ogni altro
-        calendario gia' letto bene in questo stesso giro -- il guasto di
-        UNO che costa il silenzio su TUTTI, l'esatto difetto opposto a
-        quello che questa fetta cura. Un calendario il cui evento non si sa
-        interpretare finisce quindi in `non_letti` come uno che non
-        risponde -- e i suoi impegni GIA' raccolti in questo giro si
-        scartano: un elenco parziale che si finge completo e' peggio di un
-        elenco assente, la stessa legge di `add_label_to` in
-        `proxy/ha_client.py` («non ho letto» non e' «non ce n'erano»).
         """
         import time as _time
 
@@ -2668,8 +2601,7 @@ class ToolDispatcher:
         listing = await ha.calendars()
         if "errore" in listing:
             return listing
-        calendars = listing.get("calendari")
-        calendars = calendars if isinstance(calendars, list) else []
+        calendars = readable_calendars(listing)
 
         timezone = self._timezone()
         zone = historian.home_space_zone(timezone)
@@ -2677,68 +2609,13 @@ class ToolDispatcher:
         start = (now - timedelta(days=behind)).isoformat()
         end = (now + timedelta(days=ahead)).isoformat()
 
-        appointments: list[dict] = []
-        examined: list[str] = []
-        unreadable: list[str] = []
-        truncated = False
-        readable = [entry for entry in calendars
-                    if isinstance(entry, dict) and entry.get("entity_id")]
         # Tutti insieme (A-34, Tappa 2): l'attesa e' quella del calendario
         # piu' lento, non la somma. `gather` rende nell'ordine chiesto, cioe'
         # quello di Home Assistant: `calendari_guardati` e `non_letti` non
         # dipendono da chi risponde prima. `calendar_events` non solleva.
         answers = await asyncio.gather(*(ha.calendar_events(entry["entity_id"], start, end)
-                                         for entry in readable))
-        for entry, events in zip(readable, answers, strict=True):
-            name = sanitize_ha_value(entry.get("name") or entry["entity_id"])
-            examined.append(name)
-            if "errore" in events:
-                unreadable.append(name)
-                continue
-            if events.get("troncato"):
-                # Non gestito, DICHIARATO: se questo STESSO calendario viene
-                # anche scartato qui sotto (un evento che non si sa
-                # interpretare, `unreadable_event`), `truncated` resta vero
-                # ma i suoi impegni finiscono comunque in `non_letti`, non in
-                # `impegni` -- `troncato: true` sopravvivrebbe su un elenco
-                # che non contiene piu' nessun impegno di QUESTO calendario.
-                # Serve >MAX_CALENDAR_EVENTS eventi E un evento malformato
-                # nello stesso calendario per innescarlo: visto, deciso di
-                # non trattarlo (il caso e' cosi' raro da non giustificare
-                # il costo di un secondo stato "troncato ma poi scartato").
-                truncated = True
-            calendar_appointments: list[dict] = []
-            unreadable_event = False
-            for raw_event in events.get("eventi") or []:
-                try:
-                    appointment = read_appointment(raw_event, timezone=timezone)
-                except Exception as error:
-                    logger.warning(
-                        "calendario «%s»: un evento non si sa interpretare "
-                        "(%s: %s) -- l'intero calendario finisce in non_letti",
-                        name, type(error).__name__, error)
-                    unreadable_event = True
-                    break
-                appointment["titolo"] = sanitize_ha_free_text(appointment["titolo"])
-                if "luogo" in appointment:
-                    appointment["luogo"] = sanitize_ha_free_text(appointment["luogo"])
-                if "descrizione" in appointment:
-                    appointment["descrizione"] = sanitize_ha_free_text(
-                        appointment["descrizione"])
-                appointment["calendario"] = name
-                calendar_appointments.append(appointment)
-            if unreadable_event:
-                unreadable.append(name)
-                continue
-            appointments.extend(calendar_appointments)
-
-        result: dict = {"impegni": sort_appointments(appointments),
-                        "calendari_guardati": examined}
-        if unreadable:
-            result["non_letti"] = unreadable
-        if truncated:
-            result["troncato"] = True
-        return result
+                                         for entry in calendars))
+        return merge_calendars(calendars, answers, timezone=timezone)
 
 
 # La tabella degli strumenti: UNA riga per strumento. Il catalogo che il
