@@ -1963,8 +1963,10 @@ _ANALYSIS_KIND = "analisi"
 #: Sulla catena chiama `runner.chat` SENZA strumenti -- sul ponte uguale: e'
 #: un attore che per contratto «non tocca la casa», e col catalogo della chat
 #: avrebbe `execute`. La costante e' quella del produttore
-#: (`mind/actuator_turn`), non una copia: quel modulo non importa niente di
-#: HIRIS, e l'import non chiude nessun ciclo. Da allora il cancello
+#: (`mind/actuator_turn`), non una copia: quel modulo importa da HIRIS il solo
+#: `steering` (il lettore unico, Tappa 6), che non importa `agent` -- l'import
+#: non chiude nessun ciclo (provato il 05/10/2026 importando
+#: `mind.actuator_turn` da solo: `agent.runner` non entra). Da allora il cancello
 #: `tests/test_attuatore_sul_ponte.py` RICAVA dal codice ogni specie che si
 #: accoda e pretende che sia qui: la prossima volta non la scopre il registro.
 _SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,

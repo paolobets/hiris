@@ -538,17 +538,23 @@ class UsageStore:
             "(SELECT id FROM turn WHERE ts < ?)", (limit,))
         self._conn.execute("DELETE FROM turn WHERE ts < ?", (limit,))
 
-    def turns(self, *, limit: int = 500) -> list[dict]:
+    def turns(self, *, limit: int = 500, species: str | None = None) -> list[dict]:
         """I turni, dal piu' recente. `tools` torna SCIOLTO dal JSON: una
         stringa che somiglia a una lista fa dire alla prima `len()` il numero
-        di caratteri."""
+        di caratteri.
+
+        `species` restringe a una specie: il freno dei troncati
+        (`steering.brake_engaged`) chiede gli ultimi N turni di UN mestiere, e
+        gli ultimi N di tutti -- filtrati dopo -- sarebbero quasi sempre turni
+        di chat."""
+        where, args = ("WHERE species = ? ", (species,)) if species else ("", ())
         with self._lock:
             righe = self._conn.execute(
                 "SELECT id,ts,species,provider,model,channel,subject_json,"
                 "duration_ms,iterations,tools,outcome,output_tokens,"
-                "list_cost_usd,tool_args FROM turn "
+                "list_cost_usd,tool_args FROM turn " + where +
                 "ORDER BY ts DESC LIMIT ?",
-                (int(limit),)).fetchall()
+                (*args, int(limit))).fetchall()
         return [{"id": r["id"], "ts": r["ts"], "species": r["species"],
                  "provider": r["provider"], "model": r["model"],
                  "channel": r["channel"],

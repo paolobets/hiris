@@ -19,7 +19,9 @@ from ..claude_runner import (
     RESTRICT_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
+    _current_truncated,
     _misura_corrente,
+    _PerCallFlag,
     _PerCallList,
     pesa_in_caratteri,
     testo_canonico,
@@ -359,6 +361,7 @@ class OpenAICompatRunner:
     # backends don't support Anthropic Extended Thinking (thinking_budget is
     # accepted-and-ignored in chat() below).
     last_tool_calls = _PerCallList(_current_tool_calls)
+    last_truncated = _PerCallFlag(_current_truncated)
 
     def __init__(
         self,
@@ -639,6 +642,7 @@ class OpenAICompatRunner:
             )
 
         self.last_tool_calls = []
+        self.last_truncated = False
 
         effective_model = self._resolve_model(model, agent_type)
 
@@ -910,6 +914,9 @@ class OpenAICompatRunner:
                     # OpenAI's analog of Anthropic max_tokens: generation cut off
                     # (possibly mid tool call). Surface the truncation instead of
                     # returning a misleading partial preamble with nothing executed.
+                    # E lo si DICE (D-58): la fonte di `"length"` e' scritta
+                    # accanto a `_current_truncated` in `claude_runner`.
+                    self.last_truncated = True
                     from ..claude_runner import _max_tokens_message
                     return _max_tokens_message([choice.message.content or ""])
                 raw_content = choice.message.content or f"Stopped: {choice.finish_reason}"

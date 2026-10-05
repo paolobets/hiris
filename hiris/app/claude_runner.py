@@ -644,6 +644,57 @@ _current_measure: "contextvars.ContextVar" = contextvars.ContextVar(
 )
 
 
+# **Il segnale di troncatura, per chiamata** (Tappa 6, Task 3; D-58).
+#
+# Fino al 05/10/2026 un turno fermato dal tetto di token diventava un TESTO
+# (`_max_tokens_message`) e nient'altro: il registro dei turni lo chiamava
+# «riuscito», e i mestieri che leggono JSON provavano a leggere una risposta
+# che il modello non aveva finito. Ora il runner lo DICE, con lo stesso
+# meccanismo di `last_tool_calls`: una ContextVar di modulo, condivisa con
+# `OpenAICompatRunner` e letta da `LLMRouter`, perche' due turni in parallelo
+# sullo stesso runner non si scambino il segnale. Il testo restituito non
+# cambia: nessun chiamante di oggi si rompe.
+#
+# Il segnale viene da cio' che il PROVIDER dichiara, mai dal testo:
+# - Anthropic, `stop_reason` (SDK `anthropic` 1.11.0, `types/message.py`,
+#   letto il 05/10/2026): `"max_tokens"` -- «we exceeded the requested
+#   `max_tokens` or the model's maximum» -- e `"model_context_window_exceeded"`
+#   -- «we exceeded the model's context window». Tutti e due fermano la
+#   risposta a meta'.
+# - OpenAI e compatibili, `finish_reason` (SDK `openai` 3.24.0,
+#   `types/chat/chat_completion.py`, letto il 05/10/2026): `"length"` -- «if
+#   the maximum number of tokens specified in the request was reached».
+#   OpenRouter usa lo stesso valore (`OpenRouterTeam/ai-sdk-provider`,
+#   `src/utils/map-finish-reason.ts` su `main`, letto il 05/10/2026), e Ollama
+#   lo passa da `done_reason` (`ollama/ollama`, `openai/openai.go` e
+#   `llm/server.go` su `main`, letti il 05/10/2026: `DoneReasonLength` ->
+#   `"length"`). La documentazione web dei provider non era raggiungibile da
+#   qui: le fonti sono gli SDK ufficiali e il sorgente.
+_current_truncated: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "hiris_current_truncated", default=False
+)
+
+#: Gli `stop_reason` di Anthropic che fermano la risposta a meta' (fonte
+#: sopra). Il primo dei due e' anche quello che produce `_TRUNCATION_NOTICE`.
+ANTHROPIC_TRUNCATING = frozenset({"max_tokens", "model_context_window_exceeded"})
+
+
+class _PerCallFlag:
+    """Come `_PerCallList`, per un valore vero/falso: letto e scritto nel
+    compito corrente soltanto."""
+
+    def __init__(self, var: "contextvars.ContextVar[bool]") -> None:
+        self._var = var
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        return self._var.get()
+
+    def __set__(self, obj, value) -> None:
+        self._var.set(bool(value))
+
+
 def posa_misura(raccoglitore):
     """Attacca il raccoglitore del carico a QUESTA chiamata. Torna il gettone
     da ridare a `togli_misura`, come vuole `contextvars`."""
@@ -696,6 +747,7 @@ class ClaudeRunner:
     # even though this object is a long-lived singleton (see comment above).
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_thinking_blocks = _PerCallList(_current_thinking_blocks)
+    last_truncated = _PerCallFlag(_current_truncated)
 
     def __init__(
         self,
@@ -793,6 +845,7 @@ class ClaudeRunner:
         dispatcher: Any | None = None,
     ) -> str:
         self.last_tool_calls = []
+        self.last_truncated = False
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control
         # breakpoint caches everything from the start of the request up to that
@@ -979,9 +1032,13 @@ class ClaudeRunner:
                 messages.append({"role": "user", "content": tool_results})
                 _compress_old_tool_results(messages)
             elif response.stop_reason == "max_tokens":
+                self.last_truncated = True
                 text_blocks = [b.text for b in response.content if b.type == "text"]
                 return _max_tokens_message(text_blocks)
             else:
+                # `model_context_window_exceeded` passa di qui: il testo resta
+                # quello di prima, ma il turno si dichiara troncato.
+                self.last_truncated = response.stop_reason in ANTHROPIC_TRUNCATING
                 logger.warning("Unexpected stop_reason: %s", response.stop_reason)
                 text_blocks = [b.text for b in response.content if b.type == "text"]
                 return "\n".join(text_blocks) if text_blocks else f"Stopped: {response.stop_reason}"

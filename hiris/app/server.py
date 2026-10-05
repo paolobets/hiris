@@ -2022,10 +2022,11 @@ async def analyst_round(app) -> dict | None:
         if question is None:
             return None
         async with misura_turno(app.get("usage"), runner,
-                                specie="analista", canale="catena"):
+                                specie="analista", canale="catena") as turn:
             answer = await runner.chat(user_message=question,
                                        system_prompt=analyst_turn.SYSTEM)
-        esito = analyst_turn.apply_analysis(series, answer)
+        esito = analyst_turn.apply_analysis(series, answer,
+                                            truncated=turn.truncated)
         _write_analysis(store, today, esito)
         return esito
     except Exception as error:
@@ -2123,10 +2124,11 @@ async def actuator_round(app) -> dict | None:
             return None
 
         async with misura_turno(app.get("usage"), runner,
-                                specie="attuatore", canale="catena"):
+                                specie="attuatore", canale="catena") as turn:
             answer = await runner.chat(user_message=question,
                                        system_prompt=actuator_turn.SYSTEM)
-        esito = actuator_turn.apply_actuation(pending, answer)
+        esito = actuator_turn.apply_actuation(pending, answer,
+                                              truncated=turn.truncated)
         await _settle_actuation(app, store, today, stamp, esito, pending,
                                 repaired=repaired)
         return esito

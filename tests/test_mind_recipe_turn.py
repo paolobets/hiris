@@ -144,34 +144,12 @@ def test_un_dispositivo_SENZA_entita_non_si_chiede():
 
 
 # -- la risposta ------------------------------------------------------------
-
-def test_una_ricetta_valida_si_legge():
-    dati, motivo = rt.read_recipe(json.dumps(RICETTA_BUONA))
-
-    assert motivo is None
-    assert [p["name"] for p in dati["steps"]] == ["prodotta", "consumata",
-                                                  "quota_coperta"]
-
-
-def test_la_staccionata_del_modello_si_tollera():
-    """I modelli incorniciano il JSON anche quando si chiede di non farlo:
-    buttare il giro per un dettaglio di forma costerebbe un giro intero. E' la
-    stessa tolleranza gia' presa da `observer.read_decisions`."""
-    dati, motivo = rt.read_recipe(
-        "Ecco la ricetta:\n```json\n" + json.dumps(RICETTA_BUONA) + "\n```\n")
-
-    assert motivo is None
-    assert dati["why"]
-
-
-def test_una_risposta_ILLEGGIBILE_non_e_una_ricetta_vuota():
-    """**Un guasto e una ricetta vuota sono due cose diverse.** Appiattire il
-    primo sulla seconda scriverebbe «per questo dispositivo non c'e' niente da
-    calcolare» su un dispositivo che nessuno ha capito."""
-    dati, motivo = rt.read_recipe("mi dispiace, non saprei")
-
-    assert dati is None
-    assert motivo
+#
+# Le tre prove del lettore (`read_recipe`: la ricetta valida, la staccionata,
+# l'illeggibile che non e' una ricetta vuota) sono uscite col lettore, il
+# 05/10/2026 (Tappa 6, Task 3): il JSON lo cava `steering.read_json`, e le
+# stesse tre proprieta' le difendono `tests/test_lettore_unico.py` (ogni
+# mestiere, ogni forma) e `tests/test_turno_troncato.py` (il lettore).
 
 
 # -- si scrive nel sapere, e si rifiuta senza correggere --------------------

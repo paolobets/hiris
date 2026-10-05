@@ -20,8 +20,9 @@ il potere che al modello non e' stato dato:
 """
 from __future__ import annotations
 
-import json
 import logging
+
+from ..steering import read_json
 
 logger = logging.getLogger(__name__)
 
@@ -98,29 +99,6 @@ Un elenco vuoto va benissimo: vuol dire che hai guardato e non c'era niente da
 fare."""
 
 
-def read_actuation(answer: str) -> tuple[dict | None, str | None]:
-    """La risposta letta come dato: `(dati, ragione)`.
-
-    Stessa forma di `analyst_turn.read_analysis`: o esce un dizionario, o esce
-    il perche' non si e' potuto leggere -- mai un'eccezione, perche' un guasto
-    di forma non deve fermare il giro.
-    """
-    text = str(answer or "").strip()
-    if not text:
-        return None, "il modello non ha risposto"
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:]
-    try:
-        data = json.loads(text)
-    except (TypeError, ValueError) as error:
-        return None, f"la risposta non e' JSON leggibile: {error}"
-    if not isinstance(data, dict):
-        return None, "la risposta non e' un oggetto con gli esiti"
-    return data, None
-
-
 def build_question(observations, repaired) -> str | None:
     """La domanda intera, o `None` se non c'e' niente da chiedere.
 
@@ -156,7 +134,7 @@ def build_question(observations, repaired) -> str | None:
     return "\n".join(lines)
 
 
-def apply_actuation(observations, answer: str) -> dict:
+def apply_actuation(observations, answer: str, *, truncated: bool = False) -> dict:
     """Cosa si fa della risposta: si valida, e si rifiuta se e' storta.
 
     Torna `{"attuazione": dict | None, "problemi": [...], "risposta": bool}`.
@@ -165,7 +143,10 @@ def apply_actuation(observations, answer: str) -> dict:
     problemi si dicono insieme**: dirne uno per giro costringerebbe a
     rieseguire il turno per scoprire il successivo, e un turno costa.
     """
-    data, reason = read_actuation(answer)
+    # Il JSON lo cava il lettore unico (`steering.read_json`, D-11), come per
+    # l'analista: un turno troncato non si legge (D2).
+    data, reason = read_json(answer, shape=dict, what="un oggetto con gli esiti",
+                             truncated=truncated)
     if data is None:
         answered = bool(str(answer or "").strip())
         if not answered:
