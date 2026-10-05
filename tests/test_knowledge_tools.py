@@ -1734,18 +1734,31 @@ async def test_calendar_default_window_is_thirty_days_ahead_zero_back():
 
 
 @pytest.mark.asyncio
-async def test_calendar_window_is_capped_at_a_year_each_direction():
-    """Un tetto sensato su entrambe le direzioni: oltre un anno la domanda
-    non e' piu' sui prossimi appuntamenti ma una scansione del calendario.
+async def test_calendar_beyond_a_year_is_refused_not_cut():
+    """B9 (approvata da Paolo il 05/10/2026; B-33): oltre un anno la domanda
+    non e' piu' sui prossimi appuntamenti ma una scansione del calendario, e
+    si RIFIUTA, come fanno gli altri strumenti sulle durate (`history` oltre
+    i 90 giorni). Fino a quel giorno `_clamp_days` tagliava a 365 in
+    silenzio: il modello credeva di aver letto la finestra che aveva chiesto.
 
-    **Mutazione che uccide l'assert**: togliere il `min(...)` in
-    `_clamp_days` (tornare direttamente `max(0.0, number)`, senza tetto).
-    Verificato eseguendo: con quella sostituzione `delta` diventa
-    `timedelta(days=20000)` (10000+10000, il valore chiesto senza taglio),
-    e `assert delta == timedelta(days=730)` arrossisce."""
+    Prima di chiedere a Home Assistant, e con tutti e due gli argomenti
+    detti insieme. Mutazione eseguita: tornato al taglio in silenzio ->
+    rossa (nessun `errore`, e la finestra chiesta e' di 730 giorni)."""
     house = _calendar_house([_PERSONALE], {"calendar.personale": []})
     d = ToolDispatcher(None, None, ha=house)
-    await d.dispatch("calendar", {"giorni_avanti": 10000, "giorni_indietro": 10000})
+    esito = await d.dispatch("calendar", {"giorni_avanti": 10000, "giorni_indietro": 400})
+    assert "giorni_avanti" in esito["errore"] and "giorni_indietro" in esito["errore"]
+    assert "365" in esito["errore"]
+    assert house.calls == []
+
+
+@pytest.mark.asyncio
+async def test_calendar_a_year_each_direction_is_still_allowed():
+    """Il confine e' compreso: 365 per parte si legge, e la finestra e' di
+    730 giorni."""
+    house = _calendar_house([_PERSONALE], {"calendar.personale": []})
+    d = ToolDispatcher(None, None, ha=house)
+    await d.dispatch("calendar", {"giorni_avanti": 365, "giorni_indietro": 365})
     _entity_id, start, end = _asked_window(house)
     delta = datetime.fromisoformat(end) - datetime.fromisoformat(start)
     assert delta == timedelta(days=730)

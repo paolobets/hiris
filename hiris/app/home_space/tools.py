@@ -1048,6 +1048,18 @@ def _clamp_days(raw, *, default: float, ceiling: float) -> float:
     return min(float(ceiling), max(0.0, number))
 
 
+def _days_beyond(raw, ceiling: float) -> bool:
+    """Un numero di giorni chiesto oltre il tetto. Cio' che non e' un numero
+    lo ferma gia' `dispatch` contro il `type` dello schema."""
+    return (isinstance(raw, int | float) and not isinstance(raw, bool)
+            and not math.isnan(raw) and raw > ceiling)
+
+
+def _days_said(raw) -> str:
+    """Il numero chiesto, come lo si ridice: `400`, non `400.0`."""
+    return str(int(raw)) if float(raw).is_integer() else str(raw)
+
+
 CALENDAR_TOOL_DEF = {
     "name": "calendar",
     "description": (
@@ -2610,6 +2622,17 @@ class ToolDispatcher:
         """
         import time as _time
 
+        # Oltre il tetto si RIFIUTA, non si taglia (B9, approvata il
+        # 05/10/2026; B-33): come `history` oltre i 90 giorni. Tagliato in
+        # silenzio, il modello credeva di aver letto la finestra chiesta.
+        too_far = [f"{key} arriva al massimo a {ceiling} giorni (chiesti {_days_said(value)})"
+                   for key, ceiling in (("giorni_avanti", MAX_CALENDAR_DAYS_AHEAD),
+                                        ("giorni_indietro", MAX_CALENDAR_DAYS_BACK))
+                   for value in [arguments.get(key)]
+                   if _days_beyond(value, ceiling)]
+        if too_far:
+            return {"errore": "«calendar»: " + "; ".join(too_far)
+                    + ". Restringi la finestra."}
         ahead = _clamp_days(arguments.get("giorni_avanti"),
                             default=DEFAULT_CALENDAR_DAYS_AHEAD,
                             ceiling=MAX_CALENDAR_DAYS_AHEAD)
