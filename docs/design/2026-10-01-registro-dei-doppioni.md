@@ -150,7 +150,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-08 | Raccogliere la risposta del ponte: quattro `_collect_*` e quattro «già letto» | D | CC |  | cop-1 (incompleta) | reg · cop-1 · cop-7 · cop-8 |
 | D-09 | Predefiniti del ponte e di Ollama riletti in molti punti | E | PS |  | cop-1 (incompleta); cop-7 (conteggio); cop-8 (incompleta) | reg · cop-1 · cop-2 · cop-7 · cop-8 · cop-9 |
 | D-10 | Il ciclo degli strumenti: quattro cicli, tre unità di tetto | D | CC |  | cop-7 (righe) | reg · cop-7 |
-| D-11 | Leggere un JSON dalla risposta: cinque lettori, tre strategie, una regex duplicata | D | CC |  | cop-6 (righe) | reg · cop-6 · cop-7 |
 | D-12 | Validare, rifiutare, registrare l'esito, frenare: quattro `apply_*`, quattro registri, tre freni | D | CC | analista 01/10: 8 turni orari, 7 troncati a 4096 token |  | reg |
 | D-13 | Tetti e limiti: `max_tokens` in cinque posti, nessuna temperatura | D | CC |  | cop-7 (incompleta) | reg · cop-6 · cop-7 · cop-9 |
 | D-14 | Misurare un turno: due scrittori di turni, tre di consumo, vocabolario dei nomi | D | PS |  | cop-7 (righe, incompleta); cop-8 (conteggio) | reg · cop-7 · cop-8 |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | Tappa 3 (da rilasciare) | 43d0ecc | VOCABULARY[ancore] derivato da resolver.STORE_KEY_PER_TYPE; name_matches e le sue parole spostati in home_space/reference.py. Tappa 3, Task 9 |
 | M-82 | Il ritorno di `behavior.reread()` (conteggi, `senza_corpo`) scartato in produzione: due copie di B-39 senza lettori | Tappa 3 (da rilasciare) | c80cba1 | behavior.reread non restituisce piu' niente; le prove leggono l'anagrafe e il log. Tappa 3, Task 7 (trovato 5) |
 | M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | Tappa 3 (da rilasciare) | c80cba1 | Imported.ha_version uscito; le fonti si compongono da ha_vocabulary.VOCABULARY_HA_VERSION (B-44). Tappa 3, Task 7 (trovato 6) |
+| D-11 | Leggere un JSON dalla risposta: cinque lettori, tre strategie, una regex duplicata | Tappa 6, Task 3 | 21f6e0d | steering.read_json, il lettore unico: escono read_recipe, read_analysis, read_actuation e la lettura di _read_proposal; read_decisions tiene solo la forma. La regex della staccionata vive una volta |
