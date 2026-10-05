@@ -422,8 +422,9 @@ async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         assert poll.status == 200
         body = await poll.json()
-        assert body["status"] == "error"
-        assert body.get("message")
+        # A6 (approvata il 05/10/2026): resta 200 -- il poll ha letto il job,
+        # e il job e' fallito -- ma il testo sta in `error`, la forma comune.
+        assert body == {"status": "error", "error": "La risposta non è arrivata in tempo. Riprova."}
 
 
 @pytest.mark.asyncio
@@ -447,7 +448,7 @@ async def test_poll_route_failed_job_returns_error_not_pending(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         assert poll.status == 200
         body = await poll.json()
-        assert body["status"] == "error"
+        assert body == {"status": "error", "error": "La risposta non è arrivata in tempo. Riprova."}
 
 
 @pytest.mark.asyncio
@@ -470,7 +471,7 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         assert poll.status == 200
         body = await poll.json()
-        assert body["status"] == "error"
+        assert body == {"status": "error", "error": "La risposta non è arrivata in tempo. Riprova."}
 
 
 @pytest.mark.asyncio
@@ -1457,7 +1458,8 @@ async def test_senza_nessun_provider_in_catena_il_ripiego_lo_dice_invece_di_tace
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body["status"] == "error"
-    assert "nessun altro provider in catena" in body["message"]
+    assert "nessun altro provider in catena" in body["error"]
+    assert "message" not in body
     # E il job e' chiuso: lasciarlo in 'ripiego' farebbe ritentare ogni poll.
     assert q.get(jid)["status"] == "decided"
 

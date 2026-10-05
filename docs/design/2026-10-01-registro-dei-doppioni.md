@@ -101,7 +101,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-45 | Tre forme dell'assenza nella stessa voce dello specchio (`""`, `None`, chiave mancante) | D | CC |  |  | cop-5 C2 |
 | C-48 | I corpi JSON dell'archivio dell'osservatore: tre letture con la guardia, quattro senza | D | CC |  |  | cop-6 N-10 · Tappa 8 (D10 della Tappa 4) |
 | C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | NV | DP |  |  | cop-6 N-11 · Tappa 5 (D10 della Tappa 4) |
-| C-50 | La chat risponde l'errore in quattro forme, due lingue, due volte con stato 200 | D | CC |  |  | cop-8 C3 |
+| C-50 | La chat risponde l'errore in quattro forme, due lingue, due volte con stato 200 | D | CC |  |  | cop-8 C3 · A6 della Tappa 4 (05/10/2026): il poll di un turno fallito resta 200 e porta `error` al posto di `message`; restano il 413 e i messaggi inglesi (A7, A11: cambiano cio' che si legge, con `ux-ui-specialist`) |
 | C-51 | Cancellare un ricordo che non esiste è un successo (204); correggerlo è un 404 | D | CC |  |  | cop-8 C4 |
 | C-54 | Lo stato grezzo arriva al modello: `READABLE_STATE` solo per le costruzioni, `cancel` scrive `in_corso` | D | PS |  |  | cop-9 N-C-3 · Tappa 8 (D10 della Tappa 4) |
 | C-56 | Nota «il Piano non ha risposto» due volte; nome del provider in nove stringhe | D | CC |  |  | cop-9 N-C-5 · Tappa 7, la metà del nome del provider; la nota «non ha risposto» al Task 2 (D10 della Tappa 4) |

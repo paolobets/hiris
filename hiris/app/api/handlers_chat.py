@@ -36,11 +36,16 @@ from ..model_resolution import downgrade_note
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
 from ..reasoning.queue import PRIORITY_CHAT
 from ..steering import bridge_model, declare_downgrade, misura_turno, who_answers
-from .boundary import error_response
+from .boundary import error_body, error_response
 from .handlers_home_space import compose_briefing, house_of
 from .soffitto import ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
+
+# Il testo del poll per un turno che non ha portato una risposta (scaduto,
+# fallito, deciso senza testo): uno solo, perche' a chi aspetta dice la stessa
+# cosa. Viaggia in `error` a stato 200 (A6, 05/10/2026).
+_REPLY_NOT_ARRIVED = "La risposta non è arrivata in tempo. Riprova."
 
 # Trim history by estimated token count (len/4) rather than message count.
 # Always keep an even number of messages (user+assistant pairs) to preserve
@@ -708,11 +713,12 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # Il job si chiude comunque, altrimenti resterebbe in 'ripiego' fino
         # allo sweep e ogni poll ritenterebbe.
         queue.resolve_downgrade(job_id, {"reply": ""}, time.time())
-        return web.json_response({
-            "status": "error",
-            "message": ("Il Piano Claude Max non ha risposto in tempo, e non c’è "
-                        "nessun altro provider in catena a cui chiedere."),
-        })
+        # 200 e non un 5xx: il poll ha letto il job, e il job e' finito male
+        # -- e' lo stato vero della risorsa (A6, 05/10/2026). Il testo sta in
+        # `error`, la forma comune del confine.
+        return web.json_response(error_body(
+            "Il Piano Claude Max non ha risposto in tempo, e non c’è "
+            "nessun altro provider in catena a cui chiedere.", status="error"))
 
     logger.warning(
         "Il Piano Claude Max non ha risposto entro la scadenza: il turno %s "
@@ -856,18 +862,12 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         # Never spin forever: the sweep (server.py's `_reasoning_sweep`)
         # leaves jobs in this state without routing them anywhere else --
         # this is the only place they get surfaced to the user.
-        return web.json_response({
-            "status": "error",
-            "message": "La risposta non è arrivata in tempo. Riprova.",
-        })
+        return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
     if status == "decided" and not reply:
         # Task 1's chat_reply_skipped outcome: a decision was recorded but it
         # carries no usable reply. Same terminal treatment as expired/failed
         # -- pending-forever would strand the UI.
-        return web.json_response({
-            "status": "error",
-            "message": "La risposta non è arrivata in tempo. Riprova.",
-        })
+        return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
     if status in ("pending", "claimed") and job.get("deadline_ts", 0) <= time.time():
         # Il piano non ha risposto in tempo. Fino alla 2.4.1 finiva qui, con
         # «La risposta non è arrivata in tempo. Riprova.» -- il messaggio era

@@ -78,7 +78,9 @@
             return;
           }
           if (data.status === 'error') {
-            window.HirisChatMessages.updateBubble(placeholderRow, data.message || 'Errore nella risposta.');
+            /* A6 (05/10/2026): il testo arriva in `error`, la forma comune;
+               lo stato resta 200, perche' il job e' stato letto. */
+            window.HirisChatMessages.updateBubble(placeholderRow, data.error || 'Errore nella risposta.');
             return;
           }
           /* status === 'pending' (or unexpected 404/503 body without a status)
