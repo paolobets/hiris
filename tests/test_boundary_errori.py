@@ -156,6 +156,7 @@ def _boundary_modules() -> dict[str, str]:
     import importlib
     import inspect
     import pkgutil
+    import textwrap
 
     import hiris.app.api as api_package
 
@@ -167,7 +168,11 @@ def _boundary_modules() -> dict[str, str]:
     for handler in [r.handler for r in app.router.routes()] + list(app.middlewares):
         module = getattr(handler, "__module__", "") or ""
         if module.startswith("hiris.app") and not module.startswith(package + "."):
-            sources[f"{module}.{handler.__name__}"] = inspect.getsource(handler)
+            # `dedent`: un gestore nato da una fabbrica (i due gusci HTML,
+            # `server._serve_shell`, C-29) e' una funzione annidata, e il
+            # suo sorgente arriva indentato.
+            sources[f"{module}.{handler.__name__}"] = textwrap.dedent(
+                inspect.getsource(handler))
     sources.pop(f"{package}.boundary", None)
     return sources
 
