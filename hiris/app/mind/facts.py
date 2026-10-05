@@ -49,6 +49,7 @@ import json
 
 from ..home_space.ha_vocabulary import domain_of
 from ..home_space.historian import day_boundaries
+from ..home_space.house import ENDED_SOURCE_STATES, House
 from ..home_space.type_judgments import TypeJudgments
 from ..home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
@@ -83,6 +84,19 @@ GENRES = CHRONICLE_GENRES
 #: `api/handlers_mind.py::_with_integration` e in
 #: `mind/watcher.py::rebuild_conditions`.
 NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
+
+#: **La regola con cui questo modulo costruisce la cronaca**, accanto
+#: all'impronta dei giudizi in `giudizio` (`chronicle_mark`). L'impronta dice
+#: con quali giudizi e' nata una cronaca; questa, con quale codice. Si alza
+#: quando cambia cio' che `build_episodes` scrive a parita' di grezzo e di
+#: giudizi, e il recupero (`server.py::backfill_one_report`) rifa' allora le
+#: cronache scritte prima, finche' il loro grezzo c'e' -- lo stesso meccanismo
+#: dell'impronta, nessuno nuovo.
+#:
+#: - assente: fino al 05/10/2026;
+#: - 2: una fonte che Home Assistant non nomina piu' chiude il suo episodio
+#:   (Task 1.4 degli attori, Passo 1).
+CHRONICLE_RULE = 2
 
 # **Il riposo e' del SOGGETTO, non l'unione di tutti i tipi** (17/09/2026, spec
 # 2026-09-16 §5). Fino ad allora `_is_on` riceveva lo stato nudo e lo
@@ -166,7 +180,8 @@ def _opening_attributes(row: dict):
 
 
 def build_episodes(*, store, day: str, timezone: str | None,
-                   judgments: TypeJudgments = REPO_JUDGMENTS) -> list[dict]:
+                   judgments: TypeJudgments = REPO_JUDGMENTS,
+                   house: House | None = None) -> list[dict]:
     """Gli episodi di un giorno, nella forma che `report.build_report` riceve.
 
     Ogni episodio e' `{"genere", "protagonista", "inizio", "fine",
@@ -395,6 +410,11 @@ def build_episodes(*, store, day: str, timezone: str | None,
         # vera), non un campo vuoto.
         if o.get("comparso_ts") is not None:
             base_body["comparso_ts"] = o["comparso_ts"]
+        # Perche' finisce, quando non l'ha chiuso uno stato visto: la fonte
+        # di adesso, con la sua causa (vedi la chiusura sotto il ciclo). Tace
+        # per ogni episodio finito normalmente.
+        if o.get("chiusa_dalla_fonte"):
+            base_body["chiusa_dalla_fonte"] = o["chiusa_dalla_fonte"]
         episodes.append({"genere": o["genere"], "protagonista": subject,
                         "inizio": o["inizio"], "fine": when,
                         "corpo_base": base_body})
@@ -492,6 +512,51 @@ def build_episodes(*, store, day: str, timezone: str | None,
         # esiste piu' (spec 2026-09-16 §5, D2): l'istantanea ammette solo i
         # quattro generi trattati qui sopra, e nessuna riga arriva fin qui.
 
+    # **Una fonte che Home Assistant non nomina piu' chiude il suo episodio**
+    # (Task 1.4 degli attori, Passo 1, 05/10/2026). Misurato quel giorno sulla
+    # casa vera: 60 delle 85 voci sbagliate fra il 30/09 e il 04/10 erano
+    # episodi di 12 entita' spente dal proprietario con la loro istanza,
+    # rimasti «in corso» per giorni. Un'entita' spenta o rimossa non manda un
+    # ultimo cambio (`watcher.watch_reading` scarta `new_state` a `None`), e
+    # nessuno chiedeva alla fonte se fosse ancora viva.
+    #
+    # **Si chiede a `House.source`, con la fonte di ADESSO**, non a una soglia
+    # nostra e non al grezzo: e' la casa di chi costruisce la cronaca. Solo gli
+    # stati in cui Home Assistant non ne parla piu' (`ENDED_SOURCE_STATES`:
+    # spenta o sparita); `non_disponibile` e `integrazione_ferma` possono
+    # tornare da sole, e restano al terzo passo, quello delle assenze.
+    #
+    # **Il quando e' la sua ultima riga nel grezzo** (`store.last_seen`, di
+    # qualunque stato e giorno): l'ultima volta che Home Assistant ne ha
+    # parlato -- spesso l'`unavailable` di un riavvio, che il salto qui sopra
+    # ignora. Se e' DOPO la fine del giorno, a fine giornata la fonte parlava
+    # ancora e l'episodio resta aperto come sempre; se e' PRIMA dell'inizio
+    # (un ereditato), l'episodio e' finito prima di questo giorno e non ci
+    # entra. Se l'ultima riga e' quella che l'ha aperto, la voce dura zero:
+    # di dopo non si sa niente, e `chiusa_dalla_fonte` lo dice.
+    #
+    # Senza la casa (`house=None`: le prove, o un archivio dell'anagrafe non
+    # collegato) niente si chiude: non si dice finita una fonte che non si e'
+    # potuta guardare.
+    if house is not None:
+        ended = {}
+        for subject in open_episodes:
+            source = house.source(subject)
+            if source is not None and source["stato"] in ENDED_SOURCE_STATES:
+                ended[subject] = source
+        last_seen = store.last_seen(ended) if ended else {}
+        for subject, source in ended.items():
+            when = last_seen.get(subject)
+            if when is None or when >= to_ts:
+                continue
+            if when < from_ts:
+                open_episodes.pop(subject)
+                continue
+            open_episodes[subject]["chiusa_dalla_fonte"] = {
+                "stato": source["stato"], "causa": source["causa"],
+                "spenta_da": source["spenta_da"]}
+            close(subject, when)
+
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».
     for subject in list(open_episodes):
@@ -525,7 +590,8 @@ def build_episodes(*, store, day: str, timezone: str | None,
 def aggregate_day(*, store, day: str, timezone: str | None,
                   recipes=None, series=None, names=None,
                   silent=None,
-                  judgments: TypeJudgments = REPO_JUDGMENTS) -> int:
+                  judgments: TypeJudgments = REPO_JUDGMENTS,
+                  house: House | None = None) -> int:
     """Scrive il resoconto di un giorno. Torna quante voci di cronaca porta.
 
     **Il resoconto e' la cronaca piu' le misure** (spec §9): la cronaca sono gli
@@ -560,7 +626,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     `mind/seed.balance_recipe`, e' uscito il 01/10/2026: le ricette che aveva
     seminato restano).
     """
-    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments)
+    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments,
+                              house=house)
     _, to_ts = day_boundaries(day, timezone)
     # **Si scrive SEMPRE, anche senza ricette.** Fino al 15/09/2026 un
     # chiamante che non portava le ricette non faceva scrivere niente, e la
@@ -578,7 +645,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         recipes=recipes or {}, names=names or {},
         silent=silent,
         objective=store.objective_at(to_ts),
-        judgment={"impronta": judgments.chronicle_fingerprint()}))
+        judgment=chronicle_mark(judgments)))
     # **Torna quante voci di cronaca ha scritto.** Prima tornava quanti
     # oggetti aveva salvato: e' lo stesso numero detto nella lingua che resta.
     return len(episodes)
@@ -591,13 +658,27 @@ def chronicle_is_stale(report: dict, judgments: TypeJudgments) -> bool:
     **L'assenza conta come «un altro»**: i resoconti scritti prima del
     17/09/2026 non portano impronta, e sono proprio quelli che il primo avvio
     deve rifare dentro il grezzo.
+
+    **Anche la regola del codice** (`CHRONICLE_RULE`, dal 05/10/2026): una
+    cronaca con l'impronta giusta ma scritta con la regola di prima -- o senza
+    regola, cioe' prima di quel giorno -- e' vecchia anche lei.
     """
-    fingerprint = ((report or {}).get("giudizio") or {}).get("impronta")
-    return fingerprint != judgments.chronicle_fingerprint()
+    written = (report or {}).get("giudizio") or {}
+    current = chronicle_mark(judgments)
+    return any(written.get(key) != value for key, value in current.items())
+
+
+def chronicle_mark(judgments: TypeJudgments) -> dict:
+    """Con che cosa e' nata una cronaca: l'impronta dei giudizi e la regola
+    del codice (`CHRONICLE_RULE`). Una forma sola per chi la scrive
+    (`aggregate_day`, `rebuild_chronicle`) e chi la confronta
+    (`chronicle_is_stale`)."""
+    return {"impronta": judgments.chronicle_fingerprint(), "regola": CHRONICLE_RULE}
 
 
 def rebuild_chronicle(*, store, day: str, timezone: str | None,
-                      judgments: TypeJudgments = REPO_JUDGMENTS) -> bool:
+                      judgments: TypeJudgments = REPO_JUDGMENTS,
+                      house: House | None = None) -> bool:
     """Rifa' **solo** la cronaca di un giorno col giudizio di adesso. Torna
     `True` se ha riscritto, `False` se quel giorno non ha un resoconto.
 
@@ -651,9 +732,10 @@ def rebuild_chronicle(*, store, day: str, timezone: str | None,
     report = store.report(day)
     if report is None:
         return False
-    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments)
+    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments,
+                              house=house)
     rebuilt = build_report(day=day, episodes=episodes, series={}, recipes={}, names={},
-                           judgment={"impronta": judgments.chronicle_fingerprint()})
+                           judgment=chronicle_mark(judgments))
     chronicle = list(rebuilt["cronaca"])
     from_ts, _ = day_boundaries(day, timezone)
     rebuilt_ids = {(v.get("chi"), v.get("quando_ts")) for v in chronicle}

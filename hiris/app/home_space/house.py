@@ -56,6 +56,22 @@ from .type_vocabulary import STATE_UNAVAILABLE, STATE_UNKNOWN
 _EXCLUDED_KEY = {"disabilitata": "disabilitate", "nascosta": "nascoste",
                  "servizio": "servizio"}
 
+#: Tre dei sette stati di `House.source` (D6), con un nome: quelli in cui
+#: Home Assistant **non parla piu'** dell'entita' -- spenta (dal proprietario
+#: o da Home Assistant) o sparita dagli stati. Le altre quattro parlano
+#: ancora, o possono tornare a farlo da sole: `viva`, `senza_valore`,
+#: `non_disponibile` (un riavvio la fa passare di li') e `integrazione_ferma`
+#: (un'istanza che ritenta).
+SOURCE_SWITCHED_OFF_BY_OWNER = "spenta_dal_proprietario"
+SOURCE_SWITCHED_OFF_BY_HA = "spenta_da_home_assistant"
+SOURCE_GONE = "sparita"
+#: Chi chiede «questa fonte e' finita?» chiede questo insieme (la cronaca,
+#: `mind/facts.build_episodes`, Task 1.4 degli attori, 05/10/2026): un
+#: episodio di una fonte cosi' non restera' aperto aspettando una riga che
+#: Home Assistant non scrivera' mai.
+ENDED_SOURCE_STATES = frozenset({SOURCE_SWITCHED_OFF_BY_OWNER, SOURCE_SWITCHED_OFF_BY_HA,
+                                 SOURCE_GONE})
+
 
 class House:
     """L'anagrafe, lo specchio e i registri caduti di UN momento, con la
@@ -374,14 +390,14 @@ class House:
         if visibility is not None and visibility[0] == "disabilitata":
             cause = visibility[1]
             switched_off_by = self._switched_off_by(entry, cause)
-            state = ("spenta_dal_proprietario" if switched_off_by == ENTITY_DISABLED_BY_USER
-                     else "spenta_da_home_assistant")
+            state = (SOURCE_SWITCHED_OFF_BY_OWNER if switched_off_by == ENTITY_DISABLED_BY_USER
+                     else SOURCE_SWITCHED_OFF_BY_HA)
         elif instance is not None and instance["stato"] != CONFIG_ENTRY_LOADED:
             state, cause = "integrazione_ferma", instance["stato"]
         elif readable:
             value = self.mirror.state.get(entity_id)
             if not in_states:
-                state = "sparita"
+                state = SOURCE_GONE
             elif value == STATE_UNAVAILABLE:
                 restored = disclosable_attributes(
                     self.mirror.attributes.get(entity_id)).get(RESTORED_ATTRIBUTE)

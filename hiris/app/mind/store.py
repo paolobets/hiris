@@ -977,6 +977,30 @@ class ObservationsStore:
             rows = self._conn.execute(sql, (float(ts), source)).fetchall()
         return [_reading_row(r) for r in rows]
 
+    def last_seen(self, subjects) -> dict[str, float]:
+        """L'istante dell'ultima riga del grezzo di ciascun soggetto, **di
+        qualunque stato e di qualunque giorno**: l'ultima volta che Home
+        Assistant ce ne ha parlato. Un soggetto senza righe non c'e'.
+
+        Serve alla cronaca per chiudere l'episodio di una fonte che Home
+        Assistant non nomina piu' (`facts.build_episodes`, Task 1.4 degli
+        attori): un'entita' disabilitata o rimossa non manda un ultimo cambio
+        (`watcher.watch_reading` scarta `new_state` a `None`), e la sua ultima
+        riga -- spesso l'`unavailable` di un riavvio -- e' l'ultima cosa che
+        se ne sa. Solo `fonte = 'entita'`: una condizione di sistema non e' una
+        fonte della casa.
+        """
+        wanted = sorted({str(s) for s in subjects or ()})
+        if not wanted:
+            return {}
+        marks = ",".join("?" * len(wanted))
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT soggetto, MAX(quando_ts) AS ultimo FROM cambi "
+                f"WHERE fonte = 'entita' AND soggetto IN ({marks}) GROUP BY soggetto",
+                tuple(wanted)).fetchall()
+        return {r["soggetto"]: float(r["ultimo"]) for r in rows}
+
     # -- Lo scope ----------------------------------------------------------
 
     def scope(self) -> dict[str, dict]:

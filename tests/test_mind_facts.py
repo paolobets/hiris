@@ -14,7 +14,7 @@ import pytest
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.historian import day_boundaries
 from hiris.app.home_space.type_judgments import TypeJudgments
-from hiris.app.mind.facts import GENRES, aggregate_day, genre_for
+from hiris.app.mind.facts import CHRONICLE_RULE, GENRES, aggregate_day, genre_for
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 
@@ -1291,7 +1291,8 @@ def test_il_resoconto_porta_l_impronta_dei_giudizi_con_cui_e_nata_la_cronaca(arc
     giudizi = _giudizi(("tipo", "binary_sensor.occupancy", "genere", "presenza"))
     assert giudizi.chronicle_fingerprint() != tv.REPO_JUDGMENTS.chronicle_fingerprint()
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi)
-    assert archivio.report(G)["giudizio"] == {"impronta": giudizi.chronicle_fingerprint()}
+    assert archivio.report(G)["giudizio"] == {"impronta": giudizi.chronicle_fingerprint(),
+                                              "regola": CHRONICLE_RULE}
 
 
 def test_rifare_la_cronaca_NON_tocca_misure_forme_obiettivo(archivio):
@@ -1316,7 +1317,8 @@ def test_rifare_la_cronaca_NON_tocca_misure_forme_obiettivo(archivio):
     for chiave in ("giorno", "obiettivo", "misure", "forme"):
         assert json.dumps(dopo[chiave], sort_keys=True) == json.dumps(prima[chiave], sort_keys=True)
     assert len(dopo["cronaca"]) == 1
-    assert dopo["giudizio"] == {"impronta": giudizi.chronicle_fingerprint()}
+    assert dopo["giudizio"] == {"impronta": giudizi.chronicle_fingerprint(),
+                                "regola": CHRONICLE_RULE}
 
 
 def test_rifare_la_cronaca_di_un_giorno_SENZA_resoconto_non_scrive_niente(archivio):
@@ -1347,7 +1349,8 @@ def test_una_cronaca_senza_impronta_o_con_un_altra_e_VECCHIA():
     assert chronicle_is_stale({"giudizio": {"impronta": "altra"}}, j)
     assert chronicle_is_stale(
         {"giudizio": {"impronta": tv.REPO_JUDGMENTS.chronicle_fingerprint()}}, j)
-    assert not chronicle_is_stale({"giudizio": {"impronta": j.chronicle_fingerprint()}}, j)
+    assert not chronicle_is_stale({"giudizio": {"impronta": j.chronicle_fingerprint(),
+                                                "regola": CHRONICLE_RULE}}, j)
 
 
 def _giorno_ereditato(archivio):
@@ -1418,3 +1421,195 @@ def test_rifare_la_cronaca_TOGLIE_l_ereditato_che_il_grezzo_ancora_smentisce(arc
     giudizi = _giudizi(("entita", "climate.camera", "riposo", '["off", "heat"]'))
     assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi)
     assert [v["chi"] for v in archivio.report(G)["cronaca"]] == ["switch.presa", "light.b"]
+
+
+# ── La fonte finita (Task 1.4 degli attori, Passo 1, 05/10/2026) ────────────
+#
+# Misurato il 05/10/2026 sulla casa vera: delle 85 voci di cronaca sbagliate
+# fra il 30/09 e il 04/10, 60 erano episodi «aperti» da giorni di fonti che
+# Home Assistant non nomina piu' (12 soggetti, tutti spenti dal proprietario
+# con la loro istanza). Un'entita' disabilitata o rimossa non manda un ultimo
+# cambio -- `watcher.watch_reading` scarta `new_state` a `None` -- e l'ultima
+# riga del grezzo e' l'`unavailable` del riavvio, che la cronaca salta.
+# Nessuno chiedeva alla fonte se fosse ancora viva: ora si chiede a
+# `House.source`, la fonte della Tappa 3.
+#
+# Le righe hanno la forma che `watcher.watch_reading` scrive: `da`/`a` dello
+# stato, `fonte = 'entita'`. Le case sono scritte nella forma delle righe di
+# Home Assistant (`config/entity_registry/list`, `config_entries/get`, gli
+# stati) e passano dal lettore vero, come in `tests/test_fonte_della_casa.py`.
+#
+# Mutazioni ESEGUITE (05/10/2026), ognuna ripristinata con sha256 identico e
+# `git status` riletto, tutte rosse per la ragione giusta:
+# - la chiusura per la fonte tolta (`if house is not None` -> `if False`) --
+#   rosse la spenta, la sparita ereditata e la cronaca rifatta;
+# - solo `sparita` chiude (non le spente) -- rosse la spenta e la rifatta;
+# - l'ultima riga DOPO il giorno non lascia piu' aperto -- rossa la «dopo»;
+# - l'ereditato finito prima del giorno chiuso invece che tolto -- rossa la
+#   sparita ereditata;
+# - `chronicle_is_stale` confronta la sola impronta -- rossa la regola;
+# - tolto `house=` dalla chiamata di `rebuild_chronicle` in `server.py` --
+#   rossa la prova delle chiamate, con file e riga.
+
+
+def _house(*, entities=(), states=(), entries=()):
+    """Una casa: registro delle entita', stati vivi e istanze, nella forma di
+    Home Assistant, montata come la monta il prodotto."""
+    from hiris.app.home_space.house import House
+    from hiris.app.home_space.reader import build_home_space
+    from hiris.app.home_space.topology import live_mirror
+    from hiris.app.proxy.entity_cache import _to_minimal
+
+    entita = [{"entity_id": eid, "platform": "demo", "disabled_by": None,
+               "hidden_by": None, **extra} for eid, extra in entities]
+    mirror = live_mirror([_to_minimal({"entity_id": eid, "state": st, "attributes": {}})
+                          for eid, st in states])
+    return House(build_home_space({"entita": entita, "integrazioni": list(entries),
+                                   "dispositivi": []}), mirror)
+
+
+#: L'istanza spenta dal proprietario: in Home Assistant `ConfigEntryDisabler`
+#: ha un valore solo, `user`. E' il caso misurato sulla casa vera.
+_ENTRY_SWITCHED_OFF = {"entry_id": "e_spenta", "domain": "demo", "title": "Demo",
+                       "state": "not_loaded", "source": "user", "disabled_by": "user"}
+
+
+def _house_with_entry_switched_off(subject):
+    return _house(entities=[(subject, {"config_entry_id": "e_spenta",
+                                       "disabled_by": "config_entry"})],
+                  entries=[_ENTRY_SWITCHED_OFF])
+
+
+def _watched(archivio, *soggetti):
+    for soggetto in soggetti:
+        archivio.decide_scope(soggetto, inside=True, reason="prova", author="observer")
+
+
+def test_l_episodio_di_una_fonte_spenta_si_chiude_alla_sua_ultima_riga_con_la_causa(archivio):
+    """Acceso alle 8, poi l'`unavailable` del riavvio alle 10, poi niente: la
+    sua istanza e' stata spenta dal proprietario. L'episodio si chiude alle
+    10 -- l'ultima cosa che Home Assistant ne ha detto -- e la voce dice
+    perche', con la causa della fonte: non e' una fine vista."""
+    archivio.record(quando_ts=ts(8), source="entita", subject="switch.pompa",
+                    da="off", a="on")
+    archivio.record(quando_ts=ts(10), source="entita", subject="switch.pompa",
+                    da="on", a="unavailable")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                  house=_house_with_entry_switched_off("switch.pompa"))
+    [voce] = cronaca(archivio)
+    assert (voce["quando_ts"], voce["fine_ts"]) == (ts(8), ts(10))
+    assert voce["chiusa_dalla_fonte"] == {"stato": "spenta_dal_proprietario",
+                                          "causa": "config_entry", "spenta_da": "user"}
+
+
+def test_l_episodio_ereditato_di_una_fonte_sparita_non_entra_nel_giorno_dopo(archivio):
+    """Il caso delle 60 voci, nella sua forma vera: l'ultima riga del grezzo
+    e' l'accensione di ieri (il riavvio di Home Assistant non ha lasciato
+    righe), poi l'entita' e' sparita. Oggi non c'e' niente in corso:
+    l'episodio e' finito ieri, alla sua ultima riga, e non si eredita."""
+    _watched(archivio, "climate.studio")
+    archivio.record(quando_ts=MEZZANOTTE - 10 * 3600, source="entita",
+                    subject="climate.studio", da="off", a="heat")
+    sparita = _house(entities=[("climate.studio", {})], states=[("light.altra", "on")])
+    assert sparita.source("climate.studio")["stato"] == "sparita"
+
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=sparita) == 0
+
+
+def test_senza_la_casa_niente_si_chiude_per_la_fonte(archivio):
+    """La casa non letta non dice che una fonte e' finita: l'episodio resta
+    com'era (e' il ripiego delle prove e di chi non ha l'anagrafe)."""
+    _watched(archivio, "climate.studio")
+    archivio.record(quando_ts=MEZZANOTTE - 10 * 3600, source="entita",
+                    subject="climate.studio", da="off", a="heat")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=None) == 1
+
+
+def test_una_fonte_solo_non_disponibile_NON_chiude_l_episodio(archivio):
+    """`non_disponibile` parla ancora: un riavvio la fa passare di li' e torna
+    da sola. Chiudere qui sarebbe il salto delle assenze rovesciato, che e'
+    il terzo passo, non questo."""
+    archivio.record(quando_ts=ts(8), source="entita", subject="switch.pompa",
+                    da="off", a="on")
+    archivio.record(quando_ts=ts(10), source="entita", subject="switch.pompa",
+                    da="on", a="unavailable")
+    casa = _house(entities=[("switch.pompa", {})], states=[("switch.pompa", "unavailable")])
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=casa)
+    [voce] = cronaca(archivio)
+    assert voce["fine_ts"] is None
+    assert "chiusa_dalla_fonte" not in voce
+
+
+def test_una_fonte_sparita_DOPO_il_giorno_lascia_l_episodio_aperto_a_fine_giornata(archivio):
+    """La fonte e' quella di adesso, ma il giorno e' quello di allora: se Home
+    Assistant ne ha parlato DOPO la fine del giorno, a fine giornata era
+    ancora accesa, e la voce lo dice come sempre."""
+    archivio.record(quando_ts=ts(8), source="entita", subject="switch.pompa",
+                    da="off", a="on")
+    archivio.record(quando_ts=ts(26), source="entita", subject="switch.pompa",
+                    da="on", a="unavailable")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                  house=_house_with_entry_switched_off("switch.pompa"))
+    [voce] = cronaca(archivio)
+    assert voce["fine_ts"] is None
+    assert "chiusa_dalla_fonte" not in voce
+
+
+def test_rifare_la_cronaca_chiede_la_fonte_anche_lei(archivio):
+    """La stessa regola dalla seconda porta che scrive la cronaca."""
+    from hiris.app.mind.facts import rebuild_chronicle
+
+    archivio.record(quando_ts=ts(8), source="entita", subject="switch.pompa",
+                    da="off", a="on")
+    archivio.record(quando_ts=ts(10), source="entita", subject="switch.pompa",
+                    da="on", a="unavailable")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=None)
+    assert cronaca(archivio)[0]["fine_ts"] is None
+    assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome",
+                             judgments=tv.REPO_JUDGMENTS,
+                             house=_house_with_entry_switched_off("switch.pompa"))
+    assert cronaca(archivio)[0]["fine_ts"] == ts(10)
+
+
+def test_una_cronaca_scritta_con_la_regola_di_prima_e_VECCHIA():
+    """La regola con cui si costruisce la cronaca e' cambiata (la fonte
+    finita): i resoconti scritti prima si riconoscono, come per l'impronta
+    dei giudizi, e il recupero li rifa' finche' il grezzo c'e'."""
+    from hiris.app.mind.facts import chronicle_is_stale
+
+    j = tv.REPO_JUDGMENTS
+    impronta = j.chronicle_fingerprint()
+    assert chronicle_is_stale({"giudizio": {"impronta": impronta}}, j)
+    assert chronicle_is_stale({"giudizio": {"impronta": impronta,
+                                            "regola": CHRONICLE_RULE - 1}}, j)
+    assert not chronicle_is_stale({"giudizio": {"impronta": impronta,
+                                                "regola": CHRONICLE_RULE}}, j)
+
+
+def test_ogni_chiamata_di_produzione_porta_la_casa():
+    """Un parametro col ripiego `None` e' inerte in silenzio se un chiamante
+    se lo dimentica: chi in `mind/facts.py` DICHIARA di ricevere `house` deve
+    essere chiamato con `house=`, in tutto `hiris/app`. L'elenco si chiede
+    alle firme, non si ricopia."""
+    import ast
+    import pathlib
+
+    radice = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
+    facts = ast.parse((radice / "mind" / "facts.py").read_text(encoding="utf-8"))
+    sorvegliate = {n.name for n in ast.walk(facts)
+                   if isinstance(n, ast.FunctionDef)
+                   and "house" in [a.arg for a in n.args.kwonlyargs]}
+    assert {"build_episodes", "aggregate_day", "rebuild_chronicle"} <= sorvegliate
+    viste, mancanti = 0, []
+    for percorso in radice.rglob("*.py"):
+        for nodo in ast.walk(ast.parse(percorso.read_text(encoding="utf-8"))):
+            if not isinstance(nodo, ast.Call):
+                continue
+            nome = getattr(nodo.func, "id", None) or getattr(nodo.func, "attr", None)
+            if nome not in sorvegliate:
+                continue
+            viste += 1
+            if "house" not in [k.arg for k in nodo.keywords]:
+                mancanti.append(f"{percorso.name}:{nodo.lineno} {nome}")
+    assert viste >= 5, f"viste solo {viste} chiamate: la derivazione si e' rotta"
+    assert mancanti == []

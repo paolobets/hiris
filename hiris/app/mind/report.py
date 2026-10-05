@@ -75,9 +75,15 @@ logger = logging.getLogger(__name__)
 #: piu'. E' la stessa ragione di `friendly_name`, applicata all'altro genere
 #: di soggetto.
 #:
+#: `chiusa_dalla_fonte` (05/10/2026, Task 1.4 degli attori): perche' un
+#: episodio e' finito quando non l'ha chiuso uno stato visto -- la fonte che
+#: Home Assistant non nomina piu', con la sua causa (`facts.build_episodes`).
+#: Senza, la voce direbbe una fine normale.
+#:
 #: Tutto il resto -- il clima mentre durava, il contesto ricco -- **non entra**,
 #: e si va a prendere quando serve.
-_ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts")
+_ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts",
+           "chiusa_dalla_fonte")
 
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,

@@ -30,6 +30,7 @@ from hiris.app import server
 from hiris.app.home_space import historian
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+from hiris.app.mind.facts import chronicle_mark
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
@@ -1449,7 +1450,7 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
             # vera -- «l'impronta scritta e' quella dei giudizi ricevuti» --
             # la difende `tests/test_mind_facts.py`, con un'istantanea
             # diversa da quella del repo.
-            assert scritto["giudizio"] == {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}
+            assert scritto["giudizio"] == chronicle_mark(REPO_JUDGMENTS)
         # E OGGI no: non e' finito, e un resoconto di mezza giornata direbbe
         # il falso su cio' che quel giorno e' stato.
         assert archivio.report("2026-08-24") is None
@@ -1484,7 +1485,7 @@ def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio
                             subject=f"light.g{delta}", da="off", a="on")
         archivio.replace_report("2026-08-24", {
             "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
-            "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
+            "giudizio": chronicle_mark(REPO_JUDGMENTS)})
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
@@ -1526,7 +1527,7 @@ def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
                         subject="light.a", da="off", a="on")
         archivio.replace_report("2026-08-24", {
             "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
-            "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
+            "giudizio": chronicle_mark(REPO_JUDGMENTS)})
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
@@ -1683,7 +1684,7 @@ def test_il_recupero_NON_rifa_il_giorno_a_cavallo_della_potatura_e_TIENE_gli_ere
         assert scritto == "2026-08-24"
         assert archivio.report("2026-08-23") == scritti["2026-08-23"]
         rifatto = archivio.report("2026-08-24")
-        assert rifatto["giudizio"] == {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}
+        assert rifatto["giudizio"] == chronicle_mark(REPO_JUDGMENTS)
         assert rifatto["cronaca"] == scritti["2026-08-24"]["cronaca"]
     finally:
         archivio.close()
@@ -1769,11 +1770,11 @@ def test_una_cronaca_che_NON_si_rifa_NON_ferma_i_giorni_dopo(tmp_path, monkeypat
                 "giorno": giorno, "misure": [], "forme": [], "cronaca": [],
                 "giudizio": {"impronta": "vecchia"}})
 
-        def _rotta(*, store, day, timezone, judgments):
+        def _rotta(*, store, day, timezone, judgments, house=None):
             if day == "2026-08-23":
                 raise ValueError("un difetto locale")
             return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
-                                           judgments=judgments)
+                                           judgments=judgments, house=house)
 
         monkeypatch.setattr(server, "rebuild_chronicle", _rotta)
         app = {"home_space_store": None, "observations": archivio,
@@ -1854,9 +1855,9 @@ def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_gio
             "giudizio": {"impronta": "vecchia"}})
         archivio.replace_report("2026-08-24", {
             "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
-            "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
+            "giudizio": chronicle_mark(REPO_JUDGMENTS)})
 
-        def _broken(*, store, day, timezone, judgments):
+        def _broken(*, store, day, timezone, judgments, house=None):
             raise ValueError(f"un difetto locale del {day}")
 
         monkeypatch.setattr(server, "rebuild_chronicle", _broken)
@@ -1903,7 +1904,7 @@ def _one_stale_day(tmp_path):
         "giudizio": {"impronta": "vecchia"}})
     archivio.replace_report("2026-08-24", {
         "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
-        "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
+        "giudizio": chronicle_mark(REPO_JUDGMENTS)})
     return archivio
 
 
@@ -1920,11 +1921,11 @@ def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplo
         start = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
         failing = {"2026-08-23"}
 
-        def _chronicle(*, store, day, timezone, judgments):
+        def _chronicle(*, store, day, timezone, judgments, house=None):
             if day in failing:
                 raise ValueError("un difetto locale")
             return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
-                                           judgments=judgments)
+                                           judgments=judgments, house=house)
 
         monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
         app = {"home_space_store": None, "observations": archivio,
@@ -1942,8 +1943,7 @@ def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplo
         assert len(_warnings(timedelta(0))) == 1
         failing.clear()
         assert _warnings(timedelta(minutes=5)) == []
-        assert archivio.report("2026-08-23")["giudizio"] == {
-            "impronta": REPO_JUDGMENTS.chronicle_fingerprint()}
+        assert archivio.report("2026-08-23")["giudizio"] == chronicle_mark(REPO_JUDGMENTS)
         # Di nuovo vecchia, di nuovo rotta: entro le 4 ore dal primo warning.
         archivio.replace_report("2026-08-23", {
             "giorno": "2026-08-23", "misure": [], "forme": [], "cronaca": [],
@@ -1986,7 +1986,7 @@ def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
                 raise ConnectionError("Home Assistant non risponde")
             return await real_ingredients(app, ha_client, giorno=giorno, timezone=timezone)
 
-        def _chronicle(*, store, day, timezone, judgments):
+        def _chronicle(*, store, day, timezone, judgments, house=None):
             if broken["chronicle"]:
                 raise ValueError("un difetto locale")
             return real_chronicle(store=store, day=day, timezone=timezone, judgments=judgments)
@@ -2050,7 +2050,7 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
 
     archivio = _one_stale_day(tmp_path)
     try:
-        def _broken(*, store, day, timezone, judgments):
+        def _broken(*, store, day, timezone, judgments, house=None):
             raise ValueError("un difetto locale")
 
         monkeypatch.setattr(server, "rebuild_chronicle", _broken)

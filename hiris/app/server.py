@@ -1373,7 +1373,9 @@ async def backfill_one_report(app, ha_client, *,
                 aggregate_day(store=archivio, day=as_text, timezone=timezone,
                               recipes=ricette, series=serie, names=nomi,
                               silent=silent,
-                              judgments=app["type_judgments"])
+                              judgments=app["type_judgments"],
+                              house=House.read(app.get("home_space_store"),
+                                               app.get("entity_cache")))
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
@@ -1389,7 +1391,9 @@ async def backfill_one_report(app, ha_client, *,
             started = time.monotonic()
             try:
                 rebuild_chronicle(store=archivio, day=as_text, timezone=timezone,
-                                  judgments=app["type_judgments"])
+                                  judgments=app["type_judgments"],
+                                  house=House.read(app.get("home_space_store"),
+                                                   app.get("entity_cache")))
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
@@ -1445,7 +1449,8 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
                 store=archivio, day=day, timezone=timezone,
                 recipes=ricette, series=serie, names=nomi,
                 silent=silent,
-                judgments=app["type_judgments"])
+                judgments=app["type_judgments"],
+                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -4424,7 +4429,10 @@ async def _on_startup(app: web.Application) -> None:
                 store=app["observations"], day=ieri, timezone=timezone,
                 recipes=ricette, series=serie, names=nomi,
                 silent=silent,
-                judgments=app["type_judgments"])
+                judgments=app["type_judgments"],
+                # La fonte di adesso, per chiudere gli episodi di cio' che
+                # Home Assistant non nomina piu' (`facts.build_episodes`).
+                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",

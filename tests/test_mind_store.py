@@ -430,6 +430,26 @@ def test_migration_5_adds_friendly_name_to_an_old_archive(tmp_path):
         store.close()
 
 
+def test_l_ultima_notizia_di_un_soggetto_e_la_sua_riga_piu_recente_di_qualunque_stato(archivio):
+    """`last_seen`: l'ultima volta che Home Assistant ha parlato di un
+    soggetto, anche con un `unavailable` e anche dopo un giorno qualunque --
+    e' il quando con cui la cronaca chiude l'episodio di una fonte finita
+    (Task 1.4 degli attori). Le condizioni di sistema non sono fonti della
+    casa e non entrano. Mutazione ESEGUITA: `MAX` -> `MIN` -- rossa."""
+    archivio.record(quando_ts=100.0, source="entita", subject="switch.pompa",
+                    da="off", a="on")
+    archivio.record(quando_ts=300.0, source="entita", subject="switch.pompa",
+                    da="on", a="unavailable")
+    archivio.record(quando_ts=200.0, source="entita", subject="light.b",
+                    da="off", a="on")
+    archivio.record(quando_ts=900.0, source="sistema", subject="switch.pompa",
+                    da=None, a="setup_error")
+
+    assert archivio.last_seen(["switch.pompa", "light.b", "light.mai"]) == {
+        "switch.pompa": 300.0, "light.b": 200.0}
+    assert archivio.last_seen([]) == {}
+
+
 def test_l_ultima_riga_prima_di_un_istante_c_e_una_per_soggetto(archivio):
     """Lo stato in cui un soggetto ERA quando il giorno e' cominciato.
 
