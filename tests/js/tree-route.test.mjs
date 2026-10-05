@@ -48,6 +48,9 @@ function casaCompleta(extra = {}) {
       versione_ha: '2026.8.1',
       unita: { temperature: '°C', length: 'km' },
     },
+    // I nomi delle misure li manda il server (`briefing._MEASUREMENT_NAMES`,
+    // C-09): qui una loro parte, quanto basta alla casa di prova.
+    nomi_misure: { temperature: 'temperatura', length: 'lunghezza' },
     // Una nota risolvibile (nomeEtichetta la traduce) e una PENZOLANTE
     // (nessuna voce in questa mappa): 'Luce cucina' sotto porta entrambi gli
     // id, cosi' la stessa entita' prova sia la traduzione sia il fallback.
@@ -314,6 +317,18 @@ test('sistema di riferimento: presente si legge, assente lo dichiara (mai silenz
 
   const { testo: assente } = await rendi(casaCompleta({ sistema_di_riferimento: {} }));
   assert.match(assente, /Non letto: fuso, unità, valuta e lingua della casa non sono disponibili/);
+});
+
+test('i nomi delle misure arrivano dal server, nel suo ordine; una chiave che non nomina resta grezza', async () => {
+  /* C-09 (Tappa 4, Task 5): la pagina non tiene piu' una copia della tabella
+     del nucleo. Un nome che solo il server conosce ('calore') deve comparire,
+     l'ordine e' quello della mappa e non quello di `unita`, e una chiave che
+     la mappa non nomina compare col suo nome grezzo invece di sparire. */
+  const { testo } = await rendi(casaCompleta({
+    sistema_di_riferimento: { nome: 'Casa', unita: { length: 'km', ignota: 'x', temperature: '°C' } },
+    nomi_misure: { temperature: 'calore', length: 'lunghezza' },
+  }));
+  assert.match(testo, /Unità con cui ragiona la casa: calore °C, lunghezza km, ignota x \(/);
 });
 
 test("le etichette di un'entità mostrano il NOME (`casa.etichette`), non lo slug", async () => {

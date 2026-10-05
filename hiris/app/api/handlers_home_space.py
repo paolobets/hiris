@@ -17,7 +17,7 @@ import time
 
 from aiohttp import web
 
-from ..home_space.briefing import compose
+from ..home_space.briefing import _MEASUREMENT_NAMES, compose
 from ..home_space.house import House
 from ..home_space.privacy import cover_automation_body
 from ..home_space.topology import category_names, label_names
@@ -97,6 +97,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # di riferimento", e' "non abbiamo letto niente". La stessa
             # distinzione di `non_disponibili` qui sopra.
             "sistema_di_riferimento": None,
+            # Un vocabolario, non un fatto della casa: esce anche qui, e la
+            # risposta ha la stessa forma nei due rami.
+            "nomi_misure": _MEASUREMENT_NAMES,
             # `None` e non `{}`: qui non e' "la casa non ha etichette", e'
             # "non abbiamo letto niente".
             "etichette": None, "categorie": None,
@@ -143,6 +146,10 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,
         # sono due case diverse a seconda della porta da cui entri.
         "sistema_di_riferimento": store.reference_frame(),
+        # Le parole con cui si legge `unita` qui sopra, nell'ordine in cui la
+        # casa si legge: la tabella del nucleo, mandata a chi disegna l'albero
+        # invece di ricopiata nel JavaScript (C-09, Tappa 4, Task 5).
+        "nomi_misure": _MEASUREMENT_NAMES,
         # La casa di questa richiesta, letta come la leggono tutti
         # (`House.read`): anagrafe, specchio e registri caduti in un posto.
         "piani": _live_kinds(House.read(store, request.app.get("entity_cache"))),

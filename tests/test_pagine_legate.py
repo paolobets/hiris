@@ -15,11 +15,13 @@ import re
 from pathlib import Path
 
 import pytest
+from aiohttp import web
 
 from hiris.app.action.construction.revisions import STATES_SOSPESO
 from hiris.app.api import servizi
+from hiris.app.api.handlers_home_space import handle_get_home_space
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
-from hiris.app.home_space.reader import TABLES
+from hiris.app.home_space.reader import TABLES, HomeSpace
 from hiris.app.mind.store import READING_RETENTION_S, ObservationsStore
 from tests._avvio import started_app  # noqa: F401
 
@@ -56,15 +58,42 @@ def _interval_minutes(app, job_id: str) -> int:
 
 
 # -- C-09: i nomi delle misure ------------------------------------------------
-# Mutazione eseguita: "vento" -> "venti" in `briefing._MEASUREMENT_NAMES` ->
-# rossa con la differenza sulla chiave `wind_speed`.
+# La pagina dell'albero li riceve in `GET /api/home-space` (`nomi_misure`) e non
+# ne tiene una copia.
+# Mutazione eseguita (nato rosso il passo 1 con la copia, 05/10/2026): rimessa
+# in tree-route.js la mappa `NOMI_MISURA` -> rossa la seconda prova; tolto
+# `nomi_misure` dal ramo con l'archivio -> rossa la prima.
 
-def test_measurement_names_match_briefing():
-    source = _js("config/tree-route.js")
-    assert _js_object(source, "NOMI_MISURA") == _MEASUREMENT_NAMES
-    # E lo stesso ordine: e' l'ordine in cui la casa si legge, sul nucleo e
+@pytest.mark.asyncio
+async def test_home_space_route_sends_measurement_names(aiohttp_client, tmp_path):
+    store = HomeSpace(str(tmp_path))
+    app = web.Application()
+    app["home_space_store"] = store
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    try:
+        body = await (await client.get("/api/home-space")).json()
+    finally:
+        store.close()
+    # Valori E ordine: e' l'ordine in cui la casa si legge, sul nucleo e
     # sulla pagina.
-    assert _js_array(source, "CHIAVI_MISURA_NOTE") == list(_MEASUREMENT_NAMES)
+    assert list(body["nomi_misure"].items()) == list(_MEASUREMENT_NAMES.items())
+
+    app = web.Application()
+    app["home_space_store"] = None
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    body = await (await client.get("/api/home-space")).json()
+    assert list(body["nomi_misure"].items()) == list(_MEASUREMENT_NAMES.items())
+
+
+def test_tree_page_keeps_no_measurement_names():
+    source = _js("config/tree-route.js")
+    # Le chiavi che in italiano si scrivono uguali («area», «volume») sono
+    # anche parole della pagina: non dicono niente, e restano fuori.
+    copied = [key for key, name in _MEASUREMENT_NAMES.items() if key != name
+              and (f"'{key}'" in source or re.search(rf"\b{key}\s*:", source))]
+    assert not copied, f"tree-route.js ricopia i nomi delle misure: {copied}"
 
 
 # -- C-12: il raggruppamento «in sospeso» delle Proposte ----------------------
