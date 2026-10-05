@@ -466,6 +466,9 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         for delta, soggetto in ((3, "vecchio"), (2, "l_altro_ieri"),
                                 (1, "ieri"), (0, "oggi")):
             quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            # Dentro lo scope: dal 05/10/2026 si eredita solo chi e' guardato.
+            archivio.decide_scope(f"light.{soggetto}", inside=True, reason="prova",
+                                  author="observer")
             archivio.record(quando_ts=quando.timestamp(), source="entita",
                             subject=f"light.{soggetto}", da="off", a="on")
 
@@ -1655,6 +1658,10 @@ def test_il_recupero_NON_rifa_il_giorno_a_cavallo_della_potatura_e_TIENE_gli_ere
         def _ts(giorno, ora):
             return datetime(2026, 8, giorno, ora, tzinfo=UTC).timestamp()
 
+        # Dentro lo scope: dal 05/10/2026 si eredita solo chi e' guardato.
+        for soggetto in ("climate.camera", "light.b"):
+            archivio.decide_scope(soggetto, inside=True, reason="prova",
+                                  author="observer")
         archivio.record(quando_ts=_ts(20, 10), source="entita", subject="climate.camera",
                         da="off", a="heat")
         archivio.record(quando_ts=_ts(23, 1), source="entita", subject="light.a",

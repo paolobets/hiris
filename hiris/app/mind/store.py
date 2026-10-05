@@ -950,8 +950,10 @@ class ObservationsStore:
             rows = self._conn.execute(sql, tuple(args)).fetchall()
         return [_reading_row(r) for r in rows]
 
-    def last_before(self, ts: float, *, source: str = "entita") -> list[dict]:
-        """L'ultima riga PRIMA di un istante, **una per soggetto**.
+    def last_before(self, ts: float, *, since_ts: float,
+                    source: str = "entita") -> list[dict]:
+        """L'ultima riga PRIMA di un istante, **una per soggetto**, dentro la
+        finestra `[since_ts, ts)`.
 
         Risponde a *«in che stato era la casa quando questo giorno e'
         cominciato?»*, ed e' cio' che permette all'aggregazione di sapere che
@@ -966,15 +968,50 @@ class ObservationsStore:
         (`watcher.rebuild_conditions`), e riseminarle anche da qui sarebbero
         due risposte alla stessa domanda.
 
-        Nessun tetto e nessuna finestra all'indietro: la potatura tiene il
-        grezzo a 22 giorni, e il `ROW_NUMBER()` fa il lavoro nel motore invece
-        di portare in Python centomila righe per tenerne una manciata.
+        **La finestra la dichiara chi chiede** (`since_ts`, Task 1.4 degli
+        attori, 05/10/2026). Fino a quel giorno non c'era: «la potatura tiene
+        il grezzo a 22 giorni» -- ma la potatura gira alle 03:00 e puo' non
+        girare, e una riga che sopravvive solo per quello cambiava la cronaca
+        di un giorno secondo l'ora in cui la si costruiva. Misurato sulla casa
+        vera: 4 voci fra il 30/09 e il 04/10 venivano da una riga dell'11/09.
+        Il `ROW_NUMBER()` fa il lavoro nel motore invece di portare in Python
+        centomila righe per tenerne una manciata.
+
+        **Non e' l'inizio di niente**: e' l'ultima riga, di qualunque stato.
+        Da dove comincia cio' che e' in corso lo ricostruisce chi giudica
+        (`facts.build_episodes`) rigiocando `transitions`.
         """
         sql = ("SELECT * FROM (SELECT *, ROW_NUMBER() OVER "
                "(PARTITION BY soggetto ORDER BY quando_ts DESC, id DESC) AS rn "
-               "FROM cambi WHERE quando_ts < ? AND fonte = ?) WHERE rn = 1")
+               "FROM cambi WHERE quando_ts >= ? AND quando_ts < ? AND fonte = ?) "
+               "WHERE rn = 1")
         with self._lock:
-            rows = self._conn.execute(sql, (float(ts), source)).fetchall()
+            rows = self._conn.execute(sql, (float(since_ts), float(ts), source)).fetchall()
+        return [_reading_row(r) for r in rows]
+
+    def transitions(self, subjects, *, from_ts: float, to_ts: float) -> list[dict]:
+        """I cambi di STATO di questi soggetti nella finestra semi-aperta
+        `[from_ts, to_ts)`, dal piu' vecchio: le righe in cui `da` e `a`
+        differiscono.
+
+        Le righe di solo attributo (`da == a`, scritte da `watcher` quando
+        cambia un attributo voluto) restano fuori: non aprono e non chiudono
+        niente, e sui termostati sono la maggior parte del grezzo. **Nessun
+        giudizio**: quale stato sia un riposo lo decide chi legge
+        (`facts.build_episodes`, che rigioca queste righe con la regola del
+        giorno per sapere da quando e' in corso cio' che e' in corso a
+        mezzanotte). Solo `fonte = 'entita'`.
+        """
+        wanted = sorted({str(s) for s in subjects or ()})
+        if not wanted:
+            return []
+        marks = ",".join("?" * len(wanted))
+        sql = ("SELECT * FROM cambi WHERE fonte = 'entita' AND quando_ts >= ? "
+               f"AND quando_ts < ? AND da IS NOT a AND soggetto IN ({marks}) "
+               "ORDER BY quando_ts ASC, id ASC")
+        with self._lock:
+            rows = self._conn.execute(
+                sql, (float(from_ts), float(to_ts), *wanted)).fetchall()
         return [_reading_row(r) for r in rows]
 
     def last_seen(self, subjects) -> dict[str, float]:

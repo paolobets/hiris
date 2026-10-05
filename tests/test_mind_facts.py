@@ -587,6 +587,7 @@ def test_un_cambio_di_un_secondo_prima_appartiene_al_giorno_che_finisce(archivio
     """Lo stesso confine, visto dagli oggetti: il CAMBIO e' del 23 (e' li' che
     e' successo), e in G quel termostato risulta acceso **dall'istante vero**,
     non da mezzanotte."""
+    _watched(archivio, "climate.camera_t")
     archivio.record(quando_ts=MEZZANOTTE - 1, source="entita",
                     subject="climate.camera_t", da="off", a="heat")
 
@@ -1046,6 +1047,7 @@ def test_un_episodio_gia_aperto_prima_del_giorno_esiste_anche_oggi(archivio):
     zero oggetti, esattamente cio' che la casa vera produceva.
     """
     ieri = MEZZANOTTE - 8 * 3600
+    _watched(archivio, "climate.camera_t")
     archivio.record(quando_ts=ieri, source="entita", subject="climate.camera_t",
                     da="off", a="heat")
 
@@ -1061,7 +1063,9 @@ def test_un_episodio_gia_aperto_prima_del_giorno_esiste_anche_oggi(archivio):
 
 def test_cio_che_era_spento_prima_del_giorno_non_apre_niente(archivio):
     """La semina porta lo stato, non un episodio: se a mezzanotte era spento,
-    non c'e' niente in corso da raccontare."""
+    non c'e' niente in corso da raccontare. Il soggetto e' nello scope: fuori,
+    la prova passerebbe per la ragione sbagliata (05/10/2026)."""
+    _watched(archivio, "climate.camera_t")
     archivio.record(quando_ts=MEZZANOTTE - 8 * 3600, source="entita",
                     subject="climate.camera_t", da="heat", a="off")
 
@@ -1073,6 +1077,7 @@ def test_un_episodio_cominciato_ieri_e_finito_oggi_si_chiude_con_l_inizio_vero(a
     l'accensione era in un altro giorno. Ora chiude l'episodio giusto, e la
     durata e' quella vera."""
     ieri = MEZZANOTTE - 3 * 3600
+    _watched(archivio, "light.cucina")
     archivio.record(quando_ts=ieri, source="entita", subject="light.cucina",
                     da="off", a="on")
     archivio.record(quando_ts=ts(7), source="entita", subject="light.cucina",
@@ -1237,7 +1242,12 @@ def test_none_prima_della_mezzanotte_NON_apre_un_assenza(archivio):
     """Lo stesso cambio dichiarato, sulla strada di cio' che era gia' in corso
     a mezzanotte (`store.last_before`): un tracker lasciato a `none` la sera
     prima non e' un'assenza cominciata ieri. Mutazione ESEGUITA: togliere
-    `or state in ignored` dal ciclo di `last_before` -- rossa (conteggio 1)."""
+    `or state in ignored` dal ciclo di `last_before` -- rossa (conteggio 1).
+    Dal 05/10/2026 l'ereditato si rigioca (`_replay_open`) e solo per chi e'
+    nello scope: il soggetto ci entra, o la prova passerebbe per la ragione
+    sbagliata. Mutazione ESEGUITA: nel rigioco non saltare gli stati «non lo
+    so» -- rossa (conteggio 1)."""
+    _watched(archivio, "device_tracker.switch_2")
     archivio.record(quando_ts=MEZZANOTTE - 3600, source="entita",
                     subject="device_tracker.switch_2", da="home", a="none")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
@@ -1357,6 +1367,7 @@ def _giorno_ereditato(archivio):
     """Un giorno con un episodio EREDITATO (il termostato acceso da tre giorni),
     uno chiuso dentro il giorno e uno aperto dentro il giorno; scritto col seme
     e marcato con un'impronta vecchia, come un resoconto nato prima."""
+    _watched(archivio, "climate.camera")
     archivio.record(quando_ts=MEZZANOTTE - 3 * 86400, source="entita",
                     subject="climate.camera", da="off", a="heat")
     archivio.record(quando_ts=ts(8, 0), source="entita", subject="switch.presa",
@@ -1613,3 +1624,133 @@ def test_ogni_chiamata_di_produzione_porta_la_casa():
                 mancanti.append(f"{percorso.name}:{nodo.lineno} {nome}")
     assert viste >= 5, f"viste solo {viste} chiamate: la derivazione si e' rotta"
     assert mancanti == []
+
+
+# ── L'inizio giusto (Task 1.4 degli attori, Passo 2, 05/10/2026) ────────────
+#
+# Misurato il 05/10/2026 sulla casa vera: 21 delle 85 voci sbagliate avevano
+# l'inizio alla riga di RITORNO dopo un'assenza (l'ultima riga del soggetto
+# prima del giorno), non all'inizio vero della sequenza (voce C7 dell'audit);
+# 4 venivano da una riga ereditata di un dispositivo fuori dallo scope di
+# oggi, vecchia di settimane. L'ereditato si costruisce ora rigiocando le
+# transizioni del soggetto con la regola del giorno, dentro una finestra
+# dichiarata e solo per chi e' dentro lo scope.
+#
+# Mutazioni ESEGUITE (05/10/2026), ognuna ripristinata con sha256 identico e
+# `git status` riletto, rosse per la ragione giusta:
+# - il rigioco tiene l'ULTIMA riga accesa invece della prima (l'ereditato
+#   torna all'ultima riga) -- rosse la sequenza e `heat` -> `cool`;
+# - il rigioco non salta gli stati «non lo so» -- rossa l'`unavailable`
+#   dopo un riposo (la prima forma di questa mutazione era INERTE sulle altre
+#   prove: un `unavailable` dopo uno stato acceso non cambia niente, e la
+#   prova che la discrimina e' nata per questo);
+# - la finestra tolta (`window_start = 0.0`) -- rossa la riga vecchia;
+# - lo scope non chiesto -- rossa la prova dello scope;
+# - la seconda lettura di `last_before` rimessa in `rebuild_chronicle` --
+#   rossa la prova della lettura unica (A-39).
+
+
+def test_l_inizio_ereditato_e_quello_della_sequenza_non_la_riga_di_ritorno(archivio):
+    """Acceso ieri alle 4, `unavailable` alle 14, di nuovo acceso alle 15: per
+    la regola del giorno l'`unavailable` non chiude niente, quindi l'episodio
+    in corso a mezzanotte e' cominciato alle 4, non alle 15."""
+    _watched(archivio, "switch.pompa")
+    for quando, da, a in ((-20, "off", "on"), (-10, "on", "unavailable"),
+                          (-9, "unavailable", "on")):
+        archivio.record(quando_ts=MEZZANOTTE + quando * 3600, source="entita",
+                        subject="switch.pompa", da=da, a=a)
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    [voce] = cronaca(archivio)
+    assert (voce["quando_ts"], voce["fine_ts"], voce["cosa"]) == (
+        MEZZANOTTE - 20 * 3600, None, "on")
+
+
+def test_un_cambio_fra_due_stati_accesi_non_sposta_l_inizio_ereditato(archivio):
+    """La stessa regola del ciclo del giorno: `heat` -> `cool` non riapre
+    l'episodio, che resta quello cominciato con `heat`. Prima la cronaca di
+    ieri e quella di oggi davano allo stesso episodio due inizi diversi."""
+    _watched(archivio, "climate.studio")
+    archivio.record(quando_ts=MEZZANOTTE - 20 * 3600, source="entita",
+                    subject="climate.studio", da="off", a="heat")
+    archivio.record(quando_ts=MEZZANOTTE - 5 * 3600, source="entita",
+                    subject="climate.studio", da="heat", a="cool")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    [voce] = cronaca(archivio)
+    assert (voce["quando_ts"], voce["cosa"]) == (MEZZANOTTE - 20 * 3600, "heat")
+
+
+def test_un_unavailable_prima_di_mezzanotte_non_chiude_l_ereditato(archivio):
+    """`unavailable` non apre e non chiude niente, «in NESSUN ramo»: fino a
+    oggi sulla strada dell'ereditato chiudeva di fatto, perche' la sola
+    ultima riga era un `unavailable` e il soggetto si saltava."""
+    _watched(archivio, "switch.pompa")
+    archivio.record(quando_ts=MEZZANOTTE - 20 * 3600, source="entita",
+                    subject="switch.pompa", da="off", a="on")
+    archivio.record(quando_ts=MEZZANOTTE - 2 * 3600, source="entita",
+                    subject="switch.pompa", da="on", a="unavailable")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    [voce] = cronaca(archivio)
+    assert (voce["quando_ts"], voce["fine_ts"]) == (MEZZANOTTE - 20 * 3600, None)
+
+
+def test_un_unavailable_dopo_un_riposo_non_apre_l_ereditato(archivio):
+    """L'altra faccia: spento, poi `unavailable`, poi acceso. L'episodio nasce
+    all'accensione, non all'`unavailable` -- che non e' «acceso», e' un buco.
+    Mutazione ESEGUITA: nel rigioco non saltare gli stati «non lo so» --
+    rossa (l'inizio diventa l'`unavailable`, e lo stato «unavailable»)."""
+    _watched(archivio, "switch.pompa")
+    for quando, da, a in ((-20, "on", "off"), (-10, "off", "unavailable"),
+                          (-9, "unavailable", "on")):
+        archivio.record(quando_ts=MEZZANOTTE + quando * 3600, source="entita",
+                        subject="switch.pompa", da=da, a=a)
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    [voce] = cronaca(archivio)
+    assert (voce["quando_ts"], voce["cosa"]) == (MEZZANOTTE - 9 * 3600, "on")
+
+
+def test_una_riga_piu_vecchia_della_finestra_non_si_eredita(archivio):
+    """La finestra e' quella del grezzo, `READING_RETENTION_S` contata
+    dall'inizio del giorno: una riga piu' vecchia esiste solo se la potatura
+    non e' ancora girata, e la cronaca non deve dipendere da quello."""
+    from hiris.app.mind.store import READING_RETENTION_S
+
+    _watched(archivio, "climate.studio")
+    archivio.record(quando_ts=MEZZANOTTE - READING_RETENTION_S - 3600, source="entita",
+                    subject="climate.studio", da="off", a="heat")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+
+
+def test_un_soggetto_fuori_dallo_scope_non_rientra_dalla_riga_ereditata(archivio):
+    """Chi e' fuori dallo scope di adesso non ha piu' righe scritte: ereditato,
+    resterebbe aperto per sempre (il dispositivo fantasma dall'11/09). Le sue
+    righe DENTRO il giorno restano storia del giorno."""
+    archivio.record(quando_ts=MEZZANOTTE - 20 * 3600, source="entita",
+                    subject="device_tracker.vecchio", da="home", a="not_home")
+    archivio.decide_scope("person.marta", inside=False, reason="prova", author="observer")
+    archivio.record(quando_ts=MEZZANOTTE - 20 * 3600, source="entita",
+                    subject="person.marta", da="home", a="not_home")
+    archivio.record(quando_ts=ts(9), source="entita", subject="light.fuori",
+                    da="off", a="on")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    assert [v["chi"] for v in cronaca(archivio)] == ["light.fuori"]
+
+
+def test_rifare_la_cronaca_legge_il_grezzo_di_prima_UNA_volta(archivio):
+    """A-39 del registro: `rebuild_chronicle` chiedeva `last_before` due volte,
+    una per costruire gli episodi e una per sapere quali soggetti hanno
+    ancora grezzo prima del giorno. Ora la stessa lettura serve a tutti e
+    due."""
+    from hiris.app.mind.facts import rebuild_chronicle
+
+    _giorno_ereditato(archivio)
+    letture = []
+    originale = archivio.last_before
+
+    def contata(*args, **kwargs):
+        letture.append(args)
+        return originale(*args, **kwargs)
+
+    archivio.last_before = contata
+    assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome",
+                             judgments=tv.REPO_JUDGMENTS, house=None)
+    assert len(letture) == 1

@@ -59,6 +59,7 @@ from ..home_space.type_vocabulary import (
     unknown_states,
 )
 from .report import build_report
+from .store import READING_RETENTION_S
 
 # `aggregate_day` e `build_episodes` sono SINCRONE: non fanno nessuna lettura
 # di rete. Cio' che viene da Home Assistant -- le serie delle ricette, i nomi
@@ -95,8 +96,10 @@ NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
 #:
 #: - assente: fino al 05/10/2026;
 #: - 2: una fonte che Home Assistant non nomina piu' chiude il suo episodio
-#:   (Task 1.4 degli attori, Passo 1).
-CHRONICLE_RULE = 2
+#:   (Task 1.4 degli attori, Passo 1);
+#: - 3: l'episodio ereditato comincia dove comincia la sequenza, dentro la
+#:   finestra del grezzo e solo per chi e' nello scope (Passo 2).
+CHRONICLE_RULE = 3
 
 # **Il riposo e' del SOGGETTO, non l'unione di tutti i tipi** (17/09/2026, spec
 # 2026-09-16 §5). Fino ad allora `_is_on` riceveva lo stato nudo e lo
@@ -157,6 +160,40 @@ def _is_on(value, subject: str, device_class: str | None,
     return state not in judgments.resting_of(domain, device_class, subject)
 
 
+#: I generi che aprono e chiudono sullo STATO: i generi della cronaca meno
+#: quello di sistema, che ha la sua forma (apre su qualunque condizione, chiude
+#: su `chiuso`). Chiesti al vocabolario, non riscritti: fino al 05/10/2026 la
+#: tupla stava scritta due volte in questo modulo.
+_STATE_GENRES = tuple(g for g in CHRONICLE_GENRES if g != SYSTEM_GENRE)
+
+
+def _replay_open(transitions, *, judgments: TypeJudgments,
+                 ignored: frozenset[str] | set[str]) -> dict[str, tuple[str, dict]]:
+    """Cio' che e' in corso alla fine di queste transizioni, con la riga che
+    l'ha aperto: `{soggetto: (genere, riga)}`.
+
+    **La regola e' quella del ciclo del giorno** (`_episodes`, il ramo dei
+    generi di stato): uno stato non a riposo apre se niente e' aperto, un
+    riposo chiude, e uno stato «non lo so» (`ignored`) non apre e non chiude
+    niente. Cosi' l'episodio ereditato a mezzanotte e' esattamente quello
+    che il ciclo di ieri ha lasciato aperto: stesso inizio, stesso stato.
+    """
+    opened: dict[str, tuple[str, dict]] = {}
+    for r in transitions:
+        subject = r["soggetto"]
+        state = str(r["a"] or "").strip().lower()
+        if state in ignored:
+            continue
+        genre = genre_for(subject, r.get("device_class"), judgments=judgments)
+        if genre not in _STATE_GENRES:
+            continue
+        if _is_on(state, subject, r.get("device_class"), judgments):
+            opened.setdefault(subject, (genre, r))
+        else:
+            opened.pop(subject, None)
+    return opened
+
+
 def _opening_attributes(row: dict):
     """La foto degli attributi voluti al momento in cui l'episodio si apre.
 
@@ -187,7 +224,8 @@ def build_episodes(*, store, day: str, timezone: str | None,
     Ogni episodio e' `{"genere", "protagonista", "inizio", "fine",
     "corpo_base"}`: `fine` a `None` quando a fine giornata e' ancora in corso.
     **Legge soltanto l'archivio** -- `store.readings` (i cambi del giorno) e
-    `store.last_before` (cio' che era gia' in corso a mezzanotte) -- e non
+    `store.last_before` e `store.transitions` (cio' che era gia' in corso a
+    mezzanotte, rigiocato dentro la finestra del grezzo) -- e non
     scrive niente: estratta da `aggregate_day` il 17/09/2026 perche' la cronaca
     si possa costruire senza le misure (spec 2026-09-16 §1, misura 10).
 
@@ -216,6 +254,15 @@ def build_episodes(*, store, day: str, timezone: str | None,
     07/09/2026). Tace come `nome` quando non c'e'. Vedi `close()` qui
     sotto e `proxy/state_translations.py`.
     """
+    return _episodes(store=store, day=day, timezone=timezone, judgments=judgments,
+                     house=house)[0]
+
+
+def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments,
+              house: House | None) -> tuple[list[dict], set[str]]:
+    """`build_episodes`, piu' i soggetti che il grezzo ha ancora prima del
+    giorno, dentro la finestra: la stessa lettura, per chi rifa' una cronaca
+    (`rebuild_chronicle`, A-39 del registro: prima la chiedeva due volte)."""
     from_ts, to_ts = day_boundaries(day, timezone)
     rows = store.readings(from_ts=from_ts, to_ts=to_ts)
 
@@ -235,7 +282,7 @@ def build_episodes(*, store, day: str, timezone: str | None,
     # (chiude un episodio in corso), salto nell'altro. La riga che si perde qui
     # e' un buco nell'informazione, non un fatto sulla casa: non deve ne'
     # aprire ne' chiudere niente, in NESSUN ramo. Lo stesso insieme salta lo
-    # stato ereditato da prima di mezzanotte (`store.last_before`, sotto).
+    # stato ereditato da prima di mezzanotte (`_replay_open`, sotto).
     #
     # Una riga saltata non porta nemmeno il suo nome ne' i suoi attributi:
     # il filtro la toglie prima della raccolta dei nomi e dei cambi di
@@ -296,24 +343,50 @@ def build_episodes(*, store, day: str, timezone: str | None,
     # mezzanotte: dire che il riscaldamento e' partito alle 00:00 sarebbe una
     # bugia sul quando, ed e' proprio il quando che l'analista guarda.
     #
-    # Solo i generi che aprono e chiudono sullo stato (`funzionamento`,
-    # `sicurezza`, `presenza`), con la stessa regola del ciclo del giorno:
-    # aperto se lo stato non e' a riposo per il soggetto. Il `guasto` ha gia'
-    # il suo meccanismo attraverso i riavvii (`watcher.rebuild_conditions`), e
-    # riseminarlo anche qui sarebbero due risposte alla stessa domanda.
-    for r in store.last_before(from_ts):
-        subject = r["soggetto"]
-        genre = genre_for(subject, r.get("device_class"), judgments=judgments)
-        state = str(r["a"] or "").strip().lower()
-        if genre not in ("funzionamento", "sicurezza", "presenza") or state in ignored:
-            continue
-        still_open = _is_on(state, subject, r.get("device_class"), judgments)
-        if still_open:
-            open_episodes[subject] = {
-                "genere": genre, "inizio": r["quando_ts"], "stato": r["a"],
-                "classe": r.get("device_class")}
-            if r.get("friendly_name") and subject not in entity_names:
-                entity_names[subject] = r["friendly_name"]
+    # Solo i generi che aprono e chiudono sullo stato (`_STATE_GENRES`). Il
+    # `guasto` ha gia' il suo meccanismo attraverso i riavvii
+    # (`watcher.rebuild_conditions`), e riseminarlo anche qui sarebbero due
+    # risposte alla stessa domanda.
+    #
+    # **L'inizio e' quello della sequenza, non l'ultima riga** (Task 1.4 degli
+    # attori, Passo 2, 05/10/2026; voce C7 dell'audit). Fino a quel giorno si
+    # prendeva l'ultima riga del soggetto prima di mezzanotte: dopo un buco --
+    # `on`, `unavailable`, `on` -- era la riga di RITORNO, e l'episodio
+    # nasceva all'ora del ritorno; e se l'ultima riga era l'`unavailable`, il
+    # soggetto si saltava, cioe' l'`unavailable` CHIUDEVA, contro la regola
+    # scritta sopra. Misurato sulla casa vera: 21 delle 85 voci sbagliate fra
+    # il 30/09 e il 04/10 avevano l'inizio alla riga di ritorno. Ora le
+    # transizioni del soggetto si RIGIOCANO con la regola del ciclo del giorno
+    # (`_replay_open`), e l'episodio in corso a mezzanotte e' quello che il
+    # ciclo avrebbe aperto: stesso inizio, stesso stato d'apertura, nella
+    # cronaca di ieri e in quella di oggi.
+    #
+    # **Dentro una finestra dichiarata**: `READING_RETENTION_S` contata
+    # dall'inizio del giorno, la vita che il grezzo promette. Una riga piu'
+    # vecchia esiste solo se la potatura non e' ancora girata, e la cronaca
+    # di un giorno non deve dipendere da quello.
+    #
+    # **Solo per chi e' dentro lo scope di adesso** (`store.is_watched`): chi
+    # ne e' uscito non ha piu' righe scritte, e la sua riga ereditata
+    # resterebbe aperta per sempre -- misurato: 4 voci fra il 30/09 e il
+    # 04/10 da un dispositivo fuori dallo scope, con una riga dell'11/09. Le
+    # sue righe DENTRO il giorno restano storia del giorno.
+    window_start = from_ts - READING_RETENTION_S
+    before = store.last_before(from_ts, since_ts=window_start)
+    subjects_before = {r["soggetto"] for r in before}
+    candidates = [r["soggetto"] for r in before
+                  if genre_for(r["soggetto"], r.get("device_class"),
+                               judgments=judgments) in _STATE_GENRES
+                  and store.is_watched(r["soggetto"])]
+    replayed = _replay_open(store.transitions(candidates, from_ts=window_start,
+                                              to_ts=from_ts),
+                            judgments=judgments, ignored=ignored)
+    for subject, (genre, r) in replayed.items():
+        open_episodes[subject] = {
+            "genere": genre, "inizio": r["quando_ts"], "stato": r["a"],
+            "classe": r.get("device_class")}
+        if r.get("friendly_name") and subject not in entity_names:
+            entity_names[subject] = r["friendly_name"]
     # Gli episodi chiusi (o ancora aperti a fine giornata), nell'ordine in cui
     # `close()` li consegna.
     episodes: list[dict] = []
@@ -476,7 +549,7 @@ def build_episodes(*, store, day: str, timezone: str | None,
                     "comparso_ts": r.get("first_occurred"),
                 }
             continue
-        if genre in ("funzionamento", "sicurezza", "presenza"):
+        if genre in _STATE_GENRES:
             # **Una forma sola per i tre generi** (spec 2026-09-16 §5): aperto
             # quando lo stato non e' a riposo per il soggetto, chiuso quando lo
             # e'. Il genere e' diverso, la forma no.
@@ -584,7 +657,7 @@ def build_episodes(*, store, day: str, timezone: str | None,
     # La perdita che si temeva non esisteva: non c'era niente da perdere.
     # E ogni giorno che aveva oggetti (26/08 -> 14/09) aveva gia' il suo
     # resoconto, quindi nemmeno la storia si e' persa.
-    return episodes
+    return episodes, subjects_before
 
 
 def aggregate_day(*, store, day: str, timezone: str | None,
@@ -692,12 +765,14 @@ def rebuild_chronicle(*, store, day: str, timezone: str | None,
     **Gli episodi EREDITATI da prima del giorno si tengono, a una condizione.**
     Misurato dalla revisione del 17/09/2026: un termostato acceso da venticinque
     giorni entra nella cronaca di oggi per la sua riga d'origine
-    (`store.last_before`), e quella riga esce dal grezzo prima del giorno che
+    (`store.transitions`), e quella riga esce dal grezzo prima del giorno che
     la eredita. Rifare quel giorno perdeva la voce. Una voce scritta che
     **comincia prima dell'inizio del giorno** e che la cronaca rifatta non ha
     (stessa identita': `chi` e `quando_ts`) si tiene se:
 
-    - il grezzo **non ha piu' nessuna riga** di quel soggetto prima del giorno
+    - il grezzo **non ha piu' nessuna riga** di quel soggetto prima del giorno,
+      dentro la finestra con cui l'ereditato si costruisce (`_episodes`, la
+      stessa lettura: A-39)
       -- se ce l'ha, l'assenza e' un giudizio nuovo (un riposo cambiato), non
       un grezzo perso, e la voce esce;
     - il soggetto ha **ancora un genere** per i giudizi di adesso
@@ -732,14 +807,13 @@ def rebuild_chronicle(*, store, day: str, timezone: str | None,
     report = store.report(day)
     if report is None:
         return False
-    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments,
-                              house=house)
+    episodes, raw_subjects = _episodes(store=store, day=day, timezone=timezone,
+                                       judgments=judgments, house=house)
     rebuilt = build_report(day=day, episodes=episodes, series={}, recipes={}, names={},
                            judgment=chronicle_mark(judgments))
     chronicle = list(rebuilt["cronaca"])
     from_ts, _ = day_boundaries(day, timezone)
     rebuilt_ids = {(v.get("chi"), v.get("quando_ts")) for v in chronicle}
-    raw_subjects = {r["soggetto"] for r in store.last_before(from_ts)}
     for entry in report.get("cronaca") or []:
         started = entry.get("quando_ts")
         subject = entry.get("chi")

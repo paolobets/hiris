@@ -472,10 +472,54 @@ def test_l_ultima_riga_prima_di_un_istante_c_e_una_per_soggetto(archivio):
     archivio.record(quando_ts=900.0, source="entita", subject="light.cucina",
                     da="on", a="off")
 
-    ultime = archivio.last_before(500.0)
+    ultime = archivio.last_before(500.0, since_ts=0.0)
 
     assert {r["soggetto"]: r["a"] for r in ultime} == {
         "climate.camera": "cool", "light.cucina": "on"}
+
+
+def test_l_ultima_riga_prima_resta_dentro_la_finestra_dichiarata(archivio):
+    """La finestra la dichiara chi chiede (Task 1.4 degli attori): una riga
+    piu' vecchia di `since_ts` non torna, anche se la potatura non l'ha
+    ancora tolta -- misurato: 4 voci di cronaca da una riga di settimane
+    prima. Mutazione ESEGUITA: tolto `quando_ts >= ?` dalla query (e il suo
+    argomento) -- rossa."""
+    archivio.record(quando_ts=100.0, source="entita", subject="device_tracker.vecchio",
+                    da="home", a="not_home")
+    archivio.record(quando_ts=300.0, source="entita", subject="light.cucina",
+                    da="off", a="on")
+
+    assert [r["soggetto"] for r in archivio.last_before(500.0, since_ts=200.0)] == [
+        "light.cucina"]
+
+
+def test_le_transizioni_sono_i_cambi_di_STATO_dei_soggetti_chiesti(archivio):
+    """`transitions`: cio' che `facts` rigioca per sapere da quando e' in corso
+    cio' che e' in corso a mezzanotte. Dal piu' vecchio, solo i soggetti
+    chiesti, solo dentro la finestra, senza le righe di solo attributo (che
+    non aprono e non chiudono niente) e senza le condizioni di sistema.
+    Mutazione ESEGUITA: tolto `da IS NOT a` -- rossa (entra la riga di
+    attributo delle 250)."""
+    archivio.record(quando_ts=50.0, source="entita", subject="climate.camera",
+                    da="off", a="heat")
+    archivio.record(quando_ts=200.0, source="entita", subject="climate.camera",
+                    da="heat", a="unavailable")
+    archivio.record(quando_ts=100.0, source="entita", subject="climate.camera",
+                    da="off", a="heat")
+    archivio.record(quando_ts=250.0, source="entita", subject="climate.camera",
+                    da="heat", a="heat", attributes='{"hvac_action": "idle"}')
+    archivio.record(quando_ts=300.0, source="entita", subject="light.cucina",
+                    da="off", a="on")
+    archivio.record(quando_ts=320.0, source="sistema", subject="climate.camera",
+                    da=None, a="setup_error")
+    archivio.record(quando_ts=600.0, source="entita", subject="climate.camera",
+                    da="unavailable", a="heat")
+
+    righe = archivio.transitions(["climate.camera"], from_ts=60.0, to_ts=500.0)
+
+    assert [(r["quando_ts"], r["a"]) for r in righe] == [(100.0, "heat"),
+                                                          (200.0, "unavailable")]
+    assert archivio.transitions([], from_ts=0.0, to_ts=1000.0) == []
 
 
 def test_l_ultima_riga_prima_non_guarda_le_condizioni_di_sistema(archivio):
@@ -487,7 +531,7 @@ def test_l_ultima_riga_prima_non_guarda_le_condizioni_di_sistema(archivio):
     archivio.record(quando_ts=100.0, source="sistema",
                     subject="integrazione:abc", da=None, a="setup_error")
 
-    assert archivio.last_before(500.0) == []
+    assert archivio.last_before(500.0, since_ts=0.0) == []
 
 
 # ── Il tentativo: «ci ho provato, ed e' andata cosi'» ───────────────────────
