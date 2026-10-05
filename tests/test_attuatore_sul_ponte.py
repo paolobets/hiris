@@ -145,7 +145,7 @@ def test_un_turno_di_ATTUAZIONE_arriva_al_ponte_SENZA_strumenti(monkeypatch):
 
     ponte.reason(
         {"kind": "attuazione", "job_id": "ja",
-         "context": {"history": [{"role": "user", "content": "le osservazioni"}],
+         "context": {"model": "sonnet", "history": [{"role": "user", "content": "le osservazioni"}],
                      "system_prompt": "sei l'attuatore",
                      "istruzione": "Rispondi SOLO con un oggetto JSON."}},
         "live", client=object(), base_url="http://127.0.0.1:8099")

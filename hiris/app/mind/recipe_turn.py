@@ -45,10 +45,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 
 from ..home_space.house import House
-from ..steering import misura_turno
+from ..steering import misura_turno, read_json
 from .knowledge import Fact
 from .operations import REGISTRY_VERSION
 from .recipes import Recipe
@@ -150,9 +149,6 @@ Le regole, e il codice le fa rispettare:
 
 Se non sai cosa misurare, rispondi con {"why": "...", "steps": []}.
 """
-
-_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
-
 
 def device_lines(house: House, device_id: str) -> list[str]:
     """Una riga per entita' del dispositivo: identificatore, nome, classe,
@@ -332,35 +328,6 @@ def _energy_block(house: House, device_id: str, energy: dict | None) -> str:
     return "\n".join(lines)
 
 
-def read_recipe(answer: str) -> tuple[dict | None, str | None]:
-    """La ricetta letta dalla risposta, e la ragione per cui NON si e' letta.
-
-    **Una risposta illeggibile e una ricetta vuota sono due cose diverse.** La
-    seconda afferma «ho guardato questo dispositivo e non c'e' niente da
-    misurare»; la prima non afferma niente. Appiattirle sarebbe la bugia che
-    questo prodotto rifiuta ovunque.
-
-    **La staccionata si tollera**, come in `observer.read_decisions`: i modelli
-    incorniciano il JSON anche quando si chiede di non farlo, e buttare il giro
-    per un dettaglio di forma costerebbe una domanda intera.
-    """
-    text = (answer or "").strip()
-    fenced = _FENCE.search(text)
-    if fenced:
-        text = fenced.group(1).strip()
-    else:
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end > start:
-            text = text[start:end + 1]
-    try:
-        parsed = json.loads(text)
-    except (ValueError, TypeError) as error:
-        return None, f"la risposta non e' un JSON leggibile ({type(error).__name__})"
-    if not isinstance(parsed, dict):
-        return None, "la risposta non e' una ricetta"
-    return parsed, None
-
-
 def _only_answer(store, device_id: str, kept: str) -> None:
     """Cancella le risposte VECCHIE di questo dispositivo, tenendo `kept`.
 
@@ -379,7 +346,7 @@ def _only_answer(store, device_id: str, kept: str) -> None:
 
 
 def apply_recipe(store, house: House, device_id: str, answer: str, *,
-                 who: str, when_ts: float) -> dict:
+                 who: str, when_ts: float, truncated: bool = False) -> dict:
     """Cosa si fa della risposta: si valida, e si scrive cio' che ne esce.
 
     Torna `{"scritta": bool, "problemi": [...]}`.
@@ -410,7 +377,15 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
         return {"scritta": False, "problemi": ["il modello non ha risposto"],
                 "risposta": False}
     entities = set(house.entities_of(device_id))
-    data, reason = read_recipe(answer)
+    # **Il JSON lo cava il lettore unico** (`steering.read_json`, D-11): la
+    # staccionata e il testo intorno si tollerano, e un turno troncato non si
+    # legge (D2). Il troncato finisce nel «non capito» con la SUA ragione: e'
+    # vero che il modello non ha dato una ricetta, ed e' lo stesso rifiuto di
+    # oggi -- un JSON tagliato non si leggeva nemmeno prima -- ma ora dice
+    # perche'. Non riscriverlo vorrebbe dire richiedere ogni notte, a
+    # pagamento, una risposta che si tronca, col freno ancora spento.
+    data, reason = read_json(answer, shape=dict, what="una ricetta",
+                             truncated=truncated)
     problems = [reason] if reason else []
     if data is not None:
         outcome = Recipe(data).validate(entities=entities)
@@ -666,7 +641,7 @@ async def ask(runner, store, house: House, device_id: str, *,
         # difetto di `agent_type="observer"`, che schiaccia questa funzione e
         # l'osservatore in un nome solo.
         async with misura_turno(measurements, runner, specie=species,
-                                canale="catena", modello=model):
+                                canale="catena", modello=model) as turn:
             answer = await runner.chat(
                 user_message=question, system_prompt=SYSTEM,
                 model=model, agent_type="observer",
@@ -676,4 +651,4 @@ async def ask(runner, store, house: House, device_id: str, *,
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
     return apply_recipe(store, house, device_id, answer,
-                        who=who, when_ts=when_ts)
+                        who=who, when_ts=when_ts, truncated=turn.truncated)

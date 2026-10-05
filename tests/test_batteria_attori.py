@@ -156,3 +156,20 @@ def test_senza_morti_ne_rifiuti_i_conti_per_causa_sono_vuoti():
     assert result["soggetti_morti_per_causa"] == {}
     assert result["misure_non_calcolabili_per_causa"] == {}
     assert result["misure_ferme"] == 0
+
+
+def test_dal_registro_il_troncato_si_legge_dall_ESITO_col_tetto_proprio():
+    """Tappa 6, Task 3 (D-58): il registro scrive `troncato`, e la batteria
+    lo conta qualunque sia il tetto del mestiere -- l'osservatore ha 16.000
+    token, non 4.096. Un troncato non e' un fallito.
+
+    Mutazione ESEGUITA: contare solo l'uguaglianza col tetto di fabbrica --
+    rossa (`troncati`: 0 invece di 1 per l'osservatore)."""
+    data = [(_turn("osservatore", 16000, outcome=batteria_attori.TRUNCATED),
+             [_load(8000)]),
+            (_turn("osservatore", 900), [_load(8000)])]
+
+    observer = _measure(data=data)["attori"]["osservatore"]
+
+    assert observer["troncati"] == 1
+    assert observer["falliti"] == 0

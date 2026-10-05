@@ -131,7 +131,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-08 | Raccogliere la risposta del ponte: quattro `_collect_*` e quattro «già letto» | D | CC |  | cop-1 (incompleta) | reg · cop-1 · cop-7 · cop-8 |
 | D-09 | Predefiniti del ponte e di Ollama riletti in molti punti | E | PS |  | cop-1 (incompleta); cop-7 (conteggio); cop-8 (incompleta) | reg · cop-1 · cop-2 · cop-7 · cop-8 · cop-9 |
 | D-10 | Il ciclo degli strumenti: quattro cicli, tre unità di tetto | D | CC |  | cop-7 (righe) | reg · cop-7 |
-| D-11 | Leggere un JSON dalla risposta: cinque lettori, tre strategie, una regex duplicata | D | CC |  | cop-6 (righe) | reg · cop-6 · cop-7 |
 | D-12 | Validare, rifiutare, registrare l'esito, frenare: quattro `apply_*`, quattro registri, tre freni | D | CC | analista 01/10: 8 turni orari, 7 troncati a 4096 token |  | reg |
 | D-13 | Tetti e limiti: `max_tokens` in cinque posti, nessuna temperatura | D | CC |  | cop-7 (incompleta) | reg · cop-6 · cop-7 · cop-9 |
 | D-14 | Misurare un turno: due scrittori di turni, tre di consumo, vocabolario dei nomi | D | PS |  | cop-7 (righe, incompleta); cop-8 (conteggio) | reg · cop-7 · cop-8 |
@@ -1037,3 +1036,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | S-02 | `_close_expired_promise` dice «ho aspettato N minuti» con la `scadenza_min` di adesso, non la durata del job | Tappa 6 (da rilasciare) | adee375 | la promessa scaduta dice l'attesa del suo turno (deadline_ts - created_ts), la stessa durata che va al registro degli esiti. Tappa 6, Task 2 |
 | B-52 | `ChatThread` ricostruito in tre archivi; la condizione SQL del filo in undici posti | Tappa 6 (da rilasciare) | 71dcf20 | chat_thread.thread_condition, thread_params, thread_from_columns: uscite le dodici condizioni del filo scritte a mano (dieci in chat_store, _OF_THREAD e _thread_params di keeper/store, la coda) e le tre ricostruzioni dalla riga. Tappa 6, Task 2 |
 | B-53 | Costante «64» duplicata con legame solo a commento (`MAX_TRACKED`, `_MAX_TRACKED_EXCHANGES`) | Tappa 6 (da rilasciare) | 71dcf20 | handlers_mcp importa MAX_TRACKED da usage/bridge_loads; uscito _MAX_TRACKED_EXCHANGES. Tappa 6, Task 2 |
+| D-11 | Leggere un JSON dalla risposta: cinque lettori, tre strategie, una regex duplicata | Tappa 6, Task 3 | 21f6e0d | steering.read_json, il lettore unico: escono read_recipe, read_analysis, read_actuation e la lettura di _read_proposal; read_decisions tiene solo la forma. La regex della staccionata vive una volta |

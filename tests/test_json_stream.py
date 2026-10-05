@@ -84,7 +84,7 @@ def _flusso(*righe):
 
 def _job(job_id="J-1"):
     return {"job_id": job_id, "kind": "chat",
-            "context": {"system_prompt": "Sei HIRIS.",
+            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                         "history": [{"role": "user", "content": "che luci?"}]}}
 
 

@@ -290,7 +290,7 @@ def test_il_runner_manda_X_HIRIS_Chat_e_il_soggetto_solo_per_la_chat(
     monkeypatch.setattr(ponte.subprocess, "run", _cli)
     righe: list[dict] = []
     ponte.set_turn_logger(righe.append)
-    contesto = {"history": [{"role": "user", "content": "ciao"}],
+    contesto = {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                 "system_prompt": "Sei HIRIS.", "contesto": "", "soggetto": MARTA}
     if kind == "promessa":
         contesto["promessa_id"] = "p1"

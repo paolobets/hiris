@@ -433,7 +433,8 @@ def test_is_toxic_copre_i_sentinella_veri_del_ponte():
 
     from hiris.app.agent import runner
 
-    job = {"kind": "chat", "context": {"history": [], "system_prompt": "Sei HIRIS."}}
+    job = {"kind": "chat",
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS."}}
 
     class _Proc:
         def __init__(self, returncode, stdout, stderr=""):

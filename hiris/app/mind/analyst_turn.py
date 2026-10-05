@@ -34,10 +34,23 @@ import hashlib
 import json
 import logging
 
+from ..steering import read_json
+
 logger = logging.getLogger(__name__)
 
 #: La specie di turno, per il ponte e per il runner.
 ANALYSIS_TURN_KIND = "analisi"
+
+#: **Il tetto della risposta, dichiarato** (Tappa 6, Task 4; D3, approvata
+#: il 05/10/2026). Fino a quel giorno questo mestiere non ne passava nessuno e
+#: prendeva i 4.096 di fabbrica di `claude_runner.MAX_TOKENS`: lo stesso
+#: numero, scelto da nessuno. Qui e' lo stesso valore SCRITTO -- il
+#: comportamento non cambia, diventa visibile. **Non e' misurato**: 7 turni
+#: dell'analista su 8 si fermano qui (`docs/misure/2026-10-tappa-0.md`), e il
+#: valore giusto lo sceglie la misura dal vivo della chiusura della tappa
+#: (T9: 8 turni con un tetto alto, la risposta piu' lunga piu' un margine),
+#: scritto con la data.
+MAX_ANSWER_TOKENS = 4096
 
 #: I tre inneschi della spec §10. Sono tre e sono dichiarati: un'osservazione
 #: che non dice quale dei tre non e' dell'analista, e' un commento.
@@ -47,29 +60,6 @@ TRIGGERS = (1, 2, 3)
 #: codice. Elencati qui perche' il rifiuto possa dire quale ha trovato.
 NUMERIC_FIELDS = ("valore", "numero", "copertura", "quanti_scarti", "scarto",
                   "mediana", "base")
-
-
-def read_analysis(answer: str) -> tuple[dict | None, str | None]:
-    """La risposta letta come dato: `(dati, ragione)`.
-
-    Stessa forma di `recipe_turn.read_recipe`: o esce un dizionario, o esce il
-    perche' non si e' potuto leggere -- mai un'eccezione, perche' un guasto di
-    forma non deve fermare la notte.
-    """
-    text = str(answer or "").strip()
-    if not text:
-        return None, "il modello non ha risposto"
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:]
-    try:
-        data = json.loads(text)
-    except (TypeError, ValueError) as error:
-        return None, f"la risposta non e' JSON leggibile: {error}"
-    if not isinstance(data, dict):
-        return None, "la risposta non e' un oggetto con le osservazioni"
-    return data, None
 
 
 def fondamento(stamps) -> dict:
@@ -95,7 +85,7 @@ def fondamento(stamps) -> dict:
             "impronta": hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]}
 
 
-def apply_analysis(series: dict, answer: str) -> dict:
+def apply_analysis(series: dict, answer: str, *, truncated: bool = False) -> dict:
     """Cosa si fa della risposta: si valida, e si **arricchisce coi numeri**.
 
     Torna `{"analisi": dict | None, "problemi": [...], "risposta": bool}`.
@@ -104,7 +94,12 @@ def apply_analysis(series: dict, answer: str) -> dict:
     corregge, e **tutti i problemi si dicono insieme** -- dirne uno per giro
     costringerebbe a rieseguire la notte per scoprirne un altro.
     """
-    data, reason = read_analysis(answer)
+    # Il JSON lo cava il lettore unico (`steering.read_json`, D-11): o esce
+    # un dizionario, o esce il perche' no -- e un turno troncato non si legge
+    # (D2).
+    data, reason = read_json(answer, shape=dict,
+                             what="un oggetto con le osservazioni",
+                             truncated=truncated)
     if data is None:
         answered = bool(str(answer or "").strip())
         if not answered:

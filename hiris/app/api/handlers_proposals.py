@@ -26,13 +26,13 @@ mostrare. Prima di tutti, 403: le proposte sono di chi costruisce (spec
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
 
 from aiohttp import web
 
 from ..chat_thread import unknown_id_text
+from ..steering import misura_turno, read_json
 from .boundary import error_response
 from .soffitto import require_builder
 
@@ -54,6 +54,12 @@ invece di inventare qualcosa che non sta in piedi.
 
 Rispondi SOLO con un oggetto JSON:
 {"testo": "cosa fare, in una frase", "perche": "perche' lo proponi"}"""
+
+
+#: Il tetto del «Rifalla», dichiarato (Tappa 6, Task 4): e' il 4.096 di
+#: fabbrica di `claude_runner.MAX_TOKENS` che prendeva senza dirlo, ora
+#: scritto. Non misurato: la risposta e' una frase e un perche'.
+_REDO_MAX_TOKENS = 4096
 
 
 def _store(request):
@@ -166,18 +172,18 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         # «Rifalla» è un turno di chat a tutti gli effetti: parte da un gesto
         # del proprietario nella pagina, e il suo costo va contato con gli
         # altri suoi — non in una specie a parte che nessuno guarderebbe.
-        from ..steering import misura_turno
         async with misura_turno(request.app.get("usage"), runner,
                                 specie="chat", canale="catena",
-                                soggetto=request.get("soggetto")):
+                                soggetto=request.get("soggetto")) as turn:
             answer = await runner.chat(user_message="\n".join(lines),
-                                       system_prompt=_REDO_SYSTEM)
+                                       system_prompt=_REDO_SYSTEM,
+                                       max_tokens=_REDO_MAX_TOKENS)
     except Exception as error:
         logger.warning("proposta: il giro di «rifalla» non e' partito (%s: %s)",
                        type(error).__name__, error)
         return error_response(503, "il modello non ha risposto: riprova.")
 
-    testo, perche = _read_proposal(answer)
+    testo, perche = _read_proposal(answer, truncated=turn.truncated)
     if testo is None:
         return error_response(502, "la risposta del modello non si e' potuta leggere: "
                                    "riprova.")
@@ -222,23 +228,18 @@ def _nota_porta(app, *, route: str, downgrade: str) -> str:
     return ""
 
 
-def _read_proposal(answer: str) -> tuple[str | None, str | None]:
+def _read_proposal(answer: str, *,
+                   truncated: bool = False) -> tuple[str | None, str | None]:
     """`(testo, perche)` dalla risposta del modello, o `(None, None)`.
 
-    Stessa forma delle altre letture di questo prodotto: o esce un dato, o
-    esce niente -- mai un'eccezione, perche' una risposta storta non deve far
-    cadere una rotta.
+    Il JSON lo cava il lettore unico (`steering.read_json`, D-11), con la
+    stessa tolleranza degli altri mestieri: fino al 05/10/2026 questo era un
+    quinto lettore, che rifiutava «Ecco la proposta: {...}». Un turno troncato
+    non si legge (D2). Qui resta la forma della proposta.
     """
-    text = str(answer or "").strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:]
-    try:
-        data = json.loads(text)
-    except (TypeError, ValueError):
-        return None, None
-    if not isinstance(data, dict):
+    data, _reason = read_json(answer, shape=dict, what="una proposta",
+                              truncated=truncated)
+    if data is None:
         return None, None
     testo = str(data.get("testo") or "").strip()
     if not testo:

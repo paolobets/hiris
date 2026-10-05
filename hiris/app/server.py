@@ -101,7 +101,7 @@ from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
 from .reasoning.queue import PRIORITY_BACKGROUND
-from .steering import ACTUATOR_SPECIES, declare_downgrade, misura_turno, who_answers
+from .steering import ACTUATOR_SPECIES, bridge_model, declare_downgrade, misura_turno, who_answers
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -2036,10 +2036,12 @@ async def analyst_round(app) -> dict | None:
         if question is None:
             return None
         async with misura_turno(app.get("usage"), runner,
-                                specie="analista", canale="catena"):
-            answer = await runner.chat(user_message=question,
-                                       system_prompt=analyst_turn.SYSTEM)
-        esito = analyst_turn.apply_analysis(series, answer)
+                                specie="analista", canale="catena") as turn:
+            answer = await runner.chat(
+                user_message=question, system_prompt=analyst_turn.SYSTEM,
+                max_tokens=analyst_turn.MAX_ANSWER_TOKENS)
+        esito = analyst_turn.apply_analysis(series, answer,
+                                            truncated=turn.truncated)
         _write_analysis(store, today, esito)
         return esito
     except Exception as error:
@@ -2137,10 +2139,12 @@ async def actuator_round(app) -> dict | None:
             return None
 
         async with misura_turno(app.get("usage"), runner,
-                                specie=ACTUATOR_SPECIES, canale="catena"):
-            answer = await runner.chat(user_message=question,
-                                       system_prompt=actuator_turn.SYSTEM)
-        esito = actuator_turn.apply_actuation(pending, answer)
+                                specie=ACTUATOR_SPECIES, canale="catena") as turn:
+            answer = await runner.chat(
+                user_message=question, system_prompt=actuator_turn.SYSTEM,
+                max_tokens=actuator_turn.MAX_ANSWER_TOKENS)
+        esito = actuator_turn.apply_actuation(pending, answer,
+                                              truncated=turn.truncated)
         await _settle_actuation(app, store, today, stamp, esito, pending,
                                 repaired=repaired)
         return esito
@@ -2380,7 +2384,9 @@ def _enqueue_actuator_turn(app, day: str) -> dict | None:
         return None
     job = {"history": [{"role": "user", "content": question}],
            "system_prompt": actuator_turn.SYSTEM,
-           "istruzione": actuator_turn.ANSWER_CONTRACT}
+           "istruzione": actuator_turn.ANSWER_CONTRACT,
+           # Il modello del proprietario, come la chat (decisione 11).
+           "model": bridge_model(app)}
     deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     app["reasoning_queue"].enqueue(
@@ -2429,7 +2435,9 @@ def _enqueue_analyst_turn(app, series: dict, day: str) -> dict | None:
     # altro processo, e chi raccoglie deve sapere di QUALE giorno era la
     # domanda -- e con quali serie confrontarla.
     app["reasoning_queue"].enqueue(
-        analyst_turn.ANALYSIS_TURN_KIND, {"giorno": day}, job,
+        analyst_turn.ANALYSIS_TURN_KIND, {"giorno": day},
+        # Il modello del proprietario, come la chat (decisione 11).
+        {**job, "model": bridge_model(app)},
         now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
     logger.info("analista: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
@@ -2662,7 +2670,9 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
         # da un altro processo, e chi raccoglie deve sapere di CHI era la
         # domanda. `submit` azzera il contesto e non la sveglia.
         {"dispositivo": device_id},
-        job, now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
+        # Il modello del proprietario, come la chat (decisione 11).
+        {**job, "model": bridge_model(app)},
+        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
     logger.info("ricette: turno accodato al piano per «%s» (scadenza %d min)",
                 device_id, deadline_min)
     return {"accodata": True, "dispositivo": device_id}
@@ -3042,7 +3052,9 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
         {"motivo": reason, "finestra_s": window_s,
          "cadenza_s": cadence_from(window_s),
          "lotto": sorted(lotto), "annota": annota, "campagna_ts": campagna_ts},
-        observer_bridge_turn(store, house, lotto),
+        # Il modello del proprietario, come la chat (decisione 11).
+        {**observer_bridge_turn(store, house, lotto),
+         "model": bridge_model(app)},
         now + deadline_min * 60,
         now=now, priority=PRIORITY_BACKGROUND)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve

@@ -40,8 +40,11 @@ la chat).
 from __future__ import annotations
 
 import contextlib as _contextlib
+import json as _json
 import logging
+import re as _re
 import time as _time
+from dataclasses import dataclass as _dataclass
 
 from .api.handlers_models import _STORE_DEFAULTS
 from .model_resolution import subscription_has_token
@@ -116,6 +119,127 @@ ACTUATOR_SPECIES = "attuatore"
 SPECIE = frozenset({"analista", ACTUATOR_SPECIES, "chat", "osservatore",
                     "promessa", "ricette"})
 
+#: **L'esito di un turno fermato dal tetto di token** (Tappa 6, D-58; D2).
+#: Fino al 05/10/2026 il registro lo chiamava «riuscito»: misurato in
+#: `docs/misure/2026-10-tappa-0.md`, 7 turni dell'analista su 8 si fermavano
+#: al tetto, e nessuna riga lo diceva. Il segnale viene dal runner
+#: (`last_truncated`), cioe' da cio' che il provider ha dichiarato -- mai dal
+#: testo della risposta.
+TRUNCATED = "troncato"
+
+#: Cosa riceve il mestiere al posto delle decisioni, quando il turno e' stato
+#: troncato (D2, approvata il 05/10/2026): **non si legge**. Un JSON tagliato a
+#: meta' che per caso si chiude e' l'unico modo di inventare decisioni da una
+#: risposta che il modello non ha finito -- e nessun nuovo tentativo: prima si
+#: vede, poi il tetto si sceglie misurando (D3).
+TRUNCATED_REASON = ("la risposta e' stata troncata al tetto di token: non "
+                    "si legge una risposta che il modello non ha finito")
+
+#: Una risposta vuota non e' un silenzio: e' un modello che non ha risposto.
+NO_ANSWER_REASON = "il modello non ha risposto"
+
+#: **Il freno** (Tappa 6, Task 3, passo 5): dopo questi turni troncati DI FILA
+#: lo stesso mestiere si ferma e lo dice. **Il numero non c'e' ancora, e il
+#: freno e' spento**: «un numero non misurato non si scrive», e N si sceglie
+#: dalle misure dal vivo della chiusura (T9) -- i troncati per mestiere,
+#: contati da questo stesso registro. `None` = spento.
+TRUNCATION_BRAKE: int | None = None
+
+#: Chi il freno puo' fermare. **La chat no**, ed e' una scelta, non una
+#: dimenticanza: ha una persona davanti che vede la troncatura
+#: (`claude_runner._TRUNCATION_NOTICE`) e decide da se'. Il freno esiste per i
+#: mestieri che girano da soli, di notte, e che senza di lui si troncherebbero
+#: a ogni giro senza che nessuno guardi.
+BRAKED_SPECIES = SPECIE - {"chat"}
+
+
+class TurnBraked(RuntimeError):
+    """Il freno dei troncati ha fermato questo mestiere: il turno non parte."""
+
+
+@_dataclass
+class TurnOutcome:
+    """Cio' che il turno sa di se' quando e' finito, consegnato dall'imbuto.
+
+    `truncated` si legge DOPO il blocco `async with misura_turno(...)`: e' il
+    segnale del runner, letto una volta sola qui invece che da ogni mestiere.
+    """
+    truncated: bool = False
+
+
+def was_truncated(runner) -> bool:
+    """Se l'ultima chiamata di QUESTO compito su `runner` e' stata troncata.
+
+    Il segnale e' `last_truncated`, per chiamata come `last_tool_calls`
+    (ContextVar condivisa da `ClaudeRunner`, `OpenAICompatRunner` e
+    `LLMRouter`). Un runner che non lo espone non sa dirlo, e allora non si
+    afferma niente: e' il caso delle finte nelle prove, non dei runner veri
+    -- `tests/test_turno_troncato.py` pretende l'attributo da ognuno.
+    """
+    return bool(getattr(runner, "last_truncated", False))
+
+
+_FENCE = _re.compile(r"```(?:json)?\s*(.*?)```", _re.DOTALL)
+_BRACKETS = {list: ("[", "]"), dict: ("{", "}")}
+
+
+def read_json(answer, *, shape: type, what: str,
+              truncated: bool = False) -> tuple[list | dict | None, str | None]:
+    """**Il lettore unico** delle risposte JSON dei mestieri (D-11): `(dato,
+    ragione)` -- o esce il dato della forma chiesta, o esce perche' no. Mai
+    un'eccezione: un guasto di forma non deve fermare il giro.
+
+    Fino al 05/10/2026 i lettori erano cinque (osservatore, ricette, analista,
+    attuatore, «Rifalla»), e due tolleranze diverse: l'analista rifiutava
+    «Ecco l'analisi: {...}», che le ricette leggevano. Qui vive la piu' larga
+    delle due -- la staccionata, poi la ricerca per parentesi -- e i mestieri
+    tengono solo la validazione della propria forma.
+
+    - `shape`: `list` o `dict`, la forma del valore JSON che il mestiere
+      chiede;
+    - `what`: come il mestiere chiama quella forma, per la ragione del
+      rifiuto («un elenco di decisioni»);
+    - `truncated`: il segnale del runner (`TurnOutcome.truncated`). Un turno
+      troncato **non si legge** (D2): `TRUNCATED_REASON`.
+    """
+    if truncated:
+        return None, TRUNCATED_REASON
+    text = str(answer or "").strip()
+    if not text:
+        return None, NO_ANSWER_REASON
+    fenced = _FENCE.search(text)
+    if fenced:
+        text = fenced.group(1).strip()
+    else:
+        opening, closing = _BRACKETS[shape]
+        start, end = text.find(opening), text.rfind(closing)
+        if start != -1 and end > start:
+            text = text[start:end + 1]
+    try:
+        parsed = _json.loads(text)
+    except (ValueError, TypeError) as error:
+        return None, (f"la risposta non e' un JSON leggibile "
+                      f"({type(error).__name__})")
+    if not isinstance(parsed, shape):
+        return None, f"la risposta non e' {what}"
+    return parsed, None
+
+
+def brake_engaged(archivio, specie: str) -> bool:
+    """Se il freno dei troncati ferma `specie` adesso.
+
+    Vero quando gli ultimi `TRUNCATION_BRAKE` turni registrati di quella
+    specie sono TUTTI troncati. Spento (`None`), non legge nemmeno
+    l'archivio. Senza archivio non c'e' niente da contare: non frena.
+    """
+    if TRUNCATION_BRAKE is None or specie not in BRAKED_SPECIES:
+        return False
+    if archivio is None:
+        return False
+    recenti = archivio.turns(limit=TRUNCATION_BRAKE, species=specie)
+    return (len(recenti) >= TRUNCATION_BRAKE
+            and all(t["outcome"] == TRUNCATED for t in recenti))
+
 
 @_contextlib.asynccontextmanager
 async def misura_turno(archivio, runner, *, specie: str, canale: str,
@@ -142,6 +266,12 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
     Il turno si registra **anche quando fallisce**, ed e' il caso piu'
     interessante: un giro che esaurisce le iterazioni e' quello che ha speso
     di piu' senza dare niente.
+
+    **Consegna un `TurnOutcome`** (`async with ... as turno`): dopo il blocco,
+    `turno.truncated` dice se il provider ha fermato la risposta al tetto. E'
+    l'unica cosa che l'imbuto restituisce al mestiere, e la restituisce perche'
+    il mestiere ne ha bisogno per non leggere (D2). Il turno troncato si
+    registra con l'esito `TRUNCATED`.
     """
     if specie not in SPECIE:
         # **Qui, non nell'archivio**: il vocabolario vive in questo modulo, e
@@ -162,18 +292,36 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
     # finire il carico della chat del proprietario dentro la misura del giro
     # notturno dell'analista, se i due si accavallano. E' la stessa cura che
     # `claude_runner` si era gia' data per `last_tool_calls`.
+    if brake_engaged(archivio, specie):
+        # **Il freno, PRIMA di misurare**: il turno non parte, quindi non c'e'
+        # nessun turno da registrare. Lo si dice nel registro dell'add-on, e
+        # l'eccezione arriva al giro del mestiere, che la scrive come ogni
+        # giro che non e' partito.
+        logger.warning(
+            "%s: gli ultimi %d turni si sono fermati al tetto di token -- il "
+            "mestiere si ferma finche' il tetto non cambia", specie,
+            TRUNCATION_BRAKE)
+        raise TurnBraked(f"«{specie}»: {TRUNCATION_BRAKE} turni troncati di fila")
+    stato = TurnOutcome()
     gettone = _posa_misura(
         lambda giro, pesi: carichi.setdefault(int(giro), {}).update(pesi))
     inizio = _time.perf_counter()
     esito = "riuscito"
     try:
-        yield
+        yield stato
     except Exception:
         esito = "fallito"
         raise
     finally:
         _togli_misura(gettone)
         durata_ms = int((_time.perf_counter() - inizio) * 1000)
+        # **Il troncato si legge FUORI dalla scrittura dell'archivio**: il
+        # mestiere ne ha bisogno anche quando nessuno misura (archivio
+        # `None`), perche' e' cio' che gli impedisce di leggere una risposta
+        # non finita (D2).
+        stato.truncated = esito == "riuscito" and was_truncated(runner)
+        if stato.truncated:
+            esito = TRUNCATED
         try:
             if archivio is not None:
                 chiamate = getattr(runner, "last_tool_calls", None) or []
@@ -301,6 +449,22 @@ def who_answered(app) -> str:
         if occurrence and occurrence["tipo"] == "risposto":
             return name
     return ""
+
+
+def bridge_model(app) -> str:
+    """Il modello che il proprietario ha scelto per il ponte: un alias della
+    CLI (`ponte.modello`, gia' validato all'ingresso del campo da
+    `handlers_models._clean_subscription_model`).
+
+    **Lo porta ogni turno che si accoda, non solo la chat** (decisione 11
+    della spec, Tappa 6 Task 4). Fino al 05/10/2026 solo
+    `handlers_chat._enqueue_chat_job` lo metteva nel job, e il lavoratore
+    ripiegava su «sonnet» per tutti gli altri: la scelta del proprietario
+    valeva per meta' dei turni del piano. Il predefinito e' quello di
+    `_STORE_DEFAULTS`, l'unico: non se ne scrive un secondo qui.
+    """
+    return ((app.get("models_config") or {}).get("ponte", {}).get("modello")
+            or _STORE_DEFAULTS["ponte"]["modello"])
 
 
 def who_answers(app) -> tuple[str, str]:

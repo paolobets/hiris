@@ -25,13 +25,11 @@ modulo sa fare un giro, non sa quando farlo.
 """
 from __future__ import annotations
 
-import json
 import logging
-import re
 
 from ..home_space.house import House
 from ..home_space.topology import is_pseudo_area
-from ..steering import misura_turno
+from ..steering import misura_turno, read_json
 from .scope import OBSERVER
 
 logger = logging.getLogger(__name__)
@@ -167,10 +165,8 @@ def build_house_question(objective: str, lines: list[str]) -> str:
     )
 
 
-_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
-
-
-def read_decisions(answer: str) -> tuple[list[dict], str | None]:
+def read_decisions(answer: str, *,
+                   truncated: bool = False) -> tuple[list[dict], str | None]:
     """Le decisioni lette dalla risposta, e la ragione per cui NON si sono
     lette se non si e' potuto.
 
@@ -179,28 +175,19 @@ def read_decisions(answer: str) -> tuple[list[dict], str | None]:
     non afferma niente, e appiattire la seconda sulla prima e' la bugia che
     questo prodotto rifiuta ovunque.
 
-    **La staccionata si tollera.** I modelli incorniciano il JSON in ```` ```json ````
-    anche quando si chiede di non farlo: buttare il giro per un dettaglio di
-    forma costerebbe ≈11.500 token per niente.
+    **Il JSON lo cava il lettore unico** (`steering.read_json`, D-11), con la
+    sua tolleranza -- la staccionata, il testo intorno -- e il suo rifiuto di
+    leggere un turno troncato (D2). Qui resta solo la forma della decisione.
 
     **Una voce storta si salta, le altre restano.** 380 giudizi buoni non si
     perdono per uno malformato -- e la voce saltata resta NON decisa, quindi
     l'impronta la ripresentera' al giro dopo: si ripara da se'.
     """
-    text = (answer or "").strip()
-    fenced = _FENCE.search(text)
-    if fenced:
-        text = fenced.group(1).strip()
-    else:
-        start, end = text.find("["), text.rfind("]")
-        if start != -1 and end > start:
-            text = text[start:end + 1]
-    try:
-        parsed = json.loads(text)
-    except (ValueError, TypeError) as error:
-        return [], f"la risposta non e' un JSON leggibile ({type(error).__name__})"
-    if not isinstance(parsed, list):
-        return [], "la risposta non e' un elenco di decisioni"
+    parsed, failure = read_json(answer, shape=list,
+                                what="un elenco di decisioni",
+                                truncated=truncated)
+    if failure is not None:
+        return [], failure
     decisions = []
     for item in parsed:
         if not isinstance(item, dict):
@@ -260,7 +247,8 @@ def apply_answer(store, house: House, answer: str, *, reason: str = "",
                  asked: set[str] | None = None,
                  record: bool = True,
                  campaign_ts: float | None = None,
-                 now: float | None = None) -> dict:
+                 now: float | None = None,
+                 truncated: bool = False) -> dict:
     """Cosa si fa di una risposta, **da qualunque porta sia arrivata**.
 
     E' la seconda meta' del giro, separata dalla prima perche' le due meta'
@@ -282,7 +270,7 @@ def apply_answer(store, house: House, answer: str, *, reason: str = "",
     # L'insieme valido e' quello che la casa ha scelto per la domanda, non le
     # righe rilette (Task 12): il separatore e' della resa, non del giudizio.
     known = set(watched_ids(house, asked))
-    decisions, failure = read_decisions(answer)
+    decisions, failure = read_decisions(answer, truncated=truncated)
     if failure is not None:
         logger.warning("osservatore: %s", failure)
         return {"errore": failure}
@@ -361,7 +349,7 @@ async def reconsider(runner, store, house: House, *, reason: str,
         # chiamante che non ha l'archivio): la misura non e' un requisito per
         # girare.
         async with misura_turno(measurements, runner, specie="osservatore",
-                                canale="catena", modello=model):
+                                canale="catena", modello=model) as turn:
             answer = await runner.chat(
                 user_message=question, system_prompt=SYSTEM,
                 model=model, agent_type="observer",
@@ -374,4 +362,5 @@ async def reconsider(runner, store, house: House, *, reason: str,
     return apply_answer(store, house, answer, reason=reason,
                         window_s=window_s, cadence_s=cadence_s,
                         asked={line.split(" · ", 1)[0] for line in lines},
-                        record=record, campaign_ts=campaign_ts, now=now)
+                        record=record, campaign_ts=campaign_ts, now=now,
+                        truncated=turn.truncated)
