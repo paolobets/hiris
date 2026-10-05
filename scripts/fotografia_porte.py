@@ -42,9 +42,14 @@ ferma.
   eventi e legami, che gli ingressi non portano.
 - Gli strumenti che scrivono (`execute`, `promise`, `propose`, `confirm`,
   `remember`, `cancel`): non si chiamano.
-- Le rotte che leggono gli archivi di HIRIS in `/data` (resoconti, sapere,
-  agenda): `forme`, dal vivo. Qui gli archivi nascono VUOTI: i ricordi, le
-  promesse e il sapere imparato dalla casa vera non ci sono, c'e' il seme.
+- La STORIA degli archivi di HIRIS in `/data` (resoconti, sapere imparato,
+  agenda, ricordi): `forme`, dal vivo. Qui gli archivi nascono dall'avvio
+  sugli ingressi congelati -- l'anagrafe dagli ingressi, il resto VUOTO o
+  col seme -- e la porta `rotte` fotografa questo, non cio' che la casa vera
+  ha accumulato.
+- Le rotte di `COLD_EXCLUDED_ROUTES` (la salute), e i campi di
+  `STARTUP_STAMPS` (l'istante in cui l'avvio ha letto l'anagrafe), ognuno col
+  suo perche'.
 - Il confronto dell'albero con Home Assistant (`extract_from_target`) e il
   Supervisor: gli ingressi non li portano, e l'avvio li trova muti.
 - I CORPI di automazioni e script: il prodotto li consegna solo se riesce a
@@ -53,6 +58,22 @@ ferma.
   corpo disponibile» (misurato il 01/10/2026: 19 su 19), la produzione no.
 - I prompt di sistema si compongono DENTRO `chat()` dei runner, in linea: qui
   si fotografano i testi fissi che li compongono, non la composizione.
+
+## Le rotte, a freddo
+
+La porta `rotte` (Tappa 4, Task 1, 05/10/2026) chiama ogni rotta `GET` di
+`live_routes()` sull'app montata a freddo, e salva lo stato HTTP e il corpo.
+L'elenco si CHIEDE al router dell'app montata, come per `forme`: una rotta
+nuova entra da sola. Non si filtra «chi legge `/data`»: a freddo ogni
+archivio nasce dall'avvio sugli stessi ingressi -- anche l'anagrafe, che
+vive in `/data` come gli altri (`HomeSpace(data_dir, ...)`) -- quindi quella
+linea non separa niente. Si separa cio' che una fotografia puo' tenere: una
+risposta che, sugli stessi ingressi e allo stesso orologio, e' la stessa.
+Cio' che non lo e' sta in `COLD_EXCLUDED_ROUTES` o in `STARTUP_STAMPS`, col
+suo perche'. Si chiama il gestore della rotta, non il server: i tre
+middleware dell'app (ingresso, CSRF, intestazioni di sicurezza) non toccano
+il corpo, e una richiesta senza credenziali riceve il rifiuto che il gestore
+scrive -- anche quello e' cio' che esce da quella porta.
 
 ## Le forme, dal vivo
 
@@ -83,6 +104,8 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
+from aiohttp.test_utils import make_mocked_request
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -108,7 +131,7 @@ BUSIEST_DOMAINS = 5
 
 #: Le porte dello scatto. Chi ne aggiunge una la aggiunge QUI e in `shoot`.
 PORTS = ("albero", "visibili", "nucleo", "schede", "selezioni", "osservatore",
-         "ricette", "strumenti", "catalogo", "prompt")
+         "ricette", "strumenti", "catalogo", "prompt", "rotte")
 
 
 
@@ -135,6 +158,64 @@ def live_routes(app=None, *, excluded=None) -> tuple[str, ...]:
     return tuple(sorted(route for route in routes
                         if route.startswith("/api/") and "{" not in route
                         and route not in skipped))
+
+
+#: Le rotte `GET` che la porta `rotte` NON chiama a freddo. Lista di
+#: AMMISSIONE al contrario, come `EXCLUDED_ROUTES`: ogni esclusione col suo
+#: perche' (misurato il 05/10/2026 su due scatti degli stessi ingressi); una
+#: rotta nuova entra da sola.
+COLD_EXCLUDED_ROUTES: dict[str, str] = {
+    "/api/health": (
+        "`build` e' l'impronta del codice: cambia a ogni commit per "
+        "costruzione, e fra un «prima» e un «dopo» sarebbe sempre una "
+        "differenza che il comportamento non ha. E i giorni di `riparazione` "
+        "sono quelli dell'orologio di sistema all'avvio, non dell'orologio "
+        "fermo"),
+}
+
+#: I campi di una risposta che portano l'ISTANTE in cui l'avvio ha letto
+#: qualcosa: l'orologio di sistema di quel momento (`datetime.now`), non un
+#: fatto della casa ne' l'orologio fermo dello scatto. Si sostituiscono con
+#: `STARTUP_STAMP` se ci sono. Percorso a punti dentro il corpo. Lista di
+#: ammissione: ogni campo col suo perche', e una prova che esista ancora.
+STARTUP_STAMPS: dict[str, tuple[str, ...]] = {
+    # `HomeSpace.updated_at` e `behavior_loaded_at`
+    # (`home_space/reader.py`): l'ora della ricostruzione dell'anagrafe e
+    # della lettura del comportamento, scritte all'avvio.
+    "/api/home-space": ("anagrafe_letta_il", "comportamento.letto_il"),
+}
+STARTUP_STAMP = "<istante dell'avvio>"
+
+
+def _mask_stamp(body, dotted: str) -> bool:
+    """Sostituisce il campo `dotted` di `body` con `STARTUP_STAMP`, se c'e' e
+    non e' `None`. Dice se il campo esiste (anche `None`): la prova che
+    l'elenco non e' invecchiato lo chiede qui."""
+    *parents, last = dotted.split(".")
+    for key in parents:
+        if not isinstance(body, dict) or key not in body:
+            return False
+        body = body[key]
+    if not isinstance(body, dict) or last not in body:
+        return False
+    if body[last] is not None:
+        body[last] = STARTUP_STAMP
+    return True
+
+
+async def _routes(app) -> dict:
+    """La porta `rotte`: per ogni rotta `GET` dell'app montata, chiesta al suo
+    router, lo stato HTTP e il corpo JSON."""
+    handlers = {route.resource.canonical: route.handler for route in app.router.routes()
+                if route.resource is not None and route.method == "GET"}
+    answers = {}
+    for path in live_routes(app, excluded=COLD_EXCLUDED_ROUTES):
+        response = await handlers[path](make_mocked_request("GET", path, app=app))
+        body = json.loads(response.body)
+        for dotted in STARTUP_STAMPS.get(path, ()):
+            _mask_stamp(body, dotted)
+        answers[path] = {"stato": response.status, "corpo": body}
+    return answers
 
 
 #: Oltre questo numero di chiavi un dizionario non e' un oggetto con dei
@@ -411,6 +492,7 @@ async def _ports(app, clock: float) -> dict:
         "strumenti": answers,
         "catalogo": catalog,
         "prompt": _fixed_texts(),
+        "rotte": await _routes(app),
     }
 
 

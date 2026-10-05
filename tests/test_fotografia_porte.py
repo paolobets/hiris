@@ -239,6 +239,55 @@ def test_ogni_esclusione_e_una_rotta_che_esiste():
     assert not stale, f"esclusioni di rotte che non esistono piu': {stale}"
 
 
+# ── la porta `rotte`: le rotte GET, a freddo ───────────────────────────────
+
+def test_le_rotte_a_freddo_si_chiedono_al_router(shot):
+    """L'elenco della porta `rotte` e' quello del router meno le esclusioni
+    dichiarate, e non si e' svuotato.
+
+    Mutazione ESEGUITA: in `_routes` l'elenco chiesto al router sostituito da
+    `("/api/home-space",)` -- rossa (le altre rotte mancano). Mutazione
+    ESEGUITA: aggiunta in `server.py` la riga
+    `app.router.add_get("/api/prova-mutazione", handle_config)` -- la rotta
+    entra nella porta senza toccare questa prova (verde, e lo scatto la
+    porta); tolta, esce."""
+    expected = (set(fotografia_porte.live_routes())
+                - set(fotografia_porte.COLD_EXCLUDED_ROUTES))
+    assert set(shot["rotte"]) == expected
+    # Non svuotata: la casa e le rotte dell'osservatore che restituiscono
+    # soggetti ci sono, e sono tante quante il router ne dichiara.
+    assert {"/api/home-space", "/api/mind/watching", "/api/mind/report"} <= set(shot["rotte"])
+    assert len(shot["rotte"]) >= 15, sorted(shot["rotte"])
+    assert shot["rotte"]["/api/home-space"]["stato"] == 200
+    assert shot["rotte"]["/api/home-space"]["corpo"]["piani"]
+
+
+def test_ogni_esclusione_a_freddo_e_una_rotta_che_esiste():
+    every = fotografia_porte.live_routes(excluded=())
+    stale = sorted(set(fotografia_porte.COLD_EXCLUDED_ROUTES) - set(every))
+    assert not stale, f"esclusioni di rotte che non esistono piu': {stale}"
+
+
+def test_ogni_istante_dell_avvio_dichiarato_esiste_ed_e_coperto(shot):
+    """Un campo di `STARTUP_STAMPS` che la rotta non scrive piu' e' un elenco
+    invecchiato: esce col campo.
+
+    Mutazione ESEGUITA: `anagrafe_letta_il` rinominato `anagrafe_letta` in
+    `STARTUP_STAMPS` -- rossa qui. Mutazione ESEGUITA: `STARTUP_STAMPS`
+    vuoto -- rossa in `test_nessuna_porta_legge_l_orologio_di_sistema`
+    (`rotte./api/home-space.corpo.anagrafe_letta_il` fra le differenze): e'
+    l'orologio di sistema, e senza la dichiarazione lo scatto non sarebbe
+    ripetibile."""
+    assert fotografia_porte.STARTUP_STAMPS
+    for path, fields in fotografia_porte.STARTUP_STAMPS.items():
+        for dotted in fields:
+            body = shot["rotte"][path]["corpo"]
+            for key in dotted.split("."):
+                assert key in body, f"{path}: {dotted} non c'e' piu'"
+                body = body[key]
+            assert body == fotografia_porte.STARTUP_STAMP, (path, dotted, body)
+
+
 def test_due_forme_dal_vivo_si_confrontano_senza_contare_le_righe():
     """Mutazione ESEGUITA: in `without_lengths` tolta la condizione sul campo
     `elenco` -- rossa (`righe.elenco: 2 -> 3` torna fra le differenze)."""
