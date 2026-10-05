@@ -178,10 +178,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-36 | Il resoconto di un giorno scritto con le stesse due chiamate in tre punti | E | PS |  |  | cop-1 D3 |
 | D-37 | `_write_analysis` e `_write_actuation`: stesso scheletro | E | PS |  |  | cop-1 D4 |
 | D-38 | Indice del modello → riga dell'elenco, due volte (`server.py:2195`, `:2256`) | E | PS |  |  | cop-1 D5 |
-| D-39 | Tre tabelle a mano per nome di strumento; la terza fuori dal `try` | E | PS |  |  | cop-3 D-n1 |
-| D-40 | Il cancello degli argomenti non legge `enum` né `type`: vocabolari rivalidati a mano | D | PS |  |  | cop-3 D-n2 |
-| D-41 | La risorsa che serve a uno strumento decisa in due posti | E | PS |  |  | cop-3 D-n3 |
-| D-43 | «Cosa HA riserva agli amministratori» in due moduli, tre case | E | PS |  |  | cop-3 D-n5 |
+| D-41 | La risorsa che serve a uno strumento decisa in due posti | E | PS |  |  | cop-3 D-n3 · Tappa 5, Task 2-3 (05/10/2026): la risorsa sta nella riga (`Tool.resources`) e il controllo e' dentro la rete di `dispatch`; restano, dichiarate come degradazioni e non come rifiuti, la casa chiesta da `_history` per i generi che non sono errori e la memoria del dettaglio di un ricordo. Non chiusa: il rapporto cop-3 non e' leggibile dalla nuvola, e lo sprint conferma se «i due posti» erano questi |
+| D-43 | «Cosa HA riserva agli amministratori» in due moduli, tre case | E | PS |  |  | cop-3 D-n5 · Tappa 5, Task 3 (05/10/2026), verificata: `tools._HA_CORE_USER_SERVICES`, `house_history.ADMIN_KINDS`, `workshop._BODY_ADMIN_ONLY` con `privacy.AUTOMATION_BODY_ADMIN_ONLY`. Negli strumenti ora la decide la riga (`Tool.permissions`, `Tool.mask`); l'unione delle case tocca l'officina (Tappa 7) e resta aperta |
 | D-45 | `search` non sa elencare integrazioni né ricordi; per solo nome non li cerca | D | CC |  |  | cop-3 D-n7 |
 | D-46 | Il confine di sanificazione protegge i nomi, non gli altri testi di HA | NV | CC |  |  | cop-4 N-11 |
 | D-47 | La sezione dei guasti del nucleo non ha tetto (dichiara 6.800 caratteri) | D | CC |  |  | cop-4 N-12 |
@@ -899,3 +897,5 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | Tappa 3 (da rilasciare) | c80cba1 | Imported.ha_version uscito; le fonti si compongono da ha_vocabulary.VOCABULARY_HA_VERSION (B-44). Tappa 3, Task 7 (trovato 6) |
 | D-23 | Il soffitto (chi può cosa) chiesto a mano in sette punti dentro i gestori | Tappa 5, Task 2 | 521ff44 | i sette _ceiling_denies dei gestori; il soffitto si chiede in dispatch dalla riga (Tool.permissions, Tool.mask). Le maschere fuori dagli strumenti restano a D-29 |
 | D-42 | Il rifiuto «nessun filo» ripetuto in tre gestori | Tappa 5, Task 2 | 521ff44 | il rifiuto nessun filo nei gestori di promise, agenda e cancel; lo dice dispatch dalla riga (Tool.needs_thread) |
+| D-39 | Tre tabelle a mano per nome di strumento; la terza fuori dal `try` | Tappa 5, Task 2-3 | 44684e1 | le tre tabelle a mano (elenco delle definizioni, _RESOURCE_PER_TOOL, la mappa dei gestori fuori dal try): una riga per strumento in TOOLS (521ff44), e tutto dispatch dentro la rete |
+| D-40 | Il cancello degli argomenti non legge `enum` né `type`: vocabolari rivalidati a mano | Tappa 5, Task 3 | 44684e1 | genere e ordina in parse_filters, genere e livello in parse_query; type ed enum si validano in dispatch dallo schema. Resta il controllo di richiesto in Workshop, unico per il chiamante server.py |
