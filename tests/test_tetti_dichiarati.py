@@ -86,7 +86,10 @@ class _Coda:
     def __init__(self):
         self.accodati = []
 
-    def enqueue(self, kind, wake, context, deadline, *, now=None, thread=None):
+    def enqueue(self, kind, wake, context, deadline, *, now=None, thread=None,
+                priority=None):
+        # `priority`: la firma vera di `ReasoningQueue.enqueue` dalla Tappa 6,
+        # T2 (la precedenza della chat); qui si guarda solo il modello.
         self.accodati.append({"kind": kind, "context": context})
         return "job-1"
 
