@@ -168,7 +168,7 @@ def _boundary_modules() -> dict[str, str]:
         module = getattr(handler, "__module__", "") or ""
         if module.startswith("hiris.app") and not module.startswith(package + "."):
             sources[f"{module}.{handler.__name__}"] = inspect.getsource(handler)
-    sources.pop(f"{package}.boundary")
+    sources.pop(f"{package}.boundary", None)
     return sources
 
 
