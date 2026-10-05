@@ -3684,6 +3684,22 @@ glossario (righe e citazioni fra backtick) e nelle chiavi letterali di `hiris/ap
 approvati il proprietario; la scelta se rinominare un senso o dichiararli qualificati si prende
 **prima del Task 7**, che scrive il vocabolario nel codice.
 
+## Il vocabolario del turno (Tappa 6, Task 0, 05/10/2026)
+
+Il piano della Tappa 6 (`piani/2026-10-tappa-6-un-turno.md`, cartella del progetto) lavora con
+cinque parole. Il controllo di collisione si e' fatto sul codice di `5bce65d` e su questo documento,
+come prescrive «Il controllo di collisione si fa sul codice, non solo sul glossario». **Due
+collidono**, e nessuna delle due si risolve qui: le proposte sono domande al proprietario
+(rapporto del Task 0-2), e le righe di «I concetti» non cambiano finche' non c'e' la risposta.
+
+| parola del piano | cosa vuol dire nella Tappa 6 | cosa c'era gia' | proposta |
+|---|---|---|---|
+| turno | ogni scambio con un modello, di qualunque specie: si compongono le istruzioni, si sceglie chi risponde, si aspetta, si legge, si annota | la riga `turno` di «I concetti» descrive solo il turno di una promessa che controlla (`exchange`); il senso largo vive gia' nel codice: `steering.misura_turno`, `steering.SPECIE` («le specie di turno»), `X-HIRIS-Turno`, `exchange_id`, `count_exchanges_today` | stesso concetto, la riga e' piu' stretta del codice: si riscrive col senso largo, inglese `exchange` invariato |
+| mestiere | chat, osservatore, ricette, analista, attuatore, promessa: chi chiede il turno, con cio' che dichiara (strumenti, tetto, forma della risposta) | **collisione**: `mestiere -> advisor` in «I concetti» (chi consiglia automazione, script o scena), e il `mestiere` di una credenziale in `api/credenziali.py`. Il concetto del piano esiste gia' nel codice come `steering.SPECIE`, ma `specie -> verb` e' fare/chiedere di una promessa | non «mestiere»: «specie di turno», il nome che il codice gia' usa, scritto come omonimo per ambito (`specie (steering)`) |
+| troncato | un turno fermato dal tetto di token: `stop_reason == "max_tokens"` sulla catena Claude, `finish_reason == "length"` sulle compatibili (D-58) | **collisione di senso**: `troncato -> truncated` fra le parole ordinarie, ma la riga `flusso` e tre commenti di `agent/runner.py` chiamano «troncato» il flusso NDJSON finito senza l'evento `result` (processo ucciso, formato cambiato), che la chat dice gia' «flusso incompleto» (`chat_store.INCOMPLETE_STREAM_SENTINEL`) | «troncato» resta al tetto di token (D-58); il flusso senza risultato e' «incompleto», come il suo segnale |
+| priorita' | la precedenza di un turno nella coda del ponte: la chat prima, gli altri nell'ordine d'arrivo (D4) | nel codice `priority` e' anche la precedenza fra i fatti del seme (`mind/seed.REPO_PRIORITY`, `HOUSE_PRIORITY`, `knowledge.seeded_priority`); la riga `catena` usa «priorita'» per l'ordine dei provider | nessun omonimo d'identificatore: la colonna e' `reasoning_jobs.priority` e le costanti `queue.PRIORITY_CHAT`, `queue.PRIORITY_BACKGROUND`, qualificate dal modulo; nei testi si scrive «precedenza» |
+| seguito | cio' che segue la scelta di chi risponde: sulla catena la chiamata al runner, sul ponte l'accodamento (spec §4.3) | nessuna riga e nessun identificatore; «il seguito delle chat divise» e' il nome di una fetta, non un concetto | nessuna collisione; l'inglese si sceglie quando nasce l'identificatore, nel Task 7 |
+
 ## Controlli di completezza
 
 **Aggiunta durante la review finale del ramo: due note del documento rimandavano qui prima che

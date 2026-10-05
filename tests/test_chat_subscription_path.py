@@ -51,7 +51,7 @@ from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import thread_for
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.reasoning.queue import PRIORITY_CHAT, ReasoningQueue
 from tests._avvio import started_app  # noqa: F401
 
 # Fetta «le chat divise»: `handle_chat` calcola il filo della richiesta una
@@ -154,6 +154,9 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
     job = q.get(body["job_id"])
     assert job["kind"] == "chat"
+    # Tappa 6, Task 2 (D4): la chat accodata sul ponte passa avanti ai turni
+    # del cervello.
+    assert job["priority"] == PRIORITY_CHAT
     # fetta E4 Task 5 ("un bot solo"): il context del job non porta piu' un
     # chatbot_id -- non c'e' piu' nulla da instradare per chiave, c'e' UNA
     # conversazione.

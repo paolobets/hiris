@@ -5,7 +5,7 @@ from contextlib import nullcontext
 
 from aiohttp import web
 
-from ..api.handlers_models import _STORE_DEFAULTS
+from ..api.handlers_models import bridge_deadline_min
 from ..chat_store import (
     _is_toxic_assistant,
     append_messages,
@@ -34,6 +34,7 @@ from ..model_resolution import downgrade_note
 # stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
 # modulo per l'elenco di dove e' gia' cablato).
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
+from ..reasoning.queue import PRIORITY_CHAT
 from ..steering import declare_downgrade, misura_turno, who_answers
 from .boundary import error_response
 from .handlers_home_space import compose_briefing, house_of
@@ -549,10 +550,7 @@ async def _enqueue_chat_job(
     # ne teneva una copia (Task 6) che nessuno leggeva e che la pagina Modelli
     # poteva riscrivere: due rappresentazioni dello stesso numero, e quella che
     # l'utente cambiava non era quella che il turno subiva.
-    _deadline_min = ((request.app.get("models_config") or {})
-                     .get("ponte", {}).get("scadenza_min",
-                                      _STORE_DEFAULTS["ponte"]["scadenza_min"]))
-    deadline = now + int(_deadline_min) * 60
+    deadline = now + bridge_deadline_min(request.app.get("models_config")) * 60
     context = {
         "history": sanitized_history,
         "system_prompt": system_prompt,
@@ -637,7 +635,7 @@ async def _enqueue_chat_job(
         )
 
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now,
-                                      thread=thread)
+                                      thread=thread, priority=PRIORITY_CHAT)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 

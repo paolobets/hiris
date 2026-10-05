@@ -287,7 +287,7 @@ def test_in_questo_task_i_server_mcp_sono_la_lista_vuota(caplog):
     # La condizione attesa OGGI: nessun `--mcp-config` nell'argv, quindi
     # nessun server. Se un giorno questa riga loggasse un server senza che
     # nessuno abbia attaccato gli strumenti, sarebbe una sorpresa da guardare.
-    assert "--mcp-config" not in runner._chat_claude_args("S", "U", "sonnet")
+    assert "--mcp-config" not in runner._chat_claude_args("/sistema.txt", "sonnet")
     with caplog.at_level(logging.INFO, logger="hiris.agent"):
         _reason(_flusso(_init(mcp_servers=[]), _result("ok")))
     init_log = [r.getMessage() for r in caplog.records

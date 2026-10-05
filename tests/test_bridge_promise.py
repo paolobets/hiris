@@ -145,7 +145,7 @@ def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
 def test_l_argv_permette_concludi_su_un_turno_di_promessa():
     from hiris.app.agent.runner import _chat_claude_args
 
-    argv = _chat_claude_args("sys", "user", "sonnet", active_tools=True,
+    argv = _chat_claude_args("/sistema.txt", "sonnet", active_tools=True,
                              mcp_config="{}", by_promise=True)
     permessi = argv[argv.index("--allowedTools") + 1]
     assert "__conclude" in permessi

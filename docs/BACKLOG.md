@@ -157,6 +157,10 @@ veridicita' della soluzione»).
    dice il contrario); 99 serie su 168 nel prompt hanno l'ultimo valore vuoto; nessuna memoria
    delle analisi precedenti; l'obiettivo stampato «dal ... al ...» viene letto come scadenza;
    `cosa_cambierebbe` obbligatorio contraddice «il silenzio e' un esito legittimo».
+   Assorbe la voce **D-33** del registro dei doppioni (lo stesso tema ogni giorno, con parole
+   diverse: coppie gia' presenti il giorno prima 2 su 7, 3 su 8, 4 su 8), spostata qui dalla
+   Tappa 6 il 05/10/2026: e' la memoria delle analisi precedenti che manca, non un doppione di
+   codice.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; il contratto dell'`intenzione`
    (`mind/actuator_turn.py:75-98`) incompatibile con l'officina (`workshop.py:1026`); «riscritta»

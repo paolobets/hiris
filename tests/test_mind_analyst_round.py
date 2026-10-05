@@ -192,7 +192,7 @@ class _CodaConTurnoFermo:
     def count_exchanges_today(self):
         return 0
 
-    def enqueue(self, kind, wake, job, deadline, now=None):
+    def enqueue(self, kind, wake, job, deadline, now=None, priority=None):
         self.accodati.append(kind)
 
 
@@ -271,7 +271,7 @@ class _CodaConRispostaINACCETTABILE:
     def count_exchanges_today(self):
         return 0
 
-    def enqueue(self, kind, wake, job, deadline, now=None):
+    def enqueue(self, kind, wake, job, deadline, now=None, priority=None):
         self.accodati.append(kind)
 
 

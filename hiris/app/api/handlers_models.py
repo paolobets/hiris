@@ -95,6 +95,21 @@ _OUR_KEYS = (
 _MIGRATION_FLAGS = ("seminato", "catena_seminata", "piano_seminato")
 
 
+def bridge_deadline_min(models_config: dict | None) -> int:
+    """Quanti minuti ha un turno accodato sul ponte per avere risposta.
+
+    **Una lettura sola** (Tappa 6, Task 2). Fino a qui la stessa espressione
+    era scritta in otto punti -- sei accodamenti, lo spazzino e la promessa
+    scaduta -- e due ripiegavano su un `5` scritto a mano invece che sul
+    predefinito di `_STORE_DEFAULTS` (spec §4.3, «scadenza riletta in 8
+    punti»). Si legge all'ACCODAMENTO: da li' in poi la scadenza viaggia col
+    turno (`deadline_ts`), e chi deve dire quanto ha aspettato un turno lo
+    legge dal turno, non da qui.
+    """
+    return int((models_config or {}).get("ponte", {}).get(
+        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+
+
 def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
     """Gli stessi estremi dello `schema:` di config.yaml (`int(1,120)`,
     `int(0,1000)`, `int(10,1800)`). Il Supervisor li faceva rispettare per noi;

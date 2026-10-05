@@ -25,6 +25,42 @@ class ChatThread:
     entry_point: str
 
 
+# -- Il filo negli archivi (B-52, Tappa 6 Task 2) -----------------------------
+#
+# Quattro archivi portano il filo nelle stesse due colonne: `chat_sessions`,
+# `promesse`, `costruzioni`, `reasoning_jobs`. Fino al 05/10/2026 la condizione
+# «di questo filo» era scritta a mano in dodici righe di tre file (dieci in
+# `chat_store.py`, la costante di `keeper/store.py`, la coda), e il filo si
+# ricostruiva dalla riga in tre: qui vivono una volta sola. I due valori
+# viaggiano sempre come parametri (`?`), mai incollati nel testo della query.
+
+
+def thread_condition(alias: str = "") -> str:
+    """La condizione SQL «di questo filo», per `thread_params` come parametri.
+
+    `alias` e' il nome della tabella nella query (`"s"` per `... AS s`), vuoto
+    quando la query ne ha una sola."""
+    prefix = f"{alias}." if alias else ""
+    return f"{prefix}subject_key = ? AND {prefix}entry_point = ?"
+
+
+def thread_params(thread: ChatThread | None) -> tuple[str | None, str | None]:
+    """I due valori del filo nell'ordine delle colonne; `(None, None)` per una
+    riga che non ne porta uno -- non se ne inventa uno."""
+    if thread is None:
+        return (None, None)
+    return (thread.subject_key, thread.entry_point)
+
+
+def thread_from_columns(subject_key: str | None,
+                        entry_point: str | None) -> ChatThread | None:
+    """Il filo di una riga letta da un archivio; `None` per una riga scritta
+    prima che il filo esistesse (le colonne NULL)."""
+    if not subject_key:
+        return None
+    return ChatThread(subject_key, entry_point)
+
+
 class SyncTurnsInFlight:
     """I fili con un turno SINCRONO in volo (la catena, JSON o SSE).
 

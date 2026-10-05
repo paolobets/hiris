@@ -36,6 +36,7 @@ from hiris.app.api import handlers_mcp
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
+from hiris.app.usage.bridge_loads import MAX_TRACKED
 from tests.test_knowledge_tools import _semina_casa
 
 # Il token dell'add-on per questi test: un valore qualunque, purche' quello che
@@ -398,10 +399,10 @@ async def test_senza_intestazione_di_turno_lo_strumento_si_esegue_e_il_log_lo_di
 @pytest.mark.asyncio
 async def test_il_dizionario_dei_contatori_non_cresce_oltre_il_limite(rotta):
     """Step 5 ④. Molte identita' di turno diverse, una sola chiamata ciascuna:
-    il dizionario tenuto in `app` resta limitato a `_MAX_TRACKED_EXCHANGES`, non
+    il dizionario tenuto in `app` resta limitato a `MAX_TRACKED`, non
     cresce per ogni identita' mai vista."""
     client, _ = rotta
-    quante = handlers_mcp._MAX_TRACKED_EXCHANGES * 3
+    quante = MAX_TRACKED * 3
 
     for i in range(quante):
         await _chiama_cerca(
@@ -409,7 +410,7 @@ async def test_il_dizionario_dei_contatori_non_cresce_oltre_il_limite(rotta):
         )
 
     contatori = client.app["mcp_rounds_per_exchange"]
-    assert len(contatori) <= handlers_mcp._MAX_TRACKED_EXCHANGES
+    assert len(contatori) <= MAX_TRACKED
 
 
 @pytest.mark.asyncio
@@ -420,14 +421,14 @@ async def test_un_turno_attivo_non_viene_mai_espulso(rotta):
     Il test qui sopra pinna solo che il dizionario sia LIMITATO -- e resterebbe
     verde anche con un'espulsione FIFO, cioe' con la piu' VECCHIA per data di
     nascita. Con una FIFO un turno lungo verrebbe espulso dopo
-    `_MAX_TRACKED_EXCHANGES` turni altrui, il suo contatore ripartirebbe da zero
+    `MAX_TRACKED` turni altrui, il suo contatore ripartirebbe da zero
     e **il tetto si aggirerebbe semplicemente durando**: chiamare 10 volte,
     lasciar passare 64 turni, chiamare altre 10.
 
     Cio' che il codice fa davvero e' LRU (`move_to_end` a ogni giro): il turno
     che continua a chiamare si rimette in coda e non e' mai il candidato
     all'espulsione. Qui lo si prova sull'EFFETTO, non sulla struttura -- un
-    turno «caldo» che chiama fino al tetto mentre `_MAX_TRACKED_EXCHANGES` turni
+    turno «caldo» che chiama fino al tetto mentre `MAX_TRACKED` turni
     usa-e-getta gli passano accanto, e la sua chiamata successiva che viene
     **rifiutata**: se il contatore fosse ripartito, quella passerebbe."""
     client, _ = rotta
@@ -435,9 +436,9 @@ async def test_un_turno_attivo_non_viene_mai_espulso(rotta):
 
     # Il turno caldo consuma il suo tetto, ma **intervallato** da altrettanti
     # turni nuovi: alla fine gliene sono passati accanto piu' di
-    # `_MAX_TRACKED_EXCHANGES`, cioe' abbastanza da espellerlo per intero se
+    # `MAX_TRACKED`, cioe' abbastanza da espellerlo per intero se
     # l'espulsione guardasse la data di nascita.
-    per_giro = (handlers_mcp._MAX_TRACKED_EXCHANGES
+    per_giro = (MAX_TRACKED
                 // handlers_mcp.MAX_TOOL_ROUNDS) + 1
     usa_e_getta = 0
     for giro in range(handlers_mcp.MAX_TOOL_ROUNDS):
@@ -452,7 +453,7 @@ async def test_un_turno_attivo_non_viene_mai_espulso(rotta):
                 client, 1000 + usa_e_getta,
                 {**INTESTAZIONI_CLI, "X-HIRIS-Turno": f"altro-{usa_e_getta}"})
 
-    assert usa_e_getta > handlers_mcp._MAX_TRACKED_EXCHANGES, (
+    assert usa_e_getta > MAX_TRACKED, (
         "il test non prova niente se i turni passati accanto sono meno della "
         "capienza del dizionario: alzare `per_giro`")
 
@@ -468,7 +469,7 @@ async def test_un_turno_attivo_non_viene_mai_espulso(rotta):
 
     # e la controprova che il dizionario e' rimasto limitato lo stesso: la
     # proprieta' nuova non e' stata comprata rinunciando al tetto di memoria.
-    assert len(client.app["mcp_rounds_per_exchange"]) <= handlers_mcp._MAX_TRACKED_EXCHANGES
+    assert len(client.app["mcp_rounds_per_exchange"]) <= MAX_TRACKED
 
 
 # ---------------------------------------------------------------------------
