@@ -88,7 +88,7 @@ def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
     # il CLI esce != 0) e' vivo e invariato, cambia solo la forma dello stdout.
     # Gli assert restano identici, ed e' proprio questo il punto: sono la prova
     # che il cambio di formato non ha perso questo ramo.
-    job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
+    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
 
     class _Proc:
@@ -113,7 +113,7 @@ def test_reason_chat_returns_fallback_reply_on_timeout():
     # cambio di formato non tocca, e va verificato che sia rimasto tale (con
     # `stream-json` la tentazione e' di leggere il flusso parziale del processo
     # ucciso e spacciarlo per risposta).
-    job = {"kind": "chat", "context": {"system_prompt": "Sei HIRIS.",
+    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                                         "history": [{"role": "user", "content": "ciao"}]}}
 
     def _raise_timeout(*a, **k):
@@ -214,7 +214,7 @@ def test_run_once_chat_reasons_and_submits():
     `reply` che torna alla reasoning API e' la risposta del modello e basta --
     nessuna riga di degrado, perche' non c'e' nessun degrado da dichiarare."""
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
-           "context": {"system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job})
     catturato = {}
@@ -256,7 +256,7 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     sentinella del ponte -- quelli sostituiscono la risposta, questa la
     precede."""
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
-           "context": {"system_prompt": "Sei HIRIS.",
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job}, mcp=False)
     catturato = {}

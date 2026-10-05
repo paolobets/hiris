@@ -54,6 +54,12 @@ Rispondi SOLO con un oggetto JSON:
 {"testo": "cosa fare, in una frase", "perche": "perche' lo proponi"}"""
 
 
+#: Il tetto del «Rifalla», dichiarato (Tappa 6, Task 4): e' il 4.096 di
+#: fabbrica di `claude_runner.MAX_TOKENS` che prendeva senza dirlo, ora
+#: scritto. Non misurato: la risposta e' una frase e un perche'.
+_REDO_MAX_TOKENS = 4096
+
+
 def _store(request):
     return request.app.get("observations")
 
@@ -170,7 +176,8 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
                                 specie="chat", canale="catena",
                                 soggetto=request.get("soggetto")) as turn:
             answer = await runner.chat(user_message="\n".join(lines),
-                                       system_prompt=_REDO_SYSTEM)
+                                       system_prompt=_REDO_SYSTEM,
+                                       max_tokens=_REDO_MAX_TOKENS)
     except Exception as error:
         logger.warning("proposta: il giro di «rifalla» non e' partito (%s: %s)",
                        type(error).__name__, error)

@@ -34,7 +34,7 @@ from ..model_resolution import downgrade_note
 # stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
 # modulo per l'elenco di dove e' gia' cablato).
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
-from ..steering import declare_downgrade, misura_turno, who_answers
+from ..steering import bridge_model, declare_downgrade, misura_turno, who_answers
 from .handlers_home_space import compose_briefing, house_of
 from .soffitto import ceiling_for, request_ceiling, ruolo_letto
 
@@ -600,12 +600,13 @@ async def _enqueue_chat_job(
         # La traduzione ai tre alias non e' sparita, e' salita all'INGRESSO del
         # campo (`handlers_models._clean_subscription_model`): cio' che si
         # legge qui e' gia' un alias della CLI, e non c'e' niente da tradurre.
-        # Il predefinito `"sonnet"` e' quello di `_STORE_DEFAULTS` e vale
-        # solo per un'app senza archivio (i test): sull'impianto la semina
+        # Il predefinito e' quello di `_STORE_DEFAULTS`, e vale solo per
+        # un'app senza archivio (i test): sull'impianto la semina
         # (`options_migration.seed_subscription_model`) ha gia' scritto il
-        # campo prima che un turno possa arrivare qui.
-        "model": ((request.app.get("models_config") or {})
-                  .get("ponte", {}).get("modello", "sonnet")),
+        # campo prima che un turno possa arrivare qui. Dalla Tappa 6 (Task 4)
+        # lo legge `steering.bridge_model`, come per ogni altro turno che si
+        # accoda: qui c'era una seconda copia di «sonnet».
+        "model": bridge_model(request.app),
         # Fetta «le chat divise»: il soggetto INTERO di chi ha scritto, che il
         # soffitto e la cronaca del ripiego vogliono con specie e nome, non
         # solo la chiave -- preso dal job, non da chi per caso fa il poll

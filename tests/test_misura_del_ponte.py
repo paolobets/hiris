@@ -238,7 +238,7 @@ def _attuazione_finta(monkeypatch, processo=_ProcessoFinto, **extra_context):
     strumenti e autosufficiente, quindi nessuna sonda."""
     monkeypatch.setattr(ponte.subprocess, "run",
                         lambda argv, *a, **kw: processo())
-    context = {"history": [{"role": "user", "content": "le osservazioni"}],
+    context = {"model": "sonnet", "history": [{"role": "user", "content": "le osservazioni"}],
                "system_prompt": "sei l'attuatore",
                "istruzione": "Rispondi SOLO con un oggetto JSON."}
     context.update(extra_context)

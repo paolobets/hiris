@@ -120,7 +120,7 @@ async def test_bridge_error_sentinel_is_dropped_not_persisted(submitted):
 
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
         sentinella = runner._reason_chat(
-            {"kind": "chat", "context": {"history": [], "system_prompt": "S"}},
+            {"kind": "chat", "context": {"model": "sonnet", "history": [], "system_prompt": "S"}},
             "live")["reply"]
 
     submit, calls, _data_dir = submitted

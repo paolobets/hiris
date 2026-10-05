@@ -41,6 +41,17 @@ logger = logging.getLogger(__name__)
 #: La specie di turno, per il ponte e per il runner.
 ANALYSIS_TURN_KIND = "analisi"
 
+#: **Il tetto della risposta, dichiarato** (Tappa 6, Task 4; D3, approvata
+#: il 05/10/2026). Fino a quel giorno questo mestiere non ne passava nessuno e
+#: prendeva i 4.096 di fabbrica di `claude_runner.MAX_TOKENS`: lo stesso
+#: numero, scelto da nessuno. Qui e' lo stesso valore SCRITTO -- il
+#: comportamento non cambia, diventa visibile. **Non e' misurato**: 7 turni
+#: dell'analista su 8 si fermano qui (`docs/misure/2026-10-tappa-0.md`), e il
+#: valore giusto lo sceglie la misura dal vivo della chiusura della tappa
+#: (T9: 8 turni con un tetto alto, la risposta piu' lunga piu' un margine),
+#: scritto con la data.
+MAX_ANSWER_TOKENS = 4096
+
 #: I tre inneschi della spec §10. Sono tre e sono dichiarati: un'osservazione
 #: che non dice quale dei tre non e' dell'analista, e' un commento.
 TRIGGERS = (1, 2, 3)

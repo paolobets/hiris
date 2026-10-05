@@ -418,7 +418,8 @@ def test_il_token_non_compare_nel_log_del_turno_degradato(caplog):
         stderr = "errore"
 
     job = {"kind": "chat", "job_id": "J-3",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with (
         caplog.at_level(logging.DEBUG),
@@ -727,7 +728,7 @@ def test_il_turno_senza_strumenti_lo_dichiara_all_utente_e_nel_log(caplog):
     all'utente, e sotto resta la risposta vera che il modello ha comunque
     dato sul nucleo. Il log porta il motivo."""
     job = {"kind": "chat", "job_id": "J-degrado",
-           "context": {"history": [{"role": "user", "content": "ciao"}],
+           "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
 
     with (
@@ -757,7 +758,8 @@ def test_il_turno_con_gli_strumenti_non_dichiara_nessun_degrado(caplog):
     basta. Una riga di degrado che comparisse sempre sarebbe rumore, e
     smetterebbe di significare qualcosa."""
     job = {"kind": "chat", "job_id": "J-ok",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
     catturato = {}
 
     def _run(argv, *a, **k):
@@ -790,7 +792,8 @@ def test_senza_client_non_c_e_degrado_da_dichiarare(caplog):
     comportamento, non un degrado nuovo. Un avviso qui sarebbe rumore, e il
     silenzio dichiarato smetterebbe di distinguersi."""
     job = {"kind": "chat", "job_id": "J-locale",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with (
         caplog.at_level(logging.WARNING, logger="hiris.agent"),
@@ -817,7 +820,8 @@ def test_la_riga_di_degrado_non_precede_i_sentinella_di_guasto():
         stderr = ""
 
     job = {"kind": "chat", "job_id": "J-rotto",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with patch.object(runner.subprocess, "run", lambda *a, **k: _ProcRotto()):
         esito = runner._reason_chat(
@@ -971,7 +975,8 @@ def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
     """Il turno pericoloso: strumenti ATTIVI (quindi il token E' nell'argv) e
     un sottoprocesso che riecheggia la configurazione."""
     job = {"kind": "chat", "job_id": "J-eco",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
     argv_visti = []
 
     def _run(argv, *a, **k):
@@ -1137,7 +1142,8 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
         stderr = ""
 
     job = {"kind": "chat", "job_id": "J-pulito",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
         esito = runner._reason_chat(job, "live")
 
@@ -1268,7 +1274,7 @@ def _turno(cli, *, token="TOK", job_id="J-init", sonda=True):
     """Un turno del ponte con gli strumenti ATTESI (client + base_url), la
     sonda che dice di si', e la CLI finta al posto del sottoprocesso."""
     job = {"kind": "chat", "job_id": job_id,
-           "context": {"history": [{"role": "user", "content": "che luci?"}],
+           "context": {"model": "sonnet", "history": [{"role": "user", "content": "che luci?"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
     risposta = (_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200) if sonda
                 else _Risposta({"error": "unauthorized"}, 401))
@@ -1446,7 +1452,8 @@ def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
     del ramo di degrado costerebbe due invocazioni."""
     cli = _CliFinta(_proc(0, _riga_init(stato="failed") + "\n" + _RIGA_RESULT + "\n"))
     job = {"kind": "chat", "job_id": "J-nessun-cliente",
-           "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
+           "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
+                       "contesto": "x"}}
 
     with (
         caplog.at_level(logging.WARNING, logger="hiris.agent"),

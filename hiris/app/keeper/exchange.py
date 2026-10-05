@@ -304,6 +304,7 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     """
     from ..api.handlers_home_space import compose_briefing
     from ..api.handlers_models import _STORE_DEFAULTS
+    from ..steering import bridge_model
 
     try:
         briefing, _summary = compose_briefing(app)
@@ -331,6 +332,8 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
             "history": [{"role": "user", "content": _domanda(promise)}],
             "system_prompt": _system_prompt(),
             "contesto": briefing,
+            # Il modello del proprietario, come la chat (decisione 11).
+            "model": bridge_model(app),
         },
         now + deadline_min * 60,
         now=now,

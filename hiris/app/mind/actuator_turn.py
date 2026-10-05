@@ -29,6 +29,15 @@ logger = logging.getLogger(__name__)
 #: La specie di turno, per il ponte e per il runner.
 ACTUATION_TURN_KIND = "attuazione"
 
+#: **Il tetto della risposta, dichiarato** (Tappa 6, Task 4; D3, approvata
+#: il 05/10/2026). Fino a quel giorno questo mestiere non ne passava nessuno e
+#: prendeva i 4.096 di fabbrica di `claude_runner.MAX_TOKENS`: lo stesso
+#: numero, scelto da nessuno. Qui e' lo stesso valore SCRITTO -- il
+#: comportamento non cambia, diventa visibile. **Non e' misurato**: per l'attuatore
+#: (in pausa dal 01/10/2026) non c'e' una misura, e il valore lo sceglie la
+#: misura dal vivo quando il piano degli attori lo riaccende.
+MAX_ANSWER_TOKENS = 4096
+
 #: I gesti che il MODELLO puo' rivendicare nella sua risposta. **Due, non
 #: tre**: la riparazione la fa il codice (il giro riscrive la ricetta prima di
 #: chiedere, e aggiunge l'esito come fatto), e lasciarla dire al modello

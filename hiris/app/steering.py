@@ -442,6 +442,22 @@ def who_answered(app) -> str:
     return ""
 
 
+def bridge_model(app) -> str:
+    """Il modello che il proprietario ha scelto per il ponte: un alias della
+    CLI (`ponte.modello`, gia' validato all'ingresso del campo da
+    `handlers_models._clean_subscription_model`).
+
+    **Lo porta ogni turno che si accoda, non solo la chat** (decisione 11
+    della spec, Tappa 6 Task 4). Fino al 05/10/2026 solo
+    `handlers_chat._enqueue_chat_job` lo metteva nel job, e il lavoratore
+    ripiegava su «sonnet» per tutti gli altri: la scelta del proprietario
+    valeva per meta' dei turni del piano. Il predefinito e' quello di
+    `_STORE_DEFAULTS`, l'unico: non se ne scrive un secondo qui.
+    """
+    return ((app.get("models_config") or {}).get("ponte", {}).get("modello")
+            or _STORE_DEFAULTS["ponte"]["modello"])
+
+
 def who_answers(app) -> tuple[str, str]:
     """`("ponte", "")` oppure `("catena", motivo)`.
 

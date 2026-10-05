@@ -73,7 +73,7 @@ def test_un_kind_promessa_NON_finisce_fra_i_kind_sconosciuti(caplog):
 
     esito = ponte.reason(
         {"kind": "promessa", "job_id": "j1",
-         "context": {"promessa_id": "p1", "history": [], "system_prompt": ""}},
+         "context": {"model": "sonnet", "promessa_id": "p1", "history": [], "system_prompt": ""}},
         "mock")
 
     assert "job non-chat in coda" not in caplog.text
@@ -170,7 +170,7 @@ def test_un_kind_scope_NON_finisce_fra_i_kind_sconosciuti(caplog):
 
     esito = ponte.reason(
         {"kind": "scope", "job_id": "j3",
-         "context": {"history": [{"role": "user", "content": "la casa"}],
+         "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                      "system_prompt": "sei l'osservatore"}},
         "mock")
 
@@ -260,7 +260,7 @@ def test_il_ponte_passa_al_prompt_l_istruzione_che_il_job_porta(monkeypatch):
     try:
         ponte.reason(
             {"kind": "scope", "job_id": "j9",
-             "context": {"history": [{"role": "user", "content": "la casa"}],
+             "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                          "system_prompt": "sei l'osservatore",
                          "istruzione": "Rispondi con un SOLO array JSON."}},
             "live")
@@ -311,7 +311,7 @@ def test_un_turno_di_scope_NON_riceve_gli_strumenti_della_chat(monkeypatch):
     try:
         ponte.reason(
             {"kind": "scope", "job_id": "js",
-             "context": {"history": [{"role": "user", "content": "la casa"}],
+             "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                          "system_prompt": "sei l'osservatore",
                          "istruzione": "Rispondi con un SOLO array JSON."}},
             "live", client=object(), base_url="http://127.0.0.1:8099")

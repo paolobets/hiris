@@ -1444,6 +1444,26 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # PRIMA che il token sia in mano, e questa stringa e' una
         # costante che non ha mai visto ne' la CLI ne' la sua eco.
         return {"reply": MOCK_SENTINEL}
+    # Il modello e' quello del piano (`models_config["ponte"]["modello"]`),
+    # gia' un alias della CLI: lo mette nel job chi accoda, OGNI turno
+    # (`steering.bridge_model`, Tappa 6 Task 4, decisione 11).
+    #
+    # **Nessun ripiego.** Fino al 05/10/2026 qui c'era `or "sonnet"`, e solo
+    # la chat portava il modello: osservatore, ricette, analista, attuatore e
+    # promesse giravano su «sonnet» qualunque cosa il proprietario avesse
+    # scelto. Un job senza modello oggi e' un job accodato da una versione
+    # precedente, o un produttore nuovo che se n'e' dimenticato: scegliere al
+    # posto del proprietario sarebbe lo stesso difetto. Si dichiara, PRIMA di
+    # sondare gli strumenti, e la decisione e' vuota -- la stessa che riceve
+    # una specie sconosciuta (`reason`), e che chi raccoglie tratta come «il
+    # modello non ha risposto»: il giro dopo riaccoda, col modello.
+    model = context.get("model")
+    if not model:
+        log.error(
+            "job senza `model` (job_id=%s, kind=%r): nessun modello scelto "
+            "dal proprietario per questo turno -- non si ragiona, decisione "
+            "vuota", (job or {}).get("job_id"), (job or {}).get("kind"))
+        return {}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
     # solo `history` + `system_prompt`. Arriva qui senza la chiave `contesto`
@@ -1652,11 +1672,6 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         return {"reply": reda_segreti(text, *forms),
                "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
 
-    # Il modello e' quello del piano (`models_config["ponte"]["modello"]`),
-    # gia' un alias della CLI: lo mette nel job chi accoda
-    # (`handlers_chat._enqueue_chat_job`). L'`or` copre un job che non porta
-    # la chiave `model`: per quello vale "sonnet".
-    model = context.get("model") or "sonnet"
     invocations = 0
 
     def _invoca(active_tools: bool) -> Invocation | None:
