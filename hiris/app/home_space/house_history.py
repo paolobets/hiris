@@ -41,7 +41,7 @@ from .historian import day_boundaries, home_space_zone, instant_epoch, local_dat
 from .house_query import (
     DETAIL_MEDIUM_MAX,
     HouseFilters,
-    excluded_note,
+    envelope,
     page_rows,
     parse_filters,
 )
@@ -366,11 +366,7 @@ def _frame(query: HistoryQuery, chosen: Chosen) -> dict:
     """La forma della porta, uguale per ogni genere (spec §3): cio' che si e'
     trovato, cio' che si e' lasciato fuori con la stessa nota di `search`
     (3.71.1), e la finestra chiesta nel fuso della casa."""
-    out: dict = {"trovate": chosen.found, "escluse": chosen.excluded,
-                 "profondita": chosen.depth, "voci": []}
-    note = excluded_note(chosen.found, chosen.excluded)
-    if note:
-        out["nota"] = note
+    out = envelope(chosen.found, chosen.depth, [], excluded=chosen.excluded)
     out["finestra"] = {"da": query.start.isoformat(), "a": query.end.isoformat()}
     return out
 
@@ -1277,10 +1273,8 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
                        row))
     ranked.sort(key=lambda item: item[0])
     page, beyond = _page([row for _key, row in ranked], query.who)
-    out = {"trovate": len(ranked),
-           "escluse": {"nascoste": 0, "servizio": 0, "disabilitate": 0},
-           "profondita": "corta", "voci": page,
-           "finestra": {"da": query.start.isoformat(), "a": query.end.isoformat()}}
+    out = envelope(len(ranked), "corta", page)
+    out["finestra"] = {"da": query.start.isoformat(), "a": query.end.isoformat()}
     if retained and min(retained) > start_ts:
         out["finestra"]["chiesta_da"] = out["finestra"]["da"]
         out["finestra"]["da"] = _local(min(retained), zone)

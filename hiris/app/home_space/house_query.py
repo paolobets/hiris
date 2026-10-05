@@ -538,18 +538,44 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
                               f"{', '.join(valid)}"
                               + ("; in_esecuzione vale per automazioni e script"
                                  if "in_esecuzione" in wrong else "")}
-    excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
+    excluded = no_exclusions()
     found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded)
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
-    result: dict = {"trovate": found, "escluse": excluded, "profondita": depth,
-                    "voci": [redact_row(v) for v in page]}
+    return envelope(found, depth, [redact_row(v) for v in page],
+                    excluded=excluded, beyond=beyond)
+
+
+def envelope(found: int, depth: str, rows: list, *, excluded: dict | None = None,
+             beyond=None) -> dict:
+    """La busta di una risposta di selezione: `trovate`, `escluse`,
+    `profondita`, `voci`, poi `oltre` e la `nota` sulle escluse quando ci sono.
+
+    **Un posto solo** (C-31, Tappa 4): fino al 05/10/2026 il dizionario era
+    scritto a mano qui, in `house_history._frame` e nella lettura del registro
+    di sistema -- la stessa forma in tre copie. `search` e `history` la
+    chiamano tutti e due: il modello legge una busta sola.
+
+    `excluded` assente vuol dire «non si esclude niente» (il registro di
+    sistema: non ha voci nascoste), e le categorie sono quelle di
+    `_EXCLUDED_WORDS`, a zero. L'ordine delle chiavi e' quello di prima: chi
+    legge la risposta la legge in quell'ordine.
+    """
+    excluded = no_exclusions() if excluded is None else excluded
+    out: dict = {"trovate": found, "escluse": excluded, "profondita": depth,
+                 "voci": rows}
     if beyond:
-        result["oltre"] = beyond
+        out["oltre"] = beyond
     note = excluded_note(found, excluded)
     if note:
-        result["nota"] = note
-    return result
+        out["nota"] = note
+    return out
+
+
+def no_exclusions() -> dict:
+    """Le escluse a zero, una per categoria: un dizionario NUOVO a ogni
+    chiamata, perche' la selezione lo riempie."""
+    return dict.fromkeys(_EXCLUDED_WORDS, 0)
 
 
 def excluded_note(found: int, excluded: dict) -> str | None:
