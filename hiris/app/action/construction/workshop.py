@@ -245,12 +245,7 @@ class Workshop:
         """
         operation = intent.get("gesto")
         domain = intent.get("dominio")
-        if operation not in OPERATIONS:
-            return {"errore": f"gesto sconosciuto: {operation}. Gesti: {', '.join(OPERATIONS)}."}
-        if domain not in self._ha.CONFIGURABLE_DOMAINS:
-            return {"errore": (f"non so costruire «{domain}». So costruire: "
-                               f"{', '.join(self._ha.CONFIGURABLE_DOMAINS)}.")}
-        form_reason = _invalid_form(intent)
+        form_reason = form_refusal(intent, self._ha.CONFIGURABLE_DOMAINS)
         if form_reason is not None:
             return {"errore": form_reason}
 
@@ -1073,6 +1068,42 @@ class Workshop:
             preview += ("\nSenza un turno riconoscibile non potro' confermare da "
                          "qui: apri la pagina Costruzioni e conferma di la'.")
         return {"proposta_id": proposal["id"], "anteprima": preview}
+
+
+def closed_fields(domains) -> dict[str, tuple[str, ...]]:
+    """I campi dell'intento che la porta accetta solo da un vocabolario
+    chiuso, e che lo schema dello strumento `propose` descrive soltanto a
+    parole (`home_space/tools.PROPOSE_TOOL_DEF`: «crea, modifica o
+    cancella.»). `domains` e' cio' che il client sa configurare
+    (`HAClient.CONFIGURABLE_DOMAINS`): la porta lo chiede al suo client, chi
+    compone un contratto lo chiede alla classe. «richiesto» non c'e': il suo
+    vocabolario lo schema lo enumera gia' (`advisor.STRUCTURES`).
+
+    Lo legge il contratto dell'attuatore (Tappa 6, Task 5, D5) per offrire al
+    modello le alternative che `form_refusal` poi impone: due copie degli
+    stessi elenchi divergerebbero al primo gesto nuovo."""
+    return {"gesto": OPERATIONS, "dominio": tuple(domains)}
+
+
+def form_refusal(intent: dict, domains) -> str | None:
+    """Il motivo per cui la porta rifiuta la FORMA di un intento, o `None`.
+
+    E' la prima meta' di `Workshop.propose` -- gesto, dominio, e la forma dei
+    campi (`_invalid_form`) -- separata perche' serve anche PRIMA della porta:
+    l'attuatore valida la sua `intenzione` con questa stessa funzione prima di
+    chiamare `propose` (Tappa 6, Task 5, D5). Fino al 05/10/2026 il suo
+    contratto chiedeva una forma che questa funzione rifiutava, e lo si
+    scopriva solo dopo aver speso il turno.
+    """
+    vocabularies = closed_fields(domains)
+    operation = intent.get("gesto")
+    if operation not in vocabularies["gesto"]:
+        return f"gesto sconosciuto: {operation}. Gesti: {', '.join(vocabularies['gesto'])}."
+    domain = intent.get("dominio")
+    if domain not in vocabularies["dominio"]:
+        return (f"non so costruire «{domain}». So costruire: "
+                f"{', '.join(vocabularies['dominio'])}.")
+    return _invalid_form(intent)
 
 
 def _invalid_form(intent: dict) -> str | None:

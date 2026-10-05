@@ -196,7 +196,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | E-04 | Le forme del rifiuto e del successo fra le due porte | D | CC |  | cop-9 (righe) | reg · cop-9 |
 | E-05 | Cosa controlla una porta e l'altra no | D | DP |  |  | reg · cop-9 |
 | E-06 | Più client verso HA e verso il Supervisor | E | DP |  |  | reg |
-| E-07 | Il contratto dell'«intenzione» dell'attuatore contro l'officina | D | CC | 13 esiti `proposta`: 9 in coda, 3 scartati, 1 persa; le 2 `costruibile` non in coda |  | reg · cop-9 · Tappa 6 T5 (D5) |
 | E-08 | La cartella di configurazione di HA cercata in due case | E | PS |  |  | reg · cop-1 |
 | E-09 | «Verificare senza eseguire» non è un metodo della porta: `promise` lo ricompone | D | CC |  |  | cop-3 E-n1 |
 | E-10 | `call_service` butta il motivo di HA, senza guardia; le primitive di configurazione no | D | CC |  |  | cop-5 E1 |
@@ -1037,3 +1036,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-52 | `ChatThread` ricostruito in tre archivi; la condizione SQL del filo in undici posti | Tappa 6 (da rilasciare) | 71dcf20 | chat_thread.thread_condition, thread_params, thread_from_columns: uscite le dodici condizioni del filo scritte a mano (dieci in chat_store, _OF_THREAD e _thread_params di keeper/store, la coda) e le tre ricostruzioni dalla riga. Tappa 6, Task 2 |
 | B-53 | Costante «64» duplicata con legame solo a commento (`MAX_TRACKED`, `_MAX_TRACKED_EXCHANGES`) | Tappa 6 (da rilasciare) | 71dcf20 | handlers_mcp importa MAX_TRACKED da usage/bridge_loads; uscito _MAX_TRACKED_EXCHANGES. Tappa 6, Task 2 |
 | D-11 | Leggere un JSON dalla risposta: cinque lettori, tre strategie, una regex duplicata | Tappa 6, Task 3 | 21f6e0d | steering.read_json, il lettore unico: escono read_recipe, read_analysis, read_actuation e la lettura di _read_proposal; read_decisions tiene solo la forma. La regex della staccionata vive una volta |
+| E-07 | Il contratto dell'«intenzione» dell'attuatore contro l'officina | Tappa 6 (da rilasciare) | 15578e6 | Tappa 6, Task 5 (D5): l'intenzione del contratto si deriva dallo schema di propose; apply_actuation la valida con workshop.form_refusal prima dell'officina. L'attuatore resta in pausa |

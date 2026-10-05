@@ -410,7 +410,11 @@ async def test_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa):
     app["workshop"] = officina
     app["llm_router"] = _modello_proponente(
         True, {"gesto": "crea", "dominio": "automation",
-               "richiesto": "accendi la lavatrice alle 14"})
+               # La forma che l'officina accetta (Tappa 6, Task 5): fino al
+               # 05/10/2026 qui c'era `"richiesto": "accendi la lavatrice
+               # alle 14"`, che `workshop.propose` rifiuta -- la prova
+               # difendeva la forma sbagliata con un'officina finta.
+               "innesco": [{"trigger": "time", "at": "14:00:00"}]})
     store.replace_analysis(OGGI, _analisi())
 
     await server.actuator_round(app)
@@ -539,7 +543,11 @@ async def test_col_PONTE_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa, pian
     store.replace_analysis(OGGI, _analisi())
     _bridge_replied(app, _risposta_proponente(
         True, {"gesto": "crea", "dominio": "automation",
-               "richiesto": "accendi la lavatrice alle 14"}))
+               # La forma che l'officina accetta (Tappa 6, Task 5): fino al
+               # 05/10/2026 qui c'era `"richiesto": "accendi la lavatrice
+               # alle 14"`, che `workshop.propose` rifiuta -- la prova
+               # difendeva la forma sbagliata con un'officina finta.
+               "innesco": [{"trigger": "time", "at": "14:00:00"}]}))
 
     await server.actuator_round(app)
 

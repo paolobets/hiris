@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import logging
 
+from ..home_space.ha_vocabulary import domain_of
 from ..home_space.house import House
+from ..home_space.privacy import MOVING_DOMAINS
 from ..home_space.topology import is_pseudo_area
 from ..steering import misura_turno, read_json
 from .scope import OBSERVER
@@ -81,6 +83,49 @@ def watched_ids(house: House, only: set[str] | None = None) -> list[str]:
     return [eid for eid in house.visible_entities() if only is None or eid in only]
 
 
+#: **Persone e dispositivi che le seguono arrivano al modello senza nome**
+#: (decisione 12 della spec «Una fonte sola di verita'», approvata dal
+#: proprietario; Tappa 6, Task 6, 05/10/2026). Il nome sta anche
+#: nell'identificatore -- `person.paolo`, `device_tracker.iphone_di_paolo` --
+#: quindi la riga porta un SEGNAPOSTO al posto dell'id, e la risposta si
+#: riporta all'id vero qui dentro (`apply_answer`): il giudizio resta, il nome
+#: non esce.
+#:
+#: Chi e' «persona» non si scrive qui: e' `privacy.MOVING_DOMAINS`, il genere
+#: «presenza» del vocabolario dei tipi -- le stesse due specie che Home
+#: Assistant dichiara: il dominio `person` (`components/person`, `DOMAIN`) e i
+#: `device_tracker` che una persona segue (`ATTR_DEVICE_TRACKERS`, validati con
+#: `cv.entities_domain(DEVICE_TRACKER_DOMAIN)`), letti nel sorgente di Core
+#: 2026.9.3 il 05/10/2026.
+#:
+#: Il `#` non puo' collidere con un'entita' vera: Home Assistant ammette
+#: nell'object_id solo cifre, minuscole e `_` (`homeassistant/core.py`,
+#: `_OBJECT_ID`, Core 2026.9.3, letto il 05/10/2026).
+#:
+#: **La deroga «salvo che l'obiettivo li chieda» non nasce.** L'obiettivo e'
+#: testo libero (`mind/store.objective`): non c'e' un modo per dire «le persone
+#: si', per nome» che non sia indovinarlo da una frase. Se servira', nascera'
+#: come campo dell'obiettivo, non come lettura della prosa.
+PRESENCE_MARK = "#"
+
+
+def presence_handles(ids) -> dict[str, str]:
+    """`entity_id` -> segnaposto, per le sole presenze fra `ids`.
+
+    Il numero e' la posizione nell'ordine degli id, dominio per dominio: e'
+    cio' che lo rende ricostruibile quando la risposta torna -- sul ponte
+    minuti dopo, da un altro processo -- a partire dallo stesso insieme
+    chiesto, senza archiviare una tabella di corrispondenze."""
+    handles: dict[str, str] = {}
+    counters: dict[str, int] = {}
+    for entity_id in sorted(ids):
+        domain = domain_of(entity_id)
+        if domain in MOVING_DOMAINS:
+            counters[domain] = counters.get(domain, 0) + 1
+            handles[entity_id] = f"{domain}.{PRESENCE_MARK}{counters[domain]}"
+    return handles
+
+
 def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     """Una riga per entita', **solo quelle che competono all'osservatore**
     (`watched_ids`).
@@ -107,10 +152,23 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     italiano e' rumore. Una pseudo-area («Senza area», «Aree non lette») non
     si mostra: non e' un luogo, e la riga dice gia' l'assenza tacendo. Un nome
     che e' solo l'id ripetuto non si ripete.
+
+    **Una persona o un dispositivo che la segue** (`presence_handles`) ha il
+    segnaposto al posto dell'id, e niente nome ne' area -- il nome di
+    un'area puo' essere quello di chi ci dorme. Restano classe, unita' e
+    chiave di traduzione, che dichiara l'integrazione e non la persona.
     """
     lines = []
-    for entity_id in watched_ids(house, only):
+    ids = watched_ids(house, only)
+    handles = presence_handles(ids)
+    for entity_id in ids:
         kind = house.kind_of(entity_id) or {}
+        if entity_id in handles:
+            lines.append(" · ".join(
+                [handles[entity_id]]
+                + [str(value) for value in (kind.get("classe"), kind.get("unita"),
+                                            kind.get("translation_key")) if value]))
+            continue
         room = ((house.where(entity_id) or {}).get("area")) or {}
         area_name = None if is_pseudo_area(room.get("id")) else room.get("nome")
         name = house.name("entita", entity_id)
@@ -153,13 +211,24 @@ def build_question(objective: str, lines: list[str]) -> str:
     return build_house_question(objective, lines) + "\n" + ANSWER_CONTRACT
 
 
+#: Cosa si dice al modello quando fra le righe ci sono segnaposti: senza,
+#: `person.#1` sembrerebbe un identificatore storto da correggere.
+PRESENCE_HINT = (
+    "Le persone e i dispositivi che le seguono hanno un segnaposto al posto "
+    f"dell'identificatore (per esempio person.{PRESENCE_MARK}1) e nessun nome: "
+    "giudicali per quello che sono, e nella risposta usa il segnaposto come id.\n")
+
+
 def build_house_question(objective: str, lines: list[str]) -> str:
     """L'obiettivo e la casa, **senza** il contratto di risposta."""
+    masked = any(f".{PRESENCE_MARK}" in line.split(" · ", 1)[0] for line in lines)
     return (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
         f"Queste sono le {len(lines)} entita' che ti competono. Ogni riga e':\n"
         "identificatore · nome · classe · unita' · area · chiave di traduzione\n"
-        "(i campi che mancano sono assenti, non vuoti).\n\n"
+        "(i campi che mancano sono assenti, non vuoti).\n"
+        + (PRESENCE_HINT if masked else "")
+        + "\n"
         + "\n".join(lines)
         + "\n"
     )
@@ -274,6 +343,12 @@ def apply_answer(store, house: House, answer: str, *, reason: str = "",
     if failure is not None:
         logger.warning("osservatore: %s", failure)
         return {"errore": failure}
+    # **Il segnaposto torna id** (decisione 12): si ricostruisce dallo stesso
+    # insieme da cui e' nato la domanda -- il lotto, o cio' che la casa guarda.
+    handles = {handle: entity_id for entity_id, handle in presence_handles(
+        asked if asked is not None else known).items()}
+    decisions = [{**decision, "id": handles.get(decision["id"], decision["id"])}
+                 for decision in decisions]
 
     decided = refused = ignored = 0
     for decision in decisions:
@@ -361,6 +436,6 @@ async def reconsider(runner, store, house: House, *, reason: str,
 
     return apply_answer(store, house, answer, reason=reason,
                         window_s=window_s, cadence_s=cadence_s,
-                        asked={line.split(" · ", 1)[0] for line in lines},
+                        asked=set(watched_ids(house, only)),
                         record=record, campaign_ts=campaign_ts, now=now,
                         truncated=turn.truncated)

@@ -162,9 +162,12 @@ veridicita' della soluzione»).
    Tappa 6 il 05/10/2026: e' la memoria delle analisi precedenti che manca, non un doppione di
    codice.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
-   dell'attuatore) contro la spec §5 che gli da' la sola lettura; il contratto dell'`intenzione`
-   (`mind/actuator_turn.py:75-98`) incompatibile con l'officina (`workshop.py:1026`); «riscritta»
-   che vuol dire solo «file scritto».
+   dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
+   «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,
+   D5), con l'attuatore sempre in pausa:* il contratto dell'`intenzione` incompatibile con
+   l'officina. Oggi si deriva dallo schema di `propose` (`mind/actuator_turn._intent_contract`) e
+   la risposta passa dalla stessa porta della forma dell'officina (`workshop.form_refusal`) prima
+   di arrivarci.
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
