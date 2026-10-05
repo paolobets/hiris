@@ -992,11 +992,16 @@ class ObservationsStore:
     def transitions(self, subjects, *, from_ts: float, to_ts: float) -> list[dict]:
         """I cambi di STATO di questi soggetti nella finestra semi-aperta
         `[from_ts, to_ts)`, dal piu' vecchio: le righe in cui `da` e `a`
-        differiscono.
+        differiscono, e la prima riga di ciascuno.
 
         Le righe di solo attributo (`da == a`, scritte da `watcher` quando
         cambia un attributo voluto) restano fuori: non aprono e non chiudono
-        niente, e sui termostati sono la maggior parte del grezzo. **Nessun
+        niente, e sui termostati sono la maggior parte del grezzo. **Tranne la
+        PRIMA riga di ciascun soggetto nella finestra**, di qualunque forma:
+        dice in che stato la finestra comincia. Senza, un termostato acceso
+        prima della finestra -- la riga che l'ha acceso potata -- non aveva
+        nessun cambio da rigiocare, e il suo episodio in corso spariva dalla
+        cronaca (revisione cloud, giro 3, 05/10/2026). **Nessun
         giudizio**: quale stato sia un riposo lo decide chi legge
         (`facts.build_episodes`, che rigioca queste righe con la regola del
         giorno per sapere da quando e' in corso cio' che e' in corso a
@@ -1006,12 +1011,15 @@ class ObservationsStore:
         if not wanted:
             return []
         marks = ",".join("?" * len(wanted))
-        sql = ("SELECT * FROM cambi WHERE fonte = 'entita' AND quando_ts >= ? "
-               f"AND quando_ts < ? AND da IS NOT a AND soggetto IN ({marks}) "
-               "ORDER BY quando_ts ASC, id ASC")
+        window = (f"fonte = 'entita' AND quando_ts >= ? AND quando_ts < ? "
+                  f"AND soggetto IN ({marks})")
+        sql = (f"SELECT * FROM cambi WHERE {window} AND (da IS NOT a OR id IN ("
+               "SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY soggetto "
+               f"ORDER BY quando_ts ASC, id ASC) AS rn FROM cambi WHERE {window}) "
+               "WHERE rn = 1)) ORDER BY quando_ts ASC, id ASC")
+        args = (float(from_ts), float(to_ts), *wanted)
         with self._lock:
-            rows = self._conn.execute(
-                sql, (float(from_ts), float(to_ts), *wanted)).fetchall()
+            rows = self._conn.execute(sql, args + args).fetchall()
         return [_reading_row(r) for r in rows]
 
     def last_seen(self, subjects) -> dict[str, float]:

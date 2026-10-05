@@ -522,6 +522,24 @@ def test_le_transizioni_sono_i_cambi_di_STATO_dei_soggetti_chiesti(archivio):
     assert archivio.transitions([], from_ts=0.0, to_ts=1000.0) == []
 
 
+def test_le_transizioni_portano_la_prima_riga_di_ciascuno_anche_di_attributo(archivio):
+    """La prima riga di un soggetto nella finestra entra anche se e' di solo
+    attributo: dice in che stato la finestra comincia (un termostato acceso
+    prima della finestra, la riga che l'ha acceso potata). Le righe di
+    attributo DOPO la prima restano fuori (revisione cloud, giro 3)."""
+    for quando in (100.0, 200.0, 300.0):
+        archivio.record(quando_ts=quando, source="entita", subject="climate.camera",
+                        da="heat", a="heat", attributes='{"hvac_action": "heating"}')
+    archivio.record(quando_ts=150.0, source="entita", subject="light.cucina",
+                    da="off", a="on")
+
+    righe = archivio.transitions(["climate.camera", "light.cucina"],
+                                 from_ts=50.0, to_ts=500.0)
+
+    assert [(r["soggetto"], r["quando_ts"]) for r in righe] == [
+        ("climate.camera", 100.0), ("light.cucina", 150.0)]
+
+
 def test_l_ultima_riga_prima_non_guarda_le_condizioni_di_sistema(archivio):
     """Le condizioni di sistema (`problema:`, `integrazione:`, `log:`) hanno
     gia' un meccanismo loro che le tiene aperte fra i riavvii

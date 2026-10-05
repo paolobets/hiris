@@ -1754,3 +1754,28 @@ def test_rifare_la_cronaca_legge_il_grezzo_di_prima_UNA_volta(archivio):
     assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome",
                              judgments=tv.REPO_JUDGMENTS, house=None)
     assert len(letture) == 1
+
+
+def test_un_termostato_acceso_da_piu_della_vita_del_grezzo_resta_in_corso(archivio):
+    """Acceso trenta giorni fa: la riga che l'ha acceso e' fuori dalla
+    finestra del grezzo (`READING_RETENTION_S`), e dentro restano solo righe
+    di attributo (`da == a`, scritte da `watcher` quando cambia un attributo
+    voluto: sui termostati sono la maggior parte del grezzo). Il rigioco del
+    Task 1.4 guardava solo i cambi di STATO, non ne trovava nessuno, e
+    l'episodio in corso spariva dalla cronaca -- d'inverno, ogni termostato
+    acceso da piu' di 22 giorni (revisione cloud, giro 3, 05/10/2026). La
+    prima riga del soggetto nella finestra dice in che stato la finestra
+    comincia: l'episodio c'e', e comincia li', che e' il primo istante noto."""
+    from hiris.app.mind.store import READING_RETENTION_S
+
+    _watched(archivio, "climate.camera")
+    archivio.record(quando_ts=MEZZANOTTE - READING_RETENTION_S - 8 * 86400,
+                    source="entita", subject="climate.camera", da="off", a="heat")
+    for giorni in (10, 5, 1):
+        archivio.record(quando_ts=MEZZANOTTE - giorni * 86400, source="entita",
+                        subject="climate.camera", da="heat", a="heat",
+                        attributes='{"hvac_action": "heating"}')
+
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    voce = archivio.report(G)["cronaca"][0]
+    assert (voce["chi"], voce["quando_ts"]) == ("climate.camera", MEZZANOTTE - 10 * 86400)
