@@ -67,7 +67,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field as _field
 
-from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE, domain_of
+from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE, STATISTICS_DOMAIN, domain_of
 from .operations import (
     NO_STATISTICS,
     REGISTRY,
@@ -96,10 +96,8 @@ STEP_MARK = "$"
 # porta FUORI, come campo dal vocabolario chiuso (`operations.CAUSES`): la
 # frase e' per chi legge, la causa per chi conta e per chi ripara.
 
-#: Il dominio per cui Home Assistant compila statistiche (vedi il commento
-#: «quali `state_class` producono statistiche» in `ha_vocabulary.py`, letto
-#: nel sorgente al tag 2026.9.1).
-_STATISTICS_DOMAIN = "sensor"
+# Il dominio per cui Home Assistant compila statistiche e' quello della regola
+# unica (B-12): `ha_vocabulary.STATISTICS_DOMAIN`, chiesto e non ricopiato.
 
 
 def silence(entity_id: str, source: dict | None,
@@ -137,10 +135,10 @@ def silence(entity_id: str, source: dict | None,
         return NotComputable(
             f"{entity_id} e' nel registro di Home Assistant ma non ha uno "
             f"stato: {never}", cause=state)
-    if domain_of(entity_id) != _STATISTICS_DOMAIN:
+    if domain_of(entity_id) != STATISTICS_DOMAIN:
         return NotComputable(
             f"{entity_id} non ha statistiche in Home Assistant: le compila "
-            f"solo per i `{_STATISTICS_DOMAIN}`, e questa e' "
+            f"solo per i `{STATISTICS_DOMAIN}`, e questa e' "
             f"«{domain_of(entity_id)}» -- {never}", cause=NO_STATISTICS)
     if state == "non_disponibile":
         # I due fatti, senza dire quale spieghi l'altro: `restored` vuol dire

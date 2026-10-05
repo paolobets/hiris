@@ -176,7 +176,10 @@ class House:
             "area": {"id": area.get("id"), "nome": area.get("nome")},
             "area_ereditata": not pseudo and not entry.get("area_id"),
             "piano": None if pseudo else {"id": floor.get("id"), "nome": floor.get("nome")},
-            "dispositivo": ({"id": device_id, "nome": (device or {}).get("nome")}
+            # Il nome col ripiego sull'id di `House.name` (A-16): lo stesso
+            # dispositivo non ha due nomi a seconda della porta (fondamenta 3).
+            "dispositivo": ({"id": device_id,
+                             "nome": topology.device_name(device) if device else None}
                             if device_id else None),
             "integrazione": entry.get("piattaforma"),
         }
@@ -333,13 +336,19 @@ class House:
         dispositivo sopra di lei, da cui Home Assistant l'ha propagato (vedi il
         commento in `ha_vocabulary.py`). Un dispositivo spento a sua volta
         dalla sua istanza rimanda all'istanza dell'entita'. Se la catena non si
-        legge (la voce sopra manca) resta il valore dell'entita'."""
+        legge (la voce sopra manca) resta il valore dell'entita', tranne
+        `config_entry`, che vuol dire sempre il proprietario."""
         if cause == ENTITY_DISABLED_BY_DEVICE:
             device = self._devices().get(entry.get("dispositivo_id")) or {}
             cause = device.get("disabilitato_da") or cause
         if cause == ENTITY_DISABLED_BY_CONFIG_ENTRY:
             instance = self._instances().get(entry.get("config_entry_id")) or {}
-            cause = instance.get("disabilitata_da") or cause
+            # Anche con l'istanza non letta la risposta e' una sola:
+            # `ConfigEntryDisabler` ha un valore solo, `user`
+            # (`homeassistant/config_entries.py` al tag 2026.9.4, letto il
+            # 05/10/2026), e `config_entry` lo scrive Home Assistant solo sotto
+            # un'istanza spenta.
+            cause = instance.get("disabilitata_da") or ENTITY_DISABLED_BY_USER
         return cause
 
     def source(self, entity_id: str) -> dict | None:

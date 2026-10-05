@@ -626,3 +626,30 @@ def test_una_ricetta_che_da_una_serie_oraria_a_un_contatore_si_rifiuta():
     esito = r.validate(entities={"sensor.contatore"})
     assert not esito.valid
     assert any("primo_ultimo_differenza" in p for p in esito.problems), esito.problems
+
+
+def test_il_dominio_delle_statistiche_ha_una_casa_sola():
+    """«Per quale dominio Home Assistant compila statistiche» vive in
+    `ha_vocabulary.STATISTICS_DOMAIN` (B-12). Fino al 05/10/2026
+    `mind/recipes.py` ne teneva una copia sua (`_STATISTICS_DOMAIN`), che
+    nessun cancello vedeva (revisione cloud, giro 1, R3): la regola che cambia
+    da una parte sola fa mentire la frase del resoconto.
+
+    Si chiede al sorgente: ogni assegnazione di modulo, in tutto il prodotto,
+    il cui nome dice STATISTICS_DOMAIN."""
+    import ast
+    from pathlib import Path
+
+    from hiris.app.home_space import ha_vocabulary
+
+    app = Path(ha_vocabulary.__file__).resolve().parents[1]
+    files = sorted(app.rglob("*.py"))
+    assert len(files) > 50  # la derivazione guarda davvero il prodotto
+    homes = []
+    for path in files:
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            targets = (node.targets if isinstance(node, ast.Assign)
+                       else [node.target] if isinstance(node, ast.AnnAssign) else [])
+            homes += [f"{path.relative_to(app).as_posix()}:{t.id}" for t in targets
+                      if isinstance(t, ast.Name) and "STATISTICS_DOMAIN" in t.id]
+    assert homes == ["home_space/ha_vocabulary.py:STATISTICS_DOMAIN"]
