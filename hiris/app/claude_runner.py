@@ -676,6 +676,16 @@ _current_truncated: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
     "hiris_current_truncated", default=False
 )
 
+# **La risposta con uno strumento «scappato»** (B22, approvata il 05/10/2026;
+# D-58, seconda meta'): la chiamata a uno strumento arrivata come TESTO, che
+# `OpenAICompatRunner` riconosce (`detect_leaked_tool_call`) e sostituisce
+# con `TOOL_LEAK_USER_MSG`. Per chiamata come la troncatura, e per la stessa
+# ragione. Qui resta sempre falso: gli strumenti nativi di Anthropic non
+# arrivano come testo.
+_current_tool_leaked: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "hiris_current_tool_leaked", default=False
+)
+
 #: Gli `stop_reason` di Anthropic che fermano la risposta a meta' (fonte
 #: sopra). Il primo dei due e' anche quello che produce `_TRUNCATION_NOTICE`.
 ANTHROPIC_TRUNCATING = frozenset({"max_tokens", "model_context_window_exceeded"})
@@ -750,6 +760,7 @@ class ClaudeRunner:
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_thinking_blocks = _PerCallList(_current_thinking_blocks)
     last_truncated = _PerCallFlag(_current_truncated)
+    last_tool_leaked = _PerCallFlag(_current_tool_leaked)
 
     def __init__(
         self,
@@ -848,6 +859,7 @@ class ClaudeRunner:
     ) -> str:
         self.last_tool_calls = []
         self.last_truncated = False
+        self.last_tool_leaked = False
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control
         # breakpoint caches everything from the start of the request up to that

@@ -19,6 +19,7 @@ from ..claude_runner import (
     RESTRICT_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
+    _current_tool_leaked,
     _current_truncated,
     _misura_corrente,
     _PerCallFlag,
@@ -362,6 +363,7 @@ class OpenAICompatRunner:
     # accepted-and-ignored in chat() below).
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_truncated = _PerCallFlag(_current_truncated)
+    last_tool_leaked = _PerCallFlag(_current_tool_leaked)
 
     def __init__(
         self,
@@ -643,6 +645,7 @@ class OpenAICompatRunner:
 
         self.last_tool_calls = []
         self.last_truncated = False
+        self.last_tool_leaked = False
 
         effective_model = self._resolve_model(model, agent_type)
 
@@ -849,6 +852,7 @@ class OpenAICompatRunner:
                         "(provider does not translate native tool tokens). Sample: %r",
                         effective_model, leaked, raw_content[:160],
                     )
+                    self.last_tool_leaked = True  # B22: un esito suo
                     return TOOL_LEAK_USER_MSG
                 return raw_content
 
@@ -927,6 +931,7 @@ class OpenAICompatRunner:
                         "(finish_reason=%s). Sample: %r",
                         effective_model, leaked, choice.finish_reason, raw_content[:160],
                     )
+                    self.last_tool_leaked = True  # B22: un esito suo
                     return TOOL_LEAK_USER_MSG
                 return raw_content
 

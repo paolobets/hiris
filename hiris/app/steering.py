@@ -136,6 +136,13 @@ SPECIE = frozenset({ANALYST_SPECIES, ACTUATOR_SPECIES, "chat", OBSERVER_SPECIES,
 #: testo della risposta.
 TRUNCATED = "troncato"
 
+#: **L'esito di una risposta con uno strumento «scappato»** (B22, approvata il
+#: 05/10/2026; D-58, seconda meta'): la chiamata a uno strumento arrivata
+#: come testo, che l'utente legge come `TOOL_LEAK_USER_MSG`. Fino a quel
+#: giorno il registro la chiamava «riuscito». Il segnale e' `last_tool_leaked`
+#: del runner, per chiamata come `last_truncated`.
+TOOL_LEAKED = "strumento_scappato"
+
 #: Cosa riceve il mestiere al posto delle decisioni, quando il turno e' stato
 #: troncato (D2, approvata il 05/10/2026): **non si legge**. Un JSON tagliato a
 #: meta' che per caso si chiude e' l'unico modo di inventare decisioni da una
@@ -186,6 +193,13 @@ def was_truncated(runner) -> bool:
     -- `tests/test_turno_troncato.py` pretende l'attributo da ognuno.
     """
     return bool(getattr(runner, "last_truncated", False))
+
+
+def was_tool_leaked(runner) -> bool:
+    """Se l'ultima chiamata di QUESTO compito su `runner` ha risposto con uno
+    strumento «scappato» come testo (B22). Un runner che non lo espone non sa
+    dirlo, e non si afferma niente -- come `was_truncated`."""
+    return bool(getattr(runner, "last_tool_leaked", False))
 
 
 _FENCE = _re.compile(r"```(?:json)?\s*(.*?)```", _re.DOTALL)
@@ -331,6 +345,8 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
         stato.truncated = esito == "riuscito" and was_truncated(runner)
         if stato.truncated:
             esito = TRUNCATED
+        elif esito == "riuscito" and was_tool_leaked(runner):
+            esito = TOOL_LEAKED
         try:
             if archivio is not None:
                 chiamate = getattr(runner, "last_tool_calls", None) or []

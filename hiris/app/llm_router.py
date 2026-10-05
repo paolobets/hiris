@@ -9,6 +9,7 @@ from .claude_runner import (
     RunnerBackendError,
     _current_thinking_blocks,
     _current_tool_calls,
+    _current_tool_leaked,
     _current_truncated,
 )
 
@@ -163,6 +164,7 @@ class LLMRouter:
         # chiamata precedente dello stesso compito si leggerebbe come di
         # questa.
         _current_truncated.set(False)
+        _current_tool_leaked.set(False)
         ordered = self._ordered_backends_with_name()
         if not ordered:
             # Da questa fetta e' uno stato RAGGIUNGIBILE e con un significato:
@@ -239,6 +241,13 @@ class LLMRouter:
         il backend che ha risposto e' l'ultimo ad averla scritta, perche'
         ognuno la azzera all'ingresso di `chat()`."""
         return _current_truncated.get()
+
+    @property
+    def last_tool_leaked(self) -> bool:
+        """Se la risposta che ha appena attraversato il router, in QUESTO
+        compito, portava uno strumento «scappato» come testo (B22). Stessa
+        ContextVar dei runner, come `last_truncated`."""
+        return _current_tool_leaked.get()
 
     @property
     def last_thinking_blocks(self) -> list:
