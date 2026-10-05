@@ -15,6 +15,7 @@ import ast
 import inspect
 import textwrap
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -209,3 +210,32 @@ async def test_argomenti_che_non_sono_un_oggetto_rispondono_errore(arguments):
 async def test_uno_strumento_sconosciuto_risponde_errore():
     answer = await ToolDispatcher(None, None).dispatch("fetchh", {})
     assert "errore" in answer and "«fetchh»" in answer["errore"]
+
+
+# --- la profondita', una regola sola (Task 4: B-30) ----------------------------
+
+def _readers_of(constant: str) -> list[str]:
+    """Le funzioni del prodotto che leggono `constant`, chieste al sorgente di
+    ogni modulo di `hiris/app` (non a un elenco scritto qui)."""
+    root = Path(tools.__file__).resolve().parents[1]
+    readers = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any(isinstance(node, ast.Name) and node.id == constant
+                   for node in ast.walk(function)):
+                readers.append(f"{path.relative_to(root)}:{function.name}")
+    return readers
+
+
+def test_la_soglia_della_profondita_la_legge_solo_depth_for():
+    """B-30: «una -> completa, fino a `DETAIL_MEDIUM_MAX` -> media, oltre ->
+    corta» era scritta due volte, in `house_query._select` (per `search`) e
+    in `house_history.depth_for` (per `history`). Ora vive in
+    `house_query.depth_for`, accanto alla soglia, e la storia la importa.
+
+    Rossa prima del codice (05/10/2026) con
+    `['home_space/house_history.py:depth_for', 'home_space/house_query.py:_select']`."""
+    assert _readers_of("DETAIL_MEDIUM_MAX") == ["home_space/house_query.py:depth_for"]

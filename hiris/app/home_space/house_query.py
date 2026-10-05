@@ -477,6 +477,16 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     return page, beyond
 
 
+def depth_for(count: int) -> str:
+    """La profondita' di una risposta dal numero di voci trovate, per
+    `search` e per `history` (spec §3): 1 -> completa, fino a
+    `DETAIL_MEDIUM_MAX` -> media, oltre -> corta. Una regola sola (B-30,
+    Tappa 5): fino al 05/10/2026 era scritta anche in `_select`."""
+    if count == 1:
+        return "completa"
+    return "media" if count <= DETAIL_MEDIUM_MAX else "corta"
+
+
 def _select(f: HouseFilters, house: House, behavior, detail,
             now, excluded: dict) -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
@@ -497,13 +507,16 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     found = len(matched) + len(behaving) + len(others)
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
         return _one(_missing_reference(f, house, detail))
-    if found == 1 and f.limit > 0:
+    depth = depth_for(found)
+    if depth == "completa" and f.limit > 0:
         if matched:
             return 1, "completa", [detail("entita", matched[0][0]["id"])], None
         item = behaving[0][0] if behaving else others[0]
         kind = item.get("tipo") if behaving else item["genere"]
         return 1, "completa", [detail(kind, item["id"])], None
-    medium = found <= DETAIL_MEDIUM_MAX
+    # Con `limite` 0 la voce sola non si apre: chi chiede zero righe vuole
+    # solo il conto, e la profondita' resta quella di un elenco.
+    medium = depth != "corta"
     rows = ([_entity_row(entry, area, where, house.mirror, medium)
              for entry, area, where in matched]
             + [_behavior_row(item, values, house.mirror, medium) for item, values in behaving]

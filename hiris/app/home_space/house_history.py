@@ -39,8 +39,8 @@ from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
 from .historian import day_boundaries, home_space_zone, instant_epoch, local_date
 from .house_query import (
-    DETAIL_MEDIUM_MAX,
     HouseFilters,
+    depth_for,
     excluded_note,
     page_rows,
     parse_filters,
@@ -287,14 +287,6 @@ class Chosen:
     excluded: dict
     depth: str
     subjects: list[Subject]
-
-
-def depth_for(count: int) -> str:
-    """Spec §3: 1 -> completa, 2-10 -> media, oltre 10 -> corta (la soglia
-    della porta, `DETAIL_MEDIUM_MAX`)."""
-    if count == 1:
-        return "completa"
-    return "media" if count <= DETAIL_MEDIUM_MAX else "corta"
 
 
 def _epoch(raw) -> float | None:
