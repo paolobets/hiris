@@ -83,13 +83,10 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-13 | Il JS ricostruisce un dato che il server ha, o gliene manca uno | D | CC |  | cop-6 (incompleta); cop-9 (incompleta) | reg · cop-6 · cop-9 |
 | C-14 | Agenda e Proposte: finestra da 200 contro conteggio completo | D | CC |  |  | reg |
 | C-15 | Chat: contatore dei turni, limite, due forme di risposta | D | CC |  | cop-8 (righe, incompleta) | reg · cop-8 |
-| C-16 | Tema: quattro posti, e il tema del server vale solo per la chat | D | CC |  |  | reg |
 | C-17 | Fuso e formati delle date: il browser contro la casa | D | DP |  | Tappa 4 (incompleta) | reg · cop-2 |
 | C-18 | Nome di pagina: «Costruzioni» nella prosa del server, «Proposte» nel menu | D | PS |  |  | reg · cop-3 · cop-9 |
-| C-19 | Intestazione anti-CSRF: una copia diversa | D | PS |  |  | reg |
-| C-20 | Utilità JS ricopiate per file | E | PS |  |  | reg |
+| C-20 | Utilità JS ricopiate per file | E | PS |  |  | reg · Tappa 4, Task 3 (7979300): escono le copie di `el`, `clearEl`, `byId`, `api`, `pad2`, `renderError` (Impegni, Proposte, Memoria, Modelli), `nomiRegistriInItaliano`, `setDisclosure`, in `static/common.js`; `sortHistory` non e' una copia (ordina su `quando_ts` e su `creata_ts`). Restano, fuori dalla misura del piano: `line`, `read`, i toni `TONE_*` (home, albero, osservatore), `section` e `list` (home, albero), e le `renderError` di home e albero rinominate `renderSectionError`/`renderTreeError`: resta aperta |
 | C-21 | Stato doppio client/server | D | DP |  |  | reg |
-| C-22 | Le due applicazioni (chat e configurazione): cosa condividono e cosa duplicano | E | PS |  |  | reg |
 | C-23 | Campi che arrivano e nessun JS legge | E | PS |  |  | reg |
 | C-24 | CSS: due sistemi di variabili, stili in-linea ripetuti, override caricato prima | NV | PS |  |  | reg · BACKLOG, i fogli di stile (D10 della Tappa 4) |
 | C-25 | Nomi che collidono e notizie con due nomi nella pagina dell'osservatore | D | DP |  |  | reg · BACKLOG, la pagina dell'osservatore (D10 della Tappa 4) |
@@ -298,7 +295,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | T-06 | Test che non possono fallire o non discriminano | NV | DP |  |  | reg · cop-3 |
 | T-08 | Cancelli utili: da non toccare | E | PS |  |  | reg |
 | T-09 | Moduli di produzione senza test che li importino | NV | DP |  |  | reg |
-| T-10 | La suite ha congelato la duplicazione del JS | E | PS |  |  | reg |
+| T-10 | La suite ha congelato la duplicazione del JS | E | PS |  |  | reg · Tappa 4, Task 3 (7979300): smontate `test_theme_single_rule` (le due copie in linea), la guardia CSRF di `test_settings_frontend_wiring`, «Categorie» letta nel testo di due file, `S.el` nelle prove dell'osservatore; il cancello e' `tests/js/common.test.mjs`. Resta il `pad2` ricopiato in `tests/js/watcher-giorno.test.mjs` (lo riscrive il Task 4 con `localOggi`), e le «41 voci» della misura del piano non sono state ricontate: resta aperta |
 | T-11 | Ridondanza fra test e prove che pinnano nomi vecchi | NV | DP |  |  | reg |
 | T-12 | Cosa i test non hanno mai confrontato | NV | DP |  |  | reg |
 | T-14 | Due prove che fissano il contrario di ciò che serve (`test_shared_chat_context.py:233-241`, `test_internal_auth_middleware.py:54`). La metà del confine è fatta (`3406c3a6`, Tappa 1: elenco vuoto di reti fidate provato con xfail strict su S-15); resta da stabilire se la coppia `utente`/`role_known=False` di `test_shared_chat_context.py` sia generabile in produzione | NV | PS |  |  | cop-8 T1 |
@@ -977,3 +974,6 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-55 | Tre definizioni di «non disponibile»: `queries._view_integration`, `facts`, `privacy._NEUTRAL_STATES` | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: le tre definizioni leggono il vocabolario (costanti con nome in queries, unknown_states in facts e privacy) |
 | B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | Tappa 3 (da rilasciare) | c35e940b | le tre composizioni di «adesso nel fuso» chiamano l'unica costruzione del fuso (historian.home_space_zone): usi, non copie (deciso da Paolo, 05/10/2026) |
 | C-47 | `as_document`: istanti come epoch grezzo sotto un'intestazione inglese | 3.73.0 | c336872e | as_document e le sue prove, uscite il 02/10/2026; registrata chiusa dal Task 0 della Tappa 4 |
+| C-16 | Tema: quattro posti, e il tema del server vale solo per la chat | Tappa 4, Task 3 | 7979300 | la chiave e la regola del tema vivono in common.js (savedTheme, paintSavedTheme, applyTheme, currentTheme, toggleTheme); la configurazione chiede il tema al server come la chat e non salva piu' il tema trovato all'avvio (CC dichiarato); il bootstrap in linea chiama paintSavedTheme() |
+| C-19 | Intestazione anti-CSRF: una copia diversa | Tappa 4, Task 3 | 7979300 | un'intestazione sola, da api() di common.js; il server accetta qualunque valore non vuoto (middleware_csrf.py), quindi 'XMLHttpRequest' era una forma diversa, non un difetto: PS |
+| C-22 | Le due applicazioni (chat e configurazione): cosa condividono e cosa duplicano | Tappa 4, Task 3 | 7979300 | config/api.js diventa static/common.js, caricato per primo nell'head delle due pagine; il pad2 della chat e il tema della chat ci passano |

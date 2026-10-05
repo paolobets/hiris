@@ -14,7 +14,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
      per sempre da una route che non si vede piu'. */
 
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
-const SCRIPTS = ['config/api.js', 'config/services-route.js'];
+const SCRIPTS = ['common.js', 'config/services-route.js'];
 
 function risposta(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };

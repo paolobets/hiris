@@ -108,7 +108,7 @@ function fixtureChat() {
   </body>`;
 }
 
-const MODULI_CHAT = ['config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
+const MODULI_CHAT = ['common.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
   'chat/conversations.js', 'chat/send.js', 'chat/sidebar.js', 'pending-badge.js'];
 
 function risposta(status, body) {

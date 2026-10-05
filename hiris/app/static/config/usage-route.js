@@ -115,7 +115,7 @@
        arriva `null` dal server (fino al 09/09 arrivava 0.0, ed era lo zero
        che afferma: vedi `usage/store.totali`) -- e questa tessera
        scriveva «€ 0,00» senza dire che quello zero non e' una misura, e' un
-       "qui non c'e' niente da sommare". `isSubscriptionOnly` (config/api.js)
+       "qui non c'e' niente da sommare". `isSubscriptionOnly` (common.js)
        legge `u.sections`, che questa risposta manda gia': niente di nuovo da
        inventare. Nessun trattino (regola 2 qui sopra): la parola. */
     var onlySub = isSubscriptionOnly(u.sections);
@@ -344,9 +344,7 @@
        SEMPRE visibile sotto il pulsante, non nascosta in un blocco modale che
        compare a cose fatte. */
     per('usage-reset', function() {
-      fetch('api/usage/reset', {
-        method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }
-      }).then(function() { mount(); })
+      api('api/usage/reset', { method: 'POST' }).then(function() { mount(); })
         .catch(function(e) { console.error('reset consumi fallito', e); });
     });
   }

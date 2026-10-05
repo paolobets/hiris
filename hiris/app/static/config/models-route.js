@@ -56,30 +56,6 @@
 (function() {
   'use strict';
 
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
-
-  function clearEl(node) {
-    while (node && node.firstChild) node.removeChild(node.firstChild);
-    return node;
-  }
-
-  function byId(id) {
-    return document.getElementById(id);
-  }
-
-  function api(path, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign(
-      { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      opts.headers || {});
-    return fetch(path, opts);
-  }
-
   /* L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
      quindi non può contraddire niente. DUPLICA `model_resolution.FIXED_ORDER`
      (il frontend non importa Python): le due liste sono tenute legate da un
@@ -111,7 +87,7 @@
        mandarla al server con una PUT vorrebbe dire scrivere quei predefiniti
        sopra la configurazione vera. I tre preset «Rifai la catena» stanno
        nell'intestazione della sezione, cioè restano a schermo anche quando
-       `renderError` sostituisce il corpo: dopo un GET fallito erano, insieme
+       `renderLoadFailure` sostituisce il corpo: dopo un GET fallito erano, insieme
        a «Riprova», l'unica cosa cliccabile della pagina, e un click mandava
        una PUT che azzerava l'archivio. Nascono `disabled` (mount) e si
        abilitano di là. */
@@ -987,15 +963,11 @@
     if (p) p.textContent = '';
   }
 
-  function renderError() {
+  function renderLoadFailure() {
     renderNow();
-    var body = clearEl(byId('chain-body'));
+    var body = byId('chain-body');
     if (body) {
-      body.appendChild(el('p', 'proposals-error', 'Errore caricamento provider.'));
-      var btn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-      btn.type = 'button';
-      btn.addEventListener('click', function() { loadModelsAndConfig(); });
-      body.appendChild(btn);
+      renderError(body, 'Errore caricamento provider.', function() { loadModelsAndConfig(); });
     }
     var outside = clearEl(byId('outside-body'));
     if (outside) {
@@ -1047,7 +1019,7 @@
       drawPanel();
     }).catch(function(err) {
       console.error('models/config fetch failed', err);
-      renderError();
+      renderLoadFailure();
     });
   }
 

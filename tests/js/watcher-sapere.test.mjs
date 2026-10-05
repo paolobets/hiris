@@ -29,7 +29,7 @@ const TYPE_JUDGMENTS_PY = readFileSync(
   join(CONFIG_DIR, '..', '..', 'home_space', 'type_judgments.py'), 'utf8');
 const SORGENTE = readFileSync(join(CONFIG_DIR, 'watcher-sapere.js'), 'utf8');
 
-const SCRIPTS = ['config/watcher-shared.js', 'config/watcher-giorno.js',
+const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno.js',
   'config/watcher-cosa-fare.js', 'config/watcher-sapere.js',
   'config/watcher-lavoro.js', 'config/state.js', 'config/router.js',
   'config/watcher-route.js'];

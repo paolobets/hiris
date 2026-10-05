@@ -44,26 +44,6 @@ window.HirisSettingsRoute = (function () {
     minimal: 'Minima — solo l\'essenziale'
   };
 
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
-
-  /* Stesso wrapper di models-route.js (`api()`, :68-73): l'header
-     X-Requested-With NON e' facoltativo -- `csrf_middleware`
-     (api/middleware_csrf.py) risponde 403 a ogni PUT/POST/DELETE su /api/ che
-     non lo porta. Sta qui, in un punto solo, perche' dimenticarlo su una sola
-     chiamata e' il modo esatto in cui questa pagina smetterebbe di salvare. */
-  function api(url, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign(
-      { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      opts.headers || {});
-    return fetch(url, opts);
-  }
-
   function field(body, title, descrizione, controls) {
     var wrap = el('div');
     wrap.style.cssText = 'padding:12px 0 4px';

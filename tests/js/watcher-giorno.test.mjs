@@ -16,7 +16,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    `.section-card[1]` ora cerca il pannello della scheda: le sezioni numerate
    sono uscite, i pannelli hanno preso il loro posto. */
 
-const SCRIPTS = ['config/watcher-shared.js', 'config/watcher-giorno.js',
+const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno.js',
   'config/watcher-cosa-fare.js', 'config/watcher-sapere.js',
   'config/watcher-lavoro.js', 'config/state.js', 'config/router.js',
   'config/watcher-route.js'];

@@ -18,7 +18,7 @@ import { loadScripts } from './helpers/dom.mjs';
 
    Questo test riproduce esattamente lo scenario: il test A carica SOLO
    config/state.js (espone `window.HirisState`, specchiato su
-   `globalThis.HirisState` dal proxy). Il test B carica SOLO config/api.js
+   `globalThis.HirisState` dal proxy). Il test B carica SOLO common.js
    (utility bare-function, non tocca affatto HirisState) e verifica che
    `HirisState` NON sia più visibile su `globalThis`.
 
@@ -37,12 +37,12 @@ test('isolamento harness (test A): state.js definisce HirisState su globalThis',
 });
 
 test('isolamento harness (test B): un loadScripts() con una lista DIVERSA non deve vedere il global lasciato dal test precedente', () => {
-  // Lista diversa da quella del test A: api.js espone solo funzioni bare
+  // Lista diversa da quella del test A: common.js espone solo funzioni bare
   // (esc/fmtNum/fmtEuro/fmtDataOra/...), non tocca mai HirisState. `escHtml`
-  // non esiste piu': cancellata da api.js in questa stessa fetta (M-6,
+  // non esiste piu': cancellata da common.js (allora config/api.js) in questa stessa fetta (M-6,
   // review finale «il linter e le best practice» -- il vecchio commento
   // continuava a nominarla).
-  loadScripts(['config/api.js']);
+  loadScripts(['common.js']);
   assert.equal(
     typeof globalThis.HirisState,
     'undefined',

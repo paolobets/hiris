@@ -180,42 +180,6 @@ window.HirisConstructions = (function () {
     { chiave: 'entities', etichetta: 'entità' }
   ];
 
-  function el(tag, cls, text) {
-    var node = document.createElement(tag);
-    if (cls) node.className = cls;
-    if (text !== undefined && text !== null) node.textContent = String(text);
-    return node;
-  }
-
-  function clearEl(node) {
-    while (node && node.firstChild) node.removeChild(node.firstChild);
-    return node;
-  }
-
-  function api(path, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign(
-      { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      opts.headers || {});
-    return fetch(path, opts);
-  }
-
-  function pad2(n) { return n < 10 ? '0' + n : String(n); }
-
-  /* Lo stato di un rivelatore scritto in un posto solo: `hidden` sul
-     pannello e `aria-expanded` sul bottone che lo governa non possono
-     divergere se nessuno li assegna separatamente. Lo usano tutti e due i
-     rivelatori della pagina -- i «Dettagli tecnici» di una riga e
-     l'intestazione dello «Storico» -- perche' un secondo meccanismo sarebbe
-     un doppione. Gemello di `agenda-route.js::setDisclosure`: sono due
-     copie. Non stanno in `config/api.js` (il file condiviso) per una scelta
-     delle prove, che caricano ciascuna route DA SOLA senza quel file -- non
-     per un vincolo del prodotto: le pagine lo caricano sempre. */
-  function setDisclosure(btn, panel, open) {
-    panel.hidden = !open;
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-
   function fmtData(ts) {
     var d = new Date(ts * 1000);
     return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
@@ -695,18 +659,6 @@ window.HirisConstructions = (function () {
       reason || 'Questa pagina è di chi può costruire.'));
   }
 
-  function renderError(openBody, historyBody, reload) {
-    [openBody, historyBody].forEach(function (node) {
-      clearEl(node);
-      node.appendChild(el('p', 'proposals-error',
-        'Non è stato possibile leggere le costruzioni. Riprova più tardi.'));
-      var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-      retry.type = 'button';
-      retry.addEventListener('click', reload);
-      node.appendChild(retry);
-    });
-  }
-
   /* Il titolo di una sezione richiudibile: il bottone sta DENTRO l'`<h2>`,
      non al suo posto. Chi naviga per intestazioni continua a trovare la
      sezione, e un `<h2>` dentro un `<button>` sarebbe comunque HTML non
@@ -812,7 +764,9 @@ window.HirisConstructions = (function () {
       setHistoryCount(outlet, history.length);
     }).catch(function () {
       setHistoryCount(outlet, null);
-      renderError(openBody, historyBody, reload);
+      [openBody, historyBody].forEach(function (node) {
+        renderError(node, 'Non è stato possibile leggere le costruzioni. Riprova più tardi.', reload);
+      });
     });
   }
 

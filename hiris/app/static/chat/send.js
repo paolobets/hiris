@@ -157,9 +157,8 @@
        riaprirebbe mentre HIRIS sta ancora elaborando la risposta. */
     var handedOff = false;
     try {
-      var r = await fetch('api/chat', {
+      var r = await api('api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
         body: JSON.stringify({ message: text }),
       });
       var data = await r.json();

@@ -8,7 +8,7 @@ import { loadScripts } from './helpers/dom.mjs';
 /* Sprint coerenza, lotto A, task 5 (A9): il widget "Utilizzo" della chat
    (static/index.html) mostra richieste/token/costo ma non diceva MAI da
    quando quei numeri contano -- l'elemento #usage-last-reset che
-   config/api.js::loadUsage() cerca non esisteva in nessun file. La risposta
+   common.js::loadUsage() cerca non esisteva in nessun file. La risposta
    con `last_reset` faceva sollevare quell'ultimo assegnamento (elemento
    assente) e il `catch(e) {}` vuoto lo inghiottiva senza mai loggare, ogni
    30 secondi (chat/main.js chiama loadUsage() a intervalli).
@@ -28,7 +28,7 @@ import { loadScripts } from './helpers/dom.mjs';
    del nodo in index.html (che prima di questa correzione nessun test
    copriva -- si poteva cancellare il div e la suite restava verde). */
 
-const SCRIPTS = ['config/api.js'];
+const SCRIPTS = ['common.js'];
 
 function fixtureHtml(withLastReset) {
   return `<!doctype html><body>
@@ -60,7 +60,7 @@ test('con tutti gli elementi presenti, loadUsage popola anche la data di azzeram
      ALLO STESSO MODO nelle due superfici: la pagina «Consumi» mostrava gli
      stessi dati come `€ 3,21` mentre questo riquadro scriveva `€3.2149`, e chi
      guardava l'una dopo l'altra aveva ragione di credere che una delle due
-     stesse sbagliando. Adesso il formato viene da `fmtEuro` (config/api.js),
+     stesse sbagliando. Adesso il formato viene da `fmtEuro` (common.js),
      che e' l'unico posto in cui e' scritto. */
   assert.equal(document.getElementById('u-cost').textContent, '€ 0,12');
   assert.match(document.getElementById('usage-last-reset').textContent, /Conta da/,

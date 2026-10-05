@@ -34,19 +34,29 @@
     var btn = document.getElementById('theme-toggle');
     var moon = document.getElementById('ic-moon');
     var sun = document.getElementById('ic-sun');
-    function paint(t) {
+    /* Il tema si legge e si scrive in common.js (registro C-16); qui si
+       disegna solo l'icona, che in questa pagina e' fatta a modo suo.
+       v0.10.4: usa visibility (non display) per evitare FOUC.
+       Template inizia con entrambe icone hidden via style="visibility:hidden". */
+    function paint() {
+      var t = currentTheme();
+      /* Questa pagina ha sempre scritto il tema sull'attributo anche quando
+         veniva dal sistema, e alcune regole scure dei fogli di stile
+         (`[data-theme="dark"]`) non hanno un gemello sotto
+         `prefers-color-scheme`: senza attributo la pagina si disegnerebbe
+         diversa. Si dichiara il tema mostrato, senza salvarlo: salvare
+         resta al clic. */
       document.documentElement.setAttribute('data-theme', t);
-      try { localStorage.setItem('hiris-theme', t); } catch {}
-      /* v0.10.4: usa visibility (non display) per evitare FOUC.
-         Template inizia con entrambe icone hidden via style="visibility:hidden". */
       if (moon) moon.style.visibility = t === 'dark' ? 'hidden' : 'visible';
       if (sun) sun.style.visibility = t === 'dark' ? 'visible' : 'hidden';
     }
-    var current = document.documentElement.getAttribute('data-theme') ||
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    paint(current);
+    paint();
+    /* Il tema del server vale anche qui, come nella chat: prima questa
+       pagina non lo chiedeva mai (registro C-16). */
+    applyTheme().then(paint);
     if (btn) btn.addEventListener('click', function() {
-      paint(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+      toggleTheme();
+      paint();
     });
 
     /* fetta E5 Task 8: qui viveva l'ultimo badge della cornice, `#nav-adv-count`
@@ -110,7 +120,7 @@
      non si sa, no -- come la Memoria (config/memory-route.js). Un
      amministratore non lo vede: senza ricordo il guscio aspetta la prima
      risposta prima di scegliere la pagina (sotto, `ROUTER_WAIT_MS`). La
-     regola e' `configures()` di config/api.js, la stessa della Memoria. */
+     regola e' `configures()` di common.js, la stessa della Memoria. */
 
   /* Mai una pagina vuota: il titolo, il testo del server quando c'e' (un
      «no» ricordato arriva senza, e la pagina si ridisegna quando la risposta

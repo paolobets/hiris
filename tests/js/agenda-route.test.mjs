@@ -21,7 +21,7 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/agenda-route.js'];
+const SCRIPTS = ['common.js', 'config/agenda-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };

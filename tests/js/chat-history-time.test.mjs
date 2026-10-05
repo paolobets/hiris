@@ -40,7 +40,7 @@ function fixtureHtml() {
 
 function setup(t) {
   const ctx = loadScripts(
-    ['config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js'],
+    ['common.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js'],
     { html: fixtureHtml() },
   );
   if (t) t.after(() => {
