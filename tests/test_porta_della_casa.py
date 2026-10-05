@@ -116,8 +116,8 @@ async def test_un_filtro_sbagliato_torna_l_errore_della_porta(dispatcher):
     """`parse_filters` dice cosa non va: `_search` lo restituisce com'e'.
     Mutazione ESEGUITA: passare a `query_house` anche un esito d'errore --
     rossa (AttributeError, dichiarato come guasto dello strumento)."""
-    r = await dispatcher.dispatch("search", {"genere": "piano"})
-    assert r["errore"].startswith("genere «piano» sconosciuto")
+    r = await dispatcher.dispatch("search", {"fermo_da": "tre giorni"})
+    assert r["errore"].startswith("fermo_da vuole una durata")
 
 
 @pytest.mark.asyncio
@@ -314,7 +314,7 @@ def test_il_dettaglio_vero_senza_area_sta_sotto_la_soglia_del_ponte(big_door):
     from hiris.app.home_space.privacy import redact_row
     voce = redact_row(big_door._full_detail_sync(
         "area", "__senza_area__", house=big_door._turn_house(),
-        translations={"lette": False, "motivo": "prova"}))
+        translations={"lette": False, "motivo": "prova"}, masked=False))
     assert voce["esiste"] is True
     assert len(voce["entita"]) == 50 and voce["oltre"]["entita"] > 0
     assert 'area=\\"senza area\\"' in json.dumps(voce, ensure_ascii=False)

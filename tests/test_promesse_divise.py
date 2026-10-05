@@ -139,7 +139,7 @@ def test_il_tetto_delle_cinquanta_e_per_filo(archivio):
     oltre = archivio.create(_chiedi(99, adesso=adesso), thread=PAOLO, now=adesso)
     assert "errore" in oltre
     assert str(promise_module.CEILING_IN_SOSPESO) in oltre["errore"]
-    assert archivio._count_pending(PAOLO) == promise_module.CEILING_IN_SOSPESO
+    assert archivio._count(PAOLO, pending=True) == promise_module.CEILING_IN_SOSPESO
 
     assert "errore" not in archivio.create(_chiedi(0, adesso=adesso),
                                            thread=MARTA, now=adesso)
@@ -727,3 +727,32 @@ async def test_nello_SVILUPPO_il_fai_non_si_ferma_al_soffitto(archivio, monkeypa
                      "bersaglio": {"entita": ["light.studio"]}}})
 
     assert fai.get("errore") != soffitto["perche"], fai
+
+
+@pytest.mark.asyncio
+async def test_l_agenda_dichiara_le_promesse_che_non_mostra(archivio):
+    """C-39 (Tappa 5, Task 4, passo 5): `agenda` mostra al piu' 50 promesse, e
+    fino al 05/10/2026 taceva sulle altre -- con lo storico (`tutte`) un filo
+    ne ha facilmente di piu' (le concluse restano novanta giorni). La risposta
+    porta `oltre`, nella forma che ha gia' nelle altre risposte (`restano`,
+    fondamenta 3), e la tace quando non resta niente.
+
+    I numeri si chiedono al tetto per filo, non si scrivono qui: 50 in
+    sospeso piu' 7 disdette sono 57 promesse del filo."""
+    adesso = time.time()
+    tetto = promise_module.CEILING_IN_SOSPESO
+    for n in range(7):
+        disdetta = archivio.cancel(_crea(archivio, PAOLO, n, adesso=adesso),
+                                   thread=PAOLO, now=adesso)
+        assert "errore" not in disdetta, disdetta
+    for n in range(tetto):
+        _crea(archivio, PAOLO, 100 + n, adesso=adesso)
+    paolo = _dispatcher(archivio, PAOLO, PAOLO_SOGGETTO)
+
+    tutte = await paolo.dispatch("agenda", {"tutte": True})
+    in_sospeso = await paolo.dispatch("agenda", {})
+
+    assert len(tutte["promesse"]) + tutte["oltre"]["restano"] == tetto + 7
+    assert tutte["oltre"] == {"restano": tetto + 7 - len(tutte["promesse"])}
+    assert len(in_sospeso["promesse"]) == tetto
+    assert "oltre" not in in_sospeso

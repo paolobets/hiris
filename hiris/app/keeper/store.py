@@ -208,7 +208,7 @@ class AgendaStore:
             return {"errore": reason}
         with self._lock:
             self._prune(now)
-            mine = self._count_pending(thread)
+            mine = self._count(thread, pending=True)
             if mine >= CEILING_IN_SOSPESO:
                 return {"errore": (
                     f"hai gia' {CEILING_IN_SOSPESO} promesse in sospeso, che e' "
@@ -434,6 +434,16 @@ class AgendaStore:
 
     def list(self, *, thread: ChatThread, solo_in_sospeso: bool = False,
              limit: int = 50) -> list[dict]:
+        return self.page(thread=thread, solo_in_sospeso=solo_in_sospeso, limit=limit)[0]
+
+    def page(self, *, thread: ChatThread, solo_in_sospeso: bool = False,
+             limit: int = 50) -> tuple[list[dict], int]:
+        """Le promesse di `thread` (al piu' `limit`) e quante ne restano fuori.
+
+        Il conto e' preso sotto lo stesso lock delle righe: fra le due letture
+        nessuna promessa nasce o si conclude, e `restano` dice il vero sulla
+        pagina che accompagna (C-39, Tappa 5: fino al 05/10/2026 lo strumento
+        `agenda` tagliava a 50 in silenzio)."""
         with self._lock:
             if solo_in_sospeso:
                 righe = self._conn.execute(
@@ -445,16 +455,17 @@ class AgendaStore:
                     f"SELECT * FROM promesse WHERE {_OF_THREAD} "
                     "ORDER BY quando_ts DESC LIMIT ?",
                     (*_thread_params(thread), int(limit))).fetchall()
-        return [serializza(r) for r in righe]
+            total = self._count(thread, pending=solo_in_sospeso)
+        return [serializza(r) for r in righe], total - len(righe)
 
-    def _count_pending(self, thread: ChatThread) -> int:
-        """Quante promesse di questo filo sono in sospeso: cio' che il tetto
-        per filo (`CEILING_IN_SOSPESO`) misura. Senza il lock: la chiama solo
-        `create`, che lo tiene gia'. Non c'e' una versione pubblica: nessuno
-        in produzione la chiedeva (review finale, 26/09/2026)."""
+    def _count(self, thread: ChatThread, *, pending: bool) -> int:
+        """Quante promesse ha questo filo -- con `pending`, quante in sospeso:
+        cio' che il tetto per filo (`CEILING_IN_SOSPESO`) misura. Senza il
+        lock: la chiamano `create` e `page`, che lo tengono gia'."""
+        where = f"stato IN ({_SOSPESI}) AND {_OF_THREAD}" if pending else _OF_THREAD
         return self._conn.execute(
-            f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
-            f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
+            f"SELECT count(*) FROM promesse WHERE {where}",
+            _thread_params(thread)).fetchone()[0]
 
     def has_orphans(self) -> bool:
         with self._lock:

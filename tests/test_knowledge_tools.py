@@ -349,8 +349,8 @@ class _FakeAgendaStore:
     (nessun obbligatorio mancante, nessun nome ignoto) TERMINI con una
     risposta vera invece di un `errore` che nasconderebbe un falso verde."""
 
-    def list(self, *, thread, solo_in_sospeso):
-        return []
+    def page(self, *, thread, solo_in_sospeso):
+        return [], 0
 
 
 # Il filo del turno: `agenda` lavora sulle promesse di chi chiede (spec
@@ -1752,23 +1752,17 @@ async def test_calendar_window_is_capped_at_a_year_each_direction():
 
 
 @pytest.mark.asyncio
-async def test_calendar_giorni_avanti_garbage_falls_back_to_the_default():
-    """Contratto totale di `_clamp_days` (gemella di `historian.normalize_
-    hours`): qualunque cosa in ingresso -> un numero, mai un'eccezione.
-
-    **Mutazione che uccide l'assert**: togliere il `try/except` in
-    `_clamp_days` (lasciare solo `float(raw)`). Verificato eseguendo: con
-    quella sostituzione `float("non un numero")` solleva `ValueError` PRIMA
-    di qualunque chiamata al canale -- la rete di sicurezza finale di
-    `dispatch` lo trasforma in un `errore` generico, ma `house.calls`
-    resta vuota, e `_asked_window(house)` arrossisce con un `IndexError`
-    (non l'assert sul `delta`, che non viene mai raggiunto)."""
+async def test_calendar_giorni_avanti_garbage_is_refused_before_asking():
+    """Dal 05/10/2026 (Tappa 5, Task 3, D-40) un `giorni_avanti` che non e'
+    un numero lo rifiuta `dispatch` contro il `type` dello schema, prima di
+    chiedere a Home Assistant: fino ad allora `_clamp_days` lo trasformava
+    in silenzio nel predefinito, e il modello credeva di aver chiesto un'altra
+    finestra."""
     house = _calendar_house([_PERSONALE], {"calendar.personale": []})
     d = ToolDispatcher(None, None, ha=house)
-    await d.dispatch("calendar", {"giorni_avanti": "non un numero"})
-    _entity_id, start, end = _asked_window(house)
-    delta = datetime.fromisoformat(end) - datetime.fromisoformat(start)
-    assert delta == timedelta(days=30)
+    esito = await d.dispatch("calendar", {"giorni_avanti": "non un numero"})
+    assert "«giorni_avanti» vuole un numero" in esito["errore"]
+    assert house.calls == []
 
 
 @pytest.mark.asyncio

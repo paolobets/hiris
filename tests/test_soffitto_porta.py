@@ -237,13 +237,15 @@ async def test_il_modello_non_conferma_per_conto_di_chi_non_puo():
     lascerebbe l'altro spalancato -- e quello del modello e' il piu' facile da
     attraversare, perche' basta scrivere «conferma» in chat.
 
-    Mutazione ESEGUITA: togliere il controllo da `_confirm` -- rossa.
+    Mutazione ESEGUITA: togliere il controllo da `_confirm` -- rossa. Dal
+    05/10/2026 (Tappa 5, Task 2) il controllo e' la riga di `confirm`
+    (`Tool.permissions`), e la prova passa da `dispatch`.
     """
     officina = _OfficinaContata()
     negato = {"comandare": True, "costruire": False, "rinviato": False,
               "perche": "non sei amministratore"}
 
-    esito = await _dispatcher(officina, negato)._confirm({"proposta_id": "c1"})
+    esito = await _dispatcher(officina, negato).dispatch("confirm", {"proposta_id": "c1"})
 
     assert "errore" in esito
     assert officina.applicate == [], "l'officina ha scritto lo stesso"
@@ -258,7 +260,7 @@ async def test_un_soffitto_PERMISSIVO_lascia_confermare():
     ammesso = {"comandare": True, "costruire": True, "rinviato": False,
                "perche": None}
 
-    await _dispatcher(officina, ammesso)._confirm({"proposta_id": "c1"})
+    await _dispatcher(officina, ammesso).dispatch("confirm", {"proposta_id": "c1"})
 
     assert officina.applicate == ["c1"]
 
@@ -275,7 +277,7 @@ async def test_senza_soffitto_il_dispatcher_tiene_il_comportamento_di_ieri():
     rotto in silenzio)."""
     officina = _OfficinaContata()
 
-    await _dispatcher(officina, None)._confirm({"proposta_id": "c1"})
+    await _dispatcher(officina, None).dispatch("confirm", {"proposta_id": "c1"})
 
     assert officina.applicate == ["c1"]
 

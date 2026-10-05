@@ -8,6 +8,7 @@ import copy
 import inspect
 import json
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -17,8 +18,9 @@ import pytest
 from hiris.app.action.journal import Journal
 from hiris.app.api import handlers_chat
 from hiris.app.api.soffitto import ADMIN_READS_REFUSAL, consente
+from hiris.app.home_space import tools as _tools
 from hiris.app.home_space.redaction import SecretSeal
-from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import SOLA_LETTURA, promise_tools
 from hiris.app.proxy.entity_cache import (
     INVENTORY_NOT_READY_ERROR,
@@ -247,23 +249,34 @@ _GESTORE_ATTESO = {"search": "_search", "related": "_related", "remember": "_rem
                    "confirm": "_confirm", "history": "_history", "calendar": "_calendar"}
 
 
-@pytest.mark.asyncio
-async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
-    """Da `test_historian_tools.py`: si chiama DAVVERO `dispatch`, col
-    gestore atteso sostituito da un marcatore unico -- un refuso fra due nomi
-    adiacenti non passa.
+# Un valore valido per ogni `type` dello schema: dal Task 3 della Tappa 5 il
+# tipo si valida in `dispatch`, prima del gestore.
+_CAMPIONE = {"string": "x", "object": {}, "array": [], "integer": 1,
+             "number": 1, "boolean": True}
 
-    Mutazione ESEGUITA: `"history": self._calendar` nella mappa -- rossa."""
-    assert set(_GESTORE_ATTESO) == {d["name"] for d in KNOWLEDGE_TOOLS}
-    for definizione in KNOWLEDGE_TOOLS:
-        nome = definizione["name"]
+
+@pytest.mark.asyncio
+async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore(monkeypatch):
+    """Da `test_historian_tools.py`: si chiama DAVVERO `dispatch`, e ogni riga
+    della tabella porta il SUO gestore -- un refuso fra due nomi adiacenti non
+    passa.
+
+    Dal 05/10/2026 (Tappa 5, Task 2) la mappa nome -> gestore e' la colonna
+    `handler` della tabella `TOOLS`: l'oracolo qui sotto resta scritto a mano
+    perche' e' l'attesa, non una copia della fonte. Mutazione ESEGUITA:
+    `HISTORY_TOOL_DEF` col gestore `_calendar` nella tabella -- rossa."""
+    assert {tool.name: tool.handler.__name__ for tool in TOOLS} == _GESTORE_ATTESO
+    for tool in TOOLS:
+        marcatore = {"marcato": tool.name}
+        monkeypatch.setitem(_tools._TOOL_PER_NAME, tool.name, replace(
+            tool, handler=lambda _d, _a, _m=marcatore, **_o: _m))
         d = ToolDispatcher(object(), object(), ha=object(), actuator=object(),
-                           agenda=object(), workshop=object())
-        marcatore = {"marcato": nome}
-        setattr(d, _GESTORE_ATTESO[nome], lambda argomenti, _m=marcatore: _m)
-        obbligatori = definizione["input_schema"].get("required", [])
-        esito = await d.dispatch(nome, {campo: "x" for campo in obbligatori})
-        assert esito == marcatore, nome
+                           agenda=object(), workshop=object(), thread=object())
+        schema = tool.definition["input_schema"]
+        esito = await d.dispatch(tool.name, {
+            campo: _CAMPIONE[schema["properties"][campo]["type"]]
+            for campo in schema.get("required", [])})
+        assert esito == marcatore, tool.name
 
 
 def test_la_storia_entra_nel_turno_delle_promesse():

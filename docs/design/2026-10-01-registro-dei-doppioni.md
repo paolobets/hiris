@@ -46,12 +46,11 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-24 | Identificatori e costanti piccole: `_ENTITY_ID_RE`, dominio da entity_id, tetti | E | PS |  | cop-3 (incompleta); cop-5 (incompleta); cop-6 (incompleta); Tappa 3 (incompleta) | reg · cop-3 · cop-4 · cop-5 · cop-6 · cop-9 · Tappa 3, Task 7: `_ENTITY_ID_RE` e le copie del dominio uscite; restano 4 domini in linea (`house_query` 1, `house_history` 3), ammessi con la ragione in `tests/test_identificatori_ha.py`; i tetti non sono nel piano |
 | B-26 | Motivo scritto per le misure non calcolabili: cinque stringhe, cause vere che non coincidono | D | CC | 74 misure non calcolabili; il motivo «manca `state_class`» falso in 21/21 |  | reg |
 | B-27 | Dentro `mind/operations` e `mind/analyst`: controlli ripetuti e due forme di «non lo so» | E | PS |  |  | reg · strato 2 degli attori (D10 della Tappa 3) |
-| B-28 | Ordinamento degli appuntamenti e due semantiche di `fine` | E | CC |  | Tappa 3 (verdetto) | reg · cop-5 · Tappa 5 (D10 della Tappa 3) |
+| B-28 | Ordinamento degli appuntamenti e due semantiche di `fine` | E | CC |  | Tappa 3 (verdetto) | reg · cop-5 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026), verificata: `appointments.read_appointment` scrive `fine` INCLUSIVA per un giornaliero (l'ultimo giorno) ed ESCLUSIVA per uno a orario (l'istante in cui finisce); l'ordine e' lessicografico in `sort_appointments` e in `HAClient.calendar_events`. Non eseguita: la forma giusta di `fine` non la decide il piano, e cambia cio' che il modello legge -- domanda al proprietario nel rapporto |
 | B-29 | Quote FV: «autoconsumo» esclude la batteria | D | CC | 29/09: quota_autoconsumo 31% contro 74,7% di FV non immesso | Tappa 3 (imprecisa) | reg · strato 2 degli attori (D10 della Tappa 3) |
-| B-30 | La regola della profondità scritta due volte (`search`, `history`), e una terza fissa | D | CC |  |  | cop-3 B-n1 · Tappa 5 (D10 della Tappa 3) |
 | B-31 | `tipo=automation/script` → genere: conversione in due posti | E | PS |  |  | cop-3 B-n2 · Tappa 3: non toccata (vive solo in `house_query` e `house_history`) |
-| B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | NV | PS |  |  | cop-3 B-n3 · Tappa 5 (D10 della Tappa 3) |
-| B-33 | Una durata, tre grammatiche; `calendar` taglia in silenzio, gli altri rifiutano | D | CC |  |  | cop-3 B-n4 · Tappa 5 (D10 della Tappa 3) |
+| B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | NV | PS |  |  | cop-3 B-n3 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026), verificata: le due tabelle sono `house_query._FILTERS_BY_KIND` e `house_history._WHO_KEYS`/`_ERROR_WHO_KEYS`, su due sensi diversi di `genere` (C-65); le due frasi sono la prosa delle descrizioni di `search` e `history`, che si riscrive al Task 5 insieme a D-68 |
+| B-33 | Una durata, tre grammatiche; `calendar` taglia in silenzio, gli altri rifiutano | D | CC |  |  | cop-3 B-n4 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026): la logica del calendario e' uscita in `appointments.merge_calendars` (f487b1a); il taglio dichiarato non e' fatto: il piano lo vuole «con i nomi del vocabolario D1», che e' della Tappa 4 (T7) e non c'e' ancora |
 | B-34 | «Tipi di ancora non verificabili adesso»: scritto due volte (`_remember`, `_unverifiable_types`) | NV | PS |  |  | cop-3 B-n5 |
 | B-39 | Conteggio per tipo del comportamento in tre punti, `senza_corpo` in quattro | NV | PS |  |  | cop-4 N-04 · cop-8 C2 |
 | B-42 | Credenziale o attributo dichiarato: lo decide l'ordine dei rami (9 nomi in due tabelle) | E | DP |  |  | cop-5 B1 · Tappa 7 (D10 della Tappa 3) |
@@ -95,7 +94,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-36 | I `punti` a fasce portano `somma` non spiegata e tre `null` per i contatori | NV | CC |  |  | cop-3 C-n6 |
 | C-37 | La traccia passo per passo (`run_detail`) esce senza nessun tetto | NV | CC |  |  | cop-3 C-n7 · Tappa 5 (D10 della Tappa 4) |
 | C-38 | `calendar`: unico lettore senza tetto di righe e con un involucro suo | D | CC |  |  | cop-3 C-n8 · Tappa 5 (D10 della Tappa 4) |
-| C-39 | Lo strumento `agenda` taglia a 50 in silenzio e porta 18 chiavi per promessa | D | CC |  |  | cop-3 C-n9 · Tappa 5 (D10 della Tappa 4) |
+| C-39 | Lo strumento `agenda` taglia a 50 in silenzio e porta 18 chiavi per promessa | D | CC |  |  | cop-3 C-n9 · Tappa 5 (D10 della Tappa 4) · Tappa 5, Task 4 (05/10/2026): il taglio a 50 si dichiara con `oltre: {restano: N}` (4f2a0d6, `AgendaStore.page`). Restano il 50 come tetto della riga (Task 6) e le 18 chiavi per promessa (la resa, Tappa 4) |
 | C-40 | `unita` è tre fatti con una parola (stringa dell'entità, dizionario del frame, limite) | D | CC |  |  | cop-4 N-07 |
 | C-41 | Il ricordo ha due forme: `view(ricordo)` senza `corretto_da_utente`, le righe ancorate con | D | CC |  |  | cop-4 N-08 |
 | C-42 | `attiva` dell'automazione esce solo dal nucleo: dettaglio e riga di `search` no | D | CC |  |  | cop-4 N-09 |
@@ -116,6 +115,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-62 | `dove.integrazione` è uno slug nudo; area, piano e dispositivo escono come `{id, nome}` | D | CC |  |  | Tappa 4, trovato 5 (`house.py:143`); D1 |
 | C-63 | `_with_live_kind` scrive `classe: None` e `unita: None` espliciti; altrove la chiave manca | D | CC |  |  | Tappa 4, trovato 6 (`api/handlers_home_space.py:72-74`); D1, regola dell'assenza |
 | C-64 | `state` e `unit` in inglese dentro `prima`/`dopo` del dispositivo, mandati al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`; `unit` a `:339`, trovata dal Task 1); D1 |
+| C-65 | `genere` con tre significati: genere di oggetto (`search`), cosa chiedere (`history`), genere della cronaca | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 1 (`tools.py:253`, `:953`; glossario, «I concetti»); D3: il parametro di `history` diventa `cosa` (Task 5) |
 
 ---
 
@@ -145,13 +145,12 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-20 | `fetch` contro `search`: i ricordi ancorati (`search(genere=ricordo)` apre soltanto) | D | CC | `search(genere=ricordo)` 4 volte in 131 chiamate; `fetch` 11 chiamate in 7 giorni | cop-3 (SBAGLIATA in parte); cop-4 (doppio conteggio) | reg · cop-3 · cop-4 |
 | D-21 | Il filtro per ancora: `per_tether` e `_tethered_memories` | E | PS |  | cop-3 (incompleta) | reg · cop-3 |
 | D-22 | Altre sovrapposizioni fra strumenti (11 proprietà condivise fra `search` e `history`) | E | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
-| D-23 | Il soffitto (chi può cosa) chiesto a mano in sette punti dentro i gestori | D | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
-| D-24 | Promesse: tre archivi dell'esito, quattro frasi, tre macchine a stati, tre vie di chiusura | D | CC |  | cop-9 (righe, incompleta) | reg · cop-9 |
+| D-24 | Promesse: tre archivi dell'esito, quattro frasi, tre macchine a stati, tre vie di chiusura | D | CC |  | cop-9 (righe, incompleta) | reg · cop-9 · Tappa 8: archivi dell'esito, non forma degli strumenti (piano della Tappa 5) |
 | D-25 | Validazione dello stesso ingresso in più punti | E | DP |  |  | reg · cop-3 |
-| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa) | reg · cop-3 · cop-9 |
-| D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 |
+| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa) | reg · cop-3 · cop-9 · Tappa 7: e' lo scrivere, non la forma degli strumenti (piano della Tappa 5) |
+| D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 · Tappa 8: archivi (piano della Tappa 5) |
 | D-28 | Tre costruzioni dell'indice per «questo id esiste?» | E | PS |  |  | reg · cop-3 |
-| D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 |
+| D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 · Tappa 5, Task 2: le due maschere degli strumenti (corpo in `search`, «prima» in `propose`) chiedono il soffitto da `dispatch` (`Tool.mask`); le altre restano |
 | D-30 | Strumenti di lettura nei turni degli attori: cosa manca al turno | NV | DP |  | cop-8 (righe) | reg · cop-8 |
 | D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | D | CC | 01/10: due riparazioni (ricetta già sana; ricetta inesistente), rifatte identiche alle 09:20 e 10:20 |  | reg |
 | D-32 | I giri del cervello dentro `server.py` | E | PS |  |  | reg · cop-1 B1 · cop-2 |
@@ -161,20 +160,17 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-36 | Il resoconto di un giorno scritto con le stesse due chiamate in tre punti | E | PS |  |  | cop-1 D3 |
 | D-37 | `_write_analysis` e `_write_actuation`: stesso scheletro | E | PS |  |  | cop-1 D4 |
 | D-38 | Indice del modello → riga dell'elenco, due volte (`server.py:2195`, `:2256`) | E | PS |  |  | cop-1 D5 |
-| D-39 | Tre tabelle a mano per nome di strumento; la terza fuori dal `try` | E | PS |  |  | cop-3 D-n1 |
-| D-40 | Il cancello degli argomenti non legge `enum` né `type`: vocabolari rivalidati a mano | D | PS |  |  | cop-3 D-n2 |
-| D-41 | La risorsa che serve a uno strumento decisa in due posti | E | PS |  |  | cop-3 D-n3 |
-| D-42 | Il rifiuto «nessun filo» ripetuto in tre gestori | E | PS |  |  | cop-3 D-n4 |
-| D-43 | «Cosa HA riserva agli amministratori» in due moduli, tre case | E | PS |  |  | cop-3 D-n5 |
+| D-41 | La risorsa che serve a uno strumento decisa in due posti | E | PS |  |  | cop-3 D-n3 · Tappa 5, Task 2-3 (05/10/2026): la risorsa sta nella riga (`Tool.resources`) e il controllo e' dentro la rete di `dispatch`; restano, dichiarate come degradazioni e non come rifiuti, la casa chiesta da `_history` per i generi che non sono errori e la memoria del dettaglio di un ricordo. Non chiusa: il rapporto cop-3 non e' leggibile dalla nuvola, e lo sprint conferma se «i due posti» erano questi |
+| D-43 | «Cosa HA riserva agli amministratori» in due moduli, tre case | E | PS |  |  | cop-3 D-n5 · Tappa 5, Task 3 (05/10/2026), verificata: `tools._HA_CORE_USER_SERVICES`, `house_history.ADMIN_KINDS`, `workshop._BODY_ADMIN_ONLY` con `privacy.AUTOMATION_BODY_ADMIN_ONLY`. Negli strumenti ora la decide la riga (`Tool.permissions`, `Tool.mask`); l'unione delle case tocca l'officina (Tappa 7) e resta aperta |
 | D-45 | `search` non sa elencare integrazioni né ricordi; per solo nome non li cerca | D | CC |  |  | cop-3 D-n7 |
-| D-46 | Il confine di sanificazione protegge i nomi, non gli altri testi di HA | NV | CC |  |  | cop-4 N-11 |
+| D-46 | Il confine di sanificazione protegge i nomi, non gli altri testi di HA | NV | CC |  |  | cop-4 N-11 · Tappa 5, Task 4 (05/10/2026): non toccata -- e' CC senza una forma decisa, e il confine di sanificazione sta in `queries.py`, zona del Task 8 della Tappa 3 |
 | D-47 | La sezione dei guasti del nucleo non ha tetto (dichiara 6.800 caratteri) | D | CC |  |  | cop-4 N-12 |
 | D-48 | «Corpo non disponibile» detto tre volte nel nucleo, una quarta nella pagina | NV | CC |  |  | cop-4 N-13 |
 | D-49 | Il nucleo dichiara cause di problema («id duplicati, voci malformate») che nessun codice produce | D | CC |  |  | cop-4 N-14 |
 | D-50 | A ogni turno il nucleo rilegge TUTTI i ricordi: 1 + 2N interrogazioni SQLite | NV (cop-4) · E (cop-9) — CONTRADDIZIONE | PS |  |  | cop-4 N-16 · cop-9 N-D-2 |
 | D-51 | Cache del prompt: l'ora nel nucleo, punti di taglio che non coprono il ciclo | NV | DP (cop-4) · CC (cop-7) — CONTRADDIZIONE |  |  | cop-4 N-17 · cop-7 N-D6 |
-| D-52 | Gli attributi «già calcolati» ricalcolati tre volte per il dettaglio di un'entità | E | PS |  |  | cop-4 N-18 |
-| D-53 | Le righe annidate si arricchiscono TUTTE e poi si tagliano a 50 | E | PS |  |  | cop-4 N-19 |
+| D-52 | Gli attributi «già calcolati» ricalcolati tre volte per il dettaglio di un'entità | E | PS |  |  | cop-4 N-18 · Tappa 5, Task 4 (05/10/2026): non toccata -- `queries.py` e' zona del Task 8 della Tappa 3; si riprende dopo il suo merge |
+| D-53 | Le righe annidate si arricchiscono TUTTE e poi si tagliano a 50 | E | PS |  |  | cop-4 N-19 · Tappa 5, Task 4 (05/10/2026): non toccata -- `queries._within_ceiling`, zona del Task 8 della Tappa 3; si riprende dopo il suo merge |
 | D-54 | L'id del soggetto ricavato spezzando la riga scritta per il modello (`house_lines` due volte) | E | PS |  |  | cop-6 N-12 |
 | D-55 | All'analista vanno due campi per riga che non può più usare (`soggetto`, `operazione`) | NV | CC |  |  | cop-6 N-13 |
 | D-56 | Promessa sul ponte: la guida nomina 7 strumenti assenti e non `conclude`; regole triplicate | D | CC |  |  | cop-7 N-D4 |
@@ -184,12 +180,13 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-60 | Costo e nome del provider scritti due volte, con due formule (0 contro NULL) | D | CC |  |  | cop-7 N-D13 |
 | D-61 | Due pesatori del carico, una forma, tre definizioni di «guida» | D | CC |  |  | cop-7 N-D14 |
 | D-62 | `reasoning/queue.py`: `get()`/`latest()` due forme, mezzanotte ricalcolata, `SELECT *` col nucleo | D | PS |  |  | cop-7 N-D15 |
-| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | D | DP |  |  | cop-8 D1 |
+| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | D | DP |  |  | cop-8 D1 · resta alla Tappa 6; la tabella degli strumenti della Tappa 5 (Task 2) ne e' il prerequisito |
 | D-64 | Il nucleo che non si compone: tre chiamanti, tre comportamenti | D | CC |  |  | cop-8 D2 · cop-9 N-D-1 |
 | D-65 | «Qual è la conversazione attiva di questo filo» chiesta tre volte per turno | NV | CC |  |  | cop-8 D3 |
 | D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | D | PS |  |  | cop-8 D4 |
 | D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | E | PS |  |  | Tappa 3, piano del 03/10/2026, trovato 11 |
-| D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 |
+| D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 · Tappa 5, Task 4 (05/10/2026): e' prosa delle descrizioni, si unifica al Task 5 con le descrizioni (insieme a B-32) |
+| D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 2 (`keeper/exchange.py`: le regole parlano di `execute`, `propose`, `remember`); il contenuto alla Tappa 5 (D4, Task 5), la composizione alla Tappa 6 |
 
 ---
 
@@ -977,3 +974,8 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | C-53 | `propose` restituisce il motivo del consigliere due volte (anteprima e `consiglio`) | Tappa 4 (da rilasciare) | bd993ee | consiglio.motivo esce dalla risposta di propose: il motivo resta nella Nota dell'anteprima. Tappa 4, Task 6 |
 | C-55 | Troncamenti a mano (`…`) accanto a `truncate_with_marker` (` [troncato]`): due marcatori | Tappa 4 (da rilasciare) | 679527a | i cinque tagli a mano (house_history._short, chat_store x3, exchange._senza_conclusione, workshop._add_phrase, claude_runner) chiamano truncate_with_marker; cancello AST in tests/test_troncamenti.py. Tappa 4, Task 6 |
 | S-20 | L'avviso «il bersaglio è cambiato» di una promessa non può mai partire: lo spazzino legge `occurrence["anteprima"]` (`sweeper.py:202-205`), la porta scrive `"bersaglio"` (`actuator.py:816`); alla nascita `_count_target` passa il bersaglio non tradotto, quindi `entities_at_birth` è sempre NULL | Tappa 4 (da rilasciare) | 65f851b | lo spazzino legge bersaglio.risolte (non anteprima), _count_target traduce con translate_target: nascita e risveglio contano la stessa lista. Prova con la porta vera. Tappa 4, Task 6 (D12) |
+| D-23 | Il soffitto (chi può cosa) chiesto a mano in sette punti dentro i gestori | Tappa 5, Task 2 | 521ff44 | i sette _ceiling_denies dei gestori; il soffitto si chiede in dispatch dalla riga (Tool.permissions, Tool.mask). Le maschere fuori dagli strumenti restano a D-29 |
+| D-42 | Il rifiuto «nessun filo» ripetuto in tre gestori | Tappa 5, Task 2 | 521ff44 | il rifiuto nessun filo nei gestori di promise, agenda e cancel; lo dice dispatch dalla riga (Tool.needs_thread) |
+| D-39 | Tre tabelle a mano per nome di strumento; la terza fuori dal `try` | Tappa 5, Task 2-3 | 44684e1 | le tre tabelle a mano (elenco delle definizioni, _RESOURCE_PER_TOOL, la mappa dei gestori fuori dal try): una riga per strumento in TOOLS (521ff44), e tutto dispatch dentro la rete |
+| D-40 | Il cancello degli argomenti non legge `enum` né `type`: vocabolari rivalidati a mano | Tappa 5, Task 3 | 44684e1 | genere e ordina in parse_filters, genere e livello in parse_query; type ed enum si validano in dispatch dallo schema. Resta il controllo di richiesto in Workshop, unico per il chiamante server.py |
+| B-30 | La regola della profondità scritta due volte (`search`, `history`), e una terza fissa | Tappa 5, Task 4 | bb08ff6 | la regola in house_query._select e in house_history.depth_for: ora house_query.depth_for, letta da search e da history. La terza (il registro degli errori, sempre corta) e' una scelta del genere, non una copia |

@@ -73,6 +73,11 @@ nella forma che il modello puo' chiamare.
 `dispatch()` non solleva MAI: restituisce sempre un dizionario, e in caso di
 guasto una chiave `errore` leggibile dal modello -- un'eccezione che risale
 fino al runner gli spezzerebbe il turno.
+
+**Ogni strumento e' una riga della tabella `TOOLS`** (in fondo al modulo,
+Tappa 5): definizione, gestore, archivi, filo, permessi del soffitto e
+maschera. Il catalogo (`KNOWLEDGE_TOOLS`) e cio' che `dispatch` controlla
+prima del gestore si chiedono alla riga.
 """
 from __future__ import annotations
 
@@ -80,9 +85,10 @@ import asyncio
 import inspect
 import logging
 import math
-from dataclasses import replace
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from typing import Any, ClassVar
+from typing import Any
 
 from ..action.construction.advisor import STRUCTURES
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
@@ -90,10 +96,10 @@ from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
-from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
 from . import historian
-from .appointments import read_appointment, sort_appointments
+from .appointments import merge_calendars, readable_calendars
 from .ha_vocabulary import HA_LINK_TYPE
 from .house import House
 from .house_history import (
@@ -1121,36 +1127,56 @@ CALENDAR_TOOL_DEF = {
     },
 }
 
-KNOWLEDGE_TOOLS: list[dict] = [
-    SEARCH_TOOL_DEF, RELATED_TOOL_DEF, REMEMBER_TOOL_DEF,
-    FETCH_TOOL_DEF, EXECUTE_TOOL_DEF,
-    PROMISE_TOOL_DEF, AGENDA_TOOL_DEF, CANCEL_TOOL_DEF,
-    PROPOSE_TOOL_DEF, CONFIRM_TOOL_DEF,
-    HISTORY_TOOL_DEF, CALENDAR_TOOL_DEF,
-]
-
-# I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
-# quattro stringhe scritte a mano, cioe' un secondo elenco degli stessi nomi
-# da tenere allineato -- esattamente la forma di difetto che questo ramo ha
-# gia' pagato coi tre cataloghi divergenti dei trentaquattro strumenti. Con
-# quelle scritte a mano, uno strumento nuovo nel catalogo sarebbe arrivato al
-# modello (che legge `KNOWLEDGE_TOOLS`) e poi si sarebbe sentito
-# rispondere «non e' fra quelli disponibili» dal dispatcher: il tipo di
-# incoerenza che il modello non puo' ne' capire ne' aggirare.
-_TOOL_NAMES = frozenset(d["name"] for d in KNOWLEDGE_TOOLS)
-
-# Lo schema di OGNI strumento, per nome -- stessa ragione di `_TOOL_NAMES` qui
-# sopra: si DERIVA dal catalogo invece di ricopiarlo. Usato da `_bad_arguments`
-# per sapere, senza toccare i dodici gestori, quali argomenti uno strumento
-# dichiara obbligatori (`input_schema["required"]`) e quali conosce affatto
-# (`input_schema["properties"]`).
-_TOOL_SCHEMA_PER_NAME = {d["name"]: d["input_schema"] for d in KNOWLEDGE_TOOLS}
-
-
 def _quoted(names) -> str:
     """«a», «b», «c» -- la forma coi guillemet dei messaggi di questo modulo:
     un elenco leggibile, non un repr di lista Python."""
     return ", ".join(f"«{n}»" for n in names)
+
+
+#: Come si dice al modello, in italiano, ogni `type` di JSON Schema che il
+#: catalogo usa. E' la traduzione del confine fra lo schema e la frase del
+#: rifiuto, scritta qui una volta: i tipi sono quelli di JSON Schema, non nostri.
+_TYPE_WORDS = {
+    "string": "un testo", "integer": "un intero", "number": "un numero",
+    "boolean": "vero o falso", "object": "un oggetto", "array": "un elenco",
+}
+
+
+def _has_type(value: Any, json_type: str) -> bool:
+    """`value` e' del `type` di JSON Schema? Un booleano non e' un numero
+    (in Python lo e'); un numero con la virgola e parte decimale zero e' un
+    intero, come per JSON Schema."""
+    if json_type == "boolean":
+        return isinstance(value, bool)
+    if isinstance(value, bool):
+        return False
+    if json_type == "integer":
+        return isinstance(value, int) or (isinstance(value, float) and value.is_integer())
+    if json_type == "number":
+        return isinstance(value, (int, float))
+    if json_type == "string":
+        return isinstance(value, str)
+    if json_type == "object":
+        return isinstance(value, dict)
+    if json_type == "array":
+        return isinstance(value, list)
+    return True
+
+
+def _wrong_value(key: str, value: Any, schema: dict) -> str | None:
+    """Cosa non va in un valore rispetto al suo schema (`type`, `enum`), o
+    `None`. Un `null` e' un argomento omesso: lo giudica `required`."""
+    if value is None:
+        return None
+    declared = schema.get("type")
+    types = declared if isinstance(declared, list) else [declared] if declared else []
+    if types and not any(_has_type(value, json_type) for json_type in types):
+        words = " o ".join(_TYPE_WORDS.get(json_type, json_type) for json_type in types)
+        return f"{_quoted([key])} vuole {words}"
+    allowed = schema.get("enum")
+    if allowed is not None and value not in allowed:
+        return f"{_quoted([key])} vale uno fra {_quoted(allowed)}, non {_quoted([value])}"
+    return None
 
 
 def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
@@ -1159,8 +1185,8 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     dodici gestori, cosi' che uno strumento futuro nasca gia' protetto.
 
     Consuma `input_schema["required"]` e `input_schema["properties"]`, che
-    ogni voce di `KNOWLEDGE_TOOLS` gia' dichiara: nessuna firma nuova, nessun
-    secondo elenco da tenere allineato (la stessa ragione di `_TOOL_NAMES`).
+    ogni riga di `TOOLS` gia' dichiara nella sua definizione: nessuna firma
+    nuova, nessun secondo elenco da tenere allineato.
 
     Due discipline DIVERSE, con due frasi diverse -- non una sola
     «argomenti non validi» che le confonde:
@@ -1191,8 +1217,20 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     Restituisce `None` quando gli argomenti vanno bene -- anche per uno
     strumento come `agenda`, che non dichiara `required` affatto (nessun
     obbligatorio: un dizionario vuoto e' una chiamata legittima).
+
+    **E il valore di ogni argomento noto** (Tappa 5, Task 3, D-40): il suo
+    `type` e il suo `enum`, letti dallo schema. Fino al 05/10/2026 il
+    vocabolario lo rivalidava a mano ogni parser (`genere`, `ordina`,
+    `livello`), e il tipo nessuno: `"false"` per un booleano diventava vero.
+    Lo schema e' la fonte: nessuna lista di valori ricopiata qui. Si guarda
+    il primo livello delle proprieta'; dentro gli oggetti annidati
+    (`bersaglio`, `ancore`) valida chi li riceve.
     """
-    schema = _TOOL_SCHEMA_PER_NAME[name]
+    if not isinstance(arguments, dict):
+        return {"errore": f"«{name}»: gli argomenti vanno dati come un oggetto "
+                          "(nome: valore), non come "
+                          f"{_TYPE_WORDS.get(_json_type_of(arguments), 'un valore')}."}
+    schema = _TOOL_PER_NAME[name].definition["input_schema"]
     allowed = schema.get("properties", {})
     required = schema.get("required", [])
 
@@ -1208,10 +1246,17 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     if unknown:
         every_allowed = f" (argomenti validi: {_quoted(sorted(allowed))})" if allowed else ""
         parts.append(f"non conosco {_quoted(unknown)}{every_allowed}")
+    parts.extend(wrong for key, value in arguments.items() if key in allowed
+                 for wrong in [_wrong_value(key, value, allowed[key])] if wrong)
 
     if not parts:
         return None
     return {"errore": f"«{name}»: " + "; ".join(parts) + "."}
+
+
+def _json_type_of(value: Any) -> str | None:
+    """Il `type` di JSON Schema di un valore, per dire cosa e' arrivato."""
+    return next((json_type for json_type in _TYPE_WORDS if _has_type(value, json_type)), None)
 
 
 #: I servizi del dominio `homeassistant` che Home Assistant concede a chi non
@@ -1224,6 +1269,77 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
 #: `save_persistent_states` resta fuori per decisione (fix round 1, M-1): e'
 #: manutenzione del nucleo, non un comando di casa.
 _HA_CORE_USER_SERVICES = frozenset({"turn_on", "turn_off", "toggle", "update_entity"})
+
+
+def _reserved_core_service(arguments: dict[str, Any]) -> bool:
+    """La chiamata di `execute` e' un servizio del dominio `homeassistant` che
+    Home Assistant riserva agli amministratori (`_HA_CORE_USER_SERVICES`)?
+    Il dominio e' universale per la porta (`action/verification.py`) e HIRIS
+    chiama col proprio token di amministratore: senza questa domanda chiunque
+    chatti riavvierebbe Home Assistant."""
+    domain, _dot, service = str(arguments.get("servizio") or "").partition(".")
+    return domain == "homeassistant" and service not in _HA_CORE_USER_SERVICES
+
+
+def _asks_admin_reads(arguments: dict[str, Any]) -> bool:
+    """La chiamata di `history` chiede un genere che Home Assistant mostra ai
+    soli amministratori (`house_history.ADMIN_KINDS`: esecuzioni ed errori)?
+    Verificato il 27/09/2026 su Core 2026.9.3: `system_log/list`
+    (`components/system_log/__init__.py`), `trace/list` e `trace/get`
+    (`components/trace/websocket_api.py`) sono `@websocket_api.require_admin`."""
+    return arguments.get("genere") in ADMIN_KINDS
+
+
+def _promises_an_action(arguments: dict[str, Any]) -> bool:
+    """La promessa e' un `fai`? **Il soffitto di chi chiede vale anche per
+    l'azione rimandata** (ruling 2.7 della revisione di sicurezza): chi non
+    puo' comandare adesso non puo' farsi eseguire la stessa chiamata fra
+    un'ora dallo schedulatore, che al risveglio non ha piu' nessun soffitto da
+    guardare. Un `chiedi` resta permesso: legge e basta."""
+    return arguments.get("specie") == "fai"
+
+
+@dataclass(frozen=True)
+class Permission:
+    """Un gesto del soffitto (`api/soffitto`) che una chiamata richiede.
+
+    `applies`: quando la richiede, dagli argomenti; `None` = sempre.
+    `refusal`: la frase del rifiuto; `None` = il `perche` del soffitto, come
+    ogni altro rifiuto del soffitto."""
+    gesture: str
+    applies: Callable[[dict[str, Any]], bool] | None = None
+    refusal: str | None = None
+
+
+@dataclass(frozen=True)
+class Tool:
+    """Una riga della tabella degli strumenti (`TOOLS`, Tappa 5, Task 2):
+    tutto cio' che serve a servire uno strumento, dichiarato una volta.
+
+    - `definition`: cio' che va al modello (`*_TOOL_DEF`);
+    - `handler`: il metodo di `ToolDispatcher` che lo serve;
+    - `resources`: gli archivi senza cui non si puo' servire
+      (`ToolDispatcher._missing_resource`);
+    - `needs_thread`: serve il filo di chi ha aperto il turno (le promesse
+      sono di chi le chiede, spec 2026-09-26 §2);
+    - `permissions`: i gesti del soffitto che la chiamata richiede;
+    - `mask`: il gesto senza il quale la risposta esce COPERTA dove Home
+      Assistant mostra il dato ai soli amministratori. Non e' un rifiuto: il
+      gestore riceve `masked` e copre la parte che compone lui.
+
+    Il soffitto si chiede in `ToolDispatcher.dispatch`, una volta, dalla riga:
+    fino al 05/10/2026 lo chiedevano sette punti dentro i gestori (D-23)."""
+    definition: dict
+    handler: Callable[..., Any]
+    resources: tuple[str, ...] = ()
+    needs_thread: bool = False
+    permissions: tuple[Permission, ...] = ()
+    mask: str | None = None
+
+    @property
+    def name(self) -> str:
+        return self.definition["name"]
+
 
 class ToolDispatcher:
     """Collega i dodici strumenti agli archivi, alla porta, all'officina e al
@@ -1369,27 +1485,10 @@ class ToolDispatcher:
         # dettaglio che solleva perche' nessuno gli ha passato l'istantanea.
         self._judgments = judgments if judgments is not None else REPO_JUDGMENTS
 
-    _RESOURCE_PER_TOOL: ClassVar[dict[str, tuple[str, ...]]] = {
-        # Solo la casa: la memoria serve al dettaglio di un ricordo, e quello
-        # lo dichiara da se' quando manca (`_full_detail_sync`). Rifiutare
-        # «luci accese» perche' l'archivio dei ricordi non e' pronto sarebbe
-        # un no a una domanda che non lo tocca (review finale, M5, 30/09/2026).
-        "search": ("casa",),
-        "related": ("ha",),
-        "remember": ("casa", "memoria"), "fetch": ("memoria",),
-        "execute": ("porta",),
-        "promise": ("promesse",), "agenda": ("promesse",),
-        "cancel": ("promesse",),
-        "propose": ("officina",), "confirm": ("officina",),
-        # Il canale, non la casa: gli errori si chiedono anche con la casa
-        # non ancora caricata, e il gestore dice da se' quando gli serve.
-        "history": ("ha",),
-        "calendar": ("ha",),
-    }
-
-    def _missing_resource(self, name: str) -> str | None:
-        """Quale archivio serve a questo strumento e non c'e'."""
-        for which in self._RESOURCE_PER_TOOL.get(name, ()):
+    def _missing_resource(self, tool: Tool) -> str | None:
+        """Quale archivio serve a questo strumento (`Tool.resources`) e non
+        c'e'."""
+        for which in tool.resources:
             if which == "casa" and self._home_space is None:
                 return "la conoscenza della casa non e' ancora stata caricata"
             if which == "memoria" and self._memory is None:
@@ -1410,17 +1509,38 @@ class ToolDispatcher:
         return None
 
     async def dispatch(self, name: str, arguments: dict[str, Any] | None) -> dict:
-        arguments = arguments or {}
+        try:
+            return await self._serve(name, arguments or {})
+        except Exception as error:
+            # Rete di sicurezza finale: qualunque guasto imprevisto (un
+            # archivio chiuso a meta', un tipo inatteso negli argomenti) si
+            # dichiara qui invece di risalire -- vedi il docstring della
+            # classe. Dal 05/10/2026 (Tappa 5, Task 3, D-41) dentro la rete
+            # stanno anche la riga, gli archivi e gli argomenti: con
+            # `arguments=5` il controllo degli argomenti sollevava FUORI.
+            # Minor #7 review finale: dichiararlo al MODELLO non bastava --
+            # un archivio corrotto o un guasto ricorrente restava invisibile
+            # all'operatore, che non ha altro modo di saperlo (il modello
+            # riceve solo la stringa "errore", non uno stack). Loggato qui.
+            logger.warning(
+                "strumento «%s» ha sollevato %s: %s", name, type(error).__name__, error
+            )
+            return {"errore": f"lo strumento «{name}» ha incontrato un problema: {error}"}
+
+    async def _serve(self, name: str, arguments: Any) -> dict:
+        """Il giro di `dispatch`, nell'ordine che e' il contratto: la riga,
+        gli archivi, gli argomenti, il filo e il soffitto, il gestore."""
         # Gli archivi possono mancare: il chiamante puo' costruirci prima che
         # esistano. Senza questo controllo il modello riceve
         # «'NoneType' object has no attribute 'leggi'» -- un errore Python
         # travestito da risposta, mentre questo dispatcher promette messaggi
         # LEGGIBILI. Dire cosa manca e' anche l'unico modo perche' il modello
         # possa spiegarlo all'utente invece di riprovare all'infinito.
-        missing = self._missing_resource(name)
+        tool = _TOOL_PER_NAME.get(name)
+        missing = None if tool is None else self._missing_resource(tool)
         if missing is not None:
             return {"errore": f"«{name}» non e' disponibile: {missing}."}
-        if name not in _TOOL_NAMES:
+        if tool is None:
             # NON "non inventare nomi di tool": se il modello ha chiamato
             # questo nome, gliel'abbiamo dato NOI in un turno precedente (un
             # tool rimosso da un aggiornamento, o un refuso nostro nella
@@ -1428,7 +1548,7 @@ class ToolDispatcher:
             # gli avevamo servito noi e' esattamente il difetto gia'
             # corretto una volta su questo ramo. Il messaggio resta un fatto
             # neutro: cosa esiste, non un rimprovero.
-            available = ", ".join(sorted(_TOOL_NAMES))
+            available = ", ".join(sorted(_TOOL_PER_NAME))
             return {"errore": f"lo strumento «{name}» non e' fra quelli disponibili "
                               f"({available})."}
         # Task 1 di «rifiutare e importare» (§6b): un obbligatorio mancante e
@@ -1442,48 +1562,26 @@ class ToolDispatcher:
         bad_arguments = _bad_arguments(name, arguments)
         if bad_arguments is not None:
             return bad_arguments
-        handler = {
-            "search": self._search,
-            "related": self._related,
-            "remember": self._remember,
-            "fetch": self._recall,
-            "execute": self._execute,
-            "promise": self._promise,
-            "agenda": self._list_agenda,
-            "cancel": self._cancel,
-            "propose": self._propose,
-            "confirm": self._confirm,
-            "history": self._history,
-            "calendar": self._calendar,
-        }[name]
-        try:
-            # `_execute`, `_related`, `_promise`, `_propose`, `_confirm`,
-            # `_history`, `_calendar` e -- dal 29/09/2026 -- `_search` sono coroutine
-            # (fanno rete, o -- `_promise` e `_search` -- possono scaldare il
-            # registro dei servizi prima di verificarlo o di mostrarlo); gli
-            # altri no. Si attende cio' che e' attendibile invece di
-            # rendere `async` anche i gestori sincroni.
-            occurrence = handler(arguments)
-            if inspect.isawaitable(occurrence):
-                occurrence = await occurrence
-            return occurrence
-        except Exception as error:
-            # Rete di sicurezza finale: qualunque guasto imprevisto (un
-            # archivio chiuso a meta', un tipo inatteso negli argomenti) si
-            # dichiara qui invece di risalire -- vedi il docstring della
-            # classe.
-            # Minor #7 review finale: dichiararlo al MODELLO non bastava --
-            # un archivio corrotto o un guasto ricorrente restava invisibile
-            # all'operatore, che non ha altro modo di saperlo (il modello
-            # riceve solo la stringa "errore", non uno stack). Loggato qui.
-            logger.warning(
-                "strumento «%s» ha sollevato %s: %s", name, type(error).__name__, error
-            )
-            return {"errore": f"lo strumento «{name}» ha incontrato un problema: {error}"}
+        refusal = self._refusal(tool, arguments)
+        if refusal is not None:
+            return refusal
+        # La maschera (`Tool.mask`): il soffitto si chiede QUI, una volta,
+        # e il gestore riceve la risposta -- copre la parte di risposta
+        # che Home Assistant mostra solo a chi amministra, dove la compone.
+        options = ({"masked": self._ceiling_denies(tool.mask)}
+                   if tool.mask is not None else {})
+        # Alcuni gestori sono coroutine (fanno rete, o scaldano il registro
+        # dei servizi prima di verificarlo o di mostrarlo); gli altri no. Si
+        # attende cio' che e' attendibile invece di rendere `async` anche i
+        # gestori sincroni.
+        occurrence = tool.handler(self, arguments, **options)
+        if inspect.isawaitable(occurrence):
+            occurrence = await occurrence
+        return occurrence
 
     # -- search --------------------------------------------------------
 
-    async def _search(self, arguments: dict[str, Any]) -> dict:
+    async def _search(self, arguments: dict[str, Any], *, masked: bool) -> dict:
         """La porta che interroga la casa (spec `2026-09-29-una-porta-sola-
         per-la-casa.md` §2): i filtri entrano, un insieme di voci esce, e la
         profondita' la decide `house_query.query_house` da quante sono.
@@ -1516,7 +1614,7 @@ class ToolDispatcher:
 
         def detail(kind: str, reference) -> dict:
             return self._full_detail_sync(kind, reference, house=house,
-                                          translations=translations)
+                                          translations=translations, masked=masked)
 
         response = query_house(house, self._home_space.behavior(), filters,
                                detail=detail, timezone=self._timezone())
@@ -1652,7 +1750,7 @@ class ToolDispatcher:
     # -- il dettaglio completo, la voce di `search` quando e' una sola ----
 
     def _full_detail_sync(self, kind: str, reference, *, house: House,
-                          translations: dict) -> dict:
+                          translations: dict, masked: bool) -> dict:
         """Il dettaglio completo di UNA cosa di casa -- quello che fino al
         29/09/2026 dava lo strumento `view`, oggi la voce di `search` quando
         l'insieme ne ha una sola (`house_query.query_house`, il suo `detail`).
@@ -1712,8 +1810,9 @@ class ToolDispatcher:
         # Il corpo di un'automazione solo a chi amministra: la regola e la sua
         # ragione vivono in `privacy.cover_automation_body`, che chiama anche
         # la rotta `GET /api/home-space`. Il nucleo della chat non porta i
-        # corpi -- solo il nome e se il corpo c'e'.
-        if isinstance(detail, dict) and self._ceiling_denies("amministrare"):
+        # corpi -- solo il nome e se il corpo c'e'. Il soffitto lo chiede
+        # `dispatch`, una volta, dalla riga (`Tool.mask`).
+        if isinstance(detail, dict) and masked:
             detail = cover_automation_body(detail, kind=kind)
         return detail
 
@@ -1906,20 +2005,14 @@ class ToolDispatcher:
         chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
         metodo cresce, la logica sta migrando nel posto sbagliato.
 
-        Le sole righe in piu' sono il soffitto (spec 2026-09-27, ruling
-        R-2.10b e fix round 1, M-1), che la porta non conosce: chi ha il ruolo
-        di sola lettura -- in Home Assistant il gruppo `system-read-only` --
-        non comanda; e i servizi del dominio `homeassistant` che Home
-        Assistant riserva agli amministratori non si chiamano per chi non lo
-        e'. Il dominio e' universale per la porta (`action/verification.py`)
-        e HIRIS chiama col proprio token di amministratore.
+        Il soffitto, che la porta non conosce, lo chiede `dispatch` dalla
+        riga di `execute` (`Tool.permissions`, spec 2026-09-27, ruling
+        R-2.10b e fix round 1, M-1): chi ha il ruolo di sola lettura -- in
+        Home Assistant il gruppo `system-read-only` -- non comanda; e i
+        servizi del dominio `homeassistant` che Home Assistant riserva agli
+        amministratori non si chiamano per chi non lo e'
+        (`_reserved_core_service`).
         """
-        if self._ceiling_denies("comandare"):
-            return {"errore": self._soffitto["perche"]}
-        domain, _dot, service = str(arguments.get("servizio") or "").partition(".")
-        if (domain == "homeassistant" and service not in _HA_CORE_USER_SERVICES
-                and self._ceiling_denies("amministrare")):
-            return {"errore": ADMIN_SERVICES_REFUSAL}
         outcome = await self._actuator.execute(
             arguments, actor="chat", subject=self._subject)
         # Un comando puo' aver cambiato la casa: la domanda dopo, in questo
@@ -1983,13 +2076,13 @@ class ToolDispatcher:
         seconda frase per lo stesso fatto sarebbe un doppione.
 
         Senza registro (`None`, legittimo: `promise` non lo dichiara come
-        archivio richiesto in `_RESOURCE_PER_TOOL`) o senza un canale HA
+        archivio richiesto nella sua riga, `Tool.resources`) o senza un canale HA
         vivo (`_ha` e' `None`, altrettanto legittimo per lo stesso
         motivo) non si tenta nemmeno: il registro non si puo' caricare senza
         un client a cui chiedere, e restare senza canale resta il rifiuto
         onesto di sempre -- non diventa "«promise» non e' disponibile"
         (quel messaggio e' di `_missing_resource`, per un'altra assenza:
-        aggiungere "ha" a `_RESOURCE_PER_TOOL["promise"]` sarebbe
+        aggiungere "ha" alle risorse della riga di `promise` sarebbe
         proprio quello scambio).
         """
         if self._registry is None:
@@ -2033,20 +2126,9 @@ class ToolDispatcher:
         from ..action.verification import verification
         from ..keeper.recipient import recipients_for
 
-        if self._thread is None:
-            return {"errore": _NO_THREAD_REFUSAL}
-
+        # Il filo e il soffitto (un `fai` vuole `comandare`) li ha gia'
+        # chiesti `dispatch` alla riga di `promise`.
         verb = arguments.get("specie")
-        # **Il soffitto di chi chiede vale anche per l'azione rimandata**
-        # (ruling 2.7 della revisione di sicurezza): chi non puo' comandare
-        # adesso non puo' farsi eseguire la stessa chiamata fra un'ora dallo
-        # schedulatore, che al risveglio non ha piu' nessun soffitto da
-        # guardare. Stesso `perche` di ogni altro rifiuto del soffitto. Un
-        # `chiedi` resta permesso: legge e basta. Senza soffitto (`None`: i
-        # percorsi interni) il comportamento e' quello di prima.
-        if verb == "fai" and self._ceiling_denies("comandare"):
-            return {"errore": self._soffitto["perche"]}
-
         await self._ensure_registry_fresh()
 
         when = historian.instant_epoch(arguments.get("quando"))
@@ -2151,19 +2233,21 @@ class ToolDispatcher:
         Il nome del metodo NON puo' essere `_promesse`: quell'attributo e'
         gia' l'archivio (vedi `__init__`). Due cose distinte, due nomi.
         """
-        if self._thread is None:
-            return {"errore": _NO_THREAD_REFUSAL}
         show_all = bool(arguments.get("tutte"))
-        rows = self._agenda.list(thread=self._thread, solo_in_sospeso=not show_all)
-        return {"promesse": [without_thread(r) for r in rows]}
+        rows, left = self._agenda.page(thread=self._thread, solo_in_sospeso=not show_all)
+        answer: dict = {"promesse": [without_thread(r) for r in rows]}
+        if left > 0:
+            # C-39: le promesse che la pagina non mostra si dichiarano, nella
+            # forma di `oltre` delle altre risposte (`restano`). Niente
+            # `salta`: lo strumento non ha un argomento per la pagina dopo.
+            answer["oltre"] = {"restano": left}
+        return answer
 
     def _cancel(self, arguments: dict[str, Any]) -> dict:
         """Disdice una promessa di QUESTO filo. Un id di un altro filo riceve
         la stessa risposta di uno che non esiste (`AgendaStore.cancel`)."""
         import time as _time
 
-        if self._thread is None:
-            return {"errore": _NO_THREAD_REFUSAL}
         identifier = arguments.get("id")
         if not isinstance(identifier, str) or not identifier.strip():
             return {"errore": "«cancel» ha bisogno dell'`id` della promessa."}
@@ -2173,8 +2257,10 @@ class ToolDispatcher:
             return {**occurrence, "promessa": without_thread(occurrence["promessa"])}
         return occurrence
 
-    async def _propose(self, arguments: dict[str, Any]) -> dict:
-        """Propone. Non scrive: lo fa `confirm`, e non nello stesso turno."""
+    async def _propose(self, arguments: dict[str, Any], *, masked: bool) -> dict:
+        """Propone. Non scrive: lo fa `confirm`, e non nello stesso turno.
+        `masked`: chi propone non amministra, e il «prima» di un'automazione
+        o di una scena non si mostra (`Workshop.propose`, `reveal_before`)."""
         import time as _time
         intent = {
             "gesto": arguments.get("gesto"),
@@ -2197,7 +2283,7 @@ class ToolDispatcher:
         return await self._workshop.propose(
             intent, actor="chat", exchange=self._exchange, now=_time.time(),
             thread=self._thread,
-            reveal_before=not self._ceiling_denies("amministrare"))
+            reveal_before=not masked)
 
     async def _confirm(self, arguments: dict[str, Any]) -> dict:
         """Applica una proposta gia' creata da `propose`. La guardia del
@@ -2213,12 +2299,6 @@ class ToolDispatcher:
         proposal_id = (arguments or {}).get("proposta_id")
         proposal_id = (proposal_id.strip()
                        if isinstance(proposal_id, str) else None)
-        # Il soffitto (I-1): la porta della configurazione ha due lati, il clic
-        # sulla pagina e questo strumento. Custodirne uno solo lascerebbe
-        # spalancato l'altro -- e questo e' il piu' facile da attraversare,
-        # perche' basta scrivere «conferma» in chat.
-        if self._ceiling_denies("costruire"):
-            return {"errore": self._soffitto["perche"]}
         occurrence = await self._workshop.apply(
             proposal_id, actor="chat", exchange=self._exchange,
             now=_time.time(), subject=self._subject,
@@ -2429,19 +2509,24 @@ class ToolDispatcher:
         persona compresi, e' `soffitto.denies`."""
         return denies(self._soffitto, gesture, self._subject)
 
-    def _admin_reads_refusal(self) -> dict | None:
-        """Il rifiuto delle letture che Home Assistant mostra ai soli
-        amministratori -- dal 30/09/2026 i generi `esecuzioni` ed `errori` di
-        `history` -- `None` se questo turno puo'.
+    def _refusal(self, tool: Tool, arguments: dict[str, Any]) -> dict | None:
+        """Il rifiuto di questa chiamata prima del gestore, o `None`: il filo,
+        poi il soffitto, chiesti alla riga (`Tool.needs_thread`,
+        `Tool.permissions`). Fino al 05/10/2026 il filo si chiedeva in tre
+        gestori (D-42) e il soffitto in sette punti dentro i gestori (D-23):
+        uno strumento nuovo nasceva senza permesso finche' qualcuno non se ne
+        ricordava.
 
-        Verificato il 27/09/2026 su Core 2026.9.3: `system_log/list`
-        (`components/system_log/__init__.py`), `trace/list` e `trace/get`
-        (`components/trace/websocket_api.py`) sono `@websocket_api.require_admin`.
-        HIRIS li chiama col proprio token di amministratore: senza questa
-        domanda li leggerebbe per chiunque chatti (ruling R-2.25).
-        """
-        if self._ceiling_denies("amministrare"):
-            return {"errore": ADMIN_READS_REFUSAL}
+        L'ordine e' quello che i gestori avevano: il filo prima del soffitto
+        (`promise`: una promessa senza filo non ha a chi tornare, con
+        qualunque soffitto)."""
+        if tool.needs_thread and self._thread is None:
+            return {"errore": _NO_THREAD_REFUSAL}
+        for permission in tool.permissions:
+            if permission.applies is not None and not permission.applies(arguments):
+                continue
+            if self._ceiling_denies(permission.gesture):
+                return {"errore": permission.refusal or self._soffitto["perche"]}
         return None
 
     def _seal(self):
@@ -2475,10 +2560,11 @@ class ToolDispatcher:
         non dipendono dalla persona, e un attore le chiama senza un turno.
         Qui resta cio' che dalla persona dipende.
 
-        **L'ordine dei controlli e' il contratto.** Prima gli argomenti (un
-        errore si dice senza toccare niente); poi chi non amministra
-        (`trace/list`, `trace/get`, `system_log/list` sono `require_admin`:
-        rifiutati PRIMA di qualunque lettura, ruling R-2.25); poi la casa, che
+        **L'ordine dei controlli e' il contratto.** Chi non amministra e'
+        rifiutato da `dispatch` PRIMA di qualunque lettura (la riga di
+        `history`, `Tool.permissions`: `trace/list`, `trace/get`,
+        `system_log/list` sono `require_admin`, ruling R-2.25); qui gli
+        argomenti (un errore si dice senza toccare niente); poi la casa, che
         serve a ogni genere fuorche' agli errori -- per loro la casa del turno
         non si costruisce."""
         import time as _time
@@ -2487,10 +2573,6 @@ class ToolDispatcher:
         query = parse_query(arguments, now=now, timezone=self._timezone())
         if isinstance(query, dict):
             return query
-        if query.kind in ADMIN_KINDS:
-            refusal = self._admin_reads_refusal()
-            if refusal is not None:
-                return refusal
         if query.kind == "errori":
             return await read_errors(self._ha, query, seal=self._seal())
         if self._home_space is None:
@@ -2506,92 +2588,25 @@ class ToolDispatcher:
     async def _calendar(self, arguments: dict[str, Any]) -> dict:
         """I prossimi appuntamenti, fusi da OGNI calendario di questa casa.
 
-        **Il cuore della fetta «i calendari»: la leggibilita' si verifica
-        LEGGENDO, mai dallo stato.** Un calendario rotto e uno senza impegni
-        hanno lo STESSO stato `off` in Home Assistant e tornerebbero lo
-        STESSO elenco vuoto -- solo un tentativo di lettura li distingue.
-        Percio' questo metodo prende l'elenco dei calendari (Task 1,
-        `HAClient.calendars()`) e prova a leggere CIASCUNO (Task 1,
-        `HAClient.calendar_events()`), uno per uno: nessun elenco dichiarato
-        di calendari ammessi, nessuna decisione presa dallo stato. Un
-        calendario che fallisce NON sparisce in silenzio: il suo `name`
-        finisce in `non_letti`, che esce SOLO se c'e' almeno un calendario
-        illeggibile -- se sparisse, «non hai impegni» sarebbe una bugia detta
-        con la sicurezza di chi ha guardato tutto, ed e' il difetto che la
-        fetta precedente («le tracce e il log») ha trovato tre volte.
+        Qui resta la COMPOSIZIONE (R13, Tappa 5): la finestra chiesta, le due
+        letture da Home Assistant e il fuso. Leggere gli eventi, nominare i
+        calendari illeggibili e fondere gli impegni e' di
+        `appointments.merge_calendars`, che e' puro e dice perche'.
 
         **Se l'elenco dei calendari stesso non arriva**, non c'e' niente da
         provare a leggere: si propaga il suo `errore` cosi' com'e' (un
         passthrough puro).
 
-        **`calendari_guardati` esce SEMPRE, anche vuoto -- a differenza di
-        `non_letti`/`troncato`, che tacciono quando non hanno niente da
-        dire.** Senza di lui, zero calendari e due calendari letti e
-        VUOTI sono indistinguibili: entrambi tornerebbero `{"impegni": []}`,
-        e il modello direbbe «non hai impegni segnati» quando la verita'
-        potrebbe essere «questa casa non ha calendari». E' la PROVA di cosa
-        e' stato guardato, non un dato su cosa c'e' scritto: senza di essa
-        la risposta non e' verificabile, quindi non e' condizionale come
-        gli altri due.
-
         **Il fuso e' UNO SOLO, quello del dispatcher** (`self._timezone()`,
-        `ToolDispatcher._timezone()` qui sopra, la stessa fonte di `_history`
-        -- non se ne apre una seconda): serve due volte, una per calcolare `now` con
-        `historian.home_space_zone` (nessun doppione: e' la stessa funzione
-        che gestisce gia' un fuso non riconosciuto con un avviso e il
-        ripiego su UTC) e una passata a `read_appointment` per ogni evento.
+        la stessa fonte di `_history` -- non se ne apre una seconda): serve
+        due volte, una per calcolare `now` con `historian.home_space_zone`
+        (nessun doppione: e' la stessa funzione che gestisce gia' un fuso non
+        riconosciuto con un avviso e il ripiego su UTC) e una passata a
+        `merge_calendars`, che la passa a `read_appointment` per ogni evento.
         Fondere impegni letti con fusi DIVERSI romperebbe l'ordinamento
         lessicografico di `sort_appointments` -- non succede, perche' il
         fuso e' unico per questa chiamata, ma e' il presupposto su cui quella
         fusione poggia, e va dichiarato invece di dato per scontato.
-
-        **Il tetto sul testo libero vive QUI, non nel client.**
-        `HAClient.calendar_events()` lascia `summary`/`description`/
-        `location` grezzi apposta (il suo docstring lo dice: nessun
-        consumatore prima di questo strumento) -- e' questo il punto in cui
-        quel testo, scritto da una persona in un calendario condiviso, entra
-        DAVVERO in un prompt. `titolo`/`luogo`/`descrizione` passano da
-        `sanitize_ha_free_text`, la stessa strada dei fratelli (`motivo` di
-        un'integrazione rotta), non una seconda. **Il NOME del calendario passa da
-        `sanitize_ha_value`** (non `sanitize_ha_free_text`: e' un
-        `friendly_name`, la stessa forma di `nome` per le altre entita', non testo
-        libero senza tetto HA) -- e' `state.name` di
-        `HAClient.calendars()`, scelto da una persona e potenzialmente
-        condiviso (un Google Calendar puo' esserlo), quindi un vettore di
-        testo iniettato quanto `summary`/`description`/`location`: sanificare
-        tre campi su quattro e lasciare il quarto grezzo sarebbe la stessa
-        fuga che l'audit di questo prodotto ha gia' pagato altrove
-        (L1-sicurezza.md). Sanificato UNA volta, prima di finire sia in
-        `calendario` sia in `non_letti` -- non due sanificazioni per due
-        destinazioni dello stesso valore.
-
-        **Ogni impegno porta `calendario`**, il nome (non l'`entity_id`) del
-        calendario da cui viene: fondendo «Personale» e «Famiglia» in un
-        unico elenco, sapere DA QUALE viene un impegno e' meta' della
-        risposta -- perderlo fondendo prima di annotarlo sarebbe
-        un'informazione che avevamo in mano e abbiamo buttato via.
-
-        **`troncato` esce SOLO se almeno un calendario lo ha dichiarato**
-        (`HAClient.calendar_events`, `MAX_CALENDAR_EVENTS`): un elenco
-        tagliato non deve poter sembrare completo, stessa legge del client
-        che lo genera -- propagarla in silenzio sarebbe ricreare lo stesso
-        difetto un livello piu' in alto. Non dice quale calendario (vedi la
-        `description` dello strumento).
-
-        **Un evento che non si sa interpretare affonda il SUO calendario,
-        non tutti quanti.** `read_appointment` puo' sollevare (un evento
-        senza ne' `start.date` ne' `start.dateTime`, per esempio): senza una
-        guardia qui, quell'eccezione risalirebbe fino alla rete di
-        sicurezza di `dispatch`, e la risposta perderebbe INSIEME gli
-        impegni gia' letti di questo calendario e quelli di ogni altro
-        calendario gia' letto bene in questo stesso giro -- il guasto di
-        UNO che costa il silenzio su TUTTI, l'esatto difetto opposto a
-        quello che questa fetta cura. Un calendario il cui evento non si sa
-        interpretare finisce quindi in `non_letti` come uno che non
-        risponde -- e i suoi impegni GIA' raccolti in questo giro si
-        scartano: un elenco parziale che si finge completo e' peggio di un
-        elenco assente, la stessa legge di `add_label_to` in
-        `proxy/ha_client.py` («non ho letto» non e' «non ce n'erano»).
         """
         import time as _time
 
@@ -2604,8 +2619,7 @@ class ToolDispatcher:
         listing = await ha.calendars()
         if "errore" in listing:
             return listing
-        calendars = listing.get("calendari")
-        calendars = calendars if isinstance(calendars, list) else []
+        calendars = readable_calendars(listing)
 
         timezone = self._timezone()
         zone = historian.home_space_zone(timezone)
@@ -2613,65 +2627,60 @@ class ToolDispatcher:
         start = (now - timedelta(days=behind)).isoformat()
         end = (now + timedelta(days=ahead)).isoformat()
 
-        appointments: list[dict] = []
-        examined: list[str] = []
-        unreadable: list[str] = []
-        truncated = False
-        readable = [entry for entry in calendars
-                    if isinstance(entry, dict) and entry.get("entity_id")]
         # Tutti insieme (A-34, Tappa 2): l'attesa e' quella del calendario
         # piu' lento, non la somma. `gather` rende nell'ordine chiesto, cioe'
         # quello di Home Assistant: `calendari_guardati` e `non_letti` non
         # dipendono da chi risponde prima. `calendar_events` non solleva.
         answers = await asyncio.gather(*(ha.calendar_events(entry["entity_id"], start, end)
-                                         for entry in readable))
-        for entry, events in zip(readable, answers, strict=True):
-            name = sanitize_ha_value(entry.get("name") or entry["entity_id"])
-            examined.append(name)
-            if "errore" in events:
-                unreadable.append(name)
-                continue
-            if events.get("troncato"):
-                # Non gestito, DICHIARATO: se questo STESSO calendario viene
-                # anche scartato qui sotto (un evento che non si sa
-                # interpretare, `unreadable_event`), `truncated` resta vero
-                # ma i suoi impegni finiscono comunque in `non_letti`, non in
-                # `impegni` -- `troncato: true` sopravvivrebbe su un elenco
-                # che non contiene piu' nessun impegno di QUESTO calendario.
-                # Serve >MAX_CALENDAR_EVENTS eventi E un evento malformato
-                # nello stesso calendario per innescarlo: visto, deciso di
-                # non trattarlo (il caso e' cosi' raro da non giustificare
-                # il costo di un secondo stato "troncato ma poi scartato").
-                truncated = True
-            calendar_appointments: list[dict] = []
-            unreadable_event = False
-            for raw_event in events.get("eventi") or []:
-                try:
-                    appointment = read_appointment(raw_event, timezone=timezone)
-                except Exception as error:
-                    logger.warning(
-                        "calendario «%s»: un evento non si sa interpretare "
-                        "(%s: %s) -- l'intero calendario finisce in non_letti",
-                        name, type(error).__name__, error)
-                    unreadable_event = True
-                    break
-                appointment["titolo"] = sanitize_ha_free_text(appointment["titolo"])
-                if "luogo" in appointment:
-                    appointment["luogo"] = sanitize_ha_free_text(appointment["luogo"])
-                if "descrizione" in appointment:
-                    appointment["descrizione"] = sanitize_ha_free_text(
-                        appointment["descrizione"])
-                appointment["calendario"] = name
-                calendar_appointments.append(appointment)
-            if unreadable_event:
-                unreadable.append(name)
-                continue
-            appointments.extend(calendar_appointments)
+                                         for entry in calendars))
+        return merge_calendars(calendars, answers, timezone=timezone)
 
-        result: dict = {"impegni": sort_appointments(appointments),
-                        "calendari_guardati": examined}
-        if unreadable:
-            result["non_letti"] = unreadable
-        if truncated:
-            result["troncato"] = True
-        return result
+
+# La tabella degli strumenti: UNA riga per strumento. Il catalogo che il
+# modello riceve, i nomi che `dispatch` accetta, i gestori, gli archivi e il
+# soffitto si chiedono a lei -- erano tre tabelle scritte a mano (D-39) e
+# sette domande al soffitto dentro i gestori (D-23). L'ordine e' quello del
+# catalogo che il modello legge.
+TOOLS: tuple[Tool, ...] = (
+    # Solo la casa: la memoria serve al dettaglio di un ricordo, e quello lo
+    # dichiara da se' quando manca (`_full_detail_sync`). Rifiutare «luci
+    # accese» perche' l'archivio dei ricordi non e' pronto sarebbe un no a una
+    # domanda che non lo tocca (review finale, M5, 30/09/2026).
+    Tool(SEARCH_TOOL_DEF, ToolDispatcher._search, resources=("casa",),
+         mask="amministrare"),
+    Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",)),
+    Tool(REMEMBER_TOOL_DEF, ToolDispatcher._remember, resources=("casa", "memoria")),
+    Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",)),
+    Tool(EXECUTE_TOOL_DEF, ToolDispatcher._execute, resources=("porta",),
+         permissions=(Permission("comandare"),
+                      Permission("amministrare", applies=_reserved_core_service,
+                                 refusal=ADMIN_SERVICES_REFUSAL))),
+    Tool(PROMISE_TOOL_DEF, ToolDispatcher._promise, resources=("promesse",),
+         needs_thread=True,
+         permissions=(Permission("comandare", applies=_promises_an_action),)),
+    Tool(AGENDA_TOOL_DEF, ToolDispatcher._list_agenda, resources=("promesse",),
+         needs_thread=True),
+    Tool(CANCEL_TOOL_DEF, ToolDispatcher._cancel, resources=("promesse",),
+         needs_thread=True),
+    Tool(PROPOSE_TOOL_DEF, ToolDispatcher._propose, resources=("officina",),
+         mask="amministrare"),
+    # La porta della configurazione ha due lati, il clic sulla pagina e
+    # questo strumento: custodirne uno solo lascerebbe spalancato l'altro
+    # (I-1), il piu' facile da attraversare -- basta scrivere «conferma».
+    Tool(CONFIRM_TOOL_DEF, ToolDispatcher._confirm, resources=("officina",),
+         permissions=(Permission("costruire"),)),
+    # Il canale, non la casa: gli errori si chiedono anche con la casa non
+    # ancora caricata, e il gestore dice da se' quando gli serve.
+    Tool(HISTORY_TOOL_DEF, ToolDispatcher._history, resources=("ha",),
+         permissions=(Permission("amministrare", applies=_asks_admin_reads,
+                                 refusal=ADMIN_READS_REFUSAL),)),
+    Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",)),
+)
+
+# Le viste sulla tabella. Il catalogo che il modello riceve si DERIVA: un
+# elenco scritto a mano accanto alla tabella sarebbe la seconda copia degli
+# stessi nomi, e il primo a divergere sarebbe quello che legge il modello --
+# uno strumento arrivato al modello e sconosciuto al dispatcher, il tipo di
+# incoerenza che il modello non puo' ne' capire ne' aggirare.
+KNOWLEDGE_TOOLS: list[dict] = [tool.definition for tool in TOOLS]
+_TOOL_PER_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}

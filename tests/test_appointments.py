@@ -11,7 +11,12 @@ che non hanno niente da dire.
 from unittest.mock import patch
 
 from hiris.app.home_space import appointments as appointments_module
-from hiris.app.home_space.appointments import read_appointment, sort_appointments
+from hiris.app.home_space.appointments import (
+    merge_calendars,
+    read_appointment,
+    readable_calendars,
+    sort_appointments,
+)
 
 
 def _timed_event(**fields):
@@ -335,3 +340,31 @@ def test_sort_appointments_places_an_all_day_event_before_a_timed_event_the_same
     merged = sort_appointments(appointments)
     titles = [appointment["titolo"] for appointment in merged]
     assert titles == ["Giornaliero", "A orario"]
+
+
+# --------------------------------------------------------------------------
+# merge_calendars -- la logica del calendario, senza client (Tappa 5, Task 4)
+# --------------------------------------------------------------------------
+
+def test_merge_calendars_si_prova_senza_un_client_finto():
+    """Uscita da `ToolDispatcher._calendar` il 05/10/2026 (R13): le risposte
+    di Home Assistant arrivano gia' lette, e la fusione si prova con due
+    dizionari. Un calendario che risponde `errore` e' nominato in
+    `non_letti`, gli impegni dell'altro escono fusi e annotati.
+
+    Mutazione ESEGUITA il 05/10/2026: tolto `unreadable.append(name)` sul
+    ramo `errore` -- rossa su `non_letti` (KeyError: la chiave non esce)."""
+    calendars = readable_calendars({"calendari": [
+        {"entity_id": "calendar.personale", "name": "Personale"},
+        {"entity_id": "calendar.rotto", "name": "Rotto"},
+        "una voce malformata",
+    ]})
+    answers = [{"eventi": [_timed_event()]}, {"errore": "non risponde"}]
+
+    result = merge_calendars(calendars, answers, timezone="Europe/Rome")
+
+    assert result["calendari_guardati"] == ["Personale", "Rotto"]
+    assert result["non_letti"] == ["Rotto"]
+    assert [(a["titolo"], a["calendario"]) for a in result["impegni"]] == [
+        ("Allenamento", "Personale")]
+    assert "troncato" not in result
