@@ -98,21 +98,20 @@ def test_tree_page_keeps_no_measurement_names():
 
 # -- C-12: il raggruppamento «in sospeso» delle Proposte ----------------------
 # La pagina mostra due code (`handlers_constructions._both_queues`): le
-# costruzioni, sospese in `STATES_SOSPESO`, e le proposte da fare a mano, la
-# cui attesa si chiede all'archivio vero.
-# Mutazione eseguita: tolto "in_corso" da `revisions.STATES_SOSPESO` -> rossa.
+# costruzioni, sospese in `STATES_SOSPESO`, e le proposte da fare a mano,
+# sospese in `PROPOSAL_PENDING`. Dal passo 2 il server manda `sospesa` per riga
+# (`test_constructions_api.py`), e la pagina non tiene un elenco di stati.
+# Mutazione eseguita (passo 1, con la copia): tolto "in_corso" da
+# `revisions.STATES_SOSPESO` -> rossa. Passo 2: rimesso nel JS l'elenco
+# `['in_attesa', 'in_corso', 'attesa']` -> rossa.
 
-def test_constructions_open_states_match_both_queues(tmp_path):
-    store = ObservationsStore(str(tmp_path / "oss.db"))
-    try:
-        store.add_proposal(text="t", perche="p", fingerprint="f", prova={},
-                           chi_applica="tu", now_ts=1790000000.0)
-        manual_pending = {row["stato"] for row in store.proposals(pending_only=True)}
-    finally:
-        store.close()
-    assert manual_pending, "l'archivio non ha restituito la proposta appena scritta"
-    js = set(_js_array(_js("config/constructions-route.js"), "OPEN_STATES"))
-    assert js == set(STATES_SOSPESO) | manual_pending
+def test_constructions_page_keeps_no_pending_states():
+    source = _js("config/constructions-route.js")
+    pending = set(STATES_SOSPESO) | {ObservationsStore.PROPOSAL_PENDING}
+    arrays = [set(re.findall(r"'([^']*)'", body))
+              for body in re.findall(r"\[([^\[\]]*)\]", source)]
+    copies = [sorted(found & pending) for found in arrays if found & pending]
+    assert not copies, f"constructions-route.js elenca stati sospesi: {copies}"
 
 
 # -- C-10: gli stati dei servizi ----------------------------------------------
