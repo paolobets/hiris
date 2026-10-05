@@ -1223,7 +1223,7 @@ def _source(raw) -> str | None:
 
 def error_rows(query: HistoryQuery, entries: list) -> dict:
     """Il registro di Home Assistant (spec §3): una forma sola, la corta, una
-    riga per voce -- livello, messaggio accorciato, fonte, `count`, prima e
+    riga per voce -- livello, messaggio accorciato, fonte, `volte`, prima e
     ultima volta, e l'ultima riga dell'eccezione (il «cosa»). Filtrato per
     `livello`, `integrazione` e finestra; una voce senza istante leggibile
     non si scarta: non si sa se e' fuori.
@@ -1264,7 +1264,7 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
             continue
         row = {"livello": level, "messaggio": _short(_last_message(entry.get("message"))),
                "fonte": _source(entry.get("source")), "integrazione": integration,
-               "count": entry.get("count"),
+               "volte": entry.get("count"),
                "prima": _local(entry.get("first_occurred"), zone),
                "ultima": _local(entry.get("timestamp"), zone)}
         if entry.get("exception"):

@@ -940,7 +940,7 @@ HISTORY_TOOL_DEF = {
         "ne conserva poche: una che manca NON e' andata bene. `non_letti` "
         "nomina chi non ho potuto leggere -- non e' «mai partita» -- e "
         "`non_lette_in_tutto` le conta su tutte le pagine. "
-        "Errori: `count` e' una causa sola ricomparsa N volte, non N episodi; "
+        "Errori: `volte` e' una causa sola ricomparsa N volte, non N episodi; "
         "conta per `livello`. Il registro tiene poche voci e si svuota a ogni "
         "riavvio di Home Assistant: un'assenza non prova niente. I messaggi "
         "arrivano sigillati: i segreti che conosco sono `<secret nome>`, e il "
