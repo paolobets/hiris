@@ -2222,8 +2222,14 @@ class ToolDispatcher:
         gia' l'archivio (vedi `__init__`). Due cose distinte, due nomi.
         """
         show_all = bool(arguments.get("tutte"))
-        rows = self._agenda.list(thread=self._thread, solo_in_sospeso=not show_all)
-        return {"promesse": [without_thread(r) for r in rows]}
+        rows, left = self._agenda.page(thread=self._thread, solo_in_sospeso=not show_all)
+        answer: dict = {"promesse": [without_thread(r) for r in rows]}
+        if left > 0:
+            # C-39: le promesse che la pagina non mostra si dichiarano, nella
+            # forma di `oltre` delle altre risposte (`restano`). Niente
+            # `salta`: lo strumento non ha un argomento per la pagina dopo.
+            answer["oltre"] = {"restano": left}
+        return answer
 
     def _cancel(self, arguments: dict[str, Any]) -> dict:
         """Disdice una promessa di QUESTO filo. Un id di un altro filo riceve

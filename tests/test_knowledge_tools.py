@@ -349,8 +349,8 @@ class _FakeAgendaStore:
     (nessun obbligatorio mancante, nessun nome ignoto) TERMINI con una
     risposta vera invece di un `errore` che nasconderebbe un falso verde."""
 
-    def list(self, *, thread, solo_in_sospeso):
-        return []
+    def page(self, *, thread, solo_in_sospeso):
+        return [], 0
 
 
 # Il filo del turno: `agenda` lavora sulle promesse di chi chiede (spec
