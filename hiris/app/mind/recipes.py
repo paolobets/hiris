@@ -63,9 +63,11 @@ una seconda tabella che li traduce, perche' due tabelle divergono.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field as _field
 
+from ..home_space.ha_vocabulary import domain_of
 from .operations import (
     REGISTRY,
     SHAPE_RESULT,
@@ -78,6 +80,78 @@ from .operations import (
 ENTITY_MARK = "@"
 #: Il carattere che dice «questo e' il risultato di un passo precedente».
 STEP_MARK = "$"
+
+
+# -- perche' un'entita' non da' una serie (B-26 meta'; Tappa 3, Task 8) -------
+#
+# Fino al 04/10/2026 il motivo era UNO per tutte le entita' fuori
+# dall'elenco delle statistiche: «le tiene solo per le entita' che dichiarano
+# uno `state_class`». Sui congelati del 03/10 era falso per 504 entita' su
+# 1.284 chieste (sonda, domanda `fonte`): disabilitate, sparite, o che lo
+# `state_class` lo dichiaravano. Ora la causa viene dalla fonte
+# (`House.source`), e il testo la dice.
+
+#: Il dominio per cui Home Assistant compila statistiche (vedi il commento
+#: «quali `state_class` producono statistiche» in `ha_vocabulary.py`, letto
+#: nel sorgente al tag 2026.9.1).
+_STATISTICS_DOMAIN = "sensor"
+
+
+def silence_reason(entity_id: str, source: dict | None,
+                   state_class: str | None = None) -> str:
+    """Perche' un'entita' che Home Assistant non elenca fra le statistiche
+    non dara' una serie: la causa della FONTE prima, e solo per una fonte
+    che parla la regola di Home Assistant sullo `state_class`."""
+    never = "nessuna serie, non oggi e non un altro giorno finche' resta cosi'"
+    state = (source or {}).get("stato")
+    cause = (source or {}).get("causa")
+    if source is None:
+        return (f"{entity_id} non c'e' in Home Assistant, ne' nel registro ne' "
+                f"negli stati: {never}")
+    if state == "spenta_dal_proprietario":
+        return (f"{entity_id} e' disabilitata in Home Assistant, spenta dal "
+                f"proprietario (disabled_by: {cause}): non registra niente, {never}")
+    if state == "spenta_da_home_assistant":
+        return (f"{entity_id} e' disabilitata da Home Assistant o "
+                f"dall'integrazione (disabled_by: {cause}): non registra niente, {never}")
+    if state == "integrazione_ferma":
+        return (f"l'integrazione di {entity_id} non e' caricata (stato "
+                f"dell'istanza: {cause}): {never}")
+    if state == "sparita":
+        return (f"{entity_id} e' nel registro di Home Assistant ma non ha uno "
+                f"stato: {never}")
+    if domain_of(entity_id) != _STATISTICS_DOMAIN:
+        return (f"{entity_id} non ha statistiche in Home Assistant: le compila "
+                f"solo per i `{_STATISTICS_DOMAIN}`, e questa e' "
+                f"«{domain_of(entity_id)}» -- {never}")
+    if not state_class:
+        return (f"{entity_id} non ha statistiche in Home Assistant: non dichiara "
+                f"uno `state_class`, e Home Assistant le compila solo per i sensor "
+                f"che lo dichiarano -- {never}")
+    return (f"{entity_id} non ha statistiche in Home Assistant: dichiara uno "
+            f"`state_class` ({state_class}), ma Home Assistant non la elenca fra "
+            f"quelle che tiene -- {never}")
+
+
+def silent_entities(house, entity_ids) -> dict[str, str] | None:
+    """Le entita' fra `entity_ids` per cui Home Assistant non tiene
+    statistiche, ognuna con la sua causa (`silence_reason`). `None` --
+    non `{}` -- se la casa non ha l'elenco del giro: chi non ha potuto
+    chiedere non afferma che non ne hanno."""
+    if house.statistic_ids is None:
+        return None
+    return {entity_id: silence_reason(entity_id, house.source(entity_id),
+                                      house.mirror.state_classes.get(entity_id))
+            for entity_id in entity_ids if entity_id not in house.statistic_ids}
+
+
+def unread_series_reason(error: str) -> str:
+    """Il motivo di una misura quando le statistiche orarie non si sono
+    potute leggere (trovato 7 del piano della Tappa 3, S-28): fino al
+    04/10/2026 quel guasto usciva come «la serie e' vuota», cioe' come un
+    giorno in cui non e' arrivato niente."""
+    return (f"le statistiche di Home Assistant non si sono potute leggere per "
+            f"questo giorno ({error}): non so se la serie ci sarebbe stata")
 
 
 @dataclass(frozen=True)
@@ -264,7 +338,7 @@ class Recipe:
     # -- l'esecuzione ------------------------------------------------------
 
     def run(self, *, series: dict[str, list],
-            without_statistics: set[str] | None = None) -> dict[str, Result]:
+            silent: Mapping[str, str] | None = None) -> dict[str, Result]:
         """Esegue i passi in ordine e torna `{nome del passo: risultato}`.
 
         **Valida prima**, e se la ricetta non e' valida non esegue niente: una
@@ -276,8 +350,11 @@ class Recipe:
         altro, e i passi che lo leggono lo ereditano -- e' il registro a
         propagarlo, con la sua ragione (vedi `operations.Result`).
 
-        **`without_statistics` porta il primo dei due «rifiuta se» della spec
-        §6**: le entita' per cui Home Assistant non tiene statistiche affatto.
+        **`silent` porta il primo dei due «rifiuta se» della spec §6**: le
+        entita' che non daranno una serie, ognuna col suo PERCHE' --
+        `silent_entities` (Home Assistant non tiene statistiche, con la causa
+        della fonte) o `unread_series_reason` (le statistiche non si sono
+        potute leggere).
         Il registro lo dichiara (`Operation.refuses_when`) e qui si produce,
         perche' e' qui che il fatto arriva: un'operazione riceve una lista di
         punti e non puo' distinguere *«quel giorno non e' arrivato niente»* da
@@ -300,7 +377,7 @@ class Recipe:
             raise ValueError(
                 "ricetta non valida, non eseguita: " + " · ".join(outcome.problems))
 
-        mute = set(without_statistics or ())
+        mute = dict(silent or {})
         results: dict[str, Result] = {}
         for step in self._steps:
             name = str(step["name"]).strip()
@@ -312,10 +389,7 @@ class Recipe:
                 # Il rifiuto e' del PASSO, non della ricetta: gli altri passi
                 # valgono, e mezzo resoconto e' meglio di nessuno.
                 results[name] = NotComputable(
-                    f"{' e '.join(mute_here)} non ha statistiche in Home Assistant: "
-                    "le tiene solo per le entita' che dichiarano uno "
-                    "`state_class`, e da questa non si puo' ricavare nessuna "
-                    "serie -- non oggi e non un altro giorno")
+                    " · ".join(mute[entity] for entity in mute_here))
                 continue
             given_values = [self._resolve(i, series, results)
                         for i in step.get("inputs") or []]

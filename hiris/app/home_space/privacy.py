@@ -18,7 +18,7 @@ from __future__ import annotations
 from ..proxy.entity_cache import CREDENTIALS
 from .ha_vocabulary import domain_of
 from .queries import WITHHELD_BASKET
-from .type_vocabulary import domains_by_genre
+from .type_vocabulary import domains_by_genre, unknown_states
 
 #: I due soli domini il cui genere e' "presenza", ricavati dalla dichiarazione
 #: nel vocabolario dei tipi.
@@ -30,8 +30,10 @@ MOVING_DOMAINS = domains_by_genre("presenza")
 POSITION_ATTRIBUTES = frozenset({"latitude", "longitude", "gps_accuracy",
                                  "in_zones", "gps", "location_name"})
 HOME_ZONE = "zone.home"
-#: Gli stati che non dicono dove si trova qualcuno: restano come sono.
-_NEUTRAL_STATES = frozenset({"home", "not_home", "unavailable", "unknown"})
+#: Gli stati che non dicono dove si trova qualcuno: restano come sono. In
+#: casa, fuori casa, e i due «non lo so» del vocabolario (B-07; Tappa 3, Task
+#: 8, 04/10/2026: fino a quel giorno li riscriveva qui a mano).
+_NEUTRAL_STATES = frozenset({"home", "not_home"}) | unknown_states()
 
 
 def redact_state(entity_id: str, state: str | None) -> str | None:

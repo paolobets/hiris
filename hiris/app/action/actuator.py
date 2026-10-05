@@ -95,6 +95,7 @@ import asyncio
 import logging
 import time
 
+from ..home_space.house import House
 from ..home_space.topology import clean_text
 from ..proxy.entity_cache import (
     _to_minimal,
@@ -469,7 +470,8 @@ class _StateListener:
 
 
 class ActionActuator:
-    def __init__(self, ha_client, registry, cache, journal=None) -> None:
+    def __init__(self, ha_client, registry, cache, journal=None,
+                 home_space_store=None) -> None:
         # I momenti recenti per entita', per il freno di ritmo (B-3). Vive
         # qui e non globale: un attuatore per prova non eredita il ritmo
         # di un altro.
@@ -481,6 +483,25 @@ class ActionActuator:
         # non cambia niente per chi non lo passa: la porta scriveva gia' la
         # sua riga di log, e questa e' la stessa riga resa CHIEDIBILE.
         self._journal = journal
+        # L'anagrafe, per dire PERCHE' un'entita' nominata non ha uno stato
+        # (D8, Tappa 3, Task 8): la casa si apre solo quando serve, cioe' sul
+        # rifiuto. `None` e' legittimo: il rifiuto dice «non esiste», come
+        # prima.
+        self._home_space_store = home_space_store
+
+    def _source_of_this_call(self):
+        """`House.source` di una casa aperta alla PRIMA domanda e tenuta per
+        questa chiamata soltanto (R12: mai una casa vecchia di un comando).
+        `None` senza anagrafe."""
+        if self._home_space_store is None:
+            return None
+        opened: list = []
+
+        def source(entity_id: str):
+            if not opened:
+                opened.append(House.read(self._home_space_store, self._cache))
+            return opened[0].source(entity_id)
+        return source
 
     async def _resolve(self, target: dict) -> dict:
         """Cosa contiene questo bersaglio, chiesto a Home Assistant.
@@ -646,7 +667,8 @@ class ActionActuator:
                            actor)
             return {"eseguito": False, "errore": _BLIND_MIRROR}
 
-        verdict = verification(call, self._registry, states_before)
+        source = self._source_of_this_call()
+        verdict = verification(call, self._registry, states_before, source=source)
         # Il secondo tempo, e solo per i bersagli che lo chiedono: un
         # bersaglio di sole entita' non costa nessun giro di rete. La verifica
         # si rifa' INTERA con l'elenco in mano -- non si aggiunge un pezzo a
@@ -659,7 +681,7 @@ class ActionActuator:
                                "risolto", actor, verdict.target)
                 return {"eseguito": False, "errore": resolved["errore"]}
             verdict = verification(call, self._registry, states_before,
-                                resolved=resolved)
+                                resolved=resolved, source=source)
         if not verdict.ok:
             logger.info("azione rifiutata [origine=%s]: %s", actor, verdict.reason)
             return {"eseguito": False, "errore": verdict.reason}

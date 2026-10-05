@@ -1,44 +1,10 @@
 {
  "letterali-di-stato": {
-  "hiris/app/home_space/briefing.py": {
-   "conti": {
-    "unknown": 1
-   },
-   "voci": [
-    "B-08"
-   ]
-  },
-  "hiris/app/home_space/privacy.py": {
-   "conti": {
-    "unavailable": 1,
-    "unknown": 1
-   },
-   "voci": [
-    "B-07"
-   ]
-  },
-  "hiris/app/home_space/queries.py": {
-   "conti": {
-    "unavailable": 1,
-    "unknown": 1
-   },
-   "voci": [
-    "B-09"
-   ]
-  },
   "hiris/app/keeper/recipient.py": {
    "conti": {
     "unknown": 1
    },
    "non_e_un_doppione": "lo slug di ripiego di un destinatario senza nome: non e' uno stato di Home Assistant"
-  },
-  "hiris/app/proxy/entity_cache.py": {
-   "conti": {
-    "unknown": 1
-   },
-   "voci": [
-    "B-09"
-   ]
   },
   "hiris/app/server.py": {
    "conti": {
@@ -53,5 +19,12 @@
    "non_e_un_doppione": "la versione dell'add-on quando config.yaml non si legge: non e' uno stato di Home Assistant"
   }
  },
- "regola-del-fuori": {}
+ "regola-del-fuori": {
+  "hiris/app/home_space/house.py": {
+   "conti": {
+    "disabilitata_da": 2
+   },
+   "non_e_un_doppione": "il campo omonimo dell'ISTANZA (`reader._integration`, Tappa 3, Task 8): chi ha spento l'integrazione, che `House.source` legge per dire chi ha spento le sue entita'. Non e' la regola del fuori dell'entita', che `House.source` chiede a `House.visibility`"
+  }
+ }
 }

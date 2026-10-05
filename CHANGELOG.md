@@ -1,5 +1,49 @@
 # HIRIS — Changelog
 
+## [3.75.0] — La casa: un oggetto, una risposta. La Tappa 3 di «Una fonte sola di verità» (2026-10-05)
+
+### Perche'
+
+La stessa domanda sulla casa — come si chiama questa entita', dove sta, la si guarda o no, ha
+statistiche, perche' non risponde — aveva risposte diverse a seconda di chi la faceva: la chat,
+l'osservatore, le ricette, la pagina della casa. Ognuno si rifaceva la casa a modo suo dall'anagrafe,
+e due copie della stessa regola potevano dire due cose diverse. Questa tappa mette la casa in un
+oggetto solo, letto una volta per turno, a cui tutti chiedono.
+
+### Cosa cambia per chi usa HIRIS
+
+- I nomi delle entita' sono quelli che vedi in Home Assistant: spesso «dispositivo + nome»
+  («Echo Cucina Announcements» invece di «Announcements»).
+- Per ogni entita' HIRIS sa da dove viene il suo stato e perche' manca: spenta da te, spenta da
+  Home Assistant, istanza ferma, ripristinata dopo un riavvio, senza valore. Un'entita' spenta
+  insieme alla sua integrazione o al suo dispositivo risulta spenta da te, se l'hai spenta tu.
+- Un comando su un'entita' che hai disabilitato ora dice che e' disabilitata, invece di «non esiste
+  in questa casa».
+- La scheda di un'entita' dice dove sta (area, anche ereditata dal dispositivo, piano, dispositivo,
+  integrazione) e perche' e' nascosta o disabilitata.
+- Le ricette e l'osservatore non guardano piu' le entita' disabilitate, nascoste o di servizio.
+- Le ricette conoscono la dashboard Energia di Home Assistant: per un dispositivo ne citano i ruoli
+  (consumo, produzione, rete), con l'unita' viva.
+- Quando un'entita' non ha statistiche, le ricette dicono il motivo vero; un guasto delle
+  statistiche orarie non si scrive piu' come «serie vuota».
+- Nella storia, «per mano di HIRIS» compare solo per le azioni che HIRIS ha davvero eseguito.
+- L'etichetta di data delle conversazioni passate e' nel fuso della casa, non in UTC.
+- La ricerca trova aree, piani e integrazioni anche scritti con maiuscole o accenti diversi.
+
+### Cosa cambia dentro
+
+- Un oggetto `House` per turno: gerarchia, dove, nome, visibilita' con la causa, tipo, fonte. Lo
+  specchio dello stato ha una forma sola.
+- L'anagrafe non congela piu' classe e unita': si chiedono vive. «Ha statistiche?» e' cio' che Home
+  Assistant tiene, dall'elenco del recorder.
+- Il fuso della casa e «oggi» hanno una casa sola; i vocabolari degli stati e delle costanti di
+  Home Assistant stanno in un posto.
+- Gli attori compongono la casa invece di scorrere l'anagrafe; un cancello ferma chi torna a farlo.
+
+### Da sapere
+
+Le misure a freddo della tappa sono in `docs/misure/2026-10-tappa-3.md`.
+
 ## [3.74.0] — Un solo lettore di Home Assistant: la Tappa 2 di «Una fonte sola di verità» (2026-10-04)
 
 ### Perche'

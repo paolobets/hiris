@@ -553,7 +553,7 @@ def _to_minimal(raw: dict) -> dict:
         # (`live_mirror`, `search`, il nucleo), significa che
         # nessun consumatore a valle deve ricordarsene da solo (C-2,
         # L1-sicurezza.md).
-        "state": sanitize_ha_value(raw.get("state", "unknown")),
+        "state": sanitize_ha_value(raw.get("state", type_vocabulary.STATE_UNKNOWN)),
         "name": sanitize_ha_value(attrs.get("friendly_name") or ""),
         "unit": attrs.get("unit_of_measurement") or "",
         "domain": dom,

@@ -21,7 +21,8 @@ gerarchia, la scelta di «di chi» (`select`, l'ex `house_query.select_subjects`
 la VISIBILITA' con la causa (`visibility`) e l'IDENTITA' (`name`), dal Task 5, e
 il dove (`where`), dal Task 6; il tipo (`kind_of`, `has_statistics`), dal
 Task 7; cio' che gli attori compongono (`visible_entities`, `entities_of`,
-`device_entities`, `device_ids`, `entity_ids`), dal Task 12. Le regole stanno
+`device_entities`, `device_ids`, `entity_ids`), dal Task 12; lo STATO e la
+SALUTE della fonte (`source`), dal Task 8. Le regole stanno
 in `topology` (`visibility`, `live_name`, `device_name`), che sta SOTTO questo
 modulo: la gerarchia le applica e non puo' importare la casa.
 """
@@ -30,8 +31,17 @@ from __future__ import annotations
 from dataclasses import replace
 
 from ..memory.resolver import Lookup, costruisci_indice
+from ..proxy.entity_cache import disclosable_attributes
 from . import topology
-from .ha_vocabulary import domain_of, has_statistics
+from .ha_vocabulary import (
+    CONFIG_ENTRY_LOADED,
+    ENTITY_DISABLED_BY_CONFIG_ENTRY,
+    ENTITY_DISABLED_BY_DEVICE,
+    ENTITY_DISABLED_BY_USER,
+    RESTORED_ATTRIBUTE,
+    domain_of,
+    has_statistics,
+)
 from .house_query import (
     _BEHAVIOR_KINDS,
     HouseFilters,
@@ -40,6 +50,7 @@ from .house_query import (
     _entity_matches,
 )
 from .topology import Mirror, read_mirror
+from .type_vocabulary import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 #: La chiave di `escluse` per ogni classe del fuori (`topology.visibility`).
 _EXCLUDED_KEY = {"disabilitata": "disabilitate", "nascosta": "nascoste",
@@ -72,6 +83,7 @@ class House:
         self._by_device: dict[str, list[dict]] | None = None
         self._visible_set: frozenset[str] | None = None
         self._lookup: Lookup | None = None
+        self._entry_index: dict[str, dict] | None = None
 
     @classmethod
     def read(cls, home_space_store, cache, statistic_ids=None) -> House:
@@ -275,6 +287,115 @@ class House:
         che usa il watcher)."""
         return has_statistics(entity_id, self.mirror.state_classes.get(entity_id),
                               self.statistic_ids)
+
+    def with_statistics(self, statistic_ids) -> House:
+        """La STESSA istantanea (anagrafe, specchio, registri caduti), con
+        l'elenco delle statistiche che il giro ha letto dopo averla aperta.
+        Nessuna lettura nuova: chi la chiama ha gia' l'elenco in mano
+        (`server.statistic_ids_for_round`, la lettura unica del giro)."""
+        return House(self.home_space, self.mirror, self.unavailable, statistic_ids)
+
+    def _instances(self) -> dict[str, dict]:
+        if self._entry_index is None:
+            self._entry_index = {i["entry_id"]: i for i in self.home_space.get("integrazioni") or []
+                                 if isinstance(i, dict) and i.get("entry_id")}
+        return self._entry_index
+
+    def _switched_off_by(self, entry: dict, cause: str | None) -> str | None:
+        """CHI ha spento davvero un'entita': il valore di `disabled_by`, o --
+        quando e' `config_entry` o `device` -- quello dell'istanza o del
+        dispositivo sopra di lei, da cui Home Assistant l'ha propagato (vedi il
+        commento in `ha_vocabulary.py`). Un dispositivo spento a sua volta
+        dalla sua istanza rimanda all'istanza dell'entita'. Se la catena non si
+        legge (la voce sopra manca) resta il valore dell'entita'."""
+        if cause == ENTITY_DISABLED_BY_DEVICE:
+            device = self._devices().get(entry.get("dispositivo_id")) or {}
+            cause = device.get("disabilitato_da") or cause
+        if cause == ENTITY_DISABLED_BY_CONFIG_ENTRY:
+            instance = self._instances().get(entry.get("config_entry_id")) or {}
+            cause = instance.get("disabilitata_da") or cause
+        return cause
+
+    def source(self, entity_id: str) -> dict | None:
+        """LA FONTE (R11; Tappa 3, Task 8, B-25; decisione del proprietario D6
+        «sette stati», 03/10/2026): perche' un'entita' parla o tace.
+
+        `stato`, uno di sette:
+
+        - `viva` -- c'e', con un valore;
+        - `spenta_dal_proprietario` -- disabilitata, e chi l'ha spenta e' il
+          proprietario (`disabled_by: user`, o l'istanza o il dispositivo
+          sopra di lei spenti da lui);
+        - `spenta_da_home_assistant` -- disabilitata da Home Assistant o
+          dall'integrazione (`integration`, `hass`): «mai attivata»;
+        - `integrazione_ferma` -- la sua istanza non e' caricata;
+        - `non_disponibile` -- `unavailable`, anche con `restored: true` (la
+          voce che nessuna integrazione ha aggiunto);
+        - `senza_valore` -- `unknown`: raggiungibile, ma senza un valore
+          (dopo un riavvio un sensore vivo resta cosi' per un po', e dirlo
+          morto e' il difetto che lo strato 1 toglie);
+        - `sparita` -- nel registro e non negli stati.
+
+        Negli stati e non nel registro NON e' «sparita» (scostamento dalla
+        lettera di D6, dichiarato nel rapporto del Task 8): un'entita' senza
+        `unique_id` non entra mai nel registro, e sulla casa le tre che ci sono
+        (`sun`, `zone`, `conversation`) sono vive. Si giudica dal suo stato.
+
+        `causa` e' il valore di Home Assistant che lo dice: `disabled_by` per
+        le spente, lo stato dell'istanza per l'integrazione ferma, `restored`
+        o `unavailable`, `unknown`; `None` per viva e sparita. `spenta_da` e'
+        chi ha spento davvero (la catena di `_switched_off_by`). `istanza`
+        porta l'istanza, se l'entita' ne ha una che l'anagrafe conosce.
+
+        **Con lo specchio non letto** lo stato vivo tace (`stato` e
+        `negli_stati` `None`): non si dice «sparita» di chi non si e' potuto
+        guardare. Cio' che sa il registro resta.
+
+        `statistiche`: se Home Assistant tiene statistiche per lei, dall'elenco
+        del giro; `None` se l'elenco non e' stato letto -- qui non si risponde
+        con la regola del sorgente (`kind_of` lo fa, e dice da dove viene):
+        «perche' tace» non si puo' spiegare con una deduzione.
+
+        `None` per un id che ne' il registro ne' lo specchio conoscono."""
+        entry = self._entity(entity_id)
+        readable = self.mirror.readable
+        in_states = entity_id in self.mirror.state
+        if entry is None and not in_states:
+            return None
+        instance = None
+        if entry is not None and entry.get("config_entry_id"):
+            row = self._instances().get(entry["config_entry_id"])
+            if row is not None:
+                instance = {"id": row["entry_id"], "dominio": row.get("dominio"),
+                            "stato": row.get("stato"),
+                            "disabilitata_da": row.get("disabilitata_da")}
+        state, cause, switched_off_by = None, None, None
+        visibility = self.visibility(entity_id) if entry is not None else None
+        if visibility is not None and visibility[0] == "disabilitata":
+            cause = visibility[1]
+            switched_off_by = self._switched_off_by(entry, cause)
+            state = ("spenta_dal_proprietario" if switched_off_by == ENTITY_DISABLED_BY_USER
+                     else "spenta_da_home_assistant")
+        elif instance is not None and instance["stato"] != CONFIG_ENTRY_LOADED:
+            state, cause = "integrazione_ferma", instance["stato"]
+        elif readable:
+            value = self.mirror.state.get(entity_id)
+            if not in_states:
+                state = "sparita"
+            elif value == STATE_UNAVAILABLE:
+                restored = disclosable_attributes(
+                    self.mirror.attributes.get(entity_id)).get(RESTORED_ATTRIBUTE)
+                state = "non_disponibile"
+                cause = RESTORED_ATTRIBUTE if restored is True else STATE_UNAVAILABLE
+            elif value == STATE_UNKNOWN:
+                state, cause = "senza_valore", STATE_UNKNOWN
+            else:
+                state = "viva"
+        return {"stato": state, "causa": cause, "spenta_da": switched_off_by,
+                "istanza": instance, "nel_registro": entry is not None,
+                "negli_stati": in_states if readable else None,
+                "statistiche": (self.has_statistics(entity_id)
+                                if self.statistic_ids is not None else None)}
 
     # -- cio' che gli attori compongono (Tappa 3, Task 12; R13) -------------
     #

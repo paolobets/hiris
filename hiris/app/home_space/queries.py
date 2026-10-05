@@ -83,7 +83,7 @@ from .topology import (
     visibility_classes,
 )
 from .type_judgments import MEANING_FIELD, TypeJudgments, type_subject
-from .type_vocabulary import REPO_JUDGMENTS
+from .type_vocabulary import REPO_JUDGMENTS, STATE_UNAVAILABLE, STATE_UNKNOWN
 
 if TYPE_CHECKING:
     from .house import House
@@ -1041,6 +1041,12 @@ def _view_entity(house: House, memories: list[dict], reference,
         # un'entita' non diceva in che stanza fosse: il modello doveva
         # cercarla nell'albero del nucleo, dove una disabilitata non c'e'.
         "dove": house.where(entity["id"]),
+        # LA FONTE (Tappa 3, Task 8, B-25; D6): perche' parla o tace --
+        # spenta dal proprietario o da Home Assistant, integrazione ferma,
+        # non disponibile, senza valore, sparita -- con la causa che Home
+        # Assistant scrive, da `House.source`. Fino al 04/10/2026 la scheda
+        # diceva solo `disabilitata: true` e lo stato grezzo.
+        "fonte": house.source(entity["id"]),
     }
     detail = _enrich_entity(detail, entity, mirror, label_names(home_space),
                             category_names(home_space), translations)
@@ -1496,8 +1502,9 @@ def _view_integration(house: House, reference,
     # dell'integrazione sono tutte le sue entita' che hanno uno stato).
     own = [e for e in matching if visibility(e)[0] != "disabilitata"]
     disabled = [e for e in matching if visibility(e)[0] == "disabilitata"]
-    mute = [e for e in own if mirror.state.get(e["id"]) == "unavailable"]
-    unknown = [e for e in own if mirror.state.get(e["id"]) == "unknown"]
+    # I due stati dal vocabolario, col loro nome (B-09, B-55; Tappa 3, Task 8).
+    mute = [e for e in own if mirror.state.get(e["id"]) == STATE_UNAVAILABLE]
+    unknown = [e for e in own if mirror.state.get(e["id"]) == STATE_UNKNOWN]
     detail = {
         "esiste": True, "tipo": "integrazione", "dominio": domain,
         "voci": entries,

@@ -799,6 +799,15 @@ _vocabulary.extend("alarm_control_panel", working_states=Ours({
 #: qualsiasi darebbe a un tipo un fatto che non e' suo.
 ABSENT_STATE_FORMS = Ours({"none", ""})
 
+#: I due stati, ognuno col suo nome (B-09; Tappa 3, Task 8, 04/10/2026): chi
+#: deve distinguerli -- «muta» da «senza valore», la fonte di `House.source`
+#: -- li legge da qui, non li riscrive. Sono le costanti di Home Assistant
+#: (`homeassistant/const.py`, `STATE_UNAVAILABLE`, `STATE_UNKNOWN`), e
+#: `Entity._stringify_state` (`helpers/entity.py`) dice quale scrive quando:
+#: vedi il commento in `ha_vocabulary.py`.
+STATE_UNAVAILABLE = "unavailable"
+STATE_UNKNOWN = "unknown"
+
 #: Stati «non lo so», non stati della casa. Un riavvio di Home Assistant fa
 #: attraversare questi due a OGNI entita', di ogni tipo: come sopra, non sono
 #: di nessuno in particolare. **Non sono riposi** (correzione punto 2 del
@@ -808,7 +817,7 @@ ABSENT_STATE_FORMS = Ours({"none", ""})
 #: riscaldamento acceso, o una casa lasciata disarmata. La semantica giusta e'
 #: la TERZA, non «e' finito» ne' «e' cominciato»: una riga con questo stato si
 #: SALTA, e l'episodio in corso resta aperto ATTRAVERSO il buco.
-UNKNOWN_STATES = Ours({"unavailable", "unknown"})
+UNKNOWN_STATES = Ours({STATE_UNAVAILABLE, STATE_UNKNOWN})
 
 
 # «Da sapere subito»: i dodici tipi di genere `sicurezza` piu' i quattro sensori

@@ -140,6 +140,12 @@ def _device(row: dict) -> dict:
             "modello": clean_name(row.get("model")),
             "area_id": row.get("area_id"),
             "disabilitato": 1 if row.get("disabled_by") else 0,
+            # CHI l'ha spento, col valore di Home Assistant (Tappa 3, Task 8,
+            # 04/10/2026): `DeviceEntryDisabler` -- `user`, `integration`,
+            # `config_entry`, `device` (`helpers/device_registry.py`, tag
+            # 2026.9.4). Un'entita' spenta con `disabled_by: device` eredita
+            # da qui la sua causa (`House.source`).
+            "disabilitato_da": row.get("disabled_by") or None,
             "etichette": plain_list(row.get("labels"))}
 
 
@@ -168,7 +174,13 @@ def _integration(row: dict) -> dict:
             "titolo": clean_name(row.get("title")), "stato": row.get("state"),
             "motivo": clean_reason(row.get("reason")
                                    or row.get("error_reason_translation_key")),
-            "origine": row.get("source")}
+            "origine": row.get("source"),
+            # CHI l'ha spenta (Tappa 3, Task 8, 04/10/2026; B-25): fino a quel
+            # giorno il lettore lo buttava. `ConfigEntryDisabler` ha un valore
+            # solo, `user` (`config_entries.py`, tag 2026.9.4): un'istanza la
+            # spegne solo il proprietario, e le sue entita' ricevono
+            # `disabled_by: config_entry` -- la causa vera e' questa.
+            "disabilitata_da": row.get("disabled_by") or None}
 
 
 def _entity(row: dict) -> dict:

@@ -357,6 +357,37 @@ def _cosa_non_esiste(resolved: dict) -> str:
     return "; ".join(parts)
 
 
+def _without_state(eid: str, source) -> str:
+    """Perche' un'entita' nominata dal modello non si puo' comandare: non e'
+    nella macchina degli stati, e Home Assistant tocca solo cio' che c'e'.
+
+    La regola resta «ha uno stato» (B-04): e' quella di Home Assistant. Cambia
+    il MOTIVO (decisione del proprietario D8, «la causa dalla casa»,
+    03/10/2026; trovato 2, S-27): fino al 04/10/2026 un'entita' disabilitata
+    riceveva «non esiste in questa casa», che e' falso -- l'anagrafe la
+    conosce. Ora la causa viene da `House.source`, se chi chiama l'ha data.
+    """
+    answer = source(eid) if source is not None else None
+    state = (answer or {}).get("stato")
+    cause = (answer or {}).get("causa")
+    if state == "spenta_dal_proprietario":
+        return (f"l'entita' «{eid}» c'e' in questa casa ma e' disabilitata, spenta "
+                f"dal proprietario (disabled_by: {cause}): Home Assistant non la "
+                f"comanda finche' non viene riattivata.")
+    if state == "spenta_da_home_assistant":
+        return (f"l'entita' «{eid}» c'e' in questa casa ma e' disabilitata da Home "
+                f"Assistant o dalla sua integrazione (disabled_by: {cause}): non "
+                f"ha uno stato e non si puo' comandare.")
+    if state == "integrazione_ferma":
+        return (f"l'entita' «{eid}» c'e' in questa casa ma la sua integrazione non "
+                f"e' caricata (stato dell'istanza: {cause}): non ha uno stato da "
+                f"comandare finche' non riparte.")
+    if answer is not None and answer.get("nel_registro"):
+        return (f"l'entita' «{eid}» e' nel registro di Home Assistant ma non ha "
+                f"uno stato: non si puo' comandare.")
+    return f"l'entita' «{eid}» non esiste in questa casa."
+
+
 def _list(entries, count: int = 12) -> str:
     entries = sorted(entries)
     if len(entries) <= count:
@@ -466,13 +497,17 @@ def _capability_refusal(reading: str, domain: str, definition: dict, data: dict,
 
 
 def verification(call: dict, registry, states: dict[str, dict],
-             *, resolved: dict | None = None) -> Verdict:
+             *, resolved: dict | None = None, source=None) -> Verdict:
     """Il verdetto su una chiamata. `risolto` e' cio' che Home Assistant ha
     risposto su questo bersaglio (`ha_client.extract_from_target`), e serve
     solo ai bersagli che nominano aree, piani, etichette o dispositivi: su un
     bersaglio di sole entita' non si chiede niente a nessuno, ed e' voluto --
     un giro di rete per una cosa gia' scritta nella chiamata sarebbe un costo
-    senza una domanda."""
+    senza una domanda.
+
+    `source` e' la domanda della casa sulla fonte (`House.source`): serve
+    solo a dire PERCHE' un'entita' nominata non ha uno stato (D8). Senza,
+    il rifiuto dice «non esiste», come prima."""
     reading = call.get("servizio")
     if not isinstance(reading, str) or reading.count(".") != 1:
         return _no("il servizio va scritto come «dominio.servizio», "
@@ -520,7 +555,7 @@ def verification(call: dict, registry, states: dict[str, dict],
     nominate = ha_target.get("entity_id") or []
     for eid in nominate:
         if eid not in states:
-            return _no(f"l'entita' «{eid}» non esiste in questa casa.")
+            return _no(_without_state(eid, source))
         if domain not in _DOMINI_UNIVERSALI and domain_of(eid) != domain:
             return _no(f"«{reading}» non si applica a «{eid}», che e' del "
                        f"dominio «{domain_of(eid)}».")

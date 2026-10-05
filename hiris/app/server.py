@@ -82,7 +82,7 @@ from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
-from .mind.recipes import Recipe
+from .mind.recipes import Recipe, silent_entities, unread_series_reason
 from .mind.seed import (
     HOUSE_PRIORITY,
     REPO_PRIORITY,
@@ -1368,11 +1368,11 @@ async def backfill_one_report(app, ha_client, *,
         written = archivio.report(as_text)
         if written is None:
             try:
-                ricette, serie, nomi, without = await _report_ingredients(
+                ricette, serie, nomi, silent = await _report_ingredients(
                     app, ha_client, giorno=as_text, timezone=timezone)
                 aggregate_day(store=archivio, day=as_text, timezone=timezone,
                               recipes=ricette, series=serie, names=nomi,
-                              without_statistics=without,
+                              silent=silent,
                               judgments=app["type_judgments"])
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
@@ -1439,12 +1439,12 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
         try:
             if archivio.report(day) is not None:
                 continue
-            ricette, serie, nomi, without = await _report_ingredients(
+            ricette, serie, nomi, silent = await _report_ingredients(
                 app, ha_client, giorno=day, timezone=timezone)
             aggregate_day(
                 store=archivio, day=day, timezone=timezone,
                 recipes=ricette, series=serie, names=nomi,
-                without_statistics=without,
+                silent=silent,
                 judgments=app["type_judgments"])
             scritti.append(day)
         except Exception as error:
@@ -1783,7 +1783,9 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
                                      timezone: str | None):
     """Le ricette, le serie e i nomi che servono al resoconto di un giorno.
 
-    Torna `(ricette, serie, nomi, senza_statistiche)`. Ricette vuote -- nessun dispositivo ne ha
+    Torna `(ricette, serie, nomi, silent)`: `silent` sono le entita' che non
+    daranno una serie, ognuna col suo perche' (`recipes.silent_entities`), o
+    `None` se non si e' potuto chiedere. Ricette vuote -- nessun dispositivo ne ha
     una, o il sapere non e' collegato -- fanno un resoconto con la meta' delle
     misure vuota, ed e' un fatto vero su quella casa: si scrive.
 
@@ -1815,11 +1817,14 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     if "errore" in report:
         # **Un guasto delle statistiche non e' un resoconto senza misure.** Si
         # scrivono le ricette senza serie: ogni misura esce «non calcolabile»
-        # con la sua ragione, che e' la verita' -- e l'analista la vede
-        # sparire, che e' il suo terzo innesco.
+        # dicendo che le statistiche non si sono potute leggere -- e l'analista
+        # la vede sparire, che e' il suo terzo innesco. Fino al 04/10/2026
+        # questo commento lo prometteva e la misura diceva invece «la serie
+        # e' vuota» (trovato 7 del piano della Tappa 3, S-28).
         logger.warning("resoconto: statistiche non lette per %s (%s)",
                        giorno, report["errore"])
-        return ricette, {}, nomi, None
+        reason = unread_series_reason(str(report["errore"]))
+        return ricette, {}, nomi, {e: reason for e in entita}
     serie = {e: _punti_orari(report["serie"].get(e) or [])
              for e in entita}
     # **Quali di queste entita' non avranno MAI una serie** (spec §6, primo
@@ -1831,14 +1836,17 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     if isinstance(with_statistics, dict):  # la busta del guasto (D3)
         logger.warning("resoconto: elenco delle statistiche non letto (%s): %s",
                        with_statistics.get("causa"), with_statistics.get("errore"))
-    without = (None if isinstance(with_statistics, dict)
-             else {e for e in entita if e not in with_statistics})
-    if without:
+        return ricette, serie, nomi, None
+    # Il perche' di ognuna dalla FONTE (B-26 meta'; Tappa 3, Task 8): la
+    # stessa casa del giro, con l'elenco appena letto -- nessuna seconda
+    # lettura di `recorder/list_statistic_ids`.
+    silent = silent_entities(house.with_statistics(with_statistics), entita)
+    if silent:
         logger.info(
             "resoconto: %d entita' su %d nominate dalle ricette non hanno "
-            "statistiche in Home Assistant -- le loro misure lo diranno",
-            len(without), len(entita))
-    return ricette, serie, nomi, without
+            "statistiche in Home Assistant -- le loro misure diranno perche'",
+            len(silent), len(entita))
+    return ricette, serie, nomi, silent
 
 
 #: Quanto vale una lettura di `statistic_ids` per i giri che la condividono
@@ -3761,7 +3769,8 @@ async def _on_startup(app: web.Application) -> None:
     # via `create_tool_dispatcher`, lo schedulatore e il brain
     # domani, senza che ne nasca una seconda.
     app["action_actuator"] = ActionActuator(ha_client, app["service_registry"],
-                                      app.get("entity_cache"), app["journal"])
+                                      app.get("entity_cache"), app["journal"],
+                                      home_space_store=app.get("home_space_store"))
 
     # L'archivio delle costruzioni e l'officina (fetta «costruire»,
     # docs/design/2026-08-22-costruire-in-home-assistant.md). Nascono QUI e non
@@ -4409,12 +4418,12 @@ async def _on_startup(app: web.Application) -> None:
             # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
             # delle entita' che nominano chieste una volta per giro, non una
             # per dispositivo.
-            ricette, serie, nomi, without = await _report_ingredients(
+            ricette, serie, nomi, silent = await _report_ingredients(
                 app, ha_client, giorno=ieri, timezone=timezone)
             count = aggregate_day(
                 store=app["observations"], day=ieri, timezone=timezone,
                 recipes=ricette, series=serie, names=nomi,
-                without_statistics=without,
+                silent=silent,
                 judgments=app["type_judgments"])
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
