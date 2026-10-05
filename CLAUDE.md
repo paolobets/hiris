@@ -343,7 +343,12 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
 - **Conferma esplicita dell'utente** prima di ogni commit, push o tag.
 - **Uno sprint è completo su tutta la codebase toccata**, non solo sul file d'ingresso.
 - Un nuovo kwarg di `ClaudeRunner` deve essere accettato **anche** da `OpenAICompatRunner`, o i
-  backend non-Claude si rompono in silenzio.
+  backend non-Claude si rompono in silenzio. **Vale anche dall'altra parte della chiamata**: un
+  attributo che si legge dal runner *dopo* `chat()` (`last_tool_calls`, `last_truncated`,
+  `last_tool_leaked`, `provider_name`) lo portano tutti e due i runner e il router, e `chat()` lo
+  azzera all'ingresso -- letto con `getattr(..., ripiego)`, su un backend che non lo scrive il
+  segnale tace senza errori. Lo difende `tests/test_runner_after_call.py`, che chiede l'elenco al
+  sorgente; un'assenza voluta si ammette lì, con la ragione.
 - Impostazione tecnica nuova: **prima nella UI dell'add-on**, poi come variabile d'ambiente. Una
   env var che `run.sh` non esporta è di fatto una costante.
 - Frontend: interpellare l'agente `ux-ui-specialist` prima di disegnare.
