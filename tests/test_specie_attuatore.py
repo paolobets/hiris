@@ -101,3 +101,19 @@ def test_derivazione_guarda_prodotto():
         (APP / "steering.py").read_text(encoding="utf-8")))
         if isinstance(n, ast.Constant)}
     assert GUARDED <= in_steering
+
+
+def test_il_glossario_nomina_ogni_specie_di_turno():
+    """B14 (approvata il 05/10/2026): la parola e' «specie di turno», e la sua
+    riga in «I concetti» dice quali sono. Le specie si chiedono a
+    `steering.SPECIE`: una specie nuova senza la sua parola nel glossario e'
+    rossa.
+
+    Mutazione eseguita: tolta «ricette» dalla riga -> rossa."""
+    glossary = (APP.parents[1] / "docs" / "GLOSSARIO.md").read_text(encoding="utf-8")
+    rows = [line for line in glossary.splitlines() if line.startswith("| specie di turno |")]
+    assert len(rows) == 1, rows
+    # L'elenco e' l'inciso fra i due « -- » della definizione: una specie
+    # nominata altrove nella riga non lo sostituisce.
+    listed = {word.strip() for word in rows[0].split(" -- ")[1].split(",")}
+    assert listed == set(steering.SPECIE), sorted(listed ^ set(steering.SPECIE))
