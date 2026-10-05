@@ -157,6 +157,25 @@ def test_spenta_con_la_sua_istanza_o_il_suo_dispositivo_e_del_proprietario(entit
     assert fonte["spenta_da"] == "user"
 
 
+def test_l_istanza_spenta_non_letta_resta_del_proprietario():
+    """Con il registro delle istanze caduto la catena di `_switched_off_by` non
+    si legge, ma per `config_entry` non serve: `ConfigEntryDisabler` ha un
+    valore solo, `user` (`homeassistant/config_entries.py` al tag 2026.9.4,
+    letto il 05/10/2026), e Home Assistant scrive `config_entry` su
+    un'entita' o un dispositivo solo quando la sua istanza e' spenta
+    (`entity_registry.async_config_entry_disabled_by_changed`,
+    `DeviceEntry._async_config_entry_disabled_by`). Fino al 05/10/2026 qui
+    usciva «spenta da Home Assistant»: un'affermazione falsa al posto di un
+    fatto certo (revisione cloud, giro 1, R2)."""
+    registries = {"entita": [_entity("light.x", entry="e_ignota",
+                                     disabled_by="config_entry")]}
+    fonte = House(build_home_space(registries), live_mirror([]),
+                  unavailable=("integrazioni",)).source("light.x")
+    assert fonte["stato"] == "spenta_dal_proprietario"
+    assert fonte["causa"] == "config_entry"
+    assert fonte["spenta_da"] == "user"
+
+
 def test_l_istanza_viaggia_con_la_fonte():
     """Atomicita': chi riceve «integrazione ferma» sa quale, e in che stato."""
     fonte = _house().source("light.di_istanza_che_ritenta")

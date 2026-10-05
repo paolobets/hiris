@@ -67,7 +67,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field as _field
 
-from ..home_space.ha_vocabulary import domain_of
+from ..home_space.ha_vocabulary import STATISTICS_DOMAIN, domain_of
 from .operations import (
     REGISTRY,
     SHAPE_RESULT,
@@ -91,10 +91,8 @@ STEP_MARK = "$"
 # `state_class` lo dichiaravano. Ora la causa viene dalla fonte
 # (`House.source`), e il testo la dice.
 
-#: Il dominio per cui Home Assistant compila statistiche (vedi il commento
-#: «quali `state_class` producono statistiche» in `ha_vocabulary.py`, letto
-#: nel sorgente al tag 2026.9.1).
-_STATISTICS_DOMAIN = "sensor"
+# Il dominio per cui Home Assistant compila statistiche e' quello della regola
+# unica (B-12): `ha_vocabulary.STATISTICS_DOMAIN`, chiesto e non ricopiato.
 
 
 def silence_reason(entity_id: str, source: dict | None,
@@ -120,9 +118,9 @@ def silence_reason(entity_id: str, source: dict | None,
     if state == "sparita":
         return (f"{entity_id} e' nel registro di Home Assistant ma non ha uno "
                 f"stato: {never}")
-    if domain_of(entity_id) != _STATISTICS_DOMAIN:
+    if domain_of(entity_id) != STATISTICS_DOMAIN:
         return (f"{entity_id} non ha statistiche in Home Assistant: le compila "
-                f"solo per i `{_STATISTICS_DOMAIN}`, e questa e' "
+                f"solo per i `{STATISTICS_DOMAIN}`, e questa e' "
                 f"«{domain_of(entity_id)}» -- {never}")
     if not state_class:
         return (f"{entity_id} non ha statistiche in Home Assistant: non dichiara "

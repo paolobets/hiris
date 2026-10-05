@@ -172,3 +172,24 @@ def test_il_segno_dell_id_si_scrive_solo_in_topology():
                     for part in node.values):
                 found.append(f"{path.relative_to(ROOT)}:{node.lineno}")
     assert found == []
+
+
+def test_il_dispositivo_senza_nome_ha_lo_stesso_nome_da_ogni_porta():
+    """Un dispositivo senza nome in Home Assistant (`name_by_user` e `name`
+    entrambi nullable, `reader._device`) si chiama col suo id (A-16,
+    `topology.device_name`). Fino al 05/10/2026 `where` diceva `nome: None`
+    mentre `House.name` e la scheda del dispositivo dicevano l'id: lo stesso
+    oggetto con due nomi a seconda della porta (fondamenta 3; revisione
+    cloud, giro 1, R1)."""
+    from hiris.app.home_space.reader import build_home_space
+    from hiris.app.home_space.topology import live_mirror
+
+    registries = {
+        "entita": [{"entity_id": "light.x", "platform": "hue", "device_id": "d1",
+                    "disabled_by": None, "hidden_by": None}],
+        "dispositivi": [{"id": "d1", "name": None, "name_by_user": None}],
+    }
+    house = House(build_home_space(registries), live_mirror([]))
+    assert house.where("light.x")["dispositivo"] == {"id": "d1", "nome": "d1"}
+    assert house.where("light.x")["dispositivo"]["nome"] == house.name("dispositivo", "d1")
+    assert view(house, [], [], "dispositivo", "d1")["nome"] == "d1"
