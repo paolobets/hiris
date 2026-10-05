@@ -303,7 +303,8 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     archivi, con la STESSA funzione del ramo sincrono.
     """
     from ..api.handlers_home_space import compose_briefing
-    from ..api.handlers_models import _STORE_DEFAULTS
+    from ..api.handlers_models import bridge_deadline_min
+    from ..reasoning.queue import PRIORITY_BACKGROUND
 
     try:
         briefing, _summary = compose_briefing(app)
@@ -314,8 +315,7 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
 
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
     # l'utente cambia dev'essere quella che il turno subisce.
-    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     app["reasoning_queue"].enqueue(
         "promessa",
@@ -340,6 +340,9 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
         # filo serve a chi consegna l'esito, e `claimed_chat` continua a non
         # vedere questo job perche' filtra `kind='chat'`.
         thread=promise.get("thread"),
+        # La promessa sta con i turni del cervello: solo la chat passa avanti
+        # (D4 della Tappa 6).
+        priority=PRIORITY_BACKGROUND,
     )
     logger.info("promessa %s: turno accodato al piano (scadenza %d min)",
                 promise["id"], deadline_min)

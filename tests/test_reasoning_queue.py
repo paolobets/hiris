@@ -209,7 +209,9 @@ def test_migrazione_aggiunge_le_colonne_senza_perdere_righe(tmp_path):
     # La migrazione e' davvero girata (non solo "non e' esploso"): la
     # versione e' salita e l'indice del filo esiste, sulle colonne appena
     # aggiunte.
-    assert q._conn.execute("PRAGMA user_version").fetchone()[0] == 3
+    # Versione 4 dalla Tappa 6 (Task 2, la precedenza): la catena delle
+    # migrazioni porta un archivio v2 fino in cima.
+    assert q._conn.execute("PRAGMA user_version").fetchone()[0] == 4
     indici = {r["name"] for r in
               q._conn.execute("PRAGMA index_list(reasoning_jobs)").fetchall()}
     assert "idx_reasoning_thread" in indici

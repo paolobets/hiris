@@ -30,6 +30,7 @@ from .api.handlers_chat_history import (
 from .api.handlers_config import handle_config
 from .api.handlers_misure import handle_misure
 from .api.handlers_models import (
+    bridge_deadline_min,
     handle_get_models_config,
     handle_list_models,
     handle_save_models_config,
@@ -99,6 +100,7 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
+from .reasoning.queue import PRIORITY_BACKGROUND
 from .steering import declare_downgrade, misura_turno, who_answers
 from .version import read_version
 
@@ -149,8 +151,13 @@ def _close_expired_promise(app, job: dict) -> None:
         # riapre. E' lo stesso ordine di controlli della consegna
         # (`handlers_reasoning`), per la stessa ragione.
         return
-    minuti = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", 5))
+    # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
+    # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
+    # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
+    # che il registro degli esiti riceve qui sotto: una sola, letta una volta.
+    durata_s = (float(job.get("deadline_ts", 0.0))
+                - float(job.get("created_ts", 0.0)))
+    minuti = round(durata_s / 60)
     reason = (f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
               "risposto: non so cosa dirti.")
     # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
@@ -168,8 +175,7 @@ def _close_expired_promise(app, job: dict) -> None:
         registry.fallimento(
             "subscription", family="scaduto", code=None,
             message="nessuna conclusione entro la scadenza del ponte (promessa)",
-            durata_s=float(job.get("deadline_ts", 0.0))
-            - float(job.get("created_ts", 0.0)))
+            durata_s=durata_s)
     logger.warning(
         "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
         ident, minuti)
@@ -2354,7 +2360,6 @@ async def _collect_actuator_turn(app, store, today: str,
 
 def _enqueue_actuator_turn(app, day: str) -> dict | None:
     """Accoda al piano la domanda dell'attuatore, e torna subito."""
-    from .api.handlers_models import _STORE_DEFAULTS
     store = app.get("observations")
     analysis = store.analysis(day) if store is not None else None
     if analysis is None:
@@ -2366,12 +2371,11 @@ def _enqueue_actuator_turn(app, day: str) -> dict | None:
     job = {"history": [{"role": "user", "content": question}],
            "system_prompt": actuator_turn.SYSTEM,
            "istruzione": actuator_turn.ANSWER_CONTRACT}
-    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     app["reasoning_queue"].enqueue(
         actuator_turn.ACTUATION_TURN_KIND, {"giorno": day}, job,
-        now + deadline_min * 60, now=now)
+        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
     logger.info("attuatore: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
     return {"accodata": True, "giorno": day}
@@ -2406,19 +2410,17 @@ def _write_analysis(store, day: str, esito: dict) -> None:
 
 def _enqueue_analyst_turn(app, series: dict, day: str) -> dict | None:
     """Accoda al piano la domanda dell'analista, e torna subito."""
-    from .api.handlers_models import _STORE_DEFAULTS
     job = analyst_turn.bridge_turn(series)
     if job is None:
         return None
-    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     # **Nella sveglia va il giorno**: il ponte risponde minuti dopo, da un
     # altro processo, e chi raccoglie deve sapere di QUALE giorno era la
     # domanda -- e con quali serie confrontarla.
     app["reasoning_queue"].enqueue(
         analyst_turn.ANALYSIS_TURN_KIND, {"giorno": day}, job,
-        now + deadline_min * 60, now=now)
+        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
     logger.info("analista: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
     return {"accodata": True, "giorno": day}
@@ -2638,13 +2640,11 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
                          with_series: set[str] | None = None,
                          energy: dict | None = None) -> dict | None:
     """Accoda al piano la domanda su un dispositivo, e torna subito."""
-    from .api.handlers_models import _STORE_DEFAULTS
     job = recipe_turn.bridge_turn(objective, house, device_id,
                                   with_series=with_series, energy=energy)
     if job is None:
         return None
-    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     app["reasoning_queue"].enqueue(
         recipe_turn.RECIPE_TURN_KIND,
@@ -2652,7 +2652,7 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
         # da un altro processo, e chi raccoglie deve sapere di CHI era la
         # domanda. `submit` azzera il contesto e non la sveglia.
         {"dispositivo": device_id},
-        job, now + deadline_min * 60, now=now)
+        job, now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
     logger.info("ricette: turno accodato al piano per «%s» (scadenza %d min)",
                 device_id, deadline_min)
     return {"accodata": True, "dispositivo": device_id}
@@ -3020,9 +3020,7 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
     subisce, e una terza fonte per lo stesso numero sarebbe la terza che
     diverge.
     """
-    from .api.handlers_models import _STORE_DEFAULTS
-    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     app["reasoning_queue"].enqueue(
         SCOPE_TURN_KIND,
@@ -3036,7 +3034,7 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
          "lotto": sorted(lotto), "annota": annota, "campagna_ts": campagna_ts},
         observer_bridge_turn(store, house, lotto),
         now + deadline_min * 60,
-        now=now)
+        now=now, priority=PRIORITY_BACKGROUND)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
     # poterlo dire: senza, qualche minuto di attesa legittima e'
     # indistinguibili da un guasto -- che e' precisamente la confusione da cui
@@ -4633,8 +4631,7 @@ async def _on_startup(app: web.Application) -> None:
         # Il doppio, e non la scadenza secca, perche' il ripiego COMINCIA alla
         # scadenza: il margine e' il tempo che la catena ha per rispondere.
         reasoning_queue.fail_stuck_downgrades(
-            _time.time() - 2 * 60 * int(
-                (app.get("models_config") or {}).get("ponte", {}).get("scadenza_min", 5)))
+            _time.time() - 2 * 60 * bridge_deadline_min(app.get("models_config")))
         # **Le risposte consegnate si dimenticano** (reperto C-6,
         # 23/09/2026). La domanda si azzera alla consegna da sempre
         # (`submit`); la risposta restava fino alla potatura a sette giorni,

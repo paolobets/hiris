@@ -31,7 +31,11 @@ CREATE TABLE IF NOT EXISTS reasoning_jobs (
     -- nomi di `chat_sessions`/`costruzioni` (spec §2). NULL per i job che non
     -- ne portano uno (le altre specie, o una riga scritta prima di questa
     -- versione) -- non se ne inventa uno.
-    subject_key TEXT, entry_point TEXT
+    subject_key TEXT, entry_point TEXT,
+    -- La PRECEDENZA (Tappa 6, Task 2, D4 approvata il 05/10/2026): chi ha il
+    -- numero piu' alto si serve prima, a pari numero chi e' arrivato prima.
+    -- Colonna nuova, quindi in inglese, come `delivered_ts`.
+    priority INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_reasoning_status ON reasoning_jobs(status, created_ts);
 """
@@ -51,6 +55,20 @@ CREATE INDEX IF NOT EXISTS idx_reasoning_status ON reasoning_jobs(status, create
 _IDX_THREAD_SQL = ("CREATE INDEX IF NOT EXISTS idx_reasoning_thread "
                     "ON reasoning_jobs(kind, subject_key, entry_point, status)")
 
+#: **La precedenza di un turno sul ponte** (Tappa 6, Task 2; D4 del piano,
+#: approvata da Paolo il 05/10/2026). Il ponte e' una corsia sola: fino alla
+#: Tappa 6 `claim` serviva chi era arrivato prima, e una domanda in chat
+#: aspettava dietro ai turni del cervello. La chat ha la precedenza piu' alta;
+#: tutti gli altri turni stanno sotto, fra loro nell'ordine d'arrivo.
+#:
+#: Due valori e non uno per specie: la sola decisione presa e' «la chat passa
+#: avanti» (spec §4.3). Ogni accodamento la DICHIARA (`priority=`, provato da
+#: `tests/test_reasoning_priority.py` sul sorgente); il Task 7 la fa leggere
+#: dalla dichiarazione della specie di turno.
+PRIORITY_CHAT = 1
+PRIORITY_BACKGROUND = 0
+
+
 def _row(r) -> dict:
     # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
     # (Task 14): chi ripiega alla scadenza registra nel registro degli esiti
@@ -62,6 +80,7 @@ def _row(r) -> dict:
             "nonce": r["nonce"], "wake": json.loads(r["wake_json"]),
             "context": json.loads(r["context_json"]),
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"],
+            "priority": r["priority"],
             "thread": ChatThread(r["subject_key"], r["entry_point"])
                        if r["subject_key"] else None}
 
@@ -95,12 +114,27 @@ def _migration_3(conn) -> None:
         conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN entry_point TEXT")
 
 
+def _migration_4(conn) -> None:
+    """Versione 4 (Tappa 6, Task 2): la precedenza del turno.
+
+    Stesso schema di `_migration_2` e `_migration_3`: la colonna si aggiunge
+    solo se manca. Le righe di prima prendono `PRIORITY_BACKGROUND` (il
+    `DEFAULT 0`): un turno accodato prima di questa versione si serve
+    nell'ordine d'arrivo, com'era quando e' stato accodato."""
+    colonne = {r[1] for r in conn.execute(
+        "PRAGMA table_info(reasoning_jobs)").fetchall()}
+    if "priority" not in colonne:
+        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN "
+                     "priority INTEGER NOT NULL DEFAULT 0")
+
+
 class ReasoningQueue:
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3,
-                    migrations={2: _migration_2, 3: _migration_3})
+        init_schema(self._conn, _SCHEMA, version=4,
+                    migrations={2: _migration_2, 3: _migration_3,
+                                4: _migration_4})
         # Qui e non dentro `_migration_3`, e non dentro `_SCHEMA`: e' l'UNICO
         # punto in cui le colonne esistono sempre, per costruzione, qualunque
         # sia stata la strada per arrivarci -- appena nato (`_SCHEMA` le
@@ -120,24 +154,30 @@ class ReasoningQueue:
 
     def enqueue(self, kind: str, wake: dict, context: dict, deadline_ts: float,
                 *, job_id: str | None = None, now: float,
-                thread: ChatThread | None = None) -> str:
+                thread: ChatThread | None = None,
+                priority: int = PRIORITY_BACKGROUND) -> str:
         jid = job_id or secrets.token_urlsafe(12)
         with self._lock:
             self._conn.execute(
                 "INSERT INTO reasoning_jobs(job_id,kind,wake_json,context_json,"
-                "status,deadline_ts,created_ts,subject_key,entry_point) "
-                "VALUES(?,?,?,?, 'pending', ?, ?, ?, ?)",
+                "status,deadline_ts,created_ts,subject_key,entry_point,priority) "
+                "VALUES(?,?,?,?, 'pending', ?, ?, ?, ?, ?)",
                 (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now,
                  thread.subject_key if thread else None,
-                 thread.entry_point if thread else None))
+                 thread.entry_point if thread else None, int(priority)))
             self._conn.commit()
         return jid
 
     def claim(self, now: float) -> dict | None:
+        """Il prossimo turno da servire: la precedenza piu' alta, poi il
+        piu' vecchio (D4 della Tappa 6). Uno scaduto non si serve mai: lo
+        chiude `sweep_expired`, e servirlo vorrebbe dire pagare una risposta
+        che `submit` rifiutera'."""
         with self._lock:
             r = self._conn.execute(
                 "SELECT * FROM reasoning_jobs WHERE status='pending' AND deadline_ts > ? "
-                "ORDER BY created_ts ASC, id ASC LIMIT 1", (now,)).fetchone()
+                "ORDER BY priority DESC, created_ts ASC, id ASC LIMIT 1",
+                (now,)).fetchone()
             if r is None:
                 return None
             nonce = secrets.token_urlsafe(16)
