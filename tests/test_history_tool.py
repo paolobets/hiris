@@ -249,6 +249,12 @@ _GESTORE_ATTESO = {"search": "_search", "related": "_related", "remember": "_rem
                    "confirm": "_confirm", "history": "_history", "calendar": "_calendar"}
 
 
+# Un valore valido per ogni `type` dello schema: dal Task 3 della Tappa 5 il
+# tipo si valida in `dispatch`, prima del gestore.
+_CAMPIONE = {"string": "x", "object": {}, "array": [], "integer": 1,
+             "number": 1, "boolean": True}
+
+
 @pytest.mark.asyncio
 async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore(monkeypatch):
     """Da `test_historian_tools.py`: si chiama DAVVERO `dispatch`, e ogni riga
@@ -266,8 +272,10 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore(monkeypatch):
             tool, handler=lambda _d, _a, _m=marcatore, **_o: _m))
         d = ToolDispatcher(object(), object(), ha=object(), actuator=object(),
                            agenda=object(), workshop=object(), thread=object())
-        obbligatori = tool.definition["input_schema"].get("required", [])
-        esito = await d.dispatch(tool.name, {campo: "x" for campo in obbligatori})
+        schema = tool.definition["input_schema"]
+        esito = await d.dispatch(tool.name, {
+            campo: _CAMPIONE[schema["properties"][campo]["type"]]
+            for campo in schema.get("required", [])})
         assert esito == marcatore, tool.name
 
 

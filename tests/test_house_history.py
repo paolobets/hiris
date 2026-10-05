@@ -133,11 +133,9 @@ def test_i_filtri_di_chi_sono_quelli_di_search():
     ({"ore": 0}, "ore va da piu' di 0"),
     ({"ore": 3000}, "ore va da piu' di 0"),
     ({"ore": "tante"}, "ore vuole un numero"),
-    ({"genere": "giorni"}, "genere «giorni» sconosciuto"),
     ({"livello": "ERROR"}, "livello vale solo con genere=errori"),
     ({"esecuzione": "r1"}, "esecuzione vale solo con genere=esecuzioni"),
     ({"genere": "errori", "area": "Cucina"}, "area: non vale per genere=errori"),
-    ({"genere": "errori", "livello": "DEBUG"}, "livello accetta"),
     ({"genere": "esecuzioni", "riferimento": "light.cucina_1"},
      "non e' un'automazione ne' uno script"),
     ({"genere": "esecuzioni", "tipo": "light"}, "tipo accetta automation o script"),
@@ -172,11 +170,9 @@ def test_adesso_col_suo_orologio_vero_non_e_nel_futuro(argomenti):
 
 def test_gli_errori_accettano_integrazione_e_livello():
     """Spec §2: per `errori` valgono solo `integrazione` e `livello`, e il
-    livello si porta in maiuscolo.
-
-    Mutazione ESEGUITA: `level = str(a["livello"]).strip()` senza `.upper()`
-    -- rossa."""
-    query = _q(genere="errori", integrazione="zha", livello="error")
+    livello e' uno di `LEVELS`, come lo dichiara lo schema (dal 05/10/2026 un
+    livello fuori vocabolario, maiuscole comprese, lo rifiuta `dispatch`)."""
+    query = _q(genere="errori", integrazione="zha", livello="ERROR")
     assert (query.kind, query.who.platform, query.level) == ("errori", "zha", "ERROR")
 
 

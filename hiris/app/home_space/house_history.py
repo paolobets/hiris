@@ -211,9 +211,10 @@ def parse_query(arguments: dict, *, now: float,
                 timezone: str | None) -> HistoryQuery | dict:
     """Gli argomenti di `history` -> una domanda validata, o `{"errore"}`."""
     a = dict(arguments or {})
+    # `genere` e `livello` fuori vocabolario li rifiuta `ToolDispatcher.
+    # dispatch` contro l'`enum` dello schema (`KINDS`, `LEVELS`): fino al
+    # 05/10/2026 si rivalidavano anche qui (D-40).
     kind = a.get("genere") or "stati"
-    if kind not in KINDS:
-        return {"errore": f"genere «{kind}» sconosciuto: {', '.join(KINDS)}"}
     wrong = _wrong_for_kind(kind, a)
     if wrong:
         return {"errore": wrong}
@@ -223,11 +224,7 @@ def parse_query(arguments: dict, *, now: float,
     who = parse_filters({key: a[key] for key in _WHO_KEYS if key in a})
     if isinstance(who, dict):
         return who
-    level = None
-    if _given(a, "livello"):
-        level = str(a["livello"]).strip().upper()
-        if level not in LEVELS:
-            return {"errore": f"livello accetta {', '.join(LEVELS)}"}
+    level = a["livello"] if _given(a, "livello") else None
     run_id = a.get("esecuzione")
     if run_id is not None:
         if not isinstance(run_id, str) or not run_id.strip():

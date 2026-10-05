@@ -93,13 +93,14 @@ def _calls_the_ceiling(function) -> bool:
 def test_nessun_gestore_chiede_il_soffitto_da_se():
     """D-23: il soffitto si chiede in `dispatch`, dalla riga, e in nessun
     gestore. I gestori si chiedono alla tabella, insieme ai metodi di
-    `ToolDispatcher` che non sono `dispatch` ne' il soffitto stesso: un
+    `ToolDispatcher` che non sono `dispatch` (col suo giro, `_serve`) ne' il
+    soffitto stesso: un
     metodo d'appoggio (`_full_detail_sync`) che lo richiedesse sarebbe la
     stessa copia un livello piu' in basso."""
     handlers = {tool.handler for tool in TOOLS}
     assert len(handlers) == len(TOOLS)
     methods = {member for name, member in inspect.getmembers(ToolDispatcher, inspect.isfunction)
-               if name not in ("dispatch", "_ceiling_denies", "_refusal")}
+               if name not in ("dispatch", "_serve", "_ceiling_denies", "_refusal")}
     assert handlers <= methods
     offenders = sorted(function.__name__ for function in methods if _calls_the_ceiling(function))
     assert offenders == []
@@ -122,3 +123,89 @@ async def test_le_righe_col_filo_rifiutano_un_turno_senza_filo(name, monkeypatch
 
     assert answer == {"errore": tools._NO_THREAD_REFUSAL}
     assert recorder.calls == []
+
+
+# --- gli argomenti contro lo schema (Task 3: D-40, D-41) ----------------------
+
+def _schema(name: str) -> dict:
+    return tools._TOOL_PER_NAME[name].definition["input_schema"]["properties"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("name", "key", "value"), [
+    ("search", "genere", "xyz"),
+    ("search", "ordina", "data"),
+    ("history", "genere", "giorni"),
+    ("history", "livello", "error"),
+])
+async def test_un_valore_fuori_dall_enum_e_rifiutato_col_vocabolario(name, key, value,
+                                                                     monkeypatch):
+    """D-40: il vocabolario si chiede allo schema della definizione, non si
+    rivalida a mano nel parser (`parse_filters`, `parse_query`, che fino al
+    05/10/2026 lo facevano). Il gestore non viene chiamato, e il rifiuto
+    elenca i valori ammessi, chiesti allo schema.
+
+    Mutazione ESEGUITA il 05/10/2026, la prova della derivazione: un valore
+    in piu' nell'`enum` di `genere` in `SEARCH_TOOL_DEF` (`list(KINDS) +
+    ["xyz"]`), e nient'altro toccato. `xyz` arriva al gestore (rossa qui
+    con `[{'genere': 'xyz'}] == []`): la validazione segue lo schema, non
+    una lista sua."""
+    recorder = _Recorder()
+    monkeypatch.setitem(tools._TOOL_PER_NAME, name,
+                        replace(tools._TOOL_PER_NAME[name], handler=recorder))
+    answer = await ToolDispatcher(object(), None, ha=object()).dispatch(name, {key: value})
+    assert recorder.calls == []
+    message = answer["errore"]
+    assert f"«{key}» vale uno fra" in message and f"«{value}»" in message
+    for allowed in _schema(name)[key]["enum"]:
+        assert f"«{allowed}»" in message, allowed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("name", "arguments", "words"), [
+    ("history", {"limite": "dieci"}, "un intero"),
+    ("search", {"in_esecuzione": "false"}, "vero o falso"),
+    ("search", {"sopra": True}, "un numero"),
+    ("search", {"riferimento": 1.5}, "un testo o un intero"),
+    ("calendar", {"giorni_avanti": "molti"}, "un numero"),
+])
+async def test_un_valore_del_tipo_sbagliato_e_rifiutato(name, arguments, words, monkeypatch):
+    """D-40: il `type` dello schema. Un `"false"` per un booleano oggi
+    diventava VERO (`bool("false")`); un `"dieci"` per `limite` aveva un
+    rifiuto suo, scritto a mano nel parser."""
+    recorder = _Recorder()
+    monkeypatch.setitem(tools._TOOL_PER_NAME, name,
+                        replace(tools._TOOL_PER_NAME[name], handler=recorder))
+    answer = await ToolDispatcher(object(), None, ha=object()).dispatch(name, arguments)
+    assert recorder.calls == []
+    key = next(iter(arguments))
+    assert f"«{key}» vuole {words}" in answer["errore"], answer
+
+
+@pytest.mark.asyncio
+async def test_un_intero_scritto_come_numero_con_la_virgola_passa(monkeypatch):
+    """JSON Schema: `10.0` e' un intero. Un modello che scrive i numeri come
+    numeri non va rifiutato per la forma."""
+    recorder = _Recorder()
+    monkeypatch.setitem(tools._TOOL_PER_NAME, "search",
+                        replace(tools._TOOL_PER_NAME["search"], handler=recorder))
+    answer = await ToolDispatcher(object(), None).dispatch(
+        "search", {"limite": 10.0, "genere": "area", "riferimento": 7})
+    assert answer == {"chiamato": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", [5, "abc", ["a"]])
+async def test_argomenti_che_non_sono_un_oggetto_rispondono_errore(arguments):
+    """D-41: la validazione sta DENTRO la rete di `dispatch`. Con `5` oggi
+    solleva (`TypeError` fuori dal `try`); con `"abc"` rispondeva «non
+    conosco «a», «b», «c»»."""
+    answer = await ToolDispatcher(object(), None).dispatch("search", arguments)
+    assert "errore" in answer
+    assert "oggetto" in answer["errore"], answer
+
+
+@pytest.mark.asyncio
+async def test_uno_strumento_sconosciuto_risponde_errore():
+    answer = await ToolDispatcher(None, None).dispatch("fetchh", {})
+    assert "errore" in answer and "«fetchh»" in answer["errore"]

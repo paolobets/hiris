@@ -454,11 +454,12 @@ def test_un_dispositivo_disabilitato_e_fuori_e_contato():
 
 
 @pytest.mark.parametrize("argomenti", [{"limite": 51}, {"fermo_da": "tre giorni"},
-                                       {"genere": "piano"}, {"sopra": "x"}])
+                                       {"sopra": "x"}])
 def test_un_filtro_sbagliato_si_dice_non_si_indovina(argomenti):
     """Mutazione ESEGUITA, una per caso: togliere il tetto di `limite`, il
-    controllo della durata, quello del genere, quello del numero -- ognuna
-    rossa sul proprio caso."""
+    controllo della durata, quello del numero -- ognuna rossa sul proprio
+    caso. Il genere fuori vocabolario lo rifiuta lo schema in `dispatch` dal
+    05/10/2026 (`tests/test_tabella_strumenti.py`, D-40)."""
     assert "errore" in hq.parse_filters(argomenti)
 
 

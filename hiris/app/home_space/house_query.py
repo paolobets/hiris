@@ -126,11 +126,9 @@ def parse_filters(arguments: dict) -> HouseFilters | dict:
                       ("integrazione", "platform"), ("ordina", "order_by")):
         if a.get(key) not in (None, ""):
             fields[attr] = str(a[key])
-    if fields.get("kind") and fields["kind"] not in KINDS:
-        return {"errore": f"genere «{fields['kind']}» sconosciuto: "
-                          f"{', '.join(KINDS)}"}
-    if fields.get("order_by") and fields["order_by"] not in ORDERS:
-        return {"errore": f"ordina accetta {', '.join(ORDERS)}"}
+    # `genere` e `ordina` fuori vocabolario li rifiuta `ToolDispatcher.
+    # dispatch` contro l'`enum` dello schema (`KINDS`, `ORDERS`), prima di
+    # arrivare qui: fino al 05/10/2026 si rivalidavano anche qui (D-40).
     for key, attr in (("fermo_da", "idle_for_s"),
                       ("cambiato_da", "changed_within_s")):
         if a.get(key) is not None:

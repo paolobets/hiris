@@ -116,8 +116,8 @@ async def test_un_filtro_sbagliato_torna_l_errore_della_porta(dispatcher):
     """`parse_filters` dice cosa non va: `_search` lo restituisce com'e'.
     Mutazione ESEGUITA: passare a `query_house` anche un esito d'errore --
     rossa (AttributeError, dichiarato come guasto dello strumento)."""
-    r = await dispatcher.dispatch("search", {"genere": "piano"})
-    assert r["errore"].startswith("genere «piano» sconosciuto")
+    r = await dispatcher.dispatch("search", {"fermo_da": "tre giorni"})
+    assert r["errore"].startswith("fermo_da vuole una durata")
 
 
 @pytest.mark.asyncio

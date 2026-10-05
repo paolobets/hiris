@@ -1133,6 +1133,52 @@ def _quoted(names) -> str:
     return ", ".join(f"«{n}»" for n in names)
 
 
+#: Come si dice al modello, in italiano, ogni `type` di JSON Schema che il
+#: catalogo usa. E' la traduzione del confine fra lo schema e la frase del
+#: rifiuto, scritta qui una volta: i tipi sono quelli di JSON Schema, non nostri.
+_TYPE_WORDS = {
+    "string": "un testo", "integer": "un intero", "number": "un numero",
+    "boolean": "vero o falso", "object": "un oggetto", "array": "un elenco",
+}
+
+
+def _has_type(value: Any, json_type: str) -> bool:
+    """`value` e' del `type` di JSON Schema? Un booleano non e' un numero
+    (in Python lo e'); un numero con la virgola e parte decimale zero e' un
+    intero, come per JSON Schema."""
+    if json_type == "boolean":
+        return isinstance(value, bool)
+    if isinstance(value, bool):
+        return False
+    if json_type == "integer":
+        return isinstance(value, int) or (isinstance(value, float) and value.is_integer())
+    if json_type == "number":
+        return isinstance(value, (int, float))
+    if json_type == "string":
+        return isinstance(value, str)
+    if json_type == "object":
+        return isinstance(value, dict)
+    if json_type == "array":
+        return isinstance(value, list)
+    return True
+
+
+def _wrong_value(key: str, value: Any, schema: dict) -> str | None:
+    """Cosa non va in un valore rispetto al suo schema (`type`, `enum`), o
+    `None`. Un `null` e' un argomento omesso: lo giudica `required`."""
+    if value is None:
+        return None
+    declared = schema.get("type")
+    types = declared if isinstance(declared, list) else [declared] if declared else []
+    if types and not any(_has_type(value, json_type) for json_type in types):
+        words = " o ".join(_TYPE_WORDS.get(json_type, json_type) for json_type in types)
+        return f"{_quoted([key])} vuole {words}"
+    allowed = schema.get("enum")
+    if allowed is not None and value not in allowed:
+        return f"{_quoted([key])} vale uno fra {_quoted(allowed)}, non {_quoted([value])}"
+    return None
+
+
 def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     """Il controllo unico sugli argomenti di uno strumento, usato da
     `ToolDispatcher.dispatch` PRIMA di chiamare qualunque gestore -- non nei
@@ -1171,7 +1217,19 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     Restituisce `None` quando gli argomenti vanno bene -- anche per uno
     strumento come `agenda`, che non dichiara `required` affatto (nessun
     obbligatorio: un dizionario vuoto e' una chiamata legittima).
+
+    **E il valore di ogni argomento noto** (Tappa 5, Task 3, D-40): il suo
+    `type` e il suo `enum`, letti dallo schema. Fino al 05/10/2026 il
+    vocabolario lo rivalidava a mano ogni parser (`genere`, `ordina`,
+    `livello`), e il tipo nessuno: `"false"` per un booleano diventava vero.
+    Lo schema e' la fonte: nessuna lista di valori ricopiata qui. Si guarda
+    il primo livello delle proprieta'; dentro gli oggetti annidati
+    (`bersaglio`, `ancore`) valida chi li riceve.
     """
+    if not isinstance(arguments, dict):
+        return {"errore": f"«{name}»: gli argomenti vanno dati come un oggetto "
+                          "(nome: valore), non come "
+                          f"{_TYPE_WORDS.get(_json_type_of(arguments), 'un valore')}."}
     schema = _TOOL_PER_NAME[name].definition["input_schema"]
     allowed = schema.get("properties", {})
     required = schema.get("required", [])
@@ -1188,10 +1246,17 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     if unknown:
         every_allowed = f" (argomenti validi: {_quoted(sorted(allowed))})" if allowed else ""
         parts.append(f"non conosco {_quoted(unknown)}{every_allowed}")
+    parts.extend(wrong for key, value in arguments.items() if key in allowed
+                 for wrong in [_wrong_value(key, value, allowed[key])] if wrong)
 
     if not parts:
         return None
     return {"errore": f"«{name}»: " + "; ".join(parts) + "."}
+
+
+def _json_type_of(value: Any) -> str | None:
+    """Il `type` di JSON Schema di un valore, per dire cosa e' arrivato."""
+    return next((json_type for json_type in _TYPE_WORDS if _has_type(value, json_type)), None)
 
 
 #: I servizi del dominio `homeassistant` che Home Assistant concede a chi non
@@ -1444,7 +1509,27 @@ class ToolDispatcher:
         return None
 
     async def dispatch(self, name: str, arguments: dict[str, Any] | None) -> dict:
-        arguments = arguments or {}
+        try:
+            return await self._serve(name, arguments or {})
+        except Exception as error:
+            # Rete di sicurezza finale: qualunque guasto imprevisto (un
+            # archivio chiuso a meta', un tipo inatteso negli argomenti) si
+            # dichiara qui invece di risalire -- vedi il docstring della
+            # classe. Dal 05/10/2026 (Tappa 5, Task 3, D-41) dentro la rete
+            # stanno anche la riga, gli archivi e gli argomenti: con
+            # `arguments=5` il controllo degli argomenti sollevava FUORI.
+            # Minor #7 review finale: dichiararlo al MODELLO non bastava --
+            # un archivio corrotto o un guasto ricorrente restava invisibile
+            # all'operatore, che non ha altro modo di saperlo (il modello
+            # riceve solo la stringa "errore", non uno stack). Loggato qui.
+            logger.warning(
+                "strumento «%s» ha sollevato %s: %s", name, type(error).__name__, error
+            )
+            return {"errore": f"lo strumento «{name}» ha incontrato un problema: {error}"}
+
+    async def _serve(self, name: str, arguments: Any) -> dict:
+        """Il giro di `dispatch`, nell'ordine che e' il contratto: la riga,
+        gli archivi, gli argomenti, il filo e il soffitto, il gestore."""
         # Gli archivi possono mancare: il chiamante puo' costruirci prima che
         # esistano. Senza questo controllo il modello riceve
         # «'NoneType' object has no attribute 'leggi'» -- un errore Python
@@ -1480,35 +1565,19 @@ class ToolDispatcher:
         refusal = self._refusal(tool, arguments)
         if refusal is not None:
             return refusal
-        try:
-            # `_execute`, `_related`, `_promise`, `_propose`, `_confirm`,
-            # `_history`, `_calendar` e -- dal 29/09/2026 -- `_search` sono coroutine
-            # (fanno rete, o -- `_promise` e `_search` -- possono scaldare il
-            # registro dei servizi prima di verificarlo o di mostrarlo); gli
-            # altri no. Si attende cio' che e' attendibile invece di
-            # rendere `async` anche i gestori sincroni.
-            # La maschera (`Tool.mask`): il soffitto si chiede QUI, una volta,
-            # e il gestore riceve la risposta -- copre la parte di risposta
-            # che Home Assistant mostra solo a chi amministra, dove la compone.
-            options = ({"masked": self._ceiling_denies(tool.mask)}
-                       if tool.mask is not None else {})
-            occurrence = tool.handler(self, arguments, **options)
-            if inspect.isawaitable(occurrence):
-                occurrence = await occurrence
-            return occurrence
-        except Exception as error:
-            # Rete di sicurezza finale: qualunque guasto imprevisto (un
-            # archivio chiuso a meta', un tipo inatteso negli argomenti) si
-            # dichiara qui invece di risalire -- vedi il docstring della
-            # classe.
-            # Minor #7 review finale: dichiararlo al MODELLO non bastava --
-            # un archivio corrotto o un guasto ricorrente restava invisibile
-            # all'operatore, che non ha altro modo di saperlo (il modello
-            # riceve solo la stringa "errore", non uno stack). Loggato qui.
-            logger.warning(
-                "strumento «%s» ha sollevato %s: %s", name, type(error).__name__, error
-            )
-            return {"errore": f"lo strumento «{name}» ha incontrato un problema: {error}"}
+        # La maschera (`Tool.mask`): il soffitto si chiede QUI, una volta,
+        # e il gestore riceve la risposta -- copre la parte di risposta
+        # che Home Assistant mostra solo a chi amministra, dove la compone.
+        options = ({"masked": self._ceiling_denies(tool.mask)}
+                   if tool.mask is not None else {})
+        # Alcuni gestori sono coroutine (fanno rete, o scaldano il registro
+        # dei servizi prima di verificarlo o di mostrarlo); gli altri no. Si
+        # attende cio' che e' attendibile invece di rendere `async` anche i
+        # gestori sincroni.
+        occurrence = tool.handler(self, arguments, **options)
+        if inspect.isawaitable(occurrence):
+            occurrence = await occurrence
+        return occurrence
 
     # -- search --------------------------------------------------------
 
