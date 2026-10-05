@@ -171,6 +171,32 @@ async def test_both_shells_declare_the_running_build_stamp(client):
     assert needle in html_config, "manca la <meta> nel guscio della configurazione (/config)"
 
 
+def _shell_handler(app, path: str):
+    """Il gestore di `GET path`, chiesto al router dell'app vera."""
+    found = [route.handler for route in app.router.routes()
+             if route.method == "GET" and route.resource is not None
+             and route.resource.canonical == path]
+    assert len(found) == 1, f"GET {path}: {len(found)} gestori"
+    return found[0]
+
+
+@pytest.mark.asyncio
+async def test_una_funzione_serve_i_due_gusci(client):
+    """C-29 (Tappa 4): `_serve_index` e `_serve_config` erano la stessa
+    funzione con una chiave diversa. Il guscio della chat e quello della
+    configurazione li serve ora lo stesso codice: due gestori nati dalla
+    stessa fabbrica condividono il `__code__`.
+
+    Mutazione ESEGUITA (05/10/2026): `/config` servito da una copia scritta a
+    mano -- rossa."""
+    index = _shell_handler(client.app, "/")
+    config = _shell_handler(client.app, "/config")
+    assert index is not config
+    assert index.__code__ is config.__code__, (
+        "i due gusci sono serviti da due funzioni: una copia che diverge "
+        "alla prima intestazione aggiunta a una sola")
+
+
 @pytest.fixture
 def static_snapshot(tmp_path, monkeypatch):
     """Congela `hiris/app/static/` per la durata del test (m5, review

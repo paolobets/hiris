@@ -5114,8 +5114,8 @@ def create_app() -> web.Application:
     app["sync_turns"] = SyncTurnsInFlight()
     app.router.add_static("/static", static_path, show_index=False)
 
-    app.router.add_get("/", _serve_index)
-    app.router.add_get("/config", _serve_config)
+    app.router.add_get("/", _serve_shell("html_index"))
+    app.router.add_get("/config", _serve_shell("html_config"))
     app.router.add_get("/api/health", _handle_health)
     app.router.add_get("/api/config", handle_config)
     # **ROTTA TEMPORANEA** (3.66.x): i due registri in lettura, per la
@@ -5461,26 +5461,24 @@ def _inject_version(html: str, version: str, build_stamp: str = "") -> str:
     return html
 
 
-async def _serve_index(request: web.Request) -> web.Response:
-    html = request.app.get("html_index") or ""
-    if not html:
-        return web.Response(text="UI not yet available", status=503)
-    return web.Response(
-        text=_inject_version(html, read_version(), request.app.get("build_stamp", "")),
-        content_type="text/html",
-        headers=_NO_CACHE,
-    )
+def _serve_shell(key: str):
+    """Il gestore che serve un guscio HTML, letto all'avvio sotto `key`
+    (`_read_static_pages`).
 
-
-async def _serve_config(request: web.Request) -> web.Response:
-    html = request.app.get("html_config") or ""
-    if not html:
-        return web.Response(text="UI not yet available", status=503)
-    return web.Response(
-        text=_inject_version(html, read_version(), request.app.get("build_stamp", "")),
-        content_type="text/html",
-        headers=_NO_CACHE,
-    )
+    **Una funzione per i due gusci** (C-29, Tappa 4): fino al 05/10/2026
+    `_serve_index` e `_serve_config` erano la stessa funzione con la chiave
+    cambiata -- due copie libere di divergere alla prima intestazione aggiunta
+    a una sola."""
+    async def serve(request: web.Request) -> web.Response:
+        html = request.app.get(key) or ""
+        if not html:
+            return web.Response(text="UI not yet available", status=503)
+        return web.Response(
+            text=_inject_version(html, read_version(), request.app.get("build_stamp", "")),
+            content_type="text/html",
+            headers=_NO_CACHE,
+        )
+    return serve
 
 
 
