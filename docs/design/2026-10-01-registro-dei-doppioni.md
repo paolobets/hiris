@@ -163,13 +163,12 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-20 | `fetch` contro `search`: i ricordi ancorati (`search(genere=ricordo)` apre soltanto) | D | CC | `search(genere=ricordo)` 4 volte in 131 chiamate; `fetch` 11 chiamate in 7 giorni | cop-3 (SBAGLIATA in parte); cop-4 (doppio conteggio) | reg · cop-3 · cop-4 |
 | D-21 | Il filtro per ancora: `per_tether` e `_tethered_memories` | E | PS |  | cop-3 (incompleta) | reg · cop-3 |
 | D-22 | Altre sovrapposizioni fra strumenti (11 proprietà condivise fra `search` e `history`) | E | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
-| D-23 | Il soffitto (chi può cosa) chiesto a mano in sette punti dentro i gestori | D | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
 | D-24 | Promesse: tre archivi dell'esito, quattro frasi, tre macchine a stati, tre vie di chiusura | D | CC |  | cop-9 (righe, incompleta) | reg · cop-9 · Tappa 8: archivi dell'esito, non forma degli strumenti (piano della Tappa 5) |
 | D-25 | Validazione dello stesso ingresso in più punti | E | DP |  |  | reg · cop-3 |
 | D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa) | reg · cop-3 · cop-9 · Tappa 7: e' lo scrivere, non la forma degli strumenti (piano della Tappa 5) |
 | D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 · Tappa 8: archivi (piano della Tappa 5) |
 | D-28 | Tre costruzioni dell'indice per «questo id esiste?» | E | PS |  |  | reg · cop-3 |
-| D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 |
+| D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 · Tappa 5, Task 2: le due maschere degli strumenti (corpo in `search`, «prima» in `propose`) chiedono il soffitto da `dispatch` (`Tool.mask`); le altre restano |
 | D-30 | Strumenti di lettura nei turni degli attori: cosa manca al turno | NV | DP |  | cop-8 (righe) | reg · cop-8 |
 | D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | D | CC | 01/10: due riparazioni (ricetta già sana; ricetta inesistente), rifatte identiche alle 09:20 e 10:20 |  | reg |
 | D-32 | I giri del cervello dentro `server.py` | E | PS |  |  | reg · cop-1 B1 · cop-2 |
@@ -182,7 +181,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-39 | Tre tabelle a mano per nome di strumento; la terza fuori dal `try` | E | PS |  |  | cop-3 D-n1 |
 | D-40 | Il cancello degli argomenti non legge `enum` né `type`: vocabolari rivalidati a mano | D | PS |  |  | cop-3 D-n2 |
 | D-41 | La risorsa che serve a uno strumento decisa in due posti | E | PS |  |  | cop-3 D-n3 |
-| D-42 | Il rifiuto «nessun filo» ripetuto in tre gestori | E | PS |  |  | cop-3 D-n4 |
 | D-43 | «Cosa HA riserva agli amministratori» in due moduli, tre case | E | PS |  |  | cop-3 D-n5 |
 | D-45 | `search` non sa elencare integrazioni né ricordi; per solo nome non li cerca | D | CC |  |  | cop-3 D-n7 |
 | D-46 | Il confine di sanificazione protegge i nomi, non gli altri testi di HA | NV | CC |  |  | cop-4 N-11 |
@@ -899,3 +897,5 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | Tappa 3 (da rilasciare) | 43d0ecc | VOCABULARY[ancore] derivato da resolver.STORE_KEY_PER_TYPE; name_matches e le sue parole spostati in home_space/reference.py. Tappa 3, Task 9 |
 | M-82 | Il ritorno di `behavior.reread()` (conteggi, `senza_corpo`) scartato in produzione: due copie di B-39 senza lettori | Tappa 3 (da rilasciare) | c80cba1 | behavior.reread non restituisce piu' niente; le prove leggono l'anagrafe e il log. Tappa 3, Task 7 (trovato 5) |
 | M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | Tappa 3 (da rilasciare) | c80cba1 | Imported.ha_version uscito; le fonti si compongono da ha_vocabulary.VOCABULARY_HA_VERSION (B-44). Tappa 3, Task 7 (trovato 6) |
+| D-23 | Il soffitto (chi può cosa) chiesto a mano in sette punti dentro i gestori | Tappa 5, Task 2 | 521ff44 | i sette _ceiling_denies dei gestori; il soffitto si chiede in dispatch dalla riga (Tool.permissions, Tool.mask). Le maschere fuori dagli strumenti restano a D-29 |
+| D-42 | Il rifiuto «nessun filo» ripetuto in tre gestori | Tappa 5, Task 2 | 521ff44 | il rifiuto nessun filo nei gestori di promise, agenda e cancel; lo dice dispatch dalla riga (Tool.needs_thread) |
