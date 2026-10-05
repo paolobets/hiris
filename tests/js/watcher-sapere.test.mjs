@@ -106,6 +106,9 @@ function sapereFinto(extra) {
     // scoppiare `renderCorrections`/`renderSeedGroups`/`renderOpenQuestions`.
     giudizi: [],
     domande_aperte: [],
+    // C-11: quanto costa rifare la cronaca, come lo manda `handle_knowledge`
+    // (22 giorni di grezzo, un giorno ogni cinque minuti).
+    cronaca: { ritenzione_s: 22 * 86400, un_giorno_ogni_s: 300 },
   }, extra || {});
 }
 
@@ -1305,4 +1308,28 @@ test('senza chi sappia se si costruisce, il modulo nasce nascosto', () => {
   const { corpo } = rendiSapere(sapereFinto());
 
   assert.equal(corpo.querySelector('form.jr-add-form').hidden, true);
+});
+
+
+test('seam _rendiSapere: il costo della cronaca si scrive coi numeri che manda il server', () => {
+  /* C-11 (Tappa 4, Task 5): i 22 giorni e i cinque minuti erano scritti in
+     prosa nella pagina. Ora arrivano in `cronaca`, e la durata e' il loro
+     prodotto. Con i valori di oggi la frase e' quella di prima, parola per
+     parola; con altri valori cambia con loro. Mutazione eseguita: la frase
+     tornata fissa («22 giorni ... 5 minuti ... due ore») -> rossa sul secondo
+     caso. */
+  const impronta = Array.from(campiDellImpronta());
+  const conCronaca = (cronaca) => rendiSapere(sapereFinto({
+    cronaca,
+    giudizi: [giudizio({ da: 'correzione', chi: 'Paolo', campo: impronta[0],
+      soggetto: 'light.a', soggetto_genere: 'entita',
+      valore: VALORE_PER_CAMPO[impronta[0]] || 'x' })],
+  })).corpo.textContent;
+
+  assert.match(conCronaca({ ritenzione_s: 22 * 86400, un_giorno_ogni_s: 300 }),
+    /rifà la cronaca degli ultimi 22 giorni, un giorno ogni 5 minuti: fino a circa due ore/);
+  const altra = conCronaca({ ritenzione_s: 10 * 86400, un_giorno_ogni_s: 1800 });
+  assert.match(altra,
+    /rifà la cronaca degli ultimi 10 giorni, un giorno ogni 30 minuti: fino a circa cinque ore/);
+  assert.doesNotMatch(altra, /22 giorni|5 minuti/);
 });

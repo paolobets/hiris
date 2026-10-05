@@ -22,6 +22,7 @@ from hiris.app.api import servizi
 from hiris.app.api.handlers_home_space import handle_get_home_space
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
 from hiris.app.home_space.reader import TABLES, HomeSpace
+from hiris.app.mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE
 from hiris.app.mind.store import READING_RETENTION_S, ObservationsStore
 from tests._avvio import started_app  # noqa: F401
 
@@ -141,24 +142,43 @@ def test_service_states_match_store(tmp_path):
     assert js == {pending, authorized, revoked}
 
 
-# -- C-11: gli orari dello scheduler scritti in prosa -------------------------
-# Mutazioni eseguite: `minute=20` -> `minute=25` sull'aggregazione notturna,
-# `minutes=5` -> `minutes=10` sul recupero, `22 * 86400` -> `23 * 86400` in
-# `READING_RETENTION_S`: tre rosse, ognuna sulla sua riga.
+# -- C-11: gli orari dello scheduler ------------------------------------------
+# Passo 1: «alle 00:20», «un giorno ogni 5 minuti» e i 22 giorni erano prosa
+# delle pagine, legati allo schedulatore dell'app avviata (mutazioni eseguite:
+# `minute=20`->`25`, backfill `minutes=5`->`10`, ritenzione 22->23: tre rosse).
+# Passo 2: vivono in `mind/report.py` (`NIGHTLY_*`, `BACKFILL_EVERY_MINUTES`),
+# lo schedulatore li riceve da li', e le pagine li ricevono dalle rotte
+# (`test_mind_api.py`). Qui: lo schedulatore usa le costanti, e le pagine non
+# ne tengono una copia.
+# Mutazioni eseguite (passo 2): `hour=0, minute=20` rimessi a mano e
+# `NIGHTLY_MINUTE` a 25 -> rossa la prima; «alle 00:20» rimessa come stringa
+# nella pagina -> rossa la seconda.
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_report_page_names_nightly_time(started_app):
-    when = _cron_time(started_app, "hiris_mind_aggregation")
-    assert f"alle {when}." in _js("config/watcher-giorno.js")
+async def test_scheduler_runs_report_jobs_from_constants(started_app):
+    assert _cron_time(started_app, "hiris_mind_aggregation") == \
+        f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}"
+    assert _interval_minutes(started_app, "hiris_mind_backfill") == BACKFILL_EVERY_MINUTES
 
 
-@pytest.mark.asyncio(loop_scope="module")
-async def test_knowledge_page_names_backfill_rhythm(started_app):
-    source = _js("config/watcher-sapere.js")
-    minutes = _interval_minutes(started_app, "hiris_mind_backfill")
-    assert f"un giorno ogni {minutes} minuti" in source
-    days = re.search(r"var CHRONICLE_RETENTION_DAYS = (\d+);", source)
-    assert days and int(days.group(1)) * 86400 == READING_RETENTION_S
+def _string_literals(source: str) -> list[str]:
+    """Le stringhe fra apici singoli del sorgente JS: dove una pagina scrive
+    il testo che mostra (i commenti non contano)."""
+    code = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+    return re.findall(r"'((?:[^'\\\n]|\\.)*)'", code)
+
+
+def test_report_pages_keep_no_scheduler_copy():
+    when = f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}"
+    giorno = [t for t in _string_literals(_js("config/watcher-giorno.js")) if when in t]
+    assert not giorno, f"watcher-giorno.js scrive l'ora del resoconto: {giorno}"
+    sapere = _js("config/watcher-sapere.js")
+    rhythm = f"ogni {BACKFILL_EVERY_MINUTES} minut"
+    copied = [t for t in _string_literals(sapere) if rhythm in t]
+    assert not copied, f"watcher-sapere.js scrive il ritmo del recupero: {copied}"
+    days = READING_RETENTION_S // 86400
+    assert not re.search(rf"=\s*{days}\s*;", sapere), \
+        "watcher-sapere.js tiene i giorni di ritenzione"
 
 
 # -- C-10: i nomi dei registri ------------------------------------------------

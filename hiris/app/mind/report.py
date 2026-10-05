@@ -65,6 +65,21 @@ from .recipes import Recipe
 
 logger = logging.getLogger(__name__)
 
+#: Quando si scrive il resoconto di ieri: l'aggregazione notturna (`server.py`,
+#: lavoro `hiris_mind_aggregation`) gira a quest'ora, nel fuso della casa. Le
+#: 00:20 e non la mezzanotte: aggregare a mezzanotte esatta prenderebbe un
+#: giorno ancora aperto. Scritte qui e non nella chiamata allo schedulatore
+#: perche' le dice anche la pagina «Il giorno», che le riceve da
+#: `GET /api/mind/report` (C-11, Tappa 4, Task 5).
+NIGHTLY_HOUR = 0
+NIGHTLY_MINUTE = 20
+
+#: Ogni quanto il recupero (`server.backfill_one_report`, lavoro
+#: `hiris_mind_backfill`) scrive, o rifa', un giorno di resoconto. Anche questa
+#: la dice una pagina: «Cosa ho capito» spiega quanto costa rifare la cronaca,
+#: e la riceve da `GET /api/mind/knowledge`.
+BACKFILL_EVERY_MINUTES = 5
+
 #: Le chiavi del corpo di un episodio che entrano nell'indice: **cio' che
 #: dopo non si recupera piu'**, perche' dipende da com'era la casa allora.
 #:

@@ -43,7 +43,8 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from ..mind.report import as_page
+from ..mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
+from ..mind.store import READING_RETENTION_S
 from .soffitto import require_builder, subject_name
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
@@ -222,8 +223,13 @@ async def handle_report(request: web.Request) -> web.Response:
         return web.json_response({"resoconti": serie})
     resoconto = store.report(day)
     if resoconto is None:
+        # `ora_notturna`: quando il resoconto di quel giorno si scrivera'. La
+        # pagina lo dice («non e' un errore»), e lo riceve invece di saperlo
+        # (C-11, Tappa 4, Task 5).
         return web.json_response(
-            {"errore": f"il giorno {day} non e' stato aggregato"}, status=404)
+            {"errore": f"il giorno {day} non e' stato aggregato",
+             "ora_notturna": f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}"},
+            status=404)
     # **Misure E forme**: portano lo stesso `soggetto`, e risolverne uno solo
     # rifarebbe -- dentro la stessa risposta JSON -- il difetto che la 3.46.0
     # dichiara di aver chiuso fra le misure e la cronaca. Trovato dalla
@@ -567,4 +573,9 @@ async def handle_knowledge(request) -> web.Response:
         "giudizi": judgment_listing(sapere),
         "domande_aperte": [{"chiavi": sorted(question.keys), "domanda": question.question}
                            for question in OPEN_QUESTIONS],
+        # Quanto costa rifare la cronaca, che la pagina dice accanto a ogni
+        # giudizio che la rifa': quanti giorni ne conserva il grezzo e ogni
+        # quanto il recupero ne scrive uno (C-11, Tappa 4, Task 5).
+        "cronaca": {"ritenzione_s": READING_RETENTION_S,
+                    "un_giorno_ogni_s": BACKFILL_EVERY_MINUTES * 60},
     })
