@@ -54,7 +54,7 @@ integrazione l'abbia creata) contro `CALENDAR_EVENT_SCHEMA`, che applica
 `_as_local_timezone("start", "end")` -- verificato alla stessa fonte,
 identico sui due tag. Il fuso locale e' un invariante dello SCHEMA di HA,
 non una scelta di una integrazione in particolare. La riscrittura qui sotto
-(`astimezone`, in `read_appointment`) e' percio' un NO-OP in pratica, non la
+(`historian.instant_out`, in `read_appointment`) e' percio' un NO-OP in pratica, non la
 correzione di una divergenza fra calendari che non esiste -- la si tiene
 comunque perche' e' la stessa disciplina che il resto del prodotto applica
 a OGNI istante uscente (`historian.day_boundaries`): il
@@ -85,7 +85,7 @@ sola.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from functools import cache
 
 # Import RELATIVO, come ogni altro modulo del prodotto. Assoluto
@@ -96,16 +96,11 @@ from functools import cache
 # qualunque riga di log. E' costato il guasto in produzione della v3.22.0
 # (07/09/2026); il cancello che lo impedisce e' in
 # `tests/test_import_boundary.py`.
-from .historian import home_space_zone
+from .historian import home_space_zone, instant_out
 
 
 def _stripped_text(value) -> str:
     return (value or "").strip()
-
-
-def _in_home_zone(raw: str, zone) -> str:
-    """Un `dateTime` ISO-8601 -> lo stesso istante nel fuso della casa."""
-    return datetime.fromisoformat(raw).astimezone(zone).isoformat()
 
 
 @cache
@@ -153,8 +148,8 @@ def read_appointment(event: dict, *, timezone: str | None) -> dict:
         result["fine"] = last_day.isoformat()
     else:
         zone = _cached_zone(timezone)
-        result["inizio"] = _in_home_zone(start["dateTime"], zone)
-        result["fine"] = _in_home_zone(end["dateTime"], zone)
+        result["inizio"] = instant_out(start["dateTime"], zone)
+        result["fine"] = instant_out(end["dateTime"], zone)
 
     location = _stripped_text(event.get("location"))
     if location:

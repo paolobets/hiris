@@ -1519,7 +1519,7 @@ class ToolDispatcher:
                                           translations=translations)
 
         response = query_house(house, self._home_space.behavior(), filters,
-                               detail=detail)
+                               detail=detail, timezone=self._timezone())
         if "errore" in response:
             return response
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra

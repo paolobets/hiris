@@ -37,7 +37,13 @@ from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_invent
 from ..proxy.ha_client import SHAPE, _failure
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
-from .historian import day_boundaries, home_space_zone, instant_epoch, local_date
+from .historian import (
+    day_boundaries,
+    home_space_zone,
+    instant_epoch,
+    instant_out,
+    local_date,
+)
 from .house_query import (
     DETAIL_MEDIUM_MAX,
     HouseFilters,
@@ -269,6 +275,18 @@ class Subject:
     ident: str
     name: str
     last: str | None = None
+    #: Lo specchio non ha `last_triggered` per questo soggetto: «non lo so»,
+    #: che non e' «mai» (`last` None con la chiave letta). D3, 05/10/2026.
+    last_unknown: bool = False
+
+
+def _last_run(subject: Subject, zone) -> dict:
+    """`ultima_esecuzione` nella forma di D3: l'ora della casa, `null` se non
+    e' mai partita, e NIENTE se lo specchio non lo sa. Fino al 05/10/2026 era
+    la parola «mai» in tutti e due i casi."""
+    if subject.last_unknown:
+        return {}
+    return {"ultima_esecuzione": instant_out(subject.last, zone)}
 
 
 @dataclass(frozen=True)
@@ -310,19 +328,6 @@ def _epoch(raw) -> float | None:
     return instant_epoch(raw)
 
 
-def _local(raw, zone) -> str | None:
-    """Un istante nel fuso della casa. Lo storico e le tracce tornano in UTC:
-    due offset nella stessa risposta sono la fondamenta 3 rotta (misurato il
-    24/08/2026 su `trend`). Cio' che non si legge resta com'e', come testo:
-    meglio un formato inatteso che un istante inventato."""
-    if raw is None:
-        return None
-    epoch = _epoch(raw)
-    if epoch is None:
-        return str(raw)
-    return datetime.fromtimestamp(epoch, tz=zone).isoformat()
-
-
 def _page(rows: list, f: HouseFilters) -> tuple[list, dict | None]:
     """Il tetto nella regola (spec §3), con la pagina di `search`: un punto
     solo, `house_query.page_rows` (30/09/2026)."""
@@ -349,7 +354,8 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen
     selection = house.select(f, kinds, behavior, now=now)
     if query.kind == "esecuzioni":
         subjects = [Subject(item["id"], live_name(item["id"], item.get("nome"), house.mirror),
-                            values.get("last_triggered"))
+                            values.get("last_triggered"),
+                            last_unknown="last_triggered" not in values)
                     for item, values in selection.behavior]
     else:
         subjects = [Subject(entry["id"],
@@ -477,7 +483,7 @@ def _declare_gaps(out: dict, idents: list[str], series: dict, *, truncated: bool
         start_ts = query.start.timestamp()
         covered = _covered_since(idents, series, start_ts)
         out["finestra"]["chiesta_da"] = out["finestra"]["da"]
-        out["finestra"]["da"] = _local(covered, query.start.tzinfo)
+        out["finestra"]["da"] = instant_out(covered, query.start.tzinfo)
         out["finestra"]["troncata"] = _TRUNCATED
 
 
@@ -515,7 +521,7 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
         for s in chosen.subjects:
             mine = changes[s.ident]
             row = {"id": s.ident, "nome": s.name, "cambi": len(mine),
-                   "ultimo_cambio": _local(mine[-1][0], zone) if mine else None,
+                   "ultimo_cambio": instant_out(mine[-1][0], zone) if mine else None,
                    "stato": redact_state(s.ident, current.get(s.ident))}
             ranked.append((_activity(s.ident, mine[-1][1] if mine else None), row))
         ranked.sort(key=lambda item: item[0])
@@ -525,7 +531,7 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
         events = []
         for s in chosen.subjects:
             for when, epoch, value in changes[s.ident]:
-                row = {"quando": _local(when, zone), "stato": value}
+                row = {"quando": instant_out(when, zone), "stato": value}
                 if chosen.depth == "media":
                     row = {"id": s.ident, **row}
                 row.update(_by_hand(s.ident, epoch, acts))
@@ -750,7 +756,7 @@ def _sample(points: list[dict], count: int) -> list[dict]:
 
 
 def _in_zone(point: dict, keys: tuple[str, ...], zone) -> dict:
-    return {**point, **{key: _local(point.get(key), zone) for key in keys if key in point}}
+    return {**point, **{key: instant_out(point.get(key), zone) for key in keys if key in point}}
 
 
 def _bands_until(bands: list[dict], end_ts: float) -> float | None:
@@ -832,9 +838,9 @@ def _value_row(s: Subject, query: HistoryQuery, depth: str, *, surface: str,
         activity = mine[-1][1] if mine else None
         keys = ("quando",)
     if born is not None:
-        row["dal"] = _local(born, zone)
+        row["dal"] = instant_out(born, zone)
     if until is not None:
-        row["al"] = _local(until, zone)
+        row["al"] = instant_out(until, zone)
     if counts:
         row.update(counts)
         row["conti"] = COUNTED
@@ -921,7 +927,7 @@ _RUNS_KEPT = ("Home Assistant conserva solo le ultime esecuzioni di ognuna: `dal
 
 def _run_row(trace: dict, zone) -> dict:
     row = {"esecuzione": trace.get("run_id"),
-           "inizio": _local((trace.get("timestamp") or {}).get("start"), zone),
+           "inizio": instant_out((trace.get("timestamp") or {}).get("start"), zone),
            "esito": trace.get("script_execution"),
            "ultimo_passo": trace.get("last_step")}
     if trace.get("error"):
@@ -1010,16 +1016,15 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
             if s.ident not in runs:
                 continue
             row = {"id": s.ident, "nome": s.name,
-                   "partenze_conservate": len(runs[s.ident]),
-                   "ultima_esecuzione": _local(s.last, zone) if s.last else "mai"}
+                   "partenze_conservate": len(runs[s.ident]), **_last_run(s, zone)}
             if runs[s.ident]:
                 newest, trace = runs[s.ident][0]
                 row["esito_ultima"] = trace.get("script_execution")
                 mirror_last = _epoch(s.last)
                 if mirror_last is None or abs(mirror_last - newest) > _SAME_RUN_S:
-                    row["esito_ultima_del"] = _local(newest, zone)
+                    row["esito_ultima_del"] = instant_out(newest, zone)
             if s.ident in since:
-                row["dal"] = _local(since[s.ident], zone)
+                row["dal"] = instant_out(since[s.ident], zone)
             rows.append(row)
         out["voci"] = rows
         shown = {s.ident for s in page}
@@ -1037,13 +1042,13 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
         _name_subjects(out, chosen)
         if "soggetto" in out:
             s = chosen.subjects[0]
-            out["soggetto"]["ultima_esecuzione"] = _local(s.last, zone) if s.last else "mai"
+            out["soggetto"].update(_last_run(s, zone))
             if s.ident in since:
-                out["soggetto"]["dal"] = _local(since[s.ident], zone)
+                out["soggetto"]["dal"] = instant_out(since[s.ident], zone)
         else:
             since = {ident: when for ident, when in since.items() if ident in shown}
             if since:
-                out["dal"] = {ident: _local(when, zone) for ident, when in since.items()}
+                out["dal"] = {ident: instant_out(when, zone) for ident, when in since.items()}
         # Nella media e nella completa i soggetti sono al piu' dieci: le non
         # lette si nominano tutte, qualunque sia la pagina delle righe.
         shown = {s.ident for s in chosen.subjects}
@@ -1269,8 +1274,8 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
         row = {"livello": level, "messaggio": _short(_last_message(entry.get("message"))),
                "fonte": _source(entry.get("source")), "integrazione": integration,
                "count": entry.get("count"),
-               "prima": _local(entry.get("first_occurred"), zone),
-               "ultima": _local(entry.get("timestamp"), zone)}
+               "prima": instant_out(entry.get("first_occurred"), zone),
+               "ultima": instant_out(entry.get("timestamp"), zone)}
         if entry.get("exception"):
             row["eccezione"] = _short(last_line(entry["exception"]))
         ranked.append((_activity(f"{level}|{row['fonte']}|{row['messaggio']}", last),
@@ -1283,7 +1288,7 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
            "finestra": {"da": query.start.isoformat(), "a": query.end.isoformat()}}
     if retained and min(retained) > start_ts:
         out["finestra"]["chiesta_da"] = out["finestra"]["da"]
-        out["finestra"]["da"] = _local(min(retained), zone)
+        out["finestra"]["da"] = instant_out(min(retained), zone)
         out["finestra"]["troncata"] = _LOG_KEPT
     if query.who.platform:
         out["nota_integrazione"] = _LIBRARIES_UNFILTERED

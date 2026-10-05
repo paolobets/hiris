@@ -93,11 +93,13 @@ def _chiedi(**argomenti):
 
 def _automazioni(*coppie):
     """(comportamento, specchio) per automazioni con la loro ultima
-    esecuzione (None = mai eseguita)."""
+    esecuzione (None = mai eseguita). `last_triggered` c'e' anche quando e'
+    `None`, come lo scrive Home Assistant (sorgente, tag 2026.9.4,
+    `components/automation/__init__.py:515-526`; vedi `test_l_istante.py`)."""
     comportamento = [{"id": f"automation.{n}", "tipo": "automazione",
                       "nome": n.capitalize()} for n, _ in coppie]
     attributi = {f"automation.{n}": {"values": {"last_triggered": t}}
-                 for n, t in coppie if t}
+                 for n, t in coppie}
     stati = {f"automation.{n}": "on" for n, _ in coppie}
     return comportamento, Mirror(stati, attributes=attributi)
 
@@ -328,7 +330,8 @@ def test_le_automazioni_ordinate_dalla_piu_ferma():
     assert [v["id"] for v in r["voci"]] == ["automation.abbandonata",
                                             "automation.vecchia",
                                             "automation.nuova"]
-    assert r["voci"][0]["ultima_esecuzione"] == "mai"
+    # «Mai» e' `null` dal 05/10/2026 (D3); prima la parola «mai».
+    assert r["voci"][0]["ultima_esecuzione"] is None
     assert r["voci"][1]["ultima_esecuzione"].startswith("2026-02-17")
 
 
