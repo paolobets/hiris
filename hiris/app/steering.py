@@ -115,9 +115,18 @@ from .claude_runner import togli_misura as _togli_misura
 #: `misura_turno` -- o, nel registro del ponte, contato i turni dell'attuatore
 #: sotto un nome che nessuna pagina conosce. `tests/test_specie_attuatore.py`
 #: tiene il letterale qui e solo qui.
+#:
+#: **E le altre, tranne `chat`** (A21, approvata dal proprietario il
+#: 05/10/2026): la stessa cura per l'analista, l'osservatore, le ricette e la
+#: promessa, che restavano letterali. `chat` no: e' anche un `agent_type` e un
+#: `kind` della coda, e un nome solo per tre parole non le distinguerebbe.
 ACTUATOR_SPECIES = "attuatore"
-SPECIE = frozenset({"analista", ACTUATOR_SPECIES, "chat", "osservatore",
-                    "promessa", "ricette"})
+ANALYST_SPECIES = "analista"
+OBSERVER_SPECIES = "osservatore"
+PROMISE_SPECIES = "promessa"
+RECIPES_SPECIES = "ricette"
+SPECIE = frozenset({ANALYST_SPECIES, ACTUATOR_SPECIES, "chat", OBSERVER_SPECIES,
+                    PROMISE_SPECIES, RECIPES_SPECIES})
 
 #: **L'esito di un turno fermato dal tetto di token** (Tappa 6, D-58; D2).
 #: Fino al 05/10/2026 il registro lo chiamava «riuscito»: misurato in

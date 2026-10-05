@@ -47,7 +47,7 @@ import json
 import logging
 
 from ..home_space.house import House
-from ..steering import misura_turno, read_json
+from ..steering import RECIPES_SPECIES, misura_turno, read_json
 from .knowledge import Fact
 from .operations import REGISTRY_VERSION
 from .recipes import Recipe
@@ -621,7 +621,7 @@ async def ask(runner, store, house: House, device_id: str, *,
               model: str = "auto",
               with_series: set[str] | None = None,
               energy: dict | None = None,
-              measurements=None, species: str = "ricette") -> dict:
+              measurements=None, species: str = RECIPES_SPECIES) -> dict:
     """Un giro intero sulla catena: mostra il dispositivo, chiede, applica.
 
     **Questa e' la porta della catena, non l'unica porta**: quando

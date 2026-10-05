@@ -101,7 +101,16 @@ from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
 from .reasoning.queue import PRIORITY_BACKGROUND
-from .steering import ACTUATOR_SPECIES, bridge_model, declare_downgrade, misura_turno, who_answers
+from .steering import (
+    ACTUATOR_SPECIES,
+    ANALYST_SPECIES,
+    OBSERVER_SPECIES,
+    RECIPES_SPECIES,
+    bridge_model,
+    declare_downgrade,
+    misura_turno,
+    who_answers,
+)
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -1751,7 +1760,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # motivo e' una chiave di `model_resolution._DOWNGRADE_REASONS`, e
         # finisce anche nel tentativo, cosi' la pagina puo' dire da quale
         # porta e' passato quel giro.
-        declare_downgrade(app, agent="osservatore", reason=downgrade)
+        declare_downgrade(app, agent=OBSERVER_SPECIES, reason=downgrade)
         logger.info("osservatore: riconsidero la casa (%s), lotto di %d -- %s",
                     route, len(lotto), why)
         campagna_ts = time.time()
@@ -2030,13 +2039,13 @@ async def analyst_round(app) -> dict | None:
         if runner is None:
             logger.info("analista: nessun modello collegato, si riprova al giro dopo")
             return None
-        declare_downgrade(app, agent="analista", reason=downgrade)
+        declare_downgrade(app, agent=ANALYST_SPECIES, reason=downgrade)
 
         question = analyst_turn.build_question(series)
         if question is None:
             return None
         async with misura_turno(app.get("usage"), runner,
-                                specie="analista", canale="catena") as turn:
+                                specie=ANALYST_SPECIES, canale="catena") as turn:
             answer = await runner.chat(
                 user_message=question, system_prompt=analyst_turn.SYSTEM,
                 max_tokens=analyst_turn.MAX_ANSWER_TOKENS)
@@ -2614,13 +2623,13 @@ async def recipe_round(app) -> dict | None:
         if runner is None:
             logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
             return None
-        declare_downgrade(app, agent="ricette", reason=downgrade)
+        declare_downgrade(app, agent=RECIPES_SPECIES, reason=downgrade)
         logger.info("ricette: chiedo come si misura «%s» (%s)", device_id, route)
         esito = await recipe_turn.ask(
             runner, sapere, house, device_id, objective=objective,
             who=f"modello ({route})", when_ts=time.time(),
             with_series=with_series, energy=dashboard,
-            measurements=app.get("usage"), species="ricette")
+            measurements=app.get("usage"), species=RECIPES_SPECIES)
         logger.info("ricette: giro finito -- %s", esito)
         return esito
     except Exception as exc:

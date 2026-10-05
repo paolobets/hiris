@@ -31,7 +31,7 @@ from ..home_space.ha_vocabulary import domain_of
 from ..home_space.house import House
 from ..home_space.privacy import MOVING_DOMAINS
 from ..home_space.topology import is_pseudo_area
-from ..steering import misura_turno, read_json
+from ..steering import OBSERVER_SPECIES, misura_turno, read_json
 from .scope import OBSERVER
 
 logger = logging.getLogger(__name__)
@@ -423,7 +423,7 @@ async def reconsider(runner, store, house: House, *, reason: str,
         # `misure` e' `None` quando nessuno misura (il caso dei test e di un
         # chiamante che non ha l'archivio): la misura non e' un requisito per
         # girare.
-        async with misura_turno(measurements, runner, specie="osservatore",
+        async with misura_turno(measurements, runner, specie=OBSERVER_SPECIES,
                                 canale="catena", modello=model) as turn:
             answer = await runner.chat(
                 user_message=question, system_prompt=SYSTEM,

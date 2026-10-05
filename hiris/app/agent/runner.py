@@ -85,7 +85,13 @@ from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
 from ..mind.actuator_turn import ACTUATION_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
-from ..steering import ACTUATOR_SPECIES
+from ..steering import (
+    ACTUATOR_SPECIES,
+    ANALYST_SPECIES,
+    OBSERVER_SPECIES,
+    PROMISE_SPECIES,
+    RECIPES_SPECIES,
+)
 from ..usage.giro import anthropic_turn_tokens
 from . import prompts
 
@@ -1220,10 +1226,10 @@ def set_turn_logger(fn) -> None:
 #: `attuazione`, si accodava da una settimana e non stava in nessuna delle due.
 JOB_SPECIES = {
     "chat": "chat",
-    "promessa": "promessa",
-    "scope": "osservatore",
-    "ricetta": "ricette",
-    "analisi": "analista",
+    "promessa": PROMISE_SPECIES,
+    "scope": OBSERVER_SPECIES,
+    "ricetta": RECIPES_SPECIES,
+    "analisi": ANALYST_SPECIES,
     ACTUATION_TURN_KIND: ACTUATOR_SPECIES,
 }
 
