@@ -2603,8 +2603,8 @@ class ToolDispatcher:
         (nessun doppione: e' la stessa funzione che gestisce gia' un fuso non
         riconosciuto con un avviso e il ripiego su UTC) e una passata a
         `merge_calendars`, che la passa a `read_appointment` per ogni evento.
-        Fondere impegni letti con fusi DIVERSI romperebbe l'ordinamento
-        lessicografico di `sort_appointments` -- non succede, perche' il
+        Fondere impegni letti con fusi DIVERSI romperebbe la prima chiave
+        di `sort_appointments`, il giorno della casa -- non succede, perche' il
         fuso e' unico per questa chiamata, ma e' il presupposto su cui quella
         fusione poggia, e va dichiarato invece di dato per scontato.
         """

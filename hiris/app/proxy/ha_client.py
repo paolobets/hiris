@@ -1431,9 +1431,9 @@ class HAClient:
         quello dell'istanza, e mai la forma `Z`. **L'unica eccezione e' l'ora
         ripetuta del ritorno all'ora solare** -- l'ultima domenica di ottobre
         fra le 2 e le 3, dove `02:30+02:00` esce dopo `02:00+01:00`. Due eventi
-        entrambi dentro quell'ora possono uscire invertiti; e' dichiarato, non
-        corretto, perche' parsare ogni istante per un'ora l'anno costerebbe piu'
-        di quanto valga.
+        entrambi dentro quell'ora possono uscire invertiti qui; l'elenco che
+        il modello legge passa poi da `appointments.sort_appointments`, che dal
+        05/10/2026 ordina per istante (A17) e li rimette in fila.
         Un giornaliero e un evento a orario dello stesso giorno finiscono
         nell'ordine giusto senza casi speciali: `"2026-09-05"` e' prefisso di
         `"2026-09-05T..."`, quindi precede ogni orario di quel giorno -- che e'

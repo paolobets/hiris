@@ -98,7 +98,7 @@ from functools import cache
 # (07/09/2026); il cancello che lo impedisce e' in
 # `tests/test_import_boundary.py`.
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
-from .historian import home_space_zone, instant_out
+from .historian import home_space_zone, instant_epoch, instant_out
 
 logger = logging.getLogger(__name__)
 
@@ -174,19 +174,23 @@ def sort_appointments(appointments: list[dict]) -> list[dict]:
     un elenco ordinato -- serve un ordinamento vero sull'unione, che e'
     esattamente cio' che c'e' qui.
 
-    L'ordinamento e' lessicografico sull'`inizio` GIA' letto (stringa ISO
-    con offset per un orario, data nuda per un giornaliero): basta, stessa
-    proprieta' di `HAClient.calendar_events` (una data e' prefisso di ogni
-    orario dello stesso giorno). **La stessa eccezione dichiarata li' resta
-    IDENTICA qui, non migliora**: l'ultima domenica di ottobre, fra le 2 e
-    le 3, `02:30+02:00` esce dopo `02:00+01:00` nel confronto
-    lessicografico, perche' si confronta l'ora SCRITTA e non l'istante. Due
-    impegni entrambi dentro quell'ora possono uscire invertiti; e'
-    dichiarato, non corretto -- stessa scelta di `calendar_events`, per la
-    stessa ragione (parsare ogni istante per un'ora l'anno costerebbe piu'
-    di quanto valga).
+    **Si ordina per istante, non per testo** (A17, approvata il 05/10/2026).
+    Fino a quel giorno l'ordine era lessicografico sull'`inizio`, e
+    l'ultima domenica di ottobre `02:30+02:00` usciva dopo `02:10+01:00`
+    perche' si confrontava l'ora SCRITTA: dichiarato e lasciato. La chiave
+    e' il giorno della casa (i primi dieci caratteri: un orario e' gia'
+    scritto nell'ora della casa da `read_appointment`, un giornaliero e' la
+    sua data), poi il giornaliero prima di ogni orario dello stesso giorno
+    (comincia a mezzanotte), poi l'istante. Un `inizio` che non si legge come
+    istante resta al suo testo, in coda agli orari del suo giorno.
     """
-    return sorted(appointments, key=lambda appointment: appointment["inizio"])
+    return sorted(appointments, key=_start_key)
+
+
+def _start_key(appointment: dict) -> tuple:
+    start = str(appointment.get("inizio") or "")
+    epoch = instant_epoch(start) if len(start) > 10 else None
+    return (start[:10], len(start) > 10, epoch is None, epoch or 0.0, start)
 
 
 def readable_calendars(listing: dict) -> list[dict]:

@@ -316,6 +316,25 @@ def test_sort_appointments_only_looks_at_inizio_not_at_a_raw_event():
     assert titles == ["a", "b"]
 
 
+def test_sort_appointments_orders_by_the_instant_the_night_the_clock_goes_back():
+    """A17 (approvata il 05/10/2026): il 25/10/2026 alle 03:00 Roma torna da
+    +02:00 a +01:00. Le 02:30+02:00 (00:30 UTC) vengono PRIMA delle
+    02:10+01:00 (01:10 UTC), ma come testo vengono dopo: l'ordine per testo
+    sbagliava una notte l'anno, dichiarato e lasciato. Ora si ordina per
+    istante, come `search` (Tappa 4, T4).
+
+    Mutazione eseguita: la chiave riportata al solo `inizio` come testo ->
+    rossa, «dopo» prima di «prima»."""
+    appointments = [
+        {"titolo": "dopo", "inizio": "2026-10-25T02:10:00+01:00"},
+        {"titolo": "prima", "inizio": "2026-10-25T02:30:00+02:00"},
+        {"titolo": "giornaliero", "inizio": "2026-10-25"},
+        {"titolo": "il giorno dopo", "inizio": "2026-10-26"},
+    ]
+    titles = [a["titolo"] for a in sort_appointments(appointments)]
+    assert titles == ["giornaliero", "prima", "dopo", "il giorno dopo"]
+
+
 def test_sort_appointments_places_an_all_day_event_before_a_timed_event_the_same_day():
     """Un giornaliero comincia a mezzanotte: nello stesso giorno precede
     qualunque orario, senza bisogno di un caso speciale -- una data ISO e'
