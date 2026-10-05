@@ -884,6 +884,33 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato» — aperta il 05/10/2026
+
+`origine: rapporto dell'integrazione delle Tappe 4-6 (B25, domanda 1), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · documento: `/mnt/project-files/2026-10-05-integrazione-tappe-4-6-rapporto.md`, sezione «B25, in dettaglio»
+
+Quando una risposta arriva al tetto di token, la CLI del ponte (2.1.286) la riprende da sola fino a
+tre volte e poi dichiara `end_turn`; il campo `result` porta solo l'ULTIMO pezzo. In chat si
+vedrebbe la coda di una risposta lunga; un attore leggerebbe un JSON spezzato. Il ponte deve
+riconoscere la ripresa (un evento `user` con `isSynthetic: true` nel flusso) e dichiarare il turno
+`troncato`, con la regola D2 (un turno troncato non si legge). **Prima si misura con la CLI vera**
+su una risposta lunga, non col server finto.
+
+### Il conteggio instabile di `npm test` — aperta il 05/10/2026
+
+`origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 2, domanda 3), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · stesso documento della voce sopra
+
+`npm test` a volte raccoglie meno prove, senza nessuna rossa. Si cerca la causa, e la verifica
+confronta il numero di prove JS raccolte con quello del giro precedente (regola di `CLAUDE.md`,
+«Il conteggio delle prove JS e' un fatto che si confronta», 05/10/2026).
+
+### La definizione di `propose` torna alla tabella degli strumenti — aperta il 05/10/2026
+
+`origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 3, domanda 5), approvata dal proprietario il 05/10/2026 (consigliata); da fare allo strato 4 degli attori, insieme a B29` · stesso documento delle voci sopra
+
+`mind/actuator_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
+degli strumenti (Tappa 5). Si ricollega quando l'attuatore torna (strato 4), con la decisione B29
+(le descrizioni delle proposte servono anche all'attuatore).
+
 ### I nomi delle persone verso un modello, per tutte le porte degli attori — aperta il 05/10/2026
 
 `origine: rapporto della Tappa 6, T5-T6 («Cosa resta aperto», punto 1) dello sprint «Una fonte sola di verita'»; domanda 28 del secondo giro, approvata dal proprietario il 05/10/2026 (consigliata: «voce nel BACKLOG, da misurare sulla casa»)` · nessun altro documento

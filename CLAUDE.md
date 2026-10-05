@@ -420,6 +420,18 @@ sia rotta (un insieme improvvisamente piccolo e' un cancello che sembra vivo e n
 niente), e la **mutazione eseguita** -- si aggiunge la cosa nuova alla fonte e si verifica che
 entri nel cancello **senza toccare la prova**.
 
+**Un intervallo di righe si chiede a un'ancora di testo, mai al numero** (Paolo, 05/10/2026). Una
+prova che sorveglia righe di un altro file le trova cercando il testo che le apre (una firma, un
+nome di funzione), non scrivendo «righe 557-559»: il codice si sposta, il numero resta, e la prova
+continua a dire si' guardando le righe sbagliate. Misurato in `tests/test_apostrofo_utente.py`: due
+intervalli fissi erano diventati ciechi, e la prova restava verde.
+
+**Il conteggio delle prove JS e' un fatto che si confronta** (Paolo, 05/10/2026). Una `npm test`
+che raccoglie meno prove del giro prima, senza nessuna rossa, non e' verde: e' una suite che ha
+smesso di guardare qualcosa. La verifica confronta il numero di prove raccolte con quello del giro
+precedente e lo dice quando scende (la causa del conteggio instabile e lo strumento: BACKLOG,
+Tappa 8).
+
 **E si deriva la proprieta', non la forma.** Il cancello dei giudizi pretendeva la parola chiave
 `judgments=`; sette chiamate corrette la passavano per posizione. Un cancello che chiama sbagliato
 il codice giusto spinge a cambiare codice che funziona per farlo tacere -- il modo piu' rapido di
