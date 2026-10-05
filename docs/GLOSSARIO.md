@@ -3616,7 +3616,7 @@ stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamen
 | `dal` `al` | un intervallo | due istanti | `finestra` | — | — |
 | `genere` | il nostro genere di oggetto | uno di `house_query.KINDS` | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` `ricordo` | `tipo` | `tipo` nella risposta (`"tipo": "entita"` di `view`) |
 | `dominio` | il dominio di Home Assistant | stringa di Home Assistant (`light`, `sensor`...) | `entita` | `tipo` | `tipo` nel parametro di `search` (D7) |
-| `unita` | l'unita' dell'entita' | stringa di Home Assistant | `entita` | — | — |
+| `unita` | l'unita' dell'entita' | stringa di Home Assistant | `entita` | `unit` | `unit` dentro `prima`/`dopo`, accanto a `state` (`actuator._fingerprint`, `:339`; trovata dal Task 1, la stessa voce C-64) |
 | `sistema_unita` | la cornice di riferimento della casa | il dizionario del sistema di unita' di Home Assistant | `casa` | `unita` | `topology.py:80` |
 | `limiti` | i limiti di un comando | dizionario `minimo`/`massimo`/`passo`, con l'`unita` | `entita` | `unita` | `queries.py:811-814` |
 | `statistiche` | Home Assistant tiene le statistiche | booleano | `entita` | `ha_statistiche` | `energy.py:151` |

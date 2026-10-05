@@ -138,7 +138,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-61 | `ha_statistiche` contro `statistiche`: lo stesso fatto con due nomi | D | CC |  |  | Tappa 4, trovato 4 (`energy.py:151` contro `house.py:265`); D1, D13 |
 | C-62 | `dove.integrazione` è uno slug nudo; area, piano e dispositivo escono come `{id, nome}` | D | CC |  |  | Tappa 4, trovato 5 (`house.py:143`); D1 |
 | C-63 | `_with_live_kind` scrive `classe: None` e `unita: None` espliciti; altrove la chiave manca | D | CC |  |  | Tappa 4, trovato 6 (`api/handlers_home_space.py:72-74`); D1, regola dell'assenza |
-| C-64 | `state` in inglese dentro `prima`/`dopo` del dispositivo, mandato al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`); D1 |
+| C-64 | `state` e `unit` in inglese dentro `prima`/`dopo` del dispositivo, mandati al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`; `unit` a `:339`, trovata dal Task 1); D1 |
 
 ---
 
