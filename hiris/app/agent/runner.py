@@ -808,7 +808,7 @@ class StreamOccurrence:
 
       **Fix round 1, Important**: l'ASSENZA di `is_error` significa "nessun
       esito d'errore VISTO", non "prova di riuscita". Un `tool_use` il cui
-      `tool_result` non arriva MAI -- flusso troncato (`has_result`
+      `tool_result` non arriva MAI -- flusso incompleto (`has_result`
       `False`), o un `result` di errore/max-turns che chiude il flusso con una
       chiamata ancora aperta pur con `rc == 0` -- e' esattamente il caso (3)
       che questo modulo gia' dichiara altrove, e prima di questo fix
@@ -857,7 +857,7 @@ class StreamOccurrence:
 
     @property
     def has_result(self) -> bool:
-        """False = flusso troncato, processo ucciso a meta', o formato cambiato
+        """False = flusso incompleto: processo ucciso a meta', o formato cambiato
         da un aggiornamento della CLI. Chi legge DEVE dichiararlo."""
         return self.result is not None
 
@@ -989,7 +989,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
                     # ramo sincrono (Step 2 del brief).
                     entry["is_error"] = True
     # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
-    # arrivato (flusso troncato, o un `result` di errore/max-turns che
+    # arrivato (flusso incompleto, o un `result` di errore/max-turns che
     # chiude tutto con una chiamata ancora aperta) restano senza il
     # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
     # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
@@ -1944,7 +1944,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
     if not occurrence.has_result:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
-        # 0 ma il flusso si e' chiuso senza l'evento finale: troncato, ucciso,
+        # 0 ma il flusso si e' chiuso senza l'evento finale: incompleto, ucciso,
         # o formato cambiato da un aggiornamento della CLI. Restituire "" qui
         # sarebbe indistinguibile da "il modello non ha risposto niente", e
         # restituire il testo parziale degli eventi `assistant` sarebbe peggio:

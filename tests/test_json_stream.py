@@ -554,7 +554,7 @@ def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():
 
 def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
     """Fix round 1, Important. Prima di questo fix, un `tool_use` il cui
-    `tool_result` non arriva MAI (flusso troncato -- `has_result`
+    `tool_result` non arriva MAI (flusso incompleto -- `has_result`
     `False` -- o un `result` di errore/max-turns che chiude il flusso con una
     chiamata ancora aperta pur con `rc == 0`) produceva la STESSA forma di una
     chiamata riuscita: `{"tool", "input"}`, senza nessuna terza chiave. Un
