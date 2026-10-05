@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from ..chat_thread import ChatThread
+from ..chat_thread import thread_from_columns
 from ..proxy._sanitize import truncate_with_marker
 
 VERB = ("fai", "chiedi")
@@ -312,8 +312,8 @@ def serializza(row) -> dict:
         "esito_letto_ts": row["esito_letto_ts"],
         # `None` per le promesse nate prima delle promesse divise, finche' il
         # proprietario non le adotta (`chat_thread.adopt_if_owner`).
-        "thread": (ChatThread(row["subject_key"], row["entry_point"])
-                   if _column(row, "subject_key") else None),
+        "thread": thread_from_columns(_column(row, "subject_key"),
+                                      _column(row, "entry_point")),
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

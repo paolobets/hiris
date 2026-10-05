@@ -17,7 +17,7 @@ import secrets
 import threading
 import time
 
-from ..chat_thread import ChatThread
+from ..chat_thread import ChatThread, thread_condition, thread_params
 from ..storage import connect, init_schema
 from .promise import (
     CEILING_IN_SOSPESO,
@@ -164,14 +164,9 @@ def _migration_4(conn) -> None:
         conn.execute("ALTER TABLE promesse ADD COLUMN entry_point TEXT")
 
 
-# La condizione «di questo filo», una volta sola: ogni lettura e scrittura per
-# conto di qualcuno la porta, con i due valori come parametri (`?`), mai
-# incollati nel testo della query.
-_OF_THREAD = "subject_key = ? AND entry_point = ?"
-
-
-def _thread_params(thread: ChatThread) -> tuple[str, str]:
-    return (thread.subject_key, thread.entry_point)
+# La condizione «di questo filo» (`thread_condition`): ogni lettura e
+# scrittura per conto di qualcuno la porta. Vive in `chat_thread.py` (B-52,
+# Tappa 6 Task 2), la stessa per i quattro archivi che portano il filo.
 
 
 def _json(value) -> str | None:
@@ -242,7 +237,7 @@ class AgendaStore:
                  # di sole entita' -- ed e' diverso da `0`, che direbbe
                  # «nessuna entita'».
                  data.get("entities_at_birth"),
-                 *_thread_params(thread)))
+                 *thread_params(thread)))
             self._conn.commit()
         return {"promessa": self.read(ident)}
 
@@ -314,8 +309,8 @@ class AgendaStore:
             cur = self._conn.execute(
                 f"UPDATE promesse SET esito_letto_ts=? WHERE id IN ({marks}) "
                 f"AND stato IN ({_ESITI}) AND esito_letto_ts IS NULL "
-                f"AND {_OF_THREAD}",
-                (now, *ids, *_thread_params(thread)))
+                f"AND {thread_condition()}",
+                (now, *ids, *thread_params(thread)))
             self._conn.commit()
             return cur.rowcount
 
@@ -339,8 +334,8 @@ class AgendaStore:
             cur = self._conn.execute(
                 "UPDATE promesse SET stato='disdetta', "
                 "risvegliata_ts=COALESCE(risvegliata_ts, ?) "
-                f"WHERE id=? AND stato='in_attesa' AND {_OF_THREAD}",
-                (now, promise_id, *_thread_params(thread)))
+                f"WHERE id=? AND stato='in_attesa' AND {thread_condition()}",
+                (now, promise_id, *thread_params(thread)))
             self._conn.commit()
             riuscita = cur.rowcount == 1
         row = self.read_in_thread(promise_id, thread)
@@ -415,8 +410,8 @@ class AgendaStore:
         rotta MCP che verifica `X-HIRIS-Promessa`."""
         with self._lock:
             row = self._conn.execute(
-                f"SELECT * FROM promesse WHERE id=? AND {_OF_THREAD}",
-                (promise_id, *_thread_params(thread))).fetchone()
+                f"SELECT * FROM promesse WHERE id=? AND {thread_condition()}",
+                (promise_id, *thread_params(thread))).fetchone()
         return None if row is None else serializza(row)
 
     def read_by_execution(self, execution_id: str) -> dict | None:
@@ -438,13 +433,13 @@ class AgendaStore:
             if solo_in_sospeso:
                 righe = self._conn.execute(
                     f"SELECT * FROM promesse WHERE stato IN ({_SOSPESI}) "
-                    f"AND {_OF_THREAD} ORDER BY quando_ts ASC LIMIT ?",
-                    (*_thread_params(thread), int(limit))).fetchall()
+                    f"AND {thread_condition()} ORDER BY quando_ts ASC LIMIT ?",
+                    (*thread_params(thread), int(limit))).fetchall()
             else:
                 righe = self._conn.execute(
-                    f"SELECT * FROM promesse WHERE {_OF_THREAD} "
+                    f"SELECT * FROM promesse WHERE {thread_condition()} "
                     "ORDER BY quando_ts DESC LIMIT ?",
-                    (*_thread_params(thread), int(limit))).fetchall()
+                    (*thread_params(thread), int(limit))).fetchall()
         return [serializza(r) for r in righe]
 
     def _count_pending(self, thread: ChatThread) -> int:
@@ -454,7 +449,7 @@ class AgendaStore:
         in produzione la chiedeva (review finale, 26/09/2026)."""
         return self._conn.execute(
             f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
-            f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
+            f"AND {thread_condition()}", thread_params(thread)).fetchone()[0]
 
     def has_orphans(self) -> bool:
         with self._lock:
@@ -475,7 +470,7 @@ class AgendaStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE promesse SET subject_key = ?, entry_point = ? "
-                "WHERE subject_key IS NULL", _thread_params(thread))
+                "WHERE subject_key IS NULL", thread_params(thread))
             self._conn.commit()
             return cur.rowcount
 
@@ -496,8 +491,8 @@ class AgendaStore:
         with self._lock:
             return self._conn.execute(
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_ESITI}) "
-                f"AND esito_letto_ts IS NULL AND {_OF_THREAD}",
-                _thread_params(thread)).fetchone()[0]
+                f"AND esito_letto_ts IS NULL AND {thread_condition()}",
+                thread_params(thread)).fetchone()[0]
 
     def scadute(self, now: float) -> list[dict]:
         with self._lock:

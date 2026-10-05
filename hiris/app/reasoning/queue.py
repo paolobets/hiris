@@ -5,7 +5,7 @@ import secrets
 import threading
 import time
 
-from ..chat_thread import ChatThread
+from ..chat_thread import ChatThread, thread_condition, thread_from_columns, thread_params
 from ..home_space.historian import day_boundaries, local_date
 from ..storage import connect, init_schema
 
@@ -81,8 +81,7 @@ def _row(r) -> dict:
             "context": json.loads(r["context_json"]),
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"],
             "priority": r["priority"],
-            "thread": ChatThread(r["subject_key"], r["entry_point"])
-                       if r["subject_key"] else None}
+            "thread": thread_from_columns(r["subject_key"], r["entry_point"])}
 
 def _migration_2(conn) -> None:
     """Versione 2 (23/09/2026, reperto C-6): la colonna della consegna.
@@ -163,8 +162,7 @@ class ReasoningQueue:
                 "status,deadline_ts,created_ts,subject_key,entry_point,priority) "
                 "VALUES(?,?,?,?, 'pending', ?, ?, ?, ?, ?)",
                 (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now,
-                 thread.subject_key if thread else None,
-                 thread.entry_point if thread else None, int(priority)))
+                 *thread_params(thread), int(priority)))
             self._conn.commit()
         return jid
 
@@ -443,10 +441,10 @@ class ReasoningQueue:
         with self._lock:
             row = self._conn.execute(
                 "SELECT 1 FROM reasoning_jobs "
-                "WHERE kind='chat' AND subject_key=? AND entry_point=? AND "
+                f"WHERE kind='chat' AND {thread_condition()} AND "
                 "(status='ripiego' OR "
                 "(status IN ('pending','claimed') AND deadline_ts > ?)) LIMIT 1",
-                (thread.subject_key, thread.entry_point, ts)).fetchone()
+                (*thread_params(thread), ts)).fetchone()
         return row is not None
 
     def claimed_chat(self, job_id: str) -> dict | None:

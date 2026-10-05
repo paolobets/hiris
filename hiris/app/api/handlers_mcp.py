@@ -84,7 +84,7 @@ from aiohttp import web
 from ..claude_runner import pesa_in_caratteri
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
-from ..usage.bridge_loads import BRIDGE_LOADS_KEY
+from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
 from ..version import read_version
 from .handlers_chat import create_tool_dispatcher, last_phrase
 from .soffitto import ceiling_for
@@ -167,7 +167,11 @@ METHODS = ("initialize", "tools/list", "tools/call")
 # cinque posti allora.
 MAX_TOOL_ROUNDS = 50
 
-# Quante identita' di turno diverse restano tracciate insieme. Piccolo di
+# Quante identita' di turno diverse restano tracciate insieme: `MAX_TRACKED`
+# di `usage/bridge_loads.py`, **lo stesso numero e non un secondo uguale**
+# (B-53, Tappa 6 Task 2): i contatori dei giri qui e i carichi la' tengono le
+# stesse identita' di turno, con la stessa ragione. Fino al 05/10/2026 erano
+# due `64` legati solo da un commento. Piccolo di
 # proposito (Step 2 del brief, "N piccolo"): serve solo a impedire che il
 # dizionario cresca senza fine per l'intera vita del processo -- un turno del
 # ponte dura al piu' i due `subprocess.run(timeout=300)` di
@@ -180,11 +184,10 @@ MAX_TOOL_ROUNDS = 50
 # iniziato per primo. La differenza non e' terminologica: e' cio' che rende
 # vera la proprieta' portante di questo tetto -- **un turno ancora attivo non
 # viene mai espulso**, per quanti altri turni gli passino accanto. Con una
-# FIFO vera un turno lungo verrebbe scartato dopo `_MAX_TRACKED_EXCHANGES`
+# FIFO vera un turno lungo verrebbe scartato dopo `MAX_TRACKED`
 # turni altrui e il suo contatore ripartirebbe da zero, cioe' il tetto si
 # potrebbe aggirare semplicemente durando. La proprieta' e' pinnata in
 # `tests/test_mcp_route.py::test_un_turno_attivo_non_viene_mai_espulso`.
-_MAX_TRACKED_EXCHANGES = 64
 
 # La chiave sotto cui i contatori vivono nell'`Application`. Costante e non una
 # stringa ripetuta: chi la crea (`server.create_app`) e chi la legge
@@ -370,13 +373,13 @@ def _count_round(app, exchange_id: str) -> int:
     lock, e va scritta perche' e' cio' che rende la struttura sicura SENZA
     sincronizzazione, non un'omissione.
 
-    **Dimensione limitata** (`_MAX_TRACKED_EXCHANGES`, "le ultime N identita' di
+    **Dimensione limitata** (`MAX_TRACKED`, "le ultime N identita' di
     turno" del brief): quando arriva un'identita' MAI vista e il dizionario e'
     gia' pieno, si scarta quella usata da PIU' TEMPO -- LRU e non FIFO, ed e'
     il `move_to_end` qui sotto a farne la differenza. Un turno che continua a
     chiamare si rimette in coda a ogni giro e non puo' essere espulso: se lo
     fosse, il suo contatore ripartirebbe da zero e il tetto si aggirerebbe
-    durando (vedi il commento su `_MAX_TRACKED_EXCHANGES`).
+    durando (vedi il commento su `MAX_TRACKED`, in testa a questo file).
 
     **La struttura la crea `server.create_app()`**, non questa funzione (M-2
     della review totale): scriverla qui, a richiesta gia' servita, faceva
@@ -389,7 +392,7 @@ def _count_round(app, exchange_id: str) -> int:
         rounds = rounds_per_exchange[exchange_id]
     else:
         rounds = 0
-        if len(rounds_per_exchange) >= _MAX_TRACKED_EXCHANGES:
+        if len(rounds_per_exchange) >= MAX_TRACKED:
             rounds_per_exchange.popitem(last=False)  # il piu' vecchio
     rounds_per_exchange[exchange_id] = rounds + 1
     return rounds

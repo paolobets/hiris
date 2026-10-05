@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
-from .chat_thread import ChatThread
+from .chat_thread import ChatThread, thread_condition, thread_params
 from .proxy._sanitize import truncate_with_marker
 from .storage import connect, init_schema
 
@@ -349,9 +349,9 @@ class ChatStore:
         """Return the thread's open session_id only if within the gap window — no side effects."""
         row = self._conn.execute(
             "SELECT session_id, last_msg_at FROM chat_sessions "
-            "WHERE summary IS NULL AND subject_key = ? AND entry_point = ? "
+            f"WHERE summary IS NULL AND {thread_condition()} "
             "ORDER BY last_msg_at DESC LIMIT 1",
-            (thread.subject_key, thread.entry_point),
+            thread_params(thread),
         ).fetchone()
         if not row:
             return None
@@ -382,8 +382,8 @@ class ChatStore:
         """Chiude, riassumendole, le sessioni aperte del filo tranne `keep`."""
         rows = self._conn.execute(
             "SELECT session_id FROM chat_sessions WHERE summary IS NULL "
-            "AND subject_key = ? AND entry_point = ?",
-            (thread.subject_key, thread.entry_point),
+            f"AND {thread_condition()}",
+            thread_params(thread),
         ).fetchall()
         for row in rows:
             if row["session_id"] != keep:
@@ -431,8 +431,8 @@ class ChatStore:
         # di un altro filo.
         self._conn.execute(
             "UPDATE chat_sessions SET summary = ? "
-            "WHERE session_id = ? AND subject_key = ? AND entry_point = ?",
-            (summary, session_id, thread.subject_key, thread.entry_point),
+            f"WHERE session_id = ? AND {thread_condition()}",
+            (summary, session_id, *thread_params(thread)),
         )
 
     def _new_session(self, thread: ChatThread) -> str:
@@ -441,7 +441,7 @@ class ChatStore:
         self._conn.execute(
             "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, "
             "subject_key, entry_point) VALUES(?,?,?,?,?)",
-            (session_id, ts, ts, thread.subject_key, thread.entry_point),
+            (session_id, ts, ts, *thread_params(thread)),
         )
         return session_id
 
@@ -525,9 +525,9 @@ class ChatStore:
         with self._mu:
             rows = self._conn.execute(
                 "SELECT session_id, started_at, last_msg_at, summary FROM chat_sessions "
-                "WHERE summary IS NOT NULL AND subject_key = ? AND entry_point = ? "
+                f"WHERE summary IS NOT NULL AND {thread_condition()} "
                 "ORDER BY last_msg_at DESC LIMIT ?",
-                (thread.subject_key, thread.entry_point, n),
+                (*thread_params(thread), n),
             ).fetchall()
             return [dict(r) for r in rows]
 
@@ -565,12 +565,12 @@ class ChatStore:
             active = self._fresh_session_id(thread)
             rows = self._conn.execute(
                 "SELECT s.session_id, s.last_msg_at FROM chat_sessions s "
-                "WHERE s.subject_key = ? AND s.entry_point = ? AND "
+                f"WHERE {thread_condition('s')} AND "
                 + _HAS_RETAINED_MESSAGE
                 # A pari secondo (una ripresa subito dopo l'ultimo messaggio)
                 # l'attiva sta in testa: e' la conversazione piu' recente.
                 + " ORDER BY s.last_msg_at DESC, s.session_id = ? DESC, s.rowid DESC",
-                (thread.subject_key, thread.entry_point, cutoff, active),
+                (*thread_params(thread), cutoff, active),
             ).fetchall()
             # I messaggi dell'utente ancora ricordati, in ordine: quale fa da
             # titolo lo decide `_is_blank`, in Python, perche' SQLite non sa
@@ -580,9 +580,9 @@ class ChatStore:
             for m in self._conn.execute(
                 "SELECT m.session_id, m.content FROM chat_messages m "
                 "JOIN chat_sessions s ON s.session_id = m.session_id "
-                "WHERE s.subject_key = ? AND s.entry_point = ? "
+                f"WHERE {thread_condition('s')} "
                 "AND m.role = 'user' AND m.timestamp >= ? ORDER BY m.id",
-                (thread.subject_key, thread.entry_point, cutoff),
+                (*thread_params(thread), cutoff),
             ):
                 said.setdefault(m["session_id"], []).append(m["content"])
         return [{"id": r["session_id"],
@@ -617,11 +617,11 @@ class ChatStore:
         richiudersi al primo turno. `days` come in `list_conversations`: si
         riprende solo cio' che l'elenco mostra, e `load_context` rilegge poi
         solo i messaggi dentro la conservazione (security 6.9)."""
-        key = (session_id, thread.subject_key, thread.entry_point)
+        key = (session_id, *thread_params(thread))
         with self._mu:
             found = self._conn.execute(
                 "SELECT 1 FROM chat_sessions s WHERE s.session_id = ? "
-                "AND s.subject_key = ? AND s.entry_point = ? AND "
+                f"AND {thread_condition('s')} AND "
                 + _HAS_RETAINED_MESSAGE,
                 (*key, _retention_cutoff(days)),
             ).fetchone()
@@ -631,7 +631,7 @@ class ChatStore:
                 self._close_other_open_sessions(thread, keep=session_id)
                 self._conn.execute(
                     "UPDATE chat_sessions SET summary = NULL, last_msg_at = ? "
-                    "WHERE session_id = ? AND subject_key = ? AND entry_point = ?",
+                    f"WHERE session_id = ? AND {thread_condition()}",
                     (self._now(), *key),
                 )
                 self._conn.commit()
@@ -646,16 +646,16 @@ class ChatStore:
         che non c'e' piu' (security 6.6). `False` se non c'e' una conversazione
         del filo con quell'id. Le orfane e gli altri fili restano intatti: la
         condizione sul filo sta in tutte e due le istruzioni."""
-        key = (session_id, thread.subject_key, thread.entry_point)
+        key = (session_id, *thread_params(thread))
         with self._mu:
             try:
                 self._conn.execute(
                     "DELETE FROM chat_messages WHERE session_id IN "
                     "(SELECT session_id FROM chat_sessions "
-                    "WHERE session_id = ? AND subject_key = ? AND entry_point = ?)", key)
+                    f"WHERE session_id = ? AND {thread_condition()})", key)
                 cur = self._conn.execute(
                     "DELETE FROM chat_sessions "
-                    "WHERE session_id = ? AND subject_key = ? AND entry_point = ?", key)
+                    f"WHERE session_id = ? AND {thread_condition()}", key)
                 self._conn.commit()
             except Exception:
                 self._conn.rollback()
@@ -679,7 +679,7 @@ class ChatStore:
             cur = self._conn.execute(
                 "UPDATE chat_sessions SET subject_key = ?, entry_point = ? "
                 "WHERE subject_key IS NULL",
-                (thread.subject_key, thread.entry_point),
+                thread_params(thread),
             )
             self._conn.commit()
             return cur.rowcount
