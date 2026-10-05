@@ -59,7 +59,7 @@ _EXECUTION_NOT_FOUND = unknown_id_text("nessuna esecuzione")
 async def handle_get_agenda(request: web.Request) -> web.Response:
     store = request.app.get("agenda")
     if store is None:
-        return error_response(503, "archivio non disponibile", agenda=[])
+        return error_response(503, "archivio non disponibile")
     thread = request_thread(request)
     # Le promesse di prima vanno al proprietario alla sua prima lettura, con
     # la stessa regola e nello stesso gesto della cronologia. Solo qui, fra

@@ -100,7 +100,7 @@ async def handle_watching(request: web.Request) -> web.Response:
     """
     watcher = request.app.get("watcher")
     if watcher is None:
-        return error_response(503, "osservatore non disponibile", watching=[])
+        return error_response(503, "osservatore non disponibile")
     store = request.app.get("observations")
     return web.json_response({
         "watching": _with_integration(watcher.watching()),

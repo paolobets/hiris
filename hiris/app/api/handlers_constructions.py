@@ -57,7 +57,7 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
         return refusal
     store = _store(request)
     if store is None:
-        return error_response(503, "archivio non disponibile", constructions=[])
+        return error_response(503, "archivio non disponibile")
     # Le scadute si segnano PRIMA di elencare, o la pagina mostrerebbe come
     # «da approvare» proposte che l'officina rifiuterebbe di applicare -- e il
     # bottone mentirebbe.

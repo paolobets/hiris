@@ -241,6 +241,27 @@ async def test_services_503_does_not_pretend_an_empty_list(bare_client):
     assert await resp.json() == {"error": "archivio non disponibile"}
 
 
+@pytest.mark.asyncio
+async def test_no_error_carries_an_empty_list_beside_it(bare_client):
+    """A10 (approvata il 05/10/2026), la stessa regola di C-52 per ogni rotta:
+    accanto a un errore non si mette un elenco vuoto, che direbbe «nessuno»
+    dove il fatto e' «non so». Le rotte si chiedono al router (le provoca
+    `_provoked_errors`), non si elencano: il 05/10/2026 erano agenda,
+    costruzioni e osservatore (`agenda: []`, `constructions: []`,
+    `watching: []`).
+
+    Mutazione eseguita: rimesso `agenda=[]` nel 503 di GET /api/agenda ->
+    rossa, con la rotta nel messaggio."""
+    errors = await _provoked_errors(bare_client)
+    # La derivazione non si e' svuotata: senza archivi i 503 ci sono.
+    assert sum(1 for status, _body in errors.values() if status == 503) >= 3, errors
+    # `_NOT_YET`: il resoconto di usage/reset, dichiarato (A9).
+    with_list = {route: body for route, (_status, body) in errors.items()
+                 if route not in _NOT_YET and isinstance(body, dict)
+                 and any(value == [] for value in body.values())}
+    assert with_list == {}, with_list
+
+
 # --- C-07 --------------------------------------------------------------------
 
 def test_unknown_id_sentence_is_written_once():

@@ -135,8 +135,8 @@
    Errori: 404/409/503 portano gia' un testo corretto dal server -- si legge
    `error` e si mostra verbatim, mai un messaggio sintetico per casi che il
    server ha gia' separato. Solo un vero fallimento di rete usa il messaggio
-   generico. Un fallimento della GET (rete giu', o il 503 che porta gia'
-   `costruzioni: []` e sembra una lista vuota senza esserlo) mostra un
+   generico. Un fallimento della GET (rete giu', o il 503 -- che fino al
+   05/10/2026 portava anche `constructions: []`, A10) mostra un
    messaggio distinto con "Riprova", mai lo stesso testo di "non c'e' niente
    qui". Il 403 della GET (la pagina e' di chi costruisce, spec 2026-09-26
    §3) e' un terzo caso: il motivo del server, senza "Riprova".
