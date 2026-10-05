@@ -65,7 +65,8 @@ async def handle_watching(request: web.Request) -> web.Response:
     schermata:
 
     - `watching` -- cio' che si guarda, col **motivo** e l'**autore** di ogni
-      voce (`Watcher.watching()`, che le prende dallo scope);
+      voce (`Watcher.watching()`, che le prende dallo scope), e per ogni
+      entita' la sua **fonte** (`House.source`: viva, spenta, sparita...);
     - `fuori` -- cio' che e' stato **lasciato fuori**, con la sua ragione. E'
       l'altra meta' della trasparenza, ed e' da li' che si rimette dentro una
       delle escluse: un elenco di sole cose guardate non direbbe se un'entita'
@@ -102,8 +103,18 @@ async def handle_watching(request: web.Request) -> web.Response:
     if watcher is None:
         return error_response(503, "osservatore non disponibile")
     store = request.app.get("observations")
+    # La casa del momento, per la fonte di ogni soggetto (Task 1.5, G-01).
+    # Senza anagrafe -- archivio assente, o nessuna lettura ancora riuscita
+    # (`HomeSpace.read()` torna `{}`) -- non si chiede: una casa vuota
+    # farebbe «sconosciuto» di ogni soggetto, che e' un'affermazione, non un
+    # silenzio.
+    home_space_store = request.app.get("home_space_store")
+    house = (None if home_space_store is None
+             else House.read(home_space_store, request.app.get("entity_cache")))
+    if house is not None and not house.home_space:
+        house = None
     return web.json_response({
-        "watching": _with_integration(watcher.watching()),
+        "watching": _with_integration(watcher.watching(house=house)),
         "fuori": _left_out(store),
         "obiettivo": store.objective() if store is not None else None,
         "riconsiderazione": store.last_reconsideration() if store is not None else None,

@@ -99,7 +99,8 @@ _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts")
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
                  names: dict, objective: dict | None = None,
                  silent: dict[str, NotComputable] | None = None,
-                 judgment: dict | None = None) -> dict:
+                 judgment: dict | None = None,
+                 muted: dict[str, dict] | None = None) -> dict:
     """Il resoconto di un giorno: `{giorno, obiettivo, misure, forme, cronaca,
     giudizio}`.
 
@@ -133,15 +134,23 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     §6), gia' calcolata da chi chiama: `facts.aggregate_day` e
     `facts.rebuild_chronicle`. Come `objective`, `None` resta `None`: nessuna
     impronta inventata per una cronaca che non dice con quale giudizio e' nata.
+
+    **`muted`** porta le ricette che non possono produrre niente perche' ogni
+    loro entita' tace per una causa che non passa da sola
+    (`recipes.muted_recipes`, piano degli attori, Task 1.5; G-02, G-03):
+    `{dispositivo: {non_calcolabile, causa}}`. Escono con UNA riga per
+    dispositivo, non con un rifiuto per passo; chi chiama non le mette fra
+    `recipes`.
     """
-    measured, shapes = _measurements(series, recipes, names, silent)
+    measured, shapes = _measurements(series, recipes, names, silent, muted)
     return {"giorno": day, "obiettivo": objective, "misure": measured,
             "forme": shapes, "cronaca": [_entry(e) for e in episodes or []],
             "giudizio": judgment}
 
 
 def _measurements(series: dict, recipes: dict, names: dict,
-                  silent: dict[str, NotComputable] | None = None
+                  silent: dict[str, NotComputable] | None = None,
+                  muted: dict[str, dict] | None = None
                   ) -> tuple[list[dict], list[dict]]:
     """Le misure e le **forme**, separate: `(misure, forme)`.
 
@@ -172,11 +181,18 @@ def _measurements(series: dict, recipes: dict, names: dict,
     """
     out: list[dict] = []
     shapes: list[dict] = []
-    for subject in sorted(recipes or {}):
-        recipe = Recipe(recipes[subject])
+    muted = muted or {}
+    for subject in sorted({*(recipes or {}), *muted}):
         base = {"soggetto": subject}
         if names.get(subject):
             base["nome"] = names[subject]
+        if subject in muted:
+            # Il dispositivo tace tutto: una riga, non un rifiuto per passo.
+            out.append({**base, "misura": "(la ricetta)",
+                        "non_calcolabile": muted[subject]["non_calcolabile"],
+                        "causa": muted[subject]["causa"]})
+            continue
+        recipe = Recipe(recipes[subject])
         needed = {e: series.get(e) or [] for e in recipe.entities()}
         try:
             outcomes = recipe.run(series=needed, silent=silent)

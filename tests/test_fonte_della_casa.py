@@ -333,7 +333,7 @@ async def test_un_guasto_delle_statistiche_non_si_scrive_come_serie_vuota():
     """Trovato 7 (S-28): il commento accanto al ramo prometteva «ogni misura
     esce non calcolabile con la sua ragione», e la ragione era «la serie e'
     vuota». Ora ogni entita' della ricetta porta il guasto."""
-    _ricette, serie, _nomi, silent = await _ingredients(
+    _ricette, serie, _nomi, silent, _mute = await _ingredients(
         Refused("unknown_error", "timeout"), set())
     assert serie == {}
     assert silent is not None, "il guasto e' tornato a essere «niente da dire»"
@@ -346,7 +346,7 @@ async def test_un_guasto_delle_statistiche_non_si_scrive_come_serie_vuota():
 
 @pytest.mark.asyncio
 async def test_il_resoconto_riceve_la_causa_dalla_casa_del_giro():
-    _ricette, _serie, _nomi, silent = await _ingredients({}, {"sensor.senza_valore"})
+    _ricette, _serie, _nomi, silent, _mute = await _ingredients({}, {"sensor.senza_valore"})
     assert "spenta dal proprietario" in silent["light.del_proprietario"].reason
     assert silent["light.del_proprietario"].cause == "spenta_dal_proprietario"
     assert "sensor.senza_valore" not in silent
