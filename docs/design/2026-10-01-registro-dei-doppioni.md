@@ -41,7 +41,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
-| B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | E | PS |  | cop-1 (conteggio); cop-3 (incompleta); cop-7 (incompleta); Tappa 3 (incompleta) | reg · cop-1 · cop-3 · cop-4 · cop-6 · cop-7 · Tappa 3, Task 10: uscite le copie di cop-1, cop-7 e del trovato 8; restano le due «adesso nel fuso» di cop-3 (`tools._calendar`, `house_history._window`) e `briefing._now_line`, che chiamano `historian.home_space_zone`: se sono copie lo decide il proprietario (Task 14) |
 | B-21 | Slug: `composer.available_slug` e `recipient._slugify` | D | CC |  |  | reg · cop-9 · Tappa 7 (D10 della Tappa 3) |
 | B-22 | Vocabolari dei tipi: giudizi e significati in più case | NV | DP |  | cop-5 (incompleta); cop-6 (righe) | reg · cop-5 · cop-6 · Tappa 8 (D10 della Tappa 3) |
 | B-23 | Tabelle di nomi italiani di domini e struttura «automazione/script/scena» | E | PS |  | cop-4 (conteggio); cop-5 (imprecisa) | reg · cop-4 · cop-5 · cop-9 · Tappa 3, Task 7: a meta' (`BEHAVIOR_DOMAINS` da `LINK_NAME`); restano `house_query.KINDS` e la tabella in `house_history` |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-09 | `queries._view_integration` e `entity_cache.py:530`: letterali di stato | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: STATE_UNAVAILABLE e STATE_UNKNOWN in type_vocabulary, usati da queries._view_integration ed entity_cache._to_minimal |
 | B-14 | Integrazione sana: due lettori, una costante doppia | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: CONFIG_ENTRY_SOURCE_IGNORE e config_entry_is_ignored in ha_vocabulary, per nucleo e osservatore |
 | B-55 | Tre definizioni di «non disponibile»: `queries._view_integration`, `facts`, `privacy._NEUTRAL_STATES` | Tappa 3 (da rilasciare) | 970ce03a | Tappa 3, Task 8: le tre definizioni leggono il vocabolario (costanti con nome in queries, unknown_states in facts e privacy) |
+| B-15 | Fuso, confini del giorno, «oggi»: accessori e copie | Tappa 3 (da rilasciare) | c35e940b | le tre composizioni di «adesso nel fuso» chiamano l'unica costruzione del fuso (historian.home_space_zone): usi, non copie (deciso da Paolo, 05/10/2026) |
