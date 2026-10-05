@@ -33,6 +33,7 @@ Cosa difende ciascun gruppo di test:
 """
 import logging
 import os
+import pathlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -389,7 +390,10 @@ def _cattura_system(job, caplog=None):
 
     def _fake_run(argv, *a, **k):
         catturato["argv"] = argv
-        catturato["system"] = argv[argv.index("--system-prompt") + 1]
+        # Dalla Tappa 6 (S-08) il prompt di sistema e' in un file che vive
+        # quanto l'invocazione: si legge QUI, mentre la "CLI" gira.
+        catturato["system"] = pathlib.Path(
+            argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8")
         return _Proc()
 
     with patch.object(runner.subprocess, "run", _fake_run):

@@ -41,7 +41,7 @@ def q(tmp_path):
     coda.close()
 
 
-def test_la_chat_accodata_dopo_passa_avanti_all_osservatore(q):
+def test_chat_enqueued_later_is_served_before_observer(q):
     q.enqueue("scope", {}, {}, 100.0, job_id="osservatore", now=1.0,
               priority=PRIORITY_BACKGROUND)
     q.enqueue("chat", {}, {}, 100.0, job_id="chat", now=2.0, thread=PAOLO,
@@ -50,7 +50,7 @@ def test_la_chat_accodata_dopo_passa_avanti_all_osservatore(q):
     assert q.claim(now=10.0)["job_id"] == "osservatore"
 
 
-def test_fra_pari_precedenza_resta_l_ordine_d_arrivo(q):
+def test_equal_priority_keeps_arrival_order(q):
     for nome, nato in (("primo", 1.0), ("secondo", 2.0), ("terzo", 3.0)):
         q.enqueue("analisi", {}, {}, 100.0, job_id=nome, now=nato,
                   priority=PRIORITY_BACKGROUND)
@@ -58,7 +58,7 @@ def test_fra_pari_precedenza_resta_l_ordine_d_arrivo(q):
         "primo", "secondo", "terzo"]
 
 
-def test_la_precedenza_viaggia_col_turno(q):
+def test_priority_travels_with_job(q):
     """Un dato che c'e' e nessuno puo' chiedere non esiste (fondamenta 4)."""
     q.enqueue("chat", {}, {}, 100.0, job_id="c", now=1.0, thread=PAOLO,
               priority=PRIORITY_CHAT)
@@ -66,7 +66,7 @@ def test_la_precedenza_viaggia_col_turno(q):
     assert q.claim(now=2.0)["priority"] == PRIORITY_CHAT
 
 
-def test_un_turno_scaduto_non_si_serve_e_si_chiude_scaduto(q):
+def test_expired_job_is_never_served_and_closes_expired(q):
     """Anche se e' una chat, anche se e' l'unico in coda."""
     q.enqueue("chat", {}, {}, 5.0, job_id="vecchia", now=1.0, thread=PAOLO,
               priority=PRIORITY_CHAT)
@@ -78,7 +78,7 @@ def test_un_turno_scaduto_non_si_serve_e_si_chiude_scaduto(q):
     assert q.get("vecchia")["status"] == "expired"
 
 
-def test_un_archivio_di_prima_della_colonna_si_apre_e_si_serve(tmp_path):
+def test_store_older_than_column_opens_and_serves(tmp_path):
     """La migrazione su un archivio in produzione: versione 3, righe vive."""
     percorso = str(tmp_path / "v3.db")
     conn = sqlite3.connect(percorso)
@@ -118,7 +118,7 @@ def test_un_archivio_di_prima_della_colonna_si_apre_e_si_serve(tmp_path):
     ReasoningQueue(percorso).close()
 
 
-def test_solo_la_chat_ha_la_precedenza_piu_alta():
+def test_chat_has_highest_priority():
     assert PRIORITY_CHAT > PRIORITY_BACKGROUND
 
 
@@ -140,14 +140,14 @@ def _enqueue_calls() -> list[tuple[str, int, ast.Call]]:
     return trovate
 
 
-def test_la_ricerca_degli_accodamenti_trova_i_sei_del_ponte():
+def test_enqueue_search_finds_bridge_six():
     """Prova della derivazione: un insieme improvvisamente piccolo e' un
     cancello che sembra vivo e non guarda piu' niente. Sei al 05/10/2026
     (piano della Tappa 6, «Gli accodamenti sul ponte»)."""
     assert len(_enqueue_calls()) >= 6
 
 
-def test_ogni_accodamento_del_prodotto_dichiara_la_precedenza():
+def test_every_product_enqueue_declares_priority():
     senza = [f"{f}:{riga}" for f, riga, nodo in _enqueue_calls()
              if not any(k.arg == "priority" for k in nodo.keywords)]
     assert not senza, (

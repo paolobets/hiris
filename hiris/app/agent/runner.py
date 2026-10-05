@@ -66,7 +66,10 @@ import logging
 import os
 import secrets
 import subprocess
+import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import httpx
@@ -532,11 +535,51 @@ def probe_tools(client, base_url: str, headers: dict,
     return True, ""
 
 
-def _chat_claude_args(system: str, user: str, model: str, *,
+@contextmanager
+def _system_prompt_file(system: str) -> Iterator[str]:
+    """Il prompt di sistema in un file che vive quanto un'invocazione.
+
+    Tappa 6, Task 1 (S-08). Il prompt porta il nucleo della casa, e su una casa
+    grande supera il limite di un SINGOLO argomento della riga di comando
+    (131.072 byte, `MAX_ARG_STRLEN`: misurato il 05/10/2026 nel contenitore
+    della nuvola, kernel 6.18.44; sulla macchina di Home Assistant si rimisura
+    dal vivo). Dalla documentazione della CLI (code.claude.com/docs/en/
+    cli-reference, letta il 05/10/2026): «`--system-prompt-file` -- Load system
+    prompt from a file, replacing the default prompt». Verificato lo stesso
+    giorno sulla 2.1.286, la versione fissata nel `Dockerfile`, con un'API
+    finta in locale: la richiesta porta come sistema il contenuto del file
+    (150.020 byte arrivati interi), identico a cio' che `--system-prompt`
+    portava per la stessa stringa.
+
+    Un file e non un tubo: il nucleo sta gia' su disco, in `reasoning.db`,
+    finche' il turno non si chiude. Il file e' leggibile solo dal proprietario
+    (`mkstemp`, 0600) e si cancella all'uscita dell'invocazione, anche se la
+    CLI fallisce o scade.
+    """
+    fd, path = tempfile.mkstemp(prefix="hiris-sistema-", suffix=".txt")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(system)
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
+def _chat_claude_args(system_file: str, model: str, *,
                       active_tools: bool = False,
                       mcp_config: str = "",
                       by_promise: bool = False) -> list:
     """L'argv del ponte.
+
+    **Ne' la domanda ne' il prompt di sistema stanno qui** (Tappa 6, Task 1,
+    S-08): la domanda passa su stdin (`-p` senza argomento: «Input must be
+    provided either through stdin or as a prompt argument when using
+    --print», 2.1.286, 05/10/2026), il prompt di sistema da `system_file`
+    (vedi `_system_prompt_file`). Un argomento oltre 131.072 byte e il kernel
+    rifiuta di far partire la CLI.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il formato
     della risposta passa da `json` a `stream-json --verbose`, e NON e' un
@@ -585,8 +628,8 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     Con `False` l'argv resta quello del ramo di DEGRADO: nessuna
     `--mcp-config`, nessun `--allowedTools`, e il prompt che nega gli
     strumenti resta vero per costruzione invece che per fortuna."""
-    argv = [CLI_PONTE, "-p", user, "--model", model,
-            "--system-prompt", system,
+    argv = [CLI_PONTE, "-p", "--model", model,
+            "--system-prompt-file", system_file,
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default",
@@ -1723,19 +1766,25 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "guide_chars": max(len(system) - core_chars, 0),
             "core_chars": core_chars,
             "history_chars": len(user)})
-        argv = _chat_claude_args(system, user, model,
-                                 active_tools=active_tools,
-                                 mcp_config=mcp_config,
-                                 by_promise=bool(promise_id))
         try:
             # check=False esplicito: `proc.returncode` viaggia intatto dentro
             # `Invocation.rc` e lo leggono i chiamanti (compreso il ramo di
             # verifica dell'`init` qui sotto, che tratta un rc!=0 come causa
             # plausibile e non come eccezione) -- un check=True solleverebbe
             # proprio dove oggi la gestione dell'esito funziona.
-            proc = subprocess.run(argv, capture_output=True, text=True,
-                                  timeout=300, env=_safe_subprocess_env(),
-                                  check=False)
+            #
+            # La domanda su stdin, il prompt di sistema da un file (S-08):
+            # vedi `_system_prompt_file`. `encoding` esplicito per entrambi i
+            # versi: la CLI legge e scrive UTF-8, e non deve dipendere dalla
+            # localizzazione del contenitore.
+            with _system_prompt_file(system) as system_file:
+                argv = _chat_claude_args(system_file, model,
+                                         active_tools=active_tools,
+                                         mcp_config=mcp_config,
+                                         by_promise=bool(promise_id))
+                proc = subprocess.run(argv, input=user, capture_output=True,
+                                      encoding="utf-8", timeout=300,
+                                      env=_safe_subprocess_env(), check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
             log.warning("claude non eseguibile: %s", type(exc).__name__)
             return None

@@ -37,6 +37,7 @@ import builtins
 import json
 import logging
 import os
+import pathlib
 import sqlite3
 import time
 from unittest.mock import patch
@@ -125,7 +126,7 @@ def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
         "Sei HIRIS.", [], contesto="## La casa\nSalotto: luce accesa.",
         active_tools=strumenti_attivi)
     argv = runner._chat_claude_args(
-        "SYS", "USER", "sonnet", active_tools=strumenti_attivi,
+        "/sistema.txt", "sonnet", active_tools=strumenti_attivi,
         mcp_config=runner.config_mcp("http://127.0.0.1:8099", "TOK"))
 
     nell_argv = "mcpconfig" in _normalizza(argv)
@@ -606,6 +607,10 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             # chiama gli strumenti. Se l'add-on non servisse la callback
             # adesso, questo blocco resterebbe appeso.
             visto["argv"] = argv
+            # Il prompt di sistema vive in un file quanto l'invocazione
+            # (Tappa 6, S-08): si legge adesso.
+            visto["system"] = pathlib.Path(
+                argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8")
             with httpx.Client(timeout=30) as dentro:
                 def _rpc(corpo):
                     return dentro.post(f"{base}/api/mcp",
@@ -640,8 +645,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         assert esito == "done"
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
         assert "--mcp-config" in visto["argv"]
-        system = visto["argv"][visto["argv"].index("--system-prompt") + 1]
-        assert prompts._GUIDE_WITH_TOOLS in system
+        assert prompts._GUIDE_WITH_TOOLS in visto["system"]
 
         # la callback e' stata servita, e ha portato i nomi del catalogo
         assert visto["nomi"] == _NOMI_NUDI
@@ -1250,9 +1254,14 @@ class _CliFinta:
     def __init__(self, *procs):
         self.procs = list(procs)
         self.argv = []
+        self.systems = []
 
     def __call__(self, argv, *a, **k):
         self.argv.append(list(argv))
+        # Il prompt di sistema vive in un file quanto l'invocazione (Tappa 6,
+        # S-08): si legge adesso, non dopo.
+        self.systems.append(pathlib.Path(
+            argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8"))
         return self.procs[min(len(self.argv) - 1, len(self.procs) - 1)]
 
     @property
@@ -1260,8 +1269,7 @@ class _CliFinta:
         return len(self.argv)
 
     def system(self, n: int) -> str:
-        argv = self.argv[n]
-        return argv[argv.index("--system-prompt") + 1]
+        return self.systems[n]
 
 
 def _turno(cli, *, token="TOK", job_id="J-init", sonda=True):
