@@ -32,7 +32,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from ..proxy._sanitize import sanitize_structure, sanitize_traceback
+from ..proxy._sanitize import sanitize_structure, sanitize_traceback, truncate_with_marker
 from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_inventory_error
 from ..proxy.ha_client import SHAPE, _failure
 from . import ha_vocabulary
@@ -1210,9 +1210,7 @@ def last_line(text) -> str | None:
 
 
 def _short(text: str | None) -> str | None:
-    if text is None or len(text) <= MESSAGE_MAX:
-        return text
-    return text[:MESSAGE_MAX - 1] + "…"
+    return None if text is None else truncate_with_marker(text, MESSAGE_MAX)
 
 
 def _source(raw) -> str | None:

@@ -170,7 +170,12 @@ async def test_la_frase_si_TAGLIA(banco):
     quella la frase intera.
 
     Mutazione ESEGUITA: togliere il taglio -- rossa.
-    Mutazione ESEGUITA: tagliare senza marcatore -- rossa."""
+    Mutazione ESEGUITA: tagliare senza marcatore -- rossa.
+
+    Dal 05/10/2026 (C-55) il marcatore e' quello della casa, dentro il tetto:
+    l'atteso si chiede a `truncate_with_marker`, non si ricopia."""
+    from hiris.app.proxy._sanitize import truncate_with_marker
+
     officina, _, cronaca = banco
     proposta = await _proposta(officina)
 
@@ -179,8 +184,9 @@ async def test_la_frase_si_TAGLIA(banco):
                                  confirm_phrase="a" * (PHRASE_MAX + 500))
 
     scritta = _soggetto_scritto(cronaca, esito)["confirm_phrase"]
-    assert len(scritta) <= PHRASE_MAX + 1, len(scritta)
-    assert scritta.endswith("…"), "il taglio non si dichiara"
+    assert len(scritta) <= PHRASE_MAX, len(scritta)
+    assert scritta == truncate_with_marker("a" * (PHRASE_MAX + 500), PHRASE_MAX), (
+        "il taglio non si dichiara col marcatore della casa")
 
 
 @pytest.mark.asyncio

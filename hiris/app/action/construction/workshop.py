@@ -141,11 +141,10 @@ def _add_phrase(subject: dict | None, phrase: str | None) -> dict | None:
     detto = (phrase or "").strip()
     if not detto:
         return subject
-    if len(detto) > PHRASE_MAX:
-        # Il taglio **si dichiara**: senza il marcatore, quella sembrerebbe la
-        # frase intera, e chi legge la cronaca giudicherebbe su meta' di cio'
-        # che e' stato detto.
-        detto = detto[:PHRASE_MAX] + "…"
+    # Il taglio **si dichiara**: senza il marcatore, quella sembrerebbe la
+    # frase intera, e chi legge la cronaca giudicherebbe su meta' di cio'
+    # che e' stato detto. Il marcatore e' quello della casa (C-55).
+    detto = _truncate(detto, PHRASE_MAX)
     return {**(subject or {}), "confirm_phrase": detto}
 
 

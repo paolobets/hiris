@@ -13,6 +13,7 @@ import anthropic
 # unico import di `openai_compat_runner` è dentro `error_family`) -- quindi
 # nessun ciclo.
 from .provider_occurrences import error_family
+from .proxy._sanitize import truncate_with_marker
 from .usage.giro import anthropic_turn_tokens
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,8 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
             if block.get("type") == "tool_result":
                 raw = block.get("content", "")
                 if isinstance(raw, str) and len(raw) > _TOOL_RESULT_COMPRESS_LEN:
-                    block = {**block, "content": raw[:_TOOL_RESULT_COMPRESS_LEN] + "…[troncato]"}
+                    block = {**block, "content": truncate_with_marker(
+                        raw, _TOOL_RESULT_COMPRESS_LEN)}
             compressed.append(block)
         messages[idx] = {**messages[idx], "content": compressed}
 

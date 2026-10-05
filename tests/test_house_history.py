@@ -1297,11 +1297,17 @@ def test_un_messaggio_lungo_si_accorcia_e_l_eccezione_e_la_sua_ultima_riga():
 
     Mutazione ESEGUITA: `_short` che non taglia -- rossa; accorciare
     l'eccezione PRIMA di prenderne l'ultima riga -- rossa (299 caratteri
-    diventano meno)."""
+    diventano meno).
+
+    Dal 05/10/2026 (C-55) il taglio e' quello della casa: il messaggio atteso
+    si chiede a `truncate_with_marker`, non si ricopia il marcatore."""
+    from hiris.app.proxy._sanitize import truncate_with_marker
+
     lungo = [{"level": "ERROR", "message": "x" * 1000, "timestamp": T0 - 1,
               "exception": "Traceback\n  File y\nValueError: " + "z" * 1000}]
     riga = hh.error_rows(_q(genere="errori"), lungo)["voci"][0]
-    assert len(riga["messaggio"]) == hh.MESSAGE_MAX and riga["messaggio"].endswith("…")
+    assert riga["messaggio"] == truncate_with_marker("x" * 1000, hh.MESSAGE_MAX)
+    assert len(riga["messaggio"]) == hh.MESSAGE_MAX
     assert len(riga["eccezione"]) == hh.MESSAGE_MAX
     assert riga["eccezione"].startswith("ValueError: zzz")
 

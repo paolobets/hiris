@@ -326,20 +326,18 @@ def _scansione() -> dict[str, str]:
 #    `cost_da_listino`; il primo dei quattro, `_accoda_al_bridge`, e' uscito
 #    il 02/09 diventando `_enqueue_to_bridge`; il quarto,
 #    `CEILING_IN_SOSPESO`, non compare qui perche' porta `in`, forma esclusa);
-# 3. i QUATTRO falsi positivi noti -- **annotati uno per uno ACCANTO alla
+# 3. i TRE falsi positivi noti -- **annotati uno per uno ACCANTO alla
 #    loro voce**, in cima all'elenco, e non qui: una decisione che vive
 #    lontano da cio' che decide non la legge nessuno. Erano sei: `O_CREAT`/
 #    `O_TRUNC`/`O_WRONLY` sono usciti insieme alla forma `o` (vedi la sezione
-#    sulle quattro forme escluse), misurata e non piu' tollerata. I quattro
-#    che restano costerebbero, per uscire, `a`, `col` e `non`: tre forme che
+#    sulle quattro forme escluse), misurata e non piu' tollerata; `a_trunc`
+#    e' uscito il 05/10/2026 col taglio a mano di `chat_store` (C-55). I tre
+#    che restano costerebbero, per uscire, `col` e `non`: due forme che
 #    catturano difetti veri.
 _NOTE_ITALIANE = frozenset({
-    # -- I QUATTRO FALSI POSITIVI, annotati dove si leggono --------------------
+    # -- I TRE FALSI POSITIVI, annotati dove si leggono ------------------------
     # NON sono debito da far calare: sono nomi corretti che la regola non sa
     # distinguere. Chi li trova qui non deve «correggerli».
-    "a_trunc",              # `chat_store.py`: quella `a` e' il messaggio
-                            # dell'assistente, accanto a `u_trunc` che e' quello
-                            # dell'utente
     "col_offset", "end_col_offset",   # attributi di `tokenize`: quel `col` sta
                             # per «column», non e' `con` + articolo
     "_non_negative_integer",  # `non-negative` E' inglese: il prefisso `non-`

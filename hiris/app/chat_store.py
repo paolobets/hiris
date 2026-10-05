@@ -416,12 +416,10 @@ class ChatStore:
                     [{"role": r["role"], "content": r["content"]}
                      for r in reversed(rows)])
                 for a in opening:
-                    a_trunc = a[:_DIGEST_MSG_LEN] + "…" if len(a) > _DIGEST_MSG_LEN else a
-                    pairs.append(f"A: {a_trunc}")
+                    pairs.append(f"A: {truncate_with_marker(a, _DIGEST_MSG_LEN)}")
             for u, a in turns[-_DIGEST_TURNS:]:
-                u_trunc = u[:_DIGEST_MSG_LEN] + "…" if len(u) > _DIGEST_MSG_LEN else u
-                a_trunc = a[:_DIGEST_MSG_LEN] + "…" if len(a) > _DIGEST_MSG_LEN else a
-                pairs.append(f"U: {u_trunc}\nA: {a_trunc}")
+                pairs.append(f"U: {truncate_with_marker(u, _DIGEST_MSG_LEN)}\n"
+                             f"A: {truncate_with_marker(a, _DIGEST_MSG_LEN)}")
             summary = "\n---\n".join(pairs) if pairs else rows[0]["content"][:SUMMARY_MAX_CHARS]
         else:
             summary = "(nessuna risposta)"

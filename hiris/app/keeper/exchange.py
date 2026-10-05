@@ -21,6 +21,7 @@ import time
 
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
+from ..proxy._sanitize import truncate_with_marker
 
 logger = logging.getLogger(__name__)
 
@@ -238,8 +239,7 @@ def _senza_conclusione(answer) -> str:
     detto = answer.strip() if isinstance(answer, str) else ""
     if not detto:
         return "il turno non ha concluso: non so cosa dirti."
-    if len(detto) > _CEILING_RIPORTO:
-        detto = detto[:_CEILING_RIPORTO].rstrip() + "…"
+    detto = truncate_with_marker(detto, _CEILING_RIPORTO)
     return f"il turno non ha concluso. Aveva risposto a parole: «{detto}»"
 
 
