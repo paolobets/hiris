@@ -160,9 +160,11 @@ def instant_out(raw, zone) -> str | None:
     """
     if raw is None:
         return None
+    # Al secondo (A15, 05/10/2026): i microsecondi che lo specchio porta non
+    # servono a chi legge. `timespec` tronca, non arrotonda.
     if isinstance(raw, int | float) and not isinstance(raw, bool):
-        return datetime.fromtimestamp(raw, tz=zone).isoformat()
+        return datetime.fromtimestamp(raw, tz=zone).isoformat(timespec="seconds")
     moment = _moment(raw)
     if moment is None:
         return str(raw)
-    return moment.astimezone(zone).isoformat()
+    return moment.astimezone(zone).isoformat(timespec="seconds")

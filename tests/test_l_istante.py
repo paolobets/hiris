@@ -86,6 +86,20 @@ def test_epoch_utc_and_offset_come_out_the_same():
     assert historian.instant_out(expected, ROME) == expected
 
 
+def test_an_instant_goes_out_to_the_second():
+    """A15 (approvata il 05/10/2026): niente microsecondi. Lo specchio di Home
+    Assistant li porta, e uscivano (`...T08:15:00.123456+02:00`): l'esempio di
+    D3 e' al secondo, a chi legge non servono, e sono sette caratteri per
+    istante. Si tronca, non si arrotonda: un istante non passa al secondo
+    dopo.
+
+    Mutazione eseguita: tolto `timespec="seconds"` -> rossa sulle tre forme."""
+    expected = "2026-10-04T08:15:00+02:00"
+    assert historian.instant_out(QUARTER_PAST_EIGHT_ROME + 0.999999, ROME) == expected
+    assert historian.instant_out("2026-10-04T06:15:00.123456+00:00", ROME) == expected
+    assert historian.instant_out("2026-10-04T06:15:00.987654Z", ROME) == expected
+
+
 def test_none_is_null():
     # `null` = «so che non c'e'» (un'automazione mai eseguita): D3.
     assert historian.instant_out(None, ROME) is None
@@ -165,7 +179,8 @@ def test_search_gives_the_last_change_in_the_house_zone():
                 {"tipo": "sensor"})
     by_id = {v["id"]: v for v in r["voci"]}
     assert by_id["sensor.a"]["ultimo_cambio"] == "2026-10-04T08:15:00+02:00"
-    assert by_id["sensor.b"]["ultimo_cambio"] == "2026-10-04T08:15:00.250000+02:00"
+    # Al secondo anche dalla porta (A15): i microsecondi dello specchio non escono.
+    assert by_id["sensor.b"]["ultimo_cambio"] == "2026-10-04T08:15:00+02:00"
 
 
 def test_search_without_a_known_last_change_omits_the_key():
