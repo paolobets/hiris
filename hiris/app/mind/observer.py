@@ -29,6 +29,7 @@ import json
 import logging
 import re
 
+from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.house import House
 from ..home_space.topology import is_pseudo_area
 from ..steering import misura_turno
@@ -109,6 +110,12 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     italiano e' rumore. Una pseudo-area («Senza area», «Aree non lette») non
     si mostra: non e' un luogo, e la riga dice gia' l'assenza tacendo. Un nome
     che e' solo l'id ripetuto non si ripete.
+
+    **Una fonte che tace lo dice** (piano degli attori, Task 1.5; G-01):
+    `fonte: <stato>` dal vocabolario di `House.source` quando lo stato non e'
+    `viva` -- una sparita e' ancora nell'anagrafe, e quindi fra quelle da
+    giudicare, ma non parlera'. Una fonte viva, o che lo specchio non ha
+    potuto guardare, non costa una parola.
     """
     lines = []
     for entity_id in watched_ids(house, only):
@@ -121,8 +128,50 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
                       kind.get("unita"), area_name, kind.get("translation_key")):
             if value:
                 parts.append(str(value))
+        state = (house.source(entity_id) or {}).get("stato")
+        if state not in (None, _LIVE):
+            parts.append(f"fonte: {state}")
         lines.append(" · ".join(parts))
     return lines
+
+
+#: Lo stato della fonte che parla (`House.source`, Tappa 3, Task 8).
+_LIVE = "viva"
+
+
+def _silent_inside(store, house: House) -> list[tuple[str, dict | None]]:
+    """I soggetti decisi DENTRO che la casa non mette piu' davanti
+    all'osservatore e la cui fonte tace, con la fonte: `(id, fonte)`.
+
+    Sono quelli che la regola del fuori toglie -- uno spento dal
+    proprietario, un'entita' che il registro non conosce piu' -- e che fino al
+    05/10/2026 restavano dentro per sempre, perche' nessuna domanda li
+    mostrava piu' (G-01). Un soggetto dentro e fuori dalla regola ma VIVO (una
+    nascosta che il proprietario ha voluto) non c'entra: parla. Uno che lo
+    specchio non ha potuto guardare (`stato: None`) nemmeno: non si sa.
+    `House.source` -> `None` (ne' registro ne' stati) si'."""
+    if not house.mirror.readable:
+        return []
+    shown = set(house.visible_entities())
+    out = []
+    for subject, decision in sorted(store.scope().items()):
+        if not decision["dentro"] or not is_entity_id(subject) or subject in shown:
+            continue
+        source = house.source(subject)
+        if source is None or source.get("stato") not in (None, _LIVE):
+            out.append((subject, source))
+    return out
+
+
+def gone_lines(store, house: House) -> list[str]:
+    """Una riga per soggetto dentro che tace (`_silent_inside`): l'id e la
+    fonte. La domanda che apre la campagna li porta a parte, cosi' il modello
+    puo' toglierli alla prossima cadenza (piano degli attori, Task 1.5). Il
+    codice non toglie niente: nessuna riga dello scope si cancella (D1)."""
+    return [f"{subject} · fonte: "
+            + (source["stato"] if source is not None
+               else "nessuna (ne' nel registro ne' negli stati di Home Assistant)")
+            for subject, source in _silent_inside(store, house)]
 
 
 #: **Il contratto di risposta, e vive una volta sola.** Le due porte lo
@@ -144,7 +193,7 @@ ANSWER_CONTRACT = (
 )
 
 
-def build_question(objective: str, lines: list[str]) -> str:
+def build_question(objective: str, lines: list[str], gone: list[str] = ()) -> str:
     """La domanda intera: l'obiettivo, la casa, e il contratto di risposta.
 
     E' la forma che serve alla **catena**, dove tutto viaggia in un messaggio
@@ -152,19 +201,32 @@ def build_question(objective: str, lines: list[str]) -> str:
     `bridge_turn`): la domanda in cronologia, il contratto come istruzione di
     chiusura.
     """
-    return build_house_question(objective, lines) + "\n" + ANSWER_CONTRACT
+    return build_house_question(objective, lines, gone) + "\n" + ANSWER_CONTRACT
 
 
-def build_house_question(objective: str, lines: list[str]) -> str:
-    """L'obiettivo e la casa, **senza** il contratto di risposta."""
-    return (
+def build_house_question(objective: str, lines: list[str], gone: list[str] = ()) -> str:
+    """L'obiettivo e la casa, **senza** il contratto di risposta.
+
+    `gone` sono le righe di `gone_lines`: i soggetti che guardi e che tacciono
+    fuori dalla casa che ti si mostra. Vengono dopo, a parte, solo se ci sono."""
+    question = (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
         f"Queste sono le {len(lines)} entita' che ti competono. Ogni riga e':\n"
         "identificatore · nome · classe · unita' · area · chiave di traduzione\n"
-        "(i campi che mancano sono assenti, non vuoti).\n\n"
+        "(i campi che mancano sono assenti, non vuoti; «fonte: ...» c'e' solo "
+        "quando l'entita' non parla, e dice perche').\n\n"
         + "\n".join(lines)
         + "\n"
     )
+    if gone:
+        question += (
+            f"\nQuesti {len(gone)} soggetti li guardi gia', ma la loro fonte in "
+            "Home Assistant tace e non sono piu' fra quelli sopra. Se non "
+            "servono piu', toglili (stesso formato di risposta); se li ometti "
+            "restano come sono.\n\n"
+            + "\n".join(gone)
+            + "\n")
+    return question
 
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
@@ -214,7 +276,8 @@ def read_decisions(answer: str) -> tuple[list[dict], str | None]:
     return decisions, None
 
 
-def bridge_turn(store, house: House, only: set[str] | None = None) -> dict:
+def bridge_turn(store, house: House, only: set[str] | None = None, *,
+                opening: bool = True) -> dict:
     """Il turno da accodare al ponte: **la stessa domanda, per un'altra porta**.
 
     Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job non
@@ -229,11 +292,16 @@ def bridge_turn(store, house: House, only: set[str] | None = None) -> dict:
     campo alla riga della casa da una parte sola il ponte e la catena
     giudicherebbero case diverse senza che nessuna pagina lo dica
     (fondamenta 2).
+
+    `opening`: se questo turno apre la campagna (`annota` nella sveglia). Solo
+    quello porta i soggetti che tacciono (`gone_lines`): una volta per
+    campagna basta, e i lotti dopo non pagano quelle righe.
     """
     return {
         "history": [{"role": "user",
-                     "content": build_house_question(store.objective()["testo"],
-                                                     house_lines(house, only))}],
+                     "content": build_house_question(
+                         store.objective()["testo"], house_lines(house, only),
+                         gone_lines(store, house) if opening else [])}],
         "system_prompt": SYSTEM,
         # **Senza questa chiave il ponte gli impone il contrario.** L'istruzione
         # che chiude ogni turno di chat dice «usa testo semplice: niente
@@ -281,7 +349,11 @@ def apply_answer(store, house: House, answer: str, *, reason: str = "",
     """
     # L'insieme valido e' quello che la casa ha scelto per la domanda, non le
     # righe rilette (Task 12): il separatore e' della resa, non del giudizio.
-    known = set(watched_ids(house, asked))
+    # Piu' i soggetti dentro che tacciono (`gone_lines`, Task 1.5): la domanda
+    # che apre la campagna li mostra, e una decisione su di loro vale. Non
+    # entrano in `asked`: chi li omette li lascia come sono.
+    known = set(watched_ids(house, asked)) | {
+        subject for subject, _source in _silent_inside(store, house)}
     decisions, failure = read_decisions(answer)
     if failure is not None:
         logger.warning("osservatore: %s", failure)
@@ -345,7 +417,10 @@ async def reconsider(runner, store, house: House, *, reason: str,
     """
     lines = house_lines(house, only)
     objective = store.objective()["testo"]
-    question = build_question(objective, lines)
+    # I soggetti che tacciono solo nella domanda che apre la campagna (quella
+    # che annota la riconsiderazione): vedi `bridge_turn`.
+    question = build_question(objective, lines,
+                              gone_lines(store, house) if record else [])
     try:
         # `user_message=` per nome e non posizionale: `LLMRouter.chat` --
         # il runner vero, quello con la catena di ripiego -- prende `**kwargs`

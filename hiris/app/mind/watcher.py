@@ -1049,7 +1049,7 @@ class Watcher:
 
     # -- la pagina -----------------------------------------------------
 
-    def watching(self) -> list[dict]:
+    def watching(self, *, house=None) -> list[dict]:
         """Cosa sta guardando, **perche'**, e **chi l'ha deciso**.
 
         Sono le tre cose da cui il proprietario puo' togliere qualcosa
@@ -1079,10 +1079,26 @@ class Watcher:
         e non c'e' niente da togliere -- una condizione aperta si guarda finche'
         dura. Il loro `autore` e' `None`: dire «observer» attribuirebbe a
         qualcuno una decisione che non ha preso.
+
+        **Con la casa, ogni entita' porta la sua `fonte`** (piano degli
+        attori, Task 1.5; G-01): lo stato e la causa che `House.source(id)`
+        risponde, nella stessa forma della scheda di un'entita'
+        (`queries._view_entity`). Fino al 05/10/2026 un soggetto spento dal
+        proprietario o sparito da Home Assistant si rendeva come uno vivo
+        (sulla casa, 26 soggetti guardati su 95 senza stato, nessuno marcato:
+        registro, G-01). `fonte: None` e' il `None` di `House.source`: ne' il
+        registro ne' gli stati conoscono quell'id. Senza la casa la chiave
+        manca: non si afferma niente. Nessuna riga dello scope si tocca (D1:
+        la pulizia e' della Tappa 8).
         """
-        entity = ({"soggetto": s, "motivo": v["motivo"], "autore": v["autore"],
-                   "da_quando_ts": v["deciso_ts"]}
-                  for s, v in self._store.scope().items() if v["dentro"])
+        def _entity_row(subject: str, decision: dict) -> dict:
+            row = {"soggetto": subject, "motivo": decision["motivo"],
+                   "autore": decision["autore"], "da_quando_ts": decision["deciso_ts"]}
+            if house is not None and is_entity_id(subject):
+                row["fonte"] = house.source(subject)
+            return row
+
+        entity = (_entity_row(s, v) for s, v in self._store.scope().items() if v["dentro"])
         system = ({"soggetto": s, "motivo": _SYSTEM_REASON,
                    "autore": None, "da_quando_ts": None}
                   for s in self._conditions)

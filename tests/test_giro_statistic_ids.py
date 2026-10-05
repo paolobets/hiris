@@ -145,7 +145,7 @@ async def test_due_giri_vicini_una_lettura_sola(stores):
     app = _app(stores, house)
 
     await server.recipe_round(app)
-    _ricette, _serie, _nomi, silent = await server._report_ingredients(
+    _ricette, _serie, _nomi, silent, _mute = await server._report_ingredients(
         app, house, giorno="2026-10-03", timezone="Europe/Rome")
 
     assert _asked(house) == 1

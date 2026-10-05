@@ -145,6 +145,61 @@ def silent_entities(house, entity_ids) -> dict[str, str] | None:
             for entity_id in entity_ids if entity_id not in house.statistic_ids}
 
 
+#: Gli stati della fonte (`House.source`, Tappa 3, Task 8) per cui una
+#: ricetta NON PUO' produrre, non oggi e non domani finche' qualcuno non
+#: cambia Home Assistant (piano degli attori, Task 1.5; G-02, G-03). Lista di
+#: AMMISSIONE, chiusa: uno stato nuovo della fonte resta fuori finche'
+#: qualcuno non lo ammette qui, con la ragione.
+#:
+#: - `spenta_dal_proprietario` -- una decisione sua: finche' non la rivede;
+#: - `spenta_da_home_assistant` -- «mai attivata»: e' cosi' dalla nascita;
+#: - `sparita` -- nel registro e non negli stati: nessuna integrazione la
+#:   porta piu'.
+#:
+#: Restano FUORI, e la ricetta gira dicendo il rifiuto passo per passo:
+#: `non_disponibile` e `senza_valore` (un riavvio, un dispositivo
+#: irraggiungibile per un'ora), `integrazione_ferma` (`setup_retry` ritenta da
+#: se'), e la fonte che lo specchio non ha potuto guardare (`stato: None`).
+#: Fuori anche l'id che ne' il registro ne' gli stati conoscono (`source` ->
+#: `None`): il vocabolario del Task 8 non ha una parola per lui, ed e' una
+#: domanda aperta (rapporto del Task 1.5).
+MUTED_SOURCE_STATES = ("spenta_dal_proprietario", "spenta_da_home_assistant", "sparita")
+
+
+def muted_recipes(house, recipes: Mapping[str, dict]) -> dict[str, dict]:
+    """Le ricette che non possono produrre niente perche' TUTTE le entita'
+    che nominano tacciono per una causa che non passa da sola
+    (`MUTED_SOURCE_STATES`), `{dispositivo: {non_calcolabile, causa}}`.
+
+    Fino al 05/10/2026 una ricetta cosi' girava ogni giorno e scriveva un
+    rifiuto per passo, sempre lo stesso (G-02, G-03): il resoconto diceva N
+    volte cio' che e' UN fatto del dispositivo. Ora il fatto e' una riga.
+
+    `causa` e' lo stato della fonte della prima entita' nominata, in ordine
+    (la stessa regola del rifiuto di un passo): una parola del vocabolario
+    del Task 8, non una nuova. La frase dice il perche' di ognuna
+    (`silence_reason`). Le serie di queste ricette non si chiedono: chi
+    chiama le toglie dal giro (`server._report_ingredients`).
+
+    **Si chiede alla casa, non si legge l'anagrafe**: `House.source` per id."""
+    muted = {}
+    for device_id, recipe in recipes.items():
+        named = sorted(Recipe(recipe).entities())
+        if not named:
+            continue
+        sources = [(entity_id, house.source(entity_id)) for entity_id in named]
+        if not all(source is not None and source.get("stato") in MUTED_SOURCE_STATES
+                   for _entity_id, source in sources):
+            continue
+        muted[device_id] = {
+            "non_calcolabile": (
+                "la ricetta non gira: nessuna delle sue entita' puo' dare una "
+                "serie -- " + " · ".join(silence_reason(entity_id, source)
+                                         for entity_id, source in sources)),
+            "causa": sources[0][1]["stato"]}
+    return muted
+
+
 def unread_series_reason(error: str) -> str:
     """Il motivo di una misura quando le statistiche orarie non si sono
     potute leggere (trovato 7 del piano della Tappa 3, S-28): fino al

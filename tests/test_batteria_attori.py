@@ -14,11 +14,15 @@ nome -- rossa (`soggetti_morti`: 0 invece di 1).
 Le cause (Task 1.7, passo 1), mutazioni ESEGUITE il 03/10/2026, tutte rosse
 per la ragione giusta:
 - `_by_cause` che ignora `causa` -- rossa (`{"senza causa": 3}` invece di
-  una causa per riga);
+  una causa per riga) [la prova dei soggetti e' stata riscritta col Task 1.5:
+  la riga porta `fonte`, non `causa`; le sue mutazioni sono sotto];
 - `misure_ferme` sempre 0 -- rossa (0 invece di 1);
 - i soggetti vivi contati fra i morti -- rossa (`soggetti_morti`: 4 invece di 3);
 - le misure calcolate contate fra i rifiuti -- rossa (`sparita`: 3 invece di 2);
 - una causa vuota tenuta come causa -- rossa (`""` accanto a «senza causa»).
+
+Marcati e non marcati (Task 1.5, passo 4), mutazione ESEGUITA il 05/10/2026:
+`soggetti_morti_marcati` sempre 0 -- rossa (0 invece di 3).
 """
 import sys
 from pathlib import Path
@@ -109,17 +113,30 @@ def test_senza_turni_la_batteria_lo_dice_invece_di_dare_zeri():
 # «senza causa»: e' il numero che lo strato 1 deve portare a zero.
 
 
-def test_i_soggetti_morti_si_contano_per_causa_e_senza_causa_finche_manca():
-    watching = [{"soggetto": "sensor.vivo", "causa": "spenta"},
+def _source(state):
+    """La `fonte` di una riga di `GET /api/mind/watching`: la forma di
+    `House.source` (Tappa 3, Task 8), ridotta a cio' che la batteria legge."""
+    return {"stato": state, "causa": None}
+
+
+def test_i_soggetti_morti_si_contano_marcati_e_non_marcati_e_per_stato_della_fonte():
+    """Task 1.5, passo 4: «soggetti morti» diventa «marcati / non marcati».
+    Marcato e' chi porta la `fonte` (anche `None`: nessuno lo conosce)."""
+    watching = [{"soggetto": "sensor.vivo", "fonte": _source("viva")},
                 {"soggetto": "sensor.sparito"},
-                {"soggetto": "sensor.spento", "causa": "spenta"},
-                {"soggetto": "sensor.ricreato", "causa": "ricreata"},
+                {"soggetto": "sensor.spento", "fonte": _source("spenta_dal_proprietario")},
+                {"soggetto": "sensor.altro_spento",
+                 "fonte": _source("spenta_dal_proprietario")},
+                {"soggetto": "sensor.rimosso", "fonte": None},
                 {"soggetto": "log:qualcosa"}]
     result = _measure(watching=watching, live_ids={"sensor.vivo"})
-    assert result["soggetti_morti"] == 3
-    # Il vivo con una causa non e' morto: non entra nel conto per causa.
+    assert result["soggetti_morti"] == 4
+    assert result["soggetti_morti_marcati"] == 3
+    assert result["soggetti_morti_non_marcati"] == 1
+    # Il vivo marcato non e' morto: non entra nel conto per causa.
     assert result["soggetti_morti_per_causa"] == {
-        batteria_attori.UNCAUSED: 1, "spenta": 1, "ricreata": 1}
+        batteria_attori.UNCAUSED: 1, "spenta_dal_proprietario": 2,
+        batteria_attori.NOT_IN_HA: 1}
 
 
 def test_le_misure_non_calcolabili_si_contano_per_causa():

@@ -20,7 +20,7 @@ from tests._contracts import assert_stessa_firma
 
 
 class _FintoOsservatore:
-    def watching(self):
+    def watching(self, *, house=None):
         return [{"soggetto": "climate.camera_t", "motivo": "scalda la casa",
                  "autore": "observer", "da_quando_ts": 1787000000.0}]
 
@@ -987,7 +987,7 @@ class _OsservatoreConSoggetti:
     def __init__(self, soggetti):
         self._soggetti = soggetti
 
-    def watching(self):
+    def watching(self, *, house=None):
         return [{"soggetto": s, "motivo": "una condizione di sistema aperta si guarda "
                                           "finche' dura", "autore": None,
                  "da_quando_ts": None} for s in self._soggetti]
