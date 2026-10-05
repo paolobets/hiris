@@ -922,6 +922,21 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 occurrence.init = event
         elif kind == "result":
             occurrence.result = event  # l'ULTIMO result e' quello finale
+            # **Il tetto di token: perche' qui non si legge `stop_reason`**
+            # (B25, misurato il 05/10/2026 sulla CLI 2.1.286 del `Dockerfile`,
+            # contro un finto server locale -- nessun modello vero). L'evento
+            # porta `stop_reason`, ma a fine turno non vale MAI `max_tokens`:
+            # la CLI, quando il modello si ferma al tetto, gli chiede da se'
+            # di riprendere (un evento `user` con `isSynthetic: true`, «Output
+            # token limit hit. Resume directly...»), fino a tre volte.
+            # - Se una ripresa finisce: `stop_reason: "end_turn"`, `is_error:
+            #   false`, e `result` porta SOLO l'ultimo pezzo, non il testo
+            #   intero -- un difetto aperto, scritto nel rapporto
+            #   d'integrazione delle Tappe 4-6, non corretto qui.
+            # - Se le riprese finiscono: `rc` 1, `is_error: true`,
+            #   `stop_reason: "stop_sequence"`, `api_error:
+            #   "max_output_tokens"` -- l'esito (1) qui sotto, gia' «fallito».
+            # Leggere `stop_reason` darebbe un `truncated` che non scatta mai.
         elif kind == "assistant":
             # I blocchi `tool_use` dentro il messaggio dell'assistente:
             # `{"type":"tool_use","id":...,"name":...,"input":...}`, in mezzo
