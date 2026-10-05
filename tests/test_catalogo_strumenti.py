@@ -26,8 +26,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
-
 from hiris.app.home_space import tools
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 
@@ -91,7 +89,6 @@ def _hand_tables(tree: ast.AST, tool_names: set[str]) -> list[str]:
     return found
 
 
-@pytest.mark.xfail(strict=True, reason="le tre tabelle a mano escono col Task 2 della Tappa 5")
 def test_nessuna_tabella_a_mano_per_nome_di_strumento():
     """D-39: l'elenco delle definizioni, la mappa nome -> gestore e la mappa
     nome -> risorsa erano tre tabelle scritte a mano, da tenere d'accordo da
