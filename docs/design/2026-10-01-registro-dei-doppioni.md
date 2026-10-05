@@ -24,7 +24,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 · Tappa 8 (D5) |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 · Tappa 6 (D5) |
-| A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | D | PS |  |  | cop-3 A-n3 · Tappa 4 (D5) |
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | Tappa 3 (da rilasciare) | 43d0ecc | VOCABULARY[ancore] derivato da resolver.STORE_KEY_PER_TYPE; name_matches e le sue parole spostati in home_space/reference.py. Tappa 3, Task 9 |
 | M-82 | Il ritorno di `behavior.reread()` (conteggi, `senza_corpo`) scartato in produzione: due copie di B-39 senza lettori | Tappa 3 (da rilasciare) | c80cba1 | behavior.reread non restituisce piu' niente; le prove leggono l'anagrafe e il log. Tappa 3, Task 7 (trovato 5) |
 | M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | Tappa 3 (da rilasciare) | c80cba1 | Imported.ha_version uscito; le fonti si compongono da ha_vocabulary.VOCABULARY_HA_VERSION (B-44). Tappa 3, Task 7 (trovato 6) |
+| A-26 | Leggere un istante ISO: `instant_epoch` «unica lettura» e altre tre (`_age_s`, `_in_home_zone`, `usage/store`) | Tappa 4, Task 4 | 1f2ce35 | _age_s, _in_home_zone (uscita) e la lettura di usage/store chiamano historian (instant_epoch, instant_out); cancello AST in tests/test_l_istante.py. chat_store legge last_msg_at con strptime sul formato fisso suo (_TS_FMT, UTC con Z): non nominata dalla voce, resta, segnalata nel rapporto |
