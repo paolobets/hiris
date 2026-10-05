@@ -1845,7 +1845,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_le_dataclass_del_prodotto_sono_ventitre_e_i_campi_centoventisei():
+def test_product_dataclasses_are_23_with_127_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1925,13 +1925,20 @@ def test_le_dataclass_del_prodotto_sono_ventitre_e_i_campi_centoventisei():
     `state_classes` -- lo `state_class` di ogni entita', che la storia leggeva
     dalle righe grezze consegnate a parte da `ToolDispatcher._mirror`
     (`rows_out`). Con l'istantanea per turno (`House`) viaggia lo specchio.
+
+    **Ventitre e 127 dal 05/10/2026**, Tappa 4, Task 4: il quarto campo di
+    `Subject` (`house_history.py`), `last_unknown` -- lo specchio non ha
+    `last_triggered`, cioe' «non lo so», che la storia non deve dire «mai»
+    (decisione D3). Il nome della prova e' passato all'inglese insieme al
+    numero: il vecchio portava una preposizione italiana, e un nome nuovo non
+    ne porta.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (23, 126), (classi, campi)
+    assert (classi, campi) == (23, 127), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

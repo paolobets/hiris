@@ -20,7 +20,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from .behavior import BEHAVIOR_DOMAINS
-from .historian import instant_epoch
+from .historian import home_space_zone, instant_epoch, instant_out
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
@@ -246,11 +246,16 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) ->
     return True
 
 
-def _entity_row(entry, area, where, mirror: Mirror, medium: bool) -> dict:
+def _entity_row(entry, area, where, mirror: Mirror, medium: bool, zone) -> dict:
     eid = entry["id"]
     row = {"id": eid, "nome": live_name(eid, entry.get("nome"), mirror),
-           "area": _area_name(area), "stato": mirror.state.get(eid),
-           "ultimo_cambio": mirror.since.get(eid)}
+           "area": _area_name(area), "stato": mirror.state.get(eid)}
+    # L'istante nell'ora della casa (D3, 05/10/2026: prima l'UTC grezzo dello
+    # specchio). Senza un ultimo cambio noto la chiave non esce: e' «non lo
+    # so», e un `null` direbbe «non e' mai cambiata».
+    since = mirror.since.get(eid)
+    if since is not None:
+        row["ultimo_cambio"] = instant_out(since, zone)
     if where == "nascosta":
         row["nascosta"] = True
     if medium:
@@ -307,13 +312,20 @@ def _behavior_matches(f: HouseFilters, behavior, mirror: Mirror, now,
     return out
 
 
-def _behavior_row(item, values, mirror: Mirror, medium: bool) -> dict:
+def _behavior_row(item, values, mirror: Mirror, medium: bool, zone) -> dict:
     # Il nome di tutte le cose con un `entity_id` (D1): un'automazione senza
     # nome esce col suo id, come dalla storia, non con `nome: null`.
     row = {"id": item["id"], "nome": live_name(item["id"], item.get("nome"), mirror),
            "genere": item.get("tipo"),
-           "stato": mirror.state.get(item["id"]),
-           "ultima_esecuzione": values.get("last_triggered") or "mai"}
+           "stato": mirror.state.get(item["id"])}
+    # D3 (05/10/2026; prima l'UTC grezzo, o la parola «mai»): `last_triggered`
+    # c'e' SEMPRE fra gli attributi di automazioni e script, `None` se non
+    # sono mai partiti -- letto nel sorgente di Home Assistant, tag 2026.9.4,
+    # `components/automation/__init__.py:515-526`, `components/script/
+    # __init__.py:592-604`. Quindi `None` esce `null` («mai»), e la chiave
+    # assente (lo specchio non l'ha letta) resta assente: «non lo so».
+    if "last_triggered" in values:
+        row["ultima_esecuzione"] = instant_out(values["last_triggered"], zone)
     if medium:
         for key, label in (("mode", "modalita"), ("current", "in_esecuzione")):
             if key in values:
@@ -380,10 +392,13 @@ def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
 
 def _sort_key(order_by: str):
     if order_by == "ultimo_cambio":
-        # «mai» prima di tutto: un'automazione mai eseguita e' la piu' ferma (#31).
+        # «mai» prima di tutto: un'automazione mai eseguita e' la piu' ferma
+        # (#31), e con lei cio' che non si sa. Si ordina l'ISTANTE, non il
+        # testo: nell'ora della casa le 02:30+02:00 della notte del cambio
+        # d'ora vengono prima delle 02:10+01:00, e come stringhe dopo.
         def since(r):
-            last = r.get("ultima_esecuzione")
-            return "" if last == "mai" else (last or r.get("ultimo_cambio") or "")
+            epoch = instant_epoch(r.get("ultima_esecuzione") or r.get("ultimo_cambio"))
+            return float("-inf") if epoch is None else epoch
         return since
     if order_by == "valore":
         def key(r):
@@ -478,7 +493,7 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
 
 
 def _select(f: HouseFilters, house: House, behavior, detail,
-            now, excluded: dict) -> tuple[int, str, list[dict], dict | None]:
+            now, excluded: dict, zone) -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
     if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
@@ -504,9 +519,10 @@ def _select(f: HouseFilters, house: House, behavior, detail,
         kind = item.get("tipo") if behaving else item["genere"]
         return 1, "completa", [detail(kind, item["id"])], None
     medium = found <= DETAIL_MEDIUM_MAX
-    rows = ([_entity_row(entry, area, where, house.mirror, medium)
+    rows = ([_entity_row(entry, area, where, house.mirror, medium, zone)
              for entry, area, where in matched]
-            + [_behavior_row(item, values, house.mirror, medium) for item, values in behaving]
+            + [_behavior_row(item, values, house.mirror, medium, zone)
+               for item, values in behaving]
             + others)
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)
@@ -514,7 +530,8 @@ def _select(f: HouseFilters, house: House, behavior, detail,
 
 
 def query_house(house: House, behavior, filters: HouseFilters, *,
-                detail, now: float | None = None) -> dict:
+                detail, now: float | None = None,
+                timezone: str | None = None) -> dict:
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
@@ -537,7 +554,11 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
                               + ("; in_esecuzione vale per automazioni e script"
                                  if "in_esecuzione" in wrong else "")}
     excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
-    found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded)
+    # Il fuso della casa, per ogni istante che esce (D3): `timezone` e' il
+    # nome che il dispatcher legge da `historian.house_timezone`; `None` =
+    # non si sa, e si resta in UTC con l'offset scritto.
+    found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded,
+                                         home_space_zone(timezone))
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
     result: dict = {"trovate": found, "escluse": excluded, "profondita": depth,

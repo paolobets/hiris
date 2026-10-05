@@ -275,6 +275,18 @@ class Subject:
     ident: str
     name: str
     last: str | None = None
+    #: Lo specchio non ha `last_triggered` per questo soggetto: «non lo so»,
+    #: che non e' «mai» (`last` None con la chiave letta). D3, 05/10/2026.
+    last_unknown: bool = False
+
+
+def _last_run(subject: Subject, zone) -> dict:
+    """`ultima_esecuzione` nella forma di D3: l'ora della casa, `null` se non
+    e' mai partita, e NIENTE se lo specchio non lo sa. Fino al 05/10/2026 era
+    la parola «mai» in tutti e due i casi."""
+    if subject.last_unknown:
+        return {}
+    return {"ultima_esecuzione": instant_out(subject.last, zone)}
 
 
 @dataclass(frozen=True)
@@ -342,7 +354,8 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen
     selection = house.select(f, kinds, behavior, now=now)
     if query.kind == "esecuzioni":
         subjects = [Subject(item["id"], live_name(item["id"], item.get("nome"), house.mirror),
-                            values.get("last_triggered"))
+                            values.get("last_triggered"),
+                            last_unknown="last_triggered" not in values)
                     for item, values in selection.behavior]
     else:
         subjects = [Subject(entry["id"],
@@ -1003,8 +1016,7 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
             if s.ident not in runs:
                 continue
             row = {"id": s.ident, "nome": s.name,
-                   "partenze_conservate": len(runs[s.ident]),
-                   "ultima_esecuzione": instant_out(s.last, zone) if s.last else "mai"}
+                   "partenze_conservate": len(runs[s.ident]), **_last_run(s, zone)}
             if runs[s.ident]:
                 newest, trace = runs[s.ident][0]
                 row["esito_ultima"] = trace.get("script_execution")
@@ -1030,7 +1042,7 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
         _name_subjects(out, chosen)
         if "soggetto" in out:
             s = chosen.subjects[0]
-            out["soggetto"]["ultima_esecuzione"] = instant_out(s.last, zone) if s.last else "mai"
+            out["soggetto"].update(_last_run(s, zone))
             if s.ident in since:
                 out["soggetto"]["dal"] = instant_out(since[s.ident], zone)
         else:

@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 
 from ..chat_thread import ChatThread
+from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
 
 VERB = ("fai", "chiedi")
@@ -280,6 +281,29 @@ def _column(row, name):
         return None
 
 
+def _snapshot_out(snapshot, timezone):
+    """L'istantanea come esce: l'istante di ogni misura nell'ora della casa
+    (decisione D3, 05/10/2026), col fuso che la promessa porta con se'.
+
+    L'archivio tiene l'epoch che `ToolDispatcher._snapshot` ha scritto: si
+    cambia la resa, non il record, e cosi' escono uguali anche le promesse
+    nate prima di oggi. Nessuna pagina legge `misurato_ts` (cercato in
+    `static/` il 05/10/2026): la pagina Impegni mostra della misura soltanto
+    entita', valore e unita'.
+    """
+    if not isinstance(snapshot, list):
+        return snapshot
+    zone = None
+    out = []
+    for measurement in snapshot:
+        if isinstance(measurement, dict) and "misurato_ts" in measurement:
+            zone = zone or home_space_zone(timezone)
+            measurement = {**measurement,
+                           "misurato_ts": instant_out(measurement["misurato_ts"], zone)}
+        out.append(measurement)
+    return out
+
+
 def serializza(row) -> dict:
     """L'unica forma di una promessa. Stesse chiavi, sempre."""
     fuori = {
@@ -291,7 +315,7 @@ def serializza(row) -> dict:
         "fuso": row["fuso"],
         "chiamata": _load(row["chiamata_json"]),
         "domanda": row["domanda"],
-        "istantanea": _load(row["istantanea_json"]),
+        "istantanea": _snapshot_out(_load(row["istantanea_json"]), row["fuso"]),
         "stato": row["stato"],
         "motivo": row["motivo"],
         "esecuzione_id": row["esecuzione_id"],
