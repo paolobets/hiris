@@ -82,7 +82,7 @@ from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
-from .mind.recipes import Recipe, silent_entities, unread_series_reason
+from .mind.recipes import Recipe, silent_entities, unread_series
 from .mind.seed import (
     HOUSE_PRIORITY,
     REPO_PRIORITY,
@@ -1784,7 +1784,8 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     """Le ricette, le serie e i nomi che servono al resoconto di un giorno.
 
     Torna `(ricette, serie, nomi, silent)`: `silent` sono le entita' che non
-    daranno una serie, ognuna col suo perche' (`recipes.silent_entities`), o
+    daranno una serie, ognuna col suo rifiuto -- frase e causa
+    (`recipes.silent_entities`, B-26) -- o
     `None` se non si e' potuto chiedere. Ricette vuote -- nessun dispositivo ne ha
     una, o il sapere non e' collegato -- fanno un resoconto con la meta' delle
     misure vuota, ed e' un fatto vero su quella casa: si scrive.
@@ -1823,8 +1824,8 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
         # e' vuota» (trovato 7 del piano della Tappa 3, S-28).
         logger.warning("resoconto: statistiche non lette per %s (%s)",
                        giorno, report["errore"])
-        reason = unread_series_reason(str(report["errore"]))
-        return ricette, {}, nomi, {e: reason for e in entita}
+        refusal = unread_series(str(report["errore"]))
+        return ricette, {}, nomi, {e: refusal for e in entita}
     serie = {e: _punti_orari(report["serie"].get(e) or [])
              for e in entita}
     # **Quali di queste entita' non avranno MAI una serie** (spec §6, primo
@@ -1837,7 +1838,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
         logger.warning("resoconto: elenco delle statistiche non letto (%s): %s",
                        with_statistics.get("causa"), with_statistics.get("errore"))
         return ricette, serie, nomi, None
-    # Il perche' di ognuna dalla FONTE (B-26 meta'; Tappa 3, Task 8): la
+    # Il perche' di ognuna dalla FONTE (B-26; Tappa 3, Task 8): la
     # stessa casa del giro, con l'elenco appena letto -- nessuna seconda
     # lettura di `recorder/list_statistic_ids`.
     silent = silent_entities(house.with_statistics(with_statistics), entita)

@@ -37,6 +37,8 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.mind.operations import NotComputable
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
@@ -125,7 +127,8 @@ def test_la_fonte_vede_il_motivo_delle_ricette_che_da_la_colpa_sbagliata(monkeyp
     incolpa lo `state_class` anche di una disabilitata
     (`sensor.sensore_d_spento`)."""
     monkeypatch.setattr(sonda_parita, "silent_entities", lambda house, keys: {
-        key: f"{key} {sonda_parita.BLAMES_STATE_CLASS}" for key in keys})
+        key: NotComputable(f"{key} {sonda_parita.BLAMES_STATE_CLASS}",
+                           cause="senza_statistiche") for key in keys})
     verdict = sonda_parita.source(sonda_parita.build_inputs(synthetic_inputs(), clock=CLOCK))
     blamed = [case for case in verdict["casi"] if case["porta"] == "ricette"]
     assert "sensor.sensore_d_spento" in {case["id"] for case in blamed}
