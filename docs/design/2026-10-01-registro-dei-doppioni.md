@@ -220,7 +220,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | E-04 | Le forme del rifiuto e del successo fra le due porte | D | CC |  | cop-9 (righe) | reg · cop-9 |
 | E-05 | Cosa controlla una porta e l'altra no | D | DP |  |  | reg · cop-9 |
 | E-06 | Più client verso HA e verso il Supervisor | E | DP |  |  | reg |
-| E-07 | Il contratto dell'«intenzione» dell'attuatore contro l'officina | D | CC | 13 esiti `proposta`: 9 in coda, 3 scartati, 1 persa; le 2 `costruibile` non in coda |  | reg · cop-9 |
 | E-08 | La cartella di configurazione di HA cercata in due case | E | PS |  |  | reg · cop-1 |
 | E-09 | «Verificare senza eseguire» non è un metodo della porta: `promise` lo ricompone | D | CC |  |  | cop-3 E-n1 |
 | E-10 | `call_service` butta il motivo di HA, senza guardia; le primitive di configurazione no | D | CC |  |  | cop-5 E1 |
@@ -897,3 +896,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | Tappa 3 (da rilasciare) | 43d0ecc | VOCABULARY[ancore] derivato da resolver.STORE_KEY_PER_TYPE; name_matches e le sue parole spostati in home_space/reference.py. Tappa 3, Task 9 |
 | M-82 | Il ritorno di `behavior.reread()` (conteggi, `senza_corpo`) scartato in produzione: due copie di B-39 senza lettori | Tappa 3 (da rilasciare) | c80cba1 | behavior.reread non restituisce piu' niente; le prove leggono l'anagrafe e il log. Tappa 3, Task 7 (trovato 5) |
 | M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | Tappa 3 (da rilasciare) | c80cba1 | Imported.ha_version uscito; le fonti si compongono da ha_vocabulary.VOCABULARY_HA_VERSION (B-44). Tappa 3, Task 7 (trovato 6) |
+| E-07 | Il contratto dell'«intenzione» dell'attuatore contro l'officina | Tappa 6 (da rilasciare) | 15578e6 | Tappa 6, Task 5 (D5): l'intenzione del contratto si deriva dallo schema di propose; apply_actuation la valida con workshop.form_refusal prima dell'officina. L'attuatore resta in pausa |
