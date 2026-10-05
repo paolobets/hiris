@@ -123,7 +123,8 @@ async def test_con_una_ricetta_da_controllare_si_legge(stores):
     """L'altra meta': una ricetta scritta si controlla (puo' essere senza
     serie), e per controllarla serve l'elenco.
 
-    Mutazione (verificata eseguendola): `has_prunable_recipes` che risponde
+    Mutazione (verificata eseguendola): `has_named_recipes` (allora
+    `has_prunable_recipes`) che risponde
     sempre `False` -- rossa (`assert 0 == 1`)."""
     _with_recipe(stores[0])
     house = _house()
@@ -249,15 +250,17 @@ class _Modello:
         return "{}"
 
 
-async def test_una_ricetta_potata_si_richiede_nello_stesso_giro(stores):
-    """Il dispositivo la cui ricetta e' appena stata potata (nessuna sua
-    entita' ha statistiche) torna una domanda, e si chiede GIA' in questo
-    giro -- come prima del Task 8, quando l'elenco dei dispositivi da chiedere
-    si calcolava dopo la potatura.
+async def test_una_ricetta_rotta_si_richiede_nello_stesso_giro(stores):
+    """Il dispositivo la cui ricetta non puo' calcolare (nessuna sua entita'
+    ha statistiche) torna una domanda, e si chiede GIA' in questo giro, con
+    la domanda che dice perche' (attori, Task 1.6: prima la ricetta si
+    potava, ora si ripara nel suo giro). La risposta del modello qui e'
+    storta, e la ricetta vecchia non calcolava niente: si sostituisce col
+    «non capito», come faceva la potatura.
 
-    Mutazione (verificata eseguendola): non ricalcolare i dispositivi da
-    chiedere dopo la potatura -- rossa (`assert 0 == 1`: nessuna
-    domanda)."""
+    Mutazione (verificata eseguendola il 05/10/2026): non aggiungere i
+    dispositivi da riparare a quelli da chiedere -- rossa (`assert 0 ==
+    1`: nessuna domanda)."""
     sapere, archivio = stores
     _with_recipe(sapere)
     archivio.decide_scope("sensor.prodotta", inside=True, reason="pesa",
@@ -274,4 +277,5 @@ async def test_una_ricetta_potata_si_richiede_nello_stesso_giro(stores):
     assert recipe_turn.recipes(sapere).get("dev1") is None
     assert len(modello.domande) == 1
     assert "Inverter" in modello.domande[0]
+    assert "non funziona piu'" in modello.domande[0]
     assert _asked(house) == 1

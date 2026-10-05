@@ -13,10 +13,12 @@ il potere che al modello non e' stato dato:
   obiettivo di questo attore.
 - `proposta` -- non scrive niente: passa da `Workshop.propose`, che compone e valida
   ma non tocca la casa, e lascia i tre esiti a chi amministra la casa.
-- `riparazione` -- **la fa il codice**, non il modello: il giro riscrive la
-  ricetta rotta prima di chiamarlo e aggiunge l'esito come fatto. Se potesse
-  dichiararla lui, potrebbe dichiarare una riparazione che non e' avvenuta --
-  una bugia archiviata, indistinguibile da un fatto.
+- `riparazione` -- **la faceva il codice**, non il modello: fino al
+  05/10/2026 il giro riscriveva la ricetta rotta prima di chiamarlo e
+  aggiungeva l'esito come fatto. Ora le ricette le ripara il loro giro
+  (attori, Task 1.6, D2), e il gesto resta solo nelle attuazioni gia'
+  archiviate, che la pagina continua a leggere. Il modello non l'ha mai
+  potuto dichiarare: avrebbe potuto dichiarare una riparazione non avvenuta.
 """
 from __future__ import annotations
 
@@ -43,8 +45,8 @@ ACTUATION_TURN_KIND = "attuazione"
 MAX_ANSWER_TOKENS = 4096
 
 #: I gesti che il MODELLO puo' rivendicare nella sua risposta. **Due, non
-#: tre**: la riparazione la fa il codice (il giro riscrive la ricetta prima di
-#: chiedere, e aggiunge l'esito come fatto), e lasciarla dire al modello
+#: tre**: la riparazione non e' sua (la faceva il codice di questo giro fino al
+#: 05/10/2026, ora il giro delle ricette), e lasciarla dire al modello
 #: vorrebbe dire lasciargli dichiarare una riparazione che non e' avvenuta --
 #: una bugia archiviata, indistinguibile da un fatto.
 GESTURES = ("indagine", "proposta")
@@ -71,10 +73,10 @@ Hai due gesti, e nessun altro:
    cosa che deve fare una persona: molte cose utili non sono oggetti di Home
    Assistant, e proporle come tali le fa fallire.
 
-Le ricette rotte non le ripari tu. Se in questo giro ne ho gia' riscritte, te
-lo dico nella domanda e non le riproponi; se la domanda non ne parla, nessuna
-e' stata riscritta, e una ricetta che non si esegue piu' la segnali come
-proposta da fare a mano, senza dichiarare una riparazione.
+Le ricette rotte non le ripari tu, e non le ripara questo giro: le riscrive
+da solo il giro delle ricette, quando la causa e' una che una ricetta nuova
+puo' aggirare. Una ricetta che non si esegue piu' la segnali come proposta da
+fare a mano, senza dichiarare una riparazione.
 
 **Non tocchi la casa.** Non accendi, non spegni, non scrivi configurazioni: le
 proposte le decide chi amministra la casa, una per una.
@@ -168,16 +170,12 @@ Un elenco vuoto va benissimo: vuol dire che hai guardato e non c'era niente da
 fare."""
 
 
-def build_question(observations, repaired) -> str | None:
+def build_question(observations) -> str | None:
     """La domanda intera, o `None` se non c'e' niente da chiedere.
 
     Le osservazioni si consegnano **numerate**, e il modello si riferisce a
     una col suo numero: ricopiarne il testo vorrebbe dire poterlo sbagliare, e
     un esito attaccato all'osservazione sbagliata e' peggio di nessun esito.
-
-    `repaired` sono le ricette gia' riscritte in questo giro, prima della
-    domanda: senza dirglielo, il modello proporrebbe di riparare una cosa gia'
-    riparata.
     """
     rows = list(observations or [])
     if not rows:
@@ -194,11 +192,6 @@ def build_question(observations, repaired) -> str | None:
         if row.get("spiegato"):
             lines.append(f"      gia' spiegato da: {row.get('spiegato')}")
     lines.append("")
-    if repaired:
-        lines.append("Ricette gia' riscritte in questo giro (non riproporle):")
-        for row in repaired:
-            lines.append(f"  - {row.get('soggetto')} · {row.get('misura')}")
-        lines.append("")
     lines.append(ANSWER_CONTRACT)
     return "\n".join(lines)
 

@@ -34,12 +34,6 @@ _IDENTITY = ("soggetto", "misura", "chiave", "innesco")
 #: registro contro cui e' stato deciso».
 _EVIDENCE = ("base", "quanti_scarti", "spiegato")
 
-#: Il terzo innesco dell'analista e' «qualcosa non c'e' piu'» (`analyst.py`), e
-#: una misura che non si calcola piu' e' il suo caso piu' frequente sulla casa
-#: vera: **3 osservazioni su 8**, misurate il 20/09/2026.
-_MISSING_TRIGGER = 3
-
-
 def observation_key(observation: dict) -> str:
     """L'impronta identitaria di una domanda dell'analista."""
     return "|".join(str(observation.get(name)) for name in _IDENTITY)
@@ -65,21 +59,3 @@ def to_handle(observations, decided: dict) -> list[dict]:
             continue
         seen.append(observation)
     return seen
-
-
-def broken_recipes(observations) -> list[dict]:
-    """Le osservazioni che dicono «questa misura non si calcola piu'».
-
-    **E' il gesto che nessun altro fara' mai**: `devices_to_ask` salta i
-    dispositivi che una ricetta ce l'hanno gia', quindi una ricetta che esiste
-    ma non si esegue piu' non viene riscritta da nessuno -- ed e' esattamente
-    cio' di cui l'analista si lamenta da due giorni. La stessa forma che questo
-    prodotto ha gia' pagato tre volte: *la porta salta chi ha gia' una
-    risposta, anche quando la risposta e' rotta*.
-
-    Si riconoscono dall'**innesco** e dalla base vuota, non dalla prosa: il
-    modello scrive la stessa cosa in dieci modi diversi, e un elenco di frasi
-    da cercare sarebbe rotto al primo undicesimo.
-    """
-    return [o for o in observations or []
-            if o.get("innesco") == _MISSING_TRIGGER and not o.get("base")]

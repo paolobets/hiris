@@ -34,6 +34,7 @@ quelli di domani: e' la lezione gia' pagata da `friendly_name`.
 """
 
 from hiris.app.mind import report as rep
+from hiris.app.mind.operations import CAUSES, NotComputable
 
 EPISODI = [
     {"genere": "funzionamento", "protagonista": "climate.soggiorno",
@@ -103,12 +104,14 @@ def test_il_resoconto_dice_quali_entita_NON_AVRANNO_MAI_una_serie():
     """
     r = rep.build_report(day="2026-09-13", episodes=[], series=SERIE,
                          recipes={"dev1": RICETTA}, names={},
-                         silent={"sensor.prodotta":
-                                 "sensor.prodotta non ha statistiche in Home Assistant"})
+                         silent={"sensor.prodotta": NotComputable(
+                             "sensor.prodotta non ha statistiche in Home Assistant",
+                             cause="senza_statistiche")})
 
     prodotta = next(m for m in r["misure"] if m["misura"] == "prodotta")
     assert "valore" not in prodotta
     assert "non ha statistiche" in prodotta["non_calcolabile"]
+    assert prodotta["causa"] == "senza_statistiche"
     # E le altre misure dello stesso dispositivo restano calcolate.
     consumata = next(m for m in r["misure"] if m["misura"] == "consumata")
     assert "valore" in consumata
@@ -545,7 +548,7 @@ def test_un_giorno_in_cui_la_misura_NON_c_era_resta_un_buco_col_suo_perche():
     assert riga["valori"] == [None, 2.0]
     assert riga["coperture"] == [None, 1.0]
     assert riga["perche"] == [{"dal": "2026-09-12", "al": "2026-09-12",
-                              "ragione": "la serie e' vuota"}]
+                              "ragione": "la serie e' vuota", "causa": None}]
 
 
 def test_una_misura_che_esiste_solo_da_IERI_non_finge_una_storia():
@@ -610,7 +613,7 @@ def test_una_misura_composta_che_un_giorno_RIFIUTA_resta_tre_serie_non_quattro()
     for riga in serie["serie"]:
         assert riga["valori"][0] is None, riga["chiave"]
         assert riga["perche"] == [{"dal": "2026-09-12", "al": "2026-09-12",
-                                   "ragione": "la serie e' vuota"}], riga["chiave"]
+                                   "ragione": "la serie e' vuota", "causa": None}], riga["chiave"]
     assert [r["valori"][1] for r in serie["serie"]] == [700.0, 638.0, 750.0]
 
 
@@ -659,7 +662,7 @@ def test_i_perche_uguali_di_giorni_contigui_diventano_UN_tratto():
 
     riga = rep.series_of_measures(giorni)["serie"][0]
     assert riga["perche"] == [{"dal": "2026-09-10", "al": "2026-09-12",
-                               "ragione": "la serie e' vuota"}]
+                               "ragione": "la serie e' vuota", "causa": None}]
     assert riga["valori"] == [None, None, None, 700.0]
 
 
@@ -678,8 +681,8 @@ def test_due_ragioni_DIVERSE_restano_due_tratti():
                                 "non_calcolabile": "copertura 8%"}]),
     ]
     assert rep.series_of_measures(giorni)["serie"][0]["perche"] == [
-        {"dal": "2026-09-11", "al": "2026-09-11", "ragione": "la serie e' vuota"},
-        {"dal": "2026-09-12", "al": "2026-09-12", "ragione": "copertura 8%"},
+        {"dal": "2026-09-11", "al": "2026-09-11", "ragione": "la serie e' vuota", "causa": None},
+        {"dal": "2026-09-12", "al": "2026-09-12", "ragione": "copertura 8%", "causa": None},
     ]
 
 
@@ -827,3 +830,66 @@ def test_senza_nomi_la_serie_non_ne_inventa():
 # SERIE, non dal documento: una regola gia' scritta che il suo vicino non
 # chiamava.
 # ---------------------------------------------------------------------------
+
+
+# -- la causa delle misure non calcolabili (B-26; attori, Task 1.2) ----------
+
+
+def test_ogni_misura_non_calcolabile_porta_la_sua_CAUSA_anche_a_valle():
+    """La causa di un'entita' spenta arriva fino al passo che ne legge il
+    risultato (`quota`): una ricetta che dicesse la causa solo al primo passo
+    lascerebbe «senza causa» proprio la misura che l'analista guarda.
+
+    Mutazione ESEGUITA: `row["causa"]` tolta da `_measurements` -- rossa."""
+    spenta = NotComputable("sensor.prodotta e' spenta dal proprietario",
+                           cause="spenta_dal_proprietario")
+    r = rep.build_report(day="2026-09-13", episodes=[], series=SERIE,
+                         recipes={"dev1": RICETTA}, names={},
+                         silent={"sensor.prodotta": spenta})
+    righe = {m["misura"]: m for m in r["misure"]}
+    assert righe["prodotta"]["causa"] == "spenta_dal_proprietario"
+    assert righe["quota_coperta"]["causa"] == "spenta_dal_proprietario"
+    assert "causa" not in righe["consumata"], "una misura calcolata non ha causa"
+
+
+def test_le_cause_di_un_resoconto_sono_tutte_del_vocabolario():
+    """Ogni riga rifiutata porta una causa, e la causa sta in `CAUSES`
+    (chiesto al vocabolario, non ricopiato): la copertura bassa, la ricetta
+    storta, la fonte. Nessuna riga «senza causa» esce dal motore."""
+    storta = {"why": "x", "steps": [{"name": "a", "operation": "inesistente",
+                                      "inputs": []}]}
+    corta = {"why": "x", "steps": [{"name": "poca", "operation": "somma_periodo",
+                                     "inputs": ["@sensor.corta"],
+                                     "params": {"unit": "kWh", "expected_parts": 24}}]}
+    r = rep.build_report(day="2026-09-13", episodes=[],
+                         series={**SERIE, "sensor.corta": _serie([1.0] * 3)},
+                         recipes={"dev1": RICETTA, "dev2": storta, "dev3": corta},
+                         names={},
+                         silent={"sensor.prodotta": NotComputable(
+                             "assente", cause="assente")})
+    rifiutate = [m for m in r["misure"] if "non_calcolabile" in m]
+    assert {m["causa"] for m in rifiutate} == {"assente", "ricetta_storta",
+                                               "copertura_bassa"}
+    assert all(m["causa"] in CAUSES for m in rifiutate)
+
+
+def test_la_serie_delle_misure_porta_la_causa_nei_tratti():
+    """`series_of_measures` raccoglie i giorni senza valore in tratti: il
+    tratto porta la causa accanto alla frase, e due cause diverse con la
+    stessa frase restano due tratti. Un resoconto scritto prima della causa
+    (nessuna chiave) da' `None`, non una causa inventata."""
+    def giorno(day, causa):
+        line = {"soggetto": "dev1", "misura": "prodotta", "operazione": "somma_periodo",
+                "non_calcolabile": "non c'e'"}
+        if causa:
+            line["causa"] = causa
+        return {"giorno": day, "misure": [line]}
+    serie = rep.series_of_measures([giorno("2026-09-10", None),
+                                    giorno("2026-09-11", "sparita"),
+                                    giorno("2026-09-12", "sparita"),
+                                    giorno("2026-09-13", "assente")])
+    tratti = serie["serie"][0]["perche"]
+    assert [(t["dal"], t["al"], t["causa"]) for t in tratti] == [
+        ("2026-09-10", "2026-09-10", None),
+        ("2026-09-11", "2026-09-12", "sparita"),
+        ("2026-09-13", "2026-09-13", "assente")]

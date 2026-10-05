@@ -223,13 +223,14 @@ def test_un_passo_su_un_entita_SENZA_STATISTICHE_dice_QUELLO():
          "inputs": ["@switch.lavastoviglie"], "params": {"unit": "h"}}]})
 
     esiti = r.run(series={"switch.lavastoviglie": []},
-                  silent={"switch.lavastoviglie": ric.silence_reason(
+                  silent={"switch.lavastoviglie": ric.silence(
                       "switch.lavastoviglie", {"stato": "viva", "causa": None})})
 
     assert not esiti["acceso"].computable
     assert "switch.lavastoviglie" in esiti["acceso"].reason
     assert "non ha statistiche" in esiti["acceso"].reason
     assert "vuota" not in esiti["acceso"].reason
+    assert esiti["acceso"].cause == "senza_statistiche"
 
 
 def test_senza_l_insieme_una_serie_vuota_resta_una_serie_vuota():
@@ -265,7 +266,8 @@ def test_un_passo_che_NON_tocca_l_entita_muta_si_calcola_lo_stesso():
                                                     "expected_parts": 24}}]})
 
     esiti = r.run(series={"switch.lavastoviglie": [], **CASA},
-                  silent={"switch.lavastoviglie": "muta"})
+                  silent={"switch.lavastoviglie": ric.NotComputable(
+                      "muta", cause="senza_statistiche")})
 
     assert not esiti["muta"].computable
     assert esiti["buona"].computable, getattr(esiti["buona"], "reason", None)

@@ -100,11 +100,95 @@ def test_un_non_calcolabile_con_una_ragione_vuota_e_un_errore():
     """Una stringa vuota passerebbe il controllo della firma e non direbbe
     niente: sarebbe il silenzio di prima, con una forma piu' rispettabile."""
     with pytest.raises(ValueError):
-        ops.NotComputable("   ")
+        ops.NotComputable("   ", cause=ops.COVERAGE_LOW)
+
+
+def test_un_non_calcolabile_senza_causa_non_si_puo_costruire():
+    """B-26 (attori, Task 1.2): la causa e' un CAMPO, non una parola da
+    cercare nella prosa. Senza, la batteria conta «senza causa» e l'analista
+    deve leggere la frase per sapere se la fonte e' spenta o la ricetta storta.
+    """
+    with pytest.raises(TypeError):
+        ops.NotComputable("la serie e' vuota")
+
+
+def test_una_causa_fuori_dal_vocabolario_non_si_puo_costruire():
+    """Il vocabolario e' CHIUSO: una parola nuova entra in `MEASURE_CAUSES`
+    con la sua ragione, o non entra."""
+    with pytest.raises(ValueError):
+        ops.NotComputable("la serie e' vuota", cause="vuota")
+
+
+def test_le_cause_sono_gli_stati_della_fonte_piu_quelle_della_misura():
+    """Un vocabolario, non due: gli stati della fonte (`House.source`, tutti
+    tranne «viva», che non e' una causa di silenzio) e le cause che la misura
+    aggiunge, ognuna con la sua ragione. Si CHIEDE alle due fonti."""
+    from hiris.app.home_space.house import SOURCE_LIVE, SOURCE_STATES
+
+    source_causes = set(SOURCE_STATES) - {SOURCE_LIVE}
+    assert len(source_causes) == 6, "gli stati della fonte non si leggono piu'"
+    assert ops.CAUSES == source_causes | set(ops.MEASURE_CAUSES)
+    assert SOURCE_LIVE not in ops.CAUSES
+    assert not source_causes & set(ops.MEASURE_CAUSES), (
+        "una causa della misura ripete uno stato della fonte con la stessa parola")
+    assert all(str(why).strip() for why in ops.MEASURE_CAUSES.values())
+
+
+@pytest.mark.parametrize("cause", sorted(ops.CAUSES))
+def test_ogni_causa_del_vocabolario_fa_un_non_calcolabile(cause):
+    """Derivata: una causa che entra nel vocabolario entra qui senza toccare
+    la prova."""
+    refusal = ops.NotComputable("perche' si", cause=cause)
+    assert refusal.cause == cause
+    assert refusal == ops.NotComputable("perche' si", cause=cause)
+    assert refusal != ops.NotComputable("perche' si", cause=next(
+        c for c in sorted(ops.CAUSES) if c != cause))
+
+
+def test_il_non_lo_so_si_propaga_CON_la_sua_causa():
+    """Una quota su un contatore spento dal proprietario non e' una quota
+    «senza causa»: la causa del termine mancante arriva fino in fondo, o il
+    resoconto dice la cosa giusta solo per il primo passo della ricetta.
+
+    Mutazione ESEGUITA: in `_ratio` tornare `NotComputable(r.reason,
+    cause=COVERAGE_LOW)` invece di `r` -- rossa."""
+    spento = ops.NotComputable("spento", cause="spenta_dal_proprietario")
+    letto = ops.Measurement(4.0, unit="kWh", coverage=1.0)
+    for operation, args in (("quota", (spento, letto)), ("quota", (letto, spento)),
+                            ("differenza_fra", (spento, letto)),
+                            ("confronto_periodi", (letto, spento))):
+        result = ops.REGISTRY[operation].run(*args)
+        assert result.cause == "spenta_dal_proprietario", operation
+    tutte_mute = ops.REGISTRY["somma_entita"].run([spento, spento])
+    assert tutte_mute.cause == "spenta_dal_proprietario"
+
+
+@pytest.mark.parametrize("operation, args, params, cause", [
+    ("somma_periodo", ([],), {"unit": "kWh", "expected_parts": 24}, "copertura_bassa"),
+    ("somma_periodo", ([{"valore": 1.0}] * 3,), {"unit": "kWh", "expected_parts": 24},
+     "copertura_bassa"),
+    ("somma_periodo", ([{"valore": 1.0}] * 30,), {"unit": "kWh", "expected_parts": 24},
+     "ricetta_storta"),
+    ("somma_periodo", ([{"media": 20.0, "minimo": 19.0, "massimo": 21.0}] * 24,),
+     {"unit": "°C", "expected_parts": 24}, "ricetta_storta"),
+    ("quota", (ops.Measurement(1.0, unit="kWh", coverage=1.0),
+               ops.Measurement(0.0, unit="kWh", coverage=1.0)), {}, "senza_risposta"),
+    ("differenza_fra", (ops.Measurement(1.0, unit="kWh", coverage=1.0),
+                        ops.Measurement(1.0, unit="°C", coverage=1.0)), {},
+     "ricetta_storta"),
+])
+def test_i_rifiuti_delle_operazioni_portano_la_loro_causa(operation, args, params, cause):
+    """Ogni rifiuto di un'operazione dice DOVE sta il problema: nei dati del
+    giorno (copertura bassa), nella ricetta (storta), o nella domanda, che coi
+    dati giusti non ha risposta (denominatore nullo)."""
+    result = ops.REGISTRY[operation].run(*args, **params)
+    assert not result.computable
+    assert result.cause == cause
 
 
 def test_un_non_calcolabile_dice_perche_e_non_ha_valore():
-    n = ops.NotComputable("il periodo e' fuori dalla memoria disponibile")
+    n = ops.NotComputable("il periodo e' fuori dalla memoria disponibile",
+                          cause=ops.COVERAGE_LOW)
 
     assert n.computable is False
     assert "memoria" in n.reason
@@ -351,7 +435,7 @@ def test_una_quota_su_un_NON_CALCOLABILE_non_e_un_numero():
     Mutazione che la uccide: togliere il giro sui due termini in `_ratio`.
     """
     r = ops.REGISTRY["quota"].run(
-        ops.NotComputable("il contatore non ha statistiche"),
+        ops.NotComputable("il contatore non ha statistiche", cause="senza_statistiche"),
         ops.Measurement(4.0, unit="kWh", coverage=1.0))
 
     assert not r.computable
@@ -419,7 +503,7 @@ def test_una_differenza_che_parte_da_un_non_calcolabile_resta_non_calcolabile():
 
     Mutazione che la uccide: trattare il `NotComputable` come zero.
     """
-    a = ops.NotComputable("la serie e' vuota")
+    a = ops.NotComputable("la serie e' vuota", cause=ops.COVERAGE_LOW)
     b = ops.Measurement(9.60, unit="kWh", coverage=1.0)
 
     r = ops.REGISTRY["differenza_fra"].run(a, b)
@@ -773,7 +857,7 @@ def test_somma_entita_la_copertura_e_UNA_FRAZIONE_SOLA_e_chi_manca_vale_zero():
     Mutazione ESEGUITA: `coverage=1.0` -- rossa.
     """
     zone = [ops.Measurement(3600.0, unit="s", coverage=1.0),
-            ops.NotComputable("questa zona non ha dati"),
+            ops.NotComputable("questa zona non ha dati", cause=ops.COVERAGE_LOW),
             ops.Measurement(1800.0, unit="s", coverage=0.9)]
 
     r = ops.REGISTRY["somma_entita"].run(zone)
@@ -791,7 +875,7 @@ def test_media_entita_NON_e_la_loro_somma_e_paga_la_stessa_copertura():
     Mutazione ESEGUITA: `coverage=1.0` in `_average_entities` -- rossa.
     """
     stanze = [ops.Measurement(400.0, unit="ppm", coverage=1.0),
-              ops.NotComputable("questo sensore non risponde"),
+              ops.NotComputable("questo sensore non risponde", cause="non_disponibile"),
               ops.Measurement(500.0, unit="ppm", coverage=0.5)]
 
     r = ops.REGISTRY["media_entita"].run(stanze)
@@ -815,7 +899,7 @@ def test_media_entita_di_unita_diverse_non_misura_niente():
 
 
 def test_somma_entita_di_sole_non_calcolabili_non_e_zero():
-    r = ops.REGISTRY["somma_entita"].run([ops.NotComputable("niente dati")])
+    r = ops.REGISTRY["somma_entita"].run([ops.NotComputable("niente dati", cause=ops.COVERAGE_LOW)])
 
     assert not r.computable
 
@@ -1079,7 +1163,7 @@ def test_domanda_5_le_ore_irrigate_su_una_STAGIONE_si_rifiuta_con_la_ragione():
     """
     zone = [ops.NotComputable("il periodo chiesto sta fuori dalla memoria "
                                "disponibile: la valvola non ha statistiche e il "
-                               "grezzo arriva a 22 giorni")
+                               "grezzo arriva a 22 giorni", cause=ops.COVERAGE_LOW)
             for _ in range(3)]
 
     totale = ops.REGISTRY["somma_entita"].run(zone)

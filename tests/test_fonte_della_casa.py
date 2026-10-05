@@ -41,9 +41,10 @@ from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.verification import verification
 from hiris.app.home_space.briefing import _unreliable_state
-from hiris.app.home_space.house import House
+from hiris.app.home_space.house import SOURCE_STATES, House
 from hiris.app.home_space.reader import build_home_space
 from hiris.app.home_space.topology import Mirror, live_mirror
+from hiris.app.mind.operations import CAUSES
 from hiris.app.mind.recipes import silent_entities
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests._casa_sintetica import synthetic_inputs
@@ -206,8 +207,7 @@ def test_il_lettore_tiene_chi_ha_spento_l_istanza_e_il_dispositivo():
     assert dispositivi["d_spento"]["disabilitato_da"] == "user"
 
 
-# -- il motivo delle ricette dice la causa (B-26 meta'; trovato 7) ------------
-
+# -- il motivo delle ricette dice la causa (B-26; trovato 7; attori, Task 1.2) --
 
 
 #: La ricetta di un dispositivo che nomina quattro entita' della casa sopra.
@@ -218,20 +218,74 @@ RICETTA = {"why": "prova", "steps": [
                              "light.viva", "sensor.senza_valore"))]}
 
 
-def test_il_motivo_delle_ricette_dice_la_causa_della_fonte():
-    """Fino al 04/10/2026 ogni entita' fuori dall'elenco delle statistiche
-    riceveva lo stesso motivo -- «le tiene solo per le entita' che dichiarano
-    uno `state_class`» -- anche quando era disabilitata o sparita."""
+def test_gli_stati_della_fonte_sono_quelli_che_source_produce():
+    """`SOURCE_STATES` e' il vocabolario che le cause delle misure riusano
+    (B-26): deve essere ESATTAMENTE cio' che `source` produce. Si chiede a
+    `source` su ogni id della casa di prova, che li tocca tutti e sette."""
+    house = _house()
+    ids = {e["entity_id"] for e in ENTITIES} | {s["entity_id"] for s in STATES}
+    produced = {house.source(eid)["stato"] for eid in ids}
+    assert len(produced) == 7, "la casa di prova non tocca piu' tutti gli stati"
+    assert produced == set(SOURCE_STATES)
+
+
+def _house_with(entities=(), states=(), statistic_ids=frozenset()) -> House:
+    """La casa di prova con qualche entita' in piu', solo per questa prova."""
+    registries = {"entita": ENTITIES + list(entities), "integrazioni": ENTRIES,
+                  "dispositivi": DEVICES}
+    mirror = live_mirror([_to_minimal(row) for row in STATES + list(states)])
+    return House(build_home_space(registries), mirror, statistic_ids=statistic_ids)
+
+
+#: Un sensor ricreato (`restored: true`) e uno vivo che non dichiara lo
+#: `state_class`: le due cause che fino al 04/10/2026 uscivano col motivo unico.
+_IN_PIU = ([_entity("sensor.ricreato"), _entity("sensor.senza_classe")],
+           [{"entity_id": "sensor.ricreato", "state": "unavailable",
+             "attributes": {"restored": True, "state_class": "total_increasing"}},
+            {"entity_id": "sensor.senza_classe", "state": "12", "attributes": {}}])
+
+
+@pytest.mark.parametrize("entity_id, causa, frase", [
+    ("light.del_proprietario", "spenta_dal_proprietario", "spenta dal proprietario"),
+    ("sensor.mai_attivata", "spenta_da_home_assistant", "disabled_by: integration"),
+    ("light.di_istanza_che_ritenta", "integrazione_ferma", "non e' caricata"),
+    ("light.sparita", "sparita", "non ha uno stato"),
+    ("sensor.ricreato", "non_disponibile", "restored"),
+    ("light.inventata", "assente", "ne' nel registro ne' negli stati"),
+    ("light.viva", "senza_statistiche", "solo per i `sensor`"),
+    ("sensor.senza_classe", "senza_statistiche", "non dichiara uno `state_class`"),
+])
+def test_ogni_entita_muta_porta_la_sua_causa_e_la_frase_giusta(entity_id, causa, frase):
+    """B-26: fino al 04/10/2026 ogni entita' fuori dall'elenco delle
+    statistiche riceveva lo stesso motivo -- «le tiene solo per le entita' che
+    dichiarano uno `state_class`» -- anche spenta, sparita o ricreata. Il Task
+    8 ha corretto la frase; qui la causa diventa un CAMPO dal vocabolario
+    chiuso (`operations.CAUSES`), che chi legge puo' contare senza leggere la
+    prosa. Solo chi non ha statistiche per la regola dello `state_class` lo
+    nomina."""
+    entities, states = _IN_PIU
+    muta = silent_entities(_house_with(entities, states), [entity_id])[entity_id]
+    assert muta.cause == causa
+    assert muta.cause in CAUSES
+    assert frase in muta.reason
+    if entity_id != "sensor.senza_classe":
+        assert "non dichiara uno `state_class`" not in muta.reason
+
+
+def test_le_cause_della_fonte_sono_le_parole_della_fonte():
+    """Un vocabolario, non due: dove la misura tace per la fonte, la causa e'
+    lo STATO che `House.source` da' -- la stessa parola."""
+    entities, states = _IN_PIU
+    house = _house_with(entities, states)
+    for entity_id in ("light.del_proprietario", "light.sparita", "sensor.ricreato",
+                      "light.di_istanza_che_ritenta", "sensor.mai_attivata"):
+        assert (silent_entities(house, [entity_id])[entity_id].cause
+                == house.source(entity_id)["stato"])
+
+
+def test_chi_ha_statistiche_non_tace():
     motivi = silent_entities(_house(statistic_ids={"sensor.con_statistiche"}),
-                             ["light.del_proprietario", "sensor.mai_attivata",
-                              "light.sparita", "light.viva",
-                              "sensor.con_statistiche"])
-    assert "spenta dal proprietario" in motivi["light.del_proprietario"]
-    assert "disabled_by: integration" in motivi["sensor.mai_attivata"]
-    assert "non ha uno stato" in motivi["light.sparita"]
-    assert "solo per i `sensor`" in motivi["light.viva"]
-    assert all("state_class" not in motivi[e] for e in
-               ("light.del_proprietario", "sensor.mai_attivata", "light.sparita"))
+                             ["light.viva", "sensor.con_statistiche"])
     assert "sensor.con_statistiche" not in motivi
 
 
@@ -285,14 +339,16 @@ async def test_un_guasto_delle_statistiche_non_si_scrive_come_serie_vuota():
     assert silent is not None, "il guasto e' tornato a essere «niente da dire»"
     assert set(silent) == {"light.del_proprietario", "sensor.mai_attivata",
                            "light.viva", "sensor.senza_valore"}
-    assert all("non si sono potute leggere" in m and "timeout" in m
+    assert all("non si sono potute leggere" in m.reason and "timeout" in m.reason
                for m in silent.values())
+    assert {m.cause for m in silent.values()} == {"statistiche_non_lette"}
 
 
 @pytest.mark.asyncio
 async def test_il_resoconto_riceve_la_causa_dalla_casa_del_giro():
     _ricette, _serie, _nomi, silent = await _ingredients({}, {"sensor.senza_valore"})
-    assert "spenta dal proprietario" in silent["light.del_proprietario"]
+    assert "spenta dal proprietario" in silent["light.del_proprietario"].reason
+    assert silent["light.del_proprietario"].cause == "spenta_dal_proprietario"
     assert "sensor.senza_valore" not in silent
 
 
