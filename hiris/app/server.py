@@ -99,7 +99,7 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
-from .steering import declare_downgrade, misura_turno, who_answers
+from .steering import ACTUATOR_SPECIES, declare_downgrade, misura_turno, who_answers
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -2111,7 +2111,7 @@ async def actuator_round(app) -> dict | None:
         if runner is None:
             logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
             return None
-        declare_downgrade(app, agent="attuatore", reason=downgrade)
+        declare_downgrade(app, agent=ACTUATOR_SPECIES, reason=downgrade)
 
         # **La riparazione viene PRIMA della domanda**, e il modello lo viene a
         # sapere: se lo scoprisse dopo proporrebbe di riparare una cosa gia'
@@ -2123,7 +2123,7 @@ async def actuator_round(app) -> dict | None:
             return None
 
         async with misura_turno(app.get("usage"), runner,
-                                specie="attuatore", canale="catena"):
+                                specie=ACTUATOR_SPECIES, canale="catena"):
             answer = await runner.chat(user_message=question,
                                        system_prompt=actuator_turn.SYSTEM)
         esito = actuator_turn.apply_actuation(pending, answer)
@@ -2172,17 +2172,19 @@ async def _repair_recipes(app, broken) -> list[dict]:
             # e' lui che l'ha chiesta. Attribuirla a «ricette» perche' passa
             # dalla loro funzione gonfierebbe il costo di una specie con
             # quello di un'altra.
-            measurements=app.get("usage"), species="attuatore")
+            measurements=app.get("usage"), species=ACTUATOR_SPECIES)
         done.append({"soggetto": device_id, "misura": observation.get("misura"),
                      "impronta": actuator.observation_key(observation),
                      "riscritta": bool(esito.get("scritta"))})
     return done
 
 
-#: Chi firma una ricetta riscritta dall'attuatore. Non «il modello» e non «il
-#: seme»: chi legge una riga del sapere deve poter sapere **quale attore** l'ha
-#: messa li', o il verificatore non potrebbe attribuire niente a nessuno.
-ACTUATOR_AUTHOR = "attuatore"
+#: Chi firma una ricetta riscritta dall'attuatore, e una proposta che
+#: l'attuatore manda all'officina. Non «il modello» e non «il seme»: chi legge
+#: una riga del sapere deve poter sapere **quale attore** l'ha messa li', o il
+#: verificatore non potrebbe attribuire niente a nessuno. E l'attore e' la sua
+#: specie: il nome viene da `steering` (C-28), non da un secondo letterale.
+ACTUATOR_AUTHOR = ACTUATOR_SPECIES
 
 
 async def _settle_actuation(app, store, day: str, stamp: str | None,

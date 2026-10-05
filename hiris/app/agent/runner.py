@@ -82,6 +82,7 @@ from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
 from ..mind.actuator_turn import ACTUATION_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
+from ..steering import ACTUATOR_SPECIES
 from ..usage.giro import anthropic_turn_tokens
 from . import prompts
 
@@ -1180,7 +1181,7 @@ JOB_SPECIES = {
     "scope": "osservatore",
     "ricetta": "ricette",
     "analisi": "analista",
-    ACTUATION_TURN_KIND: "attuatore",
+    ACTUATION_TURN_KIND: ACTUATOR_SPECIES,
 }
 
 
