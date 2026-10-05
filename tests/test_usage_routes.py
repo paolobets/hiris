@@ -195,12 +195,14 @@ def test_la_storia_ha_una_rotta_sua_con_i_suoi_parametri(app):
     # L'INSIEME ESATTO del secchiello. Prima di questa fetta questa rotta
     # faceva `{**riga_di_archivio, ...}` -- uno spread crudo -- e le colonne
     # uscivano su HTTP coi loro nomi senza che nessuno l'avesse deciso.
-    # `_bucket_out` le mappa a mano, e questa riga e' cio' che impedisce alla
-    # mappa di tornare uno spread: una colonna aggiunta a `consumo_giorno`
-    # che comparisse qui da sola fa rosso.
+    # `_counters_out` le mappa a mano, e questa riga e' cio' che impedisce
+    # alla mappa di tornare uno spread: una colonna aggiunta a
+    # `consumo_giorno` che comparisse qui da sola fa rosso. `cost_state` c'e'
+    # dal 05/10/2026 (C-08, Tappa 4, Task 5): il secchiello e la riga di
+    # modello escono dallo stesso mappatore.
     assert set(secchiello) == {
         "requests", "token_in", "token_out", "cache_read", "cache_write",
-        "rate_limit_errors", "cost_usd", "cost_eur",
+        "rate_limit_errors", "cost_usd", "cost_eur", "cost_state",
     }
     assert secchiello["requests"] == 1
 
@@ -290,3 +292,41 @@ def test_l_interruttore_da_sempre_cambia_davvero_i_numeri(app):
 
     assert da_anchor["total_requests"] == 0, "dopo l'ancora non si e' consumato niente"
     assert da_sempre["total_requests"] == 2, "la storia intera c'e' ancora"
+
+
+def test_il_secchiello_dice_lo_stato_del_costo_come_la_riga_di_modello(tmp_path):
+    """C-08 (Tappa 4, Task 5): il secchiello di un giorno porta `cost_state`,
+    con la stessa regola della riga di modello (`UsageStore._aggregate_state`):
+    se anche un solo modello di quel provider, quel giorno, ha un costo
+    ignoto, il secchiello lo e'. E i campi che le due righe hanno in comune
+    escono uguali, perche' escono dallo stesso mappatore.
+
+    Mutazioni eseguite: il secchiello senza `costo_stato` nell'archivio ->
+    rossa (KeyError); `_aggregate_state` che legge il solo `MIN` -> rossa sul
+    giorno misto (direbbe «gratuito»)."""
+    archivio = UsageStore(str(tmp_path / "usage.db"), read_timezone=lambda: ROMA)
+    # «gratuito» viene PRIMA di «non_noto» in ordine alfabetico: e' il caso
+    # in cui il solo `MIN` sbaglierebbe.
+    archivio.log("openrouter", "a/gratis:free", token_in=1, cost_usd=0.0,
+                 cost_state="gratuito", now=T21)
+    archivio.log("openrouter", "b/ignoto", token_in=1, cost_usd=None,
+                 cost_state="non_noto", now=T21)
+    archivio.log("claude", "claude-sonnet-4-6", token_in=1, cost_usd=0.1,
+                 cost_state="misurato", now=T22)
+    app = {"usage": archivio, "home_space_store": _ArchivioCasaFinto(ROMA)}
+    try:
+        corpo = _corpo(_chiama(handle_usage_history, app,
+                               {"from": "2026-08-21", "to": "2026-08-22"}))
+        riga = _corpo(_chiama(handle_usage, app, {"from": "sempre"}))
+    finally:
+        archivio.close()
+    giorni = {g["day"]: g["per_provider"] for g in corpo["days"]}
+    assert giorni["2026-08-21"]["openrouter"]["cost_state"] == "non_noto"
+    assert giorni["2026-08-22"]["claude"]["cost_state"] == "misurato"
+
+    modello = next(m for s in riga["sections"] for m in s["models"]
+                   if m["model"] == "claude-sonnet-4-6")
+    secchiello = giorni["2026-08-22"]["claude"]
+    comuni = set(modello) & set(secchiello)
+    assert comuni == set(secchiello)
+    assert {k: modello[k] for k in comuni} == secchiello

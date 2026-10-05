@@ -352,10 +352,15 @@ window.HirisWatcherGiorno = (function () {
     return riga;
   }
 
-  function renderReportError(body, status, reload) {
+  /* L'ora in cui si scrive il resoconto la manda il server nel 404
+     (`ora_notturna`, da `mind/report.NIGHTLY_HOUR`/`NIGHTLY_MINUTE`, le
+     stesse costanti che lo schedulatore riceve): la pagina non la sa (C-11). */
+  function renderReportError(body, status, reload, corpo) {
     if (status === 404) {
+      var ora = corpo && corpo.ora_notturna;
       line(body, 'Per questo giorno non c’è ancora un resoconto. Non è un errore: ' +
-        'il resoconto di una giornata si scrive la notte successiva, alle 00:20.', TONE_CALM);
+        'il resoconto di una giornata si scrive la notte successiva' +
+        (ora ? ', alle ' + ora : '') + '.', TONE_CALM);
       return;
     }
     if (status === 503) {
@@ -383,7 +388,10 @@ window.HirisWatcherGiorno = (function () {
     return read('api/mind/report?day=' + encodeURIComponent(giorno)).then(function (occurrence) {
       if (myGeneration !== reportGeneration) return;
       clearEl(body);
-      if (!occurrence.ok) { renderReportError(body, occurrence.status, reload); return; }
+      if (!occurrence.ok) {
+        renderReportError(body, occurrence.status, reload, occurrence.corpo);
+        return;
+      }
       renderReport(body, occurrence.corpo.resoconto || {});
     }, function () {
       if (myGeneration !== reportGeneration) return;

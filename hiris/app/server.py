@@ -4396,7 +4396,7 @@ async def _on_startup(app: web.Application) -> None:
 
     scheduler.add_job(
         _recupero_resoconti,
-        trigger="interval", minutes=5,
+        trigger="interval", minutes=report.BACKFILL_EVERY_MINUTES,
         id="hiris_mind_backfill", replace_existing=True,
         misfire_grace_time=300,
     )
@@ -4432,7 +4432,7 @@ async def _on_startup(app: web.Application) -> None:
 
     scheduler.add_job(
         _aggrega_ieri,
-        trigger="cron", hour=0, minute=20,
+        trigger="cron", hour=report.NIGHTLY_HOUR, minute=report.NIGHTLY_MINUTE,
         id="hiris_mind_aggregation", replace_existing=True,
         misfire_grace_time=3600,
     )

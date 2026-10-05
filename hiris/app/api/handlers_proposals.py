@@ -120,7 +120,7 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     row = _row(store, ident)
     if row is None:
         return web.json_response({"errore": _NOT_FOUND}, status=404)
-    if row["stato"] != "attesa":
+    if row["stato"] != store.PROPOSAL_PENDING:
         return web.json_response({"errore": _NOT_PENDING}, status=409)
     try:
         body = await request.json()

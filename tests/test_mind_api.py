@@ -1123,3 +1123,36 @@ async def test_un_osservazione_SENZA_esito_non_ne_guadagna_uno_finto(tmp_path):
         assert "esito" not in json.loads(r.text)["analisi"]["osservazioni"][0]
     finally:
         archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_il_404_del_resoconto_dice_QUANDO_si_scrivera():
+    """C-11 (Tappa 4, Task 5): la pagina «Il giorno» spiega un giorno senza
+    resoconto con l'ora in cui la notte lo scrivera', e la riceve qui invece
+    di tenerla scritta in prosa. E' l'ora delle costanti che lo schedulatore
+    riceve (`test_pagine_legate.py` lo verifica sull'app avviata).
+
+    Mutazione eseguita: tolto `ora_notturna` dal 404 -> rossa."""
+    from hiris.app.mind.report import NIGHTLY_HOUR, NIGHTLY_MINUTE
+
+    app = {"observations": _ArchivioConResoconto()}
+    r = await handle_report(_richiesta(app, query={"day": "2026-01-01"}))
+    assert r.status == 404
+    assert json.loads(r.text)["ora_notturna"] == f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}"
+
+
+@pytest.mark.asyncio
+async def test_il_sapere_porta_quanto_costa_rifare_la_cronaca():
+    """C-11 (Tappa 4, Task 5): «rifà la cronaca degli ultimi 22 giorni, un
+    giorno ogni 5 minuti» la pagina lo scrive coi numeri di qui, non coi suoi.
+
+    Mutazione eseguita: `un_giorno_ogni_s` scritto 300 a mano nella rotta, e
+    `BACKFILL_EVERY_MINUTES` portata a 10 -> rossa (la rotta non seguiva la
+    costante)."""
+    from hiris.app.mind.report import BACKFILL_EVERY_MINUTES
+    from hiris.app.mind.store import READING_RETENTION_S
+
+    r = await handle_knowledge(_richiesta({"knowledge": _FintoSapere()}))
+    assert json.loads(r.text)["cronaca"] == {
+        "ritenzione_s": READING_RETENTION_S,
+        "un_giorno_ogni_s": BACKFILL_EVERY_MINUTES * 60}

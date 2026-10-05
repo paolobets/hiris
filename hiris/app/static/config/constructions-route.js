@@ -34,9 +34,12 @@
    fondo, non il livello primario di lettura.
 
    -- Gerarchia (guida §1) --
-   UNA sola `GET /api/constructions`, filtrata qui per `stato` -- non due
-   richieste, non due mondi. Due sezioni: «In attesa» (in_attesa + in_corso
-   insieme, stesso concetto "non ancora concluso", ordinate per `creata_ts`
+   UNA sola `GET /api/constructions`, divisa qui sul campo `sospesa` che il
+   server calcola per ogni riga (C-12: la regola «non ancora concluso» delle
+   due code vive in `handlers_constructions._both_queues`, non in questa
+   pagina) -- non due richieste, non due mondi. Due sezioni: «In attesa» (le
+   righe sospese: per le costruzioni in_attesa + in_corso, per le proposte a
+   mano la loro attesa; ordinate per `creata_ts`
    crescente -- chi aspetta da piu' tempo sta in cima) e «Storico» (tutto il
    resto, `creata_ts` decrescente, piu' recente in cima).
    Lo «Storico» nasce CHIUSO, con il conteggio nel titolo (fetta «i menu
@@ -145,8 +148,6 @@
    403 (`hiris/app/api/middleware_csrf.py`). */
 window.HirisConstructions = (function () {
   'use strict';
-
-  var OPEN_STATES = ['in_attesa', 'in_corso', 'attesa'];
 
   var STATE_LABEL = {
     in_attesa: 'In attesa',
@@ -753,8 +754,8 @@ window.HirisConstructions = (function () {
         return;
       }
       var all = (data && data.constructions) || [];
-      var open = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) !== -1; });
-      var history = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) === -1; });
+      var open = all.filter(function (c) { return c.sospesa === true; });
+      var history = all.filter(function (c) { return c.sospesa !== true; });
       renderSection(openBody, open,
         'Nessuna proposta in attesa. Quando chiedi a HIRIS di creare, modificare o cancellare ' +
         'un’automazione, uno script o una scena, la trovi qui prima che diventi reale.',

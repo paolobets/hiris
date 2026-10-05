@@ -101,8 +101,19 @@ def _iso(ts: float) -> str | None:
     return datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
 
 
-def _model_out(m: dict) -> dict:
-    """Una riga di modello come la legge la pagina. `token_in` resta PURO.
+def _counters_out(row: dict) -> dict:
+    """I contatori e il costo di una riga dei consumi, come li legge la pagina:
+    un modello (`sezioni`) o un provider in un giorno (`storia`). `token_in`
+    resta PURO.
+
+    **Un mappatore solo** (C-08, Tappa 4, Task 5). Ce n'erano due, uno per
+    riga e uno per secchiello, con gli stessi nomi ma scritti due volte: e il
+    secchiello non portava `cost_state`, cosi' il grafico non poteva dire se
+    un giorno a zero era gratuito, compreso o sconosciuto.
+
+    Esplicito, e non uno spread della riga d'archivio: il secchiello era nato
+    `{**b, ...}`, e una colonna aggiunta alla tabella compariva nella risposta
+    da sola, col suo nome italiano, senza che nessuno l'avesse deciso.
 
     A sinistra il nome HTTP, a destra il nome della COLONNA (`usage/store.py`):
     e' il confine, e la legge del progetto lo vuole cosi' -- il dominio in
@@ -111,48 +122,25 @@ def _model_out(m: dict) -> dict:
     `requests` solo uscendo di qui.
     """
     return {
-        "model": m["modello"],
-        "requests": m["richieste"],
-        "token_in": m["token_in"],
-        "token_out": m["token_out"],
-        "cache_read": m["cache_lettura"],
-        "cache_write": m["cache_scrittura"],
-        "cost_usd": m["costo_usd"],
-        "cost_eur": _euro(m["costo_usd"]),
-        "cost_state": m["costo_stato"],
-        # Il doppione che questa fetta chiude: lo STESSO numero usciva come
-        # `rate_limit_errors` in cima alla risposta e `errori_rate_limit`
-        # dentro una sezione. Una cosa, un nome.
-        "rate_limit_errors": m["errori_rate_limit"],
-        "first_use": m["primo_uso"],
-        "last_use": m["ultimo_uso"],
+        "requests": row["richieste"],
+        "token_in": row["token_in"],
+        "token_out": row["token_out"],
+        "cache_read": row["cache_lettura"],
+        "cache_write": row["cache_scrittura"],
+        "cost_usd": row["costo_usd"],
+        "cost_eur": _euro(row["costo_usd"]),
+        "cost_state": row["costo_stato"],
+        # Il doppione che la fetta dei consumi ha chiuso: lo STESSO numero
+        # usciva come `rate_limit_errors` in cima alla risposta e
+        # `errori_rate_limit` dentro una sezione. Una cosa, un nome.
+        "rate_limit_errors": row["errori_rate_limit"],
     }
 
 
-def _bucket_out(b: dict) -> dict:
-    """Un secchiello giornaliero come lo legge il grafico.
-
-    **Esisteva come `{**b, ...}`, uno spread crudo della riga di archivio**, ed
-    era il motivo per cui le colonne di `consumo_giorno` uscivano su HTTP coi
-    loro nomi italiani senza che nessuno l'avesse deciso. Una rotta non deve
-    versare fuori la forma della propria tabella senza saperlo: aggiungere una
-    colonna la faceva comparire nella risposta da sola, e toglierne una la
-    faceva sparire senza che niente diventasse rosso.
-
-    Stessi nomi di `_model_out` -- e' lo stesso fatto, contato per giorno
-    invece che per modello, e due nomi per la stessa quantita' sono il
-    doppione che questa fetta e' venuta a togliere.
-    """
-    return {
-        "requests": b["richieste"],
-        "token_in": b["token_in"],
-        "token_out": b["token_out"],
-        "cache_read": b["cache_lettura"],
-        "cache_write": b["cache_scrittura"],
-        "rate_limit_errors": b["errori_rate_limit"],
-        "cost_usd": b["costo_usd"],
-        "cost_eur": _euro(b["costo_usd"]),
-    }
+def _model_out(m: dict) -> dict:
+    """Una riga di modello: i contatori di `_counters_out`, piu' chi e quando."""
+    return {"model": m["modello"], **_counters_out(m),
+            "first_use": m["primo_uso"], "last_use": m["ultimo_uso"]}
 
 
 async def handle_usage(request: web.Request) -> web.Response:
@@ -270,7 +258,7 @@ async def handle_usage_history(request: web.Request) -> web.Response:
         days.append({
             "day": g["giorno"],
             "per_provider": {
-                name: _bucket_out(data) for name, data in g["per_provider"].items()
+                name: _counters_out(data) for name, data in g["per_provider"].items()
             },
         })
     return web.json_response({"days": days, "from": since, "to": to})

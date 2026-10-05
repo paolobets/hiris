@@ -205,13 +205,33 @@ test('mount: un giorno senza resoconto (404) lo SPIEGA, e non dice che non è su
   // «non c'è ancora» e «non è successo niente» sono due cose diverse, e la
   // seconda al posto della prima sarebbe una bugia tranquillizzante.
   // Mutazione che la uccide: togliere il ramo `status === 404`.
-  const { window, document } = montaConServer({ resocontoStatus: 404 });
+  // Il corpo del 404 com'e' quello di `handle_report`: l'ora la manda il
+  // server (`ora_notturna`, C-11).
+  const { window, document } = montaConServer({
+    resocontoStatus: 404,
+    resoconto: { errore: 'il giorno non e\' stato aggregato', ora_notturna: '00:20' },
+  });
   window.HirisWatcherRoute.mount('giorno');
   await tick(20);
 
   const card3 = document.getElementById('watcher-panel-giorno');
   assert.match(card3.textContent, /non c’è ancora un resoconto/);
-  assert.match(card3.textContent, /00:20/);
+  assert.match(card3.textContent, /si scrive la notte successiva, alle 00:20\./);
+});
+
+test('mount: l’ora del resoconto la dice il server, non la pagina', async () => {
+  /* C-11 (Tappa 4, Task 5): la pagina non tiene piu' «00:20» scritto in
+     prosa. Un'ora che solo il server conosce deve comparire, e senza l'ora la
+     frase resta vera invece di inventarne una. Mutazione eseguita: la frase
+     tornata a «alle 00:20» fissa -> rossa. */
+  const { window, document } = montaConServer({
+    resocontoStatus: 404, resoconto: { errore: 'x', ora_notturna: '01:45' },
+  });
+  window.HirisWatcherRoute.mount('giorno');
+  await tick(20);
+  const testo = document.getElementById('watcher-panel-giorno').textContent;
+  assert.match(testo, /si scrive la notte successiva, alle 01:45\./);
+  assert.doesNotMatch(testo, /00:20/);
 });
 
 test('seam _rendiResoconto: le forme orarie si DICONO, non si stampano', () => {

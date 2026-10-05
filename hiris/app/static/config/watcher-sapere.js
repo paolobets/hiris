@@ -61,6 +61,7 @@ window.HirisWatcherSapere = (function () {
   var fmtWhenFull = S.fmtWhenFull;
   var fmtCount = S.fmtCount;
   var fmtDays = S.fmtDays;
+  var fmtHours = S.fmtHours;
   var fmtDateOnly = S.fmtDateOnly;
   var fmtDayMonth = S.fmtDayMonth;
   var TONE_PROBLEM = S.TONE_PROBLEM;
@@ -173,15 +174,23 @@ window.HirisWatcherSapere = (function () {
     { valore: 'nessuno', etichetta: 'Nessuno (niente episodi)' }
   ];
 
-  /* 22 giorni: la ritenzione del grezzo, `mind/store.READING_RETENTION_S`
-     (server). NON arriva nel payload di `/api/mind/knowledge` -- se un
-     campo un giorno la porta, questa costante si toglie e si legge da lì
-     (regola del brief, task 9, sezione 04). */
-  var CHRONICLE_RETENTION_DAYS = 22;
+  /* Quanto costa rifare la cronaca: i giorni che il grezzo conserva
+     (`mind/store.READING_RETENTION_S`) e ogni quanto il recupero ne scrive
+     uno (`mind/report.BACKFILL_EVERY_MINUTES`). Li manda il server in
+     `GET /api/mind/knowledge` (`cronaca`), e `renderKnowledge` li tiene qui
+     per le frasi dei giudizi: la pagina non ne ha una copia (C-11). La
+     durata in ore e' il loro prodotto, arrotondato e scritto in parole. */
+  var chronicle = null;
+  var ORE_IN_PAROLE = ['', 'un’ora', 'due ore', 'tre ore', 'quattro ore', 'cinque ore', 'sei ore'];
 
   function chronicleCostPhrase() {
-    return 'rifà la cronaca degli ultimi ' + fmtDays(CHRONICLE_RETENTION_DAYS * 86400) +
-      ', un giorno ogni 5 minuti: fino a circa due ore';
+    if (!chronicle) return 'rifà la cronaca';
+    var minuti = chronicle.un_giorno_ogni_s / 60;
+    var ore = Math.max(1, Math.round(
+      Math.round(chronicle.ritenzione_s / 86400) * chronicle.un_giorno_ogni_s / 3600));
+    return 'rifà la cronaca degli ultimi ' + fmtDays(chronicle.ritenzione_s) +
+      ', un giorno ogni ' + minuti + (minuti === 1 ? ' minuto' : ' minuti') +
+      ': fino a circa ' + (ORE_IN_PAROLE[ore] || fmtHours(ore * 3600));
   }
 
   /* Il livello che il soggetto occupa nelle chiavi di `TypeJudgments`
@@ -664,6 +673,7 @@ window.HirisWatcherSapere = (function () {
   }
 
   function renderKnowledge(body, sapere) {
+    chronicle = (sapere && sapere.cronaca) || null;
     var nonCapito = (sapere && sapere.non_capito) || [];
     var giudizi = (sapere && sapere.giudizi) || [];
     var domande = (sapere && sapere.domande_aperte) || [];

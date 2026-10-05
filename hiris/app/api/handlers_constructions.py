@@ -36,6 +36,7 @@ import time
 
 from aiohttp import web
 
+from ..action.construction.revisions import STATES_SOSPESO
 from ..chat_thread import subject_from_thread, without_thread
 from .boundary import occurrence_out
 from .soffitto import approved_services, require_builder, subject_name
@@ -94,6 +95,14 @@ async def _out(app, row: dict, approved: list[dict]) -> dict:
                                              approved=approved)}
 
 
+def _construction_suspended(row: dict) -> bool:
+    """Se una costruzione aspetta ancora: `STATES_SOSPESO`, anche `in_corso`
+    (rivendicata e non ancora decisa). E' il campo `sospesa` delle righe
+    delle due GET (C-12, Tappa 4, Task 5): la pagina lo legge, e non sa piu'
+    quali stati lo dicano."""
+    return row["stato"] in STATES_SOSPESO
+
+
 async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     """Le due code in un elenco solo, dalla piu' recente.
 
@@ -102,12 +111,17 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     da un dettaglio di implementazione.
     """
     approved = approved_services(app)
-    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS}
+    # `sospesa` e' la regola di ciascuna coda, decisa qui e non nella pagina
+    # (C-12): le costruzioni con `_construction_suspended`, le proposte a mano
+    # finche' sono `PROPOSAL_PENDING`.
+    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
+             "sospesa": _construction_suspended(row)}
             for row in store.list(pending_only=pending_only, limit=200)]
     observations = app.get("observations")
     if observations is not None:
         rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
-                  "a_mano": True}
+                  "a_mano": True,
+                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING}
                  for row in observations.proposals(pending_only=pending_only)]
     return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 
@@ -123,7 +137,8 @@ async def handle_get_construction(request: web.Request) -> web.Response:
     if row is None:
         return web.json_response({"error": _NOT_FOUND}, status=404)
     return web.json_response(
-        {"construction": await _out(request.app, row, approved_services(request.app))})
+        {"construction": {**await _out(request.app, row, approved_services(request.app)),
+                          "sospesa": _construction_suspended(row)}})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:

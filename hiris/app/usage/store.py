@@ -600,6 +600,20 @@ class UsageStore:
     # divergerebbero proprio su `partial_cost` -- il campo che impedisce
     # alla pagina di spacciare un pavimento per un costo.
 
+    #: Lo stato del costo di un insieme di righe -- un modello su piu' giorni,
+    #: un provider in un giorno --: le due colonne che lo leggono (`uno_stato`,
+    #: `ignoti`) e la regola che le combina (`_aggregate_state`). Scritte una
+    #: volta per le due somme, `sezioni` e `storia` (C-08, Tappa 4, Task 5).
+    _STATE_COLUMNS = ("MIN(costo_stato) AS uno_stato, "
+                      "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti")
+
+    @staticmethod
+    def _aggregate_state(r) -> str:
+        """`MIN(costo_stato)` e' alfabetico e non significa niente: se anche
+        una sola riga e' ignota, l'insieme lo e'. Si sceglie esplicitamente
+        invece di fidarsi dell'ordine delle lettere."""
+        return "non_noto" if r["ignoti"] else r["uno_stato"]
+
     def _where(self, da: str) -> tuple[str, tuple]:
         return ("WHERE giorno >= ?", (da,)) if da else ("", ())
 
@@ -618,8 +632,7 @@ class UsageStore:
         with self._lock:
             righe = self._conn.execute(
                 f"SELECT provider, modello, {somme}, SUM(costo_usd) AS costo_usd, "
-                "MIN(costo_stato) AS uno_stato, "
-                "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti, "
+                f"{self._STATE_COLUMNS}, "
                 "MIN(giorno) AS primo_uso, MAX(giorno) AS ultimo_uso "
                 f"FROM consumo_giorno {where} GROUP BY provider, modello "
                 "ORDER BY provider, modello", arg).fetchall()
@@ -650,10 +663,7 @@ class UsageStore:
             section["modelli"].append({
                 "modello": r["modello"],
                 "costo_usd": r["costo_usd"],
-                # `MIN(cost_state)` e' alfabetico e non significa niente: se
-                # anche un solo giorno e' ignoto, la riga lo e'. Si sceglie
-                # esplicitamente invece di fidarsi dell'ordine delle lettere.
-                "costo_stato": "non_noto" if r["ignoti"] else r["uno_stato"],
+                "costo_stato": self._aggregate_state(r),
                 "primo_uso": r["primo_uso"],
                 "ultimo_uso": r["ultimo_uso"],
                 **{c: r[c] or 0 for c in CAMPI},
@@ -706,7 +716,8 @@ class UsageStore:
         somme = ", ".join(f"SUM({c}) AS {c}" for c in CAMPI)
         with self._lock:
             righe = self._conn.execute(
-                f"SELECT giorno, provider, {somme}, SUM(costo_usd) AS costo_usd "
+                f"SELECT giorno, provider, {somme}, SUM(costo_usd) AS costo_usd, "
+                f"{self._STATE_COLUMNS} "
                 "FROM consumo_giorno WHERE giorno >= ? AND giorno <= ? "
                 "GROUP BY giorno, provider ORDER BY giorno, provider", (da, a)).fetchall()
         giorni: dict[str, dict] = {}
@@ -715,6 +726,7 @@ class UsageStore:
                                   {"giorno": r["giorno"], "per_provider": {}})
             g["per_provider"][r["provider"]] = {
                 "costo_usd": r["costo_usd"],
+                "costo_stato": self._aggregate_state(r),
                 **{c: r[c] or 0 for c in CAMPI},
             }
         return list(giorni.values())
