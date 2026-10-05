@@ -1846,6 +1846,7 @@ al Task 6 invece che deciso qui.
 | rendi | render |
 | rendite | results |
 | resa | surrender |
+| resa (home_space) | render | **Un altro senso della stessa parola, scritto accanto al primo (Tappa 4, 05/10/2026).** La riga sopra, `resa -> surrender`, e' l'arrendersi. Questa e' la resa di un oggetto: la funzione che, per un genere (entita', dispositivo, area, integrazione, comportamento, ricordo), compone cio' che esce verso il modello e le pagine, a una delle tre profondita' e col vocabolario dei campi (sezione «Il vocabolario dei campi», in fondo). Vivra' in `home_space/render.py` (`render_entity`, `render_device`...). Qualificata `(home_space)` e non nuda perche' in `static/` `render` e' gia' il disegno di una pagina (`render`, `renderError`, `renderSection`): un altro atto. Con `rendi -> render` e' la classe accettata «verbo e sostantivo dello stesso atto»: il controllo n. 2 di completezza la restituisce, e non e' una collisione |
 | resto | rest |
 | restrizione | restriction |
 | ricarica | reload |
@@ -3571,6 +3572,117 @@ C'e' un secondo vincolo, e va scritto perche' non e' ovvio: `dashboard.js:151-17
 `Object.keys(casa.conteggi)` contro `NOMI_REGISTRI` e incrocia i **valori** di `non_disponibili`
 (`"categorie:script"`), che sono i nomi dei registri di Home Assistant. Rinominare `conteggi.aree`
 obbligherebbe a rinominare valori che sono la legge del confine di HA.
+
+**L'appuntamento ha una data (05/10/2026): e' la Tappa 4 dello sprint «Una fonte sola di verita'».**
+Il corpo di `/api/home-space` si riapre li': i campi che nessuna pagina legge escono (D6, Task 10 del
+piano), salvo quelli che `ux-ui-specialist` sceglie di disegnare, e i nomi seguono il vocabolario
+dei campi (sezione qui sotto). `config_entry_id` dell'entita' resta: e' il legame che da' la causa
+del muto (M-35). Prima di togliere, la foto delle forme della rotta sulla casa vera
+(`fotografia_porte.py forme`), perche' la leggono anche i servizi firmati. Il secondo vincolo qui
+sopra (`conteggi`, `non_disponibili`) resta: sono nomi dei registri di Home Assistant.
+
+## Il vocabolario dei campi — come si chiamano i fatti che escono
+
+Deciso dal proprietario il **05/10/2026**: tutte le decisioni del piano della Tappa 4 dello sprint
+«Una fonte sola di verita'» (`piani/2026-10-tappa-4-una-resa.md`, cartella del progetto), D1-D13,
+**come consigliate**. Questa sezione e' il Task 0 di quel piano: la tabella di D1 entra qui cosi'
+come e' stata approvata, con le righe che D4, D5 e D13 aggiungono, e da qui passa al codice.
+
+**Che cosa sono.** Sono i nomi delle chiavi che HIRIS scrive quando rende un oggetto della casa
+-- un'entita', un dispositivo, un'area, un'automazione, un ricordo -- verso il modello (risultati
+degli strumenti, nucleo, righe degli attori) e verso le pagine. Non sono identificatori Python:
+sono **valori che attraversano un confine**, come i nomi degli strumenti e i valori di dominio piu'
+su. Restano italiani, perche' a chi li legge (il modello, chi usa la casa) questo prodotto parla
+italiano: la regola e' quella di CLAUDE.md, «il dominio in italiano, il confine nella lingua del
+sistema esterno». Per questo la tabella **non ha la colonna «inglese»**: un campo non si rinomina,
+si sceglie una volta.
+
+**Dove vive, e per quanto.** Fino al Task 7 della Tappa 4 la fonte e' questa tabella, e la legge
+la prova `tests/test_resa_unica.py` (lo scheletro del cancello R3). Al Task 7 nasce
+`home_space/field_vocabulary.py`, una costante per campo col suo significato e la sua forma: da
+quel giorno la fonte e' il modulo, e questa tabella esce lasciando qui il rimando. Due copie della
+stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamenta 2).
+
+| campo | il fatto | forma | di chi | nomi che escono | dove escono oggi |
+|---|---|---|---|---|---|
+| `id` | l'identificatore proprio dell'oggetto | stringa: l'`entity_id` per un'entita', l'id del registro di Home Assistant per area, piano, dispositivo, integrazione, comportamento; l'id di HIRIS per un ricordo | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` `ricordo` | `entita` | `tools._snapshot` (chiave d'id), `energy.py:149` |
+| `area` `piano` `dispositivo` | il riferimento a un altro oggetto | `{id, nome}`, sotto il nome del genere a cui si riferisce | `entita` `dispositivo` `area` `automazione` `script` `scena` | — | — |
+| `integrazione` | l'integrazione da cui un'entita' viene (la sua piattaforma) | `{id, nome}`, come area, piano e dispositivo | `entita` | `piattaforma` | `dove.integrazione` come slug nudo (`house.py:143`); `piattaforma` (`queries.py:302`) |
+| `stato` | lo stato grezzo, la parola di Home Assistant | stringa, come la scrive Home Assistant | `entita` `automazione` `script` `scena` | `valore` `state` | `valore` (`tools._snapshot`); `state` dentro `prima`/`dopo` (`actuator._fingerprint`, `:283`, `:331`) |
+| `stato_leggibile` | lo stato in parole | stringa italiana; un produttore solo, `queries.readable_state` | `entita` | — | — |
+| `ultimo_cambio` | l'ultimo cambio di stato | istante (D3: ISO 8601 con l'offset della casa) | `entita` `automazione` `script` `scena` | `da_quando` | `queries.py:504`, `:1035`, `:1213` |
+| `ultima_esecuzione` | l'ultima volta che e' girata | istante | `automazione` `script` | — | — |
+| `quando` | l'istante di un evento o di una misura | istante | `evento` `misura` | `quando_ts` `misurato_ts` `letta_alle` `deciso_ts` `da_quando_ts` | `energy.py:154` (`letta_alle`); C-46 (`deciso_ts`, `da_quando_ts`) |
+| `dal` `al` | un intervallo | due istanti | `finestra` | — | — |
+| `genere` | il nostro genere di oggetto | uno di `house_query.KINDS` | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` `ricordo` | `tipo` | `tipo` nella risposta (`"tipo": "entita"` di `view`) |
+| `dominio` | il dominio di Home Assistant | stringa di Home Assistant (`light`, `sensor`...) | `entita` | `tipo` | `tipo` nel parametro di `search` (D7) |
+| `unita` | l'unita' dell'entita' | stringa di Home Assistant | `entita` | — | — |
+| `sistema_unita` | la cornice di riferimento della casa | il dizionario del sistema di unita' di Home Assistant | `casa` | `unita` | `topology.py:80` |
+| `limiti` | i limiti di un comando | dizionario `minimo`/`massimo`/`passo`, con l'`unita` | `entita` | `unita` | `queries.py:811-814` |
+| `statistiche` | Home Assistant tiene le statistiche | booleano | `entita` | `ha_statistiche` | `energy.py:151` |
+| `volte` | quante volte | intero | `evento` | `count` | `house_history.py:1269-1273` (una chiave inglese in una riga italiana) |
+| `lette` | l'esito della lettura di un insieme | booleano | `lettura` | `letto` | `state_translations.py:100-124` (C-44) |
+| `fuori` | perche' l'oggetto non e' fra i visibili (D4) | `{classe, causa}`; assente quando l'oggetto e' visibile | `entita` `dispositivo` | `disabilitata` `nascosta` `disabilitata_da` `nascosta_da` `disabilitato` | `queries.py:1034`; `reader.py:142`, `:212-213` (1/0); M-50 |
+| `attiva` | un'automazione accesa o spenta | booleano | `automazione` | — | resta: e' gia' il suo nome (D4) |
+| `fonte` | lo stato della fonte di un'entita' (D5) | nasce col Task 8 della Tappa 3 (`House.source`) | `entita` | — | — |
+| `codice` | la posizione nel codice, nelle righe d'errore della storia (D5) | stringa | `evento` | `fonte` | `house_history.py:1222` (`_source`), `:1269-1273` |
+| `ruolo_energia` | il ruolo dell'entita' nella dashboard Energia (D13) | uno dei ruoli letti da `energy/get_prefs`: produzione, prelievo, immissione, accumulo | `entita` | — | alle profondita' media e completa |
+| `nome` | il nome che Home Assistant mostra | stringa | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` | — | resta |
+| `classe` | la classe dichiarata da Home Assistant (`device_class`) | stringa di Home Assistant | `entita` | — | resta |
+| `attributi` | gli attributi dello stato, filtrati | dizionario | `entita` | — | resta (C-34: filtrati anche alla media) |
+
+Le ultime tre righe non sono di D1: sono campi che escono gia' oggi col loro nome e lo tengono.
+Stanno qui perche' il vocabolario dica **tutti** i campi dell'entita', non solo quelli che cambiano:
+un cancello che conosce meta' dei campi sa riconoscere meta' delle copie.
+
+La colonna «di chi» usa i generi di `house_query.KINDS` (`entita`, `area`, `dispositivo`,
+`automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e cinque parole per cio' che non
+e' un oggetto della casa: `casa` (la cornice), `evento` e `misura` (una riga di storia o di
+un'istantanea), `finestra` (l'intervallo di una risposta), `lettura` (l'esito di un insieme letto).
+
+**Due regole che vanno con il vocabolario** (D1, approvate in blocco):
+
+1. **una chiave assente vuol dire «non lo so»; `null` vuol dire «so che non c'e'»**. Oggi
+   `_with_live_kind` scrive `classe: None`/`unita: None` espliciti
+   (`api/handlers_home_space.py:72-74`) e lo specchio ha tre forme dell'assenza (C-45);
+2. **le profondita'**. La resa di ogni genere ha tre profondita' -- `corta` (una riga per oggetto,
+   quando sono tanti), `media` (fino a `house_query.DETAIL_MEDIUM_MAX` oggetti), `completa` (uno
+   solo: la scheda) -- e ognuna ha un tetto in caratteri dichiarato accanto alla funzione che la
+   produce (R16). `genere` esce a **ogni** profondita' (oggi solo alla media, C-33); alla media gli
+   `attributi` sono filtrati come alla completa (C-34).
+
+**La chiave d'errore segue il confine (D2).** `error` su HTTP, verso le pagine e i servizi firmati;
+`errore` verso il modello. Non e' una riga di questa tabella perche' e' gia' scritta, e da prima:
+e' «Il confine, e dove vive», piu' su, e la applica `api/boundary.py`.
+
+**L'istante ha una forma sola (D3).** ISO 8601 con l'offset della casa
+(`2026-10-04T08:15:00+02:00`), al modello e alle pagine, prodotto da `historian.instant_out`;
+`null` = «mai», chiave assente = «non lo so». Le pagine mostrano data e ora come le scrive
+l'offset, senza riconvertirle nel fuso del browser.
+
+### Il controllo di collisione, eseguito il 05/10/2026
+
+Il glossario chiede di cercare ogni nome nuovo prima di fissarlo (vedi «Il controllo di collisione
+si fa sul codice, non solo sul glossario», in testa). Eseguito su ogni campo della tabella, nel
+glossario (righe e citazioni fra backtick) e nelle chiavi letterali di `hiris/app/` (`"campo"` nei
+`.py`). L'esito, campo per campo:
+
+| campo | nel glossario | nel codice | esito |
+|---|---|---|---|
+| `area` `dispositivo` `integrazione` `dominio` `unita` `statistiche` `quando` `causa` | righe ordinarie (`area`, `dispositivo -> device`, `integrazione -> integration`, `dominio -> domain`, `unita -> unit`, `statistiche -> statistics`, `quando -> when`, `causa -> cause`) | stesso senso | nessuna collisione |
+| `piano` | `piano (home_space) -> floor` e `piano (abbonamento)` | il piano della casa | stesso senso di `piano (home_space)`: nessuna collisione |
+| `stato` | `stato -> state`, ordinaria | `stato` e' anche lo stato di una costruzione, di una promessa, di un servizio firmato | oggetti diversi, mai nella stessa risposta: nessuna collisione |
+| `fuori` | `fuori (home_space) -> outside`, «escluso, al di fuori di un confine» | `house.py` parla gia' di «classi del fuori» con la causa (Tappa 3, `topology.visibility_classes`) | **lo stesso senso**: D4 da' un nome di campo al concetto che la Tappa 3 ha costruito |
+| `fonte` | `fonte -> source`, ordinaria | `"fonte"` e' anche la scelta di un modello (`model_resolution.py:1097`) e l'origine di un fatto (`mind/store.py:677`) | oggetti diversi; dentro le righe d'errore della storia la collisione c'era, e D5 la toglie (`codice`) |
+| `codice` | `codice -> code`, ordinaria | `"codice"` e' anche il codice d'accoppiamento di un servizio firmato (`handlers_servizi.py:96`) e il codice di un errore del provider (`provider_occurrences.py:149`) | oggetti diversi, mai nella stessa risposta: nessuna collisione, ma la parola ha gia' tre sensi |
+| `lette` | fra le parole scartate, `lette -> letto` (forma flessa) | `letto` e `lette`, la stessa busta (C-44) | e' la voce stessa che il vocabolario chiude |
+| `classe` | `classe -> class`, ordinaria | `"classe"` e' la `device_class` dell'entita' | **collisione dentro l'oggetto**: con D4 l'entita' porterebbe `classe` (la `device_class`) e `fuori.classe` (la classe del fuori). Domanda al proprietario, nel rapporto del Task 0 |
+| `genere` | **«I concetti»: `genere -> genre`, il genere di un fatto compiuto** (`funzionamento`, `presenza`, `sicurezza`, `guasto`; colonna `genere` di `mind/store.py:91` e `action/journal.py:65`) | tre sensi: il genere di un fatto (`mind/facts.py`, `mind/report.py:224`, che lo manda al modello), il genere della storia (`history(genere=stati\|valori\|esecuzioni\|errori)`, `tools.py:953`) e il genere di oggetto (`search(genere=...)`, `house_query.py:259`) | **collisione vera**: il vocabolario prende il terzo senso, il glossario ha deciso il primo. Domanda al proprietario, nel rapporto del Task 0 |
+| `id` `stato_leggibile` `ultimo_cambio` `ultima_esecuzione` `dal` `al` `sistema_unita` `limiti` `volte` `attiva` `ruolo_energia` | nessuna riga, nessuna citazione con un altro senso | `dal`/`al` gia' nelle righe di `history` (`house_history._value_row`), stesso senso | nessuna collisione |
+
+**Le domande aperte non fermano il Task 0.** `genere` e `classe` restano nella tabella come li ha
+approvati il proprietario; la scelta se rinominare un senso o dichiararli qualificati si prende
+**prima del Task 7**, che scrive il vocabolario nel codice.
 
 ## Controlli di completezza
 

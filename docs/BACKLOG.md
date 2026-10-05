@@ -170,6 +170,10 @@ reso ripetibile (come le 28 domande della chat) e lanciato prima e dopo ogni str
 **Dopo, non prima**: la riprogettazione della pagina dell'osservatore (analisi di leggibilita' in
 `docs/superpowers/audit-2026-10-01/pagina.md`). Ridisegnarla adesso vorrebbe dire presentare meglio
 un contenuto che non regge.
+Quando la si ridisegna, porta con se' due voci del registro dei doppioni spostate qui dalla Tappa 4
+dello sprint (D10, decisione del proprietario del 05/10/2026): **C-25** (nomi che collidono e notizie
+con due nomi nella pagina) e **C-27** (cronaca e primo piano: lo stesso fatto in piu' voci). Si
+chiudono nel registro con `python scripts/registro.py chiudi`, quando la copia e' uscita.
 
 **Argomenti di analisi per il refactor degli attori, dal confronto con i progetti «Jarvis» (02/10/2026).**
 `origine: il proprietario, 02/10/2026 («queste idee possono essere fondamentali»)` · studio in
@@ -872,6 +876,20 @@ va corretto, in un posto solo.
 ---
 
 ## In attesa
+
+### I fogli di stile: due sistemi di variabili, e l'override caricato prima — aperta il 05/10/2026
+
+`origine: il registro dei doppioni, voce C-24; spostata qui dalla Tappa 4 dello sprint «Una fonte sola di verita'» (D10, decisione del proprietario del 05/10/2026)` · nessun altro documento
+
+Il CSS del prodotto ha due sistemi di variabili, e `hiris-config-override.css` e' caricato
+**prima** di `hiris-config.css` (`config.html:27-28`, letto il 04/10/2026): l'override non
+sovrascrive niente di cio' che il secondo foglio ridefinisce. In piu' il JS scrive circa 130 stili
+in linea (conto del piano della Tappa 4, grep sul codice del 04/10/2026). Il dettaglio dei due
+sistemi di variabili sta nel registro v1, fuori da git (`docs/superpowers/audit-2026-10-01/`).
+
+Esce dallo sprint perche' non e' un doppione di dati: e' un doppione di forma, e la sua cura e' un
+lavoro sui fogli. Prima di toccarli si interpella `ux-ui-specialist`. Nel registro si chiude con
+`python scripts/registro.py chiudi C-24`, quando la copia e' uscita.
 
 ### La storia, con la stessa forma — la fetta successiva a «una porta sola» — **USCITA con la v3.72.0** (30/09/2026); resta la verifica dal vivo
 

@@ -76,15 +76,15 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| C-01 | Dodici renditori di «un'entità col suo stato», tre copie del dizionario base | D | CC |  |  | reg · cop-3 · cop-4 |
+| C-01 | Circa quattordici renditori di «un'entità col suo stato», tre copie del dizionario base | D | CC |  | Tappa 4 (conteggio) | reg · cop-3 · cop-4 |
 | C-02 | Dispositivo, area, integrazione, misura, stato tradotto: più renditori della stessa cosa | D | CC |  |  | reg · cop-3 |
 | C-03 | Lo stesso fatto detto con nomi diversi | D | CC |  |  | reg |
 | C-04 | Lo stesso nome per fatti diversi | D | CC |  | cop-3 (incompleta); cop-4 (incompleta) | reg · cop-3 · cop-4 |
 | C-05 | Un fatto che esce da una porta e non da un'altra | D | CC |  | cop-3 (imprecisa) | reg · cop-3 |
-| C-06 | Chiave dell'errore: `error` contro `errore` | D | CC |  | cop-5 (incompleta); cop-8 (incompleta, imprecisa) | reg · cop-5 · cop-8 |
+| C-06 | Chiave dell'errore: `error` contro `errore` | D | CC |  | cop-5 (incompleta); cop-8 (incompleta, imprecisa) | reg · cop-5 · cop-8 · S-25 è la stessa voce (Tappa 4, D2): si chiudono insieme |
 | C-07 | Altre forme dell'errore HTTP e righe ripetute negli handler | E | PS |  | cop-8 (incompleta) | reg · cop-8 · cop-9 N-C-2 |
-| C-08 | I mappatori della stessa riga di `/api/usage` | D | CC |  |  | reg |
-| C-09 | Il frontend che rifà regole del server: la copia parola per parola | E | PS |  |  | reg · cop-6 |
+| C-08 | I mappatori della stessa riga di `/api/usage` | D | CC |  | Tappa 4 (cambiata) | reg |
+| C-09 | Il frontend che rifà regole del server: la copia parola per parola | E | PS |  | Tappa 4 (incompleta) | reg · cop-6 |
 | C-10 | Grammatica dei soggetti e vocabolari chiusi scritti in Python e in JS. Dal 02/10 il rilevatore dei doppioni non vede più il vocabolario dei predefiniti (il dizionario Python con quelle quattro chiavi è uscito, `4745d69e`): il doppione fra `handlers_models._store_keys` e `models-route.js` resta, senza un attrezzo che lo sorvegli. Lo stesso per gli stati dei servizi (`autorizzato`, `in_attesa`, `revocato`): uscita la tupla `servizi.STATI` senza lettori (`2e3ab864`), restano i letterali nell'SQL e nel JS | E | PS |  | cop-6 (incompleta, due etichette sbagliate) | reg · cop-6 |
 | C-11 | Prosa del JS che ricopia costanti dello scheduler e dell'archivio | NV | PS |  |  | reg · cop-2 · cop-6 |
 | C-12 | Regole di dominio che vivono solo nel JS | NV | DP |  |  | reg · cop-6 |
@@ -92,29 +92,29 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-14 | Agenda e Proposte: finestra da 200 contro conteggio completo | D | CC |  |  | reg |
 | C-15 | Chat: contatore dei turni, limite, due forme di risposta | D | CC |  | cop-8 (righe, incompleta) | reg · cop-8 |
 | C-16 | Tema: quattro posti, e il tema del server vale solo per la chat | D | CC |  |  | reg |
-| C-17 | Fuso e formati delle date: il browser contro la casa | D | DP |  |  | reg · cop-2 |
+| C-17 | Fuso e formati delle date: il browser contro la casa | D | DP |  | Tappa 4 (incompleta) | reg · cop-2 |
 | C-18 | Nome di pagina: «Costruzioni» nella prosa del server, «Proposte» nel menu | D | PS |  |  | reg · cop-3 · cop-9 |
 | C-19 | Intestazione anti-CSRF: una copia diversa | D | PS |  |  | reg |
 | C-20 | Utilità JS ricopiate per file | E | PS |  |  | reg |
 | C-21 | Stato doppio client/server | D | DP |  |  | reg |
 | C-22 | Le due applicazioni (chat e configurazione): cosa condividono e cosa duplicano | E | PS |  |  | reg |
 | C-23 | Campi che arrivano e nessun JS legge | E | PS |  |  | reg |
-| C-24 | CSS: due sistemi di variabili, stili in-linea ripetuti, override caricato prima | NV | PS |  |  | reg |
-| C-25 | Nomi che collidono e notizie con due nomi nella pagina dell'osservatore | D | DP |  |  | reg |
+| C-24 | CSS: due sistemi di variabili, stili in-linea ripetuti, override caricato prima | NV | PS |  |  | reg · BACKLOG, i fogli di stile (D10 della Tappa 4) |
+| C-25 | Nomi che collidono e notizie con due nomi nella pagina dell'osservatore | D | DP |  |  | reg · BACKLOG, la pagina dell'osservatore (D10 della Tappa 4) |
 | C-26 | Apostrofi `'` e `’` mischiati nello stesso messaggio | E | PS |  | cop-9 (incompleta) | reg · cop-9 N-C-7 |
-| C-27 | Cronaca e primo piano: lo stesso fatto in più voci | E | DP |  |  | reg |
+| C-27 | Cronaca e primo piano: lo stesso fatto in più voci | E | DP |  |  | reg · BACKLOG, la pagina dell'osservatore (D10 della Tappa 4) |
 | C-28 | La specie «attuatore» in letterali sparsi invece del vocabolario di `steering.SPECIE` | E | PS |  |  | cop-1 C1 |
 | C-29 | `_serve_index` e `_serve_config` sono la stessa funzione (cambia solo la chiave) | E | PS |  |  | cop-2 C1 |
-| C-30 | `/api/health`: due forme scelte dal ruolo, tre stati di tipo diverso in un oggetto | NV | DP |  |  | cop-2 C2 |
+| C-30 | `/api/health`: due forme scelte dal ruolo, tre stati di tipo diverso in un oggetto | NV | DP |  |  | cop-2 C2 · Tappa 7 (D10 della Tappa 4) |
 | C-31 | L'involucro della risposta (`trovate/escluse/…/finestra`) montato in tre posti | E | PS |  |  | cop-3 C-n1 |
 | C-32 | Un istante esce in quattro forme dagli strumenti (UTC, fuso casa, epoch, «mai») | D | CC |  |  | cop-3 C-n2 |
 | C-33 | Righe della stessa risposta con chiavi diverse; `genere` manca all'entità nella corta | D | CC |  |  | cop-3 C-n3 |
 | C-34 | Nella media `attributi` sono le ceste grezze, senza il filtro della completa | D | CC |  |  | cop-3 C-n4 |
-| C-35 | Frasi fisse ripetute per riga o per risposta, già scritte nella descrizione | E | DP |  |  | cop-3 C-n5 |
+| C-35 | Frasi fisse ripetute per riga o per risposta, già scritte nella descrizione | E | DP |  |  | cop-3 C-n5 · Tappa 5 (D10 della Tappa 4) |
 | C-36 | I `punti` a fasce portano `somma` non spiegata e tre `null` per i contatori | NV | CC |  |  | cop-3 C-n6 |
-| C-37 | La traccia passo per passo (`run_detail`) esce senza nessun tetto | NV | CC |  |  | cop-3 C-n7 |
-| C-38 | `calendar`: unico lettore senza tetto di righe e con un involucro suo | D | CC |  |  | cop-3 C-n8 |
-| C-39 | Lo strumento `agenda` taglia a 50 in silenzio e porta 18 chiavi per promessa | D | CC |  |  | cop-3 C-n9 |
+| C-37 | La traccia passo per passo (`run_detail`) esce senza nessun tetto | NV | CC |  |  | cop-3 C-n7 · Tappa 5 (D10 della Tappa 4) |
+| C-38 | `calendar`: unico lettore senza tetto di righe e con un involucro suo | D | CC |  |  | cop-3 C-n8 · Tappa 5 (D10 della Tappa 4) |
+| C-39 | Lo strumento `agenda` taglia a 50 in silenzio e porta 18 chiavi per promessa | D | CC |  |  | cop-3 C-n9 · Tappa 5 (D10 della Tappa 4) |
 | C-40 | `unita` è tre fatti con una parola (stringa dell'entità, dizionario del frame, limite) | D | CC |  |  | cop-4 N-07 |
 | C-41 | Il ricordo ha due forme: `view(ricordo)` senza `corretto_da_utente`, le righe ancorate con | D | CC |  |  | cop-4 N-08 |
 | C-42 | `attiva` dell'automazione esce solo dal nucleo: dettaglio e riga di `search` no | D | CC |  |  | cop-4 N-09 |
@@ -122,17 +122,23 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-44 | Due buste nello stesso modulo `state_translations`: `letto` e `lette` | D | CC |  |  | cop-5 C1 |
 | C-45 | Tre forme dell'assenza nella stessa voce dello specchio (`""`, `None`, chiave mancante) | D | CC |  |  | cop-5 C2 |
 | C-46 | La stessa colonna (`scope.decided_ts`) esce con due nomi nella stessa risposta (`da_quando_ts`, `deciso_ts`) | E | PS |  |  | cop-6 N-08 |
-| C-47 | `as_document`: istanti come epoch grezzo sotto un'intestazione inglese | NV | DP |  |  | cop-6 N-09 |
-| C-48 | I corpi JSON dell'archivio dell'osservatore: tre letture con la guardia, quattro senza | D | CC |  |  | cop-6 N-10 |
-| C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | NV | DP |  |  | cop-6 N-11 |
+| C-48 | I corpi JSON dell'archivio dell'osservatore: tre letture con la guardia, quattro senza | D | CC |  |  | cop-6 N-10 · Tappa 8 (D10 della Tappa 4) |
+| C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | NV | DP |  |  | cop-6 N-11 · Tappa 5 (D10 della Tappa 4) |
 | C-50 | La chat risponde l'errore in quattro forme, due lingue, due volte con stato 200 | D | CC |  |  | cop-8 C3 |
 | C-51 | Cancellare un ricordo che non esiste è un successo (204); correggerlo è un 404 | D | CC |  |  | cop-8 C4 |
 | C-52 | `handle_services` risponde 503 con `"servizi": []`, contro la regola scritta altrove | D | PS |  |  | cop-8 C5 |
 | C-53 | `propose` restituisce il motivo del consigliere due volte (anteprima e `consiglio`) | E | CC |  |  | cop-9 N-C-1 |
-| C-54 | Lo stato grezzo arriva al modello: `READABLE_STATE` solo per le costruzioni, `cancel` scrive `in_corso` | D | PS |  |  | cop-9 N-C-3 |
+| C-54 | Lo stato grezzo arriva al modello: `READABLE_STATE` solo per le costruzioni, `cancel` scrive `in_corso` | D | PS |  |  | cop-9 N-C-3 · Tappa 8 (D10 della Tappa 4) |
 | C-55 | Troncamenti a mano (`…`) accanto a `truncate_with_marker` (` [troncato]`): due marcatori | D | CC |  |  | cop-9 N-C-4 |
-| C-56 | Nota «il Piano non ha risposto» due volte; nome del provider in nove stringhe | D | CC |  |  | cop-9 N-C-5 |
+| C-56 | Nota «il Piano non ha risposto» due volte; nome del provider in nove stringhe | D | CC |  |  | cop-9 N-C-5 · Tappa 7, la metà del nome del provider; la nota «non ha risposto» al Task 2 (D10 della Tappa 4) |
 | C-57 | «Disabilitata» con due significati: entità spenta nel registro, automazione `off` nel nucleo | D | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 3 |
+| C-58 | Lo stesso comportamento con due nomi: `view` può dire `nome: None`, `search` dà l'id | D | CC |  |  | Tappa 4, piano del 04/10/2026, trovato 1 (`queries.py:1253-1290` contro `house_query.py:312-323`) |
+| C-59 | `fonte` è la posizione nel codice nelle righe d'errore della storia, e lo stato della fonte | D | CC |  |  | Tappa 4, trovato 2 (`house_history.py:1222`); D5: `codice` per la posizione |
+| C-60 | `count`, chiave inglese in una riga italiana degli errori della storia | D | CC |  |  | Tappa 4, trovato 3 (`house_history.py:1269-1273`); D1: `volte` |
+| C-61 | `ha_statistiche` contro `statistiche`: lo stesso fatto con due nomi | D | CC |  |  | Tappa 4, trovato 4 (`energy.py:151` contro `house.py:265`); D1, D13 |
+| C-62 | `dove.integrazione` è uno slug nudo; area, piano e dispositivo escono come `{id, nome}` | D | CC |  |  | Tappa 4, trovato 5 (`house.py:143`); D1 |
+| C-63 | `_with_live_kind` scrive `classe: None` e `unita: None` espliciti; altrove la chiave manca | D | CC |  |  | Tappa 4, trovato 6 (`api/handlers_home_space.py:72-74`); D1, regola dell'assenza |
+| C-64 | `state` in inglese dentro `prima`/`dopo` del dispositivo, mandato al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`); D1 |
 
 ---
 
@@ -324,7 +330,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-27 | `model_resolution` campo `quando: ""`: chiave sempre vuota. Riletta il 02/10 (Task 17): `quando` esce da `GET /api/models` e `models-route.js` la legge: cambio di forma | `model_resolution.py:1129` |  | reg |
 | M-30 | `app["model_chain"]` scritto in due punti (all'avvio e alla ricomposizione della catena): due momenti, da ricondurre a una funzione sola con la Tappa 1. Misurato nella Tappa 1 (commit `1a1cdc0c`, 03/10/2026): la scrittura dell'avvio (`app["model_chain"] = list(_chain)`) e' morta, perche' `_recompute_chain` la riscrive poche righe dopo prima che qualcuno la legga; togliendola la suite resta verde. `app["ultima_riparazione"]`: la scrittura in codice morto è uscita (`a507a2c7`), restano le due vive | `server.py` (`app["model_chain"]`) | cop-1 (conteggio); cop-2 (conteggio) | reg · cop-1 · cop-2 |
 | M-31 | Segnali in uscita senza lettore: `debug.thinking_blocks`, `tools_called`, `"input"`. Riletta il 02/10 (Task 17): `debug.thinking_blocks` esce nella risposta di `POST /api/chat` e `tools_called`/`input` viaggiano nella decisione del ponte: cambio di forma, e i due rami sono dichiarati gemelli | `handlers_chat.py:1399-1400,1413` | cop-8 (incompleta) | reg · cop-8 |
-| M-32 | `queries._view_behavior` chiede `ricordi` per automazione/script: ramo sempre `[]` [D]. Riletta il 02/10 (Task 17): la cura è togliere la chiave `ricordi` dalla risposta di `view`, cioè un cambio di forma (Tappa 4) | `queries.py:1369` | cop-4 (doppio conteggio) | reg · cop-4 |
+| M-32 | `queries._view_behavior` chiede `ricordi` per automazione/script: ramo sempre `[]` [D]. Riletta il 02/10 (Task 17): la cura è togliere la chiave `ricordi` dalla risposta di `view`, cioè un cambio di forma (Tappa 4) | `queries.py:1268-1290` (riletta il 04/10/2026; era `:1369`) | cop-4 (doppio conteggio); Tappa 4 (righe) | reg · cop-4 |
 | M-35 | `reader`: `unique_id`, `config_entry_id`, `original_name` senza lettori fuori da `reader.py`, ma escono in `GET /api/home-space` (misurato sulla casa il 01/10: 1.457 volte ciascuno): toglierli cambia una forma (Tappa 4, e tocca il difetto della rotta al «lettore»). `nome_utente` è uscito (`2e3ab864`); `dispositivo_id` TOLTO: ha 6 lettori di produzione. Riletta il 03/10 (Tappa 3): `config_entry_id` dell'entità non si toglie, è il legame che darà la causa del muto (B-25, Tappa 3, Task 8) | `reader.py:143-145` | cop-4 (SBAGLIATA in parte) | reg · cop-4 |
 | M-37 | CSS definito e mai citato: 92 classi su 292; `hiris-config-override.css` quasi tutto vecchia UI [D da script] | `hiris-config.css`; `hiris-theme.css`; `hiris-config-override.css` |  | reg |
 | M-38 | `scripts/`: `backup-nas.ps1` senza riferimenti; `censimento.py` e `doppioni.py` non agganciati a hook né CI | `scripts/` |  | reg |
@@ -402,7 +408,7 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-22 | La pagina Memoria mostra il nome di un'entita' ancorata solo se il REGISTRO ne ha uno: per le entita' col nome solo nel `friendly_name` (la norma su questa casa) l'ancora esce senza nome. I nomi di ripiego che dovevano rimediare entravano solo nell'indice di `find()` e non hanno mai avuto effetto |  | LETTO | `api/handlers_memory.py::_resolve_tether` legge `nome`; dichiarazione D8 della Tappa 0: si ripara con la resa unica (Tappa 4) | Tappa 0, Task 13 |
 | S-23 | `handle_reasoning_submit` scrive l'avviso sulla «revisione olistica» a ogni consegna di un turno degli attori (`ricetta`, `analisi`, `attuazione`): tace solo per `scope`. Un avviso falso a ogni giro |  | LETTO | trovato rileggendo i commenti (Task 21, 02/10/2026); è un messaggio di log, quindi si corregge con una tappa che cambia testo | Task 21 |
 | S-24 | Un turno lungo del ponte potrebbe consegnare con la credenziale scaduta: si rinnova a metà vita, a inizio turno le restano fra 5 e 10 minuti, e un turno può durare due invocazioni da 300 s |  | DEDOTTO | letto in `api/credenziali.py` e `agent/runner.py`, non provato dal vivo: da misurare sul registro dei turni prima di toccare qualcosa | Task 21 |
-| S-25 | Otto file di `api/` scrivono `errore` su HTTP di proprio pugno invece di passare da `boundary.py` (`admission`, `handlers_mcp`, `handlers_mind`, `handlers_proposals`, `handlers_reasoning`, `handlers_servizi`, `middleware_internal_auth`, `soffitto`) |  | LETTO | il commento di `boundary.py` diceva «le uniche tre»: corretto il commento, il fatto resta (si lega al capitolo C) | Task 21 |
+| S-25 | Otto file di `api/` scrivono `errore` su HTTP di proprio pugno invece di passare da `boundary.py` (`admission`, `handlers_mcp`, `handlers_mind`, `handlers_proposals`, `handlers_reasoning`, `handlers_servizi`, `middleware_internal_auth`, `soffitto`) |  | LETTO | il commento di `boundary.py` diceva «le uniche tre»: corretto il commento, il fatto resta (si lega al capitolo C); Tappa 4 (D2): è la stessa voce di C-06, e si chiude con lei | Task 21 |
 | S-26 | Una proposta gia' decisa non torna nemmeno a prova cambiata: `_file_proposals` (`server.py`) salta ogni domanda che ha gia' una proposta senza confrontare la prova, e il confronto di `actuator.to_handle` non riceve quel dizionario. La voce X-15 ha corretto il docstring che diceva il contrario; il comportamento resta |  | LETTO | trovato dalla revisione finale del 02/10/2026; l'attuatore e' in pausa, si decide con lo strato degli attori che lo riaccende | revisione finale |
 | S-27 | `verification` dice «non esiste in questa casa» per un'entità disabilitata nominata dal modello: l'anagrafe la conosce |  | LETTO | `action/verification.py:523`; si lega a B-04; si ripara con D8 della Tappa 3 (la causa da `House.source`), Task 8 | Tappa 3, piano del 03/10/2026, trovato 2 |
 | S-28 | Un guasto di `hourly_statistics` è scritto come «serie vuota» nel resoconto, e il commento accanto dice il contrario |  | LETTO | `server.py` (`_report_ingredients`, ramo `"errore" in report`); è una causa sbagliata della fonte: Tappa 3, Task 8 (B-26) | Tappa 3, piano del 03/10/2026, trovato 7 |
@@ -724,6 +730,79 @@ stesso: si sono annotate le voci che c'erano.
 
 ---
 
+## 8. La Tappa 4 (piano del 04/10/2026): voci spostate, verdetti corretti, reperti ricondotti
+
+Fonte: il piano `piani/2026-10-tappa-4-una-resa.md` (cartella del progetto), allegato A,
+verificato sul codice di `ee4c7abd`; il proprietario ha approvato il 05/10/2026 **tutte le
+decisioni D1-D13 come consigliate**. Nella colonna `Corretta da` dei capitoli, «Tappa 4» rimanda
+a questa sezione. Le voci che il piano assegna a questa tappa sono il capitolo C (salvo quelle
+spostate in 8a), A-26, la parte JS di B-16, M-32, M-35, M-50, S-20 (D12), S-22, S-25, D-48, T-10.
+
+### 8a. Le voci del capitolo C che non sono la resa (D10: si spostano)
+
+Restano aperte nel capitolo C: cambia solo la tappa che le chiude.
+
+- **C-25**, **C-27** → BACKLOG, la pagina dell'osservatore, dopo lo sprint: la spec §9 la mette
+  fuori perimetro
+- **C-35**, **C-37**, **C-38**, **C-39**, **C-49** → Tappa 5: sono tetti e frasi degli strumenti, e R8
+- **C-30** e la metà «nome del provider» di **C-56** → Tappa 7; la nota «non ha risposto» di C-56
+  resta al Task 2 di questa tappa
+- **C-48**, **C-54** → Tappa 8: archivi
+- **C-24** → BACKLOG, i fogli di stile: non è un doppione di dati
+
+### 8b. Verdetti e testi corretti
+
+- **C-01** · conteggio — i renditori dell'entità sono circa quattordici, non dodici:
+  `queries._entity_rows` (`queries.py:476`, dizionario base `:503-505`), `queries._view_entity`
+  (`:1005`, `:1028-1044`), `_view_device` in linea (`:1211-1215`), `queries._enrich_entity` (`:183`),
+  `house_query._entity_row` (`house_query.py:251`), `house_history.state_rows` (`:499`, `:517`),
+  `house_history._value_row` (`:799`, `:811`), `tools._snapshot` (`tools.py:2369-2399`),
+  `observer.house_lines` (`observer.py:86`), `recipe_turn.device_lines` (`recipe_turn.py:157`),
+  `handlers_home_space._with_live_kind` (`:72-74`), `actuator._fingerprint` (`actuator.py:283`,
+  `:331`), `keeper/exchange._domanda` (`:381-395`), `energy.py` (`:149-154`). Corretto il titolo
+- **C-08** · cambiata — i due mappatori `_model_out`/`_bucket_out` (`handlers_usage.py:104`, `:132`)
+  hanno oggi gli stessi nomi di campo, ma il secchiello non porta `cost_state`
+- **C-09** · incompleta — `NOMI_MISURA` (`tree-route.js:123-134`) è la copia di una tabella che il
+  server ha già, `briefing._MEASUREMENT_NAMES` (`briefing.py:345`): non una regola da spostare, una
+  tabella da chiedere (trovato 10 del piano)
+- **C-17** · incompleta — `localOggi`/`ieriLocale` (`watcher-shared.js:97-155`) **scelgono quale
+  giorno chiedere al server** nel fuso del browser: sbagliano il dato chiesto, non solo l'ora
+  mostrata (trovato 9 del piano)
+- **M-32** · righe — il ramo sta oggi in `queries.py:1268-1290`, non a `:1369`
+- **S-20** · righe — oggi `keeper/sweeper.py:204-205` (legge `anteprima`) contro
+  `action/actuator.py:790` (scrive `bersaglio`). Passa a questa tappa (D12, Task 6). La riga del
+  capitolo S non si tocca qui: la chiude il Task 6, che la cura
+- **S-25** — è la stessa voce di **C-06** (la chiave d'errore su HTTP): si chiudono insieme, al Task 2
+  (D2: `error` su HTTP, `errore` verso il modello, il confine di `api/boundary.py`)
+- **C-47** — chiusa nei fatti dal commit `c336872e` (`as_document` uscita il 02/10/2026, rilasciato
+  con la 3.73.0): spostata in «Chiuse» con `registro.py chiudi`
+
+### 8c. I dieci trovati per strada del piano
+
+Sette sono voci nuove del capitolo C: **C-58** (trovato 1, Task 8) · **C-59** (trovato 2, D5,
+Task 7) · **C-60** (trovato 3, D1, Task 6) · **C-61** (trovato 4, D1 e D13) · **C-62** (trovato 5,
+D1, Task 7) · **C-63** (trovato 6, D1, Task 10) · **C-64** (trovato 7, D1, Task 7).
+
+Due stavano già nel registro: si sono annotate le voci che c'erano.
+
+- trovato 9 (`localOggi` sceglie il giorno nel fuso del browser) = **C-17**: Task 4
+- trovato 10 (`NOMI_MISURA` è la copia JS di una tabella Python) = **C-09**: Task 5
+
+Uno non entra come voce: il trovato 8 (la riga `| resa | surrender |` del glossario, un altro
+senso della parola) non era una copia da cancellare ma un senso da scrivere, e lo ha scritto questo
+stesso Task 0 nel glossario (`resa (home_space) -> render`, accanto alla riga che c'era). Una voce
+aperta e chiusa nello stesso commit non porterebbe lavoro a nessuno.
+
+### 8d. Le voci NV, da confrontare col registro v1
+
+C-11, C-12, C-21, C-24, C-30, C-36, C-37 hanno il dettaglio solo nel registro v1, che sta fuori da
+git (`docs/superpowers/audit-2026-10-01/`, sul computer del proprietario). Lo sprint le confronta con
+le righe del piano prima del task che le tocca (passo 3 del Task 0): dove il registro v1 dice altro,
+si corregge il piano.
+
+---
+
+
 ## Chiuse
 
 Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copia è cancellata.
@@ -897,3 +976,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | B-51 | I tipi di ancora scritti due volte; `name_matches` vive in `memory/` col codice morto | Tappa 3 (da rilasciare) | 43d0ecc | VOCABULARY[ancore] derivato da resolver.STORE_KEY_PER_TYPE; name_matches e le sue parole spostati in home_space/reference.py. Tappa 3, Task 9 |
 | M-82 | Il ritorno di `behavior.reread()` (conteggi, `senza_corpo`) scartato in produzione: due copie di B-39 senza lettori | Tappa 3 (da rilasciare) | c80cba1 | behavior.reread non restituisce piu' niente; le prove leggono l'anagrafe e il log. Tappa 3, Task 7 (trovato 5) |
 | M-83 | `Imported.ha_version` senza lettori: lo legge solo `__eq__` della stessa classe (vedi B-44) | Tappa 3 (da rilasciare) | c80cba1 | Imported.ha_version uscito; le fonti si compongono da ha_vocabulary.VOCABULARY_HA_VERSION (B-44). Tappa 3, Task 7 (trovato 6) |
+| C-47 | `as_document`: istanti come epoch grezzo sotto un'intestazione inglese | 3.73.0 | c336872e | as_document e le sue prove, uscite il 02/10/2026; registrata chiusa dal Task 0 della Tappa 4 |
