@@ -176,7 +176,8 @@ window.HirisAgendaRoute = (function () {
   /* Il contenuto del pannello «Cosa è cambiato» (review finale, rilievo ①):
      legge la riga di `GET /api/executions/{id}` cosi' com'e', senza
      ricostruire un'altra forma -- la cronaca gia' porta `servizio`,
-     `entita`, `cambiato`, `avviso`, `errore` (`action/journal.py::_riga`).
+     `entita`, `cambiato`, `avviso`, e `errore` che il confine scrive `error`
+     (`action/journal.py::_row`, `api/boundary.py::occurrence_out`).
 
      Il caso «cambiato è vuoto» (guida generale del progetto, non della
      pagina: il rilievo la richiama esplicitamente) NON diventa mai «niente
@@ -188,8 +189,8 @@ window.HirisAgendaRoute = (function () {
      esattamente la distinzione per cui quel campo esiste. */
   function renderExecutionDetail(panel, execution) {
     clearEl(panel);
-    if (execution.errore) {
-      var error = el('p', null, execution.errore);
+    if (execution.error) {
+      var error = el('p', null, execution.error);
       error.style.cssText = 'font-size:var(--fs-14);color:var(--err-ink);margin:4px 0 0';
       panel.appendChild(error);
     }
@@ -203,7 +204,7 @@ window.HirisAgendaRoute = (function () {
       var notice = el('p', null, execution.avviso);
       notice.style.cssText = 'font-size:var(--fs-13);color:var(--warn-ink);margin:4px 0 0';
       panel.appendChild(notice);
-    } else if (!changed && !execution.errore) {
+    } else if (!changed && !execution.error) {
       // Difensivo: nella porta attuale (`action/actuator.py`) un `cambiato`
       // vuoto porta SEMPRE un `avviso` -- questo ramo non dovrebbe mai
       // rendersi oggi, ma se un domani smettesse di esserlo, tacere

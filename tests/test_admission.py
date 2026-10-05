@@ -383,7 +383,7 @@ async def _risposta(client, method, path, headers, **kw):
 
 def _rifiuto_json(testo):
     import json
-    return json.dumps({"errore": testo}).encode("utf-8")
+    return json.dumps({"error": testo}).encode("utf-8")
 
 
 async def _gate_refused(client, method, path, headers, testo=NOT_ADMITTED, **kw):
@@ -716,7 +716,7 @@ async def test_il_rifiuto_di_una_rotta_API_e_JSON_col_solo_testo(chiusa):
     risposta = await chiusa.get("/api/chat/history", headers=_persona("u-marta"))
 
     assert risposta.status == 403
-    assert await risposta.json() == {"errore": OPTION_OFF}
+    assert await risposta.json() == {"error": OPTION_OFF}
     assert risposta.headers["X-Content-Type-Options"] == "nosniff"
     assert risposta.headers["Cache-Control"] == "no-store"
 
@@ -774,7 +774,7 @@ async def test_il_flusso_SSE_si_ferma_prima_di_partire(chiusa):
         headers=_persona("u-marta", Accept="text/event-stream"))
 
     assert risposta.status == 403
-    assert await risposta.json() == {"errore": OPTION_OFF}
+    assert await risposta.json() == {"error": OPTION_OFF}
 
 
 @pytest.mark.asyncio

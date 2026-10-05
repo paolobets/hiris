@@ -766,7 +766,7 @@ test('mount: un obiettivo rifiutato DICE perché, e non svuota il campo', async 
   // Mutazione che la uccide: ricaricare la sezione anche quando la rotta rifiuta.
   const ctx = montaConServer({
     obiettivoStatus: 400,
-    obiettivo: { errore: 'un obiettivo vuoto non si scrive: è la sola manopola' },
+    obiettivo: { error: 'un obiettivo vuoto non si scrive: è la sola manopola' },
   });
   ctx.window.HirisWatcherRoute.mount('lavoro');
   await tick(20);

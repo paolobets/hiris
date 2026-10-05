@@ -209,7 +209,7 @@ test('mount: un giorno senza resoconto (404) lo SPIEGA, e non dice che non è su
   // server (`ora_notturna`, C-11).
   const { window, document } = montaConServer({
     resocontoStatus: 404,
-    resoconto: { errore: 'il giorno non e\' stato aggregato', ora_notturna: '00:20' },
+    resoconto: { error: 'il giorno non e\' stato aggregato', ora_notturna: '00:20' },
   });
   window.HirisWatcherRoute.mount('giorno');
   await tick(20);
@@ -225,7 +225,7 @@ test('mount: l’ora del resoconto la dice il server, non la pagina', async () =
      frase resta vera invece di inventarne una. Mutazione eseguita: la frase
      tornata a «alle 00:20» fissa -> rossa. */
   const { window, document } = montaConServer({
-    resocontoStatus: 404, resoconto: { errore: 'x', ora_notturna: '01:45' },
+    resocontoStatus: 404, resoconto: { error: 'x', ora_notturna: '01:45' },
   });
   window.HirisWatcherRoute.mount('giorno');
   await tick(20);

@@ -30,6 +30,8 @@ import time
 
 from aiohttp import web
 
+from ..chat_thread import unknown_id_text
+from .boundary import error_response
 from .servizi import (
     RUOLI,
     SPECIE,
@@ -53,6 +55,9 @@ _SOLO_AMMINISTRATORI = ("approvare o revocare un servizio è un gesto da "
                         "amministratore: dare a una macchina il diritto di "
                         "comandare la casa non è meno che scriverci "
                         "un’automazione.")
+#: Approvare e revocare cercano per chiave, non per id: la frase e' quella di
+#: ogni id che non c'e' (C-07), con cio' con cui si e' cercato.
+_UNKNOWN_KEY = unknown_id_text("nessun servizio", by="quella chiave")
 
 
 def _archivio(request):
@@ -76,18 +81,17 @@ async def handle_service_present(request: web.Request) -> web.Response:
     """
     archivio = _archivio(request)
     if archivio is None:
-        return web.json_response({"errore": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     if not finestra_aperta(request.app.get("finestra_servizi"), adesso=time.time()):
         # Non dovrebbe arrivarci -- il confine la ferma prima -- ma una porta
         # che si difende in un posto solo e' una porta che si apre il giorno in
         # cui quel posto cambia.
-        return web.json_response({"errore": _CHIUSA}, status=403)
+        return error_response(403, _CHIUSA)
 
     dati = await _corpo(request)
     chiave = str(dati.get("chiave") or "").strip()
     if not chiave:
-        return web.json_response(
-            {"errore": "serve la tua chiave pubblica Ed25519, in base64"}, status=400)
+        return error_response(400, "serve la tua chiave pubblica Ed25519, in base64")
     riga = archivio.presenta(nome=str(dati.get("nome") or "").strip() or "senza nome",
                              chiave=chiave,
                              indirizzo=request.remote or "?", now_ts=time.time())
@@ -100,8 +104,7 @@ async def handle_services(request: web.Request) -> web.Response:
     """Chi ha chiesto, chi è vivo, chi hai revocato — e lo stato della finestra."""
     archivio = _archivio(request)
     if archivio is None:
-        return web.json_response({"servizi": [], "errore": "archivio non disponibile"},
-                                 status=503)
+        return error_response(503, "archivio non disponibile")
     adesso = time.time()
     archivio.pota(now_ts=adesso)
     finestra = request.app.get("finestra_servizi")
@@ -118,7 +121,7 @@ def _solo_amministratori(request) -> web.Response | None:
         return None
     logger.warning("servizi: gesto negato a %r — %s",
                    (request.get("soggetto") or {}).get("nome"), permesso["perche"])
-    return web.json_response({"errore": _SOLO_AMMINISTRATORI}, status=403)
+    return error_response(403, _SOLO_AMMINISTRATORI)
 
 
 async def handle_open_window(request: web.Request) -> web.Response:
@@ -128,7 +131,7 @@ async def handle_open_window(request: web.Request) -> web.Response:
         return negato
     finestra = request.app.get("finestra_servizi")
     if finestra is None:
-        return web.json_response({"errore": "finestra non disponibile"}, status=503)
+        return error_response(503, "finestra non disponibile")
     adesso = time.time()
     apri_finestra(finestra, adesso=adesso)
     logger.info("servizi: accoppiamento aperto per %d minuti",
@@ -154,7 +157,7 @@ async def handle_service_approve(request: web.Request) -> web.Response:
         return negato
     archivio = _archivio(request)
     if archivio is None:
-        return web.json_response({"errore": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     dati = await _corpo(request)
     try:
         fatto = archivio.approva(str(dati.get("chiave") or ""),
@@ -162,10 +165,9 @@ async def handle_service_approve(request: web.Request) -> web.Response:
                                  specie=str(dati.get("specie") or ""),
                                  now_ts=time.time())
     except ValueError as errore:
-        return web.json_response({"errore": str(errore)}, status=400)
+        return error_response(400, str(errore))
     if not fatto:
-        return web.json_response(
-            {"errore": "non ho nessun servizio con quella chiave"}, status=404)
+        return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: approvato un servizio come «%s» (%s)",
                 dati.get("ruolo"), dati.get("specie"))
     return web.json_response({"servizi": archivio.elenco()})
@@ -178,10 +180,9 @@ async def handle_service_revoke(request: web.Request) -> web.Response:
         return negato
     archivio = _archivio(request)
     if archivio is None:
-        return web.json_response({"errore": "archivio non disponibile"}, status=503)
+        return error_response(503, "archivio non disponibile")
     dati = await _corpo(request)
     if not archivio.revoca(str(dati.get("chiave") or ""), now_ts=time.time()):
-        return web.json_response(
-            {"errore": "non ho nessun servizio con quella chiave"}, status=404)
+        return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: accesso revocato a un servizio")
     return web.json_response({"servizi": archivio.elenco()})

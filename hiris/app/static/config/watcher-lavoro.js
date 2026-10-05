@@ -170,7 +170,7 @@ window.HirisWatcherLavoro = (function () {
           /* **Il campo NON si svuota e la scheda non si ricarica.** Il
              proprietario ha appena scritto una frase: perderla sarebbe il
              danno peggiore dei due. */
-          esito.textContent = (occurrence.corpo && occurrence.corpo.errore)
+          esito.textContent = (occurrence.corpo && occurrence.corpo.error)
             || 'Questo obiettivo non si può scrivere.';
           return;
         }

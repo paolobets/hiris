@@ -26,6 +26,8 @@ import os
 
 from aiohttp import web
 
+from .boundary import error_response
+
 logger = logging.getLogger(__name__)
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -64,4 +66,4 @@ async def csrf_middleware(request: web.Request, handler) -> web.Response:
         request.method, request.path,
         request.headers.get("Origin", ""),
     )
-    return web.json_response({"error": "csrf_required"}, status=403)
+    return error_response(403, "csrf_required")

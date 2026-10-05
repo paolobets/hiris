@@ -302,7 +302,7 @@ test('mount: correggere il genere manda {soggetto_genere, soggetto, campo: "gene
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
     giudizioStatus: 400,
-    giudizio: { errore: 'questo soggetto non si può correggere qui' },
+    giudizio: { error: 'questo soggetto non si può correggere qui' },
   });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -338,7 +338,7 @@ test('mount: un 409 dice che la correzione è scritta ma non è in vigore, col m
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -530,7 +530,7 @@ test('mount: il messaggio del 409 mette un punto dopo {errore}, senza raddoppiar
   const ctx1 = montaConServer({
     sapere: sapereFinto({ giudizi: [g1] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx1.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -547,7 +547,7 @@ test('mount: il messaggio del 409 mette un punto dopo {errore}, senza raddoppiar
   const ctx2 = montaConServer({
     sapere: sapereFinto({ giudizi: [g2] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'il seme non ce l’ha.', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'il seme non ce l’ha.', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx2.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -613,7 +613,7 @@ test('mount: dopo un 409 il focus si sposta comunque sul titolo «Correzioni»',
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
     giudizioStatus: 409,
-    giudizio: { errore: 'x', riga: null, impronta: 'y', da: 'solo seme' },
+    giudizio: { error: 'x', riga: null, impronta: 'y', da: 'solo seme' },
   });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -731,7 +731,7 @@ test('mount: un 503 che porta la sua ragione mostra QUELLA, non il testo di rise
   const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.wdisk' });
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
-    giudizio: { errore: 'il sapere non ha potuto scrivere (OperationalError: disco pieno)' },
+    giudizio: { error: 'il sapere non ha potuto scrivere (OperationalError: disco pieno)' },
     giudizioStatus: 503,
   });
   ctx.window.HirisWatcherRoute.mount('sapere');

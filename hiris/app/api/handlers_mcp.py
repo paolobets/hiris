@@ -86,6 +86,7 @@ from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY
 from ..version import read_version
+from .boundary import error_response
 from .handlers_chat import create_tool_dispatcher, last_phrase
 from .soffitto import ceiling_for
 
@@ -675,7 +676,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
             "credenziale di un turno del ponte (autenticazione vista: %s)",
             request.remote, request.get("auth_via"),
         )
-        return web.json_response({"error": "unauthorized"}, status=401)
+        return error_response(401, "unauthorized")
 
     try:
         body = await request.json()

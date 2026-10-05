@@ -129,7 +129,7 @@ async def test_un_utente_qualunque_NON_applica_e_gli_si_dice_perche(cliente):
 
     assert risposta.status == 403
     corpo = await risposta.json()
-    assert corpo["errore"], "un rifiuto senza motivo e' un ordine"
+    assert corpo["error"], "un rifiuto senza motivo e' un ordine"
     assert cliente.app["workshop"].applicate == [], (
         "l'officina ha scritto lo stesso: il soffitto non ha morso")
 
@@ -163,7 +163,7 @@ async def test_RIFIUTARE_e_di_chi_costruisce(cliente):
                                   headers=_testate("u-ospite"))
 
     assert risposta.status == 403
-    assert (await risposta.json())["errore"]
+    assert (await risposta.json())["error"]
 
 
 @pytest.mark.asyncio

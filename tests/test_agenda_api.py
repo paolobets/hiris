@@ -23,6 +23,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app.action.journal import Journal
+from hiris.app.api.boundary import occurrence_out
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
@@ -214,10 +215,28 @@ async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
     # `cronaca.read(ident)`, non una sua ricostruzione da parte della rotta
     # (mutazione: se la rotta smettesse di usare `Journal.read` e
     # ricostruisse a mano un sottoinsieme dei campi, questo confronto lo
-    # vedrebbe subito).
-    assert corpo["execution"] == journal.read(ident)
+    # vedrebbe subito). L'unica traduzione e' quella del confine: la chiave
+    # `errore` della riga esce `error` (D2, Tappa 4).
+    assert corpo["execution"] == occurrence_out(journal.read(ident))
     assert corpo["execution"]["servizio"] == "light.turn_on"
     assert corpo["execution"]["cambiato"] == ["light.studio"]
+
+
+@pytest.mark.asyncio
+async def test_get_esecuzione_fallita_porta_error_sul_confine(client):
+    """La riga di cronaca porta `errore` -- e' il dominio, e cosi' la legge
+    il modello -- ma su HTTP esce `error`, come ogni altro errore (D2): la
+    pagina Promesse legge `execution.error` (`agenda-route.js`)."""
+    journal = client.app["journal"]
+    ident = journal.log(
+        actor="schedulatore", service="light.turn_on", entity=["light.studio"],
+        executed=False, error="Home Assistant ha rifiutato la chiamata: 500",
+        now=1_755_600_000.0)
+
+    corpo = await (await client.get(f"/api/executions/{ident}")).json()
+    assert corpo["execution"]["error"] == "Home Assistant ha rifiutato la chiamata: 500"
+    assert "errore" not in corpo["execution"]
+    assert journal.read(ident)["errore"] == "Home Assistant ha rifiutato la chiamata: 500"
 
 
 @pytest.mark.asyncio

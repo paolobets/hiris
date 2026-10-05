@@ -129,8 +129,8 @@ async def test_e_il_rifiuto_dice_COME_SI_ENTRA(client):
         "/api/health", headers={"X-HIRIS-Internal-Token": "vecchio"})
     corpo = await resp.json()
 
-    assert "Servizi" in corpo["errore"]
-    assert "accoppiare" in corpo["errore"]
+    assert "Servizi" in corpo["error"]
+    assert "accoppiare" in corpo["error"]
 
 
 @pytest.mark.asyncio

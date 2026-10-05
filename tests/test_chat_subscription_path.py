@@ -248,7 +248,7 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "seconda"})
-        assert resp.status == 200
+        assert resp.status == 409
         body = await resp.json()
         assert body.get("error") == "max_turns_reached"
         assert body["turns"] == 1

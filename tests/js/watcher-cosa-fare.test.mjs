@@ -139,7 +139,7 @@ test('mount: un giorno mai analizzato (404) lo SPIEGA', () => {
   // «Non ho guardato» e «ho guardato e non c’era niente» sono due cose
   // diverse, e la pagina deve dirle diverse.
   // Mutazione che la uccide: mostrare «niente da segnalare» anche sul 404.
-  const ctx = montaConServer({ analisiStatus: 404, analisi: { errore: 'x' } });
+  const ctx = montaConServer({ analisiStatus: 404, analisi: { error: 'x' } });
   ctx.window.HirisWatcherRoute.mount('cosa-fare');
   return tick(20).then(function () {
     const testo = ctx.document.getElementById('watcher-panel-cosa-fare').textContent;
