@@ -58,3 +58,21 @@ def test_senza_conferme_le_domande_con_effetto_non_partono():
     m = _modulo()
     assert [d["n"] for d in m.domande_ammesse(domande, conferme=False)] == [1]
     assert len(m.domande_ammesse(domande, conferme=True)) == 3
+
+
+def test_l_errore_del_turno_arriva_col_suo_testo(monkeypatch):
+    """Il poll della chat risponde agli errori con `error_body`: il testo sta
+    in `error`, non in `message` (revisione cloud, giro 2, G2-7). Il corpo si
+    chiede al confine invece di ricopiarlo.
+
+    Mutazione ESEGUITA: lo script che legge `message` -- rossa."""
+    from hiris.app.api.boundary import error_body
+
+    m = _modulo()
+    risposte = iter([(202, json.dumps({"job_id": "j1"}).encode()),
+                     (200, json.dumps(error_body("non arrivata",
+                                                 status="error")).encode())])
+    monkeypatch.setattr(m, "_bussa", lambda *a, **k: next(risposte))
+    monkeypatch.setattr(m, "PASSO_S", 0)
+    _, stato, testo, job = m.chiedi("http://x", "k", "q", attesa=5)
+    assert (stato, testo, job) == ("errore", "non arrivata", "j1")

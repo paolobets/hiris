@@ -91,7 +91,7 @@ def chiedi(url: str, chiave: str, domanda: str, attesa: int = 900):
         if passo.get("status") == "done":
             return time.perf_counter() - inizio, "ok", passo.get("reply", ""), job
         if passo.get("status") == "error":
-            return time.perf_counter() - inizio, "errore", passo.get("message", ""), job
+            return time.perf_counter() - inizio, "errore", passo.get("error", ""), job
     return time.perf_counter() - inizio, "scaduto", "", job
 
 
