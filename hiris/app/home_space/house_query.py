@@ -17,10 +17,10 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, replace
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .behavior import BEHAVIOR_DOMAINS
+from .historian import instant_epoch
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
@@ -163,12 +163,10 @@ def parse_filters(arguments: dict) -> HouseFilters | dict:
 
 
 def _age_s(iso: str | None, now: float) -> float | None:
-    if not iso:
-        return None
-    try:
-        return now - datetime.fromisoformat(iso).timestamp()
-    except ValueError:
-        return None
+    """Da quanti secondi e' successo: l'istante si legge con l'unica lettura
+    del prodotto (`historian.instant_epoch`, A-26)."""
+    epoch = instant_epoch(iso)
+    return None if epoch is None else now - epoch
 
 
 def _area_name(area: dict) -> str | None:

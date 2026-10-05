@@ -17,7 +17,7 @@ import logging
 import secrets
 import threading
 
-from ..home_space.historian import local_date
+from ..home_space.historian import instant_epoch, local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
@@ -812,7 +812,6 @@ class UsageStore:
         """
         import json as _json
         import os
-        from datetime import datetime
 
         _PROVIDER_BY_SUFFIX = {"_openai": "openai", "_openrouter": "openrouter",
                      "_ollama": "ollama"}
@@ -836,12 +835,13 @@ class UsageStore:
             base = os.path.splitext(os.path.basename(path))[0]
             provider = next((p for suff, p in _PROVIDER_BY_SUFFIX.items()
                              if base.endswith(suff)), "claude")
-            when = now
-            try:
-                when = datetime.fromisoformat(
-                    data.get("last_reset") or "").timestamp()
-            except (TypeError, ValueError):
-                pass
+            # L'istante si legge con l'unica lettura del prodotto (A-26). Il
+            # vecchio `ClaudeRunner` lo scriveva con `datetime.now(timezone.utc)
+            # .isoformat()` (letto al tag v1.0.0 il 05/10/2026): ha sempre il
+            # fuso, quindi `instant_epoch` non ne perde nessuno.
+            when = instant_epoch(data.get("last_reset"))
+            if when is None:
+                when = now
             self.log(
                 provider, "(prima del dettaglio)",
                 richieste=int(data.get("total_requests") or 0),
