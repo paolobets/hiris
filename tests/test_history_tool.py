@@ -232,7 +232,7 @@ def test_la_descrizione_dice_cosa_portano_i_dati_ed_e_piu_corta_delle_quattro():
     assert "`al`" in testo and "compilata" in testo
     for chiave in ("salta", "oltre", "nota", "conti", "non_lette_in_tutto",
                    "consumato_non_calcolato", "ore_senza_valore", "per_mano_di",
-                   "count"):
+                   "volte"):
         assert f"`{chiave}" in testo, chiave
     # Revisione del Task 7: le due grane per nome, e il sigillo del registro.
     assert "`grana: dettaglio`" in testo and "`grana: oraria`" in testo

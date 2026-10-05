@@ -940,7 +940,7 @@ HISTORY_TOOL_DEF = {
         "ne conserva poche: una che manca NON e' andata bene. `non_letti` "
         "nomina chi non ho potuto leggere -- non e' «mai partita» -- e "
         "`non_lette_in_tutto` le conta su tutte le pagine. "
-        "Errori: `count` e' una causa sola ricomparsa N volte, non N episodi; "
+        "Errori: `volte` e' una causa sola ricomparsa N volte, non N episodi; "
         "conta per `livello`. Il registro tiene poche voci e si svuota a ogni "
         "riavvio di Home Assistant: un'assenza non prova niente. I messaggi "
         "arrivano sigillati: i segreti che conosco sono `<secret nome>`, e il "
@@ -2114,7 +2114,16 @@ class ToolDispatcher:
 
         Non sollevare mai: questa misura serve a informare, e un guasto qui non
         deve impedire di promettere.
+
+        **Il bersaglio si traduce prima di chiederlo** (S-20, Tappa 4): la
+        porta risolve nella forma di Home Assistant (`area_id`, non `aree`),
+        e la traduzione e' quella della verifica, `translate_target`, la
+        stessa che il risveglio usera'. Fino al 05/10/2026 qui partiva il
+        bersaglio del modello com'era, la risoluzione falliva, e il numero
+        restava `None` su ogni promessa.
         """
+        from ..action.verification import translate_target
+
         target = (call or {}).get("bersaglio")
         if not isinstance(target, dict) or self._actuator is None:
             return None
@@ -2123,8 +2132,11 @@ class ToolDispatcher:
         # risveglio non potrebbe essere cambiato.
         if set(target) <= {"entita"}:
             return None
+        translated, unreadable = translate_target(target)
+        if not translated or unreadable:
+            return None
         try:
-            resolved = await self._actuator._resolve(target)
+            resolved = await self._actuator._resolve(translated)
         except Exception:
             return None
         if not isinstance(resolved, dict) or resolved.get("errore"):

@@ -30,7 +30,7 @@ function jsonResponse(body, status) {
    11/09/2026): cinque parti in una risposta sola. `paginaScope()` è la
    forma «archivio collegato, niente ancora deciso»; ogni prova sovrascrive
    la parte che le serve. Le date sono epoch in secondi (float), come
-   `da_quando_ts`/`deciso_ts`/`scritto_ts`/`quando_ts` sul filo -- MAI
+   `quando`/`scritto_ts`/`quando_ts` sul filo -- MAI
    confrontate con una stringa fissa nei test: la resa è nel fuso del
    browser di chi fa girare la suite. */
 const OBIETTIVO_DI_PROVA = { testo: 'ottimizzare la casa e renderla confortevole', scritto_ts: 1787000000 };
@@ -45,13 +45,13 @@ function paginaScope(extra) {
 
 // Una voce decisa dallo scope (un'entità), e una condizione di sistema --
 // che `Watcher.watching` (watcher.py) manda con `autore: null` e
-// `da_quando_ts: null`, per costruzione.
+// `quando: null`, per costruzione.
 function voce(soggetto, extra) {
-  return Object.assign({ soggetto, motivo: 'scalda la casa', autore: 'observer', da_quando_ts: 1787000000 }, extra || {});
+  return Object.assign({ soggetto, motivo: 'scalda la casa', autore: 'observer', quando: 1787000000 }, extra || {});
 }
 
 function condizione(soggetto) {
-  return { soggetto, motivo: 'una condizione di sistema aperta si guarda finche\' dura', autore: null, da_quando_ts: null };
+  return { soggetto, motivo: 'una condizione di sistema aperta si guarda finche\' dura', autore: null, quando: null };
 }
 
 /* Il finto server della SOLA scheda «L'osservatore»: la sua lettura
@@ -219,7 +219,7 @@ test('seam _rendiScope: le voci si raggruppano per chi ha deciso, nell\'ordine t
 
 test('seam _rendiScope: una condizione di sistema (autore null) non è attribuita a nessuno e non porta un «dal»', () => {
   // `Watcher.watching` (watcher.py): le condizioni di sistema non passano
-  // dallo scope, nessuno le ha decise, `autore: None`, `da_quando_ts: None`.
+  // dallo scope, nessuno le ha decise, `autore: None`, `quando: None`.
   // Mutazione: `var k = v.autore == null ? '' : ...` -> `var k = v.autore ||
   // 'observer'` in `groupByAuthor`: la condizione finirebbe sotto «Deciso
   // dall’osservatore», e il primo assert la vede. Mutazione sul «dal»:
@@ -240,7 +240,7 @@ test('seam _rendiScope: una condizione di sistema (autore null) non è attribuit
   assert.deepEqual(sommari(corpo), ['Deciso dall’osservatore — 1 voce']);
   assert.match(testo, /Integrazioni e log \(1, in 1 integrazione\)/);
   assert.match(testo, /Nessuno le ha decise/);
-  assert.doesNotMatch(testo, /dal/, 'da_quando_ts è null per costruzione: nessuna data inventata');
+  assert.doesNotMatch(testo, /dal/, 'quando è null per costruzione: nessuna data inventata');
   assert.doesNotMatch(testo, /null/);
   const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
   assert.doesNotMatch(osservatore.textContent, /sonos/,
@@ -294,7 +294,7 @@ test('seam _rendiScope: ciò che è stato lasciato fuori ha la sua parte, con mo
   // sulla frase: toglierla lascia leggere «lasciato fuori» come «tutto il
   // resto della casa».
   const { corpo } = rendiScope(paginaScope({
-    fuori: [{ soggetto: 'sensor.uptime', motivo: 'di servizio, non dice niente sulla casa', autore: 'observer', deciso_ts: 1787000001 }],
+    fuori: [{ soggetto: 'sensor.uptime', motivo: 'di servizio, non dice niente sulla casa', autore: 'observer', quando: 1787000001 }],
   }));
   assert.ok(titoli(corpo).indexOf('Lasciato fuori') > titoli(corpo).indexOf('Cosa guardo'),
     'l\'altra metà della trasparenza viene DOPO cosa si guarda');
@@ -313,8 +313,8 @@ test('seam _rendiScope: ciò che è stato lasciato fuori ha la sua parte, con mo
   // senza spazi -- «sensor.uptimeil 17/08/2026» -- e un `\b` non ci starebbe).
   const quando = Array.from(fuori.querySelectorAll('.field-hint')).map((s) => s.textContent)
     .find((s) => /^(il|dal) /.test(s));
-  assert.ok(quando, 'deciso_ts deve comparire come «quando» accanto alla voce');
-  assert.match(quando, /^il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/, 'deciso_ts si mostra come «il ...», non «dal ...»');
+  assert.ok(quando, 'l’istante della decisione (`quando`) deve comparire accanto alla voce');
+  assert.match(quando, /^il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/, 'una voce lasciata fuori si mostra come «il ...», non «dal ...»');
   assert.match(corpo.textContent, /non è stato escluso — non è stato considerato/);
 });
 
@@ -833,7 +833,7 @@ test('seam _rendiScope: in testa i TRE numeri, e la riconsiderazione prima di co
      fuori». */
   const { corpo } = rendiScope(paginaScope({
     watching: moltiSoggetti(4, 'light'),
-    fuori: [{ soggetto: 'sensor.x', motivo: 'non riguarda l’obiettivo', autore: 'observer', deciso_ts: 1787000000 }],
+    fuori: [{ soggetto: 'sensor.x', motivo: 'non riguarda l’obiettivo', autore: 'observer', quando: 1787000000 }],
     volume: [{ giorno: '2026-09-19', righe: 13945 }],
   }));
 
@@ -880,11 +880,11 @@ test('seam _rendiScope: «Lasciato fuori» si raggruppa per TIPO di cosa, non pe
   const fuori = [];
   for (let i = 0; i < 12; i++) {
     fuori.push({ soggetto: 'sensor.s' + i, motivo: 'motivo numero ' + i,
-      autore: 'observer', deciso_ts: 1787000000 });
+      autore: 'observer', quando: 1787000000 });
   }
   for (let i = 0; i < 3; i++) {
     fuori.push({ soggetto: 'button.b' + i, motivo: 'un comando, non una misura',
-      autore: 'observer', deciso_ts: 1787000000 });
+      autore: 'observer', quando: 1787000000 });
   }
   const { corpo } = rendiScope(paginaScope({ fuori }));
 
@@ -902,7 +902,7 @@ test('seam _rendiScope: il motivo di una singola esclusione si legge, aperto il 
   const fuori = [];
   for (let i = 0; i < 6; i++) {
     fuori.push({ soggetto: 'camera.c' + i, motivo: 'Comando PTZ di una telecamera, non riguarda energia',
-      autore: 'observer', deciso_ts: 1787000000 });
+      autore: 'observer', quando: 1787000000 });
   }
   const { corpo } = rendiScope(paginaScope({ fuori }));
   apriIn(corpo, 'Vedi');
@@ -918,7 +918,7 @@ test('seam _rendiScope: nessun «summary» negli elenchi di questa scheda (spec 
      Mutazione che la uccide: rimettere `renderDecisionGroup` coi `<details>`. */
   const { corpo } = rendiScope(paginaScope({
     watching: moltiSoggetti(6, 'light'),
-    fuori: [{ soggetto: 'sensor.x', motivo: 'no', autore: 'observer', deciso_ts: 1787000000 }],
+    fuori: [{ soggetto: 'sensor.x', motivo: 'no', autore: 'observer', quando: 1787000000 }],
   }));
 
   assert.equal(corpo.querySelectorAll('summary').length, 0);

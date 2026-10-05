@@ -243,7 +243,7 @@ window.HirisWatcherShared = (function () {
   /* Il gemello di `protagonistName` per «cosa sto guardando» (rilievo del
      collaudo E2, 07/09/2026): una voce li' non ha MAI un `corpo.titolo` da
      preferire (il tipo che arriva da `/api/mind/watching` e'
-     `{soggetto, motivo, autore, da_quando_ts}`, punto), quindi non si puo' riusare
+     `{soggetto, motivo, autore, quando}`, punto), quindi non si puo' riusare
      `protagonistName` cosi' com'e' -- ma la legge resta la stessa: non
      inventare un nome che non c'e'. Se dal soggetto non si ricava altro
      (un'entita' dello scope, es. `light.cucina`), il soggetto STESSO

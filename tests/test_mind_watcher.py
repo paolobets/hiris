@@ -46,7 +46,7 @@ class _FintoArchivio:
 
     def scope(self):
         return {s: {"dentro": dentro, "motivo": f"motivo di {s}",
-                    "autore": "observer", "deciso_ts": 1787000000.0}
+                    "autore": "observer", "quando": 1787000000.0}
                 for s, dentro in self._scope.items()}
 
     def record(self, **kw):
@@ -474,7 +474,7 @@ def test_osservate_dice_cosa_guarda_e_PERCHE(coppia):
 
     assert v["climate.camera_t"]["motivo"] == "motivo di climate.camera_t"
     assert v["climate.camera_t"]["autore"] == "observer"
-    assert v["climate.camera_t"]["da_quando_ts"] == 1787000000.0
+    assert v["climate.camera_t"]["quando"] == 1787000000.0
     assert "person.marta" in v
     assert "light.lampadario" not in v      # deciso FUORI: non lo si guarda
     assert "gamba" not in v["climate.camera_t"]

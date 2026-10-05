@@ -104,7 +104,16 @@ from .claude_runner import togli_misura as _togli_misura
 #: `agent_type="observer"`, quindi misurando su quello l'osservatore e le
 #: ricette sarebbero indistinguibili -- proprio la distinzione che il
 #: proprietario vuole vedere.
-SPECIE = frozenset({"analista", "attuatore", "chat", "osservatore",
+#:
+#: **La specie dell'attuatore ha un nome, e si importa** (C-28, Tappa 4 dello
+#: sprint «Una fonte sola di verita'»): fino al 05/10/2026 «attuatore» era
+#: scritto come letterale in cinque punti di `server.py` e `agent/runner.py`,
+#: e un refuso in uno di loro avrebbe fatto rifiutare la misura a
+#: `misura_turno` -- o, nel registro del ponte, contato i turni dell'attuatore
+#: sotto un nome che nessuna pagina conosce. `tests/test_specie_attuatore.py`
+#: tiene il letterale qui e solo qui.
+ACTUATOR_SPECIES = "attuatore"
+SPECIE = frozenset({"analista", ACTUATOR_SPECIES, "chat", "osservatore",
                     "promessa", "ricette"})
 
 

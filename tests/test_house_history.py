@@ -1223,10 +1223,11 @@ _REGISTRO = [
 
 
 def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
-    """Spec §3: livello, messaggio accorciato, fonte, count, prima e ultima.
-    `count: 12` e' una voce, non dodici. Dall'ultima volta piu' recente; la
-    voce senza istante leggibile non si scarta (non si sa se e' fuori) e sta
-    in fondo.
+    """Spec §3: livello, messaggio accorciato, fonte, volte, prima e ultima.
+    `volte: 12` e' una voce, non dodici (fino al 05/10/2026 la chiave era
+    `count`, inglese in una riga italiana: trovato 3 della Tappa 4, D1).
+    Dall'ultima volta piu' recente; la voce senza istante leggibile non si
+    scarta (non si sa se e' fuori) e sta in fondo.
 
     Mutazione ESEGUITA: non filtrare per finestra -- rossa (quattro voci);
     non ordinare per l'ultima volta -- rossa (zha prima di meteo)."""
@@ -1236,12 +1237,30 @@ def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
         "lento", "zigbee giu'", "senza istante"]
     assert uscita["voci"][1] == {"livello": "ERROR", "messaggio": "zigbee giu'",
                                  "fonte": "homeassistant/components/zha/core.py:10",
-                                 "integrazione": "zha", "count": 12,
+                                 "integrazione": "zha", "volte": 12,
                                  "prima": "2026-09-29T16:40:00+02:00",
                                  "ultima": "2026-09-29T18:30:00+02:00",
                                  "eccezione": "ValueError: boom"}
     assert uscita["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
                                   "a": "2026-09-29T18:40:00+02:00"}
+
+
+def test_descrizione_errori_nomina_campi_riga():
+    """Ogni campo che la descrizione di `history` cita fra backtick nella frase
+    sugli errori e' una chiave della riga d'errore: la descrizione la legge il
+    modello, e un nome che la riga non porta lo manda a cercare cio' che non
+    c'e'. I campi si chiedono alla riga vera, le parole alla descrizione vera.
+
+    Mutazione ESEGUITA (05/10/2026): `count` rimesso nella descrizione -- rossa."""
+    import re
+
+    from hiris.app.home_space.tools import HISTORY_TOOL_DEF
+
+    riga = hh.error_rows(_q(genere="errori"), _REGISTRO)["voci"][1]
+    frase = HISTORY_TOOL_DEF["description"].split("Errori: ", 1)[1].split(". ", 1)[0]
+    citati = re.findall(r"`([^`]+)`", frase)
+    assert citati, "la frase sugli errori non cita piu' nessun campo"
+    assert [c for c in citati if c not in riga] == []
 
 
 def test_gli_errori_si_filtrano_per_livello_e_integrazione():
@@ -1278,11 +1297,17 @@ def test_un_messaggio_lungo_si_accorcia_e_l_eccezione_e_la_sua_ultima_riga():
 
     Mutazione ESEGUITA: `_short` che non taglia -- rossa; accorciare
     l'eccezione PRIMA di prenderne l'ultima riga -- rossa (299 caratteri
-    diventano meno)."""
+    diventano meno).
+
+    Dal 05/10/2026 (C-55) il taglio e' quello della casa: il messaggio atteso
+    si chiede a `truncate_with_marker`, non si ricopia il marcatore."""
+    from hiris.app.proxy._sanitize import truncate_with_marker
+
     lungo = [{"level": "ERROR", "message": "x" * 1000, "timestamp": T0 - 1,
               "exception": "Traceback\n  File y\nValueError: " + "z" * 1000}]
     riga = hh.error_rows(_q(genere="errori"), lungo)["voci"][0]
-    assert len(riga["messaggio"]) == hh.MESSAGE_MAX and riga["messaggio"].endswith("…")
+    assert riga["messaggio"] == truncate_with_marker("x" * 1000, hh.MESSAGE_MAX)
+    assert len(riga["messaggio"]) == hh.MESSAGE_MAX
     assert len(riga["eccezione"]) == hh.MESSAGE_MAX
     assert riga["eccezione"].startswith("ValueError: zzz")
 

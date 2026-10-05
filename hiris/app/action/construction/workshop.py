@@ -141,11 +141,10 @@ def _add_phrase(subject: dict | None, phrase: str | None) -> dict | None:
     detto = (phrase or "").strip()
     if not detto:
         return subject
-    if len(detto) > PHRASE_MAX:
-        # Il taglio **si dichiara**: senza il marcatore, quella sembrerebbe la
-        # frase intera, e chi legge la cronaca giudicherebbe su meta' di cio'
-        # che e' stato detto.
-        detto = detto[:PHRASE_MAX] + "…"
+    # Il taglio **si dichiara**: senza il marcatore, quella sembrerebbe la
+    # frase intera, e chi legge la cronaca giudicherebbe su meta' di cio'
+    # che e' stato detto. Il marcatore e' quello della casa (C-55).
+    detto = _truncate(detto, PHRASE_MAX)
     return {**(subject or {}), "confirm_phrase": detto}
 
 
@@ -319,8 +318,12 @@ class Workshop:
             now=now, thread=thread)
         if "errore" in occurrence:
             return occurrence
+        # Il motivo del consigliere vive nell'anteprima («Nota: ...»), che e'
+        # anche cio' che la pagina Costruzioni archivia: ripeterlo qui lo
+        # faceva leggere due volte al modello (C-53, Tappa 4). `consiglio`
+        # porta il resto del verdetto.
         return {"proposta_id": occurrence["id"], "anteprima": preview,
-                "consiglio": consiglio}
+                "consiglio": {k: v for k, v in consiglio.items() if k != "motivo"}}
 
     async def _free_key(self, domain: str, intent: dict) -> dict:
         """Una chiave che in questa casa non e' gia' occupata.

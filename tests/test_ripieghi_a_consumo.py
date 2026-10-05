@@ -189,12 +189,32 @@ def test_i_TRE_giri_automatici_passano_dall_imbuto():
     quel file, la prova li seguira' invece di diventare rossa per un trasloco
     o, peggio, di restare verde guardando un file svuotato.
     Mutazione ESEGUITA: la chiamata dell'analista spostata in un modulo di
-    `mind/` -- verde (la prova segue il codice)."""
+    `mind/` -- verde (la prova segue il codice).
+
+    Dal 05/10/2026 (C-28, Tappa 4) si legge l'ALBERO, non il testo: la specie
+    dell'attuatore arriva come `steering.ACTUATOR_SPECIES`, e la prova chiede
+    il valore del nome a `steering` invece di pretendere il letterale -- la
+    proprieta' (chi passa dall'imbuto), non la forma.
+    Mutazione ESEGUITA: tolta la chiamata dell'attuatore -- rossa."""
+    import ast
     import pathlib
+
+    from hiris.app import steering
+
     app_dir = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
-    sorgente = "\n".join(path.read_text(encoding="utf-8")
-                         for path in sorted(app_dir.rglob("*.py")))
+    agenti = set()
+    for path in sorted(app_dir.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (isinstance(node, ast.Call)
+                    and getattr(node.func, "id", None) == "declare_downgrade"):
+                continue
+            for kw in node.keywords:
+                if kw.arg != "agent":
+                    continue
+                if isinstance(kw.value, ast.Constant):
+                    agenti.add(kw.value.value)
+                elif isinstance(kw.value, ast.Name):
+                    agenti.add(getattr(steering, kw.value.id, None))
 
     for agente in ("analista", "attuatore", "ricette", "osservatore"):
-        assert f'declare_downgrade(app, agent="{agente}"' in sorgente, (
-            f"«{agente}» ripiega ancora in silenzio")
+        assert agente in agenti, f"«{agente}» ripiega ancora in silenzio"

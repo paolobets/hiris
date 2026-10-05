@@ -32,7 +32,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from ..proxy._sanitize import sanitize_structure, sanitize_traceback
+from ..proxy._sanitize import sanitize_structure, sanitize_traceback, truncate_with_marker
 from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_inventory_error
 from ..proxy.ha_client import SHAPE, _failure
 from . import ha_vocabulary
@@ -47,7 +47,7 @@ from .historian import (
 from .house_query import (
     DETAIL_MEDIUM_MAX,
     HouseFilters,
-    excluded_note,
+    envelope,
     page_rows,
     parse_filters,
 )
@@ -372,11 +372,7 @@ def _frame(query: HistoryQuery, chosen: Chosen) -> dict:
     """La forma della porta, uguale per ogni genere (spec §3): cio' che si e'
     trovato, cio' che si e' lasciato fuori con la stessa nota di `search`
     (3.71.1), e la finestra chiesta nel fuso della casa."""
-    out: dict = {"trovate": chosen.found, "escluse": chosen.excluded,
-                 "profondita": chosen.depth, "voci": []}
-    note = excluded_note(chosen.found, chosen.excluded)
-    if note:
-        out["nota"] = note
+    out = envelope(chosen.found, chosen.depth, [], excluded=chosen.excluded)
     out["finestra"] = {"da": query.start.isoformat(), "a": query.end.isoformat()}
     return out
 
@@ -1219,9 +1215,7 @@ def last_line(text) -> str | None:
 
 
 def _short(text: str | None) -> str | None:
-    if text is None or len(text) <= MESSAGE_MAX:
-        return text
-    return text[:MESSAGE_MAX - 1] + "…"
+    return None if text is None else truncate_with_marker(text, MESSAGE_MAX)
 
 
 def _source(raw) -> str | None:
@@ -1232,7 +1226,7 @@ def _source(raw) -> str | None:
 
 def error_rows(query: HistoryQuery, entries: list) -> dict:
     """Il registro di Home Assistant (spec §3): una forma sola, la corta, una
-    riga per voce -- livello, messaggio accorciato, fonte, `count`, prima e
+    riga per voce -- livello, messaggio accorciato, fonte, `volte`, prima e
     ultima volta, e l'ultima riga dell'eccezione (il «cosa»). Filtrato per
     `livello`, `integrazione` e finestra; una voce senza istante leggibile
     non si scarta: non si sa se e' fuori.
@@ -1273,7 +1267,7 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
             continue
         row = {"livello": level, "messaggio": _short(_last_message(entry.get("message"))),
                "fonte": _source(entry.get("source")), "integrazione": integration,
-               "count": entry.get("count"),
+               "volte": entry.get("count"),
                "prima": instant_out(entry.get("first_occurred"), zone),
                "ultima": instant_out(entry.get("timestamp"), zone)}
         if entry.get("exception"):
@@ -1282,10 +1276,8 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
                        row))
     ranked.sort(key=lambda item: item[0])
     page, beyond = _page([row for _key, row in ranked], query.who)
-    out = {"trovate": len(ranked),
-           "escluse": {"nascoste": 0, "servizio": 0, "disabilitate": 0},
-           "profondita": "corta", "voci": page,
-           "finestra": {"da": query.start.isoformat(), "a": query.end.isoformat()}}
+    out = envelope(len(ranked), "corta", page)
+    out["finestra"] = {"da": query.start.isoformat(), "a": query.end.isoformat()}
     if retained and min(retained) > start_ts:
         out["finestra"]["chiesta_da"] = out["finestra"]["da"]
         out["finestra"]["da"] = instant_out(min(retained), zone)
