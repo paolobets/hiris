@@ -80,6 +80,10 @@ FORME = {
     "staccionata senza linguaggio": "```\n{j}\n```",
     "testo prima e dopo": "Ecco la risposta:\n{j}\nSpero sia utile.",
     "testo intorno alla staccionata": "Ecco:\n```json\n{j}\n```\nFine.",
+    # L'etichetta in maiuscolo: i vecchi lettori dell'analista e
+    # dell'attuatore la leggevano (`.lower().startswith("json")`), il lettore
+    # unico no (revisione cloud, giro 2, G2-1).
+    "staccionata JSON maiuscola": "```JSON\n{j}\n```",
 }
 
 

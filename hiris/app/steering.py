@@ -202,7 +202,10 @@ def was_tool_leaked(runner) -> bool:
     return bool(getattr(runner, "last_tool_leaked", False))
 
 
-_FENCE = _re.compile(r"```(?:json)?\s*(.*?)```", _re.DOTALL)
+# L'etichetta della staccionata si legge in qualunque maiuscolo: i vecchi
+# lettori dell'analista e dell'attuatore accettavano ```JSON, e il lettore unico
+# non deve leggere meno di loro (revisione cloud, giro 2, G2-1).
+_FENCE = _re.compile(r"```(?:json)?\s*(.*?)```", _re.DOTALL | _re.IGNORECASE)
 _BRACKETS = {list: ("[", "]"), dict: ("{", "}")}
 
 
