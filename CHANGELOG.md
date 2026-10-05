@@ -1,5 +1,51 @@
 # HIRIS — Changelog
 
+## [3.76.0] — Una resa, gli strumenti, il ponte: le Tappe 4, 5 e 6 di «Una fonte sola di verità», e la cronaca riparata (2026-10-05)
+
+### Perche'
+
+Dopo la casa (Tappa 3), lo sprint ha messo in ordine cio' che HIRIS restituisce: la stessa cosa
+deve arrivare con la stessa forma alla pagina, al modello e alle prove (Tappa 4); gli strumenti
+della chat diventano una tabella, una riga per strumento (Tappa 5); il turno verso il modello ha
+una strada sola, dal ponte come dalla catena (Tappa 6). Insieme arriva il primo strato degli
+attori: la cronaca dell'osservatore e le ricette smettono di raccontare cose false.
+
+### Cosa cambia per chi usa HIRIS
+
+- **La cronaca dell'osservatore dice il vero.** Un'entita' che Home Assistant non conosce piu'
+  (disabilitata o sparita) non resta «accesa» per giorni: il suo episodio si chiude, e la voce dice
+  perche'. Un episodio comincia da quando e' cominciato davvero, non dalla riga di ritorno dopo un
+  buco, e un dispositivo uscito dallo scope non rientra. Sui giorni dal 30/09 al 04/10 della casa
+  del proprietario, le 85 voci sbagliate misurate spariscono. Dopo l'aggiornamento HIRIS rifa' da
+  se' la cronaca dei giorni passati ancora coperti dai dati grezzi, un giorno ogni cinque minuti.
+- **Le ricette dicono perche' una misura non si calcola**, con una causa precisa (la fonte spenta,
+  sparita, senza statistiche...), e una ricetta che non funziona si ripara nel suo stesso giro.
+- **Gli orari sono nell'ora della casa**, al secondo, ovunque: nelle pagine e verso il modello.
+- **Gli errori nelle pagine hanno una forma sola**, e agenda, proposte e osservatore non mostrano
+  piu' un elenco vuoto quando sono guasti.
+- **Il calendario rifiuta periodi oltre 365 giorni**, come gli altri strumenti di durata; l'agenda
+  dichiara quante promesse non mostra.
+- **Gli argomenti degli strumenti si controllano contro il loro schema**: un argomento sbagliato
+  viene rifiutato con il motivo, invece di produrre una risposta sbagliata.
+- **Il ponte del Piano Max**: la domanda passa su stdin e le istruzioni da un file protetto, cosi' le
+  domande lunghe non si rompono piu'; la chat passa avanti agli attori nella coda; gli attori sul
+  ponte usano il modello scelto; una risposta da cui uno strumento e' «scappato» ha un esito suo.
+- **Riservatezza:** le persone e i tracker arrivano al modello dell'osservatore con un segnaposto,
+  senza nome.
+- **Da sapere all'aggiornamento:** i turni gia' in coda senza un modello vengono rifiutati una
+  volta; una promessa che era in coda in quel momento si chiude come «fallita».
+
+### Cosa cambia dentro
+
+- La chiave d'errore segue il confine: `error` su HTTP, `errore` verso il modello.
+- Un istante si legge in un posto e si scrive in una forma sola (`historian.instant_out`).
+- Le utilita' del frontend scritte una volta (`static/common.js`); gli orari dello scheduler, i nomi
+  delle misure e «in sospeso» li decide il server.
+- Gli strumenti della chat sono una tabella; un lettore solo per le risposte JSON dei modelli.
+- La coda del ponte, il filo degli archivi e il tetto del ponte hanno una casa ciascuno.
+- Nuove regole del progetto: un intervallo di righe in una prova si chiede a un'ancora di testo; il
+  conteggio delle prove JS si confronta col giro prima.
+
 ## [3.75.0] — La casa: un oggetto, una risposta. La Tappa 3 di «Una fonte sola di verità» (2026-10-05)
 
 ### Perche'
