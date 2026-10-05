@@ -1,7 +1,7 @@
 /* HIRIS · il pallino delle due voci esecutive.
  *
  * Caricato da TUTTI E DUE i gusci (index.html e config.html), come
- * `config/api.js` e `build-check.js`: il numero e' lo stesso fatto sulle due
+ * `common.js` e `build-check.js`: il numero e' lo stesso fatto sulle due
  * superfici, e un fatto ha una sola casa.
  *
  * ── Non mostra mai `0` ─────────────────────────────────────────────────
@@ -219,7 +219,7 @@ window.HirisPendingBadge = (function () {
 
   /* La regola di chi configura, una volta sola: solo il `true` detto dal
      server o dal ricordo. Finche' non si sa, no. Le pagine la leggono da
-     `configures()` di config/api.js, che chiude anche se il pallino manca. */
+     `configures()` di common.js, che chiude anche se il pallino manca. */
   function configures() { return grantedNow.can_configure === true; }
   /* Il testo del server per una pagina di configurazione rifiutata, o ''
      quando non e' arrivato (un «no» ricordato, prima della risposta). */

@@ -91,7 +91,7 @@ function rispondi(corpo) {
 }
 
 async function monta(usage = RISPOSTA, storia = STORIA) {
-  const ctx = loadScripts(['config/api.js', 'config/usage-route.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/usage-route.js'], { html: HTML });
   const chiamate = [];
   ctx.window.fetch = (u, opzioni) => {
     chiamate.push({ url: String(u), opzioni: opzioni });

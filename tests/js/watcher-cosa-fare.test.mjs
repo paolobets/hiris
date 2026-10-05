@@ -11,7 +11,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    (`HirisWatcherCosaFare._rendiAnalisi`), la lista `SCRIPTS`, e il fatto che
    `mount` voglia il nome della scheda. */
 
-const SCRIPTS = ['config/watcher-shared.js', 'config/watcher-giorno.js',
+const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno.js',
   'config/watcher-cosa-fare.js', 'config/watcher-sapere.js',
   'config/watcher-lavoro.js', 'config/state.js', 'config/router.js',
   'config/watcher-route.js'];

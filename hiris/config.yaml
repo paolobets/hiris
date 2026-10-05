@@ -175,7 +175,7 @@ options:
     url: ""
 
   # ── 2. Aspetto ────────────────────────────────────────────────────────────
-  # `theme` e' solo il tema d'apertura: `static/config/api.js::applyTheme` legge
+  # `theme` e' solo il tema d'apertura: `static/common.js::applyTheme` legge
   # `localStorage['hiris-theme']` PRIMA di `api/config`, quindi appena l'utente
   # tocca l'interruttore chiaro/scuro dentro HIRIS questa opzione non ha piu'
   # effetto su quel browser.

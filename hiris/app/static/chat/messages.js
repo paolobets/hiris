@@ -1,7 +1,7 @@
 /* HIRIS · Chat page · message rendering (SP-4 Fase B Task 8)
    Bubble rendering, inline markdown-lite formatting, tool-call debug chips e
    l'UNICO indicatore d'attesa del prodotto (erano tre; vedi il blocco in
-   fondo). Uses the shared esc() from config/api.js (the page's private copy
+   fondo). Uses the shared esc() from common.js (the page's private copy
    was removed by this rebuild -- see task-8-report.md). */
 (function() {
   var state = window.HirisChatState;

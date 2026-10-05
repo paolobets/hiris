@@ -16,8 +16,6 @@ window.HirisWatcherCosaFare = (function () {
   'use strict';
 
   var S = HirisWatcherShared;
-  var el = S.el;
-  var clearEl = S.clearEl;
   var line = S.line;
   var read = S.read;
   var retryButton = S.retryButton;

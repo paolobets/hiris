@@ -21,7 +21,7 @@ import { loadScripts, tick, staticSnapshotDir } from './helpers/dom.mjs';
 const MAIN = join(staticSnapshotDir(), 'chat', 'main.js');
 
 const MODULI = [
-  'config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
+  'common.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
   'chat/conversations.js', 'chat/send.js', 'chat/theme.js', 'chat/sidebar.js', 'chat/keyboard.js',
   'build-check.js', 'pending-badge.js',
 ];

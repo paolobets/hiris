@@ -25,14 +25,16 @@
   // che qualcuno verifica.
   "env": { "browser": true, "es2021": true },
 
-  // I 34 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
-  // 25 namespace pubblicati su `window` e 9 nomi nudi di `config/api.js`
-  // (otto funzioni e una costante, `SUBSCRIPTION_ONLY_COST_LABEL`, dal
-  // collaudo 3.22 C5 -- `isSubscriptionOnly`/`SUBSCRIPTION_ONLY_COST_LABEL`
-  // sono lette da `config/usage-route.js`, non solo da chi le dichiara).
+  // I 45 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
+  // 25 namespace pubblicati su `window` e 20 nomi nudi di `common.js` (18
+  // funzioni e due costanti: `SUBSCRIPTION_ONLY_COST_LABEL`, dal collaudo
+  // 3.22 C5, letta da `config/usage-route.js`, e `NOMI_REGISTRI`, letta da
+  // `config/dashboard.js`). Contati il 05/10/2026 dall'elenco qui sotto.
   //
-  // `config/api.js` ne dichiara UNDICI di nomi nudi, ma `_setUsageText` e
-  // `_mostraRigheConsumi` NON stanno qui, ed e' deliberato: nessun altro file
+  // `common.js` dichiara altri nomi nudi che NON stanno qui, ed e' deliberato
+  // -- `_setUsageText`, `_showUsageRows`, `savedTheme`, `THEME_KEY`, le due
+  // costanti anti-CSRF, e `paintSavedTheme` (la chiama solo lo script in
+  // linea delle due pagine, che il linter non legge): nessun altro file
   // le legge, quindi restano sorvegliate dall'analisi di ambito. Aggiungerle
   // sarebbe un buco -- il giorno in cui qualcuno rinominasse la loro `function`
   // lasciando indietro la chiamata, `no-undef` tacerebbe perche' gliel'avremmo
@@ -77,6 +79,17 @@
     "HirisWatcherRoute": "readonly",
     "HirisWatcherSapere": "readonly",
     "HirisWatcherShared": "readonly",
+    "api": "readonly",
+    "byId": "readonly",
+    "clearEl": "readonly",
+    "currentTheme": "readonly",
+    "el": "readonly",
+    "NOMI_REGISTRI": "readonly",
+    "nomiRegistriInItaliano": "readonly",
+    "pad2": "readonly",
+    "renderError": "readonly",
+    "setDisclosure": "readonly",
+    "toggleTheme": "readonly",
     "applyTheme": "readonly",
     "configures": "readonly",
     "esc": "readonly",
@@ -92,7 +105,7 @@
     {
       // La suite gira su Node e MONTA i globali del browser nel proprio realm
       // (vedi `tests/js/helpers/dom.mjs`): qui `process`/`global` esistono, e i
-      // 34 si scrivono invece di leggersi soltanto.
+      // 45 si scrivono invece di leggersi soltanto.
       "files": ["tests/js/**"],
       "env": { "browser": true, "es2021": true, "node": true },
       "globals": {
@@ -121,6 +134,17 @@
         "HirisWatcherRoute": "writable",
         "HirisWatcherSapere": "writable",
         "HirisWatcherShared": "writable",
+        "api": "writable",
+        "byId": "writable",
+        "clearEl": "writable",
+        "currentTheme": "writable",
+        "el": "writable",
+        "NOMI_REGISTRI": "writable",
+        "nomiRegistriInItaliano": "writable",
+        "pad2": "writable",
+        "renderError": "writable",
+        "setDisclosure": "writable",
+        "toggleTheme": "writable",
         "applyTheme": "writable",
         "configures": "writable",
         "esc": "writable",

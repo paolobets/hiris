@@ -20,13 +20,13 @@ const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 const MESSAGGIO = "Sul percorso abbonamento i consumi non si misurano: la chat gira sull'abbonamento Claude.";
 
 async function monta(risposta) {
-  /* `config/api.js` prima non serviva: questa pagina aveva una copia privata
+  /* `common.js` prima non serviva: questa pagina aveva una copia privata
      delle sue funzioni di formattazione, e per lo stesso numero scriveva
      `1.3M` dove il riquadro della chat scriveva `1.28M`. Le copie sono uscite,
      restano le funzioni condivise -- che nella pagina vera arrivano dallo
      <script> che config.html carica PRIMA di questo (vedi l'ordine li'). La
      lista qui sotto adesso dice la verita' su cosa serve alla pagina. */
-  const ctx = loadScripts(['config/api.js', 'config/usage-route.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/usage-route.js'], { html: HTML });
   ctx.window.fetch = () => Promise.resolve(risposta());
   ctx.window.HirisUsageRoute.mount();
   await tick(0);
@@ -101,7 +101,7 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
     input_tokens: 1284000, output_tokens: 92100,
     cost_eur: 3.21492, last_reset: '2026-08-01T09:12:00Z',
   };
-  const ctx = loadScripts(['config/api.js', 'config/usage-route.js'], {
+  const ctx = loadScripts(['common.js', 'config/usage-route.js'], {
     html: '<!doctype html><body><div id="route-outlet"></div>'
       + '<div id="usage-widget">'
       + '<div class="usage-row"><span class="usage-val" id="u-input">—</span></div>'

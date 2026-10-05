@@ -17,10 +17,10 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
 function rendi(casa) {
-  // `config/api.js` PRIMA di `config/tree-route.js`, come fa davvero
+  // `common.js` PRIMA di `config/tree-route.js`, come fa davvero
   // config.html: dal collaudo 3.22 (A10) tree-route.js chiama `fmtDateTime`,
   // condivisa con la pagina Consumi -- non e' piu' un file isolato.
-  const ctx = loadScripts(['config/api.js', 'config/tree-route.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/tree-route.js'], { html: HTML });
   const chiamate = [];
   ctx.window.fetch = (url) => {
     chiamate.push(String(url));
@@ -286,12 +286,12 @@ test('un\'anagrafe mai letta non si traveste da albero vuoto', async () => {
 
 test('collaudo 3.22 (A10): «Letta il» mostra la data nel formato italiano, non l’ISO grezzo in UTC', async () => {
   const { testo } = await rendi(casaCompleta());
-  // La stessa funzione che la pagina Consumi già usa (config/api.js) --
+  // La stessa funzione che la pagina Consumi già usa (common.js) --
   // non una seconda copia della formattazione. Il difetto misurato era
   // «Letta il 2026-09-07T05:13:52+00:00.», due righe sopra un orario nel
   // fuso di casa: la stessa distanza di due ore che l'Osservatore dichiara
   // altrove.
-  // `fmtDateTime` e' un global BARE (api.js non e' un modulo, vedi il suo
+  // `fmtDateTime` e' un global BARE (common.js non e' un modulo, vedi il suo
   // commento in cima): il ponte di loadScripts() lo specchia su `window`
   // solo per le assegnazioni `window.X = ...`, non per le dichiarazioni di
   // funzione di primo livello -- quindi si legge da `globalThis`, come fa
@@ -337,7 +337,7 @@ test('`etichette: null`: lo dichiara, e nel frattempo gli id restano grezzi (mai
 });
 
 test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', async () => {
-  const ctx = loadScripts(['config/tree-route.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/tree-route.js'], { html: HTML });
   const consoleVera = console.error;
   console.error = () => {};
   ctx.window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });

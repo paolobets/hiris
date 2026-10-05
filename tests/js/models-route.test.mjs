@@ -7,7 +7,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    al mio prossimo messaggio, e quanto mi costa?». Questi test guardano quella
    risposta, e i gesti con cui si cambia. */
 
-const SCRIPTS = ['config/models-route.js'];
+const SCRIPTS = ['common.js', 'config/models-route.js'];
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
@@ -263,7 +263,7 @@ test('un GET fallito lo dice, e non lascia il riquadro a metà', async () => {
 
 /* ── C1 della revisione finale: dopo un GET fallito non si scrive ───────────
    I tre preset «Rifai la catena» stanno nell'INTESTAZIONE della sezione 01, e
-   `renderError` ridisegna solo `#chain-body` e `#outside-body`: dopo un GET
+   `renderLoadFailure` ridisegna solo `#chain-body` e `#outside-body`: dopo un GET
    fallito restavano a schermo, e insieme a «Riprova» erano l'unica cosa
    cliccabile della pagina. `redoChain` non aveva nessuna guardia sul
    caricamento: con `state.catena` e `state.fuoriCatena` vuote, `credenziati`

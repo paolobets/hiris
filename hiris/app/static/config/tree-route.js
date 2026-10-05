@@ -101,30 +101,11 @@ window.HirisTreeRoute = (function () {
     tono: TONE_UNKNOWN
   };
 
-  /* Nomi italiani dei registri di `non_disponibili` -- stessa mappa di
-     dashboard.js. Duplicata (non importata) di proposito: ogni route di
-     questa SPA e' autonoma, stesso pattern di memory-route.js e
-     usage-route.js, che duplicano a loro volta i toni qui sopra invece di
-     dipendere l'una dall'altra. */
-  var NOMI_REGISTRI = {
-    piani: 'Piani', aree: 'Aree', dispositivi: 'Dispositivi', entita: 'Entità',
-    etichette: 'Etichette', categorie: 'Categorie', integrazioni: 'Integrazioni'
-  };
-
-  function nomiRegistriInItaliano(voci) {
-    return voci.map(function (entry) {
-      var pezzi = String(entry).split(':');
-      var name = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
-      var scope = pezzi.slice(1).join(':');
-      return scope ? name + ' (ambito «' + scope + '»)' : name;
-    });
-  }
-
   /* Le unità del sistema di riferimento, stessa mappa e stesso ordine di
      `briefing._MEASUREMENT_NAMES` -- cosi' la stessa casa si legge uguale sul
      nucleo del modello e su questa pagina. Una chiave che HA manda e che
      questa mappa non conosce ancora NON sparisce: compare col suo nome
-     grezzo, stessa regola di `NOMI_REGISTRI` sopra e delle "chiavi
+     grezzo, stessa regola di `NOMI_REGISTRI` (common.js) e delle "chiavi
      sconosciute" di dashboard.js. */
   var CHIAVI_MISURA_NOTE = ['temperature', 'length', 'mass', 'pressure', 'volume',
     'wind_speed', 'accumulated_precipitation', 'area'];
@@ -160,13 +141,6 @@ window.HirisTreeRoute = (function () {
   function labelName(id, map) {
     if (map && Object.prototype.hasOwnProperty.call(map, id)) return map[id];
     return id;
-  }
-
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
   }
 
   function line(parent, text, style) {
@@ -470,7 +444,7 @@ window.HirisTreeRoute = (function () {
     }
 
     /* Collaudo 3.22 (A10, stessa correzione di dashboard.js::renderHomeSpace):
-       ISO grezzo in UTC -> fmtDateTime (config/api.js), non una seconda
+       ISO grezzo in UTC -> fmtDateTime (common.js), non una seconda
        funzione di formattazione. */
     line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
 
@@ -519,7 +493,7 @@ window.HirisTreeRoute = (function () {
     floor.forEach(function (floor) { renderFloor(body, floor, labelMap); });
   }
 
-  function renderError(outlet, err) {
+  function renderTreeError(outlet, err) {
     console.error('[albero-della-casa] lettura fallita', err);
     var body = section(outlet, 'Albero della casa', null);
     line(body,
@@ -559,7 +533,7 @@ window.HirisTreeRoute = (function () {
       renderTree(outlet, home_space);
     }, function (err) {
       if (loading.parentNode) loading.parentNode.removeChild(loading);
-      renderError(outlet, err);
+      renderTreeError(outlet, err);
     });
   }
 

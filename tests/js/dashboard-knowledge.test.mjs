@@ -89,11 +89,11 @@ const FRASI_TUTTO_A_POSTO = [
 const NUCLEO_VUOTO = { text: '', summary: { chars: 0, truncated: false, excluded_memories: 0, notices: [] } };
 
 /* Monta la pagina con le due risposte date e restituisce il testo reso.
-   `config/api.js` PRIMA di `config/dashboard.js`, come fa davvero
+   `common.js` PRIMA di `config/dashboard.js`, come fa davvero
    config.html: dal collaudo 3.22 (A10) dashboard.js chiama `fmtDateTime`
    (le tre "Letta/Letto/Lette il"), condivisa con la pagina Consumi. */
 async function rendi(casa, nucleo = NUCLEO_VUOTO) {
-  const ctx = loadScripts(['config/api.js', 'config/dashboard.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/dashboard.js'], { html: HTML });
   const chiamate = [];
   ctx.window.fetch = (url) => {
     const u = String(url);
@@ -322,7 +322,7 @@ test('il nucleo mostra «ciò che HIRIS ignora» con gli avvisi reali del riepil
 });
 
 test('una fetch caduta lo DICHIARA: la sezione non resta muta né finge una casa vuota', async () => {
-  const ctx = loadScripts(['config/api.js', 'config/dashboard.js'], { html: HTML });
+  const ctx = loadScripts(['common.js', 'config/dashboard.js'], { html: HTML });
   const errori = [];
   const consoleVera = console.error;
   console.error = (...a) => errori.push(a.join(' '));
@@ -360,7 +360,7 @@ test('collaudo 3.22 (A10): le TRE "Letta/Letto/Lette il" mostrano la data italia
   // Misurato dal vivo: «Letta il 2026-09-07T05:13:52+00:00.», due righe
   // sopra «Adesso sono le 08:29... (fuso Europe/Rome)» nel nucleo -- la
   // stessa distanza di due ore che l'Osservatore dichiara altrove.
-  // `fmtDateTime` (config/api.js) e' un global bare: si legge da
+  // `fmtDateTime` (common.js) e' un global bare: si legge da
   // `globalThis`, come gia' fa `globalThis.loadUsage()` in
   // chat-usage-widget.test.mjs (il ponte di loadScripts() specchia su
   // `window` solo le assegnazioni `window.X = ...`, non le dichiarazioni

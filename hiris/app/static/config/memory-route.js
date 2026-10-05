@@ -66,26 +66,6 @@ window.HirisMemoryRoute = (function () {
   ];
   var TETHER_TYPE_LABELS = { area: 'Area', entita: 'Entità', dispositivo: 'Dispositivo' };
 
-  function el(tag, cls, text) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  }
-  function clearEl(node) {
-    while (node && node.firstChild) node.removeChild(node.firstChild);
-    return node;
-  }
-  function byId(id) { return document.getElementById(id); }
-
-  function api(path, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign(
-      { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      opts.headers || {});
-    return fetch(path, opts);
-  }
-
   /* L'istante arriva in ISO 8601 UTC (`detto_il`, `store.py`): l'utente
      legge l'ora locale. `null` se manca o non è interpretabile — si
      dichiara "data non disponibile", non se ne inventa una. */
@@ -116,7 +96,7 @@ window.HirisMemoryRoute = (function () {
      la risposta del server cambia, il guscio rimonta la pagina
      (config/main.js), quindi ogni montaggio legge lo stato di adesso.
      Senza il pallino, o finche' non si sa, non si configura: la regola e'
-     `configures()` di config/api.js, la stessa del guscio. */
+     `configures()` di common.js, la stessa del guscio. */
 
   function showCardError(node, text) {
     node.textContent = text;
@@ -432,15 +412,6 @@ window.HirisMemoryRoute = (function () {
       'siano ricordi: la richiesta non ha trovato l’archivio.'));
   }
 
-  function renderError(list, reload) {
-    clearEl(list);
-    list.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere i ricordi. Riprova più tardi.'));
-    var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-    retry.type = 'button';
-    retry.addEventListener('click', reload);
-    list.appendChild(retry);
-  }
-
   function renderList(list, data, reload) {
     clearEl(list);
     var memories = data.memories || [];
@@ -476,7 +447,7 @@ window.HirisMemoryRoute = (function () {
       renderList(list, data, load);
     }).catch(function (err) {
       console.error('[memoria] caricamento fallito', err);
-      renderError(list, load);
+      renderError(list, 'Non è stato possibile leggere i ricordi. Riprova più tardi.', load);
     });
   }
 

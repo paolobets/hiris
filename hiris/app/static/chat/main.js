@@ -59,7 +59,7 @@
   }
 
   /* Il riquadro "Utilizzo" si aggiorna a intervalli, ma smette da solo quando
-     non c'e' niente da aggiornare. `loadUsage()` (config/api.js) restituisce
+     non c'e' niente da aggiornare. `loadUsage()` (common.js) restituisce
      `false` SOLO quando il server dichiara che su questa configurazione i
      consumi non si misurano (percorso abbonamento, o nessun provider): e' un
      fatto che non cambia senza un riavvio dell'add-on, quindi ripetere la

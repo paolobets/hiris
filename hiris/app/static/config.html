@@ -13,17 +13,12 @@
        `python scripts/vendora_caratteri.py`. -->
   <link rel="stylesheet" href="static/hiris-fonts.css">
   <link rel="stylesheet" href="static/hiris-theme.css">
-  <script>
-    /* paint theme before first render to avoid flash */
-    (function() {
-      try {
-        var saved = localStorage.getItem('hiris-theme');
-        if (saved === 'light' || saved === 'dark') {
-          document.documentElement.setAttribute('data-theme', saved);
-        }
-      } catch(e) {}
-    })();
-  </script>
+  <!-- Le utilita' comuni alle due pagine (static/common.js), caricate PER
+       PRIME e qui nell'<head>: la riga in linea che segue le usa per dipingere
+       il tema salvato prima del primo disegno, senza lampo all'avvio. Al
+       caricamento common.js dichiara soltanto: non tocca la pagina. -->
+  <script src="static/common.js"></script>
+  <script>paintSavedTheme();</script>
   <link rel="stylesheet" href="static/hiris-config-override.css">
   <link rel="stylesheet" href="static/hiris-config.css">
 </head>
@@ -241,32 +236,31 @@
        uscite con la fetta E3. Sono usciti col loro ultimo chiamante. -->
   <script src="static/config/state.js"></script>
   <script src="static/config/router.js"></script>
-  <script src="static/config/api.js"></script>
 <script src="static/pending-badge.js"></script>
   <script src="static/build-check.js"></script>
   <script src="static/config/dashboard.js"></script>
   <!-- Reperto 26: pagina #/tree, la faccia di `casa.piani` (gerarchia()).
-       Nessuna dipendenza (solo document e fetch, stesso pattern di
+       Dipende solo da common.js, caricato nell'<head> (stesso pattern di
        memory-route.js/settings-route.js), quindi la posizione
        nell'ordine non vincola niente. -->
   <script src="static/config/tree-route.js"></script>
   <script src="static/config/usage-route.js"></script>
   <script src="static/config/models-route.js"></script>
-  <!-- fetta E5 Task 2: pagina #/settings. Nessuna dipendenza (usa solo
-       document e fetch), quindi la sua posizione nell'ordine non vincola
+  <!-- fetta E5 Task 2: pagina #/settings. Dipende solo da common.js,
+       caricato nell'<head>, quindi la sua posizione nell'ordine non vincola
        niente: sta accanto a models-route.js perche' e' l'altra pagina che
        parla di modelli. -->
   <script src="static/config/settings-route.js"></script>
-  <!-- fetta E5 Task 9: pagina #/memory. Nessuna dipendenza (solo document e
-       fetch, stesso pattern di settings-route.js), quindi la posizione
+  <!-- fetta E5 Task 9: pagina #/memory. Dipende solo da common.js (stesso
+       pattern di settings-route.js), quindi la posizione
        nell'ordine non vincola niente. -->
   <script src="static/config/memory-route.js"></script>
-  <!-- fetta «lo schedulatore» Task 9: pagina #/agenda. Nessuna dipendenza
-       (solo document e fetch, stesso pattern di memory-route.js), quindi
+  <!-- fetta «lo schedulatore» Task 9: pagina #/agenda. Dipende solo da
+       common.js (stesso pattern di memory-route.js), quindi
        la posizione nell'ordine non vincola niente. -->
   <script src="static/config/agenda-route.js"></script>
-  <!-- fetta «costruire» Task 11: pagina #/constructions. Nessuna dipendenza
-       (solo document e fetch, stesso pattern di agenda-route.js), quindi
+  <!-- fetta «costruire» Task 11: pagina #/constructions. Dipende solo da
+       common.js (stesso pattern di agenda-route.js), quindi
        la posizione nell'ordine non vincola niente. -->
   <script src="static/config/constructions-route.js"></script>
   <!-- fetta «la pagina dell'osservatore» (18/09/2026): la pagina #/watcher è

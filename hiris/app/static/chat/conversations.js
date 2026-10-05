@@ -42,8 +42,6 @@
   function idle() { return inFlight; }
   function activeId() { return active; }
 
-  function pad2(n) { return (n < 10 ? '0' : '') + n; }
-
   /* «oggi», «ieri», poi gg-mm, nel fuso di chi guarda. `ultimo_messaggio` si
      mostra cosi' com'e': dopo una ripresa e' l'ora della ripresa (serve alla
      regola delle due ore del server), e inventarne un'altra direbbe una data
@@ -174,7 +172,7 @@
       hideNotice();
       var r;
       try {
-        r = await fetch(url, { method: method, headers: { 'X-Requested-With': 'fetch' } });
+        r = await api(url, { method: method });
       } catch (e) {
         console.error('conversation ' + method + ' failed', e);
         showNotice(state.NETWORK_ERROR_TEXT);

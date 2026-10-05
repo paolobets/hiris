@@ -29,7 +29,7 @@ const SEI_FILE = ['watcher-shared.js', 'watcher-giorno.js', 'watcher-cosa-fare.j
 const SORGENTI = SEI_FILE.map((f) => [f, readFileSync(join(CONFIG_DIR, f), 'utf8')]);
 const SORGENTE = SORGENTI.map(([, t]) => t).join('\n');
 
-const SCRIPTS = ['config/watcher-shared.js', 'config/watcher-giorno.js',
+const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno.js',
   'config/watcher-cosa-fare.js', 'config/watcher-sapere.js',
   'config/watcher-lavoro.js', 'config/state.js', 'config/router.js',
   'config/watcher-route.js'];

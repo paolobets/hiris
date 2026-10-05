@@ -1,5 +1,108 @@
-/* HIRIS - utilita' condivise dalle due pagine (chat e configurazione).
-   Carica per prima: definisce globali bare, non un modulo. */
+/* HIRIS - le utilita' del frontend, scritte UNA volta per le due pagine
+   (chat e configurazione). Carica per prima, nell'<head> di entrambe: definisce
+   globali bare, non un modulo, e al caricamento non tocca la pagina.
+
+   Era `config/api.js`, che gia' faceva da file condiviso ma con un nome che
+   non lo diceva; intanto ogni pagina della configurazione si riscriveva
+   `el`, `clearEl`, `byId`, `api`, `pad2` -- nove copie di `el`, sei di `api`
+   (registro C-20, C-22). Il cancello che impedisce il ritorno delle copie
+   chiede i nomi a QUESTO file: tests/js/common.test.mjs. */
+
+/* --------------------------------------------------------------- il DOM */
+
+/* Un elemento con classe e testo. Il testo passa SEMPRE da `textContent`:
+   cio' che arriva dal server non diventa mai markup. */
+function el(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+/* Svuota un nodo e lo restituisce; un nodo assente resta assente. */
+function clearEl(node) {
+  while (node && node.firstChild) node.removeChild(node.firstChild);
+  return node;
+}
+
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine della configurazione
+function byId(id) { return document.getElementById(id); }
+
+/* L'errore di una lettura, nella forma che le pagine usano gia': la frase
+   (in `.proposals-error`) e un «Riprova» che rilancia `reload`. Svuota il
+   nodo prima di scrivere. La frase la porta chi chiama: dice COSA non si e'
+   potuto leggere, ed e' sua. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine della configurazione
+function renderError(node, text, reload) {
+  clearEl(node);
+  node.appendChild(el('p', 'proposals-error', text));
+  var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
+  retry.type = 'button';
+  retry.addEventListener('click', reload);
+  node.appendChild(retry);
+  return node;
+}
+
+/* Lo stato di un rivelatore scritto in un posto solo: `hidden` sul
+   pannello e `aria-expanded` sul bottone che lo governa non possono
+   divergere se nessuno li assegna separatamente -- ed e' proprio la
+   divergenza (il pannello aperto e lo screen reader che lo annuncia chiuso)
+   il difetto che questa riga rende impossibile. La usano gli Impegni
+   (lo «Storico», «Cosa è cambiato») e le Proposte (lo «Storico», i
+   «Dettagli tecnici»): prima ne avevano una copia ciascuno, tenuta fuori di
+   qui solo perche' le prove caricavano ogni pagina senza il file comune. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/agenda-route.js e config/constructions-route.js
+function setDisclosure(btn, panel, open) {
+  panel.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+/* ---------------------------------------------------------- il server */
+
+/* L'intestazione anti-CSRF, una sola (registro C-19). `csrf_middleware`
+   (api/middleware_csrf.py) risponde 403 a ogni POST/PUT/PATCH/DELETE su /api/
+   che non la porta, e accetta qualunque valore non vuoto: prima una pagina
+   mandava 'XMLHttpRequest' e le altre 'fetch', due forme dello stesso gesto. */
+var CSRF_HEADER = 'X-Requested-With';
+var CSRF_VALUE = 'fetch';
+
+/* Ogni chiamata delle pagine che scrive passa da qui: dimenticare
+   l'intestazione su una chiamata sola e' il modo esatto in cui una pagina
+   smette di salvare senza dire niente. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine della configurazione e dalla chat
+function api(path, opts) {
+  opts = opts || {};
+  var headers = { 'Content-Type': 'application/json' };
+  headers[CSRF_HEADER] = CSRF_VALUE;
+  opts.headers = Object.assign(headers, opts.headers || {});
+  return fetch(path, opts);
+}
+
+/* ------------------------------------------------------------ i formati */
+
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle due pagine
+function pad2(n) { return n < 10 ? '0' + n : String(n); }
+
+/* I registri caduti, in italiano. `non_disponibili` porta il nome grezzo
+   della tabella e, per le categorie, l'ambito che ha fallito
+   (`categorie:script` -- vedi `ha_client.read_registries`): l'ambito NON si
+   butta, e' il dettaglio che dice quale delle quattro chiamate e' caduta.
+   La leggono la home e l'albero della casa: prima ne avevano una copia
+   ciascuno, «duplicata di proposito». */
+var NOMI_REGISTRI = {
+  piani: 'Piani', aree: 'Aree', dispositivi: 'Dispositivi', entita: 'Entità',
+  etichette: 'Etichette', categorie: 'Categorie', integrazioni: 'Integrazioni'
+};
+
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/dashboard.js e config/tree-route.js
+function nomiRegistriInItaliano(voci) {
+  return voci.map(function (entry) {
+    var pezzi = String(entry).split(':');
+    var name = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
+    var scope = pezzi.slice(1).join(':');
+    return scope ? name + ' (ambito «' + scope + '»)' : name;
+  });
+}
 
 // global bare (nessun modulo): chiamata da chat/messages.js::formatContent(), non da
 // questo file. Verificato con grep sull'intero repo (task-13); il contratto e' pinnato
@@ -94,15 +197,43 @@ function configures() {
   return !!(window.HirisPendingBadge && window.HirisPendingBadge.configures());
 }
 
-/* Theme: localStorage > server config > system. */
-// global bare (nessun modulo): chiamata da chat/theme.js::init(), non da questo file.
-// Verificato con grep sull'intero repo (task-13); il contratto e' pinnato da
-// tests/test_chat_page.py.
+/* ------------------------------------------------------------- il tema
+
+   Letto e scritto QUI, per tutte e due le pagine (registro C-16). La regola:
+   la scelta di chi guarda (il bottone, ricordato nel browser) > il tema del
+   server (opzione `theme` dell'add-on) > quello del sistema.
+
+   Prima la chiave stava scritta in cinque posti, e la configurazione non
+   chiedeva mai il tema al server: l'opzione dell'add-on valeva per la chat
+   sola. In piu' la configurazione salvava nel browser il tema che trovava
+   all'avvio -- quindi bastava aprirla una volta perche' da li' in poi
+   nemmeno la chat guardasse piu' il server. Adesso nel browser si scrive
+   solo al clic del bottone. */
+var THEME_KEY = 'hiris-theme';
+
+/* Il tema che chi guarda ha scelto col bottone, o `null`. */
+function savedTheme() {
+  try {
+    var t = localStorage.getItem(THEME_KEY);
+    return (t === 'light' || t === 'dark') ? t : null;
+  } catch { return null; }
+}
+
+/* Il bootstrap in linea dell'<head> delle due pagine: solo la scelta
+   salvata, prima del primo disegno, perche' e' l'unica che non chiede la
+   rete. Il resto lo fa `applyTheme()` quando la pagina parte. */
+// eslint-disable-next-line no-unused-vars -- chiamata dal <script> in linea di index.html e config.html
+function paintSavedTheme() {
+  var t = savedTheme();
+  if (t) document.documentElement.setAttribute('data-theme', t);
+}
+
+// global bare (nessun modulo): chiamata da chat/theme.js::init() e da
+// config/main.js::mountChrome(), non da questo file.
 // eslint-disable-next-line no-unused-vars -- vedi commento sopra
 async function applyTheme() {
-  var local = null;
-  try { local = localStorage.getItem('hiris-theme'); } catch {}
-  if (local === 'light' || local === 'dark') {
+  var local = savedTheme();
+  if (local) {
     document.documentElement.setAttribute('data-theme', local);
     return;
   }
@@ -116,6 +247,26 @@ async function applyTheme() {
       document.documentElement.removeAttribute('data-theme');
     }
   } catch {}
+}
+
+/* Il tema che la pagina mostra adesso: quello dichiarato, o quello del
+   sistema quando nessuno l'ha dichiarato. */
+function currentTheme() {
+  var t = document.documentElement.getAttribute('data-theme');
+  if (t === 'light' || t === 'dark') return t;
+  return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    ? 'dark' : 'light';
+}
+
+/* Il clic sul bottone del tema: l'opposto di quello mostrato, ricordato nel
+   browser. Restituisce il tema nuovo; disegnare l'icona resta alla pagina,
+   perche' le due pagine hanno icone fatte in modo diverso. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da chat/theme.js e config/main.js
+function toggleTheme() {
+  var next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem(THEME_KEY, next); } catch {}
+  return next;
 }
 
 /* Scrive il testo in `id` solo se l'elemento esiste in questa pagina.

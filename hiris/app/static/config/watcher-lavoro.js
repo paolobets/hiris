@@ -71,8 +71,6 @@ window.HirisWatcherLavoro = (function () {
   'use strict';
 
   var S = HirisWatcherShared;
-  var el = S.el;
-  var clearEl = S.clearEl;
   var line = S.line;
   var subheading = S.subheading;
   var read = S.read;

@@ -71,7 +71,7 @@ window.HirisWatcherRoute = (function () {
     if (!modulo) {
       /* Il degrado dichiarato: lo script della scheda non ha caricato. Si dice,
          invece di lasciare un pannello vuoto che sembra «non c'e' niente». */
-      S.clearEl(scheda.corpo);
+      clearEl(scheda.corpo);
       S.line(scheda.corpo, 'Questa scheda non ha caricato. Ricarica la pagina; ' +
         'se non basta, l’aggiornamento dell’add-on è a metà.', S.TONE_PROBLEM);
       return;
@@ -122,20 +122,20 @@ window.HirisWatcherRoute = (function () {
   }
 
   function costruisci(outlet) {
-    S.clearEl(outlet);
-    outlet.appendChild(S.el('h1', 'page-title', 'L’osservatore'));
-    outlet.appendChild(S.el('p', 'page-subtitle',
+    clearEl(outlet);
+    outlet.appendChild(el('h1', 'page-title', 'L’osservatore'));
+    outlet.appendChild(el('p', 'page-subtitle',
       'Guarda la casa, ne ricava misure, e dice cosa si potrebbe fare. ' +
       'Non tocca niente: decidi tu.'));
 
-    var tablist = S.el('div', 'watcher-tabs');
+    var tablist = el('div', 'watcher-tabs');
     tablist.setAttribute('role', 'tablist');
     tablist.setAttribute('aria-label', 'Le quattro schede dell’osservatore');
     tablist.addEventListener('keydown', frecce);
     outlet.appendChild(tablist);
 
     var schede = SCHEDE.map(function (def) {
-      var tab = S.el('button', 'watcher-tab', def.etichetta);
+      var tab = el('button', 'watcher-tab', def.etichetta);
       tab.type = 'button';
       tab.id = 'watcher-tab-' + def.nome;
       tab.setAttribute('role', 'tab');
@@ -156,7 +156,7 @@ window.HirisWatcherRoute = (function () {
          smetterebbero di applicarsi tutte insieme, e sarebbe un difetto
          invisibile in una prova di resa e visibile solo sulla pagina vera.
          `watcher-panel` resta la classe di QUESTA fetta, per cio' che e' suo. */
-      var pannello = S.el('div', 'section-card watcher-panel');
+      var pannello = el('div', 'section-card watcher-panel');
       pannello.id = 'watcher-panel-' + def.nome;
       pannello.setAttribute('role', 'tabpanel');
       pannello.setAttribute('aria-labelledby', tab.id);
@@ -167,7 +167,7 @@ window.HirisWatcherRoute = (function () {
       var scheda = { def: def, tab: tab, pannello: pannello, corpo: null,
                      caricata: false, fresca: null };
       scheda.fresca = S.intestazioneFresca(pannello, function () { carica(scheda, true); });
-      scheda.corpo = S.el('div', 'sc-body');
+      scheda.corpo = el('div', 'sc-body');
       pannello.appendChild(scheda.corpo);
       return scheda;
     });

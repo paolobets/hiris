@@ -31,7 +31,7 @@ const HTML_BASE = '<!doctype html><body>'
 /* Da amministratore: i segnaposto che si provano qui sono i suoi (per chi
    non configura le stesse rotte disegnano il rifiuto, can-configure.test.mjs). */
 function bootSoloGuscio() {
-  const ctx = loadScripts(['config/api.js', 'pending-badge.js', 'config/state.js', 'config/router.js', 'config/main.js'],
+  const ctx = loadScripts(['common.js', 'pending-badge.js', 'config/state.js', 'config/router.js', 'config/main.js'],
     { html: HTML_BASE });
   asAdministrator(ctx.window);
   return ctx;
@@ -89,7 +89,7 @@ test('Consumi: caricamento, misurato:false, contenuto normale ed errore hanno TU
   const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
   function monta(rispondi) {
-    const ctx = loadScripts(['config/api.js', 'config/usage-route.js'], { html: HTML });
+    const ctx = loadScripts(['common.js', 'config/usage-route.js'], { html: HTML });
     ctx.window.fetch = rispondi;
     return ctx;
   }
@@ -158,7 +158,7 @@ test('Impostazioni chat: caricamento, contenuto ed errore hanno TUTTI un solo h1
 
   // 1) caricamento
   {
-    const ctx = loadScripts(['config/settings-route.js'], { html: HTML });
+    const ctx = loadScripts(['common.js', 'config/settings-route.js'], { html: HTML });
     ctx.window.fetch = () => new Promise(() => {});
     ctx.window.HirisSettingsRoute.mount();
     assert.equal(h1s(ctx).length, 1, 'stato di caricamento: un solo h1');
@@ -166,7 +166,7 @@ test('Impostazioni chat: caricamento, contenuto ed errore hanno TUTTI un solo h1
 
   // 2) contenuto
   {
-    const ctx = loadScripts(['config/settings-route.js'], { html: HTML });
+    const ctx = loadScripts(['common.js', 'config/settings-route.js'], { html: HTML });
     ctx.window.fetch = () => Promise.resolve({
       ok: true, status: 200,
       json: () => Promise.resolve({
@@ -184,7 +184,7 @@ test('Impostazioni chat: caricamento, contenuto ed errore hanno TUTTI un solo h1
 
   // 3) errore
   {
-    const ctx = loadScripts(['config/settings-route.js'], { html: HTML });
+    const ctx = loadScripts(['common.js', 'config/settings-route.js'], { html: HTML });
     ctx.window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
     ctx.window.HirisSettingsRoute.mount();
     await new Promise((r) => setTimeout(r, 0));

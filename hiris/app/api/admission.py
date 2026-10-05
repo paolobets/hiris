@@ -36,7 +36,7 @@ STATIC_PREFIX = "/static"
 #: niente: le rotte si CHIEDONO al router nelle prove, la scelta di quali
 #: aprire no. Ogni voce viene da una chiamata vera delle pagine, lette il
 #: 27/09/2026: `index.html` e `static/chat/*.js`, `static/pending-badge.js`,
-#: `static/build-check.js`, `static/config/api.js`, e nel guscio `/config` gli
+#: `static/build-check.js`, `static/common.js`, e nel guscio `/config` gli
 #: Impegni (`agenda-route.js`) e la Memoria in lettura (`memory-route.js`).
 #: Niente prefissi: una rotta nuova nasce chiusa. HEAD passa solo dove passa
 #: GET (ruling R-2.13), e non si scrive.
@@ -56,7 +56,7 @@ ADMISSION: tuple[tuple[str, str, str], ...] = (
       "delle due pagine si disegna")),
     # Cio' che ogni guscio chiama all'avvio.
     ("GET", "/api/config",
-     ("il tema della pagina (`config/api.js::applyTheme`), chiamato da "
+     ("il tema della pagina (`common.js::applyTheme`), chiamato da "
       "entrambi i gusci all'avvio")),
     ("GET", "/api/health",
      ("connesso o no (`chat/main.js::checkHealth`, `config/main.js`) e "

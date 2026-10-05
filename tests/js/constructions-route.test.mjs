@@ -4,7 +4,12 @@ import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { installaFogli, displayRisolto } from './helpers/dom.mjs';
 
+/* La pagina carica common.js per primo (le utilita' scritte una volta):
+   qui si valuta insieme alla route, nello stesso corpo, cosi' la route ne
+   vede le funzioni come le vede nel browser. */
 const SORGENTE = fs.readFileSync(
+  new URL('../../hiris/app/static/common.js', import.meta.url), 'utf8')
+  + '\n' + fs.readFileSync(
   new URL('../../hiris/app/static/config/constructions-route.js', import.meta.url), 'utf8');
 
 function montaCon(risposta) {
