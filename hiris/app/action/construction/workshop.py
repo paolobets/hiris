@@ -319,8 +319,12 @@ class Workshop:
             now=now, thread=thread)
         if "errore" in occurrence:
             return occurrence
+        # Il motivo del consigliere vive nell'anteprima («Nota: ...»), che e'
+        # anche cio' che la pagina Costruzioni archivia: ripeterlo qui lo
+        # faceva leggere due volte al modello (C-53, Tappa 4). `consiglio`
+        # porta il resto del verdetto.
         return {"proposta_id": occurrence["id"], "anteprima": preview,
-                "consiglio": consiglio}
+                "consiglio": {k: v for k, v in consiglio.items() if k != "motivo"}}
 
     async def _free_key(self, domain: str, intent: dict) -> dict:
         """Una chiave che in questa casa non e' gia' occupata.
