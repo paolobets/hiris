@@ -884,6 +884,31 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### I nomi delle persone verso un modello, per tutte le porte degli attori — aperta il 05/10/2026
+
+`origine: rapporto della Tappa 6, T5-T6 («Cosa resta aperto», punto 1) dello sprint «Una fonte sola di verita'»; domanda 28 del secondo giro, approvata dal proprietario il 05/10/2026 (consigliata: «voce nel BACKLOG, da misurare sulla casa»)` · nessun altro documento
+
+La decisione 12 della spec degli attori (Tappa 6, Task 6) ha tolto il nome di una persona da **una**
+porta: le righe della casa che l'osservatore manda al modello (`mind/observer.py`, `house_lines`).
+Un `person.*` o un `device_tracker.*` (il genere «presenza», `privacy.MOVING_DOMAINS`) ci arriva
+come segnaposto `person.#N`, senza nome ne' area, e torna id vero prima di ogni controllo.
+
+Il nome ha altre strade, lette nel codice e **non ancora misurate sulla casa**:
+
+- le **entita' sorelle** del telefono, che portano il nome nell'id e nel nome dell'entita' (per
+  esempio la batteria del telefono, accanto al tracker dello stesso dispositivo);
+- i **nomi delle aree** nelle righe delle altre entita': un'area puo' chiamarsi come chi ci dorme;
+- il turno delle **ricette** (`mind/recipe_turn.py`), che per dispositivo elenca tutte le entita'
+  guardate (`House.entities_of`): un telefono con `mobile_app` porta il tracker e il nome del
+  dispositivo.
+
+Cosa chiede: **prima la misura, poi il come**. Sulla casa vera, quali di queste strade portano
+davvero un nome di persona a un modello, per ogni attore (osservatore, ricette, analista,
+attuatore). Le entita' del dispositivo di un tracker si chiedono a Home Assistant (il `device_id`
+del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo si decide se il
+segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
+alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
+
 ### I fogli di stile: due sistemi di variabili, e l'override caricato prima — aperta il 05/10/2026
 
 `origine: il registro dei doppioni, voce C-24; spostata qui dalla Tappa 4 dello sprint «Una fonte sola di verita'» (D10, decisione del proprietario del 05/10/2026)` · nessun altro documento
