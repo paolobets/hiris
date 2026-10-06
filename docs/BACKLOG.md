@@ -190,6 +190,13 @@ veridicita' della soluzione»).
    risposta. **Cambia la domanda dell'analista di produzione** senza dargli ancora gli strumenti
    per scavare (Task 3.6): **si unisce insieme al 3.6** (deciso dal proprietario il 06/10/2026). Dallo stesso giorno «nuova» la scrive il codice, e la ripetizione con la stessa prova si toglie invece di rifiutare l'analisi (D4 cambiata, giro 12 del revisore).
    D-33 si chiude dal vivo, quando la misura delle ripetizioni (Task 3.0 Passo 3) scende.
+   *Da fare col collegamento del 3.6, o alla Chiusura (giro 66 del revisore, N65-2, 06/10/2026):*
+   il «rimetti» dell'analista valida solo la forma dell'`entity_id` (`analyst_turn._back_in`), e
+   `analyst.bring_back` lo scrive con autore analista. Un id che la casa oggi non ha diventa cosi'
+   una riga «decisa dall'analista» che non si accende mai. La correzione: filtrare il «rimetti»
+   sull'anagrafe di adesso, come fa l'osservatore con `known`; un id assente diventa `rifiutata`,
+   con la ragione «la casa non ha questa entita'». Serve la casa nella chiamata di
+   `_write_analysis` (`server.py`), ed e' per questo che si fa col collegamento 3.6 o alla Chiusura.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
    «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,
