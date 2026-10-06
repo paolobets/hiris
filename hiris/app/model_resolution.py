@@ -260,14 +260,9 @@ def _count(from_count: int) -> str:
 # diverse per chi legge: 402 dice che i soldi sono finiti (OpenRouter), 401 e
 # 403 dicono che la chiave non va bene. Chiamarle tutte «credito esaurito»
 # sarebbe un'ipotesi sulla causa, che è la cosa che questo prodotto ha smesso
-# di fare.
-#
-# **Il 400 non c'è, apposta** (G36-1, revisione del giro 36, 06/10/2026): fino
-# a quel giorno diceva «credito esaurito», ma per Anthropic il 400 è ogni
-# `invalid_request_error` -- il «credit balance too low» del proprietario è un
-# caso solo -- e Ollama risponde 400 a una richiesta che il modello non sa
-# servire (`server/routes.go`). La sua causa la dice il provider, citato
-# (`provider_occurrences.provider_said`).
+# di fare. Fino al 06/10/2026 c'era anche il 400, «credito esaurito»: è uscito
+# dalla famiglia (`provider_occurrences._CREDENTIAL`, G36-1 e G39-2), e la sua
+# causa la dice il provider, citato.
 _CREDENTIAL_CAUSE: dict[int, str] = {
     402: "credito esaurito",
     401: "la chiave non è accettata",
@@ -300,12 +295,14 @@ def _quoted(said: str | None) -> str:
 def failure_reply(family: str, code: int | None, said: str | None = None) -> str:
     """La frase che la chat legge quando un provider non ha risposto: la
     famiglia e il codice di `provider_occurrences.error_family`, detti come
-    fatto. Un codice senza causa nella tabella (il 400) cita cio' che il
-    provider ha detto (`said`), con le stesse parole della pagina Modelli.
+    fatto, citando cio' che il provider ha detto (`said`) dove la tabella non
+    ha una causa: le stesse parole della pagina Modelli.
 
-    Il ramo `altro` (un 500, un 429, un guasto senza codice) resta
-    `TEMPORARY_FAILURE`: non dice a chi legge cosa fare, e inventargli una
-    causa sarebbe l'ipotesi che questo prodotto non fa."""
+    Il ramo `altro` (un 400, un 500, un 429, un guasto senza codice) non
+    dice a chi legge cosa fare, e inventargli un'azione sarebbe l'ipotesi che
+    questo prodotto non fa: se il provider ha detto qualcosa si cita, e basta
+    (G39-2: «prompt is too long» non si sistema nella pagina Modelli);
+    altrimenti resta `TEMPORARY_FAILURE`."""
     fra_parentesi = f" ({code})" if isinstance(code, int) else ""
     if family == "credenziale":
         cause = _CREDENTIAL_CAUSE.get(code if isinstance(code, int) else 0)
@@ -317,6 +314,8 @@ def failure_reply(family: str, code: int | None, said: str | None = None) -> str
                 "Un altro modello si sceglie nella pagina Modelli.")
     if family == "irraggiungibile":
         return f"{FAILURE_OPENINGS[1]} configurato: {_WHERE_IT_IS_FIXED}"
+    if said:
+        return f"{FAILURE_OPENINGS[0]}{fra_parentesi}{_quoted(said)}."
     return TEMPORARY_FAILURE
 
 
@@ -421,8 +420,11 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
     # riuscito, si inventò un guasto del dispositivo e mandò il proprietario a
     # cercarlo.
     if fra_parentesi:
-        return f"ha rifiutato {_count(occurrence['da_quante'])} — errore {code}, {age}"
-    return "ha rifiutato {}, {}".format(_count(occurrence["da_quante"]), age)
+        # Cio' che il provider ha detto si cita, come in chat (G39-2).
+        return "ha rifiutato {} — errore {}{}, {}".format(
+            _count(occurrence["da_quante"]), code, _quoted(occurrence.get("messaggio")), age)
+    return "ha rifiutato {}{}, {}".format(
+        _count(occurrence["da_quante"]), _quoted(occurrence.get("messaggio")), age)
 
 
 # ── La nota del ripiego: una riga che dice cosa e' successo, non perche' ──
