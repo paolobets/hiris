@@ -21,10 +21,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.mind.realignment import disconnection_recorder
 from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import (
-    disconnection_recorder,
     mirror_reload_listener,
     schedule_behavior_reread,
     schedule_registry_rebuild,
