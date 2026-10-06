@@ -27,7 +27,8 @@ from ..claude_runner import (
     pesa_in_caratteri,
     testo_canonico,
 )
-from ..provider_occurrences import error_family
+from ..model_resolution import failure_reply
+from ..provider_occurrences import error_family, provider_said
 from ..usage.giro import openai_turn_tokens
 from .pricing import get_price as _prezzo
 
@@ -785,10 +786,11 @@ class OpenAICompatRunner:
                 # chi legge che cosa fare, e inventargli un'azione sarebbe
                 # l'ipotesi sulla causa che questo prodotto non fa. Il codice
                 # invece si porta, perché è un fatto.
+                family, code = error_family(exc), _status_code(exc) or 429
+                said = provider_said(exc)
                 raise RunnerBackendError(
-                    upstream or "Errore temporaneo del servizio AI. Riprova tra poco.",
-                    family=error_family(exc),
-                    code=_status_code(exc) or 429,
+                    upstream or failure_reply(family, code, said), family=family,
+                    code=code, said=said,
                 ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
@@ -825,14 +827,15 @@ class OpenAICompatRunner:
                     if _is_conn_error(exc):
                         self._record_conn_failure()
                     logger.error("OpenAI/Ollama API error: %s", exc)
-                    # La frase per l'utente resta la stessa; il codice e la
-                    # famiglia smettono di andare persi. Era questo il punto
-                    # in cui «404, quel modello non esiste più» e «402, credito
-                    # finito» diventavano la stessa identica riga.
+                    # Il codice e la famiglia smettono di andare persi, e la
+                    # frase li dice (`failure_reply`, S-37). Era questo il
+                    # punto in cui «404, quel modello non esiste più» e «402,
+                    # credito finito» diventavano la stessa identica riga.
+                    family, code = error_family(exc), _status_code(exc)
+                    said = provider_said(exc)
                     raise RunnerBackendError(
-                        "Errore temporaneo del servizio AI. Riprova tra poco.",
-                        family=error_family(exc),
-                        code=_status_code(exc),
+                        failure_reply(family, code, said), family=family, code=code,
+                        said=said,
                     ) from exc
 
             self._record_success()

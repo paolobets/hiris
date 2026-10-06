@@ -91,3 +91,65 @@ async def test_un_turno_che_risponde_resta_riuscito(consumi):
     riga = consumi.turns()[0]
     assert riga["outcome"] == "riuscito"
     assert riga["provider"] == "openrouter"
+
+
+# -- chi chiama lo sa (rilievo G29-1) ------------------------------------------
+# Il registro scriveva gia' «fallito», ma il turno lo teneva per se': i
+# mestieri di sfondo leggevano la frase del router come risposta del modello.
+# Il caso delle ricette, il piu' grave, sta in test_mind_recipe_turn.
+
+@pytest.mark.asyncio
+async def test_il_turno_dice_che_nessuno_ha_risposto_anche_senza_archivio():
+    """Come `truncated`: il mestiere ne ha bisogno anche quando nessuno misura.
+
+    Mutazione ESEGUITA: `misura_turno` che non abbassa `answered` -- rossa."""
+    router = LLMRouter(claude=_rifiuta(), strategy="balanced")
+    async with steering.misura_turno(None, router,
+                                     specie=steering.ANALYST_SPECIES,
+                                     canale="catena") as turno:
+        risposta = await router.chat(user_message="ciao", model="auto")
+
+    assert turno.answered is False
+    # La chat ha ancora la sua frase; il mestiere legge «nessuna risposta».
+    assert risposta == "Errore Claude."
+    assert steering.chain_answer(risposta, turno) == ""
+
+
+@pytest.mark.asyncio
+async def test_un_turno_che_risponde_consegna_la_risposta():
+    router = LLMRouter(claude=_rifiuta(), openrouter=_risponde("[]"),
+                       strategy="balanced")
+    async with steering.misura_turno(None, router,
+                                     specie=steering.ANALYST_SPECIES,
+                                     canale="catena") as turno:
+        risposta = await router.chat(user_message="ciao", model="auto")
+
+    assert turno.answered is True
+    assert steering.chain_answer(risposta, turno) == "[]"
+
+
+@pytest.mark.asyncio
+async def test_l_analista_sulla_catena_non_legge_la_frase_del_router(tmp_path):
+    """Prima: «la risposta non e' un JSON leggibile», a ogni giro, per un
+    guasto della catena. Ora il motivo e' quello vero.
+
+    Mutazione ESEGUITA: `analyst_round` che passa `answer` invece di
+    `chain_answer(answer, turn)` -- rossa (il motivo torna «non JSON»)."""
+    from hiris.app import server
+    from hiris.app.mind.store import ObservationsStore
+    from tests.test_mind_analyst_round import _resoconto
+
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
+            store.replace_report(giorno, _resoconto(giorno))
+        router = LLMRouter(claude=_rifiuta(), strategy="balanced")
+        app = {"observations": store, "llm_router": router,
+               "bridge_active": False}
+
+        esito = await server.analyst_round(app)
+
+        assert router.last_unanswered is True
+        assert esito["problemi"] == [steering.NO_ANSWER_REASON]
+    finally:
+        store.close()

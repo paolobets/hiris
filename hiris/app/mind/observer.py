@@ -31,7 +31,7 @@ from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.house import House
 from ..home_space.privacy import MOVING_DOMAINS, PRESENCE_MARK, handles
 from ..home_space.topology import is_pseudo_area
-from ..steering import OBSERVER_SPECIES, SPECIES, chain_turn, read_json
+from ..steering import OBSERVER_SPECIES, SPECIES, chain_answer, chain_turn, read_json
 from .scope import OBSERVER
 
 logger = logging.getLogger(__name__)
@@ -505,7 +505,7 @@ async def reconsider(runner, store, house: House, *, reason: str,
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
 
-    return apply_answer(store, house, answer, reason=reason,
+    return apply_answer(store, house, chain_answer(answer, turn), reason=reason,
                         window_s=window_s, cadence_s=cadence_s,
                         asked=set(watched_ids(house, only)),
                         record=record, campaign_ts=campaign_ts, now=now,

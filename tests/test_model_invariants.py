@@ -365,12 +365,17 @@ def test_ogni_codice_di_credenziale_ha_la_sua_causa():
     Se il primo guadagna un codice e il secondo no, la pagina afferma una causa
     che nessuno ha misurato -- e nel caso concreto (un 429 di quota aggiunto
     per farlo comparire come problema di credito) manderebbe l'utente a
-    rigenerare una chiave che funziona."""
+    rigenerare una chiave che funziona.
+
+    **Un'eccezione sola, scritta: il 400** (G36-1, revisione del giro 36,
+    06/10/2026). Non ha una causa nostra perche' non ne ha una sola -- per
+    Anthropic e' ogni `invalid_request_error`, per Ollama un modello che non sa
+    servire la richiesta --: la causa la dice il provider, citato."""
     from hiris.app.model_resolution import _CREDENTIAL_CAUSE
     from hiris.app.provider_occurrences import _CREDENTIAL
 
     senza_causa = sorted(c for c in _CREDENTIAL if c not in _CREDENTIAL_CAUSE)
-    assert senza_causa == [], f"codici senza una causa dichiarata: {senza_causa}"
+    assert senza_causa == [400], f"codici senza una causa dichiarata: {senza_causa}"
 
 
 def test_un_codice_senza_causa_non_ne_inventa_una():

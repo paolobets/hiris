@@ -13,7 +13,8 @@ import anthropic
 # unico import di `openai_compat_runner` è dentro `error_family`) -- quindi
 # nessun ciclo.
 from .home_space.topology import name_with_id
-from .provider_occurrences import error_family
+from .model_resolution import failure_reply
+from .provider_occurrences import error_family, provider_said
 from .proxy._sanitize import truncate_with_marker
 from .usage.giro import anthropic_turn_tokens
 
@@ -54,20 +55,26 @@ class RunnerBackendError(Exception):
     low`, il caso del proprietario -- era indistinguibile da un 500 passeggero,
     e la pagina Modelli non aveva niente da dire.
 
-    `friendly_message` NON cambia: è ciò che l'utente legge in chat, e questi
-    due campi non sono per lui. Servono a `LLMRouter` per scrivere nel
-    `OccurrenceRegistry` che cosa è successo a quel provider, e da lì alla riga di
-    stato della pagina Modelli. I valori di scorta (`"altro"`, `None`) sono
-    quelli di un guasto non classificato, non un modo di dire «non lo so»:
+    Servono a `LLMRouter` per scrivere nel `OccurrenceRegistry` che cosa è
+    successo a quel provider, e da lì alla riga di stato della pagina Modelli.
+    Dal 06/10/2026 (S-37) ne nasce anche `friendly_message`
+    (`model_resolution.failure_reply`): un credito finito detto «Errore
+    temporaneo del servizio AI. Riprova tra poco.» era una frase falsa.
+    I valori di scorta (`"altro"`, `None`) sono quelli di un guasto non
+    classificato, non un modo di dire «non lo so»:
     `provider_occurrences.family_from_code(None)` restituisce la stessa cosa.
     """
 
     def __init__(self, friendly_message: str, *, family: str = "altro",
-                 code: int | None = None) -> None:
+                 code: int | None = None, said: str | None = None) -> None:
         super().__init__(friendly_message)
         self.friendly_message = friendly_message
         self.family = family
         self.code = code
+        # Cio' che il provider ha detto, gia' filtrato e tagliato
+        # (`provider_occurrences.provider_said`), o `None`: il router lo
+        # scrive nel registro, e la pagina Modelli lo cita (G36-1).
+        self.said = said
 
     def __str__(self) -> str:  # so `str(exc)` == the friendly text everywhere
         return self.friendly_message
@@ -1025,20 +1032,21 @@ class ClaudeRunner:
                 response = await self._call_api(**_api_kwargs)
             except anthropic.APIError as exc:
                 logger.error("Claude API error: %s", exc)
-                # Il codice e la causa smettono di andare persi qui. La frase
-                # per l'utente non cambia -- è quella che legge in chat, e non
-                # è il posto dove si spiega un guasto di configurazione -- ma
+                # Il codice e la causa smettono di andare persi qui:
                 # `famiglia`/`codice` arrivano al router, che li scrive nel
-                # registro degli esiti: è l'unica strada per cui la pagina
-                # Modelli possa dire «credito esaurito (400)» invece di
-                # «Attivo». `status_code` è l'attributo di `anthropic.APIError`
+                # registro degli esiti (la pagina Modelli dice «credito
+                # esaurito (400)» invece di «Attivo»), e la frase della chat
+                # dice lo stesso fatto (`failure_reply`, S-37: fino al
+                # 06/10/2026 diceva «Errore temporaneo» anche a credito
+                # finito). `status_code` è l'attributo di `anthropic.APIError`
                 # (assente su `APIConnectionError`, che infatti è
                 # «irraggiungibile» per un'altra strada).
                 _code = getattr(exc, "status_code", None)
+                _code = _code if isinstance(_code, int) else None
+                _family, _said = error_family(exc), provider_said(exc)
                 raise RunnerBackendError(
-                    "Errore temporaneo del servizio AI. Riprova tra poco.",
-                    family=error_family(exc),
-                    code=_code if isinstance(_code, int) else None,
+                    failure_reply(_family, _code, _said), family=_family, code=_code,
+                    said=_said,
                 ) from exc
 
             for block in response.content:

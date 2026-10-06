@@ -159,6 +159,32 @@ def test_le_misure_non_calcolabili_si_contano_per_causa():
     assert result["misure_ferme"] == 1
 
 
+def test_le_misure_ferme_si_contano_con_la_causa_del_prodotto():
+    """La batteria conta «ferme» le misure che il PRODOTTO rifiuta per dato
+    fermo: la parola si chiede al vocabolario delle cause, non si ricopia.
+
+    Mutazione ESEGUITA il 06/10/2026: in `mind/operations.py`,
+    `FROZEN = "ferma"` -> `FROZEN = "dato_fermo"`, con la copia di prima
+    (`FROZEN = "ferma"` scritta nella batteria) -> rossa, 0 misure ferme;
+    con la batteria che la importa -> verde senza toccare la prova.
+    """
+    from hiris.app.mind.operations import FROZEN
+
+    reports = [{"giorno": "2026-09-30", "misure": [
+        {"non_calcolabile": "ferma dalle 00:00", "causa": FROZEN}]}]
+    assert _measure(reports=reports)["misure_ferme"] == 1
+
+
+def test_le_etichette_della_batteria_non_sono_cause_del_prodotto():
+    """«senza causa» e l'etichetta di chi Home Assistant non conosce sono della
+    batteria: se il vocabolario del prodotto ne adottasse una, la batteria
+    conterebbe come «senza causa» rifiuti che una causa ce l'hanno."""
+    from hiris.app.mind.operations import CAUSES
+
+    assert batteria_attori.UNCAUSED not in CAUSES
+    assert batteria_attori.NOT_IN_HA not in CAUSES
+
+
 def test_oggi_senza_il_campo_tutto_e_senza_causa_e_niente_e_fermo():
     reports = [{"giorno": "2026-09-30", "misure": [{"non_calcolabile": "x"},
                                                    {"non_calcolabile": "y"}]}]

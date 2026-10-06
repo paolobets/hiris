@@ -51,7 +51,7 @@ from types import MappingProxyType
 
 from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE
 from ..home_space.house import House
-from ..steering import RECIPES_SPECIES, SPECIES, chain_turn, read_json
+from ..steering import RECIPES_SPECIES, SPECIES, chain_answer, chain_turn, read_json
 from .knowledge import Fact
 from .operations import NO_STATISTICS, REGISTRY_VERSION, UNKNOWN_SOURCE, NotComputable
 from .recipes import Recipe, silent_entities
@@ -869,7 +869,7 @@ async def ask(runner, store, house: House, device_id: str, *,
         logger.warning("ricetta: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
-    return apply_recipe(store, house, device_id, answer,
+    return apply_recipe(store, house, device_id, chain_answer(answer, turn),
                         who=who, when_ts=when_ts, truncated=turn.truncated,
                         repairing=None if repair is None else frozenset(repair.silent),
                         written_against=written_against(house, device_id, energy))

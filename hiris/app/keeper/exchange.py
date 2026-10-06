@@ -21,7 +21,14 @@ import logging
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
 from ..proxy._sanitize import truncate_with_marker
-from ..steering import PROMISE_SPECIES, chain_turn, enqueue_turn, refused_tool, start
+from ..steering import (
+    NO_ANSWER_REASON,
+    PROMISE_SPECIES,
+    chain_turn,
+    enqueue_turn,
+    refused_tool,
+    start,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +190,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
         briefing = ""
 
     try:
-        answer, _turn = await chain_turn(
+        answer, turn = await chain_turn(
             runner, PROMISE_SPECIES, usage=app.get("usage"),
             max_tokens=PROMISE_MAX_TOKENS,
             user_message=_domanda(promise),
@@ -202,6 +209,12 @@ async def interpreta_promise(app, promise: dict) -> dict:
         return {"errore": f"il modello non ha risposto ({type(error).__name__})."}
 
     if dispatcher.conclusione is None:
+        # **La frase del router non e' cio' che il modello ha detto** (G29-1):
+        # quando nessun backend risponde, il motivo e' quello vero, come
+        # quando `chain_turn` solleva -- non un «aveva risposto a parole» che
+        # cita la frase del router come fosse del modello.
+        if not turn.answered:
+            return {"errore": f"{NO_ANSWER_REASON}."}
         logger.warning("promessa %s: il turno non ha chiamato «conclude»; "
                        "aveva risposto %d caratteri di testo",
                        promise["id"], len(answer or ""))
