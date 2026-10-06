@@ -44,18 +44,35 @@ def evidence_of(observation: dict) -> dict:
     return {name: observation.get(name) for name in _EVIDENCE}
 
 
-def to_handle(observations, decided: dict) -> list[dict]:
-    """Le osservazioni su cui l'attuatore deve lavorare in questo giro.
+def already_answered(observation: dict, decided: dict) -> str | None:
+    """Perche' questa domanda non va proposta di nuovo, o `None` se va.
 
-    `decided` e' `{impronta: prova}` per cio' che il proprietario ha gia'
-    deciso: si salta una domanda **solo** se la sua prova e' rimasta la stessa.
-    In produzione `server.py` la chiama con un dizionario vuoto, quindi non
-    salta niente: le domande gia' decise le salta `_file_proposals`.
+    `decided` e' `store.decided_proposals()`: per impronta, la prova
+    dell'ultima proposta e se aspetta ancora una risposta. **Una aperta non
+    si duplica**; una decisa vale finche' vale la prova contro cui e' stata
+    decisa, e a prova cambiata la domanda torna (S-26, scelta del
+    proprietario del 06/10/2026). Il motivo e' una frase: chi salta lo scrive
+    nel registro, perche' una proposta potata in silenzio il 01/10/2026 e'
+    costata una diagnosi (misura del Task 4.0 degli attori).
     """
-    seen = []
-    for observation in observations or []:
-        key = observation_key(observation)
-        if key in decided and decided[key] == evidence_of(observation):
-            continue
-        seen.append(observation)
-    return seen
+    entry = decided.get(observation_key(observation))
+    if entry is None:
+        return None
+    if entry["aperta"]:
+        return "ha gia' una proposta in attesa"
+    if entry["prova"] == evidence_of(observation):
+        return "e' gia' stata decisa con la stessa prova"
+    return None
+
+
+def to_handle(observations, decided: dict) -> list[dict]:
+    """Le osservazioni su cui l'attuatore deve lavorare in questo giro: tutte
+    tranne quelle che `already_answered` salta.
+
+    In produzione `server.py` la chiama con un dizionario vuoto, quindi non
+    salta niente: l'elenco che si chiede al modello deve restare lo stesso
+    fra la domanda e la raccolta, perche' la risposta lo cita per indice. Le
+    domande gia' decise le salta `_file_proposals`, con la stessa regola.
+    """
+    return [observation for observation in observations or []
+            if already_answered(observation, decided) is None]

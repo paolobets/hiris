@@ -2257,10 +2257,13 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
         if row is None:
             continue
         key = actuator.observation_key(row)
-        if key in decided:
-            # La stessa domanda ha gia' una proposta -- in attesa o decisa --
-            # e una coda che cresce ogni giorno con la stessa riga e' il
-            # rumore che questa fetta esiste per togliere.
+        skipped = actuator.already_answered(row, decided)
+        if skipped is not None:
+            # Una coda che cresce ogni giorno con la stessa riga e' il rumore
+            # che questa fetta esiste per togliere; ma una potatura muta non
+            # si diagnostica (Task 4.0 degli attori, 06/10/2026).
+            logger.info("attuatore: la proposta su %s non si scrive: %s",
+                        key, skipped)
             continue
         if outcome.get("costruibile"):
             if workshop is None:
@@ -2282,7 +2285,7 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
             # (Task 4.2): questo contratto non lo chiede, e una frase in prosa
             # non porta i domini su cui il codice imporrebbe `alto`.
             stakes=None, now_ts=time.time())
-        decided[key] = actuator.evidence_of(row)
+        decided[key] = {"prova": actuator.evidence_of(row), "aperta": True}
 
 
 def _write_actuation(store, day: str, stamp: str | None, esito: dict,

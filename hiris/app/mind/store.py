@@ -1486,18 +1486,21 @@ class ObservationsStore:
         return cur.rowcount > 0
 
     def decided_proposals(self) -> dict[str, dict]:
-        """`{impronta: prova}` per le proposte che l'attuatore non deve rifare.
+        """`{impronta: {"prova": ..., "aperta": bool}}`: cio' che l'attuatore
+        deve sapere per non rifare una proposta (`actuator.already_answered`).
 
-        **Ci stanno anche quelle in ATTESA**: una coda aperta non si duplica.
-        Oggi chi la legge (`_file_proposals`, in `server.py`) salta ogni
-        domanda che ha gia' una proposta, SENZA confrontare la prova: il
-        confronto di `actuator.to_handle`, che la riaprirebbe a prova cambiata,
-        questo dizionario non lo riceve.
+        Per ogni impronta conta **l'ultima** proposta: dopo una prova cambiata
+        la stessa domanda ha due righe, e a decidere e' la piu' recente.
+        `aperta` dice se aspetta ancora una risposta: una coda aperta non si
+        duplica. Una decisa vale solo per la prova contro cui e' stata decisa
+        (S-26, scelta del proprietario del 06/10/2026).
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT impronta, prova_json FROM proposte").fetchall()
-        return {r[0]: json.loads(r[1]) for r in rows}
+                "SELECT impronta, prova_json, stato FROM proposte "
+                "ORDER BY creata_ts, rowid").fetchall()
+        return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING}
+                for r in rows}
 
     def analysis(self, day: str) -> dict | None:
         """L'analisi di quel giorno, o `None` se non ne ha una.

@@ -389,6 +389,37 @@ async def test_la_stessa_proposta_non_si_scrive_DUE_volte(casa):
 
 
 @pytest.mark.asyncio
+async def test_una_proposta_DECISA_torna_solo_a_prova_cambiata_e_chi_salta_lo_dice(casa, caplog):
+    """S-26, scelta del proprietario del 06/10/2026: una proposta gia' decisa
+    vale per la prova contro cui e' stata decisa. Il 01/10/2026 una proposta
+    e' stata potata in silenzio perche' la stessa domanda era stata decisa il
+    giorno prima (misura del Task 4.0 degli attori): a prova uguale si salta
+    ancora, ma il registro dice perche'; a prova cambiata si propone.
+
+    Mutazioni ESEGUITE (06/10/2026) in `_file_proposals`: saltare ogni
+    impronta gia' vista, come prima -- rossa sul registro, che non dice
+    perche'; la stessa col motivo scritto -- rossa sulla seconda proposta."""
+    app, store, _modello = casa
+    app["llm_router"] = _modello_proponente(False)
+    store.replace_analysis(OGGI, _analisi())
+    await server.actuator_round(app)
+    [prima] = store.proposals()
+    store.close_proposal(prima["id"], "rifiutata")
+
+    with caplog.at_level("INFO", logger="hiris.app.server"):
+        store.replace_analysis(OGGI, _analisi(impronta="bbb"))
+        await server.actuator_round(app)
+    assert len(store.proposals()) == 1
+    assert "gia' stata decisa con la stessa prova" in caplog.text
+
+    store.replace_analysis(OGGI, _analisi(_oss(base=40), impronta="ccc"))
+    await server.actuator_round(app)
+    righe = store.proposals()
+    assert len(righe) == 2
+    assert {r["prova"]["base"] for r in righe} == {19, 40}
+
+
+@pytest.mark.asyncio
 async def test_PIN_sulla_catena_la_proposta_si_archivia_E_l_attuazione_si_scrive(casa):
     """Pin della fetta «l'attuatore sul ponte» (28/09/2026), scritto PRIMA di
     toccare il giro: sulla catena lo stesso turno archivia la proposta da fare

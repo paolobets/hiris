@@ -48,7 +48,8 @@ def test_un_osservazione_gia_decisa_si_SALTA():
     """Mutazione: ignorare `decided` -- rossa (la stessa cosa tornerebbe in
     coda ogni giorno, che e' il rumore che questa fetta esiste per evitare)."""
     osservazione = _osservazione()
-    decise = {act.observation_key(osservazione): act.evidence_of(osservazione)}
+    decise = {act.observation_key(osservazione):
+              {"prova": act.evidence_of(osservazione), "aperta": False}}
 
     assert act.to_handle([osservazione], decise) == []
 
@@ -62,7 +63,8 @@ def test_una_PROVA_cambiata_riapre_la_domanda():
     Mutazione: confrontare la sola impronta -- rossa (il silenzio dopo un no
     diventerebbe definitivo anche quando il fondamento e' cambiato)."""
     vecchia = _osservazione(base=3)
-    decise = {act.observation_key(vecchia): act.evidence_of(vecchia)}
+    decise = {act.observation_key(vecchia):
+              {"prova": act.evidence_of(vecchia), "aperta": False}}
 
     nuova = _osservazione(base=19)
     assert act.to_handle([nuova], decise) == [nuova]
@@ -74,9 +76,24 @@ def test_una_prova_UGUALE_non_riapre_niente():
 
     Mutazione: `return list(observations)` -- rossa."""
     osservazione = _osservazione()
-    decise = {act.observation_key(osservazione): act.evidence_of(osservazione)}
+    decise = {act.observation_key(osservazione):
+              {"prova": act.evidence_of(osservazione), "aperta": False}}
 
     assert act.to_handle([osservazione], decise) == []
+
+
+def test_una_proposta_APERTA_non_si_duplica_nemmeno_a_prova_cambiata():
+    """Una coda aperta aspetta una risposta: una seconda riga sulla stessa
+    domanda la duplicherebbe. A prova cambiata torna solo una DECISA (S-26).
+
+    Mutazione ESEGUITA (06/10/2026): tolto il ramo `aperta` da
+    `already_answered` -- rossa."""
+    vecchia = _osservazione(base=3)
+    decise = {act.observation_key(vecchia):
+              {"prova": act.evidence_of(vecchia), "aperta": True}}
+
+    assert act.to_handle([_osservazione(base=19)], decise) == []
+    assert "in attesa" in act.already_answered(_osservazione(base=19), decise)
 
 
 def test_senza_niente_di_deciso_si_prende_tutto_in_carico():
