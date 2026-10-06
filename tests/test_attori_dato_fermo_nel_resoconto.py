@@ -111,7 +111,9 @@ async def test_il_30_09_la_produzione_ferma_non_e_uno_zero_con_copertura_piena()
     row, _asked = await _report(FROZEN_DAY, frozen_from=_start(FROZEN_DAY))
     assert "valore" not in row and "copertura" not in row, row
     assert row["causa"] == FROZEN
-    assert row["non_calcolabile"].startswith(f"{COUNTER} e' ferma: non varia dalle ")
+    # Nell'ora della casa (G4-4): il giorno di Roma comincia alle 22:00Z.
+    assert row["non_calcolabile"].startswith(
+        f"{COUNTER} e' ferma: non varia dalle 2026-09-30T00:00:00+02:00 ")
     assert f"in ciascuno dei {HISTORY_DAYS} giorni di storia" in row["non_calcolabile"]
 
 

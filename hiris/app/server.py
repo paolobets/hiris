@@ -50,6 +50,7 @@ from .home_space.behavior import reread, reread_dashboards
 from .home_space.energy import energy_dashboard
 from .home_space.historian import (
     day_boundaries,
+    home_space_zone,
     house_timezone,
     instant_epoch,
     local_date,
@@ -1869,7 +1870,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     # resoconto ha scritto produzione 0 con copertura 1.0, e lo zero era
     # falso. I rifiuti entrano fra le entita' che tacciono, la strada che
     # `Recipe.run` conosce gia'.
-    ferme = frozen_refusals(serie, storia)
+    ferme = frozen_refusals(serie, storia, zone=home_space_zone(timezone))
     if ferme:
         logger.info("resoconto: %d entita' ferme il %s -- le loro misure "
                     "diranno perche'", len(ferme), giorno)
