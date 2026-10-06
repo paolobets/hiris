@@ -12,6 +12,7 @@ della cronologia, che una frase di guasto non deve lasciar entrare.
 """
 from __future__ import annotations
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -131,7 +132,7 @@ def test_cio_che_il_provider_dice_si_taglia_e_si_filtra():
     from hiris.app.provider_occurrences import SAID_CAP, provider_said
 
     class _Lungo(Exception):
-        body = {"error": {"message": "x" * 5000}}
+        body: ClassVar[dict] = {"error": {"message": "x" * 5000}}
     said = provider_said(_Lungo())
     assert len(said) <= SAID_CAP and said.endswith("[troncato]")
 
