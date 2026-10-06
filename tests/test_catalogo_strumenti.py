@@ -32,8 +32,10 @@ from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 
 # Misurata il 05/10/2026 su `5bce65d` (Tappa 5, piano: «Misurato prima di
-# disegnare»). Scende a ogni task che toglie caratteri, mai sale.
-CATALOG_CEILING = 32853
+# disegnare»). Scende a ogni task che toglie caratteri, mai sale. 06/10/2026
+# (attori, Task 4.3): il campo `livello` di `propose` entra, e la frase che
+# ripeteva i vocabolari di `gesto` e `dominio` esce -- due caratteri in meno.
+CATALOG_CEILING = 32851
 
 
 def catalog_chars(definitions) -> int:

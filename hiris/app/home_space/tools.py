@@ -91,6 +91,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..action.construction.advisor import STRUCTURES
+from ..action.construction.stakes import CHOSEN_BY_MODEL as STAKES_CHOSEN_BY_MODEL
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
 from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
@@ -764,8 +765,7 @@ PROPOSE_TOOL_DEF = {
         "**non nello stesso turno**: mostra l'anteprima a chi ti sta parlando, digli che "
         "la proposta resta in attesa nella pagina «Proposte», e aspetta che sia "
         "chi ti sta parlando a dire di procedere. "
-        "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
-        "«script» o «scene». Per modificare o cancellare serve `chiave` (l'id "
+        "Per modificare o cancellare serve `chiave` (l'id "
         "dell'automazione o della scena, lo slug dello script): la trovi con "
         "`search` (col suo `riferimento` se lo hai gia'). "
         "Componi con i PARAMETRI, non scrivendo YAML: `innesco`, `condizioni`, "
@@ -787,8 +787,7 @@ PROPOSE_TOOL_DEF = {
             "dominio": {"type": "string",
                         "description": "automation, script o scene."},
             "chiave": {"type": "string",
-                       "description": "L'id o lo slug dell'oggetto da toccare "
-                                      "(solo per modifica e cancella)."},
+                       "description": "Solo per modifica e cancella."},
             "alias": {"type": "string", "description": "Il nome dell'oggetto."},
             "descrizione": {"type": "string",
                             "description": "A cosa serve, in italiano: finisce "
@@ -829,6 +828,13 @@ PROPOSE_TOOL_DEF = {
             "helper": {"type": "array", "items": {"type": "object"},
                        "description": "Gli helper da creare insieme: ognuno con "
                                       "`dominio` e `dati`."},
+            # Il livello (attori, strato 4, D13): l'enumerazione viene dalla
+            # sua casa (`action/construction/stakes.py`) e porta solo cio' che
+            # il modello puo' scegliere. «alto» non c'e': lo impone l'officina
+            # quando la proposta agisce su serrature o allarme.
+            "livello": {"type": "string", "enum": list(STAKES_CHOSEN_BY_MODEL),
+                        "description": "Su serrature e allarme e' «alto», "
+                                       "da solo."},
             "frase": {"type": "string",
                       "description": "La frase di chi ti sta parlando da cui nasce, "
                                      "verbatim."},
@@ -2290,6 +2296,7 @@ class ToolDispatcher:
             "ricorrente": bool(arguments.get("ricorrente")),
             "richiesto": arguments.get("richiesto"),
             "helper": arguments.get("helper") or [],
+            "livello": arguments.get("livello"),
             "frase": arguments.get("frase"),
         }
         return await self._workshop.propose(

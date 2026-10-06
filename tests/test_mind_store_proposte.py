@@ -34,7 +34,7 @@ def _proposta(archivio, **extra):
              "perche": "il prelievo dalla rete si concentra la mattina",
              "fingerprint": "dev1|prelievo|None|1",
              "prova": {"base": 19, "quanti_scarti": 3, "spiegato": None},
-             "chi_applica": "tu"}
+             "chi_applica": "tu", "stakes": None}
     campi.update(extra)
     return archivio.add_proposal(**campi, now_ts=100.0)
 
@@ -144,4 +144,4 @@ def test_una_proposta_senza_IMPRONTA_non_si_scrive(archivio):
     Mutazione: rendere l'impronta facoltativa -- rossa."""
     with pytest.raises(ValueError):
         archivio.add_proposal(text="x", perche="y", fingerprint="", prova={},
-                              chi_applica="tu", now_ts=100.0)
+                              chi_applica="tu", stakes=None, now_ts=100.0)

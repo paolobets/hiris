@@ -1039,6 +1039,10 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
 # ── 1. VOLUTE: qui la parola ha un senso DIVERSO da quello della riga
 # qualificata, e la mutezza e' la risposta giusta. **Questo insieme non cala.**
 _MUTE_VOLUTE = {
+    # `livello (action)` e' il livello di una PROPOSTA (`stakes`, attori,
+    # strato 4). In `radice` `livello` e' il livello del registro di Python
+    # (`main.py`, `logging.INFO`): senso diverso, mutezza giusta.
+    ("livello", "radice"),
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
     # per intero o dentro residui gia' dichiarati
     # (`keeper/exchange.py::_senza_conclusione`). `("senza", "memory")` e'

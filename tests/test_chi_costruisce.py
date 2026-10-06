@@ -129,7 +129,7 @@ def _proposta(app, chiave="k1", *, thread=None, now=None):
         exchange="t1", phrase="apri le tapparelle all'alba", prima=None,
         dopo={"id": chiave, "alias": "Tapparelle"}, helper=[],
         preview="Creo un'automazione.",
-        now=time.time() if now is None else now, thread=thread)["id"]
+        stakes=None, now=time.time() if now is None else now, thread=thread)["id"]
 
 
 def _manual_proposal(app):
@@ -137,7 +137,7 @@ def _manual_proposal(app):
         text="Sposta la lavatrice nel primo pomeriggio",
         perche="il prelievo si concentra la mattina",
         fingerprint="dev1|prelievo|None|1", prova={"base": 19},
-        chi_applica="tu", now_ts=100.0)
+        chi_applica="tu", stakes=None, now_ts=100.0)
 
 
 _GIUDIZIO = {"soggetto_genere": "tipo", "soggetto": "binary_sensor.occupancy",

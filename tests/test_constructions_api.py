@@ -399,7 +399,7 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
         operation="crea", domain="automation", key="tapparelle_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/constructions/{ident}/confirm", headers=_INGRESS_ADMIN)
     assert risposta.status == 403
@@ -419,7 +419,7 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(
         operation="crea", domain="automation", key="tapparelle_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(
         f"/api/constructions/{ident}/confirm",
@@ -436,7 +436,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
         operation="modifica", domain="automation", key="tapparelle_rip",
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
-        preview="anteprima", now=ADESSO_HTTP)["id"]
+        preview="anteprima", stakes=None, now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
     risposta = await client.post(f"/api/constructions/{ident}/restore", headers=_INGRESS_ADMIN)
@@ -457,7 +457,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
         operation="modifica", domain="automation", key="tapparelle_rip_ok",
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
-        preview="anteprima", now=ADESSO_HTTP)["id"]
+        preview="anteprima", stakes=None, now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
     # La casa e' com'era stata lasciata da quella costruzione: dal 03/10/2026
     # (S-17) il ripristino lo rilegge, e su un oggetto cambiato rifiuta.
@@ -481,7 +481,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/constructions/{ident}/reject",
                                  headers=_INGRESS_ADMIN)
@@ -498,7 +498,7 @@ async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client,
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/constructions/{ident}/reject",
                                  headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
@@ -511,7 +511,7 @@ def _edit_proposal(archivio, chiave):
         operation="modifica", domain="automation", key=chiave,
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"id": chiave, "alias": "Prima"}, dopo={"id": chiave, "alias": "Dopo"},
-        helper=[], preview="anteprima", now=ADESSO_HTTP)["id"]
+        helper=[], preview="anteprima", stakes=None, now=ADESSO_HTTP)["id"]
 
 
 @pytest.mark.asyncio
@@ -573,9 +573,9 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
     app = _app(FintoArchivio(righe))
     osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
     attesa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f1", prova={},
-                                       chi_applica="tu", now_ts=5.0)
+                                       chi_applica="tu", stakes=None, now_ts=5.0)
     chiusa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f2", prova={},
-                                       chi_applica="tu", now_ts=4.0)
+                                       chi_applica="tu", stakes=None, now_ts=4.0)
     osservazioni.close_proposal(chiusa, osservazioni.PROPOSAL_OUTCOMES[0], now_ts=6.0)
     app["observations"] = osservazioni
     try:

@@ -516,7 +516,12 @@ CREATE TABLE IF NOT EXISTS proposte (
     prova_json    TEXT NOT NULL,
     giri_json     TEXT NOT NULL,
     esito_ts      REAL,
-    esito_nota    TEXT
+    esito_nota    TEXT,
+    -- Il LIVELLO (attori, strato 4, D13): lo stesso campo delle costruzioni
+    -- (`action/construction/stakes.py`), con lo stesso vocabolario. NULL
+    -- quando nessuno l'ha detto, e per le righe nate prima del 06/10/2026
+    -- (vedi `_migration_11`). Colonna nuova, quindi in inglese.
+    stakes        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC);
 
@@ -637,11 +642,24 @@ def _migration_6(conn) -> None:
         conn.execute("ALTER TABLE scope_attempt ADD COLUMN version TEXT")
 
 
+def _migration_11(conn) -> None:
+    """v10 -> v11 (attori, strato 4, Task 4.3): `proposte.stakes`, il livello
+    della proposta da fare a mano.
+
+    Le righe scritte prima rileggono `None`: quelle proposte non sono mai
+    state chieste con un livello, e riempirlo oggi attribuirebbe a ieri un
+    fatto di adesso.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
+    if "stakes" not in existing:
+        conn.execute("ALTER TABLE proposte ADD COLUMN stakes TEXT")
+
+
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -701,7 +719,7 @@ class ObservationsStore:
                                 5: _migration_5, 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
                                 9: _migration_9,
-                                10: _migration_10})
+                                10: _migration_10, 11: _migration_11})
 
     def close(self) -> None:
         with self._lock:
@@ -1326,7 +1344,8 @@ class ObservationsStore:
     PROPOSAL_PENDING = "attesa"
 
     def add_proposal(self, *, text: str, perche: str, fingerprint: str,
-                     prova: dict, chi_applica: str, now_ts: float) -> str:
+                     prova: dict, chi_applica: str, stakes: str | None,
+                     now_ts: float) -> str:
         """Scrive una proposta da fare a mano, e torna il suo identificativo.
 
         **Senza impronta non si scrive**: e' cio' su cui si regge
@@ -1338,19 +1357,19 @@ class ObservationsStore:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO proposte(id,creata_ts,aggiornata_ts,stato,testo,"
-                "perche,chi_applica,impronta,prova_json,giri_json) "
-                "VALUES(?,?,?,?,?,?,?,?,?,'[]')",
+                "perche,chi_applica,impronta,prova_json,giri_json,stakes) "
+                "VALUES(?,?,?,?,?,?,?,?,?,'[]',?)",
                 (ident, now_ts, now_ts, self.PROPOSAL_PENDING, text, perche,
                  chi_applica, fingerprint,
-                 json.dumps(prova or {}, ensure_ascii=False)))
+                 json.dumps(prova or {}, ensure_ascii=False), stakes))
             self._conn.commit()
         return ident
 
     def proposals(self, *, pending_only: bool = False, limit: int = 200) -> list[dict]:
         """Le proposte da fare a mano, dalla piu' recente."""
         sql = ("SELECT id,creata_ts,aggiornata_ts,stato,testo,perche,"
-               "chi_applica,impronta,prova_json,giri_json,esito_ts,esito_nota "
-               "FROM proposte")
+               "chi_applica,impronta,prova_json,giri_json,esito_ts,esito_nota,"
+               "stakes FROM proposte")
         args: tuple = ()
         if pending_only:
             sql += " WHERE stato = ?"
@@ -1362,7 +1381,8 @@ class ObservationsStore:
                  "stato": r[3], "testo": r[4], "perche": r[5],
                  "chi_applica": r[6], "impronta": r[7],
                  "prova": json.loads(r[8]), "giri": json.loads(r[9]),
-                 "esito_ts": r[10], "esito_nota": r[11]} for r in rows]
+                 "esito_ts": r[10], "esito_nota": r[11], "livello": r[12]}
+                for r in rows]
 
     def close_proposal(self, ident: str, occurrence: str, *,
                        why: str | None = None, now_ts: float) -> bool:

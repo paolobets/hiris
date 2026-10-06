@@ -174,7 +174,7 @@ def test_mark_cancelled_scrive_la_costante_non_un_letterale_ricopiato(tmp_path):
         ident = archivio.propose(
             operation="crea", domain="automation", key="1", actor="chat",
             exchange=None, phrase=None, prima=None, dopo={"alias": "x"},
-            helper=[], preview="", now=time.time())["id"]
+            helper=[], preview="", stakes=None, now=time.time())["id"]
         archivio.mark_cancelled(ident, now=time.time())
         riga = archivio.read(ident)
     finally:
