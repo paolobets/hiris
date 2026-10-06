@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import logging
 
-from ..home_space.ha_vocabulary import domain_of
+from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.log_source import (
     integration_name,
     integration_slug,
@@ -593,6 +593,15 @@ def _front_page_mark(entry: dict, judgments) -> dict | None:
     """
     state = entry.get("cosa")
     if entry.get("genere") == SYSTEM_GENRE:
+        # **L'assenza di un'entita' sola resta nella cronaca** (G17-1,
+        # decisione del proprietario del 06/10/2026, «Solo integrazione»):
+        # in primo piano sale la voce dell'ISTANZA sparita insieme
+        # (`integrazione:` piu' l'id, `facts._absences`), non la luce che non
+        # ha risposto per dieci minuti. Il genere e' lo stesso -- la voce
+        # parla della fonte -- ma il soggetto no: una condizione di sistema
+        # non ha mai per soggetto un `entity_id`, un'assenza di entita' si'.
+        if is_entity_id(entry.get("chi")):
+            return None
         # **L'impalcatura non sveglia nessuno** (decisione del proprietario,
         # 20/09/2026): Home Assistant che parla di se' -- il Supervisor, HACS,
         # il frontend -- resta nella cronaca e non sale in cima. Chi lo dice e'

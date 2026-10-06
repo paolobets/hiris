@@ -118,6 +118,11 @@ INSTANCE_SUBJECT_PREFIX = NOT_ENTITY_PREFIXES[1]
 #:   stessa istanza mancano nello stesso istante, e interrompono l'episodio in corso (Passo 3, D5
 #:   «raccolte», 06/10/2026). Non e' la 3 ritoccata: la 3 e' gia' nelle
 #:   cronache scritte dalla 3.76.0, e il recupero deve poterle riconoscere.
+#:   Ritoccata invece lo stesso giorno (giro 17: lo stato e `chiusa_dalla_fonte`
+#:   dentro `assenti`, lo stato dell'istanza solo se e' di tutte) SENZA
+#:   alzarla: la 4 non era ancora uscita in nessun rilascio (`git tag
+#:   --contains` del suo commit vuoto), quindi nessuna cronaca scritta da un
+#:   add-on pubblicato la porta con la forma di prima.
 CHRONICLE_RULE = 4
 
 # **Il riposo e' del SOGGETTO, non l'unione di tutti i tipi** (17/09/2026, spec
@@ -786,8 +791,18 @@ def _absences(stretches: list[dict], *, house: House | None,
     istante -- tratti che si sovrappongono, anche a catena -- sono una voce
     sola, per l'istanza: soggetto `integrazione:` piu' l'id, come per
     un'istanza in errore, `dominio` per il nome, e `assenti`, ogni entita' col
-    suo intervallo (`chi`, `quando_ts`, `fine_ts`), perche' la voce si legga da
-    sola anche quando le entita' non sono tornate insieme. Un tratto che non
+    suo intervallo (`chi`, `quando_ts`, `fine_ts`), il suo `stato` e, se c'e',
+    `chiusa_dalla_fonte` -- la forma della voce di un'entita' sola
+    (`_absent`) -- perche' la voce si legga da sola anche quando le entita'
+    non sono tornate insieme.
+
+    **Lo `stato` dell'istanza e' quello di tutte, o nessuno** (G17-3,
+    06/10/2026): se le entita' sono sparite con lo stesso stato la voce lo
+    porta; se gli stati differiscono (`unavailable` e `unknown`) la voce non
+    ne porta nessuno, e i due stanno in `assenti`. Fino ad allora prendeva lo
+    stato del primo tratto, e diceva `unavailable` di chi era `unknown`.
+
+    Un tratto che non
     ne tocca nessun altro della sua istanza e' la voce della sua entita':
     `stato` e' cio' che Home Assistant ha scritto (`unavailable`, `unknown`,
     `none`, il vuoto), con nome e classe come per un episodio.
@@ -847,9 +862,10 @@ def _absences(stretches: list[dict], *, house: House | None,
                 alone.append(component[0])
                 continue
             ends = [s["fine"] for s in component]
-            body = {"stato": component[0]["stato"],
-                    "assenti": [{"chi": s["soggetto"], "quando_ts": s["inizio"],
-                                 "fine_ts": s["fine"]} for s in component]}
+            body = {"assenti": [_absent(s) for s in component]}
+            states = {s["stato"] for s in component}
+            if len(states) == 1:
+                body["stato"] = states.pop()
             domain = instance_of[component[0]["soggetto"]].get("dominio")
             if domain:
                 body["dominio"] = domain
@@ -871,6 +887,19 @@ def _absences(stretches: list[dict], *, house: House | None,
                         "inizio": stretch["inizio"], "fine": stretch["fine"],
                         "corpo_base": body})
     return sorted(entries, key=lambda e: (_episode_position(e), e["protagonista"]))
+
+
+def _absent(stretch: dict) -> dict:
+    """Un'entita' dentro `assenti`: lo stesso fatto della voce di un'entita'
+    sola, con la stessa forma -- lo `stato` che Home Assistant ha scritto
+    quando e' sparita e, se l'assenza e' finita perche' la fonte e' finita,
+    `chiusa_dalla_fonte` (G17-2 e G17-3, 06/10/2026). Senza, `fine_ts`
+    direbbe un ritorno che non c'e' stato."""
+    absent = {"chi": stretch["soggetto"], "quando_ts": stretch["inizio"],
+              "fine_ts": stretch["fine"], "stato": stretch["stato"]}
+    if stretch.get("chiusa_dalla_fonte"):
+        absent["chiusa_dalla_fonte"] = stretch["chiusa_dalla_fonte"]
+    return absent
 
 
 def aggregate_day(*, store, day: str, timezone: str | None,

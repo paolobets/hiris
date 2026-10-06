@@ -1868,7 +1868,8 @@ def test_un_integrazione_che_sparisce_tutta_insieme_e_UNA_voce(archivio):
         ("light.portico", tv.SYSTEM_GENRE, "unavailable", ts(11), ts(11, 10))]
     instance = cronaca(archivio)[1]
     assert instance["assenti"] == [
-        {"chi": eid, "quando_ts": ts(10) + i / 100, "fine_ts": ts(10, 5) + i / 100}
+        {"chi": eid, "quando_ts": ts(10) + i / 100, "fine_ts": ts(10, 5) + i / 100,
+         "stato": "unavailable"}
         for i, eid in enumerate(_IRRIGATION)]
     assert instance["dominio"] == "rainbird"
 
@@ -1936,3 +1937,81 @@ def test_un_assenza_aperta_a_mezzanotte_di_una_fonte_finita_non_entra_nel_giorno
     _ha(archivio, "switch.pompa", "on", "unavailable", MEZZANOTTE - 10 * 3600)
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
                          house=_house_with_entry_switched_off("switch.pompa")) == 0
+
+
+def test_in_primo_piano_sale_solo_la_voce_dell_istanza_non_le_assenze_delle_entita(archivio):
+    """G17-1, decisione del proprietario del 06/10/2026, «Solo integrazione»:
+    un'integrazione sparita tutta insieme e' la riga in cima alla pagina; una
+    luce che non risponde per dieci minuti resta nella cronaca, e non sale.
+    Passa dalla resa VERA della pagina (`as_page` sul resoconto scritto da
+    `aggregate_day`), non da `_front_page_mark` da sola: e' la pagina che il
+    proprietario legge.
+
+    Mutazione ESEGUITA: in `_front_page_mark` togliere il ramo che lascia le
+    assenze delle entita' fuori dal primo piano -- rossa (`light.portico` in
+    primo piano accanto all'istanza)."""
+    from hiris.app.mind.report import as_page
+
+    house = _irrigation_house("light.portico")
+    _watched(archivio, *_IRRIGATION, "light.portico")
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(10) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
+    _ha(archivio, "light.portico", "off", "unavailable", ts(11))
+    _ha(archivio, "light.portico", "unavailable", "off", ts(11, 10))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS)
+    assert [(r["chi"], r["sorta"]) for r in pagina["primo_piano"]] == [
+        ("integrazione:e_irr", "guasto")]
+    portico = next(v for v in pagina["cronaca"] if v["chi"] == "light.portico")
+    assert portico["genere"] == tv.SYSTEM_GENRE and "primo_piano" not in portico
+
+
+def test_dentro_assenti_un_entita_chiusa_dalla_fonte_lo_dice(archivio):
+    """G17-2: la voce di un'entita' la cui assenza finisce perche' la fonte e'
+    finita porta `chiusa_dalla_fonte` (Passo 1); dentro la voce dell'istanza,
+    la stessa entita' lo porta con la stessa forma. Senza, «fine_ts» direbbe
+    un ritorno che non c'e' stato.
+
+    La zona 1, spenta dal proprietario, manca dalle 10:00:01 e non scrive
+    piu' niente; la zona 2 manca dalle 10 alle 10:05. Si toccano: una voce
+    sola, per l'istanza."""
+    house = _house(entities=[("switch.zona_1", {"config_entry_id": "e_irr",
+                                                "disabled_by": "user"}),
+                             ("switch.zona_2", {"config_entry_id": "e_irr"})],
+                   states=[("switch.zona_2", "off")],
+                   entries=[{"entry_id": "e_irr", "domain": "rainbird", "title": "Giardino",
+                             "state": "loaded", "source": "user", "disabled_by": None}])
+    _watched(archivio, "switch.zona_1", "switch.zona_2")
+    _ha(archivio, "switch.zona_2", "off", "unavailable", ts(10))
+    _ha(archivio, "switch.zona_1", "off", "unavailable", ts(10) + 1)
+    _ha(archivio, "switch.zona_2", "unavailable", "off", ts(10, 5))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    [entry] = cronaca(archivio)
+    assert entry["chi"] == "integrazione:e_irr"
+    zona_2, zona_1 = entry["assenti"]
+    assert zona_1["chi"] == "switch.zona_1" and zona_1["fine_ts"] == ts(10) + 1
+    assert zona_1["chiusa_dalla_fonte"] == {"stato": "spenta_dal_proprietario",
+                                            "causa": "user", "spenta_da": "user"}
+    assert "chiusa_dalla_fonte" not in zona_2
+
+
+def test_la_voce_dell_istanza_non_sceglie_lo_stato_del_primo_tratto(archivio):
+    """G17-3: ogni entita' dentro `assenti` porta il SUO stato, quello che
+    Home Assistant ha scritto quando e' sparita -- la stessa regola della voce
+    di un'entita' sola. La voce dell'istanza porta uno stato solo se e' lo
+    stesso per tutte; se differiscono (`unavailable` e `unknown`) non ne porta
+    nessuno, e chi la legge trova i due in `assenti`. Prima prendeva lo stato
+    del primo tratto, e la zona 2 risultava `unavailable` senza esserlo."""
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    _ha(archivio, "switch.zona_1", "off", "unavailable", ts(10))
+    _ha(archivio, "switch.zona_2", "off", "unknown", ts(10) + 1)
+    _ha(archivio, "switch.zona_1", "unavailable", "off", ts(10, 5))
+    _ha(archivio, "switch.zona_2", "unknown", "off", ts(10, 5))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    [entry] = cronaca(archivio)
+    assert entry["chi"] == "integrazione:e_irr"
+    assert "cosa" not in entry or entry["cosa"] is None
+    assert [(a["chi"], a["stato"]) for a in entry["assenti"]] == [
+        ("switch.zona_1", "unavailable"), ("switch.zona_2", "unknown")]
