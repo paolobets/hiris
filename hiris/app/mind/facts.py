@@ -77,28 +77,41 @@ from .store import READING_RETENTION_S
 #: codice produce il genere `"bilancio"`.
 GENRES = CHRONICLE_GENRES
 
-#: I quattro prefissi con cui un `protagonista` NON e' un'entita' di Home
+#: I cinque prefissi con cui un `protagonista` NON e' un'entita' di Home
 #: Assistant, ma una condizione di sistema: una voce del registro di errori
-#: (`problema:`, `integrazione:`, `log:` -- Task 2 «le tracce e il log») o
+#: (`problema:`, `integrazione:`, `log:` -- Task 2 «le tracce e il log»),
 #: un'esecuzione di automazione in errore (`automazione:`, Task 4 dello
-#: stesso verticale). **Il lettore della tupla e' `genre_for`**, qui sotto, che
-#: ne fa un `guasto`. I singoli prefissi sono riletti a mano anche in
-#: `api/handlers_mind.py::_with_integration` e in
+#: stesso verticale) o la finestra in cui l'add-on e' rimasto scollegato da
+#: Home Assistant (`connessione:`, il riallineamento alla riconnessione,
+#: decisione del proprietario del 06/10/2026). **Il lettore della tupla e'
+#: `genre_for`**, qui sotto, che ne fa un `guasto`. I singoli prefissi sono
+#: riletti a mano anche in `api/handlers_mind.py::_with_integration` e in
 #: `mind/watcher.py::rebuild_conditions`.
 #:
-NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
+NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:",
+                       "connessione:")
 
 #: Il prefisso di un'istanza d'integrazione, chiesto alla tupla qui sopra e
 #: non riscritto: da qui lo scrive anche la cronaca. La voce di un'istanza le
 #: cui entita' sono assenti nello stesso istante (Task 1.4 degli attori,
 #: Passo 3) ha per soggetto la stessa istanza con lo stesso prefisso con cui l'osservatore
 #: scrive un'istanza in errore -- la stessa cosa vista da due porte ha la
-#: stessa forma (fondamenta 3). La tupla resta letterale perche' il suo
-#: gemello in JavaScript (`watcher-shared.js`, C-10 del registro) resti
-#: visibile al cancello dei doppioni; la prova dell'istanza
+#: stessa forma (fondamenta 3). La tupla resta letterale, e dal 06/10/2026
+#: il suo gemello in JavaScript (`parseSubjectPrefix` in `watcher-shared.js`,
+#: C-10 del registro) le e' legato da una prova
+#: (`tests/test_pagine_legate.py::test_subject_prefixes_are_read_by_the_page`);
+#: la prova dell'istanza
 #: (`test_un_integrazione_che_sparisce_tutta_insieme_e_UNA_voce`) arrossisce
 #: se l'ordine cambia.
 INSTANCE_SUBJECT_PREFIX = NOT_ENTITY_PREFIXES[1]
+
+#: Il soggetto della finestra di scollegamento: l'osservatore lo scrive alla
+#: riconnessione (`Watcher.realign`, «scollegato» all'inizio e «chiuso» alla
+#: fine), la cronaca ne fa una voce di sistema e le raccoglie dentro le
+#: assenze cominciate in quella finestra (`_gathered_by_disconnection`), il
+#: primo piano la lascia fuori (`report._front_page_mark`). Uno solo: c'e' un
+#: solo Home Assistant da cui l'add-on puo' restare scollegato.
+DISCONNECTION_SUBJECT = NOT_ENTITY_PREFIXES[4] + "home_assistant"
 
 #: **La regola con cui questo modulo costruisce la cronaca**, accanto
 #: all'impronta dei giudizi in `giudizio` (`chronicle_mark`). L'impronta dice
@@ -123,6 +136,12 @@ INSTANCE_SUBJECT_PREFIX = NOT_ENTITY_PREFIXES[1]
 #:   alzarla: la 4 non era ancora uscita in nessun rilascio (`git tag
 #:   --contains` del suo commit vuoto), quindi nessuna cronaca scritta da un
 #:   add-on pubblicato la porta con la forma di prima.
+#:
+#:   Non si alza nemmeno per la finestra di scollegamento (riallineamento alla
+#:   riconnessione, 06/10/2026): la sua voce e le assenze che raccoglie
+#:   nascono solo dalle righe `connessione:`, che nessun grezzo scritto prima
+#:   porta -- a parita' di grezzo la cronaca e' la stessa
+#:   (`test_senza_finestre_la_cronaca_non_cambia`).
 CHRONICLE_RULE = 4
 
 # **Il riposo e' del SOGGETTO, non l'unione di tutti i tipi** (17/09/2026, spec
@@ -729,25 +748,23 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # **Le assenze diventano voci, raccolte come le dichiara Home Assistant**
     # (`_absences`), e prendono il loro posto nell'ordine della cronaca: le
     # chiuse per fine, poi le aperte per inizio (`_chronicle_position`).
+    stretches = _gathered_by_disconnection(stretches, episodes)
     if stretches:
         for entry in _absences(stretches, house=house, names=entity_names):
             key = _episode_position(entry)
             index = next((i for i, e in enumerate(episodes)
                           if _episode_position(e) > key), len(episodes))
             episodes.insert(index, entry)
-    # **Il riavvio di Home Assistant non ha ancora una voce sua**, e non per
-    # dimenticanza. D5 la vuole («tutte le fonti assenti insieme -> una voce
-    # di sistema»), ma da riconoscere chiedendolo a una fonte che lo dichiari
-    # -- le condizioni di sistema dell'osservatore, o la fonte della Tappa 3
-    # -- e nessuna delle due oggi lo dice: `watch_system` non conosce il
-    # riavvio, `House.source` e' lo stato di adesso. E il grezzo non ne porta
-    # la traccia: durante il riavvio l'add-on e' scollegato, e le righe di
-    # andata a `unavailable` non arrivano mai (misurato sul 29/09/2026).
-    # Riconoscerlo da quante entita' cadono nello stesso minuto sarebbe una
-    # soglia nostra. La fonte che manca e' il riallineamento dell'osservatore
-    # alla riconnessione: lo stato che Home Assistant dichiara, col suo
-    # `last_changed`, contro l'ultima riga del grezzo -- e la finestra in cui
-    # l'add-on e' rimasto scollegato.
+    # **Il riavvio di Home Assistant ha la sua voce dal 06/10/2026**, e la
+    # prende da una fonte che lo dichiara, non da una soglia nostra: la
+    # finestra in cui l'add-on e' rimasto scollegato, misurata dal client
+    # (`HAClient.take_disconnection`) e scritta dall'osservatore alla
+    # riconnessione (`Watcher.realign`), che riallinea anche le entita'
+    # guardate allo stato che Home Assistant dichiara. Fino ad allora il
+    # grezzo non ne portava traccia: durante il riavvio l'add-on e'
+    # scollegato, e le righe di andata a `unavailable` non arrivano mai
+    # (misurato sul 29/09/2026). La voce non dice «riavvio»: un guasto di rete
+    # ha la stessa forma, e da qui non si distinguono.
     # **L'energia non e' un EPISODIO** (15/09/2026, con gli oggetti).
     # Qui si costruiva un episodio per ogni contatore -- valore iniziale,
     # finale, differenza -- e il suo unico lettore era l'oggetto. Nella
@@ -778,6 +795,44 @@ def _episode_position(episode: dict) -> tuple:
     """`_chronicle_position` di un episodio non ancora diventato voce: la
     stessa regola d'ordine, una sola."""
     return _chronicle_position({"fine_ts": episode["fine"], "quando_ts": episode["inizio"]})
+
+
+def _gathered_by_disconnection(stretches: list[dict], episodes: list[dict]) -> list[dict]:
+    """I tratti d'assenza che cominciano DENTRO una finestra di scollegamento
+    entrano nella voce di quella finestra, in `assenti`; torna gli altri.
+
+    E' la ragione della decisione del proprietario del 06/10/2026
+    («Riallinea»): le assenze dovute al riavvio non devono sembrare guasti.
+    Un'entita' che Home Assistant dichiara `unavailable` alla riconnessione,
+    con un istante dentro la finestra, e' sparita mentre l'add-on non
+    guardava: la voce che lo racconta e' quella della finestra, non quella
+    della sua istanza (che salirebbe in primo piano).
+
+    **Dentro, estremi compresi, e solo l'inizio.** La finestra e' un fatto
+    misurato (`HAClient.take_disconnection`), non un margine nostro: un
+    tratto cominciato prima era gia' un'assenza quando la connessione e'
+    caduta, e resta la voce sua; uno cominciato dopo la riconnessione l'ha
+    visto il rubinetto vivo. **Cosa non e' stato misurato**: se, dopo un
+    riavvio, Home Assistant scriva gli `unavailable` delle entita' non ancora
+    pronte prima o dopo che l'add-on si e' ricollegato. Quelli scritti dopo
+    restano voci dell'istanza.
+    """
+    windows = [e for e in episodes if e["protagonista"] == DISCONNECTION_SUBJECT]
+    if not windows:
+        return stretches
+    remaining = []
+    for stretch in stretches:
+        window = next((w for w in windows
+                       if w["inizio"] <= stretch["inizio"]
+                       and (w["fine"] is None or stretch["inizio"] <= w["fine"])), None)
+        if window is None:
+            remaining.append(stretch)
+            continue
+        window["corpo_base"].setdefault("assenti", []).append(_absent(stretch))
+    for window in windows:
+        if "assenti" in window["corpo_base"]:
+            window["corpo_base"]["assenti"].sort(key=lambda a: (a["quando_ts"], a["chi"]))
+    return remaining
 
 
 def _absences(stretches: list[dict], *, house: House | None,

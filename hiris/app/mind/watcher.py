@@ -24,7 +24,9 @@ from ..home_space.ha_vocabulary import (
 )
 from ..home_space.historian import instant_epoch
 from ..home_space.redaction import home_assistant_seal, seal_free_text
+from .facts import DISCONNECTION_SUBJECT
 from .knowledge import attributes_wanted_for
+from .store import READING_RETENTION_S
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,20 @@ _ROUNDS_BEFORE_CLOSING = 2
 # segnati e' cio' che il collettore rilegge a ogni cadenza, e tenerci dentro
 # un identificatore che non e' un identificatore significherebbe un WARNING
 # ogni due minuti, per sempre, su una cosa che non esiste.
+
+
+def _declared_instant(state: dict) -> float | None:
+    """L'istante che Home Assistant dichiara per uno stato: `last_updated`
+    (vedi il perche' in `watch_reading`), e `last_changed` come ripiego
+    dichiarato -- sbaglia di giorni su una riga di solo attributo, ma resta un
+    istante che HA dichiara. `None` se mancano o sono illeggibili tutti e due.
+    Uno solo, per il rubinetto e per il riallineamento: i due devono datare
+    lo stesso stato allo stesso istante, o il confronto del secondo con le
+    righe del primo non direbbe niente."""
+    when = instant_epoch(state.get("last_updated"))
+    if when is None:
+        when = instant_epoch(state.get("last_changed"))
+    return when
 
 
 def _text_or_none(value) -> str | None:
@@ -324,11 +340,7 @@ class Watcher:
             # ragione opposta, e vale la pena leggerlo accanto a questo: li'
             # si vuole «da quando e' accesa», che un attributo non deve
             # spostare.
-            when = instant_epoch(new_state.get("last_updated"))
-            if when is None:
-                # Ripiego dichiarato: `last_changed` sbaglia di giorni su una
-                # riga di solo attributo, ma resta un istante che HA dichiara.
-                when = instant_epoch(new_state.get("last_changed"))
+            when = _declared_instant(new_state)
             if when is None:
                 # Qui mancano o sono illeggibili TUTTI E DUE gli istanti,
                 # `last_updated` e `last_changed` (il messaggio nomina solo il
@@ -369,6 +381,75 @@ class Watcher:
             logger.warning("osservatore: evento non annotato (%s: %s)",
                            type(error).__name__, error)
             return False
+
+    def realign(self, states, *, gap: dict | None = None) -> int:
+        """Il riallineamento alla riconnessione (decisione del proprietario del
+        06/10/2026, «Riallinea»): cio' che e' cambiato mentre l'add-on era
+        scollegato entra nel grezzo, e la finestra con lui. Torna quante righe
+        ha scritto. **Non solleva mai**, come il rubinetto.
+
+        **La finestra** (`gap`, `{"da", "a"}` da `HAClient.take_disconnection`)
+        diventa due righe di sistema del soggetto `DISCONNECTION_SUBJECT`:
+        «scollegato» all'inizio, «chiuso» alla fine -- la forma di ogni
+        condizione di sistema, che nasce e finisce. Scritte insieme, a
+        riconnessione avvenuta: una finestra non ancora chiusa non si sa
+        quanto duri, e nessuna riga resta aperta se l'add-on si ferma nel
+        mezzo (in quel caso la finestra non c'e', dichiarato).
+
+        **Le entita'**: per ognuna che ha gia' una riga nel grezzo (dentro
+        `READING_RETENTION_S`), lo stato della fotografia (`states`, gli stati
+        cosi' come Home Assistant li manda: la stessa rilettura dello
+        specchio, `EntityCache.reload`) si confronta con l'ultima riga. Il
+        confronto lo fa `watch_reading`, con un evento composto dall'ultima
+        riga (il prima) e dalla fotografia (il dopo): gli stessi cancelli --
+        lo scope, le statistiche, `da == a`, gli attributi voluti -- e lo
+        stesso istante, quello che Home Assistant dichiara
+        (`_declared_instant`). Un secondo scrittore con regole sue sarebbe un
+        doppione che diverge al primo ritocco.
+
+        **Il grezzo piu' giovane della fotografia vince.** Se l'ultima riga
+        non e' piu' vecchia dell'istante che la fotografia dichiara, il
+        rubinetto vivo ha gia' scritto quello stato o uno successivo -- la
+        fotografia arriva dopo l'iscrizione, e un evento puo' superarla -- e
+        scrivere la fotografia lo smentirebbe con un dato piu' vecchio.
+
+        **Chi non ha righe non si tocca**: il confronto e' contro l'ultima riga
+        vista, e senza non c'e' niente da riallineare. Un'entita' rimossa
+        mentre l'add-on era scollegato non e' nella fotografia, e la chiude la
+        cronaca chiedendo alla fonte (`facts._episodes`, `House.source`).
+        """
+        written = 0
+        try:
+            if isinstance(gap, dict) and gap.get("da") is not None and gap.get("a") is not None:
+                self._store.record(quando_ts=float(gap["da"]), source="sistema",
+                                   subject=DISCONNECTION_SUBJECT, da=None, a="scollegato")
+                self._store.record(quando_ts=float(gap["a"]), source="sistema",
+                                   subject=DISCONNECTION_SUBJECT, da=None, a="chiuso")
+                written += 2
+            if not states:
+                return written
+            last = {r["soggetto"]: r for r in self._store.last_before(
+                float("inf"), since_ts=self._now() - READING_RETENTION_S)}
+            for state in states:
+                if not isinstance(state, dict):
+                    continue
+                row = last.get(state.get("entity_id"))
+                when = _declared_instant(state)
+                if row is None or when is None or when <= row["quando_ts"]:
+                    continue
+                try:
+                    before = json.loads(row["attributes"]) if row.get("attributes") else {}
+                except (TypeError, ValueError):
+                    before = {}
+                event = {"entity_id": row["soggetto"], "new_state": state,
+                         "old_state": {"state": row["a"],
+                                       "attributes": before if isinstance(before, dict) else {}}}
+                if self.watch_reading(event):
+                    written += 1
+        except Exception as error:
+            logger.warning("osservatore: riallineamento interrotto dopo %d righe (%s: %s)",
+                           written, type(error).__name__, error)
+        return written
 
     def _wanted_attributes(self, entity_id: str, attributes: dict) -> tuple[str, ...]:
         """Quali attributi tenere per questa entita', secondo il sapere.

@@ -399,6 +399,42 @@ async def test_alla_seconda_connessione_lo_specchio_si_rilegge():
 
 
 @pytest.mark.asyncio
+async def test_alla_riconnessione_l_osservatore_si_riallinea_con_la_stessa_fotografia():
+    """Il riallineamento (decisione del proprietario del 06/10/2026): la
+    casa finta fa da Home Assistant per il websocket e per gli stati, come il
+    client vero fa da tutti e due in produzione. La connessione cade e torna:
+    l'osservatore riceve la fotografia che lo specchio ha appena letto -- gli
+    stati UNA volta sola -- e la finestra che il client ha misurato.
+
+    Mutazione ESEGUITA: l'ascoltatore che passa `None` come finestra
+    invece di `take_disconnection()` -- rossa."""
+    house = CasaFinta(synthetic_inputs())
+    cache = _specchio_caricato()
+    heard = []
+
+    class Osservatore:
+        def realign(self, photo, *, gap):
+            heard.append((photo, gap))
+
+    observer = Osservatore()
+    house.add_topology_listener(mirror_reload_listener(house, cache, lambda: observer))
+    await house.start_websocket()
+    await asyncio.wait_for(house.ws_ready.wait(), 2)
+    house._session.drop()
+    for _ in range(100):
+        if heard:
+            break
+        await asyncio.sleep(0)
+    await _stop(house)
+
+    assert _state_reads(house) == 1
+    [(photo, gap)] = heard
+    assert {s["entity_id"] for s in photo} == {
+        s["entity_id"] for s in synthetic_inputs()["states"]}
+    assert set(gap) == {"da", "a"} and gap["da"] <= gap["a"]
+
+
+@pytest.mark.asyncio
 async def test_gli_altri_eventi_dell_anagrafe_non_rileggono_lo_specchio():
     """Mutazione ESEGUITA: togliere il `if event_type == "riconnessione"` --
     rossa (ogni evento di registro rilegge tutti gli stati)."""

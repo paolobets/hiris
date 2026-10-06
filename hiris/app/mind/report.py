@@ -602,6 +602,15 @@ def _front_page_mark(entry: dict, judgments) -> dict | None:
         # non ha mai per soggetto un `entity_id`, un'assenza di entita' si'.
         if is_entity_id(entry.get("chi")):
             return None
+        # **Nemmeno la finestra in cui l'add-on e' rimasto scollegato**
+        # (riallineamento alla riconnessione, 06/10/2026): un riavvio di Home
+        # Assistant non e' un guasto della casa, e la decisione del
+        # proprietario esiste perche' le assenze del riavvio non sembrino
+        # guasti. Resta nella cronaca, con le assenze che ha raccolto.
+        # Importata qui e non in cima: `facts` importa questo modulo.
+        from .facts import DISCONNECTION_SUBJECT
+        if entry.get("chi") == DISCONNECTION_SUBJECT:
+            return None
         # **L'impalcatura non sveglia nessuno** (decisione del proprietario,
         # 20/09/2026): Home Assistant che parla di se' -- il Supervisor, HACS,
         # il frontend -- resta nella cronaca e non sale in cima. Chi lo dice e'

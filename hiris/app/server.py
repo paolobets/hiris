@@ -1585,18 +1585,36 @@ def schedule_registry_rebuild(client, store, delay: float = 3.0, *,
     return trigger
 
 
-def mirror_reload_listener(client, entity_cache):
-    """Restituisce l'ascoltatore di topologia che rilegge lo specchio.
+def mirror_reload_listener(client, entity_cache, watcher=lambda: None):
+    """Restituisce l'ascoltatore di topologia che rilegge lo specchio, e con
+    la stessa fotografia riallinea l'osservatore.
 
     Spec «una porta sola» §6: il quarto avvisato, dopo anagrafe, servizi e
     plance. Gli altri eventi dell'anagrafe non lo toccano. `_ws_loop` emette
     «riconnessione» a ogni connessione riuscita DOPO la prima (Tappa 2, Task
     7, D2): alla prima l'avvio legge lo specchio una volta da se'
     (`entity_cache.load`), dopo essersi iscritto.
+
+    **Il riallineamento dell'osservatore** (decisione del proprietario del
+    06/10/2026, «Riallinea»): la finestra di scollegamento si prende SUBITO,
+    all'avviso (`HAClient.take_disconnection`), e la fotografia e' quella
+    che lo specchio ha appena letto (`EntityCache.reload`) -- nessuna seconda
+    lettura degli stati. `watcher` e' un richiamo, non l'osservatore: questo
+    ascoltatore si iscrive prima del websocket, l'osservatore nasce dopo, e
+    un avviso arrivato prima della sua nascita non riallinea niente (la
+    finestra si consuma lo stesso: era della connessione che l'avvio legge
+    da se').
     """
+    async def _reload_and_realign(gap) -> None:
+        photo = await entity_cache.reload(client)
+        observer = watcher()
+        if observer is not None:
+            observer.realign(photo, gap=gap)
+
     def _mirror_on_reconnect(event_type: str) -> None:
         if event_type == "riconnessione":
-            _spawn(entity_cache.reload(client), name="specchio-riconnessione")
+            _spawn(_reload_and_realign(client.take_disconnection()),
+                   name="specchio-riconnessione")
     return _mirror_on_reconnect
 
 
@@ -3668,7 +3686,8 @@ async def _on_startup(app: web.Application) -> None:
     ha_client.add_topology_listener(
         schedule_registry_rebuild(ha_client, home_space_store,
                                   then=lambda: prime_state_translations(app)))
-    ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
+    ha_client.add_topology_listener(
+        mirror_reload_listener(ha_client, entity_cache, lambda: app.get("watcher")))
     # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
     # sotto per la prima lettura, e che lo schedulatore rilegge a cadenza.
     ha_config_dir = home_assistant_folder()

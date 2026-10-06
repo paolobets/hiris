@@ -262,3 +262,65 @@ async def test_un_iscrizione_alle_integrazioni_rifiutata_si_dice(caplog):
     assert heard == []
     assert "config_entries/subscribe" in caplog.text and "Unauthorized" in caplog.text
     await _stop(client)
+
+
+# ── la finestra di scollegamento (riallineamento, 06/10/2026) ──────────────
+
+class _Clock:
+    """Un orologio che avanza di un secondo a ogni lettura: ogni istante
+    letto dal client e' diverso e riconoscibile."""
+
+    def __init__(self) -> None:
+        self.now = 1_000.0
+
+    def __call__(self) -> float:
+        self.now += 1
+        return self.now
+
+
+@pytest.mark.asyncio
+async def test_alla_riconnessione_la_finestra_va_dalla_caduta_al_ritorno():
+    """La finestra e' cio' che il client ha misurato: l'istante in cui la
+    connessione autenticata e' caduta e quello in cui la successiva e' stata
+    iscritta. La prende chi riceve l'avviso, una volta sola.
+
+    Mutazioni ESEGUITE: la finestra chiusa DOPO l'avviso invece che prima
+    -- rossa (chi ascolta trova `None`); `take_disconnection` che non svuota
+    -- rossa (la seconda lettura la ritrova)."""
+    client, connection = _client()
+    client._clock = _Clock()
+    taken: list = []
+    client.add_topology_listener(lambda _type: taken.append(client.take_disconnection()))
+    await client.start_websocket()
+    await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    # Alla prima connessione non c'e' una finestra: il prima non e' misurato.
+    assert client.take_disconnection() is None
+    connection.drop()
+    await _until(lambda: connection.listening == 2, "seconda connessione in ascolto")
+    assert taken == [{"da": 1_001.0, "a": 1_002.0}]
+    assert client.take_disconnection() is None
+    await _stop(client)
+
+
+@pytest.mark.asyncio
+async def test_i_tentativi_falliti_non_spostano_l_inizio_della_finestra():
+    """Mentre Home Assistant e' giu' il client riprova; un tentativo che non
+    arriva all'autenticazione non e' una connessione caduta. Qui il secondo
+    tentativo si vede rifiutare il gettone: la finestra comincia comunque alla
+    caduta della PRIMA connessione.
+
+    Mutazione ESEGUITA: l'inizio scritto a ogni giro del ciclo invece che
+    alla caduta di una connessione autenticata -- rossa (`da` diventa
+    l'istante del rifiuto)."""
+    client, connection = _client()
+    client._clock = _Clock()
+    taken: list = []
+    client.add_topology_listener(lambda _type: taken.append(client.take_disconnection()))
+    await client.start_websocket()
+    await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    connection.refuse_next_auth()
+    connection.drop()
+    await _until(lambda: connection.listening == 2, "terza connessione in ascolto")
+    assert connection.opened == 3
+    assert taken == [{"da": 1_001.0, "a": 1_002.0}]
+    await _stop(client)

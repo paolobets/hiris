@@ -2015,3 +2015,81 @@ def test_la_voce_dell_istanza_non_sceglie_lo_stato_del_primo_tratto(archivio):
     assert "cosa" not in entry or entry["cosa"] is None
     assert [(a["chi"], a["stato"]) for a in entry["assenti"]] == [
         ("switch.zona_1", "unavailable"), ("switch.zona_2", "unknown")]
+
+
+# ── la finestra di scollegamento (riallineamento, 06/10/2026) ──────────────
+
+def _disconnection(store, start, end):
+    """La finestra come la scrive l'osservatore alla riconnessione
+    (`Watcher.realign`): due righe di sistema, scritte insieme."""
+    Watcher(store).realign(None, gap={"da": start, "a": end})
+
+
+def test_la_finestra_di_scollegamento_e_una_voce_con_le_assenze_cominciate_dentro(archivio):
+    """Decisione del proprietario del 06/10/2026, «Riallinea»: il riavvio di
+    Home Assistant compare nella cronaca, e le assenze che ha causato non
+    sembrano guasti. HIRIS scollegato dalle 10 alle 10:03; l'irrigazione e
+    la luce del portico risultano `unavailable` da istanti DENTRO la finestra
+    (le righe che il riallineamento scrive col `last_updated` di Home
+    Assistant): entrano nella voce della finestra, non in quella della loro
+    istanza. Una luce assente da prima della finestra resta la sua voce.
+
+    Mutazione ESEGUITA: `_gathered_by_disconnection` che non raccoglie niente
+    -- rossa (la voce dell'istanza dell'irrigazione e quella del portico al
+    posto della finestra con le sue assenze)."""
+    house = _irrigation_house("light.portico", "light.garage")
+    _watched(archivio, *_IRRIGATION, "light.portico", "light.garage")
+    _ha(archivio, "light.garage", "off", "unavailable", ts(9))
+    _ha(archivio, "light.garage", "unavailable", "off", ts(11))
+    _disconnection(archivio, ts(10), ts(10, 3))
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(10, 2) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
+    _ha(archivio, "light.portico", "off", "unavailable", ts(10, 3))
+    _ha(archivio, "light.portico", "unavailable", "off", ts(10, 4))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    assert _entries(archivio) == [
+        ("connessione:home_assistant", tv.SYSTEM_GENRE, "scollegato", ts(10), ts(10, 3)),
+        ("light.garage", tv.SYSTEM_GENRE, "unavailable", ts(9), ts(11))]
+    finestra = cronaca(archivio)[0]
+    # Estremi compresi: il portico, sparito all'istante della riconnessione,
+    # e' della finestra.
+    assert [(a["chi"], a["quando_ts"], a["fine_ts"]) for a in finestra["assenti"]] == [
+        *[(eid, ts(10, 2) + i / 100, ts(10, 5) + i / 100) for i, eid in enumerate(_IRRIGATION)],
+        ("light.portico", ts(10, 3), ts(10, 4))]
+
+
+def test_la_finestra_di_scollegamento_non_sale_in_primo_piano(archivio):
+    """Un riavvio di Home Assistant non e' un guasto della casa: la voce della
+    finestra resta nella cronaca, fuori dal primo piano, dalla resa VERA della
+    pagina. Un'istanza sparita fuori dalla finestra continua a salire.
+
+    Mutazione ESEGUITA: in `_front_page_mark` togliere il ramo della finestra
+    -- rossa (`connessione:home_assistant` in primo piano come guasto)."""
+    from hiris.app.mind.report import as_page
+
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    _disconnection(archivio, ts(10), ts(10, 3))
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(12) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(12, 5) + i / 100)
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS)
+    assert [(r["chi"], r["sorta"]) for r in pagina["primo_piano"]] == [
+        ("integrazione:e_irr", "guasto")]
+    finestra = next(v for v in pagina["cronaca"] if v["chi"] == "connessione:home_assistant")
+    assert "primo_piano" not in finestra
+
+
+def test_senza_finestre_la_cronaca_non_cambia(archivio):
+    """Il grezzo scritto prima del riallineamento non ha righe di
+    `connessione:`: la cronaca e' quella di prima, ed e' per questo che
+    `CHRONICLE_RULE` non si alza (vedi il commento accanto)."""
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(10) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    assert [v["chi"] for v in cronaca(archivio)] == ["integrazione:e_irr"]
