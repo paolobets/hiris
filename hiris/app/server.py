@@ -1851,19 +1851,22 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     if isinstance(with_statistics, dict):  # la busta del guasto (D3)
         logger.warning("resoconto: elenco delle statistiche non letto (%s): %s",
                        with_statistics.get("causa"), with_statistics.get("errore"))
-        counted = house
+        list_read = False
+        # Senza l'elenco si chiedono TUTTE le sorelle possibili -- dispositivo
+        # e istanza -- e chi ha statistiche lo dice la risposta delle serie
+        # (sotto). Il ripiego sullo `state_class` dello specchio perdeva i
+        # termometri del 29/09 (G7-1, rimisura dello sprint su 413ce7a7,
+        # 06/10/2026): nello specchio non lo portavano.
+        lette = sorted({c for e in entita for c in house.possible_siblings(e)})
     else:
+        list_read = True
         counted = house.with_statistics(with_statistics)
+        lette = sorted({s for e in entita for s in counted.siblings(e) or [e]})
     # **Il giorno e la sua storia in UNA lettura, con le sorelle** (attori,
     # Task 1.3; proposta del 06/10/2026): la regola del dato fermo giudica il
     # gruppo di ogni entita' contro la stessa ora dei giorni prima
     # (`mind/flatline.py`). La finestra si allunga di `HISTORY_DAYS` e le
     # sorelle entrano nella stessa richiesta: nessuna richiesta in piu'.
-    gruppi = {}
-    for e in entita:
-        for sorella in counted.siblings(e) or [e]:
-            gruppi[sorella] = counted.sibling_group(sorella)
-    lette = sorted(gruppi)
     history_start_ts = da_ts - HISTORY_DAYS * 86400
     report = await ha_client.hourly_statistics(
         lette, datetime.fromtimestamp(history_start_ts, tz=UTC).isoformat(),
@@ -1879,7 +1882,21 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
                        giorno, report["errore"])
         refusal = unread_series(str(report["errore"]))
         return ricette, {}, nomi, {e: refusal for e in entita}, mute
-    finestra = {e: hourly_points(report["serie"].get(e) or []) for e in lette}
+    if not list_read:
+        # **Chi ha statistiche, detto da Home Assistant.** `recorder/
+        # statistics_during_period` risponde solo per gli id che hanno righe
+        # nella finestra (`recorder/statistics.py::_sorted_statistics_to_dict`,
+        # `seen_statistic_ids`, letto sul tag `2026.9.0` il 06/10/2026): la
+        # risposta e' un elenco anche lei, quello della finestra letta. La
+        # regola resta una, `House.has_statistics`; cambia solo da quale
+        # risposta di Home Assistant viene l'elenco.
+        counted = house.with_statistics(frozenset(
+            e for e, punti in report["serie"].items() if punti))
+    gruppi = {}
+    for e in entita:
+        for sorella in counted.siblings(e) or [e]:
+            gruppi[sorella] = counted.sibling_group(sorella)
+    finestra = {e: hourly_points(report["serie"].get(e) or []) for e in gruppi}
     serie = {e: split_at(finestra[e], da_ts)[1] for e in entita}
     # **Una misura su una fonte ferma si rifiuta** (D4): il 30/09/2026 il
     # resoconto ha scritto produzione 0 con copertura 1.0, e lo zero era
@@ -1890,10 +1907,10 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     if ferme:
         logger.info("resoconto: %d entita' ferme il %s -- le loro misure "
                     "diranno perche'", len(ferme), giorno)
-    if counted is house:
-        # Di quali entita' non abbiano statistiche non si afferma niente; che
-        # una fonte sia ferma si e' visto sulle serie, e resta: le sorelle le
-        # dice la regola dello `state_class` (`House.has_statistics`, G7-1).
+    if not list_read:
+        # Di quali entita' non abbiano statistiche non si afferma niente: una
+        # serie vuota nella finestra non e' «nessuna statistica». Che una
+        # fonte sia ferma si e' visto sulle serie, e resta (G7-1).
         return ricette, serie, nomi, ferme or None, mute
     # Il perche' di ognuna dalla FONTE (B-26; Tappa 3, Task 8): la
     # stessa casa del giro, con l'elenco appena letto -- nessuna seconda
