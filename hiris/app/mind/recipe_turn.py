@@ -214,9 +214,9 @@ def _operations_catalogue() -> str:
     lines = []
     for name, operation in REGISTRY.items():
         # **Solo cio' che una ricetta puo' davvero scrivere.** Il registro e' il
-        # vocabolario del prodotto e contiene voci che un dato non sa portare
-        # (`episodio` vuole `is_on`, una funzione; `tempo_in_stato` vuole un periodo,
-        # che dentro una ricetta nessuno sa produrre). Offrirle qui e' una trappola:
+        # vocabolario del prodotto e contiene voci che una ricetta non sa
+        # alimentare (`episodio` vuole gli stati di un'entita', `tempo_in_stato`
+        # un periodo: li consegna solo lo strumento di calcolo). Offrirle qui e' una trappola:
         # il modello le usa, il validatore le rifiuta sempre, il giro e' bruciato
         # e il dispositivo resta senza ricetta per sempre -- `devices_to_ask` non
         # richiede a chi una risposta l'ha gia' data. Misurato dal vivo il

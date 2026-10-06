@@ -348,42 +348,51 @@ class Operation:
     returns: str
     refuses_when: tuple[str, ...]
     run: Callable[..., Result]
-    #: Se una RICETTA puo' nominare questa operazione.
-    #:
-    #: **Il registro e le ricette non sono la stessa cosa.** Il registro ha
-    #: voci che una ricetta non potrebbe mai portare, perche' vogliono un
-    #: valore che il JSON non sa scrivere -- `episodio` vuole `is_on`, che e'
-    #: una FUNZIONE.
-    #:
-    #: **Costava un difetto vero, il 14/09/2026.** Il catalogo mostrato al
-    #: modello elencava ogni voce del registro; il modello ha scritto la sua
-    #: prima ricetta con `episodio`; `validate()` guardava solo che il nome
-    #: esistesse, e l'ha accettata; il resoconto l'ha eseguita e `TypeError` ha
-    #: ucciso la riaggregazione di due giorni interi, a ogni riavvio.
-    #:
-    #: Niente valore di fabbrica, come gli altri campi: la spec §6 dice «ogni
-    #: operazione dichiara, e non si puo' costruire senza», e un default
-    #: `True` avrebbe rifatto esattamente il difetto alla prossima voce nuova.
-    in_recipes: bool
     #: La FORMA di ogni ingresso, nell'ordine -- vedi le `SHAPE_*` qui sopra.
     #: Tante quante sono le cose che `run` prende per posizione, e un cancello
     #: lo verifica: una forma in meno lascerebbe un ingresso non controllato,
     #: che e' esattamente il buco da cui e' passato il difetto del
     #: 14/09/2026.
     takes: tuple[str, ...]
+    #: La FORMA di cio' che consegna a un passo successivo (`$passo`).
+    #:
+    #: Quasi sempre una misura (`SHAPE_RESULT`); `episodio` consegna un
+    #: periodo (`SHAPE_PERIOD`), e solo un'operazione che vuole un periodo puo'
+    #: leggerlo. Prima del 06/10/2026 `$passo` valeva «una misura» per
+    #: costruzione: era vero finche' nessuna operazione scrivibile consegnava
+    #: altro. Dichiarato e non dedotto, come `takes`: `run` restituisce un
+    #: `Result`, e cosa c'e' dentro la firma non lo dice.
+    gives: str
 
     @property
     def offerable(self) -> bool:
         """Se il catalogo puo' offrirla al modello.
 
-        Non basta che una ricetta possa NOMINARLA (`in_recipes`): deve anche
-        poterle consegnare cio' che vuole. Un'operazione che pretende un
-        `Period`, le letture grezze o un elenco di misure non ha nessuna
-        sorgente dentro una ricetta -- offrirla sarebbe metterla nell'elenco
-        perche' il modello la usi e il validatore la rifiuti sempre, bruciando
-        il giro e lasciando il dispositivo senza ricetta per sempre.
+        Una ricetta deve poterle consegnare cio' che vuole. Un'operazione che
+        pretende un periodo o le letture degli stati non ha nessuna sorgente
+        dentro una ricetta -- offrirla sarebbe metterla nell'elenco perche' il
+        modello la usi e il validatore la rifiuti sempre, bruciando il giro e
+        lasciando il dispositivo senza ricetta per sempre.
+
+        **Fino al 06/10/2026 c'era anche `in_recipes`**, per `episodio` che
+        voleva una funzione (`is_on`): nessun dato la sa scrivere. Da quando
+        prende lo stato come parola, ogni voce del registro e' scrivibile, e la
+        forma basta da sola: un campo che vale `True` su ogni voce e' una
+        domanda che nessuno fa piu'.
         """
-        return self.in_recipes and all(f in RECIPE_SHAPES for f in self.takes)
+        return all(f in RECIPE_SHAPES for f in self.takes)
+
+    @property
+    def offered_to_tool(self) -> bool:
+        """Se lo strumento di calcolo (`mind/compute.py`) puo' offrirla.
+
+        Lo strumento sa consegnare piu' forme di una ricetta (`TOOL_SHAPES`):
+        legge anche gli stati di un'entita', e da li' `episodio` ritaglia un
+        periodo. E' la decisione D7 del proprietario (06/10/2026): `episodio`
+        e `tempo_in_stato` restano per la presenza, offribili **solo** allo
+        strumento.
+        """
+        return all(f in TOOL_SHAPES for f in self.takes)
 
     @property
     def required_params(self) -> tuple[str, ...]:
@@ -445,6 +454,11 @@ SHAPE_PERIOD = "periodo"
 #: chiamante in produzione.
 RECIPE_SHAPES = (SHAPE_SERIES, SHAPE_RESULT)
 
+#: Le forme che lo strumento di calcolo sa consegnare: quelle di una ricetta,
+#: piu' gli stati di un'entita' (`@entita` davanti a un'operazione che vuole
+#: letture) e il periodo che un passo `episodio` produce (`$passo`).
+TOOL_SHAPES = (*RECIPE_SHAPES, SHAPE_READINGS, SHAPE_PERIOD)
+
 
 #: Quale versione del registro. Le ricette vivranno piu' a lungo del registro
 #: che le esegue: senza un numero, una ricetta scritta oggi e riletta fra sei
@@ -468,7 +482,11 @@ RECIPE_SHAPES = (SHAPE_SERIES, SHAPE_RESULT)
 #:   dal catalogo (3.37.0); e la domanda dice **quali entita' abbiano una
 #:   serie** (3.47.0). I 21 rifiuti archiviati erano stati decisi senza saperlo,
 #:   e restavano validi per sempre: alzando il numero tornano domande aperte.
-REGISTRY_VERSION = 2
+#: - **3** (06/10/2026) -- entra `somma_fra` (decisione D8 del proprietario,
+#:   piano degli attori strati 3-4): la consumata si scrive con una somma
+#:   invece che con quattro differenze in catena. I rifiuti archiviati tornano
+#:   domande, una volta: e' il costo che D8 dichiarava.
+REGISTRY_VERSION = 3
 
 _REGISTRY: dict[str, Operation] = {}
 
@@ -655,7 +673,7 @@ _register(Operation(
                    "la serie non ha nessun punto con un valore",
                 "la copertura sta sotto il minimo"),
     takes=(SHAPE_SERIES,),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_sum_period,
 ))
 
@@ -711,7 +729,7 @@ _register(Operation(
     refuses_when=("una delle due non e' calcolabile", "il denominatore e' nullo",
                   "il rapporto sarebbe negativo"),
     takes=(SHAPE_RESULT, SHAPE_RESULT),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_ratio,
 ))
 
@@ -747,8 +765,39 @@ _register(Operation(
     returns="la loro differenza, con la copertura peggiore delle due",
     refuses_when=("una delle due non e' calcolabile", "le unita' sono diverse"),
     takes=(SHAPE_RESULT, SHAPE_RESULT),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_difference,
+))
+
+
+def _sum(first: Result, second: Result) -> Result:
+    """`prima + seconda`, **con la stessa unita' e la copertura peggiore**.
+
+    Nasce dalla decisione D8 del proprietario (06/10/2026): la consumata di
+    una casa col fotovoltaico -- prodotta meno immessa piu' prelevata piu'
+    scaricata meno caricata -- si scriveva con quattro `differenza_fra` in
+    catena, ed e' il passo che un modello sbaglia piu' facilmente. Le tre
+    regole sono quelle di `differenza_fra`, per le stesse ragioni.
+    """
+    for r in (first, second):
+        if not r.computable:
+            return r
+    if first.unit != second.unit:
+        return NotComputable(
+            f"unita' diverse ({first.unit} e {second.unit}): la somma "
+            "sarebbe un numero senza significato", cause=RECIPE_BROKEN)
+    return Measurement(round(first.value + second.value, 2), unit=first.unit,
+                       coverage=min(first.coverage, second.coverage))
+
+
+_register(Operation(
+    name="somma_fra",
+    inputs=("una misura", "un'altra misura della stessa unita'"),
+    returns="la loro somma, con la copertura peggiore delle due",
+    refuses_when=("una delle due non e' calcolabile", "le unita' sono diverse"),
+    takes=(SHAPE_RESULT, SHAPE_RESULT),
+    gives=SHAPE_RESULT,
+    run=_sum,
 ))
 
 
@@ -785,7 +834,7 @@ _register(Operation(
     refuses_when=("l'entita' non ha statistiche in Home Assistant",
                    "la serie e' vuota", "la copertura sta sotto il minimo"),
     takes=(SHAPE_SERIES,),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_average_min_max,
 ))
 
@@ -821,88 +870,116 @@ _register(Operation(
     refuses_when=("l'entita' non ha statistiche in Home Assistant",
                    "la serie non ha nessun punto",),
     takes=(SHAPE_SERIES,),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_per_hour,
 ))
 
 
-def _episode(readings, *, is_on, period_end: float) -> Result:
-    """Le finestre in cui un soggetto era «acceso»: **un `Period`**.
+def _episode(readings, *, state: str, period_start: float,
+             period_end: float) -> Result:
+    """Le finestre in cui un soggetto era in uno STATO: **un `Period`**.
 
-    Estratta dal ciclo apri/chiudi degli episodi di `mind/facts`, che dal
-    17/09/2026 vive in `build_episodes` e non piu' dentro `aggregate_day`
-    (spec 2026-09-16 §6: **una** costruzione degli episodi, chiamata
-    dall'aggregazione e dal ricalcolo). Restituisce
-    un periodo e non una lista di coppie **perche' e' cio' che rende la
-    restrizione una composizione**: le finestre che escono di qui entrano in
-    qualunque altra operazione come «su quando» (vedi `Period`).
+    Nata dal ciclo apri/chiudi degli episodi di `mind/facts` (oggi
+    `build_episodes`). Resta per la presenza (D7 del proprietario, 06/10/2026):
+    *quanto tempo qualcuno e' stato in casa* e' `episodio` sugli stati di una
+    `person` con `state="home"`, poi `tempo_in_stato`.
 
-    `is_on` arriva da fuori -- il vocabolario dei tipi sa quali stati siano
-    riposo, e questo modulo non lo sa ne' deve impararlo.
+    **Lo stato e' una parola, non una funzione.** Fino al 06/10/2026 prendeva
+    `is_on`, una funzione: nessun dato la sa scrivere, e l'operazione non si
+    poteva nominare da nessuna parte. Lo stato e' il valore che Home Assistant
+    scrive (`home`, `on`, `heat`): si confronta cosi' com'e', senza
+    traduzioni -- la traduzione fra i due mondi vive al confine, non qui.
 
     **Un episodio ancora aperto arriva alla fine del periodo, non all'ultima
-    lettura.** Cio' che a fine giornata e' ancora in corso e' un fatto:
-    chiuderlo dove l'abbiamo visto l'ultima volta direbbe che e' finito quando
-    invece non lo sappiamo.
+    lettura**: l'assenza di un cambio dopo l'ultima lettura e' essa stessa
+    informazione. **In testa non si va prima della prima lettura**: li'
+    l'assenza non dice niente -- prima non stavamo guardando.
 
-    **I due capi non si trattano allo stesso modo, e non e' una svista.** In
-    coda si va oltre l'ultima lettura perche' l'assenza di uno spegnimento e'
-    essa stessa informazione: nessuno ha detto «finito». In testa non si va
-    indietro rispetto alla prima lettura, perche' li' l'assenza non dice
-    niente -- prima non stavamo guardando. Chi sa che era gia' acceso lo dice
-    consegnando una lettura all'inizio del periodo: e' esattamente cio' che
-    `mind/facts.aggregate_day` fa con lo stato ereditato dal giorno prima
-    (fetta 1, 10/09/2026 -- otto termostati accesi tutto il tempo che
-    producevano zero episodi).
+    **La copertura e' la parte del periodo che le letture coprono**, dalla
+    prima lettura alla fine. Home Assistant consegna lo stato all'inizio della
+    finestra quando lo conosce; quando non lo conosce piu' (il registro degli
+    stati ne tiene circa otto giorni, misura R0 del 03/10/2026) la prima
+    lettura arriva dopo, e un tempo misurato su tre giorni di trenta non e' il
+    tempo dei trenta: sotto `MINIMUM_COVERAGE` si rifiuta, come ogni altra
+    operazione.
     """
+    pairs = [(float(instant), value) for instant, value in readings or []]
+    span = float(period_end) - float(period_start)
+    if span <= 0:
+        return NotComputable("il periodo finisce prima di cominciare",
+                             cause=RECIPE_BROKEN)
+    if not pairs:
+        return NotComputable(
+            "nessuna lettura degli stati nel periodo: Home Assistant non ne "
+            "conserva per questa finestra", cause=COVERAGE_LOW)
+    first = max(pairs[0][0], float(period_start))
+    coverage = round((float(period_end) - first) / span, 3)
+    if coverage < MINIMUM_COVERAGE:
+        return NotComputable(
+            f"gli stati coprono il {coverage:.0%} del periodo, sotto il minimo "
+            f"di {MINIMUM_COVERAGE:.0%}: Home Assistant ne conserva circa otto "
+            "giorni, e un tempo misurato su una parte non e' il tempo del "
+            "periodo", cause=COVERAGE_LOW)
     windows = []
     start = None
-    for instant, state in readings or []:
-        if is_on(state):
+    for instant, value in pairs:
+        if value == state:
             if start is None:
-                start = float(instant)
+                start = instant
         elif start is not None:
-            windows.append((start, float(instant)))
+            windows.append((start, instant))
             start = None
     if start is not None:
         windows.append((start, float(period_end)))
     if not windows:
-        return NotComputable("nessun episodio nel periodo: non si e' mai acceso", cause=NO_ANSWER)
-    return Measurement(Period(windows), unit="periodo", coverage=1.0)
+        return NotComputable(f"nessun episodio nel periodo: non e' mai stato «{state}»",
+                             cause=NO_ANSWER)
+    return Measurement(Period(windows), unit="periodo", coverage=coverage)
 
 
 _register(Operation(
     name="episodio",
-    inputs=("le letture di un soggetto", "come si riconosce un riposo",
-              "la fine del periodo"),
-    returns="le finestre in cui era acceso, come un periodo",
-    refuses_when=("non si e' mai acceso nel periodo",),
-    # `is_on` e' una FUNZIONE: nessun JSON la porta, quindi nessuna
-    # ricetta puo' nominare questa operazione. Resta nel registro per la
-    # presenza (D7, 06/10/2026): non la chiama ancora nessuno.
+    inputs=("gli stati di un'entita' nel periodo",),
+    returns="le finestre in cui era nello stato chiesto, come un periodo",
+    refuses_when=("non c'e' nessuna lettura degli stati",
+                  "gli stati coprono troppo poco del periodo",
+                  "non e' mai stato in quello stato"),
+    # Le letture degli stati non le sa consegnare una ricetta: solo lo
+    # strumento di calcolo (`TOOL_SHAPES`). Inizio e fine del periodo li mette
+    # lui, dal periodo chiesto.
     takes=(SHAPE_READINGS,),
-    in_recipes=False,
+    gives=SHAPE_PERIOD,
     run=_episode,
 ))
 
 
-def _time_in_state(period: Period) -> Result:
-    """Quanto e' durato in tutto, in secondi.
+def _time_in_state(period: Result) -> Result:
+    """Quanto e' durato in tutto, in secondi, **con la copertura del periodo**.
+
+    Prende il risultato di `episodio`, non un `Period` nudo: un passo consegna
+    un risultato, e il «non lo so» di `episodio` (nessuna lettura, copertura
+    bassa) deve arrivare fino in fondo con la sua causa, come in ogni altra
+    operazione del registro.
 
     Si appoggia a `Period.duration_s`, che ha gia' fuso le finestre contigue:
-    due episodi attaccati sono un tempo solo, e sommarli separati li
-    conterebbe due volte al confine.
+    due episodi attaccati sono un tempo solo.
     """
-    return Measurement(period.duration_s, unit="s", coverage=1.0)
+    if not period.computable:
+        return period
+    if not isinstance(period.value, Period):
+        return NotComputable(
+            "tempo_in_stato vuole un periodo, e ha ricevuto una misura "
+            f"in {period.unit}", cause=RECIPE_BROKEN)
+    return Measurement(period.value.duration_s, unit="s", coverage=period.coverage)
 
 
 _register(Operation(
     name="tempo_in_stato",
-    inputs=("un periodo",),
-    returns="la durata totale, in secondi",
-    refuses_when=("il periodo non esiste: `Period` rifiuta un elenco vuoto",),
+    inputs=("il periodo di un passo `episodio`",),
+    returns="la durata totale, in secondi, con la copertura del periodo",
+    refuses_when=("il periodo non e' calcolabile",),
     takes=(SHAPE_PERIOD,),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_time_in_state,
 ))
 
@@ -939,7 +1016,7 @@ _register(Operation(
     returns="di quanto e' cambiato, e in che proporzione quando ha senso",
     refuses_when=("una delle due non e' calcolabile", "le unita' sono diverse"),
     takes=(SHAPE_RESULT, SHAPE_RESULT),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_period_comparison,
 ))
 
@@ -982,7 +1059,7 @@ _register(Operation(
     refuses_when=("l'entita' non ha statistiche in Home Assistant",
                    "i punti con un valore sono meno di tre",),
     takes=(SHAPE_SERIES,),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_trend_line,
 ))
 
@@ -1034,6 +1111,6 @@ _register(Operation(
                    "le serie hanno lunghezza diversa", "le coppie sono meno di tre",
                 "una delle due non varia affatto"),
     takes=(SHAPE_SERIES, SHAPE_SERIES),
-    in_recipes=True,
+    gives=SHAPE_RESULT,
     run=_correlation,
 ))

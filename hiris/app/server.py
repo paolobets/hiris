@@ -85,7 +85,13 @@ from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
-from .mind.recipes import Recipe, muted_recipes, silent_entities, unread_series
+from .mind.recipes import (
+    Recipe,
+    hourly_points,
+    muted_recipes,
+    silent_entities,
+    unread_series,
+)
 from .mind.seed import (
     HOUSE_PRIORITY,
     REPO_PRIORITY,
@@ -1882,7 +1888,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
                        giorno, report["errore"])
         refusal = unread_series(str(report["errore"]))
         return ricette, {}, nomi, {e: refusal for e in entita}, mute
-    finestra = {e: _punti_orari(report["serie"].get(e) or []) for e in lette}
+    finestra = {e: hourly_points(report["serie"].get(e) or []) for e in lette}
     serie = {e: split_at(finestra[e], da_ts)[1] for e in entita}
     # **Una misura su una fonte ferma si rifiuta** (D4): il 30/09/2026 il
     # resoconto ha scritto produzione 0 con copertura 1.0, e lo zero era
@@ -1956,34 +1962,6 @@ async def hold_watcher_statistic_ids(app, ha_client) -> None:
     if watcher is None or ha_client is None:
         return
     watcher.hold_statistic_ids(await statistic_ids_for_round(app, ha_client))
-
-
-def _punti_orari(punti) -> list[dict]:
-    """Le statistiche orarie nella forma che le operazioni leggono.
-
-    Il `cambio` dell'ora, mai uno zero inventato dove il dato manca. Fino al
-    01/10/2026 ne esisteva una copia privata del bilancio
-    (`mind/facts._dimension_points`), uscita con lui: questa e' l'unica.
-    """
-    return [{"inizio": p.get("inizio"), "fine": p.get("fine"),
-             "valore": p.get("cambio"),
-             # **Home Assistant manda gia' anche questi, e noi li buttavamo.**
-             # Le sue statistiche orarie sono di due generi: un CONTATORE porta
-             # `change` (il nostro `cambio`), una MISURA ISTANTANEA porta
-             # `mean`/`min`/`max`. Misurato sulla casa vera il 14/09/2026: 74
-             # contatori e **56 misure istantanee** -- ogni temperatura,
-             # umidita', CO2, rumore, segnale e potenza. Tenendo solo il
-             # `cambio`, quelle 56 arrivavano alle ricette come una serie di
-             # `None`, e ogni misura su di loro rifiutava con «la serie e'
-             # vuota»: 21 su 32 in un giorno solo.
-             #
-             # E' la frase da cui nasce tutta la spec -- «Home Assistant
-             # dichiara gia' tutto, e la copia lo butta» -- che stava
-             # succedendo dentro il codice nuovo.
-             "media": p.get("media"),
-             "minimo": p.get("minimo"),
-             "massimo": p.get("massimo")}
-            for p in punti if isinstance(p, dict)]
 
 
 # **`_device_names` vive in `api/handlers_mind.py`, e qui si importa.**

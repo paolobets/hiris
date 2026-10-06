@@ -7,7 +7,7 @@ ogni serie da sola, e sulle catture dal 03/09 al 03/10 dava 325 falsi su 360
 rifiuti; questa guarda il gruppo (`House.sibling_group`), e sulle stesse
 catture ne da' 15 su 73 (rigioco dello sprint, 06/10/2026).
 
-**Le serie sono sintetiche**, nella forma di `server._punti_orari`, e senza
+**Le serie sono sintetiche**, nella forma di `recipes.hourly_points`, e senza
 nomi della casa. Gli scenari sono quelli del prototipo della proposta
 (`/mnt/project-files/attori/2026-10-06-dato-fermo-prototipo.py`), che lo
 sprint ha fatto girare sulle catture.

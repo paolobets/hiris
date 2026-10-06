@@ -1319,6 +1319,18 @@ async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
     return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
 
 
+async def read_bands(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
+    """Le statistiche orarie di Home Assistant nella finestra: `{"serie"}` o la
+    busta del guasto, intera (`read_failure`). L'unica lettura delle fasce
+    orarie: la chiedono i valori di `history` e la ricetta al volo
+    (`mind/compute.py`)."""
+    answer = await ha.hourly_statistics(
+        entity_ids, query.start.isoformat(), query.end.isoformat())
+    if not isinstance(answer, dict) or "serie" not in answer:
+        return read_failure(answer, "le statistiche orarie non sono arrivate")
+    return {"serie": answer["serie"]}
+
+
 def journal_acts(journal, query: HistoryQuery) -> list[dict] | None:
     """Gli atti di HIRIS nella finestra, per dire «per mano di HIRIS».
     `None` -- non `[]` -- quando la cronaca non c'e' o non risponde: «non
@@ -1370,11 +1382,9 @@ async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -
               else {"serie": {}, "troncato": False})
     if "errore" in detail:
         return detail
-    bands = (await ha.hourly_statistics(
-        band_ids, query.start.isoformat(), query.end.isoformat()) if band_ids
-        else {"serie": {}})
-    if not isinstance(bands, dict) or "serie" not in bands:
-        return read_failure(bands, "le statistiche orarie non sono arrivate")
+    bands = await read_bands(ha, band_ids, query) if band_ids else {"serie": {}}
+    if "errore" in bands:
+        return bands
     return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
                       truncated=detail["troncato"], surfaces=surfaces,
                       units=mirror.units, state_classes=state_classes,

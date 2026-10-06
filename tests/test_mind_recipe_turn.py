@@ -945,16 +945,14 @@ def test_il_catalogo_NON_offre_al_modello_cio_che_una_ricetta_non_puo_scrivere()
     il dispositivo senza ricetta per sempre (`devices_to_ask` non richiede chi
     una risposta l'ha gia' data).
 
-    Mutazione: togliere il filtro `in_recipes` da `_operations_catalogue` --
+    Mutazione: togliere il filtro `offerable` da `_operations_catalogue` --
     rossa.
     """
     catalogo = rt._operations_catalogue()
     assert "episodio" not in catalogo
-    # E non basta `in_recipes`: `tempo_in_stato` una ricetta saprebbe
-    # NOMINARLA, ma non saprebbe consegnarle un periodo -- nessuna operazione
-    # offribile ne produce uno. Offrirla sarebbe la stessa trappola, un anello
-    # piu' in la'. Mutazione che la uccide: filtrare il catalogo su
-    # `in_recipes` invece che su `offerable`.
+    # `tempo_in_stato` una ricetta saprebbe NOMINARLA, ma non saprebbe
+    # consegnarle un periodo -- nessuna operazione offribile ne produce uno.
+    # Offrirla sarebbe la stessa trappola, un anello piu' in la'.
     assert "tempo_in_stato" not in catalogo
     assert "somma_periodo" in catalogo
 

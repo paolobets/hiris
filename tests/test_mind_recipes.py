@@ -321,19 +321,51 @@ def test_le_entita_che_la_ricetta_NOMINA_si_leggono_senza_eseguirla():
 #    giorni, a ogni riavvio, per sempre.
 
 
-def test_una_ricetta_che_nomina_un_operazione_NON_scrivibile_si_rifiuta():
-    """`episodio` resta nel registro -- `aggregate_day` lo usa -- ma non e'
-    scrivibile in una ricetta: `is_on` e' una funzione, e un dato non porta
-    funzioni. Il rifiuto dice PERCHE', o il modello riproverebbe.
+def test_una_ricetta_che_nomina_un_operazione_sugli_STATI_si_rifiuta():
+    """`episodio` vuole gli stati di un'entita', e dentro una ricetta `@entita`
+    consegna solo la serie delle statistiche: il primo modello che l'ha
+    scritta, il 14/09/2026, ha ucciso la riaggregazione di due giorni. Il
+    rifiuto dice le due forme, o il modello riproverebbe.
 
-    Mutazione: togliere il controllo su `in_recipes` da `validate` -- rossa.
+    Mutazione ESEGUITA: far consegnare a `@entita` anche le letture in una
+    ricetta (`entity_shapes` di fabbrica con `SHAPE_READINGS`) -- rossa.
     """
     ricetta = ric.Recipe({"why": "quanto e' stato acceso",
                       "steps": [{"name": "acceso", "operation": "episodio",
-                                 "inputs": ["@climate.x"]}]})
+                                 "inputs": ["@climate.x"],
+                                 "params": {"state": "heat", "period_start": 0,
+                                            "period_end": 3600}}]})
     esito = ricetta.validate(entities={"climate.x"})
     assert not esito.valid
-    assert any("episodio" in p and "non si puo' scrivere in una ricetta" in p
+    assert any("episodio" in p and "vuole letture" in p
+               for p in esito.problems), esito.problems
+
+
+def test_un_passo_che_consegna_un_PERIODO_lo_consegna_solo_a_chi_lo_vuole():
+    """`$passo` consegna cio' che l'operazione di quel passo dichiara
+    (`Operation.gives`): il periodo di `episodio` va a `tempo_in_stato`, una
+    misura no. Fino al 06/10/2026 `$passo` era «una misura» per costruzione.
+
+    Mutazione ESEGUITA: `_shapes_of` che per `$passo` torna sempre
+    `SHAPE_RESULT` -- rossa su entrambe le ricette.
+    """
+    from hiris.app.mind.operations import SHAPE_READINGS, SHAPE_SERIES
+
+    con_gli_stati = (SHAPE_SERIES, SHAPE_READINGS)
+    giusta = ric.Recipe({"why": "in casa", "steps": [
+        {"name": "in_casa", "operation": "episodio", "inputs": ["@person.a"],
+         "params": {"state": "home", "period_start": 0, "period_end": 3600}},
+        {"name": "quanto", "operation": "tempo_in_stato", "inputs": ["$in_casa"]}]},
+        entity_shapes=con_gli_stati)
+    storta = ric.Recipe({"why": "x", "steps": [
+        {"name": "t", "operation": "somma_periodo", "inputs": ["@sensor.a"],
+         "params": {"unit": "kWh"}},
+        {"name": "quanto", "operation": "tempo_in_stato", "inputs": ["$t"]}]},
+        entity_shapes=con_gli_stati)
+
+    assert giusta.validate(entities={"person.a"}).valid
+    esito = storta.validate(entities={"sensor.a"})
+    assert any("tempo_in_stato" in p and "vuole periodo" in p
                for p in esito.problems), esito.problems
 
 
@@ -370,21 +402,19 @@ def test_tutte_le_operazioni_OFFERTE_al_modello_sono_eseguibili_da_una_ricetta()
     obbligatori un JSON non sa portare e' una trappola che aspetta.
 
     Un parametro obbligatorio e' portabile da una ricetta solo se il suo valore
-    e' un letterale JSON. Una funzione (`is_on`) non lo e'; un `Period` neanche
-    -- va calcolato da un passo, e i passi si passano come `inputs`
-    POSIZIONALI, non come parametri.
+    e' un letterale JSON. Una funzione (`is_on`, che `episodio` prendeva fino
+    al 06/10/2026) non lo e'; un `Period` neanche -- va calcolato da un passo,
+    e i passi si passano come `inputs` POSIZIONALI, non come parametri.
 
-    Mutazione: rimettere `in_recipes=True` su `episodio` -- rossa.
+    Mutazione: rimettere `is_on` fra i parametri di `episodio` -- rossa.
     """
     import inspect
 
     from hiris.app.mind.operations import REGISTRY
 
-    valori_esclusi = {"is_on", "period", "period_end"}
+    valori_esclusi = {"is_on", "period"}
     colpevoli = []
     for name, operation in REGISTRY.items():
-        if not operation.in_recipes:
-            continue
         firma = inspect.signature(operation.run)
         for p in firma.parameters.values():
             if (p.kind is p.KEYWORD_ONLY and p.default is p.empty

@@ -148,6 +148,7 @@ def test_il_non_lo_so_si_propaga_CON_la_sua_causa():
     letto = ops.Measurement(4.0, unit="kWh", coverage=1.0)
     for operation, args in (("quota", (spento, letto)), ("quota", (letto, spento)),
                             ("differenza_fra", (spento, letto)),
+                            ("somma_fra", (spento, letto)),
                             ("confronto_periodi", (letto, spento))):
         result = ops.REGISTRY[operation].run(*args)
         assert result.cause == "spenta_dal_proprietario", operation
@@ -538,28 +539,27 @@ def test_per_ora_su_una_giornata_BUCATA_porta_l_ora_vera_non_quella_ricostruita(
     ]
 
 
-# -- le operazioni sul grezzo: episodi, durate, conteggi --------------------
+# -- gli stati: episodi e durate ---------------------------------------------
 #
-# ESTRATTE dal ciclo apri/chiudi di `mind/facts.aggregate_day`. Le letture sono
-# `(istante, stato)` come le scrive `mind/watcher.watch_reading`. Delle sei di
-# questa famiglia ne restano due, quelle che servono alla presenza (D7 del
-# proprietario, 06/10/2026, piano degli attori strati 3-4); le altre quattro
-# sono uscite con le sette domande dell'11/09/2026, che nessuno poneva piu'.
-
-ACCESO = ("heat", "on", "not_home")
+# Delle sei operazioni sugli stati ne restano due, quelle che servono alla
+# presenza (D7 del proprietario, 06/10/2026, piano degli attori strati 3-4); le
+# altre quattro sono uscite con le sette domande dell'11/09/2026. Le letture
+# sono `(istante, stato)`, con lo stato com'e' scritto da Home Assistant.
 
 
-def _acceso(state):
-    return str(state).strip().lower() in ACCESO
+def _episodio(letture, state="heat", start=0.0, end=21600.0):
+    return ops.REGISTRY["episodio"].run(letture, state=state, period_start=start,
+                                        period_end=end)
 
 
 def test_episodio_apre_e_chiude_e_restituisce_un_periodo():
     readings = [(0.0, "off"), (3600.0, "heat"), (9000.0, "off"), (18000.0, "heat")]
 
-    r = ops.REGISTRY["episodio"].run(readings, is_on=_acceso, period_end=21600.0)
+    r = _episodio(readings)
 
     assert r.computable
     assert r.value.windows == ((3600.0, 9000.0), (18000.0, 21600.0))
+    assert r.coverage == 1.0
 
 
 def test_un_episodio_ancora_APERTO_arriva_alla_fine_del_periodo_e_non_oltre():
@@ -569,51 +569,85 @@ def test_un_episodio_ancora_APERTO_arriva_alla_fine_del_periodo_e_non_oltre():
 
     Mutazione che la uccide: chiudere all'ultima lettura.
     """
-    r = ops.REGISTRY["episodio"].run([(3600.0, "heat")], is_on=_acceso,
-                                        period_end=21600.0)
+    r = _episodio([(0.0, "off"), (3600.0, "heat")])
 
     assert r.value.windows == ((3600.0, 21600.0),)
 
 
-def test_senza_nessun_acceso_non_c_e_nessun_episodio_e_si_dice():
+def test_senza_lo_stato_chiesto_non_c_e_nessun_episodio_e_si_dice():
     """Zero episodi non e' un periodo vuoto da restituire: e' una risposta, e
     va detta -- `Period` rifiuta un elenco vuoto apposta."""
-    r = ops.REGISTRY["episodio"].run([(0.0, "off")], is_on=_acceso,
-                                        period_end=3600.0)
+    r = _episodio([(0.0, "off")], end=3600.0)
 
     assert not r.computable
     assert "nessun episodio" in r.reason
+    assert r.cause == ops.NO_ANSWER
 
 
-def test_episodio_i_due_capi_NON_si_trattano_allo_stesso_modo():
-    """In coda si va oltre l'ultima lettura, in testa no -- e la differenza e'
-    quanto sappiamo dei due silenzi.
-
-    Dopo l'ultimo «acceso» nessuno ha detto «finito»: l'assenza di uno
-    spegnimento e' informazione, e l'episodio arriva a fine periodo. Prima
-    della prima lettura invece non stavamo guardando: allungare all'indietro
-    inventerebbe un acceso che nessuno ha visto. Chi SA che era gia' acceso lo
-    dice consegnando una lettura all'inizio, come fa `aggregate_day` con lo
-    stato ereditato dal giorno prima.
+def test_episodio_in_testa_NON_va_prima_della_prima_lettura():
+    """In coda si va oltre l'ultima lettura, in testa no: prima della prima
+    lettura non stavamo guardando, e allungare all'indietro inventerebbe uno
+    stato che nessuno ha visto.
 
     Mutazione che la uccide: far cominciare la prima finestra a zero invece
     che alla prima lettura.
     """
     letture = [(3600.0, "heat"), (7200.0, "off"), (10800.0, "heat")]
 
-    r = ops.REGISTRY["episodio"].run(
-        letture, is_on=lambda s: s == "heat", period_end=86400.0)
+    r = _episodio(letture, end=14400.0)
 
-    assert r.value.windows == ((3600.0, 7200.0), (10800.0, 86400.0))
+    assert r.value.windows == ((3600.0, 7200.0), (10800.0, 14400.0))
 
 
-def test_tempo_in_stato_e_la_durata_del_periodo():
-    p = ops.Period([(3600.0, 9000.0), (18000.0, 21600.0)])
+def test_episodio_su_stati_che_coprono_POCO_del_periodo_si_rifiuta():
+    """Il registro degli stati di Home Assistant tiene circa otto giorni (R0,
+    03/10/2026): chiesto un mese, la prima lettura arriva tre settimane dopo
+    l'inizio. Un tempo misurato su una settimana non e' il tempo del mese.
+
+    Mutazione ESEGUITA: copertura sempre 1.0 -- rossa.
+    """
+    giorno = 86400.0
+    letture = [(22 * giorno, "home"), (25 * giorno, "not_home")]
+
+    r = _episodio(letture, state="home", start=0.0, end=30 * giorno)
+
+    assert not r.computable
+    assert r.cause == ops.COVERAGE_LOW
+    assert "27%" in r.reason, r.reason
+
+
+def test_episodio_dice_la_copertura_VERA_quando_basta():
+    letture = [(1000.0, "heat"), (5000.0, "off")]
+
+    r = _episodio(letture, start=0.0, end=10000.0)
+
+    assert r.coverage == 0.9
+
+
+def test_tempo_in_stato_e_la_durata_del_periodo_con_la_sua_copertura():
+    p = ops.Measurement(ops.Period([(3600.0, 9000.0), (18000.0, 21600.0)]),
+                        unit="periodo", coverage=0.9)
 
     r = ops.REGISTRY["tempo_in_stato"].run(p)
 
     assert r.value == 9000.0
     assert r.unit == "s"
+    assert r.coverage == 0.9
+
+
+def test_tempo_in_stato_EREDITA_il_non_lo_so_dell_episodio():
+    """Mutazione ESEGUITA: in `_time_in_state` non controllare `computable`
+    -- rossa con `AttributeError` su `value`."""
+    muto = ops.NotComputable("nessuna lettura", cause=ops.COVERAGE_LOW)
+
+    assert ops.REGISTRY["tempo_in_stato"].run(muto) == muto
+
+
+def test_tempo_in_stato_su_una_misura_che_NON_e_un_periodo_si_rifiuta():
+    r = ops.REGISTRY["tempo_in_stato"].run(_kwh(3.0))
+
+    assert not r.computable
+    assert r.cause == ops.RECIPE_BROKEN
 
 
 def test_LA_PRESENZA_quanto_tempo_qualcuno_e_stato_in_casa():
@@ -632,13 +666,55 @@ def test_LA_PRESENZA_quanto_tempo_qualcuno_e_stato_in_casa():
     letture = [(0.0, "not_home"), (3600.0, "home"), (10800.0, "Lavoro"),
                (14400.0, "home")]
 
-    in_casa = ops.REGISTRY["episodio"].run(
-        letture, is_on=lambda s: s == "home", period_end=21600.0)
-    quanto = ops.REGISTRY["tempo_in_stato"].run(in_casa.value)
+    in_casa = _episodio(letture, state="home")
+    quanto = ops.REGISTRY["tempo_in_stato"].run(in_casa)
 
     assert in_casa.value.windows == ((3600.0, 10800.0), (14400.0, 21600.0))
     assert quanto.value == 7200.0 + 7200.0
     assert quanto.unit == "s"
+
+
+# -- la somma di due misure (D8, 06/10/2026) ---------------------------------
+
+
+def test_somma_fra_due_misure_tiene_l_unita_e_la_copertura_PEGGIORE():
+    r = ops.REGISTRY["somma_fra"].run(
+        ops.Measurement(2.5, unit="kWh", coverage=1.0),
+        ops.Measurement(1.25, unit="kWh", coverage=0.8))
+
+    assert r.value == 3.75
+    assert r.unit == "kWh"
+    assert r.coverage == 0.8
+
+
+def test_somma_fra_unita_diverse_si_rifiuta():
+    r = ops.REGISTRY["somma_fra"].run(_kwh(1.0),
+                                      ops.Measurement(1.0, unit="°C", coverage=1.0))
+
+    assert not r.computable
+    assert r.cause == ops.RECIPE_BROKEN
+
+
+def test_somma_fra_EREDITA_il_non_lo_so():
+    spento = ops.NotComputable("spento", cause="spenta_dal_proprietario")
+
+    assert ops.REGISTRY["somma_fra"].run(spento, _kwh(1.0)) == spento
+    assert ops.REGISTRY["somma_fra"].run(_kwh(1.0), spento) == spento
+
+
+def test_la_consumata_con_somma_fra_torna_coi_conti_a_mano():
+    """Il caso per cui D8 esiste: consumata = prodotta - immessa + prelevata +
+    scaricata - caricata, che prima si scriveva con quattro differenze in
+    catena. Conti a mano: 20 - 8 + 3 + 2 - 4 = 13."""
+    prodotta, immessa, prelevata, scaricata, caricata = (
+        _kwh(20.0), _kwh(8.0), _kwh(3.0), _kwh(2.0), _kwh(4.0))
+    somma = ops.REGISTRY["somma_fra"].run
+    meno = ops.REGISTRY["differenza_fra"].run
+
+    consumata = meno(somma(somma(meno(prodotta, immessa), prelevata), scaricata),
+                     caricata)
+
+    assert consumata.value == 13.0
 
 
 # -- confronti e relazioni fra serie ---------------------------------------
@@ -751,7 +827,7 @@ def test_correlazione_ALTA_su_due_serie_che_NON_si_causano():
 #   campi di una measurement: start, end, min, max, mean, last_reset
 #
 # Le 56 non hanno un `change`: hanno `mean`, `min`, `max`. Il nostro client li
-# legge e li traduce gia' (`media`/`minimo`/`massimo`), e poi `_punti_orari`
+# legge e li traduce gia' (`media`/`minimo`/`massimo`), e poi `recipes.hourly_points`
 # teneva SOLO `cambio` e buttava gli altri tre. Le ricette ricevevano una serie
 # di `None` e rifiutavano dicendo «la serie e' vuota»: 21 misure su 32, in un
 # giorno solo, tutte su temperatura, umidita', CO2, rumore, segnale, potenza.
@@ -872,7 +948,9 @@ def test_somma_periodo_su_una_misura_istantanea_RIFIUTA_dicendo_perche():
 #: L'impronta di CIO' CHE IL MODELLO PUO' CHIEDERE, per la versione qui sotto.
 #: Nomi, ingressi, resa, parametri obbligatori, forme e rifiuti dichiarati --
 #: delle sole operazioni offribili. Cambia con `REGISTRY_VERSION`, mai da sola.
-CATALOGUE_FINGERPRINT = {2: "bc902cb7f8ce6c78"}
+#: La 3 aggiunge solo `somma_fra` (D8, 06/10/2026): tolta lei, l'impronta
+#: torna quella della 2 -- verificato quando e' stata scritta.
+CATALOGUE_FINGERPRINT = {2: "bc902cb7f8ce6c78", 3: "2dd6d318e8f1a119"}
 
 
 def _impronta() -> str:
