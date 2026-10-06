@@ -14,7 +14,7 @@ import anthropic
 # nessun ciclo.
 from .home_space.topology import name_with_id
 from .model_resolution import failure_reply
-from .provider_occurrences import error_family
+from .provider_occurrences import error_family, provider_said
 from .proxy._sanitize import truncate_with_marker
 from .usage.giro import anthropic_turn_tokens
 
@@ -66,11 +66,15 @@ class RunnerBackendError(Exception):
     """
 
     def __init__(self, friendly_message: str, *, family: str = "altro",
-                 code: int | None = None) -> None:
+                 code: int | None = None, said: str | None = None) -> None:
         super().__init__(friendly_message)
         self.friendly_message = friendly_message
         self.family = family
         self.code = code
+        # Cio' che il provider ha detto, gia' filtrato e tagliato
+        # (`provider_occurrences.provider_said`), o `None`: il router lo
+        # scrive nel registro, e la pagina Modelli lo cita (G36-1).
+        self.said = said
 
     def __str__(self) -> str:  # so `str(exc)` == the friendly text everywhere
         return self.friendly_message
@@ -1038,9 +1042,10 @@ class ClaudeRunner:
                 # «irraggiungibile» per un'altra strada).
                 _code = getattr(exc, "status_code", None)
                 _code = _code if isinstance(_code, int) else None
-                _family = error_family(exc)
+                _family, _said = error_family(exc), provider_said(exc)
                 raise RunnerBackendError(
-                    failure_reply(_family, _code), family=_family, code=_code,
+                    failure_reply(_family, _code, _said), family=_family, code=_code,
+                    said=_said,
                 ) from exc
 
             for block in response.content:

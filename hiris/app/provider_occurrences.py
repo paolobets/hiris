@@ -45,6 +45,8 @@ from __future__ import annotations
 
 import time
 
+from .proxy._sanitize import sanitize_text
+
 # Le famiglie d'errore, e non una di più. Sono tre cause distinte più il ramo
 # di scorta, e la ragione per cui sono separate è che chiedono tre azioni
 # diverse a chi legge: ricaricare il credito / rifare la chiave (credenziale),
@@ -107,6 +109,36 @@ def error_family(exc: Exception) -> str:
         return "irraggiungibile"
     code = getattr(exc, "status_code", None)
     return family_from_code(code if isinstance(code, int) else None)
+
+
+#: Quanto di cio' che il provider ha detto arriva alla chat e alla pagina: un
+#: limite di spazio sullo schermo, non un giudizio sulla casa. Oltre, il taglio
+#: si dichiara (`sanitize_text`).
+SAID_CAP = 200
+
+
+def provider_said(exc: Exception) -> str | None:
+    """Cio' che il provider ha DETTO del suo rifiuto, o `None` se non ha detto
+    niente che si possa leggere (G36-1, revisione del giro 36).
+
+    E' la causa dichiarata dalla fonte: un 400 di Anthropic e' ogni
+    `invalid_request_error` (il credito finito e' un caso solo), un 400 di
+    Ollama e' un modello che non sa servire la richiesta. La forma l'hanno
+    detta le due SDK, costruendo l'errore da una risposta (06/10/2026):
+    Anthropic tiene la busta intera, `body["error"]["message"]`; l'SDK OpenAI
+    ne tiene l'interno, `body["message"]`. `exc.message` no: e' «Error code:
+    400 - {...}», la busta stampata.
+
+    Testo che HIRIS non controlla: passa dal filtro e dal taglio
+    (`sanitize_text`)."""
+    body = getattr(exc, "body", None)
+    said = None
+    if isinstance(body, dict):
+        inner = body.get("error")
+        said = inner.get("message") if isinstance(inner, dict) else body.get("message")
+    if not isinstance(said, str) or not said.strip():
+        return None
+    return sanitize_text(" ".join(said.split()), SAID_CAP)
 
 
 class OccurrenceRegistry:

@@ -724,16 +724,20 @@ async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner)
     `anthropic.APIError` diventava lo stesso «Errore temporaneo del servizio
     AI», e la pagina Modelli non aveva niente da dire."""
     import anthropic
+    import httpx
 
     from hiris.app.claude_runner import RunnerBackendError
 
-    class _Credito(anthropic.APIError):
-        def __init__(self):
-            Exception.__init__(self, "credit balance too low")
-            self.status_code = 400
+    # L'errore come lo costruisce l'SDK da una risposta vera (G36-1): il
+    # testo del provider sta in `body["error"]["message"]`.
+    credito = anthropic.Anthropic(api_key="x")._make_status_error_from_response(
+        httpx.Response(400, request=httpx.Request("POST", "https://esempio.invalid"),
+                       json={"type": "error", "error": {
+                           "type": "invalid_request_error",
+                           "message": "Your credit balance is too low."}}))
 
     with (
-        patch.object(runner, "_call_api", AsyncMock(side_effect=_Credito())),
+        patch.object(runner, "_call_api", AsyncMock(side_effect=credito)),
         pytest.raises(RunnerBackendError) as info,
     ):
         await runner.chat("Ciao")
@@ -742,12 +746,13 @@ async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner)
     assert info.value.code == 400
     # S-37 (verifiche dal vivo della 3.75.0, 05/10/2026): fino a qui la chat
     # diceva «Errore temporaneo del servizio AI. Riprova tra poco.», e un
-    # credito finito non e' temporaneo. La frase dice il fatto, con le parole
-    # della pagina Modelli (`model_resolution.failure_reply`).
+    # credito finito non e' temporaneo. Il 400 non ha una causa nostra
+    # (G36-1): la frase cita il provider, come la pagina Modelli.
     assert info.value.friendly_message == (
-        "Il servizio AI ha rifiutato la richiesta: credito esaurito (400). "
+        "Il servizio AI ha rifiutato la richiesta (400): «Your credit balance is too low.». "
         "Riprovare non basta: si sistema nella pagina Modelli."
     )
+    assert info.value.said == "Your credit balance is too low."
     assert "temporaneo" not in info.value.friendly_message
 
 
