@@ -368,6 +368,25 @@ class ConstructionStore:
             self._conn.commit()
         return cur.rowcount > 0
 
+    def unbound(self, *, actor: str, now: float) -> list[dict]:
+        """Le proposte di `actor` che aspettano una risposta e non sono legate
+        a nessuna domanda (`impronta` vuota).
+
+        Per il proponente sono le costruite di un turno la cui risposta non le
+        ha citate (rifiutata o troncata, revisione giro 61): senza impronta
+        l'anti-ripetizione non le vede, e al giro dopo la stessa domanda
+        farebbe nascere una seconda bozza accanto alla prima. Il giro le
+        rimostra al modello, che puo' citarle invece di rifarle. Non scrive.
+        """
+        cutoff = now - self.DEADLINE_S
+        with self._lock:
+            righe = self._conn.execute(
+                f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni "
+                f"WHERE origine=? AND impronta IS NULL AND stato IN ({_SOSPESI_SQL}) "
+                f"AND NOT {_EXPIRED_SQL} ORDER BY creata_ts",
+                (cutoff, actor, cutoff)).fetchall()
+        return [_row(r) for r in righe]
+
     def decided_proposals(self, *, now: float) -> dict[str, dict]:
         """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}` per
         le proposte che rispondono a una domanda del cervello: la stessa forma

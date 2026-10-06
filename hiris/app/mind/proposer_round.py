@@ -100,7 +100,8 @@ async def _chain(app, store, day: str, pending, refused, runner) -> dict:
     dispatcher = await declared.guard(app, exchange)
     presence = getattr(dispatcher, "presence", None)
     question = proposer_turn.build_question(pending, refused=refused,
-                                            presence=presence)
+                                            presence=presence,
+                                            unbound=_unbound(app))
     answer, turn = await chain_turn(
         runner, PROPOSER_SPECIES, usage=app.get("usage"),
         max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
@@ -127,7 +128,8 @@ def _enqueue(app, day: str, pending, refused) -> dict | None:
     home_space = app.get("home_space_store")
     presence = (PresenceMask(House.read(home_space, app.get("entity_cache")))
                 if home_space is not None else None)
-    job = proposer_turn.bridge_turn(pending, refused=refused, presence=presence)
+    job = proposer_turn.bridge_turn(pending, refused=refused, presence=presence,
+                                    unbound=_unbound(app))
     if job is None:
         return None
     wake = {"giorno": day, "impronte": [observation_key(o) for o in pending]}
@@ -195,12 +197,25 @@ def _open(app, store, day: str, *, report: bool = False) -> list[dict]:
     return pending
 
 
+def _unbound(app) -> list[dict]:
+    """Le proposte del proponente in attesa e senza domanda: costruite in un
+    turno la cui risposta non le ha citate (revisione, giro 61)."""
+    constructions = app.get("constructions")
+    if constructions is None:
+        return []
+    return constructions.unbound(actor=PROPOSER_SPECIES, now=time.time())
+
+
 def _built_in(app, exchange: str | None) -> frozenset[str]:
-    """Gli id delle proposte nate nel turno, dall'archivio delle costruzioni."""
+    """Gli id che un «costruita» puo' citare: le proposte nate nel turno,
+    dall'archivio delle costruzioni, e quelle gia' costruite che nessun esito
+    ha citato -- citarle e' cio' che evita una seconda bozza per la stessa
+    domanda (revisione, giro 61)."""
     constructions = app.get("constructions")
     if constructions is None:
         return frozenset()
-    return constructions.proposed_in(exchange, actor=PROPOSER_SPECIES)
+    return constructions.proposed_in(exchange, actor=PROPOSER_SPECIES) \
+        | {row["id"] for row in _unbound(app)}
 
 
 def _settle(app, store, day: str, occurrence: dict) -> None:

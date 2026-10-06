@@ -358,3 +358,21 @@ def test_una_domanda_GIA_LEGATA_non_si_riscrive_e_la_chat_non_si_lega(archivio):
     assert archivio.read(nostra, now=ADESSO)["impronta"] == "k1"
     assert archivio.read(altrui, now=ADESSO)["impronta"] is None
 
+
+def test_le_NON_LEGATE_sono_le_sospese_di_chi_le_chiede_senza_impronta(archivio):
+    """Revisione, giro 61: le costruite che nessun esito ha citato. Non ci
+    stanno quelle gia' legate, quelle di un altro, le scadute e le decise.
+
+    Mutazione ESEGUITA (06/10/2026): `unbound` senza `impronta IS NULL` --
+    rossa sulla legata."""
+    sciolta = _proponi(archivio, key="a", actor="proponente")["id"]
+    legata = _proponi(archivio, key="b", actor="proponente")["id"]
+    archivio.answers(legata, actor="proponente", fingerprint="k", prova={"base": 1})
+    _proponi(archivio, key="c")
+    decisa = _proponi(archivio, key="d", actor="proponente")["id"]
+    archivio.mark_cancelled(decisa, now=ADESSO)
+
+    assert [r["id"] for r in archivio.unbound(actor="proponente", now=ADESSO)] == [sciolta]
+    oltre = ADESSO + ConstructionStore.DEADLINE_S + 1
+    assert archivio.unbound(actor="proponente", now=oltre) == []
+

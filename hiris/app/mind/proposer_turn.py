@@ -105,7 +105,9 @@ esito per ogni osservazione dell'elenco:
 ]}
 
 Un esito «costruita» senza una chiamata riuscita a `propose` in questo turno
-viene rifiutato: l'id lo conosce l'officina, non si scrive a memoria."""
+viene rifiutato: l'id lo conosce l'officina, non si scrive a memoria. Fa
+eccezione una proposta dell'elenco «gia' costruite», se c'e': quella si cita
+col suo id, senza rifarla."""
 
 
 def proposer_tools() -> list[dict]:
@@ -205,6 +207,14 @@ def already_answered(observation: dict, decided: dict) -> str | None:
     `superata`. Il motivo e' una frase: chi salta lo scrive nel registro,
     perche' una proposta potata in silenzio il 01/10/2026 e' costata una
     diagnosi (misura del Task 4.0 degli attori).
+
+    **Una costruita scaduta senza risposta conta come decisa** (revisione,
+    giro 61): a prova uguale non torna. E' la lettera di S-26, dove torna
+    solo cio' che aspetta (D24-1) o cio' la cui prova e' cambiata, e il
+    silenzio di chi amministra vale come risposta: riproporre ogni giorno la
+    stessa bozza ignorata sarebbe la coda che cresce che S-26 toglie. Nessuno
+    l'ha scelto per iscritto: se una scaduta deve tornare, la riga da
+    cambiare e' quella di `aperta` qui sotto.
     """
     entry = decided.get(observation_key(observation))
     if entry is None:
@@ -251,13 +261,16 @@ def open_observations(analysis: dict | None, decided: dict,
 
 
 def build_question(observations, *, refused: list[str] | None = None,
-                   presence=None) -> str | None:
+                   presence=None, unbound=()) -> str | None:
     """La domanda intera, o `None` se non c'e' niente da chiedere.
 
     Le osservazioni si consegnano **numerate**, e il modello si riferisce a
     una col suo numero: ricopiarne il testo vorrebbe dire poterlo sbagliare.
     `refused` sono i problemi della risposta di prima (D10); `presence` copre
     i nomi delle persone, con la stessa numerazione del guardiano.
+    `unbound` sono le proposte gia' costruite che nessun esito ha citato
+    (`ConstructionStore.unbound`): si mostrano perche' il modello le citi
+    invece di costruirle una seconda volta (revisione, giro 61).
     """
     rows = list(observations or [])
     if not rows:
@@ -276,6 +289,13 @@ def build_question(observations, *, refused: list[str] | None = None,
         lines.append(f"      si regge su {base} giorni di storia"
                      if base else "      non ha una storia dietro")
     lines.append("")
+    if unbound:
+        lines.append("Le proposte gia' costruite in un turno di prima, che nessun "
+                     "esito ha citato. Se una risponde a un'osservazione, citala "
+                     "con «costruita» e il suo id, senza rifarla:")
+        lines.extend(f"  {row['id']}: {row.get('anteprima') or row.get('chiave')}"
+                     for row in unbound)
+        lines.append("")
     lines.extend(refused_lines(refused))
     lines.append(ANSWER_CONTRACT)
     question = "\n".join(lines)
@@ -283,10 +303,11 @@ def build_question(observations, *, refused: list[str] | None = None,
 
 
 def bridge_turn(observations, *, refused: list[str] | None = None,
-                presence=None) -> dict | None:
+                presence=None, unbound=()) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere: la
     stessa forma di `analyst_turn.bridge_turn`."""
-    question = build_question(observations, refused=refused, presence=presence)
+    question = build_question(observations, refused=refused, presence=presence,
+                              unbound=unbound)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],
@@ -311,8 +332,10 @@ def apply_outcomes(observations, answer: str, *, built=frozenset(),
     costringerebbe a rieseguire il turno per scoprire il successivo.
 
     `built` sono gli id delle proposte nate in questo turno
-    (`ConstructionStore.proposed_in`): un «costruita» con un id fuori da qui
-    si rifiuta. `presence` riporta agli id veri i segnaposto che il modello ha
+    (`ConstructionStore.proposed_in`) e di quelle gia' costruite che nessun
+    esito ha citato (`ConstructionStore.unbound`): un «costruita» con un id
+    fuori da qui si rifiuta, e cosi' uno che un altro esito ha gia' citato.
+    `presence` riporta agli id veri i segnaposto che il modello ha
     scritto nei testi.
     """
     # Il JSON lo cava il lettore unico (`steering.read_json`, D-11), come per
@@ -331,6 +354,7 @@ def apply_outcomes(observations, answer: str, *, built=frozenset(),
     problems: list[str] = []
     kept: dict[int, dict] = {}
     named: set[int] = set()
+    cited: set[str] = set()
     for index, outcome in enumerate(given):
         if not isinstance(outcome, dict):
             problems.append(f"l'esito {index} non e' un oggetto")
@@ -353,10 +377,17 @@ def apply_outcomes(observations, answer: str, *, built=frozenset(),
             ident = outcome.get("proposta_id")
             if ident not in built:
                 problems.append(
-                    f"l'esito {index} dice «{BUILT}» con l'id {ident!r}, ma in "
-                    "questo turno non e' nata nessuna proposta con quell'id: "
-                    "una proposta nasce chiamando `propose`")
+                    f"l'esito {index} dice «{BUILT}» con l'id {ident!r}, ma ne' "
+                    "in questo turno ne' fra le gia' costruite c'e' una "
+                    "proposta con quell'id: una proposta nasce chiamando "
+                    "`propose`")
                 continue
+            if ident in cited:
+                problems.append(f"l'esito {index} cita la proposta {ident!r}, "
+                                "gia' citata da un altro esito: una proposta "
+                                "risponde a una domanda sola")
+                continue
+            cited.add(ident)
             entry |= {"proposta_id": ident, "osservazione": rows[which]}
         elif kind == BY_HAND:
             what, why = _text(outcome.get("testo")), _text(outcome.get("perche"))
