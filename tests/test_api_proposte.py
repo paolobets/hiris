@@ -196,6 +196,31 @@ async def test_senza_modello_RIFALLA_lo_dice_e_non_tocca_la_proposta(casa):
     assert store.proposals()[0]["giri"] == []
 
 
+@pytest.mark.asyncio
+async def test_sulla_CATENA_nessuno_risponde_e_RIFALLA_lo_dice(casa):
+    """G29-1, per «Rifalla». Quando tutti i backend rifiutano, il router
+    consegna una frase per la chat: non e' una proposta illeggibile (502), e'
+    il modello che non ha risposto (503), come quando il giro non parte.
+
+    Mutazione ESEGUITA: la rotta senza il ramo `turn.answered` -- rossa (502)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    app, store, ident = casa
+    giu = MagicMock()
+    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    app["llm_router"] = LLMRouter(claude=giu, strategy="balanced")
+
+    r = await handle_proposal_redo(
+        _richiesta(app, {"id": ident}, {"richiesta": "dopo le 14"}))
+
+    assert r.status == 503
+    assert json.loads(r.text)["error"] == "il modello non ha risposto: riprova."
+    assert store.proposals()[0]["giri"] == []
+
+
 # ---------------------------------------------------------------------------
 # La lettura UNIFICATA: un posto solo dove si decide (spec §3).
 # ---------------------------------------------------------------------------
