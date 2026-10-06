@@ -145,7 +145,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 · Tappa 8: archivi (piano della Tappa 5) · Tappa 8 (Tappa 6, T0) |
 | D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 · Tappa 5, Task 2: le due maschere degli strumenti (corpo in `search`, «prima» in `propose`) chiedono il soffitto da `dispatch` (`Tool.mask`); le altre restano |
 | D-30 | Strumenti di lettura nei turni degli attori: cosa manca al turno | NV | DP |  | cop-8 (righe) | reg · cop-8 |
-| D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | D | CC | 01/10: due riparazioni (ricetta già sana; ricetta inesistente), rifatte identiche alle 09:20 e 10:20 |  | reg |
 | D-32 | I giri del cervello dentro `server.py` | E | PS |  |  | reg · cop-1 B1 · cop-2 |
 | D-33 | Lo stesso tema ogni giorno, con parole diverse (analisi, esiti, proposte) | D | CC | coppie già presenti il giorno prima: 2 su 7, 3 su 8, 4 su 8 | cop-6 (righe) | reg · cop-6 · BACKLOG, «Gli attori si riparano dal basso», strato 3 (Tappa 6, T0) |
 | D-34 | La serie dell'analista composta due volte, riga per riga (`server.py:1964`, `:2431`) | E | PS |  |  | cop-1 D1 |
@@ -171,10 +170,8 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-60 | Costo e nome del provider scritti due volte, con due formule (0 contro NULL) | D | CC |  |  | cop-7 N-D13 · Tappa 6 T3 |
 | D-61 | Due pesatori del carico, una forma, tre definizioni di «guida» | D | CC |  |  | cop-7 N-D14 · Tappa 6 T7 |
 | D-62 | `reasoning/queue.py`: `get()`/`latest()` due forme, mezzanotte ricalcolata, `SELECT *` col nucleo | D | PS |  |  | cop-7 N-D15 · Tappa 6 T7 |
-| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | D | DP |  |  | cop-8 D1 · resta alla Tappa 6; la tabella degli strumenti della Tappa 5 (Task 2) ne e' il prerequisito |
 | D-64 | Il nucleo che non si compone: tre chiamanti, tre comportamenti | D | CC |  |  | cop-8 D2 · cop-9 N-D-1 · Tappa 6 T7 |
 | D-65 | «Qual è la conversazione attiva di questo filo» chiesta tre volte per turno | NV | CC |  |  | cop-8 D3 · Tappa 6 T7 |
-| D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | D | PS |  |  | cop-8 D4 · Tappa 6 T8 |
 | D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 · Tappa 5, Task 4 (05/10/2026): e' prosa delle descrizioni, si unifica al Task 5 con le descrizioni (insieme a B-32) |
 | D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 2 (`keeper/exchange.py`: le regole parlano di `execute`, `propose`, `remember`); il contenuto alla Tappa 5 (D4, Task 5), la composizione alla Tappa 6 |
 
@@ -354,7 +351,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-01 | Turno dell'attuatore raccolto dal ponte: gli indici del modello applicati a un elenco rifatto «adesso» (oggi dormiente, giro in pausa) | 1° dei «5 più gravi» di cop-1 | DEDOTTO | cap. proposto D; Stato del rapporto: DIVERGENTE [D]; Unirla CC | cop-1 D6 |
 | S-05 | `read_dashboards`: `d.get("url_path")` senza `isinstance(d, dict)` |  | LETTO | `ha_client.py:1056` (04/10/2026; la `:1077` lo ha) | cop-5 S2 |
 | S-07 | `context` (chi ha causato il cambio) non entra nello specchio |  | LETTO | `entity_cache.py:516-587`; vedi correzione a B-25. **Resta aperta per scelta** (Tappa 3, D6): nessun lettore -- un campo scritto e mai letto e' il difetto che la review cerca -- e lo specchio non deve portare `context.user_id` | cop-5 S4 · Tappa 3 (D5) |
-| S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda |  | LETTO (comportamento DEDOTTO) | cap. proposto D; Stato DIVERGENTE, Unirla CC | cop-7 N-D2 · Tappa 6 T8 (la scadenza nel lavoratore) |
 | S-10 | Il ponte è una corsia sola: un turno lungo blocca la chat; ~3,3 s medi aggiunti per risposta | 1° per peso sulla latenza (cop-7 §5.4) | LETTO (non verificato sul vivo) | cap. proposto D; Stato NV, Unirla CC | cop-7 N-D3 · Tappa 6 T2: la chat passa avanti in coda; la corsia resta una |
 | S-11 | Un guasto del registro dei consumi fa cadere il turno (risposta già prodotta persa); la misura del turno è blindata |  | LETTO | cap. proposto D; Stato DIVERGENTE, Unirla CC | cop-7 N-D7 |
 | S-12 | Le chiamate di strumento della stessa risposta partono in fila, non insieme (8 letture = 8 attese) | 3° per peso sulla latenza (cop-7 §5.4) | LETTO (effetto non verificato) | cap. proposto D; Stato NV, Unirla CC | cop-7 N-D8 |
@@ -746,6 +742,32 @@ Restano aperte: cambia solo chi le chiude.
   (`handlers_models.bridge_deadline_min`, sette copie in meno) e S-02 (la promessa scaduta dice
   l'attesa del suo turno). La scadenza dentro il lavoratore è S-09, Task 8.
 
+### 8e. Il Task 8 (06/10/2026)
+
+Chiuse con `registro.py chiudi`: D-63 (un dispatcher per turno), S-09 (la CLI ha il tempo del
+turno), D-66 (il corpo JSON letto in un posto) e D-31 (verificata: la riparazione delle ricette
+ha una strada sola dal Task 1.6 degli attori).
+
+Spostate, restano aperte:
+
+- **D-30** → attori, strato 3: gli strumenti di lettura nei turni degli attori. Oggi i quattro
+  mestieri del cervello sono autosufficienti (`steering.SPECIES`) e non chiamano strumenti; il
+  ramo della rotta MCP senza soffitto serve un turno che non porta né chat né promessa, e nessuno
+  ne produce. Lo strato 3 dà gli strumenti all'analista: lì si decide con quale soffitto.
+- **D-32** → attori, strati 3-4: i giri del cervello dentro `server.py` si riscrivono lì.
+- **D-34** → attori, strato 3: la serie dell'analista.
+- **D-36** → lo sprint «Una fonte sola di verità» (la cronaca): il resoconto di un giorno scritto
+  in tre punti di `server.py` tocca `aggregate_day`, su cui lo sprint lavora.
+- **D-37**, **D-38** → attori, strato 4: lo scheletro di `_write_analysis`/`_write_actuation` e
+  l'indice del modello sono dell'attuatore, in pausa.
+- **A-23** resta DP: il Task 8 non ha cambiato il lavoratore. Il lavoratore è solo quello dentro
+  il processo (`server.py` avvia `agent/runner.run_loop`; il «percorso a processo separato
+  (`main()`)» che un commento di `server.py` cita non esiste più). Ma ciò che segue la consegna
+  (la promessa che si chiude, la risposta della chat, il registro) vive nel gestore HTTP
+  `handlers_reasoning.handle_reasoning_submit`, e il ponte riceve la sua credenziale di turno
+  dalle stesse intestazioni: togliere il giro HTTP vuol dire prima estrarre quella logica dal
+  gestore. È una fetta sua, da decidere col proprietario.
+
 ---
 
 ## 8. La Tappa 4 (piano del 04/10/2026): voci spostate, verdetti corretti, reperti ricondotti
@@ -1040,3 +1062,7 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | D-07 | Accodare sul ponte: sei `enqueue`, il modello scelto vale solo per la chat | Tappa 6, Task 7 | b432a51 | steering.enqueue_turn, l'unico .enqueue del prodotto: kind e precedenza dalla dichiarazione del mestiere, modello del proprietario e scadenza dall'archivio. I sei accodamenti vi passano |
 | D-35 | `llm_router or claude_runner` scritto 10 volte; il ramo destro non può mai scattare | Tappa 6, Task 7 | b432a51 | steering.chain_runner, la sola lettura di llm_router or claude_runner (nove punti prima). Il ramo destro resta: i test lo impostano |
 | D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | Tappa 6, Task 7 | b432a51 | le tre regole scrivono l'esempio chiamando topology.name_with_id (D6, opzione A): la resa del nome con l'id, non una costante |
+| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | Tappa 6, Task 8 | 395c178 | api/handlers_mcp.ExchangeTurn: il dispatcher si costruisce alla prima tools/call del turno e serve le altre; tre chiamate, una casa (prima tre). Esce alla scadenza del ponte |
+| S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda | Tappa 6, Task 8 | 395c178 | agent/runner._reason_chat: il timeout della CLI e' il tempo che resta al turno (deadline_ts), non 300 fisso; la CLI si ferma quando il ripiego comincia, e un turno scaduto non la invoca |
+| D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | Tappa 6, Task 8 | 395c178 | api/boundary.json_object, la lettura unica: nove rotte; un corpo [] non da' piu' 500. Resta a parte la rotta MCP, che risponde in JSON-RPC (-32700) |
+| D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | Tappa 6, Task 8 | 7550547 | verificata il 06/10: la riparazione ha una strada sola, il giro delle ricette (recipe_turn.recipes_to_repair, attori Task 1.6); la domanda la compone build_device_question per la catena e per il ponte |
