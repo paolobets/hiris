@@ -40,8 +40,7 @@ def _osservazione(**extra):
     base = {"quale": 0,
             "innesco": 1, "cosa": "il prelievo dalla rete e' salito",
             "spiegato": None,
-            "cosa_cambierebbe": "meno prelievo vuol dire meno spesa",
-            "novita": "nuova"}
+            "cosa_cambierebbe": "meno prelievo vuol dire meno spesa"}
     base.update(extra)
     return base
 

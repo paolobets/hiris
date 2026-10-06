@@ -43,11 +43,15 @@ def _serie():
                                        "quanti_scarti": 2.75, "base": 2}}]}
 
 
-def _risposta(**extra):
+def _riga(**extra):
     riga = {"quale": 0, "innesco": 1, "cosa": "il prelievo e' salito",
-            "spiegato": None, "cosa_cambierebbe": "meno spesa", "novita": "nuova"}
+            "spiegato": None, "cosa_cambierebbe": "meno spesa"}
     riga.update(extra)
-    return json.dumps({"osservazioni": [riga]})
+    return riga
+
+
+def _risposta(*righe):
+    return json.dumps({"osservazioni": list(righe) or [_riga()]})
 
 
 def test_L_IMPRONTA_ha_una_casa_sola():
@@ -90,39 +94,48 @@ def test_la_domanda_porta_la_MEMORIA():
 
     assert "gia' detto nei giorni scorsi" in domanda
     assert '"giorni": ["2026-09-13"]' in domanda
-    assert "novita" in domanda
+    assert "novita" not in domanda, "lo scrive il codice, non il modello"
 
 
-def test_una_NUOVA_su_un_impronta_gia_detta_con_la_STESSA_prova_si_rifiuta():
+def test_la_RIPETIZIONE_con_la_stessa_prova_si_TOGLIE_e_le_altre_restano():
+    """G12-2 del revisore (giro 12, 06/10/2026), eseguito: rifiutare l'analisi
+    intera per una ripetizione perdeva le altre osservazioni del giorno, e la
+    domanda dopo era identica -- su una misura che non varia mai, fino a
+    ventiquattro turni a vuoto. Si toglie solo lei, come `to_handle`.
+
+    Mutazione ESEGUITA (06/10/2026): `novelty` che torna «nuova» anche con la
+    stessa prova -- rossa (la ripetizione resta nell'analisi)."""
     memoria = analyst.previous_observations(
         [{"giorno": "2026-09-13", "osservazioni": [_osservazione()]}], [],
         today="2026-09-14")
 
-    esito = at.apply_analysis(_serie(), _risposta(), previous=memoria)
+    esito = at.apply_analysis(_serie(), _risposta(_riga(), _riga(innesco=3)),
+                              previous=memoria)
 
-    assert esito["analisi"] is None
-    assert any("stessa prova" in p for p in esito["problemi"]), esito["problemi"]
+    assert esito["problemi"] == []
+    rimaste = esito["analisi"]["osservazioni"]
+    assert [o["innesco"] for o in rimaste] == [3]
+    assert rimaste[0]["novita"] == "nuova"
+    assert esito["ripetute"] == [analyst.observation_key(_osservazione())]
 
 
-def test_con_la_PROVA_CAMBIATA_si_ridice():
-    """Mutazione ESEGUITA (06/10/2026): in `novelty_problem` confrontare la
-    sola impronta, senza la prova -- rossa (`stessa prova` fra i problemi)."""
+def test_con_la_PROVA_CAMBIATA_si_ridice_e_lo_scrive_il_CODICE():
+    """Mutazione ESEGUITA (06/10/2026): in `novelty` confrontare la sola
+    impronta, senza la prova -- rossa (l'osservazione sparisce)."""
     memoria = analyst.previous_observations(
         [{"giorno": "2026-09-13", "osservazioni": [_osservazione(base=1)]}], [],
         today="2026-09-14")
 
-    esito = at.apply_analysis(_serie(), _risposta(novita="prova cambiata"),
+    esito = at.apply_analysis(_serie(), _risposta(_riga(novita="nuova")),
                               previous=memoria)
 
     assert esito["problemi"] == []
     assert esito["analisi"]["osservazioni"][0]["novita"] == "prova cambiata"
 
 
-def test_NOVITA_mancante_o_falsa_si_rifiuta():
-    """Si rifiuta, non si corregge: come il numero scritto dal modello."""
-    assert at.apply_analysis(_serie(), _risposta(novita=None))["analisi"] is None
-    esito = at.apply_analysis(_serie(), _risposta(novita="prova cambiata"))
-    assert any("mai stata detta" in p for p in esito["problemi"])
+def test_senza_memoria_ogni_osservazione_e_NUOVA():
+    esito = at.apply_analysis(_serie(), _risposta())
+    assert esito["analisi"]["osservazioni"][0]["novita"] == "nuova"
 
 
 class _ModelloCheRipete:
@@ -133,7 +146,7 @@ class _ModelloCheRipete:
         self.domande.append(kwargs["user_message"])
         return json.dumps({"osservazioni": [
             {"quale": 0, "innesco": 1, "cosa": "di nuovo il prelievo",
-             "spiegato": None, "cosa_cambierebbe": "y", "novita": "nuova"}]})
+             "spiegato": None, "cosa_cambierebbe": "y"}]})
 
 
 def _resoconto(giorno):
@@ -145,12 +158,13 @@ def _resoconto(giorno):
 
 
 @pytest.mark.asyncio
-async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_rifiuta_la_ripetizione(tmp_path):
-    """Dal giro intero: due analisi archiviate di ieri e l'altro ieri, la
-    stessa osservazione detta con la stessa prova, e oggi non si scrive.
+async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_toglie_la_ripetizione(tmp_path):
+    """Dal giro intero: due analisi archiviate, la stessa osservazione detta
+    con la stessa prova. L'analisi di oggi si scrive -- il giro non richiede
+    ogni ora -- e la ripetizione non c'e'.
 
     Mutazione ESEGUITA (06/10/2026): il giro della catena che non passa la
-    memoria ad `apply_analysis` -- rossa (l'analisi di oggi si scrive)."""
+    memoria ad `apply_analysis` -- rossa (la ripetizione si scrive)."""
     store = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
@@ -171,6 +185,6 @@ async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_rifiuta_la_ripetizione(t
         assert '"giorni": ["2026-09-16"]' in modello.domande[0]
         assert '"stato": "attesa"' in modello.domande[0]
         oggi = historian.today(historian.house_timezone(None)).isoformat()
-        assert store.analysis(oggi) is None
+        assert store.analysis(oggi)["osservazioni"] == []
     finally:
         store.close()

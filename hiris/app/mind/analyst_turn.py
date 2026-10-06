@@ -90,9 +90,11 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
                    previous: list[dict] | None = None) -> dict:
     """Cosa si fa della risposta: si valida, e si **arricchisce coi numeri**.
 
-    `previous` e' la memoria (`analyst.previous_observations`, D4): ogni
-    osservazione dice se e' nuova, e la stessa impronta con la stessa prova si
-    rifiuta (`analyst.novelty_problem`).
+    `previous` e' la memoria (`analyst.previous_observations`, D4): il codice
+    attacca a ogni osservazione se e' nuova (`analyst.novelty`), e quella gia'
+    detta con la stessa prova **si toglie**, si dice nel registro e torna in
+    `ripetute` (le impronte). Non si rifiuta l'analisi per lei: non e' un
+    errore di lettura del modello, e' un doppione che il codice riconosce.
 
     Torna `{"analisi": dict | None, "problemi": [...], "risposta": bool}`.
 
@@ -127,20 +129,27 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
     known = list(series.get("serie") or [])
     problems: list[str] = []
     enriched: list[dict] = []
+    repeated: list[str] = []
     for number, line in enumerate(seen, start=1):
         if not isinstance(line, dict):
             problems.append(f"l'osservazione {number} non e' un'osservazione: {line!r}")
             continue
         built = _enrich(line, number, known, problems)
         if built is not None:
-            repeated = analyst.novelty_problem(built, line.get("novita"), previous or [])
-            if repeated:
-                problems.append(f"l'osservazione {number} {repeated}")
-            enriched.append({**built, "novita": line.get("novita")})
+            fresh = analyst.novelty(built, previous or [])
+            if fresh is None:
+                repeated.append(analyst.observation_key(built))
+                continue
+            enriched.append({**built, "novita": fresh})
 
     if problems:
-        return {"analisi": None, "problemi": problems, "risposta": True}
-    return {"analisi": {"osservazioni": enriched}, "problemi": [], "risposta": True}
+        return {"analisi": None, "problemi": problems, "risposta": True,
+                "ripetute": repeated}
+    if repeated:
+        logger.info("analista: %d osservazioni gia' dette con la stessa prova, "
+                    "tolte: %s", len(repeated), " \u00b7 ".join(repeated))
+    return {"analisi": {"osservazioni": enriched}, "problemi": [], "risposta": True,
+            "ripetute": repeated}
 
 
 def _enrich(line: dict, number: int, known: dict, problems: list) -> dict | None:
@@ -231,8 +240,7 @@ ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
    "innesco": 1 | 2 | 3,
    "cosa": "cosa hai visto, in una frase",
    "spiegato": "da cosa e' spiegato, oppure null se non lo e'",
-   "cosa_cambierebbe": "cosa cambierebbe rispetto all'obiettivo",
-   "novita": "nuova" | "prova cambiata"}
+   "cosa_cambierebbe": "cosa cambierebbe rispetto all'obiettivo"}
 ]}
 
 Gli inneschi sono tre, e ogni osservazione deve dire quale:
@@ -241,9 +249,8 @@ Gli inneschi sono tre, e ogni osservazione deve dire quale:
   3 = qualcosa non c'e' piu' (la copertura crolla, o la misura smette di
       calcolarsi)
 
-«novita»: «nuova» se questa misura con questo innesco non l'hai mai detta;
-«prova cambiata» se l'hai gia' detta e da allora la prova e' cambiata. La
-stessa cosa con la stessa prova non si ridice: la risposta viene rifiutata.
+Cio' che hai gia' detto con la stessa prova non ridirlo: il codice lo
+riconosce e lo toglie. Se la prova e' cambiata, puoi ridirlo.
 
 Niente numeri: li mette il codice. Un elenco vuoto va benissimo."""
 

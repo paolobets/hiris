@@ -278,9 +278,11 @@ def trigger_facts(row: dict, days: list[str]) -> list[dict]:
     return facts
 
 
-#: Le due risposte possibili alla domanda «l'hai gia' detta?» (D4 del piano
-#: degli attori, 06/10/2026). Lista di AMMISSIONE: il modello dice quale, il
-#: codice controlla contro gli archivi (`novelty_problem`).
+#: Le due risposte alla domanda «l'ha gia' detta?» (D4 del piano degli
+#: attori, 06/10/2026). Le scrive il codice (`novelty`), non il modello: se
+#: un'impronta e' in memoria lo sanno gli archivi, e chiederlo al modello
+#: sarebbe ricopiare un fatto che possiamo leggere (giro 12 del revisore,
+#: G12-2; la lezione del 22/09, «il NUMERO, non il nome»).
 NOVELTY = ("nuova", "prova cambiata")
 
 
@@ -336,28 +338,21 @@ def previous_observations(analyses, proposals, *, today: str,
     return list(by_key.values())
 
 
-def novelty_problem(observation: dict, novelty, previous: list[dict]) -> str | None:
-    """Perche' un'osservazione ripete la memoria, o `None` se non la ripete.
+def novelty(observation: dict, previous: list[dict]) -> str | None:
+    """Se un'osservazione e' nuova, ricavato dalla memoria: «nuova» se la sua
+    impronta non e' mai stata detta, «prova cambiata» se e' stata detta con
+    una prova diversa, `None` se e' **gia' detta con la stessa prova**.
 
-    La regola di D4: **la stessa impronta con la stessa prova e' gia' detta**,
-    qualunque cosa il modello dichiari. Con una prova cambiata si dice di
-    nuovo, ed e' il modello a dirlo («prova cambiata»); un'impronta mai detta
-    e' «nuova».
+    Il `None` non rifiuta l'analisi: chi chiama toglie quella sola
+    osservazione, come `actuator.to_handle` toglie cio' che e' gia' deciso.
+    Rifiutare tutto faceva perdere le altre osservazioni del giorno, e la
+    domanda dopo era identica: su una misura che non varia mai (innesco 2)
+    fino a ventiquattro turni a vuoto (giro 12 del revisore, eseguito).
     """
-    if novelty not in NOVELTY:
-        return (f"non dice se e' nuova (`novita`: {novelty!r}): "
-                f"{' o '.join(NOVELTY)}")
     key = observation_key(observation)
     said = next((p for p in previous or [] if p.get("impronta") == key), None)
     if said is None:
-        if novelty != "nuova":
-            return ("dice «prova cambiata», ma questa misura con questo "
-                    "innesco non e' mai stata detta: e' nuova")
-        return None
+        return NOVELTY[0]
     if said.get("prova") == evidence_of(observation):
-        return (f"e' gia' stata detta ({', '.join(str(d) for d in said['giorni'])}) "
-                "con la stessa prova: si ridice solo quando la prova cambia")
-    if novelty != "prova cambiata":
-        return ("dice «nuova», ma e' gia' stata detta: con la prova cambiata "
-                "e' «prova cambiata»")
-    return None
+        return None
+    return NOVELTY[1]
