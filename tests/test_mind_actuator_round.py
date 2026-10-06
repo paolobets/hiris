@@ -479,3 +479,26 @@ async def test_col_PONTE_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa, pian
     assert [(i["gesto"], attore) for i, attore in officina.intenzioni] == [
         ("crea", "proponente")]
     assert store.proposals() == []
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_nessuno_risponde_e_non_e_una_risposta(casa):
+    """G29-1, per l'attuatore: la frase del router quando tutti i backend
+    rifiutano e' nessuna risposta, non una risposta storta da rifiutare.
+
+    Mutazione ESEGUITA: il giro che passa la risposta senza `chain_answer` --
+    rossa (`risposta: True`)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    app, store, _modello = casa
+    store.replace_analysis(OGGI, _analisi())
+    giu = MagicMock()
+    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    app["llm_router"] = LLMRouter(claude=giu, strategy="balanced")
+
+    esito = await server.actuator_round(app)
+
+    assert esito is not None and esito["risposta"] is False
