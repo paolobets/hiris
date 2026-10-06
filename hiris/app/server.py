@@ -109,6 +109,7 @@ from .steering import (
     OBSERVER_SPECIES,
     PROPOSER_SPECIES,
     RECIPES_SPECIES,
+    chain_answer,
     chain_turn,
     enqueue_turn,
     start,
@@ -2119,7 +2120,7 @@ async def analyst_round(app) -> dict | None:
             runner, ANALYST_SPECIES, usage=app.get("usage"),
             max_tokens=analyst_turn.MAX_ANSWER_TOKENS,
             user_message=question, system_prompt=analyst_turn.SYSTEM)
-        esito = analyst_turn.apply_analysis(series, answer,
+        esito = analyst_turn.apply_analysis(series, chain_answer(answer, turn),
                                             truncated=turn.truncated)
         _write_analysis(store, today, esito)
         return esito
@@ -2216,7 +2217,7 @@ async def actuator_round(app) -> dict | None:
             runner, PROPOSER_SPECIES, usage=app.get("usage"),
             max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
             user_message=question, system_prompt=proposer_turn.SYSTEM)
-        esito = proposer_turn.apply_actuation(pending, answer,
+        esito = proposer_turn.apply_actuation(pending, chain_answer(answer, turn),
                                               truncated=turn.truncated)
         await _settle_actuation(app, store, today, stamp, esito, pending)
         return esito

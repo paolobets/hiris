@@ -286,9 +286,30 @@ class TurnOutcome:
     turni (`UsageStore.log_turn`), `None` se nessuno misura o se la scrittura
     e' fallita: chi vuole annotare poi quel turno lo collega per
     identificatore, non per istante.
+
+    `answered` e' `False` quando il turno non ha avuto risposta da nessun
+    modello: il router ha restituito la sua frase per l'utente
+    (`LLMRouter.last_unanswered`), e il registro scrive «fallito». Si legge
+    anche senza archivio, come `truncated`. Lo legge `chain_answer`.
     """
     truncated: bool = False
     turn_id: str | None = None
+    answered: bool = True
+
+
+def chain_answer(answer, turn: TurnOutcome) -> str:
+    """La risposta di un turno sulla catena, o `""` se nessun modello ha
+    risposto -- la stessa forma di `reasoning.queue.turn_answer` sul ponte.
+
+    **La frase del router non e' una risposta** (rilievo G29-1, 06/10/2026).
+    Quando tutti i backend rifiutano, il router consegna una frase per
+    l'utente (l'errore dell'ultimo backend, o «Tutti i provider AI non
+    disponibili...»): e' per la chat, che la mostra. Un mestiere di sfondo
+    che la leggeva come risposta del modello scriveva conclusioni su un
+    guasto -- le ricette un «non capito», che toglie il dispositivo dalle
+    domande per sempre.
+    """
+    return answer if turn.answered else ""
 
 
 def was_truncated(runner) -> bool:
@@ -456,6 +477,7 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
         # misurati sulla casa vera il 05/10/2026.
         if esito == "riuscito" and getattr(runner, "last_unanswered", False):
             esito = "fallito"
+            stato.answered = False
         # **Il troncato si legge FUORI dalla scrittura dell'archivio**: il
         # mestiere ne ha bisogno anche quando nessuno misura (archivio
         # `None`), perche' e' cio' che gli impedisce di leggere una risposta
