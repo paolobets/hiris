@@ -1843,13 +1843,33 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
         return {}, {}, nomi, None, mute
     entita = sorted({e for r in ricette.values() for e in Recipe(r).entities()})
     da_ts, a_ts = day_boundaries(giorno, timezone)
-    # **Il giorno e la sua storia in UNA lettura** (attori, Task 1.3): la
-    # regola del dato fermo giudica ogni ora contro la stessa ora dei giorni
-    # prima (`mind/flatline.py`, D3), e la finestra si allunga di
-    # `HISTORY_DAYS` invece di aggiungere una richiesta.
+    # **Quali di queste entita' non avranno MAI una serie** (spec §6, primo
+    # «rifiuta se»). Una lettura sola per giro, come le statistiche: il
+    # registro di Home Assistant e' un elenco di nomi, non una serie.
+    # `None` -- non l'insieme vuoto -- se non si e' potuto leggere: affermare
+    # «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
+    # Si legge PRIMA delle serie (dal 06/10/2026): dice anche le sorelle che
+    # la regola del dato fermo chiede (`House.sibling_group`).
+    with_statistics = await statistic_ids_for_round(app, ha_client)
+    if isinstance(with_statistics, dict):  # la busta del guasto (D3)
+        logger.warning("resoconto: elenco delle statistiche non letto (%s): %s",
+                       with_statistics.get("causa"), with_statistics.get("errore"))
+        counted = house
+    else:
+        counted = house.with_statistics(with_statistics)
+    # **Il giorno e la sua storia in UNA lettura, con le sorelle** (attori,
+    # Task 1.3; proposta del 06/10/2026): la regola del dato fermo giudica il
+    # gruppo di ogni entita' contro la stessa ora dei giorni prima
+    # (`mind/flatline.py`). La finestra si allunga di `HISTORY_DAYS` e le
+    # sorelle entrano nella stessa richiesta: nessuna richiesta in piu'.
+    gruppi = {}
+    for e in entita:
+        for sorella in counted.siblings(e) or [e]:
+            gruppi[sorella] = counted.sibling_group(sorella)
+    lette = sorted(gruppi)
     history_start_ts = da_ts - HISTORY_DAYS * 86400
     report = await ha_client.hourly_statistics(
-        entita, datetime.fromtimestamp(history_start_ts, tz=UTC).isoformat(),
+        lette, datetime.fromtimestamp(history_start_ts, tz=UTC).isoformat(),
         datetime.fromtimestamp(a_ts, tz=UTC).isoformat())
     if "errore" in report:
         # **Un guasto delle statistiche non e' un resoconto senza misure.** Si
@@ -1862,34 +1882,25 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
                        giorno, report["errore"])
         refusal = unread_series(str(report["errore"]))
         return ricette, {}, nomi, {e: refusal for e in entita}, mute
-    storia: dict[str, list[dict]] = {}
-    serie: dict[str, list[dict]] = {}
-    for e in entita:
-        storia[e], serie[e] = split_at(_punti_orari(report["serie"].get(e) or []), da_ts)
+    finestra = {e: _punti_orari(report["serie"].get(e) or []) for e in lette}
+    serie = {e: split_at(finestra[e], da_ts)[1] for e in entita}
     # **Una misura su una fonte ferma si rifiuta** (D4): il 30/09/2026 il
     # resoconto ha scritto produzione 0 con copertura 1.0, e lo zero era
     # falso. I rifiuti entrano fra le entita' che tacciono, la strada che
     # `Recipe.run` conosce gia'.
-    ferme = frozen_refusals(serie, storia, zone=home_space_zone(timezone))
+    ferme = frozen_refusals(finestra, gruppi, day_start_ts=da_ts, entity_ids=entita,
+                            zone=home_space_zone(timezone))
     if ferme:
         logger.info("resoconto: %d entita' ferme il %s -- le loro misure "
                     "diranno perche'", len(ferme), giorno)
-    # **Quali di queste entita' non avranno MAI una serie** (spec §6, primo
-    # «rifiuta se»). Una lettura sola per giro, come le statistiche: il
-    # registro di Home Assistant e' un elenco di nomi, non una serie.
-    # `None` -- non l'insieme vuoto -- se non si e' potuto leggere: affermare
-    # «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
-    with_statistics = await statistic_ids_for_round(app, ha_client)
-    if isinstance(with_statistics, dict):  # la busta del guasto (D3)
-        logger.warning("resoconto: elenco delle statistiche non letto (%s): %s",
-                       with_statistics.get("causa"), with_statistics.get("errore"))
+    if counted is house:
         # Di quali entita' non abbiano statistiche non si afferma niente; che
-        # una fonte sia ferma si e' visto sulla sua serie, e resta.
+        # una fonte sia ferma si e' visto sulle serie, e resta.
         return ricette, serie, nomi, ferme or None, mute
     # Il perche' di ognuna dalla FONTE (B-26; Tappa 3, Task 8): la
     # stessa casa del giro, con l'elenco appena letto -- nessuna seconda
     # lettura di `recorder/list_statistic_ids`.
-    silent = silent_entities(house.with_statistics(with_statistics), entita)
+    silent = silent_entities(counted, entita)
     if silent:
         logger.info(
             "resoconto: %d entita' su %d nominate dalle ricette non hanno "

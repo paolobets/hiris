@@ -1,81 +1,82 @@
-"""Il dato fermo: dove una serie smette di muoversi, giudicato contro la sua storia.
+"""Il dato fermo: una fonte che smette di parlare, giudicata con le sue sorelle.
 
-Piano degli strati 1-2 degli attori, Task 1.1; decisione D3 del proprietario
-(03/10/2026). Il caso che lo chiede e' quello del 30/09/2026 (BACKLOG, «Un
-contatore CONGELATO non si distingue da un giorno a zero»): l'inverter ha smesso
-di aggiornare i contatori, e il resoconto ha scritto produzione 0 con copertura
-1.0. La copertura conta le ore che hanno un valore, non se quel valore dice
-qualcosa: un'ora con cambio 0 e' un'ora «conosciuta».
+Piano degli strati 1-2 degli attori, Task 1.1 e 1.3; il caso e' quello del
+30/09/2026 (BACKLOG, «Un contatore CONGELATO non si distingue da un giorno a
+zero»): l'inverter ha smesso di mandare dati, Home Assistant ha tenuto gli
+ultimi valori, e il resoconto ha scritto produzione 0 con copertura 1.0.
 
-**Nessuna soglia scritta da noi** (spec dei tre attori §10: *«Non si inventa
-una soglia: si archivia e si interpreta»*). Un'ora e' **immobile** se non varia
--- cambio 0 per un contatore, `minimo == massimo` per una misura istantanea -- e
-l'immobilita' e' **anomala** solo se la stessa ora, in **ogni** giorno della
-storia che ha un valore, variava. La notte del fotovoltaico e' immobile e non e'
-anomala: la sua storia, a quell'ora, e' immobile anche lei.
+**Perche' il gruppo e non la serie** (proposta del 06/10/2026, dopo la
+revisione del giro 4 e la misura dello sprint). La prima forma giudicava ogni
+serie da sola contro la sua storia (la meta' «la sua storia» della D3 del
+03/10): sulle catture dal 03/09 al 03/10 dava 360 rifiuti, 325 falsi. Da sola
+una serie non distingue «la fonte ha smesso di parlare» da «oggi la casa ha
+fatto altro» -- uno scaldabagno spento, un'ora piatta di un termometro. Una
+fonte che tace, invece, tace con tutte le sue sorelle. La forma di adesso,
+rigiocata dallo sprint sulle stesse catture: 73 rifiuti, 58 veri su 58, 15
+falsi (13 forse veri), nessun blocco perso.
 
-**Un tratto** sono ore immobili consecutive. E' «ferma» se almeno una sua ora e'
-anomala, e allora il tratto comincia dove comincia l'immobilita', non alla prima
-ora anomala: il 30/09 la produzione e' immobile dalla mezzanotte, ed e' quello
-il «dal» vero, anche se di notte, da sola, non avrebbe detto niente.
+**La regola.** Il gruppo e' `House.sibling_group`: il dispositivo, o
+l'istanza dell'integrazione per un'entita' sola sul suo dispositivo. Un'ora e':
 
-**Una storia che non basta dice «non lo so»**, mai «ferma». Quanta storia basta
-e' anch'esso un numero, e non lo scriviamo: basta **un** giorno con un valore a
-quell'ora -- il minimo sotto cui non c'e' nessuna prova -- e il tratto porta
-quanti giorni l'hanno sostenuto (`giorni_di_storia`), perche' chi lo legge sappia
-quanto e' sottile la base (§10: *«va detto che la base e' sottile»*).
+1. **ferma per il gruppo** se tutte le sue entita' hanno un punto e nessuna
+   varia (cambio 0 per un contatore, `minimo == massimo` per una misura
+   istantanea), e almeno una misura istantanea e' ferma su un valore
+   **diverso da zero**: lo zero e' anche il riposo di un apparecchio spento,
+   10 W a mezzogiorno o la batteria al 74% per un giorno no. Un gruppo di una
+   sola entita', o di soli contatori, non si giudica: non c'e' una prova;
+2. **anomala** se il resto della casa, in quell'ora, si muove (se si ferma
+   tutto e' il sistema, Task 1.4), e se alla stessa ora dei giorni prima --
+   con l'ora prima e l'ora dopo, `NEIGHBOUR_HOURS` -- il gruppo non e' mai
+   stato fermo. La notte di un fotovoltaico senza batteria e' ferma ogni notte,
+   e si spiega da se'.
 
-**Funzione pura**: non legge archivi ne' rete. La serie del giorno e la sua
-storia arrivano da chi chiama, nella forma di `server._punti_orari`; la storia e'
-una lista sola di punti dei giorni precedenti, e «la stessa ora» e' lo stesso
-istante un numero intero di giorni prima.
+Un **tratto** sono ore ferme per il gruppo consecutive, sull'intera finestra
+letta (storia e giorno): un blocco cominciato tre giorni fa e' un tratto solo
+che arriva a oggi. Conta se ha almeno un'ora anomala. Le misure del giorno si
+rifiutano (D4) se un tratto «ferma» lo tocca; per un CONTATORE solo se il
+tratto arriva all'ultima ora della finestra: un blocco che recupera prima di
+sera non toglie niente al totale (G4-2).
 
-**Il resoconto la usa dal Task 1.3** (D4 del proprietario, 03/10/2026: una
-misura su una fonte ferma si RIFIUTA, «mai un numero plausibile»).
-`server._report_ingredients` chiede le statistiche del giorno e della sua
-storia in una lettura sola (`HISTORY_DAYS`), le separa con `split_at`, e
-`frozen_refusals` trasforma i tratti fermi in rifiuti con causa
-`operations.FROZEN`: entrano fra le entita' che tacciono (`silent`), la
-strada che `Recipe.run` conosce gia'. Il recupero dei resoconti e la
-riparazione d'avvio passano dagli stessi ingredienti, quindi un giorno
-rifatto esce con la stessa causa.
+**Nessuna soglia sulla casa.** `NEIGHBOUR_HOURS` e' la risoluzione della
+griglia oraria delle statistiche, non quanto deve durare un blocco;
+`HISTORY_DAYS` e' il costo della lettura.
+
+**Funzione pura**: le serie arrivano da chi chiama, nella forma di
+`server._punti_orari`. `server._report_ingredients` legge in UNA richiesta il
+giorno e la sua storia, per le entita' delle ricette e per le loro sorelle, e
+passa i rifiuti fra le entita' che tacciono (`silent`), la strada che
+`Recipe.run` conosce gia'. Notte, recupero e riparazione d'avvio passano
+dagli stessi ingredienti.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from datetime import UTC
 
 from ..home_space.historian import instant_epoch, instant_out
 from .operations import FROZEN, NotComputable
 
 _DAY_S = 86400
+_HOUR_S = 3600
 
-#: Gli esiti di un tratto. Lista di ammissione chiusa. «ferma» e' la parola
-#: del vocabolario delle cause (`operations.FROZEN`), e non se ne scrive una
-#: seconda copia: il tratto e il rifiuto della misura dicono lo stesso fatto.
-UNKNOWN = "non_lo_so"
-
-#: Quanti giorni di storia legge il resoconto per giudicare un giorno. Non e'
-#: una soglia del giudizio -- la regola ne vuole almeno uno, e dice su quanti
-#: si e' appoggiata (`giorni_di_storia`) -- ma il costo della lettura: la
-#: finestra delle statistiche passa da un giorno a otto, sempre in UNA
-#: richiesta per giro di resoconto (R16). Una settimana perche' ogni giorno
-#: della settimana ci compare una volta: le abitudini della casa hanno quel
-#: passo. **Il limite, detto**: la regola chiede che la stessa ora abbia
-#: variato in OGNI giorno della storia, quindi una fonte ferma da piu' giorni
-#: esce «ferma» solo nel primo -- dal secondo la sua storia contiene gia' il
-#: blocco, e lo spiega. Nel caso del 30/09 il blocco e' cominciato quel giorno.
+#: Quanti giorni di storia legge il resoconto per giudicare un giorno: il costo
+#: della lettura, non una soglia -- la finestra delle statistiche passa da un
+#: giorno a otto, in UNA richiesta per giro (R16). Una settimana perche' ogni
+#: giorno della settimana ci compare una volta. Un blocco cominciato prima
+#: della finestra non ha ore anomale dentro, e non esce.
 HISTORY_DAYS = 7
+
+#: Quante ore prima e dopo valgono come «la stessa ora» dei giorni passati. E'
+#: la risoluzione della griglia oraria: il bordo di un tramonto che anticipa,
+#: o il cambio dell'ora, spostano un'abitudine di una casella. Misurato dallo
+#: sprint il 06/10/2026: con 1 spariscono 22 falsi (i 20 di bordo di due
+#: sensori di luce e i 2 del 17/09) e i 58 blocchi veri restano.
+NEIGHBOUR_HOURS = 1
 
 
 def _still(point: dict) -> bool | None:
-    """Se l'ora non varia: `True`, `False`, o `None` se di lei non si sa niente.
-
-    Un contatore porta `valore` (il cambio dell'ora); una misura istantanea
-    porta `minimo` e `massimo`. Un'ora senza ne' l'uno ne' gli altri e' un buco,
-    non un'ora immobile.
-    """
+    """Se l'ora non varia: `True`, `False`, o `None` se di lei non si sa niente."""
     value = point.get("valore")
     if value is not None:
         return value == 0
@@ -85,54 +86,27 @@ def _still(point: dict) -> bool | None:
     return None
 
 
-def _history_by_hour(history) -> dict[float, list[tuple[float, bool]]]:
-    """La storia indicizzata per ora del giorno (secondi dalla mezzanotte UTC).
-
-    Si tiene anche l'istante, perche' vale solo la storia PRECEDENTE all'ora
-    giudicata.
-    """
-    by_hour: dict[float, list[tuple[float, bool]]] = {}
-    for point in history or []:
-        if not isinstance(point, dict):
-            continue
-        start = instant_epoch(point.get("inizio"))
-        still = _still(point)
-        if start is None or still is None:
-            continue
-        by_hour.setdefault(start % _DAY_S, []).append((start, still))
-    return by_hour
-
-
-def _verdict(start: float, by_hour) -> tuple[bool | None, int]:
-    """Se l'immobilita' di quest'ora e' anomala, e su quanti giorni di storia.
-
-    `None` se nessun giorno precedente ha un valore a quest'ora: non lo so.
-    """
-    past = [still for moment, still in by_hour.get(start % _DAY_S, [])
-            if moment < start and (start - moment) % _DAY_S == 0]
-    if not past:
-        return None, 0
-    return not any(past), len(past)
-
-
-def _stretch(run: list[dict], verdicts, zone) -> dict:
-    anomalous = [days for anomaly, days in verdicts if anomaly]
-    known = [days for anomaly, days in verdicts if anomaly is not None]
-    start, end = run[0]["inizio"], run[-1]["fine"]
-    # La frase parla nell'ora della casa, come il resto del resoconto (G4-4,
-    # revisione del 06/10/2026); `dal`/`al` restano gli istanti della serie.
-    said_start, said_end = instant_out(start, zone), instant_out(end, zone)
-    if anomalous:
-        days = max(anomalous)
-        return {"dal": start, "al": end, "esito": FROZEN,
-                "giorni_di_storia": days,
-                "perche": (f"non varia dalle {said_start} alle {said_end}, e alla stessa "
-                           f"ora ha sempre variato in ciascuno dei {days} giorni "
-                           f"di storia")}
-    return {"dal": start, "al": end, "esito": UNKNOWN,
-            "giorni_di_storia": max(known, default=0),
-            "perche": (f"non varia dalle {said_start} alle {said_end}, e la sua storia non "
-                       f"copre queste ore: non si sa se sia normale")}
+def _index(series: Mapping[str, list]):
+    """`{entita': {istante: ferma}}`, i contatori, e le ore in cui una misura
+    istantanea e' ferma su un valore diverso da zero."""
+    hours_of: dict[str, dict[float, bool]] = {}
+    counters: set[str] = set()
+    held: set[tuple[str, float]] = set()
+    for entity_id, points in (series or {}).items():
+        hours: dict[float, bool] = {}
+        for point in points or []:
+            if not isinstance(point, dict):
+                continue
+            start, still = instant_epoch(point.get("inizio")), _still(point)
+            if start is None or still is None:
+                continue
+            hours[start] = still
+            if point.get("valore") is not None:
+                counters.add(entity_id)
+            elif still and point.get("minimo") != 0:
+                held.add((entity_id, start))
+        hours_of[entity_id] = hours
+    return hours_of, counters, held
 
 
 def split_at(points, instant_ts: float) -> tuple[list[dict], list[dict]]:
@@ -140,8 +114,7 @@ def split_at(points, instant_ts: float) -> tuple[list[dict], list[dict]]:
 
     Il resoconto legge giorno e storia in una richiesta sola: questa e' la
     riga che li separa. Un punto senza un istante leggibile resta col giorno,
-    dove stava prima del Task 1.3 (le operazioni lo trattano come lo
-    trattavano); nella storia non entrerebbe comunque (`_history_by_hour`).
+    dove stava prima del Task 1.3.
     """
     before: list[dict] = []
     after: list[dict] = []
@@ -151,67 +124,113 @@ def split_at(points, instant_ts: float) -> tuple[list[dict], list[dict]]:
     return before, after
 
 
-def frozen_refusals(series: Mapping[str, list],
-                    history: Mapping[str, list], *,
-                    zone=UTC) -> dict[str, NotComputable]:
-    """Per ogni entita' con almeno un tratto «ferma», il rifiuto delle sue
-    misure: `{entity_id: NotComputable(..., cause=FROZEN)}`.
+def frozen_stretches(series: Mapping[str, list],
+                     groups: Mapping[str, Hashable | None]) -> dict[Hashable, list[dict]]:
+    """I tratti «ferma» di ogni gruppo sull'intera finestra:
+    `{gruppo: [{"dal", "al", "giorni_di_storia"}]}` con gli istanti in epoch.
 
-    D4 «rifiutata»: la misura non diventa un numero marcato ma un «non
-    calcolabile», con la frase che dice il tratto e perche'. Un tratto «non lo
-    so» non rifiuta niente: non c'e' una prova, e una misura non si toglie
-    senza prova. Le entita' senza tratti fermi non compaiono.
+    `series` sono i punti di TUTTA la finestra letta, per ogni entita'; `groups`
+    dice il gruppo di ognuna (`House.sibling_group`, `None` = senza gruppo).
     """
-    refusals: dict[str, NotComputable] = {}
-    for entity_id, points in (series or {}).items():
-        frozen = [t for t in flatline_stretches(points, history=history.get(entity_id),
-                                                     zone=zone)
-                  if t["esito"] == FROZEN]
-        if frozen:
-            refusals[entity_id] = NotComputable(
-                f"{entity_id} e' ferma: " + " · ".join(t["perche"] for t in frozen),
-                cause=FROZEN)
-    return refusals
+    hours_of, _counters, held = _index(series)
+    members: dict[Hashable, list[str]] = {}
+    for entity_id, group in groups.items():
+        if group is not None and entity_id in hours_of:
+            members.setdefault(group, []).append(entity_id)
+    every_hour = sorted({ts for hours in hours_of.values() for ts in hours})
+    if not every_hour:
+        return {}
+    found: dict[Hashable, list[dict]] = {}
+    for group, entities in members.items():
+        if len(entities) < 2:
+            continue
+        outside = [e for e in hours_of if groups.get(e) != group]
+        stretches = _group_stretches(entities, outside, hours_of, held, every_hour)
+        if stretches:
+            found[group] = stretches
+    return found
 
 
-def flatline_stretches(series, *, history, zone=UTC) -> list[dict]:
-    """I tratti in cui la serie non si muove, ognuno col suo giudizio.
+def _group_stretches(entities, outside, hours_of, held, every_hour) -> list[dict]:
+    """I tratti «ferma» di un gruppo (vedi il docstring del modulo)."""
+    first = every_hour[0]
 
-    Torna una lista di `{"dal", "al", "esito", "perche", "giorni_di_storia"}`:
-    `esito` e' `"ferma"` o `"non_lo_so"`. Un tratto immobile che la storia
-    spiega (la notte del fotovoltaico) non esce affatto: e' la serie che fa
-    quello che ha sempre fatto.
-    """
-    by_hour = _history_by_hour(history)
-    points = sorted(
-        ((start, p) for p in series or [] if isinstance(p, dict)
-         for start in [instant_epoch(p.get("inizio"))] if start is not None),
-        key=lambda pair: pair[0])
+    def group_still(ts):
+        return (all(hours_of[e].get(ts) is True for e in entities)
+                and any((e, ts) in held for e in entities))
+
+    def has_data(ts):
+        return all(ts in hours_of[e] for e in entities)
+
+    def rest_moves(ts):
+        return any(hours_of[e].get(ts) is False for e in outside)
+
     stretches: list[dict] = []
-    run: list[dict] = []
-    verdicts: list[tuple[bool | None, int]] = []
-    previous_end: float | None = None
+    run: list[float] = []
+    days_seen = 0
 
     def close() -> None:
-        if not run:
-            return
-        anomalies = [anomaly for anomaly, _ in verdicts]
-        # Un tratto spiegato in ogni sua ora dalla storia non esce.
-        if any(anomalies) or None in anomalies:
-            stretches.append(_stretch(run, verdicts, zone))
+        nonlocal days_seen
+        if run and days_seen:
+            stretches.append({"dal": run[0], "al": run[-1] + _HOUR_S,
+                              "giorni_di_storia": days_seen})
         run.clear()
-        verdicts.clear()
+        days_seen = 0
 
-    for start, point in points:
-        # Un'ora mancante fra due presenti spezza il tratto: di lei non si sa
-        # niente, e un tratto non attraversa cio' che non si sa.
-        if previous_end is not None and start != previous_end:
+    previous: float | None = None
+    for ts in every_hour:
+        # Un'ora mancante fra due presenti spezza il tratto.
+        if previous is not None and ts != previous + _HOUR_S:
             close()
-        previous_end = instant_epoch(point.get("fine"))
-        if _still(point) is not True:
+        previous = ts
+        if not group_still(ts):
             close()
             continue
-        run.append(point)
-        verdicts.append(_verdict(start, by_hour))
+        run.append(ts)
+        judged = [p for p in (ts - k * _DAY_S for k in range(1, HISTORY_DAYS + 1))
+                  if p >= first and has_data(p)]
+        near = [q for p in judged
+                for q in range(int(p) - NEIGHBOUR_HOURS * _HOUR_S,
+                               int(p) + NEIGHBOUR_HOURS * _HOUR_S + 1, _HOUR_S)
+                if has_data(q)]
+        if rest_moves(ts) and judged and not any(group_still(q) for q in near):
+            days_seen = max(days_seen, len(judged))
     close()
     return stretches
+
+
+def frozen_refusals(series: Mapping[str, list],
+                    groups: Mapping[str, Hashable | None], *,
+                    day_start_ts: float, entity_ids=None,
+                    zone=UTC) -> dict[str, NotComputable]:
+    """Il rifiuto delle misure del giorno per le entita' ferme:
+    `{entity_id: NotComputable(..., cause=FROZEN)}`.
+
+    `entity_ids` sono quelle di cui si chiede (le entita' delle ricette); le
+    altre servono solo da sorelle e da «resto della casa». La frase parla
+    nell'ora della casa (G4-4).
+    """
+    _hours, counters, _held = _index(series)
+    last = max((ts for hours in _hours.values() for ts in hours), default=None)
+    refusals: dict[str, NotComputable] = {}
+    wanted = set(series) if entity_ids is None else set(entity_ids)
+    for group, stretches in frozen_stretches(series, groups).items():
+        siblings = sorted(e for e, g in groups.items() if g == group and e in series)
+        for stretch in stretches:
+            if stretch["al"] <= day_start_ts:
+                continue
+            reaches_end = last is not None and stretch["al"] >= last + _HOUR_S
+            said_start = instant_out(stretch["dal"], zone)
+            said_end = instant_out(stretch["al"], zone)
+            for entity_id in siblings:
+                if entity_id not in wanted or entity_id in refusals:
+                    continue
+                if entity_id in counters and not reaches_end:
+                    continue
+                refusals[entity_id] = NotComputable(
+                    f"{entity_id} e' ferma: dalle {said_start} alle {said_end} non "
+                    f"varia nessuna delle {len(siblings)} entita' del suo gruppo "
+                    f"({', '.join(siblings)}), mentre il resto della casa si muove, "
+                    f"e a quell'ora il gruppo non era mai fermo nei "
+                    f"{stretch['giorni_di_storia']} giorni di storia", cause=FROZEN)
+    return refusals

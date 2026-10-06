@@ -1,28 +1,29 @@
 """Il dato fermo entra nel resoconto (piano degli attori, strato 1, Task 1.3;
-D3 «la sua storia» e D4 «rifiutata» del proprietario, 03/10/2026).
+D4 «rifiutata»; la regola delle sorelle, proposta del 06/10/2026).
 
-Il caso: il 30/09/2026 l'inverter ha smesso di aggiornare i contatori, e il
-resoconto ha scritto **produzione 0 con copertura 1.0** (BACKLOG, «Un
-contatore CONGELATO non si distingue da un giorno a zero»). La copertura conta
-le ore che hanno un valore, non se quel valore dice qualcosa.
+Il caso: il 30/09/2026 l'inverter ha smesso di mandare dati, e il resoconto ha
+scritto **produzione 0 con copertura 1.0** (BACKLOG, «Un contatore CONGELATO
+non si distingue da un giorno a zero»).
 
 Qui la strada e' quella vera: `server._report_ingredients` sul client vero di
-Home Assistant (`scripts/casa_finta.py`), che chiede le statistiche orarie in
-UNA richiesta -- il giorno e la sua storia -- e poi `report.build_report`,
-cioe' cio' che fanno l'aggregazione notturna, il recupero dei resoconti e la
-riparazione d'avvio. **Le serie sono sintetiche**, senza nomi della casa: un
-contatore di produzione che di giorno cresce e di notte no, e il 30/09 non
-cresce mai.
+Home Assistant (`scripts/casa_finta.py`) con un'anagrafe vera
+(`build_home_space`), poi `report.build_report` -- cio' che fanno
+l'aggregazione notturna, il recupero dei resoconti e la riparazione d'avvio.
+L'inverter ha due entita' con statistiche sullo stesso dispositivo: la
+produzione, che la ricetta nomina, e lo stato di carica, che la ricetta NON
+nomina e che deve arrivare lo stesso, come sorella, nella stessa richiesta.
+Un contatore della casa, su un altro dispositivo e con la sua ricetta, si
+muove sempre: e' «il resto della casa», che la regola vede fra le serie lette. **Le serie
+sono sintetiche**, senza nomi della casa.
 
-Mutazioni ESEGUITE (06/10/2026), ognuna ripristinata e verificata con
-`git status`, tutte rosse per la ragione giusta:
-- `_report_ingredients` che non passa i rifiuti «ferma» al resoconto (torna
-  `silent` senza `ferme`) -- rosse le due prove del 30/09: la misura esce
-  `valore 0.0`, `copertura 1.0`, cioe' lo zero falso;
-- la lettura senza la storia (`storia_da_ts = da_ts`) -- rossa la prova del
-  30/09: senza storia la regola dice «non lo so», e non rifiuta;
-- il guasto dell'elenco delle statistiche che torna `None` invece dei
-  rifiuti «ferma» -- rossa la prova del guasto.
+Mutazioni ESEGUITE (06/10/2026), ognuna ripristinata (`git status`), tutte
+rosse per la ragione giusta:
+- `_report_ingredients` che non passa i rifiuti «ferma» al resoconto -- rossa
+  la prova del 30/09: la misura esce `valore 0.0`, `copertura 1.0`;
+- le sorelle non chieste (si leggono solo le entita' delle ricette) -- rosse
+  la prova del 30/09 (un gruppo di una sola serie non si giudica) e quella
+  della richiesta unica;
+- la lettura senza la storia -- rossa la prova del 30/09.
 """
 from __future__ import annotations
 
@@ -35,11 +36,13 @@ import pytest
 
 from hiris.app import server
 from hiris.app.home_space.historian import day_boundaries
+from hiris.app.home_space.reader import build_home_space
 from hiris.app.mind.flatline import HISTORY_DAYS
 from hiris.app.mind.operations import FROZEN
 from hiris.app.mind.report import build_report
+from hiris.app.proxy.entity_cache import _to_minimal
 from tests._casa_sintetica import synthetic_inputs
-from tests.test_attori_davanti_alla_fonte import _mirror_cache, _registries
+from tests.test_attori_davanti_alla_fonte import _Cache
 from tests.test_fonte_della_casa import _Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -47,55 +50,85 @@ from casa_finta import CasaFinta
 
 TIMEZONE = "Europe/Rome"
 FROZEN_DAY = "2026-09-30"
-#: Un'entita' della casa sintetica: qui conta solo la sua serie.
-COUNTER = "light.viva"
+PRODUCTION = "sensor.inverter_prodotta"
+CHARGE = "sensor.inverter_carica"
+HOUSE_METER = "sensor.casa_energia"
 DEVICE = "d_inverter"
 RECIPE = {"why": "la produzione del giorno", "steps": [
-    {"name": "produzione", "operation": "somma_periodo", "inputs": [f"@{COUNTER}"],
+    {"name": "produzione", "operation": "somma_periodo", "inputs": [f"@{PRODUCTION}"],
      "params": {"unit": "kWh"}}]}
 SUN_HOURS_UTC = range(5, 17)
+HOUSE_RECIPE = {"why": "il consumo della casa", "steps": [
+    {"name": "consumo", "operation": "somma_periodo", "inputs": [f"@{HOUSE_METER}"],
+     "params": {"unit": "kWh"}}]}
+STATISTIC_IDS = {PRODUCTION, CHARGE, HOUSE_METER}
+
+
+def _entity(entity_id, device_id):
+    return {"entity_id": entity_id, "platform": "zcs", "config_entry_id": "e_" + device_id,
+            "device_id": device_id, "disabled_by": None, "hidden_by": None}
+
+
+def _app():
+    home_space = build_home_space({
+        "entita": [_entity(PRODUCTION, DEVICE), _entity(CHARGE, DEVICE),
+                   _entity(HOUSE_METER, "d_contatore")],
+        "integrazioni": [],
+        "dispositivi": [{"id": DEVICE, "name": "Inverter", "disabled_by": None},
+                        {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
+    return {"knowledge": object(), "home_space_store": _Store(home_space),
+            # Le tre fonti sono vive: senza stato sarebbero «sparite», e le
+            # loro ricette mute (`recipes.muted_recipes`).
+            "entity_cache": _Cache([_to_minimal(
+                {"entity_id": e, "state": "1", "attributes": {"state_class": "measurement"}})
+                for e in STATISTIC_IDS])}
 
 
 def _ms(moment: datetime) -> int:
     return int(moment.timestamp() * 1000)
 
 
-def _rows(from_iso, to_iso, *, frozen_from: float | None):
-    """Le righe orarie di Home Assistant (`recorder/statistics_during_period`,
-    un contatore: `change`) fra due istanti. Da `frozen_from` in poi il
-    contatore non cresce piu'."""
-    moment = datetime.fromisoformat(from_iso)
-    end = datetime.fromisoformat(to_iso)
+def _rows(entity_id, from_iso, to_iso, frozen_from):
+    """Le righe orarie di Home Assistant (`recorder/statistics_during_period`)
+    fra due istanti. Da `frozen_from` in poi l'inverter non manda piu' niente:
+    la produzione non cresce, lo stato di carica resta al 74%."""
+    moment, end = datetime.fromisoformat(from_iso), datetime.fromisoformat(to_iso)
     rows = []
     while moment < end:
-        frozen = frozen_from is not None and moment.timestamp() >= frozen_from
-        change = 0.0 if frozen or moment.hour not in SUN_HOURS_UTC else 0.4
-        rows.append({"start": _ms(moment), "end": _ms(moment + timedelta(hours=1)),
-                     "sum": None, "state": None, "change": change})
+        frozen = moment.timestamp() >= frozen_from
+        row = {"start": _ms(moment), "end": _ms(moment + timedelta(hours=1)),
+               "sum": None, "state": None, "change": None,
+               "mean": None, "min": None, "max": None}
+        if entity_id == PRODUCTION:
+            row["change"] = 0.0 if frozen or moment.hour not in SUN_HOURS_UTC else 0.4
+        elif entity_id == CHARGE:
+            low, high = (74, 74) if frozen else (40 + moment.hour, 41 + moment.hour)
+            row.update(min=low, max=high, mean=(low + high) / 2)
+        else:
+            row["change"] = 0.1 + moment.hour / 1000
+        rows.append(row)
         moment += timedelta(hours=1)
     return rows
 
 
-async def _report(day, *, frozen_from, statistic_ids=None):
-    app = {"knowledge": object(),
-           "home_space_store": _Store(_registries([{"id": DEVICE, "name": "Inverter"}])),
-           "entity_cache": _mirror_cache()}
+async def _report(day, *, frozen_from):
     asked: list[dict] = []
 
     def _statistics(extra):
         asked.append(extra)
-        return {COUNTER: _rows(extra["start_time"], extra["end_time"],
-                               frozen_from=frozen_from)}
+        return {e: _rows(e, extra["start_time"], extra["end_time"], frozen_from)
+                for e in extra["statistic_ids"]}
 
     async def _stat_ids(_app, _ha, **_kw):
-        return {COUNTER} if statistic_ids is None else statistic_ids
+        return set(STATISTIC_IDS)
 
     house = CasaFinta(synthetic_inputs(), answers={
         "recorder/statistics_during_period": _statistics})
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: {DEVICE: RECIPE}), \
+    recipes = {DEVICE: RECIPE, "d_contatore": HOUSE_RECIPE}
+    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
             mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
         ricette, serie, nomi, silent, mute = await server._report_ingredients(
-            app, house, giorno=day, timezone=TIMEZONE)
+            _app(), house, giorno=day, timezone=TIMEZONE)
     report = build_report(day=day, episodes=[], series=serie, recipes=ricette,
                           names=nomi, silent=silent, muted=mute)
     [row] = [r for r in report["misure"] if r["misura"] == "produzione"]
@@ -113,15 +146,14 @@ async def test_il_30_09_la_produzione_ferma_non_e_uno_zero_con_copertura_piena()
     assert row["causa"] == FROZEN
     # Nell'ora della casa (G4-4): il giorno di Roma comincia alle 22:00Z.
     assert row["non_calcolabile"].startswith(
-        f"{COUNTER} e' ferma: non varia dalle 2026-09-30T00:00:00+02:00 ")
-    assert f"in ciascuno dei {HISTORY_DAYS} giorni di storia" in row["non_calcolabile"]
+        f"{PRODUCTION} e' ferma: dalle 2026-09-30T00:00:00+02:00 ")
+    assert CHARGE in row["non_calcolabile"]
 
 
 @pytest.mark.asyncio
 async def test_un_giorno_che_si_muove_resta_una_misura():
     """Il controllo: la stessa casa, un giorno prima del blocco, da' il suo
-    numero con la copertura piena. Una regola che rifiutasse tutto sarebbe
-    verde sulla prova qui sopra."""
+    numero con la copertura piena."""
     row, _asked = await _report("2026-09-29", frozen_from=_start(FROZEN_DAY))
     assert row["valore"] == round(0.4 * len(SUN_HOURS_UTC), 2)
     assert row["copertura"] == 1.0
@@ -129,22 +161,49 @@ async def test_un_giorno_che_si_muove_resta_una_misura():
 
 
 @pytest.mark.asyncio
-async def test_giorno_e_storia_si_chiedono_in_una_richiesta_sola():
-    """Il costo dichiarato (R16): una richiesta per giro di resoconto, con la
-    finestra allungata di `HISTORY_DAYS` giorni -- non una seconda lettura."""
+async def test_giorno_storia_e_sorelle_in_una_richiesta_sola():
+    """Il costo dichiarato (R16): una richiesta per giro, con la finestra
+    allungata di `HISTORY_DAYS` giorni e la sorella che nessuna ricetta nomina
+    dentro -- non una lettura in piu'."""
     _row, asked = await _report(FROZEN_DAY, frozen_from=_start(FROZEN_DAY))
     assert len(asked) == 1
+    assert sorted(asked[0]["statistic_ids"]) == [HOUSE_METER, CHARGE, PRODUCTION]
     start, end = day_boundaries(FROZEN_DAY, TIMEZONE)
     assert datetime.fromisoformat(asked[0]["start_time"]) == datetime.fromtimestamp(
         start - HISTORY_DAYS * 86400, tz=UTC)
     assert datetime.fromisoformat(asked[0]["end_time"]) == datetime.fromtimestamp(end, tz=UTC)
 
 
-@pytest.mark.asyncio
-async def test_con_l_elenco_delle_statistiche_guasto_la_fonte_ferma_resta_ferma():
-    """Se `recorder/list_statistic_ids` non si legge, di quali entita' non
-    abbiano statistiche non si afferma niente. Ma la serie si e' letta, e il
-    blocco si e' visto su di lei: quello resta."""
-    row, _asked = await _report(FROZEN_DAY, frozen_from=_start(FROZEN_DAY),
-                                statistic_ids={"errore": "giu'", "causa": "rete"})
-    assert row["causa"] == FROZEN
+# -- le sorelle, chieste alla casa (`House.sibling_group`) --------------------
+
+
+def _house(entities, statistic_ids):
+    from hiris.app.home_space.house import House
+    home_space = build_home_space({"entita": entities, "integrazioni": [],
+                                   "dispositivi": []})
+    return House.read(_Store(home_space), _Cache([]), statistic_ids=statistic_ids)
+
+
+def test_le_sorelle_sono_il_dispositivo_quando_ha_due_entita_con_statistiche():
+    house = _house([_entity("sensor.a", "d1"), _entity("sensor.b", "d1"),
+                    _entity("sensor.c", "d2")], {"sensor.a", "sensor.b", "sensor.c"})
+    assert house.sibling_group("sensor.a") == ("dispositivo", "d1")
+    assert house.siblings("sensor.a") == ["sensor.a", "sensor.b"]
+
+
+def test_un_entita_sola_sul_dispositivo_ha_per_sorelle_la_sua_istanza():
+    """Gli 8 termometri del 29/09: otto dispositivi con un'entita' ciascuno,
+    sulla stessa istanza dell'integrazione (misurato dallo sprint, 06/10/2026).
+    Non la piattaforma: un'altra istanza della stessa integrazione non c'entra."""
+    rows = [{**_entity(f"sensor.t{i}", f"d{i}"), "config_entry_id": "e_hub"}
+            for i in range(3)]
+    rows.append({**_entity("sensor.altro_hub", "d9"), "config_entry_id": "e_altro"})
+    house = _house(rows, {r["entity_id"] for r in rows})
+    assert house.sibling_group("sensor.t0") == ("istanza", "e_hub")
+    assert house.siblings("sensor.t0") == ["sensor.t0", "sensor.t1", "sensor.t2"]
+
+
+def test_senza_l_elenco_delle_statistiche_non_ci_sono_sorelle():
+    house = _house([_entity("sensor.a", "d1"), _entity("sensor.b", "d1")], None)
+    assert house.sibling_group("sensor.a") is None
+    assert house.siblings("sensor.a") == []
