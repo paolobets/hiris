@@ -334,7 +334,8 @@ class SilentConnection:
     alla prossima connessione), `push_event(tipo, dati)` e
     `push_config_entry_change(cambio, voce)` (Home Assistant che parla),
     `drop()` (la connessione che cade), `core_state` (lo stato del nucleo che
-    `get_config` dichiara: `RUNNING`, o `STARTING` per una casa in avvio).
+    `get_config` dichiara: `RUNNING`, o `STARTING` per una casa in avvio),
+    `config_refusal` (`get_config` rifiutata, nella forma d'errore di HA).
     Registra `opened` (le connessioni
     aperte), `listening` (quelle arrivate in ascolto degli eventi) e `sent`
     (cio' che il client ha mandato dopo l'autenticazione, il gettone escluso:
@@ -361,6 +362,8 @@ class SilentConnection:
         #: `ha_client.STARTED_EVENT` per la fonte): una prova lo mette a
         #: `STARTING` per una casa che si sta ancora avviando.
         self.core_state = "RUNNING"
+        #: Il rifiuto di `get_config` (`{"code", "message"}`), o `None`.
+        self.config_refusal: dict | None = None
 
     # ── cio' che una prova fa fare a Home Assistant ─────────────────────────
 
@@ -436,6 +439,9 @@ class SilentConnection:
         if command == "subscribe_events":
             self._subscriptions[payload.get("event_type")] = payload["id"]
             self._confirm(payload["id"])
+        elif command == "get_config" and self.config_refusal is not None:
+            self._inbox.put_nowait({"id": payload["id"], "type": "result",
+                                    "success": False, "error": self.config_refusal})
         elif command == "get_config":
             self._inbox.put_nowait({"id": payload["id"], "type": "result",
                                     "success": True,
