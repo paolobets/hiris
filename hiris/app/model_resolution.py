@@ -270,6 +270,45 @@ _CREDENTIAL_CAUSE: dict[int, str] = {
 }
 
 
+# ── La frase della chat quando un provider non risponde (S-37) ──
+#
+# Fino al 06/10/2026 i runner dicevano a ogni rifiuto «Errore temporaneo del
+# servizio AI. Riprova tra poco.», e il codice e la famiglia andavano solo al
+# registro degli esiti. Misurato nel registro dell'add-on il 05/10/2026:
+# Claude 400 «credit balance is too low» e OpenRouter 403 «Key limit exceeded
+# (total limit)» detti «temporanei» -- e non lo sono. La causa si dice con la
+# STESSA tabella della pagina Modelli (`_CREDENTIAL_CAUSE`): due tabelle
+# direbbero due cause diverse dello stesso rifiuto.
+TEMPORARY_FAILURE = "Errore temporaneo del servizio AI. Riprova tra poco."
+#: Come cominciano le frasi di `failure_reply`: le riconosce il filtro della
+#: cronologia (`chat_store._TOXIC_ASSISTANT_PREFIXES`), che non le ricopia.
+FAILURE_OPENINGS = ("Il servizio AI ha rifiutato la richiesta",
+                    "Il servizio AI non risponde all’indirizzo")
+_WHERE_IT_IS_FIXED = "si sistema nella pagina Modelli."
+
+
+def failure_reply(family: str, code: int | None) -> str:
+    """La frase che la chat legge quando un provider non ha risposto: la
+    famiglia e il codice di `provider_occurrences.error_family`, detti come
+    fatto.
+
+    Il ramo `altro` (un 500, un 429, un guasto senza codice) resta
+    `TEMPORARY_FAILURE`: non dice a chi legge cosa fare, e inventargli una
+    causa sarebbe l'ipotesi che questo prodotto non fa."""
+    fra_parentesi = f" ({code})" if isinstance(code, int) else ""
+    if family == "credenziale":
+        cause = _CREDENTIAL_CAUSE.get(code if isinstance(code, int) else 0)
+        what = f": {cause}{fra_parentesi}" if cause else fra_parentesi
+        return (f"{FAILURE_OPENINGS[0]}{what}. Riprovare non basta: "
+                f"{_WHERE_IT_IS_FIXED}")
+    if family == "modello":
+        return (f"{FAILURE_OPENINGS[0]}: il modello non esiste più{fra_parentesi}. "
+                f"Un altro modello {_WHERE_IT_IS_FIXED}")
+    if family == "irraggiungibile":
+        return f"{FAILURE_OPENINGS[1]} configurato: {_WHERE_IT_IS_FIXED}"
+    return TEMPORARY_FAILURE
+
+
 def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: float) -> str:
     """L'ultimo esito osservato, detto a chi guarda la riga (progetto §4.3).
 

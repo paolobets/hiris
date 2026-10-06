@@ -740,11 +740,15 @@ async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner)
 
     assert info.value.family == "credenziale"
     assert info.value.code == 400
-    # La frase per l'utente NON cambia: e' cio' che legge in chat, e la chat
-    # non e' il posto dove si spiega un guasto di configurazione.
+    # S-37 (verifiche dal vivo della 3.75.0, 05/10/2026): fino a qui la chat
+    # diceva «Errore temporaneo del servizio AI. Riprova tra poco.», e un
+    # credito finito non e' temporaneo. La frase dice il fatto, con le parole
+    # della pagina Modelli (`model_resolution.failure_reply`).
     assert info.value.friendly_message == (
-        "Errore temporaneo del servizio AI. Riprova tra poco."
+        "Il servizio AI ha rifiutato la richiesta: credito esaurito (400). "
+        "Riprovare non basta: si sistema nella pagina Modelli."
     )
+    assert "temporaneo" not in info.value.friendly_message
 
 
 @pytest.mark.asyncio
@@ -768,6 +772,8 @@ async def test_un_modello_inesistente_e_un_404_non_un_errore_temporaneo(runner):
         await runner.chat("Ciao")
 
     assert info.value.family == "modello" and info.value.code == 404
+    assert "temporaneo" not in info.value.friendly_message
+    assert "il modello non esiste più (404)" in info.value.friendly_message
 
 
 @pytest.mark.asyncio
