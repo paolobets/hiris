@@ -647,3 +647,32 @@ def test_bridge_carries_fingerprint_to_collection(tmp_path):
         assert sapere.get("dispositivo", "inv", recipe_turn.RECIPE_FIELD).source == against
     finally:
         sapere.close()
+
+
+def test_empty_dashboard_changes_nothing(tmp_path):
+    """La dashboard di questa casa, misurata dallo sprint il 06/10/2026 (Task
+    2.0): `energy/get_prefs` risponde con le tre liste VUOTE, non con
+    `not_found`. Nessun ruolo, quindi niente da citare e nessuna ricetta che
+    torni: la domanda resta quella di prima, e nessun giro del modello si
+    spende finche' il proprietario non la compila.
+
+    Mutazione ESEGUITA: `written_against` che scrive il prefisso anche senza
+    ruoli -- rossa (`'dashboard Energia: ' == ''`)."""
+    store = _store(tmp_path)
+    casa = _house(store)
+    empty = {"energy_sources": [], "device_consumption": [],
+             "device_consumption_water": []}
+    dashboard = _run(energy.energy_dashboard(CasaFinta({"energy_prefs": empty}), store,
+                                             casa, with_series=SERIES))
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa)
+
+        assert dashboard["ruoli"] == []
+        assert recipe_turn.written_against(casa, "inv", dashboard) == ""
+        assert recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard) == {}
+        assert (recipe_turn.build_device_question("x", casa, "inv", energy=dashboard)
+                == recipe_turn.build_device_question("x", casa, "inv"))
+    finally:
+        sapere.close()
