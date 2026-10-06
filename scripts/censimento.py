@@ -514,6 +514,18 @@ def _file_frontend() -> list[Path]:
     )
 
 
+@functools.cache
+def _sponde():
+    """`scripts/sponde_js.py`, caricato per percorso: il censimento si carica
+    anche da fuori (`tests/test_censimento.py`), dove `scripts/` non e' nel
+    percorso di ricerca."""
+    spec = importlib.util.spec_from_file_location(
+        "_censimento_sponde_js", Path(__file__).with_name("sponde_js.py"))
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
 def censisci_rotte(
     file_app: list[Path], file_frontend: list[Path], file_test: list[Path]
 ) -> list[Reperto]:
@@ -536,9 +548,14 @@ def censisci_rotte(
             rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
         corpus_app.append(_RE_ADD_ROUTE.sub(" ", _RE_ADD.sub(" ", testo)))
 
-    # Il frontend resta crudo: _senza_commenti usa il tokenizer Python e su
-    # JavaScript non avrebbe senso applicarlo.
-    fuori = "\n".join(corpus_app + [_leggi(f) for f in file_frontend])
+    # Il JavaScript si legge per le sue STRINGHE, senza commenti (N65-1,
+    # giro 65): un commento in testa a una pagina che nomina la rotta la
+    # teneva viva senza nessuna chiamata. Il tokenizzatore e' quello delle
+    # sponde (`sponde_js.stringhe`), non una seconda copia. HTML e CSS
+    # restano crudi.
+    fuori = "\n".join(corpus_app + [
+        _sponde().stringhe(_leggi(f)) if f.suffix == ".js" else _leggi(f)
+        for f in file_frontend])
     nei_test = "\n".join(_leggi_pulito(f) for f in file_test)
 
     reperti: list[Reperto] = []

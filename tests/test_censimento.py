@@ -236,6 +236,37 @@ app.router.add_get("/api/dismessa", h)
     assert [r.nome for r in reperti] == ["/api/dismessa"]
 
 
+def test_rotta_nominata_solo_in_un_commento_JS_resta_senza_chiamanti(tmp_path):
+    """N65-1 del giro 65: il frontend si leggeva crudo, e un commento in
+    testa a una pagina che nomina la rotta («`POST /api/mind/scope`») la
+    teneva viva anche senza nessuna chiamata. Misurato dal revisore: con la
+    chiamata rinominata il cancello restava verde.
+
+    Mutazione ESEGUITA: tornare al frontend crudo -- rossa."""
+    app = _scrivi(tmp_path, "server.py", 'app.router.add_post("/api/morta", h)')
+    fe = _scrivi(tmp_path, "pagina.js", """/* La scheda scrive con `POST /api/morta`. */
+// e anche qui: api/morta
+fetch('api/viva');
+""")
+    reperti = censimento.censisci_rotte([app], [fe], [])
+    assert [r.nome for r in reperti] == ["/api/morta"]
+
+
+def test_rotta_in_una_stringa_JS_resta_viva_anche_composta(tmp_path):
+    """La guardia opposta: spogliare i commenti non deve spogliare le
+    stringhe, che SONO le chiamate -- nemmeno quelle composte a pezzi o in un
+    modello con `${}`."""
+    app = _scrivi(tmp_path, "server.py", """
+app.router.add_post("/api/mind/scope", h1)
+app.router.add_get("/api/item/{id}", h2)
+""")
+    fe = _scrivi(tmp_path, "pagina.js", """var x = 1 / 2; // una divisione, non una regex
+write('api/mind/scope', { a: 1 });
+fetch(`api/item/${x}`);
+""")
+    assert censimento.censisci_rotte([app], [fe], []) == []
+
+
 def test_funzione_senza_chiamanti(tmp_path):
     app = _scrivi(tmp_path, "modulo.py", '''
 def viva():
