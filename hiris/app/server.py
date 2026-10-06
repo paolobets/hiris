@@ -118,6 +118,7 @@ from .steering import (
     PROPOSER_SPECIES,
     RECIPES_SPECIES,
     SPECIES,
+    chain_answer,
     chain_turn,
     declare_refused,
     enqueue_turn,
@@ -2085,8 +2086,8 @@ async def analyst_round(app) -> dict | None:
             user_message=question, system_prompt=analyst_turn.SYSTEM,
             tools=declared.catalog_for_turn() or None, dispatcher=dispatcher)
         esito = analyst_turn.apply_analysis(
-            series, answer, truncated=turn.truncated, previous=previous,
-            tool_calls=turn.tool_calls, presence=presence)
+            series, chain_answer(answer, turn), truncated=turn.truncated,
+            previous=previous, tool_calls=turn.tool_calls, presence=presence)
         if _was_refused(esito) and not turn.truncated:
             declare_refused(app.get("usage"), turn.turn_id, esito["problemi"])
         _write_analysis(store, today, esito)
@@ -2192,7 +2193,7 @@ async def actuator_round(app) -> dict | None:
             runner, PROPOSER_SPECIES, usage=app.get("usage"),
             max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
             user_message=question, system_prompt=proposer_turn.SYSTEM)
-        esito = proposer_turn.apply_actuation(pending, answer,
+        esito = proposer_turn.apply_actuation(pending, chain_answer(answer, turn),
                                               truncated=turn.truncated)
         await _settle_actuation(app, store, today, stamp, esito, pending)
         return esito

@@ -1043,3 +1043,41 @@ def test_sul_PONTE_un_turno_FALLITO_non_scrive_un_non_capito(sapere, tmp_path):
 
     assert esito["risposta"] is False
     assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_la_frase_del_router_non_scrive_un_non_capito(sapere):
+    """Il gemello sulla catena del caso qui sopra (rilievo G29-1, 06/10/2026).
+    Quando tutti i backend rifiutano, il router non solleva: consegna una
+    frase per la chat (l'errore dell'ultimo backend, o «Tutti i provider AI
+    non disponibili...») e alza `last_unanswered`. Letta come risposta del
+    modello finiva nel «non capito», e il dispositivo usciva dalle domande
+    per sempre.
+
+    Il router e' quello vero, con backend che rifiutano come i veri
+    (`RunnerBackendError`): la prova non ricopia la frase, la ottiene.
+
+    Mutazioni ESEGUITE, entrambe rosse (il «non capito» viene scritto, con
+    la frase del router come evidenza): `steering.chain_answer` che
+    restituisce `answer` anche quando il turno non ha risposto;
+    `misura_turno` che non abbassa `TurnOutcome.answered`."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    def _rifiuta(messaggio):
+        runner = MagicMock()
+        runner.chat = AsyncMock(side_effect=RunnerBackendError(messaggio))
+        return runner
+
+    router = LLMRouter(claude=_rifiuta("giu'"), openrouter=_rifiuta("giu'"),
+                       strategy="balanced")
+
+    esito = await rt.ask(router, sapere, _casa_viva(), "dev1",
+                         objective="risparmiare", who="prova",
+                         when_ts=1_758_000_000.0, with_series=SERIE_VIVE)
+
+    assert router.last_unanswered is True
+    assert esito["scritta"] is False
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
