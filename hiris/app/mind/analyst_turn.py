@@ -35,6 +35,7 @@ import json
 import logging
 
 from ..steering import read_json
+from . import analyst
 
 logger = logging.getLogger(__name__)
 
@@ -242,48 +243,50 @@ def build_question(series: dict) -> str | None:
     puo' esistere. Stessa regola di `recipe_turn.build_device_question` con un
     dispositivo senza entita'.
 
-    **Costa, ed e' misurato.** Sulla casa vera il 15/09/2026, con venti giorni
-    archiviati e 146 serie: ~35.000 token a giro, una volta al giorno. Tre
-    volte il giro dell'osservatore. Va saputo, non scoperto in bolletta.
+    **L'indice, non le trenta colonne** (D2 del piano degli attori,
+    06/10/2026). Fino a quel giorno ogni misura arrivava con i suoi trenta
+    valori e le sue trenta coperture: ~35.000 token il 15/09/2026, 58.404 a
+    turno il 01/10. Ora una riga per misura coi numeri che il codice ha gia'
+    calcolato (`analyst.index`) e i fatti dei tre inneschi; le serie intere
+    sono una lettura da chiedere, non un peso da portare.
     """
     rows = series.get("serie") or []
     if not rows:
         return None
-    lines = ["L'obiettivo di questa casa, giorno per giorno:"]
-    for run in series.get("obiettivi") or []:
-        lines.append(f"  dal {run['dal']} al {run['al']}: {run['testo']}")
-    if not (series.get("obiettivi") or []):
-        lines.append("  (nessun obiettivo dichiarato per questi giorni)")
+    days = list(series.get("giorni") or [])
+    lines = ["L'obiettivo di questa casa:"]
+    lines.extend(_objective_lines(series.get("obiettivi") or [], days))
     lines.append("")
-    lines.append(f"I giorni, in ordine: {', '.join(series.get('giorni') or [])}")
-    lines.append("")
-    lines.append("Le misure, NUMERATE. Il numero fra parentesi quadre e' la "
-                 "chiave con cui te ne riferisci:")
-    for number, row in enumerate(rows):
-        lines.append(f"[{number}] " + json.dumps(_compact(row),
-                                                 ensure_ascii=False))
+    if days:
+        lines.append(f"I resoconti vanno dal {days[0]} al {days[-1]}: "
+                     f"{len(days)} giorni. «ultimo» e' il {days[-1]}.")
+        lines.append("")
+    lines.append("Le misure, NUMERATE e in ordine: prima quelle che si "
+                 "scostano di piu' dalla loro storia, poi le altre. Il numero "
+                 "fra parentesi quadre e' la chiave con cui te ne riferisci. "
+                 "«inneschi» sono i fatti che il codice ha trovato per ogni "
+                 "riga:")
+    for number, row in analyst.index(series):
+        lines.append(f"[{number}] " + json.dumps(row, ensure_ascii=False))
     lines.append("")
     lines.append(ANSWER_CONTRACT)
     return "\n".join(lines)
 
 
-def _compact(row: dict) -> dict:
-    """Una riga di serie, alleggerita di cio' che non dice niente.
-
-    **La copertura piena non si ripete trenta volte.** Misurato sulla casa vera
-    il 15/09/2026: le coperture sono il **18%** del prompt, e quasi tutte sono
-    `1.0` ripetuto. E' la stessa regola gia' scritta per la pagina -- «100%
-    accanto a ogni numero e' rumore su cui l'attenzione smette di fermarsi» --
-    e vale per il modello quanto per l'occhio.
-
-    **Ma se la copertura cambia, si scrive per intero**: quello e' il terzo
-    innesco, ed e' esattamente cio' che si va a cercare. Si comprime solo
-    quando non c'e' niente da vedere.
-    """
-    out = dict(row)
-    known = [c for c in (row.get("coperture") or []) if c is not None]
-    if known and all(c == 1.0 for c in known):
-        out["coperture"] = "piena tutti i giorni in cui la misura c'era"
+def _objective_lines(runs: list[dict], days: list[str]) -> list[str]:
+    """L'obiettivo «in vigore dal ...», e «fino al ...» solo per quello che e'
+    stato cambiato (D2, piano degli attori). «Dal ... al ...» su quello
+    corrente si leggeva come una scadenza: l'audit del 01/10/2026 l'ha
+    trovato."""
+    if not runs:
+        return ["  (nessun obiettivo dichiarato per questi giorni)"]
+    last_day = days[-1] if days else None
+    out = []
+    for run in runs:
+        if run.get("al") == last_day:
+            out.append(f"  in vigore dal {run['dal']}: {run['testo']}")
+        else:
+            out.append(f"  dal {run['dal']} fino al {run['al']}: {run['testo']}")
     return out
 
 

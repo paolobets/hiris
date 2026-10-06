@@ -203,29 +203,128 @@ def test_la_domanda_dice_QUANDO_la_domanda_e_cambiata():
     assert "2026-09-13" in q
 
 
-def test_la_copertura_PIENA_non_si_ripete_trenta_volte():
-    """**La stessa regola della pagina**, misurata anche qui: le coperture sono
-    il 18% del prompt, e \u00ab100%\u00bb accanto a ogni numero e' rumore su cui
-    l'attenzione smette di fermarsi -- del modello quanto dell'occhio. Si dice
-    che e' piena, una volta.
+def test_la_copertura_PIENA_si_dice_una_volta():
+    """**La stessa regola della pagina**, misurata anche qui: le coperture
+    erano il 18% del prompt, e «100%» accanto a ogni numero e' rumore su cui
+    l'attenzione smette di fermarsi -- del modello quanto dell'occhio.
 
-    Mutazione: scrivere sempre l'elenco -- rossa.
+    Mutazione: scrivere l'elenco delle coperture -- rossa.
     """
     q = at.build_question(_serie())
     assert q.count("1.0, 1.0, 1.0") == 0, q[:400]
     assert "piena" in q
 
 
-def test_una_copertura_che_CROLLA_si_scrive_per_intero():
-    """Il terzo innesco: se la copertura cambia, i numeri vanno visti tutti.
-    Comprimere si fa solo quando non c'e' niente da vedere.
-
-    Mutazione: comprimere sempre -- rossa.
+def test_una_copertura_che_CROLLA_si_vede_nell_indice():
+    """Il terzo innesco: se la copertura cambia, la riga dice la minima e
+    l'ultima, e il fatto dell'innesco lo marca il codice.
     """
     serie = _serie()
-    serie["serie"][0]["coperture"] = [1.0, 0.4, 1.0]
+    serie["serie"][0]["coperture"] = [1.0, 1.0, 0.4]
     q = at.build_question(serie)
     assert "0.4" in q
+    assert "la copertura e' passata da 1.0 a 0.4" in q
+
+
+# ── l'indice (D2 e D3 del piano degli attori, 06/10/2026) ───────────────────
+
+def _riga(soggetto, valori, coperture=None, perche=()):
+    from hiris.app.mind import analyst
+    serie = {"soggetto": soggetto, "nome": soggetto.title(), "misura": "m",
+             "chiave": None, "operazione": "somma_periodo", "unita": "kWh",
+             "valori": valori,
+             "coperture": coperture or [1.0 if v is not None else None for v in valori],
+             "perche": list(perche)}
+    return analyst.with_deviation({"serie": [serie]})["serie"][0]
+
+
+def _trenta():
+    """Trenta giorni, cinque misure: una che si scosta molto, una poco, una
+    che non varia mai, una che oggi non si calcola, una con due giorni."""
+    giorni = [f"2026-09-{d:02d}" for d in range(1, 31)]
+    storia = [10.0 + (d % 3) for d in range(29)]
+    righe = [
+        _riga("poco", storia + [12.5]),
+        _riga("piatta", [5.0] * 30),
+        _riga("ferma", storia + [None], perche=[
+            {"dal": giorni[-1], "al": giorni[-1], "ragione": "l'entita' e' sparita",
+             "causa": "sparita"}]),
+        _riga("molto", storia + [40.0]),
+        _riga("giovane", [None] * 28 + [3.0, 4.0]),
+    ]
+    return {"giorni": giorni, "serie": righe,
+            "obiettivi": [{"dal": giorni[0], "al": giorni[-1],
+                           "testo": "spendere meno", "scritto_ts": 1.0}]}
+
+
+def _righe_della_domanda(domanda):
+    import json
+    return [(int(riga[1:riga.index("]")]), json.loads(riga[riga.index("]") + 2:]))
+            for riga in domanda.splitlines() if riga.startswith("[")]
+
+
+def test_l_INDICE_ha_una_riga_per_misura_e_nessun_valore_della_serie():
+    """D2: una riga per misura coi numeri di `with_deviation`, e **nessun**
+    valore della serie. Il conto delle righe si chiede alle serie.
+
+    Mutazione ESEGUITA (06/10/2026): in `analyst.index` saltare le righe senza
+    fatti d'innesco -- rossa (4 righe su 5: «giovane» non c'e')."""
+    serie = _trenta()
+    righe = _righe_della_domanda(at.build_question(serie))
+
+    assert sorted(n for n, _ in righe) == list(range(len(serie["serie"])))
+    for _, riga in righe:
+        assert "valori" not in riga and "coperture" not in riga
+        assert {"ultimo", "mediana", "scarto", "base", "quanti_scarti",
+                "copertura", "inneschi"} <= set(riga)
+    # Nessun tratto della storia arriva al modello: la sequenza dei giorni
+    # 10, 11, 12 c'e' solo nelle serie.
+    assert "10.0, 11.0, 12.0" not in at.build_question(serie)
+
+
+def test_l_INDICE_e_in_ORDINE_di_scostamento_e_marca_i_tre_inneschi():
+    """D3: il codice marca i candidati e ordina, il modello sceglie. Prima chi
+    si scosta di piu', poi chi non ha scostamento, nell'ordine della serie."""
+    serie = _trenta()
+    righe = _righe_della_domanda(at.build_question(serie))
+    nomi = [riga["nome"] for _, riga in righe]
+
+    assert nomi[:2] == ["Molto", "Poco"]
+    assert sorted(nomi[2:]) == ["Ferma", "Giovane", "Piatta"]
+    per_nome = {riga["nome"]: riga for _, riga in righe}
+    assert [f["innesco"] for f in per_nome["Molto"]["inneschi"]] == [1]
+    assert [f["innesco"] for f in per_nome["Piatta"]["inneschi"]] == [2]
+    assert [f["innesco"] for f in per_nome["Ferma"]["inneschi"]] == [3]
+    assert per_nome["Giovane"]["inneschi"] == []
+    # Il numero resta la chiave della serie: «Molto» e' la quarta misura.
+    assert {riga["nome"]: n for n, riga in righe}["Molto"] == 3
+
+
+def test_una_misura_che_OGGI_non_si_calcola_porta_la_sua_CAUSA():
+    """Mutazione ESEGUITA (06/10/2026): `cause_today` che torna sempre `None`
+    -- rossa (`KeyError: 'causa_oggi'`)."""
+    righe = dict(_righe_della_domanda(at.build_question(_trenta())))
+
+    ferma = righe[2]
+    assert ferma["causa_oggi"]["causa"] == "sparita"
+    assert ferma["causa_oggi"]["dal"] == "2026-09-30"
+    assert "non_calcolabile" in ferma
+
+
+def test_l_obiettivo_e_IN_VIGORE_e_ha_una_fine_solo_se_e_cambiato():
+    """D2: «dal ... al ...» sull'obiettivo corrente si leggeva come una
+    scadenza (audit del 01/10/2026)."""
+    serie = _trenta()
+    q = at.build_question(serie)
+    assert "in vigore dal 2026-09-01: spendere meno" in q
+    assert "fino al" not in q
+
+    serie["obiettivi"] = [
+        {"dal": "2026-09-01", "al": "2026-09-10", "testo": "prima", "scritto_ts": 1.0},
+        {"dal": "2026-09-11", "al": "2026-09-30", "testo": "dopo", "scritto_ts": 2.0}]
+    q = at.build_question(serie)
+    assert "dal 2026-09-01 fino al 2026-09-10: prima" in q
+    assert "in vigore dal 2026-09-11: dopo" in q
 
 
 def test_il_turno_per_il_ponte_ha_la_stessa_forma_degli_altri():
