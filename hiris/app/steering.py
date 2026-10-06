@@ -280,6 +280,12 @@ JOB_SPECIES = {s.kind: s.name for s in SPECIES.values()}
 #: testo della risposta.
 TRUNCATED = "troncato"
 
+#: L'esito di un turno andato a buon fine, per quanto ne sa l'imbuto. E'
+#: l'unico che `declare_refused` corregge (G31-1, giro 31 della revisione,
+#: 06/10/2026): un «fallito» non ha risposto, e riscriverlo «rifiutata»
+#: direbbe al giro dopo che il modello ha sbagliato quando non ha parlato.
+SUCCEEDED = "riuscito"
+
 #: **L'esito di una risposta con uno strumento «scappato»** (B22, approvata il
 #: 05/10/2026; D-58, seconda meta'): la chiamata a uno strumento arrivata
 #: come testo, che l'utente legge come `TOOL_LEAK_USER_MSG`. Fino a quel
@@ -448,13 +454,16 @@ def declare_refused(archivio, turn_id: str | None,
     Lo chiama il mestiere che ha rifiutato la risposta, con l'id della riga:
     sulla catena da `TurnOutcome`, sul ponte dalla decisione del job
     (`runner._measure_turn`). Una riga sola per turno -- l'esito si corregge
-    dove vive, non si scrive un secondo fatto accanto. **Non solleva**, come
+    dove vive, non si scrive un secondo fatto accanto. **Solo su un turno
+    `SUCCEEDED`** (G31-1): un «fallito» o un «troncato» restano quello che
+    sono. **Non solleva**, come
     `misura_turno`: un registro rotto non deve far cadere il giro. Senza
     archivio o senza id non c'e' niente da scrivere."""
     if archivio is None or not turn_id:
         return
     try:
-        archivio.set_outcome(turn_id, REFUSED, list(problems or []))
+        archivio.set_outcome(turn_id, REFUSED, list(problems or []),
+                             only_from=SUCCEEDED)
     except Exception as error:  # guasto dell'archivio
         logger.warning("registro dei turni: l'esito «%s» del turno %s non si "
                        "e' potuto scrivere (%s: %s)", REFUSED, turn_id,
@@ -547,7 +556,7 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
     gettone = _posa_misura(
         lambda giro, pesi: carichi.setdefault(int(giro), {}).update(pesi))
     inizio = _time.perf_counter()
-    esito = "riuscito"
+    esito = SUCCEEDED
     try:
         yield stato
     except Exception:
@@ -561,17 +570,17 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
         # (`LLMRouter.last_unanswered`). Senza questa riga il turno si
         # registrava `riuscito` -- 61 turni dell'analista in tre giorni,
         # misurati sulla casa vera il 05/10/2026.
-        if esito == "riuscito" and getattr(runner, "last_unanswered", False):
+        if esito == SUCCEEDED and getattr(runner, "last_unanswered", False):
             esito = "fallito"
         # **Il troncato si legge FUORI dalla scrittura dell'archivio**: il
         # mestiere ne ha bisogno anche quando nessuno misura (archivio
         # `None`), perche' e' cio' che gli impedisce di leggere una risposta
         # non finita (D2).
-        stato.truncated = esito == "riuscito" and was_truncated(runner)
+        stato.truncated = esito == SUCCEEDED and was_truncated(runner)
         stato.tool_calls = list(getattr(runner, "last_tool_calls", None) or [])
         if stato.truncated:
             esito = TRUNCATED
-        elif esito == "riuscito" and was_tool_leaked(runner):
+        elif esito == SUCCEEDED and was_tool_leaked(runner):
             esito = TOOL_LEAKED
         try:
             if archivio is not None:
@@ -589,7 +598,7 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
                 # sulla stessa chiave: i giri sono le chiavi distinte di
                 # `carichi`, non le volte che il gancio ha scattato.
                 giri = len(carichi)
-                if esito == "riuscito" and giri >= MAX_GIRI:
+                if esito == SUCCEEDED and giri >= MAX_GIRI:
                     esito = "esaurito"
                 adesso = _time.time()
                 # **Chi ha risposto si MISURA, non si deduce.** Il

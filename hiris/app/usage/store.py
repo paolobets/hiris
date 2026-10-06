@@ -509,7 +509,8 @@ class UsageStore:
         return ident
 
     def set_outcome(self, turn_id: str, outcome: str,
-                    problems: list[str] | None = None) -> bool:
+                    problems: list[str] | None = None, *,
+                    only_from: str | None = None) -> bool:
         """Corregge l'esito di un turno gia' registrato, con i suoi
         `problems` (perche'). Torna se la riga c'era.
 
@@ -517,13 +518,21 @@ class UsageStore:
         mestiere ha rifiutato (`steering.declare_refused`, D10), i cui
         problemi il giro dopo rimette nella domanda. Il vocabolario degli
         esiti non vive qui, come quello delle specie: lo possiede
-        `steering`."""
+        `steering`, che passa anche `only_from` -- l'esito che la riga deve
+        avere per essere corretta (G31-1: un «fallito» non diventa
+        «rifiutata»). Torna `False` se la riga non c'e' o ha un altro esito."""
         written = (None if problems is None
                    else json.dumps([str(p) for p in problems], ensure_ascii=False))
         with self._lock:
-            cursor = self._conn.execute(
-                "UPDATE turn SET outcome = ?, problems = ? WHERE id = ?",
-                (outcome, written, turn_id))
+            if only_from is None:
+                cursor = self._conn.execute(
+                    "UPDATE turn SET outcome = ?, problems = ? WHERE id = ?",
+                    (outcome, written, turn_id))
+            else:
+                cursor = self._conn.execute(
+                    "UPDATE turn SET outcome = ?, problems = ? "
+                    "WHERE id = ? AND outcome = ?",
+                    (outcome, written, turn_id, only_from))
             self._conn.commit()
         return cursor.rowcount > 0
 

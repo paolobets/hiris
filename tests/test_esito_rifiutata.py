@@ -115,6 +115,23 @@ def test_un_archivio_alla_versione_3_si_migra(tmp_path):
         archivio.close()
 
 
+@pytest.mark.parametrize("esito", ["fallito", steering.TRUNCATED])
+def test_un_turno_che_NON_e_riuscito_non_diventa_rifiutato(consumi, esito):
+    """G31-1 (giro 31 della revisione, 06/10/2026): sulla catena la frase del
+    router arriva al mestiere come risposta, il mestiere la rifiuta, e il
+    giro dopo direbbe al modello che la sua risposta non era accettata
+    quando nessuno aveva risposto. Si corregge solo un turno riuscito.
+
+    Mutazione ESEGUITA (06/10/2026): `declare_refused` senza `only_from` --
+    rossa («fallito» diventa «rifiutata»)."""
+    ident = _turno(consumi, "analista", esito, 1_758_000_000.0)
+    steering.declare_refused(consumi, ident, ["non e' un JSON"])
+    riga = consumi.turns()[0]
+    assert riga["outcome"] == esito
+    assert riga["problems"] is None
+    assert steering.refused_problems(consumi, "analista") == []
+
+
 def test_senza_archivio_o_senza_id_non_succede_niente(consumi):
     _turno(consumi, "analista", "riuscito", 1_758_000_000.0)
     steering.declare_refused(None, "x")
@@ -131,7 +148,7 @@ def test_un_id_che_non_c_e_non_tocca_le_altre_righe(consumi):
 
 def test_un_archivio_rotto_non_fa_cadere_il_giro():
     class _Rotto:
-        def set_outcome(self, *a):
+        def set_outcome(self, *a, **k):
             raise OSError("disco pieno")
 
     steering.declare_refused(_Rotto(), "x")
