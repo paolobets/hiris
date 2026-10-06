@@ -2,7 +2,7 @@
 Task 5, D5 approvata il 05/10/2026).
 
 Misurato sul commit di partenza `5bce65d`: il contratto dell'attuatore
-(`mind/actuator_turn.ANSWER_CONTRACT`) chiedeva l'innesco come FRASE e
+(`mind/proposer_turn.ANSWER_CONTRACT`) chiedeva l'innesco come FRASE e
 «richiesto» libero, mentre `workshop.propose` -- e lo schema dello strumento
 `propose` (`home_space/tools.PROPOSE_TOOL_DEF`) -- vogliono l'innesco come
 LISTA di oggetti e «richiesto» da un vocabolario chiuso. L'esempio del
@@ -33,7 +33,7 @@ import re
 
 from hiris.app.action.construction.workshop import _invalid_form, form_refusal
 from hiris.app.home_space.tools import PROPOSE_TOOL_DEF
-from hiris.app.mind import actuator_turn as at
+from hiris.app.mind import proposer_turn as at
 from hiris.app.proxy.ha_client import HAClient
 
 _SCHEMA = PROPOSE_TOOL_DEF["input_schema"]

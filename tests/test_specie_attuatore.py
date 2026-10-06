@@ -74,7 +74,7 @@ def _literals(values) -> Counter:
 
 
 def test_specie_attuatore_appartiene_specie():
-    assert steering.ACTUATOR_SPECIES in steering.SPECIE
+    assert steering.PROPOSER_SPECIES in steering.SPECIE
 
 
 def test_ogni_specie_sorvegliata_ha_un_nome_in_steering():

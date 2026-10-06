@@ -71,7 +71,7 @@ from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
-from .mind import actuator, actuator_turn, analyst, analyst_turn, recipe_turn, report
+from .mind import actuator, analyst, analyst_turn, proposer_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     aggregate_day,
@@ -104,9 +104,9 @@ from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
 from .reasoning.queue import PRIORITY_BACKGROUND
 from .steering import (
-    ACTUATOR_SPECIES,
     ANALYST_SPECIES,
     OBSERVER_SPECIES,
+    PROPOSER_SPECIES,
     RECIPES_SPECIES,
     bridge_model,
     declare_downgrade,
@@ -2178,26 +2178,26 @@ async def actuator_round(app) -> dict | None:
             # La stessa guardia degli altri tre: senza, il ponte riceverebbe
             # una domanda a ogni giro -- una coda di domande identiche che
             # nessuno leggera' mai.
-            if _turn_in_flight(app, actuator_turn.ACTUATION_TURN_KIND):
+            if _turn_in_flight(app, proposer_turn.PROPOSAL_TURN_KIND):
                 return None
             return _enqueue_actuator_turn(app, today)
         if runner is None:
             logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
             return None
-        declare_downgrade(app, agent=ACTUATOR_SPECIES, reason=downgrade)
+        declare_downgrade(app, agent=PROPOSER_SPECIES, reason=downgrade)
 
         # Le ricette rotte non sono piu' sue: le ripara il giro delle ricette,
         # dalla causa (attori, Task 1.6; D2 del proprietario, 03/10/2026).
-        question = actuator_turn.build_question(pending)
+        question = proposer_turn.build_question(pending)
         if question is None:
             return None
 
         async with misura_turno(app.get("usage"), runner,
-                                specie=ACTUATOR_SPECIES, canale="catena") as turn:
+                                specie=PROPOSER_SPECIES, canale="catena") as turn:
             answer = await runner.chat(
-                user_message=question, system_prompt=actuator_turn.SYSTEM,
-                max_tokens=actuator_turn.MAX_ANSWER_TOKENS)
-        esito = actuator_turn.apply_actuation(pending, answer,
+                user_message=question, system_prompt=proposer_turn.SYSTEM,
+                max_tokens=proposer_turn.MAX_ANSWER_TOKENS)
+        esito = proposer_turn.apply_actuation(pending, answer,
                                               truncated=turn.truncated)
         await _settle_actuation(app, store, today, stamp, esito, pending)
         return esito
@@ -2214,7 +2214,7 @@ async def actuator_round(app) -> dict | None:
 #: messa li', o il verificatore non potrebbe attribuire niente a nessuno. E
 #: l'attore e' la sua specie: il nome viene da `steering` (C-28), non da un
 #: secondo letterale.
-ACTUATOR_AUTHOR = ACTUATOR_SPECIES
+ACTUATOR_AUTHOR = PROPOSER_SPECIES
 
 
 async def _settle_actuation(app, store, day: str, stamp: str | None,
@@ -2347,7 +2347,7 @@ async def _collect_actuator_turn(app, store, today: str,
     queue = app.get("reasoning_queue")
     if queue is None:
         return None
-    turn = queue.latest(actuator_turn.ACTUATION_TURN_KIND)
+    turn = queue.latest(proposer_turn.PROPOSAL_TURN_KIND)
     if not turn:
         return None
     day = (turn.get("wake") or {}).get("giorno")
@@ -2362,7 +2362,7 @@ async def _collect_actuator_turn(app, store, today: str,
     if not str(reply).strip():
         return None
     pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-    esito = actuator_turn.apply_actuation(pending, reply)
+    esito = proposer_turn.apply_actuation(pending, reply)
     if not esito.get("risposta"):
         return esito
     await _settle_actuation(app, store, day, stamp, esito, pending)
@@ -2376,18 +2376,18 @@ def _enqueue_actuator_turn(app, day: str) -> dict | None:
     if analysis is None:
         return None
     pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-    question = actuator_turn.build_question(pending)
+    question = proposer_turn.build_question(pending)
     if question is None:
         return None
     job = {"history": [{"role": "user", "content": question}],
-           "system_prompt": actuator_turn.SYSTEM,
-           "istruzione": actuator_turn.ANSWER_CONTRACT,
+           "system_prompt": proposer_turn.SYSTEM,
+           "istruzione": proposer_turn.ANSWER_CONTRACT,
            # Il modello del proprietario, come la chat (decisione 11).
            "model": bridge_model(app)}
     deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
     app["reasoning_queue"].enqueue(
-        actuator_turn.ACTUATION_TURN_KIND, {"giorno": day}, job,
+        proposer_turn.PROPOSAL_TURN_KIND, {"giorno": day}, job,
         now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
     logger.info("attuatore: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)

@@ -120,12 +120,19 @@ from .claude_runner import togli_misura as _togli_misura
 #: 05/10/2026): la stessa cura per l'analista, l'osservatore, le ricette e la
 #: promessa, che restavano letterali. `chat` no: e' anche un `agent_type` e un
 #: `kind` della coda, e un nome solo per tre parole non le distinguerebbe.
-ACTUATOR_SPECIES = "attuatore"
+#:
+#: **Dal 06/10/2026 l'attuatore si chiama proponente** (D11 del piano degli
+#: attori, strati 3-4, approvata dal proprietario il 06/10/2026): il nome
+#: «attuatore» era anche quello di `action/actuator.py`, la porta dei servizi
+#: verso la casa, cioe' l'unica cosa che questo attore non fa. Le righe gia'
+#: archiviate nei consumi restano «attuatore»: sono storia, e non si
+#: riscrivono.
+PROPOSER_SPECIES = "proponente"
 ANALYST_SPECIES = "analista"
 OBSERVER_SPECIES = "osservatore"
 PROMISE_SPECIES = "promessa"
 RECIPES_SPECIES = "ricette"
-SPECIE = frozenset({ANALYST_SPECIES, ACTUATOR_SPECIES, "chat", OBSERVER_SPECIES,
+SPECIE = frozenset({ANALYST_SPECIES, PROPOSER_SPECIES, "chat", OBSERVER_SPECIES,
                     PROMISE_SPECIES, RECIPES_SPECIES})
 
 #: **L'esito di un turno fermato dal tetto di token** (Tappa 6, D-58; D2).

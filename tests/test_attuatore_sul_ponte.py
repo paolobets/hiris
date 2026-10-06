@@ -35,7 +35,7 @@ def _risolvi(nodo: ast.expr, spazio: dict):
     """Il valore del primo argomento di `.enqueue(`, chiesto al modulo vivo.
 
     Si risolve **nello spazio dei nomi del modulo che accoda**: un letterale
-    vale se stesso, `SCOPE_TURN_KIND` e `actuator_turn.ACTUATION_TURN_KIND`
+    vale se stesso, `SCOPE_TURN_KIND` e `proposer_turn.PROPOSAL_TURN_KIND`
     valgono cio' che valgono li'. Ricostruire gli import a mano sarebbe una
     seconda risoluzione dei nomi, cioe' un doppione di Python.
     """
@@ -82,7 +82,7 @@ def test_la_derivazione_trova_TUTTE_le_specie_che_si_accodano():
     """
     trovate = specie_accodate()
     assert {"chat", "promessa", "scope", "ricetta", "analisi",
-            "attuazione"} <= set(trovate), (
+            "proposta"} <= set(trovate), (
         f"ho ricavato solo {sorted(trovate)}: la derivazione si e' rotta")
 
 
@@ -144,7 +144,7 @@ def test_un_turno_di_ATTUAZIONE_arriva_al_ponte_SENZA_strumenti(monkeypatch):
     monkeypatch.setattr(ponte, "probe_tools", spia)
 
     ponte.reason(
-        {"kind": "attuazione", "job_id": "ja",
+        {"kind": "proposta", "job_id": "ja",
          "context": {"model": "sonnet", "history": [{"role": "user", "content": "le osservazioni"}],
                      "system_prompt": "sei l'attuatore",
                      "istruzione": "Rispondi SOLO con un oggetto JSON."}},

@@ -210,7 +210,7 @@ async def test_col_PONTE_acceso_il_turno_si_accoda_e_non_si_chiama_il_modello(ca
 
     assert modello.chiamate == 0
     assert coda.accodati, "il turno non e' stato accodato al piano"
-    assert coda.accodati[0][0] == "attuazione"
+    assert coda.accodati[0][0] == "proposta"
 
 
 @pytest.mark.asyncio
@@ -349,7 +349,7 @@ async def test_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa):
     assert officina.intenzioni, "l'officina non e' stata chiamata"
     intento, attore = officina.intenzioni[0]
     assert intento["gesto"] == "crea"
-    assert attore == "attuatore", "chi ha proposto deve restare scritto"
+    assert attore == "proponente", "chi ha proposto deve restare scritto"
     assert store.proposals() == [], "una costruibile non va nell'archivio a mano"
 
 
@@ -479,5 +479,5 @@ async def test_col_PONTE_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa, pian
     await server.actuator_round(app)
 
     assert [(i["gesto"], attore) for i, attore in officina.intenzioni] == [
-        ("crea", "attuatore")]
+        ("crea", "proponente")]
     assert store.proposals() == []

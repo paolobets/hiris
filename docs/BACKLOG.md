@@ -177,7 +177,7 @@ veridicita' della soluzione»).
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
    «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,
    D5), con l'attuatore sempre in pausa:* il contratto dell'`intenzione` incompatibile con
-   l'officina. Oggi si deriva dallo schema di `propose` (`mind/actuator_turn._intent_contract`) e
+   l'officina. Oggi si deriva dallo schema di `propose` (`mind/proposer_turn._intent_contract`) e
    la risposta passa dalla stessa porta della forma dell'officina (`workshop.form_refusal`) prima
    di arrivarci.
 
@@ -919,7 +919,7 @@ confronta il numero di prove JS raccolte con quello del giro precedente (regola 
 
 `origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 3, domanda 5), approvata dal proprietario il 05/10/2026 (consigliata); da fare allo strato 4 degli attori, insieme a B29` · stesso documento delle voci sopra
 
-`mind/actuator_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
+`mind/proposer_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
 degli strumenti (Tappa 5). Si ricollega quando l'attuatore torna (strato 4), con la decisione B29
 (le descrizioni delle proposte servono anche all'attuatore).
 
@@ -1329,7 +1329,7 @@ D2 del proprietario).** La riparazione non e' piu' dell'attuatore: `_repair_reci
 le ricette rotte le richiede il giro delle ricette (`recipe_turn.recipes_to_repair`, dalla causa
 della misura), sulla catena e sul ponte. Si sposta fra le uscite col rilascio dello strato 1.
 
-`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
+`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/proposer_turn.py::SYSTEM`
 
 Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**
 (`_repair_recipes`, che chiama `recipe_turn.ask` col modello della catena) e aggiunge le
@@ -1337,7 +1337,7 @@ riparazioni all'attuazione come fatti. Sul ponte no: `_enqueue_actuator_turn` co
 con l'elenco delle riparazioni **vuoto**, e nessuna ricetta viene riscritta. Una ricetta rotta,
 sul ponte, arriva al modello come osservazione qualunque e resta rotta.
 
-Il prompt di sistema (`actuator_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
+Il prompt di sistema (`proposer_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
 fetta (28/09/2026): prima affermava «Le ricette rotte le ho gia' riscritte io prima di chiamarti»,
 falso sul ponte. Ora dice che le riparazioni avvenute stanno nella domanda, e che se la domanda non
 ne parla nessuna e' stata riscritta: una ricetta rotta si segnala come proposta da fare a mano. Resta
@@ -1357,7 +1357,7 @@ ricetta rotta sulla casa vera, attuatore sul ponte, e la riga del sapere riscrit
 
 `origine: review del fix round 1 della fetta «l'attuatore sul ponte» (28/09/2026)` · `hiris/app/server.py::_collect_actuator_turn` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_collect_analyst_turn`
 
-Quando la risposta del ponte e' **rifiutata** (`actuator_turn.apply_actuation` torna
+Quando la risposta del ponte e' **rifiutata** (`proposer_turn.apply_actuation` torna
 `attuazione: None` con i `problemi`), `_collect_actuator_turn` la restituisce con `risposta: True`
 senza scrivere niente, e `actuator_round` si ferma li' (`if collected is not None and
 collected.get("risposta"): return collected`). Al giro dopo `queue.latest("attuazione")` e' ancora

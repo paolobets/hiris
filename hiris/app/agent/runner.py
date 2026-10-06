@@ -83,13 +83,13 @@ from ..chat_store import (
 )
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
-from ..mind.actuator_turn import ACTUATION_TURN_KIND
+from ..mind.proposer_turn import PROPOSAL_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
 from ..steering import (
-    ACTUATOR_SPECIES,
     ANALYST_SPECIES,
     OBSERVER_SPECIES,
     PROMISE_SPECIES,
+    PROPOSER_SPECIES,
     RECIPES_SPECIES,
 )
 from ..usage.giro import anthropic_turn_tokens
@@ -1245,7 +1245,7 @@ JOB_SPECIES = {
     "scope": OBSERVER_SPECIES,
     "ricetta": RECIPES_SPECIES,
     "analisi": ANALYST_SPECIES,
-    ACTUATION_TURN_KIND: ACTUATOR_SPECIES,
+    PROPOSAL_TURN_KIND: PROPOSER_SPECIES,
 }
 
 
@@ -2049,14 +2049,14 @@ _ANALYSIS_KIND = "analisi"
 #: Sulla catena chiama `runner.chat` SENZA strumenti -- sul ponte uguale: e'
 #: un attore che per contratto «non tocca la casa», e col catalogo della chat
 #: avrebbe `execute`. La costante e' quella del produttore
-#: (`mind/actuator_turn`), non una copia: quel modulo importa da HIRIS il solo
+#: (`mind/proposer_turn`), non una copia: quel modulo importa da HIRIS il solo
 #: `steering` (il lettore unico, Tappa 6), che non importa `agent` -- l'import
 #: non chiude nessun ciclo (provato il 05/10/2026 importando
-#: `mind.actuator_turn` da solo: `agent.runner` non entra). Da allora il cancello
+#: `mind.proposer_turn` da solo: `agent.runner` non entra). Da allora il cancello
 #: `tests/test_attuatore_sul_ponte.py` RICAVA dal codice ogni specie che si
 #: accoda e pretende che sia qui: la prossima volta non la scopre il registro.
 _SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,
-                         ACTUATION_TURN_KIND)
+                         PROPOSAL_TURN_KIND)
 
 #: Le specie di turno che il ponte sa servire. E' un'affermazione **di questo
 #: modulo su se stesso** -- «questi so ragionarli» -- non una copia dei nomi
@@ -2064,7 +2064,7 @@ _SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,
 #: turno e' un turno: cambia il CONTENUTO (la domanda, il prompt di sistema,
 #: l'intestazione MCP), e il contenuto arriva tutto dal contesto del job.
 RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND,
-               _ANALYSIS_KIND, ACTUATION_TURN_KIND)
+               _ANALYSIS_KIND, PROPOSAL_TURN_KIND)
 
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",

@@ -192,7 +192,7 @@ def test_i_TRE_giri_automatici_passano_dall_imbuto():
     `mind/` -- verde (la prova segue il codice).
 
     Dal 05/10/2026 (C-28, Tappa 4) si legge l'ALBERO, non il testo: la specie
-    dell'attuatore arriva come `steering.ACTUATOR_SPECIES`, e la prova chiede
+    dell'attuatore arriva come `steering.PROPOSER_SPECIES`, e la prova chiede
     il valore del nome a `steering` invece di pretendere il letterale -- la
     proprieta' (chi passa dall'imbuto), non la forma.
     Mutazione ESEGUITA: tolta la chiamata dell'attuatore -- rossa."""
@@ -216,5 +216,5 @@ def test_i_TRE_giri_automatici_passano_dall_imbuto():
                 elif isinstance(kw.value, ast.Name):
                     agenti.add(getattr(steering, kw.value.id, None))
 
-    for agente in ("analista", "attuatore", "ricette", "osservatore"):
+    for agente in ("analista", "proponente", "ricette", "osservatore"):
         assert agente in agenti, f"«{agente}» ripiega ancora in silenzio"

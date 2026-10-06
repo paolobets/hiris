@@ -72,10 +72,10 @@ def test_ogni_chiamata_a_un_modello_DICHIARA_il_suo_tetto():
 def test_il_tetto_dell_analista_e_quello_di_prima_SCRITTO():
     """D3: 4.096 finche' la misura dal vivo (T9) non ne sceglie un altro.
     Cambiarlo senza la misura e' un numero inventato."""
-    from hiris.app.mind import actuator_turn, analyst_turn
+    from hiris.app.mind import analyst_turn, proposer_turn
 
     assert analyst_turn.MAX_ANSWER_TOKENS == 4096
-    assert actuator_turn.MAX_ANSWER_TOKENS == 4096
+    assert proposer_turn.MAX_ANSWER_TOKENS == 4096
 
 
 # -- il modello degli attori sul ponte -----------------------------------------

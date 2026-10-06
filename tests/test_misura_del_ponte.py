@@ -242,7 +242,7 @@ def _attuazione_finta(monkeypatch, processo=_ProcessoFinto, **extra_context):
                "system_prompt": "sei l'attuatore",
                "istruzione": "Rispondi SOLO con un oggetto JSON."}
     context.update(extra_context)
-    ponte.reason({"kind": "attuazione", "job_id": "ja", "context": context},
+    ponte.reason({"kind": "proposta", "job_id": "ja", "context": context},
                  "live", client=object(), base_url="http://127.0.0.1:8099")
 
 
@@ -257,7 +257,7 @@ def test_un_giro_di_fondo_SENZA_strumenti_scrive_la_sua_composizione(
     -- rossa (composition None); ripristinata, verde."""
     _attuazione_finta(monkeypatch)
     riga = registro[0]
-    assert riga["species"] == "attuatore"
+    assert riga["species"] == "proponente"
     assert riga["composition"] is not None
     assert riga["composition"]["history_chars"] > 0
     assert riga["exchange_id"]
