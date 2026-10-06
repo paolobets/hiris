@@ -151,10 +151,17 @@ class ReasoningQueue:
         # `enqueue`. Uno solo, perche' il consumatore e' uno solo.
         self._on_enqueue = None
 
-    def on_enqueue(self, listener) -> None:
+    def on_enqueue(self, listener, *, only_if=None) -> None:
         """Registra (o, con `None`, toglie) chi va svegliato a ogni turno
         accodato. Si chiama dopo il commit e fuori dal lucchetto: chi si
-        sveglia trova il turno gia' scritto, e puo' prenderlo subito."""
+        sveglia trova il turno gia' scritto, e puo' prenderlo subito.
+
+        Con `only_if` la sostituzione avviene solo se la sveglia in vigore e'
+        ancora quella: un lavoratore che si ferma toglie la SUA, e non quella
+        di un lavoratore nuovo che si fosse gia' registrato (G18-1 della
+        revisione del 06/10/2026)."""
+        if only_if is not None and self._on_enqueue is not only_if:
+            return
         self._on_enqueue = listener
 
     def close(self) -> None:

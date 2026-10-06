@@ -319,8 +319,8 @@ class _CodaSpia:
         self.vera = ReasoningQueue(path)
         self.claims = 0
         self.claim_rotto = claim_rotto
-    def on_enqueue(self, listener):
-        self.vera.on_enqueue(listener)
+    def on_enqueue(self, listener, **kw):
+        self.vera.on_enqueue(listener, **kw)
     def enqueue(self, *a, **k):
         return self.vera.enqueue(*a, **k)
     def claim(self, now):
@@ -1097,3 +1097,27 @@ def test_argv_del_ponte_chiede_il_formato_a_flusso_e_verboso():
     assert "json" not in argv, (
         f"`--output-format json` e' rimasto in argv ({argv!r}) accanto a "
         "stream-json")
+
+
+@pytest.mark.asyncio
+async def test_il_lavoratore_fermato_non_toglie_la_sveglia_del_successore(
+        monkeypatch, tmp_path):
+    """G18-1 (revisione del 06/10/2026): spento e riacceso il ponte, il
+    `finally` del lavoratore vecchio puo' girare DOPO che il nuovo si e'
+    registrato. Deve togliere la sua sveglia, non quella del successore:
+    altrimenti il ponte smetterebbe di servire in silenzio.
+
+    Mutazione ESEGUITA (06/10/2026): `queue.on_enqueue(None)` senza
+    `only_if` nel `finally` -- rossa, la sveglia del successore sparisce."""
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+
+    async def _consegna(*a):
+        return "recorded"
+
+    vecchio = await _avvia(coda, _consegna)
+    successore = lambda: None  # la sveglia di un altro lavoratore
+    coda.on_enqueue(successore)
+    await _ferma(vecchio)
+    assert coda.vera._on_enqueue is successore
+

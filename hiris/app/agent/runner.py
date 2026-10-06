@@ -2150,7 +2150,11 @@ async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,
 
     loop = asyncio.get_running_loop()
     arrived = asyncio.Event()
-    queue.on_enqueue(lambda: loop.call_soon_threadsafe(arrived.set))
+
+    def wake() -> None:
+        loop.call_soon_threadsafe(arrived.set)
+
+    queue.on_enqueue(wake)
     try:
         with httpx.Client(timeout=330) as client:
             while True:
@@ -2177,4 +2181,6 @@ async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,
                     log.warning("ponte, turno fallito: %s", _exception_reason(
                         exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
     finally:
-        queue.on_enqueue(None)
+        # Si toglie solo la PROPRIA sveglia: spegnere e riaccendere il ponte
+        # puo' registrare il lavoratore nuovo prima che questo `finally` giri.
+        queue.on_enqueue(None, only_if=wake)
