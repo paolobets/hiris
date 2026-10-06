@@ -1507,6 +1507,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "dal proprietario per questo turno -- non si ragiona, decisione "
             "vuota", (job or {}).get("job_id"), (job or {}).get("kind"))
         return {}
+    # **Il tempo della CLI e' quello che resta al turno** (S-09, Tappa 6,
+    # Task 8). Fino al 06/10/2026 era `timeout=300` fisso, mentre il turno ha
+    # la sua scadenza (`deadline_ts`, dalla Tappa 6, Task 2): passata quella,
+    # la coda chiude il job (`sweep_expired`; la chat ripiega sulla catena) e
+    # una risposta che arriva dopo non la riceve nessuno. Ogni job della coda
+    # la porta (`reasoning_jobs.deadline_ts NOT NULL`): un job senza e' un job
+    # che non viene dalla coda, e si dichiara come quello senza modello.
+    deadline_ts = (job or {}).get("deadline_ts")
+    if not isinstance(deadline_ts, (int, float)) or isinstance(deadline_ts, bool):
+        log.error(
+            "job senza `deadline_ts` (job_id=%s, kind=%r): non si sa quanto "
+            "tempo ha il turno -- non si ragiona, decisione vuota",
+            (job or {}).get("job_id"), (job or {}).get("kind"))
+        return {}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
     # solo `history` + `system_prompt`. Arriva qui senza la chiave `contesto`
@@ -1797,13 +1811,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # vedi `_system_prompt_file`. `encoding` esplicito per entrambi i
             # versi: la CLI legge e scrive UTF-8, e non deve dipendere dalla
             # localizzazione del contenitore.
+            # Il tempo che resta, letto ADESSO: la seconda invocazione dello
+            # stesso turno ha quello che la prima le ha lasciato.
+            time_left = deadline_ts - time.time()
+            if time_left <= 0:
+                log.warning("turno scaduto prima di invocare la CLI (job_id=%s)",
+                            job_id)
+                return None
             with _system_prompt_file(system) as system_file:
                 argv = _chat_claude_args(system_file, model,
                                          active_tools=active_tools,
                                          mcp_config=mcp_config,
                                          by_promise=bool(promise_id))
                 proc = subprocess.run(argv, input=user, capture_output=True,
-                                      encoding="utf-8", timeout=300,
+                                      encoding="utf-8", timeout=time_left,
                                       env=_safe_subprocess_env(), check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
             log.warning("claude non eseguibile: %s", type(exc).__name__)
@@ -1885,8 +1906,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # all'utente una risposta invece di un `[errore runner rc=...]`.
     #
     # L'esito (5) resta fuori di proposito: senza flusso non c'e' nessuna
-    # smentita da leggere, e ritentare pagherebbe un secondo timeout da 300s
-    # per un guasto che il ritentativo non ripara (la CLI non c'e').
+    # smentita da leggere, e ritentare pagherebbe un secondo timeout (il resto
+    # della scadenza del turno) per un guasto che il ritentativo non ripara
+    # (la CLI non c'e').
     ritentato = False
     if tools:
         confermato, reason = verify_init(invocation.occurrence,
@@ -2082,8 +2104,8 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
     resta sincrono (subprocess.run + httpx.Client): girano sullo stesso loop
     asyncio dell'intero addon (aiohttp), quindi vanno eseguiti in un thread
     executor (`run_in_executor`) e MAI chiamati direttamente nella coroutine,
-    altrimenti un job claimato blocca l'intero addon fino a ~5 minuti
-    (subprocess timeout=300, httpx.Client timeout=330)."""
+    altrimenti un job claimato blocca l'intero addon per tutto il tempo che
+    resta al turno (il `timeout` della CLI e' la sua scadenza, S-09)."""
     # **Le intestazioni del giro vivono FUORI dal `try`**, e non e' stile.
     # `_exception_reason` deve poter redigere la credenziale che questo giro
     # sta davvero usando: fino al 22/09/2026 la leggeva da `INTERNAL_TOKEN`

@@ -21,6 +21,7 @@ import ast
 import importlib
 from pathlib import Path
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import runner as ponte
 from hiris.app.steering import SPECIES
 
@@ -164,7 +165,7 @@ def test_un_turno_di_ATTUAZIONE_arriva_al_ponte_SENZA_strumenti(monkeypatch):
     monkeypatch.setattr(ponte, "probe_tools", spia)
 
     ponte.reason(
-        {"kind": "attuazione", "job_id": "ja",
+        {"kind": "attuazione", "deadline_ts": SCADENZA_LONTANA, "job_id": "ja",
          "context": {"model": "sonnet", "history": [{"role": "user", "content": "le osservazioni"}],
                      "system_prompt": "sei l'attuatore",
                      "istruzione": "Rispondi SOLO con un oggetto JSON."}},

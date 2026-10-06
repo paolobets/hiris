@@ -7,7 +7,7 @@ from aiohttp import web
 
 from ..chat_thread import thread_to_context
 from ..mind.observer import SCOPE_TURN_KIND
-from .boundary import error_response
+from .boundary import error_response, json_object
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +78,7 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
     q = request.app.get("reasoning_queue")
     if q is None:
         return error_response(503, "queue unavailable", ok=False)
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "invalid JSON", ok=False)
+    body = await json_object(request, ok=False)
     job_id = body.get("job_id"); nonce = body.get("nonce"); decision = body.get("decision") or {}
     if not q.submit(job_id, nonce, decision, _now(request)):
         return error_response(409, "invalid or expired", ok=False)

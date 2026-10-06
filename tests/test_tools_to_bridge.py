@@ -45,6 +45,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
@@ -423,7 +424,7 @@ def test_il_token_non_compare_nel_log_del_turno_degradato(caplog):
         stdout = '{"type":"result","subtype":"error","result":"boom"}\n'
         stderr = "errore"
 
-    job = {"kind": "chat", "job_id": "J-3",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-3",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 
@@ -736,7 +737,7 @@ def test_il_turno_senza_strumenti_lo_dichiara_all_utente_e_nel_log(caplog):
     la sonda non li ha trovati: la `reply` porta in testa la riga rivolta
     all'utente, e sotto resta la risposta vera che il modello ha comunque
     dato sul nucleo. Il log porta il motivo."""
-    job = {"kind": "chat", "job_id": "J-degrado",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-degrado",
            "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
 
@@ -766,7 +767,7 @@ def test_il_turno_con_gli_strumenti_non_dichiara_nessun_degrado(caplog):
     """Il complemento: quando gli strumenti ci sono, la reply e' la risposta e
     basta. Una riga di degrado che comparisse sempre sarebbe rumore, e
     smetterebbe di significare qualcosa."""
-    job = {"kind": "chat", "job_id": "J-ok",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-ok",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
     catturato = {}
@@ -800,7 +801,7 @@ def test_senza_client_non_c_e_degrado_da_dichiarare(caplog):
     puntare la mcp-config, quindi non c'e' nessun guasto -- e' il vecchio
     comportamento, non un degrado nuovo. Un avviso qui sarebbe rumore, e il
     silenzio dichiarato smetterebbe di distinguersi."""
-    job = {"kind": "chat", "job_id": "J-locale",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-locale",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 
@@ -828,7 +829,7 @@ def test_la_riga_di_degrado_non_precede_i_sentinella_di_guasto():
         stdout = '{"type":"result","subtype":"error","result":"quota"}\n'
         stderr = ""
 
-    job = {"kind": "chat", "job_id": "J-rotto",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-rotto",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 
@@ -983,7 +984,7 @@ def _ricostruibile(token: str, testo: str) -> bool:
 def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
     """Il turno pericoloso: strumenti ATTIVI (quindi il token E' nell'argv) e
     un sottoprocesso che riecheggia la configurazione."""
-    job = {"kind": "chat", "job_id": "J-eco",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-eco",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
     argv_visti = []
@@ -1150,7 +1151,7 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
                              "result": "in cucina una luce e' accesa"}) + "\n"
         stderr = ""
 
-    job = {"kind": "chat", "job_id": "J-pulito",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-pulito",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
@@ -1286,7 +1287,7 @@ class _CliFinta:
 def _turno(cli, *, token="TOK", job_id="J-init", sonda=True):
     """Un turno del ponte con gli strumenti ATTESI (client + base_url), la
     sonda che dice di si', e la CLI finta al posto del sottoprocesso."""
-    job = {"kind": "chat", "job_id": job_id,
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": job_id,
            "context": {"model": "sonnet", "history": [{"role": "user", "content": "che luci?"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
     risposta = (_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200) if sonda
@@ -1464,7 +1465,7 @@ def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
     presenza di strumenti che ha appena deciso di non chiedere -- e ogni turno
     del ramo di degrado costerebbe due invocazioni."""
     cli = _CliFinta(_proc(0, _riga_init(stato="failed") + "\n" + _RIGA_RESULT + "\n"))
-    job = {"kind": "chat", "job_id": "J-nessun-cliente",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-nessun-cliente",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 

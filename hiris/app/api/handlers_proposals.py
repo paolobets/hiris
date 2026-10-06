@@ -33,7 +33,7 @@ from aiohttp import web
 
 from ..chat_thread import unknown_id_text
 from ..steering import chain_runner, chain_turn, read_json
-from .boundary import error_response
+from .boundary import error_response, json_object
 from .soffitto import require_builder
 
 logger = logging.getLogger(__name__)
@@ -84,11 +84,8 @@ async def _close(request, outcome: str) -> web.Response:
     row = _row(store, ident)
     if row is None:
         return error_response(404, _NOT_FOUND)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    nota = str((body or {}).get("nota") or "").strip() or None
+    body = await json_object(request, optional=True)
+    nota = str(body.get("nota") or "").strip() or None
     if not store.close_proposal(ident, outcome, why=nota, now_ts=time.time()):
         return error_response(409, _NOT_PENDING)
     return web.json_response({"proposta": _row(store, ident)})
@@ -130,11 +127,8 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         return error_response(404, _NOT_FOUND)
     if row["stato"] != store.PROPOSAL_PENDING:
         return error_response(409, _NOT_PENDING)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    richiesta = str((body or {}).get("richiesta") or "").strip()
+    body = await json_object(request, optional=True)
+    richiesta = str(body.get("richiesta") or "").strip()
     if not richiesta:
         return error_response(400, "scrivi cosa vuoi cambiare: senza, il giro rifarebbe "
                                    "la stessa cosa.")

@@ -42,7 +42,7 @@ from ..mind.judgments import (
 from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.store import READING_RETENTION_S
 from ..mind.view import MindView
-from .boundary import error_response
+from .boundary import error_response, json_object
 from .soffitto import require_builder, subject_name
 
 
@@ -139,11 +139,8 @@ async def handle_set_objective(request) -> web.Response:
     store = request.app.get("observations")
     if store is None:
         return error_response(503, "archivio non disponibile")
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "corpo non leggibile")
-    text = body.get("testo") if isinstance(body, dict) else None
+    body = await json_object(request)
+    text = body.get("testo")
     if not isinstance(text, str):
         return error_response(400, "serve un campo `testo` con la frase dell'obiettivo.")
     if not text.strip():
@@ -199,11 +196,8 @@ async def handle_set_judgment(request) -> web.Response:
         return refusal
     if request.app.get("knowledge") is None:
         return error_response(503, "il sapere non e' disponibile")
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "corpo non leggibile")
-    if (not isinstance(body, dict) or "valore" not in body
+    body = await json_object(request)
+    if ("valore" not in body
             or not all(isinstance(body.get(key), str) for key in _JUDGMENT_TEXT_KEYS)):
         return error_response(400, "servono `soggetto_genere`, `soggetto` e `campo` come testo, e "
                                    "`valore` (testo, oppure null per tornare al seme).")

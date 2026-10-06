@@ -15,6 +15,7 @@ import json
 import logging
 from unittest.mock import patch
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import runner
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 
@@ -83,7 +84,7 @@ def _flusso(*righe):
 
 
 def _job(job_id="J-1"):
-    return {"job_id": job_id, "kind": "chat",
+    return {"deadline_ts": SCADENZA_LONTANA, "job_id": job_id, "kind": "chat",
             "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                         "history": [{"role": "user", "content": "che luci?"}]}}
 

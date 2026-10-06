@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
@@ -93,8 +94,9 @@ def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
     # il CLI esce != 0) e' vivo e invariato, cambia solo la forma dello stdout.
     # Gli assert restano identici, ed e' proprio questo il punto: sono la prova
     # che il cambio di formato non ha perso questo ramo.
-    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
-                                        "history": [{"role": "user", "content": "ciao"}]}}
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "ciao"}]}}
 
     class _Proc:
         returncode = 1
@@ -118,8 +120,9 @@ def test_reason_chat_returns_fallback_reply_on_timeout():
     # cambio di formato non tocca, e va verificato che sia rimasto tale (con
     # `stream-json` la tentazione e' di leggere il flusso parziale del processo
     # ucciso e spacciarlo per risposta).
-    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
-                                        "history": [{"role": "user", "content": "ciao"}]}}
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "ciao"}]}}
 
     def _raise_timeout(*a, **k):
         raise subprocess.TimeoutExpired(cmd="claude", timeout=300)
@@ -218,7 +221,7 @@ def test_run_once_chat_reasons_and_submits():
     gli strumenti: la sonda trova tutti i nomi, l'argv li collega, e la
     `reply` che torna alla reasoning API e' la risposta del modello e basta --
     nessuna riga di degrado, perche' non c'e' nessun degrado da dichiarare."""
-    job = {"job_id": "J", "nonce": "N", "kind": "chat",
+    job = {"deadline_ts": SCADENZA_LONTANA, "job_id": "J", "nonce": "N", "kind": "chat",
            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job})
@@ -260,7 +263,7 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     NON e' fra i `chat_store._TOXIC_ASSISTANT_PREFIXES` come gli altri
     sentinella del ponte -- quelli sostituiscono la risposta, questa la
     precede."""
-    job = {"job_id": "J", "nonce": "N", "kind": "chat",
+    job = {"deadline_ts": SCADENZA_LONTANA, "job_id": "J", "nonce": "N", "kind": "chat",
            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job}, mcp=False)

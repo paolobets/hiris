@@ -105,6 +105,7 @@ from .proxy.state_translations import StateTranslations
 from .steering import (
     ACTUATOR_SPECIES,
     ANALYST_SPECIES,
+    JOB_SPECIES,
     OBSERVER_SPECIES,
     RECIPES_SPECIES,
     chain_turn,
@@ -4630,7 +4631,19 @@ async def _on_startup(app: web.Application) -> None:
                     "osservatore: il turno %s e' scaduto senza risposta dal piano",
                     job.get("job_id"))
                 continue
-            if job.get("kind") != "chat":
+            if job.get("kind") == "chat":
+                continue
+            # Una specie dichiarata (`steering.JOB_SPECIES`) e' un turno che il
+            # piano non ha fatto in tempo a servire, non un orfano: fino al
+            # 06/10/2026 analisi, ricette e attuazione scadute finivano nel
+            # registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2
+            # della Tappa 6). Orfano resta solo un tipo che nessuno dichiara
+            # piu', come l'olistico di un archivio di prima della fetta E3.
+            if job.get("kind") in JOB_SPECIES:
+                logger.warning(
+                    "reasoning sweep: il turno %s (%s) e' scaduto senza risposta "
+                    "dal piano", job.get("job_id"), job.get("kind"))
+            else:
                 logger.warning(
                     "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, "
                     "fetta E3 Task 4), scartato",

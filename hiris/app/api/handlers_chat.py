@@ -40,7 +40,7 @@ from ..steering import (
     enqueue_turn,
     who_answers,
 )
-from .boundary import error_body, error_response
+from .boundary import error_body, error_response, json_object
 from .handlers_home_space import compose_briefing, house_of
 from .handlers_mind import mind_view
 from .soffitto import ceiling_for, request_ceiling, ruolo_letto
@@ -905,10 +905,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
 
 
 async def handle_chat(request: web.Request) -> web.Response:
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "Il corpo della richiesta non è JSON valido.")
+    body = await json_object(request)
 
     message = body.get("message", "").strip()
     if not message:
