@@ -1131,8 +1131,8 @@ il segnale vive nel resoconto (una misura che dichiara «fonte ferma» accanto a
 cronaca o fra le condizioni dell'osservatore; e se vale solo per i contatori di energia o per
 ogni entita' che una ricetta nomina.
 
-**In prova sul ramo del Task 1.3, la voce resta aperta finche' il proprietario non sceglie
-(06/10/2026).** La prima forma (la sola meta' «la sua storia» della D3) dava, misurata dallo
+**Scelta dal proprietario il 06/10/2026 («utilizza la regola che ha dato i dati corretti»); la
+voce si chiude col rilascio che la porta, dopo la rimisura dello sprint sul codice del ramo.** La prima forma (la sola meta' «la sua storia» della D3) dava, misurata dallo
 sprint sui trenta giorni dal 03/09 al 03/10, 360 rifiuti e 325 falsi: da sola una serie non
 distingue «la fonte ha smesso di parlare» da «la casa oggi ha fatto altro». Sul ramo ora c'e' la
 forma proposta (`mind/flatline.py`, `House.sibling_group`): un'ora e' ferma se tutto il gruppo
@@ -1141,7 +1141,7 @@ istantanea ferma su un valore diverso da zero, mentre il resto della casa si muo
 ora (piu' o meno un'ora) dei giorni prima il gruppo non era mai fermo; un contatore si rifiuta solo
 se il blocco arriva a fine giornata. Rigiocata dallo sprint sulle stesse catture: 73 rifiuti, 58
 veri su 58, 15 falsi (13 forse veri), nessun blocco perso. Cambia la D3 (da «oppure» a «e») e
-precisa la D4: decide il proprietario (proposta: `/mnt/project-files/attori/2026-10-06-dato-fermo-proposta.md`).
+precisa la D4 (proposta: `/mnt/project-files/attori/2026-10-06-dato-fermo-proposta.md`).
 Le assenze in cronaca sono il Task 1.4.
 
 ### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
