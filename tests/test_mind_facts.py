@@ -2020,9 +2020,9 @@ def test_la_voce_dell_istanza_non_sceglie_lo_stato_del_primo_tratto(archivio):
 # ── la finestra di scollegamento (riallineamento, 06/10/2026) ──────────────
 
 def _disconnection(store, start, end):
-    """La finestra come la scrive l'osservatore alla riconnessione
-    (`Watcher.realign`): due righe di sistema, scritte insieme."""
-    Watcher(store).realign(None, gap={"da": start, "a": end})
+    """La finestra come la scrive l'osservatore quando si chiude
+    (`Watcher.record_disconnection`): due righe di sistema, scritte insieme."""
+    Watcher(store).record_disconnection({"da": start, "a": end})
 
 
 def test_la_finestra_di_scollegamento_e_una_voce_con_le_assenze_cominciate_dentro(archivio):

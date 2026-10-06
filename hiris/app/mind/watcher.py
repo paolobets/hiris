@@ -382,19 +382,36 @@ class Watcher:
                            type(error).__name__, error)
             return False
 
-    def realign(self, states, *, gap: dict | None = None) -> int:
-        """Il riallineamento alla riconnessione (decisione del proprietario del
-        06/10/2026, «Riallinea»): cio' che e' cambiato mentre l'add-on era
-        scollegato entra nel grezzo, e la finestra con lui. Torna quante righe
-        ha scritto. **Non solleva mai**, come il rubinetto.
-
-        **La finestra** (`gap`, `{"da", "a"}` da `HAClient.take_disconnection`)
-        diventa due righe di sistema del soggetto `DISCONNECTION_SUBJECT`:
+    def record_disconnection(self, window: dict) -> int:
+        """La finestra in cui l'add-on e' rimasto scollegato
+        (`HAClient.add_disconnection_listener`, `{"da", "a"}`) entra nel
+        grezzo: due righe di sistema del soggetto `DISCONNECTION_SUBJECT`,
         «scollegato» all'inizio, «chiuso» alla fine -- la forma di ogni
         condizione di sistema, che nasce e finisce. Scritte insieme, a
-        riconnessione avvenuta: una finestra non ancora chiusa non si sa
-        quanto duri, e nessuna riga resta aperta se l'add-on si ferma nel
-        mezzo (in quel caso la finestra non c'e', dichiarato).
+        finestra chiusa: una finestra aperta non si sa quanto duri, e nessuna
+        riga resta aperta se l'add-on si ferma nel mezzo (in quel caso la
+        finestra non c'e', dichiarato). Torna quante righe ha scritto. **Non
+        solleva mai**, come il rubinetto."""
+        try:
+            if not (isinstance(window, dict) and window.get("da") is not None
+                    and window.get("a") is not None):
+                return 0
+            self._store.record(quando_ts=float(window["da"]), source="sistema",
+                               subject=DISCONNECTION_SUBJECT, da=None, a="scollegato")
+            self._store.record(quando_ts=float(window["a"]), source="sistema",
+                               subject=DISCONNECTION_SUBJECT, da=None, a="chiuso")
+            return 2
+        except Exception as error:
+            logger.warning("osservatore: finestra di scollegamento non annotata (%s: %s)",
+                           type(error).__name__, error)
+            return 0
+
+    def realign(self, states) -> int:
+        """Il riallineamento alla riconnessione (decisione del proprietario del
+        06/10/2026, «Riallinea»): cio' che e' cambiato mentre l'add-on era
+        scollegato entra nel grezzo. Torna quante righe ha scritto. **Non
+        solleva mai**, come il rubinetto. La finestra la scrive
+        `record_disconnection`, quando Home Assistant si dichiara avviato.
 
         **Le entita'**: per ognuna che ha gia' una riga nel grezzo (dentro
         `READING_RETENTION_S`), lo stato della fotografia (`states`, gli stati
@@ -420,12 +437,6 @@ class Watcher:
         """
         written = 0
         try:
-            if isinstance(gap, dict) and gap.get("da") is not None and gap.get("a") is not None:
-                self._store.record(quando_ts=float(gap["da"]), source="sistema",
-                                   subject=DISCONNECTION_SUBJECT, da=None, a="scollegato")
-                self._store.record(quando_ts=float(gap["a"]), source="sistema",
-                                   subject=DISCONNECTION_SUBJECT, da=None, a="chiuso")
-                written += 2
             if not states:
                 return written
             last = {r["soggetto"]: r for r in self._store.last_before(

@@ -758,9 +758,11 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # **Il riavvio di Home Assistant ha la sua voce dal 06/10/2026**, e la
     # prende da una fonte che lo dichiara, non da una soglia nostra: la
     # finestra in cui l'add-on e' rimasto scollegato, misurata dal client
-    # (`HAClient.take_disconnection`) e scritta dall'osservatore alla
-    # riconnessione (`Watcher.realign`), che riallinea anche le entita'
-    # guardate allo stato che Home Assistant dichiara. Fino ad allora il
+    # dalla caduta della connessione a quando Home Assistant si dichiara
+    # avviato (`HAClient.add_disconnection_listener`) e scritta
+    # dall'osservatore (`Watcher.record_disconnection`); alla riconnessione
+    # `Watcher.realign` riallinea anche le entita' guardate allo stato che
+    # Home Assistant dichiara. Fino ad allora il
     # grezzo non ne portava traccia: durante il riavvio l'add-on e'
     # scollegato, e le righe di andata a `unavailable` non arrivano mai
     # (misurato sul 29/09/2026). La voce non dice «riavvio»: un guasto di rete
@@ -808,14 +810,18 @@ def _gathered_by_disconnection(stretches: list[dict], episodes: list[dict]) -> l
     guardava: la voce che lo racconta e' quella della finestra, non quella
     della sua istanza (che salirebbe in primo piano).
 
-    **Dentro, estremi compresi, e solo l'inizio.** La finestra e' un fatto
-    misurato (`HAClient.take_disconnection`), non un margine nostro: un
-    tratto cominciato prima era gia' un'assenza quando la connessione e'
-    caduta, e resta la voce sua; uno cominciato dopo la riconnessione l'ha
-    visto il rubinetto vivo. **Cosa non e' stato misurato**: se, dopo un
-    riavvio, Home Assistant scriva gli `unavailable` delle entita' non ancora
-    pronte prima o dopo che l'add-on si e' ricollegato. Quelli scritti dopo
-    restano voci dell'istanza.
+    **Dentro, estremi compresi, e solo l'inizio.** La finestra e' un fatto,
+    non un margine nostro: comincia alla caduta della connessione e finisce
+    quando Home Assistant si DICHIARA avviato (`RUNNING`, o l'evento
+    `homeassistant_started`: `HAClient.add_disconnection_listener`), non al
+    ritorno del socket -- il websocket risponde mentre il nucleo e' ancora in
+    avvio, e le entita' che le integrazioni lente lasciano `unavailable` in
+    quel tratto sono del riavvio (revisione, giro 41). Un tratto cominciato
+    prima era gia' un'assenza quando la connessione e' caduta, e resta la
+    voce sua; uno cominciato dopo l'avvio dichiarato e' un fatto della casa
+    avviata. **Cosa non e' stato misurato**: quanti `unavailable` Home
+    Assistant scriva dopo `homeassistant_started` (un'integrazione che ritenta
+    oltre l'avvio). Quelli restano voci dell'istanza.
     """
     windows = [e for e in episodes if e["protagonista"] == DISCONNECTION_SUBJECT]
     if not windows:

@@ -962,8 +962,10 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 # ── Le eccezioni non crescono da sole (revisione indipendente del 02/10/2026) ─
 
 #: Le eccezioni AMMESSE, per nome, ognuna con la voce del registro che la
-#: giustifica -- o `None` per l'unico errore del rilevatore, che non ha una
-#: voce perche' non c'e' niente da togliere. E' una lista di ammissione: non
+#: giustifica. L'unico errore del rilevatore (`get_config`, chiamato via
+#: `getattr`) e' uscito il 06/10/2026: dal riallineamento il client manda
+#: `get_config` anche sul websocket di lunga vita, e il rilevatore lo vede.
+#: E' una lista di ammissione: non
 #: ricopia il file delle eccezioni, enuncia il cancello. Chiude per difetto:
 #: un'eccezione nuova, o una che cambia voce, si decide QUI, davanti a tutti.
 #:
@@ -972,7 +974,6 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 #: passare (eseguito dal revisore il 02/10/2026).
 ADMITTED_EXCEPTIONS = {
     ("simbolo-solo-test", "actuator_round"): "M-20",
-    ("simbolo-solo-test", "get_config"): None,
     ("simbolo-solo-test", "operable_domains"): "M-61",
     ("rotta-solo-test", "/api/misure"): "M-22",
 }

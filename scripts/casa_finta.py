@@ -333,7 +333,9 @@ class SilentConnection:
     Cosa sa fare per le prove: `refuse_next_auth()` (il gettone rifiutato
     alla prossima connessione), `push_event(tipo, dati)` e
     `push_config_entry_change(cambio, voce)` (Home Assistant che parla),
-    `drop()` (la connessione che cade). Registra `opened` (le connessioni
+    `drop()` (la connessione che cade), `core_state` (lo stato del nucleo che
+    `get_config` dichiara: `RUNNING`, o `STARTING` per una casa in avvio).
+    Registra `opened` (le connessioni
     aperte), `listening` (quelle arrivate in ascolto degli eventi) e `sent`
     (cio' che il client ha mandato dopo l'autenticazione, il gettone escluso:
     e' una credenziale). Un comando che non sa servire solleva
@@ -355,6 +357,10 @@ class SilentConnection:
         self.opened = 0
         self.listening = 0
         self.sent: list[dict] = []
+        #: Lo stato del nucleo che `get_config` dichiara (`CoreState`, vedi
+        #: `ha_client.STARTED_EVENT` per la fonte): una prova lo mette a
+        #: `STARTING` per una casa che si sta ancora avviando.
+        self.core_state = "RUNNING"
 
     # ── cio' che una prova fa fare a Home Assistant ─────────────────────────
 
@@ -430,6 +436,10 @@ class SilentConnection:
         if command == "subscribe_events":
             self._subscriptions[payload.get("event_type")] = payload["id"]
             self._confirm(payload["id"])
+        elif command == "get_config":
+            self._inbox.put_nowait({"id": payload["id"], "type": "result",
+                                    "success": True,
+                                    "result": {"state": self.core_state}})
         elif command == "config_entries/subscribe":
             entries = self.config_entries()
             self._entries_subscription = payload["id"]
