@@ -20,6 +20,7 @@ from ..claude_runner import (
     _current_tool_calls,
     _current_tool_leaked,
     _current_truncated,
+    _current_unanswered,
     _misura_corrente,
     _PerCallFlag,
     _PerCallList,
@@ -363,6 +364,7 @@ class OpenAICompatRunner:
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_truncated = _PerCallFlag(_current_truncated)
     last_tool_leaked = _PerCallFlag(_current_tool_leaked)
+    last_unanswered = _PerCallFlag(_current_unanswered)
 
     def __init__(
         self,
@@ -645,6 +647,7 @@ class OpenAICompatRunner:
         self.last_tool_calls = []
         self.last_truncated = False
         self.last_tool_leaked = False
+        self.last_unanswered = False
 
         effective_model = self._resolve_model(model, agent_type)
 

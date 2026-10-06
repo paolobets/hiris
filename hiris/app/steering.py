@@ -281,8 +281,14 @@ class TurnOutcome:
 
     `truncated` si legge DOPO il blocco `async with misura_turno(...)`: e' il
     segnale del runner, letto una volta sola qui invece che da ogni mestiere.
+
+    `turn_id` e' l'id della riga che l'imbuto ha scritto nel registro dei
+    turni (`UsageStore.log_turn`), `None` se nessuno misura o se la scrittura
+    e' fallita: chi vuole annotare poi quel turno lo collega per
+    identificatore, non per istante.
     """
     truncated: bool = False
+    turn_id: str | None = None
 
 
 def was_truncated(runner) -> bool:
@@ -443,6 +449,13 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
     finally:
         _togli_misura(gettone)
         durata_ms = int((_time.perf_counter() - inizio) * 1000)
+        # **Una frase del router non e' una risposta.** Quando nessun backend
+        # risponde il router non solleva: restituisce una frase per l'utente
+        # (`LLMRouter.last_unanswered`). Senza questa riga il turno si
+        # registrava `riuscito` -- 61 turni dell'analista in tre giorni,
+        # misurati sulla casa vera il 05/10/2026.
+        if esito == "riuscito" and getattr(runner, "last_unanswered", False):
+            esito = "fallito"
         # **Il troncato si legge FUORI dalla scrittura dell'archivio**: il
         # mestiere ne ha bisogno anche quando nessuno misura (archivio
         # `None`), perche' e' cio' che gli impedisce di leggere una risposta
@@ -500,6 +513,7 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
                     duration_ms=durata_ms, iterations=giri,
                     tools=strumenti, outcome=esito, now=adesso,
                     output_tokens=uscita, tool_args=argomenti)
+                stato.turn_id = ident
                 for giro, pesi in sorted(carichi.items()):
                     if "tools_chars" not in pesi:
                         # Un giro coi soli token: la consegna dei caratteri
