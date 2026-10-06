@@ -380,3 +380,299 @@ def test_recipe_round_asks_with_dashboard(tmp_path):
     finally:
         sapere.close()
         archivio.close()
+
+
+# -- l'impronta: contro cosa e' stata scritta una ricetta (Task 2.3, Passi 1b,
+#    1c, 3, 4; D8 «si richiedono») ---------------------------------------------
+
+#: Tutte le entita' dell'inverter hanno una serie: cosi' nessuna e' muta, e
+#: se la ricetta torna una domanda e' SOLO per la dashboard.
+SERIES = {e["entity_id"] for e in REGISTRIES["entita"]}
+
+RECIPE = {"why": "l'inverter e' la fonte di casa", "steps": [
+    {"name": "prodotta", "operation": "somma_periodo",
+     "inputs": ["@sensor.inverter_produzione"], "params": {"unit": "kWh"}},
+    {"name": "immessa", "operation": "somma_periodo",
+     "inputs": ["@sensor.inverter_immissione"], "params": {"unit": "kWh"}}]}
+
+
+def _knowledge(tmp_path):
+    from hiris.app.mind.knowledge import KnowledgeStore
+    return KnowledgeStore(str(tmp_path / "sapere.db"))
+
+
+def _write(sapere, casa, recipe=RECIPE, *, against=None, when_ts=1789000000.0):
+    import json
+    outcome = recipe_turn.apply_recipe(sapere, casa, "inv", json.dumps(recipe), who="x",
+                                       when_ts=when_ts, written_against=against)
+    assert outcome["scritta"], outcome
+
+
+def test_recipe_written_without_fingerprint_comes_back(tmp_path):
+    """(b) Una ricetta scritta prima che la dashboard si leggesse -- tutte e
+    sette quelle di oggi (D8) -- torna una domanda, e la domanda dice perche'.
+
+    Mutazione ESEGUITA: `written_against` che torna sempre "" (l'impronta
+    sempre uguale) -- rossa (nessuna ricetta torna)."""
+    casa, dashboard = _home(tmp_path)
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa)
+
+        back = recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard)
+
+        assert set(back) == {"inv"}
+        assert back["inv"].dashboard_changed and not back["inv"].silent
+        question = recipe_turn.build_device_question(
+            "risparmiare", casa, "inv", with_series=SERIES, energy=dashboard,
+            repair=back["inv"])
+        assert "la dashboard Energia e' cambiata" in question
+        assert "Riscrivila coi ruoli" in question
+        # Nessuna entita' muta da elencare: il blocco delle mute non c'e'.
+        assert "non funziona piu'" not in question
+        # La ricetta vecchia resta finche' la nuova non e' valida.
+        assert recipe_turn.recipes(sapere)["inv"] == RECIPE
+    finally:
+        sapere.close()
+
+
+def test_recipe_written_against_other_roles_comes_back(tmp_path):
+    """(b) Un'impronta DIVERSA da quella di adesso: il proprietario ha
+    cambiato la dashboard (qui: la batteria non c'era)."""
+    casa, dashboard = _home(tmp_path)
+    before = {**dashboard, "ruoli": [r for r in dashboard["ruoli"]
+                                      if r["tipo"] != "battery"]}
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa, against=recipe_turn.written_against(casa, "inv", before))
+
+        back = recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard)
+
+        assert set(back) == {"inv"}
+    finally:
+        sapere.close()
+
+
+def test_recipe_with_current_fingerprint_does_not_come_back(tmp_path):
+    """(c) L'impronta giusta: la ricetta vale, e non costa un giro."""
+    casa, dashboard = _home(tmp_path)
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa, against=recipe_turn.written_against(casa, "inv", dashboard))
+
+        assert recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard) == {}
+    finally:
+        sapere.close()
+
+
+def test_fingerprint_is_readable_and_only_of_this_device(tmp_path):
+    """L'impronta si legge da sola (fondamenta 1): i ruoli dichiarati per le
+    entita' DI QUESTO dispositivo, non un numero. La lavatrice ha il suo;
+    un dispositivo che la dashboard non nomina non ne ha (""); una dashboard
+    mai letta non dice niente (`None`, non ""). Il nome della sorgente e
+    l'unita' non ci sono: cambiarli non cambia la definizione di niente."""
+    casa, dashboard = _home(tmp_path)
+
+    mine = recipe_turn.written_against(casa, "inv", dashboard)
+
+    assert mine.startswith(recipe_turn.DASHBOARD_SOURCE)
+    assert "sensor.inverter_produzione=produzione" in mine
+    assert "sensor.lavatrice_energia" not in mine
+    assert "Tetto" not in mine and "kWh" not in mine
+    assert "compreso in sensor.quadro_energia" in recipe_turn.written_against(
+        casa, "lav", dashboard)
+    none_of_mine = {**dashboard, "ruoli": [r for r in dashboard["ruoli"]
+                                           if r["statistica"] == "contatore:gas"]}
+    assert recipe_turn.written_against(casa, "inv", none_of_mine) == ""
+    assert recipe_turn.written_against(casa, "inv", None) is None
+
+
+def test_device_outside_dashboard_never_comes_back_for_it(tmp_path):
+    """Un dispositivo senza entita' della dashboard non porta impronta e non
+    torna mai per questa ragione; una dashboard non letta non fa tornare
+    niente («non l'ho letta» non e' «e' cambiata»)."""
+    casa, dashboard = _home(tmp_path)
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa)
+        assert recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=None) == {}
+        no_inverter = {**dashboard, "ruoli": [r for r in dashboard["ruoli"]
+                                              if not r["statistica"].startswith(
+                                                  "sensor.inverter")]}
+        assert recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=no_inverter) == {}
+    finally:
+        sapere.close()
+
+
+def test_rewritten_recipe_carries_fingerprint_and_stops(tmp_path):
+    """Passo 3: la risposta valida a una richiesta porta `scritta_contro`
+    (la fonte della riga del sapere), e da li' la ricetta non torna piu'."""
+    import json
+    casa, dashboard = _home(tmp_path)
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa)
+        against = recipe_turn.written_against(casa, "inv", dashboard)
+
+        outcome = recipe_turn.apply_recipe(
+            sapere, casa, "inv", json.dumps(RECIPE), who="x", when_ts=1789000100.0,
+            repairing=frozenset(), written_against=against)
+
+        assert outcome["scritta"]
+        assert sapere.get("dispositivo", "inv", recipe_turn.RECIPE_FIELD).source == against
+        assert recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard) == {}
+    finally:
+        sapere.close()
+
+
+def test_failed_rewrite_keeps_recipe_and_does_not_loop(tmp_path):
+    """Revisione del piano, punto 4: una richiesta per la dashboard a cui il
+    modello risponde storto NON cancella la ricetta di adesso (calcola
+    ancora), le scrive accanto il «non capito», e la richiesta si ferma fino
+    al prossimo registro -- non a ogni giro.
+
+    Mutazione ESEGUITA: la guardia della riparazione che torna a chiedere
+    `repairing` non vuoto (com'era prima) -- rossa (la ricetta cancellata)."""
+    casa, dashboard = _home(tmp_path)
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa)
+
+        recipe_turn.apply_recipe(sapere, casa, "inv", "non saprei", who="x",
+                                 when_ts=1789000100.0, repairing=frozenset())
+
+        assert recipe_turn.recipes(sapere)["inv"] == RECIPE
+        assert recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard) == {}
+    finally:
+        sapere.close()
+
+
+class _Writer(_Runner):
+    """Il modello finto che risponde con una ricetta valida."""
+
+    async def chat(self, *, user_message, **_kwargs):
+        import json
+        self.questions.append(user_message)
+        return json.dumps(RECIPE)
+
+
+def _round_app(tmp_path, runner, sapere, archivio):
+    house = CasaFinta({"energy_prefs": PREFS}, answers={
+        "recorder/list_statistic_ids": lambda extra: [
+            {"statistic_id": s} for s in sorted(SERIES)]})
+    return {"observations": archivio, "knowledge": sapere,
+            "home_space_store": _store(tmp_path), "ha_client": house,
+            "entity_cache": _Cache(), "llm_router": runner}
+
+
+def test_recipe_round_rewrites_stale_recipe_once(tmp_path):
+    """Passo 4, il giro vero: la ricetta dell'inverter scritta senza impronta
+    torna una domanda dalla strada della riparazione, con il blocco dei ruoli
+    e il perche'; la risposta si scrive con l'impronta, e il giro dopo non
+    chiede piu' niente.
+
+    Mutazione ESEGUITA: `recipe_round` che non passa la dashboard a
+    `recipes_to_repair` -- rossa (0 domande)."""
+    from hiris.app import server
+    from hiris.app.mind.store import ObservationsStore
+
+    sapere = _knowledge(tmp_path)
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        archivio.decide_scope("sensor.inverter_prelievo", inside=True,
+                              reason="prova", author="prova")
+        runner = _Writer()
+        app = _round_app(tmp_path, runner, sapere, archivio)
+        house = House(app["home_space_store"].read(),
+                      live_mirror(_Cache().all_states()))
+        _write(sapere, house)
+
+        _run(server.recipe_round(app))
+        _run(server.recipe_round(app))
+
+        assert len(runner.questions) == 1
+        assert "- sensor.inverter_prelievo: prelievo [kWh]" in runner.questions[0]
+        assert "Riscrivila coi ruoli" in runner.questions[0]
+        fact = sapere.get("dispositivo", "inv", recipe_turn.RECIPE_FIELD)
+        assert fact.source.startswith(recipe_turn.DASHBOARD_SOURCE)
+    finally:
+        sapere.close()
+        archivio.close()
+
+
+def test_bridge_carries_fingerprint_to_collection(tmp_path):
+    """Sul ponte la risposta arriva minuti dopo, da un altro processo:
+    l'impronta contro cui la domanda e' stata scritta viaggia nella sveglia,
+    e chi raccoglie la scrive sulla ricetta -- quella che il modello ha
+    VISTO, non quella del momento della raccolta.
+
+    Mutazione ESEGUITA: la raccolta che non legge `scritta_contro` -- rossa
+    (la ricetta senza impronta, che tornerebbe a ogni giro)."""
+    import json
+    import time
+
+    from hiris.app import server
+    from hiris.app.reasoning.queue import ReasoningQueue
+
+    casa, dashboard = _home(tmp_path)
+    sapere = _knowledge(tmp_path)
+    coda = ReasoningQueue(str(tmp_path / "coda.db"))
+    try:
+        _write(sapere, casa)
+        back = recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard)
+        app = {"reasoning_queue": coda,
+               "models_config": {"ponte": {"scadenza_min": 10}}}
+
+        server._enqueue_recipe_turn(app, casa, "inv", objective="risparmiare",
+                                    with_series=SERIES, energy=dashboard,
+                                    repair=back["inv"])
+        taken = coda.claim(time.time())
+        against = recipe_turn.written_against(casa, "inv", dashboard)
+        assert taken["wake"]["scritta_contro"] == against
+        assert taken["wake"]["riparare"] == []
+        coda.submit(taken["job_id"], taken["nonce"], {"reply": json.dumps(RECIPE)},
+                    time.time())
+
+        outcome = server._collect_recipe_turn(app, sapere, casa)
+
+        assert outcome["scritta"]
+        assert sapere.get("dispositivo", "inv", recipe_turn.RECIPE_FIELD).source == against
+    finally:
+        sapere.close()
+
+
+def test_empty_dashboard_changes_nothing(tmp_path):
+    """La dashboard di questa casa, misurata dallo sprint il 06/10/2026 (Task
+    2.0): `energy/get_prefs` risponde con le tre liste VUOTE, non con
+    `not_found`. Nessun ruolo, quindi niente da citare e nessuna ricetta che
+    torni: la domanda resta quella di prima, e nessun giro del modello si
+    spende finche' il proprietario non la compila.
+
+    Mutazione ESEGUITA: `written_against` che scrive il prefisso anche senza
+    ruoli -- rossa (`'dashboard Energia: ' == ''`)."""
+    store = _store(tmp_path)
+    casa = _house(store)
+    empty = {"energy_sources": [], "device_consumption": [],
+             "device_consumption_water": []}
+    dashboard = _run(energy.energy_dashboard(CasaFinta({"energy_prefs": empty}), store,
+                                             casa, with_series=SERIES))
+    sapere = _knowledge(tmp_path)
+    try:
+        _write(sapere, casa)
+
+        assert dashboard["ruoli"] == []
+        assert recipe_turn.written_against(casa, "inv", dashboard) == ""
+        assert recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
+                                             energy=dashboard) == {}
+        assert (recipe_turn.build_device_question("x", casa, "inv", energy=dashboard)
+                == recipe_turn.build_device_question("x", casa, "inv"))
+    finally:
+        sapere.close()

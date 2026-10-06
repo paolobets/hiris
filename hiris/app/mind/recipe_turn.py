@@ -45,6 +45,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 
 from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE
@@ -105,6 +107,25 @@ DECLINED_FIELD = "ricetta_non_serve"
 #: finalmente da' un LETTORE a `REGISTRY_VERSION`, che fino a oggi era un
 #: numero scritto e mai interrogato.
 REFUSAL_SOURCE = "registro delle operazioni v"
+
+#: Contro quale dashboard Energia una RICETTA e' stata scritta (attori, Task
+#: 2.3; D8 «si richiedono», scelta del proprietario il 03/10/2026).
+#:
+#: **E' la stessa regola dei rifiuti, per l'altra cosa che puo' cambiare.** Un
+#: rifiuto vale finche' vale il registro contro cui e' stato deciso; una
+#: ricetta vale finche' valgono i ruoli che la dashboard dichiarava per le
+#: entita' del suo dispositivo quando il modello li ha visti. Le ricette di
+#: energia scritte prima che la dashboard si leggesse (sette, verificato dal
+#: vivo il 01/10/2026) definivano l'autoconsumo senza la batteria -- B-29: il
+#: 29/09 «quota_autoconsumo 31% contro 74,7% di FV non immesso» -- e il codice
+#: non puo' correggerle senza scrivere una formula sua (D8 «a mano», scartata):
+#: le richiede, una volta, col blocco dei ruoli davanti.
+#:
+#: Sta nella colonna `source` della riga, come la versione del registro sta in
+#: quella dei rifiuti: e' «la citazione, con la versione» (`Fact`). Ed e'
+#: leggibile, non un hash (fondamenta 1): chi apre il sapere legge contro quali
+#: ruoli la ricetta e' stata scritta.
+DASHBOARD_SOURCE = "dashboard Energia: "
 
 #: Il tetto della risposta. Una ricetta e' una decina di passi: 4.000 token
 #: sono larghi il doppio del necessario, e un tetto largo costa solo quando
@@ -219,7 +240,7 @@ def _operations_catalogue() -> str:
 def build_device_question(objective: str, house: House, device_id: str,
                           *, with_series: set[str] | None = None,
                           energy: dict | None = None,
-                          repair: dict[str, NotComputable] | None = None) -> str | None:
+                          repair: Repair | None = None) -> str | None:
     """La domanda intera per un dispositivo, o `None` se non c'e' da chiedere.
 
     `None` quando il dispositivo non ha entita': non ci sarebbe niente da
@@ -247,9 +268,10 @@ def build_device_question(objective: str, house: House, device_id: str,
     **`energy` e' la dashboard Energia** (`home_space.energy.energy_dashboard`),
     citata a parte con la stessa regola (`_energy_block`).
 
-    **`repair` dice PERCHE' si richiede** (attori, Task 1.6): le entita' che
-    la ricetta di adesso non puo' piu' usare, ognuna col suo rifiuto
-    (`recipes_to_repair`). Vuoto per un dispositivo chiesto la prima volta.
+    **`repair` dice PERCHE' si richiede** (attori, Task 1.6 e 2.3): le
+    entita' che la ricetta di adesso non puo' piu' usare, ognuna col suo
+    rifiuto, e se la dashboard Energia e' cambiata (`recipes_to_repair`).
+    `None` per un dispositivo chiesto la prima volta.
     """
     lines = device_lines(house, device_id)
     if not lines:
@@ -311,13 +333,7 @@ def _energy_block(house: House, device_id: str, energy: dict | None) -> str:
     non nomina niente di questo dispositivo: la domanda resta quella di prima.
     Nessuna formula scritta qui: il modello sceglie i passi, il codice calcola.
     """
-    if not energy:
-        return ""
-    # Di chi e' una statistica lo dice la casa (`House.entities_of`: le
-    # entita' del dispositivo che un attore guarda), non il campo `entita`
-    # che la dashboard ha ricavato dall'anagrafe: una risposta sola.
-    ids = set(house.entities_of(device_id))
-    mine = [r for r in energy.get("ruoli") or [] if r.get("statistica") in ids]
+    mine = _device_roles(house, device_id, energy)
     if not mine:
         return ""
     lines = ["\n\nLa dashboard Energia di Home Assistant dichiara:"]
@@ -336,21 +352,82 @@ def _energy_block(house: House, device_id: str, energy: dict | None) -> str:
     return "\n".join(lines)
 
 
-def _repair_block(repair: dict[str, NotComputable] | None) -> str:
-    """Perche' questo dispositivo torna una domanda: la ricetta che c'e'
-    nomina entita' che non danno piu' una serie, e il codice non accettera'
-    una ricetta nuova che le nomini (`apply_recipe`, `repairing`). La frase
-    e' quella del resoconto (`recipes.silence`): una sola, per il modello e
-    per chi legge le misure."""
-    if not repair:
+def _device_roles(house: House, device_id: str, energy: dict | None) -> list[dict]:
+    """I ruoli che la dashboard dichiara per le entita' di QUESTO dispositivo.
+
+    Una regola sola per il blocco della domanda e per l'impronta della
+    ricetta (`written_against`): cio' che il modello vede e' cio' contro cui
+    la ricetta si dice scritta. Di chi e' una statistica lo dice la casa
+    (`House.entities_of`: le entita' del dispositivo che un attore guarda),
+    non il campo `entita` che la dashboard ha ricavato dall'anagrafe.
+    """
+    if not energy:
+        return []
+    ids = set(house.entities_of(device_id))
+    return [r for r in energy.get("ruoli") or [] if r.get("statistica") in ids]
+
+
+def written_against(house: House, device_id: str, energy: dict | None) -> str | None:
+    """Contro cosa una ricetta di questo dispositivo si scrive adesso
+    (`DASHBOARD_SOURCE`, attori Task 2.3).
+
+    `None` quando la dashboard non e' stata letta: non si sa, e non si
+    giudica niente. `""` quando la dashboard non nomina nessuna entita' del
+    dispositivo: la ricetta non porta impronta, e non tornera' mai per questa
+    ragione. Altrimenti i ruoli, uno per statistica, in ordine: la
+    statistica, il ruolo, e cio' che la comprende. **Non** il nome della
+    sorgente ne' l'unita': cambiarli non cambia la definizione di niente, e
+    una richiesta costa un giro del modello.
+    """
+    if energy is None:
+        return None
+    parts = sorted(
+        f"{r['statistica']}={r['ruolo']}"
+        + (f" compreso in {r['compreso_in']}" if r.get("compreso_in") else "")
+        for r in _device_roles(house, device_id, energy))
+    return f"{DASHBOARD_SOURCE}{'; '.join(parts)}" if parts else ""
+
+
+@dataclass(frozen=True)
+class Repair:
+    """Perche' una ricetta che c'e' torna una domanda (attori, Task 1.6 e
+    2.3): le due cause in un oggetto che si legge da solo, che il giro passa
+    alla domanda e il ponte alla raccolta (`recipes_to_repair`)."""
+
+    #: Le entita' che non danno piu' una serie, ognuna col suo rifiuto
+    #: (`recipes.silent_entities`): la ricetta nuova non potra' nominarle.
+    silent: Mapping[str, NotComputable]
+    #: La dashboard Energia dichiara, per le entita' di questo dispositivo,
+    #: ruoli diversi da quelli contro cui la ricetta e' stata scritta (D8).
+    dashboard_changed: bool = False
+
+
+def _repair_block(repair: Repair | None) -> str:
+    """Perche' questo dispositivo torna una domanda.
+
+    Per le entita' che tacciono: la ricetta che c'e' ne nomina che non
+    danno piu' una serie, e il codice non accettera' una ricetta nuova che le nomini
+    (`apply_recipe`, `repairing`); la frase e' quella del resoconto
+    (`recipes.silence`), una sola per il modello e per chi legge le misure.
+    Per la dashboard: i ruoli sono nel blocco qui sopra (`_energy_block`), e
+    qui si dice solo che sono cambiati -- nessuna formula scritta da noi."""
+    if repair is None:
         return ""
-    lines = [("\n\n**Te lo richiedo perche' la ricetta di adesso non funziona "
-              "piu'.** Queste entita' non possono dare una serie, e una ricetta "
-              "che ne nomini una verra' rifiutata:")]
-    for entity_id in sorted(repair):
-        lines.append(f"- {entity_id}: {repair[entity_id].reason}")
-    lines.append("Riscrivila con le entita' che restano. Se senza di loro non "
-                 "c'e' niente da misurare, rispondi `steps: []` e dillo nel `why`.")
+    lines = []
+    if repair.silent:
+        lines.append("\n\n**Te lo richiedo perche' la ricetta di adesso non funziona "
+                     "piu'.** Queste entita' non possono dare una serie, e una "
+                     "ricetta che ne nomini una verra' rifiutata:")
+        for entity_id in sorted(repair.silent):
+            lines.append(f"- {entity_id}: {repair.silent[entity_id].reason}")
+        lines.append("Riscrivila con le entita' che restano. Se senza di loro non "
+                     "c'e' niente da misurare, rispondi `steps: []` e dillo nel `why`.")
+    if repair.dashboard_changed:
+        lines.append("\n\n**Te lo richiedo perche' la dashboard Energia e' cambiata "
+                     "da quando la ricetta di adesso e' stata scritta** (o allora "
+                     "non era stata letta). Riscrivila coi ruoli che dichiara "
+                     "adesso, qui sopra: se la ricetta di adesso li rispetta gia', "
+                     "puoi riscriverla uguale.")
     return "\n".join(lines)
 
 
@@ -373,7 +450,8 @@ def _only_answer(store, device_id: str, kept: str) -> None:
 
 def apply_recipe(store, house: House, device_id: str, answer: str, *,
                  who: str, when_ts: float, truncated: bool = False,
-                 repairing: frozenset[str] | set[str] = frozenset()) -> dict:
+                 repairing: frozenset[str] | set[str] | None = None,
+                 written_against: str | None = None) -> dict:
     """Cosa si fa della risposta: si valida, e si scrive cio' che ne esce.
 
     Torna `{"scritta": bool, "problemi": [...]}`.
@@ -404,6 +482,15 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
     risposta non e' una ricetta valida, quella di adesso resta finche' calcola
     ancora qualcosa, e il «non capito» le si scrive accanto -- e' lui che
     ferma la riparazione fino al prossimo registro (`recipes_to_repair`).
+    `None` e' «non e' una riparazione»; l'insieme vuoto e' una riparazione
+    senza entita' che tacciono -- la dashboard e' cambiata -- e la ricetta vecchia
+    si tiene lo stesso.
+
+    **`written_against`: la dashboard contro cui la domanda e' stata
+    scritta** (`written_against()`, attori Task 2.3), e la ricetta valida la
+    porta nella sua `source`. E' quella che il modello ha VISTO: sul ponte
+    viaggia nella sveglia, perche' alla raccolta la dashboard potrebbe gia'
+    essere un'altra.
     """
     if not str(answer or "").strip():
         logger.warning(
@@ -412,7 +499,7 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
             "capito»)", device_id)
         return {"scritta": False, "problemi": ["il modello non ha risposto"],
                 "risposta": False}
-    entities = set(house.entities_of(device_id)) - set(repairing)
+    entities = set(house.entities_of(device_id)) - set(repairing or ())
     # **Il JSON lo cava il lettore unico** (`steering.read_json`, D-11): la
     # staccionata e il testo intorno si tollerano, e un turno troncato non si
     # legge (D2). Il troncato finisce nel «non capito» con la SUA ragione: e'
@@ -433,6 +520,7 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
                 provenance="dedotto",
                 evidence=("il dispositivo con le sue " f"{len(entities)} entita', "
                           "mostrate insieme al modello con l'obiettivo della casa"),
+                source=written_against or None,
                 who=who, when_ts=when_ts))
             _only_answer(store, device_id, RECIPE_FIELD)
             return {"scritta": True, "problemi": [], "risposta": True}
@@ -466,7 +554,7 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
         evidence=f"il modello ha risposto: {str(answer).strip()[:1500]}",
         source=f"{REFUSAL_SOURCE}{REGISTRY_VERSION}",
         verification="non_capito", who=who, when_ts=when_ts))
-    if repairing and _still_counts(store, device_id, repairing):
+    if repairing is not None and _still_counts(store, device_id, repairing):
         return {"scritta": False, "problemi": problems, "risposta": True,
                 "tenuta": True}
     _only_answer(store, device_id, UNDERSTOOD_FIELD)
@@ -593,10 +681,13 @@ def repairable(refusal: NotComputable, source: dict | None) -> bool:
             and (source or {}).get("causa") == RESTORED_ATTRIBUTE)
 
 
-def recipes_to_repair(store, house: House, *, with_series: set[str] | None
-                      ) -> dict[str, dict[str, NotComputable]]:
-    """Le ricette che non possono piu' calcolare per una causa RIPARABILE,
-    `{dispositivo: {entita': rifiuto}}` (attori, Task 1.6; D2).
+def recipes_to_repair(store, house: House, *, with_series: set[str] | None,
+                      energy: dict | None = None) -> dict[str, Repair]:
+    """Le ricette che vanno riscritte, `{dispositivo: Repair}`: quelle che
+    non possono piu' calcolare per una causa RIPARABILE (attori, Task 1.6;
+    D2), e quelle scritte contro un'altra dashboard Energia (Task 2.3; D8).
+    **Una strada sola** per «questa ricetta va riscritta»: la stessa domanda,
+    la stessa raccolta, la stessa guardia contro il giro infinito.
 
     **Chi decide e' il codice, dalla causa.** Fino al 05/10/2026 una ricetta
     rotta la riscriveva solo l'attuatore, quando l'analista scriveva
@@ -619,23 +710,34 @@ def recipes_to_repair(store, house: House, *, with_series: set[str] | None
     riparazione contro QUESTO registro -- un «non capito» o un rifiuto
     ragionato ancora validi (`_still_valid`) -- non torna, come non torna fra
     le domande nuove. E `None` non e' l'insieme vuoto: senza l'elenco delle
-    statistiche non si sa chi tace, e non si richiede niente.
+    statistiche non si sa chi tace, e non si richiede niente; senza la
+    dashboard (`energy` a `None`) non si sa se e' cambiata, e per lei non si
+    richiede niente.
+
+    **La dashboard si confronta con `_still_valid`, la funzione dei rifiuti**
+    (piano, Task 2.3, Passo 3): una ricetta vale finche' vale cio' contro cui
+    e' stata scritta. Una ricetta senza impronta su un dispositivo che la
+    dashboard nomina -- le sette di energia di oggi -- torna una volta.
     """
     if with_series is None:
         return {}
     house_now = house.with_statistics(with_series)
-    given = store.device_answers((UNDERSTOOD_FIELD, DECLINED_FIELD))
-    out: dict[str, dict[str, NotComputable]] = {}
+    given = store.device_answers((RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD))
+    out: dict[str, Repair] = {}
     for device_id, named in _named_recipes(store, house):
         answers = given.get(device_id, {})
-        if any(r is not None and _still_valid(r) for r in answers.values()):
+        if any(answers.get(f) is not None and _still_valid(answers[f])
+               for f in (UNDERSTOOD_FIELD, DECLINED_FIELD)):
             continue
         looked = sorted(named | set(house.entities_of(device_id)))
         silent = silent_entities(house_now, looked) or {}
         broken = {e: r for e, r in silent.items()
                   if repairable(r, house_now.source(e))}
-        if set(broken) & named:
-            out[device_id] = broken
+        against = written_against(house, device_id, energy)
+        changed = (against is not None and answers.get(RECIPE_FIELD) is not None
+                   and not _still_valid(answers[RECIPE_FIELD], against))
+        if set(broken) & named or changed:
+            out[device_id] = Repair(silent=broken, dashboard_changed=changed)
     return out
 
 
@@ -660,16 +762,22 @@ def has_named_recipes(store, house: House) -> bool:
     return next(_named_recipes(store, house), None) is not None
 
 
-def _still_valid(rejection) -> bool:
-    """Se un rifiuto vale ancora, cioe' se il registro non e' cambiato.
+def _still_valid(fact, against: str | None = None) -> bool:
+    """Se una risposta vale ancora: **vale finche' vale cio' contro cui e'
+    stata decisa** (piano degli attori, Task 2.3, Passo 3). Due casi, una
+    regola: un rifiuto contro il registro delle operazioni (`against` a
+    `None`: la versione di adesso), una ricetta contro la dashboard Energia
+    (`against` = `written_against()`, `""` per un dispositivo che la
+    dashboard non nomina).
 
-    Un rifiuto senza la versione scritta e' di prima di questa regola: vale
-    come scaduto, e il dispositivo torna fra quelli da chiedere. E' la scelta
-    prudente nel verso giusto -- chiedere una volta di piu' costa un turno,
-    non chiedere mai piu' costa un dispositivo.
+    Una risposta senza la sua fonte scritta e' di prima di questa regola:
+    per un rifiuto vale come scaduta, e il dispositivo torna fra quelli da
+    chiedere; per una ricetta vale solo se oggi non c'e' niente contro cui
+    scriverla. E' la scelta prudente nel verso giusto -- chiedere una volta
+    di piu' costa un turno, non chiedere mai piu' costa un dispositivo.
     """
-    expected = f"{REFUSAL_SOURCE}{REGISTRY_VERSION}"
-    return (rejection.source or "") == expected
+    expected = f"{REFUSAL_SOURCE}{REGISTRY_VERSION}" if against is None else against
+    return (fact.source or "") == expected
 
 
 def recipes(store) -> dict[str, dict]:
@@ -691,7 +799,7 @@ def recipes(store) -> dict[str, dict]:
 def bridge_turn(objective: str, house: House, device_id: str,
                 *, with_series: set[str] | None = None,
                 energy: dict | None = None,
-                repair: dict[str, NotComputable] | None = None) -> dict | None:
+                repair: Repair | None = None) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere.
 
     Stessa forma di `observer.bridge_turn`, e per le stesse ragioni: il ponte
@@ -713,7 +821,7 @@ async def ask(runner, store, house: House, device_id: str, *,
               model: str = "auto",
               with_series: set[str] | None = None,
               energy: dict | None = None,
-              repair: dict[str, NotComputable] | None = None,
+              repair: Repair | None = None,
               measurements=None) -> dict:
     """Un giro intero sulla catena: mostra il dispositivo, chiede, applica.
 
@@ -739,4 +847,5 @@ async def ask(runner, store, house: House, device_id: str, *,
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
     return apply_recipe(store, house, device_id, answer,
                         who=who, when_ts=when_ts, truncated=turn.truncated,
-                        repairing=frozenset(repair or ()))
+                        repairing=None if repair is None else frozenset(repair.silent),
+                        written_against=written_against(house, device_id, energy))
