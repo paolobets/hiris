@@ -323,3 +323,80 @@ async def test_un_turno_ANCORA_SENZA_RISPOSTA_non_si_raccoglie(casa):
 def _oggi(app):
     return historian.today(
         historian.house_timezone(app.get("home_space_store"))).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# **Il difetto del 05-06/10, misurato nel registro dell'add-on.** Un turno
+# fallito dal ponte (`[runner non disponibile]`) diventava una risposta
+# rifiutata, e `analyst_round` usciva prima di accodarne uno nuovo: lo stesso
+# turno si rileggeva e rifiutava ogni ora fino a mezzanotte. E' la forma del
+# 22/09 qui sopra, chiusa allora per la sola risposta di un altro giorno.
+# ---------------------------------------------------------------------------
+
+class _CodaDiOggi(_CodaConRispostaINACCETTABILE):
+    """Un turno del ponte DI OGGI, gia' deciso `eta_s` secondi fa."""
+
+    def __init__(self, giorno, eta_s, *, reply, outcome=None):
+        import time as _t
+        super().__init__(giorno)
+        self.turno["decision"] = {"reply": reply}
+        if outcome is not None:
+            self.turno["decision"]["outcome"] = outcome
+        self.turno["decided_ts"] = _t.time() - eta_s
+        self.turno["created_ts"] = self.turno["decided_ts"] - 60
+
+
+_RIFIUTABILE = _CodaConRispostaINACCETTABILE().turno["decision"]["reply"]
+
+
+def test_un_turno_FALLITO_dal_ponte_non_e_una_risposta(casa):
+    """Mutazione ESEGUITA: il raccoglitore che legge la `reply` senza l'esito
+    -- rossa («non JSON», `risposta: True`)."""
+    app, store, _modello = casa
+    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 7200,
+                                         reply="[runner non disponibile]",
+                                         outcome="fallito")
+
+    raccolto = server._collect_analyst_turn(app, store, _oggi(app))
+
+    assert raccolto is not None and raccolto["risposta"] is False
+
+
+@pytest.mark.asyncio
+async def test_un_turno_FALLITO_dal_ponte_non_blocca_il_giro(casa):
+    app, _store, modello = casa
+    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 7200,
+                                         reply="[runner non disponibile]",
+                                         outcome="fallito")
+
+    await server.analyst_round(app)
+
+    assert modello.chiamate == 1, "un turno fallito dal ponte ha fermato il giro"
+
+
+@pytest.mark.asyncio
+async def test_un_RIFIUTO_non_si_rilegge_all_infinito(casa):
+    """Passato il freno, il giro richiede invece di rimasticare il rifiuto.
+
+    Mutazione ESEGUITA: rimettere `return collected` per ogni risposta prima
+    dell'accodamento -- rossa."""
+    app, _store, modello = casa
+    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 7200, reply=_RIFIUTABILE)
+
+    await server.analyst_round(app)
+
+    assert modello.chiamate == 1, "una risposta rifiutata ha fermato il giro"
+
+
+@pytest.mark.asyncio
+async def test_dopo_un_RIFIUTO_non_si_richiede_a_ogni_giro(casa):
+    """La contropartita: un ponte rotto non deve ricevere una domanda da
+    35.000 token a ogni giro. Si usa il freno delle ricette.
+
+    Mutazione ESEGUITA: togliere il freno -- rossa."""
+    app, _store, modello = casa
+    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 60, reply=_RIFIUTABILE)
+
+    await server.analyst_round(app)
+
+    assert modello.chiamate == 0

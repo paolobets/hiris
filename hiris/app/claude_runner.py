@@ -724,6 +724,20 @@ _current_tool_leaked: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
     "hiris_current_tool_leaked", default=False
 )
 
+# **Nessuno ha risposto** a questa chiamata: la catena era vuota, o ogni
+# backend ha rifiutato. Lo accende soltanto `LLMRouter`, che in quel caso non
+# solleva ma restituisce una frase per l'utente -- la chat la mostra -- e
+# senza questo segnale chi misura vedeva un turno riuscito. Misurato sulla
+# casa vera dal 03/10 al 05/10/2026: 61 turni dell'analista scritti
+# `riuscito`, `model: ignoto`, `output_tokens: None`, due secondi ciascuno.
+# Qui e in `OpenAICompatRunner` resta sempre falso: un runner che non
+# risponde solleva. Lo portano lo stesso, e lo azzerano, per la regola di
+# `tests/test_runner_after_call.py`: cio' che si legge dopo `chat()` lo
+# porta ogni runner.
+_current_unanswered: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "hiris_current_unanswered", default=False
+)
+
 #: Gli `stop_reason` di Anthropic che fermano la risposta a meta' (fonte
 #: sopra). Il primo dei due e' anche quello che produce `_TRUNCATION_NOTICE`.
 ANTHROPIC_TRUNCATING = frozenset({"max_tokens", "model_context_window_exceeded"})
@@ -799,6 +813,7 @@ class ClaudeRunner:
     last_thinking_blocks = _PerCallList(_current_thinking_blocks)
     last_truncated = _PerCallFlag(_current_truncated)
     last_tool_leaked = _PerCallFlag(_current_tool_leaked)
+    last_unanswered = _PerCallFlag(_current_unanswered)
 
     def __init__(
         self,
@@ -898,6 +913,7 @@ class ClaudeRunner:
         self.last_tool_calls = []
         self.last_truncated = False
         self.last_tool_leaked = False
+        self.last_unanswered = False
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control
         # breakpoint caches everything from the start of the request up to that

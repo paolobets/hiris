@@ -110,6 +110,7 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
+from .reasoning.queue import turn_answer
 from .steering import (
     ANALYST_SPECIES,
     JOB_SPECIES,
@@ -1393,14 +1394,7 @@ async def backfill_one_report(app, ha_client, *,
         written = archivio.report(as_text)
         if written is None:
             try:
-                ricette, serie, nomi, silent, mute = await _report_ingredients(
-                    app, ha_client, giorno=as_text, timezone=timezone)
-                aggregate_day(store=archivio, day=as_text, timezone=timezone,
-                              recipes=ricette, series=serie, names=nomi,
-                              silent=silent, muted=mute,
-                              judgments=app["type_judgments"],
-                              house=House.read(app.get("home_space_store"),
-                                               app.get("entity_cache")))
+                await write_day_report(app, ha_client, day=as_text, timezone=timezone)
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
@@ -1468,14 +1462,7 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
         try:
             if archivio.report(day) is not None:
                 continue
-            ricette, serie, nomi, silent, mute = await _report_ingredients(
-                app, ha_client, giorno=day, timezone=timezone)
-            aggregate_day(
-                store=archivio, day=day, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi,
-                silent=silent, muted=mute,
-                judgments=app["type_judgments"],
-                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+            await write_day_report(app, ha_client, day=day, timezone=timezone)
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -1919,6 +1906,34 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     return ricette, serie, nomi, {**ferme, **silent}, mute
 
 
+async def write_day_report(app, ha_client, *, day: str, timezone: str | None) -> int:
+    """Scrive il resoconto di `day` e torna quante voci di cronaca porta.
+
+    **L'unica strada del resoconto di un giorno** (D-36, 06/10/2026): gli
+    ingredienti letti da Home Assistant (`_report_ingredients`) e poi
+    `facts.aggregate_day` con l'istantanea viva dei giudizi e la casa di
+    adesso -- che serve a chiudere gli episodi di cio' che Home Assistant non
+    nomina piu' (`facts.build_episodes`). Fino a quel giorno la stessa coppia
+    era scritta tre volte: la notte (`_aggrega_ieri`), il recupero
+    (`backfill_one_report`) e la riparazione d'avvio
+    (`_write_missing_reports`). Lo difende
+    `tests/test_fonte_unica.py::test_d36_il_resoconto_di_un_giorno_ha_una_strada_sola`.
+
+    **Sostituisce sempre** (`aggregate_day` e' idempotente): se un giorno gia'
+    scritto si possa rifare lo decide chi chiama, e cosi' la politica sugli
+    errori -- la notte li logga, il recupero li silenzia per giorno, la
+    riparazione li conta giorno per giorno. Qui si solleva.
+    """
+    ricette, serie, nomi, silent, mute = await _report_ingredients(
+        app, ha_client, giorno=day, timezone=timezone)
+    return aggregate_day(
+        store=app["observations"], day=day, timezone=timezone,
+        recipes=ricette, series=serie, names=nomi,
+        silent=silent, muted=mute,
+        judgments=app["type_judgments"],
+        house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+
+
 async def hold_watcher_statistic_ids(app, ha_client) -> None:
     """L'elenco delle entita' con statistiche consegnato al watcher (B-12,
     Tappa 3, Task 7, 04/10/2026), dalla stessa lettura condivisa dei giri
@@ -2001,7 +2016,19 @@ async def analyst_round(app) -> dict | None:
         today = historian.today(timezone).isoformat()
 
         collected = _collect_analyst_turn(app, store, today)
-        if collected is not None and collected.get("risposta"):
+        # **Chiude il giro solo un'analisi SCRITTA** (06/10/2026). Fino a
+        # qui bastava `risposta`: una risposta rifiutata non si archivia, il
+        # turno restava l'ultimo della sua specie, e il giro lo rileggeva e
+        # rifiutava a ogni passaggio senza accodarne mai uno nuovo -- dal
+        # 05/10 13:32 al 06/10 14:05 sulla casa vera, su un turno fallito dal
+        # ponte. Sesta occorrenza della forma del 22/09 (sopra
+        # `_collect_analyst_turn`). Un rifiuto o un vuoto aspettano il freno
+        # delle ricette, poi si richiede: accodato il turno nuovo, quello
+        # vecchio non e' piu' l'ultimo e non si rilegge.
+        if collected is not None and collected.get("analisi") is not None:
+            return collected
+        if collected is not None and _troppo_presto_per_richiedere(
+                app, analyst_turn.ANALYSIS_TURN_KIND):
             return collected
         # **Non «c'e' gia' un'analisi per oggi?», ma «ce n'e' gia' una su
         # QUESTO fondamento?»** (difetto trovato dal proprietario il
@@ -2319,7 +2346,7 @@ async def _collect_actuator_turn(app, store, today: str,
         return None
     if (analysis.get("attuazione") or {}).get("su_fondamento") == stamp:
         return None
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     if not str(reply).strip():
         return None
     pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
@@ -2401,6 +2428,14 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     minuti dopo e potrebbe averlo fatto dopo un'aggregazione: i numeri che
     l'osservazione portera' devono essere quelli che l'archivio ha ORA, o
     direbbero una cosa che nessuno puo' piu' verificare.
+
+    **I problemi di una risposta rifiutata si chiedono qui**: con `risposta`
+    vera e `analisi` `None`, `esito["problemi"]` sono i motivi del rifiuto.
+    Vivono nel turno stesso -- la risposta resta nella coda, e si rivalida a
+    ogni lettura -- finche' quel turno e' l'ultimo della sua specie, cioe'
+    fino all'accodamento del turno nuovo. Con `risposta` falsa (vuota, o un
+    turno che il ponte ha fallito: `turn_answer`) non c'e' nessuna risposta da
+    correggere.
     """
     queue = app.get("reasoning_queue")
     if queue is None:
@@ -2437,7 +2472,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     from .api.handlers_mind import mind_view
 
     decision = turn.get("decision") or {}
-    reply = decision.get("reply") or ""
+    reply = turn_answer(turn)
     # Le letture del turno, come sulla catena: `{tool, input}` col nome NUDO
     # -- il prefisso `mcp__hiris__` e' del trasporto, e si toglie al confine
     # (`runner._bare_tool_name`).
@@ -2509,7 +2544,8 @@ async def recipe_round(app) -> dict | None:
         # ri-raccolto ogni dieci minuti, sempre vuoto, e non se ne accodava mai
         # uno nuovo. Trovato dal vivo il 13/09/2026 alle 21:05, dieci minuti
         # dopo aver rilasciato la correzione che quella promessa la scriveva.
-        if collected is not None and _troppo_presto_per_richiedere(app):
+        if collected is not None and _troppo_presto_per_richiedere(
+                app, recipe_turn.RECIPE_TURN_KIND):
             return collected
         if _turn_in_flight(app, recipe_turn.RECIPE_TURN_KIND):
             return None
@@ -2611,13 +2647,18 @@ async def recipe_round(app) -> dict | None:
 #:
 #: Un'ora sono 24 tentativi al giorno nel caso peggiore, e un solo giro di
 #: attesa quando il guasto e' passato.
+#:
+#: Dal 06/10/2026 frena anche l'analista, dopo una risposta vuota, fallita o
+#: rifiutata: il suo giro e' orario, quindi un'ora vuol dire un tentativo ogni
+#: due giri, e la sua domanda pesa ~35.000 token.
 RECIPE_RETRY_HOLD_S = 3600.0
 
 
-def _troppo_presto_per_richiedere(app) -> bool:
-    """Se l'ultimo turno di ricetta e' finito a vuoto da meno di un'ora."""
+def _troppo_presto_per_richiedere(app, kind: str) -> bool:
+    """Se l'ultimo turno di quella specie e' finito senza risposta utile da
+    meno di un'ora."""
     queue = app.get("reasoning_queue")
-    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND) if queue else None
+    turn = queue.latest(kind) if queue else None
     if turn is None:
         return False
     deciso = turn.get("decided_ts") or turn.get("created_ts") or 0
@@ -2678,7 +2719,7 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
         riga = sapere.get("dispositivo", device_id, campo)
         if riga is not None and riga.when_ts >= decided_ts:
             return None
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     wake = turn.get("wake") or {}
     # Una sveglia di prima del 06/10/2026 porta `[]` anche fuori da una
     # riparazione: letta come riparazione, tiene la ricetta vecchia davanti a
@@ -2981,7 +3022,7 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     letti = [a for a in store.recent_attempts() if a["esito"] != "accodata"]
     if decided_ts is not None and letti and letti[0]["quando_ts"] >= decided_ts:
         return None, False
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     wake = turn.get("wake") or {}
     lotto = wake.get("lotto")
     outcome = observer_apply_answer(
@@ -4409,19 +4450,9 @@ async def _on_startup(app: web.Application) -> None:
             # prefisso «cervello:», e la notte salterebbe in silenzio.
             timezone = house_timezone(app.get("home_space_store"))
             ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
-            # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
-            # delle entita' che nominano chieste una volta per giro, non una
-            # per dispositivo.
-            ricette, serie, nomi, silent, mute = await _report_ingredients(
-                app, ha_client, giorno=ieri, timezone=timezone)
-            count = aggregate_day(
-                store=app["observations"], day=ieri, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi,
-                silent=silent, muted=mute,
-                judgments=app["type_judgments"],
-                # La fonte di adesso, per chiudere gli episodi di cio' che
-                # Home Assistant non nomina piu' (`facts.build_episodes`).
-                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+            # **IL RESOCONTO** (spec §9), per la strada unica: la notte
+            # rifa' ieri anche se c'e' gia'.
+            count = await write_day_report(app, ha_client, day=ieri, timezone=timezone)
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",

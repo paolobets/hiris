@@ -720,3 +720,71 @@ def test_ogni_eccezione_cita_una_voce_aperta_del_registro():
     cited |= {voice for extra in SHARED_READS.values() for voice, _reason in extra.values()}
     orphans = sorted(cited - open_ids)
     assert not orphans, f"eccezioni che citano voci chiuse o inesistenti: {orphans}"
+
+
+#: D-36 (06/10/2026): **il resoconto di un giorno ha UNA strada che lo
+#: scrive.** Fino a quel giorno la stessa coppia -- gli ingredienti letti da
+#: Home Assistant, poi `aggregate_day` -- era scritta tre volte in
+#: `server.py`: la notte, il recupero, la riparazione d'avvio. Tre copie che
+#: coincidevano, e che a ogni task (la cronaca con `house=`, il dato fermo, i
+#: muti) andavano toccate tutte e tre. Le due chiamate sono l'enunciato del
+#: cancello, non la copia di un elenco: e' la coppia che fa un resoconto.
+REPORT_WRITER = "write_day_report"
+REPORT_STEPS = frozenset({"_report_ingredients", "aggregate_day"})
+
+
+def report_step_sites(trees: dict[str, ast.AST]) -> dict[str, set[str]]:
+    """Per ogni passo del resoconto, le funzioni (`file::funzione`, la piu'
+    interna) che lo nominano: chiamata, riferimento o alias d'importazione."""
+    sites: dict[str, set[str]] = {step: set() for step in REPORT_STEPS}
+
+    def visit(node: ast.AST, relative: str, aliases: dict[str, str], where: str) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            where = node.name
+        name = (aliases.get(node.id, node.id) if isinstance(node, ast.Name)
+                else node.attr if isinstance(node, ast.Attribute) else None)
+        if name in REPORT_STEPS:
+            sites[name].add(f"{relative}::{where}")
+        for child in ast.iter_child_nodes(node):
+            visit(child, relative, aliases, where)
+
+    for relative, tree in trees.items():
+        aliases = {alias.asname: alias.name for node in ast.walk(tree)
+                   if isinstance(node, ast.ImportFrom) for alias in node.names
+                   if alias.asname and alias.name in REPORT_STEPS}
+        visit(tree, relative, aliases, "<modulo>")
+    return sites
+
+
+def test_d36_il_resoconto_di_un_giorno_ha_una_strada_sola():
+    """Fuori da `write_day_report` nessuno compone il resoconto da se'.
+
+    Mutazione ESEGUITA (06/10/2026): `_write_missing_reports` riscritta con
+    le sue due chiamate (`_report_ingredients`, poi `aggregate_day`) invece di
+    `write_day_report` -- rossa, col nome della funzione nel messaggio;
+    ripristinata, `git status` pulito sul file.
+    """
+    sites = report_step_sites(_sources())
+    # Un cancello che non trova piu' i passi sembra vivo e non guarda niente.
+    assert all(sites.values()), f"un passo del resoconto non si trova piu': {sites}"
+    strays = sorted(site for found in sites.values() for site in found
+                    if not site.endswith(f"::{REPORT_WRITER}"))
+    assert not strays, (
+        f"il resoconto di un giorno composto fuori da `{REPORT_WRITER}` (D-36): "
+        f"{strays}")
+
+
+def test_d36_il_cancello_vede_la_chiamata_l_alias_e_l_attributo():
+    """Su un prodotto finto: la strada unica e' muta, una seconda e' rossa."""
+    good = ("async def write_day_report(app):\n"
+            "    x = await _report_ingredients(app)\n"
+            "    return aggregate_day(x)\n")
+    assert all(site.endswith("::write_day_report")
+               for found in report_step_sites(_fake_product(good)).values()
+               for site in found)
+    for stray in ("def notte():\n    aggregate_day()\n",
+                  "from .facts import aggregate_day as ad\ndef notte():\n    ad()\n",
+                  "def notte():\n    facts.aggregate_day()\n",
+                  "def fuori():\n    async def notte():\n        await _report_ingredients()\n"):
+        found = report_step_sites(_fake_product(stray))
+        assert any(site.endswith("::notte") for site in set().union(*found.values())), stray
