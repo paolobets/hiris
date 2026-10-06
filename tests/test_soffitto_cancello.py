@@ -61,6 +61,9 @@ SOFFITTATE = {
     "POST /api/proposals/{id}/redo":
         "fa rifare una proposta al modello, e la paga: è un gesto sulla coda "
         "di chi costruisce",
+    "POST /api/proposals/{id}/automate":
+        "fa comporre al modello un’automazione per la casa, e la paga: è un "
+        "gesto sulla coda di chi costruisce (attori, Task 4.5)",
     "POST /api/mind/judgment":
         "corregge ciò che HIRIS ha capito della casa per tutti quelli che ci "
         "vivono: le correzioni al sapere sono di chi amministra (decisione 6)",
@@ -317,4 +320,5 @@ def test_la_derivazione_delle_rotte_di_chi_costruisce_VEDE_le_rotte_vere():
             "POST /api/constructions/{id}/restore",
             "POST /api/constructions/{id}/reject",
             "POST /api/proposals/{id}/reject", "POST /api/proposals/{id}/done",
-            "POST /api/proposals/{id}/redo", "POST /api/mind/judgment"} <= derivate
+            "POST /api/proposals/{id}/redo", "POST /api/proposals/{id}/automate",
+            "POST /api/mind/judgment"} <= derivate

@@ -54,7 +54,7 @@ class _Officina:
         self.chiamate = []
 
     async def propose(self, intent, *, actor, exchange, now, thread=None,
-                      reveal_before=True):
+                      reveal_before=True, refuse_high=False):
         self.chiamate.append({"intent": intent, "actor": actor,
                               "exchange": exchange})
         if not intent.get("alias"):

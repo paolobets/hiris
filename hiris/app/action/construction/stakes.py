@@ -60,6 +60,15 @@ CHOSEN_BY_MODEL = tuple(value for value in STAKES if value != HIGH)
 #: chiedono la classe del dispositivo, che un dominio da solo non porta.
 HIGH_STAKES_DOMAINS = ("lock", "alarm_control_panel")
 
+#: Il rifiuto di un oggetto `alto` che agirebbe da solo («Rendila
+#: automatica», attori Task 4.5): decisione del proprietario del 06/10/2026,
+#: che applica quella del 03/10. Lo legge il modello, che deve capire che non
+#: e' un errore da correggere, e lo legge la pagina.
+HIGH_UNATTENDED = ("Non si può rendere automatica: agisce su "
+                   + ", ".join(HIGH_STAKES_DOMAINS)
+                   + ", che chiedono sempre a chi amministra la casa. Non "
+                     "riproporla in un'altra forma.")
+
 #: Un `entity_id` come Home Assistant lo scrive: dominio e oggetto, minuscoli,
 #: separati da un punto. Un modello che scrive un modello Jinja dentro
 #: `entity_id` non porta un dominio, e non si indovina.

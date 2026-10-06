@@ -1347,8 +1347,15 @@ class ToolDispatcher:
                  phrase: str | None = None,
                  thread: ChatThread | None = None,
                  house: House | None = None,
-                 mind=None, actor: str = "chat") -> None:
+                 mind=None, actor: str = "chat",
+                 refuse_high: bool = False) -> None:
         self._home_space = home_space_store
+        # Se `propose` deve rifiutare una proposta di livello `alto` invece di
+        # archiviarla (`Workshop.propose`). Vero solo per «Rendila
+        # automatica» (attori, Task 4.5): un'automazione su serrature o
+        # allarme agirebbe senza chiedere, e quelle chiedono sempre
+        # (decisione del proprietario del 03/10/2026, ribadita il 06/10).
+        self._refuse_high = refuse_high
         # CHI agisce in questo turno, per la cronaca e per l'officina: la chat,
         # o il mestiere di sfondo che ha il dispatcher sotto il suo guardiano
         # (il proponente, attori Task 4.2). Fino al 06/10/2026 era il
@@ -2278,7 +2285,7 @@ class ToolDispatcher:
         return await self._workshop.propose(
             intent, actor=self._actor, exchange=self._exchange, now=_time.time(),
             thread=self._thread,
-            reveal_before=not masked)
+            reveal_before=not masked, refuse_high=self._refuse_high)
 
     async def _confirm(self, arguments: dict[str, Any]) -> dict:
         """Applica una proposta gia' creata da `propose`. La guardia del

@@ -5071,17 +5071,10 @@ def create_app() -> web.Application:
     # perche' anche questa non la salti. Non scrive su Home Assistant: si
     # scrive nell'archivio e basta (vedi il modulo `handlers_constructions`).
     app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)
-    # Le proposte da fare a mano (spec 2026-09-21 §3): due esiti e un
-    # «rifalla». `crea` non c'e' -- qui non c'e' niente da scrivere in Home
-    # Assistant, e quella strada e' l'officina qui sopra.
-    from .api.handlers_proposals import (
-        handle_proposal_done,
-        handle_proposal_redo,
-        handle_proposal_reject,
-    )
-    app.router.add_post("/api/proposals/{id}/reject", handle_proposal_reject)
-    app.router.add_post("/api/proposals/{id}/done", handle_proposal_done)
-    app.router.add_post("/api/proposals/{id}/redo", handle_proposal_redo)
+    # Le proposte da fare a mano (spec 2026-09-21 §3): le rotte le dichiara
+    # il loro modulo (`handlers_proposals.add_routes`).
+    from .api.handlers_proposals import add_routes as add_proposal_routes
+    add_proposal_routes(app.router)
 
     # I due numeri dei pallini, in una richiesta sola. Sta qui, dopo i due
     # archivi che legge, e non dentro nessuno dei due blocchi sopra: non

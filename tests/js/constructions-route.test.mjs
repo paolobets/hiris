@@ -556,3 +556,105 @@ test('la sezione «In attesa» la decide il server (`sospesa`), non lo stato let
   assert.doesNotMatch(aperte, /Conclusa per il server/);
   assert.match(storico, /Conclusa per il server/);
 });
+
+/* -------------------------------------------------------------------------
+   «Rendila automatica» (attori, strato 4, Task 4.5; parere di
+   ux-ui-specialist e scelte del proprietario del 06/10/2026). Il bottone c'e'
+   solo se il server dice `automatizzabile`: la regola e' una, lato server.
+   ------------------------------------------------------------------------- */
+
+function bottoni(dom) {
+  return [...dom.window.document.querySelectorAll('button')].map((b) => b.textContent);
+}
+
+test('«Rendila automatica» c’è solo dove il server lo dice, e mai per «alto»', async () => {
+  /* Mutazione ESEGUITA (06/10/2026): il bottone disegnato senza guardare
+     `automatizzabile` -- rossa. */
+  const { dom } = montaCon({ constructions: [
+    propostaAMano({ id: 'si', automatizzabile: true }),
+    propostaAMano({ id: 'no', automatizzabile: false, livello: 'alto' }),
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const automatiche = dom.window.document.querySelectorAll('[data-azione="proposta-automate"]');
+  assert.equal(automatiche.length, 1);
+  assert.equal(automatiche[0].getAttribute('data-id'), 'si');
+  assert.equal(automatiche[0].textContent, 'Rendila automatica');
+  /* Niente bottone spento al posto di quello che non c'e'. */
+  assert.equal(dom.window.document.querySelectorAll('button[disabled]').length, 0);
+  /* La spiegazione e' legata al bottone. */
+  const spiega = dom.window.document.getElementById(
+    automatiche[0].getAttribute('aria-describedby'));
+  assert.match(spiega.textContent, /decidi tu se crearla/);
+});
+
+test('«Rendila automatica» chiama la sua rotta, senza chiedere conferma', async () => {
+  const { dom, chiamate } = montaCon({ constructions: [
+    propostaAMano({ automatizzabile: true })] });
+  dom.window.confirm = () => { throw new Error('nessuna conferma: il clic non crea niente'); };
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  dom.window.document.querySelector('[data-azione="proposta-automate"]').click();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(chiamate.some((c) => /api\/proposals\/m1\/automate/.test(String(c[0]))
+    && c[1] && c[1].method === 'POST'), JSON.stringify(chiamate.map((c) => c[0])));
+});
+
+test('mentre si prepara: il segno, la frase, e resta solo «Rifiuta»', async () => {
+  /* Mutazione ESEGUITA (06/10/2026): senza la riga che spegne «L'ho fatta
+     io» e «Rifalla» -- rossa. */
+  const { dom } = montaCon({ constructions: [
+    propostaAMano({ in_preparazione: true, automatizzabile: false })] });
+  /* La pagina interroga finche' l'automazione si prepara: il giro si
+     cattura invece di aspettarlo. */
+  const giri = [];
+  const vero = global.setTimeout;
+  global.setTimeout = (fn, ms) => { giri.push(ms); return 0; };
+  try {
+    await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  } finally {
+    global.setTimeout = vero;
+  }
+  assert.equal(giri.length, 1, 'nessun giro: la riga resterebbe «in preparazione»');
+  const document = dom.window.document;
+  const segno = document.querySelector('[data-preparazione="m1"]');
+  assert.ok(segno);
+  assert.equal(segno.getAttribute('aria-label'), 'Automazione in preparazione');
+  assert.match(document.body.textContent, /sta preparando l’automazione/);
+  const attivi = [...document.querySelectorAll('button')]
+    .filter((b) => !b.disabled && b.closest('.construction'))
+    .map((b) => b.textContent);
+  assert.deepEqual(attivi, ['Rifiuta']);
+});
+
+test('«non si può»: la ragione resta scritta, e il bottone non torna', async () => {
+  const { dom } = montaCon({ constructions: [propostaAMano({
+    automatizzabile: false, non_automatizzabile: 'tocca la serratura' })] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  assert.match(dom.window.document.body.textContent,
+    /Non si può rendere automatica: tocca la serratura/);
+  assert.ok(!bottoni(dom).includes('Rendila automatica'));
+});
+
+test('il legame si legge dai due lati: «Ne è nata» e «Nata da»', async () => {
+  /* Mutazione ESEGUITA (06/10/2026): senza la riga «Nata da» -- rossa. */
+  const { dom } = montaCon({ constructions: [
+    propostaAMano({ stato: 'automatizzata', sospesa: false, costruzione_id: 'p9' }),
+    { id: 'p9', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
+      chiave: '9', anteprima: 'Creo', prima: null, dopo: { alias: 'Lavatrice' },
+      creata_ts: 1756000200,
+      nata_da: { id: 'm1', testo: 'Sposta la lavatrice nel primo pomeriggio' } },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const document = dom.window.document;
+  assert.match(document.getElementById('constructions-history-body').textContent,
+    /Ne è nata un’automazione/);
+  assert.match(document.getElementById('constructions-open-body').textContent,
+    /Nata da: “Sposta la lavatrice nel primo pomeriggio”/);
+});
+
+test('l’esito dei comandi si annuncia senza spostare il fuoco', async () => {
+  const { dom } = montaCon({ constructions: [] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const stato = dom.window.document.getElementById('constructions-status');
+  assert.equal(stato.getAttribute('role'), 'status');
+  assert.equal(stato.getAttribute('aria-live'), 'polite');
+});

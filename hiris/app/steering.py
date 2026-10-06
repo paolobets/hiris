@@ -136,6 +136,14 @@ ANALYST_SPECIES = "analista"
 OBSERVER_SPECIES = "osservatore"
 PROMISE_SPECIES = "promessa"
 RECIPES_SPECIES = "ricette"
+#: **«Rendila automatica»** (attori, strato 4, Task 4.5; D15, decisa dal
+#: proprietario il 06/10/2026): il turno del proponente che, su richiesta di
+#: chi amministra, compone un'automazione da una proposta fatta a mano. E' un
+#: mestiere suo, e non il giro orario del proponente, perche' la coda del
+#: ponte li distingue per `kind`: con lo stesso, la raccolta di uno leggerebbe
+#: la risposta dell'altro, e la guardia «un turno in volo» li fermerebbe a
+#: vicenda. Le proposte che nascono qui le firma comunque il proponente.
+AUTOMATE_SPECIES = "automatizza"
 
 
 def _chat_tools() -> list[dict]:
@@ -186,6 +194,14 @@ async def _proposer_guard(app, exchange: str | None = None):
     return await guard(app, exchange)
 
 
+async def _automate_guard(app, exchange: str | None = None):
+    """Il guardiano di «Rendila automatica» (`automate_turn.guard`), lo
+    stesso sulla catena e sul ponte."""
+    from .mind.automate_turn import guard
+
+    return await guard(app, exchange)
+
+
 @_dataclass(frozen=True)
 class Species:
     """**La dichiarazione di un mestiere** (Tappa 6, Task 7): cio' che il turno
@@ -232,7 +248,7 @@ class Species:
         return tuple(d["name"] for d in self.catalog_for_turn())
 
 
-#: I sei mestieri. **La precedenza**: la sola decisione presa e' «la chat
+#: I sette mestieri. **La precedenza**: la sola decisione presa e' «la chat
 #: passa avanti» (spec §4.3), quindi due valori, quelli della coda.
 SPECIES = {s.name: s for s in (
     Species("chat", "chat", _chat_tools, PRIORITY_CHAT),
@@ -243,6 +259,10 @@ SPECIES = {s.name: s for s in (
             guard=_analyst_guard),
     Species(PROPOSER_SPECIES, "proposta", _proposer_tools, PRIORITY_BACKGROUND,
             guard=_proposer_guard),
+    # Gli stessi strumenti del proponente: e' il suo mestiere, su una
+    # proposta sola. Cambia il guardiano.
+    Species(AUTOMATE_SPECIES, "automatizza", _proposer_tools, PRIORITY_BACKGROUND,
+            guard=_automate_guard),
 )}
 
 def refused_tool(name: str, *, doing: str, instead: str) -> dict:

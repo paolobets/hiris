@@ -223,8 +223,16 @@ class Workshop:
 
     async def propose(self, intent: dict, *, actor: str, exchange: str | None,
                       now: float, thread: ChatThread | None = None,
-                      reveal_before: bool = True) -> dict:
+                      reveal_before: bool = True,
+                      refuse_high: bool = False) -> dict:
         """Propone; non scrive.
+
+        `refuse_high` (attori, Task 4.5): una proposta di livello `alto` si
+        rifiuta invece di archiviarsi. Lo chiede «Rendila automatica»: un
+        oggetto che agisce da solo su serrature o allarme non chiederebbe
+        piu', e quelle chiedono sempre (`stakes.HIGH_UNATTENDED`). Il
+        livello si calcola qui e solo qui (`stakes_of`): il chiamante non lo
+        ricalcola.
 
         `reveal_before` falso (chi propone non amministra, spec 2026-09-27, fix
         round 2 del Task 2): l'anteprima non descrive com'e' adesso
@@ -307,6 +315,8 @@ class Workshop:
                                 consiglio,
                                 reveal_before=reveal_before or domain not in _BODY_ADMIN_ONLY)
         level = stakes_of(intent, domain, prima, dopo)
+        if refuse_high and level == stakes.HIGH:
+            return {"errore": stakes.HIGH_UNATTENDED}
         occurrence = self._store.propose(
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,

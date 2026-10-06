@@ -440,6 +440,7 @@ window.HirisConstructions = (function () {
     head.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
     head.appendChild(el('span', null, c.testo || ''));
     head.appendChild(el('span', 'agent-badge badge-off', 'la fai tu'));
+    if (c.in_preparazione) head.appendChild(preparingBadge(c));
     box.appendChild(head);
     var chiA = requesterLine(c);
     if (chiA) box.appendChild(chiA);
@@ -455,21 +456,110 @@ window.HirisConstructions = (function () {
     });
 
     if (c.stato !== 'attesa') {
-      box.appendChild(el('div', 'field-hint',
-        c.stato === 'fatta_fuori'
-          ? 'L’hai fatta tu, fuori da Home Assistant.' + (c.esito_nota ? ' ' + c.esito_nota : '')
-          : 'Rifiutata.'));
+      box.appendChild(el('div', 'field-hint', CLOSED_TEXT[c.stato] ? CLOSED_TEXT[c.stato](c)
+        : 'Rifiutata.'));
       return box;
     }
 
+    if (c.in_preparazione) {
+      box.appendChild(el('div', 'field-hint',
+        'HIRIS sta preparando l’automazione. Può volerci qualche minuto.'));
+    } else if (c.non_automatizzabile) {
+      box.appendChild(el('div', 'field-hint',
+        'Non si può rendere automatica: ' + c.non_automatizzabile));
+    }
+
+    /* Mentre un'automazione si prepara resta solo «Rifiuta»: un secondo
+       giro sulla stessa proposta (o un «L'ho fatta io» che la chiude sotto
+       al turno) farebbe nascere una costruzione senza piu' nessuno a cui
+       legarla. */
     var actions = el('div');
     actions.style.cssText = 'display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-1)';
-    actions.appendChild(proposalButton(c, 'done', 'L’ho fatta io', 'btn btn-primary',
-      statusEl, reload));
+    var done = proposalButton(c, 'done', 'L’ho fatta io', 'btn btn-primary', statusEl, reload);
+    actions.appendChild(done);
+    var hint = null;
+    if (c.automatizzabile) {
+      hint = el('div', 'field-hint',
+        'HIRIS prepara un’automazione di Home Assistant: la vedrai qui, e decidi tu se crearla.');
+      hint.id = 'automatica-' + c.id;
+      actions.appendChild(automateButton(c, hint.id, statusEl, reload));
+    }
+    var redo = redoControl(c, statusEl, reload);
+    actions.appendChild(redo);
     actions.appendChild(proposalButton(c, 'reject', 'Rifiuta', 'btn', statusEl, reload));
-    actions.appendChild(redoControl(c, statusEl, reload));
+    if (c.in_preparazione) {
+      [done, redo.querySelector('button')].forEach(function (b) {
+        b.disabled = true;
+        b.setAttribute('aria-disabled', 'true');
+      });
+    }
     box.appendChild(actions);
+    if (hint) box.appendChild(hint);
     return box;
+  }
+
+  /* Come si chiude una proposta a mano, per esito. «automatizzata» (attori,
+     Task 4.5): ne e' nata una proposta di automazione, che sta in questa
+     stessa pagina col suo «Nata da». */
+  var CLOSED_TEXT = {
+    fatta_fuori: function (c) {
+      return 'L’hai fatta tu, fuori da Home Assistant.' + (c.esito_nota ? ' ' + c.esito_nota : '');
+    },
+    automatizzata: function () {
+      return 'Ne è nata un’automazione: la trovi tra le proposte.';
+    }
+  };
+
+  function preparingBadge(c) {
+    var b = el('span', 'agent-badge badge-warn', 'in preparazione');
+    b.setAttribute('aria-label', 'Automazione in preparazione');
+    b.setAttribute('data-preparazione', c.id);
+    b.tabIndex = -1;
+    return b;
+  }
+
+  /* «Rendila automatica» (attori, Task 4.5; parere di ux-ui-specialist e
+     scelte del proprietario del 06/10/2026). Non crea niente: fa preparare
+     al proponente un'automazione, che arriva in questa pagina con anteprima
+     e conferma. Niente finestra di conferma, per la stessa ragione. Il
+     bottone c'e' solo se il server dice `automatizzabile` -- la regola e'
+     una, `automate_turn.refusal`, e per `alto` il bottone non esiste.
+     Dopo il clic la riga si ridisegna «in preparazione», e il fuoco torna
+     sul suo segno: il ridisegno ricrea la riga, e lo perderebbe. */
+  function automateButton(c, hintId, statusEl, reload) {
+    /* Lo stesso nome dell'azione di `proposalButton`: `proposta-` e il verbo
+       della rotta. */
+    var verbo = 'automate';
+    var b = el('button', 'btn', 'Rendila automatica');
+    b.type = 'button';
+    b.setAttribute('data-azione', 'proposta-' + verbo);
+    b.setAttribute('data-id', c.id);
+    b.setAttribute('aria-describedby', hintId);
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      api('api/proposals/' + encodeURIComponent(c.id) + '/' + verbo,
+          { method: 'POST', body: JSON.stringify({}) })
+        .then(function (r) {
+          if (r.ok) {
+            return Promise.resolve(reload()).then(function () {
+              var segno = document.querySelector('[data-preparazione="' + c.id + '"]');
+              if (segno) segno.focus();
+            });
+          }
+          /* Il motivo e' del server (gia' decisa, un'altra in preparazione,
+             nessun modello): si mostra com'e', via textContent. */
+          return r.json().catch(function () { return {}; }).then(function (corpo) {
+            b.disabled = false;
+            if (statusEl) {
+              statusEl.textContent = (corpo && corpo.error) || 'Non è stato possibile prepararla: riprova.';
+            }
+          });
+        }, function () {
+          b.disabled = false;
+          if (statusEl) statusEl.textContent = 'Non è stato possibile prepararla: riprova.';
+        });
+    });
+    return b;
   }
 
   /* I due esiti che chiudono: stessa forma dei bottoni dell'officina, **altra
@@ -562,6 +652,11 @@ window.HirisConstructions = (function () {
     box.appendChild(head);
     var chi = requesterLine(c);
     if (chi) box.appendChild(chi);
+    /* Nata da una proposta a mano con «Rendila automatica»: il legame lo dice
+       il server, per id (`nata_da`). Testo di fuori: textContent. */
+    if (c.nata_da) {
+      box.appendChild(el('div', 'field-hint', 'Nata da: “' + (c.nata_da.testo || '') + '”'));
+    }
 
     if (eraGiaLi(c)) {
       box.appendChild(el('div', 'field-hint', 'Questo oggetto esiste già in casa tua.'));
@@ -723,6 +818,9 @@ window.HirisConstructions = (function () {
         'scene di questa casa — e cosa ne hai deciso.'));
       var status = el('p', 'sc-desc', '');
       status.id = 'constructions-status';
+      /* Gli esiti dei comandi si annunciano qui, senza spostare il fuoco. */
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
       outlet.appendChild(status);
       outlet.appendChild(buildSectionShell('01', 'open', 'In attesa'));
       /* Lo storico nasce chiuso: e' un registro di consultazione, non
@@ -761,12 +859,32 @@ window.HirisConstructions = (function () {
       renderSection(historyBody, history, 'Nessuna costruzione nello storico.',
         statusEl, reload, sortHistory);
       setHistoryCount(outlet, history.length);
+      watchPreparing(outlet, all, reload);
     }).catch(function () {
       setHistoryCount(outlet, null);
       [openBody, historyBody].forEach(function (node) {
         renderError(node, 'Non è stato possibile leggere le costruzioni. Riprova più tardi.', reload);
       });
     });
+  }
+
+  /* Mentre un'automazione si prepara, la pagina interroga: sul ponte la
+     risposta arriva minuti dopo, e senza questo giro la riga resterebbe
+     «in preparazione» finche' qualcuno non ricarica. Un giro solo alla
+     volta, e si ferma quando la pagina non e' piu' sul documento.
+     L'intervallo e' scelto, non misurato: abbastanza raro da non pesare,
+     abbastanza frequente da vedere l'esito mentre si guarda. */
+  var PREPARING_POLL_MS = 15000;
+  var preparingTimer = null;
+
+  function watchPreparing(outlet, all, reload) {
+    if (preparingTimer !== null) clearTimeout(preparingTimer);
+    preparingTimer = null;
+    if (!all.some(function (c) { return c.in_preparazione === true; })) return;
+    preparingTimer = setTimeout(function () {
+      preparingTimer = null;
+      if (outlet.isConnected) reload();
+    }, PREPARING_POLL_MS);
   }
 
   function mount(outlet) {

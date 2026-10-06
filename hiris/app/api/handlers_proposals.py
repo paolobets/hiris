@@ -2,7 +2,7 @@
 
 Le proposte costruibili hanno gia' le loro rotte (`handlers_constructions`):
 conferma, rifiuta, ripristina, e sopra ci vive l'officina. Queste sono le
-altre -- quelle che deve applicare una persona -- e ne hanno tre:
+altre -- quelle che deve applicare una persona -- e ne hanno quattro:
 
 - **rifiuta**: chiude. Torna in coda solo se la prova cambia, e il confronto
   lo fa il proponente (`proposer_turn.open_observations`), non questa rotta.
@@ -13,16 +13,24 @@ altre -- quelle che deve applicare una persona -- e ne hanno tre:
 - **rifalla**: non chiude niente. Apre un giro nuovo con le tue richieste di
   modifica davanti al modello, e **non ha limiti**: la si puo' far rifare
   finche' va bene.
+- **rendila automatica** (attori, Task 4.5): non chiude niente subito. Fa
+  comporre al proponente un'automazione, che arriva fra le costruzioni con
+  anteprima e conferma; quando nasce, questa proposta si chiude col legame
+  (`mind/automate_turn.py`). Su una proposta `alto` la rotta non c'e': 403.
 
 `crea` non c'e', e non e' una dimenticanza: qui non c'e' nessun oggetto da
-scrivere in Home Assistant. Quella strada e' l'officina.
+scrivere in Home Assistant. Quella strada e' l'officina, e «rendila
+automatica» ci arriva passando dal proponente.
 
 I codici portano la distinzione che conta, come le rotte gemelle: 404 «non
 esiste», 409 «esiste ma non e' piu' in attesa», 503 «non disponibile» -- cosi'
 la pagina non deve leggere il testo dell'errore per sapere quale delle tre
 mostrare. Prima di tutti, 403: le proposte sono di chi costruisce (spec
-2026-09-26 §3, decisione 5), e ognuna delle tre chiama per prima
+2026-09-26 §3, decisione 5), e ognuna chiama per prima
 `soffitto.require_builder`, lo stesso cancello della pagina Costruzioni.
+
+Le rotte le registra `add_routes`, qui: `server.py` non cresce (regola del
+proprietario del 06/10/2026).
 """
 from __future__ import annotations
 
@@ -31,7 +39,9 @@ import time
 
 from aiohttp import web
 
+from ..action.construction.stakes import HIGH
 from ..chat_thread import unknown_id_text
+from ..mind import automate_turn
 from ..steering import chain_runner, chain_turn, read_json
 from .boundary import error_response, json_object
 from .soffitto import require_builder
@@ -194,6 +204,43 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     if nota:
         corpo["nota"] = nota
     return web.json_response(corpo)
+
+
+async def handle_proposal_automate(request: web.Request) -> web.Response:
+    """«Rendila automatica»: fa partire il turno, e torna subito (202).
+
+    La regola di quando il comando esiste e' una sola
+    (`automate_turn.refusal`), e la legge anche la pagina: 403 per una
+    proposta `alto` -- il comando non esiste --, 409 per tutto cio' che
+    cambia col tempo (gia' decisa, gia' provata, un turno in corso), 503
+    senza modello.
+    """
+    refusal = require_builder(request)
+    if refusal is not None:
+        return refusal
+    store = _store(request)
+    if store is None:
+        return error_response(503, _NO_STORE)
+    ident = request.match_info.get("id", "")
+    row = _row(store, ident)
+    if row is None:
+        return error_response(404, _NOT_FOUND)
+    reason = automate_turn.refusal(row, pending=store.PROPOSAL_PENDING,
+                                   in_flight=automate_turn.preparing(request.app))
+    if reason is not None:
+        return error_response(403 if row.get("livello") == HIGH else 409, reason)
+    reason = automate_turn.begin(request.app, row)
+    if reason is not None:
+        return error_response(503, reason)
+    return web.json_response({"proposta": _row(store, ident)}, status=202)
+
+
+def add_routes(router) -> None:
+    """Le rotte delle proposte da fare a mano."""
+    router.add_post("/api/proposals/{id}/reject", handle_proposal_reject)
+    router.add_post("/api/proposals/{id}/done", handle_proposal_done)
+    router.add_post("/api/proposals/{id}/redo", handle_proposal_redo)
+    router.add_post("/api/proposals/{id}/automate", handle_proposal_automate)
 
 
 #: La risposta di «Rifalla» quando il modello non risponde: il giro non e'

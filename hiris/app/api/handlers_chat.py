@@ -141,7 +141,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                            frase: str | None = None,
                            thread: ChatThread | None = None,
                            house: House | None = None,
-                           actor: str = "chat") -> ToolDispatcher:
+                           actor: str = "chat",
+                           refuse_high: bool = False) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
     Gli strumenti della chat (`home_space/tools.py`): quattro conoscono la casa (`search`,
@@ -298,6 +299,9 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # Chi agisce: la chat, o il mestiere di sfondo che chiede il
         # dispatcher per il suo guardiano (`mind/proposer_turn.guard`).
         actor=actor,
+        # Se `propose` rifiuta il livello `alto`: solo «Rendila automatica»
+        # (`mind/automate_turn.guard`).
+        refuse_high=refuse_high,
     )
 
 

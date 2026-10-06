@@ -522,7 +522,13 @@ CREATE TABLE IF NOT EXISTS proposte (
     -- (`action/construction/stakes.py`), con lo stesso vocabolario. NULL
     -- quando nessuno l'ha detto, e per le righe nate prima del 06/10/2026
     -- (vedi `_migration_11`). Colonna nuova, quindi in inglese.
-    stakes        TEXT
+    stakes        TEXT,
+    -- «Rendila automatica» (attori, strato 4, Task 4.5; `_migration_13`):
+    -- l'id della costruzione che ne e' nata (un riferimento all'archivio
+    -- delle costruzioni, non una copia), e perche' non si e' potuta rendere
+    -- automatica. Il secondo resta su una proposta ancora in attesa.
+    construction_id    TEXT,
+    automation_refusal TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC);
 
@@ -710,11 +716,21 @@ def _migration_12(conn) -> None:
         raise
 
 
+def _migration_13(conn) -> None:
+    """v12 -> v13 (attori, strato 4, Task 4.5): `proposte.construction_id` e
+    `proposte.automation_refusal`, l'esito di «Rendila automatica». Le righe
+    di prima rileggono `None`: nessuno l'aveva chiesto."""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
+    for column in ("construction_id", "automation_refusal"):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE proposte ADD COLUMN {column} TEXT")
+
+
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -775,7 +791,7 @@ class ObservationsStore:
                                 7: _migration_7, 8: _migration_8,
                                 9: _migration_9,
                                 10: _migration_10, 11: _migration_11,
-                                12: _migration_12})
+                                12: _migration_12, 13: _migration_13})
 
     def close(self) -> None:
         with self._lock:
@@ -1393,6 +1409,13 @@ class ObservationsStore:
     #: scrivere in Home Assistant: quella strada e' l'officina.
     PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori")
 
+    #: L'esito di una proposta da fare a mano da cui e' nata un'automazione
+    #: («Rendila automatica», attori Task 4.5; chiudere col legame, scelta
+    #: del proprietario del 06/10/2026). Non sta fra `PROPOSAL_OUTCOMES`:
+    #: quelli li chiude una persona dalla pagina, questo lo chiude solo
+    #: `automate_proposal`, con l'id della costruzione accanto.
+    PROPOSAL_AUTOMATED = "automatizzata"
+
     #: Lo stato di una proposta da fare a mano che aspetta la tua risposta.
     #: Scritto una volta: lo usano le istruzioni qui sotto e la pagina delle
     #: Proposte, che lo riceve gia' deciso (`sospesa`,
@@ -1422,7 +1445,8 @@ class ObservationsStore:
     def proposals(self, *, pending_only: bool = False, limit: int = 200) -> list[dict]:
         """Le proposte da fare a mano, dalla piu' recente."""
         sql = ("SELECT id,creata_ts,stato,testo,perche,impronta,prova_json,"
-               "giri_json,esito_nota,stakes FROM proposte")
+               "giri_json,esito_nota,stakes,construction_id,automation_refusal "
+               "FROM proposte")
         args: tuple = ()
         if pending_only:
             sql += " WHERE stato = ?"
@@ -1432,7 +1456,8 @@ class ObservationsStore:
             rows = self._conn.execute(sql, (*args, int(max(1, limit)))).fetchall()
         return [{"id": r[0], "creata_ts": r[1], "stato": r[2], "testo": r[3],
                  "perche": r[4], "impronta": r[5], "prova": json.loads(r[6]),
-                 "giri": json.loads(r[7]), "esito_nota": r[8], "livello": r[9]}
+                 "giri": json.loads(r[7]), "esito_nota": r[8], "livello": r[9],
+                 "costruzione_id": r[10], "non_automatizzabile": r[11]}
                 for r in rows]
 
     def close_proposal(self, ident: str, occurrence: str, *,
@@ -1446,6 +1471,33 @@ class ObservationsStore:
             cur = self._conn.execute(
                 "UPDATE proposte SET stato=?, esito_nota=? WHERE id=? AND stato=?",
                 (occurrence, why, ident, self.PROPOSAL_PENDING))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def automate_proposal(self, ident: str, construction_id: str) -> bool:
+        """Chiude una proposta in attesa perche' ne e' nata la costruzione
+        `construction_id`. Torna se ha toccato una riga: una proposta gia'
+        decisa non si richiude, e una seconda costruzione dello stesso turno
+        non sostituisce la prima."""
+        if not str(construction_id or "").strip():
+            raise ValueError("una proposta automatizzata porta l'id della costruzione")
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE proposte SET stato=?, construction_id=? "
+                "WHERE id=? AND stato=?",
+                (self.PROPOSAL_AUTOMATED, construction_id, ident,
+                 self.PROPOSAL_PENDING))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def refuse_automation(self, ident: str, reason: str) -> bool:
+        """Scrive perche' una proposta in attesa non si e' potuta rendere
+        automatica. La proposta resta in attesa: la si puo' ancora fare, o
+        rifare."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE proposte SET automation_refusal=? WHERE id=? AND stato=?",
+                (reason, ident, self.PROPOSAL_PENDING))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -1466,8 +1518,11 @@ class ObservationsStore:
             rounds = json.loads(row[1])
             rounds.append({"richiesta": request, "scartata": row[0],
                            "quando_ts": now_ts})
+            # Una forma nuova si puo' rendere automatica anche se la vecchia
+            # no: il rifiuto di «Rendila automatica» era di quella.
             self._conn.execute(
-                "UPDATE proposte SET testo=?, giri_json=? WHERE id=?",
+                "UPDATE proposte SET testo=?, giri_json=?, automation_refusal=NULL "
+                "WHERE id=?",
                 (text, json.dumps(rounds, ensure_ascii=False), ident))
             self._conn.commit()
         return True

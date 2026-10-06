@@ -151,12 +151,18 @@ class ProposerDispatcher(AnalystDispatcher):
         return await super().dispatch(name, arguments)
 
 
-async def guard(app, exchange: str | None = None) -> ProposerDispatcher:
+async def guard(app, exchange: str | None = None, *,
+                kind: type[ProposerDispatcher] = ProposerDispatcher,
+                refuse_high: bool = False) -> ProposerDispatcher:
     """Il dispatcher di un turno del proponente, sulla catena e sul ponte.
 
     `exchange` e' l'identita' del turno (sulla catena la conia il giro, sul
     ponte e' `X-HIRIS-Turno`): l'officina la scrive accanto a ogni proposta, e
-    da li' il giro rilegge quali sono nate nel turno."""
+    da li' il giro rilegge quali sono nate nel turno.
+
+    `kind` e `refuse_high` li cambia «Rendila automatica»
+    (`automate_turn.guard`): lo stesso dispatcher firmato dal proponente, con
+    davanti il suo guardiano, e l'officina che rifiuta il livello `alto`."""
     from ..api.handlers_chat import create_tool_dispatcher
     from ..home_space.house import House
     from ..home_space.privacy import PresenceMask
@@ -164,9 +170,9 @@ async def guard(app, exchange: str | None = None) -> ProposerDispatcher:
     store = app.get("home_space_store")
     house = House.read(store, app.get("entity_cache")) if store is not None else None
     below = create_tool_dispatcher(app, exchange=exchange, house=house,
-                                   actor=PROPOSER_SPECIES)
-    return ProposerDispatcher(below, ha=None, house=None, timezone=None,
-                              presence=PresenceMask(house) if house is not None else None)
+                                   actor=PROPOSER_SPECIES, refuse_high=refuse_high)
+    return kind(below, ha=None, house=None, timezone=None,
+                presence=PresenceMask(house) if house is not None else None)
 
 
 def outcomes_of(analysis: dict | None) -> list[dict]:

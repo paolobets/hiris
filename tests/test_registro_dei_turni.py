@@ -333,7 +333,7 @@ def test_la_SPECIE_e_quella_che_il_prodotto_gia_nomina(consumi):
     from hiris.app.steering import SPECIE
 
     assert SPECIE == frozenset({"analista", "proponente", "chat", "osservatore",
-                                "promessa", "ricette"})
+                                "promessa", "ricette", "automatizza"})
     for specie in SPECIE:
         consumi.log_turn(species=specie, provider="ponte", model="x", channel="catena-anthropic",
                          duration_ms=1, iterations=1, tools=[],

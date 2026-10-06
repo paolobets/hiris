@@ -38,6 +38,7 @@ from aiohttp import web
 
 from ..action.construction.revisions import STATES_SOSPESO
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
+from ..mind import automate_turn
 from .boundary import error_response, occurrence_out
 from .soffitto import approved_services, require_builder, subject_name
 
@@ -113,15 +114,34 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     # `sospesa` e' la regola di ciascuna coda, decisa qui e non nella pagina
     # (C-12): le costruzioni con `_construction_suspended`, le proposte a mano
     # finche' sono `PROPOSAL_PENDING`.
-    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
-             "sospesa": _construction_suspended(row)}
-            for row in store.list(pending_only=pending_only, limit=200)]
     observations = app.get("observations")
+    by_hand = (observations.proposals(pending_only=pending_only)
+               if observations is not None else [])
+    # «Nata da» (attori, Task 4.5): la proposta a mano da cui e' nata una
+    # costruzione, letta per id dall'archivio gemello -- un legame, non una
+    # copia del testo nell'archivio delle costruzioni. Si cerca anche fra le
+    # chiuse: e' proprio chiudendosi che la proposta a mano porta il legame.
+    every_hand = (by_hand if not pending_only or observations is None
+                  else observations.proposals())
+    origins = {p["costruzione_id"]: {"id": p["id"], "testo": p["testo"]}
+               for p in every_hand if p.get("costruzione_id")}
+    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
+             "sospesa": _construction_suspended(row),
+             "nata_da": origins.get(row["id"])}
+            for row in store.list(pending_only=pending_only, limit=200)]
     if observations is not None:
+        # Se il comando «Rendila automatica» c'e', e se un turno la sta
+        # preparando: la regola e' quella della rotta (`automate_turn.refusal`),
+        # e la pagina riceve la risposta invece di ricalcolarla (C-12).
+        in_flight = automate_turn.preparing(app)
         rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
                   "a_mano": True,
-                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING}
-                 for row in observations.proposals(pending_only=pending_only)]
+                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING,
+                  "in_preparazione": in_flight == row["id"],
+                  "automatizzabile": automate_turn.refusal(
+                      row, pending=observations.PROPOSAL_PENDING,
+                      in_flight=in_flight) is None}
+                 for row in by_hand]
     return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 
 

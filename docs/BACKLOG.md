@@ -212,6 +212,15 @@ veridicita' della soluzione»).
    in `analisi.proponente`, e la pagina che li mostra passa da `ux-ui-specialist`. **Si rilascia
    dopo lo strato 3**, come dice il piano: non va acceso prima che l'analista coi suoi strumenti
    sia stato misurato dal vivo.
+   *«Sempre si'» c'e' dal 06/10/2026, non ancora rilasciato (Task 4.5, D15; ramo
+   `claude/project-thread-tybpui`):* si chiama **«Rendila automatica»** e sta sulle proposte da
+   fare a mano. Fa comporre al proponente un'automazione (specie di turno `automatizza`,
+   `mind/automate_turn.py`), che arriva fra le costruzioni con anteprima e conferma; quando nasce,
+   la proposta a mano si chiude col legame (esito `automatizzata`, «Nata da» sulla costruzione).
+   Un'automazione che agisce su serrature o allarme si rifiuta dentro il turno; su una proposta
+   `alto` il comando non c'e'. Le tre scelte sono di Paolo, 06/10/2026. **Da misurare dal vivo:**
+   il turno sul ponte (la consegna chiude col legame) e quanto resta «in preparazione». I token di
+   questa specie vanno contati con quelli del proponente nelle misure di D17.
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON

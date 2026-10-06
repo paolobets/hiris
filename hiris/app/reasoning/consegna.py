@@ -14,8 +14,12 @@ Cosa fa una consegna, per specie di turno:
 - **promessa**: chiude la promessa che il turno ha lasciato `in_corso` senza
   chiamare «conclude»;
 - **chat**: scrive la risposta nel filo di chi l'ha chiesta;
-- **gli attori**: niente -- la decisione resta registrata, e la va a prendere
-  il giro che ha accodato il turno.
+- **«Rendila automatica»**: chiude la proposta da fare a mano col legame
+  alla costruzione nata nel turno, o scrive perche' non si e' potuta fare
+  (`mind/automate_turn.deliver`). Non ha un giro periodico che raccolga: e'
+  un gesto di chi amministra, e la pagina aspetta questa consegna;
+- **gli altri attori**: niente -- la decisione resta registrata, e la va a
+  prendere il giro che ha accodato il turno.
 """
 from __future__ import annotations
 
@@ -136,6 +140,11 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         else:
             outcome = "chat_reply_skipped"
         return outcome
+
+    from ..mind import automate_turn
+
+    if (job or {}).get("kind") == automate_turn.AUTOMATE_TURN_KIND:
+        return "automazione_" + automate_turn.deliver(app, job, decision)
 
     # Qui arrivano i turni che non sono ne' di chat ne' di promessa: quelli
     # degli attori. Non c'e' niente da attuare -- la decisione resta
