@@ -4,7 +4,7 @@ Due chiamanti, una guardia (fix round 1, M2): l'orologio (`Sweeper._tell`,
 col suo scrittore montato) e le due strade che chiudono una promessa FUORI
 dall'orologio (ruling 3.8) -- la scadenza del turno sul ponte
 (`server._close_expired_promise`) e il turno del ponte finito senza
-«conclude» (`api/handlers_reasoning`). Le regole sono le stesse per tutti:
+«conclude» (`reasoning/consegna`). Le regole sono le stesse per tutti:
 solo se c'e' un filo, filtro dei veleni (anche sul testo del modello citato,
 `quoted`), mai un'eccezione. E dalle due strade di fuori nessuna push: non
 c'e' una risposta da portare al telefono, solo un fallimento da dichiarare.

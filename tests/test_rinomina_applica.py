@@ -691,7 +691,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # le stringhe che il modello legge, non gli identificatori Python di un
 # ambito gia' chiuso -- e applicare `concludi -> conclude` qui sarebbe una
 # rinomina a meta', perche' `server.py:122`,
-# `api/handlers_reasoning.py:67` e `api/handlers_mcp.py:474` chiamano
+# `reasoning/consegna.py` e `api/handlers_mcp.py:474` chiamano
 # `store.concludi(...)`/`sweeper.concludi_chiedi(...)` da FUORI
 # dell'ambito, dove un giro limitato a `keeper` non li vedrebbe.
 # Tracciato qui, con la grana fine sotto, invece che applicato di sfuggita.
@@ -707,7 +707,14 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # `reasoning` entra il 01/09, senza residui. E' il sottosistema che ne
     # la specifica ne' il piano avevano mai nominato -- scoperto a meta'
     # fetta -- ed e' il primo aperto con tutte e quattro le reti in piedi.
-    ("reasoning", "reasoning", frozenset()),
+    #
+    # Il 06/10/2026 (A-23) la consegna di un turno del ponte e' passata da
+    # `api/handlers_reasoning.py`, che nessun ambito sorveglia, a
+    # `reasoning/consegna.py`: e con lei uno dei chiamanti di
+    # `store.concludi(...)` elencati qui sopra. Non e' un debito nuovo, e' lo
+    # stesso chiamante che ha cambiato cartella; la grana fine e' nella prova
+    # del residuo di `keeper`, che ora guarda anche questo file.
+    ("reasoning", "reasoning", frozenset({Path("consegna.py")})),
     # `agent` entra il 01/09, senza residui, al SECONDO tentativo: il primo e'
     # stato annullato perche' la mappa conteneva nomi che sembravano suoi e non
     # lo erano (cinque costanti importate da `chat_store.py`, la famiglia dei
@@ -774,16 +781,17 @@ def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
     import shutil
 
     from _comune import ROOT
-    for nome in ("store.py", "sweeper.py"):
-        base = ROOT / "hiris" / "app" / "keeper" / nome
+    for ambito, nome in (("keeper", "store.py"), ("keeper", "sweeper.py"),
+                         ("reasoning", "consegna.py")):
+        base = ROOT / "hiris" / "app" / ambito / nome
         copia = tmp_path / nome
         shutil.copy(base, copia)
         prima = copia.read_text(encoding="utf-8")
-        rinomina.applica(copia, "keeper", scrivi=True)
+        rinomina.applica(copia, ambito, scrivi=True)
         dopo = copia.read_text(encoding="utf-8")
         sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
         assert sostituzioni == {("concludi", "conclude")}, (
-            f"keeper/{nome} diverge su {sostituzioni}, atteso solo "
+            f"{ambito}/{nome} diverge su {sostituzioni}, atteso solo "
             "{('concludi', 'conclude')} -- un nuovo nome e' comparso: "
             "decidilo davvero (applicalo, o traccialo qui) invece di "
             "lasciarlo dentro un'eccezione a grana di file")
@@ -1045,8 +1053,13 @@ _MUTE_VOLUTE = {
     # uscita con la Tappa 3, Task 9: era `senza_accenti` in
     # `memory/resolver._normalize`, che e' diventata `home_space/reference.
     # fold_accents`.
-    ("senza", "api"), ("senza", "action"),
+    ("senza", "action"),
     ("senza", "keeper"),
+    # `reasoning/consegna.py` importa `keeper/exchange._senza_conclusione`: e'
+    # la riga che fino al 06/10/2026 era `("senza", "api")`, quando la
+    # consegna del ponte stava in `api/handlers_reasoning.py` (A-23). Il nome
+    # e' di `keeper`, e li' e' gia' dichiarato.
+    ("senza", "reasoning"),
     # `note (home_space)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `home_space/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
     ("note", "api"), ("note", "action"), ("note", "usage"),

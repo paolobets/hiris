@@ -9,8 +9,8 @@ Un job di chat senza filo (accodato prima della fetta) non consegna:
 Il `context_json` di un job puo' ancora portare una chiave `chatbot_id`
 (scritta da un client/server piu' vecchio, o qui sotto per continuare a
 coprire "una chiave qualsiasi nel context non rompe nulla") ma
-`handle_reasoning_submit` non la legge piu' -- vedi
-tests/test_reasoning_api.py per quel caso.
+la consegna (`reasoning/consegna`) non la legge piu' -- vedi
+tests/test_consegna.py per quel caso.
 
 Real APIs verified before writing this test:
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
@@ -26,29 +26,13 @@ Real APIs verified before writing this test:
 import os
 
 import pytest
-from aiohttp import web
 
-from hiris.app.api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
+from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import ReasoningQueue
 
 T = ChatThread("persona:paolo", "pannello")
-
-
-@web.middleware
-async def _finto_worker(request, handler):
-    """Le due rotte del ponte chiedono una credenziale di turno (A-4, 22/09).
-
-    Queste prove parlano della CODA -- chi prende un job, chi lo consegna, cosa
-    succede a un nonce sbagliato -- non del confine. Dichiarano la premessa
-    invece di subirla, e la dichiarano nella forma vera: `auth_via`, che e' il
-    verdetto che il confine lascia.
-    """
-    request["auth_via"] = "turno"
-    request["soggetto"] = {"specie": "nessuno", "id": "ponte"}
-    return await handler(request)
-
 
 
 @pytest.fixture(autouse=True)
@@ -59,23 +43,25 @@ def reset_stores():
 
 
 def _app(tmp_path, *, submit_chat_reply=None):
-    app = web.Application(middlewares=[_finto_worker])
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    app["reasoning_queue"] = q
-    app["_clock"] = lambda: 10.0
+    app = {"reasoning_queue": q}
     if submit_chat_reply is not None:
         app["submit_chat_reply"] = submit_chat_reply
-    app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
-    app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
     return app, q
 
 
+async def _serve_turn(app, q, decision):
+    """Come il lavoratore del ponte: prende il turno dalla coda e lo consegna."""
+    c = q.claim(10.0)
+    return c, await consegna(app, c["job_id"], c["nonce"], decision, 10.0)
+
+
 @pytest.mark.asyncio
-async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client, tmp_path):
+async def test_chat_job_submit_routes_reply_to_submit_chat_reply(tmp_path):
     """fetta E3 Task 9: questo test wirava anche un `execute_decision` finto
     e verificava che NON venisse chiamato per un job kind="chat" -- da
     quando l'hook `app["execute_decision"]` e' uscito per intero
-    (handlers_reasoning.py, rilievo 1 della review indipendente sul blocco
+    (reasoning/consegna.py, rilievo 1 della review indipendente sul blocco
     5-8), quella distinzione non esiste piu': nessun kind lo chiama mai.
     Il soggetto vivo che resta -- un job "chat" instrada la risposta a
     submit_chat_reply -- e' l'unica cosa ancora verificata qui."""
@@ -86,22 +72,17 @@ async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client,
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
     q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="C1", now=1.0, thread=T)
-    client = await aiohttp_client(app)
 
-    c = await (await client.post("/api/reasoning/claim")).json()
-    assert c["job"]["job_id"] == "C1"
-    assert c["job"]["kind"] == "chat"
+    c, esito = await _serve_turn(app, q, {"reply": "ciao!"})
+    assert c["job_id"] == "C1"
+    assert c["kind"] == "chat"
 
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "C1", "nonce": c["job"]["nonce"], "decision": {"reply": "ciao!"}})
-    body = await r.json()
-
-    assert body["ok"] is True
+    assert esito is not None
     assert recorded == ["ciao!"]
 
 
 @pytest.mark.asyncio
-async def test_chat_job_missing_reply_fails_closed_but_job_resolved(aiohttp_client, tmp_path):
+async def test_chat_job_missing_reply_fails_closed_but_job_resolved(tmp_path):
     recorded = []
 
     async def _submit_chat_reply(reply_text, thread):
@@ -109,14 +90,10 @@ async def test_chat_job_missing_reply_fails_closed_but_job_resolved(aiohttp_clie
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
     q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C2", now=1.0, thread=T)
-    client = await aiohttp_client(app)
 
-    c = await (await client.post("/api/reasoning/claim")).json()
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "C2", "nonce": c["job"]["nonce"], "decision": {"reply": ""}})
-    body = await r.json()
+    _c, esito = await _serve_turn(app, q, {"reply": ""})
 
-    assert body["ok"] is True
+    assert esito is not None
     assert recorded == []  # empty reply -> no chat_store write
 
     job = q.get("C2")
@@ -124,10 +101,10 @@ async def test_chat_job_missing_reply_fails_closed_but_job_resolved(aiohttp_clie
 
 
 @pytest.mark.asyncio
-async def test_chat_job_legacy_context_key_does_not_break_delivery(aiohttp_client, tmp_path):
+async def test_chat_job_legacy_context_key_does_not_break_delivery(tmp_path):
     """fetta E4 Task 5 ("un bot solo"): un job rimasto in reasoning.db da
     prima di questo task puo' ancora portare `chatbot_id` nel proprio
-    context_json (scritto da un server piu' vecchio) -- handle_reasoning_submit
+    context_json (scritto da un server piu' vecchio) -- la consegna
     non lo legge piu' per niente, quindi quella chiave extra non deve
     impedire la consegna della risposta (prima del Task 5, un context senza
     ne' `chatbot_id` ne' `agent_id` faceva risolvere l'id a `None` e la
@@ -144,15 +121,11 @@ async def test_chat_job_legacy_context_key_does_not_break_delivery(aiohttp_clien
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
     q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, job_id="C3", now=1.0,
               thread=T)
-    client = await aiohttp_client(app)
 
-    c = await (await client.post("/api/reasoning/claim")).json()
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "C3", "nonce": c["job"]["nonce"], "decision": {"reply": "ciao!"}})
-    body = await r.json()
+    _c, esito = await _serve_turn(app, q, {"reply": "ciao!"})
 
-    assert body["ok"] is True
-    assert body["outcome"] == "chat_reply_recorded"
+    assert esito is not None
+    assert esito == "chat_reply_recorded"
     assert recorded == ["ciao!"]
     assert q.get("C3")["status"] == "decided"
 
@@ -161,33 +134,29 @@ async def test_chat_job_legacy_context_key_does_not_break_delivery(aiohttp_clien
 # e' cancellato dalla fetta E3 Task 9 (rilievo 1 della review indipendente
 # sul blocco 5-8): verificava che un job non-chat facesse ancora chiamare
 # `app["execute_decision"]" -- quel soggetto non esiste piu', l'hook e'
-# uscito per intero da handlers_reasoning.py. Verificato che cade per
+# uscito per intero dalla consegna. Verificato che cade per
 # costruzione prima della cancellazione: con l'hook rimosso l'assert
 # `body["outcome"] == "notify"` falliva (`outcome` resta "recorded"). Il suo
 # gemello per il caso "nessun hook wired" resta vivo in
-# test_reasoning_api.py::test_submit_without_execute_decision_wired_records_and_logs
+# test_consegna.py::test_consegna_non_chat_registra_e_dichiara
 # -- e' quello, non piu' un ramo alternativo, il comportamento reale oggi.
 
 
 @pytest.mark.asyncio
-async def test_chat_job_missing_submit_chat_reply_handler_does_not_crash(aiohttp_client, tmp_path):
+async def test_chat_job_missing_submit_chat_reply_handler_does_not_crash(tmp_path):
     """If app["submit_chat_reply"] isn't wired (misconfiguration), submit must
     still resolve the job instead of 500ing."""
     app, q = _app(tmp_path)  # no submit_chat_reply, no execute_decision
     q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C4", now=1.0, thread=T)
-    client = await aiohttp_client(app)
 
-    c = await (await client.post("/api/reasoning/claim")).json()
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "C4", "nonce": c["job"]["nonce"], "decision": {"reply": "ciao!"}})
-    body = await r.json()
+    _c, esito = await _serve_turn(app, q, {"reply": "ciao!"})
 
-    assert body["ok"] is True
+    assert esito is not None
     assert q.get("C4")["status"] == "decided"
 
 
 @pytest.mark.asyncio
-async def test_chat_reply_lands_in_real_chat_store(aiohttp_client, tmp_path):
+async def test_chat_reply_lands_in_real_chat_store(tmp_path):
     """End-to-end with the real chat_store.append_messages (server.py's
     submit_chat_reply wraps exactly this call)."""
     data_dir = str(tmp_path / "data")
@@ -201,13 +170,9 @@ async def test_chat_reply_lands_in_real_chat_store(aiohttp_client, tmp_path):
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
     q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="C5", now=1.0, thread=T)
-    client = await aiohttp_client(app)
 
-    c = await (await client.post("/api/reasoning/claim")).json()
-    r = await client.post("/api/reasoning/submit", json={
-        "job_id": "C5", "nonce": c["job"]["nonce"], "decision": {"reply": "risposta dalla coda"}})
-    body = await r.json()
-    assert body["ok"] is True
+    _c, esito = await _serve_turn(app, q, {"reply": "risposta dalla coda"})
+    assert esito is not None
 
     history = load_history(data_dir, thread=T)
     assert history == [{"role": "assistant", "content": "risposta dalla coda"}]

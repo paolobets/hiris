@@ -1,9 +1,17 @@
-def test_reasoning_routes_registered():
+def test_la_coda_dei_turni_non_si_raggiunge_via_http():
+    """A-23 (06/10/2026): il lavoratore del ponte prende i turni dalla coda e
+    li consegna dentro il processo. `/api/reasoning/claim` e
+    `/api/reasoning/submit` sono uscite con quel giro: la prima restituiva il
+    job col nucleo della casa e i ricordi, la seconda scriveva nella chat
+    come risposta di HIRIS (reperto A-4 del 21/09). Una rotta che rientrasse
+    riaprirebbe quella superficie senza nessuno che la usi.
+
+    Mutazione ESEGUITA (06/10/2026): rimessa in `server.py` la riga
+    `add_post("/api/reasoning/claim", ...)` -- rossa."""
     from hiris.app.server import create_app
     app = create_app()
     paths = {r.resource.canonical for r in app.router.routes() if r.resource is not None}
-    assert "/api/reasoning/claim" in paths
-    assert "/api/reasoning/submit" in paths
+    assert not {p for p in paths if p.startswith("/api/reasoning")}
 
 
 def test_reasoning_queue_importable():

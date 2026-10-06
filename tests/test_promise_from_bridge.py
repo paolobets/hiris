@@ -26,7 +26,6 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from aiohttp import web
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -37,25 +36,10 @@ from hiris.app.chat_store import _get_store, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.provider_occurrences import OccurrenceRegistry
+from hiris.app.reasoning.consegna import consegna as consegna_turno
 from hiris.app.reasoning.queue import ReasoningQueue
 
-
-@web.middleware
-async def _finto_worker(request, handler):
-    """Le due rotte del ponte chiedono una credenziale di turno (A-4, 22/09).
-
-    Queste prove parlano della CODA -- chi prende un job, chi lo consegna, cosa
-    succede a un nonce sbagliato -- non del confine. Dichiarano la premessa
-    invece di subirla, e la dichiarano nella forma vera: `auth_via`, che e' il
-    verdetto che il confine lascia.
-    """
-    request["auth_via"] = "turno"
-    request["soggetto"] = {"specie": "nessuno", "id": "ponte"}
-    return await handler(request)
-
-
 TOKEN = "token-di-prova-della-consegna"
-INTESTAZIONI = {"X-HIRIS-Internal-Token": TOKEN}
 ADESSO = 1787324400.0
 # Il filo di chi ha chiesto: ogni promessa ne ha uno (spec 2026-09-26 §2).
 PAOLO = ChatThread("persona:paolo", "pannello")
@@ -103,7 +87,7 @@ def _promessa_in_corso(promesse) -> str:
 
 
 def _accoda_e_prendi(coda, ident: str) -> dict:
-    # La coda si giudica con l'orologio VERO (`submit` usa `_now(request)`),
+    # La coda si giudica con l'orologio VERO (`_consegna` usa `time.time()`),
     # mentre le promesse ricevono il loro `adesso` come argomento: le due
     # scale non si mescolano, e una scadenza ancorata a `ADESSO` sarebbe gia'
     # passata.
@@ -115,18 +99,10 @@ def _accoda_e_prendi(coda, ident: str) -> dict:
 
 
 async def _consegna(client, job, decision):
-    # Dal 22/09/2026 le due rotte del ponte vogliono una credenziale di TURNO,
-    # non il segreto condiviso (reperto A-4). Queste prove parlano di cosa
-    # succede a una promessa quando il turno finisce senza «conclude»: la
-    # premessa si dichiara nella forma vera.
-    import time as _t
-
-    from hiris.app.api.credenziali import credenziale_ponte_viva
-    intestazioni = {**INTESTAZIONI,
-                    "X-HIRIS-Internal-Token": credenziale_ponte_viva(
-                        client.app, adesso=_t.time())}
-    return await client.post("/api/reasoning/submit", headers=intestazioni, json={
-        "job_id": job["job_id"], "nonce": job["nonce"], "decision": decision})
+    # Come il lavoratore del ponte (A-23, 06/10/2026): la consegna e' una
+    # chiamata dentro il processo, sull'app vera, non piu' una rotta HTTP.
+    return await consegna_turno(client.app, job["job_id"], job["nonce"],
+                                decision, time.time())
 
 
 @pytest.mark.asyncio
@@ -141,7 +117,7 @@ async def test_un_turno_che_finisce_senza_concludere_fa_fallire_la_promessa(cons
     risposta = await _consegna(client, job, {
         "reply": "Ho letto le otto stanze, ma da qui non posso mandarti una notifica."})
 
-    assert risposta.status == 200
+    assert risposta == "promessa_senza_conclusione"
     p = promesse.read(ident)
     assert p["stato"] == "fallita"
     assert "non ha concluso" in p["motivo"]

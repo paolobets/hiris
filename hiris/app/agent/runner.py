@@ -1,9 +1,10 @@
-"""Runner hiris-agent: polla la coda di ragionamento HIRIS e ragiona (mock|live).
+"""Runner hiris-agent: prende i turni dalla coda di ragionamento HIRIS e li ragiona (mock|live).
 
-Gira dentro l'add-on (`run_loop`, avviato da `server.py`). La credenziale di
-TURNO -- coniata da `server.py`, vive dieci minuti (`api/credenziali.PONTE_S`)
--- serve all'HTTP verso la reasoning API (`/api/reasoning/claim` e
-`/api/reasoning/submit`) e alla rotta degli strumenti (`/api/mcp`).
+Gira dentro l'add-on (`run_loop`, avviato da `server.py`), e la coda la legge
+direttamente: si sveglia quando un turno viene accodato, non la interroga a
+intervalli (A-23). La credenziale di TURNO -- coniata da `server.py`, vive
+dieci minuti (`api/credenziali.PONTE_S`) -- serve alla rotta degli strumenti
+(`/api/mcp`), che la CLI chiama da un altro processo.
 
 **Cosa puo' il ponte.** LEGGE la casa e la memoria e puo' AGIRE su di essa,
 con lo stesso catalogo della chat sincrona (`home_space/tools.KNOWLEDGE_TOOLS`):
@@ -407,7 +408,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 4, nit 1 della
     review del Task 3). Un `log.warning("...: %s", exc)` e' il **settimo
-    canale** di perdita del token, e non e' teorico: gli header del claim
+    canale** di perdita del token, e non e' teorico: le intestazioni del turno
     portano `X-HIRIS-Internal-Token`, e con un valore che il protocollo HTTP
     non accetta il client solleva **col valore dentro** (`LocalProtocolError:
     Illegal header value b'...'`, verificato contro un listener vero al fix
@@ -419,7 +420,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     redazione che c'e' gia' (`reda_segreti` su tutte le `token_forms`),
     invece di aprire una via nuova. **Il messaggio non si butta**: perdere il
     testo dell'eccezione renderebbe illeggibile il log del giro
-    (`run_once errore: HTTPStatusError` non dice quale rotta ne' quale codice),
+    (`ponte, turno fallito: HTTPStatusError` non dice quale rotta ne' quale codice),
     e un log che non serve a diagnosticare e' il primo che smette di essere
     letto.
 
@@ -445,7 +446,7 @@ def probe_tools(client, base_url: str, headers: dict,
     """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
 
     Un `POST /api/mcp` con `tools/list` sullo STESSO `httpx.Client` e con gli
-    STESSI header del claim: loopback, ~1 ms, zero token del modello. E' cio'
+    STESSE intestazioni del turno: loopback, ~1 ms, zero token del modello. E' cio'
     che permette di decidere il prompt e l'argv insieme, PRIMA di spendere un
     turno -- invece di scoprire a risposta arrivata che il modello aveva
     strumenti promessi e non serviti.
@@ -795,7 +796,7 @@ class StreamOccurrence:
       qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
       (stesso `tool_use_id`, in un evento `user` successivo) ARRIVA ed e'
       `is_error: true`, la voce guadagna una terza chiave, `"is_error": True`:
-      cosi' una chiamata riuscita (esito arrivato, senza errore) resta
+      cosi' una chiamata riuscita (esito arrived, senza errore) resta
       bit-per-bit la stessa forma del ramo sincrono, e una fallita resta
       DISTINGUIBILE invece di sparire nella stessa forma di una riuscita.
 
@@ -986,18 +987,18 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 # Fix round 1, Important: l'esito e' ARRIVATO -- si segna
                 # SEMPRE (`_risolto`), non solo quando e' un errore. E'
                 # questo marcatore, tolto qui sotto dopo il ciclo, che
-                # distingue "arrivato e riuscito" da "mai arrivato": senza,
+                # distingue "arrived e riuscito" da "mai arrived": senza,
                 # i due casi produrrebbero la stessa forma (vedi il
                 # docstring di `StreamOccurrence.tools_called`).
                 entry["_risolto"] = True
                 if block.get("is_error"):
                     # Solo quando VERO: cosi' una chiamata riuscita (esito
-                    # arrivato, senza errore) resta bit-per-bit
+                    # arrived, senza errore) resta bit-per-bit
                     # {"tool":..., "input":...}, identica alla forma del
                     # ramo sincrono (Step 2 del brief).
                     entry["is_error"] = True
     # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
-    # arrivato (flusso incompleto, o un `result` di errore/max-turns che
+    # arrived (flusso incompleto, o un `result` di errore/max-turns che
     # chiude tutto con una chiamata ancora aperta) restano senza il
     # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
     # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
@@ -1057,7 +1058,7 @@ def _resolved_tools(occurrence: StreamOccurrence) -> set:
 #
 # Perche' esiste. I due campi qui sotto sono prove che non si possono ricavare
 # da nessun file del repository -- il `Dockerfile` dice cosa e' stato chiesto,
-# non cosa e' arrivato -- e fino a oggi vivevano SOLO dentro una riga di log,
+# non cosa e' arrived -- e fino a oggi vivevano SOLO dentro una riga di log,
 # leggibile nel momento in cui un turno passava. E' il motivo per cui la
 # verifica del pin 2.1.241 e' stata rimandata il 24 agosto e poi dimenticata
 # per settimane: richiedeva di essere nel posto giusto al momento giusto.
@@ -1092,7 +1093,7 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
       girando DAVVERO. La ragione non e' caduta col pin, e' migliorata: prima
       serviva a sapere QUALE CLI fosse capitata dentro l'immagine, perche'
       `@2` ne lasciava entrare una qualunque; adesso serve a PROVARE che il
-      pin sia arrivato fino al container -- e a smascherare l'immagine
+      pin sia arrived fino al container -- e a smascherare l'immagine
       installata piu' vecchia di quella che si crede, che il `Dockerfile` da
       solo non puo' dire.
     - `apiKeySource`: e' l'**unica prova a runtime** che questo ponte stia
@@ -1111,10 +1112,10 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
     if occurrence.init is None:
         log.warning(
             "flusso stream-json senza evento system/init (job_id=%s): l'init "
-            "non e' arrivato. Le cause possibili, in nessun ordine di colpa: "
+            "non e' arrived. Le cause possibili, in nessun ordine di colpa: "
             "la CLI puo' essere morta prima di emetterlo (guardare rc e "
             "stderr, che questo modulo logga a parte), oppure --verbose non e' "
-            "arrivato alla CLI, oppure il formato del flusso e' cambiato. "
+            "arrived alla CLI, oppure il formato del flusso e' cambiato. "
             "Quando gli strumenti erano attesi questa assenza NON e' una "
             "conferma e vale come guasto: la decide `verifica_init`", job_id)
         return
@@ -1159,7 +1160,7 @@ def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple
       perche' il prompt li nomina uno per uno.
 
     **Un `init` assente vale guasto, non successo.** Una CLI piu' vecchia, un
-    `--verbose` che non e' arrivato o un formato cambiato producono la stessa
+    `--verbose` che non e' arrived o un formato cambiato producono la stessa
     assenza: trattarla come conferma vorrebbe dire far dipendere la promessa
     del prompt da cio' che NON e' stato detto. Un'assenza non e' una conferma.
 
@@ -1172,7 +1173,7 @@ def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple
     if occurrence.init is None:
         return False, ("il flusso non porta l'evento system/init: un'assenza "
                        "non e' una conferma (CLI piu' vecchia, --verbose non "
-                       "arrivato, o formato cambiato)")
+                       "arrived, o formato cambiato)")
     server = _declared_servers(occurrence)
     state = next((s.get("status") for s in server if s.get("name") == name), None)
     missing = sorted(set(mcp_names(by_promise)) - _resolved_tools(occurrence))
@@ -1192,7 +1193,7 @@ def set_usage_logger(fn) -> None:
     """Collega (o scollega) l'archivio dei consumi al ponte.
 
     Un attributo di modulo e non un parametro passato di mano in mano perche'
-    `_logga_uso` sta in fondo a cinque chiamate (`run_loop` -> `run_once` ->
+    `_logga_uso` sta in fondo a cinque chiamate (`run_loop` -> `serve` ->
     `reason` -> `_reason_chat` -> `_invoca`) e nessuna delle cinque ha motivo
     di conoscere i consumi: infilarcelo vorrebbe dire allargare cinque firme
     per un dato che riguarda solo l'ultima.
@@ -1473,11 +1474,11 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     non c'e' nessun `/api/mcp` a cui puntare la mcp-config, quindi gli strumenti
     non sono nemmeno ATTESI -- il turno vale esattamente quanto valeva prima di
     questo task, senza avvisi e senza righe di degrado. Chi li passa (il solo
-    `run_once`, cioe' il percorso di produzione) dichiara con quel gesto che il
+    `serve`, cioe' il percorso di produzione) dichiara con quel gesto che il
     ponte e' configurato per averli: da li' in poi la loro assenza e' un
     guasto, e come tale si dichiara.
 
-    Gli header sono gli STESSI del claim (`run_once` passa i suoi): l'add-on non
+    Gli header sono quelli del turno (`serve` passa i suoi): l'add-on non
     deve avere due modi di autenticarsi verso se' stesso."""
     context = job.get("context") or {}
     history = context.get("history") or []
@@ -1652,7 +1653,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # che `_remember` la veda. Ma questa lista accumula l'input grezzo del
     # modello ANCHE quando il dispatch lo rifiuta: un `detto_da` (un
     # identificativo di PERSONA) tentato dal modello resta scritto qui lo
-    # stesso, anche se non e' mai arrivato all'archivio. Per `search`, la
+    # stesso, anche se non e' mai arrived all'archivio. Per `search`, la
     # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
     # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
@@ -1982,7 +1983,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         notice = (
             f"{_INCOMPLETE_STREAM_SENTINEL} In questo turno la risposta si e' "
             "chiusa senza il messaggio finale del modello: quello che e' "
-            "arrivato non e' una risposta completa, e non te la presento come "
+            "arrived non e' una risposta completa, e non te la presento come "
             "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
             "cambiato e va guardato il log dell’add-on.")
         # Il pezzo grezzo resta nella reply, come faceva il vecchio ramo "JSON
@@ -2051,8 +2052,8 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
     cancello `tests/test_attuatore_sul_ponte.py` esiste per questo).
     Non lo si ignora in silenzio -- un pass muto sarebbe indistinguibile da
     un'assenza di problemi: un log esplicito lo dichiara e la decisione
-    restituita e' VUOTA. A valle, `handle_reasoning_submit`
-    (api/handlers_reasoning.py) la registra e basta."""
+    restituita e' VUOTA. A valle, `consegna`
+    (reasoning/consegna.py) la registra e basta."""
     kind = (job or {}).get("kind")
     if kind in RAGIONABILI:
         # Un turno di promessa E' un turno: stessa sonda degli strumenti,
@@ -2070,7 +2071,7 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
         # specie: il docstring dice cosa serve davvero.
         # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): il client e
         # la base_url del giro passano di qui SENZA essere ricostruiti. La sonda
-        # degli strumenti deve girare sullo STESSO `httpx.Client` del claim e
+        # degli strumenti deve girare sullo STESSO `httpx.Client` del lavoratore e
         # con gli STESSI header: un secondo client (o un secondo modo di
         # autenticarsi) sarebbe un secondo posto da tenere allineato.
         return _reason_chat(job, mode, client=client, base_url=base_url,
@@ -2082,57 +2083,98 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
     return {}
 
 
-def run_once(client, base_url: str, headers: dict, mode: str) -> str:
-    r = client.post(f"{base_url}/api/reasoning/claim", headers=headers, json={})
-    r.raise_for_status()
-    job = (r.json() or {}).get("job")
-    if not job:
-        return "idle"
-    job_id = job.get("job_id"); nonce = job.get("nonce")
-    if not job_id or not nonce:
-        log.warning("claim malformato (job senza id/nonce)")
-        return "failed"
-    decision = reason(job, mode, client=client, base_url=base_url,
-                      headers=headers)
-    sr = client.post(f"{base_url}/api/reasoning/submit", headers=headers,
-                     json={"job_id": job_id, "nonce": nonce, "decision": decision})
-    sr.raise_for_status()
-    return "done" if (sr.json() or {}).get("ok") else "failed"
+async def serve(job: dict, consegna, client, base_url: str, get_headers,
+                mode: str, clock=time.time) -> str:
+    """Un turno gia' preso dalla coda: lo ragiona e lo consegna.
 
-async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> None:
-    """Coroutine per il task asyncio in-addon (server.py, task 4). `run_once`
-    resta sincrono (subprocess.run + httpx.Client): girano sullo stesso loop
-    asyncio dell'intero addon (aiohttp), quindi vanno eseguiti in un thread
-    executor (`run_in_executor`) e MAI chiamati direttamente nella coroutine,
-    altrimenti un job claimato blocca l'intero addon per tutto il tempo che
-    resta al turno (il `timeout` della CLI e' la sua scadenza, S-09)."""
-    # **Le intestazioni del giro vivono FUORI dal `try`**, e non e' stile.
-    # `_exception_reason` deve poter redigere la credenziale che questo giro
-    # sta davvero usando: fino al 22/09/2026 la leggeva da `INTERNAL_TOKEN`
-    # nell'ambiente, e quando quel segreto e' uscito la redazione e' rimasta
-    # senza bersaglio -- cioe' la credenziale sarebbe finita nel registro, che
-    # e' il file che si incolla in una segnalazione. **L'ha preso la suite, non
-    # una rilettura.**
+    Tutto dentro il processo (A-23, 06/10/2026): `consegna` e'
+    `reasoning/consegna.consegna` legata all'app (`server.py`). Fino a quel
+    giorno il lavoratore chiamava se stesso via HTTP (`/api/reasoning/claim` e
+    `/api/reasoning/submit`).
+
+    Il ragionamento e' sincrono (subprocess.run + httpx.Client) e gira sullo
+    stesso loop asyncio dell'intero addon (aiohttp): va in un thread executor
+    (`run_in_executor`), MAI chiamato direttamente nella coroutine, altrimenti
+    un turno preso blocca l'intero addon per tutto il tempo che resta al turno
+    (il `timeout` della CLI e' la sua scadenza, S-09). La consegna resta sul
+    loop: e' breve, e scrive nella chat, che vive li'.
+
+    Le intestazioni si coniano qui, a turno preso: servono alla sonda e alla
+    rotta degli strumenti (`/api/mcp`, che la CLI chiama da un altro
+    processo), e una credenziale coniata per un giro vuoto non servirebbe a
+    nessuno."""
+    headers = get_headers()
+    loop = asyncio.get_running_loop()
+    decision = await loop.run_in_executor(
+        None, lambda: reason(job, mode, client=client, base_url=base_url,
+                             headers=headers))
+    delivered = await consegna(job["job_id"], job["nonce"], decision, clock())
+    return "failed" if delivered is None else "done"
+
+
+async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,
+                   clock=time.time) -> None:
+    """Il lavoratore del ponte (task asyncio in-addon, avviato da `server.py`).
+
+    **Non interroga la coda a intervalli** (A-23, 06/10/2026). Serve i turni
+    finche' ce ne sono, poi aspetta che `ReasoningQueue.enqueue` lo svegli.
+    Prima chiedeva `/api/reasoning/claim` ogni tre secondi
+    (`HIRIS_AGENT_POLL_SECONDS`), anche a coda vuota, per sempre.
+
+    L'evento si azzera PRIMA di guardare la coda: un turno accodato mentre il
+    lavoratore la guarda lo risveglia comunque, e non resta li' ad aspettare
+    il turno dopo. La sveglia passa da `call_soon_threadsafe` perche' chi
+    accoda puo' farlo da un altro thread.
+
+    Un turno che fallisce (un'eccezione mentre lo si serve) e' perso -- lo
+    chiude la spazzata alla scadenza, e la chat ripiega -- e il lavoratore
+    passa al successivo: ogni giro consuma un turno, quindi non gira a vuoto.
+    Se e' la coda stessa a fallire, invece, si aspetta il prossimo turno
+    accodato: riprovare subito girerebbe a vuoto senza pause."""
+    # **Le intestazioni del giro si ricordano FUORI dal `try`**, e non e'
+    # stile. `_exception_reason` deve poter redigere la credenziale che questo
+    # giro sta davvero usando: fino al 22/09/2026 la leggeva da
+    # `INTERNAL_TOKEN` nell'ambiente, e quando quel segreto e' uscito la
+    # redazione e' rimasta senza bersaglio -- cioe' la credenziale sarebbe
+    # finita nel registro, che e' il file che si incolla in una segnalazione.
+    # **L'ha preso la suite, non una rilettura.**
     #
     # Cosi' e' anche piu' preciso di prima: si reda la credenziale IN CORSO,
     # non quella che per caso stava in un ambiente.
     intestazioni_correnti: dict = {}
+
+    def _intestazioni() -> dict:
+        nonlocal intestazioni_correnti
+        intestazioni_correnti = get_headers()
+        return intestazioni_correnti
+
     loop = asyncio.get_running_loop()
-    with httpx.Client(timeout=330) as client:
-        while True:
-            try:
-                headers = get_headers()
-                intestazioni_correnti = headers
-                outcome = await loop.run_in_executor(
-                    None, run_once, client, base_url, headers, mode)
-                if outcome != "idle":
-                    log.info("run: %s", outcome)
-            except Exception as exc:
-                # Task 4, nit 1: `%s` sull'eccezione GREZZA e' il settimo
-                # canale di perdita del token (gli header del claim lo
-                # portano, e un valore non consegnabile risale col valore
-                # dentro). Si passa da `_exception_reason`: tipo + messaggio
-                # REDATTO, cosi' il log resta diagnosticabile.
-                log.warning("run_once errore: %s", _exception_reason(
-                    exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
-            await asyncio.sleep(poll_seconds)
+    arrived = asyncio.Event()
+    queue.on_enqueue(lambda: loop.call_soon_threadsafe(arrived.set))
+    try:
+        with httpx.Client(timeout=330) as client:
+            while True:
+                arrived.clear()
+                try:
+                    job = queue.claim(clock())
+                except Exception as exc:
+                    log.warning("ponte: la coda non risponde: %s",
+                                _exception_reason(exc))
+                    job = None
+                if job is None:
+                    await arrived.wait()
+                    continue
+                try:
+                    log.info("run: %s", await serve(
+                        job, consegna, client, base_url, _intestazioni, mode,
+                        clock))
+                except Exception as exc:
+                    # Task 4, nit 1: `%s` sull'eccezione GREZZA e' il settimo
+                    # canale di perdita del token (le intestazioni del turno
+                    # lo portano, e un valore non consegnabile risale col
+                    # valore dentro). Si passa da `_exception_reason`: tipo +
+                    # messaggio REDATTO, cosi' il log resta diagnosticabile.
+                    log.warning("ponte, turno fallito: %s", _exception_reason(
+                        exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
+    finally:
+        queue.on_enqueue(None)

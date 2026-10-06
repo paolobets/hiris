@@ -146,6 +146,16 @@ class ReasoningQueue:
         # gia' usato per UsageStore (server.py, costruzione di
         # `app["usage"]`).
         self._read_timezone = read_timezone or (lambda: None)
+        # Chi aspetta un turno nuovo (A-23, 06/10/2026): il lavoratore del
+        # ponte non interroga piu' la coda a intervalli, si fa svegliare da
+        # `enqueue`. Uno solo, perche' il consumatore e' uno solo.
+        self._on_enqueue = None
+
+    def on_enqueue(self, listener) -> None:
+        """Registra (o, con `None`, toglie) chi va svegliato a ogni turno
+        accodato. Si chiama dopo il commit e fuori dal lucchetto: chi si
+        sveglia trova il turno gia' scritto, e puo' prenderlo subito."""
+        self._on_enqueue = listener
 
     def close(self) -> None:
         with self._lock:
@@ -164,6 +174,9 @@ class ReasoningQueue:
                 (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now,
                  *thread_params(thread), int(priority)))
             self._conn.commit()
+        listener = self._on_enqueue
+        if listener is not None:
+            listener()
         return jid
 
     def claim(self, now: float) -> dict | None:
@@ -197,9 +210,9 @@ class ReasoningQueue:
     # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun
     # lettore lo riapre dopo la risoluzione: `handle_chat_reply_poll` legge
     # solo `decision` dal job (`handlers_chat.py`, il ramo di poll), MAI
-    # `context`; `handle_reasoning_submit` chiama `q.get(job_id)` anche lui
-    # DOPO il proprio submit, ma legge solo `job.get("kind")`
-    # (`handlers_reasoning.py`); `has_pending_chat(thread, now=None)` e' una
+    # `context`; `consegna` chiama `q.get(job_id)` anche lui
+    # DOPO il proprio submit, ma legge solo `kind`, `wake`, `thread` e
+    # `created_ts` (`reasoning/consegna.py`); `has_pending_chat(thread, now=None)` e' una
     # SELECT indicizzata su `kind`/`subject_key`/`entry_point`/`status` (dal
     # Task 2 "la coda porta il filo": prima solo su `status`/`deadline_ts`,
     # senza filo) che non riapre mai `context_json` (il metodo e' piu' sotto
