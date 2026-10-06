@@ -2,6 +2,11 @@
 
 `raccolte l'11/09/2026 · sono il cancello del registro delle operazioni (spec 2026-09-10, §6)`
 
+> **Storia, non cancello, dal 06/10/2026.** Con la decisione D7 del piano degli attori strati 3-4
+> le prove di queste domande sono uscite, e con loro otto delle dieci operazioni che le servivano.
+> Restano `episodio` e `tempo_in_stato`, per la presenza. Il resto di questo documento descrive il
+> registro com'era.
+
 **Perché questo documento esiste.** La spec del 10/09 dice che il set delle operazioni *«non si
 dimensiona a preventivo: si chiude con un test — è abbastanza ricco quando le quattro domande vere
 del proprietario e il resoconto giornaliero si esprimono tutti senza aggiungerne una»*, e aggiunge

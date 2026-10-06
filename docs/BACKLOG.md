@@ -296,6 +296,15 @@ Misurato in casa il 02/10/2026: le 21 ricette archiviate usano 7 operazioni, nes
 operazioni (e allora serve chi gli consegna periodi e letture), o se le domande si servono in un
 altro modo e le dieci escono. Voci del registro dei doppioni: M-12, M-14, M-64, M-65, M-78.
 
+**Deciso dal proprietario il 06/10/2026 (D7 del piano strati 3-4): escono otto, restano due per la
+presenza.** Escono `quante_volte`, `quando_succede`, `misure_durante`, `dentro`, `somma_entita`,
+`media_entita`, `raggruppa_per`, `primo_ultimo_differenza`, con le prove delle sette domande e il
+loro cancello; escono anche `Period.contains` e le forme `SHAPE_COUNTER`, `SHAPE_MEASURES`,
+`SHAPE_MEASURE_MAP`, che servivano solo a loro. Restano `episodio`, `tempo_in_stato` e `Period`,
+non offribili alle ricette e ancora senza chiamante: li alimentera' lo strumento di calcolo (Task
+3.1 e 3.2 dello strato 3, dopo D6). Il catalogo offerto al modello non cambia (l'impronta di
+`REGISTRY_VERSION` 2 resta la stessa), quindi la versione del registro non sale.
+
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
 
 `origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`

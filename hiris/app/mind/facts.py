@@ -449,8 +449,8 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
         # fondativa del cervello, che prima di oggi non era rispondibile.
         #
         # Dentro la finestra dell'episodio, estremi compresi a sinistra e
-        # esclusi a destra -- la stessa convenzione di
-        # `mind/operations.Period.contains`, una sola in tutto il prodotto.
+        # esclusi a destra -- la stessa convenzione delle finestre di
+        # `mind/operations.Period`.
         # Un episodio ancora aperto (`when is None`) prende tutto cio' che
         # viene dopo il suo inizio.
         # **La foto d'apertura c'e', e senza di lei meta' della colonna

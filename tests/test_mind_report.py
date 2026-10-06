@@ -943,8 +943,7 @@ def _difference(name: str, first: str, second: str) -> dict:
 #: consumata = prodotta - immessa + prelevata + scaricata - caricata.
 #:
 #: **Il motore non ha una somma di due misure** fra le operazioni che una
-#: ricetta puo' scrivere (`somma_entita` non e' offribile, e somma serie,
-#: non misure): la consumata si compone con quattro `differenza_fra` in
+#: ricetta puo' scrivere: la consumata si compone con quattro `differenza_fra` in
 #: catena -- (scaricata - (immessa - prodotta)) - (caricata - prelevata).
 #: Il conto torna, ma e' il passo che un modello sbaglia piu' facilmente.
 ROLE_RECIPE = {"why": "prova del motore coi ruoli della dashboard", "steps": [

@@ -51,7 +51,6 @@ numero misurato, e non spacciato per tale.
 """
 from __future__ import annotations
 
-import datetime as dt
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -72,16 +71,14 @@ MINIMUM_COVERAGE = 0.75
 class Period:
     """**Su quando** si calcola: un elenco di finestre, non un intervallo solo.
 
-    E' la decisione di disegno che le domande del proprietario hanno imposto
-    (`docs/design/2026-09-11-le-domande-del-proprietario.md`). Tre domande su
-    sette chiedono di restringere un calcolo ai momenti in cui qualcosa era
-    vero -- *«quando si accende il riscaldamento e porta la casa in
-    temperatura, poi qualcuno e' in casa o meno?»*, *«a livello di comfort la
-    casa e' sana quando c'e' qualcuno in casa?»*. Con un intervallo solo
-    servirebbe un'operazione in piu' per ciascuna di quelle restrizioni; con
-    un elenco di finestre, `episodio` ne produce e ogni altra operazione le
-    accetta: **la restrizione e' composizione**, e il registro resta piu'
-    piccolo di quanto sarebbe con un'operazione dedicata per ogni restrizione.
+    Lo produce `episodio` (le finestre in cui un soggetto era in uno stato) e
+    lo misura `tempo_in_stato`: e' la coppia che serve alla presenza -- quanto
+    tempo qualcuno e' stato in casa -- ed e' la ragione per cui questa classe
+    resta (decisione D7 del proprietario, 06/10/2026, piano degli attori
+    strati 3-4). Nacque l'11/09/2026 per le sette domande del proprietario
+    (`docs/design/2026-09-11-le-domande-del-proprietario.md`, oggi storia):
+    le operazioni che restringevano un calcolo a un periodo sono uscite con
+    quel cancello, il periodo no.
 
     **Le finestre si ordinano e si fondono quando si toccano.** Due episodi
     contigui dello stesso soggetto sono un periodo solo: lasciandoli separati
@@ -123,9 +120,6 @@ class Period:
     def duration_s(self) -> float:
         return sum(end - start for start, end in self._windows)
 
-    def contains(self, instant: float) -> bool:
-        return any(start <= instant < end for start, end in self._windows)
-
     def __eq__(self, other) -> bool:
         return type(self) is type(other) and self._windows == other._windows
 
@@ -154,11 +148,10 @@ class Measurement(Result):
     """Un numero **con la sua unita' e la sua copertura**, inseparabili.
 
     **Non tutto cio' che esce da un'operazione e' una grandezza fisica**, e le
-    unita' lo dicono: `"periodo"` (`episodio`, `dentro`), `"gruppi"`
-    (`raggruppa_per`), `"ora del giorno"` (`quando_succede`), `"volte"`
-    (`quante_volte`), `"coefficiente"` (`correlazione`), `"frazione"`
-    (`quota`). Sono **etichette di specie, non unita' di misura**, e vale la
-    pena dirlo invece di lasciar credere che kWh e «gruppi» siano la stessa
+    unita' lo dicono: `"periodo"` (`episodio`), `"coefficiente"`
+    (`correlazione`), `"frazione"` (`quota`). Sono **etichette di specie, non
+    unita' di misura**, e vale la pena dirlo invece di lasciar credere che kWh
+    e «periodo» siano la stessa
     categoria di cosa. La struttura chiede comunque una parola perche'
     l'alternativa -- un campo che qualche volta si puo' lasciare vuoto -- e'
     precisamente come nasce il frammento: una porta che a volte si puo' non
@@ -357,10 +350,10 @@ class Operation:
     run: Callable[..., Result]
     #: Se una RICETTA puo' nominare questa operazione.
     #:
-    #: **Il registro e le ricette non sono la stessa cosa.** Il registro e' il
-    #: vocabolario del prodotto: `mind/facts.aggregate_day` ne usa voci che una
-    #: ricetta non potrebbe mai portare, perche' vogliono un valore che il JSON
-    #: non sa scrivere -- `episodio` vuole `is_on`, che e' una FUNZIONE.
+    #: **Il registro e le ricette non sono la stessa cosa.** Il registro ha
+    #: voci che una ricetta non potrebbe mai portare, perche' vogliono un
+    #: valore che il JSON non sa scrivere -- `episodio` vuole `is_on`, che e'
+    #: una FUNZIONE.
     #:
     #: **Costava un difetto vero, il 14/09/2026.** Il catalogo mostrato al
     #: modello elencava ogni voce del registro; il modello ha scritto la sua
@@ -437,35 +430,19 @@ class Operation:
 #: **Il punto non e' l'elenco, e' cosa una ricetta sa PRODURRE.** Dentro una
 #: ricetta esistono due sole sorgenti: `@entita` da' la serie del periodo,
 #: `$passo` da' il risultato di un passo precedente. Tutto il resto --
-#: le letture grezze, un `Period` nudo, un elenco o una mappa di misure --
-#: nessuna ricetta lo sa scrivere, e un'operazione che lo pretende non e'
-#: offribile al modello: gliela si metterebbe nell'elenco perche' la usi, e il
-#: validatore la rifiuterebbe sempre.
+#: le letture grezze, un `Period` nudo -- nessuna ricetta lo sa scrivere, e
+#: un'operazione che lo pretende non e' offribile al modello: gliela si
+#: metterebbe nell'elenco perche' la usi, e il validatore la rifiuterebbe
+#: sempre.
 SHAPE_SERIES = "serie del periodo"
-#: **Le letture CUMULATE di un contatore**, non i cambi orari. Due cose diverse
-#: dette con una parola sola, separate alla fonte il 14/09/2026 dopo aver letto
-#: un numero sbagliato sulla casa vera: il resoconto del 26/08 portava
-#: `energia_consumata = -0,98 kWh`. Energia consumata negativa.
-#:
-#: `primo_ultimo_differenza` risponde a «quanto e' salito un contatore: ultima
-#: meno prima» e vuole le letture cumulate; dentro una ricetta `@entita`
-#: consegna le statistiche orarie di Home Assistant, dove ogni punto e' il
-#: CAMBIO di quell'ora. Fare `ultima - prima` su quelle calcola la variazione
-#: della variazione -- che non e' niente, e sull'ora giusta esce negativa.
-#:
-#: Dentro una ricetta nessuna sorgente produce questa forma, e fuori dalle
-#: ricette nessun modulo di `hiris/app` chiama piu' l'operazione (cercato il
-#: 02/10/2026): resta nel registro senza chiamanti.
-SHAPE_COUNTER = "letture cumulate di un contatore"
 SHAPE_RESULT = "misura"
 SHAPE_READINGS = "letture"
 SHAPE_PERIOD = "periodo"
-SHAPE_MEASURES = "elenco di misure"
-SHAPE_MEASURE_MAP = "mappa di misure"
 
 #: Le due forme che una ricetta sa consegnare. Un'operazione che ne vuole altre
-#: resta nel registro -- il codice dell'aggregazione la usa -- ma fuori dal
-#: catalogo.
+#: resta nel registro ma fuori dal catalogo: oggi sono `episodio` e
+#: `tempo_in_stato`, tenute per la presenza (D7, 06/10/2026) e senza ancora un
+#: chiamante in produzione.
 RECIPE_SHAPES = (SHAPE_SERIES, SHAPE_RESULT)
 
 
@@ -849,44 +826,6 @@ _register(Operation(
 ))
 
 
-def _first_last_difference(series, *, unit: str) -> Result:
-    """Quanto e' salito un contatore: `ultima - prima`.
-
-    **Estratta da `mind/facts._difference`**, ed e' il difetto fondativo di
-    questa fetta: con un solo punto nel periodo, la prima e l'ultima lettura
-    sono la STESSA riga, il conto tornava `0.0` -- «non e' cambiato niente»
-    travestito da dato -- e fu corretto in `None` il 26/08/2026. `None` era
-    meglio di zero; questo dice anche perche'.
-
-    **Prende una SERIE**, come tutte le altre operazioni che leggono nel tempo:
-    una forma sola in tutto il registro. La conversione dal grezzo -- dove un
-    contatore scrive stringhe, `"1234.5"` -- avviene al confine, cioe' dove
-    l'archivio si legge, non qui dentro.
-    """
-    known, coverage = _known_points(series)
-    if not known:
-        return NotComputable("nessuna lettura con un valore nel periodo", cause=COVERAGE_LOW)
-    if len(known) < 2:
-        return NotComputable(
-            "c'e' un solo punto nel periodo: la prima e l'ultima lettura sono la "
-            "stessa, e la differenza direbbe «non e' cambiato niente» senza saperlo",
-            cause=COVERAGE_LOW)
-    return Measurement(round(known[-1]["valore"] - known[0]["valore"], 2),
-                  unit=unit, coverage=coverage)
-
-
-_register(Operation(
-    name="primo_ultimo_differenza",
-    inputs=("la serie di un contatore nel periodo", "l'unita' del contatore"),
-    returns="di quanto e' salito fra la prima e l'ultima",
-    refuses_when=("l'entita' non ha statistiche in Home Assistant",
-                   "non c'e' nessuna lettura con un valore", "ce n'e' una sola"),
-    takes=(SHAPE_COUNTER,),
-    in_recipes=True,
-    run=_first_last_difference,
-))
-
-
 def _episode(readings, *, is_on, period_end: float) -> Result:
     """Le finestre in cui un soggetto era «acceso»: **un `Period`**.
 
@@ -939,8 +878,8 @@ _register(Operation(
     returns="le finestre in cui era acceso, come un periodo",
     refuses_when=("non si e' mai acceso nel periodo",),
     # `is_on` e' una FUNZIONE: nessun JSON la porta, quindi nessuna
-    # ricetta puo' nominare questa operazione. Resta nel registro perche'
-    # `mind/facts.aggregate_day` la usa dall'interno.
+    # ricetta puo' nominare questa operazione. Resta nel registro per la
+    # presenza (D7, 06/10/2026): non la chiama ancora nessuno.
     takes=(SHAPE_READINGS,),
     in_recipes=False,
     run=_episode,
@@ -965,113 +904,6 @@ _register(Operation(
     takes=(SHAPE_PERIOD,),
     in_recipes=True,
     run=_time_in_state,
-))
-
-
-def _how_many_times(period: Period) -> Result:
-    """Quante volte e' cominciato: **le finestre, non le letture**.
-
-    Contare le letture darebbe un numero enorme e falso -- gli otto termostati
-    di questa casa producevano 6.446 righe al giorno per otto cambi veri
-    (misurato il 10/09/2026).
-    """
-    return Measurement(len(period.windows), unit="volte", coverage=1.0)
-
-
-_register(Operation(
-    name="quante_volte",
-    inputs=("un periodo",),
-    returns="quante volte e' cominciato",
-    refuses_when=("il periodo non esiste",),
-    takes=(SHAPE_PERIOD,),
-    in_recipes=True,
-    run=_how_many_times,
-))
-
-
-def _when_it_happens(period: Period, *, zone: dt.tzinfo) -> Result:
-    """A che ore del giorno comincia, **sul fuso della casa**.
-
-    Serve alla domanda 1 del proprietario -- *«quando si accende il
-    riscaldamento...»* -- e alla 4bis, sulle automazioni
-    (`docs/design/2026-09-11-le-domande-del-proprietario.md`, dove la glossa
-    della tabella la chiama «a che ora capita di solito»). L'ora si legge sul
-    fuso della CASA e non su quello di chi guarda: un riscaldamento che parte
-    «alle 15:30» letto in UTC diventa «alle 13:30», e la risposta varrebbe per
-    un'altra casa.
-
-    **Il fuso arriva GIA' RISOLTO, come oggetto**, e non come la stringa
-    `"Europe/Rome"`: risolverlo qui vorrebbe dire importare
-    `home_space.historian`, cioe' far conoscere la casa a un modulo che deve
-    saper calcolare e basta. E' la stessa regola che `raggruppa_per` applica
-    alla chiave d'un gruppo -- il registro non sa cos'e' un piano, e non sa
-    nemmeno dove sta la casa. Chi chiama traduce, con `home_space_zone`.
-    """
-    hours = sorted({dt.datetime.fromtimestamp(start, zone).hour
-                  for start, _ in period.windows})
-    return Measurement(hours, unit="ora del giorno", coverage=1.0)
-
-
-_register(Operation(
-    name="quando_succede",
-    inputs=("un periodo", "il fuso della casa, gia' risolto in un oggetto"),
-    returns="le ore del giorno in cui comincia",
-    refuses_when=("il periodo non esiste",),
-    takes=(SHAPE_PERIOD,),
-    in_recipes=True,
-    run=_when_it_happens,
-))
-
-
-def _measurements_in_period(readings, period: Period, *, unit: str) -> Result:
-    """Cosa ha fatto una grandezza **mentre** il periodo durava: la serie
-    ristretta a quelle finestre.
-
-    Estratta dalle `measurements` dei comprimari di `mind/facts.aggregate_day`,
-    dove la regola era gia' scritta: una misura presa PRIMA che l'episodio
-    cominciasse e' il clima di prima, non l'effetto di quell'episodio. **Quel
-    dizionario non esiste piu'** -- i comprimari sono usciti con gli oggetti
-    (15/09/2026, spec 2026-09-16 §11): la regola e' sopravvissuta alla sua
-    origine e vive qui, sola (giro di correzioni 1, punto 2).
-
-    **Restituisce una SERIE, non «da 18 a 21».** La prima stesura tornava i due
-    estremi, e il cancello delle sette domande ha fatto emergere che cosi' non
-    si componeva con niente: `media_min_max` e `primo_ultimo_differenza`
-    restavano orfane perche' parlavano un'altra forma. Restituendo la serie
-    ristretta, la domanda 1 ci mette sopra `primo_ultimo_differenza` (di quanto
-    e' salita) e la 4 `media_min_max` (com'e' stata mentre c'era qualcuno) --
-    ed e' la stessa composizione, non due.
-    """
-    # `period` e' POSIZIONALE e non un parametro: un `Period` lo calcola un
-    # passo precedente, e i passi si consegnano come `inputs` -- posizionali.
-    # Come parametro non sarebbe scrivibile in nessuna ricetta, e l'operazione
-    # sarebbe stata un nome nel catalogo che nessuno poteva usare.
-    inside = [(t, v) for t, v in (readings or []) if period.contains(float(t))]
-    if not inside:
-        return NotComputable(
-            "nessuna misura dentro le finestre del periodo: la grandezza non e' "
-            "stata osservata mentre succedeva", cause=COVERAGE_LOW)
-    points = []
-    for instant, value in inside:
-        try:
-            points.append({"inizio": float(instant), "valore": float(value)})
-        except (TypeError, ValueError):
-            points.append({"inizio": float(instant), "valore": None})
-    if all(p["valore"] is None for p in points):
-        return NotComputable("le misure non si leggono come numeri", cause=RECIPE_BROKEN)
-    return Measurement(points, unit=unit,
-                  coverage=sum(p["valore"] is not None for p in points) / len(points))
-
-
-_register(Operation(
-    name="misure_durante",
-    inputs=("le letture di una grandezza", "un periodo", "l'unita'"),
-    returns="la serie ristretta alle finestre del periodo",
-    refuses_when=("non c'e' nessuna misura dentro le finestre",
-                "le misure non sono numeri"),
-    takes=(SHAPE_READINGS, SHAPE_PERIOD),
-    in_recipes=True,
-    run=_measurements_in_period,
 ))
 
 
@@ -1204,196 +1036,4 @@ _register(Operation(
     takes=(SHAPE_SERIES, SHAPE_SERIES),
     in_recipes=True,
     run=_correlation,
-))
-
-
-def _sum_entities(measurements) -> Result:
-    """Piu' entita' in un totale solo.
-
-    Nasce dalla domanda 5: *«dammi il totale delle ore irrigate»* -- tutte le
-    zone insieme.
-
-    **Chi non si e' potuto calcolare non sparisce: paga sulla copertura.** Una
-    somma che ignorasse in silenzio una zona senza dati direbbe un totale piu'
-    piccolo con la faccia di uno completo.
-
-    **La copertura e' una frazione sola, non due moltiplicate.** La prima
-    stesura faceva `min(copertura) * quota di entita' calcolabili`: chi leggeva
-    0,6 non poteva sapere se fosse 0,9 di tempo su due terzi delle zone o 0,6
-    di tempo su tutte -- due cose diverse dette con un numero solo, che e'
-    esattamente il difetto che questo progetto insegue. Adesso ogni entita'
-    porta la SUA copertura e chi manca porta zero: la somma di quelle, divisa
-    per quante erano, e' *«quanta parte di cio' che serviva si e' avuta»* --
-    la definizione che la spec da' alla parola (§6), una sola.
-    """
-    all_given = list(measurements or [])
-    if not all_given:
-        return NotComputable("nessuna entita' da sommare", cause=RECIPE_BROKEN)
-    computables = [m for m in all_given if m.computable]
-    if not computables:
-        return NotComputable(
-            "nessuna delle entita' e' calcolabile: il totale sarebbe uno zero "
-            "che non significa zero", cause=next(m.cause for m in all_given if not m.computable))
-    unit = {m.unit for m in computables}
-    if len(unit) > 1:
-        return NotComputable(
-            f"unita' diverse fra le entita' ({', '.join(sorted(unit))}): "
-            "sommarle produrrebbe un numero senza significato", cause=RECIPE_BROKEN)
-    return Measurement(round(sum(m.value for m in computables), 2),
-                  unit=computables[0].unit,
-                  coverage=sum(m.coverage for m in computables) / len(all_given))
-
-
-_register(Operation(
-    name="somma_entita",
-    inputs=("le misure di piu' entita', della stessa unita'",),
-    returns="il loro totale, con la copertura che paga chi manca",
-    refuses_when=("non c'e' nessuna entita'", "nessuna e' calcolabile",
-                "le unita' sono diverse"),
-    takes=(SHAPE_MEASURES,),
-    in_recipes=True,
-    run=_sum_entities,
-))
-
-
-def _average_entities(measurements) -> Result:
-    """La media fra piu' entita', non la loro somma.
-
-    Nasce dalla domanda 6 -- *«dammi il livello di CO2 di tutto il piano
-    terra»* -- e nasce da un difetto trovato in revisione il 12/09/2026:
-    `raggruppa_per` riduceva ogni gruppo con `somma_entita`, e il piano terra
-    rispondeva **900 ppm** sommando 400 e 500. La somma di due concentrazioni
-    non e' una concentrazione: e' un numero senza significato con un'unita'
-    accanto, cioe' la prima fondamenta rotta dentro l'operazione che doveva
-    difenderla.
-
-    Stesse regole di `somma_entita`: le unita' devono coincidere, chi non e'
-    calcolabile paga sulla copertura invece di sparire.
-    """
-    all_given = list(measurements or [])
-    if not all_given:
-        return NotComputable("nessuna entita' di cui fare la media", cause=RECIPE_BROKEN)
-    computables = [m for m in all_given if m.computable]
-    if not computables:
-        return NotComputable(
-            "nessuna delle entita' e' calcolabile: la media sarebbe uno zero "
-            "che non significa zero", cause=next(m.cause for m in all_given if not m.computable))
-    unit = {m.unit for m in computables}
-    if len(unit) > 1:
-        return NotComputable(
-            f"unita' diverse fra le entita' ({', '.join(sorted(unit))}): "
-            "la loro media non misurerebbe niente", cause=RECIPE_BROKEN)
-    return Measurement(round(sum(m.value for m in computables) / len(computables), 2),
-                  unit=computables[0].unit,
-                  coverage=sum(m.coverage for m in computables) / len(all_given))
-
-
-_register(Operation(
-    name="media_entita",
-    inputs=("le misure di piu' entita', della stessa unita'",),
-    returns="la loro media, con la copertura che paga chi manca",
-    refuses_when=("non c'e' nessuna entita'", "nessuna e' calcolabile",
-                "le unita' sono diverse"),
-    takes=(SHAPE_MEASURES,),
-    in_recipes=True,
-    run=_average_entities,
-))
-
-
-def _group_by(measurements: dict, *, key, reduce: str) -> Result:
-    """Le entita' messe insieme per una chiave -- un'area, un piano, un tipo.
-
-    Nasce dalla domanda 6: *«dammi il livello di CO2 di tutto il piano
-    terra»*. «Tutto il piano terra» non e' un elenco di entita': e' un ramo
-    dell'anagrafe, e **la chiave arriva da fuori** -- questo modulo non sa
-    cos'e' un piano e non deve impararlo, o il registro comincerebbe a
-    conoscere la casa.
-
-    **Chi non ha chiave resta fuori, e non finisce in un gruppo «altro»**: un
-    gruppo inventato comparirebbe in un totale che nessuno ha chiesto. Quanti
-    siano rimasti fuori lo dice la copertura.
-
-    **Come si riduce un gruppo lo dice chi chiama, e non c'e' un valore per
-    difetto.** La prima stesura riduceva sempre con `somma_entita`, e il piano
-    terra rispondeva 900 ppm sommando due concentrazioni (trovato in revisione
-    il 12/09/2026). Un difetto del genere non si cura scegliendo meglio il
-    valore per difetto: si cura togliendolo, perche' sommare e mediare sono
-    due domande diverse e nessuna delle due e' «quella normale».
-    """
-    entities = dict(measurements or {})
-    groups: dict[str, list] = {}
-    keyless = 0
-    for name, measurement in entities.items():
-        k = key(name)
-        if k is None:
-            keyless += 1
-            continue
-        groups.setdefault(k, []).append(measurement)
-    if not groups:
-        return NotComputable(
-            "nessuna entita' ha una chiave per cui raggrupparla",
-            cause=RECIPE_BROKEN)
-    riduttore = _REGISTRY.get(reduce)
-    if riduttore is None:
-        return NotComputable(
-            f"«{reduce}» non e' un'operazione del registro: non c'e' modo di "
-            "ridurre i gruppi", cause=RECIPE_BROKEN)
-    reduced = {k: riduttore.run(v) for k, v in groups.items()}
-    coverage = 1.0 - keyless / len(entities) if entities else 1.0
-    return Measurement(reduced, unit="gruppi", coverage=coverage)
-
-
-_register(Operation(
-    name="raggruppa_per",
-    inputs=("le misure per entita'", "una funzione che dice a che gruppo appartiene",
-            "il nome dell'operazione che riduce ogni gruppo"),
-    returns=("un risultato per gruppo -- ridotto come ha chiesto chi chiama -- "
-             "e la copertura paga chi non aveva chiave"),
-    refuses_when=("nessuna entita' ha una chiave",
-                  "l'operazione che dovrebbe ridurre i gruppi non esiste"),
-    takes=(SHAPE_MEASURE_MAP,),
-    in_recipes=True,
-    run=_group_by,
-))
-
-
-def _within(period: Period, limit: Period) -> Result:
-    """Il pezzo di un periodo che cade **dentro** un altro.
-
-    **Nata dal cancello, e contro la mia previsione.** Il documento delle
-    domande (11/09/2026) diceva che restringere un calcolo «ai momenti in cui
-    qualcosa era vero» sarebbe stata composizione e non un mattone in piu', se
-    il periodo fosse un elenco di finestre. E' vero per una MISURA --
-    `misure_durante` prende le letture e un periodo -- ma non per un PERIODO:
-    *«quanto ha scaldato mentre qualcuno era in casa»* incrocia due periodi, e
-    quella e' una forma che nessun'altra operazione aveva.
-
-    L'ha trovata la prova delle sette domande, che e' esattamente il mestiere
-    per cui quel cancello esiste: la previsione era scritta, ed era sbagliata.
-
-    Restituisce un periodo, quindi si compone: `tempo_in_stato` lo misura,
-    `quante_volte` lo conta, `quando_succede` lo colloca.
-    """
-    windows = []
-    for start, end in period.windows:
-        for other_start, other_end in limit.windows:
-            overlap_start = max(start, other_start)
-            overlap_end = min(end, other_end)
-            if overlap_end > overlap_start:
-                windows.append((overlap_start, overlap_end))
-    if not windows:
-        return NotComputable(
-            "i due periodi non si sovrappongono mai: non c'e' nessun pezzo in comune",
-            cause=NO_ANSWER)
-    return Measurement(Period(windows), unit="periodo", coverage=1.0)
-
-
-_register(Operation(
-    name="dentro",
-    inputs=("un periodo", "il periodo a cui restringerlo"),
-    returns="il pezzo del primo che cade dentro il secondo, come un periodo",
-    refuses_when=("i due periodi non si sovrappongono mai",),
-    takes=(SHAPE_PERIOD, SHAPE_PERIOD),
-    in_recipes=True,
-    run=_within,
 ))
