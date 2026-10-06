@@ -289,6 +289,28 @@ def test_le_due_porte_si_leggono_da_CLAUDE_md():
         "cambiate, o il documento non le nomina piu' per percorso")
 
 
+def test_una_funzione_AMMESSA_ha_un_nome_solo_nel_prodotto():
+    """Il grafo si ferma alle funzioni ammesse **per nome** (Task 4.3). Una
+    seconda funzione con lo stesso nome, nata altrove, verrebbe saltata anche
+    lei: l'ammissione coprirebbe un corpo che nessuno ha guardato. Quindi ogni
+    nome di `AMMESSI` che e' una funzione del prodotto e' definito UNA volta.
+
+    Mutazione ESEGUITA (06/10/2026): una `notify_admins` di primo livello in
+    `action/rhythm.py` -- rossa.
+    """
+    funzioni = _funzioni(sorted(_APP.rglob("*.py")))
+    ammesse = {nome: funzioni[nome] for nome in AMMESSI if nome in funzioni}
+
+    assert "notify_admins" in ammesse, (
+        "`notify_admins` non e' piu' una funzione del prodotto: l'ammissione "
+        "e' orfana, toglila da `AMMESSI`")
+    for nome, definizioni in ammesse.items():
+        dove = sorted(modulo for modulo, _, _ in definizioni)
+        assert len(dove) == 1, (
+            f"`{nome}` e' ammessa per nome e la definiscono {dove}: il cancello "
+            "salterebbe tutte e due. Rinomina la nuova, o ammettila a parte")
+
+
 def test_l_attuatore_non_tocca_MAI_home_assistant():
     """**Il confine del 25/08/2026**: «l'attuatore non guadagna un canale di
     scrittura suo». Finche' nessuno lo custodisce e' una promessa, e le promesse
