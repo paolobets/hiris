@@ -28,10 +28,11 @@ righe del **vocabolario dei tipi** (`home_space/type_vocabulary.py`). Spec:
 giudizi** (`home_space/type_judgments.TypeJudgments`, spec
 `docs/design/2026-09-16-il-giudizio-dei-tipi.md` §5), di cui il vocabolario e'
 il seme. Questo modulo resta il LETTORE: `genre_for` chiede il genere del
-soggetto, `_is_on` chiede se uno stato e' un riposo PER QUEL soggetto, e il
-salto in cima a `build_episodes` toglie gli stati «non lo so» e le forme
-dell'assenza di stato (`type_vocabulary.unknown_states()`,
-`type_vocabulary.ABSENT_STATE_FORMS`). L'istantanea arriva come parametro
+soggetto, `_is_on` chiede se uno stato e' un riposo PER QUEL soggetto, e gli
+stati «non lo so» e le forme dell'assenza di stato
+(`type_vocabulary.unknown_states()`, `type_vocabulary.ABSENT_STATE_FORMS`)
+non sono il riposo di nessuno: dal 06/10/2026 sono le VOCI d'assenza della
+fonte (`_absences`, D5 «raccolte»). L'istantanea arriva come parametro
 `judgments=`: in produzione e' `app["type_judgments"]`, il predefinito
 `REPO_JUDGMENTS` e' il solo seme.
 
@@ -84,7 +85,20 @@ GENRES = CHRONICLE_GENRES
 #: ne fa un `guasto`. I singoli prefissi sono riletti a mano anche in
 #: `api/handlers_mind.py::_with_integration` e in
 #: `mind/watcher.py::rebuild_conditions`.
+#:
 NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
+
+#: Il prefisso di un'istanza d'integrazione, chiesto alla tupla qui sopra e
+#: non riscritto: da qui lo scrive anche la cronaca. La voce di un'istanza le
+#: cui entita' sono assenti nello stesso istante (Task 1.4 degli attori,
+#: Passo 3) ha per soggetto la stessa istanza con lo stesso prefisso con cui l'osservatore
+#: scrive un'istanza in errore -- la stessa cosa vista da due porte ha la
+#: stessa forma (fondamenta 3). La tupla resta letterale perche' il suo
+#: gemello in JavaScript (`watcher-shared.js`, C-10 del registro) resti
+#: visibile al cancello dei doppioni; la prova dell'istanza
+#: (`test_un_integrazione_che_sparisce_tutta_insieme_e_UNA_voce`) arrossisce
+#: se l'ordine cambia.
+INSTANCE_SUBJECT_PREFIX = NOT_ENTITY_PREFIXES[1]
 
 #: **La regola con cui questo modulo costruisce la cronaca**, accanto
 #: all'impronta dei giudizi in `giudizio` (`chronicle_mark`). L'impronta dice
@@ -98,8 +112,13 @@ NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
 #: - 2: una fonte che Home Assistant non nomina piu' chiude il suo episodio
 #:   (Task 1.4 degli attori, Passo 1);
 #: - 3: l'episodio ereditato comincia dove comincia la sequenza, dentro la
-#:   finestra del grezzo e solo per chi e' nello scope (Passo 2).
-CHRONICLE_RULE = 3
+#:   finestra del grezzo e solo per chi e' nello scope (Passo 2) -- uscita
+#:   con la 3.76.0;
+#: - 4: le assenze sono voci, raccolte per istanza quando entita' della
+#:   stessa istanza mancano nello stesso istante, e interrompono l'episodio in corso (Passo 3, D5
+#:   «raccolte», 06/10/2026). Non e' la 3 ritoccata: la 3 e' gia' nelle
+#:   cronache scritte dalla 3.76.0, e il recupero deve poterle riconoscere.
+CHRONICLE_RULE = 4
 
 # **Il riposo e' del SOGGETTO, non l'unione di tutti i tipi** (17/09/2026, spec
 # 2026-09-16 §5). Fino ad allora `_is_on` riceveva lo stato nudo e lo
@@ -168,22 +187,30 @@ _STATE_GENRES = tuple(g for g in CHRONICLE_GENRES if g != SYSTEM_GENRE)
 
 
 def _replay_open(transitions, *, judgments: TypeJudgments,
-                 ignored: frozenset[str] | set[str]) -> dict[str, tuple[str, dict]]:
-    """Cio' che e' in corso alla fine di queste transizioni, con la riga che
-    l'ha aperto: `{soggetto: (genere, riga)}`.
+                 absent: frozenset[str] | set[str],
+                 ) -> tuple[dict[str, tuple[str, dict]], dict[str, dict]]:
+    """Cio' che e' in corso alla fine di queste transizioni: gli episodi
+    `{soggetto: (genere, riga che l'ha aperto)}` e le assenze `{soggetto:
+    riga che l'ha aperta}`.
 
-    **La regola e' quella del ciclo del giorno** (`_episodes`, il ramo dei
-    generi di stato): uno stato non a riposo apre se niente e' aperto, un
-    riposo chiude, e uno stato «non lo so» (`ignored`) non apre e non chiude
-    niente. Cosi' l'episodio ereditato a mezzanotte e' esattamente quello
-    che il ciclo di ieri ha lasciato aperto: stesso inizio, stesso stato.
+    **La regola e' quella del ciclo del giorno** (`_episodes`): uno stato non
+    a riposo apre se niente e' aperto, un riposo chiude; uno stato assente
+    (`absent`) INTERROMPE l'episodio in corso e apre l'assenza, il primo stato
+    vero dopo la chiude (D5 «raccolte», Passo 3). Cosi' cio' che si eredita a
+    mezzanotte e' esattamente cio' che il ciclo di ieri ha lasciato aperto:
+    stesso inizio, stesso stato -- e un episodio interrotto ieri e' finito
+    ieri, non continua oggi.
     """
     opened: dict[str, tuple[str, dict]] = {}
+    missing: dict[str, dict] = {}
     for r in transitions:
         subject = r["soggetto"]
         state = str(r["a"] or "").strip().lower()
-        if state in ignored:
+        if state in absent:
+            opened.pop(subject, None)
+            missing.setdefault(subject, r)
             continue
+        missing.pop(subject, None)
         genre = genre_for(subject, r.get("device_class"), judgments=judgments)
         if genre not in _STATE_GENRES:
             continue
@@ -191,7 +218,7 @@ def _replay_open(transitions, *, judgments: TypeJudgments,
             opened.setdefault(subject, (genre, r))
         else:
             opened.pop(subject, None)
-    return opened
+    return opened, missing
 
 
 def _opening_attributes(row: dict):
@@ -235,6 +262,13 @@ def build_episodes(*, store, day: str, timezone: str | None,
     `presenza` e' aperto quando lo stato non e' a riposo per il suo soggetto
     (`_is_on`); un `guasto` apre su qualunque condizione e chiude su `chiuso`.
 
+    **Un'entita' che non risponde e' una voce anche lei** (Task 1.4 degli
+    attori, Passo 3; D5 «raccolte», 06/10/2026): `unavailable`, `unknown`,
+    `none` o il vuoto aprono un'assenza col genere delle condizioni di
+    sistema, raccolta per istanza quando entita' della stessa istanza
+    mancano nello stesso istante (`_absences`); l'episodio in corso si chiude con `interrotto`, e al
+    ritorno ne comincia uno nuovo.
+
     **Il corpo porta `nome`, quando il grezzo del giorno lo portava**
     (fetta «il nome», 07/09/2026): il nome amichevole SALVATO al momento
     del cambio (`store.py::_migration_5`), non risolto ora dall'anagrafe --
@@ -273,32 +307,35 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # contatore e' un numero, e i numeri stanno fra le misure, dove il
     # bilancio arriva per la sua ricetta.
 
-    # `unavailable`/`unknown` si saltano QUI, una volta sola, prima di ogni
-    # ramo (`type_vocabulary.unknown_states()`, correzione dei punti 2 e 3 del
-    # secondo giro di review): un riavvio di Home Assistant li fa attraversare
-    # a OGNI entita'. Filtrarli a valle -- come prima, con gli stati di riposo
-    # per funzionamento/sicurezza e un `if` locale per presenza -- li faceva
-    # significare due cose diverse nello stesso modulo: riposo in un ramo
-    # (chiude un episodio in corso), salto nell'altro. La riga che si perde qui
-    # e' un buco nell'informazione, non un fatto sulla casa: non deve ne'
-    # aprire ne' chiudere niente, in NESSUN ramo. Lo stesso insieme salta lo
-    # stato ereditato da prima di mezzanotte (`_replay_open`, sotto).
+    # **Le assenze si SEPARANO, non si buttano** (Task 1.4 degli attori,
+    # Passo 3; D5 «raccolte», decisione del proprietario del 06/10/2026).
+    # `unavailable`/`unknown` (`type_vocabulary.unknown_states()`) e, dal
+    # 17/09/2026, `none` e il vuoto (`ABSENT_STATE_FORMS`) sono lo stesso
+    # fatto: la fonte non risponde. Non sono il riposo di nessuno -- in
+    # NESSUN ramo uno di loro apre o chiude un episodio come se fosse uno
+    # stato della casa -- ma non sono nemmeno niente: dal 06/10/2026 sono una
+    # VOCE della cronaca, col genere delle condizioni di sistema
+    # (`SYSTEM_GENRE`), e interrompono l'episodio in corso.
     #
-    # Una riga saltata non porta nemmeno il suo nome ne' i suoi attributi:
-    # il filtro la toglie prima della raccolta dei nomi e dei cambi di
-    # attributo, qui sotto.
+    # **Fino alla regola 3 si saltavano qui, prima di ogni ramo**, e il
+    # salto aveva una ragione vera: un riavvio li fa attraversare a ogni
+    # entita', e filtrarli a valle li faceva significare due cose diverse
+    # (riposo in un ramo, salto nell'altro). Ma il salto rendeva invisibile
+    # il buco: misurato il 05/10/2026 sulla casa, una luce rimasta
+    # `unavailable` per tre giorni risultava «accesa» per tre giorni. La
+    # ragione resta -- un'assenza non e' mai un riposo -- e la forma cambia:
+    # l'assenza e' un fatto della FONTE, non della casa, e ha la sua voce.
     #
-    # **Dal 17/09/2026 si saltano anche `none` e il vuoto**
-    # (`type_vocabulary.ABSENT_STATE_FORMS`, spec 2026-09-16 §5): sono un dato
-    # che manca, come `unavailable`, non il riposo di nessuno. **Cambio di
-    # comportamento dichiarato, misurato** (spec §1, misura 8): in una
-    # settimana, dal 09/09 al 16/09/2026, 200 righe `none` da 6 apparati di
-    # rete, quasi tutte intorno alle 23. Su un `device_tracker` `none` apriva
-    # un'assenza (non era `home`); su uno `switch` chiudeva l'episodio (era
-    # nell'unione dei riposi). Ora non apre e non chiude niente.
-    ignored = unknown_states() | ABSENT_STATE_FORMS.value
-    rows = [r for r in rows
-             if str(r["a"] or "").strip().lower() not in ignored]
+    # **Le righe ci sono gia'**: `watcher.watch_reading` scrive ogni cambio
+    # di stato di un soggetto guardato, `unavailable` compreso (tranne i
+    # `sensor` con statistiche, che non scrive mai). Mancano quelle che
+    # l'add-on non ha visto -- un riavvio di Home Assistant lo scollega -- e
+    # quelle non si inventano qui (vedi la fine di `_episodes`).
+    absent = unknown_states() | ABSENT_STATE_FORMS.value
+
+    def is_absence(row: dict) -> bool:
+        return (str(row["a"] or "").strip().lower() in absent
+                and not row["soggetto"].startswith(NOT_ENTITY_PREFIXES))
 
     # Il nome amichevole del soggetto, preso dal GREZZO di questo giorno --
     # mai dall'anagrafe di oggi (`store.py::_migration_5`: risolverlo dopo
@@ -325,8 +362,12 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # vera: l'analista parlava al proprietario in esadecimale -- «513a6661 ·
     # prelievo» -- e sul resoconto del giorno **zero misure su 73** portavano
     # un nome.
+    #
+    # **Prima le righe vere, poi quelle d'assenza** (Passo 3): un'assenza
+    # porta il nome che Home Assistant le ha scritto, ma non deve scavalcare
+    # quello di un episodio dello stesso giorno, che e' il nome di sempre.
     entity_names: dict[str, str] = {}
-    for r in rows:
+    for r in sorted(rows, key=is_absence):
         name = r.get("friendly_name")
         if name and r["soggetto"] not in entity_names:
             entity_names[r["soggetto"]] = name
@@ -371,20 +412,34 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # resterebbe aperta per sempre -- misurato: 4 voci fra il 30/09 e il
     # 04/10 da un dispositivo fuori dallo scope, con una riga dell'11/09. Le
     # sue righe DENTRO il giorno restano storia del giorno.
+    #
+    # **Anche un'assenza si eredita** (Passo 3): chi a mezzanotte non
+    # risponde e' assente anche oggi, dall'inizio vero. Si rigioca chi ha un
+    # genere di stato e chi ha per ultima riga un'assenza -- gli altri non
+    # hanno niente in corso.
     window_start = from_ts - READING_RETENTION_S
     before = store.last_before(from_ts, since_ts=window_start)
     subjects_before = {r["soggetto"] for r in before}
     candidates = [r["soggetto"] for r in before
-                  if genre_for(r["soggetto"], r.get("device_class"),
-                               judgments=judgments) in _STATE_GENRES
+                  if (genre_for(r["soggetto"], r.get("device_class"),
+                                judgments=judgments) in _STATE_GENRES or is_absence(r))
                   and store.is_watched(r["soggetto"])]
-    replayed = _replay_open(store.transitions(candidates, from_ts=window_start,
-                                              to_ts=from_ts),
-                            judgments=judgments, ignored=ignored)
+    replayed, missing_before = _replay_open(
+        store.transitions(candidates, from_ts=window_start, to_ts=from_ts),
+        judgments=judgments, absent=absent)
     for subject, (genre, r) in replayed.items():
         open_episodes[subject] = {
             "genere": genre, "inizio": r["quando_ts"], "stato": r["a"],
             "classe": r.get("device_class")}
+        if r.get("friendly_name") and subject not in entity_names:
+            entity_names[subject] = r["friendly_name"]
+    # Le assenze in corso: `{soggetto: {inizio, stato, classe}}`. Quelle
+    # finite: `stretches`, i tratti che diventano voci in fondo (`_absences`).
+    missing: dict[str, dict] = {}
+    stretches: list[dict] = []
+    for subject, r in missing_before.items():
+        missing[subject] = {"inizio": r["quando_ts"], "stato": r["a"],
+                            "classe": r.get("device_class")}
         if r.get("friendly_name") and subject not in entity_names:
             entity_names[subject] = r["friendly_name"]
     # Gli episodi chiusi (o ancora aperti a fine giornata), nell'ordine in cui
@@ -488,6 +543,10 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
         # per ogni episodio finito normalmente.
         if o.get("chiusa_dalla_fonte"):
             base_body["chiusa_dalla_fonte"] = o["chiusa_dalla_fonte"]
+        # Finito perche' la fonte ha smesso di rispondere, non per uno stato
+        # visto (Passo 3): l'assenza che l'ha interrotto e' la voce dopo.
+        if o.get("interrotto"):
+            base_body["interrotto"] = True
         episodes.append({"genere": o["genere"], "protagonista": subject,
                         "inizio": o["inizio"], "fine": when,
                         "corpo_base": base_body})
@@ -510,6 +569,21 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
                 attribute_changes.setdefault(subject, []).append(
                     (r["quando_ts"], values))
             continue
+        # **L'assenza, prima di ogni giudizio di genere** (Passo 3): vale per
+        # ogni entita' -- anche un sensore, che episodi non ne apre -- e
+        # interrompe cio' che e' in corso. Il primo stato vero dopo la chiude,
+        # e poi prosegue come ogni riga: se e' lo stesso stato di prima, apre
+        # un episodio NUOVO, perche' quello di prima e' finito col buco.
+        if is_absence(r):
+            if subject in open_episodes:
+                open_episodes[subject]["interrotto"] = True
+                close(subject, r["quando_ts"])
+            missing.setdefault(subject, {"inizio": r["quando_ts"], "stato": r["a"],
+                                         "classe": r.get("device_class")})
+            continue
+        if subject in missing:
+            stretches.append({**missing.pop(subject), "soggetto": subject,
+                              "fine": r["quando_ts"]})
         genre = genre_for(subject, r.get("device_class"), judgments=judgments)
         if genre is None:
             continue
@@ -611,9 +685,13 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # Senza la casa (`house=None`: le prove, o un archivio dell'anagrafe non
     # collegato) niente si chiude: non si dice finita una fonte che non si e'
     # potuta guardare.
+    #
+    # **Vale anche per un'assenza in corso** (Passo 3): un'entita' andata
+    # `unavailable` e poi spenta dal proprietario non resta «assente, in
+    # corso» per i ventidue giorni del grezzo. Stessa regola, stesso quando.
     if house is not None:
         ended = {}
-        for subject in open_episodes:
+        for subject in (*open_episodes, *missing):
             source = house.source(subject)
             if source is not None and source["stato"] in ENDED_SOURCE_STATES:
                 ended[subject] = source
@@ -622,18 +700,49 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
             when = last_seen.get(subject)
             if when is None or when >= to_ts:
                 continue
+            mark = {"stato": source["stato"], "causa": source["causa"],
+                    "spenta_da": source["spenta_da"]}
+            if subject in missing:
+                stretch = missing.pop(subject)
+                if when >= from_ts:
+                    stretches.append({**stretch, "soggetto": subject, "fine": when,
+                                      "chiusa_dalla_fonte": mark})
+                continue
             if when < from_ts:
                 open_episodes.pop(subject)
                 continue
-            open_episodes[subject]["chiusa_dalla_fonte"] = {
-                "stato": source["stato"], "causa": source["causa"],
-                "spenta_da": source["spenta_da"]}
+            open_episodes[subject]["chiusa_dalla_fonte"] = mark
             close(subject, when)
 
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».
     for subject in list(open_episodes):
         close(subject, None)
+    for subject, stretch in missing.items():
+        stretches.append({**stretch, "soggetto": subject, "fine": None})
+
+    # **Le assenze diventano voci, raccolte come le dichiara Home Assistant**
+    # (`_absences`), e prendono il loro posto nell'ordine della cronaca: le
+    # chiuse per fine, poi le aperte per inizio (`_chronicle_position`).
+    if stretches:
+        for entry in _absences(stretches, house=house, names=entity_names):
+            key = _episode_position(entry)
+            index = next((i for i, e in enumerate(episodes)
+                          if _episode_position(e) > key), len(episodes))
+            episodes.insert(index, entry)
+    # **Il riavvio di Home Assistant non ha ancora una voce sua**, e non per
+    # dimenticanza. D5 la vuole («tutte le fonti assenti insieme -> una voce
+    # di sistema»), ma da riconoscere chiedendolo a una fonte che lo dichiari
+    # -- le condizioni di sistema dell'osservatore, o la fonte della Tappa 3
+    # -- e nessuna delle due oggi lo dice: `watch_system` non conosce il
+    # riavvio, `House.source` e' lo stato di adesso. E il grezzo non ne porta
+    # la traccia: durante il riavvio l'add-on e' scollegato, e le righe di
+    # andata a `unavailable` non arrivano mai (misurato sul 29/09/2026).
+    # Riconoscerlo da quante entita' cadono nello stesso minuto sarebbe una
+    # soglia nostra. La fonte che manca e' il riallineamento dell'osservatore
+    # alla riconnessione: lo stato che Home Assistant dichiara, col suo
+    # `last_changed`, contro l'ultima riga del grezzo -- e la finestra in cui
+    # l'add-on e' rimasto scollegato.
     # **L'energia non e' un EPISODIO** (15/09/2026, con gli oggetti).
     # Qui si costruiva un episodio per ogni contatore -- valore iniziale,
     # finale, differenza -- e il suo unico lettore era l'oggetto. Nella
@@ -658,6 +767,110 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # E ogni giorno che aveva oggetti (26/08 -> 14/09) aveva gia' il suo
     # resoconto, quindi nemmeno la storia si e' persa.
     return episodes, subjects_before
+
+
+def _episode_position(episode: dict) -> tuple:
+    """`_chronicle_position` di un episodio non ancora diventato voce: la
+    stessa regola d'ordine, una sola."""
+    return _chronicle_position({"fine_ts": episode["fine"], "quando_ts": episode["inizio"]})
+
+
+def _absences(stretches: list[dict], *, house: House | None,
+              names: dict[str, str]) -> list[dict]:
+    """I tratti d'assenza di un giorno, come voci della cronaca (Task 1.4 degli
+    attori, Passo 3; D5 «raccolte»), nella forma di `build_episodes`.
+
+    **Raccolti come li dichiara Home Assistant**: l'istanza dell'integrazione
+    di ogni entita' (`config_entry_id` nel registro, chiesta a `House.source`,
+    la fonte della Tappa 3). Entita' della stessa istanza assenti nello STESSO
+    istante -- tratti che si sovrappongono, anche a catena -- sono una voce
+    sola, per l'istanza: soggetto `integrazione:` piu' l'id, come per
+    un'istanza in errore, `dominio` per il nome, e `assenti`, ogni entita' col
+    suo intervallo (`chi`, `quando_ts`, `fine_ts`), perche' la voce si legga da
+    sola anche quando le entita' non sono tornate insieme. Un tratto che non
+    ne tocca nessun altro della sua istanza e' la voce della sua entita':
+    `stato` e' cio' che Home Assistant ha scritto (`unavailable`, `unknown`,
+    `none`, il vuoto), con nome e classe come per un episodio.
+
+    **«Insieme», non «tutte»: misurato prima di scegliere.** La decisione del
+    proprietario dice «un'integrazione che sparisce tutta insieme». Sulla casa
+    (rigioco del 30/09-04/10, 06/10/2026) i buchi brevi dell'irrigazione sono
+    16 entita' su 20 guardate della stessa istanza: in ognuno dei quattro
+    dispositivi un sensore di durata resta vivo. Con «tutte» nessun buco
+    diventava la voce dell'istanza, e un giorno passava da 10 a 91 voci.
+    Nessun numero nostro decide quando un gruppo e' un'integrazione: basta che
+    due sue entita' manchino nello stesso istante.
+
+    Il genere e' quello delle condizioni di sistema (`SYSTEM_GENRE`): la voce
+    parla della FONTE, non della casa, e ha la loro forma -- nasce, dura,
+    finisce o resta aperta. Senza la casa (`house=None`) non si raccoglie
+    niente: ogni tratto e' la voce della sua entita'.
+
+    **Il limite, dichiarato**: si raccoglie fra i tratti di QUESTO giorno. Un
+    tratto finito prima di mezzanotte non si eredita, quindi due entita'
+    sparite insieme ieri sera, una tornata prima di mezzanotte e l'altra dopo,
+    sono la voce dell'istanza ieri e la voce dell'entita' rimasta oggi.
+    """
+    instance_of: dict[str, dict | None] = {}
+    if house is not None:
+        for subject in {s["soggetto"] for s in stretches}:
+            source = house.source(subject)
+            instance_of[subject] = (source or {}).get("istanza")
+
+    by_instance: dict[str, list[dict]] = {}
+    alone: list[dict] = []
+    for stretch in stretches:
+        instance = instance_of.get(stretch["soggetto"])
+        if instance:
+            by_instance.setdefault(instance["id"], []).append(stretch)
+        else:
+            alone.append(stretch)
+
+    entries: list[dict] = []
+    for instance_id, mine in by_instance.items():
+        # Le componenti di tratti che si sovrappongono: in ordine d'inizio, un
+        # tratto entra nella componente se comincia prima che lei finisca.
+        mine.sort(key=lambda s: (s["inizio"], s["soggetto"]))
+        components: list[list[dict]] = []
+        reach = None
+        for stretch in mine:
+            if components and (reach is None or stretch["inizio"] < reach):
+                components[-1].append(stretch)
+            else:
+                components.append([stretch])
+                reach = stretch["fine"]
+                continue
+            reach = (None if reach is None or stretch["fine"] is None
+                     else max(reach, stretch["fine"]))
+        for component in components:
+            if len(component) == 1:
+                alone.append(component[0])
+                continue
+            ends = [s["fine"] for s in component]
+            body = {"stato": component[0]["stato"],
+                    "assenti": [{"chi": s["soggetto"], "quando_ts": s["inizio"],
+                                 "fine_ts": s["fine"]} for s in component]}
+            domain = instance_of[component[0]["soggetto"]].get("dominio")
+            if domain:
+                body["dominio"] = domain
+            entries.append({"genere": SYSTEM_GENRE,
+                            "protagonista": INSTANCE_SUBJECT_PREFIX + instance_id,
+                            "inizio": component[0]["inizio"],
+                            "fine": None if None in ends else max(ends),
+                            "corpo_base": body})
+    for stretch in alone:
+        subject = stretch["soggetto"]
+        body = {"stato": stretch["stato"]}
+        if names.get(subject):
+            body["nome"] = names[subject]
+        if stretch.get("classe"):
+            body["classe"] = stretch["classe"]
+        if stretch.get("chiusa_dalla_fonte"):
+            body["chiusa_dalla_fonte"] = stretch["chiusa_dalla_fonte"]
+        entries.append({"genere": SYSTEM_GENRE, "protagonista": subject,
+                        "inizio": stretch["inizio"], "fine": stretch["fine"],
+                        "corpo_base": body})
+    return sorted(entries, key=lambda e: (_episode_position(e), e["protagonista"]))
 
 
 def aggregate_day(*, store, day: str, timezone: str | None,

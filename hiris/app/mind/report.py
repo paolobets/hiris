@@ -96,10 +96,15 @@ BACKFILL_EVERY_MINUTES = 5
 #: Home Assistant non nomina piu', con la sua causa (`facts.build_episodes`).
 #: Senza, la voce direbbe una fine normale.
 #:
+#: `interrotto` e `assenti` (06/10/2026, Task 1.4, Passo 3): un episodio
+#: finito perche' la fonte ha smesso di rispondere, e le entita' di
+#: un'istanza sparita tutta insieme. Senza, la prima voce direbbe una fine
+#: vista e la seconda non direbbe di chi era l'assenza.
+#:
 #: Tutto il resto -- il clima mentre durava, il contesto ricco -- **non entra**,
 #: e si va a prendere quando serve.
 _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts",
-           "chiusa_dalla_fonte")
+           "chiusa_dalla_fonte", "interrotto", "assenti")
 
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
@@ -605,8 +610,10 @@ def _front_page_mark(entry: dict, judgments) -> dict | None:
     domain = domain_of(subject)
     device_class = entry.get("classe")
     # **La condizione d'uso di `stato_da_sapere_subito`, custodita qui invece
-    # che data per scontata**: `mind/facts.py` non scrive mai una cronaca con
-    # `unavailable`/`unknown`, ma un tipo senza `lavoro` li leggerebbe come
+    # che data per scontata**: `mind/facts.py` non scrive mai l'EPISODIO di
+    # un'entita' con `unavailable`/`unknown` (dal 06/10/2026 un'assenza e' una
+    # voce col genere di sistema, e passa dal ramo sopra), ma un tipo senza
+    # `lavoro` li leggerebbe come
     # «non e' un riposo» e li farebbe entrare in primo piano. Una riga «il sensore
     # non risponde» in cima alla pagina, col vestito di un allarme.
     if str(state).strip().lower() in unknown_states():
