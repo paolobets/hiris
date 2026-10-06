@@ -2261,7 +2261,8 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
         if row is None:
             continue
         key = actuator.observation_key(row)
-        skipped = actuator.already_answered(row, decided)
+        buildable = bool(outcome.get("costruibile"))
+        skipped = actuator.already_answered(row, decided, buildable=buildable)
         if skipped is not None:
             # Una coda che cresce ogni giorno con la stessa riga e' il rumore
             # che questa fetta esiste per togliere; ma una potatura muta non
@@ -2269,7 +2270,7 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
             logger.info("attuatore: la proposta su %s non si scrive: %s",
                         key, skipped)
             continue
-        if outcome.get("costruibile"):
+        if buildable:
             if workshop is None:
                 logger.info("attuatore: officina non collegata, la proposta "
                             "costruibile di %s non si crea", row.get("soggetto"))
@@ -2282,8 +2283,18 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
                 logger.info("attuatore: l'officina ha rifiutato la proposta (%s)",
                             esito_officina["errore"])
                 continue
+            earlier = decided.get(key)
+            if earlier is not None and earlier["aperta"] and earlier["a_mano"]:
+                # D24-1: la stessa domanda adesso si puo' costruire, e la
+                # proposta da fare a mano non aspetta piu' nessuno.
+                store.close_proposal(
+                    earlier["id"], "superata",
+                    why="ora c'e' una proposta che HIRIS puo' costruire")
+                logger.info("attuatore: la proposta a mano su %s e' superata "
+                            "dalla costruibile %s", key, esito_officina.get("proposta_id"))
+            ident = esito_officina.get("proposta_id")
         else:
-            store.add_proposal(
+            ident = store.add_proposal(
                 text=str(outcome.get("trovato") or "").strip(),
                 perche=str(row.get("cosa") or "").strip(),
                 fingerprint=key, prova=actuator.evidence_of(row),
@@ -2293,7 +2304,7 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
                 # imporrebbe `alto`.
                 stakes=None, now_ts=now)
         decided[key] = {"prova": actuator.evidence_of(row), "aperta": True,
-                        "creata_ts": now}
+                        "creata_ts": now, "id": ident, "a_mano": not buildable}
 
 
 def _write_actuation(store, day: str, stamp: str | None, esito: dict,

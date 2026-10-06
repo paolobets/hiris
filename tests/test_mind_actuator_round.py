@@ -475,6 +475,41 @@ async def test_la_stessa_COSTRUIBILE_non_richiama_l_officina_a_ogni_giro(casa, t
 
 
 @pytest.mark.asyncio
+async def test_la_COSTRUIBILE_supera_la_proposta_a_mano_ancora_in_attesa(casa, tmp_path):
+    """D24-1, scelta del proprietario del 06/10/2026 (il caso del 01/10): la
+    stessa domanda era una proposta a mano in attesa, e torna costruibile. La
+    costruibile arriva all'officina, e quella a mano si chiude «superata».
+
+    Mutazione ESEGUITA (06/10/2026): tolta la chiusura -- rossa, la proposta
+    a mano resta in attesa accanto alla costruibile."""
+    from hiris.app.action.construction.revisions import ConstructionStore
+
+    app, store, _modello = casa
+    app["llm_router"] = _modello_proponente(False)
+    store.replace_analysis(OGGI, _analisi())
+    await server.actuator_round(app)
+    [manual] = store.proposals()
+
+    archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
+    try:
+        officina = _OfficinaCheArchivia(archivio)
+        app["workshop"], app["constructions"] = officina, archivio
+        app["llm_router"] = _modello_proponente(
+            True, {"gesto": "crea", "dominio": "automation",
+                   "innesco": [{"trigger": "time", "at": "14:00:00"}]})
+        store.replace_analysis(OGGI, _analisi(impronta="bbb"))
+        await server.actuator_round(app)
+
+        assert officina.chiamate == 1
+        [chiusa] = store.proposals()
+        assert chiusa["id"] == manual["id"]
+        assert chiusa["stato"] == "superata"
+        assert "costruire" in chiusa["esito_nota"]
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
 async def test_PIN_sulla_catena_la_proposta_si_archivia_E_l_attuazione_si_scrive(casa):
     """Pin della fetta «l'attuatore sul ponte» (28/09/2026), scritto PRIMA di
     toccare il giro: sulla catena lo stesso turno archivia la proposta da fare

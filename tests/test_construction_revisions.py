@@ -334,7 +334,8 @@ def test_le_proposte_del_CERVELLO_si_leggono_per_impronta(archivio):
 
     decise = archivio.decided_proposals(now=ADESSO)
     assert decise == {"dev1|prelievo|None|1": {
-        "prova": {"base": 19}, "aperta": True, "creata_ts": ADESSO}}
+        "prova": {"base": 19}, "aperta": True, "creata_ts": ADESSO,
+        "id": aperta, "a_mano": False}}
     assert archivio.decided_proposals(now=oltre)["dev1|prelievo|None|1"]["aperta"] is False
     riga = archivio.read(aperta, now=ADESSO)
     assert (riga["impronta"], riga["prova"]) == ("dev1|prelievo|None|1", {"base": 19})

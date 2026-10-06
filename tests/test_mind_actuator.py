@@ -49,7 +49,7 @@ def test_un_osservazione_gia_decisa_si_SALTA():
     coda ogni giorno, che e' il rumore che questa fetta esiste per evitare)."""
     osservazione = _osservazione()
     decise = {act.observation_key(osservazione):
-              {"prova": act.evidence_of(osservazione), "aperta": False}}
+              {"prova": act.evidence_of(osservazione), "aperta": False, "a_mano": True}}
 
     assert act.to_handle([osservazione], decise) == []
 
@@ -64,7 +64,7 @@ def test_una_PROVA_cambiata_riapre_la_domanda():
     diventerebbe definitivo anche quando il fondamento e' cambiato)."""
     vecchia = _osservazione(base=3)
     decise = {act.observation_key(vecchia):
-              {"prova": act.evidence_of(vecchia), "aperta": False}}
+              {"prova": act.evidence_of(vecchia), "aperta": False, "a_mano": True}}
 
     nuova = _osservazione(base=19)
     assert act.to_handle([nuova], decise) == [nuova]
@@ -77,7 +77,7 @@ def test_una_prova_UGUALE_non_riapre_niente():
     Mutazione: `return list(observations)` -- rossa."""
     osservazione = _osservazione()
     decise = {act.observation_key(osservazione):
-              {"prova": act.evidence_of(osservazione), "aperta": False}}
+              {"prova": act.evidence_of(osservazione), "aperta": False, "a_mano": True}}
 
     assert act.to_handle([osservazione], decise) == []
 
@@ -90,7 +90,7 @@ def test_una_proposta_APERTA_non_si_duplica_nemmeno_a_prova_cambiata():
     `already_answered` -- rossa."""
     vecchia = _osservazione(base=3)
     decise = {act.observation_key(vecchia):
-              {"prova": act.evidence_of(vecchia), "aperta": True}}
+              {"prova": act.evidence_of(vecchia), "aperta": True, "a_mano": True}}
 
     assert act.to_handle([_osservazione(base=19)], decise) == []
     assert "in attesa" in act.already_answered(_osservazione(base=19), decise)
@@ -126,3 +126,21 @@ def test_fra_i_due_archivi_vince_la_proposta_piu_RECENTE():
     assert act.latest_decided({"k": nuova}, {"k": vecchia}) == {"k": nuova}
     assert act.latest_decided({"k": vecchia}, {"k": nuova}) == {"k": nuova}
     assert act.latest_decided({"k": vecchia}, {}) == {"k": vecchia}
+
+
+def test_una_COSTRUIBILE_passa_sopra_una_proposta_a_mano_aperta():
+    """D24-1, scelta del proprietario del 06/10/2026: la forma costruibile non
+    e' un doppione della prosa. Passa sopra una proposta a mano in attesa; non
+    passa sopra un'altra costruibile in attesa.
+
+    Mutazione ESEGUITA (06/10/2026): tolto il ramo `buildable` -- rossa."""
+    osservazione = _osservazione()
+    chiave = act.observation_key(osservazione)
+    manual = {chiave: {"prova": act.evidence_of(osservazione), "aperta": True,
+                       "a_mano": True}}
+    costruibile = {chiave: {"prova": act.evidence_of(osservazione), "aperta": True,
+                            "a_mano": False}}
+
+    assert act.already_answered(osservazione, manual, buildable=True) is None
+    assert act.already_answered(osservazione, manual) is not None
+    assert act.already_answered(osservazione, costruibile, buildable=True) is not None

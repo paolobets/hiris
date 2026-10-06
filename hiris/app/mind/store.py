@@ -1390,8 +1390,11 @@ class ObservationsStore:
     #: Gli esiti che chiudono una proposta da fare a mano. **Chiusi**: una
     #: parola nuova arriverebbe da una rotta e diventerebbe uno stato che
     #: nessuna pagina sa disegnare. `crea` non c'e' -- qui non c'e' niente da
-    #: scrivere in Home Assistant: quella strada e' l'officina.
-    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori")
+    #: scrivere in Home Assistant: quella strada e' l'officina. `superata`
+    #: la scrive solo il cervello, quando la stessa domanda torna come
+    #: proposta costruibile (D24-1, scelta del proprietario del 06/10/2026):
+    #: nessuna rotta la offre.
+    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori", "superata")
 
     #: Lo stato di una proposta da fare a mano che aspetta la tua risposta.
     #: Scritto una volta: lo usano le istruzioni qui sotto e la pagina delle
@@ -1486,7 +1489,7 @@ class ObservationsStore:
         return cur.rowcount > 0
 
     def decided_proposals(self) -> dict[str, dict]:
-        """`{impronta: {"prova", "aperta", "creata_ts"}}`: cio' che l'attuatore
+        """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}`: cio' che l'attuatore
         deve sapere per non rifare una proposta (`actuator.already_answered`).
         La stessa forma di `ConstructionStore.decided_proposals`: le due code
         si fondono in `actuator.latest_decided`.
@@ -1499,10 +1502,10 @@ class ObservationsStore:
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT impronta, prova_json, stato, creata_ts FROM proposte "
+                "SELECT impronta, prova_json, stato, creata_ts, id FROM proposte "
                 "ORDER BY creata_ts, rowid").fetchall()
         return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING,
-                       "creata_ts": r[3]}
+                       "creata_ts": r[3], "id": r[4], "a_mano": True}
                 for r in rows}
 
     def analysis(self, day: str) -> dict | None:

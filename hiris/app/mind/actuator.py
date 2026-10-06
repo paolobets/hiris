@@ -62,7 +62,8 @@ def latest_decided(*sources: dict) -> dict[str, dict]:
     return merged
 
 
-def already_answered(observation: dict, decided: dict) -> str | None:
+def already_answered(observation: dict, decided: dict, *,
+                     buildable: bool = False) -> str | None:
     """Perche' questa domanda non va proposta di nuovo, o `None` se va.
 
     `decided` e' `store.decided_proposals()`: per impronta, la prova
@@ -72,11 +73,18 @@ def already_answered(observation: dict, decided: dict) -> str | None:
     proprietario del 06/10/2026). Il motivo e' una frase: chi salta lo scrive
     nel registro, perche' una proposta potata in silenzio il 01/10/2026 e'
     costata una diagnosi (misura del Task 4.0 degli attori).
+
+    **Una costruibile passa sopra una proposta a mano aperta** (`buildable`;
+    D24-1, scelta del proprietario del 06/10/2026): non e' un doppione della
+    prosa, e' la stessa domanda con un oggetto di Home Assistant pronto. Chi
+    la propone chiude quella a mano come `superata`.
     """
     entry = decided.get(observation_key(observation))
     if entry is None:
         return None
     if entry["aperta"]:
+        if buildable and entry["a_mano"]:
+            return None
         return "ha gia' una proposta in attesa"
     if entry["prova"] == evidence_of(observation):
         return "e' gia' stata decisa con la stessa prova"

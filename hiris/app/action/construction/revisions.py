@@ -324,7 +324,7 @@ class ConstructionStore:
         return [_row(r) for r in righe]
 
     def decided_proposals(self, *, now: float) -> dict[str, dict]:
-        """`{impronta: {"prova", "aperta", "creata_ts"}}` per le proposte
+        """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}` per le proposte
         nate da una domanda del cervello: la stessa forma di
         `mind/store.ObservationsStore.decided_proposals`, che l'attuatore
         fonde con questa (`actuator.latest_decided`).
@@ -335,9 +335,10 @@ class ConstructionStore:
         with self._lock:
             rows = self._conn.execute(
                 f"SELECT impronta, prova_json, creata_ts, stato IN ({_SOSPESI_SQL}) "
-                f"AND NOT {_EXPIRED_SQL} FROM costruzioni WHERE impronta IS NOT NULL "
+                f"AND NOT {_EXPIRED_SQL}, id FROM costruzioni WHERE impronta IS NOT NULL "
                 "ORDER BY creata_ts, rowid", (now - self.DEADLINE_S,)).fetchall()
-        return {r[0]: {"prova": _load(r[1]), "aperta": bool(r[3]), "creata_ts": r[2]}
+        return {r[0]: {"prova": _load(r[1]), "aperta": bool(r[3]), "creata_ts": r[2],
+                       "id": r[4], "a_mano": False}
                 for r in rows}
 
     def count_pending(self, *, now: float) -> int:
