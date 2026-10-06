@@ -25,8 +25,9 @@ e tutti e tre guardano NUMERI:
 numeri, e trenta giorni ci stanno in un prompt.
 
 **La cronaca e' un INDICE** -- quando, chi, cosa. Oggi la legge la pagina
-(`as_page`): l'analista riceve le sole serie delle misure
-(`analyst_turn.build_question`) e non ha strumenti con cui scavare. La spec §10
+(`as_page`): l'analista riceve l'indice delle misure, una riga per misura
+coi numeri gia' calcolati (`analyst.index`, dal 06/10/2026), e non ha ancora
+strumenti con cui scavare (piano degli attori, Task 3.6). La spec §10
 lo voleva capace di partire dall'indice e scavare in Home Assistant o nel
 nostro grezzo, dicendo quale dei due ha usato: non e' costruito.
 
