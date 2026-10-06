@@ -505,6 +505,22 @@ class House:
             return ("istanza", entry["config_entry_id"])
         return None
 
+    def possible_siblings(self, entity_id: str) -> list[str]:
+        """Le entita' che POTREBBERO stare nel gruppo di `sibling_group`, senza
+        sapere chi ha statistiche: quelle del suo dispositivo e quelle della
+        sua istanza, lei compresa, nell'ordine dell'anagrafe.
+
+        Serve quando l'elenco delle statistiche non si e' letto (G7-1, la
+        rimisura dello sprint su 413ce7a7): si chiedono le serie di tutte, e
+        chi ha statistiche lo dice la risposta di Home Assistant
+        (`server._report_ingredients`)."""
+        entry = self._entity(entity_id) or {}
+        device_id, instance = entry.get("dispositivo_id"), entry.get("config_entry_id")
+        return [eid for eid, e in self._entity_index().items()
+                if eid == entity_id
+                or (device_id and e.get("dispositivo_id") == device_id)
+                or (instance and e.get("config_entry_id") == instance)]
+
     def siblings(self, entity_id: str) -> list[str]:
         """Le entita' dello stesso gruppo di `sibling_group`, lei compresa,
         nell'ordine dell'anagrafe; `[]` se non ha un gruppo."""
