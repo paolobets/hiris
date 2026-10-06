@@ -1986,11 +1986,11 @@ def _punti_orari(punti) -> list[dict]:
             for p in punti if isinstance(p, dict)]
 
 
-# **`_device_names` vive in `api/handlers_mind.py`, e qui si importa.**
-# Fino al 15/09/2026 ne esistevano due copie identiche, e quella di la' aveva
-# scritto nel docstring «Un posto solo»: una ragione smentita dal file che
-# citava. Trovata dalla revisione indipendente. La seconda fondamenta -- niente
-# doppioni -- vale anche per otto righe.
+# **I nomi dei dispositivi vivono in `mind/view.MindView.device_names`, e qui
+# si chiedono.** Fino al 15/09/2026 ne esistevano due copie identiche, e quella
+# di la' aveva scritto nel docstring «Un posto solo»: una ragione smentita dal
+# file che citava. Trovata dalla revisione indipendente. La seconda fondamenta
+# -- niente doppioni -- vale anche per otto righe.
 
 
 def _turn_in_flight(app, kind: str) -> bool:
@@ -2072,11 +2072,11 @@ async def analyst_round(app) -> dict | None:
         if _turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
             return None
 
-        from .api.handlers_mind import _device_names
+        from .api.handlers_mind import mind_view
 
         series = analyst.with_deviation(
             report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                      names=_device_names(app)))
+                                      names=mind_view(app).device_names()))
         if not (series.get("serie") or []):
             return None
 
@@ -2483,12 +2483,12 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     day = (turn.get("wake") or {}).get("giorno")
     if day != today or store.analysis(day) is not None:
         return None
-    from .api.handlers_mind import _device_names
+    from .api.handlers_mind import mind_view
 
     reply = (turn.get("decision") or {}).get("reply") or ""
     series = analyst.with_deviation(
         report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                  names=_device_names(app)))
+                                  names=mind_view(app).device_names()))
     esito = analyst_turn.apply_analysis(series, reply)
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e

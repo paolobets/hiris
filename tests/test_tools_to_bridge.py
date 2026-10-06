@@ -192,10 +192,11 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     prima di un impegno». «Una porta sola per la casa» (29/09/2026): da 16
     a 15, esce `view` -- il suo dettaglio e' la voce di `search` quando
     l'insieme ne ha una sola. La storia (30/09/2026): da 15 a 12, i quattro
-    lettori del tempo diventano `history`."""
+    lettori del tempo diventano `history`. La Tappa 5, Task 8 (06/10/2026):
+    da 12 a 13, entra `mind`, le letture del cervello (R8)."""
     nomi = runner.mcp_names()
 
-    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 12
+    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 13
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da

@@ -38,6 +38,7 @@ from ..reasoning.queue import PRIORITY_CHAT
 from ..steering import bridge_model, declare_downgrade, misura_turno, who_answers
 from .boundary import error_body, error_response
 from .handlers_home_space import compose_briefing, house_of
+from .handlers_mind import mind_view
 from .soffitto import ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
@@ -154,7 +155,10 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     calendari») fonde i prossimi appuntamenti di OGNI calendario di questa
     casa, provando a leggere ciascuno invece di fidarsi dello stato -- un
     calendario che non risponde finisce nominato in `non_letti`, mai in
-    silenzio. Il dispatcher si costruisce
+    silenzio. Dal 06/10/2026 (Tappa 5, Task 8, R8) `mind` legge cio' che il
+    cervello guarda -- lo scope, l'obiettivo, i resoconti, le analisi, la
+    dashboard Energia -- con le stesse letture della pagina (`mind_view`).
+    Il dispatcher si costruisce
     dagli stessi oggetti dell'app che alimentano `compose_briefing()`
     (`home_space_store`, `memory_store`, `entity_cache`), piu' `action_actuator`,
     `workshop` e `journal` -- lo stesso specchio dello stato vivo, non uno
@@ -283,6 +287,9 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # La casa del turno (R18), quando il chiamante l'ha gia' letta per il
         # nucleo: `None` e il dispatcher la legge da se' alla prima domanda.
         house=house,
+        # Le letture del cervello (R8, Tappa 5, Task 8): le STESSE della
+        # pagina, costruite dall'unico punto che le costruisce.
+        mind=mind_view(app),
     )
 
 
