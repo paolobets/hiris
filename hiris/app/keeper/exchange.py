@@ -213,9 +213,10 @@ async def interpreta_promise(app, promise: dict) -> dict:
         # **La frase del router non e' cio' che il modello ha detto** (G29-1):
         # quando nessun backend risponde, il motivo e' quello vero, come
         # quando `chain_turn` solleva -- non un «aveva risposto a parole» che
-        # cita la frase del router come fosse del modello.
+        # cita la frase del router come fosse del modello. La frase resta,
+        # come diagnosi di HIRIS: e' lei che dice perche' (giro 40).
         if not turn.answered:
-            return {"errore": f"{NO_ANSWER_REASON}."}
+            return {"errore": _unanswered_reason(answer)}
         logger.warning("promessa %s: il turno non ha chiamato «conclude»; "
                        "aveva risposto %d caratteri di testo",
                        promise["id"], len(answer or ""))
@@ -257,6 +258,16 @@ def _senza_conclusione(answer) -> str:
         return "il turno non ha concluso: non so cosa dirti."
     detto = truncate_with_marker(detto, _CEILING_RIPORTO)
     return f"il turno non ha concluso. Aveva risposto a parole: «{detto}»"
+
+
+def _unanswered_reason(answer) -> str:
+    """Il motivo di un turno a cui nessun modello ha risposto, con dentro la
+    frase del router: e' la diagnosi («credito esaurito», «nessun provider
+    utilizzabile»), e senza la pagina direbbe solo che e' andata male."""
+    detto = answer.strip() if isinstance(answer, str) else ""
+    if not detto:
+        return f"{NO_ANSWER_REASON}."
+    return f"{NO_ANSWER_REASON}: {truncate_with_marker(detto, _CEILING_RIPORTO)}"
 
 
 def _downgrade_note(reason: str) -> str:
