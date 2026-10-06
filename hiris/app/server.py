@@ -43,6 +43,11 @@ from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_h
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.soffitto import restricted_person
+
+# review C/#15: `_spawn`, l'unico posto che crea un compito senza padrone, vive
+# in `background.py` dal 06/10/2026 (attori, Task 4.5): ne ha bisogno anche un
+# modulo di `mind/`, che non importa questo file.
+from .background import spawn as _spawn
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
 from .home_space import historian
@@ -131,29 +136,6 @@ from .version import read_version
 
 logger = logging.getLogger(__name__)
 
-# review C/#15: asyncio only holds a WEAK reference to a task with no other
-# referrer -- a bare `asyncio.create_task(...)` whose result is discarded can
-# be garbage-collected mid-execution (see the asyncio docs' "Important" note
-# on create_task). Several fire-and-forget spots in this module discarded the
-# result, including the HA notification-action listener that drives the
-# step-up APPROVAL flow (a human's phone-tap Approve/Reject awaits HTTP calls
-# to HA and must not be silently dropped mid-flight). _background_tasks keeps
-# a strong reference until each task finishes; _spawn() is the one place that
-# creates a background task, so every fire-and-forget site goes through it.
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _spawn(coro, *, name: str | None = None) -> asyncio.Task:
-    """Create a fire-and-forget task and keep a strong reference to it.
-
-    Use this instead of a bare `asyncio.create_task(...)` for any task whose
-    result is not awaited/stored by the caller -- otherwise nothing prevents
-    the event loop from garbage-collecting it before it completes.
-    """
-    task = asyncio.create_task(coro, name=name)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-    return task
 
 
 def _close_expired_promise(app, job: dict) -> None:

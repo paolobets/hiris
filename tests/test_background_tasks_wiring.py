@@ -33,7 +33,7 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app import server
+from hiris.app import background, server
 
 # ── 1. _spawn() behavior ───────────────────────────────────────────────────
 
@@ -46,12 +46,12 @@ async def test_spawn_keeps_strong_ref_while_pending_and_discards_on_done():
         await gate.wait()
         return "done"
 
-    task = server._spawn(_work(), name="test_spawn_task")
+    task = background.spawn(_work(), name="test_spawn_task")
 
     # Strong ref held while pending -- this is the whole point of the fix:
     # nothing else in the caller holds `task`, so without _background_tasks
     # the task would be eligible for GC right here.
-    assert task in server._background_tasks
+    assert task in background.background_tasks
     assert not task.done()
 
     gate.set()
@@ -60,7 +60,7 @@ async def test_spawn_keeps_strong_ref_while_pending_and_discards_on_done():
     assert result == "done"
     # Done-callback must discard it once finished, or the set would grow
     # unbounded across the process lifetime.
-    assert task not in server._background_tasks
+    assert task not in background.background_tasks
 
 
 @pytest.mark.asyncio
@@ -68,13 +68,13 @@ async def test_spawn_discards_on_exception_too():
     async def _boom():
         raise ValueError("boom")
 
-    task = server._spawn(_boom(), name="test_spawn_boom")
-    assert task in server._background_tasks
+    task = background.spawn(_boom(), name="test_spawn_boom")
+    assert task in background.background_tasks
 
     with pytest.raises(ValueError):
         await task
 
-    assert task not in server._background_tasks
+    assert task not in background.background_tasks
 
 
 @pytest.mark.asyncio
@@ -82,7 +82,7 @@ async def test_spawn_returns_asyncio_task_with_name():
     async def _noop():
         return None
 
-    task = server._spawn(_noop(), name="my_named_task")
+    task = background.spawn(_noop(), name="my_named_task")
     assert isinstance(task, asyncio.Task)
     assert task.get_name() == "my_named_task"
     await task
@@ -94,7 +94,7 @@ async def test_spawn_returns_asyncio_task_with_name():
 def _find_spawn_def(tree: ast.Module) -> ast.FunctionDef:
     return next(
         n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_spawn"
+        if isinstance(n, ast.FunctionDef) and n.name == "spawn"
     )
 
 
@@ -120,7 +120,7 @@ def _held_by_an_attribute(tree: ast.AST) -> set[int]:
 
 def test_only_spawn_itself_calls_asyncio_create_task():
     """No call site in the PRODUCT may call asyncio.create_task(...) and drop
-    the result -- every fire-and-forget task must go through server._spawn()
+    the result -- every fire-and-forget task must go through background.spawn()
     so it gets a strong reference. A task kept in an attribute
     (`self._ws_task = ...`, the HA websocket loop) already has one.
     AST-based (not text/grep-based) so comments mentioning
@@ -135,7 +135,8 @@ def test_only_spawn_itself_calls_asyncio_create_task():
     offending = []
     for path in sorted(app_dir.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        if path.name == "server.py" and path.parent == app_dir:
+        # Dal 06/10/2026 (attori, Task 4.5) `spawn` vive in `background.py`.
+        if path.name == "background.py" and path.parent == app_dir:
             spawn_def = _find_spawn_def(tree)
             allowed = range(spawn_def.lineno, spawn_def.end_lineno + 1)
         else:
@@ -161,7 +162,7 @@ def test_the_create_task_gate_still_sees_the_product():
     for path in sorted(app_dir.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         found += [path.name for node in ast.walk(tree) if _is_create_task(node)]
-    assert "server.py" in found and "ha_client.py" in found, found
+    assert "background.py" in found and "ha_client.py" in found, found
 
 
 # Qui stava `test_spawn_body_adds_to_background_tasks_and_wires_done_callback`,
