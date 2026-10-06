@@ -504,6 +504,11 @@ Il linter c'è, ed è entrato **così**: `ruff` per il Python (configurazione in
 suite. Il 26 agosto 2026 il progetto non ne aveva nessuno, e questo paragrafo lo dichiarava come
 debito. `mypy` e un formattatore non ci sono: non si pretende ciò che nessuno strumento controlla.
 
+**Niente di nuovo dentro `server.py`** (il proprietario, 06/10/2026). Un giro nuovo nasce in
+`mind/`, una rotta nuova in un `api/handlers_*`, un pezzo d'avvio in una funzione con nome fuori da
+`_on_startup`. `server.py` registra e avvia: non ospita. Lo spezzettamento di ciò che c'è già ha
+la sua voce nel BACKLOG («`server.py` si spezza alla Chiusura dello sprint»).
+
 ### Il debito dichiarato: la rinomina in inglese
 
 **Deciso il 26 agosto dal proprietario, da fare a sviluppo fermo, mai durante una fetta.**

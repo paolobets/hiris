@@ -925,6 +925,36 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### `server.py` si spezza alla Chiusura dello sprint — aperta il 06/10/2026
+
+`origine: il proprietario, 06/10/2026 («ok si» alla proposta sui file monolitici, dopo la verifica di uno specialista)` · documento: `/mnt/project-files/analisi/2026-10-06-file-monolitici-proposta.md` · `hiris/app/server.py::_on_startup`
+
+**Il problema non è la lunghezza, è la fondamenta 4.** `server.py` misurava 5.621 righe il 06/10/2026
+(ramo dello sprint @ `d605aecb`), ma il monolite vero è `_on_startup`: una funzione sola di circa
+1.466 righe con 19 funzioni definite al suo interno, che nessuno può chiamare né provare da fuori.
+Era anche il file più toccato del mese (42 commit), cioè il punto dove i rami paralleli si scontrano.
+
+**Quando:** alla Chiusura dello sprint «Una fonte sola di verità», dopo gli strati 3–4 degli attori
+(che tolgono già `actuator_round` e compagne) e le Tappe 7–8, prima di riscrivere `CLAUDE.md`.
+Mai con altri rami aperti su `server.py`.
+
+**Come:** come la rinomina in inglese — suite verde, un commit per passo, **solo spostamento**
+(se il diff contiene una riga di logica, non è uno spostamento). I passi, da disegnare:
+1. `_on_startup` → funzioni con nome in un modulo di avvio, ognuna chiamabile e provabile;
+2. i giri del cervello (`analyst_round`, `recipe_round`, `reconsideration_round`, scope) in `mind/`;
+3. i rapporti del giorno (`write_day_report`, `backfill_one_report`, `_report_ingredients`…) accanto a `mind/report.py`;
+4. la disinstallazione della card Lovelace in un modulo suo;
+5. la shell HTML (fingerprint, versione, `/api/health`) in `api/`.
+In `server.py` resta `create_app()` con la registrazione delle rotte.
+
+**Il costo noto:** 76 file di prova importano `server` (13 `monkeypatch` sui suoi attributi):
+si aggiornano nello stesso commit dello spostamento.
+
+**Fuori da questa voce, per decisione:** `ha_client.py` (grande per la regola «un canale, una
+porta»), `type_vocabulary.py` (in gran parte dati); `tools.py`, `briefing.py`, `queries.py` si
+rivedono dopo; `agent/runner.py` si decide nel refactor degli agenti. Nessuna soglia di righe per
+file: il criterio è un file, un mestiere.
+
 ### Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato» — aperta il 05/10/2026
 
 `origine: rapporto dell'integrazione delle Tappe 4-6 (B25, domanda 1), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · documento: `/mnt/project-files/2026-10-05-integrazione-tappe-4-6-rapporto.md`, sezione «B25, in dettaglio»
