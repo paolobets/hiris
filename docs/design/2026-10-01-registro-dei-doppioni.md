@@ -121,12 +121,10 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | D-01 | Comporre il system prompt: più compositori | D | PS |  |  | reg · cop-7 |
-| D-02 | `BASE_TOOL_RULES` ai turni che non hanno strumenti | D | CC | system dell'analista 1162 caratteri sul ponte, 7205 sulla catena; attuatore `tools_sent: 0`, `guide_chars: 7970` | cop-7 (righe, incompleta) | reg · cop-7 |
 | D-03 | Regole d'uso degli strumenti: `BASE_TOOL_RULES` contro `_GUIDE_WITH_TOOLS` | D | CC |  | cop-7 (conteggio, incompleta) | reg · cop-7 |
 | D-04 | Recinto del contesto: sul ponte sì, sulla catena no | D | CC |  |  | reg · cop-7 |
 | D-05 | Il contratto di risposta due volte sul ponte (analista, ricette) | D | CC |  | cop-6 (imprecisa) | reg · cop-6 · cop-7 |
 | D-06 | Chi risponde: una decisione, sette chiamanti, quattro «dopo» | D | CC |  |  | reg · cop-7 · cop-8 |
-| D-07 | Accodare sul ponte: sei `enqueue`, il modello scelto vale solo per la chat | D | CC |  | cop-1 (incompleta); cop-7 (righe, conteggio); cop-8 (conteggio) | reg · cop-1 · cop-7 · cop-8 |
 | D-08 | Raccogliere la risposta del ponte: quattro `_collect_*` e quattro «già letto» | D | CC |  | cop-1 (incompleta) | reg · cop-1 · cop-7 · cop-8 |
 | D-09 | Predefiniti del ponte e di Ollama riletti in molti punti | E | PS |  | cop-1 (incompleta); cop-7 (conteggio); cop-8 (incompleta) | reg · cop-1 · cop-2 · cop-7 · cop-8 · cop-9 |
 | D-10 | Il ciclo degli strumenti: quattro cicli, tre unità di tetto | D | CC |  | cop-7 (righe) | reg · cop-7 |
@@ -151,7 +149,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-32 | I giri del cervello dentro `server.py` | E | PS |  |  | reg · cop-1 B1 · cop-2 |
 | D-33 | Lo stesso tema ogni giorno, con parole diverse (analisi, esiti, proposte) | D | CC | coppie già presenti il giorno prima: 2 su 7, 3 su 8, 4 su 8 | cop-6 (righe) | reg · cop-6 · BACKLOG, «Gli attori si riparano dal basso», strato 3 (Tappa 6, T0) |
 | D-34 | La serie dell'analista composta due volte, riga per riga (`server.py:1964`, `:2431`) | E | PS |  |  | cop-1 D1 |
-| D-35 | `llm_router or claude_runner` scritto 10 volte; il ramo destro non può mai scattare | E | PS |  |  | cop-1 D2 · cop-2 M1 |
 | D-36 | Il resoconto di un giorno scritto con le stesse due chiamate in tre punti | E | PS |  |  | cop-1 D3 |
 | D-37 | `_write_analysis` e `_write_actuation`: stesso scheletro | E | PS |  |  | cop-1 D4 |
 | D-38 | Indice del modello → riga dell'elenco, due volte (`server.py:2195`, `:2256`) | E | PS |  |  | cop-1 D5 |
@@ -178,7 +175,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-64 | Il nucleo che non si compone: tre chiamanti, tre comportamenti | D | CC |  |  | cop-8 D2 · cop-9 N-D-1 · Tappa 6 T7 |
 | D-65 | «Qual è la conversazione attiva di questo filo» chiesta tre volte per turno | NV | CC |  |  | cop-8 D3 · Tappa 6 T7 |
 | D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | D | PS |  |  | cop-8 D4 · Tappa 6 T8 |
-| D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | E | PS |  |  | Tappa 3, piano del 03/10/2026, trovato 11 |
 | D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 · Tappa 5, Task 4 (05/10/2026): e' prosa delle descrizioni, si unifica al Task 5 con le descrizioni (insieme a B-32) |
 | D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 2 (`keeper/exchange.py`: le regole parlano di `execute`, `propose`, `remember`); il contenuto alla Tappa 5 (D4, Task 5), la composizione alla Tappa 6 |
 
@@ -1040,3 +1036,7 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | E-07 | Il contratto dell'«intenzione» dell'attuatore contro l'officina | Tappa 6 (da rilasciare) | 15578e6 | Tappa 6, Task 5 (D5): l'intenzione del contratto si deriva dallo schema di propose; apply_actuation la valida con workshop.form_refusal prima dell'officina. L'attuatore resta in pausa |
 | D-58 | `esito = riuscito` per una risposta troncata o con uno strumento «scappato» | integrazione Tappe 4-6 (da rilasciare) | 052b03f | due esiti suoi, misurati in steering.misura_turno: troncato (Tappa 6, Task 3, 21f6e0d) e strumento_scappato (B22, 052b03f), letti da last_truncated e last_tool_leaked di entrambi i runner e del router. Sul ponte il troncato non si sa: la CLI 2.1.286 non dichiara mai max_tokens a fine turno (B25, 1683180) |
 | B-26 | Motivo scritto per le misure non calcolabili: cinque stringhe, cause vere che non coincidono | attori strato 1 (da rilasciare) | 6d41d2b | il messaggio unico non c'e' piu': la causa e' un campo (operations.CAUSES = stati di House.source + cause della misura), il resoconto e i tratti la portano; la frase dice la causa vera, lo state_class solo dove e' la causa |
+| D-02 | `BASE_TOOL_RULES` ai turni che non hanno strumenti | Tappa 6, Task 7 | b432a51 | steering.compose_base: le regole sugli strumenti entrano solo per gli strumenti del turno (claude_runner.TOOL_RULES, ogni regola coi suoi strumenti); analista, attuatore, osservatore e ricette ne ricevono 0 caratteri, la promessa solo le sue. Prova R18 in tests/test_un_turno.py |
+| D-07 | Accodare sul ponte: sei `enqueue`, il modello scelto vale solo per la chat | Tappa 6, Task 7 | b432a51 | steering.enqueue_turn, l'unico .enqueue del prodotto: kind e precedenza dalla dichiarazione del mestiere, modello del proprietario e scadenza dall'archivio. I sei accodamenti vi passano |
+| D-35 | `llm_router or claude_runner` scritto 10 volte; il ramo destro non può mai scattare | Tappa 6, Task 7 | b432a51 | steering.chain_runner, la sola lettura di llm_router or claude_runner (nove punti prima). Il ramo destro resta: i test lo impostano |
+| D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | Tappa 6, Task 7 | b432a51 | le tre regole scrivono l'esempio chiamando topology.name_with_id (D6, opzione A): la resa del nome con l'id, non una costante |
