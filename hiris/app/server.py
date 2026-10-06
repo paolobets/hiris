@@ -1599,7 +1599,7 @@ def schedule_registry_rebuild(client, store, delay: float = 3.0, *,
 
 def mirror_reload_listener(client, entity_cache, watcher=lambda: None):
     """Restituisce l'ascoltatore di topologia che rilegge lo specchio, e con
-    la stessa fotografia riallinea l'osservatore.
+    la stessa fotografia riallinea l'osservatore (`Watcher.realign`).
 
     Spec «una porta sola» §6: il quarto avvisato, dopo anagrafe, servizi e
     plance. Gli altri eventi dell'anagrafe non lo toccano. `_ws_loop` emette
@@ -1608,26 +1608,37 @@ def mirror_reload_listener(client, entity_cache, watcher=lambda: None):
     (`entity_cache.load`), dopo essersi iscritto.
 
     **Il riallineamento dell'osservatore** (decisione del proprietario del
-    06/10/2026, «Riallinea»): la finestra di scollegamento si prende SUBITO,
-    all'avviso (`HAClient.take_disconnection`), e la fotografia e' quella
-    che lo specchio ha appena letto (`EntityCache.reload`) -- nessuna seconda
-    lettura degli stati. `watcher` e' un richiamo, non l'osservatore: questo
-    ascoltatore si iscrive prima del websocket, l'osservatore nasce dopo, e
-    un avviso arrivato prima della sua nascita non riallinea niente (la
-    finestra si consuma lo stesso: era della connessione che l'avvio legge
-    da se').
+    06/10/2026, «Riallinea»): la fotografia e' quella che lo specchio ha
+    appena letto (`EntityCache.reload`) -- nessuna seconda lettura degli
+    stati. La finestra di scollegamento ha il suo ascoltatore
+    (`disconnection_recorder`): si chiude quando Home Assistant si dichiara
+    avviato, che puo' essere dopo. `watcher` e' un richiamo, non
+    l'osservatore: questo ascoltatore si iscrive prima del websocket,
+    l'osservatore nasce dopo, e un avviso arrivato prima della sua nascita
+    non riallinea niente.
     """
-    async def _reload_and_realign(gap) -> None:
+    async def _reload_and_realign() -> None:
         photo = await entity_cache.reload(client)
         observer = watcher()
         if observer is not None:
-            observer.realign(photo, gap=gap)
+            observer.realign(photo)
 
     def _mirror_on_reconnect(event_type: str) -> None:
         if event_type == "riconnessione":
-            _spawn(_reload_and_realign(client.take_disconnection()),
-                   name="specchio-riconnessione")
+            _spawn(_reload_and_realign(), name="specchio-riconnessione")
     return _mirror_on_reconnect
+
+
+def disconnection_recorder(watcher=lambda: None):
+    """Restituisce l'ascoltatore della finestra di scollegamento
+    (`HAClient.add_disconnection_listener`): la consegna all'osservatore
+    (`Watcher.record_disconnection`). `watcher` e' un richiamo per la stessa
+    ragione di `mirror_reload_listener`: l'ascoltatore nasce prima di lui."""
+    def _record(window: dict) -> None:
+        observer = watcher()
+        if observer is not None:
+            observer.record_disconnection(window)
+    return _record
 
 
 def schedule_dashboards_reread(client, store, delay: float = 3.0):
@@ -3717,6 +3728,7 @@ async def _on_startup(app: web.Application) -> None:
                                   then=lambda: prime_state_translations(app)))
     ha_client.add_topology_listener(
         mirror_reload_listener(ha_client, entity_cache, lambda: app.get("watcher")))
+    ha_client.add_disconnection_listener(disconnection_recorder(lambda: app.get("watcher")))
     # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
     # sotto per la prima lettura, e che lo schedulatore rilegge a cadenza.
     ha_config_dir = home_assistant_folder()

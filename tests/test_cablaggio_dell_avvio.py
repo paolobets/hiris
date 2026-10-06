@@ -414,6 +414,32 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
             coroutine.close()
 
 
+async def test_a_closed_disconnection_window_reaches_the_app_watcher(started_app):
+    """La finestra di scollegamento, chiusa quando Home Assistant si dichiara
+    avviato, arriva all'osservatore DELL'APP: l'avvio iscrive il suo
+    ascoltatore. La finestra si consegna a un osservatore finto messo al posto
+    di quello dell'app, e lo si rimette subito.
+
+    Mutazione ESEGUITA: tolta
+    `ha_client.add_disconnection_listener(disconnection_recorder(...))` --
+    rossa."""
+    house = started_app["ha_client"]
+    real = started_app["watcher"]
+    windows = []
+
+    class Osservatore:
+        def record_disconnection(self, window):
+            windows.append(window)
+
+    started_app["watcher"] = Osservatore()
+    try:
+        for listener in house.registered("disconnection"):
+            listener({"da": 1.0, "a": 2.0})
+    finally:
+        started_app["watcher"] = real
+    assert windows == [{"da": 1.0, "a": 2.0}]
+
+
 async def test_a_reference_change_rereads_the_state_words(started_app):
     """A-14: il proprietario cambia la lingua della casa e Home Assistant
     manda `core_config_updated`. L'anagrafe si ricostruisce e legge la
