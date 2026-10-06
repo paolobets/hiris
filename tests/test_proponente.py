@@ -636,6 +636,38 @@ def _coda_ponte(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_sul_PONTE_la_NON_LEGATA_va_nel_turno_e_la_raccolta_la_lega(casa, monkeypatch):
+    """Revisione, giro 62 (G62-1): la strada della casa e' il ponte. La
+    costruita che nessun esito ha citato va nella domanda accodata, e la
+    raccolta che la cita la lega alla sua osservazione, anche se e' nata in un
+    altro turno.
+
+    Mutazione ESEGUITA (06/10/2026): `_enqueue` con `unbound=()` -- rossa,
+    l'id non e' nel turno accodato."""
+    coda = _coda_ponte(casa, monkeypatch)
+    sciolta = casa["constructions"].propose(
+        operation="crea", domain="automation", key="k1",
+        actor=steering.PROPOSER_SPECIES, exchange="un-turno-rifiutato",
+        phrase=None, prima=None, dopo={}, helper=[], preview="anteprima",
+        stakes=None, now=time.time())["id"]
+
+    await pr.proposer_round(casa)
+    (accodato,) = coda.accodati
+    assert sciolta in accodato["context"]["history"][0]["content"]
+
+    coda.turno = {"status": "decided", "wake": accodato["wake"], "decided_ts": 0,
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "costruita", "proposta_id": sciolta},
+                      {"osservazione": 1, "esito": "niente", "perche": "x"}]}),
+                      "outcome": "riuscito", "exchange_id": "un-altro-turno"}}
+    esito = await pr.proposer_round(casa)
+
+    assert esito["problemi"] == []
+    riga = casa["constructions"].read(sciolta, now=time.time())
+    assert riga["impronta"] == observation_key(osservazioni()[0])
+
+
+@pytest.mark.asyncio
 async def test_un_turno_IN_VOLO_sul_ponte_non_ne_accoda_un_altro(casa, monkeypatch):
     """Senza la guardia, a ogni battito con un turno ancora in attesa il giro
     ne accoderebbe un altro: la raccolta non trova niente finche' il turno e'
