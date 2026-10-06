@@ -551,3 +551,17 @@ def test_il_prompt_dice_che_costruire_e_in_due_tempi():
     assert "confirm" in BASE_TOOL_RULES
     # La regola che conta: non si concatena la conferma alla proposta.
     assert "stesso turno" in BASE_TOOL_RULES
+
+
+def test_le_regole_dicono_che_le_etichette_si_danno_per_id():
+    """Tappa 5, Task 5: la frase stava solo nella guida del ponte, e la catena
+    non la riceveva; e' passata nelle regole di `execute`, che arrivano a
+    entrambi i percorsi. Nessuno strumento risolve un'etichetta dal nome: un
+    modello che non lo sa ne indovina l'id.
+
+    Mutazione ESEGUITA il 06/10/2026: tolta la frase da `TOOL_RULES` -- rossa
+    su entrambi i percorsi (revisione, giro 22)."""
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        basso = testo.lower()
+        assert "si danno per id" in basso and "dal nome" in basso, percorso
+        assert basso.count("si danno per id") == 1, percorso
