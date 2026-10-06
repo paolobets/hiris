@@ -69,6 +69,29 @@ PRIORITY_CHAT = 1
 PRIORITY_BACKGROUND = 0
 
 
+def turn_answer(turn: dict | None) -> str:
+    """La risposta che un turno ha dato, o `""` se non ne ha data una.
+
+    **Un turno che il ponte dichiara fallito non ha risposto** (06/10/2026).
+    Il ponte, quando la CLI manca, scade o esce male, consegna comunque un
+    testo -- `[runner non disponibile]`, `[errore runner rc=...]` -- e lo
+    accompagna con `outcome: "fallito"` (`agent/runner._reply`, lo stesso
+    esito che scrive nel registro dei turni). Quel testo e' per la chat, che
+    lo mostra; chi raccoglie un turno del cervello deve leggerlo come
+    «nessuna risposta». Misurato nel registro dell'add-on dal 05/10 13:32 al
+    06/10 14:05: l'analista rifiutava come «non JSON» lo stesso turno fallito
+    ogni ora, fino a mezzanotte.
+
+    Una decisione scritta prima di questa versione non porta l'esito, e si
+    legge com'era. Fino a qui la stessa espressione era scritta in quattro
+    raccoglitori di `server.py`.
+    """
+    decision = (turn or {}).get("decision") or {}
+    if decision.get("outcome") == "fallito":
+        return ""
+    return decision.get("reply") or ""
+
+
 def _row(r) -> dict:
     # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
     # (Task 14): chi ripiega alla scadenza registra nel registro degli esiti
@@ -146,6 +169,23 @@ class ReasoningQueue:
         # gia' usato per UsageStore (server.py, costruzione di
         # `app["usage"]`).
         self._read_timezone = read_timezone or (lambda: None)
+        # Chi aspetta un turno nuovo (A-23, 06/10/2026): il lavoratore del
+        # ponte non interroga piu' la coda a intervalli, si fa svegliare da
+        # `enqueue`. Uno solo, perche' il consumatore e' uno solo.
+        self._on_enqueue = None
+
+    def on_enqueue(self, listener, *, only_if=None) -> None:
+        """Registra (o, con `None`, toglie) chi va svegliato a ogni turno
+        accodato. Si chiama dopo il commit e fuori dal lucchetto: chi si
+        sveglia trova il turno gia' scritto, e puo' prenderlo subito.
+
+        Con `only_if` la sostituzione avviene solo se la sveglia in vigore e'
+        ancora quella: un lavoratore che si ferma toglie la SUA, e non quella
+        di un lavoratore nuovo che si fosse gia' registrato (G18-1 della
+        revisione del 06/10/2026)."""
+        if only_if is not None and self._on_enqueue is not only_if:
+            return
+        self._on_enqueue = listener
 
     def close(self) -> None:
         with self._lock:
@@ -164,6 +204,9 @@ class ReasoningQueue:
                 (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now,
                  *thread_params(thread), int(priority)))
             self._conn.commit()
+        listener = self._on_enqueue
+        if listener is not None:
+            listener()
         return jid
 
     def claim(self, now: float) -> dict | None:
@@ -197,9 +240,9 @@ class ReasoningQueue:
     # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun
     # lettore lo riapre dopo la risoluzione: `handle_chat_reply_poll` legge
     # solo `decision` dal job (`handlers_chat.py`, il ramo di poll), MAI
-    # `context`; `handle_reasoning_submit` chiama `q.get(job_id)` anche lui
-    # DOPO il proprio submit, ma legge solo `job.get("kind")`
-    # (`handlers_reasoning.py`); `has_pending_chat(thread, now=None)` e' una
+    # `context`; `consegna` chiama `q.get(job_id)` anche lui
+    # DOPO il proprio submit, ma legge solo `kind`, `wake`, `thread` e
+    # `created_ts` (`reasoning/consegna.py`); `has_pending_chat(thread, now=None)` e' una
     # SELECT indicizzata su `kind`/`subject_key`/`entry_point`/`status` (dal
     # Task 2 "la coda porta il filo": prima solo su `status`/`deadline_ts`,
     # senza filo) che non riapre mai `context_json` (il metodo e' piu' sotto

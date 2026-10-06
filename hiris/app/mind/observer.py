@@ -31,7 +31,7 @@ from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.house import House
 from ..home_space.privacy import MOVING_DOMAINS
 from ..home_space.topology import is_pseudo_area
-from ..steering import OBSERVER_SPECIES, misura_turno, read_json
+from ..steering import OBSERVER_SPECIES, SPECIES, chain_turn, read_json
 from .scope import OBSERVER
 
 logger = logging.getLogger(__name__)
@@ -43,12 +43,11 @@ logger = logging.getLogger(__name__)
 #: JSON rotto che si butta intero.
 MAX_ANSWER_TOKENS = 16000
 
-#: Come si chiama, nella coda del ragionamento, un turno dell'osservatore.
-#: Le altre due specie sono `chat` (`api/handlers_chat.py`) e `promessa`
-#: (`keeper/exchange.py`), e come loro il nome vive **dove il turno nasce**:
-#: chi lo serve -- `agent/runner.reason` -- dichiara per conto suo quali
-#: specie sa ragionare, che e' un'affermazione sua e non una copia di questa.
-SCOPE_TURN_KIND = "scope"
+#: Come si chiama, nella coda del ragionamento, un turno dell'osservatore:
+#: il `kind` della sua dichiarazione (`steering.SPECIES`, Tappa 6, Task 7).
+#: Fino al 06/10/2026 il nome viveva qui e, ricopiato, nel lavoratore che lo
+#: serve (`agent/runner._SCOPE_KIND`).
+SCOPE_TURN_KIND = SPECIES[OBSERVER_SPECIES].kind
 
 SYSTEM = """Sei l'osservatore di HIRIS, un sistema che guarda una casa domotica.
 
@@ -505,12 +504,11 @@ async def reconsider(runner, store, house: House, *, reason: str,
         # `misure` e' `None` quando nessuno misura (il caso dei test e di un
         # chiamante che non ha l'archivio): la misura non e' un requisito per
         # girare.
-        async with misura_turno(measurements, runner, specie=OBSERVER_SPECIES,
-                                canale="catena", modello=model) as turn:
-            answer = await runner.chat(
-                user_message=question, system_prompt=SYSTEM,
-                model=model, agent_type="observer",
-                max_tokens=MAX_ANSWER_TOKENS)
+        answer, turn = await chain_turn(
+            runner, OBSERVER_SPECIES, usage=measurements, modello=model,
+            max_tokens=MAX_ANSWER_TOKENS,
+            user_message=question, system_prompt=SYSTEM,
+            model=model, agent_type="observer")
     except Exception as error:
         logger.warning("osservatore: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)

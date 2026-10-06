@@ -71,7 +71,7 @@ from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
-from .mind import actuator, actuator_turn, analyst, analyst_turn, recipe_turn, report
+from .mind import actuator, analyst, analyst_turn, proposer_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     aggregate_day,
@@ -102,16 +102,16 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
-from .reasoning.queue import PRIORITY_BACKGROUND
+from .reasoning.queue import turn_answer
 from .steering import (
-    ACTUATOR_SPECIES,
     ANALYST_SPECIES,
+    JOB_SPECIES,
     OBSERVER_SPECIES,
+    PROPOSER_SPECIES,
     RECIPES_SPECIES,
-    bridge_model,
-    declare_downgrade,
-    misura_turno,
-    who_answers,
+    chain_turn,
+    enqueue_turn,
+    start,
 )
 from .version import read_version
 
@@ -160,7 +160,7 @@ def _close_expired_promise(app, job: dict) -> None:
     if riga is None or riga.get("stato") != "in_corso":
         # Gia' conclusa da `concludi` mentre il turno finiva: non si
         # riapre. E' lo stesso ordine di controlli della consegna
-        # (`handlers_reasoning`), per la stessa ragione.
+        # (`reasoning/consegna`), per la stessa ragione.
         return
     # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
     # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
@@ -178,8 +178,8 @@ def _close_expired_promise(app, job: dict) -> None:
         tell_failure(app.get("data_dir"), riga, reason)
     # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
     # terza strada delle promesse sul ponte, dopo il successo (`api/
-    # handlers_mcp`) e il turno finito senza «conclude» (`api/
-    # handlers_reasoning`). Stessa famiglia `scaduto` del ramo chat
+    # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/
+    # consegna`). Stessa famiglia `scaduto` del ramo chat
     # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
     registry = app.get("occurrence_registry")
     if registry is not None:
@@ -1385,14 +1385,7 @@ async def backfill_one_report(app, ha_client, *,
         written = archivio.report(as_text)
         if written is None:
             try:
-                ricette, serie, nomi, silent, mute = await _report_ingredients(
-                    app, ha_client, giorno=as_text, timezone=timezone)
-                aggregate_day(store=archivio, day=as_text, timezone=timezone,
-                              recipes=ricette, series=serie, names=nomi,
-                              silent=silent, muted=mute,
-                              judgments=app["type_judgments"],
-                              house=House.read(app.get("home_space_store"),
-                                               app.get("entity_cache")))
+                await write_day_report(app, ha_client, day=as_text, timezone=timezone)
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
@@ -1460,14 +1453,7 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
         try:
             if archivio.report(day) is not None:
                 continue
-            ricette, serie, nomi, silent, mute = await _report_ingredients(
-                app, ha_client, giorno=day, timezone=timezone)
-            aggregate_day(
-                store=archivio, day=day, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi,
-                silent=silent, muted=mute,
-                judgments=app["type_judgments"],
-                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+            await write_day_report(app, ha_client, day=day, timezone=timezone)
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -1747,8 +1733,14 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # `steering.py` dichiara chiuso il 22/08 per le promesse, con la frase
         # «una terza porta che nascesse domani non potrebbe inventarsene una
         # terza senza accorgersene»: la terza porta era questa.
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        # **Il passaggio dal forfait al consumo si annuncia ogni volta**
+        # (decisione del proprietario, 13/08/2026, che `steering.py` dichiara
+        # nel suo docstring): un prelievo silenzioso si scopre a fine mese. Lo
+        # dichiara la partenza (`steering.start`). Il motivo e' una chiave di
+        # `model_resolution._DOWNGRADE_REASONS`, e finisce anche nel
+        # tentativo, cosi' la pagina puo' dire da quale porta e' passato quel
+        # giro.
+        route, downgrade, runner = start(app, OBSERVER_SPECIES)
         if route == "catena" and runner is None:
             # **Anche il silenzio si annota.** Senza token del piano e senza
             # nessun provider in catena l'osservatore taceva per sempre, con
@@ -1761,13 +1753,6 @@ async def reconsideration_round(app, ha_client) -> dict | None:
                 version=read_version())
             return None
 
-        # **Il passaggio dal forfait al consumo si annuncia ogni volta**
-        # (decisione del proprietario, 13/08/2026, che `steering.py` dichiara
-        # nel suo docstring): un prelievo silenzioso si scopre a fine mese. Il
-        # motivo e' una chiave di `model_resolution._DOWNGRADE_REASONS`, e
-        # finisce anche nel tentativo, cosi' la pagina puo' dire da quale
-        # porta e' passato quel giro.
-        declare_downgrade(app, agent=OBSERVER_SPECIES, reason=downgrade)
         logger.info("osservatore: riconsidero la casa (%s), lotto di %d -- %s",
                     route, len(lotto), why)
         campagna_ts = time.time()
@@ -1912,6 +1897,34 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     return ricette, serie, nomi, {**ferme, **silent}, mute
 
 
+async def write_day_report(app, ha_client, *, day: str, timezone: str | None) -> int:
+    """Scrive il resoconto di `day` e torna quante voci di cronaca porta.
+
+    **L'unica strada del resoconto di un giorno** (D-36, 06/10/2026): gli
+    ingredienti letti da Home Assistant (`_report_ingredients`) e poi
+    `facts.aggregate_day` con l'istantanea viva dei giudizi e la casa di
+    adesso -- che serve a chiudere gli episodi di cio' che Home Assistant non
+    nomina piu' (`facts.build_episodes`). Fino a quel giorno la stessa coppia
+    era scritta tre volte: la notte (`_aggrega_ieri`), il recupero
+    (`backfill_one_report`) e la riparazione d'avvio
+    (`_write_missing_reports`). Lo difende
+    `tests/test_fonte_unica.py::test_d36_il_resoconto_di_un_giorno_ha_una_strada_sola`.
+
+    **Sostituisce sempre** (`aggregate_day` e' idempotente): se un giorno gia'
+    scritto si possa rifare lo decide chi chiama, e cosi' la politica sugli
+    errori -- la notte li logga, il recupero li silenzia per giorno, la
+    riparazione li conta giorno per giorno. Qui si solleva.
+    """
+    ricette, serie, nomi, silent, mute = await _report_ingredients(
+        app, ha_client, giorno=day, timezone=timezone)
+    return aggregate_day(
+        store=app["observations"], day=day, timezone=timezone,
+        recipes=ricette, series=serie, names=nomi,
+        silent=silent, muted=mute,
+        judgments=app["type_judgments"],
+        house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+
+
 #: Quanto vale una lettura di `statistic_ids` per i giri che la condividono
 #: (A-05, Tappa 2, Task 8): quattro minuti, cioe' meno del giro piu' frequente
 #: che la usa (il recupero dei resoconti, ogni cinque; le ricette, ogni dieci).
@@ -1986,11 +1999,11 @@ def _punti_orari(punti) -> list[dict]:
             for p in punti if isinstance(p, dict)]
 
 
-# **`_device_names` vive in `api/handlers_mind.py`, e qui si importa.**
-# Fino al 15/09/2026 ne esistevano due copie identiche, e quella di la' aveva
-# scritto nel docstring «Un posto solo»: una ragione smentita dal file che
-# citava. Trovata dalla revisione indipendente. La seconda fondamenta -- niente
-# doppioni -- vale anche per otto righe.
+# **I nomi dei dispositivi vivono in `mind/view.MindView.device_names`, e qui
+# si chiedono.** Fino al 15/09/2026 ne esistevano due copie identiche, e quella
+# di la' aveva scritto nel docstring «Un posto solo»: una ragione smentita dal
+# file che citava. Trovata dalla revisione indipendente. La seconda fondamenta
+# -- niente doppioni -- vale anche per otto righe.
 
 
 def _turn_in_flight(app, kind: str) -> bool:
@@ -2053,7 +2066,19 @@ async def analyst_round(app) -> dict | None:
         today = historian.today(timezone).isoformat()
 
         collected = _collect_analyst_turn(app, store, today)
-        if collected is not None and collected.get("risposta"):
+        # **Chiude il giro solo un'analisi SCRITTA** (06/10/2026). Fino a
+        # qui bastava `risposta`: una risposta rifiutata non si archivia, il
+        # turno restava l'ultimo della sua specie, e il giro lo rileggeva e
+        # rifiutava a ogni passaggio senza accodarne mai uno nuovo -- dal
+        # 05/10 13:32 al 06/10 14:05 sulla casa vera, su un turno fallito dal
+        # ponte. Sesta occorrenza della forma del 22/09 (sopra
+        # `_collect_analyst_turn`). Un rifiuto o un vuoto aspettano il freno
+        # delle ricette, poi si richiede: accodato il turno nuovo, quello
+        # vecchio non e' piu' l'ultimo e non si rilegge.
+        if collected is not None and collected.get("analisi") is not None:
+            return collected
+        if collected is not None and _troppo_presto_per_richiedere(
+                app, analyst_turn.ANALYSIS_TURN_KIND):
             return collected
         # **Non «c'e' gia' un'analisi per oggi?», ma «ce n'e' gia' una su
         # QUESTO fondamento?»** (difetto trovato dal proprietario il
@@ -2072,31 +2097,28 @@ async def analyst_round(app) -> dict | None:
         if _turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
             return None
 
-        from .api.handlers_mind import _device_names
+        from .api.handlers_mind import mind_view
 
         series = analyst.with_deviation(
             report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                      names=_device_names(app)))
+                                      names=mind_view(app).device_names()))
         if not (series.get("serie") or []):
             return None
 
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        route, _downgrade, runner = start(app, ANALYST_SPECIES)
         if route == "ponte":
             return _enqueue_analyst_turn(app, series, today)
         if runner is None:
             logger.info("analista: nessun modello collegato, si riprova al giro dopo")
             return None
-        declare_downgrade(app, agent=ANALYST_SPECIES, reason=downgrade)
 
         question = analyst_turn.build_question(series)
         if question is None:
             return None
-        async with misura_turno(app.get("usage"), runner,
-                                specie=ANALYST_SPECIES, canale="catena") as turn:
-            answer = await runner.chat(
-                user_message=question, system_prompt=analyst_turn.SYSTEM,
-                max_tokens=analyst_turn.MAX_ANSWER_TOKENS)
+        answer, turn = await chain_turn(
+            runner, ANALYST_SPECIES, usage=app.get("usage"),
+            max_tokens=analyst_turn.MAX_ANSWER_TOKENS,
+            user_message=question, system_prompt=analyst_turn.SYSTEM)
         esito = analyst_turn.apply_analysis(series, answer,
                                             truncated=turn.truncated)
         _write_analysis(store, today, esito)
@@ -2172,32 +2194,29 @@ async def actuator_round(app) -> dict | None:
         if not pending:
             return None
 
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        route, _downgrade, runner = start(app, PROPOSER_SPECIES)
         if route == "ponte":
             # La stessa guardia degli altri tre: senza, il ponte riceverebbe
             # una domanda a ogni giro -- una coda di domande identiche che
             # nessuno leggera' mai.
-            if _turn_in_flight(app, actuator_turn.ACTUATION_TURN_KIND):
+            if _turn_in_flight(app, proposer_turn.PROPOSAL_TURN_KIND):
                 return None
             return _enqueue_actuator_turn(app, today)
         if runner is None:
             logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
             return None
-        declare_downgrade(app, agent=ACTUATOR_SPECIES, reason=downgrade)
 
         # Le ricette rotte non sono piu' sue: le ripara il giro delle ricette,
         # dalla causa (attori, Task 1.6; D2 del proprietario, 03/10/2026).
-        question = actuator_turn.build_question(pending)
+        question = proposer_turn.build_question(pending)
         if question is None:
             return None
 
-        async with misura_turno(app.get("usage"), runner,
-                                specie=ACTUATOR_SPECIES, canale="catena") as turn:
-            answer = await runner.chat(
-                user_message=question, system_prompt=actuator_turn.SYSTEM,
-                max_tokens=actuator_turn.MAX_ANSWER_TOKENS)
-        esito = actuator_turn.apply_actuation(pending, answer,
+        answer, turn = await chain_turn(
+            runner, PROPOSER_SPECIES, usage=app.get("usage"),
+            max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
+            user_message=question, system_prompt=proposer_turn.SYSTEM)
+        esito = proposer_turn.apply_actuation(pending, answer,
                                               truncated=turn.truncated)
         await _settle_actuation(app, store, today, stamp, esito, pending)
         return esito
@@ -2214,7 +2233,7 @@ async def actuator_round(app) -> dict | None:
 #: messa li', o il verificatore non potrebbe attribuire niente a nessuno. E
 #: l'attore e' la sua specie: il nome viene da `steering` (C-28), non da un
 #: secondo letterale.
-ACTUATOR_AUTHOR = ACTUATOR_SPECIES
+ACTUATOR_AUTHOR = PROPOSER_SPECIES
 
 
 async def _settle_actuation(app, store, day: str, stamp: str | None,
@@ -2286,7 +2305,10 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
             text=str(outcome.get("trovato") or "").strip(),
             perche=str(row.get("cosa") or "").strip(),
             fingerprint=key, prova=actuator.evidence_of(row),
-            chi_applica="tu", now_ts=time.time())
+            # Il livello di una proposta da fare a mano lo dira' il proponente
+            # (Task 4.2): questo contratto non lo chiede, e una frase in prosa
+            # non porta i domini su cui il codice imporrebbe `alto`.
+            stakes=None, now_ts=time.time())
         decided[key] = actuator.evidence_of(row)
 
 
@@ -2347,7 +2369,7 @@ async def _collect_actuator_turn(app, store, today: str,
     queue = app.get("reasoning_queue")
     if queue is None:
         return None
-    turn = queue.latest(actuator_turn.ACTUATION_TURN_KIND)
+    turn = queue.latest(proposer_turn.PROPOSAL_TURN_KIND)
     if not turn:
         return None
     day = (turn.get("wake") or {}).get("giorno")
@@ -2358,11 +2380,11 @@ async def _collect_actuator_turn(app, store, today: str,
         return None
     if (analysis.get("attuazione") or {}).get("su_fondamento") == stamp:
         return None
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     if not str(reply).strip():
         return None
     pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-    esito = actuator_turn.apply_actuation(pending, reply)
+    esito = proposer_turn.apply_actuation(pending, reply)
     if not esito.get("risposta"):
         return esito
     await _settle_actuation(app, store, day, stamp, esito, pending)
@@ -2376,19 +2398,13 @@ def _enqueue_actuator_turn(app, day: str) -> dict | None:
     if analysis is None:
         return None
     pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-    question = actuator_turn.build_question(pending)
+    question = proposer_turn.build_question(pending)
     if question is None:
         return None
     job = {"history": [{"role": "user", "content": question}],
-           "system_prompt": actuator_turn.SYSTEM,
-           "istruzione": actuator_turn.ANSWER_CONTRACT,
-           # Il modello del proprietario, come la chat (decisione 11).
-           "model": bridge_model(app)}
-    deadline_min = bridge_deadline_min(app.get("models_config"))
-    now = time.time()
-    app["reasoning_queue"].enqueue(
-        actuator_turn.ACTUATION_TURN_KIND, {"giorno": day}, job,
-        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
+           "system_prompt": proposer_turn.SYSTEM,
+           "istruzione": proposer_turn.ANSWER_CONTRACT}
+    _job_id, deadline_min = enqueue_turn(app, PROPOSER_SPECIES, {"giorno": day}, job)
     logger.info("attuatore: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
     return {"accodata": True, "giorno": day}
@@ -2426,16 +2442,10 @@ def _enqueue_analyst_turn(app, series: dict, day: str) -> dict | None:
     job = analyst_turn.bridge_turn(series)
     if job is None:
         return None
-    deadline_min = bridge_deadline_min(app.get("models_config"))
-    now = time.time()
     # **Nella sveglia va il giorno**: il ponte risponde minuti dopo, da un
     # altro processo, e chi raccoglie deve sapere di QUALE giorno era la
     # domanda -- e con quali serie confrontarla.
-    app["reasoning_queue"].enqueue(
-        analyst_turn.ANALYSIS_TURN_KIND, {"giorno": day},
-        # Il modello del proprietario, come la chat (decisione 11).
-        {**job, "model": bridge_model(app)},
-        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
+    _job_id, deadline_min = enqueue_turn(app, ANALYST_SPECIES, {"giorno": day}, job)
     logger.info("analista: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
     return {"accodata": True, "giorno": day}
@@ -2451,6 +2461,14 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     minuti dopo e potrebbe averlo fatto dopo un'aggregazione: i numeri che
     l'osservazione portera' devono essere quelli che l'archivio ha ORA, o
     direbbero una cosa che nessuno puo' piu' verificare.
+
+    **I problemi di una risposta rifiutata si chiedono qui**: con `risposta`
+    vera e `analisi` `None`, `esito["problemi"]` sono i motivi del rifiuto.
+    Vivono nel turno stesso -- la risposta resta nella coda, e si rivalida a
+    ogni lettura -- finche' quel turno e' l'ultimo della sua specie, cioe'
+    fino all'accodamento del turno nuovo. Con `risposta` falsa (vuota, o un
+    turno che il ponte ha fallito: `turn_answer`) non c'e' nessuna risposta da
+    correggere.
     """
     queue = app.get("reasoning_queue")
     if queue is None:
@@ -2483,12 +2501,12 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     day = (turn.get("wake") or {}).get("giorno")
     if day != today or store.analysis(day) is not None:
         return None
-    from .api.handlers_mind import _device_names
+    from .api.handlers_mind import mind_view
 
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     series = analyst.with_deviation(
         report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                  names=_device_names(app)))
+                                  names=mind_view(app).device_names()))
     esito = analyst_turn.apply_analysis(series, reply)
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
@@ -2545,7 +2563,8 @@ async def recipe_round(app) -> dict | None:
         # ri-raccolto ogni dieci minuti, sempre vuoto, e non se ne accodava mai
         # uno nuovo. Trovato dal vivo il 13/09/2026 alle 21:05, dieci minuti
         # dopo aver rilasciato la correzione che quella promessa la scriveva.
-        if collected is not None and _troppo_presto_per_richiedere(app):
+        if collected is not None and _troppo_presto_per_richiedere(
+                app, recipe_turn.RECIPE_TURN_KIND):
             return collected
         if _turn_in_flight(app, recipe_turn.RECIPE_TURN_KIND):
             return None
@@ -2612,8 +2631,7 @@ async def recipe_round(app) -> dict | None:
         repair = to_repair.get(device_id)
         objective = store.objective()["testo"]
 
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        route, downgrade, runner = start(app, RECIPES_SPECIES)
         if route == "ponte":
             return _enqueue_recipe_turn(app, house, device_id,
                                         objective=objective,
@@ -2622,7 +2640,6 @@ async def recipe_round(app) -> dict | None:
         if runner is None:
             logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
             return None
-        declare_downgrade(app, agent=RECIPES_SPECIES, reason=downgrade)
         logger.info("ricette: chiedo come si misura «%s» (%s)%s", device_id, route,
                     " -- riparazione" if repair else "")
         esito = await recipe_turn.ask(
@@ -2649,13 +2666,18 @@ async def recipe_round(app) -> dict | None:
 #:
 #: Un'ora sono 24 tentativi al giorno nel caso peggiore, e un solo giro di
 #: attesa quando il guasto e' passato.
+#:
+#: Dal 06/10/2026 frena anche l'analista, dopo una risposta vuota, fallita o
+#: rifiutata: il suo giro e' orario, quindi un'ora vuol dire un tentativo ogni
+#: due giri, e la sua domanda pesa ~35.000 token.
 RECIPE_RETRY_HOLD_S = 3600.0
 
 
-def _troppo_presto_per_richiedere(app) -> bool:
-    """Se l'ultimo turno di ricetta e' finito a vuoto da meno di un'ora."""
+def _troppo_presto_per_richiedere(app, kind: str) -> bool:
+    """Se l'ultimo turno di quella specie e' finito senza risposta utile da
+    meno di un'ora."""
     queue = app.get("reasoning_queue")
-    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND) if queue else None
+    turn = queue.latest(kind) if queue else None
     if turn is None:
         return False
     deciso = turn.get("decided_ts") or turn.get("created_ts") or 0
@@ -2673,10 +2695,8 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
                                   repair=repair)
     if job is None:
         return None
-    deadline_min = bridge_deadline_min(app.get("models_config"))
-    now = time.time()
-    app["reasoning_queue"].enqueue(
-        recipe_turn.RECIPE_TURN_KIND,
+    _job_id, deadline_min = enqueue_turn(
+        app, RECIPES_SPECIES,
         # **Nella sveglia va il dispositivo**: il ponte risponde minuti dopo,
         # da un altro processo, e chi raccoglie deve sapere di CHI era la
         # domanda. `submit` azzera il contesto e non la sveglia. E, per una
@@ -2687,9 +2707,7 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
         {"dispositivo": device_id,
          "riparare": None if repair is None else sorted(repair.silent),
          "scritta_contro": recipe_turn.written_against(house, device_id, energy)},
-        # Il modello del proprietario, come la chat (decisione 11).
-        {**job, "model": bridge_model(app)},
-        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
+        job)
     logger.info("ricette: turno accodato al piano per «%s» (scadenza %d min)",
                 device_id, deadline_min)
     return {"accodata": True, "dispositivo": device_id}
@@ -2720,7 +2738,7 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
         riga = sapere.get("dispositivo", device_id, campo)
         if riga is not None and riga.when_ts >= decided_ts:
             return None
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     wake = turn.get("wake") or {}
     # Una sveglia di prima del 06/10/2026 porta `[]` anche fuori da una
     # riparazione: letta come riparazione, tiene la ricetta vecchia davanti a
@@ -3023,7 +3041,7 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     letti = [a for a in store.recent_attempts() if a["esito"] != "accodata"]
     if decided_ts is not None and letti and letti[0]["quando_ts"] >= decided_ts:
         return None, False
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     wake = turn.get("wake") or {}
     lotto = wake.get("lotto")
     outcome = observer_apply_answer(
@@ -3065,10 +3083,9 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
     subisce, e una terza fonte per lo stesso numero sarebbe la terza che
     diverge.
     """
-    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
-    app["reasoning_queue"].enqueue(
-        SCOPE_TURN_KIND,
+    _job_id, deadline_min = enqueue_turn(
+        app, OBSERVER_SPECIES,
         # **La sveglia porta anche il LOTTO e se questo turno apre la
         # campagna.** Il ponte risponde minuti dopo, da un altro processo: chi
         # raccoglie deve sapere di che cosa era stata fatta la domanda, o non
@@ -3077,11 +3094,7 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
         {"motivo": reason, "finestra_s": window_s,
          "cadenza_s": cadence_from(window_s),
          "lotto": sorted(lotto), "annota": annota, "campagna_ts": campagna_ts},
-        # Il modello del proprietario, come la chat (decisione 11).
-        {**observer_bridge_turn(store, house, lotto, opening=annota),
-         "model": bridge_model(app)},
-        now + deadline_min * 60,
-        now=now, priority=PRIORITY_BACKGROUND)
+        observer_bridge_turn(store, house, lotto, opening=annota), now=now)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
     # poterlo dire: senza, qualche minuto di attesa legittima e'
     # indistinguibili da un guasto -- che e' precisamente la confusione da cui
@@ -3195,9 +3208,9 @@ def _govern_bridge_worker(app) -> None:
     Le due direzioni sono simmetriche e sono entrambe necessarie:
     - acceso e nessun lavoratore vivo -> si avvia;
     - spento e un lavoratore vivo -> si ferma. Senza questo ramo, spegnere il
-      ponte lascerebbe un ciclo che interroga la coda ogni tre secondi per
-      sempre -- rumore nel registro, e un consumatore per una coda che nessuno
-      riempie.
+      ponte lascerebbe un consumatore vivo per una coda che nessuno riempie,
+      che si sveglierebbe a ogni turno accodato da chi non sa che il ponte e'
+      spento.
 
     Senza un event loop in corso non si fa niente e non e' un ripiego: un
     compito asincrono non ha dove girare. Succede solo fuori dal server (i test
@@ -3219,9 +3232,7 @@ def _govern_bridge_worker(app) -> None:
 
         if app.get("usage") is not None:
             # I token dell'abbonamento smettono di finire solo nel log. Si
-            # collega QUI, dove il lavoratore in-addon nasce: nel percorso a
-            # processo separato (`main()`) `/data` non e' di quel processo, e
-            # li' il registro resta `None` -- dichiarato, non dimenticato.
+            # collega QUI, dove il lavoratore in-addon nasce.
             _agent_runner.set_usage_logger(app["usage"].log)
             # E il REGISTRO DEI TURNI, dalla stessa porta e per lo stesso
             # motivo (24/09/2026). Senza questa riga il ponte non scriveva
@@ -3241,19 +3252,25 @@ def _govern_bridge_worker(app) -> None:
         # ponte. Il sottoprocesso la riceve dalle STESSE intestazioni (vedi
         # `runner.reason`, che ne ricava `token` e `forms`), quindi anche
         # `--mcp-config` e la redazione dell'eco la seguono senza una riga in
-        # piu'.
+        # piu'. Serve solo alla rotta degli strumenti: la coda il lavoratore
+        # la legge direttamente (A-23, 06/10/2026).
         from .api.credenziali import credenziale_ponte_viva
+        from .reasoning.consegna import consegna
 
         def _intestazioni_ponte() -> dict:
             return {"X-HIRIS-Internal-Token": credenziale_ponte_viva(app, adesso=time.time()),
                     "X-Requested-With": "hiris-agent"}
 
+        async def _consegna(job_id, nonce, decision, now):
+            return await consegna(app, job_id, nonce, decision, now)
+
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
+                app["reasoning_queue"],
+                _consegna,
                 "http://127.0.0.1:8099",
                 _intestazioni_ponte,
                 os.environ.get("HIRIS_AGENT_MODE", "live"),
-                int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3")),
             ),
             name="agent_worker",
         )
@@ -3308,7 +3325,7 @@ def _recompute_chain(app) -> None:
     # una coda che nessuno serve, e ogni messaggio scadrebbe prima di ripiegare
     # sulla catena (Task 14) -- cioe' il bottone «Mettilo primo» sarebbe un
     # bottone che risponde 200 e fa aspettare. Spegnerlo senza fermarlo
-    # lascerebbe un ciclo che interroga una coda vuota ogni tre secondi.
+    # lascerebbe un consumatore vivo per una coda che nessuno riempie.
     _govern_bridge_worker(app)
     router = app.get("llm_router")
     mappa = router._backend_map() if router is not None else {}
@@ -3422,7 +3439,7 @@ def _chat_reply_submitter(app, data_dir: str):
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
     # jobs — writes the runner's reply into chat_store instead of actuating
     # the house. Fetta «le chat divise»: la risposta va nel filo del job
-    # (`thread`, letto dalla coda da `handle_reasoning_submit`) -- la
+    # (`thread`, letto dalla coda da `reasoning/consegna`) -- la
     # cronologia di chi ha scritto, non una sola per tutti.
     from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
     from .chat_store import append_messages as _append_chat_messages
@@ -3481,7 +3498,7 @@ def _chat_reply_submitter(app, data_dir: str):
         # vuota» -- se il codice arriva a questa riga, e' perche' sta per
         # scrivere in cronologia una risposta vera, la stessa che l'utente
         # sta per leggere. E' anche il motivo per cui NON sta in
-        # `handle_reasoning_submit` (proposta dell'audit L3 dell'agosto
+        # `reasoning/consegna` (proposta dell'audit L3 dell'agosto
         # scorso, H2): li' la guardia e' solo «reply non vuota», che i
         # sentinella la superano -- registrare il successo li' avrebbe
         # sostituito la bugia di oggi con la bugia opposta.
@@ -4452,19 +4469,9 @@ async def _on_startup(app: web.Application) -> None:
             # prefisso «cervello:», e la notte salterebbe in silenzio.
             timezone = house_timezone(app.get("home_space_store"))
             ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
-            # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
-            # delle entita' che nominano chieste una volta per giro, non una
-            # per dispositivo.
-            ricette, serie, nomi, silent, mute = await _report_ingredients(
-                app, ha_client, giorno=ieri, timezone=timezone)
-            count = aggregate_day(
-                store=app["observations"], day=ieri, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi,
-                silent=silent, muted=mute,
-                judgments=app["type_judgments"],
-                # La fonte di adesso, per chiudere gli episodi di cio' che
-                # Home Assistant non nomina piu' (`facts.build_episodes`).
-                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+            # **IL RESOCONTO** (spec §9), per la strada unica: la notte
+            # rifa' ieri anche se c'e' gia'.
+            count = await write_day_report(app, ha_client, day=ieri, timezone=timezone)
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
@@ -4662,7 +4669,19 @@ async def _on_startup(app: web.Application) -> None:
                     "osservatore: il turno %s e' scaduto senza risposta dal piano",
                     job.get("job_id"))
                 continue
-            if job.get("kind") != "chat":
+            if job.get("kind") == "chat":
+                continue
+            # Una specie dichiarata (`steering.JOB_SPECIES`) e' un turno che il
+            # piano non ha fatto in tempo a servire, non un orfano: fino al
+            # 06/10/2026 analisi, ricette e attuazione scadute finivano nel
+            # registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2
+            # della Tappa 6). Orfano resta solo un tipo che nessuno dichiara
+            # piu', come l'olistico di un archivio di prima della fetta E3.
+            if job.get("kind") in JOB_SPECIES:
+                logger.warning(
+                    "reasoning sweep: il turno %s (%s) e' scaduto senza risposta "
+                    "dal piano", job.get("job_id"), job.get("kind"))
+            else:
                 logger.warning(
                     "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, "
                     "fetta E3 Task 4), scartato",
@@ -5000,9 +5019,9 @@ async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
     # M-2 (Plan 2B final review, fast-follow): stop the reasoning-queue
     # consumer (agent_worker_task) and bound the wait. A claimed job can be
-    # sitting inside run_loop's
-    # run_in_executor offload of the blocking `run_once` (subprocess.run
-    # timeout=300 + httpx.Client timeout=330) -- an unbounded
+    # sitting inside `serve`'s
+    # run_in_executor offload of the blocking `reason` (subprocess.run with
+    # the turn's remaining time, S-09, + httpx.Client timeout=330) -- an unbounded
     # `await aw` after cancel() would then stall addon shutdown for up to
     # ~5 minutes, since cancelling the outer task does not interrupt a
     # thread already blocked inside the executor. `asyncio.wait_for` caps
@@ -5217,10 +5236,6 @@ def create_app() -> web.Application:
     app.router.add_post("/api/services/window/close", handle_close_window)
     app.router.add_post("/api/services/approve", handle_service_approve)
     app.router.add_post("/api/services/revoke", handle_service_revoke)
-
-    from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
-    app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
-    app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
     # fetta "il ponte riceve gli strumenti" (parita' B) Task 1: l'adattatore
     # JSON-RPC che porta gli strumenti della casa anche al ponte via

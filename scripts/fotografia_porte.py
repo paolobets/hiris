@@ -122,7 +122,7 @@ from hiris.app.api import handlers_chat, handlers_home_space
 from hiris.app.home_space import briefing, house_query, queries, topology
 from hiris.app.home_space.house import House
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
-from hiris.app.mind import actuator_turn, analyst_turn, observer, recipe_turn
+from hiris.app.mind import analyst_turn, observer, proposer_turn, recipe_turn
 
 DIFFERENCES_SHOWN = 200
 STARTUP_TIMEOUT_S = 120
@@ -458,7 +458,7 @@ def _fixed_texts() -> dict:
         "mind.observer.SYSTEM": observer.SYSTEM,
         "mind.recipe_turn.SYSTEM": recipe_turn.SYSTEM,
         "mind.analyst_turn.SYSTEM": analyst_turn.SYSTEM,
-        "mind.actuator_turn.SYSTEM": actuator_turn.SYSTEM,
+        "mind.proposer_turn.SYSTEM": proposer_turn.SYSTEM,
     }
     return {name: {"caratteri": len(text), "testo": text} for name, text in texts.items()}
 

@@ -111,16 +111,6 @@ def request_thread(request) -> ChatThread:
     return thread_for(request.get("soggetto"), request.get("auth_via"))
 
 
-def thread_to_context(thread: ChatThread) -> dict:
-    """La forma JSON del filo, per la risposta della rotta di claim.
-
-    Non c'e' la funzione inversa perche' nessuno la rilegge: il runner non usa
-    il filo del claim, e dentro il processo il filo si prende dalle colonne
-    della coda (`job["thread"]`), mai da un dizionario.
-    """
-    return {"subject_key": thread.subject_key, "entry_point": thread.entry_point}
-
-
 def subject_from_thread(thread: ChatThread | None) -> dict | None:
     """Il soggetto di un filo, per chi ha solo il filo: `{"specie", "id"}`.
 

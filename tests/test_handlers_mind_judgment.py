@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from aiohttp import web
 
 from hiris.app import server
 from hiris.app.api.handlers_mind import handle_knowledge, handle_set_judgment
@@ -152,7 +153,13 @@ async def test_corpo_storto_400_non_500(tmp_path):
                       {"soggetto_genere": "tipo", "soggetto": "light", "campo": "genere",
                        "valore": 7},
                       {"soggetto_genere": "tipo", "soggetto": "light", "campo": "genere"}):
-            r = await handle_set_judgment(_richiesta(app, corpo))
+            try:
+                r = await handle_set_judgment(_richiesta(app, corpo))
+            except web.HTTPBadRequest as rifiuto:
+                # Un corpo che non e' un oggetto lo rifiuta il confine
+                # (`api/boundary.json_object`), sollevando il 400 che
+                # aiohttp risponde.
+                r = rifiuto
             assert r.status == 400, corpo
             assert json.loads(r.text)["error"]
         assert s.summary()["totale"] == conto

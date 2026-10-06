@@ -274,7 +274,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     │                   CONFIGURAZIONE — composer.py, advisor.py, revisions.py
     ├── mind/           il cervello: osservatore (observer, watcher, scope, facts, report),
     │                   sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
-    │                   analista (analyst, analyst_turn), attuatore (actuator, actuator_turn)
+    │                   analista (analyst, analyst_turn), proponente (actuator, proposer_turn)
     ├── memory/         cio' che le persone hanno detto: store, interpretation, resolver
     ├── keeper/         le promesse dell'utente: promise, store, sweeper, exchange, outcome
     ├── agent/          runner.py (il lavoratore del ponte: polla la coda) + prompts.py

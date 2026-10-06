@@ -16,12 +16,12 @@ Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
 `build_chat_messages` e il commento sopra `BASE_IDENTITY` in claude_runner.py.
 """
 from ..claude_runner import (
-    BASE_IDENTITY,
-    BASE_TOOL_RULES,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
 )
+from ..home_space.topology import name_with_id
+from ..steering import compose_base
 
 # La guida del ramo SENZA strumenti. Parla di questo TURNO, non del prodotto:
 # «non puoi accendere ... perche' lo strumento che lo fa qui non c'e' -- non
@@ -150,11 +150,12 @@ _GUIDE_WITH_TOOLS = (
     "cambiati gli stati e per mano di chi, come sono andati i valori, come "
     "sono andate le esecuzioni di automazioni e script, cosa c'e' nel "
     "registro degli errori di Home Assistant --, `mcp__hiris__calendar` "
-    "per i prossimi appuntamenti nei calendari di questa casa. "
+    "per i prossimi appuntamenti nei calendari di questa casa, "
+    "`mcp__hiris__mind` per cio' che il cervello di HIRIS guarda e ha capito. "
     "Quando il prompt qui sopra parla "
     "di `search`, `related`, `remember`, `fetch`, `execute`, "
-    "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `history` "
-    "o `calendar` parla di "
+    "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `history`, "
+    "`calendar` o `mind` parla di "
     "questi STESSI strumenti, non di altri: usa il nome prefissato per "
     "chiamarli.\n"
 ) + _OLD_NAMES_NOTICE + (
@@ -166,7 +167,7 @@ _GUIDE_WITH_TOOLS = (
     "di questa casa: non li inventi e non li ricavi dal nome. Se hai solo il "
     "NOME di una cosa chiama prima `mcp__hiris__search` e usa l'id che ti "
     "risponde.\n"
-    "Gli id fra parentesi che vedi nell'albero della casa -- `Nome (id: X)` -- "
+    f"Gli id fra parentesi che vedi nell'albero della casa -- `{name_with_id('Nome', 'X')}` -- "
     "sono gia' gli identificatori esatti: se un'area, un piano, "
     "un'automazione o uno script li porta con se', usali direttamente e non "
     "chiamare `mcp__hiris__search` per qualcosa che hai gia'.\n"
@@ -317,7 +318,7 @@ _CHAT_INSTRUCTION = (
 
 def build_chat_messages(system_prompt: str, history: list, *,
                         contesto: str = "",
-                        active_tools: bool = False,
+                        active_tools: tuple[str, ...] = (),
                         restrict_to_home: bool = False,
                         response_mode: str = "",
                         istruzione: str = "") -> tuple[str, str]:
@@ -362,34 +363,27 @@ def build_chat_messages(system_prompt: str, history: list, *,
     `claude_runner.py::ClaudeRunner.chat` fa fra i suoi blocchi stabili e il
     breakpoint di cache.
 
-    `active_tools` sceglie DUE cose insieme, non una (fix round 1,
-    Critical 1 della review indipendente):
+    `active_tools` sono i NOMI degli strumenti di questo turno -- vuoto se
+    non ne ha, o se la sonda li ha smentiti -- e sceglie DUE cose insieme,
+    non una (fix round 1, Critical 1 della review indipendente):
 
-    1. **quanto di BASE viene emesso.** `BASE_IDENTITY` (chi e' HIRIS, cosa
-       conosce) e' vera su entrambi i percorsi ed entra sempre.
-       `BASE_TOOL_RULES` -- «Usa SEMPRE gli strumenti per dati sulla
-       casa», «chiama remember subito», «se hai chiamato uno strumento con
-       successo l'azione e' reale» -- e' un ORDINE DI CHIAMARE UNO STRUMENTO
-       che sul ponte non esiste, e sul ponte non viene emessa affatto. La
-       prima stesura di questo task passava BASE intero e lo faceva smentire
-       dalla guida che segue: una smentita di testo non e' un meccanismo, e
-       il caso peggiore -- «preso nota» senza aver salvato -- e' il bug
-       misurato in produzione da cui `remember` e' nato. Con
-       `active_tools=True` i due pezzi tornano contigui e il blocco e'
-       byte per byte `BASE_SYSTEM_PROMPT`, come nel ramo sincrono;
+    1. **quanto di BASE viene emesso**, dal compositore unico
+       (`steering.compose_base`, Tappa 6, Task 7). L'identita' entra sempre;
+       le regole sugli strumenti -- «Usa SEMPRE gli strumenti», «chiama
+       remember subito» -- sono ORDINI DI CHIAMARE UNO STRUMENTO, ed entrano
+       solo quelle degli strumenti che il turno ha. La prima stesura passava
+       BASE intero e lo faceva smentire dalla guida: una smentita di testo
+       non e' un meccanismo. Con gli strumenti della chat il blocco e' byte
+       per byte quello del ramo sincrono;
     2. **quale delle due guide entra.**
 
-    Nella fetta A era sempre False (nessun chiamante di produzione lo
-    passava). La fetta "il ponte riceve gli strumenti" (parita' B, Task 3) ha
-    raccolto il ramo True cambiando UN ARGOMENTO, senza riscrivere il prompt
-    una terza volta: `agent/runner.py::_reason_chat` lo passa, e il valore
-    viene dalla sonda `probe_tools` -- lo stesso booleano che decide
-    l'argv, due righe piu' sotto. Il default resta False perche' False e' il
-    ramo di DEGRADO, e un degrado deve essere cio' che si ottiene quando non
-    si sa: un default True prometterebbe strumenti a chi non li ha chiesti."""
-    # Con gli strumenti attivi le due meta' tornano adiacenti e il blocco e'
-    # esattamente `BASE_SYSTEM_PROMPT`: nessuna terza variante da mantenere.
-    base = BASE_IDENTITY + BASE_TOOL_RULES if active_tools else BASE_IDENTITY
+    Fino al 06/10/2026 era un booleano, e il ponte dava alla promessa le
+    regole di `execute`. Il valore viene da `agent/runner.py::_reason_chat`:
+    gli strumenti della dichiarazione del mestiere se la sonda `probe_tools`
+    li ha trovati, niente altrimenti -- lo stesso valore che decide l'argv,
+    due righe piu' sotto. Il default e' vuoto perche' vuoto e' il ramo di
+    DEGRADO, e un degrado deve essere cio' che si ottiene quando non si sa."""
+    base = compose_base(active_tools)
     system_parts = [base.strip()]
     if system_prompt:
         system_parts.append(system_prompt.strip())

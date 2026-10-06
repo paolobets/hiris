@@ -30,7 +30,7 @@ from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import _TRUNCATION_NOTICE, ClaudeRunner
 from hiris.app.home_space import historian
 from hiris.app.llm_router import LLMRouter
-from hiris.app.mind import actuator_turn, analyst_turn, observer
+from hiris.app.mind import analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
@@ -320,7 +320,7 @@ async def test_l_analista_troncato_non_scrive_l_analisi(tmp_path):
 
 
 def test_l_attuatore_troncato_non_attua():
-    esito = actuator_turn.apply_actuation(
+    esito = proposer_turn.apply_actuation(
         osservazioni_attuatore(), json.dumps({"esiti": []}), truncated=True)
 
     assert esito["attuazione"] is None

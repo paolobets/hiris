@@ -122,7 +122,7 @@ def _proposta(archivio, n: int, *, now: float | None = None) -> str:
         exchange="t1", phrase="apri le tapparelle all'alba", prima=None,
         dopo={"id": f"k{n}", "alias": "Tapparelle"}, helper=[],
         preview="Creo un'automazione.",
-        now=time.time() if now is None else now)["id"]
+        stakes=None, now=time.time() if now is None else now)["id"]
 
 
 @pytest.mark.asyncio

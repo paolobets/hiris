@@ -17,6 +17,7 @@ import asyncio
 
 import pytest
 
+from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.server import _govern_bridge_worker, should_start_agent_worker
 
 
@@ -85,10 +86,13 @@ class _CompitoFinto:
 
 
 @pytest.mark.asyncio
-async def test_accendere_il_ponte_fa_partire_il_lavoratore(monkeypatch):
+async def test_accendere_il_ponte_fa_partire_il_lavoratore(monkeypatch, tmp_path):
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
-    app = {"bridge_active": True}
+    # Il lavoratore legge la coda dell'app (A-23): in produzione c'e' sempre,
+    # l'avvio la costruisce prima di accendere il ponte.
+    app = {"bridge_active": True,
+           "reasoning_queue": ReasoningQueue(str(tmp_path / "r.db"))}
     _govern_bridge_worker(app)
     compito = app.get("agent_worker_task")
     assert compito is not None, (
@@ -140,7 +144,8 @@ async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(monkeypatch):
+async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(
+        monkeypatch, tmp_path):
     """Il gesto «Mettilo primo» passa di qui: la PUT scrive l'archivio e chiama
     `_recompute_chain`. Se questa si limitasse a cablare `app["bridge_active"]`
     senza governare il lavoratore, ogni turno andrebbe in una coda senza
@@ -149,7 +154,8 @@ async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(mo
     monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
     from hiris.app import server
 
-    app = {"models_config": {"ponte": {"attivo": True}, "chain_order": []}}
+    app = {"models_config": {"ponte": {"attivo": True}, "chain_order": []},
+           "reasoning_queue": ReasoningQueue(str(tmp_path / "r.db"))}
     server._recompute_chain(app)
 
     assert app["bridge_active"] is True

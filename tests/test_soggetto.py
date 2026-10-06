@@ -441,54 +441,10 @@ async def test_la_credenziale_si_guarda_PRIMA_del_segreto_condiviso():
         "il segreto condiviso ha vinto sulla credenziale effimera")
 
 
-# --- A-4: le due rotte del ponte, chiuse ------------------------------------
-
-@pytest.mark.asyncio
-async def test_le_rotte_del_PONTE_vogliono_una_credenziale_di_turno():
-    """**Reperto A-4 dell'audit del 21/09**, chiuso il 22.
-
-    `/api/reasoning/claim` restituisce il job con il `context` deserializzato
-    per intero -- il nucleo della casa e i ricordi -- piu' un nonce fresco. Con
-    quel nonce, `submit` sul ramo `chat` scrive un testo arbitrario nella
-    conversazione **come risposta di HIRIS**: l'utente legge un'istruzione
-    ostile credendola l'assistente, ed e' lui a eseguirla.
-
-    La rotta gemella dello stesso worker -- `/api/mcp` -- restringeva
-    l'autenticazione da sempre. Queste due no, e non si potevano chiudere
-    finche' il gateway MCP le chiamava. Il 22/09 il proprietario ha dichiarato
-    quel progetto morto: l'unico chiamante legittimo e' il worker, che porta
-    una credenziale di turno.
-
-    Mutazione ESEGUITA: togliere il controllo -- rossa.
-    """
-    from hiris.app.api.handlers_reasoning import (
-        handle_reasoning_claim,
-        handle_reasoning_submit,
-    )
-
-    for rotta in (handle_reasoning_claim, handle_reasoning_submit):
-        richiesta = _Firmata(headers={}, remote="127.0.0.1")
-        richiesta["auth_via"] = "ingress"
-        richiesta["soggetto"] = {"specie": "persona", "id": "u-1"}
-
-        risposta = await rotta(richiesta)
-
-        assert risposta.status == 401, (
-            f"{rotta.__name__} ha risposto a chi non e' il worker del ponte")
-
-
-@pytest.mark.asyncio
-async def test_il_WORKER_del_ponte_le_apre_ancora():
-    """La contropartita: senza di lei basterebbe chiudere tutto, e il ponte si
-    spegnerebbe in silenzio.
-
-    Mutazione: negare anche al turno -- rossa."""
-    from hiris.app.api.handlers_reasoning import handle_reasoning_claim
-
-    richiesta = _Firmata(headers={}, remote="127.0.0.1")
-    richiesta["auth_via"] = "turno"
-    richiesta["soggetto"] = {"specie": "nessuno", "id": "ponte"}
-
-    risposta = await handle_reasoning_claim(richiesta)
-
-    assert risposta.status == 200
+# --- A-4: le due rotte del ponte ---------------------------------------------
+#
+# `test_le_rotte_del_PONTE_vogliono_una_credenziale_di_turno` e
+# `test_il_WORKER_del_ponte_le_apre_ancora` sono usciti il 06/10/2026 (A-23)
+# insieme a `/api/reasoning/claim` e `/api/reasoning/submit`: il lavoratore
+# del ponte legge la coda dentro il processo, e una rotta che non esiste non
+# si difende. Che non rientrino lo prova `tests/test_reasoning_wiring.py`.

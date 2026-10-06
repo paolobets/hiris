@@ -85,11 +85,12 @@ from hiris.app.steering import TRUNCATED
 #: L'etichetta di chi non porta una causa. E' della batteria, non del prodotto:
 #: il prodotto non ha una causa che si chiami cosi'.
 UNCAUSED = "senza causa"
-#: La causa del dato fermo. Vive nel prodotto, nella regola del dato fermo (il
-#: suo `FROZEN`, Task 1.1, su un ramo non ancora unito): finche' il vocabolario
-#: non c'e', e' scritta qui. Il Task 1.7, passo 2, la CHIEDE al vocabolario e
-#: toglie questa copia.
-FROZEN = "ferma"
+#: La causa del dato fermo si CHIEDE al vocabolario delle cause del prodotto
+#: (`mind.operations`, Task 1.2 e 1.3): fino al 06/10/2026 era una copia
+#: scritta qui, nata quando quel vocabolario non c'era ancora (Task 1.7,
+#: passo 2).
+from hiris.app.mind.operations import FROZEN
+
 #: L'etichetta di un soggetto marcato con `fonte: None` (`House.source` non lo
 #: trova ne' nel registro ne' negli stati). Della batteria, non del prodotto:
 #: il vocabolario della fonte non ha una parola per lui (domanda del Task 1.5).

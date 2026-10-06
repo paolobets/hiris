@@ -13,7 +13,6 @@ import httpx as _httpx
 from ..chat_store import LEAKED_TOOL_NAME_RE
 from ..claude_runner import (
     _MAX_ITERATIONS_NOTICE,
-    BASE_SYSTEM_PROMPT,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
@@ -21,6 +20,7 @@ from ..claude_runner import (
     _current_tool_calls,
     _current_tool_leaked,
     _current_truncated,
+    _current_unanswered,
     _misura_corrente,
     _PerCallFlag,
     _PerCallList,
@@ -364,6 +364,7 @@ class OpenAICompatRunner:
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_truncated = _PerCallFlag(_current_truncated)
     last_tool_leaked = _PerCallFlag(_current_tool_leaked)
+    last_unanswered = _PerCallFlag(_current_unanswered)
 
     def __init__(
         self,
@@ -646,6 +647,7 @@ class OpenAICompatRunner:
         self.last_tool_calls = []
         self.last_truncated = False
         self.last_tool_leaked = False
+        self.last_unanswered = False
 
         effective_model = self._resolve_model(model, agent_type)
 
@@ -675,7 +677,12 @@ class OpenAICompatRunner:
         # modificatori nello stesso posto, e la parita' non e' piu' vera solo
         # per due su tre. Pinnato da
         # `tests/test_composition_order.py`.
-        system_parts = [BASE_SYSTEM_PROMPT]
+        # Il compositore unico, come `ClaudeRunner.chat` (Tappa 6, Task 7).
+        from ..steering import compose_base
+
+        if tools is not None:
+            tools = list(tools)
+        system_parts = [compose_base(t["name"] for t in tools or ())]
         if system_prompt:
             system_parts.append(system_prompt)
         # I modificatori di comportamento -- stabili per configurazione,

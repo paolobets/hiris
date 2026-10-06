@@ -1,15 +1,22 @@
 import asyncio
+import contextlib
 import logging
 import pathlib
 import subprocess
+import threading
 import time
 from unittest.mock import patch
 
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
+from hiris.app.steering import SPECIES
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 
 def test_build_chat_messages_available():
@@ -46,12 +53,12 @@ async def test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno(mo
                         lambda app, *, adesso: "credenziale-di-turno")
     ricevute = {}
 
-    def _run_loop(base_url, get_headers, mode, poll_seconds):
+    def _run_loop(queue, consegna, base_url, get_headers, mode):
         ricevute["get_headers"] = get_headers
         return asyncio.sleep(0)
 
     monkeypatch.setattr(runner, "run_loop", _run_loop)
-    app = {"bridge_active": True}
+    app = {"bridge_active": True, "reasoning_queue": object()}
     server._govern_bridge_worker(app)
     await app["agent_worker_task"]
 
@@ -89,8 +96,9 @@ def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
     # il CLI esce != 0) e' vivo e invariato, cambia solo la forma dello stdout.
     # Gli assert restano identici, ed e' proprio questo il punto: sono la prova
     # che il cambio di formato non ha perso questo ramo.
-    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
-                                        "history": [{"role": "user", "content": "ciao"}]}}
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "ciao"}]}}
 
     class _Proc:
         returncode = 1
@@ -114,8 +122,9 @@ def test_reason_chat_returns_fallback_reply_on_timeout():
     # cambio di formato non tocca, e va verificato che sia rimasto tale (con
     # `stream-json` la tentazione e' di leggere il flusso parziale del processo
     # ucciso e spacciarlo per risposta).
-    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
-                                        "history": [{"role": "user", "content": "ciao"}]}}
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "ciao"}]}}
 
     def _raise_timeout(*a, **k):
         raise subprocess.TimeoutExpired(cmd="claude", timeout=300)
@@ -151,21 +160,16 @@ def _tools_list_come_la_rotta() -> dict:
 
 
 class _Client:
-    """Il finto client del giro del ponte: claim, submit e -- dal Task 3 della
-    parita' B -- la rotta `/api/mcp` che la sonda degli strumenti interroga.
+    """Il finto client del giro del ponte: la rotta `/api/mcp` che la sonda
+    degli strumenti interroga (dal Task 3 della parita' B). E' l'unica rotta
+    che il ponte chiama: la coda la legge direttamente (A-23, 06/10/2026).
 
     `mcp=False` spegne la rotta (401): e' il ramo di DEGRADO, quello in cui il
     ponte deve accorgersene prima di comporre il prompt."""
-    def __init__(self, claim_body, *, mcp=True):
-        self.claim_body = claim_body
-        self.submitted = []
+    def __init__(self, *, mcp=True):
         self.mcp = mcp
         self.sondata = []
     def post(self, url, headers=None, json=None, **kwargs):
-        if url.endswith("/api/reasoning/claim"): return _Resp(self.claim_body)
-        if url.endswith("/api/reasoning/submit"):
-            self.submitted.append(json)
-            return _Resp({"ok": True})
         if url.endswith("/api/mcp"):
             self.sondata.append({"headers": headers, "corpo": json})
             if not self.mcp:
@@ -209,15 +213,30 @@ class _ProcFelice:
     stderr = ""
 
 
-def test_run_once_chat_reasons_and_submits():
+def _servi(job, client, *, esito="recorded"):
+    """Serve un turno gia' preso, come `run_loop`: torna l'esito del giro e le
+    consegne ricevute."""
+    consegnate = []
+
+    async def _consegna(job_id, nonce, decision, now):
+        consegnate.append({"job_id": job_id, "nonce": nonce, "decision": decision})
+        return esito
+
+    out = asyncio.run(runner.serve(
+        job, _consegna, client, "http://127.0.0.1:8099",
+        lambda: {"X-HIRIS-Internal-Token": "TOK"}, "live"))
+    return out, consegnate
+
+
+def test_serve_chat_ragiona_e_consegna():
     """Il giro felice del ponte, che dal Task 3 della parita' B e' il giro CON
     gli strumenti: la sonda trova tutti i nomi, l'argv li collega, e la
-    `reply` che torna alla reasoning API e' la risposta del modello e basta --
+    `reply` consegnata e' la risposta del modello e basta --
     nessuna riga di degrado, perche' non c'e' nessun degrado da dichiarare."""
-    job = {"job_id": "J", "nonce": "N", "kind": "chat",
+    job = {"deadline_ts": SCADENZA_LONTANA, "job_id": "J", "nonce": "N", "kind": "chat",
            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
-    c = _Client({"job": job})
+    c = _Client()
     catturato = {}
 
     def _run(argv, *a, **k):
@@ -225,7 +244,7 @@ def test_run_once_chat_reasons_and_submits():
         return _ProcFelice()
 
     with patch.object(runner.subprocess, "run", _run):
-        out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
+        out, consegnate = _servi(job, c)
     assert out == "done"
     # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): la `decision`
     # porta anche `tools_called` -- qui vuota, perche' questo flusso finto
@@ -233,10 +252,12 @@ def test_run_once_chat_reasons_and_submits():
     # e' VUOTA, non assente: e' il segnale che il turno e' girato in modalita'
     # `live` senza chiamare nulla, non un job che non ha mai avuto
     # l'occasione di farlo.
-    assert c.submitted and c.submitted[0]["decision"] == {
-        "reply": "2 luci accese", "tools_called": []}
+    # E l'esito del turno (06/10/2026): lo legge chi raccoglie un turno del
+    # cervello (`reasoning.queue.turn_answer`).
+    assert consegnate == [{"job_id": "J", "nonce": "N", "decision": {
+        "reply": "2 luci accese", "tools_called": [], "outcome": "riuscito"}}]
 
-    # la sonda e' passata dalla rotta, con GLI STESSI header del claim (non un
+    # la sonda e' passata dalla rotta, con le intestazioni del turno (non un
     # secondo modo di autenticarsi verso se stessi) e col metodo giusto
     assert c.sondata, "il ponte non ha sondato /api/mcp prima di comporre il turno"
     assert c.sondata[0]["headers"] == {"X-HIRIS-Internal-Token": "TOK"}
@@ -245,7 +266,7 @@ def test_run_once_chat_reasons_and_submits():
     assert "--mcp-config" in catturato["argv"]
 
 
-def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
+def test_serve_dichiara_all_utente_il_turno_senza_strumenti():
     """Il gemello, ed e' la difesa (3) del progetto: gli strumenti erano ATTESI
     (il giro di produzione passa client e base_url) e la rotta non li ha dati.
     Il turno non fallisce -- il modello risponde comunque sul nucleo -- ma la
@@ -256,10 +277,10 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     NON e' fra i `chat_store._TOXIC_ASSISTANT_PREFIXES` come gli altri
     sentinella del ponte -- quelli sostituiscono la risposta, questa la
     precede."""
-    job = {"job_id": "J", "nonce": "N", "kind": "chat",
+    job = {"deadline_ts": SCADENZA_LONTANA, "job_id": "J", "nonce": "N", "kind": "chat",
            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
-    c = _Client({"job": job}, mcp=False)
+    c = _Client(mcp=False)
     catturato = {}
 
     def _run(argv, *a, **k):
@@ -271,10 +292,10 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
         return _ProcFelice()
 
     with patch.object(runner.subprocess, "run", _run):
-        out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
+        out, consegnate = _servi(job, c)
 
     assert out == "done"
-    reply = c.submitted[0]["decision"]["reply"]
+    reply = consegnate[0]["decision"]["reply"]
     assert reply.startswith(runner.MISSING_TOOLS_NOTICE)
     assert "2 luci accese" in reply
     # e il prompt e' tornato a negarli, insieme all'argv: un solo booleano
@@ -282,40 +303,77 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     assert prompts._GUIDE_WITHOUT_TOOLS in catturato["system"]
 
 
-@pytest.mark.asyncio
-async def test_run_loop_does_not_block_event_loop(monkeypatch):
-    # run_once is slow+sync (real impl uses httpx.Client + subprocess.run); it
-    # must be offloaded to a thread executor so a concurrent coroutine on the
-    # same event loop keeps making progress while it runs. Regression test for
-    # the event-loop-blocking defect found in Task 4 review.
-    #
-    # I-1 fast-follow (Plan 2B final review): the original version of this
-    # test (`await ticker()` unconditionally, then assert `ticks >= 4`) is
-    # tautological -- it passes even if run_loop blocks the loop, because the
-    # ticker's sleeps just fire LATE once run_once finally releases the loop;
-    # nothing bounds the wall-clock. Rewritten to bound it: the ticker's 5 x
-    # 0.02s iterations are wrapped in `asyncio.wait_for(..., timeout=0.25)`.
-    # With the run_in_executor offload, run_once's 0.3s sleep runs on a
-    # separate thread, so the ticker finishes in ~0.1s and wait_for does NOT
-    # raise. If run_loop were reverted to calling the blocking run_once
-    # inline, the ticker would be stalled behind the 0.3s sleep and wait_for
-    # WOULD raise TimeoutError -- making this test an actual regression guard.
-    def slow_once(client, base_url, headers, mode):
-        time.sleep(0.3)
-        return "idle"
-    monkeypatch.setattr(runner, "run_once", slow_once)
+class _FakeHttpxClient:
+    """`run_loop` costruisce un vero httpx.Client(timeout=330) prima del suo
+    primo `await`: in alcuni ambienti il solo costruttore costa ~2.3s
+    (Windows, caricamento dei certificati di sistema), e sfonderebbe
+    qualunque budget stretto indipendentemente da cio' che si prova. Un
+    contesto finto e quasi istantaneo isola la cosa sotto prova."""
+    def __init__(self, *a, **k): pass
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
 
-    # run_loop constructs a real httpx.Client(timeout=330) synchronously
-    # before its first `await` -- in this environment that constructor alone
-    # takes ~2.3s (Windows system cert-store loading), which would blow any
-    # tight budget regardless of the run_once-offload fix under test. Stub it
-    # out with a near-instant fake context manager so the test isolates
-    # exactly the thing it's meant to check.
-    class _FakeHttpxClient:
-        def __init__(self, *a, **k): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
+
+class _CodaSpia:
+    """Una `ReasoningQueue` vera, che conta le volte che le si chiede un turno."""
+    def __init__(self, path, *, claim_rotto=False):
+        from hiris.app.reasoning.queue import ReasoningQueue
+        self.vera = ReasoningQueue(path)
+        self.claims = 0
+        self.claim_rotto = claim_rotto
+    def on_enqueue(self, listener, **kw):
+        self.vera.on_enqueue(listener, **kw)
+    def enqueue(self, *a, **k):
+        return self.vera.enqueue(*a, **k)
+    def claim(self, now):
+        self.claims += 1
+        if self.claim_rotto:
+            raise RuntimeError("database is locked")
+        return self.vera.claim(now)
+
+
+def _accoda(coda, job_id):
+    adesso = time.time()
+    coda.enqueue("holistic", {}, {}, adesso + 300, job_id=job_id, now=adesso)
+
+
+async def _avvia(coda, consegna):
+    task = asyncio.create_task(runner.run_loop(
+        coda, consegna, "http://127.0.0.1:8099", dict, "live"))
+    await asyncio.sleep(0.05)
+    return task
+
+
+async def _ferma(task):
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_run_loop_does_not_block_event_loop(monkeypatch, tmp_path):
+    # Il ragionamento e' lento e sincrono (subprocess.run + httpx.Client): deve
+    # andare in un thread executor, cosi' una coroutine concorrente sullo
+    # stesso loop continua ad avanzare mentre gira. Regressione del difetto di
+    # loop bloccato trovato nella review del Task 4.
+    #
+    # I-1 fast-follow (Plan 2B final review): il budget e' stretto apposta. Le
+    # 5 x 0.02s del ticker stanno dentro `asyncio.wait_for(..., timeout=0.25)`:
+    # con l'executor, gli 0.3s di `reason` girano in un altro thread e il
+    # ticker finisce in ~0.1s. Se `serve` chiamasse `reason` in linea, il
+    # ticker resterebbe fermo dietro gli 0.3s e `wait_for` solleverebbe.
+    def slow_reason(job, mode, **k):
+        time.sleep(0.3)
+        return {}
+    monkeypatch.setattr(runner, "reason", slow_reason)
     monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+    _accoda(coda, "J")
+
+    async def _consegna(*a):
+        return "recorded"
 
     ticks = 0
 
@@ -325,23 +383,181 @@ async def test_run_loop_does_not_block_event_loop(monkeypatch):
             await asyncio.sleep(0.02)
             ticks += 1
 
-    loop_task = asyncio.create_task(
-        runner.run_loop("http://127.0.0.1:8099", dict, "live", 0))
+    loop_task = asyncio.create_task(runner.run_loop(
+        coda, _consegna, "http://127.0.0.1:8099", dict, "live"))
     try:
         await asyncio.wait_for(ticker(), timeout=0.25)
     except TimeoutError:
         pytest.fail(
             "ticker did not complete within budget -- run_loop appears to be "
-            "blocking the event loop instead of offloading run_once"
+            "blocking the event loop instead of offloading the reasoning"
         )
     finally:
-        loop_task.cancel()
-        try:
-            await loop_task
-        except asyncio.CancelledError:
-            pass
+        await _ferma(loop_task)
 
     assert ticks == 5  # all ticker iterations completed within the tight budget
+
+
+@pytest.mark.asyncio
+async def test_il_lavoratore_non_interroga_la_coda_vuota_e_si_sveglia_al_turno_nuovo(
+        monkeypatch, tmp_path):
+    """A-23 (06/10/2026): il lavoratore guarda la coda una volta, la trova
+    vuota e ASPETTA -- fino a quel giorno la richiedeva via HTTP ogni tre
+    secondi, per sempre. Un turno accodato lo sveglia, viene servito, e il
+    lavoratore torna ad aspettare.
+
+    Mutazione ESEGUITA (06/10/2026): `await arrivato.wait()` sostituito da
+    `await asyncio.sleep(0.01)` sul ramo «coda vuota» -- rossa, decine di
+    richieste a coda vuota. Tolta la sveglia da `ReasoningQueue.enqueue`
+    -- rossa, il turno non viene mai servito."""
+    monkeypatch.setattr(runner, "reason", lambda job, mode, **k: {"reply": "x"})
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+    servito = asyncio.Event()
+    consegnate = []
+
+    async def _consegna(job_id, nonce, decision, now):
+        consegnate.append((job_id, decision))
+        servito.set()
+        return "recorded"
+
+    task = await _avvia(coda, _consegna)
+    try:
+        await asyncio.sleep(0.2)
+        assert coda.claims == 1, (
+            f"il lavoratore ha chiesto {coda.claims} volte una coda vuota: "
+            "e' tornato a interrogarla a intervalli")
+
+        _accoda(coda, "J")
+        await asyncio.wait_for(servito.wait(), timeout=2)
+        await asyncio.sleep(0.1)
+    finally:
+        await _ferma(task)
+
+    assert consegnate == [("J", {"reply": "x"})]
+    # una per il turno, una che trova di nuovo la coda vuota: poi aspetta
+    assert coda.claims == 3
+
+
+@pytest.mark.asyncio
+async def test_il_turno_accodato_da_un_altro_thread_sveglia_il_lavoratore(
+        monkeypatch, tmp_path):
+    """Chi accoda puo' farlo da un altro thread: la sveglia passa da
+    `call_soon_threadsafe`, che sveglia il loop fermo in attesa. Un
+    `Event.set` chiamato da fuori del loop segnerebbe l'evento senza
+    svegliarlo, e il turno aspetterebbe il prossimo motivo qualunque che il
+    loop ha di girare -- qui, la scadenza di tre secondi.
+
+    Mutazione ESEGUITA (06/10/2026): `queue.on_enqueue(arrived.set)` -- rossa,
+    il turno servito dopo tre secondi invece che subito."""
+    monkeypatch.setattr(runner, "reason", lambda job, mode, **k: {})
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+    servito = asyncio.Event()
+
+    async def _consegna(*a):
+        servito.set()
+        return "recorded"
+
+    task = await _avvia(coda, _consegna)
+    try:
+        partenza = time.monotonic()
+        threading.Thread(target=_accoda, args=(coda, "J")).start()
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(servito.wait(), timeout=3)
+        attesa = time.monotonic() - partenza
+    finally:
+        await _ferma(task)
+    assert servito.is_set() and attesa < 1, (
+        f"il turno accodato da un altro thread e' stato servito dopo {attesa:.1f}s: "
+        "la sveglia non ha svegliato il loop")
+
+
+@pytest.mark.asyncio
+async def test_il_lavoratore_serve_anche_i_turni_gia_in_coda_all_avvio(
+        monkeypatch, tmp_path):
+    """Un reasoning.db che porta turni accodati prima dell'avvio (o prima che
+    il ponte fosse acceso): nessuno li accodera' di nuovo, quindi il
+    lavoratore li serve tutti prima di mettersi ad aspettare."""
+    monkeypatch.setattr(runner, "reason", lambda job, mode, **k: {})
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+    _accoda(coda, "A")
+    _accoda(coda, "B")
+    serviti = []
+
+    async def _consegna(job_id, *a):
+        serviti.append(job_id)
+        return "recorded"
+
+    task = await _avvia(coda, _consegna)
+    await asyncio.sleep(0.1)
+    await _ferma(task)
+    assert serviti == ["A", "B"]
+
+
+@pytest.mark.asyncio
+async def test_un_turno_che_fallisce_non_ferma_il_lavoratore(monkeypatch, tmp_path):
+    """Un'eccezione mentre si serve un turno perde QUEL turno (lo chiude la
+    spazzata alla scadenza), non il lavoratore: il turno dopo si serve."""
+    def _reason(job, mode, **k):
+        if job["job_id"] == "A":
+            raise RuntimeError("guasto del turno A")
+        return {}
+    monkeypatch.setattr(runner, "reason", _reason)
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+    _accoda(coda, "A")
+    _accoda(coda, "B")
+    serviti = []
+
+    async def _consegna(job_id, *a):
+        serviti.append(job_id)
+        return "recorded"
+
+    task = await _avvia(coda, _consegna)
+    await asyncio.sleep(0.1)
+    await _ferma(task)
+    assert serviti == ["B"]
+
+
+@pytest.mark.asyncio
+async def test_una_coda_guasta_non_fa_girare_il_lavoratore_a_vuoto(
+        monkeypatch, tmp_path, caplog):
+    """Se e' la coda a sollevare, riprovare subito girerebbe senza pause: si
+    dichiara nel registro e si aspetta il prossimo turno accodato.
+
+    Mutazione ESEGUITA (06/10/2026): dopo il guasto della coda
+    `await asyncio.sleep(0)` e `continue`, senza aspettare un turno -- rossa,
+    migliaia di richieste in 0.2 secondi."""
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"), claim_rotto=True)
+
+    async def _consegna(*a):
+        return "recorded"
+
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        task = await _avvia(coda, _consegna)
+        await asyncio.sleep(0.2)
+        await _ferma(task)
+    assert coda.claims == 1
+    assert any("la coda non risponde" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_fermato_il_lavoratore_la_coda_non_lo_sveglia_piu(monkeypatch, tmp_path):
+    """Spento il ponte, il lavoratore si ferma e toglie la sua sveglia: un
+    turno accodato dopo non chiama un loop che non c'e' piu'."""
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+
+    async def _consegna(*a):
+        return "recorded"
+
+    task = await _avvia(coda, _consegna)
+    assert coda.vera._on_enqueue is not None
+    await _ferma(task)
+    assert coda.vera._on_enqueue is None
 
 
 # ── fetta E4 Task 8 ("un bot solo"): il ramo olistico di `reason()` e' uscito
@@ -370,22 +586,28 @@ def test_job_non_chat_e_dichiarato_nel_log_e_decide_vuoto(caplog):
     assert "non-chat" in messaggio
 
 
-def test_run_once_job_non_chat_invia_la_decisione_vuota_senza_chiamare_claude():
+def test_serve_job_non_chat_consegna_la_decisione_vuota_senza_chiamare_claude():
     # Il guard non e' un `return` muto a meta' strada: il job viene comunque
-    # chiuso sulla reasoning API (submit con decisione vuota, che
-    # `handle_reasoning_submit` si limita a registrare), e nessun `claude -p`
-    # viene speso per ragionarlo.
+    # consegnato (decisione vuota, che `reasoning/consegna` si limita a
+    # registrare), e nessun `claude -p` viene speso per ragionarlo.
     job = {"job_id": "J", "nonce": "N", "kind": "holistic", "context": {"snapshot": {}}}
-    c = _Client({"job": job})
 
     def _boom(*a, **k):
         raise AssertionError("nessun subprocess claude per un job non-chat")
 
     with patch.object(runner.subprocess, "run", _boom):
-        out = runner.run_once(c, "http://127.0.0.1:8099", {"X-HIRIS-Internal-Token": "TOK"}, "live")
+        out, consegnate = _servi(job, _Client())
 
     assert out == "done"
-    assert c.submitted and c.submitted[0]["decision"] == {}
+    assert consegnate and consegnate[0]["decision"] == {}
+
+
+def test_serve_dice_failed_quando_la_coda_rifiuta_la_consegna():
+    """`consegna` torna `None` quando la coda rifiuta (nonce, scadenza): il
+    giro non e' riuscito, e il registro lo deve dire."""
+    job = {"job_id": "J", "nonce": "N", "kind": "holistic", "context": {}}
+    out, _consegnate = _servi(job, _Client(), esito=None)
+    assert out == "failed"
 
 
 # ── fetta E4 Task 8, Step 1: `_CHAT_TOOL_GUIDANCE` diceva al modello di avere
@@ -554,7 +776,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nSalotto: luce accesa.",
-        active_tools=True)
+        active_tools=CHAT_TOOLS)
 
     # dice il vero su cio' che HA
     assert "HAI gli strumenti di HIRIS" in system
@@ -670,7 +892,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
 
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
-                                                active_tools=True)
+                                                active_tools=CHAT_TOOLS)
     guida = prompts._GUIDE_WITH_TOOLS
 
     assert guida in system
@@ -709,7 +931,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 # `strumenti_attivi=False` e l'argv e' ancora quello di prima. Il pin era
 # rimasto verde smettendo di sorvegliare il percorso di produzione: il modo
 # peggiore in cui una rete si rompe. Rosso e' diventato il suo gemello a valle,
-# `test_run_once_chat_reasons_and_submits` (il giro vero, con client e
+# `test_serve_chat_ragiona_e_consegna` (il giro vero, con client e
 # base_url), e il quarto campanello
 # `test_nessun_chiamante_di_produzione_gira_l_interruttore`
 # (tests/test_bridge_receives_briefing.py).
@@ -751,7 +973,7 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     meno. Il nome del test non conta piu' «i quattro»: contava un numero che
     non conta, ed e' cambiato una volta gia' (fetta «comandare»)."""
     argv = runner._chat_claude_args("/sistema.txt", "sonnet",
-                                    active_tools=True,
+                                    active_tools=CHAT_TOOLS,
                                     mcp_config=runner.config_mcp("http://x", "TOK"))
     opzioni = _normalizza(argv)
 
@@ -877,3 +1099,27 @@ def test_argv_del_ponte_chiede_il_formato_a_flusso_e_verboso():
     assert "json" not in argv, (
         f"`--output-format json` e' rimasto in argv ({argv!r}) accanto a "
         "stream-json")
+
+
+@pytest.mark.asyncio
+async def test_il_lavoratore_fermato_non_toglie_la_sveglia_del_successore(
+        monkeypatch, tmp_path):
+    """G18-1 (revisione del 06/10/2026): spento e riacceso il ponte, il
+    `finally` del lavoratore vecchio puo' girare DOPO che il nuovo si e'
+    registrato. Deve togliere la sua sveglia, non quella del successore:
+    altrimenti il ponte smetterebbe di servire in silenzio.
+
+    Mutazione ESEGUITA (06/10/2026): `queue.on_enqueue(None)` senza
+    `only_if` nel `finally` -- rossa, la sveglia del successore sparisce."""
+    monkeypatch.setattr(runner.httpx, "Client", _FakeHttpxClient)
+    coda = _CodaSpia(str(tmp_path / "r.db"))
+
+    async def _consegna(*a):
+        return "recorded"
+
+    vecchio = await _avvia(coda, _consegna)
+    successore = lambda: None  # la sveglia di un altro lavoratore
+    coda.on_enqueue(successore)
+    await _ferma(vecchio)
+    assert coda.vera._on_enqueue is successore
+
