@@ -93,6 +93,18 @@ CREATE TABLE IF NOT EXISTS costruzioni (
 );
 CREATE INDEX IF NOT EXISTS idx_costruzioni_stato ON costruzioni(stato, creata_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto ON costruzioni(dominio, chiave, creata_ts DESC);
+-- L'AVVISO agli amministratori per una proposta `alto` (attori, strato 4,
+-- Task 4.3, D14): una riga quando almeno una push e' arrivata. Finche' manca,
+-- il giro del proponente ritenta (scelta del proprietario, 06/10/2026,
+-- «Ritenta»); smette quando la proposta non e' piu' in attesa -- decisa o
+-- scaduta, un fatto della proposta e non un numero di tentativi. Una tabella
+-- a parte, legata per id, e non una colonna: questo schema si esegue a ogni
+-- apertura, quindi nasce anche negli archivi esistenti, senza gradino di
+-- versione.
+CREATE TABLE IF NOT EXISTS avvisi (
+    proposta_id TEXT PRIMARY KEY,
+    avvisata_ts REAL NOT NULL
+);
 """
 
 
@@ -285,6 +297,28 @@ class ConstructionStore:
                 "SELECT id FROM costruzioni WHERE turno=? AND origine=?",
                 (exchange, actor)).fetchall()
         return frozenset(r["id"] for r in righe)
+
+    def to_alert(self, *, actor: str, stakes: str, now: float) -> list[dict]:
+        """Le proposte di `actor` a livello `stakes` ancora in attesa e mai
+        avvisate (D14). «In attesa» con la stessa scadenza di
+        `count_pending`: una proposta scaduta che nessuno ha ancora marcato
+        non chiede piu' niente a nessuno. Non scrive."""
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT * FROM costruzioni WHERE origine=? AND stakes=? "
+                "AND stato='in_attesa' AND creata_ts >= ? "
+                "AND id NOT IN (SELECT proposta_id FROM avvisi) "
+                "ORDER BY creata_ts",
+                (actor, stakes, now - self.DEADLINE_S)).fetchall()
+        return [_row(r) for r in righe]
+
+    def mark_alerted(self, ident: str, *, now: float) -> None:
+        """L'avviso per `ident` e' arrivato: non si ritenta piu'."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO avvisi(proposta_id, avvisata_ts) VALUES(?,?)",
+                (ident, now))
+            self._conn.commit()
 
     def count_pending(self, *, now: float) -> int:
         """Quante proposte aspettano una risposta di chi costruisce.
@@ -506,6 +540,10 @@ class ConstructionStore:
             "    FROM costruzioni WHERE stato='applicata'"
             "  ) WHERE rn = 1)",
             (threshold,))
+        # Gli avvisi seguono la loro proposta: una riga senza proposta non
+        # dice piu' niente a nessuno.
+        self._conn.execute(
+            "DELETE FROM avvisi WHERE proposta_id NOT IN (SELECT id FROM costruzioni)")
         self._conn.commit()
         count = cur.rowcount
         if count:
