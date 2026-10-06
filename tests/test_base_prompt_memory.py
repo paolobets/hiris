@@ -27,8 +27,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.claude_runner import BASE_SYSTEM_PROMPT, ClaudeRunner
-from hiris.app.home_space.tools import REMEMBER_TOOL_DEF
+from hiris.app.claude_runner import ClaudeRunner
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, REMEMBER_TOOL_DEF
+from hiris.app.steering import SPECIES, compose_base
+
+#: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
+#: strumenti, dal compositore unico (Tappa 6, Task 7).
+CHAT_BASE = compose_base(SPECIES["chat"].tools_for_turn())
+
 
 NOME_RICORDA = REMEMBER_TOOL_DEF["name"]
 
@@ -44,8 +50,8 @@ def test_base_prompt_instructs_saving_user_statements():
     """Must name the real save tool (`remember`, home_space/tools.py) and use an
     imperative save verb -- asserting on a whole sentence would break on the
     first stylistic touch-up."""
-    assert NOME_RICORDA in BASE_SYSTEM_PROMPT
-    assert BASE_SYSTEM_PROMPT.count(NOME_RICORDA) >= 2, (
+    assert NOME_RICORDA in CHAT_BASE
+    assert CHAT_BASE.count(NOME_RICORDA) >= 2, (
         f"{NOME_RICORDA} must appear at least twice: in the positive instruction and "
         "in the negative clause forbidding claims without saving. If only one "
         "occurrence remains, the first (positive) bullet was likely removed."
@@ -55,13 +61,16 @@ def test_base_prompt_instructs_saving_user_statements():
 def test_base_prompt_forbids_claiming_note_without_saving():
     """Closes the "preso nota" path named in the task brief: the model must
     not claim to have taken note of something it never actually saved."""
-    assert "preso nota" in BASE_SYSTEM_PROMPT.lower()
+    assert "preso nota" in CHAT_BASE.lower()
 
 
 @pytest.mark.asyncio
 async def test_claude_runner_system_prompt_carries_memory_rule():
     """claude_runner.py's own chat() must place the rule in the `system`
-    kwarg sent to the Anthropic API -- not just in the module constant."""
+    kwarg sent to the Anthropic API -- not just in the module constant.
+
+    The turn carries the chat's tools: from Tappa 6 (Task 7) the rules about
+    a tool reach only a turn that has it (`steering.compose_base`)."""
     with patch("anthropic.AsyncAnthropic"):
         runner = ClaudeRunner(api_key="test-key")
 
@@ -73,7 +82,7 @@ async def test_claude_runner_system_prompt_carries_memory_rule():
     instance.messages.create = AsyncMock(return_value=fake_message)
     runner._client = instance
 
-    await runner.chat("ciao")
+    await runner.chat("ciao", tools=KNOWLEDGE_TOOLS)
 
     sent_system = instance.messages.create.call_args.kwargs["system"]
     assert NOME_RICORDA in _sys_text(sent_system)
@@ -103,7 +112,8 @@ async def test_openai_compat_runner_system_prompt_carries_memory_rule(tmp_path):
     runner._client = MagicMock()
     runner._client.chat.completions.create = AsyncMock(return_value=_FakeResponse())
 
-    await runner.chat(user_message="ciao", model="gpt-4o", max_tokens=64)
+    await runner.chat(user_message="ciao", model="gpt-4o", max_tokens=64,
+                      tools=KNOWLEDGE_TOOLS)
 
     sent_messages = runner._client.chat.completions.create.call_args.kwargs["messages"]
     assert NOME_RICORDA in sent_messages[0]["content"]

@@ -1039,6 +1039,10 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
 # ── 1. VOLUTE: qui la parola ha un senso DIVERSO da quello della riga
 # qualificata, e la mutezza e' la risposta giusta. **Questo insieme non cala.**
 _MUTE_VOLUTE = {
+    # `livello (action)` e' il livello di una PROPOSTA (`stakes`, attori,
+    # strato 4). In `radice` `livello` e' il livello del registro di Python
+    # (`main.py`, `logging.INFO`): senso diverso, mutezza giusta.
+    ("livello", "radice"),
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
     # per intero o dentro residui gia' dichiarati
     # (`keeper/exchange.py::_senza_conclusione`). `("senza", "memory")` e'
@@ -1845,7 +1849,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_26_with_138_fields():
+def test_product_dataclasses_are_28_with_143_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1944,13 +1948,23 @@ def test_product_dataclasses_are_26_with_138_fields():
     (`hiris/app/mind/recipe_turn.py`) coi suoi due campi -- `silent`,
     `dashboard_changed` -- perche' una ricetta che c'e' torna una domanda:
     le entita' che tacciono, e la dashboard Energia cambiata.
+
+    **Ventisette e 140 dal 06/10/2026**, Tappa 5, Task 8: `MindReading`
+    (`hiris/app/home_space/tools.py`) coi suoi due campi -- `serve`,
+    `by_day` -- una lettura dello strumento `mind`: chi la serve, e se
+    accetta un giorno.
+
+    **Ventotto e 143 dal 06/10/2026**, Tappa 6, Task 8: `ExchangeTurn`
+    (`hiris/app/api/handlers_mcp.py`) coi suoi tre campi -- `rounds`,
+    `dispatcher`, `since` -- cio' che la rotta MCP tiene di un turno del
+    ponte: i giri, il dispatcher costruito una volta, e da quando.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (26, 138), (classi, campi)
+    assert (classi, campi) == (28, 143), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

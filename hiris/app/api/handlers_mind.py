@@ -8,10 +8,11 @@ Nate come due (fetta «l'osservatore», `docs/design/2026-08-26-l-osservatore.md
 `Watcher.watching()` e gli archivi gia' tornano la forma che la pagina
 mostra -- una seconda forma costruita qui la farebbe divergere il primo giorno
 in cui qualcuno aggiunge un campo da una parte sola (fondamenta 3). Cio' che
-queste rotte AGGIUNGONO sta in funzioni col loro nome, e sono chiavi ACCANTO a
-quelle dell'archivio, mai sopra: l'integrazione delle voci tecniche
-(`_with_integration`), le escluse (`_left_out`), il volume (`_volume`), i nomi
-(`_named`, `_with_device_names`), gli esiti dell'attuatore (`_with_outcomes`).
+le letture AGGIUNGONO all'archivio -- l'integrazione delle voci tecniche, le
+escluse, il volume, i nomi, gli esiti dell'attuatore -- vive in
+`mind/view.MindView`, non qui (Tappa 5, Task 8, 06/10/2026): fino a quel
+giorno stava dentro le rotte, e il modello non poteva chiederlo. Ora la rotta
+e lo strumento `mind` chiamano gli stessi metodi (`mind_view`).
 
 **503, non un elenco vuoto, quando manca il collaboratore.** Spec §7: la
 pagina esiste perche' il proprietario possa vedere «cosa sto guardando e
@@ -26,16 +27,10 @@ stessa esenzione di `GET /api/agenda`); le due POST ci passano, come ogni
 scrittura su `/api/`."""
 from __future__ import annotations
 
-from datetime import timedelta
-
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
-from ..home_space import historian
-from ..home_space.house import House
-from ..home_space.log_source import integration_of
 from ..home_space.open_questions import OPEN_QUESTIONS
-from ..home_space.topology import read_mirror
 from ..mind import recipe_turn
 from ..mind.judgments import (
     JudgmentNotInEffect,
@@ -44,154 +39,38 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from ..mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
+from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.store import READING_RETENTION_S
-from .boundary import error_response
+from ..mind.view import MindView
+from .boundary import error_response, json_object
 from .soffitto import require_builder, subject_name
 
-#: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
-#: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
-#: filtro dello scope sta funzionando -- una settimana, cioe' abbastanza da
-#: distinguere un giorno storto da una tendenza.
-VOLUME_DAYS = 7
+
+def mind_view(app) -> MindView:
+    """Le letture del cervello di questa app: l'UNICO punto che le costruisce,
+    per le rotte qui sotto, per lo strumento `mind`
+    (`handlers_chat.create_tool_dispatcher`) e per i giri del server che
+    chiedono i nomi dei dispositivi.
+
+    Si costruisce a ogni richiesta, ed e' gratis: tiene solo riferimenti agli
+    oggetti dell'app, che possono nascere dopo questa rotta (l'osservatore
+    parte all'avvio, a meta')."""
+    return MindView(store=app.get("observations"), watcher=app.get("watcher"),
+                    home_space=app.get("home_space_store"), cache=app.get("entity_cache"),
+                    judgments=app.get("type_judgments"))
 
 
 async def handle_watching(request: web.Request) -> web.Response:
-    """La pagina dello scope: **cosa guardo, perche', da quando, e quanto costa**.
+    """La pagina dello scope: **cosa guardo, perche', da quando, e quanto costa**
+    (`MindView.scope`, dove le parti sono spiegate una per una).
 
-    Spec §5.1 e §11 **non sono due pagine**: l'elenco di cio' che si guarda e'
-    anche la prova che l'obiettivo e' stato capito. Per questo la rotta porta
-    tutte le parti in una risposta sola -- chi legge deve poter
-    confrontare le scelte con la domanda a cui rispondono senza cambiare
-    schermata:
-
-    - `watching` -- cio' che si guarda, col **motivo** e l'**autore** di ogni
-      voce (`Watcher.watching()`, che le prende dallo scope), e per ogni
-      entita' la sua **fonte** (`House.source`: viva, spenta, sparita...);
-    - `fuori` -- cio' che e' stato **lasciato fuori**, con la sua ragione. E'
-      l'altra meta' della trasparenza, ed e' da li' che si rimette dentro una
-      delle escluse: un elenco di sole cose guardate non direbbe se un'entita'
-      manca perche' esclusa o perche' mai considerata;
-    - `obiettivo` -- la domanda rispetto a cui si e' deciso;
-    - `riconsiderazione` -- quando si e' ripensata tutta la casa, la **finestra
-      di memoria misurata** e la **cadenza** che ne esce. Tutti e tre, o
-      «ogni 84 ore» sarebbe da credere sulla parola;
-    - `tentativi` -- gli ultimi giri **riusciti o no**, dal piu' recente. E'
-      l'altra domanda, e non e' la stessa: `riconsiderazione` risponde a
-      «quand'e' l'ultima volta che la casa e' stata ripensata», `tentativi` a
-      **«sta funzionando?»**. Misurato sulla casa vera l'11/09/2026:
-      l'osservatore ha provato e fallito quattro volte in quaranta minuti,
-      HIRIS ha smesso di registrare qualunque cosa -- il cancello di
-      `watcher.watch_reading` **e'** lo scope -- e questa pagina diceva
-      soltanto «non e' mai stata fatta». Vero alla lettera, falso come
-      racconto: e' la regola che questo modulo dichiara in cima al file,
-      violata dalla pagina che la dichiarava;
-    - `volume` -- **quante righe grezze al giorno**. E' la contropartita onesta
-      dello scope: fino all'11/09/2026 nessuna porta lo esponeva, e la
-      promessa della spec non era verificabile da fuori. Il 15/09/2026 l'ha
-      smentita: la spec §5.3 promette -83% (da 29.227 a 4.951 righe), e
-      questa porta ha risposto 13.945 -- circa il triplo, perche' mancava la
-      prima delle due regole di scrittura, «chi ha `state_class` non si
-      registra a campione». E' stata scritta il giorno dopo
-      (`mind/watcher.Watcher.watch_reading`).
-
-    **Le parti che mancano si dichiarano `None`/`[]`, non si inventano.**
-    L'osservatore puo' esserci e l'archivio no (avvio a meta', o un guasto): un
-    obiettivo di fabbrica e un volume a zero sarebbero due affermazioni che
-    nessuno ha verificato.
+    **503, non uno scope vuoto, senza osservatore**: vedi il docstring del
+    modulo.
     """
-    watcher = request.app.get("watcher")
-    if watcher is None:
+    scope = mind_view(request.app).scope()
+    if scope is None:
         return error_response(503, "osservatore non disponibile")
-    store = request.app.get("observations")
-    # La casa del momento, per la fonte di ogni soggetto (Task 1.5, G-01).
-    # Senza anagrafe -- archivio assente, o nessuna lettura ancora riuscita
-    # (`HomeSpace.read()` torna `{}`) -- non si chiede: una casa vuota
-    # farebbe «sconosciuto» di ogni soggetto, che e' un'affermazione, non un
-    # silenzio.
-    home_space_store = request.app.get("home_space_store")
-    house = (None if home_space_store is None
-             else House.read(home_space_store, request.app.get("entity_cache")))
-    if house is not None and not house.home_space:
-        house = None
-    return web.json_response({
-        "watching": _with_integration(watcher.watching(house=house)),
-        "fuori": _left_out(store),
-        "obiettivo": store.objective() if store is not None else None,
-        "riconsiderazione": store.last_reconsideration() if store is not None else None,
-        "tentativi": store.recent_attempts() if store is not None else None,
-        "volume": _volume(request.app, store),
-    })
-
-
-def _with_integration(lines: list[dict]) -> list[dict]:
-    """Le voci tecniche con **l'integrazione da cui vengono, e il suo nome**.
-
-    Misurato il 18/09/2026: dei 153 soggetti guardati 39 sono tecnici, e
-    vengono da **30 logger distinti che sono 23 integrazioni**. La pagina li
-    elencava uno per uno col percorso del sorgente in chiaro: trentanove righe
-    per dirne ventitre.
-
-    **La regola e' quella del primo piano** (`home_space/log_source.integration_of`), e
-    non una seconda scritta qui o in JavaScript: due letture dello stesso
-    logger darebbero due nomi per la stessa cosa nelle due schede della stessa
-    pagina -- il difetto che la 3.46.0 ha gia' chiuso fra misure e cronaca.
-
-    Le voci che non sono tecniche non guadagnano nessuna chiave: `light.studio`
-    ha un dominio, non un'integrazione, e chiamarlo «Light» fra le
-    integrazioni metterebbe le cose di casa in mezzo ai log.
-    """
-    seen = []
-    for line in lines or []:
-        subject = str(line.get("soggetto") or "")
-        slug = None
-        if subject.startswith("log:"):
-            rest = subject[len("log:"):]
-            slug = integration_of(rest.split("@")[0])
-        elif subject.startswith("problema:"):
-            slug = integration_of(subject[len("problema:"):])
-        if slug:
-            nome, identificativo = slug
-            line = {**line, "integrazione": identificativo, "nome": nome}
-        seen.append(line)
-    return seen
-
-
-def _left_out(store) -> list[dict]:
-    """Cio' su cui qualcuno ha deciso **di no**, con la ragione e l'autore.
-
-    Chi non e' nello scope affatto non compare: non e' stato lasciato fuori,
-    non e' stato considerato -- e dirlo di 452 entita' riempirebbe la pagina di
-    righe senza ragione accanto, che e' il contrario di cio' che serve.
-    """
-    if store is None:
-        return []
-    return sorted(
-        ({"soggetto": subject, "motivo": v["motivo"], "autore": v["autore"],
-          "quando": v["quando"]}
-         for subject, v in store.scope().items() if not v["dentro"]),
-        key=lambda v: v["soggetto"])
-
-
-def _volume(app, store) -> list[dict]:
-    """Quante righe grezze per ciascuno degli ultimi giorni, **dal piu'
-    vecchio**: si legge come una tendenza, e una tendenza si legge in avanti.
-
-    I confini sono quelli del giorno LOCALE (`historian.day_boundaries` col fuso
-    della casa), gli stessi che usa l'aggregazione notturna: un conteggio su
-    giorni UTC direbbe numeri che non combaciano con nessun'altra pagina.
-    """
-    if store is None:
-        return []
-    timezone = historian.house_timezone(app.get("home_space_store"))
-    today = historian.today(timezone)
-    volume = []
-    for back in range(VOLUME_DAYS - 1, -1, -1):
-        day = (today - timedelta(days=back)).isoformat()
-        from_ts, to_ts = historian.day_boundaries(day, timezone)
-        volume.append({"giorno": day,
-                       "righe": store.readings_count(from_ts=from_ts, to_ts=to_ts)})
-    return volume
+    return web.json_response(scope)
 
 
 async def handle_report(request: web.Request) -> web.Response:
@@ -213,52 +92,22 @@ async def handle_report(request: web.Request) -> web.Response:
     giorno non e' successo niente» e «quel giorno non l'abbiamo guardato» sono
     due cose diverse, e chi legge deve poterle distinguere.
     """
-    store = request.app.get("observations")
-    if store is None:
+    view = mind_view(request.app)
+    if view.store is None:
         return error_response(503, "archivio non disponibile")
     day = request.query.get("day") or None
     if day is None:
-        # Solo le misure: la cronaca si chiede un giorno alla volta.
-        # **E l'obiettivo di ogni giorno** (spec §11). Trovato dalla live
-        # review del 15/09/2026: la migrazione lo aveva riempito su tutti e
-        # venti i giorni archiviati, un giorno chiesto da solo lo portava, e
-        # QUI si buttava -- proprio nella lettura per cui quella riga esiste.
-        # Chi legge trenta giorni di misure in serie deve sapere se in mezzo la
-        # domanda e' cambiata, o legge una tendenza dove c'e' un cambio di
-        # domanda. Costa una frase per giorno; la cronaca e le forme restano
-        # fuori, e si chiedono un giorno alla volta.
-        names = _device_names(request.app)
-        serie = [{"giorno": r.get("giorno"), "obiettivo": r.get("obiettivo"),
-                  "misure": _named(names, r.get("misure"))}
-                 for r in store.reports(limit=30)]
-        return web.json_response({"resoconti": serie})
-    resoconto = store.report(day)
+        # Solo le misure, e l'obiettivo di ogni giorno: `MindView.reports`.
+        return web.json_response({"resoconti": view.reports()})
+    resoconto = view.report(day)
     if resoconto is None:
         # `ora_notturna`: quando il resoconto di quel giorno si scrivera'. La
         # pagina lo dice («non e' un errore»), e lo riceve invece di saperlo
         # (C-11, Tappa 4, Task 5).
         return error_response(
             404, f"il giorno {day} non e' stato aggregato",
-            ora_notturna=f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}")
-    # **Misure E forme**: portano lo stesso `soggetto`, e risolverne uno solo
-    # rifarebbe -- dentro la stessa risposta JSON -- il difetto che la 3.46.0
-    # dichiara di aver chiuso fra le misure e la cronaca. Trovato dalla
-    # revisione indipendente il 15/09/2026.
-    names = _device_names(request.app)
-    resoconto = {**resoconto,
-                 "misure": _named(names, resoconto.get("misure")),
-                 "forme": _named(names, resoconto.get("forme"))}
-    # **La resa per la PAGINA** (spec 2026-09-18 §3): il nome sempre, e la
-    # banda di cio' che esce dal solito. Non tocca cio' che e' archiviato --
-    # il giudizio su cosa merita la banda si cambia da «Cosa ho capito», e se
-    # stesse nella cronaca ogni ripensamento costerebbe ventidue giorni da
-    # rifare.
-    #
-    # Le due fonti si chiedono con `.get`: un add-on partito a meta' deve
-    # rispondere lo stesso, con meno cose da dire e nessuna inventata.
-    return web.json_response({"resoconto": as_page(
-        resoconto, judgments=request.app.get("type_judgments"),
-        names=_entity_names(request.app))})
+            ora_notturna=view.nightly_time())
+    return web.json_response({"resoconto": resoconto})
 
 
 async def handle_set_objective(request) -> web.Response:
@@ -290,11 +139,8 @@ async def handle_set_objective(request) -> web.Response:
     store = request.app.get("observations")
     if store is None:
         return error_response(503, "archivio non disponibile")
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "corpo non leggibile")
-    text = body.get("testo") if isinstance(body, dict) else None
+    body = await json_object(request)
+    text = body.get("testo")
     if not isinstance(text, str):
         return error_response(400, "serve un campo `testo` con la frase dell'obiettivo.")
     if not text.strip():
@@ -350,11 +196,8 @@ async def handle_set_judgment(request) -> web.Response:
         return refusal
     if request.app.get("knowledge") is None:
         return error_response(503, "il sapere non e' disponibile")
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "corpo non leggibile")
-    if (not isinstance(body, dict) or "valore" not in body
+    body = await json_object(request)
+    if ("valore" not in body
             or not all(isinstance(body.get(key), str) for key in _JUDGMENT_TEXT_KEYS)):
         return error_response(400, "servono `soggetto_genere`, `soggetto` e `campo` come testo, e "
                                    "`valore` (testo, oppure null per tornare al seme).")
@@ -395,138 +238,18 @@ async def handle_analysis(request) -> web.Response:
     e non c'era niente da dire» e «non ho guardato» sono due cose diverse, e
     la prima e' una riga con zero osservazioni. Stessa legge del resoconto.
     """
-    store = request.app.get("observations")
-    if store is None:
+    view = mind_view(request.app)
+    if view.store is None:
         return error_response(503, "archivio non disponibile")
     day = (request.query.get("day") or "").strip()
     if not day:
-        names = _device_names(request.app)
-        return web.json_response({"analisi": [
-            {**a, "osservazioni": _named(names, a.get("osservazioni"))}
-            for a in store.analyses(limit=30)]})
-    found = store.analysis(day)
+        return web.json_response({"analisi": view.analyses()})
+    found = view.analysis(day)
     if found is None:
         return error_response(404, f"il giorno {day} non e' stato analizzato")
-    return web.json_response({"analisi": _with_device_names(request.app, found)})
+    return web.json_response({"analisi": found})
 
 
-def _device_names(app) -> dict:
-    """I nomi dei dispositivi di **adesso**, o `{}` se l'anagrafe non c'e'.
-
-    **Un posto solo, e adesso e' vero.** Prima questa mappa si ricostruiva
-    dentro `_with_device_names`, e le altre tre forme delle rotte del cervello
-    non la costruivano affatto. Il 15/09/2026 la revisione indipendente ha
-    trovato che «un posto solo» era falso mentre lo scrivevo: una copia
-    identica viveva anche in `server.py`, che ora importa questa.
-    """
-    casa = app.get("home_space_store")
-    if casa is None:
-        return {}
-    # Il nome, altrimenti l'id (`House.name`, A-16, 04/10/2026): fino a quel
-    # giorno un dispositivo senza nome usciva dalla mappa, e la pagina lo
-    # mostrava senza niente. I dispositivi li elenca la casa (Task 12).
-    house = House.read(casa, app.get("entity_cache"))
-    return {device_id: house.name("dispositivo", device_id)
-            for device_id in house.device_ids()}
-
-
-def _entity_names(app) -> dict:
-    """I nomi **vivi** delle entita', dallo specchio, o `{}` se non c'e'.
-
-    Il gemello di `_device_names`, per l'altro genere di soggetto: le misure
-    parlano di dispositivi (l'anagrafe), la cronaca di entita' (lo specchio).
-    Una mappa sola per chi legge, costruita dove si legge -- l'archivio
-    continua a dire cio' che sapeva.
-
-    **Serve perche' il grezzo il nome non sempre ce l'ha**: misurato sulla
-    casa vera il 18/09/2026, 7 voci di cronaca su 75 erano senza, e fra loro
-    l'allarme del piano terra. Sei le risolve il `dominio` che portano con se';
-    la settima e' un'entita', e il suo nome vive qui.
-
-    **I nomi li legge `topology.read_mirror`**, la stessa lettura dello
-    specchio della ricerca e delle pagine (A-35, 03/10/2026): fino a quel
-    giorno questa funzione se li ricavava da se', scandendo lo specchio con la
-    sua regola su cosa sia un nome. Dal 04/10/2026 (B-41) per nome e non per
-    posizione; uno specchio guasto da' `{}` invece di far cadere la rotta.
-    """
-    return read_mirror(app.get("entity_cache")).names
-
-
-def _named(names: dict, lines) -> list:
-    """Le righe con **il nome del soggetto risolto dove manca**.
-
-    **La regola e' una sola, e vale per ogni porta del cervello.** L'archivio
-    dice cio' che sapeva; chi legge risolve cio' che puo' oggi. Una riga che
-    il nome ce l'ha tiene il suo -- e' quello di ALLORA, ed e' piu' vero: un
-    dispositivo si puo' rinominare. Un soggetto che l'anagrafe non conosce
-    resta senza: chi legge vede l'identificatore, che e' la verita', non un
-    buco.
-
-    Misurato sulla casa vera il 15/09/2026, prima che questa funzione
-    esistesse: delle cinque porte del cervello **una sola** risolveva i nomi.
-    Il resoconto del 14 aveva 73 misure senza nome e 39 righe di cronaca col
-    nome -- lo stesso dispositivo, due sezioni della stessa pagina, due
-    lingue.
-    """
-    if not names:
-        return list(lines or [])
-    seen = []
-    for line in lines or []:
-        if isinstance(line, dict) and not line.get("nome"):
-            found = names.get(line.get("soggetto"))
-            line = {**line, "nome": found} if found else line
-        seen.append(line)
-    return seen
-
-
-def _with_device_names(app, analysis: dict) -> dict:
-    """L'analisi con i nomi dei dispositivi **risolti adesso**, dove mancano.
-
-    **L'archivio dice cio' che sapeva; chi legge risolve cio' che puo' oggi.**
-    Un'analisi si scrive una volta sola -- un giorno ne ha una -- e quella del
-    15/09/2026 e' nata prima che i nomi dei dispositivi arrivassero: porta
-    `nome: null`, e riscriverla costerebbe 35.000 token per cambiare
-    un'etichetta.
-
-    **Un'osservazione che il nome ce l'ha tiene il suo**: e' quello di allora,
-    ed e' piu' vero di quello di adesso -- un dispositivo si puo' rinominare.
-    E un dispositivo che l'anagrafe non conosce **resta senza**: chi legge vede
-    l'identificatore, che e' la verita', non un buco.
-
-    E' la stessa regola di `report.series_of_measures`, un piano piu' in la'.
-    """
-    names = _device_names(app)
-    if not names:
-        return _with_outcomes(analysis)
-    return _with_outcomes({**analysis,
-                           "osservazioni": _named(names, analysis.get("osservazioni"))})
-
-
-def _with_outcomes(analysis: dict) -> dict:
-    """L'analisi con **l'esito dell'attuatore accanto alla sua osservazione**.
-
-    Gli esiti sono la risposta alle domande dell'analista, e la pagina li legge
-    dove la domanda sta. A rimetterli insieme e' il server, perche' e' lui che
-    conosce la regola dell'impronta: rifarla in JavaScript sarebbe il secondo
-    posto in cui si decide chi risponde a chi, e due regole divergono al primo
-    ritocco.
-
-    **Chi non ha un esito non ne guadagna uno vuoto**: il silenzio
-    dell'attuatore e' un fatto che la pagina dice con parole sue, e un `{}`
-    somiglierebbe a una risposta.
-    """
-    actuation = analysis.get("attuazione") or {}
-    by_key = {o.get("impronta"): o for o in actuation.get("esiti") or []
-              if o.get("impronta")}
-    if not by_key:
-        return analysis
-    from ..mind.actuator import observation_key
-
-    seen = []
-    for observation in analysis.get("osservazioni") or []:
-        outcome = by_key.get(observation_key(observation))
-        seen.append({**observation, "esito": outcome} if outcome else observation)
-    return {**analysis, "osservazioni": seen}
 
 async def handle_knowledge(request) -> web.Response:
     """Il **sapere**: cosa HIRIS ha capito della casa, e cosa non ha capito.
@@ -560,7 +283,7 @@ async def handle_knowledge(request) -> web.Response:
     sapere = request.app.get("knowledge")
     if sapere is None:
         return error_response(503, "il sapere non e' disponibile")
-    names = _device_names(request.app)
+    names = mind_view(request.app).device_names()
     unexplained = [{"specie": f.subject_kind, "soggetto": f.subject,
                    "campo": f.field, "valore": f.value,
                    "provenienza": f.provenance, "prove": f.evidence,

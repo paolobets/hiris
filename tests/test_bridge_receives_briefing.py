@@ -40,12 +40,12 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.claude_runner import (
     BASE_IDENTITY,
-    BASE_SYSTEM_PROMPT,
     BASE_TOOL_RULES,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
@@ -53,6 +53,15 @@ from hiris.app.claude_runner import (
 )
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.steering import SPECIES, compose_base
+
+#: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
+#: strumenti, dal compositore unico (Tappa 6, Task 7).
+CHAT_BASE = compose_base(SPECIES["chat"].tools_for_turn())
+
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 
 @pytest.fixture(autouse=True)
@@ -126,8 +135,8 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     divergerebbe in silenzio: i due percorsi di chat direbbero al modello due
     cose diverse su chi e'. Vale anche dopo il taglio in due meta' (fix round
     1): si importano, non si riscrivono."""
-    assert prompts.BASE_IDENTITY is BASE_IDENTITY
-    assert prompts.BASE_TOOL_RULES is BASE_TOOL_RULES
+    # Dalla Tappa 6 (Task 7) il ponte non importa piu' le due meta': le
+    # compone `steering.compose_base`, lo stesso compositore della catena.
     # fix della review totale della fetta (m-3): l'assert su
     # `prompts.BASE_SYSTEM_PROMPT` e' uscito, e con lui l'import in
     # `prompts.py`. Non pinnava niente di vivo: il codice di `prompts.py` non
@@ -142,9 +151,7 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     # MINIMAL_PROMPT -- si cerca il blocco intero (fino alla parentesi
     # chiusa), non piu' una riga singola letterale, cosi' l'assert resta
     # valido qualunque sia l'a-capo scelto.
-    inizio = sorgente.index("from ..claude_runner import")
-    blocco_import = sorgente[inizio:sorgente.index(")", inizio) + 1]
-    assert "BASE_IDENTITY" in blocco_import
+    assert "from ..steering import compose_base" in sorgente
     assert "Sei HIRIS, assistente AI integrata in Home Assistant" not in sorgente, (
         "il testo di BASE e' stato RICOPIATO in prompts.py invece che importato")
 
@@ -181,9 +188,9 @@ def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
     adiacenti e il blocco e' byte per byte `BASE_SYSTEM_PROMPT`, cioe' quello
     che il ramo sincrono compone gia' oggi."""
     system, _user = prompts.build_chat_messages(
-        "Sei HIRIS.", [], contesto=_CONTESTO, active_tools=True)
+        "Sei HIRIS.", [], contesto=_CONTESTO, active_tools=CHAT_TOOLS)
 
-    assert BASE_SYSTEM_PROMPT.strip() in system
+    assert CHAT_BASE.strip() in system
     assert "Usa SEMPRE gli strumenti" in system
     assert "chiama remember subito" in system
 
@@ -235,7 +242,7 @@ def test_il_ramo_con_strumenti_afferma_gli_strumenti_del_catalogo():
     finche' l'argv non porta `--mcp-config` ne' `--allowedTools`, nessuna
     produzione puo' arrivare qui."""
     system, _user = prompts.build_chat_messages(
-        "Sei HIRIS.", [], contesto=_CONTESTO, active_tools=True)
+        "Sei HIRIS.", [], contesto=_CONTESTO, active_tools=CHAT_TOOLS)
 
     assert prompts._GUIDE_WITH_TOOLS in system
     assert prompts._GUIDE_WITHOUT_TOOLS not in system
@@ -276,10 +283,11 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
     import inspect
 
     firma = inspect.signature(prompts.build_chat_messages)
-    # il default resta False perche' False e' il ramo di DEGRADO: cio' che si
-    # ottiene quando non si sa. Un default True prometterebbe strumenti a chi
-    # non li ha chiesti.
-    assert firma.parameters["active_tools"].default is False
+    # il default resta vuoto perche' vuoto e' il ramo di DEGRADO: cio' che si
+    # ottiene quando non si sa. Un default con strumenti li prometterebbe a chi
+    # non li ha chiesti. (Fino al 06/10/2026 era il booleano `False`; ora sono
+    # i nomi degli strumenti del turno, Tappa 6, Task 7.)
+    assert firma.parameters["active_tools"].default == ()
     assert firma.parameters["contesto"].default == ""
     # i due primi parametri restano POSIZIONALI (i pin esistenti li passano
     # cosi': tests/test_agent_runner_inaddon.py::test_build_chat_messages_available)
@@ -311,7 +319,10 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
         "la composizione non passa piu' da un solo punto parametrico: se il "
         "prompt e l'argv tornano a comporsi in due posti, il secondo giro del "
         "Task 4 puo' ricomporne uno solo dei due")
-    assert sorgente.count("active_tools=active_tools") == 2, (
+    # Il prompt riceve i NOMI degli strumenti del mestiere quando il booleano
+    # e' vero (Tappa 6, Task 7): la variabile letta resta la stessa.
+    assert sorgente.count("active_tools=active_tools") == 1
+    assert sorgente.count("active_tools=turn_tools if active_tools else ()") == 1, (
         "il prompt e l'argv non leggono piu' la stessa variabile: e' il punto "
         "in cui rientra un prompt che promette cio' che l'argv non da'")
     # ...e il chiamante passa UN booleano, quello deciso dalla sonda (primo
@@ -343,7 +354,7 @@ def test_il_prompt_che_esce_davvero_dal_ponte_senza_sonda_e_quello_senza_strumen
     che l'argv li porti e' il difetto numero uno di questo prodotto. Il gemello
     (il turno CON la sonda che risponde) e'
     tests/test_tools_to_bridge.py."""
-    job = {"kind": "chat", "job_id": "job-senza-strumenti",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-senza-strumenti",
            "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": _CONTESTO}}
 
@@ -406,7 +417,7 @@ def test_il_job_legacy_senza_contesto_dichiara_il_silenzio_nel_log(caplog):
     la chiave `contesto` e non c'e' modo di ricomporla nel runner. Deve
     LOGGARE, nominando il job_id -- mai un `.get("contesto") or ""` muto, che
     e' indistinguibile da un'assenza di problemi."""
-    job = {"kind": "chat", "job_id": "job-legacy-1",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-legacy-1",
            "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS."}}
 
@@ -434,7 +445,7 @@ def test_il_job_legacy_senza_contesto_lo_dichiara_anche_al_modello():
     """Il degrado non si ferma al log: il prompt dice al modello che in questo
     turno non ha nemmeno la fotografia -- altrimenti risponderebbe come se la
     casa non esistesse, che al lettore sembra una risposta normale."""
-    job = {"kind": "chat", "job_id": "job-legacy-2",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-legacy-2",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS."}}
 
     system = _cattura_system(job)
@@ -448,7 +459,7 @@ def test_il_job_con_contesto_non_logga_e_porta_la_casa(caplog):
     """Il complemento: un job accodato DOPO questo deploy non deve produrre
     nessun avviso -- un log che scatta sempre e' rumore, e il silenzio
     dichiarato smette di distinguersi."""
-    job = {"kind": "chat", "job_id": "job-nuovo",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-nuovo",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO}}
 
@@ -476,7 +487,7 @@ def test_contesto_presente_ma_vuoto_non_e_un_job_legacy(caplog):
     il caso legacy e non deve loggare come tale -- quel degrado lo dichiara
     gia' il testo del nucleo (`compose_chat_context`). Il prompt pero' dice
     comunque al modello che la fotografia non c'e'."""
-    job = {"kind": "chat", "job_id": "job-vuoto",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-vuoto",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": ""}}
 
@@ -501,7 +512,7 @@ def test_senza_sonda_il_ponte_resta_senza_strumenti_anche_col_contesto():
     riceve ne' `client` ne' `base_url`, quindi non c'e' sonda e non ci sono
     strumenti attesi: l'argv deve restare quello di prima, byte per byte, o
     smentirebbe il prompt che in questo stesso turno li nega."""
-    job = {"kind": "chat", "job_id": "job-nuovo",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-nuovo",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO}}
 
@@ -623,7 +634,7 @@ def test_i_modificatori_sono_importati_non_ricopiati():
 def test_il_ponte_non_da_strumenti_anche_coi_modificatori_attivi():
     """La riga che separa la fetta A dalla B, vista con entrambi i
     modificatori accesi insieme: restano innocui rispetto agli strumenti."""
-    job = {"kind": "chat", "job_id": "job-modificatori",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-modificatori",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO,
                        "restrict_to_home": True, "response_mode": "minimal"}}
@@ -646,7 +657,7 @@ def test_reason_chat_legge_i_due_valori_dal_context_e_li_applica():
     """`_reason_chat` legge `restrict_to_home`/`response_mode` dal `context`
     del job e li passa a `build_chat_messages` -- non un default sempre
     disattivo che ignorerebbe l'impostazione dell'utente."""
-    job = {"kind": "chat", "job_id": "job-attivi",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-attivi",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO,
                        "restrict_to_home": True, "response_mode": "compact"}}
@@ -661,7 +672,7 @@ def test_reason_chat_col_loro_default_su_un_job_senza_le_due_chiavi():
     """Il complemento: un job che non porta affatto le due chiavi (legacy, o
     impostazioni di default) non deve emettere nessun modificatore --
     `False`/`""`, non un errore."""
-    job = {"kind": "chat", "job_id": "job-senza-chiavi",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-senza-chiavi",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": _CONTESTO}}
 

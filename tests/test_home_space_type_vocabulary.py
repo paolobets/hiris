@@ -502,6 +502,15 @@ _PRODOTTO = Path(__file__).resolve().parents[1] / "hiris" / "app"
 # Il nome della costante e' scritto accanto per chi legge, non per il
 # confronto.
 _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
+    ("action/construction/stakes.py", ("alarm_control_panel", "lock")):
+        "`stakes.HIGH_STAKES_DOMAINS`: non dice cosa un tipo E', dice su "
+        "quali domini una PROPOSTA e' sempre di livello «alto» -- una "
+        "decisione del proprietario (03/10/2026, «serrature e allarme "
+        "chiedono sempre»), scritta come lista d'ammissione con la sua data. "
+        "Il vocabolario mette `lock`, `alarm_control_panel` e `siren` nel "
+        "genere «sicurezza», che e' un'altra domanda (cosa l'osservatore "
+        "raccoglie): derivare la lista dal genere farebbe entrare la sirena, "
+        "che nessuno ha deciso (attori, strato 4, Task 4.3).",
     # `briefing._EVENT_DOMAINS` e `briefing._EVENT_CLASSES` stavano qui, e non
     # ci sono piu': l'08/09/2026 erano diventate un campo solo sulle righe del
     # vocabolario (`notable`), uscito a sua volta il 02/10/2026 quando nessun

@@ -23,8 +23,8 @@ from hiris.app.api.handlers_proposals import _REDO_SYSTEM
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES, ClaudeRunner
 from hiris.app.home_space import tools as home_tools
 from hiris.app.home_space.briefing import compose
-from hiris.app.mind.actuator_turn import SYSTEM as ACTUATOR_SYSTEM
 from hiris.app.mind.observer import SYSTEM as OBSERVER_SYSTEM
+from hiris.app.mind.proposer_turn import SYSTEM as ACTUATOR_SYSTEM
 
 # ── 5.4 / brief: le costanti di prompt elencate in spec §1 ──────────────────
 _PROMPT_COSTANTI = {
@@ -128,7 +128,7 @@ def test_osservatore_e_attuatore_non_toccano_i_gesti_dichiarati():
     """Wording only: i vocabolari chiusi restano quelli di prima -- se
     cambiassero, romperebbero la pagina che li legge senza che questo file
     se ne accorga altrimenti."""
-    from hiris.app.mind.actuator_turn import GESTURES, OUTCOME_GESTURES
+    from hiris.app.mind.proposer_turn import GESTURES, OUTCOME_GESTURES
     assert GESTURES == ("indagine", "proposta")
     assert OUTCOME_GESTURES == ("indagine", "riparazione", "proposta")
 
@@ -174,7 +174,7 @@ def test_mark_cancelled_scrive_la_costante_non_un_letterale_ricopiato(tmp_path):
         ident = archivio.propose(
             operation="crea", domain="automation", key="1", actor="chat",
             exchange=None, phrase=None, prima=None, dopo={"alias": "x"},
-            helper=[], preview="", now=time.time())["id"]
+            helper=[], preview="", stakes=None, now=time.time())["id"]
         archivio.mark_cancelled(ident, now=time.time())
         riga = archivio.read(ident)
     finally:

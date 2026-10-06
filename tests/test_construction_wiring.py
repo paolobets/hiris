@@ -46,7 +46,7 @@ async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, c
         ident = archivio.propose(
             operation="scrivi", domain="automation", key="test.risana",
             actor="prova", exchange=None, phrase=None, prima=None, dopo=None,
-            helper=[], preview="", now=_time.time())["id"]
+            helper=[], preview="", stakes=None, now=_time.time())["id"]
         # `claim` la porta a `in_corso`: e' lo stato che un riavvio a meta'
         # lascia sul disco, ed e' l'unica cosa che `risana()` sa chiudere.
         archivio.claim(ident, now=_time.time())
