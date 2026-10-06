@@ -120,8 +120,13 @@ def test_un_INNESCO_che_la_riga_NON_HA_si_rifiuta():
     esiste affatto.
 
     Mutazione ESEGUITA (06/10/2026): `_trigger` che accetta qualunque innesco
-    dei tre -- rossa (il 2 e il 3 passano)."""
-    for innesco in (0, 2, 3, 4, "uno"):
+    dei tre -- rossa (il 2 e il 3 passano).
+
+    `True` e `1.0` valgono 1 per Python, e si rifiutano lo stesso (G21-1 del
+    revisore, giro 21): finivano nell'impronta con un'altra forma, e la
+    ripetizione non si toglieva piu'. Mutazione ESEGUITA (06/10/2026): togliere
+    il controllo sul tipo -- rossa (`True` passa)."""
+    for innesco in (0, 2, 3, 4, "uno", True, 1.0):
         esito = at.apply_analysis(_serie(), _risposta([_osservazione(innesco=innesco)]))
         assert any("innesco" in p for p in esito["problemi"]), innesco
 
@@ -189,6 +194,16 @@ def test_il_RIMETTI_si_valida_e_si_archivia_con_l_analisi():
 
     storta = json.dumps({"osservazioni": [], "rimetti": [{"id": "sensor.x"}]})
     assert at.apply_analysis(_serie(), storta)["analisi"] is None
+
+
+def test_il_RIMETTI_vuole_un_ENTITY_ID():
+    """G21-2 del revisore (giro 21): «camera da letto» passava. Mutazione
+    ESEGUITA (06/10/2026): controllare solo che l'id non sia vuoto -- rossa."""
+    import json
+    for ident in ("camera da letto", "batteria", "Sensor.x"):
+        storta = json.dumps({"osservazioni": [], "rimetti": [
+            {"id": ident, "perche": "spiega il prelievo serale"}]})
+        assert at.apply_analysis(_serie(), storta)["analisi"] is None, ident
 
 
 def test_le_LETTURE_del_turno_vengono_dal_registro_delle_chiamate():

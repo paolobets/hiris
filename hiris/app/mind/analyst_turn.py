@@ -38,6 +38,7 @@ import hashlib
 import json
 import logging
 
+from ..home_space.ha_vocabulary import is_entity_id
 from ..steering import read_json
 from . import analyst
 
@@ -243,7 +244,10 @@ def _trigger(written, row: dict, which: int, number: int, problems: list,
     Una riga senza fatti non e' candidata a niente.
     """
     marked = sorted({fact["innesco"] for fact in analyst.trigger_facts(row, days)})
-    if written is not None and written not in marked:
+    # Solo un `int` vero (G21-1 del revisore, giro 21): in Python `True == 1`
+    # e `1.0 == 1`, e un innesco scritto cosi' passava il confronto, finiva
+    # nell'impronta con un'altra forma e la ripetizione non si toglieva piu'.
+    if written is not None and (type(written) is not int or written not in marked):
         problems.append(
             f"l'osservazione {number} dice innesco «{written}», ma la misura "
             f"[{which}] e' candidata a {marked or 'nessun innesco'}: gli "
@@ -272,7 +276,9 @@ def _text(value) -> str | None:
 
 def _back_in(asked, problems: list) -> list[dict]:
     """Il **rimetti dentro** (D9): le entita' che l'analista chiede di far
-    rientrare nello scope, `[{id, perche}]`. Si valida la forma; lo scrive il
+    rientrare nello scope, `[{id, perche}]`. Si valida la forma -- anche
+    quella dell'`id`, che deve essere un `entity_id` (G21-2 del revisore:
+    «camera da letto» passava); lo scrive il
     Task 3.7, con autore `ANALYST`, e `scope.may_overwrite` lascia fuori cio'
     che il proprietario ha tolto."""
     if asked is None:
@@ -284,7 +290,7 @@ def _back_in(asked, problems: list) -> list[dict]:
     for number, item in enumerate(asked, start=1):
         ident = str((item or {}).get("id") or "").strip() if isinstance(item, dict) else ""
         why = _text(item.get("perche")) if isinstance(item, dict) else None
-        if not ident or why is None:
+        if not is_entity_id(ident) or why is None:
             problems.append(f"il rimetti {number} vuole `id` e `perche`: {item!r}")
             continue
         out.append({"id": ident, "perche": why})
