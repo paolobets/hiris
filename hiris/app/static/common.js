@@ -8,6 +8,58 @@
    (registro C-20, C-22). Il cancello che impedisce il ritorno delle copie
    chiede i nomi a QUESTO file: tests/js/common.test.mjs. */
 
+/* ------------------------------------------------------------- l'attesa */
+
+/* Le durate e le frasi dell'attesa di un turno, scritte UNA volta per le due
+   porte che lo aspettano: la chat (chat/messages.js) e il «Rifalla» della
+   pagina Proposte (config/constructions-route.js; attori, Task 4.4). Fino al
+   06/10/2026 vivevano solo nella chat: la seconda porta le avrebbe ricopiate,
+   e le due attese avrebbero cominciato a dire cose diverse.
+
+   Le prime tre -- quelle che l'utente vive come attesa -- sono calibrate
+   sulla letteratura (i 10 secondi oltre i quali l'attenzione si stacca) e NON
+   su tempi di risposta misurati su questo prodotto: nessuno li ha ancora
+   raccolti. Le altre hanno una provenienza diversa, dichiarata accanto. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle due pagine
+var SOGLIE_ATTESA = {
+  /* ogni quanto la pagina richiede notizie di un turno del ponte */
+  rilettura: 3500,
+  /* compare il cronometro */
+  timer: 10000,
+  /* l'etichetta ammette che ci sta mettendo troppo */
+  lenta: 30000,
+  /* compare la riga che dice che fine fa il turno */
+  servizio: 120000,
+  /* Quanto PRIMA della scadenza avvisare che sta per arrendersi. La scadenza
+     non e' scritta qui: la porta chi ce l'ha davvero (la chat dal suo poll,
+     il «Rifalla» dalla coda del server). */
+  margineResa: 30000,
+  /* E quando dirlo dove una scadenza non esiste proprio. Questo numero e'
+     arbitrario e lo dichiara: non c'e' niente da cui derivarlo. */
+  senzaScadenza: 270000,
+  /* Quanto la bolla della chat resta una regione live DOPO che ci e' stata
+     scritta dentro la risposta (chat/messages.js, updateBubble): l'ultimo
+     atto della stessa vita, l'indicatore che diventa risposta. */
+  uscitaRegioneLive: 1200
+};
+
+/* Le frasi che non dipendono da COSA si aspetta. Quelle che lo nominano --
+   «questa risposta», «questo rifacimento» -- stanno con la loro porta. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle due pagine
+var FRASI_ATTESA = {
+  lenta: 'Ci sto mettendo più del solito',
+  quasiResa: 'Ancora niente: fra poco smetto di aspettare',
+  senzaScadenza: 'Ancora niente. Continuo ad aspettare: su questo turno non ho un tempo massimo.'
+};
+
+/* Il cronometro dell'attesa, `m:ss`. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle due pagine
+function stopwatchText(ms) {
+  var s = Math.floor(Math.max(0, ms) / 1000);
+  var ss = s % 60;
+  return Math.floor(s / 60) + ':' + (ss < 10 ? '0' + ss : ss);
+}
+
 /* --------------------------------------------------------------- il DOM */
 
 /* Un elemento con classe e testo. Il testo passa SEMPRE da `textContent`:

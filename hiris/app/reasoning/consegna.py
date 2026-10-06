@@ -15,13 +15,17 @@ Cosa fa una consegna, per specie di turno:
   chiamare «conclude»;
 - **chat**: scrive la risposta nel filo di chi l'ha chiesta;
 - **gli attori**: niente -- la decisione resta registrata, e la va a prendere
-  il giro che ha accodato il turno.
+  il giro che ha accodato il turno;
+- **«Rifalla»**: scrive l'esito nel filo della proposta
+  (`mind/proposal_redo.deliver`), perche' non c'e' un giro che passi.
 """
 from __future__ import annotations
 
 import logging
 
 from ..mind.observer import SCOPE_TURN_KIND
+from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
+from ..mind.proposer_turn import PROPOSAL_TURN_KIND
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +140,21 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         else:
             outcome = "chat_reply_skipped"
         return outcome
+
+    if (job or {}).get("kind") == PROPOSAL_TURN_KIND \
+            and ((job or {}).get("wake") or {}).get(REDO_KEY):
+        # Un «Rifalla» (attori, Task 4.4): c'e' una persona che aspetta davanti
+        # alla pagina, e nessun giro periodico che passi a raccogliere. La
+        # risposta si scrive nel filo della proposta adesso; la pagina la
+        # trova alla sua prossima lettura.
+        from ..mind.proposal_redo import deliver
+
+        try:
+            return "rifalla_" + (deliver(app, job, decision) or "ignorato")
+        except Exception:
+            logger.exception("consegna di un «Rifalla» non riuscita (job_id=%s)",
+                             job_id)
+            return "error"
 
     # Qui arrivano i turni che non sono ne' di chat ne' di promessa: quelli
     # degli attori. Non c'e' niente da attuare -- la decisione resta

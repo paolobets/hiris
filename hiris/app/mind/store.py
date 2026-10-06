@@ -1452,41 +1452,57 @@ class ObservationsStore:
             self._conn.commit()
         return cur.rowcount > 0
 
-    def add_proposal_round(self, ident: str, *, request: str, text: str,
-                           now_ts: float) -> bool:
-        """Accoda un giro di «Rifalla» e **sostituisce il testo** con la forma
-        nuova.
+    def add_proposal_round(self, ident: str, *, request: str, outcome: str,
+                           turn: str, now_ts: float, text: str | None = None,
+                           why: str | None = None,
+                           built: str | None = None) -> bool:
+        """Accoda un giro di «Rifalla» al filo della proposta. Torna se l'ha
+        scritto.
 
         Il filo si accoda e non si sostituisce: il modello deve vedere cosa e'
         stato scartato, o potrebbe tornare alla prima forma al secondo giro.
-        Un giro **non chiude niente**: la proposta resta in attesa.
+        Un giro **non chiude niente**: la proposta resta com'e', in attesa o
+        no -- la chiude, quando serve, chi lo chiama.
+
+        `outcome` e' l'esito del proponente (`proposer_turn.OUTCOMES`, attori,
+        Task 4.4):
+        - **a mano**: `text` e `why` sostituiscono testo e perche', e il
+          giro conserva la forma scartata;
+        - **niente**: la proposta resta com'era, e il giro porta il perche';
+        - **costruita**: il giro porta l'id della proposta costruita.
+
+        `turn` e' l'identita' del turno che ha risposto: **lo stesso turno non
+        scrive due giri**, ed e' cio' che rende innocua una seconda consegna.
         """
+        if outcome not in ("a_mano", "niente", "costruita"):
+            raise ValueError(f"esito di un giro sconosciuto: {outcome!r}")
         with self._lock:
             row = self._conn.execute(
-                "SELECT testo, giri_json FROM proposte WHERE id=?", (ident,)).fetchone()
+                "SELECT testo, perche, giri_json FROM proposte WHERE id=?",
+                (ident,)).fetchone()
             if row is None:
                 return False
-            rounds = json.loads(row[1])
-            rounds.append({"richiesta": request, "scartata": row[0],
-                           "quando_ts": now_ts})
+            rounds = json.loads(row[2])
+            if any(r.get("turno") == turn for r in rounds):
+                return False
+            entry = {"richiesta": request, "esito": outcome, "turno": turn,
+                     "quando_ts": now_ts}
+            kept_text, kept_why = row[0], row[1]
+            if outcome == "a_mano":
+                entry["scartata"] = kept_text
+                # Il testo cambia, e la ragione con lui: una proposta nuova
+                # con la ragione vecchia sarebbe una riga che non si spiega.
+                kept_text, kept_why = text or kept_text, why or kept_why
+            elif outcome == "niente":
+                entry["perche"] = why
+            else:
+                entry["proposta_id"] = built
+            rounds.append(entry)
             self._conn.execute(
-                "UPDATE proposte SET testo=?, giri_json=? WHERE id=?",
-                (text, json.dumps(rounds, ensure_ascii=False), ident))
+                "UPDATE proposte SET testo=?, perche=?, giri_json=? WHERE id=?",
+                (kept_text, kept_why, json.dumps(rounds, ensure_ascii=False), ident))
             self._conn.commit()
         return True
-
-    def rewrite_proposal_why(self, ident: str, perche: str) -> bool:
-        """Riscrive il `perche` di una proposta, dopo un giro di «Rifalla».
-
-        Il testo cambia (lo fa `add_proposal_round`), e la ragione con lui: una
-        proposta nuova con la ragione vecchia sarebbe una riga che non si
-        spiega piu'.
-        """
-        with self._lock:
-            cur = self._conn.execute(
-                "UPDATE proposte SET perche=? WHERE id=?", (perche, ident))
-            self._conn.commit()
-        return cur.rowcount > 0
 
     def decided_proposals(self) -> dict[str, dict]:
         """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}`:

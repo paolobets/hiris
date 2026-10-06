@@ -23,7 +23,9 @@
    copia privata, piu' quella della card): adesso e' uno. */
 (function() {
   var state = window.HirisChatState;
-  var CHAT_POLL_INTERVAL_MS = 3500;
+  /* Ogni quanto si richiede: lo stesso ritmo del «Rifalla» delle Proposte,
+     scritto una volta in common.js. */
+  var CHAT_POLL_INTERVAL_MS = SOGLIE_ATTESA.rilettura;
   var CHAT_POLL_MAX_MS = 5 * 60 * 1000;
 
   function sleep(ms) {

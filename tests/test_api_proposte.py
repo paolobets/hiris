@@ -162,8 +162,10 @@ async def test_RIFALLA_accoda_il_giro_e_riscrive_il_testo(casa, monkeypatch):
     class _Modello:
         async def chat(self, **kwargs):
             domande.append(kwargs.get("user_message") or "")
-            return json.dumps({"testo": "Sposta la lavatrice dopo le 14",
-                               "perche": "cosi' cade nelle ore di sole"})
+            return json.dumps({"esiti": [{
+                "osservazione": 0, "esito": "a_mano",
+                "testo": "Sposta la lavatrice dopo le 14",
+                "perche": "cosi' cade nelle ore di sole"}]})
 
     app["llm_router"] = _Modello()
 

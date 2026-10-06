@@ -58,6 +58,10 @@ BY_HAND = "a_mano"
 NOTHING = "niente"
 OUTCOMES = (BUILT, BY_HAND, NOTHING)
 
+#: Perche' una proposta da fare a mano si chiude `superata` (D24-1): la stessa
+#: frase dal giro e dal «Rifalla», scritta una volta.
+SUPERSEDED_WHY = "ora c'e' una proposta che HIRIS puo' costruire"
+
 #: Dove gli esiti stanno nell'analisi: accanto alle osservazioni a cui
 #: rispondono, uno per osservazione. «Costruita» e «da fare a mano» col solo id
 #: della proposta (un riferimento, non una copia: testo, perche' e prova
@@ -277,17 +281,7 @@ def build_question(observations, *, refused: list[str] | None = None,
         return None
     lines = ["Le osservazioni dell'analista rimaste aperte, numerate:"]
     for index, row in enumerate(rows):
-        lines.append(f"  [{index}] {row.get('nome') or row.get('soggetto')} · "
-                     f"{row.get('misura')}"
-                     + (f" ({row.get('chiave')})" if row.get("chiave") else ""))
-        lines.append(f"      cosa ha visto: {row.get('cosa')}")
-        if row.get("cosa_cambierebbe"):
-            lines.append(f"      cosa cambierebbe: {row.get('cosa_cambierebbe')}")
-        if row.get("da_riverificare"):
-            lines.append(f"      da riverificare: {row.get('da_riverificare')}")
-        base = row.get("base")
-        lines.append(f"      si regge su {base} giorni di storia"
-                     if base else "      non ha una storia dietro")
+        lines.extend(observation_lines(index, row))
     lines.append("")
     if unbound:
         lines.append("Le proposte gia' costruite in un turno di prima, che nessun "
@@ -300,6 +294,23 @@ def build_question(observations, *, refused: list[str] | None = None,
     lines.append(ANSWER_CONTRACT)
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
+
+
+def observation_lines(index: int, row: dict) -> list[str]:
+    """Un'osservazione come la legge il proponente, col suo numero: la stessa
+    forma per il giro e per il «Rifalla» (`mind/proposal_redo.py`)."""
+    lines = [f"  [{index}] {row.get('nome') or row.get('soggetto')} · "
+             f"{row.get('misura')}"
+             + (f" ({row.get('chiave')})" if row.get("chiave") else ""),
+             f"      cosa ha visto: {row.get('cosa')}"]
+    if row.get("cosa_cambierebbe"):
+        lines.append(f"      cosa cambierebbe: {row.get('cosa_cambierebbe')}")
+    if row.get("da_riverificare"):
+        lines.append(f"      da riverificare: {row.get('da_riverificare')}")
+    base = row.get("base")
+    lines.append(f"      si regge su {base} giorni di storia"
+                 if base else "      non ha una storia dietro")
+    return lines
 
 
 def bridge_turn(observations, *, refused: list[str] | None = None,
