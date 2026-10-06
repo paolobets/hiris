@@ -170,6 +170,22 @@ async def _analyst_guard(app, exchange: str | None = None):
     return await guard(app, exchange)
 
 
+def _proposer_tools() -> list[dict]:
+    """Gli strumenti del proponente: i lettori dell'analista piu' `propose`
+    (D12 del piano degli attori, Task 4.2)."""
+    from .mind.proposer_turn import proposer_tools
+
+    return proposer_tools()
+
+
+async def _proposer_guard(app, exchange: str | None = None):
+    """Il guardiano del proponente (`proposer_turn.guard`), lo stesso sulla
+    catena e sul ponte."""
+    from .mind.proposer_turn import guard
+
+    return await guard(app, exchange)
+
+
 @_dataclass(frozen=True)
 class Species:
     """**La dichiarazione di un mestiere** (Tappa 6, Task 7): cio' che il turno
@@ -225,7 +241,8 @@ SPECIES = {s.name: s for s in (
     Species(RECIPES_SPECIES, "ricetta", None, PRIORITY_BACKGROUND),
     Species(ANALYST_SPECIES, "analisi", _analyst_tools, PRIORITY_BACKGROUND,
             guard=_analyst_guard),
-    Species(PROPOSER_SPECIES, "proposta", None, PRIORITY_BACKGROUND),
+    Species(PROPOSER_SPECIES, "proposta", _proposer_tools, PRIORITY_BACKGROUND,
+            guard=_proposer_guard),
 )}
 
 def refused_tool(name: str, *, doing: str, instead: str) -> dict:
@@ -244,8 +261,12 @@ def compose_base(tools) -> str:
     puo' usare.
 
     Un turno senza strumenti riceve la sola identita': zero caratteri di
-    regole. Uno con alcuni strumenti riceve le regole che parlano di quelli,
-    e quelle che non ne nominano nessuno (`claude_runner.TOOL_RULES`). Con
+    regole. Uno con alcuni strumenti riceve le regole che parlano SOLO di
+    quelli, e quelle che non ne nominano nessuno (`claude_runner.TOOL_RULES`):
+    dal 06/10/2026 (attori, Task 4.2) una regola che nomina anche uno
+    strumento del turno non basta -- il proponente ha `propose` e non
+    `confirm`, e la regola della chat gli diceva di mostrare l'anteprima a chi
+    gli parla, fermarsi e confermare dopo. Con
     tutti gli strumenti -- la chat -- il blocco e' quello di sempre, byte per
     byte.
 
@@ -260,7 +281,7 @@ def compose_base(tools) -> str:
     if not names:
         return BASE_IDENTITY
     return BASE_IDENTITY + "".join(
-        text for about, text in TOOL_RULES if not about or names & set(about))
+        text for about, text in TOOL_RULES if not about or set(about) <= names)
 
 
 #: I nomi dei mestieri: una vista sulle dichiarazioni.
@@ -509,6 +530,18 @@ def refused_problems(archivio, specie: str) -> list[str]:
     if not recenti or recenti[0]["outcome"] != REFUSED:
         return []
     return list(recenti[0].get("problems") or [])
+
+
+def refused_lines(problems: list[str] | None) -> list[str]:
+    """Le righe della domanda che riportano i `problems` di una risposta
+    rifiutata (D10), o nessuna. Una frase sola per i mestieri che riprovano
+    (l'analista, il proponente): la stessa correzione si chiede con le stesse
+    parole."""
+    if not problems:
+        return []
+    return [("La tua risposta precedente non e' stata accettata, per "
+             "questi motivi. Rispondi di nuovo evitandoli:"),
+            *(f"- {problem}" for problem in problems), ""]
 
 
 @_contextlib.asynccontextmanager
@@ -853,3 +886,67 @@ def enqueue_turn(app, species: str, wake: dict, context: dict, *,
         now + deadline_min * 60, now=now, thread=thread,
         priority=declared.priority)
     return job_id, deadline_min
+
+
+def turn_in_flight(app, kind: str) -> bool:
+    """Se un turno di quella specie sta gia' aspettando una risposta dal piano.
+
+    **La coda e' l'unico posto in cui questo fatto vive.** Tenere il `job_id`
+    anche altrove -- su `app`, in un archivio -- sarebbe un doppione ai sensi
+    della fondamenta 2, e per giunta uno che non sopravvive a un riavvio,
+    mentre il job si'.
+
+    **Uno SCADUTO non e' in volo**, e questa riga e' costata cinque giorni di
+    silenzio. Misurato sulla casa il 21/09/2026: l'analista non scriveva
+    un'analisi dal 16, coi resoconti tutti archiviati. Il 17 un suo turno era
+    stato accodato al ponte; poi il ponte e' stato spento, e la spazzata delle
+    scadenze gira **solo a ponte acceso** -- quel turno e' rimasto `pending`
+    per sempre. La guardia dell'analista guardava soltanto «c'e' una
+    risposta?», e ha risposto «in volo» a ogni giro, per sempre.
+
+    Lo scope e le ricette avevano la riga giusta da settimane, ciascuno nella
+    propria copia: **tre guardie, e una nata senza**. Adesso e' una sola, e
+    chi la legge legge anche il perche'.
+
+    Sta qui, accanto a `enqueue_turn`, dal 06/10/2026 (attori, Task 4.2): il
+    giro del proponente vive fuori da `server.py`, e la guardia deve essere la
+    stessa per tutti i giri.
+    """
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return False
+    turn = queue.latest(kind)
+    if turn is None:
+        return False
+    return (turn["status"] in ("pending", "claimed")
+            and turn["deadline_ts"] > _time.time())
+
+
+#: Quanto si aspetta prima di richiedere, dopo una risposta vuota.
+#:
+#: **Un'ora, e il numero viene da un conto.** Una risposta vuota da un ponte
+#: che SA ragionare quella specie non e' piu' un rifiuto istantaneo: vuol dire
+#: che la CLI non ha risposto, e quel giro e' costato. Richiedere a ogni
+#: passaggio dell'anello sarebbero **144 turni al giorno** contro il tetto
+#: giornaliero del piano: un ponte rotto svuoterebbe da solo la quota, e da
+#: li' in poi ogni turno -- chat compresa -- passerebbe ai provider a
+#: pagamento.
+#:
+#: Un'ora sono 24 tentativi al giorno nel caso peggiore, e un solo giro di
+#: attesa quando il guasto e' passato.
+#:
+#: Dal 06/10/2026 frena anche l'analista, dopo una risposta vuota, fallita o
+#: rifiutata: il suo giro e' orario, quindi un'ora vuol dire un tentativo ogni
+#: due giri, e la sua domanda pesa ~35.000 token.
+RETRY_HOLD_S = 3600.0
+
+
+def too_soon_to_ask_again(app, kind: str) -> bool:
+    """Se l'ultimo turno di quella specie e' finito senza risposta utile da
+    meno di un'ora."""
+    queue = app.get("reasoning_queue")
+    turn = queue.latest(kind) if queue else None
+    if turn is None:
+        return False
+    deciso = turn.get("decided_ts") or turn.get("created_ts") or 0
+    return (_time.time() - deciso) < RETRY_HOLD_S

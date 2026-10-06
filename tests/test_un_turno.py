@@ -257,6 +257,7 @@ def test_le_viste_del_ponte_vengono_dalle_dichiarazioni():
     assert set(ponte.RAGIONABILI) == {s.kind for s in steering.SPECIES.values()}
     assert set(ponte._SELF_CONTAINED_KINDS) == {
         s.kind for s in steering.SPECIES.values() if s.self_contained}
-    # Tre dal 06/10/2026: l'analista ha gli strumenti (attori, Task 3.6, D5).
-    # Un insieme piu' piccolo direbbe una derivazione che non guarda piu'.
-    assert len(ponte._SELF_CONTAINED_KINDS) >= 3
+    # Tre dal 06/10/2026: l'analista ha gli strumenti (attori, Task 3.6, D5);
+    # due dal Task 4.2, col proponente. Un insieme piu' piccolo direbbe una
+    # derivazione che non guarda piu'.
+    assert len(ponte._SELF_CONTAINED_KINDS) >= 2

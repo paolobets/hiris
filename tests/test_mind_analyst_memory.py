@@ -18,7 +18,7 @@ import pytest
 
 from hiris.app import server
 from hiris.app.home_space import historian
-from hiris.app.mind import actuator, analyst
+from hiris.app.mind import analyst
 from hiris.app.mind import analyst_turn as at
 from hiris.app.mind.store import ObservationsStore
 
@@ -54,12 +54,6 @@ def _riga(**extra):
 
 def _risposta(*righe):
     return json.dumps({"osservazioni": list(righe) or [_riga()]})
-
-
-def test_L_IMPRONTA_ha_una_casa_sola():
-    """Fondamenta 2: l'impronta nasce nell'analista e l'attuatore la chiede."""
-    assert actuator.observation_key is analyst.observation_key
-    assert actuator.evidence_of is analyst.evidence_of
 
 
 def test_la_memoria_e_UNA_VOCE_per_impronta_con_i_giorni_e_l_ESITO():

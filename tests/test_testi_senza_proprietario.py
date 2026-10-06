@@ -122,17 +122,6 @@ def test_workshop_richiesto_non_nomina_l_utente():
     assert "chi ti sta parlando" in motivo
 
 
-# ── 5.6 (osservatore): le forme che NON devono cambiare ─────────────────────
-
-def test_osservatore_e_attuatore_non_toccano_i_gesti_dichiarati():
-    """Wording only: i vocabolari chiusi restano quelli di prima -- se
-    cambiassero, romperebbero la pagina che li legge senza che questo file
-    se ne accorga altrimenti."""
-    from hiris.app.mind.proposer_turn import GESTURES, OUTCOME_GESTURES
-    assert GESTURES == ("indagine", "proposta")
-    assert OUTCOME_GESTURES == ("indagine", "riparazione", "proposta")
-
-
 # ── Il briefing (home_space/briefing.py): le entita' nascoste ───────────────
 
 _CASA_ENTITA_NASCOSTA = {

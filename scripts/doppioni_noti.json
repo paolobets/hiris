@@ -15,6 +15,5 @@
  "vocabolario-parallelo · {compreso, gratuito, misurato, non_noto, reale} · hiris/app/static/config/usage-route.js + hiris/app/usage/vocabulary.py · 2 posti": "C-10",
  "vocabolario-parallelo · {differenza, massimo, media, minimo, pendenza, punti, variazione, verso} · hiris/app/mind/report.py + hiris/app/static/config/watcher-giorno.js · 2 posti": "C-10",
  "vocabolario-parallelo · {entita, integrazione, tipo} · hiris/app/home_space/type_judgments.py + hiris/app/static/config/watcher-lavoro.js · 2 posti": "C-10",
- "vocabolario-parallelo · {fallita, mantenuta, saltata} · hiris/app/keeper/promise.py + hiris/app/static/config/agenda-route.js · 2 posti": "C-10",
- "vocabolario-parallelo · {indagine, proposta, riparazione} · hiris/app/mind/proposer_turn.py + hiris/app/static/config/watcher-cosa-fare.js · 2 posti": "C-10"
+ "vocabolario-parallelo · {fallita, mantenuta, saltata} · hiris/app/keeper/promise.py + hiris/app/static/config/agenda-route.js · 2 posti": "C-10"
 }

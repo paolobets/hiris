@@ -1790,6 +1790,12 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # La riga del registro di questo turno: chi raccoglie la risposta
             # e la rifiuta ci scrive sopra «rifiutata» (D10).
             decision["turn_id"] = turn_id
+        if work_id and exchange_id and not retried_cell:
+            # L'identita' del turno sulla rotta MCP, per i mestieri di sfondo:
+            # l'officina la scrive accanto a ogni proposta nata nel turno, e
+            # chi raccoglie la risposta del proponente rilegge da li' quali
+            # sono (D12, `ConstructionStore.proposed_in`).
+            decision["exchange_id"] = exchange_id
         return decision
 
     invocations = 0

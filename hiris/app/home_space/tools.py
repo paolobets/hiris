@@ -1347,8 +1347,14 @@ class ToolDispatcher:
                  phrase: str | None = None,
                  thread: ChatThread | None = None,
                  house: House | None = None,
-                 mind=None) -> None:
+                 mind=None, actor: str = "chat") -> None:
         self._home_space = home_space_store
+        # CHI agisce in questo turno, per la cronaca e per l'officina: la chat,
+        # o il mestiere di sfondo che ha il dispatcher sotto il suo guardiano
+        # (il proponente, attori Task 4.2). Fino al 06/10/2026 era il
+        # letterale «chat» in tre gestori, e una proposta del proponente
+        # sarebbe uscita firmata dalla chat.
+        self._actor = actor
         # Le letture del cervello (`mind/view.MindView`, Tappa 5, Task 8):
         # lo scope, l'obiettivo, i resoconti, le analisi. Arrivano GIA'
         # costruite, come il sapere e la cronaca: `home_space` non importa da
@@ -2002,7 +2008,7 @@ class ToolDispatcher:
         (`_reserved_core_service`).
         """
         outcome = await self._actuator.execute(
-            arguments, actor="chat", subject=self._subject)
+            arguments, actor=self._actor, subject=self._subject)
         # Un comando puo' aver cambiato la casa: la domanda dopo, in questo
         # stesso turno, la rilegge invece di guardare lo specchio di prima
         # (`_turn_house`). Anche su un rifiuto: costa una lettura, e decidere
@@ -2270,7 +2276,7 @@ class ToolDispatcher:
             "frase": arguments.get("frase"),
         }
         return await self._workshop.propose(
-            intent, actor="chat", exchange=self._exchange, now=_time.time(),
+            intent, actor=self._actor, exchange=self._exchange, now=_time.time(),
             thread=self._thread,
             reveal_before=not masked)
 
@@ -2289,7 +2295,7 @@ class ToolDispatcher:
         proposal_id = (proposal_id.strip()
                        if isinstance(proposal_id, str) else None)
         occurrence = await self._workshop.apply(
-            proposal_id, actor="chat", exchange=self._exchange,
+            proposal_id, actor=self._actor, exchange=self._exchange,
             now=_time.time(), subject=self._subject,
             # B-5: il cancello sa dire «in mezzo c'e' stato un turno», non «in
             # mezzo c'e' stato un si'». La frase di questo turno va in cronaca

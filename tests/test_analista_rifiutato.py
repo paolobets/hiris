@@ -137,7 +137,7 @@ async def test_sul_PONTE_la_domanda_accodata_porta_i_problemi(casa, monkeypatch)
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
     monkeypatch.setattr(server, "enqueue_turn",
                         lambda app, specie, wake, job: accodati.append(job) or ("j", 5))
-    monkeypatch.setattr(server, "_turn_in_flight", lambda app, kind: False)
+    monkeypatch.setattr(server, "turn_in_flight", lambda app, kind: False)
     await server.analyst_round(app)
     assert _PROBLEMA in accodati[0]["history"][0]["content"]
 

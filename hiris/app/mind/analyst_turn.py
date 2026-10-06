@@ -40,7 +40,7 @@ import logging
 import time
 
 from ..home_space.ha_vocabulary import is_entity_id
-from ..steering import ANALYST_SPECIES, SPECIES, read_json
+from ..steering import ANALYST_SPECIES, SPECIES, read_json, refused_lines
 from . import analyst
 
 logger = logging.getLogger(__name__)
@@ -415,11 +415,7 @@ def build_question(series: dict, previous: list[dict] | None = None, *,
             shown = {k: v for k, v in said.items() if k != "impronta"}
             lines.append("- " + json.dumps(shown, ensure_ascii=False))
         lines.append("")
-    if refused:
-        lines.append("La tua risposta precedente non e' stata accettata, per "
-                     "questi motivi. Rispondi di nuovo evitandoli:")
-        lines.extend(f"- {problem}" for problem in refused)
-        lines.append("")
+    lines.extend(refused_lines(refused))
     lines.append(ANSWER_CONTRACT)
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question

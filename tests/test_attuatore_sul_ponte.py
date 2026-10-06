@@ -21,9 +21,8 @@ import ast
 import importlib
 from pathlib import Path
 
-from conftest import SCADENZA_LONTANA
 from hiris.app.agent import runner as ponte
-from hiris.app.steering import SPECIES
+from hiris.app.steering import PROPOSER_SPECIES, SPECIES
 
 RADICE = Path(__file__).resolve().parent.parent
 APP = RADICE / "hiris" / "app"
@@ -124,53 +123,22 @@ def test_ogni_specie_ACCODATA_e_ragionata_dal_ponte_e_ha_un_nome_nel_registro():
             "turni: il ponte lo spenderebbe senza che nessuno lo veda")
 
 
-class _ProcessoFinto:
-    """Cio' che `subprocess.run` restituirebbe, senza lanciare la CLI: una
-    prova unitaria non spende un turno dell'abbonamento."""
+def test_un_turno_del_PROPONENTE_arriva_al_ponte_coi_SUOI_strumenti():
+    """Fino al 06/10/2026 l'attuatore arrivava al ponte senza strumenti, come
+    sulla catena. Dal Task 4.2 (D12) il proponente ha i lettori e `propose`,
+    sulle due strade: il ponte li prende dalla dichiarazione del mestiere, e
+    il catalogo della chat -- `execute` compreso, la porta con cui HIRIS
+    accende e spegne -- resta fuori.
 
-    returncode = 1
-    stdout = ""
-    stderr = "la CLI non e' stata lanciata: e' una prova"
+    Mutazione ESEGUITA (06/10/2026): la dichiarazione del proponente col
+    catalogo della chat -- rossa (`execute` fra i nomi)."""
+    nomi = ponte.mcp_names(PROPOSER_SPECIES)
+    assert ponte.mcp_name("propose") in nomi
+    assert ponte.mcp_name("search") in nomi
+    for fuori in ("execute", "confirm", "remember", "promise", "compute"):
+        assert ponte.mcp_name(fuori) not in nomi, fuori
+    argv = ponte._chat_claude_args("sistema.txt", "sonnet", active_tools=True,
+                                   mcp_config="{}", species=PROPOSER_SPECIES)
+    assert argv[argv.index("--allowedTools") + 1] == ",".join(nomi)
 
 
-def test_un_turno_di_ATTUAZIONE_arriva_al_ponte_SENZA_strumenti(monkeypatch):
-    """Sulla catena l'attuatore chiama `runner.chat` senza strumenti: sul ponte
-    deve essere uguale. Non e' eleganza: col catalogo della chat avrebbe
-    `execute`, la porta con cui HIRIS accende e spegne, e un attore che per
-    contratto «non tocca la casa» potrebbe toccarla senza nessun si'.
-
-    Due fatti, e servono entrambi. Che la CLI venga lanciata dice che il turno
-    e' arrivato a `_reason_chat` e non al ramo della decisione vuota; che la
-    sonda non giri e che nell'argv non ci sia la `--mcp-config` dice che ci e'
-    arrivato senza strumenti. La spia risponde «strumenti presenti»: se fosse
-    interrogata, la `--mcp-config` finirebbe davvero nell'argv.
-
-    Mutazioni ESEGUITE: togliere `attuazione` da `RAGIONABILI` -- rossa (la
-    CLI non parte); toglierla da `_SELF_CONTAINED_KINDS` -- rossa (la sonda
-    gira).
-    """
-    lanci: list[list[str]] = []
-
-    def cli(argv, *a, **kw):
-        lanci.append(list(argv))
-        return _ProcessoFinto()
-
-    sondato = []
-
-    def spia(*a, **kw):
-        sondato.append(kw)
-        return True, ""
-
-    monkeypatch.setattr(ponte.subprocess, "run", cli)
-    monkeypatch.setattr(ponte, "probe_tools", spia)
-
-    ponte.reason(
-        {"kind": "proposta", "deadline_ts": SCADENZA_LONTANA, "job_id": "ja",
-         "context": {"model": "sonnet", "history": [{"role": "user", "content": "le osservazioni"}],
-                     "system_prompt": "sei l'attuatore",
-                     "istruzione": "Rispondi SOLO con un oggetto JSON."}},
-        "live", client=object(), base_url="http://127.0.0.1:8099")
-
-    assert lanci, "il turno di attuazione non e' arrivato al ponte"
-    assert sondato == [], "un turno di attuazione non ha strumenti da sondare"
-    assert all("--mcp-config" not in argv for argv in lanci)

@@ -23,16 +23,16 @@ from hiris.app.api import handlers_proposals
 from hiris.app.mind import analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
-from tests.test_mind_actuator_turn import _osservazioni as osservazioni_attuatore
 from tests.test_mind_analyst_turn import _serie as serie_analista
 from tests.test_mind_recipe_turn import CASA, RICETTA_BUONA
+from tests.test_proponente import osservazioni as osservazioni_proponente
 
 DECISIONI = [{"id": "climate.camera_t", "dentro": True, "motivo": "scalda"}]
 ANALISI = {"osservazioni": [{"quale": 0, "innesco": 1,
                              "cosa": "il prelievo e' salito", "spiegato": None,
                              "cosa_cambierebbe": "meno prelievo, meno spesa"}]}
-ATTUAZIONE = {"esiti": [{"osservazione": 0, "gesto": "indagine",
-                         "trovato": "il sensore era fermo"}]}
+ESITI_PROPONENTE = {"esiti": [{"osservazione": 0, "esito": "niente",
+                               "perche": "il sensore era fermo"}]}
 PROPOSTA = {"testo": "spegni lo scaldabagno alle 23", "perche": "costa meno"}
 
 
@@ -54,9 +54,9 @@ def _analista(testo):
     return analyst_turn.apply_analysis(serie_analista(), testo)["problemi"] == []
 
 
-def _attuatore(testo):
-    return proposer_turn.apply_actuation(osservazioni_attuatore(),
-                                         testo)["problemi"] == []
+def _proponente(testo):
+    return proposer_turn.apply_outcomes(osservazioni_proponente()[:1],
+                                        testo)["problemi"] == []
 
 
 def _rifalla(testo):
@@ -67,7 +67,7 @@ MESTIERI = {
     "osservatore": (DECISIONI, lambda t, _p: _osservatore(t)),
     "ricette": (RICETTA_BUONA, _ricette),
     "analista": (ANALISI, lambda t, _p: _analista(t)),
-    "attuatore": (ATTUAZIONE, lambda t, _p: _attuatore(t)),
+    "proponente": (ESITI_PROPONENTE, lambda t, _p: _proponente(t)),
     "rifalla": (PROPOSTA, lambda t, _p: _rifalla(t)),
 }
 

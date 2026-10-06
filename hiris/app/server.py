@@ -73,7 +73,7 @@ from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
-from .mind import actuator, analyst, analyst_turn, proposer_turn, recipe_turn, report
+from .mind import analyst, analyst_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     aggregate_day,
@@ -87,6 +87,7 @@ from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
+from .mind.proposer_round import proposer_round
 from .mind.recipes import (
     Recipe,
     hourly_points,
@@ -115,7 +116,6 @@ from .steering import (
     ANALYST_SPECIES,
     JOB_SPECIES,
     OBSERVER_SPECIES,
-    PROPOSER_SPECIES,
     RECIPES_SPECIES,
     SPECIES,
     chain_answer,
@@ -124,6 +124,8 @@ from .steering import (
     enqueue_turn,
     refused_problems,
     start,
+    too_soon_to_ask_again,
+    turn_in_flight,
 )
 from .version import read_version
 
@@ -1713,7 +1715,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             # solo, e da li' in poi ogni turno -- chat compresa -- passerebbe
             # ai provider a pagamento.
             return None
-        if _turn_in_flight(app, SCOPE_TURN_KIND):
+        if turn_in_flight(app, SCOPE_TURN_KIND):
             # Questo giro scatta ogni minuto e un turno del piano ne dura
             # parecchi: senza questa guardia la casa accodarebbe un turno al
             # minuto, ciascuno col suo lotto di casa dentro, e il tetto
@@ -1994,36 +1996,6 @@ async def hold_watcher_statistic_ids(app, ha_client) -> None:
 # -- niente doppioni -- vale anche per otto righe.
 
 
-def _turn_in_flight(app, kind: str) -> bool:
-    """Se un turno di quella specie sta gia' aspettando una risposta dal piano.
-
-    **La coda e' l'unico posto in cui questo fatto vive.** Tenere il `job_id`
-    anche altrove -- su `app`, in un archivio -- sarebbe un doppione ai sensi
-    della fondamenta 2, e per giunta uno che non sopravvive a un riavvio,
-    mentre il job si'.
-
-    **Uno SCADUTO non e' in volo**, e questa riga e' costata cinque giorni di
-    silenzio. Misurato sulla casa il 21/09/2026: l'analista non scriveva
-    un'analisi dal 16, coi resoconti tutti archiviati. Il 17 un suo turno era
-    stato accodato al ponte; poi il ponte e' stato spento, e la spazzata delle
-    scadenze gira **solo a ponte acceso** -- quel turno e' rimasto `pending`
-    per sempre. La guardia dell'analista guardava soltanto «c'e' una
-    risposta?», e ha risposto «in volo» a ogni giro, per sempre.
-
-    Lo scope e le ricette avevano la riga giusta da settimane, ciascuno nella
-    propria copia: **tre guardie, e una nata senza**. Adesso e' una sola, e
-    chi la legge legge anche il perche'.
-    """
-    queue = app.get("reasoning_queue")
-    if queue is None:
-        return False
-    turn = queue.latest(kind)
-    if turn is None:
-        return False
-    return (turn["status"] in ("pending", "claimed")
-            and turn["deadline_ts"] > time.time())
-
-
 async def analyst_round(app) -> dict | None:
     """L'anello dell'analista: **«leggi le misure di molti giorni e di' cosa si
     potrebbe fare»** (spec §10).
@@ -2065,7 +2037,7 @@ async def analyst_round(app) -> dict | None:
         # vecchio non e' piu' l'ultimo e non si rilegge.
         if collected is not None and collected.get("analisi") is not None:
             return collected
-        if collected is not None and _troppo_presto_per_richiedere(
+        if collected is not None and too_soon_to_ask_again(
                 app, analyst_turn.ANALYSIS_TURN_KIND):
             return collected
         # **Non «c'e' gia' un'analisi per oggi?», ma «ce n'e' gia' una su
@@ -2082,7 +2054,7 @@ async def analyst_round(app) -> dict | None:
         scritta = store.analysis(today)
         if scritta is not None and scritta.get("fondamento") == fondamento:
             return None
-        if _turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
+        if turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
             return None
 
         from .api.handlers_mind import mind_view
@@ -2145,281 +2117,6 @@ def _analyst_memory(store, today: str, series: dict) -> list[dict]:
     return analyst.previous_observations(
         store.analyses(limit=ANALYST_DAYS), store.proposals(), today=today,
         series=series)
-
-
-async def actuator_round(app) -> dict | None:
-    """L'anello dell'**attuatore**: il terzo attore del cervello (spec
-    2026-09-21).
-
-    Torna il resoconto del giro, o `None` se non c'era da farlo.
-
-    **Un'analisi, un'attuazione.** Il giro si aggancia allo stesso battito
-    orario dell'analista e non fa niente finche' non trova l'analisi di oggi;
-    quando l'ha attuata, tace. Il riferimento e' **l'analisi e non il giorno**:
-    dalla 3.55.0 un'analisi si rifa' quando cambia il suo fondamento, e
-    un'attuazione fatta su quella vecchia parlava di numeri che non ci sono
-    piu'.
-
-    Cosi' parte quando l'analisi e' finita -- qualunque ora sia, perche'
-    l'analista ritenta ogni ora finche' non riesce -- senza inventare un
-    orario suo.
-
-    **Il silenzio dell'analista non fa girare niente**: un elenco vuoto di
-    osservazioni non ha niente da attuare, e chiedere costerebbe un turno per
-    una risposta che non puo' esistere.
-
-    Non solleva mai: gira per sempre, e un giro andato storto non deve fermare
-    lo schedulatore.
-    """
-    store = app.get("observations")
-    if store is None:
-        return None
-    # **Un giro alla volta.** Lo schedulatore ha mezz'ora di `misfire_grace_time`:
-    # due giri possono partire insieme dopo una sosta dell'add-on, e senza
-    # questa guardia si pagherebbero due turni per la stessa analisi -- il
-    # secondo scriverebbe sopra il primo, con gli stessi dati.
-    if app.get("attuatore_in_volo"):
-        return None
-    app["attuatore_in_volo"] = True
-    try:
-        timezone = house_timezone(app.get("home_space_store"))
-        today = historian.today(timezone).isoformat()
-        analysis = store.analysis(today)
-        if analysis is None:
-            return None
-        stamp = (analysis.get("fondamento") or {}).get("impronta")
-        # **La risposta del piano si raccoglie PRIMA di chiedere di nuovo**:
-        # il ponte gira altrove e risponde minuti dopo, e senza questo passo
-        # accoderebbe una domanda a ogni giro e non ne leggerebbe mai una.
-        collected = await _collect_actuator_turn(app, store, today, stamp)
-        if collected is not None and collected.get("risposta"):
-            return collected
-        analysis = store.analysis(today) or analysis
-        done = analysis.get("attuazione") or {}
-        if done.get("su_fondamento") == stamp:
-            return None
-
-        # Qui l'elenco arriva tutto: a `actuator.to_handle` si passa un
-        # dizionario vuoto, quindi non salta niente. Le domande che hanno gia'
-        # una proposta -- in attesa o decisa -- le salta `_file_proposals`.
-        pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-        if not pending:
-            return None
-
-        route, _downgrade, runner = start(app, PROPOSER_SPECIES)
-        if route == "ponte":
-            # La stessa guardia degli altri tre: senza, il ponte riceverebbe
-            # una domanda a ogni giro -- una coda di domande identiche che
-            # nessuno leggera' mai.
-            if _turn_in_flight(app, proposer_turn.PROPOSAL_TURN_KIND):
-                return None
-            return _enqueue_actuator_turn(app, today)
-        if runner is None:
-            logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
-            return None
-
-        # Le ricette rotte non sono piu' sue: le ripara il giro delle ricette,
-        # dalla causa (attori, Task 1.6; D2 del proprietario, 03/10/2026).
-        question = proposer_turn.build_question(pending)
-        if question is None:
-            return None
-
-        answer, turn = await chain_turn(
-            runner, PROPOSER_SPECIES, usage=app.get("usage"),
-            max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
-            user_message=question, system_prompt=proposer_turn.SYSTEM)
-        esito = proposer_turn.apply_actuation(pending, chain_answer(answer, turn),
-                                              truncated=turn.truncated)
-        await _settle_actuation(app, store, today, stamp, esito, pending)
-        return esito
-    except Exception as error:
-        logger.warning("attuatore: giro fallito (%s: %s) -- si riprova al giro "
-                       "dopo", type(error).__name__, error)
-        return None
-    finally:
-        app["attuatore_in_volo"] = False
-
-
-#: Chi firma cio' che l'attuatore propone all'officina. Non «il modello» e non
-#: «il seme»: chi legge una proposta deve poter sapere **quale attore** l'ha
-#: messa li', o il verificatore non potrebbe attribuire niente a nessuno. E
-#: l'attore e' la sua specie: il nome viene da `steering` (C-28), non da un
-#: secondo letterale.
-ACTUATOR_AUTHOR = PROPOSER_SPECIES
-
-
-async def _settle_actuation(app, store, day: str, stamp: str | None,
-                            esito: dict, pending) -> None:
-    """La coda del turno dell'attuatore: **una sola, per le due strade.**
-
-    Una risposta applicata diventa proposte in coda e un'attuazione scritta
-    dentro l'analisi, che sia arrivata dalla catena (il giro) o dal ponte (la
-    raccolta). Fino al 28/09/2026 le strade erano due righe copiate, e la
-    copia del ponte aveva perso le proposte: un esito «proposta» raccolto dal
-    ponte si scriveva nell'attuazione e non arrivava mai ne' all'archivio ne'
-    all'officina. Nessuno se n'era accorto perche' il ponte non ragionava la
-    specie, e la risposta era sempre vuota.
-
-    Le ricette rotte non passano piu' di qui: dal 05/10/2026 le ripara il
-    giro delle ricette, sulla catena e sul ponte (attori, Task 1.6, D2).
-    """
-    await _file_proposals(app, store, esito, pending)
-    _write_actuation(store, day, stamp, esito, pending=pending)
-
-
-async def _file_proposals(app, store, esito: dict, pending) -> None:
-    """Mette in coda le proposte del turno: **due forme, due archivi**.
-
-    - **costruibile** -> passa dall'officina (`Workshop.propose`), che compone e
-      valida contro QUESTA casa e **non scrive niente**: ne esce un'anteprima
-      col diff, e la scrittura resta dove sta -- un turno diverso, col si' del
-      proprietario. E' il confine del 25/08: «l'attuatore non guadagna un
-      canale di scrittura suo».
-    - **da fare a mano** -> l'archivio gemello, con l'impronta e la prova, che
-      sono cio' su cui si regge l'anti-ripetizione.
-
-    «Un posto solo dove si decide» e' una promessa sulla PAGINA: i due archivi
-    restano due, perche' una frase in prosa dentro una tabella di diff sarebbe
-    il doppione per forma.
-    """
-    actuation = esito.get("attuazione")
-    if not actuation:
-        return
-    rows = list(pending or [])
-    decided = store.decided_proposals()
-    workshop = app.get("workshop")
-    for outcome in actuation.get("esiti") or []:
-        if outcome.get("gesto") != "proposta":
-            continue
-        index = outcome.get("osservazione")
-        row = rows[index] if isinstance(index, int) and 0 <= index < len(rows) else None
-        if row is None:
-            continue
-        key = actuator.observation_key(row)
-        if key in decided:
-            # La stessa domanda ha gia' una proposta -- in attesa o decisa --
-            # e una coda che cresce ogni giorno con la stessa riga e' il
-            # rumore che questa fetta esiste per togliere.
-            continue
-        if outcome.get("costruibile"):
-            if workshop is None:
-                logger.info("attuatore: officina non collegata, la proposta "
-                            "costruibile di %s non si crea", row.get("soggetto"))
-                continue
-            esito_officina = await workshop.propose(
-                dict(outcome.get("intenzione") or {}),
-                actor=ACTUATOR_AUTHOR, exchange=None, now=time.time())
-            if esito_officina.get("errore"):
-                logger.info("attuatore: l'officina ha rifiutato la proposta (%s)",
-                            esito_officina["errore"])
-            continue
-        store.add_proposal(
-            text=str(outcome.get("trovato") or "").strip(),
-            perche=str(row.get("cosa") or "").strip(),
-            fingerprint=key, prova=actuator.evidence_of(row),
-            # Il livello di una proposta da fare a mano lo dira' il proponente
-            # (Task 4.2): questo contratto non lo chiede, e una frase in prosa
-            # non porta i domini su cui il codice imporrebbe `alto`.
-            stakes=None, now_ts=time.time())
-        decided[key] = actuator.evidence_of(row)
-
-
-def _write_actuation(store, day: str, stamp: str | None, esito: dict,
-                     *, pending=()) -> None:
-    """Scrive l'attuazione **dentro l'analisi**, o dice perche' non l'ha fatto.
-
-    Gli esiti stanno accanto alle osservazioni che li hanno generati: sono la
-    risposta a quelle domande, e in un archivio a parte servirebbe una giuntura
-    per rimetterli insieme.
-
-    **Una risposta rifiutata non si archivia**: un'attuazione con dentro dei
-    problemi non e' un'attuazione, e scriverla direbbe che quel giorno e' stato
-    attuato. **Sulla catena** il giro dopo riprova, perche' `su_fondamento`
-    resta assente. Sul ponte no: la raccolta rilegge a ogni giro la stessa
-    risposta rifiutata e il giro si ferma li', fino al giorno dopo -- come
-    l'analista. E' una voce di `docs/BACKLOG.md` («In attesa»).
-    """
-    actuation = esito.get("attuazione")
-    if actuation is None:
-        if esito.get("problemi"):
-            logger.warning("attuatore: risposta rifiutata per %s -- %s",
-                           day, " · ".join(esito["problemi"]))
-        return
-    analysis = store.analysis(day)
-    if analysis is None:
-        return
-    # **L'esito si lega all'IMPRONTA, non alla posizione.** Il numero con cui
-    # il modello indica un'osservazione vale dentro l'elenco che gli abbiamo
-    # dato -- gia' filtrato da `to_handle` -- e archiviarlo legherebbe un
-    # esito a una riga che domani potrebbe essere un'altra.
-    rows = list(pending or [])
-    esiti = []
-    for outcome in actuation.get("esiti") or []:
-        index = outcome.get("osservazione")
-        row = rows[index] if isinstance(index, int) and 0 <= index < len(rows) else None
-        segnato = {k: v for k, v in outcome.items() if k != "osservazione"}
-        if row is not None:
-            segnato["impronta"] = actuator.observation_key(row)
-        esiti.append(segnato)
-    analysis = {**analysis, "attuazione": {"esiti": esiti, "su_fondamento": stamp}}
-    store.replace_analysis(day, analysis)
-    logger.info("attuatore: attuazione di %s scritta (%d esiti)",
-                day, len(actuation.get("esiti") or []))
-
-
-async def _collect_actuator_turn(app, store, today: str,
-                                 stamp: str | None) -> dict | None:
-    """La risposta che il piano ha dato alla domanda dell'attuatore.
-
-    **Un turno gia' raccolto non si rilegge**, e la traccia e' l'attuazione
-    stessa: se porta questo fondamento, la risposta e' gia' stata applicata.
-
-    Le osservazioni si rileggono **adesso**, come fa l'analista con le serie:
-    il ponte risponde minuti dopo, e nel frattempo l'analisi puo' essersi
-    rifatta -- gli esiti devono attaccarsi alle osservazioni che ci sono ora.
-    """
-    queue = app.get("reasoning_queue")
-    if queue is None:
-        return None
-    turn = queue.latest(proposer_turn.PROPOSAL_TURN_KIND)
-    if not turn:
-        return None
-    day = (turn.get("wake") or {}).get("giorno")
-    if day != today:
-        return None
-    analysis = store.analysis(day)
-    if analysis is None:
-        return None
-    if (analysis.get("attuazione") or {}).get("su_fondamento") == stamp:
-        return None
-    reply = turn_answer(turn)
-    if not str(reply).strip():
-        return None
-    pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-    esito = proposer_turn.apply_actuation(pending, reply)
-    if not esito.get("risposta"):
-        return esito
-    await _settle_actuation(app, store, day, stamp, esito, pending)
-    return esito
-
-
-def _enqueue_actuator_turn(app, day: str) -> dict | None:
-    """Accoda al piano la domanda dell'attuatore, e torna subito."""
-    store = app.get("observations")
-    analysis = store.analysis(day) if store is not None else None
-    if analysis is None:
-        return None
-    pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
-    question = proposer_turn.build_question(pending)
-    if question is None:
-        return None
-    job = {"history": [{"role": "user", "content": question}],
-           "system_prompt": proposer_turn.SYSTEM,
-           "istruzione": proposer_turn.ANSWER_CONTRACT}
-    _job_id, deadline_min = enqueue_turn(app, PROPOSER_SPECIES, {"giorno": day}, job)
-    logger.info("attuatore: turno accodato al piano per %s (scadenza %d min)",
-                day, deadline_min)
-    return {"accodata": True, "giorno": day}
 
 
 def _write_analysis(store, day: str, esito: dict) -> None:
@@ -2515,7 +2212,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     # `decided` da settimane.
     #
     # `giorno`: una risposta per un altro giorno non dice niente su oggi.
-    # `_collect_actuator_turn` lo pretende da sempre.
+    # Il giro del proponente lo pretende da sempre.
     #
     # Perche' insieme costavano sei giorni: il turno del 17/09 era `decided`
     # con una risposta che la validazione **non poteva accettare**; una
@@ -2610,10 +2307,10 @@ async def recipe_round(app) -> dict | None:
         # ri-raccolto ogni dieci minuti, sempre vuoto, e non se ne accodava mai
         # uno nuovo. Trovato dal vivo il 13/09/2026 alle 21:05, dieci minuti
         # dopo aver rilasciato la correzione che quella promessa la scriveva.
-        if collected is not None and _troppo_presto_per_richiedere(
+        if collected is not None and too_soon_to_ask_again(
                 app, recipe_turn.RECIPE_TURN_KIND):
             return collected
-        if _turn_in_flight(app, recipe_turn.RECIPE_TURN_KIND):
+        if turn_in_flight(app, recipe_turn.RECIPE_TURN_KIND):
             return None
 
         watched = {s for s, riga in (store.scope() or {}).items()
@@ -2699,36 +2396,6 @@ async def recipe_round(app) -> dict | None:
     except Exception as exc:
         logger.warning("ricette: giro fallito (%s: %s)", type(exc).__name__, exc)
         return None
-
-
-#: Quanto si aspetta prima di richiedere, dopo una risposta vuota.
-#:
-#: **Un'ora, e il numero viene da un conto.** Una risposta vuota da un ponte
-#: che SA ragionare quella specie non e' piu' un rifiuto istantaneo: vuol dire
-#: che la CLI non ha risposto, e quel giro e' costato. Richiedere a ogni
-#: passaggio dell'anello sarebbero **144 turni al giorno** contro il tetto
-#: giornaliero del piano: un ponte rotto svuoterebbe da solo la quota, e da
-#: li' in poi ogni turno -- chat compresa -- passerebbe ai provider a
-#: pagamento.
-#:
-#: Un'ora sono 24 tentativi al giorno nel caso peggiore, e un solo giro di
-#: attesa quando il guasto e' passato.
-#:
-#: Dal 06/10/2026 frena anche l'analista, dopo una risposta vuota, fallita o
-#: rifiutata: il suo giro e' orario, quindi un'ora vuol dire un tentativo ogni
-#: due giri, e la sua domanda pesa ~35.000 token.
-RECIPE_RETRY_HOLD_S = 3600.0
-
-
-def _troppo_presto_per_richiedere(app, kind: str) -> bool:
-    """Se l'ultimo turno di quella specie e' finito senza risposta utile da
-    meno di un'ora."""
-    queue = app.get("reasoning_queue")
-    turn = queue.latest(kind) if queue else None
-    if turn is None:
-        return False
-    deciso = turn.get("decided_ts") or turn.get("created_ts") or 0
-    return (time.time() - deciso) < RECIPE_RETRY_HOLD_S
 
 
 def _enqueue_recipe_turn(app, house: House, device_id: str, *,
@@ -4488,13 +4155,15 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=1800,
     )
 
-    # L'ATTUATORE (spec 2026-09-21 §4) e' IN PAUSA dal 01/10/2026, per
-    # decisione del proprietario: qui stava il suo anello orario, e non c'e'
-    # piu'. L'audit di quel giorno sulla casa vera: il turno parte senza
-    # strumenti di lettura, quindi nessuna indagine riporta un fatto letto
-    # dalla casa, e nessuna delle sue proposte era utile. Il giro e i moduli
-    # `mind/actuator*.py` restano: si riaccende quando avra' gli strumenti --
-    # voce «L'attuatore e' in pausa» in `docs/BACKLOG.md`.
+    # Il PROPONENTE (piano degli attori, Task 4.2): lo stesso battito
+    # dell'analista, un giro per analisi. Il giro vive in
+    # `mind/proposer_round.py`; qui c'e' solo l'iscrizione.
+    scheduler.add_job(
+        proposer_round, args=(app,),
+        trigger="interval", minutes=60,
+        id="hiris_mind_proposer", replace_existing=True,
+        misfire_grace_time=1800,
+    )
 
     scheduler.add_job(
         _recupero_resoconti,

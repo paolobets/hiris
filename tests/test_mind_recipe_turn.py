@@ -827,7 +827,7 @@ def test_a_chi_chiedere_RUOTA_e_un_dispositivo_storto_non_affama_gli_altri():
     niente, e il giro successivo ripesca **lo stesso**. Per sempre. Gli altri
     trenta non vengono chiesti mai.
 
-    Il freno che esiste (`_troppo_presto_per_richiedere`) guarda solo la coda
+    Il freno che esiste (`steering.too_soon_to_ask_again`) guarda solo la coda
     del ponte: rallenta a un giro all'ora, non cambia dispositivo.
 
     Si ruota. Il contatore vive in memoria e riparte da capo al riavvio: non e'

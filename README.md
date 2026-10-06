@@ -67,7 +67,7 @@ one of the twelve tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **sixteen** APScheduler jobs
+Periodic work *does* run — the scheduler registers **seventeen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
 the paragraph above needed the caveat. Most are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
@@ -178,29 +178,20 @@ model never writes a number — it names which measure, and the code attaches
 value, coverage, deviation and base from the series, so that a wrong number
 inside an authoritative-looking report is impossible.
 
-There was a seventeenth, and it is **paused since 01/10/2026**: the actuator
-(spec `2026-09-21-l-attuatore.md`), the brain's third actor. Its hourly job is
-no longer registered; `server.py::actuator_round` and `mind/actuator*.py` stay,
-because it comes back once it can actually read the house. An audit on the
-owner's house that day found that its turn starts with no read tools at all —
-so none of its twelve investigations reported a fact read from the house — that
-none of its nine proposals was useful, and that its recipe repairs repeated
-every round without anyone checking whether the measure became computable
-again. What follows describes it as designed, for when it is switched back on.
-It ran on the same hourly beat and did
-nothing until today's analysis exists and has not been acted on yet: *one
-analysis, one actuation* — keyed to the analysis's own foundation, not to the
-day, so an analysis redone after a recovered report gets a new actuation. Its
-shape was decided by measurement, not by the word "actuator": of the
-observations the analyst really wrote on the owner's house on 15 and 16/09/2026,
-**most ask to investigate**, some ask to repair one of HIRIS's own recipes,
-one asks to change a habit, and **none asks to build an automation**. So it
-investigates first — read-only — and answers next to the question; it rewrites
-a recipe that no longer executes, which is the one thing it writes without
-asking, and the same act the recipe round already performs; and it
-proposes only when there is something to propose. It never writes to the house:
-that path goes through `costruisci`, which composes and validates but does not
-write, and through the owner's yes.
+The seventeenth is the proposer (`mind/proposer_round.py::proposer_round`),
+on the same hourly beat — the actor that was called the actuator until
+06/10/2026, paused from 01/10 because its turn started with no read tools. It
+does nothing until today's analysis has observations still open: the analyst
+investigates now, and what it explained (`spiegato`) never reaches the
+proposer. For each open observation the proposer gives **one outcome**:
+*built*, *by hand* or *nothing* (with why). It has the analyst's read tools and
+the same `propose` as the chat: the workshop composes and validates **inside**
+the turn, so a refusal comes back to the model, which corrects and tries again,
+instead of losing the proposal until the next day. A *built* outcome must cite
+a proposal id born in that turn — the construction archive records the turn,
+so the model cannot claim a proposal that does not exist. It never writes to
+the house: `propose` composes and validates but does not write, and the owner
+says yes or no.
 
 
 2.0 is a reduction to the core. Version 1.x shipped a much wider surface
