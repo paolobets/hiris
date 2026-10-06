@@ -137,20 +137,20 @@ PROMISE_SPECIES = "promessa"
 RECIPES_SPECIES = "ricette"
 
 
-def _chat_tools() -> tuple[str, ...]:
+def _chat_tools() -> list[dict]:
     """Gli strumenti della chat: tutta la tabella (`home_space/tools.TOOLS`).
     Chiesti a ogni turno, non copiati all'import: la tabella e' di la'."""
     from .home_space.tools import KNOWLEDGE_TOOLS
 
-    return tuple(d["name"] for d in KNOWLEDGE_TOOLS)
+    return list(KNOWLEDGE_TOOLS)
 
 
-def _promise_tools() -> tuple[str, ...]:
+def _promise_tools() -> list[dict]:
     """Gli strumenti della promessa: l'elenco d'ammissione di
-    `keeper/exchange.SOLA_LETTURA` piu' `conclude`, chiesti a `promise_tools`."""
+    `keeper/exchange.SOLA_LETTURA` piu' `conclude` (`promise_tools`)."""
     from .keeper.exchange import promise_tools
 
-    return tuple(d["name"] for d in promise_tools())
+    return promise_tools()
 
 
 @_dataclass(frozen=True)
@@ -162,10 +162,19 @@ class Species:
     - `kind`: il nome del job nella coda del ponte. Fino al 06/10/2026 viveva
       due volte, nel modulo che accoda (`observer.SCOPE_TURN_KIND`, ...) e
       nel lavoratore che serve (`agent/runner._SCOPE_KIND`, ...);
-    - `tools`: chi dice gli strumenti del turno, o `None` per un mestiere
-      **autosufficiente** -- la domanda porta gia' tutto, e il turno non deve
-      poter agire. E' l'elenco d'ammissione degli strumenti: la catena lo
-      pretende in `chain_turn`, il ponte ci sceglie la sonda e il catalogo;
+    - `catalog`: chi dice le DEFINIZIONI degli strumenti del turno, o `None`
+      per un mestiere **autosufficiente** -- la domanda porta gia' tutto, e il
+      turno non deve poter agire. E' l'elenco d'ammissione degli strumenti:
+      la catena lo pretende in `chain_turn`; il ponte ci compone
+      `--allowedTools`, la sonda e `verify_init`, e `/api/mcp` lo serve al
+      turno che si fa riconoscere (`X-HIRIS-Lavoro`). Fino al 06/10/2026
+      (attori, Task 3.6) il ponte conosceva due cataloghi soli, chat e
+      promessa: un terzo mestiere con strumenti avrebbe ricevuto quello della
+      chat, `execute` compreso;
+    - `guard`: per un mestiere di sfondo con strumenti, chi costruisce il suo
+      dispatcher -- `await guard(app, exchange)` -- con davanti il guardiano
+      che lascia passare solo il catalogo. `None` per chat e promessa, che
+      il ponte serve con il soggetto e il soffitto dei loro job;
     - `priority`: la precedenza sulla coda del ponte (D4 della Tappa 6).
 
     Il tetto di token non sta qui: lo dichiara ogni turno accanto alla sua
@@ -173,16 +182,21 @@ class Species:
     """
     name: str
     kind: str
-    tools: _Callable[[], tuple[str, ...]] | None
+    catalog: _Callable[[], list[dict]] | None
     priority: int
+    guard: _Callable | None = None
 
     @property
     def self_contained(self) -> bool:
-        return self.tools is None
+        return self.catalog is None
+
+    def catalog_for_turn(self) -> list[dict]:
+        """Le definizioni degli strumenti ammessi in un turno di questo mestiere."""
+        return [] if self.catalog is None else self.catalog()
 
     def tools_for_turn(self) -> tuple[str, ...]:
         """I nomi degli strumenti ammessi in un turno di questo mestiere."""
-        return () if self.tools is None else self.tools()
+        return tuple(d["name"] for d in self.catalog_for_turn())
 
 
 #: I sei mestieri. **La precedenza**: la sola decisione presa e' «la chat

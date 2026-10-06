@@ -289,9 +289,9 @@ def test_la_promessa_sul_ponte_legge_i_suoi_strumenti_e_non_quelli_della_chat():
     promessa = SPECIES["promessa"].tools_for_turn()
     system, _user = prompts.build_chat_messages(
         "", [], contesto=_CONTESTO, active_tools=promessa)
-    for nome in mcp_names(by_promise=True):
+    for nome in mcp_names("promessa"):
         assert f"`{nome}`" in system, nome
-    for nome in set(mcp_names()) - set(mcp_names(by_promise=True)):
+    for nome in set(mcp_names()) - set(mcp_names("promessa")):
         assert nome not in system, nome
 
 

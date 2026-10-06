@@ -467,18 +467,28 @@ class ReasoningQueue:
                 (*thread_params(thread), ts)).fetchone()
         return row is not None
 
+    def claimed(self, job_id: str) -> dict | None:
+        """Il job SOLO se e' preso in carico (status='claimed'), di qualunque
+        specie; altrimenti None.
+
+        La chiama `/api/mcp` (`handlers_mcp._exchange_species`) per verificare
+        `X-HIRIS-Lavoro`: un job che non e' in lavorazione non presta a
+        nessuno il catalogo del suo mestiere (attori, Task 3.6)."""
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM reasoning_jobs WHERE job_id=? AND status='claimed'",
+                (job_id,)).fetchone()
+        return _row(r) if r is not None else None
+
     def claimed_chat(self, job_id: str) -> dict | None:
-        """Il job SOLO se e' una chat presa in carico (status='claimed'),
-        altrimenti None -- qualunque altro stato o specie.
+        """Il job SOLO se e' una chat presa in carico (`claimed`), altrimenti
+        None -- qualunque altro stato o specie.
 
         La chiama `/api/mcp` (`handlers_mcp._exchange_chat_job`) per
         verificare `X-HIRIS-Chat`: un job che non e' una chat presa in carico
         non presta a nessuno il suo soggetto ne' il suo soffitto."""
-        with self._lock:
-            r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE job_id=? AND kind='chat' "
-                "AND status='claimed'", (job_id,)).fetchone()
-        return _row(r) if r is not None else None
+        job = self.claimed(job_id)
+        return job if job is not None and job.get("kind") == "chat" else None
 
     def count_exchanges_today(self, now: float | None = None) -> int:
         """Quanti turni del piano sono stati accodati oggi -- di OGNI specie.

@@ -265,7 +265,7 @@ class _Risposta:
     def json(self):
         return {"jsonrpc": "2.0", "id": 1, "result": {"tools": [
             {"name": n.split("__")[-1]}
-            for n in {*ponte.mcp_names(), *ponte.mcp_names(by_promise=True)}]}}
+            for n in {*ponte.mcp_names(), *ponte.mcp_names("promessa")}]}}
 
 
 class _ClientFinto:

@@ -82,8 +82,6 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
-from ..home_space.tools import KNOWLEDGE_TOOLS
-from ..keeper.exchange import promise_tools
 from ..model_resolution import SUBSCRIPTION_ALIAS
 from ..steering import JOB_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens
@@ -153,25 +151,29 @@ def mcp_name(tool: str) -> str:
     return f"mcp__{_mcp_server_name()}__{tool}"
 
 
-def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
+def mcp_names(species: str = "chat") -> tuple[str, ...]:
     """I nomi che il modello vede DAVVERO, derivati dal catalogo.
 
     Attraverso MCP la CLI prefissa ogni strumento col nome del server: `search`
     diventa `mcp__hiris__search`, ed e' quello -- non il nome nudo -- cio' che il
     modello legge nell'elenco e cio' che `--allowedTools` deve permettere.
 
-    Si DERIVA da `KNOWLEDGE_TOOLS`: un elenco di stringhe scritto a mano
+    Si DERIVA dal catalogo del mestiere (`steering.Species.catalog`, che per
+    la chat e' `KNOWLEDGE_TOOLS`): un elenco di stringhe scritto a mano
     qui sarebbe il SECONDO catalogo, l'errore che l'intera fetta E2 e' esistita
     per chiudere (tre cataloghi divergenti della stessa cosa). Cosi' uno
     strumento che entra o esce da `home_space/tools.py` arriva qui da solo.
 
     E' una funzione e non una costante di modulo: il catalogo dipende dal
-    turno (`by_promise`), e il prefisso dal nome del server, che si legge con
+    turno (`species`), e il prefisso dal nome del server, che si legge con
     l'import differito qui sopra."""
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
     # promessa vede i lettori di `SOLA_LETTURA` piu'
     # `conclude` -- e i due elenchi non sono l'uno il sottoinsieme dell'altro:
-    # `conclude` esiste solo di la', `execute` solo di qua.
+    # `conclude` esiste solo di la', `execute` solo di qua. Dal 06/10/2026
+    # (attori, Task 3.6) lo dice la dichiarazione del mestiere, non piu' un
+    # «promessa si' o no»: un terzo mestiere con strumenti avrebbe ricevuto
+    # i nomi della chat.
     #
     # Difetto trovato dalla VERIFICA LIVE della 3.10.0: la fetta «le promesse
     # seguono la catena» aveva reso il catalogo per-turno nella rotta MCP e
@@ -179,12 +181,12 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     # cinque, `verify_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `conclude`, cioe' senza nessun modo di finire.
-    definitions = promise_tools() if by_promise else KNOWLEDGE_TOOLS
-    return tuple(mcp_name(d["name"]) for d in definitions)
+    return tuple(mcp_name(name) for name in SPECIES[species].tools_for_turn())
 
 
 def config_mcp(base_url: str, token: str, exchange_id: str = "",
-               promise_id: str = "", chat_job_id: str = "") -> str:
+               promise_id: str = "", chat_job_id: str = "",
+               work_id: str = "") -> str:
     """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
 
     `exchange_id` (Task 6 della fetta, facoltativo e vuoto per default) diventa
@@ -274,6 +276,13 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     # `X-HIRIS-Promessa` qui sopra.
     if chat_job_id:
         intestazioni["X-HIRIS-Chat"] = chat_job_id
+    # Attori, Task 3.6 (06/10/2026): il turno di un mestiere di sfondo con
+    # strumenti (`steering.Species.guard`) dice a `/api/mcp` QUALE job sta
+    # servendo, e da li' la rotta ricava il mestiere: il suo catalogo, il suo
+    # guardiano. Stessa disciplina di `X-HIRIS-Chat`: non autentica, e la
+    # rotta la verifica contro un job preso in carico.
+    if work_id:
+        intestazioni["X-HIRIS-Lavoro"] = work_id
     return json.dumps({
         "mcpServers": {
             _mcp_server_name(): {
@@ -450,7 +459,8 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
 
 
 def probe_tools(client, base_url: str, headers: dict,
-                *, job_id=None, promise_id: str = "") -> tuple[bool, str]:
+                *, job_id=None, promise_id: str = "", species: str = "chat",
+                work_id: str = "") -> tuple[bool, str]:
     """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
 
     Un `POST /api/mcp` con `tools/list` sullo STESSO `httpx.Client` e con gli
@@ -492,13 +502,12 @@ def probe_tools(client, base_url: str, headers: dict,
     che pinna contro un listener VERO proprio il fatto che il valore finisce
     nel messaggio dell'eccezione. Provato: la redazione funziona (il motivo
     diventa `Illegal header value b'***'`)."""
-    # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
-    # stessa cosa che il turno usera': con l'intestazione della promessa la
-    # rotta serve il catalogo della promessa, senza quello della chat, e una
-    # sonda che chiedesse l'uno per poi usare l'altro proverebbe il turno
-    # sbagliato.
-    definitions = promise_tools() if promise_id else KNOWLEDGE_TOOLS
-    awaited = {d["name"] for d in definitions}
+    # I nomi NUDI del catalogo di QUESTO turno, dalla dichiarazione del suo
+    # mestiere. La sonda deve interrogare la stessa cosa che il turno usera':
+    # con l'intestazione della promessa la rotta serve il catalogo della
+    # promessa, con quella del lavoro il catalogo del mestiere, e una sonda
+    # che chiedesse l'uno per poi usare l'altro proverebbe il turno sbagliato.
+    awaited = set(SPECIES[species].tools_for_turn())
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 
     def _no(reason: str) -> tuple[bool, str]:
@@ -512,6 +521,8 @@ def probe_tools(client, base_url: str, headers: dict,
         probe_headers = dict(headers or {})
         if promise_id:
             probe_headers["X-HIRIS-Promessa"] = promise_id
+        if work_id:
+            probe_headers["X-HIRIS-Lavoro"] = work_id
         answer = client.post(
             url, headers=probe_headers,
             json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
@@ -580,7 +591,7 @@ def _system_prompt_file(system: str) -> Iterator[str]:
 def _chat_claude_args(system_file: str, model: str, *,
                       active_tools: bool = False,
                       mcp_config: str = "",
-                      by_promise: bool = False) -> list:
+                      species: str = "chat") -> list:
     """L'argv del ponte.
 
     **Ne' la domanda ne' il prompt di sistema stanno qui** (Tappa 6, Task 1,
@@ -647,7 +658,7 @@ def _chat_claude_args(system_file: str, model: str, *,
             "--output-format", "stream-json", "--verbose"]
     if active_tools:
         argv += ["--mcp-config", mcp_config,
-                 "--allowedTools", ",".join(mcp_names(by_promise))]
+                 "--allowedTools", ",".join(mcp_names(species))]
     return argv
 
 
@@ -1147,7 +1158,7 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
         len(tools) if isinstance(tools, list) else 0)
 
 
-def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple[bool, str]:
+def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bool, str]:
     """Difesa (2) del progetto: la CLI ci e' ARRIVATA, agli strumenti?
 
     `probe_tools` (difesa 1) prova che la rotta risponde con tutti i nomi
@@ -1184,7 +1195,7 @@ def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple
                        "arrived, o formato cambiato)")
     server = _declared_servers(occurrence)
     state = next((s.get("status") for s in server if s.get("name") == name), None)
-    missing = sorted(set(mcp_names(by_promise)) - _resolved_tools(occurrence))
+    missing = sorted(set(mcp_names(species)) - _resolved_tools(occurrence))
     if str(state or "").strip().lower() != "connected" or missing:
         return False, (f"mcp_servers={server}; server {name!r} stato={state!r} "
                        f"(atteso 'connected'); strumenti non risolti dalla CLI="
@@ -1600,6 +1611,16 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # Solo la chat: una promessa o un turno dell'osservatore non hanno nessuna
     # persona davanti.
     chat_job_id = (job_id or "") if job.get("kind") == "chat" else ""
+    # Il mestiere del turno, dalla sua dichiarazione: il catalogo che la
+    # sonda chiede, `--allowedTools`, `verify_init` e il prompt vengono tutti
+    # da qui. Un `kind` che nessun mestiere dichiara resta sul catalogo della
+    # chat, come prima (lo rifiuta comunque `misura_turno`).
+    species = SPECIES.get(JOB_SPECIES.get(job.get("kind")))
+    species_name = species.name if species is not None else "chat"
+    # Attori, Task 3.6: un mestiere di sfondo con strumenti si fa riconoscere
+    # dalla rotta MCP col suo job (`X-HIRIS-Lavoro`, vedi `config_mcp`).
+    work_id = ((job_id or "") if species is not None and species.guard is not None
+               else "")
     # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
     # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
@@ -1623,7 +1644,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     if awaited:
         tools, _reason = probe_tools(client, base_url, intestazioni,
                                      job_id=job_id,
-                                     promise_id=promise_id)
+                                     promise_id=promise_id,
+                                     species=species_name, work_id=work_id)
     else:
         tools = False
     token = intestazioni.get("X-HIRIS-Internal-Token", "")
@@ -1739,7 +1761,6 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
     invocations = 0
     # Gli strumenti che la dichiarazione del mestiere ammette in questo turno.
-    species = SPECIES.get(JOB_SPECIES.get(job.get("kind")))
     turn_tools = species.tools_for_turn() if species is not None else ()
 
     def _invoca(active_tools: bool) -> Invocation | None:
@@ -1773,7 +1794,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # cosi' che il tetto per-turno della rotta MCP resta un tetto sul
         # turno anche quando il turno si sdoppia (Task 4).
         mcp_config = (config_mcp(base_url, token, exchange_id, promise_id,
-                                 chat_job_id=chat_job_id)
+                                 chat_job_id=chat_job_id, work_id=work_id)
                       if active_tools else "")
         # Le DUE righe che leggono lo stesso booleano, una accanto all'altra.
         # Non esiste un secondo posto in cui il prompt e l'argv possono
@@ -1830,7 +1851,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                 argv = _chat_claude_args(system_file, model,
                                          active_tools=active_tools,
                                          mcp_config=mcp_config,
-                                         by_promise=bool(promise_id))
+                                         species=species_name)
                 proc = subprocess.run(argv, input=user, capture_output=True,
                                       encoding="utf-8", timeout=time_left,
                                       env=_safe_subprocess_env(), check=False)
@@ -1920,7 +1941,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     ritentato = False
     if tools:
         confermato, reason = verify_init(invocation.occurrence,
-                                         by_promise=bool(promise_id))
+                                         species=species_name)
         if not confermato:
             # Silenzio dichiarato ② della fetta. Il motivo si reda come tutto
             # cio' che nasce dal sottoprocesso: non c'e' una seconda via.

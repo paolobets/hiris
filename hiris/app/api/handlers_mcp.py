@@ -53,6 +53,14 @@ ripiego: ricadere riaprirebbe la porta di scrittura che l'intestazione
 esiste per chiudere. L'ASSENZA dell'intestazione (promesse, osservatore)
 resta com'era prima di questa fetta.
 
+**Dagli attori (Task 3.6, 06/10/2026) sa anche QUALE mestiere.** Un mestiere
+di sfondo con strumenti (l'analista) porta `X-HIRIS-Lavoro`, l'id del suo job;
+la rotta lo verifica contro un job preso in carico (`_exchange_species`), e
+per quel turno serve il catalogo della dichiarazione del mestiere
+(`steering.Species.catalog`) e dispaccia col suo guardiano
+(`Species.guard`). Presente ma non valida, l'intestazione chiude: il catalogo
+torna vuoto e la chiamata si rifiuta, come per `X-HIRIS-Chat`.
+
 **E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
 «costruire» anche di configurazione.** Il catalogo e' quello del turno
 sincrono: `execute` chiama un servizio di Home Assistant, `propose`/`confirm`
@@ -85,6 +93,7 @@ from aiohttp import web
 from ..claude_runner import pesa_in_caratteri
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
+from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
 from ..version import read_version
 from .boundary import error_response
@@ -337,6 +346,35 @@ def _exchange_chat_job(request: web.Request) -> tuple[bool, dict | None]:
     return True, job
 
 
+def _exchange_species(request: web.Request) -> tuple[bool, str | None]:
+    """`(intestazione presente, mestiere)` per questo turno: lo stesso
+    tri-stato di `_exchange_chat_job`. Il mestiere vale solo se il job e'
+    preso in carico (`ReasoningQueue.claimed`) e se la sua dichiarazione ha
+    un guardiano (`steering.Species.guard`): `X-HIRIS-Lavoro` la manda il
+    runner solo per quelli (attori, Task 3.6)."""
+    ident = (request.headers.get("X-HIRIS-Lavoro") or "").strip()
+    if not ident:
+        return False, None
+    queue = request.app.get("reasoning_queue")
+    job = queue.claimed(ident) if queue is not None else None
+    species = SPECIES.get(JOB_SPECIES.get((job or {}).get("kind")))
+    if species is None or species.guard is None:
+        logger.warning(
+            "MCP: X-HIRIS-Lavoro nomina un job che non e' il turno preso in "
+            "carico di un mestiere con guardiano (%s): nessuno strumento", ident)
+        return True, None
+    return True, species.name
+
+
+def _stale_work_rejection(name: str) -> dict:
+    """Il `content` per un `X-HIRIS-Lavoro` presente che non vale: si chiude,
+    come `_stale_chat_rejection` e per la stessa ragione -- ricadere sul
+    catalogo della chat darebbe a un attore `execute`."""
+    return _closed_call(
+        "questo turno non è più valido: è scaduto o è già stato consegnato, "
+        f"e non uso nessuno strumento (l'ultimo tentato: «{name}»).")
+
+
 def _stale_chat_rejection(name: str) -> dict:
     """Il `content` per un `X-HIRIS-Chat` presente che non vale piu'.
 
@@ -349,10 +387,17 @@ def _stale_chat_rejection(name: str) -> dict:
     Stessa forma del tetto dei giri: un esito dello strumento, non un guasto
     di protocollo.
     """
-    result = {"errore": (
+    return _closed_call(
         "questo turno di chat non è più valido: la risposta è scaduta o è "
         "già stata data, e senza sapere chi sta parlando non uso nessuno "
-        f"strumento (l'ultimo tentato: «{name}»).")}
+        f"strumento (l'ultimo tentato: «{name}»).")
+
+
+def _closed_call(text: str) -> dict:
+    """Il `content` di una chiamata chiusa da un'intestazione che non vale:
+    un esito dello strumento, non un guasto di protocollo. Una forma sola per
+    `X-HIRIS-Chat` e `X-HIRIS-Lavoro`."""
+    result = {"errore": text}
     return {
         "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
         "isError": True,
@@ -621,11 +666,20 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # del turno e resta nel turno (`ExchangeTurn`). Le intestazioni del job e
     # della promessa si rileggono comunque a ogni chiamata: un job che non
     # vale piu' chiude la chiamata anche a turno avviato.
+    work_header_present, species = _exchange_species(request)
+    if work_header_present and species is None:
+        return _answer(request_id, _stale_work_rejection(name))
     chat_header_present, chat_job = _exchange_chat_job(request)
     if chat_header_present and chat_job is None:
         return _answer(request_id, _stale_chat_rejection(name))
     promise_id = _exchange_promise_id(request)
     dispatcher = turn.dispatcher if turn is not None else None
+    if dispatcher is None and species is not None:
+        # Il guardiano del mestiere, lo stesso della catena: lascia passare
+        # solo il catalogo della dichiarazione (attori, Task 3.6).
+        dispatcher = await SPECIES[species].guard(request.app, exchange_id)
+        if turn is not None:
+            turn.dispatcher = dispatcher = turn.dispatcher or dispatcher
     if dispatcher is None:
         dispatcher = await _build_dispatcher(request, exchange_id, chat_job, promise_id)
         if turn is not None:
@@ -807,13 +861,20 @@ async def handle_mcp(request: web.Request) -> web.Response:
             })
         if method == "tools/list":
             _promise_id = _exchange_promise_id(request)
+            _work_present, _species = _exchange_species(request)
             # Il turno di una promessa vede il catalogo della promessa:
             # i lettori di `SOLA_LETTURA` piu' `conclude`, che li' e' l'unico modo
             # in cui il turno puo' finire. Le definizioni sono le STESSE
             # di `KNOWLEDGE_TOOLS` (promise_tools le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su
-            # entrambe le strade.
-            catalogo = mcp_catalog(promise_tools() if _promise_id else None)
+            # entrambe le strade. Il turno di un mestiere con guardiano vede
+            # il catalogo della sua dichiarazione, e un'intestazione che non
+            # vale non vede niente (attori, Task 3.6).
+            if _work_present:
+                catalogo = mcp_catalog(SPECIES[_species].catalog_for_turn()
+                                       if _species else [])
+            else:
+                catalogo = mcp_catalog(promise_tools() if _promise_id else None)
             # Spec «le misure complete» §4(2): quante definizioni la CLI ha
             # ricevuto per QUESTO turno. La sonda di `probe_tools` non porta
             # `X-HIRIS-Turno` e non si annota: non e' un turno.
