@@ -23,10 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.action.registry import ServiceRegistry
+from hiris.app.home_space.reference import slugify as _slugify
 from hiris.app.keeper.recipient import (
     _REASON_HA_DOWN,
     Recipients,
-    _slugify,
     recipients_for,
 )
 from hiris.app.proxy.ha_client import HAClient

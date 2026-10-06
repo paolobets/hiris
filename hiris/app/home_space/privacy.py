@@ -20,6 +20,7 @@ import re
 from ..proxy.entity_cache import CREDENTIALS
 from .ha_vocabulary import domain_of
 from .queries import WITHHELD_BASKET
+from .reference import NO_SLUG, slugify
 from .type_vocabulary import domains_by_genre, unknown_states
 
 #: I due soli domini il cui genere e' "presenza", ricavati dalla dichiarazione
@@ -196,7 +197,8 @@ def person_bound(house) -> tuple[list[str], list[str]]:
     """`(entita', dispositivi)` che portano il nome di una persona: le
     presenze (`MOVING_DOMAINS`: `person` e i `device_tracker`) e, per ogni
     dispositivo che porta una presenza, TUTTE le sue entita' -- la batteria
-    del telefono, accanto al suo tracker.
+    del telefono, accanto al suo tracker -- e quelle il cui id porta il nome
+    di una persona (`named_after_person`, G26-1).
 
     Il legame si chiede a Home Assistant, non si indovina dai nomi: e' il
     `device_id` del registro delle entita' (`config/entity_registry/list`),
@@ -208,7 +210,35 @@ def person_bound(house) -> tuple[list[str], list[str]]:
     devices = [d for d in house.device_ids()
                if any(e["id"] in moving for e in house.device_entities(d))]
     sisters = {e["id"] for d in devices for e in house.device_entities(d)}
-    return sorted(moving | sisters), devices
+    return sorted(moving | sisters | named_after_person(house)), devices
+
+
+def named_after_person(house) -> set[str]:
+    """Le entita' il cui `entity_id` porta il nome di una persona: un
+    `automation.paolo_arriva_a_casa`, un `input_boolean.giulia_in_ferie`, un
+    sensore senza dispositivo (G26-1, giro 26 della revisione, 06/10/2026).
+
+    Nessun legame del registro le unisce alla persona -- non hanno il suo
+    dispositivo -- ma l'id porta il nome, e `search` e `history` restituiscono
+    gli id. Il nome e' quello delle persone dichiarate in Home Assistant
+    (`person.*`), nella forma che Home Assistant stesso ne ricava per un id
+    (`reference.slugify`, la replica di `homeassistant.util.slugify`): uno o
+    piu' pezzi interi dell'object_id, fra un `_` e l'altro, mai un pezzo di
+    parola («paolone» non e' «paolo»). Un nome che non da' uno slug (un
+    alfabeto che la replica non traslittera: `"unknown"`) non copre niente,
+    invece di coprire ogni id con «unknown» dentro."""
+    slugs = set()
+    for person in house.entity_ids():
+        if domain_of(person) != "person":
+            continue
+        slug = slugify(house.name("entita", person))
+        if slug and slug != NO_SLUG:
+            slugs.add(slug)
+    if not slugs:
+        return set()
+    pieces = re.compile(rf"(?:^|_)(?:{'|'.join(map(re.escape, slugs))})(?:_|$)")
+    return {e for e in house.entity_ids()
+            if pieces.search(e.partition(".")[2])}
 
 
 class PresenceMask:

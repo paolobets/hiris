@@ -151,6 +151,57 @@ def test_una_I_turca_non_fa_SOLLEVARE_il_filtro():
     assert mask.mask("ışıl") == "person.#1"
 
 
+def _named_things():
+    return [
+        _row("automation.paolo_arriva_a_casa", "Paolo arriva a casa"),
+        _row("input_boolean.giulia_in_ferie", "Giulia in ferie"),
+        _row("sensor.telefono_paolo_batteria", "Telefono batteria"),
+        _row("sensor.paolone", "Paolone"),
+        _row("switch.paolo_bis", "Interruttore"),
+    ]
+
+
+def test_gli_ID_che_portano_il_nome_di_una_persona_prendono_il_segnaposto():
+    """G26-1, decisione A (giro 26 della revisione, 06/10/2026): il nome di
+    una persona dichiarata (`person.*`) nella forma che Home Assistant ne
+    ricava per un id -- pezzi interi dell'object_id, mai un pezzo di parola.
+
+    Mutazione ESEGUITA (06/10/2026): `person_bound` senza
+    `named_after_person` -- rossa (l'automazione arriva col nome)."""
+    rows = [
+        _row("climate.camera_t", "Termostato Camera"),
+        _row("person.paolo", "Paolo"),
+        _row("person.giulia", "Giulia"),
+        *_named_things(),
+    ]
+    house = House({"entita": rows, "dispositivi": [], "aree": []},
+                  Mirror(state={row["id"]: "on" for row in rows}))
+    ids, _devices = person_bound(house)
+    assert "sensor.paolone" not in ids
+    risposta = {"trovate": [
+        {"id": "automation.paolo_arriva_a_casa", "nome": "Paolo arriva a casa"},
+        {"id": "input_boolean.giulia_in_ferie", "nome": "Giulia in ferie"},
+        {"id": "sensor.telefono_paolo_batteria", "nome": "Telefono batteria"},
+        {"id": "switch.paolo_bis", "nome": "Interruttore"}]}
+    mask = PresenceMask(house)
+    coperta = mask.mask(risposta)
+    _without_names(coperta)
+    assert [r["id"] for r in coperta["trovate"]] == [
+        "automation.#1", "input_boolean.#1", "sensor.#1", "switch.#1"]
+    assert mask.unmask({"riferimento": "automation.#1"}) == {
+        "riferimento": "automation.paolo_arriva_a_casa"}
+    assert mask.mask({"id": "sensor.paolone"}) == {"id": "sensor.paolone"}
+
+
+def test_un_nome_che_non_da_uno_SLUG_non_copre_niente():
+    """La replica di slugify non traslittera altri alfabeti («unknown»): il
+    nome non deve diventare «copri ogni id con unknown dentro»."""
+    rows = [_row("person.x", "日本"), _row("sensor.unknown_x", "Ignoto")]
+    house = House({"entita": rows, "dispositivi": [], "aree": []},
+                  Mirror(state={row["id"]: "on" for row in rows}))
+    assert person_bound(house)[0] == ["person.x"]
+
+
 def test_il_segnaposto_torna_id_negli_argomenti():
     mask = PresenceMask(_house())
     assert mask.unmask({"riferimento": "sensor.#1", "altro": "sensor.#10"}) == {
