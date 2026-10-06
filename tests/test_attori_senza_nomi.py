@@ -193,10 +193,27 @@ def test_gli_ID_che_portano_il_nome_di_una_persona_prendono_il_segnaposto():
     assert mask.mask({"id": "sensor.paolone"}) == {"id": "sensor.paolone"}
 
 
+def test_anche_l_OBJECT_ID_della_persona_copre_gli_id():
+    """G28-1 (giro 28 della revisione, 06/10/2026): una persona senza nome
+    amichevole (il nome ripiega sull'id) e una che si chiama «Paolo Bets»
+    ma e' nata `person.paolo`.
+
+    Mutazione ESEGUITA (06/10/2026): il solo nome dichiarato, senza
+    l'object_id -- rossa (gli id di Paolo e di Giulia restano in chiaro)."""
+    rows = [_row("person.paolo", "Paolo Bets"), _row("person.giulia", None),
+            *_named_things()]
+    house = House({"entita": rows, "dispositivi": [], "aree": []},
+                  Mirror(state={row["id"]: "on" for row in rows}))
+    ids, _devices = person_bound(house)
+    assert {"automation.paolo_arriva_a_casa", "input_boolean.giulia_in_ferie",
+            "sensor.telefono_paolo_batteria", "switch.paolo_bis"} <= set(ids)
+    assert "sensor.paolone" not in ids
+
+
 def test_un_nome_che_non_da_uno_SLUG_non_copre_niente():
     """La replica di slugify non traslittera altri alfabeti («unknown»): il
     nome non deve diventare «copri ogni id con unknown dentro»."""
-    rows = [_row("person.x", "日本"), _row("sensor.unknown_x", "Ignoto")]
+    rows = [_row("person.x", "日本"), _row("sensor.unknown_ignoto", "Ignoto")]
     house = House({"entita": rows, "dispositivi": [], "aree": []},
                   Mirror(state={row["id"]: "on" for row in rows}))
     assert person_bound(house)[0] == ["person.x"]

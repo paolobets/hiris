@@ -221,7 +221,8 @@ def named_after_person(house) -> set[str]:
     Nessun legame del registro le unisce alla persona -- non hanno il suo
     dispositivo -- ma l'id porta il nome, e `search` e `history` restituiscono
     gli id. Il nome e' quello delle persone dichiarate in Home Assistant
-    (`person.*`), nella forma che Home Assistant stesso ne ricava per un id
+    (`person.*`), col loro object_id, nella forma che Home Assistant stesso
+    ne ricava per un id
     (`reference.slugify`, la replica di `homeassistant.util.slugify`): uno o
     piu' pezzi interi dell'object_id, fra un `_` e l'altro, mai un pezzo di
     parola («paolone» non e' «paolo»). Un nome che non da' uno slug (un
@@ -231,9 +232,15 @@ def named_after_person(house) -> set[str]:
     for person in house.entity_ids():
         if domain_of(person) != "person":
             continue
-        slug = slugify(house.name("entita", person))
-        if slug and slug != NO_SLUG:
-            slugs.add(slug)
+        # Il nome dichiarato e l'object_id della persona (G28-1, giro 28):
+        # l'object_id e' cio' che Home Assistant ha ricavato dal nome quando
+        # la persona e' nata, e vale anche quando il nome amichevole manca
+        # (`House.name` ripiega sull'id, che non e' un nome).
+        name = house.name("entita", person)
+        for text in {name if name != person else "", person.partition(".")[2]}:
+            slug = slugify(text)
+            if slug and slug != NO_SLUG:
+                slugs.add(slug)
     if not slugs:
         return set()
     pieces = re.compile(rf"(?:^|_)(?:{'|'.join(map(re.escape, slugs))})(?:_|$)")
