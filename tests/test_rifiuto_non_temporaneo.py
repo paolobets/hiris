@@ -130,9 +130,9 @@ def test_cio_che_il_provider_dice_si_legge_dalle_due_sdk():
 def test_cio_che_il_provider_dice_si_taglia_e_si_filtra():
     from hiris.app.provider_occurrences import SAID_CAP, provider_said
 
-    class _Lungo(Exception):
-        body = {"error": {"message": "x" * 5000}}
-    said = provider_said(_Lungo())
+    lungo = Exception("lungo")
+    lungo.body = {"error": {"message": "x" * 5000}}
+    said = provider_said(lungo)
     assert len(said) <= SAID_CAP and said.endswith("[troncato]")
 
 
