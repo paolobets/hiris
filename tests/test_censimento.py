@@ -714,16 +714,24 @@ def test_un_registro_che_non_si_legge_ferma_il_cancello(monkeypatch):
     assert cens.run(cancello=True) == 1
 
 
-def test_un_registro_che_non_si_carica_dice_perche(tmp_path, capsys):
+def test_un_registro_che_non_si_carica_dice_perche(tmp_path, capsys, monkeypatch):
     """Il cancello che si ferma sul registro dice la ragione: una dipendenza
     mancante non e' un registro rotto, e senza il messaggio le due cose hanno
-    la stessa faccia (revisione, giro 34)."""
+    la stessa faccia (revisione, giri 34 e 35).
+
+    Mutazione ESEGUITA il 06/10/2026: in `run`, tolta la riga che stampa
+    `COPERTURA_REGISTRO["errore"]` -> rossa.
+    """
+    import scripts.censimento as cens
+
     reg = _registro(tmp_path, "import modulo_che_non_esiste\nREGISTRY = {}\n")
+    vero = cens.censisci_operazioni
+    monkeypatch.setattr(cens, "censisci_operazioni", lambda file_app: vero(file_app, reg))
 
-    censimento.censisci_operazioni([], reg)
-
-    assert censimento.COPERTURA_REGISTRO["leggibile"] is False
-    assert "modulo_che_non_esiste" in censimento.COPERTURA_REGISTRO["errore"]
+    assert cens.run(cancello=True) == 1
+    errore = capsys.readouterr().err
+    assert "ModuleNotFoundError" in errore
+    assert "modulo_che_non_esiste" in errore
 
 
 def test_il_modulo_del_registro_non_denuncia_se_stesso(tmp_path):
