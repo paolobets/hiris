@@ -258,7 +258,7 @@ def _trenta():
                            "testo": "spendere meno", "scritto_ts": 1.0}]}
 
 
-def _righe_della_domanda(domanda):
+def _index_lines(domanda):
     import json
     return [(int(riga[1:riga.index("]")]), json.loads(riga[riga.index("]") + 2:]))
             for riga in domanda.splitlines() if riga.startswith("[")]
@@ -271,7 +271,7 @@ def test_l_INDICE_ha_una_riga_per_misura_e_nessun_valore_della_serie():
     Mutazione ESEGUITA (06/10/2026): in `analyst.index` saltare le righe senza
     fatti d'innesco -- rossa (4 righe su 5: «giovane» non c'e')."""
     serie = _trenta()
-    righe = _righe_della_domanda(at.build_question(serie))
+    righe = _index_lines(at.build_question(serie))
 
     assert sorted(n for n, _ in righe) == list(range(len(serie["serie"])))
     for _, riga in righe:
@@ -287,7 +287,7 @@ def test_l_INDICE_e_in_ORDINE_di_scostamento_e_marca_i_tre_inneschi():
     """D3: il codice marca i candidati e ordina, il modello sceglie. Prima chi
     si scosta di piu', poi chi non ha scostamento, nell'ordine della serie."""
     serie = _trenta()
-    righe = _righe_della_domanda(at.build_question(serie))
+    righe = _index_lines(at.build_question(serie))
     nomi = [riga["nome"] for _, riga in righe]
 
     assert nomi[:2] == ["Molto", "Poco"]
@@ -304,7 +304,7 @@ def test_l_INDICE_e_in_ORDINE_di_scostamento_e_marca_i_tre_inneschi():
 def test_una_misura_che_OGGI_non_si_calcola_porta_la_sua_CAUSA():
     """Mutazione ESEGUITA (06/10/2026): `cause_today` che torna sempre `None`
     -- rossa (`KeyError: 'causa_oggi'`)."""
-    righe = dict(_righe_della_domanda(at.build_question(_trenta())))
+    righe = dict(_index_lines(at.build_question(_trenta())))
 
     ferma = righe[2]
     assert ferma["causa_oggi"]["causa"] == "sparita"

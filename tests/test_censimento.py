@@ -972,6 +972,10 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 #: passare (eseguito dal revisore il 02/10/2026).
 ADMITTED_EXCEPTIONS = {
     ("simbolo-solo-test", "actuator_round"): "M-20",
+    # La ricetta al volo, pronta e non ancora offerta (attori, Task 3.1):
+    # entra nel turno dell'analista col Task 3.6, e allora escono tutte e due.
+    ("simbolo-solo-test", "compute"): "M-78",
+    ("simbolo-solo-test", "tool_def"): "M-78",
     ("simbolo-solo-test", "get_config"): None,
     ("simbolo-solo-test", "operable_domains"): "M-61",
     ("rotta-solo-test", "/api/misure"): "M-22",

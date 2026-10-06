@@ -243,7 +243,7 @@ def answer(recipe: Recipe, results: dict[str, Result], *, start_ts: float,
             row.update(valore=_value_out(result.value, zone), unita=result.unit,
                        copertura=result.coverage)
         else:
-            row.update(non_calcolabile=result.reason, causa=result.cause)
+            row.update({"non_calcolabile": result.reason, "causa": result.cause})
         out["passi"].append(row)
     if states_from:
         out["stati_dal"] = {entity: instant_out(when, zone)

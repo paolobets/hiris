@@ -30,7 +30,8 @@ from tests.test_mind_recipe_turn import CASA, RICETTA_BUONA
 DECISIONI = [{"id": "climate.camera_t", "dentro": True, "motivo": "scalda"}]
 ANALISI = {"osservazioni": [{"quale": 0, "innesco": 1,
                              "cosa": "il prelievo e' salito", "spiegato": None,
-                             "cosa_cambierebbe": "meno prelievo, meno spesa"}]}
+                             "cosa_cambierebbe": "meno prelievo, meno spesa",
+                             "novita": "nuova"}]}
 ATTUAZIONE = {"esiti": [{"osservazione": 0, "gesto": "indagine",
                          "trovato": "il sensore era fermo"}]}
 PROPOSTA = {"testo": "spegni lo scaldabagno alle 23", "perche": "costa meno"}

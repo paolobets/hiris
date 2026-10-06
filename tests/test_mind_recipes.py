@@ -351,17 +351,17 @@ def test_un_passo_che_consegna_un_PERIODO_lo_consegna_solo_a_chi_lo_vuole():
     """
     from hiris.app.mind.operations import SHAPE_READINGS, SHAPE_SERIES
 
-    con_gli_stati = (SHAPE_SERIES, SHAPE_READINGS)
+    with_states = (SHAPE_SERIES, SHAPE_READINGS)
     giusta = ric.Recipe({"why": "in casa", "steps": [
         {"name": "in_casa", "operation": "episodio", "inputs": ["@person.a"],
          "params": {"state": "home", "period_start": 0, "period_end": 3600}},
         {"name": "quanto", "operation": "tempo_in_stato", "inputs": ["$in_casa"]}]},
-        entity_shapes=con_gli_stati)
+        entity_shapes=with_states)
     storta = ric.Recipe({"why": "x", "steps": [
         {"name": "t", "operation": "somma_periodo", "inputs": ["@sensor.a"],
          "params": {"unit": "kWh"}},
         {"name": "quanto", "operation": "tempo_in_stato", "inputs": ["$t"]}]},
-        entity_shapes=con_gli_stati)
+        entity_shapes=with_states)
 
     assert giusta.validate(entities={"person.a"}).valid
     esito = storta.validate(entities={"sensor.a"})

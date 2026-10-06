@@ -2410,7 +2410,7 @@ def _write_analysis(store, day: str, esito: dict) -> None:
 
 
 def _enqueue_analyst_turn(app, series: dict, day: str,
-                          previous: list[dict]) -> dict | None:
+                          previous: list[dict] | None = None) -> dict | None:
     """Accoda al piano la domanda dell'analista, e torna subito."""
     job = analyst_turn.bridge_turn(series, previous)
     if job is None:

@@ -1,11 +1,11 @@
 """La ricetta al volo (`mind/compute.py`; D6 del proprietario, 06/10/2026;
 piano degli attori, strato 3, Task 3.1 e 3.2).
 
-Le serie sono SINTETICHE, nella forma che il client consegna
-(`HAClient.hourly_statistics`: `inizio`, `fine`, `cambio`; `HAClient.history`:
-`quando`, `valore`). Il client e' un finto che risponde solo alle due letture
-che lo strumento fa, e conta le domande; l'elenco delle statistiche arriva con
-la casa (`House.with_statistics`), come nel giro delle ricette.
+Le serie sono SINTETICHE. Home Assistant e' la casa finta della storia
+(`tests/test_history_tool._house`, cioe' `scripts/casa_finta.py`: il client
+VERO col trasporto sostituito), che risponde coi messaggi grezzi delle
+statistiche orarie e dello storico; l'elenco delle statistiche arriva con la
+casa (`House.with_statistics`), come nel giro delle ricette.
 """
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ from hiris.app.mind.recipes import Recipe, hourly_points
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests.test_attori_davanti_alla_fonte import _Cache
 from tests.test_fonte_della_casa import _Store
+from tests.test_history_tool import _HISTORY_PATH, _asked
+from tests.test_history_tool import _house as _ha_house
 
 #: Il 10/09/2026 a mezzanotte UTC, e dieci giorni dopo.
 START = datetime(2026, 9, 10, tzinfo=UTC).timestamp()
@@ -33,25 +35,22 @@ def _iso(ts: float) -> str:
 
 
 def _hours(values_per_hour, start=START):
-    return [{"inizio": start + h * 3600, "fine": start + (h + 1) * 3600, "cambio": v}
+    """Le fasce orarie nella forma GREZZA di `recorder/statistics_during_period`:
+    `start`/`end` in millisecondi, `change` di un contatore."""
+    return [{"start": int((start + h * 3600) * 1000),
+             "end": int((start + (h + 1) * 3600) * 1000), "change": v}
             for h, v in enumerate(values_per_hour)]
 
 
-class _Ha:
-    """Il client della casa, ridotto alle due letture dello strumento."""
+def _Ha(statistics=None, states=None):
+    """Home Assistant: le statistiche orarie e gli stati, dalla casa finta."""
+    return _ha_house(serie=states, fasce=statistics)
 
-    def __init__(self, statistics=None, states=None):
-        self.statistics = statistics or {}
-        self.states = states or {}
-        self.asked = []
 
-    async def hourly_statistics(self, ids, start, end):
-        self.asked.append(("statistiche", tuple(ids), start, end))
-        return {"serie": {e: self.statistics[e] for e in ids if e in self.statistics}}
-
-    async def history(self, ids, start, end):
-        self.asked.append(("storia", tuple(ids), start, end))
-        return {"serie": {e: self.states.get(e, []) for e in ids}, "troncato": False}
+def _client_points(raw):
+    """Le fasce come il client le consegna (`HAClient.hourly_statistics`)."""
+    return [{"inizio": r["start"] / 1000, "fine": r["end"] / 1000, "cambio": r["change"]}
+            for r in raw]
 
 
 def _house(entities, listed=None):
@@ -97,8 +96,8 @@ async def test_una_quota_su_dieci_giorni_e_LA_STESSA_della_ricetta():
     risposta = await _run(QUOTA, ha, ["sensor.prodotta", "sensor.consumata"])
 
     attesa = Recipe({"why": QUOTA["perche"], "steps": QUOTA["passi"]}).run(
-        series={"sensor.prodotta": hourly_points(prodotta),
-                "sensor.consumata": hourly_points(consumata)})
+        series={"sensor.prodotta": hourly_points(_client_points(prodotta)),
+                "sensor.consumata": hourly_points(_client_points(consumata))})
     passi = {p["nome"]: p for p in risposta["passi"]}
     assert passi["quota"]["valore"] == attesa["quota"].value == 0.5
     assert passi["prodotta"]["valore"] == 480.0
@@ -156,7 +155,7 @@ async def test_una_richiesta_STORTA_dice_TUTTI_i_problemi_e_non_legge_niente():
     assert any("expected_parts" in p and "mette il codice" in p for p in problemi)
     assert any("unit" in p for p in problemi), problemi
     assert any("zeta" in p for p in problemi), problemi
-    assert ha.asked == []
+    assert ha.calls == []
 
 
 @pytest.mark.asyncio
@@ -191,7 +190,7 @@ async def test_LA_PRESENZA_dagli_stati_di_una_persona():
     assert passi["quanto"]["unita"] == "s"
     assert passi["in_casa"]["valore"]["finestre"]
     assert risposta["stati_dal"]["person.giulia"].startswith("2026-09-10T02:00")
-    assert [a[0] for a in ha.asked] == ["storia"]
+    assert {name for name, _ in _asked(ha)} == {_HISTORY_PATH}
 
 
 @pytest.mark.asyncio

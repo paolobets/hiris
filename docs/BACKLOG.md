@@ -173,6 +173,14 @@ veridicita' della soluzione»).
    diverse: coppie gia' presenti il giorno prima 2 su 7, 3 su 8, 4 su 8), spostata qui dalla
    Tappa 6 il 05/10/2026: e' la memoria delle analisi precedenti che manca, non un doppione di
    codice.
+   *Il codice c'e' dal 06/10/2026, non ancora rilasciato (piano degli attori, Task 3.1-3.4, ramo
+   `claude/attori-strato-3-parti-pure-u24nsp`):* la ricetta al volo (`mind/compute.py`) con
+   `somma_fra` e la presenza dagli stati (`REGISTRY_VERSION` 3: i rifiuti archiviati tornano
+   domande); l'indice al posto delle trenta colonne, con gli inneschi marcati dal codice e
+   l'obiettivo «in vigore dal»; la memoria ricavata da analisi e proposte, con `novita` nella
+   risposta. **Cambia la domanda dell'analista di produzione** senza dargli ancora gli strumenti
+   per scavare (Task 3.6): si unisce insieme al 3.6, o prima solo se il proprietario lo decide.
+   D-33 si chiude dal vivo, quando la misura delle ripetizioni (Task 3.0 Passo 3) scende.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
    «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,
