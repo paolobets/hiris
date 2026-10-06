@@ -8,6 +8,7 @@ mentre il turno e' in volo scarta in silenzio la risposta che arriva dopo.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 
@@ -38,6 +39,14 @@ def _manuale(casa):
         text="Abbassa il termostato di notte", perche="il prelievo notturno sale",
         fingerprint=observation_key(riga), prova=evidence_of(riga),
         stakes=None, now_ts=1.0)
+
+
+def _seconda(casa):
+    riga = osservazioni()[1]
+    return casa["observations"].add_proposal(
+        text="Sposta la lavatrice dopo le 21", perche="alle 19 costa di piu'",
+        fingerprint=observation_key(riga), prova=evidence_of(riga),
+        stakes=None, now_ts=2.0)
 
 
 def _proposta(casa, ident):
@@ -147,6 +156,45 @@ async def test_una_COSTRUITA_inventata_non_chiude_niente(casa):
     assert esito["esito"] == redo.UNREADABLE
     assert _proposta(casa, ident)["stato"] == "attesa"
     assert _proposta(casa, ident)["giri"] == []
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_due_pressioni_ravvicinate_fanno_UN_turno_solo(casa):
+    """Sulla catena il turno non passa dalla coda, e la coda non puo' dire che
+    e' in volo: lo dice `CHAIN_IN_FLIGHT`, finche' la richiesta e' aperta. Un
+    secondo «Rifalla» mentre il primo aspetta il modello non parte (rilievo
+    N68-1 del giro 68).
+
+    Mutazione ESEGUITA (06/10/2026): `redo` senza il controllo su
+    `CHAIN_IN_FLIGHT` -- rossa, il secondo parte e il modello e' chiamato due
+    volte."""
+    ident = _manuale(casa)
+    partito, libera = asyncio.Event(), asyncio.Event()
+
+    class _Lento:
+        def __init__(self):
+            self.chiamate = 0
+            self.last_tool_calls: list = []
+
+        async def chat(self, **_kwargs):
+            self.chiamate += 1
+            if self.chiamate == 1:
+                partito.set()
+                await libera.wait()
+            return _esiti(esito="niente", perche="x")
+
+    casa["llm_router"] = _Lento()
+    primo = asyncio.create_task(
+        redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA))
+    await asyncio.wait_for(partito.wait(), 5)
+
+    with pytest.raises(redo.InFlight):
+        await redo.redo(casa, casa["observations"], _proposta(casa, ident), "di nuovo")
+    libera.set()
+    await primo
+
+    assert casa["llm_router"].chiamate == 1
+    assert ident not in casa[redo.CHAIN_IN_FLIGHT], "finita la richiesta, si libera"
 
 
 # -- Il ponte ---------------------------------------------------------------------
@@ -286,3 +334,49 @@ async def test_un_rifacimento_NON_ferma_e_non_nasconde_il_giro_orario(ponte):
 
     giro = coda.latest(pt.PROPOSAL_TURN_KIND, wake_key=pr.ROUND_KEY)
     assert giro is not None and giro["wake"]["giorno"] == OGGI
+
+
+@pytest.mark.asyncio
+async def test_un_rifacimento_di_A_non_tocca_lo_stato_ne_la_partenza_di_B(ponte):
+    """La coda distingue il rifacimento di una proposta da quello di
+    un'altra per il valore della sveglia. Senza, con «Rifalla» in volo su A la
+    riga di B direbbe «in corso» con la richiesta di A, e un «Rifalla» su B
+    avrebbe un 409 (rilievo G68-1 del giro 68).
+
+    Mutazione ESEGUITA (06/10/2026): `ReasoningQueue.latest` che ignora
+    `wake_value` -- rossa, B si legge «in corso» con la richiesta di A."""
+    casa, coda = ponte
+    a, b = _manuale(casa), _seconda(casa)
+    await redo.redo(casa, casa["observations"], _proposta(casa, a), RICHIESTA)
+
+    assert redo.state(casa, _proposta(casa, b)) is None
+    await redo.redo(casa, casa["observations"], _proposta(casa, b), "piu' tardi")
+
+    assert redo.state(casa, _proposta(casa, a))["richiesta"] == RICHIESTA
+    assert redo.state(casa, _proposta(casa, b))["richiesta"] == "piu' tardi"
+    assert coda.latest(pt.PROPOSAL_TURN_KIND, wake_key=redo.WAKE_KEY,
+                       wake_value=b)["wake"]["proposta"] == b
+
+
+@pytest.mark.asyncio
+async def test_un_turno_ATTESO_oltre_la_scadenza_si_dice_SCADUTO(ponte, monkeypatch):
+    """Fra la scadenza e la spazzata la coda tiene il turno `pending`: la
+    pagina non deve dire «in corso» per un turno che il ponte non consegnera'
+    piu' (rilievo N68-1 del giro 68). E un turno scaduto non ferma un nuovo
+    «Rifalla».
+
+    Mutazione ESEGUITA (06/10/2026): `state` con `RUNNING` anche oltre
+    `deadline_ts` -- rossa, il turno scaduto si legge «in corso»."""
+    casa, coda = ponte
+    ident = _manuale(casa)
+    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    job = coda.latest(pt.PROPOSAL_TURN_KIND, wake_key=redo.WAKE_KEY,
+                      wake_value=ident)
+    oltre = job["deadline_ts"] + 1
+    monkeypatch.setattr(redo.time, "time", lambda: oltre)
+
+    stato = redo.state(casa, _proposta(casa, ident))
+
+    assert job["status"] == "pending"
+    assert stato["stato"] == redo.EXPIRED and stato["richiesta"] == RICHIESTA
+    await redo.redo(casa, casa["observations"], _proposta(casa, ident), "di nuovo")
