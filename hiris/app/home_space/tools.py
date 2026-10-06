@@ -36,8 +36,8 @@ compone e fa validare contro QUESTA casa (mai uno YAML scritto a mano),
 non da un campo che il modello potrebbe compilare da solo. Vedi
 `action/construction/workshop.py` per il giro intero e la guardia.
 
-`history` passa per `home_space/house_history.py`; il genere della domanda lo
-dice `genere`, un argomento esplicito. `calendar` legge ogni calendario
+`history` passa per `home_space/house_history.py`; che cosa si chiede lo
+dice `cosa`, un argomento esplicito. `calendar` legge ogni calendario
 (`HAClient.calendars()`/`calendar_events()`) e compone gli impegni
 (`home_space/appointments.py`) in un unico elenco ordinato; un calendario che
 non riesce a leggere finisce in `non_letti`, perche' la leggibilita' si
@@ -91,6 +91,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..action.construction.advisor import STRUCTURES
+from ..action.construction.stakes import CHOSEN_BY_MODEL as STAKES_CHOSEN_BY_MODEL
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
 from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
@@ -100,6 +101,7 @@ from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
 from . import historian
 from .appointments import merge_calendars, readable_calendars
+from .energy import energy_dashboard
 from .ha_vocabulary import HA_LINK_TYPE
 from .house import House
 from .house_history import (
@@ -111,7 +113,14 @@ from .house_history import (
     read_history,
 )
 from .house_history import KINDS as HISTORY_KINDS
-from .house_query import KINDS, ORDERS, ROWS_MAX, parse_filters, query_house
+from .house_query import (
+    KINDS,
+    ORDERS,
+    ROWS_MAX,
+    depth_for,
+    parse_filters,
+    query_house,
+)
 from .privacy import cover_automation_body
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
@@ -174,65 +183,111 @@ def _fallen_stores_message(stores: list[str]) -> str:
 logger = logging.getLogger(__name__)
 
 
+# Tappa 5, Task 5 (06/10/2026; B-32, D-68): cio' che `search` e `history`
+# hanno in comune si scrive una volta sola. Prima le stesse proprieta'
+# stavano in due schemi con parole diverse («Includi le entita' nascoste. Di
+# norma no.» / «Anche le entita' nascoste.»), e la regola della profondita'
+# in due prose con le soglie scritte a mano («fino a 10», «da 2 a 10»),
+# mentre la soglia vera e' una e la applica `house_query.depth_for` per
+# entrambe. Le differenze vere restano in chiaro accanto a
+# ciascuno schema: `riferimento` (un ricordo ha un numero, la storia no) e
+# `integrazione` (per gli errori e' chi ha scritto la voce).
+_SUBJECT_FILTERS = {
+    "nome": {
+        "type": "string",
+        "description": ("Un nome, un alias o un pezzo di nome, confrontato anche "
+                        "per radice («rifiuti» trova «rifiuto»)."),
+    },
+    "tipo": {
+        "type": "string",
+        "description": "Il dominio di Home Assistant: light, sensor, switch, automation...",
+    },
+    "classe": {
+        "type": "string",
+        "description": "La classe del dispositivo: battery, motion, temperature, energy...",
+    },
+    "area": {
+        "type": "string",
+        "description": "Il nome o l'id dell'area; «senza area» per cio' che non ne ha.",
+    },
+    "piano": {"type": "string", "description": "Il nome del piano."},
+    "integrazione": {
+        "type": "string",
+        "description": "La piattaforma: tuya, reolink, zha...",
+    },
+    "includi_nascoste": {
+        "type": "boolean",
+        "description": "Anche le entita' nascoste, che di norma restano fuori.",
+    },
+    "includi_servizio": {
+        "type": "boolean",
+        "description": ("Anche le entita' di servizio (diagnostica, "
+                        "configurazione), che di norma restano fuori."),
+    },
+    "limite": {
+        "type": "integer", "minimum": 0, "maximum": ROWS_MAX,
+        "description": f"Quante voci al massimo (predefinito e tetto {ROWS_MAX}); "
+                       "0 da' solo i conti.",
+    },
+    "salta": {
+        "type": "integer", "minimum": 0,
+        "description": "Quante voci saltare: il `salta` di `oltre`, la pagina dopo.",
+    },
+}
+
+
+def _depth_rule(complete: str, medium: str, short: str) -> str:
+    """La regola della profondita' detta al modello, una volta per tutte e due
+    le porte (D-68). La soglia si CHIEDE a `depth_for`, che la applica (B-30:
+    la costante la legge lei sola): il testo non puo' dire 10 mentre la
+    regola fa 12."""
+    medium_max = max(n for n in range(2, ROWS_MAX + 1) if depth_for(n) == "media")
+    return (f"**La profondita' la decido io**, da quante voci trovo: una -> "
+            f"`completa` ({complete}); fino a {medium_max} -> `media` "
+            f"({medium}); oltre -> `corta` ({short}). ")
+
+
+# Come si leggono i conti e le pagine: la busta delle due porte e' una
+# (`house_query.envelope`, `page_rows`), e la frase che la spiega pure.
+_COUNT_RULE = (
+    "`trovate` conta cio' che corrisponde, `escluse` cio' che NON ti ho dato "
+    "(nascoste, servizio, disabilitate). **Un numero senza le escluse non e' "
+    "un totale**: se dai un conteggio e `escluse` non e' vuoto, di' anche "
+    "quelle (la `nota` ha il totale); se la domanda riguarda proprio quelle, "
+    "richiama con `includi_nascoste` -- «nessuna luce accesa» e' falso se le "
+    "accese sono nascoste. Con `oltre` ne restano: **prima restringi** con un "
+    "filtro, scorri col suo `salta` solo se ti servono tutte (ogni pagina e' "
+    "un giro); `salta_oltre_la_fine` vuol dire che hai saltato oltre "
+    "l'ultima, e le voci ci sono. "
+)
+
+
 SEARCH_TOOL_DEF = {
     "name": "search",
     # La porta che interroga la casa (spec `2026-09-29-una-porta-sola-per-la-
     # casa.md` §2): dal 29/09/2026 fa anche il mestiere del dettaglio, che era
-    # di un secondo strumento. La descrizione dice, in quest'ordine, a cosa
-    # serve, i filtri, la profondita', cosa leggere SEMPRE nella risposta e
-    # cosa non esce -- il resto (le ceste degli attributi, i comandi di
-    # un'entita') lo dice la risposta stessa, non una descrizione da 13.000
-    # caratteri pagata a ogni turno.
+    # di un secondo strumento. Dal 06/10/2026 (Tappa 5, Task 5) la descrizione
+    # non ripete cio' che dice lo schema: dice dove vale ogni filtro, la
+    # profondita', cosa leggere SEMPRE nella risposta e cosa non esce.
     "description": (
         "La porta che interroga la casa: per TROVARE, CONTARE, ELENCARE e "
         "FILTRARE le cose di casa, e per il DETTAGLIO di una cosa sola (con "
         "`riferimento`, l'id esatto). Tutti i filtri sono facoltativi e si "
-        "combinano; senza nessuno, elenca le entita'.\n"
-        "I filtri, e dove valgono:\n"
-        "- `nome`: un nome, un alias o un pezzo di nome, confrontato anche per "
-        "radice («rifiuti» trova «rifiuto»). Da solo cerca in TUTTI i generi.\n"
-        "- `genere`: entita (predefinito), area, dispositivo, automazione, "
-        "script, ricordo, integrazione.\n"
-        "- `riferimento`: l'id esatto -- di entita', area, dispositivo, "
-        "automazione o script; il numero di un ricordo; il dominio di "
-        "un'integrazione. Da' il dettaglio completo; se non esiste, una voce "
-        "`esiste: false` col `suggerimento`.\n"
-        "- `tipo`: il dominio di Home Assistant (`light`, `sensor`, `switch`...); "
-        "`automation` e `script` portano ad automazioni e script.\n"
-        "- `stato`: `on`, `off`, `unavailable`, `unknown`, `home`...; per "
-        "automazioni e script dice se sono abilitate.\n"
-        "- `classe`: la classe del dispositivo (`battery`, `motion`, "
-        "`temperature`...). Solo entita'.\n"
-        "- `area`, `piano`: i nomi del nucleo; `area` «senza area» trova cio' "
-        "che non ne ha una.\n"
-        "- `integrazione`: la piattaforma (`tuya`, `reolink`...).\n"
-        "- `fermo_da`, `cambiato_da`: una durata (`30d`, `2h`, `15m`); per "
-        "automazioni e script conta l'ultima esecuzione.\n"
-        "- `sopra`, `sotto`: un numero; solo entita' con uno stato numerico.\n"
-        "- `in_esecuzione`: solo automazioni e script.\n"
-        "- `includi_nascoste`, `includi_servizio`: di norma restano fuori le "
-        "nascoste e le entita' di servizio (diagnostica, configurazione).\n"
-        "- `ordina` (`nome`, `ultimo_cambio`, `valore`), `limite` (0-50; 0 da' "
-        "solo i conti), `salta` (la pagina dopo).\n"
-        "Per le aree valgono solo `nome` e `piano`; per i dispositivi `nome`, "
-        "`area`, `piano`, `integrazione`. Un filtro che non vale per il genere "
+        "combinano; senza nessuno elenca le entita', `nome` da solo cerca in "
+        "tutti i generi.\n"
+        "Dove valgono: per le aree solo `nome` e `piano`; per i dispositivi "
+        "`nome`, `area`, `piano`, `integrazione`; `classe`, `sopra` e `sotto` "
+        "solo per le entita'; `in_esecuzione` solo per automazioni e script, e "
+        "per loro `stato` dice se sono abilitate e `fermo_da`/`cambiato_da` "
+        "contano l'ultima esecuzione. Un filtro che non vale per il genere "
         "chiesto torna un `errore`, mai un insieme intero.\n"
-        "La profondita' la decide lo strumento, da quante voci trova: UNA -> "
-        "`completa`, il dettaglio intero (stato, attributi, `comandi`, per "
-        "un'automazione o uno script il corpo, per un'area le sue entita' -- "
-        "al massimo 50, il resto nel suo `oltre`); "
-        "fino a 10 -> `media`, con attributi e ultimo cambio; oltre -> "
-        "`corta`, una riga per voce, al massimo 50.\n"
-        "La risposta porta SEMPRE `trovate` (quante corrispondono) ed "
-        "`escluse` (nascoste, servizio, disabilitate: cio' che NON ti ha "
-        "dato). **Leggi sempre `escluse`**: se `escluse.nascoste` e' maggiore "
-        "di zero e la domanda riguarda quelle cose, richiama con "
-        "`includi_nascoste` -- «nessuna luce accesa» e' falso se le accese "
-        "sono nascoste. **Un numero senza le escluse non e' un totale**: se "
-        "rispondi con un conteggio e `escluse` non e' vuoto, di' anche quelle "
-        "(la `nota` ti da' il totale). Se c'e' `oltre`, **prima restringi** con un filtro; "
-        "scorri con `salta` solo se ti servono davvero tutte: ogni pagina e' "
-        "un giro.\n"
+        + _depth_rule(
+            "il dettaglio intero: stato, attributi, `comandi`, il corpo di "
+            "un'automazione o di uno script, le entita' di un'area -- al "
+            f"massimo {ROWS_MAX}, il resto nel suo `oltre`",
+            "attributi e ultimo cambio",
+            f"una riga per voce, al massimo {ROWS_MAX}")
+        + "\n" + _COUNT_RULE + "\n"
         "Guarda `tipo` e l'id prima di concludere: «luci» puo' essere un "
         "`sensor` che le CONTA invece che una luce. Se piu' voci hanno lo "
         "stesso nome (due «Bagno» su piani diversi) scegli guardando la "
@@ -252,10 +307,7 @@ SEARCH_TOOL_DEF = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "nome": {
-                "type": "string",
-                "description": "Un nome o un pezzo di nome (es. «bagno», «lavatrice»).",
-            },
+            **_SUBJECT_FILTERS,
             "genere": {
                 "type": "string",
                 "enum": list(KINDS),
@@ -264,31 +316,15 @@ SEARCH_TOOL_DEF = {
             "riferimento": {
                 "type": ["string", "integer"],
                 "description": (
-                    "L'id esatto della cosa, il numero di un ricordo o il "
-                    "dominio di un'integrazione: da' il dettaglio completo."
+                    "L'id esatto (di entita', area, dispositivo, automazione "
+                    "o script), il numero di un ricordo o il dominio di "
+                    "un'integrazione: da' il dettaglio completo; se non esiste, "
+                    "una voce `esiste: false` col `suggerimento`."
                 ),
-            },
-            "tipo": {
-                "type": "string",
-                "description": "Il dominio di Home Assistant: light, sensor, switch, automation...",
             },
             "stato": {
                 "type": "string",
                 "description": "Lo stato: on, off, unavailable, unknown, home...",
-            },
-            "classe": {
-                "type": "string",
-                "description": ("La classe del dispositivo: battery, motion, "
-                                "temperature... Solo entita'."),
-            },
-            "area": {
-                "type": "string",
-                "description": "Il nome o l'id dell'area; «senza area» per cio' che non ne ha.",
-            },
-            "piano": {"type": "string", "description": "Il nome del piano."},
-            "integrazione": {
-                "type": "string",
-                "description": "La piattaforma: tuya, reolink, hue...",
             },
             "fermo_da": {
                 "type": "string",
@@ -304,26 +340,10 @@ SEARCH_TOOL_DEF = {
                 "type": "boolean",
                 "description": "Solo automazioni e script in corsa (o ferme).",
             },
-            "includi_nascoste": {
-                "type": "boolean",
-                "description": "Includi le entita' nascoste. Di norma no.",
-            },
-            "includi_servizio": {
-                "type": "boolean",
-                "description": "Includi le entita' di servizio. Di norma no.",
-            },
             "ordina": {
                 "type": "string",
                 "enum": list(ORDERS),
                 "description": "L'ordine delle voci; di norma per nome.",
-            },
-            "limite": {
-                "type": "integer", "minimum": 0, "maximum": ROWS_MAX,
-                "description": "Quante voci al massimo (0: solo i conti).",
-            },
-            "salta": {
-                "type": "integer", "minimum": 0,
-                "description": "Quante voci saltare: la pagina dopo.",
             },
         },
     },
@@ -764,8 +784,7 @@ PROPOSE_TOOL_DEF = {
         "**non nello stesso turno**: mostra l'anteprima a chi ti sta parlando, digli che "
         "la proposta resta in attesa nella pagina «Proposte», e aspetta che sia "
         "chi ti sta parlando a dire di procedere. "
-        "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
-        "«script» o «scene». Per modificare o cancellare serve `chiave` (l'id "
+        "Per modificare o cancellare serve `chiave` (l'id "
         "dell'automazione o della scena, lo slug dello script): la trovi con "
         "`search` (col suo `riferimento` se lo hai gia'). "
         "Componi con i PARAMETRI, non scrivendo YAML: `innesco`, `condizioni`, "
@@ -787,8 +806,7 @@ PROPOSE_TOOL_DEF = {
             "dominio": {"type": "string",
                         "description": "automation, script o scene."},
             "chiave": {"type": "string",
-                       "description": "L'id o lo slug dell'oggetto da toccare "
-                                      "(solo per modifica e cancella)."},
+                       "description": "Solo per modifica e cancella."},
             "alias": {"type": "string", "description": "Il nome dell'oggetto."},
             "descrizione": {"type": "string",
                             "description": "A cosa serve, in italiano: finisce "
@@ -829,6 +847,13 @@ PROPOSE_TOOL_DEF = {
             "helper": {"type": "array", "items": {"type": "object"},
                        "description": "Gli helper da creare insieme: ognuno con "
                                       "`dominio` e `dati`."},
+            # Il livello (attori, strato 4, D13): l'enumerazione viene dalla
+            # sua casa (`action/construction/stakes.py`) e porta solo cio' che
+            # il modello puo' scegliere. «alto» non c'e': lo impone l'officina
+            # quando la proposta agisce su serrature o allarme.
+            "livello": {"type": "string", "enum": list(STAKES_CHOSEN_BY_MODEL),
+                        "description": "Su serrature e allarme e' «alto», "
+                                       "da solo."},
             "frase": {"type": "string",
                       "description": "La frase di chi ti sta parlando da cui nasce, "
                                      "verbatim."},
@@ -895,33 +920,30 @@ CONFIRM_TOOL_DEF = {
 # chiama `history`, mai «storia».
 HISTORY_TOOL_DEF = {
     "name": "history",
+    # Tappa 5, Task 5 (06/10/2026): il parametro che sceglie la domanda si
+    # chiama `cosa`, non piu' `genere` (D3, C-65): `genere` in `search` e' il
+    # genere di un oggetto, qui era tutt'altro. I filtri comuni, la
+    # profondita' e la lettura dei conti vengono da `_SUBJECT_FILTERS`,
+    # `_depth_rule` e `_COUNT_RULE`, come per `search`.
     "description": (
         "Cio' che e' successo in casa nel tempo: come sono cambiati gli stati, "
         "come sono andati i valori, come sono andate automazioni e script, "
         "cosa c'e' nel registro degli errori di Home Assistant. Una chiamata "
-        "sola, anche per piu' cose insieme: scegli DI CHI con gli stessi "
-        "filtri di `search` (`nome`, `riferimento`, `tipo`, `classe`, `area`, "
-        "`piano`, `integrazione`, `includi_nascoste`, `includi_servizio`) e "
-        "QUANDO con `ore` (le ultime N, predefinito 24) oppure con `da`/`a` "
-        "(«oggi», «ieri» nel fuso della casa, o un istante ISO col fuso; senza "
-        "`a` e' adesso) -- non tutti e due. "
-        "`genere`: `stati` (predefinito) i cambi di stato; `valori` i numeri "
+        "sola, anche per piu' cose insieme: DI CHI con gli stessi filtri di "
+        "`search`, QUANDO con `ore` oppure con `da`/`a` -- non tutti e due. "
+        "`cosa`: `stati` (predefinito) i cambi di stato; `valori` i numeri "
         "nel tempo; `esecuzioni` le partenze di automazioni e script; `errori` "
         "il registro, che accetta solo `integrazione` e `livello`. Un filtro "
-        "che non vale per il genere torna `errore`, non viene ignorato. "
-        "**La profondita' la decido io** dal numero di soggetti: uno -> "
-        "`completa` (ogni cambio; la serie; le esecuzioni conservate, e con "
-        "`esecuzione` = il `run_id` di una riga la traccia passo per passo); "
-        "da 2 a 10 -> `media` (ogni cambio con l'id; una riga per serie; le "
-        "ultime 3 esecuzioni di ognuna); oltre 10 -> `corta` (una riga per "
-        "soggetto). "
-        "Al massimo 50 `voci`: `salta` scorre le voci -- le righe nella "
-        "completa e nella media, i soggetti nella corta. Con `oltre` ne restano: "
-        "prima restringi (finestra piu' corta, un'area, un nome), scorri col "
-        "suo `salta` solo se ti servono tutte; se `oltre` dice "
-        "`salta_oltre_la_fine`, hai saltato oltre l'ultima e le voci ci sono. "
-        "`trovate` non conta le escluse: `nota` dice il totale con le "
-        "escluse, e se dai un numero di' anche quelle. "
+        "che non vale per `cosa` torna `errore`, non viene ignorato. "
+        + _depth_rule(
+            "ogni cambio; la serie; le esecuzioni conservate, e con "
+            "`esecuzione` = il `run_id` di una riga la traccia passo per passo",
+            "ogni cambio con l'id; una riga per serie; le ultime 3 esecuzioni "
+            "di ognuna",
+            "una riga per soggetto")
+        + f"Al massimo {ROWS_MAX} `voci`: `salta` scorre le righe nella "
+        "completa e nella media, i soggetti nella corta. "
+        + _COUNT_RULE +
         "`finestra` e' il periodo DAVVERO coperto: con `chiesta_da` e "
         "`troncata` mancano i dati piu' vecchi -- dillo. `dal` su una riga: "
         "quella serie, o le esecuzioni conservate, cominciano dopo l'inizio; "
@@ -956,32 +978,17 @@ HISTORY_TOOL_DEF = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "genere": {"type": "string", "enum": list(HISTORY_KINDS),
-                       "description": "Cosa: stati (predefinito), valori, "
-                                      "esecuzioni, errori."},
-            "nome": {"type": "string",
-                     "description": "Di chi, per nome o alias, come in `search`."},
+            **_SUBJECT_FILTERS,
+            "cosa": {"type": "string", "enum": list(HISTORY_KINDS),
+                     "description": "Che cosa chiedere; di norma stati."},
             "riferimento": {"type": "string",
-                            "description": "Di chi, per identificatore esatto (es. "
+                            "description": "L'id esatto (es. "
                                            "'sensor.camera_temperatura')."},
-            "tipo": {"type": "string",
-                     "description": "Il dominio di Home Assistant (light, sensor, "
-                                    "automation, script...)."},
-            "classe": {"type": "string",
-                       "description": "La classe del dispositivo (temperature, "
-                                      "energy, door...)."},
-            "area": {"type": "string",
-                     "description": "L'area, per nome o id; «senza area» per chi non "
-                                    "ne ha."},
-            "piano": {"type": "string", "description": "Il piano, per nome."},
-            "integrazione": {"type": "string",
-                             "description": "L'integrazione (es. zha). Per gli "
-                                            "errori, chi ha scritto la voce."},
-            "includi_nascoste": {"type": "boolean",
-                                 "description": "Anche le entita' nascoste."},
-            "includi_servizio": {"type": "boolean",
-                                 "description": "Anche le entita' di configurazione e "
-                                                "diagnostica."},
+            "integrazione": {
+                **_SUBJECT_FILTERS["integrazione"],
+                "description": (_SUBJECT_FILTERS["integrazione"]["description"]
+                                + " Per gli errori, chi ha scritto la voce."),
+            },
             "ore": {"type": "number", "maximum": WINDOW_MAX_HOURS,
                     "description": "Le ultime N ore, da adesso. Predefinito 24, al "
                                    "massimo 2160 (90 giorni). Non insieme a da/a."},
@@ -993,17 +1000,11 @@ HISTORY_TOOL_DEF = {
                                  "lo chiude) o un istante ISO col fuso. Senza, "
                                  "adesso. Vuole `da`."},
             "esecuzione": {"type": "string",
-                           "description": "Solo con genere=esecuzioni e UNA "
+                           "description": "Solo con cosa=esecuzioni e UNA "
                                           "automazione o script: il run_id di una "
                                           "riga, per la traccia passo per passo."},
             "livello": {"type": "string", "enum": list(LEVELS),
-                        "description": "Solo con genere=errori."},
-            "limite": {"type": "integer", "minimum": 0, "maximum": ROWS_MAX,
-                       "description": "Quante voci al massimo (predefinito e tetto "
-                                      "50); 0 da' solo i conteggi."},
-            "salta": {"type": "integer", "minimum": 0,
-                      "description": "Quante voci saltare: il valore di "
-                                     "oltre.salta."},
+                        "description": "Solo con cosa=errori."},
         },
     },
 }
@@ -1062,57 +1063,25 @@ def _days_said(raw) -> str:
 
 CALENDAR_TOOL_DEF = {
     "name": "calendar",
+    # Tappa 5, Task 5 (06/10/2026): la descrizione dice cio' che lo schema non
+    # dice -- da 3.050 caratteri, che ripetevano finestra, predefiniti e tetti
+    # gia' scritti nelle proprieta', a meno di un terzo, coi fatti di prima.
     "description": (
-        "**Non e' «agenda».** Quello sono gli impegni di HIRIS con se "
-        "stesso; questi sono i PROSSIMI appuntamenti scritti da una persona "
-        "sui calendari di questa casa -- risponde alla domanda «quali sono "
-        "i miei prossimi appuntamenti?», «cosa ho in programma questa "
-        "settimana?». Ogni "
-        "impegno porta `titolo`, `inizio`, `fine`, `giornaliero` (vero se "
-        "dura l'intera giornata) e, SOLO quando il calendario li ha scritti, "
-        "`luogo`/`descrizione`; porta anche `calendario`, il NOME di chi lo "
-        "tiene (es. 'Personale', 'Famiglia') -- fondendo piu' calendari in "
-        "un unico elenco, sapere DA QUALE viene un impegno e' meta' della "
-        "risposta. `giorni_avanti` (predefinito 30, tetto 365) e "
-        "`giorni_indietro` (predefinito 0, tetto 365) scelgono la finestra: "
-        "il passato resta a richiesta, perche' la domanda primaria e' sui "
-        "PROSSIMI appuntamenti, non sui passati. "
-        "**Un calendario dice SOLO cio' che ci e' scritto.** `impegni: []` "
-        "significa che nella finestra chiesta non c'e' NESSUN impegno "
-        "SEGNATO -- non che la casa sara' vuota, e non che non succedera' "
-        "niente: chi ci vive puo' semplicemente non aver scritto niente sul "
-        "calendario. E' NORMALE che l'elenco sia spesso vuoto: e' un fatto "
-        "sul calendario, non un fatto sulla vita di chi lo tiene. "
-        "**Un calendario che non riesco a leggere non sparisce.** Provo a "
-        "leggere OGNI calendario di questa casa, uno per uno: quelli che "
-        "riesco a leggere finiscono in `impegni`, quelli che NON riesco a "
-        "leggere finiscono, per nome, in `non_letti` -- una chiave che "
-        "esiste SOLO se ce n'e' almeno uno (i `non_letti` sono sempre un "
-        "sottoinsieme dei `calendari_guardati` qui sotto: guardati e' "
-        "«ho provato», non_letti e' «non ci sono riuscito»). Non solo "
-        "Home Assistant che non risponde: anche un calendario che ha "
-        "risposto bene ma con un evento che non so interpretare finisce "
-        "qui, per lo stesso motivo -- non e' leggibile, qualunque sia la "
-        "causa, e le cause non si confondono nel dirlo. Un elenco vuoto di "
-        "impegni e un calendario NON letto sono due fatti diversi: "
-        "confonderli direbbe «non hai impegni» con la sicurezza di chi ha "
-        "guardato tutto, quando in realta' un calendario non e' stato "
-        "letto. Se `non_letti` compare, dillo invece di tacerlo. "
-        "`calendari_guardati` esce SEMPRE (anche vuoto): sono i nomi di "
-        "TUTTI i calendari che ho provato a leggere in questa chiamata. "
-        "Se e' vuoto, questa casa non ha nessun calendario -- non e' lo "
-        "stesso fatto di «ho letto dei calendari e sono tutti vuoti»: "
-        "guarda questa chiave, non solo `impegni`, prima di dire «non hai "
-        "impegni». "
-        "**`troncato: true` significa che almeno un calendario aveva PIU' "
-        "impegni di quanti ne siano tornati** -- non concludere «non ci sono "
-        "altri impegni». Non dice QUALE calendario e' stato tagliato, solo che "
-        "ne e' successo almeno uno. Cio' che manca e' cio' che sta PIU' "
-        "LONTANO dall'inizio della finestra chiesta -- che di solito e' "
-        "ADESSO, quindi di solito manca cio' che e' piu' in la' nel futuro; "
-        "ma se hai chiesto anche `giorni_indietro`, l'inizio della finestra "
-        "e' nel passato, e cio' che manca potrebbe essere proprio i "
-        "PROSSIMI appuntamenti, non i piu' lontani in assoluto."
+        "I PROSSIMI appuntamenti scritti dalle persone sui calendari di questa "
+        "casa («cosa ho in programma questa settimana?»). Non e' `agenda`, che "
+        "sono gli impegni di HIRIS. Ogni impegno porta `titolo`, `inizio`, "
+        "`fine`, `giornaliero` (dura tutta la giornata), `calendario` (il nome "
+        "di chi lo tiene: i calendari si fondono in un elenco solo, e da quale "
+        "viene e' meta' della risposta) e, se scritti, `luogo` e `descrizione`. "
+        "**Un calendario dice solo cio' che ci e' scritto**: `impegni: []` "
+        "vuol dire nessun impegno segnato nella finestra, non una casa vuota, "
+        "ed e' normale. `calendari_guardati` c'e' sempre: i calendari che ho "
+        "provato a leggere; vuoto vuol dire che la casa non ne ha. "
+        "`non_letti` c'e' solo se qualcuno non l'ho potuto leggere, per "
+        "qualunque causa: dillo, e non dire «non hai impegni» se un calendario "
+        "manca. `troncato: true`: almeno un calendario aveva piu' impegni di "
+        "quelli tornati, e mancano i piu' lontani dall'inizio della finestra "
+        "-- con `giorni_indietro` possono essere proprio i prossimi."
     ),
     "input_schema": {
         "type": "object",
@@ -1121,9 +1090,9 @@ CALENDAR_TOOL_DEF = {
                 "type": "number",
                 "description": (
                     "Quanti giorni in avanti guardare, da adesso. "
-                    "Predefinito 30, non 7: una finestra piu' corta "
+                    f"Predefinito {DEFAULT_CALENDAR_DAYS_AHEAD}, non 7: una finestra piu' corta "
                     "rischia di rispondere «niente» anche quando qualcosa "
-                    "sta per arrivare. Il massimo e' 365."
+                    f"sta per arrivare. Il massimo e' {MAX_CALENDAR_DAYS_AHEAD}."
                 ),
             },
             "giorni_indietro": {
@@ -1131,7 +1100,7 @@ CALENDAR_TOOL_DEF = {
                 "description": (
                     "Quanti giorni all'indietro guardare, da adesso. "
                     "Predefinito 0 (niente passato): usalo solo se ti viene "
-                    "chiesto esplicitamente il passato. Il massimo e' 365."
+                    f"chiesto esplicitamente il passato. Il massimo e' {MAX_CALENDAR_DAYS_BACK}."
                 ),
             },
         },
@@ -1294,12 +1263,12 @@ def _reserved_core_service(arguments: dict[str, Any]) -> bool:
 
 
 def _asks_admin_reads(arguments: dict[str, Any]) -> bool:
-    """La chiamata di `history` chiede un genere che Home Assistant mostra ai
+    """La chiamata di `history` chiede una `cosa` che Home Assistant mostra ai
     soli amministratori (`house_history.ADMIN_KINDS`: esecuzioni ed errori)?
     Verificato il 27/09/2026 su Core 2026.9.3: `system_log/list`
     (`components/system_log/__init__.py`), `trace/list` e `trace/get`
     (`components/trace/websocket_api.py`) sono `@websocket_api.require_admin`."""
-    return arguments.get("genere") in ADMIN_KINDS
+    return arguments.get("cosa") in ADMIN_KINDS
 
 
 def _promises_an_action(arguments: dict[str, Any]) -> bool:
@@ -1354,8 +1323,8 @@ class Tool:
 
 
 class ToolDispatcher:
-    """Collega i dodici strumenti agli archivi, alla porta, all'officina e al
-    canale HA -- e non altro.
+    """Collega gli strumenti della tabella (`TOOLS`) agli archivi, alla porta,
+    all'officina, al canale HA e alle letture del cervello -- e non altro.
 
     Prende `home_space_store` e `memory_store` gia' costruiti dal chiamante
     (`create_app()` o l'equivalente nei test): questa classe non ne apre
@@ -1377,8 +1346,15 @@ class ToolDispatcher:
                  subject: dict | None = None,
                  phrase: str | None = None,
                  thread: ChatThread | None = None,
-                 house: House | None = None) -> None:
+                 house: House | None = None,
+                 mind=None) -> None:
         self._home_space = home_space_store
+        # Le letture del cervello (`mind/view.MindView`, Tappa 5, Task 8):
+        # lo scope, l'obiettivo, i resoconti, le analisi. Arrivano GIA'
+        # costruite, come il sapere e la cronaca: `home_space` non importa da
+        # `mind` (`tests/test_confine_home_space.py`). `None` e' legittimo
+        # come per gli altri archivi: `mind` dichiara un errore.
+        self._mind = mind
         # L'istantanea della casa di QUESTO turno (`house.House`, R18): una
         # lettura dell'anagrafe e una dello specchio, la gerarchia calcolata
         # una volta, per il nucleo e per ogni strumento. Il chiamante la passa
@@ -1564,7 +1540,7 @@ class ToolDispatcher:
             return {"errore": f"lo strumento «{name}» non e' fra quelli disponibili "
                               f"({available})."}
         # Task 1 di «rifiutare e importare» (§6b): un obbligatorio mancante e
-        # un nome ignoto si rifiutano QUI, una volta sola per tutti e dodici
+        # un nome ignoto si rifiutano QUI, una volta sola per tutti
         # gli strumenti -- non nei gestori, che fino ad oggi lo facevano a
         # mano (quattro di loro) o non lo facevano affatto (un lettore
         # del tempo, uscito il 30/09/2026 con la storia, dichiarava un
@@ -2290,6 +2266,7 @@ class ToolDispatcher:
             "ricorrente": bool(arguments.get("ricorrente")),
             "richiesto": arguments.get("richiesto"),
             "helper": arguments.get("helper") or [],
+            "livello": arguments.get("livello"),
             "frase": arguments.get("frase"),
         }
         return await self._workshop.propose(
@@ -2659,11 +2636,136 @@ class ToolDispatcher:
         return merge_calendars(calendars, answers, timezone=timezone)
 
 
+    # -- cio' che il cervello guarda (R8) ---------------------------------
+
+    async def _read_mind(self, arguments: dict[str, Any]) -> dict:
+        """Cio' che il cervello guarda e ha capito (Tappa 5, Task 8; R8): la
+        STESSA lettura che la pagina riceve dalle rotte di
+        `api/handlers_mind.py`, perche' tutte e due chiamano `MindView`
+        (fondamenta 3). Quale lettura, lo dice `cosa`, e la tabella
+        `MIND_READINGS` dice chi la serve: l'`enum` dello schema si deriva da
+        lei, e un valore nuovo e' una riga sola.
+
+        `giorno` sceglie un giorno solo, e vale per resoconti e analisi: con le
+        altre letture si rifiuta invece di essere ignorato, come ogni filtro
+        che non vale (`history`)."""
+        what = arguments["cosa"]
+        reading = MIND_READINGS[what]
+        if arguments.get("giorno") is not None and not reading.by_day:
+            daily = ", ".join(sorted(key for key, row in MIND_READINGS.items() if row.by_day))
+            return {"errore": f"«giorno» vale solo per {daily}, non per «{what}»."}
+        return await reading.serve(self, arguments.get("giorno"))
+
+    def _mind_missing(self, *, store: bool = True) -> dict | None:
+        """Cosa manca alle letture del cervello, o `None`: le letture stesse
+        (un dispatcher costruito senza), o l'archivio. Un archivio assente non
+        e' un archivio vuoto -- la rotta risponde 503, qui un `errore`."""
+        if self._mind is None:
+            return {"errore": "le letture del cervello non sono collegate."}
+        if store and self._mind.store is None:
+            return {"errore": "l'archivio del cervello non e' disponibile."}
+        return None
+
+    async def _mind_scope(self, _day) -> dict:
+        missing = self._mind_missing(store=False)
+        if missing is not None:
+            return missing
+        scope = self._mind.scope()
+        if scope is None:
+            return {"errore": "l'osservatore non e' disponibile: l'add-on e' partito senza di lui."}
+        return scope
+
+    async def _mind_objective(self, _day) -> dict:
+        return self._mind_missing() or {"obiettivo": self._mind.objective()}
+
+    async def _mind_reports(self, day: str | None) -> dict:
+        missing = self._mind_missing()
+        if missing is not None:
+            return missing
+        if not day:
+            return {"resoconti": self._mind.reports()}
+        found = self._mind.report(day)
+        if found is None:
+            # La stessa risposta della rotta: un giorno mai aggregato non e'
+            # un giorno vuoto, e si dice quando il resoconto si scrivera'.
+            return {"errore": f"il giorno {day} non e' stato aggregato",
+                    "ora_notturna": self._mind.nightly_time()}
+        return {"resoconto": found}
+
+    async def _mind_analyses(self, day: str | None) -> dict:
+        missing = self._mind_missing()
+        if missing is not None:
+            return missing
+        if not day:
+            return {"analisi": self._mind.analyses()}
+        found = self._mind.analysis(day)
+        if found is None:
+            return {"errore": f"il giorno {day} non e' stato analizzato"}
+        return {"analisi": found}
+
+    async def _mind_energy(self, _day) -> dict:
+        """La dashboard Energia (`home_space/energy.py`, piano degli attori,
+        strato 2): cio' che il proprietario ha dichiarato a Home Assistant su
+        chi e' rete, sole, batteria. E' della casa, non del cervello -- per
+        questo non passa da `MindView` -- ma e' la stessa domanda «su cosa
+        ragiona HIRIS», e il cervello la legge prima di scrivere una ricetta.
+
+        `ha_statistiche` resta `None`: l'elenco delle statistiche lo chiede il
+        giro delle ricette, e qui «non l'ho chiesto» si dice com'e'."""
+        if self._ha is None or self._home_space is None:
+            return {"errore": "la dashboard Energia si legge da Home Assistant, "
+                              "e il collegamento o la casa non ci sono."}
+        dashboard = await energy_dashboard(self._ha, self._home_space, self._turn_house())
+        if dashboard is None:
+            return {"errore": "la dashboard Energia non e' stata letta: Home Assistant "
+                              "non ha risposto."}
+        return {"energia": dashboard}
+
+
 # La tabella degli strumenti: UNA riga per strumento. Il catalogo che il
 # modello riceve, i nomi che `dispatch` accetta, i gestori, gli archivi e il
 # soffitto si chiedono a lei -- erano tre tabelle scritte a mano (D-39) e
 # sette domande al soffitto dentro i gestori (D-23). L'ordine e' quello del
 # catalogo che il modello legge.
+@dataclass(frozen=True)
+class MindReading:
+    """Una lettura dello strumento `mind`: chi la serve, e se accetta un
+    `giorno`."""
+    serve: Callable[..., Any]
+    by_day: bool = False
+
+
+#: Le letture dello strumento `mind`, per `cosa`. **E' la tabella del
+#: parametro**: l'`enum` di `MIND_TOOL_DEF` si chiede a lei, e il gestore la
+#: legge (piano della Tappa 5, Task 8, passo 5: «una riga nella tabella del
+#: parametro, nessun modulo nuovo»).
+MIND_READINGS: dict[str, MindReading] = {
+    "scope": MindReading(ToolDispatcher._mind_scope),
+    "obiettivo": MindReading(ToolDispatcher._mind_objective),
+    "resoconti": MindReading(ToolDispatcher._mind_reports, by_day=True),
+    "analisi": MindReading(ToolDispatcher._mind_analyses, by_day=True),
+    "energia": MindReading(ToolDispatcher._mind_energy),
+}
+
+MIND_TOOL_DEF = {
+    "name": "mind",
+    "description": (
+        "Cio' che il cervello di HIRIS guarda e ha capito, in sola lettura. "
+        "`cosa`: `scope` cosa guarda, perche' e cosa ha lasciato fuori; "
+        "`obiettivo` la domanda della casa; `resoconti` le misure dei giorni; "
+        "`analisi` le osservazioni dell'analista; `energia` la dashboard "
+        "Energia di Home Assistant."),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "cosa": {"type": "string", "enum": list(MIND_READINGS)},
+            "giorno": {"type": "string",
+                       "description": "AAAA-MM-GG: un giorno solo, per resoconti e analisi."},
+        },
+        "required": ["cosa"],
+    },
+}
+
 TOOLS: tuple[Tool, ...] = (
     # Solo la casa: la memoria serve al dettaglio di un ricordo, e quello lo
     # dichiara da se' quando manca (`_full_detail_sync`). Rifiutare «luci
@@ -2698,6 +2800,11 @@ TOOLS: tuple[Tool, ...] = (
          permissions=(Permission("amministrare", applies=_asks_admin_reads,
                                  refusal=ADMIN_READS_REFUSAL),)),
     Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",)),
+    # Nessun permesso, come `search` e `history` (D6 del piano): le stesse
+    # cose sono gia' visibili nella pagina del cervello a chiunque entri.
+    # Nessun archivio nella riga: ogni lettura dice da se' cosa le manca
+    # (`_mind_missing`), e l'energia non passa dalle letture del cervello.
+    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind),
 )
 
 # Le viste sulla tabella. Il catalogo che il modello riceve si DERIVA: un

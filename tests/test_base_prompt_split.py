@@ -26,16 +26,21 @@ import inspect
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import (
     BASE_IDENTITY,
-    BASE_SYSTEM_PROMPT,
     BASE_TOOL_RULES,
     ClaudeRunner,
 )
+from hiris.app.steering import SPECIES, compose_base
+
+#: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
+#: strumenti, dal compositore unico (Tappa 6, Task 7).
+CHAT_BASE = compose_base(SPECIES["chat"].tools_for_turn())
+
 
 
 def test_la_concatenazione_ordinata_e_la_costante_di_prima():
     """La fonte resta UNA: spezzare non deve cambiare di un byte cio' che il
     percorso sincrono manda al modello."""
-    assert BASE_IDENTITY + BASE_TOOL_RULES == BASE_SYSTEM_PROMPT
+    assert BASE_IDENTITY + BASE_TOOL_RULES == CHAT_BASE
 
 
 def test_base_identita_non_contiene_istruzioni_sugli_strumenti():
@@ -87,7 +92,7 @@ def test_la_riga_sulla_lingua_sta_nella_meta_che_il_ponte_emette():
         "la riga sulla lingua e' rientrata nella meta' che il ponte NON "
         "emette: e' il difetto m-2, riaperto")
     # e la fonte resta una: chi la legge da BASE_SYSTEM_PROMPT la trova ancora
-    assert riga in BASE_SYSTEM_PROMPT
+    assert riga in CHAT_BASE
 
 
 def test_il_ponte_e_il_sincrono_non_si_contraddicono_sulla_lingua():
@@ -106,18 +111,21 @@ def test_il_ponte_e_il_sincrono_non_si_contraddicono_sulla_lingua():
     assert "lingua di chi ti sta parlando" in prompts._CHAT_INSTRUCTION
 
 
-def test_il_percorso_sincrono_continua_a_comporre_la_costante_intera():
-    """I tre chiamanti sincroni non cambiano: compongono `BASE_SYSTEM_PROMPT`,
-    non le meta'. Il taglio serve al ponte e solo al ponte -- di la' gli
-    strumenti esistono davvero e le regole sono vere.
+def test_i_tre_compositori_chiamano_il_compositore_unico():
+    """Fino al 06/10/2026 i due percorsi sincroni componevano la costante
+    intera, a ogni turno, e il ponte le due meta' per conto suo: tre
+    composizioni, e la catena dava le regole sugli strumenti anche a chi non
+    ne ha (Tappa 6, Task 7; R18). Ora chiamano tutti e tre
+    `steering.compose_base`, e nessuno compone le meta' a mano.
 
-    (Che la regola arrivi davvero al modello lo verificano gia' i test di
-    `tests/test_base_prompt_memory.py`, che chiamano i runner veri con un
-    client finto. Qui si difende il livello che quelli non vedono: DA QUALE
-    costante il blocco viene preso.)"""
+    (Che il blocco arrivi davvero al modello lo verificano
+    `tests/test_base_prompt_memory.py` e `tests/test_un_turno.py`, che
+    chiamano i runner veri con un client finto.)"""
+    from hiris.app.agent import prompts
+
     for sorgente in (inspect.getsource(ClaudeRunner.chat),
-                     inspect.getsource(OpenAICompatRunner.chat)):
-        assert "BASE_SYSTEM_PROMPT" in sorgente
-        assert "BASE_IDENTITY" not in sorgente, (
-            "un percorso SINCRONO ha cominciato a comporre solo meta' BASE: "
-            "di la' gli strumenti ci sono, e la meta' sugli strumenti serve")
+                     inspect.getsource(OpenAICompatRunner.chat),
+                     inspect.getsource(prompts.build_chat_messages)):
+        assert "compose_base(" in sorgente
+        for meta in ("BASE_IDENTITY", "BASE_TOOL_RULES", "TOOL_RULES"):
+            assert meta not in sorgente.split('"""')[-1], meta

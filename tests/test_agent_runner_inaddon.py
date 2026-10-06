@@ -7,9 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
+from hiris.app.steering import SPECIES
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 
 def test_build_chat_messages_available():
@@ -89,8 +94,9 @@ def test_reason_chat_returns_fallback_reply_on_nonzero_returncode():
     # il CLI esce != 0) e' vivo e invariato, cambia solo la forma dello stdout.
     # Gli assert restano identici, ed e' proprio questo il punto: sono la prova
     # che il cambio di formato non ha perso questo ramo.
-    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
-                                        "history": [{"role": "user", "content": "ciao"}]}}
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "ciao"}]}}
 
     class _Proc:
         returncode = 1
@@ -114,8 +120,9 @@ def test_reason_chat_returns_fallback_reply_on_timeout():
     # cambio di formato non tocca, e va verificato che sia rimasto tale (con
     # `stream-json` la tentazione e' di leggere il flusso parziale del processo
     # ucciso e spacciarlo per risposta).
-    job = {"kind": "chat", "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
-                                        "history": [{"role": "user", "content": "ciao"}]}}
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
+           "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "ciao"}]}}
 
     def _raise_timeout(*a, **k):
         raise subprocess.TimeoutExpired(cmd="claude", timeout=300)
@@ -214,7 +221,7 @@ def test_run_once_chat_reasons_and_submits():
     gli strumenti: la sonda trova tutti i nomi, l'argv li collega, e la
     `reply` che torna alla reasoning API e' la risposta del modello e basta --
     nessuna riga di degrado, perche' non c'e' nessun degrado da dichiarare."""
-    job = {"job_id": "J", "nonce": "N", "kind": "chat",
+    job = {"deadline_ts": SCADENZA_LONTANA, "job_id": "J", "nonce": "N", "kind": "chat",
            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job})
@@ -256,7 +263,7 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     NON e' fra i `chat_store._TOXIC_ASSISTANT_PREFIXES` come gli altri
     sentinella del ponte -- quelli sostituiscono la risposta, questa la
     precede."""
-    job = {"job_id": "J", "nonce": "N", "kind": "chat",
+    job = {"deadline_ts": SCADENZA_LONTANA, "job_id": "J", "nonce": "N", "kind": "chat",
            "context": {"model": "sonnet", "system_prompt": "Sei HIRIS.",
                        "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job}, mcp=False)
@@ -554,7 +561,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nSalotto: luce accesa.",
-        active_tools=True)
+        active_tools=CHAT_TOOLS)
 
     # dice il vero su cio' che HA
     assert "HAI gli strumenti di HIRIS" in system
@@ -670,20 +677,23 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
 
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
-                                                active_tools=True)
-    guida = prompts._GUIDE_WITH_TOOLS
+                                                active_tools=CHAT_TOOLS)
+    guida = prompts.guide_with_tools(CHAT_TOOLS)
 
     assert guida in system
     assert prompts._GUIDE_WITHOUT_TOOLS not in system
     # la smentita del ramo di degrado non deve poter comparire qui: sarebbe
     # falsa, e la falsita' speculare e' lo stesso difetto.
     assert "quelle istruzioni non si applicano" not in guida
-    # i nomi nudi del catalogo sono tutti nominati dalla guida -- `execute`
+    # i nomi del catalogo sono tutti nominati dalla guida -- `execute`
     # compreso dalla fetta «comandare»: l'elenco si DERIVA da
     # `KNOWLEDGE_TOOLS`, cosi' uno strumento nuovo entra qui da solo
-    # invece di lasciare questo test a sorvegliarne quattro su cinque.
+    # invece di lasciare questo test a sorvegliarne quattro su cinque. Dal
+    # 06/10/2026 (Tappa 5, Task 5) col nome prefissato, e il ricollegamento
+    # dei nomi nudi e' una regola sola invece di un secondo elenco.
     for voce in KNOWLEDGE_TOOLS:
-        assert f"`{voce['name']}`" in guida
+        assert f"`{runner.mcp_name(voce['name'])}`" in guida
+    assert "col nome nudo" in guida and "STESSI strumenti" in guida
     # ...e quello che la persona nomina davvero (chat_settings.py ne scrive
     # uno solo dal 29/09/2026, «una porta sola per la casa»: vedi il commento
     # sopra `DEFAULT_SYSTEM_PROMPT`) e' proprio quello che la guida ricollega.
@@ -751,7 +761,7 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     meno. Il nome del test non conta piu' «i quattro»: contava un numero che
     non conta, ed e' cambiato una volta gia' (fetta «comandare»)."""
     argv = runner._chat_claude_args("/sistema.txt", "sonnet",
-                                    active_tools=True,
+                                    active_tools=CHAT_TOOLS,
                                     mcp_config=runner.config_mcp("http://x", "TOK"))
     opzioni = _normalizza(argv)
 

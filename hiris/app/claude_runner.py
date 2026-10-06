@@ -12,6 +12,7 @@ import anthropic
 # `provider_occurrences`, che non importa niente da qui a livello di modulo (il suo
 # unico import di `openai_compat_runner` è dentro `error_family`) -- quindi
 # nessun ciclo.
+from .home_space.topology import name_with_id
 from .provider_occurrences import error_family
 from .proxy._sanitize import truncate_with_marker
 from .usage.giro import anthropic_turn_tokens
@@ -131,8 +132,8 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # (`agent/prompts._GUIDE_WITH_TOOLS`, dove il brief le aveva messe): sono
 # regole del PRODOTTO, e questa meta' e' l'unico testo emesso SE E SOLO SE
 # gli strumenti esistono -- sempre sul percorso sincrono (che le guide non le
-# vede MAI: `chat()` qui sotto compone `BASE_SYSTEM_PROMPT`) e sul ponte solo
-# con `active_tools=True`. Scritte nella guida sarebbero arrivate al
+# vede MAI: `chat()` qui sotto compone da `steering.compose_base`) e sul
+# ponte solo quando la sonda ha trovato gli strumenti. Scritte nella guida sarebbero arrivate al
 # ponte e non alla chat vera, cioe' la divergenza fra i due percorsi che la
 # fetta «parita'» ha passato due task a chiudere. Alla guida resta il suo
 # mestiere: i nomi PREFISSATI, che qui non avrebbero senso.
@@ -161,7 +162,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 #
 # fetta "il ponte riceve il nucleo" (parita' A, Task 2, fix round 1 --
 # Critical 1 della review indipendente): la costante e' spezzata in DUE meta',
-# e `BASE_SYSTEM_PROMPT` resta la loro concatenazione, byte per byte. NESSUN
+# e la loro concatenazione e' cio' che riceve la chat, byte per byte. NESSUN
 # chiamante cambia: `chat()` qui sotto, backends/openai_compat_runner.py
 # (`chat`) e tests/test_base_prompt_memory.py continuano a
 # vedere la STESSA costante con lo STESSO testo (pinnato da
@@ -204,8 +205,8 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # su ENTRAMBI i percorsi), e `_CHAT_INSTRUCTION` e' stata allineata --
 # altrimenti i due blocchi si contraddicevano dentro lo stesso prompt.
 #
-# Il percorso sincrono non perde nulla: la riga c'e' ancora e
-# `BASE_SYSTEM_PROMPT` resta la concatenazione ordinata delle due meta'.
+# Il percorso sincrono non perde nulla: la riga c'e' ancora, e la chat
+# riceve la concatenazione ordinata delle due meta'.
 # Cambia la POSIZIONE della riga dentro quel testo -- subito dopo l'identita'
 # invece che in coda all'elenco "## Regole fondamentali", dove peraltro era
 # l'unico trattino che non parlava di strumenti. Pinnata da
@@ -254,94 +255,131 @@ BASE_IDENTITY = (
 # riportato cambiamenti), e la riga dopo vieta esplicitamente la deduzione
 # sulla causa nominando le tre ragioni banali che la rendono inutile. E' la
 # stessa disciplina del «preso nota»: non dire di sapere cio' che non sai.
-BASE_TOOL_RULES = (
-    "Hai a disposizione strumenti per cercare e guardare il dettaglio di una"
-    " cosa della casa, per salvare e richiamare ciò che ti viene detto e per"
-    " far succedere qualcosa: `execute` chiama un servizio di Home Assistant"
-    " su una o più entità — accendere, spegnere, impostare. La chiamata viene"
-    " verificata contro questa installazione prima di partire, e dopo ti arriva"
-    " ciò che Home Assistant ha visto cambiare: quello che ha riportato subito e"
-    " quello che ha annunciato un istante dopo, che HIRIS aspetta apposta per un"
-    " tempo breve e limitato."
-    " `execute` non scrive automazioni, script o scene — per costruirli usa"
-    " `propose` (vedi sotto) — e non programma niente per dopo:"
-    " ogni sua azione nasce da una richiesta di questa conversazione.\n\n"
-    "## Regole fondamentali\n"
-    "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
-    "- `execute` vuole gli id ESATTI delle entità, mai il nome con cui le persone le chiamano:"
-    " se hai solo un NOME chiama prima search e usa l'id che ti risponde.\n"
-    "- Gli id fra parentesi che vedi nell'albero della casa — `Nome (id: X)` — sono già gli"
-    " identificatori esatti: se un'area, un piano, un'automazione o uno script li porta con sé"
-    " nel contesto, usali direttamente e non chiamare search per qualcosa che hai già.\n"
-    "- Se devi risolvere più nomi nella stessa richiesta, chiama search UNA sola volta con"
-    " tutto il testo: risolve più frammenti in una frase sola, non serve una chiamata per"
-    " nome.\n"
-    "- Se devi fare più letture indipendenti — più search con riferimento, più related —"
-    " chiamale IN PARALLELO nella stessa risposta: il ciclo conta un giro per risposta, non per"
-    " chiamata.\n"
-    "- Se la richiesta riguarda una STANZA, un piano, un'etichetta o un dispositivo,"
-    " passali a `execute` cosi' come sono -- `aree`, `piani`, `etichette`,"
-    " `dispositivi` -- e NON raccogliere gli id a mano con search: li risolve Home"
-    " Assistant, che e' l'unico a saperli tutti. Raccoglierli a mano significa"
-    " spegnerne quattordici su quindici e dire di averle spente tutte.\n"
-    "- L'esito porta `bersaglio`: se `toccate` e' piu' corto di `risolte`, dillo"
-    " a chi ti sta parlando e di' quali sono rimaste fuori e perche'.\n"
-    "- Dopo aver eseguito racconta cosa è SUCCESSO, non cosa è stato chiesto: la risposta di"
-    " `execute` porta `prima`, `dopo` e `cambiato`, presi da ciò che Home Assistant ha"
-    " riportato durante la chiamata o annunciato subito dopo. Se `cambiato` non è vuoto"
-    " il comando ha avuto effetto: dillo, e di' da cosa a cosa.\n"
-    "- Se `cambiato` è vuoto, l'unica cosa vera è che Home Assistant non ha riportato nessun"
-    " cambiamento: dillo così — non «non è cambiato niente in casa», che è una cosa che non"
-    " puoi sapere — e riferisci l'`avviso` se c'è.\n"
-    "- E NON dedurne una causa. Non dire che il dispositivo non risponde, che c'è un problema"
-    " di comunicazione, che è offline o guasto: non hai nessun dato che lo dica, e mandare"
-    " qualcuno a cercare un guasto inesistente è peggio che dire «non lo so». Le ragioni vere"
-    " sono banali almeno quanto un guasto — era già così, il servizio non cambia nessuno"
-    " stato, oppure una tapparella o una valvola si sta ancora muovendo e finirà fra qualche"
-    " secondo.\n"
-    "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
-    "- Se hai chiamato uno strumento con successo, l'azione è reale:\n"
-    "  non aggiungere disclaimers come "
-    "'ho inventato', 'ho simulato' o 'non ho realmente eseguito'.\n"
-    "- Quando una richiesta ammette più letture — «accendi il bagno», e in bagno ci sono due"
-    " luci, uno scaldasalviette e un aspiratore — agisci sulla lettura più naturale e di' cosa"
-    " hai fatto: ciò che fai si annulla dicendo il contrario, quindi sbagliare costa una frase"
-    " mentre domandare costerebbe a ogni richiesta. Non c'è nessuna conferma da chiedere e"
-    " nessuna azione in attesa. Domanda solo quando una lettura naturale non c'è: in quella"
-    " stanza non c'è niente del genere, oppure i candidati sono così diversi che nessuno è ovvio.\n"
-    "- «Si annulla dicendo il contrario» ha un'eccezione, ed è ciò che non si vede guardando la"
-    " casa: **spegnere un'automazione o uno script** (`automation.turn_off`, `script.turn_off`)"
-    " non accende e non spegne niente di visibile, e resta così finché qualcuno non lo riattiva"
-    " — una regola della casa che smette di valere, e nessuno che sappia perché. Fallo se te lo"
-    " chiedono; ma dillo per esteso — quale automazione, e che resterà spenta — e non farlo mai"
-    " come effetto collaterale di un'altra richiesta.\n"
-    "- Se chi ti sta parlando ti corregge, proponi di ricordare la sua PREFERENZA GENERALE con"
-    " remember — «quando dico di accendere una stanza senza specificare altro, di solito"
-    " intendo le luci» — e mai una sostituzione della frase con delle entità («accendi il"
-    " bagno = queste due luci»): la sostituzione gli toglierebbe la possibilità di intendere"
-    " il riscaldamento con le stesse parole, e non varrebbe per nessun'altra stanza. Ciò che"
-    " ricordi è testo che rileggerai insieme alla frase di allora, non una macro che la"
-    " sostituisce.\n"
-    "- Quando chi ti sta parlando dichiara qualcosa di duraturo su di sé, sulla casa o su come"
-    " vuole le cose — una preferenza, un vincolo, un guasto, una regola operativa — chiama"
-    " remember subito, senza chiedere il permesso: basta l'affermazione, non serve che dica"
-    " 'ricordati che'. Non salvare lo stato di adesso né una richiesta una tantum, né ciò che"
-    " puoi rileggere da Home Assistant quando serve.\n"
-    "- 'Preso nota' senza aver chiamato remember è la stessa azione mai eseguita vietata sopra:"
-    " non dirlo se non hai salvato.\n\n"
-    "Per costruire qualcosa in Home Assistant — un'automazione, uno script, una"
-    " scena — usa `propose`: compone e fa validare, ma NON scrive. Mostra"
-    " a chi ti sta parlando l'anteprima che ricevi e fermati. Solo quando"
-    " risponde di procedere chiami `confirm`. **Puoi chiamarlo senza il"
-    " `proposta_id`**: applico l'unica proposta in sospeso nata in un turno"
-    " precedente, e se ce ne fosse piu' d'una te le elenco. Non"
-    " chiamare `confirm` nello stesso turno di `propose`: viene rifiutato,"
-    " e la ragione è che il sì deve essere suo. Se l'anteprima contiene una"
-    " nota sul mestiere (per esempio: quella cosa è uno script, non"
-    " un'automazione), riferiscila."
+#
+# **Ogni regola dice di quali strumenti parla** (Tappa 6, Task 7; R18). Fino
+# al 06/10/2026 il blocco era uno, e andava intero a ogni turno della catena:
+# 6.044 caratteri all'analista, che non ha strumenti, e le regole di
+# `execute` alla promessa, che non puo' toccare la casa. Ora una riga entra
+# se il turno ha almeno uno degli strumenti che nomina, o se non ne nomina
+# nessuno ed e' vera per chiunque ne abbia (`()`). Chi compone e'
+# `steering.compose_base`; i nomi stanno nella tabella degli strumenti, e
+# `tests/test_un_turno.py` li pretende da li'.
+TOOL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("execute",), (
+        "Hai a disposizione strumenti per cercare e guardare il dettaglio di una"
+        " cosa della casa, per salvare e richiamare ciò che ti viene detto e per"
+        " far succedere qualcosa: `execute` chiama un servizio di Home Assistant"
+        " su una o più entità — accendere, spegnere, impostare. La chiamata viene"
+        " verificata contro questa installazione prima di partire, e dopo ti arriva"
+        " ciò che Home Assistant ha visto cambiare: quello che ha riportato subito e"
+        " quello che ha annunciato un istante dopo, che HIRIS aspetta apposta per un"
+        " tempo breve e limitato."
+        " `execute` non scrive automazioni, script o scene — per costruirli usa"
+        " `propose` (vedi sotto) — e non programma niente per dopo:"
+        " ogni sua azione nasce da una richiesta di questa conversazione.\n\n"
+    )),
+    ((), (
+        "## Regole fondamentali\n"
+        "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
+    )),
+    (("execute",), (
+        "- `execute` vuole gli id ESATTI delle entità, mai il nome con cui le persone le chiamano:"
+        " se hai solo un NOME chiama prima search e usa l'id che ti risponde.\n"
+    )),
+    (("search",), (
+        "- Gli id fra parentesi che vedi nell'albero della casa"
+        f" — `{name_with_id('Nome', 'X')}` — sono già gli"
+        " identificatori esatti: se un'area, un piano, un'automazione o uno script li porta con sé"
+        " nel contesto, usali direttamente e non chiamare search per qualcosa che hai già.\n"
+    )),
+    (("search",), (
+        "- Se devi risolvere più nomi nella stessa richiesta, chiama search UNA sola volta con"
+        " tutto il testo: risolve più frammenti in una frase sola, non serve una chiamata per"
+        " nome.\n"
+    )),
+    (("search", "related"), (
+        "- Se devi fare più letture indipendenti — più search con riferimento, più related —"
+        " chiamale IN PARALLELO nella stessa risposta, non una dopo l'altra.\n"
+    )),
+    (("execute",), (
+        "- Se la richiesta riguarda una STANZA, un piano, un'etichetta o un dispositivo,"
+        " passali a `execute` cosi' come sono -- `aree`, `piani`, `etichette`,"
+        " `dispositivi` -- e NON raccogliere gli id a mano con search: li risolve Home"
+        " Assistant, che e' l'unico a saperli tutti. Raccoglierli a mano significa"
+        " spegnerne quattordici su quindici e dire di averle spente tutte. Le `etichette`"
+        " invece si danno per id, come le conosce Home Assistant: nessuno strumento le risolve"
+        " dal nome, quindi non indovinarne l'id.\n"
+        "- L'esito porta `bersaglio`: se `toccate` e' piu' corto di `risolte`, dillo"
+        " a chi ti sta parlando e di' quali sono rimaste fuori e perche'.\n"
+        "- Dopo aver eseguito racconta cosa è SUCCESSO, non cosa è stato chiesto: la risposta di"
+        " `execute` porta `prima`, `dopo` e `cambiato`, presi da ciò che Home Assistant ha"
+        " riportato durante la chiamata o annunciato subito dopo. Se `cambiato` non è vuoto"
+        " il comando ha avuto effetto: dillo, e di' da cosa a cosa.\n"
+        "- Se `cambiato` è vuoto, l'unica cosa vera è che Home Assistant non ha riportato nessun"
+        " cambiamento: dillo così — non «non è cambiato niente in casa», che è una cosa che non"
+        " puoi sapere — e riferisci l'`avviso` se c'è.\n"
+        "- E NON dedurne una causa. Non dire che il dispositivo non risponde, che c'è un problema"
+        " di comunicazione, che è offline o guasto: non hai nessun dato che lo dica, e mandare"
+        " qualcuno a cercare un guasto inesistente è peggio che dire «non lo so». Le ragioni vere"
+        " sono banali almeno quanto un guasto — era già così, il servizio non cambia nessuno"
+        " stato, oppure una tapparella o una valvola si sta ancora muovendo e finirà fra qualche"
+        " secondo.\n"
+    )),
+    ((), (
+        "- Non dichiarare azioni mai eseguite: se non hai"
+        " chiamato il tool, non dire di averlo fatto.\n"
+        "- Se hai chiamato uno strumento con successo, l'azione è reale:\n"
+        "  non aggiungere disclaimers come "
+        "'ho inventato', 'ho simulato' o 'non ho realmente eseguito'.\n"
+    )),
+    (("execute",), (
+        "- Quando una richiesta ammette più letture — «accendi il bagno», e in bagno ci sono due"
+        " luci, uno scaldasalviette e un aspiratore — agisci sulla lettura più naturale e di' cosa"
+        " hai fatto: ciò che fai si annulla dicendo il contrario, quindi sbagliare costa una frase"
+        " mentre domandare costerebbe a ogni richiesta. Non c'è nessuna conferma da chiedere e"
+        " nessuna azione in attesa. Domanda solo quando una lettura naturale non c'è: in quella"
+        " stanza non c'è niente del genere, oppure i candidati"
+        " sono così diversi che nessuno è ovvio.\n"
+        "- «Si annulla dicendo il contrario» ha un'eccezione, ed è ciò che non si vede guardando la"
+        " casa: **spegnere un'automazione o uno script** (`automation.turn_off`, `script.turn_off`)"
+        " non accende e non spegne niente di visibile, e resta così finché qualcuno non lo riattiva"
+        " — una regola della casa che smette di valere, e nessuno che sappia perché. Fallo se te lo"
+        " chiedono; ma dillo per esteso — quale automazione, e che resterà spenta — e non farlo mai"
+        " come effetto collaterale di un'altra richiesta.\n"
+    )),
+    (("remember",), (
+        "- Se chi ti sta parlando ti corregge, proponi di ricordare la sua PREFERENZA GENERALE con"
+        " remember — «quando dico di accendere una stanza senza specificare altro, di solito"
+        " intendo le luci» — e mai una sostituzione della frase con delle entità («accendi il"
+        " bagno = queste due luci»): la sostituzione gli toglierebbe la possibilità di intendere"
+        " il riscaldamento con le stesse parole, e non varrebbe per nessun'altra stanza. Ciò che"
+        " ricordi è testo che rileggerai insieme alla frase di allora, non una macro che la"
+        " sostituisce.\n"
+        "- Quando chi ti sta parlando dichiara qualcosa di duraturo su di sé, sulla casa o su come"
+        " vuole le cose — una preferenza, un vincolo, un guasto, una regola operativa — chiama"
+        " remember subito, senza chiedere il permesso: basta l'affermazione, non serve che dica"
+        " 'ricordati che'. Non salvare lo stato di adesso né una richiesta una tantum, né ciò che"
+        " puoi rileggere da Home Assistant quando serve.\n"
+        "- 'Preso nota' senza aver chiamato remember è la stessa azione mai eseguita vietata sopra:"
+        " non dirlo se non hai salvato.\n\n"
+    )),
+    (("propose", "confirm"), (
+        "Per costruire qualcosa in Home Assistant — un'automazione, uno script, una"
+        " scena — usa `propose`: compone e fa validare, ma NON scrive. Mostra"
+        " a chi ti sta parlando l'anteprima che ricevi e fermati. Solo quando"
+        " risponde di procedere chiami `confirm`. **Puoi chiamarlo senza il"
+        " `proposta_id`**: applico l'unica proposta in sospeso nata in un turno"
+        " precedente, e se ce ne fosse piu' d'una te le elenco. Non"
+        " chiamare `confirm` nello stesso turno di `propose`: viene rifiutato,"
+        " e la ragione è che il sì deve essere suo. Se l'anteprima contiene una"
+        " nota sul mestiere (per esempio: quella cosa è uno script, non"
+        " un'automazione), riferiscila."
+    )),
 )
 
-BASE_SYSTEM_PROMPT = BASE_IDENTITY + BASE_TOOL_RULES
+#: Le regole intere, nell'ordine: cio' che riceve un turno con TUTTI gli
+#: strumenti (la chat). Una vista sulle righe qui sopra, non una seconda copia.
+BASE_TOOL_RULES = "".join(text for _tools, text in TOOL_RULES)
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
@@ -875,7 +913,15 @@ class ClaudeRunner:
         # follow-up turns, and the API rejected the request with a 400
         # (regression introduced in v0.9.5, surfaced to the user as a generic
         # "Errore temporaneo del servizio AI" on the 2nd message of a chat).
-        system_blocks: list[dict] = [{"type": "text", "text": BASE_SYSTEM_PROMPT}]
+        # L'identita' e le regole degli strumenti di QUESTO turno, dal
+        # compositore unico (Tappa 6, Task 7): un turno senza strumenti non
+        # riceve regole su strumenti che non ha.
+        from .steering import compose_base
+
+        if tools is not None:
+            tools = list(tools)
+        base = compose_base(t["name"] for t in tools or ())
+        system_blocks: list[dict] = [{"type": "text", "text": base}]
         if system_prompt:
             system_blocks.append({"type": "text", "text": system_prompt})
         # Behaviour modifiers — stable per agent config, must precede context_str.

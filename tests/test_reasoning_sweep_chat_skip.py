@@ -97,6 +97,28 @@ async def test_expired_holistic_job_is_logged_and_left_expired(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", sorted(
+    k for k in server.JOB_SPECIES if k not in ("chat", "promessa", server.SCOPE_TURN_KIND)))
+async def test_un_turno_dichiarato_scade_e_non_e_un_orfano(tmp_path, kind, caplog):
+    """Rossa su `8529b30`: analisi, ricette e attuazione scadute finivano
+    nel registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2 della
+    Tappa 6). Le specie si chiedono alle dichiarazioni (`steering.JOB_SPECIES`);
+    chat, promessa e osservatore hanno gia' la loro strada nella spazzata.
+
+    Mutazione ESEGUITA il 06/10/2026: tolto il ramo delle specie dichiarate --
+    rossa, «orfano» per ognuna."""
+    async with _started_sweep(tmp_path) as (sweep, q, _app):
+        now = _time.time()
+        q.enqueue(kind, {}, {}, now - 10, job_id="turno", now=now - 100)
+        with caplog.at_level("WARNING", logger="hiris"):
+            await sweep()
+
+        assert q.get("turno")["status"] == "expired"
+        (riga,) = [r.getMessage() for r in caplog.records if "turno" in r.getMessage()]
+        assert "scaduto" in riga and "orfano" not in riga, riga
+
+
+@pytest.mark.asyncio
 async def test_mixed_sweep_only_non_chat_kind_logged(tmp_path, monkeypatch, caplog):
     """Both kinds expire in the same sweep pass: only the non-chat one is
     logged as orphaned; the chat one is simply left in 'expired' state

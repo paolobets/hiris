@@ -91,9 +91,9 @@ def test_gli_errori_della_storia_trovano_l_integrazione_con_la_maiuscola():
     """`house_history.error_rows` confrontava l'integrazione esatta.
 
     Mutazione ESEGUITA: il confronto torna esatto -- rossa."""
-    esatto = hh.error_rows(_q(genere="errori", integrazione="zha"), _REGISTRO)["voci"]
+    esatto = hh.error_rows(_q(cosa="errori", integrazione="zha"), _REGISTRO)["voci"]
     assert esatto
-    assert hh.error_rows(_q(genere="errori", integrazione="ZHA"), _REGISTRO)["voci"] == esatto
+    assert hh.error_rows(_q(cosa="errori", integrazione="ZHA"), _REGISTRO)["voci"] == esatto
 
 
 def _unicodedata_normalize_calls(albero) -> int:

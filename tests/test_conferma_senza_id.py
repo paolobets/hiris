@@ -40,7 +40,13 @@ import pytest
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.journal import Journal
+from hiris.app.steering import SPECIES, compose_base
 from tests.test_construction_workshop import WorkshopHouse, _intento
+
+#: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
+#: strumenti, dal compositore unico (Tappa 6, Task 7).
+CHAT_BASE = compose_base(SPECIES["chat"].tools_for_turn())
+
 
 ADESSO = 1_756_000_000.0
 
@@ -201,9 +207,8 @@ def test_la_GUIDA_dice_al_modello_che_puo_ometterlo():
     partiti.
 
     Mutazione ESEGUITA: togliere la frase dalla guida -- rossa."""
-    from hiris.app.claude_runner import BASE_SYSTEM_PROMPT
-
-    assert "senza il `proposta_id`" in BASE_SYSTEM_PROMPT, (
+    
+    assert "senza il `proposta_id`" in CHAT_BASE, (
         "la guida non dice al modello che l'id si puo' omettere")
 
 

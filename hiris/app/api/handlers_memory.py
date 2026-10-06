@@ -41,7 +41,7 @@ from ..home_space.house import House
 from ..memory.interpretation import deduci_unit, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..proxy._sanitize import sanitize_ha_value
-from .boundary import error_response
+from .boundary import error_response, json_object
 from .soffitto import restricted_person
 
 # Gli stessi campi scalari che MemoryStore.correggi() accetta
@@ -178,12 +178,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     if existing is None:
         return error_response(404, f"nessun ricordo con id {memory_id}")
 
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "corpo della richiesta non valido: atteso JSON")
-    if not isinstance(body, dict):
-        return error_response(400, "corpo della richiesta non valido: atteso un oggetto")
+    body = await json_object(request)
 
     # I campi della richiesta che non sono correggibili non si applicano in
     # silenzio (il testo, per esempio, resta giustamente intatto), ma la

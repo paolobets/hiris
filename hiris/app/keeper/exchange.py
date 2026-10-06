@@ -17,11 +17,11 @@ un'assenza da interpretare.
 from __future__ import annotations
 
 import logging
-import time
 
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
 from ..proxy._sanitize import truncate_with_marker
+from ..steering import PROMISE_SPECIES, chain_turn, enqueue_turn, start
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,11 @@ logger = logging.getLogger(__name__)
 # di AMMISSIONE, e uno strumento nuovo non ci entra da solo finche' qualcuno
 # non scrive perche'.
 SOLA_LETTURA = ("search", "related", "fetch", "history", "calendar")
+
+#: Il tetto della risposta di un turno di promessa: il valore che il turno
+#: passava scritto nella chiamata, ora con un nome (Tappa 6, Task 7). La
+#: risposta vera e' la chiamata a `conclude`, una o due frasi.
+PROMISE_MAX_TOKENS = 2000
 
 CONCLUDI_TOOL_DEF = {
     "name": "conclude",
@@ -145,7 +150,6 @@ async def interpreta_promise(app, promise: dict) -> dict:
     """
     from ..api.handlers_chat import create_tool_dispatcher
     from ..api.handlers_home_space import compose_briefing
-    from ..steering import PROMISE_SPECIES, declare_downgrade, misura_turno, who_answers
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
     # 22/08/2026 questo turno non se la faceva affatto e andava dritto al
@@ -154,15 +158,15 @@ async def interpreta_promise(app, promise: dict) -> dict:
     # casa che gira interamente sul Piano Claude Max le promesse morivano su
     # chiavi API esaurite mentre la chat funzionava, e nessuna pagina lo
     # diceva.
-    route, downgrade_reason = who_answers(app)
+    #
     # Lo stesso imbuto delle altre porte (reperto C-5, 23/09/2026): la nota
     # che la pagina della promessa mostra resta dov'era, e in piu' il ripiego
-    # si conta nell'archivio dei consumi.
-    declare_downgrade(app, agent=PROMISE_SPECIES, reason=downgrade_reason)
+    # si conta nell'archivio dei consumi -- lo dichiara la partenza
+    # (`steering.start`), quando il turno parte davvero sulla catena.
+    route, downgrade_reason, runner = start(app, PROMISE_SPECIES)
     if route == "ponte":
         return _enqueue_to_bridge(app, promise)
 
-    runner = app.get("llm_router") or app.get("claude_runner")
     if runner is None:
         return {"errore": "non c’era nessun modello a cui chiedere."}
 
@@ -180,20 +184,19 @@ async def interpreta_promise(app, promise: dict) -> dict:
         briefing = ""
 
     try:
-        async with misura_turno(app.get("usage"), runner,
-                                specie=PROMISE_SPECIES, canale="catena"):
-            answer = await runner.chat(
-                user_message=_domanda(promise),
-                system_prompt=_system_prompt(),
-                context_str=briefing,
-                conversation_history=[],
-                model="auto",
-                max_tokens=2000,
-                agent_type="promessa",
-                thinking_budget=0,
-                tools=promise_tools(),
-                dispatcher=dispatcher,
-            )
+        answer, _turn = await chain_turn(
+            runner, PROMISE_SPECIES, usage=app.get("usage"),
+            max_tokens=PROMISE_MAX_TOKENS,
+            user_message=_domanda(promise),
+            system_prompt=_system_prompt(),
+            context_str=briefing,
+            conversation_history=[],
+            model="auto",
+            agent_type="promessa",
+            thinking_budget=0,
+            tools=promise_tools(),
+            dispatcher=dispatcher,
+        )
     except Exception as error:
         logger.warning("turno della promessa %s fallito (%s: %s)",
                        promise["id"], type(error).__name__, error)
@@ -303,9 +306,6 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     archivi, con la STESSA funzione del ramo sincrono.
     """
     from ..api.handlers_home_space import compose_briefing
-    from ..api.handlers_models import bridge_deadline_min
-    from ..reasoning.queue import PRIORITY_BACKGROUND
-    from ..steering import bridge_model
 
     try:
         briefing, _summary = compose_briefing(app)
@@ -315,11 +315,10 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
         briefing = ""
 
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
-    # l'utente cambia dev'essere quella che il turno subisce.
-    deadline_min = bridge_deadline_min(app.get("models_config"))
-    now = time.time()
-    app["reasoning_queue"].enqueue(
-        "promessa",
+    # l'utente cambia dev'essere quella che il turno subisce. La leggono, col
+    # modello del proprietario (decisione 11), `steering.enqueue_turn`.
+    _job_id, deadline_min = enqueue_turn(
+        app, PROMISE_SPECIES,
         {"promessa_id": promise["id"]},
         {
             "promessa_id": promise["id"],
@@ -332,20 +331,15 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
             "history": [{"role": "user", "content": _domanda(promise)}],
             "system_prompt": _system_prompt(),
             "contesto": briefing,
-            # Il modello del proprietario, come la chat (decisione 11).
-            "model": bridge_model(app),
         },
-        now + deadline_min * 60,
-        now=now,
         # Il filo di chi l'ha chiesta (spec 2026-09-26 §2.4): nelle colonne
         # della coda, non nel contesto -- il turno resta in sola lettura
         # (`SOLA_LETTURA`) e non riceve ne' il soggetto ne' un soffitto; il
         # filo serve a chi consegna l'esito, e `claimed_chat` continua a non
         # vedere questo job perche' filtra `kind='chat'`.
-        thread=promise.get("thread"),
         # La promessa sta con i turni del cervello: solo la chat passa avanti
-        # (D4 della Tappa 6).
-        priority=PRIORITY_BACKGROUND,
+        # (D4 della Tappa 6), e la precedenza e' nella sua dichiarazione.
+        thread=promise.get("thread"),
     )
     logger.info("promessa %s: turno accodato al piano (scadenza %d min)",
                 promise["id"], deadline_min)
@@ -353,25 +347,14 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
 
 
 def _system_prompt() -> str:
-    # Fix finale ④ (review 2026-08-20): questo turno riceve lo STESSO nucleo
-    # della chat (`compose_briefing`, vedi `interpreta_promise` sopra), coi
-    # suoi `(id: X)` accanto ad aree/piani/automazioni/script -- ma senza
-    # queste due righe il prompt non lo spiegava, e il modello non aveva modo
-    # di sapere che poteva usarli direttamente invece di chiamare `search`.
-    # Il parallelismo, qui, e' vero al 100%: il turno gira su `runner.chat`,
-    # lo STESSO ciclo di `claude_runner.py` (`BASE_TOOL_RULES`) che
-    # conta un giro per risposta, non per chiamata -- a differenza del ponte
-    # (vedi `agent/prompts._GUIDE_WITH_TOOLS`, dove la stessa frase e'
-    # falsa perche' il tetto MCP conta ogni `tools/call`).
+    # Gli id fra parentesi e le letture in parallelo stavano anche qui fino
+    # al 06/10/2026 (Tappa 5, Task 5; D-56): dalla Tappa 6 (Task 7) il turno
+    # le riceve dalle regole di `search` (`steering.compose_base`), sulla
+    # catena e sul ponte. Qui resta cio' che e' solo della promessa.
     return (
         "Stai mantenendo una promessa: qualcuno ti ha chiesto, tempo fa, di "
         "guardare qualcosa a quest'ora e di dirgli com'e' andata. Adesso non c'e' "
         "nessuno davanti allo schermo.\n"
-        "Gli id fra parentesi che vedi nell'albero della casa -- `Nome (id: X)` -- "
-        "sono gia' gli identificatori esatti per gli strumenti: usali direttamente, "
-        "non serve chiamare «search» per qualcosa che hai gia'.\n"
-        "Se devi fare piu' letture indipendenti, chiamale IN PARALLELO nella stessa "
-        "risposta: il ciclo conta un giro per risposta, non per chiamata.\n"
         "Guarda con gli strumenti che hai, poi chiama SEMPRE «conclude». Se la "
         "condizione che ti era stata chiesta non si e' verificata, concludi con "
         "avvisare=false: e' la risposta giusta, non un fallimento.\n"

@@ -148,7 +148,7 @@ def prepare(arguments: dict, *, now: float, timezone: str | None):
     """
     a = dict(arguments or {})
     window = {key: a[key] for key in ("da", "a", "ore") if key in a}
-    query = parse_query({**window, "genere": "valori"}, now=now, timezone=timezone)
+    query = parse_query({**window, "cosa": "valori"}, now=now, timezone=timezone)
     if isinstance(query, dict):
         return query
     start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
