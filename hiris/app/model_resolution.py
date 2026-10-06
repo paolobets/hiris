@@ -283,13 +283,28 @@ TEMPORARY_FAILURE = "Errore temporaneo del servizio AI. Riprova tra poco."
 #: Come cominciano le frasi di `failure_reply`: le riconosce il filtro della
 #: cronologia (`chat_store._TOXIC_ASSISTANT_PREFIXES`), che non le ricopia.
 FAILURE_OPENINGS = ("Il servizio AI ha rifiutato la richiesta",
-                    "Il servizio AI non risponde all’indirizzo")
+                    "Il servizio AI non risponde all’indirizzo",
+                    "Errore temporaneo del servizio AI")
 _WHERE_IT_IS_FIXED = "si sistema nella pagina Modelli."
 
 
 def _quoted(said: str | None) -> str:
     """Cio' che il provider ha detto, fra virgolette, o niente."""
     return f": «{said}»" if said else ""
+
+
+def _sentence(text: str, said: str | None) -> str:
+    """`text` chiuso da un punto, se la citazione con cui finisce non ne ha
+    gia' uno: «…too low.». sarebbe un punto doppio (giro 43)."""
+    return text if said and said[-1] in ".!?…" else text + "."
+
+
+def _temporary(code: int | None) -> bool:
+    """Se lo stato HTTP dice da se' che la stessa richiesta puo' riuscire piu'
+    tardi: il 429 (RFC 6585 §4, con `Retry-After`) e i 5xx, dove e' il server
+    a non aver saputo servire una richiesta valida (RFC 9110 §15.6). Un 4xx e'
+    un rifiuto della richiesta. Revisione del giro 43, 06/10/2026."""
+    return isinstance(code, int) and (code == 429 or 500 <= code <= 599)
 
 
 def failure_reply(family: str, code: int | None, said: str | None = None) -> str:
@@ -299,10 +314,12 @@ def failure_reply(family: str, code: int | None, said: str | None = None) -> str
     ha una causa: le stesse parole della pagina Modelli.
 
     Il ramo `altro` (un 400, un 500, un 429, un guasto senza codice) non
-    dice a chi legge cosa fare, e inventargli un'azione sarebbe l'ipotesi che
-    questo prodotto non fa: se il provider ha detto qualcosa si cita, e basta
-    (G39-2: «prompt is too long» non si sistema nella pagina Modelli);
-    altrimenti resta `TEMPORARY_FAILURE`."""
+    dice a chi legge dove si sistema, e inventargli un'azione sarebbe
+    l'ipotesi che questo prodotto non fa (G39-2: «prompt is too long» non si
+    sistema nella pagina Modelli). Lo stato HTTP dice soltanto se riprovare
+    serve (`_temporary`): un 429 o un 5xx e' temporaneo, un altro 4xx e' un
+    rifiuto. Cio' che il provider ha detto si cita in tutti e due; un guasto
+    senza codice resta `TEMPORARY_FAILURE`."""
     fra_parentesi = f" ({code})" if isinstance(code, int) else ""
     if family == "credenziale":
         cause = _CREDENTIAL_CAUSE.get(code if isinstance(code, int) else 0)
@@ -314,9 +331,12 @@ def failure_reply(family: str, code: int | None, said: str | None = None) -> str
                 "Un altro modello si sceglie nella pagina Modelli.")
     if family == "irraggiungibile":
         return f"{FAILURE_OPENINGS[1]} configurato: {_WHERE_IT_IS_FIXED}"
-    if said:
-        return f"{FAILURE_OPENINGS[0]}{fra_parentesi}{_quoted(said)}."
-    return TEMPORARY_FAILURE
+    if not isinstance(code, int):
+        return TEMPORARY_FAILURE
+    if _temporary(code):
+        return (_sentence(f"{FAILURE_OPENINGS[2]}{fra_parentesi}{_quoted(said)}", said)
+                + " Riprova tra poco.")
+    return _sentence(f"{FAILURE_OPENINGS[0]}{fra_parentesi}{_quoted(said)}", said)
 
 
 def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: float) -> str:

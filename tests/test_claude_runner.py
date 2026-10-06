@@ -751,7 +751,7 @@ async def test_un_credito_esaurito_arriva_al_router_col_400_e_la_frase_del_provi
     # (G36-1): la frase cita il provider, come la pagina Modelli, e non
     # inventa un'azione (G39-2).
     assert info.value.friendly_message == (
-        "Il servizio AI ha rifiutato la richiesta (400): «Your credit balance is too low.»."
+        "Il servizio AI ha rifiutato la richiesta (400): «Your credit balance is too low.»"
     )
     assert info.value.said == "Your credit balance is too low."
     assert "temporaneo" not in info.value.friendly_message
