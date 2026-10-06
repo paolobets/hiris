@@ -320,7 +320,6 @@ async def test_una_proposta_NON_COSTRUIBILE_finisce_nell_archivio_delle_proposte
     righe = store.proposals()
     assert len(righe) == 1
     assert righe[0]["testo"].startswith("Sposta la lavatrice")
-    assert righe[0]["chi_applica"] == "tu"
     assert righe[0]["impronta"] == "dev1|prelievo|None|1"
     assert righe[0]["prova"]["base"] == 19, "senza la prova non si riapre mai"
 
@@ -452,7 +451,6 @@ async def test_col_PONTE_una_proposta_da_fare_a_mano_si_ARCHIVIA(casa, piano_acc
 
     righe = store.proposals()
     assert [r["impronta"] for r in righe] == ["dev1|prelievo|None|1"]
-    assert righe[0]["chi_applica"] == "tu"
     assert store.analysis(OGGI)["attuazione"]["su_fondamento"] == "aaa"
     assert modello.chiamate == 0
 

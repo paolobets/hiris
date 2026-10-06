@@ -89,7 +89,7 @@ async def _close(request, outcome: str) -> web.Response:
     except Exception:
         body = {}
     nota = str((body or {}).get("nota") or "").strip() or None
-    if not store.close_proposal(ident, outcome, why=nota, now_ts=time.time()):
+    if not store.close_proposal(ident, outcome, why=nota):
         return error_response(409, _NOT_PENDING)
     return web.json_response({"proposta": _row(store, ident)})
 

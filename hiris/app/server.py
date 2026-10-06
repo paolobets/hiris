@@ -2289,7 +2289,7 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
             # Il livello di una proposta da fare a mano lo dira' il proponente
             # (Task 4.2): questo contratto non lo chiede, e una frase in prosa
             # non porta i domini su cui il codice imporrebbe `alto`.
-            chi_applica="tu", stakes=None, now_ts=time.time())
+            stakes=None, now_ts=time.time())
         decided[key] = actuator.evidence_of(row)
 
 

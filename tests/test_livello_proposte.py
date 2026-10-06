@@ -164,7 +164,7 @@ def test_la_proposta_da_fare_a_mano_porta_lo_stesso_campo(tmp_path):
     try:
         store.add_proposal(text="sposta l'irrigazione alle 6", perche="piove",
                            fingerprint="s|m|k|1", prova={"base": 19},
-                           chi_applica="tu", stakes="medio", now_ts=100.0)
+                           stakes="medio", now_ts=100.0)
         assert store.proposals()[0]["livello"] == "medio"
     finally:
         store.close()

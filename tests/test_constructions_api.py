@@ -573,10 +573,10 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
     app = _app(FintoArchivio(righe))
     osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
     attesa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f1", prova={},
-                                       chi_applica="tu", stakes=None, now_ts=5.0)
+                                       stakes=None, now_ts=5.0)
     chiusa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f2", prova={},
-                                       chi_applica="tu", stakes=None, now_ts=4.0)
-    osservazioni.close_proposal(chiusa, osservazioni.PROPOSAL_OUTCOMES[0], now_ts=6.0)
+                                       stakes=None, now_ts=4.0)
+    osservazioni.close_proposal(chiusa, osservazioni.PROPOSAL_OUTCOMES[0])
     app["observations"] = osservazioni
     try:
         corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))

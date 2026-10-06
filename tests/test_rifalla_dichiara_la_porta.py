@@ -109,7 +109,7 @@ def casa(tmp_path):
         text="Sposta la lavatrice nel primo pomeriggio",
         perche="il prelievo si concentra la mattina",
         fingerprint="dev1|prelievo|None|1",
-        prova={"base": 19}, chi_applica="tu", stakes=None, now_ts=100.0)
+        prova={"base": 19}, stakes=None, now_ts=100.0)
     app = {
         "observations": store,
         "llm_router": _Modello(),
