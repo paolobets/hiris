@@ -1,5 +1,38 @@
 # HIRIS — Changelog
 
+## [3.77.0] — Il dato fermo e la dashboard Energia: gli attori, strati 1 e 2 (2026-10-06)
+
+### Perche'
+
+Il resoconto della casa scriveva come vere delle misure fatte su una fonte bloccata: il 30/09
+l'inverter si e' fermato per un giorno e mezzo e HIRIS ha scritto «produzione 0 kWh», con copertura
+piena. E le ricette di energia indovinavano i ruoli (produzione, prelievo, batteria) dai nomi,
+mentre Home Assistant li dichiara nella dashboard Energia. Questo rilascio fa vedere il blocco e
+fa leggere i ruoli dove HA li dichiara.
+
+### Cosa cambia per chi usa HIRIS
+
+- **Il dato fermo.** Quando tutte le entita' di un dispositivo si fermano insieme mentre il resto
+  della casa si muove, e a quell'ora non era mai successo nei giorni prima, le misure di quel
+  tratto non si calcolano: il resoconto dice «ferma», dalle … alle …, in ora della casa, invece di
+  un numero falso. Un contatore che si blocca e recupera prima di sera tiene il suo totale. Sui 30
+  giorni veri della casa la regola ha preso tutti i 58 blocchi, e ne ha trovato uno che non si
+  conosceva.
+- **La dashboard Energia di Home Assistant entra nelle ricette.** Le ricette di energia citano i
+  ruoli che la dashboard dichiara (rete, solare, batteria, stato di carica) e ricordano contro quale
+  dashboard sono state scritte: se la cambi, si riscrivono. Una dashboard vuota non cambia niente.
+- **Le ricette si possono leggere intere** dalla pagina del sapere: con quali entita' e quali passi
+  e' scritta ognuna.
+
+### Da sapere
+
+- L'autoconsumo dell'inverter oggi esce piu' basso del vero (0,34–0,38 contro 0,78–0,97 nei giorni
+  dal 03 al 05/10), perche' la ricetta usa un contatore che toglie l'energia mandata in batteria. Si
+  corregge quando le ricette si riscrivono coi ruoli della dashboard, dopo questo aggiornamento: la
+  voce resta aperta finche' non e' verificata sui numeri veri.
+- La batteria non dichiara la capacita', e la casa non dichiara acqua ne' gas: queste voci restano
+  fuori.
+
 ## [3.76.0] — Una resa, gli strumenti, il ponte: le Tappe 4, 5 e 6 di «Una fonte sola di verità», e la cronaca riparata (2026-10-05)
 
 ### Perche'
