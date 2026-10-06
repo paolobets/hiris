@@ -236,6 +236,37 @@ app.router.add_get("/api/dismessa", h)
     assert [r.nome for r in reperti] == ["/api/dismessa"]
 
 
+def test_rotta_nominata_solo_in_un_commento_JS_resta_senza_chiamanti(tmp_path):
+    """N65-1 del giro 65: il frontend si leggeva crudo, e un commento in
+    testa a una pagina che nomina la rotta («`POST /api/mind/scope`») la
+    teneva viva anche senza nessuna chiamata. Misurato dal revisore: con la
+    chiamata rinominata il cancello restava verde.
+
+    Mutazione ESEGUITA: tornare al frontend crudo -- rossa."""
+    app = _scrivi(tmp_path, "server.py", 'app.router.add_post("/api/morta", h)')
+    fe = _scrivi(tmp_path, "pagina.js", """/* La scheda scrive con `POST /api/morta`. */
+// e anche qui: api/morta
+fetch('api/viva');
+""")
+    reperti = censimento.censisci_rotte([app], [fe], [])
+    assert [r.nome for r in reperti] == ["/api/morta"]
+
+
+def test_rotta_in_una_stringa_JS_resta_viva_anche_composta(tmp_path):
+    """La guardia opposta: spogliare i commenti non deve spogliare le
+    stringhe, che SONO le chiamate -- nemmeno quelle composte a pezzi o in un
+    modello con `${}`."""
+    app = _scrivi(tmp_path, "server.py", """
+app.router.add_post("/api/mind/scope", h1)
+app.router.add_get("/api/item/{id}", h2)
+""")
+    fe = _scrivi(tmp_path, "pagina.js", """var x = 1 / 2; // una divisione, non una regex
+write('api/mind/scope', { a: 1 });
+fetch(`api/item/${x}`);
+""")
+    assert censimento.censisci_rotte([app], [fe], []) == []
+
+
 def test_funzione_senza_chiamanti(tmp_path):
     app = _scrivi(tmp_path, "modulo.py", '''
 def viva():
@@ -1025,8 +1056,10 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 # ── Le eccezioni non crescono da sole (revisione indipendente del 02/10/2026) ─
 
 #: Le eccezioni AMMESSE, per nome, ognuna con la voce del registro che la
-#: giustifica -- o `None` per l'unico errore del rilevatore, che non ha una
-#: voce perche' non c'e' niente da togliere. E' una lista di ammissione: non
+#: giustifica. L'unico errore del rilevatore (`get_config`, chiamato via
+#: `getattr`) e' uscito il 06/10/2026: dal riallineamento il client manda
+#: `get_config` anche sul websocket di lunga vita, e il rilevatore lo vede.
+#: E' una lista di ammissione: non
 #: ricopia il file delle eccezioni, enuncia il cancello. Chiude per difetto:
 #: un'eccezione nuova, o una che cambia voce, si decide QUI, davanti a tutti.
 #:
@@ -1034,7 +1067,6 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 #: scrivere quelle due parole -- o citare una voce aperta qualunque -- per
 #: passare (eseguito dal revisore il 02/10/2026).
 ADMITTED_EXCEPTIONS = {
-    ("simbolo-solo-test", "get_config"): None,
     ("simbolo-solo-test", "operable_domains"): "M-61",
     ("rotta-solo-test", "/api/misure"): "M-22",
 }

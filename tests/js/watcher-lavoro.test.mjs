@@ -73,6 +73,11 @@ function montaConServer(opts = {}) {
           : { obiettivo: OBIETTIVO_DI_PROVA, scritto: true },
         opts.obiettivoStatus);
     }
+    if (u.indexOf('api/mind/scope') === 0) {
+      if (opts.scopeRotto) throw new Error('rete giu\'');
+      return jsonResponse(opts.scope !== undefined ? opts.scope : { decisione: {} },
+        opts.scopeStatus);
+    }
     if (u.indexOf('api/mind/watching') === 0) {
       if (opts.osservateRotto) throw new Error('rete giu\'');
       return jsonResponse(
@@ -922,4 +927,129 @@ test('seam _rendiScope: nessun «summary» negli elenchi di questa scheda (spec 
   }));
 
   assert.equal(corpo.querySelectorAll('summary').length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Togli e rimetti (D9 degli attori, Task 3.7): il proprietario toglie una
+// cosa della casa da «Cosa guardo» e rimette dentro una cosa di «Lasciato
+// fuori», con `POST /api/mind/scope`. Disegno approvato da Paolo il
+// 06/10/2026 dopo il parere UX.
+// ---------------------------------------------------------------------------
+
+/* Il bottone che CONFERMA: dentro il motivo aperto, dopo quello che l'ha
+   aperto (che resta nel DOM, nascosto, con lo stesso verbo). */
+function conferma(document, testo) {
+  return [...document.querySelectorAll('button')].filter((b) => b.textContent === testo && !b.hidden)
+    .pop();
+}
+
+function corpiScope(ctx) {
+  return ctx.corpiInviati.map((c) => JSON.parse(c)).filter((c) => 'dentro' in c);
+}
+
+test('mount: «Togli» manda la decisione col motivo scritto, rilegge la scheda e dice dove è finita la riga', async () => {
+  // Mutazione che la uccide: mandare `dentro: true`, o non rileggere la scheda.
+  const ctx = montaConServer({ watching: paginaScope({ watching: [voce('sensor.vicino')] }) });
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(20);
+
+  bottone(ctx.document, 'Togli').click();
+  const campo = ctx.document.querySelector('input[type="text"]');
+  assert.ok(campo, 'il motivo si apre in linea');
+  assert.equal(ctx.document.activeElement, campo, 'il fuoco va nel campo');
+  campo.value = 'è il sensore del vicino';
+  conferma(ctx.document, 'Togli').click();
+  await tick(20);
+
+  assert.deepEqual(corpiScope(ctx), [{ soggetto: 'sensor.vicino', dentro: false,
+    motivo: 'è il sensore del vicino' }]);
+  assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/watching') === 0).length, 2,
+    'dopo la scrittura la scheda si rilegge intera');
+  const stato = ctx.document.querySelector('[role="status"]');
+  assert.ok(stato, 'l’esito sta in un’area di stato');
+  assert.match(stato.textContent, /tolto da ciò che guardo.*Lasciato fuori/);
+  assert.equal(ctx.document.activeElement, stato, 'il fuoco va sull’esito, la riga non c’è più');
+  assert.ok(bottone(stato, 'Rimetti dentro'), 'e l’annullamento è a portata di mano');
+});
+
+test('mount: un motivo vuoto non si manda come testo, e lo decide il server', async () => {
+  const ctx = montaConServer({ watching: paginaScope({ watching: [voce('sensor.x')] }) });
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(20);
+  bottone(ctx.document, 'Togli').click();
+  conferma(ctx.document, 'Togli').click();
+  await tick(20);
+  assert.deepEqual(corpiScope(ctx), [{ soggetto: 'sensor.x', dentro: false, motivo: null }]);
+});
+
+test('mount: un rifiuto dice perché e non butta il motivo scritto', async () => {
+  // Mutazione che la uccide: ricaricare la scheda anche quando la rotta rifiuta.
+  const ctx = montaConServer({
+    watching: paginaScope({ watching: [voce('sensor.x')] }),
+    scopeStatus: 403, scope: { error: 'solo chi amministra può decidere cosa si guarda' },
+  });
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(20);
+  bottone(ctx.document, 'Togli').click();
+  ctx.document.querySelector('input[type="text"]').value = 'non mi serve';
+  conferma(ctx.document, 'Togli').click();
+  await tick(20);
+
+  assert.match(ctx.document.getElementById('route-outlet').textContent, /solo chi amministra/);
+  assert.equal(ctx.document.querySelector('input[type="text"]').value, 'non mi serve');
+  assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/watching') === 0).length, 1);
+});
+
+test('mount: Esc chiude il motivo e riporta il fuoco su «Togli»', async () => {
+  const ctx = montaConServer({ watching: paginaScope({ watching: [voce('sensor.x')] }) });
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(20);
+  const togli = bottone(ctx.document, 'Togli');
+  togli.click();
+  const campo = ctx.document.querySelector('input[type="text"]');
+  campo.dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(ctx.document.querySelector('input[type="text"]'), null);
+  assert.equal(ctx.document.activeElement, togli);
+  assert.equal(corpiScope(ctx).length, 0, 'Esc non scrive niente');
+});
+
+test('seam _rendiScope: «Togli» c’è sulle cose della casa decise, non sui soggetti tecnici né sulle condizioni di sistema', () => {
+  // Mutazione che la uccide: togliere la guardia `haComando`.
+  const { corpo } = rendiScope(paginaScope({ watching: [
+    voce('sensor.casa', { nome: 'Casa' }), condizione('sensor.guasto'),
+    voce('log:zha', { autore: null, quando: null }),
+  ] }));
+  const togli = [...corpo.querySelectorAll('button')].filter((b) => b.textContent === 'Togli');
+  assert.equal(togli.length, 1, togli.map((b) => b.getAttribute('aria-label')).join(' | '));
+  assert.equal(togli[0].getAttribute('aria-label'), 'Togli Casa da ciò che guardo',
+    'centinaia di «Togli» uguali non si distinguono: l’etichetta nomina la cosa');
+});
+
+test('seam _rendiScope: ciò che hai tolto tu sta in testa a «Lasciato fuori», a parte dai tipi, col suo «Rimetti dentro»', () => {
+  // Mutazione che la uccide: lasciare le righe del proprietario dentro i tipi.
+  const { corpo } = rendiScope(paginaScope({ fuori: [
+    { soggetto: 'sensor.vicino', motivo: 'è del vicino', autore: 'owner', quando: 1787000000 },
+    { soggetto: 'sensor.uptime', motivo: 'di servizio', autore: 'observer', quando: 1787000000 },
+  ] }));
+  const testo = corpo.textContent;
+  assert.match(testo, /Tolto da te \(1\)/);
+  assert.ok(testo.indexOf('Tolto da te') < testo.indexOf('1 soggetti, in 1 tipo'),
+    'il gruppo del proprietario viene prima dei tipi');
+  assert.ok(bottone(corpo, 'Rimetti dentro'), 'la riga tolta da te si rimette da qui');
+});
+
+test('mount: «Rimetti dentro» su una cosa esclusa dall’osservatore la rende una tua decisione, e lo dice', async () => {
+  const fuori = [{ soggetto: 'sensor.pioggia', motivo: 'non pesa', autore: 'observer',
+    quando: 1787000000 }];
+  const ctx = montaConServer({ watching: paginaScope({ fuori }) });
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(20);
+  apriIn(ctx.document.getElementById('route-outlet'), 'Vedi');
+  bottone(ctx.document, 'Rimetti dentro').click();
+  conferma(ctx.document, 'Rimetti dentro').click();
+  await tick(20);
+
+  assert.deepEqual(corpiScope(ctx), [{ soggetto: 'sensor.pioggia', dentro: true, motivo: null }]);
+  assert.match(ctx.document.querySelector('[role="status"]').textContent,
+    /tua decisione: l’osservatore non lo toglierà più/);
 });

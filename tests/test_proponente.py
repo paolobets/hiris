@@ -12,6 +12,7 @@ stanno in `tests/test_mind_actuator_guards.py`.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -139,7 +140,7 @@ async def test_l_officina_RIFIUTA_dentro_il_turno_il_modello_corregge(casa):
     accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
     assert [o["esito"] for o in accanto] == ["costruita", "niente"]
     assert accanto[0]["proposta_id"] == _id_nato(modello.risultati)
-    assert app["constructions"].read(accanto[0]["proposta_id"])["origine"] == \
+    assert app["constructions"].read(accanto[0]["proposta_id"], now=time.time())["origine"] == \
         steering.PROPOSER_SPECIES
     assert app["usage"].turns()[0]["outcome"] == steering.SUCCEEDED
 
@@ -186,6 +187,49 @@ async def test_un_id_nato_in_UN_ALTRO_turno_non_vale(casa):
     esito = await pr.proposer_round(app)
 
     assert any(vecchia in p for p in esito["problemi"])
+
+
+@pytest.mark.asyncio
+async def test_una_COSTRUITA_di_una_risposta_RIFIUTATA_si_cita_non_si_rifa(casa):
+    """Revisione, giro 61: il modello chiama `propose`, ma la sua risposta si
+    rifiuta. La proposta resta in attesa senza impronta, e al giro dopo la
+    stessa domanda farebbe nascere una seconda bozza (fondamenta 2). Il giro
+    gliela rimostra, e il modello la cita invece di rifarla.
+
+    Mutazioni ESEGUITE (06/10/2026): `_built_in` senza le non citate -- rossa,
+    l'id si rifiuta; la domanda senza l'elenco -- rossa, l'id non c'e'."""
+    app = casa
+    app["llm_router"] = _Modello(
+        ([("propose", _INTENZIONE_BUONA)], "non e' un JSON"),
+        ([], lambda risultati: json.dumps({"esiti": [
+            {"osservazione": 0, "esito": "costruita",
+             "proposta_id": _id_nato(risultati)},
+            {"osservazione": 1, "esito": "niente", "perche": "abitudine"}]})))
+
+    primo = await pr.proposer_round(app)
+    secondo = await pr.proposer_round(app)
+
+    ident = _id_nato(app["llm_router"].risultati)
+    assert primo["problemi"] and secondo["problemi"] == []
+    assert ident in app["llm_router"].domande[1]
+    (riga,) = app["constructions"].list(now=time.time())
+    assert (riga["id"], riga["impronta"]) == (ident, observation_key(osservazioni()[0]))
+    assert app["constructions"].unbound(actor=steering.PROPOSER_SPECIES,
+                                        now=time.time()) == []
+
+
+def test_una_proposta_risponde_a_UNA_domanda_sola():
+    """Lo stesso id citato da due esiti: il secondo si rifiuta, o una proposta
+    sola chiuderebbe due osservazioni.
+
+    Mutazione ESEGUITA (06/10/2026): `apply_outcomes` senza il controllo dei
+    citati -- rossa."""
+    risposta = json.dumps({"esiti": [
+        {"osservazione": 0, "esito": "costruita", "proposta_id": "p1"},
+        {"osservazione": 1, "esito": "costruita", "proposta_id": "p1"}]})
+    esito = pt.apply_outcomes(osservazioni(), risposta, built=frozenset({"p1"}))
+    assert [o["esito"] for o in esito["esiti"]] == ["costruita"]
+    assert any("gia' citata" in p for p in esito["problemi"])
 
 
 def test_un_osservazione_SPIEGATA_dall_analista_non_arriva_al_proponente():
@@ -293,9 +337,11 @@ async def test_A_MANO_va_nell_archivio_gemello_con_l_impronta_e_la_prova(casa):
     assert proposta["impronta"] == observation_key(osservazioni()[0])
     assert proposta["prova"] == evidence_of(osservazioni()[0])
     accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
-    # «a mano» non si copia accanto all'osservazione: la proposta ha gia'
-    # l'impronta.
-    assert [o["esito"] for o in accanto] == ["niente"]
+    # «a mano» sta accanto all'osservazione col solo id: testo, perche' e
+    # prova vivono nell'archivio gemello, non si copiano.
+    assert accanto[0] == {"impronta": proposta["impronta"], "esito": "a_mano",
+                          "proposta_id": proposta["id"]}
+    assert [o["esito"] for o in accanto] == ["a_mano", "niente"]
 
 
 @pytest.mark.asyncio
@@ -307,22 +353,167 @@ async def test_un_giro_dopo_non_RICHIEDE_cio_che_ha_un_esito(casa):
     assert len(app["llm_router"].domande) == 1
 
 
-def test_una_proposta_RIFIUTATA_torna_in_coda_solo_se_la_prova_cambia():
-    """La promessa della rotta delle proposte (`handlers_proposals`): fino al
-    06/10/2026 non era vera, il giro saltava ogni impronta gia' vista.
+def _decisa(osservazione, *, aperta, by_hand, creata_ts=1.0, ident="p1", **prova):
+    return {"prova": {**evidence_of(osservazione), **prova}, "aperta": aperta,
+            "creata_ts": creata_ts, "id": ident, "a_mano": by_hand}
 
-    Mutazione ESEGUITA (06/10/2026): `open_observations` che salta ogni
+
+def test_una_proposta_RIFIUTATA_torna_in_coda_solo_se_la_prova_cambia():
+    """La promessa della rotta delle proposte (`handlers_proposals`), e S-26:
+    una decisa vale per la prova contro cui e' stata decisa, che sia a mano o
+    costruita.
+
+    Mutazione ESEGUITA (06/10/2026): `already_answered` che salta ogni
     impronta decisa a qualunque prova -- rossa."""
     riga = osservazioni()[0]
     chiave = observation_key(riga)
-    analisi = {"osservazioni": [riga]}
-    decise = {chiave: evidence_of(riga)}
-    assert pt.open_observations(analisi, decise) == []
     cambiata = {**riga, "base": 25}
-    assert pt.open_observations({"osservazioni": [cambiata]}, decise) == [cambiata]
-    # In attesa: non si duplica, a qualunque prova.
-    assert pt.open_observations({"osservazioni": [cambiata]}, decise,
-                                waiting={chiave}) == []
+    for by_hand in (True, False):
+        decise = {chiave: _decisa(riga, aperta=False, by_hand=by_hand)}
+        assert pt.open_observations({"osservazioni": [riga]}, decise) == []
+        assert pt.open_observations({"osservazioni": [cambiata]}, decise) == [cambiata]
+
+
+def test_una_COSTRUITA_in_attesa_non_si_duplica_una_A_MANO_torna_al_turno():
+    """Una costruita in attesa non si richiede, a qualunque prova; una da
+    fare a mano in attesa torna al turno, perche' adesso il modello potrebbe
+    costruirla (D24-1, scelta del proprietario del 06/10/2026).
+
+    Mutazioni ESEGUITE (06/10/2026): `already_answered` che salta ogni aperta
+    -- rossa sulla a mano; che non ne salta nessuna -- rossa sulla costruita."""
+    riga = osservazioni()[0]
+    chiave = observation_key(riga)
+    cambiata = {**riga, "base": 25}
+    costruita = {chiave: _decisa(riga, aperta=True, by_hand=False)}
+    manuale = {chiave: _decisa(riga, aperta=True, by_hand=True)}
+    assert pt.open_observations({"osservazioni": [cambiata]}, costruita) == []
+    assert pt.open_observations({"osservazioni": [riga]}, manuale) == [riga]
+
+
+def test_per_impronta_vince_la_proposta_piu_RECENTE_dei_due_archivi():
+    """S-26 e D24-2: le due code si fondono, e decide l'ultima. Una a mano
+    rifiutata ieri e una costruita in attesa oggi sulla stessa domanda: la
+    domanda non si richiede.
+
+    Mutazione ESEGUITA (06/10/2026): `latest_decided` che tiene la prima --
+    rossa."""
+    riga = osservazioni()[0]
+    chiave = observation_key(riga)
+    ieri = {chiave: _decisa(riga, aperta=False, by_hand=True, creata_ts=1.0, base=3)}
+    oggi = {chiave: _decisa(riga, aperta=True, by_hand=False, creata_ts=2.0)}
+    for fonti in ((ieri, oggi), (oggi, ieri)):
+        assert pt.latest_decided(*fonti)[chiave]["creata_ts"] == 2.0
+    assert pt.open_observations({"osservazioni": [riga]},
+                                pt.latest_decided(ieri, oggi)) == []
+
+
+@pytest.mark.asyncio
+async def test_chi_SALTA_una_domanda_lo_scrive_nel_registro(casa, caplog):
+    """S-26: il 01/10/2026 una proposta e' stata potata in silenzio, e la
+    diagnosi e' costata il Task 4.0. Ogni giro che salta lo dice, una riga.
+
+    Mutazione ESEGUITA (06/10/2026): `_open` senza la riga nel registro --
+    rossa."""
+    app = casa
+    riga = osservazioni()[0]
+    ident = app["observations"].add_proposal(
+        text="x", perche="y", fingerprint=observation_key(riga),
+        prova=evidence_of(riga), stakes=None, now_ts=1.0)
+    app["observations"].close_proposal(ident, "rifiutata")
+    app["llm_router"] = _Modello(([], json.dumps({"esiti": [
+        {"osservazione": 0, "esito": "niente", "perche": "abitudine"}]})))
+
+    with caplog.at_level("INFO", logger="hiris.app.mind.proposer_round"):
+        await pr.proposer_round(app)
+
+    assert "[0] Scaldabagno" not in app["llm_router"].domande[0]
+    assert any(observation_key(riga) in r.getMessage()
+               and "stessa prova" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_una_COSTRUITA_porta_impronta_e_prova_e_non_torna(casa):
+    """D24-2: la riga della costruita porta l'impronta e la prova della sua
+    domanda. Il giorno dopo, con la stessa prova, la domanda non torna
+    all'officina; e torna a prova cambiata quando la proposta e' decisa.
+
+    Revisione, giro 60: in h4tcbr la prova si perdeva in `Workshop.propose`
+    (il nome del parametro riusato per il motivo della validazione). Qui la
+    scrive il giro dopo il turno, con `answers`, e `propose` non la tocca.
+
+    Mutazione ESEGUITA (06/10/2026): `_settle` che passa `prova=None` ad
+    `answers` -- rossa sulla prova della riga."""
+    app = casa
+    app["llm_router"] = _Modello((
+        [("propose", _INTENZIONE_BUONA)],
+        lambda risultati: json.dumps({"esiti": [
+            {"osservazione": 0, "esito": "costruita",
+             "proposta_id": _id_nato(risultati)},
+            {"osservazione": 1, "esito": "niente", "perche": "abitudine"}]})))
+    await pr.proposer_round(app)
+
+    ident = pt.outcomes_of(app["observations"].analysis(OGGI))[0]["proposta_id"]
+    riga = app["constructions"].read(ident, now=time.time())
+    assert riga["impronta"] == observation_key(osservazioni()[0])
+    assert riga["prova"] == evidence_of(osservazioni()[0])
+
+    # Un'analisi nuova con la stessa osservazione: in attesa, non si richiede.
+    app["observations"].replace_analysis(OGGI, {"osservazioni": osservazioni()[:1]})
+    assert await pr.proposer_round(app) is None
+    assert len(app["llm_router"].domande) == 1
+
+
+@pytest.mark.asyncio
+async def test_una_COSTRUITA_SUPERA_la_proposta_a_mano_in_attesa(casa):
+    """D24-1: una proposta a mano in attesa da ieri torna al turno; se ora il
+    modello la costruisce, quella a mano si chiude `superata`.
+
+    Mutazione ESEGUITA (06/10/2026): `_settle` senza `close_proposal` --
+    rossa, la proposta a mano resta «attesa»."""
+    app = casa
+    riga = osservazioni()[0]
+    manuale = app["observations"].add_proposal(
+        text="Abbassa il termostato", perche="notturno",
+        fingerprint=observation_key(riga), prova=evidence_of(riga),
+        stakes=None, now_ts=1.0)
+    app["llm_router"] = _Modello((
+        [("propose", _INTENZIONE_BUONA)],
+        lambda risultati: json.dumps({"esiti": [
+            {"osservazione": 0, "esito": "costruita",
+             "proposta_id": _id_nato(risultati)},
+            {"osservazione": 1, "esito": "niente", "perche": "abitudine"}]})))
+
+    await pr.proposer_round(app)
+
+    assert "[0] Scaldabagno" in app["llm_router"].domande[0]
+    (proposta,) = app["observations"].proposals()
+    assert proposta["id"] == manuale and proposta["stato"] == "superata"
+
+
+@pytest.mark.asyncio
+async def test_un_secondo_A_MANO_non_duplica_e_non_si_richiede_a_ogni_giro(casa):
+    """D24-1, l'altra strada: la proposta a mano in attesa torna al turno e il
+    modello risponde di nuovo «a mano». Non si duplica, l'esito accanto cita
+    quella che aspetta gia', e il giro dopo non richiede: una volta per
+    analisi, non a ogni battito.
+
+    Mutazione ESEGUITA (06/10/2026): `_settle` che scrive comunque una
+    proposta nuova -- rossa, le proposte sono due."""
+    app = casa
+    riga = osservazioni()[0]
+    manuale = app["observations"].add_proposal(
+        text="Abbassa il termostato", perche="notturno",
+        fingerprint=observation_key(riga), prova=evidence_of(riga),
+        stakes=None, now_ts=1.0)
+    app["llm_router"] = _Modello(([], _risposta_manuale()))
+
+    await pr.proposer_round(app)
+    assert await pr.proposer_round(app) is None
+
+    assert [p["id"] for p in app["observations"].proposals()] == [manuale]
+    accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
+    assert accanto[0]["proposta_id"] == manuale
+    assert len(app["llm_router"].domande) == 1
 
 
 # -- Il ponte ------------------------------------------------------------------
@@ -337,7 +528,12 @@ class _Coda:
         self.accodati.append({"kind": kind, "wake": wake, "context": context})
         return "job-1"
 
-    def latest(self, kind):
+    def latest(self, kind, *, wake_key=None, wake_value=None):
+        """Come la coda vera: con `wake_key`, solo un turno che porta quella
+        chiave nella sveglia (il giro chiede i suoi, `ROUND_KEY`)."""
+        if wake_key is not None and self.turno is not None \
+                and wake_key not in (self.turno.get("wake") or {}):
+            return None
         return self.turno
 
 
@@ -434,3 +630,116 @@ def test_un_osservazione_SENZA_esito_e_un_problema():
         {"osservazione": 1, "esito": "niente", "perche": "x"}]}))
     assert esito["problemi"] == ["non hanno un esito le osservazioni 0"]
     assert [o["impronta"] for o in esito["esiti"]] == [observation_key(osservazioni()[1])]
+
+
+# -- Le guardie del giro (G53-1, giro 53 della revisione) ---------------------
+
+def _coda_ponte(app, monkeypatch):
+    coda = app["reasoning_queue"] = _Coda()
+    monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
+    return coda
+
+
+@pytest.mark.asyncio
+async def test_sul_PONTE_la_NON_LEGATA_va_nel_turno_e_la_raccolta_la_lega(casa, monkeypatch):
+    """Revisione, giro 62 (G62-1): la strada della casa e' il ponte. La
+    costruita che nessun esito ha citato va nella domanda accodata, e la
+    raccolta che la cita la lega alla sua osservazione, anche se e' nata in un
+    altro turno.
+
+    Mutazione ESEGUITA (06/10/2026): `_enqueue` con `unbound=()` -- rossa,
+    l'id non e' nel turno accodato."""
+    coda = _coda_ponte(casa, monkeypatch)
+    sciolta = casa["constructions"].propose(
+        operation="crea", domain="automation", key="k1",
+        actor=steering.PROPOSER_SPECIES, exchange="un-turno-rifiutato",
+        phrase=None, prima=None, dopo={}, helper=[], preview="anteprima",
+        stakes=None, now=time.time())["id"]
+
+    await pr.proposer_round(casa)
+    (accodato,) = coda.accodati
+    assert sciolta in accodato["context"]["history"][0]["content"]
+
+    coda.turno = {"status": "decided", "wake": accodato["wake"], "decided_ts": 0,
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "costruita", "proposta_id": sciolta},
+                      {"osservazione": 1, "esito": "niente", "perche": "x"}]}),
+                      "outcome": "riuscito", "exchange_id": "un-altro-turno"}}
+    esito = await pr.proposer_round(casa)
+
+    assert esito["problemi"] == []
+    riga = casa["constructions"].read(sciolta, now=time.time())
+    assert riga["impronta"] == observation_key(osservazioni()[0])
+
+
+@pytest.mark.asyncio
+async def test_un_turno_IN_VOLO_sul_ponte_non_ne_accoda_un_altro(casa, monkeypatch):
+    """Senza la guardia, a ogni battito con un turno ancora in attesa il giro
+    ne accoderebbe un altro: la raccolta non trova niente finche' il turno e'
+    `pending`, e le osservazioni restano aperte.
+
+    Mutazione ESEGUITA (06/10/2026): il giro senza `turn_in_flight` e
+    `too_soon_to_ask_again` -- rossa (due turni accodati)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    coda.turno = {"status": "pending", "deadline_ts": time.time() + 600,
+                  "wake": {"giorno": OGGI}}
+    assert await pr.proposer_round(casa) is None
+    assert coda.accodati == []
+
+
+@pytest.mark.asyncio
+async def test_un_turno_finito_da_POCO_non_si_richiede(casa, monkeypatch):
+    """`RETRY_HOLD_S`: dopo una risposta vuota si aspetta, invece di spendere
+    un turno a ogni battito.
+
+    Mutazione ESEGUITA (06/10/2026): il giro senza `too_soon_to_ask_again`
+    -- rossa (un turno accodato)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    coda.turno = {"status": "decided", "decided_ts": time.time() - 60,
+                  "wake": {"giorno": OGGI}, "decision": {"reply": ""}}
+    await pr.proposer_round(casa)
+    assert coda.accodati == []
+
+
+@pytest.mark.asyncio
+async def test_sul_PONTE_un_rifiuto_si_scrive_sulla_riga_del_turno(casa, monkeypatch):
+    """D10 sul ponte: senza, `refused_problems` non riporterebbe i motivi
+    alla domanda dopo.
+
+    Mutazione ESEGUITA (06/10/2026): la raccolta senza `declare_refused` --
+    rossa (la riga resta «riuscito»)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    ident = casa["usage"].log_turn(
+        species=steering.PROPOSER_SPECIES, provider="subscription", model="m",
+        channel="ponte", duration_ms=1, iterations=1, tools=[],
+        outcome="riuscito", now=1_758_000_000.0)
+    coda.turno = {"status": "decided", "decided_ts": 0,
+                  "wake": {"giorno": OGGI, "impronte": [
+                      observation_key(o) for o in osservazioni()]},
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "costruita", "proposta_id": "x"},
+                      {"osservazione": 1, "esito": "niente", "perche": "y"}]}),
+                      "outcome": "riuscito", "turn_id": ident}}
+    await pr.proposer_round(casa)
+    riga = casa["usage"].turns()[0]
+    assert riga["outcome"] == steering.REFUSED
+    assert any("'x'" in p for p in riga["problems"])
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_di_IERI_non_scrive_sull_analisi_di_oggi(casa, monkeypatch):
+    """Le impronte possono coincidere, e gli id costruiti sarebbero di un
+    turno di ieri.
+
+    Mutazione ESEGUITA (06/10/2026): la raccolta senza il controllo del
+    giorno della sveglia -- rossa (gli esiti si scrivono)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    coda.turno = {"status": "decided", "decided_ts": 0,
+                  "wake": {"giorno": "2000-01-01", "impronte": [
+                      observation_key(o) for o in osservazioni()]},
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "niente", "perche": "x"},
+                      {"osservazione": 1, "esito": "niente", "perche": "y"}]}),
+                      "outcome": "riuscito"}}
+    await pr.proposer_round(casa)
+    assert pt.outcomes_of(casa["observations"].analysis(OGGI)) == []

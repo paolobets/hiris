@@ -278,49 +278,136 @@ class _Clock:
         return self.now
 
 
-@pytest.mark.asyncio
-async def test_alla_riconnessione_la_finestra_va_dalla_caduta_al_ritorno():
-    """La finestra e' cio' che il client ha misurato: l'istante in cui la
-    connessione autenticata e' caduta e quello in cui la successiva e' stata
-    iscritta. La prende chi riceve l'avviso, una volta sola.
+def _windows(client: HAClient) -> list[dict]:
+    heard: list[dict] = []
+    client.add_disconnection_listener(heard.append)
+    return heard
 
-    Mutazioni ESEGUITE: la finestra chiusa DOPO l'avviso invece che prima
-    -- rossa (chi ascolta trova `None`); `take_disconnection` che non svuota
-    -- rossa (la seconda lettura la ritrova)."""
+
+@pytest.mark.asyncio
+async def test_con_home_assistant_avviato_la_finestra_va_dalla_caduta_al_ritorno():
+    """La finestra e' cio' che il client ha misurato: dalla caduta della
+    connessione autenticata a quando, a connessione tornata, Home Assistant
+    si dichiara avviato. Qui `get_config` risponde `RUNNING`: la finestra si
+    chiude alla risposta, una volta sola. Alla prima connessione non c'e'.
+
+    Mutazione ESEGUITA: la finestra chiusa senza guardare lo stato del nucleo
+    (`_core_state_read` che chiude sempre) -- verde qui, rossa nella prova
+    successiva: e' quella che la discrimina."""
     client, connection = _client()
     client._clock = _Clock()
-    taken: list = []
-    client.add_topology_listener(lambda _type: taken.append(client.take_disconnection()))
+    windows = _windows(client)
     await client.start_websocket()
     await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
-    # Alla prima connessione non c'e' una finestra: il prima non e' misurato.
-    assert client.take_disconnection() is None
+    await _settle()
+    assert windows == []
+    assert not any(m.get("type") == "get_config" for m in connection.sent), (
+        "alla prima connessione non c'e' una finestra da chiudere")
     connection.drop()
     await _until(lambda: connection.listening == 2, "seconda connessione in ascolto")
-    assert taken == [{"da": 1_001.0, "a": 1_002.0}]
-    assert client.take_disconnection() is None
+    await _until(lambda: windows, "finestra chiusa")
+    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
     await _stop(client)
 
 
 @pytest.mark.asyncio
-async def test_i_tentativi_falliti_non_spostano_l_inizio_della_finestra():
-    """Mentre Home Assistant e' giu' il client riprova; un tentativo che non
-    arriva all'autenticazione non e' una connessione caduta. Qui il secondo
-    tentativo si vede rifiutare il gettone: la finestra comincia comunque alla
-    caduta della PRIMA connessione.
+async def test_con_home_assistant_in_avvio_la_finestra_si_chiude_a_homeassistant_started():
+    """Il websocket risponde mentre il nucleo e' ancora `STARTING` (il server
+    HTTP parte con `frontend`, prima della fine dell'avvio): la finestra resta
+    aperta finche' Home Assistant non manda `homeassistant_started`, e le
+    entita' lasciate `unavailable` dalle integrazioni lente in quel tratto
+    sono del riavvio (revisione, giro 41, 06/10/2026).
 
-    Mutazione ESEGUITA: l'inizio scritto a ogni giro del ciclo invece che
-    alla caduta di una connessione autenticata -- rossa (`da` diventa
-    l'istante del rifiuto)."""
+    Mutazioni ESEGUITE: `_core_state_read` che chiude a qualunque stato --
+    rossa (la finestra chiusa alla risposta, prima dell'evento); il ramo di
+    `STARTED_EVENT` tolto da `_dispatch_bus_event` -- rossa (la finestra non
+    si chiude mai)."""
     client, connection = _client()
     client._clock = _Clock()
-    taken: list = []
-    client.add_topology_listener(lambda _type: taken.append(client.take_disconnection()))
+    windows = _windows(client)
     await client.start_websocket()
     await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    connection.core_state = "STARTING"
+    connection.drop()
+    await _until(lambda: connection.listening == 2, "seconda connessione in ascolto")
+    await _settle()
+    assert windows == [], "Home Assistant non si e' ancora dichiarato avviato"
+    assert connection.push_event("homeassistant_started", {})
+    await _until(lambda: windows, "finestra chiusa all'avvio dichiarato")
+    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
+    await _stop(client)
+
+
+@pytest.mark.asyncio
+async def test_i_tentativi_falliti_e_le_ricadute_non_spostano_l_inizio_della_finestra():
+    """Mentre Home Assistant e' giu' il client riprova; un tentativo che non
+    arriva all'autenticazione non e' una connessione caduta, e nemmeno una
+    connessione tornata e ricaduta mentre il nucleo era ancora in avvio apre
+    una finestra nuova: la finestra comincia alla PRIMA caduta.
+
+    Mutazioni ESEGUITE: l'inizio scritto a ogni giro del ciclo invece che
+    alla caduta di una connessione autenticata -- rossa; l'inizio
+    sovrascritto a ogni caduta autenticata (senza `_dropped_at is None`) --
+    rossa."""
+    client, connection = _client()
+    client._clock = _Clock()
+    windows = _windows(client)
+    await client.start_websocket()
+    await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    connection.core_state = "STARTING"
     connection.refuse_next_auth()
     connection.drop()
-    await _until(lambda: connection.listening == 2, "terza connessione in ascolto")
-    assert connection.opened == 3
-    assert taken == [{"da": 1_001.0, "a": 1_002.0}]
+    await _until(lambda: connection.listening == 2, "seconda connessione in ascolto")
+    connection.drop()
+    await _until(lambda: connection.listening == 3, "terza connessione in ascolto")
+    assert connection.opened == 4
+    connection.core_state = "RUNNING"
+    assert connection.push_event("homeassistant_started", {})
+    await _until(lambda: windows, "finestra chiusa")
+    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
     await _stop(client)
+
+
+@pytest.mark.asyncio
+async def test_se_get_config_e_rifiutata_la_finestra_si_chiude_al_ritorno_e_lo_dice(caplog):
+    """Una domanda rifiutata non lascia la finestra aperta in attesa di un
+    evento forse gia' passato: si chiude al ritorno del socket, e il registro
+    dice perche' (revisione, giro 48, M4).
+
+    Mutazione ESEGUITA: il ramo del rifiuto che non chiude -- rossa (la
+    finestra non si chiude)."""
+    client, connection = _client()
+    client._clock = _Clock()
+    windows = _windows(client)
+    await client.start_websocket()
+    await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    connection.core_state = "STARTING"
+    connection.config_refusal = {"code": "unknown_error", "message": "rifiutata"}
+    connection.drop()
+    await _until(lambda: windows, "finestra chiusa al rifiuto")
+    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
+    assert "get_config rifiutata" in caplog.text
+    await _stop(client)
+
+
+@pytest.mark.asyncio
+async def test_l_iscrizione_a_homeassistant_started_precede_la_domanda_sullo_stato():
+    """L'ordine e' la proprieta' che non perde l'avvio: `async_start` mette
+    `running` e POI manda l'evento (core.py, tag 2026.9.4), quindi iscritti
+    prima della domanda, un avvio finito in mezzo si legge `RUNNING` nella
+    risposta. Al contrario, finito fra domanda e iscrizione, non lo
+    vedrebbe nessuno (revisione, giro 48, M5).
+
+    Mutazione ESEGUITA: l'iscrizione spostata dopo `get_config` -- rossa."""
+    client, connection = _client()
+    await client.start_websocket()
+    await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    connection.drop()
+    await _until(lambda: connection.listening == 2, "seconda connessione in ascolto")
+    await _stop(client)
+    # Solo la seconda connessione chiede lo stato; l'ultima iscrizione
+    # all'evento e' la sua.
+    kinds = [m.get("event_type") or m.get("type") for m in connection.sent]
+    assert kinds.count("get_config") == 1, kinds
+    started = max(i for i, k in enumerate(kinds) if k == "homeassistant_started")
+    assert started < kinds.index("get_config"), kinds

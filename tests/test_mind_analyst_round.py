@@ -186,7 +186,7 @@ class _CodaConTurnoFermo:
                       "wake": {"giorno": "2026-09-17"}, "decision": None}
         self.accodati = []
 
-    def latest(self, kind):
+    def latest(self, kind, **_filtro):
         return self.turno
 
     def count_exchanges_today(self):
@@ -265,7 +265,7 @@ class _CodaConRispostaINACCETTABILE:
         }
         self.accodati = []
 
-    def latest(self, kind):
+    def latest(self, kind, **_filtro):
         return self.turno
 
     def count_exchanges_today(self):

@@ -283,17 +283,22 @@ async def test_chi_non_costruisce_riceve_403_e_niente_cambia(cliente, metodo, ro
 
     assert risposta.status == 403
     assert (await risposta.json())["error"]
-    assert app["constructions"].read(c)["stato"] == "in_attesa"
+    assert app["constructions"].read(c, now=time.time())["stato"] == "in_attesa"
     [manual] = app["observations"].proposals()
     assert (manual["stato"], manual["giri"]) == ("attesa", [])
     assert app["knowledge"].summary()["totale"] == righe_sapere
 
 
+def _disk_state(app, ident):
+    """Lo stato come sta scritto, senza la lettura che lo dice «adesso»."""
+    return app["constructions"]._conn.execute(
+        "SELECT stato FROM costruzioni WHERE id=?", (ident,)).fetchone()[0]
+
+
 @pytest.mark.asyncio
-async def test_il_cancello_viene_PRIMA_della_scadenza(cliente):
-    """«NOT pinned» 11: `GET /api/constructions` segnava le scadute PRIMA di
-    rispondere -- una scrittura. Il cancello sta davanti: una proposta scaduta
-    resta `in_attesa` sul disco dopo il 403."""
+async def test_il_cancello_viene_PRIMA_dell_archivio(cliente):
+    """«NOT pinned» 11: il cancello sta davanti a ogni archivio. Una proposta
+    scaduta resta com'era sul disco dopo il 403."""
     app = cliente.app
     scaduta = _proposta(app, now=time.time() - ConstructionStore.DEADLINE_S - 60)
 
@@ -303,7 +308,26 @@ async def test_il_cancello_viene_PRIMA_della_scadenza(cliente):
 
     assert elenco.status == 403 and singola.status == 403
     assert (await elenco.json())["error"]
-    assert app["constructions"].read(scaduta)["stato"] == "in_attesa"
+    assert _disk_state(app, scaduta) == "in_attesa"
+
+
+@pytest.mark.asyncio
+async def test_LEGGERE_l_elenco_non_scrive_e_la_scaduta_esce_scaduta(cliente):
+    """Misura del Task 4.0 degli attori (06/10/2026): `GET /api/constructions`
+    scriveva, perche' segnava le scadute prima di elencare. Una lettura non
+    scrive: la scaduta esce scaduta dalla risposta, e il disco resta com'era.
+
+    Mutazione ESEGUITA (06/10/2026): rimesso `store._scadi` nella rotta --
+    rossa sul disco, che diventa «scaduta»."""
+    app = cliente.app
+    scaduta = _proposta(app, now=time.time() - ConstructionStore.DEADLINE_S - 60)
+
+    risposta = await cliente.get("/api/constructions", headers=_testate("u-admin"))
+
+    assert risposta.status == 200
+    [riga] = [r for r in (await risposta.json())["constructions"] if r["id"] == scaduta]
+    assert (riga["stato"], riga["sospesa"]) == ("scaduta", False)
+    assert _disk_state(app, scaduta) == "in_attesa"
 
 
 @pytest.mark.asyncio

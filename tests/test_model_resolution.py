@@ -829,7 +829,7 @@ def test_senza_indirizzo_la_riga_dice_QUELLO_e_non_il_modello():
 # ---------------------------------------------------------------------------
 
 ADESSO = 10_000.0
-CREDITO_FINITO = {"tipo": "rifiutato", "famiglia": "credenziale", "codice": 400,
+CREDITO_FINITO = {"tipo": "rifiutato", "famiglia": "altro", "codice": 400,
                   "messaggio": "credit balance too low", "quando": ADESSO - 180,
                   "da_quante": 40, "durata_s": 0.4}
 HA_RISPOSTO = {"tipo": "risposto", "famiglia": "", "codice": None,
@@ -848,7 +848,7 @@ def test_il_caso_del_proprietario_si_legge_sulla_riga():
         occurrences={"claude": CREDITO_FINITO, "openrouter": HA_RISPOSTO})
     righe = {r["id"]: r for r in catena}
     assert righe["claude"]["stato_testo"] == (
-        "ha rifiutato le ultime 40 richieste (400): «credit balance too low», 3 min fa")
+        "ha rifiutato le ultime 40 richieste — errore 400: «credit balance too low», 3 min fa")
     assert righe["openrouter"]["stato_testo"] == "ha risposto 3 min fa"
 
 

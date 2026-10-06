@@ -1406,8 +1406,11 @@ class ObservationsStore:
     #: Gli esiti che chiudono una proposta da fare a mano. **Chiusi**: una
     #: parola nuova arriverebbe da una rotta e diventerebbe uno stato che
     #: nessuna pagina sa disegnare. `crea` non c'e' -- qui non c'e' niente da
-    #: scrivere in Home Assistant: quella strada e' l'officina.
-    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori")
+    #: scrivere in Home Assistant: quella strada e' l'officina. `superata`
+    #: la scrive solo il proponente, quando la stessa domanda torna come
+    #: proposta costruita (D24-1, scelta del proprietario del 06/10/2026):
+    #: nessuna rotta la offre.
+    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori", "superata")
 
     #: L'esito di una proposta da fare a mano da cui e' nata un'automazione
     #: («Rendila automatica», attori Task 4.5; chiudere col legame, scelta
@@ -1501,53 +1504,85 @@ class ObservationsStore:
             self._conn.commit()
         return cur.rowcount > 0
 
-    def add_proposal_round(self, ident: str, *, request: str, text: str,
-                           now_ts: float) -> bool:
-        """Accoda un giro di «Rifalla» e **sostituisce il testo** con la forma
-        nuova.
+    def add_proposal_round(self, ident: str, *, request: str, outcome: str,
+                           turn: str, now_ts: float, text: str | None = None,
+                           why: str | None = None,
+                           built: str | None = None) -> bool:
+        """Accoda un giro di «Rifalla» al filo della proposta. Torna se l'ha
+        scritto.
 
         Il filo si accoda e non si sostituisce: il modello deve vedere cosa e'
         stato scartato, o potrebbe tornare alla prima forma al secondo giro.
-        Un giro **non chiude niente**: la proposta resta in attesa.
+        Un giro **non chiude niente**: la proposta resta com'e', in attesa o
+        no -- la chiude, quando serve, chi lo chiama.
+
+        `outcome` e' l'esito del proponente (`proposer_turn.OUTCOMES`, attori,
+        Task 4.4):
+        - **a mano**: `text` e `why` sostituiscono testo e perche', e il
+          giro conserva la forma scartata;
+        - **niente**: la proposta resta com'era, e il giro porta il perche';
+        - **costruita**: il giro porta l'id della proposta costruita.
+
+        `turn` e' l'identita' del turno che ha risposto: **lo stesso turno non
+        scrive due giri**, ed e' cio' che rende innocua una seconda consegna.
         """
+        if outcome not in ("a_mano", "niente", "costruita"):
+            raise ValueError(f"esito di un giro sconosciuto: {outcome!r}")
         with self._lock:
             row = self._conn.execute(
-                "SELECT testo, giri_json FROM proposte WHERE id=?", (ident,)).fetchone()
+                "SELECT testo, perche, giri_json FROM proposte WHERE id=?",
+                (ident,)).fetchone()
             if row is None:
                 return False
-            rounds = json.loads(row[1])
-            rounds.append({"richiesta": request, "scartata": row[0],
-                           "quando_ts": now_ts})
-            # Una forma nuova si puo' rendere automatica anche se la vecchia
-            # no: il rifiuto di «Rendila automatica» era di quella.
+            rounds = json.loads(row[2])
+            if any(r.get("turno") == turn for r in rounds):
+                return False
+            entry = {"richiesta": request, "esito": outcome, "turno": turn,
+                     "quando_ts": now_ts}
+            kept_text, kept_why = row[0], row[1]
+            refusal_sql = ""
+            if outcome == "a_mano":
+                entry["scartata"] = kept_text
+                # Il testo cambia, e la ragione con lui: una proposta nuova
+                # con la ragione vecchia sarebbe una riga che non si spiega.
+                kept_text, kept_why = text or kept_text, why or kept_why
+                # Una forma nuova si puo' rendere automatica anche se la
+                # vecchia no: il rifiuto di «Rendila automatica» era di
+                # quella. Con «niente» la forma e' la stessa e il rifiuto
+                # resta vero; con «costruita» la proposta si chiude.
+                refusal_sql = ", automation_refusal=NULL"
+            elif outcome == "niente":
+                entry["perche"] = why
+            else:
+                entry["proposta_id"] = built
+            rounds.append(entry)
             self._conn.execute(
-                "UPDATE proposte SET testo=?, giri_json=?, automation_refusal=NULL "
-                "WHERE id=?",
-                (text, json.dumps(rounds, ensure_ascii=False), ident))
+                "UPDATE proposte SET testo=?, perche=?, giri_json=?"
+                + refusal_sql + " WHERE id=?",
+                (kept_text, kept_why, json.dumps(rounds, ensure_ascii=False), ident))
             self._conn.commit()
         return True
 
-    def rewrite_proposal_why(self, ident: str, perche: str) -> bool:
-        """Riscrive il `perche` di una proposta, dopo un giro di «Rifalla».
+    def decided_proposals(self) -> dict[str, dict]:
+        """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}`:
+        cio' che il proponente deve sapere per non rifare una proposta
+        (`proposer_turn.already_answered`). La stessa forma di
+        `ConstructionStore.decided_proposals`: le due code si fondono in
+        `proposer_turn.latest_decided`.
 
-        Il testo cambia (lo fa `add_proposal_round`), e la ragione con lui: una
-        proposta nuova con la ragione vecchia sarebbe una riga che non si
-        spiega piu'.
+        Per ogni impronta conta **l'ultima** proposta: dopo una prova cambiata
+        la stessa domanda ha due righe, e a decidere e' la piu' recente.
+        `aperta` dice se aspetta ancora una risposta. Una decisa vale solo per
+        la prova contro cui e' stata decisa (S-26, scelta del proprietario del
+        06/10/2026).
         """
         with self._lock:
-            cur = self._conn.execute(
-                "UPDATE proposte SET perche=? WHERE id=?", (perche, ident))
-            self._conn.commit()
-        return cur.rowcount > 0
-
-    def decided_proposals(self) -> dict[str, dict]:
-        """`{impronta: prova}` per le proposte che il proponente non deve
-        rifare a prova uguale (`proposer_turn.open_observations`, che
-        quelle in attesa salta a qualunque prova)."""
-        with self._lock:
             rows = self._conn.execute(
-                "SELECT impronta, prova_json FROM proposte").fetchall()
-        return {r[0]: json.loads(r[1]) for r in rows}
+                "SELECT impronta, prova_json, stato, creata_ts, id FROM proposte "
+                "ORDER BY creata_ts, rowid").fetchall()
+        return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING,
+                       "creata_ts": r[3], "id": r[4], "a_mano": True}
+                for r in rows}
 
     def analysis(self, day: str) -> dict | None:
         """L'analisi di quel giorno, o `None` se non ne ha una.

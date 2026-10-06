@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 
 from ..action.construction.stakes import HIGH
 from ..background import spawn
@@ -46,6 +47,7 @@ from ..steering import (
     start,
     turn_in_flight,
 )
+from .proposal_redo import round_lines
 from .proposer_turn import PROPOSE, ProposerDispatcher
 from .proposer_turn import guard as proposer_guard
 
@@ -140,16 +142,21 @@ def preparing(app) -> str | None:
 HIGH_REFUSAL = "serrature e allarme chiedono sempre a te: questa non diventa automatica."
 
 
-def refusal(row: dict, *, pending: str, in_flight: str | None) -> str | None:
+def refusal(row: dict, *, pending: str, in_flight: str | None,
+            redoing: bool = False) -> str | None:
     """Perche' questa proposta non si puo' rendere automatica adesso, o
     `None`. **Una regola sola** per la rotta, che rifiuta, e per la pagina,
-    che non mostra il bottone (`handlers_constructions._both_queues`)."""
+    che non mostra il bottone (`handlers_constructions._both_queues`).
+    `redoing`: un «Rifalla» sulla stessa proposta e' in corso
+    (`proposal_redo.redoing`, giro di revisione 68, G68-2)."""
     if row.get("stato") != pending:
         return "quella proposta non è più in attesa: qualcuno l’ha già decisa."
     if row.get("livello") == HIGH:
         return HIGH_REFUSAL
     if row.get("non_automatizzabile"):
         return "HIRIS ha già provato: " + row["non_automatizzabile"]
+    if redoing:
+        return "HIRIS la sta rifacendo: aspetta la forma nuova."
     if in_flight == row.get("id"):
         return "HIRIS la sta già preparando."
     if in_flight is not None:
@@ -166,9 +173,7 @@ def build_question(row: dict, *, presence=None) -> str:
     prova = row.get("prova") or {}
     if prova:
         lines.append(f"  la prova dell'osservazione da cui e' nata: {prova}")
-    for giro in row.get("giri") or []:
-        lines.append(f"  una forma gia' scartata: {giro.get('scartata')}")
-        lines.append(f"  la richiesta di allora: {giro.get('richiesta')}")
+    lines += round_lines(row.get("giri") or [])
     lines += ["", ANSWER_CONTRACT]
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
@@ -288,7 +293,8 @@ def _built_in(app, exchange: str | None) -> str | None:
     if constructions is None:
         return None
     ids = constructions.proposed_in(exchange, actor=PROPOSER_SPECIES)
-    rows = [r for r in (constructions.read(i) for i in ids) if r is not None]
+    now = time.time()
+    rows = [r for r in (constructions.read(i, now=now) for i in ids) if r is not None]
     if not rows:
         return None
     return max(rows, key=lambda r: r.get("creata_ts") or 0)["id"]

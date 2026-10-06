@@ -58,12 +58,17 @@ BY_HAND = "a_mano"
 NOTHING = "niente"
 OUTCOMES = (BUILT, BY_HAND, NOTHING)
 
+#: Perche' una proposta da fare a mano si chiude `superata` (D24-1): la stessa
+#: frase dal giro e dal «Rifalla», scritta una volta.
+SUPERSEDED_WHY = "ora c'e' una proposta che HIRIS puo' costruire"
+
 #: Dove gli esiti stanno nell'analisi: accanto alle osservazioni a cui
-#: rispondono. Ci stanno «costruita» (col solo id della proposta: un
-#: riferimento, non una copia) e «niente» (col perche', che non vive altrove).
-#: «Da fare a mano» no: la proposta porta gia' l'impronta dell'osservazione
-#: nell'archivio gemello (`ObservationsStore.add_proposal`), e scriverla anche
-#: qui sarebbe il doppione che l'attuazione di prima era.
+#: rispondono, uno per osservazione. «Costruita» e «da fare a mano» col solo id
+#: della proposta (un riferimento, non una copia: testo, perche' e prova
+#: vivono nel loro archivio), «niente» col perche', che non vive altrove.
+#: Anche «da fare a mano» ci sta dal 06/10/2026: una proposta a mano in attesa
+#: torna al turno (D24-1), e senza l'esito accanto il giro la richiederebbe a
+#: ogni battito invece che una volta per analisi.
 OUTCOMES_KEY = PROPOSER_SPECIES
 
 SYSTEM = """Sei il proponente di HIRIS, un sistema che guarda una casa domotica.
@@ -104,7 +109,9 @@ esito per ogni osservazione dell'elenco:
 ]}
 
 Un esito «costruita» senza una chiamata riuscita a `propose` in questo turno
-viene rifiutato: l'id lo conosce l'officina, non si scrive a memoria."""
+viene rifiutato: l'id lo conosce l'officina, non si scrive a memoria. Fa
+eccezione una proposta dell'elenco «gia' costruite», se c'e': quella si cita
+col suo id, senza rifarla."""
 
 
 def proposer_tools() -> list[dict]:
@@ -180,23 +187,71 @@ def outcomes_of(analysis: dict | None) -> list[dict]:
     return list(((analysis or {}).get(OUTCOMES_KEY)) or [])
 
 
+def latest_decided(*sources: dict) -> dict[str, dict]:
+    """Le proposte gia' fatte, dai due archivi, in un dizionario solo: per
+    ogni impronta vince la piu' recente (`creata_ts`).
+
+    Le proposte da fare a mano e quelle costruite vivono in due archivi
+    (`mind/store.proposte`, `revisions.costruzioni`), con la stessa forma.
+    Fino al 06/10/2026 si leggeva solo il primo, e una costruita non fermava
+    niente: la stessa domanda con la stessa prova tornava all'officina a ogni
+    giro (revisione indipendente, giro 24, D24-2).
+    """
+    merged: dict[str, dict] = {}
+    for source in sources:
+        for key, entry in (source or {}).items():
+            if key not in merged or entry["creata_ts"] >= merged[key]["creata_ts"]:
+                merged[key] = entry
+    return merged
+
+
+def already_answered(observation: dict, decided: dict) -> str | None:
+    """Perche' questa domanda non va chiesta di nuovo, o `None` se va.
+
+    `decided` e' `latest_decided` dei due archivi: per impronta, l'ultima
+    proposta. **Una costruita in attesa non si duplica.** Una decisa vale
+    finche' vale la prova contro cui e' stata decisa: a prova cambiata la
+    domanda torna (S-26, scelta del proprietario del 06/10/2026). Una **da
+    fare a mano in attesa torna al turno** (D24-1, stessa data): adesso il
+    modello potrebbe costruirla, e se la costruisce quella a mano si chiude
+    `superata`. Il motivo e' una frase: chi salta lo scrive nel registro,
+    perche' una proposta potata in silenzio il 01/10/2026 e' costata una
+    diagnosi (misura del Task 4.0 degli attori).
+
+    **Una costruita scaduta senza risposta conta come decisa** (revisione,
+    giro 61): a prova uguale non torna. E' la lettera di S-26, dove torna
+    solo cio' che aspetta (D24-1) o cio' la cui prova e' cambiata, e il
+    silenzio di chi amministra vale come risposta: riproporre ogni giorno la
+    stessa bozza ignorata sarebbe la coda che cresce che S-26 toglie. Scelta
+    del proprietario del 06/10/2026 («Resta cosi'»): una scaduta torna solo
+    se la prova cambia.
+    """
+    entry = decided.get(observation_key(observation))
+    if entry is None:
+        return None
+    if entry["aperta"]:
+        return None if entry["a_mano"] else "ha gia' una proposta costruita in attesa"
+    if entry["prova"] == evidence_of(observation):
+        return "e' gia' stata decisa con la stessa prova"
+    return None
+
+
 def open_observations(analysis: dict | None, decided: dict,
-                      waiting=frozenset()) -> list[dict]:
+                      skipped: list | None = None) -> list[dict]:
     """Le osservazioni che aspettano il proponente, nell'ordine dell'analisi.
 
     Restano fuori:
     - quelle **chiuse dall'indagine dell'analista** (`spiegato`): D1 del
       refactor, l'indagine e' sua, e cio' che ha spiegato non e' una
       domanda aperta;
-    - quelle con un esito gia' scritto accanto a questa analisi;
-    - quelle che hanno gia' una proposta da fare a mano **in attesa**
-      (`waiting`, le impronte): una coda aperta non si duplica;
-    - quelle che ne hanno una decisa **con la stessa prova** (`decided`,
-      `{impronta: prova}` di `ObservationsStore.decided_proposals`). Una
-      proposta rifiutata torna in coda solo se la prova cambia: e' cio' che
-      la rotta delle proposte promette (`api/handlers_proposals.py`), e fino
-      al 06/10/2026 non era vero -- il giro di prima passava un dizionario
-      vuoto e saltava ogni impronta gia' vista, a qualunque prova.
+    - quelle con un esito gia' scritto accanto a questa analisi: un giro
+      chiede una volta per analisi;
+    - quelle che `already_answered` salta (`decided`, da `latest_decided`).
+      Una proposta rifiutata torna in coda solo se la prova cambia: e' cio'
+      che la rotta delle proposte promette (`api/handlers_proposals.py`).
+
+    `skipped`, se c'e', riceve `(impronta, motivo)` di ogni osservazione
+    saltata da `already_answered`, per chi lo scrive nel registro.
     """
     done = {o.get("impronta") for o in outcomes_of(analysis)}
     seen = []
@@ -204,50 +259,72 @@ def open_observations(analysis: dict | None, decided: dict,
         if not isinstance(observation, dict) or observation.get("spiegato"):
             continue
         key = observation_key(observation)
-        if key in done or key in waiting \
-                or (key in decided and decided[key] == evidence_of(observation)):
+        if key in done:
+            continue
+        reason = already_answered(observation, decided)
+        if reason is not None:
+            if skipped is not None:
+                skipped.append((key, reason))
             continue
         seen.append(observation)
     return seen
 
 
 def build_question(observations, *, refused: list[str] | None = None,
-                   presence=None) -> str | None:
+                   presence=None, unbound=()) -> str | None:
     """La domanda intera, o `None` se non c'e' niente da chiedere.
 
     Le osservazioni si consegnano **numerate**, e il modello si riferisce a
     una col suo numero: ricopiarne il testo vorrebbe dire poterlo sbagliare.
     `refused` sono i problemi della risposta di prima (D10); `presence` copre
     i nomi delle persone, con la stessa numerazione del guardiano.
+    `unbound` sono le proposte gia' costruite che nessun esito ha citato
+    (`ConstructionStore.unbound`): si mostrano perche' il modello le citi
+    invece di costruirle una seconda volta (revisione, giro 61).
     """
     rows = list(observations or [])
     if not rows:
         return None
     lines = ["Le osservazioni dell'analista rimaste aperte, numerate:"]
     for index, row in enumerate(rows):
-        lines.append(f"  [{index}] {row.get('nome') or row.get('soggetto')} · "
-                     f"{row.get('misura')}"
-                     + (f" ({row.get('chiave')})" if row.get("chiave") else ""))
-        lines.append(f"      cosa ha visto: {row.get('cosa')}")
-        if row.get("cosa_cambierebbe"):
-            lines.append(f"      cosa cambierebbe: {row.get('cosa_cambierebbe')}")
-        if row.get("da_riverificare"):
-            lines.append(f"      da riverificare: {row.get('da_riverificare')}")
-        base = row.get("base")
-        lines.append(f"      si regge su {base} giorni di storia"
-                     if base else "      non ha una storia dietro")
+        lines.extend(observation_lines(index, row))
     lines.append("")
+    if unbound:
+        lines.append("Le proposte gia' costruite in un turno di prima, che nessun "
+                     "esito ha citato. Se una risponde a un'osservazione, citala "
+                     "con «costruita» e il suo id, senza rifarla:")
+        lines.extend(f"  {row['id']}: {row.get('anteprima') or row.get('chiave')}"
+                     for row in unbound)
+        lines.append("")
     lines.extend(refused_lines(refused))
     lines.append(ANSWER_CONTRACT)
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
 
 
+def observation_lines(index: int, row: dict) -> list[str]:
+    """Un'osservazione come la legge il proponente, col suo numero: la stessa
+    forma per il giro e per il «Rifalla» (`mind/proposal_redo.py`)."""
+    lines = [f"  [{index}] {row.get('nome') or row.get('soggetto')} · "
+             f"{row.get('misura')}"
+             + (f" ({row.get('chiave')})" if row.get("chiave") else ""),
+             f"      cosa ha visto: {row.get('cosa')}"]
+    if row.get("cosa_cambierebbe"):
+        lines.append(f"      cosa cambierebbe: {row.get('cosa_cambierebbe')}")
+    if row.get("da_riverificare"):
+        lines.append(f"      da riverificare: {row.get('da_riverificare')}")
+    base = row.get("base")
+    lines.append(f"      si regge su {base} giorni di storia"
+                 if base else "      non ha una storia dietro")
+    return lines
+
+
 def bridge_turn(observations, *, refused: list[str] | None = None,
-                presence=None) -> dict | None:
+                presence=None, unbound=()) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere: la
     stessa forma di `analyst_turn.bridge_turn`."""
-    question = build_question(observations, refused=refused, presence=presence)
+    question = build_question(observations, refused=refused, presence=presence,
+                              unbound=unbound)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],
@@ -272,8 +349,10 @@ def apply_outcomes(observations, answer: str, *, built=frozenset(),
     costringerebbe a rieseguire il turno per scoprire il successivo.
 
     `built` sono gli id delle proposte nate in questo turno
-    (`ConstructionStore.proposed_in`): un «costruita» con un id fuori da qui
-    si rifiuta. `presence` riporta agli id veri i segnaposto che il modello ha
+    (`ConstructionStore.proposed_in`) e di quelle gia' costruite che nessun
+    esito ha citato (`ConstructionStore.unbound`): un «costruita» con un id
+    fuori da qui si rifiuta, e cosi' uno che un altro esito ha gia' citato.
+    `presence` riporta agli id veri i segnaposto che il modello ha
     scritto nei testi.
     """
     # Il JSON lo cava il lettore unico (`steering.read_json`, D-11), come per
@@ -292,6 +371,7 @@ def apply_outcomes(observations, answer: str, *, built=frozenset(),
     problems: list[str] = []
     kept: dict[int, dict] = {}
     named: set[int] = set()
+    cited: set[str] = set()
     for index, outcome in enumerate(given):
         if not isinstance(outcome, dict):
             problems.append(f"l'esito {index} non e' un oggetto")
@@ -314,11 +394,18 @@ def apply_outcomes(observations, answer: str, *, built=frozenset(),
             ident = outcome.get("proposta_id")
             if ident not in built:
                 problems.append(
-                    f"l'esito {index} dice «{BUILT}» con l'id {ident!r}, ma in "
-                    "questo turno non e' nata nessuna proposta con quell'id: "
-                    "una proposta nasce chiamando `propose`")
+                    f"l'esito {index} dice «{BUILT}» con l'id {ident!r}, ma ne' "
+                    "in questo turno ne' fra le gia' costruite c'e' una "
+                    "proposta con quell'id: una proposta nasce chiamando "
+                    "`propose`")
                 continue
-            entry["proposta_id"] = ident
+            if ident in cited:
+                problems.append(f"l'esito {index} cita la proposta {ident!r}, "
+                                "gia' citata da un altro esito: una proposta "
+                                "risponde a una domanda sola")
+                continue
+            cited.add(ident)
+            entry |= {"proposta_id": ident, "osservazione": rows[which]}
         elif kind == BY_HAND:
             what, why = _text(outcome.get("testo")), _text(outcome.get("perche"))
             if what is None or why is None:

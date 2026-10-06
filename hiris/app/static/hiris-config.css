@@ -2212,3 +2212,11 @@
 @media (max-width: 560px) {
   .fallback-row { grid-template-columns: 1fr auto; }
 }
+
+/* L'attesa di un «Rifalla» dentro la riga della proposta (attori, Task 4.4).
+   Il cronometro e' per l'occhio: cifre a larghezza fissa, perche' non salti
+   a ogni secondo. La riga dei due minuti non occupa spazio finche' e' vuota. */
+.redo-wait { display: flex; flex-direction: column; gap: var(--sp-1); }
+.redo-label { font-weight: 500; }
+.redo-timer { margin-left: var(--sp-2); font-variant-numeric: tabular-nums; }
+.redo-service:empty { display: none; }

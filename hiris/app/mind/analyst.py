@@ -27,6 +27,10 @@ consegnare, non una soglia da applicare.
 """
 from __future__ import annotations
 
+import time as _time
+
+from .scope import ANALYST, OWNER
+
 #: Quanti giorni di storia servono per parlare di scostamento. **Due punti non
 #: sono una storia**, e un numero calcolato su due giorni con la faccia di uno
 #: calcolato su trenta e' il difetto che questo prodotto vieta. Tre e' il
@@ -356,3 +360,57 @@ def novelty(observation: dict, previous: list[dict]) -> str | None:
     if said.get("prova") == evidence_of(observation):
         return None
     return NOVELTY[1]
+
+
+#: Cosa e' successo a una richiesta di **rimetti dentro** (D9). Stanno
+#: nell'analisi archiviata accanto alla richiesta, perche' chi la rilegge
+#: sappia cosa ne e' stato senza confrontarla con lo scope di adesso.
+BACK_IN = "rientrata"
+ALREADY_INSIDE = "gia_dentro"
+BACK_IN_REFUSED = "rifiutata"
+
+#: I motivi di ripiego del proprietario, quando dalla pagina toglie o rimette
+#: senza scrivere perche'. `store.decide_scope` non scrive una decisione senza
+#: motivo; il campo della pagina e' facoltativo, quindi il ripiego vive qui,
+#: una volta sola. In terza persona: lo rilegge anche l'analista.
+OWNER_REMOVED = "tolto dal proprietario"
+OWNER_BROUGHT_BACK = "rimesso dentro dal proprietario"
+
+_AUTHOR_NAME = {OWNER: "il proprietario", ANALYST: "l'analista"}
+
+
+def bring_back(store, analysis: dict, *, when_ts: float | None = None) -> dict:
+    """Scrive il **rimetti dentro** dell'analista (D9), e torna l'analisi con
+    l'esito di ogni richiesta accanto.
+
+    L'analista ha in mano cio' che l'osservatore non aveva -- come la casa si
+    e' comportata -- e puo' far rientrare cio' che l'osservatore ha lasciato
+    fuori: scrive con autore `ANALYST`, e `scope.may_overwrite` (dentro
+    `store.decide_scope`) lascia fuori cio' che ha tolto il proprietario.
+    **Quel rifiuto si scrive con la ragione**: un'analisi che ha chiesto e non
+    dice cosa ne e' stato sembrerebbe ascoltata.
+
+    Cio' che e' gia' dentro non si riscrive: il motivo, l'autore e il «dal ...»
+    della pagina restano di chi l'ha deciso.
+
+    La forma della richiesta l'ha gia' validata `analyst_turn._back_in`
+    (`id` di entita', `perche` non vuoto).
+    """
+    asked = analysis.get("rimetti") or []
+    if not asked:
+        return analysis
+    now = float(when_ts if when_ts is not None else _time.time())
+    outcomes = []
+    for item in asked:
+        subject, why = item["id"], item["perche"]
+        standing = store.scope().get(subject)
+        if standing is not None and standing["dentro"]:
+            outcomes.append({**item, "esito": ALREADY_INSIDE})
+        elif store.decide_scope(subject, inside=True, reason=why, author=ANALYST,
+                                when_ts=now):
+            outcomes.append({**item, "esito": BACK_IN})
+        else:
+            who = _AUTHOR_NAME.get(standing["autore"], standing["autore"])
+            outcomes.append({**item, "esito": BACK_IN_REFUSED,
+                             "ragione": f"l'ha tolta {who}: «{standing['motivo']}»"})
+    return {**analysis, "rimetti": outcomes}

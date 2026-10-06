@@ -20,6 +20,7 @@ from hiris.app.action.construction import stakes, workshop
 from hiris.app.api.handlers_constructions import _both_queues
 from hiris.app.api.handlers_proposals import handle_proposal_automate
 from hiris.app.mind import automate_turn as at
+from hiris.app.mind import proposal_redo
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import ReasoningQueue
@@ -94,7 +95,7 @@ async def test_NASCE_l_automazione_e_la_proposta_a_mano_si_chiude_col_legame(cas
     assert riga["stato"] == store.PROPOSAL_AUTOMATED
     assert riga["costruzione_id"] == nata
     # Firmata dal proponente, e misurata sotto la sua specie di turno.
-    assert app["constructions"].read(nata)["origine"] == steering.PROPOSER_SPECIES
+    assert app["constructions"].read(nata, now=1.0)["origine"] == steering.PROPOSER_SPECIES
     assert app["usage"].turns()[0]["species"] == steering.AUTOMATE_SPECIES
     # La pagina legge il legame dalla costruzione: «Nata da».
     righe = await _both_queues(app, app["constructions"], False)
@@ -119,7 +120,7 @@ async def test_un_automazione_su_una_SERRATURA_si_rifiuta_dentro_il_turno(casa):
     await _premi(app, ident)
 
     assert app["llm_router"].risultati[0] == {"errore": stakes.HIGH_UNATTENDED}
-    assert app["constructions"].list(pending_only=False, limit=10) == []
+    assert app["constructions"].list(now=1.0, pending_only=False, limit=10) == []
     riga = _riga(store, ident)
     assert riga["stato"] == store.PROPOSAL_PENDING
     assert riga["non_automatizzabile"] == "tocca la serratura, che chiede sempre"
@@ -141,7 +142,7 @@ async def test_la_rifiuta_l_OFFICINA_non_il_guardiano(banco):
 
     assert rifiutata == {"errore": stakes.HIGH_UNATTENDED}
     assert passata["livello"] == stakes.HIGH
-    assert len(archivio.list(pending_only=False, limit=10)) == 1
+    assert len(archivio.list(now=1.0, pending_only=False, limit=10)) == 1
 
 
 @pytest.mark.asyncio
@@ -174,7 +175,7 @@ async def test_il_guardiano_ammette_solo_un_AUTOMAZIONE_NUOVA(casa):
     modifica = await guardiano.dispatch("propose", _intento(gesto="modifica"))
 
     assert "errore" in script and "errore" in modifica
-    assert app["constructions"].list(pending_only=False, limit=10) == []
+    assert app["constructions"].list(now=1.0, pending_only=False, limit=10) == []
 
 
 @pytest.mark.asyncio
@@ -233,11 +234,43 @@ def test_RIFALLA_toglie_il_rifiuto_della_forma_vecchia(tmp_path):
         ident = store.add_proposal(text="a", perche="b", fingerprint="f",
                                    prova={}, stakes=None, now_ts=1.0)
         store.refuse_automation(ident, "non si puo'")
-        store.add_proposal_round(ident, request="in un altro modo", text="c",
-                                 now_ts=2.0)
+        store.add_proposal_round(ident, request="in un altro modo",
+                                 outcome="a_mano", turn="t1", text="c",
+                                 why="d", now_ts=2.0)
         assert _riga(store, ident)["non_automatizzabile"] is None
     finally:
         store.close()
+
+
+def test_un_giro_NIENTE_lascia_il_rifiuto_la_forma_e_la_stessa(tmp_path):
+    """G68-2 (giro 68), punto 1: con «niente» la forma resta quella che non
+    si poteva automatizzare, e il rifiuto resta vero. Mutazione ESEGUITA
+    (06/10/2026): `automation_refusal=NULL` scritto per ogni esito -- rossa."""
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        ident = store.add_proposal(text="a", perche="b", fingerprint="f",
+                                   prova={}, stakes=None, now_ts=1.0)
+        store.refuse_automation(ident, "non si puo'")
+        store.add_proposal_round(ident, request="in un altro modo",
+                                 outcome="niente", turn="t1", why="niente da fare",
+                                 now_ts=2.0)
+        assert _riga(store, ident)["non_automatizzabile"] == "non si puo'"
+    finally:
+        store.close()
+
+
+def test_la_domanda_legge_il_filo_per_ESITO(tmp_path):
+    """G68-2, punto 2: un giro «niente» non ha una forma scartata, e la
+    domanda scriveva «una forma gia' scartata: None». Mutazione ESEGUITA
+    (06/10/2026): `round_lines` che legge `scartata` per ogni giro -- rossa."""
+    riga = {"testo": "t", "perche": "p", "giri": [
+        {"richiesta": "prima", "esito": "a_mano", "scartata": "la vecchia"},
+        {"richiesta": "poi", "esito": "niente", "perche": "nessuna forma"},
+    ]}
+    domanda = at.build_question(riga)
+    assert "None" not in domanda
+    assert "gia' scartata prima: la vecchia" in domanda
+    assert "allora non avevi proposto niente: nessuna forma" in domanda
 
 
 @pytest.mark.asyncio
@@ -263,7 +296,7 @@ async def test_uno_SCRIPT_una_SCENA_o_un_AUTOMAZIONE_non_diventano_automatici(ba
     assert rifiutata == {"errore": stakes.opaque_unattended(
         officina._ha.CONFIGURABLE_DOMAINS)}
     assert "proposta_id" in passata
-    assert len(archivio.list(pending_only=False, limit=10)) == 1
+    assert len(archivio.list(now=1.0, pending_only=False, limit=10)) == 1
 
 
 def test_SERVICE_TEMPLATE_e_un_servizio_e_la_serratura_si_vede():
@@ -303,7 +336,7 @@ async def test_un_servizio_SCRITTO_COME_MODELLO_non_diventa_automatico(banco, pa
 
     assert rifiutata == {"errore": stakes.TEMPLATE_UNATTENDED}
     assert "proposta_id" in passata
-    assert len(archivio.list(pending_only=False, limit=10)) == 1
+    assert len(archivio.list(now=1.0, pending_only=False, limit=10)) == 1
 
 
 def test_un_nome_SCRITTO_COME_MODELLO_non_inventa_un_dominio():
@@ -337,6 +370,43 @@ async def test_UNA_ALLA_VOLTA_un_altra_in_preparazione_ferma_il_comando(casa):
     assert app["usage"].turns() == []
     righe = await _both_queues(app, app["constructions"], False)
     assert next(r for r in righe if r["id"] == seconda)["automatizzabile"] is False
+
+
+@pytest.mark.asyncio
+async def test_sopra_un_RIFALLA_in_corso_non_si_rende_automatica(casa):
+    """G68-2 (giro 68), punto 3: «Rifalla» e «Rendila automatica» sulla
+    stessa proposta darebbero due costruzioni per una domanda, o un
+    rifacimento scartato. Con un rifacimento in volo la rotta risponde 409
+    senza turno, e la pagina non mostra il comando.
+
+    Mutazione ESEGUITA (06/10/2026): `refusal` senza il ramo `redoing` --
+    rossa."""
+    app, _store, prima = casa
+    app[proposal_redo.CHAIN_IN_FLIGHT] = {prima}
+    app["llm_router"] = _Modello([], "{}")
+
+    risposta = await handle_proposal_automate(_richiesta(app, {"id": prima}))
+
+    assert risposta.status == 409
+    assert app["usage"].turns() == []
+    righe = await _both_queues(app, app["constructions"], False)
+    assert next(r for r in righe if r["id"] == prima)["automatizzabile"] is False
+
+
+@pytest.mark.asyncio
+async def test_mentre_si_prepara_l_automazione_RIFALLA_non_parte(casa):
+    """G68-2, punto 3, dall'altra parte: con l'automazione in preparazione
+    sulla stessa proposta il rifacimento solleva `InFlight` (la rotta: 409).
+
+    Mutazione ESEGUITA (06/10/2026): `redo` senza il controllo di
+    `automate_turn.preparing` -- rossa."""
+    app, store, prima = casa
+    app[at.IN_FLIGHT] = prima
+    app["llm_router"] = _Modello([], "{}")
+
+    with pytest.raises(proposal_redo.InFlight):
+        await proposal_redo.redo(app, store, _riga(store, prima), "piu' tardi")
+    assert app["usage"].turns() == []
 
 
 @pytest.mark.asyncio
