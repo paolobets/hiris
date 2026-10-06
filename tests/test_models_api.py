@@ -960,16 +960,16 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     client.app["model_chain"] = ["claude", "openrouter"]
     registro = client.app["occurrence_registry"]
     for _ in range(40):
-        registro.fallimento("claude", family="credenziale", code=400,
+        registro.fallimento("claude", family="altro", code=400,
                             message="credit balance too low", durata_s=0.4)
     registro.successo("openrouter")
 
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["catena"]}
-    assert righe["claude"]["esito"]["famiglia"] == "credenziale"
+    assert righe["claude"]["esito"]["famiglia"] == "altro"
     assert righe["claude"]["esito"]["da_quante"] == 40
     assert righe["claude"]["stato_testo"].startswith(
-        "ha rifiutato le ultime 40 richieste (400): «credit balance too low», ")
+        "ha rifiutato le ultime 40 richieste — errore 400: «credit balance too low», ")
     assert righe["openrouter"]["stato_testo"].startswith("ha risposto ")
 
 
