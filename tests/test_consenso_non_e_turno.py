@@ -35,6 +35,7 @@ via MCP non hanno nessuna persona che parli. In tutti e tre i casi la chiave
 non c'è — e «non c'è» non è `""`, che si leggerebbe come «ha detto niente».
 """
 import os
+import time
 
 import pytest
 
@@ -59,9 +60,9 @@ def banco(tmp_path):
     cronaca.close()
 
 
-async def _proposta(officina) -> str:
+async def _proposta(officina, now: float = ADESSO) -> str:
     esito = await officina.propose(_intento(), actor="chat",
-                                   exchange="turno-1", now=ADESSO)
+                                   exchange="turno-1", now=now)
     assert "errore" not in esito, esito
     return esito["proposta_id"]
 
@@ -296,7 +297,9 @@ async def test_lo_STRUMENTO_confirm_porta_la_frase_fino_in_cronaca(banco):
     Mutazione ESEGUITA: togliere `confirm_phrase=self._frase` dallo strumento
     `confirm` -- rossa."""
     officina, _, cronaca = banco
-    proposta = await _proposta(officina)
+    # Adesso davvero: lo strumento legge l'orologio, e una proposta nata a
+    # una data ferma sarebbe gia' scaduta.
+    proposta = await _proposta(officina, now=time.time())
 
     dispatcher = ToolDispatcher(None, None, workshop=officina,
                                 exchange="turno-2", subject=SOGGETTO,

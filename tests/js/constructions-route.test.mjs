@@ -301,6 +301,18 @@ test('una proposta da fare a mano si legge, e dice che la fai tu', async () => {
   assert.match(testo, /la fai tu/i, 'chi la applica non si legge');
 });
 
+test('una proposta a mano SUPERATA da una costruibile lo dice, e non si legge come un rifiuto', async () => {
+  /* D24-1 (06/10/2026): la stessa domanda e' tornata costruibile, e la
+     proposta a mano si chiude «superata». Mutazione ESEGUITA: togliere il
+     ramo `superata` -- rossa, la pagina dice «Rifiutata.». */
+  const { dom } = montaCon({ constructions: [propostaAMano({ stato: 'superata', sospesa: false })] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+
+  const testo = dom.window.document.body.textContent;
+  assert.match(testo, /Superata: ora c’è una proposta che HIRIS può costruire/);
+  assert.doesNotMatch(testo, /Rifiutata\./);
+});
+
 test('una proposta a mano ha TRE comandi, e nessun «Approva»', async () => {
   /* «Crea» non si applica: non c'e' niente da scrivere in Home Assistant.
      Mutazione che la uccide: riusare i bottoni dell'officina. */

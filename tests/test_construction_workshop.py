@@ -288,7 +288,7 @@ async def test_richiesto_accetta_solo_una_delle_tre_strutture(banco):
     assert "errore" in esito
     assert "frase" in esito["errore"], (
         "il rifiuto deve dire DOVE va il testo libero, o il modello riprova uguale")
-    assert ha.salvate == [] and archivio.list() == [], (
+    assert ha.salvate == [] and archivio.list(now=ADESSO) == [], (
         "un campo riempito male non fa nascere una proposta")
 
 
@@ -321,7 +321,7 @@ async def test_una_validazione_fallita_ferma_tutto_e_riporta_il_motivo_di_ha(ban
     esito = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "Unknown trigger" in esito["errore"]
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -343,7 +343,7 @@ async def test_confermare_in_un_turno_successivo_scrive_davvero(banco):
                                    now=ADESSO + 60)
     assert esito["applicata"] is True
     assert ha.salvate[0][0] == "automation"
-    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
     riga = cronaca.read(esito["esecuzione_id"])
     assert riga["genere"] == "costruzione"
     assert riga["eseguito"] is True
@@ -399,7 +399,7 @@ async def test_un_identificatore_non_verificabile_ferma_la_proposta(banco):
     esito = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "alla cieca" in esito["errore"]
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -427,7 +427,7 @@ async def test_se_l_automazione_cade_gli_helper_appena_nati_si_disfano(banco):
     assert "errore" in esito
     assert ha.helper_creati, "l'helper doveva essere creato prima del rifiuto"
     assert ha.helper_cancellati == [("input_boolean", "modalita_notte")]
-    assert archivio.read(p["proposta_id"])["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
 
 
 @pytest.mark.asyncio
@@ -435,7 +435,7 @@ async def test_modificare_archivia_il_prima_prima_di_scrivere(banco):
     officina, ha, archivio, _ = banco
     intento = _intento(gesto="modifica", chiave="1771")
     p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
-    riga = archivio.read(p["proposta_id"])
+    riga = archivio.read(p["proposta_id"], now=ADESSO)
     assert riga["prima"]["alias"] == "com'era"
     assert "com'era" in riga["anteprima"] or "prima" in riga["anteprima"].lower()
     # «prima di scrivere» e' la parte del nome che l'assert sopra non prova
@@ -499,7 +499,7 @@ async def test_una_scena_con_due_stati_sulla_stessa_entita_si_rifiuta(banco):
         actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "light.salotto" in esito["errore"]
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -553,7 +553,7 @@ async def test_modificare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banc
     assert "proposta_id" not in esito
     assert "errore" in esito
     assert "9999" in esito["errore"] or "non esiste" in esito["errore"].lower()
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -565,7 +565,7 @@ async def test_cancellare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banc
                                    actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "errore" in esito
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -671,13 +671,13 @@ async def test_due_conferme_della_stessa_proposta_non_scrivono_due_volte(banco):
     officina, ha, archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
-    proposta_stantia = archivio.read(p["proposta_id"])
+    proposta_stantia = archivio.read(p["proposta_id"], now=ADESSO)
     assert proposta_stantia["stato"] == "in_attesa"
     # Un'altra richiesta rivendica per prima: il DB passa a `in_corso`.
     prima_rivendicazione = archivio.claim(p["proposta_id"], now=ADESSO + 59)
     assert "errore" not in prima_rivendicazione
     # Questa richiesta lavora ancora sulla lettura stantia.
-    officina._store.read = lambda ident: proposta_stantia
+    officina._store.read = lambda ident, now: proposta_stantia
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
     assert "errore" in esito
@@ -700,7 +700,7 @@ async def test_un_intento_vuoto_si_rifiuta_invece_di_validare_niente(banco):
     assert "proposta_id" not in esito
     assert "non ho capito" in esito["errore"]
     assert ha.salvate == []
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -861,7 +861,7 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
     assert ha.helper_creati, "l'helper doveva essere creato prima del guasto"
     assert ha.helper_cancellati == [("input_boolean", "modalita_notte")]
     # (c) la proposta non resta bloccata in_corso.
-    assert archivio.read(p["proposta_id"])["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
 
 
 @pytest.mark.asyncio
@@ -893,7 +893,7 @@ async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
 
     assert "errore" in esito
     assert esito.get("guasto_rete") is True
-    assert archivio.read(p["proposta_id"])["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
 
 
 @pytest.mark.asyncio
@@ -908,7 +908,7 @@ async def test_un_guasto_di_rete_durante_proponi_non_solleva(banco):
 
     assert "proposta_id" not in esito
     assert "errore" in esito
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -925,7 +925,7 @@ async def test_un_guasto_di_rete_durante_proponi_una_modifica_non_solleva(banco)
 
     assert "proposta_id" not in esito
     assert "errore" in esito
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 @pytest.mark.asyncio
@@ -1071,7 +1071,7 @@ async def test_se_il_registro_non_risponde_l_etichetta_MANCATA_si_dichiara(tmp_p
         "nessuna etichetta su un id che nessuno ha confermato")
     assert "input_boolean.modalita_notte" in (esito.get("avviso") or "")
     assert "etichetta HIRIS" in esito["avviso"]
-    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
 
 
 def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
@@ -1360,7 +1360,7 @@ async def test_la_proposta_di_paolo_non_si_conferma_dal_filo_di_marta(banco):
     assert "errore" in esito
     assert "nessuna proposta in sospeso" in esito["errore"]
     assert p["proposta_id"] not in esito["errore"]
-    assert archivio.read(p["proposta_id"])["stato"] == "in_attesa"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "in_attesa"
 
 
 @pytest.mark.asyncio
@@ -1383,8 +1383,8 @@ async def test_con_due_pendenti_di_paolo_marta_non_ha_niente_in_sospeso(banco):
     assert "nessuna proposta in sospeso" in esito["errore"]
     assert p1["proposta_id"] not in esito["errore"]
     assert p2["proposta_id"] not in esito["errore"]
-    assert archivio.read(p1["proposta_id"])["chiave"] not in esito["errore"]
-    assert archivio.read(p2["proposta_id"])["chiave"] not in esito["errore"]
+    assert archivio.read(p1["proposta_id"], now=ADESSO)["chiave"] not in esito["errore"]
+    assert archivio.read(p2["proposta_id"], now=ADESSO)["chiave"] not in esito["errore"]
 
 
 @pytest.mark.asyncio
@@ -1398,7 +1398,7 @@ async def test_per_id_da_un_altro_filo_e_rifiutata(banco):
                                  thread=MARTA, now=ADESSO + 60)
     assert "errore" in esito
     assert esito["errore"] == "non ho nessuna proposta con quell’identificatore."
-    assert archivio.read(p["proposta_id"])["stato"] == "in_attesa"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "in_attesa"
     assert ha.salvate == []
 
 
@@ -1412,7 +1412,7 @@ async def test_nel_proprio_filo_si_conferma_come_prima(banco):
     assert "errore" not in esito
     assert esito["applicata"] is True
     assert ha.salvate
-    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
 
 
 @pytest.mark.asyncio
@@ -1460,7 +1460,7 @@ async def test_thread_assente_non_restringe_come_la_pagina(banco):
                                  now=ADESSO + 60)
     assert "errore" not in esito
     assert esito["applicata"] is True
-    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
 
 
 @pytest.mark.asyncio
@@ -1522,7 +1522,7 @@ async def test_una_modifica_confermata_su_un_oggetto_cambiato_a_mano_NON_scrive(
     assert "cambiat" in esito["errore"]
     assert ha.salvate == [], "ha scritto sopra una modifica fatta a mano"
     assert ha.corpi["1771"] == _HAND_EDITED
-    assert archivio.read(p["proposta_id"])["stato"] != "applicata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] != "applicata"
 
 
 @pytest.mark.asyncio
@@ -1553,7 +1553,7 @@ async def test_una_modifica_su_un_oggetto_cancellato_a_mano_NON_lo_ricrea(banco)
 async def test_una_creazione_su_una_chiave_occupata_nel_frattempo_NON_sovrascrive(banco):
     officina, ha, archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
-    chiave = archivio.read(p["proposta_id"])["chiave"]
+    chiave = archivio.read(p["proposta_id"], now=ADESSO)["chiave"]
     ha.corpi[chiave] = {"id": chiave, "alias": "nata a mano con lo stesso id"}
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
@@ -1616,7 +1616,7 @@ async def test_ripristinare_una_creazione_cambiata_a_mano_NON_la_cancella(banco)
     officina, ha, archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
-    chiave = archivio.read(p["proposta_id"])["chiave"]
+    chiave = archivio.read(p["proposta_id"], now=ADESSO)["chiave"]
     ha.corpi[chiave] = {**ha.corpi[chiave], "alias": "rinominata a mano"}
 
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,

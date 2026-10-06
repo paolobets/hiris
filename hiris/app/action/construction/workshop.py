@@ -467,10 +467,10 @@ class Workshop:
         `thread` vero, ed e' li' che la restrizione morde.
         """
         if not proposal_id:
-            proposal_id, reason = self._only_pending(exchange, thread)
+            proposal_id, reason = self._only_pending(exchange, thread, now=now)
             if proposal_id is None:
                 return {"errore": reason}
-        proposal = self._store.read(proposal_id)
+        proposal = self._store.read(proposal_id, now=now)
         if proposal is None or not _thread_may_confirm(proposal, thread):
             # **Stesso testo per «non esiste» e «e' di un altro filo»**
             # (decisione 4, spec §5): un rifiuto non deve far capire che una
@@ -605,7 +605,7 @@ class Workshop:
                 "entita": entity, "avviso": notice}
 
     def _only_pending(self, exchange: str | None,
-                      thread: ChatThread | None) -> tuple[str | None, str]:
+                      thread: ChatThread | None, *, now: float) -> tuple[str | None, str]:
         """Quale proposta sta confermando chi ti sta parlando, quando non l'ha nominata.
 
         **Il difetto che chiude** (23/09/2026, misurato sulla casa vera): il
@@ -656,7 +656,7 @@ class Workshop:
         bruciando un posto sotto il tetto per un doppione. Il rifiuto
         rimanda alla pagina, senza nominarle (`_ORPHANS_ELSEWHERE`).
         """
-        all_pending = [r for r in self._store.list(pending_only=True)
+        all_pending = [r for r in self._store.list(now=now, pending_only=True)
                       if r["stato"] == "in_attesa"]
         pending = [r for r in all_pending
                   if thread is None or _same_thread(r, thread)]
@@ -1018,7 +1018,7 @@ class Workshop:
         rimette niente**: il «prima» di questa proposta e' il `dopo` di allora,
         e `apply` lo confronta con la casa (`_changed_since`, S-17).
         """
-        row = self._store.read(construction_id)
+        row = self._store.read(construction_id, now=now)
         if row is None:
             return {"errore": unknown_id_text("nessuna costruzione")}
         if row["stato"] != "applicata":

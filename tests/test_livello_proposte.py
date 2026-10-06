@@ -47,7 +47,7 @@ async def test_una_proposta_su_una_SERRATURA_e_alta_anche_se_il_modello_dice_lie
 
     assert "proposta_id" in esito, esito
     assert esito["livello"] == "alto"
-    assert archivio.read(esito["proposta_id"])["livello"] == "alto"
+    assert archivio.read(esito["proposta_id"], now=ADESSO)["livello"] == "alto"
 
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ async def test_l_ALLARME_come_bersaglio_di_un_servizio_generico_e_alto(banco):
     esito = await officina.propose(_intento(azioni=azioni, livello="banale"),
                                    actor="chat", exchange="t1", now=ADESSO)
 
-    assert archivio.read(esito["proposta_id"])["livello"] == "alto"
+    assert archivio.read(esito["proposta_id"], now=ADESSO)["livello"] == "alto"
 
 
 @pytest.mark.asyncio
@@ -71,7 +71,7 @@ async def test_l_azione_di_un_DISPOSITIVO_serratura_e_alta(banco):
     esito = await officina.propose(_intento(azioni=azioni, livello="lieve"),
                                    actor="chat", exchange="t1", now=ADESSO)
 
-    assert archivio.read(esito["proposta_id"])["livello"] == "alto"
+    assert archivio.read(esito["proposta_id"], now=ADESSO)["livello"] == "alto"
 
 
 @pytest.mark.asyncio
@@ -84,7 +84,7 @@ async def test_una_SCENA_che_chiude_la_serratura_e_alta(banco):
         actor="chat", exchange="t1", now=ADESSO)
 
     assert "proposta_id" in esito, esito
-    assert archivio.read(esito["proposta_id"])["livello"] == "alto"
+    assert archivio.read(esito["proposta_id"], now=ADESSO)["livello"] == "alto"
 
 
 @pytest.mark.asyncio
@@ -102,7 +102,7 @@ async def test_CANCELLARE_un_automazione_che_arma_l_allarme_e_alto(banco):
         actor="chat", exchange="t1", now=ADESSO)
 
     assert "proposta_id" in esito, esito
-    assert archivio.read(esito["proposta_id"])["livello"] == "alto"
+    assert archivio.read(esito["proposta_id"], now=ADESSO)["livello"] == "alto"
 
 
 @pytest.mark.asyncio
@@ -121,7 +121,7 @@ async def test_GUARDARE_una_serratura_non_e_agire_su_di_lei(banco):
                  livello="lieve"),
         actor="chat", exchange="t1", now=ADESSO)
 
-    assert archivio.read(esito["proposta_id"])["livello"] == "lieve"
+    assert archivio.read(esito["proposta_id"], now=ADESSO)["livello"] == "lieve"
 
 
 @pytest.mark.asyncio
@@ -132,8 +132,8 @@ async def test_fuori_dalla_lista_vale_il_livello_del_modello_e_senza_resta_non_d
     taciuto = await officina.propose(_intento(alias="Tapparelle al tramonto"),
                                      actor="chat", exchange="t2", now=ADESSO)
 
-    assert archivio.read(detto["proposta_id"])["livello"] == "medio"
-    assert archivio.read(taciuto["proposta_id"])["livello"] is None, (
+    assert archivio.read(detto["proposta_id"], now=ADESSO)["livello"] == "medio"
+    assert archivio.read(taciuto["proposta_id"], now=ADESSO)["livello"] is None, (
         "un livello che nessuno ha detto non si inventa")
 
 
@@ -145,7 +145,7 @@ async def test_il_modello_non_puo_scrivere_ALTO_da_se(banco):
 
     assert "proposta_id" not in esito
     assert "lo mette il codice" in esito["errore"]
-    assert archivio.list() == [] and ha.salvate == []
+    assert archivio.list(now=ADESSO) == [] and ha.salvate == []
 
 
 @pytest.mark.asyncio
@@ -155,7 +155,7 @@ async def test_un_livello_fuori_dal_vocabolario_si_rifiuta(banco):
                                    exchange="t1", now=ADESSO)
 
     assert "errore" in esito and "livello" in esito["errore"]
-    assert archivio.list() == []
+    assert archivio.list(now=ADESSO) == []
 
 
 def test_la_proposta_da_fare_a_mano_porta_lo_stesso_campo(tmp_path):

@@ -269,7 +269,7 @@ def _gate_comes_first(nome: str, funzioni: dict) -> bool:
     """La PRIMA istruzione del gestore chiama `require_builder` -- o delega
     subito a un aiutante di `api/` (`return await _act(...)`) la cui prima
     istruzione lo chiama. «Per prima» e non «da qualche parte»: il cancello
-    deve venire prima di qualunque archivio (`store.scadi` scrive)."""
+    deve venire prima di qualunque archivio."""
     prima = _first_statement(funzioni[nome])
     chiamate = _chiama(prima)
     if "require_builder" in chiamate:

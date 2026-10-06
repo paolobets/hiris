@@ -240,11 +240,11 @@ async def test_troppi_id_sono_un_400_non_un_500(client):
 async def test_una_proposta_scaduta_non_conta_nel_pallino(client):
     """Il pallino non deve mandare l'utente su una pagina vuota.
 
-    `scadi()` gira solo all'apertura della pagina: una proposta lasciata
-    scadere resta `in_attesa` sul disco, e un conteggio che guardasse il solo
-    `stato` continuerebbe a dire «1 in attesa» per sempre. L'utente apre, la
-    scadenza viene scritta, e la pagina dice «Nessuna proposta in attesa» --
-    il contrario del mestiere del pallino (review indipendente, rilievo 6).
+    Una proposta lasciata scadere resta `in_attesa` sul disco finche' una
+    scrittura non la segna, e un conteggio che guardasse il solo `stato`
+    continuerebbe a dire «1 in attesa» mentre la pagina dice «Nessuna
+    proposta in attesa» -- il contrario del mestiere del pallino (review
+    indipendente, rilievo 6).
     """
     costruzioni = client.app["constructions"]
     _proposta(costruzioni, 0, now=ADESSO)
@@ -253,4 +253,5 @@ async def test_una_proposta_scaduta_non_conta_nel_pallino(client):
     assert costruzioni.count_pending(now=ADESSO) == 1
     assert costruzioni.count_pending(now=oltre) == 0
     # E la riga NON e' stata riscritta: un conteggio non scrive.
-    assert costruzioni.list()[0]["stato"] == "in_attesa"
+    assert costruzioni._conn.execute(
+        "SELECT stato FROM costruzioni").fetchone()[0] == "in_attesa"
