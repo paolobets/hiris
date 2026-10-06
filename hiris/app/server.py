@@ -2058,16 +2058,17 @@ async def analyst_round(app) -> dict | None:
         if not (series.get("serie") or []):
             return None
 
+        previous = _analyst_memory(store, today, series)
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
         if route == "ponte":
-            return _enqueue_analyst_turn(app, series, today)
+            return _enqueue_analyst_turn(app, series, today, previous)
         if runner is None:
             logger.info("analista: nessun modello collegato, si riprova al giro dopo")
             return None
         declare_downgrade(app, agent=ANALYST_SPECIES, reason=downgrade)
 
-        question = analyst_turn.build_question(series)
+        question = analyst_turn.build_question(series, previous)
         if question is None:
             return None
         async with misura_turno(app.get("usage"), runner,
@@ -2076,7 +2077,8 @@ async def analyst_round(app) -> dict | None:
                 user_message=question, system_prompt=analyst_turn.SYSTEM,
                 max_tokens=analyst_turn.MAX_ANSWER_TOKENS)
         esito = analyst_turn.apply_analysis(series, answer,
-                                            truncated=turn.truncated)
+                                            truncated=turn.truncated,
+                                            previous=previous)
         _write_analysis(store, today, esito)
         return esito
     except Exception as error:
@@ -2089,6 +2091,14 @@ async def analyst_round(app) -> dict | None:
 #: della spec §9 -- «trenta giorni di misure stanno in un prompt» -- e
 #: misurato sulla casa vera sono ~35.000 token.
 ANALYST_DAYS = 30
+
+
+def _analyst_memory(store, today: str, series: dict) -> list[dict]:
+    """Cio' che l'analista ha gia' detto nella sua finestra, dagli archivi
+    (D4 del piano degli attori, `analyst.previous_observations`)."""
+    return analyst.previous_observations(
+        store.analyses(limit=ANALYST_DAYS), store.proposals(), today=today,
+        series=series)
 
 
 async def actuator_round(app) -> dict | None:
@@ -2399,9 +2409,10 @@ def _write_analysis(store, day: str, esito: dict) -> None:
                 day, len(analysis.get("osservazioni") or []))
 
 
-def _enqueue_analyst_turn(app, series: dict, day: str) -> dict | None:
+def _enqueue_analyst_turn(app, series: dict, day: str,
+                          previous: list[dict]) -> dict | None:
     """Accoda al piano la domanda dell'analista, e torna subito."""
-    job = analyst_turn.bridge_turn(series)
+    job = analyst_turn.bridge_turn(series, previous)
     if job is None:
         return None
     deadline_min = bridge_deadline_min(app.get("models_config"))
@@ -2467,7 +2478,8 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     series = analyst.with_deviation(
         report.series_of_measures(store.reports(limit=ANALYST_DAYS),
                                   names=_device_names(app)))
-    esito = analyst_turn.apply_analysis(series, reply)
+    esito = analyst_turn.apply_analysis(series, reply,
+                                        previous=_analyst_memory(store, day, series))
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.

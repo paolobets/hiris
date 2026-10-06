@@ -36,6 +36,35 @@ from __future__ import annotations
 MINIMUM_HISTORY = 3
 
 
+#: Le chiavi che fanno l'IDENTITA' di un'osservazione -- e quindi della domanda
+#: che l'attuatore ne fa, e della proposta che ne nasce: chi, cosa si misura, quale
+#: chiave dentro la misura, e con quale innesco. **I numeri non ci stanno**: se
+#: ci stessero, ogni giorno sarebbe una domanda nuova e una proposta rifiutata
+#: ieri tornerebbe oggi con la stessa faccia.
+_IDENTITY = ("soggetto", "misura", "chiave", "innesco")
+
+#: Cio' che rende una prova **diversa** da quella contro cui il proprietario ha
+#: deciso: su quanti giorni si regge (`base`), quanto si stacca
+#: (`quanti_scarti`), e se nel frattempo qualcuno l'ha spiegata. Cambiano
+#: questi, la domanda si riapre (spec §4); non cambia niente, tace.
+#:
+#: **Non a tempo**: il tempo non e' una prova, e riproporre la stessa cosa con
+#: gli stessi dati e' insistere, non informare. E' la stessa regola che il
+#: sapere usa per i rifiuti delle ricette -- «un rifiuto vale finche' vale il
+#: registro contro cui e' stato deciso».
+_EVIDENCE = ("base", "quanti_scarti", "spiegato")
+
+
+def observation_key(observation: dict) -> str:
+    """L'impronta identitaria di un'osservazione dell'analista."""
+    return "|".join(str(observation.get(name)) for name in _IDENTITY)
+
+
+def evidence_of(observation: dict) -> dict:
+    """La forza della prova su cui quella domanda si regge, adesso."""
+    return {name: observation.get(name) for name in _EVIDENCE}
+
+
 def with_deviation(series: dict) -> dict:
     """La stessa serie, con lo **scostamento** dell'ultimo valore su ogni riga.
 
@@ -247,3 +276,88 @@ def trigger_facts(row: dict, days: list[str]) -> list[dict]:
         facts.append({"innesco": 3, "fatto": "la copertura e' passata da "
                       f"{coverages[-2]} a {coverages[-1]} nell'ultimo giorno"})
     return facts
+
+
+#: Le due risposte possibili alla domanda «l'hai gia' detta?» (D4 del piano
+#: degli attori, 06/10/2026). Lista di AMMISSIONE: il modello dice quale, il
+#: codice controlla contro gli archivi (`novelty_problem`).
+NOVELTY = ("nuova", "prova cambiata")
+
+
+def previous_observations(analyses, proposals, *, today: str,
+                          series: dict | None = None) -> list[dict]:
+    """La **memoria** dell'analista, ricavata dagli archivi (D4): nessuna
+    tabella nuova, riferimenti per impronta, mai copie.
+
+    `analyses` sono le analisi archiviate (`MindStore.analyses`, la finestra
+    `ANALYST_DAYS` del giro), `proposals` le proposte (`MindStore.proposals`).
+    Torna una voce per impronta, in ordine dalla piu' recente: chi e' la
+    misura, l'innesco, i giorni in cui e' stata detta, cosa e' stato detto
+    l'ultima volta, la prova di allora e l'esito della proposta che ne e'
+    nata, se c'e'. Se la misura e' ancora nella serie di oggi, `quale` e' il
+    suo numero.
+
+    L'analisi di `today` non e' memoria: e' quella che si sta riscrivendo.
+    """
+    numbers = {}
+    for number, row in enumerate((series or {}).get("serie") or []):
+        numbers[(row.get("soggetto"), row.get("misura"), row.get("chiave"))] = number
+    outcomes: dict[str, dict] = {}
+    for proposal in proposals or []:
+        key = proposal.get("impronta")
+        if key and key not in outcomes:
+            outcomes[key] = {"stato": proposal.get("stato"),
+                             "nota": proposal.get("esito_nota")}
+    by_key: dict[str, dict] = {}
+    ordered = sorted((a for a in analyses or [] if a.get("giorno") != today),
+                     key=lambda a: str(a.get("giorno") or ""), reverse=True)
+    for analysis in ordered:
+        for observation in analysis.get("osservazioni") or []:
+            if not isinstance(observation, dict):
+                continue
+            key = observation_key(observation)
+            seen = by_key.get(key)
+            if seen is not None:
+                seen["giorni"].append(analysis.get("giorno"))
+                continue
+            entry = {"impronta": key, "nome": observation.get("nome"),
+                     "misura": observation.get("misura"),
+                     "chiave": observation.get("chiave"),
+                     "innesco": observation.get("innesco"),
+                     "giorni": [analysis.get("giorno")],
+                     "cosa": observation.get("cosa"),
+                     "prova": evidence_of(observation),
+                     "esito": outcomes.get(key)}
+            where = (observation.get("soggetto"), observation.get("misura"),
+                     observation.get("chiave"))
+            if where in numbers:
+                entry["quale"] = numbers[where]
+            by_key[key] = entry
+    return list(by_key.values())
+
+
+def novelty_problem(observation: dict, novelty, previous: list[dict]) -> str | None:
+    """Perche' un'osservazione ripete la memoria, o `None` se non la ripete.
+
+    La regola di D4: **la stessa impronta con la stessa prova e' gia' detta**,
+    qualunque cosa il modello dichiari. Con una prova cambiata si dice di
+    nuovo, ed e' il modello a dirlo («prova cambiata»); un'impronta mai detta
+    e' «nuova».
+    """
+    if novelty not in NOVELTY:
+        return (f"non dice se e' nuova (`novita`: {novelty!r}): "
+                f"{' o '.join(NOVELTY)}")
+    key = observation_key(observation)
+    said = next((p for p in previous or [] if p.get("impronta") == key), None)
+    if said is None:
+        if novelty != "nuova":
+            return ("dice «prova cambiata», ma questa misura con questo "
+                    "innesco non e' mai stata detta: e' nuova")
+        return None
+    if said.get("prova") == evidence_of(observation):
+        return (f"e' gia' stata detta ({', '.join(str(d) for d in said['giorni'])}) "
+                "con la stessa prova: si ridice solo quando la prova cambia")
+    if novelty != "prova cambiata":
+        return ("dice «nuova», ma e' gia' stata detta: con la prova cambiata "
+                "e' «prova cambiata»")
+    return None

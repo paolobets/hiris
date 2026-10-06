@@ -86,8 +86,13 @@ def fondamento(stamps) -> dict:
             "impronta": hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]}
 
 
-def apply_analysis(series: dict, answer: str, *, truncated: bool = False) -> dict:
+def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
+                   previous: list[dict] | None = None) -> dict:
     """Cosa si fa della risposta: si valida, e si **arricchisce coi numeri**.
+
+    `previous` e' la memoria (`analyst.previous_observations`, D4): ogni
+    osservazione dice se e' nuova, e la stessa impronta con la stessa prova si
+    rifiuta (`analyst.novelty_problem`).
 
     Torna `{"analisi": dict | None, "problemi": [...], "risposta": bool}`.
 
@@ -128,7 +133,10 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False) -> dic
             continue
         built = _enrich(line, number, known, problems)
         if built is not None:
-            enriched.append(built)
+            repeated = analyst.novelty_problem(built, line.get("novita"), previous or [])
+            if repeated:
+                problems.append(f"l'osservazione {number} {repeated}")
+            enriched.append({**built, "novita": line.get("novita")})
 
     if problems:
         return {"analisi": None, "problemi": problems, "risposta": True}
@@ -223,7 +231,8 @@ ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
    "innesco": 1 | 2 | 3,
    "cosa": "cosa hai visto, in una frase",
    "spiegato": "da cosa e' spiegato, oppure null se non lo e'",
-   "cosa_cambierebbe": "cosa cambierebbe rispetto all'obiettivo"}
+   "cosa_cambierebbe": "cosa cambierebbe rispetto all'obiettivo",
+   "novita": "nuova" | "prova cambiata"}
 ]}
 
 Gli inneschi sono tre, e ogni osservazione deve dire quale:
@@ -232,10 +241,14 @@ Gli inneschi sono tre, e ogni osservazione deve dire quale:
   3 = qualcosa non c'e' piu' (la copertura crolla, o la misura smette di
       calcolarsi)
 
+«novita»: «nuova» se questa misura con questo innesco non l'hai mai detta;
+«prova cambiata» se l'hai gia' detta e da allora la prova e' cambiata. La
+stessa cosa con la stessa prova non si ridice: la risposta viene rifiutata.
+
 Niente numeri: li mette il codice. Un elenco vuoto va benissimo."""
 
 
-def build_question(series: dict) -> str | None:
+def build_question(series: dict, previous: list[dict] | None = None) -> str | None:
     """La domanda intera, o `None` se non c'e' niente da analizzare.
 
     `None` quando non c'e' nessuna serie: una casa senza misure non ha niente
@@ -249,6 +262,10 @@ def build_question(series: dict) -> str | None:
     turno il 01/10. Ora una riga per misura coi numeri che il codice ha gia'
     calcolato (`analyst.index`) e i fatti dei tre inneschi; le serie intere
     sono una lettura da chiedere, non un peso da portare.
+
+    **La memoria** (D4): cio' che l'analista ha gia' detto nei giorni della
+    finestra, una voce per impronta, con la prova di allora e l'esito della
+    proposta che ne e' nata (`analyst.previous_observations`).
     """
     rows = series.get("serie") or []
     if not rows:
@@ -269,6 +286,15 @@ def build_question(series: dict) -> str | None:
     for number, row in analyst.index(series):
         lines.append(f"[{number}] " + json.dumps(row, ensure_ascii=False))
     lines.append("")
+    if previous:
+        lines.append("Cio' che hai gia' detto nei giorni scorsi, una voce per "
+                     "misura e innesco, con la prova di allora e l'esito della "
+                     "proposta che ne e' nata («quale» e' il numero della "
+                     "misura qui sopra, se c'e' ancora):")
+        for said in previous:
+            shown = {k: v for k, v in said.items() if k != "impronta"}
+            lines.append("- " + json.dumps(shown, ensure_ascii=False))
+        lines.append("")
     lines.append(ANSWER_CONTRACT)
     return "\n".join(lines)
 
@@ -290,7 +316,7 @@ def _objective_lines(runs: list[dict], days: list[str]) -> list[str]:
     return out
 
 
-def bridge_turn(series: dict) -> dict | None:
+def bridge_turn(series: dict, previous: list[dict] | None = None) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere.
 
     Stessa forma di `recipe_turn.bridge_turn` e di `observer.bridge_turn`, e
@@ -298,7 +324,7 @@ def bridge_turn(series: dict) -> dict | None:
     `istruzione` serve perche' altrimenti l'istruzione di chiusura della chat
     gli vieta il JSON che qui si chiede.
     """
-    question = build_question(series)
+    question = build_question(series, previous)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],
