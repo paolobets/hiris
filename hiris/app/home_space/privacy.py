@@ -227,7 +227,23 @@ def named_after_person(house) -> set[str]:
     piu' pezzi interi dell'object_id, fra un `_` e l'altro, mai un pezzo di
     parola («paolone» non e' «paolo»). Un nome che non da' uno slug (un
     alfabeto che la replica non traslittera: `"unknown"`) non copre niente,
-    invece di coprire ogni id con «unknown» dentro."""
+    invece di coprire ogni id con «unknown» dentro.
+
+    **Limiti dichiarati** (decisione del proprietario del 06/10/2026, «Solo
+    nome intero», dopo il giro 28 della revisione):
+    - **i pezzi di un nome in piu' parole non si coprono da soli.** «Paolo
+      Bets» nata `person.paolo_bets` non copre `automation.paolo_arriva`, e
+      «Paolo» da solo in un testo passa. Coprire ogni pezzo prenderebbe anche
+      le particelle («de», «di», «la»), e per evitarlo servirebbe un elenco
+      o una soglia nostri. Quante persone della casa hanno un nome in piu'
+      parole, e quanti id ne portano un pezzo solo, l'ha misurato lo sprint
+      sugli ingressi del 03/10/2026: nessuna persona col nome in piu'
+      parole, 76 id coperti, 0 id con un pezzo solo;
+    - **un nome che e' anche una parola** («Sole») copre gli id che la
+      contengono (`sensor.sole_elevazione`): informazione tolta, non una
+      fuga, e `unmask` riporta l'id;
+    - **lo slug e' quello della replica** (`reference.slugify`): «Strauß» da'
+      «strau», dove `python-slugify` di Home Assistant da' «strauss»."""
     slugs = set()
     for person in house.entity_ids():
         if domain_of(person) != "person":
