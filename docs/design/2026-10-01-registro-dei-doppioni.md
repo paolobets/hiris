@@ -86,7 +86,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-32 | Un istante esce in quattro forme dagli strumenti (UTC, fuso casa, epoch, «mai») | D | CC |  |  | cop-3 C-n2 · A15 dell'integrazione Tappe 4-6 (d29d98c, 05/10/2026): `historian.instant_out` esce al secondo, senza microsecondi; restano le altre forme |
 | C-33 | Righe della stessa risposta con chiavi diverse; `genere` manca all'entità nella corta | D | CC |  |  | cop-3 C-n3 |
 | C-34 | Nella media `attributi` sono le ceste grezze, senza il filtro della completa | D | CC |  |  | cop-3 C-n4 |
-| C-35 | Frasi fisse ripetute per riga o per risposta, già scritte nella descrizione | E | DP |  |  | cop-3 C-n5 · Tappa 5 (D10 della Tappa 4) |
 | C-36 | I `punti` a fasce portano `somma` non spiegata e tre `null` per i contatori | NV | CC |  |  | cop-3 C-n6 |
 | C-37 | La traccia passo per passo (`run_detail`) esce senza nessun tetto | NV | CC |  |  | cop-3 C-n7 · Tappa 5 (D10 della Tappa 4) |
 | C-38 | `calendar`: unico lettore senza tetto di righe e con un involucro suo | D | CC |  |  | cop-3 C-n8 · Tappa 5 (D10 della Tappa 4) |
@@ -846,10 +845,10 @@ Spostate, restano aperte:
 
 - **C-37**, **C-38** → Tappa 5, Task 6 (i tetti per risposta, R16): la traccia passo per passo
   senza tetto e `calendar` senza tetto di righe sono tetti, e il Task 6 li scrive dopo la misura.
-- **C-35** resta aperta, da decidere col proprietario: le frasi fisse per risposta
+- **C-35** chiusa come voluta (Paolo, 06/10/2026: «Restano»): le frasi fisse per risposta
   (`nessuna_registrazione.perche`, `_NO_RECORDING` in `house_history.py`) ripetono la
-  descrizione, ma toglierle cambia la forma della risposta e va contro la fondamenta 1
-  (un oggetto porta cio' che serve a interpretarlo da solo). Prima la regola, poi il codice.
+  descrizione, ma toglierle cambierebbe la forma della risposta contro la fondamenta 1
+  (un oggetto porta cio' che serve a interpretarlo da solo).
 
 ## Chiuse
 
@@ -1082,3 +1081,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | D-57 | La guida del ponte: secondo catalogo a mano, `mcp__hiris__` ricopiato venti volte (in potenza) | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | i nomi mcp__hiris__* li compone guide_with_tools dagli strumenti del turno, col prefisso di runner.mcp_name (usato anche da mcp_names, read_stream e _bare_tool_name). Mutazione eseguita: una riga in piu' nella tabella TOOLS compare nella guida senza toccare guida ne' prova |
 | D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | la composizione l'ha fatta la Tappa 6, Task 7 (compose_base); il contenuto qui: la promessa riceve le sole regole dei suoi strumenti (1.272 caratteri, nessuna di execute, propose, remember, confirm) |
 | C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | Tappa 5, Task 5 (ramo, non rilasciata) | eea18be | lo strumento mind (Tappa 5, Task 8): scope, obiettivo, resoconti, analisi ed energia sono chiedibili dalla chat; verificato il 06/10/2026 sull'enum di cosa |
+| C-35 | Frasi fisse ripetute per riga o per risposta, già scritte nella descrizione | Tappa 5, Task 5 (ramo, non rilasciata) | 9a80dfd5 | voluta: decisione di Paolo del 06/10/2026 (scheda, «Restano»). Le frasi fisse per risposta (nessuna_registrazione.perche, _NO_RECORDING) restano perche' una risposta si legge da sola (fondamenta 1); la descrizione dello strumento le ripete per chi sceglie la chiamata |
