@@ -106,33 +106,97 @@ def test_la_CHIAVE_resta_parte_dell_identita_della_misura():
     serie["serie"].append({**serie["serie"][1], "chiave": "media"})
 
     esito = at.apply_analysis(serie, _risposta([
-        _osservazione(quale=1, innesco=2), _osservazione(quale=2, innesco=2)]))
+        _osservazione(quale=1), _osservazione(quale=2)]))
 
     assert esito["problemi"] == []
     chiavi = [o["chiave"] for o in esito["analisi"]["osservazioni"]]
     assert chiavi == ["massimo", "media"], chiavi
 
 
-def test_un_INNESCO_fuori_dai_tre_si_rifiuta():
-    """Gli inneschi sono tre e sono dichiarati nella spec: un'osservazione che
-    non dice quale dei tre non e' dell'analista, e' un commento.
+def test_un_INNESCO_che_la_riga_NON_HA_si_rifiuta():
+    """D3 e Task 3.5: gli inneschi li marca il codice sulla riga, e il modello
+    sceglie fra quelli. La riga [0] e' candidata al solo innesco 1: un 3 -- che
+    esiste nella spec, ma non su questa riga -- si rifiuta, come uno che non
+    esiste affatto.
 
-    Mutazione: accettare qualunque numero -- rossa.
-    """
-    for innesco in (0, 4, "uno", None):
+    Mutazione ESEGUITA (06/10/2026): `_trigger` che accetta qualunque innesco
+    dei tre -- rossa (il 2 e il 3 passano)."""
+    for innesco in (0, 2, 3, 4, "uno"):
         esito = at.apply_analysis(_serie(), _risposta([_osservazione(innesco=innesco)]))
         assert any("innesco" in p for p in esito["problemi"]), innesco
 
 
-def test_senza_COSA_CAMBIEREBBE_si_rifiuta():
-    """La spec lo elenca fra le quattro cose che ogni osservazione deve avere:
-    senza, e' una constatazione, non qualcosa che si potrebbe fare -- e
-    l'analista esiste per dire cosa si potrebbe fare.
+def test_l_INNESCO_lo_attacca_il_codice_quando_la_riga_ne_ha_uno():
+    """Mutazione ESEGUITA (06/10/2026): `_trigger` che pretende l'innesco
+    scritto -- rossa."""
+    riga = _osservazione()
+    del riga["innesco"]
+    esito = at.apply_analysis(_serie(), _risposta([riga]))
+    assert esito["problemi"] == []
+    assert esito["analisi"]["osservazioni"][0]["innesco"] == 1
 
-    Mutazione: renderlo facoltativo -- rossa.
-    """
+
+def test_con_PIU_inneschi_sulla_riga_il_modello_SCEGLIE():
+    serie = _serie()
+    serie["serie"][0]["coperture"] = [1.0, 1.0, 0.4]
+    riga = _osservazione()
+    del riga["innesco"]
+    esito = at.apply_analysis(serie, _risposta([riga]))
+    assert any("scegline uno" in p for p in esito["problemi"]), esito["problemi"]
+
+    esito = at.apply_analysis(serie, _risposta([_osservazione(innesco=3)]))
+    assert esito["analisi"]["osservazioni"][0]["innesco"] == 3
+
+
+def test_una_riga_SENZA_inneschi_non_e_candidata():
+    serie = _serie()
+    serie["serie"][0]["scostamento"] = {"ultimo": 0.74, "mediana": 0.3, "scarto": None,
+                                        "quanti_scarti": None, "base": 1,
+                                        "non_calcolabile": "storia corta"}
+    esito = at.apply_analysis(serie, _risposta([_osservazione()]))
+    assert any("nessun" in p for p in esito["problemi"]), esito["problemi"]
+
+
+def test_COSA_CAMBIEREBBE_e_facoltativo():
+    """Task 3.5: obbligatorio contraddiceva «il silenzio e' un esito
+    legittimo» -- spingeva a inventare un'azione per ogni constatazione
+    (audit del 01/10/2026).
+
+    Mutazione ESEGUITA (06/10/2026): rimetterlo obbligatorio in `_enrich`
+    -- rossa."""
     esito = at.apply_analysis(_serie(), _risposta([_osservazione(cosa_cambierebbe="  ")]))
-    assert any("cambierebbe" in p for p in esito["problemi"]), esito["problemi"]
+    assert esito["problemi"] == []
+    vista = esito["analisi"]["osservazioni"][0]
+    assert vista["cosa_cambierebbe"] is None
+    assert vista["da_riverificare"] is None
+
+    riga = _osservazione()
+    riga["da_riverificare"] = "se il contatore e' ripartito"
+    esito = at.apply_analysis(_serie(), _risposta([riga]))
+    assert esito["analisi"]["osservazioni"][0]["da_riverificare"] == \
+        "se il contatore e' ripartito"
+
+
+def test_il_RIMETTI_si_valida_e_si_archivia_con_l_analisi():
+    """D9: l'analista chiede nella risposta di far rientrare un'entita'; lo
+    scrive il Task 3.7. Qui la forma: `id` e `perche`, tutti e due."""
+    import json
+    buona = json.dumps({"osservazioni": [], "rimetti": [
+        {"id": "sensor.batteria", "perche": "spiega il prelievo serale"}]})
+    esito = at.apply_analysis(_serie(), buona)
+    assert esito["analisi"]["rimetti"] == [
+        {"id": "sensor.batteria", "perche": "spiega il prelievo serale"}]
+
+    storta = json.dumps({"osservazioni": [], "rimetti": [{"id": "sensor.x"}]})
+    assert at.apply_analysis(_serie(), storta)["analisi"] is None
+
+
+def test_le_LETTURE_del_turno_vengono_dal_registro_delle_chiamate():
+    """Task 3.5, Passo 3: dal runner (`last_tool_calls`), non dal testo."""
+    chiamate = [{"tool": "history", "input": {"riferimento": "sensor.prelievo"}}]
+    esito = at.apply_analysis(_serie(), _risposta([]), tool_calls=chiamate)
+    assert esito["analisi"]["letture"] == chiamate
+    assert "letture" not in at.apply_analysis(_serie(), _risposta([]))["analisi"]
 
 
 def test_il_SILENZIO_e_un_esito_legittimo_e_non_e_un_rifiuto():
@@ -153,7 +217,7 @@ def test_TUTTI_i_problemi_si_dicono_insieme():
     Mutazione: tornare al primo problema -- rossa.
     """
     esito = at.apply_analysis(_serie(), _risposta([
-        _osservazione(quale=99, innesco=9, cosa_cambierebbe="")]))
+        _osservazione(quale=99, cosa="", valore=3.0)]))
 
     assert len(esito["problemi"]) >= 3, esito["problemi"]
 

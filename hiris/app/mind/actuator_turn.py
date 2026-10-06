@@ -185,7 +185,8 @@ def build_question(observations) -> str | None:
         lines.append(f"  [{index}] {row.get('soggetto')} · {row.get('misura')}"
                      + (f" ({row.get('chiave')})" if row.get("chiave") else ""))
         lines.append(f"      cosa ha visto: {row.get('cosa')}")
-        lines.append(f"      cosa cambierebbe: {row.get('cosa_cambierebbe')}")
+        if row.get("cosa_cambierebbe"):
+            lines.append(f"      cosa cambierebbe: {row.get('cosa_cambierebbe')}")
         base = row.get("base")
         lines.append(f"      si regge su {base} giorni di storia"
                      if base else "      non ha una storia dietro")

@@ -37,7 +37,9 @@ def _serie():
     return {"giorni": ["2026-09-12", "2026-09-13", "2026-09-14"], "obiettivi": [],
             "serie": [{"soggetto": "dev1", "nome": "Inverter", "misura": "prelievo",
                        "chiave": None, "operazione": "somma_periodo", "unita": "kWh",
-                       "valori": [0.3, 0.3, 0.74], "coperture": [1.0, 1.0, 1.0],
+                       # L'ultima copertura scende: la riga e' candidata agli
+                       # inneschi 1 e 3 (`analyst.trigger_facts`).
+                       "valori": [0.3, 0.3, 0.74], "coperture": [1.0, 1.0, 0.5],
                        "perche": [],
                        "scostamento": {"ultimo": 0.74, "mediana": 0.3, "scarto": 0.16,
                                        "quanti_scarti": 2.75, "base": 2}}]}
@@ -145,15 +147,14 @@ class _ModelloCheRipete:
     async def chat(self, **kwargs):
         self.domande.append(kwargs["user_message"])
         return json.dumps({"osservazioni": [
-            {"quale": 0, "innesco": 1, "cosa": "di nuovo il prelievo",
-             "spiegato": None, "cosa_cambierebbe": "y"}]})
+            {"quale": 0, "cosa": "di nuovo il prelievo", "spiegato": None}]})
 
 
-def _resoconto(giorno):
+def _resoconto(giorno, copertura=1.0):
     return {"giorno": giorno, "obiettivo": None,
             "misure": [{"soggetto": "dev1", "nome": "Inverter", "misura": "prelievo",
                         "operazione": "somma_periodo", "valore": 1.0,
-                        "unita": "kWh", "copertura": 1.0}],
+                        "unita": "kWh", "copertura": copertura}],
             "forme": [], "cronaca": []}
 
 
@@ -167,9 +168,12 @@ async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_toglie_la_ripetizione(tm
     memoria ad `apply_analysis` -- rossa (la ripetizione si scrive)."""
     store = ObservationsStore(str(tmp_path / "oss.db"))
     try:
-        for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
-            store.replace_report(giorno, _resoconto(giorno))
-        detta = _osservazione(base=2, quanti_scarti=None)
+        # La copertura scende l'ultimo giorno: un solo innesco, il 3, che il
+        # codice attacca senza che il modello lo scriva.
+        for giorno, copertura in (("2026-09-15", 1.0), ("2026-09-16", 1.0),
+                                  ("2026-09-17", 0.5)):
+            store.replace_report(giorno, _resoconto(giorno, copertura))
+        detta = _osservazione(base=2, quanti_scarti=None, innesco=3)
         store.replace_analysis("2026-09-16", {"osservazioni": [detta]})
         store.replace_analysis("2026-09-17", {"osservazioni": []})
         store.add_proposal(text="t", perche="p",

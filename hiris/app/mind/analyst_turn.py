@@ -14,10 +14,14 @@ nostro (sarebbe correggere invece di rifiutare). Stessa dottrina delle ricette.
 
 ## Cosa deve avere un'osservazione
 
-Le quattro cose che la spec elenca: **cosa** ha visto, **perche'** lo dice
-(quale dei tre inneschi), **se e' spiegato**, **cosa cambierebbe** rispetto
-all'obiettivo. Senza l'ultima e' una constatazione, non qualcosa che si
-potrebbe fare -- e l'analista esiste per dire cosa si potrebbe fare.
+**Cosa** ha visto, **su quale misura** (il numero) e **se e' spiegato**.
+**Perche'** lo dice -- quale dei tre inneschi -- lo sa il codice, che li marca
+sulla riga: il modello sceglie solo fra quelli, quando sono piu' d'uno.
+**Cosa cambierebbe** rispetto all'obiettivo e' facoltativo dal Task 3.5 del
+piano degli attori: obbligatorio, contraddiceva «il silenzio e' un esito
+legittimo» -- spingeva a inventare un'azione per ogni constatazione (audit del
+01/10/2026). Facoltativo anche **da riverificare**: cio' che l'analista vuole
+ricontrollare, archiviato con l'osservazione.
 
 ## Il silenzio
 
@@ -87,8 +91,16 @@ def fondamento(stamps) -> dict:
 
 
 def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
-                   previous: list[dict] | None = None) -> dict:
+                   previous: list[dict] | None = None,
+                   tool_calls: list[dict] | None = None) -> dict:
     """Cosa si fa della risposta: si valida, e si **arricchisce coi numeri**.
+
+    `tool_calls` sono le letture fatte nel turno, dal registro delle chiamate
+    del runner (`last_tool_calls`: `{tool, input}`), mai dal testo del modello
+    (Task 3.5, Passo 3). Stanno nell'analisi una volta sola, in `letture`:
+    il turno non dice quale lettura e' servita a quale osservazione, e
+    ripeterle su ognuna sarebbe una copia. Oggi l'analista non ha strumenti
+    e l'elenco e' vuoto; li riceve col Task 3.6.
 
     `previous` e' la memoria (`analyst.previous_observations`, D4): il codice
     attacca a ogni osservazione se e' nuova (`analyst.novelty`), e quella gia'
@@ -127,6 +139,7 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
     # L'elenco IN ORDINE: il numero che il modello indica e' la posizione qui,
     # ed e' lo stesso ordine con cui `build_question` lo ha consegnato.
     known = list(series.get("serie") or [])
+    days = list(series.get("giorni") or [])
     problems: list[str] = []
     enriched: list[dict] = []
     repeated: list[str] = []
@@ -134,7 +147,7 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
         if not isinstance(line, dict):
             problems.append(f"l'osservazione {number} non e' un'osservazione: {line!r}")
             continue
-        built = _enrich(line, number, known, problems)
+        built = _enrich(line, number, known, problems, days)
         if built is not None:
             fresh = analyst.novelty(built, previous or [])
             if fresh is None:
@@ -142,17 +155,25 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
                 continue
             enriched.append({**built, "novita": fresh})
 
+    back_in = _back_in(data.get("rimetti"), problems)
     if problems:
         return {"analisi": None, "problemi": problems, "risposta": True,
                 "ripetute": repeated}
     if repeated:
         logger.info("analista: %d osservazioni gia' dette con la stessa prova, "
                     "tolte: %s", len(repeated), " \u00b7 ".join(repeated))
-    return {"analisi": {"osservazioni": enriched}, "problemi": [], "risposta": True,
+    analysis = {"osservazioni": enriched}
+    if back_in:
+        analysis["rimetti"] = back_in
+    if tool_calls:
+        analysis["letture"] = [{"tool": c.get("tool"), "input": c.get("input")}
+                               for c in tool_calls if isinstance(c, dict)]
+    return {"analisi": analysis, "problemi": [], "risposta": True,
             "ripetute": repeated}
 
 
-def _enrich(line: dict, number: int, known: dict, problems: list) -> dict | None:
+def _enrich(line: dict, number: int, known: dict, problems: list,
+            days: list[str]) -> dict | None:
     """Un'osservazione validata e completata coi numeri della serie."""
     written = [f for f in NUMERIC_FIELDS if f in line]
     if written:
@@ -185,21 +206,13 @@ def _enrich(line: dict, number: int, known: dict, problems: list) -> dict | None
     else:
         row = known[which]
 
-    trigger = line.get("innesco")
-    if trigger not in TRIGGERS:
-        problems.append(
-            f"l'osservazione {number} porta un innesco che non esiste "
-            f"(«{trigger}»): sono tre, 1, 2 o 3, e senza uno dei tre e' un "
-            "commento, non un'osservazione")
-
     if not str(line.get("cosa") or "").strip():
         problems.append(f"l'osservazione {number} non dice COSA ha visto")
-    if not str(line.get("cosa_cambierebbe") or "").strip():
-        problems.append(
-            f"l'osservazione {number} non dice cosa cambierebbe: senza, e' una "
-            "constatazione, e l'analista esiste per dire cosa si potrebbe fare")
 
     if row is None:
+        return None
+    trigger = _trigger(line.get("innesco"), row, which, number, problems, days)
+    if trigger is None:
         return None
     deviation = row.get("scostamento") or {}
     values = row.get("valori") or []
@@ -209,12 +222,73 @@ def _enrich(line: dict, number: int, known: dict, problems: list) -> dict | None
             "unita": row.get("unita"),
             "innesco": trigger, "cosa": str(line.get("cosa") or "").strip(),
             "spiegato": line.get("spiegato"),
-            "cosa_cambierebbe": str(line.get("cosa_cambierebbe") or "").strip(),
+            "cosa_cambierebbe": _text(line.get("cosa_cambierebbe")),
+            "da_riverificare": _text(line.get("da_riverificare")),
             "valore": values[-1] if values else None,
             "copertura": coverages[-1] if coverages else None,
             "quanti_scarti": deviation.get("quanti_scarti"),
             "mediana": deviation.get("mediana"),
             "base": deviation.get("base")}
+
+
+def _trigger(written, row: dict, which: int, number: int, problems: list,
+             days: list[str]) -> int | None:
+    """L'innesco dell'osservazione, **dai fatti che il codice ha marcato**
+    sulla riga (D3, Task 3.5; `analyst.trigger_facts`).
+
+    Una riga con un innesco solo lo prende senza che il modello lo scriva.
+    Con piu' inneschi il modello sceglie, e sceglie FRA quelli della riga:
+    un innesco che la riga non ha si rifiuta -- prima era il modello a
+    dichiararlo, e una scelta sbagliata era indistinguibile da una giusta.
+    Una riga senza fatti non e' candidata a niente.
+    """
+    marked = sorted({fact["innesco"] for fact in analyst.trigger_facts(row, days)})
+    if written is not None and written not in marked:
+        problems.append(
+            f"l'osservazione {number} dice innesco «{written}», ma la misura "
+            f"[{which}] e' candidata a {marked or 'nessun innesco'}: gli "
+            "inneschi li marca il codice, e si sceglie fra quelli")
+        return None
+    if written is not None:
+        return written
+    if len(marked) == 1:
+        return marked[0]
+    if not marked:
+        problems.append(
+            f"l'osservazione {number} parla della misura [{which}], che non ha "
+            "nessun fatto d'innesco: non e' candidata a un'osservazione")
+    else:
+        problems.append(
+            f"l'osservazione {number} non dice l'innesco, e la misura [{which}] "
+            f"e' candidata a piu' di uno ({marked}): scegline uno")
+    return None
+
+
+def _text(value) -> str | None:
+    """Un campo di testo facoltativo: la frase, o `None` se non c'e'."""
+    clean = str(value or "").strip()
+    return clean or None
+
+
+def _back_in(asked, problems: list) -> list[dict]:
+    """Il **rimetti dentro** (D9): le entita' che l'analista chiede di far
+    rientrare nello scope, `[{id, perche}]`. Si valida la forma; lo scrive il
+    Task 3.7, con autore `ANALYST`, e `scope.may_overwrite` lascia fuori cio'
+    che il proprietario ha tolto."""
+    if asked is None:
+        return []
+    if not isinstance(asked, list):
+        problems.append("`rimetti` vuole un elenco di {id, perche}")
+        return []
+    out = []
+    for number, item in enumerate(asked, start=1):
+        ident = str((item or {}).get("id") or "").strip() if isinstance(item, dict) else ""
+        why = _text(item.get("perche")) if isinstance(item, dict) else None
+        if not ident or why is None:
+            problems.append(f"il rimetti {number} vuole `id` e `perche`: {item!r}")
+            continue
+        out.append({"id": ident, "perche": why})
+    return out
 
 SYSTEM = """Sei l'analista di HIRIS, un sistema che guarda una casa domotica.
 
@@ -237,17 +311,22 @@ ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
 
 {"osservazioni": [
   {"quale": <il NUMERO fra parentesi quadre della misura, come nell'elenco>,
-   "innesco": 1 | 2 | 3,
+   "innesco": <solo se la misura ne ha piu' d'uno: uno dei suoi «inneschi»>,
    "cosa": "cosa hai visto, in una frase",
    "spiegato": "da cosa e' spiegato, oppure null se non lo e'",
-   "cosa_cambierebbe": "cosa cambierebbe rispetto all'obiettivo"}
-]}
+   "cosa_cambierebbe": "facoltativo: cosa cambierebbe rispetto all'obiettivo",
+   "da_riverificare": "facoltativo: cosa vuoi ricontrollare"}
+],
+ "rimetti": [{"id": "<entity_id da far rientrare fra le cose guardate>",
+              "perche": "perche' serve"}]}
 
-Gli inneschi sono tre, e ogni osservazione deve dire quale:
+Gli inneschi sono tre, e il codice li ha gia' marcati su ogni misura:
   1 = qualcosa e' cambiato, e non e' spiegato da cio' che gia' sappiamo
   2 = qualcosa e' stabile e costa
   3 = qualcosa non c'e' piu' (la copertura crolla, o la misura smette di
       calcolarsi)
+Una misura senza «inneschi» non e' candidata a un'osservazione. «rimetti» e'
+facoltativo.
 
 Cio' che hai gia' detto con la stessa prova non ridirlo: il codice lo
 riconosce e lo toglie. Se la prova e' cambiata, puoi ridirlo.
