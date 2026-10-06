@@ -53,6 +53,8 @@ _OTHER_SENSES = {
         5, "il campo che porta la riga di una promessa"),
     ("api/handlers_agenda.py", "promessa"): (
         2, "il campo che porta la riga di una promessa"),
+    ("api/handlers_mind.py", "ricette"): (
+        1, "la chiave della porta del sapere con le ricette scritte (06/10/2026)"),
 }
 
 

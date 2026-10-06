@@ -755,9 +755,16 @@ class _FintoSapere:
         # (`tests/test_handlers_mind_judgment.py`).
         return []
 
+    def device_answers(self, fields):
+        # Le ricette della porta (`recipe_turn.recipe_listing`): le prove con
+        # le ricette usano il sapere vero.
+        return {}
+
 
 assert_stessa_firma(sap.KnowledgeStore.judgment_rows, _FintoSapere.judgment_rows,
                     nome="judgment_rows")
+assert_stessa_firma(sap.KnowledgeStore.device_answers, _FintoSapere.device_answers,
+                    nome="device_answers")
 
 
 @pytest.mark.asyncio
@@ -1184,3 +1191,51 @@ async def test_decisione_esce_stesso_nome_watching_fuori(tmp_path):
             assert not {"da_quando_ts", "deciso_ts"} & set(voce), voce
     finally:
         archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_il_sapere_consegna_le_RICETTE_intere(tmp_path):
+    """**La quarta fondamenta**, per le ricette (attori, 06/10/2026): la porta
+    del sapere le contava e non ne mostrava nessuna, e per leggere come la
+    ricetta dell'inverter definisce l'autoconsumo (B-29) lo sprint ha dovuto
+    aprire l'archivio a mano. Ora ogni ricetta esce intera e si legge da
+    sola: i passi come il motore li esegue, le entita' che nomina, contro
+    quale dashboard Energia e' stata scritta, chi e quando, e il nome del
+    dispositivo.
+
+    Mutazione ESEGUITA: la rotta senza la chiave `ricette` -- rossa
+    (`KeyError: 'ricette'`)."""
+    from hiris.app.home_space.house import House
+    from hiris.app.home_space.topology import Mirror
+    from hiris.app.mind import recipe_turn
+
+    casa = House({"dispositivi": [{"id": "inv", "nome": "Inverter"}],
+                  "entita": [{"id": "sensor.prodotta", "dispositivo_id": "inv"},
+                             {"id": "sensor.immessa", "dispositivo_id": "inv"}]}, Mirror())
+    ricetta = {"why": "la fonte di casa", "steps": [
+        {"name": "prodotta", "operation": "somma_periodo",
+         "inputs": ["@sensor.prodotta"], "params": {"unit": "kWh"}},
+        {"name": "immessa", "operation": "somma_periodo",
+         "inputs": ["@sensor.immessa"], "params": {"unit": "kWh"}}]}
+    contro = f"{recipe_turn.DASHBOARD_SOURCE}sensor.prodotta=produzione"
+    sapere = sap.KnowledgeStore(str(tmp_path / "sapere.db"))
+    try:
+        esito = recipe_turn.apply_recipe(sapere, casa, "inv", json.dumps(ricetta),
+                                         who="modello (ponte)", when_ts=1789000000.0,
+                                         written_against=contro)
+        assert esito["scritta"]
+
+        anagrafe = HomeSpace(str(tmp_path))
+        anagrafe.hold_registries({"dispositivi": [{"id": "inv", "name": "Inverter"}],
+                                  "entita": []})
+
+        r = await handle_knowledge(_richiesta({"knowledge": sapere,
+                                               "home_space_store": anagrafe}))
+
+        assert json.loads(r.text)["ricette"] == [{
+            "dispositivo": "inv", "nome": "Inverter", "ricetta": ricetta,
+            "entita": ["sensor.immessa", "sensor.prodotta"],
+            "scritta_contro": contro, "chi": "modello (ponte)",
+            "quando_ts": 1789000000.0}]
+    finally:
+        sapere.close()

@@ -36,6 +36,7 @@ from ..home_space.house import House
 from ..home_space.log_source import integration_of
 from ..home_space.open_questions import OPEN_QUESTIONS
 from ..home_space.topology import read_mirror
+from ..mind import recipe_turn
 from ..mind.judgments import (
     JudgmentNotInEffect,
     JudgmentRefused,
@@ -559,6 +560,7 @@ async def handle_knowledge(request) -> web.Response:
     sapere = request.app.get("knowledge")
     if sapere is None:
         return error_response(503, "il sapere non e' disponibile")
+    names = _device_names(request.app)
     unexplained = [{"specie": f.subject_kind, "soggetto": f.subject,
                    "campo": f.field, "valore": f.value,
                    "provenienza": f.provenance, "prove": f.evidence,
@@ -570,6 +572,11 @@ async def handle_knowledge(request) -> web.Response:
         "giudizi": judgment_listing(sapere),
         "domande_aperte": [{"chiavi": sorted(question.keys), "domanda": question.question}
                            for question in OPEN_QUESTIONS],
+        # Le ricette INTERE, non solo il loro conto (attori, 06/10/2026):
+        # passi, entita', contro cosa sono state scritte (`recipe_listing`),
+        # col nome del dispositivo di adesso.
+        "ricette": [{**row, "nome": names.get(row["dispositivo"])}
+                    for row in recipe_turn.recipe_listing(sapere)],
         # Quanto costa rifare la cronaca, che la pagina dice accanto a ogni
         # giudizio che la rifa': quanti giorni ne conserva il grezzo e ogni
         # quanto il recupero ne scrive uno (C-11, Tappa 4, Task 5).
