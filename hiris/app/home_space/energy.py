@@ -18,9 +18,10 @@ nome). Home Assistant usa `device_class: energy` per la produzione E per il
 prelievo: la classe non basta, il nome nemmeno.
 
 **La forma, letta sul sorgente di Home Assistant al tag `2026.9.4` il
-04/10/2026** (`components/energy/data.py`; non ancora misurata su questa casa:
-Task 2.0). Le sorgenti hanno un `type` -- `grid`, `solar`, `battery`, `gas`,
-`water` -- e i loro contatori in campi singoli: la rete `stat_energy_from`
+04/10/2026** (`components/energy/data.py`), e **misurata su questa casa il
+06/10/2026** (attori, Task 2.0, dallo sprint; solo conti e forme). Le
+sorgenti hanno un `type` -- `grid`, `solar`, `battery`, `gas`, `water` -- e i
+loro contatori in campi singoli: la rete `stat_energy_from`
 («kWh consumed from grid») e `stat_energy_to` («kWh returned to grid»),
 entrambi anche `None`; il sole `stat_energy_from`; la batteria
 `stat_energy_from` e `stat_energy_to` (scarica e carica: `stat_rate` e'
@@ -31,6 +32,20 @@ facoltativo, `included_in_stat` («a device that includes this device's
 consumption in its total»). La rete di PRIMA della migrazione
 (`LegacyGridSourceType`: liste `flow_from`/`flow_to`) al tag letto non esce
 piu', ma il client la passa com'e' (`HAClient.energy_prefs`), e qui si legge.
+
+**Cosa ha detto la casa.** Il 06/10/2026 mattina `energy/get_prefs` rispondeva
+con le tre liste VUOTE (non `not_found`): la dashboard c'era e non dichiarava
+niente, e nessun ruolo ne usciva. Compilata dal proprietario lo stesso giorno,
+le sorgenti erano `grid`, `solar` e `battery`, coi campi SINGOLI (non le liste
+di prima della migrazione); `gas`, `water` e i consumi dei dispositivi vuoti.
+Ne escono sei ruoli: cinque contatori in kWh con `state_class:
+total_increasing` e lo stato di carica in % con `measurement`, tutti entita'
+dello stesso dispositivo, l'inverter (revisione del piano degli attori, punto
+6: il limite di un dispositivo per ricetta non morde). La batteria non
+dichiara `capacity`. Accanto ai contatori, tutte e tre portano `stat_rate`,
+la rete e la batteria anche un `power_config` (`stat_rate_from`,
+`stat_rate_to`: le potenze in entrata e in uscita), e i prezzi della rete
+sono `None`: potenze e prezzi non sono ruoli (`ROLES`).
 
 I valori sono **statistic_id**, non per forza entita': una statistica esterna
 (`dominio:nome`) e' ammessa dallo schema (`_reject_price_for_external_stat`).

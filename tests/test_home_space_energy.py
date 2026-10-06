@@ -13,7 +13,7 @@ riga dell'entita'.
 
 **La forma di `energy/get_prefs`** viene dal sorgente di Home Assistant, tag
 `2026.9.4`, letto il 04/10/2026 (`components/energy/data.py`): vedi
-`home_space/energy.py`. Non e' ancora misurata su questa casa (Task 2.0).
+`home_space/energy.py`, e misurata su questa casa il 06/10/2026 (Task 2.0).
 
 Mutazioni ESEGUITE il 04/10/2026, elencate sulle prove che le prendono.
 """
@@ -161,6 +161,34 @@ def test_grid_without_export_has_no_export_role():
     prefs = {"energy_sources": [_grid(stat_energy_from="sensor.inverter_prelievo")],
              "device_consumption": []}
     assert [r["ruolo"] for r in energy.declared_roles(prefs)] == ["prelievo"]
+
+
+def test_measured_shape_gives_six_roles():
+    """La forma misurata su questa casa il 06/10/2026 (Task 2.0, dallo
+    sprint; qui con id inventati): rete, sole e batteria coi campi singoli,
+    `stat_rate` su tutte e tre, `power_config` su rete e batteria, nessuna
+    `capacity`, prezzi `None`. Sei ruoli, e nessuna potenza fra loro."""
+    power = {"stat_rate_from": "sensor.potenza_entrante",
+             "stat_rate_to": "sensor.potenza_uscente"}
+    prefs = {"energy_sources": [
+        _grid(stat_energy_from="sensor.inverter_prelievo",
+              stat_energy_to="sensor.inverter_immissione",
+              stat_rate="sensor.potenza_rete", power_config=power),
+        {"type": "solar", "stat_energy_from": "sensor.inverter_produzione",
+         "stat_rate": "sensor.inverter_potenza"},
+        {"type": "battery", "stat_energy_from": "sensor.inverter_scarica",
+         "stat_energy_to": "sensor.inverter_carica", "stat_soc": "sensor.inverter_soc",
+         "stat_rate": "sensor.inverter_potenza_batteria", "power_config": power}],
+        "device_consumption": [], "device_consumption_water": []}
+
+    roles = {r["statistica"]: r["ruolo"] for r in energy.declared_roles(prefs)}
+
+    assert roles == {"sensor.inverter_prelievo": "prelievo",
+                     "sensor.inverter_immissione": "immissione",
+                     "sensor.inverter_produzione": "produzione",
+                     "sensor.inverter_scarica": "scarica",
+                     "sensor.inverter_carica": "carica",
+                     "sensor.inverter_soc": "stato di carica"}
 
 
 def test_legacy_grid_lists_bring_the_same_roles():
