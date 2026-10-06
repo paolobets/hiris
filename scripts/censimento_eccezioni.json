@@ -1,6 +1,5 @@
 {
  "simbolo-solo-test": {
-  "get_config": "Falso positivo del rilevatore: HAClient.get_config e' chiamato in produzione attraverso getattr, dentro home_space/topology.rebuild.",
   "operable_domains": "Lo legge il censore dei tipi, che e' un attrezzo (scripts/censore_tipi.py): il giudizio «accendibile» non ha lettori nel prodotto, e se serve lo decide il proprietario. Voce M-61 del registro."
  },
  "rotta-solo-test": {

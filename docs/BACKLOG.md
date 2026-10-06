@@ -42,6 +42,15 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### ⚠️ Prima di rilasciare: il Task 4.2 accende il proponente — aperta il 06/10/2026
+
+`origine: il coordinatore del progetto, 06/10/2026, all'unione del Task 4.2 nel ramo d'integrazione` · `hiris/app/mind/proposer_round.py`
+
+Dal Task 4.2 (strato 4 degli attori) il proponente gira: `actuator_round` e' uscito (M-20 chiusa)
+e al suo posto c'e' `proposer_round`. **Il rilascio che lo contiene viene dopo** due cose: la
+misura dal vivo dello strato 3 e la diagnosi del passo 1 del 4.0 (le due proposte perse). Chi
+prepara la bozza del CHANGELOG controlla questa voce prima di proporre la versione.
+
 ### I prossimi passi, in ordine — aperta il 01/10/2026
 
 `origine: il proprietario, 01/10/2026 («segna nel backlog il da farsi»)` · uscite 3.71.0, 3.71.1, 3.72.0, 3.72.1
@@ -946,6 +955,46 @@ va corretto, in un posto solo.
 ---
 
 ## In attesa
+
+### Registro modelli: `esito.tipo` dice «rifiutato» anche per 429 e 5xx — aperta il 06/10/2026
+
+`origine: giro 47 del revisore e thread «Termometri e falso errore», 06/10/2026; da fare dopo il rilascio` · `hiris/app/provider_occurrences.py` · `hiris/app/static/config/models-route.js::providerRow`
+
+Il registro dei modelli scrive `esito.tipo` = `"rifiutato"` anche quando il provider ha risposto
+429 o 5xx, cioè un guasto temporaneo. Separarlo (`"temporaneo"`) cambia il pallino e il peso del
+nome nella riga del provider (`providerRow` in `models-route.js`, che legge
+`esito.tipo === 'rifiutato'`) e la regola «da quante». Prima del disegno serve il parere
+dell'agente `ux-ui-specialist`.
+
+### `server.py` si spezza alla Chiusura dello sprint — aperta il 06/10/2026
+
+`origine: il proprietario, 06/10/2026 («ok si» alla proposta sui file monolitici, dopo la verifica di uno specialista)` · documento: `/mnt/project-files/analisi/2026-10-06-file-monolitici-proposta.md` · `hiris/app/server.py::_on_startup`
+
+**Il problema non è la lunghezza, è la fondamenta 4.** `server.py` misurava 5.621 righe il 06/10/2026
+(ramo dello sprint @ `d605aecb`), ma il monolite vero è `_on_startup`: una funzione sola di circa
+1.466 righe con 19 funzioni definite al suo interno, che nessuno può chiamare né provare da fuori.
+Era anche il file più toccato del mese (42 commit), cioè il punto dove i rami paralleli si scontrano.
+
+**Quando:** alla Chiusura dello sprint «Una fonte sola di verità», dopo gli strati 3–4 degli attori
+(che tolgono già `actuator_round` e compagne) e le Tappe 7–8, prima di riscrivere `CLAUDE.md`.
+Mai con altri rami aperti su `server.py`.
+
+**Come:** come la rinomina in inglese — suite verde, un commit per passo, **solo spostamento**
+(se il diff contiene una riga di logica, non è uno spostamento). I passi, da disegnare:
+1. `_on_startup` → funzioni con nome in un modulo di avvio, ognuna chiamabile e provabile;
+2. i giri del cervello (`analyst_round`, `recipe_round`, `reconsideration_round`, scope) in `mind/`;
+3. i rapporti del giorno (`write_day_report`, `backfill_one_report`, `_report_ingredients`…) accanto a `mind/report.py`;
+4. la disinstallazione della card Lovelace in un modulo suo;
+5. la shell HTML (fingerprint, versione, `/api/health`) in `api/`.
+In `server.py` resta `create_app()` con la registrazione delle rotte.
+
+**Il costo noto:** 76 file di prova importano `server` (13 `monkeypatch` sui suoi attributi):
+si aggiornano nello stesso commit dello spostamento.
+
+**Fuori da questa voce, per decisione:** `ha_client.py` (grande per la regola «un canale, una
+porta»), `type_vocabulary.py` (in gran parte dati); `tools.py`, `briefing.py`, `queries.py` si
+rivedono dopo; `agent/runner.py` si decide nel refactor degli agenti. Nessuna soglia di righe per
+file: il criterio è un file, un mestiere.
 
 ### Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato» — aperta il 05/10/2026
 

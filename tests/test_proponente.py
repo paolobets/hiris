@@ -12,6 +12,7 @@ stanno in `tests/test_mind_actuator_guards.py`.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -434,3 +435,84 @@ def test_un_osservazione_SENZA_esito_e_un_problema():
         {"osservazione": 1, "esito": "niente", "perche": "x"}]}))
     assert esito["problemi"] == ["non hanno un esito le osservazioni 0"]
     assert [o["impronta"] for o in esito["esiti"]] == [observation_key(osservazioni()[1])]
+
+
+# -- Le guardie del giro (G53-1, giro 53 della revisione) ---------------------
+
+def _coda_ponte(app, monkeypatch):
+    coda = app["reasoning_queue"] = _Coda()
+    monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
+    return coda
+
+
+@pytest.mark.asyncio
+async def test_un_turno_IN_VOLO_sul_ponte_non_ne_accoda_un_altro(casa, monkeypatch):
+    """Senza la guardia, a ogni battito con un turno ancora in attesa il giro
+    ne accoderebbe un altro: la raccolta non trova niente finche' il turno e'
+    `pending`, e le osservazioni restano aperte.
+
+    Mutazione ESEGUITA (06/10/2026): il giro senza `turn_in_flight` e
+    `too_soon_to_ask_again` -- rossa (due turni accodati)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    coda.turno = {"status": "pending", "deadline_ts": time.time() + 600,
+                  "wake": {"giorno": OGGI}}
+    assert await pr.proposer_round(casa) is None
+    assert coda.accodati == []
+
+
+@pytest.mark.asyncio
+async def test_un_turno_finito_da_POCO_non_si_richiede(casa, monkeypatch):
+    """`RETRY_HOLD_S`: dopo una risposta vuota si aspetta, invece di spendere
+    un turno a ogni battito.
+
+    Mutazione ESEGUITA (06/10/2026): il giro senza `too_soon_to_ask_again`
+    -- rossa (un turno accodato)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    coda.turno = {"status": "decided", "decided_ts": time.time() - 60,
+                  "wake": {"giorno": OGGI}, "decision": {"reply": ""}}
+    await pr.proposer_round(casa)
+    assert coda.accodati == []
+
+
+@pytest.mark.asyncio
+async def test_sul_PONTE_un_rifiuto_si_scrive_sulla_riga_del_turno(casa, monkeypatch):
+    """D10 sul ponte: senza, `refused_problems` non riporterebbe i motivi
+    alla domanda dopo.
+
+    Mutazione ESEGUITA (06/10/2026): la raccolta senza `declare_refused` --
+    rossa (la riga resta «riuscito»)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    ident = casa["usage"].log_turn(
+        species=steering.PROPOSER_SPECIES, provider="subscription", model="m",
+        channel="ponte", duration_ms=1, iterations=1, tools=[],
+        outcome="riuscito", now=1_758_000_000.0)
+    coda.turno = {"status": "decided", "decided_ts": 0,
+                  "wake": {"giorno": OGGI, "impronte": [
+                      observation_key(o) for o in osservazioni()]},
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "costruita", "proposta_id": "x"},
+                      {"osservazione": 1, "esito": "niente", "perche": "y"}]}),
+                      "outcome": "riuscito", "turn_id": ident}}
+    await pr.proposer_round(casa)
+    riga = casa["usage"].turns()[0]
+    assert riga["outcome"] == steering.REFUSED
+    assert any("'x'" in p for p in riga["problems"])
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_di_IERI_non_scrive_sull_analisi_di_oggi(casa, monkeypatch):
+    """Le impronte possono coincidere, e gli id costruiti sarebbero di un
+    turno di ieri.
+
+    Mutazione ESEGUITA (06/10/2026): la raccolta senza il controllo del
+    giorno della sveglia -- rossa (gli esiti si scrivono)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    coda.turno = {"status": "decided", "decided_ts": 0,
+                  "wake": {"giorno": "2000-01-01", "impronte": [
+                      observation_key(o) for o in osservazioni()]},
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "niente", "perche": "x"},
+                      {"osservazione": 1, "esito": "niente", "perche": "y"}]}),
+                      "outcome": "riuscito"}}
+    await pr.proposer_round(casa)
+    assert pt.outcomes_of(casa["observations"].analysis(OGGI)) == []

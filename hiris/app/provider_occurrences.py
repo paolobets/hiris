@@ -66,10 +66,17 @@ FAMILIES = ("credenziale", "modello", "irraggiungibile", "scaduto", "altro")
 
 # La sola tabella di questo modulo, e sta qui e non in `occurrence_phrase` perché è
 # una MISURA (che cosa ha risposto il server), non una parola. 402 è il codice
-# canonico del credito; Anthropic risponde 400 con «credit balance too low»,
-# che è il caso del proprietario; 401 e 403 sono la chiave rifiutata. Tutti e
-# quattro sono «la credenziale non ti fa passare», e la frase li distingue.
-_CREDENTIAL = (400, 401, 402, 403)
+# canonico del credito; 401 e 403 sono la chiave rifiutata. Tutti e tre sono
+# «la credenziale non ti fa passare», e la frase li distingue.
+#
+# **Il 400 non c'è** (G39-2, revisione del giro 39, 06/10/2026): fino a quel
+# giorno stava qui perché Anthropic risponde 400 con «credit balance too low»,
+# il caso del proprietario. Ma per Anthropic il 400 è ogni
+# `invalid_request_error` («prompt is too long» compreso), e Ollama risponde 400
+# a una richiesta che il modello non sa servire (`server/routes.go`): chiamarlo
+# credenziale mandava chi legge a sistemare una chiave. È `altro`, e la sua
+# causa la dice il provider (`provider_said`).
+_CREDENTIAL = (401, 402, 403)
 
 
 def family_from_code(code: int | None) -> str:

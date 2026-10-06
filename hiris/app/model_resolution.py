@@ -260,14 +260,9 @@ def _count(from_count: int) -> str:
 # diverse per chi legge: 402 dice che i soldi sono finiti (OpenRouter), 401 e
 # 403 dicono che la chiave non va bene. Chiamarle tutte «credito esaurito»
 # sarebbe un'ipotesi sulla causa, che è la cosa che questo prodotto ha smesso
-# di fare.
-#
-# **Il 400 non c'è, apposta** (G36-1, revisione del giro 36, 06/10/2026): fino
-# a quel giorno diceva «credito esaurito», ma per Anthropic il 400 è ogni
-# `invalid_request_error` -- il «credit balance too low» del proprietario è un
-# caso solo -- e Ollama risponde 400 a una richiesta che il modello non sa
-# servire (`server/routes.go`). La sua causa la dice il provider, citato
-# (`provider_occurrences.provider_said`).
+# di fare. Fino al 06/10/2026 c'era anche il 400, «credito esaurito»: è uscito
+# dalla famiglia (`provider_occurrences._CREDENTIAL`, G36-1 e G39-2), e la sua
+# causa la dice il provider, citato.
 _CREDENTIAL_CAUSE: dict[int, str] = {
     402: "credito esaurito",
     401: "la chiave non è accettata",
@@ -288,7 +283,8 @@ TEMPORARY_FAILURE = "Errore temporaneo del servizio AI. Riprova tra poco."
 #: Come cominciano le frasi di `failure_reply`: le riconosce il filtro della
 #: cronologia (`chat_store._TOXIC_ASSISTANT_PREFIXES`), che non le ricopia.
 FAILURE_OPENINGS = ("Il servizio AI ha rifiutato la richiesta",
-                    "Il servizio AI non risponde all’indirizzo")
+                    "Il servizio AI non risponde all’indirizzo",
+                    "Errore temporaneo del servizio AI")
 _WHERE_IT_IS_FIXED = "si sistema nella pagina Modelli."
 
 
@@ -297,15 +293,33 @@ def _quoted(said: str | None) -> str:
     return f": «{said}»" if said else ""
 
 
+def _sentence(text: str, said: str | None) -> str:
+    """`text` chiuso da un punto, se la citazione con cui finisce non ne ha
+    gia' uno: «…too low.». sarebbe un punto doppio (giro 43)."""
+    return text if said and said[-1] in ".!?…" else text + "."
+
+
+def _temporary(code: int | None) -> bool:
+    """Se lo stato HTTP dice da se' che la stessa richiesta puo' riuscire piu'
+    tardi: il 429 (RFC 6585 §4, con `Retry-After`) e i 5xx, dove e' il server
+    a non aver saputo servire una richiesta valida (RFC 9110 §15.6). Un 4xx e'
+    un rifiuto della richiesta. Revisione del giro 43, 06/10/2026."""
+    return isinstance(code, int) and (code == 429 or 500 <= code <= 599)
+
+
 def failure_reply(family: str, code: int | None, said: str | None = None) -> str:
     """La frase che la chat legge quando un provider non ha risposto: la
     famiglia e il codice di `provider_occurrences.error_family`, detti come
-    fatto. Un codice senza causa nella tabella (il 400) cita cio' che il
-    provider ha detto (`said`), con le stesse parole della pagina Modelli.
+    fatto, citando cio' che il provider ha detto (`said`) dove la tabella non
+    ha una causa: le stesse parole della pagina Modelli.
 
-    Il ramo `altro` (un 500, un 429, un guasto senza codice) resta
-    `TEMPORARY_FAILURE`: non dice a chi legge cosa fare, e inventargli una
-    causa sarebbe l'ipotesi che questo prodotto non fa."""
+    Il ramo `altro` (un 400, un 500, un 429, un guasto senza codice) non
+    dice a chi legge dove si sistema, e inventargli un'azione sarebbe
+    l'ipotesi che questo prodotto non fa (G39-2: «prompt is too long» non si
+    sistema nella pagina Modelli). Lo stato HTTP dice soltanto se riprovare
+    serve (`_temporary`): un 429 o un 5xx e' temporaneo, un altro 4xx e' un
+    rifiuto. Cio' che il provider ha detto si cita in tutti e due; un guasto
+    senza codice resta `TEMPORARY_FAILURE`."""
     fra_parentesi = f" ({code})" if isinstance(code, int) else ""
     if family == "credenziale":
         cause = _CREDENTIAL_CAUSE.get(code if isinstance(code, int) else 0)
@@ -317,7 +331,12 @@ def failure_reply(family: str, code: int | None, said: str | None = None) -> str
                 "Un altro modello si sceglie nella pagina Modelli.")
     if family == "irraggiungibile":
         return f"{FAILURE_OPENINGS[1]} configurato: {_WHERE_IT_IS_FIXED}"
-    return TEMPORARY_FAILURE
+    if not isinstance(code, int):
+        return TEMPORARY_FAILURE
+    if _temporary(code):
+        return (_sentence(f"{FAILURE_OPENINGS[2]}{fra_parentesi}{_quoted(said)}", said)
+                + " Riprova tra poco.")
+    return _sentence(f"{FAILURE_OPENINGS[0]}{fra_parentesi}{_quoted(said)}", said)
 
 
 def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: float) -> str:
@@ -420,9 +439,17 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
     # cui è nata la regola -- il giorno in cui HIRIS, davanti a un comando
     # riuscito, si inventò un guasto del dispositivo e mandò il proprietario a
     # cercarlo.
+    if _temporary(code):
+        # Un 429 o un 5xx non e' un rifiuto (giro 43): la stessa regola per
+        # classe HTTP della chat (`failure_reply`).
+        return "non ha servito {} — errore temporaneo {}{}, {}".format(
+            _count(occurrence["da_quante"]), code, _quoted(occurrence.get("messaggio")), age)
     if fra_parentesi:
-        return f"ha rifiutato {_count(occurrence['da_quante'])} — errore {code}, {age}"
-    return "ha rifiutato {}, {}".format(_count(occurrence["da_quante"]), age)
+        # Cio' che il provider ha detto si cita, come in chat (G39-2).
+        return "ha rifiutato {} — errore {}{}, {}".format(
+            _count(occurrence["da_quante"]), code, _quoted(occurrence.get("messaggio")), age)
+    return "ha rifiutato {}{}, {}".format(
+        _count(occurrence["da_quante"]), _quoted(occurrence.get("messaggio")), age)
 
 
 # ── La nota del ripiego: una riga che dice cosa e' successo, non perche' ──

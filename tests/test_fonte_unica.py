@@ -102,11 +102,8 @@ KNOWN_DUPLICATES = ROOT / "scripts" / "doppioni_noti.json"
 #: `reread_after_first_connection` (Tappa 2, Task 7) dice al websocket di
 #: lunga vita che anche la prima connessione deve far rileggere: lo chiama
 #: l'avvio quando Home Assistant non risponde, e non manda niente alla casa.
-#: `take_disconnection` (riallineamento alla riconnessione, 06/10/2026) rende
-#: la finestra in cui il websocket e' rimasto giu': cio' che il client ha
-#: misurato sul suo orologio, non una domanda a Home Assistant.
 LIFECYCLE = frozenset({"start", "stop", "start_websocket",
-                       "reread_after_first_connection", "take_disconnection"})
+                       "reread_after_first_connection"})
 
 
 def _module_of(function) -> str:

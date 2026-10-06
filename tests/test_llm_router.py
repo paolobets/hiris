@@ -426,7 +426,7 @@ async def test_il_ripiego_scrive_chi_ha_rifiutato_e_chi_ha_risposto():
     rotto = MagicMock()
     rotto.chat = AsyncMock(side_effect=RunnerBackendError(
         "Errore temporaneo del servizio AI. Riprova tra poco.",
-        family="credenziale", code=400))
+        family="credenziale", code=402))
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,
@@ -435,7 +435,7 @@ async def test_il_ripiego_scrive_chi_ha_rifiutato_e_chi_ha_risposto():
     assert await router.chat(model="auto") == "risposta"
     claude = registro.occurrence("claude")
     assert claude["tipo"] == "rifiutato"
-    assert claude["famiglia"] == "credenziale" and claude["codice"] == 400
+    assert claude["famiglia"] == "credenziale" and claude["codice"] == 402
     assert claude["quando"] == 1000.0 and claude["da_quante"] == 1
     assert registro.occurrence("openrouter")["tipo"] == "risposto"
 
@@ -511,7 +511,7 @@ async def test_quaranta_turni_di_rifiuto_si_leggono_come_quaranta():
     rotto = MagicMock()
     rotto.chat = AsyncMock(side_effect=RunnerBackendError(
         "Errore temporaneo del servizio AI. Riprova tra poco.",
-        family="credenziale", code=400))
+        family="credenziale", code=402))
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,

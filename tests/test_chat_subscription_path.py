@@ -1330,7 +1330,7 @@ async def test_la_nota_nomina_CHI_HA_RISPOSTO_non_il_primo_della_catena(tmp_path
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     registro = _con_registro(app, catena=["claude", "openrouter"])
-    registro.fallimento("claude", family="credenziale", code=400,
+    registro.fallimento("claude", family="credenziale", code=402,
                         message="credit balance too low", durata_s=0.3)
     registro.successo("openrouter")
     async with TestClient(TestServer(app)) as client:

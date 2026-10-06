@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.mind.realignment import disconnection_recorder
 from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import (
@@ -404,34 +405,40 @@ async def test_alla_riconnessione_l_osservatore_si_riallinea_con_la_stessa_fotog
     casa finta fa da Home Assistant per il websocket e per gli stati, come il
     client vero fa da tutti e due in produzione. La connessione cade e torna:
     l'osservatore riceve la fotografia che lo specchio ha appena letto -- gli
-    stati UNA volta sola -- e la finestra che il client ha misurato.
+    stati UNA volta sola -- e, a Home Assistant avviato, la finestra che il
+    client ha misurato.
 
-    Mutazione ESEGUITA: l'ascoltatore che passa `None` come finestra
-    invece di `take_disconnection()` -- rossa."""
+    Mutazioni ESEGUITE: l'ascoltatore che non riallinea -- rossa;
+    `disconnection_recorder` che non consegna -- rossa."""
     house = CasaFinta(synthetic_inputs())
     cache = _specchio_caricato()
-    heard = []
+    photos, windows = [], []
 
     class Osservatore:
-        def realign(self, photo, *, gap):
-            heard.append((photo, gap))
+        def realign(self, photo):
+            photos.append(photo)
+
+        def record_disconnection(self, window):
+            windows.append(window)
 
     observer = Osservatore()
     house.add_topology_listener(mirror_reload_listener(house, cache, lambda: observer))
+    house.add_disconnection_listener(disconnection_recorder(lambda: observer))
     await house.start_websocket()
     await asyncio.wait_for(house.ws_ready.wait(), 2)
     house._session.drop()
     for _ in range(100):
-        if heard:
+        if photos and windows:
             break
         await asyncio.sleep(0)
     await _stop(house)
 
     assert _state_reads(house) == 1
-    [(photo, gap)] = heard
+    [photo] = photos
     assert {s["entity_id"] for s in photo} == {
         s["entity_id"] for s in synthetic_inputs()["states"]}
-    assert set(gap) == {"da", "a"} and gap["da"] <= gap["a"]
+    [window] = windows
+    assert set(window) == {"da", "a"} and window["da"] <= window["a"]
 
 
 @pytest.mark.asyncio

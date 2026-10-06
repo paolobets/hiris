@@ -718,7 +718,7 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 
 
 @pytest.mark.asyncio
-async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner):
+async def test_un_credito_esaurito_arriva_al_router_col_400_e_la_frase_del_provider(runner):
     """Il caso del proprietario, misurato: Anthropic risponde `400 credit
     balance too low`. Fino a questa fetta il 400 moriva qui dentro -- ogni
     `anthropic.APIError` diventava lo stesso «Errore temporaneo del servizio
@@ -742,15 +742,16 @@ async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner)
     ):
         await runner.chat("Ciao")
 
-    assert info.value.family == "credenziale"
+    # Il 400 e' «altro» (G39-2): per Anthropic e' ogni `invalid_request_error`.
+    assert info.value.family == "altro"
     assert info.value.code == 400
     # S-37 (verifiche dal vivo della 3.75.0, 05/10/2026): fino a qui la chat
     # diceva «Errore temporaneo del servizio AI. Riprova tra poco.», e un
     # credito finito non e' temporaneo. Il 400 non ha una causa nostra
-    # (G36-1): la frase cita il provider, come la pagina Modelli.
+    # (G36-1): la frase cita il provider, come la pagina Modelli, e non
+    # inventa un'azione (G39-2).
     assert info.value.friendly_message == (
-        "Il servizio AI ha rifiutato la richiesta (400): «Your credit balance is too low.». "
-        "Riprovare non basta: si sistema nella pagina Modelli."
+        "Il servizio AI ha rifiutato la richiesta (400): «Your credit balance is too low.»"
     )
     assert info.value.said == "Your credit balance is too low."
     assert "temporaneo" not in info.value.friendly_message

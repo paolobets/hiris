@@ -45,7 +45,7 @@ def test_i_fallimenti_consecutivi_si_contano():
     r, t = _registro()
     for i in range(40):
         t[0] += 1
-        r.fallimento("claude", family="credenziale", code=400,
+        r.fallimento("claude", family="credenziale", code=402,
                      message="credit balance too low", durata_s=0.4)
     e = r.occurrence("claude")
     assert e["da_quante"] == 40 and e["quando"] == 1040.0
@@ -53,8 +53,8 @@ def test_i_fallimenti_consecutivi_si_contano():
 
 def test_un_successo_azzera_il_conto_dei_rifiuti():
     r, _t = _registro()
-    r.fallimento("claude", family="credenziale", code=400, message="x", durata_s=0.1)
-    r.fallimento("claude", family="credenziale", code=400, message="x", durata_s=0.1)
+    r.fallimento("claude", family="credenziale", code=402, message="x", durata_s=0.1)
+    r.fallimento("claude", family="credenziale", code=402, message="x", durata_s=0.1)
     r.successo("claude")
     assert r.occurrence("claude") == {"tipo": "risposto", "famiglia": "", "codice": None,
                                  "messaggio": "", "quando": 1000.0, "da_quante": 1,
@@ -92,7 +92,7 @@ def test_un_rifiuto_DIVERSO_ricomincia_a_contare():
 def test_due_provider_non_si_confondono():
     r, _ = _registro()
     r.successo("openrouter")
-    r.fallimento("claude", family="credenziale", code=400, message="x", durata_s=0.1)
+    r.fallimento("claude", family="credenziale", code=402, message="x", durata_s=0.1)
     assert r.occurrence("openrouter")["tipo"] == "risposto"
     assert r.occurrence("claude")["tipo"] == "rifiutato"
 
@@ -122,17 +122,17 @@ def test_chi_legge_il_registro_non_lo_puo_riscrivere():
 def test_un_esito_vecchio_resta_vecchio_e_lo_dichiara():
     adesso = [1000.0]
     r = OccurrenceRegistry(clock=lambda: adesso[0])
-    r.fallimento("claude", family="credenziale", code=400,
+    r.fallimento("claude", family="altro", code=400,
                  message="credit balance too low", durata_s=0.4)
     adesso[0] += 7200                      # due ore dopo, e NESSUNA nuova chiamata
     e = r.occurrence("claude")
     assert e["quando"] == 1000.0, "il registro non deve ringiovanire da solo"
     assert occurrence_phrase(e, position=1, now=adesso[0]) == (
-        "ha rifiutato l’ultima richiesta (400): «credit balance too low», 2 h fa")
+        "ha rifiutato l’ultima richiesta — errore 400: «credit balance too low», 2 h fa")
 
 
 @pytest.mark.parametrize("codice,attesa", [
-    (400, "credenziale"), (401, "credenziale"), (402, "credenziale"), (403, "credenziale"),
+    (400, "altro"), (401, "credenziale"), (402, "credenziale"), (403, "credenziale"),
     (404, "modello"), (429, "altro"), (500, "altro"), (None, "altro"),
 ])
 def test_le_famiglie_d_errore_sono_tre_piu_una(codice, attesa):
@@ -199,11 +199,12 @@ def test_le_due_sdk_dicono_irraggiungibile_nello_stesso_modo():
 def test_famiglia_errore_legge_il_codice_quando_l_eccezione_ce_l_ha():
     """I runner sollevano da `anthropic.APIError` / `openai.APIError`, che
     portano `status_code`. Se `error_family` lo ignorasse, ogni errore d'API
-    tornerebbe «altro» e il caso del proprietario (400, credito) non sarebbe
-    distinguibile da un 500 -- cioè il difetto che questo modulo chiude,
-    rientrato dall'unica porta che i runner usano."""
+    tornerebbe «altro» e una chiave rifiutata (401) non sarebbe distinguibile
+    da un 500 -- cioè il difetto che questo modulo chiude, rientrato
+    dall'unica porta che i runner usano. (Il 400 e' «altro» dal 06/10/2026,
+    G39-2.)"""
     class _Api(Exception):
-        status_code = 400
+        status_code = 401
 
     class _Muta(Exception):
         pass
@@ -271,10 +272,10 @@ def test_le_frasi_dei_cinque_stati():
     assert occurrence_phrase({"tipo": "risposto", "famiglia": "", "codice": None,
                         "messaggio": "", "quando": a - 180, "da_quante": 1,
                         "durata_s": 0.0}, position=2, now=a) == "ha risposto 3 min fa"
-    assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "credenziale", "codice": 400,
+    assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "altro", "codice": 400,
                         "messaggio": "credit balance too low", "quando": a - 180,
                         "da_quante": 40, "durata_s": 0.4}, position=1, now=a) == (
-        "ha rifiutato le ultime 40 richieste (400): «credit balance too low», 3 min fa")
+        "ha rifiutato le ultime 40 richieste — errore 400: «credit balance too low», 3 min fa")
     assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "modello", "codice": 404,
                         "messaggio": "", "quando": a - 180, "da_quante": 1,
                         "durata_s": 0.2}, position=1, now=a) == (
@@ -314,17 +315,27 @@ def test_la_famiglia_di_scorta_dice_il_codice_e_non_lo_interpreta():
     """«altro» è ciò che il sistema NON ha saputo classificare: un 500, un 429,
     un guasto senza codice. La frase riporta il numero e si ferma lì -- non
     inventa una causa, che è la regola nata il giorno in cui HIRIS mandò il
-    proprietario a cercare un guasto del dispositivo che non c'era."""
+    proprietario a cercare un guasto del dispositivo che non c'era. Se il
+    provider ha detto qualcosa, si cita (G39-2): e' la sua causa, non la
+    nostra."""
     a = 10_000.0
 
-    def _f(codice, quante=1):
+    def _f(codice, quante=1, detto=""):
         return occurrence_phrase({"tipo": "rifiutato", "famiglia": "altro", "codice": codice,
-                            "messaggio": "boom", "quando": a - 180, "da_quante": quante,
+                            "messaggio": detto, "quando": a - 180, "da_quante": quante,
                             "durata_s": 0.1}, position=1, now=a)
 
-    assert _f(500) == "ha rifiutato l’ultima richiesta — errore 500, 3 min fa"
-    assert _f(429, quante=7) == "ha rifiutato le ultime 7 richieste — errore 429, 3 min fa"
+    assert _f(400) == "ha rifiutato l’ultima richiesta — errore 400, 3 min fa"
     assert _f(None) == "ha rifiutato l’ultima richiesta, 3 min fa"
+    assert _f(400, detto="boom") == "ha rifiutato l’ultima richiesta — errore 400: «boom», 3 min fa"
+    # Un 429 o un 5xx non e' un rifiuto (giro 43; RFC 6585 §4, RFC 9110
+    # §15.6): la stessa regola per classe HTTP della chat.
+    assert _f(500) == "non ha servito l’ultima richiesta — errore temporaneo 500, 3 min fa"
+    assert _f(429, quante=7) == (
+        "non ha servito le ultime 7 richieste — errore temporaneo 429, 3 min fa")
+    assert _f(529, detto="Overloaded") == (
+        "non ha servito l’ultima richiesta — errore temporaneo 529: «Overloaded», 3 min fa")
+    assert _f(None, detto="boom") == "ha rifiutato l’ultima richiesta: «boom», 3 min fa"
 
 
 def test_il_modello_inesistente_non_conta_le_richieste():

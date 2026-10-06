@@ -261,7 +261,7 @@ async def test_sulla_CATENA_nessuno_risponde_e_il_motivo_non_cita_il_router():
     """G29-1, per le promesse. Quando tutti i backend rifiutano, il router
     consegna una frase per la chat; il motivo della promessa fallita non la
     cita come «aveva risposto a parole», e la pagina non la mostra come
-    estratto del modello: dice che il modello non ha risposto.
+    estratto del modello: dice che il modello non ha risposto, e perche'.
 
     Mutazione ESEGUITA: `interpreta_promise` senza il ramo `turn.answered` --
     rossa (il motivo cita «Errore Claude.» e porta l'`excerpt`)."""
@@ -279,7 +279,9 @@ async def test_sulla_CATENA_nessuno_risponde_e_il_motivo_non_cita_il_router():
     esito = await interpreta_promise({"llm_router": router}, _promessa_chiedi())
 
     assert router.last_unanswered is True
-    assert esito == {"errore": f"{NO_ANSWER_REASON}."}
+    # La frase resta come diagnosi di HIRIS, non come parole del modello
+    # (giro 40): e' lei che dice perche'.
+    assert esito == {"errore": f"{NO_ANSWER_REASON}: Errore Claude."}
 
 
 @pytest.mark.asyncio

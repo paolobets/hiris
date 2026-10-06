@@ -1550,7 +1550,7 @@ def test_la_finestra_diventa_due_righe_di_sistema(grezzo):
     la cronaca riconosce (`facts.DISCONNECTION_SUBJECT`)."""
     from hiris.app.mind.facts import DISCONNECTION_SUBJECT
     w = Watcher(grezzo, now=lambda: _T + 600)
-    assert w.realign([], gap={"da": _T, "a": _T + 180}) == 2
+    assert w.record_disconnection({"da": _T, "a": _T + 180}) == 2
     assert [(r["fonte"], r["soggetto"], r["a"], r["quando_ts"])
             for r in grezzo.readings(from_ts=0, to_ts=float("inf"))] == [
         ("sistema", DISCONNECTION_SUBJECT, "scollegato", _T),
@@ -1573,5 +1573,5 @@ def test_il_riallineamento_non_solleva_mai(grezzo):
         def last_before(self, *a, **kw):
             raise RuntimeError("archivio rotto")
 
-    assert Watcher(Rotto()).realign([_foto("light.cucina", "off", _T)],
-                                    gap={"da": _T, "a": _T + 1}) == 0
+    assert Watcher(Rotto()).realign([_foto("light.cucina", "off", _T)]) == 0
+    assert Watcher(Rotto()).record_disconnection({"da": _T, "a": _T + 1}) == 0

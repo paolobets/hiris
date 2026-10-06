@@ -12,7 +12,6 @@ della cronologia, che una frase di guasto non deve lasciar entrare.
 """
 from __future__ import annotations
 
-from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -35,7 +34,7 @@ async def test_la_catena_che_rifiuta_per_credito_non_dice_temporaneo():
     """La catena del proprietario il 05/10: Claude a credito zero, OpenRouter
     con la quota della chiave finita. Risponde l'ultimo rifiuto, col suo
     fatto."""
-    router = LLMRouter(claude=_refusing("credenziale", 400),
+    router = LLMRouter(claude=_refusing("altro", 400, CREDIT),
                        openrouter=_refusing("credenziale", 403),
                        model_chain=["claude", "openrouter"])
     answer = await router.chat(model="auto")
@@ -45,7 +44,7 @@ async def test_la_catena_che_rifiuta_per_credito_non_dice_temporaneo():
 
 
 @pytest.mark.parametrize(("family", "code"), [
-    ("credenziale", 400), ("credenziale", 402), ("credenziale", 401),
+    ("credenziale", 402), ("credenziale", 401),
     ("credenziale", 403), ("modello", 404), ("irraggiungibile", None)])
 def test_ogni_frase_di_rifiuto_resta_fuori_dalla_cronologia(family, code):
     """Una frase di guasto in cronologia torna al modello a ogni turno
@@ -56,11 +55,12 @@ def test_ogni_frase_di_rifiuto_resta_fuori_dalla_cronologia(family, code):
     assert _is_toxic_assistant(phrase)
 
 
-@pytest.mark.parametrize(("family", "code"), [("altro", 500), ("altro", 429), ("altro", None)])
-def test_un_guasto_non_classificato_resta_la_frase_di_prima(family, code):
-    """Il ramo `altro`: un 500 o un 429 non dicono a chi legge cosa fare, e la
-    frase non inventa una causa (`provider_occurrences.family_from_code`)."""
-    assert failure_reply(family, code) == TEMPORARY_FAILURE
+def test_un_guasto_senza_codice_resta_la_frase_di_prima():
+    """Il ramo `altro` senza codice: nessuna risposta da cui dire di piu', e la
+    frase non inventa una causa (`provider_occurrences.family_from_code`).
+    Con un codice la classe HTTP dice di piu' (giro 43, sotto)."""
+    assert failure_reply("altro", None) == TEMPORARY_FAILURE
+    assert failure_reply("altro", None, "boom") == TEMPORARY_FAILURE
     assert _is_toxic_assistant(TEMPORARY_FAILURE)
 
 
@@ -76,35 +76,42 @@ def test_la_causa_e_la_stessa_della_pagina_modelli():
         assert f": {cause} ({code})." in failure_reply("credenziale", code)
 
 
-# -- G36-1 (revisione, giro 36): il 400 non vuol dire credito ----------------
+# -- G36-1 e G39-2 (revisione, giri 36 e 39): il 400 non vuol dire credito -------
 #
 # Anthropic risponde 400 a ogni `invalid_request_error` -- il credito finito e'
-# un caso solo --, e Ollama risponde 400 a una richiesta che il modello non sa
-# servire (`server/routes.go`). La causa la dice il provider, citato.
+# un caso solo, «prompt is too long» un altro --, e Ollama risponde 400 a una
+# richiesta che il modello non sa servire. Il 400 e' «altro»: la causa la dice
+# il provider, citato, e nessuno inventa un'azione per chi legge.
 
 CREDIT = "Your credit balance is too low to access the Anthropic API."
 
 
-def test_un_400_cita_il_provider_e_non_dice_credito():
-    phrase = failure_reply("credenziale", 400, CREDIT)
-    assert phrase == (f"Il servizio AI ha rifiutato la richiesta (400): «{CREDIT}». "
-                      "Riprovare non basta: si sistema nella pagina Modelli.")
-    assert "credito esaurito" not in failure_reply("credenziale", 400)
+def test_il_400_e_altro():
+    from hiris.app.provider_occurrences import family_from_code
+    assert family_from_code(400) == "altro"
+
+
+def test_un_400_cita_il_provider_senza_inventare_un_azione():
+    phrase = failure_reply("altro", 400, CREDIT)
+    assert phrase == f"Il servizio AI ha rifiutato la richiesta (400): «{CREDIT}»"
+    long_prompt = "prompt is too long: 250000 tokens > 200000 maximum"
+    assert failure_reply("altro", 400, long_prompt) == (
+        f"Il servizio AI ha rifiutato la richiesta (400): «{long_prompt}».")
 
 
 def test_un_400_di_ollama_non_e_un_credito():
     said = '"gemma3" does not support thinking'
-    phrase = failure_reply("credenziale", 400, said)
-    assert "credito" not in phrase and said in phrase
+    phrase = failure_reply("altro", 400, said)
+    assert "credito" not in phrase and "Modelli" not in phrase and said in phrase
 
 
 def test_la_pagina_modelli_cita_lo_stesso_provider():
-    """Le due porte, la stessa frase del provider (fondamenta 3)."""
+    """Le due porte, la stessa citazione del provider (fondamenta 3)."""
     from hiris.app.model_resolution import occurrence_phrase
-    page = occurrence_phrase({"tipo": "rifiutato", "famiglia": "credenziale",
+    page = occurrence_phrase({"tipo": "rifiutato", "famiglia": "altro",
                               "codice": 400, "messaggio": CREDIT, "quando": 0.0,
                               "da_quante": 40}, position=1, now=180.0)
-    assert page == f"ha rifiutato le ultime 40 richieste (400): «{CREDIT}», 3 min fa"
+    assert page == f"ha rifiutato le ultime 40 richieste — errore 400: «{CREDIT}», 3 min fa"
 
 
 def test_cio_che_il_provider_dice_si_legge_dalle_due_sdk():
@@ -131,9 +138,9 @@ def test_cio_che_il_provider_dice_si_legge_dalle_due_sdk():
 def test_cio_che_il_provider_dice_si_taglia_e_si_filtra():
     from hiris.app.provider_occurrences import SAID_CAP, provider_said
 
-    class _Lungo(Exception):
-        body: ClassVar[dict] = {"error": {"message": "x" * 5000}}
-    said = provider_said(_Lungo())
+    lungo = Exception("lungo")
+    lungo.body = {"error": {"message": "x" * 5000}}
+    said = provider_said(lungo)
     assert len(said) <= SAID_CAP and said.endswith("[troncato]")
 
 
@@ -143,7 +150,39 @@ async def test_il_router_scrive_nel_registro_cio_che_il_provider_ha_detto():
     quella del provider: la pagina non aveva niente da citare."""
     from hiris.app.provider_occurrences import OccurrenceRegistry
     registry = OccurrenceRegistry(clock=lambda: 0.0)
-    router = LLMRouter(claude=_refusing("credenziale", 400, CREDIT),
+    router = LLMRouter(claude=_refusing("altro", 400, CREDIT),
                        model_chain=["claude"], registry=registry)
     await router.chat(model="auto")
     assert registry.occurrence("claude")["messaggio"] == CREDIT
+
+
+# -- G43 (revisione, giro 43): la classe HTTP decide «rifiuto» o «temporaneo» --
+#
+# Un 5xx non e' un rifiuto: e' il server che non ha saputo servire una richiesta
+# valida (RFC 9110 §15.6). Il 429 e il 503 portano nel protocollo il «riprova»
+# (RFC 6585 §4, `Retry-After`). Un 4xx e' un rifiuto della richiesta.
+
+@pytest.mark.parametrize("code", [429, 500, 503, 529])
+def test_un_429_o_un_5xx_e_temporaneo_e_cita_il_provider(code):
+    phrase = failure_reply("altro", code, "Overloaded")
+    assert phrase == f"Errore temporaneo del servizio AI ({code}): «Overloaded». Riprova tra poco."
+    assert _is_toxic_assistant(phrase)
+
+
+def test_un_5xx_senza_parole_del_provider_dice_il_codice():
+    phrase = failure_reply("altro", 529)
+    assert phrase == "Errore temporaneo del servizio AI (529). Riprova tra poco."
+    assert _is_toxic_assistant(phrase)
+
+
+def test_un_4xx_senza_parole_del_provider_e_un_rifiuto_non_un_temporaneo():
+    phrase = failure_reply("altro", 400)
+    assert phrase == "Il servizio AI ha rifiutato la richiesta (400)."
+    assert _is_toxic_assistant(phrase)
+
+
+def test_nessun_punto_doppio_quando_il_provider_chiude_la_frase():
+    assert failure_reply("altro", 400, "Too low.") == (
+        "Il servizio AI ha rifiutato la richiesta (400): «Too low.»")
+    assert failure_reply("altro", 503, "Busy.") == (
+        "Errore temporaneo del servizio AI (503): «Busy.» Riprova tra poco.")
