@@ -32,7 +32,7 @@ import time
 from aiohttp import web
 
 from ..chat_thread import unknown_id_text
-from ..steering import misura_turno, read_json
+from ..steering import chain_runner, chain_turn, read_json
 from .boundary import error_response
 from .soffitto import require_builder
 
@@ -139,7 +139,7 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         return error_response(400, "scrivi cosa vuoi cambiare: senza, il giro rifarebbe "
                                    "la stessa cosa.")
 
-    runner = request.app.get("llm_router") or request.app.get("claude_runner")
+    runner = chain_runner(request.app)
     if runner is None:
         return error_response(503, "nessun modello collegato: non posso rifare la proposta "
                                    "adesso.")
@@ -172,12 +172,10 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         # «Rifalla» è un turno di chat a tutti gli effetti: parte da un gesto
         # del proprietario nella pagina, e il suo costo va contato con gli
         # altri suoi — non in una specie a parte che nessuno guarderebbe.
-        async with misura_turno(request.app.get("usage"), runner,
-                                specie="chat", canale="catena",
-                                soggetto=request.get("soggetto")) as turn:
-            answer = await runner.chat(user_message="\n".join(lines),
-                                       system_prompt=_REDO_SYSTEM,
-                                       max_tokens=_REDO_MAX_TOKENS)
+        answer, turn = await chain_turn(
+            runner, "chat", usage=request.app.get("usage"),
+            soggetto=request.get("soggetto"), max_tokens=_REDO_MAX_TOKENS,
+            user_message="\n".join(lines), system_prompt=_REDO_SYSTEM)
     except Exception as error:
         logger.warning("proposta: il giro di «rifalla» non e' partito (%s: %s)",
                        type(error).__name__, error)

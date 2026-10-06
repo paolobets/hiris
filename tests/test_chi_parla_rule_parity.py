@@ -27,7 +27,13 @@ import pytest
 
 from hiris.app.agent import prompts
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.claude_runner import BASE_IDENTITY, BASE_SYSTEM_PROMPT, ClaudeRunner
+from hiris.app.claude_runner import BASE_IDENTITY, ClaudeRunner
+from hiris.app.steering import SPECIES, compose_base
+
+#: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
+#: strumenti, dal compositore unico (Tappa 6, Task 7).
+CHAT_BASE = compose_base(SPECIES["chat"].tools_for_turn())
+
 
 # La frase esatta, letta dalla costante -- non ridichiarata a mano, o le due
 # potrebbero divergere senza che questo file se ne accorga.
@@ -50,7 +56,7 @@ def test_la_regola_e_nella_meta_che_entrambi_i_percorsi_emettono():
     `test_base_prompt_split.py::test_base_identita_non_contiene_istruzioni_
     sugli_strumenti` la prenderebbe comunque, ma qui lo si dichiara."""
     assert _REGOLA in BASE_IDENTITY
-    assert _REGOLA in BASE_SYSTEM_PROMPT
+    assert _REGOLA in CHAT_BASE
 
 
 def test_il_ponte_riceve_la_regola_fuori_dal_recinto_della_casa():

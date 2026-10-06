@@ -10,6 +10,10 @@ import pytest
 from hiris.app.agent import prompts, runner
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
+from hiris.app.steering import SPECIES
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 
 def test_build_chat_messages_available():
@@ -554,7 +558,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nSalotto: luce accesa.",
-        active_tools=True)
+        active_tools=CHAT_TOOLS)
 
     # dice il vero su cio' che HA
     assert "HAI gli strumenti di HIRIS" in system
@@ -670,7 +674,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
 
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
-                                                active_tools=True)
+                                                active_tools=CHAT_TOOLS)
     guida = prompts._GUIDE_WITH_TOOLS
 
     assert guida in system
@@ -751,7 +755,7 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     meno. Il nome del test non conta piu' «i quattro»: contava un numero che
     non conta, ed e' cambiato una volta gia' (fetta «comandare»)."""
     argv = runner._chat_claude_args("/sistema.txt", "sonnet",
-                                    active_tools=True,
+                                    active_tools=CHAT_TOOLS,
                                     mcp_config=runner.config_mcp("http://x", "TOK"))
     opzioni = _normalizza(argv)
 

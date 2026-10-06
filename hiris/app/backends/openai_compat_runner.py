@@ -13,7 +13,6 @@ import httpx as _httpx
 from ..chat_store import LEAKED_TOOL_NAME_RE
 from ..claude_runner import (
     _MAX_ITERATIONS_NOTICE,
-    BASE_SYSTEM_PROMPT,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
@@ -675,7 +674,12 @@ class OpenAICompatRunner:
         # modificatori nello stesso posto, e la parita' non e' piu' vera solo
         # per due su tre. Pinnato da
         # `tests/test_composition_order.py`.
-        system_parts = [BASE_SYSTEM_PROMPT]
+        # Il compositore unico, come `ClaudeRunner.chat` (Tappa 6, Task 7).
+        from ..steering import compose_base
+
+        if tools is not None:
+            tools = list(tools)
+        system_parts = [compose_base(t["name"] for t in tools or ())]
         if system_prompt:
             system_parts.append(system_prompt)
         # I modificatori di comportamento -- stabili per configurazione,

@@ -22,6 +22,7 @@ import importlib
 from pathlib import Path
 
 from hiris.app.agent import runner as ponte
+from hiris.app.steering import SPECIES
 
 RADICE = Path(__file__).resolve().parent.parent
 APP = RADICE / "hiris" / "app"
@@ -53,23 +54,42 @@ def _risolvi(nodo: ast.expr, spazio: dict):
 
 def specie_accodate() -> dict[str, list[str]]:
     """`{specie: [dove]}` -- ogni `kind` che il codice accoda nella coda del
-    ragionamento, RICAVATO dal sorgente e non elencato."""
+    ragionamento, RICAVATO dal sorgente e non elencato.
+
+    Dalla Tappa 6 (Task 7) si accoda da un posto solo, `steering.enqueue_turn`,
+    che prende il `kind` dalla dichiarazione del mestiere: la specie accodata
+    e' il mestiere passato a ogni chiamata di `enqueue_turn`, risolto nel
+    modulo che accoda e tradotto nel suo `kind` dalle dichiarazioni."""
     trovate: dict[str, list[str]] = {}
     for percorso in sorted(APP.rglob("*.py")):
         albero = ast.parse(percorso.read_text(encoding="utf-8"))
         chiamate = [n for n in ast.walk(albero)
                     if isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Attribute)
-                    and n.func.attr == "enqueue"]
+                    and (getattr(n.func, "id", None) == "enqueue_turn"
+                         or getattr(n.func, "attr", None) == "enqueue_turn")]
         if not chiamate:
             continue
         spazio = vars(importlib.import_module(_modulo(percorso)))
         for chiamata in chiamate:
-            primo = (chiamata.args[0] if chiamata.args
-                     else next(k.value for k in chiamata.keywords if k.arg == "kind"))
+            mestiere = _risolvi(chiamata.args[1], spazio)
             dove = f"{percorso.relative_to(RADICE).as_posix()}:{chiamata.lineno}"
-            trovate.setdefault(_risolvi(primo, spazio), []).append(dove)
+            trovate.setdefault(SPECIES[mestiere].kind, []).append(dove)
     return trovate
+
+
+def test_si_accoda_solo_dalla_partenza_unica():
+    """Un `.enqueue(` fuori da `steering` sarebbe un accodamento che non
+    passa dalla dichiarazione del mestiere, e che la derivazione qui sopra
+    non vedrebbe: il cancello lo pretende assente."""
+    fuori = []
+    for percorso in sorted(APP.rglob("*.py")):
+        if percorso.relative_to(APP).as_posix() in ("steering.py", "reasoning/queue.py"):
+            continue
+        for n in ast.walk(ast.parse(percorso.read_text(encoding="utf-8"))):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "enqueue"):
+                fuori.append(f"{percorso.relative_to(APP).as_posix()}:{n.lineno}")
+    assert fuori == [], fuori
 
 
 def test_la_derivazione_trova_TUTTE_le_specie_che_si_accodano():

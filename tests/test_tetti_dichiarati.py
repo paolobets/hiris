@@ -35,19 +35,17 @@ APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 
 # -- il tetto ------------------------------------------------------------------
 
-def _model_calls() -> list[tuple[str, int, ast.Call]]:
-    """Le chiamate `<qualcosa>.chat(...)` del prodotto, **chieste al
-    sorgente**. Si saltano quelle che inoltrano `**kwargs` (il router verso i
-    backend): il tetto viaggia dentro, ed e' gia' stato dichiarato da chi ha
-    chiamato il router."""
+def _turn_calls() -> list[tuple[str, int, ast.Call]]:
+    """Le partenze dei turni sulla catena: le chiamate di
+    `steering.chain_turn`, **chieste al sorgente**. Dalla Tappa 6 (Task 7)
+    e' l'unico posto che chiama `runner.chat` (`tests/test_un_turno.py`)."""
     trovate = []
     for percorso in sorted(APP.rglob("*.py")):
         albero = ast.parse(percorso.read_text(encoding="utf-8"))
         for nodo in ast.walk(albero):
             if (isinstance(nodo, ast.Call)
-                    and isinstance(nodo.func, ast.Attribute)
-                    and nodo.func.attr == "chat"
-                    and not any(k.arg is None for k in nodo.keywords)):
+                    and (getattr(nodo.func, "id", None) == "chain_turn"
+                         or getattr(nodo.func, "attr", None) == "chain_turn")):
                 trovate.append((str(percorso.relative_to(APP)), nodo.lineno, nodo))
     return trovate
 
@@ -57,11 +55,20 @@ def test_ogni_chiamata_a_un_modello_DICHIARA_il_suo_tetto():
     `server.py`, il «Rifalla» in `api/handlers_proposals.py`.
 
     Mutazione ESEGUITA: tolto `max_tokens=` dalla chiamata dell'analista --
-    rossa, nominando `server.py`."""
-    chiamate = _model_calls()
-    # **La prova della derivazione**: su `5bce65d` le chiamate dirette sono
-    # otto (piano della Tappa 6, «Misurato prima di disegnare»). Il Task 7 le
-    # porta tutte nel modulo dei turni: allora questa ricerca va puntata la'.
+    rossa, nominando `server.py`.
+
+    Dal Task 7 la chiamata e' una sola, e il tetto e' un argomento di
+    `chain_turn` **senza predefinito**: Python stesso rifiuta un turno che non
+    lo dichiara. La prova guarda anche ogni partenza, per nome."""
+    import inspect
+
+    parametro = inspect.signature(steering.chain_turn).parameters["max_tokens"]
+    assert parametro.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parametro.default is inspect.Parameter.empty
+    chiamate = _turn_calls()
+    # **La prova della derivazione**: su `5bce65d` le chiamate dirette erano
+    # otto (piano della Tappa 6, «Misurato prima di disegnare»), e sono
+    # diventate otto partenze.
     assert len(chiamate) >= 8, (
         f"la ricerca delle chiamate e' rotta: ne ha trovate {len(chiamate)}")
     senza = [f"{file}:{riga}" for file, riga, nodo in chiamate

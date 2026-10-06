@@ -28,12 +28,12 @@ import logging
 from ..action.construction.workshop import closed_fields, form_refusal
 from ..home_space.tools import PROPOSE_TOOL_DEF
 from ..proxy.ha_client import HAClient
-from ..steering import read_json
+from ..steering import ACTUATOR_SPECIES, SPECIES, read_json
 
 logger = logging.getLogger(__name__)
 
 #: La specie di turno, per il ponte e per il runner.
-ACTUATION_TURN_KIND = "attuazione"
+ACTUATION_TURN_KIND = SPECIES[ACTUATOR_SPECIES].kind
 
 #: **Il tetto della risposta, dichiarato** (Tappa 6, Task 4; D3, approvata
 #: il 05/10/2026). Fino a quel giorno questo mestiere non ne passava nessuno e

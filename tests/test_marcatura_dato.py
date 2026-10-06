@@ -27,9 +27,13 @@ legittimo.
 Quel salto esiste solo qui. Questa marcatura è ciò che lo nomina.
 """
 from hiris.app.agent import prompts
+from hiris.app.steering import SPECIES
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 
-def _sistema(contesto: str, *, strumenti=True) -> str:
+def _sistema(contesto: str, *, strumenti=CHAT_TOOLS) -> str:
     sistema, _utente = prompts.build_chat_messages(
         "Sei HIRIS.", [{"role": "user", "content": "che ore sono"}],
         contesto=contesto, active_tools=strumenti)
@@ -133,6 +137,6 @@ def test_la_marcatura_vale_anche_SENZA_strumenti():
     falsa. La marcatura serve anche li'.
 
     Mutazione ESEGUITA: marcare solo il ramo con gli strumenti -- rossa."""
-    sistema = _sistema(CASA, strumenti=False)
+    sistema = _sistema(CASA, strumenti=())
 
     assert prompts.APERTURA_CASA in sistema

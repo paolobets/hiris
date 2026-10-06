@@ -49,12 +49,16 @@ from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
+from hiris.app.steering import SPECIES
 
 # La fixture dell'app col confine ACCESO vive in `conftest.py` e non qui: una
 # seconda copia divergerebbe, e senza le due valvole della suite rimosse questi
 # test passerebbero anche col guasto in piedi. Viveva in
 # `tests/test_internal_token.py`, uscito il 22/09/2026 col segreto condiviso.
 from tests.test_knowledge_tools import _semina_casa
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 _NOMI_NUDI = {d["name"] for d in KNOWLEDGE_TOOLS}
 
@@ -109,7 +113,7 @@ class _ClientFinto:
 # ① L'INVARIANTE, NEI DUE VERSI -- il test da non cancellare mai
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("strumenti_attivi", [True, False])
+@pytest.mark.parametrize("strumenti_attivi", [CHAT_TOOLS, ()], ids=["con", "senza"])
 def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
     """`"--mcp-config" in argv` **<=>** `_GUIDE_WITH_TOOLS in system`.
 
@@ -145,7 +149,7 @@ def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
 def test_le_due_guide_non_convivono_mai_nello_stesso_prompt():
     """Il corollario: un prompt che contenesse entrambe direbbe al modello una
     cosa e il suo contrario, e vincerebbe l'ultima letta."""
-    for attivi in (True, False):
+    for attivi in (CHAT_TOOLS, ()):
         system, _u = prompts.build_chat_messages("Sei HIRIS.", [], active_tools=attivi)
         assert (prompts._GUIDE_WITH_TOOLS in system) != (
             prompts._GUIDE_WITHOUT_TOOLS in system)
@@ -854,7 +858,7 @@ _CONTRORDINI = (
 )
 
 
-@pytest.mark.parametrize("strumenti_attivi", [True, False])
+@pytest.mark.parametrize("strumenti_attivi", [CHAT_TOOLS, ()], ids=["con", "senza"])
 def test_il_blocco_del_contesto_non_contraddice_nessuno_dei_due_rami(strumenti_attivi):
     """Le due clausole non devono rientrare su NESSUNO dei due rami.
 
@@ -907,7 +911,7 @@ def test_il_blocco_del_contesto_resta_uno_solo_su_entrambi_i_rami():
     STESSO `_CONTESTO_PRESENTE` che esce sui due rami. Se un giorno diventasse
     condizionale, sarebbero due testi da tenere veri invece di uno."""
     with_, _u = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
-                                            active_tools=True)
+                                            active_tools=CHAT_TOOLS)
     without, _u2 = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
                                                active_tools=False)
     assert prompts._CONTESTO_PRESENTE in with_
