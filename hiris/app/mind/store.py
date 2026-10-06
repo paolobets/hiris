@@ -676,22 +676,38 @@ def _migration_12(conn) -> None:
     SQLite 3.35, e la versione dentro l'immagine dell'add-on non e' stata
     misurata. La ricostruzione funziona su tutte. Le righe restano, con ogni
     colonna che resta.
+
+    **Tutto o niente, in una transazione** (revisione indipendente, giro 14,
+    G14-1). Il modulo `sqlite3` non apre una transazione per `ALTER` e
+    `CREATE`: senza `BEGIN` ogni passo si confermava da solo, e una
+    ricostruzione interrotta dopo il `RENAME` lasciava una `proposte` vuota,
+    con le righe in `proposte_v11` dove nessuno le legge. Se un passo fallisce
+    si torna indietro e l'archivio resta alla versione 11, intero: la
+    migrazione si rifara' al prossimo avvio.
     """
     existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
     if not existing & {"chi_applica", "aggiornata_ts", "esito_ts"}:
         return
     columns = ",".join(_PROPOSAL_COLUMNS)
-    conn.execute("ALTER TABLE proposte RENAME TO proposte_v11")
-    conn.execute("DROP INDEX IF EXISTS idx_proposte_stato")
-    conn.execute(
-        "CREATE TABLE proposte (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
-        "stato TEXT NOT NULL, testo TEXT NOT NULL, perche TEXT NOT NULL, "
-        "impronta TEXT NOT NULL, prova_json TEXT NOT NULL, "
-        "giri_json TEXT NOT NULL, esito_nota TEXT, stakes TEXT)")
-    conn.execute(f"INSERT INTO proposte({columns}) SELECT {columns} FROM proposte_v11")
-    conn.execute("DROP TABLE proposte_v11")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_proposte_stato "
-                 "ON proposte(stato, creata_ts DESC)")
+    # Una migrazione precedente dello stesso avvio puo' averne gia' aperta una
+    # (il modulo la apre da se' davanti a un `UPDATE`): si continua in quella.
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        conn.execute("ALTER TABLE proposte RENAME TO proposte_v11")
+        conn.execute("DROP INDEX IF EXISTS idx_proposte_stato")
+        conn.execute(
+            "CREATE TABLE proposte (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
+            "stato TEXT NOT NULL, testo TEXT NOT NULL, perche TEXT NOT NULL, "
+            "impronta TEXT NOT NULL, prova_json TEXT NOT NULL, "
+            "giri_json TEXT NOT NULL, esito_nota TEXT, stakes TEXT)")
+        conn.execute(f"INSERT INTO proposte({columns}) SELECT {columns} FROM proposte_v11")
+        conn.execute("DROP TABLE proposte_v11")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_proposte_stato "
+                     "ON proposte(stato, creata_ts DESC)")
+    except BaseException:
+        conn.rollback()
+        raise
 
 
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo

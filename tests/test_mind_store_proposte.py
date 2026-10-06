@@ -191,3 +191,47 @@ def test_le_tre_colonne_MAI_LETTE_escono_e_le_righe_restano(tmp_path):
     assert righe[0]["esito_nota"] == "fatto ieri sera"
     assert righe[0]["prova"] == {"base": 19}
     assert righe[0]["creata_ts"] == 100.0
+
+
+def test_una_ricostruzione_INTERROTTA_non_perde_le_proposte(tmp_path, monkeypatch):
+    """Revisione indipendente, giro 14 (G14-1). La ricostruzione si ferma a
+    meta' -- qui la copia delle righe fallisce, perche' chiede una colonna che
+    la tabella vecchia non ha -- e l'archivio deve restare com'era: alla
+    versione 11, con le sue righe in `proposte`, senza `proposte_v11`. Al
+    prossimo avvio la migrazione si rifa' e riesce.
+
+    Mutazione ESEGUITA (06/10/2026): tolti `BEGIN` e `rollback` dalla
+    migrazione -- rossa, perche' `proposte` resta vuota e le righe stanno in
+    `proposte_v11`."""
+    import sqlite3
+
+    from hiris.app.mind import store as store_module
+
+    path = str(tmp_path / "oss.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(_PROPOSTE_V11)
+    conn.close()
+
+    monkeypatch.setattr(store_module, "_PROPOSAL_COLUMNS",
+                        store_module._PROPOSAL_COLUMNS + ("colonna_fantasma",))
+    with pytest.raises(sqlite3.OperationalError, match="colonna_fantasma"):
+        ObservationsStore(path)
+
+    conn = sqlite3.connect(path)
+    try:
+        tabelle = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        versione = conn.execute("PRAGMA user_version").fetchone()[0]
+        righe = conn.execute("SELECT id, chi_applica FROM proposte").fetchall()
+    finally:
+        conn.close()
+    assert "proposte_v11" not in tabelle, tabelle
+    assert versione == 11
+    assert righe == [("p1", "tu")]
+
+    monkeypatch.undo()
+    store = ObservationsStore(path)
+    try:
+        assert [p["id"] for p in store.proposals()] == ["p1"]
+    finally:
+        store.close()
