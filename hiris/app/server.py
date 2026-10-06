@@ -1385,14 +1385,7 @@ async def backfill_one_report(app, ha_client, *,
         written = archivio.report(as_text)
         if written is None:
             try:
-                ricette, serie, nomi, silent, mute = await _report_ingredients(
-                    app, ha_client, giorno=as_text, timezone=timezone)
-                aggregate_day(store=archivio, day=as_text, timezone=timezone,
-                              recipes=ricette, series=serie, names=nomi,
-                              silent=silent, muted=mute,
-                              judgments=app["type_judgments"],
-                              house=House.read(app.get("home_space_store"),
-                                               app.get("entity_cache")))
+                await write_day_report(app, ha_client, day=as_text, timezone=timezone)
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
@@ -1460,14 +1453,7 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
         try:
             if archivio.report(day) is not None:
                 continue
-            ricette, serie, nomi, silent, mute = await _report_ingredients(
-                app, ha_client, giorno=day, timezone=timezone)
-            aggregate_day(
-                store=archivio, day=day, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi,
-                silent=silent, muted=mute,
-                judgments=app["type_judgments"],
-                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+            await write_day_report(app, ha_client, day=day, timezone=timezone)
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -1910,6 +1896,34 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     if silent is None:
         return ricette, serie, nomi, ferme or None, mute
     return ricette, serie, nomi, {**ferme, **silent}, mute
+
+
+async def write_day_report(app, ha_client, *, day: str, timezone: str | None) -> int:
+    """Scrive il resoconto di `day` e torna quante voci di cronaca porta.
+
+    **L'unica strada del resoconto di un giorno** (D-36, 06/10/2026): gli
+    ingredienti letti da Home Assistant (`_report_ingredients`) e poi
+    `facts.aggregate_day` con l'istantanea viva dei giudizi e la casa di
+    adesso -- che serve a chiudere gli episodi di cio' che Home Assistant non
+    nomina piu' (`facts.build_episodes`). Fino a quel giorno la stessa coppia
+    era scritta tre volte: la notte (`_aggrega_ieri`), il recupero
+    (`backfill_one_report`) e la riparazione d'avvio
+    (`_write_missing_reports`). Lo difende
+    `tests/test_fonte_unica.py::test_d36_il_resoconto_di_un_giorno_ha_una_strada_sola`.
+
+    **Sostituisce sempre** (`aggregate_day` e' idempotente): se un giorno gia'
+    scritto si possa rifare lo decide chi chiama, e cosi' la politica sugli
+    errori -- la notte li logga, il recupero li silenzia per giorno, la
+    riparazione li conta giorno per giorno. Qui si solleva.
+    """
+    ricette, serie, nomi, silent, mute = await _report_ingredients(
+        app, ha_client, giorno=day, timezone=timezone)
+    return aggregate_day(
+        store=app["observations"], day=day, timezone=timezone,
+        recipes=ricette, series=serie, names=nomi,
+        silent=silent, muted=mute,
+        judgments=app["type_judgments"],
+        house=House.read(app.get("home_space_store"), app.get("entity_cache")))
 
 
 #: Quanto vale una lettura di `statistic_ids` per i giri che la condividono
@@ -4452,19 +4466,9 @@ async def _on_startup(app: web.Application) -> None:
             # prefisso «cervello:», e la notte salterebbe in silenzio.
             timezone = house_timezone(app.get("home_space_store"))
             ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
-            # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
-            # delle entita' che nominano chieste una volta per giro, non una
-            # per dispositivo.
-            ricette, serie, nomi, silent, mute = await _report_ingredients(
-                app, ha_client, giorno=ieri, timezone=timezone)
-            count = aggregate_day(
-                store=app["observations"], day=ieri, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi,
-                silent=silent, muted=mute,
-                judgments=app["type_judgments"],
-                # La fonte di adesso, per chiudere gli episodi di cio' che
-                # Home Assistant non nomina piu' (`facts.build_episodes`).
-                house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+            # **IL RESOCONTO** (spec §9), per la strada unica: la notte
+            # rifa' ieri anche se c'e' gia'.
+            count = await write_day_report(app, ha_client, day=ieri, timezone=timezone)
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",

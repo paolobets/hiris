@@ -902,8 +902,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     pagato (accodava invece di sostituire, e le ancore YAML lo nascondevano).
 
     **In produzione `judgments` e' `app["type_judgments"]`**, l'istantanea viva
-    (i tre chiamanti in `server.py`); il predefinito `REPO_JUDGMENTS` e' il
-    solo seme, per le prove.
+    (`server.py::write_day_report`, l'unica strada del resoconto, D-36); il
+    predefinito `REPO_JUDGMENTS` e' il solo seme, per le prove.
 
     **Il bilancio non entra piu' qui, e non produce un genere `"bilancio"`**
     (15/09/2026, con gli oggetti). Fino ad allora questa funzione riceveva un
