@@ -6,7 +6,7 @@ nessuno dei due.
 
 Esiste per non far leggere quattrocento righe serializzate a chi vuole due
 interi: `GET /api/agenda` serve fino a 200 promesse, `GET /api/constructions`
-altrettanto e prima SCRIVE (`store.scadi`). Questa rotta la chiamano tutti e
+altrettanto. Questa rotta la chiamano tutti e
 due i gusci a ogni apertura, a ogni risposta della chat e al ritorno del
 fuoco sulla finestra. Oggi costa due `count(*)` (`count_unread`,
 `count_pending`) piu' una lettura intera: le proposte dell'attuatore si

@@ -698,7 +698,7 @@ async def test_il_job_di_una_promessa_col_filo_non_vale_come_chat(rotta_chat):
 
     assert "non è più valido" in (esito.get("errore") or ""), esito
     assert casa_ha.salvate == []
-    assert archivio.read(proposta)["stato"] == "in_attesa"
+    assert archivio.read(proposta, now=adesso)["stato"] == "in_attesa"
 
 
 @pytest.mark.asyncio

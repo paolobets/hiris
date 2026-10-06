@@ -1461,7 +1461,7 @@ async def test_la_BOZZA_di_chi_non_amministra_non_rivela_com_e_adesso(
 
     esito = await chat.dispatch("propose", intento)
     testo = json_text(esito)
-    stored_before = (archivio.read(esito["proposta_id"]) or {}).get("prima") \
+    stored_before = (archivio.read(esito["proposta_id"], now=time.time()) or {}).get("prima") \
         if "proposta_id" in esito else None
     archivio.close()
     cronaca.close()

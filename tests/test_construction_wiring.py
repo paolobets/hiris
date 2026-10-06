@@ -50,13 +50,13 @@ async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, c
         # `claim` la porta a `in_corso`: e' lo stato che un riavvio a meta'
         # lascia sul disco, ed e' l'unica cosa che `risana()` sa chiudere.
         archivio.claim(ident, now=_time.time())
-        assert archivio.read(ident)["stato"] == "in_corso"
+        assert archivio.read(ident, now=_time.time())["stato"] == "in_corso"
     finally:
         archivio.close()
 
     with caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
         async with started_with(tmp_path) as app:
-            stato = app["constructions"].read(ident)["stato"]
+            stato = app["constructions"].read(ident, now=_time.time())["stato"]
     avvisi = [rec.getMessage() for rec in caplog.records
               if "risanamento delle costruzioni" in rec.getMessage()]
     assert stato != "in_corso", (

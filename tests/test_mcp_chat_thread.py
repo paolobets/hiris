@@ -154,7 +154,7 @@ async def test_il_ponte_di_una_persona_non_amministratrice_non_scrive_in_casa(ro
 
     assert _SOLO_AMMINISTRATORI in (esito.get("errore") or ""), esito
     assert casa_ha.salvate == [], "Home Assistant ha ricevuto una scrittura"
-    assert archivio.read(proposta)["stato"] == "in_attesa"
+    assert archivio.read(proposta, now=time.time())["stato"] == "in_attesa"
 
 
 # 2. Lo stesso job, ma di un amministratore: il soffitto lo lascia passare.
@@ -206,7 +206,7 @@ async def test_un_X_HIRIS_Chat_non_valido_non_fa_girare_nessuno_strumento(
 
     assert "non è più valido" in (esito.get("errore") or ""), esito
     assert casa_ha.salvate == [], "Home Assistant ha ricevuto una scrittura"
-    assert archivio.read(proposta)["stato"] == "in_attesa"
+    assert archivio.read(proposta, now=time.time())["stato"] == "in_attesa"
     assert dispatcher_visti == [], "il dispatcher non doveva nemmeno nascere"
     assert "X-HIRIS-Chat" in caplog.text
 
