@@ -119,7 +119,9 @@ from .steering import (
     RECIPES_SPECIES,
     SPECIES,
     chain_turn,
+    declare_refused,
     enqueue_turn,
+    refused_problems,
     start,
 )
 from .version import read_version
@@ -2056,20 +2058,27 @@ async def analyst_round(app) -> dict | None:
             return None
 
         previous = _analyst_memory(store, today, series)
+        # I problemi della risposta di prima, se e' stata rifiutata (D10):
+        # dal registro dei turni, la stessa riga sulle due strade.
+        refused = refused_problems(app.get("usage"), ANALYST_SPECIES)
         route, _downgrade, runner = start(app, ANALYST_SPECIES)
         if route == "ponte":
-            return _enqueue_analyst_turn(app, series, today, previous)
+            return _enqueue_analyst_turn(app, series, today, previous,
+                                         refused=refused)
         if runner is None:
             logger.info("analista: nessun modello collegato, si riprova al giro dopo")
             return None
 
-        question = analyst_turn.build_question(series, previous)
-        if question is None:
-            return None
         # Gli strumenti e il guardiano li dice la dichiarazione del mestiere
-        # (D5, Task 3.6): gli stessi che il ponte serve da `/api/mcp`.
+        # (D5, Task 3.6): gli stessi che il ponte serve da `/api/mcp`. Il
+        # guardiano porta la maschera dei nomi, che copre anche la domanda.
         declared = SPECIES[ANALYST_SPECIES]
         dispatcher = await declared.guard(app) if declared.guard else None
+        presence = getattr(dispatcher, "presence", None)
+        question = analyst_turn.build_question(series, previous, refused=refused,
+                                               presence=presence)
+        if question is None:
+            return None
         answer, turn = await chain_turn(
             runner, ANALYST_SPECIES, usage=app.get("usage"),
             max_tokens=analyst_turn.MAX_ANSWER_TOKENS,
@@ -2077,8 +2086,9 @@ async def analyst_round(app) -> dict | None:
             tools=declared.catalog_for_turn() or None, dispatcher=dispatcher)
         esito = analyst_turn.apply_analysis(
             series, answer, truncated=turn.truncated, previous=previous,
-            tool_calls=turn.tool_calls,
-            presence=getattr(dispatcher, "presence", None))
+            tool_calls=turn.tool_calls, presence=presence)
+        if _was_refused(esito) and not turn.truncated:
+            declare_refused(app.get("usage"), turn.turn_id, esito["problemi"])
         _write_analysis(store, today, esito)
         return esito
     except Exception as error:
@@ -2403,10 +2413,27 @@ def _write_analysis(store, day: str, esito: dict) -> None:
                 day, len(analysis.get("osservazioni") or []))
 
 
+def _was_refused(esito: dict) -> bool:
+    """Se il modello ha risposto e la risposta non e' passata (D10): non un
+    silenzio, non un guasto del ponte -- un'analisi rifiutata coi suoi
+    problemi."""
+    return bool(esito.get("risposta")) and esito.get("analisi") is None
+
+
+def _analyst_presence(app):
+    """La maschera dei nomi sulla casa di adesso (decisione 12 estesa): quella
+    che il raccoglitore rifa' per riportare i segnaposto agli id."""
+    casa = app.get("home_space_store")
+    return (PresenceMask(House.read(casa, app.get("entity_cache")))
+            if casa is not None else None)
+
+
 def _enqueue_analyst_turn(app, series: dict, day: str,
-                          previous: list[dict] | None = None) -> dict | None:
+                          previous: list[dict] | None = None, *,
+                          refused: list[str] | None = None) -> dict | None:
     """Accoda al piano la domanda dell'analista, e torna subito."""
-    job = analyst_turn.bridge_turn(series, previous)
+    job = analyst_turn.bridge_turn(series, previous, refused=refused,
+                                   presence=_analyst_presence(app))
     if job is None:
         return None
     # **Nella sveglia va il giorno**: il ponte risponde minuti dopo, da un
@@ -2483,12 +2510,15 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
                                   names=mind_view(app).device_names()))
     # I segnaposto che il modello ha letto sul ponte tornano id dalla stessa
     # numerazione, sulla casa di adesso (come l'osservatore, decisione 12).
-    casa = app.get("home_space_store")
-    presence = (PresenceMask(House.read(casa, app.get("entity_cache")))
-                if casa is not None else None)
     esito = analyst_turn.apply_analysis(series, reply,
                                         previous=_analyst_memory(store, day, series),
-                                        tool_calls=calls, presence=presence)
+                                        tool_calls=calls,
+                                        presence=_analyst_presence(app))
+    if _was_refused(esito):
+        # L'esito sulla riga del turno del ponte (D10): il runner l'ha messa
+        # nella decisione. Il raccoglitore rilegge lo stesso turno finche' non
+        # ne parte un altro, e riscrivere lo stesso esito non cambia niente.
+        declare_refused(app.get("usage"), decision.get("turn_id"), esito["problemi"])
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.
@@ -5549,7 +5579,7 @@ def _registra_turno_ponte(archivio, carichi=None):
     """
     from .usage.giro import payload_rows_ponte
 
-    def registra(riga: dict) -> None:
+    def registra(riga: dict) -> str:
         riga = dict(riga)
         soggetto = riga.pop("subject", None)
         exchange_id = riga.pop("exchange_id", "")
@@ -5560,6 +5590,7 @@ def _registra_turno_ponte(archivio, carichi=None):
         preso = carichi.take(exchange_id) if carichi is not None else None
         for pesi in payload_rows_ponte(composizione, giri, preso):
             archivio.log_payload(ident, now=adesso, **pesi)
+        return ident
 
     return registra
 

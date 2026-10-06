@@ -287,6 +287,14 @@ TRUNCATED = "troncato"
 #: del runner, per chiamata come `last_truncated`.
 TOOL_LEAKED = "strumento_scappato"
 
+#: **L'esito di una risposta che il mestiere ha rifiutato** (D10 del piano
+#: degli attori, approvata il 06/10/2026): il modello ha finito, ma cio' che
+#: ha detto non passa la validazione del mestiere. Fino a quel giorno il
+#: registro la chiamava «riuscito». A differenza di `TRUNCATED` non lo sa il
+#: runner: lo sa il mestiere, dopo il turno, e lo scrive sulla riga gia'
+#: registrata (`declare_refused`).
+REFUSED = "rifiutata"
+
 #: Cosa riceve il mestiere al posto delle decisioni, quando il turno e' stato
 #: troncato (D2, approvata il 05/10/2026): **non si legge**. Un JSON tagliato a
 #: meta' che per caso si chiude e' l'unico modo di inventare decisioni da una
@@ -298,8 +306,9 @@ TRUNCATED_REASON = ("la risposta e' stata troncata al tetto di token: non "
 #: Una risposta vuota non e' un silenzio: e' un modello che non ha risposto.
 NO_ANSWER_REASON = "il modello non ha risposto"
 
-#: **Il freno** (Tappa 6, Task 3, passo 5): dopo questi turni troncati DI FILA
-#: lo stesso mestiere si ferma e lo dice. **Il numero non c'e' ancora, e il
+#: **Il freno** (Tappa 6, Task 3, passo 5): dopo questi turni troncati o
+#: rifiutati DI FILA (`BRAKE_OUTCOMES`, D10) lo stesso mestiere si ferma e lo
+#: dice. **Il numero non c'e' ancora, e il
 #: freno e' spento**: «un numero non misurato non si scrive», e N si sceglie
 #: dalle misure dal vivo della chiusura (T9) -- i troncati per mestiere,
 #: contati da questo stesso registro. `None` = spento.
@@ -313,8 +322,16 @@ TRUNCATION_BRAKE: int | None = None
 BRAKED_SPECIES = SPECIE - {"chat"}
 
 
+#: Gli esiti che il freno conta: un turno che non ha dato niente da leggere.
+#: Il troncato perche' il modello non ha finito, il rifiutato perche' ha
+#: finito male (D10). Uno strumento «scappato» no: la chat e' l'unica a
+#: produrlo, e la chat non si frena.
+BRAKE_OUTCOMES = frozenset({TRUNCATED, REFUSED})
+
+
 class TurnBraked(RuntimeError):
-    """Il freno dei troncati ha fermato questo mestiere: il turno non parte."""
+    """Il freno ha fermato questo mestiere (troppi turni troncati o rifiutati
+    di fila, `BRAKE_OUTCOMES`): il turno non parte."""
 
 
 @_dataclass
@@ -407,10 +424,10 @@ def read_json(answer, *, shape: type, what: str,
 
 
 def brake_engaged(archivio, specie: str) -> bool:
-    """Se il freno dei troncati ferma `specie` adesso.
+    """Se il freno ferma `specie` adesso.
 
     Vero quando gli ultimi `TRUNCATION_BRAKE` turni registrati di quella
-    specie sono TUTTI troncati. Spento (`None`), non legge nemmeno
+    specie sono TUTTI troncati o rifiutati (`BRAKE_OUTCOMES`). Spento (`None`), non legge nemmeno
     l'archivio. Senza archivio non c'e' niente da contare: non frena.
     """
     if TRUNCATION_BRAKE is None or specie not in BRAKED_SPECIES:
@@ -419,7 +436,49 @@ def brake_engaged(archivio, specie: str) -> bool:
         return False
     recenti = archivio.turns(limit=TRUNCATION_BRAKE, species=specie)
     return (len(recenti) >= TRUNCATION_BRAKE
-            and all(t["outcome"] == TRUNCATED for t in recenti))
+            and all(t["outcome"] in BRAKE_OUTCOMES for t in recenti))
+
+
+def declare_refused(archivio, turn_id: str | None,
+                    problems: list[str] | None = None) -> None:
+    """Scrive `REFUSED` sulla riga di un turno gia' registrato, con i
+    `problems` della risposta (D10; la colonna e' la scelta del proprietario
+    del 06/10/2026, «Si', con la colonna»).
+
+    Lo chiama il mestiere che ha rifiutato la risposta, con l'id della riga:
+    sulla catena da `TurnOutcome`, sul ponte dalla decisione del job
+    (`runner._measure_turn`). Una riga sola per turno -- l'esito si corregge
+    dove vive, non si scrive un secondo fatto accanto. **Non solleva**, come
+    `misura_turno`: un registro rotto non deve far cadere il giro. Senza
+    archivio o senza id non c'e' niente da scrivere."""
+    if archivio is None or not turn_id:
+        return
+    try:
+        archivio.set_outcome(turn_id, REFUSED, list(problems or []))
+    except Exception as error:  # guasto dell'archivio
+        logger.warning("registro dei turni: l'esito «%s» del turno %s non si "
+                       "e' potuto scrivere (%s: %s)", REFUSED, turn_id,
+                       type(error).__name__, error)
+
+
+def refused_problems(archivio, specie: str) -> list[str]:
+    """I problemi dell'ultimo turno di `specie`, se e' stato rifiutato; `[]`
+    altrimenti (D10). Il giro che riprova li rimette nella domanda, sulla
+    catena come sul ponte: il modello vede perche' la risposta di prima non
+    e' passata. Solo l'ULTIMO turno: un turno riuscito in mezzo dice che i
+    problemi di prima sono superati. **Non solleva**, come `declare_refused`."""
+    if archivio is None:
+        return []
+    try:
+        recenti = archivio.turns(limit=1, species=specie)
+    except Exception as error:  # guasto dell'archivio
+        logger.warning("registro dei turni: i problemi di «%s» non si sono "
+                       "potuti leggere (%s: %s)", specie,
+                       type(error).__name__, error)
+        return []
+    if not recenti or recenti[0]["outcome"] != REFUSED:
+        return []
+    return list(recenti[0].get("problems") or [])
 
 
 @_contextlib.asynccontextmanager
@@ -479,10 +538,11 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
         # l'eccezione arriva al giro del mestiere, che la scrive come ogni
         # giro che non e' partito.
         logger.warning(
-            "%s: gli ultimi %d turni si sono fermati al tetto di token -- il "
-            "mestiere si ferma finche' il tetto non cambia", specie,
-            TRUNCATION_BRAKE)
-        raise TurnBraked(f"«{specie}»: {TRUNCATION_BRAKE} turni troncati di fila")
+            "%s: gli ultimi %d turni sono stati troncati al tetto di token o "
+            "rifiutati -- il mestiere si ferma finche' qualcuno non guarda",
+            specie, TRUNCATION_BRAKE)
+        raise TurnBraked(f"«{specie}»: {TRUNCATION_BRAKE} turni troncati o "
+                         "rifiutati di fila")
     stato = TurnOutcome()
     gettone = _posa_misura(
         lambda giro, pesi: carichi.setdefault(int(giro), {}).update(pesi))

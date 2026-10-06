@@ -355,8 +355,21 @@ riconosce e lo toglie. Se la prova e' cambiata, puoi ridirlo.
 Niente numeri: li mette il codice. Un elenco vuoto va benissimo."""
 
 
-def build_question(series: dict, previous: list[dict] | None = None) -> str | None:
+def build_question(series: dict, previous: list[dict] | None = None, *,
+                   refused: list[str] | None = None,
+                   presence=None) -> str | None:
     """La domanda intera, o `None` se non c'e' niente da analizzare.
+
+    `refused` sono i problemi della risposta di prima, se e' stata rifiutata
+    (D10, `steering.refused_problems`): il giro che riprova li rimette nella
+    domanda, sulla catena come sul ponte, cosi' il modello sa cosa correggere.
+
+    `presence` (`privacy.PresenceMask`) copre i nomi delle persone anche qui,
+    non solo nelle risposte degli strumenti (G26-1, nota sull'indice): i nomi
+    delle misure vengono dai resoconti, coi nomi dei dispositivi, e un
+    dispositivo di una persona nello scope portava il suo nome nella domanda.
+    E' la stessa maschera del guardiano del turno, quindi la stessa
+    numerazione.
 
     `None` quando non c'e' nessuna serie: una casa senza misure non ha niente
     da analizzare, e la domanda costerebbe un giro per una risposta che non
@@ -402,8 +415,14 @@ def build_question(series: dict, previous: list[dict] | None = None) -> str | No
             shown = {k: v for k, v in said.items() if k != "impronta"}
             lines.append("- " + json.dumps(shown, ensure_ascii=False))
         lines.append("")
+    if refused:
+        lines.append("La tua risposta precedente non e' stata accettata, per "
+                     "questi motivi. Rispondi di nuovo evitandoli:")
+        lines.extend(f"- {problem}" for problem in refused)
+        lines.append("")
     lines.append(ANSWER_CONTRACT)
-    return "\n".join(lines)
+    question = "\n".join(lines)
+    return presence.mask(question) if presence is not None else question
 
 
 def _objective_lines(runs: list[dict], days: list[str]) -> list[str]:
@@ -423,7 +442,9 @@ def _objective_lines(runs: list[dict], days: list[str]) -> list[str]:
     return out
 
 
-def bridge_turn(series: dict, previous: list[dict] | None = None) -> dict | None:
+def bridge_turn(series: dict, previous: list[dict] | None = None, *,
+                refused: list[str] | None = None,
+                presence=None) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere.
 
     Stessa forma di `recipe_turn.bridge_turn` e di `observer.bridge_turn`, e
@@ -431,7 +452,7 @@ def bridge_turn(series: dict, previous: list[dict] | None = None) -> dict | None
     `istruzione` serve perche' altrimenti l'istruzione di chiusura della chat
     gli vieta il JSON che qui si chiede.
     """
-    question = build_question(series, previous)
+    question = build_question(series, previous, refused=refused, presence=presence)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],

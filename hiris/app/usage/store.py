@@ -129,7 +129,10 @@ CREATE TABLE IF NOT EXISTS turn (
     -- questo non sta in `payload.cost_usd`: due cose diverse, due colonne.
     output_tokens INTEGER,
     list_cost_usd REAL,
-    tool_args     TEXT
+    tool_args     TEXT,
+    -- `problems`: perche' il mestiere ha rifiutato la risposta (D10), un
+    -- elenco JSON di frasi. NULL su ogni turno che nessuno ha rifiutato.
+    problems      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn(ts DESC);
 -- `prefix_hash` e' l'impronta di cio' che DOVREBBE essere stabile fra un
@@ -231,6 +234,16 @@ def _migration_3(conn) -> None:
         conn.execute("ALTER TABLE turn ADD COLUMN tool_args TEXT")
 
 
+def _migration_4(conn) -> None:
+    """Versione 4 (06/10/2026, D10 del piano degli attori): i problemi di una
+    risposta rifiutata, sulla riga del suo turno. Stessa cura della 2 e della
+    3: la colonna si aggiunge solo se manca, e le righe gia' scritte restano
+    NULL -- nessuno le aveva rifiutate per iscritto."""
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(turn)").fetchall()}
+    if "problems" not in columns:
+        conn.execute("ALTER TABLE turn ADD COLUMN problems TEXT")
+
+
 #: Quanto si tiene di un argomento. Testo libero lungo non deve gonfiare il
 #: registro; e sono filtri e nomi della casa, non contenuti.
 _ARG_TEXT_MAX = 200
@@ -324,8 +337,9 @@ class UsageStore:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3,
-                    migrations={2: _migration_2, 3: _migration_3})
+        init_schema(self._conn, _SCHEMA, version=4,
+                    migrations={2: _migration_2, 3: _migration_3,
+                                4: _migration_4})
 
     def close(self) -> None:
         with self._lock:
@@ -494,6 +508,25 @@ class UsageStore:
             self._conn.commit()
         return ident
 
+    def set_outcome(self, turn_id: str, outcome: str,
+                    problems: list[str] | None = None) -> bool:
+        """Corregge l'esito di un turno gia' registrato, con i suoi
+        `problems` (perche'). Torna se la riga c'era.
+
+        Esiste per l'esito che si sa solo DOPO il turno: una risposta che il
+        mestiere ha rifiutato (`steering.declare_refused`, D10), i cui
+        problemi il giro dopo rimette nella domanda. Il vocabolario degli
+        esiti non vive qui, come quello delle specie: lo possiede
+        `steering`."""
+        written = (None if problems is None
+                   else json.dumps([str(p) for p in problems], ensure_ascii=False))
+        with self._lock:
+            cursor = self._conn.execute(
+                "UPDATE turn SET outcome = ?, problems = ? WHERE id = ?",
+                (outcome, written, turn_id))
+            self._conn.commit()
+        return cursor.rowcount > 0
+
     def log_payload(self, turn_id: str, *, iteration: int, tools_chars: int,
                     guide_chars: int, core_chars: int, history_chars: int,
                     results_chars: int, now: float, tools_sent: int = 0,
@@ -552,7 +585,7 @@ class UsageStore:
             righe = self._conn.execute(
                 "SELECT id,ts,species,provider,model,channel,subject_json,"
                 "duration_ms,iterations,tools,outcome,output_tokens,"
-                "list_cost_usd,tool_args FROM turn " + where +
+                "list_cost_usd,tool_args,problems FROM turn " + where +
                 "ORDER BY ts DESC LIMIT ?",
                 (*args, int(limit))).fetchall()
         return [{"id": r["id"], "ts": r["ts"], "species": r["species"],
@@ -565,7 +598,9 @@ class UsageStore:
                  "output_tokens": r["output_tokens"],
                  "list_cost_usd": r["list_cost_usd"],
                  "tool_args": (None if r["tool_args"] is None
-                               else json.loads(r["tool_args"]))}
+                               else json.loads(r["tool_args"])),
+                 "problems": (None if r["problems"] is None
+                              else json.loads(r["problems"]))}
                 for r in righe]
 
     def payloads(self, turn_id: str) -> list[dict]:

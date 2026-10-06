@@ -311,3 +311,69 @@ def test_sul_PONTE_il_rimetti_col_segnaposto_torna_id(tmp_path, monkeypatch):
              "perche": "la batteria spiega il calo"}]
     finally:
         store.close()
+
+
+def test_la_DOMANDA_dell_analista_esce_senza_nomi():
+    """La nota sull'indice del giro 26: i nomi delle misure vengono dai
+    resoconti, coi nomi dei dispositivi. Un dispositivo di una persona nello
+    scope portava il suo nome nella domanda, fuori dagli strumenti.
+
+    Mutazione ESEGUITA (06/10/2026): `build_question` che ignora `presence`
+    -- rossa (il nome arriva nella domanda)."""
+    serie = {"giorni": ["2026-09-17"], "obiettivi": [],
+             "serie": [{"soggetto": "d1", "nome": "iPhone di Paolo",
+                        "misura": "batteria", "unita": "%",
+                        "valori": [80.0], "coperture": [1.0]}]}
+    assert "Paolo" in at.build_question(serie)
+    _without_names(at.build_question(serie, presence=PresenceMask(_house())))
+
+
+@pytest.mark.asyncio
+async def test_il_giro_della_catena_copre_la_domanda_con_la_maschera_del_GUARDIANO(
+        tmp_path, monkeypatch):
+    """La stessa maschera del guardiano, quindi la stessa numerazione.
+
+    Mutazione ESEGUITA (06/10/2026): il giro che non passa `presence` a
+    `build_question` -- rossa."""
+    from hiris.app import server, steering
+    from hiris.app.mind.store import ObservationsStore
+
+    maschera = object()
+
+    class _Guardiano:
+        presence = maschera
+
+        async def dispatch(self, name, arguments):
+            return {}
+
+    async def _guardia(app, exchange=None):
+        return _Guardiano()
+
+    chieste = []
+
+    def _domanda(series, previous=None, *, refused=None, presence=None):
+        chieste.append(presence)
+
+    import dataclasses
+
+    declared = steering.SPECIES[steering.ANALYST_SPECIES]
+    monkeypatch.setitem(steering.SPECIES, steering.ANALYST_SPECIES,
+                        dataclasses.replace(declared, guard=_guardia))
+    monkeypatch.setattr(at, "build_question", _domanda)
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        store.replace_report("2026-09-17", {
+            "giorno": "2026-09-17", "obiettivo": None, "forme": [], "cronaca": [],
+            "misure": [{"soggetto": "d1", "nome": "Inverter", "misura": "prelievo",
+                        "operazione": "somma_periodo", "valore": 1.0,
+                        "unita": "kWh", "copertura": 1.0}]})
+
+        class _Modello:
+            async def chat(self, **kwargs):
+                raise AssertionError("la domanda e' None: il turno non parte")
+
+        await server.analyst_round({"observations": store, "llm_router": _Modello(),
+                                    "bridge_active": False})
+    finally:
+        store.close()
+    assert chieste == [maschera]

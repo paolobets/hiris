@@ -1285,8 +1285,10 @@ def _bare_tool_name(name: str) -> str:
 def _measure_turn(job: dict, *, duration_ms: int, tools: list,
                   occurrence: "StreamOccurrence | None",
                   outcome: str, exchange_id: str = "",
-                  composition: dict | None = None) -> None:
-    """La riga del registro per un turno del PONTE.
+                  composition: dict | None = None) -> str | None:
+    """La riga del registro per un turno del PONTE. Torna l'id della riga, o
+    `None` se non e' stata scritta: il mestiere che rifiuta la risposta lo
+    usa per scriverci sopra «rifiutata» (`steering.declare_refused`, D10).
 
     **Perche' non basta `steering.misura_turno`.** Quella misura avvolge una
     chiamata a `runner.chat()` e raccoglie i pesi del carico a ogni giro dal
@@ -1310,14 +1312,14 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
     """
     try:
         if _log_turn is None:
-            return
+            return None
         species = JOB_SPECIES.get((job or {}).get("kind"))
         if species is None:
             # Un `reasoning.db` lasciato da un'installazione precedente puo'
             # portare una specie che nessuno ragiona piu'. Si tace invece di
             # scrivere un nome inventato: `reason()` l'ha gia' dichiarata nel
             # log, e una riga sbagliata sarebbe peggio di una riga assente.
-            return
+            return None
         models = exchange_usages(occurrence) if occurrence is not None else []
         # I giri sono le chiamate al modello, uno per `message.id`: e' cio'
         # che `iterations` vuol dire sulla catena. `num_turns` della CLI NON
@@ -1338,7 +1340,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
         # vocabolario da tradurre a meta' strada: `server.py` le passa
         # dritte. Una traduzione in mezzo sarebbe un posto in piu' in cui
         # una colonna nuova si dimentica.
-        _log_turn({
+        return _log_turn({
             "species": species,
             "channel": "ponte",
             # Il nome con cui la pagina Modelli chiama questa strada, cosi'
@@ -1374,6 +1376,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
     except Exception as error:  # guasto dell'archivio
         log.warning("la misura del turno del ponte non si e' potuta scrivere "
                     "(%s: %s)", type(error).__name__, error)
+        return None
 
 
 def _logga_uso(occurrence: StreamOccurrence, job_id) -> None:
@@ -1761,7 +1764,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # misura che perde i turni degli altri cinque, ed e' esattamente il
         # buco che questa riga chiude -- il 24/09/2026 il registro aveva 37
         # turni della catena e ZERO del ponte.
-        _measure_turn(
+        turn_id = _measure_turn(
             job, duration_ms=int((time.perf_counter() - turn_started) * 1000),
             tools=tools_called_in_exchange,
             occurrence=last_occurrence[-1] if last_occurrence else None,
@@ -1780,9 +1783,14 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # `[runner non disponibile]` non e' una risposta del modello, e
         # trattato come tale bloccava l'analista per un giorno intero. La chat
         # mostra comunque il testo, che e' la diagnosi per chi la legge.
-        return {"reply": reda_segreti(text, *forms),
-               "tools_called": _reda_struttura(tools_called_in_exchange, *forms),
-               "outcome": outcome}
+        decision = {"reply": reda_segreti(text, *forms),
+                    "tools_called": _reda_struttura(tools_called_in_exchange, *forms),
+                    "outcome": outcome}
+        if isinstance(turn_id, str) and turn_id:
+            # La riga del registro di questo turno: chi raccoglie la risposta
+            # e la rifiuta ci scrive sopra «rifiutata» (D10).
+            decision["turn_id"] = turn_id
+        return decision
 
     invocations = 0
     # Gli strumenti che la dichiarazione del mestiere ammette in questo turno.
