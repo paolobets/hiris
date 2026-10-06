@@ -176,10 +176,10 @@ async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_toglie_la_ripetizione(tm
         detta = _osservazione(base=2, quanti_scarti=None, innesco=3)
         store.replace_analysis("2026-09-16", {"osservazioni": [detta]})
         store.replace_analysis("2026-09-17", {"osservazioni": []})
-        store.add_proposal(text="t", perche="p",
-                           fingerprint=analyst.observation_key(detta),
-                           prova=analyst.evidence_of(detta), chi_applica="tu",
-                           now_ts=1.0)
+        # L'esito di una proposta nella memoria lo prova
+        # `test_la_memoria_e_UNA_VOCE_per_impronta_con_i_giorni_e_l_ESITO`, sui
+        # dizionari di `proposals()`: la firma di `add_proposal` cambia con lo
+        # strato 4 (`stakes`), e questa prova non deve legarsi a lei.
         modello = _ModelloCheRipete()
         app = {"observations": store, "llm_router": modello, "bridge_active": False}
 
@@ -187,7 +187,6 @@ async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_toglie_la_ripetizione(tm
 
         assert len(modello.domande) == 1
         assert '"giorni": ["2026-09-16"]' in modello.domande[0]
-        assert '"stato": "attesa"' in modello.domande[0]
         oggi = historian.today(historian.house_timezone(None)).isoformat()
         assert store.analysis(oggi)["osservazioni"] == []
     finally:
