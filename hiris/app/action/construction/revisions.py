@@ -101,7 +101,15 @@ CREATE TABLE IF NOT EXISTS costruzioni (
     -- NULL quando nessuno l'ha detto e il codice non aveva niente da
     -- imporre, e per le righe nate prima del 06/10/2026: e' vero, non
     -- l'hanno mai avuto (vedi `_migration_4`).
-    stakes TEXT
+    stakes TEXT,
+    -- L'IMPRONTA e la PROVA della domanda dell'analista a cui la proposta
+    -- risponde (`mind/analyst.observation_key`, `evidence_of`), quando l'ha
+    -- costruita il proponente. NULL per quelle della chat e per i
+    -- ripristini: non rispondono a nessuna domanda. Servono
+    -- all'anti-ripetizione (`decided_proposals`), come le stesse colonne di
+    -- `proposte`.
+    impronta TEXT,
+    prova_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_costruzioni_stato ON costruzioni(stato, creata_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto ON costruzioni(dominio, chiave, creata_ts DESC);
@@ -172,6 +180,23 @@ def _migration_4(conn) -> None:
         conn.execute("ALTER TABLE costruzioni ADD COLUMN stakes TEXT")
 
 
+def _migration_5(conn) -> None:
+    """v4 -> v5 (revisione indipendente, giro 24, D24-2): impronta e prova
+    della domanda a cui la proposta risponde.
+
+    Fino al 06/10/2026 una proposta costruita dal cervello non lasciava
+    l'impronta da nessuna parte, e la stessa domanda con la stessa prova
+    tornava all'officina a ogni giro (misurato dal revisore: tre giri, tre
+    bozze). Le righe scritte prima rileggono `None`: quale domanda le abbia
+    fatte nascere non e' scritto da nessuna parte, e non si indovina.
+    """
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
+    if "impronta" not in colonne:
+        conn.execute("ALTER TABLE costruzioni ADD COLUMN impronta TEXT")
+    if "prova_json" not in colonne:
+        conn.execute("ALTER TABLE costruzioni ADD COLUMN prova_json TEXT")
+
+
 def _load(text):
     return None if text is None else json.loads(text)
 
@@ -221,6 +246,10 @@ def _row(r) -> dict:
         "esecuzione_id": r["esecuzione_id"],
         "motivo": REASON_EXPIRED if expired else r["motivo"],
         "livello": r["stakes"],
+        # La stessa coppia, con gli stessi nomi, delle proposte da fare a
+        # mano (`mind/store.proposals`): le due code, una forma.
+        "impronta": r["impronta"],
+        "prova": _load(r["prova_json"]),
     }
 
 
@@ -236,8 +265,9 @@ class ConstructionStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=4,
-                   migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
+        init_schema(self._conn, _SCHEMA, version=5,
+                   migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
+                               5: _migration_5})
 
     def close(self) -> None:
         with self._lock:
@@ -318,6 +348,43 @@ class ConstructionStore:
                 "SELECT id FROM costruzioni WHERE turno=? AND origine=?",
                 (exchange, actor)).fetchall()
         return frozenset(r["id"] for r in righe)
+
+    def answers(self, ident: str, *, actor: str, fingerprint: str,
+                prova: dict) -> bool:
+        """Scrive sulla riga `ident` l'impronta e la prova della domanda a cui
+        risponde (D24-2). Torna se ha toccato una riga.
+
+        La scrive il giro del proponente dopo il turno, quando il modello dice
+        per quale osservazione l'ha costruita: `propose` e' lo strumento della
+        chat, e dentro il turno non sa per quale domanda compone. Solo su una
+        riga di `actor` ancora senza impronta: una domanda gia' legata non si
+        riscrive.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE costruzioni SET impronta=?, prova_json=? "
+                "WHERE id=? AND origine=? AND impronta IS NULL",
+                (fingerprint, json.dumps(prova), ident, actor))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def decided_proposals(self, *, now: float) -> dict[str, dict]:
+        """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}` per
+        le proposte che rispondono a una domanda del cervello: la stessa forma
+        di `mind/store.ObservationsStore.decided_proposals`, con cui il
+        proponente la fonde (`proposer_turn.latest_decided`).
+
+        Per ogni impronta conta l'ultima. `aperta` e' «aspetta ancora una
+        risposta»: sospesa e non scaduta, come la conta `count_pending`.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT impronta, prova_json, creata_ts, stato IN ({_SOSPESI_SQL}) "
+                f"AND NOT {_EXPIRED_SQL}, id FROM costruzioni WHERE impronta IS NOT NULL "
+                "ORDER BY creata_ts, rowid", (now - self.DEADLINE_S,)).fetchall()
+        return {r[0]: {"prova": _load(r[1]), "aperta": bool(r[3]), "creata_ts": r[2],
+                       "id": r[4], "a_mano": False}
+                for r in rows}
 
     def to_alert(self, *, actor: str, stakes: str, now: float) -> list[dict]:
         """Le proposte di `actor` a livello `stakes` ancora in attesa e mai

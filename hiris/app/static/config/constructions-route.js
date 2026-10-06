@@ -458,7 +458,9 @@ window.HirisConstructions = (function () {
       box.appendChild(el('div', 'field-hint',
         c.stato === 'fatta_fuori'
           ? 'L’hai fatta tu, fuori da Home Assistant.' + (c.esito_nota ? ' ' + c.esito_nota : '')
-          : 'Rifiutata.'));
+          : c.stato === 'superata'
+            ? 'Superata: ora c’è una proposta che HIRIS può costruire.'
+            : 'Rifiutata.'));
       return box;
     }
 

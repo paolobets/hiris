@@ -66,7 +66,7 @@ async def proposer_round(app) -> dict | None:
         # il ponte risponde minuti dopo, e senza questo passo il giro
         # accoderebbe una domanda a ogni battito e non ne leggerebbe nessuna.
         collected = await _collect(app, store, today)
-        pending = _open(store, today)
+        pending = _open(app, store, today, report=True)
         if not pending:
             return collected
         # Un turno in volo, o finito da meno di un'ora (`RETRY_HOLD_S`): si
@@ -111,7 +111,7 @@ async def _chain(app, store, day: str, pending, refused, runner) -> dict:
         truncated=turn.truncated, presence=presence)
     if occurrence["risposta"] and occurrence["problemi"] and not turn.truncated:
         declare_refused(app.get("usage"), turn.turn_id, occurrence["problemi"])
-    _settle(store, day, occurrence)
+    _settle(app, store, day, occurrence)
     await _alert_high_safely(app)
     return occurrence
 
@@ -172,17 +172,27 @@ async def _collect(app, store, today: str) -> dict | None:
         presence=presence)
     if occurrence["problemi"]:
         declare_refused(app.get("usage"), decision.get("turn_id"), occurrence["problemi"])
-    _settle(store, today, occurrence)
+    _settle(app, store, today, occurrence)
     await _alert_high_safely(app)
     return occurrence
 
 
-def _open(store, day: str) -> list[dict]:
-    """Le osservazioni di `day` ancora senza esito, contro le proposte da
-    fare a mano di adesso."""
-    waiting = {p["impronta"] for p in store.proposals(pending_only=True)}
-    return proposer_turn.open_observations(store.analysis(day),
-                                           store.decided_proposals(), waiting)
+def _open(app, store, day: str, *, report: bool = False) -> list[dict]:
+    """Le osservazioni di `day` ancora senza esito, contro le proposte gia'
+    fatte dai due archivi. Con `report`, chi salta lo scrive nel registro
+    (S-26): una riga per giro, non una per osservazione."""
+    constructions = app.get("constructions")
+    decided = proposer_turn.latest_decided(
+        store.decided_proposals(),
+        constructions.decided_proposals(now=time.time())
+        if constructions is not None else {})
+    skipped: list = []
+    pending = proposer_turn.open_observations(store.analysis(day), decided, skipped)
+    if report and skipped:
+        logger.info("proponente: %d osservazioni non si richiedono -- %s",
+                    len(skipped),
+                    " · ".join(f"{key}: {why}" for key, why in skipped))
+    return pending
 
 
 def _built_in(app, exchange: str | None) -> frozenset[str]:
@@ -193,11 +203,16 @@ def _built_in(app, exchange: str | None) -> frozenset[str]:
     return constructions.proposed_in(exchange, actor=PROPOSER_SPECIES)
 
 
-def _settle(store, day: str, occurrence: dict) -> None:
-    """Scrive gli esiti buoni: «da fare a mano» nell'archivio gemello con
-    l'impronta e la prova; «costruita» e «niente» accanto all'osservazione,
-    nell'analisi. Un esito per un'osservazione che ne ha gia' uno non si
+def _settle(app, store, day: str, occurrence: dict) -> None:
+    """Scrive gli esiti buoni, uno per osservazione, accanto all'analisi; la
+    proposta da fare a mano nell'archivio gemello con l'impronta e la prova;
+    sulla riga di una costruita l'impronta e la prova della sua domanda
+    (D24-2). Un esito per un'osservazione che ne ha gia' uno non si
     riscrive: e' cio' che rende innocua una seconda lettura dello stesso turno.
+
+    Con una proposta a mano ancora in attesa sulla stessa domanda (D24-1):
+    una costruita la chiude `superata`; un secondo «a mano» non la duplica,
+    e l'esito accanto cita quella che aspetta gia'.
     """
     if occurrence["problemi"]:
         logger.warning("proponente: esiti rifiutati per %s -- %s",
@@ -205,27 +220,45 @@ def _settle(store, day: str, occurrence: dict) -> None:
     analysis = store.analysis(day)
     if analysis is None or not occurrence["esiti"]:
         return
-    still_open = {observation_key(o) for o in _open(store, day)}
+    still_open = {observation_key(o) for o in _open(app, store, day)}
+    waiting = {key: entry for key, entry in store.decided_proposals().items()
+               if entry["aperta"]}
+    constructions = app.get("constructions")
     beside = proposer_turn.outcomes_of(analysis)
     for outcome in occurrence["esiti"]:
-        if outcome["impronta"] not in still_open:
+        key = outcome["impronta"]
+        if key not in still_open:
             continue
-        still_open.discard(outcome["impronta"])
+        still_open.discard(key)
+        observation = outcome.get("osservazione")
+        earlier = waiting.get(key)
         if outcome["esito"] == proposer_turn.BY_HAND:
-            store.add_proposal(
-                text=outcome["testo"], perche=outcome["perche"],
-                fingerprint=outcome["impronta"],
-                prova=evidence_of(outcome["osservazione"]),
-                # Il livello di una proposta da fare a mano non lo impone
-                # nessuno: una frase in prosa non porta i domini su cui il
-                # codice imporrebbe `alto` (D13), e una cosa che fa una
-                # persona non e' HIRIS che tocca la casa (D14 avvisa per
-                # quelle).
-                stakes=None, now_ts=time.time())
-            continue
+            if earlier is not None:
+                logger.info("proponente: la proposta a mano su %s aspetta gia' "
+                            "(%s), non si duplica", key, earlier["id"])
+                ident = earlier["id"]
+            else:
+                ident = store.add_proposal(
+                    text=outcome["testo"], perche=outcome["perche"],
+                    fingerprint=key, prova=evidence_of(observation),
+                    # Il livello di una proposta da fare a mano non lo impone
+                    # nessuno: una frase in prosa non porta i domini su cui il
+                    # codice imporrebbe `alto` (D13).
+                    stakes=None, now_ts=time.time())
+            outcome = {"impronta": key, "esito": outcome["esito"],
+                       "proposta_id": ident}
+        elif outcome["esito"] == proposer_turn.BUILT:
+            if constructions is not None:
+                constructions.answers(outcome["proposta_id"], actor=PROPOSER_SPECIES,
+                                      fingerprint=key, prova=evidence_of(observation))
+            if earlier is not None:
+                store.close_proposal(
+                    earlier["id"], "superata",
+                    why="ora c'e' una proposta che HIRIS puo' costruire")
+                logger.info("proponente: la proposta a mano su %s e' superata "
+                            "dalla costruita %s", key, outcome["proposta_id"])
         beside.append({k: v for k, v in outcome.items() if k != "osservazione"})
     store.replace_analysis(day, {**analysis, proposer_turn.OUTCOMES_KEY: beside})
-
 
 #: Il testo della push agli amministratori. Lo scrive il codice, non il
 #: modello: il nome dell'oggetto e' l'unica parte che viene dalla proposta.

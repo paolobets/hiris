@@ -1390,8 +1390,11 @@ class ObservationsStore:
     #: Gli esiti che chiudono una proposta da fare a mano. **Chiusi**: una
     #: parola nuova arriverebbe da una rotta e diventerebbe uno stato che
     #: nessuna pagina sa disegnare. `crea` non c'e' -- qui non c'e' niente da
-    #: scrivere in Home Assistant: quella strada e' l'officina.
-    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori")
+    #: scrivere in Home Assistant: quella strada e' l'officina. `superata`
+    #: la scrive solo il proponente, quando la stessa domanda torna come
+    #: proposta costruita (D24-1, scelta del proprietario del 06/10/2026):
+    #: nessuna rotta la offre.
+    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori", "superata")
 
     #: Lo stato di una proposta da fare a mano che aspetta la tua risposta.
     #: Scritto una volta: lo usano le istruzioni qui sotto e la pagina delle
@@ -1486,13 +1489,25 @@ class ObservationsStore:
         return cur.rowcount > 0
 
     def decided_proposals(self) -> dict[str, dict]:
-        """`{impronta: prova}` per le proposte che il proponente non deve
-        rifare a prova uguale (`proposer_turn.open_observations`, che
-        quelle in attesa salta a qualunque prova)."""
+        """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}`:
+        cio' che il proponente deve sapere per non rifare una proposta
+        (`proposer_turn.already_answered`). La stessa forma di
+        `ConstructionStore.decided_proposals`: le due code si fondono in
+        `proposer_turn.latest_decided`.
+
+        Per ogni impronta conta **l'ultima** proposta: dopo una prova cambiata
+        la stessa domanda ha due righe, e a decidere e' la piu' recente.
+        `aperta` dice se aspetta ancora una risposta. Una decisa vale solo per
+        la prova contro cui e' stata decisa (S-26, scelta del proprietario del
+        06/10/2026).
+        """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT impronta, prova_json FROM proposte").fetchall()
-        return {r[0]: json.loads(r[1]) for r in rows}
+                "SELECT impronta, prova_json, stato, creata_ts, id FROM proposte "
+                "ORDER BY creata_ts, rowid").fetchall()
+        return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING,
+                       "creata_ts": r[3], "id": r[4], "a_mano": True}
+                for r in rows}
 
     def analysis(self, day: str) -> dict | None:
         """L'analisi di quel giorno, o `None` se non ne ha una.

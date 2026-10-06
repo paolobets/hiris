@@ -317,3 +317,44 @@ def test_la_migrazione_v1_conserva_le_righe_come_senza_filo(tmp_path):
     assert riga["chiave"] == "1771"
     a.close()
 
+
+def test_le_proposte_del_CERVELLO_si_leggono_per_impronta(archivio):
+    """Revisione indipendente, giro 24 (D24-2): l'impronta e la prova di una
+    costruita restano sulla sua riga (`answers`), e si leggono con la stessa
+    forma delle proposte a mano. `aperta` e' sospesa e non scaduta; quelle
+    della chat, senza impronta, non ci sono.
+
+    Mutazione ESEGUITA (06/10/2026): `aperta` senza il predicato della
+    scadenza -- rossa sulla scaduta."""
+    _proponi(archivio, key="dalla_chat")
+    aperta = _proponi(archivio, key="a", actor="proponente")["id"]
+    assert archivio.answers(aperta, actor="proponente",
+                            fingerprint="dev1|prelievo|None|1", prova={"base": 19})
+    oltre = ADESSO + ConstructionStore.DEADLINE_S + 1
+
+    decise = archivio.decided_proposals(now=ADESSO)
+    assert decise == {"dev1|prelievo|None|1": {
+        "prova": {"base": 19}, "aperta": True, "creata_ts": ADESSO,
+        "id": aperta, "a_mano": False}}
+    assert archivio.decided_proposals(now=oltre)["dev1|prelievo|None|1"]["aperta"] is False
+    riga = archivio.read(aperta, now=ADESSO)
+    assert (riga["impronta"], riga["prova"]) == ("dev1|prelievo|None|1", {"base": 19})
+
+
+def test_una_domanda_GIA_LEGATA_non_si_riscrive_e_la_chat_non_si_lega(archivio):
+    """`answers` scrive solo su una riga di chi la chiede, e solo una volta:
+    una seconda lettura dello stesso turno non sposta la domanda, e una
+    proposta della chat non diventa del proponente.
+
+    Mutazione ESEGUITA (06/10/2026): `answers` senza `impronta IS NULL` --
+    rossa, la seconda chiamata tocca la riga."""
+    nostra = _proponi(archivio, key="a", actor="proponente")["id"]
+    altrui = _proponi(archivio, key="b")["id"]
+    assert archivio.answers(nostra, actor="proponente", fingerprint="k1", prova={"base": 1})
+    assert not archivio.answers(nostra, actor="proponente", fingerprint="k2",
+                                prova={"base": 2})
+    assert not archivio.answers(altrui, actor="proponente", fingerprint="k3",
+                                prova={"base": 3})
+    assert archivio.read(nostra, now=ADESSO)["impronta"] == "k1"
+    assert archivio.read(altrui, now=ADESSO)["impronta"] is None
+

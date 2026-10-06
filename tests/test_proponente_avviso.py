@@ -14,8 +14,8 @@ in `tests/test_mind_actuator_guards.py`.
 from __future__ import annotations
 
 import json
-import time
 import sys
+import time
 from pathlib import Path
 
 import pytest

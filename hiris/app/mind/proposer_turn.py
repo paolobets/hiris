@@ -59,11 +59,12 @@ NOTHING = "niente"
 OUTCOMES = (BUILT, BY_HAND, NOTHING)
 
 #: Dove gli esiti stanno nell'analisi: accanto alle osservazioni a cui
-#: rispondono. Ci stanno «costruita» (col solo id della proposta: un
-#: riferimento, non una copia) e «niente» (col perche', che non vive altrove).
-#: «Da fare a mano» no: la proposta porta gia' l'impronta dell'osservazione
-#: nell'archivio gemello (`ObservationsStore.add_proposal`), e scriverla anche
-#: qui sarebbe il doppione che l'attuazione di prima era.
+#: rispondono, uno per osservazione. «Costruita» e «da fare a mano» col solo id
+#: della proposta (un riferimento, non una copia: testo, perche' e prova
+#: vivono nel loro archivio), «niente» col perche', che non vive altrove.
+#: Anche «da fare a mano» ci sta dal 06/10/2026: una proposta a mano in attesa
+#: torna al turno (D24-1), e senza l'esito accanto il giro la richiederebbe a
+#: ogni battito invece che una volta per analisi.
 OUTCOMES_KEY = PROPOSER_SPECIES
 
 SYSTEM = """Sei il proponente di HIRIS, un sistema che guarda una casa domotica.
@@ -174,23 +175,63 @@ def outcomes_of(analysis: dict | None) -> list[dict]:
     return list(((analysis or {}).get(OUTCOMES_KEY)) or [])
 
 
+def latest_decided(*sources: dict) -> dict[str, dict]:
+    """Le proposte gia' fatte, dai due archivi, in un dizionario solo: per
+    ogni impronta vince la piu' recente (`creata_ts`).
+
+    Le proposte da fare a mano e quelle costruite vivono in due archivi
+    (`mind/store.proposte`, `revisions.costruzioni`), con la stessa forma.
+    Fino al 06/10/2026 si leggeva solo il primo, e una costruita non fermava
+    niente: la stessa domanda con la stessa prova tornava all'officina a ogni
+    giro (revisione indipendente, giro 24, D24-2).
+    """
+    merged: dict[str, dict] = {}
+    for source in sources:
+        for key, entry in (source or {}).items():
+            if key not in merged or entry["creata_ts"] >= merged[key]["creata_ts"]:
+                merged[key] = entry
+    return merged
+
+
+def already_answered(observation: dict, decided: dict) -> str | None:
+    """Perche' questa domanda non va chiesta di nuovo, o `None` se va.
+
+    `decided` e' `latest_decided` dei due archivi: per impronta, l'ultima
+    proposta. **Una costruita in attesa non si duplica.** Una decisa vale
+    finche' vale la prova contro cui e' stata decisa: a prova cambiata la
+    domanda torna (S-26, scelta del proprietario del 06/10/2026). Una **da
+    fare a mano in attesa torna al turno** (D24-1, stessa data): adesso il
+    modello potrebbe costruirla, e se la costruisce quella a mano si chiude
+    `superata`. Il motivo e' una frase: chi salta lo scrive nel registro,
+    perche' una proposta potata in silenzio il 01/10/2026 e' costata una
+    diagnosi (misura del Task 4.0 degli attori).
+    """
+    entry = decided.get(observation_key(observation))
+    if entry is None:
+        return None
+    if entry["aperta"]:
+        return None if entry["a_mano"] else "ha gia' una proposta costruita in attesa"
+    if entry["prova"] == evidence_of(observation):
+        return "e' gia' stata decisa con la stessa prova"
+    return None
+
+
 def open_observations(analysis: dict | None, decided: dict,
-                      waiting=frozenset()) -> list[dict]:
+                      skipped: list | None = None) -> list[dict]:
     """Le osservazioni che aspettano il proponente, nell'ordine dell'analisi.
 
     Restano fuori:
     - quelle **chiuse dall'indagine dell'analista** (`spiegato`): D1 del
       refactor, l'indagine e' sua, e cio' che ha spiegato non e' una
       domanda aperta;
-    - quelle con un esito gia' scritto accanto a questa analisi;
-    - quelle che hanno gia' una proposta da fare a mano **in attesa**
-      (`waiting`, le impronte): una coda aperta non si duplica;
-    - quelle che ne hanno una decisa **con la stessa prova** (`decided`,
-      `{impronta: prova}` di `ObservationsStore.decided_proposals`). Una
-      proposta rifiutata torna in coda solo se la prova cambia: e' cio' che
-      la rotta delle proposte promette (`api/handlers_proposals.py`), e fino
-      al 06/10/2026 non era vero -- il giro di prima passava un dizionario
-      vuoto e saltava ogni impronta gia' vista, a qualunque prova.
+    - quelle con un esito gia' scritto accanto a questa analisi: un giro
+      chiede una volta per analisi;
+    - quelle che `already_answered` salta (`decided`, da `latest_decided`).
+      Una proposta rifiutata torna in coda solo se la prova cambia: e' cio'
+      che la rotta delle proposte promette (`api/handlers_proposals.py`).
+
+    `skipped`, se c'e', riceve `(impronta, motivo)` di ogni osservazione
+    saltata da `already_answered`, per chi lo scrive nel registro.
     """
     done = {o.get("impronta") for o in outcomes_of(analysis)}
     seen = []
@@ -198,8 +239,12 @@ def open_observations(analysis: dict | None, decided: dict,
         if not isinstance(observation, dict) or observation.get("spiegato"):
             continue
         key = observation_key(observation)
-        if key in done or key in waiting \
-                or (key in decided and decided[key] == evidence_of(observation)):
+        if key in done:
+            continue
+        reason = already_answered(observation, decided)
+        if reason is not None:
+            if skipped is not None:
+                skipped.append((key, reason))
             continue
         seen.append(observation)
     return seen
@@ -312,7 +357,7 @@ def apply_outcomes(observations, answer: str, *, built=frozenset(),
                     "questo turno non e' nata nessuna proposta con quell'id: "
                     "una proposta nasce chiamando `propose`")
                 continue
-            entry["proposta_id"] = ident
+            entry |= {"proposta_id": ident, "osservazione": rows[which]}
         elif kind == BY_HAND:
             what, why = _text(outcome.get("testo")), _text(outcome.get("perche"))
             if what is None or why is None:

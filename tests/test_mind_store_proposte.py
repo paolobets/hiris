@@ -119,11 +119,12 @@ def test_il_filo_dei_GIRI_si_accoda_e_si_rilegge_in_ordine(archivio):
 
 
 def test_le_proposte_DECISE_si_leggono_per_impronta(archivio):
-    """E' cio' che serve all'anti-ripetizione: l'attuatore salta una domanda
-    la cui impronta ha gia' una proposta decisa **con la stessa prova**.
+    """E' cio' che serve all'anti-ripetizione: per impronta, la prova
+    dell'ultima proposta e se aspetta ancora una risposta
+    (`proposer_turn.already_answered`).
 
-    Mutazione: tornare anche quelle in attesa senza distinguerle -- rossa (una
-    proposta aperta verrebbe riproposta come se fosse stata decisa)."""
+    Mutazione ESEGUITA (06/10/2026): `aperta` sempre vera -- rossa sulla
+    chiusa."""
     aperta = _proposta(archivio)
     chiusa = _proposta(archivio, fingerprint="dev2|consumo|None|1",
                        prova={"base": 3, "quanti_scarti": 1, "spiegato": None})
@@ -131,8 +132,28 @@ def test_le_proposte_DECISE_si_leggono_per_impronta(archivio):
 
     decise = archivio.decided_proposals()
     assert set(decise) == {"dev1|prelievo|None|1", "dev2|consumo|None|1"}
-    assert decise["dev2|consumo|None|1"]["base"] == 3
-    assert aperta  # la proposta aperta conta: non si duplica una coda aperta
+    assert decise["dev2|consumo|None|1"] == {
+        "prova": {"base": 3, "quanti_scarti": 1, "spiegato": None}, "aperta": False,
+        "creata_ts": 100.0, "id": chiusa, "a_mano": True}
+    assert decise["dev1|prelievo|None|1"]["aperta"] is True, aperta
+
+
+def test_per_impronta_conta_l_ULTIMA_proposta(archivio):
+    """Dopo una prova cambiata la stessa domanda ha due righe: la vecchia
+    decisa e la nuova in attesa. Deve contare la nuova (S-26).
+
+    Mutazione ESEGUITA (06/10/2026): `ORDER BY creata_ts DESC` -- rossa."""
+    vecchia = _proposta(archivio, prova={"base": 3, "quanti_scarti": 1, "spiegato": None})
+    archivio.close_proposal(vecchia, "rifiutata")
+    archivio.add_proposal(text="di nuovo", perche="la prova e' cambiata",
+                          fingerprint="dev1|prelievo|None|1",
+                          prova={"base": 19, "quanti_scarti": 3, "spiegato": None},
+                          stakes=None, now_ts=200.0)
+
+    entry = archivio.decided_proposals()["dev1|prelievo|None|1"]
+    assert {k: entry[k] for k in ("prova", "aperta", "creata_ts")} == {
+        "prova": {"base": 19, "quanti_scarti": 3, "spiegato": None},
+        "aperta": True, "creata_ts": 200.0}
 
 
 def test_una_proposta_senza_IMPRONTA_non_si_scrive(archivio):
