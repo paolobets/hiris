@@ -1131,15 +1131,15 @@ il segnale vive nel resoconto (una misura che dichiara «fonte ferma» accanto a
 cronaca o fra le condizioni dell'osservatore; e se vale solo per i contatori di energia o per
 ogni entita' che una ricetta nomina.
 
-**Deciso e costruito (attori, strato 1, Task 1.1 e 1.3; D3 e D4 del proprietario, 03/10/2026).
-La voce si chiude col rilascio che li porta.** Nessuna soglia: un'ora e' ferma se non varia dove
-**la sua stessa storia**, alla stessa ora, variava in ogni giorno (`mind/flatline.py`), quindi la
-notte del fotovoltaico non scatta. Vale per ogni entita' che una ricetta nomina. Il segnale vive
-nel **resoconto**, e la misura **si rifiuta**: «non calcolabile» con causa `ferma` e il tratto
-nella frase, mai uno zero accanto a un segno. Il resoconto legge il giorno e sette giorni di storia
-in una richiesta sola (`server._report_ingredients`). Limite dichiarato: una fonte ferma da piu'
-giorni esce «ferma» solo nel primo, perche' dal secondo la sua storia contiene gia' il blocco. Le
-assenze in cronaca sono il Task 1.4.
+**Costruito a meta', e la voce resta aperta (attori, strato 1, Task 1.1 e 1.3; revisione giro 4
+e misura dello sprint del 06/10/2026).** Sul ramo del Task 1.3 c'e' la meta' «la sua storia» della
+D3: un'ora e' ferma se non varia dove la sua storia, alla stessa ora, variava in ogni giorno
+(`mind/flatline.py`), e la misura si rifiuta (D4). Misurata dallo sprint sui trenta giorni dal
+03/09 al 03/10 (47 serie): 360 rifiuti, 35 veri (29-30/09), 325 falsi. Da sola una serie non
+distingue «la fonte ha smesso di parlare» da «la casa oggi ha fatto altro». Manca la meta' «le
+sorelle» della D3, e la forma della regola torna al proprietario prima di andare nel resoconto
+(proposta: `/mnt/project-files/attori/2026-10-06-dato-fermo-proposta.md`). Le assenze in cronaca
+sono il Task 1.4.
 
 ### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
 

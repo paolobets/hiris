@@ -44,8 +44,9 @@ rifatto esce con la stessa causa.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC
 
-from ..home_space.historian import instant_epoch
+from ..home_space.historian import instant_epoch, instant_out
 from .operations import FROZEN, NotComputable
 
 _DAY_S = 86400
@@ -114,20 +115,23 @@ def _verdict(start: float, by_hour) -> tuple[bool | None, int]:
     return not any(past), len(past)
 
 
-def _stretch(run: list[dict], verdicts) -> dict:
+def _stretch(run: list[dict], verdicts, zone) -> dict:
     anomalous = [days for anomaly, days in verdicts if anomaly]
     known = [days for anomaly, days in verdicts if anomaly is not None]
     start, end = run[0]["inizio"], run[-1]["fine"]
+    # La frase parla nell'ora della casa, come il resto del resoconto (G4-4,
+    # revisione del 06/10/2026); `dal`/`al` restano gli istanti della serie.
+    said_start, said_end = instant_out(start, zone), instant_out(end, zone)
     if anomalous:
         days = max(anomalous)
         return {"dal": start, "al": end, "esito": FROZEN,
                 "giorni_di_storia": days,
-                "perche": (f"non varia dalle {start} alle {end}, e alla stessa "
+                "perche": (f"non varia dalle {said_start} alle {said_end}, e alla stessa "
                            f"ora ha sempre variato in ciascuno dei {days} giorni "
                            f"di storia")}
     return {"dal": start, "al": end, "esito": UNKNOWN,
             "giorni_di_storia": max(known, default=0),
-            "perche": (f"non varia dalle {start} alle {end}, e la sua storia non "
+            "perche": (f"non varia dalle {said_start} alle {said_end}, e la sua storia non "
                        f"copre queste ore: non si sa se sia normale")}
 
 
@@ -148,7 +152,8 @@ def split_at(points, instant_ts: float) -> tuple[list[dict], list[dict]]:
 
 
 def frozen_refusals(series: Mapping[str, list],
-                    history: Mapping[str, list]) -> dict[str, NotComputable]:
+                    history: Mapping[str, list], *,
+                    zone=UTC) -> dict[str, NotComputable]:
     """Per ogni entita' con almeno un tratto «ferma», il rifiuto delle sue
     misure: `{entity_id: NotComputable(..., cause=FROZEN)}`.
 
@@ -159,7 +164,8 @@ def frozen_refusals(series: Mapping[str, list],
     """
     refusals: dict[str, NotComputable] = {}
     for entity_id, points in (series or {}).items():
-        frozen = [t for t in flatline_stretches(points, history=history.get(entity_id))
+        frozen = [t for t in flatline_stretches(points, history=history.get(entity_id),
+                                                     zone=zone)
                   if t["esito"] == FROZEN]
         if frozen:
             refusals[entity_id] = NotComputable(
@@ -168,7 +174,7 @@ def frozen_refusals(series: Mapping[str, list],
     return refusals
 
 
-def flatline_stretches(series, *, history) -> list[dict]:
+def flatline_stretches(series, *, history, zone=UTC) -> list[dict]:
     """I tratti in cui la serie non si muove, ognuno col suo giudizio.
 
     Torna una lista di `{"dal", "al", "esito", "perche", "giorni_di_storia"}`:
@@ -192,7 +198,7 @@ def flatline_stretches(series, *, history) -> list[dict]:
         anomalies = [anomaly for anomaly, _ in verdicts]
         # Un tratto spiegato in ogni sua ora dalla storia non esce.
         if any(anomalies) or None in anomalies:
-            stretches.append(_stretch(run, verdicts))
+            stretches.append(_stretch(run, verdicts, zone))
         run.clear()
         verdicts.clear()
 
