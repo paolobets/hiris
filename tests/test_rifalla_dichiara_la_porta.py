@@ -90,6 +90,8 @@ def _richiesta(app, ident, corpo):
             # cancello al confine ha letto (`soffitto.request_role`).
             self._valori = {"soggetto": AMMINISTRATORE, "auth_via": "ingress",
                             "ruolo": "amministratore"}
+            # `aiohttp.web.BaseRequest.body_exists` (`api/boundary.json_object`).
+            self.body_exists = corpo is not None
 
         async def json(self):
             return corpo

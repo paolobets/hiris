@@ -202,19 +202,27 @@ def test_i_TRE_giri_automatici_passano_dall_imbuto():
     from hiris.app import steering
 
     app_dir = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
+
+    def _valore(nodo):
+        if isinstance(nodo, ast.Constant):
+            return nodo.value
+        if isinstance(nodo, ast.Name):
+            return getattr(steering, nodo.id, None)
+        return None
+
     agenti = set()
     for path in sorted(app_dir.rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not (isinstance(node, ast.Call)
-                    and getattr(node.func, "id", None) == "declare_downgrade"):
+            if not isinstance(node, ast.Call):
                 continue
-            for kw in node.keywords:
-                if kw.arg != "agent":
-                    continue
-                if isinstance(kw.value, ast.Constant):
-                    agenti.add(kw.value.value)
-                elif isinstance(kw.value, ast.Name):
-                    agenti.add(getattr(steering, kw.value.id, None))
+            nome = getattr(node.func, "id", None)
+            if nome == "declare_downgrade":
+                agenti.update(_valore(kw.value) for kw in node.keywords
+                              if kw.arg == "agent")
+            # Dalla Tappa 6 (Task 7) i giri partono da `steering.start`, che
+            # dichiara il ripiego per il mestiere che riceve.
+            elif nome == "start" and len(node.args) == 2:
+                agenti.add(_valore(node.args[1]))
 
     for agente in ("analista", "proponente", "ricette", "osservatore"):
         assert agente in agenti, f"«{agente}» ripiega ancora in silenzio"

@@ -49,6 +49,9 @@ def _richiesta(app, match=None, corpo=None):
             # `soffitto.request_role`).
             self._valori = {"soggetto": AMMINISTRATORE, "auth_via": "ingress",
                             "ruolo": "amministratore"}
+            # `aiohttp.web.BaseRequest.body_exists`: se la richiesta porta
+            # un corpo (`api/boundary.json_object`, Tappa 6, Task 8).
+            self.body_exists = corpo is not None
 
         async def json(self):
             if corpo is None:

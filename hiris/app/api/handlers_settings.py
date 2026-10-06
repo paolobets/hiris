@@ -74,7 +74,7 @@ import logging
 from aiohttp import web
 
 from ..chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
-from .boundary import error_response
+from .boundary import error_response, json_object
 from .soffitto import restricted_person
 
 # I nomi di HTTP e i nomi del FILE non sono piu' gli stessi, e la differenza e'
@@ -308,10 +308,7 @@ async def handle_get_settings(request: web.Request) -> web.Response:
 
 
 async def handle_save_settings(request: web.Request) -> web.Response:
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "Il corpo della richiesta non è JSON valido.", field="")
+    body = await json_object(request, field="")
 
     current = request.app.get("chat_settings") or ChatSettings()
     try:

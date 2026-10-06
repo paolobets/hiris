@@ -182,7 +182,7 @@ class _FintaCoda:
     def count_exchanges_today(self):
         return 0
 
-    def enqueue(self, kind, wake, job, deadline, now=None, priority=None):
+    def enqueue(self, kind, wake, job, deadline, now=None, priority=None, thread=None):
         self.accodati.append((kind, wake, job))
 
 

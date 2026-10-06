@@ -44,10 +44,13 @@ import json as _json
 import logging
 import re as _re
 import time as _time
+from collections.abc import Callable as _Callable
 from dataclasses import dataclass as _dataclass
+from typing import NamedTuple as _NamedTuple
 
-from .api.handlers_models import _STORE_DEFAULTS
+from .api.handlers_models import _STORE_DEFAULTS, bridge_deadline_min
 from .model_resolution import subscription_has_token
+from .reasoning.queue import PRIORITY_BACKGROUND, PRIORITY_CHAT
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +135,100 @@ ANALYST_SPECIES = "analista"
 OBSERVER_SPECIES = "osservatore"
 PROMISE_SPECIES = "promessa"
 RECIPES_SPECIES = "ricette"
-SPECIE = frozenset({ANALYST_SPECIES, PROPOSER_SPECIES, "chat", OBSERVER_SPECIES,
-                    PROMISE_SPECIES, RECIPES_SPECIES})
+
+
+def _chat_tools() -> tuple[str, ...]:
+    """Gli strumenti della chat: tutta la tabella (`home_space/tools.TOOLS`).
+    Chiesti a ogni turno, non copiati all'import: la tabella e' di la'."""
+    from .home_space.tools import KNOWLEDGE_TOOLS
+
+    return tuple(d["name"] for d in KNOWLEDGE_TOOLS)
+
+
+def _promise_tools() -> tuple[str, ...]:
+    """Gli strumenti della promessa: l'elenco d'ammissione di
+    `keeper/exchange.SOLA_LETTURA` piu' `conclude`, chiesti a `promise_tools`."""
+    from .keeper.exchange import promise_tools
+
+    return tuple(d["name"] for d in promise_tools())
+
+
+@_dataclass(frozen=True)
+class Species:
+    """**La dichiarazione di un mestiere** (Tappa 6, Task 7): cio' che il turno
+    di un mestiere e', in un posto solo. Tutto il resto si chiede a lei.
+
+    - `name`: il nome nel registro dei turni (`misura_turno`) e nei ripieghi;
+    - `kind`: il nome del job nella coda del ponte. Fino al 06/10/2026 viveva
+      due volte, nel modulo che accoda (`observer.SCOPE_TURN_KIND`, ...) e
+      nel lavoratore che serve (`agent/runner._SCOPE_KIND`, ...);
+    - `tools`: chi dice gli strumenti del turno, o `None` per un mestiere
+      **autosufficiente** -- la domanda porta gia' tutto, e il turno non deve
+      poter agire. E' l'elenco d'ammissione degli strumenti: la catena lo
+      pretende in `chain_turn`, il ponte ci sceglie la sonda e il catalogo;
+    - `priority`: la precedenza sulla coda del ponte (D4 della Tappa 6).
+
+    Il tetto di token non sta qui: lo dichiara ogni turno accanto alla sua
+    domanda (Tappa 6, Task 4), e `chain_turn` lo pretende per nome.
+    """
+    name: str
+    kind: str
+    tools: _Callable[[], tuple[str, ...]] | None
+    priority: int
+
+    @property
+    def self_contained(self) -> bool:
+        return self.tools is None
+
+    def tools_for_turn(self) -> tuple[str, ...]:
+        """I nomi degli strumenti ammessi in un turno di questo mestiere."""
+        return () if self.tools is None else self.tools()
+
+
+#: I sei mestieri. **La precedenza**: la sola decisione presa e' «la chat
+#: passa avanti» (spec §4.3), quindi due valori, quelli della coda.
+SPECIES = {s.name: s for s in (
+    Species("chat", "chat", _chat_tools, PRIORITY_CHAT),
+    Species(PROMISE_SPECIES, "promessa", _promise_tools, PRIORITY_BACKGROUND),
+    Species(OBSERVER_SPECIES, "scope", None, PRIORITY_BACKGROUND),
+    Species(RECIPES_SPECIES, "ricetta", None, PRIORITY_BACKGROUND),
+    Species(ANALYST_SPECIES, "analisi", None, PRIORITY_BACKGROUND),
+    Species(PROPOSER_SPECIES, "proposta", None, PRIORITY_BACKGROUND),
+)}
+
+def compose_base(tools) -> str:
+    """**Il compositore** (Tappa 6, Task 7; R18): l'identita' di HIRIS, e le
+    regole sugli strumenti che `tools` (i NOMI degli strumenti del turno)
+    puo' usare.
+
+    Un turno senza strumenti riceve la sola identita': zero caratteri di
+    regole. Uno con alcuni strumenti riceve le regole che parlano di quelli,
+    e quelle che non ne nominano nessuno (`claude_runner.TOOL_RULES`). Con
+    tutti gli strumenti -- la chat -- il blocco e' quello di sempre, byte per
+    byte.
+
+    La chiamano la catena (`ClaudeRunner.chat`, `OpenAICompatRunner.chat`) e
+    il ponte (`agent/prompts.build_chat_messages`): un turno identico compone
+    la stessa cosa da entrambe le parti. Fino al 06/10/2026 erano tre
+    composizioni, e la catena dava le regole a tutti.
+    """
+    from .claude_runner import BASE_IDENTITY, TOOL_RULES
+
+    names = set(tools or ())
+    if not names:
+        return BASE_IDENTITY
+    return BASE_IDENTITY + "".join(
+        text for about, text in TOOL_RULES if not about or names & set(about))
+
+
+#: I nomi dei mestieri: una vista sulle dichiarazioni.
+SPECIE = frozenset(SPECIES)
+
+#: Come il ponte chiama i mestieri (il `kind` del job) e come li chiama il
+#: registro: una vista sulle dichiarazioni. Fino al 06/10/2026 era una tabella
+#: scritta in `agent/runner.py`, accanto a due altre liste degli stessi job
+#: (`RAGIONABILI`, `_SELF_CONTAINED_KINDS`).
+JOB_SPECIES = {s.kind: s.name for s in SPECIES.values()}
 
 #: **L'esito di un turno fermato dal tetto di token** (Tappa 6, D-58; D2).
 #: Fino al 05/10/2026 il registro lo chiamava «riuscito»: misurato in
@@ -516,3 +611,92 @@ def who_answers(app) -> tuple[str, str]:
     if not can:
         return "catena", reason
     return "ponte", ""
+
+
+# -- la partenza unica (Tappa 6, Task 7; R4, D-35) ------------------------------
+
+def chain_runner(app):
+    """Il runner della catena: il router, o il runner Claude se il router non
+    c'e'. `None` se non c'e' nessun modello a cui chiedere.
+
+    **Una lettura sola** (D-35). Fino al 06/10/2026 la stessa espressione era
+    scritta in nove punti, fra `server.py`, la chat, la promessa, il
+    «Rifalla» e la pagina dei consumi.
+    """
+    return app.get("llm_router") or app.get("claude_runner")
+
+
+class Start(_NamedTuple):
+    """Chi risponde a un turno, e con cosa: la strada (`"ponte"` o
+    `"catena"`), il motivo del ripiego, e il runner della catena (`None` sul
+    ponte, o se non c'e' nessun modello). Si spacchetta come una tupla."""
+    route: str
+    downgrade: str
+    runner: object | None
+
+
+def start(app, species: str) -> Start:
+    """**La partenza di un turno**: chiede `who_answers`, sceglie il runner
+    della catena e, se il turno parte davvero sulla catena, dichiara il
+    ripiego (`declare_downgrade`).
+
+    E' la sequenza che i giri del cervello e la promessa scrivevano a mano,
+    ognuno nel suo ordine. Il ripiego si dichiara solo se c'e' un runner: un
+    giro che non parte non e' passato dal forfait al consumo.
+    """
+    route, downgrade = who_answers(app)
+    runner = chain_runner(app) if route == "catena" else None
+    if runner is not None:
+        declare_downgrade(app, agent=species, reason=downgrade)
+    return Start(route, downgrade, runner)
+
+
+async def chain_turn(runner, species: str, *, usage, max_tokens: int,
+                     soggetto: dict | None = None, modello: str = "",
+                     tools: list[dict] | None = None,
+                     **chat) -> tuple[object, TurnOutcome]:
+    """**Un turno sulla catena**: l'unico posto del prodotto che chiama
+    `runner.chat` (R4; `tests/test_un_turno.py` lo cerca nel sorgente).
+    Torna la risposta e l'esito del turno (`TurnOutcome`).
+
+    - **Il tetto si dichiara sempre**: `max_tokens` non ha un predefinito, e
+      ogni mestiere passa il suo (Tappa 6, Task 4).
+    - **Gli strumenti sono un elenco d'ammissione**: un turno puo' avere solo
+      quelli che la dichiarazione del suo mestiere ammette, e un mestiere
+      autosufficiente nessuno. Un turno fuori elenco non parte: solleva,
+      come `misura_turno` per una specie sconosciuta.
+    - **Si misura sempre**, con `misura_turno`, sul canale «catena».
+    """
+    # Una specie sconosciuta la rifiuta `misura_turno`, qui sotto, col suo
+    # vocabolario.
+    if tools is not None and species in SPECIES:
+        asked = {d["name"] for d in tools}
+        allowed = set(SPECIES[species].tools_for_turn())
+        if not asked <= allowed:
+            raise ValueError(f"«{species}» non ammette gli strumenti "
+                             f"{', '.join(sorted(asked - allowed))}")
+    async with misura_turno(usage, runner, specie=species, canale="catena",
+                            soggetto=soggetto, modello=modello) as turn:
+        answer = await runner.chat(max_tokens=max_tokens, tools=tools, **chat)
+    return answer, turn
+
+
+def enqueue_turn(app, species: str, wake: dict, context: dict, *,
+                 thread=None, now: float | None = None) -> tuple[str, int]:
+    """**Un turno sul ponte**: l'unico posto che accoda. Torna l'id del job e
+    i minuti che il turno ha per avere risposta.
+
+    Dalla dichiarazione del mestiere vengono il `kind` del job e la
+    precedenza; dall'archivio il modello del proprietario (`bridge_model`,
+    decisione 11) e la scadenza (`bridge_deadline_min`). Fino al 06/10/2026
+    ognuno dei sei accodamenti le scriveva a mano. `now` serve a chi annota
+    l'accodamento con lo stesso istante del job.
+    """
+    declared = SPECIES[species]
+    deadline_min = bridge_deadline_min(app.get("models_config"))
+    now = _time.time() if now is None else now
+    job_id = app["reasoning_queue"].enqueue(
+        declared.kind, wake, {**context, "model": bridge_model(app)},
+        now + deadline_min * 60, now=now, thread=thread,
+        priority=declared.priority)
+    return job_id, deadline_min

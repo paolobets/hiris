@@ -140,16 +140,46 @@ def _enqueue_calls() -> list[tuple[str, int, ast.Call]]:
     return trovate
 
 
+def _funnel_calls() -> list[tuple[str, int]]:
+    """Le chiamate di `steering.enqueue_turn`: da dove i mestieri accodano."""
+    return [(f, riga) for f, riga, nodo in _calls("enqueue_turn")]
+
+
+def _calls(name: str) -> list[tuple[str, int, ast.Call]]:
+    trovate = []
+    for percorso in sorted(APP.rglob("*.py")):
+        for nodo in ast.walk(ast.parse(percorso.read_text(encoding="utf-8"))):
+            if (isinstance(nodo, ast.Call)
+                    and (getattr(nodo.func, "id", None) == name
+                         or getattr(nodo.func, "attr", None) == name)):
+                trovate.append((str(percorso.relative_to(APP)), nodo.lineno, nodo))
+    return trovate
+
+
 def test_enqueue_search_finds_bridge_six():
     """Prova della derivazione: un insieme improvvisamente piccolo e' un
-    cancello che sembra vivo e non guarda piu' niente. Sei al 05/10/2026
-    (piano della Tappa 6, «Gli accodamenti sul ponte»)."""
-    assert len(_enqueue_calls()) >= 6
+    cancello che sembra vivo e non guarda piu' niente. Sei accodamenti al
+    05/10/2026 (piano della Tappa 6, «Gli accodamenti sul ponte»); dal Task 7
+    passano tutti da `steering.enqueue_turn`, che e' l'unico `.enqueue(`."""
+    assert len(_funnel_calls()) >= 6, _funnel_calls()
+    assert [f for f, _riga, _nodo in _enqueue_calls()] == ["steering.py"]
 
 
 def test_every_product_enqueue_declares_priority():
+    """L'unico accodamento dichiara la precedenza, e la prende dalla
+    dichiarazione del mestiere (Tappa 6, Task 7)."""
     senza = [f"{f}:{riga}" for f, riga, nodo in _enqueue_calls()
              if not any(k.arg == "priority" for k in nodo.keywords)]
     assert not senza, (
         "accodamenti senza `priority=`: la precedenza si dichiara a ogni "
         f"accodamento, non si eredita in silenzio: {senza}")
+
+
+def test_solo_la_chat_passa_avanti():
+    """D4: la sola decisione presa e' «la chat passa avanti». Le precedenze
+    si chiedono alle dichiarazioni dei mestieri."""
+    from hiris.app.steering import SPECIES
+
+    alte = {n for n, s in SPECIES.items() if s.priority == PRIORITY_CHAT}
+    assert alte == {"chat"}
+    assert {s.priority for n, s in SPECIES.items() if n != "chat"} == {PRIORITY_BACKGROUND}

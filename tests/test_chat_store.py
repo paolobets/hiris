@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.chat_store import (
     ChatStore,
     append_messages,
@@ -433,7 +434,7 @@ def test_is_toxic_copre_i_sentinella_veri_del_ponte():
 
     from hiris.app.agent import runner
 
-    job = {"kind": "chat",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS."}}
 
     class _Proc:

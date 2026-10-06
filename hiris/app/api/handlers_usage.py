@@ -39,6 +39,7 @@ from aiohttp import web
 
 from ..config import EUR_RATE as _EUR_RATE
 from ..home_space.historian import house_timezone, local_date
+from ..steering import chain_runner
 
 _NO_PROVIDER_MSG = (
     "Nessun provider AI configurato e nessun consumo mai registrato: non c’è "
@@ -74,8 +75,7 @@ def _can_respond(app) -> bool:
     ancora consumato niente» -- e non un'assenza di misura. E' la distinzione
     che rende `measured: false` un caso raro invece che la normalita'.
     """
-    return bool(app.get("llm_router") or app.get("claude_runner")
-                or app.get("bridge_active"))
+    return bool(chain_runner(app) or app.get("bridge_active"))
 
 
 def _unmeasured() -> dict:

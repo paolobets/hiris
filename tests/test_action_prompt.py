@@ -34,7 +34,15 @@ import pytest
 
 from hiris.app.agent import prompts
 from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS, _GUIDE_WITHOUT_TOOLS
-from hiris.app.claude_runner import BASE_SYSTEM_PROMPT
+from hiris.app.steering import SPECIES, compose_base
+
+#: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
+#: strumenti, dal compositore unico (Tappa 6, Task 7).
+CHAT_BASE = compose_base(SPECIES["chat"].tools_for_turn())
+
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 
 def _prompt_del_ponte() -> str:
@@ -44,7 +52,7 @@ def _prompt_del_ponte() -> str:
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nBagno: luce spenta.",
-        active_tools=True)
+        active_tools=CHAT_TOOLS)
     return system
 
 
@@ -54,7 +62,7 @@ def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
     Un test che ne guardasse uno solo lascerebbe l'altro percorso libero di
     divergere in silenzio: e' esattamente la divergenza che la fetta
     «parita'» ha passato due task a chiudere."""
-    return {"sincrono": BASE_SYSTEM_PROMPT, "ponte": _prompt_del_ponte()}
+    return {"sincrono": CHAT_BASE, "ponte": _prompt_del_ponte()}
 
 
 # -- 1. `execute` esiste -----------------------------------------------------
@@ -486,7 +494,7 @@ def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
     # sincrono restava scoperto: mutando la sua guida la prova non se ne
     # accorgeva.
     guide = {
-        "sincrono": BASE_SYSTEM_PROMPT,
+        "sincrono": CHAT_BASE,
         "ponte": _GUIDE_WITH_TOOLS,
     }
     for percorso, testo in guide.items():
@@ -538,7 +546,7 @@ def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
         "di guardare: e' esattamente cio' che il modello ha fatto")
     assert "stato corrente" in ponte
 
-    sincrono = BASE_SYSTEM_PROMPT.lower()
+    sincrono = CHAT_BASE.lower()
     assert "usa sempre gli strumenti" in sincrono, (
         "il percorso sincrono non impone piu' gli strumenti per i dati sulla "
         "casa: e' l'unica riga che gli impedisce di rispondere col contesto")

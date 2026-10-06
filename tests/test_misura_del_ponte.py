@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import runner as ponte
 from hiris.app.steering import SPECIE
 
@@ -242,7 +243,8 @@ def _attuazione_finta(monkeypatch, processo=_ProcessoFinto, **extra_context):
                "system_prompt": "sei l'attuatore",
                "istruzione": "Rispondi SOLO con un oggetto JSON."}
     context.update(extra_context)
-    ponte.reason({"kind": "proposta", "job_id": "ja", "context": context},
+    ponte.reason({"kind": "proposta", "deadline_ts": SCADENZA_LONTANA,
+                  "job_id": "ja", "context": context},
                  "live", client=object(), base_url="http://127.0.0.1:8099")
 
 

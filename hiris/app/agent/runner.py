@@ -83,15 +83,8 @@ from ..chat_store import (
 )
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
-from ..mind.proposer_turn import PROPOSAL_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
-from ..steering import (
-    ANALYST_SPECIES,
-    OBSERVER_SPECIES,
-    PROMISE_SPECIES,
-    PROPOSER_SPECIES,
-    RECIPES_SPECIES,
-)
+from ..steering import JOB_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens
 from . import prompts
 
@@ -1225,28 +1218,13 @@ def set_turn_logger(fn) -> None:
     _log_turn = fn
 
 
-#: Come il ponte chiama le sue specie, e come le chiama il registro.
-#:
-#: Sono due vocabolari per gli stessi attori, e la traduzione esiste **in un
-#: posto solo**: `steering.misura_turno` RIFIUTA una specie che non conosce
-#: -- giustamente, perche' due nomi per lo stesso attore renderebbero il
-#: registro inservibile sulla domanda per cui esiste, «chi spende cosa» --
-#: e senza questa tabella il ponte gliene passerebbe tre inventate.
-#:
-#: `tests/test_misura_del_ponte.py` tiene la tabella allineata a
-#: `RAGIONABILI` da una parte e a `steering.SPECIE` dall'altra: il giorno in
-#: cui nasce una specie ragionabile nuova, la prova diventa rossa invece
-#: che il registro muto. E dal 28/09/2026 `tests/test_attuatore_sul_ponte.py`
-#: la tiene allineata anche a cio' che il server ACCODA: la sesta specie,
-#: `attuazione`, si accodava da una settimana e non stava in nessuna delle due.
-JOB_SPECIES = {
-    "chat": "chat",
-    "promessa": PROMISE_SPECIES,
-    "scope": OBSERVER_SPECIES,
-    "ricetta": RECIPES_SPECIES,
-    "analisi": ANALYST_SPECIES,
-    PROPOSAL_TURN_KIND: PROPOSER_SPECIES,
-}
+#: Come il ponte chiama le sue specie, e come le chiama il registro: dalla
+#: Tappa 6 (Task 7) e' una vista sulle dichiarazioni dei mestieri
+#: (`steering.JOB_SPECIES`). `steering.misura_turno` RIFIUTA una specie che
+#: non conosce, e senza questa traduzione il ponte gliene passerebbe di
+#: inventate. `tests/test_misura_del_ponte.py` la tiene allineata a
+#: `RAGIONABILI`, e `tests/test_attuatore_sul_ponte.py` a cio' che il server
+#: ACCODA.
 
 
 def _bare_tool_name(name: str) -> str:
@@ -1529,6 +1507,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "dal proprietario per questo turno -- non si ragiona, decisione "
             "vuota", (job or {}).get("job_id"), (job or {}).get("kind"))
         return {}
+    # **Il tempo della CLI e' quello che resta al turno** (S-09, Tappa 6,
+    # Task 8). Fino al 06/10/2026 era `timeout=300` fisso, mentre il turno ha
+    # la sua scadenza (`deadline_ts`, dalla Tappa 6, Task 2): passata quella,
+    # la coda chiude il job (`sweep_expired`; la chat ripiega sulla catena) e
+    # una risposta che arriva dopo non la riceve nessuno. Ogni job della coda
+    # la porta (`reasoning_jobs.deadline_ts NOT NULL`): un job senza e' un job
+    # che non viene dalla coda, e si dichiara come quello senza modello.
+    deadline_ts = (job or {}).get("deadline_ts")
+    if not isinstance(deadline_ts, (int, float)) or isinstance(deadline_ts, bool):
+        log.error(
+            "job senza `deadline_ts` (job_id=%s, kind=%r): non si sa quanto "
+            "tempo ha il turno -- non si ragiona, decisione vuota",
+            (job or {}).get("job_id"), (job or {}).get("kind"))
+        return {}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
     # solo `history` + `system_prompt`. Arriva qui senza la chiave `contesto`
@@ -1738,6 +1730,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
 
     invocations = 0
+    # Gli strumenti che la dichiarazione del mestiere ammette in questo turno.
+    species = SPECIES.get(JOB_SPECIES.get(job.get("kind")))
+    turn_tools = species.tools_for_turn() if species is not None else ()
 
     def _invoca(active_tools: bool) -> Invocation | None:
         """UN'invocazione intera della CLI, composta dal SOLO `active_tools`.
@@ -1782,7 +1777,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                        if isinstance(context, dict) else "")
         system, user = prompts.build_chat_messages(
             system_prompt, history, contesto=contesto,
-            active_tools=active_tools,
+            # I NOMI degli strumenti del mestiere, dalla sua dichiarazione:
+            # il compositore da' le regole di quelli e basta (Tappa 6, T7).
+            active_tools=turn_tools if active_tools else (),
             restrict_to_home=restrict_to_home, response_mode=response_mode,
             # **Il contratto di risposta appartiene a chi pone la domanda.**
             # Un turno di chat e uno di promessa non ne portano uno e
@@ -1814,13 +1811,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # vedi `_system_prompt_file`. `encoding` esplicito per entrambi i
             # versi: la CLI legge e scrive UTF-8, e non deve dipendere dalla
             # localizzazione del contenitore.
+            # Il tempo che resta, letto ADESSO: la seconda invocazione dello
+            # stesso turno ha quello che la prima le ha lasciato.
+            time_left = deadline_ts - time.time()
+            if time_left <= 0:
+                log.warning("turno scaduto prima di invocare la CLI (job_id=%s)",
+                            job_id)
+                return None
             with _system_prompt_file(system) as system_file:
                 argv = _chat_claude_args(system_file, model,
                                          active_tools=active_tools,
                                          mcp_config=mcp_config,
                                          by_promise=bool(promise_id))
                 proc = subprocess.run(argv, input=user, capture_output=True,
-                                      encoding="utf-8", timeout=300,
+                                      encoding="utf-8", timeout=time_left,
                                       env=_safe_subprocess_env(), check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
             log.warning("claude non eseguibile: %s", type(exc).__name__)
@@ -1902,8 +1906,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # all'utente una risposta invece di un `[errore runner rc=...]`.
     #
     # L'esito (5) resta fuori di proposito: senza flusso non c'e' nessuna
-    # smentita da leggere, e ritentare pagherebbe un secondo timeout da 300s
-    # per un guasto che il ritentativo non ripara (la CLI non c'e').
+    # smentita da leggere, e ritentare pagherebbe un secondo timeout (il resto
+    # della scadenza del turno) per un guasto che il ritentativo non ripara
+    # (la CLI non c'e').
     ritentato = False
     if tools:
         confermato, reason = verify_init(invocation.occurrence,
@@ -2003,31 +2008,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         return _reply(f"{MISSING_TOOLS_NOTICE}\n\n{text}")
     return _reply(text)
 
-#: Il nome della specie dell'osservatore, usato anche fuori dal dispaccio (la
-#: sonda degli strumenti, il ramo del contesto): un letterale ripetuto in tre
-#: punti di questo file sarebbe un refuso che non fallisce, solo cambia
-#: comportamento in silenzio.
-_SCOPE_KIND = "scope"
-
-#: La specie del turno che chiede una RICETTA per un dispositivo
-#: (`mind/recipe_turn.RECIPE_TURN_KIND`), dal 13/09/2026.
-#:
-#: **Trovata dal vivo, non leggendo.** Il giro delle ricette e' partito alle
-#: 19:58 del 13/09 e ha accodato il suo primo turno; due secondi dopo il ponte
-#: ha scritto «nessun ramo lo ragiona piu'» e ha restituito una decisione
-#: vuota. Il docstring di `SCOPE_TURN_KIND` lo diceva in anticipo -- *«chi lo
-#: serve dichiara per conto suo quali specie sa ragionare»* -- ed e' stato
-#: letto e non applicato.
-_RECIPE_KIND = "ricetta"
-
-#: La specie del turno dell'analista (spec §10, 15/09/2026). Entra qui sotto
-#: **insieme** al modulo che la produce, e non dopo: il 13/09 il turno delle
-#: ricette fu accodato a un ponte che non sapeva ragionarlo -- «job non-chat in
-#: coda: nessun ramo lo ragiona piu'» -- e la decisione vuota che ne usci' fu
-#: scritta come «non capito» di un modello mai interpellato.
-_ANALYSIS_KIND = "analisi"
-
-#: Le specie la cui DOMANDA porta gia' tutto, e che non devono poter agire.
+#: Le specie la cui DOMANDA porta gia' tutto, e che non devono poter agire:
+#: i mestieri **autosufficienti** della dichiarazione (`steering.SPECIES`).
 #: Il nome e' inglese come il resto del codice: «senza nucleo» descriveva solo
 #: meta' di cio' che fanno, e portava una preposizione italiana in un
 #: identificatore (cancello `test_preposizioni_italiane.py`).
@@ -2042,29 +2024,20 @@ _ANALYSIS_KIND = "analisi"
 #: che la review indipendente aveva chiuso per lo scope l'11/09/2026, e che il
 #: turno delle ricette avrebbe riaperto.
 #:
-#: **L'attuatore entra il 28/09/2026, una settimana tardi.** Dalla 3.56.0 (21/09)
-#: `server.py::_enqueue_actuator_turn` accodava `attuazione` ogni ora e il
-#: ponte la mandava nel ramo della decisione vuota: misurato dal vivo nel
-#: registro dell'add-on, l'attuatore sul ponte non ha mai prodotto niente.
-#: Sulla catena chiama `runner.chat` SENZA strumenti -- sul ponte uguale: e'
-#: un attore che per contratto «non tocca la casa», e col catalogo della chat
-#: avrebbe `execute`. La costante e' quella del produttore
-#: (`mind/proposer_turn`), non una copia: quel modulo importa da HIRIS il solo
-#: `steering` (il lettore unico, Tappa 6), che non importa `agent` -- l'import
-#: non chiude nessun ciclo (provato il 05/10/2026 importando
-#: `mind.proposer_turn` da solo: `agent.runner` non entra). Da allora il cancello
-#: `tests/test_attuatore_sul_ponte.py` RICAVA dal codice ogni specie che si
-#: accoda e pretende che sia qui: la prossima volta non la scopre il registro.
-_SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,
-                         PROPOSAL_TURN_KIND)
+#: **Una vista, non un elenco** (Tappa 6, Task 7). Fino al 06/10/2026 era una
+#: lista scritta qui, e ricopiava una proprieta' dei mestieri: l'attuatore e'
+#: entrato il 28/09/2026 con una settimana di ritardo -- dalla 3.56.0 si
+#: accodava ogni ora e il ponte lo mandava nel ramo della decisione vuota. Ora
+#: un mestiere dichiarato senza strumenti e' qui da solo.
+_SELF_CONTAINED_KINDS = tuple(kind for kind, name in JOB_SPECIES.items()
+                              if SPECIES[name].self_contained)
 
-#: Le specie di turno che il ponte sa servire. E' un'affermazione **di questo
-#: modulo su se stesso** -- «questi so ragionarli» -- non una copia dei nomi
-#: che i produttori si danno. Tutte finiscono in `_reason_chat`, perche' un
-#: turno e' un turno: cambia il CONTENUTO (la domanda, il prompt di sistema,
-#: l'intestazione MCP), e il contenuto arriva tutto dal contesto del job.
-RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND,
-               _ANALYSIS_KIND, PROPOSAL_TURN_KIND)
+#: Le specie di turno che il ponte sa servire: tutti i mestieri dichiarati.
+#: Tutte finiscono in `_reason_chat`, perche' un turno e' un turno: cambia il
+#: CONTENUTO (la domanda, il prompt di sistema, l'intestazione MCP), e il
+#: contenuto arriva tutto dal contesto del job. Fino al 06/10/2026 era una
+#: terza lista degli stessi job, accanto a `JOB_SPECIES` e a quella qui sopra.
+RAGIONABILI = tuple(JOB_SPECIES)
 
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",
@@ -2131,8 +2104,8 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
     resta sincrono (subprocess.run + httpx.Client): girano sullo stesso loop
     asyncio dell'intero addon (aiohttp), quindi vanno eseguiti in un thread
     executor (`run_in_executor`) e MAI chiamati direttamente nella coroutine,
-    altrimenti un job claimato blocca l'intero addon fino a ~5 minuti
-    (subprocess timeout=300, httpx.Client timeout=330)."""
+    altrimenti un job claimato blocca l'intero addon per tutto il tempo che
+    resta al turno (il `timeout` della CLI e' la sua scadenza, S-09)."""
     # **Le intestazioni del giro vivono FUORI dal `try`**, e non e' stile.
     # `_exception_reason` deve poter redigere la credenziale che questo giro
     # sta davvero usando: fino al 22/09/2026 la leggeva da `INTERNAL_TOKEN`

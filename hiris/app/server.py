@@ -102,16 +102,15 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
-from .reasoning.queue import PRIORITY_BACKGROUND
 from .steering import (
     ANALYST_SPECIES,
+    JOB_SPECIES,
     OBSERVER_SPECIES,
     PROPOSER_SPECIES,
     RECIPES_SPECIES,
-    bridge_model,
-    declare_downgrade,
-    misura_turno,
-    who_answers,
+    chain_turn,
+    enqueue_turn,
+    start,
 )
 from .version import read_version
 
@@ -1747,8 +1746,14 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # `steering.py` dichiara chiuso il 22/08 per le promesse, con la frase
         # «una terza porta che nascesse domani non potrebbe inventarsene una
         # terza senza accorgersene»: la terza porta era questa.
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        # **Il passaggio dal forfait al consumo si annuncia ogni volta**
+        # (decisione del proprietario, 13/08/2026, che `steering.py` dichiara
+        # nel suo docstring): un prelievo silenzioso si scopre a fine mese. Lo
+        # dichiara la partenza (`steering.start`). Il motivo e' una chiave di
+        # `model_resolution._DOWNGRADE_REASONS`, e finisce anche nel
+        # tentativo, cosi' la pagina puo' dire da quale porta e' passato quel
+        # giro.
+        route, downgrade, runner = start(app, OBSERVER_SPECIES)
         if route == "catena" and runner is None:
             # **Anche il silenzio si annota.** Senza token del piano e senza
             # nessun provider in catena l'osservatore taceva per sempre, con
@@ -1761,13 +1766,6 @@ async def reconsideration_round(app, ha_client) -> dict | None:
                 version=read_version())
             return None
 
-        # **Il passaggio dal forfait al consumo si annuncia ogni volta**
-        # (decisione del proprietario, 13/08/2026, che `steering.py` dichiara
-        # nel suo docstring): un prelievo silenzioso si scopre a fine mese. Il
-        # motivo e' una chiave di `model_resolution._DOWNGRADE_REASONS`, e
-        # finisce anche nel tentativo, cosi' la pagina puo' dire da quale
-        # porta e' passato quel giro.
-        declare_downgrade(app, agent=OBSERVER_SPECIES, reason=downgrade)
         logger.info("osservatore: riconsidero la casa (%s), lotto di %d -- %s",
                     route, len(lotto), why)
         campagna_ts = time.time()
@@ -1986,11 +1984,11 @@ def _punti_orari(punti) -> list[dict]:
             for p in punti if isinstance(p, dict)]
 
 
-# **`_device_names` vive in `api/handlers_mind.py`, e qui si importa.**
-# Fino al 15/09/2026 ne esistevano due copie identiche, e quella di la' aveva
-# scritto nel docstring «Un posto solo»: una ragione smentita dal file che
-# citava. Trovata dalla revisione indipendente. La seconda fondamenta -- niente
-# doppioni -- vale anche per otto righe.
+# **I nomi dei dispositivi vivono in `mind/view.MindView.device_names`, e qui
+# si chiedono.** Fino al 15/09/2026 ne esistevano due copie identiche, e quella
+# di la' aveva scritto nel docstring «Un posto solo»: una ragione smentita dal
+# file che citava. Trovata dalla revisione indipendente. La seconda fondamenta
+# -- niente doppioni -- vale anche per otto righe.
 
 
 def _turn_in_flight(app, kind: str) -> bool:
@@ -2072,31 +2070,28 @@ async def analyst_round(app) -> dict | None:
         if _turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
             return None
 
-        from .api.handlers_mind import _device_names
+        from .api.handlers_mind import mind_view
 
         series = analyst.with_deviation(
             report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                      names=_device_names(app)))
+                                      names=mind_view(app).device_names()))
         if not (series.get("serie") or []):
             return None
 
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        route, _downgrade, runner = start(app, ANALYST_SPECIES)
         if route == "ponte":
             return _enqueue_analyst_turn(app, series, today)
         if runner is None:
             logger.info("analista: nessun modello collegato, si riprova al giro dopo")
             return None
-        declare_downgrade(app, agent=ANALYST_SPECIES, reason=downgrade)
 
         question = analyst_turn.build_question(series)
         if question is None:
             return None
-        async with misura_turno(app.get("usage"), runner,
-                                specie=ANALYST_SPECIES, canale="catena") as turn:
-            answer = await runner.chat(
-                user_message=question, system_prompt=analyst_turn.SYSTEM,
-                max_tokens=analyst_turn.MAX_ANSWER_TOKENS)
+        answer, turn = await chain_turn(
+            runner, ANALYST_SPECIES, usage=app.get("usage"),
+            max_tokens=analyst_turn.MAX_ANSWER_TOKENS,
+            user_message=question, system_prompt=analyst_turn.SYSTEM)
         esito = analyst_turn.apply_analysis(series, answer,
                                             truncated=turn.truncated)
         _write_analysis(store, today, esito)
@@ -2172,8 +2167,7 @@ async def actuator_round(app) -> dict | None:
         if not pending:
             return None
 
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        route, _downgrade, runner = start(app, PROPOSER_SPECIES)
         if route == "ponte":
             # La stessa guardia degli altri tre: senza, il ponte riceverebbe
             # una domanda a ogni giro -- una coda di domande identiche che
@@ -2184,7 +2178,6 @@ async def actuator_round(app) -> dict | None:
         if runner is None:
             logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
             return None
-        declare_downgrade(app, agent=PROPOSER_SPECIES, reason=downgrade)
 
         # Le ricette rotte non sono piu' sue: le ripara il giro delle ricette,
         # dalla causa (attori, Task 1.6; D2 del proprietario, 03/10/2026).
@@ -2192,11 +2185,10 @@ async def actuator_round(app) -> dict | None:
         if question is None:
             return None
 
-        async with misura_turno(app.get("usage"), runner,
-                                specie=PROPOSER_SPECIES, canale="catena") as turn:
-            answer = await runner.chat(
-                user_message=question, system_prompt=proposer_turn.SYSTEM,
-                max_tokens=proposer_turn.MAX_ANSWER_TOKENS)
+        answer, turn = await chain_turn(
+            runner, PROPOSER_SPECIES, usage=app.get("usage"),
+            max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
+            user_message=question, system_prompt=proposer_turn.SYSTEM)
         esito = proposer_turn.apply_actuation(pending, answer,
                                               truncated=turn.truncated)
         await _settle_actuation(app, store, today, stamp, esito, pending)
@@ -2384,14 +2376,8 @@ def _enqueue_actuator_turn(app, day: str) -> dict | None:
         return None
     job = {"history": [{"role": "user", "content": question}],
            "system_prompt": proposer_turn.SYSTEM,
-           "istruzione": proposer_turn.ANSWER_CONTRACT,
-           # Il modello del proprietario, come la chat (decisione 11).
-           "model": bridge_model(app)}
-    deadline_min = bridge_deadline_min(app.get("models_config"))
-    now = time.time()
-    app["reasoning_queue"].enqueue(
-        proposer_turn.PROPOSAL_TURN_KIND, {"giorno": day}, job,
-        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
+           "istruzione": proposer_turn.ANSWER_CONTRACT}
+    _job_id, deadline_min = enqueue_turn(app, PROPOSER_SPECIES, {"giorno": day}, job)
     logger.info("attuatore: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
     return {"accodata": True, "giorno": day}
@@ -2429,16 +2415,10 @@ def _enqueue_analyst_turn(app, series: dict, day: str) -> dict | None:
     job = analyst_turn.bridge_turn(series)
     if job is None:
         return None
-    deadline_min = bridge_deadline_min(app.get("models_config"))
-    now = time.time()
     # **Nella sveglia va il giorno**: il ponte risponde minuti dopo, da un
     # altro processo, e chi raccoglie deve sapere di QUALE giorno era la
     # domanda -- e con quali serie confrontarla.
-    app["reasoning_queue"].enqueue(
-        analyst_turn.ANALYSIS_TURN_KIND, {"giorno": day},
-        # Il modello del proprietario, come la chat (decisione 11).
-        {**job, "model": bridge_model(app)},
-        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
+    _job_id, deadline_min = enqueue_turn(app, ANALYST_SPECIES, {"giorno": day}, job)
     logger.info("analista: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
     return {"accodata": True, "giorno": day}
@@ -2486,12 +2466,12 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     day = (turn.get("wake") or {}).get("giorno")
     if day != today or store.analysis(day) is not None:
         return None
-    from .api.handlers_mind import _device_names
+    from .api.handlers_mind import mind_view
 
     reply = (turn.get("decision") or {}).get("reply") or ""
     series = analyst.with_deviation(
         report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                  names=_device_names(app)))
+                                  names=mind_view(app).device_names()))
     esito = analyst_turn.apply_analysis(series, reply)
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
@@ -2615,8 +2595,7 @@ async def recipe_round(app) -> dict | None:
         repair = to_repair.get(device_id)
         objective = store.objective()["testo"]
 
-        route, downgrade = who_answers(app)
-        runner = app.get("llm_router") or app.get("claude_runner")
+        route, downgrade, runner = start(app, RECIPES_SPECIES)
         if route == "ponte":
             return _enqueue_recipe_turn(app, house, device_id,
                                         objective=objective,
@@ -2625,7 +2604,6 @@ async def recipe_round(app) -> dict | None:
         if runner is None:
             logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
             return None
-        declare_downgrade(app, agent=RECIPES_SPECIES, reason=downgrade)
         logger.info("ricette: chiedo come si misura «%s» (%s)%s", device_id, route,
                     " -- riparazione" if repair else "")
         esito = await recipe_turn.ask(
@@ -2676,10 +2654,8 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
                                   repair=repair)
     if job is None:
         return None
-    deadline_min = bridge_deadline_min(app.get("models_config"))
-    now = time.time()
-    app["reasoning_queue"].enqueue(
-        recipe_turn.RECIPE_TURN_KIND,
+    _job_id, deadline_min = enqueue_turn(
+        app, RECIPES_SPECIES,
         # **Nella sveglia va il dispositivo**: il ponte risponde minuti dopo,
         # da un altro processo, e chi raccoglie deve sapere di CHI era la
         # domanda. `submit` azzera il contesto e non la sveglia. E, per una
@@ -2690,9 +2666,7 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
         {"dispositivo": device_id,
          "riparare": None if repair is None else sorted(repair.silent),
          "scritta_contro": recipe_turn.written_against(house, device_id, energy)},
-        # Il modello del proprietario, come la chat (decisione 11).
-        {**job, "model": bridge_model(app)},
-        now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
+        job)
     logger.info("ricette: turno accodato al piano per «%s» (scadenza %d min)",
                 device_id, deadline_min)
     return {"accodata": True, "dispositivo": device_id}
@@ -3068,10 +3042,9 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
     subisce, e una terza fonte per lo stesso numero sarebbe la terza che
     diverge.
     """
-    deadline_min = bridge_deadline_min(app.get("models_config"))
     now = time.time()
-    app["reasoning_queue"].enqueue(
-        SCOPE_TURN_KIND,
+    _job_id, deadline_min = enqueue_turn(
+        app, OBSERVER_SPECIES,
         # **La sveglia porta anche il LOTTO e se questo turno apre la
         # campagna.** Il ponte risponde minuti dopo, da un altro processo: chi
         # raccoglie deve sapere di che cosa era stata fatta la domanda, o non
@@ -3080,11 +3053,7 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
         {"motivo": reason, "finestra_s": window_s,
          "cadenza_s": cadence_from(window_s),
          "lotto": sorted(lotto), "annota": annota, "campagna_ts": campagna_ts},
-        # Il modello del proprietario, come la chat (decisione 11).
-        {**observer_bridge_turn(store, house, lotto, opening=annota),
-         "model": bridge_model(app)},
-        now + deadline_min * 60,
-        now=now, priority=PRIORITY_BACKGROUND)
+        observer_bridge_turn(store, house, lotto, opening=annota), now=now)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
     # poterlo dire: senza, qualche minuto di attesa legittima e'
     # indistinguibili da un guasto -- che e' precisamente la confusione da cui
@@ -4665,7 +4634,19 @@ async def _on_startup(app: web.Application) -> None:
                     "osservatore: il turno %s e' scaduto senza risposta dal piano",
                     job.get("job_id"))
                 continue
-            if job.get("kind") != "chat":
+            if job.get("kind") == "chat":
+                continue
+            # Una specie dichiarata (`steering.JOB_SPECIES`) e' un turno che il
+            # piano non ha fatto in tempo a servire, non un orfano: fino al
+            # 06/10/2026 analisi, ricette e attuazione scadute finivano nel
+            # registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2
+            # della Tappa 6). Orfano resta solo un tipo che nessuno dichiara
+            # piu', come l'olistico di un archivio di prima della fetta E3.
+            if job.get("kind") in JOB_SPECIES:
+                logger.warning(
+                    "reasoning sweep: il turno %s (%s) e' scaduto senza risposta "
+                    "dal piano", job.get("job_id"), job.get("kind"))
+            else:
                 logger.warning(
                     "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, "
                     "fetta E3 Task 4), scartato",
