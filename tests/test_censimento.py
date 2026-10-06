@@ -671,6 +671,49 @@ def _somma_periodo(serie):
     assert [r.nome for r in reperti] == ["_somma_periodo"]
 
 
+def test_il_registro_vero_si_legge_e_conta_tutte_le_sue_operazioni():
+    """Il registro del prodotto, non quello finto: si legge, e il numero di
+    operazioni che il censimento vede e' quello che il registro dichiara.
+
+    Il numero si CHIEDE a `REGISTRY`, importato per pacchetto come lo importa
+    il prodotto: scriverlo qui lo farebbe invecchiare in silenzio.
+
+    Rosso il 06/10/2026 (chiusura dello strato 1 degli attori): dal Task 1.2
+    (`6d41d2b`, 05/10) `mind/operations.py` importa il vocabolario della fonte
+    da `..home_space.house`, e il caricamento per percorso falliva su quel
+    relativo. Il censimento stampava «NON LEGGIBILE» e il cancello restava
+    verde senza aver cercato niente: le prove usavano solo il registro finto,
+    che di relativi non ne ha.
+    """
+    from hiris.app.mind.operations import REGISTRY
+
+    censimento.censisci_operazioni([], censimento.REGISTRO_PY)
+
+    assert censimento.COPERTURA_REGISTRO["leggibile"] is True
+    assert len(REGISTRY) > 0  # un registro vuoto qui sarebbe un'altra notizia
+    assert censimento.COPERTURA_REGISTRO["operazioni"] == len(REGISTRY)
+
+
+def test_un_registro_che_non_si_legge_ferma_il_cancello(monkeypatch):
+    """Un registro illeggibile da' zero reperti con la stessa faccia di un
+    registro pulito: il cancello deve dire che non ha guardato, non che e'
+    tutto in ordine.
+
+    Mutazione ESEGUITA il 06/10/2026: in `run`, tolta la riga che conta il
+    registro cieco fra le ragioni per uscire 1 -> questa prova rossa.
+    """
+    import scripts.censimento as cens
+
+    def cieco(*_a, **_k):
+        cens.COPERTURA_REGISTRO["leggibile"] = False
+        cens.COPERTURA_REGISTRO["operazioni"] = 0
+        return []
+
+    monkeypatch.setattr(cens, "censisci_operazioni", cieco)
+
+    assert cens.run(cancello=True) == 1
+
+
 def test_il_modulo_del_registro_non_denuncia_se_stesso(tmp_path):
     """L'implementazione vera sta nel registro: segnalarla sarebbe il rumore
     sano che seppellisce la rotta.

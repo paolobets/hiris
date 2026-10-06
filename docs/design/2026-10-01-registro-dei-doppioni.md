@@ -227,9 +227,9 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| G-01 | Lo scope tiene decisioni su entità che non ci sono più | D | CC | 413 soggetti decisi, 86 senza stato in HA (21%); 26 dei 95 «dentro» |  | reg · cop-6 |
-| G-02 | Ricette e rifiuti di dispositivi disabilitati o spariti restano e girano | D | CC | 13 dispositivi disabilitati su 32 soggetti di misura; `ricetta_non_serve` 60 righe |  | reg · cop-6 |
-| G-03 | Resoconti scritti da fonti ferme, per sempre | D | DP | 36 resoconti; 814 misure su 1809 «non calcolabili» (45%) |  | reg |
+| G-01 | Lo scope tiene decisioni su entità che non ci sono più | D | CC | 413 soggetti decisi, 86 senza stato in HA (21%); 26 dei 95 «dentro» |  | reg · cop-6 · strato 1 degli attori, la parte che legge (D1, 03/10; Task 1.5, 3.76.0: `watching` porta la fonte di ogni soggetto); la pulizia dello scope resta alla Tappa 8 |
+| G-02 | Ricette e rifiuti di dispositivi disabilitati o spariti restano e girano | D | CC | 13 dispositivi disabilitati su 32 soggetti di misura; `ricetta_non_serve` 60 righe |  | reg · cop-6 · strato 1 degli attori, la parte che legge (D1, 03/10; Task 1.5 e 1.6, 3.76.0: una riga per dispositivo con la causa, e solo una causa riparabile riapre la ricetta); la pulizia di ricette e rifiuti resta alla Tappa 8 |
+| G-03 | Resoconti scritti da fonti ferme, per sempre | D | DP | 36 resoconti; 814 misure su 1809 «non calcolabili» (45%) |  | reg · strato 1 degli attori, la parte che legge (D1, 03/10; Task 1.2 e 1.3, 3.76.0 e 3.77.0: il rifiuto porta la causa, il dato fermo esce «ferma»); la pulizia dei resoconti resta alla Tappa 8 |
 | G-04 | Proposte «a mano» dell'attuatore in attesa su dati rotti, e antiripetizione | D | DP | 9 righe `proposte` (7 `attesa`, 2 `rifiutata`): 0 utili, 4 sbagliate, 5 vaghe |  | reg · cop-6 |
 | G-05 | Righe del sapere senza lettore, e valori ammessi che nessuno produce. Le 14 `direzione:*` e le 23 `notevole` escono con la migrazione 9 (`5ae09966`, Task 20); restano le righe non leggibili dall'API e i valori ammessi che nessuno produce | E | PS | 396 righe nel sapere: 14 `direzione:*`, 23 `notevole`; 275 non leggibili dall'API |  | reg · cop-5 · cop-6 |
 | G-06 | Colonne scritte e mai lette in `osservazioni.db` | E | PS |  | cop-6 (incompleta) | reg · cop-6 |
