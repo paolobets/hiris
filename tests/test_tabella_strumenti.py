@@ -136,7 +136,7 @@ def _schema(name: str) -> dict:
 @pytest.mark.parametrize(("name", "key", "value"), [
     ("search", "genere", "xyz"),
     ("search", "ordina", "data"),
-    ("history", "genere", "giorni"),
+    ("history", "cosa", "giorni"),
     ("history", "livello", "error"),
 ])
 async def test_un_valore_fuori_dall_enum_e_rifiutato_col_vocabolario(name, key, value,

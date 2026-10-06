@@ -92,6 +92,9 @@ _NOMI_MAI_STATI_STRUMENTO = frozenset({
     "calendar",
     # fetta «la storia» (30/09/2026): uno strumento nuovo al posto di quattro.
     "history",
+    # Tappa 5, Task 8 (06/10/2026): uno strumento nuovo, le letture del
+    # cervello (R8).
+    "mind",
 })
 
 _DEFINIZIONI = list(KNOWLEDGE_TOOLS) + [CONCLUDI_TOOL_DEF]
@@ -180,21 +183,22 @@ def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
         "riconoscera' piu' la citazione del loro nome precedente")
 
 
-def test_the_catalog_has_thirteen_distinct_names():
+def test_the_catalog_has_fourteen_distinct_names():
     """Dodici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
     «le tracce e il log», Task 5: `system_log`, `automation_trace`; 15 -> 16
     con la fetta «i calendari», Task 3: `calendar`; 16 -> 15 con «una porta
     sola per la casa», 29/09/2026: esce `view`; 15 -> 12 con «la storia»,
     30/09/2026: escono `trend`, `logbook`, `system_log`, `automation_trace`,
-    entra `history`), tredici quello delle
+    entra `history`; 12 -> 13 con la Tappa 5, Task 8, 06/10/2026: entra
+    `mind`), quattordici quello delle
     definizioni: e' la sesta volta, in questa fetta, che un
     numero giusto su un perimetro sembra sbagliato su un altro (vedi la nota
     in cima a "I nomi degli strumenti" nel glossario). Pinnato qui perche'
     un doppione fra i due cataloghi -- `concludi` che finisse anche nella
     chat -- non lo vedrebbe nessun altro test."""
     nomi = [d["name"] for d in _DEFINIZIONI]
-    assert len(nomi) == 13, nomi
-    assert len(set(nomi)) == 13, "due definizioni portano lo stesso nome"
+    assert len(nomi) == 14, nomi
+    assert len(set(nomi)) == 14, "due definizioni portano lo stesso nome"
 
 
 def _prose_runtime():
@@ -208,19 +212,23 @@ def _prose_runtime():
     che nominano i nomi vecchi APPOSTA (sono il verbale di come quel testo
     e' cambiato) e non devono seguire il codice."""
     from hiris.app.agent.prompts import (
-        _GUIDE_WITH_TOOLS,
         _GUIDE_WITHOUT_TOOLS,
-        _OLD_NAMES_NOTICE,
+        _old_names_notice,
+        guide_with_tools,
     )
     from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
     from hiris.app.claude_runner import BASE_TOOL_RULES
     from hiris.app.keeper.exchange import _system_prompt
+    from hiris.app.steering import SPECIES
+    guide = [(f"agent/prompts.guide_with_tools({specie})",
+              guide_with_tools(SPECIES[specie].tools_for_turn()).replace(
+                  _old_names_notice(SPECIES[specie].tools_for_turn()), ""))
+             for specie in ("chat", "promessa")]
     return [
         ("agent/prompts._GUIDE_WITHOUT_TOOLS", _GUIDE_WITHOUT_TOOLS),
         # MENO l'avviso sui nomi vecchi, che e' l'unico testo del prodotto
         # autorizzato a nominarli -- e ha la sua regola, nel test sotto.
-        ("agent/prompts._GUIDE_WITH_TOOLS",
-         _GUIDE_WITH_TOOLS.replace(_OLD_NAMES_NOTICE, "")),
+        *guide,
         ("claude_runner.BASE_TOOL_RULES", BASE_TOOL_RULES),
         ("keeper/exchange._system_prompt()", _system_prompt()),
         ("impostazioni_chat.DEFAULT_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT),
@@ -280,12 +288,14 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     un avviso che non nomina piu' nessun nome vecchio non serve piu' a
     nessuno e va TOLTO, non lasciato a occupare il prompt. Quando quel
     giorno arriva, questo test lo dice."""
-    from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS, _OLD_NAMES_NOTICE
+    from hiris.app.agent.prompts import guide_with_tools
+    from hiris.app.steering import SPECIES
 
-    assert _OLD_NAMES_NOTICE in _GUIDE_WITH_TOOLS, (
-        "l'avviso non e' piu' dentro la guida: o e' stato tolto (e allora va "
-        "tolto anche di qui), o la guida non lo emette piu' -- e chi ha "
-        "salvato il proprio prompt resta senza il ponte fra i due nomi")
+    _OLD_NAMES_NOTICE = _avviso_intero()
+    assert _OLD_NAMES_NOTICE in guide_with_tools(SPECIES["chat"].tools_for_turn()), (
+        "l'avviso non e' piu' dentro la guida della chat: o e' stato tolto (e "
+        "allora va tolto anche di qui), o la guida non lo emette piu' -- e chi "
+        "ha salvato il proprio prompt resta senza il ponte fra i due nomi")
 
     catalogo = _catalogo()
     citati = {parola for parola, _ in _citazioni(_OLD_NAMES_NOTICE)}
@@ -312,6 +322,30 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     # refuso che nessun altro test vedrebbe.
     estranee = citati - _NOMI_MAI_STATI_STRUMENTO
     assert not estranee, f"l'avviso cita parole che non sono nomi di strumento: {sorted(estranee)}"
+
+
+def _avviso_intero() -> str:
+    """L'avviso con tutti i nomi di prima: quello di un turno che ha tutti gli
+    strumenti della tabella dei nomi vecchi (la chat)."""
+    from hiris.app.agent.prompts import _OLD_NAMES, _old_names_notice
+    return _old_names_notice(tuple(_OLD_NAMES))
+
+
+def test_l_avviso_nomina_solo_i_nomi_vecchi_degli_strumenti_del_turno():
+    """Tappa 5, Task 5 (D-56): alla promessa, che non ha `remember`, non si
+    dice che `ricorda` si chiama `remember` -- le si nominerebbe uno
+    strumento che non ha. A un turno senza nessuno di quegli strumenti
+    l'avviso non arriva.
+
+    Mutazione ESEGUITA il 06/10/2026: `_old_names_notice` che ignora gli
+    strumenti del turno (tutte le coppie sempre) -- rossa con `remember`."""
+    from hiris.app.agent.prompts import _old_names_notice
+    from hiris.app.steering import SPECIES
+    citati = {p for p, _ in _citazioni(
+        _old_names_notice(SPECIES["promessa"].tools_for_turn()))}
+    assert {"search", "history"} <= citati
+    assert not citati & {"ricorda", "remember"}, citati
+    assert _old_names_notice(("execute",)) == ""
 
 
 _RADICE = Path(__file__).resolve().parent.parent / "hiris" / "app"
@@ -368,10 +402,13 @@ def _citati(citazione):
     diventati) e la lista breve dei letterali che non sono per il modello."""
     from hiris.app.agent import prompts
 
+    # La tabella dei nomi di prima e' l'unico posto che li scrive: i suoi
+    # letterali sono i nomi stessi, uno per stringa.
+    vecchi = {nome for nomi in prompts._OLD_NAMES.values() for nome in nomi}
     colpevoli = []
     for relativo, testo in _letterali():
-        if relativo == "agent/prompts.py":
-            testo = testo.replace(prompts._OLD_NAMES_NOTICE, "")
+        if relativo == "agent/prompts.py" and testo in vecchi:
+            continue
         if any(relativo == f and t in testo
                for f, t in _ECCEZIONI_GATE):
             continue
@@ -453,6 +490,5 @@ def test_l_avviso_dice_che_i_quattro_sono_diventati_history():
     oggi si chiama `history` (spec §4).
 
     Mutazione ESEGUITA: l'avviso senza `automation_trace` -- rossa."""
-    from hiris.app.agent.prompts import _OLD_NAMES_NOTICE
-    citati = {parola for parola, _ in _citazioni(_OLD_NAMES_NOTICE)}
+    citati = {parola for parola, _ in _citazioni(_avviso_intero())}
     assert {"trend", "logbook", "system_log", "automation_trace", "history"} <= citati

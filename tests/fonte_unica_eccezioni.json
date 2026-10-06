@@ -1,10 +1,10 @@
 {
  "letterali-di-stato": {
-  "hiris/app/keeper/recipient.py": {
+  "hiris/app/home_space/reference.py": {
    "conti": {
     "unknown": 1
    },
-   "non_e_un_doppione": "lo slug di ripiego di un destinatario senza nome: non e' uno stato di Home Assistant"
+   "non_e_un_doppione": "lo slug di ripiego di un testo senza nome (`NO_SLUG`, la replica di slugify di Home Assistant): non e' uno stato di Home Assistant"
   },
   "hiris/app/server.py": {
    "conti": {

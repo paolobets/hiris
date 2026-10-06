@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from aiohttp import web
 
 from hiris.app.api.handlers_mind import (
     handle_analysis,
@@ -483,8 +484,13 @@ async def test_un_corpo_storto_e_un_400_non_un_500(tmp_path):
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         for corpo in ({}, {"testo": 12}, {"altro": "x"}, [], _ILLEGGIBILE):
-            r = await handle_set_objective(_richiesta_scritta(
-                {"observations": archivio}, corpo))
+            try:
+                r = await handle_set_objective(_richiesta_scritta(
+                    {"observations": archivio}, corpo))
+            except web.HTTPBadRequest as rifiuto:
+                # Un corpo che non e' un oggetto lo rifiuta il confine
+                # (`api/boundary.json_object`).
+                r = rifiuto
             assert r.status == 400, corpo
     finally:
         archivio.close()
@@ -1086,7 +1092,7 @@ async def test_una_voce_di_config_entry_NON_inventa_un_integrazione():
 async def test_l_ESITO_dell_attuatore_arriva_ACCANTO_alla_sua_osservazione(tmp_path):
     """Mutazione ESEGUITA: non attaccare l'esito -- rossa (la pagina dovrebbe
     rifare la regola dell'impronta per conto suo)."""
-    from hiris.app.mind import actuator
+    from hiris.app.mind import analyst
     from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
@@ -1097,7 +1103,7 @@ async def test_l_ESITO_dell_attuatore_arriva_ACCANTO_alla_sua_osservazione(tmp_p
             "osservazioni": [osservazione],
             "attuazione": {"su_fondamento": "aaa", "esiti": [
                 {"gesto": "indagine", "trovato": "fra le 19 e le 22",
-                 "impronta": actuator.observation_key(osservazione)}]}})
+                 "impronta": analyst.observation_key(osservazione)}]}})
 
         r = await handle_analysis(_richiesta({"observations": archivio},
                                              {"day": "2026-09-20"}))

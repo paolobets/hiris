@@ -58,10 +58,10 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
-    # Le scadute si segnano PRIMA di elencare, o la pagina mostrerebbe come
-    # «da approvare» proposte che l'officina rifiuterebbe di applicare -- e il
-    # bottone mentirebbe.
-    store.scadi(time.time())
+    # Una lettura non scrive: le scadute escono scadute da sole
+    # (`revisions._EXPIRED_SQL`). Fino al 06/10/2026 questa rotta le segnava
+    # sul disco prima di elencare, e la chat poteva confermarne una che
+    # nessuno aveva ancora aperto (misura del Task 4.0 degli attori).
     pending_only = request.query.get("pending_only") in ("1", "true", "si")
     return web.json_response(
         {"constructions": await _both_queues(request.app, store, pending_only)})
@@ -115,7 +115,7 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     # finche' sono `PROPOSAL_PENDING`.
     rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
              "sospesa": _construction_suspended(row)}
-            for row in store.list(pending_only=pending_only, limit=200)]
+            for row in store.list(now=time.time(), pending_only=pending_only, limit=200)]
     observations = app.get("observations")
     if observations is not None:
         rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
@@ -132,7 +132,7 @@ async def handle_get_construction(request: web.Request) -> web.Response:
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
-    row = store.read(request.match_info["id"])
+    row = store.read(request.match_info["id"], now=time.time())
     if row is None:
         return error_response(404, _NOT_FOUND)
     return web.json_response(
@@ -157,7 +157,7 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     if store is None or workshop is None:
         return error_response(503, "officina non disponibile")
     ident = request.match_info["id"]
-    if store.read(ident) is None:
+    if store.read(ident, now=time.time()) is None:
         return error_response(404, _NOT_FOUND)
     method = getattr(workshop, verb)
     occurrence = await method(ident, actor="pagina", exchange=None,
@@ -202,7 +202,7 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     if store is None:
         return error_response(503, "archivio non disponibile")
     ident = request.match_info["id"]
-    if store.read(ident) is None:
+    if store.read(ident, now=time.time()) is None:
         return error_response(404, _NOT_FOUND)
     occurrence = store.mark_cancelled(ident, now=time.time())
     if "errore" in occurrence:

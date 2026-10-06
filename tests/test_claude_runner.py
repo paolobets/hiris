@@ -718,33 +718,43 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 
 
 @pytest.mark.asyncio
-async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner):
+async def test_un_credito_esaurito_arriva_al_router_col_400_e_la_frase_del_provider(runner):
     """Il caso del proprietario, misurato: Anthropic risponde `400 credit
     balance too low`. Fino a questa fetta il 400 moriva qui dentro -- ogni
     `anthropic.APIError` diventava lo stesso «Errore temporaneo del servizio
     AI», e la pagina Modelli non aveva niente da dire."""
     import anthropic
+    import httpx
 
     from hiris.app.claude_runner import RunnerBackendError
 
-    class _Credito(anthropic.APIError):
-        def __init__(self):
-            Exception.__init__(self, "credit balance too low")
-            self.status_code = 400
+    # L'errore come lo costruisce l'SDK da una risposta vera (G36-1): il
+    # testo del provider sta in `body["error"]["message"]`.
+    credito = anthropic.Anthropic(api_key="x")._make_status_error_from_response(
+        httpx.Response(400, request=httpx.Request("POST", "https://esempio.invalid"),
+                       json={"type": "error", "error": {
+                           "type": "invalid_request_error",
+                           "message": "Your credit balance is too low."}}))
 
     with (
-        patch.object(runner, "_call_api", AsyncMock(side_effect=_Credito())),
+        patch.object(runner, "_call_api", AsyncMock(side_effect=credito)),
         pytest.raises(RunnerBackendError) as info,
     ):
         await runner.chat("Ciao")
 
-    assert info.value.family == "credenziale"
+    # Il 400 e' «altro» (G39-2): per Anthropic e' ogni `invalid_request_error`.
+    assert info.value.family == "altro"
     assert info.value.code == 400
-    # La frase per l'utente NON cambia: e' cio' che legge in chat, e la chat
-    # non e' il posto dove si spiega un guasto di configurazione.
+    # S-37 (verifiche dal vivo della 3.75.0, 05/10/2026): fino a qui la chat
+    # diceva «Errore temporaneo del servizio AI. Riprova tra poco.», e un
+    # credito finito non e' temporaneo. Il 400 non ha una causa nostra
+    # (G36-1): la frase cita il provider, come la pagina Modelli, e non
+    # inventa un'azione (G39-2).
     assert info.value.friendly_message == (
-        "Errore temporaneo del servizio AI. Riprova tra poco."
+        "Il servizio AI ha rifiutato la richiesta (400): «Your credit balance is too low.»"
     )
+    assert info.value.said == "Your credit balance is too low."
+    assert "temporaneo" not in info.value.friendly_message
 
 
 @pytest.mark.asyncio
@@ -768,6 +778,8 @@ async def test_un_modello_inesistente_e_un_404_non_un_errore_temporaneo(runner):
         await runner.chat("Ciao")
 
     assert info.value.family == "modello" and info.value.code == 404
+    assert "temporaneo" not in info.value.friendly_message
+    assert "il modello non esiste più (404)" in info.value.friendly_message
 
 
 @pytest.mark.asyncio

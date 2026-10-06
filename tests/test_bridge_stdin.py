@@ -27,6 +27,7 @@ import sys
 
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import runner
 
 #: La CLI finta e' uno script con la riga `#!` e la soglia e' quella del
@@ -84,7 +85,7 @@ def fake_cli(tmp_path, monkeypatch):
 
 
 def _job(domanda: str, contesto: str = "") -> dict:
-    return {"kind": "chat", "job_id": "job-stdin",
+    return {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-stdin",
             "context": {"history": [{"role": "user", "content": domanda}],
                         "system_prompt": "Sei HIRIS.", "contesto": contesto,
                         "model": "sonnet"}}

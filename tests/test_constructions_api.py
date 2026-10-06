@@ -1,6 +1,7 @@
 """Le cinque rotte: guardare, guardarne una, confermare, rimettere com'era, rifiutare."""
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -35,20 +36,15 @@ from tests.test_settings_api import csrf_stretto  # noqa: F401
 class FintoArchivio:
     def __init__(self, righe=None, esito_disdetta=None):
         self._righe = righe or []
-        self.scadenze_chieste = 0
         self.disdette = []
         self._esito_disdetta = esito_disdetta
 
-    def scadi(self, now):
-        self.scadenze_chieste += 1
-        return 0
-
-    def list(self, *, pending_only=False, limit=200):
+    def list(self, *, now, pending_only=False, limit=200):
         if pending_only:
             return [r for r in self._righe if r["stato"] == "in_attesa"]
         return list(self._righe)
 
-    def read(self, ident):
+    def read(self, ident, *, now):
         for r in self._righe:
             if r["id"] == ident:
                 return r
@@ -80,7 +76,6 @@ def test_i_finti_combaciano_con_la_firma_vera():
     piu'."""
     assert_stessa_firma(ConstructionStore.list, FintoArchivio.list, nome="list")
     assert_stessa_firma(ConstructionStore.read, FintoArchivio.read, nome="read")
-    assert_stessa_firma(ConstructionStore.scadi, FintoArchivio.scadi, nome="scadi")
     assert_stessa_firma(ConstructionStore.mark_cancelled, FintoArchivio.mark_cancelled,
                         nome="mark_cancelled")
     assert_stessa_firma(Workshop.apply, FintaOfficina.apply, nome="apply")
@@ -188,9 +183,6 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
         FintaRichiesta(app, query={"pending_only": "1"})))
     assert set(aperte) == {"constructions"}
     assert [c["id"] for c in aperte["constructions"]] == ["a"]
-    # La pagina non deve mai mostrare come «da approvare» una proposta che
-    # l'officina rifiuterebbe perche' scaduta.
-    assert archivio.scadenze_chieste == 2
 
 
 @pytest.mark.asyncio
@@ -358,7 +350,11 @@ async def test_rifiutare_cio_che_non_e_piu_in_attesa_da_409():
 # `tests/test_agenda_api.py::test_delete_senza_x_requested_with_e_403_e_non_disdice`.
 # ---------------------------------------------------------------------------
 
-ADESSO_HTTP = 1_756_100_000.0
+#: Adesso davvero: queste proposte passano dalle rotte, che leggono
+#: l'orologio, e una data ferma le farebbe nascere gia' scadute (dal
+#: 06/10/2026 la scadenza vale anche per chi conferma, non solo per chi apre
+#: la pagina).
+ADESSO_HTTP = time.time()
 
 #: Chi bussa, in queste prove HTTP: il proprietario, dall'ingress di Home
 #: Assistant. Serve perché la porta della configurazione chiede CHI, e una
@@ -399,14 +395,14 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
         operation="crea", domain="automation", key="tapparelle_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/constructions/{ident}/confirm", headers=_INGRESS_ADMIN)
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: un 403 non deve aver toccato ne' l'archivio ne'
     # Home Assistant.
-    assert archivio.read(ident)["stato"] == "in_attesa"
+    assert archivio.read(ident, now=ADESSO_HTTP)["stato"] == "in_attesa"
     assert client.app["_fake_ha"].salvate == []
 
 
@@ -419,13 +415,13 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(
         operation="crea", domain="automation", key="tapparelle_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(
         f"/api/constructions/{ident}/confirm",
         headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
-    assert archivio.read(ident)["stato"] == "applicata"
+    assert archivio.read(ident, now=ADESSO_HTTP)["stato"] == "applicata"
     assert client.app["_fake_ha"].salvate
 
 
@@ -436,7 +432,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
         operation="modifica", domain="automation", key="tapparelle_rip",
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
-        preview="anteprima", now=ADESSO_HTTP)["id"]
+        preview="anteprima", stakes=None, now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
     risposta = await client.post(f"/api/constructions/{ident}/restore", headers=_INGRESS_ADMIN)
@@ -445,7 +441,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
     assert client.app["_fake_ha"].salvate == []
     # Nessuna nuova proposta di ripristino deve essere nata: quella originale
     # resta l'unica riga dell'archivio.
-    assert len(archivio.list(limit=200)) == 1
+    assert len(archivio.list(now=ADESSO_HTTP, limit=200)) == 1
 
 
 @pytest.mark.asyncio
@@ -457,7 +453,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
         operation="modifica", domain="automation", key="tapparelle_rip_ok",
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
-        preview="anteprima", now=ADESSO_HTTP)["id"]
+        preview="anteprima", stakes=None, now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
     # La casa e' com'era stata lasciata da quella costruzione: dal 03/10/2026
     # (S-17) il ripristino lo rilegge, e su un oggetto cambiato rifiuta.
@@ -481,14 +477,14 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/constructions/{ident}/reject",
                                  headers=_INGRESS_ADMIN)
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: sul 403 la proposta resta `in_attesa`.
-    assert archivio.read(ident)["stato"] == "in_attesa"
+    assert archivio.read(ident, now=ADESSO_HTTP)["stato"] == "in_attesa"
 
 
 @pytest.mark.asyncio
@@ -498,12 +494,12 @@ async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client,
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
-        now=ADESSO_HTTP)["id"]
+        stakes=None, now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/constructions/{ident}/reject",
                                  headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
-    assert archivio.read(ident)["stato"] == "disdetta"
+    assert archivio.read(ident, now=ADESSO_HTTP)["stato"] == "disdetta"
 
 
 def _edit_proposal(archivio, chiave):
@@ -511,7 +507,7 @@ def _edit_proposal(archivio, chiave):
         operation="modifica", domain="automation", key=chiave,
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"id": chiave, "alias": "Prima"}, dopo={"id": chiave, "alias": "Dopo"},
-        helper=[], preview="anteprima", now=ADESSO_HTTP)["id"]
+        helper=[], preview="anteprima", stakes=None, now=ADESSO_HTTP)["id"]
 
 
 @pytest.mark.asyncio
@@ -573,10 +569,10 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
     app = _app(FintoArchivio(righe))
     osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
     attesa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f1", prova={},
-                                       chi_applica="tu", now_ts=5.0)
+                                       stakes=None, now_ts=5.0)
     chiusa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f2", prova={},
-                                       chi_applica="tu", now_ts=4.0)
-    osservazioni.close_proposal(chiusa, osservazioni.PROPOSAL_OUTCOMES[0], now_ts=6.0)
+                                       stakes=None, now_ts=4.0)
+    osservazioni.close_proposal(chiusa, osservazioni.PROPOSAL_OUTCOMES[0])
     app["observations"] = osservazioni
     try:
         corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))

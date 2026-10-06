@@ -274,7 +274,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     │                   CONFIGURAZIONE — composer.py, advisor.py, revisions.py
     ├── mind/           il cervello: osservatore (observer, watcher, scope, facts, report),
     │                   sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
-    │                   analista (analyst, analyst_turn), attuatore (actuator, actuator_turn)
+    │                   analista (analyst, analyst_turn), proponente (actuator, proposer_turn)
     ├── memory/         cio' che le persone hanno detto: store, interpretation, resolver
     ├── keeper/         le promesse dell'utente: promise, store, sweeper, exchange, outcome
     ├── agent/          runner.py (il lavoratore del ponte: polla la coda) + prompts.py
@@ -503,6 +503,11 @@ Il linter c'è, ed è entrato **così**: `ruff` per il Python (configurazione in
 `oxlint` per il JavaScript (`npm run lint`), nel pre-push a **ogni** push e nella CI accanto alla
 suite. Il 26 agosto 2026 il progetto non ne aveva nessuno, e questo paragrafo lo dichiarava come
 debito. `mypy` e un formattatore non ci sono: non si pretende ciò che nessuno strumento controlla.
+
+**Niente di nuovo dentro `server.py`** (il proprietario, 06/10/2026). Un giro nuovo nasce in
+`mind/`, una rotta nuova in un `api/handlers_*`, un pezzo d'avvio in una funzione con nome fuori da
+`_on_startup`. `server.py` registra e avvia: non ospita. Lo spezzettamento di ciò che c'è già ha
+la sua voce nel BACKLOG («`server.py` si spezza alla Chiusura dello sprint»).
 
 ### Il debito dichiarato: la rinomina in inglese
 

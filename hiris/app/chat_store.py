@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 from .chat_thread import ChatThread, thread_condition, thread_params
+from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
 from .storage import connect, init_schema
 
@@ -97,7 +98,7 @@ BRIDGE_SENTINELS = (
 # riconoscitore troppo stretto lascia passare il guasto che deve cogliere.
 LEAKED_TOOL_NAME_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]{2,})[^\x00-\x7F\s]")
 _TOXIC_ASSISTANT_EXACT = frozenset({
-    "Errore temporaneo del servizio AI. Riprova tra poco.",
+    TEMPORARY_FAILURE,
     "Rate limit — riprova tra poco.",
     "",
 })
@@ -106,6 +107,8 @@ _TOXIC_ASSISTANT_PREFIXES = (
     "Il modello selezionato non gestisce correttamente i tool",
     # Le sentinelle del ponte: dall'elenco unico qui sopra, non ricopiate.
     *BRIDGE_SENTINELS,
+    # Le frasi di un provider che non ha risposto (S-37), dalla loro casa.
+    *FAILURE_OPENINGS,
 )
 
 

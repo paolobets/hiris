@@ -5,7 +5,6 @@ from contextlib import nullcontext
 
 from aiohttp import web
 
-from ..api.handlers_models import bridge_deadline_min
 from ..chat_store import (
     _is_toxic_assistant,
     append_messages,
@@ -34,10 +33,16 @@ from ..model_resolution import downgrade_note
 # stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
 # modulo per l'elenco di dove e' gia' cablato).
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
-from ..reasoning.queue import PRIORITY_CHAT
-from ..steering import bridge_model, declare_downgrade, misura_turno, who_answers
-from .boundary import error_body, error_response
+from ..steering import (
+    chain_runner,
+    chain_turn,
+    declare_downgrade,
+    enqueue_turn,
+    who_answers,
+)
+from .boundary import error_body, error_response, json_object
 from .handlers_home_space import compose_briefing, house_of
+from .handlers_mind import mind_view
 from .soffitto import ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
@@ -135,7 +140,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                            soggetto: dict | None = None,
                            frase: str | None = None,
                            thread: ChatThread | None = None,
-                           house: House | None = None) -> ToolDispatcher:
+                           house: House | None = None,
+                           actor: str = "chat") -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
     Gli strumenti della chat (`home_space/tools.py`): quattro conoscono la casa (`search`,
@@ -154,7 +160,10 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     calendari») fonde i prossimi appuntamenti di OGNI calendario di questa
     casa, provando a leggere ciascuno invece di fidarsi dello stato -- un
     calendario che non risponde finisce nominato in `non_letti`, mai in
-    silenzio. Il dispatcher si costruisce
+    silenzio. Dal 06/10/2026 (Tappa 5, Task 8, R8) `mind` legge cio' che il
+    cervello guarda -- lo scope, l'obiettivo, i resoconti, le analisi, la
+    dashboard Energia -- con le stesse letture della pagina (`mind_view`).
+    Il dispatcher si costruisce
     dagli stessi oggetti dell'app che alimentano `compose_briefing()`
     (`home_space_store`, `memory_store`, `entity_cache`), piu' `action_actuator`,
     `workshop` e `journal` -- lo stesso specchio dello stato vivo, non uno
@@ -283,6 +292,12 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # La casa del turno (R18), quando il chiamante l'ha gia' letta per il
         # nucleo: `None` e il dispatcher la legge da se' alla prima domanda.
         house=house,
+        # Le letture del cervello (R8, Tappa 5, Task 8): le STESSE della
+        # pagina, costruite dall'unico punto che le costruisce.
+        mind=mind_view(app),
+        # Chi agisce: la chat, o il mestiere di sfondo che chiede il
+        # dispatcher per il suo guardiano (`mind/proposer_turn.guard`).
+        actor=actor,
     )
 
 
@@ -547,15 +562,14 @@ async def _enqueue_chat_job(
     # `_downgrade_to_chain` sul proprio soggetto se il turno ripiega).
     soffitto = request_ceiling(request)
 
-    reasoning_queue = request.app["reasoning_queue"]
-    now = time.time()
-    # La scadenza viene dall'ARCHIVIO, riletto a ogni turno come il modello
-    # qui sopra. Fino alla 2.4.1 veniva da `BRIDGE_DEADLINE_MIN`, cioè
-    # dall'opzione dell'add-on, mentre `models_config["ponte"]["scadenza_min"]`
-    # ne teneva una copia (Task 6) che nessuno leggeva e che la pagina Modelli
-    # poteva riscrivere: due rappresentazioni dello stesso numero, e quella che
-    # l'utente cambiava non era quella che il turno subiva.
-    deadline = now + bridge_deadline_min(request.app.get("models_config")) * 60
+    # La scadenza e il modello del piano vengono dall'ARCHIVIO, riletti a ogni
+    # turno da `steering.enqueue_turn` (Tappa 6, Task 7), come per ogni altro
+    # mestiere che si accoda: il modello e' un alias della CLI gia' tradotto
+    # all'ingresso del campo (`handlers_models._clean_subscription_model`).
+    # Fino alla 2.4.1 la scadenza veniva dall'opzione dell'add-on, e fino alla
+    # 3.1.0 il modello del piano era un effetto collaterale di quello di
+    # Claude API: in entrambi i casi quello che l'utente cambiava non era
+    # quello che il turno subiva.
     context = {
         "history": sanitized_history,
         "system_prompt": system_prompt,
@@ -586,31 +600,6 @@ async def _enqueue_chat_job(
         # fosse la configurazione dell'utente.
         "restrict_to_home": settings.restrict_to_home,
         "response_mode": settings.response_mode,
-        # Il modello del piano e' un CAMPO, letto dall'archivio a ogni turno
-        # come la scadenza qui sopra: sono i due valori che questo punto legge
-        # da `models_config["ponte"]`.
-        #
-        # Fino alla 3.1.0 qui si componeva
-        # `cli_model(resolve_model("auto", "chat", provider_models["claude"]))`,
-        # e lo stesso identico calcolo viveva anche in
-        # `handlers_models._models_in_use`: due implementazioni della stessa
-        # regola, libere di divergere. Peggio della duplicazione era cio' che
-        # diceva -- il modello del piano era un effetto collaterale del modello
-        # di CLAUDE API, cioe' di un altro provider, con l'incentivo opposto:
-        # a consumo si sceglie il modello frugale, nel piano il modello non
-        # costa di piu'. Il proprietario si ritrovava il piano che aveva pagato
-        # a girare con `haiku`.
-        #
-        # La traduzione ai tre alias non e' sparita, e' salita all'INGRESSO del
-        # campo (`handlers_models._clean_subscription_model`): cio' che si
-        # legge qui e' gia' un alias della CLI, e non c'e' niente da tradurre.
-        # Il predefinito e' quello di `_STORE_DEFAULTS`, e vale solo per
-        # un'app senza archivio (i test): sull'impianto la semina
-        # (`options_migration.seed_subscription_model`) ha gia' scritto il
-        # campo prima che un turno possa arrivare qui. Dalla Tappa 6 (Task 4)
-        # lo legge `steering.bridge_model`, come per ogni altro turno che si
-        # accoda: qui c'era una seconda copia di «sonnet».
-        "model": bridge_model(request.app),
         # Fetta «le chat divise»: il soggetto INTERO di chi ha scritto, che il
         # soffitto e la cronaca del ripiego vogliono con specie e nome, non
         # solo la chiave -- preso dal job, non da chi per caso fa il poll
@@ -640,8 +629,8 @@ async def _enqueue_chat_job(
             settings.thinking_budget,
         )
 
-    job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now,
-                                      thread=thread, priority=PRIORITY_CHAT)
+    job_id, _deadline_min = enqueue_turn(request.app, "chat", {}, context,
+                                         thread=thread)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 
@@ -698,7 +687,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
             durata_s=float(job.get("deadline_ts", now))
             - float(job.get("created_ts", now)))
 
-    runner = request.app.get("llm_router") or request.app.get("claude_runner")
+    runner = chain_runner(request.app)
     contesto = job.get("context") or {}
     data_dir = request.app.get("data_dir", "/data")
     # Fetta «le chat divise»: soggetto e filo sono quelli DEL JOB, cioe' di chi
@@ -752,52 +741,51 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # Il ripiego dalla coda alla catena e' un turno di chat: la
         # specie e' quella di chi ha scritto, non della strada che il
         # turno ha dovuto prendere.
-        async with misura_turno(request.app.get("usage"), runner,
-                                specie="chat", canale="catena",
-                                soggetto=soggetto):
-            answer = await runner.chat(
-                user_message=ultimo,
-                system_prompt=contesto.get("system_prompt", ""),
-                context_str=contesto.get("contesto", ""),
-                # La cronologia del job CONTIENE GIÀ il turno dell'utente (pinnato
-                # da `test_job_context_history_includes_current_user_turn`):
-                # passarla intera come `conversation_history` E ripetere il
-                # messaggio come `user_message` lo manderebbe due volte.
-                conversation_history=cronologia[:-1],
-                # Il turno passa dal ciclo di ripiego del router, nell'ordine
-                # della catena: e' l'unico modo che esiste (il ramo del modello
-                # esplicito e' uscito con la Tappa 0). Qui va SCRITTO, non
-                # ereditato.
-                model="auto",
-                max_tokens=CHAT_MAX_TOKENS,
-                agent_type="chat",
-                restrict_to_home=bool(contesto.get("restrict_to_home")),
-                response_mode=contesto.get("response_mode", "auto"),
-                # Il contesto del job NON porta `thinking_budget` (sette chiavi,
-                # pinnate da `test_context_del_job_porta_esattamente_queste_
-                # sette_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
-                # applicare al ripiego un'impostazione che il ponte aveva
-                # dichiarato inapplicabile, con un log, al momento
-                # dell'accodamento.
-                thinking_budget=0,
-                tools=KNOWLEDGE_TOOLS,
-                dispatcher=create_tool_dispatcher(
-                    request.app, exchange=exchange_id,
-                    # Il soffitto di chi ha scritto il messaggio, dal soggetto
-                    # DEL JOB: e' la stessa regola del ramo sincrono e della
-                    # rotta MCP, non quella di chi fa il poll.
-                    soffitto=await ceiling_for(request.app, soggetto),
-                    soggetto=soggetto,
-                    # Lo STESSO testo che il modello ha davanti come ultimo turno
-                    # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
-                    # da un'altra parte, la cronaca registrerebbe una frase
-                    # diversa da quella su cui il modello ha deciso.
-                    frase=ultimo,
-                    # Il filo DEL JOB (letto in cima a questa funzione),
-                    # non quello di chi per caso fa il poll che scopre la
-                    # scadenza (spec §4, come `soggetto` qui sopra).
-                    thread=thread),
-            )
+        answer, _turn = await chain_turn(
+            runner, "chat", usage=request.app.get("usage"),
+            soggetto=soggetto,
+            user_message=ultimo,
+            system_prompt=contesto.get("system_prompt", ""),
+            context_str=contesto.get("contesto", ""),
+            # La cronologia del job CONTIENE GIÀ il turno dell'utente (pinnato
+            # da `test_job_context_history_includes_current_user_turn`):
+            # passarla intera come `conversation_history` E ripetere il
+            # messaggio come `user_message` lo manderebbe due volte.
+            conversation_history=cronologia[:-1],
+            # Il turno passa dal ciclo di ripiego del router, nell'ordine
+            # della catena: e' l'unico modo che esiste (il ramo del modello
+            # esplicito e' uscito con la Tappa 0). Qui va SCRITTO, non
+            # ereditato.
+            model="auto",
+            max_tokens=CHAT_MAX_TOKENS,
+            agent_type="chat",
+            restrict_to_home=bool(contesto.get("restrict_to_home")),
+            response_mode=contesto.get("response_mode", "auto"),
+            # Il contesto del job NON porta `thinking_budget` (sette chiavi,
+            # pinnate da `test_context_del_job_porta_esattamente_queste_
+            # sette_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
+            # applicare al ripiego un'impostazione che il ponte aveva
+            # dichiarato inapplicabile, con un log, al momento
+            # dell'accodamento.
+            thinking_budget=0,
+            tools=KNOWLEDGE_TOOLS,
+            dispatcher=create_tool_dispatcher(
+                request.app, exchange=exchange_id,
+                # Il soffitto di chi ha scritto il messaggio, dal soggetto
+                # DEL JOB: e' la stessa regola del ramo sincrono e della
+                # rotta MCP, non quella di chi fa il poll.
+                soffitto=await ceiling_for(request.app, soggetto),
+                soggetto=soggetto,
+                # Lo STESSO testo che il modello ha davanti come ultimo turno
+                # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
+                # da un'altra parte, la cronaca registrerebbe una frase
+                # diversa da quella su cui il modello ha deciso.
+                frase=ultimo,
+                # Il filo DEL JOB (letto in cima a questa funzione),
+                # non quello di chi per caso fa il poll che scopre la
+                # scadenza (spec §4, come `soggetto` qui sopra).
+                thread=thread),
+        )
     except RunnerBackendError as exc:
         # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
         # essere `app["claude_runner"]`, cioè un backend diretto che SOLLEVA.
@@ -921,10 +909,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
 
 
 async def handle_chat(request: web.Request) -> web.Response:
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "Il corpo della richiesta non è JSON valido.")
+    body = await json_object(request)
 
     message = body.get("message", "").strip()
     if not message:
@@ -1019,7 +1004,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         else:
             return await _enqueue_chat_job(request, settings, message, data_dir, thread)
 
-    runner = request.app.get("llm_router") or request.app.get("claude_runner")
+    runner = chain_runner(request.app)
     if runner is None:
         # E' la PRIMA cosa che legge chi installa HIRIS e apre la chat senza
         # aver ancora configurato niente. Prima diceva, in inglese, «set
@@ -1158,23 +1143,22 @@ async def handle_chat(request: web.Request) -> web.Response:
         agent_thinking_budget = settings.thinking_budget
 
         try:
-            async with misura_turno(request.app.get("usage"), runner,
-                                    specie="chat", canale="catena",
-                                    soggetto=request.get("soggetto")):
-                response = await runner.chat(
-                    user_message=message,
-                    system_prompt=system_prompt,
-                    context_str=context_str,
-                    conversation_history=context_history,
-                    model=agent_model,
-                    max_tokens=agent_max_tokens,
-                    agent_type=agent_type,
-                    restrict_to_home=agent_restrict,
-                    response_mode=agent_response_mode,
-                    thinking_budget=agent_thinking_budget,
-                    tools=KNOWLEDGE_TOOLS,
-                    dispatcher=tool_dispatcher,
-                )
+            response, _turn = await chain_turn(
+                runner, "chat", usage=request.app.get("usage"),
+                soggetto=request.get("soggetto"),
+                user_message=message,
+                system_prompt=system_prompt,
+                context_str=context_str,
+                conversation_history=context_history,
+                model=agent_model,
+                max_tokens=agent_max_tokens,
+                agent_type=agent_type,
+                restrict_to_home=agent_restrict,
+                response_mode=agent_response_mode,
+                thinking_budget=agent_thinking_budget,
+                tools=KNOWLEDGE_TOOLS,
+                dispatcher=tool_dispatcher,
+            )
         except RunnerBackendError as exc:
             # Review C/#13: runners now raise instead of returning a friendly
             # string on API failure, so LLMRouter's auto-fallback loop actually

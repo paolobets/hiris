@@ -31,7 +31,7 @@ import time
 from aiohttp import web
 
 from ..chat_thread import unknown_id_text
-from .boundary import error_response
+from .boundary import error_response, json_object
 from .servizi import (
     RUOLI,
     SPECIE,
@@ -64,13 +64,6 @@ def _archivio(request):
     return request.app.get("servizi")
 
 
-async def _corpo(request) -> dict:
-    try:
-        return await request.json() or {}
-    except Exception:
-        return {}
-
-
 async def handle_service_present(request: web.Request) -> web.Response:
     """Un servizio si fa vivo. **Non lo autorizza**: lo mette in coda.
 
@@ -88,7 +81,7 @@ async def handle_service_present(request: web.Request) -> web.Response:
         # cui quel posto cambia.
         return error_response(403, _CHIUSA)
 
-    dati = await _corpo(request)
+    dati = await json_object(request)
     chiave = str(dati.get("chiave") or "").strip()
     if not chiave:
         return error_response(400, "serve la tua chiave pubblica Ed25519, in base64")
@@ -158,7 +151,7 @@ async def handle_service_approve(request: web.Request) -> web.Response:
     archivio = _archivio(request)
     if archivio is None:
         return error_response(503, "archivio non disponibile")
-    dati = await _corpo(request)
+    dati = await json_object(request)
     try:
         fatto = archivio.approva(str(dati.get("chiave") or ""),
                                  ruolo=str(dati.get("ruolo") or ""),
@@ -181,7 +174,7 @@ async def handle_service_revoke(request: web.Request) -> web.Response:
     archivio = _archivio(request)
     if archivio is None:
         return error_response(503, "archivio non disponibile")
-    dati = await _corpo(request)
+    dati = await json_object(request)
     if not archivio.revoca(str(dati.get("chiave") or ""), now_ts=time.time()):
         return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: accesso revocato a un servizio")

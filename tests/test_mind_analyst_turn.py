@@ -106,33 +106,112 @@ def test_la_CHIAVE_resta_parte_dell_identita_della_misura():
     serie["serie"].append({**serie["serie"][1], "chiave": "media"})
 
     esito = at.apply_analysis(serie, _risposta([
-        _osservazione(quale=1, innesco=2), _osservazione(quale=2, innesco=2)]))
+        _osservazione(quale=1), _osservazione(quale=2)]))
 
     assert esito["problemi"] == []
     chiavi = [o["chiave"] for o in esito["analisi"]["osservazioni"]]
     assert chiavi == ["massimo", "media"], chiavi
 
 
-def test_un_INNESCO_fuori_dai_tre_si_rifiuta():
-    """Gli inneschi sono tre e sono dichiarati nella spec: un'osservazione che
-    non dice quale dei tre non e' dell'analista, e' un commento.
+def test_un_INNESCO_che_la_riga_NON_HA_si_rifiuta():
+    """D3 e Task 3.5: gli inneschi li marca il codice sulla riga, e il modello
+    sceglie fra quelli. La riga [0] e' candidata al solo innesco 1: un 3 -- che
+    esiste nella spec, ma non su questa riga -- si rifiuta, come uno che non
+    esiste affatto.
 
-    Mutazione: accettare qualunque numero -- rossa.
-    """
-    for innesco in (0, 4, "uno", None):
+    Mutazione ESEGUITA (06/10/2026): `_trigger` che accetta qualunque innesco
+    dei tre -- rossa (il 2 e il 3 passano).
+
+    `True` e `1.0` valgono 1 per Python, e si rifiutano lo stesso (G21-1 del
+    revisore, giro 21): finivano nell'impronta con un'altra forma, e la
+    ripetizione non si toglieva piu'. Mutazione ESEGUITA (06/10/2026): togliere
+    il controllo sul tipo -- rossa (`True` passa)."""
+    for innesco in (0, 2, 3, 4, "uno", True, 1.0):
         esito = at.apply_analysis(_serie(), _risposta([_osservazione(innesco=innesco)]))
         assert any("innesco" in p for p in esito["problemi"]), innesco
 
 
-def test_senza_COSA_CAMBIEREBBE_si_rifiuta():
-    """La spec lo elenca fra le quattro cose che ogni osservazione deve avere:
-    senza, e' una constatazione, non qualcosa che si potrebbe fare -- e
-    l'analista esiste per dire cosa si potrebbe fare.
+def test_l_INNESCO_lo_attacca_il_codice_quando_la_riga_ne_ha_uno():
+    """Mutazione ESEGUITA (06/10/2026): `_trigger` che pretende l'innesco
+    scritto -- rossa."""
+    riga = _osservazione()
+    del riga["innesco"]
+    esito = at.apply_analysis(_serie(), _risposta([riga]))
+    assert esito["problemi"] == []
+    assert esito["analisi"]["osservazioni"][0]["innesco"] == 1
 
-    Mutazione: renderlo facoltativo -- rossa.
-    """
+
+def test_con_PIU_inneschi_sulla_riga_il_modello_SCEGLIE():
+    serie = _serie()
+    serie["serie"][0]["coperture"] = [1.0, 1.0, 0.4]
+    riga = _osservazione()
+    del riga["innesco"]
+    esito = at.apply_analysis(serie, _risposta([riga]))
+    assert any("scegline uno" in p for p in esito["problemi"]), esito["problemi"]
+
+    esito = at.apply_analysis(serie, _risposta([_osservazione(innesco=3)]))
+    assert esito["analisi"]["osservazioni"][0]["innesco"] == 3
+
+
+def test_una_riga_SENZA_inneschi_non_e_candidata():
+    serie = _serie()
+    serie["serie"][0]["scostamento"] = {"ultimo": 0.74, "mediana": 0.3, "scarto": None,
+                                        "quanti_scarti": None, "base": 1,
+                                        "non_calcolabile": "storia corta"}
+    esito = at.apply_analysis(serie, _risposta([_osservazione()]))
+    assert any("nessun" in p for p in esito["problemi"]), esito["problemi"]
+
+
+def test_COSA_CAMBIEREBBE_e_facoltativo():
+    """Task 3.5: obbligatorio contraddiceva «il silenzio e' un esito
+    legittimo» -- spingeva a inventare un'azione per ogni constatazione
+    (audit del 01/10/2026).
+
+    Mutazione ESEGUITA (06/10/2026): rimetterlo obbligatorio in `_enrich`
+    -- rossa."""
     esito = at.apply_analysis(_serie(), _risposta([_osservazione(cosa_cambierebbe="  ")]))
-    assert any("cambierebbe" in p for p in esito["problemi"]), esito["problemi"]
+    assert esito["problemi"] == []
+    vista = esito["analisi"]["osservazioni"][0]
+    assert vista["cosa_cambierebbe"] is None
+    assert vista["da_riverificare"] is None
+
+    riga = _osservazione()
+    riga["da_riverificare"] = "se il contatore e' ripartito"
+    esito = at.apply_analysis(_serie(), _risposta([riga]))
+    assert esito["analisi"]["osservazioni"][0]["da_riverificare"] == \
+        "se il contatore e' ripartito"
+
+
+def test_il_RIMETTI_si_valida_e_si_archivia_con_l_analisi():
+    """D9: l'analista chiede nella risposta di far rientrare un'entita'; lo
+    scrive il Task 3.7. Qui la forma: `id` e `perche`, tutti e due."""
+    import json
+    buona = json.dumps({"osservazioni": [], "rimetti": [
+        {"id": "sensor.batteria", "perche": "spiega il prelievo serale"}]})
+    esito = at.apply_analysis(_serie(), buona)
+    assert esito["analisi"]["rimetti"] == [
+        {"id": "sensor.batteria", "perche": "spiega il prelievo serale"}]
+
+    storta = json.dumps({"osservazioni": [], "rimetti": [{"id": "sensor.x"}]})
+    assert at.apply_analysis(_serie(), storta)["analisi"] is None
+
+
+def test_il_RIMETTI_vuole_un_ENTITY_ID():
+    """G21-2 del revisore (giro 21): «camera da letto» passava. Mutazione
+    ESEGUITA (06/10/2026): controllare solo che l'id non sia vuoto -- rossa."""
+    import json
+    for ident in ("camera da letto", "batteria", "Sensor.x"):
+        storta = json.dumps({"osservazioni": [], "rimetti": [
+            {"id": ident, "perche": "spiega il prelievo serale"}]})
+        assert at.apply_analysis(_serie(), storta)["analisi"] is None, ident
+
+
+def test_le_LETTURE_del_turno_vengono_dal_registro_delle_chiamate():
+    """Task 3.5, Passo 3: dal runner (`last_tool_calls`), non dal testo."""
+    chiamate = [{"tool": "history", "input": {"riferimento": "sensor.prelievo"}}]
+    esito = at.apply_analysis(_serie(), _risposta([]), tool_calls=chiamate)
+    assert esito["analisi"]["letture"] == chiamate
+    assert "letture" not in at.apply_analysis(_serie(), _risposta([]))["analisi"]
 
 
 def test_il_SILENZIO_e_un_esito_legittimo_e_non_e_un_rifiuto():
@@ -153,7 +232,7 @@ def test_TUTTI_i_problemi_si_dicono_insieme():
     Mutazione: tornare al primo problema -- rossa.
     """
     esito = at.apply_analysis(_serie(), _risposta([
-        _osservazione(quale=99, innesco=9, cosa_cambierebbe="")]))
+        _osservazione(quale=99, cosa="", valore=3.0)]))
 
     assert len(esito["problemi"]) >= 3, esito["problemi"]
 
@@ -203,29 +282,128 @@ def test_la_domanda_dice_QUANDO_la_domanda_e_cambiata():
     assert "2026-09-13" in q
 
 
-def test_la_copertura_PIENA_non_si_ripete_trenta_volte():
-    """**La stessa regola della pagina**, misurata anche qui: le coperture sono
-    il 18% del prompt, e \u00ab100%\u00bb accanto a ogni numero e' rumore su cui
-    l'attenzione smette di fermarsi -- del modello quanto dell'occhio. Si dice
-    che e' piena, una volta.
+def test_la_copertura_PIENA_si_dice_una_volta():
+    """**La stessa regola della pagina**, misurata anche qui: le coperture
+    erano il 18% del prompt, e «100%» accanto a ogni numero e' rumore su cui
+    l'attenzione smette di fermarsi -- del modello quanto dell'occhio.
 
-    Mutazione: scrivere sempre l'elenco -- rossa.
+    Mutazione: scrivere l'elenco delle coperture -- rossa.
     """
     q = at.build_question(_serie())
     assert q.count("1.0, 1.0, 1.0") == 0, q[:400]
     assert "piena" in q
 
 
-def test_una_copertura_che_CROLLA_si_scrive_per_intero():
-    """Il terzo innesco: se la copertura cambia, i numeri vanno visti tutti.
-    Comprimere si fa solo quando non c'e' niente da vedere.
-
-    Mutazione: comprimere sempre -- rossa.
+def test_una_copertura_che_CROLLA_si_vede_nell_indice():
+    """Il terzo innesco: se la copertura cambia, la riga dice la minima e
+    l'ultima, e il fatto dell'innesco lo marca il codice.
     """
     serie = _serie()
-    serie["serie"][0]["coperture"] = [1.0, 0.4, 1.0]
+    serie["serie"][0]["coperture"] = [1.0, 1.0, 0.4]
     q = at.build_question(serie)
     assert "0.4" in q
+    assert "la copertura e' passata da 1.0 a 0.4" in q
+
+
+# ── l'indice (D2 e D3 del piano degli attori, 06/10/2026) ───────────────────
+
+def _riga(soggetto, valori, coperture=None, perche=()):
+    from hiris.app.mind import analyst
+    serie = {"soggetto": soggetto, "nome": soggetto.title(), "misura": "m",
+             "chiave": None, "operazione": "somma_periodo", "unita": "kWh",
+             "valori": valori,
+             "coperture": coperture or [1.0 if v is not None else None for v in valori],
+             "perche": list(perche)}
+    return analyst.with_deviation({"serie": [serie]})["serie"][0]
+
+
+def _trenta():
+    """Trenta giorni, cinque misure: una che si scosta molto, una poco, una
+    che non varia mai, una che oggi non si calcola, una con due giorni."""
+    giorni = [f"2026-09-{d:02d}" for d in range(1, 31)]
+    storia = [10.0 + (d % 3) for d in range(29)]
+    righe = [
+        _riga("poco", storia + [12.5]),
+        _riga("piatta", [5.0] * 30),
+        _riga("ferma", storia + [None], perche=[
+            {"dal": giorni[-1], "al": giorni[-1], "ragione": "l'entita' e' sparita",
+             "causa": "sparita"}]),
+        _riga("molto", storia + [40.0]),
+        _riga("giovane", [None] * 28 + [3.0, 4.0]),
+    ]
+    return {"giorni": giorni, "serie": righe,
+            "obiettivi": [{"dal": giorni[0], "al": giorni[-1],
+                           "testo": "spendere meno", "scritto_ts": 1.0}]}
+
+
+def _index_lines(domanda):
+    import json
+    return [(int(riga[1:riga.index("]")]), json.loads(riga[riga.index("]") + 2:]))
+            for riga in domanda.splitlines() if riga.startswith("[")]
+
+
+def test_l_INDICE_ha_una_riga_per_misura_e_nessun_valore_della_serie():
+    """D2: una riga per misura coi numeri di `with_deviation`, e **nessun**
+    valore della serie. Il conto delle righe si chiede alle serie.
+
+    Mutazione ESEGUITA (06/10/2026): in `analyst.index` saltare le righe senza
+    fatti d'innesco -- rossa (4 righe su 5: «giovane» non c'e')."""
+    serie = _trenta()
+    righe = _index_lines(at.build_question(serie))
+
+    assert sorted(n for n, _ in righe) == list(range(len(serie["serie"])))
+    for _, riga in righe:
+        assert "valori" not in riga and "coperture" not in riga
+        assert {"ultimo", "mediana", "scarto", "base", "quanti_scarti",
+                "copertura", "inneschi"} <= set(riga)
+    # Nessun tratto della storia arriva al modello: la sequenza dei giorni
+    # 10, 11, 12 c'e' solo nelle serie.
+    assert "10.0, 11.0, 12.0" not in at.build_question(serie)
+
+
+def test_l_INDICE_e_in_ORDINE_di_scostamento_e_marca_i_tre_inneschi():
+    """D3: il codice marca i candidati e ordina, il modello sceglie. Prima chi
+    si scosta di piu', poi chi non ha scostamento, nell'ordine della serie."""
+    serie = _trenta()
+    righe = _index_lines(at.build_question(serie))
+    nomi = [riga["nome"] for _, riga in righe]
+
+    assert nomi[:2] == ["Molto", "Poco"]
+    assert sorted(nomi[2:]) == ["Ferma", "Giovane", "Piatta"]
+    per_nome = {riga["nome"]: riga for _, riga in righe}
+    assert [f["innesco"] for f in per_nome["Molto"]["inneschi"]] == [1]
+    assert [f["innesco"] for f in per_nome["Piatta"]["inneschi"]] == [2]
+    assert [f["innesco"] for f in per_nome["Ferma"]["inneschi"]] == [3]
+    assert per_nome["Giovane"]["inneschi"] == []
+    # Il numero resta la chiave della serie: «Molto» e' la quarta misura.
+    assert {riga["nome"]: n for n, riga in righe}["Molto"] == 3
+
+
+def test_una_misura_che_OGGI_non_si_calcola_porta_la_sua_CAUSA():
+    """Mutazione ESEGUITA (06/10/2026): `cause_today` che torna sempre `None`
+    -- rossa (`KeyError: 'causa_oggi'`)."""
+    righe = dict(_index_lines(at.build_question(_trenta())))
+
+    ferma = righe[2]
+    assert ferma["causa_oggi"]["causa"] == "sparita"
+    assert ferma["causa_oggi"]["dal"] == "2026-09-30"
+    assert "non_calcolabile" in ferma
+
+
+def test_l_obiettivo_e_IN_VIGORE_e_ha_una_fine_solo_se_e_cambiato():
+    """D2: «dal ... al ...» sull'obiettivo corrente si leggeva come una
+    scadenza (audit del 01/10/2026)."""
+    serie = _trenta()
+    q = at.build_question(serie)
+    assert "in vigore dal 2026-09-01: spendere meno" in q
+    assert "fino al" not in q
+
+    serie["obiettivi"] = [
+        {"dal": "2026-09-01", "al": "2026-09-10", "testo": "prima", "scritto_ts": 1.0},
+        {"dal": "2026-09-11", "al": "2026-09-30", "testo": "dopo", "scritto_ts": 2.0}]
+    q = at.build_question(serie)
+    assert "dal 2026-09-01 fino al 2026-09-10: prima" in q
+    assert "in vigore dal 2026-09-11: dopo" in q
 
 
 def test_il_turno_per_il_ponte_ha_la_stessa_forma_degli_altri():
@@ -268,20 +446,36 @@ def test_il_ponte_sa_ragionare_il_turno_dell_ANALISTA():
     assert ANALYSIS_TURN_KIND in runner.RAGIONABILI
 
 
-def test_il_turno_dell_analista_NON_riceve_gli_strumenti():
-    """**E' di sicurezza, non di eleganza.** Senza questa riga il turno
-    girerebbe col catalogo della chat, `execute` compreso -- la porta con cui
-    HIRIS accende, spegne e chiama un servizio -- e un turno che deve solo
-    leggere dei numeri e scrivere delle frasi potrebbe agire sulla casa senza
-    che nessun si' lo autorizzi. E' il rilievo chiuso per lo scope l'11/09 e
-    ripreso per le ricette.
+def test_il_turno_dell_analista_riceve_SOLO_lettori():
+    """**E' di sicurezza, non di eleganza.** Fino al 06/10/2026 l'analista
+    non riceveva strumenti, e questa prova pretendeva che restasse fra i
+    mestieri autosufficienti: senza, il ponte gli avrebbe dato il catalogo
+    della chat, `execute` compreso. Dal Task 3.6 degli attori (D5) riceve i
+    lettori e `compute`, e la prova pretende che non riceva NIENTE che
+    scriva o impegni.
 
-    Mutazione: togliere `_ANALYSIS_KIND` da `_SELF_CONTAINED_KINDS` -- rossa.
-    """
-    from hiris.app.agent import runner
-    from hiris.app.mind.analyst_turn import ANALYSIS_TURN_KIND
+    L'elenco qui sotto non ricopia un fatto che vive altrove: e' la meta' di
+    D5 che dice cosa resta FUORI, scritta nel piano degli attori (strati 3-4)
+    e approvata il 06/10/2026 -- `execute` comanda la casa, `remember`
+    scrive nella memoria, `promise`/`cancel` impegnano il futuro,
+    `propose`/`confirm` scrivono configurazione.
 
-    assert ANALYSIS_TURN_KIND in runner._SELF_CONTAINED_KINDS
+    Mutazione ESEGUITA (06/10/2026): aggiungere `execute` a
+    `analyst_turn.READERS` -- rossa."""
+    from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
+    from hiris.app.mind import compute
+    from hiris.app.steering import ANALYST_SPECIES, SPECIES
+
+    fuori = {"execute", "remember", "promise", "cancel", "propose", "confirm"}
+    nomi = set(SPECIES[ANALYST_SPECIES].tools_for_turn())
+    assert nomi == {*at.READERS, compute.COMPUTE_TOOL_NAME}
+    assert not nomi & fuori, nomi & fuori
+    # Gli STESSI dizionari della chat, non copie: una descrizione migliorata
+    # li' vale anche qui.
+    chat = {d["name"]: d for d in KNOWLEDGE_TOOLS}
+    for definition in at.analyst_tools():
+        if definition["name"] in chat:
+            assert definition is chat[definition["name"]]
 
 
 # ---------------------------------------------------------------------------

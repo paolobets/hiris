@@ -827,7 +827,7 @@ def test_a_chi_chiedere_RUOTA_e_un_dispositivo_storto_non_affama_gli_altri():
     niente, e il giro successivo ripesca **lo stesso**. Per sempre. Gli altri
     trenta non vengono chiesti mai.
 
-    Il freno che esiste (`_troppo_presto_per_richiedere`) guarda solo la coda
+    Il freno che esiste (`steering.too_soon_to_ask_again`) guarda solo la coda
     del ponte: rallenta a un giro all'ora, non cambia dispositivo.
 
     Si ruota. Il contatore vive in memoria e riparte da capo al riavvio: non e'
@@ -945,16 +945,14 @@ def test_il_catalogo_NON_offre_al_modello_cio_che_una_ricetta_non_puo_scrivere()
     il dispositivo senza ricetta per sempre (`devices_to_ask` non richiede chi
     una risposta l'ha gia' data).
 
-    Mutazione: togliere il filtro `in_recipes` da `_operations_catalogue` --
+    Mutazione: togliere il filtro `offerable` da `_operations_catalogue` --
     rossa.
     """
     catalogo = rt._operations_catalogue()
     assert "episodio" not in catalogo
-    # E non basta `in_recipes`: `tempo_in_stato` una ricetta saprebbe
-    # NOMINARLA, ma non saprebbe consegnarle un periodo -- nessuna operazione
-    # offribile ne produce uno. Offrirla sarebbe la stessa trappola, un anello
-    # piu' in la'. Mutazione che la uccide: filtrare il catalogo su
-    # `in_recipes` invece che su `offerable`.
+    # `tempo_in_stato` una ricetta saprebbe NOMINARLA, ma non saprebbe
+    # consegnarle un periodo -- nessuna operazione offribile ne produce uno.
+    # Offrirla sarebbe la stessa trappola, un anello piu' in la'.
     assert "tempo_in_stato" not in catalogo
     assert "somma_periodo" in catalogo
 
@@ -1015,3 +1013,71 @@ def test_sul_PONTE_la_riparazione_arriva_fino_alla_raccolta(sapere, tmp_path):
 
     assert not esito["scritta"]
     assert rt.recipes(sapere)["dev1"] == _ricetta("sensor.prodotta", "sensor.vecchia")
+
+
+def test_sul_PONTE_un_turno_FALLITO_non_scrive_un_non_capito(sapere, tmp_path):
+    """Un turno che il ponte ha fallito (`[runner non disponibile]`, esito
+    `fallito`) non e' la risposta del modello. Letto come tale finiva nel
+    «non capito», e un dispositivo che il modello non ha saputo leggere non
+    si richiede mai piu' (`devices_to_ask`): il guasto del ponte di una notte
+    lo toglieva dalle domande per sempre.
+
+    Mutazione ESEGUITA: la raccolta che legge la `reply` senza l'esito --
+    rossa (il «non capito» viene scritto)."""
+    import time
+
+    from hiris.app import server
+    from hiris.app.reasoning.queue import ReasoningQueue
+
+    casa = _casa_viva()
+    coda = ReasoningQueue(str(tmp_path / "coda.db"))
+    app = {"reasoning_queue": coda, "models_config": {"ponte": {"scadenza_min": 10}}}
+    server._enqueue_recipe_turn(app, casa, "dev1", objective="risparmiare",
+                                with_series=SERIE_VIVE)
+    preso = coda.claim(time.time())
+    coda.submit(preso["job_id"], preso["nonce"],
+                {"reply": "[runner non disponibile]", "tools_called": [],
+                 "outcome": "fallito"}, time.time())
+
+    esito = server._collect_recipe_turn(app, sapere, casa)
+
+    assert esito["risposta"] is False
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_la_frase_del_router_non_scrive_un_non_capito(sapere):
+    """Il gemello sulla catena del caso qui sopra (rilievo G29-1, 06/10/2026).
+    Quando tutti i backend rifiutano, il router non solleva: consegna una
+    frase per la chat (l'errore dell'ultimo backend, o «Tutti i provider AI
+    non disponibili...») e alza `last_unanswered`. Letta come risposta del
+    modello finiva nel «non capito», e il dispositivo usciva dalle domande
+    per sempre.
+
+    Il router e' quello vero, con backend che rifiutano come i veri
+    (`RunnerBackendError`): la prova non ricopia la frase, la ottiene.
+
+    Mutazioni ESEGUITE, entrambe rosse (il «non capito» viene scritto, con
+    la frase del router come evidenza): `steering.chain_answer` che
+    restituisce `answer` anche quando il turno non ha risposto;
+    `misura_turno` che non abbassa `TurnOutcome.answered`."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    def _rifiuta(messaggio):
+        runner = MagicMock()
+        runner.chat = AsyncMock(side_effect=RunnerBackendError(messaggio))
+        return runner
+
+    router = LLMRouter(claude=_rifiuta("giu'"), openrouter=_rifiuta("giu'"),
+                       strategy="balanced")
+
+    esito = await rt.ask(router, sapere, _casa_viva(), "dev1",
+                         objective="risparmiare", who="prova",
+                         when_ts=1_758_000_000.0, with_series=SERIE_VIVE)
+
+    assert router.last_unanswered is True
+    assert esito["scritta"] is False
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None

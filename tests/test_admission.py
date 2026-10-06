@@ -175,8 +175,7 @@ ADMIN_SWEEP_302AE885 = {
     "POST /api/constructions/{id}/restore": 503, "POST /api/mcp": 401,
     "POST /api/mind/judgment": 503, "POST /api/mind/objective": 503,
     "POST /api/proposals/{id}/done": 503, "POST /api/proposals/{id}/redo": 503,
-    "POST /api/proposals/{id}/reject": 503, "POST /api/reasoning/claim": 401,
-    "POST /api/reasoning/submit": 401, "POST /api/services/approve": 400,
+    "POST /api/proposals/{id}/reject": 503, "POST /api/services/approve": 400,
     "POST /api/services/present": 403, "POST /api/services/revoke": 404,
     "POST /api/services/window/close": 200, "POST /api/services/window/open": 200,
     "POST /api/usage/reset": 409, "PUT /api/chat-settings": 200,
@@ -981,9 +980,9 @@ def _chat(ruolo, *, ha=None, porta=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("argomenti", [
-    {"genere": "errori"},
-    {"genere": "esecuzioni", "riferimento": "automation.luci"},
-    {"genere": "esecuzioni", "riferimento": "automation.luci", "esecuzione": "r-1"},
+    {"cosa": "errori"},
+    {"cosa": "esecuzioni", "riferimento": "automation.luci"},
+    {"cosa": "esecuzioni", "riferimento": "automation.luci", "esecuzione": "r-1"},
 ])
 @pytest.mark.parametrize("ruolo", ["utente", "lettore"])
 async def test_le_letture_RISERVATE_agli_amministratori_non_escono_dalla_chat(
@@ -1010,7 +1009,7 @@ async def test_l_amministratore_e_i_turni_senza_persona_leggono_come_prima(ruolo
     aperto (`soffitto=None`: promesse, osservatore), leggono il registro."""
     ha = _house()
 
-    esito = await _chat(ruolo, ha=ha).dispatch("history", {"genere": "errori"})
+    esito = await _chat(ruolo, ha=ha).dispatch("history", {"cosa": "errori"})
 
     assert esito["voci"][0]["messaggio"] == "zigbee giu'"
 
@@ -1070,7 +1069,7 @@ async def test_lo_SVILUPPO_non_si_restringe_per_ruolo(monkeypatch):
     chat = ToolDispatcher(None, None, ha=ha, actuator=porta,
                           soffitto=consente(sviluppo, ruolo=None), subject=sviluppo)
 
-    registro = await chat.dispatch("history", {"genere": "errori"})
+    registro = await chat.dispatch("history", {"cosa": "errori"})
     await chat.dispatch("execute", {"servizio": "light.turn_on",
                                     "bersaglio": {"entity_id": ["light.x"]}})
 
@@ -1264,9 +1263,9 @@ class _RunnerCheLegge:
     async def chat(self, **kwargs):
         self.contesto = kwargs.get("context_str")
         d = kwargs["dispatcher"]
-        self.risposte.append(await d.dispatch("history", {"genere": "errori"}))
+        self.risposte.append(await d.dispatch("history", {"cosa": "errori"}))
         self.risposte.append(await d.dispatch(
-            "history", {"genere": "esecuzioni", "riferimento": "automation.luci"}))
+            "history", {"cosa": "esecuzioni", "riferimento": "automation.luci"}))
         await d.dispatch("conclude", {"avvisare": False, "testo": "fatto"})
 
 
@@ -1336,7 +1335,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_dal_PONTE(casa):
 
     risposta = await casa.post("/api/mcp", json={
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-        "params": {"name": "history", "arguments": {"genere": "errori"}}},
+        "params": {"name": "history", "arguments": {"cosa": "errori"}}},
         headers={**credenziale_ponte(app, "turno-della-promessa"),
                  "X-HIRIS-Promessa": ident})
     corpo = await risposta.json()
@@ -1461,7 +1460,7 @@ async def test_la_BOZZA_di_chi_non_amministra_non_rivela_com_e_adesso(
 
     esito = await chat.dispatch("propose", intento)
     testo = json_text(esito)
-    stored_before = (archivio.read(esito["proposta_id"]) or {}).get("prima") \
+    stored_before = (archivio.read(esito["proposta_id"], now=time.time()) or {}).get("prima") \
         if "proposta_id" in esito else None
     archivio.close()
     cronaca.close()

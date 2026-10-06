@@ -5,7 +5,7 @@ conferma, rifiuta, ripristina, e sopra ci vive l'officina. Queste sono le
 altre -- quelle che deve applicare una persona -- e ne hanno tre:
 
 - **rifiuta**: chiude. Torna in coda solo se la prova cambia, e il confronto
-  lo fa l'attuatore (`actuator.to_handle`), non questa rotta.
+  lo fa il proponente (`proposer_turn.open_observations`), non questa rotta.
 - **fatta fuori da HA**: chiude **come applicata**, dichiarando che non e'
   stato HIRIS a farlo e che non puo' verificarlo in nessun oggetto. Per il
   verificatore, un domani, «l'ho fatto io» e «lo hai fatto tu» sono due prove
@@ -32,8 +32,8 @@ import time
 from aiohttp import web
 
 from ..chat_thread import unknown_id_text
-from ..steering import misura_turno, read_json
-from .boundary import error_response
+from ..steering import chain_runner, chain_turn, read_json
+from .boundary import error_response, json_object
 from .soffitto import require_builder
 
 logger = logging.getLogger(__name__)
@@ -84,12 +84,9 @@ async def _close(request, outcome: str) -> web.Response:
     row = _row(store, ident)
     if row is None:
         return error_response(404, _NOT_FOUND)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    nota = str((body or {}).get("nota") or "").strip() or None
-    if not store.close_proposal(ident, outcome, why=nota, now_ts=time.time()):
+    body = await json_object(request, optional=True)
+    nota = str(body.get("nota") or "").strip() or None
+    if not store.close_proposal(ident, outcome, why=nota):
         return error_response(409, _NOT_PENDING)
     return web.json_response({"proposta": _row(store, ident)})
 
@@ -130,16 +127,13 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         return error_response(404, _NOT_FOUND)
     if row["stato"] != store.PROPOSAL_PENDING:
         return error_response(409, _NOT_PENDING)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    richiesta = str((body or {}).get("richiesta") or "").strip()
+    body = await json_object(request, optional=True)
+    richiesta = str(body.get("richiesta") or "").strip()
     if not richiesta:
         return error_response(400, "scrivi cosa vuoi cambiare: senza, il giro rifarebbe "
                                    "la stessa cosa.")
 
-    runner = request.app.get("llm_router") or request.app.get("claude_runner")
+    runner = chain_runner(request.app)
     if runner is None:
         return error_response(503, "nessun modello collegato: non posso rifare la proposta "
                                    "adesso.")
@@ -172,16 +166,18 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         # «Rifalla» è un turno di chat a tutti gli effetti: parte da un gesto
         # del proprietario nella pagina, e il suo costo va contato con gli
         # altri suoi — non in una specie a parte che nessuno guarderebbe.
-        async with misura_turno(request.app.get("usage"), runner,
-                                specie="chat", canale="catena",
-                                soggetto=request.get("soggetto")) as turn:
-            answer = await runner.chat(user_message="\n".join(lines),
-                                       system_prompt=_REDO_SYSTEM,
-                                       max_tokens=_REDO_MAX_TOKENS)
+        answer, turn = await chain_turn(
+            runner, "chat", usage=request.app.get("usage"),
+            soggetto=request.get("soggetto"), max_tokens=_REDO_MAX_TOKENS,
+            user_message="\n".join(lines), system_prompt=_REDO_SYSTEM)
     except Exception as error:
         logger.warning("proposta: il giro di «rifalla» non e' partito (%s: %s)",
                        type(error).__name__, error)
-        return error_response(503, "il modello non ha risposto: riprova.")
+        return error_response(503, _NO_ANSWER)
+    # La frase del router quando nessun backend risponde non e' una proposta
+    # illeggibile (502): e' il modello che non ha risposto, come sopra (G29-1).
+    if not turn.answered:
+        return error_response(503, _NO_ANSWER)
 
     testo, perche = _read_proposal(answer, truncated=turn.truncated)
     if testo is None:
@@ -198,6 +194,12 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     if nota:
         corpo["nota"] = nota
     return web.json_response(corpo)
+
+
+#: La risposta di «Rifalla» quando il modello non risponde: il giro non e'
+#: partito (`chain_turn` solleva) o nessun backend ha risposto
+#: (`TurnOutcome.answered`). Per chi preme il bottone e' la stessa cosa.
+_NO_ANSWER = "il modello non ha risposto: riprova."
 
 
 def _nota_porta(app, *, route: str, downgrade: str) -> str:

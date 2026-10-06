@@ -552,3 +552,28 @@ def test_senza_sapere_cosa_si_e_chiesto_non_si_inventa_nessuna_omissione(archivi
 
     assert "sensor.presa_energia" not in archivio.scope()
     assert esito["omesse"] == 0
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_nessuno_risponde_e_si_dice_cosi(archivio):
+    """G29-1, per l'osservatore: la frase del router quando tutti i backend
+    rifiutano non e' una risposta illeggibile, e' nessuna risposta -- e il
+    tentativo lo dice con la sua ragione.
+
+    Mutazione ESEGUITA: `reconsider` che passa la risposta senza
+    `chain_answer` -- rossa («non e' un JSON leggibile»)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+    from hiris.app.steering import NO_ANSWER_REASON
+
+    giu = MagicMock()
+    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    router = LLMRouter(claude=giu, strategy="balanced")
+
+    esito = await observer.reconsider(router, archivio, _casa(),
+                                      reason="prima volta", now=1000.0)
+
+    assert esito == {"errore": NO_ANSWER_REASON}
+    assert archivio.scope() == {}

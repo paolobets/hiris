@@ -12,7 +12,7 @@ questo no.
 
 **Un tetto, LRU**, e lo stesso dei contatori dei giri di `api/handlers_mcp.py`,
 che lo importano da qui (B-53): un
-turno del ponte dura al piu' due invocazioni da 300 s, e un turno ancora in
+turno del ponte dura al piu' fino alla sua scadenza (S-09), e un turno ancora in
 uso non si espelle.
 """
 from __future__ import annotations

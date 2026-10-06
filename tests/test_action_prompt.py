@@ -34,7 +34,15 @@ import pytest
 
 from hiris.app.agent import prompts
 from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS, _GUIDE_WITHOUT_TOOLS
-from hiris.app.claude_runner import BASE_SYSTEM_PROMPT
+from hiris.app.steering import SPECIES, compose_base
+
+#: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
+#: strumenti, dal compositore unico (Tappa 6, Task 7).
+CHAT_BASE = compose_base(SPECIES["chat"].tools_for_turn())
+
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 
 def _prompt_del_ponte() -> str:
@@ -44,7 +52,7 @@ def _prompt_del_ponte() -> str:
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nBagno: luce spenta.",
-        active_tools=True)
+        active_tools=CHAT_TOOLS)
     return system
 
 
@@ -54,13 +62,16 @@ def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
     Un test che ne guardasse uno solo lascerebbe l'altro percorso libero di
     divergere in silenzio: e' esattamente la divergenza che la fetta
     «parita'» ha passato due task a chiudere."""
-    return {"sincrono": BASE_SYSTEM_PROMPT, "ponte": _prompt_del_ponte()}
+    return {"sincrono": CHAT_BASE, "ponte": _prompt_del_ponte()}
 
 
 # -- 1. `execute` esiste -----------------------------------------------------
 
 def test_la_guida_nomina_esegui():
-    assert "execute" in _GUIDE_WITH_TOOLS
+    """Col nome che la CLI serve: dal 06/10/2026 lo compone `guide_with_tools`
+    dagli strumenti del turno (Tappa 5, Task 5; D-57)."""
+    from hiris.app.agent.runner import mcp_name
+    assert f"`{mcp_name('execute')}`" in prompts.guide_with_tools(CHAT_TOOLS)
 
 
 def test_entrambi_i_percorsi_dicono_che_esegui_esiste():
@@ -146,11 +157,6 @@ def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci(
 
 
 # -- 2. Gli id, non i nomi --------------------------------------------------
-
-def test_la_guida_chiede_gli_id_non_i_nomi():
-    basso = _GUIDE_WITH_TOOLS.lower()
-    assert "search" in basso and "id" in basso
-
 
 def test_entrambi_i_percorsi_mandano_a_cerca_chi_ha_solo_un_nome():
     """E' l'errore piu' probabile: il modello ha «la luce della cucina» e
@@ -478,18 +484,13 @@ def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
     restava verde con una delle due tornata indietro. E' il difetto n.1 del
     progetto, comparso dentro la prova scritta per chiuderlo.
     """
-    # DUE SORGENTI DIVERSE, e la distinzione e' il punto della prova.
-    # `_GUIDE_WITH_TOOLS` (importata in cima) e' quella del PONTE;
-    # `BASE_SYSTEM_PROMPT` di `claude_runner` e' quella del SINCRONO, che porta
-    # la chat vera. Il secondo tentativo di questa prova le metteva entrambe
-    # sulla guida del ponte -- due chiavi, un testo solo -- e il percorso
-    # sincrono restava scoperto: mutando la sua guida la prova non se ne
-    # accorgeva.
-    guide = {
-        "sincrono": BASE_SYSTEM_PROMPT,
-        "ponte": _GUIDE_WITH_TOOLS,
-    }
-    for percorso, testo in guide.items():
+    # Dal 06/10/2026 (Tappa 5, Task 5; D-03) la sorgente e' UNA: le regole
+    # di `claude_runner.TOOL_RULES`, che il ponte compone come la catena
+    # (`steering.compose_base`). La guida del ponte le ripeteva: due sorgenti
+    # della stessa regola nello stesso prompt. Si guarda la sorgente, e che
+    # il ponte la riceva una volta sola.
+    assert _prompt_del_ponte().lower().count("non raccogliere") == 1
+    for percorso, testo in {"regole": CHAT_BASE}.items():
         basso = testo.lower()
         for parola in ("aree", "piani", "etichette", "dispositivi"):
             assert parola in basso, (
@@ -538,7 +539,7 @@ def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
         "di guardare: e' esattamente cio' che il modello ha fatto")
     assert "stato corrente" in ponte
 
-    sincrono = BASE_SYSTEM_PROMPT.lower()
+    sincrono = CHAT_BASE.lower()
     assert "usa sempre gli strumenti" in sincrono, (
         "il percorso sincrono non impone piu' gli strumenti per i dati sulla "
         "casa: e' l'unica riga che gli impedisce di rispondere col contesto")
@@ -550,3 +551,17 @@ def test_il_prompt_dice_che_costruire_e_in_due_tempi():
     assert "confirm" in BASE_TOOL_RULES
     # La regola che conta: non si concatena la conferma alla proposta.
     assert "stesso turno" in BASE_TOOL_RULES
+
+
+def test_le_regole_dicono_che_le_etichette_si_danno_per_id():
+    """Tappa 5, Task 5: la frase stava solo nella guida del ponte, e la catena
+    non la riceveva; e' passata nelle regole di `execute`, che arrivano a
+    entrambi i percorsi. Nessuno strumento risolve un'etichetta dal nome: un
+    modello che non lo sa ne indovina l'id.
+
+    Mutazione ESEGUITA il 06/10/2026: tolta la frase da `TOOL_RULES` -- rossa
+    su entrambi i percorsi (revisione, giro 22)."""
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        basso = testo.lower()
+        assert "si danno per id" in basso and "dal nome" in basso, percorso
+        assert basso.count("si danno per id") == 1, percorso

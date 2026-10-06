@@ -67,7 +67,7 @@ class _Officina:
 
 
 class _Archivio:
-    def read(self, ident):
+    def read(self, ident, *, now):
         return {"id": ident, "stato": "in_attesa"}
 
 

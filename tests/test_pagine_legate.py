@@ -22,6 +22,7 @@ from hiris.app.api import servizi
 from hiris.app.api.handlers_home_space import handle_get_home_space
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
 from hiris.app.home_space.reader import TABLES, HomeSpace
+from hiris.app.mind.facts import NOT_ENTITY_PREFIXES
 from hiris.app.mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE
 from hiris.app.mind.store import READING_RETENTION_S, ObservationsStore
 from tests._avvio import started_app  # noqa: F401
@@ -191,3 +192,22 @@ def test_report_pages_keep_no_scheduler_copy():
 
 def test_register_names_cover_reader_tables():
     assert set(_js_object(_js("common.js"), "NOMI_REGISTRI")) == set(TABLES)
+
+
+# -- C-10: i prefissi dei soggetti di sistema ---------------------------------
+# `NOT_ENTITY_PREFIXES` (`mind/facts.py`) e' la grammatica con cui la cronaca
+# scrive un soggetto che non e' un'entita'; `parseSubjectPrefix`
+# (`watcher-shared.js`) e' la pagina che la legge. Un prefisso nuovo senza la
+# sua lettura comparirebbe a schermo come un identificatore grezzo -- ed e'
+# successo quasi: `connessione:` (il riallineamento, 06/10/2026) e' nato in
+# Python. Fino a quel giorno la coppia era un doppione noto senza legame.
+# Mutazione ESEGUITA: tolto il ramo `connessione:` da `parseSubjectPrefix`
+# -> rossa.
+
+def test_subject_prefixes_are_read_by_the_page():
+    source = _js("config/watcher-shared.js")
+    body = re.search(r"function parseSubjectPrefix\(s\) \{(.*?)\n  \}", source, re.DOTALL)
+    assert body, "parseSubjectPrefix non trovata: il file e' cambiato sotto questa prova?"
+    read = re.findall(r"s\.indexOf\('([a-z]+:)'\) === 0", body.group(1))
+    assert len(read) >= 4, f"la lettura dei prefissi non trova piu' niente: {read}"
+    assert sorted(read) == sorted(NOT_ENTITY_PREFIXES)

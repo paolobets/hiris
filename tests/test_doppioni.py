@@ -299,5 +299,5 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
         f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CEILING}")
 
 
-KNOWN_CEILING = 19
+KNOWN_CEILING = 16
 

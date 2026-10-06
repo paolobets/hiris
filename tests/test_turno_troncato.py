@@ -30,16 +30,16 @@ from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import _TRUNCATION_NOTICE, ClaudeRunner
 from hiris.app.home_space import historian
 from hiris.app.llm_router import LLMRouter
-from hiris.app.mind import actuator_turn, analyst_turn, observer
+from hiris.app.mind import analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.usage.store import UsageStore
-from tests.test_mind_actuator_turn import _osservazioni as osservazioni_attuatore
 from tests.test_mind_analyst_round import _resoconto
 from tests.test_mind_analyst_turn import _serie as serie_analista
 from tests.test_mind_observer import _casa
 from tests.test_mind_recipe_turn import CASA, RICETTA_BUONA
+from tests.test_proponente import osservazioni as osservazioni_proponente
 
 APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 
@@ -319,11 +319,11 @@ async def test_l_analista_troncato_non_scrive_l_analisi(tmp_path):
         store.close()
 
 
-def test_l_attuatore_troncato_non_attua():
-    esito = actuator_turn.apply_actuation(
-        osservazioni_attuatore(), json.dumps({"esiti": []}), truncated=True)
+def test_il_proponente_troncato_non_scrive_esiti():
+    esito = proposer_turn.apply_outcomes(
+        osservazioni_proponente(), json.dumps({"esiti": []}), truncated=True)
 
-    assert esito["attuazione"] is None
+    assert esito["esiti"] == []
     assert esito["problemi"] == [steering.TRUNCATED_REASON]
 
 

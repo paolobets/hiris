@@ -80,13 +80,7 @@ TEMPORARY_ROOTS = {"tmp_path", "tmpdir"}
 
 #: `«file»::«funzione»` -> perche' oggi puo' ancora leggere il testo di
 #: `server.py`. Si accorcia, non si allunga.
-ADMITTED: dict[str, str] = {
-    "test_mind_actuator_guards.py::"
-    "test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_server":
-        ("prova che la derivazione allargata a tutto hiris/app (Task 7) contiene "
-         "quella vecchia del solo server.py: legge server.py per costruire il "
-         "termine di paragone, e resta vera anche quando il file si svuota"),
-}
+ADMITTED: dict[str, str] = {}
 
 
 def _called_name(func: ast.expr) -> str | None:

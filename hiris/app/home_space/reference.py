@@ -85,6 +85,49 @@ def fold_accents(text: str) -> str:
     return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
+#: Lo slug di un testo che si riduce al niente (`homeassistant/util/
+#: __init__.py::slugify`): non e' uno stato di Home Assistant. Chi lo
+#: confronta (`privacy.named_after_person`) lo chiede qui.
+NO_SLUG = "unknown"
+
+
+def slugify(text: str | None) -> str:
+    """Replica di `homeassistant.util.slugify(text, separator="_")`
+    (che a sua volta chiama il pacchetto PyPI `python-slugify`), per i nomi
+    Latini con accenti che un dispositivo smart-home porta nella pratica --
+    niente dipendenza nuova per una funzione di poche righe.
+
+    Viveva in `keeper/recipient.py` fino al 06/10/2026: la usano il
+    destinatario delle promesse e il segnaposto dei nomi
+    (`home_space/privacy.PresenceMask`, G26-1), e una seconda copia sarebbe
+    un doppione (B-21 resta aperta per `composer.available_slug`).
+
+    La piegatura degli accenti e' `fold_accents`, qui sopra (Tappa 3, Task 9,
+    B-20); il filtro
+    ASCII che segue resta di qui, perche' e' la forma dello slug: `"é"` -> `"e"`,
+    `"à"` -> `"a"`. Copre il range Latino che un nome di dispositivo usa in
+    pratica; **non** e' una traslitterazione fonetica come quella che
+    `python-slugify` usa per altri alfabeti (cirillico, greco, CJK
+    diventerebbero stringhe vuote qui, non una resa approssimata) -- se la
+    casa vera lo richiedesse un giorno, la verifica contro il registro dei
+    servizi piu' sotto scarta comunque un candidato sbagliato invece di spingere al
+    posto sbagliato.
+
+    Stessa forma dei due casi limite di HA (`homeassistant/util/
+    __init__.py::slugify`): testo vuoto o `None` -> stringa vuota; testo che
+    si riduce al niente dopo la traslitterazione -> `"unknown"`.
+
+    **Pinnata** in `tests/test_keeper_recipient.py` con i quattro nomi
+    misurati sulla casa vera piu' un caso con spazi e accenti (fix round 1,
+    26/09/2026).
+    """
+    if text is None or text == "":
+        return ""
+    ascii_only = fold_accents(text).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "_", ascii_only.lower()).strip("_")
+    return slug or NO_SLUG
+
+
 def normalize(text: str) -> str:
     """Minuscole, accenti tolti, spazi multipli compressi.
 

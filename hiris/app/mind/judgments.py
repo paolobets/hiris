@@ -77,7 +77,7 @@ _LEVELS = {
 
 #: `guasto` ha una forma, ma e' quella delle condizioni di sistema
 #: (`mind/facts.genre_for`: i prefissi `problema:`, `integrazione:`, `log:`,
-#: `automazione:`): legge `a` come `chiuso` o come la condizione vera. Dato allo
+#: `automazione:`, `connessione:`): legge `a` come `chiuso` o come la condizione vera. Dato allo
 #: stato di un'entita', ogni stato diverso da `chiuso` -- `off` compreso --
 #: aprirebbe un guasto, e nessuno lo chiuderebbe (spec §5: la forma resta codice,
 #: la casa sceglie solo fra i generi che uno stato sa portare).

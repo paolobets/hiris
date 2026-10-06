@@ -492,14 +492,19 @@ def test_un_riavvio_di_ha_non_apre_un_oggetto_di_presenza(archivio):
     """Il ramo `presenza` controllava solo `r["a"] == "home"`: qualunque
     altro valore apriva un oggetto, compresi `unavailable` e `unknown`. A
     ogni riavvio di Home Assistant le `person` ci passano, quindi nasceva un
-    oggetto <<presenza, stato unavailable>> di un minuto per ogni persona, a
-    ogni riavvio. Mutazione: togliere il filtro `_UNKNOWN` dal ramo
-    `presenza` -- il conteggio tornerebbe 1 invece di 0."""
+    oggetto <<presenza, stato unavailable>> di un minuto per ogni persona.
+
+    Dal 06/10/2026 (Task 1.4 degli attori, Passo 3, D5) quel minuto e' una
+    voce -- ma d'ASSENZA della fonte, col genere delle condizioni di sistema,
+    non una presenza: «fuori casa» resta una cosa che la persona ha fatto,
+    «non risponde» una cosa della fonte."""
     archivio.record(quando_ts=ts(9, 0), source="entita",
                     subject="person.paolo", da="home", a="unavailable")
     archivio.record(quando_ts=ts(9, 1), source="entita",
                     subject="person.paolo", da="unavailable", a="home")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    [voce] = cronaca(archivio)
+    assert (voce["genere"], voce["cosa"]) == (tv.SYSTEM_GENRE, "unavailable")
 
 
 # -- Punto 3b: il riposo di un pannello d'allarme e' ARMATO, non disarmato --
@@ -789,47 +794,17 @@ def test_una_valvola_che_si_apre_o_chiude_non_genera_falsi_riposi(archivio):
 # -- funzionamento e la sicurezza li trattavano come "spento" perche'
 # -- `_UNKNOWN` era un sottoinsieme di `_RESTING`.
 
-def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
-    """Uno stato 'unavailable' non e' 'e' finito' ne' 'e' cominciato': e'
-    'non lo sappiamo'. Un riscaldamento acceso alle 15:30, un riavvio che
-    lo fa passare per 'unavailable' alle 18:00 e tornare 'heat' alle 18:05,
-    spento alle 20:00: deve nascere UN oggetto dalle 15:30 alle 20:00, non
-    due.
+def test_un_termostato_che_passa_da_unavailable_si_interrompe_e_ne_riparte_uno(archivio):
+    """La prova (c) del piano, con D5 «raccolte» (06/10/2026): un riscaldamento
+    acceso alle 15:30, `unavailable` alle 18:00, di nuovo `heat` alle 18:05,
+    spento alle 20:00. Fino alla regola 3 era UNA voce, 15:30 -> 20:00: il
+    buco si saltava. Ora sono tre: l'accensione interrotta alle 18, l'assenza
+    dalle 18 alle 18:05, e un'accensione nuova dalle 18:05 alle 20 -- di quei
+    cinque minuti non si sa niente, e la cronaca non li racconta come
+    riscaldamento.
 
-    Le due difese in gioco sono `_RESTING` (non contiene 'unavailable'/
-    'unknown') e il filtro `_UNKNOWN` in cima ad `aggregate_day`. Mutazioni
-    ESEGUITE e verificate una per una (giro di pulizia, punto 3 -- il
-    rapporto precedente le diceva entrambe inerti per LA STESSA ragione,
-    ed era vero solo per la prima):
-
-    - rimettere 'unavailable' in `_RESTING` da sola resta verde: il filtro
-      `_UNKNOWN` in cima toglie la riga PRIMA che arrivi a controllare
-      `_RESTING`, che quindi non la vede mai. **Questa meta' e' oggi
-      ridondanza morta**: nessun test la sorveglia da sola, la sua unica
-      guardia e' questo commento;
-    - togliere il filtro `_UNKNOWN` in cima da solo resta verde ANCHE QUI,
-      ma per una ragione diversa: quando 'unavailable' arriva a episodio
-      GIA' aperto, `_is_on("unavailable")` torna `True` (non e' in
-      `_RESTING`), e la guardia `if subject not in open_episodes` non fa nulla
-      perche' il soggetto e' gia' dentro -- l'oggetto resta aperto per
-      assorbimento del guardiano, non perche' la difesa regga qui.
-      **Questa meta', pero', e' sorvegliata altrove**: da
-      `test_un_riavvio_di_ha_non_apre_un_oggetto_di_presenza` e da
-      `test_il_riepilogo_dell_energia_salta_le_letture_unavailable`, dove
-      l'episodio NON e' ancora aperto quando arriva 'unavailable' e il
-      filtro e' l'unica cosa che impedisce un oggetto spurio o una
-      lettura contaminata -- provato dal vivo: entrambi arrossiscono
-      togliendo solo il filtro.
-
-    Serve quindi la COPPIA per arrossire proprio questo test: rimettere
-    'unavailable'/'unknown' dentro `_RESTING` **e** togliere il filtro
-    `_UNKNOWN` in cima (lo stato pre-correzione, prima che le due difese
-    esistessero) -- solo insieme riproducono il difetto originale, e il
-    conteggio torna 2 invece di 1. Questo test e il suo gemello (allarme)
-    sono comunque l'ultima linea: scattano il giorno in cui un refattore
-    togliesse il filtro credendo che l'appartenenza a `_RESTING` da sola
-    copra il caso dell'episodio gia' aperto -- non lo copre, e senza il
-    filtro nessun altro test qui dentro se ne accorgerebbe."""
+    (Questa prova e il suo gemello sull'allarme difendevano il salto: il
+    gemello e' uscito, diceva la stessa proprieta' su un altro genere.)"""
     archivio.record(quando_ts=ts(15, 30), source="entita",
                     subject="climate.camera_t", da="off", a="heat")
     archivio.record(quando_ts=ts(18, 0), source="entita",
@@ -838,51 +813,14 @@ def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
                     subject="climate.camera_t", da="unavailable", a="heat")
     archivio.record(quando_ts=ts(20, 0), source="entita",
                     subject="climate.camera_t", da="heat", a="off")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = cronaca(archivio)[0]
-    assert o["quando_ts"] == ts(15, 30)
-    assert o["fine_ts"] == ts(20, 0)
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 3
+    assert [(v["genere"], v["cosa"], v["quando_ts"], v["fine_ts"], v.get("interrotto"))
+            for v in cronaca(archivio)] == [
+        ("funzionamento", "heat", ts(15, 30), ts(18, 0), True),
+        (tv.SYSTEM_GENRE, "unavailable", ts(18, 0), ts(18, 5), None),
+        ("funzionamento", "heat", ts(18, 5), ts(20, 0), None)]
 
 
-def test_un_riavvio_di_ha_non_spezza_un_allarme_disinserito(archivio):
-    """Stesso difetto, ramo sicurezza: la casa lasciata disarmata e' la
-    cosa NOTEVOLE (vedi il punto 3b), e un riavvio a meta' non deve
-    spezzarla in due.
-
-    Stesso ragionamento del test gemello (riscaldamento), ESEGUITO e
-    verificato rosso per entrambe le meta' separatamente (giro di
-    pulizia, punto 3): rimettere 'unavailable' in `_RESTING` da sola resta
-    verde, schermata dal filtro `_UNKNOWN` in cima -- e QUI e' ridondanza
-    morta, nessun test la sorveglia da sola. Togliere il filtro `_UNKNOWN`
-    in cima da solo resta verde anche qui, per lo stesso assorbimento:
-    l'episodio e' gia' aperto ("disarmed" dall'1:00) quando 'unavailable'
-    arriva alle 5:00, `_is_on("unavailable")` torna `True`, e la guardia
-    non fa nulla perche' il soggetto e' gia' dentro -- ma quella meta' e'
-    sorvegliata altrove (vedi il gemello per i due test che la
-    catturano).
-
-    Serve quindi la COPPIA per arrossire proprio questo test: rimettere
-    'unavailable'/'unknown' dentro `_RESTING` **e** togliere il filtro in
-    cima -- e solo cosi' l'oggetto si chiude alle 5:00 e "disarmed" alle
-    5:05 ne apre un secondo, portando il conteggio a 2. Questo test e il
-    suo gemello sono l'ultima linea proprio per il caso dell'episodio
-    gia' aperto, che l'appartenenza a `_RESTING` da sola non copre."""
-    archivio.record(quando_ts=ts(1, 0), source="entita",
-                    subject="alarm_control_panel.casa", da="armed_home",
-                    a="disarmed")
-    archivio.record(quando_ts=ts(5, 0), source="entita",
-                    subject="alarm_control_panel.casa", da="disarmed",
-                    a="unavailable")
-    archivio.record(quando_ts=ts(5, 5), source="entita",
-                    subject="alarm_control_panel.casa", da="unavailable",
-                    a="disarmed")
-    archivio.record(quando_ts=ts(9, 0), source="entita",
-                    subject="alarm_control_panel.casa", da="disarmed",
-                    a="armed_home")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = cronaca(archivio)[0]
-    assert o["quando_ts"] == ts(1, 0)
-    assert o["fine_ts"] == ts(9, 0)
 
 
 # -- Punto 3: il riepilogo dell'energia non deve ingerire un 'unavailable' -
@@ -1193,39 +1131,27 @@ def test_l_assenza_di_una_persona_resta_quella_di_oggi(archivio):
     assert voce["cosa"] == "not_home" and voce["fine_ts"] == ts(17, 0)
 
 
-def test_none_su_un_tracker_NON_apre_un_assenza(archivio):
+def test_none_su_un_tracker_NON_apre_un_assenza_della_persona(archivio):
     """Cambio dichiarato (spec §1 misura 8): 200 righe `none` in una settimana
-    da 6 apparati di rete aprivano assenze false. Mutazione ESEGUITA: togliere
-    le forme assenti dall'insieme saltato -- rossa (conteggio 1)."""
+    da 6 apparati di rete aprivano assenze false di presenza. Restano fuori
+    dalla presenza; dal 06/10/2026 (D5) il `none` e' una voce d'assenza della
+    FONTE, col genere delle condizioni di sistema."""
     archivio.record(quando_ts=ts(23, 0), source="entita", subject="device_tracker.switch_2",
                     da="home", a="none")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    [voce] = cronaca(archivio)
+    assert (voce["genere"], voce["cosa"], voce["fine_ts"]) == (tv.SYSTEM_GENRE, "none", None)
 
 
-def test_none_su_uno_switch_NON_chiude_e_NON_apre(archivio):
-    """Su uno `switch` `none` chiudeva l'episodio (spec §1 misura 8); ora non
-    chiude, e non apre nemmeno.
+def test_none_su_uno_switch_interrompe_e_NON_apre(archivio):
+    """Su uno `switch` `none` chiudeva l'episodio come un riposo (spec §1
+    misura 8); dal 17/09/2026 non chiudeva e non apriva niente; dal 06/10/2026
+    (D5 «raccolte») lo INTERROMPE e apre l'assenza -- che non e' un riposo e
+    non e' un'accensione. Sulla presa spenta non apre nessun episodio: solo
+    la voce d'assenza.
 
-    **Riscritta il 17/09/2026, perche' la forma del capitolato non poteva
-    fallire da sola.** Con la sola accensione chiusa da `none`, la mutazione
-    «togliere le forme assenti dall'insieme saltato» e' stata ESEGUITA ed e'
-    rimasta VERDE: senza il salto, `none` arriva a `_is_on`, e nel riposo del
-    soggetto (`off`) non c'e' -- l'episodio resta aperto per un'altra strada.
-    Il salto e' la difesa che conta dove l'episodio NON e' aperto: per questo
-    c'e' la seconda presa, spenta alle 9:00 e a `none` alle 22:00.
-
-    Mutazioni ESEGUITE: (1) togliere le forme assenti dall'insieme saltato --
-    rossa (la presa spenta apre un episodio, conteggio 2); (2) insieme, il
-    comportamento di prima: niente salto e `none` contato fra i riposi
-    (`_is_on`: `judgments.resting_of(...) | {"none"}`) -- rossa, `fine_ts`
-    dell'accesso a internet diventa le 23:00 (`assert 1787605200.0 is None`);
-    ripristinata con l'editor, sha256 identico.
-
-    **La (2) dichiarava una mutazione impossibile** (giro di correzioni 1,
-    punto 7): citava `type_vocabulary.resting_states()`, l'unione dei riposi
-    di tutti i tipi, che e' uscita col Task 8. Qui sopra c'e' cio' che quella
-    unione FACEVA -- portarsi dentro `none` -- scritto in un modo che oggi si
-    puo' davvero eseguire."""
+    Mutazione ESEGUITA: rimettere il salto delle assenze in cima al ciclo del
+    giorno -- rossa (una voce sola: l'accensione delle 10, ancora aperta)."""
     archivio.record(quando_ts=ts(10, 0), source="entita", subject="switch.accesso_internet",
                     da="off", a="on")
     archivio.record(quando_ts=ts(23, 0), source="entita", subject="switch.accesso_internet",
@@ -1234,23 +1160,27 @@ def test_none_su_uno_switch_NON_chiude_e_NON_apre(archivio):
                     da="on", a="off")
     archivio.record(quando_ts=ts(22, 0), source="entita", subject="switch.presa",
                     da="off", a="none")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    assert cronaca(archivio)[0]["fine_ts"] is None
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 3
+    assert [(v["chi"], v["genere"], v["quando_ts"], v["fine_ts"], v.get("interrotto"))
+            for v in cronaca(archivio)] == [
+        ("switch.accesso_internet", "funzionamento", ts(10), ts(23), True),
+        ("switch.presa", tv.SYSTEM_GENRE, ts(22), None, None),
+        ("switch.accesso_internet", tv.SYSTEM_GENRE, ts(23), None, None)]
 
 
-def test_none_prima_della_mezzanotte_NON_apre_un_assenza(archivio):
-    """Lo stesso cambio dichiarato, sulla strada di cio' che era gia' in corso
-    a mezzanotte (`store.last_before`): un tracker lasciato a `none` la sera
-    prima non e' un'assenza cominciata ieri. Mutazione ESEGUITA: togliere
-    `or state in ignored` dal ciclo di `last_before` -- rossa (conteggio 1).
-    Dal 05/10/2026 l'ereditato si rigioca (`_replay_open`) e solo per chi e'
-    nello scope: il soggetto ci entra, o la prova passerebbe per la ragione
-    sbagliata. Mutazione ESEGUITA: nel rigioco non saltare gli stati «non lo
-    so» -- rossa (conteggio 1)."""
+def test_none_prima_della_mezzanotte_e_un_assenza_della_fonte_ereditata(archivio):
+    """Lo stesso cambio, sulla strada di cio' che era gia' in corso a
+    mezzanotte (`_replay_open`): un tracker lasciato a `none` la sera prima
+    non e' una presenza cominciata ieri -- e' una fonte che da ieri non
+    risponde, e la voce lo dice dall'inizio vero. Solo per chi e' nello scope:
+    il soggetto ci entra, o la prova passerebbe per la ragione sbagliata."""
     _watched(archivio, "device_tracker.switch_2")
     archivio.record(quando_ts=MEZZANOTTE - 3600, source="entita",
                     subject="device_tracker.switch_2", da="home", a="none")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    [voce] = cronaca(archivio)
+    assert (voce["genere"], voce["quando_ts"], voce["fine_ts"]) == (
+        tv.SYSTEM_GENRE, MEZZANOTTE - 3600, None)
 
 
 def test_un_giudizio_della_casa_su_UNA_entita_la_tace(archivio):
@@ -1497,20 +1427,23 @@ def _watched(archivio, *soggetti):
 
 
 def test_l_episodio_di_una_fonte_spenta_si_chiude_alla_sua_ultima_riga_con_la_causa(archivio):
-    """Acceso alle 8, poi l'`unavailable` del riavvio alle 10, poi niente: la
-    sua istanza e' stata spenta dal proprietario. L'episodio si chiude alle
-    10 -- l'ultima cosa che Home Assistant ne ha detto -- e la voce dice
-    perche', con la causa della fonte: non e' una fine vista."""
+    """Acceso alle 8, poi l'`unavailable` alle 10, poi niente: la sua istanza
+    e' stata spenta dal proprietario. L'accensione e' interrotta alle 10 dal
+    buco (Passo 3); l'assenza che comincia alle 10 non resta «in corso»: si
+    chiude all'ultima cosa che Home Assistant ne ha detto, e la voce dice
+    perche', con la causa della fonte."""
     archivio.record(quando_ts=ts(8), source="entita", subject="switch.pompa",
                     da="off", a="on")
     archivio.record(quando_ts=ts(10), source="entita", subject="switch.pompa",
                     da="on", a="unavailable")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
                   house=_house_with_entry_switched_off("switch.pompa"))
-    [voce] = cronaca(archivio)
-    assert (voce["quando_ts"], voce["fine_ts"]) == (ts(8), ts(10))
-    assert voce["chiusa_dalla_fonte"] == {"stato": "spenta_dal_proprietario",
-                                          "causa": "config_entry", "spenta_da": "user"}
+    accesa, assente = cronaca(archivio)
+    assert (accesa["quando_ts"], accesa["fine_ts"], accesa["interrotto"]) == (ts(8), ts(10), True)
+    assert (assente["genere"], assente["quando_ts"], assente["fine_ts"]) == (
+        tv.SYSTEM_GENRE, ts(10), ts(10))
+    assert assente["chiusa_dalla_fonte"] == {"stato": "spenta_dal_proprietario",
+                                             "causa": "config_entry", "spenta_da": "user"}
 
 
 def test_l_episodio_ereditato_di_una_fonte_sparita_non_entra_nel_giorno_dopo(archivio):
@@ -1536,19 +1469,20 @@ def test_senza_la_casa_niente_si_chiude_per_la_fonte(archivio):
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=None) == 1
 
 
-def test_una_fonte_solo_non_disponibile_NON_chiude_l_episodio(archivio):
+def test_una_fonte_solo_non_disponibile_resta_assente_in_corso(archivio):
     """`non_disponibile` parla ancora: un riavvio la fa passare di li' e torna
-    da sola. Chiudere qui sarebbe il salto delle assenze rovesciato, che e'
-    il terzo passo, non questo."""
+    da sola. Non e' una fonte finita: l'accensione e' interrotta dal buco, e
+    l'assenza resta in corso a fine giornata, senza `chiusa_dalla_fonte`."""
     archivio.record(quando_ts=ts(8), source="entita", subject="switch.pompa",
                     da="off", a="on")
     archivio.record(quando_ts=ts(10), source="entita", subject="switch.pompa",
                     da="on", a="unavailable")
     casa = _house(entities=[("switch.pompa", {})], states=[("switch.pompa", "unavailable")])
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=casa)
-    [voce] = cronaca(archivio)
-    assert voce["fine_ts"] is None
-    assert "chiusa_dalla_fonte" not in voce
+    accesa, assente = cronaca(archivio)
+    assert accesa["fine_ts"] == ts(10)
+    assert (assente["genere"], assente["fine_ts"]) == (tv.SYSTEM_GENRE, None)
+    assert "chiusa_dalla_fonte" not in accesa and "chiusa_dalla_fonte" not in assente
 
 
 def test_una_fonte_sparita_DOPO_il_giorno_lascia_l_episodio_aperto_a_fine_giornata(archivio):
@@ -1575,11 +1509,11 @@ def test_rifare_la_cronaca_chiede_la_fonte_anche_lei(archivio):
     archivio.record(quando_ts=ts(10), source="entita", subject="switch.pompa",
                     da="on", a="unavailable")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=None)
-    assert cronaca(archivio)[0]["fine_ts"] is None
+    assert cronaca(archivio)[1]["fine_ts"] is None
     assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome",
                              judgments=tv.REPO_JUDGMENTS,
                              house=_house_with_entry_switched_off("switch.pompa"))
-    assert cronaca(archivio)[0]["fine_ts"] == ts(10)
+    assert cronaca(archivio)[1]["fine_ts"] == ts(10)
 
 
 def test_una_cronaca_scritta_con_la_regola_di_prima_e_VECCHIA():
@@ -1650,10 +1584,18 @@ def test_ogni_chiamata_di_produzione_porta_la_casa():
 #   rossa la prova della lettura unica (A-39).
 
 
-def test_l_inizio_ereditato_e_quello_della_sequenza_non_la_riga_di_ritorno(archivio):
-    """Acceso ieri alle 4, `unavailable` alle 14, di nuovo acceso alle 15: per
-    la regola del giorno l'`unavailable` non chiude niente, quindi l'episodio
-    in corso a mezzanotte e' cominciato alle 4, non alle 15."""
+def test_l_ereditato_dopo_un_buco_comincia_al_ritorno_e_il_buco_resta_ieri(archivio):
+    """Acceso ieri alle 4, `unavailable` alle 14, di nuovo acceso alle 15.
+    Con la regola 3 l'`unavailable` non chiudeva niente e l'episodio in corso
+    a mezzanotte cominciava alle 4 (voce C7 dell'audit: l'inizio era la riga
+    di RITORNO perche' il buco era invisibile). Con D5 «raccolte» (regola 4)
+    il buco e' una voce: ieri l'accensione delle 4 e' interrotta alle 14,
+    l'assenza dura fino alle 15, e da li' ne comincia una nuova -- che e'
+    quella in corso a mezzanotte. Lo stesso rigioco del giorno, quindi lo
+    stesso inizio ieri e oggi.
+
+    Mutazione ESEGUITA: nel rigioco saltare le assenze invece di
+    interrompere -- rossa (l'inizio torna alle 4)."""
     _watched(archivio, "switch.pompa")
     for quando, da, a in ((-20, "off", "on"), (-10, "on", "unavailable"),
                           (-9, "unavailable", "on")):
@@ -1662,7 +1604,13 @@ def test_l_inizio_ereditato_e_quello_della_sequenza_non_la_riga_di_ritorno(archi
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
     [voce] = cronaca(archivio)
     assert (voce["quando_ts"], voce["fine_ts"], voce["cosa"]) == (
-        MEZZANOTTE - 20 * 3600, None, "on")
+        MEZZANOTTE - 9 * 3600, None, "on")
+    aggregate_day(store=archivio, day="2026-08-23", timezone="Europe/Rome")
+    assert [(v["genere"], v["quando_ts"], v["fine_ts"])
+            for v in cronaca(archivio, "2026-08-23")] == [
+        ("funzionamento", MEZZANOTTE - 20 * 3600, MEZZANOTTE - 10 * 3600),
+        (tv.SYSTEM_GENRE, MEZZANOTTE - 10 * 3600, MEZZANOTTE - 9 * 3600),
+        ("funzionamento", MEZZANOTTE - 9 * 3600, None)]
 
 
 def test_un_cambio_fra_due_stati_accesi_non_sposta_l_inizio_ereditato(archivio):
@@ -1679,10 +1627,11 @@ def test_un_cambio_fra_due_stati_accesi_non_sposta_l_inizio_ereditato(archivio):
     assert (voce["quando_ts"], voce["cosa"]) == (MEZZANOTTE - 20 * 3600, "heat")
 
 
-def test_un_unavailable_prima_di_mezzanotte_non_chiude_l_ereditato(archivio):
-    """`unavailable` non apre e non chiude niente, «in NESSUN ramo»: fino a
-    oggi sulla strada dell'ereditato chiudeva di fatto, perche' la sola
-    ultima riga era un `unavailable` e il soggetto si saltava."""
+def test_un_unavailable_prima_di_mezzanotte_interrompe_l_ereditato(archivio):
+    """Acceso ieri, `unavailable` due ore prima di mezzanotte, e niente piu':
+    oggi non c'e' un'accensione in corso -- c'e' un'assenza in corso, dalle
+    22 di ieri. Con la regola 3 la cronaca di oggi diceva «acceso dalle 4 di
+    ieri» per tutto il buco (il caso della luce dei tre giorni)."""
     _watched(archivio, "switch.pompa")
     archivio.record(quando_ts=MEZZANOTTE - 20 * 3600, source="entita",
                     subject="switch.pompa", da="off", a="on")
@@ -1690,7 +1639,8 @@ def test_un_unavailable_prima_di_mezzanotte_non_chiude_l_ereditato(archivio):
                     subject="switch.pompa", da="on", a="unavailable")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
     [voce] = cronaca(archivio)
-    assert (voce["quando_ts"], voce["fine_ts"]) == (MEZZANOTTE - 20 * 3600, None)
+    assert (voce["genere"], voce["quando_ts"], voce["fine_ts"]) == (
+        tv.SYSTEM_GENRE, MEZZANOTTE - 2 * 3600, None)
 
 
 def test_un_unavailable_dopo_un_riposo_non_apre_l_ereditato(archivio):
@@ -1779,3 +1729,367 @@ def test_un_termostato_acceso_da_piu_della_vita_del_grezzo_resta_in_corso(archiv
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
     voce = archivio.report(G)["cronaca"][0]
     assert (voce["chi"], voce["quando_ts"]) == ("climate.camera", MEZZANOTTE - 10 * 86400)
+
+
+# -- Task 1.4 degli attori, Passo 3: le assenze nella cronaca (D5 «raccolte») --
+#
+# Decisione del proprietario del 06/10/2026: un'entita' che smette di
+# rispondere (`unavailable`, `unknown`, `none`, il vuoto) diventa una VOCE
+# della cronaca, raggruppata come la dichiara Home Assistant -- una per
+# integrazione quando l'istanza sparisce tutta insieme, una per entita'
+# altrimenti -- e l'episodio in corso quando la fonte sparisce si chiude
+# «interrotto»; al ritorno, se lo stato e' lo stesso, ne riparte uno nuovo.
+# «Tutta insieme» e' diventato «nello stesso istante» dopo il rigioco dei
+# giorni veri (vedi `facts._absences`).
+#
+# **Il grezzo di queste prove lo scrive l'osservatore**, da eventi nella forma
+# in cui Home Assistant li manda (`_ha`): le righe di assenza sono quelle che
+# `watcher.watch_reading` scrive davvero, non righe composte a mano.
+
+
+def _iso(instant):
+    from datetime import UTC, datetime
+    return datetime.fromtimestamp(instant, UTC).isoformat()
+
+
+def _ha(store, eid, old_state, new_state, instant, **attributes):
+    """Un `state_changed` come Home Assistant lo manda: `old_state` e
+    `new_state` interi, `last_changed` e `last_updated` mossi insieme (un cambio
+    di STATO), gli attributi dell'entita' sullo stato nuovo. L'osservatore lo
+    scrive nel grezzo, o la prova si ferma qui."""
+    old = None if old_state is None else {"entity_id": eid, "state": old_state,
+                                          "attributes": dict(attributes)}
+    new = {"entity_id": eid, "state": new_state, "attributes": dict(attributes),
+           "last_changed": _iso(instant), "last_updated": _iso(instant)}
+    assert Watcher(store).watch_reading(
+        {"entity_id": eid, "old_state": old, "new_state": new})
+
+
+def _entries(store, day=None):
+    return [(v["chi"], v["genere"], v["cosa"], v["quando_ts"], v["fine_ts"])
+            for v in cronaca(store, day)]
+
+
+#: L'istanza dell'irrigazione: quattro entita' guardate, come sulla casa
+#: (misurato il 05/10: 77 buchi brevi di un'integrazione intera, 16 entita'
+#: insieme). Il raggruppamento si chiede alla casa: `config_entry_id` nel
+#: registro delle entita'.
+_IRRIGATION = ("switch.zona_1", "switch.zona_2", "valve.zona_1", "binary_sensor.pioggia")
+#: Il riposo di ciascuna, nella parola di Home Assistant: una valvola e'
+#: `closed`, non `off`.
+_RESTING = {"switch.zona_1": "off", "switch.zona_2": "off", "valve.zona_1": "closed",
+            "binary_sensor.pioggia": "off"}
+
+
+def _irrigation_house(*others):
+    return _house(entities=[(eid, {"config_entry_id": "e_irr"}) for eid in _IRRIGATION]
+                  + [(eid, {"config_entry_id": "e_altra"}) for eid in others],
+                  states=[(eid, _RESTING.get(eid, "off")) for eid in (*_IRRIGATION, *others)],
+                  entries=[{"entry_id": "e_irr", "domain": "rainbird", "title": "Giardino",
+                            "state": "loaded", "source": "user", "disabled_by": None},
+                           {"entry_id": "e_altra", "domain": "hue", "title": "Luci",
+                            "state": "loaded", "source": "user", "disabled_by": None}])
+
+
+def test_l_assenza_di_una_fonte_sola_e_la_sua_voce_e_interrompe_l_episodio(archivio):
+    """Accesa alle 8, `unavailable` alle 10, di nuovo accesa alle 10:05,
+    spenta alle 12. Tre voci, nell'ordine in cui si chiudono: l'accensione
+    delle 8 interrotta alle 10, l'assenza dalle 10 alle 10:05 (il genere delle
+    condizioni di sistema, lo stato che Home Assistant ha scritto), e
+    un'accensione NUOVA dalle 10:05 alle 12. Fino alla regola 3
+    l'`unavailable` si saltava e restava una voce sola, 8 -> 12, come se in
+    mezzo niente fosse.
+
+    Mutazione ESEGUITA: rimettere il salto delle assenze in cima al ciclo
+    del giorno -- rossa (una voce sola, 8 -> 12)."""
+    _watched(archivio, "switch.pompa")
+    _ha(archivio, "switch.pompa", "off", "on", ts(8), friendly_name="Pompa")
+    _ha(archivio, "switch.pompa", "on", "unavailable", ts(10), friendly_name="Pompa")
+    _ha(archivio, "switch.pompa", "unavailable", "on", ts(10, 5), friendly_name="Pompa")
+    _ha(archivio, "switch.pompa", "on", "off", ts(12), friendly_name="Pompa")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 3
+    assert _entries(archivio) == [
+        ("switch.pompa", "funzionamento", "on", ts(8), ts(10)),
+        ("switch.pompa", tv.SYSTEM_GENRE, "unavailable", ts(10), ts(10, 5)),
+        ("switch.pompa", "funzionamento", "on", ts(10, 5), ts(12))]
+    interrupted, absence, restarted = cronaca(archivio)
+    assert interrupted["interrotto"] is True
+    assert absence["nome"] == "Pompa" and "interrotto" not in absence
+    assert "interrotto" not in restarted
+
+
+def test_la_luce_rimasta_unavailable_tre_giorni_risulta_assente_non_accesa(archivio):
+    """Il caso del proprietario: accesa la sera, poi `unknown` e `unavailable`,
+    e cosi' per tre giorni. Nel giorno di mezzo la cronaca dice «assente da
+    quella sera, ancora in corso» -- non «accesa». Il giorno del ritorno, la
+    stessa assenza si chiude e un'accensione nuova comincia al ritorno."""
+    yesterday = "2026-08-23"
+    two_evenings_ago = MEZZANOTTE - 86400 - 4 * 3600
+    _watched(archivio, "light.lampadario")
+    _ha(archivio, "light.lampadario", "off", "on", two_evenings_ago - 1800)
+    _ha(archivio, "light.lampadario", "on", "unknown", two_evenings_ago)
+    _ha(archivio, "light.lampadario", "unknown", "unavailable", two_evenings_ago + 1)
+    _ha(archivio, "light.lampadario", "unavailable", "on", ts(16))
+    _ha(archivio, "light.lampadario", "on", "off", ts(18))
+    aggregate_day(store=archivio, day=yesterday, timezone="Europe/Rome")
+    assert _entries(archivio, yesterday) == [
+        ("light.lampadario", tv.SYSTEM_GENRE, "unknown", two_evenings_ago, None)]
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    assert _entries(archivio) == [
+        ("light.lampadario", tv.SYSTEM_GENRE, "unknown", two_evenings_ago, ts(16)),
+        ("light.lampadario", "funzionamento", "on", ts(16), ts(18))]
+
+
+def test_un_integrazione_che_sparisce_tutta_insieme_e_UNA_voce(archivio):
+    """Le quattro entita' dell'irrigazione vanno `unavailable` insieme alle 10
+    e tornano alle 10:05: una voce sola, per l'ISTANZA (`integrazione:` piu' il
+    suo `config_entry_id`, lo stesso soggetto con cui l'osservatore scrive
+    un'istanza in errore), che dice di quale integrazione e quali entita'
+    erano assenti, ciascuna col suo intervallo. Una luce di un'altra istanza
+    assente da sola resta la sua voce. L'accensione della zona 1 si
+    interrompe come per una fonte sola.
+
+    Mutazione ESEGUITA: togliere il raggruppamento per istanza -- rossa (le
+    quattro voci delle entita' al posto di quella dell'istanza)."""
+    house = _irrigation_house("light.portico")
+    _watched(archivio, *_IRRIGATION, "light.portico")
+    _ha(archivio, "switch.zona_1", "off", "on", ts(9))
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, "on" if eid == "switch.zona_1" else _RESTING[eid], "unavailable",
+            ts(10) + i / 100)
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
+    _ha(archivio, "light.portico", "off", "unavailable", ts(11))
+    _ha(archivio, "light.portico", "unavailable", "off", ts(11, 10))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    assert _entries(archivio) == [
+        ("switch.zona_1", "funzionamento", "on", ts(9), ts(10)),
+        ("integrazione:e_irr", tv.SYSTEM_GENRE, "unavailable", ts(10), ts(10, 5) + 0.03),
+        ("light.portico", tv.SYSTEM_GENRE, "unavailable", ts(11), ts(11, 10))]
+    instance = cronaca(archivio)[1]
+    assert instance["assenti"] == [
+        {"chi": eid, "quando_ts": ts(10) + i / 100, "fine_ts": ts(10, 5) + i / 100,
+         "stato": "unavailable"}
+        for i, eid in enumerate(_IRRIGATION)]
+    assert instance["dominio"] == "rainbird"
+
+
+def test_due_entita_della_stessa_istanza_assenti_insieme_sono_la_voce_dell_istanza(archivio):
+    """«Insieme» e non «tutte» (misurato sulla casa: i buchi dell'irrigazione
+    sono 16 entita' su 20 guardate, un sensore di durata per dispositivo resta
+    vivo). Due entita' su quattro della stessa istanza assenti nello stesso
+    istante sono la voce dell'istanza, con le due che mancavano.
+
+    Prima stesura: «tutte», e questa prova chiedeva due voci di entita'. Il
+    rigioco dei giorni veri l'ha smentita (nessuna voce d'istanza, un giorno da
+    10 a 91 voci)."""
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    for eid in _IRRIGATION:
+        _ha(archivio, eid, None, _RESTING[eid], ts(1))
+    for eid in _IRRIGATION[:2]:
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(10))
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    [entry] = cronaca(archivio)
+    assert entry["chi"] == "integrazione:e_irr"
+    assert [a["chi"] for a in entry["assenti"]] == list(_IRRIGATION[:2])
+
+
+def test_due_entita_della_stessa_istanza_assenti_in_momenti_diversi_restano_due_voci(archivio):
+    """«Insieme» vuol dire nello stesso istante: due assenze della stessa
+    istanza che non si toccano sono due fatti, e restano le voci delle due
+    entita'. Una terza che le tocca entrambe le riunisce (la catena).
+
+    Mutazione ESEGUITA: raccogliere per istanza senza guardare il tempo --
+    rossa (una voce d'istanza dalle 10 alle 12:05)."""
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    _ha(archivio, "switch.zona_1", "off", "unavailable", ts(10))
+    _ha(archivio, "switch.zona_1", "unavailable", "off", ts(10, 5))
+    _ha(archivio, "switch.zona_2", "off", "unavailable", ts(12))
+    _ha(archivio, "switch.zona_2", "unavailable", "off", ts(12, 5))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    assert [(v["chi"], v["quando_ts"], v["fine_ts"]) for v in cronaca(archivio)] == [
+        ("switch.zona_1", ts(10), ts(10, 5)), ("switch.zona_2", ts(12), ts(12, 5))]
+    _ha(archivio, "valve.zona_1", "closed", "unavailable", ts(10, 1))
+    _ha(archivio, "valve.zona_1", "unavailable", "closed", ts(12, 1))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    [entry] = cronaca(archivio)
+    assert (entry["chi"], entry["quando_ts"], entry["fine_ts"]) == (
+        "integrazione:e_irr", ts(10), ts(12, 5))
+    assert [a["chi"] for a in entry["assenti"]] == [
+        "switch.zona_1", "valve.zona_1", "switch.zona_2"]
+
+
+def test_un_assenza_aperta_a_mezzanotte_di_una_fonte_finita_non_entra_nel_giorno(archivio):
+    """La regola della fonte finita (Passo 1) vale anche per un'assenza: un
+    interruttore andato `unavailable` ieri e poi spento dal proprietario con la
+    sua istanza non resta «assente, in corso» per i ventidue giorni del grezzo.
+    La sua ultima riga e' di ieri: oggi non c'e' niente.
+
+    Nata verde: con la regola 3 lo stesso esito veniva dall'episodio
+    ereditato chiuso dalla fonte. Mutazione ESEGUITA perche' discrimini la
+    regola 4: la fonte finita chiesta solo per gli episodi, non per le
+    assenze -- rossa (una voce: l'assenza, «in corso»)."""
+    _watched(archivio, "switch.pompa")
+    _ha(archivio, "switch.pompa", "off", "on", MEZZANOTTE - 20 * 3600)
+    _ha(archivio, "switch.pompa", "on", "unavailable", MEZZANOTTE - 10 * 3600)
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                         house=_house_with_entry_switched_off("switch.pompa")) == 0
+
+
+def test_in_primo_piano_sale_solo_la_voce_dell_istanza_non_le_assenze_delle_entita(archivio):
+    """G17-1, decisione del proprietario del 06/10/2026, «Solo integrazione»:
+    un'integrazione sparita tutta insieme e' la riga in cima alla pagina; una
+    luce che non risponde per dieci minuti resta nella cronaca, e non sale.
+    Passa dalla resa VERA della pagina (`as_page` sul resoconto scritto da
+    `aggregate_day`), non da `_front_page_mark` da sola: e' la pagina che il
+    proprietario legge.
+
+    Mutazione ESEGUITA: in `_front_page_mark` togliere il ramo che lascia le
+    assenze delle entita' fuori dal primo piano -- rossa (`light.portico` in
+    primo piano accanto all'istanza)."""
+    from hiris.app.mind.report import as_page
+
+    house = _irrigation_house("light.portico")
+    _watched(archivio, *_IRRIGATION, "light.portico")
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(10) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
+    _ha(archivio, "light.portico", "off", "unavailable", ts(11))
+    _ha(archivio, "light.portico", "unavailable", "off", ts(11, 10))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS)
+    assert [(r["chi"], r["sorta"]) for r in pagina["primo_piano"]] == [
+        ("integrazione:e_irr", "guasto")]
+    portico = next(v for v in pagina["cronaca"] if v["chi"] == "light.portico")
+    assert portico["genere"] == tv.SYSTEM_GENRE and "primo_piano" not in portico
+
+
+def test_dentro_assenti_un_entita_chiusa_dalla_fonte_lo_dice(archivio):
+    """G17-2: la voce di un'entita' la cui assenza finisce perche' la fonte e'
+    finita porta `chiusa_dalla_fonte` (Passo 1); dentro la voce dell'istanza,
+    la stessa entita' lo porta con la stessa forma. Senza, «fine_ts» direbbe
+    un ritorno che non c'e' stato.
+
+    La zona 1, spenta dal proprietario, manca dalle 10:00:01 e non scrive
+    piu' niente; la zona 2 manca dalle 10 alle 10:05. Si toccano: una voce
+    sola, per l'istanza."""
+    house = _house(entities=[("switch.zona_1", {"config_entry_id": "e_irr",
+                                                "disabled_by": "user"}),
+                             ("switch.zona_2", {"config_entry_id": "e_irr"})],
+                   states=[("switch.zona_2", "off")],
+                   entries=[{"entry_id": "e_irr", "domain": "rainbird", "title": "Giardino",
+                             "state": "loaded", "source": "user", "disabled_by": None}])
+    _watched(archivio, "switch.zona_1", "switch.zona_2")
+    _ha(archivio, "switch.zona_2", "off", "unavailable", ts(10))
+    _ha(archivio, "switch.zona_1", "off", "unavailable", ts(10) + 1)
+    _ha(archivio, "switch.zona_2", "unavailable", "off", ts(10, 5))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    [entry] = cronaca(archivio)
+    assert entry["chi"] == "integrazione:e_irr"
+    zona_2, zona_1 = entry["assenti"]
+    assert zona_1["chi"] == "switch.zona_1" and zona_1["fine_ts"] == ts(10) + 1
+    assert zona_1["chiusa_dalla_fonte"] == {"stato": "spenta_dal_proprietario",
+                                            "causa": "user", "spenta_da": "user"}
+    assert "chiusa_dalla_fonte" not in zona_2
+
+
+def test_la_voce_dell_istanza_non_sceglie_lo_stato_del_primo_tratto(archivio):
+    """G17-3: ogni entita' dentro `assenti` porta il SUO stato, quello che
+    Home Assistant ha scritto quando e' sparita -- la stessa regola della voce
+    di un'entita' sola. La voce dell'istanza porta uno stato solo se e' lo
+    stesso per tutte; se differiscono (`unavailable` e `unknown`) non ne porta
+    nessuno, e chi la legge trova i due in `assenti`. Prima prendeva lo stato
+    del primo tratto, e la zona 2 risultava `unavailable` senza esserlo."""
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    _ha(archivio, "switch.zona_1", "off", "unavailable", ts(10))
+    _ha(archivio, "switch.zona_2", "off", "unknown", ts(10) + 1)
+    _ha(archivio, "switch.zona_1", "unavailable", "off", ts(10, 5))
+    _ha(archivio, "switch.zona_2", "unknown", "off", ts(10, 5))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    [entry] = cronaca(archivio)
+    assert entry["chi"] == "integrazione:e_irr"
+    assert "cosa" not in entry or entry["cosa"] is None
+    assert [(a["chi"], a["stato"]) for a in entry["assenti"]] == [
+        ("switch.zona_1", "unavailable"), ("switch.zona_2", "unknown")]
+
+
+# ── la finestra di scollegamento (riallineamento, 06/10/2026) ──────────────
+
+def _disconnection(store, start, end):
+    """La finestra come la scrive l'osservatore quando si chiude
+    (`Watcher.record_disconnection`): due righe di sistema, scritte insieme."""
+    Watcher(store).record_disconnection({"da": start, "a": end})
+
+
+def test_la_finestra_di_scollegamento_e_una_voce_con_le_assenze_cominciate_dentro(archivio):
+    """Decisione del proprietario del 06/10/2026, «Riallinea»: il riavvio di
+    Home Assistant compare nella cronaca, e le assenze che ha causato non
+    sembrano guasti. HIRIS scollegato dalle 10 alle 10:03; l'irrigazione e
+    la luce del portico risultano `unavailable` da istanti DENTRO la finestra
+    (le righe che il riallineamento scrive col `last_updated` di Home
+    Assistant): entrano nella voce della finestra, non in quella della loro
+    istanza. Una luce assente da prima della finestra resta la sua voce.
+
+    Mutazione ESEGUITA: `_gathered_by_disconnection` che non raccoglie niente
+    -- rossa (la voce dell'istanza dell'irrigazione e quella del portico al
+    posto della finestra con le sue assenze)."""
+    house = _irrigation_house("light.portico", "light.garage")
+    _watched(archivio, *_IRRIGATION, "light.portico", "light.garage")
+    _ha(archivio, "light.garage", "off", "unavailable", ts(9))
+    _ha(archivio, "light.garage", "unavailable", "off", ts(11))
+    _disconnection(archivio, ts(10), ts(10, 3))
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(10, 2) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
+    _ha(archivio, "light.portico", "off", "unavailable", ts(10, 3))
+    _ha(archivio, "light.portico", "unavailable", "off", ts(10, 4))
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    assert _entries(archivio) == [
+        ("connessione:home_assistant", tv.SYSTEM_GENRE, "scollegato", ts(10), ts(10, 3)),
+        ("light.garage", tv.SYSTEM_GENRE, "unavailable", ts(9), ts(11))]
+    finestra = cronaca(archivio)[0]
+    # Estremi compresi: il portico, sparito all'istante della riconnessione,
+    # e' della finestra.
+    assert [(a["chi"], a["quando_ts"], a["fine_ts"]) for a in finestra["assenti"]] == [
+        *[(eid, ts(10, 2) + i / 100, ts(10, 5) + i / 100) for i, eid in enumerate(_IRRIGATION)],
+        ("light.portico", ts(10, 3), ts(10, 4))]
+
+
+def test_la_finestra_di_scollegamento_non_sale_in_primo_piano(archivio):
+    """Un riavvio di Home Assistant non e' un guasto della casa: la voce della
+    finestra resta nella cronaca, fuori dal primo piano, dalla resa VERA della
+    pagina. Un'istanza sparita fuori dalla finestra continua a salire.
+
+    Mutazione ESEGUITA: in `_front_page_mark` togliere il ramo della finestra
+    -- rossa (`connessione:home_assistant` in primo piano come guasto)."""
+    from hiris.app.mind.report import as_page
+
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    _disconnection(archivio, ts(10), ts(10, 3))
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(12) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(12, 5) + i / 100)
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS)
+    assert [(r["chi"], r["sorta"]) for r in pagina["primo_piano"]] == [
+        ("integrazione:e_irr", "guasto")]
+    finestra = next(v for v in pagina["cronaca"] if v["chi"] == "connessione:home_assistant")
+    assert "primo_piano" not in finestra
+
+
+def test_senza_finestre_la_cronaca_non_cambia(archivio):
+    """Il grezzo scritto prima del riallineamento non ha righe di
+    `connessione:`: la cronaca e' quella di prima, ed e' per questo che
+    `CHRONICLE_RULE` non si alza (vedi il commento accanto)."""
+    house = _irrigation_house()
+    _watched(archivio, *_IRRIGATION)
+    for i, eid in enumerate(_IRRIGATION):
+        _ha(archivio, eid, _RESTING[eid], "unavailable", ts(10) + i / 100)
+        _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
+    assert [v["chi"] for v in cronaca(archivio)] == ["integrazione:e_irr"]

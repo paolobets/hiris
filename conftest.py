@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest_asyncio
 
@@ -11,6 +12,14 @@ os.environ.setdefault("HIRIS_ALLOW_NO_TOKEN", "1")
 # does not inject X-Requested-With (real browsers do, via fetch()).
 os.environ.setdefault("HIRIS_ALLOW_NO_CSRF", "1")
 
+
+#: La scadenza di un job del ponte che una prova non vuole far scadere: un
+#: giorno da quando la suite parte. Ogni job della coda porta `deadline_ts`, e
+#: il lavoratore da' alla CLI il tempo che gli resta (S-09, Tappa 6, Task 8):
+#: un job di prova senza scadenza non e' un job che la coda possa produrre.
+#: Non una data fissa nel 2100: un `subprocess.run` con settant'anni di
+#: `timeout` solleva `OverflowError` (misurato il 06/10/2026).
+SCADENZA_LONTANA = time.time() + 24 * 3600
 
 # --- Fingere l'ingress del Supervisor --------------------------------------
 #

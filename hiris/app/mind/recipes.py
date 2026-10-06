@@ -71,7 +71,7 @@ from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE, STATISTICS_DOMAIN, do
 from .operations import (
     NO_STATISTICS,
     REGISTRY,
-    SHAPE_RESULT,
+    SHAPE_READINGS,
     SHAPE_SERIES,
     STATISTICS_UNREAD,
     UNKNOWN_SOURCE,
@@ -232,6 +232,37 @@ def muted_recipes(house, recipes: Mapping[str, dict]) -> dict[str, dict]:
     return muted
 
 
+def hourly_points(points) -> list[dict]:
+    """Le statistiche orarie nella forma che le operazioni leggono.
+
+    Il `cambio` dell'ora, mai uno zero inventato dove il dato manca. Fino al
+    01/10/2026 ne esisteva una copia privata del bilancio
+    (`mind/facts._dimension_points`), uscita con lui: questa e' l'unica. Fino
+    al 06/10/2026 viveva in `server.py` (`_punti_orari`); e' venuta qui
+    accanto al motore perche' la legge anche lo strumento di calcolo
+    (`mind/compute.py`), e una seconda copia sarebbe un doppione.
+    """
+    return [{"inizio": p.get("inizio"), "fine": p.get("fine"),
+             "valore": p.get("cambio"),
+             # **Home Assistant manda gia' anche questi, e noi li buttavamo.**
+             # Le sue statistiche orarie sono di due generi: un CONTATORE porta
+             # `change` (il nostro `cambio`), una MISURA ISTANTANEA porta
+             # `mean`/`min`/`max`. Misurato sulla casa vera il 14/09/2026: 74
+             # contatori e **56 misure istantanee** -- ogni temperatura,
+             # umidita', CO2, rumore, segnale e potenza. Tenendo solo il
+             # `cambio`, quelle 56 arrivavano alle ricette come una serie di
+             # `None`, e ogni misura su di loro rifiutava con «la serie e'
+             # vuota»: 21 su 32 in un giorno solo.
+             #
+             # E' la frase da cui nasce tutta la spec -- «Home Assistant
+             # dichiara gia' tutto, e la copia lo butta» -- che stava
+             # succedendo dentro il codice nuovo.
+             "media": p.get("media"),
+             "minimo": p.get("minimo"),
+             "massimo": p.get("massimo")}
+            for p in points if isinstance(p, dict)]
+
+
 def unread_series(error: str) -> NotComputable:
     """Il rifiuto di una misura quando le statistiche orarie non si sono
     potute leggere (trovato 7 del piano della Tappa 3, S-28): fino al
@@ -259,29 +290,45 @@ class Validation:
         return not self.problems
 
 
-def _shape_of(given) -> str:
-    """La forma di cio' che un ingresso consegna.
+#: Cio' che si dice di un letterale: nessuna operazione del registro ne prende
+#: uno, e dirlo con un nome suo fa uscire un rifiuto leggibile invece di un
+#: confronto che non torna mai.
+_LITERAL = "un valore scritto a mano"
 
-    Dentro una ricetta esistono **due sole sorgenti**: `@entita` da' la serie
-    del periodo, `$passo` da' la misura di un passo precedente. Un letterale
-    non e' ne' l'una ne' l'altra, e nessuna operazione del registro ne prende
-    uno: dirlo con un nome suo fa uscire un rifiuto leggibile invece di un
-    confronto che non torna mai.
+
+def _shapes_of(given, entity_shapes: tuple[str, ...],
+               step_gives: Mapping[str, str]) -> tuple[str, ...]:
+    """Le forme che un ingresso SA consegnare.
+
+    Due sorgenti: `@entita` consegna cio' che chi esegue sa leggere di
+    un'entita' (`entity_shapes`: in una ricetta la sola serie del periodo,
+    nello strumento di calcolo anche gli stati); `$passo` consegna cio' che
+    l'operazione di quel passo dichiara di dare (`Operation.gives`) -- quasi
+    sempre una misura, un periodo dopo `episodio`.
     """
     if isinstance(given, str):
         if given.startswith(ENTITY_MARK):
-            return SHAPE_SERIES
-        if given.startswith(STEP_MARK):
-            return SHAPE_RESULT
-    return "un valore scritto a mano"
+            return entity_shapes
+        if given.startswith(STEP_MARK) and given[1:] in step_gives:
+            return (step_gives[given[1:]],)
+    return (_LITERAL,)
 
 
 class Recipe:
-    """Una ricetta: il dato, il suo controllo, la sua esecuzione."""
+    """Una ricetta: il dato, il suo controllo, la sua esecuzione.
 
-    def __init__(self, data: dict) -> None:
+    `entity_shapes` dice cosa `@entita` sa consegnare a chi la esegue. Il
+    sapere e il resoconto leggono le statistiche orarie, e basta la serie del
+    periodo (il valore di fabbrica); lo strumento di calcolo (`mind/compute.py`)
+    legge anche gli stati, e lo dice qui. Lo stesso motore per tutti e due --
+    nessuna seconda grammatica (D6 del proprietario, 06/10/2026).
+    """
+
+    def __init__(self, data: dict, *,
+                 entity_shapes: tuple[str, ...] = (SHAPE_SERIES,)) -> None:
         self._data = dict(data or {})
         self._steps = list(self._data.get("steps") or [])
+        self._entity_shapes = tuple(entity_shapes)
 
     @property
     def why(self) -> str:
@@ -321,6 +368,8 @@ class Recipe:
                 "calcola niente, e' una ricetta che nessuno ha finito di scrivere")
 
         seen: set[str] = set()
+        #: Cosa consegna ogni passo gia' letto: lo dichiara la sua operazione.
+        step_gives: dict[str, str] = {}
         for number, step in enumerate(self._steps, start=1):
             if not isinstance(step, dict):
                 problems.append(f"il passo {number} non e' un passo: {step!r}")
@@ -337,32 +386,30 @@ class Recipe:
             operation = str(step.get("operation") or "").strip()
             problems.extend(self._problemi_operazione(
                 operation, name or str(number), step.get("params"),
-                step.get("inputs")))
+                step.get("inputs"), self._entity_shapes, step_gives))
             for given in step.get("inputs") or []:
                 problems.extend(self._problemi_ingresso(
                     given, name or str(number), seen, entities))
             if name:
                 seen.add(name)
+                if operation in REGISTRY:
+                    step_gives[name] = REGISTRY[operation].gives
         return Validation(problems)
 
     @staticmethod
     def _problemi_operazione(operation: str, step_name: str, params,
-                             inputs) -> list[str]:
+                             inputs, entity_shapes: tuple[str, ...],
+                             step_gives: Mapping[str, str]) -> list[str]:
         """Quattro domande sull'operazione di un passo, e si fanno **tutte**.
 
         1. **esiste?** -- un nome fuori dal registro;
-        2. **si puo' scrivere in una ricetta?** -- il registro e' il
-           vocabolario del prodotto, e ne contiene voci che un dato non puo'
-           portare: `episodio` vuole `is_on`, che e' una funzione. Prima del
-           14/09/2026 questo controllo non c'era, il catalogo mostrava tutto al
-           modello, e la prima ricetta che il modello abbia mai scritto ha
-           ucciso la riaggregazione di due giorni con un `TypeError`;
-        3. **ha i parametri obbligatori?** -- `somma_periodo` senza `unit`
+        2. **ha i parametri obbligatori?** -- `somma_periodo` senza `unit`
            solleverebbe a meta' giornata invece di essere rifiutata prima di
            eseguire, che e' l'unica cosa che rende una ricetta un dato invece
            che codice;
-        4. **quanti ingressi?** -- `quota` prende due cose; con tre, di nuovo
-           `TypeError`.
+        3. **quanti ingressi?** -- `quota` prende due cose; con tre, di nuovo
+           `TypeError`;
+        4. **di che forma?** -- sotto, col suo caso vero.
 
         Le tre risposte che dipendono dalla forma di `run` si leggono dalla
         FIRMA (`required_params`, `input_range`), mai da un elenco scritto a
@@ -373,12 +420,6 @@ class Recipe:
             return [(f"il passo «{step_name}» nomina l'operazione "
                      f"«{operation}», che non esiste nel registro")]
         entry = REGISTRY[operation]
-        if not entry.in_recipes:
-            return [(f"il passo «{step_name}» nomina l'operazione "
-                     f"«{operation}», che **non si puo' scrivere in una ricetta**: "
-                     "vuole un valore che un dato non sa portare (una funzione, o "
-                     "un periodo da calcolare). Esiste nel registro perche' la usa "
-                     "il codice dell'aggregazione, non una ricetta")]
         given_params = params if isinstance(params, dict) else {}
         found = [f"il passo «{step_name}» non da' il parametro obbligatorio "
                     f"«{n}», che «{operation}» pretende"
@@ -392,18 +433,22 @@ class Recipe:
                 f"il passo «{step_name}» consegna {given_count} ingressi a "
                 f"«{operation}», che ne vuole {wanted}")
             return found
-        # 5. **di che FORMA sono?** L'ultimo anello, e il piu' silenzioso:
+        # 4. **di che FORMA sono?** L'ultimo anello, e il piu' silenzioso:
         #    `tempo_in_stato` vuole un periodo, una ricetta gli consegnava la
         #    serie di un'entita', e il motore moriva un passo dopo con
         #    `AttributeError: 'list' object has no attribute 'windows'`.
         #    Misurato sulla casa vera il 14/09/2026, dopo che la 3.34.0 aveva
         #    gia' chiuso nomi, parametri e numero di ingressi.
+        #    Il 14/09 il catalogo mostrava anche cio' che una ricetta non sa
+        #    consegnare, e la prima ricetta mai scritta dal modello -- con
+        #    `episodio` -- ha ucciso la riaggregazione di due giorni: e' questa
+        #    domanda, e non un elenco a parte, a rifiutarla.
         for given, wanted_shape in zip(listed, entry.takes):
-            actual = _shape_of(given)
-            if actual != wanted_shape:
+            deliverable = _shapes_of(given, entity_shapes, step_gives)
+            if wanted_shape not in deliverable:
                 found.append(
-                    f"il passo «{step_name}» consegna {actual} dove "
-                    f"«{operation}» vuole {wanted_shape}")
+                    f"il passo «{step_name}» consegna {' o '.join(deliverable)} "
+                    f"dove «{operation}» vuole {wanted_shape}")
         return found
 
     @staticmethod
@@ -427,7 +472,8 @@ class Recipe:
     # -- l'esecuzione ------------------------------------------------------
 
     def run(self, *, series: dict[str, list],
-            silent: Mapping[str, NotComputable] | None = None) -> dict[str, Result]:
+            silent: Mapping[str, NotComputable] | None = None,
+            readings: Mapping[str, list] | None = None) -> dict[str, Result]:
         """Esegue i passi in ordine e torna `{nome del passo: risultato}`.
 
         **Valida prima**, e se la ricetta non e' valida non esegue niente: una
@@ -451,6 +497,10 @@ class Recipe:
         con una parola sola manda a cercare un buco nei dati che non c'e' --
         e soprattutto **non lo dice al modello**, a cui il rifiuto torna.
 
+        `readings` sono gli stati di ogni entita', `[(istante, stato)]`, per
+        le operazioni che li vogliono (`SHAPE_READINGS`): li consegna solo lo
+        strumento di calcolo, che li dichiara in `entity_shapes`.
+
         Misurato sulla casa vera il 15/09/2026 (`recorder/list_statistic_ids`):
         **130 entita' su 1206 hanno statistiche, tutte `sensor`**. Nel
         resoconto del 14, **18 rifiuti su 28** erano di questa specie e
@@ -461,7 +511,7 @@ class Recipe:
         non deve affermare che non ne hanno. Stessa regola con cui
         `ha_client._request_statistics` torna `{"errore"}` e mai `{}`.
         """
-        outcome = self.validate(entities=set(series))
+        outcome = self.validate(entities=set(series) | set(readings or {}))
         if not outcome.valid:
             raise ValueError(
                 "ricetta non valida, non eseguita: " + " · ".join(outcome.problems))
@@ -483,17 +533,20 @@ class Recipe:
                     " · ".join(mute[entity].reason for entity in mute_here),
                     cause=mute[mute_here[0]].cause)
                 continue
-            given_values = [self._resolve(i, series, results)
-                        for i in step.get("inputs") or []]
+            given_values = [self._resolve(i, wanted, series, readings or {}, results)
+                            for i, wanted in zip(step.get("inputs") or [],
+                                                 operation.takes)]
             params_of_step = dict(step.get("params") or {})
             results[name] = operation.run(*given_values, **params_of_step)
         return results
 
     @staticmethod
-    def _resolve(given, series: dict, results: dict):
+    def _resolve(given, wanted: str, series: Mapping, readings: Mapping,
+                 results: dict):
         if isinstance(given, str):
             if given.startswith(ENTITY_MARK):
-                return series.get(given[1:]) or []
+                source = readings if wanted == SHAPE_READINGS else series
+                return source.get(given[1:]) or []
             if given.startswith(STEP_MARK):
                 return results[given[1:]]
         return given

@@ -39,7 +39,7 @@ import logging
 from ...chat_thread import ChatThread, unknown_id_text
 from ...home_space.historian import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
-from . import composer
+from . import composer, stakes
 from .advisor import STRUCTURES, consiglia
 
 logger = logging.getLogger(__name__)
@@ -306,11 +306,12 @@ class Workshop:
         preview = self._preview(operation, domain, key, intent, prima, dopo,
                                 consiglio,
                                 reveal_before=reveal_before or domain not in _BODY_ADMIN_ONLY)
+        level = stakes_of(intent, domain, prima, dopo)
         occurrence = self._store.propose(
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
             helper=list(intent.get("helper") or []), preview=preview,
-            now=now, thread=thread)
+            stakes=level, now=now, thread=thread)
         if "errore" in occurrence:
             return occurrence
         # Il motivo del consigliere vive nell'anteprima («Nota: ...»), che e'
@@ -318,6 +319,7 @@ class Workshop:
         # faceva leggere due volte al modello (C-53, Tappa 4). `consiglio`
         # porta il resto del verdetto.
         return {"proposta_id": occurrence["id"], "anteprima": preview,
+                "livello": level,
                 "consiglio": {k: v for k, v in consiglio.items() if k != "motivo"}}
 
     async def _free_key(self, domain: str, intent: dict) -> dict:
@@ -465,10 +467,10 @@ class Workshop:
         `thread` vero, ed e' li' che la restrizione morde.
         """
         if not proposal_id:
-            proposal_id, reason = self._only_pending(exchange, thread)
+            proposal_id, reason = self._only_pending(exchange, thread, now=now)
             if proposal_id is None:
                 return {"errore": reason}
-        proposal = self._store.read(proposal_id)
+        proposal = self._store.read(proposal_id, now=now)
         if proposal is None or not _thread_may_confirm(proposal, thread):
             # **Stesso testo per «non esiste» e «e' di un altro filo»**
             # (decisione 4, spec §5): un rifiuto non deve far capire che una
@@ -603,7 +605,7 @@ class Workshop:
                 "entita": entity, "avviso": notice}
 
     def _only_pending(self, exchange: str | None,
-                      thread: ChatThread | None) -> tuple[str | None, str]:
+                      thread: ChatThread | None, *, now: float) -> tuple[str | None, str]:
         """Quale proposta sta confermando chi ti sta parlando, quando non l'ha nominata.
 
         **Il difetto che chiude** (23/09/2026, misurato sulla casa vera): il
@@ -654,7 +656,7 @@ class Workshop:
         bruciando un posto sotto il tetto per un doppione. Il rifiuto
         rimanda alla pagina, senza nominarle (`_ORPHANS_ELSEWHERE`).
         """
-        all_pending = [r for r in self._store.list(pending_only=True)
+        all_pending = [r for r in self._store.list(now=now, pending_only=True)
                       if r["stato"] == "in_attesa"]
         pending = [r for r in all_pending
                   if thread is None or _same_thread(r, thread)]
@@ -1016,7 +1018,7 @@ class Workshop:
         rimette niente**: il «prima» di questa proposta e' il `dopo` di allora,
         e `apply` lo confronta con la casa (`_changed_since`, S-17).
         """
-        row = self._store.read(construction_id)
+        row = self._store.read(construction_id, now=now)
         if row is None:
             return {"errore": unknown_id_text("nessuna costruzione")}
         if row["stato"] != "applicata":
@@ -1037,7 +1039,8 @@ class Workshop:
         proposal = self._store.propose(
             operation=intent_operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=f"ripristino di {construction_id}", prima=row["dopo"],
-            dopo=dopo, helper=[], preview=preview, now=now)
+            dopo=dopo, helper=[], preview=preview,
+            stakes=stakes_of({}, domain, row["dopo"], dopo), now=now)
         if "errore" in proposal:
             return proposal
         if actor in HUMAN_ACTORS:
@@ -1156,7 +1159,23 @@ def _invalid_form(intent: dict) -> str | None:
     for entry in intent.get("helper") or []:
         if not isinstance(entry, dict) or not isinstance(entry.get("dominio"), str):
             return "ogni helper deve essere un dizionario con un «dominio» testuale."
-    return None
+    # Il livello (attori, strato 4, D13): il modello sceglie fra tre, e
+    # «alto» non e' suo. Si rifiuta, non si corregge: il motivo dice al
+    # modello che quella parola la mette il codice.
+    return stakes.stakes_refusal(intent.get("livello"))
+
+
+def stakes_of(intent: dict, domain: str, prima: dict | None,
+              dopo: dict | None) -> str | None:
+    """Il livello della proposta: quello che il modello ha scelto, o `alto`
+    se il «prima» o il «dopo» agiscono su un dominio della lista
+    (`stakes.HIGH_STAKES_DOMAINS`). I due lati, perche' togliere l'allarme
+    di notte conta quanto aggiungerlo. I servizi li trova l'estrattore unico
+    (`services_named`), sulla sola parte che agisce."""
+    services = [service for body in (prima, dopo)
+                for service in services_named(stakes.acting_part(domain, body))]
+    acted = stakes.domains_acted_on(domain, prima, dopo, services=services)
+    return stakes.impose(intent.get("livello"), acted)
 
 
 def _seme_da(intent: dict) -> int:

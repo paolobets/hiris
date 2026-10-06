@@ -125,12 +125,6 @@ ESENTI = {
         "canali esterni. Quando serve un turno di chat il soffitto è quello "
         "della persona del job, e viaggia nel dispatcher (`X-HIRIS-Chat`, "
         "tests/test_mcp_chat_thread.py)",
-    "POST /api/reasoning/claim":
-        "il worker del ponte, che porta un token e non una persona — stesso "
-        "rinvio di «/api/mcp»",
-    "POST /api/reasoning/submit":
-        "la consegna del turno dallo stesso worker del ponte: token e non "
-        "persona, e il suo perimetro è l’invariante dei canali esterni",
     "POST /api/services/present":
         "**l’unica superficie che questo prodotto non può autenticare**, e "
         "deve esserlo: un servizio non ancora approvato non ha modo di "
@@ -275,7 +269,7 @@ def _gate_comes_first(nome: str, funzioni: dict) -> bool:
     """La PRIMA istruzione del gestore chiama `require_builder` -- o delega
     subito a un aiutante di `api/` (`return await _act(...)`) la cui prima
     istruzione lo chiama. «Per prima» e non «da qualche parte»: il cancello
-    deve venire prima di qualunque archivio (`store.scadi` scrive)."""
+    deve venire prima di qualunque archivio."""
     prima = _first_statement(funzioni[nome])
     chiamate = _chiama(prima)
     if "require_builder" in chiamate:
