@@ -1015,3 +1015,33 @@ def test_sul_PONTE_la_riparazione_arriva_fino_alla_raccolta(sapere, tmp_path):
 
     assert not esito["scritta"]
     assert rt.recipes(sapere)["dev1"] == _ricetta("sensor.prodotta", "sensor.vecchia")
+
+
+def test_sul_PONTE_un_turno_FALLITO_non_scrive_un_non_capito(sapere, tmp_path):
+    """Un turno che il ponte ha fallito (`[runner non disponibile]`, esito
+    `fallito`) non e' la risposta del modello. Letto come tale finiva nel
+    «non capito», e un dispositivo che il modello non ha saputo leggere non
+    si richiede mai piu' (`devices_to_ask`): il guasto del ponte di una notte
+    lo toglieva dalle domande per sempre.
+
+    Mutazione ESEGUITA: la raccolta che legge la `reply` senza l'esito --
+    rossa (il «non capito» viene scritto)."""
+    import time
+
+    from hiris.app import server
+    from hiris.app.reasoning.queue import ReasoningQueue
+
+    casa = _casa_viva()
+    coda = ReasoningQueue(str(tmp_path / "coda.db"))
+    app = {"reasoning_queue": coda, "models_config": {"ponte": {"scadenza_min": 10}}}
+    server._enqueue_recipe_turn(app, casa, "dev1", objective="risparmiare",
+                                with_series=SERIE_VIVE)
+    preso = coda.claim(time.time())
+    coda.submit(preso["job_id"], preso["nonce"],
+                {"reply": "[runner non disponibile]", "tools_called": [],
+                 "outcome": "fallito"}, time.time())
+
+    esito = server._collect_recipe_turn(app, sapere, casa)
+
+    assert esito["risposta"] is False
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None

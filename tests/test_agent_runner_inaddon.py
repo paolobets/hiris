@@ -252,8 +252,10 @@ def test_serve_chat_ragiona_e_consegna():
     # e' VUOTA, non assente: e' il segnale che il turno e' girato in modalita'
     # `live` senza chiamare nulla, non un job che non ha mai avuto
     # l'occasione di farlo.
+    # E l'esito del turno (06/10/2026): lo legge chi raccoglie un turno del
+    # cervello (`reasoning.queue.turn_answer`).
     assert consegnate == [{"job_id": "J", "nonce": "N", "decision": {
-        "reply": "2 luci accese", "tools_called": []}}]
+        "reply": "2 luci accese", "tools_called": [], "outcome": "riuscito"}}]
 
     # la sonda e' passata dalla rotta, con le intestazioni del turno (non un
     # secondo modo di autenticarsi verso se stessi) e col metodo giusto

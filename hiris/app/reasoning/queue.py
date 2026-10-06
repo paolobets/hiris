@@ -69,6 +69,29 @@ PRIORITY_CHAT = 1
 PRIORITY_BACKGROUND = 0
 
 
+def turn_answer(turn: dict | None) -> str:
+    """La risposta che un turno ha dato, o `""` se non ne ha data una.
+
+    **Un turno che il ponte dichiara fallito non ha risposto** (06/10/2026).
+    Il ponte, quando la CLI manca, scade o esce male, consegna comunque un
+    testo -- `[runner non disponibile]`, `[errore runner rc=...]` -- e lo
+    accompagna con `outcome: "fallito"` (`agent/runner._reply`, lo stesso
+    esito che scrive nel registro dei turni). Quel testo e' per la chat, che
+    lo mostra; chi raccoglie un turno del cervello deve leggerlo come
+    «nessuna risposta». Misurato nel registro dell'add-on dal 05/10 13:32 al
+    06/10 14:05: l'analista rifiutava come «non JSON» lo stesso turno fallito
+    ogni ora, fino a mezzanotte.
+
+    Una decisione scritta prima di questa versione non porta l'esito, e si
+    legge com'era. Fino a qui la stessa espressione era scritta in quattro
+    raccoglitori di `server.py`.
+    """
+    decision = (turn or {}).get("decision") or {}
+    if decision.get("outcome") == "fallito":
+        return ""
+    return decision.get("reply") or ""
+
+
 def _row(r) -> dict:
     # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
     # (Task 14): chi ripiega alla scadenza registra nel registro degli esiti

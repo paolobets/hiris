@@ -1727,8 +1727,15 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # annotazioni orfane escono dal tetto LRU di `BridgeLoads`.
             exchange_id="" if retried_cell else exchange_id,
             composition=composition_cell[-1] if composition_cell else None)
+        # **L'esito viaggia con la risposta** (06/10/2026): lo stesso che va
+        # nel registro dei turni, fino alla coda. Chi raccoglie un turno del
+        # cervello lo legge da li' (`reasoning.queue.turn_answer`): un
+        # `[runner non disponibile]` non e' una risposta del modello, e
+        # trattato come tale bloccava l'analista per un giorno intero. La chat
+        # mostra comunque il testo, che e' la diagnosi per chi la legge.
         return {"reply": reda_segreti(text, *forms),
-               "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
+               "tools_called": _reda_struttura(tools_called_in_exchange, *forms),
+               "outcome": outcome}
 
     invocations = 0
     # Gli strumenti che la dichiarazione del mestiere ammette in questo turno.

@@ -102,6 +102,7 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
+from .reasoning.queue import turn_answer
 from .steering import (
     ANALYST_SPECIES,
     JOB_SPECIES,
@@ -2065,7 +2066,19 @@ async def analyst_round(app) -> dict | None:
         today = historian.today(timezone).isoformat()
 
         collected = _collect_analyst_turn(app, store, today)
-        if collected is not None and collected.get("risposta"):
+        # **Chiude il giro solo un'analisi SCRITTA** (06/10/2026). Fino a
+        # qui bastava `risposta`: una risposta rifiutata non si archivia, il
+        # turno restava l'ultimo della sua specie, e il giro lo rileggeva e
+        # rifiutava a ogni passaggio senza accodarne mai uno nuovo -- dal
+        # 05/10 13:32 al 06/10 14:05 sulla casa vera, su un turno fallito dal
+        # ponte. Sesta occorrenza della forma del 22/09 (sopra
+        # `_collect_analyst_turn`). Un rifiuto o un vuoto aspettano il freno
+        # delle ricette, poi si richiede: accodato il turno nuovo, quello
+        # vecchio non e' piu' l'ultimo e non si rilegge.
+        if collected is not None and collected.get("analisi") is not None:
+            return collected
+        if collected is not None and _troppo_presto_per_richiedere(
+                app, analyst_turn.ANALYSIS_TURN_KIND):
             return collected
         # **Non «c'e' gia' un'analisi per oggi?», ma «ce n'e' gia' una su
         # QUESTO fondamento?»** (difetto trovato dal proprietario il
@@ -2367,7 +2380,7 @@ async def _collect_actuator_turn(app, store, today: str,
         return None
     if (analysis.get("attuazione") or {}).get("su_fondamento") == stamp:
         return None
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     if not str(reply).strip():
         return None
     pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
@@ -2448,6 +2461,14 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     minuti dopo e potrebbe averlo fatto dopo un'aggregazione: i numeri che
     l'osservazione portera' devono essere quelli che l'archivio ha ORA, o
     direbbero una cosa che nessuno puo' piu' verificare.
+
+    **I problemi di una risposta rifiutata si chiedono qui**: con `risposta`
+    vera e `analisi` `None`, `esito["problemi"]` sono i motivi del rifiuto.
+    Vivono nel turno stesso -- la risposta resta nella coda, e si rivalida a
+    ogni lettura -- finche' quel turno e' l'ultimo della sua specie, cioe'
+    fino all'accodamento del turno nuovo. Con `risposta` falsa (vuota, o un
+    turno che il ponte ha fallito: `turn_answer`) non c'e' nessuna risposta da
+    correggere.
     """
     queue = app.get("reasoning_queue")
     if queue is None:
@@ -2482,7 +2503,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
         return None
     from .api.handlers_mind import mind_view
 
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     series = analyst.with_deviation(
         report.series_of_measures(store.reports(limit=ANALYST_DAYS),
                                   names=mind_view(app).device_names()))
@@ -2542,7 +2563,8 @@ async def recipe_round(app) -> dict | None:
         # ri-raccolto ogni dieci minuti, sempre vuoto, e non se ne accodava mai
         # uno nuovo. Trovato dal vivo il 13/09/2026 alle 21:05, dieci minuti
         # dopo aver rilasciato la correzione che quella promessa la scriveva.
-        if collected is not None and _troppo_presto_per_richiedere(app):
+        if collected is not None and _troppo_presto_per_richiedere(
+                app, recipe_turn.RECIPE_TURN_KIND):
             return collected
         if _turn_in_flight(app, recipe_turn.RECIPE_TURN_KIND):
             return None
@@ -2644,13 +2666,18 @@ async def recipe_round(app) -> dict | None:
 #:
 #: Un'ora sono 24 tentativi al giorno nel caso peggiore, e un solo giro di
 #: attesa quando il guasto e' passato.
+#:
+#: Dal 06/10/2026 frena anche l'analista, dopo una risposta vuota, fallita o
+#: rifiutata: il suo giro e' orario, quindi un'ora vuol dire un tentativo ogni
+#: due giri, e la sua domanda pesa ~35.000 token.
 RECIPE_RETRY_HOLD_S = 3600.0
 
 
-def _troppo_presto_per_richiedere(app) -> bool:
-    """Se l'ultimo turno di ricetta e' finito a vuoto da meno di un'ora."""
+def _troppo_presto_per_richiedere(app, kind: str) -> bool:
+    """Se l'ultimo turno di quella specie e' finito senza risposta utile da
+    meno di un'ora."""
     queue = app.get("reasoning_queue")
-    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND) if queue else None
+    turn = queue.latest(kind) if queue else None
     if turn is None:
         return False
     deciso = turn.get("decided_ts") or turn.get("created_ts") or 0
@@ -2711,7 +2738,7 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
         riga = sapere.get("dispositivo", device_id, campo)
         if riga is not None and riga.when_ts >= decided_ts:
             return None
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     wake = turn.get("wake") or {}
     # Una sveglia di prima del 06/10/2026 porta `[]` anche fuori da una
     # riparazione: letta come riparazione, tiene la ricetta vecchia davanti a
@@ -3014,7 +3041,7 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     letti = [a for a in store.recent_attempts() if a["esito"] != "accodata"]
     if decided_ts is not None and letti and letti[0]["quando_ts"] >= decided_ts:
         return None, False
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    reply = turn_answer(turn)
     wake = turn.get("wake") or {}
     lotto = wake.get("lotto")
     outcome = observer_apply_answer(
