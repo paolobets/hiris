@@ -893,3 +893,108 @@ def test_la_serie_delle_misure_porta_la_causa_nei_tratti():
         ("2026-09-10", "2026-09-10", None),
         ("2026-09-11", "2026-09-12", "sparita"),
         ("2026-09-13", "2026-09-13", "assente")]
+
+
+# -- B-29: autoconsumo e autosufficienza coi ruoli della dashboard ------------
+#    (piano degli attori, strato 2, Task 2.4, Passo 1)
+
+#: Un giorno di sole con la batteria, ora per ora, nella forma in cui il
+#: resoconto riceve le serie orarie (`server._punti_orari`: il `cambio` di
+#: ogni ora). La produzione e' quella del 29/09/2026 (20,2 kWh, BACKLOG, voce
+#: del contatore congelato); le altre quattro serie sono SINTETICHE, con la
+#: forma di un giorno vero: immissione fra le 13 e le 18, carica a meta'
+#: mattina, scarica la sera e la notte, prelievo prima dell'alba. Le serie
+#: orarie vere del 29/09 le ha la cattura dello sprint (Task 1.0, sul computer
+#: del proprietario): quando arrivano, questa prova si ripete su quelle.
+_HOURS = 24
+_SOLAR_DAY = {
+    "sensor.inverter_produzione": {6: 0.1, 7: 0.4, 8: 0.9, 9: 1.5, 10: 2.1, 11: 2.5,
+                                   12: 3.0, 13: 2.9, 14: 2.3, 15: 1.9, 16: 1.4,
+                                   17: 0.8, 18: 0.3, 19: 0.1},
+    "sensor.inverter_immissione": {13: 1.2, 14: 1.6, 15: 1.4, 16: 1.0, 17: 0.5},
+    "sensor.inverter_carica": {9: 0.5, 10: 1.0, 11: 1.2, 12: 1.0},
+    "sensor.inverter_scarica": {0: 0.3, 1: 0.2, 19: 0.6, 20: 0.7, 21: 0.6, 22: 0.5,
+                                23: 0.4},
+    "sensor.inverter_prelievo": {2: 0.3, 3: 0.3, 4: 0.3, 5: 0.3, 6: 0.2, 7: 0.1},
+}
+
+
+def _hours(per_hour: dict[int, float]) -> list[dict]:
+    """Ventiquattro ore: un'ora senza flusso e' uno zero MISURATO, non un buco."""
+    return [{"valore": per_hour.get(hour, 0.0)} for hour in range(_HOURS)]
+
+
+def _total(name: str, entity_id: str) -> dict:
+    return {"name": name, "operation": "somma_periodo", "inputs": [f"@{entity_id}"],
+            "params": {"unit": "kWh", "expected_parts": _HOURS}}
+
+
+def _difference(name: str, first: str, second: str) -> dict:
+    return {"name": name, "operation": "differenza_fra",
+            "inputs": [f"${first}", f"${second}"]}
+
+
+#: La ricetta d'esempio coi RUOLI che la dashboard dichiara. Scritta qui, non
+#: nel prodotto (D8: nessuna formula nostra nel prodotto; la scrive il
+#: modello col blocco dei ruoli davanti). Le definizioni sono quelle del
+#: criterio di chiusura dello strato 2:
+#: autoconsumo = (prodotta - immessa) / prodotta;
+#: autosufficienza = (consumata - prelevata) / consumata, con
+#: consumata = prodotta - immessa + prelevata + scaricata - caricata.
+#:
+#: **Il motore non ha una somma di due misure** fra le operazioni che una
+#: ricetta puo' scrivere (`somma_entita` non e' offribile, e somma serie,
+#: non misure): la consumata si compone con quattro `differenza_fra` in
+#: catena -- (scaricata - (immessa - prodotta)) - (caricata - prelevata).
+#: Il conto torna, ma e' il passo che un modello sbaglia piu' facilmente.
+ROLE_RECIPE = {"why": "prova del motore coi ruoli della dashboard", "steps": [
+    _total("prodotta", "sensor.inverter_produzione"),
+    _total("immessa", "sensor.inverter_immissione"),
+    _total("prelevata", "sensor.inverter_prelievo"),
+    _total("caricata", "sensor.inverter_carica"),
+    _total("scaricata", "sensor.inverter_scarica"),
+    _difference("autoconsumata", "prodotta", "immessa"),
+    {"name": "autoconsumo", "operation": "quota",
+     "inputs": ["$autoconsumata", "$prodotta"]},
+    _difference("immessa_meno_prodotta", "immessa", "prodotta"),
+    _difference("senza_rete_entrante", "scaricata", "immessa_meno_prodotta"),
+    _difference("caricata_meno_prelevata", "caricata", "prelevata"),
+    _difference("consumata", "senza_rete_entrante", "caricata_meno_prelevata"),
+    _difference("consumata_non_prelevata", "consumata", "prelevata"),
+    {"name": "autosufficienza", "operation": "quota",
+     "inputs": ["$consumata_non_prelevata", "$consumata"]},
+]}
+
+
+def test_self_consumption_and_sufficiency_match_hand_computation():
+    """B-29: il 29/09/2026 il resoconto diceva «quota_autoconsumo 31%» contro
+    il 74,7% di FV non immesso, perche' la ricetta dell'inverter definiva
+    l'autoconsumo senza la batteria. Questa prova dice che il MOTORE, con una
+    ricetta scritta coi ruoli, calcola i due numeri giusti: gli stessi che si
+    calcolano a mano dalle stesse serie, all'arrotondamento del resoconto.
+    Che il MODELLO scriva quella ricetta si vede dal vivo (Passo 2).
+
+    Mutazioni ESEGUITE il 06/10/2026, tutte rosse sul numero: l'autoconsumo
+    come quota dell'immessa sulla prodotta (il verso rovesciato: 0,282 contro
+    0,718); la consumata senza la batteria, cioe' la definizione di B-29
+    (14,5 contro 15,6); `differenza_fra` che somma, nel motore (34,4)."""
+    serie = {e: _hours(v) for e, v in _SOLAR_DAY.items()}
+    totale = {e: sum(v.values()) for e, v in _SOLAR_DAY.items()}
+    prodotta = totale["sensor.inverter_produzione"]
+    immessa = totale["sensor.inverter_immissione"]
+    prelevata = totale["sensor.inverter_prelievo"]
+    consumata = (prodotta - immessa + prelevata + totale["sensor.inverter_scarica"]
+                 - totale["sensor.inverter_carica"])
+
+    r = rep.build_report(day="2026-09-29", episodes=[], series=serie,
+                         recipes={"inverter": ROLE_RECIPE}, names={})
+
+    misure = {m["misura"]: m for m in r["misure"]}
+    assert misure["prodotta"]["valore"] == round(prodotta, 2) == 20.2
+    assert misure["consumata"]["valore"] == round(consumata, 2)
+    assert misure["autoconsumo"]["valore"] == round((prodotta - immessa) / prodotta, 3)
+    assert misure["autosufficienza"]["valore"] == round(
+        (consumata - prelevata) / consumata, 3)
+    for nome in ("autoconsumo", "autosufficienza"):
+        assert misure[nome]["unita"] == "frazione"
+        assert misure[nome]["copertura"] == 1.0
