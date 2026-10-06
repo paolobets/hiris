@@ -42,6 +42,15 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### ⚠️ Prima di rilasciare: il Task 4.2 accende il proponente — aperta il 06/10/2026
+
+`origine: il coordinatore del progetto, 06/10/2026, all'unione del Task 4.2 nel ramo d'integrazione` · `hiris/app/mind/proposer_round.py`
+
+Dal Task 4.2 (strato 4 degli attori) il proponente gira: `actuator_round` e' uscito (M-20 chiusa)
+e al suo posto c'e' `proposer_round`. **Il rilascio che lo contiene viene dopo** due cose: la
+misura dal vivo dello strato 3 e la diagnosi del passo 1 del 4.0 (le due proposte perse). Chi
+prepara la bozza del CHANGELOG controlla questa voce prima di proporre la versione.
+
 ### I prossimi passi, in ordine — aperta il 01/10/2026
 
 `origine: il proprietario, 01/10/2026 («segna nel backlog il da farsi»)` · uscite 3.71.0, 3.71.1, 3.72.0, 3.72.1
