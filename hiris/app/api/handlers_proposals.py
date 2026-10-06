@@ -173,7 +173,11 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     except Exception as error:
         logger.warning("proposta: il giro di «rifalla» non e' partito (%s: %s)",
                        type(error).__name__, error)
-        return error_response(503, "il modello non ha risposto: riprova.")
+        return error_response(503, _NO_ANSWER)
+    # La frase del router quando nessun backend risponde non e' una proposta
+    # illeggibile (502): e' il modello che non ha risposto, come sopra (G29-1).
+    if not turn.answered:
+        return error_response(503, _NO_ANSWER)
 
     testo, perche = _read_proposal(answer, truncated=turn.truncated)
     if testo is None:
@@ -190,6 +194,12 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     if nota:
         corpo["nota"] = nota
     return web.json_response(corpo)
+
+
+#: La risposta di «Rifalla» quando il modello non risponde: il giro non e'
+#: partito (`chain_turn` solleva) o nessun backend ha risposto
+#: (`TurnOutcome.answered`). Per chi preme il bottone e' la stessa cosa.
+_NO_ANSWER = "il modello non ha risposto: riprova."
 
 
 def _nota_porta(app, *, route: str, downgrade: str) -> str:

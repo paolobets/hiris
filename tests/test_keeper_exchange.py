@@ -252,6 +252,32 @@ class _RunnerCheRispondeInTesto:
 
 
 @pytest.mark.asyncio
+async def test_sulla_CATENA_nessuno_risponde_e_il_motivo_non_cita_il_router():
+    """G29-1, per le promesse. Quando tutti i backend rifiutano, il router
+    consegna una frase per la chat; il motivo della promessa fallita non la
+    cita come «aveva risposto a parole», e la pagina non la mostra come
+    estratto del modello: dice che il modello non ha risposto.
+
+    Mutazione ESEGUITA: `interpreta_promise` senza il ramo `turn.answered` --
+    rossa (il motivo cita «Errore Claude.» e porta l'`excerpt`)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.keeper.exchange import interpreta_promise
+    from hiris.app.llm_router import LLMRouter
+    from hiris.app.steering import NO_ANSWER_REASON
+
+    giu = MagicMock()
+    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    router = LLMRouter(claude=giu, strategy="balanced")
+
+    esito = await interpreta_promise({"llm_router": router}, _promessa_chiedi())
+
+    assert router.last_unanswered is True
+    assert esito == {"errore": f"{NO_ANSWER_REASON}."}
+
+
+@pytest.mark.asyncio
 async def test_il_turno_che_non_conclude_riporta_cio_che_il_modello_aveva_detto():
     """Il motivo che si legge dalla pagina deve dire COSA e' successo.
 
