@@ -2444,7 +2444,7 @@ def _write_analysis(store, day: str, esito: dict) -> None:
     analysis = {**analysis,
                 "fondamento": analyst_turn.fondamento(
                     store.report_stamps(limit=ANALYST_DAYS))}
-    store.replace_analysis(day, analysis)
+    store.replace_analysis(day, analyst.bring_back(store, analysis))
     logger.info("analista: analisi di %s scritta (%d osservazioni)",
                 day, len(analysis.get("osservazioni") or []))
 
@@ -5459,6 +5459,7 @@ def create_app() -> web.Application:
         handle_report,
         handle_set_judgment,
         handle_set_objective,
+        handle_set_scope,
         handle_watching,
     )
     app.router.add_get("/api/mind/watching", handle_watching)
@@ -5475,6 +5476,7 @@ def create_app() -> web.Application:
     # ricostruisce l'istantanea e la sostituisce -- la correzione vale subito.
     # E' una scrittura: passa dal `csrf_middleware` come l'obiettivo.
     app.router.add_post("/api/mind/judgment", handle_set_judgment)
+    app.router.add_post("/api/mind/scope", handle_set_scope)
 
     return app
 

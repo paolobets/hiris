@@ -64,6 +64,11 @@ SOFFITTATE = {
     "POST /api/mind/judgment":
         "corregge ciò che HIRIS ha capito della casa per tutti quelli che ci "
         "vivono: le correzioni al sapere sono di chi amministra (decisione 6)",
+    "POST /api/mind/scope":
+        "il togli e il rimetti del proprietario: una decisione con autore "
+        "`owner`, che nessun attore può più scavalcare. Decide cosa HIRIS "
+        "guarda per tutta la casa, quindi è di chi amministra come i giudizi "
+        "(D9 degli attori, Task 3.7)",
     "POST /api/services/window/close":
         "la richiude. Passa dallo stesso soffitto dell’apertura perché un "
         "estraneo che potesse chiuderla toglierebbe al proprietario "
@@ -224,7 +229,8 @@ def test_le_due_scritture_verso_home_assistant_passano_DAVVERO_dal_soffitto():
 #: (spec 2026-09-26 §0, decisioni 5 e 6), non una copia: le rotte sotto questi
 #: prefissi si CHIEDONO al router, e una rotta nuova sotto uno di essi entra
 #: da sola nella verifica.
-_BUILDER_PREFIXES = ("/api/constructions", "/api/proposals", "/api/mind/judgment")
+_BUILDER_PREFIXES = ("/api/constructions", "/api/proposals", "/api/mind/judgment",
+                     "/api/mind/scope")
 
 _API = RADICE / "hiris" / "app" / "api"
 
