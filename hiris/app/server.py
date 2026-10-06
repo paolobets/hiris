@@ -159,7 +159,7 @@ def _close_expired_promise(app, job: dict) -> None:
     if riga is None or riga.get("stato") != "in_corso":
         # Gia' conclusa da `concludi` mentre il turno finiva: non si
         # riapre. E' lo stesso ordine di controlli della consegna
-        # (`handlers_reasoning`), per la stessa ragione.
+        # (`reasoning/consegna`), per la stessa ragione.
         return
     # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
     # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
@@ -177,8 +177,8 @@ def _close_expired_promise(app, job: dict) -> None:
         tell_failure(app.get("data_dir"), riga, reason)
     # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
     # terza strada delle promesse sul ponte, dopo il successo (`api/
-    # handlers_mcp`) e il turno finito senza «conclude» (`api/
-    # handlers_reasoning`). Stessa famiglia `scaduto` del ramo chat
+    # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/
+    # consegna`). Stessa famiglia `scaduto` del ramo chat
     # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
     registry = app.get("occurrence_registry")
     if registry is not None:
@@ -3181,9 +3181,9 @@ def _govern_bridge_worker(app) -> None:
     Le due direzioni sono simmetriche e sono entrambe necessarie:
     - acceso e nessun lavoratore vivo -> si avvia;
     - spento e un lavoratore vivo -> si ferma. Senza questo ramo, spegnere il
-      ponte lascerebbe un ciclo che interroga la coda ogni tre secondi per
-      sempre -- rumore nel registro, e un consumatore per una coda che nessuno
-      riempie.
+      ponte lascerebbe un consumatore vivo per una coda che nessuno riempie,
+      che si sveglierebbe a ogni turno accodato da chi non sa che il ponte e'
+      spento.
 
     Senza un event loop in corso non si fa niente e non e' un ripiego: un
     compito asincrono non ha dove girare. Succede solo fuori dal server (i test
@@ -3205,9 +3205,7 @@ def _govern_bridge_worker(app) -> None:
 
         if app.get("usage") is not None:
             # I token dell'abbonamento smettono di finire solo nel log. Si
-            # collega QUI, dove il lavoratore in-addon nasce: nel percorso a
-            # processo separato (`main()`) `/data` non e' di quel processo, e
-            # li' il registro resta `None` -- dichiarato, non dimenticato.
+            # collega QUI, dove il lavoratore in-addon nasce.
             _agent_runner.set_usage_logger(app["usage"].log)
             # E il REGISTRO DEI TURNI, dalla stessa porta e per lo stesso
             # motivo (24/09/2026). Senza questa riga il ponte non scriveva
@@ -3227,19 +3225,25 @@ def _govern_bridge_worker(app) -> None:
         # ponte. Il sottoprocesso la riceve dalle STESSE intestazioni (vedi
         # `runner.reason`, che ne ricava `token` e `forms`), quindi anche
         # `--mcp-config` e la redazione dell'eco la seguono senza una riga in
-        # piu'.
+        # piu'. Serve solo alla rotta degli strumenti: la coda il lavoratore
+        # la legge direttamente (A-23, 06/10/2026).
         from .api.credenziali import credenziale_ponte_viva
+        from .reasoning.consegna import consegna
 
         def _intestazioni_ponte() -> dict:
             return {"X-HIRIS-Internal-Token": credenziale_ponte_viva(app, adesso=time.time()),
                     "X-Requested-With": "hiris-agent"}
 
+        async def _consegna(job_id, nonce, decision, now):
+            return await consegna(app, job_id, nonce, decision, now)
+
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
+                app["reasoning_queue"],
+                _consegna,
                 "http://127.0.0.1:8099",
                 _intestazioni_ponte,
                 os.environ.get("HIRIS_AGENT_MODE", "live"),
-                int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3")),
             ),
             name="agent_worker",
         )
@@ -3294,7 +3298,7 @@ def _recompute_chain(app) -> None:
     # una coda che nessuno serve, e ogni messaggio scadrebbe prima di ripiegare
     # sulla catena (Task 14) -- cioe' il bottone «Mettilo primo» sarebbe un
     # bottone che risponde 200 e fa aspettare. Spegnerlo senza fermarlo
-    # lascerebbe un ciclo che interroga una coda vuota ogni tre secondi.
+    # lascerebbe un consumatore vivo per una coda che nessuno riempie.
     _govern_bridge_worker(app)
     router = app.get("llm_router")
     mappa = router._backend_map() if router is not None else {}
@@ -3408,7 +3412,7 @@ def _chat_reply_submitter(app, data_dir: str):
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
     # jobs — writes the runner's reply into chat_store instead of actuating
     # the house. Fetta «le chat divise»: la risposta va nel filo del job
-    # (`thread`, letto dalla coda da `handle_reasoning_submit`) -- la
+    # (`thread`, letto dalla coda da `reasoning/consegna`) -- la
     # cronologia di chi ha scritto, non una sola per tutti.
     from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
     from .chat_store import append_messages as _append_chat_messages
@@ -3467,7 +3471,7 @@ def _chat_reply_submitter(app, data_dir: str):
         # vuota» -- se il codice arriva a questa riga, e' perche' sta per
         # scrivere in cronologia una risposta vera, la stessa che l'utente
         # sta per leggere. E' anche il motivo per cui NON sta in
-        # `handle_reasoning_submit` (proposta dell'audit L3 dell'agosto
+        # `reasoning/consegna` (proposta dell'audit L3 dell'agosto
         # scorso, H2): li' la guardia e' solo «reply non vuota», che i
         # sentinella la superano -- registrare il successo li' avrebbe
         # sostituito la bugia di oggi con la bugia opposta.
@@ -4988,9 +4992,9 @@ async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
     # M-2 (Plan 2B final review, fast-follow): stop the reasoning-queue
     # consumer (agent_worker_task) and bound the wait. A claimed job can be
-    # sitting inside run_loop's
-    # run_in_executor offload of the blocking `run_once` (subprocess.run
-    # timeout=300 + httpx.Client timeout=330) -- an unbounded
+    # sitting inside `serve`'s
+    # run_in_executor offload of the blocking `reason` (subprocess.run with
+    # the turn's remaining time, S-09, + httpx.Client timeout=330) -- an unbounded
     # `await aw` after cancel() would then stall addon shutdown for up to
     # ~5 minutes, since cancelling the outer task does not interrupt a
     # thread already blocked inside the executor. `asyncio.wait_for` caps
@@ -5205,10 +5209,6 @@ def create_app() -> web.Application:
     app.router.add_post("/api/services/window/close", handle_close_window)
     app.router.add_post("/api/services/approve", handle_service_approve)
     app.router.add_post("/api/services/revoke", handle_service_revoke)
-
-    from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
-    app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
-    app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
     # fetta "il ponte riceve gli strumenti" (parita' B) Task 1: l'adattatore
     # JSON-RPC che porta gli strumenti della casa anche al ponte via

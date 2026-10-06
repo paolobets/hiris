@@ -23,7 +23,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 · Tappa 3 (D5) · Tappa 3, Task 5 e 12: escono quelli di osservatore, ricette, nomi dei dispositivi; restano `briefing` (nomi dei dispositivi del nucleo, Task 8), `house_history.read_runs` e `topology.compare_with_home_assistant` (l'indice delle entita' per id) |
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 · Tappa 8 (D5) |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
-| A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 · Tappa 6 (D5) · verificata il 05/10, resta DP: vedi §8 |
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
@@ -767,6 +766,19 @@ Spostate, restano aperte:
   dalle stesse intestazioni: togliere il giro HTTP vuol dire prima estrarre quella logica dal
   gestore. È una fetta sua, da decidere col proprietario.
 
+### 8f. A-23, la fetta sua (06/10/2026)
+
+Il proprietario ha scelto la risposta A del rapporto del Task 8: una fetta sua. Chiusa con
+`registro.py chiudi` (commit `4bbdf06`). Prima la consegna è uscita dal gestore HTTP
+(`api/handlers_reasoning.py` → `reasoning/consegna.py`, gli stessi rami), poi il giro: il
+lavoratore prende il turno dalla coda, lo ragiona nell'executor, lo consegna dentro il processo, e
+a coda vuota aspetta che `ReasoningQueue.enqueue` lo svegli. Con le due rotte esce il loro
+cancello (A-4): una rotta che non esiste non si difende.
+
+Toccata per strada: **M-74**. Delle cuciture che elencava escono `app["_clock"]` (la leggeva solo
+il gestore uscito) e `thread_to_context` (dava forma alla risposta del claim). La voce resta
+aperta per il resto.
+
 ---
 
 ## 8. La Tappa 4 (piano del 04/10/2026): voci spostate, verdetti corretti, reperti ricondotti
@@ -1066,3 +1078,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda | Tappa 6, Task 8 | 395c178 | agent/runner._reason_chat: il timeout della CLI e' il tempo che resta al turno (deadline_ts), non 300 fisso; la CLI si ferma quando il ripiego comincia, e un turno scaduto non la invoca |
 | D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | Tappa 6, Task 8 | 395c178 | api/boundary.json_object, la lettura unica: nove rotte; un corpo [] non da' piu' 500. Resta a parte la rotta MCP, che risponde in JSON-RPC (-32700) |
 | D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | Tappa 6, Task 8 | 7550547 | verificata il 06/10: la riparazione ha una strada sola, il giro delle ricette (recipe_turn.recipes_to_repair, attori Task 1.6); la domanda la compone build_device_question per la catena e per il ponte |
+| A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | Tappa 6, A-23 | 4bbdf06 | le rotte /api/reasoning/claim e /api/reasoning/submit, il loro cancello e HIRIS_AGENT_POLL_SECONDS: il lavoratore prende il turno con ReasoningQueue.claim, lo consegna con reasoning/consegna.consegna e a coda vuota aspetta che enqueue lo svegli |

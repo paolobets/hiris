@@ -583,8 +583,8 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     chiamate degli strumenti. E' cio' che rende il disegno «una rotta e non un
     sottoprocesso» qualcosa di piu' di un'affermazione.
 
-    Se un giorno qualcuno «semplificasse» chiamando `run_once` direttamente
-    nella coroutine, la chat andrebbe in **stallo circolare**: il modello
+    Se un giorno qualcuno «semplificasse» chiamando `reason` direttamente
+    nella coroutine di `serve`, la chat andrebbe in **stallo circolare**: il modello
     chiama lo strumento, l'HTTP non viene servito perche' il loop e' fermo
     dentro `subprocess.run`, e dopo cinque minuti scatta il timeout. Questo
     test e' cio' che glielo impedisce -- e fallirebbe **in stallo**, che e'
@@ -642,12 +642,23 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
                                                          "tipo": "area"})
             return _ProcFelice()
 
+        from hiris.app.reasoning.consegna import consegna
+
+        async def _consegna(job_id, nonce, decision, now):
+            return await consegna(app, job_id, nonce, decision, now)
+
+        # Il turno si serve con `runner.serve`, chiamata DALLA coroutine come
+        # in produzione (`run_loop`): e' `serve` che deve spostare la CLI nel
+        # thread dell'executor. Fino al 06/10/2026 qui la spostava la prova
+        # stessa (`asyncio.to_thread`), e il difetto che questa prova dice di
+        # sorvegliare -- la CLI chiamata nella coroutine -- non poteva vederlo.
         with (
             patch.object(runner.subprocess, "run", _finta_cli),
             httpx.Client(timeout=30) as http,
         ):
-            esito = await asyncio.to_thread(
-                runner.run_once, http, base, intestazioni, "live")
+            esito = await runner.serve(
+                coda.claim(time.time()), _consegna, http, base,
+                lambda: intestazioni, "live")
 
         assert esito == "done"
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
@@ -1165,8 +1176,8 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
 # TASK 4, nit 1 della review del Task 3 -- IL SETTIMO CANALE.
 #
 # I cinque canali qui sopra nascono dallo stdout della CLI. Il sesto e' la
-# reply. Il settimo e' un'ECCEZIONE: `run_once` fa HTTP verso la reasoning API
-# con gli header del claim, che portano `X-HIRIS-Internal-Token`, e con un
+# reply. Il settimo e' un'ECCEZIONE: il giro fa HTTP verso la rotta degli
+# strumenti con le intestazioni del turno, che portano `X-HIRIS-Internal-Token`, e con un
 # valore che il protocollo non accetta il client solleva **col valore dentro**.
 # Il catch del giro lo logga. Era irraggiungibile solo grazie a una difesa che
 # sta in un altro file (la validazione del token all'avvio) e che nessun test
@@ -1175,7 +1186,7 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
 
 @pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
 def test_il_settimo_canale_l_eccezione_del_giro_non_porta_il_token(monkeypatch, token):
-    """Il messaggio dell'eccezione non si butta -- `run_once errore:
+    """Il messaggio dell'eccezione non si butta -- `ponte, turno fallito:
     HTTPStatusError` non direbbe ne' quale rotta ne' quale codice, e un log che
     non serve a diagnosticare e' il primo che smette di essere letto -- ma
     passa dalla redazione che c'e' gia'."""
