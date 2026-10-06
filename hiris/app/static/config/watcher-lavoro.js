@@ -64,9 +64,21 @@
    che il payload manda e `AUTHOR_LABEL` non conosce ha comunque il suo
    gruppo, col valore grezzo -- non sparisce mai.
 
+   -- Togli e rimetti (D9 degli attori, Task 3.7) --
+   Il proprietario toglie una cosa della casa da «Cosa guardo» e rimette
+   dentro una cosa di «Lasciato fuori» (`POST /api/mind/scope`): la decisione
+   e' sua, con autore `owner`, e nessun attore la scavalca piu'
+   (`mind/scope.py`). Il disegno e' passato prima dall'agente UX (proposta
+   del 06/10/2026, approvata da Paolo): un bottone testuale per riga, un
+   motivo facoltativo che si apre in linea, nessuna conferma modale -- il
+   gesto si annulla -- e dopo la scrittura la scheda si rilegge intera, con
+   l'esito in testa in un'area `role="status"` che sopravvive al ridisegno.
+   I soggetti tecnici e le condizioni di sistema non hanno il comando: non
+   passano dallo scope.
+
    Sicurezza: testi via textContent/createElement, MAI innerHTML su dati del
-   server. L'unica POST e' quella dell'obiettivo, e porta `X-Requested-With`
-   perche' passa dal `csrf_middleware`. */
+   server. Le due POST (l'obiettivo e lo scope) portano `X-Requested-With`
+   perche' passano dal `csrf_middleware`. */
 window.HirisWatcherLavoro = (function () {
   'use strict';
 
@@ -292,7 +304,151 @@ window.HirisWatcherLavoro = (function () {
     if (v.autore != null && !opts.senzaAutore) {
       riga.appendChild(el('div', 'field-hint', 'Deciso ' + authorPhrase(v.autore)));
     }
+    /* Il comando DOPO motivo e autore: si toglie dopo aver letto perche'
+       la cosa era li', e un lettore di schermo lo sente in quell'ordine. */
+    if (opts.azione && opts.corpo && haComando(v)) {
+      riga.appendChild(comandoScope(v, opts.azione === 'rimetti', opts.corpo));
+    }
     return riga;
+  }
+
+  /* -- Togli e rimetti -------------------------------------------------- */
+
+  /* Solo le entita' decise da qualcuno: un soggetto tecnico non e' nello
+     scope, una condizione di sistema (`autore: null`) nessuno l'ha decisa. */
+  function haComando(v) {
+    return v.autore != null && !parseSubjectPrefix(v.soggetto).kind;
+  }
+
+  function nomeDi(v) {
+    return v.nome || describeWatchedSubject(v.soggetto, v.nome).primary;
+  }
+
+  /* L'esito dell'ultima scrittura, da dire DOPO il ridisegno: la ricarica
+     distrugge la riga da cui si e' partiti, e senza questo la riga
+     sparirebbe senza dire dove e' andata. Si consuma alla prima resa. */
+  var esitoInSospeso = null;
+
+  function scriviScope(v, dentro, motivo) {
+    return write('api/mind/scope', { soggetto: v.soggetto, dentro: dentro, motivo: motivo || null });
+  }
+
+  function comandoScope(v, dentro, corpo) {
+    var verbo = dentro ? 'Rimetti dentro' : 'Togli';
+    var box = el('div');
+    box.style.cssText = 'margin-top:4px';
+    var apri = el('button', 'btn btn-ghost btn-sm', verbo);
+    apri.type = 'button';
+    apri.style.cssText = 'min-height:24px;min-width:24px';
+    apri.setAttribute('aria-label', dentro
+      ? 'Rimetti dentro ' + nomeDi(v) + ' fra ciò che guardo'
+      : 'Togli ' + nomeDi(v) + ' da ciò che guardo');
+    box.appendChild(apri);
+
+    apri.addEventListener('click', function () {
+      apri.hidden = true;
+      var form = el('div');
+      form.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px';
+      var campo = el('input');
+      campo.type = 'text';
+      campo.placeholder = 'Perché? (facoltativo)';
+      campo.setAttribute('aria-label', 'Perché ' + (dentro ? 'lo rimetti dentro' : 'lo togli')
+        + ' (facoltativo)');
+      campo.style.cssText = 'flex:1 1 12em;min-width:0;min-height:24px;font:inherit';
+      var conferma = el('button', 'btn btn-sm', verbo);
+      conferma.type = 'button';
+      conferma.style.cssText = 'min-height:24px';
+      var annulla = el('button', 'btn btn-ghost btn-sm', 'Annulla');
+      annulla.type = 'button';
+      annulla.style.cssText = 'min-height:24px';
+      var errore = el('div', 'field-hint');
+      errore.setAttribute('role', 'alert');
+      form.appendChild(campo);
+      form.appendChild(conferma);
+      form.appendChild(annulla);
+      form.appendChild(errore);
+      box.appendChild(form);
+      campo.focus();
+
+      function chiudi() {
+        box.removeChild(form);
+        apri.hidden = false;
+        apri.focus();
+      }
+      function invia() {
+        conferma.disabled = true;
+        conferma.textContent = dentro ? 'Rimetto…' : 'Tolgo…';
+        errore.textContent = '';
+        scriviScope(v, dentro, campo.value.trim()).then(function (occurrence) {
+          if (!occurrence.ok) {
+            /* Il campo resta com'e': il motivo appena scritto non si perde. */
+            conferma.disabled = false;
+            conferma.textContent = verbo;
+            errore.textContent = (occurrence.corpo && occurrence.corpo.error)
+              || ('Non è stato possibile ' + (dentro ? 'rimetterlo dentro' : 'toglierlo') + '. Riprova.');
+            return;
+          }
+          esitoInSospeso = { voce: v, dentro: dentro, primaAutore: v.autore };
+          carica(corpo);
+        }, function () {
+          conferma.disabled = false;
+          conferma.textContent = verbo;
+          errore.textContent = 'Non è stato possibile ' + (dentro ? 'rimetterlo dentro' : 'toglierlo')
+            + '. Riprova.';
+        });
+      }
+      conferma.addEventListener('click', invia);
+      annulla.addEventListener('click', chiudi);
+      campo.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); invia(); }
+        if (e.key === 'Escape') { e.preventDefault(); chiudi(); }
+      });
+    });
+    return box;
+  }
+
+  /* L'area dell'esito: UNA per la scheda, non per riga, e il fuoco ci va
+     perche' il nodo da cui si e' partiti non esiste piu'. Dopo un «togli»
+     porta l'annullamento a portata di mano: il gesto non ha conferma
+     proprio perche' si disfa da qui. */
+  function renderEsito(body) {
+    var e = esitoInSospeso;
+    esitoInSospeso = null;
+    if (!e) return;
+    var area = el('div', 'sc-desc');
+    area.setAttribute('role', 'status');
+    area.setAttribute('tabindex', '-1');
+    var nome = nomeDi(e.voce);
+    if (e.dentro) {
+      area.appendChild(el('span', null, nome + ' è di nuovo fra ciò che guardo. '
+        + (e.primaAutore === 'owner' ? 'Hai cambiato idea: la decisione resta tua.'
+          : 'Ora è una tua decisione: l’osservatore non lo toglierà più.')));
+    } else {
+      area.appendChild(el('span', null, nome + ' tolto da ciò che guardo. Lo trovi in «Lasciato fuori», '
+        + 'fra le cose tolte da te. '));
+      var annulla = el('button', 'btn btn-ghost btn-sm', 'Rimetti dentro');
+      annulla.type = 'button';
+      annulla.style.cssText = 'min-height:24px';
+      annulla.setAttribute('aria-label', 'Rimetti dentro ' + nome + ' fra ciò che guardo');
+      annulla.addEventListener('click', function () {
+        annulla.disabled = true;
+        scriviScope(e.voce, true, '').then(function (occurrence) {
+          if (!occurrence.ok) {
+            annulla.disabled = false;
+            area.appendChild(el('span', null, ' Non è stato possibile rimetterlo dentro. Riprova.'));
+            return;
+          }
+          esitoInSospeso = { voce: e.voce, dentro: true, primaAutore: 'owner' };
+          carica(body);
+        }, function () {
+          annulla.disabled = false;
+          area.appendChild(el('span', null, ' Non è stato possibile rimetterlo dentro. Riprova.'));
+        });
+      });
+      area.appendChild(annulla);
+    }
+    body.appendChild(area);
+    area.focus();
   }
 
   /* 2. Cosa si guarda: **due mestieri, due elenchi** (spec §4D). Le cose
@@ -338,7 +494,8 @@ window.HirisWatcherLavoro = (function () {
           etichetta: 'Vedi tutte',
           rendi: function (v) {
             return rigaDecisione(v, { whenPrefix: 'dal',
-                                      senzaMotivo: !!comune, senzaAutore: true });
+                                      senzaMotivo: !!comune, senzaAutore: true,
+                                      azione: 'togli', corpo: body });
           }
         });
       });
@@ -399,20 +556,40 @@ window.HirisWatcherLavoro = (function () {
       line(body, 'Niente è stato lasciato fuori con una ragione scritta.', TONE_CALM);
       return;
     }
-    var gruppi = byType(leftOut);
+    /* **Cio' che hai tolto tu, in testa e a parte** (parere UX, Task 3.7):
+       dentro i tipi finirebbe fra ~280 righe, due clic piu' in basso, e le
+       tue decisioni non si ritroverebbero. Stessa ragione per cui «Deciso da
+       te» viene per primo in «Cosa guardo». */
+    var tuoi = leftOut.filter(function (v) { return v.autore === 'owner'; });
+    var altri = leftOut.filter(function (v) { return v.autore !== 'owner'; });
+    if (tuoi.length) {
+      S.elencoLungo(body, {
+        titolo: 'Tolto da te',
+        riassunto: 'Tolto da te (' + fmtCount(tuoi.length) + ')',
+        pochi: [],
+        tutti: tuoi,
+        etichetta: 'Vedi',
+        rendi: function (v) {
+          return rigaDecisione(v, { whenPrefix: 'il', senzaAutore: true,
+                                    azione: 'rimetti', corpo: body });
+        }
+      });
+    }
+    if (!altri.length) return;
+    var gruppi = byType(altri);
     S.elencoLungo(body, {
       titolo: 'Tutti i tipi di cosa lasciati fuori',
-      riassunto: fmtCount(leftOut.length) + ' soggetti, in ' + fmtCount(gruppi.length)
+      riassunto: fmtCount(altri.length) + ' soggetti, in ' + fmtCount(gruppi.length)
         + (gruppi.length === 1 ? ' tipo di cosa' : ' tipi di cosa'),
       didascalia: 'i 5 tipi con più soggetti',
       pochi: gruppi.slice(0, 5),
       tutti: gruppi,
       etichetta: 'Vedi tutti',
-      rendi: rigaTipoFuori
+      rendi: function (g) { return rigaTipoFuori(g, body); }
     });
   }
 
-  function rigaTipoFuori(g) {
+  function rigaTipoFuori(g, corpo) {
     var riga = el('div', 'sc-row');
     riga.appendChild(el('div', 'sc-row-title', g.tipo + ' — ' + fmtCount(g.voci.length)
       + (g.voci.length === 1 ? ' soggetto' : ' soggetti')));
@@ -424,7 +601,9 @@ window.HirisWatcherLavoro = (function () {
       pochi: [],
       tutti: g.voci,
       etichetta: 'Vedi',
-      rendi: function (v) { return rigaDecisione(v, { whenPrefix: 'il' }); }
+      rendi: function (v) {
+        return rigaDecisione(v, { whenPrefix: 'il', azione: 'rimetti', corpo: corpo });
+      }
     });
     return riga;
   }
@@ -677,6 +856,7 @@ window.HirisWatcherLavoro = (function () {
        vengono dopo. */
     renderObjective(body, p.obiettivo);
     renderNumeri(body, p);
+    renderEsito(body);
     renderReconsideration(body, p.riconsiderazione, archiveMissing);
     renderWatched(body, p.watching || []);
     renderLeftOut(body, p.fuori || [], archiveMissing);

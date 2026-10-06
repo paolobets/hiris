@@ -1,7 +1,8 @@
 """Le rotte del cervello, che la pagina dell'osservatore legge.
 
-Sei: `watching`, `report`, `analysis`, `knowledge` e le POST `objective` e
-`judgment` (la rotta dei giudizi sui tipi, spec 2026-09-16 §4).
+Sette: `watching`, `report`, `analysis`, `knowledge` e le POST `objective`,
+`judgment` (la rotta dei giudizi sui tipi, spec 2026-09-16 §4) e `scope` (il
+togli e il rimetti del proprietario, D9 degli attori).
 Nate come due (fetta «l'osservatore», `docs/design/2026-08-26-l-osservatore.md`
 §7), cresciute con la spec dei tre attori (§8, §9, §10, §11).
 
@@ -23,15 +24,16 @@ difende ovunque (`casa.non_disponibili`, `casa.etichette`, eccetera): un
 guasto non si appiattisce su un'assenza.
 
 Le rotte GET non hanno `csrf_middleware` da rispettare (sono metodi "safe",
-stessa esenzione di `GET /api/agenda`); le due POST ci passano, come ogni
+stessa esenzione di `GET /api/agenda`); le POST ci passano, come ogni
 scrittura su `/api/`."""
 from __future__ import annotations
 
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
+from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.open_questions import OPEN_QUESTIONS
-from ..mind import recipe_turn
+from ..mind import analyst, recipe_turn
 from ..mind.judgments import (
     JudgmentNotInEffect,
     JudgmentRefused,
@@ -40,6 +42,7 @@ from ..mind.judgments import (
     write_judgment,
 )
 from ..mind.report import BACKFILL_EVERY_MINUTES
+from ..mind.scope import OWNER
 from ..mind.store import READING_RETENTION_S
 from ..mind.view import MindView
 from .boundary import error_response, json_object
@@ -226,6 +229,51 @@ async def handle_set_judgment(request) -> web.Response:
             impronta=unused.status["impronta"],
             provenienza_istantanea=unused.status["provenienza_istantanea"])
     return web.json_response(outcome)
+
+
+async def handle_set_scope(request) -> web.Response:
+    """Il **togli** e il **rimetti** del proprietario (D9 degli attori, Task
+    3.7): una decisione sullo scope con autore `OWNER`.
+
+    Corpo: `{"soggetto": entity_id, "dentro": bool, "motivo": testo?}`. Torna
+    `{"soggetto", "decisione": {...}}`, la riga di `store.scope()` dopo la
+    scrittura.
+
+    **Il motivo e' facoltativo per chi preme, non per l'archivio**:
+    `decide_scope` non scrive una decisione senza ragione, e un campo vuoto
+    diventa il ripiego di `analyst` (`OWNER_REMOVED`, `OWNER_BROUGHT_BACK`).
+
+    **Solo cio' su cui qualcuno ha gia' deciso** (404 altrimenti): la pagina
+    toglie e rimette righe che mostra. Un soggetto mai giudicato scritto qui
+    sarebbe una riga che la pagina direbbe guardata e che forse nessun evento
+    accendera' mai -- la stessa ragione per cui l'osservatore scarta gli id
+    che non ha chiesto. I soggetti tecnici (`log:`, `problema:`...) non sono
+    entita' e non passano dallo scope: 400.
+
+    `OWNER` non lo scavalca nessuno (`scope.may_overwrite`): per questo la
+    scrive solo chi puo' costruire (`soffitto.require_builder`), come i
+    giudizi sui tipi. E' una scrittura: passa dal `csrf_middleware`.
+    """
+    refusal = require_builder(request)
+    if refusal is not None:
+        return refusal
+    store = request.app.get("observations")
+    if store is None:
+        return error_response(503, "archivio non disponibile")
+    body = await json_object(request)
+    subject, inside, why = body.get("soggetto"), body.get("dentro"), body.get("motivo")
+    if (not is_entity_id(subject) or not isinstance(inside, bool)
+            or not (why is None or isinstance(why, str))):
+        return error_response(400, "servono `soggetto` (un entity_id), `dentro` (vero o "
+                                   "falso) e, se vuoi, `motivo` come testo.")
+    if subject not in store.scope():
+        return error_response(404, f"su {subject} nessuno ha ancora deciso: non c'e' "
+                                   "niente da togliere o rimettere.")
+    reason = (why or "").strip() or (
+        analyst.OWNER_BROUGHT_BACK if inside else analyst.OWNER_REMOVED)
+    store.decide_scope(subject, inside=inside, reason=reason, author=OWNER)
+    return web.json_response({"soggetto": subject,
+                              "decisione": store.scope()[subject]})
 
 
 async def handle_analysis(request) -> web.Response:
