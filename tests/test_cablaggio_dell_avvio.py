@@ -35,6 +35,7 @@ from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space import historian
+from hiris.app.mind import realignment
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import EntityCache
@@ -396,10 +397,10 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
             listener("riconnessione")
     try:
         # Dal riallineamento dell'osservatore (06/10/2026) la rilettura gira
-        # dentro l'ascoltatore, che con la stessa fotografia riallinea: si
+        # in `mind/realignment.py`, che con la stessa fotografia riallinea: si
         # riconosce dalla funzione e da cio' che porta con se'.
         rereads = [c for c in spawned
-                   if c.cr_code.co_qualname.endswith("._reload_and_realign")
+                   if c.cr_code is realignment.reload_and_realign.__code__
                    and c.cr_frame.f_locals.get("entity_cache") is started_app["entity_cache"]
                    and c.cr_frame.f_locals.get("client") is house]
         assert len(rereads) == 1, [c.cr_code.co_qualname for c in spawned]
