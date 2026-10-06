@@ -69,6 +69,28 @@ HIGH_UNATTENDED = ("Non si può rendere automatica: agisce su "
                    + ", che chiedono sempre a chi amministra la casa. Non "
                      "riproporla in un'altra forma.")
 
+#: I delimitatori con cui Home Assistant riconosce un modello Jinja in una
+#: stringa: `is_template_string` in `homeassistant/helpers/template`, ramo
+#: `dev`, letto il 06/10/2026.
+_TEMPLATE_MARKS = ("{{", "{%", "{#")
+
+
+def is_template(value) -> bool:
+    """Se `value` e' un modello Jinja, che Home Assistant risolve solo quando
+    il passo gira: chi lo legge qui non sa cosa diventera'."""
+    return isinstance(value, str) and any(mark in value for mark in _TEMPLATE_MARKS)
+
+
+#: Il rifiuto di un oggetto che agira' DA SOLO chiamando un servizio scritto
+#: come modello (giro di revisione 69, G69-1): `action: "{{ 'lock.unlock' }}"`
+#: usciva senza livello. Il nome lo decide Home Assistant quando il passo
+#: gira, e da qui non si vede.
+TEMPLATE_UNATTENDED = ("Non si può rendere automatica: chiama un servizio "
+                       "scritto come modello, e quale sia lo decide Home "
+                       "Assistant solo quando gira: potrebbe toccare serrature "
+                       "o allarme senza chiedere. Scrivi il servizio per nome.")
+
+
 def opaque_unattended(opaque) -> str:
     """Il rifiuto di un oggetto che agira' DA SOLO accendendo uno dei domini
     `opaque` (giro di revisione 67, G67-1; consigliata A, 06/10/2026).
@@ -85,13 +107,17 @@ def opaque_unattended(opaque) -> str:
               "le azioni dirette, o dillo nel perche'.")
 
 
-def unattended_refusal(level: str | None, acted_on, opaque) -> str | None:
+def unattended_refusal(level: str | None, acted_on, opaque,
+                       services=()) -> str | None:
     """Perche' un oggetto che agira' DA SOLO non si accetta, o `None`
-    («Rendila automatica», attori Task 4.5): `alto`, o un'azione su un
-    oggetto il cui contenuto non si vede (`opaque`). Finche' il codice non
-    legge quei corpi, un oggetto che agisce da solo non li chiama."""
+    («Rendila automatica», attori Task 4.5): `alto`, un servizio scritto come
+    modello (`services`), o un'azione su un oggetto il cui contenuto non si
+    vede (`opaque`). Finche' il codice non legge quei corpi, un oggetto che
+    agisce da solo non li chiama."""
     if level == HIGH:
         return HIGH_UNATTENDED
+    if any(is_template(service) for service in services):
+        return TEMPLATE_UNATTENDED
     if set(acted_on or ()) & set(opaque):
         return opaque_unattended(opaque)
     return None
@@ -159,8 +185,10 @@ def domains_acted_on(domain: str, *bodies, services=()) -> set[str]:
     found: set[str] = set()
     # Un servizio ha la stessa grammatica di un `entity_id`, dominio e nome:
     # lo legge la stessa funzione.
+    # Un servizio scritto come modello non ha ancora un dominio: lo rifiuta
+    # `unattended_refusal`, e qui non diventa un dominio inventato.
     for service in services:
-        if isinstance(service, str) and "." in service:
+        if isinstance(service, str) and "." in service and not is_template(service):
             found.add(domain_of(service))
 
     def entity_domain(value) -> None:

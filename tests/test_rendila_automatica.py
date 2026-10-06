@@ -16,7 +16,7 @@ import json
 import pytest
 
 from hiris.app import background, steering
-from hiris.app.action.construction import stakes
+from hiris.app.action.construction import stakes, workshop
 from hiris.app.api.handlers_constructions import _both_queues
 from hiris.app.api.handlers_proposals import handle_proposal_automate
 from hiris.app.mind import automate_turn as at
@@ -264,6 +264,57 @@ async def test_uno_SCRIPT_una_SCENA_o_un_AUTOMAZIONE_non_diventano_automatici(ba
         officina._ha.CONFIGURABLE_DOMAINS)}
     assert "proposta_id" in passata
     assert len(archivio.list(pending_only=False, limit=10)) == 1
+
+
+def test_SERVICE_TEMPLATE_e_un_servizio_e_la_serratura_si_vede():
+    """G69-1 (giro 69): Home Assistant accetta il nome del servizio anche in
+    `service_template` (`SERVICE_SCHEMA`, `config_validation.py`, letto il
+    06/10/2026). Leggendo solo `service`/`action`, `lock.unlock` usciva senza
+    livello, senza rifiuto e fuori dall'anteprima.
+
+    Mutazione ESEGUITA (06/10/2026): `service_template` tolta da
+    `_SERVICE_KEYS` -- rossa."""
+    corpo = {"actions": [{"service_template": "lock.unlock",
+                          "target": {"area_id": "ingresso"}}]}
+    assert workshop.services_named(corpo) == ["lock.unlock"]
+    assert workshop.acted_on("automation", None, corpo) == {"lock"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("passo", [
+    {"action": "{{ 'lock.unlock' }}", "target": {"area_id": "ingresso"}},
+    {"service_template": "{% if true %}lock.unlock{% endif %}",
+     "target": {"area_id": "ingresso"}},
+    {"action": "{{ servizio }}"},
+])
+async def test_un_servizio_SCRITTO_COME_MODELLO_non_diventa_automatico(banco, passo):
+    """G69-1 (giro 69): `action: "{{ 'lock.unlock' }}"` usciva senza livello
+    e passava il rifiuto. Il nome lo decide Home Assistant quando gira: con
+    `refuse_high` l'officina lo rifiuta; senza, la proposta normale passa
+    (il livello delle proposte normali e' una scelta di Paolo, non toccata).
+
+    Mutazione ESEGUITA (06/10/2026): `unattended_refusal` senza il controllo
+    dei modelli -- rosse le tre."""
+    officina, _, archivio, _ = banco
+    rifiutata = await officina.propose(_intento(azioni=[passo]), actor="x",
+                                       exchange="t1", now=1.0, refuse_high=True)
+    passata = await officina.propose(_intento(azioni=[passo]), actor="x",
+                                     exchange="t2", now=1.0)
+
+    assert rifiutata == {"errore": stakes.TEMPLATE_UNATTENDED}
+    assert "proposta_id" in passata
+    assert len(archivio.list(pending_only=False, limit=10)) == 1
+
+
+def test_un_nome_SCRITTO_COME_MODELLO_non_inventa_un_dominio():
+    """`domain_of("{{ 'lock.unlock' }}")` darebbe `{{ 'lock`: un dominio che
+    non esiste. Il modello resta un nome nell'anteprima, non un dominio.
+
+    Mutazione ESEGUITA (06/10/2026): il filtro `is_template` tolto da
+    `domains_acted_on` -- rossa."""
+    corpo = {"actions": [{"action": "{{ 'lock.unlock' }}"}]}
+    assert workshop.services_named(corpo) == ["{{ 'lock.unlock' }}"]
+    assert workshop.acted_on("automation", None, corpo) == set()
 
 
 @pytest.mark.asyncio

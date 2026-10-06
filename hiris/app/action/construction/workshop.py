@@ -319,7 +319,8 @@ class Workshop:
         if refuse_high:
             refusal = stakes.unattended_refusal(
                 level, acted_on(domain, prima, dopo),
-                self._ha.CONFIGURABLE_DOMAINS)
+                self._ha.CONFIGURABLE_DOMAINS,
+                services=services_called(domain, prima, dopo))
             if refusal is not None:
                 return {"errore": refusal}
         occurrence = self._store.propose(
@@ -1194,9 +1195,16 @@ def acted_on(domain: str, prima: dict | None, dopo: dict | None) -> set[str]:
     """I domini su cui il «prima» o il «dopo» agiscono: i servizi chiamati
     li trova l'estrattore unico (`services_named`), sulla sola parte che
     agisce. Lo leggono `stakes_of` e il rifiuto di «Rendila automatica»."""
-    services = [service for body in (prima, dopo)
-                for service in services_named(stakes.acting_part(domain, body))]
-    return stakes.domains_acted_on(domain, prima, dopo, services=services)
+    return stakes.domains_acted_on(domain, prima, dopo,
+                                   services=services_called(domain, prima, dopo))
+
+
+def services_called(domain: str, prima: dict | None, dopo: dict | None) -> list[str]:
+    """I servizi che il «prima» o il «dopo» chiamano, sulla sola parte che
+    agisce (`services_named`): li leggono `acted_on` e il rifiuto di «Rendila
+    automatica», che guarda anche i nomi scritti come modello."""
+    return [service for body in (prima, dopo)
+            for service in services_named(stakes.acting_part(domain, body))]
 
 
 def _seme_da(intent: dict) -> int:
@@ -1223,6 +1231,14 @@ def _seme_da(intent: dict) -> int:
 _MAX_DEPTH = 50
 
 
+#: Le chiavi in cui Home Assistant scrive il nome del servizio di un passo:
+#: `action` (dal 2024.8), `service` (prima) e `service_template`, che accetta
+#: anch'essa un nome o un modello (`SERVICE_SCHEMA` in
+#: `homeassistant/helpers/config_validation.py`, ramo `dev`, letto il
+#: 06/10/2026; giro di revisione 69, G69-1).
+_SERVICE_KEYS = ("service", "action", "service_template")
+
+
 def services_named(body: dict | None) -> list[str]:
     """I servizi che questo corpo CHIAMA, nell'ordine in cui compaiono.
 
@@ -1239,6 +1255,8 @@ def services_named(body: dict | None) -> list[str]:
     prima c'era `service:`) e -- prima di `actions:` -- per la lista dei passi.
     Una stringa col punto e' un servizio, una lista e' un elenco: la posizione
     cambia da una versione all'altra di HA, il tipo no.
+    Un modello Jinja e' un servizio anche senza punto: il nome lo decide Home
+    Assistant quando il passo gira, e l'anteprima lo mostra com'e' scritto.
 
     Si **deduplica** (un'automazione che accende dieci luci chiama dieci volte
     lo stesso servizio, e dirlo dieci volte renderebbe illeggibile la riga che
@@ -1252,8 +1270,8 @@ def services_named(body: dict | None) -> list[str]:
             return
         if isinstance(node, dict):
             for key, value in node.items():
-                if (key in ("service", "action")
-                        and isinstance(value, str) and "." in value):
+                if (key in _SERVICE_KEYS and isinstance(value, str)
+                        and ("." in value or stakes.is_template(value))):
                     if value not in found:
                         found.append(value)
                     continue
