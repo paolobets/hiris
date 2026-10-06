@@ -783,8 +783,11 @@ def _nomi_registro(percorso: Path) -> dict[str, str] | None:
         return None
     try:
         modulo = _carica_registro(percorso)
-    except Exception:
-        return None  # un registro rotto non ferma la lettura: lo dice il rapporto
+    except Exception as errore:
+        # Un registro rotto non ferma la lettura: lo dice il rapporto, con la
+        # ragione (una dipendenza mancante non e' un registro rotto).
+        COPERTURA_REGISTRO["errore"] = f"{type(errore).__name__}: {errore}"
+        return None
     if modulo is None:
         return None
     registro = getattr(modulo, "REGISTRY", None)
@@ -828,6 +831,7 @@ def censisci_operazioni(
     puo' benissimo essere pubblico -- ed e' il caso peggiore, perche' qualcuno
     lo importa.
     """
+    COPERTURA_REGISTRO.pop("errore", None)
     nomi = _nomi_registro(percorso_registro)
     COPERTURA_REGISTRO["leggibile"] = nomi is not None
     COPERTURA_REGISTRO["operazioni"] = len(set(nomi.values())) if nomi else 0
@@ -1047,6 +1051,8 @@ def run(*, cancello: bool = False, exceptions: Path | None = None) -> int:
         print(f"{_ROSSO}CANCELLO: il registro delle operazioni "
               f"({_rel(REGISTRO_PY)}) non si legge: il controllo dei doppioni "
               f"delle operazioni non ha cercato niente.{_RESET}", file=sys.stderr)
+        if COPERTURA_REGISTRO.get("errore"):
+            print(f"  {COPERTURA_REGISTRO['errore']}", file=sys.stderr)
     if fermanti:
         print(file=sys.stderr)
         print(f"{_ROSSO}CANCELLO: {len(fermanti)} reperti che fermano. Si toglie "
