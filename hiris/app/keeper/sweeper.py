@@ -17,18 +17,15 @@ from __future__ import annotations
 import logging
 
 from ..chat_thread import subject_from_thread
-from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
+from ..proxy._sanitize import sanitize_ha_value
+from .delivery import deliver
 from .outcome import write_line
 from .promise import (
-    MAX_SERVICES_PER_PROMISE,
-    REASON_CAP,
     TOLLERANZA_S,
     delay_reason,
-    delivery_call,
     failure_message,
     kept_message,
     outcome_message,
-    push_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -322,41 +319,17 @@ class Sweeper:
             logger.warning("promessa %s: recapito non risolto (%s)",
                            promise["id"], type(error).__name__)
             return _RECIPIENTS_FAILED
-        # Deduplicati in ordine stabile (extra 5: `recipients_for` gia' non
-        # ne produce, qui non ci si fida) e al piu' `MAX_SERVICES_PER_PROMISE`
-        # (ruling 3.4): il resto si conta nel log, non si spinge.
-        services = list(dict.fromkeys(recipients.services))
-        if not services:
+        if not recipients.services:
             logger.info("promessa %s: nessun servizio a cui notificare",
                         promise["id"])
             return recipients.reason
-        if len(services) > MAX_SERVICES_PER_PROMISE:
-            logger.warning("promessa %s: %d servizi, ne notifico %d",
-                           promise["id"], len(services), MAX_SERVICES_PER_PROMISE)
-            services = services[:MAX_SERVICES_PER_PROMISE]
-
-        message = push_message(text)
-        failures = []
-        for service in services:
-            # Ogni push passa dalla porta unica, con la verifica vera
-            # (vincolo 3.1). Un servizio che fallisce si DICHIARA e non si
-            # devia su un altro (vincolo 3.5): scegliere un ripiego sarebbe
-            # decidere al posto di chi ha configurato i suoi dispositivi.
-            try:
-                occurrence = await self._execute(
-                    delivery_call(service, message), actor="schedulatore",
-                    subject=subject)
-            except Exception as error:
-                occurrence = {"eseguito": False, "errore": (
-                    f"guasto imprevisto ({type(error).__name__}).")}
-            if not occurrence.get("eseguito"):
-                error = truncate_with_marker(
-                    str(occurrence.get("errore") or "non è arrivata."), REASON_CAP)
-                failures.append(f"{service} ({error})")
+        count, failures = await deliver(recipients.services, text,
+                                        execute=self._execute,
+                                        actor="schedulatore", subject=subject)
         # Nei log id e conteggi: il testo e la frase sono di chi ha chiesto
         # (vincolo 3.6).
         logger.info("promessa %s: notifica a %d servizi, %d non arrivate",
-                    promise["id"], len(services), len(failures))
+                    promise["id"], count, len(failures))
         if not failures:
             return None
         return "la notifica non è arrivata a " + "; ".join(failures)
