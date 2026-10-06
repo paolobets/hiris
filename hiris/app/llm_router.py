@@ -192,7 +192,10 @@ class LLMRouter:
                 if self._registry is not None:
                     self._registry.fallimento(
                         backend_name, family=getattr(exc, "family", "altro"),
-                        code=getattr(exc, "code", None), message=str(exc),
+                        code=getattr(exc, "code", None),
+                        # Cio' che il PROVIDER ha detto, non la frase della
+                        # chat: e' cio' che la pagina cita (G36-1).
+                        message=getattr(exc, "said", None) or "",
                         durata_s=time.monotonic() - start)
                 last_friendly = exc.friendly_message
             except Exception as exc:

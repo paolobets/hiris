@@ -28,7 +28,7 @@ from ..claude_runner import (
     testo_canonico,
 )
 from ..model_resolution import failure_reply
-from ..provider_occurrences import error_family
+from ..provider_occurrences import error_family, provider_said
 from ..usage.giro import openai_turn_tokens
 from .pricing import get_price as _prezzo
 
@@ -787,8 +787,10 @@ class OpenAICompatRunner:
                 # l'ipotesi sulla causa che questo prodotto non fa. Il codice
                 # invece si porta, perché è un fatto.
                 family, code = error_family(exc), _status_code(exc) or 429
+                said = provider_said(exc)
                 raise RunnerBackendError(
-                    upstream or failure_reply(family, code), family=family, code=code,
+                    upstream or failure_reply(family, code, said), family=family,
+                    code=code, said=said,
                 ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
@@ -830,8 +832,10 @@ class OpenAICompatRunner:
                     # punto in cui «404, quel modello non esiste più» e «402,
                     # credito finito» diventavano la stessa identica riga.
                     family, code = error_family(exc), _status_code(exc)
+                    said = provider_said(exc)
                     raise RunnerBackendError(
-                        failure_reply(family, code), family=family, code=code,
+                        failure_reply(family, code, said), family=family, code=code,
+                        said=said,
                     ) from exc
 
             self._record_success()
