@@ -325,10 +325,16 @@ def test_la_famiglia_di_scorta_dice_il_codice_e_non_lo_interpreta():
                             "messaggio": detto, "quando": a - 180, "da_quante": quante,
                             "durata_s": 0.1}, position=1, now=a)
 
-    assert _f(500) == "ha rifiutato l’ultima richiesta — errore 500, 3 min fa"
-    assert _f(429, quante=7) == "ha rifiutato le ultime 7 richieste — errore 429, 3 min fa"
+    assert _f(400) == "ha rifiutato l’ultima richiesta — errore 400, 3 min fa"
     assert _f(None) == "ha rifiutato l’ultima richiesta, 3 min fa"
-    assert _f(500, detto="boom") == "ha rifiutato l’ultima richiesta — errore 500: «boom», 3 min fa"
+    assert _f(400, detto="boom") == "ha rifiutato l’ultima richiesta — errore 400: «boom», 3 min fa"
+    # Un 429 o un 5xx non e' un rifiuto (giro 43; RFC 6585 §4, RFC 9110
+    # §15.6): la stessa regola per classe HTTP della chat.
+    assert _f(500) == "non ha servito l’ultima richiesta — errore temporaneo 500, 3 min fa"
+    assert _f(429, quante=7) == (
+        "non ha servito le ultime 7 richieste — errore temporaneo 429, 3 min fa")
+    assert _f(529, detto="Overloaded") == (
+        "non ha servito l’ultima richiesta — errore temporaneo 529: «Overloaded», 3 min fa")
     assert _f(None, detto="boom") == "ha rifiutato l’ultima richiesta: «boom», 3 min fa"
 
 
