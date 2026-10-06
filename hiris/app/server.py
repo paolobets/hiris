@@ -2247,7 +2247,11 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
     if not actuation:
         return
     rows = list(pending or [])
-    decided = store.decided_proposals()
+    constructions = app.get("constructions")
+    now = time.time()
+    decided = actuator.latest_decided(
+        store.decided_proposals(),
+        constructions.decided_proposals(now=now) if constructions is not None else {})
     workshop = app.get("workshop")
     for outcome in actuation.get("esiti") or []:
         if outcome.get("gesto") != "proposta":
@@ -2272,20 +2276,24 @@ async def _file_proposals(app, store, esito: dict, pending) -> None:
                 continue
             esito_officina = await workshop.propose(
                 dict(outcome.get("intenzione") or {}),
-                actor=ACTUATOR_AUTHOR, exchange=None, now=time.time())
+                actor=ACTUATOR_AUTHOR, exchange=None, now=now,
+                fingerprint=key, prova=actuator.evidence_of(row))
             if esito_officina.get("errore"):
                 logger.info("attuatore: l'officina ha rifiutato la proposta (%s)",
                             esito_officina["errore"])
-            continue
-        store.add_proposal(
-            text=str(outcome.get("trovato") or "").strip(),
-            perche=str(row.get("cosa") or "").strip(),
-            fingerprint=key, prova=actuator.evidence_of(row),
-            # Il livello di una proposta da fare a mano lo dira' il proponente
-            # (Task 4.2): questo contratto non lo chiede, e una frase in prosa
-            # non porta i domini su cui il codice imporrebbe `alto`.
-            stakes=None, now_ts=time.time())
-        decided[key] = {"prova": actuator.evidence_of(row), "aperta": True}
+                continue
+        else:
+            store.add_proposal(
+                text=str(outcome.get("trovato") or "").strip(),
+                perche=str(row.get("cosa") or "").strip(),
+                fingerprint=key, prova=actuator.evidence_of(row),
+                # Il livello di una proposta da fare a mano lo dira' il
+                # proponente (Task 4.2): questo contratto non lo chiede, e una
+                # frase in prosa non porta i domini su cui il codice
+                # imporrebbe `alto`.
+                stakes=None, now_ts=now)
+        decided[key] = {"prova": actuator.evidence_of(row), "aperta": True,
+                        "creata_ts": now}
 
 
 def _write_actuation(store, day: str, stamp: str | None, esito: dict,

@@ -223,8 +223,13 @@ class Workshop:
 
     async def propose(self, intent: dict, *, actor: str, exchange: str | None,
                       now: float, thread: ChatThread | None = None,
-                      reveal_before: bool = True) -> dict:
+                      reveal_before: bool = True,
+                      fingerprint: str | None = None, prova: dict | None = None) -> dict:
         """Propone; non scrive.
+
+        `fingerprint` e `prova` li passa il cervello: sono l'impronta e la
+        prova della domanda da cui la proposta nasce, e restano sulla riga per
+        l'anti-ripetizione (`ConstructionStore.decided_proposals`).
 
         `reveal_before` falso (chi propone non amministra, spec 2026-09-27, fix
         round 2 del Task 2): l'anteprima non descrive com'e' adesso
@@ -311,7 +316,7 @@ class Workshop:
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
             helper=list(intent.get("helper") or []), preview=preview,
-            stakes=level, now=now, thread=thread)
+            stakes=level, now=now, thread=thread, fingerprint=fingerprint, prova=prova)
         if "errore" in occurrence:
             return occurrence
         # Il motivo del consigliere vive nell'anteprima («Nota: ...»), che e'

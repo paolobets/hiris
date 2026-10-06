@@ -16,7 +16,7 @@ class FintaOfficina:
                                           "entita": ["automation.x"], "avviso": None}
 
     async def propose(self, intento, *, actor, exchange, now, thread=None,
-                      reveal_before=True):
+                      reveal_before=True, fingerprint=None, prova=None):
         self.chiamate.append(("propose", intento, actor, exchange))
         return self._proponi
 

@@ -1486,8 +1486,10 @@ class ObservationsStore:
         return cur.rowcount > 0
 
     def decided_proposals(self) -> dict[str, dict]:
-        """`{impronta: {"prova": ..., "aperta": bool}}`: cio' che l'attuatore
+        """`{impronta: {"prova", "aperta", "creata_ts"}}`: cio' che l'attuatore
         deve sapere per non rifare una proposta (`actuator.already_answered`).
+        La stessa forma di `ConstructionStore.decided_proposals`: le due code
+        si fondono in `actuator.latest_decided`.
 
         Per ogni impronta conta **l'ultima** proposta: dopo una prova cambiata
         la stessa domanda ha due righe, e a decidere e' la piu' recente.
@@ -1497,9 +1499,10 @@ class ObservationsStore:
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT impronta, prova_json, stato FROM proposte "
+                "SELECT impronta, prova_json, stato, creata_ts FROM proposte "
                 "ORDER BY creata_ts, rowid").fetchall()
-        return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING}
+        return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING,
+                       "creata_ts": r[3]}
                 for r in rows}
 
     def analysis(self, day: str) -> dict | None:

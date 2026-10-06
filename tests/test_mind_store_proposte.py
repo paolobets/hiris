@@ -133,7 +133,8 @@ def test_le_proposte_DECISE_si_leggono_per_impronta(archivio):
     decise = archivio.decided_proposals()
     assert set(decise) == {"dev1|prelievo|None|1", "dev2|consumo|None|1"}
     assert decise["dev2|consumo|None|1"] == {
-        "prova": {"base": 3, "quanti_scarti": 1, "spiegato": None}, "aperta": False}
+        "prova": {"base": 3, "quanti_scarti": 1, "spiegato": None}, "aperta": False,
+        "creata_ts": 100.0}
     assert decise["dev1|prelievo|None|1"]["aperta"] is True, aperta
 
 
@@ -152,7 +153,7 @@ def test_per_impronta_conta_l_ULTIMA_proposta(archivio):
 
     entry = archivio.decided_proposals()["dev1|prelievo|None|1"]
     assert entry == {"prova": {"base": 19, "quanti_scarti": 3, "spiegato": None},
-                     "aperta": True}
+                     "aperta": True, "creata_ts": 200.0}
 
 
 def test_una_proposta_senza_IMPRONTA_non_si_scrive(archivio):

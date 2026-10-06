@@ -317,3 +317,24 @@ def test_la_migrazione_v1_conserva_le_righe_come_senza_filo(tmp_path):
     assert riga["chiave"] == "1771"
     a.close()
 
+
+
+def test_le_proposte_del_CERVELLO_si_leggono_per_impronta(archivio):
+    """Revisione indipendente, giro 24 (D24-2): l'impronta e la prova di una
+    costruibile restano sulla sua riga, e si leggono con la stessa forma delle
+    proposte a mano. `aperta` e' sospesa e non scaduta; quelle della chat,
+    senza impronta, non ci sono.
+
+    Mutazione ESEGUITA (06/10/2026): `aperta` senza il predicato della
+    scadenza -- rossa sulla scaduta."""
+    _proponi(archivio, key="dalla_chat")
+    aperta = _proponi(archivio, key="a", fingerprint="dev1|prelievo|None|1",
+                      prova={"base": 19})["id"]
+    oltre = ADESSO + ConstructionStore.DEADLINE_S + 1
+
+    decise = archivio.decided_proposals(now=ADESSO)
+    assert decise == {"dev1|prelievo|None|1": {
+        "prova": {"base": 19}, "aperta": True, "creata_ts": ADESSO}}
+    assert archivio.decided_proposals(now=oltre)["dev1|prelievo|None|1"]["aperta"] is False
+    riga = archivio.read(aperta, now=ADESSO)
+    assert (riga["impronta"], riga["prova"]) == ("dev1|prelievo|None|1", {"base": 19})

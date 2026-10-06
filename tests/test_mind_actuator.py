@@ -111,3 +111,18 @@ def test_senza_niente_di_deciso_si_prende_tutto_in_carico():
 # Le ricette rotte: il gesto che nessun altro fara' mai.
 # ---------------------------------------------------------------------------
 
+
+
+def test_fra_i_due_archivi_vince_la_proposta_piu_RECENTE():
+    """Le proposte a mano e le costruibili vivono in due archivi con la stessa
+    forma (giro 24, D24-2): per ogni impronta conta la piu' recente, da
+    qualunque archivio venga.
+
+    Mutazione ESEGUITA (06/10/2026): vince sempre il secondo archivio --
+    rossa."""
+    vecchia = {"prova": {"base": 3}, "aperta": False, "creata_ts": 100.0}
+    nuova = {"prova": {"base": 19}, "aperta": True, "creata_ts": 200.0}
+
+    assert act.latest_decided({"k": nuova}, {"k": vecchia}) == {"k": nuova}
+    assert act.latest_decided({"k": vecchia}, {"k": nuova}) == {"k": nuova}
+    assert act.latest_decided({"k": vecchia}, {}) == {"k": vecchia}

@@ -101,7 +101,14 @@ CREATE TABLE IF NOT EXISTS costruzioni (
     -- NULL quando nessuno l'ha detto e il codice non aveva niente da
     -- imporre, e per le righe nate prima del 06/10/2026: e' vero, non
     -- l'hanno mai avuto (vedi `_migration_4`).
-    stakes TEXT
+    stakes TEXT,
+    -- L'IMPRONTA e la PROVA della domanda dell'analista da cui la proposta
+    -- e' nata (`mind/actuator.observation_key`, `evidence_of`), quando l'ha
+    -- proposta il cervello. NULL per quelle della chat e per i ripristini:
+    -- non rispondono a nessuna domanda. Servono all'anti-ripetizione
+    -- (`decided_proposals`), come le stesse colonne di `proposte`.
+    impronta TEXT,
+    prova_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_costruzioni_stato ON costruzioni(stato, creata_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto ON costruzioni(dominio, chiave, creata_ts DESC);
@@ -160,6 +167,23 @@ def _migration_4(conn) -> None:
         conn.execute("ALTER TABLE costruzioni ADD COLUMN stakes TEXT")
 
 
+def _migration_5(conn) -> None:
+    """v4 -> v5 (revisione indipendente, giro 24, D24-2): impronta e prova
+    della domanda da cui la proposta e' nata.
+
+    Fino al 06/10/2026 una proposta costruibile del cervello non lasciava
+    l'impronta da nessuna parte, e la stessa domanda con la stessa prova
+    chiamava l'officina a ogni giro (misurato dal revisore: tre giri, tre
+    bozze). Le righe scritte prima rileggono `None`: quale domanda le abbia
+    fatte nascere non e' scritto da nessuna parte, e non si indovina.
+    """
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
+    if "impronta" not in colonne:
+        conn.execute("ALTER TABLE costruzioni ADD COLUMN impronta TEXT")
+    if "prova_json" not in colonne:
+        conn.execute("ALTER TABLE costruzioni ADD COLUMN prova_json TEXT")
+
+
 def _load(text):
     return None if text is None else json.loads(text)
 
@@ -209,6 +233,10 @@ def _row(r) -> dict:
         "esecuzione_id": r["esecuzione_id"],
         "motivo": REASON_EXPIRED if expired else r["motivo"],
         "livello": r["stakes"],
+        # La stessa coppia, con gli stessi nomi, delle proposte da fare a
+        # mano (`mind/store.proposals`): le due code, una forma.
+        "impronta": r["impronta"],
+        "prova": _load(r["prova_json"]),
     }
 
 
@@ -224,8 +252,9 @@ class ConstructionStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=4,
-                   migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
+        init_schema(self._conn, _SCHEMA, version=5,
+                   migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
+                               5: _migration_5})
 
     def close(self) -> None:
         with self._lock:
@@ -235,7 +264,8 @@ class ConstructionStore:
                 exchange: str | None, phrase: str | None, prima: dict | None,
                 dopo: dict | None, helper: list, preview: str,
                 stakes: str | None, now: float,
-                thread: ChatThread | None = None) -> dict:
+                thread: ChatThread | None = None,
+                fingerprint: str | None = None, prova: dict | None = None) -> dict:
         ident = secrets.token_urlsafe(9)
         with self._lock:
             self._prune(now)
@@ -257,13 +287,14 @@ class ConstructionStore:
             self._conn.execute(
                 "INSERT INTO costruzioni(id,creata_ts,aggiornata_ts,stato,gesto,dominio,"
                 "chiave,origine,turno,frase,prima_json,dopo_json,helper_json,anteprima,"
-                "esecuzione_id,motivo,subject_key,entry_point,stakes) "
-                "VALUES(?,?,?,'in_attesa',?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)",
+                "esecuzione_id,motivo,subject_key,entry_point,stakes,impronta,prova_json) "
+                "VALUES(?,?,?,'in_attesa',?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?,?,?)",
                 (ident, now, now, operation, domain, key, actor, exchange, phrase,
                  None if prima is None else json.dumps(prima),
                  None if dopo is None else json.dumps(dopo),
                  json.dumps(list(helper)), preview,
-                 *thread_params(thread), stakes))
+                 *thread_params(thread), stakes, fingerprint,
+                 None if prova is None else json.dumps(prova)))
             self._conn.commit()
         return {"id": ident}
 
@@ -291,6 +322,23 @@ class ConstructionStore:
         with self._lock:
             righe = self._conn.execute(sql, params + (int(limit),)).fetchall()
         return [_row(r) for r in righe]
+
+    def decided_proposals(self, *, now: float) -> dict[str, dict]:
+        """`{impronta: {"prova", "aperta", "creata_ts"}}` per le proposte
+        nate da una domanda del cervello: la stessa forma di
+        `mind/store.ObservationsStore.decided_proposals`, che l'attuatore
+        fonde con questa (`actuator.latest_decided`).
+
+        Per ogni impronta conta l'ultima. `aperta` e' «aspetta ancora una
+        risposta»: sospesa e non scaduta, come la conta `count_pending`.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT impronta, prova_json, creata_ts, stato IN ({_SOSPESI_SQL}) "
+                f"AND NOT {_EXPIRED_SQL} FROM costruzioni WHERE impronta IS NOT NULL "
+                "ORDER BY creata_ts, rowid", (now - self.DEADLINE_S,)).fetchall()
+        return {r[0]: {"prova": _load(r[1]), "aperta": bool(r[3]), "creata_ts": r[2]}
+                for r in rows}
 
     def count_pending(self, *, now: float) -> int:
         """Quante proposte aspettano una risposta di chi costruisce.

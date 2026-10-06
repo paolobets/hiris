@@ -342,7 +342,7 @@ class _OfficinaCheConta:
     def __init__(self):
         self.chiamate = 0
 
-    async def propose(self, intent, *, actor, exchange, now):
+    async def propose(self, intent, *, actor, exchange, now, fingerprint=None, prova=None):
         self.chiamate += 1
         return {"proposta_id": "c1"}
 

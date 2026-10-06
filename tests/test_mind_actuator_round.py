@@ -11,6 +11,7 @@ finche' l'analisi di oggi non c'e'. Cosi' parte quando l'analisi e' finita,
 qualunque ora sia, senza inventare un orario.
 """
 import json
+import time
 
 import pytest
 
@@ -289,9 +290,26 @@ class _FintaOfficina:
         self.intenzioni = []
         self._esito = esito or {"proposta_id": "c1", "anteprima": "diff"}
 
-    async def propose(self, intent, *, actor, exchange, now):
+    async def propose(self, intent, *, actor, exchange, now, fingerprint=None, prova=None):
         self.intenzioni.append((intent, actor))
         return self._esito
+
+
+class _OfficinaCheArchivia:
+    """Un'officina che archivia davvero, nell'archivio vero delle
+    costruzioni, con l'impronta e la prova che il giro le passa."""
+
+    def __init__(self, archivio):
+        self.archivio = archivio
+        self.chiamate = 0
+
+    async def propose(self, intent, *, actor, exchange, now, fingerprint=None, prova=None):
+        self.chiamate += 1
+        esito = self.archivio.propose(
+            operation="crea", domain="automation", key=f"k{self.chiamate}", actor=actor,
+            exchange=exchange, phrase=None, prima=None, dopo={"alias": "x"}, helper=[],
+            preview="diff", stakes=None, now=now, fingerprint=fingerprint, prova=prova)
+        return {"proposta_id": esito["id"], "anteprima": "diff"}
 
 
 def _modello_proponente(costruibile, intenzione=None):
@@ -417,6 +435,43 @@ async def test_una_proposta_DECISA_torna_solo_a_prova_cambiata_e_chi_salta_lo_di
     righe = store.proposals()
     assert len(righe) == 2
     assert {r["prova"]["base"] for r in righe} == {19, 40}
+
+
+@pytest.mark.asyncio
+async def test_la_stessa_COSTRUIBILE_non_richiama_l_officina_a_ogni_giro(casa, tmp_path):
+    """Revisione indipendente, giro 24 (D24-2), misurato: tre giri con la
+    stessa costruibile e la stessa prova chiamavano l'officina tre volte,
+    perche' l'impronta di una costruibile non si scriveva da nessuna parte.
+    Ora sta sulla riga dell'officina, e la regola e' la stessa delle
+    proposte a mano: una aperta non si duplica, una decisa torna solo a
+    prova cambiata.
+
+    Mutazione ESEGUITA (06/10/2026): `_file_proposals` che non legge
+    l'archivio delle costruzioni -- rossa, tre chiamate."""
+    from hiris.app.action.construction.revisions import ConstructionStore
+
+    app, store, _modello = casa
+    archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
+    try:
+        officina = _OfficinaCheArchivia(archivio)
+        app["workshop"], app["constructions"] = officina, archivio
+        app["llm_router"] = _modello_proponente(
+            True, {"gesto": "crea", "dominio": "automation",
+                   "innesco": [{"trigger": "time", "at": "14:00:00"}]})
+        for giro in ("aaa", "bbb", "ccc"):
+            store.replace_analysis(OGGI, _analisi(impronta=giro))
+            await server.actuator_round(app)
+        assert officina.chiamate == 1
+        [riga] = archivio.list(now=time.time())
+        assert riga["impronta"] == "dev1|prelievo|None|1"
+        assert riga["prova"]["base"] == 19
+
+        archivio.mark_cancelled(riga["id"], now=time.time())
+        store.replace_analysis(OGGI, _analisi(_oss(base=40), impronta="ddd"))
+        await server.actuator_round(app)
+        assert officina.chiamate == 2, "a prova cambiata la decisa torna"
+    finally:
+        archivio.close()
 
 
 @pytest.mark.asyncio

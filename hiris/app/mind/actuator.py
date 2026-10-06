@@ -44,6 +44,24 @@ def evidence_of(observation: dict) -> dict:
     return {name: observation.get(name) for name in _EVIDENCE}
 
 
+def latest_decided(*sources: dict) -> dict[str, dict]:
+    """Le proposte gia' fatte, da piu' archivi, in un dizionario solo: per
+    ogni impronta vince la piu' recente (`creata_ts`).
+
+    Le proposte da fare a mano e quelle costruibili vivono in due archivi
+    (`mind/store.proposte`, `revisions.costruzioni`), con la stessa forma.
+    Fino al 06/10/2026 si leggeva solo il primo, e una costruibile non
+    fermava niente: la stessa domanda con la stessa prova chiamava
+    l'officina a ogni giro (revisione indipendente, giro 24, D24-2).
+    """
+    merged: dict[str, dict] = {}
+    for source in sources:
+        for key, entry in (source or {}).items():
+            if key not in merged or entry["creata_ts"] >= merged[key]["creata_ts"]:
+                merged[key] = entry
+    return merged
+
+
 def already_answered(observation: dict, decided: dict) -> str | None:
     """Perche' questa domanda non va proposta di nuovo, o `None` se va.
 
