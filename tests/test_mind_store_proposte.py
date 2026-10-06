@@ -105,8 +105,10 @@ def test_il_filo_dei_GIRI_si_accoda_e_si_rilegge_in_ordine(archivio):
     ident = _proposta(archivio)
 
     archivio.add_proposal_round(ident, request="troppo presto, dopo le 14",
+                                outcome="a_mano", turn="t1",
                                 text="Sposta la lavatrice dopo le 14", now_ts=300.0)
     archivio.add_proposal_round(ident, request="e solo nei feriali",
+                                outcome="a_mano", turn="t2",
                                 text="Sposta la lavatrice dopo le 14, nei feriali",
                                 now_ts=400.0)
 
@@ -116,6 +118,37 @@ def test_il_filo_dei_GIRI_si_accoda_e_si_rilegge_in_ordine(archivio):
     assert riga["testo"].endswith("nei feriali"), (
         "il testo della proposta deve essere l'ULTIMA forma, non la prima")
     assert riga["stato"] == "attesa", "un giro non chiude niente"
+
+
+def test_lo_STESSO_turno_non_scrive_due_giri(archivio):
+    """Un turno del ponte puo' essere consegnato due volte (il lavoratore
+    ritenta, la rotta e la consegna si incrociano): il secondo giro dello
+    stesso turno non si scrive (attori, Task 4.4).
+
+    Mutazione ESEGUITA (06/10/2026): tolto il controllo su `turno` -- rossa,
+    due giri."""
+    ident = _proposta(archivio)
+    assert archivio.add_proposal_round(ident, request="dopo le 14", outcome="a_mano",
+                                       turn="t1", text="Dopo le 14", now_ts=300.0)
+    assert not archivio.add_proposal_round(ident, request="dopo le 14",
+                                           outcome="a_mano", turn="t1",
+                                           text="Dopo le 14", now_ts=301.0)
+    assert len(archivio.proposals()[0]["giri"]) == 1
+
+
+def test_un_giro_NIENTE_lascia_la_proposta_com_era(archivio):
+    """«Niente» entra nel filo come un giro qualunque, col perche', e il
+    testo non cambia (scelta del proprietario, 06/10/2026)."""
+    ident = _proposta(archivio)
+    prima = archivio.proposals()[0]["testo"]
+    archivio.add_proposal_round(ident, request="senza toccare la lavatrice",
+                                outcome="niente", turn="t1",
+                                why="senza la lavatrice non resta niente da spostare",
+                                now_ts=300.0)
+    riga = archivio.proposals()[0]
+    assert riga["testo"] == prima
+    assert riga["giri"][-1]["esito"] == "niente"
+    assert riga["giri"][-1]["perche"].startswith("senza la lavatrice")
 
 
 def test_le_proposte_DECISE_si_leggono_per_impronta(archivio):

@@ -868,7 +868,8 @@ async def chain_turn(runner, species: str, *, usage, max_tokens: int,
 
 
 def enqueue_turn(app, species: str, wake: dict, context: dict, *,
-                 thread=None, now: float | None = None) -> tuple[str, int]:
+                 thread=None, now: float | None = None,
+                 priority: int | None = None) -> tuple[str, int]:
     """**Un turno sul ponte**: l'unico posto che accoda. Torna l'id del job e
     i minuti che il turno ha per avere risposta.
 
@@ -877,6 +878,11 @@ def enqueue_turn(app, species: str, wake: dict, context: dict, *,
     decisione 11) e la scadenza (`bridge_deadline_min`). Fino al 06/10/2026
     ognuno dei sei accodamenti le scriveva a mano. `now` serve a chi annota
     l'accodamento con lo stesso istante del job.
+
+    `priority` scavalca quella del mestiere per un turno che una persona
+    aspetta davanti alla pagina: «Rifalla» e' un turno del proponente con la
+    precedenza della chat (attori, Task 4.4, scelta del proprietario del
+    06/10/2026: la ragione di D4, «la chat passa avanti», e' chi aspetta).
     """
     declared = SPECIES[species]
     deadline_min = bridge_deadline_min(app.get("models_config"))
@@ -884,11 +890,11 @@ def enqueue_turn(app, species: str, wake: dict, context: dict, *,
     job_id = app["reasoning_queue"].enqueue(
         declared.kind, wake, {**context, "model": bridge_model(app)},
         now + deadline_min * 60, now=now, thread=thread,
-        priority=declared.priority)
+        priority=declared.priority if priority is None else priority)
     return job_id, deadline_min
 
 
-def turn_in_flight(app, kind: str) -> bool:
+def turn_in_flight(app, kind: str, *, wake_key: str | None = None) -> bool:
     """Se un turno di quella specie sta gia' aspettando una risposta dal piano.
 
     **La coda e' l'unico posto in cui questo fatto vive.** Tenere il `job_id`
@@ -911,11 +917,15 @@ def turn_in_flight(app, kind: str) -> bool:
     Sta qui, accanto a `enqueue_turn`, dal 06/10/2026 (attori, Task 4.2): il
     giro del proponente vive fuori da `server.py`, e la guardia deve essere la
     stessa per tutti i giri.
+
+    `wake_key` guarda solo i turni con quella chiave nella sveglia: il giro
+    del proponente e i suoi «Rifalla» stanno nella stessa specie, e un
+    rifacimento in volo non deve fermare il giro orario (attori, Task 4.4).
     """
     queue = app.get("reasoning_queue")
     if queue is None:
         return False
-    turn = queue.latest(kind)
+    turn = queue.latest(kind, wake_key=wake_key)
     if turn is None:
         return False
     return (turn["status"] in ("pending", "claimed")
@@ -941,11 +951,12 @@ def turn_in_flight(app, kind: str) -> bool:
 RETRY_HOLD_S = 3600.0
 
 
-def too_soon_to_ask_again(app, kind: str) -> bool:
+def too_soon_to_ask_again(app, kind: str, *, wake_key: str | None = None) -> bool:
     """Se l'ultimo turno di quella specie e' finito senza risposta utile da
-    meno di un'ora."""
+    meno di un'ora. `wake_key` restringe ai turni con quella chiave nella
+    sveglia, come `turn_in_flight`."""
     queue = app.get("reasoning_queue")
-    turn = queue.latest(kind) if queue else None
+    turn = queue.latest(kind, wake_key=wake_key) if queue else None
     if turn is None:
         return False
     deciso = turn.get("decided_ts") or turn.get("created_ts") or 0

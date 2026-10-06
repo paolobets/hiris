@@ -505,30 +505,6 @@ def downgrade_note(*, reason: str, who_answered: str) -> str:
             f"{display_name(who_answered)}, {which_nature}.")
 
 
-def synchronous_door_note(*, who_answered: str) -> str:
-    """La riga per una porta che **risponde subito** mentre il piano e' acceso.
-
-    **Non e' un ripiego, ed e' per questo che non riusa `downgrade_note`.** La'
-    si dice che cosa il piano non ha fatto; qui il piano sta benissimo -- e'
-    la porta che non puo' aspettarlo, perche' risponde nello stesso istante in
-    cui la si preme e il piano risponde minuti dopo, da un altro processo.
-
-    Dire «il Piano Claude Max non ha risposto» sarebbe **falso**, e manderebbe
-    il proprietario a cercare un guasto che non esiste: e' esattamente il
-    difetto che `downgrade_note` documenta per gli avvisi di `execute`.
-
-    Stesso silenzio delle altre: un provider di cui non si conosce la natura
-    non produce una frase approssimativa. La natura e' la meta' che riguarda i
-    soldi, ed e' la ragione per cui questa riga esiste.
-    """
-    which_nature = nature(who_answered)
-    if not which_nature:
-        return ""
-    return (f"Il Piano Claude Max e' acceso, ma questo giro risponde subito "
-            f"e il piano risponde in differita: ha risposto "
-            f"{display_name(who_answered)}, {which_nature}.")
-
-
 def compose_now(
     *,
     chain: list[str],

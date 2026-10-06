@@ -118,9 +118,15 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
             for row in store.list(now=time.time(), pending_only=pending_only, limit=200)]
     observations = app.get("observations")
     if observations is not None:
+        from ..mind.proposal_redo import state as redo_state
+
+        # `rifacimento`: un «Rifalla» sul ponte non ancora arrivato, come lo
+        # dice la coda (attori, Task 4.4). La pagina lo disegna nella riga, e
+        # cosi' sopravvive a una ricarica.
         rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
                   "a_mano": True,
-                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING}
+                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING,
+                  "rifacimento": redo_state(app, row)}
                  for row in observations.proposals(pending_only=pending_only)]
     return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 

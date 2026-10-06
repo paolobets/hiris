@@ -231,6 +231,18 @@ veridicita' della soluzione»).
    Paolo, 06/10/2026), e smette quando la proposta e' decisa o scaduta: le proposte da avvisare
    le dice l'archivio delle costruzioni (tabella `avvisi`), quindi anche una costruita che il
    modello non cita.
+   *«Rifalla» e' un turno del proponente dal 06/10/2026, non ancora rilasciato (Task 4.4, D16,
+   ramo `claude/project-thread-1k66ii`; scelte di Paolo del 06/10, tutte le consigliate):* stessi
+   strumenti e stesso contratto, su un'osservazione sola, con davanti la forma scartata, il filo
+   e la richiesta (`mind/proposal_redo.py`). Dalla partenza unica: sul ponte la rotta risponde
+   202, il turno ha la precedenza della chat e la consegna scrive l'esito nel filo; lo stato «in
+   rifacimento» lo dice la coda, e la pagina rilegge finche' arriva. Tre esiti: una frase nuova,
+   «niente» (entra nel filo, la proposta resta), o una costruita (la proposta a mano si chiude
+   `superata`, D24-1). Una proposta decisa mentre il giro e' in volo scarta la risposta; alla
+   scadenza si dice, senza ripiegare a consumo. Le soglie e le frasi dell'attesa vivono in
+   `common.js` per la chat e per le Proposte. Escono `_REDO_SYSTEM`, `_read_proposal`, il turno
+   contato come chat, `model_resolution.synchronous_door_note` e il suo caso in `_nota_porta`.
+   **Resta da misurare dal vivo** (Task 4.8): un «Rifalla» sul ponte, dal clic all'esito.
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
@@ -357,6 +369,11 @@ non offribili alle ricette e ancora senza chiamante: li alimentera' lo strumento
 `REGISTRY_VERSION` 2 resta la stessa), quindi la versione del registro non sale.
 
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
+
+**CHIUSA il 06/10/2026 nel codice, non ancora rilasciata** (attori, strato 4, Task 4.4, D16):
+«Rifalla» e' un turno del proponente dalla partenza unica, e col piano acceso va sul ponte; la
+pagina interroga. Si dice chiusa davvero dopo la verifica dal vivo della chiusura dello strato
+4 (Task 4.8). Il testo sotto e' com'era.
 
 `origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`
 

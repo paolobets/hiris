@@ -19,11 +19,11 @@ from hiris.app.action.construction.revisions import (
 )
 from hiris.app.action.construction.workshop import _invalid_form
 from hiris.app.agent import prompts
-from hiris.app.api.handlers_proposals import _REDO_SYSTEM
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES, ClaudeRunner
 from hiris.app.home_space import tools as home_tools
 from hiris.app.home_space.briefing import compose
 from hiris.app.mind.observer import SYSTEM as OBSERVER_SYSTEM
+from hiris.app.mind.proposal_redo import REDO_RULE
 from hiris.app.mind.proposer_turn import SYSTEM as ACTUATOR_SYSTEM
 
 # ── 5.4 / brief: le costanti di prompt elencate in spec §1 ──────────────────
@@ -108,8 +108,8 @@ def test_attuatore_non_nomina_un_proprietario_ma_chi_amministra_la_casa():
 
 
 def test_rifalla_non_nomina_un_proprietario_ma_chi_amministra_la_casa():
-    assert "il proprietario" not in _REDO_SYSTEM.lower()
-    assert "chi amministra la casa" in _REDO_SYSTEM
+    assert "il proprietario" not in REDO_RULE.lower()
+    assert "chi amministra la casa" in " ".join(REDO_RULE.lower().split())
 
 
 def test_workshop_richiesto_non_nomina_l_utente():

@@ -438,7 +438,11 @@ window.HirisConstructions = (function () {
 
     var head = el('div');
     head.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
-    head.appendChild(el('span', null, c.testo || ''));
+    var testo = el('span', null, c.testo || '');
+    /* Il fuoco ci arriva dopo un «Rifalla» riuscito (attori, Task 4.4). */
+    testo.setAttribute('data-proposta', c.id);
+    testo.tabIndex = -1;
+    head.appendChild(testo);
     head.appendChild(el('span', 'agent-badge badge-off', 'la fai tu'));
     box.appendChild(head);
     var chiA = requesterLine(c);
@@ -446,11 +450,13 @@ window.HirisConstructions = (function () {
     if (c.perche) box.appendChild(el('div', 'field-hint', c.perche));
 
     /* Il filo dei giri: cosa hai gia' scartato, e cosa avevi chiesto. Al
-       terzo giro nessuno si ricorda piu' cosa aveva chiesto al primo. */
+       terzo giro nessuno si ricorda piu' cosa aveva chiesto al primo. Un
+       giro chiude con uno degli esiti del proponente (attori, Task 4.4): una
+       frase nuova, niente, o una proposta costruibile. */
     (c.giri || []).forEach(function (giro) {
       var riga = el('div', 'field-hint');
       riga.appendChild(el('div', null, 'Avevi chiesto: ' + (giro.richiesta || '')));
-      riga.appendChild(el('div', null, 'Scartata: ' + (giro.scartata || '')));
+      riga.appendChild(el('div', null, roundOutcome(giro)));
       box.appendChild(riga);
     });
 
@@ -464,14 +470,36 @@ window.HirisConstructions = (function () {
       return box;
     }
 
+    var attesa = redoWaiting(c);
+    if (attesa) {
+      box.setAttribute('aria-busy', 'true');
+      box.appendChild(waitBlock(attesa));
+    }
+
     var actions = el('div');
     actions.style.cssText = 'display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-1)';
     actions.appendChild(proposalButton(c, 'done', 'L’ho fatta io', 'btn btn-primary',
       statusEl, reload));
     actions.appendChild(proposalButton(c, 'reject', 'Rifiuta', 'btn', statusEl, reload));
-    actions.appendChild(redoControl(c, statusEl, reload));
+    /* Mentre il rifacimento e' in volo «Rifalla» non c'e': un secondo giro
+       lo rifiuterebbe il server (409). «Rifiuta» e «L'ho fatta io» restano:
+       la risposta che arriva dopo si scarta (scelta del proprietario,
+       06/10/2026). */
+    if (!attesa) actions.appendChild(redoControl(c, statusEl, reload));
     box.appendChild(actions);
     return box;
+  }
+
+  /* Cosa e' uscito da un giro del filo. Un giro scritto prima del 06/10/2026
+     non porta `esito`: era sempre una frase nuova. */
+  function roundOutcome(giro) {
+    if (giro.esito === 'niente') {
+      return 'Nessuna proposta: ' + (giro.perche || '');
+    }
+    if (giro.esito === 'costruita') {
+      return 'Ne è nata una proposta da approvare.';
+    }
+    return 'Scartata: ' + (giro.scartata || '');
   }
 
   /* I due esiti che chiudono: stessa forma dei bottoni dell'officina, **altra
@@ -495,23 +523,214 @@ window.HirisConstructions = (function () {
     return b;
   }
 
+  /* -- «Rifalla» (attori, Task 4.4; D16) -------------------------------
+
+     Il rifacimento e' un turno del proponente. Sulla catena la richiesta
+     torna con l'esito; sul ponte torna 202, e la risposta arriva minuti dopo
+     da un altro processo: la riga porta allora `rifacimento`, che il server
+     legge dalla coda, e la pagina rilegge l'elenco finche' nessuna riga e'
+     piu' in corso. Lo stato sta nella riga e non nella pagina: sopravvive a
+     `reload()` e a una ricarica. Parere di ux-ui-specialist del 06/10/2026
+     (/mnt/project-files/attori/2026-10-06-task-4-4-rifalla-proposta.md). */
+
+  /* I rifacimenti di questa pagina: quelli sulla catena, che aspettano la
+     loro richiesta (`{id: {avvio, richiesta}}`); quelli di cui la pagina
+     aspetta l'esito per dirlo (`{id: true}`); le richieste scritte, che non
+     si perdono finche' il rifacimento non riesce (`lasciate`); la nota del
+     backend sul giro; il giro di riletture e l'orologio; l'ultima risposta
+     letta, per non ridisegnare quando niente e' cambiato. */
+  var redo = { catena: {}, attesi: {}, lasciate: {}, nota: '', giro: null,
+               orologio: null, ultima: '' };
+
+  var REDO_WAIT_LABEL = 'Sto rifacendo la proposta';
+  /* Le due frasi dei due minuti, come quelle della chat (chat/messages.js):
+     sul ponte il turno e' al sicuro sul server, sulla catena muore con la
+     richiesta. */
+  var REDO_SAFE_ON_SERVER = 'Il rifacimento può richiedere qualche minuto. Puoi anche ' +
+    'chiudere: se arriva, la nuova proposta la trovi qui.';
+  var REDO_KEEP_OPEN = 'Il rifacimento può richiedere qualche minuto. Tieni aperta ' +
+    'questa pagina: se la chiudi, questo rifacimento si perde.';
+
+  /* L'attesa di una riga, o `null`: dal server (ponte) o dalla richiesta
+     ancora aperta (catena). `scadenza` e' un istante in ms, 0 se non c'e'. */
+  function redoWaiting(c) {
+    var r = c.rifacimento;
+    if (r && r.stato === 'in_corso') {
+      return { avvio: (r.avvio_ts || 0) * 1000, scadenza: (r.scadenza_ts || 0) * 1000,
+               richiesta: r.richiesta || '', ponte: true };
+    }
+    var locale = redo.catena[c.id];
+    if (locale) {
+      return { avvio: locale.avvio, scadenza: 0, richiesta: locale.richiesta, ponte: false };
+    }
+    return null;
+  }
+
+  /* La frase dell'attesa a un dato istante: una funzione del tempo, non una
+     catena di timer, perche' la riga si ridisegna a ogni rilettura. Le
+     soglie e le frasi sono quelle della chat (common.js). */
+  function waitLabel(attesa, adesso) {
+    var passato = adesso - attesa.avvio;
+    if (attesa.scadenza && adesso >= attesa.scadenza - SOGLIE_ATTESA.margineResa) {
+      return FRASI_ATTESA.quasiResa;
+    }
+    if (!attesa.scadenza && passato >= SOGLIE_ATTESA.senzaScadenza) {
+      return FRASI_ATTESA.senzaScadenza;
+    }
+    if (passato >= SOGLIE_ATTESA.lenta) return FRASI_ATTESA.lenta;
+    return REDO_WAIT_LABEL;
+  }
+
+  function paintWait(node, attesa, adesso) {
+    var passato = adesso - attesa.avvio;
+    node.querySelector('.redo-label').textContent = waitLabel(attesa, adesso);
+    var timer = node.querySelector('.redo-timer');
+    timer.textContent = passato >= SOGLIE_ATTESA.timer ? stopwatchText(passato) : '';
+    node.querySelector('.redo-service').textContent = passato >= SOGLIE_ATTESA.servizio
+      ? (attesa.ponte ? REDO_SAFE_ON_SERVER : REDO_KEEP_OPEN) : '';
+  }
+
+  /* Il blocco d'attesa. NON e' una regione live: si ricrea a ogni rilettura
+     e verrebbe riletto ogni pochi secondi. Annuncia la riga di stato, una
+     volta all'avvio e una all'esito. Il cronometro e' per l'occhio. */
+  function waitBlock(attesa) {
+    var node = el('div', 'field-hint redo-wait');
+    node.setAttribute('data-avvio', String(attesa.avvio));
+    node.setAttribute('data-scadenza', String(attesa.scadenza));
+    node.setAttribute('data-ponte', attesa.ponte ? '1' : '');
+    var top = el('div');
+    top.appendChild(el('span', 'redo-label', REDO_WAIT_LABEL));
+    var timer = el('span', 'redo-timer');
+    timer.setAttribute('aria-hidden', 'true');
+    top.appendChild(timer);
+    node.appendChild(top);
+    node.appendChild(el('div', null, 'Avevi chiesto: ' + attesa.richiesta));
+    node.appendChild(el('div', 'redo-service'));
+    paintWait(node, attesa, Date.now());
+    return node;
+  }
+
+  /* L'orologio della pagina: aggiorna il cronometro e le frasi dei blocchi
+     d'attesa una volta al secondo, senza ridisegnare le righe. */
+  function tick(outlet) {
+    var blocchi = outlet.querySelectorAll('.redo-wait');
+    if (!blocchi.length || !stillHere()) {
+      if (redo.orologio != null) { clearInterval(redo.orologio); redo.orologio = null; }
+      return;
+    }
+    Array.prototype.forEach.call(blocchi, function (node) {
+      paintWait(node, {
+        avvio: Number(node.getAttribute('data-avvio')),
+        scadenza: Number(node.getAttribute('data-scadenza')),
+        ponte: !!node.getAttribute('data-ponte')
+      }, Date.now());
+    });
+  }
+
+  /* Siamo ancora su questa pagina? Il router non avvisa quando una route esce
+     di scena (lo stesso giro di config/services-route.js). */
+  function stillHere() {
+    return String(window.location.hash || '').indexOf('#/constructions') === 0;
+  }
+
+  /* Cosa dire quando un rifacimento atteso non e' piu' in corso, guardando la
+     riga com'e' adesso. `null` se c'e' ancora da aspettare. */
+  function redoOutcome(c, all) {
+    if (!c) return { testo: '' };
+    if (redoWaiting(c)) return null;
+    var r = c.rifacimento;
+    var rifalla = '[data-rifalla="' + c.id + '"]';
+    if (r && r.stato === 'scaduto') {
+      return { testo: 'Ho smesso di aspettare. La proposta di prima resta com’era.',
+               fuoco: rifalla, tieni: true };
+    }
+    if (r && (r.stato === 'fallito' || r.stato === 'illeggibile')) {
+      return { testo: 'Non è stato possibile rifarla: riprova.', fuoco: rifalla, tieni: true };
+    }
+    if (c.stato === 'superata') {
+      var giro = (c.giri || [])[(c.giri || []).length - 1] || {};
+      var nata = all.filter(function (x) { return x.id === giro.proposta_id; })[0];
+      return {
+        testo: nata
+          ? 'Al posto di questa ti propongo ' + domainName(nata).toLowerCase() + ' «' +
+            objectName(nata) + '»: si può creare direttamente in Home Assistant. ' +
+            'Guardala e approvala qui sotto.'
+          : 'Al posto di questa c’è una proposta che HIRIS può costruire. Guardala e ' +
+            'approvala qui sotto.',
+        /* Sull'intestazione della nuova, non su «Approva»: prima di
+           confermare va letta l'anteprima. */
+        fuoco: nata ? '[data-proposta="' + nata.id + '"]' : null
+      };
+    }
+    var ultimo = (c.giri || [])[(c.giri || []).length - 1] || {};
+    if (ultimo.esito === 'niente') {
+      return { testo: 'Con questa richiesta non ho trovato niente di sensato da proporre. ' +
+                      'La proposta di prima resta com’era.', fuoco: rifalla, tieni: true };
+    }
+    return { testo: 'Ho rifatto la proposta.', fuoco: '[data-proposta="' + c.id + '"]' };
+  }
+
+  /* Dopo ogni disegno: chi aspettavo ha un esito? E serve rileggere? */
+  function afterDraw(outlet, all, statusEl, reload) {
+    Object.keys(redo.attesi).forEach(function (id) {
+      var c = all.filter(function (x) { return x.id === id; })[0];
+      var esito = redoOutcome(c, all);
+      if (!esito) return;
+      delete redo.attesi[id];
+      if (!esito.tieni) delete redo.lasciate[id];
+      if (statusEl && esito.testo) {
+        statusEl.textContent = esito.testo + (redo.nota ? ' ' + redo.nota : '');
+      }
+      redo.nota = '';
+      var bersaglio = esito.fuoco ? outlet.querySelector(esito.fuoco) : null;
+      if (bersaglio) bersaglio.focus();
+    });
+    var inCorso = all.some(function (c) {
+      return c.rifacimento && c.rifacimento.stato === 'in_corso';
+    });
+    all.forEach(function (c) {
+      if (c.rifacimento && c.rifacimento.stato === 'in_corso') redo.attesi[c.id] = true;
+    });
+    if (inCorso && stillHere() && redo.giro == null) {
+      redo.giro = setInterval(function () {
+        if (!stillHere()) { stopPolling(); return; }
+        reload({ seCambia: true });
+      }, SOGLIE_ATTESA.rilettura);
+    } else if (!inCorso && redo.giro != null) {
+      stopPolling();
+    }
+    if (outlet.querySelector('.redo-wait') && redo.orologio == null) {
+      redo.orologio = setInterval(function () { tick(outlet); }, 1000);
+    }
+  }
+
+  function stopPolling() {
+    if (redo.giro != null) { clearInterval(redo.giro); redo.giro = null; }
+  }
+
   /* «Rifalla» apre un campo di testo con le richieste di modifica, e ripete
      il turno **senza limiti**: la si puo' far rifare finche' va bene
-     (decisione del proprietario, 21/09/2026). */
+     (decisione del proprietario, 21/09/2026). Una richiesta che non e'
+     andata a buon fine non si perde: il campo si riapre gia' compilato. */
   function redoControl(c, statusEl, reload) {
     var wrap = el('div');
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:var(--sp-2)';
     var apri = el('button', 'btn btn-ghost', 'Rifalla');
     apri.type = 'button';
     apri.setAttribute('aria-expanded', 'false');
+    apri.setAttribute('data-rifalla', c.id);
     wrap.appendChild(apri);
     apri.addEventListener('click', function () {
       if (apri.getAttribute('aria-expanded') === 'true') return;
       apri.setAttribute('aria-expanded', 'true');
+      var campoId = 'rifalla-' + c.id;
+      var etichetta = el('label', 'field-hint', 'Cosa cambiare');
+      etichetta.setAttribute('for', campoId);
       var campo = el('textarea');
+      campo.id = campoId;
       campo.rows = 3;
-      campo.setAttribute('aria-label', 'Cosa cambiare');
       campo.style.cssText = 'width:100%;max-width:420px';
+      campo.value = (c.rifacimento && c.rifacimento.richiesta) || redo.lasciate[c.id] || '';
       var manda = el('button', 'btn btn-primary', 'Rifalla adesso');
       manda.type = 'button';
       manda.addEventListener('click', function () {
@@ -520,32 +739,47 @@ window.HirisConstructions = (function () {
           if (statusEl) statusEl.textContent = 'Scrivi cosa vuoi cambiare.';
           return;
         }
-        manda.disabled = true;
-        api('api/proposals/' + encodeURIComponent(c.id) + '/redo',
-            { method: 'POST', body: JSON.stringify({ richiesta: richiesta }) })
-          .then(function (r) { return r.json().then(function (b) { return b; },
-                                                    function () { return {}; }); })
-          .then(function (corpo) {
-            /* Da quale porta è passato questo giro (reperto C-5, 23/09/2026).
-               «Rifalla» risponde subito e il piano risponde in differita:
-               quando il piano è acceso, il giro si paga a consumo. La frase
-               arriva dal backend — è un'affermazione sul prodotto, e sui soldi
-               — e questa pagina la mostra e basta.
-
-               Va in `#constructions-status`, che il ridisegno NON ricrea:
-               scritta dentro la riga sparirebbe nell'istante stesso in cui
-               `reload()` la ridisegna, cioè non si leggerebbe mai. */
-            reload();
-            if (statusEl) statusEl.textContent = corpo && corpo.nota ? corpo.nota : '';
-          }, function () {
-            manda.disabled = false;
-            if (statusEl) statusEl.textContent = 'Non è stato possibile rifarla: riprova.';
-          });
+        sendRedo(c, richiesta, statusEl, reload);
       });
+      wrap.appendChild(etichetta);
       wrap.appendChild(campo);
       wrap.appendChild(manda);
+      campo.focus();
     });
     return wrap;
+  }
+
+  function sendRedo(c, richiesta, statusEl, reload) {
+    redo.catena[c.id] = { avvio: Date.now(), richiesta: richiesta };
+    redo.attesi[c.id] = true;
+    redo.lasciate[c.id] = richiesta;
+    redo.nota = '';
+    if (statusEl) statusEl.textContent = 'Rifacimento avviato.';
+    reload();
+    api('api/proposals/' + encodeURIComponent(c.id) + '/redo',
+        { method: 'POST', body: JSON.stringify({ richiesta: richiesta }) })
+      .then(function (r) {
+        return r.json().then(function (b) { return { ok: r.ok, corpo: b }; },
+                            function () { return { ok: r.ok, corpo: {} }; });
+      }, function () { return { ok: false, corpo: {} }; })
+      .then(function (esito) {
+        delete redo.catena[c.id];
+        if (!esito.ok) {
+          /* Il motivo del server, alla lettera; il ripiego se non ne ha. */
+          delete redo.attesi[c.id];
+          reload();
+          if (statusEl) {
+            statusEl.textContent = (esito.corpo && esito.corpo.error) ||
+              'Non è stato possibile rifarla: riprova.';
+          }
+          return;
+        }
+        /* Da quale porta e' passato questo giro (reperto C-5, 23/09/2026):
+           sulla catena, quando il piano non ha potuto rispondere, il giro si
+           e' pagato a consumo, e la frase arriva dal backend. */
+        redo.nota = (esito.corpo && esito.corpo.nota) || '';
+        reload();
+      });
   }
 
   function line(c, statusEl, reload) {
@@ -556,7 +790,11 @@ window.HirisConstructions = (function () {
 
     var head = el('div');
     head.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
-    head.appendChild(el('span', null, domainName(c) + ' «' + objectName(c) + '»'));
+    var nome = el('span', null, domainName(c) + ' «' + objectName(c) + '»');
+    /* Il fuoco ci arriva quando un «Rifalla» la fa nascere (attori, Task 4.4). */
+    nome.setAttribute('data-proposta', c.id);
+    nome.tabIndex = -1;
+    head.appendChild(nome);
     var bOperation = operationBadge(c);
     head.appendChild(el('span', 'agent-badge ' + bOperation.cls, bOperation.testo));
     head.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[c.stato] || 'badge-off'),
@@ -710,8 +948,12 @@ window.HirisConstructions = (function () {
     if (btn) btn.textContent = n == null ? 'Storico' : ('Storico (' + n + ')');
   }
 
-  function draw(outlet) {
-    function reload() { return draw(outlet); }
+  function draw(outlet, opts) {
+    function reload(o) { return draw(outlet, o); }
+    /* Una rilettura del giro del «Rifalla» non mostra «Caricamento…» e non
+       ridisegna se niente e' cambiato: chi sta scrivendo nel campo di
+       un'altra riga non deve perderlo ogni pochi secondi. */
+    var quieta = !!(opts && opts.seCambia);
 
     var openBody = outlet.querySelector('#constructions-open-body');
     var historyBody = outlet.querySelector('#constructions-history-body');
@@ -723,8 +965,13 @@ window.HirisConstructions = (function () {
       outlet.appendChild(el('p', 'page-subtitle',
         'Le proposte di HIRIS per creare, modificare o cancellare automazioni, script e ' +
         'scene di questa casa — e cosa ne hai deciso.'));
+      /* Una regione live, creata vuota prima di scriverci: senza, nessuna
+         delle frasi che riceve -- esiti, errori, la nota sui soldi -- veniva
+         annunciata (parere di ux-ui-specialist, 06/10/2026). */
       var status = el('p', 'sc-desc', '');
       status.id = 'constructions-status';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
       outlet.appendChild(status);
       outlet.appendChild(buildSectionShell('01', 'open', 'In attesa'));
       /* Lo storico nasce chiuso: e' un registro di consultazione, non
@@ -737,8 +984,10 @@ window.HirisConstructions = (function () {
       statusEl = outlet.querySelector('#constructions-status');
     }
 
-    clearEl(openBody); openBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
-    clearEl(historyBody); historyBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
+    if (!quieta) {
+      clearEl(openBody); openBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
+      clearEl(historyBody); historyBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
+    }
 
     return fetch('api/constructions').then(function (r) {
       if (r.status === 403) {
@@ -754,6 +1003,9 @@ window.HirisConstructions = (function () {
         return;
       }
       var all = (data && data.constructions) || [];
+      var firma = JSON.stringify(all);
+      if (quieta && firma === redo.ultima) return;
+      redo.ultima = firma;
       var open = all.filter(function (c) { return c.sospesa === true; });
       var history = all.filter(function (c) { return c.sospesa !== true; });
       renderSection(openBody, open,
@@ -763,7 +1015,10 @@ window.HirisConstructions = (function () {
       renderSection(historyBody, history, 'Nessuna costruzione nello storico.',
         statusEl, reload, sortHistory);
       setHistoryCount(outlet, history.length);
+      afterDraw(outlet, all, statusEl, reload);
     }).catch(function () {
+      /* Una rilettura persa non e' un guasto: al prossimo giro. */
+      if (quieta) return;
       setHistoryCount(outlet, null);
       [openBody, historyBody].forEach(function (node) {
         renderError(node, 'Non è stato possibile leggere le costruzioni. Riprova più tardi.', reload);

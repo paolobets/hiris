@@ -528,7 +528,12 @@ class _Coda:
         self.accodati.append({"kind": kind, "wake": wake, "context": context})
         return "job-1"
 
-    def latest(self, kind):
+    def latest(self, kind, *, wake_key=None, wake_value=None):
+        """Come la coda vera: con `wake_key`, solo un turno che porta quella
+        chiave nella sveglia (il giro chiede i suoi, `ROUND_KEY`)."""
+        if wake_key is not None and self.turno is not None \
+                and wake_key not in (self.turno.get("wake") or {}):
+            return None
         return self.turno
 
 

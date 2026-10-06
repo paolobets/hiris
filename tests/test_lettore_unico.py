@@ -7,7 +7,9 @@ tolleravano il testo intorno al JSON (la staccionata, poi la ricerca per
 parentesi), gli altri due toglievano solo una staccionata **iniziale**. Una
 risposta come «Ecco l'analisi: {...}» era buona per le ricette e illeggibile per
 l'analista. Un quinto lettore, gemello degli ultimi due, viveva nel «Rifalla»
-delle proposte (`api/handlers_proposals._read_proposal`).
+delle proposte (`api/handlers_proposals._read_proposal`), ed e' uscito col
+Task 4.4 degli attori: il «Rifalla» e' un turno del proponente, e legge con
+`proposer_turn.apply_outcomes`.
 
 Queste prove chiedono a OGNI mestiere di accettare cio' che gli altri
 accettano. Sono scritte sul comportamento del mestiere -- la funzione che
@@ -19,7 +21,6 @@ import json
 
 import pytest
 
-from hiris.app.api import handlers_proposals
 from hiris.app.mind import analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
@@ -33,7 +34,6 @@ ANALISI = {"osservazioni": [{"quale": 0, "innesco": 1,
                              "cosa_cambierebbe": "meno prelievo, meno spesa"}]}
 ESITI_PROPONENTE = {"esiti": [{"osservazione": 0, "esito": "niente",
                                "perche": "il sensore era fermo"}]}
-PROPOSTA = {"testo": "spegni lo scaldabagno alle 23", "perche": "costa meno"}
 
 
 def _osservatore(testo):
@@ -59,16 +59,11 @@ def _proponente(testo):
                                         testo)["problemi"] == []
 
 
-def _rifalla(testo):
-    return handlers_proposals._read_proposal(testo)[0] == PROPOSTA["testo"]
-
-
 MESTIERI = {
     "osservatore": (DECISIONI, lambda t, _p: _osservatore(t)),
     "ricette": (RICETTA_BUONA, _ricette),
     "analista": (ANALISI, lambda t, _p: _analista(t)),
     "proponente": (ESITI_PROPONENTE, lambda t, _p: _proponente(t)),
-    "rifalla": (PROPOSTA, lambda t, _p: _rifalla(t)),
 }
 
 #: Le forme che un modello usa davvero per incorniciare il JSON. Ognuna e'

@@ -391,7 +391,8 @@ class ReasoningQueue:
             self._conn.commit()
             return cur.rowcount
 
-    def latest(self, kind: str) -> dict | None:
+    def latest(self, kind: str, *, wake_key: str | None = None,
+               wake_value: str | None = None) -> dict | None:
         """L'ultimo turno accodato di quella specie, con la sua decisione.
 
         **Perche' esiste, e perche' sta qui.** Un turno instradato sul ponte
@@ -408,14 +409,29 @@ class ReasoningQueue:
         secondo: leggendo il primo aspetterebbe per sempre una risposta che
         nessuno dara' piu'.
 
+        Con `wake_key`, solo i turni la cui sveglia porta quella chiave (e,
+        con `wake_value`, quel valore).
+
         La forma e' quella di `get()`, `decision` compresa: sono la stessa
         riga letta con due chiavi diverse, e due forme diverse per la stessa
         riga sarebbero la fondamenta 3 rotta dentro un file solo.
         """
+        sql, args = "SELECT * FROM reasoning_jobs WHERE kind=?", [kind]
+        if wake_key is not None:
+            # **Due domande nella stessa specie** (attori, Task 4.4): il giro
+            # orario del proponente porta `giorno` nella sveglia, un
+            # «Rifalla» porta `proposta`. Senza questo filtro l'ultimo
+            # «Rifalla» nasconderebbe al giro la risposta che aspetta.
+            path = "$." + wake_key
+            if wake_value is None:
+                sql += " AND json_extract(wake_json, ?) IS NOT NULL"
+                args.append(path)
+            else:
+                sql += " AND json_extract(wake_json, ?) = ?"
+                args += [path, wake_value]
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE kind=? "
-                "ORDER BY created_ts DESC, id DESC LIMIT 1", (kind,)).fetchone()
+                sql + " ORDER BY created_ts DESC, id DESC LIMIT 1", args).fetchone()
         if r is None:
             return None
         out = _row(r)

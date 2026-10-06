@@ -45,6 +45,12 @@ logger = logging.getLogger(__name__)
 #: sosta dell'add-on, e senza questa guardia si pagherebbero due turni.
 IN_FLIGHT = "proponente_in_volo"
 
+#: La chiave della sveglia che fa di un turno del proponente un turno del
+#: GIRO: la porta ogni accodamento di `_enqueue`. Nella stessa specie stanno
+#: anche i «Rifalla» (`mind/proposal_redo.py`), che portano `proposta`: il
+#: giro guarda solo i suoi.
+ROUND_KEY = "giorno"
+
 
 async def proposer_round(app) -> dict | None:
     """Il giro: raccoglie la risposta del ponte, poi chiede per le
@@ -71,8 +77,9 @@ async def proposer_round(app) -> dict | None:
             return collected
         # Un turno in volo, o finito da meno di un'ora (`RETRY_HOLD_S`): si
         # aspetta, come l'analista e le ricette.
-        if turn_in_flight(app, proposer_turn.PROPOSAL_TURN_KIND) \
-                or too_soon_to_ask_again(app, proposer_turn.PROPOSAL_TURN_KIND):
+        if turn_in_flight(app, proposer_turn.PROPOSAL_TURN_KIND, wake_key=ROUND_KEY) \
+                or too_soon_to_ask_again(app, proposer_turn.PROPOSAL_TURN_KIND,
+                                         wake_key=ROUND_KEY):
             return collected
         refused = refused_problems(app.get("usage"), PROPOSER_SPECIES)
         route, _downgrade, runner = start(app, PROPOSER_SPECIES)
@@ -132,7 +139,7 @@ def _enqueue(app, day: str, pending, refused) -> dict | None:
                                     unbound=_unbound(app))
     if job is None:
         return None
-    wake = {"giorno": day, "impronte": [observation_key(o) for o in pending]}
+    wake = {ROUND_KEY: day, "impronte": [observation_key(o) for o in pending]}
     _job_id, deadline_min = enqueue_turn(app, PROPOSER_SPECIES, wake, job)
     logger.info("proponente: turno accodato al piano per %s (scadenza %d min)",
                 day, deadline_min)
@@ -148,11 +155,12 @@ async def _collect(app, store, today: str) -> dict | None:
     turno e' l'ultimo della sua specie.
     """
     queue = app.get("reasoning_queue")
-    turn = queue.latest(proposer_turn.PROPOSAL_TURN_KIND) if queue else None
+    turn = (queue.latest(proposer_turn.PROPOSAL_TURN_KIND, wake_key=ROUND_KEY)
+            if queue else None)
     if not turn or turn.get("status") != "decided":
         return None
     wake = turn.get("wake") or {}
-    if wake.get("giorno") != today:
+    if wake.get(ROUND_KEY) != today:
         return None
     analysis = store.analysis(today)
     by_key = {observation_key(o): o
@@ -267,9 +275,8 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
                 constructions.answers(outcome["proposta_id"], actor=PROPOSER_SPECIES,
                                       fingerprint=key, prova=evidence_of(observation))
             if earlier is not None:
-                store.close_proposal(
-                    earlier["id"], "superata",
-                    why="ora c'e' una proposta che HIRIS puo' costruire")
+                store.close_proposal(earlier["id"], "superata",
+                                     why=proposer_turn.SUPERSEDED_WHY)
                 logger.info("proponente: la proposta a mano su %s e' superata "
                             "dalla costruita %s", key, outcome["proposta_id"])
         beside.append({k: v for k, v in outcome.items() if k != "osservazione"})
