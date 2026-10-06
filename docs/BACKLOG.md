@@ -1131,6 +1131,16 @@ il segnale vive nel resoconto (una misura che dichiara «fonte ferma» accanto a
 cronaca o fra le condizioni dell'osservatore; e se vale solo per i contatori di energia o per
 ogni entita' che una ricetta nomina.
 
+**Deciso e costruito (attori, strato 1, Task 1.1 e 1.3; D3 e D4 del proprietario, 03/10/2026).
+La voce si chiude col rilascio che li porta.** Nessuna soglia: un'ora e' ferma se non varia dove
+**la sua stessa storia**, alla stessa ora, variava in ogni giorno (`mind/flatline.py`), quindi la
+notte del fotovoltaico non scatta. Vale per ogni entita' che una ricetta nomina. Il segnale vive
+nel **resoconto**, e la misura **si rifiuta**: «non calcolabile» con causa `ferma` e il tratto
+nella frase, mai uno zero accanto a un segno. Il resoconto legge il giorno e sette giorni di storia
+in una richiesta sola (`server._report_ingredients`). Limite dichiarato: una fonte ferma da piu'
+giorni esce «ferma» solo nel primo, perche' dal secondo la sua storia contiene gia' il blocco. Le
+assenze in cronaca sono il Task 1.4.
+
 ### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
 
 `origine: spec del 29/09/2026 §8, «si cambia una cosa alla volta»` · nessun documento

@@ -28,32 +28,44 @@ quanto e' sottile la base (§10: *«va detto che la base e' sottile»*).
 **Funzione pura**: non legge archivi ne' rete. La serie del giorno e la sua
 storia arrivano da chi chiama, nella forma di `server._punti_orari`; la storia e'
 una lista sola di punti dei giorni precedenti, e «la stessa ora» e' lo stesso
-istante un numero intero di giorni prima. Nessun chiamante in produzione
-ancora: si collega al resoconto col Task 1.3, dopo la Tappa 3.
+istante un numero intero di giorni prima.
+
+**Il resoconto la usa dal Task 1.3** (D4 del proprietario, 03/10/2026: una
+misura su una fonte ferma si RIFIUTA, «mai un numero plausibile»).
+`server._report_ingredients` chiede le statistiche del giorno e della sua
+storia in una lettura sola (`HISTORY_DAYS`), le separa con `split_at`, e
+`frozen_refusals` trasforma i tratti fermi in rifiuti con causa
+`operations.FROZEN`: entrano fra le entita' che tacciono (`silent`), la
+strada che `Recipe.run` conosce gia'. Il recupero dei resoconti e la
+riparazione d'avvio passano dagli stessi ingredienti, quindi un giorno
+rifatto esce con la stessa causa.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Mapping
+
+from ..home_space.historian import instant_epoch
+from .operations import FROZEN, NotComputable
 
 _DAY_S = 86400
 
-#: Gli esiti di un tratto. Lista di ammissione chiusa.
-FROZEN = "ferma"
+#: Gli esiti di un tratto. Lista di ammissione chiusa. «ferma» e' la parola
+#: del vocabolario delle cause (`operations.FROZEN`), e non se ne scrive una
+#: seconda copia: il tratto e il rifiuto della misura dicono lo stesso fatto.
 UNKNOWN = "non_lo_so"
 
-
-def _epoch(value) -> float | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if moment.tzinfo is None:
-        # Un istante senza fuso non si confronta con la storia: non si indovina.
-        return None
-    return moment.timestamp()
+#: Quanti giorni di storia legge il resoconto per giudicare un giorno. Non e'
+#: una soglia del giudizio -- la regola ne vuole almeno uno, e dice su quanti
+#: si e' appoggiata (`giorni_di_storia`) -- ma il costo della lettura: la
+#: finestra delle statistiche passa da un giorno a otto, sempre in UNA
+#: richiesta per giro di resoconto (R16). Una settimana perche' ogni giorno
+#: della settimana ci compare una volta: le abitudini della casa hanno quel
+#: passo. **Il limite, detto**: la regola chiede che la stessa ora abbia
+#: variato in OGNI giorno della storia, quindi una fonte ferma da piu' giorni
+#: esce «ferma» solo nel primo -- dal secondo la sua storia contiene gia' il
+#: blocco, e lo spiega. Nel caso del 30/09 il blocco e' cominciato quel giorno.
+HISTORY_DAYS = 7
 
 
 def _still(point: dict) -> bool | None:
@@ -82,7 +94,7 @@ def _history_by_hour(history) -> dict[float, list[tuple[float, bool]]]:
     for point in history or []:
         if not isinstance(point, dict):
             continue
-        start = _epoch(point.get("inizio"))
+        start = instant_epoch(point.get("inizio"))
         still = _still(point)
         if start is None or still is None:
             continue
@@ -119,6 +131,43 @@ def _stretch(run: list[dict], verdicts) -> dict:
                        f"copre queste ore: non si sa se sia normale")}
 
 
+def split_at(points, instant_ts: float) -> tuple[list[dict], list[dict]]:
+    """I punti divisi in `(prima, da li' in poi)` rispetto a `instant_ts`.
+
+    Il resoconto legge giorno e storia in una richiesta sola: questa e' la
+    riga che li separa. Un punto senza un istante leggibile resta col giorno,
+    dove stava prima del Task 1.3 (le operazioni lo trattano come lo
+    trattavano); nella storia non entrerebbe comunque (`_history_by_hour`).
+    """
+    before: list[dict] = []
+    after: list[dict] = []
+    for point in points or []:
+        start = instant_epoch(point.get("inizio")) if isinstance(point, dict) else None
+        (before if start is not None and start < instant_ts else after).append(point)
+    return before, after
+
+
+def frozen_refusals(series: Mapping[str, list],
+                    history: Mapping[str, list]) -> dict[str, NotComputable]:
+    """Per ogni entita' con almeno un tratto «ferma», il rifiuto delle sue
+    misure: `{entity_id: NotComputable(..., cause=FROZEN)}`.
+
+    D4 «rifiutata»: la misura non diventa un numero marcato ma un «non
+    calcolabile», con la frase che dice il tratto e perche'. Un tratto «non lo
+    so» non rifiuta niente: non c'e' una prova, e una misura non si toglie
+    senza prova. Le entita' senza tratti fermi non compaiono.
+    """
+    refusals: dict[str, NotComputable] = {}
+    for entity_id, points in (series or {}).items():
+        frozen = [t for t in flatline_stretches(points, history=history.get(entity_id))
+                  if t["esito"] == FROZEN]
+        if frozen:
+            refusals[entity_id] = NotComputable(
+                f"{entity_id} e' ferma: " + " · ".join(t["perche"] for t in frozen),
+                cause=FROZEN)
+    return refusals
+
+
 def flatline_stretches(series, *, history) -> list[dict]:
     """I tratti in cui la serie non si muove, ognuno col suo giudizio.
 
@@ -130,7 +179,7 @@ def flatline_stretches(series, *, history) -> list[dict]:
     by_hour = _history_by_hour(history)
     points = sorted(
         ((start, p) for p in series or [] if isinstance(p, dict)
-         for start in [_epoch(p.get("inizio"))] if start is not None),
+         for start in [instant_epoch(p.get("inizio"))] if start is not None),
         key=lambda pair: pair[0])
     stretches: list[dict] = []
     run: list[dict] = []
@@ -152,7 +201,7 @@ def flatline_stretches(series, *, history) -> list[dict]:
         # niente, e un tratto non attraversa cio' che non si sa.
         if previous_end is not None and start != previous_end:
             close()
-        previous_end = _epoch(point.get("fine"))
+        previous_end = instant_epoch(point.get("fine"))
         if _still(point) is not True:
             close()
             continue
