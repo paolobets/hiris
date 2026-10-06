@@ -23,7 +23,10 @@ rosse per la ragione giusta:
 - le sorelle non chieste (si leggono solo le entita' delle ricette) -- rosse
   la prova del 30/09 (un gruppo di una sola serie non si giudica) e quella
   della richiesta unica;
-- la lettura senza la storia -- rossa la prova del 30/09.
+- la lettura senza la storia -- rossa la prova del 30/09;
+- `House.sibling_group` che chiede l'elenco del giro invece di
+  `has_statistics` (la forma prima del giro 7) -- rosse la prova dell'elenco
+  guasto e quella dello `state_class` (G7-1).
 """
 from __future__ import annotations
 
@@ -111,7 +114,7 @@ def _rows(entity_id, from_iso, to_iso, frozen_from):
     return rows
 
 
-async def _report(day, *, frozen_from):
+async def _report(day, *, frozen_from, statistic_ids=STATISTIC_IDS):
     asked: list[dict] = []
 
     def _statistics(extra):
@@ -120,7 +123,7 @@ async def _report(day, *, frozen_from):
                 for e in extra["statistic_ids"]}
 
     async def _stat_ids(_app, _ha, **_kw):
-        return set(STATISTIC_IDS)
+        return statistic_ids if isinstance(statistic_ids, dict) else set(statistic_ids)
 
     house = CasaFinta(synthetic_inputs(), answers={
         "recorder/statistics_during_period": _statistics})
@@ -174,14 +177,30 @@ async def test_giorno_storia_e_sorelle_in_una_richiesta_sola():
     assert datetime.fromisoformat(asked[0]["end_time"]) == datetime.fromtimestamp(end, tz=UTC)
 
 
+@pytest.mark.asyncio
+async def test_con_l_elenco_delle_statistiche_guasto_la_fonte_ferma_resta_ferma():
+    """G7-1 (revisione del giro 7): se `recorder/list_statistic_ids` non si
+    legge, le sorelle le dice la regola dello `state_class`
+    (`House.has_statistics`, B-12), e il blocco del 30/09 si vede lo stesso.
+    Con le sorelle chieste solo all'elenco, il 30/09 tornava zero con
+    copertura 1.0."""
+    row, asked = await _report(FROZEN_DAY, frozen_from=_start(FROZEN_DAY),
+                               statistic_ids={"errore": "giu'", "causa": "rete"})
+    assert row["causa"] == FROZEN
+    assert sorted(asked[0]["statistic_ids"]) == [HOUSE_METER, CHARGE, PRODUCTION]
+
+
 # -- le sorelle, chieste alla casa (`House.sibling_group`) --------------------
 
 
-def _house(entities, statistic_ids):
+def _house(entities, statistic_ids, state_classes=None):
     from hiris.app.home_space.house import House
     home_space = build_home_space({"entita": entities, "integrazioni": [],
                                    "dispositivi": []})
-    return House.read(_Store(home_space), _Cache([]), statistic_ids=statistic_ids)
+    mirror = _Cache([_to_minimal({"entity_id": e, "state": "1",
+                                  "attributes": {"state_class": c}})
+                     for e, c in (state_classes or {}).items()])
+    return House.read(_Store(home_space), mirror, statistic_ids=statistic_ids)
 
 
 def test_le_sorelle_sono_il_dispositivo_quando_ha_due_entita_con_statistiche():
@@ -203,7 +222,12 @@ def test_un_entita_sola_sul_dispositivo_ha_per_sorelle_la_sua_istanza():
     assert house.siblings("sensor.t0") == ["sensor.t0", "sensor.t1", "sensor.t2"]
 
 
-def test_senza_l_elenco_delle_statistiche_non_ci_sono_sorelle():
-    house = _house([_entity("sensor.a", "d1"), _entity("sensor.b", "d1")], None)
-    assert house.sibling_group("sensor.a") is None
-    assert house.siblings("sensor.a") == []
+def test_senza_l_elenco_le_sorelle_le_dice_lo_state_class():
+    """G7-1: senza l'elenco del giro vale la regola del sorgente
+    (`House.has_statistics`): una sorella senza `state_class` non ha
+    statistiche, e non entra nel gruppo."""
+    rows = [_entity("sensor.a", "d1"), _entity("sensor.b", "d1"), _entity("sensor.c", "d1")]
+    house = _house(rows, None, {"sensor.a": "measurement", "sensor.b": "total_increasing"})
+    assert house.sibling_group("sensor.a") == ("dispositivo", "d1")
+    assert house.siblings("sensor.a") == ["sensor.a", "sensor.b"]
+    assert house.sibling_group("sensor.c") is None

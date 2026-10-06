@@ -482,18 +482,24 @@ class House:
         almeno due entita' con statistiche; altrimenti `("istanza",
         config_entry_id)`, l'istanza dell'integrazione che Home Assistant
         dichiara nel registro delle entita' -- non la piattaforma, che unisce
-        cose senza legame. `None` se l'elenco delle statistiche non e' stato
-        letto, se l'entita' non ne ha, o se non ha ne' dispositivo ne' istanza.
+        cose senza legame. `None` se l'entita' non ha statistiche o se non ha
+        ne' dispositivo ne' istanza.
+
+        «Ha statistiche» e' la regola sola di `has_statistics` (B-12): l'elenco
+        del giro se c'e', la regola del sorgente sullo `state_class` se manca.
+        Fino al giro 7 della revisione (06/10/2026) qui serviva l'elenco, e il
+        giorno in cui `recorder/list_statistic_ids` falliva il dato fermo
+        spariva: il 30/09 sarebbe tornato zero con copertura 1.0 (G7-1).
 
         Misurato dallo sprint il 06/10/2026 sulle catture (03/09-03/10): senza
         il ripiego sull'istanza si perdevano gli 8 termometri del 29/09, otto
         dispositivi con un'entita' ciascuno fermi insieme."""
-        if self.statistic_ids is None or entity_id not in self.statistic_ids:
+        if not self.has_statistics(entity_id):
             return None
         entry = self._entity(entity_id) or {}
         device_id = entry.get("dispositivo_id")
         if device_id and sum(1 for e in self.device_entities(device_id)
-                             if e["id"] in self.statistic_ids) >= 2:
+                             if self.has_statistics(e["id"])) >= 2:
             return ("dispositivo", device_id)
         if entry.get("config_entry_id"):
             return ("istanza", entry["config_entry_id"])

@@ -1895,7 +1895,8 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
                     "diranno perche'", len(ferme), giorno)
     if counted is house:
         # Di quali entita' non abbiano statistiche non si afferma niente; che
-        # una fonte sia ferma si e' visto sulle serie, e resta.
+        # una fonte sia ferma si e' visto sulle serie, e resta: le sorelle le
+        # dice la regola dello `state_class` (`House.has_statistics`, G7-1).
         return ricette, serie, nomi, ferme or None, mute
     # Il perche' di ognuna dalla FONTE (B-26; Tappa 3, Task 8): la
     # stessa casa del giro, con l'elenco appena letto -- nessuna seconda
