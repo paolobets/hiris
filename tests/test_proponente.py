@@ -140,7 +140,7 @@ async def test_l_officina_RIFIUTA_dentro_il_turno_il_modello_corregge(casa):
     accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
     assert [o["esito"] for o in accanto] == ["costruita", "niente"]
     assert accanto[0]["proposta_id"] == _id_nato(modello.risultati)
-    assert app["constructions"].read(accanto[0]["proposta_id"])["origine"] == \
+    assert app["constructions"].read(accanto[0]["proposta_id"], now=time.time())["origine"] == \
         steering.PROPOSER_SPECIES
     assert app["usage"].turns()[0]["outcome"] == steering.SUCCEEDED
 

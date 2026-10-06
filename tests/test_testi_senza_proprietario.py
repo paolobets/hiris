@@ -165,7 +165,7 @@ def test_mark_cancelled_scrive_la_costante_non_un_letterale_ricopiato(tmp_path):
             exchange=None, phrase=None, prima=None, dopo={"alias": "x"},
             helper=[], preview="", stakes=None, now=time.time())["id"]
         archivio.mark_cancelled(ident, now=time.time())
-        riga = archivio.read(ident)
+        riga = archivio.read(ident, now=time.time())
     finally:
         archivio.close()
     assert riga["motivo"] == REASON_DISDETTA
@@ -196,7 +196,7 @@ def test_una_riga_col_vecchio_letterale_legge_quello_nuovo_dopo_la_migrazione(tm
 
     archivio = ConstructionStore(percorso)
     try:
-        riga = archivio.read("v1")
+        riga = archivio.read("v1", now=time.time())
     finally:
         archivio.close()
     assert riga["stato"] == "disdetta"

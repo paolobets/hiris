@@ -4,7 +4,7 @@ Il difetto che ha motivato questo file: la chat costruiva una proposta e
 rispondeva che restava «in attesa di conferma» **senza dire dove** si
 conferma. Chi legge quella frase resta fermo, oppure cerca in Home Assistant
 una cosa che in Home Assistant non c'e' ancora -- e la proposta scade
-(`ConstructionStore.scadi`) senza che nessuno l'abbia vista. La cura e' stata
+(`ConstructionStore.DEADLINE_S`) senza che nessuno l'abbia vista. La cura e' stata
 nominare la pagina dentro la descrizione dello strumento, che e' il solo
 posto che il modello legge quando decide cosa dire.
 

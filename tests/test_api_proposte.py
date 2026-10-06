@@ -236,10 +236,7 @@ class _FintaOfficina:
     def __init__(self, righe=()):
         self._righe = list(righe)
 
-    def scadi(self, now):
-        return 0
-
-    def list(self, pending_only=False, limit=200):
+    def list(self, *, now, pending_only=False, limit=200):
         if pending_only:
             return [r for r in self._righe if r["stato"] == "attesa"]
         return list(self._righe)

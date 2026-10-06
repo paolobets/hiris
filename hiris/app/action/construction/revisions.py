@@ -58,11 +58,16 @@ STATES_SOSPESO = ("in_attesa", "in_corso")
 _SOSPESI_SQL = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 
 #: **Quando una proposta e' scaduta**: in attesa da prima del limite (il
-#: parametro e' `adesso - DEADLINE_S`). Lo stesso nome e lo stesso testo del
-#: ramo degli attori `h4tcbr` (537169a9), dove lo usano anche `_scadi`,
-#: `read`, `list`, `count_pending`, `claim` e `mark_cancelled`: qui, finche'
-#: quel ramo non e' unito, lo usa `to_alert`.
+#: parametro e' `adesso - DEADLINE_S`). Il predicato vive qui una volta, e lo
+#: usano chi la segna (`_scadi`), chi la legge (`read`, `list`), chi la conta
+#: (`count_pending`) e chi la rivendica o la rifiuta (`claim`,
+#: `mark_cancelled`): fino al 06/10/2026 la scadenza la scriveva la LETTURA
+#: dell'elenco (`GET /api/constructions` chiamava `scadi`), e una proposta
+#: scaduta restava confermabile dalla chat finche' nessuno apriva la pagina.
 _EXPIRED_SQL = "(stato='in_attesa' AND creata_ts < ?)"
+
+#: Il motivo di una proposta scaduta, scritto o letto.
+REASON_EXPIRED = "scaduta senza risposta"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
@@ -177,11 +182,15 @@ from .workshop import services_named
 
 
 def _row(r) -> dict:
+    """Una riga com'e' **adesso**: `scaduta_ora` (calcolata da `read` e
+    `list` con `_EXPIRED_SQL`) la legge scaduta anche quando nessuno l'ha
+    ancora segnata. Una lettura non scrive."""
+    expired = bool(r["scaduta_ora"])
     return {
         "id": r["id"],
         "creata_ts": r["creata_ts"],
         "aggiornata_ts": r["aggiornata_ts"],
-        "stato": r["stato"],
+        "stato": "scaduta" if expired else r["stato"],
         "gesto": r["gesto"],
         "dominio": r["dominio"],
         "chiave": r["chiave"],
@@ -210,7 +219,7 @@ def _row(r) -> dict:
         "helper": _load(r["helper_json"]) or [],
         "anteprima": r["anteprima"],
         "esecuzione_id": r["esecuzione_id"],
-        "motivo": r["motivo"],
+        "motivo": REASON_EXPIRED if expired else r["motivo"],
         "livello": r["stakes"],
     }
 
@@ -242,10 +251,9 @@ class ConstructionStore:
         ident = secrets.token_urlsafe(9)
         with self._lock:
             self._prune(now)
-            # Le scadute si contano fuori dal tetto, e questa e' l'unica
-            # ragione per cui `scadi` viene chiamata in produzione: senza
-            # questa riga la scadenza sarebbe scritta e mai eseguita -- una
-            # regola vera solo nei test.
+            # Le scadute si segnano qui, dove si scrive comunque, e si
+            # contano fuori dal tetto: e' l'unico punto che le scrive sul
+            # disco. Chi legge non lo aspetta (`_EXPIRED_SQL`).
             self._scadi(now)
             # `stato IN (STATES_SOSPESO)`, non solo `in_attesa`: una proposta
             # rivendicata (`in_corso`) e' ancora in sospeso, e deve continuare
@@ -271,23 +279,29 @@ class ConstructionStore:
             self._conn.commit()
         return {"id": ident}
 
-    def read(self, ident: str) -> dict | None:
+    def read(self, ident: str, *, now: float) -> dict | None:
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM costruzioni WHERE id=?", (ident,)).fetchone()
+                f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni WHERE id=?",
+                (now - self.DEADLINE_S, ident)).fetchone()
         return None if r is None else _row(r)
 
-    def list(self, *, pending_only: bool = False, limit: int = 200) -> list[dict]:
+    def list(self, *, now: float, pending_only: bool = False,
+             limit: int = 200) -> list[dict]:
         """`pending_only=True` elenca le pendenti -- `stato IN
         (STATES_SOSPESO)`, non solo `in_attesa`: una proposta rivendicata
         (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco
-        nella finestra fra `claim` e la transizione finale."""
-        sql = "SELECT * FROM costruzioni"
+        nella finestra fra `claim` e la transizione finale. Le scadute non
+        sono pendenti, segnate o no."""
+        cutoff = now - self.DEADLINE_S
+        sql = f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni"
+        params: tuple = (cutoff,)
         if pending_only:
-            sql += f" WHERE stato IN ({_SOSPESI_SQL})"
+            sql += f" WHERE stato IN ({_SOSPESI_SQL}) AND NOT {_EXPIRED_SQL}"
+            params += (cutoff,)
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
-            righe = self._conn.execute(sql, (int(limit),)).fetchall()
+            righe = self._conn.execute(sql, params + (int(limit),)).fetchall()
         return [_row(r) for r in righe]
 
     def proposed_in(self, exchange: str | None, *, actor: str) -> frozenset[str]:
@@ -309,8 +323,8 @@ class ConstructionStore:
         """Le proposte di `actor` a livello `stakes` ancora in attesa e mai
         avvisate (D14). Non scaduta con `_EXPIRED_SQL`: una proposta scaduta
         che nessuno ha ancora segnato non chiede piu' niente a nessuno. La
-        colonna `scaduta_ora` e' la forma con cui `_row` legge le righe nel
-        ramo `h4tcbr`. Non scrive."""
+        colonna `scaduta_ora` e' la forma con cui `_row` legge le righe. Non
+        scrive."""
         cutoff = now - self.DEADLINE_S
         with self._lock:
             righe = self._conn.execute(
@@ -343,31 +357,19 @@ class ConstructionStore:
         ragione per cui `propose` guarda `STATES_SOSPESO` e non il solo
         `in_attesa`.
 
-        NON chiama `scadi()`: e' un conteggio, e un conteggio non scrive.
-        Ma non puo' nemmeno ignorare la scadenza, ed e' il motivo per cui la
-        `WHERE` qui sotto non e' semplicemente `stato IN (sospesi)` (review
-        indipendente della fetta, rilievo 6). `scadi()` la chiama solo
-        `GET /api/constructions` -- cioe' l'apertura della pagina -- e
-        `propose`. Una proposta lasciata scadere senza che nessuno apra la
-        pagina resterebbe `in_attesa` sul disco per sempre, e il pallino
-        continuerebbe a dire «1 in attesa» a ogni turno di chat e a ogni
-        ritorno del fuoco. Chi costruisce apre, `scadi()` gira, e la pagina dice
-        «Nessuna proposta in attesa»: il pallino l'avrebbe mandato in una
-        pagina vuota, cioe' avrebbe fatto il contrario del suo mestiere, che
-        e' dire se vale la pena aprirla.
-
-        Il ragionamento «tanto dura fino alla prossima apertura» era
-        circolare: e' il pallino a decidere quando c'e' una prossima
-        apertura.
+        Non scrive, e non puo' ignorare la scadenza (review indipendente
+        della fetta, rilievo 6): una proposta lasciata scadere senza che
+        nessuno la segni resterebbe `in_attesa` sul disco, e il pallino
+        direbbe «1 in attesa» mandando chi costruisce in una pagina vuota.
+        Per questo conta con `_EXPIRED_SQL`, come la pagina elenca.
 
         `in_corso` non ha scadenza: e' rivendicata, qualcuno ci sta gia'
-        lavorando -- e infatti `_scadi()` tocca solo `in_attesa`. La `WHERE`
-        qui rispecchia quella, o i due numeri divergerebbero.
+        lavorando -- e infatti `_EXPIRED_SQL` guarda solo `in_attesa`.
         """
         with self._lock:
             return self._conn.execute(
-                "SELECT count(*) FROM costruzioni WHERE stato='in_corso' "
-                "OR (stato='in_attesa' AND creata_ts >= ?)",
+                f"SELECT count(*) FROM costruzioni WHERE stato IN ({_SOSPESI_SQL}) "
+                f"AND NOT {_EXPIRED_SQL}",
                 (now - self.DEADLINE_S,)).fetchone()[0]
 
     def claim(self, ident: str, *, now: float) -> dict:
@@ -387,8 +389,8 @@ class ConstructionStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE costruzioni SET stato='in_corso', aggiornata_ts=? "
-                "WHERE id=? AND stato='in_attesa'",
-                (now, ident))
+                f"WHERE id=? AND stato='in_attesa' AND NOT {_EXPIRED_SQL}",
+                (now, ident, now - self.DEADLINE_S))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}
@@ -481,8 +483,8 @@ class ConstructionStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE costruzioni SET stato='disdetta', aggiornata_ts=?, motivo=? "
-                "WHERE id=? AND stato='in_attesa'",
-                (now, REASON_DISDETTA, ident))
+                f"WHERE id=? AND stato='in_attesa' AND NOT {_EXPIRED_SQL}",
+                (now, REASON_DISDETTA, ident, now - self.DEADLINE_S))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}
@@ -508,24 +510,19 @@ class ConstructionStore:
             return {"errore": "quella proposta non e' piu' in attesa"}
         return {"id": ident, "stato": state}
 
-    def scadi(self, now: float) -> int:
-        """Le proposte troppo vecchie diventano `scaduta`. Restituisce quante.
+    def _scadi(self, now: float) -> int:
+        """Le proposte troppo vecchie si SEGNANO `scaduta`, sul disco.
+        Restituisce quante. **Senza lock**: lo chiama `propose`, che il lock
+        ce l'ha gia' in mano (`threading.Lock` non e' rientrante).
 
         Non si cancellano: sparire in silenzio renderebbe indistinguibile «e'
-        scaduta» da «non l'ho mai proposta».
+        scaduta» da «non l'ho mai proposta». Chi legge non aspetta questa
+        scrittura: `read` e `list` le leggono scadute da sole.
         """
-        with self._lock:
-            return self._scadi(now)
-
-    def _scadi(self, now: float) -> int:
-        """Il corpo, **senza lock**: lo chiama `propose`, che il lock ce l'ha
-        gia' in mano. `threading.Lock` non e' rientrante -- prenderlo due volte
-        bloccherebbe il processo, non solleverebbe."""
         cur = self._conn.execute(
-            "UPDATE costruzioni SET stato='scaduta', aggiornata_ts=?, "
-            "motivo='scaduta senza risposta' "
-            "WHERE stato='in_attesa' AND creata_ts < ?",
-            (now, now - self.DEADLINE_S))
+            "UPDATE costruzioni SET stato='scaduta', aggiornata_ts=?, motivo=? "
+            f"WHERE {_EXPIRED_SQL}",
+            (now, REASON_EXPIRED, now - self.DEADLINE_S))
         self._conn.commit()
         return cur.rowcount
 

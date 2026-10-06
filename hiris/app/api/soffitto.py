@@ -608,9 +608,8 @@ def require_builder(request) -> web.Response | None:
 
     Una funzione sola per ogni rotta della pagina Costruzioni, delle proposte
     a mano e dei giudizi: la regola e' una, e due copie divergerebbero al
-    primo ritocco. Si chiama PRIMA di toccare qualunque archivio -- anche la
-    lettura dell'elenco scrive (`store.scadi`), e un 403 detto dopo avrebbe
-    gia' scritto.
+    primo ritocco. Si chiama PRIMA di toccare qualunque archivio: un 403
+    detto dopo avrebbe gia' letto, o scritto.
 
     Il rifiuto si registra a `info`: un non amministratore che apre la pagina
     per URL e' un caso normale, non un allarme. Si scrive la chiave del

@@ -14,6 +14,7 @@ in `tests/test_mind_actuator_guards.py`.
 from __future__ import annotations
 
 import json
+import time
 import sys
 from pathlib import Path
 
@@ -175,7 +176,7 @@ async def test_una_proposta_su_una_SERRATURA_esce_alto_anche_se_il_modello_dice_
 
     await pr.proposer_round(casa)
 
-    (riga,) = casa["constructions"].list()
+    (riga,) = casa["constructions"].list(now=time.time())
     assert riga["livello"] == "alto"
 
 
@@ -213,7 +214,7 @@ async def test_una_proposta_MEDIO_non_avvisa_nessuno(casa):
 
     await pr.proposer_round(casa)
 
-    (riga,) = casa["constructions"].list()
+    (riga,) = casa["constructions"].list(now=time.time())
     assert riga["livello"] == "medio"
     assert casa["action_actuator"].chiamate == []
 
@@ -280,7 +281,7 @@ async def test_una_proposta_DECISA_non_si_avvisa_piu(casa):
     porta = casa["action_actuator"]
     porta.arriva = False
     await pr.proposer_round(casa)
-    (riga,) = casa["constructions"].list()
+    (riga,) = casa["constructions"].list(now=time.time())
 
     casa["constructions"].mark_rejected(riga["id"], now=riga["creata_ts"] + 1,
                                         reason="no")
@@ -406,32 +407,25 @@ async def test_un_GUASTO_dell_avviso_non_toglie_il_turno(casa):
     esito = await pr.proposer_round(casa)
 
     assert esito is not None and esito["problemi"] == []
-    assert len(casa["constructions"].list()) == 1
+    assert len(casa["constructions"].list(now=time.time())) == 1
 
 
-def test_to_alert_porta_SCADUTA_ORA_come_lo_vuole_il_ramo_degli_attori(tmp_path, monkeypatch):
-    """Revisione, giro 58 (G58-1): nel ramo `h4tcbr` (537169a9) `_row` legge
-    `r["scaduta_ora"]`, che esiste solo nei SELECT con `_EXPIRED_SQL AS
-    scaduta_ora`. Unito quel ramo, un `to_alert` con `SELECT *` solleverebbe
-    IndexError, e l'avviso in testa a ogni giro fallirebbe sempre. Qui `_row`
-    e' sostituito con la lettura di quel ramo: la riga deve portare la colonna,
-    falsa per una proposta non scaduta.
+def test_to_alert_porta_SCADUTA_ORA_che_ROW_legge(tmp_path):
+    """Revisione, giro 58 (G58-1): `_row` legge `r["scaduta_ora"]`, che esiste
+    solo nei SELECT con `_EXPIRED_SQL AS scaduta_ora`. Un `to_alert` con
+    `SELECT *` solleverebbe IndexError, e l'avviso in testa a ogni giro
+    fallirebbe sempre.
 
     Mutazione ESEGUITA (06/10/2026): `to_alert` col `SELECT *` di prima --
     rossa, «IndexError: No item with that key»."""
-    from hiris.app.action.construction import revisions
-
-    lette = []
-    monkeypatch.setattr(revisions, "_row",
-                        lambda r: lette.append(bool(r["scaduta_ora"])) or {"id": r["id"]})
     archivio = ConstructionStore(str(tmp_path / "c.db"))
     try:
         archivio.propose(operation="crea", domain="automation", key="k",
                          actor="proponente", exchange="t", phrase=None,
                          prima=None, dopo={"alias": "x"}, helper=[],
                          preview="", stakes="alto", now=1_000_000.0)
-        assert len(archivio.to_alert(actor="proponente", stakes="alto",
-                                     now=1_000_001.0)) == 1
+        (riga,) = archivio.to_alert(actor="proponente", stakes="alto",
+                                    now=1_000_001.0)
     finally:
         archivio.close()
-    assert lette == [False]
+    assert riga["stato"] == "in_attesa"

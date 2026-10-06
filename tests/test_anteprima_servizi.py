@@ -200,7 +200,7 @@ def test_la_riga_dell_archivio_porta_i_servizi_dei_DUE_lati():
         "dopo_json": '{"actions": [{"action": "light.turn_on"},'
                      ' {"action": "shell_command.riavvia"}]}',
         "helper_json": None, "anteprima": "a", "esecuzione_id": None,
-        "motivo": None, "stakes": None})
+        "motivo": None, "stakes": None, "scaduta_ora": 0})
 
     assert riga["chiama_prima"] == ["light.turn_on"]
     assert riga["chiama_dopo"] == ["light.turn_on", "shell_command.riavvia"]
@@ -221,6 +221,6 @@ def test_e_un_lato_ASSENTE_da_una_lista_vuota_non_un_buco():
         "subject_key": None, "entry_point": None,
         "prima_json": None, "dopo_json": '{"entities": {"light.x": "on"}}',
         "helper_json": None, "anteprima": "a", "esecuzione_id": None,
-        "motivo": None, "stakes": None})
+        "motivo": None, "stakes": None, "scaduta_ora": 0})
 
     assert riga["chiama_prima"] == [] and riga["chiama_dopo"] == []
