@@ -189,6 +189,49 @@ async def test_un_id_nato_in_UN_ALTRO_turno_non_vale(casa):
     assert any(vecchia in p for p in esito["problemi"])
 
 
+@pytest.mark.asyncio
+async def test_una_COSTRUITA_di_una_risposta_RIFIUTATA_si_cita_non_si_rifa(casa):
+    """Revisione, giro 61: il modello chiama `propose`, ma la sua risposta si
+    rifiuta. La proposta resta in attesa senza impronta, e al giro dopo la
+    stessa domanda farebbe nascere una seconda bozza (fondamenta 2). Il giro
+    gliela rimostra, e il modello la cita invece di rifarla.
+
+    Mutazioni ESEGUITE (06/10/2026): `_built_in` senza le non citate -- rossa,
+    l'id si rifiuta; la domanda senza l'elenco -- rossa, l'id non c'e'."""
+    app = casa
+    app["llm_router"] = _Modello(
+        ([("propose", _INTENZIONE_BUONA)], "non e' un JSON"),
+        ([], lambda risultati: json.dumps({"esiti": [
+            {"osservazione": 0, "esito": "costruita",
+             "proposta_id": _id_nato(risultati)},
+            {"osservazione": 1, "esito": "niente", "perche": "abitudine"}]})))
+
+    primo = await pr.proposer_round(app)
+    secondo = await pr.proposer_round(app)
+
+    ident = _id_nato(app["llm_router"].risultati)
+    assert primo["problemi"] and secondo["problemi"] == []
+    assert ident in app["llm_router"].domande[1]
+    (riga,) = app["constructions"].list(now=time.time())
+    assert (riga["id"], riga["impronta"]) == (ident, observation_key(osservazioni()[0]))
+    assert app["constructions"].unbound(actor=steering.PROPOSER_SPECIES,
+                                        now=time.time()) == []
+
+
+def test_una_proposta_risponde_a_UNA_domanda_sola():
+    """Lo stesso id citato da due esiti: il secondo si rifiuta, o una proposta
+    sola chiuderebbe due osservazioni.
+
+    Mutazione ESEGUITA (06/10/2026): `apply_outcomes` senza il controllo dei
+    citati -- rossa."""
+    risposta = json.dumps({"esiti": [
+        {"osservazione": 0, "esito": "costruita", "proposta_id": "p1"},
+        {"osservazione": 1, "esito": "costruita", "proposta_id": "p1"}]})
+    esito = pt.apply_outcomes(osservazioni(), risposta, built=frozenset({"p1"}))
+    assert [o["esito"] for o in esito["esiti"]] == ["costruita"]
+    assert any("gia' citata" in p for p in esito["problemi"])
+
+
 def test_un_osservazione_SPIEGATA_dall_analista_non_arriva_al_proponente():
     """D1 del refactor: l'indagine e' dell'analista, e cio' che ha spiegato e'
     chiuso.
@@ -590,6 +633,38 @@ def _coda_ponte(app, monkeypatch):
     coda = app["reasoning_queue"] = _Coda()
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
     return coda
+
+
+@pytest.mark.asyncio
+async def test_sul_PONTE_la_NON_LEGATA_va_nel_turno_e_la_raccolta_la_lega(casa, monkeypatch):
+    """Revisione, giro 62 (G62-1): la strada della casa e' il ponte. La
+    costruita che nessun esito ha citato va nella domanda accodata, e la
+    raccolta che la cita la lega alla sua osservazione, anche se e' nata in un
+    altro turno.
+
+    Mutazione ESEGUITA (06/10/2026): `_enqueue` con `unbound=()` -- rossa,
+    l'id non e' nel turno accodato."""
+    coda = _coda_ponte(casa, monkeypatch)
+    sciolta = casa["constructions"].propose(
+        operation="crea", domain="automation", key="k1",
+        actor=steering.PROPOSER_SPECIES, exchange="un-turno-rifiutato",
+        phrase=None, prima=None, dopo={}, helper=[], preview="anteprima",
+        stakes=None, now=time.time())["id"]
+
+    await pr.proposer_round(casa)
+    (accodato,) = coda.accodati
+    assert sciolta in accodato["context"]["history"][0]["content"]
+
+    coda.turno = {"status": "decided", "wake": accodato["wake"], "decided_ts": 0,
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "costruita", "proposta_id": sciolta},
+                      {"osservazione": 1, "esito": "niente", "perche": "x"}]}),
+                      "outcome": "riuscito", "exchange_id": "un-altro-turno"}}
+    esito = await pr.proposer_round(casa)
+
+    assert esito["problemi"] == []
+    riga = casa["constructions"].read(sciolta, now=time.time())
+    assert riga["impronta"] == observation_key(osservazioni()[0])
 
 
 @pytest.mark.asyncio
