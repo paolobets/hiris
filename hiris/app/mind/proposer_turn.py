@@ -1,37 +1,36 @@
-"""Il turno del **proponente** (`docs/design/2026-09-21-l-attuatore.md`, §2).
+"""Il turno del **proponente** (`docs/design/2026-09-21-l-attuatore.md`, §2;
+piano degli attori, strato 4, D12).
 
 Fino al 06/10/2026 si chiamava attuatore: il nome nuovo e' D11 del piano degli
 attori, strati 3-4.
 
-Gemello di `analyst_turn.py`, e per la stessa ragione: il modello dice cosa ha
-trovato e cosa propone, il codice **valida e rifiuta**. Una risposta storta non
-si corregge -- si rifiuta per intero, e il giro dopo riprova.
+**Propone con gli strumenti, e chiude con un esito per osservazione** (D12,
+approvata il 03/10/2026). Riceve le osservazioni dell'analista che restano dopo
+la sua indagine (quelle `spiegato` sono chiuse), i lettori dell'analista e lo
+stesso `propose` della chat. L'officina compone e valida **dentro** il turno:
+se rifiuta, il modello vede il perche' e corregge. Fino a qui l'intenzione
+viaggiava nella risposta finale, e un rifiuto dell'officina arrivava dopo il
+turno: la proposta si perdeva fino al giorno dopo (R0, M2: 2 su 2).
 
-**Due gesti nella risposta, tre nell'archivio**, e la differenza e' esattamente
-il potere che al modello non e' stato dato:
+Il turno si chiude con un JSON: per ogni osservazione **«costruita»**, **«da
+fare a mano»** (cosa e perche') o **«niente»** (perche'). L'identificativo di
+una proposta costruita lo registra l'archivio delle costruzioni col turno
+accanto (`ConstructionStore.proposed_in`), non lo scrive il modello: il
+modello lo cita, e il codice accetta solo un id nato in questo turno. Cosi'
+non puo' dichiarare una proposta che non c'e'.
 
-- `indagine` -- sola lettura. La maggior parte delle osservazioni, sulla casa
-  vera, sono domande: «il sensore era fermo?», «a che ore e' avvenuto il prelievo?».
-  Rispondere vale piu' che proporre, e una coda che non si riempie e' il primo
-  obiettivo di questo attore.
-- `proposta` -- non scrive niente: passa da `Workshop.propose`, che compone e valida
-  ma non tocca la casa, e lascia i tre esiti a chi amministra la casa.
-- `riparazione` -- **la faceva il codice**, non il modello: fino al
-  05/10/2026 il giro riscriveva la ricetta rotta prima di chiamarlo e
-  aggiungeva l'esito come fatto. Ora le ricette le ripara il loro giro
-  (attori, Task 1.6, D2), e il gesto resta solo nelle attuazioni gia'
-  archiviate, che la pagina continua a leggere. Il modello non l'ha mai
-  potuto dichiarare: avrebbe potuto dichiarare una riparazione non avvenuta.
+Il modello dice cosa ha fatto, il codice **valida e rifiuta**: ogni esito
+storto si dice, e l'osservazione resta aperta per il giro dopo; quelli buoni
+si tengono. Non tocca la casa: `propose` compone e non scrive (il cancello
+§7.1, `tests/test_mind_actuator_guards.py`).
 """
 from __future__ import annotations
 
-import json
 import logging
 
-from ..action.construction.workshop import closed_fields, form_refusal
-from ..home_space.tools import PROPOSE_TOOL_DEF
-from ..proxy.ha_client import HAClient
-from ..steering import PROPOSER_SPECIES, SPECIES, read_json
+from ..steering import PROPOSER_SPECIES, SPECIES, read_json, refused_lines, refused_tool
+from .analyst import evidence_of, observation_key
+from .analyst_turn import READERS, AnalystDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -44,197 +43,250 @@ PROPOSAL_TURN_KIND = SPECIES[PROPOSER_SPECIES].kind
 #: il 05/10/2026). Fino a quel giorno questo mestiere non ne passava nessuno e
 #: prendeva i 4.096 di fabbrica di `claude_runner.MAX_TOKENS`: lo stesso
 #: numero, scelto da nessuno. Qui e' lo stesso valore SCRITTO -- il
-#: comportamento non cambia, diventa visibile. **Non e' misurato**: per l'attuatore
-#: (in pausa dal 01/10/2026) non c'e' una misura, e il valore lo sceglie la
-#: misura dal vivo quando il piano degli attori lo riaccende.
+#: comportamento non cambia, diventa visibile. **Non e' misurato**: per il
+#: proponente non c'e' una misura, e il valore lo sceglie la misura dal vivo
+#: della chiusura dello strato 4 (Task 4.8).
 MAX_ANSWER_TOKENS = 4096
 
-#: I gesti che il MODELLO puo' rivendicare nella sua risposta. **Due, non
-#: tre**: la riparazione non e' sua (la faceva il codice di questo giro fino al
-#: 05/10/2026, ora il giro delle ricette), e lasciarla dire al modello
-#: vorrebbe dire lasciargli dichiarare una riparazione che non e' avvenuta --
-#: una bugia archiviata, indistinguibile da un fatto.
-GESTURES = ("indagine", "proposta")
+#: Lo strumento con cui propone: lo STESSO della chat, chiesto per nome alla
+#: tabella degli strumenti (`home_space/tools.TOOLS`), mai ricopiato.
+PROPOSE = "propose"
 
-#: I gesti che esistono nell'ARCHIVIO, cioe' quelli che la pagina puo'
-#: incontrare leggendo un'attuazione. La differenza fra i due elenchi e'
-#: esattamente il potere che al modello non e' stato dato.
-OUTCOME_GESTURES = ("indagine", "riparazione", "proposta")
+#: Gli esiti che il modello puo' dare a un'osservazione (D12).
+BUILT = "costruita"
+BY_HAND = "a_mano"
+NOTHING = "niente"
+OUTCOMES = (BUILT, BY_HAND, NOTHING)
 
-SYSTEM = """Sei l'attuatore di HIRIS, un sistema che guarda una casa domotica.
+#: Dove gli esiti stanno nell'analisi: accanto alle osservazioni a cui
+#: rispondono. Ci stanno «costruita» (col solo id della proposta: un
+#: riferimento, non una copia) e «niente» (col perche', che non vive altrove).
+#: «Da fare a mano» no: la proposta porta gia' l'impronta dell'osservazione
+#: nell'archivio gemello (`ObservationsStore.add_proposal`), e scriverla anche
+#: qui sarebbe il doppione che l'attuazione di prima era.
+OUTCOMES_KEY = PROPOSER_SPECIES
 
-L'analista ti consegna cio' che ha concluso. Il tuo mestiere e' UNO: prendere
-quelle conclusioni e **fare il passo successivo** -- e il passo successivo,
-quasi sempre, non e' costruire qualcosa.
+SYSTEM = """Sei il proponente di HIRIS, un sistema che guarda una casa domotica.
 
-Hai due gesti, e nessun altro:
+L'analista ha gia' indagato: ti consegna le osservazioni che restano aperte.
+Il tuo mestiere e' UNO: per ognuna, decidere **se c'e' qualcosa da proporre**.
 
-1. INDAGINE -- vai a vedere e rispondi. La maggior parte delle osservazioni
-   sono domande («il sensore era fermo?», «a che ore e' avvenuto il
-   prelievo?»). Guardare e rispondere vale piu' che proporre: se l'indagine
-   chiude la questione hai finito, e non si propone niente.
-2. PROPOSTA -- quando c'e' davvero qualcosa da fare. Di' se e' un oggetto che
-   Home Assistant sa tenere (un'automazione, una scena, un helper) oppure una
-   cosa che deve fare una persona: molte cose utili non sono oggetti di Home
-   Assistant, e proporle come tali le fa fallire.
+Tre esiti, e nessun altro:
 
-Le ricette rotte non le ripari tu, e non le ripara questo giro: le riscrive
-da solo il giro delle ricette, quando la causa e' una che una ricetta nuova
-puo' aggirare. Una ricetta che non si esegue piu' la segnali come proposta da
-fare a mano, senza dichiarare una riparazione.
+1. COSTRUITA -- e' un oggetto che Home Assistant sa tenere (un'automazione,
+   uno script, una scena, un helper). Lo componi chiamando `propose`:
+   l'officina lo valida contro questa casa e ti risponde con l'id della
+   proposta, oppure ti dice perche' non va. Se non va, correggi e richiama.
+   Nella risposta citi l'id che `propose` ti ha dato.
+2. A MANO -- e' una cosa che deve fare una persona: molte cose utili non sono
+   oggetti di Home Assistant, e proporle come tali le fa fallire.
+3. NIENTE -- hai guardato e non c'e' niente da proporre. E' un esito
+   legittimo, e va detto perche'.
 
-**Non tocchi la casa.** Non accendi, non spegni, non scrivi configurazioni: le
-proposte le decide chi amministra la casa, una per una.
+Hai i lettori (search, related, history, mind) per guardare la casa prima di
+proporre: un'automazione su un'entita' che non hai visto e' un'ipotesi.
 
-**Il silenzio e' un esito legittimo.** Se hai guardato e non c'e' niente da
-fare, dillo: e' diverso dal non aver guardato.
+**Non tocchi la casa.** `propose` non scrive niente: le proposte le decide
+chi amministra la casa, una per una.
 
-**Non inventare cosa hai trovato.** Se non hai potuto verificare qualcosa,
-scrivilo invece di dedurlo: un'indagine inventata e' peggio di nessuna
-indagine, perche' sembra una risposta."""
+**Non inventare.** Se non hai potuto verificare qualcosa, dillo nel perche':
+una proposta inventata e' peggio di nessuna proposta."""
 
-#: I campi dello schema di `propose` che l'attuatore NON riceve, ognuno con la
-#: sua ragione. Lista di esclusione: un campo nuovo dello schema entra nel
-#: contratto da solo.
-#:
-#: - `frase` e' «la frase di chi ti sta parlando, verbatim»: all'attuatore non
-#:   parla nessuno, e qualunque cosa ci scrivesse sarebbe una citazione
-#:   inventata.
-INTENT_EXCLUDED = ("frase",)
+ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma, con UN
+esito per ogni osservazione dell'elenco:
 
-#: Come si mostra il valore d'esempio di un campo, per tipo dello schema JSON.
-#: Sono forme, non contenuti: cosa va dentro lo dice la descrizione del campo
-#: nella legenda sotto l'esempio. Una lista si mostra VUOTA: lo schema dice
-#: solo che le voci sono oggetti, e un oggetto vuoto d'esempio la porta lo
-#: rifiuterebbe (un helper senza `dominio`) -- l'esempio deve passare dalla
-#: porta, e lo prova `tests/test_attuatore_intenzione.py`.
-_EXAMPLE_VALUE = {"string": '"..."', "boolean": "true | false", "object": "{}",
-                  "array": "[]"}
+{"esiti": [
+  {"osservazione": <il numero dell'osservazione, come nell'elenco>,
+   "esito": "costruita" | "a_mano" | "niente",
+   "proposta_id": "<per costruita: l'id che `propose` ti ha dato>",
+   "testo": "<per a_mano: cosa fare, in una frase>",
+   "perche": "<per a_mano e niente: perche'>"}
+]}
+
+Un esito «costruita» senza una chiamata riuscita a `propose` in questo turno
+viene rifiutato: l'id lo conosce l'officina, non si scrive a memoria."""
 
 
-def _example_value(field: str, spec: dict, vocabularies: dict) -> str:
-    choices = spec.get("enum") or vocabularies.get(field)
-    if choices:
-        return " | ".join(json.dumps(choice, ensure_ascii=False) for choice in choices)
-    return _EXAMPLE_VALUE[spec.get("type", "string")]
+def proposer_tools() -> list[dict]:
+    """Il catalogo del turno: i lettori dell'analista (`analyst_turn.READERS`)
+    piu' `propose`, con gli STESSI dizionari della chat (`KNOWLEDGE_TOOLS`,
+    filtrati e non copiati). La definizione di `propose` si chiede alla
+    tabella (voce del BACKLOG del 05/10, «La definizione di `propose` torna
+    alla tabella degli strumenti»)."""
+    from ..home_space.tools import KNOWLEDGE_TOOLS
+
+    wanted = (*READERS, PROPOSE)
+    admitted = [d for d in KNOWLEDGE_TOOLS if d["name"] in wanted]
+    if len(admitted) != len(wanted):
+        # Uno strumento rinominato nella chat svuoterebbe il catalogo IN
+        # SILENZIO: si dichiara, come per l'analista.
+        logger.error("catalogo del proponente incompleto: mancano %s",
+                     sorted(set(wanted) - {d["name"] for d in admitted}))
+    return admitted
 
 
-def _intent_contract() -> tuple[str, str]:
-    """L'`intenzione` del contratto, **derivata dallo schema dello strumento
-    `propose`** (`home_space/tools.PROPOSE_TOOL_DEF`) e dai vocabolari chiusi
-    che la porta dell'officina impone (`workshop.closed_fields`): l'esempio,
-    e la legenda dei campi con la descrizione dello schema.
+class ProposerDispatcher(AnalystDispatcher):
+    """Il guardiano del turno: il guardiano dell'analista -- i lettori, e la
+    maschera dei nomi delle persone -- **meno `compute` e piu' `propose`**.
 
-    Fino al 05/10/2026 la forma era scritta a mano qui, e non era quella
-    dell'officina: l'innesco come frase e «richiesto» libero. Ogni proposta
-    costruibile veniva rifiutata dalla forma (Tappa 6, D5, misurato con
-    `workshop._invalid_form`). Derivata, cambia insieme allo schema.
+    Lo stesso oggetto risponde sulla catena (`proposer_round`) e sul ponte
+    (`/api/mcp`, `steering.Species.guard`). Il dispatcher sotto e' quello
+    della chat, firmato dal proponente (`create_tool_dispatcher(actor=...)`):
+    l'officina scrive chi ha proposto, e con quale turno.
     """
-    tool_schema = PROPOSE_TOOL_DEF["input_schema"]
-    vocabularies = closed_fields(HAClient.CONFIGURABLE_DOMAINS)
-    fields = [(name, spec) for name, spec in tool_schema["properties"].items()
-              if name not in INTENT_EXCLUDED]
-    pad = " " * len('   "intenzione": {')
-    example = ",\n".join(
-        f'{json.dumps(name)}: {_example_value(name, spec, vocabularies)}'
-        for name, spec in fields).replace("\n", "\n" + pad)
-    legend = "\n".join(
-        f"- `{name}`"
-        + (" (sempre)" if name in tool_schema.get("required", ()) else "")
-        + f": {spec.get('description', '').strip()}"
-        for name, spec in fields)
-    return "{" + example + "}", legend
+
+    async def dispatch(self, name: str, arguments: dict | None) -> dict:
+        if name == PROPOSE:
+            # **Nessuno parla al proponente**: `frase` e' «la frase di chi ti
+            # sta parlando, verbatim», e qualunque cosa ci scrivesse sarebbe
+            # una citazione inventata, archiviata accanto alla proposta.
+            asked = {k: v for k, v in (arguments or {}).items() if k != "frase"}
+            return self._covered(
+                await self._below.dispatch(name, self._uncovered(asked)))
+        if name not in READERS:
+            return refused_tool(
+                name, doing="mentre propongo",
+                instead="Se serve un oggetto di Home Assistant, proponilo con "
+                        "`propose`; se serve una persona, scrivilo come «a_mano».")
+        return await super().dispatch(name, arguments)
 
 
-_INTENT_EXAMPLE, _INTENT_LEGEND = _intent_contract()
+async def guard(app, exchange: str | None = None) -> ProposerDispatcher:
+    """Il dispatcher di un turno del proponente, sulla catena e sul ponte.
 
-ANSWER_CONTRACT = f"""Rispondi SOLO con un oggetto JSON di questa forma:
+    `exchange` e' l'identita' del turno (sulla catena la conia il giro, sul
+    ponte e' `X-HIRIS-Turno`): l'officina la scrive accanto a ogni proposta, e
+    da li' il giro rilegge quali sono nate nel turno."""
+    from ..api.handlers_chat import create_tool_dispatcher
+    from ..home_space.house import House
+    from ..home_space.privacy import PresenceMask
 
-{{"esiti": [
-  {{"osservazione": <il numero dell'osservazione, come nell'elenco>,
-   "gesto": "indagine" | "proposta",
-   "trovato": "cosa hai trovato o cosa proponi, in una frase",
-   "costruibile": true | false,
-   "intenzione": {_INTENT_EXAMPLE}}}
-]}}
-
-`costruibile` serve solo alla proposta: `true` se e' un oggetto che Home
-Assistant sa tenere, `false` se e' una cosa che deve fare una persona.
-
-**Se scrivi `costruibile: true` devi portare anche `intenzione`**: una frase in
-prosa non basta a costruire niente, e senza l'intenzione la proposta viene
-rifiutata per intero. Se non sai comporla, scrivi `costruibile: false` e dilla
-a parole: e' meglio di una costruzione che non sta in piedi.
-
-L'intenzione e' la stessa che riceve chi costruisce in Home Assistant, e ne
-ha la forma: un campo con le alternative ne accetta UNA, una lista resta una
-lista anche con una voce sola, e i campi che non servono si omettono. I campi:
-{_INTENT_LEGEND}
-
-Un elenco vuoto va benissimo: vuol dire che hai guardato e non c'era niente da
-fare."""
+    store = app.get("home_space_store")
+    house = House.read(store, app.get("entity_cache")) if store is not None else None
+    below = create_tool_dispatcher(app, exchange=exchange, house=house,
+                                   actor=PROPOSER_SPECIES)
+    return ProposerDispatcher(below, ha=None, house=None, timezone=None,
+                              presence=PresenceMask(house) if house is not None else None)
 
 
-def build_question(observations) -> str | None:
+def outcomes_of(analysis: dict | None) -> list[dict]:
+    """Gli esiti del proponente scritti accanto all'analisi."""
+    return list(((analysis or {}).get(OUTCOMES_KEY)) or [])
+
+
+def open_observations(analysis: dict | None, decided: dict,
+                      waiting=frozenset()) -> list[dict]:
+    """Le osservazioni che aspettano il proponente, nell'ordine dell'analisi.
+
+    Restano fuori:
+    - quelle **chiuse dall'indagine dell'analista** (`spiegato`): D1 del
+      refactor, l'indagine e' sua, e cio' che ha spiegato non e' una
+      domanda aperta;
+    - quelle con un esito gia' scritto accanto a questa analisi;
+    - quelle che hanno gia' una proposta da fare a mano **in attesa**
+      (`waiting`, le impronte): una coda aperta non si duplica;
+    - quelle che ne hanno una decisa **con la stessa prova** (`decided`,
+      `{impronta: prova}` di `ObservationsStore.decided_proposals`). Una
+      proposta rifiutata torna in coda solo se la prova cambia: e' cio' che
+      la rotta delle proposte promette (`api/handlers_proposals.py`), e fino
+      al 06/10/2026 non era vero -- il giro di prima passava un dizionario
+      vuoto e saltava ogni impronta gia' vista, a qualunque prova.
+    """
+    done = {o.get("impronta") for o in outcomes_of(analysis)}
+    seen = []
+    for observation in (analysis or {}).get("osservazioni") or []:
+        if not isinstance(observation, dict) or observation.get("spiegato"):
+            continue
+        key = observation_key(observation)
+        if key in done or key in waiting \
+                or (key in decided and decided[key] == evidence_of(observation)):
+            continue
+        seen.append(observation)
+    return seen
+
+
+def build_question(observations, *, refused: list[str] | None = None,
+                   presence=None) -> str | None:
     """La domanda intera, o `None` se non c'e' niente da chiedere.
 
     Le osservazioni si consegnano **numerate**, e il modello si riferisce a
-    una col suo numero: ricopiarne il testo vorrebbe dire poterlo sbagliare, e
-    un esito attaccato all'osservazione sbagliata e' peggio di nessun esito.
+    una col suo numero: ricopiarne il testo vorrebbe dire poterlo sbagliare.
+    `refused` sono i problemi della risposta di prima (D10); `presence` copre
+    i nomi delle persone, con la stessa numerazione del guardiano.
     """
     rows = list(observations or [])
     if not rows:
         return None
-    lines = ["Le osservazioni dell'analista di oggi, numerate:"]
+    lines = ["Le osservazioni dell'analista rimaste aperte, numerate:"]
     for index, row in enumerate(rows):
-        lines.append(f"  [{index}] {row.get('soggetto')} · {row.get('misura')}"
+        lines.append(f"  [{index}] {row.get('nome') or row.get('soggetto')} · "
+                     f"{row.get('misura')}"
                      + (f" ({row.get('chiave')})" if row.get("chiave") else ""))
         lines.append(f"      cosa ha visto: {row.get('cosa')}")
         if row.get("cosa_cambierebbe"):
             lines.append(f"      cosa cambierebbe: {row.get('cosa_cambierebbe')}")
+        if row.get("da_riverificare"):
+            lines.append(f"      da riverificare: {row.get('da_riverificare')}")
         base = row.get("base")
         lines.append(f"      si regge su {base} giorni di storia"
                      if base else "      non ha una storia dietro")
-        if row.get("spiegato"):
-            lines.append(f"      gia' spiegato da: {row.get('spiegato')}")
     lines.append("")
+    lines.extend(refused_lines(refused))
     lines.append(ANSWER_CONTRACT)
-    return "\n".join(lines)
+    question = "\n".join(lines)
+    return presence.mask(question) if presence is not None else question
 
 
-def apply_actuation(observations, answer: str, *, truncated: bool = False) -> dict:
-    """Cosa si fa della risposta: si valida, e si rifiuta se e' storta.
+def bridge_turn(observations, *, refused: list[str] | None = None,
+                presence=None) -> dict | None:
+    """Il turno da accodare al ponte, o `None` se non c'e' da chiedere: la
+    stessa forma di `analyst_turn.bridge_turn`."""
+    question = build_question(observations, refused=refused, presence=presence)
+    if question is None:
+        return None
+    return {"history": [{"role": "user", "content": question}],
+            "system_prompt": SYSTEM,
+            "istruzione": ANSWER_CONTRACT}
 
-    Torna `{"attuazione": dict | None, "problemi": [...], "risposta": bool}`.
 
-    `attuazione` e' `None` quando c'e' anche un solo problema -- e **tutti i
-    problemi si dicono insieme**: dirne uno per giro costringerebbe a
-    rieseguire il turno per scoprire il successivo, e un turno costa.
+def _text(value) -> str | None:
+    text = str(value or "").strip() if isinstance(value, str) else ""
+    return text or None
+
+
+def apply_outcomes(observations, answer: str, *, built=frozenset(),
+                   truncated: bool = False, presence=None) -> dict:
+    """Cosa si fa della risposta: si valida esito per esito.
+
+    Torna `{"esiti": [...], "problemi": [...], "risposta": bool}`. Ogni esito
+    buono porta l'impronta della sua osservazione (dal codice, non dal
+    modello) e i campi del suo tipo. **Un esito storto non fa cadere gli
+    altri**: si dice nei problemi, e la sua osservazione resta aperta per il
+    giro dopo. Tutti i problemi si dicono insieme: dirne uno per giro
+    costringerebbe a rieseguire il turno per scoprire il successivo.
+
+    `built` sono gli id delle proposte nate in questo turno
+    (`ConstructionStore.proposed_in`): un «costruita» con un id fuori da qui
+    si rifiuta. `presence` riporta agli id veri i segnaposto che il modello ha
+    scritto nei testi.
     """
     # Il JSON lo cava il lettore unico (`steering.read_json`, D-11), come per
     # l'analista: un turno troncato non si legge (D2).
     data, reason = read_json(answer, shape=dict, what="un oggetto con gli esiti",
                              truncated=truncated)
     if data is None:
-        answered = bool(str(answer or "").strip())
-        if not answered:
-            logger.warning(
-                "attuatore: nessuna risposta -- non si scrive niente, si "
-                "riprova al giro dopo (una risposta che non c'e' non e' un "
-                "silenzio)")
-        return {"attuazione": None, "problemi": [reason], "risposta": answered}
-
-    seen = data.get("esiti")
-    if not isinstance(seen, list):
-        return {"attuazione": None, "risposta": True,
-                "problemi": [("la risposta non porta un elenco `esiti`: un "
-                              "elenco vuoto e' silenzio, e va bene; l'assenza "
-                              "dell'elenco e' un'altra cosa")]}
+        return {"esiti": [], "problemi": [reason],
+                "risposta": bool(str(answer or "").strip())}
+    given = data.get("esiti")
+    if not isinstance(given, list):
+        return {"esiti": [], "risposta": True,
+                "problemi": ["la risposta non porta un elenco `esiti`"]}
 
     rows = list(observations or [])
-    problems = []
-    kept = []
-    for index, outcome in enumerate(seen):
+    problems: list[str] = []
+    kept: dict[int, dict] = {}
+    named: set[int] = set()
+    for index, outcome in enumerate(given):
         if not isinstance(outcome, dict):
             problems.append(f"l'esito {index} non e' un oggetto")
             continue
@@ -244,38 +296,47 @@ def apply_actuation(observations, answer: str, *, truncated: bool = False) -> di
             problems.append(
                 f"l'esito {index} nomina l'osservazione {which!r}, che non e' "
                 f"nell'elenco (ce ne sono {len(rows)})")
-        gesture = outcome.get("gesto")
-        if gesture not in GESTURES:
-            problems.append(
-                f"l'esito {index} porta il gesto {gesture!r}: i gesti sono "
-                + ", ".join(GESTURES))
-        if not str(outcome.get("trovato") or "").strip():
-            problems.append(
-                f"l'esito {index} non dice cosa ha trovato o cosa propone")
-        # **Costruibile senza intenzione non e' costruibile**: l'officina vuole
-        # gesto, dominio e il resto, e una frase in prosa non li ha. Meglio un
-        # rifiuto che una costruzione che non sta in piedi.
-        if gesture == "proposta" and outcome.get("costruibile"):
-            intent = outcome.get("intenzione")
-            ok = (isinstance(intent, dict) and intent.get("gesto")
-                  and intent.get("dominio"))
-            if not ok:
+            continue
+        if which in named:
+            problems.append(f"l'osservazione {which} ha piu' di un esito")
+            kept.pop(which, None)
+            continue
+        named.add(which)
+        kind = outcome.get("esito")
+        entry = {"impronta": observation_key(rows[which]), "esito": kind}
+        if kind == BUILT:
+            ident = outcome.get("proposta_id")
+            if ident not in built:
                 problems.append(
-                    f"l'esito {index} si dice costruibile ma non porta "
-                    "un'intenzione con `gesto` e `dominio`: una frase in prosa "
-                    "non basta a costruire niente")
-            else:
-                # **La stessa porta dell'officina, prima dell'officina**
-                # (Tappa 6, D5). Un'intenzione che `workshop.propose`
-                # rifiuterebbe si rifiuta qui, col suo motivo: il giro dopo
-                # riprova, invece di spendere il turno per una proposta che
-                # muore al confine.
-                refusal = form_refusal(intent, HAClient.CONFIGURABLE_DOMAINS)
-                if refusal is not None:
-                    problems.append(
-                        f"l'esito {index} porta un'intenzione che non si puo' "
-                        f"costruire: {refusal}")
-        kept.append(outcome)
-    if problems:
-        return {"attuazione": None, "problemi": problems, "risposta": True}
-    return {"attuazione": {"esiti": kept}, "problemi": [], "risposta": True}
+                    f"l'esito {index} dice «{BUILT}» con l'id {ident!r}, ma in "
+                    "questo turno non e' nata nessuna proposta con quell'id: "
+                    "una proposta nasce chiamando `propose`")
+                continue
+            entry["proposta_id"] = ident
+        elif kind == BY_HAND:
+            what, why = _text(outcome.get("testo")), _text(outcome.get("perche"))
+            if what is None or why is None:
+                problems.append(f"l'esito {index} e' «{BY_HAND}» e vuole "
+                                "`testo` e `perche`")
+                continue
+            entry |= {"testo": what, "perche": why, "osservazione": rows[which]}
+        elif kind == NOTHING:
+            why = _text(outcome.get("perche"))
+            if why is None:
+                problems.append(f"l'esito {index} e' «{NOTHING}» e vuole `perche`")
+                continue
+            entry["perche"] = why
+        else:
+            problems.append(f"l'esito {index} porta {kind!r}: gli esiti sono "
+                            + ", ".join(OUTCOMES))
+            continue
+        kept[which] = entry
+    missing = [n for n in range(len(rows)) if n not in named]
+    if missing:
+        problems.append("non hanno un esito le osservazioni "
+                        + ", ".join(str(n) for n in missing))
+    outcomes = [kept[n] for n in sorted(kept)]
+    if presence is not None:
+        outcomes = [{**o, **{k: presence.unmask(o[k]) for k in ("testo", "perche")
+                             if k in o}} for o in outcomes]
+    return {"esiti": outcomes, "problemi": problems, "risposta": True}

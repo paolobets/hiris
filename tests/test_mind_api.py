@@ -1092,7 +1092,7 @@ async def test_una_voce_di_config_entry_NON_inventa_un_integrazione():
 async def test_l_ESITO_dell_attuatore_arriva_ACCANTO_alla_sua_osservazione(tmp_path):
     """Mutazione ESEGUITA: non attaccare l'esito -- rossa (la pagina dovrebbe
     rifare la regola dell'impronta per conto suo)."""
-    from hiris.app.mind import actuator
+    from hiris.app.mind import analyst
     from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
@@ -1103,7 +1103,7 @@ async def test_l_ESITO_dell_attuatore_arriva_ACCANTO_alla_sua_osservazione(tmp_p
             "osservazioni": [osservazione],
             "attuazione": {"su_fondamento": "aaa", "esiti": [
                 {"gesto": "indagine", "trovato": "fra le 19 e le 22",
-                 "impronta": actuator.observation_key(osservazione)}]}})
+                 "impronta": analyst.observation_key(osservazione)}]}})
 
         r = await handle_analysis(_richiesta({"observations": archivio},
                                              {"day": "2026-09-20"}))

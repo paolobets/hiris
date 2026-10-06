@@ -30,7 +30,7 @@ from ..home_space import historian
 from ..home_space.house import House
 from ..home_space.log_source import integration_of
 from ..home_space.topology import read_mirror
-from .actuator import observation_key
+from .analyst import observation_key
 from .report import NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
 
 #: Quanti giorni di righe grezze si mostrano (`volume`). **Non e' la durata del grezzo**
@@ -320,7 +320,7 @@ def _with_outcomes(analysis: dict) -> dict:
 
     Gli esiti sono la risposta alle domande dell'analista, e si leggono dove
     la domanda sta. La regola dell'impronta e' dell'attuatore
-    (`actuator.observation_key`): rifarla in JavaScript sarebbe il secondo
+    (`analyst.observation_key`): rifarla in JavaScript sarebbe il secondo
     posto in cui si decide chi risponde a chi.
 
     **Chi non ha un esito non ne guadagna uno vuoto**: il silenzio

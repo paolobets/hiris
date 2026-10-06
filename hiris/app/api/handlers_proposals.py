@@ -5,7 +5,7 @@ conferma, rifiuta, ripristina, e sopra ci vive l'officina. Queste sono le
 altre -- quelle che deve applicare una persona -- e ne hanno tre:
 
 - **rifiuta**: chiude. Torna in coda solo se la prova cambia, e il confronto
-  lo fa l'attuatore (`actuator.to_handle`), non questa rotta.
+  lo fa il proponente (`proposer_turn.open_observations`), non questa rotta.
 - **fatta fuori da HA**: chiude **come applicata**, dichiarando che non e'
   stato HIRIS a farlo e che non puo' verificarlo in nessun oggetto. Per il
   verificatore, un domani, «l'ho fatto io» e «lo hai fatto tu» sono due prove

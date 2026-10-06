@@ -344,7 +344,7 @@ def novelty(observation: dict, previous: list[dict]) -> str | None:
     una prova diversa, `None` se e' **gia' detta con la stessa prova**.
 
     Il `None` non rifiuta l'analisi: chi chiama toglie quella sola
-    osservazione, come `actuator.to_handle` toglie cio' che e' gia' deciso.
+    osservazione, come `proposer_turn.open_observations` toglie cio' che e' gia' deciso.
     Rifiutare tutto faceva perdere le altre osservazioni del giorno, e la
     domanda dopo era identica: su una misura che non varia mai (innesco 2)
     fino a ventiquattro turni a vuoto (giro 12 del revisore, eseguito).

@@ -140,7 +140,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                            soggetto: dict | None = None,
                            frase: str | None = None,
                            thread: ChatThread | None = None,
-                           house: House | None = None) -> ToolDispatcher:
+                           house: House | None = None,
+                           actor: str = "chat") -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
     Gli strumenti della chat (`home_space/tools.py`): quattro conoscono la casa (`search`,
@@ -294,6 +295,9 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # Le letture del cervello (R8, Tappa 5, Task 8): le STESSE della
         # pagina, costruite dall'unico punto che le costruisce.
         mind=mind_view(app),
+        # Chi agisce: la chat, o il mestiere di sfondo che chiede il
+        # dispatcher per il suo guardiano (`mind/proposer_turn.guard`).
+        actor=actor,
     )
 
 

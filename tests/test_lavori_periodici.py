@@ -8,8 +8,6 @@ sprint «Una fonte sola di verita'»). Adesso l'app si avvia davvero
 (`tests/_avvio.py`) e si chiede allo schedulatore cosa c'e', quando gira, e
 cosa fa.
 """
-import asyncio
-import contextlib
 import pathlib
 import sys
 from unittest import mock
@@ -94,47 +92,32 @@ async def test_l_inventario_si_ricarica_ogni_due_minuti(started_app):
     assert reloaded.await_args.args[0] is started_app["entity_cache"]
 
 
-async def test_i_lavori_periodici_sono_sedici_come_dichiara_il_readme(started_app):
+async def test_i_lavori_periodici_sono_diciassette_come_dichiara_il_readme(started_app):
     """Un lavoro periodico gira per sempre e costa per sempre: aggiungerne uno
     senza accorgersene e' il modo in cui una casa comincia a fare rumore di
     notte. Il numero vive anche nel README, e questa prova esiste perche' non
-    divergano (la storia dei sedici: `docs/BACKLOG.md` e il README).
+    divergano (la storia dei sedici: `docs/BACKLOG.md` e il README; il
+    diciassettesimo e' il proponente, attori Task 4.2, 06/10/2026).
 
     Mutazione ESEGUITA: un `add_job` in piu' in `_on_startup` -- rossa."""
     jobs = started_app["scheduler"].get_jobs()
-    assert len(jobs) == 16, sorted(job.id for job in jobs)
+    assert len(jobs) == 17, sorted(job.id for job in jobs)
     readme = (pathlib.Path(__file__).resolve().parents[1] / "README.md").read_text(
         encoding="utf-8")
-    assert "registers **sixteen** APScheduler jobs" in readme, (
-        "il README non dichiara piu' sedici lavori periodici: il numero "
+    assert "registers **seventeen** APScheduler jobs" in readme, (
+        "il README non dichiara piu' diciassette lavori periodici: il numero "
         "vive in due posti e questa prova esiste perche' non divergano.")
 
 
-async def test_l_attuatore_e_in_pausa_e_niente_lo_fa_girare(tmp_path):
-    """**L'attuatore e' fermo dal 01/10/2026, per decisione del proprietario**
-    (voce «L'attuatore e' in pausa» in `docs/BACKLOG.md`): il suo lavoro non e'
-    registrato, e niente all'avvio lo chiama. Chi lo riaccende toglie questa
-    prova insieme alla pausa, non la aggira.
+async def test_il_proponente_gira_ogni_ora(started_app):
+    """Il diciassettesimo (attori, Task 4.2): lo stesso battito
+    dell'analista, col giro che vive in `mind/proposer_round.py`."""
+    from hiris.app.mind.proposer_round import proposer_round
 
-    Non basta guardare gli `id`: l'attuatore potrebbe tornare sotto il nome di
-    un altro lavoro. Quindi si ESEGUE il corpo di ognuno dei sedici, con
-    `actuator_round` sostituito, e si pretende che nessuno lo chiami.
-
-    Mutazioni ESEGUITE il 03/10/2026: rimesso l'`add_job` di
-    `hiris_mind_actuator` -- rossa, «assert 17 == 16»; `await actuator_round(app)` dentro
-    `_anello_analista` (id `hiris_mind_analyst`) -- rossa, «Expected mock to
-    not have been awaited. Awaited 1 times.»"""
-    called = mock.AsyncMock()
-    with mock.patch.object(server, "actuator_round", called):
-        async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            jobs = app["scheduler"].get_jobs()
-            assert len(jobs) == 16, sorted(job.id for job in jobs)
-            for job in jobs:
-                # I giri veri possono fallire sulla casa sintetica: qui conta
-                # solo chi chiamano, non se riescono.
-                with contextlib.suppress(Exception):
-                    await asyncio.wait_for(job.func(*job.args, **job.kwargs), 20)
-    called.assert_not_awaited()
+    job = _job(started_app, "hiris_mind_proposer")
+    assert str(job.trigger) == "interval[1:00:00]"
+    assert job.func is proposer_round
+    assert job.args == (started_app,)
 
 
 async def test_le_condizioni_si_leggono_anche_una_volta_all_avvio(tmp_path):

@@ -1486,14 +1486,9 @@ class ObservationsStore:
         return cur.rowcount > 0
 
     def decided_proposals(self) -> dict[str, dict]:
-        """`{impronta: prova}` per le proposte che l'attuatore non deve rifare.
-
-        **Ci stanno anche quelle in ATTESA**: una coda aperta non si duplica.
-        Oggi chi la legge (`_file_proposals`, in `server.py`) salta ogni
-        domanda che ha gia' una proposta, SENZA confrontare la prova: il
-        confronto di `actuator.to_handle`, che la riaprirebbe a prova cambiata,
-        questo dizionario non lo riceve.
-        """
+        """`{impronta: prova}` per le proposte che il proponente non deve
+        rifare a prova uguale (`proposer_turn.open_observations`, che
+        quelle in attesa salta a qualunque prova)."""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT impronta, prova_json FROM proposte").fetchall()

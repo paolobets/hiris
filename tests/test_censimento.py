@@ -1036,7 +1036,6 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 #: scrivere quelle due parole -- o citare una voce aperta qualunque -- per
 #: passare (eseguito dal revisore il 02/10/2026).
 ADMITTED_EXCEPTIONS = {
-    ("simbolo-solo-test", "actuator_round"): "M-20",
     ("simbolo-solo-test", "operable_domains"): "M-61",
     ("rotta-solo-test", "/api/misure"): "M-22",
 }

@@ -271,6 +271,21 @@ class ConstructionStore:
             righe = self._conn.execute(sql, (int(limit),)).fetchall()
         return [_row(r) for r in righe]
 
+    def proposed_in(self, exchange: str | None, *, actor: str) -> frozenset[str]:
+        """Gli id delle proposte che `actor` ha fatto nel turno `exchange`.
+
+        E' come il proponente sa quali proposte sono nate nel suo turno
+        (attori, Task 4.2, D12): lo dice l'archivio, che le ha scritte col
+        turno accanto, non il modello -- che cosi' non puo' dichiarare una
+        proposta che non c'e'. Senza turno, nessuna."""
+        if not exchange:
+            return frozenset()
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT id FROM costruzioni WHERE turno=? AND origine=?",
+                (exchange, actor)).fetchall()
+        return frozenset(r["id"] for r in righe)
+
     def count_pending(self, *, now: float) -> int:
         """Quante proposte aspettano una risposta di chi costruisce.
 

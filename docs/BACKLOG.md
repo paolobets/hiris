@@ -200,6 +200,18 @@ veridicita' della soluzione»).
    delle due proposte costruibili perse (Task 4.0, Passo 1): il turno del proponente con `propose`
    (Task 4.2), l'avviso per `alto` (D14), «Rifalla» e «sempre si'» (Task 4.4, 4.5), e il resto
    di cio' che esce (Task 4.6).
+   *Il turno del proponente c'e' dal 06/10/2026, non ancora rilasciato (Task 4.2, ramo
+   `claude/attori-strato-3-parti-pure-u24nsp`):* i lettori dell'analista piu' `propose`, chiesto
+   alla tabella degli strumenti; un esito per osservazione («costruita», «a_mano», «niente»), con
+   l'id della proposta costruita dall'archivio delle costruzioni; il giro in
+   `mind/proposer_round.py` e il lavoro orario `hiris_mind_proposer` (la pausa e la sua prova
+   escono). Escono con lui `actuator_round` e i suoi cinque aiutanti, `mind/actuator.py`, il
+   gesto `indagine`, `_intent_contract`, `INTENT_EXCLUDED` e il controllo anticipato. **Restano
+   al Task 4.6** la lettura di `analisi.attuazione` nella pagina (`mind/view._with_outcomes`,
+   `watcher-cosa-fare.js`), che per le analisi nuove non trova piu' niente: gli esiti nuovi stanno
+   in `analisi.proponente`, e la pagina che li mostra passa da `ux-ui-specialist`. **Si rilascia
+   dopo lo strato 3**, come dice il piano: non va acceso prima che l'analista coi suoi strumenti
+   sia stato misurato dal vivo.
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
@@ -985,6 +997,10 @@ confronta il numero di prove JS raccolte con quello del giro precedente (regola 
 «Il conteggio delle prove JS e' un fatto che si confronta», 05/10/2026).
 
 ### La definizione di `propose` torna alla tabella degli strumenti — aperta il 05/10/2026
+
+*Fatto nel codice il 06/10/2026 (Task 4.2, ramo, non rilasciata):* il catalogo del proponente
+chiede `propose` a `KNOWLEDGE_TOOLS` per nome (`proposer_turn.proposer_tools`), e
+`PROPOSE_TOOL_DEF` non si importa piu' fuori dalla tabella. Si chiude col rilascio.
 
 `origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 3, domanda 5), approvata dal proprietario il 05/10/2026 (consigliata); da fare allo strato 4 degli attori, insieme a B29` · stesso documento delle voci sopra
 

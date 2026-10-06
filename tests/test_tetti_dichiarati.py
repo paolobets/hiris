@@ -25,6 +25,7 @@ from conftest import SCADENZA_LONTANA
 from hiris.app import server, steering
 from hiris.app.agent import runner as ponte
 from hiris.app.keeper import exchange
+from hiris.app.mind import proposer_round
 from hiris.app.mind.store import ObservationsStore
 from tests.test_agent_runner_inaddon import _ProcFelice
 from tests.test_mind_analyst_turn import _serie
@@ -152,12 +153,11 @@ def test_ricette_analista_attuatore_e_promessa_portano_il_modello(tmp_path):
             assert _accodato(app).get("model") == "opus", nome
 
         app["reasoning_queue"].accodati.clear()
-        app["observations"].replace_analysis("2026-10-05", {"osservazioni": [
+        proposer_round._enqueue(app, "2026-10-05", [
             {"soggetto": "dev1", "misura": "prelievo", "chiave": None,
              "innesco": 1, "base": 3, "cosa": "sale",
-             "cosa_cambierebbe": "spendere meno"}]})
-        server._enqueue_actuator_turn(app, "2026-10-05")
-        assert _accodato(app).get("model") == "opus", "attuatore"
+             "cosa_cambierebbe": "spendere meno"}], [])
+        assert _accodato(app).get("model") == "opus", "proponente"
     finally:
         app["observations"].close()
 
