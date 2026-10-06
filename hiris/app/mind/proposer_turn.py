@@ -212,9 +212,9 @@ def already_answered(observation: dict, decided: dict) -> str | None:
     giro 61): a prova uguale non torna. E' la lettera di S-26, dove torna
     solo cio' che aspetta (D24-1) o cio' la cui prova e' cambiata, e il
     silenzio di chi amministra vale come risposta: riproporre ogni giorno la
-    stessa bozza ignorata sarebbe la coda che cresce che S-26 toglie. Nessuno
-    l'ha scelto per iscritto: se una scaduta deve tornare, la riga da
-    cambiare e' quella di `aperta` qui sotto.
+    stessa bozza ignorata sarebbe la coda che cresce che S-26 toglie. Scelta
+    del proprietario del 06/10/2026 («Resta cosi'»): una scaduta torna solo
+    se la prova cambia.
     """
     entry = decided.get(observation_key(observation))
     if entry is None:
