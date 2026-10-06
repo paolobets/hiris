@@ -475,6 +475,43 @@ class House:
                     self._by_device.setdefault(entry["dispositivo_id"], []).append(entry)
         return self._by_device.get(device_id, [])
 
+    def sibling_group(self, entity_id: str) -> tuple[str, str] | None:
+        """Il gruppo di SORELLE di un'entita' con statistiche (piano degli
+        attori, richiesta (4) alla Tappa 3; regola del dato fermo, proposta
+        del 06/10/2026): `("dispositivo", id)` se sul suo dispositivo ci sono
+        almeno due entita' con statistiche; altrimenti `("istanza",
+        config_entry_id)`, l'istanza dell'integrazione che Home Assistant
+        dichiara nel registro delle entita' -- non la piattaforma, che unisce
+        cose senza legame. `None` se l'elenco delle statistiche non e' stato
+        letto, se l'entita' non ne ha, o se non ha ne' dispositivo ne' istanza.
+
+        Misurato dallo sprint il 06/10/2026 sulle catture (03/09-03/10): senza
+        il ripiego sull'istanza si perdevano gli 8 termometri del 29/09, otto
+        dispositivi con un'entita' ciascuno fermi insieme."""
+        if self.statistic_ids is None or entity_id not in self.statistic_ids:
+            return None
+        entry = self._entity(entity_id) or {}
+        device_id = entry.get("dispositivo_id")
+        if device_id and sum(1 for e in self.device_entities(device_id)
+                             if e["id"] in self.statistic_ids) >= 2:
+            return ("dispositivo", device_id)
+        if entry.get("config_entry_id"):
+            return ("istanza", entry["config_entry_id"])
+        return None
+
+    def siblings(self, entity_id: str) -> list[str]:
+        """Le entita' dello stesso gruppo di `sibling_group`, lei compresa,
+        nell'ordine dell'anagrafe; `[]` se non ha un gruppo."""
+        group = self.sibling_group(entity_id)
+        if group is None:
+            return []
+        if group[0] == "dispositivo":
+            candidates = [e["id"] for e in self.device_entities(group[1])]
+        else:
+            candidates = [eid for eid, e in self._entity_index().items()
+                          if e.get("config_entry_id") == group[1]]
+        return [eid for eid in candidates if self.sibling_group(eid) == group]
+
     def entities_of(self, device_id: str) -> list[str]:
         """Le entita' di un dispositivo che un attore guarda (B-03, B-11; D2
         «si'», decisione del proprietario del 03/10/2026): quelle di
