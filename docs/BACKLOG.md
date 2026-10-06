@@ -925,6 +925,16 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Registro modelli: `esito.tipo` dice «rifiutato» anche per 429 e 5xx — aperta il 06/10/2026
+
+`origine: giro 47 del revisore e thread «Termometri e falso errore», 06/10/2026; da fare dopo il rilascio` · `hiris/app/provider_occurrences.py` · `hiris/app/static/config/models-route.js::providerRow`
+
+Il registro dei modelli scrive `esito.tipo` = `"rifiutato"` anche quando il provider ha risposto
+429 o 5xx, cioè un guasto temporaneo. Separarlo (`"temporaneo"`) cambia il pallino e il peso del
+nome nella riga del provider (`providerRow` in `models-route.js`, che legge
+`esito.tipo === 'rifiutato'`) e la regola «da quante». Prima del disegno serve il parere
+dell'agente `ux-ui-specialist`.
+
 ### `server.py` si spezza alla Chiusura dello sprint — aperta il 06/10/2026
 
 `origine: il proprietario, 06/10/2026 («ok si» alla proposta sui file monolitici, dopo la verifica di uno specialista)` · documento: `/mnt/project-files/analisi/2026-10-06-file-monolitici-proposta.md` · `hiris/app/server.py::_on_startup`
