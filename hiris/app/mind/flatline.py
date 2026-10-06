@@ -23,11 +23,15 @@ l'istanza dell'integrazione per un'entita' sola sul suo dispositivo. Un'ora e':
    istantanea), e almeno una misura istantanea e' ferma su un valore
    **diverso da zero**: lo zero e' anche il riposo di un apparecchio spento,
    10 W a mezzogiorno o la batteria al 74% per un giorno no. Un gruppo di una
-   sola entita', o di soli contatori, non si giudica: non c'e' una prova;
-2. **anomala** se il resto della casa, in quell'ora, si muove (se si ferma
-   tutto e' il sistema, Task 1.4), e se alla stessa ora dei giorni prima --
-   con l'ora prima e l'ora dopo, `NEIGHBOUR_HOURS` -- il gruppo non e' mai
-   stato fermo. La notte di un fotovoltaico senza batteria e' ferma ogni notte,
+   sola entita', o di soli contatori, non si giudica: non c'e' una prova.
+   Una sorella senza punti in quell'ora rende il gruppo non fermo (G7-3,
+   bassa: quanti gruppi lo subiscono lo conta la rimisura dello sprint);
+2. **anomala** se il resto di cio' che il resoconto legge -- le altre entita'
+   delle ricette e le loro sorelle, non la casa intera (G7-2: con le ricette
+   di un solo dispositivo la regola non scatta mai) -- in quell'ora si muove
+   (se si ferma tutto e' il sistema, Task 1.4), e se alla stessa ora dei
+   giorni prima -- con l'ora prima e l'ora dopo, `NEIGHBOUR_HOURS` -- il
+   gruppo non e' mai stato fermo. La notte di un fotovoltaico senza batteria e' ferma ogni notte,
    e si spiega da se'.
 
 Un **tratto** sono ore ferme per il gruppo consecutive, sull'intera finestra
