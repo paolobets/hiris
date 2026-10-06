@@ -46,7 +46,7 @@ griglia oraria delle statistiche, non quanto deve durare un blocco;
 `HISTORY_DAYS` e' il costo della lettura.
 
 **Funzione pura**: le serie arrivano da chi chiama, nella forma di
-`server._punti_orari`. `server._report_ingredients` legge in UNA richiesta il
+`recipes.hourly_points`. `server._report_ingredients` legge in UNA richiesta il
 giorno e la sua storia, per le entita' delle ricette e per le loro sorelle, e
 passa i rifiuti fra le entita' che tacciono (`silent`), la strada che
 `Recipe.run` conosce gia'. Notte, recupero e riparazione d'avvio passano

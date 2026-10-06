@@ -203,8 +203,9 @@ window.HirisWatcherShared = (function () {
 
   /* ------------------------------------------- i soggetti grezzi, letti */
 
-  /* Il riconoscimento dei quattro prefissi tecnici (`problema:`/
-     `integrazione:`/`log:`/`automazione:`) SEPARATO dalla resa: questa
+  /* Il riconoscimento dei cinque prefissi tecnici (`problema:`/
+     `integrazione:`/`log:`/`automazione:`/`connessione:`) SEPARATO dalla
+     resa: questa
      funzione dice solo COSA porta un soggetto grezzo, mai come scriverlo a
      schermo -- quello lo decide chi la chiama. E' la base condivisa fra le
      schede che rendono un soggetto (BACKLOG.md, collaudo del 07/09/2026: due
@@ -236,6 +237,9 @@ window.HirisWatcherShared = (function () {
     }
     if (s.indexOf('automazione:') === 0) {
       return { kind: 'automazione', rest: s.slice('automazione:'.length) };
+    }
+    if (s.indexOf('connessione:') === 0) {
+      return { kind: 'connessione', rest: s.slice('connessione:'.length) };
     }
     return { kind: null, rest: s };
   }
@@ -281,6 +285,11 @@ window.HirisWatcherShared = (function () {
     if (p.kind === 'integrazione') return { primary: 'Un’integrazione non caricata', secondary: p.rest, technical: false };
     if (p.kind === 'log') return { primary: 'Registro: ' + p.logger, secondary: p.location, technical: false };
     if (p.kind === 'automazione') return { primary: 'Automazione: ' + p.rest, secondary: '', technical: false };
+    /* La finestra in cui HIRIS e' rimasto scollegato (`connessione:
+       home_assistant`, il riallineamento alla riconnessione): non dice
+       «riavvio», perche' da qui un riavvio e un guasto di rete hanno la
+       stessa forma. */
+    if (p.kind === 'connessione') return { primary: 'HIRIS scollegato da Home Assistant', secondary: '', technical: false };
     if (nome) return { primary: nome, secondary: p.rest, technical: false };
     return { primary: p.rest, secondary: '', technical: true };
   }

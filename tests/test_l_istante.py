@@ -240,7 +240,7 @@ def _runs(subjects, depth_count):
     from tests.test_house_history import _NESSUNA, _q
 
     chosen = hh.Chosen(depth_count, dict(_NESSUNA), hh.depth_for(depth_count), subjects)
-    return hh.run_rows(_q(genere="esecuzioni"), chosen, traces={},
+    return hh.run_rows(_q(cosa="esecuzioni"), chosen, traces={},
                        keys={s.ident: None for s in subjects}, unread={})
 
 

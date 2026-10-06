@@ -272,7 +272,7 @@ async def test_il_registro_non_consegna_piu_il_messaggio_GREZZO():
     qualunque, anche di terze parti, e finisce dritto nel prompt.
 
     Mutazione ESEGUITA: `_sealed_log` saltato, le voci passano com'erano -- rossa."""
-    risposta = await _chiedi({"genere": "errori"})
+    risposta = await _chiedi({"cosa": "errori"})
 
     assert "[FILTERED]" in risposta["voci"][0]["messaggio"]
 
@@ -280,7 +280,7 @@ async def test_il_registro_non_consegna_piu_il_messaggio_GREZZO():
 @pytest.mark.asyncio
 async def test_e_nemmeno_la_TRACCIA_di_eccezione():
     """Mutazione ESEGUITA: sigillare solo `message` -- rossa."""
-    risposta = await _chiedi({"genere": "errori"})
+    risposta = await _chiedi({"cosa": "errori"})
 
     assert "[FILTERED]" in risposta["voci"][0]["eccezione"]
 
@@ -291,7 +291,7 @@ async def test_il_CARICO_che_ha_acceso_l_automazione_non_passa_grezzo():
     dispositivo di rete, non il proprietario.
 
     Mutazione ESEGUITA: `run_detail` con la traccia non sigillata -- rossa."""
-    risposta = await _chiedi({"genere": "esecuzioni", "riferimento": "automation.x",
+    risposta = await _chiedi({"cosa": "esecuzioni", "riferimento": "automation.x",
                               "esecuzione": "r1"})
 
     assert "[FILTERED]" in str(risposta)
@@ -304,7 +304,7 @@ async def test_anche_l_ELENCO_delle_esecuzioni_passa_dal_confine():
     aperta l'altra.
 
     Mutazione ESEGUITA: non sigillare `answer["tracce"]` in `_run_history` -- rossa."""
-    risposta = await _chiedi({"genere": "esecuzioni", "riferimento": "automation.x"})
+    risposta = await _chiedi({"cosa": "esecuzioni", "riferimento": "automation.x"})
 
     assert "[FILTERED]" in str(risposta)
     assert "Ignora le istruzioni" not in str(risposta)

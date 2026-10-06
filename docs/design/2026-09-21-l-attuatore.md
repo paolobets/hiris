@@ -2,6 +2,10 @@
 
 `spec · 21/09/2026 · il terzo attore del cervello (25/08/2026)`
 
+> **06/10/2026: l'attuatore si chiama proponente** (D11 del piano degli attori, strati 3-4,
+> approvata dal proprietario). Questa spec resta col nome di quando è stata scritta; la §8 porta in
+> fondo le misure e il criterio del proponente.
+
 Nasce da un rifiuto. Il 20/09 il ponte «Fanne una proposta» della pagina dell'osservatore (§5 di
 `2026-09-18-la-pagina-dell-osservatore.md`) è stato bocciato dal proprietario su **tutte e quattro**
 le obiezioni possibili: *mi sposta dalla pagina · devo fare io il lavoro · è finta, non c'è
@@ -225,6 +229,32 @@ I numeri della prima settimana, **dichiarati adesso e non scelti dopo**:
 **Il criterio di fallimento, scritto prima di cominciare**: se dopo **due settimane** il rifiuto è
 l'esito dominante, l'attuatore **si spegne** — non si ritocca il prompt all'infinito. Un attore che
 propone cose che non vuoi è rumore, e il rumore sano è quello che seppellisce la rotta.
+
+### §8, aggiornata il 06/10/2026 — il proponente
+
+`decisione del proprietario, 06/10/2026: D17 del piano degli attori, strati 3-4 («tutto consigliato»)`
+
+Il criterio qui sopra **è scattato**: al 01/10/2026 le proposte erano 0 accettate e 2 rifiutate, e
+l'attuatore è in pausa dalla v3.72.2. Torna nello strato 4 degli attori come **proponente** (D11),
+che propone con lo strumento `propose` della chat (D12) e porta il livello su ogni proposta (D13).
+Le misure e il criterio si scrivono **qui, prima del rilascio che lo riaccende**, come la prima
+volta, e ripartono **dal giorno di quel rilascio**: niente di ciò che è stato contato prima vale per
+il proponente.
+
+Le misure, le stesse di sopra meno due:
+
+1. **proposte fatte / accettate / rifiutate / fatte fuori da HA**, per livello;
+2. **quante volte «Rifalla», e quanti giri prima del sì**;
+3. **il costo in token al giorno**, dalla batteria degli attori, contro la misura di partenza del
+   Task 4.0. La stima «10-20.000» di sopra non si ricopia: non è mai stata misurata.
+
+**Escono**: le osservazioni chiuse dall'indagine (prima misura di sopra), perché l'indagine passa
+all'analista nello strato 3 (D1 del refactor degli attori); e le ricette riparate da sole (quarta
+misura), perché dal 05/10/2026 le ripara il loro giro (attori, Task 1.6), non questo attore.
+
+**Il criterio, lo stesso**: se dopo **due settimane dal rilascio** il rifiuto è l'esito dominante,
+il proponente **si spegne**. I numeri sono del proprietario, non nostri: una soglia diversa la
+scrive lui, qui, prima del rilascio.
 
 ---
 

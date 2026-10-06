@@ -173,13 +173,33 @@ veridicita' della soluzione»).
    diverse: coppie gia' presenti il giorno prima 2 su 7, 3 su 8, 4 su 8), spostata qui dalla
    Tappa 6 il 05/10/2026: e' la memoria delle analisi precedenti che manca, non un doppione di
    codice.
+   *Il codice c'e' dal 06/10/2026, non ancora rilasciato (piano degli attori, Task 3.1-3.4, ramo
+   `claude/attori-strato-3-parti-pure-u24nsp`):* la ricetta al volo (`mind/compute.py`) con
+   `somma_fra` e la presenza dagli stati (`REGISTRY_VERSION` 3: i rifiuti archiviati tornano
+   domande); l'indice al posto delle trenta colonne, con gli inneschi marcati dal codice e
+   l'obiettivo «in vigore dal»; la memoria ricavata da analisi e proposte, con `novita` nella
+   risposta. **Cambia la domanda dell'analista di produzione** senza dargli ancora gli strumenti
+   per scavare (Task 3.6): **si unisce insieme al 3.6** (deciso dal proprietario il 06/10/2026). Dallo stesso giorno «nuova» la scrive il codice, e la ripetizione con la stessa prova si toglie invece di rifiutare l'analisi (D4 cambiata, giro 12 del revisore).
+   D-33 si chiude dal vivo, quando la misura delle ripetizioni (Task 3.0 Passo 3) scende.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
    «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,
    D5), con l'attuatore sempre in pausa:* il contratto dell'`intenzione` incompatibile con
-   l'officina. Oggi si deriva dallo schema di `propose` (`mind/actuator_turn._intent_contract`) e
+   l'officina. Oggi si deriva dallo schema di `propose` (`mind/proposer_turn._intent_contract`) e
    la risposta passa dalla stessa porta della forma dell'officina (`workshop.form_refusal`) prima
    di arrivarci.
+   *Il 06/10/2026 l'attuatore diventa il **proponente** (D11-D17 del piano degli attori, strati
+   3-4, tutte le consigliate).* Gia' nel codice: il nome (Task 4.1: `steering.PROPOSER_SPECIES`,
+   `mind/proposer_turn.py`), il livello su ogni proposta delle due code, con `alto` imposto dal
+   codice su serrature e allarme (Task 4.3, `action/construction/stakes.py`), e l'uscita delle
+   tre colonne mai lette di `proposte` (parte del Task 4.6). **Le misure e il criterio di
+   spegnimento sono scritti prima del rilascio** (Task 4.7, D17), nella spec
+   `2026-09-21-l-attuatore.md` §8: proposte fatte, accettate, rifiutate e fatte fuori da HA, per
+   livello; i giri di «Rifalla»; i token al giorno; e se dopo due settimane dal rilascio il
+   rifiuto e' l'esito dominante, il proponente si spegne. Aspettano lo strato 3 e la diagnosi
+   delle due proposte costruibili perse (Task 4.0, Passo 1): il turno del proponente con `propose`
+   (Task 4.2), l'avviso per `alto` (D14), «Rifalla» e «sempre si'» (Task 4.4, 4.5), e il resto
+   di cio' che esce (Task 4.6).
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
@@ -295,6 +315,15 @@ Misurato in casa il 02/10/2026: le 21 ricette archiviate usano 7 operazioni, nes
 **Da decidere col refactor degli attori**: se l'analista risponde alle sette domande con queste
 operazioni (e allora serve chi gli consegna periodi e letture), o se le domande si servono in un
 altro modo e le dieci escono. Voci del registro dei doppioni: M-12, M-14, M-64, M-65, M-78.
+
+**Deciso dal proprietario il 06/10/2026 (D7 del piano strati 3-4): escono otto, restano due per la
+presenza.** Escono `quante_volte`, `quando_succede`, `misure_durante`, `dentro`, `somma_entita`,
+`media_entita`, `raggruppa_per`, `primo_ultimo_differenza`, con le prove delle sette domande e il
+loro cancello; escono anche `Period.contains` e le forme `SHAPE_COUNTER`, `SHAPE_MEASURES`,
+`SHAPE_MEASURE_MAP`, che servivano solo a loro. Restano `episodio`, `tempo_in_stato` e `Period`,
+non offribili alle ricette e ancora senza chiamante: li alimentera' lo strumento di calcolo (Task
+3.1 e 3.2 dello strato 3, dopo D6). Il catalogo offerto al modello non cambia (l'impronta di
+`REGISTRY_VERSION` 2 resta la stessa), quindi la versione del registro non sale.
 
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
 
@@ -919,7 +948,7 @@ confronta il numero di prove JS raccolte con quello del giro precedente (regola 
 
 `origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 3, domanda 5), approvata dal proprietario il 05/10/2026 (consigliata); da fare allo strato 4 degli attori, insieme a B29` · stesso documento delle voci sopra
 
-`mind/actuator_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
+`mind/proposer_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
 degli strumenti (Tappa 5). Si ricollega quando l'attuatore torna (strato 4), con la decisione B29
 (le descrizioni delle proposte servono anche all'attuatore).
 
@@ -993,7 +1022,7 @@ da ottimizzare sui numeri veri:
   il server aiohttp rifiuta una riga di richiesta oltre 8.190 byte: con ~300 entita' si
   sfora. `HAClient.history` legge a pezzi (`_HISTORY_FILTER_MAX = 6000` byte di filtro per richiesta,
   `proxy/ha_client.py`). Il 6.000 e' un margine scelto, **non misurato**: va provato con una
-  ricerca che scelga ~300 entita' (per esempio `history(genere=valori, tipo=sensor)` su tutta la casa).
+  ricerca che scelga ~300 entita' (per esempio `history(cosa=valori, tipo=sensor)` su tutta la casa).
 - **Le domande #14 e #26 della batteria**, le due che la spec nomina: #14 (`da="ieri"`, consumato,
   fasce orarie di Home Assistant oltre le 24 ore) e #26. Si leggono coi cinque criteri di §8.
   Sulla #14 la riga deve portare `al` (l'ora in corso non e' ancora compilata: revisione finale,
@@ -1329,7 +1358,7 @@ D2 del proprietario).** La riparazione non e' piu' dell'attuatore: `_repair_reci
 le ricette rotte le richiede il giro delle ricette (`recipe_turn.recipes_to_repair`, dalla causa
 della misura), sulla catena e sul ponte. Si sposta fra le uscite col rilascio dello strato 1.
 
-`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
+`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/proposer_turn.py::SYSTEM`
 
 Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**
 (`_repair_recipes`, che chiama `recipe_turn.ask` col modello della catena) e aggiunge le
@@ -1337,7 +1366,7 @@ riparazioni all'attuazione come fatti. Sul ponte no: `_enqueue_actuator_turn` co
 con l'elenco delle riparazioni **vuoto**, e nessuna ricetta viene riscritta. Una ricetta rotta,
 sul ponte, arriva al modello come osservazione qualunque e resta rotta.
 
-Il prompt di sistema (`actuator_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
+Il prompt di sistema (`proposer_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
 fetta (28/09/2026): prima affermava «Le ricette rotte le ho gia' riscritte io prima di chiamarti»,
 falso sul ponte. Ora dice che le riparazioni avvenute stanno nella domanda, e che se la domanda non
 ne parla nessuna e' stata riscritta: una ricetta rotta si segnala come proposta da fare a mano. Resta
@@ -1357,7 +1386,7 @@ ricetta rotta sulla casa vera, attuatore sul ponte, e la riga del sapere riscrit
 
 `origine: review del fix round 1 della fetta «l'attuatore sul ponte» (28/09/2026)` · `hiris/app/server.py::_collect_actuator_turn` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_collect_analyst_turn`
 
-Quando la risposta del ponte e' **rifiutata** (`actuator_turn.apply_actuation` torna
+Quando la risposta del ponte e' **rifiutata** (`proposer_turn.apply_actuation` torna
 `attuazione: None` con i `problemi`), `_collect_actuator_turn` la restituisce con `risposta: True`
 senza scrivere niente, e `actuator_round` si ferma li' (`if collected is not None and
 collected.get("risposta"): return collected`). Al giro dopo `queue.latest("attuazione")` e' ancora

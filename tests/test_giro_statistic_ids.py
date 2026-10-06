@@ -10,7 +10,8 @@ leggeva per conto suo (due letture dello stesso elenco in `server.py`), e il
 giro delle ricette la leggeva a ogni passaggio anche senza niente da potare
 ne' da chiedere -- prima di guardare se ci fosse qualcosa da fare.
 
-Ora la lettura vive in `server.statistic_ids_for_round`: una memoria piu'
+Ora la lettura vive in `house_history.statistic_ids_for_round` (in `server.py` fino al
+06/10/2026): una memoria piu'
 breve del giro piu' frequente che la usa (cosi' un giro non riusa mai la
 propria lettura precedente, ma due giri vicini ne fanno una sola), e mai su
 un guasto.
@@ -27,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app import server
+from hiris.app.home_space import house_history
 from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import Mirror
@@ -182,7 +184,7 @@ async def test_la_memoria_scade(stores):
     dell'eta' -- rossa sul bordo."""
     house = _house()
     app = {}
-    memory = server.STATISTIC_IDS_MEMORY_S
+    memory = house_history.STATISTIC_IDS_MEMORY_S
 
     await server.statistic_ids_for_round(app, house, now=1000.0)
     await server.statistic_ids_for_round(app, house, now=1000.0 + memory - 1)
@@ -239,7 +241,7 @@ async def test_la_memoria_e_piu_breve_di_ogni_giro_che_la_usa(started_app):
     intervals = [job.trigger.interval.total_seconds() for job in users
                  if hasattr(job.trigger, "interval")]
     assert len(intervals) >= 2, [job.id for job in users]
-    assert server.STATISTIC_IDS_MEMORY_S < min(intervals)
+    assert house_history.STATISTIC_IDS_MEMORY_S < min(intervals)
 
 
 class _Modello:

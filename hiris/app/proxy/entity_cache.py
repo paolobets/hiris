@@ -669,24 +669,33 @@ class EntityCache:
         che SOLLEVA se Home Assistant non ha dato gli stati. Chi la chiama
         all'avvio lo dichiara, e il giro dei due minuti
         (`reload_entity_inventory`) riprova."""
-        failure = await self._reread(ha_client)
-        if failure is not None:
+        outcome = await self._reread(ha_client)
+        if isinstance(outcome, dict):
             # La busta del guasto (D3): `get_states` non solleva, `load` si'
             # -- e' il suo contratto.
-            raise HAReadError(failure)
+            raise HAReadError(outcome)
 
-    async def reload(self, ha_client) -> None:
+    async def reload(self, ha_client) -> list[dict] | None:
         """Rilegge lo specchio dopo una riconnessione (spec §6): la stessa
         rilettura di `load`, che non solleva. Un guasto lascia lo specchio
-        com'era, dichiarato `stale`, e lo dice nel log."""
-        failure = await self._reread(ha_client)
-        if failure is not None:
-            logger.warning("specchio: rilettura dopo la riconnessione fallita "
-                           "(%s: %s)", failure.get("causa"), failure.get("errore"))
+        com'era, dichiarato `stale`, e lo dice nel log.
 
-    async def _reread(self, ha_client) -> dict | None:
-        """L'UNICA rilettura intera dello specchio. Torna `None` se e' riuscita,
-        la busta del guasto se no (e allora lo specchio resta com'era).
+        Torna la FOTOGRAFIA appena letta -- gli stati cosi' come Home
+        Assistant li ha mandati, prima della proiezione minimale -- o `None`
+        se la rilettura e' fallita. La prende l'osservatore per riallinearsi
+        (`Watcher.realign`): una seconda lettura degli stati alla stessa
+        riconnessione sarebbe la stessa casa letta due volte."""
+        outcome = await self._reread(ha_client)
+        if isinstance(outcome, dict):
+            logger.warning("specchio: rilettura dopo la riconnessione fallita "
+                           "(%s: %s)", outcome.get("causa"), outcome.get("errore"))
+            return None
+        return outcome
+
+    async def _reread(self, ha_client) -> list[dict] | dict:
+        """L'UNICA rilettura intera dello specchio. Torna la fotografia grezza
+        se e' riuscita, la busta del guasto se no (e allora lo specchio resta
+        com'era).
 
         Gli eventi emessi mentre la connessione era giu' non tornano: fino
         alla 3.70 lo specchio restava stantio fino al riavvio dell'add-on
@@ -735,7 +744,7 @@ class EntityCache:
                 # pronto (o vecchio).
                 self._loaded = True
                 succeeded = True
-                return None
+                return raw_states
             finally:
                 self._pending = None
                 self._stale = not succeeded

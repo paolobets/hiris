@@ -246,3 +246,18 @@ test('elencoLungo: tre righe non si chiudono dietro un bottone', () => {
   elenco(secondo.ctx, secondo.corpo, { pochi: [], didascalia: '', tutti: dati(4) });
   assert.ok(bottone(secondo.corpo, 'Vedi tutte (4)'), 'sopra la soglia si chiude');
 });
+
+test('describeWatchedSubject: la finestra di scollegamento ha un nome, non il prefisso grezzo (riallineamento, 06/10/2026)', () => {
+  /* La cronaca scrive la finestra in cui HIRIS e' rimasto scollegato come
+     `connessione:home_assistant` (`mind/facts.DISCONNECTION_SUBJECT`). Senza
+     il quinto prefisso la pagina la mostrerebbe come un identificatore.
+     Mutazione ESEGUITA: tolto il ramo `connessione:` da `parseSubjectPrefix`
+     -- rossa (`technical` vero, il soggetto grezzo come nome). */
+  const { ctx } = monta();
+  const S = ctx.window.HirisWatcherShared;
+  assert.equal(S.parseSubjectPrefix('connessione:home_assistant').kind, 'connessione');
+  const d = S.describeWatchedSubject('connessione:home_assistant', null);
+  assert.equal(d.technical, false);
+  assert.equal(d.primary, 'HIRIS scollegato da Home Assistant');
+  assert.doesNotMatch(d.primary, /riavvio/i, 'da qui un riavvio e un guasto di rete non si distinguono');
+});

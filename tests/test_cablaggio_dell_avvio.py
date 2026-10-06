@@ -395,11 +395,20 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
         for listener in house.registered("topology"):
             listener("riconnessione")
     try:
+        # Dal riallineamento dell'osservatore (06/10/2026) la rilettura gira
+        # dentro l'ascoltatore, che con la stessa fotografia riallinea: si
+        # riconosce dalla funzione e da cio' che porta con se'.
         rereads = [c for c in spawned
-                   if c.cr_code is EntityCache.reload.__code__
-                   and c.cr_frame.f_locals.get("self") is started_app["entity_cache"]
-                   and c.cr_frame.f_locals.get("ha_client") is house]
+                   if c.cr_code.co_qualname.endswith("._reload_and_realign")
+                   and c.cr_frame.f_locals.get("entity_cache") is started_app["entity_cache"]
+                   and c.cr_frame.f_locals.get("client") is house]
         assert len(rereads) == 1, [c.cr_code.co_qualname for c in spawned]
+        # E l'osservatore che riallinea e' quello dell'app, chiesto all'avviso
+        # e non fissato all'iscrizione: l'ascoltatore nasce prima di lui.
+        # Mutazione ESEGUITA: `lambda: None` al posto di `app.get("watcher")`
+        # nell'iscrizione -- rossa.
+        assert started_app.get("watcher") is not None
+        assert rereads[0].cr_frame.f_locals["watcher"]() is started_app["watcher"]
     finally:
         for coroutine in spawned:
             coroutine.close()

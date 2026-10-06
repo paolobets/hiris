@@ -34,7 +34,7 @@ def _q(**argomenti):
 
 
 def test_senza_quando_la_finestra_e_di_ventiquattro_ore_e_il_genere_e_stati():
-    """Spec §2: default `genere` stati, default `ore` 24.
+    """Spec §2: default `cosa` stati, default `ore` 24.
 
     Mutazione ESEGUITA: `DEFAULT_HOURS = 12.0` -- rossa."""
     query = _q()
@@ -104,7 +104,7 @@ def test_la_quattordici_diventa_una_chiamata_sola():
     """La #14 della batteria, «consumo di oggi contro ieri» (spec §2).
 
     Mutazione ESEGUITA: pretendere `a` quando c'e' `da` -- rossa."""
-    query = _q(genere="valori", nome="energia consumata oggi", da="ieri")
+    query = _q(cosa="valori", nome="energia consumata oggi", da="ieri")
     assert query.kind == "valori"
     assert query.who.name == "energia consumata oggi"
     assert query.start.isoformat() == "2026-09-28T00:00:00+02:00"
@@ -133,14 +133,14 @@ def test_i_filtri_di_chi_sono_quelli_di_search():
     ({"ore": 0}, "ore va da piu' di 0"),
     ({"ore": 3000}, "ore va da piu' di 0"),
     ({"ore": "tante"}, "ore vuole un numero"),
-    ({"livello": "ERROR"}, "livello vale solo con genere=errori"),
-    ({"esecuzione": "r1"}, "esecuzione vale solo con genere=esecuzioni"),
-    ({"genere": "errori", "area": "Cucina"}, "area: non vale per genere=errori"),
-    ({"genere": "esecuzioni", "riferimento": "light.cucina_1"},
+    ({"livello": "ERROR"}, "livello vale solo con cosa=errori"),
+    ({"esecuzione": "r1"}, "esecuzione vale solo con cosa=esecuzioni"),
+    ({"cosa": "errori", "area": "Cucina"}, "area: non vale per cosa=errori"),
+    ({"cosa": "esecuzioni", "riferimento": "light.cucina_1"},
      "non e' un'automazione ne' uno script"),
-    ({"genere": "esecuzioni", "tipo": "light"}, "tipo accetta automation o script"),
-    ({"genere": "esecuzioni", "classe": "door"}, "classe non vale"),
-    ({"genere": "esecuzioni", "esecuzione": "   "}, "un testo non vuoto"),
+    ({"cosa": "esecuzioni", "tipo": "light"}, "tipo accetta automation o script"),
+    ({"cosa": "esecuzioni", "classe": "door"}, "classe non vale"),
+    ({"cosa": "esecuzioni", "esecuzione": "   "}, "un testo non vuoto"),
     ({"limite": 51}, "limite va da 0 a 50"),
 ])
 def test_un_argomento_sbagliato_e_un_errore_mai_un_altra_domanda(argomenti, parole):
@@ -172,7 +172,7 @@ def test_gli_errori_accettano_integrazione_e_livello():
     """Spec §2: per `errori` valgono solo `integrazione` e `livello`, e il
     livello e' uno di `LEVELS`, come lo dichiara lo schema (dal 05/10/2026 un
     livello fuori vocabolario, maiuscole comprese, lo rifiuta `dispatch`)."""
-    query = _q(genere="errori", integrazione="zha", livello="ERROR")
+    query = _q(cosa="errori", integrazione="zha", livello="ERROR")
     assert (query.kind, query.who.platform, query.level) == ("errori", "zha", "ERROR")
 
 
@@ -410,7 +410,7 @@ def test_una_esecuzione_vale_per_una_sola_automazione():
     Mutazione ESEGUITA: togliere il controllo `len(subjects) != 1` con
     `run_id` -- rossa (ritorna un `Chosen`, non l'errore)."""
     comportamento, specchio = _automazioni(("carta", T_IERI), ("vetro", T_IERI))
-    query = _q(genere="esecuzioni", esecuzione="r1")
+    query = _q(cosa="esecuzioni", esecuzione="r1")
     risposta = hh.choose(query, House(_casa(), specchio), comportamento, now=T0)
     assert "esecuzione vale per UNA sola automazione" in risposta["errore"]
 
@@ -554,10 +554,10 @@ def test_entro_un_giorno_i_cambi_veri_oltre_le_fasce_per_chi_le_ha():
     Mutazione ESEGUITA: `<` al posto di `<=` -- rossa sulle 24 ore;
     `bool(state_class)` al posto di `bands_are_arithmetic` -- rossa sulla
     banderuola."""
-    assert hh.value_surface(_q(genere="valori", ore=24), "measurement") == "dettaglio"
-    assert hh.value_surface(_q(genere="valori", ore=48), "measurement") == "oraria"
-    assert hh.value_surface(_q(genere="valori", ore=48), None) == "dettaglio"
-    assert hh.value_surface(_q(genere="valori", ore=48), "measurement_angle") == "dettaglio"
+    assert hh.value_surface(_q(cosa="valori", ore=24), "measurement") == "dettaglio"
+    assert hh.value_surface(_q(cosa="valori", ore=48), "measurement") == "oraria"
+    assert hh.value_surface(_q(cosa="valori", ore=48), None) == "dettaglio"
+    assert hh.value_surface(_q(cosa="valori", ore=48), "measurement_angle") == "dettaglio"
 
 
 _TEMPERATURA = {"sensor.temperatura": [
@@ -570,7 +570,7 @@ def test_i_conti_di_una_serie_sono_di_hiris_e_la_media_pesa_il_tempo():
     vale 6 ore, il 22 dodici, il 18 sei: la media e' 20,5, non 20.
 
     Mutazione ESEGUITA: media aritmetica dei punti -- rossa (20,0)."""
-    riga = _valori(_q(genere="valori", tipo="sensor"), ["sensor.temperatura"],
+    riga = _valori(_q(cosa="valori", tipo="sensor"), ["sensor.temperatura"],
                    dettaglio=_TEMPERATURA,
                    classi={"sensor.temperatura": "measurement"},
                    unita={"sensor.temperatura": "°C"})["voci"][0]
@@ -593,7 +593,7 @@ def test_un_contatore_che_si_azzera_a_mezzanotte_somma_i_due_giorni():
         _punto("2026-09-27T22:00:00+00:00", "0.0"), _punto("2026-09-28T10:00:00+00:00", "5.0"),
         _punto("2026-09-28T21:59:00+00:00", "9.0"), _punto("2026-09-28T22:00:00+00:00", "0.0"),
         _punto("2026-09-29T12:00:00+00:00", "4.5")]}
-    riga = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], dettaglio=energia,
+    riga = _valori(_q(cosa="valori", da="ieri"), ["sensor.energia"], dettaglio=energia,
                    classi={"sensor.energia": "total_increasing"})["voci"][0]
     assert riga["consumato"] == 13.5
 
@@ -610,7 +610,7 @@ def test_le_fasce_di_un_contatore_sommano_il_cambio_di_home_assistant():
          "minimo": None, "massimo": None, "media": None, "stato": 0.9, "cambio": 0.5},
         {"inizio": "2026-09-29T00:00:00+00:00", "fine": "2026-09-29T01:00:00+00:00",
          "minimo": None, "massimo": None, "media": None, "stato": 0.2, "cambio": 0.2}]}
-    uscita = _valori(_q(genere="valori", ore=48), ["sensor.energia"], fasce=fasce,
+    uscita = _valori(_q(cosa="valori", ore=48), ["sensor.energia"], fasce=fasce,
                      superfici={"sensor.energia": "oraria"},
                      classi={"sensor.energia": "total_increasing"})
     assert uscita["grana"] == "oraria"
@@ -628,7 +628,7 @@ def test_le_fasce_di_un_contatore_non_hanno_media():
     fasce = {"sensor.energia": [
         {"inizio": "2026-09-28T22:00:00+00:00", "stato": 0.4, "cambio": 0.4},
         {"inizio": "2026-09-28T23:00:00+00:00", "stato": 0.9, "cambio": 0.5}]}
-    riga = _valori(_q(genere="valori", ore=48), ["sensor.energia"], fasce=fasce,
+    riga = _valori(_q(cosa="valori", ore=48), ["sensor.energia"], fasce=fasce,
                    superfici={"sensor.energia": "oraria"},
                    classi={"sensor.energia": "total_increasing"})["voci"][0]
     assert "media" not in riga
@@ -655,7 +655,7 @@ def test_il_consumato_di_un_total_increasing_e_quello_di_home_assistant(letture,
     rossa ([5, -1, 6] da' 6)."""
     ore = [f"2026-09-29T0{i}:00:00+00:00" for i in range(len(letture))]
     serie = {"sensor.energia": [_punto(q, v) for q, v in zip(ore, letture, strict=True)]}
-    riga = _valori(_q(genere="valori"), ["sensor.energia"], dettaglio=serie,
+    riga = _valori(_q(cosa="valori"), ["sensor.energia"], dettaglio=serie,
                    classi={"sensor.energia": "total_increasing"})["voci"][0]
     assert riga["consumato"] == consumato
 
@@ -671,13 +671,13 @@ def test_un_total_con_last_reset_non_si_conta_dai_punti():
     serie = {"sensor.gas": [_punto(_INIZIO, "8.0"),
                             _punto("2026-09-28T22:00:00+00:00", "0.5"),
                             _punto("2026-09-29T12:00:00+00:00", "2.0")]}
-    ciclica = _valori(_q(genere="valori"), ["sensor.gas"], dettaglio=serie,
+    ciclica = _valori(_q(cosa="valori"), ["sensor.gas"], dettaglio=serie,
                       classi={"sensor.gas": "total"},
                       attributi={"sensor.gas": {"values": {
                           "last_reset": "2026-09-28T22:00:00+00:00"}}})["voci"][0]
     assert "consumato" not in ciclica
     assert "24 ore" in ciclica["consumato_non_calcolato"]
-    netta = _valori(_q(genere="valori"), ["sensor.gas"], dettaglio=serie,
+    netta = _valori(_q(cosa="valori"), ["sensor.gas"], dettaglio=serie,
                     classi={"sensor.gas": "total"})["voci"][0]
     assert netta["consumato"] == -6.0 and "consumato_non_calcolato" not in netta
 
@@ -693,11 +693,11 @@ def test_il_tempo_senza_un_numero_non_pesa_e_si_dice():
     serie = {"sensor.temperatura": [
         _punto(_INIZIO, "10.0"), _punto("2026-09-28T18:40:00+00:00", "unavailable"),
         _punto("2026-09-29T14:40:00+00:00", "20.0")]}
-    riga = _valori(_q(genere="valori"), ["sensor.temperatura"],
+    riga = _valori(_q(cosa="valori"), ["sensor.temperatura"],
                    dettaglio=serie)["voci"][0]
     assert riga["media"] == 15.0
     assert riga["ore_senza_valore"] == 20.0
-    intera = _valori(_q(genere="valori"), ["sensor.temperatura"],
+    intera = _valori(_q(cosa="valori"), ["sensor.temperatura"],
                      dettaglio=_TEMPERATURA)["voci"][0]
     assert "ore_senza_valore" not in intera
 
@@ -713,7 +713,7 @@ def test_una_serie_nata_dopo_lo_dice_sulla_sua_riga():
     nata = {**_TEMPERATURA, "sensor.energia": [
         _punto("2026-09-29T10:40:00+00:00", "5.0"),
         _punto("2026-09-29T14:40:00+00:00", "7.0")]}
-    uscita = _valori(_q(genere="valori"), ["sensor.temperatura", "sensor.energia"],
+    uscita = _valori(_q(cosa="valori"), ["sensor.temperatura", "sensor.energia"],
                      dettaglio=nata)
     assert uscita["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
                                   "a": "2026-09-29T18:40:00+02:00"}
@@ -746,7 +746,7 @@ def test_le_fasce_orarie_che_finiscono_prima_di_adesso_lo_dicono_con_al():
     fasce = {"sensor.energia": [
         _fascia("2026-09-29T14:00:00+00:00", "2026-09-29T15:00:00+00:00", 1.0, 0.5),
         _fascia("2026-09-29T15:00:00+00:00", "2026-09-29T16:00:00+00:00", 1.4, 0.4)]}
-    uscita = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], fasce=fasce,
+    uscita = _valori(_q(cosa="valori", da="ieri"), ["sensor.energia"], fasce=fasce,
                      superfici={"sensor.energia": "oraria"},
                      classi={"sensor.energia": "total_increasing"})
     riga = uscita["voci"][0]
@@ -755,11 +755,11 @@ def test_le_fasce_orarie_che_finiscono_prima_di_adesso_lo_dicono_con_al():
     assert riga["consumato"] == 0.9
     fasce_mute = {"sensor.energia": [
         _fascia("2026-09-29T15:00:00+00:00", None, 1.4, 0.4)]}
-    riga = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], fasce=fasce_mute,
+    riga = _valori(_q(cosa="valori", da="ieri"), ["sensor.energia"], fasce=fasce_mute,
                    superfici={"sensor.energia": "oraria"},
                    classi={"sensor.energia": "total_increasing"})["voci"][0]
     assert riga["al"] == "2026-09-29T18:00:00+02:00"
-    ora_piena = _q(genere="valori", da="2026-09-27T16:00:00+00:00",
+    ora_piena = _q(cosa="valori", da="2026-09-27T16:00:00+00:00",
                    a="2026-09-29T16:00:00+00:00")
     riga = _valori(ora_piena, ["sensor.energia"], fasce=fasce,
                    superfici={"sensor.energia": "oraria"},
@@ -774,7 +774,7 @@ def _lunga():
 
 def test_una_serie_lunga_si_campiona_a_cinquanta_punti_col_primo_e_l_ultimo():
     """Mutazione ESEGUITA: dare tutti i punti -- rossa (300)."""
-    riga = _valori(_q(genere="valori"), ["sensor.temperatura"],
+    riga = _valori(_q(cosa="valori"), ["sensor.temperatura"],
                    dettaglio={"sensor.temperatura": _lunga()})["voci"][0]
     assert len(riga["punti"]) == 50
     assert riga["punti"][0]["valore"] == "0" and riga["punti"][-1]["valore"] == "299"
@@ -791,7 +791,7 @@ def test_la_completa_campiona_ma_i_conti_sono_della_serie_intera():
     -- rossa (massimo 299)."""
     lunga = _lunga()
     lunga[1] = _punto(lunga[1]["quando"], "1000")
-    riga = _valori(_q(genere="valori"), ["sensor.temperatura"],
+    riga = _valori(_q(cosa="valori"), ["sensor.temperatura"],
                    dettaglio={"sensor.temperatura": lunga})["voci"][0]
     assert "1000" not in [p["valore"] for p in riga["punti"]]
     assert riga["massimo"] == 1000.0
@@ -805,7 +805,7 @@ def test_una_serie_vuota_non_ha_conti_e_si_dichiara():
 
     Mutazione ESEGUITA: tenere la riga anche senza punti -- rossa (due id in
     `voci`); `conti` scritto anche senza numeri -- rossa sull'umidita'."""
-    uscita = _valori(_q(genere="valori"),
+    uscita = _valori(_q(cosa="valori"),
                      ["sensor.temperatura", "sensor.energia", "sensor.umidita"],
                      dettaglio={**_TEMPERATURA,
                                 "sensor.umidita": [_punto(_INIZIO, "unavailable")]})
@@ -823,7 +823,7 @@ def test_superfici_diverse_si_dichiarano_serie_per_serie():
     fasce = {"sensor.energia": [{"inizio": "2026-09-28T22:00:00+00:00",
                                  "fine": "2026-09-28T23:00:00+00:00", "minimo": 1.0,
                                  "massimo": 2.0, "media": 1.5}]}
-    uscita = _valori(_q(genere="valori", ore=48), ["sensor.temperatura", "sensor.energia"],
+    uscita = _valori(_q(cosa="valori", ore=48), ["sensor.temperatura", "sensor.energia"],
                      dettaglio=_TEMPERATURA, fasce=fasce,
                      superfici={"sensor.temperatura": "dettaglio",
                                 "sensor.energia": "oraria"})
@@ -838,7 +838,7 @@ def test_una_fascia_con_un_inizio_illeggibile_e_un_guasto_non_un_vuoto():
     Mutazione ESEGUITA: togliere il controllo degli inizi illeggibili --
     rossa (la riga ha i conti e nessun `errore`)."""
     fasce = {"sensor.energia": [{"inizio": {"non": "un istante"}, "media": 1.0}]}
-    riga = _valori(_q(genere="valori", ore=48), ["sensor.energia"], fasce=fasce,
+    riga = _valori(_q(cosa="valori", ore=48), ["sensor.energia"], fasce=fasce,
                    superfici={"sensor.energia": "oraria"})["voci"][0]
     assert "non le leggo" in riga["errore"]
 
@@ -850,7 +850,7 @@ def test_i_valori_di_chi_si_sposta_non_dicono_la_zona(ident):
     Mutazione ESEGUITA: non passare i punti da `redact_state` -- rossa."""
     viaggio = {ident: [_punto(_INIZIO, "home"),
                        _punto("2026-09-29T08:00:00+00:00", "Lavoro")]}
-    uscita = _valori(_q(genere="valori"), [ident], dettaglio=viaggio)
+    uscita = _valori(_q(cosa="valori"), [ident], dettaglio=viaggio)
     assert "Lavoro" not in json.dumps(uscita, ensure_ascii=False)
     assert uscita["voci"][0]["punti"][1]["valore"] == "not_home"
 
@@ -874,16 +874,16 @@ def test_i_valori_si_impaginano_dopo_la_lettura_dal_piu_attivo():
     chiamata) -- rossa; `nessuna_registrazione` su tutte le serie invece che
     sulla pagina -- rossa sulla prima pagina."""
     soggetti, serie = _dodici_sensori()
-    prima = _valori(_q(genere="valori", limite=3), soggetti, dettaglio=serie)
+    prima = _valori(_q(cosa="valori", limite=3), soggetti, dettaglio=serie)
     assert prima["profondita"] == "corta"
     assert [v["id"] for v in prima["voci"]] == ["sensor.s07", "sensor.s02", "sensor.s00"]
     assert prima["oltre"]["restano"] == 9 and prima["oltre"]["salta"] == 3
     assert "nessuna_registrazione" not in prima
-    ultima = _valori(_q(genere="valori", limite=3, salta=9), soggetti, dettaglio=serie)
+    ultima = _valori(_q(cosa="valori", limite=3, salta=9), soggetti, dettaglio=serie)
     assert [v["id"] for v in ultima["voci"]] == ["sensor.s09", "sensor.s10"]
     assert ultima["nessuna_registrazione"]["soggetti"] == ["sensor.s11"]
     assert "oltre" not in ultima
-    media = _valori(_q(genere="valori"), ["sensor.s00", "sensor.s07"], dettaglio=serie)
+    media = _valori(_q(cosa="valori"), ["sensor.s00", "sensor.s07"], dettaglio=serie)
     assert [v["id"] for v in media["voci"]] == ["sensor.s07", "sensor.s00"]
 
 
@@ -896,17 +896,17 @@ def test_una_serie_tagliata_dice_da_quando_la_risposta_e_intera():
     tardo -- rossa; non spostare `da` quando e' troncata -- rossa."""
     tagliata = {**_TEMPERATURA,
                 "sensor.energia": [_punto("2026-09-29T10:40:00+00:00", "1.0")]}
-    uscita = _valori(_q(genere="valori"), ["sensor.temperatura", "sensor.energia"],
+    uscita = _valori(_q(cosa="valori"), ["sensor.temperatura", "sensor.energia"],
                      dettaglio=tagliata, troncato=True)
     assert uscita["finestra"]["da"] == "2026-09-29T12:40:00+02:00"
     assert uscita["finestra"]["chiesta_da"] == "2026-09-28T18:40:00+02:00"
     assert "troncata" in uscita["finestra"]
     # Tagliata di mezz'ora: dentro lo scarto di un'ora, ma il taglio si dice.
     poco = {"sensor.temperatura": [_punto("2026-09-28T17:10:00+00:00", "20.0")]}
-    mezz_ora = _valori(_q(genere="valori"), ["sensor.temperatura"], dettaglio=poco,
+    mezz_ora = _valori(_q(cosa="valori"), ["sensor.temperatura"], dettaglio=poco,
                        troncato=True)
     assert mezz_ora["finestra"]["da"] == "2026-09-28T19:10:00+02:00"
-    intera = _valori(_q(genere="valori"), ["sensor.temperatura"], dettaglio=_TEMPERATURA)
+    intera = _valori(_q(cosa="valori"), ["sensor.temperatura"], dettaglio=_TEMPERATURA)
     assert intera["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
                                   "a": "2026-09-29T18:40:00+02:00"}
 
@@ -924,7 +924,7 @@ def _traccia(run_id, ore, esito="finished", **altro):
 def _esecuzioni(soggetti, query=None, **argomenti):
     chosen = hh.Chosen(len(soggetti), dict(_NESSUNA), hh.depth_for(len(soggetti)),
                        [hh.Subject(i, i.split(".")[1], _fa(1)) for i in soggetti])
-    return hh.run_rows(query or _q(genere="esecuzioni"), chosen, **argomenti)
+    return hh.run_rows(query or _q(cosa="esecuzioni"), chosen, **argomenti)
 
 
 def test_una_automazione_da_le_sue_esecuzioni_nella_finestra():
@@ -1011,7 +1011,7 @@ def test_nella_corta_le_automazioni_partite_di_recente_vengono_prima():
     in `non_letti` tutte le non lette invece di quelle della pagina -- rossa
     sulla prima pagina; `dal` mai dichiarato -- rossa."""
     nomi, tracce, chiavi = _dodici_automazioni()
-    pagine = [_esecuzioni(nomi, _q(genere="esecuzioni", limite=5, salta=salta),
+    pagine = [_esecuzioni(nomi, _q(cosa="esecuzioni", limite=5, salta=salta),
                           traces=tracce, keys=chiavi, unread={})
               for salta in (0, 5, 10)]
     visti = [v["id"] for p in pagine for v in p["voci"]]
@@ -1069,7 +1069,7 @@ def test_l_innesco_di_chi_si_sposta_non_dice_dove_era_ne_dove_va():
              "attributes": {"latitude": 45.1, "longitude": 9.2}}
     traccia = {"run_id": "r1", "trace": {"trigger/0": [{"changed_variables": {
         "trigger": {"from_state": {**marta, "state": "Lavoro"}, "to_state": marta}}}]}}
-    uscita = hh.run_detail(_q(genere="esecuzioni", esecuzione="r1"), chosen, traccia)
+    uscita = hh.run_detail(_q(cosa="esecuzioni", esecuzione="r1"), chosen, traccia)
     testo = json.dumps(uscita, ensure_ascii=False)
     for dove in ("Lavoro", "Palestra", "latitude", "longitude"):
         assert dove not in testo, dove
@@ -1088,7 +1088,7 @@ def _risultato(stato, voluto):
 
 def _esecuzione_intera(traccia):
     chosen = hh.Chosen(1, dict(_NESSUNA), "completa", [hh.Subject("automation.x", "X")])
-    return hh.run_detail(_q(genere="esecuzioni", esecuzione="r1"), chosen, traccia)
+    return hh.run_detail(_q(cosa="esecuzioni", esecuzione="r1"), chosen, traccia)
 
 
 def test_una_condizione_su_chi_si_sposta_non_dice_la_zona():
@@ -1163,13 +1163,13 @@ def test_ogni_pagina_della_corta_conta_le_non_lette():
     rossa."""
     nomi, tracce, chiavi = _dodici_automazioni()
     chiavi["automation.a04"] = None
-    prima = _esecuzioni(nomi, _q(genere="esecuzioni", limite=5), traces=tracce,
+    prima = _esecuzioni(nomi, _q(cosa="esecuzioni", limite=5), traces=tracce,
                         keys=chiavi, unread={})
     assert prima["non_lette_in_tutto"] == 2 and "non_letti" not in prima
     # Chi non si legge sta in fondo coi mai partiti, per id: a04 sulla
     # seconda pagina, a11 sulla terza -- ognuna col suo nome e col conto.
     for salta, nominate in ((5, ["automation.a04"]), (10, ["automation.a11"])):
-        pagina = _esecuzioni(nomi, _q(genere="esecuzioni", limite=5, salta=salta),
+        pagina = _esecuzioni(nomi, _q(cosa="esecuzioni", limite=5, salta=salta),
                              traces=tracce, keys=chiavi, unread={})
         assert pagina["non_lette_in_tutto"] == 2
         assert list(pagina["non_letti"]) == nominate
@@ -1182,7 +1182,7 @@ def test_il_dal_della_media_e_di_chi_ha_righe_nella_pagina():
     nomi = [f"automation.rifiuto_{n}" for n in range(5)]
     tracce = {f"automation.10{n}": [_traccia(f"r{n}{k}", 5 - n + k) for k in range(5)]
               for n in range(5)}
-    uscita = _esecuzioni(nomi, _q(genere="esecuzioni", limite=3), traces=tracce,
+    uscita = _esecuzioni(nomi, _q(cosa="esecuzioni", limite=3), traces=tracce,
                          keys={f"automation.rifiuto_{n}": f"automation.10{n}"
                                for n in range(5)}, unread={})
     assert {v["id"] for v in uscita["voci"]} == {"automation.rifiuto_4"}
@@ -1227,7 +1227,7 @@ def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
 
     Mutazione ESEGUITA: non filtrare per finestra -- rossa (quattro voci);
     non ordinare per l'ultima volta -- rossa (zha prima di meteo)."""
-    uscita = hh.error_rows(_q(genere="errori"), _REGISTRO)
+    uscita = hh.error_rows(_q(cosa="errori"), _REGISTRO)
     assert uscita["trovate"] == 3 and uscita["profondita"] == "corta"
     assert [v["messaggio"] for v in uscita["voci"]] == [
         "lento", "zigbee giu'", "senza istante"]
@@ -1252,7 +1252,7 @@ def test_descrizione_errori_nomina_campi_riga():
 
     from hiris.app.home_space.tools import HISTORY_TOOL_DEF
 
-    riga = hh.error_rows(_q(genere="errori"), _REGISTRO)["voci"][1]
+    riga = hh.error_rows(_q(cosa="errori"), _REGISTRO)["voci"][1]
     frase = HISTORY_TOOL_DEF["description"].split("Errori: ", 1)[1].split(". ", 1)[0]
     citati = re.findall(r"`([^`]+)`", frase)
     assert citati, "la frase sugli errori non cita piu' nessun campo"
@@ -1268,11 +1268,11 @@ def test_gli_errori_si_filtrano_per_livello_e_integrazione():
     dell'identificativo (`found[0]`) -- rossa (giro di correzioni: la
     lettura propria del logger e' uscita, era un doppione)."""
     assert [v["messaggio"] for v in hh.error_rows(
-        _q(genere="errori", livello="WARNING"), _REGISTRO)["voci"]] == ["lento"]
+        _q(cosa="errori", livello="WARNING"), _REGISTRO)["voci"]] == ["lento"]
     assert [v["messaggio"] for v in hh.error_rows(
-        _q(genere="errori", integrazione="meteo"), _REGISTRO)["voci"]] == ["lento"]
+        _q(cosa="errori", integrazione="meteo"), _REGISTRO)["voci"]] == ["lento"]
     assert [v["messaggio"] for v in hh.error_rows(
-        _q(genere="errori", integrazione="zha"), _REGISTRO)["voci"]] == ["zigbee giu'"]
+        _q(cosa="errori", integrazione="zha"), _REGISTRO)["voci"]] == ["zigbee giu'"]
 
 
 def test_salta_su_un_registro_senza_voci_non_promette_voci():
@@ -1282,7 +1282,7 @@ def test_salta_su_un_registro_senza_voci_non_promette_voci():
 
     Mutazione ESEGUITA: togliere la guardia `> 0` sulle righe in
     `house_query.page_rows` -- rossa (`oltre` con `disponibili: 0`)."""
-    uscita = hh.error_rows(_q(genere="errori", integrazione="nessuna", salta=5), _REGISTRO)
+    uscita = hh.error_rows(_q(cosa="errori", integrazione="nessuna", salta=5), _REGISTRO)
     assert uscita["trovate"] == 0 and uscita["voci"] == []
     assert "oltre" not in uscita
 
@@ -1301,7 +1301,7 @@ def test_un_messaggio_lungo_si_accorcia_e_l_eccezione_e_la_sua_ultima_riga():
 
     lungo = [{"level": "ERROR", "message": "x" * 1000, "timestamp": T0 - 1,
               "exception": "Traceback\n  File y\nValueError: " + "z" * 1000}]
-    riga = hh.error_rows(_q(genere="errori"), lungo)["voci"][0]
+    riga = hh.error_rows(_q(cosa="errori"), lungo)["voci"][0]
     assert riga["messaggio"] == truncate_with_marker("x" * 1000, hh.MESSAGE_MAX)
     assert len(riga["messaggio"]) == hh.MESSAGE_MAX
     assert len(riga["eccezione"]) == hh.MESSAGE_MAX
@@ -1312,11 +1312,11 @@ def test_gli_errori_si_impaginano_con_oltre():
     """La pagina e `oltre` di `search` (`_page`, `_oltre`), anche oltre la fine.
 
     Mutazione ESEGUITA: `voci` senza `_page` -- rossa."""
-    prima = hh.error_rows(_q(genere="errori", limite=1), _REGISTRO)
+    prima = hh.error_rows(_q(cosa="errori", limite=1), _REGISTRO)
     assert [v["messaggio"] for v in prima["voci"]] == ["lento"]
     assert prima["oltre"]["restano"] == 2 and prima["oltre"]["salta"] == 1
     assert "consiglio" in prima["oltre"]
-    fuori = hh.error_rows(_q(genere="errori", salta=9), _REGISTRO)
+    fuori = hh.error_rows(_q(cosa="errori", salta=9), _REGISTRO)
     assert fuori["voci"] == [] and fuori["oltre"]["disponibili"] == 3
 
 
@@ -1329,13 +1329,13 @@ def test_un_registro_che_non_copre_la_finestra_lo_dice():
     Mutazione ESEGUITA: non spostare `da` -- rossa; prendere la piu' vecchia
     DOPO il filtro del livello -- rossa (`da` diventa quella del WARNING)."""
     corto = [voce for voce in _REGISTRO if voce.get("timestamp") != T0 - 3 * 86400]
-    uscita = hh.error_rows(_q(genere="errori", ore=168, livello="WARNING"), corto)
+    uscita = hh.error_rows(_q(cosa="errori", ore=168, livello="WARNING"), corto)
     assert uscita["finestra"]["da"] == datetime.fromtimestamp(
         T0 - 600, ZoneInfo(ROMA)).isoformat()
     assert uscita["finestra"]["chiesta_da"] == datetime.fromtimestamp(
         T0 - 168 * 3600, ZoneInfo(ROMA)).isoformat()
     assert "riavvio" in uscita["finestra"]["troncata"]
-    intero = hh.error_rows(_q(genere="errori"), _REGISTRO)
+    intero = hh.error_rows(_q(cosa="errori"), _REGISTRO)
     assert "troncata" not in intero["finestra"]
 
 
@@ -1347,7 +1347,7 @@ def test_a_parita_di_istante_decide_anche_il_livello():
     rossa."""
     gemelle = [{"level": livello, "message": "uguale", "source": ["a.py", 1],
                 "timestamp": T0 - 5} for livello in ("WARNING", "ERROR")]
-    assert [v["livello"] for v in hh.error_rows(_q(genere="errori"), gemelle)["voci"]] \
+    assert [v["livello"] for v in hh.error_rows(_q(cosa="errori"), gemelle)["voci"]] \
         == ["ERROR", "WARNING"]
 
 
@@ -1360,9 +1360,9 @@ def test_le_librerie_di_un_integrazione_si_dichiarano_col_filtro():
     Mutazione ESEGUITA: non scrivere `nota_integrazione` -- rossa."""
     voci = [*_REGISTRO, {"name": "zigpy.application", "level": "ERROR",
                          "message": ["radio giu'"], "timestamp": T0 - 30}]
-    tutte = hh.error_rows(_q(genere="errori"), voci)
+    tutte = hh.error_rows(_q(cosa="errori"), voci)
     assert tutte["voci"][0]["integrazione"] == "zigpy"
     assert "nota_integrazione" not in tutte
-    zha = hh.error_rows(_q(genere="errori", integrazione="zha"), voci)
+    zha = hh.error_rows(_q(cosa="errori", integrazione="zha"), voci)
     assert [v["messaggio"] for v in zha["voci"]] == ["zigbee giu'"]
     assert "zigpy" in zha["nota_integrazione"]

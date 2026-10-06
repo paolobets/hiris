@@ -17,31 +17,10 @@ mestiere dell'attuatore e' stato disegnato su quelle, non sulla parola
 """
 from __future__ import annotations
 
-#: Le chiavi che fanno l'IDENTITA' di una domanda: chi, cosa si misura, quale
-#: chiave dentro la misura, e con quale innesco. **I numeri non ci stanno**: se
-#: ci stessero, ogni giorno sarebbe una domanda nuova e una proposta rifiutata
-#: ieri tornerebbe oggi con la stessa faccia.
-_IDENTITY = ("soggetto", "misura", "chiave", "innesco")
-
-#: Cio' che rende una prova **diversa** da quella contro cui il proprietario ha
-#: deciso: su quanti giorni si regge (`base`), quanto si stacca
-#: (`quanti_scarti`), e se nel frattempo qualcuno l'ha spiegata. Cambiano
-#: questi, la domanda si riapre (spec §4); non cambia niente, tace.
-#:
-#: **Non a tempo**: il tempo non e' una prova, e riproporre la stessa cosa con
-#: gli stessi dati e' insistere, non informare. E' la stessa regola che il
-#: sapere usa per i rifiuti delle ricette -- «un rifiuto vale finche' vale il
-#: registro contro cui e' stato deciso».
-_EVIDENCE = ("base", "quanti_scarti", "spiegato")
-
-def observation_key(observation: dict) -> str:
-    """L'impronta identitaria di una domanda dell'analista."""
-    return "|".join(str(observation.get(name)) for name in _IDENTITY)
-
-
-def evidence_of(observation: dict) -> dict:
-    """La forza della prova su cui quella domanda si regge, adesso."""
-    return {name: observation.get(name) for name in _EVIDENCE}
+#: L'impronta e la prova di un'osservazione vivono dove le osservazioni
+#: nascono, nell'analista (piano degli attori, Task 3.4, 06/10/2026): una casa
+#: sola per l'impronta (fondamenta 2).
+from .analyst import evidence_of, observation_key
 
 
 def to_handle(observations, decided: dict) -> list[dict]:

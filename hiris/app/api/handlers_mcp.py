@@ -53,6 +53,14 @@ ripiego: ricadere riaprirebbe la porta di scrittura che l'intestazione
 esiste per chiudere. L'ASSENZA dell'intestazione (promesse, osservatore)
 resta com'era prima di questa fetta.
 
+**Dagli attori (Task 3.6, 06/10/2026) sa anche QUALE mestiere.** Un mestiere
+di sfondo con strumenti (l'analista) porta `X-HIRIS-Lavoro`, l'id del suo job;
+la rotta lo verifica contro un job preso in carico (`_exchange_species`), e
+per quel turno serve il catalogo della dichiarazione del mestiere
+(`steering.Species.catalog`) e dispaccia col suo guardiano
+(`Species.guard`). Presente ma non valida, l'intestazione chiude: il catalogo
+torna vuoto e la chiamata si rifiuta, come per `X-HIRIS-Chat`.
+
 **E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
 «costruire» anche di configurazione.** Il catalogo e' quello del turno
 sincrono: `execute` chiama un servizio di Home Assistant, `propose`/`confirm`
@@ -78,16 +86,19 @@ import json
 import logging
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 
 from aiohttp import web
 
 from ..claude_runner import pesa_in_caratteri
-from ..home_space.tools import KNOWLEDGE_TOOLS
+from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
+from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
 from ..version import read_version
 from .boundary import error_response
 from .handlers_chat import create_tool_dispatcher, last_phrase
+from .handlers_models import bridge_deadline_min
 from .soffitto import ceiling_for
 
 logger = logging.getLogger(__name__)
@@ -175,8 +186,8 @@ MAX_TOOL_ROUNDS = 50
 # due `64` legati solo da un commento. Piccolo di
 # proposito (Step 2 del brief, "N piccolo"): serve solo a impedire che il
 # dizionario cresca senza fine per l'intera vita del processo -- un turno del
-# ponte dura al piu' i due `subprocess.run(timeout=300)` di
-# `agent/runner.py::_reason_chat`, la sua identita' non serve piu' un istante
+# ponte dura al piu' fino alla sua scadenza (il `timeout` della CLI in
+# `agent/runner.py::_reason_chat`, S-09), la sua identita' non serve piu' un istante
 # dopo, e tenerne migliaia sarebbe una perdita di memoria scritta apposta.
 # L'espulsione e' **LRU, non FIFO** (l'etichetta era sbagliata fino alla
 # review totale della fetta, M-1): `_count_round` fa `move_to_end` a ogni
@@ -194,6 +205,28 @@ MAX_TOOL_ROUNDS = 50
 # stringa ripetuta: chi la crea (`server.create_app`) e chi la legge
 # (`_count_round`) devono per forza nominare la stessa cosa.
 ROUNDS_PER_EXCHANGE_KEY = "mcp_rounds_per_exchange"
+
+
+@dataclass
+class ExchangeTurn:
+    """Cio' che la rotta tiene di UN turno del ponte, sotto la sua identita'
+    (`X-HIRIS-Turno`): una casa sola per lo stato del turno, non un dizionario
+    per ogni cosa che si ricorda.
+
+    - `rounds`: i giri di strumento gia' passati (il tetto, Task 6).
+    - `dispatcher`: il dispatcher del turno (Tappa 6, Task 8; D-63), costruito
+      alla PRIMA chiamata e riusato dalle altre -- come la catena, che ne
+      costruisce uno per turno. Con lui resta la `House` che ha letto: il turno
+      guarda la casa del suo inizio, e la rilegge negli stessi due casi della
+      catena (`ToolDispatcher._turn_house`: l'anagrafe ricostruita, un comando
+      di questo turno andato a segno). Fino al 06/10/2026 ogni chiamata
+      vedeva la casa nuova; ora il ponte ha lo stesso contratto della catena.
+    - `since`: quando il turno ha chiamato la prima volta. Serve a lasciar
+      andare il dispatcher di un turno scaduto (`_release_expired`)."""
+
+    rounds: int = 0
+    dispatcher: ToolDispatcher | None = None
+    since: float = 0.0
 
 
 def create_rounds_per_exchange(app) -> None:
@@ -313,6 +346,38 @@ def _exchange_chat_job(request: web.Request) -> tuple[bool, dict | None]:
     return True, job
 
 
+def _exchange_species(request: web.Request) -> tuple[bool, str | None]:
+    """`(intestazione presente, mestiere)` per questo turno: lo stesso
+    tri-stato di `_exchange_chat_job`. Il mestiere vale solo se il job e'
+    preso in carico (`ReasoningQueue.claimed`) e se la sua dichiarazione ha
+    un guardiano (`steering.Species.guard`). Il runner la manda per ogni
+    turno che non e' chat ne' promessa (attori, Task 3.6; G23-1): un mestiere
+    con un catalogo e senza guardiano si fa riconoscere lo stesso, e qui si
+    chiude invece di ricevere il catalogo della chat."""
+    ident = (request.headers.get("X-HIRIS-Lavoro") or "").strip()
+    if not ident:
+        return False, None
+    queue = request.app.get("reasoning_queue")
+    job = queue.claimed(ident) if queue is not None else None
+    species = SPECIES.get(JOB_SPECIES.get((job or {}).get("kind")))
+    if species is None or species.guard is None:
+        logger.warning(
+            "MCP: X-HIRIS-Lavoro nomina un job che non e' il turno preso in "
+            "carico di un mestiere con guardiano (%s): nessuno strumento", ident)
+        return True, None
+    return True, species.name
+
+
+def _stale_work_rejection(name: str) -> dict:
+    """Il `content` per un `X-HIRIS-Lavoro` presente che non vale: si chiude,
+    come `_stale_chat_rejection` e per la stessa ragione -- ricadere sul
+    catalogo della chat darebbe a un attore `execute`."""
+    return _closed_call(
+        "non riconosco questo turno come un lavoro in corso con strumenti: è "
+        "scaduto, è già stato consegnato, o il suo mestiere non ne ha. Non uso "
+        f"nessuno strumento (l'ultimo tentato: «{name}»).")
+
+
 def _stale_chat_rejection(name: str) -> dict:
     """Il `content` per un `X-HIRIS-Chat` presente che non vale piu'.
 
@@ -325,10 +390,17 @@ def _stale_chat_rejection(name: str) -> dict:
     Stessa forma del tetto dei giri: un esito dello strumento, non un guasto
     di protocollo.
     """
-    result = {"errore": (
+    return _closed_call(
         "questo turno di chat non è più valido: la risposta è scaduta o è "
         "già stata data, e senza sapere chi sta parlando non uso nessuno "
-        f"strumento (l'ultimo tentato: «{name}»).")}
+        f"strumento (l'ultimo tentato: «{name}»).")
+
+
+def _closed_call(text: str) -> dict:
+    """Il `content` di una chiamata chiusa da un'intestazione che non vale:
+    un esito dello strumento, non un guasto di protocollo. Una forma sola per
+    `X-HIRIS-Chat` e `X-HIRIS-Lavoro`."""
+    result = {"errore": text}
     return {
         "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
         "isError": True,
@@ -358,10 +430,11 @@ def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
     return entries
 
 
-def _count_round(app, exchange_id: str) -> int:
+def _count_round(app, exchange_id: str, *, now: float) -> tuple[int, ExchangeTurn]:
     """Incrementa il contatore dei giri di strumento del turno `exchange_id` e
     restituisce il valore **prima** dell'incremento (quanti giri erano gia'
-    passati per questo turno).
+    passati per questo turno), insieme al turno stesso (`ExchangeTurn`), che
+    la chiamata usa dopo per il suo dispatcher.
 
     **Vive solo nel processo e solo nel loop asyncio.** `handle_mcp` e' un
     handler aiohttp: gira sempre nel thread del loop dell'add-on. Il
@@ -387,16 +460,35 @@ def _count_round(app, exchange_id: str) -> int:
     emettere ad aiohttp «Changing state of started or joined application»,
     che con aiohttp 4 diventa un errore. Lo stato di un'app aiohttp si compone
     prima che l'app parta."""
-    rounds_per_exchange: OrderedDict[str, int] = app[ROUNDS_PER_EXCHANGE_KEY]
-    if exchange_id in rounds_per_exchange:
+    rounds_per_exchange: OrderedDict[str, ExchangeTurn] = app[ROUNDS_PER_EXCHANGE_KEY]
+    turn = rounds_per_exchange.get(exchange_id)
+    if turn is not None:
         rounds_per_exchange.move_to_end(exchange_id)
-        rounds = rounds_per_exchange[exchange_id]
     else:
-        rounds = 0
         if len(rounds_per_exchange) >= MAX_TRACKED:
             rounds_per_exchange.popitem(last=False)  # il piu' vecchio
-    rounds_per_exchange[exchange_id] = rounds + 1
-    return rounds
+        turn = rounds_per_exchange[exchange_id] = ExchangeTurn(since=now)
+    rounds_so_far = turn.rounds
+    turn.rounds += 1
+    return rounds_so_far, turn
+
+
+def _release_expired(app, now: float) -> None:
+    """Lascia andare il dispatcher (e la casa che tiene) dei turni piu'
+    vecchi della scadenza del ponte (`bridge_deadline_min`, la scadenza che
+    viaggia col turno dalla Tappa 6, Task 2): oltre quella, la risposta del
+    turno non la aspetta piu' nessuno. Il turno non ha un segnale di chiusura
+    che arrivi a questa rotta -- la CLI finisce e basta -- e senza questo
+    rilascio fino a `MAX_TRACKED` case di turni finiti resterebbero in
+    memoria.
+
+    **Il contatore dei giri resta**: se ripartisse, il tetto si aggirerebbe
+    durando. Se un turno scaduto chiama ancora, si costruisce un dispatcher
+    nuovo, come si faceva per ogni chiamata fino al 06/10/2026."""
+    window = bridge_deadline_min(app.get("models_config")) * 60
+    for turn in app[ROUNDS_PER_EXCHANGE_KEY].values():
+        if turn.dispatcher is not None and now - turn.since > window:
+            turn.dispatcher = None
 
 
 def _ceiling_rejection(name: str) -> dict:
@@ -439,6 +531,40 @@ def _ceiling_rejection(name: str) -> dict:
         "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
         "isError": True,
     }
+
+
+async def _build_dispatcher(request: web.Request, exchange_id: str | None,
+                            chat_job: dict | None, promise_id: str | None):
+    """Il dispatcher di un turno del ponte, con cio' che il turno porta: il
+    soffitto, il soggetto, la frase e il filo di un job di chat; il soffitto di
+    chi ha chiesto una promessa; niente per gli altri. Lo si costruisce una
+    volta per turno (`_call_tool`, D-63)."""
+    if chat_job is not None:
+        ctx = chat_job.get("context") or {}
+        soggetto = ctx.get("soggetto")
+        return create_tool_dispatcher(
+            request.app, exchange=exchange_id,
+            soffitto=await ceiling_for(request.app, soggetto),
+            soggetto=soggetto,
+            frase=last_phrase(ctx.get("history")),
+            # Fetta «le chat divise» (Task 7): il filo DEL JOB, gia' un
+            # `ChatThread` -- `claimed_chat()` lo costruisce da
+            # `subject_key`/`entry_point` della riga (`reasoning/queue.py::
+            # _row`), non dal `context` serializzato (quello porta il
+            # soggetto INTERO per il soffitto/la cronaca, non il filo).
+            # `None` per un job accodato prima di questa versione.
+            thread=chat_job.get("thread"))
+    if promise_id:
+        # Il turno di una promessa porta il soffitto di chi l'ha chiesta, come
+        # il ramo sincrono (`keeper/exchange.promise_ceiling`, fix round 1 del
+        # Task 2, H-1): senza, il ponte leggerebbe per lei cio' che Home
+        # Assistant le nega.
+        agenda = request.app.get("agenda")
+        subject, ceiling = await promise_ceiling(
+            request.app, agenda.read(promise_id) if agenda is not None else None)
+        return create_tool_dispatcher(request.app, exchange=exchange_id,
+                                      soffitto=ceiling, soggetto=subject)
+    return create_tool_dispatcher(request.app, exchange=exchange_id)
 
 
 async def _call_tool(request: web.Request, params, request_id) -> web.Response:
@@ -485,6 +611,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # strumenti -- ma se succedesse, questo e' cio' che impedirebbe al tetto
     # di raddoppiare in silenzio).
     exchange_id = request.headers.get("X-HIRIS-Turno")
+    turn: ExchangeTurn | None = None
     if not exchange_id:
         # Silenzio dichiarato (5) della fetta: un chiamante che non propaga
         # questa intestazione (una CLI diversa dal ponte, un test, un
@@ -498,7 +625,9 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
             "viene contata nel tetto per-turno (%d/turno) -- il chiamante "
             "non la propaga", name, MAX_TOOL_ROUNDS)
     else:
-        rounds_so_far = _count_round(request.app, exchange_id)
+        now = time.time()
+        _release_expired(request.app, now)
+        rounds_so_far, turn = _count_round(request.app, exchange_id, now=now)
         if rounds_so_far >= MAX_TOOL_ROUNDS:
             if rounds_so_far == MAX_TOOL_ROUNDS:
                 # Un log.warning al PRIMO superamento per turno (Step 3 del
@@ -532,47 +661,42 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # amministratrice poteva far scrivere un'automazione passando dal piano.
     # L'osservatore non porta `X-HIRIS-Chat` e resta senza soggetto: nessuna
     # persona l'ha aperto. Una promessa nemmeno, ma una persona l'ha chiesta:
-    # il suo soffitto si rifa' dal filo della promessa, qui sotto.
+    # il suo soffitto si rifa' dal filo della promessa (`_build_dispatcher`).
     # Un'intestazione PRESENTE che non vale chiude la chiamata: vedi
     # `_stale_chat_rejection`.
+    #
+    # Tappa 6, Task 8 (D-63): il dispatcher si costruisce alla PRIMA chiamata
+    # del turno e resta nel turno (`ExchangeTurn`). Le intestazioni del job e
+    # della promessa si rileggono comunque a ogni chiamata: un job che non
+    # vale piu' chiude la chiamata anche a turno avviato.
+    work_header_present, species = _exchange_species(request)
+    if work_header_present and species is None:
+        return _answer(request_id, _stale_work_rejection(name))
     chat_header_present, chat_job = _exchange_chat_job(request)
     if chat_header_present and chat_job is None:
         return _answer(request_id, _stale_chat_rejection(name))
-    if chat_job is not None:
-        ctx = chat_job.get("context") or {}
-        soggetto = ctx.get("soggetto")
-        dispatcher = create_tool_dispatcher(
-            request.app, exchange=exchange_id,
-            soffitto=await ceiling_for(request.app, soggetto),
-            soggetto=soggetto,
-            frase=last_phrase(ctx.get("history")),
-            # Fetta «le chat divise» (Task 7): il filo DEL JOB, gia' un
-            # `ChatThread` -- `claimed_chat()` lo costruisce da
-            # `subject_key`/`entry_point` della riga (`reasoning/queue.py::
-            # _row`), non dal `context` serializzato (quello porta il
-            # soggetto INTERO per il soffitto/la cronaca, non il filo).
-            # `None` per un job accodato prima di questa versione.
-            thread=chat_job.get("thread"))
     promise_id = _exchange_promise_id(request)
-    if chat_job is None and promise_id:
-        # Il turno di una promessa porta il soffitto di chi l'ha chiesta, come
-        # il ramo sincrono (`keeper/exchange.promise_ceiling`, fix round 1 del
-        # Task 2, H-1): senza, il ponte leggerebbe per lei cio' che Home
-        # Assistant le nega.
-        agenda = request.app.get("agenda")
-        subject, ceiling = await promise_ceiling(
-            request.app, agenda.read(promise_id) if agenda is not None else None)
-        dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id,
-                                            soffitto=ceiling, soggetto=subject)
-    elif chat_job is None:
-        dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
+    dispatcher = turn.dispatcher if turn is not None else None
+    if dispatcher is None and species is not None:
+        # Il guardiano del mestiere, lo stesso della catena: lascia passare
+        # solo il catalogo della dichiarazione (attori, Task 3.6).
+        dispatcher = await SPECIES[species].guard(request.app, exchange_id)
+        if turn is not None:
+            turn.dispatcher = dispatcher = turn.dispatcher or dispatcher
+    if dispatcher is None:
+        dispatcher = await _build_dispatcher(request, exchange_id, chat_job, promise_id)
+        if turn is not None:
+            # Due prime chiamate in parallelo possono costruirne due: resta il
+            # primo arrivato, e l'altro non ha ancora letto niente.
+            turn.dispatcher = dispatcher = turn.dispatcher or dispatcher
     if promise_id:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:
         # `SOLA_LETTURA` e' un elenco di AMMISSIONE, e con due implementazioni
         # uno strumento nuovo che scrive entrerebbe da solo in una delle due il
         # giorno in cui qualcuno lo aggiunge alla chat. `conclude` non esiste
         # nel dispatcher della chat: lo serve il wrapper, ed e' li' che il
-        # turno finisce.
+        # turno finisce. Il guardiano e' di QUESTA chiamata, non del turno:
+        # `conclusione` dice cosa ha fatto lei.
         dispatcher = PromiseDispatcher(dispatcher)
     result = await dispatcher.dispatch(name, arguments)
 
@@ -581,7 +705,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
         # notifica parte adesso. Non si aspetta la consegna del job -- se la
         # CLI morisse dopo aver concluso, la decisione del modello sarebbe gia'
         # al sicuro, e il `submit` che arriva dopo trovera' una promessa non
-        # piu' `in_corso` e non toccheranno niente (`handlers_reasoning`).
+        # piu' `in_corso` e non toccheranno niente (`reasoning/consegna`).
         #
         # A concludere e' l'orologio, non questa rotta: un secondo punto che
         # decide se notificare e con quali parole sarebbe libero di divergere
@@ -740,13 +864,20 @@ async def handle_mcp(request: web.Request) -> web.Response:
             })
         if method == "tools/list":
             _promise_id = _exchange_promise_id(request)
+            _work_present, _species = _exchange_species(request)
             # Il turno di una promessa vede il catalogo della promessa:
             # i lettori di `SOLA_LETTURA` piu' `conclude`, che li' e' l'unico modo
             # in cui il turno puo' finire. Le definizioni sono le STESSE
             # di `KNOWLEDGE_TOOLS` (promise_tools le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su
-            # entrambe le strade.
-            catalogo = mcp_catalog(promise_tools() if _promise_id else None)
+            # entrambe le strade. Il turno di un mestiere con guardiano vede
+            # il catalogo della sua dichiarazione, e un'intestazione che non
+            # vale non vede niente (attori, Task 3.6).
+            if _work_present:
+                catalogo = mcp_catalog(SPECIES[_species].catalog_for_turn()
+                                       if _species else [])
+            else:
+                catalogo = mcp_catalog(promise_tools() if _promise_id else None)
             # Spec «le misure complete» §4(2): quante definizioni la CLI ha
             # ricevuto per QUESTO turno. La sonda di `probe_tools` non porta
             # `X-HIRIS-Turno` e non si annota: non e' un turno.

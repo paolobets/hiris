@@ -2082,16 +2082,19 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
 def test_i_punti_orari_NON_buttano_media_minimo_e_massimo():
     """**La frase fondativa della spec, dentro il codice nuovo.** Il client
     legge gia' `mean`/`min`/`max` di Home Assistant e li traduce in
-    `media`/`minimo`/`massimo`; `_punti_orari` teneva solo `cambio` e buttava
-    gli altri tre. Le ricette ricevevano una serie di `None` e rifiutavano
-    dicendo «la serie e' vuota»: misurato sulla casa vera il 14/09/2026,
-    **21 misure su 32 in un giorno solo**, tutte su temperatura, umidita',
+    `media`/`minimo`/`massimo`; i punti orari (oggi `hourly_points`)
+    tenevano solo `cambio` e buttavano gli altri tre. Le ricette ricevevano
+    una serie di `None` e rifiutavano dicendo «la serie e' vuota»: misurato
+    sulla casa vera il 14/09/2026, **21 misure su 32 in un giorno solo**,
+    tutte su temperatura, umidita',
     CO2, rumore, segnale e potenza -- le **56** entita' della casa che hanno
     una statistica di tipo `measurement` e nessun `change`.
 
     Mutazione: tornare a tenere il solo `cambio` -- rossa.
     """
-    punti = server._punti_orari([
+    from hiris.app.mind.recipes import hourly_points
+
+    punti = hourly_points([
         {"inizio": 0.0, "fine": 3600.0, "media": 25.2, "minimo": 25.1,
          "massimo": 25.3},
         {"inizio": 3600.0, "fine": 7200.0, "cambio": 1.4},

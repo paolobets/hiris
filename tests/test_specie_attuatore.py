@@ -38,13 +38,12 @@ GUARDED = steering.SPECIE - {"chat"}
 #: la stessa grafia. Chiude per difetto: un posto nuovo e' rosso finche'
 #: qualcuno non lo ammette qui, con la ragione.
 _OTHER_SENSES = {
-    ("agent/runner.py", "promessa"): (
-        2, "il `kind` del job della coda (chiave di JOB_SPECIES, RAGIONABILI)"),
-    ("api/handlers_reasoning.py", "promessa"): (
+    ("reasoning/consegna.py", "promessa"): (
         1, "il `kind` del job della coda"),
     ("server.py", "promessa"): (1, "il `kind` del job della coda"),
     ("keeper/exchange.py", "promessa"): (
-        2, "il `kind` con cui la promessa si accoda, e il suo `agent_type`"),
+        1, ("il suo `agent_type`; il `kind` con cui si accoda e' nella "
+            "dichiarazione del mestiere (Tappa 6, Task 7)")),
     ("claude_runner.py", "promessa"): (
         1, "la chiave `agent_type` di AUTO_MODEL_MAP"),
     ("keeper/store.py", "promessa"): (
@@ -74,7 +73,7 @@ def _literals(values) -> Counter:
 
 
 def test_specie_attuatore_appartiene_specie():
-    assert steering.ACTUATOR_SPECIES in steering.SPECIE
+    assert steering.PROPOSER_SPECIES in steering.SPECIE
 
 
 def test_ogni_specie_sorvegliata_ha_un_nome_in_steering():

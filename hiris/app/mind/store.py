@@ -504,19 +504,25 @@ CREATE TABLE IF NOT EXISTS analisi (
 -- `giri_json` e' il filo del «Rifalla»: ogni giro porta la richiesta di
 -- modifica e la forma che ne e' uscita, cosi' il modello vede il filo intero e
 -- non ripropone cio' che e' stato appena scartato.
+--
+-- Non c'e' chi la applica (e' sempre una persona: lo dice la porta delle
+-- Proposte), ne' quando e' stata toccata o chiusa l'ultima volta: nessuno lo
+-- leggeva (vedi `_migration_12`).
 CREATE TABLE IF NOT EXISTS proposte (
     id            TEXT PRIMARY KEY,
     creata_ts     REAL NOT NULL,
-    aggiornata_ts REAL NOT NULL,
     stato         TEXT NOT NULL,
     testo         TEXT NOT NULL,
     perche        TEXT NOT NULL,
-    chi_applica   TEXT NOT NULL,
     impronta      TEXT NOT NULL,
     prova_json    TEXT NOT NULL,
     giri_json     TEXT NOT NULL,
-    esito_ts      REAL,
-    esito_nota    TEXT
+    esito_nota    TEXT,
+    -- Il LIVELLO (attori, strato 4, D13): lo stesso campo delle costruzioni
+    -- (`action/construction/stakes.py`), con lo stesso vocabolario. NULL
+    -- quando nessuno l'ha detto, e per le righe nate prima del 06/10/2026
+    -- (vedi `_migration_11`). Colonna nuova, quindi in inglese.
+    stakes        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC);
 
@@ -637,11 +643,78 @@ def _migration_6(conn) -> None:
         conn.execute("ALTER TABLE scope_attempt ADD COLUMN version TEXT")
 
 
+def _migration_11(conn) -> None:
+    """v10 -> v11 (attori, strato 4, Task 4.3): `proposte.stakes`, il livello
+    della proposta da fare a mano.
+
+    Le righe scritte prima rileggono `None`: quelle proposte non sono mai
+    state chieste con un livello, e riempirlo oggi attribuirebbe a ieri un
+    fatto di adesso.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
+    if "stakes" not in existing:
+        conn.execute("ALTER TABLE proposte ADD COLUMN stakes TEXT")
+
+
+#: Le colonne di `proposte` alla versione 12, quelle che la ricostruzione
+#: ricopia. Sono la forma di QUEL gradino, e restano ferme: una colonna nata
+#: dopo arriva con la sua migrazione, come `stakes` con `_migration_11`.
+_PROPOSAL_COLUMNS = ("id", "creata_ts", "stato", "testo", "perche", "impronta",
+                     "prova_json", "giri_json", "esito_nota", "stakes")
+
+
+def _migration_12(conn) -> None:
+    """v11 -> v12 (attori, strato 4, Task 4.6): escono `proposte.chi_applica`,
+    `aggiornata_ts` ed `esito_ts` (censimento del 01/10/2026, punti 6 e 7).
+
+    `chi_applica` era una costante salvata: si scriveva sempre «tu», e la
+    porta delle Proposte la sovrascriveva con la sua
+    (`handlers_constructions._both_queues`). Le due date si scrivevano e
+    nessuno le leggeva: la pagina ordina per `creata_ts`.
+
+    **Si ricostruisce la tabella, non si usa `DROP COLUMN`**: quello vuole
+    SQLite 3.35, e la versione dentro l'immagine dell'add-on non e' stata
+    misurata. La ricostruzione funziona su tutte. Le righe restano, con ogni
+    colonna che resta.
+
+    **Tutto o niente, in una transazione** (revisione indipendente, giro 14,
+    G14-1). Il modulo `sqlite3` non apre una transazione per `ALTER` e
+    `CREATE`: senza `BEGIN` ogni passo si confermava da solo, e una
+    ricostruzione interrotta dopo il `RENAME` lasciava una `proposte` vuota,
+    con le righe in `proposte_v11` dove nessuno le legge. Se un passo fallisce
+    si torna indietro e l'archivio resta alla versione 11, intero: la
+    migrazione si rifara' al prossimo avvio.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
+    if not existing & {"chi_applica", "aggiornata_ts", "esito_ts"}:
+        return
+    columns = ",".join(_PROPOSAL_COLUMNS)
+    # Una migrazione precedente dello stesso avvio puo' averne gia' aperta una
+    # (il modulo la apre da se' davanti a un `UPDATE`): si continua in quella.
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        conn.execute("ALTER TABLE proposte RENAME TO proposte_v11")
+        conn.execute("DROP INDEX IF EXISTS idx_proposte_stato")
+        conn.execute(
+            "CREATE TABLE proposte (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
+            "stato TEXT NOT NULL, testo TEXT NOT NULL, perche TEXT NOT NULL, "
+            "impronta TEXT NOT NULL, prova_json TEXT NOT NULL, "
+            "giri_json TEXT NOT NULL, esito_nota TEXT, stakes TEXT)")
+        conn.execute(f"INSERT INTO proposte({columns}) SELECT {columns} FROM proposte_v11")
+        conn.execute("DROP TABLE proposte_v11")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_proposte_stato "
+                     "ON proposte(stato, creata_ts DESC)")
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -701,7 +774,8 @@ class ObservationsStore:
                                 5: _migration_5, 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
                                 9: _migration_9,
-                                10: _migration_10})
+                                10: _migration_10, 11: _migration_11,
+                                12: _migration_12})
 
     def close(self) -> None:
         with self._lock:
@@ -1326,7 +1400,7 @@ class ObservationsStore:
     PROPOSAL_PENDING = "attesa"
 
     def add_proposal(self, *, text: str, perche: str, fingerprint: str,
-                     prova: dict, chi_applica: str, now_ts: float) -> str:
+                     prova: dict, stakes: str | None, now_ts: float) -> str:
         """Scrive una proposta da fare a mano, e torna il suo identificativo.
 
         **Senza impronta non si scrive**: e' cio' su cui si regge
@@ -1337,20 +1411,18 @@ class ObservationsStore:
         ident = uuid.uuid4().hex
         with self._lock:
             self._conn.execute(
-                "INSERT INTO proposte(id,creata_ts,aggiornata_ts,stato,testo,"
-                "perche,chi_applica,impronta,prova_json,giri_json) "
-                "VALUES(?,?,?,?,?,?,?,?,?,'[]')",
-                (ident, now_ts, now_ts, self.PROPOSAL_PENDING, text, perche,
-                 chi_applica, fingerprint,
-                 json.dumps(prova or {}, ensure_ascii=False)))
+                "INSERT INTO proposte(id,creata_ts,stato,testo,perche,"
+                "impronta,prova_json,giri_json,stakes) "
+                "VALUES(?,?,?,?,?,?,?,'[]',?)",
+                (ident, now_ts, self.PROPOSAL_PENDING, text, perche, fingerprint,
+                 json.dumps(prova or {}, ensure_ascii=False), stakes))
             self._conn.commit()
         return ident
 
     def proposals(self, *, pending_only: bool = False, limit: int = 200) -> list[dict]:
         """Le proposte da fare a mano, dalla piu' recente."""
-        sql = ("SELECT id,creata_ts,aggiornata_ts,stato,testo,perche,"
-               "chi_applica,impronta,prova_json,giri_json,esito_ts,esito_nota "
-               "FROM proposte")
+        sql = ("SELECT id,creata_ts,stato,testo,perche,impronta,prova_json,"
+               "giri_json,esito_nota,stakes FROM proposte")
         args: tuple = ()
         if pending_only:
             sql += " WHERE stato = ?"
@@ -1358,14 +1430,13 @@ class ObservationsStore:
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
             rows = self._conn.execute(sql, (*args, int(max(1, limit)))).fetchall()
-        return [{"id": r[0], "creata_ts": r[1], "aggiornata_ts": r[2],
-                 "stato": r[3], "testo": r[4], "perche": r[5],
-                 "chi_applica": r[6], "impronta": r[7],
-                 "prova": json.loads(r[8]), "giri": json.loads(r[9]),
-                 "esito_ts": r[10], "esito_nota": r[11]} for r in rows]
+        return [{"id": r[0], "creata_ts": r[1], "stato": r[2], "testo": r[3],
+                 "perche": r[4], "impronta": r[5], "prova": json.loads(r[6]),
+                 "giri": json.loads(r[7]), "esito_nota": r[8], "livello": r[9]}
+                for r in rows]
 
     def close_proposal(self, ident: str, occurrence: str, *,
-                       why: str | None = None, now_ts: float) -> bool:
+                       why: str | None = None) -> bool:
         """Chiude una proposta con uno dei suoi esiti. Torna se ha toccato una riga."""
         if occurrence not in self.PROPOSAL_OUTCOMES:
             raise ValueError(
@@ -1373,9 +1444,8 @@ class ObservationsStore:
                 + ", ".join(self.PROPOSAL_OUTCOMES))
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE proposte SET stato=?, aggiornata_ts=?, esito_ts=?, "
-                "esito_nota=? WHERE id=? AND stato=?",
-                (occurrence, now_ts, now_ts, why, ident, self.PROPOSAL_PENDING))
+                "UPDATE proposte SET stato=?, esito_nota=? WHERE id=? AND stato=?",
+                (occurrence, why, ident, self.PROPOSAL_PENDING))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -1397,8 +1467,8 @@ class ObservationsStore:
             rounds.append({"richiesta": request, "scartata": row[0],
                            "quando_ts": now_ts})
             self._conn.execute(
-                "UPDATE proposte SET testo=?, giri_json=?, aggiornata_ts=? WHERE id=?",
-                (text, json.dumps(rounds, ensure_ascii=False), now_ts, ident))
+                "UPDATE proposte SET testo=?, giri_json=? WHERE id=?",
+                (text, json.dumps(rounds, ensure_ascii=False), ident))
             self._conn.commit()
         return True
 

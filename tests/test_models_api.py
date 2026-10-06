@@ -969,7 +969,7 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     assert righe["claude"]["esito"]["famiglia"] == "credenziale"
     assert righe["claude"]["esito"]["da_quante"] == 40
     assert righe["claude"]["stato_testo"].startswith(
-        "ha rifiutato le ultime 40 richieste — credito esaurito (400), ")
+        "ha rifiutato le ultime 40 richieste (400): «credit balance too low», ")
     assert righe["openrouter"]["stato_testo"].startswith("ha risposto ")
 
 

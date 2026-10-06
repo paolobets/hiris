@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from aiohttp import web
 
 from hiris.app.api.handlers_mind import (
     handle_analysis,
@@ -483,8 +484,13 @@ async def test_un_corpo_storto_e_un_400_non_un_500(tmp_path):
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         for corpo in ({}, {"testo": 12}, {"altro": "x"}, [], _ILLEGGIBILE):
-            r = await handle_set_objective(_richiesta_scritta(
-                {"observations": archivio}, corpo))
+            try:
+                r = await handle_set_objective(_richiesta_scritta(
+                    {"observations": archivio}, corpo))
+            except web.HTTPBadRequest as rifiuto:
+                # Un corpo che non e' un oggetto lo rifiuta il confine
+                # (`api/boundary.json_object`).
+                r = rifiuto
             assert r.status == 400, corpo
     finally:
         archivio.close()

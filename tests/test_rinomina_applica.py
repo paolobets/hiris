@@ -691,7 +691,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # le stringhe che il modello legge, non gli identificatori Python di un
 # ambito gia' chiuso -- e applicare `concludi -> conclude` qui sarebbe una
 # rinomina a meta', perche' `server.py:122`,
-# `api/handlers_reasoning.py:67` e `api/handlers_mcp.py:474` chiamano
+# `reasoning/consegna.py` e `api/handlers_mcp.py:474` chiamano
 # `store.concludi(...)`/`sweeper.concludi_chiedi(...)` da FUORI
 # dell'ambito, dove un giro limitato a `keeper` non li vedrebbe.
 # Tracciato qui, con la grana fine sotto, invece che applicato di sfuggita.
@@ -707,7 +707,14 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # `reasoning` entra il 01/09, senza residui. E' il sottosistema che ne
     # la specifica ne' il piano avevano mai nominato -- scoperto a meta'
     # fetta -- ed e' il primo aperto con tutte e quattro le reti in piedi.
-    ("reasoning", "reasoning", frozenset()),
+    #
+    # Il 06/10/2026 (A-23) la consegna di un turno del ponte e' passata da
+    # `api/handlers_reasoning.py`, che nessun ambito sorveglia, a
+    # `reasoning/consegna.py`: e con lei uno dei chiamanti di
+    # `store.concludi(...)` elencati qui sopra. Non e' un debito nuovo, e' lo
+    # stesso chiamante che ha cambiato cartella; la grana fine e' nella prova
+    # del residuo di `keeper`, che ora guarda anche questo file.
+    ("reasoning", "reasoning", frozenset({Path("consegna.py")})),
     # `agent` entra il 01/09, senza residui, al SECONDO tentativo: il primo e'
     # stato annullato perche' la mappa conteneva nomi che sembravano suoi e non
     # lo erano (cinque costanti importate da `chat_store.py`, la famiglia dei
@@ -774,16 +781,17 @@ def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
     import shutil
 
     from _comune import ROOT
-    for nome in ("store.py", "sweeper.py"):
-        base = ROOT / "hiris" / "app" / "keeper" / nome
+    for ambito, nome in (("keeper", "store.py"), ("keeper", "sweeper.py"),
+                         ("reasoning", "consegna.py")):
+        base = ROOT / "hiris" / "app" / ambito / nome
         copia = tmp_path / nome
         shutil.copy(base, copia)
         prima = copia.read_text(encoding="utf-8")
-        rinomina.applica(copia, "keeper", scrivi=True)
+        rinomina.applica(copia, ambito, scrivi=True)
         dopo = copia.read_text(encoding="utf-8")
         sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
         assert sostituzioni == {("concludi", "conclude")}, (
-            f"keeper/{nome} diverge su {sostituzioni}, atteso solo "
+            f"{ambito}/{nome} diverge su {sostituzioni}, atteso solo "
             "{('concludi', 'conclude')} -- un nuovo nome e' comparso: "
             "decidilo davvero (applicalo, o traccialo qui) invece di "
             "lasciarlo dentro un'eccezione a grana di file")
@@ -1039,14 +1047,23 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
 # ── 1. VOLUTE: qui la parola ha un senso DIVERSO da quello della riga
 # qualificata, e la mutezza e' la risposta giusta. **Questo insieme non cala.**
 _MUTE_VOLUTE = {
+    # `livello (action)` e' il livello di una PROPOSTA (`stakes`, attori,
+    # strato 4). In `radice` `livello` e' il livello del registro di Python
+    # (`main.py`, `logging.INFO`): senso diverso, mutezza giusta.
+    ("livello", "radice"),
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
     # per intero o dentro residui gia' dichiarati
     # (`keeper/exchange.py::_senza_conclusione`). `("senza", "memory")` e'
     # uscita con la Tappa 3, Task 9: era `senza_accenti` in
     # `memory/resolver._normalize`, che e' diventata `home_space/reference.
     # fold_accents`.
-    ("senza", "api"), ("senza", "action"),
+    ("senza", "action"),
     ("senza", "keeper"),
+    # `reasoning/consegna.py` importa `keeper/exchange._senza_conclusione`: e'
+    # la riga che fino al 06/10/2026 era `("senza", "api")`, quando la
+    # consegna del ponte stava in `api/handlers_reasoning.py` (A-23). Il nome
+    # e' di `keeper`, e li' e' gia' dichiarato.
+    ("senza", "reasoning"),
     # `note (home_space)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `home_space/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
     ("note", "api"), ("note", "action"), ("note", "usage"),
@@ -1845,7 +1862,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_26_with_138_fields():
+def test_product_dataclasses_are_28_with_143_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1944,13 +1961,23 @@ def test_product_dataclasses_are_26_with_138_fields():
     (`hiris/app/mind/recipe_turn.py`) coi suoi due campi -- `silent`,
     `dashboard_changed` -- perche' una ricetta che c'e' torna una domanda:
     le entita' che tacciono, e la dashboard Energia cambiata.
+
+    **Ventisette e 140 dal 06/10/2026**, Tappa 5, Task 8: `MindReading`
+    (`hiris/app/home_space/tools.py`) coi suoi due campi -- `serve`,
+    `by_day` -- una lettura dello strumento `mind`: chi la serve, e se
+    accetta un giorno.
+
+    **Ventotto e 143 dal 06/10/2026**, Tappa 6, Task 8: `ExchangeTurn`
+    (`hiris/app/api/handlers_mcp.py`) coi suoi tre campi -- `rounds`,
+    `dispatcher`, `since` -- cio' che la rotta MCP tiene di un turno del
+    ponte: i giri, il dispatcher costruito una volta, e da quando.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (26, 138), (classi, campi)
+    assert (classi, campi) == (28, 143), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

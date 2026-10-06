@@ -128,7 +128,7 @@ def test_un_esito_vecchio_resta_vecchio_e_lo_dichiara():
     e = r.occurrence("claude")
     assert e["quando"] == 1000.0, "il registro non deve ringiovanire da solo"
     assert occurrence_phrase(e, position=1, now=adesso[0]) == (
-        "ha rifiutato l’ultima richiesta — credito esaurito (400), 2 h fa")
+        "ha rifiutato l’ultima richiesta (400): «credit balance too low», 2 h fa")
 
 
 @pytest.mark.parametrize("codice,attesa", [
@@ -274,7 +274,7 @@ def test_le_frasi_dei_cinque_stati():
     assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "credenziale", "codice": 400,
                         "messaggio": "credit balance too low", "quando": a - 180,
                         "da_quante": 40, "durata_s": 0.4}, position=1, now=a) == (
-        "ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa")
+        "ha rifiutato le ultime 40 richieste (400): «credit balance too low», 3 min fa")
     assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "modello", "codice": 404,
                         "messaggio": "", "quando": a - 180, "da_quante": 1,
                         "durata_s": 0.2}, position=1, now=a) == (
@@ -294,8 +294,7 @@ def test_mai_provato_fuori_dalla_catena_non_e_un_ripiego_mancato():
 
 
 def test_una_chiave_rifiutata_non_e_un_credito_esaurito():
-    """400 e 402 dicono «i soldi sono finiti» (Anthropic risponde 400 «credit
-    balance too low», OpenRouter 402); 401 e 403 dicono «questa chiave non va
+    """402 dice «i soldi sono finiti» (OpenRouter); 401 e 403 dicono «questa chiave non va
     bene». Sono due azioni diverse per chi legge -- ricaricare, oppure rifare
     la chiave -- e chiamarle tutte «credito esaurito» sarebbe un'ipotesi sulla
     causa, che è esattamente ciò che questo prodotto non fa."""

@@ -23,7 +23,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 · Tappa 3 (D5) · Tappa 3, Task 5 e 12: escono quelli di osservatore, ricette, nomi dei dispositivi; restano `briefing` (nomi dei dispositivi del nucleo, Task 8), `house_history.read_runs` e `topology.compare_with_home_assistant` (l'indice delle entita' per id) |
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 · Tappa 8 (D5) |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
-| A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | NV | DP |  |  | cop-2 A2 · Tappa 6 (D5) · verificata il 05/10, resta DP: vedi §8 |
 | A-28 | Ogni lettura WebSocket apre sessione e autenticazione nuove; un comando in tre modi | E | PS |  |  | cop-5 A1 |
 | A-29 | «Home Assistant non ha risposto» in tre modi; connessione caduta resa «forma inattesa» | D | CC |  |  | cop-5 A2 |
 | A-30 | Le forme di ritorno di `HAClient`: sette, per la stessa domanda «è andata?» | D | CC |  |  | cop-5 A3 |
@@ -48,7 +47,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-28 | Ordinamento degli appuntamenti e due semantiche di `fine` | E | CC |  | Tappa 3 (verdetto) | reg · cop-5 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026), verificata: `appointments.read_appointment` scrive `fine` INCLUSIVA per un giornaliero (l'ultimo giorno) ed ESCLUSIVA per uno a orario (l'istante in cui finisce); l'ordine e' lessicografico in `sort_appointments` e in `HAClient.calendar_events`. Non eseguita: la forma giusta di `fine` non la decide il piano, e cambia cio' che il modello legge -- domanda al proprietario nel rapporto · A17 dell'integrazione Tappe 4-6 (761cabe, 05/10/2026): `sort_appointments` ordina per istante (`instant_epoch`), giornalieri prima degli orari dello stesso giorno -- la notte del cambio d'ora non si inverte piu'; resta la semantica di `fine` (domanda 10 del secondo giro: `dal`/`al` di D1, a T7) |
 | B-29 | Quote FV: «autoconsumo» esclude la batteria | D | CC | 29/09: quota_autoconsumo 31% contro 74,7% di FV non immesso | Tappa 3 (imprecisa) | reg · strato 2 degli attori (D10 della Tappa 3) |
 | B-31 | `tipo=automation/script` → genere: conversione in due posti | E | PS |  |  | cop-3 B-n2 · Tappa 3: non toccata (vive solo in `house_query` e `house_history`) |
-| B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | NV | PS |  |  | cop-3 B-n3 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026), verificata: le due tabelle sono `house_query._FILTERS_BY_KIND` e `house_history._WHO_KEYS`/`_ERROR_WHO_KEYS`, su due sensi diversi di `genere` (C-65); le due frasi sono la prosa delle descrizioni di `search` e `history`, che si riscrive al Task 5 insieme a D-68 |
 | B-33 | Una durata, tre grammatiche; `calendar` taglia in silenzio, gli altri rifiutano | D | CC |  |  | cop-3 B-n4 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026): la logica del calendario e' uscita in `appointments.merge_calendars` (f487b1a); il taglio dichiarato non e' fatto: il piano lo vuole «con i nomi del vocabolario D1», che e' della Tappa 4 (T7) e non c'e' ancora · B9 dell'integrazione Tappe 4-6 (9dba93a, 05/10/2026): `calendar` oltre 365 giorni rifiuta, come gli altri strumenti di durata -- il taglio silenzioso non c'e' piu'; resta la grammatica unica della durata (vocabolario D1, Tappa 4 T7) |
 | B-34 | «Tipi di ancora non verificabili adesso»: scritto due volte (`_remember`, `_unverifiable_types`) | NV | PS |  |  | cop-3 B-n5 |
 | B-39 | Conteggio per tipo del comportamento in tre punti, `senza_corpo` in quattro | NV | PS |  |  | cop-4 N-04 · cop-8 C2 |
@@ -68,7 +66,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-03 | Lo stesso fatto detto con nomi diversi | D | CC |  |  | reg |
 | C-04 | Lo stesso nome per fatti diversi | D | CC |  | cop-3 (incompleta); cop-4 (incompleta) | reg · cop-3 · cop-4 |
 | C-05 | Un fatto che esce da una porta e non da un'altra | D | CC |  | cop-3 (imprecisa) | reg · cop-3 |
-| C-10 | Grammatica dei soggetti e vocabolari chiusi scritti in Python e in JS. Dal 02/10 il rilevatore dei doppioni non vede più il vocabolario dei predefiniti (il dizionario Python con quelle quattro chiavi è uscito, `4745d69e`): il doppione fra `handlers_models._store_keys` e `models-route.js` resta, senza un attrezzo che lo sorvegli. Lo stesso per gli stati dei servizi (`autorizzato`, `in_attesa`, `revocato`): uscita la tupla `servizi.STATI` senza lettori (`2e3ab864`), restano i letterali nell'SQL e nel JS | E | PS |  | cop-6 (incompleta, due etichette sbagliate) | reg · cop-6 · Tappa 4, Task 5 (e6eff8b): gli stati dei servizi in services-route.js legati a ServiziStore facendolo lavorare, e le chiavi di NOMI_REGISTRI (common.js) a reader.TABLES (`tests/test_pagine_legate.py`); le parole di NOMI_REGISTRI restano testo di pagina. Gli altri vocabolari della voce (ruoli, provider, stati delle costruzioni e delle promesse, giudizi, analisi) non sono stati toccati: resta aperta |
+| C-10 | Grammatica dei soggetti e vocabolari chiusi scritti in Python e in JS. Dal 02/10 il rilevatore dei doppioni non vede più il vocabolario dei predefiniti (il dizionario Python con quelle quattro chiavi è uscito, `4745d69e`): il doppione fra `handlers_models._store_keys` e `models-route.js` resta, senza un attrezzo che lo sorvegli. Lo stesso per gli stati dei servizi (`autorizzato`, `in_attesa`, `revocato`): uscita la tupla `servizi.STATI` senza lettori (`2e3ab864`), restano i letterali nell'SQL e nel JS | E | PS |  | cop-6 (incompleta, due etichette sbagliate) | reg · cop-6 · Tappa 4, Task 5 (e6eff8b): gli stati dei servizi in services-route.js legati a ServiziStore facendolo lavorare, e le chiavi di NOMI_REGISTRI (common.js) a reader.TABLES (`tests/test_pagine_legate.py`); le parole di NOMI_REGISTRI restano testo di pagina. Gli altri vocabolari della voce (ruoli, provider, stati delle costruzioni e delle promesse, giudizi, analisi) non sono stati toccati: resta aperta. Riallineamento alla riconnessione (06/10/2026): i prefissi dei soggetti di sistema (`facts.NOT_ENTITY_PREFIXES`, cinque con `connessione:`) legati a `parseSubjectPrefix` (`tests/test_pagine_legate.py`), e il loro doppione noto esce |
 | C-11 | Prosa del JS che ricopia costanti dello scheduler e dell'archivio | NV | PS |  |  | reg · cop-2 · cop-6 · Tappa 4, Task 5 (d29c37c): «alle 00:20», «un giorno ogni 5 minuti» e i 22 giorni escono da watcher-giorno.js e watcher-sapere.js; NIGHTLY_HOUR/NIGHTLY_MINUTE e BACKFILL_EVERY_MINUTES in mind/report.py, lette dallo schedulatore e mandate da GET /api/mind/report (404, ora_notturna) e /api/mind/knowledge (cronaca). NV: da confrontare col registro v1 prima di chiuderla |
 | C-12 | Regole di dominio che vivono solo nel JS | NV | DP |  |  | reg · cop-6 · Tappa 4, Task 5 (953b33c): OPEN_STATES esce da constructions-route.js; le righe delle Proposte portano sospesa, calcolata in handlers_constructions con STATES_SOSPESO e ObservationsStore.PROPOSAL_PENDING (nuova). PENDING_STATES e OUTCOME_STATES di agenda-route.js restano, legati per valori da agenda-route-vocabulary.test.mjs. NV: da confrontare col registro v1 prima di chiuderla |
 | C-13 | Il JS ricostruisce un dato che il server ha, o gliene manca uno | D | CC |  | cop-6 (incompleta); cop-9 (incompleta) | reg · cop-6 · cop-9 |
@@ -99,7 +97,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-44 | Due buste nello stesso modulo `state_translations`: `letto` e `lette` | D | CC |  |  | cop-5 C1 |
 | C-45 | Tre forme dell'assenza nella stessa voce dello specchio (`""`, `None`, chiave mancante) | D | CC |  |  | cop-5 C2 |
 | C-48 | I corpi JSON dell'archivio dell'osservatore: tre letture con la guardia, quattro senza | D | CC |  |  | cop-6 N-10 · Tappa 8 (D10 della Tappa 4) |
-| C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | NV | DP |  |  | cop-6 N-11 · Tappa 5 (D10 della Tappa 4) |
 | C-50 | La chat risponde l'errore in quattro forme, due lingue, due volte con stato 200 | D | CC |  |  | cop-8 C3 · A6 della Tappa 4 (05/10/2026): il poll di un turno fallito resta 200 e porta `error` al posto di `message`; restano il 413 e i messaggi inglesi (A7, A11: cambiano cio' che si legge, con `ux-ui-specialist`) |
 | C-51 | Cancellare un ricordo che non esiste è un successo (204); correggerlo è un 404 | D | CC |  |  | cop-8 C4 |
 | C-54 | Lo stato grezzo arriva al modello: `READABLE_STATE` solo per le costruzioni, `cancel` scrive `in_corso` | D | PS |  |  | cop-9 N-C-3 · Tappa 8 (D10 della Tappa 4) |
@@ -112,7 +109,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-62 | `dove.integrazione` è uno slug nudo; area, piano e dispositivo escono come `{id, nome}` | D | CC |  |  | Tappa 4, trovato 5 (`house.py:143`); D1 |
 | C-63 | `_with_live_kind` scrive `classe: None` e `unita: None` espliciti; altrove la chiave manca | D | CC |  |  | Tappa 4, trovato 6 (`api/handlers_home_space.py:72-74`); D1, regola dell'assenza |
 | C-64 | `state` e `unit` in inglese dentro `prima`/`dopo` del dispositivo, mandati al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`; `unit` a `:339`, trovata dal Task 1); D1 |
-| C-65 | `genere` con tre significati: genere di oggetto (`search`), cosa chiedere (`history`), genere della cronaca | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 1 (`tools.py:253`, `:953`; glossario, «I concetti»); D3: il parametro di `history` diventa `cosa` (Task 5) |
 
 ---
 
@@ -121,12 +117,9 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | D-01 | Comporre il system prompt: più compositori | D | PS |  |  | reg · cop-7 |
-| D-02 | `BASE_TOOL_RULES` ai turni che non hanno strumenti | D | CC | system dell'analista 1162 caratteri sul ponte, 7205 sulla catena; attuatore `tools_sent: 0`, `guide_chars: 7970` | cop-7 (righe, incompleta) | reg · cop-7 |
-| D-03 | Regole d'uso degli strumenti: `BASE_TOOL_RULES` contro `_GUIDE_WITH_TOOLS` | D | CC |  | cop-7 (conteggio, incompleta) | reg · cop-7 |
 | D-04 | Recinto del contesto: sul ponte sì, sulla catena no | D | CC |  |  | reg · cop-7 |
 | D-05 | Il contratto di risposta due volte sul ponte (analista, ricette) | D | CC |  | cop-6 (imprecisa) | reg · cop-6 · cop-7 |
 | D-06 | Chi risponde: una decisione, sette chiamanti, quattro «dopo» | D | CC |  |  | reg · cop-7 · cop-8 |
-| D-07 | Accodare sul ponte: sei `enqueue`, il modello scelto vale solo per la chat | D | CC |  | cop-1 (incompleta); cop-7 (righe, conteggio); cop-8 (conteggio) | reg · cop-1 · cop-7 · cop-8 |
 | D-08 | Raccogliere la risposta del ponte: quattro `_collect_*` e quattro «già letto» | D | CC |  | cop-1 (incompleta) | reg · cop-1 · cop-7 · cop-8 |
 | D-09 | Predefiniti del ponte e di Ollama riletti in molti punti | E | PS |  | cop-1 (incompleta); cop-7 (conteggio); cop-8 (incompleta) | reg · cop-1 · cop-2 · cop-7 · cop-8 · cop-9 |
 | D-10 | Il ciclo degli strumenti: quattro cicli, tre unità di tetto | D | CC |  | cop-7 (righe) | reg · cop-7 |
@@ -147,12 +140,9 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 · Tappa 8: archivi (piano della Tappa 5) · Tappa 8 (Tappa 6, T0) |
 | D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 · Tappa 5, Task 2: le due maschere degli strumenti (corpo in `search`, «prima» in `propose`) chiedono il soffitto da `dispatch` (`Tool.mask`); le altre restano |
 | D-30 | Strumenti di lettura nei turni degli attori: cosa manca al turno | NV | DP |  | cop-8 (righe) | reg · cop-8 |
-| D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | D | CC | 01/10: due riparazioni (ricetta già sana; ricetta inesistente), rifatte identiche alle 09:20 e 10:20 |  | reg |
 | D-32 | I giri del cervello dentro `server.py` | E | PS |  |  | reg · cop-1 B1 · cop-2 |
 | D-33 | Lo stesso tema ogni giorno, con parole diverse (analisi, esiti, proposte) | D | CC | coppie già presenti il giorno prima: 2 su 7, 3 su 8, 4 su 8 | cop-6 (righe) | reg · cop-6 · BACKLOG, «Gli attori si riparano dal basso», strato 3 (Tappa 6, T0) |
 | D-34 | La serie dell'analista composta due volte, riga per riga (`server.py:1964`, `:2431`) | E | PS |  |  | cop-1 D1 |
-| D-35 | `llm_router or claude_runner` scritto 10 volte; il ramo destro non può mai scattare | E | PS |  |  | cop-1 D2 · cop-2 M1 |
-| D-36 | Il resoconto di un giorno scritto con le stesse due chiamate in tre punti | E | PS |  |  | cop-1 D3 |
 | D-37 | `_write_analysis` e `_write_actuation`: stesso scheletro | E | PS |  |  | cop-1 D4 |
 | D-38 | Indice del modello → riga dell'elenco, due volte (`server.py:2195`, `:2256`) | E | PS |  |  | cop-1 D5 |
 | D-41 | La risorsa che serve a uno strumento decisa in due posti | E | PS |  |  | cop-3 D-n3 · Tappa 5, Task 2-3 (05/10/2026): la risorsa sta nella riga (`Tool.resources`) e il controllo e' dentro la rete di `dispatch`; restano, dichiarate come degradazioni e non come rifiuti, la casa chiesta da `_history` per i generi che non sono errori e la memoria del dettaglio di un ricordo. Non chiusa: il rapporto cop-3 non e' leggibile dalla nuvola, e lo sprint conferma se «i due posti» erano questi |
@@ -168,19 +158,12 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-53 | Le righe annidate si arricchiscono TUTTE e poi si tagliano a 50 | E | PS |  |  | cop-4 N-19 · Tappa 5, Task 4 (05/10/2026): non toccata -- `queries._within_ceiling`, zona del Task 8 della Tappa 3; si riprende dopo il suo merge |
 | D-54 | L'id del soggetto ricavato spezzando la riga scritta per il modello (`house_lines` due volte) | E | PS |  |  | cop-6 N-12 · Tappa 6 T7 |
 | D-55 | All'analista vanno due campi per riga che non può più usare (`soggetto`, `operazione`) | NV | CC |  |  | cop-6 N-13 · Tappa 6 T7 |
-| D-56 | Promessa sul ponte: la guida nomina 7 strumenti assenti e non `conclude`; regole triplicate | D | CC |  |  | cop-7 N-D4 |
-| D-57 | La guida del ponte: secondo catalogo a mano, `mcp__hiris__` ricopiato venti volte (in potenza) | D | PS |  |  | cop-7 N-D5 |
 | D-59 | Il vocabolario degli stati di `reasoning_jobs`: letterali in tre file, in due lingue | E | PS |  |  | cop-7 N-D11 · Tappa 6 T7 |
 | D-60 | Costo e nome del provider scritti due volte, con due formule (0 contro NULL) | D | CC |  |  | cop-7 N-D13 · Tappa 6 T3 |
 | D-61 | Due pesatori del carico, una forma, tre definizioni di «guida» | D | CC |  |  | cop-7 N-D14 · Tappa 6 T7 |
 | D-62 | `reasoning/queue.py`: `get()`/`latest()` due forme, mezzanotte ricalcolata, `SELECT *` col nucleo | D | PS |  |  | cop-7 N-D15 · Tappa 6 T7 |
-| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | D | DP |  |  | cop-8 D1 · resta alla Tappa 6; la tabella degli strumenti della Tappa 5 (Task 2) ne e' il prerequisito |
 | D-64 | Il nucleo che non si compone: tre chiamanti, tre comportamenti | D | CC |  |  | cop-8 D2 · cop-9 N-D-1 · Tappa 6 T7 |
 | D-65 | «Qual è la conversazione attiva di questo filo» chiesta tre volte per turno | NV | CC |  |  | cop-8 D3 · Tappa 6 T7 |
-| D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | D | PS |  |  | cop-8 D4 · Tappa 6 T8 |
-| D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | E | PS |  |  | Tappa 3, piano del 03/10/2026, trovato 11 |
-| D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 · Tappa 5, Task 4 (05/10/2026): e' prosa delle descrizioni, si unifica al Task 5 con le descrizioni (insieme a B-32) |
-| D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 2 (`keeper/exchange.py`: le regole parlano di `execute`, `propose`, `remember`); il contenuto alla Tappa 5 (D4, Task 5), la composizione alla Tappa 6 |
 
 ---
 
@@ -236,9 +219,9 @@ File relativi a `hiris/app/` salvo diverso avviso.
 
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
-| G-01 | Lo scope tiene decisioni su entità che non ci sono più | D | CC | 413 soggetti decisi, 86 senza stato in HA (21%); 26 dei 95 «dentro» |  | reg · cop-6 |
-| G-02 | Ricette e rifiuti di dispositivi disabilitati o spariti restano e girano | D | CC | 13 dispositivi disabilitati su 32 soggetti di misura; `ricetta_non_serve` 60 righe |  | reg · cop-6 |
-| G-03 | Resoconti scritti da fonti ferme, per sempre | D | DP | 36 resoconti; 814 misure su 1809 «non calcolabili» (45%) |  | reg |
+| G-01 | Lo scope tiene decisioni su entità che non ci sono più | D | CC | 413 soggetti decisi, 86 senza stato in HA (21%); 26 dei 95 «dentro» |  | reg · cop-6 · strato 1 degli attori, la parte che legge (D1, 03/10; Task 1.5, 3.76.0: `watching` porta la fonte di ogni soggetto); la pulizia dello scope resta alla Tappa 8 |
+| G-02 | Ricette e rifiuti di dispositivi disabilitati o spariti restano e girano | D | CC | 13 dispositivi disabilitati su 32 soggetti di misura; `ricetta_non_serve` 60 righe |  | reg · cop-6 · strato 1 degli attori, la parte che legge (D1, 03/10; Task 1.5 e 1.6, 3.76.0: una riga per dispositivo con la causa, e solo una causa riparabile riapre la ricetta); la pulizia di ricette e rifiuti resta alla Tappa 8 |
+| G-03 | Resoconti scritti da fonti ferme, per sempre | D | DP | 36 resoconti; 814 misure su 1809 «non calcolabili» (45%) |  | reg · strato 1 degli attori, la parte che legge (D1, 03/10; Task 1.2 e 1.3, 3.76.0 e 3.77.0: il rifiuto porta la causa, il dato fermo esce «ferma»); la pulizia dei resoconti resta alla Tappa 8 |
 | G-04 | Proposte «a mano» dell'attuatore in attesa su dati rotti, e antiripetizione | D | DP | 9 righe `proposte` (7 `attesa`, 2 `rifiutata`): 0 utili, 4 sbagliate, 5 vaghe |  | reg · cop-6 |
 | G-05 | Righe del sapere senza lettore, e valori ammessi che nessuno produce. Le 14 `direzione:*` e le 23 `notevole` escono con la migrazione 9 (`5ae09966`, Task 20); restano le righe non leggibili dall'API e i valori ammessi che nessuno produce | E | PS | 396 righe nel sapere: 14 `direzione:*`, 23 `notevole`; 275 non leggibili dall'API |  | reg · cop-5 · cop-6 |
 | G-06 | Colonne scritte e mai lette in `osservazioni.db` | E | PS |  | cop-6 (incompleta) | reg · cop-6 |
@@ -287,9 +270,9 @@ File relativi a `hiris/app/` salvo diverso avviso.
 |---|---|---|---|---|
 | M-02 | `_resolve_current_model` (due runner) senza chiamanti di produzione: lo usano 15 asserzioni di `tests/test_provider_default_model.py` come cucitura di prova. Esce alla Tappa 1, quando quelle prove passano da `chat()`. La parte `simple_chat` x4 e' USCITA con la Tappa 0, Task 10 (38684dae) | `claude_runner.py`; `openai_compat_runner.py` | cop-7 (incompleta) | reg · cop-7 |
 | M-07 | `llm_router._STRATEGY_ORDER`/`_norm_policy`/`chat_policy`/`strategy`: solo ramo «libreria» e `_chain_as_it_was` | `llm_router.py:52-62`; `server.py:3240,5258-5266` |  | reg · cop-2 |
-| M-11 | L'attuatore in pausa dal 3.72.2: 318 righe in `server.py`, `mind/actuator.py` 82, `actuator_turn.py` 221 | `server.py:2001-2336,4508` | cop-1 (incompleta) | reg · cop-1 · cop-2 |
+| M-11 | L'attuatore in pausa dal 3.72.2: 318 righe in `server.py`, `mind/actuator.py` 82, `proposer_turn.py` 221 | `server.py:2001-2336,4508` | cop-1 (incompleta) | reg · cop-1 · cop-2 |
 | M-12 | `mind/scope.ANALYST` e `OWNER` mai passati come `author` in produzione. Riletto il 02/10: è la scala d'autorità del perimetro (osservatore < analista < proprietario), disegno degli attori; si decide con gli strati degli attori | `mind/scope.py:44`; `observer.py:282,299` |  | reg |
-| M-14 | `Operation.refuses_when` non letto a runtime (lo legge solo l'impronta del catalogo, in una prova); i `SHAPE_*` oltre i due delle ricette servono solo alle dieci operazioni di M-78. **Resta, per decisione del proprietario del 02/10/2026** (serve al refactor degli agenti che segue lo sprint): è costruito per l'analista, e cosa fa è scritto nel BACKLOG, voce sugli attori | `mind/operations.py`; `recipes.py:281` |  | reg |
+| M-14 | `Operation.refuses_when` non letto a runtime (lo legge solo l'impronta del catalogo, in una prova); i `SHAPE_*` oltre i due delle ricette servono solo alle operazioni di M-78 (dal 06/10/2026 due, `SHAPE_READINGS` e `SHAPE_PERIOD`: le altre tre sono uscite con le otto operazioni; dallo stesso giorno le legge la validazione delle ricette — `Operation.gives` e le forme che `@entita` sa consegnare — e le offre la ricetta al volo, `TOOL_SHAPES`). **Resta, per decisione del proprietario del 02/10/2026** (serve al refactor degli agenti che segue lo sprint): è costruito per l'analista, e cosa fa è scritto nel BACKLOG, voce sugli attori | `mind/operations.py`; `recipes.py:281` |  | reg |
 | M-17 | Il campo `operable` (`accendibile`, 13 righe del seme su 98) senza lettore di produzione: lo legge solo il censore, vedi M-61. `notevole` non è più un giudizio (`5ae09966`), e le 23 dichiarazioni `notable` del vocabolario dei tipi sono uscite il 02/10/2026 per decisione del proprietario, con le cinque prove che le leggevano: di questa voce resta aperto il solo `operable` | `type_judgments.py:30-35,401`; `type_vocabulary.py:910-946` | cop-5 (SBAGLIATA in parte) | reg · cop-5 |
 | M-20 | Una usata solo dai test (censimento): `actuator_round`, in pausa e non morta (D5). `objective_history` è uscita (`a0a26584`), le cinque del censore sono negli attrezzi (`b6a2c155`); `get_config` TOLTA: è letta in produzione (`topology.py:142` via `getattr`, dentro `rebuild`) | `server.py` (`actuator_round`) | cop-4 (conteggio, SBAGLIATA in parte); cop-5 (conteggio, SBAGLIATA in parte) | reg · cop-4 · cop-5 |
 | M-22 | Rotta senza chiamante di produzione: `GET /api/misure`. **Resta per scelta** (dichiarazione D5 della Tappa 0): la usano `scripts/misure.py` e le batterie. La parte `GET /api/entities` (tutto `handlers_entities.py`) e' USCITA con la Tappa 0, Task 9 | `server.py` (rotta `/api/misure`) | cop-8 (conteggio, incompleta) | reg · cop-2 · cop-3 · cop-8 |
@@ -310,14 +293,13 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | M-55 | `HAClient.get_states(entity_ids)`: il ramo del filtro mai raggiunto in produzione (cinque chiamanti passano `[]`). Riletta il 02/10 (Task 17): toglierlo cambia la firma che sei chiamanti e le case finte di molte prove usano; si fa con A-03, Tappa 1 | `ha_client.py` (`HAClient.get_states`) |  | cop-5 M2 |
 | M-59 | 22 righe del vocabolario senza nessun campo: le legge solo il censore, che dal Task 14 è un attrezzo (`scripts/censore_tipi.py`). Non sono morte: toglierle riapre 22 voci del censore. Da decidere | `type_vocabulary.py` (righe senza campi) |  | cop-5 M6 |
 | M-61 | Il giudizio `accendibile` non ha lettori nel prodotto: `operable_domains` lo legge solo il censore (attrezzo dal Task 14). `da_sapere_subito` ha un chiamante interno e non è un reperto. Da decidere se il giudizio serve | `type_judgments.py:401` |  | cop-5 M8 |
-| M-67 | Costanti senza lettori nel prodotto: `OUTCOME_GESTURES` (resta con l'attuatore in pausa, D5) e `facts.GENRES` (la nomina il testo di una domanda aperta mostrata al proprietario: toglierla cambia quel testo, D7). I due parametri `readings(subject=)` e `readings_count(source=)` sono usciti (`a0a26584`) | `actuator_turn.py:41`; `facts.py:75`; `mind/store.py:849,877` |  | cop-6 N-18 |
+| M-67 | Costanti senza lettori nel prodotto: `OUTCOME_GESTURES` (resta con l'attuatore in pausa, D5) e `facts.GENRES` (la nomina il testo di una domanda aperta mostrata al proprietario: toglierla cambia quel testo, D7). I due parametri `readings(subject=)` e `readings_count(source=)` sono usciti (`a0a26584`) | `proposer_turn.py:41`; `facts.py:75`; `mind/store.py:849,877` |  | cop-6 N-18 |
 | M-68 | `OpenAICompatRunner.circuit_state()`: NON e' codice morto (la chiama `_circuit_is_open`, riletto il 02/10/2026); resta vero che nessuno fuori dal runner puo' chiedere lo stato del circuito: e' un dato che c'e' e nessuno puo' chiedere, Tappa 6 | `openai_compat_runner.py` |  | cop-7 N-M2 |
 | M-72 | `outcome` della consegna al ponte: otto valori che nessuno legge (`error` esce con `ok: true`). Riletta il 02/10 (Task 17): `outcome` esce nella risposta di `POST /api/reasoning/submit` e cinque file di prova ne fissano il valore: cambio di forma | `api/handlers_reasoning.py:88-184` |  | cop-8 M2 |
 | M-73 | Il ramo «ruolo non l'ho potuto sapere (trattato come utente)» NON è irraggiungibile: voce falsa, conservata. Mutazione eseguita il 02/10: 7 prove lo raggiungono, e in produzione ci si arriva quando `config/auth/list` fallisce | `api/handlers_chat.py:359-363`; `soffitto.py:150-164` |  | cop-8 M3 |
 | M-74 | Segnali e cuciture di prova nel prodotto (`app["_clock"]`, `"input"`, `thread_to_context`, rami dichiarati irraggiungibili). Riletta il 02/10 (Task 17): i tre rami «irraggiungibili» sono raggiunti dalle prove (mutazione eseguita: 32 rosse) e sono difese volute; `app["_clock"]` è una cucitura usata da tre file di prova; `thread_to_context` dà forma alla risposta del claim. Non c'è codice morto da togliere qui | `handlers_reasoning.py:50-51`; `handlers_chat.py:53-54,544,1400`; `chat_thread.py:78-85`; `handlers_home_space.py:46-84,216-228` |  | cop-8 M4 |
 | M-75 | Il ramo «ripristino dalla chat» di `Workshop.restore` non ha chiamanti di produzione. Riletta il 02/10 (Task 17): è una capacità disegnata e provata da due prove, senza chiamante: toglierla o cablarla è una decisione del proprietario | `workshop.py:987-1001` |  | cop-9 N-M-1 |
 | M-76 | `REASON_DISDETTA`, il `motivo` delle righe `disdetta` e `_migration_3`: scritti, mai letti. Riletta il 02/10 (Task 17): `motivo` esce da `GET /api/constructions` e `_migration_3` è nella mappa delle migrazioni: cambio di forma | `revisions.py:50,110-130,404-406`; `constructions-route.js:633-644` |  | cop-9 N-M-2 |
-| M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso. Riletto il 02/10: sono il vocabolario delle sette domande del proprietario dell'11/09 (`docs/design/2026-09-11-le-domande-del-proprietario.md`), le eseguono le prove di quel cancello. Misurato in casa il 02/10: le 21 ricette archiviate usano 7 operazioni, nessuna delle dieci. **Resta, per decisione del proprietario del 02/10/2026** (serve al refactor degli agenti che segue lo sprint): è costruito per l'analista, e cosa fa è scritto nel BACKLOG, voce sugli attori | `mind/operations.py` |  | compl N-2 |
 | M-80 | La chiave `seminato` di `GET /api/models/config` (e `_MIGRATION_FLAGS`): dal 02/10 nessuno la scrive né la legge; toglierla cambia la forma di una rotta, quindi va dichiarata | `api/handlers_models.py` (`_store_keys`, `_MIGRATION_FLAGS`) |  | Tappa 0, Task 16 |
 | M-81 | `provider_occurrences.FAMILIES`: la legge solo una prova (le famiglie sono rami di `occurrence_phrase`, che non legge l'elenco). Il censimento non esamina le costanti di modulo: trovata dalla revisione indipendente del blocco B | `provider_occurrences.py` (`FAMILIES`) |  | revisione del blocco B, 02/10/2026 |
 
@@ -329,7 +311,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 |---|---|---|---|---|
 | X-12 | Messaggio fisso «le tiene solo per le entità che dichiarano uno `state_class`» stampato per ogni id fuori da `statistic_ids`. Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `recipes.py:314-318`; `operations.py:548`; `recipe_turn.py:279-281` |  | reg |
 | X-13 | `observer.SYSTEM`: «ciò che lasci FUORI non viene registrato affatto». Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `observer.py:57-62` |  | reg · cop-6 |
-| X-14 | `actuator_turn.SYSTEM` promette «INDAGINE — vai a vedere» a un turno senza strumenti; frasi false nella pagina dell'osservatore. Riletta il 02/10 (Task 21): è testo che arriva al modello (il prompt dell'attuatore, in pausa) e all'utente (la pagina dell'osservatore): si decide con lo strato 4 degli attori | `actuator_turn.py:51-54`; `watcher-lavoro.js:214` |  | reg · cop-6 |
+| X-14 | `proposer_turn.SYSTEM` promette «INDAGINE — vai a vedere» a un turno senza strumenti; frasi false nella pagina dell'osservatore. Riletta il 02/10 (Task 21): è testo che arriva al modello (il prompt dell'attuatore, in pausa) e all'utente (la pagina dell'osservatore): si decide con lo strato 4 degli attori | `proposer_turn.py:51-54`; `watcher-lavoro.js:214` |  | reg · cop-6 |
 | X-16 | Descrizione di `search`/`related`: «Guarda `tipo`…», ma la riga porta `genere` (e non sempre). Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `tools.py:331-333,357-360` | cop-3 (imprecisa) | reg · cop-3 |
 | X-20 | Prompt dell'analista: «dal … al 2026-09-30» letto come scadenza [D]. Riletta il 02/10 (Task 21): è testo che arriva al modello: correggerlo cambia un prompt, cioè un comportamento. Si decide con la tappa che tocca quel turno | `analyst_turn.py:258-259`; `report.py:379-381` |  | reg |
 | X-31 | La regola «non si scrive in `app[...]` a richiesta servita» dichiarata tre volte, violata in ≥17 punti. Riletta il 02/10 (Task 21): le tre frasi dicono il vero sul contenitore che descrivono; la violazione è nel codice, non in un commento. Si lavora con la Tappa 6 (capitolo D) | `server.py:5652-5681` contro `:737,1174,1421,2034,2523,3155,3208,3232`, `judgments.py:375`, `handlers_models.py:587`, `handlers_settings.py:361` |  | cop-2 X5 |
@@ -358,7 +340,6 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-01 | Turno dell'attuatore raccolto dal ponte: gli indici del modello applicati a un elenco rifatto «adesso» (oggi dormiente, giro in pausa) | 1° dei «5 più gravi» di cop-1 | DEDOTTO | cap. proposto D; Stato del rapporto: DIVERGENTE [D]; Unirla CC | cop-1 D6 |
 | S-05 | `read_dashboards`: `d.get("url_path")` senza `isinstance(d, dict)` |  | LETTO | `ha_client.py:1056` (04/10/2026; la `:1077` lo ha) | cop-5 S2 |
 | S-07 | `context` (chi ha causato il cambio) non entra nello specchio |  | LETTO | `entity_cache.py:516-587`; vedi correzione a B-25. **Resta aperta per scelta** (Tappa 3, D6): nessun lettore -- un campo scritto e mai letto e' il difetto che la review cerca -- e lo specchio non deve portare `context.user_id` | cop-5 S4 · Tappa 3 (D5) |
-| S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda |  | LETTO (comportamento DEDOTTO) | cap. proposto D; Stato DIVERGENTE, Unirla CC | cop-7 N-D2 · Tappa 6 T8 (la scadenza nel lavoratore) |
 | S-10 | Il ponte è una corsia sola: un turno lungo blocca la chat; ~3,3 s medi aggiunti per risposta | 1° per peso sulla latenza (cop-7 §5.4) | LETTO (non verificato sul vivo) | cap. proposto D; Stato NV, Unirla CC | cop-7 N-D3 · Tappa 6 T2: la chat passa avanti in coda; la corsia resta una |
 | S-11 | Un guasto del registro dei consumi fa cadere il turno (risposta già prodotta persa); la misura del turno è blindata |  | LETTO | cap. proposto D; Stato DIVERGENTE, Unirla CC | cop-7 N-D7 |
 | S-12 | Le chiamate di strumento della stessa risposta partono in fila, non insieme (8 letture = 8 attese) | 3° per peso sulla latenza (cop-7 §5.4) | LETTO (effetto non verificato) | cap. proposto D; Stato NV, Unirla CC | cop-7 N-D8 |
@@ -413,7 +394,7 @@ Ritirate per intero: **0**. Nessuna correzione dichiara falsa una voce intera; s
 - **C-05** · cop-3 · imprecisa — `tools._snapshot` è di `promise` specie `chiedi`, non di `execute`; il reperto resta (zona di `person.*` in chiaro in `promessa.istantanea`)
 - **C-06** · cop-8 · incompleta, imprecisa — `handlers_reasoning.py` sta in entrambe le colonne; il 401 HTTP di `handlers_mcp.py` è `{"error"}` (terza forma: `error` JSON-RPC); manca `{"status": "error", "message"}` della chat
 - **C-10** · cop-6 · incompleta, due etichette sbagliate — i prefissi sono scritti a mano anche da chi produce i soggetti (`watcher.py:596,779,800,839`); `handlers_mind.py:344` non è «campi giudizio» (chiavi della POST); `OUTCOME_GESTURES` sono i GESTI di un esito, non «specie osservazione», senza lettori Python
-- **D-05** · cop-6 · imprecisa — `actuator_turn` non ha nessun `bridge_turn` (il job è composto in `server.py:2331`); il contratto due volte vale per analista (`analyst_turn.py:271` + `:306-308`) e ricette (`recipe_turn.py:260` + `:577-579`)
+- **D-05** · cop-6 · imprecisa — `proposer_turn` non ha nessun `bridge_turn` (il job è composto in `server.py:2331`); il contratto due volte vale per analista (`analyst_turn.py:271` + `:306-308`) e ricette (`recipe_turn.py:260` + `:577-579`)
 - **D-20** · cop-3 · SBAGLIATA in parte — `search(genere=ricordo)` non «elenca e apre»: apre soltanto, e solo con un `riferimento` numerico [E]
 - **D-20** · cop-4 · doppio conteggio — il ramo `_view_behavior`/`ricordi` (`queries.py:1369`) è lo STESSO reperto di M-32: si conta una volta
 - **D-26** · cop-3 · imprecisa — la gemella di `actuator._states()` non è `tools._mirror` ma `tools._state_readings` (`:2758`); `_mirror` è una terza forma
@@ -485,7 +466,7 @@ Note sulle quattro: in A (finestra di memoria) cop-1 dichiara dedotta l'invarian
 ### 3c. Nuove: rapporti di copertura che non concordano su una voce v1
 
 - **D-07 · quanti posti per l'alias di default `sonnet`** (il registro v1 dice tre). cop-7: «almeno quattro» (`runner.py:688`, `:1721`, `handlers_models.py:67`, `model_resolution.py:894`). cop-8: «sono quattro», e il quarto è `handlers_chat.py:646`. I due elenchi non coincidono: l'unione ne fa cinque. Non scelto.
-- **D-05 · il contratto due volte sul ponte.** cop-6: imprecisa (`actuator_turn` non ha `bridge_turn`; lo dice anche cop-1 correggendo D-07). cop-7: «confermata senza modifiche». Non scelto: la riga porta la correzione di cop-6 e la conferma di cop-7 nelle fonti.
+- **D-05 · il contratto due volte sul ponte.** cop-6: imprecisa (`proposer_turn` non ha `bridge_turn`; lo dice anche cop-1 correggendo D-07). cop-7: «confermata senza modifiche». Non scelto: la riga porta la correzione di cop-6 e la conferma di cop-7 nelle fonti.
 - **B-05 · quante politiche di nome.** cop-9: le vive sono 3-4, non 4-5 (la politica B del resolver non ha lettori). cop-3: ne manca una (le automazioni). cop-6: la politica E è descritta a metà. Tre correzioni compatibili fra loro, ma il numero finale non lo dà nessuno.
 - **A-13 · indice `Lookup`.** cop-3 e cop-8 confermano righe e contenuto; cop-9 ne cambia il verdetto (divergente solo nell'ingresso, Unirla PS). La riga porta la versione di cop-9.
 - Conferma delle righe da un rapporto, correzione di contenuto da un altro (non sono contraddizioni: letture di file diversi): **A-12** (cop-3 imprecisa, cop-4 confermata) · **A-17** (cop-6 incompleta, cop-9 righe verificate) · **B-23** (cop-4 «giusto», cop-5 imprecisa su `ha_client.py:1536`) · **B-24** (cop-4 confermata, cop-3, cop-5, cop-6 incompleta) · **D-09** (cop-1 «giusta», cop-7 una sola lettura viva di `HIRIS_AGENT_POLL_SECONDS`) · **D-26** (cop-3 imprecisa, cop-9 righe verificate).
@@ -575,7 +556,7 @@ Non cambiano il verdetto: spostano una riga o aggiungono una copia che il regist
 - **C-15** · cop-8 · righe, incompleta — il blocco è `handlers_chat.py:1008-1016`; `max_turns_reached` esce con stato 200
 - **C-26** · cop-9 · incompleta — non elenca i file con più mescolanza (`workshop.py:62-63`, `keeper/store.py:350/352`)
 - **D-02** · cop-7 · righe, incompleta — `BASE_TOOL_RULES` va da `:267` a `:352`; lo stesso difetto vale per la PROMESSA (6 strumenti su 12) e per `chat_stream`
-- **D-07** · cop-1 · incompleta — `_enqueue_actuator_turn` è l'unica che scrive il job a mano: `actuator_turn` non ha `bridge_turn`
+- **D-07** · cop-1 · incompleta — `_enqueue_actuator_turn` è l'unica che scrive il job a mano: `proposer_turn` non ha `bridge_turn`
 - **D-08** · cop-1 · incompleta — l'attuatore controlla `day != today` ma non `status`; il suo «già letto» confronta un valore diverso dalla traccia
 - **D-09** · cop-1 · incompleta — il letterale `5` a `server.py:149` determina anche il testo del messaggio all'utente
 - **D-09** · cop-8 · incompleta — `handlers_chat_history.py:50,81,91,100,112` usa `app["data_dir"]` senza ripiego: due stili per la stessa chiave
@@ -750,6 +731,45 @@ Restano aperte: cambia solo chi le chiude.
   (`handlers_models.bridge_deadline_min`, sette copie in meno) e S-02 (la promessa scaduta dice
   l'attesa del suo turno). La scadenza dentro il lavoratore è S-09, Task 8.
 
+### 8e. Il Task 8 (06/10/2026)
+
+Chiuse con `registro.py chiudi`: D-63 (un dispatcher per turno), S-09 (la CLI ha il tempo del
+turno), D-66 (il corpo JSON letto in un posto) e D-31 (verificata: la riparazione delle ricette
+ha una strada sola dal Task 1.6 degli attori).
+
+Spostate, restano aperte:
+
+- **D-30** → attori, strato 3: gli strumenti di lettura nei turni degli attori. Oggi i quattro
+  mestieri del cervello sono autosufficienti (`steering.SPECIES`) e non chiamano strumenti; il
+  ramo della rotta MCP senza soffitto serve un turno che non porta né chat né promessa, e nessuno
+  ne produce. Lo strato 3 dà gli strumenti all'analista: lì si decide con quale soffitto.
+- **D-32** → attori, strati 3-4: i giri del cervello dentro `server.py` si riscrivono lì.
+- **D-34** → attori, strato 3: la serie dell'analista.
+- **D-36** → lo sprint «Una fonte sola di verità» (la cronaca): il resoconto di un giorno scritto
+  in tre punti di `server.py` tocca `aggregate_day`, su cui lo sprint lavora.
+- **D-37**, **D-38** → attori, strato 4: lo scheletro di `_write_analysis`/`_write_actuation` e
+  l'indice del modello sono dell'attuatore, in pausa.
+- **A-23** resta DP: il Task 8 non ha cambiato il lavoratore. Il lavoratore è solo quello dentro
+  il processo (`server.py` avvia `agent/runner.run_loop`; il «percorso a processo separato
+  (`main()`)» che un commento di `server.py` cita non esiste più). Ma ciò che segue la consegna
+  (la promessa che si chiude, la risposta della chat, il registro) vive nel gestore HTTP
+  `handlers_reasoning.handle_reasoning_submit`, e il ponte riceve la sua credenziale di turno
+  dalle stesse intestazioni: togliere il giro HTTP vuol dire prima estrarre quella logica dal
+  gestore. È una fetta sua, da decidere col proprietario.
+
+### 8f. A-23, la fetta sua (06/10/2026)
+
+Il proprietario ha scelto la risposta A del rapporto del Task 8: una fetta sua. Chiusa con
+`registro.py chiudi` (commit `4bbdf06`). Prima la consegna è uscita dal gestore HTTP
+(`api/handlers_reasoning.py` → `reasoning/consegna.py`, gli stessi rami), poi il giro: il
+lavoratore prende il turno dalla coda, lo ragiona nell'executor, lo consegna dentro il processo, e
+a coda vuota aspetta che `ReasoningQueue.enqueue` lo svegli. Con le due rotte esce il loro
+cancello (A-4): una rotta che non esiste non si difende.
+
+Toccata per strada: **M-74**. Delle cuciture che elencava escono `app["_clock"]` (la leggeva solo
+il gestore uscito) e `thread_to_context` (dava forma alla risposta del claim). La voce resta
+aperta per il resto.
+
 ---
 
 ## 8. La Tappa 4 (piano del 04/10/2026): voci spostate, verdetti corretti, reperti ricondotti
@@ -824,6 +844,22 @@ si corregge il piano.
 
 ---
 
+
+
+## 9. La Tappa 5, Task 5 (06/10/2026): le regole e le descrizioni degli strumenti
+
+Fonte: il piano `piani/2026-10-tappa-5-gli-strumenti.md` (cartella del progetto), Task 5, sul
+ramo dello strato 4 (`6b857ec`). Chiuse con `registro.py chiudi`: B-32, D-68, C-65, D-03, D-56,
+D-57, D-69 (commit `c39482f5`) e C-49 (lo strumento `mind`, `eea18be`).
+
+Spostate, restano aperte:
+
+- **C-37**, **C-38** → Tappa 5, Task 6 (i tetti per risposta, R16): la traccia passo per passo
+  senza tetto e `calendar` senza tetto di righe sono tetti, e il Task 6 li scrive dopo la misura.
+- **C-35** resta aperta, da decidere col proprietario: le frasi fisse per risposta
+  (`nessuna_registrazione.perche`, `_NO_RECORDING` in `house_history.py`) ripetono la
+  descrizione, ma toglierle cambia la forma della risposta e va contro la fondamenta 1
+  (un oggetto porta cio' che serve a interpretarlo da solo). Prima la regola, poi il codice.
 
 ## Chiuse
 
@@ -1040,3 +1076,22 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | E-07 | Il contratto dell'«intenzione» dell'attuatore contro l'officina | Tappa 6 (da rilasciare) | 15578e6 | Tappa 6, Task 5 (D5): l'intenzione del contratto si deriva dallo schema di propose; apply_actuation la valida con workshop.form_refusal prima dell'officina. L'attuatore resta in pausa |
 | D-58 | `esito = riuscito` per una risposta troncata o con uno strumento «scappato» | integrazione Tappe 4-6 (da rilasciare) | 052b03f | due esiti suoi, misurati in steering.misura_turno: troncato (Tappa 6, Task 3, 21f6e0d) e strumento_scappato (B22, 052b03f), letti da last_truncated e last_tool_leaked di entrambi i runner e del router. Sul ponte il troncato non si sa: la CLI 2.1.286 non dichiara mai max_tokens a fine turno (B25, 1683180) |
 | B-26 | Motivo scritto per le misure non calcolabili: cinque stringhe, cause vere che non coincidono | attori strato 1 (da rilasciare) | 6d41d2b | il messaggio unico non c'e' piu': la causa e' un campo (operations.CAUSES = stati di House.source + cause della misura), il resoconto e i tratti la portano; la frase dice la causa vera, lo state_class solo dove e' la causa |
+| D-36 | Il resoconto di un giorno scritto con le stesse due chiamate in tre punti | attori (da rilasciare) | 2c14dcb6 | write_day_report in server.py: la coppia _report_ingredients + aggregate_day in un posto solo; notte, recupero e riparazione la chiamano, e tengono la loro regola di sovrascrittura e di errore. Cancello: test_fonte_unica.py::test_d36_il_resoconto_di_un_giorno_ha_una_strada_sola |
+| D-02 | `BASE_TOOL_RULES` ai turni che non hanno strumenti | Tappa 6, Task 7 | b432a51 | steering.compose_base: le regole sugli strumenti entrano solo per gli strumenti del turno (claude_runner.TOOL_RULES, ogni regola coi suoi strumenti); analista, attuatore, osservatore e ricette ne ricevono 0 caratteri, la promessa solo le sue. Prova R18 in tests/test_un_turno.py |
+| D-07 | Accodare sul ponte: sei `enqueue`, il modello scelto vale solo per la chat | Tappa 6, Task 7 | b432a51 | steering.enqueue_turn, l'unico .enqueue del prodotto: kind e precedenza dalla dichiarazione del mestiere, modello del proprietario e scadenza dall'archivio. I sei accodamenti vi passano |
+| D-35 | `llm_router or claude_runner` scritto 10 volte; il ramo destro non può mai scattare | Tappa 6, Task 7 | b432a51 | steering.chain_runner, la sola lettura di llm_router or claude_runner (nove punti prima). Il ramo destro resta: i test lo impostano |
+| D-67 | La regola «Nome (id: X)» ripetuta in tre prompt | Tappa 6, Task 7 | b432a51 | le tre regole scrivono l'esempio chiamando topology.name_with_id (D6, opzione A): la resa del nome con l'id, non una costante |
+| D-63 | Sul ponte ogni `tools/call` rifà ciò che la catena fa una volta per turno | Tappa 6, Task 8 | 395c178 | api/handlers_mcp.ExchangeTurn: il dispatcher si costruisce alla prima tools/call del turno e serve le altre; tre chiamate, una casa (prima tre). Esce alla scadenza del ponte |
+| S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda | Tappa 6, Task 8 | 395c178 | agent/runner._reason_chat: il timeout della CLI e' il tempo che resta al turno (deadline_ts), non 300 fisso; la CLI si ferma quando il ripiego comincia, e un turno scaduto non la invoca |
+| D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | Tappa 6, Task 8 | 395c178 | api/boundary.json_object, la lettura unica: nove rotte; un corpo [] non da' piu' 500. Resta a parte la rotta MCP, che risponde in JSON-RPC (-32700) |
+| D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | Tappa 6, Task 8 | 7550547 | verificata il 06/10: la riparazione ha una strada sola, il giro delle ricette (recipe_turn.recipes_to_repair, attori Task 1.6); la domanda la compone build_device_question per la catena e per il ponte |
+| B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | le due frasi sui filtri di search e history sono un frammento solo (_SUBJECT_FILTERS) con le differenze dichiarate accanto; le due tabelle restano due perche' guardano due sensi diversi (genere di oggetto, cosa chiedere), che ora hanno anche due nomi (C-65) |
+| D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | _depth_rule in tools.py, una frase per le due descrizioni; la soglia si chiede a house_query.depth_for. Prova: test_history_tool::test_search_e_history_dicono_la_profondita_con_le_stesse_parole |
+| C-65 | `genere` con tre significati: genere di oggetto (`search`), cosa chiedere (`history`), genere della cronaca | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | il parametro di history si chiama cosa (D3); genere resta il genere di oggetto di search e il genere della cronaca |
+| D-03 | Regole d'uso degli strumenti: `BASE_TOOL_RULES` contro `_GUIDE_WITH_TOOLS` | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | la guida del ponte non ripete piu' le regole di claude_runner.TOOL_RULES, che il ponte compone gia' (steering.compose_base): restano i nomi prefissati, la fotografia e il tetto per chiamata. Le etichette per id sono entrate nelle regole di execute. Prove: test_prompt_parallelism (una volta sola), test_action_prompt |
+| D-56 | Promessa sul ponte: la guida nomina 7 strumenti assenti e non `conclude`; regole triplicate | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | guide_with_tools nomina gli strumenti del turno: la promessa legge i suoi sei, conclude compreso; l'avviso dei nomi vecchi nomina solo i suoi; keeper/exchange._system_prompt non ripete piu' gli id fra parentesi e il parallelismo. Prove: test_bridge_receives_briefing::test_la_promessa_sul_ponte_legge_i_suoi_strumenti_e_non_quelli_della_chat, test_keeper_exchange |
+| D-57 | La guida del ponte: secondo catalogo a mano, `mcp__hiris__` ricopiato venti volte (in potenza) | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | i nomi mcp__hiris__* li compone guide_with_tools dagli strumenti del turno, col prefisso di runner.mcp_name (usato anche da mcp_names, read_stream e _bare_tool_name). Mutazione eseguita: una riga in piu' nella tabella TOOLS compare nella guida senza toccare guida ne' prova |
+| D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | la composizione l'ha fatta la Tappa 6, Task 7 (compose_base); il contenuto qui: la promessa riceve le sole regole dei suoi strumenti (1.272 caratteri, nessuna di execute, propose, remember, confirm) |
+| C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | Tappa 5, Task 5 (ramo, non rilasciata) | eea18be | lo strumento mind (Tappa 5, Task 8): scope, obiettivo, resoconti, analisi ed energia sono chiedibili dalla chat; verificato il 06/10/2026 sull'enum di cosa |
+| A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | Tappa 6, A-23 | 4bbdf06 | le rotte /api/reasoning/claim e /api/reasoning/submit, il loro cancello e HIRIS_AGENT_POLL_SECONDS: il lavoratore prende il turno con ReasoningQueue.claim, lo consegna con reasoning/consegna.consegna e a coda vuota aspetta che enqueue lo svegli |
+| M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso. Riletto il 02/10: sono il vocabolario delle sette domande del proprietario dell'11/09 (`docs/design/2026-09-11-le-domande-del-proprietario.md`), le eseguono le prove di quel cancello. Misurato in casa il 02/10: le 21 ricette archiviate usano 7 operazioni, nessuna delle dieci. **Il 06/10/2026 (D7 del piano degli attori strati 3-4) ne escono otto** con le prove delle sette domande; restano `episodio`, `tempo_in_stato` e `Period` per la presenza, ancora senza chiamante: la voce si chiude quando lo strumento di calcolo li alimenta (strato 3, Task 3.1-3.2). Il 06/10/2026 la ricetta al volo (`mind/compute.py`, Task 3.1) li alimenta dagli stati di un'entità, con la copertura vera; lo strumento però non è ancora offerto a nessun turno (Task 3.6, dopo Tappa 5 T8 e Tappa 6 T7-T8): la voce si chiude allora | attori, Task 3.6 (ramo, non rilasciata) | a0ccd46c | la ricetta al volo (mind/compute.py) alimenta episodio, tempo_in_stato e Period ed e' offerta all'analista dal Task 3.6; eccezioni compute e tool_def uscite dal censimento |

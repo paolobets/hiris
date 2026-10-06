@@ -16,12 +16,11 @@ Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
 `build_chat_messages` e il commento sopra `BASE_IDENTITY` in claude_runner.py.
 """
 from ..claude_runner import (
-    BASE_IDENTITY,
-    BASE_TOOL_RULES,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
 )
+from ..steering import compose_base
 
 # La guida del ramo SENZA strumenti. Parla di questo TURNO, non del prodotto:
 # «non puoi accendere ... perche' lo strumento che lo fa qui non c'e' -- non
@@ -62,132 +61,100 @@ _GUIDE_WITHOUT_TOOLS = (
     "invece di tirare a indovinare."
 )
 
-# La guida del ramo CON gli strumenti (`_GUIDE_WITH_TOOLS`, piu' sotto). Esce
-# quando la sonda dice che gli strumenti ci sono (`agent/runner.py::
-# _reason_chat` passa `active_tools`), e cio' che le impedisce di diventare
-# falsa e' l'INVARIANTE nei due versi (tests/test_tools_to_bridge.py):
-# `--mcp-config` nell'argv <=> questo testo nel system. Mai l'uno senza l'altro.
+# **I nomi DI PRIMA degli strumenti** -- una riga di compatibilita'
+# temporanea, e qui sotto c'e' scritto cosa la fa sparire.
 #
-# Il testo nomina gli strumenti coi nomi PREFISSATI (`mcp__hiris__search`...),
-# quelli di `runner.mcp_names()`: e' l'UNICA forma in cui la CLI li serve e
-# l'unica che il modello puo' chiamare. E ricollega a loro i nomi nudi che la
-# persona (il system prompt delle impostazioni della chat) continua a usare:
-# li elenca, non li conta. Uno strumento che entra o esce dal catalogo
-# (`home_space/tools.py`) qui si aggiunge o si toglie a mano, e lo pretende
-# `test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati`
-# (tests/test_agent_runner_inaddon.py).
+# Il 02/09 i nomi che il modello legge sono passati all'inglese, e la persona
+# nel proprio prompt puo' continuare a scrivere quelli vecchi:
+# `chat_settings.py::DEFAULT_SYSTEM_PROMPT` e' un DEFAULT, e chi ha salvato il
+# proprio testo almeno una volta serve al modello «usa `cerca` e `guarda`»
+# anche dopo l'aggiornamento. Senza questa riga il modello legge
+# un'istruzione che nomina uno strumento che non esiste piu' -- e il
+# dispatcher lo rifiuta davvero, quindi il turno si brucia o, peggio, il
+# modello se ne dimentica e racconta di aver guardato.
 #
-# Le regole del giro in due tempi di `propose`/`confirm` stanno in
-# `claude_runner.BASE_TOOL_RULES`, che questo ramo compone comunque (vedi
-# `build_chat_messages`). Qui sta cio' che riguarda i NOMI e il ponte: gli id
-# per `execute` si prendono da `mcp__hiris__search`, e sul ponte ogni
-# chiamata conta nel tetto per-turno.
+# **Questa tabella E' il fatto** (CLAUDE.md, «l'elenco E' il fatto»): i nomi
+# vecchi non vivono in nessun'altra parte del prodotto. Il default storico
+# ne nominava due (`cerca`, `guarda`); `view` (uscito il 29/09/2026 con «una
+# porta sola per la casa») e `ricorda` coprono i prompt salvati dopo la
+# rinomina; i quattro lettori del tempo sono diventati `history` il
+# 30/09/2026, e la guida del ponte li ha serviti per un mese.
 #
-# **La riga di compatibilita' sui nomi VECCHI degli strumenti -- temporanea, e
-# qui sotto c'e' scritto cosa la fa sparire.**
+# Dal 06/10/2026 (Tappa 5, Task 5) l'avviso nomina solo i nomi vecchi degli
+# strumenti che il turno HA: alla promessa, che non ha `remember`, non si
+# dice che `ricorda` si chiama `remember`.
 #
-# Il 02/09 i quattordici nomi che il modello legge sono passati all'inglese.
-# Questa guida ricollega gia' i nomi nudi del prompt della persona ai nomi
-# prefissati (`_GUIDE_WITH_TOOLS`, il capoverso qui sotto) -- ma quel
-# ricollegamento elenca i nomi NUOVI, e la persona nel proprio prompt continua
-# a scrivere quelli vecchi: `chat_settings.py::DEFAULT_SYSTEM_PROMPT` e' un
-# DEFAULT, e chi ha salvato il proprio testo almeno una volta serve al modello
-# «usa `cerca` e `guarda`» anche dopo l'aggiornamento. Senza questa riga il
-# modello legge un'istruzione che nomina uno strumento che non esiste piu' --
-# e il dispatcher lo rifiuta davvero (`home_space/tools.py`, `name not in
-# _TOOL_NAMES`), quindi il turno si brucia o, peggio, il modello se ne
-# dimentica e racconta di aver guardato.
-#
-# **Dice tre cose e nessuna di piu'**: che i nomi italiani nel testo sopra sono
-# i nomi VECCHI, a quali nuovi corrispondono, e che valgono quelli del
-# catalogo. NON dice «sono gli stessi strumenti coi nomi di prima»: quella
-# forma suggerirebbe che i nomi vecchi funzionino ancora, e non e' vero.
-#
-# **Condizione di uscita, scritta perche' una riga di compatibilita' senza una
-# condizione resta li' per sempre e nessuno sa piu' perche':** questa riga si
-# toglie il giorno in cui nessun `impostazioni_chat.json` in circolazione
-# contiene piu' un nome italiano di strumento -- cioe' quando ogni
-# installazione ha o il default nuovo o un prompt riscritto a mano. Non si
-# misura dal repository: si misura sulle installazioni vive.
-#
-# Pochi nomi bastano perche' il catalogo intero e' elencato nella guida qui
-# sotto. Il default storico ne nominava DUE soli (`cerca`, `guarda`); `view`
-# (il nome inglese di `guarda`, uscito il 29/09/2026 con «una porta sola per
-# la casa») e `ricorda` coprono i prompt salvati dopo la rinomina e i piu'
-# frequenti fra quelli riscritti a mano. Dal 30/09/2026 («la storia») cita
-# anche i quattro lettori del tempo diventati `history`: sono i nomi che la
-# guida del ponte ha servito per un mese, e un prompt salvato in quel mese
-# li nomina. I nomi di prima che l'avviso cita oggi sono otto: `cerca`,
-# `guarda`, `ricorda`, `view`, `trend`, `logbook`, `system_log`,
-# `automation_trace`.
-_OLD_NAMES_NOTICE = (
-    "Se il testo qui sopra nomina gli strumenti in italiano (`cerca`, "
-    "`guarda`, `ricorda`...), `view`, `trend`, `logbook`, `system_log` o "
-    "`automation_trace`, sono i nomi DI PRIMA: oggi `cerca`, `guarda` e "
-    "`view` sono un solo strumento, `search`; `trend`, `logbook`, "
-    "`system_log` e `automation_trace` sono un solo strumento, `history`; "
-    "e `ricorda` si chiama `remember`. Usa i nomi del catalogo.\n"
-)
+# **Condizione di uscita:** la tabella si svuota il giorno in cui nessun
+# `impostazioni_chat.json` in circolazione contiene piu' un nome italiano di
+# strumento. Non si misura dal repository: si misura sulle installazioni vive.
+_OLD_NAMES = {
+    "search": ("cerca", "guarda", "view"),
+    "remember": ("ricorda",),
+    "history": ("trend", "logbook", "system_log", "automation_trace"),
+}
 
+
+def _old_names_notice(tools) -> str:
+    """L'avviso sui nomi di prima, per gli strumenti di questo turno. Dice tre
+    cose e nessuna di piu': che quei nomi sono VECCHI, a quale nome nuovo
+    corrispondono, e che valgono quelli del catalogo. Non dice «sono gli
+    stessi strumenti coi nomi di prima»: suggerirebbe che i vecchi funzionino
+    ancora, e non e' vero."""
+    pairs = [(new, old) for new, old in _OLD_NAMES.items() if new in tools]
+    if not pairs:
+        return ""
+    cited = ", ".join(f"`{name}`" for _new, old in pairs for name in old)
+    mapped = "; ".join(
+        ", ".join(f"`{name}`" for name in old)
+        + (" oggi e' " if len(old) == 1 else " oggi sono ") + f"`{new}`"
+        for new, old in pairs)
+    return (f"Se il testo qui sopra nomina {cited}, sono nomi DI PRIMA: "
+            f"{mapped}. Usa i nomi del catalogo.\n")
+
+
+# La guida del ramo CON gli strumenti. Esce quando la sonda dice che gli
+# strumenti ci sono (`agent/runner.py::_reason_chat` passa `active_tools`), e
+# cio' che le impedisce di diventare falsa e' l'INVARIANTE nei due versi
+# (tests/test_tools_to_bridge.py): `--mcp-config` nell'argv <=> questo testo
+# nel system. Mai l'uno senza l'altro.
+#
+# **Dice solo cio' che e' del ponte** (Tappa 5, Task 5; D-03). Fino al
+# 06/10/2026 ripeteva, coi nomi prefissati, sei regole che
+# `claude_runner.TOOL_RULES` gia' da' a questo stesso turno (gli id esatti
+# per `execute`, gli id fra parentesi, una `search` per piu' nomi, le stanze
+# passate a `execute`...): due testi della stessa regola, nello stesso
+# prompt. Qui restano i nomi PREFISSATI, la fotografia che non si aggiorna e
+# il tetto per chiamata, che sono veri solo sul ponte.
+#
+# I nomi non sono scritti qui: li compone `guide_with_tools` dagli strumenti
+# del turno (D-57). Fino al 06/10/2026 erano un secondo catalogo a mano, e la
+# promessa sul ponte leggeva sette strumenti che non aveva e non leggeva
+# `conclude`, che e' l'unico modo di finire (D-56).
 _GUIDE_WITH_TOOLS = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
-    "l'unica forma in cui puoi chiamarli: `mcp__hiris__search` per lo stato "
-    "della casa (elenco, filtri e dettaglio di una cosa sola), "
-    "`mcp__hiris__related` per "
-    "sapere chi tocca una cosa (quali automazioni, script, scene o gruppi la "
-    "usano), `mcp__hiris__remember` e `mcp__hiris__fetch` per la memoria di "
-    "cio' che le persone ti hanno detto, `mcp__hiris__execute` per far "
-    "succedere qualcosa in casa ADESSO, `mcp__hiris__promise` per mettere "
-    "da parte un'azione o una domanda per PIU' TARDI (verificata subito "
-    "contro questa casa, non quando arriva il momento di mantenerla), "
-    "`mcp__hiris__agenda` per sapere cosa e' ancora in sospeso o com'e' "
-    "andata, `mcp__hiris__cancel` per annullare una promessa non ancora "
-    "mantenuta, `mcp__hiris__propose` per proporre di creare, modificare o "
-    "cancellare un'automazione, uno script o una scena (non scrive: restituisce "
-    "un'anteprima), `mcp__hiris__confirm` per applicare quella proposta, "
-    "`mcp__hiris__history` per cio' che e' successo nel tempo -- come sono "
-    "cambiati gli stati e per mano di chi, come sono andati i valori, come "
-    "sono andate le esecuzioni di automazioni e script, cosa c'e' nel "
-    "registro degli errori di Home Assistant --, `mcp__hiris__calendar` "
-    "per i prossimi appuntamenti nei calendari di questa casa. "
-    "Quando il prompt qui sopra parla "
-    "di `search`, `related`, `remember`, `fetch`, `execute`, "
-    "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `history` "
-    "o `calendar` parla di "
-    "questi STESSI strumenti, non di altri: usa il nome prefissato per "
-    "chiamarli.\n"
-) + _OLD_NAMES_NOTICE + (
+    "l'unica forma in cui puoi chiamarli: quando il testo qui sopra li "
+    "nomina col nome nudo (`search`), parla di questi STESSI strumenti, e li "
+    "chiami col nome prefissato.\n"
     "Quando serve un valore CORRENTE chiama lo strumento invece di rispondere "
-    "con cio' che leggi nel contesto qui sotto: guarda adesso. Non inventare "
-    "stati, valori o entita', e non dire di aver guardato, di aver preso "
-    "nota o di aver acceso qualcosa se non hai chiamato lo strumento.\n"
-    "Gli id delle entita' che passi a `mcp__hiris__execute` sono quelli ESATTI "
-    "di questa casa: non li inventi e non li ricavi dal nome. Se hai solo il "
-    "NOME di una cosa chiama prima `mcp__hiris__search` e usa l'id che ti "
-    "risponde.\n"
-    "Gli id fra parentesi che vedi nell'albero della casa -- `Nome (id: X)` -- "
-    "sono gia' gli identificatori esatti: se un'area, un piano, "
-    "un'automazione o uno script li porta con se', usali direttamente e non "
-    "chiamare `mcp__hiris__search` per qualcosa che hai gia'.\n"
-    "Se devi risolvere piu' nomi nella stessa richiesta, chiama "
-    "`mcp__hiris__search` UNA sola volta con tutto il testo invece di una "
-    "chiamata per nome.\n"
-    "Se devi fare piu' letture indipendenti -- piu' `mcp__hiris__search` "
-    "con `riferimento`, piu' `mcp__hiris__related` -- puoi chiamarle IN PARALLELO nella stessa "
-    "risposta, ma qui OGNI chiamata conta nel tetto per-turno, anche quelle "
-    "parallele: il risparmio vero e' risolvere piu' nomi con UNA "
-    "`mcp__hiris__search` (vedi sopra) ed essere parsimoniosi con le "
-    "chiamate, non il parallelismo in se'.\n"
-    "Se invece la richiesta riguarda una STANZA, un piano o un dispositivo, "
-    "passane l'id a `mcp__hiris__execute` cosi' com'e' (`aree`, `piani`, "
-    "`dispositivi`) e NON raccogliere a mano gli id delle entita' che "
-    "contengono: li risolve Home Assistant, che e' l'unico a saperli tutti. "
-    "Raccoglierli a mano significa spegnerne quattordici su quindici e dire "
-    "di averle spente tutte. Le etichette (`etichette`) si danno per id, "
-    "come le conosce Home Assistant: nessuno strumento le risolve dal nome, "
-    "quindi non indovinare l'id di un'etichetta.\n"
+    "con cio' che leggi nel contesto qui sotto: guarda adesso.\n"
+    "Qui OGNI chiamata conta nel tetto per-turno, anche quelle parallele: il "
+    "risparmio vero e' risolvere piu' nomi con una ricerca sola ed essere "
+    "parsimoniosi con le chiamate, non il parallelismo in se'.\n"
 )
+
+
+def guide_with_tools(tools) -> str:
+    """La guida del ponte per gli strumenti di QUESTO turno: la parte fissa,
+    i nomi prefissati chiesti a `runner.mcp_name` (il prefisso viene dal
+    nome del server, `api/handlers_mcp.MCP_SERVER_NAME`) e l'avviso sui nomi
+    di prima. Uno strumento che entra nella tabella entra qui da solo."""
+    from .runner import mcp_name
+
+    names = ", ".join(f"`{mcp_name(tool)}`" for tool in tools)
+    return (_GUIDE_WITH_TOOLS + f"I tuoi strumenti in questo turno: {names}.\n"
+            + _old_names_notice(tools))
+
 
 #: I delimitatori del contenuto della casa, e la riga che dice cosa e'
 #: (reperto B-2, 22/09/2026).
@@ -317,7 +284,7 @@ _CHAT_INSTRUCTION = (
 
 def build_chat_messages(system_prompt: str, history: list, *,
                         contesto: str = "",
-                        active_tools: bool = False,
+                        active_tools: tuple[str, ...] = (),
                         restrict_to_home: bool = False,
                         response_mode: str = "",
                         istruzione: str = "") -> tuple[str, str]:
@@ -362,34 +329,27 @@ def build_chat_messages(system_prompt: str, history: list, *,
     `claude_runner.py::ClaudeRunner.chat` fa fra i suoi blocchi stabili e il
     breakpoint di cache.
 
-    `active_tools` sceglie DUE cose insieme, non una (fix round 1,
-    Critical 1 della review indipendente):
+    `active_tools` sono i NOMI degli strumenti di questo turno -- vuoto se
+    non ne ha, o se la sonda li ha smentiti -- e sceglie DUE cose insieme,
+    non una (fix round 1, Critical 1 della review indipendente):
 
-    1. **quanto di BASE viene emesso.** `BASE_IDENTITY` (chi e' HIRIS, cosa
-       conosce) e' vera su entrambi i percorsi ed entra sempre.
-       `BASE_TOOL_RULES` -- «Usa SEMPRE gli strumenti per dati sulla
-       casa», «chiama remember subito», «se hai chiamato uno strumento con
-       successo l'azione e' reale» -- e' un ORDINE DI CHIAMARE UNO STRUMENTO
-       che sul ponte non esiste, e sul ponte non viene emessa affatto. La
-       prima stesura di questo task passava BASE intero e lo faceva smentire
-       dalla guida che segue: una smentita di testo non e' un meccanismo, e
-       il caso peggiore -- «preso nota» senza aver salvato -- e' il bug
-       misurato in produzione da cui `remember` e' nato. Con
-       `active_tools=True` i due pezzi tornano contigui e il blocco e'
-       byte per byte `BASE_SYSTEM_PROMPT`, come nel ramo sincrono;
+    1. **quanto di BASE viene emesso**, dal compositore unico
+       (`steering.compose_base`, Tappa 6, Task 7). L'identita' entra sempre;
+       le regole sugli strumenti -- «Usa SEMPRE gli strumenti», «chiama
+       remember subito» -- sono ORDINI DI CHIAMARE UNO STRUMENTO, ed entrano
+       solo quelle degli strumenti che il turno ha. La prima stesura passava
+       BASE intero e lo faceva smentire dalla guida: una smentita di testo
+       non e' un meccanismo. Con gli strumenti della chat il blocco e' byte
+       per byte quello del ramo sincrono;
     2. **quale delle due guide entra.**
 
-    Nella fetta A era sempre False (nessun chiamante di produzione lo
-    passava). La fetta "il ponte riceve gli strumenti" (parita' B, Task 3) ha
-    raccolto il ramo True cambiando UN ARGOMENTO, senza riscrivere il prompt
-    una terza volta: `agent/runner.py::_reason_chat` lo passa, e il valore
-    viene dalla sonda `probe_tools` -- lo stesso booleano che decide
-    l'argv, due righe piu' sotto. Il default resta False perche' False e' il
-    ramo di DEGRADO, e un degrado deve essere cio' che si ottiene quando non
-    si sa: un default True prometterebbe strumenti a chi non li ha chiesti."""
-    # Con gli strumenti attivi le due meta' tornano adiacenti e il blocco e'
-    # esattamente `BASE_SYSTEM_PROMPT`: nessuna terza variante da mantenere.
-    base = BASE_IDENTITY + BASE_TOOL_RULES if active_tools else BASE_IDENTITY
+    Fino al 06/10/2026 era un booleano, e il ponte dava alla promessa le
+    regole di `execute`. Il valore viene da `agent/runner.py::_reason_chat`:
+    gli strumenti della dichiarazione del mestiere se la sonda `probe_tools`
+    li ha trovati, niente altrimenti -- lo stesso valore che decide l'argv,
+    due righe piu' sotto. Il default e' vuoto perche' vuoto e' il ramo di
+    DEGRADO, e un degrado deve essere cio' che si ottiene quando non si sa."""
+    base = compose_base(active_tools)
     system_parts = [base.strip()]
     if system_prompt:
         system_parts.append(system_prompt.strip())
@@ -413,7 +373,8 @@ def build_chat_messages(system_prompt: str, history: list, *,
     # rifiutare invece di rispondere.
     contesto = (contesto or "").strip()
     if not istruzione:
-        guida = _GUIDE_WITH_TOOLS if active_tools else _GUIDE_WITHOUT_TOOLS
+        guida = (guide_with_tools(active_tools) if active_tools
+                 else _GUIDE_WITHOUT_TOOLS)
         system_parts.append(
             guida + "\n" + (_CONTESTO_PRESENTE if contesto else _CONTESTO_ASSENTE))
         if contesto:

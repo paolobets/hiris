@@ -256,18 +256,68 @@ def _count(from_count: int) -> str:
         f"le ultime {int(from_count)} richieste")
 
 
-# La causa in parole, per la famiglia `credenziale`. Quattro codici, due azioni
-# diverse per chi legge: 400 e 402 dicono che i soldi sono finiti (Anthropic
-# risponde 400 con «credit balance too low» -- il caso del proprietario --,
-# OpenRouter 402), 401 e 403 dicono che la chiave non va bene. Chiamarle tutte
-# «credito esaurito» sarebbe un'ipotesi sulla causa, che è la cosa che questo
-# prodotto ha smesso di fare.
+# La causa in parole, per la famiglia `credenziale`. Tre codici, due azioni
+# diverse per chi legge: 402 dice che i soldi sono finiti (OpenRouter), 401 e
+# 403 dicono che la chiave non va bene. Chiamarle tutte «credito esaurito»
+# sarebbe un'ipotesi sulla causa, che è la cosa che questo prodotto ha smesso
+# di fare.
+#
+# **Il 400 non c'è, apposta** (G36-1, revisione del giro 36, 06/10/2026): fino
+# a quel giorno diceva «credito esaurito», ma per Anthropic il 400 è ogni
+# `invalid_request_error` -- il «credit balance too low» del proprietario è un
+# caso solo -- e Ollama risponde 400 a una richiesta che il modello non sa
+# servire (`server/routes.go`). La sua causa la dice il provider, citato
+# (`provider_occurrences.provider_said`).
 _CREDENTIAL_CAUSE: dict[int, str] = {
-    400: "credito esaurito",
     402: "credito esaurito",
     401: "la chiave non è accettata",
     403: "la chiave non è accettata",
 }
+
+
+# ── La frase della chat quando un provider non risponde (S-37) ──
+#
+# Fino al 06/10/2026 i runner dicevano a ogni rifiuto «Errore temporaneo del
+# servizio AI. Riprova tra poco.», e il codice e la famiglia andavano solo al
+# registro degli esiti. Misurato nel registro dell'add-on il 05/10/2026:
+# Claude 400 «credit balance is too low» e OpenRouter 403 «Key limit exceeded
+# (total limit)» detti «temporanei» -- e non lo sono. La causa si dice con la
+# STESSA tabella della pagina Modelli (`_CREDENTIAL_CAUSE`): due tabelle
+# direbbero due cause diverse dello stesso rifiuto.
+TEMPORARY_FAILURE = "Errore temporaneo del servizio AI. Riprova tra poco."
+#: Come cominciano le frasi di `failure_reply`: le riconosce il filtro della
+#: cronologia (`chat_store._TOXIC_ASSISTANT_PREFIXES`), che non le ricopia.
+FAILURE_OPENINGS = ("Il servizio AI ha rifiutato la richiesta",
+                    "Il servizio AI non risponde all’indirizzo")
+_WHERE_IT_IS_FIXED = "si sistema nella pagina Modelli."
+
+
+def _quoted(said: str | None) -> str:
+    """Cio' che il provider ha detto, fra virgolette, o niente."""
+    return f": «{said}»" if said else ""
+
+
+def failure_reply(family: str, code: int | None, said: str | None = None) -> str:
+    """La frase che la chat legge quando un provider non ha risposto: la
+    famiglia e il codice di `provider_occurrences.error_family`, detti come
+    fatto. Un codice senza causa nella tabella (il 400) cita cio' che il
+    provider ha detto (`said`), con le stesse parole della pagina Modelli.
+
+    Il ramo `altro` (un 500, un 429, un guasto senza codice) resta
+    `TEMPORARY_FAILURE`: non dice a chi legge cosa fare, e inventargli una
+    causa sarebbe l'ipotesi che questo prodotto non fa."""
+    fra_parentesi = f" ({code})" if isinstance(code, int) else ""
+    if family == "credenziale":
+        cause = _CREDENTIAL_CAUSE.get(code if isinstance(code, int) else 0)
+        what = f": {cause}{fra_parentesi}" if cause else fra_parentesi + _quoted(said)
+        return (f"{FAILURE_OPENINGS[0]}{what}. Riprovare non basta: "
+                f"{_WHERE_IT_IS_FIXED}")
+    if family == "modello":
+        return (f"{FAILURE_OPENINGS[0]}: il modello non esiste più{fra_parentesi}. "
+                "Un altro modello si sceglie nella pagina Modelli.")
+    if family == "irraggiungibile":
+        return f"{FAILURE_OPENINGS[1]} configurato: {_WHERE_IT_IS_FIXED}"
+    return TEMPORARY_FAILURE
 
 
 def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: float) -> str:
@@ -358,8 +408,11 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
         # nata la regola». Valeva per un ramo e non per l'altro.
         cause = _CREDENTIAL_CAUSE.get(code if isinstance(code, int) else 0)
         if cause is None:
-            return "ha rifiutato {}{}, {}".format(
-                _count(occurrence["da_quante"]), fra_parentesi, age)
+            # La causa la dice il provider, se l'ha detta (G36-1): la stessa
+            # citazione della chat (`failure_reply`).
+            return "ha rifiutato {}{}{}, {}".format(
+                _count(occurrence["da_quante"]), fra_parentesi,
+                _quoted(occurrence.get("messaggio")), age)
         return "ha rifiutato {} — {}{}, {}".format(
             _count(occurrence["da_quante"]), cause, fra_parentesi, age)
     # `altro`: il ramo di ciò che NON si è saputo classificare. Riporta il

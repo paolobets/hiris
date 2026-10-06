@@ -91,9 +91,9 @@ def test_gli_errori_della_storia_trovano_l_integrazione_con_la_maiuscola():
     """`house_history.error_rows` confrontava l'integrazione esatta.
 
     Mutazione ESEGUITA: il confronto torna esatto -- rossa."""
-    esatto = hh.error_rows(_q(genere="errori", integrazione="zha"), _REGISTRO)["voci"]
+    esatto = hh.error_rows(_q(cosa="errori", integrazione="zha"), _REGISTRO)["voci"]
     assert esatto
-    assert hh.error_rows(_q(genere="errori", integrazione="ZHA"), _REGISTRO)["voci"] == esatto
+    assert hh.error_rows(_q(cosa="errori", integrazione="ZHA"), _REGISTRO)["voci"] == esatto
 
 
 def _unicodedata_normalize_calls(albero) -> int:
@@ -111,7 +111,7 @@ def test_gli_accenti_si_piegano_in_un_posto_solo():
     arrossisce.
 
     Mutazione ESEGUITA: rimettere `unicodedata.normalize("NFKD", ...)` in
-    `keeper/recipient._slugify` -- rossa."""
+    `keeper/recipient._slugify` (oggi `reference.slugify`) -- rossa."""
     trovate = {p.relative_to(APP).as_posix(): n for p in sorted(APP.rglob("*.py"))
                if (n := _unicodedata_normalize_calls(
                    ast.parse(p.read_text(encoding="utf-8"))))}
@@ -122,7 +122,7 @@ def test_gli_slug_tengono_il_proprio_filtro_ascii():
     """Gli slug usano la piegatura comune e tengono il loro filtro: le due
     forme misurate restano le stesse."""
     from hiris.app.action.construction.composer import available_slug
-    from hiris.app.keeper.recipient import _slugify
+    from hiris.app.home_space.reference import slugify as _slugify
     assert available_slug("Perché  la Città?", set()) == "perche_la_citta"
     assert _slugify("Telefono di Andrè") == "telefono_di_andre"
     assert _slugify("日本") == "unknown"

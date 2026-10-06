@@ -36,6 +36,35 @@ from __future__ import annotations
 MINIMUM_HISTORY = 3
 
 
+#: Le chiavi che fanno l'IDENTITA' di un'osservazione -- e quindi della domanda
+#: che l'attuatore ne fa, e della proposta che ne nasce: chi, cosa si misura, quale
+#: chiave dentro la misura, e con quale innesco. **I numeri non ci stanno**: se
+#: ci stessero, ogni giorno sarebbe una domanda nuova e una proposta rifiutata
+#: ieri tornerebbe oggi con la stessa faccia.
+_IDENTITY = ("soggetto", "misura", "chiave", "innesco")
+
+#: Cio' che rende una prova **diversa** da quella contro cui il proprietario ha
+#: deciso: su quanti giorni si regge (`base`), quanto si stacca
+#: (`quanti_scarti`), e se nel frattempo qualcuno l'ha spiegata. Cambiano
+#: questi, la domanda si riapre (spec §4); non cambia niente, tace.
+#:
+#: **Non a tempo**: il tempo non e' una prova, e riproporre la stessa cosa con
+#: gli stessi dati e' insistere, non informare. E' la stessa regola che il
+#: sapere usa per i rifiuti delle ricette -- «un rifiuto vale finche' vale il
+#: registro contro cui e' stato deciso».
+_EVIDENCE = ("base", "quanti_scarti", "spiegato")
+
+
+def observation_key(observation: dict) -> str:
+    """L'impronta identitaria di un'osservazione dell'analista."""
+    return "|".join(str(observation.get(name)) for name in _IDENTITY)
+
+
+def evidence_of(observation: dict) -> dict:
+    """La forza della prova su cui quella domanda si regge, adesso."""
+    return {name: observation.get(name) for name in _EVIDENCE}
+
+
 def with_deviation(series: dict) -> dict:
     """La stessa serie, con lo **scostamento** dell'ultimo valore su ogni riga.
 
@@ -127,3 +156,203 @@ def _median(values: list) -> float:
     if len(ordered) % 2:
         return float(ordered[middle])
     return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def index(series: dict) -> list[tuple[int, dict]]:
+    """L'**indice** della domanda (D2 del piano degli attori, 06/10/2026):
+    una riga per misura, `(numero, riga)`, coi numeri che il codice ha gia'
+    calcolato e **nessun valore della serie**.
+
+    Il numero e' la posizione della misura in `series["serie"]`, la chiave con
+    cui il modello se ne riferisce (`analyst_turn.apply_analysis`): l'indice
+    cambia l'ordine in cui le righe si leggono, non la loro chiave.
+
+    **In ordine, e nessuna manca** (D3). Prima le misure con lo scostamento
+    calcolato, dalla piu' lontana dalla sua storia; poi le altre, nell'ordine
+    stabile della serie. Ordinare non e' una soglia; tagliare lo sarebbe, e
+    non si taglia: una misura con due giorni di storia e' una riga come le
+    altre, coi suoi numeri.
+    """
+    days = list(series.get("giorni") or [])
+    rows = list(series.get("serie") or [])
+
+    def _order(pair):
+        number, row = pair
+        spread = (row.get("scostamento") or {}).get("quanti_scarti")
+        if spread is None:
+            return (1, 0.0, number)
+        return (0, -abs(spread), number)
+
+    return [(number, index_row(row, days))
+            for number, row in sorted(enumerate(rows), key=_order)]
+
+
+def index_row(row: dict, days: list[str]) -> dict:
+    """Una riga dell'indice: chi e' la misura, i numeri di `with_deviation`,
+    la copertura riassunta, la causa se oggi non si calcola, e i fatti che la
+    rendono candidata a ciascun innesco (`trigger_facts`)."""
+    deviation = row.get("scostamento") or {}
+    values = list(row.get("valori") or [])
+    out = {"nome": row.get("nome"), "misura": row.get("misura"),
+           "chiave": row.get("chiave"), "unita": row.get("unita"),
+           "ultimo": deviation.get("ultimo"), "mediana": deviation.get("mediana"),
+           "scarto": deviation.get("scarto"), "base": deviation.get("base"),
+           "quanti_scarti": deviation.get("quanti_scarti"),
+           "copertura": coverage_summary(row.get("coperture") or []),
+           "giorni_con_valore": sum(v is not None for v in values)}
+    if deviation.get("non_calcolabile"):
+        out["non_calcolabile"] = deviation["non_calcolabile"]
+    cause = cause_today(row, days)
+    if cause is not None:
+        out["causa_oggi"] = cause
+    out["inneschi"] = trigger_facts(row, days)
+    return out
+
+
+def coverage_summary(coverages: list):
+    """La copertura dei giorni, riassunta: `"piena"` quando ogni giorno con la
+    misura l'ha avuta intera, altrimenti l'ultima, la minima e la mediana.
+    `None` se nessun giorno ne porta una."""
+    known = [c for c in coverages if c is not None]
+    if not known:
+        return None
+    if all(c == 1.0 for c in known):
+        return "piena"
+    return {"ultima": known[-1], "minima": min(known), "mediana": _median(known)}
+
+
+def cause_today(row: dict, days: list[str]) -> dict | None:
+    """Perche' l'ultimo giorno la misura non ha valore: il tratto di `perche`
+    che lo comprende (`{dal, ragione, causa}`), o `None` se un valore c'e' o
+    se il resoconto non ha detto perche'."""
+    values = row.get("valori") or []
+    if not days or not values or values[-1] is not None:
+        return None
+    for run in row.get("perche") or []:
+        if isinstance(run, dict) and run.get("al") == days[-1]:
+            return {"dal": run.get("dal"), "ragione": run.get("ragione"),
+                    "causa": run.get("causa")}
+    return None
+
+
+def trigger_facts(row: dict, days: list[str]) -> list[dict]:
+    """I fatti che rendono la misura candidata a un innesco (D3): il codice li
+    marca, il modello sceglie fra loro. `[{innesco, fatto}]`, vuoto quando non
+    ce n'e' nessuno.
+
+    1. lo scostamento si calcola (il fatto e' `quanti_scarti`, che la riga
+       porta gia': si nomina, non si ricopia), o la storia e' identica
+       tutti i giorni e l'ultimo no;
+    2. la storia non varia mai, e l'ultimo giorno nemmeno;
+    3. l'ultimo giorno non si calcola e un giorno prima si', o la copertura
+       dell'ultimo giorno e' diversa da quella del giorno prima.
+
+    Nessuna soglia: ogni scostamento calcolato e' un fatto, e l'indice lo
+    ordina (`index`).
+    """
+    deviation = row.get("scostamento") or {}
+    facts: list[dict] = []
+    last = deviation.get("ultimo")
+    numeric = isinstance(last, (int, float)) and not isinstance(last, bool)
+    if deviation.get("quanti_scarti") is not None:
+        facts.append({"innesco": 1, "fatto": "quanti_scarti"})
+    elif (numeric and (deviation.get("base") or 0) >= MINIMUM_HISTORY
+          and deviation.get("scarto") == 0):
+        if last != deviation.get("mediana"):
+            facts.append({"innesco": 1, "fatto": "la storia e' identica tutti i "
+                          "giorni e l'ultimo giorno no"})
+        else:
+            facts.append({"innesco": 2, "fatto": "non varia mai nella sua storia"})
+
+    values = list(row.get("valori") or [])
+    if values and values[-1] is None:
+        before = [i for i, v in enumerate(values[:-1]) if v is not None]
+        if before:
+            facts.append({"innesco": 3, "fatto": "l'ultimo giorno non si calcola; "
+                          f"l'ultimo valore e' del {days[before[-1]]}"})
+    coverages = list(row.get("coperture") or [])
+    if len(coverages) >= 2 and None not in coverages[-2:] \
+            and coverages[-1] != coverages[-2]:
+        facts.append({"innesco": 3, "fatto": "la copertura e' passata da "
+                      f"{coverages[-2]} a {coverages[-1]} nell'ultimo giorno"})
+    return facts
+
+
+#: Le due risposte alla domanda «l'ha gia' detta?» (D4 del piano degli
+#: attori, 06/10/2026). Le scrive il codice (`novelty`), non il modello: se
+#: un'impronta e' in memoria lo sanno gli archivi, e chiederlo al modello
+#: sarebbe ricopiare un fatto che possiamo leggere (giro 12 del revisore,
+#: G12-2; la lezione del 22/09, «il NUMERO, non il nome»).
+NOVELTY = ("nuova", "prova cambiata")
+
+
+def previous_observations(analyses, proposals, *, today: str,
+                          series: dict | None = None) -> list[dict]:
+    """La **memoria** dell'analista, ricavata dagli archivi (D4): nessuna
+    tabella nuova, riferimenti per impronta, mai copie.
+
+    `analyses` sono le analisi archiviate (`MindStore.analyses`, la finestra
+    `ANALYST_DAYS` del giro), `proposals` le proposte (`MindStore.proposals`).
+    Torna una voce per impronta, in ordine dalla piu' recente: chi e' la
+    misura, l'innesco, i giorni in cui e' stata detta, cosa e' stato detto
+    l'ultima volta, la prova di allora e l'esito della proposta che ne e'
+    nata, se c'e'. Se la misura e' ancora nella serie di oggi, `quale` e' il
+    suo numero.
+
+    L'analisi di `today` non e' memoria: e' quella che si sta riscrivendo.
+    """
+    numbers = {}
+    for number, row in enumerate((series or {}).get("serie") or []):
+        numbers[(row.get("soggetto"), row.get("misura"), row.get("chiave"))] = number
+    outcomes: dict[str, dict] = {}
+    for proposal in proposals or []:
+        key = proposal.get("impronta")
+        if key and key not in outcomes:
+            outcomes[key] = {"stato": proposal.get("stato"),
+                             "nota": proposal.get("esito_nota")}
+    by_key: dict[str, dict] = {}
+    ordered = sorted((a for a in analyses or [] if a.get("giorno") != today),
+                     key=lambda a: str(a.get("giorno") or ""), reverse=True)
+    for analysis in ordered:
+        for observation in analysis.get("osservazioni") or []:
+            if not isinstance(observation, dict):
+                continue
+            key = observation_key(observation)
+            seen = by_key.get(key)
+            if seen is not None:
+                seen["giorni"].append(analysis.get("giorno"))
+                continue
+            entry = {"impronta": key, "nome": observation.get("nome"),
+                     "misura": observation.get("misura"),
+                     "chiave": observation.get("chiave"),
+                     "innesco": observation.get("innesco"),
+                     "giorni": [analysis.get("giorno")],
+                     "cosa": observation.get("cosa"),
+                     "prova": evidence_of(observation),
+                     "esito": outcomes.get(key)}
+            where = (observation.get("soggetto"), observation.get("misura"),
+                     observation.get("chiave"))
+            if where in numbers:
+                entry["quale"] = numbers[where]
+            by_key[key] = entry
+    return list(by_key.values())
+
+
+def novelty(observation: dict, previous: list[dict]) -> str | None:
+    """Se un'osservazione e' nuova, ricavato dalla memoria: «nuova» se la sua
+    impronta non e' mai stata detta, «prova cambiata» se e' stata detta con
+    una prova diversa, `None` se e' **gia' detta con la stessa prova**.
+
+    Il `None` non rifiuta l'analisi: chi chiama toglie quella sola
+    osservazione, come `actuator.to_handle` toglie cio' che e' gia' deciso.
+    Rifiutare tutto faceva perdere le altre osservazioni del giorno, e la
+    domanda dopo era identica: su una misura che non varia mai (innesco 2)
+    fino a ventiquattro turni a vuoto (giro 12 del revisore, eseguito).
+    """
+    key = observation_key(observation)
+    said = next((p for p in previous or [] if p.get("impronta") == key), None)
+    if said is None:
+        return NOVELTY[0]
+    if said.get("prova") == evidence_of(observation):
+        return None
+    return NOVELTY[1]

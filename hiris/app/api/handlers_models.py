@@ -16,7 +16,7 @@ from ..model_resolution import (
     compose_topology,
     subscription_has_token,
 )
-from .boundary import error_response
+from .boundary import json_object
 
 logger = logging.getLogger(__name__)
 
@@ -539,12 +539,9 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
 
 
 async def handle_save_models_config(request: web.Request) -> web.Response:
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "invalid JSON body")
+    body = await json_object(request)
     data_dir = request.app.get("data_dir") or "/data"
-    clean = save_models_config(data_dir, body if isinstance(body, dict) else {})
+    clean = save_models_config(data_dir, body)
     request.app["models_config"] = clean   # hot-update per la sessione corrente
     # E poi si RIMETTE IN VIGORE. Aggiornare solo il dizionario cambiava la
     # PAGINA e non il RUNTIME: la catena del router e il timeout del backend

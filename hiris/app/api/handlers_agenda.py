@@ -43,7 +43,7 @@ from ..chat_thread import (
     unknown_id_text,
     without_thread,
 )
-from .boundary import error_response, occurrence_out
+from .boundary import error_response, json_object, occurrence_out
 from .soffitto import restricted_person
 
 # Vedi `handle_mark_read`: sta qui e non in `keeper/`, perche' e' un limite
@@ -103,11 +103,8 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     store = request.app.get("agenda")
     if store is None:
         return error_response(503, "archivio non disponibile")
-    try:
-        body = await request.json()
-    except Exception:
-        return error_response(400, "corpo non leggibile")
-    ids = body.get("ids") if isinstance(body, dict) else None
+    body = await json_object(request)
+    ids = body.get("ids")
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
         return error_response(400, "serve una lista `ids` di stringhe.")
     # Un tetto, perche' `mark_read` genera un segnaposto SQL per id: oltre

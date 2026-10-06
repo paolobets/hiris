@@ -848,7 +848,7 @@ def test_il_caso_del_proprietario_si_legge_sulla_riga():
         occurrences={"claude": CREDITO_FINITO, "openrouter": HA_RISPOSTO})
     righe = {r["id"]: r for r in catena}
     assert righe["claude"]["stato_testo"] == (
-        "ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa")
+        "ha rifiutato le ultime 40 richieste (400): «credit balance too low», 3 min fa")
     assert righe["openrouter"]["stato_testo"] == "ha risposto 3 min fa"
 
 
