@@ -227,8 +227,10 @@ veridicita' della soluzione»).
    dei servizi (`keeper/delivery.notify_admins`, ammessa per nome nel cancello §7.1). Il ciclo
    della push e' uno solo per le promesse e per l'avviso (`keeper/delivery.deliver`). Le
    proposte da fare a mano restano senza livello: una cosa che fa una persona non e' HIRIS che
-   tocca la casa. Una proposta che il modello costruisce ma non cita nella risposta non avvisa:
-   l'avviso parte dall'esito scritto, ed e' cio' che lo rende uno per proposta.
+   tocca la casa. Un avviso che non arriva si ritenta a ogni giro finche' arriva (scelta di
+   Paolo, 06/10/2026), e smette quando la proposta e' decisa o scaduta: le proposte da avvisare
+   le dice l'archivio delle costruzioni (tabella `avvisi`), quindi anche una costruita che il
+   modello non cita.
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON

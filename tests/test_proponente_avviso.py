@@ -122,10 +122,13 @@ class _Porta:
 
     def __init__(self):
         self.chiamate = []
+        self.arriva = True
 
     async def execute(self, call, *, actor, subject=None):
         self.chiamate.append({"call": call, "actor": actor, "subject": subject})
-        return {"eseguito": True}
+        if self.arriva:
+            return {"eseguito": True}
+        return {"eseguito": False, "errore": "Home Assistant non ha risposto"}
 
 
 def _osservazioni(quante):
@@ -182,7 +185,8 @@ async def test_una_proposta_ALTO_avvisa_gli_amministratori(casa):
     unica delle promesse e dalla porta dei servizi, firmata dal proponente.
 
     Rossa prima del Task 4.3: nessuna push. Mutazione ESEGUITA (06/10/2026):
-    `_alert_high` che non chiama `notify_admins` -- rossa."""
+    `_alert_high` che salta `notify_admins` -- rossa; `_alert_high` che chiede
+    le proposte `medio` invece delle `alto` -- rossa."""
     _analisi(casa, 1)
     casa["llm_router"] = _Modello(_SERRATURA)
 
@@ -202,8 +206,8 @@ async def test_una_proposta_MEDIO_non_avvisa_nessuno(casa):
     """D13: nel cervello cambia solo `alto`. Una `medio` va fra le Proposte, e
     nessun telefono suona.
 
-    Mutazione ESEGUITA (06/10/2026): `_alert_high` senza il controllo del
-    livello -- rossa."""
+    Mutazione ESEGUITA (06/10/2026): `to_alert` senza il filtro sul livello
+    -- rossa."""
     _analisi(casa, 1)
     casa["llm_router"] = _Modello(_LUCE)
 
@@ -224,30 +228,122 @@ async def test_un_turno_con_una_ALTO_e_una_MEDIO_avvisa_una_volta(casa):
     assert len(casa["action_actuator"].chiamate) == 1
 
 
-def test_una_seconda_lettura_dello_stesso_turno_non_avvisa_di_nuovo():
-    """Sul ponte la risposta si rilegge a ogni battito finche' non arriva un
-    turno nuovo. `_settle` torna solo le proposte scritte ADESSO: la seconda
-    lettura ne torna zero, e la push non parte due volte.
+@pytest.mark.asyncio
+async def test_un_avviso_ARRIVATO_non_si_ripete_al_battito_dopo(casa):
+    """Sul ponte la risposta si rilegge a ogni battito, e il giro guarda gli
+    avvisi a ogni battito: uno arrivato e' scritto nell'archivio, e la push
+    non parte due volte.
 
-    Mutazione ESEGUITA (06/10/2026): `_settle` che torna ogni «costruita»
-    della risposta, anche gia' scritta -- rossa."""
-    import tempfile
+    Mutazione ESEGUITA (06/10/2026): `mark_alerted` che non scrive -- rossa
+    (due push)."""
+    _analisi(casa, 1)
+    casa["llm_router"] = _Modello(_SERRATURA)
 
-    with tempfile.TemporaryDirectory() as cartella:
-        store = ObservationsStore(f"{cartella}/oss.db")
-        try:
-            store.replace_analysis(OGGI, {"osservazioni": _osservazioni(1),
-                                          "fondamento": {"giorni": 3}})
-            (osservazione,) = _osservazioni(1)
-            from hiris.app.mind.analyst import observation_key
+    await pr.proposer_round(casa)
+    await pr.proposer_round(casa)
 
-            esito = {"esiti": [{"impronta": observation_key(osservazione),
-                                "esito": "costruita", "proposta_id": "p1"}],
-                     "problemi": []}
-            assert pr._settle(store, OGGI, esito) == ["p1"]
-            assert pr._settle(store, OGGI, esito) == []
-        finally:
-            store.close()
+    assert len(casa["action_actuator"].chiamate) == 1
+
+
+@pytest.mark.asyncio
+async def test_un_avviso_che_NON_PARTE_si_ritenta_finche_arriva(casa):
+    """Scelta del proprietario, 06/10/2026 («Ritenta»): un avviso `alto` che
+    non arriva si ritenta al giro dopo, e quando arriva smette.
+
+    Mutazione ESEGUITA (06/10/2026): `_alert_high` che segna avvisata la
+    proposta anche quando nessuna push e' arrivata -- rossa (una push sola);
+    il giro senza il ritentativo in testa -- rossa."""
+    _analisi(casa, 1)
+    casa["llm_router"] = _Modello(_SERRATURA)
+    porta = casa["action_actuator"]
+    porta.arriva = False
+
+    await pr.proposer_round(casa)
+    await pr.proposer_round(casa)
+    assert len(porta.chiamate) == 2
+
+    porta.arriva = True
+    await pr.proposer_round(casa)
+    await pr.proposer_round(casa)
+    assert len(porta.chiamate) == 3
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_DECISA_non_si_avvisa_piu(casa):
+    """Il limite dei tentativi e' un fatto della proposta, non un numero
+    nostro (§10): decisa, non chiede piu' niente a nessuno.
+
+    Mutazione ESEGUITA (06/10/2026): `to_alert` senza `stato='in_attesa'` --
+    rossa."""
+    _analisi(casa, 1)
+    casa["llm_router"] = _Modello(_SERRATURA)
+    porta = casa["action_actuator"]
+    porta.arriva = False
+    await pr.proposer_round(casa)
+    (riga,) = casa["constructions"].list()
+
+    casa["constructions"].mark_rejected(riga["id"], now=riga["creata_ts"] + 1,
+                                        reason="no")
+    await pr.proposer_round(casa)
+
+    assert len(porta.chiamate) == 1
+
+
+def test_una_proposta_SCADUTA_non_si_avvisa_piu(tmp_path):
+    """Scaduta anche se nessuno ha ancora aperto la pagina che la marca: la
+    stessa scadenza di `count_pending`.
+
+    Mutazione ESEGUITA (06/10/2026): `to_alert` senza la scadenza -- rossa."""
+    archivio = ConstructionStore(str(tmp_path / "c.db"))
+    try:
+        archivio.propose(operation="crea", domain="automation", key="k",
+                         actor="proponente", exchange="t", phrase=None,
+                         prima=None, dopo={"alias": "x"}, helper=[],
+                         preview="", stakes="alto", now=1_000_000.0)
+        assert len(archivio.to_alert(actor="proponente", stakes="alto",
+                                     now=1_000_001.0)) == 1
+        dopo = 1_000_000.0 + ConstructionStore.DEADLINE_S + 1
+        assert archivio.to_alert(actor="proponente", stakes="alto", now=dopo) == []
+    finally:
+        archivio.close()
+
+
+def test_gli_avvisi_nascono_anche_in_un_ARCHIVIO_esistente(tmp_path):
+    """Una tabella a parte, `CREATE TABLE IF NOT EXISTS`: un archivio gia' alla
+    sua versione la riceve all'apertura, senza gradino di migrazione."""
+    import sqlite3
+
+    percorso = str(tmp_path / "c.db")
+    ConstructionStore(percorso).close()
+    con = sqlite3.connect(percorso)
+    con.execute("DROP TABLE avvisi")
+    con.commit()
+    con.close()
+
+    archivio = ConstructionStore(percorso)
+    try:
+        archivio.mark_alerted("p1", now=1_000_000.0)
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_una_ALTO_che_il_modello_non_cita_si_avvisa_lo_stesso(casa):
+    """Le proposte da avvisare le dice l'archivio, non la risposta: una
+    costruita che il modello dimentica di citare non resta muta."""
+    _analisi(casa, 1)
+
+    class _Smemorato(_Modello):
+        async def chat(self, **kwargs):
+            await kwargs["dispatcher"].dispatch("propose", _SERRATURA)
+            return json.dumps({"esiti": [
+                {"osservazione": 0, "esito": "niente", "perche": "boh"}]})
+
+    casa["llm_router"] = _Smemorato()
+
+    await pr.proposer_round(casa)
+
+    assert len(casa["action_actuator"].chiamate) == 1
 
 
 # -- Chi amministra, e i suoi telefoni ----------------------------------------
@@ -290,3 +386,52 @@ async def test_un_amministratore_SENZA_telefono_si_conta_non_blocca_gli_altri(ca
     assert esito["senza_telefono"][0].startswith("u-ospite")
     assert {c["call"]["servizio"] for c in casa["action_actuator"].chiamate} == {
         "notify.mobile_app_iphone_bet", "notify.mobile_app_iphone_di_marta"}
+
+
+@pytest.mark.asyncio
+async def test_un_GUASTO_dell_avviso_non_toglie_il_turno(casa):
+    """Revisione, giro 58: l'avviso gira in testa a ogni giro, e un suo guasto
+    non deve far cadere il turno del proponente.
+
+    Mutazione ESEGUITA (06/10/2026): `_alert_high` chiamato senza la sua
+    protezione in testa al giro -- rossa (nessun esito scritto)."""
+    _analisi(casa, 1)
+    casa["llm_router"] = _Modello(_LUCE)
+
+    def guasto(**_):
+        raise RuntimeError("archivio illeggibile")
+
+    casa["constructions"].to_alert = guasto
+
+    esito = await pr.proposer_round(casa)
+
+    assert esito is not None and esito["problemi"] == []
+    assert len(casa["constructions"].list()) == 1
+
+
+def test_to_alert_porta_SCADUTA_ORA_come_lo_vuole_il_ramo_degli_attori(tmp_path, monkeypatch):
+    """Revisione, giro 58 (G58-1): nel ramo `h4tcbr` (537169a9) `_row` legge
+    `r["scaduta_ora"]`, che esiste solo nei SELECT con `_EXPIRED_SQL AS
+    scaduta_ora`. Unito quel ramo, un `to_alert` con `SELECT *` solleverebbe
+    IndexError, e l'avviso in testa a ogni giro fallirebbe sempre. Qui `_row`
+    e' sostituito con la lettura di quel ramo: la riga deve portare la colonna,
+    falsa per una proposta non scaduta.
+
+    Mutazione ESEGUITA (06/10/2026): `to_alert` col `SELECT *` di prima --
+    rossa, «IndexError: No item with that key»."""
+    from hiris.app.action.construction import revisions
+
+    lette = []
+    monkeypatch.setattr(revisions, "_row",
+                        lambda r: lette.append(bool(r["scaduta_ora"])) or {"id": r["id"]})
+    archivio = ConstructionStore(str(tmp_path / "c.db"))
+    try:
+        archivio.propose(operation="crea", domain="automation", key="k",
+                         actor="proponente", exchange="t", phrase=None,
+                         prima=None, dopo={"alias": "x"}, helper=[],
+                         preview="", stakes="alto", now=1_000_000.0)
+        assert len(archivio.to_alert(actor="proponente", stakes="alto",
+                                     now=1_000_001.0)) == 1
+    finally:
+        archivio.close()
+    assert lette == [False]

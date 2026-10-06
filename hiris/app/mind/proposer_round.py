@@ -55,6 +55,9 @@ async def proposer_round(app) -> dict | None:
         return None
     app[IN_FLIGHT] = True
     try:
+        # Prima di tutto gli avvisi che non sono arrivati: si ritentano a ogni
+        # battito, anche nei giorni senza analisi (D14, «Ritenta»).
+        await _alert_high_safely(app)
         today = historian.today(
             historian.house_timezone(app.get("home_space_store"))).isoformat()
         if store.analysis(today) is None:
@@ -108,7 +111,8 @@ async def _chain(app, store, day: str, pending, refused, runner) -> dict:
         truncated=turn.truncated, presence=presence)
     if occurrence["risposta"] and occurrence["problemi"] and not turn.truncated:
         declare_refused(app.get("usage"), turn.turn_id, occurrence["problemi"])
-    await _alert_high(app, _settle(store, day, occurrence))
+    _settle(store, day, occurrence)
+    await _alert_high_safely(app)
     return occurrence
 
 
@@ -168,7 +172,8 @@ async def _collect(app, store, today: str) -> dict | None:
         presence=presence)
     if occurrence["problemi"]:
         declare_refused(app.get("usage"), decision.get("turn_id"), occurrence["problemi"])
-    await _alert_high(app, _settle(store, today, occurrence))
+    _settle(store, today, occurrence)
+    await _alert_high_safely(app)
     return occurrence
 
 
@@ -188,25 +193,20 @@ def _built_in(app, exchange: str | None) -> frozenset[str]:
     return constructions.proposed_in(exchange, actor=PROPOSER_SPECIES)
 
 
-def _settle(store, day: str, occurrence: dict) -> list[str]:
+def _settle(store, day: str, occurrence: dict) -> None:
     """Scrive gli esiti buoni: «da fare a mano» nell'archivio gemello con
     l'impronta e la prova; «costruita» e «niente» accanto all'osservazione,
     nell'analisi. Un esito per un'osservazione che ne ha gia' uno non si
     riscrive: e' cio' che rende innocua una seconda lettura dello stesso turno.
-
-    Torna gli id delle proposte costruite scritte **adesso**: una seconda
-    lettura dello stesso turno ne torna zero, e l'avviso (`_alert_high`) non
-    parte due volte per la stessa proposta.
     """
     if occurrence["problemi"]:
         logger.warning("proponente: esiti rifiutati per %s -- %s",
                        day, " · ".join(occurrence["problemi"]))
     analysis = store.analysis(day)
     if analysis is None or not occurrence["esiti"]:
-        return []
+        return
     still_open = {observation_key(o) for o in _open(store, day)}
     beside = proposer_turn.outcomes_of(analysis)
-    built = []
     for outcome in occurrence["esiti"]:
         if outcome["impronta"] not in still_open:
             continue
@@ -224,10 +224,7 @@ def _settle(store, day: str, occurrence: dict) -> list[str]:
                 stakes=None, now_ts=time.time())
             continue
         beside.append({k: v for k, v in outcome.items() if k != "osservazione"})
-        if outcome["esito"] == proposer_turn.BUILT:
-            built.append(outcome["proposta_id"])
     store.replace_analysis(day, {**analysis, proposer_turn.OUTCOMES_KEY: beside})
-    return built
 
 
 #: Il testo della push agli amministratori. Lo scrive il codice, non il
@@ -238,22 +235,39 @@ ALERT_TEXT = ("HIRIS ha una proposta di livello alto: «{name}». "
               "Decidi tu, nella pagina Proposte.")
 
 
-async def _alert_high(app, ids) -> None:
+async def _alert_high_safely(app) -> None:
+    """`_alert_high` che non solleva: un guasto dell'avviso non toglie il
+    turno al proponente (revisione, giro 58). Si ritenta al giro dopo."""
+    try:
+        await _alert_high(app)
+    except Exception as error:
+        logger.warning("proponente: avviso per le proposte alto non riuscito "
+                       "(%s: %s) -- si ritenta al giro dopo",
+                       type(error).__name__, error)
+
+
+async def _alert_high(app) -> None:
     """L'avviso per una proposta `alto` (D14, approvata il 06/10/2026): una
     push agli amministratori, dal recapito delle promesse e dalla porta dei
     servizi (`keeper/delivery.notify_admins`). Le altre proposte vanno fra le
     Proposte e basta (D13: nel cervello cambia solo `alto`).
 
-    Il livello lo legge dall'archivio delle costruzioni, dove l'ha scritto
-    l'officina: il modello non lo sceglie, e qui non si ricalcola."""
+    **Si ritenta finche' arriva** (scelta del proprietario, 06/10/2026): le
+    proposte da avvisare le dice l'archivio delle costruzioni -- `alto`, del
+    proponente, in attesa, senza un avviso arrivato -- e il giro le guarda a
+    ogni battito. Smette quando almeno una push e' arrivata, o quando la
+    proposta non e' piu' in attesa: nessun numero di tentativi scelto da noi.
+    Il livello l'ha scritto l'officina; qui non si ricalcola.
+    """
     constructions = app.get("constructions")
     if constructions is None:
         return
-    for ident in ids:
-        row = constructions.read(ident)
-        if row is None or row.get("livello") != HIGH:
-            continue
+    for row in constructions.to_alert(actor=PROPOSER_SPECIES, stakes=HIGH,
+                                      now=time.time()):
         body = row.get("dopo") or row.get("prima") or {}
         name = body.get("alias") if isinstance(body, dict) else None
-        await notify_admins(app, ALERT_TEXT.format(name=name or row.get("chiave")),
-                            actor=PROPOSER_SPECIES)
+        report = await notify_admins(
+            app, ALERT_TEXT.format(name=name or row.get("chiave")),
+            actor=PROPOSER_SPECIES)
+        if report.get("push", 0) > len(report.get("mancate") or ()):
+            constructions.mark_alerted(row["id"], now=time.time())
