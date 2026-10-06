@@ -123,6 +123,34 @@ def test_un_nome_si_copre_in_QUALUNQUE_maiuscolo():
     assert mask.mask("IPHONE DI PAOLO BATTERIA") == "sensor.#1"
 
 
+def _people(*names):
+    rows = [_row(f"person.p{i}", name) for i, name in enumerate(names, start=1)]
+    return House({"entita": rows, "dispositivi": [], "aree": []},
+                 Mirror(state={row["id"]: "home" for row in rows}))
+
+
+def test_un_nome_che_CASEFOLD_cambia_di_forma_si_copre_anche_scritto_esatto():
+    """G27-1 (giro 27 della revisione, 06/10/2026): `"Strauß".casefold()` e'
+    «strauss», che `re.IGNORECASE` non fa corrispondere a «Strauß». Su
+    3aee25b5 il nome scritto proprio come lo dichiara Home Assistant passava
+    -- rossa (eseguita): «Strauß è a casa» intatto."""
+    mask = PresenceMask(_people("Strauß", "İlker"))
+    assert mask.mask("Strauß è a casa") == "person.#1 è a casa"
+    assert mask.mask("STRAUSS") == "person.#1"
+    assert mask.mask("strauss") == "person.#1"
+    assert mask.mask("İlker esce") == "person.#2 esce"
+
+
+def test_una_I_turca_non_fa_SOLLEVARE_il_filtro():
+    """G27-2: `re.IGNORECASE` fa corrispondere «I» a «ı», `casefold` no. Su
+    3aee25b5 la ricerca nel dizionario sollevava -- rossa (eseguita):
+    `KeyError: 'işil'`."""
+    mask = PresenceMask(_people("Işıl"))
+    assert mask.mask("IŞIL") == "person.#1"
+    assert mask.mask("Işıl") == "person.#1"
+    assert mask.mask("ışıl") == "person.#1"
+
+
 def test_il_segnaposto_torna_id_negli_argomenti():
     mask = PresenceMask(_house())
     assert mask.unmask({"riferimento": "sensor.#1", "altro": "sensor.#10"}) == {

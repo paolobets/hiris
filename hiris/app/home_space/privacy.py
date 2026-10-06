@@ -237,46 +237,57 @@ class PresenceMask:
         self.handles = handles(ids)
         words: dict[str, str] = {}
         for entity_id, handle in self.handles.items():
-            words[entity_id.casefold()] = handle
+            words[entity_id] = handle
             name = house.name("entita", entity_id)
             if name and name != entity_id:
-                words.setdefault(name.casefold(), handle)
+                words.setdefault(name, handle)
         for number, device_id in enumerate(devices, start=1):
             name = house.name("dispositivo", device_id)
             if name and name != device_id:
-                words.setdefault(name.casefold(),
-                                 f"dispositivo.{PRESENCE_MARK}{number}")
-        self._words = words
+                words.setdefault(name, f"dispositivo.{PRESENCE_MARK}{number}")
         self._mask = _alternation(words)
         back = {handle: entity_id for entity_id, handle in self.handles.items()}
-        self._back = back
         self._unmask = _alternation(back, after=r"(?!\d)")
 
     def mask(self, value):
-        return _replace(value, self._mask, self._words)
+        return _replace(value, self._mask)
 
     def unmask(self, value):
-        return _replace(value, self._unmask, self._back)
+        return _replace(value, self._unmask)
 
 
 def _alternation(words: dict[str, str], *, after: str = r"(?!\w)"):
-    """Un'espressione sola per tutte le parole, le piu' lunghe prima, ognuna
-    solo intera e in qualunque maiuscolo (le chiavi di `words` sono gia'
-    `casefold`); `None` se non c'e' niente da sostituire."""
+    """`(espressione, valori)`: un'espressione sola per tutte le parole, le
+    piu' lunghe prima, ognuna solo intera e in qualunque maiuscolo; `None` se
+    non c'e' niente da sostituire.
+
+    **Ogni forma e' un gruppo con nome, e il valore lo dice il gruppo**
+    (`m.lastgroup`), mai una ricerca del testo trovato in un dizionario
+    (G27-1 e G27-2, giro 27 della revisione, 06/10/2026). Per ogni parola le
+    forme sono due, quella dichiarata e quella `casefold`, perche'
+    `re.IGNORECASE` usa le corrispondenze semplici e `casefold` quelle
+    piene: «Strauß» diventa «strauss» (che non trova «Strauß»), e «IŞIL»
+    cercato come «işil» dava `KeyError`. Con le due forme fra le alternative,
+    «Strauß», «STRAUSS» e «strauss» si coprono tutti, e niente solleva."""
     if not words:
         return None
-    alternatives = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
-    return re.compile(rf"(?<![\w.#])(?:{alternatives}){after}", re.IGNORECASE)
+    forms = sorted({(form, value) for word, value in words.items()
+                    for form in (word, word.casefold())},
+                   key=lambda pair: (-len(pair[0]), pair[0]))
+    alternatives = "|".join(f"(?P<w{i}>{re.escape(form)})"
+                            for i, (form, _value) in enumerate(forms))
+    pattern = re.compile(rf"(?<![\w.#])(?:{alternatives}){after}", re.IGNORECASE)
+    return pattern, [value for _form, value in forms]
 
 
-def _replace(value, pattern, words: dict[str, str]):
-    if pattern is None:
+def _replace(value, matcher):
+    if matcher is None:
         return value
     if isinstance(value, str):
-        return pattern.sub(lambda m: words[m.group(0).casefold()], value)
+        pattern, values = matcher
+        return pattern.sub(lambda m: values[int(m.lastgroup[1:])], value)
     if isinstance(value, dict):
-        return {_replace(k, pattern, words): _replace(v, pattern, words)
-                for k, v in value.items()}
+        return {_replace(k, matcher): _replace(v, matcher) for k, v in value.items()}
     if isinstance(value, list | tuple):
-        return [_replace(item, pattern, words) for item in value]
+        return [_replace(item, matcher) for item in value]
     return value
