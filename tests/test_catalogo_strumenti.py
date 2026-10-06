@@ -44,7 +44,14 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # 06/10/2026 (attori, Task 4.3): il campo `livello` di `propose` entra, e la
 # frase che ripeteva i vocabolari di `gesto` e `dominio` esce -- due
 # caratteri in meno.
-CATALOG_CEILING = 33445
+#
+# 06/10/2026 (Tappa 5, Task 5): il catalogo torna sotto l'obiettivo. La
+# descrizione di `calendar` non ripete piu' cio' che dice il suo schema
+# (3.608 -> 1.564), e `search` e `history` scrivono una volta i filtri
+# comuni, la regola della profondita' e la lettura dei conti (`search`
+# 5.935 -> 4.939; `history` 5.552 -> 5.673, perche' ora legge i conti con la
+# stessa frase intera di `search`). Misurato: 30.526, sotto i 32.425 di R18.
+CATALOG_CEILING = 30526
 
 
 def catalog_chars(definitions) -> int:

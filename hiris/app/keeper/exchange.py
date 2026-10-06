@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 
 from ..home_space.tools import KNOWLEDGE_TOOLS
-from ..home_space.topology import name_with_id
 from ..model_resolution import _DOWNGRADE_REASONS
 from ..proxy._sanitize import truncate_with_marker
 from ..steering import PROMISE_SPECIES, chain_turn, enqueue_turn, start
@@ -348,25 +347,14 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
 
 
 def _system_prompt() -> str:
-    # Fix finale ④ (review 2026-08-20): questo turno riceve lo STESSO nucleo
-    # della chat (`compose_briefing`, vedi `interpreta_promise` sopra), coi
-    # suoi `(id: X)` accanto ad aree/piani/automazioni/script -- ma senza
-    # queste due righe il prompt non lo spiegava, e il modello non aveva modo
-    # di sapere che poteva usarli direttamente invece di chiamare `search`.
-    # Il parallelismo, qui, e' vero al 100%: il turno gira su `runner.chat`,
-    # lo STESSO ciclo di `claude_runner.py` (`BASE_TOOL_RULES`) che
-    # conta un giro per risposta, non per chiamata -- a differenza del ponte
-    # (vedi `agent/prompts._GUIDE_WITH_TOOLS`, dove la stessa frase e'
-    # falsa perche' il tetto MCP conta ogni `tools/call`).
+    # Gli id fra parentesi e le letture in parallelo stavano anche qui fino
+    # al 06/10/2026 (Tappa 5, Task 5; D-56): dalla Tappa 6 (Task 7) il turno
+    # le riceve dalle regole di `search` (`steering.compose_base`), sulla
+    # catena e sul ponte. Qui resta cio' che e' solo della promessa.
     return (
         "Stai mantenendo una promessa: qualcuno ti ha chiesto, tempo fa, di "
         "guardare qualcosa a quest'ora e di dirgli com'e' andata. Adesso non c'e' "
         "nessuno davanti allo schermo.\n"
-        f"Gli id fra parentesi che vedi nell'albero della casa -- `{name_with_id('Nome', 'X')}` -- "
-        "sono gia' gli identificatori esatti per gli strumenti: usali direttamente, "
-        "non serve chiamare «search» per qualcosa che hai gia'.\n"
-        "Se devi fare piu' letture indipendenti, chiamale IN PARALLELO nella stessa "
-        "risposta: il ciclo conta un giro per risposta, non per chiamata.\n"
         "Guarda con gli strumenti che hai, poi chiama SEMPRE «conclude». Se la "
         "condizione che ti era stata chiesta non si e' verificata, concludi con "
         "avvisare=false: e' la risposta giusta, non un fallimento.\n"

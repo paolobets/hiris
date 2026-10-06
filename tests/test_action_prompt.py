@@ -68,7 +68,10 @@ def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
 # -- 1. `execute` esiste -----------------------------------------------------
 
 def test_la_guida_nomina_esegui():
-    assert "execute" in _GUIDE_WITH_TOOLS
+    """Col nome che la CLI serve: dal 06/10/2026 lo compone `guide_with_tools`
+    dagli strumenti del turno (Tappa 5, Task 5; D-57)."""
+    from hiris.app.agent.runner import mcp_name
+    assert f"`{mcp_name('execute')}`" in prompts.guide_with_tools(CHAT_TOOLS)
 
 
 def test_entrambi_i_percorsi_dicono_che_esegui_esiste():
@@ -154,11 +157,6 @@ def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci(
 
 
 # -- 2. Gli id, non i nomi --------------------------------------------------
-
-def test_la_guida_chiede_gli_id_non_i_nomi():
-    basso = _GUIDE_WITH_TOOLS.lower()
-    assert "search" in basso and "id" in basso
-
 
 def test_entrambi_i_percorsi_mandano_a_cerca_chi_ha_solo_un_nome():
     """E' l'errore piu' probabile: il modello ha «la luce della cucina» e
@@ -486,18 +484,13 @@ def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
     restava verde con una delle due tornata indietro. E' il difetto n.1 del
     progetto, comparso dentro la prova scritta per chiuderlo.
     """
-    # DUE SORGENTI DIVERSE, e la distinzione e' il punto della prova.
-    # `_GUIDE_WITH_TOOLS` (importata in cima) e' quella del PONTE;
-    # `BASE_SYSTEM_PROMPT` di `claude_runner` e' quella del SINCRONO, che porta
-    # la chat vera. Il secondo tentativo di questa prova le metteva entrambe
-    # sulla guida del ponte -- due chiavi, un testo solo -- e il percorso
-    # sincrono restava scoperto: mutando la sua guida la prova non se ne
-    # accorgeva.
-    guide = {
-        "sincrono": CHAT_BASE,
-        "ponte": _GUIDE_WITH_TOOLS,
-    }
-    for percorso, testo in guide.items():
+    # Dal 06/10/2026 (Tappa 5, Task 5; D-03) la sorgente e' UNA: le regole
+    # di `claude_runner.TOOL_RULES`, che il ponte compone come la catena
+    # (`steering.compose_base`). La guida del ponte le ripeteva: due sorgenti
+    # della stessa regola nello stesso prompt. Si guarda la sorgente, e che
+    # il ponte la riceva una volta sola.
+    assert _prompt_del_ponte().lower().count("non raccogliere") == 1
+    for percorso, testo in {"regole": CHAT_BASE}.items():
         basso = testo.lower()
         for parola in ("aree", "piani", "etichette", "dispositivi"):
             assert parola in basso, (

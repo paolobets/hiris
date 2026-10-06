@@ -773,14 +773,17 @@ def test_cerca_tool_def_dichiara_i_generi():
     La presenza di una parola nella prosa non basta («ricordo» compare anche
     accanto a `riferimento`): lo schema deve ammettere ESATTAMENTE i generi
     della porta. Mutazione ESEGUITA: l'`enum` di `genere` senza l'ultimo
-    genere -- rossa."""
+    genere -- rossa.
+
+    Dal 06/10/2026 (Tappa 5, Task 5, D-03) la prosa non ripete piu' l'elenco
+    dei generi: lo dichiara l'`enum`, che il modello riceve con lo schema, e
+    una seconda copia nella descrizione era un doppione da pagare a ogni
+    turno. La descrizione dice dove vale ogni filtro, e lo nomina."""
     from hiris.app.home_space.house_query import KINDS
     genere = SEARCH_TOOL_DEF["input_schema"]["properties"]["genere"]
     assert genere["enum"] == list(KINDS)
-    for parola in KINDS:
-        assert parola in SEARCH_TOOL_DEF["description"], (
-            f"SEARCH_TOOL_DEF non dichiara «{parola}»")
-    assert "piano" in SEARCH_TOOL_DEF["description"]
+    for filtro in ("`piano`", "`area`", "`integrazione`", "`classe`"):
+        assert filtro in SEARCH_TOOL_DEF["description"], filtro
 
 
 def test_la_descrizione_del_bersaglio_etichette_dice_che_si_danno_per_id():

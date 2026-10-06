@@ -209,15 +209,15 @@ def test_il_catalogo_ha_tredici_strumenti_e_la_storia_e_uno():
 
 
 def test_la_storia_dichiara_i_filtri_di_search_e_nessuno_e_obbligatorio():
-    """Mutazione ESEGUITA: `"required": ["genere"]` nello schema -- rossa."""
+    """Mutazione ESEGUITA: `"required": ["cosa"]` nello schema -- rossa."""
     storia = next(d for d in KNOWLEDGE_TOOLS if d["name"] == "history")
     schema = storia["input_schema"]
     assert set(schema["properties"]) == {
-        "genere", "nome", "riferimento", "tipo", "classe", "area", "piano",
+        "cosa", "nome", "riferimento", "tipo", "classe", "area", "piano",
         "integrazione", "includi_nascoste", "includi_servizio", "ore", "da", "a",
         "esecuzione", "livello", "limite", "salta"}
     assert not schema.get("required")
-    assert schema["properties"]["genere"]["enum"] == ["stati", "valori", "esecuzioni",
+    assert schema["properties"]["cosa"]["enum"] == ["stati", "valori", "esecuzioni",
                                                       "errori"]
 
 
@@ -308,7 +308,7 @@ async def test_senza_canale_la_storia_lo_dichiara():
     """Mutazione ESEGUITA: togliere `"history": ("ha",)` da
     `_RESOURCE_PER_TOOL` -- rossa (il messaggio diventa quello della rete di
     sicurezza)."""
-    esito = await ToolDispatcher(None, None).dispatch("history", {"genere": "errori"})
+    esito = await ToolDispatcher(None, None).dispatch("history", {"cosa": "errori"})
     assert "collegamento vivo con Home Assistant" in esito["errore"]
 
 
@@ -349,7 +349,7 @@ async def test_un_guasto_dello_storico_dei_valori_e_un_errore(tmp_path):
     storico -- rossa."""
     ha = _house(answers=_broken_history())
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "valori", "riferimento": "sensor.cucina_t"})
+        "history", {"cosa": "valori", "riferimento": "sensor.cucina_t"})
     guasto = await ha.history(["sensor.cucina_t"], "2026-09-29T00:00:00+00:00",
                               "2026-09-30T00:00:00+00:00")
     assert esito == guasto
@@ -392,7 +392,7 @@ async def test_la_quattordici_e_una_chiamata_sola(tmp_path):
         {"start": ore[1], "end": ore[1] + 3_600_000, "state": 0.9, "change": 0.5}]}
     ha = _house(fasce=fasce)
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "valori", "nome": "energia consumata oggi", "da": "ieri"})
+        "history", {"cosa": "valori", "nome": "energia consumata oggi", "da": "ieri"})
     assert [(name, extra["statistic_ids"]) for name, extra in _asked(ha)] == [
         ("recorder/statistics_during_period", ["sensor.energia_oggi"])]
     assert esito["profondita"] == "completa" and esito["grana"] == "oraria"
@@ -411,7 +411,7 @@ async def test_una_banderuola_resta_sul_dettaglio_oltre_le_ventiquattro_ore(tmp_
     ha = _house(serie={"sensor.vento_direzione": [{"quando": _ADESSO.isoformat(),
                                                    "valore": "180"}]})
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "valori", "riferimento": "sensor.vento_direzione", "ore": 48})
+        "history", {"cosa": "valori", "riferimento": "sensor.vento_direzione", "ore": 48})
     assert [name for name, _extra in _asked(ha)] == [_HISTORY_PATH]
     assert esito["grana"] == "dettaglio"
 
@@ -431,7 +431,7 @@ async def test_un_contatore_con_last_reset_non_inventa_il_consumato(tmp_path):
              for h, v in ((5, "3.0"), (3, "4.0"), (1, "1.0"))]
     ha = _house(serie={"sensor.energia_oggi": punti})
     esito = await _history_dispatcher(tmp_path, ha, cache=_Specchio(righe)).dispatch(
-        "history", {"genere": "valori", "riferimento": "sensor.energia_oggi", "ore": 6})
+        "history", {"cosa": "valori", "riferimento": "sensor.energia_oggi", "ore": 6})
     riga = esito["voci"][0]
     assert "consumato_non_calcolato" in riga and "consumato" not in riga
 
@@ -447,7 +447,7 @@ async def test_i_valori_leggono_lo_specchio_una_volta_sola(tmp_path):
     specchio = _history_mirror()
     ha = _house(serie={"sensor.cucina_t": [{"quando": _ADESSO.isoformat(), "valore": "19"}]})
     esito = await _history_dispatcher(tmp_path, ha, cache=specchio).dispatch(
-        "history", {"genere": "valori", "riferimento": "sensor.cucina_t"})
+        "history", {"cosa": "valori", "riferimento": "sensor.cucina_t"})
     assert "errore" not in esito
     assert specchio.letture == 1
 
@@ -468,7 +468,7 @@ async def test_le_esecuzioni_leggono_la_casa_una_volta_sola(tmp_path):
         return leggi()
 
     d._home_space.read = _conta
-    await d.dispatch("history", {"genere": "esecuzioni", "riferimento": "script.buonanotte"})
+    await d.dispatch("history", {"cosa": "esecuzioni", "riferimento": "script.buonanotte"})
     assert len(letture) == 1
 
 
@@ -537,7 +537,7 @@ async def test_la_ventisei_e_una_chiamata_sola(tmp_path):
     tracce = {f"automation.17713{i}": [_traccia(f"r{i}")] for i in range(5)}
     ha = _house(tracce=tracce)
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "esecuzioni", "nome": "rifiuti"})
+        "history", {"cosa": "esecuzioni", "nome": "rifiuti"})
     assert ha.connections == [("ws", ("trace/list",) * 5)]
     assert {(extra["domain"], extra["item_id"]) for _name, extra in _asked(ha)} == {
         ("automation", f"17713{i}") for i in range(5)}
@@ -555,7 +555,7 @@ async def test_uno_script_si_chiede_col_suo_id_di_registro(tmp_path):
     dell'entity_id invece che da `unique_id` -- rossa (`buonanotte` invece
     di `bn_1`)."""
     ha = _house()
-    await _history_dispatcher(tmp_path, ha).dispatch("history", {"genere": "esecuzioni",
+    await _history_dispatcher(tmp_path, ha).dispatch("history", {"cosa": "esecuzioni",
                                                     "riferimento": "script.buonanotte"})
     assert _asked(ha) == [("trace/list", {"domain": "script", "item_id": "bn_1"})]
 
@@ -569,7 +569,7 @@ async def test_uno_script_fuori_dal_registro_si_chiede_col_suo_object_id(tmp_pat
     rossa (nessuna raffica)."""
     ha = _house()
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "esecuzioni", "riferimento": "script.risveglio"})
+        "history", {"cosa": "esecuzioni", "riferimento": "script.risveglio"})
     assert _asked(ha) == [("trace/list", {"domain": "script", "item_id": "risveglio"})]
     assert "non_letti" not in esito
 
@@ -588,7 +588,7 @@ async def test_un_automazione_senza_id_e_nominata_fra_i_non_letti(tmp_path):
     tracce = {f"automation.17713{i}": [_traccia(f"r{i}")] for i in range(1, 5)}
     ha = _house(tracce=tracce)
     esito = await _history_dispatcher(tmp_path, ha, cache=_Specchio(righe)).dispatch(
-        "history", {"genere": "esecuzioni", "nome": "rifiuti"})
+        "history", {"cosa": "esecuzioni", "nome": "rifiuti"})
     assert ha.connections == [("ws", ("trace/list",) * 4)]
     assert {(extra["domain"], extra["item_id"]) for _name, extra in _asked(ha)} == {
         ("automation", f"17713{i}") for i in range(1, 5)}
@@ -608,7 +608,7 @@ async def test_uno_specchio_non_pronto_non_da_la_colpa_all_identificatore(tmp_pa
     ha = _house()
     spento = await _history_dispatcher(tmp_path, ha, cache=_Specchio(
         _history_mirror().all_states(), loaded=False)).dispatch(
-        "history", {"genere": "esecuzioni", "riferimento": "automation.rifiuto_carta"})
+        "history", {"cosa": "esecuzioni", "riferimento": "automation.rifiuto_carta"})
     assert spento == {"errore": INVENTORY_NOT_READY_ERROR}
     assert ha.calls == []
 
@@ -619,7 +619,7 @@ async def test_senza_specchio_lo_si_dice(tmp_path):
     cache e' `None` -- rossa (l'automazione finisce fra i non letti)."""
     casa = _semina_casa(tmp_path, casa=_history_house(), comportamento=_COMPORTAMENTO)
     esito = await ToolDispatcher(casa, None, cache=None, ha=_house()).dispatch(
-        "history", {"genere": "esecuzioni", "riferimento": "automation.rifiuto_carta"})
+        "history", {"cosa": "esecuzioni", "riferimento": "automation.rifiuto_carta"})
     assert esito == {"errore": NO_INVENTORY_ERROR}
 
 
@@ -629,7 +629,7 @@ async def test_una_esecuzione_passo_per_passo_e_sigillata_e_senza_zone(tmp_path)
     rossa sull'iniezione."""
     ha = _house()
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "esecuzioni", "riferimento": "automation.rifiuto_vetro",
+        "history", {"cosa": "esecuzioni", "riferimento": "automation.rifiuto_vetro",
                     "esecuzione": "r1"})
     assert _asked(ha) == [("trace/get", {"domain": "automation", "item_id": "177131",
                                          "run_id": "r1"})]
@@ -655,9 +655,9 @@ async def test_per_mano_di_hiris_arriva_dalla_cronaca_del_dispatcher(tmp_path):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("argomenti", [
-    {"genere": "errori"},
-    {"genere": "esecuzioni", "nome": "rifiuti"},
-    {"genere": "esecuzioni", "riferimento": "automation.rifiuto_vetro", "esecuzione": "r1"}])
+    {"cosa": "errori"},
+    {"cosa": "esecuzioni", "nome": "rifiuti"},
+    {"cosa": "esecuzioni", "riferimento": "automation.rifiuto_vetro", "esecuzione": "r1"}])
 @pytest.mark.parametrize("ruolo", ["utente", "lettore"])
 async def test_chi_non_amministra_non_legge_esecuzioni_ne_errori(tmp_path, argomenti, ruolo):
     """Spec §5, ruling R-2.25: rifiutati PRIMA di chiedere a Home Assistant.
@@ -672,7 +672,7 @@ async def test_chi_non_amministra_non_legge_esecuzioni_ne_errori(tmp_path, argom
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("argomenti", [{"riferimento": "light.cucina_1"},
-                                       {"genere": "valori", "tipo": "sensor"}])
+                                       {"cosa": "valori", "tipo": "sensor"}])
 async def test_chi_non_amministra_legge_stati_e_valori(tmp_path, argomenti):
     """Mutazione ESEGUITA: il soffitto controllato per ogni genere -- rossa."""
     ha = _house()
@@ -690,7 +690,7 @@ async def test_gli_errori_non_hanno_bisogno_della_casa_gli_stati_si(tmp_path):
     degli errori -- rossa."""
     registro = [{"level": "ERROR", "message": ["zigbee giu'"], "name": "x"}]
     d = ToolDispatcher(None, None, ha=_house(registro=registro))
-    assert (await d.dispatch("history", {"genere": "errori"}))["voci"][0]["messaggio"] \
+    assert (await d.dispatch("history", {"cosa": "errori"}))["voci"][0]["messaggio"] \
         == "zigbee giu'"
     assert "conoscenza della casa" in (await d.dispatch("history", {}))["errore"]
 
@@ -704,7 +704,7 @@ async def test_il_registro_che_non_risponde_si_dice():
     porta fino alla risposta."""
     ha = _house(refuse={"system_log/list": {"code": "unknown_error", "message": "giu'"}})
     esito = await ToolDispatcher(None, None, ha=ha).dispatch(
-        "history", {"genere": "errori"})
+        "history", {"cosa": "errori"})
     assert esito == {"errore": "giu'", "causa": "rifiuto", "codice": "unknown_error"}
 
 
@@ -718,7 +718,7 @@ async def test_le_fasce_orarie_rifiutate_arrivano_con_la_busta_intera(tmp_path):
     arriva intera, come quella di `calendar` (fondamenta 3)."""
     ha = _house(refuse={"recorder/statistics_during_period": dict(_REFUSED)})
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "valori", "nome": "energia consumata oggi", "da": "ieri"})
+        "history", {"cosa": "valori", "nome": "energia consumata oggi", "da": "ieri"})
     assert esito == _REFUSED_ENVELOPE
 
 
@@ -726,7 +726,7 @@ async def test_le_fasce_orarie_rifiutate_arrivano_con_la_busta_intera(tmp_path):
 async def test_una_esecuzione_rifiutata_arriva_con_la_busta_intera(tmp_path):
     ha = _house(refuse={"trace/get": dict(_REFUSED)})
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "esecuzioni", "riferimento": "automation.rifiuto_vetro",
+        "history", {"cosa": "esecuzioni", "riferimento": "automation.rifiuto_vetro",
                     "esecuzione": "r1"})
     assert esito == _REFUSED_ENVELOPE
 
@@ -737,7 +737,7 @@ async def test_le_esecuzioni_senza_risposta_arrivano_con_la_busta_intera(tmp_pat
     busta del client, intera."""
     ha = _house(silence=("trace/list",))
     esito = await _history_dispatcher(tmp_path, ha).dispatch(
-        "history", {"genere": "esecuzioni", "riferimento": "script.buonanotte"})
+        "history", {"cosa": "esecuzioni", "riferimento": "script.buonanotte"})
     assert esito["causa"] == "silenzio"
     assert set(esito) == {"errore", "causa", "codice"}
 
@@ -763,7 +763,7 @@ async def test_un_segreto_dentro_l_eccezione_non_arriva_al_modello(tmp_path):
                               "rifiutate"}]
     d = ToolDispatcher(None, None, ha=_house(registro=registro))
     d._remembered_seal = SecretSeal.from_file(segreti)
-    esito = await d.dispatch("history", {"genere": "errori"})
+    esito = await d.dispatch("history", {"cosa": "errori"})
     assert "Zq9-segreto-77" not in str(esito)
     voce = esito["voci"][0]
     assert "<secret nas_password>" in voce["eccezione"]
@@ -806,7 +806,7 @@ async def test_un_segreto_nelle_righe_prima_dell_ultima_si_butta_non_si_sigilla(
     d = ToolDispatcher(None, None, ha=_house(registro=registro))
     spia = _SigilloSpia(SecretSeal.from_file(segreti))
     d._remembered_seal = spia
-    esito = await d.dispatch("history", {"genere": "errori"})
+    esito = await d.dispatch("history", {"cosa": "errori"})
     assert "Zq9-segreto-77" not in str(esito) and "<secret" not in str(esito)
     assert esito["voci"][0]["eccezione"] == "SynologyDSMLoginFailed: credenziali rifiutate"
     assert not any("login(user" in testo or "Traceback" in testo for testo in spia.visti)
@@ -838,7 +838,36 @@ async def test_un_segreto_attaccato_alla_punteggiatura_non_arriva_al_modello(
                  "message": [testo], "exception": f"Traceback:\nValueError: {testo}"}]
     d = ToolDispatcher(None, None, ha=_house(registro=registro))
     d._remembered_seal = SecretSeal.from_file(segreti)
-    esito = await d.dispatch("history", {"genere": "errori"})
+    esito = await d.dispatch("history", {"cosa": "errori"})
     assert segreto not in str(esito)
     assert "<secret la_chiave>" in esito["voci"][0]["messaggio"]
     assert "<secret la_chiave>" in esito["voci"][0]["eccezione"]
+
+
+def test_search_e_history_dicono_la_profondita_con_le_stesse_parole():
+    """D-68 e B-32 (Tappa 5, Task 5): la regola della profondita' e i filtri
+    comuni si scrivono una volta. Prima `search` diceva «fino a 10» e
+    `history` «da 2 a 10», scritti a mano accanto a una soglia che vive in
+    `house_query.depth_for`.
+
+    Mutazione ESEGUITA il 06/10/2026: la descrizione di `history` riscritta
+    con la vecchia prosa («da 2 a 10 -> `media`») -- rossa. Mutazione
+    ESEGUITA: `DETAIL_MEDIUM_MAX = 12` in `house_query.py` -- verde senza
+    toccare ne' le descrizioni ne' questa prova: il numero si chiede a
+    `depth_for`."""
+    from hiris.app.home_space.house_query import DETAIL_MEDIUM_MAX
+    from hiris.app.home_space.tools import (
+        _SUBJECT_FILTERS,
+        HISTORY_TOOL_DEF,
+        SEARCH_TOOL_DEF,
+    )
+    regola = f"fino a {DETAIL_MEDIUM_MAX} -> `media`"
+    for definizione in (SEARCH_TOOL_DEF, HISTORY_TOOL_DEF):
+        assert regola in definizione["description"], definizione["name"]
+        assert "**La profondita' la decido io**" in definizione["description"]
+        proprieta = definizione["input_schema"]["properties"]
+        # `integrazione` di history aggiunge una frase sua (gli errori): e'
+        # la differenza dichiarata, tutto il resto e' lo stesso oggetto.
+        for chiave, frammento in _SUBJECT_FILTERS.items():
+            if (definizione["name"], chiave) != ("history", "integrazione"):
+                assert proprieta[chiave] == frammento, (definizione["name"], chiave)

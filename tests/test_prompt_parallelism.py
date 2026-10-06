@@ -41,76 +41,82 @@ qui SONO il contratto -- e' il prompt che deve dire queste parole al modello,
 non un comportamento osservabile da un altro lato. Dichiararlo qui perche' un
 domani chi legge sappia perche' un assert cosi' semplice sopravvive in questo
 progetto.
+
+**Dal 06/10/2026 (Tappa 5, Task 5; D-03) le regole sono una volta sola.** Il
+ponte compone le stesse regole della catena (`steering.compose_base`, Tappa 6,
+Task 7), e la sua guida le ripeteva coi nomi prefissati: nello stesso prompt
+la stessa regola due volte. Ora le regole stanno in
+`claude_runner.TOOL_RULES` e arrivano a entrambi i percorsi; la guida del
+ponte dice solo cio' che e' del ponte. Per questo la giustificazione
+«il ciclo conta un giro per risposta» e' uscita dalle regole: arrivava anche
+al ponte, dove e' falsa.
 """
-from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS
+from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS, build_chat_messages
 from hiris.app.claude_runner import BASE_TOOL_RULES
+from hiris.app.steering import SPECIES
 
 
-def _le_due_guide() -> dict[str, str]:
-    return {
-        "sincrono (BASE_TOOL_RULES)": BASE_TOOL_RULES,
-        "ponte (_GUIDA_CON_STRUMENTI)": _GUIDE_WITH_TOOLS,
-    }
+def _ponte() -> str:
+    """Il system prompt della chat sul ponte, con gli strumenti della chat."""
+    system, _ = build_chat_messages(
+        "", [], active_tools=SPECIES["chat"].tools_for_turn())
+    return system
 
 
-def test_entrambe_le_guide_insegnano_il_batch_di_cerca():
+def _i_due_percorsi() -> dict[str, str]:
+    return {"catena (BASE_TOOL_RULES)": BASE_TOOL_RULES, "ponte": _ponte()}
+
+
+def test_entrambi_i_percorsi_insegnano_il_batch_di_cerca_una_volta():
     """"Piu' nomi -> UNA chiamata cerca col testo intero" (R8: la capacita'
     c'era gia' nella ricerca per nome, misurata 8 su 8 in una chiamata -- nessun
-    prompt lo diceva)."""
-    for percorso, testo in _le_due_guide().items():
-        basso = testo.lower()
-        assert "search" in basso and "una sola volta" in basso, (
-            f"la guida {percorso} non insegna piu' il batch di cerca: un "
-            "turno che deve risolvere N nomi torna a chiamare cerca N volte, "
-            "il costo che questo task doveva evitare")
+    prompt lo diceva). Una volta sola anche sul ponte (D-03).
+
+    Mutazione ESEGUITA il 06/10/2026: rimessa nella guida del ponte la riga
+    «chiama `mcp__hiris__search` UNA sola volta» -- rossa, due volte."""
+    for percorso, testo in _i_due_percorsi().items():
+        assert testo.lower().count("una sola volta con tutto il testo") == 1, percorso
 
 
-def test_entrambe_le_guide_legano_gli_id_dell_albero_agli_strumenti():
+def test_entrambi_i_percorsi_legano_gli_id_dell_albero_agli_strumenti():
     """Raccolta dal Task 4 (nota in progress.md): l'albero della casa ora
     porta gli id fra parentesi (`Nome (id: X)`, T4), ma senza questa riga
     nessuna guida diceva al modello che sono ESATTAMENTE gli identificatori
     da passare agli strumenti -- il modello chiamerebbe comunque `search` per
     qualcosa che il contesto gli sta gia' dando."""
-    for percorso, testo in _le_due_guide().items():
-        assert "(id: X)" in testo, (
-            f"la guida {percorso} non lega piu' gli id fra parentesi "
-            "dell'albero agli strumenti")
+    for percorso, testo in _i_due_percorsi().items():
+        assert testo.count("(id: X)") == 1, percorso
 
 
-def test_entrambe_le_guide_legano_anche_gli_script_agli_id_dell_albero():
+def test_entrambi_i_percorsi_legano_anche_gli_script_agli_id_dell_albero():
     """Fix finale ③: l'albero annota gli id anche per gli SCRIPT
     (`briefing.py::_behavior_lines`, stessa forma di aree/piani/
     automazioni), ma la riga che lega gli id fra parentesi agli strumenti
     nominava solo "un'area, un piano o un'automazione" -- dimenticando lo
     script, che porta l'id con la stessa identica annotazione."""
-    for percorso, testo in _le_due_guide().items():
-        assert "o uno script" in testo, (
-            f"la guida {percorso} non menziona piu' lo script fra le cose "
-            "che portano l'id fra parentesi nell'albero")
+    for percorso, testo in _i_due_percorsi().items():
+        assert "o uno script" in testo, percorso
 
 
-def test_il_sincrono_insegna_il_parallelismo_col_conteggio_vero():
-    """Sul percorso sincrono la giustificazione e' vera (il ciclo di
-    `claude_runner.py` conta un giro per risposta, non per chiamata): resta
-    l'istruzione originale, invariata."""
+def test_le_regole_insegnano_il_parallelismo_senza_il_conteggio_della_catena():
+    """Le regole arrivano a entrambi i percorsi: possono dire di chiamare in
+    parallelo, non che «il ciclo conta un giro per risposta», che sul ponte
+    e' falso (ogni `tools/call` conta)."""
     assert "IN PARALLELO" in BASE_TOOL_RULES
-    assert "il ciclo conta un giro per risposta, non per" in BASE_TOOL_RULES
+    assert "il ciclo conta un giro per risposta" not in _ponte()
 
 
 def test_solo_il_ponte_insegna_ogni_chiamata_conta():
     """Sul ponte il tetto vero e' quello MCP (`MAX_TOOL_ROUNDS`,
     `api/handlers_mcp.py`), e `_count_round` incrementa a OGNI `tools/call`:
     8 `view` paralleli nella stessa risposta della CLI costano comunque 8
-    giri. La guida del ponte non deve piu' promettere il risparmio falso
-    ("un giro per risposta, non per chiamata") -- deve dire che ogni
-    chiamata conta, e che il risparmio vero e' il batch di `search` piu' la
-    parsimonia."""
-    assert "il ciclo conta un giro per risposta, non per" not in _GUIDE_WITH_TOOLS, (
-        "la guida del ponte ripete ancora la giustificazione falsa: sul "
-        "ponte ogni chiamata (anche parallela) consuma un giro del tetto MCP")
+    giri. La guida del ponte lo dice -- ogni chiamata conta, e il risparmio
+    vero e' il batch di `search` piu' la parsimonia -- e le regole della
+    catena no."""
     basso = _GUIDE_WITH_TOOLS.lower()
     assert "ogni chiamata conta" in basso
     assert "parsimoni" in basso
+    assert "parsimoni" not in BASE_TOOL_RULES.lower()
 
 
 def test_il_tetto_delle_iterazioni_e_50():

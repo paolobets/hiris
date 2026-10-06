@@ -299,15 +299,16 @@ TOOL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     )),
     (("search", "related"), (
         "- Se devi fare più letture indipendenti — più search con riferimento, più related —"
-        " chiamale IN PARALLELO nella stessa risposta: il ciclo conta un giro per risposta, non per"
-        " chiamata.\n"
+        " chiamale IN PARALLELO nella stessa risposta, non una dopo l'altra.\n"
     )),
     (("execute",), (
         "- Se la richiesta riguarda una STANZA, un piano, un'etichetta o un dispositivo,"
         " passali a `execute` cosi' come sono -- `aree`, `piani`, `etichette`,"
         " `dispositivi` -- e NON raccogliere gli id a mano con search: li risolve Home"
         " Assistant, che e' l'unico a saperli tutti. Raccoglierli a mano significa"
-        " spegnerne quattordici su quindici e dire di averle spente tutte.\n"
+        " spegnerne quattordici su quindici e dire di averle spente tutte. Le `etichette`"
+        " invece si danno per id, come le conosce Home Assistant: nessuno strumento le risolve"
+        " dal nome, quindi non indovinarne l'id.\n"
         "- L'esito porta `bersaglio`: se `toccate` e' piu' corto di `risolte`, dillo"
         " a chi ti sta parlando e di' quali sono rimaste fuori e perche'.\n"
         "- Dopo aver eseguito racconta cosa è SUCCESSO, non cosa è stato chiesto: la risposta di"

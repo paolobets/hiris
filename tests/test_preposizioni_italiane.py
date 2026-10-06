@@ -386,7 +386,7 @@ _NOTE_ITALIANE = frozenset({
     "_fra_poco",
     "_get_entities_on_come_lo_strumento",
     "_i_due_testi_di_chi_puo_agire", "_init_col_server_collegato",
-    "_le_due_guide", "_membri_di",
+    "_membri_di",
     "_mock_che_solleva", "_mock_risposta_con_stato", "_nomi_di_campo", "_porta_di_prova",
     "_posizionali_dopo_self", "_presente_nel_js", "_prompt_del_ponte",
     "_righe_di_percorso_e_parola_chiave", "_ripiego_sala_da_pranzo",

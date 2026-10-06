@@ -250,15 +250,49 @@ def test_il_ramo_con_strumenti_afferma_gli_strumenti_del_catalogo():
     # unico (fetta «comandare», Task 7): scritto a mano restava a quattro
     # mentre il catalogo ne aveva cinque, ed e' esattamente la dichiarazione
     # che invecchia in silenzio di cui questo file e' pieno di lapidi.
-    for voce in KNOWLEDGE_TOOLS:
-        assert f"`{voce['name']}`" in prompts._GUIDE_WITH_TOOLS
+    # Dal 06/10/2026 (Tappa 5, Task 5; D-57) i nomi li compone
+    # `guide_with_tools` dagli strumenti del turno: si guarda il system.
     assert "HAI gli strumenti di HIRIS" in system
     assert "NON hai alcuno strumento" not in system
     # riserva 1 del piano della fetta B: attraverso MCP il modello vede i nomi
-    # PREFISSATI dal server. Il prefisso esatto e' una decisione della B --
-    # qui si pinna solo che il testo prepara il modello a vederli prefissati,
-    # invece di nominare dei nomi nudi che non comparirebbero mai.
-    assert "mcp__hiris__" in prompts._GUIDE_WITH_TOOLS
+    # PREFISSATI dal server -- e il prefisso si chiede a `runner.mcp_name`.
+    for voce in KNOWLEDGE_TOOLS:
+        assert f"`mcp__hiris__{voce['name']}`" in system
+
+
+def test_la_guida_nomina_gli_strumenti_della_tabella_senza_ricopiarli():
+    """D-57 (Tappa 5, Task 5): i nomi prefissati della guida vengono dalla
+    tabella degli strumenti, attraverso la dichiarazione del mestiere, e il
+    prefisso da `runner.mcp_name`. Fino al 06/10/2026 erano un secondo
+    catalogo scritto a mano nella guida.
+
+    Mutazione ESEGUITA il 06/10/2026: una riga in piu' nella tabella `TOOLS`
+    di `home_space/tools.py` (una copia di `mind` col nome `prova_d57`) --
+    `mcp__hiris__prova_d57` e' comparso nella guida della chat senza toccare
+    ne' la guida ne' questa prova, e la prova e' rimasta verde. La prova
+    gemella qui sotto e' la rossa: con il nome tolto dalla guida a mano."""
+    from hiris.app.agent.runner import mcp_names
+    system, _user = prompts.build_chat_messages(
+        "Sei HIRIS.", [], contesto=_CONTESTO, active_tools=CHAT_TOOLS)
+    for nome in mcp_names():
+        assert f"`{nome}`" in system, nome
+
+
+def test_la_promessa_sul_ponte_legge_i_suoi_strumenti_e_non_quelli_della_chat():
+    """D-56: la guida della promessa sul ponte nominava sette strumenti che
+    la promessa non ha (`execute`, `remember`, `propose`...) e non nominava
+    `conclude`, l'unico modo di finire.
+
+    Mutazione ESEGUITA il 06/10/2026: `guide_with_tools` che nomina sempre
+    gli strumenti della chat -- rossa con `conclude`."""
+    from hiris.app.agent.runner import mcp_names
+    promessa = SPECIES["promessa"].tools_for_turn()
+    system, _user = prompts.build_chat_messages(
+        "", [], contesto=_CONTESTO, active_tools=promessa)
+    for nome in mcp_names(by_promise=True):
+        assert f"`{nome}`" in system, nome
+    for nome in set(mcp_names()) - set(mcp_names(by_promise=True)):
+        assert nome not in system, nome
 
 
 def test_il_runner_gira_l_interruttore_da_un_solo_booleano():

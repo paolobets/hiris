@@ -32,22 +32,27 @@ def test_ogni_nome_ammesso_esiste_davvero_nel_catalogo_della_chat():
     assert set(SOLA_LETTURA) <= veri
 
 
-def test_il_prompt_di_sistema_spiega_gli_id_fra_parentesi_e_il_parallelismo():
+def test_il_turno_riceve_gli_id_fra_parentesi_e_il_parallelismo_una_volta():
     """Fix finale ④ (review 2026-08-20): il turno riceve lo STESSO nucleo
     della chat, coi suoi `(id: X)` accanto ad aree/piani/automazioni/script
-    (`compose_briefing`, vedi `interpreta_promise`), ma prima di questo fix
-    il prompt non lo spiegava affatto, ne' diceva il conteggio del
-    parallelismo -- che QUI e' vero al 100% perche' il turno gira su
-    `runner.chat`, lo stesso ciclo di `claude_runner.py`
-    (`BASE_TOOL_RULES`) che conta un giro per risposta, non per
-    chiamata."""
+    (`compose_briefing`, vedi `interpreta_promise`), e il prompt deve
+    spiegarli, e insegnare il parallelismo.
+
+    Dal 06/10/2026 (Tappa 5, Task 5; D-56) le due righe non stanno piu' nel
+    prompt della promessa: le da' al turno il compositore
+    (`steering.compose_base`), dalle regole di `search`, sulla catena e sul
+    ponte. Stavano in tutti e due i posti: la stessa regola due volte nello
+    stesso prompt. E la giustificazione «il ciclo conta un giro per
+    risposta» era falsa per una promessa sul ponte.
+
+    Mutazione ESEGUITA il 06/10/2026: rimessa la riga degli id fra
+    parentesi in `_system_prompt` -- rossa, due volte."""
     from hiris.app.keeper.exchange import _system_prompt
-    testo = _system_prompt()
-    assert "(id: X)" in testo, "il prompt non spiega piu' gli id fra parentesi dell'albero"
-    assert "IN PARALLELO" in testo, "il prompt non insegna piu' il parallelismo"
-    assert "il ciclo conta un giro per risposta, non per chiamata" in testo, (
-        "qui la giustificazione del parallelismo e' vera (il turno gira su "
-        "runner.chat): deve restare, non diventare la frase falsa del ponte")
+    from hiris.app.steering import SPECIES, compose_base
+    testo = compose_base(SPECIES["promessa"].tools_for_turn()) + _system_prompt()
+    assert testo.count("(id: X)") == 1, "gli id fra parentesi: una volta, non zero o due"
+    assert testo.count("IN PARALLELO") == 1, "il parallelismo: una volta"
+    assert "il ciclo conta un giro per risposta" not in testo
 
 
 def test_concludi_dichiara_che_la_notifica_la_manda_hiris():

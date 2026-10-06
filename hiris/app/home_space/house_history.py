@@ -115,27 +115,27 @@ def _wrong_for_kind(kind: str, a: dict) -> str | None:
     """Il filtro che non vale per questo genere, detto (spec §2): ignorato,
     la storia risponderebbe con sicurezza a un'altra domanda."""
     if _given(a, "esecuzione") and kind != "esecuzioni":
-        return "esecuzione vale solo con genere=esecuzioni"
+        return "esecuzione vale solo con cosa=esecuzioni"
     if _given(a, "livello") and kind != "errori":
-        return "livello vale solo con genere=errori"
+        return "livello vale solo con cosa=errori"
     if kind == "errori":
         wrong = [key for key in _WHO_KEYS if _given(a, key) and key not in _ERROR_WHO_KEYS]
         if wrong:
             verb = "vale" if len(wrong) == 1 else "valgono"
-            return (f"{', '.join(wrong)}: non {verb} per genere=errori -- il registro "
+            return (f"{', '.join(wrong)}: non {verb} per cosa=errori -- il registro "
                     "di Home Assistant non sa di aree ne' di cose della casa: accetta "
                     "solo integrazione e livello")
     if kind == "esecuzioni":
         if _given(a, "classe"):
-            return ("classe non vale per genere=esecuzioni: le esecuzioni sono di "
+            return ("classe non vale per cosa=esecuzioni: le esecuzioni sono di "
                     "automazioni e script")
         if _given(a, "tipo") and a["tipo"] not in BEHAVIOR_DOMAINS:
-            return ("genere=esecuzioni vale per automazioni e script: tipo accetta "
+            return ("cosa=esecuzioni vale per automazioni e script: tipo accetta "
                     "automation o script")
         reference = str(a.get("riferimento") or "")
         if reference and reference.split(".", 1)[0] not in BEHAVIOR_DOMAINS:
             return (f"«{reference}» non e' un'automazione ne' uno script: "
-                    "genere=esecuzioni vale solo per loro")
+                    "cosa=esecuzioni vale solo per loro")
     return None
 
 
@@ -217,10 +217,10 @@ def parse_query(arguments: dict, *, now: float,
                 timezone: str | None) -> HistoryQuery | dict:
     """Gli argomenti di `history` -> una domanda validata, o `{"errore"}`."""
     a = dict(arguments or {})
-    # `genere` e `livello` fuori vocabolario li rifiuta `ToolDispatcher.
+    # `cosa` e `livello` fuori vocabolario li rifiuta `ToolDispatcher.
     # dispatch` contro l'`enum` dello schema (`KINDS`, `LEVELS`): fino al
     # 05/10/2026 si rivalidavano anche qui (D-40).
-    kind = a.get("genere") or "stati"
+    kind = a.get("cosa") or "stati"
     wrong = _wrong_for_kind(kind, a)
     if wrong:
         return {"errore": wrong}

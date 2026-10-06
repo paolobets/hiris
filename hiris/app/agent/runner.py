@@ -143,6 +143,15 @@ def _mcp_server_name() -> str:
     return MCP_SERVER_NAME
 
 
+def mcp_name(tool: str) -> str:
+    """Il nome con cui il modello vede `tool` sul ponte: la CLI prefissa ogni
+    strumento col nome del server (`search` -> `mcp__hiris__search`). Una
+    funzione sola per l'argv (`mcp_names`) e per il testo della guida
+    (`prompts.guide_with_tools`): fino al 06/10/2026 il testo ricopiava il
+    prefisso a mano, una volta per strumento (D-57)."""
+    return f"mcp__{_mcp_server_name()}__{tool}"
+
+
 def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     """I nomi che il modello vede DAVVERO, derivati dal catalogo.
 
@@ -158,7 +167,6 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     E' una funzione e non una costante di modulo: il catalogo dipende dal
     turno (`by_promise`), e il prefisso dal nome del server, che si legge con
     l'import differito qui sopra."""
-    prefix = f"mcp__{_mcp_server_name()}__"
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
     # promessa vede i lettori di `SOLA_LETTURA` piu'
     # `conclude` -- e i due elenchi non sono l'uno il sottoinsieme dell'altro:
@@ -171,7 +179,7 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `conclude`, cioe' senza nessun modo di finire.
     definitions = promise_tools() if by_promise else KNOWLEDGE_TOOLS
-    return tuple(f"{prefix}{d['name']}" for d in definitions)
+    return tuple(mcp_name(d["name"]) for d in definitions)
 
 
 def config_mcp(base_url: str, token: str, exchange_id: str = "",
@@ -893,7 +901,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
     # -- una chiamata reale all'API emette piu' eventi `assistant` con lo
     # STESSO id (uno per blocco), e il giro e' l'id, non l'evento.
     exchange_by_id: dict[str, dict] = {}
-    mcp_prefix = f"mcp__{_mcp_server_name()}__"
+    mcp_prefix = mcp_name("")
     for line in (stdout or "").splitlines():
         line = line.strip()
         if not line:
@@ -1245,8 +1253,7 @@ def _bare_tool_name(name: str) -> str:
     propri della CLI -- resta com'e': e' un attore diverso, e fonderlo coi
     nostri direbbe che HIRIS ha strumenti che non ha.
     """
-    prefix = f"mcp__{_mcp_server_name()}__"
-    return name.removeprefix(prefix)
+    return name.removeprefix(mcp_name(""))
 
 
 def _measure_turn(job: dict, *, duration_ms: int, tools: list,

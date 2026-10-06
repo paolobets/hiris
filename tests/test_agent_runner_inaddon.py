@@ -678,19 +678,22 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
                                                 active_tools=CHAT_TOOLS)
-    guida = prompts._GUIDE_WITH_TOOLS
+    guida = prompts.guide_with_tools(CHAT_TOOLS)
 
     assert guida in system
     assert prompts._GUIDE_WITHOUT_TOOLS not in system
     # la smentita del ramo di degrado non deve poter comparire qui: sarebbe
     # falsa, e la falsita' speculare e' lo stesso difetto.
     assert "quelle istruzioni non si applicano" not in guida
-    # i nomi nudi del catalogo sono tutti nominati dalla guida -- `execute`
+    # i nomi del catalogo sono tutti nominati dalla guida -- `execute`
     # compreso dalla fetta «comandare»: l'elenco si DERIVA da
     # `KNOWLEDGE_TOOLS`, cosi' uno strumento nuovo entra qui da solo
-    # invece di lasciare questo test a sorvegliarne quattro su cinque.
+    # invece di lasciare questo test a sorvegliarne quattro su cinque. Dal
+    # 06/10/2026 (Tappa 5, Task 5) col nome prefissato, e il ricollegamento
+    # dei nomi nudi e' una regola sola invece di un secondo elenco.
     for voce in KNOWLEDGE_TOOLS:
-        assert f"`{voce['name']}`" in guida
+        assert f"`{runner.mcp_name(voce['name'])}`" in guida
+    assert "col nome nudo" in guida and "STESSI strumenti" in guida
     # ...e quello che la persona nomina davvero (chat_settings.py ne scrive
     # uno solo dal 29/09/2026, «una porta sola per la casa»: vedi il commento
     # sopra `DEFAULT_SYSTEM_PROMPT`) e' proprio quello che la guida ricollega.
