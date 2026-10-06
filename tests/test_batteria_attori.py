@@ -223,8 +223,8 @@ def test_dal_registro_il_troncato_si_legge_dall_ESITO_col_tetto_proprio():
 
 # --- L'analista (piano degli attori, strati 3-4, Task 3.8) ------------------
 #
-# Mutazioni ESEGUITE il 06/10/2026, ognuna rossa per la ragione giusta e col
-# ripristino verificato (`git status`):
+# Mutazioni ESEGUITE il 06/10/2026 (la regola di prima col giro 49), ognuna
+# rossa per la ragione giusta e col ripristino verificato (`git status`):
 # - `osservazioni_con_letture` contate su tutte le analisi, con o senza
 #   `letture` -- rossa (3 invece di 2);
 # - la novita' decisa dalla sola impronta, senza la prova -- rossa (la prova
@@ -233,8 +233,9 @@ def test_dal_registro_il_troncato_si_legge_dall_ESITO_col_tetto_proprio():
 #   «nuova»);
 # - la forma del rifiuto senza coprire i numeri -- rossa (due forme invece di
 #   una);
-# - i tetti propri ignorati -- rossa (`troncati`: 1 invece di 2, `tetto`
-#   4096 invece di 8000);
+# - i tetti propri ignorati -- rossa (`tetto` 4096 invece di 8000);
+# - la regola di prima col tetto di oggi invece che con quello di fabbrica
+#   (G49-1, giro 49) -- rossa (`troncati`: 2 invece di 3);
 # - un rifiutato contato fra i falliti -- rossa (`falliti`: 3 invece di 0).
 # Mutazione ESEGUITA sulla fonte: `steering.ANALYST_SPECIES = "analista_x"` --
 # le prove qui sotto restano verdi senza toccarle, perche' il nome si chiede.
@@ -338,14 +339,18 @@ def test_le_risposte_rifiutate_si_contano_per_forma_del_motivo():
     assert row["falliti"] == 0
 
 
-def test_l_analista_si_conta_troncato_col_suo_tetto():
-    """Per i turni registrati prima dell'esito `troncato`, l'uguaglianza si
-    fa col tetto che il mestiere dichiara, e la riga lo porta accanto."""
+def test_l_analista_porta_il_suo_tetto_ma_la_regola_di_prima_usa_quello_di_allora():
+    """Il troncato si legge dall'esito, col tetto che il turno ha dichiarato;
+    la riga porta accanto il tetto del mestiere. I turni registrati prima
+    dell'esito hanno girato col tetto di fabbrica, e la regola di prima usa
+    quello: un `riuscito` lungo quanto il tetto di OGGI non e' troncato
+    (G49-1)."""
     data = [(_turn(ANALYST, 8000), [_load(30000)]),
-            (_turn(ANALYST, 4000), [_load(30000)]),
+            (_turn(ANALYST, CEILING), [_load(30000)]),
+            (_turn(ANALYST, CEILING), [_load(30000)]),
             (_turn(ANALYST, 300, outcome=steering.TRUNCATED), [_load(30000)])]
     row = _measure(data=data, ceilings={ANALYST: 8000})["attori"][ANALYST]
-    assert row["troncati"] == 2
+    assert row["troncati"] == 3
     assert row["tetto"] == 8000
     assert row["token_ingresso_per_giro"] == 30000
 

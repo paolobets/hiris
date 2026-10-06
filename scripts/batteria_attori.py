@@ -75,11 +75,15 @@ I criteri di chiusura dello strato 3 si leggono qui, sotto `analista`:
   codice del motivo, solo la frase, e la frase porta i numeri e le parti
   citate di quella risposta: si conta la sua **forma** -- numeri, «citazioni»,
   [parentesi] e {parentesi} coperti -- non il testo;
-- **troncati col tetto proprio**: la regola dei turni registrati prima
-  dell'esito `troncato` usa il tetto che il mestiere dichiara
-  (`analyst_turn.MAX_ANSWER_TOKENS` per l'analista), e la riga lo porta
-  accanto, in `tetto`. Gli altri mestieri restano sul tetto di fabbrica, come
-  prima.
+- **troncati col tetto proprio**: dal 05/10/2026 il troncato e' l'esito
+  `troncato`, scritto col tetto che il turno ha dichiarato. La riga porta
+  accanto, in `tetto`, il tetto che il mestiere dichiara OGGI
+  (`analyst_turn.MAX_ANSWER_TOKENS` per l'analista; gli altri il tetto di
+  fabbrica). La regola dei turni registrati PRIMA di quell'esito resta quella
+  del paragrafo sopra, col tetto di fabbrica: e' il tetto con cui quei turni
+  hanno girato (il tetto dichiarato dell'analista nasce in b76b44d0, dopo
+  l'esito). Usare il tetto di oggi farebbe sparire il «prima» il giorno in
+  cui il tetto si alza (rilievo G49-1 del revisore, 06/10/2026).
 
 Le specie si chiedono a `steering.SPECIE`: una riga del registro con un nome
 che il registro non conosce piu' (l'«attuatore» archiviato prima del 06/10)
@@ -223,8 +227,9 @@ def measure(*, data: list, watching: list[dict], reports: list[dict],
     """I numeri della batteria. `data` e' cio' che `misure._leggi_remoto`
     restituisce: una coppia (turno, carichi) per turno.
 
-    `ceilings` sono i tetti propri dei mestieri che ne dichiarano uno (gli
-    altri restano su `output_ceiling`); `analyses` le analisi archiviate,
+    `ceilings` sono i tetti propri dei mestieri che ne dichiarano uno, da
+    portare accanto ai troncati (gli altri portano `output_ceiling`, che e'
+    anche il tetto della regola dei turni di prima); `analyses` le analisi archiviate,
     contate dal giorno `since_day` (`AAAA-MM-GG`) in poi."""
     actors: dict[str, dict] = {}
     durations: dict[str, list[float]] = {}
@@ -239,7 +244,8 @@ def measure(*, data: list, watching: list[dict], reports: list[dict],
         row["giri"] += len(loads)
         row["token_uscita"] += turn.get("output_tokens") or 0
         outcome = turn.get("outcome")
-        row["troncati"] += 1 if _truncated(turn, ceiling) else 0
+        # La regola di prima col tetto di allora, quello di fabbrica (G49-1).
+        row["troncati"] += 1 if _truncated(turn, output_ceiling) else 0
         row["rifiutati"] += 1 if outcome == REFUSED else 0
         row["falliti"] += 0 if outcome in (SUCCEEDED, TRUNCATED, REFUSED) else 1
         durations.setdefault(species, []).append((turn.get("duration_ms") or 0) / 1000)
