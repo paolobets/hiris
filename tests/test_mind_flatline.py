@@ -14,7 +14,8 @@ saranno entrano qui come ingresso fisso al posto di queste.
 
 from datetime import UTC, datetime, timedelta
 
-from hiris.app.mind.flatline import flatline_stretches
+from hiris.app.mind.flatline import flatline_stretches, frozen_refusals, split_at
+from hiris.app.mind.operations import FROZEN
 
 DAY = datetime(2026, 9, 30, tzinfo=UTC)
 SUN_HOURS = range(7, 19)
@@ -196,3 +197,37 @@ def test_un_ora_mancante_spezza_il_tratto():
     stretches = flatline_stretches(day,
                                 history=history_of(counter, normal_consumption))
     assert len(_frozen_only(stretches)) == 2
+
+
+# ── i rifiuti per il resoconto (Task 1.3, D4 «rifiutata») ───────────────────
+
+
+def test_solo_un_tratto_fermo_rifiuta_le_misure():
+    """`frozen_refusals` rifiuta l'entita' con un tratto «ferma» e non quella
+    con un tratto «non lo so»: una misura non si toglie senza prova.
+
+    Mutazione ESEGUITA (06/10/2026): il filtro su `esito == FROZEN` tolto --
+    rossa, la serie senza storia veniva rifiutata."""
+    refusals = frozen_refusals(
+        {"sensor.ferma": counter(DAY, lambda h: 0.0),
+         "sensor.senza_storia": counter(DAY, lambda h: 0.0),
+         "sensor.viva": counter(DAY, normal_consumption)},
+        {"sensor.ferma": history_of(counter, normal_consumption),
+         "sensor.viva": history_of(counter, normal_consumption)})
+    assert set(refusals) == {"sensor.ferma"}
+    assert refusals["sensor.ferma"].cause == FROZEN
+    assert refusals["sensor.ferma"].reason.startswith("sensor.ferma e' ferma: non varia")
+
+
+def test_split_at_separa_la_storia_dal_giorno():
+    """Il giorno e la storia arrivano in una lettura sola: la separazione e'
+    all'istante d'inizio del giorno, che resta col giorno."""
+    past = history_of(counter, normal_consumption, days=1)
+    day = counter(DAY, normal_consumption)
+    before, after = split_at(past + day, DAY.timestamp())
+    assert before == past and after == day
+
+
+def test_split_at_lascia_al_giorno_un_punto_senza_istante():
+    odd = {"inizio": None, "fine": None, "valore": 1.0}
+    assert split_at([odd], DAY.timestamp()) == ([], [odd])
