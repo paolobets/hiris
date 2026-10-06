@@ -179,7 +179,7 @@ veridicita' della soluzione»).
    domande); l'indice al posto delle trenta colonne, con gli inneschi marcati dal codice e
    l'obiettivo «in vigore dal»; la memoria ricavata da analisi e proposte, con `novita` nella
    risposta. **Cambia la domanda dell'analista di produzione** senza dargli ancora gli strumenti
-   per scavare (Task 3.6): si unisce insieme al 3.6, o prima solo se il proprietario lo decide.
+   per scavare (Task 3.6): **si unisce insieme al 3.6** (deciso dal proprietario il 06/10/2026). Dallo stesso giorno «nuova» la scrive il codice, e la ripetizione con la stessa prova si toglie invece di rifiutare l'analisi (D4 cambiata, giro 12 del revisore).
    D-33 si chiude dal vivo, quando la misura delle ripetizioni (Task 3.0 Passo 3) scende.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
