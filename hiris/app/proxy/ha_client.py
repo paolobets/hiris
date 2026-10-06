@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -421,6 +422,14 @@ class HAClient:
         #: Le connessioni autenticate finora: la prima non avvisa «riconnessione».
         self._connections = 0
         self._reread_at_first_connection = False
+        #: L'orologio della finestra di scollegamento: iniettabile perche' le
+        #: prove fissino gli istanti senza toccare il modulo `time`.
+        self._clock = time.time
+        #: Quando e' caduta l'ultima connessione AUTENTICATA, finche' una
+        #: riconnessione non la chiude in una finestra (`take_disconnection`).
+        self._dropped_at: float | None = None
+        #: L'ultima finestra chiusa e non ancora presa da nessuno.
+        self._disconnection: dict | None = None
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -2427,6 +2436,27 @@ class HAClient:
         else:
             self._reread_at_first_connection = True
 
+    def take_disconnection(self) -> dict | None:
+        """La finestra in cui l'add-on e' rimasto scollegato da Home Assistant,
+        **una volta sola**: `{"da": epoch, "a": epoch}`, oppure `None` se non
+        ce n'e' una da consegnare.
+
+        `da` e' l'istante in cui e' caduta una connessione che Home Assistant
+        aveva autenticato, `a` quello in cui la successiva e' stata
+        autenticata e iscritta, sull'orologio di questo processo: e' un fatto
+        che misuriamo noi, non qualcosa che Home Assistant dichiara. Non dice
+        PERCHE' la connessione e' caduta -- un riavvio di Home Assistant e un
+        guasto di rete hanno la stessa forma da qui -- e chi la scrive non
+        deve dirlo.
+
+        Si legge all'avviso «riconnessione» (`mirror_reload_listener` in
+        `server.py`, che la consegna all'osservatore) e si svuota leggendola:
+        due lettori della stessa finestra la scriverebbero due volte. Alla
+        prima connessione non c'e': il prima non e' stato misurato.
+        """
+        window, self._disconnection = self._disconnection, None
+        return window
+
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
@@ -2454,11 +2484,13 @@ class HAClient:
         auth_wait = AUTH_RETRY_FIRST_S
         while True:
             pause = 0
+            authenticated = False
             try:
                 async with self._session.ws_connect(ws_url) as ws:
                     refusal = await self._authenticate(ws)
                     if refusal is None:
                         auth_wait = AUTH_RETRY_FIRST_S
+                        authenticated = True
                         await self._listen(ws)
                     else:
                         logger.error(
@@ -2474,6 +2506,12 @@ class HAClient:
                 pause = RECONNECT_DELAY_S
             finally:
                 self.ws_ready.clear()
+                # L'inizio della finestra di scollegamento: solo la caduta di
+                # una connessione autenticata. I tentativi falliti mentre
+                # Home Assistant e' giu' non la spostano -- l'add-on era gia'
+                # scollegato dal primo.
+                if authenticated:
+                    self._dropped_at = self._clock()
             if pause:
                 await asyncio.sleep(pause)
 
@@ -2551,6 +2589,11 @@ class HAClient:
         # dovuto leggere PRIMA (Home Assistant non rispondeva), lo chiede con
         # `reread_after_first_connection`.
         self._connections += 1
+        # La finestra si chiude PRIMA dell'avviso: chi lo riceve la prende
+        # (`take_disconnection`) nello stesso giro.
+        if self._dropped_at is not None:
+            self._disconnection = {"da": self._dropped_at, "a": self._clock()}
+            self._dropped_at = None
         if self._connections > 1 or self._reread_at_first_connection:
             self._announce_reconnection()
 
