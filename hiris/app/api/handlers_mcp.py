@@ -350,8 +350,10 @@ def _exchange_species(request: web.Request) -> tuple[bool, str | None]:
     """`(intestazione presente, mestiere)` per questo turno: lo stesso
     tri-stato di `_exchange_chat_job`. Il mestiere vale solo se il job e'
     preso in carico (`ReasoningQueue.claimed`) e se la sua dichiarazione ha
-    un guardiano (`steering.Species.guard`): `X-HIRIS-Lavoro` la manda il
-    runner solo per quelli (attori, Task 3.6)."""
+    un guardiano (`steering.Species.guard`). Il runner la manda per ogni
+    turno che non e' chat ne' promessa (attori, Task 3.6; G23-1): un mestiere
+    con un catalogo e senza guardiano si fa riconoscere lo stesso, e qui si
+    chiude invece di ricevere il catalogo della chat."""
     ident = (request.headers.get("X-HIRIS-Lavoro") or "").strip()
     if not ident:
         return False, None

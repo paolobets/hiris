@@ -42,6 +42,7 @@ from hiris.app.api.soffitto import _SOLO_AMMINISTRATORI
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.steering import PROMISE_SPECIES, SPECIES
 from tests.test_construction_workshop import WorkshopHouse, _intento
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -260,17 +261,22 @@ def test_config_mcp_porta_X_HIRIS_Chat_solo_per_un_job_di_chat():
 
 # 5. Il runner: l'intestazione nell'argv vero, e il soggetto nel registro.
 class _Risposta:
+    """La risposta di `tools/list`, ESATTA per il turno: la sonda rifiuta
+    anche un catalogo piu' largo del suo (G23-1)."""
     status_code = 200
+
+    def __init__(self, specie):
+        self._specie = specie
 
     def json(self):
         return {"jsonrpc": "2.0", "id": 1, "result": {"tools": [
-            {"name": n.split("__")[-1]}
-            for n in {*ponte.mcp_names(), *ponte.mcp_names("promessa")}]}}
+            {"name": n} for n in SPECIES[self._specie].tools_for_turn()]}}
 
 
 class _ClientFinto:
-    def post(self, *_a, **_k):
-        return _Risposta()
+    def post(self, *_a, headers=None, **_k):
+        promessa = "X-HIRIS-Promessa" in (headers or {})
+        return _Risposta(PROMISE_SPECIES if promessa else "chat")
 
 
 class _ProcessoFinto:

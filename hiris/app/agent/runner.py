@@ -83,7 +83,7 @@ from ..chat_store import (
     RUNNER_ERROR_PREFIX,
 )
 from ..model_resolution import SUBSCRIPTION_ALIAS
-from ..steering import JOB_SPECIES, SPECIES
+from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens
 from . import prompts
 
@@ -276,10 +276,10 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     # `X-HIRIS-Promessa` qui sopra.
     if chat_job_id:
         intestazioni["X-HIRIS-Chat"] = chat_job_id
-    # Attori, Task 3.6 (06/10/2026): il turno di un mestiere di sfondo con
-    # strumenti (`steering.Species.guard`) dice a `/api/mcp` QUALE job sta
-    # servendo, e da li' la rotta ricava il mestiere: il suo catalogo, il suo
-    # guardiano. Stessa disciplina di `X-HIRIS-Chat`: non autentica, e la
+    # Attori, Task 3.6 (06/10/2026): il turno di un mestiere che non e' chat
+    # ne' promessa dice a `/api/mcp` QUALE job sta servendo, e da li' la
+    # rotta ricava il mestiere: il suo catalogo, il suo guardiano -- o, se
+    # non ne ha uno, niente (G23-1). Stessa disciplina di `X-HIRIS-Chat`: non autentica, e la
     # rotta la verifica contro un job preso in carico.
     if work_id:
         intestazioni["X-HIRIS-Lavoro"] = work_id
@@ -552,6 +552,14 @@ def probe_tools(client, base_url: str, headers: dict,
     if missing:
         return _no(f"tools/list non porta {sorted(missing)}: il ponte avrebbe "
                    f"strumenti a meta', e il prompt li afferma tutti")
+    # **Anche cio' che c'e' in piu'** (G23-1, giro 23 della revisione,
+    # 06/10/2026): una sonda che guarda solo cosa manca passa un catalogo piu'
+    # largo del mestiere -- quello della chat, `execute` compreso, servito a
+    # un turno che doveva solo leggere.
+    extra = found - awaited
+    if extra:
+        return _no(f"tools/list porta {sorted(extra)}, che questo turno non "
+                   f"ha: la rotta serve un catalogo che non e' il suo")
     return True, ""
 
 
@@ -1195,11 +1203,17 @@ def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bo
                        "arrived, o formato cambiato)")
     server = _declared_servers(occurrence)
     state = next((s.get("status") for s in server if s.get("name") == name), None)
-    missing = sorted(set(mcp_names(species)) - _resolved_tools(occurrence))
-    if str(state or "").strip().lower() != "connected" or missing:
+    awaited = set(mcp_names(species))
+    resolved = _resolved_tools(occurrence)
+    missing = sorted(awaited - resolved)
+    # Anche quelli in piu' del NOSTRO server (G23-1): gli strumenti propri
+    # della CLI non portano il prefisso, e non sono un catalogo che serviamo.
+    extra = sorted(t for t in resolved - awaited if t.startswith(mcp_name("")))
+    if str(state or "").strip().lower() != "connected" or missing or extra:
         return False, (f"mcp_servers={server}; server {name!r} stato={state!r} "
                        f"(atteso 'connected'); strumenti non risolti dalla CLI="
-                       f"{missing}")
+                       f"{missing}; strumenti del server che il turno non ha="
+                       f"{extra}")
     return True, ""
 
 
@@ -1617,10 +1631,14 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # chat, come prima (lo rifiuta comunque `misura_turno`).
     species = SPECIES.get(JOB_SPECIES.get(job.get("kind")))
     species_name = species.name if species is not None else "chat"
-    # Attori, Task 3.6: un mestiere di sfondo con strumenti si fa riconoscere
-    # dalla rotta MCP col suo job (`X-HIRIS-Lavoro`, vedi `config_mcp`).
-    work_id = ((job_id or "") if species is not None and species.guard is not None
-               else "")
+    # Attori, Task 3.6: ogni turno che non e' chat ne' promessa si fa
+    # riconoscere dalla rotta MCP col suo job (`X-HIRIS-Lavoro`, vedi
+    # `config_mcp`). Non solo quelli con un guardiano (G23-1, giro 23): un
+    # mestiere dichiarato con un catalogo e senza guardiano, senza
+    # intestazione, riceverebbe il catalogo della chat; con l'intestazione la
+    # rotta lo chiude.
+    work_id = ("" if species_name in ("chat", PROMISE_SPECIES)
+               else (job_id or ""))
     # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
     # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
