@@ -212,6 +212,14 @@ veridicita' della soluzione»).
    in `analisi.proponente`, e la pagina che li mostra passa da `ux-ui-specialist`. **Si rilascia
    dopo lo strato 3**, come dice il piano: non va acceso prima che l'analista coi suoi strumenti
    sia stato misurato dal vivo.
+   *L'avviso per `alto` c'e' dal 06/10/2026, non ancora rilasciato (Task 4.3, D14):* quando il
+   proponente costruisce una proposta `alto`, una push a ogni amministratore di Home Assistant
+   (utenti di sistema esclusi), sui telefoni che dice il recapito delle promesse e dalla porta
+   dei servizi (`keeper/delivery.notify_admins`, ammessa per nome nel cancello §7.1). Il ciclo
+   della push e' uno solo per le promesse e per l'avviso (`keeper/delivery.deliver`). Le
+   proposte da fare a mano restano senza livello: una cosa che fa una persona non e' HIRIS che
+   tocca la casa. Una proposta che il modello costruisce ma non cita nella risposta non avvisa:
+   l'avviso parte dall'esito scritto, ed e' cio' che lo rende uno per proposta.
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON

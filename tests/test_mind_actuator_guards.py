@@ -51,10 +51,21 @@ RADICE_GIRO = "proposer_round"
 #: scrittura e' un turno diverso, col si' del proprietario (spec §3). E' il gesto
 #: «propone», ed e' l'unica ragione per cui l'attuatore nomina l'officina.
 #:
+#: `notify_admins` (`keeper/delivery.py`) e' una FUNZIONE, non un metodo di una
+#: porta: l'avviso agli amministratori per una proposta `alto` (D14 del piano
+#: degli attori, strati 3-4, approvata dal proprietario il 06/10/2026: «una
+#: notifica agli amministratori, con lo stesso recapito delle promesse,
+#: attraverso `action/actuator.py`»). Il proponente la chiama, e il grafo **si
+#: ferma li'**: il suo corpo legge gli utenti e i telefoni da Home Assistant e
+#: spinge dalla porta dei servizi, ma solo una push di forma fissa
+#: (`promise.delivery_call`) verso i servizi che dice il recapito -- mai un
+#: servizio scelto dal modello. Ammettere `execute` al posto suo avrebbe dato
+#: al proponente l'intera porta dei servizi.
+#:
 #: Questa lista non ricopia niente: **dice cosa il cancello ammette**. Un metodo
 #: nuovo dell'officina non entra qui da solo -- va ammesso a mano, con la ragione,
 #: che e' esattamente il momento in cui qualcuno deve pensarci.
-AMMESSI = frozenset({"propose"})
+AMMESSI = frozenset({"propose", "notify_admins"})
 
 
 def _albero(percorso: pathlib.Path):
@@ -130,12 +141,14 @@ def _funzioni(moduli) -> dict[str, list[tuple[str, ast.AST, str]]]:
     return funzioni
 
 
-def _chiamate_dirette(funzioni: dict, radice: str) -> set[str]:
-    """I nomi raggiungibili da `radice` seguendo le sole chiamate dirette."""
+def _chiamate_dirette(funzioni: dict, radice: str,
+                      fermate=frozenset()) -> set[str]:
+    """I nomi raggiungibili da `radice` seguendo le sole chiamate dirette.
+    Nelle `fermate` non si scende: sono le funzioni ammesse per nome."""
     visti: set[str] = set()
 
     def scendi(nome: str) -> None:
-        if nome in visti or nome not in funzioni:
+        if nome in visti or nome in fermate or nome not in funzioni:
             return
         visti.add(nome)
         for _, definizione, _ in funzioni[nome]:
@@ -182,7 +195,7 @@ def superficie_attuatore(moduli=None) -> dict[str, str]:
     for giro in altri_giri:
         condivise |= _chiamate_dirette(funzioni, giro)
 
-    sole_sue = _chiamate_dirette(funzioni, RADICE_GIRO) - condivise
+    sole_sue = _chiamate_dirette(funzioni, RADICE_GIRO, AMMESSI) - condivise
     assert RADICE_GIRO in sole_sue
     for nome in sorted(sole_sue):
         for modulo, definizione, sorgente in funzioni[nome]:
@@ -237,7 +250,7 @@ def test_la_superficie_comprende_il_GIRO_non_solo_i_moduli():
     superficie = superficie_attuatore()
 
     assert "proposer_turn.py" in superficie and "proposer_round.py" in superficie
-    for gesto in ("_settle", "_chain", "_collect"):
+    for gesto in ("_settle", "_chain", "_collect", "_alert_high"):
         assert f"mind/proposer_round.py::{gesto}" in superficie, (
             f"`{gesto}` e' un gesto del proponente e non e' sorvegliato")
 
@@ -292,7 +305,10 @@ def test_l_attuatore_non_tocca_MAI_home_assistant():
     Mutazione ESEGUITA: `await ha_client.call_service(...)` in `actuator.py` --
     rossa. E `self._workshop.apply(...)` in `_file_proposals` -- rossa. Dal
     06/10/2026 (Task 4.2, Passo 5): `app["action_actuator"].execute(...)` in
-    `proposer_round._settle` -- rossa.
+    `proposer_round._settle` -- rossa. Dal Task 4.3 (06/10/2026): `AMMESSI`
+    senza `notify_admins` -- rossa su `soffitto._refresh_users` (`users`);
+    `app["action_actuator"].execute(...)` in `_alert_high`, accanto
+    all'avviso ammesso -- rossa.
     """
     vietati = (porte_home_assistant()
                | {m for porta in porte_dichiarate() for m in _metodi_pubblici(porta)}
