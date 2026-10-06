@@ -648,7 +648,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
         # notifica parte adesso. Non si aspetta la consegna del job -- se la
         # CLI morisse dopo aver concluso, la decisione del modello sarebbe gia'
         # al sicuro, e il `submit` che arriva dopo trovera' una promessa non
-        # piu' `in_corso` e non toccheranno niente (`handlers_reasoning`).
+        # piu' `in_corso` e non toccheranno niente (`reasoning/consegna`).
         #
         # A concludere e' l'orologio, non questa rotta: un secondo punto che
         # decide se notificare e con quali parole sarebbe libero di divergere

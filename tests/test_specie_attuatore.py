@@ -38,7 +38,7 @@ GUARDED = steering.SPECIE - {"chat"}
 #: la stessa grafia. Chiude per difetto: un posto nuovo e' rosso finche'
 #: qualcuno non lo ammette qui, con la ragione.
 _OTHER_SENSES = {
-    ("api/handlers_reasoning.py", "promessa"): (
+    ("reasoning/consegna.py", "promessa"): (
         1, "il `kind` del job della coda"),
     ("server.py", "promessa"): (1, "il `kind` del job della coda"),
     ("keeper/exchange.py", "promessa"): (

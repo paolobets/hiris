@@ -3,7 +3,9 @@ def test_il_ponte_interno_resta_e_l_mcp_esterno_no():
     proprietario, 01/10/2026): l'MCP di integrazione esterno esce -- il
     gateway che lo usava e' stato abbandonato -- e con lui `GET
     /api/entities`, che non aveva altri chiamanti. **Il ponte interno DEVE
-    restare**: `/api/mcp` e le due rotte della coda dei turni.
+    restare**: `/api/mcp`. (Le due rotte della coda dei turni sono uscite il
+    06/10/2026 con A-23: il ponte la legge dentro il processo,
+    `tests/test_reasoning_wiring.py`.)
 
     Mutazione ESEGUITA: tolta da `server.py` la riga
     `add_post("/api/mcp", handle_mcp)` -- rossa (`/api/mcp mancante`).
@@ -11,8 +13,7 @@ def test_il_ponte_interno_resta_e_l_mcp_esterno_no():
     from hiris.app.server import create_app
     app = create_app()
     paths = {r.resource.canonical for r in app.router.routes() if r.resource is not None}
-    for kept in ("/api/mcp", "/api/reasoning/claim", "/api/reasoning/submit"):
-        assert kept in paths, f"{kept} mancante: il ponte interno DEVE restare"
+    assert "/api/mcp" in paths, "/api/mcp mancante: il ponte interno DEVE restare"
     assert "/api/entities" not in paths
 
 
