@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
@@ -11,6 +11,29 @@ const SORGENTE = fs.readFileSync(
   new URL('../../hiris/app/static/common.js', import.meta.url), 'utf8')
   + '\n' + fs.readFileSync(
   new URL('../../hiris/app/static/config/constructions-route.js', import.meta.url), 'utf8');
+
+/* I giri accesi dalla pagina si spengono alla fine di ogni prova (giro di
+   revisione 71). Senza, un giro di riletture o l'orologio di un'attesa
+   restano vivi dopo una prova rossa, e il file non termina: in CI si
+   leggerebbe come un tempo scaduto, non come la prova che e' fallita. Anche i
+   finti timer di `montaConLetture` tornano veri qui. Mutazione ESEGUITA
+   (06/10/2026): senza le due righe che spengono e che ridanno il vero
+   `clearInterval`, il file non termina (fermato a 60 s); con una sola delle
+   due termina, e la pagina si spegne da se'. */
+const TIMER_VERI = { setInterval: global.setInterval, clearInterval: global.clearInterval };
+const accesi = new Set();
+function setIntervalSorvegliato(fn, ms) {
+  const h = TIMER_VERI.setInterval(fn, ms);
+  accesi.add(h);
+  return h;
+}
+global.setInterval = setIntervalSorvegliato;
+afterEach(() => {
+  accesi.forEach((h) => TIMER_VERI.clearInterval(h));
+  accesi.clear();
+  global.setInterval = setIntervalSorvegliato;
+  global.clearInterval = TIMER_VERI.clearInterval;
+});
 
 function montaCon(risposta) {
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
