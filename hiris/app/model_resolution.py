@@ -439,6 +439,11 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
     # cui è nata la regola -- il giorno in cui HIRIS, davanti a un comando
     # riuscito, si inventò un guasto del dispositivo e mandò il proprietario a
     # cercarlo.
+    if _temporary(code):
+        # Un 429 o un 5xx non e' un rifiuto (giro 43): la stessa regola per
+        # classe HTTP della chat (`failure_reply`).
+        return "non ha servito {} — errore temporaneo {}{}, {}".format(
+            _count(occurrence["da_quante"]), code, _quoted(occurrence.get("messaggio")), age)
     if fra_parentesi:
         # Cio' che il provider ha detto si cita, come in chat (G39-2).
         return "ha rifiutato {} — errore {}{}, {}".format(
