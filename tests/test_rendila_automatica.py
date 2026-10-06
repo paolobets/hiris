@@ -238,3 +238,66 @@ def test_RIFALLA_toglie_il_rifiuto_della_forma_vecchia(tmp_path):
         assert _riga(store, ident)["non_automatizzabile"] is None
     finally:
         store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("azione", [
+    {"action": "script.turn_on", "target": {"entity_id": "script.apri_porta"}},
+    {"action": "scene.turn_on", "target": {"entity_id": "scene.esco"}},
+    {"action": "automation.trigger", "target": {"entity_id": "automation.notte"}},
+    {"action": "homeassistant.turn_on", "target": {"entity_id": "script.apri_porta"}},
+])
+async def test_uno_SCRIPT_una_SCENA_o_un_AUTOMAZIONE_non_diventano_automatici(banco, azione):
+    """G67-1 (giro 67, consigliata A): `script.apri_porta` usciva `lieve` e
+    passava, perche' quello che lo script fa non si vede da qui. Con
+    `refuse_high` l'officina lo rifiuta; senza, la proposta normale passa.
+
+    Mutazione ESEGUITA (06/10/2026): `unattended_refusal` senza il controllo
+    dei domini opachi -- rosse le quattro."""
+    officina, _, archivio, _ = banco
+    rifiutata = await officina.propose(_intento(azioni=[azione]), actor="x",
+                                       exchange="t1", now=1.0, refuse_high=True)
+    passata = await officina.propose(_intento(azioni=[azione]), actor="x",
+                                     exchange="t2", now=1.0)
+
+    assert rifiutata == {"errore": stakes.opaque_unattended(
+        officina._ha.CONFIGURABLE_DOMAINS)}
+    assert "proposta_id" in passata
+    assert len(archivio.list(pending_only=False, limit=10)) == 1
+
+
+@pytest.mark.asyncio
+async def test_UNA_ALLA_VOLTA_un_altra_in_preparazione_ferma_il_comando(casa):
+    """N67-1 (giro 67): mentre una proposta si prepara, sulle altre il
+    comando non c'e' e la rotta risponde 409, senza far partire un turno.
+
+    Mutazione ESEGUITA (06/10/2026): tolto da `refusal` il ramo
+    `in_flight is not None` -- rossa."""
+    app, store, prima = casa
+    seconda = store.add_proposal(text="Spegni il portico", perche="x",
+                                 fingerprint="dev2|x|None|1", prova={},
+                                 stakes=None, now_ts=200.0)
+    app[at.IN_FLIGHT] = prima
+    app["llm_router"] = _Modello([], "{}")
+
+    risposta = await handle_proposal_automate(_richiesta(app, {"id": seconda}))
+
+    assert risposta.status == 409
+    assert app["usage"].turns() == []
+    righe = await _both_queues(app, app["constructions"], False)
+    assert next(r for r in righe if r["id"] == seconda)["automatizzabile"] is False
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_ALTA_gia_decisa_risponde_409_non_403(casa):
+    """N67-3 (giro 67): il codice segue il testo. Una proposta `alto` gia'
+    decisa non e' «il comando non esiste»: e' «non piu' in attesa»."""
+    app, store, _ = casa
+    alta = store.add_proposal(text="Chiudi a chiave", perche="x",
+                              fingerprint="lock|y|None|1", prova={},
+                              stakes=stakes.HIGH, now_ts=300.0)
+    store.close_proposal(alta, "rifiutata")
+
+    risposta = await handle_proposal_automate(_richiesta(app, {"id": alta}))
+
+    assert risposta.status == 409

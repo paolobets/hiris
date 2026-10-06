@@ -39,7 +39,6 @@ import time
 
 from aiohttp import web
 
-from ..action.construction.stakes import HIGH
 from ..chat_thread import unknown_id_text
 from ..mind import automate_turn
 from ..steering import chain_runner, chain_turn, read_json
@@ -228,7 +227,8 @@ async def handle_proposal_automate(request: web.Request) -> web.Response:
     reason = automate_turn.refusal(row, pending=store.PROPOSAL_PENDING,
                                    in_flight=automate_turn.preparing(request.app))
     if reason is not None:
-        return error_response(403 if row.get("livello") == HIGH else 409, reason)
+        return error_response(403 if reason == automate_turn.HIGH_REFUSAL else 409,
+                              reason)
     reason = automate_turn.begin(request.app, row)
     if reason is not None:
         return error_response(503, reason)

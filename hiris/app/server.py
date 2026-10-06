@@ -1575,7 +1575,7 @@ def schedule_registry_rebuild(client, store, delay: float = 3.0, *,
             pending.cancel()
         # _spawn(), non un asyncio.create_task(...) nudo: tiene un riferimento
         # forte finche' la ricostruzione non finisce (review C/#15) -- vedi il
-        # commento in cima al modulo su _background_tasks.
+        # commento in cima a `background.py`.
         state["attesa"] = _spawn(_fra_poco(), name="ricostruzione_anagrafe")
 
     return trigger

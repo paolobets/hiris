@@ -230,9 +230,10 @@ class Workshop:
         `refuse_high` (attori, Task 4.5): una proposta di livello `alto` si
         rifiuta invece di archiviarsi. Lo chiede «Rendila automatica»: un
         oggetto che agisce da solo su serrature o allarme non chiederebbe
-        piu', e quelle chiedono sempre (`stakes.HIGH_UNATTENDED`). Il
-        livello si calcola qui e solo qui (`stakes_of`): il chiamante non lo
-        ricalcola.
+        piu', e quelle chiedono sempre (`stakes.HIGH_UNATTENDED`); e nemmeno
+        uno che accende script, scene o automazioni, il cui contenuto non si
+        vede (`stakes.opaque_unattended`, G67-1). Il livello si calcola qui e
+        solo qui (`stakes_of`): il chiamante non lo ricalcola.
 
         `reveal_before` falso (chi propone non amministra, spec 2026-09-27, fix
         round 2 del Task 2): l'anteprima non descrive com'e' adesso
@@ -315,8 +316,12 @@ class Workshop:
                                 consiglio,
                                 reveal_before=reveal_before or domain not in _BODY_ADMIN_ONLY)
         level = stakes_of(intent, domain, prima, dopo)
-        if refuse_high and level == stakes.HIGH:
-            return {"errore": stakes.HIGH_UNATTENDED}
+        if refuse_high:
+            refusal = stakes.unattended_refusal(
+                level, acted_on(domain, prima, dopo),
+                self._ha.CONFIGURABLE_DOMAINS)
+            if refusal is not None:
+                return {"errore": refusal}
         occurrence = self._store.propose(
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
@@ -1182,10 +1187,16 @@ def stakes_of(intent: dict, domain: str, prima: dict | None,
     (`stakes.HIGH_STAKES_DOMAINS`). I due lati, perche' togliere l'allarme
     di notte conta quanto aggiungerlo. I servizi li trova l'estrattore unico
     (`services_named`), sulla sola parte che agisce."""
+    return stakes.impose(intent.get("livello"), acted_on(domain, prima, dopo))
+
+
+def acted_on(domain: str, prima: dict | None, dopo: dict | None) -> set[str]:
+    """I domini su cui il «prima» o il «dopo» agiscono: i servizi chiamati
+    li trova l'estrattore unico (`services_named`), sulla sola parte che
+    agisce. Lo leggono `stakes_of` e il rifiuto di «Rendila automatica»."""
     services = [service for body in (prima, dopo)
                 for service in services_named(stakes.acting_part(domain, body))]
-    acted = stakes.domains_acted_on(domain, prima, dopo, services=services)
-    return stakes.impose(intent.get("livello"), acted)
+    return stakes.domains_acted_on(domain, prima, dopo, services=services)
 
 
 def _seme_da(intent: dict) -> int:

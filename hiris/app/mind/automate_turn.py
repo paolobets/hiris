@@ -133,6 +133,13 @@ def preparing(app) -> str | None:
     return ((turn or {}).get("wake") or {}).get("proposta")
 
 
+#: Il solo rifiuto che dice «il comando non esiste» (403, D15): gli altri
+#: cambiano col tempo (409). La rotta sceglie il codice da questo testo, non
+#: dal livello, che su una proposta gia' decisa direbbe 403 con le parole del
+#: 409 (giro 67, N67-3).
+HIGH_REFUSAL = "serrature e allarme chiedono sempre a te: questa non diventa automatica."
+
+
 def refusal(row: dict, *, pending: str, in_flight: str | None) -> str | None:
     """Perche' questa proposta non si puo' rendere automatica adesso, o
     `None`. **Una regola sola** per la rotta, che rifiuta, e per la pagina,
@@ -140,7 +147,7 @@ def refusal(row: dict, *, pending: str, in_flight: str | None) -> str | None:
     if row.get("stato") != pending:
         return "quella proposta non è più in attesa: qualcuno l’ha già decisa."
     if row.get("livello") == HIGH:
-        return "serrature e allarme chiedono sempre a te: questa non diventa automatica."
+        return HIGH_REFUSAL
     if row.get("non_automatizzabile"):
         return "HIRIS ha già provato: " + row["non_automatizzabile"]
     if in_flight == row.get("id"):

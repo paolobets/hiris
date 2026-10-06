@@ -69,6 +69,33 @@ HIGH_UNATTENDED = ("Non si può rendere automatica: agisce su "
                    + ", che chiedono sempre a chi amministra la casa. Non "
                      "riproporla in un'altra forma.")
 
+def opaque_unattended(opaque) -> str:
+    """Il rifiuto di un oggetto che agira' DA SOLO accendendo uno dei domini
+    `opaque` (giro di revisione 67, G67-1; consigliata A, 06/10/2026).
+
+    Un'automazione che accende uno script, una scena o un'altra automazione
+    agisce su cio' che QUELLI fanno, e `domains_acted_on` non lo vede (lo dice
+    la sua docstring): misurato sul ramo, `script.turn_on` su uno script che
+    apre la porta usciva `lieve`. I domini non si scrivono qui: sono quelli
+    che questo prodotto costruisce (`HAClient.CONFIGURABLE_DOMAINS`), i soli
+    il cui corpo e' fatto di altre azioni, e la porta li chiede al suo client."""
+    return ("Non si può rendere automatica: accende " + ", ".join(opaque)
+            + ", e quello che fanno non si vede da qui: potrebbero toccare "
+              "serrature o allarme senza chiedere. Componi l'automazione con "
+              "le azioni dirette, o dillo nel perche'.")
+
+
+def unattended_refusal(level: str | None, acted_on, opaque) -> str | None:
+    """Perche' un oggetto che agira' DA SOLO non si accetta, o `None`
+    («Rendila automatica», attori Task 4.5): `alto`, o un'azione su un
+    oggetto il cui contenuto non si vede (`opaque`). Finche' il codice non
+    legge quei corpi, un oggetto che agisce da solo non li chiama."""
+    if level == HIGH:
+        return HIGH_UNATTENDED
+    if set(acted_on or ()) & set(opaque):
+        return opaque_unattended(opaque)
+    return None
+
 #: Un `entity_id` come Home Assistant lo scrive: dominio e oggetto, minuscoli,
 #: separati da un punto. Un modello che scrive un modello Jinja dentro
 #: `entity_id` non porta un dominio, e non si indovina.
