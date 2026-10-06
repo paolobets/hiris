@@ -13,13 +13,15 @@ riga dell'entita'.
 
 **La forma di `energy/get_prefs`** viene dal sorgente di Home Assistant, tag
 `2026.9.4`, letto il 04/10/2026 (`components/energy/data.py`): vedi
-`home_space/energy.py`. Non e' ancora misurata su questa casa (Task 2.0).
+`home_space/energy.py`, e misurata su questa casa il 06/10/2026 (Task 2.0).
 
 Mutazioni ESEGUITE il 04/10/2026, elencate sulle prove che le prendono.
 """
 import asyncio
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -161,6 +163,34 @@ def test_grid_without_export_has_no_export_role():
     prefs = {"energy_sources": [_grid(stat_energy_from="sensor.inverter_prelievo")],
              "device_consumption": []}
     assert [r["ruolo"] for r in energy.declared_roles(prefs)] == ["prelievo"]
+
+
+def test_measured_shape_gives_six_roles():
+    """La forma misurata su questa casa il 06/10/2026 (Task 2.0, dallo
+    sprint; qui con id inventati): rete, sole e batteria coi campi singoli,
+    `stat_rate` su tutte e tre, `power_config` su rete e batteria, nessuna
+    `capacity`, prezzi `None`. Sei ruoli, e nessuna potenza fra loro."""
+    power = {"stat_rate_from": "sensor.potenza_entrante",
+             "stat_rate_to": "sensor.potenza_uscente"}
+    prefs = {"energy_sources": [
+        _grid(stat_energy_from="sensor.inverter_prelievo",
+              stat_energy_to="sensor.inverter_immissione",
+              stat_rate="sensor.potenza_rete", power_config=power),
+        {"type": "solar", "stat_energy_from": "sensor.inverter_produzione",
+         "stat_rate": "sensor.inverter_potenza"},
+        {"type": "battery", "stat_energy_from": "sensor.inverter_scarica",
+         "stat_energy_to": "sensor.inverter_carica", "stat_soc": "sensor.inverter_soc",
+         "stat_rate": "sensor.inverter_potenza_batteria", "power_config": power}],
+        "device_consumption": [], "device_consumption_water": []}
+
+    roles = {r["statistica"]: r["ruolo"] for r in energy.declared_roles(prefs)}
+
+    assert roles == {"sensor.inverter_prelievo": "prelievo",
+                     "sensor.inverter_immissione": "immissione",
+                     "sensor.inverter_produzione": "produzione",
+                     "sensor.inverter_scarica": "scarica",
+                     "sensor.inverter_carica": "carica",
+                     "sensor.inverter_soc": "stato di carica"}
 
 
 def test_legacy_grid_lists_bring_the_same_roles():
@@ -334,6 +364,52 @@ def test_bridge_turn_carries_the_same_block(tmp_path):
     casa, dashboard = _home(tmp_path)
     job = recipe_turn.bridge_turn("x", casa, "inv", energy=dashboard)
     assert "La dashboard Energia di Home Assistant dichiara:" in job["history"][0]["content"]
+
+
+# -- stato di carica e acqua: come ogni altro ruolo (Task 2.5) ---------------
+
+#: Le liste della dashboard che non sono sorgenti (`declared_roles`).
+_CONSUMPTION_LISTS = ("device_consumption", "device_consumption_water")
+
+
+def _declaring_only(kind: str, field: str, statistic: str) -> dict:
+    """Una dashboard che dichiara UN ruolo solo, nella forma di Home
+    Assistant: una sorgente col suo `type`, o una riga di consumo."""
+    if kind in _CONSUMPTION_LISTS:
+        return {"energy_sources": [], kind: [{field: statistic}]}
+    return {"energy_sources": [{"type": kind, field: statistic}]}
+
+
+@pytest.mark.parametrize(("kind", "field"), list(energy.ROLES),
+                         ids=lambda key: str(key))
+def test_every_declared_role_reaches_question_and_fingerprint(tmp_path, kind, field):
+    """Attori, Task 2.5, Passo 1: **nessun codice per tipo.** Lo stato di
+    carica (`stat_soc`, che questa casa dichiara dal 06/10/2026) e l'acqua
+    (che non dichiara) entrano nel blocco della domanda e nell'impronta della
+    ricetta per la stessa strada degli altri ruoli. L'elenco si CHIEDE a
+    `energy.ROLES`: un ruolo nuovo entra qui senza toccare la prova.
+
+    Mutazioni ESEGUITE il 06/10/2026: in `_energy_block` saltato il ruolo
+    «stato di carica» -- rossa solo su `stat_soc`; una voce nuova in `ROLES`
+    (`("water", "stat_rate")`) -- un caso in piu', senza toccare la prova."""
+    statistic = "sensor.inverter_soc"
+    role = energy.ROLES[(kind, field)]
+    store = _store(tmp_path)
+    casa = _house(store)
+    dashboard = _run(energy.energy_dashboard(
+        CasaFinta({"energy_prefs": _declaring_only(kind, field, statistic)}), store, casa))
+
+    question = recipe_turn.build_device_question("x", casa, "inv", energy=dashboard)
+
+    assert f"- {statistic}: {role} [%]" in question
+    assert recipe_turn.written_against(casa, "inv", dashboard) == (
+        f"{recipe_turn.DASHBOARD_SOURCE}{statistic}={role}")
+
+
+def test_role_derivation_holds_the_facts_of_task_2_5():
+    """La derivazione qui sopra non si e' svuotata: i due fatti del Task 2.5
+    -- lo stato di carica e l'acqua -- sono fra i ruoli."""
+    assert {("battery", "stat_soc"), ("water", "stat_energy_from")} <= set(energy.ROLES)
 
 
 # -- il giro vero: `server.recipe_round` --------------------------------------

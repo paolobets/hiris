@@ -780,20 +780,46 @@ def _still_valid(fact, against: str | None = None) -> bool:
     return (fact.source or "") == expected
 
 
-def recipes(store) -> dict[str, dict]:
-    """Le ricette valide di tutti i dispositivi, `{dispositivo: ricetta}`, in
+def _written(store):
+    """`(dispositivo, riga del sapere, ricetta)` per ogni ricetta scritta, in
     una lettura del sapere (`Knowledge.device_answers`, A-38). Una riga che
     non si legge come JSON non e' una ricetta: si salta e si dichiara."""
-    found = {}
     for device_id, answers in store.device_answers((RECIPE_FIELD,)).items():
         fact = answers.get(RECIPE_FIELD)
         if fact is None or not fact.value:
             continue
         try:
-            found[device_id] = json.loads(fact.value)
+            yield device_id, fact, json.loads(fact.value)
         except (ValueError, TypeError):  # pragma: no cover - riga corrotta a mano
             logger.warning("sapere: la ricetta di %s non si legge come JSON", device_id)
-    return found
+
+
+def recipes(store) -> dict[str, dict]:
+    """Le ricette valide di tutti i dispositivi, `{dispositivo: ricetta}`."""
+    return {device_id: body for device_id, _fact, body in _written(store)}
+
+
+def recipe_listing(store) -> list[dict]:
+    """Le ricette scritte, una riga per dispositivo, come la porta del sapere
+    le consegna (`GET /api/mind/knowledge`, chiave `ricette`).
+
+    **La quarta fondamenta**: fino al 06/10/2026 la porta del sapere contava
+    le ricette e non ne mostrava nessuna -- i passi, le entita' che nominano e
+    contro cosa sono state scritte stavano solo nell'archivio. Misurato dallo
+    sprint quel giorno, rifacendo il Task 2.0 degli attori: per sapere come
+    la ricetta dell'inverter definisce l'autoconsumo (B-29) bisognava aprire
+    il database a mano.
+
+    Ogni riga si legge da sola (fondamenta 1): la ricetta com'e' scritta --
+    la stessa forma che il motore esegue, non una resa sua --, le entita'
+    che nomina (`Recipe.entities`, la regola del motore), `scritta_contro`
+    (la dashboard Energia contro cui e' stata scritta, `DASHBOARD_SOURCE`;
+    `None` se nessuna), chi e quando. Il nome del dispositivo lo aggiunge chi
+    ha l'anagrafe."""
+    return [{"dispositivo": device_id, "ricetta": body,
+             "entita": sorted(Recipe(body).entities()),
+             "scritta_contro": fact.source, "chi": fact.who, "quando_ts": fact.when_ts}
+            for device_id, fact, body in sorted(_written(store), key=lambda r: r[0])]
 
 
 def bridge_turn(objective: str, house: House, device_id: str,

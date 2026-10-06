@@ -998,3 +998,47 @@ def test_self_consumption_and_sufficiency_match_hand_computation():
     for nome in ("autoconsumo", "autosufficienza"):
         assert misure[nome]["unita"] == "frazione"
         assert misure[nome]["copertura"] == 1.0
+
+
+#: Lo stato di carica della batteria nella forma in cui il resoconto lo
+#: riceve: una MISURA ISTANTANEA (`state_class: measurement`, misurato sulla
+#: casa il 06/10/2026, attori Task 2.0), quindi ogni ora porta media, minimo e
+#: massimo e nessun cambio (`server._punti_orari`). I valori sono SINTETICI,
+#: e crescono ora per ora: della forma conta solo che sia istantanea.
+_SOC_DAY = [{"valore": None, "media": 20.0 + 3 * h, "minimo": 19.0 + 3 * h,
+             "massimo": 21.5 + 3 * h} for h in range(_HOURS)]
+
+
+def test_state_of_charge_measured_like_any_role():
+    """Attori, Task 2.5: lo stato di carica che la dashboard dichiara
+    (`stat_soc`) si misura con le operazioni che ci sono, senza codice suo.
+    Il motore ne da' media, minimo e massimo -- il minimo e' il piu' piccolo
+    dei minimi ORARI, non delle medie -- e rifiuta di sommarlo: un 30% piu'
+    un 40% non e' un 70% di niente.
+
+    Mutazione ESEGUITA il 06/10/2026: il minimo preso dalle medie in
+    `operations._average_min_max` -- rossa (20,0 contro 19,0)."""
+    recipe = {"why": "prova del motore sullo stato di carica", "steps": [
+        {"name": "carica_della_batteria", "operation": "media_min_max",
+         "inputs": ["@sensor.inverter_soc"],
+         "params": {"unit": "%", "expected_parts": _HOURS}},
+        {"name": "carica_sommata", "operation": "somma_periodo",
+         "inputs": ["@sensor.inverter_soc"],
+         "params": {"unit": "%", "expected_parts": _HOURS}},
+    ]}
+
+    r = rep.build_report(day="2026-09-29", episodes=[],
+                         series={"sensor.inverter_soc": _SOC_DAY},
+                         recipes={"inverter": recipe}, names={})
+
+    misure = {m["misura"]: m for m in r["misure"]}
+    soc = misure["carica_della_batteria"]
+    medie = [p["media"] for p in _SOC_DAY]
+    assert soc["valore"] == {"media": round(sum(medie) / len(medie), 2),
+                             "minimo": min(p["minimo"] for p in _SOC_DAY),
+                             "massimo": max(p["massimo"] for p in _SOC_DAY)}
+    assert soc["unita"] == "%" and soc["copertura"] == 1.0
+    sommata = misure["carica_sommata"]
+    assert "valore" not in sommata
+    assert "ISTANTANEA" in sommata["non_calcolabile"]
+    assert sommata["causa"] == "ricetta_storta"

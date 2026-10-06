@@ -153,6 +153,18 @@ veridicita' della soluzione»).
    autosufficienza mediana 96,6%, il resoconto dice «minoritario»); acqua, carica della batteria e
    presenza non hanno misura; le forme orarie non arrivano all'analista, che quindi non vede che
    il 95% dell'immissione esce fra le 13 e le 18.
+   *Il codice c'e' dal 06/10/2026 (piano degli attori, Task 2.1-2.5):* la dashboard Energia e' un
+   oggetto della casa (`home_space/energy.py`); le ricette ne vedono i ruoli e ricordano contro
+   quali sono state scritte, e quando cambiano tornano una domanda (D8); il motore calcola
+   autoconsumo e autosufficienza coi ruoli come i conti a mano. Lo stato di carica, che questa
+   casa dichiara dal 06/10, entra come ogni altro ruolo; l'acqua no, perche' la dashboard non la
+   dichiara. **Lo strato si chiude dal vivo**, dopo il rilascio: la ricetta dell'inverter
+   riscritta, il resoconto del primo giorno intero contro le statistiche di Home Assistant, poi
+   `python scripts/registro.py chiudi B-29` (Task 2.4, Passi 2 e 3). **Passano allo strato 3
+   (R1 del refactor degli attori)**, decisioni del proprietario del 03/10: la presenza come
+   misura, con lo strumento di calcolo generico (D7), e le forme orarie all'analista, a porzioni e
+   con gli strumenti (D9); e del 06/10: la somma di due misure, che oggi una ricetta scrive con
+   quattro `differenza_fra` in catena.
 3. **L'analista.** Gli inneschi li sceglie il modello e non il codice (la spec `i tre attori` §10
    dice il contrario); 99 serie su 168 nel prompt hanno l'ultimo valore vuoto; nessuna memoria
    delle analisi precedenti; l'obiettivo stampato «dal ... al ...» viene letto come scadenza;
