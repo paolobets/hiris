@@ -48,7 +48,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | B-28 | Ordinamento degli appuntamenti e due semantiche di `fine` | E | CC |  | Tappa 3 (verdetto) | reg · cop-5 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026), verificata: `appointments.read_appointment` scrive `fine` INCLUSIVA per un giornaliero (l'ultimo giorno) ed ESCLUSIVA per uno a orario (l'istante in cui finisce); l'ordine e' lessicografico in `sort_appointments` e in `HAClient.calendar_events`. Non eseguita: la forma giusta di `fine` non la decide il piano, e cambia cio' che il modello legge -- domanda al proprietario nel rapporto · A17 dell'integrazione Tappe 4-6 (761cabe, 05/10/2026): `sort_appointments` ordina per istante (`instant_epoch`), giornalieri prima degli orari dello stesso giorno -- la notte del cambio d'ora non si inverte piu'; resta la semantica di `fine` (domanda 10 del secondo giro: `dal`/`al` di D1, a T7) |
 | B-29 | Quote FV: «autoconsumo» esclude la batteria | D | CC | 29/09: quota_autoconsumo 31% contro 74,7% di FV non immesso | Tappa 3 (imprecisa) | reg · strato 2 degli attori (D10 della Tappa 3) |
 | B-31 | `tipo=automation/script` → genere: conversione in due posti | E | PS |  |  | cop-3 B-n2 · Tappa 3: non toccata (vive solo in `house_query` e `house_history`) |
-| B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | NV | PS |  |  | cop-3 B-n3 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026), verificata: le due tabelle sono `house_query._FILTERS_BY_KIND` e `house_history._WHO_KEYS`/`_ERROR_WHO_KEYS`, su due sensi diversi di `genere` (C-65); le due frasi sono la prosa delle descrizioni di `search` e `history`, che si riscrive al Task 5 insieme a D-68 |
 | B-33 | Una durata, tre grammatiche; `calendar` taglia in silenzio, gli altri rifiutano | D | CC |  |  | cop-3 B-n4 · Tappa 5 (D10 della Tappa 3) · Tappa 5, Task 4 (05/10/2026): la logica del calendario e' uscita in `appointments.merge_calendars` (f487b1a); il taglio dichiarato non e' fatto: il piano lo vuole «con i nomi del vocabolario D1», che e' della Tappa 4 (T7) e non c'e' ancora · B9 dell'integrazione Tappe 4-6 (9dba93a, 05/10/2026): `calendar` oltre 365 giorni rifiuta, come gli altri strumenti di durata -- il taglio silenzioso non c'e' piu'; resta la grammatica unica della durata (vocabolario D1, Tappa 4 T7) |
 | B-34 | «Tipi di ancora non verificabili adesso»: scritto due volte (`_remember`, `_unverifiable_types`) | NV | PS |  |  | cop-3 B-n5 |
 | B-39 | Conteggio per tipo del comportamento in tre punti, `senza_corpo` in quattro | NV | PS |  |  | cop-4 N-04 · cop-8 C2 |
@@ -99,7 +98,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-44 | Due buste nello stesso modulo `state_translations`: `letto` e `lette` | D | CC |  |  | cop-5 C1 |
 | C-45 | Tre forme dell'assenza nella stessa voce dello specchio (`""`, `None`, chiave mancante) | D | CC |  |  | cop-5 C2 |
 | C-48 | I corpi JSON dell'archivio dell'osservatore: tre letture con la guardia, quattro senza | D | CC |  |  | cop-6 N-10 · Tappa 8 (D10 della Tappa 4) |
-| C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | NV | DP |  |  | cop-6 N-11 · Tappa 5 (D10 della Tappa 4) |
 | C-50 | La chat risponde l'errore in quattro forme, due lingue, due volte con stato 200 | D | CC |  |  | cop-8 C3 · A6 della Tappa 4 (05/10/2026): il poll di un turno fallito resta 200 e porta `error` al posto di `message`; restano il 413 e i messaggi inglesi (A7, A11: cambiano cio' che si legge, con `ux-ui-specialist`) |
 | C-51 | Cancellare un ricordo che non esiste è un successo (204); correggerlo è un 404 | D | CC |  |  | cop-8 C4 |
 | C-54 | Lo stato grezzo arriva al modello: `READABLE_STATE` solo per le costruzioni, `cancel` scrive `in_corso` | D | PS |  |  | cop-9 N-C-3 · Tappa 8 (D10 della Tappa 4) |
@@ -112,7 +110,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-62 | `dove.integrazione` è uno slug nudo; area, piano e dispositivo escono come `{id, nome}` | D | CC |  |  | Tappa 4, trovato 5 (`house.py:143`); D1 |
 | C-63 | `_with_live_kind` scrive `classe: None` e `unita: None` espliciti; altrove la chiave manca | D | CC |  |  | Tappa 4, trovato 6 (`api/handlers_home_space.py:72-74`); D1, regola dell'assenza |
 | C-64 | `state` e `unit` in inglese dentro `prima`/`dopo` del dispositivo, mandati al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`; `unit` a `:339`, trovata dal Task 1); D1 |
-| C-65 | `genere` con tre significati: genere di oggetto (`search`), cosa chiedere (`history`), genere della cronaca | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 1 (`tools.py:253`, `:953`; glossario, «I concetti»); D3: il parametro di `history` diventa `cosa` (Task 5) |
 
 ---
 
@@ -121,7 +118,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | D-01 | Comporre il system prompt: più compositori | D | PS |  |  | reg · cop-7 |
-| D-03 | Regole d'uso degli strumenti: `BASE_TOOL_RULES` contro `_GUIDE_WITH_TOOLS` | D | CC |  | cop-7 (conteggio, incompleta) | reg · cop-7 |
 | D-04 | Recinto del contesto: sul ponte sì, sulla catena no | D | CC |  |  | reg · cop-7 |
 | D-05 | Il contratto di risposta due volte sul ponte (analista, ricette) | D | CC |  | cop-6 (imprecisa) | reg · cop-6 · cop-7 |
 | D-06 | Chi risponde: una decisione, sette chiamanti, quattro «dopo» | D | CC |  |  | reg · cop-7 · cop-8 |
@@ -164,16 +160,12 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-53 | Le righe annidate si arricchiscono TUTTE e poi si tagliano a 50 | E | PS |  |  | cop-4 N-19 · Tappa 5, Task 4 (05/10/2026): non toccata -- `queries._within_ceiling`, zona del Task 8 della Tappa 3; si riprende dopo il suo merge |
 | D-54 | L'id del soggetto ricavato spezzando la riga scritta per il modello (`house_lines` due volte) | E | PS |  |  | cop-6 N-12 · Tappa 6 T7 |
 | D-55 | All'analista vanno due campi per riga che non può più usare (`soggetto`, `operazione`) | NV | CC |  |  | cop-6 N-13 · Tappa 6 T7 |
-| D-56 | Promessa sul ponte: la guida nomina 7 strumenti assenti e non `conclude`; regole triplicate | D | CC |  |  | cop-7 N-D4 |
-| D-57 | La guida del ponte: secondo catalogo a mano, `mcp__hiris__` ricopiato venti volte (in potenza) | D | PS |  |  | cop-7 N-D5 |
 | D-59 | Il vocabolario degli stati di `reasoning_jobs`: letterali in tre file, in due lingue | E | PS |  |  | cop-7 N-D11 · Tappa 6 T7 |
 | D-60 | Costo e nome del provider scritti due volte, con due formule (0 contro NULL) | D | CC |  |  | cop-7 N-D13 · Tappa 6 T3 |
 | D-61 | Due pesatori del carico, una forma, tre definizioni di «guida» | D | CC |  |  | cop-7 N-D14 · Tappa 6 T7 |
 | D-62 | `reasoning/queue.py`: `get()`/`latest()` due forme, mezzanotte ricalcolata, `SELECT *` col nucleo | D | PS |  |  | cop-7 N-D15 · Tappa 6 T7 |
 | D-64 | Il nucleo che non si compone: tre chiamanti, tre comportamenti | D | CC |  |  | cop-8 D2 · cop-9 N-D-1 · Tappa 6 T7 |
 | D-65 | «Qual è la conversazione attiva di questo filo» chiesta tre volte per turno | NV | CC |  |  | cop-8 D3 · Tappa 6 T7 |
-| D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | E | CC |  |  | Tappa 3, piano del 03/10/2026, trovato 12 · Tappa 5, Task 4 (05/10/2026): e' prosa delle descrizioni, si unifica al Task 5 con le descrizioni (insieme a B-32) |
-| D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | D | CC |  |  | Tappa 5, piano del 05/10/2026, trovato 2 (`keeper/exchange.py`: le regole parlano di `execute`, `propose`, `remember`); il contenuto alla Tappa 5 (D4, Task 5), la composizione alla Tappa 6 |
 
 ---
 
@@ -843,6 +835,22 @@ si corregge il piano.
 ---
 
 
+
+## 9. La Tappa 5, Task 5 (06/10/2026): le regole e le descrizioni degli strumenti
+
+Fonte: il piano `piani/2026-10-tappa-5-gli-strumenti.md` (cartella del progetto), Task 5, sul
+ramo dello strato 4 (`6b857ec`). Chiuse con `registro.py chiudi`: B-32, D-68, C-65, D-03, D-56,
+D-57, D-69 (commit `c39482f5`) e C-49 (lo strumento `mind`, `eea18be`).
+
+Spostate, restano aperte:
+
+- **C-37**, **C-38** → Tappa 5, Task 6 (i tetti per risposta, R16): la traccia passo per passo
+  senza tetto e `calendar` senza tetto di righe sono tetti, e il Task 6 li scrive dopo la misura.
+- **C-35** resta aperta, da decidere col proprietario: le frasi fisse per risposta
+  (`nessuna_registrazione.perche`, `_NO_RECORDING` in `house_history.py`) ripetono la
+  descrizione, ma toglierle cambia la forma della risposta e va contro la fondamenta 1
+  (un oggetto porta cio' che serve a interpretarlo da solo). Prima la regola, poi il codice.
+
 ## Chiuse
 
 Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copia è cancellata.
@@ -1066,3 +1074,11 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | S-09 | Due orologi per la stessa scadenza: `timeout=300` fisso della CLI contro `scadenza_min`; due turni pagati per una domanda | Tappa 6, Task 8 | 395c178 | agent/runner._reason_chat: il timeout della CLI e' il tempo che resta al turno (deadline_ts), non 300 fisso; la CLI si ferma quando il ripiego comincia, e un turno scaduto non la invoca |
 | D-66 | Leggere un corpo JSON: cinque stili; chat, `submit` e servizi rispondono 500 | Tappa 6, Task 8 | 395c178 | api/boundary.json_object, la lettura unica: nove rotte; un corpo [] non da' piu' 500. Resta a parte la rotta MCP, che risponde in JSON-RPC (-32700) |
 | D-31 | Riparazione delle ricette: lo stesso turno `recipe_turn.ask` composto in due modi | Tappa 6, Task 8 | 7550547 | verificata il 06/10: la riparazione ha una strada sola, il giro delle ricette (recipe_turn.recipes_to_repair, attori Task 1.6); la domanda la compone build_device_question per la catena e per il ponte |
+| B-32 | «Quale filtro vale per quale genere»: due tabelle, due frasi | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | le due frasi sui filtri di search e history sono un frammento solo (_SUBJECT_FILTERS) con le differenze dichiarate accanto; le due tabelle restano due perche' guardano due sensi diversi (genere di oggetto, cosa chiedere), che ora hanno anche due nomi (C-65) |
+| D-68 | La regola della profondità ripetuta in prosa nelle descrizioni di `search` e `history` | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | _depth_rule in tools.py, una frase per le due descrizioni; la soglia si chiede a house_query.depth_for. Prova: test_history_tool::test_search_e_history_dicono_la_profondita_con_le_stesse_parole |
+| C-65 | `genere` con tre significati: genere di oggetto (`search`), cosa chiedere (`history`), genere della cronaca | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | il parametro di history si chiama cosa (D3); genere resta il genere di oggetto di search e il genere della cronaca |
+| D-03 | Regole d'uso degli strumenti: `BASE_TOOL_RULES` contro `_GUIDE_WITH_TOOLS` | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | la guida del ponte non ripete piu' le regole di claude_runner.TOOL_RULES, che il ponte compone gia' (steering.compose_base): restano i nomi prefissati, la fotografia e il tetto per chiamata. Le etichette per id sono entrate nelle regole di execute. Prove: test_prompt_parallelism (una volta sola), test_action_prompt |
+| D-56 | Promessa sul ponte: la guida nomina 7 strumenti assenti e non `conclude`; regole triplicate | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | guide_with_tools nomina gli strumenti del turno: la promessa legge i suoi sei, conclude compreso; l'avviso dei nomi vecchi nomina solo i suoi; keeper/exchange._system_prompt non ripete piu' gli id fra parentesi e il parallelismo. Prove: test_bridge_receives_briefing::test_la_promessa_sul_ponte_legge_i_suoi_strumenti_e_non_quelli_della_chat, test_keeper_exchange |
+| D-57 | La guida del ponte: secondo catalogo a mano, `mcp__hiris__` ricopiato venti volte (in potenza) | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | i nomi mcp__hiris__* li compone guide_with_tools dagli strumenti del turno, col prefisso di runner.mcp_name (usato anche da mcp_names, read_stream e _bare_tool_name). Mutazione eseguita: una riga in piu' nella tabella TOOLS compare nella guida senza toccare guida ne' prova |
+| D-69 | `interpreta_promise` riceve le `BASE_TOOL_RULES` intere, su strumenti che la promessa non ha | Tappa 5, Task 5 (ramo, non rilasciata) | c39482f5 | la composizione l'ha fatta la Tappa 6, Task 7 (compose_base); il contenuto qui: la promessa riceve le sole regole dei suoi strumenti (1.272 caratteri, nessuna di execute, propose, remember, confirm) |
+| C-49 | Resoconti, analisi, scope e obiettivo non sono chiedibili dalla chat | Tappa 5, Task 5 (ramo, non rilasciata) | eea18be | lo strumento mind (Tappa 5, Task 8): scope, obiettivo, resoconti, analisi ed energia sono chiedibili dalla chat; verificato il 06/10/2026 sull'enum di cosa |
