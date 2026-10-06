@@ -366,3 +366,48 @@ async def test_i_tentativi_falliti_e_le_ricadute_non_spostano_l_inizio_della_fin
     await _until(lambda: windows, "finestra chiusa")
     assert windows == [{"da": 1_001.0, "a": 1_002.0}]
     await _stop(client)
+
+
+@pytest.mark.asyncio
+async def test_se_get_config_e_rifiutata_la_finestra_si_chiude_al_ritorno_e_lo_dice(caplog):
+    """Una domanda rifiutata non lascia la finestra aperta in attesa di un
+    evento forse gia' passato: si chiude al ritorno del socket, e il registro
+    dice perche' (revisione, giro 48, M4).
+
+    Mutazione ESEGUITA: il ramo del rifiuto che non chiude -- rossa (la
+    finestra non si chiude)."""
+    client, connection = _client()
+    client._clock = _Clock()
+    windows = _windows(client)
+    await client.start_websocket()
+    await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    connection.core_state = "STARTING"
+    connection.config_refusal = {"code": "unknown_error", "message": "rifiutata"}
+    connection.drop()
+    await _until(lambda: windows, "finestra chiusa al rifiuto")
+    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
+    assert "get_config rifiutata" in caplog.text
+    await _stop(client)
+
+
+@pytest.mark.asyncio
+async def test_l_iscrizione_a_homeassistant_started_precede_la_domanda_sullo_stato():
+    """L'ordine e' la proprieta' che non perde l'avvio: `async_start` mette
+    `running` e POI manda l'evento (core.py, tag 2026.9.4), quindi iscritti
+    prima della domanda, un avvio finito in mezzo si legge `RUNNING` nella
+    risposta. Al contrario, finito fra domanda e iscrizione, non lo
+    vedrebbe nessuno (revisione, giro 48, M5).
+
+    Mutazione ESEGUITA: l'iscrizione spostata dopo `get_config` -- rossa."""
+    client, connection = _client()
+    await client.start_websocket()
+    await _until(lambda: connection.listening == 1, "prima connessione in ascolto")
+    connection.drop()
+    await _until(lambda: connection.listening == 2, "seconda connessione in ascolto")
+    await _stop(client)
+    # Solo la seconda connessione chiede lo stato; l'ultima iscrizione
+    # all'evento e' la sua.
+    kinds = [m.get("event_type") or m.get("type") for m in connection.sent]
+    assert kinds.count("get_config") == 1, kinds
+    started = max(i for i, k in enumerate(kinds) if k == "homeassistant_started")
+    assert started < kinds.index("get_config"), kinds
