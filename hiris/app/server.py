@@ -2541,15 +2541,26 @@ async def recipe_round(app) -> dict | None:
             else:
                 with_series = reading
 
+        # **La dashboard Energia** (piano degli attori, Task 2.2-2.3, D6, D8):
+        # letta una volta per giro dell'anagrafe, e solo quando c'e' qualcosa
+        # da chiedere o da riparare. Serve due volte: citata a parte nella
+        # domanda, e per sapere se una ricetta e' stata scritta contro ruoli
+        # che la dashboard non dichiara piu' (o non dichiarava ancora).
+        dashboard = (await energy_dashboard(cliente, home_space_store, house,
+                                            with_series=with_series)
+                     if cliente is not None else None)
+
         # **La ricetta rotta si ripara QUI, nel suo giro** (attori, Task 1.6;
         # D2 del proprietario, 03/10/2026). Decide il codice, dalla causa
         # (`recipe_turn.recipes_to_repair`): un dispositivo che pesa e la cui
-        # ricetta nomina un'entita' sparita, ricreata o senza statistiche torna
+        # ricetta nomina un'entita' sparita, ricreata o senza statistiche, o
+        # e' stata scritta contro un'altra dashboard Energia (Task 2.3), torna
         # fra quelli da chiedere, con la domanda che dice perche'. Fino al
         # 05/10/2026 la riparava solo l'attuatore, in pausa dal 01/10: nessuno.
         to_repair = {device_id: broken for device_id, broken
                      in recipe_turn.recipes_to_repair(
-                         sapere, house, with_series=with_series).items()
+                         sapere, house, with_series=with_series,
+                         energy=dashboard).items()
                      if set(house.entities_of(device_id)) & watched}
         if to_repair:
             logger.info("ricette: %d ricette da riparare -- %s", len(to_repair),
@@ -2567,12 +2578,6 @@ async def recipe_round(app) -> dict | None:
             return None
         repair = to_repair.get(device_id)
         objective = store.objective()["testo"]
-        # **La dashboard Energia, citata a parte** (piano degli attori, Task
-        # 2.2-2.3, D6): letta una volta per giro dell'anagrafe, qui solo
-        # quando c'e' davvero una domanda da fare.
-        dashboard = (await energy_dashboard(cliente, home_space_store, house,
-                                            with_series=with_series)
-                     if cliente is not None else None)
 
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
@@ -2628,7 +2633,7 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
                          objective: str,
                          with_series: set[str] | None = None,
                          energy: dict | None = None,
-                         repair: dict | None = None) -> dict | None:
+                         repair: recipe_turn.Repair | None = None) -> dict | None:
     """Accoda al piano la domanda su un dispositivo, e torna subito."""
     job = recipe_turn.bridge_turn(objective, house, device_id,
                                   with_series=with_series, energy=energy,
@@ -2642,9 +2647,13 @@ def _enqueue_recipe_turn(app, house: House, device_id: str, *,
         # **Nella sveglia va il dispositivo**: il ponte risponde minuti dopo,
         # da un altro processo, e chi raccoglie deve sapere di CHI era la
         # domanda. `submit` azzera il contesto e non la sveglia. E, per una
-        # riparazione, le entita' che la risposta non puo' nominare: chi
-        # raccoglie le applica come la catena (`apply_recipe`, `repairing`).
-        {"dispositivo": device_id, "riparare": sorted(repair or ())},
+        # riparazione, le entita' che la risposta non puo' nominare (`None`:
+        # non e' una riparazione; `[]`: lo e', per la dashboard), e la
+        # dashboard contro cui la domanda e' scritta: chi raccoglie le applica
+        # come la catena (`apply_recipe`, `repairing` e `written_against`).
+        {"dispositivo": device_id,
+         "riparare": None if repair is None else sorted(repair.silent),
+         "scritta_contro": recipe_turn.written_against(house, device_id, energy)},
         # Il modello del proprietario, come la chat (decisione 11).
         {**job, "model": bridge_model(app)},
         now + deadline_min * 60, now=now, priority=PRIORITY_BACKGROUND)
@@ -2679,10 +2688,16 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
         if riga is not None and riga.when_ts >= decided_ts:
             return None
     reply = (turn.get("decision") or {}).get("reply") or ""
-    repairing = frozenset((turn.get("wake") or {}).get("riparare") or ())
+    wake = turn.get("wake") or {}
+    # Una sveglia di prima del 06/10/2026 porta `[]` anche fuori da una
+    # riparazione: letta come riparazione, tiene la ricetta vecchia davanti a
+    # una risposta storta, e un dispositivo chiesto la prima volta non ne ha.
+    repairing = (None if wake.get("riparare") is None
+                 else frozenset(wake["riparare"]))
     esito = recipe_turn.apply_recipe(sapere, house, device_id, reply,
                                      who="modello (ponte)", when_ts=time.time(),
-                                     repairing=repairing)
+                                     repairing=repairing,
+                                     written_against=wake.get("scritta_contro"))
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.

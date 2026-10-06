@@ -1845,7 +1845,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_25_with_136_fields():
+def test_product_dataclasses_are_26_with_138_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1939,13 +1939,18 @@ def test_product_dataclasses_are_25_with_136_fields():
     `mask` -- una riga della tabella degli strumenti; e `Permission` coi suoi
     tre -- `gesture`, `applies`, `refusal` -- un gesto del soffitto che una
     chiamata richiede.
+
+    **Ventisei e 138 dal 06/10/2026**, attori, strato 2, Task 2.3: `Repair`
+    (`hiris/app/mind/recipe_turn.py`) coi suoi due campi -- `silent`,
+    `dashboard_changed` -- perche' una ricetta che c'e' torna una domanda:
+    le entita' che tacciono, e la dashboard Energia cambiata.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (25, 136), (classi, campi)
+    assert (classi, campi) == (26, 138), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

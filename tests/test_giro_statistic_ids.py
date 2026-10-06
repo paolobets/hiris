@@ -83,10 +83,13 @@ def stores(tmp_path):
 def _house() -> CasaFinta:
     """La casa sintetica col client vero; l'elenco delle statistiche porta
     l'entita' della ricetta (altrimenti il giro la poterebbe), e le
-    statistiche orarie rispondono vuote."""
+    statistiche orarie rispondono vuote. Nessuna dashboard Energia: dal
+    Task 2.3 degli attori il giro la chiede anche per controllare le ricette
+    scritte, e una casa senza risponde `not_found` (`ws_get_prefs`)."""
     return CasaFinta(synthetic_inputs(), answers={
         _LIST: lambda extra: [{"statistic_id": "sensor.prodotta"}],
-        _STATISTICS: lambda extra: {}})
+        _STATISTICS: lambda extra: {}},
+        refuse={"energy/get_prefs": {"code": "not_found", "message": "No prefs"}})
 
 
 def _app(stores, house):

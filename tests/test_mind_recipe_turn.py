@@ -671,7 +671,9 @@ def test_una_ricetta_su_un_entita_SPARITA_torna_una_domanda_e_dice_perche(sapere
     rotte = rt.recipes_to_repair(sapere, casa, with_series=SERIE_VIVE)
 
     assert set(rotte) == {"dev1"}
-    assert {e: r.cause for e, r in rotte["dev1"].items()} == {"sensor.vecchia": "sparita"}
+    assert {e: r.cause for e, r in rotte["dev1"].silent.items()} == {
+        "sensor.vecchia": "sparita"}
+    assert not rotte["dev1"].dashboard_changed
     domanda = rt.build_device_question("risparmiare", casa, "dev1",
                                        with_series=SERIE_VIVE, repair=rotte["dev1"])
     blocco = domanda.split("non funziona piu'", 1)[1]
@@ -734,7 +736,7 @@ def test_la_riparazione_RIFIUTA_una_ricetta_che_nomina_ancora_l_entita_muta(sape
     esito = rt.apply_recipe(sapere, casa, "dev1",
                             json.dumps(_ricetta("sensor.consumata", "sensor.vecchia")),
                             who="x", when_ts=1789000100.0,
-                            repairing=frozenset(rotte["dev1"]))
+                            repairing=frozenset(rotte["dev1"].silent))
 
     assert not esito["scritta"]
     assert any("sensor.vecchia" in p for p in esito["problemi"])
