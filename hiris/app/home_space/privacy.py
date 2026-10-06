@@ -226,21 +226,26 @@ class PresenceMask:
 
     Un nome si sostituisce solo intero (non dentro un'altra parola), e prima
     i piu' lunghi: «iPhone di Paolo Batteria» diventa un segnaposto solo,
-    non «dispositivo.#1 Batteria»."""
+    non «dispositivo.#1 Batteria». **Senza badare alle maiuscole** (G26-1,
+    giro 26 della revisione): il nome e' quello che Home Assistant dichiara,
+    ma una risposta lo puo' portare scritto «paolo» o «PAOLO» -- e resta il
+    suo nome. Gli id e i segnaposto, che sono gia' in minuscolo per Home
+    Assistant (`_OBJECT_ID`), si confrontano allo stesso modo senza danno."""
 
     def __init__(self, house) -> None:
         ids, devices = person_bound(house)
         self.handles = handles(ids)
         words: dict[str, str] = {}
         for entity_id, handle in self.handles.items():
-            words[entity_id] = handle
+            words[entity_id.casefold()] = handle
             name = house.name("entita", entity_id)
             if name and name != entity_id:
-                words.setdefault(name, handle)
+                words.setdefault(name.casefold(), handle)
         for number, device_id in enumerate(devices, start=1):
             name = house.name("dispositivo", device_id)
             if name and name != device_id:
-                words.setdefault(name, f"dispositivo.{PRESENCE_MARK}{number}")
+                words.setdefault(name.casefold(),
+                                 f"dispositivo.{PRESENCE_MARK}{number}")
         self._words = words
         self._mask = _alternation(words)
         back = {handle: entity_id for entity_id, handle in self.handles.items()}
@@ -256,18 +261,19 @@ class PresenceMask:
 
 def _alternation(words: dict[str, str], *, after: str = r"(?!\w)"):
     """Un'espressione sola per tutte le parole, le piu' lunghe prima, ognuna
-    solo intera; `None` se non c'e' niente da sostituire."""
+    solo intera e in qualunque maiuscolo (le chiavi di `words` sono gia'
+    `casefold`); `None` se non c'e' niente da sostituire."""
     if not words:
         return None
     alternatives = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
-    return re.compile(rf"(?<![\w.#])(?:{alternatives}){after}")
+    return re.compile(rf"(?<![\w.#])(?:{alternatives}){after}", re.IGNORECASE)
 
 
 def _replace(value, pattern, words: dict[str, str]):
     if pattern is None:
         return value
     if isinstance(value, str):
-        return pattern.sub(lambda m: words[m.group(0)], value)
+        return pattern.sub(lambda m: words[m.group(0).casefold()], value)
     if isinstance(value, dict):
         return {_replace(k, pattern, words): _replace(v, pattern, words)
                 for k, v in value.items()}

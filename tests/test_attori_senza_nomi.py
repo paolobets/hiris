@@ -111,6 +111,18 @@ def test_un_nome_si_copre_solo_INTERO():
     assert coperta == "Paolone e person.#2"
 
 
+def test_un_nome_si_copre_in_QUALUNQUE_maiuscolo():
+    """G26-1 (giro 26 della revisione, 06/10/2026): il nome dichiarato da Home
+    Assistant e' «Paolo», una risposta lo puo' portare «paolo» o «PAOLO».
+
+    Mutazione ESEGUITA (06/10/2026): `_alternation` senza `re.IGNORECASE` --
+    rossa («PAOLO» passa intatto)."""
+    mask = PresenceMask(_house())
+    assert mask.mask("quando paolo esce") == "quando person.#2 esce"
+    assert mask.mask("PAOLO") == "person.#2"
+    assert mask.mask("IPHONE DI PAOLO BATTERIA") == "sensor.#1"
+
+
 def test_il_segnaposto_torna_id_negli_argomenti():
     mask = PresenceMask(_house())
     assert mask.unmask({"riferimento": "sensor.#1", "altro": "sensor.#10"}) == {
