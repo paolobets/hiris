@@ -45,16 +45,21 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
+from hiris.app.steering import SPECIES
 
 # La fixture dell'app col confine ACCESO vive in `conftest.py` e non qui: una
 # seconda copia divergerebbe, e senza le due valvole della suite rimosse questi
 # test passerebbero anche col guasto in piedi. Viveva in
 # `tests/test_internal_token.py`, uscito il 22/09/2026 col segreto condiviso.
 from tests.test_knowledge_tools import _semina_casa
+
+#: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
+CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
 
 _NOMI_NUDI = {d["name"] for d in KNOWLEDGE_TOOLS}
 
@@ -109,7 +114,7 @@ class _ClientFinto:
 # ① L'INVARIANTE, NEI DUE VERSI -- il test da non cancellare mai
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("strumenti_attivi", [True, False])
+@pytest.mark.parametrize("strumenti_attivi", [CHAT_TOOLS, ()], ids=["con", "senza"])
 def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
     """`"--mcp-config" in argv` **<=>** `_GUIDE_WITH_TOOLS in system`.
 
@@ -145,7 +150,7 @@ def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
 def test_le_due_guide_non_convivono_mai_nello_stesso_prompt():
     """Il corollario: un prompt che contenesse entrambe direbbe al modello una
     cosa e il suo contrario, e vincerebbe l'ultima letta."""
-    for attivi in (True, False):
+    for attivi in (CHAT_TOOLS, ()):
         system, _u = prompts.build_chat_messages("Sei HIRIS.", [], active_tools=attivi)
         assert (prompts._GUIDE_WITH_TOOLS in system) != (
             prompts._GUIDE_WITHOUT_TOOLS in system)
@@ -192,10 +197,11 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     prima di un impegno». «Una porta sola per la casa» (29/09/2026): da 16
     a 15, esce `view` -- il suo dettaglio e' la voce di `search` quando
     l'insieme ne ha una sola. La storia (30/09/2026): da 15 a 12, i quattro
-    lettori del tempo diventano `history`."""
+    lettori del tempo diventano `history`. La Tappa 5, Task 8 (06/10/2026):
+    da 12 a 13, entra `mind`, le letture del cervello (R8)."""
     nomi = runner.mcp_names()
 
-    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 12
+    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 13
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da
@@ -418,7 +424,7 @@ def test_il_token_non_compare_nel_log_del_turno_degradato(caplog):
         stdout = '{"type":"result","subtype":"error","result":"boom"}\n'
         stderr = "errore"
 
-    job = {"kind": "chat", "job_id": "J-3",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-3",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 
@@ -577,8 +583,8 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     chiamate degli strumenti. E' cio' che rende il disegno «una rotta e non un
     sottoprocesso» qualcosa di piu' di un'affermazione.
 
-    Se un giorno qualcuno «semplificasse» chiamando `run_once` direttamente
-    nella coroutine, la chat andrebbe in **stallo circolare**: il modello
+    Se un giorno qualcuno «semplificasse» chiamando `reason` direttamente
+    nella coroutine di `serve`, la chat andrebbe in **stallo circolare**: il modello
     chiama lo strumento, l'HTTP non viene servito perche' il loop e' fermo
     dentro `subprocess.run`, e dopo cinque minuti scatta il timeout. Questo
     test e' cio' che glielo impedisce -- e fallirebbe **in stallo**, che e'
@@ -636,12 +642,23 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
                                                          "tipo": "area"})
             return _ProcFelice()
 
+        from hiris.app.reasoning.consegna import consegna
+
+        async def _consegna(job_id, nonce, decision, now):
+            return await consegna(app, job_id, nonce, decision, now)
+
+        # Il turno si serve con `runner.serve`, chiamata DALLA coroutine come
+        # in produzione (`run_loop`): e' `serve` che deve spostare la CLI nel
+        # thread dell'executor. Fino al 06/10/2026 qui la spostava la prova
+        # stessa (`asyncio.to_thread`), e il difetto che questa prova dice di
+        # sorvegliare -- la CLI chiamata nella coroutine -- non poteva vederlo.
         with (
             patch.object(runner.subprocess, "run", _finta_cli),
             httpx.Client(timeout=30) as http,
         ):
-            esito = await asyncio.to_thread(
-                runner.run_once, http, base, intestazioni, "live")
+            esito = await runner.serve(
+                coda.claim(time.time()), _consegna, http, base,
+                lambda: intestazioni, "live")
 
         assert esito == "done"
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
@@ -731,7 +748,7 @@ def test_il_turno_senza_strumenti_lo_dichiara_all_utente_e_nel_log(caplog):
     la sonda non li ha trovati: la `reply` porta in testa la riga rivolta
     all'utente, e sotto resta la risposta vera che il modello ha comunque
     dato sul nucleo. Il log porta il motivo."""
-    job = {"kind": "chat", "job_id": "J-degrado",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-degrado",
            "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
 
@@ -761,7 +778,7 @@ def test_il_turno_con_gli_strumenti_non_dichiara_nessun_degrado(caplog):
     """Il complemento: quando gli strumenti ci sono, la reply e' la risposta e
     basta. Una riga di degrado che comparisse sempre sarebbe rumore, e
     smetterebbe di significare qualcosa."""
-    job = {"kind": "chat", "job_id": "J-ok",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-ok",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
     catturato = {}
@@ -795,7 +812,7 @@ def test_senza_client_non_c_e_degrado_da_dichiarare(caplog):
     puntare la mcp-config, quindi non c'e' nessun guasto -- e' il vecchio
     comportamento, non un degrado nuovo. Un avviso qui sarebbe rumore, e il
     silenzio dichiarato smetterebbe di distinguersi."""
-    job = {"kind": "chat", "job_id": "J-locale",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-locale",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 
@@ -823,7 +840,7 @@ def test_la_riga_di_degrado_non_precede_i_sentinella_di_guasto():
         stdout = '{"type":"result","subtype":"error","result":"quota"}\n'
         stderr = ""
 
-    job = {"kind": "chat", "job_id": "J-rotto",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-rotto",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 
@@ -853,7 +870,7 @@ _CONTRORDINI = (
 )
 
 
-@pytest.mark.parametrize("strumenti_attivi", [True, False])
+@pytest.mark.parametrize("strumenti_attivi", [CHAT_TOOLS, ()], ids=["con", "senza"])
 def test_il_blocco_del_contesto_non_contraddice_nessuno_dei_due_rami(strumenti_attivi):
     """Le due clausole non devono rientrare su NESSUNO dei due rami.
 
@@ -906,7 +923,7 @@ def test_il_blocco_del_contesto_resta_uno_solo_su_entrambi_i_rami():
     STESSO `_CONTESTO_PRESENTE` che esce sui due rami. Se un giorno diventasse
     condizionale, sarebbero due testi da tenere veri invece di uno."""
     with_, _u = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
-                                            active_tools=True)
+                                            active_tools=CHAT_TOOLS)
     without, _u2 = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
                                                active_tools=False)
     assert prompts._CONTESTO_PRESENTE in with_
@@ -978,7 +995,7 @@ def _ricostruibile(token: str, testo: str) -> bool:
 def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
     """Il turno pericoloso: strumenti ATTIVI (quindi il token E' nell'argv) e
     un sottoprocesso che riecheggia la configurazione."""
-    job = {"kind": "chat", "job_id": "J-eco",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-eco",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
     argv_visti = []
@@ -1145,7 +1162,7 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
                              "result": "in cucina una luce e' accesa"}) + "\n"
         stderr = ""
 
-    job = {"kind": "chat", "job_id": "J-pulito",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-pulito",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
@@ -1159,8 +1176,8 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
 # TASK 4, nit 1 della review del Task 3 -- IL SETTIMO CANALE.
 #
 # I cinque canali qui sopra nascono dallo stdout della CLI. Il sesto e' la
-# reply. Il settimo e' un'ECCEZIONE: `run_once` fa HTTP verso la reasoning API
-# con gli header del claim, che portano `X-HIRIS-Internal-Token`, e con un
+# reply. Il settimo e' un'ECCEZIONE: il giro fa HTTP verso la rotta degli
+# strumenti con le intestazioni del turno, che portano `X-HIRIS-Internal-Token`, e con un
 # valore che il protocollo non accetta il client solleva **col valore dentro**.
 # Il catch del giro lo logga. Era irraggiungibile solo grazie a una difesa che
 # sta in un altro file (la validazione del token all'avvio) e che nessun test
@@ -1169,7 +1186,7 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
 
 @pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
 def test_il_settimo_canale_l_eccezione_del_giro_non_porta_il_token(monkeypatch, token):
-    """Il messaggio dell'eccezione non si butta -- `run_once errore:
+    """Il messaggio dell'eccezione non si butta -- `ponte, turno fallito:
     HTTPStatusError` non direbbe ne' quale rotta ne' quale codice, e un log che
     non serve a diagnosticare e' il primo che smette di essere letto -- ma
     passa dalla redazione che c'e' gia'."""
@@ -1281,7 +1298,7 @@ class _CliFinta:
 def _turno(cli, *, token="TOK", job_id="J-init", sonda=True):
     """Un turno del ponte con gli strumenti ATTESI (client + base_url), la
     sonda che dice di si', e la CLI finta al posto del sottoprocesso."""
-    job = {"kind": "chat", "job_id": job_id,
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": job_id,
            "context": {"model": "sonnet", "history": [{"role": "user", "content": "che luci?"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
     risposta = (_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200) if sonda
@@ -1459,7 +1476,7 @@ def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
     presenza di strumenti che ha appena deciso di non chiedere -- e ogni turno
     del ramo di degrado costerebbe due invocazioni."""
     cli = _CliFinta(_proc(0, _riga_init(stato="failed") + "\n" + _RIGA_RESULT + "\n"))
-    job = {"kind": "chat", "job_id": "J-nessun-cliente",
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "J-nessun-cliente",
            "context": {"model": "sonnet", "history": [], "system_prompt": "Sei HIRIS.",
                        "contesto": "x"}}
 

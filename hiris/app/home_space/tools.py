@@ -91,6 +91,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..action.construction.advisor import STRUCTURES
+from ..action.construction.stakes import CHOSEN_BY_MODEL as STAKES_CHOSEN_BY_MODEL
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
 from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
@@ -100,6 +101,7 @@ from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
 from . import historian
 from .appointments import merge_calendars, readable_calendars
+from .energy import energy_dashboard
 from .ha_vocabulary import HA_LINK_TYPE
 from .house import House
 from .house_history import (
@@ -764,8 +766,7 @@ PROPOSE_TOOL_DEF = {
         "**non nello stesso turno**: mostra l'anteprima a chi ti sta parlando, digli che "
         "la proposta resta in attesa nella pagina «Proposte», e aspetta che sia "
         "chi ti sta parlando a dire di procedere. "
-        "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
-        "«script» o «scene». Per modificare o cancellare serve `chiave` (l'id "
+        "Per modificare o cancellare serve `chiave` (l'id "
         "dell'automazione o della scena, lo slug dello script): la trovi con "
         "`search` (col suo `riferimento` se lo hai gia'). "
         "Componi con i PARAMETRI, non scrivendo YAML: `innesco`, `condizioni`, "
@@ -787,8 +788,7 @@ PROPOSE_TOOL_DEF = {
             "dominio": {"type": "string",
                         "description": "automation, script o scene."},
             "chiave": {"type": "string",
-                       "description": "L'id o lo slug dell'oggetto da toccare "
-                                      "(solo per modifica e cancella)."},
+                       "description": "Solo per modifica e cancella."},
             "alias": {"type": "string", "description": "Il nome dell'oggetto."},
             "descrizione": {"type": "string",
                             "description": "A cosa serve, in italiano: finisce "
@@ -829,6 +829,13 @@ PROPOSE_TOOL_DEF = {
             "helper": {"type": "array", "items": {"type": "object"},
                        "description": "Gli helper da creare insieme: ognuno con "
                                       "`dominio` e `dati`."},
+            # Il livello (attori, strato 4, D13): l'enumerazione viene dalla
+            # sua casa (`action/construction/stakes.py`) e porta solo cio' che
+            # il modello puo' scegliere. «alto» non c'e': lo impone l'officina
+            # quando la proposta agisce su serrature o allarme.
+            "livello": {"type": "string", "enum": list(STAKES_CHOSEN_BY_MODEL),
+                        "description": "Su serrature e allarme e' «alto», "
+                                       "da solo."},
             "frase": {"type": "string",
                       "description": "La frase di chi ti sta parlando da cui nasce, "
                                      "verbatim."},
@@ -1354,8 +1361,8 @@ class Tool:
 
 
 class ToolDispatcher:
-    """Collega i dodici strumenti agli archivi, alla porta, all'officina e al
-    canale HA -- e non altro.
+    """Collega gli strumenti della tabella (`TOOLS`) agli archivi, alla porta,
+    all'officina, al canale HA e alle letture del cervello -- e non altro.
 
     Prende `home_space_store` e `memory_store` gia' costruiti dal chiamante
     (`create_app()` o l'equivalente nei test): questa classe non ne apre
@@ -1377,8 +1384,15 @@ class ToolDispatcher:
                  subject: dict | None = None,
                  phrase: str | None = None,
                  thread: ChatThread | None = None,
-                 house: House | None = None) -> None:
+                 house: House | None = None,
+                 mind=None) -> None:
         self._home_space = home_space_store
+        # Le letture del cervello (`mind/view.MindView`, Tappa 5, Task 8):
+        # lo scope, l'obiettivo, i resoconti, le analisi. Arrivano GIA'
+        # costruite, come il sapere e la cronaca: `home_space` non importa da
+        # `mind` (`tests/test_confine_home_space.py`). `None` e' legittimo
+        # come per gli altri archivi: `mind` dichiara un errore.
+        self._mind = mind
         # L'istantanea della casa di QUESTO turno (`house.House`, R18): una
         # lettura dell'anagrafe e una dello specchio, la gerarchia calcolata
         # una volta, per il nucleo e per ogni strumento. Il chiamante la passa
@@ -1564,7 +1578,7 @@ class ToolDispatcher:
             return {"errore": f"lo strumento «{name}» non e' fra quelli disponibili "
                               f"({available})."}
         # Task 1 di «rifiutare e importare» (§6b): un obbligatorio mancante e
-        # un nome ignoto si rifiutano QUI, una volta sola per tutti e dodici
+        # un nome ignoto si rifiutano QUI, una volta sola per tutti
         # gli strumenti -- non nei gestori, che fino ad oggi lo facevano a
         # mano (quattro di loro) o non lo facevano affatto (un lettore
         # del tempo, uscito il 30/09/2026 con la storia, dichiarava un
@@ -2290,6 +2304,7 @@ class ToolDispatcher:
             "ricorrente": bool(arguments.get("ricorrente")),
             "richiesto": arguments.get("richiesto"),
             "helper": arguments.get("helper") or [],
+            "livello": arguments.get("livello"),
             "frase": arguments.get("frase"),
         }
         return await self._workshop.propose(
@@ -2659,11 +2674,136 @@ class ToolDispatcher:
         return merge_calendars(calendars, answers, timezone=timezone)
 
 
+    # -- cio' che il cervello guarda (R8) ---------------------------------
+
+    async def _read_mind(self, arguments: dict[str, Any]) -> dict:
+        """Cio' che il cervello guarda e ha capito (Tappa 5, Task 8; R8): la
+        STESSA lettura che la pagina riceve dalle rotte di
+        `api/handlers_mind.py`, perche' tutte e due chiamano `MindView`
+        (fondamenta 3). Quale lettura, lo dice `cosa`, e la tabella
+        `MIND_READINGS` dice chi la serve: l'`enum` dello schema si deriva da
+        lei, e un valore nuovo e' una riga sola.
+
+        `giorno` sceglie un giorno solo, e vale per resoconti e analisi: con le
+        altre letture si rifiuta invece di essere ignorato, come ogni filtro
+        che non vale (`history`)."""
+        what = arguments["cosa"]
+        reading = MIND_READINGS[what]
+        if arguments.get("giorno") is not None and not reading.by_day:
+            daily = ", ".join(sorted(key for key, row in MIND_READINGS.items() if row.by_day))
+            return {"errore": f"«giorno» vale solo per {daily}, non per «{what}»."}
+        return await reading.serve(self, arguments.get("giorno"))
+
+    def _mind_missing(self, *, store: bool = True) -> dict | None:
+        """Cosa manca alle letture del cervello, o `None`: le letture stesse
+        (un dispatcher costruito senza), o l'archivio. Un archivio assente non
+        e' un archivio vuoto -- la rotta risponde 503, qui un `errore`."""
+        if self._mind is None:
+            return {"errore": "le letture del cervello non sono collegate."}
+        if store and self._mind.store is None:
+            return {"errore": "l'archivio del cervello non e' disponibile."}
+        return None
+
+    async def _mind_scope(self, _day) -> dict:
+        missing = self._mind_missing(store=False)
+        if missing is not None:
+            return missing
+        scope = self._mind.scope()
+        if scope is None:
+            return {"errore": "l'osservatore non e' disponibile: l'add-on e' partito senza di lui."}
+        return scope
+
+    async def _mind_objective(self, _day) -> dict:
+        return self._mind_missing() or {"obiettivo": self._mind.objective()}
+
+    async def _mind_reports(self, day: str | None) -> dict:
+        missing = self._mind_missing()
+        if missing is not None:
+            return missing
+        if not day:
+            return {"resoconti": self._mind.reports()}
+        found = self._mind.report(day)
+        if found is None:
+            # La stessa risposta della rotta: un giorno mai aggregato non e'
+            # un giorno vuoto, e si dice quando il resoconto si scrivera'.
+            return {"errore": f"il giorno {day} non e' stato aggregato",
+                    "ora_notturna": self._mind.nightly_time()}
+        return {"resoconto": found}
+
+    async def _mind_analyses(self, day: str | None) -> dict:
+        missing = self._mind_missing()
+        if missing is not None:
+            return missing
+        if not day:
+            return {"analisi": self._mind.analyses()}
+        found = self._mind.analysis(day)
+        if found is None:
+            return {"errore": f"il giorno {day} non e' stato analizzato"}
+        return {"analisi": found}
+
+    async def _mind_energy(self, _day) -> dict:
+        """La dashboard Energia (`home_space/energy.py`, piano degli attori,
+        strato 2): cio' che il proprietario ha dichiarato a Home Assistant su
+        chi e' rete, sole, batteria. E' della casa, non del cervello -- per
+        questo non passa da `MindView` -- ma e' la stessa domanda «su cosa
+        ragiona HIRIS», e il cervello la legge prima di scrivere una ricetta.
+
+        `ha_statistiche` resta `None`: l'elenco delle statistiche lo chiede il
+        giro delle ricette, e qui «non l'ho chiesto» si dice com'e'."""
+        if self._ha is None or self._home_space is None:
+            return {"errore": "la dashboard Energia si legge da Home Assistant, "
+                              "e il collegamento o la casa non ci sono."}
+        dashboard = await energy_dashboard(self._ha, self._home_space, self._turn_house())
+        if dashboard is None:
+            return {"errore": "la dashboard Energia non e' stata letta: Home Assistant "
+                              "non ha risposto."}
+        return {"energia": dashboard}
+
+
 # La tabella degli strumenti: UNA riga per strumento. Il catalogo che il
 # modello riceve, i nomi che `dispatch` accetta, i gestori, gli archivi e il
 # soffitto si chiedono a lei -- erano tre tabelle scritte a mano (D-39) e
 # sette domande al soffitto dentro i gestori (D-23). L'ordine e' quello del
 # catalogo che il modello legge.
+@dataclass(frozen=True)
+class MindReading:
+    """Una lettura dello strumento `mind`: chi la serve, e se accetta un
+    `giorno`."""
+    serve: Callable[..., Any]
+    by_day: bool = False
+
+
+#: Le letture dello strumento `mind`, per `cosa`. **E' la tabella del
+#: parametro**: l'`enum` di `MIND_TOOL_DEF` si chiede a lei, e il gestore la
+#: legge (piano della Tappa 5, Task 8, passo 5: «una riga nella tabella del
+#: parametro, nessun modulo nuovo»).
+MIND_READINGS: dict[str, MindReading] = {
+    "scope": MindReading(ToolDispatcher._mind_scope),
+    "obiettivo": MindReading(ToolDispatcher._mind_objective),
+    "resoconti": MindReading(ToolDispatcher._mind_reports, by_day=True),
+    "analisi": MindReading(ToolDispatcher._mind_analyses, by_day=True),
+    "energia": MindReading(ToolDispatcher._mind_energy),
+}
+
+MIND_TOOL_DEF = {
+    "name": "mind",
+    "description": (
+        "Cio' che il cervello di HIRIS guarda e ha capito, in sola lettura. "
+        "`cosa`: `scope` cosa guarda, perche' e cosa ha lasciato fuori; "
+        "`obiettivo` la domanda della casa; `resoconti` le misure dei giorni; "
+        "`analisi` le osservazioni dell'analista; `energia` la dashboard "
+        "Energia di Home Assistant."),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "cosa": {"type": "string", "enum": list(MIND_READINGS)},
+            "giorno": {"type": "string",
+                       "description": "AAAA-MM-GG: un giorno solo, per resoconti e analisi."},
+        },
+        "required": ["cosa"],
+    },
+}
+
 TOOLS: tuple[Tool, ...] = (
     # Solo la casa: la memoria serve al dettaglio di un ricordo, e quello lo
     # dichiara da se' quando manca (`_full_detail_sync`). Rifiutare «luci
@@ -2698,6 +2838,11 @@ TOOLS: tuple[Tool, ...] = (
          permissions=(Permission("amministrare", applies=_asks_admin_reads,
                                  refusal=ADMIN_READS_REFUSAL),)),
     Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",)),
+    # Nessun permesso, come `search` e `history` (D6 del piano): le stesse
+    # cose sono gia' visibili nella pagina del cervello a chiunque entri.
+    # Nessun archivio nella riga: ogni lettura dice da se' cosa le manca
+    # (`_mind_missing`), e l'energia non passa dalle letture del cervello.
+    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind),
 )
 
 # Le viste sulla tabella. Il catalogo che il modello riceve si DERIVA: un

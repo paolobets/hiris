@@ -1,4 +1,7 @@
-"""Il turno dell'**attuatore** (spec 2026-09-21 §2).
+"""Il turno del **proponente** (`docs/design/2026-09-21-l-attuatore.md`, §2).
+
+Fino al 06/10/2026 si chiamava attuatore: il nome nuovo e' D11 del piano degli
+attori, strati 3-4.
 
 Gemello di `analyst_turn.py`, e per la stessa ragione: il modello dice cosa ha
 trovato e cosa propone, il codice **valida e rifiuta**. Una risposta storta non
@@ -28,12 +31,14 @@ import logging
 from ..action.construction.workshop import closed_fields, form_refusal
 from ..home_space.tools import PROPOSE_TOOL_DEF
 from ..proxy.ha_client import HAClient
-from ..steering import read_json
+from ..steering import PROPOSER_SPECIES, SPECIES, read_json
 
 logger = logging.getLogger(__name__)
 
-#: La specie di turno, per il ponte e per il runner.
-ACTUATION_TURN_KIND = "attuazione"
+#: La specie di turno, per il ponte e per il runner: una vista sulla
+#: dichiarazione del mestiere. Fino al 06/10/2026 era «attuazione»: l'attore
+#: si chiama proponente (D11 del piano degli attori, strati 3-4).
+PROPOSAL_TURN_KIND = SPECIES[PROPOSER_SPECIES].kind
 
 #: **Il tetto della risposta, dichiarato** (Tappa 6, Task 4; D3, approvata
 #: il 05/10/2026). Fino a quel giorno questo mestiere non ne passava nessuno e

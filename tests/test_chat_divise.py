@@ -11,6 +11,7 @@ lo status, il contenuto restituito, cio' che sta nell'archivio.
 """
 import os
 import sys
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -23,10 +24,10 @@ from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.api.handlers_chat_history import handle_get_chat_history
-from hiris.app.api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
+from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.server import _chat_reply_submitter
 from tests._casa_sintetica import synthetic_inputs
@@ -41,13 +42,8 @@ def _persona(pid):
 
 @web.middleware
 async def _finto_confine(request, handler):
-    chi = request.headers.get("X-Chi", "")
-    if chi == "ponte":
-        request["auth_via"] = "turno"
-        request["soggetto"] = {"specie": "nessuno", "id": "ponte"}
-    else:
-        request["auth_via"] = "ingress"
-        request["soggetto"] = _persona(chi)
+    request["auth_via"] = "ingress"
+    request["soggetto"] = _persona(request.headers.get("X-Chi", ""))
     return await handler(request)
 
 
@@ -102,8 +98,6 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
     app.router.add_get("/api/chat/history", handle_get_chat_history)
-    app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
-    app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
     return app, q, data_dir
 
 
@@ -183,21 +177,17 @@ async def test_il_poll_di_un_job_altrui_e_un_404(tmp_path):
 # 6. La consegna del ponte scrive nel filo del job, non in un altro.
 @pytest.mark.asyncio
 async def test_la_risposta_del_ponte_arriva_nel_filo_di_chi_ha_chiesto(tmp_path):
-    app, _q, data_dir = _make_app(tmp_path, ponte_attivo=True)
+    app, q, data_dir = _make_app(tmp_path, ponte_attivo=True)
     async with TestClient(TestServer(app)) as client:
         primo = await client.post("/api/chat", json={"message": "che ore sono?"},
                                   headers={"X-Chi": "paolo"})
         assert primo.status == 202
-        preso = await (await client.post("/api/reasoning/claim",
-                                         headers={"X-Chi": "ponte"})).json()
-        # Sul filo HTTP il filo del job viaggia come dizionario.
-        assert preso["job"]["thread"] == {"subject_key": "persona:paolo",
-                                          "entry_point": "pannello"}
-        consegna = await client.post(
-            "/api/reasoning/submit", headers={"X-Chi": "ponte"},
-            json={"job_id": preso["job"]["job_id"], "nonce": preso["job"]["nonce"],
-                  "decision": {"reply": "Sono le cinque."}})
-        assert (await consegna.json())["outcome"] == "chat_reply_recorded"
+        # Come il lavoratore del ponte: prende il turno dalla coda e lo consegna.
+        preso = q.claim(time.time())
+        assert preso["thread"] == PAOLO
+        esito = await consegna(app, preso["job_id"], preso["nonce"],
+                               {"reply": "Sono le cinque."}, time.time())
+        assert esito == "chat_reply_recorded"
 
     assert load_history(data_dir, thread=PAOLO) == [
         {"role": "user", "content": "che ore sono?"},
@@ -212,15 +202,11 @@ async def test_la_risposta_del_ponte_arriva_nel_filo_di_chi_ha_chiesto(tmp_path)
 async def test_un_job_senza_filo_non_scrive_da_nessuna_parte(tmp_path, caplog):
     app, q, data_dir = _make_app(tmp_path)
     q.enqueue("chat", {}, {"history": []}, deadline_ts=9e12, job_id="VECCHIO", now=1.0)
-    async with TestClient(TestServer(app)) as client:
-        preso = await (await client.post("/api/reasoning/claim",
-                                         headers={"X-Chi": "ponte"})).json()
-        with caplog.at_level("WARNING"):
-            consegna = await client.post(
-                "/api/reasoning/submit", headers={"X-Chi": "ponte"},
-                json={"job_id": "VECCHIO", "nonce": preso["job"]["nonce"],
-                      "decision": {"reply": "risposta orfana"}})
-        assert (await consegna.json())["outcome"] == "chat_reply_senza_filo"
+    preso = q.claim(10.0)
+    with caplog.at_level("WARNING"):
+        esito = await consegna(app, "VECCHIO", preso["nonce"],
+                               {"reply": "risposta orfana"}, 10.0)
+    assert esito == "chat_reply_senza_filo"
 
     from hiris.app.chat_store import _get_store
 

@@ -20,7 +20,7 @@ import json
 import pytest
 
 from hiris.app.api import handlers_proposals
-from hiris.app.mind import actuator_turn, analyst_turn, observer
+from hiris.app.mind import analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
 from tests.test_mind_actuator_turn import _osservazioni as osservazioni_attuatore
@@ -55,7 +55,7 @@ def _analista(testo):
 
 
 def _attuatore(testo):
-    return actuator_turn.apply_actuation(osservazioni_attuatore(),
+    return proposer_turn.apply_actuation(osservazioni_attuatore(),
                                          testo)["problemi"] == []
 
 

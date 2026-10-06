@@ -49,6 +49,9 @@ def _richiesta(app, match=None, corpo=None):
             # `soffitto.request_role`).
             self._valori = {"soggetto": AMMINISTRATORE, "auth_via": "ingress",
                             "ruolo": "amministratore"}
+            # `aiohttp.web.BaseRequest.body_exists`: se la richiesta porta
+            # un corpo (`api/boundary.json_object`, Tappa 6, Task 8).
+            self.body_exists = corpo is not None
 
         async def json(self):
             if corpo is None:
@@ -70,7 +73,7 @@ def casa(tmp_path):
         text="Sposta la lavatrice nel primo pomeriggio",
         perche="il prelievo si concentra la mattina",
         fingerprint="dev1|prelievo|None|1",
-        prova={"base": 19}, chi_applica="tu", now_ts=100.0)
+        prova={"base": 19}, stakes=None, now_ts=100.0)
     try:
         yield ({"observations": store, "ha_client": CasaFinta(
                    synthetic_inputs(), answers={"config/auth/list": lambda extra: [_ADMIN]}),
@@ -190,6 +193,31 @@ async def test_senza_modello_RIFALLA_lo_dice_e_non_tocca_la_proposta(casa):
         _richiesta(app, {"id": ident}, {"richiesta": "dopo le 14"}))
 
     assert r.status == 503
+    assert store.proposals()[0]["giri"] == []
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_nessuno_risponde_e_RIFALLA_lo_dice(casa):
+    """G29-1, per «Rifalla». Quando tutti i backend rifiutano, il router
+    consegna una frase per la chat: non e' una proposta illeggibile (502), e'
+    il modello che non ha risposto (503), come quando il giro non parte.
+
+    Mutazione ESEGUITA: la rotta senza il ramo `turn.answered` -- rossa (502)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    app, store, ident = casa
+    giu = MagicMock()
+    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    app["llm_router"] = LLMRouter(claude=giu, strategy="balanced")
+
+    r = await handle_proposal_redo(
+        _richiesta(app, {"id": ident}, {"richiesta": "dopo le 14"}))
+
+    assert r.status == 503
+    assert json.loads(r.text)["error"] == "il modello non ha risposto: riprova."
     assert store.proposals()[0]["giri"] == []
 
 

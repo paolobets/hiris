@@ -182,7 +182,7 @@ class _FintaCoda:
     def count_exchanges_today(self):
         return 0
 
-    def enqueue(self, kind, wake, job, deadline, now=None, priority=None):
+    def enqueue(self, kind, wake, job, deadline, now=None, priority=None, thread=None):
         self.accodati.append((kind, wake, job))
 
 
@@ -210,7 +210,7 @@ async def test_col_PONTE_acceso_il_turno_si_accoda_e_non_si_chiama_il_modello(ca
 
     assert modello.chiamate == 0
     assert coda.accodati, "il turno non e' stato accodato al piano"
-    assert coda.accodati[0][0] == "attuazione"
+    assert coda.accodati[0][0] == "proposta"
 
 
 @pytest.mark.asyncio
@@ -320,7 +320,6 @@ async def test_una_proposta_NON_COSTRUIBILE_finisce_nell_archivio_delle_proposte
     righe = store.proposals()
     assert len(righe) == 1
     assert righe[0]["testo"].startswith("Sposta la lavatrice")
-    assert righe[0]["chi_applica"] == "tu"
     assert righe[0]["impronta"] == "dev1|prelievo|None|1"
     assert righe[0]["prova"]["base"] == 19, "senza la prova non si riapre mai"
 
@@ -349,7 +348,7 @@ async def test_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa):
     assert officina.intenzioni, "l'officina non e' stata chiamata"
     intento, attore = officina.intenzioni[0]
     assert intento["gesto"] == "crea"
-    assert attore == "attuatore", "chi ha proposto deve restare scritto"
+    assert attore == "proponente", "chi ha proposto deve restare scritto"
     assert store.proposals() == [], "una costruibile non va nell'archivio a mano"
 
 
@@ -452,7 +451,6 @@ async def test_col_PONTE_una_proposta_da_fare_a_mano_si_ARCHIVIA(casa, piano_acc
 
     righe = store.proposals()
     assert [r["impronta"] for r in righe] == ["dev1|prelievo|None|1"]
-    assert righe[0]["chi_applica"] == "tu"
     assert store.analysis(OGGI)["attuazione"]["su_fondamento"] == "aaa"
     assert modello.chiamate == 0
 
@@ -479,5 +477,28 @@ async def test_col_PONTE_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa, pian
     await server.actuator_round(app)
 
     assert [(i["gesto"], attore) for i, attore in officina.intenzioni] == [
-        ("crea", "attuatore")]
+        ("crea", "proponente")]
     assert store.proposals() == []
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_nessuno_risponde_e_non_e_una_risposta(casa):
+    """G29-1, per l'attuatore: la frase del router quando tutti i backend
+    rifiutano e' nessuna risposta, non una risposta storta da rifiutare.
+
+    Mutazione ESEGUITA: il giro che passa la risposta senza `chain_answer` --
+    rossa (`risposta: True`)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    app, store, _modello = casa
+    store.replace_analysis(OGGI, _analisi())
+    giu = MagicMock()
+    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    app["llm_router"] = LLMRouter(claude=giu, strategy="balanced")
+
+    esito = await server.actuator_round(app)
+
+    assert esito is not None and esito["risposta"] is False

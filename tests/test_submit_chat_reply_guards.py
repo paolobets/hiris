@@ -36,6 +36,7 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 
+from conftest import SCADENZA_LONTANA
 from hiris.app import chat_store
 from hiris.app.chat_store import close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
@@ -120,7 +121,8 @@ async def test_bridge_error_sentinel_is_dropped_not_persisted(submitted):
 
     with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
         sentinella = runner._reason_chat(
-            {"kind": "chat", "context": {"model": "sonnet", "history": [], "system_prompt": "S"}},
+            {"kind": "chat", "deadline_ts": SCADENZA_LONTANA,
+             "context": {"model": "sonnet", "history": [], "system_prompt": "S"}},
             "live")["reply"]
 
     submit, calls, _data_dir = submitted

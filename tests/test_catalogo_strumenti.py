@@ -32,8 +32,19 @@ from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 
 # Misurata il 05/10/2026 su `5bce65d` (Tappa 5, piano: «Misurato prima di
-# disegnare»). Scende a ogni task che toglie caratteri, mai sale.
-CATALOG_CEILING = 32853
+# disegnare»): 32.853. Scende a ogni task che toglie caratteri, mai sale.
+#
+# **Salita UNA volta, per decisione del proprietario** (06/10/2026, scheda
+# del coordinatore, opzione A): lo strumento `mind` (Task 8, R8) e' entrato
+# prima che il Task 5 liberasse lo spazio -- l'uscita di `fetch` (-1.087) e
+# le descrizioni senza ripetizioni -- che aspetta i Task 7 e 11 della Tappa 4.
+# Misurato col nuovo strumento: 33.447 (+594). Il Task 5 la riporta a
+# <= 32.425 (R18), e da qui di nuovo scende soltanto.
+#
+# 06/10/2026 (attori, Task 4.3): il campo `livello` di `propose` entra, e la
+# frase che ripeteva i vocabolari di `gesto` e `dominio` esce -- due
+# caratteri in meno.
+CATALOG_CEILING = 33445
 
 
 def catalog_chars(definitions) -> int:

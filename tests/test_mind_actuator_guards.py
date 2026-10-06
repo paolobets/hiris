@@ -148,7 +148,9 @@ def superficie_attuatore(moduli=None) -> dict[str, str]:
 
     Due pezzi, e il secondo e' quello che il cancello vecchio non vedeva:
 
-    1. i moduli `mind/actuator*.py`, presi **dalla cartella** e non elencati;
+    1. i moduli `mind/actuator*.py` e `mind/proposer*.py` (l'attore si chiama
+       proponente dal 06/10/2026, D11), presi **dalla cartella** e non
+       elencati;
     2. il **giro** (`actuator_round`, che la spec §6 dichiara parte
        dell'attuatore) e cio' che chiama, dove `ha_client` e' a portata di mano
        dovunque. Si ricava dal grafo delle chiamate, **meno** cio' che
@@ -164,8 +166,9 @@ def superficie_attuatore(moduli=None) -> dict[str, str]:
     che la derivazione larga contenga quella stretta.
     """
     superficie = {p.name: p.read_text(encoding="utf-8")
-                  for p in sorted((_APP / "mind").glob("actuator*.py"))}
-    assert superficie, "non trovo nessun modulo `mind/actuator*.py`"
+                  for pattern in ("actuator*.py", "proposer*.py")
+                  for p in sorted((_APP / "mind").glob(pattern))}
+    assert superficie, "non trovo nessun modulo `mind/actuator*.py` o `mind/proposer*.py`"
 
     funzioni = _funzioni(moduli if moduli is not None else sorted(_APP.rglob("*.py")))
     altri_giri = {n for n in funzioni
@@ -228,7 +231,7 @@ def test_la_superficie_comprende_il_GIRO_nel_server_non_solo_i_due_moduli():
     """
     superficie = superficie_attuatore()
 
-    assert "actuator.py" in superficie and "actuator_turn.py" in superficie
+    assert "actuator.py" in superficie and "proposer_turn.py" in superficie
     for gesto in ("_file_proposals", "_write_actuation"):
         assert f"server.py::{gesto}" in superficie, (
             f"`{gesto}` e' un gesto dell'attuatore e non e' sorvegliato")
