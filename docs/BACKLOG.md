@@ -180,6 +180,18 @@ veridicita' della soluzione»).
    l'officina. Oggi si deriva dallo schema di `propose` (`mind/proposer_turn._intent_contract`) e
    la risposta passa dalla stessa porta della forma dell'officina (`workshop.form_refusal`) prima
    di arrivarci.
+   *Il 06/10/2026 l'attuatore diventa il **proponente** (D11-D17 del piano degli attori, strati
+   3-4, tutte le consigliate).* Gia' nel codice: il nome (Task 4.1: `steering.PROPOSER_SPECIES`,
+   `mind/proposer_turn.py`), il livello su ogni proposta delle due code, con `alto` imposto dal
+   codice su serrature e allarme (Task 4.3, `action/construction/stakes.py`), e l'uscita delle
+   tre colonne mai lette di `proposte` (parte del Task 4.6). **Le misure e il criterio di
+   spegnimento sono scritti prima del rilascio** (Task 4.7, D17), nella spec
+   `2026-09-21-l-attuatore.md` §8: proposte fatte, accettate, rifiutate e fatte fuori da HA, per
+   livello; i giri di «Rifalla»; i token al giorno; e se dopo due settimane dal rilascio il
+   rifiuto e' l'esito dominante, il proponente si spegne. Aspettano lo strato 3 e la diagnosi
+   delle due proposte costruibili perse (Task 4.0, Passo 1): il turno del proponente con `propose`
+   (Task 4.2), l'avviso per `alto` (D14), «Rifalla» e «sempre si'» (Task 4.4, 4.5), e il resto
+   di cio' che esce (Task 4.6).
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
