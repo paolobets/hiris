@@ -714,6 +714,18 @@ def test_un_registro_che_non_si_legge_ferma_il_cancello(monkeypatch):
     assert cens.run(cancello=True) == 1
 
 
+def test_un_registro_che_non_si_carica_dice_perche(tmp_path, capsys):
+    """Il cancello che si ferma sul registro dice la ragione: una dipendenza
+    mancante non e' un registro rotto, e senza il messaggio le due cose hanno
+    la stessa faccia (revisione, giro 34)."""
+    reg = _registro(tmp_path, "import modulo_che_non_esiste\nREGISTRY = {}\n")
+
+    censimento.censisci_operazioni([], reg)
+
+    assert censimento.COPERTURA_REGISTRO["leggibile"] is False
+    assert "modulo_che_non_esiste" in censimento.COPERTURA_REGISTRO["errore"]
+
+
 def test_il_modulo_del_registro_non_denuncia_se_stesso(tmp_path):
     """L'implementazione vera sta nel registro: segnalarla sarebbe il rumore
     sano che seppellisce la rotta.
