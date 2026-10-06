@@ -198,12 +198,13 @@ def _history_dispatcher(tmp_path, ha, *, ruolo=None, cache=None, journal=None, c
 
 # --- il catalogo e il cablaggio ---------------------------------------------
 
-def test_il_catalogo_ha_dodici_strumenti_e_la_storia_e_uno():
-    """Spec §4: escono quattro, entra `history`; da 15 a 12.
+def test_il_catalogo_ha_tredici_strumenti_e_la_storia_e_uno():
+    """Spec §4: escono quattro, entra `history`; da 15 a 12. Da 12 a 13 il
+    06/10/2026: entra `mind` (Tappa 5, Task 8).
 
     Mutazione ESEGUITA: uno strumento `trend` rimesso nel catalogo -- rossa."""
     nomi = {d["name"] for d in KNOWLEDGE_TOOLS}
-    assert len(KNOWLEDGE_TOOLS) == 12 and "history" in nomi
+    assert len(KNOWLEDGE_TOOLS) == 13 and "history" in nomi
     assert not nomi & {"trend", "logbook", "system_log", "automation_trace"}
 
 
@@ -246,7 +247,8 @@ def test_la_descrizione_dice_cosa_portano_i_dati_ed_e_piu_corta_delle_quattro():
 _GESTORE_ATTESO = {"search": "_search", "related": "_related", "remember": "_remember",
                    "fetch": "_recall", "execute": "_execute", "promise": "_promise",
                    "agenda": "_list_agenda", "cancel": "_cancel", "propose": "_propose",
-                   "confirm": "_confirm", "history": "_history", "calendar": "_calendar"}
+                   "confirm": "_confirm", "history": "_history", "calendar": "_calendar",
+                   "mind": "_read_mind"}
 
 
 # Un valore valido per ogni `type` dello schema: dal Task 3 della Tappa 5 il
@@ -273,8 +275,11 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore(monkeypatch):
         d = ToolDispatcher(object(), object(), ha=object(), actuator=object(),
                            agenda=object(), workshop=object(), thread=object())
         schema = tool.definition["input_schema"]
+        # Un obbligatorio con un vocabolario prende il primo valore ammesso,
+        # chiesto allo schema (`mind`, Tappa 5, Task 8: `cosa`).
         esito = await d.dispatch(tool.name, {
-            campo: _CAMPIONE[schema["properties"][campo]["type"]]
+            campo: (schema["properties"][campo].get("enum")
+                    or [_CAMPIONE[schema["properties"][campo]["type"]]])[0]
             for campo in schema.get("required", [])})
         assert esito == marcatore, tool.name
 

@@ -51,7 +51,7 @@ from types import MappingProxyType
 
 from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE
 from ..home_space.house import House
-from ..steering import RECIPES_SPECIES, misura_turno, read_json
+from ..steering import RECIPES_SPECIES, SPECIES, chain_turn, read_json
 from .knowledge import Fact
 from .operations import NO_STATISTICS, REGISTRY_VERSION, UNKNOWN_SOURCE, NotComputable
 from .recipes import Recipe, silent_entities
@@ -59,9 +59,8 @@ from .recipes import Recipe, silent_entities
 logger = logging.getLogger(__name__)
 
 #: Come si chiama, nella coda del ragionamento, un turno che chiede una
-#: ricetta. Sta accanto a `observer.SCOPE_TURN_KIND` per la stessa ragione per
-#: cui quello sta li': il nome vive dove il turno nasce.
-RECIPE_TURN_KIND = "ricetta"
+#: ricetta: il `kind` della sua dichiarazione, come `observer.SCOPE_TURN_KIND`.
+RECIPE_TURN_KIND = SPECIES[RECIPES_SPECIES].kind
 
 #: Il campo del sapere che porta la ricetta di un dispositivo.
 RECIPE_FIELD = "ricetta"
@@ -861,12 +860,11 @@ async def ask(runner, store, house: House, device_id: str, *,
     if question is None:
         return {"scritta": False, "problemi": ["il dispositivo non ha entita'"]}
     try:
-        async with misura_turno(measurements, runner, specie=RECIPES_SPECIES,
-                                canale="catena", modello=model) as turn:
-            answer = await runner.chat(
-                user_message=question, system_prompt=SYSTEM,
-                model=model, agent_type="observer",
-                max_tokens=MAX_ANSWER_TOKENS)
+        answer, turn = await chain_turn(
+            runner, RECIPES_SPECIES, usage=measurements, modello=model,
+            max_tokens=MAX_ANSWER_TOKENS,
+            user_message=question, system_prompt=SYSTEM,
+            model=model, agent_type="observer")
     except Exception as error:
         logger.warning("ricetta: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)

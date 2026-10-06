@@ -332,7 +332,7 @@ def test_la_SPECIE_e_quella_che_il_prodotto_gia_nomina(consumi):
     Mutazione ESEGUITA: togliere una specie dal vocabolario -- rossa."""
     from hiris.app.steering import SPECIE
 
-    assert SPECIE == frozenset({"analista", "attuatore", "chat", "osservatore",
+    assert SPECIE == frozenset({"analista", "proponente", "chat", "osservatore",
                                 "promessa", "ricette"})
     for specie in SPECIE:
         consumi.log_turn(species=specie, provider="ponte", model="x", channel="catena-anthropic",

@@ -83,7 +83,13 @@ CREATE TABLE IF NOT EXISTS costruzioni (
     -- riga con questa colonna vuota entra mai nella scelta implicita di un
     -- filo (vedi `Workshop._only_pending`).
     subject_key TEXT,
-    entry_point TEXT
+    entry_point TEXT,
+    -- Il LIVELLO della proposta (attori, strato 4, D13): banale, lieve,
+    -- medio o alto (`stakes.STAKES`), scritto quando la proposta nasce.
+    -- NULL quando nessuno l'ha detto e il codice non aveva niente da
+    -- imporre, e per le righe nate prima del 06/10/2026: e' vero, non
+    -- l'hanno mai avuto (vedi `_migration_4`).
+    stakes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_costruzioni_stato ON costruzioni(stato, creata_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto ON costruzioni(dominio, chiave, creata_ts DESC);
@@ -130,6 +136,18 @@ def _migration_3(conn) -> None:
         (REASON_DISDETTA, "rifiutata dal proprietario"))
 
 
+def _migration_4(conn) -> None:
+    """v3 -> v4 (attori, strato 4, Task 4.3): il livello della proposta.
+
+    Le righe scritte prima rileggono `None`, e non si riempiono: calcolare
+    oggi il livello di una proposta di ieri le attribuirebbe un fatto che
+    allora non c'era, e nessuno di quei si' e' stato chiesto con un livello.
+    """
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
+    if "stakes" not in colonne:
+        conn.execute("ALTER TABLE costruzioni ADD COLUMN stakes TEXT")
+
+
 def _load(text):
     return None if text is None else json.loads(text)
 
@@ -174,6 +192,7 @@ def _row(r) -> dict:
         "anteprima": r["anteprima"],
         "esecuzione_id": r["esecuzione_id"],
         "motivo": r["motivo"],
+        "livello": r["stakes"],
     }
 
 
@@ -189,8 +208,8 @@ class ConstructionStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3,
-                   migrations={2: _migration_2, 3: _migration_3})
+        init_schema(self._conn, _SCHEMA, version=4,
+                   migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
 
     def close(self) -> None:
         with self._lock:
@@ -199,7 +218,8 @@ class ConstructionStore:
     def propose(self, *, operation: str, domain: str, key: str, actor: str,
                 exchange: str | None, phrase: str | None, prima: dict | None,
                 dopo: dict | None, helper: list, preview: str,
-                now: float, thread: ChatThread | None = None) -> dict:
+                stakes: str | None, now: float,
+                thread: ChatThread | None = None) -> dict:
         ident = secrets.token_urlsafe(9)
         with self._lock:
             self._prune(now)
@@ -222,13 +242,13 @@ class ConstructionStore:
             self._conn.execute(
                 "INSERT INTO costruzioni(id,creata_ts,aggiornata_ts,stato,gesto,dominio,"
                 "chiave,origine,turno,frase,prima_json,dopo_json,helper_json,anteprima,"
-                "esecuzione_id,motivo,subject_key,entry_point) "
-                "VALUES(?,?,?,'in_attesa',?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?)",
+                "esecuzione_id,motivo,subject_key,entry_point,stakes) "
+                "VALUES(?,?,?,'in_attesa',?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)",
                 (ident, now, now, operation, domain, key, actor, exchange, phrase,
                  None if prima is None else json.dumps(prima),
                  None if dopo is None else json.dumps(dopo),
                  json.dumps(list(helper)), preview,
-                 *thread_params(thread)))
+                 *thread_params(thread), stakes))
             self._conn.commit()
         return {"id": ident}
 

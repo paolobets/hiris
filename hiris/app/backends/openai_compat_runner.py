@@ -13,7 +13,6 @@ import httpx as _httpx
 from ..chat_store import LEAKED_TOOL_NAME_RE
 from ..claude_runner import (
     _MAX_ITERATIONS_NOTICE,
-    BASE_SYSTEM_PROMPT,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
@@ -21,13 +20,15 @@ from ..claude_runner import (
     _current_tool_calls,
     _current_tool_leaked,
     _current_truncated,
+    _current_unanswered,
     _misura_corrente,
     _PerCallFlag,
     _PerCallList,
     pesa_in_caratteri,
     testo_canonico,
 )
-from ..provider_occurrences import error_family
+from ..model_resolution import failure_reply
+from ..provider_occurrences import error_family, provider_said
 from ..usage.giro import openai_turn_tokens
 from .pricing import get_price as _prezzo
 
@@ -364,6 +365,7 @@ class OpenAICompatRunner:
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_truncated = _PerCallFlag(_current_truncated)
     last_tool_leaked = _PerCallFlag(_current_tool_leaked)
+    last_unanswered = _PerCallFlag(_current_unanswered)
 
     def __init__(
         self,
@@ -646,6 +648,7 @@ class OpenAICompatRunner:
         self.last_tool_calls = []
         self.last_truncated = False
         self.last_tool_leaked = False
+        self.last_unanswered = False
 
         effective_model = self._resolve_model(model, agent_type)
 
@@ -675,7 +678,12 @@ class OpenAICompatRunner:
         # modificatori nello stesso posto, e la parita' non e' piu' vera solo
         # per due su tre. Pinnato da
         # `tests/test_composition_order.py`.
-        system_parts = [BASE_SYSTEM_PROMPT]
+        # Il compositore unico, come `ClaudeRunner.chat` (Tappa 6, Task 7).
+        from ..steering import compose_base
+
+        if tools is not None:
+            tools = list(tools)
+        system_parts = [compose_base(t["name"] for t in tools or ())]
         if system_prompt:
             system_parts.append(system_prompt)
         # I modificatori di comportamento -- stabili per configurazione,
@@ -778,10 +786,11 @@ class OpenAICompatRunner:
                 # chi legge che cosa fare, e inventargli un'azione sarebbe
                 # l'ipotesi sulla causa che questo prodotto non fa. Il codice
                 # invece si porta, perché è un fatto.
+                family, code = error_family(exc), _status_code(exc) or 429
+                said = provider_said(exc)
                 raise RunnerBackendError(
-                    upstream or "Errore temporaneo del servizio AI. Riprova tra poco.",
-                    family=error_family(exc),
-                    code=_status_code(exc) or 429,
+                    upstream or failure_reply(family, code, said), family=family,
+                    code=code, said=said,
                 ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
@@ -818,14 +827,15 @@ class OpenAICompatRunner:
                     if _is_conn_error(exc):
                         self._record_conn_failure()
                     logger.error("OpenAI/Ollama API error: %s", exc)
-                    # La frase per l'utente resta la stessa; il codice e la
-                    # famiglia smettono di andare persi. Era questo il punto
-                    # in cui «404, quel modello non esiste più» e «402, credito
-                    # finito» diventavano la stessa identica riga.
+                    # Il codice e la famiglia smettono di andare persi, e la
+                    # frase li dice (`failure_reply`, S-37). Era questo il
+                    # punto in cui «404, quel modello non esiste più» e «402,
+                    # credito finito» diventavano la stessa identica riga.
+                    family, code = error_family(exc), _status_code(exc)
+                    said = provider_said(exc)
                     raise RunnerBackendError(
-                        "Errore temporaneo del servizio AI. Riprova tra poco.",
-                        family=error_family(exc),
-                        code=_status_code(exc),
+                        failure_reply(family, code, said), family=family, code=code,
+                        said=said,
                     ) from exc
 
             self._record_success()

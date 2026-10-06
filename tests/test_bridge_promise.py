@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent.runner import config_mcp
 
 
@@ -72,7 +73,7 @@ def test_un_kind_promessa_NON_finisce_fra_i_kind_sconosciuti(caplog):
     from hiris.app.agent import runner as ponte
 
     esito = ponte.reason(
-        {"kind": "promessa", "job_id": "j1",
+        {"kind": "promessa", "deadline_ts": SCADENZA_LONTANA, "job_id": "j1",
          "context": {"model": "sonnet", "promessa_id": "p1", "history": [], "system_prompt": ""}},
         "mock")
 
@@ -169,7 +170,7 @@ def test_un_kind_scope_NON_finisce_fra_i_kind_sconosciuti(caplog):
     from hiris.app.agent import runner as ponte
 
     esito = ponte.reason(
-        {"kind": "scope", "job_id": "j3",
+        {"kind": "scope", "deadline_ts": SCADENZA_LONTANA, "job_id": "j3",
          "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                      "system_prompt": "sei l'osservatore"}},
         "mock")
@@ -259,7 +260,7 @@ def test_il_ponte_passa_al_prompt_l_istruzione_che_il_job_porta(monkeypatch):
     monkeypatch.setattr(ponte.prompts, "build_chat_messages", spia)
     try:
         ponte.reason(
-            {"kind": "scope", "job_id": "j9",
+            {"kind": "scope", "deadline_ts": SCADENZA_LONTANA, "job_id": "j9",
              "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                          "system_prompt": "sei l'osservatore",
                          "istruzione": "Rispondi con un SOLO array JSON."}},
@@ -310,7 +311,7 @@ def test_un_turno_di_scope_NON_riceve_gli_strumenti_della_chat(monkeypatch):
     monkeypatch.setattr(ponte, "probe_tools", spia)
     try:
         ponte.reason(
-            {"kind": "scope", "job_id": "js",
+            {"kind": "scope", "deadline_ts": SCADENZA_LONTANA, "job_id": "js",
              "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                          "system_prompt": "sei l'osservatore",
                          "istruzione": "Rispondi con un SOLO array JSON."}},

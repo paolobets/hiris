@@ -26,7 +26,11 @@ rosse per la ragione giusta:
 - la lettura senza la storia -- rossa la prova del 30/09;
 - `House.sibling_group` che chiede l'elenco del giro invece di
   `has_statistics` (la forma prima del giro 7) -- rosse la prova dell'elenco
-  guasto e quella dello `state_class` (G7-1).
+  guasto e quella dello `state_class` (G7-1);
+- con l'elenco guasto, la casa del ripiego sullo `state_class` invece
+  dell'elenco detto dalla risposta delle serie -- rossa la prova dei
+  termometri (`KeyError`: nessun rifiuto); `House.possible_siblings` senza
+  l'istanza -- rossa la stessa prova (G7-1, rimisura).
 """
 from __future__ import annotations
 
@@ -180,10 +184,10 @@ async def test_giorno_storia_e_sorelle_in_una_richiesta_sola():
 @pytest.mark.asyncio
 async def test_con_l_elenco_delle_statistiche_guasto_la_fonte_ferma_resta_ferma():
     """G7-1 (revisione del giro 7): se `recorder/list_statistic_ids` non si
-    legge, le sorelle le dice la regola dello `state_class`
-    (`House.has_statistics`, B-12), e il blocco del 30/09 si vede lo stesso.
-    Con le sorelle chieste solo all'elenco, il 30/09 tornava zero con
-    copertura 1.0."""
+    legge, le sorelle le dice la risposta delle serie di Home Assistant (chi
+    ha righe nella finestra), e il blocco del 30/09 si vede lo stesso. Con le
+    sorelle chieste solo all'elenco, il 30/09 tornava zero con copertura
+    1.0."""
     row, asked = await _report(FROZEN_DAY, frozen_from=_start(FROZEN_DAY),
                                statistic_ids={"errore": "giu'", "causa": "rete"})
     assert row["causa"] == FROZEN
@@ -231,3 +235,101 @@ def test_senza_l_elenco_le_sorelle_le_dice_lo_state_class():
     assert house.sibling_group("sensor.a") == ("dispositivo", "d1")
     assert house.siblings("sensor.a") == ["sensor.a", "sensor.b"]
     assert house.sibling_group("sensor.c") is None
+
+
+# -- i termometri del 29/09 con l'elenco guasto (G7-1, la rimisura) ----------
+#
+# La rimisura dello sprint su 413ce7a7 (06/10/2026, catture 03/09-03/10): con
+# l'elenco delle statistiche illeggibile, gli 8 termometri -- un'entita' per
+# dispositivo, la stessa istanza -- perdevano il gruppo, perche' nello
+# specchio non portavano lo `state_class` e il ripiego di `has_statistics`
+# diceva «niente statistiche». Il blocco del 29/09 spariva. Qui la forma e'
+# la stessa, sintetica: tre termometri senza `state_class` nello specchio.
+
+THERMOMETERS = [f"sensor.termometro_{i}" for i in range(3)]
+HUB = "e_hub_termometri"
+
+
+def _thermometer_app():
+    rows = [{**_entity(t, f"d_termometro_{i}"), "config_entry_id": HUB}
+            for i, t in enumerate(THERMOMETERS)]
+    home_space = build_home_space({
+        "entita": [*rows, _entity(HOUSE_METER, "d_contatore")],
+        "integrazioni": [],
+        "dispositivi": [*({"id": f"d_termometro_{i}", "name": f"Termometro {i}",
+                           "disabled_by": None} for i in range(len(THERMOMETERS))),
+                        {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
+    cache = [_to_minimal({"entity_id": t, "state": "21.3", "attributes": {}})
+             for t in THERMOMETERS]
+    cache.append(_to_minimal({"entity_id": HOUSE_METER, "state": "1",
+                              "attributes": {"state_class": "total_increasing"}}))
+    return {"knowledge": object(), "home_space_store": _Store(home_space),
+            "entity_cache": _Cache(cache)}
+
+
+def _thermometer_rows(entity_id, from_iso, to_iso, frozen_from):
+    moment, end = datetime.fromisoformat(from_iso), datetime.fromisoformat(to_iso)
+    rows = []
+    while moment < end:
+        row = {"start": _ms(moment), "end": _ms(moment + timedelta(hours=1)),
+               "sum": None, "state": None, "change": None,
+               "mean": None, "min": None, "max": None}
+        if entity_id == HOUSE_METER:
+            row["change"] = 0.1 + moment.hour / 1000
+        elif moment.timestamp() >= frozen_from:
+            row.update(min=21.3, max=21.3, mean=21.3)
+        else:
+            low = 19 + moment.hour / 10
+            row.update(min=low, max=low + 0.2, mean=low + 0.1)
+        rows.append(row)
+        moment += timedelta(hours=1)
+    return rows
+
+
+async def _thermometer_ingredients(day, *, frozen_from, statistic_ids):
+    asked: list[dict] = []
+
+    def _statistics(extra):
+        asked.append(extra)
+        return {e: _thermometer_rows(e, extra["start_time"], extra["end_time"], frozen_from)
+                for e in extra["statistic_ids"]
+                if e in THERMOMETERS or e == HOUSE_METER}
+
+    async def _stat_ids(_app, _ha, **_kw):
+        return statistic_ids
+
+    house = CasaFinta(synthetic_inputs(), answers={
+        "recorder/statistics_during_period": _statistics})
+    recipes = {"d_termometro_0": {"why": "la temperatura", "steps": [
+                   {"name": "temperatura", "operation": "media_min_max",
+                    "inputs": [f"@{THERMOMETERS[0]}"], "params": {"unit": "°C"}}]},
+               "d_contatore": HOUSE_RECIPE}
+    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
+        _ricette, _serie, _nomi, silent, _mute = await server._report_ingredients(
+            _thermometer_app(), house, giorno=day, timezone=TIMEZONE)
+    return silent or {}, asked
+
+
+@pytest.mark.asyncio
+async def test_con_l_elenco_i_termometri_del_29_09_sono_fermi():
+    """Il controllo: con l'elenco letto i tre termometri stanno nella loro
+    istanza, e il blocco si vede."""
+    silent, _asked = await _thermometer_ingredients(
+        "2026-09-29", frozen_from=_start("2026-09-29"),
+        statistic_ids={*THERMOMETERS, HOUSE_METER})
+    assert silent[THERMOMETERS[0]].cause == FROZEN
+
+
+@pytest.mark.asyncio
+async def test_con_l_elenco_guasto_i_termometri_restano_nella_loro_istanza():
+    """G7-1, la rimisura: l'elenco non si legge e lo specchio non porta lo
+    `state_class` dei termometri. Le sorelle le dice la risposta delle serie
+    di Home Assistant -- chi ha statistiche nella finestra -- e il blocco del
+    29/09 resta preso."""
+    silent, asked = await _thermometer_ingredients(
+        "2026-09-29", frozen_from=_start("2026-09-29"),
+        statistic_ids={"errore": "giu'", "causa": "rete"})
+    assert silent[THERMOMETERS[0]].cause == FROZEN
+    assert THERMOMETERS[2] in silent[THERMOMETERS[0]].reason
+    assert len(asked) == 1

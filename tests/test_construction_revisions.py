@@ -22,7 +22,7 @@ def _proponi(a, **kw):
     base = {"operation": "crea", "domain": "automation", "key": "1771", "actor": "chat",
                 "exchange": "t1", "phrase": "apri le tapparelle all'alba", "prima": None,
                 "dopo": {"id": "1771", "alias": "Tapparelle"}, "helper": [],
-                "preview": "Creo un'automazione che apre le tapparelle all'alba.",
+                "preview": "Creo un'automazione che apre le tapparelle all'alba.", "stakes": None,
                 "now": ADESSO}
     base.update(kw)
     return a.propose(**base)

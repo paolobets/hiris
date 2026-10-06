@@ -98,7 +98,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     effetto collaterale. Ovunque altro si DERIVANO da qui.
 
     Da 34 a 4, poi 5, poi 6, poi 9, poi 11, poi 13, poi 15, poi 16, poi 15
-    (`view` esce), e ora 12. `execute` resta
+    (`view` esce), poi 12, e ora 13 (`mind`). `execute` resta
     l'unico che scrive un SERVIZIO in Home Assistant SUBITO -- e non lo fa da
     se': chiede alla porta unica (`action/actuator.py`), che verifica prima e
     rilegge dopo. E' la differenza con i trentaquattro usciti, dove ciascuno
@@ -141,7 +141,14 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     invece di sparire. Entra anche lui in `SOLA_LETTURA` (stessa
     deliberazione, stessa ragione: legge e basta, e senza di lui il ponte
     non potrebbe mai tenere una promessa «avvisami la sera prima di un
-    impegno»)."""
+    impegno»).
+
+    Tredici dal 06/10/2026 (Tappa 5, Task 8, R8): `mind` legge cio' che il
+    cervello guarda -- lo scope, l'obiettivo, i resoconti, le analisi, la
+    dashboard Energia -- con le stesse letture della pagina. Legge e basta,
+    ma NON entra in `SOLA_LETTURA`: un turno di promessa tiene la parola
+    data a una persona, e cio' che il cervello pensa della casa non gli
+    serve -- l'elenco di ammissione si allarga quando qualcuno lo decide."""
     nomi = {s["name"] for s in KNOWLEDGE_TOOLS}
     # 29/09/2026 («una porta sola per la casa», spec §4): `view` esce, e il
     # suo dettaglio e' la voce di `search` quando l'insieme ne ha una sola.
@@ -149,7 +156,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     # lettori del tempo diventano `history`, da quindici a dodici.
     assert nomi == {"search", "related", "remember", "fetch", "execute",
                     "promise", "agenda", "cancel", "propose", "confirm",
-                    "history", "calendar"}
+                    "history", "calendar", "mind"}
 
 
 def test_ogni_definizione_ha_una_descrizione_utile():

@@ -10,7 +10,7 @@ dichiarare vorrebbe dire lasciargli dichiarare una cosa non avvenuta.
 """
 import json
 
-from hiris.app.mind import actuator_turn as at
+from hiris.app.mind import proposer_turn as at
 
 
 def _osservazioni():

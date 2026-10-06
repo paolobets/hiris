@@ -49,6 +49,9 @@ def _richiesta(app, match=None, corpo=None):
             # `soffitto.request_role`).
             self._valori = {"soggetto": AMMINISTRATORE, "auth_via": "ingress",
                             "ruolo": "amministratore"}
+            # `aiohttp.web.BaseRequest.body_exists`: se la richiesta porta
+            # un corpo (`api/boundary.json_object`, Tappa 6, Task 8).
+            self.body_exists = corpo is not None
 
         async def json(self):
             if corpo is None:
@@ -70,7 +73,7 @@ def casa(tmp_path):
         text="Sposta la lavatrice nel primo pomeriggio",
         perche="il prelievo si concentra la mattina",
         fingerprint="dev1|prelievo|None|1",
-        prova={"base": 19}, chi_applica="tu", now_ts=100.0)
+        prova={"base": 19}, stakes=None, now_ts=100.0)
     try:
         yield ({"observations": store, "ha_client": CasaFinta(
                    synthetic_inputs(), answers={"config/auth/list": lambda extra: [_ADMIN]}),

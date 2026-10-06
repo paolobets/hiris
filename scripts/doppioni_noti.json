@@ -1,5 +1,5 @@
 {
- "funzione-gemella · __init__ · hiris/app/action/construction/revisions.py + hiris/app/action/journal.py · 2 posti": "D-27",
+ "funzione-gemella · __init__ · hiris/app/action/construction/revisions.py + hiris/app/keeper/store.py · 2 posti": "D-27",
  "predefinito-ripetuto · data_dir = '/data' · hiris/app/api/handlers_chat.py + hiris/app/chat_thread.py · 3 posti": "D-09",
  "vocabolario-parallelo · {amministratore, lettore, utente} · hiris/app/api/canali.py + hiris/app/api/servizi.py + hiris/app/static/config/services-route.js · 4 posti": "C-10",
  "vocabolario-parallelo · {applicata, in_corso, rifiutata, scaduta} · hiris/app/action/construction/workshop.py + hiris/app/static/config/constructions-route.js · 2 posti": "C-10",
@@ -17,5 +17,5 @@
  "vocabolario-parallelo · {differenza, massimo, media, minimo, pendenza, punti, variazione, verso} · hiris/app/mind/report.py + hiris/app/static/config/watcher-giorno.js · 2 posti": "C-10",
  "vocabolario-parallelo · {entita, integrazione, tipo} · hiris/app/home_space/type_judgments.py + hiris/app/static/config/watcher-lavoro.js · 2 posti": "C-10",
  "vocabolario-parallelo · {fallita, mantenuta, saltata} · hiris/app/keeper/promise.py + hiris/app/static/config/agenda-route.js · 2 posti": "C-10",
- "vocabolario-parallelo · {indagine, proposta, riparazione} · hiris/app/mind/actuator_turn.py + hiris/app/static/config/watcher-cosa-fare.js · 2 posti": "C-10"
+ "vocabolario-parallelo · {indagine, proposta, riparazione} · hiris/app/mind/proposer_turn.py + hiris/app/static/config/watcher-cosa-fare.js · 2 posti": "C-10"
 }

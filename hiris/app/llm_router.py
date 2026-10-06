@@ -11,6 +11,7 @@ from .claude_runner import (
     _current_tool_calls,
     _current_tool_leaked,
     _current_truncated,
+    _current_unanswered,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,7 @@ class LLMRouter:
         # questa.
         _current_truncated.set(False)
         _current_tool_leaked.set(False)
+        _current_unanswered.set(False)
         ordered = self._ordered_backends_with_name()
         if not ordered:
             # Da questa fetta e' uno stato RAGGIUNGIBILE e con un significato:
@@ -172,6 +174,7 @@ class LLMRouter:
             # porta non hanno un backend costruito. «Riprova tra poco» sarebbe
             # una parola piu' larga del fatto -- non passa da solo.
             logger.warning("Nessun provider in catena: chat(model=auto) non ha a chi chiedere")
+            _current_unanswered.set(True)
             return ("Nessun provider utilizzabile in catena: HIRIS non ha a chi "
                     "chiedere. Apri la pagina Modelli e mettine almeno uno in "
                     "catena.")
@@ -189,7 +192,10 @@ class LLMRouter:
                 if self._registry is not None:
                     self._registry.fallimento(
                         backend_name, family=getattr(exc, "family", "altro"),
-                        code=getattr(exc, "code", None), message=str(exc),
+                        code=getattr(exc, "code", None),
+                        # Cio' che il PROVIDER ha detto, non la frase della
+                        # chat: e' cio' che la pagina cita (G36-1).
+                        message=getattr(exc, "said", None) or "",
                         durata_s=time.monotonic() - start)
                 last_friendly = exc.friendly_message
             except Exception as exc:
@@ -213,6 +219,7 @@ class LLMRouter:
                 # caso interessante, quello in cui claude non ha risposto.
                 _current_provider.set(backend_name)
                 return answer
+        _current_unanswered.set(True)
         return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 
     # ------------------------------------------------------------------
@@ -233,6 +240,18 @@ class LLMRouter:
         """
         val = _current_tool_calls.get()
         return val if val is not None else []
+
+    @property
+    def last_unanswered(self) -> bool:
+        """Se nessun backend ha risposto alla chiamata che ha appena
+        attraversato il router, in QUESTO compito: la frase restituita era la
+        sua, non di un modello. La legge `steering.misura_turno`, che allora
+        registra il turno `fallito`.
+
+        Stessa ContextVar dei runner, che pero' non la accendono mai: un
+        runner che non risponde solleva, e `misura_turno` lo registra
+        `fallito` gia' da se'."""
+        return _current_unanswered.get()
 
     @property
     def last_truncated(self) -> bool:

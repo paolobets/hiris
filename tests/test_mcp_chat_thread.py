@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from conftest import SCADENZA_LONTANA
 from hiris.app import server
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
@@ -295,7 +296,8 @@ def test_il_runner_manda_X_HIRIS_Chat_e_il_soggetto_solo_per_la_chat(
     if kind == "promessa":
         contesto["promessa_id"] = "p1"
     try:
-        ponte._reason_chat({"job_id": "J1", "kind": kind, "context": contesto},
+        ponte._reason_chat({"deadline_ts": SCADENZA_LONTANA, "job_id": "J1",
+                            "kind": kind, "context": contesto},
                            "live", client=_ClientFinto(),
                            base_url="http://127.0.0.1:8099",
                            headers={"X-HIRIS-Internal-Token": "tok"})
