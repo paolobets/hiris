@@ -21,7 +21,7 @@ import logging
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
 from ..proxy._sanitize import truncate_with_marker
-from ..steering import PROMISE_SPECIES, chain_turn, enqueue_turn, start
+from ..steering import PROMISE_SPECIES, chain_turn, enqueue_turn, refused_tool, start
 
 logger = logging.getLogger(__name__)
 
@@ -134,10 +134,9 @@ class PromiseDispatcher:
             self.conclusione = {"avvisare": avvisare, "testo": text}
             return {"concluso": True}
         if name not in SOLA_LETTURA:
-            return {"errore": (f"«{name}» non e' disponibile mentre mantengo una "
-                               "promessa: qui posso guardare e rispondere, non "
-                               "toccare la casa. Se serve un'azione, dilla nel "
-                               "testo e decidera' la persona.")}
+            return refused_tool(
+                name, doing="mentre mantengo una promessa",
+                instead="Se serve un'azione, dilla nel testo e decidera' la persona.")
         return await self._sotto.dispatch(name, argomenti)
 
 

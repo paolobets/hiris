@@ -205,14 +205,22 @@ async def test_un_lavoro_che_non_vale_CHIUDE(rotta, mestiere):
 @pytest.mark.asyncio
 async def test_un_lavoro_di_un_mestiere_SENZA_guardiano_chiude(rotta, mestiere):
     """`X-HIRIS-Lavoro` vale solo per un mestiere con guardiano: un job di
-    chat che la porta non riceve per quella strada niente."""
+    chat che la porta non riceve per quella strada niente.
+
+    Mutazione ESEGUITA (06/10/2026): il rifiuto col vecchio testo, «scaduto
+    o gia' stato consegnato» -- rossa."""
     client, coda, *_ = rotta
     adesso = time.time()
     job_id = coda.enqueue("chat", {}, {"history": []}, adesso + 300, now=adesso)
     coda.claim(adesso + 1)
-    catalogo = await _rpc(client, "tools/list",
-                          {**_INTESTAZIONI, "X-HIRIS-Lavoro": job_id})
+    intestazioni = {**_INTESTAZIONI, "X-HIRIS-Lavoro": job_id}
+    catalogo = await _rpc(client, "tools/list", intestazioni)
     assert catalogo["tools"] == []
+    # Il rifiuto dice anche questa ragione, non solo «scaduto o consegnato»:
+    # il job e' vivo, e' il suo mestiere a non avere strumenti (giro 23).
+    esito = await _rpc(client, "tools/call", intestazioni,
+                       {"name": "search", "arguments": {"nome": "cucina"}})
+    assert "il suo mestiere non ne ha" in esito["content"][0]["text"]
 
 
 # ── G23-1 (giro 23 della revisione, 06/10/2026): la porta non resta aperta ──
@@ -286,6 +294,11 @@ async def test_un_mestiere_con_catalogo_e_SENZA_guardiano_non_riceve_la_chat(
 
     client, coda, *_ = rotta
     job_id = _accoda_analisi(coda)
-    catalogo = await _rpc(client, "tools/list",
-                          {**_INTESTAZIONI, "X-HIRIS-Lavoro": job_id})
+    intestazioni = {**_INTESTAZIONI, "X-HIRIS-Lavoro": job_id}
+    catalogo = await _rpc(client, "tools/list", intestazioni)
     assert catalogo["tools"] == []
+    # Il rifiuto dice anche questa ragione, non solo «scaduto o consegnato»:
+    # il job e' vivo, e' il suo mestiere a non avere strumenti (giro 23).
+    esito = await _rpc(client, "tools/call", intestazioni,
+                       {"name": "search", "arguments": {"nome": "cucina"}})
+    assert "il suo mestiere non ne ha" in esito["content"][0]["text"]

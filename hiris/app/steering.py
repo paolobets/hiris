@@ -46,6 +46,7 @@ import re as _re
 import time as _time
 from collections.abc import Callable as _Callable
 from dataclasses import dataclass as _dataclass
+from dataclasses import field as _field
 from typing import NamedTuple as _NamedTuple
 
 from .api.handlers_models import _STORE_DEFAULTS, bridge_deadline_min
@@ -153,6 +154,22 @@ def _promise_tools() -> list[dict]:
     return promise_tools()
 
 
+def _analyst_tools() -> list[dict]:
+    """Gli strumenti dell'analista: i lettori di `analyst_turn.READERS` piu'
+    `compute` (D5 del piano degli attori, Task 3.6)."""
+    from .mind.analyst_turn import analyst_tools
+
+    return analyst_tools()
+
+
+async def _analyst_guard(app, exchange: str | None = None):
+    """Il guardiano dell'analista (`analyst_turn.guard`), lo stesso sulla
+    catena e sul ponte."""
+    from .mind.analyst_turn import guard
+
+    return await guard(app, exchange)
+
+
 @_dataclass(frozen=True)
 class Species:
     """**La dichiarazione di un mestiere** (Tappa 6, Task 7): cio' che il turno
@@ -206,9 +223,20 @@ SPECIES = {s.name: s for s in (
     Species(PROMISE_SPECIES, "promessa", _promise_tools, PRIORITY_BACKGROUND),
     Species(OBSERVER_SPECIES, "scope", None, PRIORITY_BACKGROUND),
     Species(RECIPES_SPECIES, "ricetta", None, PRIORITY_BACKGROUND),
-    Species(ANALYST_SPECIES, "analisi", None, PRIORITY_BACKGROUND),
+    Species(ANALYST_SPECIES, "analisi", _analyst_tools, PRIORITY_BACKGROUND,
+            guard=_analyst_guard),
     Species(PROPOSER_SPECIES, "proposta", None, PRIORITY_BACKGROUND),
 )}
+
+def refused_tool(name: str, *, doing: str, instead: str) -> dict:
+    """Il rifiuto di uno strumento fuori dal catalogo di un mestiere di
+    sfondo: una frase sola per il guardiano della promessa
+    (`keeper/exchange.PromiseDispatcher`) e per quello dell'analista
+    (`mind/analyst_turn.AnalystDispatcher`). Cambia solo cio' che il turno
+    sta facendo, e cosa fare invece."""
+    return {"errore": (f"«{name}» non e' disponibile {doing}: qui posso "
+                       f"guardare e rispondere, non toccare la casa. {instead}")}
+
 
 def compose_base(tools) -> str:
     """**Il compositore** (Tappa 6, Task 7; R18): l'identita' di HIRIS, e le
@@ -295,8 +323,13 @@ class TurnOutcome:
 
     `truncated` si legge DOPO il blocco `async with misura_turno(...)`: e' il
     segnale del runner, letto una volta sola qui invece che da ogni mestiere.
+    `tool_calls` le chiamate di strumento del turno, `{tool, input}`, dalla
+    stessa lettura che le scrive nel registro dei turni: un mestiere che le
+    attacca alla sua risposta (l'analista, «letture», Task 3.5) non le
+    rilegge dal runner per conto suo.
     """
     truncated: bool = False
+    tool_calls: list = _field(default_factory=list)
 
 
 def was_truncated(runner) -> bool:
@@ -462,13 +495,14 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
         # `None`), perche' e' cio' che gli impedisce di leggere una risposta
         # non finita (D2).
         stato.truncated = esito == "riuscito" and was_truncated(runner)
+        stato.tool_calls = list(getattr(runner, "last_tool_calls", None) or [])
         if stato.truncated:
             esito = TRUNCATED
         elif esito == "riuscito" and was_tool_leaked(runner):
             esito = TOOL_LEAKED
         try:
             if archivio is not None:
-                chiamate = getattr(runner, "last_tool_calls", None) or []
+                chiamate = stato.tool_calls
                 strumenti = [c["tool"] for c in chiamate]
                 # Gli argomenti, alla stessa posizione dei nomi (spec §7):
                 # `log_turn` li riduce e maschera le credenziali.

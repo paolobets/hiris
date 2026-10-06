@@ -446,20 +446,36 @@ def test_il_ponte_sa_ragionare_il_turno_dell_ANALISTA():
     assert ANALYSIS_TURN_KIND in runner.RAGIONABILI
 
 
-def test_il_turno_dell_analista_NON_riceve_gli_strumenti():
-    """**E' di sicurezza, non di eleganza.** Senza questa riga il turno
-    girerebbe col catalogo della chat, `execute` compreso -- la porta con cui
-    HIRIS accende, spegne e chiama un servizio -- e un turno che deve solo
-    leggere dei numeri e scrivere delle frasi potrebbe agire sulla casa senza
-    che nessun si' lo autorizzi. E' il rilievo chiuso per lo scope l'11/09 e
-    ripreso per le ricette.
+def test_il_turno_dell_analista_riceve_SOLO_lettori():
+    """**E' di sicurezza, non di eleganza.** Fino al 06/10/2026 l'analista
+    non riceveva strumenti, e questa prova pretendeva che restasse fra i
+    mestieri autosufficienti: senza, il ponte gli avrebbe dato il catalogo
+    della chat, `execute` compreso. Dal Task 3.6 degli attori (D5) riceve i
+    lettori e `compute`, e la prova pretende che non riceva NIENTE che
+    scriva o impegni.
 
-    Mutazione: togliere `_ANALYSIS_KIND` da `_SELF_CONTAINED_KINDS` -- rossa.
-    """
-    from hiris.app.agent import runner
-    from hiris.app.mind.analyst_turn import ANALYSIS_TURN_KIND
+    L'elenco qui sotto non ricopia un fatto che vive altrove: e' la meta' di
+    D5 che dice cosa resta FUORI, scritta nel piano degli attori (strati 3-4)
+    e approvata il 06/10/2026 -- `execute` comanda la casa, `remember`
+    scrive nella memoria, `promise`/`cancel` impegnano il futuro,
+    `propose`/`confirm` scrivono configurazione.
 
-    assert ANALYSIS_TURN_KIND in runner._SELF_CONTAINED_KINDS
+    Mutazione ESEGUITA (06/10/2026): aggiungere `execute` a
+    `analyst_turn.READERS` -- rossa."""
+    from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
+    from hiris.app.mind import compute
+    from hiris.app.steering import ANALYST_SPECIES, SPECIES
+
+    fuori = {"execute", "remember", "promise", "cancel", "propose", "confirm"}
+    nomi = set(SPECIES[ANALYST_SPECIES].tools_for_turn())
+    assert nomi == {*at.READERS, compute.COMPUTE_TOOL_NAME}
+    assert not nomi & fuori, nomi & fuori
+    # Gli STESSI dizionari della chat, non copie: una descrizione migliorata
+    # li' vale anche qui.
+    chat = {d["name"]: d for d in KNOWLEDGE_TOOLS}
+    for definition in at.analyst_tools():
+        if definition["name"] in chat:
+            assert definition is chat[definition["name"]]
 
 
 # ---------------------------------------------------------------------------

@@ -1,10 +1,8 @@
 {
  "simbolo-solo-test": {
   "actuator_round": "L'attuatore e' in pausa per decisione del proprietario (dichiarazione D5 della Tappa 0): lo riaccende lo strato 4 degli attori. Voce M-20 del registro.",
-  "compute": "La ricetta al volo (mind/compute.py, Task 3.1 degli attori, decisione D6 del 06/10/2026) e' pronta ma non ancora offerta: entra nel turno dell'analista con il Task 3.6, dopo la Tappa 5 (T8) e la Tappa 6 (T7, T8). Quando entra, questa voce esce, e con lei M-78. Voce M-78 del registro.",
   "get_config": "Falso positivo del rilevatore: HAClient.get_config e' chiamato in produzione attraverso getattr, dentro home_space/topology.rebuild.",
-  "operable_domains": "Lo legge il censore dei tipi, che e' un attrezzo (scripts/censore_tipi.py): il giudizio «accendibile» non ha lettori nel prodotto, e se serve lo decide il proprietario. Voce M-61 del registro.",
-  "tool_def": "Lo schema della ricetta al volo (mind/compute.py, Task 3.1 degli attori, decisione D6 del 06/10/2026) e' pronta ma non ancora offerta: entra nel turno dell'analista con il Task 3.6, dopo la Tappa 5 (T8) e la Tappa 6 (T7, T8). Quando entra, questa voce esce, e con lei M-78. Voce M-78 del registro."
+  "operable_domains": "Lo legge il censore dei tipi, che e' un attrezzo (scripts/censore_tipi.py): il giudizio «accendibile» non ha lettori nel prodotto, e se serve lo decide il proprietario. Voce M-61 del registro."
  },
  "rotta-solo-test": {
   "/api/misure": "La leggono gli attrezzi di misura (scripts/misure.py, scripts/batteria_attori.py), che il rilevatore non conta fra i chiamanti: dichiarazione D5 della Tappa 0. Voce M-22 del registro."

@@ -193,8 +193,9 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
         ("`reread_ha_problems`, il giro dei 5 minuti: il giro delle condizioni "
          "riusa `app[\"ha_problems\"]` (A-02, chiusa al Task 5)")),
     "statistic_ids": (
-        "server.py",
-        ("`statistic_ids_for_round`, la lettura condivisa dai giri (prova: "
+        "home_space/house_history.py",
+        ("`statistic_ids_for_round`, la lettura condivisa dai giri e dal "
+         "guardiano dell'analista (prova: "
          "`tests/test_giro_statistic_ids.py`)")),
     "extract_from_target": (
         "action/actuator.py",

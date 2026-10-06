@@ -56,6 +56,8 @@ from .home_space.historian import (
     local_date,
 )
 from .home_space.house import House
+from .home_space.house_history import statistic_ids_for_round
+from .home_space.privacy import PresenceMask
 from .home_space.reader import HomeSpace
 from .home_space.redaction import home_assistant_folder
 from .home_space.topology import (
@@ -114,6 +116,7 @@ from .steering import (
     OBSERVER_SPECIES,
     PROPOSER_SPECIES,
     RECIPES_SPECIES,
+    SPECIES,
     chain_turn,
     enqueue_turn,
     start,
@@ -1916,37 +1919,6 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     return ricette, serie, nomi, {**ferme, **silent}, mute
 
 
-#: Quanto vale una lettura di `statistic_ids` per i giri che la condividono
-#: (A-05, Tappa 2, Task 8): quattro minuti, cioe' meno del giro piu' frequente
-#: che la usa (il recupero dei resoconti, ogni cinque; le ricette, ogni dieci).
-#: Cosi' un giro non riusa mai la propria lettura precedente -- ogni giro
-#: vede l'elenco fresco di Home Assistant -- ma due giri vicini ne fanno una
-#: sola. La prova (`tests/test_giro_statistic_ids.py`) chiede i giri allo
-#: schedulatore e al grafo delle chiamate, non li ricopia.
-STATISTIC_IDS_MEMORY_S = 240.0
-
-
-async def statistic_ids_for_round(app, ha_client, *,
-                                  now: float | None = None) -> set[str] | dict:
-    """Le entita' con statistiche (`HAClient.statistic_ids`), lette UNA volta
-    per i giri vicini.
-
-    Fino al 04/10/2026 il giro delle ricette e gli ingredienti del resoconto
-    leggevano lo stesso elenco ognuno per conto suo (A-05). La lettura buona
-    si tiene in `app["statistic_ids_held"]` per `STATISTIC_IDS_MEMORY_S`;
-    **un guasto non si tiene mai**: la busta (D3) torna al chiamante, e il
-    giro dopo richiede.
-    """
-    now = time.monotonic() if now is None else now
-    held = app.get("statistic_ids_held")
-    if held is not None and now - held[0] < STATISTIC_IDS_MEMORY_S:
-        return held[1]
-    reading = await ha_client.statistic_ids()
-    if not isinstance(reading, dict):
-        app["statistic_ids_held"] = (now, reading)
-    return reading
-
-
 async def hold_watcher_statistic_ids(app, ha_client) -> None:
     """L'elenco delle entita' con statistiche consegnato al watcher (B-12,
     Tappa 3, Task 7, 04/10/2026), dalla stessa lettura condivisa dei giri
@@ -2067,13 +2039,19 @@ async def analyst_round(app) -> dict | None:
         question = analyst_turn.build_question(series, previous)
         if question is None:
             return None
+        # Gli strumenti e il guardiano li dice la dichiarazione del mestiere
+        # (D5, Task 3.6): gli stessi che il ponte serve da `/api/mcp`.
+        declared = SPECIES[ANALYST_SPECIES]
+        dispatcher = await declared.guard(app) if declared.guard else None
         answer, turn = await chain_turn(
             runner, ANALYST_SPECIES, usage=app.get("usage"),
             max_tokens=analyst_turn.MAX_ANSWER_TOKENS,
-            user_message=question, system_prompt=analyst_turn.SYSTEM)
-        esito = analyst_turn.apply_analysis(series, answer,
-                                            truncated=turn.truncated,
-                                            previous=previous)
+            user_message=question, system_prompt=analyst_turn.SYSTEM,
+            tools=declared.catalog_for_turn() or None, dispatcher=dispatcher)
+        esito = analyst_turn.apply_analysis(
+            series, answer, truncated=turn.truncated, previous=previous,
+            tool_calls=turn.tool_calls,
+            presence=getattr(dispatcher, "presence", None))
         _write_analysis(store, today, esito)
         return esito
     except Exception as error:
@@ -2455,14 +2433,27 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     day = (turn.get("wake") or {}).get("giorno")
     if day != today or store.analysis(day) is not None:
         return None
+    from .agent.runner import _bare_tool_name
     from .api.handlers_mind import mind_view
 
-    reply = (turn.get("decision") or {}).get("reply") or ""
+    decision = turn.get("decision") or {}
+    reply = decision.get("reply") or ""
+    # Le letture del turno, come sulla catena: `{tool, input}` col nome NUDO
+    # -- il prefisso `mcp__hiris__` e' del trasporto, e si toglie al confine
+    # (`runner._bare_tool_name`).
+    calls = [{"tool": _bare_tool_name(c.get("tool")), "input": c.get("input")}
+             for c in decision.get("tools_called") or [] if isinstance(c, dict)]
     series = analyst.with_deviation(
         report.series_of_measures(store.reports(limit=ANALYST_DAYS),
                                   names=mind_view(app).device_names()))
+    # I segnaposto che il modello ha letto sul ponte tornano id dalla stessa
+    # numerazione, sulla casa di adesso (come l'osservatore, decisione 12).
+    casa = app.get("home_space_store")
+    presence = (PresenceMask(House.read(casa, app.get("entity_cache")))
+                if casa is not None else None)
     esito = analyst_turn.apply_analysis(series, reply,
-                                        previous=_analyst_memory(store, day, series))
+                                        previous=_analyst_memory(store, day, series),
+                                        tool_calls=calls, presence=presence)
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.

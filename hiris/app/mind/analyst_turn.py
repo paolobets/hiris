@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 
 from ..home_space.ha_vocabulary import is_entity_id
 from ..steering import ANALYST_SPECIES, SPECIES, read_json
@@ -93,15 +94,20 @@ def fondamento(stamps) -> dict:
 
 def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
                    previous: list[dict] | None = None,
-                   tool_calls: list[dict] | None = None) -> dict:
+                   tool_calls: list[dict] | None = None,
+                   presence=None) -> dict:
     """Cosa si fa della risposta: si valida, e si **arricchisce coi numeri**.
 
     `tool_calls` sono le letture fatte nel turno, dal registro delle chiamate
     del runner (`last_tool_calls`: `{tool, input}`), mai dal testo del modello
     (Task 3.5, Passo 3). Stanno nell'analisi una volta sola, in `letture`:
     il turno non dice quale lettura e' servita a quale osservazione, e
-    ripeterle su ognuna sarebbe una copia. Oggi l'analista non ha strumenti
-    e l'elenco e' vuoto; li riceve col Task 3.6.
+    ripeterle su ognuna sarebbe una copia. Dal Task 3.6 (D5) arrivano sulla
+    catena da `steering.TurnOutcome.tool_calls`, sul ponte dalla decisione
+    del turno, con lo stesso nome nudo (`server._collect_analyst_turn`).
+
+    `presence` (`privacy.PresenceMask`) riporta all'id vero un segnaposto che
+    il modello ha letto negli strumenti e scritto in un `rimetti`.
 
     `previous` e' la memoria (`analyst.previous_observations`, D4): il codice
     attacca a ogni osservazione se e' nuova (`analyst.novelty`), e quella gia'
@@ -156,7 +162,10 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
                 continue
             enriched.append({**built, "novita": fresh})
 
-    back_in = _back_in(data.get("rimetti"), problems)
+    asked_back = data.get("rimetti")
+    if presence is not None:
+        asked_back = presence.unmask(asked_back)
+    back_in = _back_in(asked_back, problems)
     if problems:
         return {"analisi": None, "problemi": problems, "risposta": True,
                 "ripetute": repeated}
@@ -311,7 +320,13 @@ otto giorni al 99% non sono una notizia. Poche cose dette bene, o nessuna.
 
 **Non inventare soglie.** Lo scostamento e' gia' misurato contro la storia di
 quel dato; se la base e' di pochi giorni, dillo invece di fingere che sia
-solida."""
+solida.
+
+**Puoi guardare la casa, non toccarla.** Hai i lettori (search, related,
+history, mind) e compute, che fa un conto col motore delle ricette: usali
+quando una riga non basta a dire se una cosa e' spiegata. Cio' che leggi lo
+registra il codice; anche i numeri che ti tornano restano fuori dalla
+risposta."""
 
 ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
 
@@ -422,3 +437,116 @@ def bridge_turn(series: dict, previous: list[dict] | None = None) -> dict | None
     return {"history": [{"role": "user", "content": question}],
             "system_prompt": SYSTEM,
             "istruzione": ANSWER_CONTRACT}
+
+
+# ── Gli strumenti dell'analista (D5 del piano degli attori; Task 3.6) ────────
+
+#: **I lettori che l'analista riceve: un elenco d'AMMISSIONE**, come
+#: `keeper/exchange.SOLA_LETTURA` -- decisione 13 della spec della fonte
+#: unica, «un attore non e' una persona: sola lettura dichiarata». Uno
+#: strumento nuovo della chat non entra qui da solo: entra quando qualcuno
+#: scrive perche'.
+#:
+#: - `search` -- cosa e' una cosa della casa, e dove sta;
+#: - `related` -- a cosa e' legata (il dispositivo, l'area, le sorelle);
+#: - `history` -- stati, valori, esecuzioni e registro degli errori: cio' che
+#:   una riga dell'indice riassume, quando l'analista vuole vederlo;
+#: - `mind` -- cio' che il cervello guarda: lo scope, l'obiettivo, le porzioni
+#:   dei resoconti e le analisi (Tappa 5, Task 8).
+#:
+#: Fuori, per scelta (D5): `execute`, `remember`, `promise`, `propose`,
+#: `confirm`, `cancel` -- scrivono o impegnano -- e `fetch`, `calendar`, che
+#: nessuna osservazione dell'audit del 01/10/2026 ha chiesto. `compute` non
+#: e' un lettore della chat: lo serve il guardiano qui sotto.
+READERS = ("search", "related", "history", "mind")
+
+
+def analyst_tools() -> list[dict]:
+    """Il catalogo del turno: i lettori, con gli STESSI dizionari della chat
+    (`KNOWLEDGE_TOOLS`, filtrati e non copiati), piu' `compute`."""
+    from ..home_space.tools import KNOWLEDGE_TOOLS
+    from .compute import tool_def
+
+    admitted = [d for d in KNOWLEDGE_TOOLS if d["name"] in READERS]
+    if len(admitted) != len(READERS):
+        # Un lettore rinominato nella chat svuoterebbe il catalogo IN
+        # SILENZIO: si dichiara, come per la promessa.
+        logger.error("catalogo dell'analista incompleto: mancano %s",
+                     sorted(set(READERS) - {d["name"] for d in admitted}))
+    return admitted + [tool_def()]
+
+
+class AnalystDispatcher:
+    """Il guardiano del turno: lascia scendere i lettori, serve `compute`, e
+    rifiuta il resto con la frase della promessa (`steering.refused_tool`).
+
+    Sta DAVANTI al dispatcher della chat invece di modificarlo, come
+    `PromiseDispatcher`: `compute` non deve esistere nella chat. Lo stesso
+    oggetto risponde sulla catena (`server.analyst_round`) e sul ponte
+    (`/api/mcp`, `steering.Species.guard`).
+    """
+
+    def __init__(self, below, *, ha, house, timezone: str | None,
+                 presence=None) -> None:
+        self._below = below
+        self._ha = ha
+        self._house = house
+        self._timezone = timezone
+        #: Il filtro dei nomi delle persone (`privacy.PresenceMask`; decisione
+        #: 12 estesa agli strumenti degli attori, «Segnaposto», 06/10/2026):
+        #: cio' che torna al modello passa da `mask`, cio' che il modello manda
+        #: da `unmask`. `None` senza casa: non c'e' niente da coprire.
+        self.presence = presence
+
+    async def dispatch(self, name: str, arguments: dict | None) -> dict:
+        from ..steering import refused_tool
+        from .compute import COMPUTE_TOOL_NAME, compute
+
+        arguments = arguments or {}
+        if name == COMPUTE_TOOL_NAME:
+            if self._ha is None or self._house is None:
+                return {"errore": ("la casa non e' ancora letta, o Home Assistant "
+                                   "non e' collegato: non posso leggere le serie")}
+            return self._covered(await compute(
+                self._uncovered(arguments), ha=self._ha, house=self._house,
+                now=time.time(), timezone=self._timezone))
+        if name not in READERS:
+            return refused_tool(
+                name, doing="mentre analizzo le misure",
+                instead=("Se serve un'azione, scrivila in «cosa_cambierebbe»: "
+                         "la proposta la decide qualcun altro."))
+        return self._covered(await self._below.dispatch(name, self._uncovered(arguments)))
+
+    def _covered(self, result):
+        return result if self.presence is None else self.presence.mask(result)
+
+    def _uncovered(self, arguments):
+        return arguments if self.presence is None else self.presence.unmask(arguments)
+
+
+async def guard(app, exchange: str | None = None) -> AnalystDispatcher:
+    """Il dispatcher di un turno dell'analista, sulla catena e sul ponte.
+
+    Una casa sola per il turno: quella dei lettori e quella di `compute` sono
+    la stessa (`create_tool_dispatcher(house=...)`), con l'elenco delle
+    statistiche dalla lettura condivisa dei giri
+    (`house_history.statistic_ids_for_round`). Se l'elenco non si legge,
+    `compute` non afferma che un'entita' ne e' senza.
+    """
+    from ..api.handlers_chat import create_tool_dispatcher
+    from ..home_space import historian
+    from ..home_space.house import House
+    from ..home_space.house_history import statistic_ids_for_round
+    from ..home_space.privacy import PresenceMask
+
+    store = app.get("home_space_store")
+    ha = app.get("ha_client")
+    house = House.read(store, app.get("entity_cache")) if store is not None else None
+    if house is not None and ha is not None:
+        with_statistics = await statistic_ids_for_round(app, ha)
+        if not isinstance(with_statistics, dict):
+            house = house.with_statistics(with_statistics)
+    below = create_tool_dispatcher(app, exchange=exchange, house=house)
+    return AnalystDispatcher(below, ha=ha, house=house,
+                             timezone=historian.house_timezone(store),
+                             presence=PresenceMask(house) if house is not None else None)

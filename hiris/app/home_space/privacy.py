@@ -15,6 +15,8 @@ profondita' -- decisione del proprietario, 29/09/2026:
 """
 from __future__ import annotations
 
+import re
+
 from ..proxy.entity_cache import CREDENTIALS
 from .ha_vocabulary import domain_of
 from .queries import WITHHELD_BASKET
@@ -164,3 +166,111 @@ def cover_automation_body(entry: dict, *, kind: str) -> dict:
     if kind != "automazione" or entry.get("corpo") is None:
         return entry
     return {**entry, "corpo": None, "corpo_non_disponibile": AUTOMATION_BODY_ADMIN_ONLY}
+
+
+# ── I nomi delle persone verso un attore (decisione 12, estesa il 06/10/2026)
+
+#: Il segno del SEGNAPOSTO che prende il posto di un identificatore che porta
+#: il nome di una persona (decisione 12 della spec «Una fonte sola di
+#: verita'», Tappa 6, Task 6, 05/10/2026). Il `#` non puo' collidere con
+#: un'entita' vera: Home Assistant ammette nell'object_id solo cifre,
+#: minuscole e `_` (`homeassistant/core.py`, `_OBJECT_ID`, Core 2026.9.3,
+#: letto il 05/10/2026). Viveva in `mind/observer.py` fino al 06/10/2026.
+PRESENCE_MARK = "#"
+
+
+def handles(ids) -> dict[str, str]:
+    """`entity_id` -> segnaposto `<dominio>.#N`, numerato dominio per dominio
+    nell'ordine degli id: cio' che lo rende ricostruibile, a partire dallo
+    stesso insieme, senza archiviare una tabella di corrispondenze."""
+    out: dict[str, str] = {}
+    counters: dict[str, int] = {}
+    for entity_id in sorted(ids):
+        domain = domain_of(entity_id)
+        counters[domain] = counters.get(domain, 0) + 1
+        out[entity_id] = f"{domain}.{PRESENCE_MARK}{counters[domain]}"
+    return out
+
+
+def person_bound(house) -> tuple[list[str], list[str]]:
+    """`(entita', dispositivi)` che portano il nome di una persona: le
+    presenze (`MOVING_DOMAINS`: `person` e i `device_tracker`) e, per ogni
+    dispositivo che porta una presenza, TUTTE le sue entita' -- la batteria
+    del telefono, accanto al suo tracker.
+
+    Il legame si chiede a Home Assistant, non si indovina dai nomi: e' il
+    `device_id` del registro delle entita' (`config/entity_registry/list`),
+    che l'anagrafe tiene come `dispositivo_id` (`House.device_entities`).
+    Decisione del proprietario del 06/10/2026 («Segnaposto», dopo la misura
+    del Task 3.0, Passo 4: `search` portava un nome di persona in 4 risposte
+    su 35, quasi sempre dentro il nome di un'entita')."""
+    moving = {e for e in house.entity_ids() if domain_of(e) in MOVING_DOMAINS}
+    devices = [d for d in house.device_ids()
+               if any(e["id"] in moving for e in house.device_entities(d))]
+    sisters = {e["id"] for d in devices for e in house.device_entities(d)}
+    return sorted(moving | sisters), devices
+
+
+class PresenceMask:
+    """Il filtro dei nomi delle persone **per le risposte degli strumenti di un
+    attore** (decisione 12 estesa: «Segnaposto», 06/10/2026). La chat resta
+    com'e': qui passa solo il guardiano di un mestiere di sfondo
+    (`mind/analyst_turn.AnalystDispatcher`).
+
+    `mask` sostituisce, a ogni profondita' e anche nelle chiavi, l'id di
+    un'entita' legata a una persona (`person_bound`) col suo segnaposto, e
+    con lo stesso segnaposto il suo nome; il nome di un suo dispositivo
+    diventa `dispositivo.#N`. `unmask` riporta i segnaposto agli id veri
+    negli argomenti che il modello manda: il turno legge la cosa giusta senza
+    averne mai visto il nome.
+
+    Un nome si sostituisce solo intero (non dentro un'altra parola), e prima
+    i piu' lunghi: «iPhone di Paolo Batteria» diventa un segnaposto solo,
+    non «dispositivo.#1 Batteria»."""
+
+    def __init__(self, house) -> None:
+        ids, devices = person_bound(house)
+        self.handles = handles(ids)
+        words: dict[str, str] = {}
+        for entity_id, handle in self.handles.items():
+            words[entity_id] = handle
+            name = house.name("entita", entity_id)
+            if name and name != entity_id:
+                words.setdefault(name, handle)
+        for number, device_id in enumerate(devices, start=1):
+            name = house.name("dispositivo", device_id)
+            if name and name != device_id:
+                words.setdefault(name, f"dispositivo.{PRESENCE_MARK}{number}")
+        self._words = words
+        self._mask = _alternation(words)
+        back = {handle: entity_id for entity_id, handle in self.handles.items()}
+        self._back = back
+        self._unmask = _alternation(back, after=r"(?!\d)")
+
+    def mask(self, value):
+        return _replace(value, self._mask, self._words)
+
+    def unmask(self, value):
+        return _replace(value, self._unmask, self._back)
+
+
+def _alternation(words: dict[str, str], *, after: str = r"(?!\w)"):
+    """Un'espressione sola per tutte le parole, le piu' lunghe prima, ognuna
+    solo intera; `None` se non c'e' niente da sostituire."""
+    if not words:
+        return None
+    alternatives = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+    return re.compile(rf"(?<![\w.#])(?:{alternatives}){after}")
+
+
+def _replace(value, pattern, words: dict[str, str]):
+    if pattern is None:
+        return value
+    if isinstance(value, str):
+        return pattern.sub(lambda m: words[m.group(0)], value)
+    if isinstance(value, dict):
+        return {_replace(k, pattern, words): _replace(v, pattern, words)
+                for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_replace(item, pattern, words) for item in value]
+    return value

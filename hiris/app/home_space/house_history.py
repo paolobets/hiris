@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -1543,3 +1544,37 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     if "errore" not in response and not mirror.readable:
         response["stato_non_letto"] = True
     return response
+
+
+#: Quanto vale una lettura di `statistic_ids` per i giri che la condividono
+#: (A-05, Tappa 2, Task 8): quattro minuti, cioe' meno del giro piu' frequente
+#: che la usa (il recupero dei resoconti, ogni cinque; le ricette, ogni dieci).
+#: Cosi' un giro non riusa mai la propria lettura precedente -- ogni giro
+#: vede l'elenco fresco di Home Assistant -- ma due giri vicini ne fanno una
+#: sola. La prova (`tests/test_giro_statistic_ids.py`) chiede i giri allo
+#: schedulatore e al grafo delle chiamate, non li ricopia.
+STATISTIC_IDS_MEMORY_S = 240.0
+
+
+async def statistic_ids_for_round(app, ha_client, *,
+                                  now: float | None = None) -> set[str] | dict:
+    """Le entita' con statistiche (`HAClient.statistic_ids`), lette UNA volta
+    per i giri vicini.
+
+    Fino al 04/10/2026 il giro delle ricette e gli ingredienti del resoconto
+    leggevano lo stesso elenco ognuno per conto suo (A-05). Viveva in
+    `server.py` fino al 06/10/2026 (attori, Task 3.6): la chiede anche il
+    guardiano dell'analista, che il ponte costruisce in `/api/mcp`, e la porta
+    della storia e' la casa che entrambi possono importare. La lettura buona
+    si tiene in `app["statistic_ids_held"]` per `STATISTIC_IDS_MEMORY_S`;
+    **un guasto non si tiene mai**: la busta (D3) torna al chiamante, e il
+    giro dopo richiede.
+    """
+    now = time.monotonic() if now is None else now
+    held = app.get("statistic_ids_held")
+    if held is not None and now - held[0] < STATISTIC_IDS_MEMORY_S:
+        return held[1]
+    reading = await ha_client.statistic_ids()
+    if not isinstance(reading, dict):
+        app["statistic_ids_held"] = (now, reading)
+    return reading

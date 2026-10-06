@@ -29,7 +29,7 @@ import logging
 
 from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.house import House
-from ..home_space.privacy import MOVING_DOMAINS
+from ..home_space.privacy import MOVING_DOMAINS, PRESENCE_MARK, handles
 from ..home_space.topology import is_pseudo_area
 from ..steering import OBSERVER_SPECIES, SPECIES, chain_turn, read_json
 from .scope import OBSERVER
@@ -97,32 +97,23 @@ def watched_ids(house: House, only: set[str] | None = None) -> list[str]:
 #: `cv.entities_domain(DEVICE_TRACKER_DOMAIN)`), letti nel sorgente di Core
 #: 2026.9.3 il 05/10/2026.
 #:
-#: Il `#` non puo' collidere con un'entita' vera: Home Assistant ammette
-#: nell'object_id solo cifre, minuscole e `_` (`homeassistant/core.py`,
-#: `_OBJECT_ID`, Core 2026.9.3, letto il 05/10/2026).
+#: Il segnaposto e il suo segno (`PRESENCE_MARK`) vivono in
+#: `home_space/privacy.py` dal 06/10/2026: li usa anche il guardiano degli
+#: attori (`privacy.PresenceMask`), e un segnaposto con due case diventerebbe
+#: due forme della stessa cosa.
 #:
 #: **La deroga «salvo che l'obiettivo li chieda» non nasce.** L'obiettivo e'
 #: testo libero (`mind/store.objective`): non c'e' un modo per dire «le persone
 #: si', per nome» che non sia indovinarlo da una frase. Se servira', nascera'
 #: come campo dell'obiettivo, non come lettura della prosa.
-PRESENCE_MARK = "#"
 
 
 def presence_handles(ids) -> dict[str, str]:
-    """`entity_id` -> segnaposto, per le sole presenze fra `ids`.
-
-    Il numero e' la posizione nell'ordine degli id, dominio per dominio: e'
-    cio' che lo rende ricostruibile quando la risposta torna -- sul ponte
-    minuti dopo, da un altro processo -- a partire dallo stesso insieme
-    chiesto, senza archiviare una tabella di corrispondenze."""
-    handles: dict[str, str] = {}
-    counters: dict[str, int] = {}
-    for entity_id in sorted(ids):
-        domain = domain_of(entity_id)
-        if domain in MOVING_DOMAINS:
-            counters[domain] = counters.get(domain, 0) + 1
-            handles[entity_id] = f"{domain}.{PRESENCE_MARK}{counters[domain]}"
-    return handles
+    """`entity_id` -> segnaposto, per le sole presenze fra `ids`: la
+    numerazione e' quella di `privacy.handles`, sul lotto chiesto. E' cio' che
+    la rende ricostruibile quando la risposta torna -- sul ponte minuti dopo,
+    da un altro processo -- a partire dallo stesso insieme."""
+    return handles(i for i in ids if domain_of(i) in MOVING_DOMAINS)
 
 
 def house_lines(house: House, only: set[str] | None = None) -> list[str]:

@@ -373,8 +373,9 @@ def _stale_work_rejection(name: str) -> dict:
     come `_stale_chat_rejection` e per la stessa ragione -- ricadere sul
     catalogo della chat darebbe a un attore `execute`."""
     return _closed_call(
-        "questo turno non è più valido: è scaduto o è già stato consegnato, "
-        f"e non uso nessuno strumento (l'ultimo tentato: «{name}»).")
+        "non riconosco questo turno come un lavoro in corso con strumenti: è "
+        "scaduto, è già stato consegnato, o il suo mestiere non ne ha. Non uso "
+        f"nessuno strumento (l'ultimo tentato: «{name}»).")
 
 
 def _stale_chat_rejection(name: str) -> dict:
