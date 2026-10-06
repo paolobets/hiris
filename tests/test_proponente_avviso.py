@@ -386,3 +386,52 @@ async def test_un_amministratore_SENZA_telefono_si_conta_non_blocca_gli_altri(ca
     assert esito["senza_telefono"][0].startswith("u-ospite")
     assert {c["call"]["servizio"] for c in casa["action_actuator"].chiamate} == {
         "notify.mobile_app_iphone_bet", "notify.mobile_app_iphone_di_marta"}
+
+
+@pytest.mark.asyncio
+async def test_un_GUASTO_dell_avviso_non_toglie_il_turno(casa):
+    """Revisione, giro 58: l'avviso gira in testa a ogni giro, e un suo guasto
+    non deve far cadere il turno del proponente.
+
+    Mutazione ESEGUITA (06/10/2026): `_alert_high` chiamato senza la sua
+    protezione in testa al giro -- rossa (nessun esito scritto)."""
+    _analisi(casa, 1)
+    casa["llm_router"] = _Modello(_LUCE)
+
+    def guasto(**_):
+        raise RuntimeError("archivio illeggibile")
+
+    casa["constructions"].to_alert = guasto
+
+    esito = await pr.proposer_round(casa)
+
+    assert esito is not None and esito["problemi"] == []
+    assert len(casa["constructions"].list()) == 1
+
+
+def test_to_alert_porta_SCADUTA_ORA_come_lo_vuole_il_ramo_degli_attori(tmp_path, monkeypatch):
+    """Revisione, giro 58 (G58-1): nel ramo `h4tcbr` (537169a9) `_row` legge
+    `r["scaduta_ora"]`, che esiste solo nei SELECT con `_EXPIRED_SQL AS
+    scaduta_ora`. Unito quel ramo, un `to_alert` con `SELECT *` solleverebbe
+    IndexError, e l'avviso in testa a ogni giro fallirebbe sempre. Qui `_row`
+    e' sostituito con la lettura di quel ramo: la riga deve portare la colonna,
+    falsa per una proposta non scaduta.
+
+    Mutazione ESEGUITA (06/10/2026): `to_alert` col `SELECT *` di prima --
+    rossa, «IndexError: No item with that key»."""
+    from hiris.app.action.construction import revisions
+
+    lette = []
+    monkeypatch.setattr(revisions, "_row",
+                        lambda r: lette.append(bool(r["scaduta_ora"])) or {"id": r["id"]})
+    archivio = ConstructionStore(str(tmp_path / "c.db"))
+    try:
+        archivio.propose(operation="crea", domain="automation", key="k",
+                         actor="proponente", exchange="t", phrase=None,
+                         prima=None, dopo={"alias": "x"}, helper=[],
+                         preview="", stakes="alto", now=1_000_000.0)
+        assert len(archivio.to_alert(actor="proponente", stakes="alto",
+                                     now=1_000_001.0)) == 1
+    finally:
+        archivio.close()
+    assert lette == [False]

@@ -57,7 +57,7 @@ async def proposer_round(app) -> dict | None:
     try:
         # Prima di tutto gli avvisi che non sono arrivati: si ritentano a ogni
         # battito, anche nei giorni senza analisi (D14, «Ritenta»).
-        await _alert_high(app)
+        await _alert_high_safely(app)
         today = historian.today(
             historian.house_timezone(app.get("home_space_store"))).isoformat()
         if store.analysis(today) is None:
@@ -112,7 +112,7 @@ async def _chain(app, store, day: str, pending, refused, runner) -> dict:
     if occurrence["risposta"] and occurrence["problemi"] and not turn.truncated:
         declare_refused(app.get("usage"), turn.turn_id, occurrence["problemi"])
     _settle(store, day, occurrence)
-    await _alert_high(app)
+    await _alert_high_safely(app)
     return occurrence
 
 
@@ -173,7 +173,7 @@ async def _collect(app, store, today: str) -> dict | None:
     if occurrence["problemi"]:
         declare_refused(app.get("usage"), decision.get("turn_id"), occurrence["problemi"])
     _settle(store, today, occurrence)
-    await _alert_high(app)
+    await _alert_high_safely(app)
     return occurrence
 
 
@@ -233,6 +233,17 @@ def _settle(store, day: str, occurrence: dict) -> None:
 #: e una frase che li ricopiasse mentirebbe il giorno in cui la lista cambia.
 ALERT_TEXT = ("HIRIS ha una proposta di livello alto: «{name}». "
               "Decidi tu, nella pagina Proposte.")
+
+
+async def _alert_high_safely(app) -> None:
+    """`_alert_high` che non solleva: un guasto dell'avviso non toglie il
+    turno al proponente (revisione, giro 58). Si ritenta al giro dopo."""
+    try:
+        await _alert_high(app)
+    except Exception as error:
+        logger.warning("proponente: avviso per le proposte alto non riuscito "
+                       "(%s: %s) -- si ritenta al giro dopo",
+                       type(error).__name__, error)
 
 
 async def _alert_high(app) -> None:

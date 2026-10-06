@@ -57,6 +57,13 @@ REASON_DISDETTA = "rifiutata dalla pagina"
 STATES_SOSPESO = ("in_attesa", "in_corso")
 _SOSPESI_SQL = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 
+#: **Quando una proposta e' scaduta**: in attesa da prima del limite (il
+#: parametro e' `adesso - DEADLINE_S`). Lo stesso nome e lo stesso testo del
+#: ramo degli attori `h4tcbr` (537169a9), dove lo usano anche `_scadi`,
+#: `read`, `list`, `count_pending`, `claim` e `mark_cancelled`: qui, finche'
+#: quel ramo non e' unito, lo usa `to_alert`.
+_EXPIRED_SQL = "(stato='in_attesa' AND creata_ts < ?)"
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
     id TEXT PRIMARY KEY,
@@ -300,16 +307,19 @@ class ConstructionStore:
 
     def to_alert(self, *, actor: str, stakes: str, now: float) -> list[dict]:
         """Le proposte di `actor` a livello `stakes` ancora in attesa e mai
-        avvisate (D14). «In attesa» con la stessa scadenza di
-        `count_pending`: una proposta scaduta che nessuno ha ancora marcato
-        non chiede piu' niente a nessuno. Non scrive."""
+        avvisate (D14). Non scaduta con `_EXPIRED_SQL`: una proposta scaduta
+        che nessuno ha ancora segnato non chiede piu' niente a nessuno. La
+        colonna `scaduta_ora` e' la forma con cui `_row` legge le righe nel
+        ramo `h4tcbr`. Non scrive."""
+        cutoff = now - self.DEADLINE_S
         with self._lock:
             righe = self._conn.execute(
-                "SELECT * FROM costruzioni WHERE origine=? AND stakes=? "
-                "AND stato='in_attesa' AND creata_ts >= ? "
+                f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni "
+                f"WHERE origine=? AND stakes=? AND stato='in_attesa' "
+                f"AND NOT {_EXPIRED_SQL} "
                 "AND id NOT IN (SELECT proposta_id FROM avvisi) "
                 "ORDER BY creata_ts",
-                (actor, stakes, now - self.DEADLINE_S)).fetchall()
+                (cutoff, actor, stakes, cutoff)).fetchall()
         return [_row(r) for r in righe]
 
     def mark_alerted(self, ident: str, *, now: float) -> None:
