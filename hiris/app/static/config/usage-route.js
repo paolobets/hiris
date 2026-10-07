@@ -282,14 +282,14 @@
      Niente riquadro quando non e' mai successo: una sezione vuota che dice
      «nessun ripiego» ruberebbe spazio alla domanda con cui si apre questa
      pagina, che e' quanto ho speso. */
-  function fallbacks(righe) {
+  function fallbacks(righe, piano) {
     if (!righe || !righe.length) return '';
     var totale = righe.reduce(function(n, r) { return n + (r.count || 0); }, 0);
     return '<div class="usage-fallbacks" id="usage-fallbacks">'
       + '<h2 class="sc-title">Giri passati a consumo</h2>'
       + '<p class="sc-desc">' + totale + (totale === 1
-          ? ' giro non è stato servito dal Piano Claude Max ed è stato pagato a consumo.'
-          : ' giri non sono stati serviti dal Piano Claude Max e sono stati pagati a consumo.')
+          ? ' giro non è stato servito dal ' + escHtml(piano) + ' ed è stato pagato a consumo.'
+          : ' giri non sono stati serviti dal ' + escHtml(piano) + ' e sono stati pagati a consumo.')
       + '</p>'
       + righe.map(function(r) {
           return '<div class="fallback-row">'
@@ -332,7 +332,7 @@
       + '<div class="usage-sections">'
       + (u.sections || []).map(section).join('')
       + '</div>'
-      + fallbacks(u.fallbacks);
+      + fallbacks(u.fallbacks, u.fallbacks_from);
 
     connect();
   }

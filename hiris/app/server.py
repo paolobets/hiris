@@ -182,7 +182,7 @@ def _close_expired_promise(app, job: dict) -> None:
     durata_s = (float(job.get("deadline_ts", 0.0))
                 - float(job.get("created_ts", 0.0)))
     minuti = round(durata_s / 60)
-    reason = (f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
+    reason = (f"ho aspettato il {SUBSCRIPTION.name} per {minuti} minuti e non ha "
               "risposto: non so cosa dirti.")
     # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
     # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
@@ -321,14 +321,14 @@ def _bridge_notices(bridge_active: bool, token_presente: bool) -> list[str]:
     """
     if bridge_active and not token_presente:
         return [("Il ponte e' acceso ma «Provider · Piano Claude Max — token» e' "
-                "vuoto: nessun messaggio arriva al Piano Claude Max, e ogni turno "
+                f"vuoto: nessun messaggio arriva al {SUBSCRIPTION.name}, e ogni turno "
                 "passa alla catena -- dal forfait al consumo. Incolla il token, "
                 "oppure spegni il ponte dalla pagina Modelli di HIRIS.")]
     if token_presente and not bridge_active:
-        return [("Hai il token del Piano Claude Max, ma il ponte e' spento: le "
+        return [(f"Hai il token del {SUBSCRIPTION.name}, ma il ponte e' spento: le "
                 "risposte passano dalla catena, a consumo. Il ponte non si accende "
                 "piu' da un'opzione dell'add-on -- si accende nella pagina Modelli "
-                "di HIRIS, col bottone accanto alla riga «Il Piano Claude Max ha il "
+                f"di HIRIS, col bottone accanto alla riga «Il {SUBSCRIPTION.name} ha il "
                 "token, lo paghi, ed e' fuori dalla catena».")]
     return []
 
@@ -2704,7 +2704,7 @@ def _govern_bridge_worker(app) -> None:
         )
         logger.info(
             "Lavoratore del ponte avviato: il ponte e' acceso e il token del "
-            "Piano Claude Max c'e'.")
+            "%s c'e'.", SUBSCRIPTION.name)
     elif not voluto and live:
         current.cancel()
         app["agent_worker_task"] = None
@@ -2717,7 +2717,7 @@ def _govern_bridge_worker(app) -> None:
         logger.info("ponte spento: revocate %d credenziali del turno", quante)
         logger.info(
             "Lavoratore del ponte fermato: il ponte e' spento, oppure manca il "
-            "token del Piano Claude Max. La chat risponde dalla catena.")
+            "token del %s. La chat risponde dalla catena.", SUBSCRIPTION.name)
 
 
 def _recompute_chain(app) -> None:

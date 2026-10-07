@@ -711,12 +711,13 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # -- e' lo stato vero della risorsa (A6, 05/10/2026). Il testo sta in
         # `error`, la forma comune del confine.
         return web.json_response(error_body(
-            "Il Piano Claude Max non ha risposto in tempo, e non c’è "
+            f"Il {SUBSCRIPTION.name} non ha risposto in tempo, e non c’è "
             "nessun altro provider in catena a cui chiedere.", status="error"))
 
     logger.warning(
-        "Il Piano Claude Max non ha risposto entro la scadenza: il turno %s "
-        "passa alla catena. Il costo cambia -- dal forfait al consumo.", job_id)
+        "Il %s non ha risposto entro la scadenza: il turno %s "
+        "passa alla catena. Il costo cambia -- dal forfait al consumo.",
+        SUBSCRIPTION.name, job_id)
 
     cronologia = contesto.get("history") or []
     if not isinstance(cronologia, list):

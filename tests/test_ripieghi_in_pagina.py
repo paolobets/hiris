@@ -70,3 +70,25 @@ async def test_senza_ripieghi_la_chiave_c_e_ed_e_VUOTA(app):
 # ed e' nata verde senza saper fallire: togliendo la CHIAMATA alla sezione le
 # due parole restavano nel file -- nella definizione della funzione, che
 # nessuno chiamava piu'. Guardava il file invece del comportamento.
+
+
+@pytest.mark.asyncio
+async def test_chi_non_li_ha_serviti_lo_dice_la_tabella(app, monkeypatch):
+    """D10a (Tappa 7 T9): la pagina scriveva «Piano Claude Max» a mano. Il
+    nome viaggia col payload, e lo chiede alla tabella dei provider.
+
+    Mutazione ESEGUITA (07/10/2026): il valore scritto a mano
+    `"fallbacks_from": "Piano Claude Max"` -- rossa, `'Piano Claude Max' ==
+    'Un piano rinominato'`; ripristinata."""
+    import dataclasses
+
+    from hiris.app import providers
+    from hiris.app.api import handlers_usage
+
+    rinominato = dataclasses.replace(providers.SUBSCRIPTION, name="Un piano rinominato")
+    monkeypatch.setattr(handlers_usage, "SUBSCRIPTION", rinominato)
+    applicazione, _store = app
+
+    corpo = await _leggi(applicazione)
+
+    assert corpo["fallbacks_from"] == "Un piano rinominato"
