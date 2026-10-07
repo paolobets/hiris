@@ -430,7 +430,9 @@ intervalli fissi erano diventati ciechi, e la prova restava verde.
 che raccoglie meno prove del giro prima, senza nessuna rossa, non e' verde: e' una suite che ha
 smesso di guardare qualcosa. `npm test` lo confronta da se': il reporter
 `tests/js/helpers/conteggio-prove.mjs` conta le prove per file, le confronta con il giro prima su
-questo clone e, se un file ne porta meno, lo nomina e fa uscire la corsa con 1. La causa del
+questo clone e, se un file ne porta meno, lo nomina e fa uscire la corsa con 1. Il conto sceso non
+si salva, quindi rilanciare non lo zittisce: se le prove le hai tolte tu, `HIRIS_PROVE_JS_OK=1 npm
+test` lo accetta (il valore accettato e' esattamente `1`). La causa del
 conteggio instabile del 05/10 (le scritture di coda perse con `--test-force-exit`) e la sua
 correzione stanno in `tests/js/helpers/uscita-intera.mjs`.
 
