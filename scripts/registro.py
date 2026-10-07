@@ -199,6 +199,14 @@ def closed_early(entries: list[Entry]) -> list[Entry]:
             and not _VERSION.match(entry.cells[2])]
 
 
+def pending(entries: list[Entry]) -> list[str]:
+    """Gli id che `release` toccherebbe, nell'ordine del documento: le voci
+    segnate e le chiuse in anticipo. E' cio' che un rilascio in prova stampa."""
+    early = {entry.id for entry in closed_early(entries)}
+    return [entry.id for entry in entries
+            if entry.id in early or releasable(entry) is not None]
+
+
 def release(path: Path, *, version: str) -> list[str]:
     """Al rilascio: chiude le voci segnate e da' la versione alle chiuse in
     anticipo. Restituisce gli id toccati, nell'ordine del documento."""
@@ -218,9 +226,7 @@ def release(path: Path, *, version: str) -> list[str]:
         if sign is not None:
             close(path, entry_id, version=version, commit=", ".join(sign.commits),
                   note=sign.note)
-    touched = {entry_id for entry_id, sign in marked if sign is not None}
-    touched |= {entry.id for entry in early}
-    return [entry.id for entry in entries if entry.id in touched]
+    return pending(entries)
 
 
 def unfinished(entries: list[Entry]) -> list[str]:

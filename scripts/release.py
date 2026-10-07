@@ -12,7 +12,9 @@ Steps (abort on first failure):
   3   Check CHANGELOG.md has ## [X.Y.Z] section AND no ## [Non rilasciato] left
   4   Check git tree clean (only config.yaml / CHANGELOG.md allowed dirty)
   5   Run pytest (skipped with --skip-tests)
-  6   git add + commit chore: release vX.Y.Z
+  5b  Close the duplicates register entries marked «chiudibile al rilascio»
+      and version the ones closed early (scripts/registro.py)
+  6   git add + commit chore: release vX.Y.Z (register included)
   7  git tag vX.Y.Z
   8  git push HEAD:master --tags  (always targets master, worktree-safe)
   9  Extract changelog section for X.Y.Z
@@ -24,6 +26,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import registro
+
 # Ensure UTF-8 output on Windows (cp1252 terminals can't encode ✓/✗/→)
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -33,6 +37,8 @@ if hasattr(sys.stderr, "reconfigure"):
 ROOT = Path(__file__).parent.parent
 CONFIG = ROOT / "hiris" / "config.yaml"
 CHANGELOG = ROOT / "CHANGELOG.md"
+#: Il registro dei doppioni: lo chiede a `registro`, che e' la sua casa.
+REGISTER = registro.REGISTER
 
 # `_VERSIONED_DOCS` e i passi 3b (intestazioni di versione) e 3c (doc_check.py)
 # sono usciti insieme ai quattordici documenti del prodotto 1.x, cancellati
@@ -200,6 +206,23 @@ def run_tests() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Step 5b
+# ---------------------------------------------------------------------------
+
+def close_register(version: str, dry_run: bool) -> None:
+    """Le voci fatte nel ramo si chiudono con la versione che le rilascia
+    (N74-3, scelta di Paolo del 07/10/2026): lo fa lo script, perche' un passo
+    a mano si dimentica e il registro tornerebbe a dire «non rilasciato» su
+    codice uscito. Dopo i test: se falliscono, il registro resta com'era."""
+    if dry_run:
+        ids = registro.pending(registro.read_entries(REGISTER))
+        _info(f"[dry-run] registro: {len(ids)} voci prenderebbero la {version}: {ids}")
+        return
+    ids = registro.release(REGISTER, version=version)
+    _ok(f"Registro dei doppioni: {len(ids)} voci con la {version}")
+
+
+# ---------------------------------------------------------------------------
 # Steps 6-8
 # ---------------------------------------------------------------------------
 
@@ -216,7 +239,8 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
         ] if (ROOT / p).exists()
     ]
     cmds = [
-        ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *extra],
+        ["git", "add", "hiris/config.yaml", "CHANGELOG.md",
+         registro.REGISTER.relative_to(registro.ROOT).as_posix(), *extra],
         ["git", "commit", "-m", f"chore: release v{version}"],
         ["git", "tag", f"v{version}"],
         ["git", "push", "origin", "HEAD:master", "--tags"],
@@ -304,6 +328,7 @@ def main() -> None:
         _info("Skipping pytest (--skip-tests)")
     else:
         run_tests()                        # step 5
+    close_register(args.version, args.dry_run)       # step 5b
     git_commit_and_tag(args.version, args.dry_run)   # steps 6-8
     notes = extract_changelog_section(args.version)  # step 9
     create_github_release(args.version, notes, args.dry_run)  # step 10
