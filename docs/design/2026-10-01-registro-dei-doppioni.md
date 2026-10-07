@@ -85,7 +85,6 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-32 | Un istante esce in quattro forme dagli strumenti (UTC, fuso casa, epoch, «mai») | D | CC |  |  | cop-3 C-n2 · A15 dell'integrazione Tappe 4-6 (d29d98c, 05/10/2026): `historian.instant_out` esce al secondo, senza microsecondi; restano le altre forme |
 | C-33 | Righe della stessa risposta con chiavi diverse; `genere` manca all'entità nella corta | D | CC |  |  | cop-3 C-n3 |
 | C-34 | Nella media `attributi` sono le ceste grezze, senza il filtro della completa | D | CC |  |  | cop-3 C-n4 |
-| C-35 | Frasi fisse ripetute per riga o per risposta, già scritte nella descrizione | E | DP |  |  | cop-3 C-n5 · Tappa 5 (D10 della Tappa 4) |
 | C-36 | I `punti` a fasce portano `somma` non spiegata e tre `null` per i contatori | NV | CC |  |  | cop-3 C-n6 |
 | C-37 | La traccia passo per passo (`run_detail`) esce senza nessun tetto | NV | CC |  |  | cop-3 C-n7 · Tappa 5 (D10 della Tappa 4) |
 | C-38 | `calendar`: unico lettore senza tetto di righe e con un involucro suo | D | CC |  |  | cop-3 C-n8 · Tappa 5 (D10 della Tappa 4) |
@@ -855,10 +854,10 @@ Spostate, restano aperte:
 
 - **C-37**, **C-38** → Tappa 5, Task 6 (i tetti per risposta, R16): la traccia passo per passo
   senza tetto e `calendar` senza tetto di righe sono tetti, e il Task 6 li scrive dopo la misura.
-- **C-35** resta aperta, da decidere col proprietario: le frasi fisse per risposta
+- **C-35** chiusa come voluta (Paolo, 06/10/2026: «Restano»): le frasi fisse per risposta
   (`nessuna_registrazione.perche`, `_NO_RECORDING` in `house_history.py`) ripetono la
-  descrizione, ma toglierle cambia la forma della risposta e va contro la fondamenta 1
-  (un oggetto porta cio' che serve a interpretarlo da solo). Prima la regola, poi il codice.
+  descrizione, ma toglierle cambierebbe la forma della risposta contro la fondamenta 1
+  (un oggetto porta cio' che serve a interpretarlo da solo).
 
 ## Chiuse
 
@@ -1095,3 +1094,4 @@ Una voce arriva qui solo con `python scripts/registro.py chiudi`, quando la copi
 | A-23 | Il ponte interroga via HTTP ogni 3 secondi la coda dello stesso processo | Tappa 6, A-23 | 4bbdf06 | le rotte /api/reasoning/claim e /api/reasoning/submit, il loro cancello e HIRIS_AGENT_POLL_SECONDS: il lavoratore prende il turno con ReasoningQueue.claim, lo consegna con reasoning/consegna.consegna e a coda vuota aspetta che enqueue lo svegli |
 | M-78 | 10 operazioni su 18 di `mind/operations.py` più `Period` (~530 righe) vivono solo nelle prove; i commenti dicono che le usa `aggregate_day`: falso. Riletto il 02/10: sono il vocabolario delle sette domande del proprietario dell'11/09 (`docs/design/2026-09-11-le-domande-del-proprietario.md`), le eseguono le prove di quel cancello. Misurato in casa il 02/10: le 21 ricette archiviate usano 7 operazioni, nessuna delle dieci. **Il 06/10/2026 (D7 del piano degli attori strati 3-4) ne escono otto** con le prove delle sette domande; restano `episodio`, `tempo_in_stato` e `Period` per la presenza, ancora senza chiamante: la voce si chiude quando lo strumento di calcolo li alimenta (strato 3, Task 3.1-3.2). Il 06/10/2026 la ricetta al volo (`mind/compute.py`, Task 3.1) li alimenta dagli stati di un'entità, con la copertura vera; lo strumento però non è ancora offerto a nessun turno (Task 3.6, dopo Tappa 5 T8 e Tappa 6 T7-T8): la voce si chiude allora | attori, Task 3.6 (ramo, non rilasciata) | a0ccd46c | la ricetta al volo (mind/compute.py) alimenta episodio, tempo_in_stato e Period ed e' offerta all'analista dal Task 3.6; eccezioni compute e tool_def uscite dal censimento |
 | M-20 | Una usata solo dai test (censimento): `actuator_round`, in pausa e non morta (D5). `objective_history` è uscita (`a0a26584`), le cinque del censore sono negli attrezzi (`b6a2c155`); `get_config` TOLTA: è letta in produzione (`topology.py:142` via `getattr`, dentro `rebuild`) | attori, Task 4.2 (ramo, non rilasciata) | b79c3470 | actuator_round esce col giro del proponente (mind/proposer_round.py); gli altri pezzi erano gia' usciti o ritirati |
+| C-35 | Frasi fisse ripetute per riga o per risposta, già scritte nella descrizione | Tappa 5, Task 5 (ramo, non rilasciata) | 9a80dfd5 | voluta: decisione di Paolo del 06/10/2026 (scheda, «Restano»). Le frasi fisse per risposta (nessuna_registrazione.perche, _NO_RECORDING) restano perche' una risposta si legge da sola (fondamenta 1); la descrizione dello strumento le ripete per chi sceglie la chiamata |
