@@ -3212,11 +3212,6 @@ async def _on_startup(app: web.Application) -> None:
     app["constructions"] = ConstructionStore(
         os.path.join(data_dir, "costruzioni.db"))
 
-    # L'archivio dei servizi accoppiati (22/09/2026). Qui non vive nessun
-    # segreto: solo chiavi PUBBLICHE, il ruolo che il proprietario ha dato e lo
-    # stato. Si puo' leggere per intero senza che ne esca niente di utile.
-    from .api.servizi import open_services
-    open_services(app, os.path.join(data_dir, "servizi.db"))
     app["workshop"] = Workshop(
         ha_client, app["constructions"], app["journal"],
         read_timezone=lambda: house_timezone(app.get("home_space_store")))
@@ -3359,6 +3354,12 @@ async def _on_startup(app: web.Application) -> None:
     # all'avvio.
     memory_store = MemoryStore(os.path.join(data_dir, "memoria.db"))
     app["memory_store"] = memory_store
+
+    # L'archivio dei servizi accoppiati (22/09/2026). Qui non vive nessun
+    # segreto: solo chiavi PUBBLICHE, il ruolo che il proprietario ha dato e lo
+    # stato. Si puo' leggere per intero senza che ne esca niente di utile.
+    from .api.servizi import open_services
+    open_services(app, os.path.join(data_dir, "servizi.db"))
 
     # Il WebSocket verso Home Assistant e' gia' aperto (`_open_websocket`, piu'
     # sopra, prima della prima lettura). Gli ascoltatori iscritti dopo

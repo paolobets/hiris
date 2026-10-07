@@ -280,7 +280,8 @@ def _service_thread_archives(app) -> list[tuple[str, Callable[[dict[str, str]], 
         ("sessioni di chat",
          lambda renames: chat_store.rekey_subjects(app["data_dir"], renames)),
     ]
-    named = (("promesse", "agenda"), ("costruzioni", "constructions"))
+    named = (("promesse", "agenda"), ("costruzioni", "constructions"),
+             ("ricordi", "memory_store"))
     for label, key in named:
         archive = app.get(key)
         if archive is not None:

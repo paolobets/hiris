@@ -48,7 +48,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
-from ..storage import connect, init_schema
+from ..storage import connect, init_schema, rekey
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS ricordi (
@@ -119,6 +119,15 @@ class MemoryStore:
 
     def close(self) -> None:
         self._conn.close()
+
+    def rekey_subjects(self, renames: dict[str, str]) -> int:
+        """I ricordi dei soggetti di `renames` (chiave vecchia -> nuova) passano
+        alla chiave nuova in `said_by`; ritorna quanti. CHI cambia chiave lo
+        decide `servizi.migrate_service_threads` (G83-3, 07/10/2026): con la
+        chiave vecchia la pagina Memoria di un servizio restava vuota.
+        `detto_da` e' il nome, un'etichetta, e resta com'e'."""
+        return rekey(self._conn, "UPDATE ricordi SET said_by = ? WHERE said_by = ?",
+                     renames)
 
     def remember(self, text: str, *, detto_da: str | None = None,
                 said_by: str | None = None, ancore=(), conditions=(),
