@@ -17,7 +17,11 @@ compiute: girano su ogni installazione nuova (vedi `server._chain_as_it_was`).
 """
 from __future__ import annotations
 
-from .providers import SUBSCRIPTION
+import logging
+
+from .providers import CLAUDE, DEFAULT_PRESET, SUBSCRIPTION, get, preset
+
+logger = logging.getLogger(__name__)
 
 
 def seed_chain(store: dict, current_chain: list[str], *, log) -> tuple[dict, bool]:
@@ -124,3 +128,102 @@ def seed_subscription_model(store: dict, current_alias: str,
         else f" Il predefinito {previous!r} e' stato sostituito.",
     )
     return store, True
+
+
+def _chain_as_it_was(credentials: dict) -> list[str]:
+    """La catena con cui nasce un archivio che non ha ancora la sua: **ogni
+    provider a consumo di cui c'e' una credenziale**, nell'ordine del preset
+    «balanced».
+
+    Si chiama ancora «com'era» perche' e' cio' che la regola pre-2.5 produceva
+    sull'installazione del proprietario, ed e' per quello che esiste: copiare
+    la catena invece di far passare quell'impianto da «due provider lavorano» a
+    «zero provider». Ma non e' piu' una copia della vecchia regola per intero.
+
+    **Aveva un secondo ramo, ed e' uscito con la versione B.** La vecchia
+    regola era in due tempi: `legacy = not any(interruttori)` -- nessuno dei
+    cinque `provider_*` acceso, e allora contava la sola credenziale -- oppure,
+    con almeno un interruttore acceso, contavano solo gli accesi. I cinque
+    interruttori sono usciti dallo schema e `run.sh` non esporta piu' nessuno
+    dei cinque `PROVIDER_*`: via Supervisor `legacy` era strutturalmente sempre
+    vero e il secondo ramo era codice irraggiungibile. Tenerlo qui voleva dire
+    tenere a schermo una regola che non puo' piu' girare -- e i test che la
+    esercitavano difendevano uno stato che nessun utente puo' produrre.
+
+    Resta quindi la sola regola di compatibilita', scritta per quello che e'.
+    **E va DECISA, non ereditata** (G3 della revisione): non e' piu' una
+    migrazione che si esaurisce, si esegue su ogni installazione nuova finche'
+    qualcuno non decide che catena deve trovare chi installa HIRIS oggi. La
+    fetta successiva non puo' limitarsi a cancellarla: senza, un'installazione
+    nuova nasce con la catena vuota e la chat muta.
+
+    **Due provider non ci entrano mai, qualunque credenziale abbiano.** Il
+    piano non e' un membro della catena: sta in testa quando il ponte e'
+    acceso, e quello lo dice `ponte.attivo`, non l'appartenenza. Ollama la
+    vecchia regola lo voleva con l'indirizzo E il nome del modello, e il nome
+    arrivava da una variabile d'ambiente che nessuna installazione riceve
+    piu': chi lo vuole lo aggiunge dalla pagina Modelli.
+
+    Fino al 02/10/2026 prendeva anche il preset e lo stato del ponte, letti
+    da `LLM_STRATEGY` e `BRIDGE_ENABLED`: `run.sh` non le esporta dalla 3.0.0,
+    e su ogni installazione valevano «balanced» e spento.
+    """
+    return [name for name in preset(DEFAULT_PRESET).order
+            if get(name).chain_member and not get(name).needs_chosen_model
+            and credentials.get(name)]
+
+
+def seed_at_startup(app, data_dir: str, _credentials: dict) -> None:
+    """Le due semine dell'avvio, nell'ordine: la catena, poi il modello del piano."""
+    from .api.handlers_models import load_models_config, save_models_config
+
+    # ── La catena iniziale di un archivio che non ce l'ha ────────────────
+    # Nata come seconda meta' della migrazione: la catena che HIRIS stava
+    # usando copiata nell'archivio PRIMA che la derivazione dai cinque
+    # interruttori sparisse. Senza quella copia, l'installazione del
+    # proprietario -- cinque interruttori a false, credenziali presenti --
+    # sarebbe passata da «due provider lavorano» a «zero provider».
+    # Con la versione B i cinque interruttori NON esistono piu' e `run.sh` non
+    # esporta piu' i cinque `PROVIDER_*`: qui non si copia piu' niente da
+    # nessuna parte, si COMPONE una catena dalle credenziali presenti. E' la
+    # sola regola di compatibilita' rimasta, e a differenza delle altre letture
+    # di migrazione non si esaurisce: gira su ogni installazione nuova. Va
+    # DECISA dalla fetta successiva, non ereditata (G3) -- e cancellarla e
+    # basta farebbe nascere ogni installazione nuova con la catena vuota.
+    # La guardia e' il SEGNO, non la forma della catena: una `chain_order`
+    # vuota, da questa fetta, e' una decisione esprimibile in due click, e
+    # regolarsi su di lei faceva ripopolare al riavvio una catena svuotata di
+    # proposito. Vedi `seed_chain`.
+    from .options_migration import seed_chain
+    if not app["models_config"].get("catena_seminata"):
+        _current_chain = _chain_as_it_was(_credentials)
+        _arch, _da_salvare = seed_chain(dict(app["models_config"]),
+                                        _current_chain, log=logger)
+        if _da_salvare:
+            save_models_config(data_dir, _arch, flags=True)
+            app["models_config"] = load_models_config(data_dir)
+
+    # La TERZA semina: il modello del Piano Claude Max. Fino alla 3.1.0 era un
+    # effetto collaterale di `provider_models["claude"]` -- un campo solo per
+    # due economie opposte, e l'impianto del proprietario girava sul piano col
+    # modello scelto per non spendere sull'API. Da questa fetta e' un valore
+    # suo, e qui si esegue un'ULTIMA volta la derivazione che se ne va, perche'
+    # il giorno dell'aggiornamento niente cambi sotto l'utente.
+    #
+    # Salvataggio proprio e non fuso con quello della catena: fondere le due
+    # semine in una scrittura sola le renderebbe una migrazione sola che puo'
+    # trovarsi a meta', che e' esattamente cio' che i segni distinti esistono
+    # per evitare.
+    from .options_migration import seed_subscription_model
+    if not app["models_config"].get("piano_seminato"):
+        from .agent.runner import cli_model
+        from .claude_runner import resolve_model
+        _current_alias = cli_model(resolve_model(
+            "auto", "chat",
+            app["models_config"].get("provider_models", {}).get(CLAUDE.id, ""),
+        ))
+        _arch_p, _da_salvare_p = seed_subscription_model(
+            dict(app["models_config"]), _current_alias, log=logger)
+        if _da_salvare_p:
+            save_models_config(data_dir, _arch_p, flags=True)
+            app["models_config"] = load_models_config(data_dir)
