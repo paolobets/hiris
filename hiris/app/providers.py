@@ -456,3 +456,21 @@ def outside_chain(answers: Mapping[str, bool], chain: list[str]) -> list[str]:
     """
     return [pid for pid in chain_members() if answers.get(pid) and pid not in chain]
 
+
+
+# ── Cio' che la pagina riceve invece di ricopiarlo ─────────────────────────
+
+def page_payload() -> dict:
+    """L'ordine fisso e i tre preset, per la pagina Modelli.
+
+    Erano le due liste che `static/config/models-route.js` ricopiava
+    (`FIXED_ORDER`, `PRESET`), tenute legate al Python da una prova che
+    confrontava le stringhe. Le parole di ogni riga (nome, natura, dove va il
+    dato) arrivano gia' sulla riga: qui viaggia solo cio' che la pagina non
+    puo' leggere altrove.
+    """
+    return {
+        "ordine_fisso": list(ids()),
+        "preset": [{"chiave": p.key, "nome": p.name, "ordine": list(p.order)}
+                   for p in PRESETS],
+    }

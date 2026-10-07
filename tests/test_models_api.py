@@ -84,6 +84,10 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         "seminato", "catena_seminata", "piano_seminato",
         # cio' che la pagina disegna
         "adesso", "catena", "fuori_catena", "fine_catena",
+        # Tappa 7, Task 9: cio' che la pagina ricopiava e ora riceve -- l'ordine
+        # fisso e i preset dalla tabella dei provider, e le chiavi che una PUT
+        # scrive (`_OUR_KEYS`)
+        "ordine_fisso", "preset", "scrivibili",
     }
     # `ponte_attivo` E' USCITO con la versione B, ed era l'ULTIMO residuo
     # dell'invariante 1 di tutto il payload: `app["bridge_active"]`, cioe'
@@ -510,7 +514,7 @@ async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(cli
     assert [p["id"] for p in body["providers"]] == ["claude"]
     p = body["providers"][0]
     assert set(p) == {"id", "nome", "alias", "elenco_completo", "fonte",
-                      "provenienza", "spiegazione", "quando", "dove", "scelto",
+                      "provenienza", "spiegazione", "dove", "scelto",
                       "casella", "modelli"}
     # La fixture `client` non porta una chiave di Claude API, quindi non c'e'
     # nessun elenco da leggere e il pannello lo DICE. Qui si asseriva `fonte ==
@@ -647,27 +651,10 @@ async def test_la_casella_dei_gratuiti_viaggia_come_percorso_solo_per_openrouter
     assert p["dove"] == ["provider_models", "openrouter"]
 
 
-@pytest.mark.asyncio
-async def test_nessun_pannello_ha_piu_niente_da_confessare(client):
-    """Invariante 4, chiuso invece che dichiarato. Fino al Task 10 questo campo
-    portava la confessione: lo stesso valore -- il modello di Claude API --
-    aveva effetto IMMEDIATO sul ponte (`_enqueue_chat_job` rilegge
-    `app["models_config"]` a ogni turno) e SOLO AL RIAVVIO sull'API (i runner
-    lo ricevevano alla costruzione), e la pagina ne dichiarava uno solo:
-    sbagliata, non imprecisa. Adesso i runner LEGGONO, quindi non c'e' un
-    tempo da dichiarare per nessuno dei cinque -- e la pagina non ne inventa
-    uno quando il backend tace (pinnato in tests/js/models-route.test.mjs).
-
-    Si guardano tutti e cinque, non solo quello che confessava: una didascalia
-    di riavvio rimessa su un provider qualsiasi sarebbe la pagina che torna a
-    mentire da un'altra riga."""
-    for pid in _CONFIG_PROVIDER_IDS:
-        body = await (await client.get("/api/models?provider=" + pid)).json()
-        for p in body["providers"]:
-            assert p["quando"] == "", (
-                "il pannello di " + pid + " dichiara un tempo che non esiste: "
-                + repr(p["quando"])
-            )
+# Tappa 7, Task 9 (M-27): `test_nessun_pannello_ha_piu_niente_da_confessare`
+# e' uscito con il campo `quando` che provava sempre vuoto. Il campo non c'e'
+# piu': che non rientri lo dice l'insieme esatto delle chiavi del pannello in
+# `test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco`.
 
 
 @pytest.mark.asyncio

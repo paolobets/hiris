@@ -1024,18 +1024,12 @@ def compose_panel(
                                 and source == "riserva" and bool(hide_free_models)
                                 and any(str(v).endswith(":free") for v in values))),
         "spiegazione": explanation(provider_id),
-        # Da quando ha effetto la scelta: NIENTE, perché ha effetto dal
-        # prossimo messaggio, e questo vale per OGNI provider e per ogni campo
-        # di questa pagina. Qui viveva `quando()`, la confessione
-        # dell'invariante 4: lo stesso valore -- il modello di Claude API --
-        # aveva effetto immediato sul ponte e solo al riavvio sull'API, e la
-        # pagina ne dichiarava uno solo. Il Task 10 ha tolto il problema invece
-        # della frase: i runner LEGGONO il modello al momento dell'uso.
-        # Il campo resta perché il canale resta -- la pagina disegna la riga
-        # solo se il backend gliela manda, e non ne inventa una quando il
-        # backend tace -- ma oggi il backend tace su tutti e cinque:
-        # l'assenza di didascalia È l'affermazione.
-        "quando": "",
+        # Qui stava `quando`, «da quando ha effetto la scelta»: sempre vuoto
+        # dal Task 10 (i runner LEGGONO il modello al momento dell'uso, quindi
+        # ogni scelta vale dal prossimo messaggio), e la pagina lo leggeva
+        # ancora. E' uscito alla Tappa 7, Task 9 (voce M-27), con la riga che
+        # lo disegnava e il suo stile: l'assenza di didascalia resta
+        # l'affermazione.
         "dove": list(get(provider_id).model_path) if get(provider_id) else [],
         "scelto": chosen,
         # La casella vive SULLA LISTA CHE FILTRA e non in una pagina di

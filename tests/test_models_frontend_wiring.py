@@ -138,10 +138,10 @@ def test_la_pagina_non_conosce_il_caso_del_piano_ma_obbedisce_a_un_campo():
         assert sospetta not in corpo, (
             "la pagina non deve riconoscere il piano per id: obbedisce a un campo"
         )
-    # L'unico posto in cui la parola compare e' l'ordine di «Fuori dalla
-    # catena», che e' un ordine di visualizzazione e non una regola: e' pinnato
-    # contro il backend dal test qui sotto.
-    assert corpo.count("subscription") == 1
+    # Fino alla Tappa 7 (Task 9) la parola compariva una volta, nell'ordine di
+    # «Fuori dalla catena» ricopiato dal backend. Ora l'ordine arriva nel
+    # payload (`ordine_fisso`), e la parola non compare piu'.
+    assert corpo.count("subscription") == 0
 
 
 def test_le_parole_del_prodotto_non_vivono_nella_pagina():
@@ -189,28 +189,14 @@ def test_la_parola_attivo_non_torna_da_nessuna_porta():
     assert "'Fuori dalla catena'" in js
 
 
-def test_l_ordine_fisso_del_frontend_e_quello_del_backend():
-    """Due liste con lo stesso nome in due linguaggi sono la miniatura del
-    difetto che questa fetta chiude. Non si possono fondere (il frontend non
-    importa Python), ma si possono tenere legate da un test che si rompe."""
-    from hiris.app.providers import ids
-    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    # Dopo la rinomina del frontend i due nomi COINCIDONO -- `FIXED_ORDER` di
-    # qua e di la' -- ed e' il caso migliore per un pin che confronta due
-    # linguaggi: chi legge non deve piu' tenere a mente due parole.
-    atteso = "var FIXED_ORDER = [" + ", ".join(f"'{p}'" for p in ids()) + "];"
-    assert atteso in js, f"atteso in models-route.js: {atteso}"
-
-
-def test_i_tre_preset_del_frontend_sono_quelli_del_router():
-    """Stessa ragione: i tre ordini esistono due volte. Un preset che
-    riscrivesse la catena in un ordine diverso da quello del router
-    prometterebbe un comportamento che il prodotto non ha."""
-    from hiris.app.providers import PRESETS
-    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    for chiave, ordine in ((p.key, p.order) for p in PRESETS):
-        atteso = "ordine: [" + ", ".join(f"'{p}'" for p in ordine) + "]"
-        assert atteso in js, f"{chiave}: atteso {atteso} in models-route.js"
+# Tappa 7, Task 9: `test_l_ordine_fisso_del_frontend_e_quello_del_backend` e
+# `test_i_tre_preset_del_frontend_sono_quelli_del_router` sono usciti. Tenevano
+# legate due copie -- `FIXED_ORDER` e `PRESET` in `models-route.js` contro il
+# Python -- confrontando le stringhe; le copie sono uscite dalla pagina, che
+# riceve `ordine_fisso` e `preset` nel payload di GET api/models/config. Che la
+# pagina li usi lo provano i test JS (`tests/js/models-route.test.mjs`), e
+# che un provider nuovo della tabella arrivi alla pagina lo prova
+# `tests/test_provider_literals.py`.
 
 
 def test_il_pannello_non_conosce_i_casi_particolari_ma_obbedisce_a_un_percorso():
@@ -222,29 +208,23 @@ def test_il_pannello_non_conosce_i_casi_particolari_ma_obbedisce_a_un_percorso()
     altro linguaggio, libere di divergere: il pannello riceve un PERCORSO e lo
     applica alla cieca.
 
-    I QUATTRO id compaiono nel codice esattamente quattro volte ciascuno, e
-    sono le due liste che il prodotto tiene legate al backend da un test
-    (`FIXED_ORDER`, una volta; i tre preset, tre volte). Un quinto sarebbe un
-    caso particolare riconosciuto per nome -- ed e' cosi' che il difetto di
-    questa fetta rientrerebbe."""
+    Nessun id di provider compare nel codice: dalla Tappa 7 (Task 9) l'ordine
+    fisso e i preset arrivano nel payload, e un id scritto qui sarebbe un caso
+    particolare riconosciuto per nome -- ed e' cosi' che il difetto di questa
+    fetta rientrerebbe. Lo sorveglia, per tutto il frontend,
+    `tests/test_provider_literals.py`."""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     corpo = _codice_senza_commenti(js)
     assert "data.dove" in corpo
     assert "writePath" in corpo and "readPath" in corpo
-    for pid in ("'claude'", "'openrouter'", "'openai'", "'ollama'"):
-        assert corpo.count(pid) == 4, (
-            f"{pid} compare {corpo.count(pid)} volte: le sole citazioni ammesse "
-            "sono FIXED_ORDER (1) e i tre preset (3), entrambi pinnati contro "
-            "il backend"
-        )
 
 
 def test_le_parole_del_pannello_non_vivono_nella_pagina():
-    """Provenienza, spiegazione e «da quando ha effetto» sono affermazioni sul
-    prodotto e cambiano con lui: la provenienza dipende da un fatto misurato
-    adesso, e la didascalia di `quando` sparira' con la scrittura a caldo
-    (Task 10) senza che nessuno tocchi questo file. Scritte qui resterebbero a
-    dire quella di ieri, e a schermo la frase ci sarebbe lo stesso."""
+    """Provenienza e spiegazione sono affermazioni sul prodotto e cambiano con
+    lui: la provenienza dipende da un fatto misurato adesso. Scritte qui
+    resterebbero a dire quella di ieri, e a schermo la frase ci sarebbe lo
+    stesso. (Il terzo campo, `quando`, e' uscito alla Tappa 7, Task 9: era
+    sempre vuoto.)"""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     corpo = _codice_senza_commenti(js)
     for parola in ("Letti da", "Elenco di riserva", "riavvio dell'add-on",
@@ -255,7 +235,6 @@ def test_le_parole_del_pannello_non_vivono_nella_pagina():
         )
     assert "data.provenienza" in corpo
     assert "data.spiegazione" in corpo
-    assert "data.quando" in corpo
     # Il PARAMETRO si chiama `checkbox` dal 02/09 (era `casella`: `box` era gia'
     # legato nello stesso ambito). Il CAMPO che legge -- `etichetta` -- e' sul
     # filo e non cambia: e' proprio quello che questo test sorveglia.

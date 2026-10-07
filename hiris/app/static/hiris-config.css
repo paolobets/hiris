@@ -1710,15 +1710,6 @@
   font-size: var(--fs-12); color: var(--text-2);
   line-height: var(--lh-snug);
 }
-/* La confessione dell'invariante 4: lo stesso valore si applica in due modi.
-   Neutra -- non è un avviso, è un fatto -- e destinata a sparire da sé quando
-   il backend smetterà di mandarla (Task 10). */
-.panel-when {
-  margin: 0;
-  font-size: 11px; color: var(--text-3);
-  font-style: italic;
-  line-height: var(--lh-snug);
-}
 .panel-status {
   margin: 0;
   font-size: var(--fs-12); color: var(--err-ink);

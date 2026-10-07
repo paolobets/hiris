@@ -26,6 +26,7 @@ from ..providers import (
     chain_members,
     chosen_model,
     credentials_present,
+    page_payload,
 )
 from ..providers import get as provider_of
 from .boundary import json_object
@@ -495,6 +496,12 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # fra il gesto e la risposta del server -- attaccata a una riga, dopo un
     # riordino direbbe «ultimo della catena» di uno che non lo è più.
     payload["fine_catena"] = CHAIN_END if payload["catena"] else ""
+    # L'ordine fisso e i preset (Tappa 7, Task 9): la pagina li riceve dalla
+    # tabella dei provider invece di ricopiarli. E le chiavi che una PUT
+    # scrive, perche' la pagina non ne tenga un elenco suo coi predefiniti
+    # accanto -- i predefiniti sono `_STORE_DEFAULTS`, gia' applicati qui.
+    payload.update(page_payload())
+    payload["scrivibili"] = list(_OUR_KEYS)
     return web.json_response(payload)
 
 
