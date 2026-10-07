@@ -1008,13 +1008,17 @@ l'officina scrive automazioni, script, scene e gli otto helper a *storage collec
 scritto in `docs/design/2026-09-04-i-comandi-verso-home-assistant.md` §2.8, con la sua regola: **il
 POST di un passo non si ritenta mai**.
 
-**La proposta, in breve** (le decisioni sono aperte, e stanno nel documento): solo
+**Decise dal proprietario il 07/10/2026** («ok consigliato», le sei decisioni del documento nella
+forma consigliata): solo
 `history_stats`, per ammissione, come oggetto principale; solo `crea` e `cancella`; il cammino
 legge da ogni risposta di HA i campi che il passo chiede invece di ricopiare la sequenza; `propose`
 valida con l'anteprima di HA (`history_stats/start_preview`) e abortisce il flow; l'entita' nata si
 trova con il lettore che c'e' gia' (`Workshop._helper_entities`, `platform` + `unique_id` =
-`entry_id`) e prende l'etichetta HIRIS; `create_helper` resta solo per le storage collection.
-Niente in `server.py`, nessuna rotta nuova.
+`entry_id`) e prende l'etichetta HIRIS; `create_helper` resta solo per le storage collection;
+fino all'`apply` la chiave della proposta e' il titolo, poi l'`entry_id` (nessuna colonna nuova);
+un guasto di rete sull'ultimo passo non si ritenta, si rilegge `config_entries/get`; il livello
+resta quello dichiarato dal modello (il sensore non agisce su niente). Niente in `server.py`,
+nessuna rotta nuova.
 
 **Quando.** Dopo la Chiusura dello sprint e il rilascio del ramo d'integrazione. Nel frattempo,
 col Task 3.6, la frase del criterio entra nella domanda dell'analista e del proponente («se la
