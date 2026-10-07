@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import time as _time
 
+from ..home_space.house import ENDED_SOURCE_STATES
 from .scope import ANALYST, OWNER
 
 #: Quanti giorni di storia servono per parlare di scostamento. **Due punti non
@@ -375,6 +376,15 @@ BACK_IN_REFUSED = "rifiutata"
 #: «decisa dall'analista» che nessun evento accendera' mai.
 NOT_IN_HOUSE = "la casa non ha questa entita'"
 
+
+def source_ended(state: str) -> str:
+    """La ragione di un rifiuto per una fonte finita: l'entita' c'e' nel
+    registro, ma Home Assistant non ne parla piu' -- spenta dal proprietario,
+    spenta da Home Assistant o sparita dagli stati (`ENDED_SOURCE_STATES`).
+    Porta lo stato di `House.source`, col suo nome, perche' la ragione si
+    legga da sola."""
+    return f"Home Assistant non ne parla piu': {state}"
+
 #: I motivi di ripiego del proprietario, quando dalla pagina toglie o rimette
 #: senza scrivere perche'. `store.decide_scope` non scrive una decisione senza
 #: motivo; il campo della pagina e' facoltativo, quindi il ripiego vive qui,
@@ -405,7 +415,10 @@ def bring_back(store, analysis: dict, house, *, when_ts: float | None = None) ->
     accetta solo cio' che era nella domanda (`observer.apply_answer`, `known`),
     l'analista rimette solo cio' che il registro o gli stati conoscono
     (`House.source`). Un id che la casa non ha esce `rifiutata` con la
-    ragione, e lo scope non si tocca.
+    ragione, e lo scope non si tocca. **Lo stesso per una fonte finita**
+    (`ENDED_SOURCE_STATES`: disabilitata o sparita dagli stati): e' nel
+    registro, ma non avra' mai uno stato, e dentro sarebbe la stessa riga che
+    non si accende mai.
     """
     asked = analysis.get("rimetti") or []
     if not asked:
@@ -415,8 +428,12 @@ def bring_back(store, analysis: dict, house, *, when_ts: float | None = None) ->
     for item in asked:
         subject, why = item["id"], item["perche"]
         standing = store.scope().get(subject)
-        if house.source(subject) is None:
+        source = house.source(subject)
+        if source is None:
             outcomes.append({**item, "esito": BACK_IN_REFUSED, "ragione": NOT_IN_HOUSE})
+        elif source["stato"] in ENDED_SOURCE_STATES:
+            outcomes.append({**item, "esito": BACK_IN_REFUSED,
+                             "ragione": source_ended(source["stato"])})
         elif standing is not None and standing["dentro"]:
             outcomes.append({**item, "esito": ALREADY_INSIDE})
         elif store.decide_scope(subject, inside=True, reason=why, author=ANALYST,

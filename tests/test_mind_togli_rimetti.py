@@ -17,7 +17,13 @@ import json
 import pytest
 
 from hiris.app.api.handlers_mind import handle_set_scope
-from hiris.app.home_space.house import House
+from hiris.app.home_space.house import (
+    SOURCE_GONE,
+    SOURCE_SWITCHED_OFF_BY_HA,
+    SOURCE_SWITCHED_OFF_BY_OWNER,
+    House,
+)
+from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import analyst
 from hiris.app.mind.scope import ANALYST, OBSERVER, OWNER
 from hiris.app.mind.store import ObservationsStore
@@ -225,6 +231,53 @@ def test_l_analista_non_rimette_cio_che_la_casa_non_ha(archivio):
     assert scritta["rimetti"] == [{"id": "sensor.inventato", "perche": "spiega il crollo",
                                    "esito": analyst.BACK_IN_REFUSED,
                                    "ragione": analyst.NOT_IN_HOUSE}]
+
+
+@pytest.mark.parametrize("voce, stato", [
+    ({"id": "sensor.pioggia", "disabilitata": True, "disabilitata_da": "user"},
+     SOURCE_SWITCHED_OFF_BY_OWNER),
+    ({"id": "sensor.pioggia", "disabilitata": True, "disabilitata_da": "integration"},
+     SOURCE_SWITCHED_OFF_BY_HA),
+    ({"id": "sensor.pioggia"}, SOURCE_GONE),
+])
+def test_l_analista_non_rimette_una_fonte_finita(archivio, voce, stato):
+    """Nel registro c'e', ma Home Assistant non ne parla piu' (spenta, o
+    sparita dagli stati): dentro sarebbe la stessa riga che non si accende
+    mai. Si rifiuta con lo stato della fonte nella ragione, e la decisione
+    dell'osservatore resta com'era.
+
+    Mutazione ESEGUITA (07/10/2026): `bring_back` senza il ramo delle fonti
+    finite -- rossa in tutti e tre i casi (la riga rientra con autore
+    analista)."""
+    archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa",
+                          author=OBSERVER, when_ts=1000.0)
+    # Lo specchio LETTO, senza la pioggia negli stati: e' cio' che fa dire
+    # «sparita» a `House.source` (con lo specchio illeggibile tacerebbe).
+    casa = House({"entita": [voce], "dispositivi": [], "aree": []},
+                 Mirror(state={"sensor.altro": "on"}))
+
+    scritta = analyst.bring_back(archivio, _analisi("sensor.pioggia"), casa,
+                                 when_ts=2000.0)
+
+    assert archivio.scope()["sensor.pioggia"]["autore"] == OBSERVER
+    esito = scritta["rimetti"][0]
+    assert esito["esito"] == analyst.BACK_IN_REFUSED
+    assert esito["ragione"] == analyst.source_ended(stato)
+    assert stato in esito["ragione"]
+
+
+def test_una_fonte_viva_rientra(archivio):
+    """Il ramo delle fonti finite non prende di piu': una fonte viva negli
+    stati rientra come sempre."""
+    archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa",
+                          author=OBSERVER, when_ts=1000.0)
+    casa = House({"entita": [{"id": "sensor.pioggia"}], "dispositivi": [], "aree": []},
+                 Mirror(state={"sensor.pioggia": "3.2"}))
+
+    scritta = analyst.bring_back(archivio, _analisi("sensor.pioggia"), casa,
+                                 when_ts=2000.0)
+
+    assert scritta["rimetti"][0]["esito"] == analyst.BACK_IN
 
 
 def test_un_analisi_senza_rimetti_passa_com_e(archivio):
