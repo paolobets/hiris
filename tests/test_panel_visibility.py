@@ -491,7 +491,7 @@ async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
     il tetto del client vero sul comando appeso (10 s) -- rossa."""
     ha = _filo_appeso("frontend/update_panel")
     app = _app(True, ha)
-    await server._start_panel_sync(app)
+    await server.start_panel_sync(app)
     for _ in range(100):
         if ha.calls:
             break
@@ -520,9 +520,9 @@ async def test_rifiuto_e_rilettura_fallita_stanno_in_una_riga(supervisor, caplog
 
 
 def test_la_sincronia_parte_dopo_l_avvio_che_crea_il_client():
-    """`_start_panel_sync` legge `app["ha_client"]`, che nasce in `_on_startup`:
+    """`start_panel_sync` legge `app["ha_client"]`, che nasce in `_on_startup`:
     l'ordine dei due e' un fatto, e si pinna."""
     app = server.create_app()
     hooks = list(app.on_startup)
-    assert server._on_startup in hooks and server._start_panel_sync in hooks
-    assert hooks.index(server._start_panel_sync) > hooks.index(server._on_startup)
+    assert server._on_startup in hooks and server.start_panel_sync in hooks
+    assert hooks.index(server.start_panel_sync) > hooks.index(server._on_startup)

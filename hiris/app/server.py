@@ -16,7 +16,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .action.actuator import ActionActuator
 from .action.construction.revisions import ConstructionStore
 from .action.construction.workshop import Workshop
-from .action.installation import _disinstalla_card_lovelace, _start_panel_sync
+from .action.installation import disinstalla_card_lovelace, start_panel_sync
 from .action.journal import Journal
 from .action.registry import ServiceRegistry
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
@@ -28,7 +28,7 @@ from .api.handlers_chat_history import (
     handle_resume_conversation,
 )
 from .api.handlers_config import handle_config
-from .api.handlers_health import _handle_health
+from .api.handlers_health import handle_health
 from .api.handlers_misure import handle_misure
 from .api.handlers_models import (
     bridge_deadline_min,
@@ -3012,11 +3012,11 @@ async def _on_startup(app: web.Application) -> None:
     # Assistant (copia in www/, file di ingress, risorsa registrata). La card
     # e' uscita dal prodotto: adesso quelle tre tracce si **tolgono**, una
     # volta, riconoscendo solo cio' che l'add-on stesso aveva messo. Vedi il
-    # commento esteso su `_disinstalla_card_lovelace`.
+    # commento esteso su `disinstalla_card_lovelace`.
     # NON e' lo slug del Supervisor (`panel_visibility.read_own_slug`): e' il
     # nome della cartella con cui il vecchio installatore della card la copiava.
     hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
-    await _disinstalla_card_lovelace(
+    await disinstalla_card_lovelace(
         ha_base_url,
         os.environ.get("SUPERVISOR_TOKEN", ""),
         hiris_slug,
@@ -4403,7 +4403,7 @@ async def _on_cleanup(app: web.Application) -> None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
             await asyncio.wait_for(aw, timeout=5)
-    # La sincronia della voce di menu (`_start_panel_sync`): puo' essere
+    # La sincronia della voce di menu (`start_panel_sync`): puo' essere
     # ancora in attesa del nucleo. Non tiene niente da chiudere, quindi si
     # ferma e si aspetta senza tetto proprio.
     panel_sync = app.get("panel_sync_task")
@@ -4515,7 +4515,7 @@ def create_app() -> web.Application:
     # Dopo `_on_startup`, che crea `app["ha_client"]`. Parte in un compito a
     # parte e non si aspetta: l'add-on puo' avviarsi prima del nucleo, e una
     # Home Assistant che non risponde non deve tenere chiuso HIRIS.
-    app.on_startup.append(_start_panel_sync)
+    app.on_startup.append(start_panel_sync)
     app.on_cleanup.append(_on_cleanup)
 
     # Spec 2026-09-27 §2: l'opzione dell'add-on e' l'UNICA fonte della scelta,
@@ -4551,7 +4551,7 @@ def create_app() -> web.Application:
 
     app.router.add_get("/", _serve_shell("html_index"))
     app.router.add_get("/config", _serve_shell("html_config"))
-    app.router.add_get("/api/health", _handle_health)
+    app.router.add_get("/api/health", handle_health)
     app.router.add_get("/api/config", handle_config)
     # **ROTTA TEMPORANEA** (3.66.x): i due registri in lettura, per la
     # fase delle misure. Esce quando i verdetti hanno deciso le tre leve

@@ -239,8 +239,8 @@ def _rimuovi_file_card(slug: str) -> None:
         logger.debug("card HIRIS: cartella %s non rimossa (%s)", folder, exc)
 
 
-async def _disinstalla_card_lovelace(ha_base_url: str, token: str,
-                                     slug: str = "hiris") -> None:
+async def disinstalla_card_lovelace(ha_base_url: str, token: str,
+                                    slug: str = "hiris") -> None:
     """Disinstalla la card Lovelace dalla configurazione di Home Assistant.
 
     Prima la risorsa, poi i file: al contrario si lascerebbe -- proprio nella
@@ -255,7 +255,7 @@ async def _disinstalla_card_lovelace(ha_base_url: str, token: str,
     _rimuovi_file_card(slug)
 
 
-async def _start_panel_sync(app: web.Application) -> None:
+async def start_panel_sync(app: web.Application) -> None:
     # Il compito si tiene in `app`: il tetto della sincronia e' di dieci
     # minuti, e un arresto durante l'attesa del nucleo lo lascerebbe pendente
     # a chiusura. `_on_cleanup` lo ferma.

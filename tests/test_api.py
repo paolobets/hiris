@@ -72,7 +72,7 @@ async def test_health_endpoint(client):
     # «non ancora vista» non e' «andata bene», la stessa legge di `ponte`.
     # La CHIAVE dev'esserci comunque: e' la domanda che il 14/09/2026 non si
     # poteva fare, e un `null` dice gia' qualcosa (non e' girata).
-    # Mutazione: togliere la chiave da `_handle_health` -- rossa.
+    # Mutazione: togliere la chiave da `handle_health` -- rossa.
     assert "riparazione" in data
     assert data["riparazione"] is None
 

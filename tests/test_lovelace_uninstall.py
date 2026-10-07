@@ -13,7 +13,7 @@ comportamento) e i suoi test si sono spostati qui, non buttati. Dal 03/10/2026
 (A-40) la ricerca e' una sola, `home_space.redaction.home_assistant_folder`.
 
 Cosa difendono i test nuovi -- le tre regole di
-`action.installation._disinstalla_card_lovelace`:
+`action.installation.disinstalla_card_lovelace`:
   1. tocca **solo** le risorse che l'add-on stesso aveva registrato;
   2. e' **idempotente**: al secondo avvio non trova niente e non fa niente;
   3. **non fa cadere l'avvio** e **non tace**: se Home Assistant non risponde
@@ -348,8 +348,8 @@ async def test_i_file_si_tolgono_anche_se_la_deregistrazione_fallisce():
     with patch("hiris.app.action.installation._deregistra_risorsa_card",
                AsyncMock(return_value=False)) as dereg, \
          patch("hiris.app.action.installation._rimuovi_file_card") as rimuovi:
-        from hiris.app.action.installation import _disinstalla_card_lovelace
-        await _disinstalla_card_lovelace("http://supervisor/core", TOKEN, SLUG)
+        from hiris.app.action.installation import disinstalla_card_lovelace
+        await disinstalla_card_lovelace("http://supervisor/core", TOKEN, SLUG)
     dereg.assert_awaited_once()
     rimuovi.assert_called_once_with(SLUG)
 
@@ -484,7 +484,7 @@ async def _uninstall_call():
     from tests._avvio import started_with
 
     disinstalla = AsyncMock()
-    with patch.object(server, "_disinstalla_card_lovelace", disinstalla), \
+    with patch.object(server, "disinstalla_card_lovelace", disinstalla), \
             tempfile.TemporaryDirectory() as data_dir:
         async with started_with(data_dir):
             pass
@@ -499,7 +499,7 @@ async def test_l_avvio_disinstalla_la_card_con_gli_argomenti_giusti(monkeypatch)
     risponde).
 
     Mutazione ESEGUITA (03/10/2026): tolta da `_on_startup` la chiamata a
-    `_disinstalla_card_lovelace` -- rossa (`Expected mock to have been
+    `disinstalla_card_lovelace` -- rossa (`Expected mock to have been
     awaited once. Awaited 0 times.`)."""
     from tests._avvio import fotografia_porte
 

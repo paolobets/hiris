@@ -8,7 +8,7 @@ from ..version import read_version
 from .soffitto import restricted_person
 
 
-async def _handle_health(request: web.Request) -> web.Response:
+async def handle_health(request: web.Request) -> web.Response:
     # `ponte` porta i due fatti che nessun file del repository puo' dire: quale
     # CLI e' arrivata DAVVERO nel container (il `Dockerfile` dice cosa e' stato
     # chiesto, non cosa gira) e se il ponte parli con l'abbonamento invece che
