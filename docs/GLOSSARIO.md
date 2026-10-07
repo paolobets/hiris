@@ -3709,6 +3709,24 @@ commenti di `agent/runner.py`). La tabella qui sotto resta come la traccia del c
 | priorita' | la precedenza di un turno nella coda del ponte: la chat prima, gli altri nell'ordine d'arrivo (D4) | nel codice `priority` e' anche la precedenza fra i fatti del seme (`mind/seed.REPO_PRIORITY`, `HOUSE_PRIORITY`, `knowledge.seeded_priority`); la riga `catena` usa «priorita'» per l'ordine dei provider | nessun omonimo d'identificatore: la colonna e' `reasoning_jobs.priority` e le costanti `queue.PRIORITY_CHAT`, `queue.PRIORITY_BACKGROUND`, qualificate dal modulo; nei testi si scrive «precedenza» |
 | seguito | cio' che segue la scelta di chi risponde: sulla catena la chiamata al runner, sul ponte l'accodamento (spec §4.3) | nessuna riga e nessun identificatore; «il seguito delle chat divise» e' il nome di una fetta, non un concetto | nessuna collisione; l'inglese si sceglie quando nasce l'identificatore, nel Task 7 |
 
+## Il vocabolario della Tappa 7 (Task 0, 07/10/2026)
+
+Il piano della Tappa 7 (`piani/2026-10-tappa-7-scrivere-permessi-modelli.md`, cartella del progetto)
+lavora con quattro parole nuove (`terza porta`, `gesto`, `provider`, `natura`), e la prima ne tira dentro
+una quinta, `porta`. Il controllo di collisione si e' fatto sul codice di `6ab04511` e su questo
+documento, come prescrive «Il controllo di collisione si fa sul codice, non solo sul glossario».
+**Due collidono** (`gesto`, `porta`): come per la Tappa 6, le proposte sono domande al proprietario,
+e le righe di «I concetti» non cambiano finche' non c'e' la risposta. Nessun nome nuovo porta una
+preposizione italiana (`tests/test_preposizioni_italiane.py`).
+
+| parola del piano | cosa vuol dire nella Tappa 7 | cosa c'era gia' | proposta |
+|---|---|---|---|
+| gesto | cio' che una rotta o uno strumento chiede di poter fare: leggere, comandare, amministrare (D4: ogni rotta dichiara il suo nella tabella d'ammissione; D6: `costruire` entra in `amministrare`) | **collisione**: la riga `gesto -> operation` di «I concetti» e' il verbo di una costruzione (crea, modifica, cancella: `_GESTI` in «I valori di dominio», oggi `workshop.OPERATIONS` in `action/construction/`, e la colonna `gesto` delle costruzioni). Il senso del piano vive gia' nel codice, senza una riga: `api/soffitto.GESTI` e le chiavi di `api/canali.PUO` | omonimo qualificato per ambito, `gesto (api)`: i due sensi stanno in cartelle diverse (`api/` e `action/construction/`), quindi la qualificazione separa davvero. L'inglese si decide con la rinomina, non qui |
+| porta | un canale di scrittura verso Home Assistant e l'unico modulo che lo attraversa (CLAUDE.md, «Un canale, una porta») | la riga `porta -> actuator` dice solo la porta dei SERVIZI; la configurazione (`action/construction/workshop.py`) e' una porta dal 22/08/2026, e la terza arriva col Task 4 | stesso concetto, la riga e' piu' stretta del codice: si riscrive col senso largo. `actuator` resta il nome del modulo dei servizi; l'inglese del concetto si decide quando nasce il primo identificatore che lo nomina |
+| terza porta | il modulo dichiarato per le scritture su Home Assistant che non sono servizi ne' configurazione: la voce di menu dell'add-on e la disinstallazione della card (D1, Task 4) | nessuna riga e nessun identificatore | nessuna collisione; il nome del modulo si sceglie nel Task 4, quando nasce |
+| provider | chi fornisce un modello: `subscription`, `claude`, `openai`, `openrouter`, `ollama` (D8: un modulo `providers.py` con id, nome, natura, ordine, credenziale) | nessuna riga: e' gia' la parola del confine (`provider_id`, `provider_name`, «L'omonimia FRA MODULI e' ammessa…») | nessuna collisione: e' il nome che i sistemi esterni usano, e vince (§5 ②); nei testi italiani resta «provider» |
+| natura | come si paga un provider: nel piano, a consumo, in casa | `natura -> nature` fra le parole ordinarie; nel codice `model_resolution.NATURES` e `nature()`, lo stesso senso; la riga `sorta` la cita come «di chi ha risposto a un turno», che e' la natura del provider che ha risposto | nessuna collisione: un senso solo, gia' in inglese nel codice |
+
 ## Controlli di completezza
 
 **Aggiunta durante la review finale del ramo: due note del documento rimandavano qui prima che
