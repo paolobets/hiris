@@ -1072,7 +1072,7 @@ async def test_sulla_CATENA_la_frase_del_router_non_scrive_un_non_capito(sapere)
         return runner
 
     router = LLMRouter(claude=_rifiuta("giu'"), openrouter=_rifiuta("giu'"),
-                       strategy="balanced")
+                       model_chain=["claude", "openrouter"])
 
     esito = await rt.ask(router, sapere, _casa_viva(), "dev1",
                          objective="risparmiare", who="prova",

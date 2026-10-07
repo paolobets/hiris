@@ -29,6 +29,7 @@ from ..claude_runner import (
 )
 from ..model_resolution import failure_reply
 from ..provider_occurrences import error_family, provider_said
+from ..providers import OLLAMA, OPENAI
 from ..usage.giro import openai_turn_tokens
 from .pricing import get_price as _prezzo
 
@@ -110,8 +111,10 @@ def warn_thinking_ignored(backend_noun: str, thinking_budget: int) -> None:
             thinking_budget, backend_noun,
         )
 
+# Il modello automatico vive nella tabella dei provider (`OPENAI.auto_model`,
+# Tappa 7 T9): la pagina Modelli lo legge da li' per dire chi risponderebbe.
 AUTO_MODEL_MAP: dict[str, str] = {
-    "chat":  "gpt-4o",
+    "chat":  OPENAI.auto_model,
 }
 
 # fetta "i riferimenti" (R3): stesso tetto e stessa ragione di
@@ -401,11 +404,12 @@ class OpenAICompatRunner:
         # lo stesso difetto che `LLMRouter._ordered_backends_with_name` e' gia'
         # stato scritto per evitare nel registro degli esiti, e per la stessa
         # ragione.
-        self.provider_name = "ollama" if local else "openai"
+        self.provider_name = OLLAMA.id if local else OPENAI.id
         # Circuit-breaker message noun, so a cloud backend doesn't report
         # itself as "il backend locale" (review backlog #7).
         self._backend_noun = "Il servizio AI" if self._is_cloud else "Il backend locale"
-        # Ollama su hardware lento: timeout esplicito per evitare hang infiniti.
+        # Ollama su hardware lento: timeout esplicito per evitare hang infiniti
+        # (`OLLAMA.reply_timeout_s`, il valore della tabella dei provider).
         # Cloud OpenAI: 600s (rispetta default SDK per risposte lunghe). Il
         # numero arriva dal chiamante -- per Ollama e' `ollama.timeout_s`
         # dell'archivio, la stessa casa da cui la pagina Modelli lo mostra:
@@ -413,7 +417,8 @@ class OpenAICompatRunner:
         # SECONDA rappresentazione dello stesso numero accanto alla copia
         # d'archivio (invariante 1), e le due potevano dire cose diverse.
         self._timeout_s = 0.0
-        self.apply_timeout(float(timeout_s) if timeout_s else (120.0 if local else 600.0))
+        self.apply_timeout(float(timeout_s) if timeout_s
+                           else (float(OLLAMA.reply_timeout_s or 0) if local else 600.0))
         # Circuit-breaker state for connection-class failures (dead endpoint).
         self._conn_fail_count = 0
         self._circuit_open_until = 0.0

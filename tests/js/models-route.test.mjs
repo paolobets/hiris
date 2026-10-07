@@ -580,7 +580,7 @@ test('«Usa» mette il provider in fondo alla catena, e salva l\'oggetto intero'
 
 test('il piano NON offre «Usa», perché quella PUT il server la butta via', async () => {
   /* La prova che vale il doppio delle altre. `save_models_config` scarta
-     `subscription` da `chain_order` (`_VALID_BACKENDS` sono quattro nomi) e la
+     `subscription` da `chain_order` (`providers.chain_members()` sono quattro nomi) e la
      presenza del piano in catena discende da `ponte.attivo`, che questa pagina
      non scrive e che nessuno legge dall'archivio finché il Task 13 non lo
      cabla. Un «Usa» sul piano manderebbe una PUT accettata con 200 e buttata

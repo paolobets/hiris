@@ -10,7 +10,8 @@ sulla documentazione ufficiale il 15 agosto 2026, non dedotto: header
 recenti, e ogni voce porta `id`, `display_name`, `created_at` e `capabilities`.
 Vuole una CHIAVE API: col token del piano non risponde.
 
-`_CLAUDE_MODELS` resta come RISERVA -- una lista di tre nomi scritta a mano che
+`CLAUDE.reserve_models` (era `_CLAUDE_MODELS`) resta come RISERVA -- una lista
+di tre nomi scritta a mano che
 invecchia da sola -- e da questa fetta si dichiara per quello che e' invece di
 presentarsi come tutto cio' che esiste.
 """
@@ -20,6 +21,7 @@ import pytest
 
 from hiris.app.api import handlers_models
 from hiris.app.model_resolution import provenance
+from hiris.app.providers import CLAUDE
 
 # La fixture `client` (app vera via `create_app()`), la stessa che
 # `tests/test_models_api.py` importa. Serve alla prova sulla chiave assente.
@@ -76,7 +78,7 @@ async def test_un_200_vuoto_non_e_una_lettura_riuscita():
                return_value=_mock_openrouter_response({"data": []})):
         modelli, fonte = await handlers_models._fetch_claude_models("sk-test")
     assert fonte == "riserva"
-    assert modelli == handlers_models._CLAUDE_MODELS
+    assert modelli == list(CLAUDE.reserve_models)
 
 
 @pytest.mark.asyncio
@@ -86,7 +88,7 @@ async def test_una_chiave_rifiutata_dichiara_la_riserva():
     with patch("aiohttp.ClientSession", return_value=_mock_risposta_con_stato(401)):
         modelli, fonte = await handlers_models._fetch_claude_models("sk-sbagliata")
     assert fonte == "riserva"
-    assert modelli == handlers_models._CLAUDE_MODELS
+    assert modelli == list(CLAUDE.reserve_models)
 
 
 @pytest.mark.asyncio
@@ -94,7 +96,7 @@ async def test_una_rete_che_cade_dichiara_la_riserva():
     with patch("aiohttp.ClientSession", return_value=_mock_che_solleva()):
         modelli, fonte = await handlers_models._fetch_claude_models("sk-test")
     assert fonte == "riserva"
-    assert modelli == handlers_models._CLAUDE_MODELS
+    assert modelli == list(CLAUDE.reserve_models)
 
 
 # ── La provenienza: due rami cancellati, non uno aggiunto ──────────────────

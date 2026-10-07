@@ -31,107 +31,25 @@ Chi le chiama porta i fatti già misurati.
 """
 from __future__ import annotations
 
-import os
+from .providers import (
+    OLLAMA,
+    OPENROUTER,
+    SUBSCRIPTION,
+    chain_members,
+    display_name,
+    get,
+    ids,
+    missing_reason,
+    nature,
+    privacy,
+    providers_in_chain,
+)
 
-# LA MISURA DELLA CREDENZIALE DEL PIANO, in un posto solo.
-#
-# «Il piano ha un token?» era scritta quattro volte, in quattro moduli, e
-# governava quattro decisioni diverse: se il worker del ponte PARTE
-# (`server.should_start_agent_worker`), se il piano ENTRA nella catena
-# (`server._credentials`), cosa la pagina Modelli DICHIARA
-# (`handlers_models._config_has_credential`), e se il turno si ACCODA
-# (`steering._subscription_can_answer`).
-#
-# Oggi erano identiche. Il giorno in cui il token seguisse la strada che hanno
-# gia' fatto `ponte.attivo`, `tetto_giornaliero` e `scadenza_min` -- da
-# `config.yaml` all'archivio -- si aggiornerebbe il file della pagina, perche'
-# e' il file della pagina. La pagina direbbe «Piano Claude Max, funziona, primo
-# della catena»; il worker non partirebbe, e la chat ripiegherebbe su Claude
-# API a consumo. L'utente pagherebbe a token credendo di essere sul forfait.
-#
-# E' esattamente il difetto per cui questo modulo esiste -- una pagina vera
-# riga per riga e falsa nel complesso -- chiuso a valle (la COMPOSIZIONE della
-# decisione) e mai a monte (la MISURA che la alimenta). Il commento a
-# `handlers_models._config_has_credential` diceva che due definizioni della
-# stessa credenziale «sarebbero la seconda rappresentazione in miniatura»:
-# c'erano entrambe, e il commento descriveva il difetto al presente credendo
-# di descriverne l'assenza.
-SUBSCRIPTION_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"
-
-
-def subscription_has_token() -> bool:
-    """Vero se la credenziale dell'abbonamento Claude c'e'.
-
-    Solo la PRESENZA, mai il valore: chi chiama non deve poterlo stampare per
-    sbaglio in un log o in una risposta.
-    """
-    return bool(os.environ.get(SUBSCRIPTION_TOKEN_VAR, "").strip())
-
-# Il nome leggibile di ogni provider.
-DISPLAY_NAMES: dict[str, str] = {
-    "subscription": "Piano Claude Max",
-    "claude": "Claude API",
-    "openrouter": "OpenRouter",
-    "openai": "OpenAI",
-    "ollama": "Ollama (in casa)",
-}
-
-# Quattro categorie, non un prezzo: HIRIS non ha una fonte di listini, e un
-# prezzo vecchio è una bugia che sembra un servizio (progetto §12.1). Sono
-# l'unica cosa che serve per decidere l'ordine di una catena.
-# **Dove va il dato, e sotto quali condizioni** (reperto C-5, 23/09/2026).
-#
-# Le stesse righe stanno nelle traduzioni dell'add-on, ma quella e' la pagina
-# dove si INCOLLA una chiave; la catena e il ponte si decidono nella pagina
-# Modelli di HIRIS, che e' un'altra pagina. Chi accende il piano di la' non e'
-# mai passato dalla riga di privacy, e un prodotto che manda i dati di casa a
-# un fornitore terzo deve dirlo **dove il gesto si fa**.
-#
-# Stanno QUI con le altre affermazioni sul prodotto, e viaggiano nel payload:
-# la pagina non compone frasi, e un `if (id === 'subscription')` in JavaScript
-# sarebbe la regola scritta una seconda volta in un'altra lingua.
-#
-# Il piano NON ha la frase di Claude API: le condizioni d'uso e di
-# conservazione del Piano Max sono diverse da quelle dell'API a consumo, e una
-# frase buona per tutti e due nasconderebbe proprio la differenza che conta.
-PRIVACY: dict[str, str] = {
-    "subscription": (
-        "I tuoi messaggi e la conoscenza della casa passano da Anthropic "
-        "(USA), sotto le condizioni d’uso e di conservazione del Piano "
-        "Claude Max, diverse da quelle dell’API a consumo."),
-    "claude": (
-        "I tuoi messaggi e la conoscenza della casa passano da Anthropic "
-        "(USA)."),
-    "openrouter": (
-        "I tuoi messaggi passano da OpenRouter (USA) e dal fornitore del "
-        "modello che scegli."),
-    "openai": "I tuoi messaggi passano dai server di OpenAI (USA).",
-    "ollama": "Resta in casa tua: il tuo dato non esce dalla tua rete.",
-}
-
-NATURES: dict[str, str] = {
-    "subscription": "nel piano",
-    "claude": "a consumo",
-    "openrouter": "a consumo",
-    "openai": "a consumo",
-    "ollama": "in casa",
-}
-
-# Che cosa manca, quando manca. Sono TRE credenziali diverse e la parola le
-# distingue: il piano ha un token OAuth, tre provider hanno una chiave, Ollama
-# ha un indirizzo. Stanno qui e non nel frontend per la stessa ragione dei nomi
-# (Task 5) e delle frasi di `compose_now`: sono affermazioni sul prodotto, e
-# ognuna corrisponde a un ramo di `api/handlers_models._config_has_credential`.
-# Scritte nella pagina sarebbero una seconda descrizione della regola di
-# credenziale, in un altro linguaggio, libera di divergere dalla prima -- che è
-# la forma esatta del difetto che questa fetta chiude.
-MISSING_REASONS: dict[str, str] = {
-    "subscription": "manca il token",
-    "claude": "manca la chiave",
-    "openrouter": "manca la chiave",
-    "openai": "manca la chiave",
-    "ollama": "manca l’indirizzo",
-}
+# I nomi, le nature, dove va il dato e che cosa manca stavano qui, in quattro
+# tabelle (`DISPLAY_NAMES`, `PRIVACY`, `NATURES`, `MISSING_REASONS`) piu'
+# l'ordine fisso (`FIXED_ORDER`), e una seconda volta nei consumi e nella
+# pagina. Dal Task 9 della Tappa 7 sono campi della tabella dei provider
+# (`providers.py`): qui si compongono le frasi, e si chiedono i fatti.
 
 # Cosa c'è dopo l'ultimo anello. È una frase sulla CATENA e non su una riga --
 # quale sia l'ultima riga cambia con un gesto, e la pagina riordina da sé fra
@@ -140,13 +58,6 @@ MISSING_REASONS: dict[str, str] = {
 # Resta vera anche dopo il Task 14: l'ultimo che non risponde è la fine della
 # strada, col ponte o senza.
 CHAIN_END = "ultimo della catena: se non risponde, la chat dà errore"
-
-# L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
-# quindi non può contraddire niente. È l'ordine di ripiego di `balanced`
-# (`llm_router._STRATEGY_ORDER`), con il piano subito dopo Claude API.
-FIXED_ORDER: tuple[str, ...] = (
-    "claude", "subscription", "openrouter", "openai", "ollama",
-)
 
 # ── I due gesti sul ponte, e perché sono un PERCORSO e non un tipo ──────────
 # Dalla versione B (3.0.0) `ponte.attivo` vive nell'archivio di HIRIS e non fra
@@ -177,27 +88,6 @@ ACTION_REMOVE_SUBSCRIPTION = {
     "dove": ["ponte", "attivo"],
     "valore": False,
 }
-
-
-def display_name(provider_id: str) -> str:
-    return DISPLAY_NAMES.get(provider_id, provider_id)
-
-
-def nature(provider_id: str) -> str:
-    return NATURES.get(provider_id, "")
-
-
-def privacy(provider_id: str) -> str:
-    """Dove va il dato di chi usa questo provider. `""` se non si sa.
-
-    Il vuoto attraversa, come per la natura: una frase approssimativa sulla
-    privacy e' peggio del silenzio, perche' viene letta come una garanzia.
-    """
-    return PRIVACY.get(provider_id, "")
-
-
-def missing_reason(provider_id: str) -> str:
-    return MISSING_REASONS.get(provider_id, "manca la credenziale")
 
 
 # ── La riga di stato: l'ultimo esito osservato, in parole ──────────────────
@@ -501,7 +391,7 @@ def downgrade_note(*, reason: str, who_answered: str) -> str:
     which_nature = nature(who_answered)
     if not what_happened or not which_nature:
         return ""
-    return (f"Il Piano Claude Max {what_happened}: ha risposto "
+    return (f"Il {SUBSCRIPTION.name} {what_happened}: ha risposto "
             f"{display_name(who_answered)}, {which_nature}.")
 
 
@@ -534,12 +424,12 @@ def compose_now(
     Task 10 dall'archivio, `ponte.scadenza_min`), non un secondo default che
     può divergere da quello vero.
     """
-    bridge_has_token = bool(credentials.get("subscription"))
+    bridge_has_token = bool(credentials.get(SUBSCRIPTION.id))
     diagnosis: list[dict] = []
 
     bridge_silent = bridge_active and not bridge_has_token
     if bridge_active and bridge_has_token:
-        who = "subscription"
+        who = SUBSCRIPTION.id
         route = "ponte"
     else:
         # Anche quando il ponte è acceso SENZA token. Fino al Task 14 questo
@@ -556,11 +446,11 @@ def compose_now(
     if who is None:
         if bridge_silent:
             phrase = ("HIRIS non può rispondere: il ponte è acceso, manca il "
-                      "token del Piano Claude Max, e sotto di lui non c’è nessuno.")
+                      f"token del {SUBSCRIPTION.name}, e sotto di lui non c’è nessuno.")
             diagnosis.append({
                 "gravita": "guasto",
                 "testo": ("Il ponte è acceso ma manca il token: nessun "
-                          "messaggio arriva al Piano Claude Max, e in catena "
+                          f"messaggio arriva al {SUBSCRIPTION.name}, e in catena "
                           "non c’è nessun altro a cui passarlo."),
                 "azione": None,
             })
@@ -597,7 +487,7 @@ def compose_now(
         if chain:
             diagnosis.append({
                 "gravita": "fatto",
-                "testo": ("Il ponte è acceso: il Piano Claude Max prova per "
+                "testo": (f"Il ponte è acceso: il {SUBSCRIPTION.name} prova per "
                           f"primo, e se non risponde entro {int(bridge_deadline_min)} minuti "
                           "il turno "
                           "passa al successivo della catena."
@@ -613,7 +503,7 @@ def compose_now(
         else:
             diagnosis.append({
                 "gravita": "guasto",
-                "testo": ("Il ponte è acceso e sotto il Piano Claude Max non "
+                "testo": (f"Il ponte è acceso e sotto il {SUBSCRIPTION.name} non "
                           "c’è nessun altro: "
                           f"se non risponde entro {int(bridge_deadline_min)} minuti, "
                           "il turno non ha dove andare."
@@ -630,7 +520,7 @@ def compose_now(
         diagnosis.append({
             "gravita": "spreco",
             "testo": ("Il ponte è acceso ma manca il token: nessun messaggio "
-                      "arriva al Piano Claude Max, e ogni turno passa alla "
+                      f"arriva al {SUBSCRIPTION.name}, e ogni turno passa alla "
                       "catena — dal forfait al consumo."),
             "azione": None,
         })
@@ -652,7 +542,8 @@ def compose_now(
         # il piano in testa. La metà che mancava è arrivata.
         diagnosis.append({
             "gravita": "spreco",
-            "testo": "Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.",
+            "testo": (f"Il {SUBSCRIPTION.name} ha il token, lo paghi, ed è fuori "
+                      "dalla catena."),
             "azione": dict(ACTION_PUT_SUBSCRIPTION_FIRST),
         })
 
@@ -670,7 +561,7 @@ def compose_topology(
     occurrences: dict[str, dict],
     now: float,
     bridge_deadline_min: int = 5,
-    ollama_timeout_s: int = 120,
+    ollama_timeout_s: int | None = OLLAMA.reply_timeout_s,
 ) -> tuple[list[dict], list[dict]]:
     """La topologia effettiva: chi è in catena, in che ordine, e chi ne sta fuori.
 
@@ -693,8 +584,8 @@ def compose_topology(
     le frecce e «Usa» -- perché dice una cosa sola: *la presenza e la posizione
     di questa riga in catena si decidono da `chain_order`*. Per il piano è
     falso in entrambi i sensi, e non per simmetria estetica: `save_models_config`
-    scarta `subscription` da `chain_order` (`_VALID_BACKENDS` sono quattro
-    nomi), quindi un «Usa» sulla riga del piano scriverebbe una PUT che il
+    scarta il piano da `chain_order` (accetta i soli
+    `providers.chain_members()`), quindi un «Usa» sulla riga del piano scriverebbe una PUT che il
     server accetta con 200 e butta via -- un bottone che non fa niente, cioè il
     difetto che questa fetta esiste per chiudere, ricomparso nell'interfaccia.
     Il piano entra in catena da un'AZIONE dichiarata dal backend
@@ -745,24 +636,23 @@ def compose_topology(
     `manca` e `nota` sono due frasi, non due calcoli, e stanno qui per la
     stessa ragione delle altre parole di questo modulo. `manca` dice QUALE
     credenziale manca (tre credenziali diverse, tre parole diverse, una per
-    ogni ramo di `_config_has_credential`); `nota` dice PERCHÉ una riga non
+    credenziale della tabella dei provider); `nota` dice PERCHÉ una riga non
     offre i gesti che offrono le altre -- l'assenza di un gesto, senza una
     parola, si legge come un guasto. Entrambe sono `""` quando non c'è niente
     da dire, e la pagina disegna solo ciò che non è vuoto: nessuna condizione
     sul provider vive nel frontend.
     """
-    from .model_activation import providers_in_chain
-
     # Il piano NON è un membro di `chain_order`, né qui né dopo il Task 14: la
     # sua presenza in testa discende da `ponte.attivo`, che è un'altra chiave
-    # dell'archivio. Sul disco lo garantisce già `_VALID_BACKENDS` (quattro
-    # nomi, il piano non c'è); qui si ridice, perché questa funzione riceve una
-    # lista e non il disco, e una lista può arrivare da chiunque -- il gateway
-    # MCP fa PUT su questa rotta.
+    # dell'archivio. Sul disco lo garantisce già `load_models_config` (la
+    # catena accetta i soli `chain_members()`); qui si ridice, perché questa
+    # funzione riceve una lista e non il disco, e una lista può arrivare da
+    # chiunque -- il gateway MCP fa PUT su questa rotta.
+    members = chain_members()
     dentro = [p for p in providers_in_chain(chain_order, credentials)
-              if p != "subscription"]
+              if p in members]
     if bridge_active:
-        dentro = ["subscription"] + dentro
+        dentro = [SUBSCRIPTION.id] + dentro
 
     def without_model(pid: str) -> bool:
         """Ollama con l'indirizzo e senza un modello scelto.
@@ -783,7 +673,8 @@ def compose_topology(
         finché non c'è un modello. Le parole lo dicono, e `server.py` filtra la
         catena effettiva con lo stesso fatto.
         """
-        return pid == "ollama" and not models.get(pid, "")
+        p = get(pid)
+        return bool(p and p.needs_chosen_model) and not models.get(pid, "")
 
     def note(pid: str, in_chain: bool, has_credential: bool) -> str:
         """La parola che spiega perché quella riga non ha i gesti delle altre.
@@ -806,7 +697,7 @@ def compose_topology(
             return ("L’indirizzo c’è, il modello no: finché manca non c’è "
                     "niente a cui chiedere, e in catena non ci può stare. Si "
                     "sceglie qui accanto.")
-        if pid != "subscription":
+        if pid != SUBSCRIPTION.id:
             return ""
         if in_chain:
             return ("In testa o fuori: ci sta perché il ponte è acceso, e si "
@@ -817,15 +708,15 @@ def compose_topology(
         return ""
 
     def connettore(pid: str) -> str:
-        if pid == "subscription":
+        if pid == SUBSCRIPTION.id:
             # Il Task 14 ha cambiato QUESTA stringa, ed è il momento in cui il
             # progetto §11.1 si incassa: la pagina disegna un anello invece di
             # un vicolo cieco senza che nessuno tocchi il frontend. Diceva «il
             # ponte non ripiega: se non risponde entro N min il messaggio va
             # perso», e finché è stato vero è stato giusto dirlo.
             return f"se non risponde entro {int(bridge_deadline_min)} min"
-        if pid == "ollama":
-            return f"se non risponde entro {int(ollama_timeout_s)} s"
+        if pid == OLLAMA.id:
+            return f"se non risponde entro {int(ollama_timeout_s or 0)} s"
         return "se rifiuta, subito"
 
     def note_connector(pid: str) -> str:
@@ -844,7 +735,7 @@ def compose_topology(
         Si dichiara, come il Task 6 ha dichiarato il tetto: è un fatto, non un
         divieto, ed è composta con lo STESSO numero del connettore -- due
         letture non potrebbero divergere."""
-        if pid != "subscription" or int(bridge_deadline_min) <= 5:
+        if pid != SUBSCRIPTION.id or int(bridge_deadline_min) <= 5:
             return ""
         return ("sopra i 5 minuti la chat smette di aspettare prima della "
                 "scadenza, e il turno non passa al successivo")
@@ -914,12 +805,12 @@ def compose_topology(
             # niente (la pagina non disegna «Usa» dove non c'è credenziale),
             # quindi il modello mancante si dichiara solo quando è davvero
             # LUI l'unica cosa che manca.
-            "riordinabile": (pid != "subscription"
+            "riordinabile": (pid in members
                              and not (has_credential and without_model(pid))),
         }
 
     chain = [row(pid, i + 1) for i, pid in enumerate(dentro)]
-    fuori = [row(pid, None) for pid in FIXED_ORDER if pid not in dentro]
+    fuori = [row(pid, None) for pid in ids() if pid not in dentro]
     return chain, fuori
 
 
@@ -947,46 +838,12 @@ SUBSCRIPTION_ALIAS: tuple[tuple[str, str], ...] = (
     ("opus", "il più capace"),
 )
 
-# Gli ospiti che si interrogano davvero. Servono a `provenance` per nominare
-# CHI non ha risposto: «non ho potuto leggere» senza il nome di chi non ha
-# risposto è meno di quanto il sistema sa.
-_OSPITI: dict[str, str] = {
-    # Claude API è entrata qui con la fetta «il modello del piano». Prima aveva
-    # un ramo tutto suo in `provenance`, con una frase che dichiarava
-    # inesistente la rotta di elenco di Anthropic: falso, `GET /v1/models`
-    # esiste. Cancellato il ramo, il percorso generico produce già le due frasi
-    # giuste -- serviva solo il nome dell'ospite. Un caso particolare in meno,
-    # non uno in più.
-    "claude": "api.anthropic.com",
-    "openai": "api.openai.com",
-    "openrouter": "openrouter.ai",
-}
-
-# DOVE si scrive la scelta, come percorso dentro l'oggetto che la pagina già
-# salva. È un dato e non una regola scritta nel frontend: senza, la pagina
-# avrebbe bisogno di un `if (id === 'ollama')` per sapere che il modello di
-# Ollama non vive in `provider_models` -- cioè di conoscere il caso
-# particolare, che è la forma esatta del difetto che questa fetta chiude.
-# Qui il piano aveva la tupla VUOTA -- «niente da salvare» -- con la ragione
-# scritta accanto: il suo modello era un effetto di quello di Claude API
-# (progetto §0.4), non un secondo valore, e un pannello che offrisse di
-# scriverlo avrebbe mandato una PUT che nessuno legge.
-#
-# Era vera, ed era IL DIFETTO. Un campo solo serviva due economie opposte: su
-# Claude API si paga a token e `haiku` è la scelta frugale, sul piano il
-# modello non costa di più e `opus` è la ragione per cui il piano esiste.
-# L'impianto del proprietario girava sul piano con `haiku`. Dalla fetta «il
-# modello del piano» il piano ha un campo suo, `ponte.modello`, e questa riga
-# è tutto ciò che serve al frontend per accendere i tre radio: `dove` non
-# vuoto → `scrivibile` vero. Nessuna riga di JavaScript ha dovuto imparare
-# niente -- è ciò per cui `dove` è un percorso e non un nome.
-_WHERE_WRITTEN: dict[str, tuple[str, ...]] = {
-    "claude": ("provider_models", "claude"),
-    "openai": ("provider_models", "openai"),
-    "openrouter": ("provider_models", "openrouter"),
-    "ollama": ("ollama", "modello"),
-    "subscription": ("ponte", "modello"),
-}
+# Gli ospiti che si interrogano davvero (`Provider.host`) e DOVE si scrive la
+# scelta (`Provider.model_path`) erano due tabelle di questo modulo, `_OSPITI`
+# e `_WHERE_WRITTEN`: dal Task 9 della Tappa 7 sono campi della tabella dei
+# provider. Il percorso resta un dato e non una regola scritta nel frontend:
+# senza, la pagina avrebbe bisogno di un `if (id === 'ollama')` per sapere che
+# il modello di Ollama non vive in `provider_models`.
 
 # La voce «auto», che nell'archivio è la STRINGA VUOTA e non la parola "auto".
 # Salvare letteralmente "auto" è un difetto: `claude_runner.resolve_model`
@@ -1005,7 +862,8 @@ def is_alias(provider_id: str) -> bool:
     aggiornano. Sono cose di natura diversa e la pagina lo dice col carattere,
     non con una didascalia (progetto §6.2).
     """
-    return provider_id == "subscription"
+    p = get(provider_id)
+    return bool(p and p.model_alias)
 
 
 def provenance(provider_id: str, source: str, *, address: str = "",
@@ -1024,7 +882,7 @@ def provenance(provider_id: str, source: str, *, address: str = "",
         # credenziale». Un pannello che si apre deve SEMPRE dare una risposta:
         # nascondere è comodo per chi capisce e crudele per chi non capisce
         # perché una cosa è sparita. La parola è la stessa della riga
-        # (`MISSING_REASONS`), perché è lo stesso fatto detto nello stesso vocabolario.
+        # (`Provider.missing_reason`), perché è lo stesso fatto detto nello stesso vocabolario.
         return f"Non c’è nessun elenco da leggere: {missing_reason(provider_id)}."
     if source == "fissa":
         # Il piano. Non è un ripiego e non si chiama così: i tre alias non
@@ -1044,12 +902,13 @@ def provenance(provider_id: str, source: str, *, address: str = "",
     # sorgente, commenti compresi: un grep assoluto è una trappola più forte di
     # uno che deve distinguere una citazione da un'affermazione -- per questo
     # qui è parafrasata.
-    ospite = _OSPITI.get(provider_id) or address or display_name(provider_id)
+    p = get(provider_id)
+    ospite = (p.host if p else "") or address or display_name(provider_id)
     if source == "viva":
-        if provider_id == "ollama":
+        if provider_id == OLLAMA.id:
             return f"Scaricati su {ospite} — letti adesso."
         return f"Letti da {ospite} adesso."
-    cause = ("spento? indirizzo sbagliato?" if provider_id == "ollama"
+    cause = ("spento? indirizzo sbagliato?" if provider_id == OLLAMA.id
              else "chiave rifiutata? rete?")
     row = (f"Elenco di riserva: non ho potuto leggere {ospite} ({cause}). Quello che vedi "
            "qui potrebbe non esistere più.")
@@ -1070,7 +929,7 @@ def explanation(provider_id: str) -> str:
     Per il piano è la forma stessa del pannello a spiegare (progetto §10.1);
     per OpenRouter è la ragione per cui l'elenco non è il catalogo.
     """
-    if provider_id == "subscription":
+    if provider_id == SUBSCRIPTION.id:
         # Qui c'era una frase che mandava l'utente a scegliere sulla riga di
         # Claude API, perché quale dei tre alias fosse in uso discendeva da lì:
         # vera fino alla 3.1.0, e falsa dal momento esatto in cui il piano ha
@@ -1079,12 +938,12 @@ def explanation(provider_id: str) -> str:
         return ("Sono alias, non nomi di modello: seguono il modello corrente "
                 "del piano invece di puntare a una versione fissa. Qui la "
                 "scelta non cambia quanto spendi — è compresa nel piano.")
-    if provider_id == "openrouter":
+    if provider_id == OPENROUTER.id:
         return ("Solo modelli che sanno usare gli strumenti: HIRIS manda "
                 "sempre il catalogo delle azioni, e gli altri rifiuterebbero "
                 "ogni richiesta. Qui ci sono quelli scelti da noi: per uno che "
                 "non c’è, incollane l’identificatore nel campo qui sopra.")
-    if provider_id == "ollama":
+    if provider_id == OLLAMA.id:
         return ("Sono i modelli scaricati su quella macchina: per averne un "
                 "altro si fa `ollama pull` di là, non da qui.")
     return ""
@@ -1161,7 +1020,7 @@ def compose_panel(
             # nomi morti (che erano tutti `:free`) quella condizione avrebbe
             # continuato ad affermarlo su un elenco che non ne ha piu' nemmeno
             # uno: una riga che dice il falso su cio' che si sta guardando.
-            free_models_notice=(provider_id == "openrouter"
+            free_models_notice=(provider_id == OPENROUTER.id
                                 and source == "riserva" and bool(hide_free_models)
                                 and any(str(v).endswith(":free") for v in values))),
         "spiegazione": explanation(provider_id),
@@ -1177,7 +1036,7 @@ def compose_panel(
         # backend tace -- ma oggi il backend tace su tutti e cinque:
         # l'assenza di didascalia È l'affermazione.
         "quando": "",
-        "dove": list(_WHERE_WRITTEN.get(provider_id, ())),
+        "dove": list(get(provider_id).model_path) if get(provider_id) else [],
         "scelto": chosen,
         # La casella vive SULLA LISTA CHE FILTRA e non in una pagina di
         # impostazioni: si auto-documenta, e non serve una descrizione per
@@ -1186,6 +1045,6 @@ def compose_panel(
         # pagina, per la stessa ragione di `dove`.
         "casella": ({"etichetta": "nascondi i gratuiti",
                      "dove": ["nascondi_gratuiti"]}
-                    if provider_id == "openrouter" else None),
+                    if provider_id == OPENROUTER.id else None),
         "modelli": entries,
     }

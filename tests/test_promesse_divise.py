@@ -627,7 +627,7 @@ def test_le_promesse_di_prima_si_adottano_solo_da_due_porte():
 
 @pytest.fixture
 def col_token_del_piano(monkeypatch):
-    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
     monkeypatch.setenv(SUBSCRIPTION_TOKEN_VAR, "un-token-qualunque")
 
 

@@ -266,7 +266,7 @@ async def test_una_memoria_non_misurabile_non_ferma_il_primo_giro(archivio, faul
 #
 # Fetta «l'osservatore chiede a chi risponde davvero» (11/09/2026). Fino a
 # oggi questo giro andava dritto a `llm_router`, dove il Piano Claude Max
-# **non e' un anello** (`llm_router._VALID_BACKEND_NAMES`). Misurato sulla
+# **non e' un anello** (`providers.chain_members()`). Misurato sulla
 # casa vera l'11/09 alle 11:00:44: l'osservatore cadeva su un modello
 # OpenRouter «batch-only» (404) e su una chiave Claude senza credito (400),
 # mentre l'abbonamento -- 140 richieste su 140 nella storia di questa casa --
@@ -278,7 +278,7 @@ async def test_una_memoria_non_misurabile_non_ferma_il_primo_giro(archivio, faul
 # Il turno del ponte non torna dentro la stessa chiamata: si accoda, e si
 # raccoglie a un giro successivo. Da cui le due meta' provate qui sotto.
 
-from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
+from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
 from hiris.app.reasoning.queue import ReasoningQueue
 
 

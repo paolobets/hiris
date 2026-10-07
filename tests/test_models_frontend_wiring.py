@@ -193,12 +193,12 @@ def test_l_ordine_fisso_del_frontend_e_quello_del_backend():
     """Due liste con lo stesso nome in due linguaggi sono la miniatura del
     difetto che questa fetta chiude. Non si possono fondere (il frontend non
     importa Python), ma si possono tenere legate da un test che si rompe."""
-    from hiris.app.model_resolution import FIXED_ORDER
+    from hiris.app.providers import ids
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     # Dopo la rinomina del frontend i due nomi COINCIDONO -- `FIXED_ORDER` di
     # qua e di la' -- ed e' il caso migliore per un pin che confronta due
     # linguaggi: chi legge non deve piu' tenere a mente due parole.
-    atteso = "var FIXED_ORDER = [" + ", ".join(f"'{p}'" for p in FIXED_ORDER) + "];"
+    atteso = "var FIXED_ORDER = [" + ", ".join(f"'{p}'" for p in ids()) + "];"
     assert atteso in js, f"atteso in models-route.js: {atteso}"
 
 
@@ -206,9 +206,9 @@ def test_i_tre_preset_del_frontend_sono_quelli_del_router():
     """Stessa ragione: i tre ordini esistono due volte. Un preset che
     riscrivesse la catena in un ordine diverso da quello del router
     prometterebbe un comportamento che il prodotto non ha."""
-    from hiris.app.llm_router import _STRATEGY_ORDER
+    from hiris.app.providers import PRESETS
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    for chiave, ordine in _STRATEGY_ORDER.items():
+    for chiave, ordine in ((p.key, p.order) for p in PRESETS):
         atteso = "ordine: [" + ", ".join(f"'{p}'" for p in ordine) + "]"
         assert atteso in js, f"{chiave}: atteso {atteso} in models-route.js"
 

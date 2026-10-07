@@ -33,7 +33,7 @@ def mock_runner():
 
 @pytest.mark.asyncio
 async def test_router_chat_delegates_to_runner(mock_runner):
-    router = LLMRouter(claude=mock_runner)
+    router = LLMRouter(claude=mock_runner, model_chain=["claude"])
     result = await router.chat(user_message="hello", system_prompt="sys")
     mock_runner.chat.assert_awaited_once()
     assert result == "response text"
@@ -55,7 +55,7 @@ def test_router_last_tool_calls_reflects_current_call_not_stale_backend(mock_run
     backend's stale/unrelated `last_tool_calls` attribute must NOT leak
     through the router property."""
     mock_runner.last_tool_calls = [{"tool": "stale_backend_attr", "input": {}}]
-    router = LLMRouter(claude=mock_runner)
+    router = LLMRouter(claude=mock_runner, model_chain=["claude"])
     token = _current_tool_calls.set([{"tool": "get_home_status", "input": {}}])
     try:
         assert router.last_tool_calls == [{"tool": "get_home_status", "input": {}}]
@@ -69,7 +69,7 @@ def test_router_last_thinking_blocks_reflects_current_call(mock_runner):
     silently returned None whenever chat went through the router — the
     debug payload's thinking_blocks was always empty. Now it proxies the
     same shared per-call ContextVar as ClaudeRunner."""
-    router = LLMRouter(claude=mock_runner)
+    router = LLMRouter(claude=mock_runner, model_chain=["claude"])
     assert router.last_thinking_blocks == []
     token = _current_thinking_blocks.set(["step 1: ..."])
     try:
@@ -78,31 +78,14 @@ def test_router_last_thinking_blocks_reflects_current_call(mock_runner):
         _current_thinking_blocks.reset(token)
 
 
-def test_router_strategy_defaults_to_balanced(mock_runner):
-    router = LLMRouter(claude=mock_runner)
-    assert router._strategy == "balanced"
-
-
-def test_router_strategy_invalid_falls_back_to_balanced(mock_runner):
-    router = LLMRouter(claude=mock_runner, strategy="unknown_strategy")
-    assert router._strategy == "balanced"
-
-
-def test_router_strategy_cost_first_orders_ollama_first(mock_runner):
-    mock_ollama = MagicMock()
-    mock_ollama.chat = AsyncMock(return_value="ollama response")
-    router = LLMRouter(claude=mock_runner, ollama=mock_ollama, strategy="cost_first")
-    backends = _runners(router)
-    assert backends[0] is mock_ollama
-    assert backends[1] is mock_runner
-
-
-def test_router_strategy_quality_first_orders_claude_first(mock_runner):
-    mock_ollama = MagicMock()
-    router = LLMRouter(claude=mock_runner, ollama=mock_ollama, strategy="quality_first")
-    backends = _runners(router)
-    assert backends[0] is mock_runner
-    assert backends[1] is mock_ollama
+# Tappa 7 T9 (M-07): `test_router_strategy_defaults_to_balanced`,
+# `..._invalid_falls_back_to_balanced`, `..._cost_first_orders_ollama_first` e
+# `..._quality_first_orders_claude_first` sono usciti con il ramo «libreria»
+# del router (`strategy`, `_STRATEGY_ORDER`): difendevano l'ordine che una
+# strategia produceva quando nessuno passava una catena, e il router oggi la
+# pretende. Che l'ordine sia quello della catena lo prova
+# `test_model_chain_sets_single_chain_for_both_modes`; i tre ordini vivono come
+# preset nella tabella dei provider (`tests/test_providers.py`).
 
 
 @pytest.mark.asyncio
@@ -111,7 +94,7 @@ async def test_router_chat_fallback_on_exception(mock_runner):
     failing_runner.chat = AsyncMock(side_effect=Exception("backend down"))
     mock_ollama = MagicMock()
     mock_ollama.chat = AsyncMock(return_value="ollama fallback")
-    router = LLMRouter(claude=failing_runner, ollama=mock_ollama, strategy="quality_first")
+    router = LLMRouter(claude=failing_runner, ollama=mock_ollama, model_chain=["claude", "ollama"])
     result = await router.chat(user_message="hello", model="auto")
     assert result == "ollama fallback"
     failing_runner.chat.assert_awaited_once()
@@ -122,7 +105,7 @@ async def test_router_chat_fallback_on_exception(mock_runner):
 async def test_router_chat_all_fail_returns_error_message(mock_runner):
     failing_runner = MagicMock()
     failing_runner.chat = AsyncMock(side_effect=Exception("down"))
-    router = LLMRouter(claude=failing_runner, strategy="balanced")
+    router = LLMRouter(claude=failing_runner, model_chain=["claude"])
     result = await router.chat(user_message="hello", model="auto")
     assert "non disponibili" in result
 
@@ -147,7 +130,7 @@ async def test_router_chat_fails_over_on_runner_backend_error(mock_runner):
     )
     mock_ollama = MagicMock()
     mock_ollama.chat = AsyncMock(return_value="ollama fallback")
-    router = LLMRouter(claude=failing_runner, ollama=mock_ollama, strategy="quality_first")
+    router = LLMRouter(claude=failing_runner, ollama=mock_ollama, model_chain=["claude", "ollama"])
     result = await router.chat(user_message="hello", model="auto")
     assert result == "ollama fallback"
     failing_runner.chat.assert_awaited_once()
@@ -162,7 +145,7 @@ async def test_router_chat_all_backends_raise_returns_last_friendly_message(mock
     first.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude, riprova."))
     second = MagicMock()
     second.chat = AsyncMock(side_effect=RunnerBackendError("Crediti OpenRouter esauriti."))
-    router = LLMRouter(claude=first, openrouter=second, strategy="balanced")
+    router = LLMRouter(claude=first, openrouter=second, model_chain=["claude", "openrouter"])
     result = await router.chat(user_message="hello", model="auto")
     assert result == "Crediti OpenRouter esauriti."
 
@@ -186,7 +169,7 @@ async def test_router_routes_openrouter_prefix_colon(mock_runner):
     or_runner = MagicMock()
     or_runner.chat = AsyncMock(return_value="from openrouter")
     or_runner.last_tool_calls = []
-    router = LLMRouter(openrouter=or_runner, strategy="balanced")
+    router = LLMRouter(openrouter=or_runner, model_chain=["openrouter"])
     result = await router.chat(
         user_message="hi",
         model="openrouter:meta-llama/llama-3.3-70b-instruct:free",
@@ -200,7 +183,7 @@ async def test_router_routes_openrouter_prefix_slash(mock_runner):
     or_runner = MagicMock()
     or_runner.chat = AsyncMock(return_value="from openrouter")
     or_runner.last_tool_calls = []
-    router = LLMRouter(openrouter=or_runner, strategy="balanced")
+    router = LLMRouter(openrouter=or_runner, model_chain=["openrouter"])
     result = await router.chat(
         user_message="hi",
         model="openrouter/anthropic/claude-sonnet-4-6",
@@ -218,20 +201,15 @@ async def test_router_claude_prefix_skips_openrouter(mock_runner):
     or_runner = MagicMock()
     or_runner.chat = AsyncMock()
     or_runner.last_tool_calls = []
-    router = LLMRouter(claude=claude_runner, openrouter=or_runner, strategy="balanced")
+    router = LLMRouter(claude=claude_runner, openrouter=or_runner,
+                       model_chain=["claude", "openrouter"])
     result = await router.chat(user_message="hi", model="claude-sonnet-4-6")
     assert result == "from claude"
     or_runner.chat.assert_not_awaited()
 
 
-def test_router_strategy_includes_openrouter_in_chain():
-    or_runner = MagicMock()
-    claude_runner = MagicMock()
-    router = LLMRouter(claude=claude_runner, openrouter=or_runner, strategy="balanced")
-    backends = _runners(router)
-    # balanced: claude > openrouter > openai > ollama
-    assert backends[0] is claude_runner
-    assert or_runner in backends
+# Tappa 7 T9 (M-07): `test_router_strategy_includes_openrouter_in_chain` e'
+# uscito con l'ordine di strategia che provava.
 
 
 def test_openrouter_runner_strips_prefix_in_resolve_model():
@@ -288,23 +266,19 @@ class _Dummy:
 
 def test_model_chain_sets_single_chain_for_both_modes():
     claude, ollama = _Dummy(), _Dummy()
-    r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced",
-                  model_chain=["ollama", "claude"])
+    r = LLMRouter(claude=claude, ollama=ollama, model_chain=["ollama", "claude"])
     # un'unica policy (chat_policy), nell'ordine dato dalla catena
     assert _runners(r) == [ollama, claude]
 
 
 def test_ordered_backends_empty_when_no_runners_registered():
     """Nessun runner registrato (ogni provider inattivo) -> _ordered_backends()
-    e' vuota, su entrambi i rami del costruttore: model_chain esplicitamente
-    vuoto e il ramo legacy (nessun model_chain, nessun chat_policy). Meta' viva
-    di `test_all_inactive_fails_closed_for_sensitive_egress` (Slice 6b Task 1),
-    spostata qui -- la meta' su `automatic_allows_sensitive()` e' uscita col
-    suo soggetto (fetta E4 Task 7)."""
-    r_model_chain = LLMRouter(strategy="balanced", model_chain=[])
+    e' vuota. Meta' viva di `test_all_inactive_fails_closed_for_sensitive_egress`
+    (Slice 6b Task 1), spostata qui -- la meta' su `automatic_allows_sensitive()`
+    e' uscita col suo soggetto (fetta E4 Task 7). Il ramo «legacy» (nessuna
+    catena) che provava insieme e' uscito alla Tappa 7 T9 (M-07)."""
+    r_model_chain = LLMRouter(model_chain=[])
     assert _runners(r_model_chain) == []
-    r_legacy = LLMRouter(strategy="quality_first")
-    assert _runners(r_legacy) == []
 
 
 # fetta «la catena diventa l'unica verita'»: `LLMRouter.simple_chat` e' uscito,
@@ -333,18 +307,37 @@ def test_una_catena_esplicitamente_vuota_non_ripiega_sull_ordine_di_strategia():
     non puo' rispondere» mentre la chat rispondeva. E' la regola `legacy`
     appena tolta, rientrata da un'altra porta."""
     claude, ollama = _Dummy(), _Dummy()
-    r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced", model_chain=[])
+    r = LLMRouter(claude=claude, ollama=ollama, model_chain=[])
     assert r._chat_policy == []
     assert _runners(r) == []
 
 
-def test_senza_catena_passata_il_ripiego_di_libreria_resta():
-    """`model_chain=None` e' il ramo di libreria: nessuno ha passato una
-    catena, quindi l'ordine di strategia e' l'unica cosa che c'e'. Distinguere
-    «catena vuota» da «nessuna catena» e' tutto cio' che il cambio fa."""
-    claude, ollama = _Dummy(), _Dummy()
-    r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced")
-    assert _runners(r) == [claude, ollama]
+def test_senza_catena_il_router_non_si_costruisce():
+    """Tappa 7 T9 (M-07): il ramo di libreria (`model_chain=None` -> ordine di
+    strategia) e' uscito. Una catena non passata non e' piu' «ripiega su un
+    ordine scritto qui dentro»: e' un errore di chi costruisce, che si vede
+    subito invece di instradare in silenzio su un ordine che nessuno ha scelto.
+
+    Mutazione eseguita (07/10/2026): `model_chain: list[str] | None = None` con
+    `self._chat_policy = list(chain_members()) if model_chain is None else ...`
+    in `LLMRouter.__init__` -> rosso con «DID NOT RAISE <class 'TypeError'>».
+    Ripristinato, `git diff hiris/app/llm_router.py` senza la mutazione."""
+    with pytest.raises(TypeError):
+        LLMRouter(claude=_Dummy(), ollama=_Dummy())
+
+
+def test_un_provider_che_la_tabella_non_conosce_non_entra_nel_router():
+    """I nomi dei backend sono quelli della tabella dei provider
+    (`providers.chain_members()`): un nome sconosciuto prima veniva scartato in
+    silenzio da `_norm_policy`, e un backend passato col nome sbagliato non
+    rispondeva mai senza che nessuno lo sapesse.
+
+    Mutazione eseguita (07/10/2026): tolto il `raise TypeError` sui nomi
+    sconosciuti in `LLMRouter.__init__` -> rosso con «DID NOT RAISE <class
+    'TypeError'>». Ripristinato, `git diff hiris/app/llm_router.py` senza la
+    mutazione."""
+    with pytest.raises(TypeError, match="bogus"):
+        LLMRouter(claude=_Dummy(), bogus=_Dummy(), model_chain=["claude"])
 
 
 @pytest.mark.asyncio
@@ -352,7 +345,7 @@ async def test_niente_in_catena_non_e_una_risposta_che_invita_a_riprovare():
     """«Tutti i provider AI non disponibili. Riprova tra poco» dice che il
     guasto e' transitorio. Con la catena vuota non lo e': non c'e' niente da
     aspettare, c'e' qualcosa da mettere in catena."""
-    r = LLMRouter(claude=_Dummy(), strategy="balanced", model_chain=[])
+    r = LLMRouter(claude=_Dummy(), model_chain=[])
     risposta = await r.chat(model="auto")
     assert "catena" in risposta.lower()
     assert "riprova" not in risposta.lower()
@@ -533,7 +526,7 @@ async def test_senza_registro_il_router_funziona_come_prima():
     rotto.chat = AsyncMock(side_effect=RunnerBackendError("giu'"))
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="risposta")
-    router = LLMRouter(claude=rotto, ollama=buono, strategy="quality_first")
+    router = LLMRouter(claude=rotto, ollama=buono, model_chain=["claude", "ollama"])
     assert await router.chat(model="auto") == "risposta"
 
 

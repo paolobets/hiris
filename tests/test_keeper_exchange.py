@@ -274,7 +274,7 @@ async def test_sulla_CATENA_nessuno_risponde_e_il_motivo_non_cita_il_router():
 
     giu = MagicMock()
     giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
-    router = LLMRouter(claude=giu, strategy="balanced")
+    router = LLMRouter(claude=giu, model_chain=["claude"])
 
     esito = await interpreta_promise({"llm_router": router}, _promessa_chiedi())
 
@@ -393,7 +393,7 @@ def _app_col_ponte(coda=None, router=None):
 
 @pytest.fixture
 def col_token_del_piano(monkeypatch):
-    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
     monkeypatch.setenv(SUBSCRIPTION_TOKEN_VAR, "un-token-qualunque")
 
 
@@ -448,7 +448,7 @@ async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_
 async def test_senza_il_token_del_piano_il_turno_scende_alla_catena(monkeypatch):
     """Il ripiego della chat, identico: e' la regola sola che la fetta cerca."""
     from hiris.app.keeper.exchange import interpreta_promise
-    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
 
     monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
     coda = _CodaFinta()
@@ -482,7 +482,7 @@ async def test_il_ripiego_dal_piano_alla_catena_finisce_nella_promessa(monkeypat
     promessa non ha una risposta in cui metterla -- ha il suo motivo, ed e'
     quello che si legge dalla pagina."""
     from hiris.app.keeper.exchange import interpreta_promise
-    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
 
     monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
     app = _app_col_ponte(_CodaFinta(),

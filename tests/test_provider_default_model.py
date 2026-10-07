@@ -20,8 +20,9 @@ import pytest_asyncio
 
 from hiris.app.backends.openai_compat_runner import AUTO_MODEL_MAP as AUTO_COMPAT
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.backends.openrouter_runner import AUTO_OPENROUTER, OpenRouterRunner
+from hiris.app.backends.openrouter_runner import OpenRouterRunner
 from hiris.app.claude_runner import AUTO_MODEL_MAP, ClaudeRunner, resolve_model
+from hiris.app.providers import OPENROUTER
 
 
 def test_resolve_model_uses_provider_default_when_auto():
@@ -89,7 +90,7 @@ def test_il_modello_di_openrouter_cambia_dal_turno_dopo(tmp_path):
     # Il prefisso `openrouter:` viene tolto prima della chiamata, come sempre.
     assert runner._resolve_current_model() == "openai/gpt-4.1"
     app["models_config"] = {"provider_models": {"openrouter": ""}}
-    assert runner._resolve_current_model() == AUTO_OPENROUTER.split("openrouter:")[-1]
+    assert runner._resolve_current_model() == OPENROUTER.auto_model.split("openrouter:")[-1]
 
 
 def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):

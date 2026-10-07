@@ -62,7 +62,10 @@ from .proxy._sanitize import sanitize_text
 # esiste per chiudere: il piano non ha rifiutato, non ha risposto. Chiede a chi
 # legge un'azione ancora diversa dalle altre tre -- guardare se il worker del
 # ponte sta girando -- ed e' per questo che e' separata.
-FAMILIES = ("credenziale", "modello", "irraggiungibile", "scaduto", "altro")
+#
+# Le famiglie non stanno in un elenco: sono i rami di
+# `model_resolution.occurrence_phrase`. La tupla `FAMILIES` che le elencava e'
+# uscita alla Tappa 7 T9 (voce M-81): la leggeva solo una prova.
 
 # La sola tabella di questo modulo, e sta qui e non in `occurrence_phrase` perché è
 # una MISURA (che cosa ha risposto il server), non una parola. 402 è il codice

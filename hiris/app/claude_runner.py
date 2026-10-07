@@ -15,6 +15,7 @@ import anthropic
 from .home_space.topology import name_with_id
 from .model_resolution import failure_reply
 from .provider_occurrences import error_family, provider_said
+from .providers import CLAUDE
 from .proxy._sanitize import truncate_with_marker
 from .usage.giro import anthropic_turn_tokens
 
@@ -494,8 +495,10 @@ def testo_canonico(x) -> str:
 MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 45]
 
+# Il modello automatico vive nella tabella dei provider (`CLAUDE.auto_model`,
+# Tappa 7 T9): la pagina Modelli lo legge da li' per dire chi risponderebbe.
 AUTO_MODEL_MAP: dict[str, str] = {
-    "chat": "claude-sonnet-4-6",
+    "chat": CLAUDE.auto_model,
 }
 # Il turno di una promessa "chiedi" (`keeper/exchange.py::interpreta_promise`)
 # ragiona come un turno di chat -- confronta un valore con un'istantanea,
@@ -882,9 +885,9 @@ class ClaudeRunner:
         from .usage.vocabulary import cost_state_and_value
 
         state, cost_usd = cost_state_and_value(
-            "claude", model, cost_dichiarato=None, cost_da_listino=cost)
+            CLAUDE.id, model, cost_dichiarato=None, cost_da_listino=cost)
         self._log_usage(
-            "claude", model, token_in=inp, token_out=out,
+            CLAUDE.id, model, token_in=inp, token_out=out,
             cache_read=cache_read, cache_write=cache_write,
             cost_usd=cost_usd, cost_state=state, now=time.time())
 
@@ -899,7 +902,7 @@ class ClaudeRunner:
         if self._log_usage is None:
             return
         self._log_usage(
-            "claude", model, richieste=0, errori_rate_limit=1,
+            CLAUDE.id, model, richieste=0, errori_rate_limit=1,
             cost_usd=None, cost_state="non_noto", now=time.time())
 
     async def chat(
@@ -1076,7 +1079,7 @@ class ClaudeRunner:
             if _raccoglitore is not None:
                 from .usage.vocabulary import cost_state_and_value
                 _, _costo_giro = cost_state_and_value(
-                    "claude", effective_model, cost_dichiarato=None,
+                    CLAUDE.id, effective_model, cost_dichiarato=None,
                     cost_da_listino=cost)
                 _raccoglitore(_giro, {**anthropic_turn_tokens(response.usage),
                                       "cost_usd": _costo_giro,

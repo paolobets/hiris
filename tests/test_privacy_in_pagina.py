@@ -19,6 +19,7 @@ seconda volta in un'altra lingua.
 import pathlib
 
 from hiris.app import model_resolution as mr
+from hiris.app import providers
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 
@@ -28,8 +29,8 @@ def test_ogni_provider_dichiara_dove_va_il_dato():
     «di quello non si sa», che e' la cosa peggiore da dire sulla privacy.
 
     Mutazione ESEGUITA: togliere una voce -- rossa."""
-    for pid in mr.FIXED_ORDER:
-        assert mr.privacy(pid), f"«{pid}» non dice dove va il dato"
+    for pid in providers.ids():
+        assert providers.privacy(pid), f"«{pid}» non dice dove va il dato"
 
 
 def test_il_piano_dichiara_le_SUE_condizioni_di_conservazione():
@@ -39,11 +40,11 @@ def test_il_piano_dichiara_le_SUE_condizioni_di_conservazione():
     nasconderebbe proprio la differenza.
 
     Mutazione ESEGUITA: dare al piano la frase di Claude API -- rossa."""
-    frase = mr.privacy("subscription")
+    frase = providers.privacy("subscription")
 
     assert "conservazione" in frase
     assert "divers" in frase.lower()
-    assert frase != mr.privacy("claude")
+    assert frase != providers.privacy("claude")
 
 
 def test_Ollama_dice_che_NON_esce():
@@ -51,7 +52,7 @@ def test_Ollama_dice_che_NON_esce():
     questo, e vederselo scritto e' la ragione per cui la riga esiste.
 
     Mutazione ESEGUITA: dare a Ollama una frase qualunque -- rossa."""
-    frase = mr.privacy("ollama")
+    frase = providers.privacy("ollama")
 
     assert "non esce" in frase.lower()
 
@@ -71,8 +72,8 @@ def test_la_frase_viaggia_nella_RIGA_della_catena():
     )
     per_id = {r["id"]: r for r in catena + fuori}
 
-    assert per_id["subscription"]["privacy"] == mr.privacy("subscription")
-    assert per_id["claude"]["privacy"] == mr.privacy("claude")
+    assert per_id["subscription"]["privacy"] == providers.privacy("subscription")
+    assert per_id["claude"]["privacy"] == providers.privacy("claude")
 
 
 def test_la_pagina_DISEGNA_la_frase_e_non_la_compone():

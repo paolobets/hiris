@@ -73,7 +73,7 @@ async def test_il_segnale_si_azzera_a_ogni_chiamata():
 
 @pytest.mark.asyncio
 async def test_il_router_dice_lo_strumento_scappato_di_chi_ha_risposto():
-    router = LLMRouter(openai=_runner("search▁{}"), strategy="balanced")
+    router = LLMRouter(openai=_runner("search▁{}"), model_chain=["openai"])
     await router.chat(user_message="ciao", model="auto", tools=_TOOLS)
     assert router.last_tool_leaked is True
 
@@ -82,7 +82,7 @@ async def test_il_router_dice_lo_strumento_scappato_di_chi_ha_risposto():
 async def test_il_router_senza_nessuno_che_risponde_non_eredita_il_segnale():
     primo = MagicMock()
     primo.chat = AsyncMock(side_effect=RuntimeError("giu'"))
-    router = LLMRouter(claude=primo, strategy="balanced")
+    router = LLMRouter(claude=primo, model_chain=["claude"])
     ClaudeRunner(api_key="sk-prova").last_tool_leaked = True
     await router.chat(user_message="ciao", model="auto")
     assert router.last_tool_leaked is False
