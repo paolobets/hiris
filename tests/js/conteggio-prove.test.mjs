@@ -4,7 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contaPerFile, resoconto, scese } from './helpers/conteggio-prove.mjs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { contaPerFile, registra, resoconto, scese } from './helpers/conteggio-prove.mjs';
 
 const QUI = dirname(fileURLToPath(import.meta.url));
 const evento = (type, file, nesting = 0) => ({ type, data: { file: join(QUI, file), nesting } });
@@ -48,4 +50,41 @@ test('scese: un file sparito dal giro conta come zero, anche se il totale sale',
     { 'tests/js/a.test.mjs': 9 },
   );
   assert.deepEqual(giu, [{ file: 'tests/js/b.test.mjs', prima: 1, adesso: 0 }]);
+});
+
+/* N75-1 (revisore, giro 75): se il conto che scende si salvasse, un
+ * rilancio automatico spegnerebbe il confronto -- il secondo giro
+ * confronterebbe con il conto gia' sceso e direbbe di si'. */
+test('resoconto: un conto che scende non si salva, e il testo dice come accettarlo', () => {
+  const r = resoconto({ 'tests/js/a.test.mjs': 15 }, { 'tests/js/a.test.mjs': 2 });
+  assert.equal(r.salva, false);
+  assert.equal(r.ferma, true);
+  assert.match(r.testo, /HIRIS_PROVE_JS_OK=1/);
+});
+
+test('resoconto: con HIRIS_PROVE_JS_OK il conto che scende si accetta, si salva e non ferma', () => {
+  const r = resoconto({ 'tests/js/a.test.mjs': 15 }, { 'tests/js/a.test.mjs': 2 }, { accetta: true });
+  assert.equal(r.salva, true);
+  assert.equal(r.ferma, false);
+  assert.match(r.testo, /accettato/);
+});
+
+test('resoconto: un conto che non scende si salva sempre', () => {
+  assert.equal(resoconto(null, { 'tests/js/a.test.mjs': 1 }).salva, true);
+  assert.equal(resoconto({ 'tests/js/a.test.mjs': 1 }, { 'tests/js/a.test.mjs': 3 }).salva, true);
+});
+
+test('registra: il conto sceso non tocca la memoria, e il giro dopo lo segnala ancora', (t) => {
+  const cartella = mkdtempSync(join(tmpdir(), 'hiris-conteggio-'));
+  t.after(() => rmSync(cartella, { recursive: true, force: true }));
+  const memoria = join(cartella, 'memoria.json');
+  const intero = { 'tests/js/a.test.mjs': 15 };
+  const sceso = { 'tests/js/a.test.mjs': 2 };
+  assert.equal(registra(intero, { memoria }).ferma, false);
+  assert.equal(registra(sceso, { memoria }).ferma, true);
+  assert.equal(registra(sceso, { memoria }).ferma, true, 'il rilancio deve segnalarlo di nuovo');
+  assert.deepEqual(JSON.parse(readFileSync(memoria, 'utf8')).per_file, intero);
+  assert.equal(registra(sceso, { memoria, accetta: true }).ferma, false);
+  assert.deepEqual(JSON.parse(readFileSync(memoria, 'utf8')).per_file, sceso);
+  assert.equal(registra(sceso, { memoria }).ferma, false);
 });
