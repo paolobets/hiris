@@ -95,7 +95,7 @@ def test_presentarsi_DUE_volte_non_crea_due_righe(archivio):
     archivio.presenta(nome="Retro Panel", chiave=pubblica, indirizzo="x", now_ts=100.0)
     archivio.presenta(nome="Retro Panel", chiave=pubblica, indirizzo="x", now_ts=200.0)
 
-    assert len(archivio.elenco()) == 1
+    assert len(archivio.elenco(now_ts=300.0)) == 1
 
 
 def test_approvare_da_il_RUOLO_e_la_specie(archivio):
@@ -108,7 +108,7 @@ def test_approvare_da_il_RUOLO_e_la_specie(archivio):
 
     archivio.approva(pubblica, ruolo="utente", specie="luogo", now_ts=200.0)
 
-    riga = archivio.elenco()[0]
+    riga = archivio.elenco(now_ts=300.0)[0]
     assert riga["stato"] == "autorizzato"
     assert riga["ruolo"] == "utente"
     assert riga["specie"] == "luogo"
@@ -156,7 +156,7 @@ def test_REVOCARE_toglie_l_accesso_subito(archivio):
     archivio.revoca(pubblica, now_ts=300.0)
 
     assert archivio.autorizzato(pubblica) is None
-    assert archivio.elenco()[0]["stato"] == "revocato"
+    assert archivio.elenco(now_ts=300.0)[0]["stato"] == "revocato"
 
 
 def test_un_servizio_REVOCATO_che_si_ripresenta_resta_revocato(archivio):
@@ -176,7 +176,7 @@ def test_un_servizio_REVOCATO_che_si_ripresenta_resta_revocato(archivio):
 
     archivio.presenta(nome="x", chiave=pubblica, indirizzo="x", now_ts=400.0)
 
-    assert archivio.elenco()[0]["stato"] == "revocato"
+    assert archivio.elenco(now_ts=300.0)[0]["stato"] == "revocato"
     assert archivio.autorizzato(pubblica) is None
 
 
@@ -195,10 +195,50 @@ def test_una_presentazione_mai_guardata_SCADE(archivio):
     archivio.presenta(nome="vera", chiave=viva, indirizzo="x", now_ts=100.0)
     archivio.approva(viva, ruolo="utente", specie="luogo", now_ts=110.0)
 
-    quante = archivio.pota(now_ts=100.0 + ServiziStore.ATTESA_S + 1)
+    dopo = 100.0 + ServiziStore.ATTESA_S + 1
 
-    assert quante == 1
-    assert [r["nome"] for r in archivio.elenco()] == ["vera"]
+    assert [r["nome"] for r in archivio.elenco(now_ts=dopo)] == ["vera"]
+
+
+def test_la_presentazione_scaduta_esce_dal_disco_quando_si_SCRIVE(archivio, tmp_path):
+    """La scaduta non si mostra (sopra), e dal disco la toglie la
+    presentazione successiva: l'unico punto che la cancella e' uno che scrive
+    comunque. Fino al 07/10/2026 la cancellava `GET /api/services`, una
+    lettura (Tappa 7, Task 0b).
+
+    Mutazione ESEGUITA: togliere la cancellazione da `presenta` -- rossa."""
+    import sqlite3
+
+    _, vecchia = _coppia()
+    _, nuova = _coppia()
+    archivio.presenta(nome="rumore", chiave=vecchia, indirizzo="x", now_ts=100.0)
+    dopo = 100.0 + ServiziStore.ATTESA_S + 1
+
+    archivio.elenco(now_ts=dopo)
+    archivio.presenta(nome="altro", chiave=nuova, indirizzo="x", now_ts=dopo)
+
+    conn = sqlite3.connect(str(tmp_path / "servizi.db"))
+    try:
+        nomi = [r[0] for r in conn.execute("SELECT nome FROM servizi")]
+    finally:
+        conn.close()
+    assert nomi == ["altro"]
+
+
+def test_una_presentazione_scaduta_NON_si_approva(archivio):
+    """La pagina non la mostra piu': approvarla vorrebbe dire dare un si' a
+    qualcosa che non si vede. Fino al 07/10/2026 non si poteva perche' la
+    lettura della pagina l'aveva gia' cancellata.
+
+    Mutazione ESEGUITA: approvare senza guardare la scadenza -- rossa."""
+    _, pubblica = _coppia()
+    archivio.presenta(nome="rumore", chiave=pubblica, indirizzo="x", now_ts=100.0)
+
+    fatto = archivio.approva(pubblica, ruolo="utente", specie="luogo",
+                             now_ts=100.0 + ServiziStore.ATTESA_S + 1)
+
+    assert fatto is False
+    assert archivio.autorizzato(pubblica) is None
 
 
 def test_l_elenco_dice_TUTTO_quello_che_serve_a_decidere(archivio):
@@ -211,7 +251,7 @@ def test_l_elenco_dice_TUTTO_quello_che_serve_a_decidere(archivio):
     archivio.presenta(nome="Retro Panel", chiave=pubblica,
                       indirizzo="192.168.1.31", now_ts=100.0)
 
-    riga = archivio.elenco()[0]
+    riga = archivio.elenco(now_ts=300.0)[0]
     for campo in ("nome", "indirizzo", "codice", "visto_ts", "stato"):
         assert riga.get(campo) is not None, campo
 

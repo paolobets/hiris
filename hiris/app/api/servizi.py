@@ -60,6 +60,13 @@ CREATE INDEX IF NOT EXISTS idx_servizi_stato ON servizi(stato, visto_ts DESC);
 """
 
 
+#: Una presentazione che nessuno ha guardato entro `ServiziStore.ATTESA_S`:
+#: scaduta. La condizione vive qui una volta sola, perche' la usano tre
+#: domande -- chi si mostra, chi si puo' approvare, chi si cancella -- e due
+#: copie direbbero prima o poi due scadenze diverse.
+_SCADUTA = "stato='in_attesa' AND visto_ts < ?"
+
+
 def _row(r) -> dict:
     return {"chiave": r["chiave"], "nome": r["nome"], "indirizzo": r["indirizzo"],
             "stato": r["stato"], "ruolo": r["ruolo"], "specie": r["specie"],
@@ -113,6 +120,11 @@ class ServiziStore:
         if not str(chiave or "").strip():
             raise ValueError("un servizio senza chiave pubblica non si presenta")
         with self._lock:
+            # Le scadute si cancellano qui, dove si scrive comunque: e' l'unico
+            # punto che le toglie dal disco (Tappa 7, Task 0b). Fino al
+            # 07/10/2026 lo faceva `GET /api/services`, cioe' una lettura.
+            self._conn.execute(f"DELETE FROM servizi WHERE {_SCADUTA}",
+                               (now_ts - self.ATTESA_S,))
             esistente = self._conn.execute(
                 "SELECT * FROM servizi WHERE chiave=?", (chiave,)).fetchone()
             if esistente is None:
@@ -131,7 +143,11 @@ class ServiziStore:
 
     def approva(self, chiave: str, *, ruolo: str, specie: str,
                 now_ts: float) -> bool:
-        """Il sì del proprietario, col ruolo e la specie che decide lui."""
+        """Il sì del proprietario, col ruolo e la specie che decide lui.
+
+        Una presentazione scaduta non si approva: la pagina non la mostra
+        piu', e fino al 07/10/2026 non esisteva nemmeno, perche' la lettura
+        della pagina la cancellava."""
         if ruolo not in RUOLI:
             raise ValueError(f"ruolo {ruolo!r}: sono {', '.join(RUOLI)}")
         if specie not in SPECIE:
@@ -139,7 +155,8 @@ class ServiziStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE servizi SET stato='autorizzato', ruolo=?, specie=?, "
-                "deciso_ts=? WHERE chiave=?", (ruolo, specie, now_ts, chiave))
+                f"deciso_ts=? WHERE chiave=? AND NOT ({_SCADUTA})",
+                (ruolo, specie, now_ts, chiave, now_ts - self.ATTESA_S))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -166,23 +183,19 @@ class ServiziStore:
                 (chiave,)).fetchone()
         return None if r is None else _row(r)
 
-    def elenco(self) -> list[dict]:
+    def elenco(self, *, now_ts: float) -> list[dict]:
         """Tutti, dal più recente: la pagina mostra insieme chi aspetta, chi è
         vivo e chi hai revocato — perché sono la stessa domanda vista in tre
-        momenti, e separarli in tre elenchi costringerebbe a cercare."""
+        momenti, e separarli in tre elenchi costringerebbe a cercare.
+
+        Le presentazioni scadute non ci sono, ma **non si cancellano qui**:
+        una lettura non scrive (Tappa 7, Task 0b). Le toglie dal disco la
+        presentazione successiva."""
         with self._lock:
             righe = self._conn.execute(
-                "SELECT * FROM servizi ORDER BY visto_ts DESC").fetchall()
+                f"SELECT * FROM servizi WHERE NOT ({_SCADUTA}) "
+                "ORDER BY visto_ts DESC", (now_ts - self.ATTESA_S,)).fetchall()
         return [_row(r) for r in righe]
-
-    def pota(self, *, now_ts: float) -> int:
-        """Toglie le presentazioni che nessuno ha guardato entro `ATTESA_S`."""
-        with self._lock:
-            cur = self._conn.execute(
-                "DELETE FROM servizi WHERE stato='in_attesa' AND visto_ts < ?",
-                (now_ts - self.ATTESA_S,))
-            self._conn.commit()
-        return cur.rowcount
 
 
 #: Quanto resta aperta la finestra di accoppiamento. **Dieci minuti**, decisione

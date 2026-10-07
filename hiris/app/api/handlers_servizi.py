@@ -99,10 +99,9 @@ async def handle_services(request: web.Request) -> web.Response:
     if archivio is None:
         return error_response(503, "archivio non disponibile")
     adesso = time.time()
-    archivio.pota(now_ts=adesso)
     finestra = request.app.get("finestra_servizi")
     return web.json_response({
-        "servizi": archivio.elenco(),
+        "servizi": archivio.elenco(now_ts=adesso),
         "finestra": {"aperta": finestra_aperta(finestra, adesso=adesso),
                      "resta_s": round(finestra_resta(finestra, adesso=adesso))},
         "ruoli": list(RUOLI), "specie": list(SPECIE)})
@@ -163,7 +162,7 @@ async def handle_service_approve(request: web.Request) -> web.Response:
         return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: approvato un servizio come «%s» (%s)",
                 dati.get("ruolo"), dati.get("specie"))
-    return web.json_response({"servizi": archivio.elenco()})
+    return web.json_response({"servizi": archivio.elenco(now_ts=time.time())})
 
 
 async def handle_service_revoke(request: web.Request) -> web.Response:
@@ -178,4 +177,4 @@ async def handle_service_revoke(request: web.Request) -> web.Response:
     if not archivio.revoca(str(dati.get("chiave") or ""), now_ts=time.time()):
         return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: accesso revocato a un servizio")
-    return web.json_response({"servizi": archivio.elenco()})
+    return web.json_response({"servizi": archivio.elenco(now_ts=time.time())})

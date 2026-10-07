@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
+from hiris.app.api.servizi import ServiziStore
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
@@ -298,3 +299,41 @@ async def test_l_elenco_dice_i_ruoli_e_le_specie_possibili(cliente):
 
     assert corpo["ruoli"] == ["amministratore", "utente", "lettore"]
     assert corpo["specie"] == ["integrazione", "luogo"]
+
+
+# --- una lettura non scrive (Tappa 7, Task 0b, 07/10/2026) -------------------
+
+def _rows_on_disk(percorso) -> int:
+    """Le righe dell'archivio contate da una connessione a parte: cio' che sta
+    sul disco, non cio' che la rotta decide di mostrare."""
+    import sqlite3
+
+    conn = sqlite3.connect(str(percorso))
+    try:
+        return conn.execute("SELECT COUNT(*) FROM servizi").fetchone()[0]
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
+async def test_GET_api_services_NON_scrive_l_archivio(cliente, tmp_path):
+    """**Una lettura non scrive.** Fino al 07/10/2026 `GET /api/services`
+    potava l'archivio prima di rispondere: chi voleva solo guardare quali
+    servizi sono approvati cancellava le presentazioni scadute. La stessa cosa
+    che `GET /api/constructions` aveva smesso di fare il 06/10.
+
+    La presentazione scaduta non si mostra -- la pagina resta leggibile -- ma
+    resta sul disco finche' non si scrive comunque (una presentazione nuova).
+
+    Mutazione ESEGUITA: rimettere `pota` nella rotta -- rossa."""
+    import time
+
+    archivio = cliente.server.app["servizi"]
+    vecchia = time.time() - ServiziStore.ATTESA_S - 60
+    archivio.presenta(nome="rumore", chiave=_chiave(), indirizzo="x", now_ts=vecchia)
+
+    corpo = await (await cliente.get("/api/services", headers=_chi("u-admin"))).json()
+
+    assert corpo["servizi"] == [], "una presentazione scaduta non si mostra"
+    assert _rows_on_disk(tmp_path / "servizi.db") == 1, (
+        "GET /api/services ha cancellato una riga: una lettura che scrive")
