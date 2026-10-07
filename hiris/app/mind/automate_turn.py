@@ -120,7 +120,7 @@ async def guard(app, exchange: str | None = None) -> AutomateDispatcher:
     """Il `dispatcher` del turno, sulla catena e sul ponte: il guardiano qui
     sopra, e l'officina che rifiuta il livello `alto`."""
     return await proposer_guard(app, exchange, kind=AutomateDispatcher,
-                                refuse_high=True)
+                                refuse_high=True, species=AUTOMATE_SPECIES)
 
 
 def preparing(app) -> str | None:

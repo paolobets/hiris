@@ -364,7 +364,10 @@ def test_l_officina_legge_solo_il_registro_delle_entita():
     house = CasaFinta(inputs)
     workshop = Workshop(house, None, None)
 
-    found, missing = _run(workshop._helper_entities([("input_boolean", "vacanza_2")]))
+    # Dal 07/10/2026 (A-15) la lettura la fa `_entity_index`, UNA per
+    # l'oggetto e per gli helper, e `_helper_entities` la riceve.
+    index = _run(workshop._entity_index())
+    found, missing = workshop._helper_entities([("input_boolean", "vacanza_2")], index)
 
     assert (found, missing) == (["input_boolean.vacanza"], [])
     assert _commands(house) == ["config/entity_registry/list"]

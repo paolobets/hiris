@@ -105,6 +105,7 @@ from ..proxy.entity_cache import (
 from ..proxy.ha_client import SILENCE
 from .rhythm import too_often
 from .verification import verification
+from .write_outcome import refused
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,7 @@ _NO_STATE_TO_REREAD = ("la chiamata e' partita ed e' stata accettata: questo "
                              "nessuno stato da rileggere.")
 
 
-def _preview(verdict, resolved: dict) -> dict:
+def _target_report(verdict, resolved: dict) -> dict:
     """Cosa il bersaglio conteneva, e cosa di quello si tocca.
 
     C'e' solo quando il bersaglio e' stato risolto da Home Assistant: su un
@@ -331,7 +332,12 @@ def _fingerprint(entry) -> dict | None:
     """
     if not isinstance(entry, dict):
         return None
-    fingerprint = {"state": entry.get("state")}
+    # `stato` e `unita`, non `state` e `unit` (C-64, Tappa 7, Task 2,
+    # 07/10/2026): sono chiavi NOSTRE, che vanno al modello, e seguono la resa
+    # di ogni altra porta che gli racconta un'entita' (`house_query`,
+    # `queries`: `stato`, `unita`). Gli attributi sotto restano coi nomi di
+    # Home Assistant: sono suoi.
+    fingerprint = {"stato": entry.get("state")}
     # L'UNITA', che questa proiezione buttava: «adesso e' a 21, in stanza ci
     # sono 69.8» senza scala e' un numero, non un fatto -- e il modello non
     # puo' nemmeno dedurla, perche' il nucleo gli vieta esplicitamente di
@@ -339,7 +345,7 @@ def _fingerprint(entry) -> dict | None:
     # dello specchio (`entity_cache._to_minimal`) e costava solo il leggerla.
     unit = clean_text(entry.get("unit"))
     if unit is not None:
-        fingerprint["unit"] = unit
+        fingerprint["unita"] = unit
     # `disclosable_attributes` appiattisce le quattro ceste che raccontano la
     # casa (`capabilities`/`values`/`uninterpreted`) e LASCIA FUORI le
     # credenziali. Non e' prudenza generica: un token di telecamera RUOTA, e
@@ -347,9 +353,10 @@ def _fingerprint(entry) -> dict | None:
     # inventare un cambiamento, cioe' il verso opposto del difetto che
     # quest'impronta esiste per chiudere.
     attributes = disclosable_attributes(entry.get("attributes"))
-    # `state` non si lascia sovrascrivere da un attributo omonimo: la chiave
-    # che dice lo stato dev'essere sempre quella.
-    fingerprint.update({k: v for k, v in attributes.items() if k != "state"})
+    # Le chiavi nostre non si lasciano sovrascrivere da un attributo omonimo:
+    # la chiave che dice lo stato (e quella che dice l'unita') dev'essere
+    # sempre quella.
+    fingerprint.update({k: v for k, v in attributes.items() if k not in fingerprint})
     return fingerprint
 
 
@@ -533,7 +540,8 @@ class ActionActuator:
         if not isinstance(answer, dict):
             return {"errore": _target_not_resolved("risposta illeggibile")}
         if answer.get("errore"):
-            return {"errore": _target_not_resolved(str(answer["errore"]))}
+            return {"errore": _target_not_resolved(str(answer["errore"])),
+                    "causa": answer}
         return answer
 
     def _open_listen(self, listen) -> bool:
@@ -603,7 +611,9 @@ class ActionActuator:
         else:
             message = f"Home Assistant ha rifiutato la chiamata: {answer['errore']}"
         logger.warning("azione fallita [origine=%s] %s: %s", actor, service, message)
-        occurrence = {"eseguito": False, "errore": message}
+        # La busta del client resta intatta in `causa` (E-04): la frase e'
+        # di HIRIS, il motivo e il codice sono di Home Assistant.
+        occurrence = refused(message, answer)
         execution_id = self._record(actor=actor, service=service, entity=entity,
                                     executed=False, error=message, subject=subject)
         if execution_id is not None:
@@ -629,7 +639,9 @@ class ActionActuator:
 
         Torna `{"verdetto", "stati_prima", "risolto"}` oppure `{"errore": ...}`
         gia' scritto per il modello (con `bersaglio` quando il bersaglio era
-        stato risolto: cio' che conteneva resta un fatto anche sul rifiuto).
+        stato risolto: cio' che conteneva resta un fatto anche sul rifiuto; con
+        `causa`, la busta del client, quando il rifiuto nasce da una lettura
+        di Home Assistant non riuscita).
         Le guardie sono tre, ed e' la porta a dirle, per chi esegue e per chi
         verifica soltanto (`verify`): due porte non rispondono in modo opposto
         alla stessa situazione.
@@ -641,8 +653,14 @@ class ActionActuator:
         try:
             await self._registry.ensure_fresh(self._ha)
         except Exception as error:
-            return {"errore": f"non riesco a leggere cosa Home Assistant sa fare "
-                              f"({type(error).__name__}: {error})."}
+            refusal = {"errore": f"non riesco a leggere cosa Home Assistant sa fare "
+                                 f"({type(error).__name__}: {error})."}
+            # La busta della lettura caduta, quando il registro la porta
+            # (`HAReadError.failure`): e' la causa vera, e resta intatta.
+            failure = getattr(error, "failure", None)
+            if isinstance(failure, dict):
+                refusal["causa"] = failure
+            return refusal
 
         # Guardia (a). Il registro sa distinguere «mai letto» (`empty()`) da
         # «letto e vuoto», ma per chi deve agire i due casi valgono uguale:
@@ -681,14 +699,14 @@ class ActionActuator:
             if resolved.get("errore"):
                 logger.warning("chiamata rifiutata [origine=%s]: bersaglio %s non "
                                "risolto", actor, verdict.target)
-                return {"errore": resolved["errore"]}
+                return {k: v for k, v in resolved.items() if k in ("errore", "causa")}
             verdict = verification(call, self._registry, states_before,
                                    resolved=resolved, source=source)
         if not verdict.ok:
             logger.info("chiamata rifiutata [origine=%s]: %s", actor, verdict.reason)
             refusal = {"errore": verdict.reason}
             if resolved is not None:
-                refusal["bersaglio"] = _preview(verdict, resolved)
+                refusal["bersaglio"] = _target_report(verdict, resolved)
             return refusal
         return {"verdetto": verdict, "stati_prima": states_before, "risolto": resolved}
 
@@ -714,7 +732,7 @@ class ActionActuator:
         answer = {"servizio": f"{verdict.domain}.{verdict.service}",
                   "entita": list(verdict.entity)}
         if resolved is not None:
-            answer["bersaglio"] = _preview(verdict, resolved)
+            answer["bersaglio"] = _target_report(verdict, resolved)
         elif verdict.da_risolvere:
             answer["da_risolvere"] = True
         return answer
@@ -723,7 +741,7 @@ class ActionActuator:
                       subject: dict | None = None) -> dict:
         checked = await self._check(call, actor=actor)
         if "errore" in checked:
-            return {"eseguito": False, "errore": checked["errore"]}
+            return refused(checked["errore"], checked.get("causa"))
         verdict = checked["verdetto"]
         states_before = checked["stati_prima"]
         resolved = checked["risolto"]
@@ -746,15 +764,15 @@ class ActionActuator:
             if braked is not None:
                 logger.warning("azione FERMATA dal ritmo [origine=%s]: %s",
                                actor, braked)
-                return {"eseguito": False, "errore": braked}
+                return refused(braked)
 
         # L'anteprima: cosa si toccherebbe, calcolata e detta PRIMA di
         # toccarlo. Nell'esito ci arriva in fondo, ma qui e' gia' un fatto --
         # e nel log lo e' anche quando la chiamata poi fallisce, che e'
         # l'unico momento in cui la si puo' confrontare con cio' che e'
         # successo davvero.
-        preview = _preview(verdict, resolved) if resolved is not None else None
-        if preview is not None:
+        report = _target_report(verdict, resolved) if resolved is not None else None
+        if report is not None:
             logger.info("azione: bersaglio %s risolto in %d entita' da toccare "
                         "(%d di altri domini, %d senza stato) [origine=%s]",
                         verdict.target, len(verdict.entity),
@@ -853,8 +871,8 @@ class ActionActuator:
         occurrence = {"servizio": f"{verdict.domain}.{verdict.service}",
                       "entita": list(verdict.entity),
                       "prima": prima, "dopo": dopo, "cambiato": changed}
-        if preview is not None:
-            occurrence["bersaglio"] = preview
+        if report is not None:
+            occurrence["bersaglio"] = report
         if non_viste:
             occurrence["avviso"] = _not_seen(pending, listened=listening)
         elif changed:

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.api import handlers_models
+from hiris.app.providers import CLAUDE, OPENAI, OPENROUTER
 
 
 def _mock_openrouter_response(payload: dict):
@@ -112,7 +113,7 @@ async def test_fetch_falls_back_when_capability_field_missing():
     with patch("aiohttp.ClientSession", return_value=session_cm):
         models, fonte = await handlers_models._fetch_openrouter_models("sk-or-test")
 
-    assert models == handlers_models._OPENROUTER_PRESETS
+    assert models == list(OPENROUTER.reserve_models)
     assert fonte == "riserva", (
         "una risposta 200 senza dati di capacita' NON e' una lettura riuscita: "
         "quello che si mostra viene dal sorgente"
@@ -123,7 +124,7 @@ def test_presets_no_longer_include_known_broken_hermes3():
     """Regression: hermes-3-llama-3.1-405b:free does not support tools and was
     removed from presets (v0.9.8) after observed 404s."""
     assert "openrouter:nousresearch/hermes-3-llama-3.1-405b:free" not in (
-        handlers_models._OPENROUTER_PRESETS
+        list(OPENROUTER.reserve_models)
     )
 
 
@@ -251,7 +252,7 @@ async def test_una_lettura_fallita_dichiara_la_riserva_invece_di_fingere():
         modelli, fonte = await handlers_models._fetch_openrouter_models(
             "k", hide_free_models=False)
     assert fonte == "riserva"
-    assert modelli == handlers_models._OPENROUTER_PRESETS
+    assert modelli == list(OPENROUTER.reserve_models)
 
 
 @pytest.mark.asyncio
@@ -281,7 +282,7 @@ async def test_un_200_senza_modelli_utili_non_e_una_lettura_riuscita():
     session_cm = _mock_openrouter_response({"data": [{"id": "davinci-002"}]})
     with patch("aiohttp.ClientSession", return_value=session_cm):
         modelli, fonte = await handlers_models._fetch_openai_models("sk-test")
-    assert modelli == handlers_models._OPENAI_FALLBACK
+    assert modelli == list(OPENAI.reserve_models)
     assert fonte == "riserva"
 
 
@@ -289,7 +290,7 @@ async def test_un_200_senza_modelli_utili_non_e_una_lettura_riuscita():
 async def test_openai_che_non_risponde_dichiara_la_riserva():
     with patch("aiohttp.ClientSession", return_value=_mock_che_solleva()):
         modelli, fonte = await handlers_models._fetch_openai_models("sk-test")
-    assert modelli == handlers_models._OPENAI_FALLBACK
+    assert modelli == list(OPENAI.reserve_models)
     assert fonte == "riserva"
 
 
@@ -348,7 +349,7 @@ async def test_openai_che_risponde_MALE_dichiara_la_riserva():
     with patch("aiohttp.ClientSession", return_value=_mock_stato(401)):
         modelli, fonte = await handlers_models._fetch_openai_models("sk-sbagliata")
     assert fonte == "riserva"
-    assert modelli == handlers_models._OPENAI_FALLBACK
+    assert modelli == list(OPENAI.reserve_models)
 
 
 @pytest.mark.asyncio
@@ -357,7 +358,7 @@ async def test_openrouter_che_risponde_MALE_dichiara_la_riserva():
         modelli, fonte = await handlers_models._fetch_openrouter_models(
             "k", hide_free_models=False)
     assert fonte == "riserva"
-    assert modelli == handlers_models._OPENROUTER_PRESETS
+    assert modelli == list(OPENROUTER.reserve_models)
 
 
 @pytest.mark.asyncio
@@ -384,11 +385,16 @@ def test_i_modelli_di_claude_non_offrono_piu_la_parola_auto():
     diceva «scegli tu», e salvarla come valore fa partire la richiesta con
     `model="auto"` verso un provider che quel nome non lo conosce
     (`resolve_model("auto", "chat", "auto") == "auto"`). Nell'archivio auto e'
-    la stringa vuota, e il pannello la offre come prima voce."""
-    from hiris.app.claude_runner import resolve_model
-    assert "auto" not in handlers_models._CLAUDE_MODELS
-    assert resolve_model("auto", "chat", "auto") == "auto", (
-        "se un giorno resolve_model imparasse a scartare la parola, questa "
+    la stringa vuota, e il pannello la offre come prima voce.
+
+    Il difetto e' reale e si prova dove nasce: un runner la cui scelta e'
+    «auto» spedisce `model="auto"` (`ClaudeRunner._resolve_model`; fino alla
+    Tappa 7 T10 la prova chiedeva a `resolve_model`, uscita)."""
+    from hiris.app.claude_runner import ClaudeRunner
+    assert "auto" not in list(CLAUDE.reserve_models)
+    runner = ClaudeRunner(api_key="sk-test", read_model=lambda: "auto")
+    assert runner._resolve_model("auto") == "auto", (
+        "se un giorno il runner imparasse a scartare la parola, questa "
         "prova va riscritta: oggi il difetto e' reale"
     )
 
@@ -447,7 +453,7 @@ async def test_l_elenco_vivo_NON_e_limitato_alla_lista_del_sorgente():
         modelli, _ = await handlers_models._fetch_openrouter_models("sk-or-test")
 
     nei_preset = {m.removeprefix("openrouter:")
-                  for m in handlers_models._OPENROUTER_PRESETS}
+                  for m in list(OPENROUTER.reserve_models)}
     assert not ({"provider-x/modello-1", "provider-y/modello-2"} & nei_preset)
     assert len(modelli) == 2
 
@@ -495,4 +501,4 @@ def test_la_riserva_non_contiene_modelli_che_non_esistono_piu():
         "openrouter:anthropic/claude-sonnet-4-6",
         "openrouter:anthropic/claude-opus-4-7",
     }
-    assert not (morti & set(handlers_models._OPENROUTER_PRESETS))
+    assert not (morti & set(OPENROUTER.reserve_models))

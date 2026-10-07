@@ -113,7 +113,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
         return Recipients(("notify.mobile_app_iphone_bet",), None)
 
     async def _comanda(_subject):
-        return {"leggere": True, "comandare": True, "costruire": False,
+        return {"leggere": True, "comandare": True, "amministrare": False,
                 "ruolo": "utente", "perche": None}
 
     async def _no_owner():

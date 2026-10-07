@@ -169,3 +169,32 @@ def test_l_impronta_della_catena_CAMBIA_se_cambia_la_guida():
         STRUMENTI, "x")
 
     assert uno["prefix_hash"] != due["prefix_hash"]
+
+
+# --- Una definizione di «guida» per tutti i canali (Tappa 7, T10; D-61) ----
+
+
+def test_la_STESSA_composizione_pesa_uguale_sui_due_canali():
+    """Erano tre definizioni di «guida» sotto lo stesso nome: i blocchi
+    Anthropic pesati come JSON (chiavi e `cache_control` compresi), il testo
+    della catena, la stringa del ponte. Adesso la regola e' una
+    (`usage.giro.pesa_carico`) e ogni canale separa solo i pezzi: la stessa
+    guida e lo stesso nucleo danno la stessa guida e la stessa impronta, in
+    blocchi come in un messaggio solo.
+
+    Mutazione ESEGUITA (07/10/2026): in `claude_runner._pesa_carico` i
+    blocchi passati interi (`str(b)`) invece del loro testo -- rossa
+    (la guida di Claude pesava le chiavi del blocco). Ripristinata, `git
+    diff` senza la mutazione."""
+    guida, nucleo = "sei hiris, sii conciso", "sono le 20:33"
+    anthropic = _pesa_carico(
+        [{"type": "text", "text": guida, "cache_control": {"type": "ephemeral"}},
+         {"type": "text", "text": nucleo}],
+        STRUMENTI, _messaggi(), nucleo)
+    catena = _pesa_carico_catena(
+        [{"role": "system", "content": guida + nucleo},
+         {"role": "user", "content": "ciao"}], STRUMENTI, nucleo)
+
+    assert anthropic["guide_chars"] == catena["guide_chars"] == len(guida)
+    assert anthropic["core_chars"] == catena["core_chars"] == len(nucleo)
+    assert anthropic["prefix_hash"] == catena["prefix_hash"]

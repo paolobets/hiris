@@ -4,7 +4,7 @@
 dentro `api/handlers_chat.handle_chat`, intrecciata con la persistenza del
 turno e con la coda -- e il turno di una promessa, che quella funzione non la
 attraversa mai, ne aveva per forza una seconda: andava dritto a `llm_router`,
-dove il ponte non e' nemmeno un anello (`_VALID_BACKEND_NAMES` conosce claude,
+dove il ponte non e' nemmeno un anello (`providers.chain_members()` conosce claude,
 openai, openrouter, ollama).
 
 Non era una svista di chi ha scritto lo Schedulatore: era la struttura a
@@ -49,8 +49,8 @@ from dataclasses import dataclass as _dataclass
 from dataclasses import field as _field
 from typing import NamedTuple as _NamedTuple
 
-from .api.handlers_models import _STORE_DEFAULTS, bridge_deadline_min
-from .model_resolution import subscription_has_token
+from .models_store import _STORE_DEFAULTS, bridge_deadline_min
+from .providers import subscription_has_token
 from .reasoning.queue import PRIORITY_BACKGROUND, PRIORITY_CHAT
 
 logger = logging.getLogger(__name__)
@@ -105,12 +105,13 @@ from .claude_runner import togli_misura as _togli_misura
 #: **Le specie di turno di HIRIS**, in un posto solo: `misura_turno` rifiuta
 #: una specie che non sta qui.
 #:
-#: **Non e' `agent_type`**, e la differenza morde. `agent_type` risponde a
-#: «quale modello scelgo» (`AUTO_MODEL_MAP`); questa risponde a «chi sta
-#: chiedendo». Fino al 07/10/2026 `mind/observer.py` e `mind/recipe_turn.py`
-#: passavano tutti e due `agent_type="observer"`, quindi misurando su quello
-#: l'osservatore e le ricette sarebbero stati indistinguibili -- proprio la
-#: distinzione che il proprietario vuole vedere.
+#: **Non sceglie il modello.** Fino al 07/10/2026 i runner ricevevano anche
+#: un `agent_type`, che rispondeva a «quale modello scelgo» con una mappa per
+#: mestiere, e `mind/observer.py` e `mind/recipe_turn.py` ci passavano tutti e
+#: due «observer»: misurando su quello l'osservatore e le ricette sarebbero
+#: stati indistinguibili. `agent_type` e' uscito (Tappa 7 T10, D11a): ogni
+#: turno usa il modello scelto per il provider, e la specie risponde a una
+#: domanda sola, «chi sta chiedendo».
 #:
 #: **La specie dell'attuatore ha un nome, e si importa** (C-28, Tappa 4 dello
 #: sprint «Una fonte sola di verita'»): fino al 05/10/2026 «attuatore» era
@@ -122,8 +123,8 @@ from .claude_runner import togli_misura as _togli_misura
 #:
 #: **E le altre, tranne `chat`** (A21, approvata dal proprietario il
 #: 05/10/2026): la stessa cura per l'analista, l'osservatore, le ricette e la
-#: promessa, che restavano letterali. `chat` no: e' anche un `agent_type` e un
-#: `kind` della coda, e un nome solo per tre parole non le distinguerebbe.
+#: promessa, che restavano letterali. `chat` no: e' anche un `kind` della coda, e
+#: un nome solo per due parole non le distinguerebbe.
 #:
 #: **Dal 06/10/2026 l'attuatore si chiama proponente** (D11 del piano degli
 #: attori, strati 3-4, approvata dal proprietario il 06/10/2026): il nome
@@ -224,7 +225,13 @@ class Species:
       dispatcher -- `await guard(app, exchange)` -- con davanti il guardiano
       che lascia passare solo il catalogo. `None` per chat e promessa, che
       il ponte serve con il soggetto e il soffitto dei loro job;
-    - `priority`: la precedenza sulla coda del ponte (D4 della Tappa 6).
+    - `priority`: la precedenza sulla coda del ponte (D4 della Tappa 6);
+    - `gestures`: per un mestiere di sfondo con strumenti, i gesti del suo
+      soffitto (`api/soffitto.GESTI`) -- **la decisione 13** della spec
+      2026-10-01 (Tappa 7, Task 7). Il guardiano lo passa al dispatcher
+      (`ceiling()`), e un dispatcher senza soffitto non si costruisce piu'.
+      `None` per chat e promessa, il cui soffitto e' quello della persona
+      che li ha aperti.
 
     Il tetto di token non sta qui: lo dichiara ogni turno accanto alla sua
     domanda (Tappa 6, Task 4), e `chain_turn` lo pretende per nome.
@@ -234,6 +241,24 @@ class Species:
     catalog: _Callable[[], list[dict]] | None
     priority: int
     guard: _Callable | None = None
+    gestures: frozenset[str] | None = None
+
+    def __post_init__(self) -> None:
+        # Un guardiano senza gesti costruirebbe un dispatcher senza soffitto:
+        # e' esattamente il «tutto» che la decisione 13 ha tolto.
+        if (self.guard is None) != (self.gestures is None):
+            raise ValueError(f"mestiere {self.name!r}: un guardiano porta i suoi "
+                             "gesti, e i gesti un guardiano")
+
+    def ceiling(self) -> dict:
+        """Il soffitto dichiarato di questo mestiere, nella forma di tutti gli
+        altri (`soffitto.declared_ceiling`)."""
+        from .api.soffitto import declared_ceiling
+
+        if self.gestures is None:
+            raise ValueError(f"il mestiere {self.name!r} non dichiara un soffitto: "
+                             "lo porta la persona che apre il turno")
+        return declared_ceiling(self.gestures)
 
     @property
     def self_contained(self) -> bool:
@@ -248,6 +273,15 @@ class Species:
         return tuple(d["name"] for d in self.catalog_for_turn())
 
 
+#: **Cosa puo' un attore** (decisione 13 della spec 2026-10-01, D5 della
+#: Tappa 7): leggere e amministrare si', comandare no. Al livello di chi
+#: amministra perche' cio' che gli attori producono lo legge solo chi
+#: amministra, e l'analista per spiegare un cambio ha bisogno del corpo
+#: dell'automazione; `amministrare` e' anche il gesto di `propose`, che il
+#: proponente ha gia' (la proposta aspetta il si'). Comandare no: un attore
+#: non tocca la casa.
+_ACTOR_GESTURES = frozenset({"leggere", "amministrare"})
+
 #: I sette mestieri. **La precedenza**: la sola decisione presa e' «la chat
 #: passa avanti» (spec §4.3), quindi due valori, quelli della coda.
 SPECIES = {s.name: s for s in (
@@ -256,13 +290,13 @@ SPECIES = {s.name: s for s in (
     Species(OBSERVER_SPECIES, "scope", None, PRIORITY_BACKGROUND),
     Species(RECIPES_SPECIES, "ricetta", None, PRIORITY_BACKGROUND),
     Species(ANALYST_SPECIES, "analisi", _analyst_tools, PRIORITY_BACKGROUND,
-            guard=_analyst_guard),
+            guard=_analyst_guard, gestures=_ACTOR_GESTURES),
     Species(PROPOSER_SPECIES, "proposta", _proposer_tools, PRIORITY_BACKGROUND,
-            guard=_proposer_guard),
+            guard=_proposer_guard, gestures=_ACTOR_GESTURES),
     # Gli stessi strumenti del proponente: e' il suo mestiere, su una
     # proposta sola. Cambia il guardiano.
     Species(AUTOMATE_SPECIES, "automatizza", _proposer_tools, PRIORITY_BACKGROUND,
-            guard=_automate_guard),
+            guard=_automate_guard, gestures=_ACTOR_GESTURES),
 )}
 
 def refused_tool(name: str, *, doing: str, instead: str) -> dict:

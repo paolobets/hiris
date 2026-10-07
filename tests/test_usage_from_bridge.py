@@ -37,7 +37,8 @@ def test_il_ponte_registra_i_token_col_costo_COMPRESO(registro):
     }), "job-1")
 
     provider, _modello, kw = registro[0]
-    assert provider == "ponte"
+    # D9a: il provider e' `subscription` anche nei consumi (era `ponte`).
+    assert provider == "subscription"
     assert kw["token_in"] == 2100 and kw["token_out"] == 94
     assert kw["cache_read"] == 1400 and kw["cache_write"] == 210
     assert kw["cost_state"] == "compreso"
@@ -148,3 +149,19 @@ def test_senza_registro_il_ponte_logga_e_basta_come_prima():
 def test_un_turno_senza_usage_non_scrive_niente(registro):
     ponte._logga_uso(_esito({}), "job-6")
     assert registro == []
+
+
+def test_un_archivio_dei_consumi_che_solleva_non_fa_cadere_il_turno():
+    """Tappa 7, T10 (S-11): il turno del ponte ha gia' la sua risposta quando
+    scrive i consumi; un archivio rotto non deve buttarla via.
+
+    Mutazione ESEGUITA (07/10/2026): `log_safely` senza il `try` -- rossa
+    (`OSError: disco pieno`). Ripristinata, `git diff` senza la mutazione."""
+    def rotto(provider, model, **kw):
+        raise OSError("disco pieno")
+
+    ponte.set_usage_logger(rotto)
+    try:
+        ponte._logga_uso(_esito({"input_tokens": 1, "output_tokens": 1}), "job-rotto")
+    finally:
+        ponte.set_usage_logger(None)

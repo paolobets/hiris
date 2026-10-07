@@ -341,7 +341,7 @@ async def test_chi_non_ha_una_strada_se_lo_sente_dire_alla_nascita(archivio):
 async def test_un_fai_senza_il_permesso_di_comandare_non_nasce(archivio):
     """2.7 (ruling): il soffitto di chi chiede vale anche per l'azione
     rimandata -- stesso `perche`. Un `chiedi` resta permesso."""
-    soffitto = {"leggere": True, "comandare": False, "costruire": False,
+    soffitto = {"leggere": True, "comandare": False, "amministrare": False,
                 "ruolo": "lettore", "perche": "questa utenza legge e basta"}
     d = _dispatcher(archivio, MARTA, MARTA_SOGGETTO, soffitto=soffitto)
 
@@ -627,7 +627,7 @@ def test_le_promesse_di_prima_si_adottano_solo_da_due_porte():
 
 @pytest.fixture
 def col_token_del_piano(monkeypatch):
-    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
     monkeypatch.setenv(SUBSCRIPTION_TOKEN_VAR, "un-token-qualunque")
 
 

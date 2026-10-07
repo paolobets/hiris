@@ -15,7 +15,6 @@ aggiungerla. Cio' che resta scritto a mano e' la CLASSIFICAZIONE, che non
 ricopia niente: enuncia la decisione, e chiude per difetto -- una rotta non
 classificata fa diventare rosso questo file.
 """
-import ast
 import pathlib
 
 from tests._avvio import router_routes
@@ -201,31 +200,6 @@ def test_ogni_esenzione_porta_la_sua_RAGIONE():
             f"«{rotta}» e' classificata senza una ragione leggibile")
 
 
-def test_le_due_scritture_verso_home_assistant_passano_DAVVERO_dal_soffitto():
-    """La classificazione dice cosa DOVREBBE passare dal soffitto; questa prova
-    guarda se ci passa davvero, altrimenti sarebbe un elenco di buone
-    intenzioni.
-
-    Il punto unico e' `handlers_constructions._act`, da cui passano sia
-    «applica» sia «rimetti com'era». Dal 26/09/2026 chiede al cancello di
-    tutta la pagina, `require_builder` (spec 2026-09-26 §3: «`_act` passa
-    alla stessa funzione, una regola, non due»).
-
-    Mutazione ESEGUITA: tolto `require_builder` da `_act` -- rossa.
-    """
-    sorgente = (RADICE / "hiris" / "app" / "api"
-                / "handlers_constructions.py").read_text(encoding="utf-8")
-    albero = ast.parse(sorgente)
-    atto = next(n for n in ast.walk(albero)
-                if isinstance(n, ast.AsyncFunctionDef) and n.name == "_act")
-    chiamate = {getattr(n.func, "id", None) or getattr(n.func, "attr", None)
-                for n in ast.walk(atto) if isinstance(n, ast.Call)}
-
-    assert "require_builder" in chiamate, (
-        "`_act` non interroga più il cancello: le due scritture verso Home "
-        "Assistant sono tornate a passare senza chiedere chi le chiede")
-
-
 # --- il cancello di chi costruisce (spec 2026-09-26 §3) ----------------------
 
 #: I prefissi delle rotte che sono di chi costruisce. **E' la decisione**
@@ -235,14 +209,10 @@ def test_le_due_scritture_verso_home_assistant_passano_DAVVERO_dal_soffitto():
 _BUILDER_PREFIXES = ("/api/constructions", "/api/proposals", "/api/mind/judgment",
                      "/api/mind/scope")
 
-_API = RADICE / "hiris" / "app" / "api"
-
-
-def builder_routes() -> dict[str, str]:
-    """`"METODO percorso" -> nome del gestore`, DERIVATO dal router vero: ogni
-    metodo, letture comprese -- la pagina e' di chi costruisce anche quando
-    guarda."""
-    trovate = {rotta: gestore for rotta, gestore in router_routes().items()
+def builder_routes() -> set[str]:
+    """`"METODO modello"`, DERIVATO dal router vero: ogni metodo, letture
+    comprese -- la pagina e' di chi amministra anche quando guarda."""
+    trovate = {rotta for rotta in router_routes()
                if rotta.split(" ", 1)[1].startswith(_BUILDER_PREFIXES)}
     for prefisso in _BUILDER_PREFIXES:
         assert any(r.split(" ", 1)[1].startswith(prefisso) for r in trovate), (
@@ -252,63 +222,32 @@ def builder_routes() -> dict[str, str]:
     return trovate
 
 
-def _funzioni_api() -> dict[str, ast.AsyncFunctionDef]:
-    funzioni = {}
-    for percorso in _API.glob("handlers_*.py"):
-        for nodo in ast.walk(ast.parse(percorso.read_text(encoding="utf-8"))):
-            if isinstance(nodo, ast.AsyncFunctionDef):
-                funzioni[nodo.name] = nodo
-    return funzioni
+def test_ogni_rotta_di_chi_costruisce_chiede_AMMINISTRARE():
+    """**Il cancello delle decisioni 5 e 6.** Ogni rotta registrata sotto
+    `/api/constructions`, `/api/proposals`, `/api/mind/judgment` e
+    `/api/mind/scope` chiede il gesto `amministrare` nella tabella delle rotte
+    (`admission.ADMISSION`), che il confine chiede per ogni soggetto prima del
+    gestore -- cioe' prima di qualunque archivio. Una rotta nuova sotto questi
+    prefissi entra da sola in questa verifica. Fino al 07/10/2026 la prova
+    guardava che la prima istruzione di ogni gestore fosse
+    `soffitto.require_builder`, uscito col cancello unico (F-01, Tappa 7);
+    la proprieta' e' la stessa, la forma no -- comprese le due scritture
+    verso Home Assistant di `_act` (applica e rimetti com'era).
 
+    Mutazioni ESEGUITE: la riga `POST /api/proposals/{id}/redo` col gesto
+    `leggere` -- rossa col nome della rotta; aggiunta a `server.py` una
+    `router.add_get("/api/proposals/prova", handle_get_pending)` -- rossa
+    (senza riga, nessun gesto)."""
+    from hiris.app.api.admission import ADMISSION
 
-def _first_statement(funzione: ast.AsyncFunctionDef) -> ast.stmt:
-    corpo = funzione.body
-    if (corpo and isinstance(corpo[0], ast.Expr)
-            and isinstance(corpo[0].value, ast.Constant)):
-        corpo = corpo[1:]  # la docstring
-    return corpo[0]
-
-
-def _chiama(istruzione: ast.stmt) -> set[str]:
-    return {getattr(n.func, "id", None) or getattr(n.func, "attr", None)
-            for n in ast.walk(istruzione) if isinstance(n, ast.Call)}
-
-
-def _gate_comes_first(nome: str, funzioni: dict) -> bool:
-    """La PRIMA istruzione del gestore chiama `require_builder` -- o delega
-    subito a un aiutante di `api/` (`return await _act(...)`) la cui prima
-    istruzione lo chiama. «Per prima» e non «da qualche parte»: il cancello
-    deve venire prima di qualunque archivio."""
-    prima = _first_statement(funzioni[nome])
-    chiamate = _chiama(prima)
-    if "require_builder" in chiamate:
-        return True
-    aiutanti = [c for c in chiamate if c in funzioni and c != nome]
-    return (isinstance(prima, ast.Return) and len(aiutanti) == 1
-            and "require_builder" in _chiama(_first_statement(funzioni[aiutanti[0]])))
-
-
-def test_ogni_rotta_di_chi_costruisce_passa_PER_PRIMA_dal_cancello():
-    """**Il cancello delle decisioni 5 e 6.** Ogni gestore registrato sotto
-    `/api/constructions`, `/api/proposals` e `/api/mind/judgment` chiama
-    `soffitto.require_builder` come prima cosa. Una rotta nuova sotto questi
-    prefissi entra da sola in questa verifica.
-
-    Mutazioni ESEGUITE: tolto `require_builder` da `handle_proposal_redo` --
-    rossa col nome della rotta; spostato dopo `store.scadi` in
-    `handle_get_constructions` -- rossa; aggiunta a `server.py` una
-    `router.add_get("/api/proposals/prova", handle_get_pending)` -- rossa.
-    """
-    funzioni = _funzioni_api()
-    scoperte = sorted(rotta for rotta, gestore in builder_routes().items()
-                      if gestore not in funzioni
-                      or not _gate_comes_first(gestore, funzioni))
+    gesti = {f"{r.method} {r.canonical}": r.gesture for r in ADMISSION}
+    scoperte = sorted(rotta for rotta in builder_routes()
+                      if gesti.get(rotta) != "amministrare")
 
     assert not scoperte, (
-        f"rotte di chi costruisce senza il cancello davanti: {scoperte}. La "
-        "pagina Costruzioni, le proposte e i giudizi sono di chi costruisce "
-        "(spec 2026-09-26 §3): la prima istruzione del gestore è "
-        "`require_builder`")
+        f"rotte di chi costruisce senza il gesto `amministrare`: {scoperte}. La "
+        "pagina Costruzioni, le proposte e i giudizi sono di chi amministra "
+        "(spec 2026-09-26 §3)")
 
 
 def test_la_derivazione_delle_rotte_di_chi_costruisce_VEDE_le_rotte_vere():

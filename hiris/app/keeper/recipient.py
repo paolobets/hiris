@@ -89,6 +89,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from ..api.canali import SERVICE_SPECIES
 from ..home_space.reference import slugify
 from ..proxy.ha_client import HAReadError
 
@@ -101,7 +102,7 @@ logger = logging.getLogger(__name__)
 _SLUG_RE = re.compile(r"^[a-z0-9_]+$")
 
 
-#: Le due specie dei servizi firmati (`api/servizi.py::SPECIE`): nessuna
+#: Le specie dei servizi firmati (`api/canali.py::SERVICE_SPECIES`): nessuna
 #: strada finche' Retro Panel e le integrazioni non dichiarano il proprio
 #: gestore di notifiche (BACKLOG). Testo esatto della spec §2.3.
 _REASON_NO_CHANNEL = "il servizio non ha ancora dichiarato come si avvisa."
@@ -156,9 +157,6 @@ _REASON_AMBIGUOUS_PERSON = (
     "in Home Assistant risulta collegata allo stesso utente. Sistemalo in "
     "Impostazioni → Persone.")
 
-#: Le due specie dei servizi firmati (Retro Panel e le integrazioni,
-#: `api/servizi.py::SPECIE`): stessa non-strada per entrambe.
-_SIGNED_SPECIES = ("luogo", "integrazione")
 
 
 @dataclass(frozen=True)
@@ -205,7 +203,9 @@ async def recipients_for(subject: dict | None, ha, services) -> Recipients:
     # falso). La CHIAVE del dizionario resta `"specie"` -- quella e' un
     # valore di dominio, non un identificatore Python.
     kind = subject.get("specie")
-    if kind in _SIGNED_SPECIES:
+    # Le specie dei servizi firmati (Retro Panel e le integrazioni) si
+    # chiedono al vocabolario del confine (F-02): stessa non-strada per tutte.
+    if kind in SERVICE_SPECIES:
         return Recipients((), _REASON_NO_CHANNEL)
     if kind != "persona":
         return Recipients((), _REASON_NO_SUBJECT)

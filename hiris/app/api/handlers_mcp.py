@@ -51,7 +51,8 @@ quando la CLI risponde) **chiude la chiamata** (`_stale_chat_rejection`)
 invece di ricadere sul dispatcher senza soffitto -- fail closed, non un
 ripiego: ricadere riaprirebbe la porta di scrittura che l'intestazione
 esiste per chiudere. L'ASSENZA dell'intestazione (promesse, osservatore)
-resta com'era prima di questa fetta.
+non da' piu' il dispatcher della chat senza soffitto: dal 07/10/2026
+(decisione 13) il suo soffitto non concede nessun gesto (`_build_dispatcher`).
 
 **Dagli attori (Task 3.6, 06/10/2026) sa anche QUALE mestiere.** Un mestiere
 di sfondo con strumenti (l'analista) porta `X-HIRIS-Lavoro`, l'id del suo job;
@@ -90,16 +91,17 @@ from dataclasses import dataclass
 
 from aiohttp import web
 
-from ..claude_runner import pesa_in_caratteri
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
+from ..models_store import bridge_deadline_min
+from ..providers import SUBSCRIPTION
 from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
+from ..usage.giro import pesa_in_caratteri
 from ..version import read_version
 from .boundary import error_response
 from .handlers_chat import create_tool_dispatcher, last_phrase
-from .handlers_models import bridge_deadline_min
-from .soffitto import ceiling_for
+from .soffitto import ceiling_for, nothing_granted
 
 logger = logging.getLogger(__name__)
 
@@ -396,6 +398,13 @@ def _stale_chat_rejection(name: str) -> dict:
         f"strumento (l'ultimo tentato: «{name}»).")
 
 
+#: Il `perche` del soffitto di un turno che non dice chi e': ne' una chat, ne'
+#: una promessa, ne' un mestiere di sfondo (decisione 13).
+_UNKNOWN_TURN = ("non so di quale turno è questa chiamata -- non è una chat, una "
+                 "promessa né il lavoro di un mestiere -- e senza sapere chi l'ha "
+                 "aperto non concedo nessun gesto")
+
+
 def _closed_call(text: str) -> dict:
     """Il `content` di una chiamata chiusa da un'intestazione che non vale:
     un esito dello strumento, non un guasto di protocollo. Una forma sola per
@@ -537,8 +546,16 @@ async def _build_dispatcher(request: web.Request, exchange_id: str | None,
                             chat_job: dict | None, promise_id: str | None):
     """Il dispatcher di un turno del ponte, con cio' che il turno porta: il
     soffitto, il soggetto, la frase e il filo di un job di chat; il soffitto di
-    chi ha chiesto una promessa; niente per gli altri. Lo si costruisce una
-    volta per turno (`_call_tool`, D-63)."""
+    chi ha chiesto una promessa. Lo si costruisce una volta per turno
+    (`_call_tool`, D-63).
+
+    **Un turno che non si fa riconoscere non ha nessun gesto** (decisione 13,
+    Tappa 7, Task 7): il soffitto e' `soffitto.nothing_granted`, e ogni
+    strumento che chiede un gesto -- comandare, costruire, leggere cio' che
+    Home Assistant riserva agli amministratori -- si rifiuta col suo perche'.
+    Fino al 07/10/2026 riceveva il soffitto `None`, cioe' tutto. I mestieri di
+    sfondo si fanno riconoscere con `X-HIRIS-Lavoro` e passano dal loro
+    guardiano, che porta il soffitto dichiarato (`Species.ceiling`)."""
     if chat_job is not None:
         ctx = chat_job.get("context") or {}
         soggetto = ctx.get("soggetto")
@@ -564,7 +581,8 @@ async def _build_dispatcher(request: web.Request, exchange_id: str | None,
             request.app, agenda.read(promise_id) if agenda is not None else None)
         return create_tool_dispatcher(request.app, exchange=exchange_id,
                                       soffitto=ceiling, soggetto=subject)
-    return create_tool_dispatcher(request.app, exchange=exchange_id)
+    return create_tool_dispatcher(request.app, exchange=exchange_id,
+                                  soffitto=nothing_granted(_UNKNOWN_TURN))
 
 
 async def _call_tool(request: web.Request, params, request_id) -> web.Response:
@@ -659,9 +677,10 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # riceve soffitto, soggetto e frase DEL JOB, come il ramo sincrono. Prima
     # di questa riga il ponte costruiva senza soffitto: una persona non
     # amministratrice poteva far scrivere un'automazione passando dal piano.
-    # L'osservatore non porta `X-HIRIS-Chat` e resta senza soggetto: nessuna
-    # persona l'ha aperto. Una promessa nemmeno, ma una persona l'ha chiesta:
-    # il suo soffitto si rifa' dal filo della promessa (`_build_dispatcher`).
+    # Una promessa non porta `X-HIRIS-Chat`, ma una persona l'ha chiesta: il
+    # suo soffitto si rifa' dal filo della promessa (`_build_dispatcher`). Un
+    # mestiere di sfondo porta `X-HIRIS-Lavoro` e il soffitto dichiarato; un
+    # turno che non porta niente non ha nessun gesto (decisione 13).
     # Un'intestazione PRESENTE che non vale chiude la chiamata: vedi
     # `_stale_chat_rejection`.
     #
@@ -745,7 +764,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
             # concluso: e' un fatto gia' accertato, non un'ipotesi.
             registry = request.app.get("occurrence_registry")
             if registry is not None:
-                registry.successo("subscription")
+                registry.successo(SUBSCRIPTION.id)
 
     content: dict = {
         "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],

@@ -1862,7 +1862,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_28_with_143_fields():
+def test_product_dataclasses_are_30_with_164_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1971,13 +1971,24 @@ def test_product_dataclasses_are_28_with_143_fields():
     (`hiris/app/api/handlers_mcp.py`) coi suoi tre campi -- `rounds`,
     `dispatcher`, `since` -- cio' che la rotta MCP tiene di un turno del
     ponte: i giri, il dispatcher costruito una volta, e da quando.
+
+    **Trenta e 163 dal 07/10/2026**, Tappa 7, Task 9: in
+    `hiris/app/providers.py`, `Provider` coi suoi diciassette campi -- la riga
+    della tabella dei provider: id, nome, natura, riservatezza, credenziale,
+    dove sta la scelta del modello, i modelli noti, i tempi, le parole dei
+    consumi -- e `Preset` coi suoi tre -- `key`, `name`, `order` -- un ordine
+    pronto della pagina Modelli.
+
+    **Trenta e 164 dal 07/10/2026**, Tappa 7, Task 10: il settimo campo di
+    `Tool`, `read_only` -- lo strumento legge e basta, e le letture della
+    stessa risposta partono insieme (S-12, D15a).
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (28, 143), (classi, campi)
+    assert (classi, campi) == (30, 164), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

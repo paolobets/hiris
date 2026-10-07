@@ -160,7 +160,8 @@ class ProposerDispatcher(AnalystDispatcher):
 
 async def guard(app, exchange: str | None = None, *,
                 kind: type[ProposerDispatcher] = ProposerDispatcher,
-                refuse_high: bool = False) -> ProposerDispatcher:
+                refuse_high: bool = False,
+                species: str = PROPOSER_SPECIES) -> ProposerDispatcher:
     """Il dispatcher di un turno del proponente, sulla catena e sul ponte.
 
     `exchange` e' l'identita' del turno (sulla catena la conia il giro, sul
@@ -169,7 +170,11 @@ async def guard(app, exchange: str | None = None, *,
 
     `kind` e `refuse_high` li cambia «Rendila automatica»
     (`automate_turn.guard`): lo stesso dispatcher firmato dal proponente, con
-    davanti il suo guardiano, e l'officina che rifiuta il livello `alto`."""
+    davanti il suo guardiano, e l'officina che rifiuta il livello `alto`.
+
+    `species` e' il mestiere che apre il turno, e da lui si chiede il soffitto
+    (`steering.Species.ceiling`, decisione 13): la firma nella cronaca resta
+    quella del proponente, che e' chi propone."""
     from ..api.handlers_chat import create_tool_dispatcher
     from ..home_space.house import House
     from ..home_space.privacy import PresenceMask
@@ -177,7 +182,8 @@ async def guard(app, exchange: str | None = None, *,
     store = app.get("home_space_store")
     house = House.read(store, app.get("entity_cache")) if store is not None else None
     below = create_tool_dispatcher(app, exchange=exchange, house=house,
-                                   actor=PROPOSER_SPECIES, refuse_high=refuse_high)
+                                   actor=PROPOSER_SPECIES, refuse_high=refuse_high,
+                                   soffitto=SPECIES[species].ceiling())
     return kind(below, ha=None, house=None, timezone=None,
                 presence=PresenceMask(house) if house is not None else None)
 

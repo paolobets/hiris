@@ -31,6 +31,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hiris.app.api import canali
 from hiris.app.api.servizi import ServiziStore
+from hiris.app.chat_thread import new_subject
 
 from ._contracts import assert_stessa_firma
 
@@ -59,7 +60,8 @@ class _Archivio:
 
 def _servizi(pubblica, *, nome="sviluppo", ruolo="lettore", specie="integrazione"):
     return _Archivio({pubblica: {"nome": nome, "ruolo": ruolo, "specie": specie,
-                                 "chiave": pubblica, "stato": "autorizzato"}})
+                                 "chiave": pubblica, "stato": "autorizzato",
+                                 "impronta": ServiziStore.fingerprint(pubblica)}})
 
 
 def _firma(privata, *, chiave=None, metodo="GET", percorso="/api/health",
@@ -92,8 +94,11 @@ def test_una_firma_valida_da_il_canale_e_il_suo_RUOLO():
     esito, motivo = _verifica(_servizi(pubblica), **_firma(privata))
 
     assert motivo is None, motivo
-    assert esito["servizio"] == "sviluppo"
+    assert esito["nome"] == "sviluppo"
     assert esito["ruolo"] == "lettore"
+    # Il soggetto, nella sua forma unica (F-19): il confine lo attacca cosi'.
+    assert esito == new_subject(esito["specie"], ident=esito["id"], nome="sviluppo",
+                                ruolo="lettore")
 
 
 def test_la_SPECIE_arriva_dall_archivio_e_non_si_inventa():
@@ -178,7 +183,7 @@ def test_una_richiesta_VECCHIA_non_passa():
 
     esito, motivo = _verifica(
         _servizi(pubblica), adesso=adesso,
-        **_firma(privata, momento=adesso - canali.FINESTRA_S - 1))
+        **_firma(privata, momento=adesso - canali.SCARTO_MOMENTO_S - 1))
 
     assert esito is None
     assert "momento" in motivo.lower()
@@ -195,7 +200,7 @@ def test_una_richiesta_dal_FUTURO_non_passa():
 
     esito, _ = _verifica(
         _servizi(pubblica), adesso=adesso,
-        **_firma(privata, momento=adesso + canali.FINESTRA_S + 60))
+        **_firma(privata, momento=adesso + canali.SCARTO_MOMENTO_S + 60))
 
     assert esito is None
 
@@ -226,7 +231,7 @@ def test_i_valori_gia_visti_non_crescono_per_sempre():
     Mutazione: non potare mai -- rossa."""
     privata, pubblica = _coppia()
     adesso = time.time()
-    visti = {f"vecchio-{n}": adesso - canali.FINESTRA_S * 4 for n in range(50)}
+    visti = {f"vecchio-{n}": adesso - canali.SCARTO_MOMENTO_S * 4 for n in range(50)}
 
     _verifica(_servizi(pubblica), visti=visti, adesso=adesso,
               **_firma(privata, momento=adesso))
@@ -332,78 +337,52 @@ def test_la_finta_combacia_con_l_archivio_vero():
 
 # --- i tre ruoli ------------------------------------------------------------
 
-@pytest.mark.parametrize("ruolo,legge,comanda,costruisce", [
+@pytest.mark.parametrize("ruolo,legge,comanda,amministra", [
     ("amministratore", True, True, True),
     ("utente", True, True, False),
     ("lettore", True, False, False),
 ])
-def test_i_tre_ruoli_dicono_esattamente_questo(ruolo, legge, comanda, costruisce):
+def test_i_tre_ruoli_dicono_esattamente_questo(ruolo, legge, comanda, amministra):
     """La tabella della spec §4, pinnata. `utente` e' quello che il
     proprietario ha descritto: «cosi' non gestisce automazioni e altro, quindi
     comanda».
 
-    Mutazione ESEGUITA: dare `costruire` a «utente» -- rossa."""
+    Mutazione ESEGUITA: dare `amministrare` a «utente» -- rossa."""
     puo = canali.PUO[ruolo]
 
     assert puo["leggere"] is legge
     assert puo["comandare"] is comanda
-    assert puo["costruire"] is costruisce
+    assert puo["amministrare"] is amministra
 
 
 def test_ogni_ruolo_dichiarato_e_MAPPATO():
     """Un ruolo che esiste nel vocabolario ma che nessuno ha mappato non e'
     «permesso»: e' un ruolo su cui nessuno ha deciso.
 
-    Mutazione: aggiungere un ruolo a `RUOLI` e non mapparlo -- rossa."""
+    Mutazione: aggiungere un ruolo a `RUOLI` e non mapparlo -- rossa. E
+    i gesti si chiedono al soffitto, non si ricopiano: un gesto nuovo in
+    `GESTI` che `PUO` non dice e' rosso qui."""
+    from hiris.app.api.soffitto import GESTI
+
     assert set(canali.PUO) == set(canali.RUOLI)
     for ruolo, puo in canali.PUO.items():
-        for gesto in ("leggere", "comandare", "costruire"):
+        assert set(puo) == set(GESTI), ruolo
+        for gesto in GESTI:
             assert isinstance(puo.get(gesto), bool), f"{ruolo} non dice {gesto}"
 
 
-def test_i_ruoli_sono_gli_STESSI_in_tutte_e_due_le_case():
-    """`canali` decide cosa concede un ruolo, `servizi` quali ruoli si possono
-    approvare: due elenchi degli stessi valori divergerebbero al primo che se
-    ne aggiunge uno, e il ruolo approvato non aprirebbe niente.
+def test_i_ruoli_e_le_specie_hanno_UNA_casa():
+    """`canali` decide cosa concede un ruolo, `servizi` quali ruoli e specie
+    si possono approvare: fino al 07/10/2026 `RUOLI` era scritto in entrambi
+    (F-02). Adesso l'archivio li chiede qui -- lo stesso oggetto, non una
+    copia uguale -- e la specie ignota sta fra le specie.
 
-    Mutazione ESEGUITA: aggiungere un ruolo a uno solo dei due -- rossa."""
+    Mutazione ESEGUITA: riscritto `RUOLI = ("amministratore", "utente",
+    "lettore")` in `servizi.py` -- rossa (stessi valori, due case)."""
     from hiris.app.api import servizi
 
-    assert tuple(canali.RUOLI) == tuple(servizi.RUOLI)
+    assert servizi.RUOLI is canali.RUOLI
+    assert servizi.SERVICE_SPECIES is canali.SERVICE_SPECIES
+    assert canali.SPECIE_IGNOTA in canali.SERVICE_SPECIES
 
 
-# --- il soffitto del metodo -------------------------------------------------
-
-@pytest.mark.parametrize("metodo,passa", [
-    ("GET", True), ("HEAD", True), ("OPTIONS", True),
-    ("POST", False), ("PUT", False), ("PATCH", False), ("DELETE", False)])
-def test_un_LETTORE_legge_e_basta(metodo, passa):
-    """A che serve un ruolo che legge e basta: una macchina che deve **misurare
-    senza toccare** -- e Home Assistant non ha un ruolo cosi'.
-
-    **Qui non si nomina nessun servizio, ed e' voluto** (decisione del
-    proprietario, 22/09/2026): chi ha quale ruolo lo decide lui approvando,
-    caso per caso, e vive nell'archivio dei servizi. Scriverlo anche qui
-    sarebbe la stessa decisione in due posti, libera di divergere -- e a
-    divergere sarebbe il posto che nessuno rilegge.
-
-    Mutazione ESEGUITA: far passare qualunque metodo -- rossa."""
-    assert canali.consente_metodo("lettore", metodo) is passa
-
-
-def test_gli_altri_due_ruoli_scrivono():
-    """Il contrario: un soffitto che negasse a tutti sarebbe il prodotto rotto,
-    non messo in sicurezza.
-
-    Mutazione: negare sempre -- rossa."""
-    for ruolo in ("amministratore", "utente"):
-        for metodo in ("GET", "POST", "PUT", "PATCH", "DELETE"):
-            assert canali.consente_metodo(ruolo, metodo) is True
-
-
-def test_un_ruolo_sconosciuto_NEGA_tutto():
-    """Il verso del dubbio anche qui.
-
-    Mutazione: ripiegare su «amministratore» -- rossa."""
-    for metodo in ("GET", "POST"):
-        assert canali.consente_metodo("inventato", metodo) is False

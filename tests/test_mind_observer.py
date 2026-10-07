@@ -19,6 +19,7 @@ import os
 
 import pytest
 
+from hiris.app.claude_runner import _misura_corrente
 from hiris.app.home_space import topology
 from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import Mirror
@@ -78,12 +79,17 @@ class _Modello:
         self.chiamate = []
 
     async def chat(self, *, user_message, system_prompt="", model="auto",
-                   agent_type="chat", max_tokens=0, **kw):
+                   max_tokens=0, **kw):
         # Solo per NOME: `LLMRouter.chat` prende `**kwargs` e basta. Una finta
         # che accetti anche il posizionale lascerebbe passare una chiamata che
         # in produzione morirebbe al primo giro.
         self.chiamate.append({"domanda": user_message, "sistema": system_prompt,
-                              "modello": model, "tipo": agent_type})
+                              "modello": model, "altri": kw})
+        # Come i runner veri: il modello che ha risposto lo dichiara il
+        # runner, nella misura del giro.
+        raccoglitore = _misura_corrente()
+        if raccoglitore is not None:
+            raccoglitore(1, {"model": "gpt-4o", "output_tokens": 1})
         if self.solleva:
             raise RuntimeError("il modello non risponde")
         return self.risposta
@@ -347,23 +353,38 @@ async def test_il_giro_riuscito_si_annota_con_la_ragione_e_la_misura(archivio):
 
 
 @pytest.mark.asyncio
-async def test_l_osservatore_si_dichiara_al_conto_dei_consumi(archivio):
-    """`agent_type` decide sotto quale voce il giro finisce nei consumi. Un
-    osservatore contato come «chat» renderebbe invisibile il costo vero del
-    prodotto -- un giro ogni 84 ore su ≈11.500 token -- proprio nella pagina
-    fatta per vederlo."""
+async def test_l_osservatore_si_dichiara_al_registro_dei_turni(archivio, tmp_path):
+    """Un osservatore contato come «chat» renderebbe invisibile il costo vero
+    del prodotto -- un giro ogni 84 ore su ≈11.500 token -- proprio nella
+    pagina fatta per vederlo. Si dichiara con la sua SPECIE; il modello non lo
+    sceglie piu' il mestiere (`agent_type` e' uscito, Tappa 7 T10, D11a), e
+    nel registro c'e' il modello che ha RISPOSTO, quello che il runner
+    dichiara -- non «auto», che il giro passava alla misura come se fosse un
+    modello.
+
+    Mutazione ESEGUITA (07/10/2026): rimesso `modello=model` (con
+    `model="auto"`) nella chiamata di `reconsider` a `chain_turn` -- rossa
+    (`'auto' == 'gpt-4o'`). Ripristinata, `git diff` senza la mutazione."""
+    from hiris.app.steering import OBSERVER_SPECIES
+    from hiris.app.usage.store import UsageStore
+
+    consumi = UsageStore(str(tmp_path / "consumi.db"))
     modello = _Modello("[]")
 
-    await observer.reconsider(modello, archivio, _casa(), reason="x", now=1000.0)
+    await observer.reconsider(modello, archivio, _casa(), reason="x", now=1000.0,
+                              measurements=consumi)
 
-    assert modello.chiamate[0]["tipo"] == "observer"
+    assert "agent_type" not in modello.chiamate[0]["altri"]
+    assert modello.chiamate[0]["modello"] == "auto"
+    [turno] = consumi.turns()
+    assert (turno["species"], turno["model"]) == (OBSERVER_SPECIES, "gpt-4o")
 
 
 # -- il turno del ponte: la stessa domanda, per un'altra porta ---------------
 #
 # Fetta «l'osservatore chiede a chi risponde davvero» (11/09/2026). Il giro
 # dell'osservatore andava dritto a `llm_router`, dove il ponte **non e' un
-# anello** (`llm_router._VALID_BACKEND_NAMES`: claude, openai, openrouter,
+# anello** (`providers.chain_members()`: claude, openai, openrouter,
 # ollama). Su una casa che gira interamente sul Piano Claude Max -- questa --
 # l'osservatore non poteva usare l'unico fornitore che risponde, ed e'
 # esattamente il difetto che `steering.py` dichiara di aver chiuso il
@@ -570,7 +591,7 @@ async def test_sulla_CATENA_nessuno_risponde_e_si_dice_cosi(archivio):
 
     giu = MagicMock()
     giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
-    router = LLMRouter(claude=giu, strategy="balanced")
+    router = LLMRouter(claude=giu, model_chain=["claude"])
 
     esito = await observer.reconsider(router, archivio, _casa(),
                                       reason="prima volta", now=1000.0)

@@ -27,6 +27,7 @@ from ..home_space.historian import house_timezone, instant_epoch, local_date
 from ..home_space.house import House
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
+from ..providers import SUBSCRIPTION
 
 # Fix round 1, Important 2 (Task 5): il nome di chi parla arriva
 # dall'intestazione dell'ingress di Home Assistant -- non e' mai fidato, la
@@ -41,9 +42,10 @@ from ..steering import (
     who_answers,
 )
 from .boundary import error_body, error_response, json_object
+from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
 from .handlers_mind import mind_view
-from .soffitto import ceiling_for, request_ceiling, ruolo_letto
+from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
 
@@ -218,13 +220,22 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     turno del ponte che non e' di chat, l'officina non restringe PER FILO
     (vedi `Workshop.apply`): il soffitto (chi puo' costruire) resta invariato
     e continua a mordere.
+
+    **`soffitto` e' obbligatorio** (decisione 13, Tappa 7, Task 7): quello di
+    chi ha aperto il turno -- la persona di una chat, chi ha chiesto una
+    promessa -- o quello dichiarato dal mestiere di sfondo
+    (`steering.Species.ceiling`). Fino al 07/10/2026 un turno di sfondo lo
+    lasciava `None`, e `None` non negava niente: adesso e' un errore.
     """
+    if soffitto is None:
+        raise ValueError("create_tool_dispatcher: nessun soffitto. Un turno porta "
+                         "quello di chi l'ha aperto o quello del suo mestiere "
+                         "(steering.Species.ceiling), mai nessuno")
     return ToolDispatcher(
         app.get("home_space_store"),
         app.get("memory_store"),
-        # Il soffitto di chi ha aperto il turno (I-1): `None` quando non c'e'
-        # nessuna persona che l'ha aperto (schedulatore, promessa, un turno
-        # del ponte che non porta `X-HIRIS-Chat`).
+        # Il soffitto di chi ha aperto il turno (I-1), o quello dichiarato dal
+        # suo mestiere (decisione 13): mai `None`, vedi sopra.
         soffitto=soffitto,
         subject=soggetto,
         # **La frase di QUESTO turno** (B-5), quella su cui una conferma
@@ -338,10 +349,11 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
     prosa del prompt.
 
     **Il ruolo sconosciuto non si spaccia per "utente"** (fix round 1,
-    Important 3): `soffitto.consente()` restituisce la stringa "utente" SIA
-    quando Home Assistant ha risposto "non amministratore" SIA quando la
-    lettura e' fallita e HIRIS ripiega per non spegnere la chat -- due fatti
-    diversi dietro la stessa parola. Il parametro `role_known` (valorizzato
+    Important 3): `soffitto.consente()` restituisce lo stesso ruolo
+    (`soffitto.PERSONA_IGNOTA`, `lettore`) SIA quando Home Assistant ha detto
+    che la persona e' di sola lettura SIA quando la lettura e' fallita e HIRIS
+    ripiega per non spegnere la chat -- due fatti diversi dietro la stessa
+    parola. Il parametro `role_known` (valorizzato
     da `soffitto.ruolo_letto()`, chiamata dai due compositori di
     `compose_chat_context` qui sotto -- rinominato dal Task 8 perche' un
     parametro omonimo della funzione importata faceva ombra a quella
@@ -364,7 +376,7 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
         nome = s.get("nome")
         chi = f"«{sanitize_ha_value(nome)}»" if nome else \
             "una persona che Home Assistant non ha nominato"
-    elif specie in ("integrazione", "luogo"):
+    elif specie in SERVICE_SPECIES:
         nome = s.get("nome")
         chi = f"«{sanitize_ha_value(nome)}»" if nome else "un servizio senza nome"
     elif soggetto is None:
@@ -378,9 +390,12 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
         if ruolo and role_known:
             righe.append(f"- ruolo in Home Assistant: {ruolo}")
         else:
+            # Come la tratta il soffitto, chiesto al soffitto (X-66): fino al
+            # 07/10/2026 qui c'era scritto «utente» mentre il soffitto
+            # applicava `lettore`.
             righe.append("- ruolo in Home Assistant: non l'ho potuto sapere "
-                         "(trattato come utente)")
-    elif specie in ("integrazione", "luogo") and ruolo:
+                         f"(trattato come {PERSONA_IGNOTA})")
+    elif specie in SERVICE_SPECIES and ruolo:
         righe.append(f"- un servizio approvato dal proprietario, ruolo {ruolo}")
 
     righe.append(f"- da: {thread.entry_point}")
@@ -680,7 +695,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     occurrence_registry = request.app.get("occurrence_registry")
     if occurrence_registry is not None:
         occurrence_registry.fallimento(
-            "subscription", family="scaduto", code=None,
+            SUBSCRIPTION.id, family="scaduto", code=None,
             # Il messaggio è per chi legge un log, non per la pagina: la frase
             # che l'utente vede la compone `model_resolution.occurrence_phrase`.
             message="nessuna risposta entro la scadenza del ponte",
@@ -693,7 +708,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
 
     runner = chain_runner(request.app)
     contesto = job.get("context") or {}
-    data_dir = request.app.get("data_dir", "/data")
+    data_dir = request.app["data_dir"]
     # Fetta «le chat divise»: soggetto e filo sono quelli DEL JOB, cioe' di chi
     # ha scritto il messaggio -- non di chi per caso fa il poll che scopre la
     # scadenza (spec §4). Il poll di un altro filo e' gia' un 404, ma il turno
@@ -710,12 +725,13 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # -- e' lo stato vero della risorsa (A6, 05/10/2026). Il testo sta in
         # `error`, la forma comune del confine.
         return web.json_response(error_body(
-            "Il Piano Claude Max non ha risposto in tempo, e non c’è "
+            f"Il {SUBSCRIPTION.name} non ha risposto in tempo, e non c’è "
             "nessun altro provider in catena a cui chiedere.", status="error"))
 
     logger.warning(
-        "Il Piano Claude Max non ha risposto entro la scadenza: il turno %s "
-        "passa alla catena. Il costo cambia -- dal forfait al consumo.", job_id)
+        "Il %s non ha risposto entro la scadenza: il turno %s "
+        "passa alla catena. Il costo cambia -- dal forfait al consumo.",
+        SUBSCRIPTION.name, job_id)
 
     cronologia = contesto.get("history") or []
     if not isinstance(cronologia, list):
@@ -762,7 +778,6 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
             # ereditato.
             model="auto",
             max_tokens=CHAT_MAX_TOKENS,
-            agent_type="chat",
             restrict_to_home=bool(contesto.get("restrict_to_home")),
             response_mode=contesto.get("response_mode", "auto"),
             # Il contesto del job NON porta `thinking_budget` (sette chiavi,
@@ -921,7 +936,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     if len(message) > 4000:
         return error_response(413, "message too long (max 4000 chars)")
 
-    data_dir = request.app.get("data_dir", "/data")
+    data_dir = request.app["data_dir"]
     settings = request.app["chat_settings"]
     # Fetta «le chat divise»: il filo di chi scrive, calcolato UNA volta qui e
     # passato a tutto cio' che segue -- cronologia, riassunti, limite dei
@@ -1133,11 +1148,6 @@ async def handle_chat(request: web.Request) -> web.Response:
         # pagina Modelli, e la chat chiede SEMPRE `auto`: il turno passa dal ciclo
         # di ripiego di `LLMRouter.chat`, l'unico che esiste.
         agent_model = "auto"
-        # Personas are always the chat entity (Slice 5 retired the non-chat
-        # "agent" type and the `type` field itself) — no per-type branch needed
-        # here. Kept as a literal only because runner.chat still takes
-        # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
-        agent_type = "chat"
         # La chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
         # modulo dei runner, perche' una risposta lunga -- il riepilogo di una
         # casa grande, un elenco di ricordi -- lo supera legittimamente.
@@ -1156,7 +1166,6 @@ async def handle_chat(request: web.Request) -> web.Response:
                 conversation_history=context_history,
                 model=agent_model,
                 max_tokens=agent_max_tokens,
-                agent_type=agent_type,
                 restrict_to_home=agent_restrict,
                 response_mode=agent_response_mode,
                 thinking_budget=agent_thinking_budget,

@@ -413,8 +413,13 @@ async def test_chat_returns_explicit_error_when_402_retry_also_fails(tmp_path):
         )
     out = exc_info.value.friendly_message
     assert "OpenRouter" in out
-    assert "max_tokens" in out
     assert "4096" in out  # original requested value mentioned for clarity
+    # X-64 (Tappa 7 T10): la frase chiedeva di ridurre «max_tokens
+    # dell’agente», un numero che nessuna pagina espone. Mutazione ESEGUITA
+    # (07/10/2026): rimessa la frase di prima -- rossa. Ripristinata, `git
+    # diff` senza la mutazione.
+    assert "agente" not in out
+    assert "pagina Modelli" in out
 
 
 @pytest.mark.asyncio
@@ -1069,3 +1074,33 @@ def test_quando_il_provider_NOMINA_il_modello_gratuito_lo_si_dice():
     messaggio = parse_upstream_rate_limit(_Exc())
 
     assert "meta-llama/llama-3.3-70b-instruct:free" in messaggio
+
+
+@pytest.mark.asyncio
+async def test_le_chiamate_di_strumento_con_finish_reason_stop_si_servono():
+    """Tappa 7, T10 (S-14): una risposta che porta `tool_calls` con
+    `finish_reason == "stop"` finiva nel ramo della risposta finale, e le
+    chiamate si perdevano. Le chiamate si guardano, non il motivo.
+
+    Mutazione ESEGUITA (07/10/2026): ripristinato `if choice.finish_reason ==
+    "stop":` senza guardare `tool_calls` -- rossa (il dispatcher mai
+    chiamato, la risposta vuota). Ripristinata, `git diff` senza la
+    mutazione."""
+    runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-test")
+    call = MagicMock(id="c1")
+    call.function.name = "search"
+    call.function.arguments = '{"testo": "luci"}'
+    first = MagicMock(choices=[MagicMock(
+        finish_reason="stop", message=MagicMock(content="", tool_calls=[call]))])
+    last = MagicMock(choices=[MagicMock(
+        finish_reason="stop", message=MagicMock(content="tre luci", tool_calls=None))])
+    runner._client.chat.completions.create = AsyncMock(side_effect=[first, last])
+    dispatcher = MagicMock()
+    dispatcher.dispatch = AsyncMock(return_value={"trovate": 3})
+
+    out = await runner.chat(user_message="che luci ho?", dispatcher=dispatcher,
+                            tools=[{"name": "search", "description": "cerca",
+                                    "input_schema": {"type": "object"}}])
+
+    dispatcher.dispatch.assert_awaited_once_with("search", {"testo": "luci"})
+    assert out == "tre luci"

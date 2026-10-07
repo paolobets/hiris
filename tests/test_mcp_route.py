@@ -731,9 +731,9 @@ async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monk
     chiamate = []
     vero = handlers_mcp.create_tool_dispatcher
 
-    def _spia(app, exchange=None):
+    def _spia(app, exchange=None, **kw):
         chiamate.append((app, exchange))
-        return vero(app, exchange=exchange)
+        return vero(app, exchange=exchange, **kw)
 
     monkeypatch.setattr(handlers_mcp, "create_tool_dispatcher", _spia)
     client, _ = rotta
@@ -765,8 +765,8 @@ async def test_la_rotta_annota_la_lista_e_la_chiamata_sotto_il_turno(rotta):
     tools/list -- rossa; tolta la chiamata a `_annota_risultato` nel ramo
     tools/call -- rossa; `len(testo)` sostituito da `len(corpo)` (il JSON
     intero invece del testo al modello) -- rossa."""
-    from hiris.app.claude_runner import pesa_in_caratteri
     from hiris.app.usage.bridge_loads import BRIDGE_LOADS_KEY
+    from hiris.app.usage.giro import pesa_in_caratteri
 
     client, _ = rotta
     intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "TURNO-1"}

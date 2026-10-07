@@ -26,9 +26,10 @@ automatica» ci arriva passando dal proponente.
 I codici portano la distinzione che conta, come le rotte gemelle: 404 «non
 esiste», 409 «esiste ma non e' piu' in attesa», 503 «non disponibile» -- cosi'
 la pagina non deve leggere il testo dell'errore per sapere quale delle tre
-mostrare. Prima di tutti, 403: le proposte sono di chi costruisce (spec
-2026-09-26 §3, decisione 5), e ognuna chiama per prima
-`soffitto.require_builder`, lo stesso cancello della pagina Costruzioni.
+mostrare. Prima di tutti, 403: le proposte sono di chi amministra (spec
+2026-09-26 §3, decisione 5), e ognuna porta il gesto `amministrare` in
+`admission.ADMISSION`, lo stesso della pagina Costruzioni: lo chiede il
+confine, prima del gestore.
 
 Le rotte le registra `add_routes`, qui: `server.py` non cresce (regola del
 proprietario del 06/10/2026).
@@ -42,7 +43,6 @@ from aiohttp import web
 from ..chat_thread import unknown_id_text
 from ..mind import automate_turn, proposal_redo
 from .boundary import error_response, json_object
-from .soffitto import require_builder
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +59,6 @@ def _row(store, ident: str) -> dict | None:
 
 
 async def _close(request, outcome: str) -> web.Response:
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, _NO_STORE)
@@ -103,9 +100,6 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     rifiutato. Uno alla volta, pero': un secondo mentre il primo e' in volo e'
     409.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, _NO_STORE)
@@ -159,9 +153,6 @@ async def handle_proposal_automate(request: web.Request) -> web.Response:
     cambia col tempo (gia' decisa, gia' provata, un turno in corso), 503
     senza modello.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, _NO_STORE)

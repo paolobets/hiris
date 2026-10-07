@@ -45,7 +45,17 @@ export HIRIS_NON_ADMIN_ACCESS=$(bashio::config 'non_admin_access')
 export LOG_LEVEL=$(bashio::config 'log_level' 'info')
 # `INTERNAL_TOKEN` e' uscito il 22/09/2026 col segreto condiviso (reperto A-5):
 # un servizio esterno adesso si accoppia dalla pagina Servizi e firma.
-export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
+# Il valore di fabbrica ha UNA casa, `api/ingresso.py::RETE_PREDEFINITA` (S-15,
+# F-10, Tappa 7): qui si esporta solo cio' che il proprietario ha scritto, e
+# vuoto se non ha scritto niente. Non `bashio::config 'chiave' ''`: letto il
+# 07/10/2026 il sorgente di bashio (`lib/config.sh`), `${2:-null}` trasforma un
+# default vuoto in «null», e la stringa «null» arriverebbe al Python come una
+# rete sbagliata. `config.has_value` e' falso per «null» e per il vuoto.
+SUPERVISOR_INGRESS_CIDR=""
+if bashio::config.has_value 'supervisor_ingress_cidr'; then
+    SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr')
+fi
+export SUPERVISOR_INGRESS_CIDR
 
 # Versione B: esce HIRIS_DEBUG_EXPOSE_PORT/debug_expose_port, con il blocco di
 # sette `bashio::log.warning` che era il suo unico effetto. Non apriva niente:

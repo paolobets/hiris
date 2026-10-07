@@ -110,8 +110,9 @@ async def test_chat_missing_message(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_no_runner(aiohttp_client):
+async def test_chat_no_runner(aiohttp_client, tmp_path):
     app = create_app()
+    app["data_dir"] = str(tmp_path)  # lo scrive l'avvio, che qui non gira
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
@@ -304,7 +305,7 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
     # (era gia' inerte in pratica -- vedi handlers_chat.py) -- la chat usa
     # sempre CHAT_MAX_TOKENS come tetto, non piu' un valore floorato.
     assert call_kwargs["max_tokens"] == 16000
-    assert call_kwargs["agent_type"] == "chat"
+    assert "agent_type" not in call_kwargs  # Tappa 7 T10, D11a
 
 
 @pytest.mark.asyncio

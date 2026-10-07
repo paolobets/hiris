@@ -1297,7 +1297,15 @@ class Tool:
     - `permissions`: i gesti del soffitto che la chiamata richiede;
     - `mask`: il gesto senza il quale la risposta esce COPERTA dove Home
       Assistant mostra il dato ai soli amministratori. Non e' un rifiuto: il
-      gestore riceve `masked` e copre la parte che compone lui.
+      gestore riceve `masked` e copre la parte che compone lui;
+    - `read_only`: lo strumento legge e basta -- non scrive in Home
+      Assistant, ne' nella memoria, ne' nell'agenda, ne' nell'officina. Le
+      letture della stessa risposta partono insieme, le altre una alla volta
+      (`reads_only`, Tappa 7 T10, D15a). Si dichiara per riga, e chiude per
+      difetto: uno strumento nuovo e' una scrittura finche' qualcuno non
+      scrive che legge. Non si deduce da `permissions`: `remember` e
+      `cancel` scrivono senza chiedere nessun gesto, e `history` legge
+      chiedendone uno.
 
     Il soffitto si chiede in `ToolDispatcher.dispatch`, una volta, dalla riga:
     fino al 05/10/2026 lo chiedevano sette punti dentro i gestori (D-23)."""
@@ -1307,6 +1315,7 @@ class Tool:
     needs_thread: bool = False
     permissions: tuple[Permission, ...] = ()
     mask: str | None = None
+    read_only: bool = False
 
     @property
     def name(self) -> str:
@@ -1371,13 +1380,11 @@ class ToolDispatcher:
         # un accesso al disco per riga.
         self._remembered_seal = None
         self._memory = memory_store
-        # Il soffitto di chi ha aperto questo turno (invariante I-1). `None`
-        # vuol dire che nessuna persona ha aperto il turno -- lo
-        # schedulatore, una promessa che si sveglia, un turno del ponte che
-        # non e' di chat -- e li' vale il
-        # comportamento di ieri: il perimetro delle macchine e' l'invariante
-        # dei canali esterni, e stringerlo qui a meta' spegnerebbe il gateway
-        # senza che nessuno l'abbia deciso. **Dichiarato, non dedotto.**
+        # Il soffitto di questo turno (invariante I-1): quello di chi l'ha
+        # aperto, o quello dichiarato dal suo mestiere (decisione 13,
+        # `steering.Species.ceiling`). L'unico costruttore del prodotto
+        # (`create_tool_dispatcher`) rifiuta `None`; qui arriva solo dalle
+        # prove che costruiscono il dispatcher a mano.
         self._soffitto = soffitto
         # CHI ha aperto questo turno. Viaggia accanto al soffitto e non dentro:
         # il soffitto dice cosa si concede, il soggetto dice a chi -- e la
@@ -2291,13 +2298,6 @@ class ToolDispatcher:
             # Task 7, spec §5: «confirm e' del filo». Il filo di QUESTO
             # turno, non quello della proposta -- l'officina confronta i due.
             thread=self._thread)
-        # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
-        # `_rete`) -- `handlers_constructions.py` lo toglie gia' sul percorso
-        # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal
-        # corpo). Qui, sul percorso chat, questo dizionario va DIRETTO al
-        # modello: senza questa riga il flag ci arrivava integro, e «interno»
-        # sarebbe stato vero da una sola delle due porte.
-        occurrence.pop("guasto_rete", None)
         # Come dopo `execute`: una configurazione applicata cambia la casa,
         # e la casa di questo turno si rilegge alla prossima domanda.
         self._house = None
@@ -2707,10 +2707,12 @@ TOOLS: tuple[Tool, ...] = (
     # accese» perche' l'archivio dei ricordi non e' pronto sarebbe un no a una
     # domanda che non lo tocca (review finale, M5, 30/09/2026).
     Tool(SEARCH_TOOL_DEF, ToolDispatcher._search, resources=("casa",),
-         mask="amministrare"),
-    Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",)),
+         mask="amministrare", read_only=True),
+    Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",),
+         read_only=True),
     Tool(REMEMBER_TOOL_DEF, ToolDispatcher._remember, resources=("casa", "memoria")),
-    Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",)),
+    Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",),
+         read_only=True),
     Tool(EXECUTE_TOOL_DEF, ToolDispatcher._execute, resources=("porta",),
          permissions=(Permission("comandare"),
                       Permission("amministrare", applies=_reserved_core_service,
@@ -2719,27 +2721,31 @@ TOOLS: tuple[Tool, ...] = (
          needs_thread=True,
          permissions=(Permission("comandare", applies=_promises_an_action),)),
     Tool(AGENDA_TOOL_DEF, ToolDispatcher._list_agenda, resources=("promesse",),
-         needs_thread=True),
+         needs_thread=True, read_only=True),
     Tool(CANCEL_TOOL_DEF, ToolDispatcher._cancel, resources=("promesse",),
          needs_thread=True),
     Tool(PROPOSE_TOOL_DEF, ToolDispatcher._propose, resources=("officina",),
          mask="amministrare"),
     # La porta della configurazione ha due lati, il clic sulla pagina e
     # questo strumento: custodirne uno solo lascerebbe spalancato l'altro
-    # (I-1), il piu' facile da attraversare -- basta scrivere «conferma».
+    # (I-1), il piu' facile da attraversare -- basta scrivere «conferma». Lo
+    # stesso gesto della pagina (`admission.ADMISSION`), dal 07/10/2026
+    # `amministrare`: `costruire` aveva lo stesso valore per ogni ruolo (F-03).
     Tool(CONFIRM_TOOL_DEF, ToolDispatcher._confirm, resources=("officina",),
-         permissions=(Permission("costruire"),)),
+         permissions=(Permission("amministrare"),)),
     # Il canale, non la casa: gli errori si chiedono anche con la casa non
     # ancora caricata, e il gestore dice da se' quando gli serve.
     Tool(HISTORY_TOOL_DEF, ToolDispatcher._history, resources=("ha",),
          permissions=(Permission("amministrare", applies=_asks_admin_reads,
-                                 refusal=ADMIN_READS_REFUSAL),)),
-    Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",)),
+                                 refusal=ADMIN_READS_REFUSAL),),
+         read_only=True),
+    Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",),
+         read_only=True),
     # Nessun permesso, come `search` e `history` (D6 del piano): le stesse
     # cose sono gia' visibili nella pagina del cervello a chiunque entri.
     # Nessun archivio nella riga: ogni lettura dice da se' cosa le manca
     # (`_mind_missing`), e l'energia non passa dalle letture del cervello.
-    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind),
+    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind, read_only=True),
 )
 
 # Le viste sulla tabella. Il catalogo che il modello riceve si DERIVA: un
@@ -2749,3 +2755,11 @@ TOOLS: tuple[Tool, ...] = (
 # incoerenza che il modello non puo' ne' capire ne' aggirare.
 KNOWLEDGE_TOOLS: list[dict] = [tool.definition for tool in TOOLS]
 _TOOL_PER_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}
+
+
+def reads_only(name: str) -> bool:
+    """Lo strumento `name` legge e basta (`Tool.read_only`)? Un nome che la
+    tabella non conosce -- `compute` dell'analista, `conclude` della
+    promessa, un refuso del modello -- e' una scrittura: chiude per difetto."""
+    tool = _TOOL_PER_NAME.get(name)
+    return tool is not None and tool.read_only

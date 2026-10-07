@@ -20,6 +20,7 @@ import logging
 
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
+from ..providers import SUBSCRIPTION
 from ..proxy._sanitize import truncate_with_marker
 from ..steering import (
     NO_ANSWER_REASON,
@@ -198,7 +199,6 @@ async def interpreta_promise(app, promise: dict) -> dict:
             context_str=briefing,
             conversation_history=[],
             model="auto",
-            agent_type="promessa",
             thinking_budget=0,
             tools=promise_tools(),
             dispatcher=dispatcher,
@@ -287,7 +287,7 @@ def _downgrade_note(reason: str) -> str:
     fatto = _DOWNGRADE_REASONS.get(reason)
     if not fatto:
         return ""
-    return (f"Il Piano Claude Max {fatto}: questo turno l’ha mantenuto la catena, "
+    return (f"Il {SUBSCRIPTION.name} {fatto}: questo turno l’ha mantenuto la catena, "
             "a consumo.")
 
 

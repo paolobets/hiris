@@ -299,5 +299,12 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
         f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CEILING}")
 
 
-KNOWN_CEILING = 16
+# 11 dalla Tappa 7 T9 (07/10/2026): i quattro vocabolari dei provider fra
+# `model_resolution`, `llm_router`, `handlers_models`, i consumi e le due pagine sono
+# usciti con la tabella dei provider, e le chiavi dell'archivio che la pagina
+# ricopiava coi predefiniti accanto (ora arrivano in `scrivibili`).
+# 10 dalla Tappa 7 T10 (07/10/2026): `data_dir = '/data'` ripetuto in
+# `handlers_chat` e `chat_thread` (D-09) e' uscito -- ogni lettore chiede
+# `app["data_dir"]`, che l'avvio scrive una volta.
+KNOWN_CEILING = 10
 

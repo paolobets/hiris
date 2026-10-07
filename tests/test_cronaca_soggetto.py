@@ -149,13 +149,13 @@ async def test_il_filo_del_soggetto_NON_si_spezza_su_RESTORE(officina):
     nata = await banco.apply(proposta["proposta_id"], actor="pagina",
                              exchange=None, now=_ADESSO + 1,
                              subject=_PERSONA)
-    assert nata.get("applicata"), nata
+    assert nata.get("eseguito"), nata
 
     disfatta = await banco.restore(proposta["proposta_id"], actor="pagina",
                                    exchange=None, now=_ADESSO + 2,
                                    subject=_PERSONA)
 
-    assert disfatta.get("applicata"), disfatta
+    assert disfatta.get("eseguito"), disfatta
     riga = registro.read(disfatta["esecuzione_id"])
     assert riga["soggetto"] is not None, (
         "il ripristino ha scritto una riga senza soggetto: il filo si spezza "

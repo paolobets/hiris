@@ -150,7 +150,8 @@ def test_openrouter_scrive_il_costo_REALE_dichiarato_dalla_risposta():
     registro = Registro()
     runner = OpenRouterRunner(api_key="x", log_usage=registro)
 
-    runner._track_usage(_Risposta(_uso(cost=0.0031)), "anthropic/claude-sonnet-4-6")
+    runner._track_usage(_Risposta(_uso(cost=0.0031)), "anthropic/claude-sonnet-4-6",
+                        measuring=False)
 
     s = registro.scritte[0]
     assert s["provider"] == "openrouter", "non «openai»: e' una sottoclasse"
@@ -162,7 +163,7 @@ def test_openrouter_senza_cost_dichiara_non_noto_e_non_zero():
     registro = Registro()
     runner = OpenRouterRunner(api_key="x", log_usage=registro)
 
-    runner._track_usage(_Risposta(_uso()), "un/modello-mai-visto")
+    runner._track_usage(_Risposta(_uso()), "un/modello-mai-visto", measuring=False)
 
     assert registro.scritte[0]["cost_state"] == "non_noto"
     assert registro.scritte[0]["cost_usd"] is None
@@ -173,7 +174,7 @@ def test_openai_resta_openai():
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="x",
                                 log_usage=registro)
 
-    runner._track_usage(_Risposta(_uso()), "gpt-4o")
+    runner._track_usage(_Risposta(_uso()), "gpt-4o", measuring=False)
 
     assert registro.scritte[0]["provider"] == "openai"
     assert registro.scritte[0]["cost_state"] == "misurato"
@@ -185,7 +186,7 @@ def test_ollama_dichiara_lo_zero_invece_di_calcolarlo():
                                 api_key="ollama", local=True,
                                 log_usage=registro)
 
-    runner._track_usage(_Risposta(_uso()), "qwen2.5:7b")
+    runner._track_usage(_Risposta(_uso()), "qwen2.5:7b", measuring=False)
 
     assert registro.scritte[0]["provider"] == "ollama"
     assert registro.scritte[0]["cost_state"] == "gratuito"
@@ -204,7 +205,7 @@ def test_i_token_di_cache_si_leggono_DOVE_il_fornitore_li_mette():
     runner = OpenRouterRunner(api_key="x", log_usage=registro)
 
     runner._track_usage(_Risposta(_uso(prompt=100, cached=80, cache_write=20)),
-                        "anthropic/claude-sonnet-4-6")
+                        "anthropic/claude-sonnet-4-6", measuring=False)
 
     scritta = registro.scritte[0]
     assert scritta["cache_read"] == 80
@@ -219,7 +220,7 @@ def test_un_fornitore_che_NON_dichiara_la_cache_scrive_zero_e_non_solleva():
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="x",
                                 log_usage=registro)
 
-    runner._track_usage(_Risposta(_uso()), "gpt-4o")
+    runner._track_usage(_Risposta(_uso()), "gpt-4o", measuring=False)
 
     assert registro.scritte[0]["cache_read"] == 0
     assert registro.scritte[0]["cache_write"] == 0
@@ -247,7 +248,7 @@ def test_una_risposta_senza_usage_non_scrive_niente():
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="x",
                                 log_usage=registro)
 
-    runner._track_usage(_Risposta(None), "gpt-4o")
+    runner._track_usage(_Risposta(None), "gpt-4o", measuring=False)
 
     assert registro.scritte == []
 
@@ -305,16 +306,18 @@ async def test_claude_fuori_listino_consegna_costo_NULL(monkeypatch):
 
 
 def test_la_catena_sa_il_costo_anche_SENZA_archivio_dei_consumi():
-    """`_track_usage` esce presto quando `log_usage` e' None: il costo del
-    giro per la misura non deve dipendere da quel gancio.
+    """Senza `log_usage` non si scrive niente, ma il costo del giro per la
+    misura non deve dipendere da quel gancio: con qualcuno che misura,
+    `_track_usage` lo calcola lo stesso (dal 07/10/2026 e' lui l'unico
+    calcolo del giro, D-60: `_response_cost` e' uscito).
 
-    Mutazione ESEGUITA: in `_response_cost`, `return None` anche quando
-    `self._log_usage is None` -- lo stesso ramo d'uscita anticipata di
-    `_track_usage`, che qui non deve esistere -- rossa."""
+    Mutazione ESEGUITA (07/10/2026): in `_track_usage`, uscita anticipata
+    con `self._log_usage is None` anche quando `measuring` e' vero -- rossa
+    (`None == 0.0031`). Ripristinata, `git diff` senza la mutazione."""
     runner = OpenRouterRunner(api_key="x")
-    assert runner._response_cost(_Risposta(_uso(cost=0.0031)),
-                                 "anthropic/claude-sonnet-4-6") == 0.0031
-    assert runner._response_cost(_Risposta(_uso()), "un/modello") is None
+    assert runner._track_usage(_Risposta(_uso(cost=0.0031)),
+                               "anthropic/claude-sonnet-4-6", measuring=True) == 0.0031
+    assert runner._track_usage(_Risposta(_uso()), "un/modello", measuring=True) is None
 
 
 @pytest.mark.asyncio
@@ -326,7 +329,7 @@ async def test_openrouter_consegna_i_token_DOPO_la_risposta():
 
     Mutazione ESEGUITA: togliere la seconda consegna in
     openai_compat_runner (il blocco dopo `self._track_usage(response,
-    effective_model)`) -- rossa."""
+    effective_model, ...)`) -- rossa."""
     runner = OpenRouterRunner(api_key="x")
     msg = MagicMock()
     msg.content = "fatto"
@@ -347,3 +350,80 @@ async def test_openrouter_consegna_i_token_DOPO_la_risposta():
     assert token["input_tokens"] == 100
     assert token["output_tokens"] == 20
     assert token["cost_usd"] == 0.0031
+
+
+# ── Un guasto dei consumi non fa cadere il turno (Tappa 7, T10; S-11) ──────
+
+
+def _archivio_rotto(provider, model, **kw):
+    raise OSError("disco pieno")
+
+
+@pytest.mark.asyncio
+async def test_claude_risponde_anche_se_l_archivio_dei_consumi_solleva(monkeypatch):
+    """La risposta e' gia' arrivata, ed e' gia' pagata: un archivio rotto non
+    deve buttarla via. Sulla catena, peggio, il router leggeva l'eccezione
+    come un guasto del provider e passava al successivo.
+
+    Mutazione ESEGUITA (07/10/2026): `log_safely` senza il `try` -- rossa
+    (`OSError: disco pieno`) su questa e sulle due gemelle. Ripristinata,
+    `git diff` senza la mutazione."""
+    runner = ClaudeRunner(api_key="x", log_usage=_archivio_rotto)
+
+    async def _finta(**kwargs):
+        return _RispostaClaude()
+
+    monkeypatch.setattr(runner._client.messages, "create", _finta)
+    assert await runner.chat("ciao") == "fatto"
+
+
+@pytest.mark.asyncio
+async def test_la_catena_risponde_anche_se_l_archivio_dei_consumi_solleva():
+    runner = OpenRouterRunner(api_key="x", log_usage=_archivio_rotto)
+    msg = MagicMock(content="fatto", tool_calls=None)
+    risposta = MagicMock(choices=[MagicMock(finish_reason="stop", message=msg)])
+    risposta.usage = _uso(cost=0.0031)
+    runner._client.chat.completions.create = AsyncMock(return_value=risposta)
+    assert await runner.chat(user_message="ciao") == "fatto"
+
+
+# ── Il costo del giro, calcolato una volta (Tappa 7, T10; D-60) ────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("quale", ["claude", "catena"])
+async def test_i_consumi_e_la_misura_del_giro_dicono_lo_STESSO_costo(monkeypatch, quale):
+    """Erano due calcoli dello stesso numero -- uno per l'archivio dei
+    consumi, uno per la misura del giro -- e due copie della stessa regola
+    divergono al primo cambiamento fatto da una parte sola. Adesso il costo
+    si calcola una volta e lo stesso valore va a tutti e due.
+
+    Mutazione ESEGUITA (07/10/2026): nella misura del giro di Claude,
+    `"cost_usd": cost_usd * 2` -- rossa sul solo ramo `claude`.
+    Ripristinata, `git diff` senza la mutazione."""
+    registro = Registro()
+    consegne = []
+    if quale == "claude":
+        runner = ClaudeRunner(api_key="x", log_usage=registro,
+                              read_model=lambda: "claude-sonnet-4-6")
+
+        async def _finta(**kwargs):
+            return _RispostaClaude()
+
+        monkeypatch.setattr(runner._client.messages, "create", _finta)
+        chiama = runner.chat("ciao")
+    else:
+        runner = OpenRouterRunner(api_key="x", log_usage=registro)
+        msg = MagicMock(content="fatto", tool_calls=None)
+        risposta = MagicMock(choices=[MagicMock(finish_reason="stop", message=msg)])
+        risposta.usage = _uso(cost=0.0031)
+        runner._client.chat.completions.create = AsyncMock(return_value=risposta)
+        chiama = runner.chat(user_message="ciao")
+    gettone = posa_misura(lambda giro, pesi: consegne.append(pesi))
+    try:
+        await chiama
+    finally:
+        togli_misura(gettone)
+    [dopo] = [p for p in consegne if "cost_usd" in p]
+    assert registro.scritte[0]["cost_usd"] is not None
+    assert dopo["cost_usd"] == registro.scritte[0]["cost_usd"]

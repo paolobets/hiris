@@ -58,12 +58,12 @@ class _Officina:
                     confirm_phrase=None, thread=None):
         self.applicate.append((ident, actor))
         self.soggetti.append(subject)
-        return {"applicata": ident}
+        return {"eseguito": True}
 
     async def restore(self, ident, *, actor, exchange, now, subject=None):
         self.applicate.append((ident, actor))
         self.soggetti.append(subject)
-        return {"ripristinata": ident}
+        return {"eseguito": True}
 
 
 class _Archivio:
@@ -221,7 +221,7 @@ class _OfficinaContata:
     async def apply(self, ident, *, actor, exchange, now, subject=None,
                     confirm_phrase=None, thread=None):
         self.applicate.append(ident)
-        return {"applicata": ident}
+        return {"eseguito": True}
 
 
 def _dispatcher(officina, soffitto):
@@ -242,7 +242,7 @@ async def test_il_modello_non_conferma_per_conto_di_chi_non_puo():
     (`Tool.permissions`), e la prova passa da `dispatch`.
     """
     officina = _OfficinaContata()
-    negato = {"comandare": True, "costruire": False, "rinviato": False,
+    negato = {"comandare": True, "amministrare": False, "rinviato": False,
               "perche": "non sei amministratore"}
 
     esito = await _dispatcher(officina, negato).dispatch("confirm", {"proposta_id": "c1"})
@@ -257,27 +257,10 @@ async def test_un_soffitto_PERMISSIVO_lascia_confermare():
 
     Mutazione: negare sempre -- rossa."""
     officina = _OfficinaContata()
-    ammesso = {"comandare": True, "costruire": True, "rinviato": False,
+    ammesso = {"comandare": True, "amministrare": True, "rinviato": False,
                "perche": None}
 
     await _dispatcher(officina, ammesso).dispatch("confirm", {"proposta_id": "c1"})
-
-    assert officina.applicate == ["c1"]
-
-
-@pytest.mark.asyncio
-async def test_senza_soffitto_il_dispatcher_tiene_il_comportamento_di_ieri():
-    """Il dispatcher nasce anche dove non c'e' nessuna persona: il turno di una
-    promessa, il ponte, lo schedulatore. Li' `soffitto` e' `None` e vale il
-    comportamento di ieri -- **dichiarato, non dedotto**: il perimetro delle
-    macchine e' l'invariante dei canali esterni, e stringerlo qui a meta'
-    spegnerebbe il gateway senza che nessuno l'abbia deciso.
-
-    Mutazione: trattare `None` come un rifiuto -- rossa (e sarebbe il ponte
-    rotto in silenzio)."""
-    officina = _OfficinaContata()
-
-    await _dispatcher(officina, None).dispatch("confirm", {"proposta_id": "c1"})
 
     assert officina.applicate == ["c1"]
 
@@ -294,7 +277,7 @@ async def test_la_chat_passa_il_soffitto_al_dispatcher(cliente):
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     app = cliente.app
-    negato = {"comandare": True, "costruire": False, "rinviato": False,
+    negato = {"comandare": True, "amministrare": False, "rinviato": False,
               "perche": "x"}
 
     dispatcher = create_tool_dispatcher(app, exchange="t-1", soffitto=negato)

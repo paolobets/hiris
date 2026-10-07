@@ -43,7 +43,7 @@ def consumi(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tutti_rifiutano_il_router_lo_dice_e_la_frase_resta():
-    router = LLMRouter(claude=_rifiuta("Errore Claude."), strategy="balanced")
+    router = LLMRouter(claude=_rifiuta("Errore Claude."), model_chain=["claude"])
     risposta = await router.chat(user_message="ciao", model="auto")
     # La chat continua a mostrare la frase che mostrava.
     assert risposta == "Errore Claude."
@@ -52,7 +52,7 @@ async def test_tutti_rifiutano_il_router_lo_dice_e_la_frase_resta():
 
 @pytest.mark.asyncio
 async def test_una_catena_vuota_non_ha_risposto():
-    router = LLMRouter(claude=_risponde(), strategy="balanced", model_chain=[])
+    router = LLMRouter(claude=_risponde(), model_chain=[])
     risposta = await router.chat(user_message="ciao", model="auto")
     assert "Nessun provider utilizzabile in catena" in risposta
     assert router.last_unanswered is True
@@ -62,9 +62,9 @@ async def test_una_catena_vuota_non_ha_risposto():
 async def test_il_segnale_si_azzera_a_ogni_chiamata():
     """Un turno che risponde dopo uno in cui nessuno ha risposto non eredita
     il segnale: e' per chiamata, come `last_truncated`."""
-    giu = LLMRouter(claude=_rifiuta(), strategy="balanced")
+    giu = LLMRouter(claude=_rifiuta(), model_chain=["claude"])
     await giu.chat(user_message="ciao", model="auto")
-    su = LLMRouter(claude=_risponde(), strategy="balanced")
+    su = LLMRouter(claude=_risponde(), model_chain=["claude"])
     assert await su.chat(user_message="ciao", model="auto") == "risposta"
     assert su.last_unanswered is False
 
@@ -72,7 +72,7 @@ async def test_il_segnale_si_azzera_a_ogni_chiamata():
 @pytest.mark.asyncio
 async def test_il_registro_dei_turni_scrive_fallito(consumi):
     router = LLMRouter(claude=_rifiuta(), openrouter=_rifiuta("giu'"),
-                       strategy="balanced")
+                       model_chain=["claude", "openrouter"])
     async with steering.misura_turno(consumi, router,
                                      specie=steering.ANALYST_SPECIES,
                                      canale="catena"):
@@ -83,7 +83,7 @@ async def test_il_registro_dei_turni_scrive_fallito(consumi):
 @pytest.mark.asyncio
 async def test_un_turno_che_risponde_resta_riuscito(consumi):
     router = LLMRouter(claude=_rifiuta(), openrouter=_risponde(),
-                       strategy="balanced")
+                       model_chain=["claude", "openrouter"])
     async with steering.misura_turno(consumi, router,
                                      specie=steering.ANALYST_SPECIES,
                                      canale="catena"):
@@ -103,7 +103,7 @@ async def test_il_turno_dice_che_nessuno_ha_risposto_anche_senza_archivio():
     """Come `truncated`: il mestiere ne ha bisogno anche quando nessuno misura.
 
     Mutazione ESEGUITA: `misura_turno` che non abbassa `answered` -- rossa."""
-    router = LLMRouter(claude=_rifiuta(), strategy="balanced")
+    router = LLMRouter(claude=_rifiuta(), model_chain=["claude"])
     async with steering.misura_turno(None, router,
                                      specie=steering.ANALYST_SPECIES,
                                      canale="catena") as turno:
@@ -118,7 +118,7 @@ async def test_il_turno_dice_che_nessuno_ha_risposto_anche_senza_archivio():
 @pytest.mark.asyncio
 async def test_un_turno_che_risponde_consegna_la_risposta():
     router = LLMRouter(claude=_rifiuta(), openrouter=_risponde("[]"),
-                       strategy="balanced")
+                       model_chain=["claude", "openrouter"])
     async with steering.misura_turno(None, router,
                                      specie=steering.ANALYST_SPECIES,
                                      canale="catena") as turno:
@@ -143,7 +143,7 @@ async def test_l_analista_sulla_catena_non_legge_la_frase_del_router(tmp_path):
     try:
         for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
             store.replace_report(giorno, _resoconto(giorno))
-        router = LLMRouter(claude=_rifiuta(), strategy="balanced")
+        router = LLMRouter(claude=_rifiuta(), model_chain=["claude"])
         app = {"observations": store, "llm_router": router,
                "bridge_active": False}
 

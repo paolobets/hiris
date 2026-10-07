@@ -1,6 +1,5 @@
 import asyncio
 import contextvars
-import hashlib
 import json
 import logging
 import time
@@ -15,8 +14,9 @@ import anthropic
 from .home_space.topology import name_with_id
 from .model_resolution import failure_reply
 from .provider_occurrences import error_family, provider_said
+from .providers import CLAUDE
 from .proxy._sanitize import truncate_with_marker
-from .usage.giro import anthropic_turn_tokens
+from .usage.giro import anthropic_turn_tokens, pesa_carico
 
 logger = logging.getLogger(__name__)
 
@@ -388,7 +388,6 @@ TOOL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
 #: strumenti (la chat). Una vista sulle righe qui sopra, non una seconda copia.
 BASE_TOOL_RULES = "".join(text for _tools, text in TOOL_RULES)
 
-MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 # Tetto d'uscita piu' alto per la chat interattiva: una risposta lunga (il
 # riepilogo di una casa grande, un elenco di ricordi) supera legittimamente il
@@ -410,113 +409,33 @@ CHAT_MAX_TOKENS = 16000
 MAX_TOOL_ITERATIONS = 50
 
 
-def pesa_in_caratteri(x) -> int:
-    """Quanto pesa una cosa, in caratteri. **Una sola**, e la importano tutti
-    e due i pesatori.
-
-    Erano due funzioni identiche con due nomi diversi -- `_peso` qui e
-    `_weight` nella catena -- e il cancello dei doppioni le ha prese al primo
-    giro. Due copie della stessa regola divergono al primo cambiamento fatto
-    da una parte sola, ed e' gia' successo in questo prodotto (l'ordine di
-    composizione, `tests/test_composition_order.py`).
-    """
-    if x is None:
-        return 0
-    if isinstance(x, str):
-        return len(x)
-    return len(json.dumps(x, ensure_ascii=False, default=str))
-
-
 def _pesa_carico(system_blocks: list, tools, messages: list,
                  context_str: str) -> dict:
-    """Di cosa e' fatto il carico di UN giro, in caratteri.
+    """Di cosa e' fatto il carico di UN giro, nella forma Anthropic.
 
-    Le cinque voci sono quelle che il proprietario vuole distinguere, e ognuna
-    si prende DOVE STA, non da una copia: `system_blocks` e' gia' composto,
-    `tools` e' il catalogo deciso dal chiamante, `messages` porta la
-    conversazione con dentro i risultati degli strumenti accumulati.
-
-    **`guida` e `nucleo` si separano dentro `system_blocks`**: il nucleo e' il
-    `context_str`, che viaggia come ultimo blocco DOPO il punto di
-    interruzione della cache (per questo e' l'unico che si paga pieno a ogni
-    giro). Tutto cio' che lo precede e' la guida, ed e' stabile.
-
-    **`risultati` e' l'unico che cresce**: i blocchi `tool_result` dentro i
-    messaggi. Separarlo dalla cronologia e' l'intero punto della misura --
-    confonderli direbbe «la conversazione e' lunga» dove la verita' e' «gli
-    strumenti hanno risposto molto».
+    Qui si separano soltanto i pezzi, come li vuole QUESTO protocollo: i
+    testi dei blocchi di sistema (il nucleo e' il `context_str`, l'ultimo
+    blocco, dopo il punto di interruzione della cache), e dentro i messaggi i
+    blocchi `tool_result` dal resto. La regola -- cosa e' guida, cosa entra
+    nell'impronta -- e' una sola per tutti i canali: `usage.giro.pesa_carico`.
     """
-
-    nucleo = len(context_str or "")
-    guida = sum(pesa_in_caratteri(b) for b in (system_blocks or [])) - nucleo
-    # **L'impronta di cio' che DOVREBBE restare uguale fra un turno e
-    # l'altro**: guida piu' definizioni degli strumenti, cioe' il prefisso su
-    # cui ogni forma di caching si appoggia. Non si conservano i contenuti --
-    # portano il nome della casa e i ricordi -- ma sedici caratteri di
-    # impronta bastano a dire «e' cambiato» o «non e' cambiato», che e'
-    # l'intera domanda.
-    stabile = [b for b in (system_blocks or []) if pesa_in_caratteri(b) and
-               (not isinstance(b, dict) or b.get("text") != context_str)]
-    impronta = hashlib.sha256(
-        (testo_canonico(stabile) + testo_canonico(tools)).encode("utf-8")
-    ).hexdigest()[:16]
-    risultati = 0
-    cronologia = 0
+    conversation: list = []
+    results: list = []
     for msg in messages or []:
-        contenuto = msg.get("content")
-        if isinstance(contenuto, list):
-            for blocco in contenuto:
-                peso = pesa_in_caratteri(blocco)
-                if isinstance(blocco, dict) and blocco.get("type") == "tool_result":
-                    risultati += peso
-                else:
-                    cronologia += peso
+        content = msg.get("content")
+        if isinstance(content, list):
+            for block in content:
+                is_result = isinstance(block, dict) and block.get("type") == "tool_result"
+                (results if is_result else conversation).append(block)
         else:
-            cronologia += pesa_in_caratteri(contenuto)
-    return {"tools_chars": pesa_in_caratteri(tools), "guide_chars": max(guida, 0),
-            "core_chars": nucleo, "history_chars": cronologia,
-            "results_chars": risultati,
-            "tools_sent": len(tools or []), "prefix_hash": impronta}
+            conversation.append(content)
+    return pesa_carico(
+        system=[b.get("text", "") if isinstance(b, dict) else str(b)
+                for b in (system_blocks or [])],
+        core=context_str, conversation=conversation, results=results, tools=tools)
 
-
-def testo_canonico(x) -> str:
-    """Il testo su cui si calcola un'impronta. **Una sola**, e la importano
-    tutti e due i pesatori: due copie darebbero due impronte diverse per lo
-    stesso prefisso, e i due canali diventerebbero inconfrontabili -- che e'
-    l'unica cosa per cui questa misura esiste.
-
-    `sort_keys` non e' un dettaglio: senza, due dizionari uguali con le
-    chiavi in ordine diverso darebbero impronte diverse, e la misura direbbe
-    «prefisso instabile» su un prefisso che non e' cambiato.
-    """
-    return x if isinstance(x, str) else json.dumps(x, ensure_ascii=False,
-                                                   sort_keys=True, default=str)
-MAX_RETRIES = 3
-RETRY_DELAYS = [5, 15, 45]
-
-AUTO_MODEL_MAP: dict[str, str] = {
-    "chat": "claude-sonnet-4-6",
-}
-# Il turno di una promessa "chiedi" (`keeper/exchange.py::interpreta_promise`)
-# ragiona come un turno di chat -- confronta un valore con un'istantanea,
-# giudica se una condizione si e' verificata -- e per giunta gira SENZA
-# nessuno davanti: e' il caso in cui la qualita' del modello conta di piu',
-# non di meno, non un lavoro leggero da ripiegare su "agent" (haiku). Prima
-# di questa voce, `resolve_model("auto", "promessa", "")` ripiegava sulla
-# costante `MODEL` -- che vale lo stesso di `AUTO_MODEL_MAP["chat"]` solo per
-# coincidenza, non perche' le due cose fossero legate: le due costanti
-# potevano divergere senza che nessun test se ne accorgesse (review finale
-# della fetta «lo schedulatore», rilievo minore). Si punta alla chiave
-# "chat", non a una stringa duplicata: nessun doppione.
-AUTO_MODEL_MAP["promessa"] = AUTO_MODEL_MAP["chat"]
 
 from .backends.pricing import get_price as _price
-
-
-def resolve_model(model: str, agent_type: str, default_model: str = "") -> str:
-    if model == "auto":
-        return default_model or AUTO_MODEL_MAP.get(agent_type, MODEL)
-    return model
 
 # Models that support Anthropic Extended Thinking. For others (e.g. Haiku 4.5,
 # Sonnet < 4.5) the API errors with 400 if `thinking` is supplied. Pattern-based
@@ -611,7 +530,8 @@ def _max_tokens_message(text_blocks: list[str]) -> str:
 # verso solo -- backends/openai_compat_runner.py importa GIA' da questo
 # modulo (_TRUNCATION_NOTICE, RESTRICT_PROMPT, COMPACT_PROMPT, MINIMAL_
 # PROMPT), mai il contrario -- quindi definirla due volte sarebbe il
-# doppione che CLAUDE.md:70-72 vieta, non una necessita' strutturale.
+# doppione che CLAUDE.md vieta (fondamenta 2, «Nessun doppione»), non una
+# necessita' strutturale.
 _MAX_ITERATIONS_NOTICE = (
     "⚠️ Il turno si è fermato perché ha esaurito i passi disponibili con gli "
     "strumenti. Quello che ho già verificato o eseguito resta valido — prova "
@@ -813,6 +733,48 @@ class _PerCallList:
 
 
 
+async def _dispatch_one(dispatcher, name: str, arguments) -> dict:
+    """Uno strumento, servito dal dispatcher del turno -- o dichiarato non
+    disponibile, mai sollevando: un dizionario leggibile dal modello, come
+    ogni altro `dispatch()`."""
+    if dispatcher is None:
+        # Minor #7 review finale: questo degrado e' dichiarato al modello ma
+        # prima non lasciava traccia in log.
+        logger.debug("Strumento '%s' richiesto ma nessun dispatcher disponibile "
+                     "(degradazione dichiarata, non un errore)", name)
+        return {"error": f"Strumento '{name}' non disponibile."}
+    return await dispatcher.dispatch(name, arguments)
+
+
+async def dispatch_calls(dispatcher, calls: list[tuple[str, Any]]) -> list:
+    """Le chiamate di strumento di UNA risposta, coi risultati nell'ordine in
+    cui il modello le ha chieste. **Una regola sola per i due runner** (Tappa
+    7, T10; S-12, D15a).
+
+    Partivano tutte in fila, `await` dopo `await`: otto letture erano otto
+    attese, mentre il prompt (`BASE_TOOL_RULES`) insegna al modello a
+    chiederle IN PARALLELO. Adesso le letture consecutive partono insieme e
+    le altre una alla volta, nel loro posto: una scrittura che partisse
+    insieme a un'altra potrebbe arrivare in ordine diverso da come il modello
+    l'ha chiesta. Cos'e' una lettura lo dice la tabella degli strumenti
+    (`home_space.tools.reads_only`), non un elenco qui.
+    """
+    from .home_space.tools import reads_only
+
+    results: list = [None] * len(calls)
+    start = 0
+    while start < len(calls):
+        end = start + 1
+        if reads_only(calls[start][0]):
+            while end < len(calls) and reads_only(calls[end][0]):
+                end += 1
+        results[start:end] = await asyncio.gather(
+            *(_dispatch_one(dispatcher, name, arguments)
+              for name, arguments in calls[start:end]))
+        start = end
+    return results
+
+
 class ClaudeRunner:
     # Per-call, per-asyncio-Task isolated — NOT shared mutable instance state,
     # even though this object is a long-lived singleton (see comment above).
@@ -828,7 +790,23 @@ class ClaudeRunner:
         read_model=None,
         log_usage=None,
     ) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        # **Il tempo e i ritentativi si DICHIARANO** (Tappa 7, T10; S-13), e
+        # sono quelli dell'SDK: `anthropic` 1.11.0, `_constants.py`, letto il
+        # 07/10/2026 -- `DEFAULT_TIMEOUT = Timeout(600, connect=5.0)`,
+        # `DEFAULT_MAX_RETRIES = 2`. L'SDK ritenta da se' 408, 409, 429, i
+        # 5xx (529 compreso) e gli errori di connessione, con un'attesa che
+        # parte da mezzo secondo, raddoppia fino a 8 e rispetta `retry-after`
+        # (`_base_client.py`, `_should_retry` e `_calculate_retry_timeout`,
+        # stessa lettura). Fino a questa fetta sopra quei ritentativi c'erano
+        # i NOSTRI tre (5 + 15 + 45 secondi) su 429 e 529: un turno sotto
+        # rifiuto poteva aspettare piu' di un minuto, con fino a dodici
+        # richieste partite. Adesso ritenta uno solo. Si passano le costanti
+        # dell'SDK e non due numeri: `_calculate_nonstreaming_timeout` adatta
+        # il tempo a `max_tokens` solo quando il client ha esattamente il
+        # predefinito.
+        self._client = anthropic.AsyncAnthropic(
+            api_key=api_key, timeout=anthropic.DEFAULT_TIMEOUT,
+            max_retries=anthropic.DEFAULT_MAX_RETRIES)
         # Il runner non conosce l'archivio dei consumi: conosce una funzione.
         # Stessa disciplina di `read_model` qui sotto -- ed e' cio' che
         # tiene i runner provabili senza costruire mezzo add-on.
@@ -844,8 +822,7 @@ class ClaudeRunner:
         # (invariante 4: «un valore si applica in un modo solo»).
         # Adesso e' una LETTURA, e la didascalia non serve piu': l'assenza di
         # didascalie e' la cosa piu' onesta che la pagina possa dire di se'.
-        # `None` = nessuna lettura, cioe' il comportamento che aveva
-        # `default_model=""` (ripiego su AUTO_MODEL_MAP).
+        # `None` = nessuna lettura: il modello automatico del provider.
         self._read_model = read_model
         # last_tool_calls / last_thinking_blocks are intentionally NOT
         # initialized here — they are per-call/per-Task class-level
@@ -856,16 +833,22 @@ class ClaudeRunner:
         """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
         return (self._read_model() if self._read_model else "") or ""
 
-    def _resolve_current_model(self) -> str:
-        """Il modello che questo runner userebbe adesso con `model="auto"`.
+    def _resolve_model(self, model: str) -> str:
+        """Il modello di questo turno: quello chiesto, o con `"auto"` quello
+        scelto per Claude, o il suo automatico (`CLAUDE.auto_model`).
 
-        Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo
-        di provarla sarebbe intercettare la chiamata all'API."""
-        return resolve_model("auto", "chat", self._chosen_model())
+        **Il mestiere non sceglie il modello** (Tappa 7, T10; D11a): fino a
+        questa fetta la scelta passava da `agent_type` e da una mappa per
+        mestiere che su Claude dava a tutti lo stesso modello. Ogni turno usa
+        il modello scelto per il provider -- la stessa regola del ponte
+        (decisione 11: gli attori usano il modello che scegli tu)."""
+        if model != "auto":
+            return model
+        return self._chosen_model() or CLAUDE.auto_model
 
     def _write_usage(self, model: str, inp: int, out: int,
                      cache_write: int, cache_read: int,
-                     cost: float) -> None:
+                     cost_usd: float | None, state: str) -> None:
         """Una risposta entra nell'archivio dei consumi, col NOME del modello.
 
         Fino a questa fetta il nome era qui, in mano, e finiva solo dentro il
@@ -876,15 +859,14 @@ class ClaudeRunner:
         perche' costa due tariffe diverse (`cache_write`/`cache_read` in
         `pricing.py`) ed e' il numero che dice se il prefisso sta lavorando.
         Il totale che la pagina mostra resta la somma dei tre.
-        """
-        if self._log_usage is None:
-            return
-        from .usage.vocabulary import cost_state_and_value
 
-        state, cost_usd = cost_state_and_value(
-            "claude", model, cost_dichiarato=None, cost_da_listino=cost)
-        self._log_usage(
-            "claude", model, token_in=inp, token_out=out,
+        Il costo e il suo stato arrivano gia' calcolati, una volta per giro:
+        gli stessi due valori vanno alla misura del giro (D-60).
+        """
+        from .usage.store import log_safely
+
+        log_safely(
+            self._log_usage, CLAUDE.id, model, token_in=inp, token_out=out,
             cache_read=cache_read, cache_write=cache_write,
             cost_usd=cost_usd, cost_state=state, now=time.time())
 
@@ -896,10 +878,10 @@ class ClaudeRunner:
         dicevano CHI stesse rifiutando -- l'unica cosa che serva sapere quando
         succede.
         """
-        if self._log_usage is None:
-            return
-        self._log_usage(
-            "claude", model, richieste=0, errori_rate_limit=1,
+        from .usage.store import log_safely
+
+        log_safely(
+            self._log_usage, CLAUDE.id, model, richieste=0, errori_rate_limit=1,
             cost_usd=None, cost_state="non_noto", now=time.time())
 
     async def chat(
@@ -910,7 +892,6 @@ class ClaudeRunner:
         conversation_history: list[dict] | None = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
-        agent_type: str = "chat",
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
@@ -962,7 +943,7 @@ class ClaudeRunner:
         system_blocks[-1] = {**system_blocks[-1], "cache_control": {"type": "ephemeral"}}
         if context_str:
             system_blocks.append({"type": "text", "text": context_str})
-        effective_model = resolve_model(model, agent_type, self._chosen_model())
+        effective_model = self._resolve_model(model)
         if tools is not None:
             # Il catalogo arriva gia' deciso dal chiamante (es. gli
             # strumenti di ToolDispatcher, home_space/tools.py).
@@ -1058,28 +1039,30 @@ class ClaudeRunner:
             cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             prices = _price(effective_model)
-            cost = (
+            listino = (
                 inp * prices["input"]
                 + cache_creation * prices.get("cache_write", prices["input"] * 1.25)
                 + cache_read * prices.get("cache_read", prices["input"] * 0.1)
                 + out * prices["output"]
             ) / 1_000_000
+            # **Il costo del giro si calcola UNA volta** (Tappa 7, T10; D-60),
+            # con la regola della pagina Consumi -- un modello fuori listino
+            # e' `None`, non zero -- e lo stesso valore va ai consumi e alla
+            # misura del giro. Erano due calcoli dello stesso numero.
+            from .usage.vocabulary import cost_state_and_value
+            cost_state, cost_usd = cost_state_and_value(
+                CLAUDE.id, effective_model, cost_dichiarato=None,
+                cost_da_listino=listino)
             self._write_usage(effective_model, inp, out,
-                              cache_creation, cache_read, cost)
+                              cache_creation, cache_read, cost_usd, cost_state)
 
             # **La seconda consegna del giro** (spec «le misure complete»
             # §3): i token, DOPO la risposta. La prima -- i caratteri -- e'
             # partita prima della chiamata; `steering.misura_turno` le fonde.
-            # Il costo e' quello del listino, con la stessa regola della
-            # pagina Consumi: un modello fuori listino e' `None`, non zero.
             _raccoglitore = _misura_corrente()
             if _raccoglitore is not None:
-                from .usage.vocabulary import cost_state_and_value
-                _, _costo_giro = cost_state_and_value(
-                    "claude", effective_model, cost_dichiarato=None,
-                    cost_da_listino=cost)
                 _raccoglitore(_giro, {**anthropic_turn_tokens(response.usage),
-                                      "cost_usd": _costo_giro,
+                                      "cost_usd": cost_usd,
                                       "model": effective_model})
 
             if response.stop_reason == "end_turn":
@@ -1088,31 +1071,17 @@ class ClaudeRunner:
 
             if response.stop_reason == "tool_use":
                 messages.append({"role": "assistant", "content": response.content})
+                uses = [b for b in response.content if b.type == "tool_use"]
+                results = await dispatch_calls(
+                    dispatcher, [(b.name, b.input) for b in uses])
                 tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        if dispatcher is not None:
-                            # ToolDispatcher (e affini) espone la stessa
-                            # interfaccia minima -- dispatch(nome, argomenti).
-                            result = await dispatcher.dispatch(block.name, block.input)
-                        else:
-                            # ne' un dispatcher per-chiamata: lo strumento non
-                            # e' eseguibile. Mai sollevare qui: un dizionario
-                            # leggibile dal modello, come ogni altro dispatch()
-                            # di questo ramo.
-                            # Minor #7 review finale: questo degrado e'
-                            # dichiarato al modello ma prima non lasciava
-                            # traccia in log.
-                            logger.debug(
-                                "Strumento '%s' richiesto ma nessun dispatcher disponibile "
-                                "(degradazione dichiarata, non un errore)", block.name)
-                            result = {"error": f"Strumento '{block.name}' non disponibile."}
-                        self.last_tool_calls.append({"tool": block.name, "input": block.input})
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": json.dumps(result),
-                        })
+                for block, result in zip(uses, results, strict=True):
+                    self.last_tool_calls.append({"tool": block.name, "input": block.input})
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
+                    })
                 messages.append({"role": "user", "content": tool_results})
                 _compress_old_tool_results(messages)
             elif response.stop_reason == "max_tokens":
@@ -1139,17 +1108,16 @@ class ClaudeRunner:
         return _MAX_ITERATIONS_NOTICE
 
     async def _call_api(self, **kwargs) -> Any:
-        for attempt in range(MAX_RETRIES + 1):
-            try:
-                return await self._client.messages.create(**kwargs)
-            except anthropic.APIStatusError as exc:
-                if exc.status_code in (429, 529) and attempt < MAX_RETRIES:
-                    self._write_rejection(kwargs.get('model') or '')
-                    delay = RETRY_DELAYS[attempt]
-                    logger.warning(
-                        "Rate limit (attempt %d/%d), retry in %ds", attempt + 1, MAX_RETRIES, delay
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    raise
+        """UNA richiesta: i ritentativi sono dell'SDK (vedi `__init__`).
 
+        Un 429 o un 529 che arriva fin qui ha gia' esaurito quelli: si conta
+        UNA volta sulla riga del modello che l'ha preso, e sale. Quelli che
+        l'SDK ha ritentato con successo non si vedono -- l'SDK non li
+        racconta -- ed e' una perdita dichiarata: la pagina Consumi conta i
+        rifiuti che hanno fermato un turno, non ogni risposta 429."""
+        try:
+            return await self._client.messages.create(**kwargs)
+        except anthropic.APIStatusError as exc:
+            if exc.status_code in (429, 529):
+                self._write_rejection(kwargs.get("model") or "")
+            raise

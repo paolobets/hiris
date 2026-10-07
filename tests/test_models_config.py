@@ -1,6 +1,6 @@
 import os
 
-from hiris.app.api.handlers_models import load_models_config, save_models_config
+from hiris.app.models_store import load_models_config, save_models_config
 
 
 def test_defaults_when_absent(tmp_path):
@@ -28,7 +28,6 @@ def test_defaults_when_absent(tmp_path):
         # Valeva "", e la differenza faceva contare come «copiato» un valore
         # che nessuno aveva scelto -- ogni installazione, anche nuova.
         "strategia_ultima": "balanced",
-        "seminato": False,
         "catena_seminata": False,
         "piano_seminato": False,
     }
@@ -98,13 +97,13 @@ def test_brain_model_legacy_survives_a_save(tmp_path):
 
 
 def test_provider_models_defaults_empty(tmp_path):
-    from hiris.app.api.handlers_models import load_models_config
+    from hiris.app.models_store import load_models_config
     cfg = load_models_config(str(tmp_path))
     assert cfg["provider_models"] == {"claude": "", "openai": "", "openrouter": ""}
 
 
 def test_provider_models_roundtrip_and_sanitizes(tmp_path):
-    from hiris.app.api.handlers_models import load_models_config, save_models_config
+    from hiris.app.models_store import load_models_config, save_models_config
     saved = save_models_config(str(tmp_path), {"provider_models": {
         "claude": "claude-opus-4-7", "openai": 123, "bogus": "x"}})
     assert saved["provider_models"]["claude"] == "claude-opus-4-7"
@@ -128,7 +127,6 @@ def test_le_nuove_chiavi_hanno_i_predefiniti_quando_il_file_non_esiste(tmp_path)
     assert cfg["ollama"] == {"modello": "", "timeout_s": 120}
     assert cfg["nascondi_gratuiti"] is False
     assert cfg["strategia_ultima"] == "balanced"
-    assert cfg["seminato"] is False
     assert cfg["piano_seminato"] is False
 
 
@@ -211,15 +209,15 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     `ponte.modello` col valore derivato da Claude API, cioe' cancella la scelta
     che l'utente ha appena fatto sulla riga del piano.
 
-    Rimettere i tre nomi in `_OUR_KEYS` fa cadere questo test."""
+    Rimettere i due nomi in `_OUR_KEYS` fa cadere questo test."""
     save_models_config(str(tmp_path), {"chain_order": ["claude"]}, flags=True)
     save_models_config(
         str(tmp_path),
-        {"seminato": True, "catena_seminata": True, "piano_seminato": True,
+        {"catena_seminata": True, "piano_seminato": True,
          "chain_order": ["claude"]},
         flags=True,
     )
-    assert load_models_config(str(tmp_path))["seminato"] is True
+    assert load_models_config(str(tmp_path))["catena_seminata"] is True
 
     # La PUT: l'oggetto intero come lo manda la pagina, con i due segni a
     # `false` come li porta lo `state.cfg` di default.
@@ -231,15 +229,10 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
         "ollama": {"modello": "", "timeout_s": 120},
         "nascondi_gratuiti": False,
         "strategia_ultima": "balanced",
-        "seminato": False,
         "catena_seminata": False,
         "piano_seminato": False,
     })
     cfg = load_models_config(str(tmp_path))
-    assert cfg["seminato"] is True, (
-        "una PUT ha riportato `seminato` a false: al riavvio la semina delle "
-        "opzioni rigira e sovrascrive le decisioni della pagina"
-    )
     assert cfg["catena_seminata"] is True, (
         "una PUT ha riportato `catena_seminata` a false: al riavvio la catena "
         "si ripopola dalla regola `legacy`"
@@ -346,3 +339,27 @@ def test_un_archivio_che_non_e_un_oggetto_conta_come_illeggibile(tmp_path, caplo
     assert any("invece di un oggetto JSON" in r.getMessage()
                for r in caplog.records if r.levelname == "ERROR")
     assert (tmp_path / "models_config.json.corrotto").exists()
+
+
+def test_seminato_resta_disco_ma_la_rotta_non_lo_dice_piu(tmp_path):
+    """M-80 (Tappa 7, Task 10): `seminato`, il segno della semina delle
+    OPZIONI uscita il 02/10/2026, non lo scriveva ne' lo leggeva piu' nessuno,
+    e `GET /api/models/config` lo mostrava ancora. Esce dalla forma
+    dell'archivio letto; un archivio che lo porta lo tiene sul disco, perche'
+    la scrittura e' lettura-modifica-scrittura e non cancella dati
+    dell'utente in silenzio.
+
+    Mutazione ESEGUITA (07/10/2026): `"seminato"` rimesso in testa a
+    `models_store._MIGRATION_FLAGS` -- rossa sulla prima asserzione
+    (`assert 'seminato' not in {...}`). Ripristinata, `git diff` di
+    `models_store.py` senza la mutazione."""
+    import json
+
+    percorso = tmp_path / "models_config.json"
+    percorso.write_text(json.dumps({"seminato": True, "chain_order": ["claude"]}),
+                        encoding="utf-8")
+    assert "seminato" not in load_models_config(str(tmp_path))
+    save_models_config(str(tmp_path), {"chain_order": ["openai"]})
+    disco = json.loads(percorso.read_text(encoding="utf-8"))
+    assert disco["seminato"] is True
+    assert disco["chain_order"] == ["openai"]

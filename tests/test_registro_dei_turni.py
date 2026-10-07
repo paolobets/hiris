@@ -315,10 +315,11 @@ def test_il_carico_si_LEGA_al_suo_turno(consumi):
 
 
 def test_la_SPECIE_e_quella_che_il_prodotto_gia_nomina(consumi):
-    """**Sei specie, non quattro.** Al runner arriva `agent_type`, che ha
-    quattro valori e serve a scegliere il MODELLO; `observer.py` e
-    `recipe_turn.py` passano tutti e due `"observer"`, quindi osservatore e
-    ricette sarebbero indistinguibili proprio nel punto in cui misuriamo.
+    """**Sei specie, non quattro.** Al runner arrivava `agent_type`, che
+    aveva quattro valori e serviva a scegliere il MODELLO (uscito con la
+    Tappa 7 T10); `observer.py` e `recipe_turn.py` passavano tutti e due
+    `"observer"`, quindi osservatore e ricette sarebbero stati
+    indistinguibili proprio nel punto in cui misuriamo.
 
     Il vocabolario giusto esiste già: è quello che il registro dei ripieghi
     usa da stamattina. Si riusa, non se ne conia un secondo.
@@ -437,7 +438,7 @@ def test_il_turno_registra_CHI_ha_chiesto(consumi):
     una sola; il giorno in cui HIRIS riceve input da chat diverse per utente e
     per sistema — Retro Panel accanto alla sua — `species="chat"` le
     schiaccerebbe insieme. È lo stesso difetto di `agent_type="observer"`, che
-    schiaccia osservatore e ricette.
+    schiacciava osservatore e ricette.
 
     La forma è quella del soggetto della cronaca, non una nuova: è la stessa
     domanda, e due forme per la stessa domanda divergono.

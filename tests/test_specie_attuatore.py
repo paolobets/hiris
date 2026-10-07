@@ -6,15 +6,15 @@ doppione). I valori da cercare si CHIEDONO a `steering.SPECIE`, i file alla
 cartella: nessun elenco ricopiato (CLAUDE.md, I-0).
 
 **Tutte le specie tranne `chat`** (A21, approvata da Paolo il 05/10/2026):
-`chat` e' anche un `agent_type`, il nome di un `kind` della coda e la
+`chat` e' anche il nome di un `kind` della coda e la
 chiave di molte strutture, e un cancello sul suo letterale non
 distinguerebbe niente. Fino al 05/10/2026 il cancello guardava solo
 l'attuatore (C-28, Tappa 4, T6), e «analista», «osservatore», «ricette»,
 «promessa» restavano letterali in `server.py`, `agent/runner.py`,
 `mind/observer.py`, `mind/recipe_turn.py` e `keeper/exchange.py`.
 
-`promessa` ha anche altri sensi -- il `kind` del job della coda, la chiave
-`agent_type` del modello, il campo che porta la riga di una promessa -- e
+`promessa` ha anche altri sensi -- il `kind` del job della coda, il campo
+che porta la riga di una promessa -- e
 quelli restano letterali: stanno in `_OTHER_SENSES`, una lista d'AMMISSIONE
 con la ragione, per modulo e per conto.
 
@@ -22,6 +22,9 @@ Mutazione ESEGUITA (05/10/2026): rimesso `specie="attuatore"` nella misura del
 turno in `server.py` -- rossa, col file e la riga. Mutazione ESEGUITA
 (05/10/2026, A21): rimesso `agent="ricette"` in `declare_downgrade` di
 `server.py` -- rossa, col file e la riga.
+
+Tappa 7 T10 (D11a): le due ammissioni di `agent_type` -- `keeper/exchange.py`
+e la chiave di `AUTO_MODEL_MAP` in `claude_runner.py` -- sono uscite con lui.
 """
 import ast
 from collections import Counter
@@ -41,11 +44,6 @@ _OTHER_SENSES = {
     ("reasoning/consegna.py", "promessa"): (
         1, "il `kind` del job della coda"),
     ("server.py", "promessa"): (1, "il `kind` del job della coda"),
-    ("keeper/exchange.py", "promessa"): (
-        1, ("il suo `agent_type`; il `kind` con cui si accoda e' nella "
-            "dichiarazione del mestiere (Tappa 6, Task 7)")),
-    ("claude_runner.py", "promessa"): (
-        1, "la chiave `agent_type` di AUTO_MODEL_MAP"),
     ("keeper/store.py", "promessa"): (
         2, "il campo che porta la riga di una promessa"),
     ("home_space/tools.py", "promessa"): (

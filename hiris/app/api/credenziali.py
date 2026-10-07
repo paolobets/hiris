@@ -36,6 +36,18 @@ import secrets
 
 logger = logging.getLogger(__name__)
 
+#: **Il ruolo che questa credenziale porta al cancello delle rotte**
+#: (`admission.gesture_refusal`, Tappa 7): `lettore`, «una macchina che deve
+#: misurare senza toccare» (`canali.RUOLI`). Il ponte chiama una rotta sola,
+#: `POST /api/mcp`, che legge; cosa si fa DENTRO un turno lo decide il
+#: soffitto del suo dispatcher -- quello della persona di un turno di chat,
+#: quello del mestiere di un turno di sfondo -- non questa credenziale. Fino al
+#: 07/10/2026 la credenziale non portava un ruolo e passava il confine senza
+#: domande: le rotte di chi amministra la fermavano una per una
+#: (`require_builder`, `_solo_amministratori`), le altre, comprese le
+#: scritture della configurazione di HIRIS, no.
+RUOLO_TURNO = "lettore"
+
 #: Quanti BYTE casuali chiede a `secrets.token_urlsafe` (il nome dice bit, e
 #: sbaglia): un segreto indovinabile non e' un segreto, e un contatore -- o un
 #: identificatore di turno -- sarebbe prevedibile.

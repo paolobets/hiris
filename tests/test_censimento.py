@@ -190,6 +190,20 @@ app.router.add_post("/api/morta", h2)
     assert [r.nome for r in reperti] == ["/api/morta"]
 
 
+def test_rotta_nominata_solo_nella_TABELLA_dei_gesti_resta_senza_chiamanti(tmp_path):
+    """La riga della tabella delle rotte (`admission.ADMISSION`, Tappa 7)
+    dichiara un gesto, non chiama la rotta: come `add_get`, non la tiene viva.
+
+    Mutazione ESEGUITA: tolta `_RE_GESTO_ROTTA.sub` dal corpo -- rossa (la
+    rotta morta sparisce dai reperti)."""
+    app = _scrivi(tmp_path, "server.py", '''
+app.router.add_post("/api/morta", h)
+ADMISSION = (Route("POST", "/api/morta", "amministrare"),)
+''')
+    reperti = censimento.censisci_rotte([app], [], [])
+    assert [r.nome for r in reperti] == ["/api/morta"]
+
+
 def test_rotta_chiamata_dai_soli_test_e_un_reperto(tmp_path):
     app = _scrivi(tmp_path, "server.py", 'app.router.add_get("/api/solo-test", h)')
     t = _scrivi(tmp_path, "test_x.py", 'await client.get("/api/solo-test")')

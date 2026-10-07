@@ -685,6 +685,24 @@ class ChatStore:
             self._conn.commit()
             return cur.rowcount
 
+    def rekey_subjects(self, renames: dict[str, str]) -> int:
+        """Le sessioni dei soggetti di `renames` (chiave vecchia -> nuova)
+        passano alla chiave nuova, in una transazione; ritorna quante.
+
+        CHI cambia chiave non si decide qui (lo decide
+        `servizi.migrate_service_threads`): l'archivio non sa cosa sia un
+        servizio. L'ingresso resta quello di ogni sessione."""
+        with self._mu:
+            try:
+                moved = sum(self._conn.execute(
+                    "UPDATE chat_sessions SET subject_key = ? WHERE subject_key = ?",
+                    (new, old)).rowcount for old, new in renames.items())
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+            return moved
+
     def delete_old_messages(self, retention_days: int) -> int:
         """Hard-delete chat messages older than retention_days. Returns row count deleted."""
         if retention_days <= 0:
@@ -820,6 +838,11 @@ def has_orphans(data_dir: str) -> bool:
 def adopt_orphans(data_dir: str, *, thread: ChatThread) -> int:
     """Le sessioni orfane passano al filo dato; ritorna quante."""
     return _get_store(data_dir).adopt_orphans(thread)
+
+
+def rekey_subjects(data_dir: str, renames: dict[str, str]) -> int:
+    """Le sessioni dei soggetti di `renames` passano alla chiave nuova; ritorna quante."""
+    return _get_store(data_dir).rekey_subjects(renames)
 
 
 def delete_old_messages(data_dir: str, retention_days: int) -> int:

@@ -69,6 +69,24 @@ _EXPIRED_SQL = "(stato='in_attesa' AND creata_ts < ?)"
 #: Il motivo di una proposta scaduta, scritto o letto.
 REASON_EXPIRED = "scaduta senza risposta"
 
+#: **Lo stato del dubbio** (E-11, decisione D3a della Tappa 7, 07/10/2026):
+#: la scrittura e' partita e non si sa se Home Assistant l'abbia fatta. Non
+#: e' `rifiutata` -- puo' essere arrivata -- e non e' `applicata` -- puo' non
+#: esserlo. Nasce in due posti: l'officina, quando dopo un silenzio della
+#: scrittura nemmeno la rilettura dell'oggetto risponde (`Workshop.apply`), e
+#: `risana`, all'avvio, per una riga rimasta `in_corso`. Una riga cosi' **non
+#: si pota** (`_prune`): puo' portare l'unico «prima» rimasto al mondo.
+#: Il nome e' il minimo, al femminile come gli altri stati della costruzione;
+#: il vocabolario unico degli stati e' della Tappa 8, che non ne ha ancora
+#: uno per questo caso (piano della Tappa 8, D4, letto il 07/10/2026).
+UNCERTAIN = "incerta"
+
+#: Il motivo di una riga rimasta `in_corso` a un riavvio (`risana`). Una
+#: costante perche' la legge anche `_migration_6`, che porta a `incerta` le
+#: righe che `risana` segnava `rifiutata` fino al 07/10/2026.
+REASON_RESTARTED = ("l’add-on si e' riavviato mentre la stavo applicando: non so "
+                    "se la scrittura sia arrivata a Home Assistant.")
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
     id TEXT PRIMARY KEY,
@@ -197,6 +215,20 @@ def _migration_5(conn) -> None:
         conn.execute("ALTER TABLE costruzioni ADD COLUMN prova_json TEXT")
 
 
+def _migration_6(conn) -> None:
+    """v5 -> v6 (Tappa 7, Task 3, E-11): il dubbio ha il suo stato.
+
+    Fino al 07/10/2026 `risana` chiudeva `rifiutata` una riga rimasta
+    `in_corso` a un riavvio, pur scrivendo nel motivo «non so se la
+    scrittura sia arrivata»: e la potatura, che protegge solo l'ultima
+    `applicata`, poteva poi cancellare l'unico «prima» di un oggetto che Home
+    Assistant aveva forse gia' cambiato. Le righe che portano ESATTAMENTE
+    quel motivo passano a `incerta`; nessun'altra `rifiutata` si tocca."""
+    conn.execute(
+        "UPDATE costruzioni SET stato=? WHERE stato='rifiutata' AND motivo=?",
+        (UNCERTAIN, REASON_RESTARTED))
+
+
 def _load(text):
     return None if text is None else json.loads(text)
 
@@ -265,9 +297,9 @@ class ConstructionStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=5,
+        init_schema(self._conn, _SCHEMA, version=6,
                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
-                               5: _migration_5})
+                               5: _migration_5, 6: _migration_6})
 
     def close(self) -> None:
         with self._lock:
@@ -511,36 +543,55 @@ class ConstructionStore:
         Va chiamata all'avvio (dal Task 8, che monta l'officina), PRIMA che
         una nuova `apply` possa rivendicare qualcosa.
 
+        **Lo stato e' `incerta`** (`UNCERTAIN`, E-11, 07/10/2026), lo stesso
+        che l'officina da' al dubbio vero dopo una scrittura: fino a quel
+        giorno qui si scriveva `rifiutata` accanto a «non so», e la potatura
+        poteva cancellare il «prima» di una scrittura forse arrivata. Il
+        motivo resta in questa riga (`REASON_RESTARTED`): al riavvio non c'e'
+        nessuna cronaca da citare, perche' nessun tentativo si e' concluso.
+
         Restituisce quante righe ha chiuso.
         """
-        reason = ("l’add-on si e' riavviato mentre la stavo applicando: non so "
-                  "se la scrittura sia arrivata a Home Assistant.")
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE costruzioni SET stato='rifiutata', aggiornata_ts=?, motivo=? "
+                "UPDATE costruzioni SET stato=?, aggiornata_ts=?, motivo=? "
                 "WHERE stato='in_corso'",
-                (now, reason))
+                (UNCERTAIN, now, REASON_RESTARTED))
             self._conn.commit()
             count = cur.rowcount
         if count:
             logger.warning("costruzioni: %d proposte erano in_corso all'avvio, "
-                           "risanate a rifiutata (non riprovate)", count)
+                           "risanate a %s (non riprovate)", count, UNCERTAIN)
         return count
 
     def mark_applied(self, ident: str, *, now: float,
                         execution_id: str | None) -> dict:
         return self._change_state(ident, "applicata", now, execution_id, None)
 
-    def mark_rejected(self, ident: str, *, now: float, reason: str) -> dict:
-        return self._change_state(ident, "rifiutata", now, None, reason)
+    def mark_rejected(self, ident: str, *, now: float,
+                      execution_id: str | None) -> dict:
+        """La scrittura non e' stata fatta. **Il motivo non si copia qui**
+        (D-26, Tappa 7, Task 3, 07/10/2026): vive nella cronaca, e la riga lo
+        cita per `esecuzione_id` -- fino a quel giorno lo stesso testo stava
+        in `costruzioni.motivo` e in `esecuzioni.errore`, due archivi dello
+        stesso esito. Chi mostra la riga lo legge dalla cronaca
+        (`handlers_constructions._out`)."""
+        return self._change_state(ident, "rifiutata", now, execution_id, None)
+
+    def mark_uncertain(self, ident: str, *, now: float,
+                       execution_id: str | None) -> dict:
+        """Non si sa se la scrittura sia arrivata (`UNCERTAIN`, D3a): il
+        motivo, come per `mark_rejected`, vive nella cronaca."""
+        return self._change_state(ident, UNCERTAIN, now, execution_id, None)
 
     def mark_cancelled(self, ident: str, *, now: float) -> dict:
         """Il «no» di chi costruisce -- che NON e' un fallimento.
 
-        `rifiutata` vuol dire che l'applicazione non e' andata a buon fine, o
-        che non si sa se lo sia: validazione caduta, Home Assistant che
-        rifiuta, e il riavvio a meta' (`risana`), dove la scrittura puo' anche
-        essere arrivata. Questo e' l'altro
+        `rifiutata` vuol dire che l'applicazione non e' andata a buon fine:
+        validazione caduta, Home Assistant che rifiuta, una scrittura che
+        rileggendo non c'e'. Quando non si sa se lo sia -- il riavvio a meta'
+        (`risana`), il silenzio che nemmeno la rilettura scioglie -- lo stato
+        e' `incerta` (`UNCERTAIN`, dal 07/10/2026). Questo e' l'altro
         caso, ed e' quello che vogliamo sia facile: la persona ha guardato la
         proposta e ha detto di no. Tenerli separati e' cio' che permette alla
         pagina di non colorare di rosso l'esercizio del controllo per cui
@@ -563,7 +614,7 @@ class ConstructionStore:
         mondo di com'era quell'oggetto -- diventa cancellabile a 90 giorni.
         Impedire la disdetta di una riga gia' rivendicata chiude la corsa
         alla radice: chi ha vinto la rivendicazione porta la transizione
-        finale fino in fondo (`applicata` o `rifiutata`), e solo allora la
+        finale fino in fondo (`applicata`, `rifiutata` o `incerta`), e solo allora la
         riga torna leggibile come non piu' in sospeso.
         """
         with self._lock:
@@ -614,7 +665,9 @@ class ConstructionStore:
 
     def _prune(self, now: float) -> int:
         """Le righe vecchie se ne vanno -- tranne l'ultima applicata di ogni
-        oggetto, che e' l'unica copia del «prima» rimasta al mondo.
+        oggetto, che e' l'unica copia del «prima» rimasta al mondo, e le
+        `incerta` (E-11, D3a): di una scrittura che forse e' arrivata, il
+        «prima» puo' essere l'unica copia anche lui.
 
         E' l'unica operazione irreversibile del modulo: restituisce quante
         righe ha tolto e lo scrive nel log quando ne toglie almeno una, cosi'
@@ -626,13 +679,13 @@ class ConstructionStore:
         """
         threshold = now - self.RETENTION_S
         cur = self._conn.execute(
-            "DELETE FROM costruzioni WHERE creata_ts < ? AND id NOT IN ("
+            "DELETE FROM costruzioni WHERE creata_ts < ? AND stato != ? AND id NOT IN ("
             "  SELECT id FROM ("
             "    SELECT id, ROW_NUMBER() OVER ("
             "      PARTITION BY dominio, chiave ORDER BY creata_ts DESC) AS rn"
             "    FROM costruzioni WHERE stato='applicata'"
             "  ) WHERE rn = 1)",
-            (threshold,))
+            (threshold, UNCERTAIN))
         # Gli avvisi seguono la loro proposta: una riga senza proposta non
         # dice piu' niente a nessuno.
         self._conn.execute(

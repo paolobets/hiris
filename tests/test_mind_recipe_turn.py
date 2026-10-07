@@ -1072,7 +1072,7 @@ async def test_sulla_CATENA_la_frase_del_router_non_scrive_un_non_capito(sapere)
         return runner
 
     router = LLMRouter(claude=_rifiuta("giu'"), openrouter=_rifiuta("giu'"),
-                       strategy="balanced")
+                       model_chain=["claude", "openrouter"])
 
     esito = await rt.ask(router, sapere, _casa_viva(), "dev1",
                          objective="risparmiare", who="prova",
@@ -1084,21 +1084,36 @@ async def test_sulla_CATENA_la_frase_del_router_non_scrive_un_non_capito(sapere)
 
 
 @pytest.mark.asyncio
-async def test_le_ricette_si_dichiarano_RICETTE_non_osservatore(sapere):
+async def test_le_ricette_si_dichiarano_RICETTE_non_osservatore(sapere, tmp_path):
     """Le ricette sono una specie loro (piano degli attori, strati 3-4, Task
     4.6): fino al 07/10/2026 il giro passava `agent_type="observer"`, il nome
-    di un altro attore. La scelta del modello non cambia -- nessuna delle due
-    parole sta in `AUTO_MODEL_MAP` -- cambia chi si dichiara.
+    di un altro attore. `agent_type` e' uscito (Tappa 7 T10, D11a): le
+    ricette si dichiarano con la specie, e nel registro dei turni c'e' il
+    modello che ha risposto -- quello che il runner dichiara -- non «auto».
 
-    Mutazione ESEGUITA: rimettere `agent_type="observer"` -- rossa."""
-    from unittest.mock import AsyncMock, MagicMock
-
+    Mutazione ESEGUITA (07/10/2026): rimesso `modello=model` (con
+    `model="auto"`) nella chiamata di `ask` a `chain_turn` -- rossa
+    (`'auto' == 'claude-sonnet-4-6'`). Ripristinata, `git diff` senza la
+    mutazione."""
+    from hiris.app.claude_runner import _misura_corrente
     from hiris.app.steering import RECIPES_SPECIES
+    from hiris.app.usage.store import UsageStore
 
-    runner = MagicMock()
-    runner.chat = AsyncMock(return_value="[]")
+    chiesto = {}
 
-    await rt.ask(runner, sapere, _casa_viva(), "dev1", objective="risparmiare",
-                 who="prova", when_ts=1_758_000_000.0, with_series=SERIE_VIVE)
+    class _Runner:
+        async def chat(self, **kw):
+            chiesto.update(kw)
+            raccoglitore = _misura_corrente()
+            if raccoglitore is not None:
+                raccoglitore(1, {"model": "claude-sonnet-4-6", "output_tokens": 1})
+            return "[]"
 
-    assert runner.chat.await_args.kwargs["agent_type"] == RECIPES_SPECIES
+    consumi = UsageStore(str(tmp_path / "consumi.db"))
+    await rt.ask(_Runner(), sapere, _casa_viva(), "dev1", objective="risparmiare",
+                 who="prova", when_ts=1_758_000_000.0, with_series=SERIE_VIVE,
+                 measurements=consumi)
+
+    assert "agent_type" not in chiesto
+    [turno] = consumi.turns()
+    assert (turno["species"], turno["model"]) == (RECIPES_SPECIES, "claude-sonnet-4-6")

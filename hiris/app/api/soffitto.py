@@ -36,13 +36,9 @@ import logging
 import time
 from typing import NamedTuple
 
-from aiohttp import web
-
-from ..chat_thread import subject_key_for
+from ..chat_thread import new_subject
 from ..proxy._sanitize import sanitize_ha_value
-from .boundary import error_response
-from .canali import PUO, RUOLI
-from .servizi import SPECIE as SERVICE_SPECIES
+from .canali import PUO, RUOLI, SERVICE_SPECIES, SPECIE_IGNOTA
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +55,41 @@ RUOLI_VALIDI_S = 60.0
 #: che in un silenzio. `amministrare` (spec 2026-09-27, ruling R-2.25 e fix
 #: round 1) e' toccare cio' che Home Assistant riserva ai soli
 #: amministratori: le letture `@websocket_api.require_admin` (registro di
-#: sistema, tracce, corpo delle automazioni) e i servizi registrati con
-#: `async_register_admin_service` (`homeassistant.restart` e fratelli).
-GESTI = ("leggere", "comandare", "costruire", "amministrare")
+#: sistema, tracce, corpo delle automazioni), i servizi registrati con
+#: `async_register_admin_service` (`homeassistant.restart` e fratelli) e,
+#: dal 07/10/2026, la scrittura della configurazione, che fino ad allora era
+#: un gesto a se', `costruire`, con lo stesso valore per tutti i ruoli (F-03,
+#: D6 della Tappa 7). Lo stesso vocabolario chiedono le rotte, una per una
+#: (`admission.ADMISSION`), e gli strumenti (`tools.Permission`).
+GESTI = ("leggere", "comandare", "amministrare")
+
+
+def nothing_granted(perche: str) -> dict:
+    """Il soffitto che non concede **nessun gesto**, col suo perche'. Una
+    casa sola (F-20): la macchina senza ruolo e la persona non verificata al
+    risveglio lo chiedono qui."""
+    return {**{gesto: False for gesto in GESTI}, "ruolo": None, "perche": perche}
+
+#: Il `perche` del soffitto di un attore di sfondo (decisione 13 della spec
+#: 2026-10-01, Tappa 7, Task 7): cio' che gli manca e' sempre `comandare`.
+_ACTOR = ("un attore di sfondo non comanda la casa: guarda, spiega e propone, "
+          "e cio' che propone aspetta il sì di chi amministra")
+
+
+def declared_ceiling(gestures) -> dict:
+    """Il soffitto **dichiarato** di un mestiere di sfondo
+    (`steering.Species.gestures`): nessuna persona l'ha aperto, quindi non
+    c'e' un ruolo da leggere -- c'e' la dichiarazione, e il soffitto la
+    traduce nella forma di tutti gli altri. Fino al 07/10/2026 quei turni
+    avevano soffitto `None`, che non negava niente (decisione 13).
+
+    Un gesto che non e' in `GESTI` e' un errore di chi dichiara, non un
+    permesso in piu' ne' in meno: solleva."""
+    gestures = frozenset(gestures)
+    if not gestures <= set(GESTI):
+        raise ValueError(f"gesti sconosciuti: {sorted(gestures - set(GESTI))}")
+    return {**{gesto: gesto in gestures for gesto in GESTI}, "ruolo": None,
+            "perche": None if gestures == set(GESTI) else f"{_ACTOR}."}
 
 #: Quanto il cancello al confine tiene per buono un guasto nella lettura dei
 #: ruoli (spec 2026-09-27, ruling R-2.8/2.9). Il cancello gira su ogni
@@ -80,7 +108,7 @@ GATE_FAILURE_HOLD_S = 5.0
 #: lettura non deve dargli piu' di quanto ha. Un ingress non arriva qui (il
 #: cancello al confine lo chiude prima): ci arriva un turno servito dal ponte,
 #: che il ruolo lo rilegge al momento dello strumento.
-_PERSONA_IGNOTA = "lettore"
+PERSONA_IGNOTA = "lettore"
 
 _TEATRO = ("comandare le entità è ciò che Home Assistant concede già dalla "
            "plancia: vietarlo qui non toglierebbe nessun potere a nessuno")
@@ -132,7 +160,7 @@ def consente(soggetto: dict | None, *, ruolo: str | None) -> dict:
 
     if ruolo in RUOLI:
         puo = PUO[ruolo]
-        if puo["costruire"]:
+        if puo["amministrare"]:
             perche = None
         elif puo["comandare"]:
             perche = f"{_SOLO_AMMINISTRATORI}. {_TEATRO}."
@@ -141,11 +169,10 @@ def consente(soggetto: dict | None, *, ruolo: str | None) -> dict:
         return {**puo, "ruolo": ruolo, "perche": perche}
 
     if persona:
-        puo = PUO[_PERSONA_IGNOTA]
-        return {**puo, "ruolo": _PERSONA_IGNOTA, "perche": f"{_IGNOTO}."}
+        puo = PUO[PERSONA_IGNOTA]
+        return {**puo, "ruolo": PERSONA_IGNOTA, "perche": f"{_IGNOTO}."}
 
-    return {**{gesto: False for gesto in GESTI},
-            "ruolo": None, "perche": _MACCHINA_MUTA}
+    return nothing_granted(_MACCHINA_MUTA)
 
 
 def ruolo_letto(soffitto: dict) -> bool:
@@ -155,7 +182,7 @@ def ruolo_letto(soffitto: dict) -> bool:
 
     Serve a chi deve DIRLO a qualcuno (fix round 1, Task 5, Important 3: la
     sezione "Chi ti sta parlando" del contesto della chat), non solo a
-    deciderlo -- `consente()` sopra restituisce `_PERSONA_IGNOTA` ("lettore",
+    deciderlo -- `consente()` sopra restituisce `PERSONA_IGNOTA` ("lettore",
     dal fix round 1 del Task 2 della spec 2026-09-27) ANCHE quando il ruolo
     e' stato letto davvero da Home Assistant e la persona e' del gruppo di
     sola lettura: la stessa stringa copre due fatti diversi, e solo
@@ -332,22 +359,20 @@ async def boundary_role(app, subject: dict | None) -> BoundaryRole:
 
 
 def denies(ceiling: dict | None, gesture: str, subject: dict | None) -> bool:
-    """Questo soffitto nega questo gesto? La domanda degli strumenti del
-    turno (`tools._ceiling_denies`) e di `can_configure` nei pallini.
+    """Questo soffitto nega questo gesto? **La domanda unica** (F-01, Tappa
+    7): la fanno il cancello delle rotte (`admission.gesture_refusal`, per
+    ogni soggetto), gli strumenti del turno (`tools._ceiling_denies`) e i
+    pallini (`handlers_pending`). Fino al 07/10/2026 il cancello di chi
+    costruisce (`require_builder`), quello dei servizi (`_solo_amministratori`)
+    e `can_build` leggevano `ceiling["costruire"]` nudo, e differivano da qui
+    in un caso solo: lo sviluppo con l'interruttore acceso.
 
-    **Non e' l'unica** (review finale, punto 5): il cancello di chi
-    costruisce (`require_builder`), quello dei servizi
-    (`handlers_servizi._solo_amministratori`) e `can_build` leggono
-    `ceiling["costruire"]` nudo. Misurato il 27/09/2026 su ogni specie per
-    ogni ruolo, interruttore acceso e spento: una differenza sola, lo
-    sviluppo con l'interruttore acceso -- per loro non costruisce, per questa
-    funzione si'. La pinna `test_chi_costruisce.py::
-    test_il_cancello_decide_per_ogni_ingresso`; unirle cambierebbe lo
-    sviluppo, e la scelta sta in `docs/BACKLOG.md`.
-
-    `None` (nessuna persona ha aperto il turno: l'osservatore, lo
-    schedulatore) non nega niente -- il perimetro delle macchine e'
-    l'invariante dei canali esterni. **Lo sviluppo non si restringe per
+    `None` non arriva dal prodotto: l'unico costruttore del dispatcher
+    (`handlers_chat.create_tool_dispatcher`) lo rifiuta dal 07/10/2026, e
+    ogni turno porta un soffitto -- quello di chi l'ha aperto, o quello
+    dichiarato dal suo mestiere (`declared_ceiling`, decisione 13). Lo
+    ricevono soltanto le prove che costruiscono `ToolDispatcher` a mano.
+    **Lo sviluppo non si restringe per
     ruolo** (fix round 1, I3): con `HIRIS_ALLOW_NO_TOKEN` l'autenticazione e'
     spenta per definizione, e restringerlo darebbe solo un prodotto diverso da
     provare.
@@ -392,7 +417,7 @@ async def sole_owner(app) -> dict | None:
     """
     owners = [uid for uid, row in (await _ha_users(app) or {}).items()
               if row.get("proprietario")]
-    return {"specie": "persona", "id": owners[0]} if len(owners) == 1 else None
+    return new_subject("persona", ident=owners[0]) if len(owners) == 1 else None
 
 
 async def administrators(app) -> list[dict] | None:
@@ -409,7 +434,7 @@ async def administrators(app) -> list[dict] | None:
     users = await _ha_users(app)
     if users is None:
         return None
-    return [{"specie": "persona", "id": uid} for uid, row in users.items()
+    return [new_subject("persona", ident=uid) for uid, row in users.items()
             if is_admin_role(_role_of(row)) and not row.get("sistema")]
 
 
@@ -441,15 +466,14 @@ WAKE_UNVERIFIED_PERSON = ("non ho potuto verificare in Home Assistant chi aveva 
 
 
 def _approved_service_role(app, subject: dict) -> str | None:
-    """Il ruolo del servizio approvato che porta questo nome, letto adesso
+    """Il ruolo del servizio approvato con questa impronta, letto adesso
     dall'archivio dei servizi -- o `None` se non si puo' sapere con certezza.
 
     Il soggetto ricostruito da un filo (`chat_thread.subject_from_thread`)
-    porta specie e id -- per un servizio l'id e' il nome con cui e' stato
-    approvato (`middleware_internal_auth`) -- ma non il ruolo, che viaggiava
-    con la firma. Si rilegge dall'archivio, e nel dubbio si chiude: un
-    servizio revocato, sconosciuto o con due approvazioni di ruolo diverso
-    sotto lo stesso nome non ha un ruolo che si possa dedurre.
+    porta specie e id -- per un servizio l'id e' l'impronta della sua chiave
+    (`servizi.ServiziStore.fingerprint`, S-16) -- ma non il ruolo, che
+    viaggiava con la firma. Si rilegge dall'archivio, e nel dubbio si chiude:
+    un servizio revocato o sconosciuto non ha un ruolo che si possa dedurre.
     """
     roles = {row.get("ruolo") for row in _service_rows(subject, approved_services(app))}
     return roles.pop() if len(roles) == 1 else None
@@ -475,12 +499,13 @@ def approved_services(app) -> list[dict]:
 
 
 def _service_rows(subject: dict, approved: list[dict]) -> list[dict]:
-    """Le righe approvate che portano il nome e la specie di questo soggetto:
-    una ricerca sola per il ruolo al risveglio (`_approved_service_role`) e
-    il nome sulla pagina (`subject_name`)."""
+    """Le righe approvate che portano l'impronta e la specie di questo
+    soggetto: una ricerca sola per il ruolo al risveglio
+    (`_approved_service_role`) e il nome sulla pagina (`subject_name`). Fino
+    al 07/10/2026 si cercava per nome (S-16)."""
     return [row for row in approved
-            if row.get("nome") == subject.get("id")
-            and (row.get("specie") or "integrazione") == subject.get("specie")]
+            if row.get("impronta") == subject.get("id")
+            and (row.get("specie") or SPECIE_IGNOTA) == subject.get("specie")]
 
 
 #: Le specie che hanno un nome da qualche parte: una persona fra gli utenti
@@ -497,8 +522,8 @@ async def subject_name(app, subject: dict | None, *,
     scritto un giudizio si nominano qui, allo stesso modo.
 
     Si legge da chi lo SA: per una persona gli utenti di Home Assistant, per
-    un servizio l'archivio -- dove il nome e' lo stesso id con cui e' stato
-    approvato, e la lettura aggiunge che e' **ancora** approvato. Se non c'e',
+    un servizio l'archivio, cercato per impronta -- e la lettura aggiunge che
+    e' **ancora** approvato. Se non c'e',
     il nome che il confine ha attaccato al soggetto (l'intestazione
     dell'ingress, la firma); un soggetto rifatto da un filo non ne porta. Mai
     la chiave: sulla pagina sarebbe un identificatore interno, non un nome.
@@ -539,17 +564,16 @@ async def ceiling_at_wake(app, subject: dict | None) -> dict:
         # legge (`lettore`): per un'azione a scadenza di cui non si sa il
         # padrone nemmeno quello -- una macchina senza ruolo, che non puo'
         # niente.
-        return consente({"specie": "nessuno"}, ruolo=None)
+        return consente(new_subject("nessuno"), ruolo=None)
     if subject.get("specie") == "persona":
         # **Al risveglio il dubbio chiude** (fix round 1, punto 2). In chat
-        # una persona senza ruolo leggibile vale «lettore» (`_PERSONA_IGNOTA`):
+        # una persona senza ruolo leggibile vale «lettore» (`PERSONA_IGNOTA`):
         # legge e basta. Al risveglio nemmeno quello -- l'utente puo' essere
         # stato cancellato, o Home Assistant non rispondere -- e nel dubbio
         # non si fa niente: nessun gesto, nemmeno le letture riservate.
         role = await _ruolo_persona(app, subject)
         if role is None:
-            return {**{g: False for g in GESTI}, "ruolo": None,
-                    "perche": WAKE_UNVERIFIED_PERSON}
+            return nothing_granted(WAKE_UNVERIFIED_PERSON)
         return consente(subject, ruolo=role)
     subject["ruolo"] = _approved_service_role(app, subject)
     return await ceiling_for(app, subject)
@@ -577,8 +601,8 @@ def request_role(request) -> str | None:
 def request_ceiling(request) -> dict:
     """**Il soffitto di questa richiesta**, dal ruolo gia' letto
     (`request_role`): la stessa regola di `ceiling_for`, senza rileggere i
-    ruoli. E' la sola strada per chi decide su una richiesta -- il cancello di
-    chi costruisce, quello dei servizi, il turno di chat, i pallini."""
+    ruoli. E' la sola strada per chi decide su una richiesta -- il cancello
+    delle rotte (`admission.gesture_refusal`), il turno di chat, i pallini."""
     return consente(request.get("soggetto") or {}, ruolo=request_role(request))
 
 
@@ -599,28 +623,6 @@ def _route_pattern(request) -> str:
     info = getattr(request, "match_info", None)
     resource = getattr(getattr(info, "route", None), "resource", None)
     return getattr(resource, "canonical", None) or "?"
-
-
-def require_builder(request) -> web.Response | None:
-    """**Il cancello di chi costruisce** (spec 2026-09-26 §3, decisioni 5 e
-    6): `None` se questa richiesta puo' costruire, altrimenti il 403 col
-    motivo del soffitto.
-
-    Una funzione sola per ogni rotta della pagina Costruzioni, delle proposte
-    a mano e dei giudizi: la regola e' una, e due copie divergerebbero al
-    primo ritocco. Si chiama PRIMA di toccare qualunque archivio: un 403
-    detto dopo avrebbe gia' letto, o scritto.
-
-    Il rifiuto si registra a `info`: un non amministratore che apre la pagina
-    per URL e' un caso normale, non un allarme. Si scrive la chiave del
-    soggetto e non il nome visualizzato, che e' testo di chi chiede.
-    """
-    permesso = request_ceiling(request)
-    if permesso["costruire"]:
-        return None
-    logger.info("soffitto: %s %s negato a %s — %s", request.method, _route_pattern(request),
-                subject_key_for(request.get("soggetto")), permesso["perche"])
-    return error_response(403, permesso["perche"])
 
 
 def prepara_ruoli(app) -> None:

@@ -345,6 +345,10 @@ async def test_il_csrf_gira_DOPO_l_autenticazione_e_non_prima(monkeypatch):
         return web.json_response({"ok": True})
 
     app.router.add_post("/api/prova-ordine", accepted)
+    # Una rotta di prova ha bisogno del suo gesto (`admission.ADMISSION`): senza,
+    # il cancello unico la chiude a tutti, ponte compreso, prima del CSRF.
+    from hiris.app.api import admission
+    monkeypatch.setitem(admission._GESTURES, ("POST", "/api/prova-ordine"), "leggere")
     # L'avvio no: qui si guarda il confine, e l'avvio parlerebbe con Home
     # Assistant.
     app.on_startup.clear()

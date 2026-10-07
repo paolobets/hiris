@@ -559,7 +559,10 @@ async def guard(app, exchange: str | None = None) -> AnalystDispatcher:
         with_statistics = await statistic_ids_for_round(app, ha)
         if not isinstance(with_statistics, dict):
             house = house.with_statistics(with_statistics)
-    below = create_tool_dispatcher(app, exchange=exchange, house=house)
+    # Il soffitto dichiarato dal mestiere (decisione 13): legge e amministra,
+    # non comanda. Fino al 07/10/2026 qui non c'era, e `None` non negava niente.
+    below = create_tool_dispatcher(app, exchange=exchange, house=house,
+                                   soffitto=SPECIES[ANALYST_SPECIES].ceiling())
     return AnalystDispatcher(below, ha=ha, house=house,
                              timezone=historian.house_timezone(store),
                              presence=PresenceMask(house) if house is not None else None)

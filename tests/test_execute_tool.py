@@ -17,6 +17,7 @@ test. Qui si pinnano tre cose che nessun altro test copre:
 import pytest
 
 from hiris.app.action.actuator import ActionActuator
+from hiris.app.api.soffitto import consente
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from tests._contracts import assert_stessa_firma
 
@@ -97,6 +98,11 @@ async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
 # avrebbe visto, perche' ogni finta passa la porta a mano.
 
 
+#: Il soffitto che il costruttore pretende (decisione 13, Tappa 7, Task 7): qui
+#: si prova il cablaggio, non il permesso.
+_AMMINISTRATORE = consente(None, ruolo="amministratore")
+
+
 @pytest.mark.asyncio
 async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     """`create_tool_dispatcher` e' l'UNICO punto di costruzione del
@@ -106,7 +112,7 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     actuator = FintaPorta()
-    d = create_tool_dispatcher({"action_actuator": actuator})
+    d = create_tool_dispatcher({"action_actuator": actuator}, soffitto=_AMMINISTRATORE)
 
     esito = await d.dispatch("execute", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
@@ -130,7 +136,8 @@ def test_l_unico_costruttore_del_dispatcher_passa_l_istantanea_dei_giudizi():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     giudizi_finti = object()
-    d = create_tool_dispatcher({"type_judgments": giudizi_finti})
+    d = create_tool_dispatcher({"type_judgments": giudizi_finti},
+                               soffitto=_AMMINISTRATORE)
     assert d._judgments is giudizi_finti
 
 
@@ -157,7 +164,7 @@ def test_un_app_SENZA_la_chiave_costruisce_il_dispatcher_sul_SOLO_SEME():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
     from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 
-    d = create_tool_dispatcher({})
+    d = create_tool_dispatcher({}, soffitto=_AMMINISTRATORE)
     assert d._judgments is REPO_JUDGMENTS
 
 

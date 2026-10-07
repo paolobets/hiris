@@ -320,7 +320,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
         logger.info("Impostazioni chat rifiutate: %s", rejection.reason)
         return error_response(400, rejection.reason, field=rejection.field)
 
-    data_dir = request.app.get("data_dir") or "/data"
+    data_dir = request.app["data_dir"]
     try:
         updated.save(data_dir)
     except OSError as exc:

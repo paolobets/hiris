@@ -63,10 +63,10 @@ def test_dopo_l_ancora_l_abbonamento_non_afferma_ancora_zero(archivio):
     stesso fatto in due forme a seconda di un pulsante. Il commento accanto
     a quella somma dichiarava gia' il rischio («due strade per lo stesso
     numero divergono al primo caso limite») e la somma non lo rispettava."""
-    archivio.log("ponte", "claude-haiku-4-5", token_in=80,
+    archivio.log("subscription", "claude-haiku-4-5", token_in=80,
                       cost_usd=None, cost_state="compreso", now=MATTINA)
     archivio.sposta_anchor(POMERIGGIO)
-    archivio.log("ponte", "claude-haiku-4-5", token_in=40,
+    archivio.log("subscription", "claude-haiku-4-5", token_in=40,
                       cost_usd=None, cost_state="compreso", now=POMERIGGIO)
 
     sezione = archivio.sezioni(from_anchor=True)[0]

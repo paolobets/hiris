@@ -16,8 +16,7 @@ class _R:
 def _router():
     return LLMRouter(
         claude=_R("claude"), ollama=_R("ollama"),
-        chat_policy=["claude", "ollama"],
-    )
+        model_chain=["claude", "ollama"])
 
 
 @pytest.mark.asyncio
@@ -80,14 +79,9 @@ async def test_explicit_model_overrides_policy():
     assert out == "claude"
 
 
-@pytest.mark.asyncio
-async def test_backward_compat_policies_default_from_strategy():
-    r = LLMRouter(claude=_R("claude"), ollama=_R("ollama"), strategy="cost_first")
-    # cost_first order: ollama before claude.
-    # fetta E3 Task 8: la meta' di questo test su `run_with_actions` e'
-    # uscita insieme al metodo (uscito con la Sentinella, Task 7) -- la
-    # prova su `chat()` sotto copre lo stesso invariante su un ramo vivo.
-    assert await r.chat(model="auto") == "ollama"
+# Tappa 7 T9 (M-07): `test_backward_compat_policies_default_from_strategy`
+# e' uscito con il ramo «libreria» del router: provava che `strategy=` desse
+# l'ordine quando nessuno passava una catena, e oggi la catena e' obbligatoria.
 
 
 # fetta E4 Task 7: `test_chat_stream_mode_not_forwarded_to_runner' e' uscito,
@@ -105,14 +99,12 @@ async def test_backward_compat_policies_default_from_strategy():
 # questo test).
 
 
-def test_policy_drops_unknown_backend_names_preserving_order():
-    # fetta E4 Task 7: spostato da `automatic_policy`/`r._automatic_policy`
-    # (usciti) a `chat_policy`/`r._chat_policy` -- il soggetto (_norm_policy
-    # applicato al kwarg del costruttore, non solo alla funzione pura gia'
-    # coperta da test_router_backlog_fixes.py) resta vivo, cambia solo la
-    # via d'accesso.
+def test_la_catena_scarta_i_nomi_sconosciuti_conservando_l_ordine():
+    # Tappa 7 T9: era `test_policy_drops_unknown_backend_names_preserving_order`
+    # su `chat_policy` (uscito con `_norm_policy`); il soggetto -- un nome che
+    # la tabella non conosce non entra nella catena, e gli altri restano
+    # nell'ordine dato -- vale ora per `model_chain`, l'unica catena rimasta.
     r = LLMRouter(
         claude=_R("claude"), ollama=_R("ollama"),
-        chat_policy=["bogus", "ollama", "claude", "also_bogus"],
-    )
+        model_chain=["bogus", "ollama", "claude", "also_bogus"])
     assert r._chat_policy == ["ollama", "claude"]

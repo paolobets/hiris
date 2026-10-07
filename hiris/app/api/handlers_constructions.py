@@ -25,10 +25,10 @@ basta, e farlo passare dall'officina gli darebbe la stessa superficie di
 rischio di una conferma. Non e' una quinta rotta uguale alle altre: e'
 un'assenza deliberata.
 
-**Tutte e cinque sono di chi costruisce** (spec 2026-09-26 §3, decisione 5):
-ognuna chiama per prima `soffitto.require_builder`, prima di toccare un
-archivio. `tests/test_soffitto_cancello.py` deriva l'elenco dal router e lo
-verifica.
+**Tutte e cinque sono di chi amministra** (spec 2026-09-26 §3, decisione 5):
+ognuna porta il gesto `amministrare` nella tabella delle rotte
+(`admission.ADMISSION`), e il confine lo chiede per ogni soggetto prima di
+qualunque gestore, quindi prima di toccare un archivio (F-01, Tappa 7).
 """
 from __future__ import annotations
 
@@ -37,10 +37,11 @@ import time
 from aiohttp import web
 
 from ..action.construction.revisions import STATES_SOSPESO
+from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..mind import automate_turn
 from .boundary import error_response, occurrence_out
-from .soffitto import approved_services, require_builder, subject_name
+from .soffitto import approved_services, subject_name
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
@@ -53,9 +54,6 @@ def _store(request):
 
 
 async def handle_get_constructions(request: web.Request) -> web.Response:
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
@@ -89,7 +87,18 @@ async def _out(app, row: dict, approved: list[dict]) -> dict:
     code hanno la stessa forma. Il nome viene da `soffitto.subject_name`, la
     stessa casa dell'autore di un giudizio; `approved` e' l'archivio dei
     servizi letto UNA volta per risposta, non una per riga.
+
+    **Il motivo di un tentativo si legge dalla cronaca** (D-26, Tappa 7,
+    Task 3, 07/10/2026): l'officina non lo copia piu' nella riga, che porta
+    l'`esecuzione_id` della voce che lo dice. Le righe che un motivo proprio
+    ce l'hanno -- scaduta, disdetta, risanata al riavvio, e quelle scritte
+    prima di quel giorno -- lo tengono.
     """
+    if row.get("motivo") is None and row.get("esecuzione_id"):
+        journal = app.get("journal")
+        voce = journal.read(row["esecuzione_id"]) if journal is not None else None
+        if voce is not None and voce.get("errore"):
+            row = {**row, "motivo": voce["errore"]}
     return {**without_thread(row),
             "chiesta_da": await subject_name(app, subject_from_thread(row.get("thread")),
                                              approved=approved)}
@@ -153,9 +162,6 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
 
 
 async def handle_get_construction(request: web.Request) -> web.Response:
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
@@ -170,15 +176,11 @@ async def handle_get_construction(request: web.Request) -> web.Response:
 async def _act(request: web.Request, verb: str) -> web.Response:
     """Le due scritture della pagina verso Home Assistant, da un punto solo.
 
-    Passano dallo stesso cancello di tutte le rotte di questa pagina
-    (`soffitto.require_builder`): dal 26/09/2026 la pagina intera e' di chi
-    costruisce (spec 2026-09-26 §3, decisione 5), e una regola per le
-    scritture e un'altra per le letture sarebbero due regole.
+    Passano dallo stesso cancello di tutte le rotte di questa pagina (il
+    gesto `amministrare` in `admission.ADMISSION`): dal 26/09/2026 la pagina
+    intera e' di chi amministra (spec 2026-09-26 §3, decisione 5), e una
+    regola per le scritture e un'altra per le letture sarebbero due regole.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
-
     store = _store(request)
     workshop = request.app.get("workshop")
     if store is None or workshop is None:
@@ -190,15 +192,14 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     occurrence = await method(ident, actor="pagina", exchange=None,
                               now=time.time(),
                               subject=request.get("soggetto"))
-    if "errore" in occurrence:
+    if not occurrence["eseguito"]:
         # Un guasto di TRASPORTO verso Home Assistant (ondata finale, punto
         # 7, terza pulizia) non e' «la proposta non e' piu' in attesa»: e' la
         # stessa indisponibilita' che le due GET, qui sopra, dichiarano con
-        # 503. Prima questo ramo appiattiva ogni errore dell'officina su 409,
-        # anche quando la causa era Home Assistant irraggiungibile. Il flag
-        # e' interno (`Workshop._fallita`/`_rete`): non deve uscire nel corpo
-        # della risposta.
-        status = 503 if occurrence.pop("guasto_rete", False) else 409
+        # 503. Si legge la `causa` dell'esito, la forma delle due porte
+        # (`action/write_outcome.py`, E-04): fino al 07/10/2026 era un flag
+        # dell'officina, `guasto_rete`, che questa rotta toglieva dal corpo.
+        status = 503 if silent(occurrence) else 409
         return web.json_response(occurrence_out(occurrence), status=status)
     return web.json_response(occurrence_out(occurrence))
 
@@ -212,26 +213,25 @@ async def handle_restore_construction(request: web.Request) -> web.Response:
 
 
 async def handle_reject_construction(request: web.Request) -> web.Response:
-    """Il «no»: si scrive nell'archivio e basta.
+    """Il «no»: passa dall'officina, che lo scrive nell'archivio e basta.
 
-    Non passa dall'officina, e non e' una svista: non c'e' niente da scrivere
-    su Home Assistant, e farlo passare da li' darebbe a un rifiuto la stessa
-    superficie di rischio di una conferma.
+    Non tocca Home Assistant -- non c'e' niente da scrivere -- ma passa
+    dalla porta del canale della configurazione (`Workshop.reject`, E-12,
+    Tappa 7, Task 3, 07/10/2026): fino a quel giorno questa rotta chiamava
+    l'archivio da se', e le transizioni di una proposta avevano due porte.
 
-    **Ma passa dal cancello** (spec 2026-09-26 §3, decisione 5): fino al
+    **E passa dal cancello** (spec 2026-09-26 §3, decisione 5): fino al
     26/09 dire di no era di tutti, perche' chi non costruiva vedeva comunque
     la coda. Adesso la coda e' di chi costruisce, e il suo «no» con lei.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
-    if store is None:
-        return error_response(503, "archivio non disponibile")
+    workshop = request.app.get("workshop")
+    if store is None or workshop is None:
+        return error_response(503, "officina non disponibile")
     ident = request.match_info["id"]
     if store.read(ident, now=time.time()) is None:
         return error_response(404, _NOT_FOUND)
-    occurrence = store.mark_cancelled(ident, now=time.time())
+    occurrence = workshop.reject(ident, now=time.time())
     if "errore" in occurrence:
         return web.json_response(occurrence_out(occurrence), status=409)
     return web.json_response(occurrence_out(occurrence))

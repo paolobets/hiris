@@ -76,11 +76,11 @@ ITALIAN_FUNCTION_WORDS = frozenset([
 def fold_accents(text: str) -> str:
     """Gli accenti tolti, e nient'altro: «Città» -> «Citta».
 
-    La piegatura di tutto il prodotto (B-20): il riferimento qui sotto, e i
-    due slug (`action/construction/composer.available_slug` e `slugify`
-    qui sotto), che dopo ci applicano ciascuno il proprio
-    filtro ASCII -- quello e' la forma della chiave che Home Assistant
-    accetta, non una regola del confronto."""
+    La piegatura di tutto il prodotto (B-20): il riferimento qui sotto, e
+    lo slug (`slugify`, qui sotto, che chiede anche
+    `action/construction/composer.available_slug`, B-21), che dopo ci
+    applica il suo filtro ASCII -- quello e' la forma della chiave che Home
+    Assistant accetta, non una regola del confronto."""
     decomposed = unicodedata.normalize("NFKD", text)
     return "".join(c for c in decomposed if not unicodedata.combining(c))
 
@@ -100,7 +100,9 @@ def slugify(text: str | None) -> str:
     Viveva in `keeper/recipient.py` fino al 06/10/2026: la usano il
     destinatario delle promesse e il segnaposto dei nomi
     (`home_space/privacy.PresenceMask`, G26-1), e una seconda copia sarebbe
-    un doppione (B-21 resta aperta per `composer.available_slug`).
+    un doppione. Dal 07/10/2026 la chiede anche `composer.available_slug`
+    per le chiavi degli script, che ci aggiunge solo il suffisso contro le
+    collisioni (B-21, Tappa 7, Task 3).
 
     La piegatura degli accenti e' `fold_accents`, qui sopra (Tappa 3, Task 9,
     B-20); il filtro

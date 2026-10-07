@@ -51,6 +51,9 @@ def reset_chat_stores():
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
+    # Lo scrive l'avvio (`_on_startup`), che qui non gira: senza, la lettura
+    # dell'adozione dei fili (`chat_thread`) non ha dove guardare.
+    app["data_dir"] = str(tmp_path)
     app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     # La cronaca (`GET /api/executions/{id}`, rilievo ① della review finale):
     # anche lei nasce qui a mano, come `promesse` due righe sopra, perche'

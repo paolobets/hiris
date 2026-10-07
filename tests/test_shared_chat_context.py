@@ -229,21 +229,30 @@ def test_il_nome_grezzo_di_home_assistant_viene_sanificato_e_quotato(tmp_path):
 
 
 def test_un_ruolo_non_letto_non_si_spaccia_per_utente(tmp_path):
-    """Fix round 1, Important 3. `soffitto.consente()` restituisce la
-    stringa "utente" SIA quando Home Assistant ha risposto "non
-    amministratore" SIA quando la lettura e' fallita e HIRIS ripiega (vedi
+    """Fix round 1, Important 3. `soffitto.consente()` restituisce lo stesso
+    ruolo SIA quando Home Assistant ha detto che la persona e' di sola
+    lettura SIA quando la lettura e' fallita e HIRIS ripiega (vedi
     `soffitto.ruolo_letto`): affermarlo come un fatto letto, nel secondo
     caso, sarebbe la stessa famiglia di errore che questo prodotto vieta
-    altrove ("non dire di sapere cio' che non sai")."""
+    altrove ("non dire di sapere cio' che non sai").
+
+    E **come la si tratta lo dice il soffitto** (X-66, Tappa 7): fino al
+    07/10/2026 il testo diceva «trattato come utente» mentre il soffitto
+    applicava `lettore`. Mutazione ESEGUITA: rimesso «utente» scritto a mano
+    nella frase -- rossa."""
+    from hiris.app.api.soffitto import PERSONA_IGNOTA, consente
+
     app: dict = {}
+    ripiego = consente({"specie": "persona", "id": "p"}, ruolo=None)
     testo_ripiego = compose_chat_context(
         app, str(tmp_path), thread=PAOLO,
         soggetto={"specie": "persona", "id": "p", "nome": "Paolo"},
-        ruolo="utente", role_known=False)
+        ruolo=ripiego["ruolo"], role_known=False)
 
+    assert ripiego["ruolo"] == PERSONA_IGNOTA
     assert "ruolo in Home Assistant: utente" not in testo_ripiego
     assert ("ruolo in Home Assistant: non l'ho potuto sapere "
-           "(trattato come utente)") in testo_ripiego
+            f"(trattato come {PERSONA_IGNOTA})") in testo_ripiego
 
     # Il complemento: un "utente" VERO, letto davvero, si afferma senza riserve.
     testo_letto = compose_chat_context(

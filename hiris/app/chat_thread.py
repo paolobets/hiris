@@ -93,6 +93,27 @@ class SyncTurnsInFlight:
         return self._counts.get(thread, 0) > 0
 
 
+def new_subject(specie: str, *, ident: str | None = None, nome: str | None = None,
+                utente: str | None = None, ruolo: str | None = None) -> dict:
+    """**Il soggetto, in una forma sola** (F-19, Tappa 7): chi chiede, con le
+    stesse cinque chiavi da ogni porta -- il confine (`middleware_internal_auth`),
+    la firma (`canali.riconosci`), il soffitto (`sole_owner`, `administrators`,
+    `ceiling_at_wake`) e il filo (`subject_from_thread`). Fino al 07/10/2026 lo
+    costruivano otto punti in quattro forme (5, 4, 2 e 1 chiave), e chi lo
+    leggeva non poteva distinguere un campo assente da un campo vuoto.
+
+    - `specie`: `persona`, una specie di servizio (`canali.SERVICE_SPECIES`), `nessuno`
+      (il ponte, un turno interno) o `sviluppo`;
+    - `id`: la chiave stabile (l'utente di Home Assistant, l'impronta di un
+      servizio, il mestiere di un turno) -- `None` quando non c'e';
+    - `nome`: l'etichetta da mostrare, mai un'identita';
+    - `utente`: il nome utente di Home Assistant, solo per una persona;
+    - `ruolo`: il ruolo che viaggia con la credenziale (un servizio), `None`
+      per una persona -- il suo lo legge il cancello da Home Assistant."""
+    return {"specie": specie, "id": ident or None, "nome": nome or None,
+            "utente": utente or None, "ruolo": ruolo or None}
+
+
 def subject_key_for(soggetto: dict | None) -> str:
     """`specie:id` -- mai il nome, che cambia. `-` quando l'id non c'e'."""
     s = soggetto or {}
@@ -112,7 +133,8 @@ def request_thread(request) -> ChatThread:
 
 
 def subject_from_thread(thread: ChatThread | None) -> dict | None:
-    """Il soggetto di un filo, per chi ha solo il filo: `{"specie", "id"}`.
+    """Il soggetto di un filo, per chi ha solo il filo: nella forma di
+    `new_subject`, con specie e id.
 
     Serve all'orologio, che al risveglio di una promessa non ha la richiesta
     di chi l'ha chiesta -- ha la riga, e la riga ha il filo. Niente nome:
@@ -122,7 +144,7 @@ def subject_from_thread(thread: ChatThread | None) -> dict | None:
     if thread is None:
         return None
     specie, _sep, ident = thread.subject_key.partition(":")
-    return {"specie": specie, "id": None if ident in ("", "-") else ident}
+    return new_subject(specie, ident=None if ident in ("", "-") else ident)
 
 
 def unknown_id_text(nothing: str, by: str = "quell’identificatore") -> str:
@@ -170,7 +192,7 @@ async def adopt_if_owner(app, request, thread: ChatThread) -> None:
     from . import chat_store
     from .api.soffitto import is_owner
 
-    data_dir = app.get("data_dir", "/data")
+    data_dir = app["data_dir"]
     agenda = app.get("agenda")
     soggetto = request.get("soggetto") or {}
     if thread.entry_point != "pannello" or soggetto.get("specie") != "persona":

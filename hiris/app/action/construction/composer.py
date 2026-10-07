@@ -16,11 +16,7 @@ Puro: niente rete, niente orologio, niente archivio.
 """
 from __future__ import annotations
 
-import re
-
-from ...home_space.reference import fold_accents
-
-_NON_SLUG = re.compile(r"[^a-z0-9_]+")
+from ...home_space.reference import NO_SLUG, slugify
 
 
 def new_id(existing: set[str], seme: int) -> str:
@@ -44,16 +40,19 @@ def new_id(existing: set[str], seme: int) -> str:
 
 
 def available_slug(base: str, existing: set[str]) -> str:
-    """Una chiave di script che non collide. `cv.slug` la valida lato HA."""
-    # Piega gli accenti prima di applicare la regex, altrimenti "perché" →
-    # "perch" invece di "perche". La piegatura e' quella di tutto il prodotto
-    # (`home_space/reference.fold_accents`, B-20); il filtro ASCII e' dello slug.
-    base_ascii = fold_accents(base or "").encode("ascii", "ignore").decode("ascii")
-    reading = _NON_SLUG.sub("_", base_ascii.strip().lower()).strip("_")
-    if not reading:
-        # Uno slug vuoto finirebbe in `/api/config/script/config/`, che e'
-        # un'altra rotta: mai restituire la stringa vuota.
-        reading = "script_hiris"
+    """Una chiave di script che non collide. `cv.slug` la valida lato HA.
+
+    **Lo slug e' uno** (B-21, Tappa 7, Task 3, 07/10/2026): quello di Home
+    Assistant, replicato in `home_space/reference.slugify`; qui resta solo
+    il suffisso contro le collisioni. Fino a quel giorno questa funzione
+    aveva una regex sua e ripiegava su `script_hiris` dove HA da'
+    `unknown` (`NO_SLUG`). Vale per le chiavi nuove: quelle gia' scritte
+    non si rinominano.
+    """
+    # Un testo vuoto da' la stringa vuota anche in HA, e uno slug vuoto
+    # finirebbe in `/api/config/script/config/`, che e' un'altra rotta: mai
+    # restituire la stringa vuota.
+    reading = slugify(base) or NO_SLUG
     candidato = reading
     numero = 1
     while candidato in existing:
