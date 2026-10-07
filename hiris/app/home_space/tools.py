@@ -104,15 +104,14 @@ from .appointments import merge_calendars, readable_calendars
 from .energy import energy_dashboard
 from .ha_vocabulary import HA_LINK_TYPE
 from .house import House
+from .house_history import KINDS as HISTORY_KINDS
 from .house_history import (
-    ADMIN_KINDS,
     LEVELS,
     WINDOW_MAX_HOURS,
     parse_query,
     read_errors,
     read_history,
 )
-from .house_history import KINDS as HISTORY_KINDS
 from .house_query import (
     KINDS,
     ORDERS,
@@ -121,7 +120,11 @@ from .house_query import (
     parse_filters,
     query_house,
 )
-from .privacy import cover_automation_body
+from .privacy import (
+    ADMIN_ONLY_HISTORY_KINDS,
+    HA_CORE_USER_SERVICES,
+    cover_reserved_body,
+)
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
@@ -1242,35 +1245,21 @@ def _json_type_of(value: Any) -> str | None:
     return next((json_type for json_type in _TYPE_WORDS if _has_type(value, json_type)), None)
 
 
-#: I servizi del dominio `homeassistant` che Home Assistant concede a chi non
-#: amministra. Verificato il 27/09/2026 su Core 2026.9.3,
-#: `components/homeassistant/__init__.py`: `turn_on`, `turn_off`, `toggle`,
-#: `update_entity` (e `save_persistent_states`) si registrano con
-#: `hass.services.async_register`; `stop`, `restart`, `check_config`,
-#: `reload_core_config`, `set_location`, `reload_custom_templates`,
-#: `reload_config_entry` e `reload_all` con `async_register_admin_service`.
-#: `save_persistent_states` resta fuori per decisione (fix round 1, M-1): e'
-#: manutenzione del nucleo, non un comando di casa.
-_HA_CORE_USER_SERVICES = frozenset({"turn_on", "turn_off", "toggle", "update_entity"})
-
-
 def _reserved_core_service(arguments: dict[str, Any]) -> bool:
     """La chiamata di `execute` e' un servizio del dominio `homeassistant` che
-    Home Assistant riserva agli amministratori (`_HA_CORE_USER_SERVICES`)?
+    Home Assistant riserva agli amministratori (`privacy.HA_CORE_USER_SERVICES`)?
     Il dominio e' universale per la porta (`action/verification.py`) e HIRIS
     chiama col proprio token di amministratore: senza questa domanda chiunque
     chatti riavvierebbe Home Assistant."""
     domain, _dot, service = str(arguments.get("servizio") or "").partition(".")
-    return domain == "homeassistant" and service not in _HA_CORE_USER_SERVICES
+    return domain == "homeassistant" and service not in HA_CORE_USER_SERVICES
 
 
 def _asks_admin_reads(arguments: dict[str, Any]) -> bool:
     """La chiamata di `history` chiede una `cosa` che Home Assistant mostra ai
-    soli amministratori (`house_history.ADMIN_KINDS`: esecuzioni ed errori)?
-    Verificato il 27/09/2026 su Core 2026.9.3: `system_log/list`
-    (`components/system_log/__init__.py`), `trace/list` e `trace/get`
-    (`components/trace/websocket_api.py`) sono `@websocket_api.require_admin`."""
-    return arguments.get("cosa") in ADMIN_KINDS
+    soli amministratori (`privacy.ADMIN_ONLY_HISTORY_KINDS`: esecuzioni ed
+    errori, con la fonte in Home Assistant scritta li')?"""
+    return arguments.get("cosa") in ADMIN_ONLY_HISTORY_KINDS
 
 
 def _promises_an_action(arguments: dict[str, Any]) -> bool:
@@ -1810,13 +1799,13 @@ class ToolDispatcher:
             del detail["ricordi"]
             detail["ricordi_non_letti"] = ("l'archivio della memoria non e' "
                                            "ancora stato caricato")
-        # Il corpo di un'automazione solo a chi amministra: la regola e la sua
-        # ragione vivono in `privacy.cover_automation_body`, che chiama anche
+        # Il corpo di automazioni e scene solo a chi amministra: la regola e la
+        # sua ragione vivono in `privacy.cover_reserved_body`, che chiama anche
         # la rotta `GET /api/home-space`. Il nucleo della chat non porta i
         # corpi -- solo il nome e se il corpo c'e'. Il soffitto lo chiede
         # `dispatch`, una volta, dalla riga (`Tool.mask`).
         if isinstance(detail, dict) and masked:
-            detail = cover_automation_body(detail, kind=kind)
+            detail = cover_reserved_body(detail, kind=kind)
         return detail
 
     def _turn_house(self) -> House:

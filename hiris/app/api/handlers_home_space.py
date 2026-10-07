@@ -19,7 +19,7 @@ from aiohttp import web
 
 from ..home_space.briefing import _MEASUREMENT_NAMES, compose
 from ..home_space.house import House
-from ..home_space.privacy import cover_automation_body
+from ..home_space.privacy import cover_reserved_body
 from ..home_space.topology import category_names, label_names
 from .soffitto import denies, request_ceiling
 
@@ -127,12 +127,12 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
     # Quante voci HIRIS conosce solo di nome: si conta PRIMA di coprire,
     # perche' dice cio' che HIRIS sa, non cio' che mostra a chi guarda.
     without_body = sum(1 for v in behavior_entries if v["corpo"] is None)
-    # Il corpo di un'automazione solo a chi amministra: la stessa regola dello
+    # Il corpo di automazioni e scene solo a chi amministra: la stessa regola dello
     # strumento della chat, dalla stessa funzione (3.73.1). Le persone che non
     # amministrano qui non arrivano (`admission.py`); ci arriva un servizio
     # firmato «lettore» o «utente».
     if denies(request_ceiling(request), "amministrare", request.get("soggetto")):
-        behavior_entries = [cover_automation_body(v, kind=v["tipo"])
+        behavior_entries = [cover_reserved_body(v, kind=v["tipo"])
                             for v in behavior_entries]
     return web.json_response({
         "anagrafe_letta_il": store.updated_at(),

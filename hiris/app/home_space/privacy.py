@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 
 from ..proxy.entity_cache import CREDENTIALS
-from .ha_vocabulary import domain_of
+from .ha_vocabulary import HA_LINK_TYPE, domain_of
 from .queries import WITHHELD_BASKET
 from .reference import NO_SLUG, slugify
 from .type_vocabulary import domains_by_genre, unknown_states
@@ -144,29 +144,91 @@ def redact_nested(value):
     return out
 
 
-#: Perche' il corpo di un'automazione non va a chi non amministra. Verificato
-#: il 27/09/2026 su Core 2026.9.3 (fix round 1 del Task 2, L-2):
-#: `automation/config` (`components/automation/__init__.py`) e'
-#: `@websocket_api.require_admin`; `script/config` no, e il corpo degli
-#: script resta visibile a tutti.
-AUTOMATION_BODY_ADMIN_ONLY = ("Home Assistant mostra il corpo delle "
-                              "automazioni solo agli amministratori: si sa "
-                              "che c'e' e come si chiama, non cosa fa")
+# ── Cosa Home Assistant riserva agli amministratori ───────────────────────
+#
+# **Una casa sola** (D-43, F-22; Tappa 7, Task 5, 07/10/2026). Fino a quel
+# giorno lo stesso fatto -- «questo Home Assistant lo mostra o lo fa fare solo
+# a chi amministra» -- stava in quattro posti: i servizi del nucleo negli
+# strumenti (`tools._HA_CORE_USER_SERVICES`), le letture della storia
+# (`house_history.ADMIN_KINDS`), il corpo nell'anteprima dell'officina
+# (`workshop._BODY_ADMIN_ONLY`, automazioni e scene) e il corpo nella porta che
+# legge la casa (qui, solo automazioni). Due regole per «il corpo si mostra solo
+# a chi amministra»: oggi coincidevano sulla casa perche' la porta non porta
+# corpi di scene, non perche' qualcuno le tenesse uguali.
+#
+# **Riletto nel sorgente di Home Assistant il 07/10/2026, tag `2026.9.4`.**
+# Non si ipotizza: ogni insieme qui sotto cita dove HA lo dichiara.
+
+#: I domini il cui CORPO Home Assistant mostra solo agli amministratori.
+#: Le due porte da cui si legge un corpo:
+#: - REST, `/api/config/{automation,script,scene}/config/<chiave>`:
+#:   `BaseEditConfigView.get` e' `@require_admin` per tutti e tre
+#:   (`components/config/view.py`, righe 85-86);
+#: - WebSocket: `automation/config` e' `@websocket_api.require_admin`
+#:   (`components/automation/__init__.py`, righe 1248-1249); `script/config`
+#:   no (`components/script/__init__.py`, riga 784); le scene non hanno un
+#:   comando WebSocket della configurazione (`components/scene/__init__.py`,
+#:   `components/homeassistant/scene.py`): il loro corpo esce solo dalla
+#:   porta REST, che chiede l'amministratore.
+#: Quindi: il corpo di automazioni e scene si', quello degli script no. I nomi
+#: sono quelli di Home Assistant (il confine): chi ha in mano il tipo nostro
+#: («automazione», «scena») lo traduce con `HA_LINK_TYPE`, in `body_is_admin_only`.
+BODY_ADMIN_ONLY_DOMAINS = frozenset({"automation", "scene"})
+
+#: Perche' una voce della casa arriva senza corpo a chi non amministra.
+BODY_ADMIN_ONLY = ("Home Assistant mostra il corpo delle automazioni e delle "
+                   "scene solo agli amministratori: si sa che c'e' e come si "
+                   "chiama, non cosa fa")
+#: La stessa ragione, nell'anteprima di una proposta dell'officina, al posto
+#: della riga «Prima:» (com'e' adesso la cosa che si modifica).
+BEFORE_ADMIN_ONLY = "com'è adesso lo vedono solo gli amministratori."
 
 
-def cover_automation_body(entry: dict, *, kind: str) -> dict:
-    """La voce com'e' per chi non amministra: un'automazione col corpo lo
-    perde e dice perche'. Tutto il resto -- uno script, un'automazione di cui
-    il corpo non si conosce -- resta com'e': «coperto» e «non letto» sono due
-    fatti diversi.
+def body_is_admin_only(kind: str) -> bool:
+    """Il corpo di questo tipo Home Assistant lo mostra solo a chi amministra?
 
-    **Una regola, due porte**: la chiamano lo strumento della chat
-    (`tools.py`, il dettaglio di `view`) e la rotta `GET /api/home-space`,
-    che fino alla 3.73.0 consegnava i corpi a un servizio firmato «lettore».
+    `kind` e' il dominio di Home Assistant (`automation`, `scene`) oppure il
+    tipo nostro (`automazione`, `scena`): la traduzione e' quella del
+    confine, `ha_vocabulary.HA_LINK_TYPE`, e non una seconda tabella."""
+    return HA_LINK_TYPE.get(kind, kind) in BODY_ADMIN_ONLY_DOMAINS
+
+
+def cover_reserved_body(entry: dict, *, kind: str) -> dict:
+    """La voce com'e' per chi non amministra: se Home Assistant riserva il
+    corpo di questo tipo, la voce lo perde e dice perche'. Tutto il resto --
+    uno script, una voce di cui il corpo non si conosce -- resta com'e':
+    «coperto» e «non letto» sono due fatti diversi.
+
+    **Una regola, tre porte**: la chiamano lo strumento della chat
+    (`tools.py`, il dettaglio di `view`), la rotta `GET /api/home-space`, che
+    fino alla 3.73.0 consegnava i corpi a un servizio firmato «lettore», e --
+    con la sua frase, `BEFORE_ADMIN_ONLY` -- l'anteprima dell'officina.
     """
-    if kind != "automazione" or entry.get("corpo") is None:
+    if not body_is_admin_only(kind) or entry.get("corpo") is None:
         return entry
-    return {**entry, "corpo": None, "corpo_non_disponibile": AUTOMATION_BODY_ADMIN_ONLY}
+    return {**entry, "corpo": None, "corpo_non_disponibile": BODY_ADMIN_ONLY}
+
+
+#: I servizi del dominio `homeassistant` che Home Assistant concede a chi non
+#: amministra. Riletto il 07/10/2026 al tag `2026.9.4`,
+#: `components/homeassistant/__init__.py`: `turn_on`, `turn_off`, `toggle`
+#: (righe 185-193), `update_entity` (righe 282-287) e `save_persistent_states`
+#: (righe 179-181) si registrano con `hass.services.async_register`; `stop`,
+#: `restart`, `check_config`, `reload_core_config`, `set_location`,
+#: `reload_custom_templates`, `reload_config_entry` e `reload_all` con
+#: `async_register_admin_service`. `save_persistent_states` resta fuori per
+#: decisione (fix round 1, M-1, 27/09/2026): e' manutenzione del nucleo, non
+#: un comando di casa.
+HA_CORE_USER_SERVICES = frozenset({"turn_on", "turn_off", "toggle", "update_entity"})
+
+#: I generi della storia (`house_history.KINDS`) che leggono cio' che Home
+#: Assistant mostra ai soli amministratori: le esecuzioni (`trace/list`,
+#: `trace/get`, `components/trace/websocket_api.py`) e gli errori
+#: (`system_log/list`, `components/system_log/__init__.py`, righe 342-343),
+#: tutti `@websocket_api.require_admin`. Riletto il 07/10/2026 al tag
+#: `2026.9.4`. Che siano generi veri della storia lo prova
+#: `tests/test_riservato_agli_amministratori.py`, chiedendolo a `house_history`.
+ADMIN_ONLY_HISTORY_KINDS = frozenset({"esecuzioni", "errori"})
 
 
 # ── I nomi delle persone verso un attore (decisione 12, estesa il 06/10/2026)

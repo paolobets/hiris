@@ -30,7 +30,7 @@ _PERSONA_MARTA = {"specie": "persona", "id": "u-marta"}
 @pytest.fixture
 def dispatcher_as_user(archivio_casa, memoria):
     """Lo stesso costruttore, col soffitto di chi non amministra -- come le
-    prove del corpo coperto (`privacy.cover_automation_body`) in
+    prove del corpo coperto (`privacy.cover_reserved_body`) in
     `tests/test_admission.py`."""
     return ToolDispatcher(archivio_casa, memoria,
                           soffitto=consente(_PERSONA_MARTA, ruolo="utente"),

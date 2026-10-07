@@ -617,7 +617,7 @@ def test_il_token_non_compare_in_tools_called():
         headers={"X-HIRIS-Internal-Token": token})
 
     assert token not in json.dumps(decisione)
-    assert decisione["tools_called"][0]["input"]["testo"] == f"il token e' {runner.REDATTO}"
+    assert decisione["tools_called"][0]["input"]["testo"] == f"il token e' {runner.MASK}"
 
 
 # -- il conteggio dei giri (Step 4 del brief) --------------------------------

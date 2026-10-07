@@ -38,6 +38,7 @@ import logging
 
 from ...chat_thread import ChatThread, unknown_id_text
 from ...home_space.historian import home_space_zone
+from ...home_space.privacy import BEFORE_ADMIN_ONLY, body_is_admin_only
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer, stakes
 from .advisor import STRUCTURES, consiglia
@@ -314,7 +315,7 @@ class Workshop:
 
         preview = self._preview(operation, domain, key, intent, prima, dopo,
                                 consiglio,
-                                reveal_before=reveal_before or domain not in _BODY_ADMIN_ONLY)
+                                reveal_before=reveal_before or not body_is_admin_only(domain))
         level = stakes_of(intent, domain, prima, dopo)
         if refuse_high:
             refusal = stakes.unattended_refusal(
@@ -435,7 +436,7 @@ class Workshop:
                          f"«{(prima or {}).get('alias') or key}», "
                          "che esiste già in casa tua.")
             righe.append(f"Prima: {_compatta(prima)}" if reveal_before
-                         else f"Prima: {_BEFORE_ADMIN_ONLY}")
+                         else f"Prima: {BEFORE_ADMIN_ONLY}")
             righe.append(f"Dopo: {_compatta(dopo)}")
         else:
             righe.append(f"Cancello {ARTICOLO_DETERMINATIVO.get(domain, domain)} "
@@ -1284,14 +1285,6 @@ def services_named(body: dict | None) -> list[str]:
 
     walk(body or {}, 0)
     return found
-
-
-#: I domini il cui corpo attuale Home Assistant mostra solo agli
-#: amministratori, e la riga che li sostituisce nell'anteprima di chi non lo
-#: e' (vedi `Workshop.propose`). L'alias resta: e' lo stesso nome che la
-#: plancia mostra a tutti.
-_BODY_ADMIN_ONLY = frozenset({"automation", "scene"})
-_BEFORE_ADMIN_ONLY = "com'è adesso lo vedono solo gli amministratori."
 
 
 def _compatta(body: dict | None) -> str:

@@ -244,7 +244,15 @@ _INJECTION_RE = re.compile(
 # IDENTICAL string (" [troncato]") before the merge, so there was no visible
 # text to choose between -- this one survives because it is the module that
 # both callers already depend on, not because either wording lost.
-_TRUNCATED = " [troncato]"
+#: Il marcatore del taglio, da solo: e' cio' che resta al posto di un valore
+#: tagliato per intero (un contenitore oltre la profondita' che si guarda, nel
+#: registro dei turni). Accanto a un testo accorciato porta lo spazio davanti.
+CUT = "[troncato]"
+_TRUNCATED = f" {CUT}"
+#: Il segnaposto di un segreto tolto: lo stesso nel ponte (`agent/runner.py`,
+#: i segreti tolti dai messaggi) e nel registro dei turni (`usage/store.py`,
+#: gli argomenti salvati). Fino al 07/10/2026 era scritto in tutti e due (D-29).
+MASK = "***"
 
 
 def truncate_with_marker(text, cap: int) -> str:

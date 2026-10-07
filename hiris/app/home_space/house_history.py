@@ -75,10 +75,6 @@ WINDOW_MAX_HOURS = 24 * 90
 #: `system_log` raccoglie da `WARNING` in su (soglia, non elenco: verificato
 #: sui tag `2024.7.0` e `2026.9.0`, `handler.setLevel(logging.WARNING)`).
 LEVELS = ("WARNING", "ERROR", "CRITICAL")
-#: I generi che leggono cio' che Home Assistant mostra ai soli
-#: amministratori: `trace/list`, `trace/get`, `system_log/list` sono
-#: `require_admin` (Core 2026.9.3, verificato il 27/09/2026, ruling R-2.25).
-ADMIN_KINDS = frozenset({"esecuzioni", "errori"})
 #: Le chiavi di «di chi», e della pagina: le stesse di `search`, lette da
 #: `parse_filters` e da nessun altro.
 _WHO_KEYS = ("nome", "riferimento", "tipo", "classe", "area", "piano",
@@ -1286,8 +1282,9 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
 # dipende dalla persona (piano della Tappa 3, «l'oggetto per turno»): ricevono
 # la casa (`House`), il canale (`ha`), lo specchio (`cache`) e il sigillo, e un
 # attore che non e' un turno di chat le chiama da se'. **Il permesso resta
-# sopra**, nel dispatcher: il cancello di `ADMIN_KINDS` prima di chiamarle, e
-# niente qui lo rifa' ne' lo salta -- chi le chiama ha gia' deciso che puo'.
+# sopra**, nel dispatcher: il cancello di `privacy.ADMIN_ONLY_HISTORY_KINDS`
+# prima di chiamarle, e niente qui lo rifa' ne' lo salta -- chi le chiama ha
+# gia' deciso che puo'.
 
 
 def read_failure(answer, fallback: str) -> dict:
@@ -1502,9 +1499,9 @@ async def read_errors(ha, query: HistoryQuery, *, seal) -> dict:
     `error_rows`. Non guarda la casa: gli errori si chiedono anche con
     l'anagrafe non ancora caricata.
 
-    `system_log/list` e' `require_admin` in Home Assistant (Core 2026.9.3,
-    verificato il 27/09/2026): chi lo chiama ha GIA' deciso che puo' -- nella
-    chat, `ToolDispatcher._history` col cancello di `ADMIN_KINDS`."""
+    `system_log/list` e' `require_admin` in Home Assistant (la fonte sta in
+    `privacy.ADMIN_ONLY_HISTORY_KINDS`): chi lo chiama ha GIA' deciso che puo'
+    -- nella chat, `ToolDispatcher._history` col cancello di quell'insieme."""
     answer = await ha.system_log()
     if not isinstance(answer.get("voci"), list):
         return read_failure(answer, "il registro di Home Assistant non ha risposto")
@@ -1523,8 +1520,9 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     costruirne una per loro chiama `read_errors` da se'.
 
     **Il permesso non e' qui.** `esecuzioni` ed `errori` leggono cio' che Home
-    Assistant mostra ai soli amministratori (`ADMIN_KINDS`): il cancello sta
-    in chi chiama, prima di questa funzione."""
+    Assistant mostra ai soli amministratori
+    (`privacy.ADMIN_ONLY_HISTORY_KINDS`): il cancello sta in chi chiama, prima
+    di questa funzione."""
     if query.kind == "errori":
         return await read_errors(ha, query, seal=seal)
     mirror, home = house.mirror, house.home_space

@@ -83,6 +83,7 @@ from ..chat_store import (
     RUNNER_ERROR_PREFIX,
 )
 from ..model_resolution import SUBSCRIPTION_ALIAS
+from ..proxy._sanitize import MASK
 from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens
 from . import prompts
@@ -294,9 +295,6 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     }, ensure_ascii=False)
 
 
-REDATTO = "***"
-
-
 #: Dove sta la CLI del ponte, e **non si cerca in `PATH`** (reperto D-4,
 #: 22/09/2026): `PATH` non e' una cosa che questo prodotto controlla, e un
 #: `argv[0]` nudo lascia decidere a lui quale programma si esegue. L'immagine
@@ -340,7 +338,7 @@ def reda_segreti(text: str, *segreti: str) -> str:
     # seconda lasciando in giro il resto.
     for segreto in sorted(set(segreti), key=len, reverse=True):
         if segreto:
-            text = text.replace(segreto, REDATTO)
+            text = text.replace(segreto, MASK)
     return text
 
 
@@ -421,7 +419,7 @@ def _reda_struttura(value, *segreti: str):
 
 
 def _exception_reason(exc: BaseException, token: str | None = None) -> str:
-    """Il messaggio di un'eccezione reso stampabile: tipo + testo REDATTO.
+    """Il messaggio di un'eccezione reso stampabile: tipo + testo redatto (`MASK`).
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 4, nit 1 della
     review del Task 3). Un `log.warning("...: %s", exc)` e' il **settimo
@@ -2244,7 +2242,7 @@ async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,
                     # canale di perdita del token (le intestazioni del turno
                     # lo portano, e un valore non consegnabile risale col
                     # valore dentro). Si passa da `_exception_reason`: tipo +
-                    # messaggio REDATTO, cosi' il log resta diagnosticabile.
+                    # messaggio redatto, cosi' il log resta diagnosticabile.
                     log.warning("ponte, turno fallito: %s", _exception_reason(
                         exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
     finally:
