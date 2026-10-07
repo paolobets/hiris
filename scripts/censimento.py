@@ -392,7 +392,10 @@ def censisci_scritture(file_app: list[Path]) -> list[Reperto]:
 
 # ── Opzioni e variabili d'ambiente ──────────────────────────────────────────
 
-_RE_EXPORT = re.compile(r"^\s*export\s+([A-Z_][A-Z0-9_]*)=", re.MULTILINE)
+# `export NOME=valore` e `export NOME` su una riga sua (run.sh assegna in un
+# ramo ed esporta dopo): fino al 07/10/2026 si riconosceva solo la prima, e
+# `SUPERVISOR_INGRESS_CIDR` usciva come mai esportata (N83-2, giro 83).
+_RE_EXPORT = re.compile(r"^\s*export\s+([A-Z_][A-Z0-9_]*)\b", re.MULTILINE)
 _RE_ENV = re.compile(
     r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[)"""
     r"""\s*["']([A-Z_][A-Z0-9_]*)["']"""

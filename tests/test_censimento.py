@@ -122,6 +122,24 @@ c = os.environ["HIRIS_ALTRA"]
     assert nomi == {"HIRIS_MORTA", "HIRIS_ALTRA"}
 
 
+def test_envvar_esportata_su_una_riga_sua_non_e_un_reperto(tmp_path):
+    """N83-2 (giro 83, 07/10/2026). `run.sh` assegna `SUPERVISOR_INGRESS_CIDR`
+    in un ramo e la esporta dopo, con `export NOME` su una riga sua: la regola
+    che voleva `export NOME=` la leggeva come mai esportata. Un nome che ne
+    contiene un altro come prefisso non conta come esportato."""
+    cfg = _scrivi(tmp_path, "config.yaml", _CONFIG_YAML)
+    run_sh = _scrivi(tmp_path, "run.sh", 'HIRIS_SOLA=""\nexport HIRIS_SOLA\n'
+                                         "export HIRIS_PREFISSO_LUNGO=1\n")
+    app = _scrivi(tmp_path, "app.py", '''
+import os
+a = os.environ.get("HIRIS_SOLA")
+b = os.environ.get("HIRIS_PREFISSO")
+''')
+    reperti = censimento.censisci_configurazione(cfg, run_sh, [app])
+    nomi = {r.nome for r in reperti if r.categoria == "envvar-mai-esportata"}
+    assert nomi == {"HIRIS_PREFISSO"}
+
+
 def test_config_mancante_non_esplode(tmp_path):
     assert censimento.censisci_configurazione(
         tmp_path / "assente.yaml", tmp_path / "assente.sh", []
