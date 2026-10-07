@@ -1427,17 +1427,11 @@ class ToolDispatcher:
         # Il registro dei servizi (`action/registry.py::ServiceRegistry`), la
         # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
         # stessa ragione di `_ha`: due registri sarebbero due opinioni
-        # su cosa esiste, e potrebbero divergere. Serve a `promise` per
-        # verificare un `fai` ADESSO (`_verify_now`). `None` e' legittimo e
-        # NON passa da `_missing_resource` (che solleverebbe un errore
-        # diverso, "l'archivio non e' caricato"): senza registro PRONTO --
-        # assente o presente ma mai caricato da Home Assistant,
-        # `_registry_not_ready()` -- il controllo RIFIUTA invece di tacere
-        # (fix review Task 6 Rilievo 2): un `fai` mai verificato nascerebbe
-        # con una promessa che dichiara "viene VERIFICATA adesso" senza
-        # esserlo stata. (Il recapito scelto dal modello, che questo registro
-        # verificava allo stesso modo, e' uscito con la fetta «il seguito
-        # delle chat divise»: lo risolve il sistema al risveglio.)
+        # su cosa esiste, e potrebbero divergere. Serve a `search` (i
+        # comandi di un'entita') e al recapito di un `chiedi`. Un `fai` NON
+        # si verifica piu' qui: lo verifica la porta (`ActionActuator.verify`,
+        # Tappa 7 T1, E-13), con la stessa guardia del registro muto con cui
+        # esegue. `None` e' legittimo e NON passa da `_missing_resource`.
         self._registry = registry
         # L'archivio delle promesse (`keeper/store.py`). `None` e'
         # legittimo come per la porta: i tre strumenti dichiarano un errore
@@ -2054,18 +2048,16 @@ class ToolDispatcher:
         carica PIGRAMENTE alla prima azione ESEGUITA (`server.py`, commento
         sulla scelta) -- un add-on appena avviato che non ha ancora eseguito
         nessuna azione arriva qui con un registro presente ma VUOTO, e senza
-        questa chiamata `_registry_not_ready()` rifiuterebbe SEMPRE, anche
-        quando Home Assistant e' raggiungibile e pronto a rispondere.
+        questa chiamata la vista uscirebbe senza comandi, anche quando Home
+        Assistant e' raggiungibile e pronto a rispondere.
         Difetto misurato dal vivo su 3.9.1: «verifica le temperature di ogni
         stanza e fra un'ora mandami il delta» rifiutato con «il registro dei
         servizi non e' ancora pronto», mentre le otto temperature erano appena
         state lette correttamente (da un'altra strada, non dal registro).
 
         Diversa dalla porta in un punto: qui un guasto non diventa un errore
-        diverso da mostrare al modello -- degrada al rifiuto onesto gia'
-        scritto in `_registry_not_ready()` ("non e' pronto"), perche' e' gia'
-        la frase giusta per «non so ancora cosa questa casa sa fare»: una
-        seconda frase per lo stesso fatto sarebbe un doppione.
+        da mostrare al modello -- si registra e basta; chi verifica un `fai`
+        e' la porta, che ha il suo rifiuto per il registro muto.
 
         Senza registro (`None`, legittimo: `promise` non lo dichiara come
         archivio richiesto nella sua riga, `Tool.resources`) o senza un canale HA
@@ -2115,7 +2107,6 @@ class ToolDispatcher:
         """
         import time as _time
 
-        from ..action.verification import verification
         from ..keeper.recipient import recipients_for
 
         # Il filo e il soffitto (un `fai` vuole `comandare`) li ha gia'
@@ -2140,7 +2131,7 @@ class ToolDispatcher:
             call = arguments.get("chiamata")
             if not isinstance(call, dict):
                 return {"errore": "una promessa «fai» ha bisogno di `chiamata`."}
-            refusal = self._verify_now(call, verification)
+            refusal = await self._verify_now(call)
             if refusal is not None:
                 return {"errore": refusal}
             data["chiamata"] = call
@@ -2189,15 +2180,14 @@ class ToolDispatcher:
         Non sollevare mai: questa misura serve a informare, e un guasto qui non
         deve impedire di promettere.
 
-        **Il bersaglio si traduce prima di chiederlo** (S-20, Tappa 4): la
-        porta risolve nella forma di Home Assistant (`area_id`, non `aree`),
-        e la traduzione e' quella della verifica, `translate_target`, la
-        stessa che il risveglio usera'. Fino al 05/10/2026 qui partiva il
+        **Il conto lo fa la porta** (S-20, Tappa 4; E-13, Tappa 7 T1):
+        `ActionActuator.verify` traduce il bersaglio con la verifica e lo
+        risolve come al risveglio. Fino al 05/10/2026 qui partiva il
         bersaglio del modello com'era, la risoluzione falliva, e il numero
-        restava `None` su ogni promessa.
+        restava `None` su ogni promessa; fino al 07/10/2026 la traduzione si
+        rifaceva qui e la risoluzione si chiedeva a un metodo privato della
+        porta.
         """
-        from ..action.verification import translate_target
-
         target = (call or {}).get("bersaglio")
         if not isinstance(target, dict) or self._actuator is None:
             return None
@@ -2206,16 +2196,14 @@ class ToolDispatcher:
         # risveglio non potrebbe essere cambiato.
         if set(target) <= {"entita"}:
             return None
-        translated, unreadable = translate_target(target)
-        if not translated or unreadable:
-            return None
+        # La risoluzione la fa la porta (`verify`, E-13): la traduzione del
+        # bersaglio e' la sua, la stessa del risveglio. Il conto e' `risolte`,
+        # cio' che il bersaglio COPRE, anche quando la verifica poi rifiuta.
         try:
-            resolved = await self._actuator._resolve(translated)
+            answer = await self._actuator.verify(call)
         except Exception:
             return None
-        if not isinstance(resolved, dict) or resolved.get("errore"):
-            return None
-        found = resolved.get("entita") or []
+        found = (answer.get("bersaglio") or {}).get("risolte")
         return len(found) if isinstance(found, list) else None
 
     def _list_agenda(self, arguments: dict[str, Any]) -> dict:
@@ -2315,84 +2303,40 @@ class ToolDispatcher:
         self._house = None
         return occurrence
 
-    def _verify_now(self, call: dict, verify) -> str | None:
+    async def _verify_now(self, call: dict) -> str | None:
         """Il rifiuto della verifica, o `None`. Sola lettura: non esegue niente.
 
-        Non si risolvono i bersagli per aree o etichette: quella risoluzione
-        chiede a Home Assistant e vive nella porta. Qui si verifica cio' che si
-        puo' verificare senza rete -- il servizio esiste, l'entita' nominata
-        esiste, i parametri appartengono a quel servizio -- che e' esattamente
-        cio' che sbaglia il modello.
+        **La verifica e' quella della porta** (`ActionActuator.verify`, E-09 ed
+        E-13, Tappa 7, Task 1, 07/10/2026). Fino a quel giorno qui si
+        ricomponevano a mano le guardie del registro vuoto e dello specchio
+        cieco, con frasi diverse da quelle della porta, e si chiamava
+        `verification()` da se': due porte che rispondevano in due modi alla
+        stessa situazione. Le frasi ora sono quelle della porta.
 
-        Senza registro si RIFIUTA, non si tace piu' (fix review Task 6,
-        Rilievo 2, deciso dal proprietario): e' la STESSA guardia di
-        `action/actuator.py::_MUTE_REGISTRY` ("non so ancora cosa Home Assistant
-        sa fare"), spostata al momento della promessa invece che
-        dell'esecuzione -- due porte non devono rispondere in modo opposto
-        alla stessa situazione. La frase e' diversa apposta: li' si sta
-        eseguendo, qui si sta promettendo, e "riprova fra un momento" ha un
-        senso diverso nei due casi. Tacere qui lascerebbe nascere un `fai`
-        senza che il suo servizio sia mai stato verificato: `PROMISE_TOOL_DEF`
-        dichiara al modello "viene VERIFICATA adesso" senza condizioni, e
-        prima del cablaggio del Task 7 il registro e' SEMPRE `None` in
-        produzione -- quindi il silenzio avrebbe reso quella frase falsa
-        proprio ora, non in un caso limite futuro.
+        Non si risolvono i bersagli per aree o etichette (`resolve=False`):
+        quella risoluzione chiede a Home Assistant, e una promessa nasce anche
+        se in quel momento non risponde -- la porta la risolve al risveglio.
+        Si verifica cio' che si puo' verificare senza rete -- il servizio
+        esiste, l'entita' nominata esiste, i parametri appartengono a quel
+        servizio -- che e' esattamente cio' che sbaglia il modello.
 
-        Dal cablaggio del Task 7 c'e' un secondo caso, raggiungibile per la
-        prima volta: all'avvio il registro esiste (non e' `None`, `server.py`
-        lo costruisce sempre) ma e' ancora VUOTO -- mai caricato da Home
-        Assistant. Lasciare proseguire fino a `verification()` produrrebbe «il
-        dominio non esiste. Domini disponibili: .» -- la frase FALSA detta
-        con sicurezza contro cui mette in guardia `action/actuator.py`
-        (`_MUTE_REGISTRY`). Le due assenze raccontano lo stesso fatto («non so
-        ancora cosa questa casa sa fare») e si riconoscono con lo STESSO
-        criterio della porta -- si CHIEDE al registro (`domains()` vuoto), non
-        si reinventa la regola in un secondo posto. Il criterio vive in
-        `_registry_not_ready()` (review Task 7, Rilievo 1).
-
-        Un terzo caso, trovato dalla review finale: uno specchio dello stato
-        NON leggibile faceva tornare `None` (nessun rifiuto) invece di
-        rifiutare -- la stessa dimenticanza del registro (Task 6) e del
-        recapito (Task 7), sull'ultimo ingresso rimasto. Riusa la STESSA
-        forma decisa li' -- si rifiuta, non si tace -- invece di scriverne
-        una terza copia.
+        Senza porta si RIFIUTA, non si tace (fix review Task 6, Rilievo 2,
+        deciso dal proprietario): `PROMISE_TOOL_DEF` dichiara al modello
+        «viene VERIFICATA adesso» senza condizioni.
         """
-        if self._registry_not_ready():
-            return ("non posso ancora prometterlo: non so cosa questa casa sa "
-                    "fare, perche' il registro dei servizi non e' pronto. "
-                    "Riprova fra un momento.")
-        states = states_by_id(self._cache)
-        if not states:
-            # Terza occorrenza dello stesso schema (review finale, rilievo
-            # minore): il registro assente si rifiuta (Task 6), il recapito
-            # non verificabile si rifiuta (Task 7), e uno specchio cieco deve
-            # rifiutarsi allo stesso modo -- non tornare `None` in silenzio.
-            # Prima di questo fix una `chiamata` nasceva SENZA che
-            # `_verify_now` avesse potuto verificare l'entita' nominata,
-            # mentre `PROMISE_TOOL_DEF` dichiara al modello, senza
-            # condizioni, «viene VERIFICATA adesso». Stesso criterio di
-            # `action/actuator.py::_BLIND_MIRROR` (`None` e `{}` insieme, di
-            # proposito: una casa che davvero non ha nessuna entita' non ha
-            # nemmeno l'entita' bersaglio, quindi non c'e' chiamata legittima
-            # che questo rifiuto possa negare). Estratta in
-            # `_blind_mirror_refusal()` (Task 2, R7): `_verify_comparison_targets`
-            # fa la STESSA domanda, e una seconda stringa scritta a mano li'
-            # sarebbe un doppione appena creato.
-            return self._blind_mirror_refusal()
-        verdict = verify(call, self._registry, states)
-        if verdict.da_risolvere:
-            return None  # bersaglio per area: lo risolvera' la porta, al momento
-        return None if verdict.ok else verdict.reason
+        if self._actuator is None:
+            return ("non posso prometterlo: il collegamento con Home Assistant "
+                    "non e' disponibile, e non posso verificare la chiamata.")
+        answer = await self._actuator.verify(call, resolve=False)
+        return answer.get("errore")
 
     def _blind_mirror_refusal(self) -> str:
         """Il rifiuto quando lo specchio dello stato non e' leggibile: "non
         so ancora", non un silenzio.
 
-        Estratta (Task 2, spec R7) perche' `_verify_now` e
-        `_verify_comparison_targets` fanno la STESSA domanda a
-        `states_by_id()` -- una seconda stringa scritta a mano in un
-        secondo posto sarebbe un doppione appena creato (fondamenta n.2),
-        lo stesso rilievo gia' fatto per `_registry_not_ready`.
+        Oggi la chiede solo `_verify_comparison_targets`: il `fai` lo
+        verifica la porta (Tappa 7 T1), con il suo rifiuto per lo specchio
+        cieco.
         """
         return ("non posso ancora prometterlo: non vedo lo stato di "
                 "questa casa, l'inventario delle entita' non e' "
@@ -2437,19 +2381,6 @@ class ToolDispatcher:
                      "Usa «search» per trovare l'id esatto e ripeti la "
                      "richiesta.".format(", ".join(unknown)))
         return None
-
-    def _registry_not_ready(self) -> bool:
-        """«Non so ancora cosa questa casa sa fare»: il registro e' assente
-        (`None`) o presente ma mai caricato da Home Assistant (`domains()`
-        vuoto). Le due assenze si trattano uguali -- e' lo stesso criterio di
-        `action/actuator.py::ActionActuator.execute` per la guardia `_MUTE_REGISTRY` --
-        perche' senza domini non si puo' verificare NIENTE. Estratta qui
-        (review Task 7, Rilievo 1) quando la interrogavano in due --
-        `_verify_now` e la verifica del recapito scelto dal modello, uscita
-        con la fetta «il seguito delle chat divise» -- e le due letture
-        divergevano; resta una funzione perche' la domanda ha un nome.
-        """
-        return self._registry is None or not self._registry.domains()
 
     def _snapshot(self, entities: list) -> list[dict]:
         """I valori di partenza, presi ADESSO, con la loro unita'.

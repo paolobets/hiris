@@ -102,6 +102,7 @@ from ..proxy.entity_cache import (
     disclosable_attributes,
     states_by_id,
 )
+from ..proxy.ha_client import SILENCE
 from .rhythm import too_often
 from .verification import verification
 
@@ -242,7 +243,8 @@ _CHANGED_NOT_SHOWABLE = ("Home Assistant ha riportato un cambiamento su queste "
 # e' mai potuto misurare: e' precisamente la stessa disciplina di
 # `_no_change`, applicata al caso in cui non c'e' NIENTE da
 # guardare invece di qualcosa che non si e' mosso. Nessuna scadenza nominata:
-# non se n'e' pagata nessuna (vedi `ActionActuator._call_no_target`).
+# non se n'e' pagata nessuna (vedi il ramo senza bersaglio di
+# `ActionActuator.execute`).
 _NO_STATE_TO_REREAD = ("la chiamata e' partita ed e' stata accettata: questo "
                              "servizio non ha un bersaglio, quindi non c’era "
                              "nessuno stato da rileggere.")
@@ -585,63 +587,61 @@ class ActionActuator:
                            type(error).__name__, error)
             return None
 
-    async def _call_no_target(self, verdict, data: dict, actor: str,
-                              subject: dict | None = None) -> dict:
-        """La chiamata di un servizio che non dichiara un target
-        (`Verdict.no_target`): niente entita' da iniettare, niente
-        stato da rileggere. Review finale, rilievo CRITICO ①.
+    def _failed(self, answer: dict, *, actor: str, service: str,
+                entity: list[str], subject: dict | None) -> dict:
+        """L'esito di una chiamata che Home Assistant non ha eseguito, o di cui
+        non si sa: L'UNICO posto che lo scrive (E-03, Tappa 7, Task 1).
 
-        Non e' un caso limite delle tre fonti del «dopo» (vedi il docstring
-        del modulo): e' un ramo a parte, perche' per un servizio senza
-        bersaglio quelle tre fonti non hanno NIENTE su cui applicarsi -- zero
-        entita', zero annunci possibili. Non si apre nemmeno l'ascolto -- e
-        la ragione vera **non** e' il tempo: `_StateListener.attendi` esce
-        subito quando non c'e' nessuna entita' da aspettare (`_pending`
-        vuoto), quindi anche aprendolo la scadenza non si pagherebbe
-        comunque (correzione della review indipendente, punto ②: qui prima
-        c'era scritto il contrario). La ragione e' che per questo servizio
-        non c'e' NESSUNO stato da osservare: registrare e subito dopo togliere
-        un ascoltatore che non puo' mai sentire niente sarebbe un giro a
-        vuoto, non una protezione da un costo. L'esito dice solo cio' che e'
-        vero: la chiamata e' partita ed e' stata accettata, e non c'era
-        nessuno stato da guardare -- mai «entro N secondi non e' cambiato
-        niente», che sarebbe una misura inventata su qualcosa che non si e'
-        mai potuto misurare.
-        """
-        service = f"{verdict.domain}.{verdict.service}"
-        try:
-            await self._ha.call_service(verdict.domain, verdict.service, data)
-        except Exception as error:
-            logger.warning("azione fallita [origine=%s] %s: %s",
-                           actor, service, error)
-            message = f"Home Assistant ha rifiutato la chiamata: {error}"
-            execution_id = self._record(
-                actor=actor, service=service, entity=[],
-                executed=False, error=message, subject=subject)
-            occurrence = {"eseguito": False, "errore": message}
-            if execution_id is not None:
-                occurrence["esecuzione_id"] = execution_id
-            return occurrence
-
-        logger.info("azione eseguita [origine=%s] %s -- nessun bersaglio: "
-                    "niente stato da rileggere", actor, service)
-        occurrence = {"eseguito": True, "servizio": service, "entita": [],
-                 "prima": {}, "dopo": {}, "cambiato": [],
-                 "avviso": _NO_STATE_TO_REREAD}
-        execution_id = self._record(
-            actor=actor, service=service, entity=[],
-            executed=True, changed=[], notice=occurrence["avviso"], subject=subject)
+        `answer` e' la busta del client (`call_service`). Il motivo di Home
+        Assistant arriva **intatto** (E-10): fino al 07/10/2026 il client
+        faceva `raise_for_status()` e qui arrivava «400, message='Bad
+        Request', url=...». E un silenzio del trasporto non si dice
+        «rifiutato»: la chiamata puo' essere arrivata, e chi legge deve
+        saperlo prima di riprovare."""
+        if answer.get("causa") == SILENCE:
+            message = f"{answer['errore']}. Non so se la chiamata e' arrivata."
+        else:
+            message = f"Home Assistant ha rifiutato la chiamata: {answer['errore']}"
+        logger.warning("azione fallita [origine=%s] %s: %s", actor, service, message)
+        occurrence = {"eseguito": False, "errore": message}
+        execution_id = self._record(actor=actor, service=service, entity=entity,
+                                    executed=False, error=message, subject=subject)
         if execution_id is not None:
             occurrence["esecuzione_id"] = execution_id
         return occurrence
 
-    async def execute(self, call: dict, *, actor: str,
-                      subject: dict | None = None) -> dict:
+    def _succeeded(self, occurrence: dict, *, actor: str,
+                   subject: dict | None) -> dict:
+        """L'esito di una chiamata eseguita, con la sua riga di cronaca:
+        L'UNICO posto che la scrive (E-03). `occurrence` porta gia' servizio,
+        entita', `cambiato` e l'eventuale `avviso`; `eseguito` lo mette lei."""
+        occurrence = {"eseguito": True, **occurrence}
+        execution_id = self._record(
+            actor=actor, service=occurrence["servizio"], entity=occurrence["entita"],
+            executed=True, changed=occurrence["cambiato"],
+            notice=occurrence.get("avviso"), subject=subject)
+        if execution_id is not None:
+            occurrence["esecuzione_id"] = execution_id
+        return occurrence
+
+    async def _check(self, call: dict, *, actor: str, resolve: bool = True) -> dict:
+        """Il pre-volo, UNO: cio' che si controlla prima di toccare la casa.
+
+        Torna `{"verdetto", "stati_prima", "risolto"}` oppure `{"errore": ...}`
+        gia' scritto per il modello (con `bersaglio` quando il bersaglio era
+        stato risolto: cio' che conteneva resta un fatto anche sul rifiuto).
+        Le guardie sono tre, ed e' la porta a dirle, per chi esegue e per chi
+        verifica soltanto (`verify`): due porte non rispondono in modo opposto
+        alla stessa situazione.
+
+        Con `resolve=False` un bersaglio per area, piano, etichetta o
+        dispositivo non si chiede a Home Assistant: la verifica si ferma a cio'
+        che si puo' dire senza rete, e il verdetto esce col suo
+        `da_risolvere`."""
         try:
             await self._registry.ensure_fresh(self._ha)
         except Exception as error:
-            return {"eseguito": False,
-                    "errore": f"non riesco a leggere cosa Home Assistant sa fare "
+            return {"errore": f"non riesco a leggere cosa Home Assistant sa fare "
                               f"({type(error).__name__}: {error})."}
 
         # Guardia (a). Il registro sa distinguere «mai letto» (`empty()`) da
@@ -649,9 +649,9 @@ class ActionActuator:
         # senza domini non si puo' verificare niente, e lasciar proseguire
         # significherebbe far dire alla verifica «Domini disponibili: .».
         if not self._registry.domains():
-            logger.warning("azione rifiutata [origine=%s]: registro dei servizi vuoto",
+            logger.warning("chiamata rifiutata [origine=%s]: registro dei servizi vuoto",
                            actor)
-            return {"eseguito": False, "errore": _MUTE_REGISTRY}
+            return {"errore": _MUTE_REGISTRY}
 
         # Lo specchio per id, o `None` se non l'ho potuto leggere
         # (`entity_cache.states_by_id`, la stessa domanda degli strumenti della
@@ -663,12 +663,14 @@ class ActionActuator:
         # quindi non c'e' chiamata legittima che questa guardia possa
         # rifiutare -- e in cambio non si nega mai un'entita' che esiste.
         if not states_before:
-            logger.warning("azione rifiutata [origine=%s]: specchio dello stato non leggibile",
-                           actor)
-            return {"eseguito": False, "errore": _BLIND_MIRROR}
+            logger.warning("chiamata rifiutata [origine=%s]: specchio dello stato "
+                           "non leggibile", actor)
+            return {"errore": _BLIND_MIRROR}
 
         source = self._source_of_this_call()
         verdict = verification(call, self._registry, states_before, source=source)
+        if verdict.da_risolvere and not resolve:
+            return {"verdetto": verdict, "stati_prima": states_before, "risolto": None}
         # Il secondo tempo, e solo per i bersagli che lo chiedono: un
         # bersaglio di sole entita' non costa nessun giro di rete. La verifica
         # si rifa' INTERA con l'elenco in mano -- non si aggiunge un pezzo a
@@ -677,14 +679,54 @@ class ActionActuator:
         if verdict.da_risolvere:
             resolved = await self._resolve(verdict.target)
             if resolved.get("errore"):
-                logger.warning("azione rifiutata [origine=%s]: bersaglio %s non "
+                logger.warning("chiamata rifiutata [origine=%s]: bersaglio %s non "
                                "risolto", actor, verdict.target)
-                return {"eseguito": False, "errore": resolved["errore"]}
+                return {"errore": resolved["errore"]}
             verdict = verification(call, self._registry, states_before,
-                                resolved=resolved, source=source)
+                                   resolved=resolved, source=source)
         if not verdict.ok:
-            logger.info("azione rifiutata [origine=%s]: %s", actor, verdict.reason)
-            return {"eseguito": False, "errore": verdict.reason}
+            logger.info("chiamata rifiutata [origine=%s]: %s", actor, verdict.reason)
+            refusal = {"errore": verdict.reason}
+            if resolved is not None:
+                refusal["bersaglio"] = _preview(verdict, resolved)
+            return refusal
+        return {"verdetto": verdict, "stati_prima": states_before, "risolto": resolved}
+
+    async def verify(self, call: dict, *, resolve: bool = True,
+                     actor: str = "verifica") -> dict:
+        """Verificare senza eseguire (E-09, E-13): il pre-volo di `execute`,
+        e nient'altro. Non chiama il servizio, non consuma il freno di ritmo
+        (quello e' dell'istante in cui si esegue), non scrive la cronaca.
+
+        Torna `{"errore": ...}` (con `bersaglio` se il bersaglio era stato
+        risolto) oppure `{"servizio", "entita"}`, piu' `bersaglio` quando Home
+        Assistant ha risolto un bersaglio per area, piano, etichetta o
+        dispositivo, o `da_risolvere: True` quando con `resolve=False` non gli
+        si e' chiesto.
+
+        Fino al 07/10/2026 chi doveva verificare senza eseguire -- una
+        promessa `fai`, che si verifica alla nascita -- ricomponeva le guardie
+        da se', con frasi sue, e chiamava `_resolve`, privato."""
+        checked = await self._check(call, actor=actor, resolve=resolve)
+        if "errore" in checked:
+            return checked
+        verdict, resolved = checked["verdetto"], checked["risolto"]
+        answer = {"servizio": f"{verdict.domain}.{verdict.service}",
+                  "entita": list(verdict.entity)}
+        if resolved is not None:
+            answer["bersaglio"] = _preview(verdict, resolved)
+        elif verdict.da_risolvere:
+            answer["da_risolvere"] = True
+        return answer
+
+    async def execute(self, call: dict, *, actor: str,
+                      subject: dict | None = None) -> dict:
+        checked = await self._check(call, actor=actor)
+        if "errore" in checked:
+            return {"eseguito": False, "errore": checked["errore"]}
+        verdict = checked["verdetto"]
+        states_before = checked["stati_prima"]
+        resolved = checked["risolto"]
 
         # **Il freno di RITMO** (reperto B-3, 22/09/2026), e sta QUI perche'
         # qui passa ogni azione di ogni origine -- chat, promessa,
@@ -718,15 +760,30 @@ class ActionActuator:
                         verdict.target, len(verdict.entity),
                         len(verdict.scartate), len(verdict.sconosciute), actor)
 
+        service = f"{verdict.domain}.{verdict.service}"
         data = dict(call.get("dati") or {})
         if verdict.no_target:
-            # Niente da iniettare: `entity_id: []` direbbe una cosa diversa
-            # da «questo servizio non ha bersaglio» (review finale, rilievo
-            # CRITICO ①). Il resto della sequenza -- ascolto, attesa, le tre
-            # fonti del «dopo» -- non si applica a un servizio che non ha
-            # niente da rileggere, ed e' un ramo a parte apposta: vedi
-            # `_call_no_target`.
-            return await self._call_no_target(verdict, data, actor, subject)
+            # Un servizio che non dichiara un target (`Verdict.no_target`):
+            # niente entita' da iniettare -- `entity_id: []` direbbe una cosa
+            # diversa da «questo servizio non ha bersaglio» (review finale,
+            # rilievo CRITICO ①) -- e niente stato da rileggere. Non si apre
+            # nemmeno l'ascolto: per questo servizio non c'e' NESSUNO stato da
+            # osservare, e registrare e subito togliere un ascoltatore che non
+            # puo' sentire niente sarebbe un giro a vuoto. L'esito dice solo
+            # cio' che e' vero: la chiamata e' partita ed e' stata accettata --
+            # mai «entro N secondi non e' cambiato niente», che sarebbe una
+            # misura inventata su qualcosa che non si e' mai potuto misurare.
+            answer = await self._ha.call_service(verdict.domain, verdict.service, data)
+            if "errore" in answer:
+                return self._failed(answer, actor=actor, service=service, entity=[],
+                                    subject=subject)
+            logger.info("azione eseguita [origine=%s] %s -- nessun bersaglio: "
+                        "niente stato da rileggere", actor, service)
+            return self._succeeded(
+                {"servizio": service, "entita": [],
+                 "prima": {}, "dopo": {}, "cambiato": [],
+                 "avviso": _NO_STATE_TO_REREAD},
+                actor=actor, subject=subject)
         data["entity_id"] = list(verdict.entity)
 
         # L'ascolto si apre PRIMA della chiamata (vedi il docstring del
@@ -740,27 +797,16 @@ class ActionActuator:
         listen = _StateListener(verdict.entity)
         listening = self._open_listen(listen)
         try:
-            try:
-                riportati = await self._ha.call_service(
-                    verdict.domain, verdict.service, data)
-            except Exception as error:
-                logger.warning("azione fallita [origine=%s] %s.%s: %s",
-                               actor, verdict.domain, verdict.service, error)
-                message = f"Home Assistant ha rifiutato la chiamata: {error}"
-                execution_id = self._record(
-                    actor=actor,
-                    service=f"{verdict.domain}.{verdict.service}",
-                    entity=list(verdict.entity), executed=False, error=message, subject=subject)
-                occurrence = {"eseguito": False, "errore": message}
-                if execution_id is not None:
-                    occurrence["esecuzione_id"] = execution_id
-                return occurrence
+            answer = await self._ha.call_service(verdict.domain, verdict.service, data)
+            if "errore" in answer:
+                return self._failed(answer, actor=actor, service=service,
+                                    entity=list(verdict.entity), subject=subject)
 
             # Un'entita' di cui la chiamata ha gia' detto qualcosa non si
             # aspetta: quella misura e' presa durante l'esecuzione, cioe' nel
             # momento giusto per costruzione. Si aspettano le altre --
             # sull'impianto del proprietario, tutte.
-            ha_fingerprints = _reported_fingerprints(riportati)
+            ha_fingerprints = _reported_fingerprints(answer["cambiati"])
             if listening:
                 await listen.attendi(
                     [e for e in verdict.entity if e not in ha_fingerprints], pending)
@@ -804,10 +850,9 @@ class ActionActuator:
         annunciate = [e for e in verdict.entity if e in listen.udite]
         riportate_qui = [e for e in verdict.entity if e in ha_fingerprints]
 
-        occurrence = {"eseguito": True,
-                 "servizio": f"{verdict.domain}.{verdict.service}",
-                 "entita": list(verdict.entity),
-                 "prima": prima, "dopo": dopo, "cambiato": changed}
+        occurrence = {"servizio": f"{verdict.domain}.{verdict.service}",
+                      "entita": list(verdict.entity),
+                      "prima": prima, "dopo": dopo, "cambiato": changed}
         if preview is not None:
             occurrence["bersaglio"] = preview
         if non_viste:
@@ -835,9 +880,4 @@ class ActionActuator:
                     len(annunciate), len(riportate_qui),
                     f"attesi fino a {_seconds(pending)}s" if listening
                     else "nessun ascolto disponibile, attesa zero")
-        execution_id = self._record(
-            actor=actor, service=occurrence["servizio"], entity=list(verdict.entity),
-            executed=True, changed=changed, notice=occurrence.get("avviso"), subject=subject)
-        if execution_id is not None:
-            occurrence["esecuzione_id"] = execution_id
-        return occurrence
+        return self._succeeded(occurrence, actor=actor, subject=subject)

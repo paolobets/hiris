@@ -1,6 +1,7 @@
+
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy.ha_client import REFUSAL, SILENCE, HAClient
 
 
 class FintaRisposta:
@@ -21,6 +22,9 @@ class FintaRisposta:
     async def json(self):
         return self._payload
 
+    async def text(self):
+        return str(self._payload)
+
 
 class FintaSessione:
     def __init__(self, payload, stato=200):
@@ -33,6 +37,13 @@ class FintaSessione:
         return FintaRisposta(self.payload, self.stato)
 
 
+class SessioneMuta:
+    """Il trasporto che non risponde: la richiesta scade prima di arrivare."""
+
+    def post(self, url, json=None):
+        raise TimeoutError()
+
+
 @pytest.mark.asyncio
 async def test_call_service_compone_url_e_corpo():
     client = HAClient("http://ha.local:8123", "token")
@@ -42,15 +53,32 @@ async def test_call_service_compone_url_e_corpo():
     url, corpo = client._session.chiamate[0]
     assert url == "http://ha.local:8123/api/services/light/turn_off"
     assert corpo == {"entity_id": "light.salotto"}
-    assert cambiati == [{"entity_id": "light.salotto", "state": "off"}]
+    assert cambiati == {"cambiati": [{"entity_id": "light.salotto", "state": "off"}]}
 
 
 @pytest.mark.asyncio
-async def test_call_service_propaga_il_rifiuto_di_home_assistant():
+async def test_il_rifiuto_di_home_assistant_arriva_col_suo_motivo():
+    """E-10 (Tappa 7 T1): un 400 con `message` torna nella busta del rifiuto,
+    col testo di Home Assistant intatto e il codice. Fino al 07/10/2026
+    `raise_for_status()` buttava il corpo. Mutazione (eseguita): rimettere
+    `resp.raise_for_status()` -- rossa, `RuntimeError: HTTP 400`."""
+    motivo = "Invalid service data: extra keys not allowed @ data['luminosita']"
     client = HAClient("http://ha.local:8123", "token")
-    client._session = FintaSessione({}, stato=400)
-    with pytest.raises(RuntimeError):
-        await client.call_service("light", "turn_off", {"entity_id": "light.x"})
+    client._session = FintaSessione({"message": motivo}, stato=400)
+    risposta = await client.call_service("light", "turn_on", {"entity_id": "light.x"})
+    assert risposta == {"errore": motivo, "causa": REFUSAL, "codice": 400}
+
+
+@pytest.mark.asyncio
+async def test_un_trasporto_muto_e_un_silenzio_non_un_rifiuto():
+    """Un tempo scaduto non e' una risposta di Home Assistant: torna la busta
+    del silenzio, non solleva. Mutazione (eseguita): `_failure(REFUSAL, ...)`
+    nel ramo dell'eccezione -- rossa sulla causa."""
+    client = HAClient("http://ha.local:8123", "token")
+    client._session = SessioneMuta()
+    risposta = await client.call_service("light", "turn_on", {})
+    assert risposta["causa"] == SILENCE
+    assert risposta["codice"] is None
 
 
 # -- la forma della risposta, che nessuno aveva mai misurata (2.2.1) --------
@@ -73,7 +101,7 @@ async def test_la_forma_con_changed_states_non_viene_buttata_via():
         "changed_states": [{"entity_id": "light.salotto", "state": "off"}],
         "service_response": {"qualcosa": 1}})
     cambiati = await client.call_service("light", "turn_off", {})
-    assert cambiati == [{"entity_id": "light.salotto", "state": "off"}]
+    assert cambiati == {"cambiati": [{"entity_id": "light.salotto", "state": "off"}]}
 
 
 @pytest.mark.asyncio
@@ -86,7 +114,7 @@ async def test_una_forma_che_non_si_sa_leggere_diventa_nessun_cambiamento(payloa
     «non so dire cosa sia cambiato»."""
     client = HAClient("http://ha.local:8123", "token")
     client._session = FintaSessione(payload)
-    assert await client.call_service("light", "turn_off", {}) == []
+    assert await client.call_service("light", "turn_off", {}) == {"cambiati": []}
 
 
 @pytest.mark.asyncio
@@ -94,8 +122,8 @@ async def test_cio_che_non_e_uno_stato_viene_saltato():
     client = HAClient("http://ha.local:8123", "token")
     client._session = FintaSessione(["non un dizionario", {"senza": "id"},
                                      {"entity_id": "light.salotto", "state": "off"}])
-    assert await client.call_service("light", "turn_off", {}) == [
-        {"entity_id": "light.salotto", "state": "off"}]
+    assert await client.call_service("light", "turn_off", {}) == {"cambiati": [
+        {"entity_id": "light.salotto", "state": "off"}]}
 
 
 @pytest.mark.asyncio

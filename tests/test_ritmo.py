@@ -184,12 +184,17 @@ def test_e_frena_DOPO_la_verifica_non_prima():
     un'automazione rotta che chiama male fermerebbe quella sana che tocca la
     stessa entita'.
 
-    Mutazione ESEGUITA: spostato il freno prima di `verdict.ok` -- rossa."""
+    Dalla Tappa 7 (T1) la verifica vive in `_check`, il pre-volo che
+    `execute` e `verify` condividono: il freno viene dopo che `execute` l'ha
+    chiesto, e il pre-volo e' quello che guarda `verdict.ok`.
+
+    Mutazione ESEGUITA: spostato il freno prima di `self._check(` -- rossa."""
     import inspect
 
     from hiris.app.action.actuator import ActionActuator
 
     sorgente = inspect.getsource(ActionActuator.execute)
 
-    assert sorgente.index("verdict.ok") < sorgente.index("too_often"), (
+    assert "verdict.ok" in inspect.getsource(ActionActuator._check)
+    assert sorgente.index("self._check(") < sorgente.index("too_often"), (
         "il ritmo si consuma anche per comandi che vengono rifiutati comunque")

@@ -40,6 +40,8 @@ from ...chat_thread import ChatThread, unknown_id_text
 from ...home_space.historian import home_space_zone
 from ...home_space.privacy import BEFORE_ADMIN_ONLY, body_is_admin_only
 from ...proxy._sanitize import truncate_with_marker as _truncate
+from ...proxy.ha_client import SILENCE
+from ..journal import CONSTRUCTION
 from . import composer, stakes
 from .advisor import STRUCTURES, consiglia
 
@@ -605,9 +607,10 @@ class Workshop:
                           "l’etichetta HIRIS, e da qui non risulta mio.")
             notice = f"{notice} {unlabelled}" if notice else unlabelled
 
-        execution_id = self._journal.log_construction(
-            actor=actor, operation=operation, domain=domain, key=key,
-            entity=entity, executed=True, now=now, notice=notice, subject=subject)
+        execution_id = self._journal.log(
+            actor=actor, service=f"{domain}.{operation}", genre=CONSTRUCTION,
+            object_ref=f"{domain}.{key}", entity=entity, executed=True, now=now,
+            notice=notice, subject=subject)
         occurrence_state = self._store.mark_applied(proposal_id, now=now,
                                                       execution_id=execution_id)
         if "errore" in occurrence_state:
@@ -792,9 +795,9 @@ class Workshop:
         guasti di TRASPORTO (ondata finale, punto 1).
 
         `read_configuration`, `save_configuration` e
-        `delete_configuration` sollevano quello che rompe il trasporto --
-        e' scritto nel loro docstring (`proxy/ha_client.py`), e resta cosi':
-        la guardia vive qui, all'unico chiamante, non li'. Senza di lei, un
+        `delete_configuration` rendono la busta del silenzio quando il
+        trasporto si rompe (A-30, 07/10/2026: prima sollevavano), e la cattura
+        larga resta per cio' che nessuna busta prevede. Senza questa guardia, un
         Home Assistant irraggiungibile durante un'`apply` salterebbe
         `_disfa` (spazzatura in casa dell'utente, spec §3.1), lascerebbe la
         riga bloccata `in_corso` fino al riavvio, e farebbe uscire un 500
@@ -812,7 +815,7 @@ class Workshop:
         di trasporto breve.
         """
         try:
-            return await call
+            answer = await call
         except Exception as exc:
             # Punto 3 (residuo): la cattura larga e' la scelta giusta (restringere
             # vorrebbe dire importare aiohttp qui, in un modulo deliberatamente
@@ -825,6 +828,15 @@ class Workshop:
             return {"errore": (f"Home Assistant non ha risposto: "
                                f"{_truncate(str(exc), _NETWORK_ERROR_CAP)}"),
                     "guasto_rete": True}
+        # Dal 07/10/2026 (A-30) le tre primitive non sollevano sul trasporto:
+        # rendono la busta del silenzio, gia' scritta «Home Assistant non ha
+        # risposto: ...». Qui diventa la stessa forma di prima.
+        if isinstance(answer, dict) and answer.get("causa") == SILENCE:
+            logger.warning("chiamata verso Home Assistant senza risposta: %s",
+                           answer["errore"])
+            return {"errore": _truncate(answer["errore"], _NETWORK_ERROR_CAP),
+                    "guasto_rete": True}
+        return answer
 
     async def _disfa(self, nati: list[tuple[str, str]],
                      senza_id: list[str] | None = None) -> str:
@@ -864,10 +876,10 @@ class Workshop:
 
     def _fallita(self, proposal: dict, now: float, actor: str, reason: str, *,
                 guasto_rete: bool = False, subject: dict | None = None) -> dict:
-        execution_id = self._journal.log_construction(
-            actor=actor, operation=proposal["gesto"], domain=proposal["dominio"],
-            key=proposal["chiave"], entity=[], executed=False, now=now,
-            error=reason, subject=subject)
+        execution_id = self._journal.log(
+            actor=actor, service=f"{proposal['dominio']}.{proposal['gesto']}",
+            genre=CONSTRUCTION, object_ref=f"{proposal['dominio']}.{proposal['chiave']}",
+            entity=[], executed=False, now=now, error=reason, subject=subject)
         occurrence_state = self._store.mark_rejected(proposal["id"], now=now,
                                                       reason=reason)
         if "errore" in occurrence_state:

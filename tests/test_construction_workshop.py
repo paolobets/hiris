@@ -1265,7 +1265,9 @@ async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(ban
 async def test_un_guasto_di_rete_logga_tipo_ed_exc_info(banco, caplog):
     """Senza tipo ne' traceback un `TypeError` nostro (un difetto del codice)
     e' indistinguibile, in log, da un guasto di rete vero: il difetto nascosto
-    due volte."""
+    due volte. Dal 07/10/2026 (Tappa 7 T1, A-30) il guasto di rete arriva come
+    busta del silenzio e si logga col suo motivo; cio' che ancora risale e' un
+    difetto, e si logga col tipo e la traccia."""
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     ha._solleva.add("save_configuration")
@@ -1275,8 +1277,23 @@ async def test_un_guasto_di_rete_logga_tipo_ed_exc_info(banco, caplog):
         await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                now=ADESSO + 60)
 
+    record = next(r for r in caplog.records if "senza risposta" in r.getMessage())
+    assert "finta interruzione di rete" in record.getMessage()
+
+    caplog.clear()
+    p = await officina.propose(_intento(), actor="chat", exchange="t3", now=ADESSO)
+
+    async def broken(*args, **kwargs):
+        raise TypeError("un difetto nostro")
+
+    ha.client.save_configuration = broken
+    with caplog.at_level(logging.WARNING,
+                         logger="hiris.app.action.construction.workshop"):
+        await officina.apply(p["proposta_id"], actor="chat", exchange="t4",
+                               now=ADESSO + 120)
+
     record = next(r for r in caplog.records if "non riuscita" in r.getMessage())
-    assert "ConnectionError" in record.getMessage()
+    assert "TypeError" in record.getMessage()
     assert record.exc_info is not None
 
 

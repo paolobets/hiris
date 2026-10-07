@@ -51,6 +51,12 @@ EXECUTIONS_RETENTION_S = 90 * 86400
 # dentro il contesto di un modello.
 MAX_LIST_ROWS = 200
 
+#: I due generi di un atto: una chiamata di servizio, dalla porta dei servizi,
+#: e una scrittura di configurazione, dall'officina.
+COMMAND = "comando"
+CONSTRUCTION = "costruzione"
+GENRES = (COMMAND, CONSTRUCTION)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS esecuzioni (
     id TEXT PRIMARY KEY,
@@ -141,46 +147,29 @@ class Journal:
             self._conn.close()
 
     def log(self, *, actor: str, service: str, entity: list[str],
-                 executed: bool, now: float, changed: list[str] | None = None,
-                 error: str | None = None, notice: str | None = None,
-                 subject: dict | None = None) -> str:
-        ident = secrets.token_urlsafe(9)
-        with self._lock:
-            self._conn.execute(
-                "DELETE FROM esecuzioni WHERE quando_ts < ?",
-                (now - EXECUTIONS_RETENTION_S,))
-            self._conn.execute(
-                "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
-                "eseguito,cambiato_json,errore,avviso,genere,oggetto,"
-                "soggetto_json) "
-                "VALUES(?,?,?,?,?,?,?,?,?,'comando',NULL,?)",
-                (ident, now, actor, service, json.dumps(list(entity)),
-                 int(bool(executed)),
-                 None if changed is None else json.dumps(list(changed)),
-                 error, notice,
-                 None if subject is None else json.dumps(subject)))
-            self._conn.commit()
-        return ident
-
-    def log_construction(self, *, actor: str, operation: str, domain: str,
-                             key: str, entity: list[str], executed: bool,
-                             now: float, error: str | None = None,
-                             notice: str | None = None,
-                             subject: dict | None = None) -> str:
-        """Un atto di costruzione, nella STESSA tabella dei comandi.
+            executed: bool, now: float, genre: str = COMMAND,
+            object_ref: str | None = None, changed: list[str] | None = None,
+            error: str | None = None, notice: str | None = None,
+            subject: dict | None = None) -> str:
+        """Un atto, comando o costruzione: L'UNICO scrittore della tabella
+        (E-02, Tappa 7, Task 1). Fino al 07/10/2026 c'erano `log` e
+        `log_construction`, con la stessa potatura e lo stesso `INSERT`
+        scritti due volte.
 
         Un atto e' lo stesso fatto qualunque sia l'origine e qualunque sia il
         canale: due registri avrebbero dato allo stesso fatto due trattamenti,
-        e sarebbero stati fusi dopo (fondamenta 3). `genere` dice come si legge
-        la riga.
+        e sarebbero stati fusi dopo (fondamenta 3). `genre` dice come si legge
+        la riga (`COMMAND` o `CONSTRUCTION`).
 
-        **`servizio` per una costruzione porta `dominio.gesto`** -- per esempio
-        `automation.crea` (i gesti sono `workshop.OPERATIONS`). Non e' un
-        servizio di Home Assistant e non va letto
-        come tale: `genere` e' li' apposta per distinguerli. `entita` porta le
-        entita' NATE o toccate dall'atto, che e' la stessa cosa che porta per
-        un comando.
+        **Per una costruzione `service` porta `dominio.gesto`** -- per esempio
+        `automation.crea` (i gesti sono `workshop.OPERATIONS`) -- e
+        `object_ref` porta `dominio.chiave`. Non e' un servizio di Home
+        Assistant e non va letto come tale: `genere` e' li' apposta per
+        distinguerli. `entita` porta le entita' NATE o toccate dall'atto, che
+        e' la stessa cosa che porta per un comando.
         """
+        if genre not in GENRES:
+            raise ValueError(f"genere sconosciuto: {genre!r}")
         ident = secrets.token_urlsafe(9)
         with self._lock:
             self._conn.execute(
@@ -190,10 +179,11 @@ class Journal:
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto,"
                 "soggetto_json) "
-                "VALUES(?,?,?,?,?,?,NULL,?,?,'costruzione',?,?)",
-                (ident, now, actor, f"{domain}.{operation}",
-                 json.dumps(list(entity)), int(bool(executed)), error, notice,
-                 f"{domain}.{key}",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ident, now, actor, service, json.dumps(list(entity)),
+                 int(bool(executed)),
+                 None if changed is None else json.dumps(list(changed)),
+                 error, notice, genre, object_ref,
                  None if subject is None else json.dumps(subject)))
             self._conn.commit()
         return ident

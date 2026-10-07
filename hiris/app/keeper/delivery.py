@@ -45,12 +45,15 @@ async def deliver(services, text, *, execute, actor: str,
     failures = []
     for service in unique:
         # Ogni push passa dalla porta unica, con la verifica vera (vincolo 3.1).
+        # Il motivo e' quello della porta (Tappa 7 T1): il rifiuto di Home
+        # Assistant col suo testo, o il guasto di trasporto detto come tale.
+        # Un'eccezione non e' un esito della porta, e non se ne fabbrica uno.
         try:
             occurrence = await execute(delivery_call(service, message),
                                        actor=actor, subject=subject)
         except Exception as error:
-            occurrence = {"eseguito": False, "errore": (
-                f"guasto imprevisto ({type(error).__name__}).")}
+            failures.append(f"{service} (guasto imprevisto: {type(error).__name__})")
+            continue
         if not occurrence.get("eseguito"):
             error = truncate_with_marker(
                 str(occurrence.get("errore") or "non è arrivata."), REASON_CAP)

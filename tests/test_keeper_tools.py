@@ -7,6 +7,8 @@ from typing import ClassVar
 
 import pytest
 
+from hiris.app.action import actuator as actuator_module
+from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
@@ -57,13 +59,26 @@ def promesse(tmp_path):
 PAOLO = ChatThread("persona:paolo", "pannello")
 
 
-def _dispatcher(promesse, **extra):
+#: «La porta di serie»: senza `actuator=` il dispatcher ha la porta vera,
+#: costruita come in produzione. `None` dice «nessuna porta».
+_SERIE = object()
+
+
+def _dispatcher(promesse, *, registry=None, cache=None, ha=None, actuator=_SERIE):
     """Un dispatcher con i soli pezzi che servono a questi test.
 
     Gli altri archivi restano `None`: i gestori dichiarano un errore invece di
     sollevare, ed e' il contratto della classe.
+
+    Con un registro c'e' anche la porta (`ActionActuator`), con lo stesso
+    registro e lo stesso specchio, com'e' cablata in produzione: dalla Tappa 7
+    (T1, E-13) un `fai` lo verifica lei, non lo strumento. Chi vuole provare
+    l'assenza della porta passa `actuator=None`.
     """
-    return ToolDispatcher(None, None, agenda=promesse, thread=PAOLO, **extra)
+    if actuator is _SERIE:
+        actuator = None if registry is None else ActionActuator(ha, registry, cache)
+    return ToolDispatcher(None, None, agenda=promesse, thread=PAOLO,
+                          registry=registry, cache=cache, ha=ha, actuator=actuator)
 
 
 def test_i_tre_strumenti_sono_nel_catalogo():
@@ -185,7 +200,7 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
         "quando": _fra(60),
         "chiamata": {"servizio": "light.turn_on",
                      "bersaglio": {"entita": ["light.studio"]}}})
-    assert "errore" in esito
+    assert esito["errore"] == actuator_module._MUTE_REGISTRY
     assert "Domini disponibili" not in esito["errore"]
     assert promesse.list(thread=PAOLO) == []
 
@@ -204,7 +219,9 @@ async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(prom
         "quando": _fra(60),
         "chiamata": {"servizio": "light.turn_on",
                      "bersaglio": {"entita": ["light.studio"]}}})
-    assert "errore" in esito
+    # La frase e' quella della porta (Tappa 7 T1): la stessa con cui rifiuta
+    # di eseguire, non una seconda scritta per la promessa.
+    assert esito["errore"] == actuator_module._BLIND_MIRROR
     assert promesse.list(thread=PAOLO) == []
 
 
@@ -286,7 +303,10 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
     (un `try/except` a monte lo inghiottirebbe comunque in "non e' pronto").
     """
     registry = _RegistroTracciaScaldamento()
-    d = _dispatcher(promesse, registry=registry, cache=_CacheFinta())  # nessun ha
+    # Nessun canale e nessuna porta: in produzione la porta si monta col
+    # client di Home Assistant, e senza di lei un `fai` non si puo' verificare
+    # (Tappa 7 T1). Il rifiuto e' quello onesto dello strumento.
+    d = _dispatcher(promesse, registry=registry, cache=_CacheFinta(), actuator=None)
     esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -294,7 +314,7 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert not registry.chiamato  # non si e' nemmeno tentato di scaldarlo
     assert "errore" in esito
-    assert "non e' pronto" in esito["errore"]
+    assert "non e' disponibile" in esito["errore"]
 
 
 @pytest.mark.asyncio
@@ -416,10 +436,8 @@ class _RegistroFinto:
     «per avere gli stessi nomi» invece che per coprire cio' che viene letto
     davvero.
 
-    `vuoto()` e `ensure_fresh()` (della classe vera, usati da
-    `action/actuator.py` prima di eseguire) sono usciti da qui apposta: nessun
-    gestore di `ToolDispatcher` li chiama, e tenerli avrebbe continuato
-    a dare l'illusione di un doppio completo senza che nulla li provasse.
+    `ensure_fresh()` c'e' dalla Tappa 7 (T1): un `fai` lo verifica la porta,
+    che scalda il registro prima di guardarlo. Questo doppio e' gia' caldo.
     """
     #: I due recapiti, nella forma MISURATA il 09/09/2026 su Home Assistant
     #: 2026.9.1 (`GET /api/services`, casa del proprietario):
@@ -448,6 +466,9 @@ class _RegistroFinto:
         },
     }
 
+    async def ensure_fresh(self, ha_client) -> None:
+        return None
+
     def domains(self):
         return ["light", "notify"]
 
@@ -466,7 +487,11 @@ class _RegistroVuoto:
     di rifiutare -- se ne chiamasse un altro (`service()`, `services_for()`)
     solleverebbe `AttributeError` invece di rifiutare col motivo giusto,
     esattamente l'errore che la review del Task 6 aveva trovato nel percorso
-    gemello (vedi `_RegistroFinto` sopra)."""
+    gemello (vedi `_RegistroFinto` sopra). `ensure_fresh()` non carica
+    niente: e' il registro che Home Assistant non ha ancora saputo riempire."""
+
+    async def ensure_fresh(self, ha_client) -> None:
+        return None
 
     def domains(self):
         return []
@@ -483,6 +508,10 @@ def test_i_registri_finti_combaciano_con_la_firma_vera():
                         nome="domains (vuoto)")
     assert_stessa_firma(ServiceRegistry.ensure_fresh,
                         _RegistroTracciaScaldamento.ensure_fresh, nome="ensure_fresh")
+    assert_stessa_firma(ServiceRegistry.ensure_fresh, _RegistroFinto.ensure_fresh,
+                        nome="ensure_fresh (finto)")
+    assert_stessa_firma(ServiceRegistry.ensure_fresh, _RegistroVuoto.ensure_fresh,
+                        nome="ensure_fresh (vuoto)")
 
 
 def _house_with_services() -> CasaFinta:

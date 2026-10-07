@@ -168,7 +168,7 @@ def _annuncia(house: CasaFinta, stati, specchio) -> None:
 
 
 #: Home Assistant che risponde 500 allo spegnimento: un rifiuto nella forma
-#: vera, che il client vero solleva (`raise_for_status`).
+#: vera, che il client vero rende nella busta del rifiuto (Tappa 7 T1).
 TURN_OFF_REFUSED = {"POST /api/services/light/turn_off": 500}
 
 
