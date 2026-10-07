@@ -23,6 +23,7 @@ import json
 import logging
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -34,8 +35,10 @@ from casa_finta import CasaFinta
 from hiris.app import server
 from hiris.app.api import handlers_mcp
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_thread import thread_for
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
+from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.bridge_loads import MAX_TRACKED
 from tests.test_knowledge_tools import _semina_casa
 
@@ -76,6 +79,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     memoria = MemoryStore(memoria_db)
     app["home_space_store"] = casa
     app["memory_store"] = memoria
+    app["reasoning_queue"] = coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -83,6 +87,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     try:
         yield client, memoria_db
     finally:
+        coda.close()
         memoria.close()
         casa.close()
 
@@ -185,6 +190,25 @@ async def test_initialize_dichiara_la_versione_dell_addon_da_read_version(rotta)
 # ④ e ⑤ -- tools/call passa dal dispatcher VERO
 # ---------------------------------------------------------------------------
 
+#: Chi apre il turno di chat: un servizio col ruolo `utente`, che viaggia col
+#: soggetto (`soffitto.ceiling_for`). Dal 07/10/2026 `remember` chiede
+#: `comandare` (G83-1), e un turno del ponte senza una chat riconosciuta non
+#: concede nessun gesto.
+_CHI_COMANDA = {"specie": "integrazione", "id": "impronta-di-prova",
+                "nome": "prova", "ruolo": "utente"}
+
+
+def _chat_presa(app, soggetto: dict) -> str:
+    """Un job di chat di `soggetto`, preso in carico: l'id che il ponte manda
+    in `X-HIRIS-Chat`."""
+    coda, adesso = app["reasoning_queue"], time.time()
+    job_id = coda.enqueue(
+        "chat", {}, {"history": [], "system_prompt": "Sei HIRIS.", "soggetto": soggetto},
+        adesso + 300, now=adesso, thread=thread_for(soggetto, "canale"))
+    assert coda.claim(adesso + 1)["job_id"] == job_id
+    return job_id
+
+
 @pytest.mark.asyncio
 async def test_tools_call_ricorda_scrive_davvero_in_memoria_db(rotta):
     """La prova che questa rotta non ha una logica di strumento propria: la
@@ -197,7 +221,7 @@ async def test_tools_call_ricorda_scrive_davvero_in_memoria_db(rotta):
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 7, "method": "tools/call",
         "params": {"name": "remember", "arguments": {"testo": frase}},
-    })
+    }, {**INTESTAZIONI_CLI, "X-HIRIS-Chat": _chat_presa(client.app, _CHI_COMANDA)})
     assert risposta.status == 200
     corpo = await risposta.json()
     assert corpo["id"] == 7

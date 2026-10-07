@@ -1303,8 +1303,8 @@ class Tool:
       letture della stessa risposta partono insieme, le altre una alla volta
       (`reads_only`, Tappa 7 T10, D15a). Si dichiara per riga, e chiude per
       difetto: uno strumento nuovo e' una scrittura finche' qualcuno non
-      scrive che legge. Non si deduce da `permissions`: `remember` e
-      `cancel` scrivono senza chiedere nessun gesto, e `history` legge
+      scrive che legge. Non si deduce da `permissions`: `cancel` scrive
+      senza chiedere nessun gesto, e `history` legge
       chiedendone uno.
 
     Il soffitto si chiede in `ToolDispatcher.dispatch`, una volta, dalla riga:
@@ -2710,7 +2710,11 @@ TOOLS: tuple[Tool, ...] = (
          mask="amministrare", read_only=True),
     Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",),
          read_only=True),
-    Tool(REMEMBER_TOOL_DEF, ToolDispatcher._remember, resources=("casa", "memoria")),
+    # Un ricordo entra nel nucleo di ogni turno, di ogni persona, e ci resta:
+    # non e' una scrittura nel proprio filo, e chi legge soltanto non la fa
+    # (G83-1, giro 83; Paolo, 07/10/2026).
+    Tool(REMEMBER_TOOL_DEF, ToolDispatcher._remember, resources=("casa", "memoria"),
+         permissions=(Permission("comandare"),)),
     Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",),
          read_only=True),
     Tool(EXECUTE_TOOL_DEF, ToolDispatcher._execute, resources=("porta",),

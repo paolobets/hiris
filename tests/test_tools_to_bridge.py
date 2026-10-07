@@ -48,6 +48,7 @@ import pytest
 from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
+from hiris.app.chat_thread import thread_for
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
 from hiris.app.steering import SPECIES
@@ -571,6 +572,10 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
     assert "non e' disponibile" in json.loads(contenuto["content"][0]["text"])["errore"]
 
 
+_CHI_SCRIVE = {"specie": "integrazione", "id": "impronta-di-prova",
+               "nome": "prova", "ruolo": "utente"}
+
+
 @pytest.mark.asyncio
 async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback(
     ponte_produzione, tmp_path,
@@ -600,11 +605,15 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     try:
         base = _base_url(client)
         adesso = time.time()
+        # Chi scrive e' un servizio col ruolo `utente`, che viaggia col
+        # soggetto (`soffitto.ceiling_for`): dal 07/10/2026 `remember` chiede
+        # `comandare` (G83-1), e un turno senza chi l'ha aperto non concede
+        # nessun gesto.
         coda.enqueue("chat", {},
                      {"history": [{"role": "user", "content": "che luci?"}],
                       "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nCucina",
-                      "model": "sonnet"},
-                     adesso + 300, now=adesso)
+                      "model": "sonnet", "soggetto": _CHI_SCRIVE},
+                     adesso + 300, now=adesso, thread=thread_for(_CHI_SCRIVE, "canale"))
 
         visto: dict = {}
 
@@ -618,10 +627,15 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             # (Tappa 6, S-08): si legge adesso.
             visto["system"] = pathlib.Path(
                 argv[argv.index("--system-prompt-file") + 1]).read_text(encoding="utf-8")
+            # Le intestazioni sono quelle che il runner ha scritto nella
+            # `--mcp-config`, come le manda la CLI vera: credenziale, turno e
+            # QUALE chat si sta servendo (`X-HIRIS-Chat`).
+            [server_mcp] = json.loads(
+                argv[argv.index("--mcp-config") + 1])["mcpServers"].values()
             with httpx.Client(timeout=30) as dentro:
                 def _rpc(corpo):
-                    return dentro.post(f"{base}/api/mcp",
-                                       headers=intestazioni,
+                    return dentro.post(server_mcp["url"],
+                                       headers=server_mcp["headers"],
                                        json=corpo).json()
 
                 elenco = _rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
