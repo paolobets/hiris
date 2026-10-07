@@ -36,8 +36,16 @@ def occurrence_out(occurrence: dict) -> dict:
     L'ordine delle chiavi si conserva -- `error` prende il posto esatto di
     `errore` invece di finire in coda -- cosi' il corpo di una risposta non
     cambia forma per un dettaglio che nessuno ha deciso.
+
+    **Anche dentro `causa`** (Tappa 7, Task 2, 07/10/2026): l'esito di una
+    scrittura porta in `causa` la busta del client (`action/write_outcome.py`),
+    che ha anch'essa il suo `errore`. Si traduce la stessa chiave, un livello
+    sotto: un `errore` che esce su HTTP perche' annidato sarebbe la stessa
+    parola italiana al confine.
     """
-    return {("error" if k == "errore" else k): v for k, v in occurrence.items()}
+    return {("error" if k == "errore" else k):
+            (occurrence_out(v) if k == "causa" and isinstance(v, dict) else v)
+            for k, v in occurrence.items()}
 
 
 def error_body(text: str, **fields) -> dict:

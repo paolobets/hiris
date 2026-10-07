@@ -37,6 +37,7 @@ import time
 from aiohttp import web
 
 from ..action.construction.revisions import STATES_SOSPESO
+from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..mind import automate_turn
 from .boundary import error_response, occurrence_out
@@ -190,15 +191,14 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     occurrence = await method(ident, actor="pagina", exchange=None,
                               now=time.time(),
                               subject=request.get("soggetto"))
-    if "errore" in occurrence:
+    if not occurrence["eseguito"]:
         # Un guasto di TRASPORTO verso Home Assistant (ondata finale, punto
         # 7, terza pulizia) non e' «la proposta non e' piu' in attesa»: e' la
         # stessa indisponibilita' che le due GET, qui sopra, dichiarano con
-        # 503. Prima questo ramo appiattiva ogni errore dell'officina su 409,
-        # anche quando la causa era Home Assistant irraggiungibile. Il flag
-        # e' interno (`Workshop._fallita`/`_rete`): non deve uscire nel corpo
-        # della risposta.
-        status = 503 if occurrence.pop("guasto_rete", False) else 409
+        # 503. Si legge la `causa` dell'esito, la forma delle due porte
+        # (`action/write_outcome.py`, E-04): fino al 07/10/2026 era un flag
+        # dell'officina, `guasto_rete`, che questa rotta toglieva dal corpo.
+        status = 503 if silent(occurrence) else 409
         return web.json_response(occurrence_out(occurrence), status=status)
     return web.json_response(occurrence_out(occurrence))
 

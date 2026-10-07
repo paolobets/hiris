@@ -14,6 +14,7 @@ from casa_finta import CasaFinta
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.journal import Journal
+from hiris.app.action.write_outcome import refused
 from hiris.app.api.handlers_constructions import (
     handle_confirm_construction,
     handle_get_construction,
@@ -257,7 +258,7 @@ async def test_il_filo_di_chi_ha_proposto_non_esce_dalla_singola():
 @pytest.mark.asyncio
 async def test_confermare_dalla_pagina_dichiara_l_origine_umana():
     """La pagina E' un umano che ha cliccato: nessun turno da distinguere."""
-    officina = FintaOfficina({"applicata": True, "esecuzione_id": "e1"})
+    officina = FintaOfficina({"eseguito": True, "esecuzione_id": "e1"})
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]), officina)
     risposta = await handle_confirm_construction(
         FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
@@ -268,7 +269,7 @@ async def test_confermare_dalla_pagina_dichiara_l_origine_umana():
 
 @pytest.mark.asyncio
 async def test_una_conferma_rifiutata_non_risponde_200():
-    officina = FintaOfficina({"errore": "quella proposta e' gia' applicata."})
+    officina = FintaOfficina(refused("quella proposta e' gia' applicata."))
     app = _app(FintoArchivio([{"id": "p1", "stato": "applicata"}]), officina)
     risposta = await handle_confirm_construction(
         FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
@@ -279,21 +280,30 @@ async def test_una_conferma_rifiutata_non_risponde_200():
 async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
     """Ondata finale, punto 7 (terza pulizia): `_act` appiattiva ogni
     errore dell'officina su 409 -- anche un guasto di Home Assistant, che
-    dalla GET sarebbe un 503. `Workshop._fallita`/`_rete` marcano un guasto
-    di trasporto con `guasto_rete: True`; questa rotta lo deve leggere."""
-    officina = FintaOfficina({"errore": "Home Assistant non ha risposto: timeout",
-                              "guasto_rete": True})
+    dalla GET sarebbe un 503. Dal 07/10/2026 (Tappa 7, Task 2) la rotta lo
+    legge dalla `causa` dell'esito, la busta del silenzio del client, e non
+    da un flag dell'officina. E la `causa` esce con le chiavi del confine:
+    nessun `errore` italiano, nemmeno annidato (`boundary.occurrence_out`).
+
+    Mutazioni eseguite il 07/10/2026: in `_act` `status = 409` fisso -> rossa
+    su `409 == 503`; in `occurrence_out` la `causa` passata com'e' -> rossa
+    sul corpo (`'errore'` al posto di `'error'` nella causa). Ripristinate."""
+    silenzio = {"errore": "Home Assistant non ha risposto: timeout",
+                "causa": "silenzio", "codice": None}
+    officina = FintaOfficina(refused(silenzio["errore"], silenzio))
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]), officina)
     risposta = await handle_confirm_construction(
         FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
     assert risposta.status == 503
-    # Il flag e' interno: non deve trapelare nel corpo della risposta.
-    assert b"guasto_rete" not in risposta.body
+    corpo = _corpo(risposta)
+    assert corpo["causa"] == {"error": silenzio["errore"], "causa": "silenzio",
+                              "codice": None}
+    assert b'"errore"' not in risposta.body
 
 
 @pytest.mark.asyncio
 async def test_ripristinare_passa_dall_officina():
-    officina = FintaOfficina({"applicata": True, "esecuzione_id": "e2"})
+    officina = FintaOfficina({"eseguito": True, "esecuzione_id": "e2"})
     app = _app(FintoArchivio([{"id": "c1", "stato": "applicata"}]), officina)
     risposta = await handle_restore_construction(
         FintaRichiesta(app, ident="c1", soggetto=AMMINISTRATORE))
@@ -318,7 +328,7 @@ async def test_confermare_senza_officina_da_503():
 @pytest.mark.asyncio
 async def test_rifiutare_dalla_pagina_non_tocca_home_assistant():
     """Il no non passa dall'officina: non c'e' niente da scrivere."""
-    officina = FintaOfficina({"applicata": True})
+    officina = FintaOfficina({"eseguito": True})
     archivio = FintoArchivio([{"id": "p1", "stato": "in_attesa"}])
     app = _app(archivio, officina)
     risposta = await handle_reject_construction(FintaRichiesta(app, ident="p1"))
@@ -532,7 +542,7 @@ async def test_conferma_su_un_oggetto_cambiato_e_409_e_non_scrive(client, csrf_s
 @pytest.mark.asyncio
 async def test_conferma_con_la_rilettura_in_guasto_e_503_e_non_scrive(client, csrf_stretto):
     """Un guasto di rete durante la rilettura e' indisponibilita' (503), non
-    un conflitto, e il flag interno non trapela nella risposta."""
+    un conflitto, e la sua causa e' il silenzio del client."""
     ha = client.app["_fake_ha"]
     ident = _edit_proposal(client.app["constructions"], "tapparelle_s17_rete")
     ha._solleva.add("read_configuration")
@@ -542,7 +552,7 @@ async def test_conferma_con_la_rilettura_in_guasto_e_503_e_non_scrive(client, cs
         headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
 
     assert risposta.status == 503
-    assert "guasto_rete" not in await risposta.json()
+    assert (await risposta.json())["causa"]["causa"] == "silenzio"
     assert ha.salvate == []
 
 

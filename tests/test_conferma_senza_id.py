@@ -81,7 +81,7 @@ async def test_senza_id_si_conferma_L_UNICA_in_sospeso(banco):
     esito = await officina.apply(None, actor="chat", exchange="turno-2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert esito.get("proposta_id", ident) == ident
 
 
@@ -97,7 +97,7 @@ async def test_l_id_ESPLICITO_continua_a_funzionare(banco):
     esito = await officina.apply(ident, actor="chat", exchange="turno-2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
 
 
 @pytest.mark.asyncio
@@ -237,7 +237,7 @@ async def test_con_l_id_ESPLICITO_non_conta_quante_ne_pendono(banco):
     esito = await officina.apply(primo, actor="chat", exchange="turno-2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
 
 
 @pytest.mark.asyncio
@@ -258,5 +258,5 @@ async def test_una_proposta_di_QUESTO_turno_non_blocca_quella_di_prima(banco):
     esito = await officina.apply(None, actor="chat", exchange="turno-2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert esito.get("proposta_id", vecchia) == vecchia

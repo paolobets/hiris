@@ -168,7 +168,7 @@ async def test_il_ponte_di_un_amministratore_attraversa_il_soffitto(
 
     esito = await _confirm(client, proposta, chat=job_id)
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert casa_ha.salvate, "la conferma dell'amministratore non ha scritto"
     visto = dispatcher_visti[-1]
     assert visto["soffitto"]["costruire"] is True
@@ -221,7 +221,7 @@ async def test_senza_intestazione_resta_il_comportamento_di_prima(
     proposta = await _proposta(client)
     with caplog.at_level(logging.WARNING, logger=handlers_mcp.__name__):
         esito = await _confirm(client, proposta)
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert casa_ha.salvate
     assert dispatcher_visti[-1].get("soffitto") is None
     assert dispatcher_visti[-1].get("soggetto") is None
@@ -243,7 +243,7 @@ async def test_una_cronologia_malformata_non_fa_cadere_la_rotta(
 
     esito = await _confirm(client, proposta, chat=ident)
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert dispatcher_visti[-1]["frase"] is None
 
 

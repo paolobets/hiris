@@ -13,7 +13,7 @@ class FintaOfficina:
     def __init__(self, esito_proponi=None, esito_applica=None):
         self.chiamate = []
         self._proponi = esito_proponi or {"proposta_id": "p1", "anteprima": "farei cosi'"}
-        self._applica = esito_applica or {"applicata": True, "esecuzione_id": "e1",
+        self._applica = esito_applica or {"eseguito": True, "esecuzione_id": "e1",
                                           "entita": ["automation.x"], "avviso": None}
 
     async def propose(self, intento, *, actor, exchange, now, thread=None,
@@ -142,19 +142,3 @@ async def test_conferma_senza_identificatore_NON_sceglie_QUI():
     assert workshop.chiamate == [("apply", None, "chat", "t7")], (
         "il dispatcher non deve ne' rifiutare da solo ne' scegliere: "
         "inoltra None e lascia decidere l'officina")
-
-
-@pytest.mark.asyncio
-async def test_conferma_non_lascia_uscire_guasto_rete_verso_il_modello():
-    """Punto 7 (residuo): `guasto_rete` e' dichiarato «interno»
-    (`handlers_constructions.py`), e sul percorso HTTP lo e' davvero -- quella
-    rotta lo legge per scegliere 503 invece di 409 e poi lo toglie dal corpo.
-    Sul percorso chat, prima di questa correzione, lo strumento restituiva il
-    dizionario di `apply` tale e quale: il flag usciva integro verso il
-    modello. O e' interno da entrambe le porte, o il commento mente su una."""
-    workshop = FintaOfficina(esito_applica={
-        "errore": "Home Assistant non ha risposto: timeout", "guasto_rete": True})
-    d = _dispatcher(workshop=workshop, exchange="t7")
-    esito = await d.dispatch("confirm", {"proposta_id": "p1"})
-    assert "guasto_rete" not in esito
-    assert "errore" in esito

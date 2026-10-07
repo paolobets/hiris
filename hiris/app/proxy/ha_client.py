@@ -645,8 +645,8 @@ class HAClient:
     # Queste tre primitive non sollevano piu' sul trasporto (A-30, Tappa 7,
     # Task 1, 07/10/2026): un guasto e' la busta del silenzio, un rifiuto di
     # Home Assistant la busta del rifiuto col suo motivo. Il loro UNICO
-    # chiamante (`action/construction/workshop.py::Workshop._rete`) legge il
-    # silenzio e lo dice `guasto_rete`, come prima.
+    # chiamante (`action/construction/workshop.py::Workshop._rete`) porta la
+    # busta intatta nella `causa` dell'esito (E-04, Task 2).
     @cost(rest=1)
     async def read_configuration(self, domain: str, key: str) -> dict:
         """Il corpo scritto di un oggetto, letto dalla stessa rotta dell'editor.

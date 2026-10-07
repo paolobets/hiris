@@ -86,7 +86,7 @@ async def test_la_frase_del_turno_che_conferma_FINISCE_in_cronaca(banco):
                                  now=ADESSO + 60, subject=SOGGETTO,
                                  confirm_phrase="grazie")
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert _soggetto_scritto(cronaca, esito)["confirm_phrase"] == "grazie"
 
 
@@ -143,7 +143,7 @@ async def test_una_conferma_dalla_PAGINA_non_porta_nessuna_frase(banco):
                                  exchange=None, now=ADESSO + 60,
                                  subject=SOGGETTO)
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert "confirm_phrase" not in _soggetto_scritto(cronaca, esito)
 
 
@@ -306,5 +306,5 @@ async def test_lo_STRUMENTO_confirm_porta_la_frase_fino_in_cronaca(banco):
                                 phrase="sì, scrivila")
     esito = await dispatcher.dispatch("confirm", {"proposta_id": proposta})
 
-    assert esito.get("applicata"), esito
+    assert esito.get("eseguito"), esito
     assert _soggetto_scritto(cronaca, esito)["confirm_phrase"] == "sì, scrivila"

@@ -17,6 +17,7 @@ from hiris.app.action.construction import workshop as officina_modulo
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.journal import Journal
+from hiris.app.action.write_outcome import silent
 from hiris.app.chat_thread import ChatThread
 from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
@@ -341,7 +342,7 @@ async def test_confermare_in_un_turno_successivo_scrive_davvero(banco):
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.salvate[0][0] == "automation"
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
     riga = cronaca.read(esito["esecuzione_id"])
@@ -369,7 +370,7 @@ async def test_dalla_pagina_si_applica_sempre(banco):
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
 
 
 @pytest.mark.asyncio
@@ -410,7 +411,7 @@ async def test_se_l_entita_non_compare_lo_dice_invece_di_dichiarare_riuscito(ban
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert esito["avviso"]
     assert cronaca.read(esito["esecuzione_id"])["avviso"]
 
@@ -483,7 +484,7 @@ async def test_ripristinare_rimette_il_prima_passando_dalla_stessa_officina(banc
     ha.salvate.clear()
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
                                       now=ADESSO + 120)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.salvate[0][2]["alias"] == "com'era"
 
 
@@ -731,7 +732,7 @@ async def test_ripristinare_dalla_chat_e_un_giro_in_due_tempi(banco):
     assert ha.salvate == []
     esito2 = await officina.apply(esito["proposta_id"], actor="chat", exchange="t4",
                                     now=ADESSO + 180)
-    assert esito2["applicata"] is True
+    assert esito2["eseguito"] is True
     assert ha.salvate[0][2]["alias"] == "com'era"
 
 
@@ -800,7 +801,7 @@ async def test_cancellare_chiama_cancella_configurazione_con_la_chiave_giusta(ba
                                actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.cancellate == [("automation", "1771")]
 
 
@@ -815,7 +816,7 @@ async def test_ripristinare_una_creazione_la_cancella(banco):
     chiave_nata = ha.salvate[0][1]
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
                                       now=ADESSO + 120)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.cancellate == [("automation", chiave_nata)]
 
 
@@ -865,10 +866,11 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
 
 
 @pytest.mark.asyncio
-async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco):
+async def test_guasto_rete_durante_applica_causa_silenzio(banco):
     """Punto 7 (terza pulizia): `_act` (handlers_constructions.py) deve poter
     distinguere un guasto di TRASPORTO da un rifiuto vero di Home Assistant,
-    per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
+    per rispondere 503 e non 409 -- la causa che questo test pinna (la busta
+    del silenzio, non piu' un flag)."""
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     ha._solleva.add("save_configuration")
@@ -876,7 +878,7 @@ async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
 
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
 
 
 @pytest.mark.asyncio
@@ -892,7 +894,7 @@ async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
                                    now=ADESSO + 60)
 
     assert "errore" in esito
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
 
 
@@ -1001,7 +1003,7 @@ async def test_l_etichetta_va_sull_entita_LETTA_non_su_quella_supposta(tmp_path)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata") is True
+    assert esito.get("eseguito") is True
     # I due identificatori sono davvero diversi: senza questo, la prova
     # tornerebbe a misurare un caso in cui coincidono.
     assert ha.helper_creati and ha.helper_ids["input_boolean"] == ["vacanza", "vacanza_2"]
@@ -1063,7 +1065,7 @@ async def test_se_il_registro_non_risponde_l_etichetta_MANCATA_si_dichiara(tmp_p
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata") is True
+    assert esito.get("eseguito") is True
     # L'automazione, letta da `_reread`, l'etichetta la prende: e' un'entita'
     # VISTA. L'helper no -- nessuno ha confermato il suo identificatore.
     assert ("automation.tapparelle_all_alba", "hiris") in ha.etichettate
@@ -1125,7 +1127,7 @@ async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
 # Oggi i quattro siti che chiamano `read_configuration`/
 # `save_configuration`/`delete_configuration` sono tutti avvolti in
 # `self._rete(...)`: e' cio' che trasforma un guasto di TRASPORTO in
-# `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire come
+# la busta del silenzio del client invece di lasciarlo risalire come
 # eccezione fuori dall'officina (il modulo dichiara "non solleva mai"). Ma
 # oggi questo e' solo disciplina -- nessun test lo garantisce -- e un quinto
 # sito aggiunto domani senza l'involucro riaprirebbe il difetto IN SILENZIO,
@@ -1228,7 +1230,7 @@ def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
         f"primitive REST chiamate fuori da self._rete(...): {nude}. Un "
         "guasto di trasporto in quel punto risalirebbe come eccezione fuori "
         "dall'officina, invece di diventare "
-        "{'errore': ..., 'guasto_rete': True} come ovunque altrove.")
+        "la busta del silenzio, come ovunque altrove.")
 
 
 # ---------------------------------------------------------------------------
@@ -1252,7 +1254,7 @@ async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(ban
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
 
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
     assert "non ha risposto" in esito["errore"]
     assert "gestite a mano" not in esito["errore"]
 
@@ -1427,7 +1429,7 @@ async def test_nel_proprio_filo_si_conferma_come_prima(banco):
     esito = await officina.apply(None, actor="chat", exchange="t2",
                                  thread=PAOLO, now=ADESSO + 60)
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.salvate
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
 
@@ -1441,7 +1443,7 @@ async def test_una_proposta_senza_filo_resta_confermabile_per_id_da_chiunque(ban
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                  thread=MARTA, now=ADESSO + 60)
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
 
 
 @pytest.mark.asyncio
@@ -1476,7 +1478,7 @@ async def test_thread_assente_non_restringe_come_la_pagina(banco):
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
 
 
@@ -1496,7 +1498,7 @@ async def test_ripristinare_dalla_pagina_di_una_proposta_nata_con_filo_non_si_re
                                    now=ADESSO + 120)
 
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
 
 
 @pytest.mark.asyncio
@@ -1589,7 +1591,7 @@ async def test_se_la_rilettura_non_risponde_non_si_scrive_e_si_dice_guasto(banco
     ha._solleva.add("read_configuration")
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
     assert "cambiat" not in esito["errore"]
     assert ha.salvate == []
 
@@ -1601,7 +1603,7 @@ async def test_un_oggetto_rimasto_com_era_si_scrive_come_prima(banco):
                                actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert len(ha.salvate) == 1
 
 
@@ -1662,7 +1664,7 @@ async def test_ripristinare_una_cancellazione_rimette_l_oggetto(banco):
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
                                    now=ADESSO + 120)
 
-    assert esito.get("applicata") is True, esito
+    assert esito.get("eseguito") is True, esito
     assert ha.corpi["1771"]["alias"] == "com'era"
 
 
