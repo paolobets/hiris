@@ -1531,8 +1531,10 @@ class ObservationsStore:
             self._conn.commit()
         return ident
 
-    def proposals(self, *, pending_only: bool = False, limit: int = 200) -> list[dict]:
-        """Le proposte da fare a mano, dalla piu' recente."""
+    def proposals(self, *, pending_only: bool = False, limit: int = 200,
+                  ident: str | None = None) -> list[dict]:
+        """Le proposte da fare a mano, dalla piu' recente. Con `ident`, solo
+        quella (`proposal`)."""
         sql = ("SELECT id,creata_ts,stato,testo,perche,impronta,prova_json,"
                "giri_json,esito_nota,stakes,construction_id,automation_refusal "
                "FROM proposte")
@@ -1540,6 +1542,9 @@ class ObservationsStore:
         if pending_only:
             sql += " WHERE stato = ?"
             args = (self.PROPOSAL_PENDING,)
+        if ident is not None:
+            sql += (" AND" if args else " WHERE") + " id = ?"
+            args = (*args, ident)
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
             rows = self._conn.execute(sql, (*args, int(max(1, limit)))).fetchall()
@@ -1548,6 +1553,14 @@ class ObservationsStore:
                  "giri": json.loads(r[7]), "esito_nota": r[8], "livello": r[9],
                  "costruzione_id": r[10], "non_automatizzabile": r[11]}
                 for r in rows]
+
+    def proposal(self, ident: str) -> dict | None:
+        """Una proposta da fare a mano per id, o `None`. **Per id, non fra le
+        ultime**: cercarla nelle prime `limit` di `proposals()` la perdeva
+        quando ce n'erano piu' di 200 piu' recenti, e la tabella non ha
+        scadenza (revisione C3, 07/10/2026)."""
+        found = self.proposals(ident=ident, limit=1)
+        return found[0] if found else None
 
     def close_proposal(self, ident: str, occurrence: str, *,
                        why: str | None = None) -> bool:

@@ -59,10 +59,6 @@ ANALYSIS_TURN_KIND = SPECIES[ANALYST_SPECIES].kind
 #: scritto con la data.
 MAX_ANSWER_TOKENS = 4096
 
-#: I tre inneschi della spec §10. Sono tre e sono dichiarati: un'osservazione
-#: che non dice quale dei tre non e' dell'analista, e' un commento.
-TRIGGERS = (1, 2, 3)
-
 #: I campi che il modello NON deve scrivere: sono i numeri, e li mette il
 #: codice. Elencati qui perche' il rifiuto possa dire quale ha trovato.
 NUMERIC_FIELDS = ("valore", "numero", "copertura", "quanti_scarti", "scarto",

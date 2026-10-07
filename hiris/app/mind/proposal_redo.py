@@ -235,7 +235,7 @@ def settle(app, store, ident: str, request: str, occurrence: dict, *,
     parola. **Una proposta che non e' piu' in attesa scarta la risposta**, in
     silenzio (scelta del proprietario del 06/10/2026): chi l'ha rifiutata
     mentre il turno era in volo ha gia' deciso."""
-    row = next((p for p in store.proposals() if p["id"] == ident), None)
+    row = store.proposal(ident)
     if row is None or row["stato"] != store.PROPOSAL_PENDING:
         logger.info("rifalla: la proposta %s non e' piu' in attesa, la risposta "
                     "si scarta", ident)

@@ -55,10 +55,7 @@ def _store(request):
 
 
 def _row(store, ident: str) -> dict | None:
-    for row in store.proposals():
-        if row["id"] == ident:
-            return row
-    return None
+    return store.proposal(ident)
 
 
 async def _close(request, outcome: str) -> web.Response:

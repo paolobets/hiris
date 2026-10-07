@@ -289,3 +289,20 @@ def test_una_ricostruzione_INTERROTTA_non_perde_le_proposte(tmp_path, monkeypatc
         assert [p["id"] for p in store.proposals()] == ["p1"]
     finally:
         store.close()
+
+
+def test_una_proposta_si_trova_per_ID_anche_oltre_le_ultime_duecento(archivio):
+    """La tabella non ha scadenza: chi chiude, rifa' o rilegge una proposta la
+    chiede per id, non fra le piu' recenti di `proposals()` (limite 200).
+    Misurato nella revisione C3 (07/10/2026): con 201 proposte la piu' vecchia
+    usciva `None`, e «Rifalla» la chiudeva come scartata.
+
+    Mutazione: `proposal` che la cerca fra `proposals()` -- rossa."""
+    prima = archivio.add_proposal(text="la prima", perche="p", fingerprint="f0",
+                                  prova={}, stakes=None, now_ts=1.0)
+    for n in range(200):
+        archivio.add_proposal(text=f"dopo {n}", perche="p", fingerprint=f"f{n + 1}",
+                              prova={}, stakes=None, now_ts=10.0 + n)
+    assert prima not in {p["id"] for p in archivio.proposals()}
+    assert archivio.proposal(prima)["testo"] == "la prima"
+    assert archivio.proposal("non-esiste") is None
