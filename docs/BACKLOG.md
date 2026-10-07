@@ -203,6 +203,8 @@ veridicita' della soluzione»).
    (`House.source`). Prove in `tests/test_mind_togli_rimetti.py`, mutazione eseguita. Nello stesso
    giorno, su richiesta del coordinatore, anche la fonte finita (`ENDED_SOURCE_STATES`: disabilitata
    o sparita dagli stati) esce `rifiutata`, con lo stato della fonte nella ragione.
+   *G74-1 (giro 74 del revisore, 07/10/2026):* «non c'e'» si dice solo con l'anagrafe letta e lo
+   specchio leggibile; altrimenti la ragione e' `HOUSE_UNREAD`, «la casa non si e' potuta leggere».
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
    «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,

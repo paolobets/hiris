@@ -155,6 +155,9 @@ class _Anagrafe:
         self._ids = ids
 
     def read(self):
+        # Un'anagrafe mai letta e' `{}` (`reader.py`), non una con zero entita'.
+        if not self._ids:
+            return {}
         return {"entita": [{"id": i} for i in self._ids], "dispositivi": [], "aree": []}
 
     def unavailable(self):
@@ -164,9 +167,20 @@ class _Anagrafe:
         return {}
 
 
+class _Specchio:
+    """La cache degli stati, letta, con le sole entita' nominate."""
+
+    def __init__(self, *ids):
+        self._ids = ids
+
+    def all_states(self):
+        return [{"id": i, "state": "on"} for i in self._ids]
+
+
 def _casa(*ids):
-    """La casa di adesso, con le sole entita' nominate."""
-    return House.read(_Anagrafe(*ids), None)
+    """La casa di adesso, letta per intero (anagrafe e specchio), con le sole
+    entita' nominate."""
+    return House.read(_Anagrafe(*ids), _Specchio(*ids))
 
 
 def _analisi(*ids):
@@ -280,6 +294,32 @@ def test_una_fonte_viva_rientra(archivio):
     assert scritta["rimetti"][0]["esito"] == analyst.BACK_IN
 
 
+@pytest.mark.parametrize("casa", [
+    House.read(None, None),
+    House.read(_Anagrafe(), _Specchio("sensor.altro")),
+    House.read(_Anagrafe("sensor.altro"), None),
+], ids=["niente letto", "anagrafe non letta", "specchio non letto"])
+def test_con_la_casa_non_letta_il_rifiuto_dice_il_vero(archivio, casa):
+    """G74-1 (giro 74 del revisore): con l'anagrafe mai letta (`{}`) o lo
+    specchio illeggibile -- Home Assistant irraggiungibile all'avvio --
+    `House.source` non conosce nessuno, e ogni «rimetti» usciva con «la casa
+    non ha questa entita'»: falso, e archiviato nell'analisi. La ragione e'
+    quella vera, e la decisione dell'osservatore resta com'era.
+
+    Mutazione ESEGUITA (07/10/2026): `_house_readable` che torna sempre vero
+    -- rossa in tutti e tre i casi (la ragione torna `NOT_IN_HOUSE`)."""
+    archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa",
+                          author=OBSERVER, when_ts=1000.0)
+
+    scritta = analyst.bring_back(archivio, _analisi("sensor.pioggia"), casa,
+                                 when_ts=2000.0)
+
+    voce = archivio.scope()["sensor.pioggia"]
+    assert (voce["dentro"], voce["autore"]) == (False, OBSERVER)
+    assert scritta["rimetti"][0]["esito"] == analyst.BACK_IN_REFUSED
+    assert scritta["rimetti"][0]["ragione"] == analyst.HOUSE_UNREAD
+
+
 def test_un_analisi_senza_rimetti_passa_com_e(archivio):
     analisi = {"osservazioni": []}
     assert analyst.bring_back(archivio, analisi, _casa()) == analisi
@@ -313,7 +353,8 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
 
     await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheRimette(),
                                 "bridge_active": False,
-                                "home_space_store": _Anagrafe("sensor.pioggia", "sensor.vicino")})
+                                "home_space_store": _Anagrafe("sensor.pioggia", "sensor.vicino"),
+                                "entity_cache": _Specchio("sensor.pioggia", "sensor.vicino")})
 
     scope = archivio.scope()
     assert (scope["sensor.pioggia"]["dentro"], scope["sensor.pioggia"]["autore"]) == (
@@ -355,7 +396,8 @@ async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(ar
 
     await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheInventa(),
                                 "bridge_active": False,
-                                "home_space_store": _Anagrafe("sensor.pioggia")})
+                                "home_space_store": _Anagrafe("sensor.pioggia"),
+                                "entity_cache": _Specchio("sensor.pioggia")})
 
     assert "sensor.inventato" not in archivio.scope()
     assert archivio.scope()["sensor.pioggia"]["autore"] == ANALYST
@@ -364,3 +406,29 @@ async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(ar
     assert esiti["sensor.pioggia"]["esito"] == analyst.BACK_IN
     assert esiti["sensor.inventato"]["esito"] == analyst.BACK_IN_REFUSED
     assert esiti["sensor.inventato"]["ragione"] == analyst.NOT_IN_HOUSE
+
+
+@pytest.mark.asyncio
+async def test_il_giro_dell_analista_con_la_casa_non_letta_non_mente(archivio):
+    """G74-1 dal giro intero: l'anagrafe mai letta e nessuna cache, come
+    all'avvio con Home Assistant irraggiungibile. L'analisi si archivia, il
+    «rimetti» dice che la casa non si e' potuta leggere, lo scope resta."""
+    from hiris.app import server
+    from hiris.app.home_space import historian
+
+    archivio.replace_report("2026-09-15", {
+        "giorno": "2026-09-15", "obiettivo": None, "forme": [], "cronaca": [],
+        "misure": [{"soggetto": "dev1", "nome": "Inverter", "misura": "prelievo",
+                    "operazione": "somma_periodo", "valore": 1.0, "unita": "kWh",
+                    "copertura": 1.0}]})
+    archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
+
+    await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheInventa(),
+                                "bridge_active": False, "home_space_store": _Anagrafe()})
+
+    assert archivio.scope()["sensor.pioggia"]["autore"] == OBSERVER
+    assert "sensor.inventato" not in archivio.scope()
+    oggi = historian.today(historian.house_timezone(None)).isoformat()
+    ragioni = {r["id"]: r["ragione"] for r in archivio.analysis(oggi)["rimetti"]}
+    assert ragioni == {"sensor.pioggia": analyst.HOUSE_UNREAD,
+                       "sensor.inventato": analyst.HOUSE_UNREAD}
