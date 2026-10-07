@@ -128,6 +128,27 @@ identica a quella di partenza dopo ogni passo. I conti di oggi si chiedono a
 domande restano, per il refactor degli agenti (voce sugli attori qui sotto); i numeri di R18 sono
 approvati e scritti nella spec; le 23 dichiarazioni `notable` escono.
 
+#### Tappa 7: le note basse del revisore — aperta il 07/10/2026
+
+`origine: giri 81 e 82 del revisore (/mnt/project-files/revisioni/giro-81.md e giro-82.md), 07/10/2026; non bloccanti, registrate qui per decisione del coordinatore` · `hiris/app/action/actuator.py` · `docs/design/2026-08-22-costruire-in-home-assistant.md`
+
+- **N81-1, la spec dice ancora due porte.** Il §2.1 di
+  `docs/design/2026-08-22-costruire-in-home-assistant.md` parla di due porte di scrittura, mentre
+  `CLAUDE.md` («Un canale, una porta») dalla Tappa 7, T4 ne nomina tre. E' una spec viva, e
+  `CLAUDE.md` la cita come fonte del paragrafo. Basta una riga in testa al §2.1 che rimandi a
+  `CLAUDE.md` per la terza porta.
+- **N82-1, il silenzio entra nella cronaca come «non eseguito».** Quando il trasporto tace su
+  `call_service`, la riga di cronaca porta `eseguito=False`, mentre il testo dice «non so se la
+  chiamata è arrivata». Era cosi' anche prima. Ma dalla Tappa 7, T1 la porta dei servizi distingue i
+  due casi, e la cronaca potrebbe dirlo, con un campo o con l'esito «incerto». Fondamenta 1: chi
+  legge la cronaca oggi non sa che quella riga e' un dubbio.
+- **N82-2, il silenzio puo' nascondere un nostro difetto.** `call_service` e le tre primitive
+  catturano `Exception` e la chiamano silenzio, quindi un nostro difetto dentro il blocco (per
+  esempio un `TypeError`) diventerebbe «HA non ha risposto». Il log e' a livello `debug`, senza
+  `exc_info`; `Workshop._rete` usava `exc_info=True` proprio per questo. Le due proposte del
+  revisore: `logger.warning(..., exc_info=True)`, oppure catturare solo `aiohttp.ClientError` e
+  `asyncio.TimeoutError`.
+
 ### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
 
 `origine: il proprietario, 01/10/2026, dopo l'audit degli attori sulla casa vera («i risultati non mi convincono, sembrano sommari e non mi ritrovo»)` · rapporti dell'audit in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · `hiris/app/server.py::_on_startup` · `hiris/app/server.py::actuator_round`
