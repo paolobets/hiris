@@ -193,10 +193,12 @@ def test_boundary_modules_are_asked_not_copied():
     modules = _boundary_modules()
     # La derivazione non si e' svuotata: senza le rotte o il pacchetto la prova
     # sotto passerebbe guardando niente. Tre dei moduli che il 05/10/2026
-    # scrivevano `errore` su HTTP (S-25), e un gestore di `server.py`.
+    # scrivevano `errore` su HTTP (S-25), `/api/health` (uscito da `server.py`
+    # al Task 11 della Tappa 7) e un gestore di `server.py`, il guscio HTML.
     for name in ("hiris.app.api.handlers_mind", "hiris.app.api.admission",
                  "hiris.app.api.middleware_internal_auth",
-                 "hiris.app.server._handle_health"):
+                 "hiris.app.api.handlers_health",
+                 "hiris.app.server.serve"):
         assert name in modules, sorted(modules)
 
 

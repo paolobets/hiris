@@ -60,6 +60,13 @@ CREATE INDEX IF NOT EXISTS idx_servizi_stato ON servizi(stato, visto_ts DESC);
 """
 
 
+#: Una presentazione che nessuno ha guardato entro `ServiziStore.ATTESA_S`.
+#: Una condizione sola per chi la cancella (`_prune`) e per chi la salta
+#: (`elenco`, `approva`, `revoca`): fra la scadenza e la prossima scrittura la
+#: riga sta ancora su disco, e nessuna porta la deve vedere.
+_EXPIRED_SQL = "(stato='in_attesa' AND visto_ts < ?)"
+
+
 def _row(r) -> dict:
     return {"chiave": r["chiave"], "nome": r["nome"], "indirizzo": r["indirizzo"],
             "stato": r["stato"], "ruolo": r["ruolo"], "specie": r["specie"],
@@ -113,6 +120,9 @@ class ServiziStore:
         if not str(chiave or "").strip():
             raise ValueError("un servizio senza chiave pubblica non si presenta")
         with self._lock:
+            # La potatura vive nella scrittura che fa crescere l'archivio, non
+            # nella lettura (Tappa 7, Task 0b): una `GET` non scrive.
+            self._prune(now_ts)
             esistente = self._conn.execute(
                 "SELECT * FROM servizi WHERE chiave=?", (chiave,)).fetchone()
             if esistente is None:
@@ -139,7 +149,8 @@ class ServiziStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE servizi SET stato='autorizzato', ruolo=?, specie=?, "
-                "deciso_ts=? WHERE chiave=?", (ruolo, specie, now_ts, chiave))
+                f"deciso_ts=? WHERE chiave=? AND NOT {_EXPIRED_SQL}",
+                (ruolo, specie, now_ts, chiave, self._expiry(now_ts)))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -148,8 +159,9 @@ class ServiziStore:
         sarebbe revocare domani."""
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE servizi SET stato='revocato', deciso_ts=? WHERE chiave=?",
-                (now_ts, chiave))
+                "UPDATE servizi SET stato='revocato', deciso_ts=? "
+                f"WHERE chiave=? AND NOT {_EXPIRED_SQL}",
+                (now_ts, chiave, self._expiry(now_ts)))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -166,23 +178,28 @@ class ServiziStore:
                 (chiave,)).fetchone()
         return None if r is None else _row(r)
 
-    def elenco(self) -> list[dict]:
+    def elenco(self, *, now_ts: float) -> list[dict]:
         """Tutti, dal più recente: la pagina mostra insieme chi aspetta, chi è
         vivo e chi hai revocato — perché sono la stessa domanda vista in tre
-        momenti, e separarli in tre elenchi costringerebbe a cercare."""
+        momenti, e separarli in tre elenchi costringerebbe a cercare.
+
+        Le presentazioni scadute non ci sono, anche se nessuno le ha ancora
+        tolte dal disco: una lettura non scrive."""
         with self._lock:
             righe = self._conn.execute(
-                "SELECT * FROM servizi ORDER BY visto_ts DESC").fetchall()
+                f"SELECT * FROM servizi WHERE NOT {_EXPIRED_SQL} "
+                "ORDER BY visto_ts DESC", (self._expiry(now_ts),)).fetchall()
         return [_row(r) for r in righe]
 
-    def pota(self, *, now_ts: float) -> int:
-        """Toglie le presentazioni che nessuno ha guardato entro `ATTESA_S`."""
-        with self._lock:
-            cur = self._conn.execute(
-                "DELETE FROM servizi WHERE stato='in_attesa' AND visto_ts < ?",
-                (now_ts - self.ATTESA_S,))
-            self._conn.commit()
-        return cur.rowcount
+    def _expiry(self, now_ts: float) -> float:
+        return now_ts - self.ATTESA_S
+
+    def _prune(self, now_ts: float) -> None:
+        """Toglie dal disco le presentazioni che nessuno ha guardato entro
+        `ATTESA_S`. La chiama `presenta`, che tiene il lucchetto: e' l'unica
+        scrittura che fa crescere l'archivio."""
+        self._conn.execute(f"DELETE FROM servizi WHERE {_EXPIRED_SQL}",
+                           (self._expiry(now_ts),))
 
 
 #: Quanto resta aperta la finestra di accoppiamento. **Dieci minuti**, decisione

@@ -38,7 +38,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
-| B-21 | Slug: `composer.available_slug` e `recipient._slugify` | D | CC |  |  | reg · cop-9 · Tappa 7 (D10 della Tappa 3) |
+| B-21 | Slug: `composer.available_slug` e `reference.slugify` | D | CC |  | Tappa 7, T0 (testo) | reg · cop-9 · Tappa 7 (D10 della Tappa 3) |
 | B-22 | Vocabolari dei tipi: giudizi e significati in più case | NV | DP |  | cop-5 (incompleta); cop-6 (righe) | reg · cop-5 · cop-6 · Tappa 8 (D10 della Tappa 3) |
 | B-23 | Tabelle di nomi italiani di domini e struttura «automazione/script/scena» | E | PS |  | cop-4 (conteggio); cop-5 (imprecisa) | reg · cop-4 · cop-5 · cop-9 · Tappa 3, Task 7: a meta' (`BEHAVIOR_DOMAINS` da `LINK_NAME`); restano `house_query.KINDS` e la tabella in `house_history` |
 | B-24 | Identificatori e costanti piccole: `_ENTITY_ID_RE`, dominio da entity_id, tetti | E | PS |  | cop-3 (incompleta); cop-5 (incompleta); cop-6 (incompleta); Tappa 3 (incompleta) | reg · cop-3 · cop-4 · cop-5 · cop-6 · cop-9 · Tappa 3, Task 7: `_ENTITY_ID_RE` e le copie del dominio uscite; restano 4 domini in linea (`house_query` 1, `house_history` 3), ammessi con la ragione in `tests/test_identificatori_ha.py`; i tetti non sono nel piano |
@@ -132,7 +132,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-22 | Altre sovrapposizioni fra strumenti (11 proprietà condivise fra `search` e `history`) | E | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
 | D-24 | Promesse: tre archivi dell'esito, quattro frasi, tre macchine a stati, tre vie di chiusura | D | CC |  | cop-9 (righe, incompleta) | reg · cop-9 · Tappa 8: archivi dell'esito, non forma degli strumenti (piano della Tappa 5) · Tappa 8 (Tappa 6, T0) |
 | D-25 | Validazione dello stesso ingresso in più punti | E | DP |  |  | reg · cop-3 |
-| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa) | reg · cop-3 · cop-9 · Tappa 7: e' lo scrivere, non la forma degli strumenti (piano della Tappa 5) · Tappa 7 (Tappa 6, T0) |
+| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa); Tappa 7, T0 (testo) | reg · cop-3 · cop-9 · Tappa 7: e' lo scrivere, non la forma degli strumenti (piano della Tappa 5) · Tappa 7 (Tappa 6, T0) |
 | D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 · Tappa 8: archivi (piano della Tappa 5) · Tappa 8 (Tappa 6, T0) |
 | D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 · Tappa 5, Task 2: le due maschere degli strumenti (corpo in `search`, «prima» in `propose`) chiedono il soffitto da `dispatch` (`Tool.mask`); le altre restano |
 | D-30 | Strumenti di lettura nei turni degli attori: cosa manca al turno | NV | DP |  | cop-8 (righe) | reg · cop-8 |
@@ -203,7 +203,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | F-16 | I default numerici dei runner senza unità nel nome e senza un posto comune | E | PS |  |  | cop-7 N-F2 |
 | F-17 | `amministrare` vale negli strumenti, non nelle rotte: i corpi delle automazioni ai servizi firmati | D | DP |  |  | cop-8 F3 |
 | F-18 | «Solo il ponte»: lo stesso cancello due volte, con insiemi, chiavi e testi diversi | E | PS |  |  | cop-8 F4 · **chiudibile al rilascio** `4bbdf062`: `_ponte_soltanto` uscito con `handlers_reasoning.py` (A-23); resta solo il cancello di `handlers_mcp` (riallineamento 07/10/2026) |
-| F-19 | La forma del soggetto: quattro costruttori nel middleware, tre fuori, due forme | E | PS |  |  | cop-8 F5 |
+| F-19 | La forma del soggetto: otto costruttori, quattro nel middleware e quattro fuori; quattro forme | E | PS |  | Tappa 7, T0 (conteggio) | cop-8 F5 |
 | F-20 | Costanti piccole del permesso scritte due volte (metodi sicuri, specie ignota, «nessun gesto») | E | PS |  |  | cop-8 F6 |
 | F-21 | `FINESTRA_S`: un nome, due fatti (600 s accoppiamento, 30 s firma) | D | PS |  |  | cop-8 F7 |
 | F-22 | «Il corpo si mostra solo a chi amministra», due regole: `privacy.cover_automation_body` (automazioni, per chat e `GET /api/home-space`, dalla 3.73.1) e `workshop._BODY_ADMIN_ONLY` (automazioni e scene, per l'anteprima di una costruzione). Oggi non c'è una falla: il comportamento letto non porta scene | D | CC |  |  | revisione 3.73.1 |
@@ -359,6 +359,8 @@ Difetti di comportamento che i rapporti descrivono senza una seconda copia, senz
 | S-37 | Credito o quota esauriti di un modello detti «Errore temporaneo del servizio AI. Riprova tra poco»: non e' temporaneo |  | MISURATO | registro dell'add-on del 05/10/2026: Claude 400 «credit balance is too low», OpenRouter 403 «Key limit exceeded (total limit)»; `llm_router`, `claude_runner`, `backends/openai_compat_runner` | verifiche dal vivo della 3.75.0, 05/10/2026 · **chiudibile al rilascio** `bbfff94c`, `b9852bc3`: credito e quota non sono piu' «temporanei» (`model_resolution.failure_reply`) (riallineamento 07/10/2026) |
 | S-38 | L'osservatore dal ponte: un lotto di 100 soggetti deciso solo su 29, le altre 71 «omesse» |  | MISURATO | registro dell'add-on del 05/10/2026, 11:46 (output_tokens 184); rientrano al giro dopo, la causa non e' nota | verifiche dal vivo della 3.75.0, 05/10/2026 |
 | S-39 | `handlers_reasoning` scrive un WARNING a ogni consegna non di scope, su un meccanismo uscito (la revisione olistica) |  | LETTO | `api/handlers_reasoning.py` (`nessun execute_decision wired`); il commento accanto lo ammette: e' rumore nel registro dell'add-on | verifiche dal vivo della 3.75.0, 05/10/2026 |
+| S-40 | `GET /api/services` potava l'archivio dei servizi prima di rispondere: una lettura che cancellava righe |  | LETTO | `api/handlers_servizi.py` (`handle_services` → `archivio.pota`); bloccava la misura in sola lettura dei servizi approvati (D4 della Tappa 7) | piano della Tappa 7 (07/10/2026), Task 0b · **chiudibile al rilascio** `2c69cde`: la scaduta esce dalla lettura (`servizi._EXPIRED_SQL`) e dal disco alla presentazione; `pota` cancellata |
+| S-41 | Altre `GET` che scrivono: il poll della chat che ripiega sulla catena, l'adozione dei fili orfani, il file dei modelli guasto |  | LETTO | `GET /api/chat/reply/{job_id}` a scadenza fa un turno intero (`handlers_chat._downgrade_to_chain`: coda, consumi, cronologia, e strumenti che scrivono su HA col soffitto del job); `GET /api/chat/history`, `/api/chat/conversations`, `/api/agenda` adottano sessioni e promesse senza proprietario (`chat_thread.adopt_if_owner`); `GET /api/models` e `/api/models/config` rinominano `models_config.json` illeggibile in `.corrotto` (`handlers_models._set_aside_unreadable_store`). Da decidere caso per caso: il primo e' la consegna di un messaggio gia' scritto | Tappa 7, Task 0b (ricerca delle altre `GET`, 07/10/2026) |
 
 ---
 
@@ -854,6 +856,44 @@ Spostate, restano aperte:
   (`nessuna_registrazione.perche`, `_NO_RECORDING` in `house_history.py`) ripetono la
   descrizione, ma toglierle cambierebbe la forma della risposta contro la fondamenta 1
   (un oggetto porta cio' che serve a interpretarlo da solo).
+
+## 10. La Tappa 7, Task 0 (07/10/2026): il registro e il piano
+
+Fonte: il piano `piani/2026-10-tappa-7-scrivere-permessi-modelli.md` (cartella del progetto), scritto
+su `9f478891`; il Task 0 sul ramo d'integrazione `6ab04511`.
+
+**Il piano confrontato col riallineamento C5** (`registro/2026-10-07-riallineamento.md`). C5 assegna
+alla Tappa 7 67 voci; la tabella «Le voci, assegnate» del piano le porta tutte e 67, piu' quattro che
+C5 mette altrove e il piano cita solo per dire dove sono: **C-56** (C5: «7 (provider) · Chiusura
+(nota)», la stessa divisione del piano), **E-08** (chiusa con la 3.74.0), **F-18** e **S-37**
+(chiudibili al rilascio). Nessuna voce in una sola delle due liste, nessun verdetto diverso.
+
+Correzioni di testo (le righe dei capitoli sono gia' corrette):
+
+- **B-21** — `keeper/recipient._slugify` non esiste piu': dal 06/10/2026 lo slug di HA vive in
+  `home_space/reference.slugify`. Corretto anche il docstring di `reference.fold_accents`, che citava
+  ancora il nome uscito. I due slug restano due (`composer.available_slug` aggiunge il suffisso
+  contro le collisioni e ripiega su `script_hiris`): si uniscono col Task 3.
+- **D-26** — `apply_actuation` non esiste piu'. Le porte verso l'officina sono la chat (e l'MCP, che
+  usa gli stessi strumenti: `home_space/tools.py`, `propose` e `apply`), la pagina
+  (`api/handlers_constructions.py`, `_act`) e i turni del proponente (`mind/automate_turn.py`). I due
+  `_preview` (`actuator._preview`, `Workshop._preview`) e i due archivi dell'esito restano: Task 3.
+- **F-19** — il conto del piano, letto nel codice il 07/10/2026 su `9f478891`: otto costruttori del
+  soggetto (quattro nel middleware, quattro fuori) e quattro forme (5, 4, 2 e 1 chiave). La voce
+  diceva sette e due: e' peggiorata. Si unisce col Task 6.
+
+Voci nuove:
+
+- **S-40** — la `GET` che scriveva (Task 0b), fatta in questo ramo.
+- **S-41** — le altre `GET` che scrivono, trovate cercandole tutte (le 26 rotte `add_get` di
+  `server.py` e i middleware che girano anche sulle letture). Non hanno ancora un task: il poll della
+  chat che ripiega e' la consegna di un messaggio che la persona ha gia' scritto, e chiede una
+  decisione prima di un cambio.
+
+**Il servizio firmato `utente` che scrive la configurazione** (la prova «PIN 4» di
+`tests/test_admission.py`, `test_PIN_un_servizio_utente_firmato_passa_come_prima`) non prende una
+riga sua: e' **F-17** (`amministrare` vale negli strumenti, non nelle rotte), e si chiude con lei nel
+Task 6 (D4, il gesto per rotta).
 
 ## Chiuse
 

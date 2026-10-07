@@ -310,7 +310,7 @@ aveva più un consumatore vivo. La conoscenza vive in `home_space/` (l'anagrafe,
 `memory/` (ciò che le persone hanno detto).
 Dalla fetta E5 (Task 5) non esiste più nemmeno `static/hiris-chat-card.js`, la card Lovelace:
 è uscita per intero — file, copia dentro Home Assistant, registrazione della risorsa — e tornerà
-riscritta da zero come ultimo passo, quando il prodotto sarà completo. Al suo posto `server.py`
+riscritta da zero come ultimo passo, quando il prodotto sarà completo. Al suo posto `action/installation.py`
 tiene solo la **disinstallazione** (`_disinstalla_card_lovelace`), perché quelle scritture
 stavano nella configurazione dell'utente, non dentro l'add-on.
 La tabella «Cosa è condannato» qui sopra resta valida come **regola**, ma i percorsi che cita

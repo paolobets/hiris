@@ -13,7 +13,7 @@ comportamento) e i suoi test si sono spostati qui, non buttati. Dal 03/10/2026
 (A-40) la ricerca e' una sola, `home_space.redaction.home_assistant_folder`.
 
 Cosa difendono i test nuovi -- le tre regole di
-`server._disinstalla_card_lovelace`:
+`action.installation._disinstalla_card_lovelace`:
   1. tocca **solo** le risorse che l'add-on stesso aveva registrato;
   2. e' **idempotente**: al secondo avvio non trova niente e non fa niente;
   3. **non fa cadere l'avvio** e **non tace**: se Home Assistant non risponde
@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app import server
+from hiris.app.action import installation
 
 SLUG = "hiris"
 TOKEN = "test-token"
@@ -96,7 +97,7 @@ def _cancellazioni(ws) -> list[dict]:
 
 @contextlib.contextmanager
 def _sessione(ws):
-    with patch("hiris.app.server.aiohttp.ClientSession",
+    with patch("hiris.app.action.installation.aiohttp.ClientSession",
                return_value=_make_session_ws(ws)):
         yield
 
@@ -107,7 +108,7 @@ def _sessione(ws):
 
 def test_riconosce_solo_gli_url_che_l_addon_sapeva_creare():
     """Il predicato e' l'inverso esatto di quello che usava la registrazione."""
-    from hiris.app.server import _e_risorsa_della_card
+    from hiris.app.action.installation import _e_risorsa_della_card
     assert _e_risorsa_della_card(URL_INGRESS_VECCHIO, SLUG)
     assert _e_risorsa_della_card(URL_LOCALE_NUDO, SLUG)
     assert _e_risorsa_della_card(URL_LOCALE_VERSIONATO, SLUG)
@@ -142,7 +143,7 @@ async def test_cancella_le_tre_forme_di_url_e_lascia_stare_le_altre():
         _ws_delete_ok(2), _ws_delete_ok(3), _ws_delete_ok(4),
     ])
     with _sessione(ws):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
 
     cancellati = [m["resource_id"] for m in _cancellazioni(ws)]
@@ -159,7 +160,7 @@ async def test_non_registra_piu_niente():
         _ws_delete_ok(2),
     ])
     with _sessione(ws):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
 
     assert not [m for m in _msgs(ws) if m.get("type") == "lovelace/resources/create"]
@@ -177,16 +178,16 @@ async def test_al_secondo_avvio_non_cancella_niente():
         _ws_elenco_ok([{"id": "r2", "url": "/local/community/x.js", "type": "module"}]),
     ])
     with _sessione(ws):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
     assert _cancellazioni(ws) == []
 
 
 def test_file_gia_assenti_non_si_rimuovono_due_volte(tmp_path):
     """Secondo giro su una cartella gia' pulita: nessun `os.remove`."""
-    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)), \
-         patch("hiris.app.server.os.remove") as rimuovi:
-        from hiris.app.server import _rimuovi_file_card
+    with patch("hiris.app.action.installation.home_assistant_folder", return_value=str(tmp_path)), \
+         patch("hiris.app.action.installation.os.remove") as rimuovi:
+        from hiris.app.action.installation import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
     rimuovi.assert_not_called()
 
@@ -201,9 +202,9 @@ async def test_home_assistant_irraggiungibile_non_solleva_e_lo_dichiara(caplog):
     def _esplode(*a, **k):
         raise OSError("connection refused")
 
-    with patch("hiris.app.server.aiohttp.ClientSession", side_effect=_esplode), \
+    with patch("hiris.app.action.installation.aiohttp.ClientSession", side_effect=_esplode), \
          caplog.at_level("WARNING"):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
 
     testo = caplog.text
@@ -216,7 +217,7 @@ async def test_auth_rifiutata_non_solleva_e_lo_dichiara(caplog):
     """Token non valido: nessuna eccezione, e il silenzio non e' ammesso."""
     ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_INVALID])
     with _sessione(ws), caplog.at_level("WARNING"):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
     assert "Risorse" in caplog.text
     assert _cancellazioni(ws) == []
@@ -227,7 +228,7 @@ async def test_lovelace_in_modalita_yaml_lo_dice_senza_fallire(caplog):
     """In modalita' YAML le risorse non si gestiscono: si dice all'utente."""
     ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_OK, _ws_elenco_ko()])
     with _sessione(ws), caplog.at_level("INFO"):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
     assert "lovelace.yaml" in caplog.text
 
@@ -241,7 +242,7 @@ async def test_una_delete_rifiutata_lo_dichiara_con_l_url(caplog):
         _ws_delete_ko(2),
     ])
     with _sessione(ws), caplog.at_level("WARNING"):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
     assert URL_LOCALE_VERSIONATO in caplog.text
 
@@ -264,7 +265,7 @@ async def test_una_delete_rifiutata_non_abbandona_le_successive(caplog):
         _ws_delete_ko(2), _ws_delete_ok(3),
     ])
     with _sessione(ws), caplog.at_level("INFO"):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         esito = await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
 
     # La seconda e' stata TENTATA nonostante il fallimento della prima.
@@ -288,7 +289,7 @@ async def test_due_delete_rifiutate_finiscono_entrambe_nel_riepilogo(caplog):
         _ws_delete_ko(2), _ws_delete_ko(3),
     ])
     with _sessione(ws), caplog.at_level("WARNING"):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
 
     riepilogo = [r for r in caplog.messages if "rimaste da togliere a mano" in r]
@@ -324,11 +325,11 @@ async def test_home_assistant_che_non_risponde_non_appende_l_avvio(caplog):
 
     inizio = time.monotonic()
     with (
-        patch("hiris.app.server.aiohttp.ClientSession", return_value=sessione),
-        patch("hiris.app.server._WS_CONNECT_TIMEOUT", 0.05),
+        patch("hiris.app.action.installation.aiohttp.ClientSession", return_value=sessione),
+        patch("hiris.app.action.installation._WS_CONNECT_TIMEOUT", 0.05),
         caplog.at_level("WARNING"),
     ):
-        from hiris.app.server import _deregistra_risorsa_card
+        from hiris.app.action.installation import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
     trascorso = time.monotonic() - inizio
 
@@ -338,16 +339,16 @@ async def test_home_assistant_che_non_risponde_non_appende_l_avvio(caplog):
 
 def test_l_attesa_sulla_connessione_e_dichiarata_e_breve():
     """Il valore vero, non una promessa nel commento: minuti no, secondi si'."""
-    assert 0 < server._WS_CONNECT_TIMEOUT <= 30.0
+    assert 0 < installation._WS_CONNECT_TIMEOUT <= 30.0
 
 
 @pytest.mark.asyncio
 async def test_i_file_si_tolgono_anche_se_la_deregistrazione_fallisce():
     """Ordine: prima la risorsa, poi i file -- ma il fallimento non blocca."""
-    with patch("hiris.app.server._deregistra_risorsa_card",
+    with patch("hiris.app.action.installation._deregistra_risorsa_card",
                AsyncMock(return_value=False)) as dereg, \
-         patch("hiris.app.server._rimuovi_file_card") as rimuovi:
-        from hiris.app.server import _disinstalla_card_lovelace
+         patch("hiris.app.action.installation._rimuovi_file_card") as rimuovi:
+        from hiris.app.action.installation import _disinstalla_card_lovelace
         await _disinstalla_card_lovelace("http://supervisor/core", TOKEN, SLUG)
     dereg.assert_awaited_once()
     rimuovi.assert_called_once_with(SLUG)
@@ -364,9 +365,9 @@ def test_toglie_i_due_file_della_card(tmp_path, caplog):
     (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
     (cartella / "hiris-ingress.json").write_text("{}", encoding="utf-8")
 
-    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)), \
+    with patch("hiris.app.action.installation.home_assistant_folder", return_value=str(tmp_path)), \
          caplog.at_level("INFO"):
-        from hiris.app.server import _rimuovi_file_card
+        from hiris.app.action.installation import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
 
     assert not (cartella / "hiris-chat-card.js").exists()
@@ -382,8 +383,8 @@ def test_la_cartella_con_roba_dell_utente_non_si_tocca(tmp_path):
     (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
     (cartella / "sfondo-cucina.png").write_bytes(b"\x89PNG")
 
-    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)):
-        from hiris.app.server import _rimuovi_file_card
+    with patch("hiris.app.action.installation.home_assistant_folder", return_value=str(tmp_path)):
+        from hiris.app.action.installation import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
 
     assert not (cartella / "hiris-chat-card.js").exists()
@@ -393,9 +394,9 @@ def test_la_cartella_con_roba_dell_utente_non_si_tocca(tmp_path):
 
 def test_cartella_ha_non_montata_non_solleva():
     """Senza volume di configurazione non c'e' niente da togliere."""
-    with patch("hiris.app.server.home_assistant_folder", return_value=None), \
-         patch("hiris.app.server.os.remove") as rimuovi:
-        from hiris.app.server import _rimuovi_file_card
+    with patch("hiris.app.action.installation.home_assistant_folder", return_value=None), \
+         patch("hiris.app.action.installation.os.remove") as rimuovi:
+        from hiris.app.action.installation import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
     rimuovi.assert_not_called()
 
@@ -406,10 +407,11 @@ def test_file_non_cancellabile_lo_dichiara_e_non_solleva(tmp_path, caplog):
     cartella.mkdir(parents=True)
     (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
 
-    with patch("hiris.app.server.home_assistant_folder", return_value=str(tmp_path)), \
-         patch("hiris.app.server.os.remove", side_effect=PermissionError("read-only")), \
+    with patch("hiris.app.action.installation.home_assistant_folder", return_value=str(tmp_path)), \
+         patch("hiris.app.action.installation.os.remove",
+               side_effect=PermissionError("read-only")), \
          caplog.at_level("WARNING"):
-        from hiris.app.server import _rimuovi_file_card
+        from hiris.app.action.installation import _rimuovi_file_card
         _rimuovi_file_card(SLUG)
     assert "a mano" in caplog.text
 
@@ -543,6 +545,6 @@ def test_rimuovi_file_card_cerca_la_cartella_dove_la_cerca_il_sigillo(tmp_path, 
     (cartella / "hiris-chat-card.js").write_text("// card", encoding="utf-8")
     monkeypatch.setattr(redaction, "_FOLDERS", (str(tmp_path),))
 
-    server._rimuovi_file_card(SLUG)
+    installation._rimuovi_file_card(SLUG)
 
     assert not (cartella / "hiris-chat-card.js").exists()

@@ -134,7 +134,7 @@ def test_service_states_match_store(tmp_path):
         store.approva("k", ruolo=role, specie=kind, now_ts=2.0)
         authorized = store.autorizzato("k")["stato"]
         store.revoca("k", now_ts=3.0)
-        revoked = store.elenco()[0]["stato"]
+        revoked = store.elenco(now_ts=4.0)[0]["stato"]
     finally:
         store.close()
     source = _js("config/services-route.js")
