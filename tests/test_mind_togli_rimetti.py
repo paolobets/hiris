@@ -17,6 +17,13 @@ import json
 import pytest
 
 from hiris.app.api.handlers_mind import handle_set_scope
+from hiris.app.home_space.house import (
+    SOURCE_GONE,
+    SOURCE_SWITCHED_OFF_BY_HA,
+    SOURCE_SWITCHED_OFF_BY_OWNER,
+    House,
+)
+from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import analyst
 from hiris.app.mind.scope import ANALYST, OBSERVER, OWNER
 from hiris.app.mind.store import ObservationsStore
@@ -140,6 +147,28 @@ async def test_senza_archivio_e_un_503():
 
 # -- L'analista, dalla risposta ----------------------------------------------
 
+class _Anagrafe:
+    """L'archivio dell'anagrafe, con le sole entita' nominate: quanto basta a
+    `House.read` per sapere cosa la casa ha."""
+
+    def __init__(self, *ids):
+        self._ids = ids
+
+    def read(self):
+        return {"entita": [{"id": i} for i in self._ids], "dispositivi": [], "aree": []}
+
+    def unavailable(self):
+        return ()
+
+    def reference_frame(self):
+        return {}
+
+
+def _casa(*ids):
+    """La casa di adesso, con le sole entita' nominate."""
+    return House.read(_Anagrafe(*ids), None)
+
+
 def _analisi(*ids):
     return {"osservazioni": [],
             "rimetti": [{"id": i, "perche": "spiega il crollo"} for i in ids]}
@@ -149,7 +178,8 @@ def test_l_analista_rimette_cio_che_l_osservatore_ha_tolto(archivio):
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa",
                           author=OBSERVER, when_ts=1000.0)
 
-    scritta = analyst.bring_back(archivio, _analisi("sensor.pioggia"), when_ts=2000.0)
+    scritta = analyst.bring_back(archivio, _analisi("sensor.pioggia"), _casa("sensor.pioggia"),
+                                 when_ts=2000.0)
 
     voce = archivio.scope()["sensor.pioggia"]
     assert (voce["dentro"], voce["autore"], voce["motivo"]) == (
@@ -165,7 +195,8 @@ def test_l_analista_non_rimette_cio_che_il_proprietario_ha_tolto(archivio):
     archivio.decide_scope("sensor.vicino", inside=False, reason="e' del vicino",
                           author=OWNER, when_ts=1000.0)
 
-    scritta = analyst.bring_back(archivio, _analisi("sensor.vicino"), when_ts=2000.0)
+    scritta = analyst.bring_back(archivio, _analisi("sensor.vicino"), _casa("sensor.vicino"),
+                                 when_ts=2000.0)
 
     voce = archivio.scope()["sensor.vicino"]
     assert (voce["dentro"], voce["autore"]) == (False, OWNER)
@@ -181,16 +212,77 @@ def test_cio_che_e_gia_dentro_non_si_riscrive(archivio):
     archivio.decide_scope("sensor.solare", inside=True, reason="pesa",
                           author=OBSERVER, when_ts=1000.0)
 
-    scritta = analyst.bring_back(archivio, _analisi("sensor.solare"), when_ts=2000.0)
+    scritta = analyst.bring_back(archivio, _analisi("sensor.solare"), _casa("sensor.solare"),
+                                 when_ts=2000.0)
 
     voce = archivio.scope()["sensor.solare"]
     assert (voce["autore"], voce["quando"]) == (OBSERVER, 1000.0)
     assert scritta["rimetti"][0]["esito"] == analyst.ALREADY_INSIDE
 
 
+def test_l_analista_non_rimette_cio_che_la_casa_non_ha(archivio):
+    """N65-2: un id ben scritto che ne' il registro ne' gli stati conoscono
+    non entra, nemmeno fuori dallo scope: il rifiuto sta accanto alla
+    richiesta, con la ragione."""
+    scritta = analyst.bring_back(archivio, _analisi("sensor.inventato"),
+                                 _casa("sensor.pioggia"), when_ts=2000.0)
+
+    assert archivio.scope() == {}
+    assert scritta["rimetti"] == [{"id": "sensor.inventato", "perche": "spiega il crollo",
+                                   "esito": analyst.BACK_IN_REFUSED,
+                                   "ragione": analyst.NOT_IN_HOUSE}]
+
+
+@pytest.mark.parametrize("voce, stato", [
+    ({"id": "sensor.pioggia", "disabilitata": True, "disabilitata_da": "user"},
+     SOURCE_SWITCHED_OFF_BY_OWNER),
+    ({"id": "sensor.pioggia", "disabilitata": True, "disabilitata_da": "integration"},
+     SOURCE_SWITCHED_OFF_BY_HA),
+    ({"id": "sensor.pioggia"}, SOURCE_GONE),
+])
+def test_l_analista_non_rimette_una_fonte_finita(archivio, voce, stato):
+    """Nel registro c'e', ma Home Assistant non ne parla piu' (spenta, o
+    sparita dagli stati): dentro sarebbe la stessa riga che non si accende
+    mai. Si rifiuta con lo stato della fonte nella ragione, e la decisione
+    dell'osservatore resta com'era.
+
+    Mutazione ESEGUITA (07/10/2026): `bring_back` senza il ramo delle fonti
+    finite -- rossa in tutti e tre i casi (la riga rientra con autore
+    analista)."""
+    archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa",
+                          author=OBSERVER, when_ts=1000.0)
+    # Lo specchio LETTO, senza la pioggia negli stati: e' cio' che fa dire
+    # «sparita» a `House.source` (con lo specchio illeggibile tacerebbe).
+    casa = House({"entita": [voce], "dispositivi": [], "aree": []},
+                 Mirror(state={"sensor.altro": "on"}))
+
+    scritta = analyst.bring_back(archivio, _analisi("sensor.pioggia"), casa,
+                                 when_ts=2000.0)
+
+    assert archivio.scope()["sensor.pioggia"]["autore"] == OBSERVER
+    esito = scritta["rimetti"][0]
+    assert esito["esito"] == analyst.BACK_IN_REFUSED
+    assert esito["ragione"] == analyst.source_ended(stato)
+    assert stato in esito["ragione"]
+
+
+def test_una_fonte_viva_rientra(archivio):
+    """Il ramo delle fonti finite non prende di piu': una fonte viva negli
+    stati rientra come sempre."""
+    archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa",
+                          author=OBSERVER, when_ts=1000.0)
+    casa = House({"entita": [{"id": "sensor.pioggia"}], "dispositivi": [], "aree": []},
+                 Mirror(state={"sensor.pioggia": "3.2"}))
+
+    scritta = analyst.bring_back(archivio, _analisi("sensor.pioggia"), casa,
+                                 when_ts=2000.0)
+
+    assert scritta["rimetti"][0]["esito"] == analyst.BACK_IN
+
+
 def test_un_analisi_senza_rimetti_passa_com_e(archivio):
     analisi = {"osservazioni": []}
-    assert analyst.bring_back(archivio, analisi) == analisi
+    assert analyst.bring_back(archivio, analisi, _casa()) == analisi
     assert archivio.scope() == {}
 
 
@@ -205,7 +297,7 @@ class _ModelloCheRimette:
 
 @pytest.mark.asyncio
 async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
-    """Il collegamento: senza la chiamata in `server._write_analysis` il
+    """Il collegamento: senza la chiamata in `analyst_round.write_analysis` il
     `rimetti` validato dal Task 3.5 finirebbe nell'archivio e basta, e lo
     scope non cambierebbe mai."""
     from hiris.app import server
@@ -220,7 +312,8 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
     archivio.decide_scope("sensor.vicino", inside=False, reason="e' del vicino", author=OWNER)
 
     await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheRimette(),
-                                "bridge_active": False})
+                                "bridge_active": False,
+                                "home_space_store": _Anagrafe("sensor.pioggia", "sensor.vicino")})
 
     scope = archivio.scope()
     assert (scope["sensor.pioggia"]["dentro"], scope["sensor.pioggia"]["autore"]) == (
@@ -231,3 +324,43 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
     esiti = {r["id"]: r["esito"] for r in archivio.analysis(oggi)["rimetti"]}
     assert esiti == {"sensor.pioggia": analyst.BACK_IN,
                      "sensor.vicino": analyst.BACK_IN_REFUSED}
+
+
+class _ModelloCheInventa:
+    async def chat(self, **kwargs):
+        return json.dumps({"osservazioni": [], "rimetti": [
+            {"id": "sensor.pioggia", "perche": "spiega il crollo"},
+            {"id": "sensor.inventato", "perche": "forse serve"}]})
+
+
+@pytest.mark.asyncio
+async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(archivio):
+    """N65-2 (giro 66 del revisore): `analyst_turn._back_in` valida solo la
+    FORMA dell'id, quindi un id ben scritto che la casa non ha diventava una
+    riga «decisa dall'analista» che nessun evento accendera' mai. Si filtra
+    sull'anagrafe di adesso, come l'osservatore con `known`, e il rifiuto si
+    scrive con la ragione accanto alla richiesta.
+
+    Mutazione ESEGUITA (07/10/2026): `bring_back` senza il filtro -- rossa
+    (`sensor.inventato` entra nello scope con autore analista)."""
+    from hiris.app import server
+    from hiris.app.home_space import historian
+
+    archivio.replace_report("2026-09-15", {
+        "giorno": "2026-09-15", "obiettivo": None, "forme": [], "cronaca": [],
+        "misure": [{"soggetto": "dev1", "nome": "Inverter", "misura": "prelievo",
+                    "operazione": "somma_periodo", "valore": 1.0, "unita": "kWh",
+                    "copertura": 1.0}]})
+    archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
+
+    await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheInventa(),
+                                "bridge_active": False,
+                                "home_space_store": _Anagrafe("sensor.pioggia")})
+
+    assert "sensor.inventato" not in archivio.scope()
+    assert archivio.scope()["sensor.pioggia"]["autore"] == ANALYST
+    oggi = historian.today(historian.house_timezone(None)).isoformat()
+    esiti = {r["id"]: r for r in archivio.analysis(oggi)["rimetti"]}
+    assert esiti["sensor.pioggia"]["esito"] == analyst.BACK_IN
+    assert esiti["sensor.inventato"]["esito"] == analyst.BACK_IN_REFUSED
+    assert esiti["sensor.inventato"]["ragione"] == analyst.NOT_IN_HOUSE

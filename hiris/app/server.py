@@ -79,6 +79,7 @@ from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
 from .mind import analyst, analyst_turn, recipe_turn, report
+from .mind.analyst_round import ANALYST_DAYS, write_analysis
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     aggregate_day,
@@ -2064,18 +2065,12 @@ async def analyst_round(app) -> dict | None:
             previous=previous, tool_calls=turn.tool_calls, presence=presence)
         if _was_refused(esito) and not turn.truncated:
             declare_refused(app.get("usage"), turn.turn_id, esito["problemi"])
-        _write_analysis(store, today, esito)
+        write_analysis(app, store, today, esito)
         return esito
     except Exception as error:
         logger.warning("analista: giro fallito (%s: %s) -- si riprova al giro "
                        "dopo", type(error).__name__, error)
         return None
-
-
-#: Quanti giorni di misure si consegnano all'analista. Trenta e' il numero
-#: della spec §9 -- «trenta giorni di misure stanno in un prompt» -- e
-#: misurato sulla casa vera sono ~35.000 token.
-ANALYST_DAYS = 30
 
 
 def _analyst_memory(store, today: str, series: dict) -> list[dict]:
@@ -2084,33 +2079,6 @@ def _analyst_memory(store, today: str, series: dict) -> list[dict]:
     return analyst.previous_observations(
         store.analyses(limit=ANALYST_DAYS), store.proposals(), today=today,
         series=series)
-
-
-def _write_analysis(store, day: str, esito: dict) -> None:
-    """Scrive l'analisi, o dice perche' non l'ha scritta.
-
-    **Una risposta rifiutata non si archivia**: un'analisi con dentro dei
-    problemi non e' un'analisi, e scriverla direbbe che quel giorno e' stato
-    analizzato. Il giro dopo riprova, perche' `analysis(giorno)` resta `None`.
-    """
-    analysis = esito.get("analisi")
-    if analysis is None:
-        if esito.get("problemi"):
-            logger.warning("analista: risposta rifiutata per %s -- %s",
-                           day, " \u00b7 ".join(esito["problemi"]))
-        return
-    # **Il fondamento si legge QUI**, non da chi chiama: e' lo stato dei
-    # resoconti nel momento in cui l'analisi viene scritta, e le due strade --
-    # il turno diretto e la risposta raccolta dal ponte -- devono registrarlo
-    # allo stesso modo. Il ponte rilegge le serie adesso (vedi
-    # `_collect_analyst_turn`), quindi «adesso» e' il fondamento giusto per
-    # entrambe.
-    analysis = {**analysis,
-                "fondamento": analyst_turn.fondamento(
-                    store.report_stamps(limit=ANALYST_DAYS))}
-    store.replace_analysis(day, analyst.bring_back(store, analysis))
-    logger.info("analista: analisi di %s scritta (%d osservazioni)",
-                day, len(analysis.get("osservazioni") or []))
 
 
 def _was_refused(esito: dict) -> bool:
@@ -2223,7 +2191,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.
         return esito
-    _write_analysis(store, day, esito)
+    write_analysis(app, store, day, esito)
     return esito
 
 

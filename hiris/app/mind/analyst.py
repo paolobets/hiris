@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import time as _time
 
+from ..home_space.house import ENDED_SOURCE_STATES
 from .scope import ANALYST, OWNER
 
 #: Quanti giorni di storia servono per parlare di scostamento. **Due punti non
@@ -369,6 +370,21 @@ BACK_IN = "rientrata"
 ALREADY_INSIDE = "gia_dentro"
 BACK_IN_REFUSED = "rifiutata"
 
+#: La ragione di un rifiuto che non viene dallo scope ma dalla casa (N65-2):
+#: l'id chiesto e' ben scritto, ma ne' il registro ne' gli stati lo
+#: conoscono (`House.source` -> `None`). Scriverlo dentro farebbe una riga
+#: «decisa dall'analista» che nessun evento accendera' mai.
+NOT_IN_HOUSE = "la casa non ha questa entita'"
+
+
+def source_ended(state: str) -> str:
+    """La ragione di un rifiuto per una fonte finita: l'entita' c'e' nel
+    registro, ma Home Assistant non ne parla piu' -- spenta dal proprietario,
+    spenta da Home Assistant o sparita dagli stati (`ENDED_SOURCE_STATES`).
+    Porta lo stato di `House.source`, col suo nome, perche' la ragione si
+    legga da sola."""
+    return f"Home Assistant non ne parla piu': {state}"
+
 #: I motivi di ripiego del proprietario, quando dalla pagina toglie o rimette
 #: senza scrivere perche'. `store.decide_scope` non scrive una decisione senza
 #: motivo; il campo della pagina e' facoltativo, quindi il ripiego vive qui,
@@ -379,7 +395,7 @@ OWNER_BROUGHT_BACK = "rimesso dentro dal proprietario"
 _AUTHOR_NAME = {OWNER: "il proprietario", ANALYST: "l'analista"}
 
 
-def bring_back(store, analysis: dict, *, when_ts: float | None = None) -> dict:
+def bring_back(store, analysis: dict, house, *, when_ts: float | None = None) -> dict:
     """Scrive il **rimetti dentro** dell'analista (D9), e torna l'analisi con
     l'esito di ogni richiesta accanto.
 
@@ -394,7 +410,15 @@ def bring_back(store, analysis: dict, *, when_ts: float | None = None) -> dict:
     della pagina restano di chi l'ha deciso.
 
     La forma della richiesta l'ha gia' validata `analyst_turn._back_in`
-    (`id` di entita', `perche` non vuoto).
+    (`id` di entita', `perche` non vuoto). **Che la casa l'abbia lo dice
+    `house`, la casa di adesso** (N65-2, 07/10/2026): come l'osservatore
+    accetta solo cio' che era nella domanda (`observer.apply_answer`, `known`),
+    l'analista rimette solo cio' che il registro o gli stati conoscono
+    (`House.source`). Un id che la casa non ha esce `rifiutata` con la
+    ragione, e lo scope non si tocca. **Lo stesso per una fonte finita**
+    (`ENDED_SOURCE_STATES`: disabilitata o sparita dagli stati): e' nel
+    registro, ma non avra' mai uno stato, e dentro sarebbe la stessa riga che
+    non si accende mai.
     """
     asked = analysis.get("rimetti") or []
     if not asked:
@@ -404,7 +428,13 @@ def bring_back(store, analysis: dict, *, when_ts: float | None = None) -> dict:
     for item in asked:
         subject, why = item["id"], item["perche"]
         standing = store.scope().get(subject)
-        if standing is not None and standing["dentro"]:
+        source = house.source(subject)
+        if source is None:
+            outcomes.append({**item, "esito": BACK_IN_REFUSED, "ragione": NOT_IN_HOUSE})
+        elif source["stato"] in ENDED_SOURCE_STATES:
+            outcomes.append({**item, "esito": BACK_IN_REFUSED,
+                             "ragione": source_ended(source["stato"])})
+        elif standing is not None and standing["dentro"]:
             outcomes.append({**item, "esito": ALREADY_INSIDE})
         elif store.decide_scope(subject, inside=True, reason=why, author=ANALYST,
                                 when_ts=now):
