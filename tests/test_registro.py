@@ -144,3 +144,64 @@ def test_un_id_a_tre_cifre_si_legge(tmp_path):
         "| D-100 | centesima | E | PS |\n", encoding="utf-8")
     assert [entry.id for entry in registro.read_entries(document)] == ["D-100"]
 
+
+
+#: Un registro piccolo con le tre forme del «fatto ma non rilasciato»: una
+#: voce aperta segnata, una aperta non segnata, una chiusa prima della versione.
+_WITH_RELEASABLE = (
+    "## A. Leggere\n\n| Id | Voce | Stato | Unirla | Fonti |\n|---|---|---|---|---|\n"
+    "| A-01 | prima | E | PS | reg · **chiudibile al rilascio** `abc1234`, `def5678`: "
+    "copia tolta |\n"
+    "| A-03 | terza | D | CC | reg |\n\n"
+    "## Chiuse\n\n| Id | Voce | Chiusa con | Commit | Cosa |\n|---|---|---|---|---|\n"
+    "| A-02 | seconda | 3.73.0 | 1111111 | tolta |\n"
+    "| A-04 | quarta | Tappa 6, Task 7 | 2222222 | tolta prima del rilascio |\n")
+
+
+def test_una_voce_segnata_si_riconosce_e_porta_i_suoi_commit(tmp_path):
+    """Mutazione ESEGUITA: in `releasable` letto solo il primo commit --
+    rossa (la voce porta un commit solo invece dei due)."""
+    document = tmp_path / "registro.md"
+    document.write_text(_WITH_RELEASABLE, encoding="utf-8")
+    entries = {entry.id: entry for entry in registro.read_entries(document)}
+    assert registro.releasable(entries["A-01"]) == registro.Releasable(
+        commits=["abc1234", "def5678"], note="copia tolta")
+    assert registro.releasable(entries["A-03"]) is None
+    assert [entry.id for entry in registro.closed_early(list(entries.values()))] == ["A-04"]
+
+
+def test_un_segno_storto_ferma_la_verifica(tmp_path):
+    """Un segno che il lettore non capisce non e' una voce chiudibile in meno:
+    e' una voce che al rilascio resterebbe aperta in silenzio.
+    Mutazione ESEGUITA: `malformed` restituisce sempre [] -- rossa."""
+    document = tmp_path / "registro.md"
+    document.write_text(_WITH_RELEASABLE.replace("`abc1234`, `def5678`: ", ""),
+                        encoding="utf-8")
+    assert registro.malformed(registro.read_entries(document)) == ["A-01"]
+
+
+def test_al_rilascio_le_segnate_si_chiudono_e_le_anticipate_prendono_la_versione(tmp_path):
+    """Mutazione ESEGUITA: tolta da `release` la riscrittura delle chiuse in
+    anticipo -- rossa (A-04 resta «Tappa 6, Task 7»)."""
+    document = tmp_path / "registro.md"
+    document.write_text(_WITH_RELEASABLE, encoding="utf-8")
+    closed = registro.release(document, version="3.78.0")
+    assert closed == ["A-01", "A-04"]
+    entries = {entry.id: entry for entry in registro.read_entries(document)}
+    assert entries["A-01"].closed
+    assert entries["A-01"].cells[2:] == ("3.78.0", "abc1234, def5678", "copia tolta")
+    assert entries["A-04"].cells[2] == "3.78.0"
+    assert entries["A-02"].cells[2] == "3.73.0"
+    assert not entries["A-03"].closed
+    assert registro.release(document, version="3.78.0") == []
+
+
+def test_il_rilascio_vuole_una_versione_vera(tmp_path):
+    document = tmp_path / "registro.md"
+    document.write_text(_WITH_RELEASABLE, encoding="utf-8")
+    with pytest.raises(SystemExit, match="Tappa 7"):
+        registro.release(document, version="Tappa 7")
+
+
+def test_il_registro_vero_non_ha_segni_storti():
+    assert registro.malformed(registro.read_entries(REGISTER)) == []
