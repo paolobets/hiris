@@ -376,6 +376,20 @@ BACK_IN_REFUSED = "rifiutata"
 #: «decisa dall'analista» che nessun evento accendera' mai.
 NOT_IN_HOUSE = "la casa non ha questa entita'"
 
+#: La ragione quando la casa non si e' potuta guardare per intero (G74-1,
+#: giro 74 del revisore): «non c'e'» si puo' dire solo con l'anagrafe letta
+#: (un'anagrafe mai letta e' `{}`, `reader.py`) E lo specchio leggibile --
+#: senza il primo non si conosce il registro, senza il secondo le entita'
+#: che vivono solo negli stati (`sun`, `zone`, `conversation`, senza
+#: `unique_id`). Il rifiuto si scrive con la ragione vera, e lo scope non si
+#: tocca: la prossima analisi puo' chiedere di nuovo.
+HOUSE_UNREAD = "la casa non si e' potuta leggere"
+
+
+def _house_readable(house) -> bool:
+    """Se la casa di adesso basta per dire che un'entita' non c'e'."""
+    return bool(house.home_space) and house.mirror.readable
+
 
 def source_ended(state: str) -> str:
     """La ragione di un rifiuto per una fonte finita: l'entita' c'e' nel
@@ -418,7 +432,8 @@ def bring_back(store, analysis: dict, house, *, when_ts: float | None = None) ->
     ragione, e lo scope non si tocca. **Lo stesso per una fonte finita**
     (`ENDED_SOURCE_STATES`: disabilitata o sparita dagli stati): e' nel
     registro, ma non avra' mai uno stato, e dentro sarebbe la stessa riga che
-    non si accende mai.
+    non si accende mai. Ma «non c'e'» si dice solo di una casa letta: con
+    l'anagrafe o lo specchio non letti la ragione e' `HOUSE_UNREAD` (G74-1).
     """
     asked = analysis.get("rimetti") or []
     if not asked:
@@ -430,7 +445,9 @@ def bring_back(store, analysis: dict, house, *, when_ts: float | None = None) ->
         standing = store.scope().get(subject)
         source = house.source(subject)
         if source is None:
-            outcomes.append({**item, "esito": BACK_IN_REFUSED, "ragione": NOT_IN_HOUSE})
+            outcomes.append({**item, "esito": BACK_IN_REFUSED,
+                             "ragione": (NOT_IN_HOUSE if _house_readable(house)
+                                         else HOUSE_UNREAD)})
         elif source["stato"] in ENDED_SOURCE_STATES:
             outcomes.append({**item, "esito": BACK_IN_REFUSED,
                              "ragione": source_ended(source["stato"])})
