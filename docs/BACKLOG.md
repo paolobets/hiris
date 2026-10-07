@@ -197,6 +197,10 @@ veridicita' della soluzione»).
    sull'anagrafe di adesso, come fa l'osservatore con `known`; un id assente diventa `rifiutata`,
    con la ragione «la casa non ha questa entita'». Serve la casa nella chiamata di
    `_write_analysis` (`server.py`), ed e' per questo che si fa col collegamento 3.6 o alla Chiusura.
+   *Fatto il 07/10/2026 (fetta C2):* `_write_analysis` e' uscita da `server.py` in
+   `mind/analyst_round.py` con un commit di solo spostamento; `analyst.bring_back` riceve la casa di
+   adesso e rifiuta con `NOT_IN_HOUSE` l'id che ne' il registro ne' gli stati conoscono
+   (`House.source`). Prove in `tests/test_mind_togli_rimetti.py`, mutazione eseguita.
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
    «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,

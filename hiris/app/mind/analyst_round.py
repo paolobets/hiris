@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 
+from ..home_space.house import House
 from . import analyst, analyst_turn
 
 logger = logging.getLogger(__name__)
@@ -22,12 +23,15 @@ logger = logging.getLogger(__name__)
 ANALYST_DAYS = 30
 
 
-def write_analysis(store, day: str, occurrence: dict) -> None:
+def write_analysis(app, store, day: str, occurrence: dict) -> None:
     """Scrive l'analisi, o dice perche' non l'ha scritta.
 
     **Una risposta rifiutata non si archivia**: un'analisi con dentro dei
     problemi non e' un'analisi, e scriverla direbbe che quel giorno e' stato
     analizzato. Il giro dopo riprova, perche' `analysis(giorno)` resta `None`.
+
+    **Il «rimetti» si confronta con la casa di adesso** (N65-2): `app` serve
+    solo a leggerla, dagli stessi archivi vivi da cui la legge l'osservatore.
     """
     analysis = occurrence.get("analisi")
     if analysis is None:
@@ -44,6 +48,7 @@ def write_analysis(store, day: str, occurrence: dict) -> None:
     analysis = {**analysis,
                 "fondamento": analyst_turn.fondamento(
                     store.report_stamps(limit=ANALYST_DAYS))}
-    store.replace_analysis(day, analyst.bring_back(store, analysis))
+    house = House.read(app.get("home_space_store"), app.get("entity_cache"))
+    store.replace_analysis(day, analyst.bring_back(store, analysis, house))
     logger.info("analista: analisi di %s scritta (%d osservazioni)",
                 day, len(analysis.get("osservazioni") or []))

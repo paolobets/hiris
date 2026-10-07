@@ -2065,7 +2065,7 @@ async def analyst_round(app) -> dict | None:
             previous=previous, tool_calls=turn.tool_calls, presence=presence)
         if _was_refused(esito) and not turn.truncated:
             declare_refused(app.get("usage"), turn.turn_id, esito["problemi"])
-        write_analysis(store, today, esito)
+        write_analysis(app, store, today, esito)
         return esito
     except Exception as error:
         logger.warning("analista: giro fallito (%s: %s) -- si riprova al giro "
@@ -2191,7 +2191,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.
         return esito
-    write_analysis(store, day, esito)
+    write_analysis(app, store, day, esito)
     return esito
 
 
