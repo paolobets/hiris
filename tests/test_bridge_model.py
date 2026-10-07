@@ -24,7 +24,7 @@ import logging
 import pytest
 
 from hiris.app.agent import runner
-from hiris.app.claude_runner import resolve_model
+from hiris.app.providers import CLAUDE
 
 
 @pytest.fixture(autouse=True)
@@ -41,26 +41,22 @@ def il_piano_puo_rispondere(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# [1]-[4]: modello_cli (+ resolve_model a monte)
+# [1]-[4]: modello_cli
 # ---------------------------------------------------------------------------
 
 def test_auto_senza_models_config_da_sonnet():
-    # "auto" senza un default di provider (nessun `models_config` salvato,
-    # o provider_models["claude"] vuoto) risolve via AUTO_MODEL_MAP["chat"]
-    # -> "claude-sonnet-4-6", che modello_cli traduce nell'alias "sonnet".
-    modello_risolto = resolve_model("auto", "chat", "")
-    assert runner.cli_model(modello_risolto) == "sonnet"
+    # Senza una scelta per Claude API vale il suo modello automatico
+    # (`CLAUDE.auto_model`, -> "claude-sonnet-4-6"), che modello_cli traduce
+    # nell'alias "sonnet". `resolve_model` a monte e' uscita (Tappa 7 T10).
+    assert runner.cli_model(CLAUDE.auto_model) == "sonnet"
 
 
 def test_modello_opus_esplicito_da_opus():
-    modello_risolto = resolve_model("claude-opus-4-7", "chat", "")
-    assert modello_risolto == "claude-opus-4-7"  # resolve_model non tocca un modello non "auto"
-    assert runner.cli_model(modello_risolto) == "opus"
+    assert runner.cli_model("claude-opus-4-7") == "opus"
 
 
 def test_modello_haiku_esplicito_da_haiku():
-    modello_risolto = resolve_model("claude-haiku-4-5-20251001", "chat", "")
-    assert runner.cli_model(modello_risolto) == "haiku"
+    assert runner.cli_model("claude-haiku-4-5-20251001") == "haiku"
 
 
 def test_modello_non_anthropic_ricade_su_sonnet_e_lo_dichiara_nel_log(caplog):
@@ -69,8 +65,7 @@ def test_modello_non_anthropic_ricade_su_sonnet_e_lo_dichiara_nel_log(caplog):
     # non puo' MAI parlare -- passarlo a `claude --model` darebbe rc!=0 ad
     # ogni turno. Il ripiego su "sonnet" non e' silenzioso: un log.warning
     # nomina il valore configurato.
-    modello_risolto = resolve_model("gpt-4o", "chat", "")
-    assert modello_risolto == "gpt-4o"
+    modello_risolto = "gpt-4o"
 
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
         esito = runner.cli_model(modello_risolto)

@@ -609,9 +609,10 @@ def compose_topology(
     numero è una decisione di qualcuno. Il tempo del ponte e il timeout di
     Ollama lo sono -- li scrive l'utente -- e i loro valori arrivano dal
     chiamante, che li legge dove li legge il runtime. Un rifiuto immediato non è
-    un numero e si dice a parole; un tempo che nessuno ha scelto (i tre
-    tentativi su un 429 di Claude, 5+15+45 secondi) non si inventa: lo
-    racconterà la riga di stato dopo che è successo (Task 11).
+    un numero e si dice a parole; un tempo che nessuno ha scelto (i
+    ritentativi dell'SDK su un 429 di Claude, con l'attesa che il provider
+    chiede) non si inventa: lo racconterà la riga di stato dopo che è
+    successo (Task 11).
 
     Il connettore di una riga dice cosa succede se QUELLA riga non risponde, e
     non presume niente su chi viene dopo: la pagina lo disegna fra una riga e
@@ -852,9 +853,9 @@ SUBSCRIPTION_ALIAS: tuple[tuple[str, str], ...] = (
 # il modello di Ollama non vive in `provider_models`.
 
 # La voce «auto», che nell'archivio è la STRINGA VUOTA e non la parola "auto".
-# Salvare letteralmente "auto" è un difetto: `claude_runner.resolve_model`
-# tratta il default come valore, quindi `resolve_model("auto", "chat", "auto")`
-# restituisce "auto" e la richiesta parte con `model="auto"` verso un provider
+# Salvare letteralmente "auto" è un difetto: `ClaudeRunner._resolve_model`
+# tratta la scelta come valore, quindi una scelta «auto» fa partire la
+# richiesta con `model="auto"` verso un provider
 # che quel nome non lo conosce. Fino a questa fetta `_CLAUDE_MODELS` apriva con
 # "auto" e il picker uscito col Task 8 lo offriva come qualunque altro.
 AUTO_NOTE = "scelto da HIRIS: oggi {}"

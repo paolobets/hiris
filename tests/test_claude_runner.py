@@ -66,7 +66,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anthropic
 import pytest
 
-from hiris.app.claude_runner import AUTO_MODEL_MAP, RESTRICT_PROMPT, ClaudeRunner, resolve_model
+from hiris.app.claude_runner import RESTRICT_PROMPT, ClaudeRunner
 
 
 def _sys_text(system) -> str:
@@ -184,71 +184,21 @@ async def test_restrict_to_home_appends_to_existing_prompt(restricted_runner):
     assert RESTRICT_PROMPT in system_text
 
 
-def test_resolve_model_auto_chat_returns_sonnet():
-    assert resolve_model("auto", "chat") == "claude-sonnet-4-6"
-
-
-def test_resolve_model_explicit_overrides_auto():
-    assert resolve_model("claude-sonnet-4-6", "agent") == "claude-sonnet-4-6"
-
-
-def test_resolve_model_auto_unknown_type_defaults_to_sonnet():
-    assert resolve_model("auto", "unknown_type") == "claude-sonnet-4-6"
-
-
-def test_resolve_model_auto_promessa_e_agganciato_a_chat():
-    """Rilievo minore della review finale dello schedulatore: il turno di una
-    promessa "chiedi" (`keeper/exchange.py::interpreta_promise`) usa
-    `agent_type="promessa"`, che prima non era in `AUTO_MODEL_MAP` -- il
-    ripiego su `MODEL` coincideva col valore di "chat" solo per coincidenza,
-    non perche' le due costanti fossero legate. Qui si prova il legame:
-    "promessa" DEVE essere la STESSA chiave di "chat", non una stringa
-    duplicata che domani potrebbe divergere senza che nessun test se ne
-    accorga."""
-    assert AUTO_MODEL_MAP["promessa"] == AUTO_MODEL_MAP["chat"]
-    assert resolve_model("auto", "promessa") == AUTO_MODEL_MAP["chat"]
+# Tappa 7 T10 (D11a): i quattro `test_resolve_model_*` sono usciti con
+# `resolve_model` e `AUTO_MODEL_MAP`. Il modello non si sceglie piu' per
+# mestiere: le prove del modello che parte davvero passano da `chat()`, in
+# `tests/test_provider_default_model.py`.
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_retries_once_and_succeeds(runner, rifiuti):
-    """_call_api retries on 429 and succeeds on second attempt."""
-    success = MagicMock()
-    success.stop_reason = "end_turn"
-    success.content = [MagicMock(type="text", text="ok")]
-    success.usage.input_tokens = 5
-    success.usage.output_tokens = 2
+async def test_un_429_si_conta_UNA_volta_e_sale_senza_ritentativi_nostri(runner, rifiuti):
+    """S-13 (Tappa 7, T10): i ritentativi sono dell'SDK, e i nostri non ci si
+    impilano sopra. Un 429 che arriva a `_call_api` ha gia' esaurito quelli
+    dell'SDK: si conta una volta, sulla riga del modello, e sale.
 
-    call_count = 0
-
-    async def fake_create(**kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise anthropic.APIStatusError(
-                "rate limited",
-                response=MagicMock(status_code=429),
-                body={},
-            )
-        return success
-
-    with patch.object(runner._client.messages, "create", side_effect=fake_create), \
-         patch("hiris.app.claude_runner.asyncio.sleep", new_callable=AsyncMock):
-        result = await runner._call_api(
-            model="claude-sonnet-4-6", max_tokens=100, messages=[]
-        )
-
-    assert result is success
-    assert call_count == 2
-    assert [x for x in rifiuti if x["errori_rate_limit"] == 1], (
-        "un 429 si conta ancora -- adesso sulla riga del modello che l'ha "
-        "preso, invece che in un numero solo che non diceva CHI rifiutasse")
-
-
-@pytest.mark.asyncio
-async def test_rate_limit_exhausts_retries_raises(runner, rifiuti):
-    """_call_api raises after MAX_RETRIES 429 errors."""
-    from hiris.app.claude_runner import MAX_RETRIES
-
+    Mutazione ESEGUITA (07/10/2026): rimesso il ciclo di tre ritentativi
+    propri in `_call_api` (con `asyncio.sleep` reso istantaneo) -- rossa
+    (`assert 4 == 1`). Ripristinata, `git diff` senza la mutazione."""
     call_count = 0
 
     async def always_rate_limit(**kwargs):
@@ -262,17 +212,29 @@ async def test_rate_limit_exhausts_retries_raises(runner, rifiuti):
 
     with (
         patch.object(runner._client.messages, "create", side_effect=always_rate_limit),
-        patch("hiris.app.claude_runner.asyncio.sleep", new_callable=AsyncMock),
+        patch("asyncio.sleep", new_callable=AsyncMock),
         pytest.raises(anthropic.APIStatusError),
     ):
         await runner._call_api(
             model="claude-sonnet-4-6", max_tokens=100, messages=[]
         )
 
-    assert len(rifiuti) == MAX_RETRIES, (
-        "ogni tentativo rifiutato si conta, come prima: solo, adesso si sa "
-        "su quale modello")
-    assert call_count == MAX_RETRIES + 1
+    assert call_count == 1
+    assert len(rifiuti) == 1
+    assert rifiuti[0]["errori_rate_limit"] == 1
+
+
+def test_il_client_dichiara_tempo_e_ritentativi_dell_sdk():
+    """Il client porta il tempo e i ritentativi PREDEFINITI dell'SDK, chiesti
+    all'SDK (`anthropic.DEFAULT_TIMEOUT`, `anthropic.DEFAULT_MAX_RETRIES`):
+    sono loro, e non piu' i nostri, a ritentare un 429 o un 529.
+
+    Mutazione ESEGUITA (07/10/2026): `max_retries=0` nel costruttore --
+    rossa (`assert 0 == 2`). Ripristinata, `git diff` senza la mutazione."""
+    runner = ClaudeRunner(api_key="test-key")
+    assert runner._client.max_retries == anthropic.DEFAULT_MAX_RETRIES
+    assert runner._client.max_retries > 0, "nessuno ritenterebbe piu' un 429"
+    assert runner._client.timeout == anthropic.DEFAULT_TIMEOUT
 
 
 # Review finale fetta E2, I-5: `CONFIRMATION_COVERED_TOOLS` e

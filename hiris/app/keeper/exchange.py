@@ -199,7 +199,6 @@ async def interpreta_promise(app, promise: dict) -> dict:
             context_str=briefing,
             conversation_history=[],
             model="auto",
-            agent_type="promessa",
             thinking_budget=0,
             tools=promise_tools(),
             dispatcher=dispatcher,

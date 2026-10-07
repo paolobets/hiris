@@ -8,9 +8,9 @@ STESSA stringa che il ramo sincrono passa al runner, composta da
 in poi questo file compone il system prompt del ponte NELLO STESSO ORDINE del
 ramo sincrono (`claude_runner.py`, `ClaudeRunner.chat`): BASE -> persona ->
 modificatori -> guida -> contesto. Le costanti di BASE si IMPORTANO da
-`..claude_runner`: una seconda copia qui sarebbe la "funzione doppia" vietata
-da CLAUDE.md:70-72. (Nessun ciclo: `claude_runner.py` importa solo stdlib,
-`anthropic` e `.backends.pricing` -- mai `agent/`.)
+`..claude_runner`: una seconda copia qui sarebbe la "funzione doppia" che
+CLAUDE.md vieta («Le funzioni doppie si unificano»). (Nessun ciclo:
+`claude_runner.py` non importa mai da `agent/`.)
 
 Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
 `build_chat_messages` e il commento sopra `BASE_IDENTITY` in claude_runner.py.

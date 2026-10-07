@@ -413,6 +413,28 @@ CAMPI = ("richieste", "token_in", "token_out", "cache_lettura",
          "cache_scrittura", "errori_rate_limit")
 
 
+def log_safely(log_usage, provider: str, model: str, **fields) -> None:
+    """Una riga di consumo, scritta da chi ha appena avuto una risposta: **un
+    guasto dell'archivio non fa cadere il turno** (Tappa 7, T10; S-11).
+
+    I tre scrittori -- il runner di Claude, quello della catena, il ponte --
+    chiamavano `log_usage` a mano, senza rete: un disco pieno o un archivio
+    chiuso a meta' sollevava DOPO che il modello aveva risposto, e la
+    risposta gia' pagata andava persa (sulla catena, peggio, il router la
+    leggeva come un guasto del provider e passava al successivo). La misura
+    del turno era gia' blindata (`steering.misura_turno`); i consumi no.
+
+    `None` e' il ramo di libreria e dei test: nessun archivio, nessuna riga.
+    """
+    if log_usage is None:
+        return
+    try:
+        log_usage(provider, model, **fields)
+    except Exception as error:
+        logger.warning("consumi: la riga di %s/%s non e' stata scritta (%s: %s)",
+                       provider, model, type(error).__name__, error)
+
+
 class UsageStore:
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._read_timezone = read_timezone

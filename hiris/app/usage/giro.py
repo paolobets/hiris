@@ -11,6 +11,79 @@ sulla stessa domanda, e questo prodotto ha gia' pagato due volte quel difetto
 """
 from __future__ import annotations
 
+import hashlib
+import json
+
+
+def pesa_in_caratteri(x) -> int:
+    """Quanto pesa una cosa, in caratteri. **Una sola**, e la importano tutti
+    i pesatori.
+
+    Erano due funzioni identiche con due nomi diversi -- `_peso` in
+    `claude_runner` e `_weight` nella catena -- e il cancello dei doppioni le
+    ha prese al primo giro. Abita qui dalla Tappa 7 (T10, D-61), accanto alla
+    lettura dei token: e' la stessa domanda, «quanto pesa un giro».
+    """
+    if x is None:
+        return 0
+    if isinstance(x, str):
+        return len(x)
+    return len(json.dumps(x, ensure_ascii=False, default=str))
+
+
+def testo_canonico(x) -> str:
+    """Il testo su cui si calcola un'impronta. **Una sola**: due copie
+    darebbero due impronte diverse per lo stesso prefisso, e i canali
+    diventerebbero inconfrontabili -- che e' l'unica cosa per cui questa
+    misura esiste.
+
+    `sort_keys` non e' un dettaglio: senza, due dizionari uguali con le
+    chiavi in ordine diverso darebbero impronte diverse, e la misura direbbe
+    «prefisso instabile» su un prefisso che non e' cambiato.
+    """
+    return x if isinstance(x, str) else json.dumps(x, ensure_ascii=False,
+                                                   sort_keys=True, default=str)
+
+
+def pesa_carico(*, system: list[str], core: str, conversation: list,
+                results: list, tools) -> dict:
+    """Di cosa e' fatto il carico di UN giro, in caratteri: **una definizione
+    sola** per tutti i canali (Tappa 7, T10; D-61).
+
+    Erano tre: `claude_runner` pesava i blocchi di sistema come JSON (chiavi
+    e `cache_control` compresi), la catena il testo del suo unico messaggio
+    di sistema, il ponte la stringa composta. Tre «guide» diverse sotto lo
+    stesso nome rendevano i canali inconfrontabili. Adesso ogni canale
+    separa i pezzi secondo il SUO protocollo (blocchi Anthropic, ruoli
+    OpenAI, la stringa del ponte) e la regola e' questa:
+
+    - `guida` -- i caratteri del TESTO di sistema meno il nucleo;
+    - `nucleo` -- il `core` (il contesto del turno, che cambia ogni volta);
+    - `cronologia` e `risultati` -- i pezzi gia' separati dal chiamante:
+      `risultati` e' l'unico che cresce di giro in giro, e separarlo e'
+      l'intero punto della misura;
+    - l'impronta -- il testo di sistema SENZA il nucleo, piu' le
+      definizioni: il prefisso su cui ogni forma di caching si appoggia. Il
+      nucleo si toglie dall'ultima occorrenza, perche' e' l'ultimo pezzo
+      composto: comprenderlo farebbe cambiare l'impronta a ogni turno (il
+      nucleo porta l'ora), cioe' una misura che sembra funzionare e non
+      misura niente -- scoperto dalla prima lettura vera, 24/09/2026.
+    """
+    core = core or ""
+    joined = "".join(text or "" for text in system)
+    stable = joined
+    if core:
+        head, found, tail = joined.rpartition(core)
+        stable = head + tail if found else joined
+    fingerprint = hashlib.sha256(
+        (stable + testo_canonico(tools)).encode("utf-8")).hexdigest()[:16]
+    return {"tools_chars": pesa_in_caratteri(tools),
+            "guide_chars": max(len(joined) - len(core), 0),
+            "core_chars": len(core),
+            "history_chars": sum(pesa_in_caratteri(x) for x in conversation),
+            "results_chars": sum(pesa_in_caratteri(x) for x in results),
+            "tools_sent": len(tools or []), "prefix_hash": fingerprint}
+
 
 def _field(source, name: str):
     """Un campo da un dizionario (lo stream del ponte) o da un oggetto

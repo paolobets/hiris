@@ -843,7 +843,6 @@ def bridge_turn(objective: str, house: House, device_id: str,
 
 async def ask(runner, store, house: House, device_id: str, *,
               objective: str, who: str, when_ts: float,
-              model: str = "auto",
               with_series: set[str] | None = None,
               energy: dict | None = None,
               repair: Repair | None = None,
@@ -861,10 +860,9 @@ async def ask(runner, store, house: House, device_id: str, *,
         return {"scritta": False, "problemi": ["il dispositivo non ha entita'"]}
     try:
         answer, turn = await chain_turn(
-            runner, RECIPES_SPECIES, usage=measurements, modello=model,
+            runner, RECIPES_SPECIES, usage=measurements,
             max_tokens=MAX_ANSWER_TOKENS,
-            user_message=question, system_prompt=SYSTEM,
-            model=model, agent_type=RECIPES_SPECIES)
+            user_message=question, system_prompt=SYSTEM, model="auto")
     except Exception as error:
         logger.warning("ricetta: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)

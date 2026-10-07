@@ -105,12 +105,13 @@ from .claude_runner import togli_misura as _togli_misura
 #: **Le specie di turno di HIRIS**, in un posto solo: `misura_turno` rifiuta
 #: una specie che non sta qui.
 #:
-#: **Non e' `agent_type`**, e la differenza morde. `agent_type` risponde a
-#: «quale modello scelgo» (`AUTO_MODEL_MAP`); questa risponde a «chi sta
-#: chiedendo». Fino al 07/10/2026 `mind/observer.py` e `mind/recipe_turn.py`
-#: passavano tutti e due `agent_type="observer"`, quindi misurando su quello
-#: l'osservatore e le ricette sarebbero stati indistinguibili -- proprio la
-#: distinzione che il proprietario vuole vedere.
+#: **Non sceglie il modello.** Fino al 07/10/2026 i runner ricevevano anche
+#: un `agent_type`, che rispondeva a «quale modello scelgo» con una mappa per
+#: mestiere, e `mind/observer.py` e `mind/recipe_turn.py` ci passavano tutti e
+#: due «observer»: misurando su quello l'osservatore e le ricette sarebbero
+#: stati indistinguibili. `agent_type` e' uscito (Tappa 7 T10, D11a): ogni
+#: turno usa il modello scelto per il provider, e la specie risponde a una
+#: domanda sola, «chi sta chiedendo».
 #:
 #: **La specie dell'attuatore ha un nome, e si importa** (C-28, Tappa 4 dello
 #: sprint «Una fonte sola di verita'»): fino al 05/10/2026 «attuatore» era
@@ -122,8 +123,8 @@ from .claude_runner import togli_misura as _togli_misura
 #:
 #: **E le altre, tranne `chat`** (A21, approvata dal proprietario il
 #: 05/10/2026): la stessa cura per l'analista, l'osservatore, le ricette e la
-#: promessa, che restavano letterali. `chat` no: e' anche un `agent_type` e un
-#: `kind` della coda, e un nome solo per tre parole non le distinguerebbe.
+#: promessa, che restavano letterali. `chat` no: e' anche un `kind` della coda, e
+#: un nome solo per due parole non le distinguerebbe.
 #:
 #: **Dal 06/10/2026 l'attuatore si chiama proponente** (D11 del piano degli
 #: attori, strati 3-4, approvata dal proprietario il 06/10/2026): il nome

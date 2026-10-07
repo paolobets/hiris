@@ -1297,7 +1297,15 @@ class Tool:
     - `permissions`: i gesti del soffitto che la chiamata richiede;
     - `mask`: il gesto senza il quale la risposta esce COPERTA dove Home
       Assistant mostra il dato ai soli amministratori. Non e' un rifiuto: il
-      gestore riceve `masked` e copre la parte che compone lui.
+      gestore riceve `masked` e copre la parte che compone lui;
+    - `read_only`: lo strumento legge e basta -- non scrive in Home
+      Assistant, ne' nella memoria, ne' nell'agenda, ne' nell'officina. Le
+      letture della stessa risposta partono insieme, le altre una alla volta
+      (`reads_only`, Tappa 7 T10, D15a). Si dichiara per riga, e chiude per
+      difetto: uno strumento nuovo e' una scrittura finche' qualcuno non
+      scrive che legge. Non si deduce da `permissions`: `remember` e
+      `cancel` scrivono senza chiedere nessun gesto, e `history` legge
+      chiedendone uno.
 
     Il soffitto si chiede in `ToolDispatcher.dispatch`, una volta, dalla riga:
     fino al 05/10/2026 lo chiedevano sette punti dentro i gestori (D-23)."""
@@ -1307,6 +1315,7 @@ class Tool:
     needs_thread: bool = False
     permissions: tuple[Permission, ...] = ()
     mask: str | None = None
+    read_only: bool = False
 
     @property
     def name(self) -> str:
@@ -2698,10 +2707,12 @@ TOOLS: tuple[Tool, ...] = (
     # accese» perche' l'archivio dei ricordi non e' pronto sarebbe un no a una
     # domanda che non lo tocca (review finale, M5, 30/09/2026).
     Tool(SEARCH_TOOL_DEF, ToolDispatcher._search, resources=("casa",),
-         mask="amministrare"),
-    Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",)),
+         mask="amministrare", read_only=True),
+    Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",),
+         read_only=True),
     Tool(REMEMBER_TOOL_DEF, ToolDispatcher._remember, resources=("casa", "memoria")),
-    Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",)),
+    Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",),
+         read_only=True),
     Tool(EXECUTE_TOOL_DEF, ToolDispatcher._execute, resources=("porta",),
          permissions=(Permission("comandare"),
                       Permission("amministrare", applies=_reserved_core_service,
@@ -2710,7 +2721,7 @@ TOOLS: tuple[Tool, ...] = (
          needs_thread=True,
          permissions=(Permission("comandare", applies=_promises_an_action),)),
     Tool(AGENDA_TOOL_DEF, ToolDispatcher._list_agenda, resources=("promesse",),
-         needs_thread=True),
+         needs_thread=True, read_only=True),
     Tool(CANCEL_TOOL_DEF, ToolDispatcher._cancel, resources=("promesse",),
          needs_thread=True),
     Tool(PROPOSE_TOOL_DEF, ToolDispatcher._propose, resources=("officina",),
@@ -2726,13 +2737,15 @@ TOOLS: tuple[Tool, ...] = (
     # ancora caricata, e il gestore dice da se' quando gli serve.
     Tool(HISTORY_TOOL_DEF, ToolDispatcher._history, resources=("ha",),
          permissions=(Permission("amministrare", applies=_asks_admin_reads,
-                                 refusal=ADMIN_READS_REFUSAL),)),
-    Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",)),
+                                 refusal=ADMIN_READS_REFUSAL),),
+         read_only=True),
+    Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",),
+         read_only=True),
     # Nessun permesso, come `search` e `history` (D6 del piano): le stesse
     # cose sono gia' visibili nella pagina del cervello a chiunque entri.
     # Nessun archivio nella riga: ogni lettura dice da se' cosa le manca
     # (`_mind_missing`), e l'energia non passa dalle letture del cervello.
-    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind),
+    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind, read_only=True),
 )
 
 # Le viste sulla tabella. Il catalogo che il modello riceve si DERIVA: un
@@ -2742,3 +2755,11 @@ TOOLS: tuple[Tool, ...] = (
 # incoerenza che il modello non puo' ne' capire ne' aggirare.
 KNOWLEDGE_TOOLS: list[dict] = [tool.definition for tool in TOOLS]
 _TOOL_PER_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}
+
+
+def reads_only(name: str) -> bool:
+    """Lo strumento `name` legge e basta (`Tool.read_only`)? Un nome che la
+    tabella non conosce -- `compute` dell'analista, `conclude` della
+    promessa, un refuso del modello -- e' una scrittura: chiude per difetto."""
+    tool = _TOOL_PER_NAME.get(name)
+    return tool is not None and tool.read_only

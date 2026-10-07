@@ -46,8 +46,8 @@ def _models_in_use(store: dict) -> dict[str, str]:
     `model="auto"` -- la scelta, letta dove la tabella dice che vive
     (`Provider.model_path`), oppure il modello automatico del provider
     (`Provider.auto_model`), che e' lo stesso che i runner leggono
-    (`claude_runner.AUTO_MODEL_MAP`, `OpenAICompatRunner._resolve_model`,
-    `OpenRouterRunner._resolve_model`). Il modello di Ollama non ha un
+    (`_resolve_model` di `ClaudeRunner`, `OpenAICompatRunner` e
+    `OpenRouterRunner`). Il modello di Ollama non ha un
     automatico: senza una scelta la riga resta vuota, ed e' la verita'.
 
     La riga di `subscription` era la parte scomoda, ed è la cosa che la fetta
@@ -181,8 +181,8 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
 #
 # Task 9: la voce "auto" è USCITA da questa lista. Non era un modello: era la
 # parola con cui il vecchio picker diceva «scegli tu», e salvarla come valore è
-# un difetto -- `resolve_model("auto", "chat", "auto")` restituisce "auto" e la
-# richiesta parte con `model="auto"` verso un provider che quel nome non lo
+# un difetto -- il runner tratta la scelta come valore, quindi una scelta
+# «auto» fa partire la richiesta con `model="auto"` verso un provider che quel nome non lo
 # conosce. Nell'archivio «auto» è la STRINGA VUOTA, e il pannello la offre come
 # prima voce con la sua nota (`model_resolution.AUTO_NOTE`), che dice anche a
 # quale modello si risolve oggi.

@@ -385,11 +385,16 @@ def test_i_modelli_di_claude_non_offrono_piu_la_parola_auto():
     diceva «scegli tu», e salvarla come valore fa partire la richiesta con
     `model="auto"` verso un provider che quel nome non lo conosce
     (`resolve_model("auto", "chat", "auto") == "auto"`). Nell'archivio auto e'
-    la stringa vuota, e il pannello la offre come prima voce."""
-    from hiris.app.claude_runner import resolve_model
+    la stringa vuota, e il pannello la offre come prima voce.
+
+    Il difetto e' reale e si prova dove nasce: un runner la cui scelta e'
+    «auto» spedisce `model="auto"` (`ClaudeRunner._resolve_model`; fino alla
+    Tappa 7 T10 la prova chiedeva a `resolve_model`, uscita)."""
+    from hiris.app.claude_runner import ClaudeRunner
     assert "auto" not in list(CLAUDE.reserve_models)
-    assert resolve_model("auto", "chat", "auto") == "auto", (
-        "se un giorno resolve_model imparasse a scartare la parola, questa "
+    runner = ClaudeRunner(api_key="sk-test", read_model=lambda: "auto")
+    assert runner._resolve_model("auto") == "auto", (
+        "se un giorno il runner imparasse a scartare la parola, questa "
         "prova va riscritta: oggi il difetto e' reale"
     )
 

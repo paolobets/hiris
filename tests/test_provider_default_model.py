@@ -14,29 +14,87 @@ nessuna didascalia da fare -- l'assenza di didascalie e' la cosa piu' onesta
 che possa dire di se'.
 """
 import contextlib
+import inspect
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 
-from hiris.app.backends.openai_compat_runner import AUTO_MODEL_MAP as AUTO_COMPAT
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.backends.openrouter_runner import OpenRouterRunner
-from hiris.app.claude_runner import AUTO_MODEL_MAP, ClaudeRunner, resolve_model
-from hiris.app.providers import OPENROUTER
+from hiris.app.claude_runner import ClaudeRunner
+from hiris.app.llm_router import LLMRouter
+from hiris.app.providers import CLAUDE, OPENAI, OPENROUTER
 
 
-def test_resolve_model_uses_provider_default_when_auto():
-    # default esplicito vince su AUTO_MODEL_MAP quando model="auto"
-    assert resolve_model("auto", "agent", "claude-opus-4-7") == "claude-opus-4-7"
+async def _modello_spedito(runner, model: str = "auto") -> str:
+    """Il `model=` che parte DAVVERO verso il provider, da un turno vero
+    (`chat()`), con il client finto.
+
+    Tappa 7 T10 (M-02): fino ad allora queste prove chiedevano a
+    `_resolve_current_model()`, un metodo che nessun codice di produzione
+    chiamava -- esisteva per loro. Adesso chiedono a cio' che il turno spedisce.
+    """
+    if isinstance(runner, ClaudeRunner):
+        msg = MagicMock(stop_reason="end_turn",
+                        content=[MagicMock(type="text", text="ok")])
+        msg.usage = MagicMock(input_tokens=1, output_tokens=1,
+                              cache_creation_input_tokens=0, cache_read_input_tokens=0)
+        runner._client.messages.create = AsyncMock(return_value=msg)
+        await runner.chat("ciao", model=model)
+        return runner._client.messages.create.call_args.kwargs["model"]
+    m = MagicMock(content="ok", tool_calls=None)
+    risposta = MagicMock(choices=[MagicMock(finish_reason="stop", message=m)])
+    risposta.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+    runner._client.chat.completions.create = AsyncMock(return_value=risposta)
+    await runner.chat(user_message="ciao", model=model)
+    return runner._client.chat.completions.create.call_args.kwargs["model"]
 
 
-def test_resolve_model_falls_back_to_auto_map_when_no_default():
-    # nessun default -> comportamento odierno (AUTO_MODEL_MAP)
-    assert resolve_model("auto", "chat", "") == AUTO_MODEL_MAP["chat"]
+def _cloud(**kw) -> OpenAICompatRunner:
+    return OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-test", **kw)
 
 
-def test_resolve_model_explicit_wins_over_default():
-    assert resolve_model("claude-sonnet-4-6", "agent", "claude-opus-4-7") == "claude-sonnet-4-6"
+# ---------------------------------------------------------------------------
+# Il mestiere non sceglie il modello (Tappa 7, T10; D11a)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("runner_class", [ClaudeRunner, OpenAICompatRunner, LLMRouter])
+def test_la_chiamata_non_accetta_piu_un_mestiere(runner_class):
+    """`agent_type` sceglieva il modello per mestiere: su Claude dava a tutti
+    lo stesso, su OpenAI mandava osservatore e promesse su `gpt-4o-mini` e
+    analista e proponente -- che non lo passavano -- su `gpt-4o`. E' uscito
+    dalla firma dei due runner; il router inoltra `**kwargs`, e un mestiere
+    passato oggi arriverebbe al runner e solleverebbe.
+
+    Mutazione ESEGUITA (07/10/2026): rimesso `agent_type: str = "chat"` nella
+    firma di `OpenAICompatRunner.chat` -- rossa sul parametro di OpenAI.
+    Ripristinata, `git diff` senza la mutazione."""
+    chat = runner_class.chat
+    assert "agent_type" not in inspect.signature(chat).parameters
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("runner,atteso", [
+    (lambda: ClaudeRunner(api_key="sk-test"), CLAUDE.auto_model),
+    (lambda: _cloud(), OPENAI.auto_model),
+], ids=["claude", "openai"])
+async def test_senza_scelta_ogni_turno_va_sul_modello_automatico_del_provider(runner, atteso):
+    """Senza una scelta, l'automatico della tabella dei provider -- lo stesso
+    per la chat, l'osservatore, le ricette e le promesse.
+
+    Mutazione ESEGUITA (07/10/2026): il ripiego di
+    `OpenAICompatRunner._resolve_model` rimesso a `"gpt-4o-mini"` -- rossa
+    (`'gpt-4o-mini' == 'gpt-4o'`). Ripristinata, `git diff` senza la
+    mutazione."""
+    assert await _modello_spedito(runner()) == atteso
+
+
+@pytest.mark.asyncio
+async def test_un_modello_esplicito_vince_sulla_scelta():
+    runner = ClaudeRunner(api_key="sk-test", read_model=lambda: "claude-opus-4-7")
+    assert await _modello_spedito(runner, model="claude-sonnet-4-6") == "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------
@@ -61,39 +119,42 @@ def _lettura(app, provider):
     return leggi
 
 
-def test_il_modello_di_claude_cambia_dal_turno_dopo_non_dal_riavvio(tmp_path):
+@pytest.mark.asyncio
+async def test_il_modello_di_claude_cambia_dal_turno_dopo_non_dal_riavvio():
     app = _archivio(claude="claude-opus-4-7")
     runner = ClaudeRunner(api_key="sk-test",
                           read_model=_lettura(app, "claude"))
-    assert runner._resolve_current_model() == "claude-opus-4-7"
+    assert await _modello_spedito(runner) == "claude-opus-4-7"
 
     app["models_config"] = {"provider_models": {"claude": "claude-haiku-4-5-20251001"}}
-    assert runner._resolve_current_model() == "claude-haiku-4-5-20251001", (
+    assert await _modello_spedito(runner) == "claude-haiku-4-5-20251001", (
         "il runner deve LEGGERE il modello al momento dell'uso, non averlo "
         "ricevuto alla costruzione"
     )
 
 
-def test_il_modello_di_openai_cambia_dal_turno_dopo(tmp_path):
+@pytest.mark.asyncio
+async def test_il_modello_di_openai_cambia_dal_turno_dopo():
     app = _archivio(openai="gpt-4.1")
-    runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-test",
-                                read_model=_lettura(app, "openai"))
-    assert runner._resolve_current_model() == "gpt-4.1"
+    runner = _cloud(read_model=_lettura(app, "openai"))
+    assert await _modello_spedito(runner) == "gpt-4.1"
     app["models_config"] = {"provider_models": {"openai": "gpt-4o-mini"}}
-    assert runner._resolve_current_model() == "gpt-4o-mini"
+    assert await _modello_spedito(runner) == "gpt-4o-mini"
 
 
-def test_il_modello_di_openrouter_cambia_dal_turno_dopo(tmp_path):
+@pytest.mark.asyncio
+async def test_il_modello_di_openrouter_cambia_dal_turno_dopo():
     app = _archivio(openrouter="openrouter:openai/gpt-4.1")
     runner = OpenRouterRunner(api_key="sk-or-test",
                               read_model=_lettura(app, "openrouter"))
     # Il prefisso `openrouter:` viene tolto prima della chiamata, come sempre.
-    assert runner._resolve_current_model() == "openai/gpt-4.1"
+    assert await _modello_spedito(runner) == "openai/gpt-4.1"
     app["models_config"] = {"provider_models": {"openrouter": ""}}
-    assert runner._resolve_current_model() == OPENROUTER.auto_model.split("openrouter:")[-1]
+    assert await _modello_spedito(runner) == OPENROUTER.auto_model.split("openrouter:")[-1]
 
 
-def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):
+@pytest.mark.asyncio
+async def test_il_modello_di_ollama_cambia_dal_turno_dopo():
     """Il locale e' il caso in cui il valore vince SEMPRE, anche su un modello
     passato esplicitamente (quell'istanza ne ha scaricato uno solo). Prima
     quella vittoria era di un valore cotto nel costruttore (`fixed_model`);
@@ -105,32 +166,22 @@ def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):
             (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
         ),
     )
-    assert runner._resolve_current_model() == "llama3.1:8b"
-    assert runner._resolve_model("gpt-4o", "chat") == "llama3.1:8b"
+    assert await _modello_spedito(runner) == "llama3.1:8b"
+    assert await _modello_spedito(runner, model="gpt-4o") == "llama3.1:8b"
 
     archivio["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
-    assert runner._resolve_current_model() == "qwen2.5:14b"
-    assert runner._resolve_model("gpt-4o", "chat") == "qwen2.5:14b"
+    assert await _modello_spedito(runner) == "qwen2.5:14b"
+    assert await _modello_spedito(runner, model="gpt-4o") == "qwen2.5:14b"
 
 
-def test_senza_lettura_il_comportamento_e_quello_di_prima(tmp_path):
-    """`read_model=None` deve valere quanto valeva `default_model=""`: e' il
-    ramo di libreria (chiunque costruisca un runner senza passare da
-    `server.py`), e cambiarlo in silenzio sarebbe un ripiego nuovo."""
-    claude = ClaudeRunner(api_key="sk-test")
-    assert claude._resolve_current_model() == AUTO_MODEL_MAP["chat"]
-
-    openai = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-test")
-    assert openai._resolve_current_model() == AUTO_COMPAT["chat"]
-
-
-def test_una_lettura_che_torna_None_non_rompe_il_turno(tmp_path):
+@pytest.mark.asyncio
+async def test_una_lettura_che_torna_None_non_rompe_il_turno():
     """`read_model` e' fornita da chi costruisce il runner: se un giorno
     restituisse `None` (una chiave assente letta male), il runner deve ripiegare
     come se non ci fosse scelta, non mandare `None` al provider."""
     runner = ClaudeRunner(api_key="sk-test",
                           read_model=lambda: None)
-    assert runner._resolve_current_model() == AUTO_MODEL_MAP["chat"]
+    assert await _modello_spedito(runner) == CLAUDE.auto_model
 
 
 # ---------------------------------------------------------------------------
@@ -285,65 +336,13 @@ def test_senza_un_numero_restano_i_due_predefiniti_di_sempre(tmp_path, locale, a
     assert runner._client.timeout.read == atteso
 
 
-# ---------------------------------------------------------------------------
-# Il modello che ESCE VERAMENTE verso il provider
-#
-# `_resolve_current_model()` rende osservabile la lettura, ma e' un metodo
-# che esiste per i test: da solo non prova che sia lo stesso valore a finire
-# nella richiesta. Queste due prove guardano il `model=` della chiamata.
-# ---------------------------------------------------------------------------
+# Tappa 7 T10 (M-02): le due prove «il modello che ESCE VERAMENTE verso il
+# provider» sono diventate il metodo di tutte quelle qui sopra
+# (`_modello_spedito`), e sono uscite come prove a parte.
 
 
 @pytest.mark.asyncio
-async def test_la_chiamata_a_claude_parte_col_modello_LETTO_ADESSO(tmp_path):
-    from unittest.mock import AsyncMock, MagicMock
-
-    app = _archivio(claude="claude-opus-4-7")
-    runner = ClaudeRunner(api_key="sk-test",
-                          read_model=_lettura(app, "claude"))
-    blocco = MagicMock(type="text", text="ok")
-    msg = MagicMock(stop_reason="end_turn", content=[blocco])
-    msg.usage = MagicMock(input_tokens=1, output_tokens=1,
-                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
-    runner._client.messages.create = AsyncMock(return_value=msg)
-
-    await runner.chat("ciao", model="auto", agent_type="chat")
-    assert runner._client.messages.create.call_args.kwargs["model"] == "claude-opus-4-7"
-
-    app["models_config"] = {"provider_models": {"claude": "claude-sonnet-4-6"}}
-    await runner.chat("ciao", model="auto", agent_type="chat")
-    assert runner._client.messages.create.call_args.kwargs["model"] == "claude-sonnet-4-6", (
-        "il turno successivo deve partire col modello nuovo, senza riavvio"
-    )
-
-
-@pytest.mark.asyncio
-async def test_la_chiamata_a_ollama_parte_col_modello_LETTO_ADESSO(tmp_path):
-    from unittest.mock import AsyncMock, MagicMock
-
-    archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
-    runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
-        read_model=lambda: (
-            (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
-        ),
-    )
-    m = MagicMock()
-    m.content = "ok"
-    m.tool_calls = None
-    risposta = MagicMock(choices=[MagicMock(finish_reason="stop", message=m)])
-    risposta.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
-    runner._client.chat.completions.create = AsyncMock(return_value=risposta)
-
-    await runner.chat(user_message="ciao", model="auto")
-    assert runner._client.chat.completions.create.call_args.kwargs["model"] == "llama3.1:8b"
-
-    archivio["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
-    await runner.chat(user_message="ciao", model="auto")
-    assert runner._client.chat.completions.create.call_args.kwargs["model"] == "qwen2.5:14b"
-
-
-def test_una_lettura_che_torna_None_non_arriva_MAI_al_provider(tmp_path):
+async def test_una_lettura_che_torna_None_non_arriva_MAI_al_provider():
     """Il locale e' il caso pericoloso: `_resolve_model` restituisce il valore
     scelto senza ripiego (quell'istanza ha un modello solo), quindi un `None`
     finirebbe dritto nel `model=` della richiesta. `_chosen_model` normalizza
@@ -352,7 +351,7 @@ def test_una_lettura_che_torna_None_non_arriva_MAI_al_provider(tmp_path):
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         read_model=lambda: None)
     assert locale._chosen_model() == ""
-    assert locale._resolve_current_model() == ""
+    assert await _modello_spedito(locale) == ""
 
     claude = ClaudeRunner(api_key="sk-test",
                           read_model=lambda: None)

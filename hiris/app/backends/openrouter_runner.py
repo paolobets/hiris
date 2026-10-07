@@ -23,8 +23,8 @@ from .openai_compat_runner import OpenAICompatRunner
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Il modello che questo runner usa quando nessuno ne ha scelto uno: pagante ma
-# affidabile, e NON quello di `AUTO_MODEL_MAP` (che è la mappa di OpenAI e su
-# OpenRouter darebbe un nome inesistente). Era una stringa scritta dentro
+# affidabile, e NON quello di OpenAI (`OPENAI.auto_model`, che su OpenRouter
+# darebbe un nome inesistente). Era una stringa scritta dentro
 # `_resolve_model`, poi una costante di questo modulo (`AUTO_OPENROUTER`): dal
 # Task 9 della Tappa 7 e' `OPENROUTER.auto_model`, letto da qui e dalla pagina
 # Modelli, che devono dire la stessa cosa.
@@ -73,7 +73,7 @@ class OpenRouterRunner(OpenAICompatRunner):
         # da `OpenAICompatRunner`, che si dichiara OpenAI.
         self.provider_name = OPENROUTER.id
 
-    def _resolve_model(self, model: str, agent_type: str) -> str:
+    def _resolve_model(self, model: str) -> str:
         """Strip 'openrouter:' / 'openrouter/' prefix before sending to OR."""
         if model == "auto":
             # SP-2 T5C: user-chosen per-provider default wins; otherwise the

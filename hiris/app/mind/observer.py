@@ -460,7 +460,7 @@ def apply_answer(store, house: House, answer: str, *, reason: str = "",
 
 async def reconsider(runner, store, house: House, *, reason: str,
                      window_s: float | None = None, cadence_s: float | None = None,
-                     model: str = "auto", only: set[str] | None = None,
+                     only: set[str] | None = None,
                      record: bool = True, campaign_ts: float | None = None,
                      now: float | None = None, measurements=None) -> dict:
     """Un giro intero **sulla catena**: guarda la casa, chiede, e consegna la
@@ -486,20 +486,20 @@ async def reconsider(runner, store, house: House, *, reason: str,
         # il runner vero, quello con la catena di ripiego -- prende `**kwargs`
         # e basta, e un posizionale ci morirebbe sopra al primo giro in
         # produzione senza che nessuna finta lo veda.
-        # **La specie si DICHIARA, non si deduce da `agent_type`.** Quello
-        # qui sotto vale «observer» e risponde a «quale modello scelgo»; fino
-        # al 07/10/2026 lo passava anche `recipe_turn`, e misurare su di lui
-        # avrebbe reso l'osservatore e le ricette indistinguibili -- proprio
-        # la distinzione per cui il registro esiste.
+        # **La specie si DICHIARA** (`OBSERVER_SPECIES`): fino al 07/10/2026
+        # il runner riceveva anche un `agent_type`, che sceglieva il modello
+        # per mestiere ed e' uscito (Tappa 7 T10, D11a): il modello e' quello
+        # scelto per il provider. Il modello del giro non si passa a chi
+        # misura: lo dichiara il runner, che e' l'unico a saperlo -- con
+        # `modello="auto"` il registro dei turni scriveva «auto».
         #
         # `misure` e' `None` quando nessuno misura (il caso dei test e di un
         # chiamante che non ha l'archivio): la misura non e' un requisito per
         # girare.
         answer, turn = await chain_turn(
-            runner, OBSERVER_SPECIES, usage=measurements, modello=model,
+            runner, OBSERVER_SPECIES, usage=measurements,
             max_tokens=MAX_ANSWER_TOKENS,
-            user_message=question, system_prompt=SYSTEM,
-            model=model, agent_type="observer")
+            user_message=question, system_prompt=SYSTEM, model="auto")
     except Exception as error:
         logger.warning("osservatore: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)

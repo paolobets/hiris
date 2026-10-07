@@ -305,7 +305,7 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
     # (era gia' inerte in pratica -- vedi handlers_chat.py) -- la chat usa
     # sempre CHAT_MAX_TOKENS come tetto, non piu' un valore floorato.
     assert call_kwargs["max_tokens"] == 16000
-    assert call_kwargs["agent_type"] == "chat"
+    assert "agent_type" not in call_kwargs  # Tappa 7 T10, D11a
 
 
 @pytest.mark.asyncio

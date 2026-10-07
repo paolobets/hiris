@@ -109,7 +109,7 @@ class _Model:
         self.questions = []
 
     async def chat(self, *, user_message, system_prompt="", model="auto",
-                   agent_type="chat", max_tokens=0, **kw):
+                   max_tokens=0, **kw):
         self.questions.append(user_message + "\n" + system_prompt)
         return self.answer
 

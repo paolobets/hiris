@@ -24,13 +24,12 @@ from ..claude_runner import (
     _misura_corrente,
     _PerCallFlag,
     _PerCallList,
-    pesa_in_caratteri,
-    testo_canonico,
+    dispatch_calls,
 )
 from ..model_resolution import failure_reply
 from ..provider_occurrences import error_family, provider_said
 from ..providers import OLLAMA, OPENAI
-from ..usage.giro import openai_turn_tokens
+from ..usage.giro import openai_turn_tokens, pesa_carico, testo_canonico
 from .pricing import get_price as _prezzo
 
 # Circuit-breaker: after this many consecutive connection-class failures, skip
@@ -111,12 +110,6 @@ def warn_thinking_ignored(backend_noun: str, thinking_budget: int) -> None:
             thinking_budget, backend_noun,
         )
 
-# Il modello automatico vive nella tabella dei provider (`OPENAI.auto_model`,
-# Tappa 7 T9): la pagina Modelli lo legge da li' per dire chi risponderebbe.
-AUTO_MODEL_MAP: dict[str, str] = {
-    "chat":  OPENAI.auto_model,
-}
-
 # fetta "i riferimenti" (R3): stesso tetto e stessa ragione di
 # claude_runner.MAX_TOOL_ITERATIONS -- 10 round-trip morivano garantiti
 # contro 8 stanze da guardare una a una, senza margine per il giro finale
@@ -161,8 +154,8 @@ def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
 TOOL_LEAK_USER_MSG = (
     "Il modello selezionato non gestisce correttamente i tool tramite questo "
     "provider (la chiamata al tool è arrivata come testo invece che come "
-    "tool_call). Cambia modello — preferisci quelli con tool use nativo "
-    "OpenAI — oppure disattiva i tool dell’agente."
+    "tool_call). Cambia modello nella pagina Modelli — preferisci quelli con "
+    "tool use nativo OpenAI."
 )
 
 
@@ -264,57 +257,22 @@ def parse_upstream_rate_limit(exc: Any) -> str | None:
     )
 
 
-import hashlib as _hashlib
-
-
 def _pesa_carico_catena(messages: list, tools, context_str: str) -> dict:
-    """Di cosa e' fatto il carico di UN giro sulla catena, in caratteri.
+    """Di cosa e' fatto il carico di UN giro sulla catena, nella forma OpenAI.
 
-    Le cinque voci sono le STESSE di `claude_runner._pesa_carico`, perche' la
-    domanda e' la stessa e due vocabolari renderebbero i due percorsi
-    inconfrontabili -- che e' l'unica cosa per cui questa misura esiste.
-
-    La forma pero' e' diversa, e non si finge che non lo sia: qui la casa
-    compone **un solo messaggio di sistema**, quindi guida e core si
-    separano sul `context_str` che il chiamante ha passato, non su blocchi.
+    Qui la casa compone **un solo messaggio di sistema**, con il nucleo
+    DENTRO (`system_parts.append(context_str)`): si separano i messaggi per
+    ruolo -- `system`, `tool` (i risultati), il resto -- e la regola e' la
+    stessa di ogni canale (`usage.giro.pesa_carico`), che toglie il nucleo
+    dal testo dell'impronta.
     """
-    core = len(context_str or "")
-    guide = 0
-    results = 0
-    history = 0
+    by_role: dict[str, list] = {"system": [], "tool": [], "altro": []}
     for msg in messages or []:
-        weight = pesa_in_caratteri(msg.get("content"))
-        ruolo = msg.get("role")
-        if ruolo == "system":
-            guide += weight
-        elif ruolo == "tool":
-            results += weight
-        else:
-            history += weight
-    # Il gemello dell'impronta di `claude_runner`: il prefisso e' il
-    # messaggio di sistema piu' le definizioni. Qui pesa di piu' che di la',
-    # perche' il caching di questi provider e' IMPLICITO e per prefisso -- e
-    # il 74% pagato pieno e' su questa strada.
-    stabile = "".join(testo_canonico(m.get("content")) for m in (messages or [])
-                      if m.get("role") == "system")
-    # **Il nucleo esce dall'impronta**, e qui non basta guardare i ruoli: la
-    # casa compone UN SOLO messaggio di sistema e il nucleo ci sta DENTRO
-    # (`system_parts.append(context_str)`). Comprendendolo, l'impronta
-    # cambierebbe a ogni turno -- il nucleo porta l'ora -- e la misura
-    # direbbe «prefisso instabile» sempre, su ogni casa: una misura che
-    # sembra funzionare e non misura niente.
-    #
-    # Scoperto dalla PRIMA lettura vera sulla casa (24/09/2026): tre turni,
-    # tre impronte diverse, un numero troppo netto per essere vero.
-    if context_str:
-        stabile = stabile.replace(context_str, "")
-    fingerprint = _hashlib.sha256(
-        (stabile + testo_canonico(tools)).encode("utf-8")).hexdigest()[:16]
-    return {"tools_chars": pesa_in_caratteri(tools), "guide_chars": max(guide - core, 0),
-            "core_chars": core, "history_chars": history,
-            "results_chars": results,
-            "tools_sent": len(tools or []), "prefix_hash": fingerprint}
-
+        role = msg.get("role")
+        by_role[role if role in ("system", "tool") else "altro"].append(msg.get("content"))
+    return pesa_carico(system=[testo_canonico(c) for c in by_role["system"]],
+                       core=context_str, conversation=by_role["altro"],
+                       results=by_role["tool"], tools=tools)
 
 
 def _cache_counts(usage: Any) -> tuple[int, int]:
@@ -410,15 +368,20 @@ class OpenAICompatRunner:
         self._backend_noun = "Il servizio AI" if self._is_cloud else "Il backend locale"
         # Ollama su hardware lento: timeout esplicito per evitare hang infiniti
         # (`OLLAMA.reply_timeout_s`, il valore della tabella dei provider).
-        # Cloud OpenAI: 600s (rispetta default SDK per risposte lunghe). Il
+        # Cloud: il predefinito dell'SDK, CHIESTO all'SDK e non ricopiato
+        # (Tappa 7 T10, F-16): `openai` 3.26.0, `_constants.py`, letto il
+        # 07/10/2026 -- `DEFAULT_TIMEOUT = Timeout(timeout=600, connect=5.0)`.
+        # Fino ad allora qui c'era un `600.0` senza unita' e senza fonte. Il
         # numero arriva dal chiamante -- per Ollama e' `ollama.timeout_s`
         # dell'archivio, la stessa casa da cui la pagina Modelli lo mostra:
         # fino a questa fetta veniva da `OLLAMA_REQUEST_TIMEOUT`, cioe' una
         # SECONDA rappresentazione dello stesso numero accanto alla copia
         # d'archivio (invariante 1), e le due potevano dire cose diverse.
         self._timeout_s = 0.0
-        self.apply_timeout(float(timeout_s) if timeout_s
-                           else (float(OLLAMA.reply_timeout_s or 0) if local else 600.0))
+        if not timeout_s:
+            import openai as _openai
+            timeout_s = (OLLAMA.reply_timeout_s or 0) if local else _openai.DEFAULT_TIMEOUT.read
+        self.apply_timeout(float(timeout_s))
         # Circuit-breaker state for connection-class failures (dead endpoint).
         self._conn_fail_count = 0
         self._circuit_open_until = 0.0
@@ -436,12 +399,12 @@ class OpenAICompatRunner:
         """Stato del costo, costo, token IN e OUT -- per UNA `usage` gia'
         presente (il chiamante ha gia' escluso `None`).
 
-        Un solo calcolo del listino e dello stato per le due letture che lo
-        fanno (`_response_cost`, la misura del giro; `_track_usage`,
-        l'archivio dei consumi): prima erano due copie della stessa regola,
-        e due copie della stessa regola sono gia' costate care a questo
-        prodotto una volta (vedi il commento sul difetto OpenRouter, sotto
-        in `_track_usage`)."""
+        Un solo calcolo del listino e dello stato, una volta per giro
+        (`_track_usage`): lo stesso valore va all'archivio dei consumi e alla
+        misura del giro. Erano due chiamate della stessa regola (D-60), e due
+        copie della stessa regola sono gia' costate care a questo prodotto
+        una volta (vedi il commento sul difetto OpenRouter, sotto in
+        `_track_usage`)."""
         from ..usage.vocabulary import cost_state_and_value
 
         inp = getattr(usage, "prompt_tokens", 0) or 0
@@ -453,31 +416,25 @@ class OpenAICompatRunner:
                                            cost_da_listino=listino)
         return state, cost, inp, out
 
-    def _response_cost(self, response: Any, model: str) -> float | None:
-        """Il costo di UNA risposta, con la regola della pagina Consumi.
-
-        Separato da `_track_usage` perche' quello esce presto quando manca
-        l'archivio dei consumi, e la misura del giro non deve dipendere da
-        quel gancio (spec «le misure complete» §3)."""
-        usage = getattr(response, "usage", None)
-        if not usage:
-            return None
-        _, cost, _, _ = self._cost_state(usage, model)
-        return cost
-
-    def _track_usage(self, response: Any, model: str) -> None:
+    def _track_usage(self, response: Any, model: str, *,
+                     measuring: bool) -> float | None:
         """Scrive il consumo di UNA risposta nell'archivio dei consumi
-        (`log_usage`): token, cache, costo e stato del costo, per modello.
+        (`log_usage`): token, cache, costo e stato del costo, per modello. E
+        torna il costo, calcolato qui UNA volta, per la misura del giro
+        (D-60): la misura non dipende dal gancio dei consumi (spec «le misure
+        complete» §3), per questo il costo si calcola anche senza archivio
+        quando qualcuno misura (`measuring`).
 
         Una risposta senza `usage` non si stima: non si scrive niente, e lo
-        si dichiara nel log. Senza il gancio `log_usage` non si scrive niente.
+        si dichiara nel log. Un guasto dell'archivio non fa cadere il turno
+        (`usage.store.log_safely`, S-11).
         """
         usage = getattr(response, "usage", None)
         if not usage:
             logger.debug("Model %s: risposta senza 'usage' -- nessun contatore aggiornato", model)
-            return
-        if self._log_usage is None:
-            return
+            return None
+        if self._log_usage is None and not measuring:
+            return None
 
         # OpenRouter dichiara il costo VERO in ogni risposta -- `usage.cost`,
         # sempre presente, anche in streaming (Usage Accounting, verificato
@@ -487,10 +444,13 @@ class OpenAICompatRunner:
         # il difetto da cui nasce l'intera fetta.
         state, cost, inp, out = self._cost_state(usage, model)
         cache_read, cache_write = _cache_counts(usage)
-        self._log_usage(
-            self.provider_name, model, token_in=inp, token_out=out,
+        from ..usage.store import log_safely
+
+        log_safely(
+            self._log_usage, self.provider_name, model, token_in=inp, token_out=out,
             cache_read=cache_read, cache_write=cache_write,
             cost_usd=cost, cost_state=state, now=time.time())
+        return cost
 
     def _write_rejection(self, model: str) -> None:
         """Un 429 si conta sulla riga del modello che l'ha preso.
@@ -499,10 +459,10 @@ class OpenAICompatRunner:
         per tutto il prodotto non direbbe CHI stia rifiutando -- che e'
         l'unica cosa che serve sapere quando succede.
         """
-        if self._log_usage is None:
-            return
-        self._log_usage(
-            self.provider_name, model, richieste=0, errori_rate_limit=1,
+        from ..usage.store import log_safely
+
+        log_safely(
+            self._log_usage, self.provider_name, model, richieste=0, errori_rate_limit=1,
             cost_usd=None, cost_state="non_noto", now=time.time())
 
     # ------------------------------------------------------------------
@@ -513,14 +473,13 @@ class OpenAICompatRunner:
         """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
         return (self._read_model() if self._read_model else "") or ""
 
-    def _resolve_current_model(self) -> str:
-        """Il modello che questo runner userebbe adesso con `model="auto"`.
-
-        Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo
-        di provarla sarebbe intercettare la chiamata all'API."""
-        return self._resolve_model("auto", "chat")
-
-    def _resolve_model(self, model: str, agent_type: str) -> str:
+    def _resolve_model(self, model: str) -> str:
+        """Il modello di questo turno. Il mestiere non lo sceglie (Tappa 7,
+        T10; D11a): fino ad allora, con `"auto"` e nessuna scelta, la chat
+        andava su `gpt-4o` e osservatore e promesse su `gpt-4o-mini`, mentre
+        analista e proponente -- che il mestiere non lo dicevano -- su
+        `gpt-4o`. Adesso tutti il modello scelto, o l'automatico del
+        provider (`OPENAI.auto_model`)."""
         # Ollama: il modello scelto vince SEMPRE, anche su un modello passato
         # esplicitamente -- era gia' cosi' (`if self._fixed_model: return
         # self._fixed_model` come primo ramo) e resta, perche' l'istanza locale
@@ -530,7 +489,7 @@ class OpenAICompatRunner:
         if self._local:
             return chosen
         if model == "auto":
-            return chosen or AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
+            return chosen or OPENAI.auto_model
         return model
 
     def apply_timeout(self, seconds: float) -> None:
@@ -555,15 +514,16 @@ class OpenAICompatRunner:
             return
         import openai as _openai
         self._timeout_s = seconds
-        # Ollama: disabilita auto-retry SDK. Default openai 2.x = 2 retry, che
-        # cumulativamente possono superare il wrapper chatbot_engine 300s
-        # producendo "Timeout dopo 300s" generico senza log specifici. Con
-        # max_retries=0 il primo APIError/Timeout viene loggato e ritornato.
-        # Cloud OpenAI: lascia il default (2) — la rete cloud è meno volatile.
+        # Ollama: nessun ritentativo dell'SDK -- un'istanza locale lenta che
+        # ritenta moltiplica l'attesa del turno, e il primo errore va loggato
+        # e restituito. Cloud: i predefiniti dell'SDK (ritentativi e tempo di
+        # connessione), chiesti all'SDK come il tempo di risposta in
+        # `__init__`: `DEFAULT_MAX_RETRIES = 2`, `connect=5.0` (stessa
+        # lettura del 07/10/2026).
         self._client = _openai.AsyncOpenAI(
             api_key=self._api_key, base_url=self._base_url,
-            timeout=_httpx.Timeout(seconds, connect=5.0),
-            max_retries=0 if self._local else 2,
+            timeout=_httpx.Timeout(seconds, connect=_openai.DEFAULT_TIMEOUT.connect),
+            max_retries=0 if self._local else _openai.DEFAULT_MAX_RETRIES,
         )
 
     # ------------------------------------------------------------------
@@ -611,7 +571,6 @@ class OpenAICompatRunner:
         conversation_history: list[dict] | None = None,
         model: str = "auto",
         max_tokens: int = 4096,
-        agent_type: str = "chat",
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
@@ -655,7 +614,7 @@ class OpenAICompatRunner:
         self.last_tool_leaked = False
         self.last_unanswered = False
 
-        effective_model = self._resolve_model(model, agent_type)
+        effective_model = self._resolve_model(model)
 
         # Build system message (OpenAI uses a single system message)
         #
@@ -817,10 +776,14 @@ class OpenAICompatRunner:
                         logger.error(
                             "OpenRouter 402 retry failed: %s", retry_exc,
                         )
+                        # Nessuna azione impossibile (X-64): fino al 07/10/2026
+                        # la frase chiedeva di ridurre «max_tokens
+                        # dell’agente», un numero che nessuna pagina espone.
                         raise RunnerBackendError(
-                            f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
-                            f"Riduci max_tokens dell’agente sotto {affordable} "
-                            f"oppure aggiungi credito su openrouter.ai.",
+                            f"Crediti OpenRouter insufficienti: la risposta chiede fino a "
+                            f"{max_tokens} token e il credito ne copre meno di "
+                            f"{affordable}. Aggiungi credito su openrouter.ai, oppure "
+                            f"scegli un modello meno costoso nella pagina Modelli.",
                             family=error_family(retry_exc),
                             code=_status_code(retry_exc),
                         ) from retry_exc
@@ -844,21 +807,30 @@ class OpenAICompatRunner:
                     ) from exc
 
             self._record_success()
-            self._track_usage(response, effective_model)
+            _raccoglitore = _misura_corrente()
+            cost_usd = self._track_usage(response, effective_model,
+                                         measuring=_raccoglitore is not None)
 
             # La seconda consegna del giro: i token, dopo la risposta.
-            _raccoglitore = _misura_corrente()
             if _raccoglitore is not None:
                 _raccoglitore(iter_idx + 1, {
                     **openai_turn_tokens(getattr(response, "usage", None)),
-                    "cost_usd": self._response_cost(response, effective_model),
+                    "cost_usd": cost_usd,
                     # Chi ha risposto con QUALE modello: lo sa solo questo
                     # punto (la chat non lo passa all'imbuto).
                     "model": effective_model})
 
             choice = response.choices[0]
 
-            if choice.finish_reason == "stop":
+            # **Le chiamate di strumento si guardano, non il motivo**
+            # (Tappa 7, T10; S-14): una risposta che porta `tool_calls` con
+            # `finish_reason == "stop"` finiva in questo ramo come risposta
+            # finale, e le chiamate si perdevano -- il turno restituiva un
+            # testo spesso vuoto mentre il modello aspettava i risultati. Il
+            # caso e' dedotto dalla lettura del codice (registro, S-14), non
+            # misurato su un provider: per questo la regola guarda la cosa
+            # che conta, le chiamate, e non presume quale provider la produca.
+            if choice.finish_reason == "stop" and not choice.message.tool_calls:
                 raw_content = choice.message.content or ""
                 leaked = detect_leaked_tool_call(raw_content, tool_name_set)
                 if leaked:
@@ -871,7 +843,7 @@ class OpenAICompatRunner:
                     return TOOL_LEAK_USER_MSG
                 return raw_content
 
-            if choice.finish_reason == "tool_calls":
+            if choice.finish_reason in ("tool_calls", "stop"):
                 tool_calls = choice.message.tool_calls or []
                 # Reconstruct assistant message cleanly.
                 # content is None per OpenAI spec when finish_reason=="tool_calls";
@@ -892,7 +864,14 @@ class OpenAICompatRunner:
                         for tc in tool_calls
                     ]
                 messages.append(assistant_msg)
-                for tc in tool_calls:
+                # Gli argomenti si leggono prima: un JSON rotto e' una
+                # risposta pronta, non una chiamata. Le altre partono con la
+                # regola dei due runner (`dispatch_calls`: le letture insieme,
+                # le scritture una alla volta), e i risultati tornano al
+                # modello nell'ordine delle sue chiamate.
+                answers: list = [None] * len(tool_calls)
+                to_serve: list[tuple[int, str, Any]] = []
+                for index, tc in enumerate(tool_calls):
                     try:
                         tool_input = json.loads(tc.function.arguments)
                     except json.JSONDecodeError as json_exc:
@@ -900,29 +879,20 @@ class OpenAICompatRunner:
                             "Tool %s: argomenti JSON non validi %r: %s",
                             tc.function.name, tc.function.arguments[:120], json_exc,
                         )
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": json.dumps({
-                                "error": (
-                                    f"Argomenti JSON non validi per '{tc.function.name}'. "
-                                    "Correggi il JSON e riprova."
-                                )
-                            }),
-                        })
+                        answers[index] = {
+                            "error": (
+                                f"Argomenti JSON non validi per '{tc.function.name}'. "
+                                "Correggi il JSON e riprova."
+                            )
+                        }
                         continue
-                    if dispatcher is not None:
-                        # ToolDispatcher (e affini): stessa interfaccia
-                        # minima dispatch(nome, argomenti).
-                        result = await dispatcher.dispatch(tc.function.name, tool_input)
-                    else:
-                        # Nessun dispatcher per-chiamata: lo strumento si
-                        # dichiara non disponibile.
-                        logger.debug(
-                            "Strumento '%s' richiesto ma nessun dispatcher disponibile "
-                            "(degradazione dichiarata, non un errore)", tc.function.name)
-                        result = {"error": f"Strumento '{tc.function.name}' non disponibile."}
-                    self.last_tool_calls.append({"tool": tc.function.name, "input": tool_input})
+                    to_serve.append((index, tc.function.name, tool_input))
+                served = await dispatch_calls(
+                    dispatcher, [(name, args) for _, name, args in to_serve])
+                for (index, name, tool_input), result in zip(to_serve, served, strict=True):
+                    answers[index] = result
+                    self.last_tool_calls.append({"tool": name, "input": tool_input})
+                for tc, result in zip(tool_calls, answers, strict=True):
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,

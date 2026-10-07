@@ -271,10 +271,10 @@ def test_i_DUE_runner_veri_espongono_il_contratto():
 
 @pytest.mark.asyncio
 async def test_una_specie_INVENTATA_viene_rifiutata(app):
-    """La regola sta dove sta il vocabolario. `agent_type="observer"` è il
-    nome che il runner usa per scegliere il modello, e se entrasse qui il
-    registro avrebbe due nomi per lo stesso attore — proprio sulla domanda
-    per cui esiste.
+    """La regola sta dove sta il vocabolario. `agent_type="observer"` era il
+    nome che il runner usava per scegliere il modello (uscito, Tappa 7 T10),
+    e se entrasse qui il registro avrebbe due nomi per lo stesso attore —
+    proprio sulla domanda per cui esiste.
 
     Mutazione ESEGUITA: togliere il controllo dall'imbuto -- rossa."""
     with pytest.raises(ValueError, match="observer"):

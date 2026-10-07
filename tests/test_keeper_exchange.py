@@ -215,7 +215,10 @@ async def test_interpreta_promessa_ritorna_cio_che_il_turno_ha_concluso():
     # strutturale della spec (§6.2), non solo un fatto su questo test
     assert ({d["name"] for d in runner.chiamato_con["tools"]}
             == set(SOLA_LETTURA) | {"conclude"})
-    assert runner.chiamato_con["agent_type"] == "promessa"
+    # Il mestiere non sceglie il modello (Tappa 7 T10, D11a): la promessa
+    # chiede il modello scelto, come ogni turno.
+    assert "agent_type" not in runner.chiamato_con
+    assert runner.chiamato_con["model"] == "auto"
 
 
 @pytest.mark.asyncio

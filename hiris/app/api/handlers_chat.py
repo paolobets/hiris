@@ -778,7 +778,6 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
             # ereditato.
             model="auto",
             max_tokens=CHAT_MAX_TOKENS,
-            agent_type="chat",
             restrict_to_home=bool(contesto.get("restrict_to_home")),
             response_mode=contesto.get("response_mode", "auto"),
             # Il contesto del job NON porta `thinking_budget` (sette chiavi,
@@ -1149,11 +1148,6 @@ async def handle_chat(request: web.Request) -> web.Response:
         # pagina Modelli, e la chat chiede SEMPRE `auto`: il turno passa dal ciclo
         # di ripiego di `LLMRouter.chat`, l'unico che esiste.
         agent_model = "auto"
-        # Personas are always the chat entity (Slice 5 retired the non-chat
-        # "agent" type and the `type` field itself) — no per-type branch needed
-        # here. Kept as a literal only because runner.chat still takes
-        # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
-        agent_type = "chat"
         # La chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
         # modulo dei runner, perche' una risposta lunga -- il riepilogo di una
         # casa grande, un elenco di ricordi -- lo supera legittimamente.
@@ -1172,7 +1166,6 @@ async def handle_chat(request: web.Request) -> web.Response:
                 conversation_history=context_history,
                 model=agent_model,
                 max_tokens=agent_max_tokens,
-                agent_type=agent_type,
                 restrict_to_home=agent_restrict,
                 response_mode=agent_response_mode,
                 thinking_budget=agent_thinking_budget,
