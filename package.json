@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test --test-force-exit tests/js/*.test.mjs",
+    "test": "node --import ./tests/js/helpers/uscita-intera.mjs --test --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/js/helpers/conteggio-prove.mjs --test-reporter-destination=stderr tests/js/*.test.mjs",
     "lint": "oxlint --deny-warnings hiris/app/static tests/js",
     "sponde": "python scripts/sponde_js.py"
   },

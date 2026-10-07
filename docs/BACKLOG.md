@@ -1090,6 +1090,15 @@ su una risposta lunga, non col server finto.
 
 ### Il conteggio instabile di `npm test` — aperta il 05/10/2026
 
+*Fatto nel codice il 07/10/2026 (ramo, non rilasciata):* la causa era `--test-force-exit`. Ogni
+figlio esce con `process.exit()` appena finisce l'ultima prova, e sulle pipe POSIX le sue
+scritture sono asincrone: se il padre legge lento, gli esiti di coda di un file si perdono, il
+figlio esce 0 e nessuna prova e' rossa. Riprodotta fermando a intermittenza il padre: 553, 551 e
+552 prove su 638, sempre 0 rosse; senza `--test-force-exit`, 638 su 638. La correzione rende
+bloccante l'uscita in ogni processo (`tests/js/helpers/uscita-intera.mjs`, con `--import`); il
+confronto col giro prima e' un reporter di `npm test` (`tests/js/helpers/conteggio-prove.mjs`).
+Si chiude col rilascio.
+
 `origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 2, domanda 3), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · stesso documento della voce sopra
 
 `npm test` a volte raccoglie meno prove, senza nessuna rossa. Si cerca la causa, e la verifica
