@@ -13,6 +13,7 @@ Una difesa permanente invecchia. Una porta chiusa no.
 """
 import base64
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -298,3 +299,38 @@ async def test_l_elenco_dice_i_ruoli_e_le_specie_possibili(cliente):
 
     assert corpo["ruoli"] == ["amministratore", "utente", "lettore"]
     assert corpo["specie"] == ["integrazione", "luogo"]
+
+
+@pytest.mark.asyncio
+async def test_leggere_l_elenco_NON_scrive_l_archivio(cliente):
+    """Tappa 7, Task 0b: una lettura non scrive. Fino al 07/10/2026
+    `GET /api/services` potava l'archivio prima di rispondere, e chi voleva
+    soltanto guardare i servizi approvati cambiava il disco.
+
+    La presentazione scaduta esce dalla risposta da sola, come in
+    `GET /api/constructions` (`revisions._EXPIRED_SQL`), e resta su disco
+    finche' non si scrive.
+
+    Mutazione ESEGUITA: rimettere `archivio.pota` nella rotta -- rossa."""
+    import os
+
+    from hiris.app.api.servizi import ServiziStore
+    archivio = cliente.app["servizi"]
+    archivio.presenta(nome="scaduta", chiave=_chiave(), indirizzo="x",
+                      now_ts=time.time() - ServiziStore.ATTESA_S - 60)
+    cartella = cliente.app["data_dir"]
+
+    def disco():
+        # Il file e il suo giornale WAL: una cancellazione finisce nel secondo.
+        # Il `-shm` no: e' l'indice condiviso di SQLite, e lo aggiornano anche
+        # i lettori.
+        return {n: open(os.path.join(cartella, n), "rb").read()
+                for n in ("servizi.db", "servizi.db-wal")
+                if os.path.exists(os.path.join(cartella, n))}
+
+    prima = disco()
+
+    corpo = await (await cliente.get("/api/services", headers=_chi("u-admin"))).json()
+
+    assert disco() == prima
+    assert [r["nome"] for r in corpo["servizi"]] == []

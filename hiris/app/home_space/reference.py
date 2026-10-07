@@ -77,8 +77,8 @@ def fold_accents(text: str) -> str:
     """Gli accenti tolti, e nient'altro: «Città» -> «Citta».
 
     La piegatura di tutto il prodotto (B-20): il riferimento qui sotto, e i
-    due slug (`action/construction/composer.available_slug`,
-    `keeper/recipient._slugify`), che dopo ci applicano ciascuno il proprio
+    due slug (`action/construction/composer.available_slug` e `slugify`
+    qui sotto), che dopo ci applicano ciascuno il proprio
     filtro ASCII -- quello e' la forma della chiave che Home Assistant
     accetta, non una regola del confronto."""
     decomposed = unicodedata.normalize("NFKD", text)
