@@ -130,7 +130,7 @@ approvati e scritti nella spec; le 23 dichiarazioni `notable` escono.
 
 #### Tappa 7: le note basse del revisore — aperta il 07/10/2026
 
-`origine: giri 81 e 82 del revisore (/mnt/project-files/revisioni/giro-81.md e giro-82.md), 07/10/2026; non bloccanti, registrate qui per decisione del coordinatore` · `hiris/app/action/actuator.py` · `docs/design/2026-08-22-costruire-in-home-assistant.md`
+`origine: giri 81, 82 e 89 del revisore (/mnt/project-files/revisioni/giro-81.md, giro-82.md e giro-89.md), 07/10/2026; non bloccanti, registrate qui per decisione del coordinatore` · `hiris/app/action/actuator.py` · `docs/design/2026-08-22-costruire-in-home-assistant.md` · `hiris/app/static/hiris-theme.css`
 
 - **N81-1, la spec dice ancora due porte.** Il §2.1 di
   `docs/design/2026-08-22-costruire-in-home-assistant.md` parla di due porte di scrittura, mentre
@@ -148,6 +148,12 @@ approvati e scritti nella spec; le 23 dichiarazioni `notable` escono.
   `exc_info`; `Workshop._rete` usava `exc_info=True` proprio per questo. Le due proposte del
   revisore: `logger.warning(..., exc_info=True)`, oppure catturare solo `aiohttp.ClientError` e
   `asyncio.TimeoutError`.
+- **N89-1, i contrasti dei token *-ink non portano il loro nome.** Nel commento sopra i token
+  `--ok-ink`, `--warn-ink` e `--err-ink` di `hiris/app/static/hiris-theme.css`, la frase prima
+  elenca i colori di partenza nell'ordine warn, ok, err («2.04:1 (warn), 2.49:1 (ok), 4.05:1
+  (err)»), e quella dopo da' i contrasti nuovi senza nome, nell'ordine dei token («5.16 / 5.61 /
+  5.44»). Chi legge le due terne di seguito li scambia. Si etichettano: «sul bianco: ok 5.16, warn
+  5.61, err 5.44». E' solo un commento: va bene al prossimo tocco del file.
 
 ### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
 
