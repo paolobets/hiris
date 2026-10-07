@@ -120,16 +120,21 @@ dal 1° ottobre 2026 (voce «Gli attori si riparano dal basso» del BACKLOG). �
 contro l'installazione, la esegue e rilegge lo stato. Non è ③ — non c'è nessun agente, nessuna
 autonomia, nessun perimetro da approvare — è la chat che fa una cosa sola quando gliela chiedi.
 **Un canale, una porta.** Per ogni canale di scrittura verso Home Assistant esiste **un unico
-modulo** che lo attraversa. Oggi sono due: i **servizi** (`action/actuator.py`, dalla fetta
-«comandare») e la **configurazione** (`action/construction/workshop.py`, dalla fetta «costruire»).
-Sono canali diversi in tutto — rotta, verifica, «dopo» — e condividono ciò che conta: la cronaca,
-l'`origine` e la forma del rifiuto motivato, che vivono **una volta sola** e hanno la **stessa
-forma da entrambi**. Un terzo punto che scriva su Home Assistant fuori da queste due porte è un
-difetto, non un'ottimizzazione. Spec: `docs/design/2026-08-22-costruire-in-home-assistant.md` §2.1.
+modulo** che lo attraversa. Oggi sono tre: i **servizi** (`action/actuator.py`, dalla fetta
+«comandare»), la **configurazione** (`action/construction/workshop.py`, dalla fetta «costruire») e
+l'**installazione** (`action/installation.py`, dalla Tappa 7: ciò che l'add-on scrive per
+installarsi e disinstallarsi). Servizi e configurazione sono canali diversi in tutto — rotta,
+verifica, «dopo» — e condividono ciò che conta: la cronaca, l'`origine` e la forma del rifiuto
+motivato, che vivono **una volta sola** e hanno la **stessa forma da entrambi**. L'installazione
+non ha un «dopo» da mostrare a una persona: ci stanno la voce di menu dell'add-on
+(`frontend/update_panel`, all'avvio) e la disinstallazione della card Lovelace, e nessuna delle due
+tocca i servizi né la configurazione di automazioni, script e scene. Un quarto punto che scriva su
+Home Assistant fuori da queste tre porte è un difetto, non un'ottimizzazione. Spec:
+`docs/design/2026-08-22-costruire-in-home-assistant.md` §2.1.
 
-Due scritture stanno fuori dalle due porte, e sono dichiarate: la voce di menu dell'add-on
-(`frontend/update_panel`, all'avvio) e la disinstallazione della card Lovelace. Nessuna delle due
-tocca i servizi né la configurazione di automazioni, script e scene.
+La terza porta è **ancora a metà** (Tappa 7, Task 4): la scrittura della voce di menu vive in
+`panel_visibility.py`, che l'installazione avvia, e la card apre ancora una sua sessione WebSocket
+invece di passare da `HAClient`.
 
 **Non si scrive mai `automations.yaml`, `scripts.yaml` o `scenes.yaml` in proprio.** Scrive Home
 Assistant, attraverso l'API di configurazione, trovando la voce per `id` e sostituendola. È questa
@@ -271,7 +276,8 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── action/         «cosa questa casa sa fare, e il farlo»: actuator.py — i SERVIZI, l'unica
     │                   porta sul canale — verification.py, registry.py, journal.py, rhythm.py;
     │                   construction/ — workshop.py, l'unica porta sul canale della
-    │                   CONFIGURAZIONE — composer.py, advisor.py, revisions.py
+    │                   CONFIGURAZIONE — composer.py, advisor.py, revisions.py;
+    │                   installation.py, la porta dell'INSTALLAZIONE (voce di menu, card)
     ├── mind/           il cervello: osservatore (observer, watcher, scope, facts, report),
     │                   sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
     │                   analista (analyst, analyst_turn), proponente (actuator, proposer_turn)

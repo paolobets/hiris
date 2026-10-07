@@ -13,7 +13,7 @@ cresce, la copia no, e il cancello resta verde mentre il buco si apre.
 
 **Adesso l'elenco si CHIEDE, non si scrive.** Alle porte lo chiede il sorgente di
 `ha_client`; ai moduli dell'attuatore lo chiede il grafo delle chiamate di
-tutto `hiris/app`; alle due porte-modulo lo chiede `CLAUDE.md`, che le dichiara. Una
+tutto `hiris/app`; alle porte-modulo lo chiede `CLAUDE.md`, che le dichiara. Una
 porta nuova e una funzione nuova entrano nel cancello **il giorno in cui
 nascono**, non il giorno in cui qualcuno se ne ricorda.
 
@@ -82,6 +82,19 @@ def _metodi_pubblici(percorso: pathlib.Path) -> frozenset[str]:
         and not figlio.name.startswith("_"))
 
 
+def _superficie_pubblica(percorso: pathlib.Path) -> frozenset[str]:
+    """I metodi pubblici delle classi E le funzioni pubbliche di primo livello.
+
+    Una porta non e' per forza una classe: `action/installation.py` (la terza,
+    07/10/2026) e' fatta di sole funzioni, e con i soli metodi delle classi
+    sarebbe entrata nel cancello vuota.
+    """
+    return _metodi_pubblici(percorso) | frozenset(
+        nodo.name for nodo in _albero(percorso).body
+        if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not nodo.name.startswith("_"))
+
+
 def porte_home_assistant() -> frozenset[str]:
     """Ogni metodo pubblico di `HAClient`, DERIVATO dal suo sorgente.
 
@@ -105,23 +118,28 @@ def porte_home_assistant() -> frozenset[str]:
 
 
 def porte_dichiarate() -> tuple[pathlib.Path, ...]:
-    """I due moduli-porta, DERIVATI da `CLAUDE.md` che li dichiara.
+    """I moduli-porta, DERIVATI da `CLAUDE.md` che li dichiara.
 
     *«Per ogni canale di scrittura verso Home Assistant esiste un unico modulo
-    che lo attraversa. Oggi sono due.»* Il cancello legge quella frase invece di
+    che lo attraversa. Oggi sono tre.»* Il cancello legge quella frase invece di
     ricopiarne i percorsi: il giorno in cui una porta si sposta o ne nasce una
-    terza, il documento e il cancello restano d'accordo.
+    nuova, il documento e il cancello restano d'accordo. E' successo il
+    07/10/2026, con la terza (`action/installation.py`, Tappa 7, Task 4).
+
+    Si legge il PARAGRAFO, fino alla prima riga vuota, e non un numero fisso di
+    caratteri: con 900 caratteri il paragrafo delle tre porte veniva tagliato,
+    e il paragrafo dopo, che nomina `panel_visibility.py`, poteva entrarci.
     """
     testo = (RADICE / "CLAUDE.md").read_text(encoding="utf-8")
     inizio = testo.index("**Un canale, una porta.**")
-    blocco = testo[inizio:inizio + 900]
+    blocco = testo[inizio:testo.index("\n\n", inizio)]
     percorsi = [RADICE / "hiris" / "app" / grezzo
                 for grezzo in re.findall(r"`([A-Za-z0-9_/]+\.py)`", blocco)]
     vivi = [p for p in percorsi if p.exists()]
-    assert len(vivi) == len(percorsi) == 2, (
+    assert len(vivi) == len(percorsi) == 3, (
         f"`CLAUDE.md` dichiara le porte di scrittura, e da quel paragrafo ho "
         f"letto {len(percorsi)} percorsi di cui {len(vivi)} esistono davvero. "
-        "Servono due porte, entrambe vive: o il documento ne nomina una che non "
+        "Servono tre porte, tutte vive: o il documento ne nomina una che non "
         "esiste piu', o le porte sono cambiate e nessuno l'ha scritto")
     return tuple(vivi)
 
@@ -275,8 +293,8 @@ def test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_giro():
     assert any(nome.startswith("mind/proposer_round.py::") for nome in larga)
 
 
-def test_le_due_porte_si_leggono_da_CLAUDE_md():
-    """**I-0.** Anche i due moduli-porta si derivano: li dichiara `CLAUDE.md`.
+def test_le_porte_si_leggono_da_CLAUDE_md():
+    """**I-0.** Anche i moduli-porta si derivano: li dichiara `CLAUDE.md`.
 
     Se un percorso dichiarato non esiste piu', questa prova lo dice -- ed e' il
     caso in cui la ragione scritta accanto al codice ha smesso di essere vera,
@@ -284,9 +302,11 @@ def test_le_due_porte_si_leggono_da_CLAUDE_md():
     """
     nomi = {p.name for p in porte_dichiarate()}
 
-    assert nomi == {"actuator.py", "workshop.py"}, (
+    assert nomi == {"actuator.py", "workshop.py", "installation.py"}, (
         f"le porte dichiarate in `CLAUDE.md` sono {sorted(nomi)}: o sono "
         "cambiate, o il documento non le nomina piu' per percorso")
+    # Mutazione ESEGUITA (07/10/2026): tolto da `CLAUDE.md` il percorso di
+    # `action/installation.py` -- rossa, qui e nel cancello dell'attuatore.
 
 
 def test_una_funzione_AMMESSA_ha_un_nome_solo_nel_prodotto():
@@ -319,8 +339,9 @@ def test_l_attuatore_non_tocca_MAI_home_assistant():
     Si legge il sorgente e basta: e' un cancello di FORMA, e la forma e' cio'
     che si rompe quando qualcuno aggiunge una chiamata «solo per provare».
 
-    Tre insiemi, **tutti derivati**: le porte di `ha_client`, i metodi delle due
-    porte-modulo dichiarate in `CLAUDE.md`, e la superficie dell'attuatore. Meno
+    Tre insiemi, **tutti derivati**: le porte di `ha_client`, la superficie
+    pubblica delle porte-modulo dichiarate in `CLAUDE.md`, e quella
+    dell'attuatore. Meno
     `AMMESSI`, che e' l'unica lista scritta a mano e che **enuncia** il cancello
     invece di ricopiare un fatto.
 
@@ -330,10 +351,13 @@ def test_l_attuatore_non_tocca_MAI_home_assistant():
     `proposer_round._settle` -- rossa. Dal Task 4.3 (06/10/2026): `AMMESSI`
     senza `notify_admins` -- rossa su `soffitto._refresh_users` (`users`);
     `app["action_actuator"].execute(...)` in `_alert_high`, accanto
-    all'avviso ammesso -- rossa.
+    all'avviso ammesso -- rossa. Dal 07/10/2026 (la terza porta):
+    `installation.disinstalla_card_lovelace(...)` in `proposer_round` --
+    rossa; con i soli metodi delle classi (`_metodi_pubblici` al posto di
+    `_superficie_pubblica`) la stessa riga era VERDE.
     """
     vietati = (porte_home_assistant()
-               | {m for porta in porte_dichiarate() for m in _metodi_pubblici(porta)}
+               | {m for porta in porte_dichiarate() for m in _superficie_pubblica(porta)}
                ) - AMMESSI
 
     for nome, sorgente in superficie_attuatore().items():
