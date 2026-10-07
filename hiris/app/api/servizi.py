@@ -265,27 +265,34 @@ def open_services(app, path: str) -> ServiziStore:
     return store
 
 
-def _service_thread_archives(app) -> list[tuple[str, Callable[[dict[str, str]], int]]]:
-    """Gli archivi che portano il soggetto di chi ha parlato in una colonna,
-    con la funzione che lo rinomina: `(nome per il registro, rekey)`. Un
-    archivio che l'avvio non ha aperto (il sapere puo' restare `None`) non
-    c'e', e il registro lo tace.
+#: Gli archivi che l'avvio apre e che portano il soggetto di chi ha parlato in
+#: una colonna, oltre alla chat: `(nome per il registro, chiave in app)`. Ognuno
+#: ha `rekey_subjects`. L'avvio li apre PRIMA di `open_services`
+#: (`tests/test_servizi_identita.py` lo prova sull'app avviata).
+SUBJECT_ARCHIVES = (("promesse", "agenda"), ("costruzioni", "constructions"),
+                    ("ricordi", "memory_store"), ("righe del sapere", "knowledge"))
+
+
+def _service_thread_archives(app) -> list[tuple[str, Callable[[dict[str, str]], int] | None]]:
+    """Gli archivi che portano il soggetto di chi ha parlato, con la funzione
+    che lo rinomina: `(nome per il registro, rekey)`. Un archivio atteso che
+    l'avvio non ha aperto -- il sapere puo' restare `None` per guasto, o un
+    avvio riordinato lo apre dopo -- ha `None` al posto della funzione, e la
+    migrazione lo dice (N86-1, giro 86): tacerlo lascerebbe le sue righe sotto
+    il nome per sempre, senza traccia.
 
     Fino al 07/10/2026 migravano solo i fili della chat (T8); il soggetto
     vive anche qui, e con la chiave vecchia un servizio perdeva le sue
     promesse in agenda (G83-3, scelta di Paolo: «Migra tutto»)."""
     from .. import chat_store
 
-    archives: list[tuple[str, Callable[[dict[str, str]], int]]] = [
+    archives: list[tuple[str, Callable[[dict[str, str]], int] | None]] = [
         ("sessioni di chat",
          lambda renames: chat_store.rekey_subjects(app["data_dir"], renames)),
     ]
-    named = (("promesse", "agenda"), ("costruzioni", "constructions"),
-             ("ricordi", "memory_store"), ("righe del sapere", "knowledge"))
-    for label, key in named:
+    for label, key in SUBJECT_ARCHIVES:
         archive = app.get(key)
-        if archive is not None:
-            archives.append((label, archive.rekey_subjects))
+        archives.append((label, None if archive is None else archive.rekey_subjects))
     return archives
 
 
@@ -309,6 +316,9 @@ def migrate_service_threads(app) -> dict[str, int]:
         return {}
     moved: dict[str, int] = {}
     for label, rekey in _service_thread_archives(app):
+        if rekey is None:
+            logger.warning("servizi: %s: archivio non aperto, non migrate", label)
+            continue
         try:
             moved[label] = rekey(renames)
         except Exception as exc:

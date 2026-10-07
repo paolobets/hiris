@@ -264,10 +264,74 @@ def test_le_righe_del_sapere_del_servizio_passano_all_IMPRONTA(tmp_path, caplog)
     assert "1 righe del sapere" in caplog.text
     assert migrate_service_threads(app)["righe del sapere"] == 0
 
+    # N86-1 (giro 86): l'archivio atteso e non aperto non sparisce in
+    # silenzio. Mutazione ESEGUITA (07/10/2026): il `logger.warning` tolto --
+    # rossa, la riga non c'e'.
     app["knowledge"] = None
-    assert "righe del sapere" not in migrate_service_threads(app)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="hiris.app.api.servizi"):
+        assert "righe del sapere" not in migrate_service_threads(app)
+    assert "righe del sapere: archivio non aperto, non migrate" in caplog.text
     app["knowledge"] = sapere
     _chiudi(app)
+
+
+@pytest.mark.asyncio
+async def test_l_avvio_vero_migra_ogni_archivio_del_soggetto(tmp_path):
+    """N86-1 (giro 86): la migrazione gira dentro `open_services`, e un
+    archivio che l'avvio apre DOPO non e' ancora in `app`: le sue righe
+    restavano sotto il nome a ogni avvio. Qui l'ordine non si legge nel
+    sorgente: si avvia l'app vera (`tests/_avvio.started_with`) su una
+    `data_dir` scritta com'era prima, con una riga sotto `luogo:cucina` in
+    ogni archivio di `SUBJECT_ARCHIVES`, e si guarda dove sono finite.
+
+    Mutazione ESEGUITA (07/10/2026): l'import e la chiamata di
+    `open_services` riportati sopra `MemoryStore(` in `server.py` -- rossa, il
+    ricordo resta sotto il nome (`['luogo:cucina']`), gli altri migrano."""
+    from hiris.app.api.servizi import SUBJECT_ARCHIVES
+    from tests._avvio import started_with
+
+    vecchia = "luogo:cucina"
+    servizi = ServiziStore(str(tmp_path / "servizi.db"))
+    _privata, pubblica = servizio_approvato({"servizi": servizi}, "utente",
+                                            nome="cucina", specie="luogo")
+    servizi.close()
+    nuova = f"luogo:{ServiziStore.fingerprint(pubblica)}"
+    filo = ChatThread(vecchia, "canale")
+
+    agenda = AgendaStore(str(tmp_path / "promesse.db"))
+    promessa = agenda.create({"specie": "chiedi", "frase": "x", "domanda": "?",
+                              "quando_ts": T_NASCITA + 3600},
+                             thread=filo, now=T_NASCITA)["promessa"]["id"]
+    agenda.close()
+    costruzioni = ConstructionStore(str(tmp_path / "costruzioni.db"))
+    costruzione = costruzioni.propose(
+        operation="crea", domain="automation", key="cucina", actor="chat",
+        exchange="t1", phrase="x", prima=None, dopo={"alias": "x"}, helper=[],
+        preview="x", stakes=None, now=T_NASCITA, thread=filo)["id"]
+    costruzioni.close()
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    memoria.remember("la cucina ha due finestre", detto_da="cucina", said_by=vecchia)
+    memoria.close()
+    sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
+    sapere.write(Fact(subject_kind="tipo", subject="sensor.cucina", field="genere",
+                      value="presenza", provenance="nostro", who="cucina",
+                      when_ts=T_NASCITA, said_by=vecchia))
+    sapere.close()
+
+    async with started_with(tmp_path) as app:
+        trovate = {
+            "agenda": app["agenda"].read(promessa)["thread"].subject_key,
+            "constructions": app["constructions"].read(
+                costruzione, now=T_NASCITA)["thread"].subject_key,
+            "memory_store": [r["said_by"] for r in app["memory_store"].fetch(limit=10)],
+            "knowledge": app["knowledge"].get("tipo", "sensor.cucina", "genere").said_by,
+        }
+
+    assert {chiave for _nome, chiave in SUBJECT_ARCHIVES} == set(trovate), (
+        "un archivio nuovo in SUBJECT_ARCHIVES: questa prova deve scrivergli una riga")
+    assert trovate == {"agenda": nuova, "constructions": nuova,
+                       "memory_store": [nuova], "knowledge": nuova}, trovate
 
 
 def test_l_avvio_apre_l_archivio_e_migra_nello_stesso_gesto(tmp_path):
