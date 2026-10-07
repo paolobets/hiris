@@ -10,7 +10,7 @@ il 15 agosto 2026, girava sul piano con `haiku`.
 """
 import pytest
 
-from hiris.app.api import handlers_models
+from hiris.app import models_store
 
 ALIAS = ("haiku", "sonnet", "opus")
 
@@ -18,16 +18,16 @@ ALIAS = ("haiku", "sonnet", "opus")
 def test_il_predefinito_del_campo_non_e_mai_vuoto():
     """Vuoto significherebbe «non so», e «non so» e' la porta da cui la regola
     «se non so niente allora fai come prima» e' gia' rientrata quattro volte."""
-    assert handlers_models._STORE_DEFAULTS["ponte"]["modello"] == "sonnet"
+    assert models_store._STORE_DEFAULTS["ponte"]["modello"] == "sonnet"
 
 
 @pytest.mark.parametrize("alias", ALIAS)
 def test_i_tre_alias_passano_intatti(alias):
-    assert handlers_models._clean_bridge({"modello": alias})["modello"] == alias
+    assert models_store._clean_bridge({"modello": alias})["modello"] == alias
 
 
 def test_un_archivio_senza_il_campo_riceve_il_predefinito():
-    assert handlers_models._clean_bridge({})["modello"] == "sonnet"
+    assert models_store._clean_bridge({})["modello"] == "sonnet"
 
 
 @pytest.mark.parametrize("scritto,atteso", [
@@ -39,12 +39,12 @@ def test_un_identificatore_si_riporta_dentro_invece_di_far_fallire(scritto, atte
     """Come i due `_clamp_int` accanto: un valore fuori range non e' un corpo
     malformato, si riporta dentro. Il riduttore e' `cli_model`, che qui trova
     la sua unica casa."""
-    assert handlers_models._clean_bridge({"modello": scritto})["modello"] == atteso
+    assert models_store._clean_bridge({"modello": scritto})["modello"] == atteso
 
 
 @pytest.mark.parametrize("spazzatura", ["gpt-4o", "", None, 42, [], {"a": 1}])
 def test_cio_che_non_e_un_alias_diventa_sonnet_e_non_esplode(spazzatura):
-    esito = handlers_models._clean_bridge({"modello": spazzatura})["modello"]
+    esito = models_store._clean_bridge({"modello": spazzatura})["modello"]
     assert esito in ALIAS
     assert esito == "sonnet"
 
@@ -52,7 +52,7 @@ def test_cio_che_non_e_un_alias_diventa_sonnet_e_non_esplode(spazzatura):
 def test_il_campo_nuovo_non_cancella_gli_altri_tre_del_ponte():
     """`_clean_bridge` scrive l'oggetto intero: un campo aggiunto senza
     riportare gli altri li azzererebbe a ogni PUT."""
-    pulito = handlers_models._clean_bridge(
+    pulito = models_store._clean_bridge(
         {"attivo": True, "scadenza_min": 10, "tetto_giornaliero": 150,
          "modello": "opus"})
     assert pulito == {"attivo": True, "scadenza_min": 10,
@@ -111,22 +111,22 @@ def test_il_segno_non_viaggia_in_una_put(tmp_path):
     ricoprendo la scelta dell'utente col valore derivato. Il segno vive fuori
     da `_OUR_KEYS`, come gli altri due."""
     d = str(tmp_path)
-    handlers_models.save_models_config(
+    models_store.save_models_config(
         d, {"ponte": {"attivo": True, "scadenza_min": 5,
                       "tetto_giornaliero": 50, "modello": "opus"},
             "piano_seminato": True},
         flags=True)
-    handlers_models.save_models_config(
+    models_store.save_models_config(
         d, {"ponte": {"attivo": True, "scadenza_min": 5,
                       "tetto_giornaliero": 50, "modello": "opus"},
             "piano_seminato": False})
-    assert handlers_models.load_models_config(d)["piano_seminato"] is True
+    assert models_store.load_models_config(d)["piano_seminato"] is True
 
 
 def test_il_segno_sopravvive_al_giro_load_save(tmp_path):
     d = str(tmp_path)
-    handlers_models.save_models_config(d, {"piano_seminato": True}, flags=True)
-    assert handlers_models.load_models_config(d)["piano_seminato"] is True
+    models_store.save_models_config(d, {"piano_seminato": True}, flags=True)
+    assert models_store.load_models_config(d)["piano_seminato"] is True
 
 
 # ── Il CABLAGGIO: l'avvio vero ────────────────────────────────────────────
@@ -152,7 +152,7 @@ async def _start(d) -> dict:
 
 def _archivio_pre_fetta(tmp_path, modello_claude, modello_piano="sonnet"):
     d = str(tmp_path)
-    handlers_models.save_models_config(d, {
+    models_store.save_models_config(d, {
         "provider_models": {"claude": modello_claude, "openai": "", "openrouter": ""},
         "ponte": {"attivo": True, "scadenza_min": 10,
                   "tetto_giornaliero": 150, "modello": modello_piano},
@@ -174,7 +174,7 @@ async def test_l_avvio_semina_il_modello_che_l_installazione_stava_usando(tmp_pa
     models_config = await _start(d)
     assert models_config["ponte"]["modello"] == "haiku"
     assert models_config["piano_seminato"] is True
-    assert handlers_models.load_models_config(d)["ponte"]["modello"] == "haiku", (
+    assert models_store.load_models_config(d)["ponte"]["modello"] == "haiku", (
         "e finisce sul DISCO: una semina che resta in memoria rigira al riavvio")
 
 
@@ -190,9 +190,9 @@ async def test_un_secondo_avvio_non_ricopre_la_scelta(tmp_path):
     d = _archivio_pre_fetta(tmp_path, "claude-haiku-4-5-20251001")
     await _start(d)
 
-    archivio = handlers_models.load_models_config(d)
+    archivio = models_store.load_models_config(d)
     archivio["ponte"]["modello"] = "opus"
     archivio["provider_models"]["claude"] = "claude-sonnet-4-6"
-    handlers_models.save_models_config(d, archivio)
+    models_store.save_models_config(d, archivio)
 
     assert (await _start(d))["ponte"]["modello"] == "opus"

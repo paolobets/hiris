@@ -31,7 +31,6 @@ from .api.handlers_config import handle_config
 from .api.handlers_health import handle_health
 from .api.handlers_misure import handle_misure
 from .api.handlers_models import (
-    bridge_deadline_min,
     handle_get_models_config,
     handle_list_models,
     handle_save_models_config,
@@ -112,6 +111,7 @@ from .mind.seed import (
 )
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
+from .models_store import bridge_deadline_min
 from .panel_visibility import parse_access_flag
 from .provider_occurrences import OccurrenceRegistry
 from .providers import (
@@ -3223,7 +3223,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # L'archivio dei modelli si legge prima di costruire `LLMRouter`, piu' sotto:
     # la catena si compone da `chain_order`.
-    from .api.handlers_models import load_models_config
+    from .models_store import load_models_config
     # Qui c'era la semina delle opzioni dell'add-on (`options_migration.seed`):
     # copiava nell'archivio, una volta sola, sette valori che arrivavano
     # dall'ambiente. Dalla 3.0.0 `run.sh` non li esporta piu', e sulla casa la

@@ -165,7 +165,7 @@ def test_ricette_analista_attuatore_e_promessa_portano_il_modello(tmp_path):
 def test_il_modello_del_ponte_si_legge_in_UN_posto():
     """Il predefinito vive in `_STORE_DEFAULTS`: chi legge il campo non ne
     scrive un secondo."""
-    from hiris.app.api.handlers_models import _STORE_DEFAULTS
+    from hiris.app.models_store import _STORE_DEFAULTS
 
     assert steering.bridge_model({}) == _STORE_DEFAULTS["ponte"]["modello"]
     assert steering.bridge_model(

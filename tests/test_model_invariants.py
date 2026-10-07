@@ -243,12 +243,12 @@ def test_l_insieme_che_il_validatore_accetta_e_quello_che_la_pagina_offre():
     quello che dice -- la stessa cosa che il test qui sopra difende, un piano
     piu' sotto: li' era il pannello contro la CLI, qui il pannello contro il
     posto in cui la scelta si ferma."""
-    from hiris.app.api import handlers_models
+    from hiris.app import models_store
     from hiris.app.model_resolution import SUBSCRIPTION_ALIAS
 
     offerti = [v for v, _ in SUBSCRIPTION_ALIAS]
     for alias in offerti:
-        assert handlers_models._clean_bridge({"modello": alias})["modello"] == alias, (
+        assert models_store._clean_bridge({"modello": alias})["modello"] == alias, (
             f"il pannello offre {alias!r} e il salvataggio non lo tiene"
         )
     assert sorted(offerti) == ["haiku", "opus", "sonnet"]

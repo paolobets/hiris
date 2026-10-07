@@ -275,7 +275,7 @@ async def test_ollama_senza_modello_non_entra_in_catena_per_migrazione(tmp_path)
 
 @pytest.mark.asyncio
 async def test_una_catena_gia_scelta_sopravvive_all_avvio(tmp_path):
-    from hiris.app.api.handlers_models import save_models_config
+    from hiris.app.models_store import save_models_config
 
     save_models_config(str(tmp_path), {"chain_order": ["ollama"]})
     models_config = await _start_seeding_the_chain(
@@ -305,7 +305,7 @@ async def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_sv
       il difetto fa cadere questo test») non era piu' vera;
     - la stessa, con anche la guardia di `seed_chain` resa `if False:` --
       rossa (`['claude', 'openrouter'] == []`)."""
-    from hiris.app.api.handlers_models import save_models_config
+    from hiris.app.models_store import save_models_config
 
     primo = await _start_seeding_the_chain(
         tmp_path, CREDENZIALI_DEL_PROPRIETARIO)

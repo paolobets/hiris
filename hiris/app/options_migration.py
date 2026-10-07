@@ -175,7 +175,7 @@ def _chain_as_it_was(credentials: dict) -> list[str]:
 
 def seed_at_startup(app, data_dir: str, _credentials: dict) -> None:
     """Le due semine dell'avvio, nell'ordine: la catena, poi il modello del piano."""
-    from .api.handlers_models import load_models_config, save_models_config
+    from .models_store import load_models_config, save_models_config
 
     # ── La catena iniziale di un archivio che non ce l'ha ────────────────
     # Nata come seconda meta' della migrazione: la catena che HIRIS stava

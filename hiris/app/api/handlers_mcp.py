@@ -94,13 +94,13 @@ from aiohttp import web
 from ..claude_runner import pesa_in_caratteri
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
+from ..models_store import bridge_deadline_min
 from ..providers import SUBSCRIPTION
 from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
 from ..version import read_version
 from .boundary import error_response
 from .handlers_chat import create_tool_dispatcher, last_phrase
-from .handlers_models import bridge_deadline_min
 from .soffitto import ceiling_for, nothing_granted
 
 logger = logging.getLogger(__name__)

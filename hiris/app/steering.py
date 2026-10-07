@@ -49,7 +49,7 @@ from dataclasses import dataclass as _dataclass
 from dataclasses import field as _field
 from typing import NamedTuple as _NamedTuple
 
-from .api.handlers_models import _STORE_DEFAULTS, bridge_deadline_min
+from .models_store import _STORE_DEFAULTS, bridge_deadline_min
 from .providers import subscription_has_token
 from .reasoning.queue import PRIORITY_BACKGROUND, PRIORITY_CHAT
 
