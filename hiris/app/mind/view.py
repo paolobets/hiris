@@ -30,6 +30,7 @@ from ..home_space import historian
 from ..home_space.house import House
 from ..home_space.log_source import integration_of
 from ..home_space.topology import read_mirror
+from . import proposer_turn
 from .analyst import observation_key
 from .report import NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
 
@@ -226,7 +227,7 @@ class MindView:
         e quella del 15/09/2026 e' nata prima che i nomi dei dispositivi
         arrivassero: porta `nome: null`, e riscriverla costerebbe 35.000 token
         per cambiare un'etichetta. Accanto a ogni osservazione, l'esito
-        dell'attuatore (`_with_outcomes`)."""
+        del proponente (`_with_outcomes`)."""
         found = self.store.analysis(day)
         if found is None:
             return None
@@ -316,18 +317,24 @@ def _named(names: dict, lines) -> list:
 
 
 def _with_outcomes(analysis: dict) -> dict:
-    """L'analisi con **l'esito dell'attuatore accanto alla sua osservazione**.
+    """L'analisi con **l'esito del proponente accanto alla sua osservazione**.
 
     Gli esiti sono la risposta alle domande dell'analista, e si leggono dove
-    la domanda sta. La regola dell'impronta e' dell'attuatore
+    la domanda sta. La regola dell'impronta e' del proponente
     (`analyst.observation_key`): rifarla in JavaScript sarebbe il secondo
-    posto in cui si decide chi risponde a chi.
+    posto in cui si decide chi risponde a chi. Il lettore e' lo stesso del
+    proponente (`proposer_turn.outcomes_of`): fino al 07/10/2026 qui se ne
+    leggeva un altro, sulla chiave del vecchio attuatore, e gli esiti del
+    proponente non arrivavano mai alla pagina.
 
-    **Chi non ha un esito non ne guadagna uno vuoto**: il silenzio
-    dell'attuatore e' un fatto, e un `{}` somiglierebbe a una risposta."""
-    actuation = analysis.get("attuazione") or {}
-    by_key = {o.get("impronta"): o for o in actuation.get("esiti") or []
+    L'elenco grezzo non esce accanto agli esiti attaccati: sarebbe la stessa
+    cosa in due posti della stessa risposta.
+
+    **Chi non ha un esito non ne guadagna uno vuoto**: un `{}` somiglierebbe
+    a una risposta."""
+    by_key = {o.get("impronta"): o for o in proposer_turn.outcomes_of(analysis)
               if o.get("impronta")}
+    analysis = {k: v for k, v in analysis.items() if k != proposer_turn.OUTCOMES_KEY}
     if not by_key:
         return analysis
     seen = []

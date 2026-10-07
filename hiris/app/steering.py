@@ -107,10 +107,10 @@ from .claude_runner import togli_misura as _togli_misura
 #:
 #: **Non e' `agent_type`**, e la differenza morde. `agent_type` risponde a
 #: «quale modello scelgo» (`AUTO_MODEL_MAP`); questa risponde a «chi sta
-#: chiedendo». `mind/observer.py` e `mind/recipe_turn.py` passano tutti e due
-#: `agent_type="observer"`, quindi misurando su quello l'osservatore e le
-#: ricette sarebbero indistinguibili -- proprio la distinzione che il
-#: proprietario vuole vedere.
+#: chiedendo». Fino al 07/10/2026 `mind/observer.py` e `mind/recipe_turn.py`
+#: passavano tutti e due `agent_type="observer"`, quindi misurando su quello
+#: l'osservatore e le ricette sarebbero stati indistinguibili -- proprio la
+#: distinzione che il proprietario vuole vedere.
 #:
 #: **La specie dell'attuatore ha un nome, e si importa** (C-28, Tappa 4 dello
 #: sprint «Una fonte sola di verita'»): fino al 05/10/2026 «attuatore» era

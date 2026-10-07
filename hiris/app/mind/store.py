@@ -726,11 +726,96 @@ def _migration_13(conn) -> None:
             conn.execute(f"ALTER TABLE proposte ADD COLUMN {column} TEXT")
 
 
+#: La chiave sotto cui il vecchio attuatore scriveva i suoi esiti dentro
+#: l'analisi, e i suoi tre gesti. Sono nomi RITIRATI (attori, strato 4, Task
+#: 4.6): non esiste una fonte da interrogare, l'elenco e' il fatto, e serve
+#: solo a `_migration_14` per leggere le righe di allora.
+_RETIRED_KEY = "attuazione"
+_RETIRED_INQUIRY = "indagine"
+_RETIRED_REPAIR = "riparazione"
+_RETIRED_PROPOSAL = "proposta"
+
+
+def _retired_outcome(conn, outcome, written_ts: float) -> dict | None:
+    """Un esito del vecchio attuatore nella forma del proponente, o `None`
+    se non si lega a niente (`_migration_14`)."""
+    from . import proposer_turn
+
+    if not isinstance(outcome, dict) or not outcome.get("impronta"):
+        return None
+    key = outcome["impronta"]
+    gesture = outcome.get("gesto")
+    if gesture in (_RETIRED_INQUIRY, _RETIRED_REPAIR):
+        why = str(outcome.get("trovato") or "").strip()
+        return {"impronta": key, "esito": proposer_turn.NOTHING,
+                "perche": why} if why else None
+    if gesture != _RETIRED_PROPOSAL:
+        return None
+    if outcome.get("costruibile"):
+        return {"impronta": key, "esito": proposer_turn.BUILT}
+    row = conn.execute(
+        "SELECT id FROM proposte WHERE impronta = ? AND creata_ts <= ? "
+        "ORDER BY creata_ts DESC, rowid DESC LIMIT 1", (key, written_ts)).fetchone()
+    found = {"proposta_id": row["id"]} if row is not None else {}
+    return {"impronta": key, "esito": proposer_turn.BY_HAND, **found}
+
+
+def _migration_14(conn) -> None:
+    """v13 -> v14 (attori, strato 4, Task 4.6): gli esiti del vecchio
+    attuatore, archiviati dentro l'analisi sotto `attuazione`, passano alla
+    chiave del proponente (`proposer_turn.OUTCOMES_KEY`), nella sua forma.
+
+    Fino al 06/10/2026 le due chiavi convivevano: la pagina leggeva la
+    vecchia, il proponente scriveva la nuova, e i suoi esiti non arrivavano
+    mai alla pagina. Due chiavi vorrebbero due lettori (fondamenta 2): si
+    portano le righe a una, e il lettore resta uno (`outcomes_of`).
+
+    - un'**indagine** e una **riparazione** non proponevano niente: «niente»,
+      col perche' che l'attuatore aveva scritto (dal 05/10/2026 l'indagine e'
+      dell'analista e la riparazione del giro delle ricette);
+    - una **proposta da fare a mano** cita la riga di `proposte` con la stessa
+      impronta nata prima che l'analisi fosse scritta: il giro di allora la
+      metteva li', o ne trovava gia' una;
+    - una **proposta costruibile** e' «costruita» senza id: l'id della
+      costruzione allora non si scriveva, e non si inventa;
+    - un esito senza impronta non si legava a nessuna osservazione e la pagina
+      non lo mostrava: non si porta.
+
+    Per un'impronta che ha gia' un esito del proponente vale il suo: e' il
+    piu' recente. **Solo le analisi con `attuazione` si riscrivono.**
+    """
+    from . import proposer_turn
+
+    rows = conn.execute(
+        "SELECT giorno, corpo_json, scritto_ts FROM analisi").fetchall()
+    for row in rows:
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(body, dict) or _RETIRED_KEY not in body:
+            continue
+        retired = body.pop(_RETIRED_KEY)
+        retired = retired.get("esiti") or [] if isinstance(retired, dict) else []
+        beside = proposer_turn.outcomes_of(body)
+        answered = {o.get("impronta") for o in beside}
+        for outcome in retired:
+            moved = _retired_outcome(conn, outcome, row["scritto_ts"])
+            if moved is not None and moved["impronta"] not in answered:
+                beside.append(moved)
+                answered.add(moved["impronta"])
+        body[proposer_turn.OUTCOMES_KEY] = beside
+        conn.execute("UPDATE analisi SET corpo_json = ? WHERE giorno = ?",
+                     (json.dumps(body, ensure_ascii=False), row["giorno"]))
+        logger.info("analisi di %s: esiti dell'attuatore portati al proponente",
+                    row["giorno"])
+
+
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -791,7 +876,8 @@ class ObservationsStore:
                                 7: _migration_7, 8: _migration_8,
                                 9: _migration_9,
                                 10: _migration_10, 11: _migration_11,
-                                12: _migration_12, 13: _migration_13})
+                                12: _migration_12, 13: _migration_13,
+                                14: _migration_14})
 
     def close(self) -> None:
         with self._lock:

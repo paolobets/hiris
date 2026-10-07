@@ -9,7 +9,8 @@ una cosa entra nel loro perimetro. **Non da' autonomia a nessuno**: «il
 cervello non tocca la casa senza un si'» resta vero a ogni livello.
 
 **Chi lo assegna.** `alto` lo impone il codice, quando la proposta agisce su
-un dominio di `HIGH_STAKES_DOMAINS`; gli altri tre li sceglie il modello, che
+un dominio di `HIGH_STAKES_DOMAINS` o chiama un servizio scritto come modello
+(scelta del proprietario del 07/10/2026, `impose`); gli altri tre li sceglie il modello, che
 non puo' abbassare un `alto` ne' scriverlo da se'. Un modello che sbaglia
 potrebbe mettere `lieve` su una serratura: e' la ragione per cui quella parte
 non e' sua.
@@ -142,7 +143,8 @@ def stakes_refusal(chosen) -> str | None:
     if chosen == HIGH:
         return (f"«livello» accetta {', '.join(CHOSEN_BY_MODEL)}: «{HIGH}» lo "
                 "mette il codice, da solo, quando la proposta agisce su "
-                + ", ".join(HIGH_STAKES_DOMAINS) + ".")
+                + ", ".join(HIGH_STAKES_DOMAINS)
+                + " o chiama un servizio scritto come modello.")
     return f"«livello» accetta solo {', '.join(CHOSEN_BY_MODEL)}, non {chosen!r}."
 
 

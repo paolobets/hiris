@@ -1081,3 +1081,24 @@ async def test_sulla_CATENA_la_frase_del_router_non_scrive_un_non_capito(sapere)
     assert router.last_unanswered is True
     assert esito["scritta"] is False
     assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+
+
+@pytest.mark.asyncio
+async def test_le_ricette_si_dichiarano_RICETTE_non_osservatore(sapere):
+    """Le ricette sono una specie loro (piano degli attori, strati 3-4, Task
+    4.6): fino al 07/10/2026 il giro passava `agent_type="observer"`, il nome
+    di un altro attore. La scelta del modello non cambia -- nessuna delle due
+    parole sta in `AUTO_MODEL_MAP` -- cambia chi si dichiara.
+
+    Mutazione ESEGUITA: rimettere `agent_type="observer"` -- rossa."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.steering import RECIPES_SPECIES
+
+    runner = MagicMock()
+    runner.chat = AsyncMock(return_value="[]")
+
+    await rt.ask(runner, sapere, _casa_viva(), "dev1", objective="risparmiare",
+                 who="prova", when_ts=1_758_000_000.0, with_series=SERIE_VIVE)
+
+    assert runner.chat.await_args.kwargs["agent_type"] == RECIPES_SPECIES

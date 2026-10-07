@@ -487,10 +487,10 @@ async def reconsider(runner, store, house: House, *, reason: str,
         # e basta, e un posizionale ci morirebbe sopra al primo giro in
         # produzione senza che nessuna finta lo veda.
         # **La specie si DICHIARA, non si deduce da `agent_type`.** Quello
-        # qui sopra vale «observer» e risponde a «quale modello scelgo»; lo
-        # passa anche `recipe_turn`, quindi misurare su di lui renderebbe
-        # l'osservatore e le ricette indistinguibili -- proprio la
-        # distinzione per cui il registro esiste.
+        # qui sotto vale «observer» e risponde a «quale modello scelgo»; fino
+        # al 07/10/2026 lo passava anche `recipe_turn`, e misurare su di lui
+        # avrebbe reso l'osservatore e le ricette indistinguibili -- proprio
+        # la distinzione per cui il registro esiste.
         #
         # `misure` e' `None` quando nessuno misura (il caso dei test e di un
         # chiamante che non ha l'archivio): la misura non e' un requisito per

@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS fallback (
 -- chiedendo, e da quale sistema. Oggi la chat e' una sola; il giorno in cui
 -- HIRIS riceve input da chat diverse per utente e per sistema (Retro Panel,
 -- per dire), `species='chat'` le schiaccerebbe insieme -- lo stesso difetto
--- di `agent_type='observer'` che schiaccia osservatore e ricette. Una
+-- di `agent_type='observer'` che schiacciava osservatore e ricette. Una
 -- colonna sola per tutte e quattro le specie di soggetto, come per la
 -- cronaca: `NULL` quando non c'e' nessuna persona, che e' il fatto giusto
 -- per i giri notturni.

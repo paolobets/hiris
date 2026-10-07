@@ -35,39 +35,33 @@ window.HirisWatcherCosaFare = (function () {
     3: 'non c’è più',
   };
 
-  /* Cosa l'attuatore ha fatto di questa osservazione (spec 2026-09-21 §2).
+  /* Cosa il proponente ha fatto di questa osservazione (attori, strato 4,
+     Task 4.6).
 
-     **L'esito arriva gia' attaccato dalla rotta**: e' il server a sapere quale
-     esito risponde a quale domanda (la regola dell'impronta), e rifarla qui
-     sarebbe il secondo posto in cui si decide chi risponde a chi.
+     **L'esito arriva gia' attaccato dalla rotta** (`mind/view._with_outcomes`):
+     e' il server a sapere quale esito risponde a quale domanda (la regola
+     dell'impronta), e rifarla qui sarebbe il secondo posto in cui si decide
+     chi risponde a chi.
 
-     Tre frasi per tre gesti, e una quarta per il silenzio -- che si dice solo
-     se l'attuatore ha davvero guardato: prima che giri, la sua assenza non e'
-     un silenzio, e' che non ha ancora guardato. */
-  var ATTUATORE_LABEL = {
-    indagine: 'Ho guardato: ',
-    proposta: 'Propongo: ',
-    riparazione: 'Ho riparato: '
+     Tre esiti, tre frasi. Le proposte vivono nel loro archivio: qui c'e' il
+     rimando, non la copia. Solo «niente» porta un testo, il suo perche', che
+     non vive altrove. Senza esito non si dice niente: il proponente non ha
+     ancora risposto, e il giro dopo la richiede. */
+  var PROPONENTE_FRASE = {
+    costruita: 'Ho proposto una modifica che HIRIS può fare: la trovi in Proposte.',
+    a_mano: 'Ho proposto una cosa da fare a mano: la trovi in Proposte.',
+    niente: 'Ho guardato e non c’è niente da proporre: '
   };
 
-  function rigaAttuatore(riga, o, attuata) {
+  function rigaProponente(riga, o) {
     var esito = o && o.esito;
-    if (!esito) {
-      if (attuata) {
-        riga.appendChild(el('div', 'field-hint',
-          'Ho guardato e non so cosa proporre per questa.'));
-      }
-      return;
-    }
-    /* Una riparazione non riuscita **non si racconta come riuscita**: la
-       frase la decide `riscritta`, non il gesto. */
-    var etichetta = ATTUATORE_LABEL[esito.gesto] || '';
-    if (esito.gesto === 'riparazione' && esito.riscritta !== true) etichetta = '';
-    riga.appendChild(el('div', 'sc-row-why', etichetta + (esito.trovato || '')));
+    var frase = esito && PROPONENTE_FRASE[esito.esito];
+    if (!frase) return;
+    if (esito.esito === 'niente') frase += (esito.perche || '');
+    riga.appendChild(el('div', 'sc-row-why', frase));
   }
 
   function renderAnalysis(body, analysis) {
-    var attuata = !!(analysis && analysis.attuazione);
     var seen = (analysis && analysis.osservazioni) || [];
     if (!seen.length) {
       /* **Il silenzio e' un esito legittimo** (spec §10), e va detto: «ho
@@ -115,7 +109,7 @@ window.HirisWatcherCosaFare = (function () {
       if (o.spiegato) coda.push('È spiegato: ' + o.spiegato + '.');
       if (o.cosa_cambierebbe) coda.push('Cosa cambierebbe: ' + o.cosa_cambierebbe);
       if (coda.length) riga.appendChild(el('div', 'sc-row-why', coda.join(' ')));
-      rigaAttuatore(riga, o, attuata);
+      rigaProponente(riga, o);
       body.appendChild(riga);
     });
   }
