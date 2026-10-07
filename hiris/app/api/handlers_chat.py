@@ -219,13 +219,22 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     turno del ponte che non e' di chat, l'officina non restringe PER FILO
     (vedi `Workshop.apply`): il soffitto (chi puo' costruire) resta invariato
     e continua a mordere.
+
+    **`soffitto` e' obbligatorio** (decisione 13, Tappa 7, Task 7): quello di
+    chi ha aperto il turno -- la persona di una chat, chi ha chiesto una
+    promessa -- o quello dichiarato dal mestiere di sfondo
+    (`steering.Species.ceiling`). Fino al 07/10/2026 un turno di sfondo lo
+    lasciava `None`, e `None` non negava niente: adesso e' un errore.
     """
+    if soffitto is None:
+        raise ValueError("create_tool_dispatcher: nessun soffitto. Un turno porta "
+                         "quello di chi l'ha aperto o quello del suo mestiere "
+                         "(steering.Species.ceiling), mai nessuno")
     return ToolDispatcher(
         app.get("home_space_store"),
         app.get("memory_store"),
-        # Il soffitto di chi ha aperto il turno (I-1): `None` quando non c'e'
-        # nessuna persona che l'ha aperto (schedulatore, promessa, un turno
-        # del ponte che non porta `X-HIRIS-Chat`).
+        # Il soffitto di chi ha aperto il turno (I-1), o quello dichiarato dal
+        # suo mestiere (decisione 13): mai `None`, vedi sopra.
         soffitto=soffitto,
         subject=soggetto,
         # **La frase di QUESTO turno** (B-5), quella su cui una conferma

@@ -213,17 +213,27 @@ async def test_un_X_HIRIS_Chat_non_valido_non_fa_girare_nessuno_strumento(
 
 
 @pytest.mark.asyncio
-async def test_senza_intestazione_resta_il_comportamento_di_prima(
+async def test_senza_intestazione_il_turno_non_ha_NESSUN_gesto(
         rotta, dispatcher_visti, caplog):
-    """Promesse e osservatore non la portano: non e' un'anomalia, e il turno
-    va com'e' sempre andato -- nessun soffitto, nessun soggetto."""
+    """Un turno che non dice chi e' -- ne' chat, ne' promessa, ne' lavoro di
+    un mestiere -- non costruisce: il suo soffitto non concede nessun gesto
+    (decisione 13, Tappa 7, Task 7). Fino al 07/10/2026 riceveva il soffitto
+    `None`, che non negava niente, e la conferma passava.
+
+    Mutazione ESEGUITA (07/10/2026): il terzo ramo di
+    `handlers_mcp._build_dispatcher` con un soffitto che concede tutto (il
+    «tutto» che `None` era) -- rossa: la conferma passa e la casa salva."""
+    from hiris.app.api.soffitto import GESTI
+
     client, _coda, _archivio, casa_ha = rotta
     proposta = await _proposta(client)
     with caplog.at_level(logging.WARNING, logger=handlers_mcp.__name__):
         esito = await _confirm(client, proposta)
-    assert esito.get("applicata"), esito
-    assert casa_ha.salvate
-    assert dispatcher_visti[-1].get("soffitto") is None
+    assert not esito.get("applicata"), esito
+    assert "non concedo nessun gesto" in esito.get("errore", ""), esito
+    assert casa_ha.salvate == []
+    soffitto = dispatcher_visti[-1].get("soffitto")
+    assert soffitto is not None and not any(soffitto[g] for g in GESTI), soffitto
     assert dispatcher_visti[-1].get("soggetto") is None
     assert "X-HIRIS-Chat" not in caplog.text
 

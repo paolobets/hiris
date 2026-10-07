@@ -118,7 +118,7 @@ from casa_finta import NOWHERE, CasaFinta
 
 from hiris.app import claude_runner, server
 from hiris.app.agent import prompts as bridge_prompts
-from hiris.app.api import handlers_chat, handlers_home_space
+from hiris.app.api import handlers_chat, handlers_home_space, soffitto
 from hiris.app.home_space import briefing, house_query, queries, topology
 from hiris.app.home_space.house import House
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
@@ -473,7 +473,11 @@ async def _ports(app, clock: float) -> dict:
     home_space, entries = store.read(), store.behavior()
     mirror = topology.live_mirror(cache.all_states())
     text, summary = handlers_home_space.compose_briefing(app)
-    dispatcher = handlers_chat.create_tool_dispatcher(app)
+    # Lo scatto guarda ogni strumento, quindi col soffitto che non nega
+    # niente: quello di chi amministra (il costruttore non accetta `None` dal
+    # 07/10/2026, decisione 13).
+    dispatcher = handlers_chat.create_tool_dispatcher(
+        app, soffitto=soffitto.consente(None, ruolo="amministratore"))
     answers = {}
     for label, (name, arguments) in _tool_calls(home_space).items():
         answers[label] = await dispatcher.dispatch(name, arguments)

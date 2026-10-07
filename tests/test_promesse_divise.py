@@ -341,7 +341,7 @@ async def test_chi_non_ha_una_strada_se_lo_sente_dire_alla_nascita(archivio):
 async def test_un_fai_senza_il_permesso_di_comandare_non_nasce(archivio):
     """2.7 (ruling): il soffitto di chi chiede vale anche per l'azione
     rimandata -- stesso `perche`. Un `chiedi` resta permesso."""
-    soffitto = {"leggere": True, "comandare": False, "costruire": False,
+    soffitto = {"leggere": True, "comandare": False, "amministrare": False,
                 "ruolo": "lettore", "perche": "questa utenza legge e basta"}
     d = _dispatcher(archivio, MARTA, MARTA_SOGGETTO, soffitto=soffitto)
 

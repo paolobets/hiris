@@ -24,6 +24,7 @@ from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.handlers_mind import handle_analysis, handle_report, handle_watching
+from hiris.app.api.soffitto import consente
 from hiris.app.home_space import energy
 from hiris.app.home_space.tools import (
     KNOWLEDGE_TOOLS,
@@ -32,6 +33,10 @@ from hiris.app.home_space.tools import (
     ToolDispatcher,
 )
 from hiris.app.mind.store import ObservationsStore
+
+#: Il soffitto che il costruttore pretende (decisione 13, Tappa 7, Task 7):
+#: qui si prova altro, non il permesso.
+_AMMINISTRATORE = consente(None, ruolo="amministratore")
 from tests.test_home_space_energy import PREFS, _Cache, _house, _store
 
 DAY = "2026-10-04"
@@ -99,7 +104,7 @@ async def test_lo_strumento_e_la_rotta_dicono_la_stessa_cosa(tmp_path, what):
     solo nella rotta (`{**scope, "extra": 1}`) -- rossa su `scope`, col campo
     nel confronto. Ripristinata, `git status` pulito."""
     app = _app(tmp_path)
-    dispatcher = create_tool_dispatcher(app)
+    dispatcher = create_tool_dispatcher(app, soffitto=_AMMINISTRATORE)
     days = [None, DAY] if MIND_READINGS[what].by_day else [None]
     for day in days:
         arguments = {"cosa": what} | ({"giorno": day} if day else {})
@@ -135,7 +140,7 @@ async def test_un_giorno_mai_aggregato_si_dice_come_lo_dice_la_rotta(tmp_path):
     la rotta risponde 404 con l'ora in cui il resoconto si scrivera', lo
     strumento un `errore` con la stessa ora."""
     app = _app(tmp_path)
-    dispatcher = create_tool_dispatcher(app)
+    dispatcher = create_tool_dispatcher(app, soffitto=_AMMINISTRATORE)
     answer = await dispatcher.dispatch("mind", {"cosa": "resoconti", "giorno": "2026-01-01"})
     page = await handle_report(_Richiesta(app, {"day": "2026-01-01"}))
     assert page.status == 404
@@ -153,14 +158,14 @@ async def test_giorno_con_una_lettura_che_non_ha_giorni_si_rifiuta(tmp_path):
 
     Mutazione ESEGUITA il 06/10/2026: tolto il controllo di `by_day` dal
     gestore -- `scope` con un giorno rispondeva lo scope, rossa."""
-    dispatcher = create_tool_dispatcher(_app(tmp_path))
+    dispatcher = create_tool_dispatcher(_app(tmp_path), soffitto=_AMMINISTRATORE)
     answer = await dispatcher.dispatch("mind", {"cosa": "scope", "giorno": DAY})
     assert answer == {"errore": "«giorno» vale solo per analisi, resoconti, non per «scope»."}
 
 
 @pytest.mark.asyncio
 async def test_una_cosa_fuori_vocabolario_si_rifiuta_col_vocabolario(tmp_path):
-    dispatcher = create_tool_dispatcher(_app(tmp_path))
+    dispatcher = create_tool_dispatcher(_app(tmp_path), soffitto=_AMMINISTRATORE)
     answer = await dispatcher.dispatch("mind", {"cosa": "ricordi"})
     assert "errore" in answer
     assert all(what in answer["errore"] for what in MIND_READINGS), answer
@@ -172,12 +177,14 @@ async def test_senza_osservatore_e_senza_letture_si_dice_cosa_manca(tmp_path):
     lo strumento un `errore` che lo dice."""
     app = _app(tmp_path)
     app.pop("watcher")
-    answer = await create_tool_dispatcher(app).dispatch("mind", {"cosa": "scope"})
+    answer = await create_tool_dispatcher(app, soffitto=_AMMINISTRATORE).dispatch(
+        "mind", {"cosa": "scope"})
     assert "osservatore non e' disponibile" in answer["errore"]
     assert (await handle_watching(_Richiesta(app))).status == 503
 
     app.pop("observations")
-    answer = await create_tool_dispatcher(app).dispatch("mind", {"cosa": "resoconti"})
+    answer = await create_tool_dispatcher(app, soffitto=_AMMINISTRATORE).dispatch(
+        "mind", {"cosa": "resoconti"})
     assert "archivio del cervello" in answer["errore"]
 
     bare = ToolDispatcher(None, None)

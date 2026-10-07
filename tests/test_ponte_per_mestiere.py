@@ -59,7 +59,8 @@ def mestiere(monkeypatch):
 
     monkeypatch.setitem(steering.SPECIES, steering.ANALYST_SPECIES, steering.Species(
         steering.ANALYST_SPECIES, "analisi", lambda: [_CERCA, _CONTA],
-        PRIORITY_BACKGROUND, guard=_guard))
+        PRIORITY_BACKGROUND, guard=_guard,
+        gestures=steering.SPECIES[steering.ANALYST_SPECIES].gestures))
     # La vista dei mestieri autosufficienti si deriva all'import: qui la si
     # rideriva dalla dichiarazione di prova.
     monkeypatch.setattr(ponte, "_SELF_CONTAINED_KINDS", tuple(

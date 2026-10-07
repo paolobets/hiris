@@ -70,6 +70,27 @@ def nothing_granted(perche: str) -> dict:
     risveglio lo chiedono qui."""
     return {**{gesto: False for gesto in GESTI}, "ruolo": None, "perche": perche}
 
+#: Il `perche` del soffitto di un attore di sfondo (decisione 13 della spec
+#: 2026-10-01, Tappa 7, Task 7): cio' che gli manca e' sempre `comandare`.
+_ACTOR = ("un attore di sfondo non comanda la casa: guarda, spiega e propone, "
+          "e cio' che propone aspetta il sì di chi amministra")
+
+
+def declared_ceiling(gestures) -> dict:
+    """Il soffitto **dichiarato** di un mestiere di sfondo
+    (`steering.Species.gestures`): nessuna persona l'ha aperto, quindi non
+    c'e' un ruolo da leggere -- c'e' la dichiarazione, e il soffitto la
+    traduce nella forma di tutti gli altri. Fino al 07/10/2026 quei turni
+    avevano soffitto `None`, che non negava niente (decisione 13).
+
+    Un gesto che non e' in `GESTI` e' un errore di chi dichiara, non un
+    permesso in piu' ne' in meno: solleva."""
+    gestures = frozenset(gestures)
+    if not gestures <= set(GESTI):
+        raise ValueError(f"gesti sconosciuti: {sorted(gestures - set(GESTI))}")
+    return {**{gesto: gesto in gestures for gesto in GESTI}, "ruolo": None,
+            "perche": None if gestures == set(GESTI) else f"{_ACTOR}."}
+
 #: Quanto il cancello al confine tiene per buono un guasto nella lettura dei
 #: ruoli (spec 2026-09-27, ruling R-2.8/2.9). Il cancello gira su ogni
 #: richiesta dell'ingress, asset compresi: senza questo freno un Home
@@ -346,9 +367,12 @@ def denies(ceiling: dict | None, gesture: str, subject: dict | None) -> bool:
     e `can_build` leggevano `ceiling["costruire"]` nudo, e differivano da qui
     in un caso solo: lo sviluppo con l'interruttore acceso.
 
-    `None` (nessuna persona ha aperto il turno: l'osservatore, lo
-    schedulatore) non nega niente -- il perimetro delle macchine e'
-    l'invariante dei canali esterni. **Lo sviluppo non si restringe per
+    `None` non arriva dal prodotto: l'unico costruttore del dispatcher
+    (`handlers_chat.create_tool_dispatcher`) lo rifiuta dal 07/10/2026, e
+    ogni turno porta un soffitto -- quello di chi l'ha aperto, o quello
+    dichiarato dal suo mestiere (`declared_ceiling`, decisione 13). Lo
+    ricevono soltanto le prove che costruiscono `ToolDispatcher` a mano.
+    **Lo sviluppo non si restringe per
     ruolo** (fix round 1, I3): con `HIRIS_ALLOW_NO_TOKEN` l'autenticazione e'
     spenta per definizione, e restringerlo darebbe solo un prodotto diverso da
     provare.

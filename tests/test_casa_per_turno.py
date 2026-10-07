@@ -67,9 +67,14 @@ import fotografia_porte
 
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.handlers_home_space import compose_briefing, house_of
+from hiris.app.api.soffitto import consente
 from hiris.app.home_space import topology
 from hiris.app.home_space.house import House
 from hiris.app.home_space.tools import ToolDispatcher
+
+#: Il soffitto che il costruttore pretende (decisione 13, Tappa 7, Task 7):
+#: qui si prova altro, non il permesso.
+_AMMINISTRATORE = consente(None, ruolo="amministratore")
 from tests._casa_sintetica import INSTANT, synthetic_inputs
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -136,7 +141,7 @@ async def _chat_turn(app) -> list[dict]:
     strumenti, come `handlers_chat.handle_chat`."""
     house = house_of(app)
     compose_briefing(app, house)
-    dispatcher = create_tool_dispatcher(app, house=house)
+    dispatcher = create_tool_dispatcher(app, house=house, soffitto=_AMMINISTRATORE)
     return [
         await dispatcher.dispatch("search", {"nome": "Sensore"}),
         await dispatcher.dispatch("search", {"genere": "area", "riferimento": "stanza_uno"}),

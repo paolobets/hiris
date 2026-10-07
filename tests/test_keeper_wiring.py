@@ -28,6 +28,7 @@ from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_chat import create_tool_dispatcher
+from hiris.app.api.soffitto import consente
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
@@ -246,7 +247,7 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
     promesse_sentinella = object()
     app = {"service_registry": registro_sentinella, "agenda": promesse_sentinella}
 
-    dispatcher = create_tool_dispatcher(app)
+    dispatcher = create_tool_dispatcher(app, soffitto=consente(None, ruolo="amministratore"))
 
     assert dispatcher._registry is registro_sentinella
     assert dispatcher._agenda is promesse_sentinella

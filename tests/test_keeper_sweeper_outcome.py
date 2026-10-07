@@ -119,7 +119,7 @@ class SoffittoFinto:
     def __init__(self, comandare=True, perche=None):
         self.soggetti = []
         self._esito = {"leggere": True, "comandare": comandare,
-                       "costruire": False, "ruolo": "utente", "perche": perche}
+                       "amministrare": False, "ruolo": "utente", "perche": perche}
 
     async def __call__(self, subject):
         self.soggetti.append(subject)

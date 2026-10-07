@@ -1371,13 +1371,11 @@ class ToolDispatcher:
         # un accesso al disco per riga.
         self._remembered_seal = None
         self._memory = memory_store
-        # Il soffitto di chi ha aperto questo turno (invariante I-1). `None`
-        # vuol dire che nessuna persona ha aperto il turno -- lo
-        # schedulatore, una promessa che si sveglia, un turno del ponte che
-        # non e' di chat -- e li' vale il
-        # comportamento di ieri: il perimetro delle macchine e' l'invariante
-        # dei canali esterni, e stringerlo qui a meta' spegnerebbe il gateway
-        # senza che nessuno l'abbia deciso. **Dichiarato, non dedotto.**
+        # Il soffitto di questo turno (invariante I-1): quello di chi l'ha
+        # aperto, o quello dichiarato dal suo mestiere (decisione 13,
+        # `steering.Species.ceiling`). L'unico costruttore del prodotto
+        # (`create_tool_dispatcher`) rifiuta `None`; qui arriva solo dalle
+        # prove che costruiscono il dispatcher a mano.
         self._soffitto = soffitto
         # CHI ha aperto questo turno. Viaggia accanto al soffitto e non dentro:
         # il soffitto dice cosa si concede, il soggetto dice a chi -- e la

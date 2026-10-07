@@ -110,7 +110,7 @@ async def _no_owner():
 
 
 async def _ceiling_allowing(_subject):
-    return {"leggere": True, "comandare": True, "costruire": True,
+    return {"leggere": True, "comandare": True, "amministrare": True,
             "ruolo": "amministratore", "perche": None}
 
 
