@@ -654,7 +654,7 @@ async def test_l_archivio_dei_servizi_si_legge_UNA_volta_per_elenco(cliente):
     class _Servizi:
         letture = 0
 
-        def elenco(self):
+        def elenco(self, *, now_ts):
             _Servizi.letture += 1
             return [{"nome": "retropanel", "specie": "luogo", "stato": "autorizzato"}]
 

@@ -466,7 +466,7 @@ def approved_services(app) -> list[dict]:
     if services is None:
         return []
     try:
-        rows = services.elenco()
+        rows = services.elenco(now_ts=time.time())
     except Exception as exc:
         logger.warning("soffitto: archivio dei servizi non leggibile (%s)",
                        type(exc).__name__)

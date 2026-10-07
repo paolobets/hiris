@@ -24,6 +24,7 @@ Il codice si **deriva** dalla chiave pubblica e non e' casuale -- e' cosi' che i
 servizio puo' mostrarlo senza scambiare nient'altro con HIRIS.
 """
 import base64
+import sqlite3
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -95,7 +96,7 @@ def test_presentarsi_DUE_volte_non_crea_due_righe(archivio):
     archivio.presenta(nome="Retro Panel", chiave=pubblica, indirizzo="x", now_ts=100.0)
     archivio.presenta(nome="Retro Panel", chiave=pubblica, indirizzo="x", now_ts=200.0)
 
-    assert len(archivio.elenco()) == 1
+    assert len(archivio.elenco(now_ts=500.0)) == 1
 
 
 def test_approvare_da_il_RUOLO_e_la_specie(archivio):
@@ -108,7 +109,7 @@ def test_approvare_da_il_RUOLO_e_la_specie(archivio):
 
     archivio.approva(pubblica, ruolo="utente", specie="luogo", now_ts=200.0)
 
-    riga = archivio.elenco()[0]
+    riga = archivio.elenco(now_ts=500.0)[0]
     assert riga["stato"] == "autorizzato"
     assert riga["ruolo"] == "utente"
     assert riga["specie"] == "luogo"
@@ -156,7 +157,7 @@ def test_REVOCARE_toglie_l_accesso_subito(archivio):
     archivio.revoca(pubblica, now_ts=300.0)
 
     assert archivio.autorizzato(pubblica) is None
-    assert archivio.elenco()[0]["stato"] == "revocato"
+    assert archivio.elenco(now_ts=500.0)[0]["stato"] == "revocato"
 
 
 def test_un_servizio_REVOCATO_che_si_ripresenta_resta_revocato(archivio):
@@ -176,29 +177,44 @@ def test_un_servizio_REVOCATO_che_si_ripresenta_resta_revocato(archivio):
 
     archivio.presenta(nome="x", chiave=pubblica, indirizzo="x", now_ts=400.0)
 
-    assert archivio.elenco()[0]["stato"] == "revocato"
+    assert archivio.elenco(now_ts=500.0)[0]["stato"] == "revocato"
     assert archivio.autorizzato(pubblica) is None
 
 
-def test_una_presentazione_mai_guardata_SCADE(archivio):
+def test_una_presentazione_mai_guardata_SCADE(archivio, tmp_path):
     """Chiunque possa raggiungere HIRIS puo' presentarsi. Senza scadenza la
     pagina si riempie di rumore, e una pagina piena di rumore e' una pagina che
     non si guarda piu'.
 
     Le AUTORIZZATE non scadono: quelle le hai decise tu.
 
+    Dal 07/10/2026 (Tappa 7, Task 0b) la scaduta esce dal disco alla
+    presentazione successiva, non alla lettura.
+
     Mutazione ESEGUITA: potare anche le autorizzate -- rossa (un servizio vivo
     sparirebbe da solo)."""
     _, in_attesa = _coppia()
     _, viva = _coppia()
+    _, terza = _coppia()
     archivio.presenta(nome="rumore", chiave=in_attesa, indirizzo="x", now_ts=100.0)
     archivio.presenta(nome="vera", chiave=viva, indirizzo="x", now_ts=100.0)
     archivio.approva(viva, ruolo="utente", specie="luogo", now_ts=110.0)
+    dopo = 100.0 + ServiziStore.ATTESA_S + 1
 
-    quante = archivio.pota(now_ts=100.0 + ServiziStore.ATTESA_S + 1)
+    archivio.presenta(nome="nuova", chiave=terza, indirizzo="x", now_ts=dopo)
 
-    assert quante == 1
-    assert [r["nome"] for r in archivio.elenco()] == ["vera"]
+    assert _su_disco(tmp_path) == ["nuova", "vera"]
+    assert [r["nome"] for r in archivio.elenco(now_ts=dopo)] == ["nuova", "vera"]
+
+
+def _su_disco(tmp_path) -> list[str]:
+    """Le righe vere dell'archivio, lette senza passare dalla sua porta: la
+    porta salta le scadute, e qui si vuole sapere se ci sono ancora."""
+    conn = sqlite3.connect(str(tmp_path / "servizi.db"))
+    try:
+        return sorted(r[0] for r in conn.execute("SELECT nome FROM servizi"))
+    finally:
+        conn.close()
 
 
 def test_l_elenco_dice_TUTTO_quello_che_serve_a_decidere(archivio):
@@ -211,7 +227,7 @@ def test_l_elenco_dice_TUTTO_quello_che_serve_a_decidere(archivio):
     archivio.presenta(nome="Retro Panel", chiave=pubblica,
                       indirizzo="192.168.1.31", now_ts=100.0)
 
-    riga = archivio.elenco()[0]
+    riga = archivio.elenco(now_ts=500.0)[0]
     for campo in ("nome", "indirizzo", "codice", "visto_ts", "stato"):
         assert riga.get(campo) is not None, campo
 
@@ -289,3 +305,37 @@ def test_il_contenitore_della_finestra_nasce_con_l_app():
     mod.prepara_finestra(app)
 
     assert app["finestra_servizi"] == {}
+
+
+def test_una_presentazione_scaduta_non_si_LEGGE_anche_se_e_ancora_su_disco(archivio):
+    """Tappa 7, Task 0b: la potatura non vive piu' nella lettura, quindi fra la
+    scadenza e la prossima scrittura la riga sta ancora su disco. Nessuna porta
+    la deve vedere: non l'elenco, non il si', non il no.
+
+    Mutazione ESEGUITA: togliere `NOT _EXPIRED_SQL` da `elenco` -- rossa."""
+    _, scaduta = _coppia()
+    archivio.presenta(nome="scaduta", chiave=scaduta, indirizzo="x", now_ts=100.0)
+    dopo = 100.0 + ServiziStore.ATTESA_S + 1
+
+    assert archivio.elenco(now_ts=dopo) == []
+    assert archivio.approva(scaduta, ruolo="utente", specie="luogo", now_ts=dopo) is False
+    assert archivio.revoca(scaduta, now_ts=dopo) is False
+    assert archivio.autorizzato(scaduta) is None
+
+
+def test_la_potatura_avviene_alla_PRESENTAZIONE(archivio, tmp_path):
+    """L'unica scrittura che fa crescere l'archivio e' quella che lo pota:
+    senza, le presentazioni scadute resterebbero su disco per sempre, ora che
+    la lettura non le toglie piu'.
+
+    Mutazione ESEGUITA: togliere `self._prune` da `presenta` -- rossa."""
+    _, vecchia = _coppia()
+    _, nuova = _coppia()
+    archivio.presenta(nome="vecchia", chiave=vecchia, indirizzo="x", now_ts=100.0)
+    archivio.elenco(now_ts=100.0 + ServiziStore.ATTESA_S + 1)
+    assert _su_disco(tmp_path) == ["vecchia"]   # la lettura non l'ha tolta
+
+    archivio.presenta(nome="nuova", chiave=nuova, indirizzo="x",
+                      now_ts=100.0 + ServiziStore.ATTESA_S + 1)
+
+    assert _su_disco(tmp_path) == ["nuova"]
