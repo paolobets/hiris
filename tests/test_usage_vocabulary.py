@@ -80,8 +80,9 @@ def test_i_gratuiti_hanno_uno_zero_DICHIARATO(provider, model):
     assert costo == 0.0, "qui lo zero e' vero, e va detto come numero"
 
 
-def test_il_ponte_e_compreso_e_non_ha_un_costo():
-    stato, costo = cost_state_and_value("ponte", "sonnet",
+def test_il_piano_e_compreso_e_non_ha_un_costo():
+    # D9a: il piano e' `subscription` anche nei consumi (era `ponte`).
+    stato, costo = cost_state_and_value("subscription", "sonnet",
                                  cost_dichiarato=None, cost_da_listino=0.0)
     assert stato == "compreso"
     assert costo is None, (

@@ -299,9 +299,9 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
         f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CEILING}")
 
 
-# 12 dalla Tappa 7 T9 (07/10/2026): i tre vocabolari dei provider fra
-# `model_resolution`, `llm_router`, `handlers_models` e la pagina Modelli sono
+# 11 dalla Tappa 7 T9 (07/10/2026): i quattro vocabolari dei provider fra
+# `model_resolution`, `llm_router`, `handlers_models`, i consumi e le due pagine sono
 # usciti con la tabella dei provider, e le chiavi dell'archivio che la pagina
 # ricopiava coi predefiniti accanto (ora arrivano in `scrivibili`).
-KNOWN_CEILING = 12
+KNOWN_CEILING = 11
 

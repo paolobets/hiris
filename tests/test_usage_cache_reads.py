@@ -47,7 +47,8 @@ def test_le_sezioni_esistono_solo_per_i_provider_usati(archivio):
 
 def test_una_sezione_porta_i_suoi_modelli_col_primo_e_l_ultimo_uso(archivio):
     claude = archivio.sezioni()[0]
-    assert claude["etichetta"] == "API Anthropic"
+    # D10a: il nome della pagina Modelli (era «API Anthropic»).
+    assert claude["etichetta"] == "Claude API"
     assert claude["nota"].startswith("Costo calcolato")
     assert claude["costo_usd"] == 2.0
     assert claude["costo_parziale"] is False
@@ -98,7 +99,7 @@ def test_una_sezione_senza_nessun_costo_NOTO_non_afferma_zero(tmp_path):
     """
     a = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: ROMA)
     try:
-        a.log("ponte", "claude-haiku-4-5", token_in=80, token_out=9,
+        a.log("subscription", "claude-haiku-4-5", token_in=80, token_out=9,
                    cost_usd=None, cost_state="compreso", now=T21)
 
         sezione = a.sezioni()[0]
@@ -128,7 +129,7 @@ def test_il_totale_con_un_provider_a_pagamento_E_l_abbonamento_e_un_pavimento(tm
     try:
         a.log("claude", "claude-sonnet-4-6", cost_usd=2.0,
                    cost_state="misurato", now=T21)
-        a.log("ponte", "claude-haiku-4-5", cost_usd=None,
+        a.log("subscription", "claude-haiku-4-5", cost_usd=None,
                    cost_state="compreso", now=T21)
 
         totali = a.totali()

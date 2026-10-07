@@ -37,7 +37,8 @@ def test_il_ponte_registra_i_token_col_costo_COMPRESO(registro):
     }), "job-1")
 
     provider, _modello, kw = registro[0]
-    assert provider == "ponte"
+    # D9a: il provider e' `subscription` anche nei consumi (era `ponte`).
+    assert provider == "subscription"
     assert kw["token_in"] == 2100 and kw["token_out"] == 94
     assert kw["cache_read"] == 1400 and kw["cache_write"] == 210
     assert kw["cost_state"] == "compreso"

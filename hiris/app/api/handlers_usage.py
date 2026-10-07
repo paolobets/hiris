@@ -207,6 +207,12 @@ async def handle_usage(request: web.Request) -> web.Response:
             "provider": s["provider"],
             "label": s["etichetta"],
             "note": s["nota"],
+            # Con che parola si contano le chiamate (il piano conta turni), e
+            # se il costo e' compreso nel piano: la pagina li leggeva
+            # riconoscendo il provider per nome (`provider === 'ponte'`).
+            # Vengono dalla tabella dei provider (Tappa 7, Task 9).
+            "unit": s["unita"],
+            "cost_included": s["compreso"],
             "requests": s["richieste"],
             "token_in": s["token_in"],
             "token_out": s["token_out"],

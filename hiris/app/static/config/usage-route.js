@@ -38,9 +38,10 @@
     non_noto: 'Prezzo sconosciuto'
   };
 
-  /* L'ordine con cui i provider entrano nel grafico e nella legenda: fisso,
-     cosi' due case identiche disegnano la stessa figura. */
-  var Order = ['claude', 'openai', 'openrouter', 'ollama', 'ponte'];
+  /* L'ordine con cui i provider entrano nel grafico e nella legenda e' quello
+     delle sezioni, che il server manda nell'ordine fisso della tabella dei
+     provider: due case identiche disegnano la stessa figura. Fino alla Tappa 7
+     (Task 9) stava qui un ordine suo (`Order`), il quinto del prodotto. */
 
   var state = { daAncora: true, giorni: 30, ultimo: null };
 
@@ -71,7 +72,7 @@
       + fmtNum(m.cache_write) + ' scritti';
   }
 
-  function modelRow(m, provider) {
+  function modelRow(m, s) {
     var when = m.first_use === m.last_use
       ? 'il ' + escHtml(m.first_use)
       : 'dal ' + escHtml(m.first_use) + ' al ' + escHtml(m.last_use);
@@ -80,7 +81,9 @@
     var refusals = m.rate_limit_errors
       ? ' · ' + m.rate_limit_errors + ' rifiuti per limite di frequenza'
       : '';
-    var unit = provider === 'ponte' ? 'turni' : 'richieste';
+    /* La parola con cui si contano le chiamate arriva con la sezione (`unit`):
+       il piano conta turni, gli altri richieste. */
+    var unit = s.unit;
     return '<div class="usage-model-row">'
       + '<div class="umr-top"><span class="umr-name">' + escHtml(m.model) + '</span>'
       + rowCost(m) + '</div>'
@@ -92,7 +95,7 @@
   }
 
   function sectionTotal(s) {
-    if (s.provider === 'ponte') {
+    if (s.cost_included) {
       return '<span class="usec-cost umr-included">Compreso</span>';
     }
     var text = fmtEuro(s.cost_eur, 2);
@@ -104,7 +107,7 @@
       + '<div class="usec-head"><h2 class="usec-name">' + escHtml(s.label) + '</h2>'
       + sectionTotal(s) + '</div>'
       + '<p class="sc-desc">' + escHtml(s.note) + '</p>'
-      + s.models.map(function(m) { return modelRow(m, s.provider); }).join('')
+      + s.models.map(function(m) { return modelRow(m, s); }).join('')
       + '</section>';
   }
 
@@ -230,15 +233,19 @@
   function charts(storia, sezioni) {
     var labels = {};
     var present = [];
-    sezioni.forEach(function(s) { labels[s.provider] = s.label; });
-    Order.forEach(function(p) { if (labels[p]) present.push(p); });
+    var included = [];
+    sezioni.forEach(function(s) {
+      labels[s.provider] = s.label;
+      present.push(s.provider);
+      if (s.cost_included) included.push(s.provider);
+    });
 
     var giorni = (storia.days || []).slice(-state.giorni);
-    var withCost = present.filter(function(p) { return p !== 'ponte'; });
+    var withCost = present.filter(function(p) { return included.indexOf(p) === -1; });
     /* La spiegazione del grafico vuoto ora e' un ARGOMENTO di svgBarre, non
        un paragrafo composto e piazzato qui sotto -- vedi il commento su
        svgBarre. */
-    var costEmptyText = present.indexOf('ponte') >= 0
+    var costEmptyText = included.length
       ? 'L’abbonamento non ha un costo di turno da impilare qui: i suoi '
         + 'turni sono nel grafico «Richieste al giorno» qui sotto.'
       : 'Nessun consumo nel periodo scelto.';

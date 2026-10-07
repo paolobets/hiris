@@ -117,7 +117,8 @@ def test_le_sezioni_ci_sono_solo_per_i_provider_usati(app):
 
 def test_una_sezione_porta_etichetta_nota_e_modelli(app):
     sezione = _corpo(_chiama(handle_usage, app))["sections"][0]
-    assert sezione["label"] == "API Anthropic"
+    # D10a: il nome della pagina Modelli (era «API Anthropic»).
+    assert sezione["label"] == "Claude API"
     assert sezione["note"]
     assert sezione["cost_eur"] > 0
     model = sezione["models"][0]

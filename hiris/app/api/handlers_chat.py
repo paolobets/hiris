@@ -27,6 +27,7 @@ from ..home_space.historian import house_timezone, instant_epoch, local_date
 from ..home_space.house import House
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
+from ..providers import SUBSCRIPTION
 
 # Fix round 1, Important 2 (Task 5): il nome di chi parla arriva
 # dall'intestazione dell'ingress di Home Assistant -- non e' mai fidato, la
@@ -680,7 +681,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     occurrence_registry = request.app.get("occurrence_registry")
     if occurrence_registry is not None:
         occurrence_registry.fallimento(
-            "subscription", family="scaduto", code=None,
+            SUBSCRIPTION.id, family="scaduto", code=None,
             # Il messaggio è per chi legge un log, non per la pagina: la frase
             # che l'utente vede la compone `model_resolution.occurrence_phrase`.
             message="nessuna risposta entro la scadenza del ponte",

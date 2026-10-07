@@ -11,31 +11,17 @@ vera, anche `claude-opus-4-8`, che in `pricing.py` non c'e'.
 from __future__ import annotations
 
 from ..backends.pricing import prezzo_noto
+from ..providers import get
 
 # Dal piu' DEBOLE al piu' forte. `reale` sta sopra `misurato` perche' e' un
 # fatto -- quanto e' stato addebitato -- e non una stima da listino.
 STATES: tuple[str, ...] = ("non_noto", "compreso", "gratuito", "misurato", "reale")
 
-LABEL: dict[str, str] = {
-    "claude": "API Anthropic",
-    "openai": "API OpenAI",
-    "openrouter": "OpenRouter",
-    "ollama": "Ollama (in casa)",
-    "ponte": "Abbonamento Claude",
-}
-
-# La differenza fra `misurato` e `reale` si dichiara UNA VOLTA per sezione, non
-# riga per riga: i due stati non convivono mai nella stessa sezione, perche' e'
-# il provider a determinarli.
-NOTE: dict[str, str] = {
-    "claude": "Costo calcolato sul listino Anthropic.",
-    "openai": "Costo calcolato sul listino OpenAI.",
-    "openrouter": ("Costo dichiarato da OpenRouter: e' quanto e' stato "
-                   "addebitato, non una stima."),
-    "ollama": "Modelli in casa: nessun costo.",
-    "ponte": ("L’abbonamento non espone il prezzo del singolo turno. I token "
-              "si', e sono questi."),
-}
+# I nomi delle sezioni (`LABEL`) e le loro note (`NOTE`) stavano qui, con
+# nomi diversi da quelli della pagina Modelli («API Anthropic», «Abbonamento
+# Claude») e il piano sotto la chiave `ponte`. Dalla Tappa 7 (Task 9, D9a e
+# D10a) sono campi della tabella dei provider (`Provider.name`,
+# `Provider.usage_note`), e il piano e' `subscription` anche qui.
 
 
 def piu_debole(a: str, b: str) -> str:
@@ -58,10 +44,14 @@ def cost_state_and_value(provider: str, model: str, *,
     streaming. `cost_da_listino` e' quello che il runner ha calcolato dai
     prezzi in `pricing.py`, e vale solo se quel modello e' davvero in tabella:
     altrimenti e' lo zero del ripiego, che non significa «gratis».
+
+    Lo stato FISSO di un provider -- `compreso` per il piano, `gratuito` per
+    Ollama -- lo dice la tabella dei provider (`Provider.cost_state`).
     """
-    if provider == "ponte":
+    fixed = getattr(get(provider), "cost_state", "")
+    if fixed == "compreso":
         return "compreso", None
-    if provider == "ollama" or model.endswith(":free"):
+    if fixed == "gratuito" or model.endswith(":free"):
         return "gratuito", 0.0
     if cost_dichiarato is not None:
         return "reale", float(cost_dichiarato)

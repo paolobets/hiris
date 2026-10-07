@@ -93,6 +93,7 @@ from aiohttp import web
 from ..claude_runner import pesa_in_caratteri
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
+from ..providers import SUBSCRIPTION
 from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
 from ..version import read_version
@@ -745,7 +746,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
             # concluso: e' un fatto gia' accertato, non un'ipotesi.
             registry = request.app.get("occurrence_registry")
             if registry is not None:
-                registry.successo("subscription")
+                registry.successo(SUBSCRIPTION.id)
 
     content: dict = {
         "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],

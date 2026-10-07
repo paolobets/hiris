@@ -83,6 +83,7 @@ from ..chat_store import (
     RUNNER_ERROR_PREFIX,
 )
 from ..model_resolution import SUBSCRIPTION_ALIAS
+from ..providers import SUBSCRIPTION
 from ..proxy._sanitize import MASK
 from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens
@@ -1343,7 +1344,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "channel": "ponte",
             # Il nome con cui la pagina Modelli chiama questa strada, cosi'
             # che il registro e la pagina dicano la stessa parola.
-            "provider": "subscription",
+            "provider": SUBSCRIPTION.id,
             "model": models[0][0] if models else "ignoto",
             "duration_ms": duration_ms,
             # Lo stream comanda; se non ha letto niente, il conto della CLI
@@ -1408,8 +1409,10 @@ def _logga_uso(occurrence: StreamOccurrence, job_id) -> None:
         return
     now = time.time()
     for model, counts in righe:
-        _log_usage("ponte", model, richieste=1, **counts,
-                   cost_usd=None, cost_state="compreso", now=now)
+        # Il provider e' `subscription` anche nei consumi (Tappa 7 T9, D9a):
+        # fino ad allora questa riga scriveva `ponte`, il nome della strada.
+        _log_usage(SUBSCRIPTION.id, model, richieste=1, **counts,
+                   cost_usd=None, cost_state=SUBSCRIPTION.cost_state, now=now)
 
 
 # I conteggi di UN modello dentro `modelUsage`, a sinistra il nome di HIRIS e

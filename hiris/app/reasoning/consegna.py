@@ -30,6 +30,7 @@ import logging
 from ..mind.observer import SCOPE_TURN_KIND
 from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
 from ..mind.proposer_turn import PROPOSAL_TURN_KIND
+from ..providers import SUBSCRIPTION
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
             registry = app.get("occurrence_registry")
             if registry is not None:
                 registry.fallimento(
-                    "subscription", family="altro", code=None,
+                    SUBSCRIPTION.id, family="altro", code=None,
                     message="promessa sul ponte finita senza chiamare «conclude»",
                     durata_s=now - float(job.get("created_ts", now)))
             outcome = "promessa_senza_conclusione"

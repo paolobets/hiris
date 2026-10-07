@@ -19,6 +19,7 @@ import threading
 
 from ..home_space.historian import instant_epoch, local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
+from ..providers import CLAUDE, OLLAMA, OPENAI, OPENROUTER, SUBSCRIPTION, get, ids
 from ..proxy._sanitize import CUT, MASK, truncate_with_marker
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
@@ -245,6 +246,85 @@ def _migration_4(conn) -> None:
         conn.execute("ALTER TABLE turn ADD COLUMN problems TEXT")
 
 
+#: La chiave con cui i consumi chiamavano il piano fino alla Tappa 7 (Task 9).
+#: E' un fatto storico, non una copia: la scrivevano `agent/runner.py` e le
+#: versioni dell'add-on fino alla 3.x, e un archivio tornato indietro di una
+#: versione la riscrive. Dalla D9a il provider e' `subscription` ovunque, e
+#: `ponte` resta solo il nome della strada (`steering.who_answers`).
+_OLD_SUBSCRIPTION_KEY = "ponte"
+
+def _known_sum(a, b):
+    """La somma dei costi NOTI: `None` solo se nessuno dei due lo e' -- la
+    stessa regola di `UsageStore.log`, dove una riga degradata tiene cio' che
+    ha gia' pagato."""
+    noti = [c for c in (a, b) if c is not None]
+    return sum(noti) if noti else None
+
+
+def _migration_5(conn) -> None:
+    """Versione 5 (07/10/2026, Tappa 7 T9, D9a): i consumi del piano passano
+    da `ponte` a `subscription`.
+
+    Una riga che trova gia' la sua gemella sotto `subscription` (stesso giorno
+    e modello, o stesso modello nel saldo dell'ancora) ci si FONDE: i
+    contatori si sommano, i costi noti pure, lo stato e' il piu' debole dei
+    due, e l'intervallo si allarga. Non dovrebbe succedere -- nessuno scriveva
+    `subscription` in questo archivio -- ma succede a un archivio che torna
+    indietro di una versione e riscrive `ponte`: al ritorno la migrazione
+    rigira (la versione vecchia ritimbra `user_version`) e trova entrambe.
+    Per la stessa ragione e' idempotente: senza righe `ponte` non fa niente.
+
+    Dichiara nel registro quante righe ha spostato, e in quale tabella.
+    """
+    old, new = _OLD_SUBSCRIPTION_KEY, SUBSCRIPTION.id
+    days = conn.execute("SELECT * FROM consumo_giorno WHERE provider=?",
+                        (old,)).fetchall()
+    for r in days:
+        twin = conn.execute(
+            "SELECT * FROM consumo_giorno WHERE giorno=? AND provider=? AND modello=?",
+            (r["giorno"], new, r["modello"])).fetchone()
+        if twin is None:
+            conn.execute(
+                "UPDATE consumo_giorno SET provider=? "
+                "WHERE giorno=? AND provider=? AND modello=?",
+                (new, r["giorno"], old, r["modello"]))
+            continue
+        sums = ", ".join(f"{c}={c}+?" for c in CAMPI)
+        conn.execute(
+            f"UPDATE consumo_giorno SET {sums}, costo_usd=?, costo_stato=?, "
+            "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
+            "WHERE giorno=? AND provider=? AND modello=?",
+            (*(r[c] for c in CAMPI),
+             _known_sum(twin["costo_usd"], r["costo_usd"]),
+             piu_debole(twin["costo_stato"], r["costo_stato"]),
+             r["primo_ts"], r["ultimo_ts"], r["giorno"], new, r["modello"]))
+        conn.execute("DELETE FROM consumo_giorno "
+                     "WHERE giorno=? AND provider=? AND modello=?",
+                     (r["giorno"], old, r["modello"]))
+    balances = conn.execute("SELECT * FROM ancora_saldo WHERE provider=?",
+                            (old,)).fetchall()
+    for r in balances:
+        twin = conn.execute(
+            "SELECT * FROM ancora_saldo WHERE provider=? AND modello=?",
+            (new, r["modello"])).fetchone()
+        if twin is None:
+            conn.execute("UPDATE ancora_saldo SET provider=? "
+                         "WHERE provider=? AND modello=?", (new, old, r["modello"]))
+            continue
+        sums = ", ".join(f"{c}={c}+?" for c in CAMPI)
+        conn.execute(
+            f"UPDATE ancora_saldo SET {sums}, costo_usd=? "
+            "WHERE provider=? AND modello=?",
+            (*(r[c] for c in CAMPI),
+             _known_sum(twin["costo_usd"], r["costo_usd"]), new, r["modello"]))
+        conn.execute("DELETE FROM ancora_saldo WHERE provider=? AND modello=?",
+                     (old, r["modello"]))
+    if days or balances:
+        logger.info(
+            "consumi: il piano passa da «%s» a «%s» -- %d righe di consumo_giorno "
+            "e %d di ancora_saldo spostate", old, new, len(days), len(balances))
+
+
 #: Quanto si tiene di un argomento. Testo libero lungo non deve gonfiare il
 #: registro; e sono filtri e nomi della casa, non contenuti.
 _ARG_TEXT_MAX = 200
@@ -338,9 +418,9 @@ class UsageStore:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=4,
+        init_schema(self._conn, _SCHEMA, version=5,
                     migrations={2: _migration_2, 3: _migration_3,
-                                4: _migration_4})
+                                4: _migration_4, 5: _migration_5})
 
     def close(self) -> None:
         with self._lock:
@@ -673,9 +753,15 @@ class UsageStore:
 
         I provider mai usati non compaiono: e' un'ASSENZA, non uno zero -- ed
         e' il «al primo utilizzo si attiva» che il proprietario ha chiesto.
-        """
-        from .vocabulary import LABEL, NOTE
 
+        Le sezioni escono nell'ORDINE FISSO della tabella dei provider, e
+        portano le parole della tabella: il nome (lo stesso della pagina
+        Modelli, D10a), la nota, l'unita' con cui si contano le chiamate e se
+        il costo e' compreso. Fino alla Tappa 7 (Task 9) i nomi e le note
+        stavano in `usage/vocabulary.py`, l'unita' e l'ordine nella pagina.
+        Un provider che la tabella non conosce -- una riga scritta da una
+        versione futura -- esce dopo gli altri, col suo id per nome.
+        """
         if from_anchor:
             da = self._anchor_day() or da
         where, arg = self._where(da)
@@ -690,10 +776,13 @@ class UsageStore:
 
         per_provider: dict[str, dict] = {}
         for r in righe:
+            p = get(r["provider"])
             section = per_provider.setdefault(r["provider"], {
                 "provider": r["provider"],
-                "etichetta": LABEL.get(r["provider"], r["provider"]),
-                "nota": NOTE.get(r["provider"], ""),
+                "etichetta": p.name if p else r["provider"],
+                "nota": p.usage_note if p else "",
+                "unita": p.usage_unit if p else "richieste",
+                "compreso": bool(p and p.cost_state == "compreso"),
                 # `None`, non `0.0`: una sezione i cui modelli non hanno NESSUN
                 # costo noto -- l'abbonamento, per dirne una -- affermerebbe
                 # «zero euro» per una cosa che un costo non ce l'ha. E' lo zero
@@ -721,7 +810,9 @@ class UsageStore:
             })
         if from_anchor:
             self._sottrai_saldo(per_provider)
-        return list(per_provider.values())
+        place = {pid: i for i, pid in enumerate(ids())}
+        return sorted(per_provider.values(),
+                      key=lambda s: (place.get(s["provider"], len(place)), s["provider"]))
 
     def totali(self, *, da: str = "", from_anchor: bool = False) -> dict:
         """I contatori sommati su tutte le sezioni. `costo_usd` puo' essere
@@ -876,8 +967,9 @@ class UsageStore:
         import json as _json
         import os
 
-        _PROVIDER_BY_SUFFIX = {"_openai": "openai", "_openrouter": "openrouter",
-                     "_ollama": "ollama"}
+        # I nomi dei file di prima: `usage_<provider>.json`, e `usage.json`
+        # per Claude API.
+        _PROVIDER_BY_SUFFIX = {"_" + p.id: p.id for p in (OPENAI, OPENROUTER, OLLAMA)}
         importati = 0
         for path in percorsi:
             if not os.path.exists(path):
@@ -897,7 +989,7 @@ class UsageStore:
                 continue
             base = os.path.splitext(os.path.basename(path))[0]
             provider = next((p for suff, p in _PROVIDER_BY_SUFFIX.items()
-                             if base.endswith(suff)), "claude")
+                             if base.endswith(suff)), CLAUDE.id)
             # L'istante si legge con l'unica lettura del prodotto (A-26). Il
             # vecchio `ClaudeRunner` lo scriveva con `datetime.now(timezone.utc)
             # .isoformat()` (letto al tag v1.0.0 il 05/10/2026): ha sempre il
