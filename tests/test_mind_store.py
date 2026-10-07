@@ -5,6 +5,7 @@ da cui nasce il cervello -- ma la soglia tecnica e' 22: il ventiduesimo e' una
 guardia che riconcilia la promessa con l'aritmetica dei secondi assoluti.
 Gli oggetti restano.
 """
+import json
 import os
 import sqlite3
 
@@ -1097,5 +1098,58 @@ def test_migration_14_non_tocca_un_analisi_senza_attuazione(tmp_path):
             "SELECT corpo_json FROM analisi WHERE giorno = '2026-09-21'"
         ).fetchone()["corpo_json"]
         assert dopo == grezzo
+    finally:
+        riaperto.close()
+
+
+def test_migration_14_cita_la_proposta_nata_PRIMA_dell_analisi(tmp_path):
+    """Due proposte con la stessa impronta: quella del giro di allora, e una
+    nata dopo che l'analisi era gia' scritta (la prova e' cambiata, la domanda
+    e' tornata). L'esito migrato cita la prima: la seconda risponde a
+    un'altra analisi. Revisione, giro 74, N74-1: senza questa prova il filtro
+    su `scritto_ts` non era sorvegliato.
+
+    Mutazione ESEGUITA: `creata_ts <= ? + 1e12` -- rossa (cita la seconda)."""
+    from hiris.app.mind import proposer_turn
+
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    allora = store.add_proposal(text="a", perche="x", fingerprint="imp",
+                                prova={"v": 1}, stakes=None, now_ts=1.0)
+    store.add_proposal(text="b", perche="x", fingerprint="imp",
+                       prova={"v": 2}, stakes=None, now_ts=3.0)
+    store._conn.execute(
+        "INSERT INTO analisi(giorno,corpo_json,scritto_ts) VALUES(?,?,?)",
+        ("2026-09-20", json.dumps({"osservazioni": [], "attuazione": {"esiti": [
+            {"gesto": "proposta", "trovato": "a", "impronta": "imp"}]}}), 2.0))
+    store._conn.execute("PRAGMA user_version = 13")
+    store._conn.commit()
+    store.close()
+
+    riaperto = ObservationsStore(percorso)
+    try:
+        assert proposer_turn.outcomes_of(riaperto.analysis("2026-09-20")) == [
+            {"impronta": "imp", "esito": proposer_turn.BY_HAND, "proposta_id": allora}]
+    finally:
+        riaperto.close()
+
+
+def test_migration_14_non_porta_una_proposta_a_mano_senza_riga(tmp_path):
+    """Un «a_mano» senza la riga in `proposte` farebbe dire alla pagina «la
+    trovi in Proposte» dove non c'e' niente: come l'esito senza impronta, non
+    si porta. Revisione, giro 74, N74-2.
+
+    Mutazione ESEGUITA: portarlo senza `proposta_id` -- rossa."""
+    from hiris.app.mind import proposer_turn
+
+    percorso = _archive_v13(tmp_path, {
+        "osservazioni": [], "attuazione": {"esiti": [
+            {"gesto": "proposta", "trovato": "a", "impronta": "orfana"}]}})
+
+    riaperto = ObservationsStore(percorso)
+    try:
+        analisi = riaperto.analysis("2026-09-20")
+        assert "attuazione" not in analisi
+        assert proposer_turn.outcomes_of(analisi) == []
     finally:
         riaperto.close()

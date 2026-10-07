@@ -756,8 +756,12 @@ def _retired_outcome(conn, outcome, written_ts: float) -> dict | None:
     row = conn.execute(
         "SELECT id FROM proposte WHERE impronta = ? AND creata_ts <= ? "
         "ORDER BY creata_ts DESC, rowid DESC LIMIT 1", (key, written_ts)).fetchone()
-    found = {"proposta_id": row["id"]} if row is not None else {}
-    return {"impronta": key, "esito": proposer_turn.BY_HAND, **found}
+    if row is None:
+        # Senza la riga la pagina direbbe «la trovi in Proposte» dove non
+        # c'e' niente: come l'esito senza impronta, non si porta (revisione,
+        # giro 74, N74-2).
+        return None
+    return {"impronta": key, "esito": proposer_turn.BY_HAND, "proposta_id": row["id"]}
 
 
 def _migration_14(conn) -> None:
@@ -775,7 +779,7 @@ def _migration_14(conn) -> None:
       dell'analista e la riparazione del giro delle ricette);
     - una **proposta da fare a mano** cita la riga di `proposte` con la stessa
       impronta nata prima che l'analisi fosse scritta: il giro di allora la
-      metteva li', o ne trovava gia' una;
+      metteva li', o ne trovava gia' una. Senza quella riga non si porta;
     - una **proposta costruibile** e' «costruita» senza id: l'id della
       costruzione allora non si scriveva, e non si inventa;
     - un esito senza impronta non si legava a nessuna osservazione e la pagina
