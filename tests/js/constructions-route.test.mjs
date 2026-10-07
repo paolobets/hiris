@@ -199,8 +199,32 @@ test('una costruzione «incerta» ha la sua faccia di avviso e si può rimettere
   assert.ok(stato[0].classList.contains('badge-warn'), 'un avviso, non la faccia neutra');
   const rimetti = riga.querySelector('[data-azione="restore"]');
   assert.ok(rimetti, 'il ripristino c’è anche per un’incerta');
+  // ux-ui-specialist, 07/10/2026: il bottone dice che prima si controlla, e
+  // una riga fissa lo spiega; la conferma nomina l'oggetto e il controllo.
+  assert.equal(rimetti.textContent, 'Verifica e rimetti com’era');
+  assert.match(riga.textContent, /«Verifica e rimetti» guarda prima la casa e scrive solo se serve/);
   rimetti.click();
-  assert.match(chiesto, /Non so se la modifica del .* sia arrivata/);
+  assert.match(chiesto, /^Non so se la modifica del \d\d\/\d\d\/\d{4} a «Luci» sia arrivata\. Controllo in Home Assistant: se è arrivata, rimetto l’automazione com’era prima/);
+});
+
+test('una «incerta» senza motivo dice il dubbio, non una causa; un’applicata resta «Rimetti com’era»', async () => {
+  // ux-ui-specialist, 07/10/2026: se il server non manda un motivo la pagina
+  // non ne inventa uno -- dice solo che non sa. Mutazione ESEGUITA
+  // (07/10/2026): senza il ripiego la riga del dubbio non c'e' (rossa).
+  const { dom } = montaCon({ constructions: [
+    { id: 'i2', stato: 'incerta', gesto: 'crea', dominio: 'automation',
+      chiave: '9', anteprima: '', prima: null, dopo: { alias: 'Notte' },
+      creata_ts: 1790000000 },
+    { id: 'a1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
+      chiave: '8', anteprima: '', prima: null, dopo: { alias: 'Giorno' },
+      creata_ts: 1790000000 },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const [incerta, applicata] = ['i2', 'a1'].map((id) =>
+    dom.window.document.querySelector('[data-proposta="' + id + '"]').closest('.construction'));
+  assert.match(incerta.textContent, /Non so se questa modifica sia arrivata in Home Assistant\./);
+  assert.equal(applicata.querySelector('[data-azione="restore"]').textContent, 'Rimetti com’era');
+  assert.doesNotMatch(applicata.textContent, /Verifica e rimetti/);
 });
 
 test('una scena mostra il conteggio e gli entity_id anche se `entities` è un dizionario', async () => {

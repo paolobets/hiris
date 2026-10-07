@@ -1029,6 +1029,23 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Una costruzione «incerta» cambia stato dopo la verifica — aperta il 07/10/2026
+
+`origine: passaggio di ux-ui-specialist sulla pagina Costruzioni (07/10/2026, in sola lettura del codice), girato dal coordinatore; lo stato resta fermo per scelta della Tappa 7 (N84-1) finche' la Tappa 8 non decide il vocabolario; da fare alla Tappa 8 (D4)` · nessun documento
+
+Una costruzione e' `incerta` quando Home Assistant non ha risposto alla scrittura e nemmeno la
+rilettura ha sciolto il dubbio (`Workshop._uncertain`, `revisions.risana`). Dalla pagina si puo'
+fare «Verifica e rimetti com'era» (`Workshop.restore`): se la casa e' gia' com'era prima risponde
+«e' gia' com'era prima: non c'e' niente da rimettere», altrimenti rimette il prima con una
+costruzione nuova. **In tutti e due i casi la riga resta `incerta`**, quindi il bottone resta e si
+puo' cliccare all'infinito, ricevendo ogni volta la stessa risposta. Lo specialista chiede che lo
+stato cambi dopo la verifica. Non si e' fatto nella Tappa 7 perche' il nome nuovo (per esempio
+«verificata» o «rimessa») spetta al vocabolario unico degli stati della Tappa 8, che parte dallo
+schema v7 delle costruzioni e deve includere `incerta`. Resta aperta anche la seconda richiesta
+dello specialista: quando il server risponde «gia' com'era prima» la pagina lo mostra come un
+errore (409), mentre dovrebbe mostrarlo con tono neutro; serve un segnale nell'esito, non un
+confronto sul testo.
+
 ### L'officina impara i config flow: `history_stats` prima di tutto — aperta il 07/10/2026
 
 `origine: il proprietario, 07/10/2026 (scelta A sulla nota C8, «l'officina impara i config flow»)` · documento: `/mnt/project-files/attori/2026-10-07-officina-config-flow-proposta.md` · fonti: `/mnt/project-files/attori/2026-10-07-c8-presenza-history-stats-nota.md` · `hiris/app/action/construction/workshop.py` · `hiris/app/proxy/ha_client.py::HELPER_DOMAINS`

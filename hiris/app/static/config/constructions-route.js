@@ -96,8 +96,14 @@
    (ambra come `scaduta`: Home Assistant non ha risposto e non si sa se la
    scrittura sia arrivata; offre Ripristina, e il server dice se c'era
    qualcosa da rimettere). Etichetta e badge di `incerta` (G83-2, giro 83,
-   07/10/2026) riusano lo stile che c'era: il passaggio da ux-ui-specialist
-   NON e' stato fatto, e va fatto.
+   07/10/2026) riusano lo stile che c'era. Passaggio da ux-ui-specialist il
+   07/10/2026, in sola lettura del codice (la pagina non e' stata aperta):
+   etichetta e ambra confermate; il motivo ha un ripiego se il server non ne
+   manda uno, e sotto una riga fissa che dice cosa fa il bottone; il bottone
+   dice «Verifica e rimetti com’era»; la conferma dice che prima si controlla.
+   Contrasto di --warn-ink nel tema chiaro CALCOLATO (formula WCAG su
+   OKLCH -> sRGB, 07/10/2026, non misurato in un browser): 5.61 su --surface,
+   5.37 su --bg, sopra il 4.5 di AA.
    ADATTAMENTO rispetto al testo letterale della guida (confermato dalla
    review indipendente del Task 11: la guida si contraddiceva da sola,
    proponendo nella STESSA sezione l'etichetta "Rifiutata da te" per
@@ -374,10 +380,11 @@ window.HirisConstructions = (function () {
   /* guida §7: il testo del confirm() composto solo da campi reali. */
   function restoreMessage(c) {
     if (c.stato === 'incerta') {
-      return 'Non so se la modifica del ' + fmtData(c.creata_ts) + ' sia arrivata. ' +
-        'Se è arrivata rimetto ' + objectArticle(c) + ' «' + objectName(c) +
-        '» com’era prima, e le modifiche fatte dopo vengono sovrascritte; ' +
-        'se non lo è, non scrivo niente. Procedo?';
+      return 'Non so se la modifica del ' + fmtData(c.creata_ts) + ' a «' +
+        objectName(c) + '» sia arrivata. Controllo in Home Assistant: se è ' +
+        'arrivata, rimetto ' + objectArticle(c) + ' com’era prima (le modifiche ' +
+        'fatte dopo vengono sovrascritte); se non è arrivata, non scrivo niente. ' +
+        'Procedo?';
     }
     return 'Rimetto ' + objectArticle(c) + ' «' + objectName(c) + '» com’era il ' +
       fmtData(c.creata_ts) + '. Le modifiche fatte dopo vengono sovrascritte. Procedo?';
@@ -955,11 +962,23 @@ window.HirisConstructions = (function () {
        migrata mostrerebbe la stessa faccia: mostrare `motivo` tornerebbe a
        far leggere la parola "rifiutata" su una riga che e' il "no" di chi
        costruisce. */
-    if (c.motivo && c.stato !== 'disdetta') {
-      var reason = el('p', null, c.motivo);
+    /* `incerta`: il ripiego quando il server non manda un motivo dice solo
+       il dubbio, non una causa che la pagina non conosce; sotto, una riga
+       fissa su cosa fa il bottone (ux-ui-specialist, 07/10/2026). */
+    var motivo = c.stato === 'incerta'
+      ? (c.motivo || 'Non so se questa modifica sia arrivata in Home Assistant.')
+      : c.motivo;
+    if (motivo && c.stato !== 'disdetta') {
+      var reason = el('p', null, motivo);
       reason.style.cssText = 'font-size:var(--fs-13);margin:0;color:' +
         (c.stato === 'rifiutata' ? 'var(--err-ink)' : 'var(--warn-ink)');
       box.appendChild(reason);
+    }
+    if (c.stato === 'incerta') {
+      var verifica = el('p', null, 'Puoi controllare lo stato reale: «Verifica e ' +
+        'rimetti» guarda prima la casa e scrive solo se serve.');
+      verifica.style.cssText = 'font-size:var(--fs-13);margin:0;color:var(--text-2)';
+      box.appendChild(verifica);
     }
 
     var actions = el('div');
@@ -976,7 +995,8 @@ window.HirisConstructions = (function () {
       actions.appendChild(bReject);
     }
     if (c.stato === 'applicata' || c.stato === 'incerta') {
-      actions.appendChild(actionButton('restore', 'Rimetti com’era',
+      actions.appendChild(actionButton('restore',
+        c.stato === 'incerta' ? 'Verifica e rimetti com’era' : 'Rimetti com’era',
         'btn btn-ghost btn-ghost-danger', c, statusEl, reload));
     }
     if (actions.childNodes.length) box.appendChild(actions);
