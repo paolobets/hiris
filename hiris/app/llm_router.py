@@ -13,6 +13,7 @@ from .claude_runner import (
     _current_truncated,
     _current_unanswered,
 )
+from .providers import chain_members
 
 logger = logging.getLogger(__name__)
 
@@ -29,69 +30,34 @@ _current_provider: ContextVar[str] = ContextVar(
     "hiris_provider_corrente", default="")
 
 
-_STRATEGY_ORDER = {
-    # cost_first: prefer free local (Ollama) → cheap cloud → full cloud
-    "cost_first":    ["ollama", "openrouter", "openai", "claude"],
-    # quality_first: prefer most capable first, then the dedicated OpenAI slot
-    "quality_first": ["claude", "openai", "openrouter", "ollama"],
-    # balanced (default): still leads with the most capable model (Claude),
-    # but economizes on the fallback chain by preferring OpenRouter (which
-    # can hit cheaper/free-tier models) over the dedicated OpenAI slot,
-    # before finally falling back to local Ollama. Distinct from
-    # quality_first: swaps positions 2 and 3.
-    "balanced":      ["claude", "openrouter", "openai", "ollama"],
-}
-
-_VALID_BACKEND_NAMES = frozenset({"claude", "openai", "openrouter", "ollama"})
-
-
-def _norm_policy(policy: list[str] | None, strategy: str) -> list[str]:
-    """Normalize a backend policy list.
-
-    A non-empty list is filtered to known backend names, preserving order.
-    None/empty, OR a non-empty list that filters down to nothing (every name
-    unknown), falls back to the strategy's default order (backward-compat) --
-    an all-invalid policy must not silently leave the router with an empty
-    backend chain.
-    """
-    if policy:
-        filtered = [name for name in policy if name in _VALID_BACKEND_NAMES]
-        if filtered:
-            return filtered
-    return list(_STRATEGY_ORDER[strategy])
-
-
 class LLMRouter:
-    """Routes LLM calls to the appropriate backend.
+    """Instrada le chiamate al modello lungo la catena, ripiegando.
 
-    Backends: Claude (anthropic), OpenAI cloud, OpenRouter proxy, Ollama local.
+    I backend arrivano per nome di provider (`LLMRouter(claude=..., ollama=...)`)
+    e i nomi ammessi sono quelli che la tabella dei provider governa da
+    `chain_order` (`providers.chain_members()`): un nome che la tabella non
+    conosce e' un errore di chi costruisce, non un backend da ignorare. Se un
+    backend solleva, si prova il successivo della catena.
 
-    strategy controls the default backend preference order:
-      - "quality_first": Claude → OpenAI → OpenRouter → Ollama
-      - "balanced": Claude → OpenRouter → OpenAI → Ollama
-      - "cost_first": Ollama → OpenRouter → OpenAI → Claude
-    Fallback: if a backend raises, the next backend in the chain is tried
-    automatically.
+    `model_chain` e' la catena che l'utente ha ordinato, gia' filtrata a chi
+    puo' rispondere (`providers.providers_in_chain`, vedi `server.py`). E'
+    OBBLIGATORIA, e vale per quello che dice anche quando e' vuota: una catena
+    vuota significa «nessuno in catena», non «ripiega su un ordine di
+    strategia».
 
-    A single ordered policy, chat_policy, selects the backend chain. If not
-    supplied (None/empty), it derives from _STRATEGY_ORDER[strategy].
-    When the caller instead passes `model_chain` (the chain the user ordered,
-    filtered to credentialed providers by model_activation.providers_in_chain
-    — see server.py), that list supersedes chat_policy, and it does so ALSO
-    when it is empty: an explicit empty chain means "nobody is in the chain",
-    not "fall back to the strategy order".
+    **Il ramo «libreria» e' uscito** (Tappa 7, Task 9; voce M-07): `strategy`,
+    `chat_policy`, `_norm_policy` e `_STRATEGY_ORDER` servivano solo quando
+    nessuno passava una catena, e `server.py` la passa sempre. I tre ordini
+    sono rimasti come i tre preset della pagina Modelli (`providers.PRESETS`),
+    che e' l'unico posto in cui erano ancora una decisione.
     """
 
     def __init__(
         self,
-        claude: Any = None,
-        openai: Any = None,
-        openrouter: Any = None,
-        ollama: Any = None,
-        strategy: str = "balanced",
-        chat_policy: list[str] | None = None,
-        model_chain: list[str] | None = None,
+        *,
+        model_chain: list[str],
         registry: Any = None,
+        **backends: Any,
     ) -> None:
         # `registro` è `provider_occurrences.OccurrenceRegistry` (app["occurrence_registry"]).
         # Facoltativo perché `LLMRouter` è costruito anche da test e da codice
@@ -102,30 +68,21 @@ class LLMRouter:
         # fatto. I turni del ponte, che di qui non passano, li registra chi li
         # raccoglie (`server.py`, `api/`).
         self._registry = registry
-        self._claude = claude
-        self._openai = openai
-        self._openrouter = openrouter
-        self._ollama = ollama
-        self._strategy = strategy if strategy in _STRATEGY_ORDER else "balanced"
-        # Se model_chain è fornito, sostituisce chat_policy col suo ordine.
-        # Una catena ESPLICITA vale per quello che dice, anche quando è vuota
-        # (`is not None`, non la verità della lista): ricadendo sull'ordine di
-        # strategia, la pagina direbbe «la catena è vuota, HIRIS non può
-        # rispondere» mentre il router risponde con ogni provider che ha una
-        # credenziale. `model_chain=None` (nessuna catena passata) resta il
-        # ramo di libreria e ripiega sulla strategia.
-        if model_chain is not None:
-            self._chat_policy = [n for n in model_chain if n in _VALID_BACKEND_NAMES]
-        else:
-            self._chat_policy = _norm_policy(chat_policy, self._strategy)
+        members = chain_members()
+        unknown = sorted(set(backends) - set(members))
+        if unknown:
+            raise TypeError(
+                f"LLMRouter: provider sconosciuti alla tabella {unknown}; "
+                f"ammessi {list(members)}")
+        self._backends = dict(backends)
+        # Una catena ESPLICITA vale per quello che dice, anche quando è vuota:
+        # ricadendo su un ordine di riserva, la pagina direbbe «la catena è
+        # vuota, HIRIS non può rispondere» mentre il router risponde con ogni
+        # provider che ha una credenziale.
+        self._chat_policy = [n for n in model_chain if n in members]
 
     def _backend_map(self) -> dict[str, Any]:
-        return {
-            "claude": self._claude,
-            "openai": self._openai,
-            "openrouter": self._openrouter,
-            "ollama": self._ollama,
-        }
+        return {name: self._backends.get(name) for name in chain_members()}
 
     def _ordered_backends_with_name(self) -> list[tuple[str, Any]]:
         """Gli anelli in ordine di catena, CON IL NOME DEL PROVIDER.

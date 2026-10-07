@@ -213,7 +213,7 @@ async def test_sulla_CATENA_nessuno_risponde_e_RIFALLA_lo_dice(casa):
     app, store, ident = casa
     giu = MagicMock()
     giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
-    app["llm_router"] = LLMRouter(claude=giu, strategy="balanced")
+    app["llm_router"] = LLMRouter(claude=giu, model_chain=["claude"])
 
     r = await handle_proposal_redo(
         _richiesta(app, {"id": ident}, {"richiesta": "dopo le 14"}))

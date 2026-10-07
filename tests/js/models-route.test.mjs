@@ -31,6 +31,17 @@ const CONFIG = {
   nascondi_gratuiti: false,
   strategia_ultima: 'balanced',
   seminato: true,
+  /* Dalla Tappa 7 (Task 9) l'ordine fisso, i preset e le chiavi scrivibili
+     arrivano dal server (`providers.page_payload`, `handlers_models._OUR_KEYS`):
+     la pagina non ne tiene piu' una copia. */
+  ordine_fisso: ['claude', 'subscription', 'openrouter', 'openai', 'ollama'],
+  preset: [
+    { chiave: 'balanced', nome: 'Bilanciato', ordine: ['claude', 'openrouter', 'openai', 'ollama'] },
+    { chiave: 'cost_first', nome: 'Risparmio', ordine: ['ollama', 'openrouter', 'openai', 'claude'] },
+    { chiave: 'quality_first', nome: 'Qualità massima', ordine: ['claude', 'openai', 'openrouter', 'ollama'] },
+  ],
+  scrivibili: ['chain_order', 'provider_models', 'ponte', 'ollama', 'nascondi_gratuiti',
+               'strategia_ultima'],
   fine_catena: 'ultimo della catena: se non risponde, la chat dà errore',
   catena: [
     { id: 'openrouter', nome: 'OpenRouter', modello: 'anthropic/claude-sonnet-4-6',
@@ -275,30 +286,35 @@ test('un GET fallito lo dice, e non lascia il riquadro a metà', async () => {
    momento la chat rispondeva «Nessun provider utilizzabile in catena», e al
    riavvio successivo la semina rigirava. Un click. */
 
-test('dopo un GET fallito i preset non possono scrivere', async () => {
-  const ctx = monta({ configRotta: true });
+test('dopo un GET fallito non resta nessun preset da premere', async () => {
+  /* Dalla Tappa 7 (Task 9) i preset arrivano nel payload: prima della risposta
+     non ci sono, e dopo un GET fallito non nascono. Fino ad allora stavano
+     scritti in questo file, comparivano spenti al montaggio e una guardia su
+     `state.loaded` rifiutava la scrittura a chi li riaccendeva da fuori. Ora
+     il bottone che potrebbe azzerare l'archivio non esiste proprio.
+
+     Il caso che conta e' il RIMONTAGGIO: il modulo e' un singleton e i preset
+     della visita prima restano in `state.preset`. Mutazione eseguita
+     (07/10/2026): `renderPresets()` chiamato anche nel ramo `.catch` di
+     `loadModelsAndConfig` -> rosso, «3 !== 0» (i bottoni della visita prima
+     ridisegnati sopra uno stato mai letto). Ripristinato, `git diff` di
+     `models-route.js` senza la mutazione. */
+  const opts = {};
+  const ctx = monta(opts);
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
+  assert.equal(ctx.document.querySelectorAll('#chain-presets button').length, 3,
+    'la prima visita legge e disegna i tre preset');
 
-  const preset = Array.from(ctx.document.querySelectorAll('.sc-actions button'));
-  assert.equal(preset.length, 3,
-    'i tre preset restano a schermo: stanno nell\'intestazione della sezione, '
-    + 'e renderErrore ridisegna solo il corpo');
-  assert.ok(preset.every((b) => b.disabled),
-    'e sono spenti, perché un preset RIFÀ la catena e rifarla su uno stato mai '
-    + 'letto vuol dire cancellarla');
-
-  /* La guardia non è solo l'attributo: `state.caricato` rifiuta la scrittura
-     anche a chi il bottone lo attiva da fuori (un `disabled = false` da
-     console, un click sintetico). L'attributo è la metà che si vede. */
-  preset.forEach((b) => { b.disabled = false; });
-  preset[0].dispatchEvent(new ctx.window.Event('click'));
+  opts.configRotta = true;
+  ctx.window.HirisModelsRoute.mount();
   await tick(20);
-
-  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT');
-  assert.equal(put.length, 0,
-    'un click su un preset dopo un GET fallito ha mandato una PUT: quel corpo '
-    + 'è lo `state.cfg` di default del modulo, e azzera l\'intero archivio');
+  const preset = Array.from(ctx.document.querySelectorAll('#chain-presets button'));
+  assert.equal(preset.length, 0,
+    'dopo un GET fallito un preset RIFAREBBE la catena su uno stato mai letto');
+  assert.equal(ctx.document.getElementById('chain-presets').hidden, true,
+    'e l\'etichetta «Rifai la catena:» non resta sola a schermo');
+  assert.equal(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').length, 0);
 });
 
 test('dopo un GET riuscito i preset tornano vivi', async () => {
@@ -313,6 +329,70 @@ test('dopo un GET riuscito i preset tornano vivi', async () => {
   preset[0].dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
   assert.equal(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').length, 1);
+});
+
+test('l\'ordine di «Fuori dalla catena» e i preset sono quelli che manda il server', async () => {
+  /* La pagina Modelli RICEVE l'ordine fisso e i preset (Tappa 7, Task 9):
+     qui il server ne manda di diversi da quelli del prodotto, e la pagina
+     deve disegnare quelli. Con una copia nel file -- `FIXED_ORDER` e
+     `PRESET`, com'era fino ad allora -- la pagina disegnerebbe la sua.
+
+     Mutazioni eseguite (07/10/2026), ciascuna rossa per la ragione giusta e
+     ripristinata (`git diff` di `models-route.js` senza la mutazione):
+     - `recomposeLayout` filtra su un ordine scritto a mano
+       (`['claude','subscription','openrouter','openai','ollama']`) invece di
+       `state.ordineFisso` -> rosso sull'ordine di «Fuori dalla catena»;
+     - `renderPresets` disegna i nomi da un elenco scritto a mano
+       (`Bilanciato`, `Risparmio`, `Qualità massima`) -> rosso sui nomi. */
+  const ordine = ['ollama', 'openai', 'subscription', 'claude', 'openrouter'];
+  const preset = [{ chiave: 'solo_openrouter', nome: 'Un ordine del server',
+                    ordine: ['openrouter'] }];
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI,
+                                ordine_fisso: ordine, preset } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+
+  assert.deepEqual(
+    Array.from(ctx.document.querySelectorAll('#chain-presets button')).map((b) => b.textContent),
+    ['Un ordine del server']);
+
+  /* «(x)» su Claude API: la riga esce, e «Fuori dalla catena» si ricompone
+     nell'ordine fisso ricevuto (`recomposeLayout`). */
+  righeCatena(ctx.document)[0].querySelector('.row-leave')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  assert.deepEqual(righeFuori(ctx.document).map((r) => r.querySelector('.row-name').textContent),
+    ['Ollama (in casa)', 'OpenAI', 'Piano Claude Max', 'Claude API']);
+
+  /* E il preset del server rifà la catena col SUO ordine. */
+  ctx.document.querySelector('#chain-presets button').dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
+  const corpo = JSON.parse(put.opts.body);
+  assert.deepEqual(corpo.chain_order, ['openrouter']);
+  assert.equal(corpo.strategia_ultima, 'solo_openrouter');
+});
+
+test('la PUT porta le chiavi che il server dice scrivibili, e solo quelle', async () => {
+  /* `scrivibili` (Tappa 7, Task 9) sostituisce l'elenco che `state.cfg` teneva
+     in questo file, coi predefiniti accanto -- i modelli di tre provider per
+     nome, i tempi del ponte, i 120 secondi di Ollama. I segni della migrazione
+     arrivano nel GET e non devono tornare indietro.
+
+     Mutazione eseguita (07/10/2026): la copia di `state.cfg` fatta su tutte le
+     chiavi di `cfgRaw` invece che su `scrivibili` -> rosso, la PUT porta
+     `seminato`. Ripristinato, `git diff` di `models-route.js` senza la
+     mutazione. */
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  righeCatena(ctx.document)[1].querySelector('.row-up')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
+  const corpo = JSON.parse(put.opts.body);
+  assert.deepEqual(Object.keys(corpo).sort(), CONFIG.scrivibili.slice().sort());
+  assert.deepEqual(corpo.ponte, CONFIG.ponte, 'i valori arrivano dal GET, non da un predefinito');
 });
 
 test('la risposta sta SOPRA le ragioni: il riquadro precede la prima sezione', async () => {
@@ -580,7 +660,7 @@ test('«Usa» mette il provider in fondo alla catena, e salva l\'oggetto intero'
 
 test('il piano NON offre «Usa», perché quella PUT il server la butta via', async () => {
   /* La prova che vale il doppio delle altre. `save_models_config` scarta
-     `subscription` da `chain_order` (`_VALID_BACKENDS` sono quattro nomi) e la
+     `subscription` da `chain_order` (`providers.chain_members()` sono quattro nomi) e la
      presenza del piano in catena discende da `ponte.attivo`, che questa pagina
      non scrive e che nessuno legge dall'archivio finché il Task 13 non lo
      cabla. Un «Usa» sul piano manderebbe una PUT accettata con 200 e buttata
@@ -807,7 +887,7 @@ test('la pagina non ha più niente da confessare sull\'ordine', async () => {
    quelli disponibili?».
 
    Il pannello NON compone nessuna frase e non sa niente dei casi particolari:
-   la provenienza dell'elenco, la spiegazione, da quando la scelta ha effetto e
+   la provenienza dell'elenco, la spiegazione e
    DOVE va scritta arrivano dal payload. I test qui sotto guardano proprio
    questo -- che una parola a schermo sia quella ricevuta, e che cambiando il
    payload cambi lo schermo. */
@@ -817,7 +897,6 @@ const PANNELLO_OR = {
   fonte: 'viva',
   provenienza: 'Letti da openrouter.ai adesso.',
   spiegazione: 'Solo modelli che sanno usare gli strumenti.',
-  quando: 'Una frase qualsiasi del backend.',
   dove: ['provider_models', 'openrouter'],
   scelto: 'openrouter:anthropic/claude-sonnet-4-6',
   casella: { etichetta: 'nascondi i gratuiti', dove: ['nascondi_gratuiti'] },
@@ -837,7 +916,7 @@ const PANNELLO_PIANO = {
   provenienza: 'Sono tutti quelli che esistono: il ponte parla con la CLI del piano.',
   spiegazione: 'Sono alias, non nomi di modello: qui la scelta non cambia '
     + 'quanto spendi, è compresa nel piano.',
-  quando: '', dove: ['ponte', 'modello'], scelto: 'sonnet', casella: null,
+  dove: ['ponte', 'modello'], scelto: 'sonnet', casella: null,
   modelli: [
     { valore: 'haiku', nota: 'il più rapido' },
     { valore: 'sonnet', nota: 'l\'equilibrato' },
@@ -849,7 +928,7 @@ const PANNELLO_OLLAMA = {
   id: 'ollama', nome: 'Ollama (in casa)', alias: false, elenco_completo: false,
   fonte: 'viva',
   provenienza: 'Scaricati su http://192.168.1.42:11434 — letti adesso.',
-  spiegazione: '', quando: '',
+  spiegazione: '',
   dove: ['ollama', 'modello'], scelto: 'llama3.1:8b', casella: null,
   modelli: [
     { valore: 'llama3.1:8b', nota: '' },
@@ -1024,32 +1103,10 @@ test('scegliere un modello di OpenRouter salva l\'oggetto intero, e la pagina ri
   assert.equal(pannello(ctx.document), null, 'e il pannello si chiude');
 });
 
-test('la didascalia del pannello è quella del backend, e sparisce quando il backend tace', async () => {
-  /* La promessa che il Task 9 aveva scritto, e che il Task 10 ha riscosso:
-     la didascalia non è scritta qui, quindi il giorno in cui il backend
-     smette di avere un tempo da dichiarare la riga sparisce da sé, senza che
-     nessuno tocchi il frontend. È successo -- `decisione_modelli` manda ""
-     per tutti e cinque i provider, perché ogni valore di questa pagina vale
-     dal prossimo messaggio -- e la coppia di prove resta: il canale è ancora
-     lì, e non inventa niente quando è vuoto. */
-  const parlante = monta({ config: { catena: CATENA, fuori_catena: FUORI },
-    pannelli: { openrouter: PANNELLO_OR } });
-  parlante.window.HirisModelsRoute.mount();
-  await tick(20);
-  apriIlModello(parlante, righeCatena(parlante.document)[1]);
-  await tick(20);
-  assert.equal(pannello(parlante.document).querySelector('.panel-when').textContent,
-    'Una frase qualsiasi del backend.');
-
-  const muto = monta({ config: { catena: CATENA, fuori_catena: FUORI },
-    pannelli: { openrouter: Object.assign({}, PANNELLO_OR, { quando: '' }) } });
-  muto.window.HirisModelsRoute.mount();
-  await tick(20);
-  apriIlModello(muto, righeCatena(muto.document)[1]);
-  await tick(20);
-  assert.equal(pannello(muto.document).querySelector('.panel-when'), null,
-    'senza la frase la pagina non ne inventa una');
-});
+/* Tappa 7, Task 9 (M-27): «la didascalia del pannello è quella del backend, e
+   sparisce quando il backend tace» è uscita col campo `quando`, che il backend
+   mandava vuoto per tutti e cinque i provider dal Task 10. La riga che la
+   disegnava è uscita con lei. */
 
 test('il pannello scrive DOVE gli viene detto, e non sa dove sia', async () => {
   /* Il modello di Ollama non vive in `provider_models` (`_PROVIDER_MODEL_KEYS`

@@ -39,6 +39,7 @@ from aiohttp import web
 
 from ..config import EUR_RATE as _EUR_RATE
 from ..home_space.historian import house_timezone, local_date
+from ..providers import SUBSCRIPTION
 from ..steering import chain_runner
 
 _NO_PROVIDER_MSG = (
@@ -200,6 +201,9 @@ async def handle_usage(request: web.Request) -> web.Response:
         # Lista VUOTA e non chiave assente: «non e' mai successo» e «non lo
         # so» sono due cose diverse, e la pagina deve poter scrivere la prima.
         "fallbacks": store.fallbacks(from_anchor=from_anchor),
+        # Chi non li ha serviti: il nome lo dice la tabella dei provider
+        # (D10a), la pagina non lo scrive a mano.
+        "fallbacks_from": SUBSCRIPTION.name,
         "last_reset": _iso(store.anchor()),
         "timezone": timezone or "UTC",
         "timezone_known": bool(timezone),
@@ -207,6 +211,12 @@ async def handle_usage(request: web.Request) -> web.Response:
             "provider": s["provider"],
             "label": s["etichetta"],
             "note": s["nota"],
+            # Con che parola si contano le chiamate (il piano conta turni), e
+            # se il costo e' compreso nel piano: la pagina li leggeva
+            # riconoscendo il provider per nome (`provider === 'ponte'`).
+            # Vengono dalla tabella dei provider (Tappa 7, Task 9).
+            "unit": s["unita"],
+            "cost_included": s["compreso"],
             "requests": s["richieste"],
             "token_in": s["token_in"],
             "token_out": s["token_out"],

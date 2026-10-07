@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from hiris.app import providers
 from hiris.app.api import handlers_models
 
 # Reuse the aiohttp test-app fixture/factory from test_api.py (creates the real
@@ -10,7 +11,21 @@ from hiris.app.api import handlers_models
 # tmp_path). Importing the fixture makes pytest pick it up in this module too.
 from tests.test_api import client  # noqa: F401
 
-_CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollama")
+# I cinque id si chiedono alla tabella dei provider (Tappa 7 T9): ricopiati
+# qui erano la tredicesima scrittura dello stesso elenco.
+_CONFIG_PROVIDER_IDS = providers.ids()
+
+
+def _with_claude_key(client):
+    """La chiave di Claude API nell'app, come la mette l'avvio.
+
+    Dalla Tappa 7 T9 la credenziale si misura sulla chiave e non sul runner
+    costruito (`providers.credentials_present`, una definizione sola): la
+    fixture `client` cabla un runner finto senza chiave, uno stato che l'avvio
+    non produce -- in produzione il runner di Claude nasce solo con la
+    chiave. Le prove che vogliono Claude API credenziato la mettono qui; le
+    altre restano senza, e `/api/models` non esce in rete."""
+    client.app["claude_api_key"] = "sk-test"
 
 
 @pytest.fixture
@@ -30,7 +45,7 @@ def claude_con_elenco(client):
     """
     client.app["claude_api_key"] = "sk-test"
     with patch.object(handlers_models, "_fetch_claude_models",
-                      AsyncMock(return_value=(handlers_models._CLAUDE_MODELS,
+                      AsyncMock(return_value=(list(providers.CLAUDE.reserve_models),
                                               "riserva"))):
         yield client
 
@@ -69,6 +84,10 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         "seminato", "catena_seminata", "piano_seminato",
         # cio' che la pagina disegna
         "adesso", "catena", "fuori_catena", "fine_catena",
+        # Tappa 7, Task 9: cio' che la pagina ricopiava e ora riceve -- l'ordine
+        # fisso e i preset dalla tabella dei provider, e le chiavi che una PUT
+        # scrive (`_OUR_KEYS`)
+        "ordine_fisso", "preset", "scrivibili",
     }
     # `ponte_attivo` E' USCITO con la versione B, ed era l'ULTIMO residuo
     # dell'invariante 1 di tutto il payload: `app["bridge_active"]`, cioe'
@@ -100,6 +119,7 @@ async def test_i_cinque_provider_ci_sono_tutti_e_stanno_in_una_lista_sola(client
     Cio' che quel test proteggeva resta, e si guarda dove la cosa vive adesso:
     i cinque ci sono tutti, ognuno sta in UNA delle due liste, e la credenziale
     e' un booleano."""
+    _with_claude_key(client)
     resp = await client.get("/api/models/config")
     assert resp.status == 200
     body = await resp.json()
@@ -116,8 +136,8 @@ async def test_i_cinque_provider_ci_sono_tutti_e_stanno_in_una_lista_sola(client
         assert isinstance(riga["nome"], str) and riga["nome"]
         assert isinstance(riga["ha_credenziale"], bool)
 
-    # The test client fixture wires app["claude_runner"] to a mock — so the
-    # "claude" provider must report a credential even without CLAUDE_API_KEY.
+    # La chiave di Claude API e' messa sopra (`_with_claude_key`): la
+    # riga di Claude dice che la credenziale c'e'.
     assert righe["claude"]["ha_credenziale"] is True
     assert righe["claude"]["manca"] == ""
 
@@ -328,12 +348,10 @@ async def test_la_riga_di_openrouter_non_mostra_piu_un_modello_di_openai(client)
     di OpenAI: su OpenRouter `gpt-4o` non e' nemmeno un nome valido). La riga
     diceva `gpt-4o` a chiunque non avesse scelto un modello: un identificatore
     preciso, e falso."""
-    from hiris.app.backends.openrouter_runner import AUTO_OPENROUTER
-
     client.app["openrouter_api_key"] = "sk-or-presente"
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["catena"] + body["fuori_catena"]}
-    assert righe["openrouter"]["modello"] == AUTO_OPENROUTER
+    assert righe["openrouter"]["modello"] == providers.OPENROUTER.auto_model
     assert righe["openrouter"]["modello"] != righe["openai"]["modello"]
 
 
@@ -376,6 +394,7 @@ async def test_una_catena_vuota_non_ha_una_fine(client):
 async def test_get_models_config_never_leaks_secrets(client, monkeypatch):
     """Boolean has_credential only — the actual secret VALUE must never
     appear anywhere in the /api/models/config JSON payload."""
+    _with_claude_key(client)
     fake_oauth_token = "sk-ant-oat01-super-secret-token-value"
     fake_claude_key = "sk-ant-api03-another-secret-value"
     fake_openai_key = "sk-openai-fake-secret-value"
@@ -495,7 +514,7 @@ async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(cli
     assert [p["id"] for p in body["providers"]] == ["claude"]
     p = body["providers"][0]
     assert set(p) == {"id", "nome", "alias", "elenco_completo", "fonte",
-                      "provenienza", "spiegazione", "quando", "dove", "scelto",
+                      "provenienza", "spiegazione", "dove", "scelto",
                       "casella", "modelli"}
     # La fixture `client` non porta una chiave di Claude API, quindi non c'e'
     # nessun elenco da leggere e il pannello lo DICE. Qui si asseriva `fonte ==
@@ -632,27 +651,10 @@ async def test_la_casella_dei_gratuiti_viaggia_come_percorso_solo_per_openrouter
     assert p["dove"] == ["provider_models", "openrouter"]
 
 
-@pytest.mark.asyncio
-async def test_nessun_pannello_ha_piu_niente_da_confessare(client):
-    """Invariante 4, chiuso invece che dichiarato. Fino al Task 10 questo campo
-    portava la confessione: lo stesso valore -- il modello di Claude API --
-    aveva effetto IMMEDIATO sul ponte (`_enqueue_chat_job` rilegge
-    `app["models_config"]` a ogni turno) e SOLO AL RIAVVIO sull'API (i runner
-    lo ricevevano alla costruzione), e la pagina ne dichiarava uno solo:
-    sbagliata, non imprecisa. Adesso i runner LEGGONO, quindi non c'e' un
-    tempo da dichiarare per nessuno dei cinque -- e la pagina non ne inventa
-    uno quando il backend tace (pinnato in tests/js/models-route.test.mjs).
-
-    Si guardano tutti e cinque, non solo quello che confessava: una didascalia
-    di riavvio rimessa su un provider qualsiasi sarebbe la pagina che torna a
-    mentire da un'altra riga."""
-    for pid in _CONFIG_PROVIDER_IDS:
-        body = await (await client.get("/api/models?provider=" + pid)).json()
-        for p in body["providers"]:
-            assert p["quando"] == "", (
-                "il pannello di " + pid + " dichiara un tempo che non esiste: "
-                + repr(p["quando"])
-            )
+# Tappa 7, Task 9 (M-27): `test_nessun_pannello_ha_piu_niente_da_confessare`
+# e' uscito con il campo `quando` che provava sempre vuoto. Il campo non c'e'
+# piu': che non rientri lo dice l'insieme esatto delle chiavi del pannello in
+# `test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco`.
 
 
 @pytest.mark.asyncio
@@ -879,6 +881,7 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
 
     Qui si usa la funzione VERA (`server._recompute_chain`), non una finta:
     di sua natura questa prova esiste per non fidarsi del cablaggio."""
+    _with_claude_key(client)
     from hiris.app.llm_router import LLMRouter
     from hiris.app.server import _recompute_chain
 
@@ -956,6 +959,7 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     (`400 credit balance too low`) mentre OpenRouter serve i turni. Il
     registro e' scritto DA QUI, come lo scriverebbe il router, e la pagina
     riceve le due frasi gia' fatte."""
+    _with_claude_key(client)
     client.app["openrouter_api_key"] = "sk-or-presente"
     client.app["model_chain"] = ["claude", "openrouter"]
     registro = client.app["occurrence_registry"]
@@ -978,6 +982,7 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
     """Lo stato di un add-on appena partito: nessuna osservazione, e la pagina
     lo dice invece di regalare un successo che nessuno ha misurato. E' anche
     la prova che il registro non nasce popolato."""
+    _with_claude_key(client)
     client.app["model_chain"] = ["claude"]
 
     body = await (await client.get("/api/models/config")).json()
@@ -994,6 +999,7 @@ async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypa
     solo), la riga direbbe per sempre «poco fa» -- che e' esattamente la
     freschezza finta che ha fatto sopravvivere il difetto piu' grave della
     settimana a 1207 test."""
+    _with_claude_key(client)
     import hiris.app.api.handlers_models as modulo
 
     client.app["model_chain"] = ["claude"]
@@ -1022,6 +1028,7 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
     rappresentazioni dello stesso fatto, e la pagina racconterebbe un traffico
     che non e' quello che c'e' stato. Qui il router e' costruito a mano con il
     registro dell'app, come fa `_on_startup`, e un turno vero lo riempie."""
+    _with_claude_key(client)
     from unittest.mock import AsyncMock, MagicMock
 
     from hiris.app.claude_runner import RunnerBackendError
@@ -1053,7 +1060,7 @@ async def test_l_avvio_consegna_al_router_IL_registro_dell_app(tmp_path):
     (`app.on_startup.clear()`).
 
     Fino al 03/10/2026 la prova cercava la parola chiave `registry` in ogni
-    `LLMRouter(...)` del testo di `server.py`. Adesso l'app si avvia davvero,
+    `LLMRouter(..., model_chain=[])` del testo di `server.py`. Adesso l'app si avvia davvero,
     con una credenziale perche' il router nasca, e si guarda l'IDENTITA': il
     router tiene lo STESSO registro che l'app pubblica alla pagina -- non
     «un registro», che la vecchia prova avrebbe lasciato passare.

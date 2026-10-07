@@ -6,7 +6,8 @@ complesso.
 """
 import pytest
 
-from hiris.app.model_resolution import FIXED_ORDER, compose_now, display_name, nature
+from hiris.app.model_resolution import compose_now
+from hiris.app.providers import display_name, ids, nature
 
 
 def test_il_primo_della_catena_e_quello_che_risponde():
@@ -626,7 +627,7 @@ def test_una_catena_vuota_lascia_tutti_e_cinque_fuori():
     catena, fuori = compose_topology(chain_order=[], credentials=CRED,
                                       models=MOD, bridge_active=False)
     assert catena == []
-    assert [r["id"] for r in fuori] == list(FIXED_ORDER)
+    assert [r["id"] for r in fuori] == list(ids())
 
 
 def test_nessuna_riga_porta_la_parola_vietata():
@@ -1021,7 +1022,7 @@ def test_un_motivo_che_non_e_un_fatto_osservato_non_si_annuncia():
 
 def test_la_nota_nomina_il_piano_con_il_nome_che_ha_in_tutto_il_prodotto():
     """Un nome per provider, mai due (Task 5). La nota non se ne inventa uno
-    suo: se `DISPLAY_NAMES` cambiasse, cambierebbe anche qui."""
+    suo: se il nome nella tabella dei provider cambiasse, cambierebbe anche qui."""
     testo = downgrade_note(reason="scadenza", who_answered="openrouter")
     assert testo.startswith("Il " + display_name("subscription") + " ")
     assert display_name("openrouter") in testo

@@ -41,7 +41,7 @@
 
    Vale anche per il PANNELLO DEL MODELLO (Task 9), che è la parte più recente
    e quella in cui sarebbe stato più facile ricominciare: la provenienza
-   dell'elenco, la spiegazione, da quando la scelta ha effetto e persino DOVE
+   dell'elenco, la spiegazione e persino DOVE
    va scritta (`dove`, un percorso dentro `state.cfg`) arrivano dal payload.
    È il percorso, in particolare, a permettere a questo file di non sapere che
    il modello di Ollama non vive in `provider_models` e che il piano non ha
@@ -56,23 +56,14 @@
 (function() {
   'use strict';
 
-  /* L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
-     quindi non può contraddire niente. DUPLICA `model_resolution.FIXED_ORDER`
-     (il frontend non importa Python): le due liste sono tenute legate da un
-     test che si rompe -- test_models_frontend_wiring.py. */
-  var FIXED_ORDER = ['claude', 'subscription', 'openrouter', 'openai', 'ollama'];
-
-  /* I tre ordini per esteso, da `llm_router._STRATEGY_ORDER`. Vivono qui
-     perché un preset è un GESTO che riscrive la catena, non uno stato
-     persistente da cui la catena si deriva: `llm_strategy` come impostazione
-     esce con questa fetta. Nessun «preset corrente» da mostrare, nessuna
-     regola di precedenza da spiegare, nessun arbitro da mantenere.
-     Anche questi sono pinnati lato Python: gli ordini esistono due volte. */
-  var PRESET = {
-    balanced: { nome: 'Bilanciato', ordine: ['claude', 'openrouter', 'openai', 'ollama'] },
-    cost_first: { nome: 'Risparmio', ordine: ['ollama', 'openrouter', 'openai', 'claude'] },
-    quality_first: { nome: 'Qualità massima', ordine: ['claude', 'openai', 'openrouter', 'ollama'] }
-  };
+  /* L'ordine fisso e i tre preset NON vivono qui. Fino alla Tappa 7 (Task 9)
+     questo file ne teneva una copia (`FIXED_ORDER`, `PRESET`), legata al
+     Python da un test che confrontava le stringhe: ora arrivano nel payload di
+     GET api/models/config (`ordine_fisso`, `preset`), dalla tabella dei
+     provider (`providers.py`), e un provider nuovo compare in questa pagina
+     senza che nessuno la tocchi. Un preset resta un GESTO che riscrive la
+     catena, non uno stato da cui la catena si deriva: nessun «preset
+     corrente» da mostrare, nessuna regola di precedenza da spiegare. */
 
   var ERR_SAVE = '⚠ Salvataggio non riuscito';
 
@@ -92,6 +83,8 @@
        una PUT che azzerava l'archivio. Nascono `disabled` (mount) e si
        abilitano di là. */
     loaded: false,
+    ordineFisso: [],       // GET api/models/config -> ordine_fisso[]
+    preset: [],            // GET api/models/config -> preset[] ({chiave, nome, ordine})
     catena: [],            // GET api/models/config -> catena[]
     fuoriCatena: [],       // GET api/models/config -> fuori_catena[]
     adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
@@ -109,27 +102,20 @@
        pazienza ciascuno, e fino al Task 8 la pagina la leggeva a ogni
        caricamento per un risultato che nessuno guardava. */
     pannello: null,
-    cfg: {
-      chain_order: [],
-      provider_models: { claude: '', openai: '', openrouter: '' },
-      ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50, modello: 'sonnet' },
-      ollama: { modello: '', timeout_s: 120 },
-      nascondi_gratuiti: false,
-      strategia_ultima: ''
-      /* `seminato` NON sta qui ed è deliberato: è il segno che la migrazione
-         (versione A) è avvenuta, non una decisione dell'utente. Un client HTTP
-         non deve poterlo riscrivere -- rimandarlo a `false` farebbe RIGIRARE la
-         semina al riavvio successivo, e dopo la versione B, con l'ambiente
-         muto, ricopierebbe i predefiniti: la perdita silenziosa che le due
-         versioni della migrazione esistono per evitare. Il backend lo tiene
-         fuori da `_OUR_KEYS` (`api/handlers_models.py`), quindi anche una
-         PUT che lo portasse non lo toccherebbe; qui non viaggia proprio. */
-    }
-  };
+    /* Ciò che una PUT scrive. Prima del GET è solo una catena vuota: le
+       chiavi e i loro valori arrivano col payload (`scrivibili` dice quali
+       sono), e i predefiniti -- i modelli dei provider, i tempi del ponte e di
+       Ollama -- vivono nel backend, dove `load_models_config` li applica.
+       Fino alla Tappa 7 (Task 9) qui ce n'era una seconda copia.
 
-  /* I tre bottoni «Rifai la catena», per poterli abilitare quando il primo GET
-     torna. Vivono fuori da `state` perché sono nodi del DOM, non dati. */
-  var presetButtons = [];
+       I segni della migrazione (`seminato`, `catena_seminata`,
+       `piano_seminato`) NON ci entrano ed è deliberato: non sono decisioni
+       dell'utente, e un client che li rimandasse a `false` farebbe RIGIRARE la
+       semina al riavvio successivo. Il backend li tiene fuori da `_OUR_KEYS`
+       (`api/handlers_models.py`), quindi `scrivibili` non li nomina e una PUT
+       che li portasse non li toccherebbe. */
+    cfg: { chain_order: [] }
+  };
 
   /* ── PUT api/models/config — SEMPRE l'oggetto intero (§7.2), serializzato ──
      Due controlli che scrivono quasi in contemporanea potrebbero far arrivare
@@ -394,8 +380,8 @@
      stesso identico comportamento.
 
      E come ogni altra cosa in questo file, il pannello NON compone nessuna
-     frase: la provenienza dell'elenco, la spiegazione, da quando la scelta ha
-     effetto e persino DOVE va scritta arrivano dal payload. Il percorso
+     frase: la provenienza dell'elenco, la spiegazione e
+     persino DOVE va scritta arrivano dal payload. Il percorso
      (`dove`) è ciò che permette a questo codice di non sapere che il modello
      di Ollama non vive in `provider_models`: senza, servirebbe un
      `if (id === '...')`, cioè una regola del prodotto scritta una seconda
@@ -554,16 +540,6 @@
     }
     if (data.spiegazione) {
       box.appendChild(el('p', 'panel-explanation', data.spiegazione));
-    }
-    /* Da quando ha effetto la scelta, se mai avesse un tempo suo. Oggi il
-       backend tace su tutti e cinque i provider (`model_resolution`: ogni
-       valore di questa pagina vale dal prossimo messaggio) e questa riga non
-       si disegna. Il canale resta perché la pagina non deve imparare una
-       forma nuova il giorno in cui un campo tornasse ad avere un tempo
-       proprio -- e perché una frase così è un'affermazione sul prodotto, che
-       si scrive dove il prodotto la sa. */
-    if (data.quando) {
-      box.appendChild(el('p', 'panel-when', data.quando));
     }
     var statusEl = el('p', 'panel-status');
     statusEl.setAttribute('aria-live', 'polite');
@@ -869,7 +845,7 @@
       return Object.assign({}, r, { posizione: i + 1 });
     });
     var idDentro = state.catena.map(function(r) { return r.id; });
-    state.fuoriCatena = FIXED_ORDER.filter(function(id) {
+    state.fuoriCatena = state.ordineFisso.filter(function(id) {
       return perId[id] && idDentro.indexOf(id) === -1;
     }).map(function(id) { return Object.assign({}, perId[id], { posizione: null }); });
   }
@@ -932,8 +908,15 @@
     writeChain(order, 'Errore salvataggio ordine. Riprova.');
   }
 
+  function presetByKey(key) {
+    for (var i = 0; i < state.preset.length; i++) {
+      if (state.preset[i].chiave === key) return state.preset[i];
+    }
+    return null;
+  }
+
   function redoChain(key) {
-    var p = PRESET[key];
+    var p = presetByKey(key);
     if (!p) return;
     /* Solo chi ha una credenziale: mettere in catena un provider senza
        credenziale creerebbe una riga che non può funzionare, cioè la seconda
@@ -997,21 +980,21 @@
       state.adesso = (cfgRaw.adesso && typeof cfgRaw.adesso === 'object') ? cfgRaw.adesso : null;
       state.bridgeActive = !!(cfgRaw.ponte && cfgRaw.ponte.attivo);
       state.fineCatena = typeof cfgRaw.fine_catena === 'string' ? cfgRaw.fine_catena : '';
-      state.cfg = {
-        chain_order: Array.isArray(cfgRaw.chain_order) ? cfgRaw.chain_order.slice() : [],
-        provider_models: Object.assign({ claude: '', openai: '', openrouter: '' },
-                                       cfgRaw.provider_models || {}),
-        ponte: Object.assign({ attivo: false, scadenza_min: 5, tetto_giornaliero: 50,
-                               modello: 'sonnet' },
-                             cfgRaw.ponte || {}),
-        ollama: Object.assign({ modello: '', timeout_s: 120 }, cfgRaw.ollama || {}),
-        nascondi_gratuiti: !!cfgRaw.nascondi_gratuiti,
-        strategia_ultima: cfgRaw.strategia_ultima || ''
-      };
+      state.ordineFisso = Array.isArray(cfgRaw.ordine_fisso) ? cfgRaw.ordine_fisso : [];
+      state.preset = Array.isArray(cfgRaw.preset) ? cfgRaw.preset : [];
+      /* Una copia profonda delle sole chiavi che una PUT scrive: i pannelli
+         scrivono dentro `state.cfg` (`writePath`), e senza copia scriverebbero
+         dentro la risposta. */
+      var cfg = {};
+      (Array.isArray(cfgRaw.scrivibili) ? cfgRaw.scrivibili : []).forEach(function(k) {
+        if (cfgRaw[k] !== undefined) cfg[k] = JSON.parse(JSON.stringify(cfgRaw[k]));
+      });
+      if (!Array.isArray(cfg.chain_order)) cfg.chain_order = [];
+      state.cfg = cfg;
       /* L'UNICO posto che apre le scritture, ed è il ramo del GET riuscito:
          da qui in poi `state.cfg` è ciò che il prodotto ha davvero. */
       state.loaded = true;
-      presetButtons.forEach(function(b) { b.disabled = false; });
+      renderPresets();
       clearChainError();
       renderNow();
       renderChain();
@@ -1021,6 +1004,28 @@
       console.error('models/config fetch failed', err);
       renderLoadFailure();
     });
+  }
+
+  /* I bottoni «Rifai la catena», disegnati dai preset del payload. Nascono
+     quando il primo GET torna, e solo allora: un preset è un gesto che RIFÀ
+     la catena, e rifarla su uno stato mai letto vuol dire cancellarla. Fino
+     alla Tappa 7 (Task 9) i nomi stavano in questo file e i bottoni
+     comparivano spenti al montaggio; ora che i nomi arrivano dal server, prima
+     della risposta non c'è niente da mostrare -- e dopo un GET fallito non
+     resta nessun bottone che possa scrivere. */
+  function renderPresets() {
+    var actions = byId('chain-presets');
+    if (!actions) return;
+    clearEl(actions);
+    if (!state.preset.length) { actions.hidden = true; return; }
+    actions.appendChild(el('span', 'sc-actions-label', 'Rifai la catena:'));
+    state.preset.forEach(function(p) {
+      var b = el('button', 'btn btn-ghost btn-sm', p.nome);
+      b.type = 'button';
+      b.addEventListener('click', function() { redoChain(p.chiave); });
+      actions.appendChild(b);
+    });
+    actions.hidden = false;
   }
 
   /* ── Shell statico ────────────────────────────────────────────────────── */
@@ -1060,20 +1065,8 @@
        si deriva (progetto §5.3). Effetto immediato e visibile, e da quel momento
        la verità è di nuovo una sola. */
     var actions = el('div', 'sc-actions');
-    actions.appendChild(el('span', 'sc-actions-label', 'Rifai la catena:'));
-    presetButtons = [];
-    Object.keys(PRESET).forEach(function(key) {
-      var b = el('button', 'btn btn-ghost btn-sm', PRESET[key].nome);
-      b.type = 'button';
-      /* Spenti finché il primo GET non è tornato: un preset è un gesto che
-         RIFÀ la catena, e rifarla su uno stato mai letto vuol dire cancellarla.
-         `state.loaded` rifiuta comunque la scrittura -- questo lo dice a
-         schermo, che è la metà che l'utente vede. */
-      b.disabled = true;
-      b.addEventListener('click', function() { redoChain(key); });
-      presetButtons.push(b);
-      actions.appendChild(b);
-    });
+    actions.id = 'chain-presets';
+    actions.hidden = true;
     chainCard.querySelector('.sc-header').appendChild(actions);
     /* Qui viveva la confessione: «L'ordine si applica al riavvio
        dell'add-on». Era vera -- `handle_save_models_config` aggiornava

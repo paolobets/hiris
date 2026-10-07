@@ -124,7 +124,7 @@ test('un fallimento di rete non lascia il guasto invisibile: console.error regis
 // ---------------------------------------------------------------------------
 // Collaudo 3.22, C5 ("€ 0,00 quando la verità è «non misurabile»"): misurato
 // dal vivo — «Richieste 99 · Token input 7.20M · Costo € 0,00» senza altra
-// spiegazione, quando l'UNICO uso registrato è l'abbonamento (`ponte`), che
+// spiegazione, quando l'UNICO uso registrato è l'abbonamento (`subscription`), che
 // non ha un costo di turno da sommare. Il totale che il server manda
 // (`cost_eur`) è 0.0 per costruzione: nessun altro addendo. Uno zero
 // misurato e uno zero "qui non c'è niente da misurare" sono lo stesso zero
@@ -137,7 +137,7 @@ test('collaudo 3.22 (C5): con il solo abbonamento, il riquadro dice «In abbonam
   window.fetch = async () => jsonResponse({
     total_requests: 99, input_tokens: 7200000, output_tokens: 500000,
     cost_eur: 0, partial_cost: false, last_reset: '2026-07-01T00:00:00Z',
-    sections: [{ provider: 'ponte', cost_usd: null }],
+    sections: [{ provider: 'subscription', cost_usd: null, cost_included: true }],
   });
 
   await globalThis.loadUsage();
@@ -149,13 +149,14 @@ test('collaudo 3.22 (C5): con il solo abbonamento, il riquadro dice «In abbonam
 
 test('collaudo 3.22 (C5): con ANCHE un provider a consumo, uno zero vero resta «€ 0,00»', async () => {
   // Precondizione di non-regressione: la correzione non deve appiattire
-  // ogni "ponte" presente in `sections` -- solo quando è l'UNICA sezione,
+  // ogni sezione a costo compreso presente in `sections` -- solo quando è l'UNICA,
   // cioè non c'è nessun provider misurabile che possa aver speso qualcosa.
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml(true) });
   window.fetch = async () => jsonResponse({
     total_requests: 3, input_tokens: 100, output_tokens: 50,
     cost_eur: 0, partial_cost: false, last_reset: '2026-07-01T00:00:00Z',
-    sections: [{ provider: 'ponte', cost_usd: null }, { provider: 'claude', cost_usd: 0 }],
+    sections: [{ provider: 'subscription', cost_usd: null, cost_included: true },
+               { provider: 'claude', cost_usd: 0, cost_included: false }],
   });
 
   await globalThis.loadUsage();

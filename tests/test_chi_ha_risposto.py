@@ -40,7 +40,7 @@ async def test_chi_risponde_in_catena_si_dichiara():
     primo.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
     secondo = MagicMock()
     secondo.chat = AsyncMock(return_value="risposta")
-    router = LLMRouter(claude=primo, openrouter=secondo, strategy="balanced")
+    router = LLMRouter(claude=primo, openrouter=secondo, model_chain=["claude", "openrouter"])
 
     assert await router.chat(user_message="ciao", model="auto") == "risposta"
     assert router.provider_name == "openrouter"
@@ -50,7 +50,7 @@ async def test_chi_risponde_in_catena_si_dichiara():
 async def test_prima_di_rispondere_non_si_sa():
     """Un nome che c'e' gia' prima della chiamata sarebbe il nome del turno
     PRECEDENTE, ed e' peggio di «ignoto»: si legge come un fatto."""
-    router = LLMRouter(claude=MagicMock(), strategy="balanced")
+    router = LLMRouter(claude=MagicMock(), model_chain=["claude"])
     assert router.provider_name == ""
 
 
@@ -59,7 +59,7 @@ async def test_nessuno_risponde_nessun_nome():
     """Tutti rifiutano: non si dichiara un vincitore che non c'e'."""
     primo = MagicMock()
     primo.chat = AsyncMock(side_effect=RunnerBackendError("giu'"))
-    router = LLMRouter(claude=primo, strategy="balanced")
+    router = LLMRouter(claude=primo, model_chain=["claude"])
     await router.chat(user_message="ciao", model="auto")
     assert router.provider_name == ""
 
@@ -70,6 +70,6 @@ async def test_anche_il_modello_chiesto_per_nome_dichiara_chi_ha_risposto():
     dichiarazione vivesse solo nel ciclo, meta' dei turni resterebbe muta."""
     runner = MagicMock()
     runner.chat = AsyncMock(return_value="ok")
-    router = LLMRouter(claude=runner, strategy="balanced")
+    router = LLMRouter(claude=runner, model_chain=["claude"])
     await router.chat(user_message="ciao", model="claude-opus-4-8")
     assert router.provider_name == "claude"

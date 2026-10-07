@@ -363,7 +363,7 @@ async def test_l_osservatore_si_dichiara_al_conto_dei_consumi(archivio):
 #
 # Fetta «l'osservatore chiede a chi risponde davvero» (11/09/2026). Il giro
 # dell'osservatore andava dritto a `llm_router`, dove il ponte **non e' un
-# anello** (`llm_router._VALID_BACKEND_NAMES`: claude, openai, openrouter,
+# anello** (`providers.chain_members()`: claude, openai, openrouter,
 # ollama). Su una casa che gira interamente sul Piano Claude Max -- questa --
 # l'osservatore non poteva usare l'unico fornitore che risponde, ed e'
 # esattamente il difetto che `steering.py` dichiara di aver chiuso il
@@ -570,7 +570,7 @@ async def test_sulla_CATENA_nessuno_risponde_e_si_dice_cosi(archivio):
 
     giu = MagicMock()
     giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
-    router = LLMRouter(claude=giu, strategy="balanced")
+    router = LLMRouter(claude=giu, model_chain=["claude"])
 
     esito = await observer.reconsider(router, archivio, _casa(),
                                       reason="prima volta", now=1000.0)

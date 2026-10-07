@@ -20,7 +20,7 @@ from unittest import mock
 
 import pytest
 
-from hiris.app.model_activation import providers_in_chain
+from hiris.app.providers import providers_in_chain
 from tests._avvio import SERVER_LOGGER, UNREACHABLE_OLLAMA
 
 
@@ -70,10 +70,10 @@ def test_i_nomi_sconosciuti_e_i_doppioni_cadono():
         ["claude", "claude", "gemini"], {"claude": True}) == ["claude"]
 
 
-def test_la_vecchia_derivazione_non_esiste_piu():
-    import hiris.app.model_activation as m
-    assert not hasattr(m, "derive_active_providers")
-    assert not hasattr(m, "reconcile_chain")
+# Tappa 7 T9 (M-26): `test_la_vecchia_derivazione_non_esiste_piu` e' uscito
+# con `model_activation.py`, fuso nella tabella dei provider: chiedeva che il
+# modulo non avesse piu' `derive_active_providers` e `reconcile_chain`, e il
+# modulo non c'e' piu'.
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +96,7 @@ def test_la_vecchia_derivazione_non_esiste_piu():
 # E' anche cio' che chiude il DEBITO E dichiarato al Task 1: fino alla 2.4.1
 # `app["model_chain"]` aveva DUE scritture, `list(_chain)` dentro il ramo
 # dei runner e `[]` nel suo `else`, e la seconda non era coperta da niente.
+# Dalla Tappa 7 T9 (M-30) la scrittura e' una sola, quella di `_recompute_chain`.
 # ---------------------------------------------------------------------------
 
 @contextlib.asynccontextmanager
@@ -180,11 +181,10 @@ async def test_l_avvio_scrive_una_copia_non_la_lista_del_router(tmp_path):
 
     Mutazione ESEGUITA (03/10/2026): in `_recompute_chain`
     `router._chat_policy = list(chain)` -> `= app["model_chain"]` -- rossa.
-    Mutazione ESEGUITA e NON vista: nel blocco dell'avvio
-    `app["model_chain"] = list(_chain)` -> `= _chain` -- verde, perche' il
-    ricalcolo riscrive `app["model_chain"]` poche righe dopo: in produzione
-    quella copia non arriva a nessuno (la vecchia prova, che eseguiva il
-    blocco isolato, la vedeva)."""
+    La scrittura di `app["model_chain"]` nel blocco dell'avvio, che il
+    ricalcolo riscriveva poche righe dopo (una mutazione su di lei restava
+    verde: in produzione quella copia non arrivava a nessuno), e' uscita alla
+    Tappa 7 T9 (voce M-30)."""
     async with _started(tmp_path, ["claude"], credentials=("claude",)) as (app, _chains):
         published = app["model_chain"]
         assert published == ["claude"]

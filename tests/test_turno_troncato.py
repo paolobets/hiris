@@ -163,7 +163,7 @@ async def test_il_router_dice_la_troncatura_di_chi_ha_risposto():
                                 api_key="sk-prova")
     runner._client.chat.completions.create = AsyncMock(
         return_value=_risposta_openai("length"))
-    router = LLMRouter(openai=runner, strategy="balanced")
+    router = LLMRouter(openai=runner, model_chain=["openai"])
 
     await router.chat(user_message="ciao", model="auto")
 
@@ -176,7 +176,7 @@ async def test_il_router_senza_nessuno_che_risponde_non_eredita_il_segnale():
     leggersi come di questa, quando il router risponde da se'."""
     primo = MagicMock()
     primo.chat = AsyncMock(side_effect=RuntimeError("giu'"))
-    router = LLMRouter(claude=primo, strategy="balanced")
+    router = LLMRouter(claude=primo, model_chain=["claude"])
     # La chiamata di prima, nello stesso compito, era troncata: il segnale e'
     # la ContextVar condivisa, e un runner qualunque la scrive.
     ClaudeRunner(api_key="sk-prova").last_truncated = True

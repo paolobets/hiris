@@ -149,14 +149,23 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
 # [6]-[8]: l'indipendenza, in tutte e due le direzioni
 # ---------------------------------------------------------------------------
 
+def _store(provider_models, ollama_model, ponte_model):
+    """Il dizionario della pagina Modelli, nella forma in cui lo legge
+    `_models_in_use` dalla Tappa 7 T9: i tre valori che prima arrivavano come
+    argomenti separati stanno ai loro indirizzi (`Provider.model_path`)."""
+    return {"provider_models": provider_models,
+            "ollama": {"modello": ollama_model},
+            "ponte": {"modello": ponte_model}}
+
+
 @pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
 def test_il_piano_mostra_il_campo_e_non_una_composizione(alias):
     """Claude API su haiku, il piano su `alias`: la riga del piano dice
     `alias`. Con la regola vecchia direbbe sempre `haiku`."""
     from hiris.app.api import handlers_models
-    modelli = handlers_models._models_in_use(
+    modelli = handlers_models._models_in_use(_store(
         {"claude": "claude-haiku-4-5-20251001", "openai": "", "openrouter": ""},
-        "", alias)
+        "", alias))
     assert modelli["subscription"] == alias
 
 
@@ -166,8 +175,8 @@ def test_cambiare_il_modello_di_claude_api_non_tocca_il_piano():
     from hiris.app.api import handlers_models
     prima = {"claude": "claude-haiku-4-5-20251001", "openai": "", "openrouter": ""}
     dopo = {"claude": "claude-opus-4-7", "openai": "", "openrouter": ""}
-    assert handlers_models._models_in_use(prima, "", "sonnet")["subscription"] == "sonnet"
-    assert handlers_models._models_in_use(dopo, "", "sonnet")["subscription"] == "sonnet"
+    assert handlers_models._models_in_use(_store(prima, "", "sonnet"))["subscription"] == "sonnet"
+    assert handlers_models._models_in_use(_store(dopo, "", "sonnet"))["subscription"] == "sonnet"
 
 
 def test_e_cambiare_il_piano_non_tocca_claude_api():
@@ -176,5 +185,5 @@ def test_e_cambiare_il_piano_non_tocca_claude_api():
     API passerebbe tutto il resto del file."""
     from hiris.app.api import handlers_models
     pm = {"claude": "claude-opus-4-7", "openai": "", "openrouter": ""}
-    assert handlers_models._models_in_use(pm, "", "haiku")["claude"] == "claude-opus-4-7"
-    assert handlers_models._models_in_use(pm, "", "opus")["claude"] == "claude-opus-4-7"
+    assert handlers_models._models_in_use(_store(pm, "", "haiku"))["claude"] == "claude-opus-4-7"
+    assert handlers_models._models_in_use(_store(pm, "", "opus"))["claude"] == "claude-opus-4-7"

@@ -156,7 +156,7 @@ const MISURATO = {
   measured: true, total_requests: 3, input_tokens: 10, output_tokens: 5,
   total_tokens: 15, cost_usd: 0.01, cost_eur: 0.01, partial_cost: false,
   rate_limit_errors: 0, last_reset: null, timezone: 'Europe/Rome',
-  timezone_known: true, sections: [],
+  timezone_known: true, sections: [], fallbacks_from: 'Piano Claude Max',
 };
 
 test('i giri passati a consumo si leggono nella pagina, con chi e con quante volte', async () => {
@@ -172,6 +172,22 @@ test('i giri passati a consumo si leggono nella pagina, con chi e con quante vol
   assert.match(testo, /tetto giornaliero/);
   assert.match(testo, /22/, 'il numero è la differenza fra un caso e un problema');
   assert.match(testo, /ricette/);
+});
+
+test('chi non ha servito i giri lo dice il server, non la pagina', async () => {
+  /* D10a (Tappa 7 T9): «Piano Claude Max» era scritto a mano qui dentro; il
+     nome arriva in `fallbacks_from`, e il server lo chiede alla tabella dei
+     provider. Mutazione ESEGUITA (07/10/2026): ripristinato il nome scritto a
+     mano nelle due frasi -- rossa su «Un piano rinominato»; ripristinata. */
+  const { testo } = await monta(() => ({
+    ok: true, status: 200,
+    json: () => Promise.resolve({ ...MISURATO, fallbacks_from: 'Un piano rinominato', fallbacks: [
+      { day: '2026-09-22', agent: 'analista', reason: 'tetto giornaliero', count: 1, last_ts: 1 },
+    ] }),
+  }));
+
+  assert.match(testo, /servito dal Un piano rinominato/);
+  assert.doesNotMatch(testo, /Piano Claude Max/);
 });
 
 test('senza ripieghi non compare nessun riquadro', async () => {

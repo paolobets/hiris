@@ -78,7 +78,7 @@
   --consumo-openai:     oklch(0.60 0.13 200);
   --consumo-openrouter: oklch(0.64 0.14 330);
   --consumo-ollama:     oklch(0.66 0.11 160);
-  --consumo-ponte:      oklch(0.58 0.09 60);
+  --consumo-subscription: oklch(0.58 0.09 60);
 
   /* Le due serie sovrapposte del bilancio dell'energia (mandato «il bilancio
      dell'energia», 27/08/2026, brief-pagina.md §2): produzione e prelievo,
@@ -151,7 +151,7 @@
   --consumo-openai:     oklch(0.72 0.13 200);
   --consumo-openrouter: oklch(0.76 0.14 330);
   --consumo-ollama:     oklch(0.78 0.11 160);
-  --consumo-ponte:      oklch(0.72 0.10 60);
+  --consumo-subscription: oklch(0.72 0.10 60);
   --bilancio-produzione: oklch(0.80 0.13 100);
   --bilancio-prelievo:   oklch(0.74 0.15 260);
 
@@ -201,7 +201,7 @@
   --consumo-openai:     oklch(0.72 0.13 200);
   --consumo-openrouter: oklch(0.76 0.14 330);
   --consumo-ollama:     oklch(0.78 0.11 160);
-  --consumo-ponte:      oklch(0.72 0.10 60);
+  --consumo-subscription: oklch(0.72 0.10 60);
   --bilancio-produzione: oklch(0.80 0.13 100);
   --bilancio-prelievo:   oklch(0.74 0.15 260);
     --accent:        oklch(0.78 0.17 280);

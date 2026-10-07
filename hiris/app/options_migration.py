@@ -17,6 +17,8 @@ compiute: girano su ogni installazione nuova (vedi `server._chain_as_it_was`).
 """
 from __future__ import annotations
 
+from .providers import SUBSCRIPTION
+
 
 def seed_chain(store: dict, current_chain: list[str], *, log) -> tuple[dict, bool]:
     """Copia la catena EFFETTIVA di oggi nell'archivio, una volta sola.
@@ -113,11 +115,11 @@ def seed_subscription_model(store: dict, current_alias: str,
     bridge["modello"] = current_alias
     store["ponte"] = bridge
     log.info(
-        "Il Piano Claude Max ha adesso un modello suo: %s, cioe' quello che "
+        "Il %s ha adesso un modello suo: %s, cioe' quello che "
         "stava gia' usando (era un effetto del modello di Claude API). Da "
         "adesso si sceglie dalla riga del piano nella pagina Modelli, e "
         "cambiare il modello di Claude API non lo tocca piu'.%s",
-        current_alias,
+        SUBSCRIPTION.name, current_alias,
         "" if previous in (None, current_alias)
         else f" Il predefinito {previous!r} e' stato sostituito.",
     )

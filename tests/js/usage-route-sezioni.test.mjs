@@ -26,7 +26,7 @@ const RISPOSTA = {
   timezone_known: true,
   sections: [
     {
-      provider: 'claude', label: 'API Anthropic',
+      provider: 'claude', label: 'Claude API', unit: 'richieste', cost_included: false,
       note: 'Costo calcolato sul listino Anthropic.',
       requests: 980, token_in: 2600000, token_out: 380000,
       cache_read: 4200000, cache_write: 310000,
@@ -40,7 +40,7 @@ const RISPOSTA = {
       }],
     },
     {
-      provider: 'openrouter', label: 'OpenRouter',
+      provider: 'openrouter', label: 'OpenRouter', unit: 'richieste', cost_included: false,
       note: 'Costo dichiarato da OpenRouter.',
       requests: 23, token_in: 110000, token_out: 5000,
       cache_read: 0, cache_write: 0,
@@ -61,7 +61,7 @@ const RISPOSTA = {
       ],
     },
     {
-      provider: 'ponte', label: 'Abbonamento Claude',
+      provider: 'subscription', label: 'Piano Claude Max', unit: 'turni', cost_included: true,
       note: "L'abbonamento non espone il prezzo del singolo turno.",
       requests: 128, token_in: 2100000, token_out: 94000,
       cache_read: 1400000, cache_write: 210000,
@@ -116,10 +116,10 @@ async function monta(usage = RISPOSTA, storia = STORIA) {
 
 test('le sezioni compaiono solo per i provider usati', async () => {
   const { testo } = await monta();
-  assert.match(testo, /API Anthropic/);
+  assert.match(testo, /Claude API/);
   assert.match(testo, /OpenRouter/);
-  assert.match(testo, /Abbonamento Claude/);
-  assert.doesNotMatch(testo, /API OpenAI/,
+  assert.match(testo, /Piano Claude Max/);
+  assert.doesNotMatch(testo, /OpenAI/,
     "mai usato: e' un'ASSENZA, non una sezione a zero");
 });
 
@@ -166,7 +166,7 @@ test('senza righe ignote il totale non si scusa', async () => {
 // ---------------------------------------------------------------------------
 // Collaudo 3.22, C5 ("€ 0,00 quando la verità è «non misurabile»"): la
 // tessera «COSTO» del riepilogo sommava anche la sezione dell'abbonamento
-// (`ponte`, `cost_usd: null`) come 0.0 -- quando l'abbonamento è l'UNICO
+// (`subscription`, `cost_usd: null`) come 0.0 -- quando l'abbonamento è l'UNICO
 // uso, il totale che il server manda è 0.0 per costruzione, e la tessera
 // scriveva «€ 0,00» invece di dire che qui non c'è niente da misurare.
 // ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ const RISPOSTA_SOLO_ABBONAMENTO = {
   timezone: 'Europe/Rome',
   timezone_known: true,
   sections: [{
-    provider: 'ponte', label: 'Abbonamento Claude',
+    provider: 'subscription', label: 'Piano Claude Max', unit: 'turni', cost_included: true,
     note: "L'abbonamento non espone il prezzo del singolo turno.",
     requests: 99, token_in: 7200000, token_out: 500000,
     cache_read: 0, cache_write: 0,
@@ -200,7 +200,7 @@ const RISPOSTA_SOLO_ABBONAMENTO = {
 
 const STORIA_SOLO_ABBONAMENTO = {
   da: '2026-07-23', a: '2026-08-21',
-  days: [{ day: '2026-08-21', per_provider: { ponte: { requests: 99 } } }],
+  days: [{ day: '2026-08-21', per_provider: { subscription: { requests: 99 } } }],
 };
 
 test('collaudo 3.22 (C5): con il solo abbonamento la tessera «Costo» dice «In abbonamento», mai «€ 0,00»', async () => {
@@ -225,12 +225,12 @@ test('collaudo 3.22 (C5, difetto di resa): il grafico del costo senza provider a
   assert.match(vuoto.textContent, /abbonamento/i,
     'la spiegazione (perche\' il costo non compare qui) deve stare DENTRO il box, non in un paragrafo separato dopo');
 
-  // Il grafico delle RICHIESTE, invece, ha davvero un provider (ponte) da
+  // Il grafico delle RICHIESTE, invece, ha davvero un provider (il piano) da
   // disegnare: resta un <svg> vero, non il placeholder vuoto.
   const titoli = [...grafici.querySelectorAll('h3')].map((h) => h.textContent);
   assert.ok(titoli.includes('Richieste al giorno'), 'precondizione: il secondo grafico deve esistere');
   assert.equal(grafici.querySelectorAll('.usage-chart-empty').length, 1,
-    'SOLO il grafico del costo e\' vuoto -- quello delle richieste ha il ponte da disegnare');
+    'SOLO il grafico del costo e\' vuoto -- quello delle richieste ha il piano da disegnare');
 });
 
 test('i rifiuti 429 compaiono solo se ce ne sono', async () => {
@@ -283,4 +283,29 @@ test('quando non si misura, la pagina lo dice e toglie il pulsante', async () =>
   assert.match(testo, /Nessun provider AI configurato/);
   assert.equal(outlet.querySelector('#usage-reset'), null,
     'non c\'e\' nessuna ancora da spostare');
+});
+
+test('l\'unità e il costo compreso li dice la sezione, non il nome del provider', async () => {
+  /* Fino alla Tappa 7 (Task 9) la pagina riconosceva il piano per nome
+     (`provider === 'ponte'`) per scrivere «turni» e «Compreso». Ora sono campi
+     della sezione (`unit`, `cost_included`, dalla tabella dei provider): un
+     provider qualunque che li porta si disegna allo stesso modo.
+
+     Mutazioni eseguite (07/10/2026), ognuna rossa e ripristinata (`git diff`
+     di `usage-route.js` senza la mutazione):
+     - `var unit = s.provider === 'subscription' ? 'turni' : 'richieste';` ->
+       rosso, la riga dice «7 richieste»;
+     - `if (s.provider === 'subscription')` in `sectionTotal` -> rosso, il
+       totale della sezione non dice «Compreso». */
+  const sezione = Object.assign({}, RISPOSTA_SOLO_ABBONAMENTO.sections[0], {
+    provider: 'un_altro', label: 'Un altro piano', unit: 'giri', requests: 7,
+    models: [Object.assign({}, RISPOSTA_SOLO_ABBONAMENTO.sections[0].models[0],
+                           { requests: 7 })],
+  });
+  const { outlet } = await monta(Object.assign({}, RISPOSTA_SOLO_ABBONAMENTO,
+                                               { sections: [sezione] }),
+                                 { days: [] });
+  const blocco = outlet.querySelector('.usage-provider');
+  assert.match(blocco.querySelector('.umr-meta').textContent, /^7 giri /);
+  assert.equal(blocco.querySelector('.usec-cost').textContent, 'Compreso');
 });

@@ -112,10 +112,24 @@ from .mind.seed import (
 )
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
-from .model_resolution import subscription_has_token
 from .panel_visibility import parse_access_flag
 from .provider_occurrences import OccurrenceRegistry
-from .providers import can_answer_at_startup, can_answer_now, credentials_present
+from .providers import (
+    CLAUDE,
+    DEFAULT_PRESET,
+    OLLAMA,
+    OPENAI,
+    OPENROUTER,
+    SUBSCRIPTION,
+    can_answer_at_startup,
+    can_answer_now,
+    credentials_present,
+    get,
+    outside_chain,
+    preset,
+    providers_in_chain,
+    subscription_has_token,
+)
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
@@ -168,7 +182,7 @@ def _close_expired_promise(app, job: dict) -> None:
     durata_s = (float(job.get("deadline_ts", 0.0))
                 - float(job.get("created_ts", 0.0)))
     minuti = round(durata_s / 60)
-    reason = (f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
+    reason = (f"ho aspettato il {SUBSCRIPTION.name} per {minuti} minuti e non ha "
               "risposto: non so cosa dirti.")
     # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
     # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
@@ -183,7 +197,7 @@ def _close_expired_promise(app, job: dict) -> None:
     registry = app.get("occurrence_registry")
     if registry is not None:
         registry.fallimento(
-            "subscription", family="scaduto", code=None,
+            SUBSCRIPTION.id, family="scaduto", code=None,
             message="nessuna conclusione entro la scadenza del ponte (promessa)",
             durata_s=durata_s)
     logger.warning(
@@ -307,14 +321,14 @@ def _bridge_notices(bridge_active: bool, token_presente: bool) -> list[str]:
     """
     if bridge_active and not token_presente:
         return [("Il ponte e' acceso ma «Provider · Piano Claude Max — token» e' "
-                "vuoto: nessun messaggio arriva al Piano Claude Max, e ogni turno "
+                f"vuoto: nessun messaggio arriva al {SUBSCRIPTION.name}, e ogni turno "
                 "passa alla catena -- dal forfait al consumo. Incolla il token, "
                 "oppure spegni il ponte dalla pagina Modelli di HIRIS.")]
     if token_presente and not bridge_active:
-        return [("Hai il token del Piano Claude Max, ma il ponte e' spento: le "
+        return [(f"Hai il token del {SUBSCRIPTION.name}, ma il ponte e' spento: le "
                 "risposte passano dalla catena, a consumo. Il ponte non si accende "
                 "piu' da un'opzione dell'add-on -- si accende nella pagina Modelli "
-                "di HIRIS, col bottone accanto alla riga «Il Piano Claude Max ha il "
+                f"di HIRIS, col bottone accanto alla riga «Il {SUBSCRIPTION.name} ha il "
                 "token, lo paghi, ed e' fuori dalla catena».")]
     return []
 
@@ -357,9 +371,9 @@ def _chain_as_it_was(credentials: dict) -> list[str]:
     da `LLM_STRATEGY` e `BRIDGE_ENABLED`: `run.sh` non le esporta dalla 3.0.0,
     e su ogni installazione valevano «balanced» e spento.
     """
-    from .llm_router import _STRATEGY_ORDER
-    return [name for name in _STRATEGY_ORDER["balanced"]
-            if name not in ("subscription", "ollama") and credentials.get(name)]
+    return [name for name in preset(DEFAULT_PRESET).order
+            if get(name).chain_member and not get(name).needs_chosen_model
+            and credentials.get(name)]
 
 
 async def reload_entity_inventory(cache, ha_client) -> bool:
@@ -1491,7 +1505,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # **La stessa domanda che si fanno la chat e le promesse, dalla stessa
         # funzione.** Fino all'11/09/2026 questo giro non se la faceva affatto
         # e andava dritto al router -- dove il ponte non e' un anello
-        # (`llm_router._VALID_BACKEND_NAMES`). Misurato sulla casa vera l'11/09
+        # (`providers.chain_members()`). Misurato sulla casa vera l'11/09
         # alle 11:00:44: l'osservatore cadeva su un modello OpenRouter
         # «batch-only» (404) e su una chiave Claude senza credito (400) mentre
         # l'abbonamento, li' accanto, serviva la chat. E' il difetto che
@@ -2475,10 +2489,10 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     registry = app.get("occurrence_registry")
     if registry is not None:
         if "errore" in outcome:
-            registry.fallimento("subscription", family="altro", code=None,
+            registry.fallimento(SUBSCRIPTION.id, family="altro", code=None,
                                 message=outcome["errore"], durata_s=0.0)
         else:
-            registry.successo("subscription")
+            registry.successo(SUBSCRIPTION.id)
     if "errore" in outcome:
         logger.warning("osservatore: la risposta del piano non si e' potuta "
                        "usare (%s) -- si riprova al giro dopo", outcome["errore"])
@@ -2690,7 +2704,7 @@ def _govern_bridge_worker(app) -> None:
         )
         logger.info(
             "Lavoratore del ponte avviato: il ponte e' acceso e il token del "
-            "Piano Claude Max c'e'.")
+            "%s c'e'.", SUBSCRIPTION.name)
     elif not voluto and live:
         current.cancel()
         app["agent_worker_task"] = None
@@ -2703,7 +2717,7 @@ def _govern_bridge_worker(app) -> None:
         logger.info("ponte spento: revocate %d credenziali del turno", quante)
         logger.info(
             "Lavoratore del ponte fermato: il ponte e' spento, oppure manca il "
-            "token del Piano Claude Max. La chat risponde dalla catena.")
+            "token del %s. La chat risponde dalla catena.", SUBSCRIPTION.name)
 
 
 def _recompute_chain(app) -> None:
@@ -2726,7 +2740,6 @@ def _recompute_chain(app) -> None:
     farebbe niente fino al riavvio successivo -- esattamente il difetto che il
     Task 10 ha chiuso per la catena. Qui e' l'UNICO posto che lo scrive.
     """
-    from .model_activation import providers_in_chain
     cfg = app.get("models_config") or {}
     # Un valore solo, derivato una volta, letto da tutti: la spazzata
     # (`_reasoning_sweep`), l'instradamento (`steering.who_answers`), la
@@ -2758,13 +2771,14 @@ def _recompute_chain(app) -> None:
     # Task 7 -- pagina che dice «la catena è vuota, HIRIS non può rispondere»
     # e chat che risponde lo stesso, usando l'ordine di prima.
     router._chat_policy = list(chain)
-    ollama = mappa.get("ollama")
+    ollama = mappa.get(OLLAMA.id)
     if ollama is not None:
         # L'unico valore della fetta che non si può leggere al momento
         # dell'uso: `AsyncOpenAI` cuoce il timeout nel client alla costruzione
         # (vedi `OpenAICompatRunner.apply_timeout`, che è un no-op quando il
         # numero non è cambiato).
-        ollama.apply_timeout((cfg.get("ollama") or {}).get("timeout_s", 120))
+        ollama.apply_timeout((cfg.get(OLLAMA.id) or {}).get(
+            "timeout_s", OLLAMA.reply_timeout_s))
 
 
 def _read_static_pages(app) -> None:
@@ -2882,7 +2896,7 @@ def _chat_reply_submitter(app, data_dir: str):
             registry = app.get("occurrence_registry")
             if registry is not None:
                 registry.fallimento(
-                    "subscription", family="altro", code=None,
+                    SUBSCRIPTION.id, family="altro", code=None,
                     message=reply_text, durata_s=0.0)
             return
         # Task 6 (collaudo-3.22, indagine-abbonamento.md): QUI, e non prima
@@ -2911,7 +2925,7 @@ def _chat_reply_submitter(app, data_dir: str):
         # sostituito la bugia di oggi con la bugia opposta.
         registry = app.get("occurrence_registry")
         if registry is not None:
-            registry.successo("subscription")
+            registry.successo(SUBSCRIPTION.id)
         _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir,
                               thread=thread)
     return _submit_chat_reply
@@ -3511,6 +3525,13 @@ async def _on_startup(app: web.Application) -> None:
             local_model_url = ""
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    # Le credenziali stanno nell'app, dove le leggono anche la pagina Modelli e
+    # `/api/models`: la tabella dei provider le misura da qui
+    # (`providers.credentials_present`), all'avvio come in ogni richiesta.
+    app["claude_api_key"] = api_key
+    app["openai_api_key"] = openai_api_key
+    app["openrouter_api_key"] = openrouter_api_key
+    app["local_model_url"] = local_model_url
 
     # ── Le credenziali, e nient'altro ──────────────────────────────────
     # fetta «la catena diventa l'unica verita'»: qui c'erano i cinque
@@ -3518,9 +3539,7 @@ async def _on_startup(app: web.Application) -> None:
     # (`derive_active_providers`), cioe' la SECONDA rappresentazione dello
     # stato di un provider. Adesso l'unica cosa che si misura qui e' se la
     # credenziale c'e'; chi la USA lo dice `chain_order`.
-    _credentials = credentials_present(
-        api_key=api_key, openai_api_key=openai_api_key,
-        openrouter_api_key=openrouter_api_key, local_model_url=local_model_url)
+    _credentials = credentials_present(app)
 
     # ── La catena iniziale di un archivio che non ce l'ha ────────────────
     # Nata come seconda meta' della migrazione: la catena che HIRIS stava
@@ -3565,7 +3584,7 @@ async def _on_startup(app: web.Application) -> None:
         from .claude_runner import resolve_model
         _current_alias = cli_model(resolve_model(
             "auto", "chat",
-            app["models_config"].get("provider_models", {}).get("claude", ""),
+            app["models_config"].get("provider_models", {}).get(CLAUDE.id, ""),
         ))
         _arch_p, _da_salvare_p = seed_subscription_model(
             dict(app["models_config"]), _current_alias, log=logger)
@@ -4147,7 +4166,7 @@ async def _on_startup(app: web.Application) -> None:
         """Il modello di Ollama non vive in `provider_models` (è un fantasma
         lì: `_clean_provider_models` lo scarta in lettura e in scrittura): la
         sua unica casa è `models_config["ollama"]["modello"]`."""
-        return (app.get("models_config") or {}).get("ollama", {}).get("modello", "")
+        return (app.get("models_config") or {}).get(OLLAMA.id, {}).get("modello", "")
 
     # Il modello di Ollama, dalla SUA UNICA CASA. Fino alla 2.4.1 veniva da
     # `LOCAL_MODEL_NAME`, cioè da un'opzione dell'add-on: era il modello messo
@@ -4156,14 +4175,14 @@ async def _on_startup(app: web.Application) -> None:
     # (`_PROVIDER_MODEL_KEYS` non lo contiene, `_clean_provider_models` lo
     # scarta in lettura E in scrittura -- e resta così: NON è un doppione da
     # far rivivere).
-    _ollama_model = (app["models_config"].get("ollama") or {}).get("modello", "")
-    _risponde = can_answer_at_startup(_credentials, local_model_url, _ollama_model)
+    _ollama_model = (app["models_config"].get(OLLAMA.id) or {}).get("modello", "")
+    _risponde = can_answer_at_startup(_credentials, app["models_config"])
 
     claude_runner = None
-    if api_key and _credentials["claude"]:
+    if api_key and _credentials[CLAUDE.id]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
-            read_model=_model_of("claude"),
+            read_model=_model_of(CLAUDE.id),
             log_usage=app["usage"].log,
         )
 
@@ -4182,11 +4201,11 @@ async def _on_startup(app: web.Application) -> None:
     ], now=time.time())
 
     openai_runner = None
-    if openai_api_key and _credentials["openai"]:
+    if openai_api_key and _credentials[OPENAI.id]:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
-            read_model=_model_of("openai"),
+            read_model=_model_of(OPENAI.id),
             log_usage=app["usage"].log,
         )
 
@@ -4208,11 +4227,12 @@ async def _on_startup(app: web.Application) -> None:
             # Dall'ARCHIVIO, non da `OLLAMA_REQUEST_TIMEOUT`: è lo stesso
             # numero che la pagina Modelli mostra sul connettore, e leggerlo in
             # due posti era la seconda rappresentazione (invariante 1).
-            timeout_s=(app["models_config"].get("ollama") or {}).get("timeout_s", 120),
+            timeout_s=(app["models_config"].get(OLLAMA.id) or {}).get(
+                "timeout_s", OLLAMA.reply_timeout_s),
             read_model=_local_model,
             log_usage=app["usage"].log,
         )
-    if _risponde["ollama"]:
+    if _risponde[OLLAMA.id]:
         # Quick reachability check — warn but don't abort startup.
         try:
             import aiohttp as _aiohttp
@@ -4240,23 +4260,14 @@ async def _on_startup(app: web.Application) -> None:
             )
 
     openrouter_runner = None
-    if openrouter_api_key and _credentials["openrouter"]:
+    if openrouter_api_key and _credentials[OPENROUTER.id]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
-            read_model=_model_of("openrouter"),
+            read_model=_model_of(OPENROUTER.id),
             log_usage=app["usage"].log,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 
-    # Store config for /api/models endpoint
-    # La chiave di Claude API era una locale di questa funzione e non arrivava
-    # mai nell'app: `_config_has_credential("claude")` la cercava in ambiente,
-    # e nessuno la usava per altro. Dalla fetta «il modello del piano» serve
-    # anche a `_fetch_claude_models`, e sta dove stanno le altre due.
-    app["claude_api_key"] = api_key
-    app["openai_api_key"] = openai_api_key
-    app["openrouter_api_key"] = openrouter_api_key
-    app["local_model_url"] = local_model_url
     # `app["local_model_name"]` e' USCITO col Task 9. Era una copia del modello
     # di Ollama presa all'avvio: dopo il Task 6 la casa del valore e'
     # l'archivio, e una copia in memoria che nessuna PUT aggiorna e' la
@@ -4273,13 +4284,10 @@ async def _on_startup(app: web.Application) -> None:
     # diventa credenziato NON entra da solo: compare in «Fuori dalla catena»,
     # a un gesto di distanza.
     #
-    # La scrittura di `app["model_chain"]` e' UNA, fuori dal ramo dei
-    # runner: prima ce n'erano due -- `list(_chain)` qui e `[]` nell'else -- e
-    # la seconda non era coperta da nessun test perche' vive dentro
-    # `_on_startup`, che ogni fixture azzera (il debito E dichiarato al
-    # Task 1). Con una sola scrittura non c'e' piu' un secondo posto da tenere
-    # allineato: il debito si chiude togliendo il doppione, non coprendolo.
-    from .model_activation import providers_in_chain
+    # `app["model_chain"]` qui NON si scrive: lo scrive `_recompute_chain`,
+    # chiamata poche righe sotto, ed e' l'unica scrittura (la Tappa 7 ha tolto
+    # quella dell'avvio, che il ricalcolo sovrascriveva prima che qualcuno la
+    # leggesse: voce M-30).
     # Il filtro e' `_risponde`, non `_credentials` (Task 9): in catena ci puo'
     # stare solo chi ha un backend costruito. Con la sola credenziale, un
     # `chain_order` che nomina Ollama senza un modello scelto avrebbe messo in
@@ -4292,20 +4300,13 @@ async def _on_startup(app: web.Application) -> None:
     # non viene consultato, e prima `reconcile_chain` lo accodava da solo. Il
     # cambio di comportamento si dichiara nel registro, dove un operatore lo
     # cerca, invece di lasciarlo dedurre da un provider che non risponde mai.
-    _fuori = [p for p in ("claude", "openrouter", "openai", "ollama")
-              if _risponde.get(p) and p not in _chain]
+    _fuori = outside_chain(_risponde, _chain)
     if _fuori:
         logger.info(
             "Provider con credenziale FUORI dalla catena: %s. HIRIS non li "
             "consulta: un provider e' usato se e solo se sta in catena, e in "
             "catena ci si mette dalla pagina Modelli.", ", ".join(_fuori),
         )
-    # La catena EFFETTIVA, pubblicata perche' la pagina Modelli possa RICEVERE
-    # la decisione invece di ricostruirla. E' lo stesso oggetto che entra nel
-    # router poche righe sotto: se un giorno divergessero, divergerebbero da se
-    # stessi -- che e' il difetto che questa fetta chiude, reso impossibile
-    # invece che vietato.
-    app["model_chain"] = list(_chain)
 
     if any([claude_runner, openai_runner, openrouter_runner, ollama_runner]):
         router = LLMRouter(
@@ -4313,15 +4314,6 @@ async def _on_startup(app: web.Application) -> None:
             openai=openai_runner,
             openrouter=openrouter_runner,
             ollama=ollama_runner,
-            # `strategy=` NON si passa piu' (versione B): era
-            # `os.environ.get("LLM_STRATEGY")`, cioe' l'opzione dell'add-on, e
-            # `LLMRouter` la usa SOLO nel ramo `model_chain is None` -- che qui
-            # non si prende mai, perche' `model_chain=_chain` e' sempre
-            # esplicito. Era un valore letto e mai usato: toglierlo non cambia
-            # nessun comportamento, e lasciarlo avrebbe fatto sopravvivere
-            # l'ultima lettura di comportamento di un'opzione uscita. Il
-            # parametro resta in `LLMRouter` come default di libreria, dove i
-            # suoi test lo pinnano.
             model_chain=_chain,
             # Il ciclo di ripiego e' il SOLO posto in cui HIRIS vede come si
             # comporta un provider davvero, e fino a questa fetta lo buttava
@@ -4381,7 +4373,7 @@ async def _on_startup(app: web.Application) -> None:
     # operatore cerca in coda al registro quando la chat costa piu' del
     # previsto.
     for _notice in _bridge_notices(bool(app.get("bridge_active")),
-                                   _credentials["subscription"]):
+                                   _credentials[SUBSCRIPTION.id]):
         logger.warning(_notice)
 
 

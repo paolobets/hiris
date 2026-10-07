@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.model_resolution import DISPLAY_NAMES
+from hiris.app.providers import all_providers
 
 BASE = Path(__file__).resolve().parents[1] / "hiris"
 
@@ -46,12 +46,12 @@ def _righe_vive(percorso: Path) -> str:
 def test_nessun_nome_ritirato_sopravvive(percorso, ritirato):
     assert ritirato not in _righe_vive(percorso), (
         f"{percorso.name} nomina ancora un provider con «{ritirato}»: "
-        "il nome è uno solo e sta in decisione_modelli.NOMI"
+        "il nome è uno solo e sta nella tabella dei provider (`providers.py`)"
     )
 
 
 def test_i_cinque_nomi_sono_quelli_e_solo_quelli():
-    assert DISPLAY_NAMES == {
+    assert {p.id: p.name for p in all_providers()} == {
         "subscription": "Piano Claude Max",
         "claude": "Claude API",
         "openrouter": "OpenRouter",

@@ -15,7 +15,6 @@ import pytest
 
 from hiris.app.model_resolution import occurrence_phrase
 from hiris.app.provider_occurrences import (
-    FAMILIES,
     OccurrenceRegistry,
     error_family,
     family_from_code,
@@ -142,25 +141,39 @@ def test_le_famiglie_d_errore_sono_tre_piu_una(codice, attesa):
     assert family_from_code(codice) == attesa
 
 
-def test_ogni_famiglia_dichiarata_e_una_di_quelle_che_esistono():
-    """`FAMILIES` è l'elenco, e non è decorativo: `occurrence_phrase` ha un ramo per
-    ognuna, e una famiglia introdotta di soppiatto finirebbe nel ramo di
-    scorta senza che nessuno se ne accorga.
+def _phrase_for(famiglia, codice):
+    """La frase della pagina per un rifiuto di questa famiglia e codice."""
+    r, _ = _registro()
+    r.fallimento("claude", family=famiglia, code=codice, message="boh", durata_s=0.0)
+    return occurrence_phrase(r.occurrence("claude"), position=1, now=1060.0)
 
-    `scaduto` è la quinta, ed è arrivata col ripiego (Task 14): il Piano Claude
-    Max non risponde con un codice e non solleva niente -- il turno accodato
-    non viene servito entro la scadenza. Il ramo di scorta direbbe «ha
-    rifiutato», che è una parola più larga del fatto."""
-    assert set(FAMILIES) == {"credenziale", "modello", "irraggiungibile",
-                             "scaduto", "altro"}
-    for codice in (400, 401, 402, 403, 404, 429, 500, None):
-        assert family_from_code(codice) in FAMILIES
-    # `scaduto` non nasce da un codice HTTP: non c'è nessuna risposta da cui
-    # prenderlo. La scrive a mano l'unico punto che la osserva
-    # (`handlers_chat._downgrade_to_chain`), ed è per questo che questa riga
-    # sta qui e non nel ciclo qui sopra.
-    assert "scaduto" not in {family_from_code(c)
-                             for c in (400, 401, 402, 403, 404, 429, 500, None)}
+
+@pytest.mark.parametrize("codice", [400, 401, 402, 403, 404, 429, 500, None])
+def test_ogni_famiglia_che_nasce_da_un_codice_ha_il_suo_ramo(codice):
+    """Una famiglia introdotta di soppiatto finirebbe nel ramo di scorta di
+    `occurrence_phrase` senza che nessuno se ne accorga. Si chiede al ramo, non
+    a un elenco: fino alla Tappa 7 T9 la prova guardava `FAMILIES`, una tupla
+    che solo lei leggeva (voce M-81) -- `occurrence_phrase` decide per rami e
+    non l'ha mai consultata, quindi l'elenco poteva dire il vero mentre la
+    pagina scriveva la frase di scorta.
+
+    Proprieta': una famiglia diversa da `altro` produce una frase diversa da
+    quella di `altro` con lo stesso codice.
+
+    Mutazione eseguita (07/10/2026): in `family_from_code`, il 404 restituisce
+    `"modelli"` invece di `"modello"` -> rosso su `codice=404` (le due frasi
+    coincidono: «ha rifiutato l'ultima richiesta — errore 404»). Ripristinato,
+    `git diff hiris/app/provider_occurrences.py` senza la mutazione.
+
+    `scaduto` non nasce da un codice HTTP: non c'e' nessuna risposta da cui
+    prenderlo. La scrive a mano l'unico punto che la osserva
+    (`handlers_chat._downgrade_to_chain`)."""
+    famiglia = family_from_code(codice)
+    assert famiglia != "scaduto"
+    if famiglia != "altro":
+        assert _phrase_for(famiglia, codice) != _phrase_for("altro", codice), (
+            f"la famiglia «{famiglia}» del codice {codice} non ha un ramo suo"
+        )
 
 
 def test_una_scadenza_non_si_legge_come_un_rifiuto():

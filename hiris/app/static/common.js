@@ -211,7 +211,7 @@ function fmtDateTime(v) {
 
 /* Collaudo 3.22 (C5): «Richieste 99 · Token input 7.20M · Costo € 0,00»
    senza altra spiegazione -- misurato quando l'UNICO uso e' l'abbonamento
-   (`ponte`), che non ha un costo di turno da sommare (vedi
+   (`subscription`), che non ha un costo di turno da sommare (vedi
    hiris/app/usage/vocabulary.py::cost_state_and_value, stato "compreso").
    Il totale che il server manda (`cost_eur`) e' 0.0 per costruzione: nessun
    altro addendo. Uno zero misurato e uno zero "non c'e' niente da misurare"
@@ -219,15 +219,17 @@ function fmtDateTime(v) {
    l'archivio della casa combatte ovunque -- rimessa dentro dalla porta del
    riquadro Utilizzo.
 
-   Niente di nuovo da inventare: `sections[].provider` arriva gia' in ogni
-   risposta di `/api/usage` (handlers_usage.py), e la sezione dell'abbonamento
-   ha gia' il proprio nome, "ponte". Condivisa fra il riquadro della chat e
+   Niente di nuovo da inventare: ogni sezione di `/api/usage` dice da se' se
+   il suo costo e' compreso nel piano (`cost_included`, dalla tabella dei
+   provider). Fino alla Tappa 7 (Task 9) qui si riconosceva la sezione per
+   nome, "ponte", che non era nemmeno il nome del provider. Condivisa fra il
+   riquadro della chat e
    la pagina Consumi -- le DUE superfici che leggono lo stesso `cost_eur`,
    per la stessa ragione per cui fmtEuro/fmtNum vivono qui e non in due
    copie (vedi il commento sopra fmtNum). */
 function isSubscriptionOnly(sections) {
   return !!(sections && sections.length
-    && sections.every(function(s) { return s.provider === 'ponte'; }));
+    && sections.every(function(s) { return !!s.cost_included; }));
 }
 
 /* La parola che sostituisce «€ 0,00» quando `isSubscriptionOnly()` e' vera.

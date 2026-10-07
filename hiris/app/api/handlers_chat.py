@@ -27,6 +27,7 @@ from ..home_space.historian import house_timezone, instant_epoch, local_date
 from ..home_space.house import House
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
+from ..providers import SUBSCRIPTION
 
 # Fix round 1, Important 2 (Task 5): il nome di chi parla arriva
 # dall'intestazione dell'ingress di Home Assistant -- non e' mai fidato, la
@@ -694,7 +695,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     occurrence_registry = request.app.get("occurrence_registry")
     if occurrence_registry is not None:
         occurrence_registry.fallimento(
-            "subscription", family="scaduto", code=None,
+            SUBSCRIPTION.id, family="scaduto", code=None,
             # Il messaggio è per chi legge un log, non per la pagina: la frase
             # che l'utente vede la compone `model_resolution.occurrence_phrase`.
             message="nessuna risposta entro la scadenza del ponte",
@@ -724,12 +725,13 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # -- e' lo stato vero della risorsa (A6, 05/10/2026). Il testo sta in
         # `error`, la forma comune del confine.
         return web.json_response(error_body(
-            "Il Piano Claude Max non ha risposto in tempo, e non c’è "
+            f"Il {SUBSCRIPTION.name} non ha risposto in tempo, e non c’è "
             "nessun altro provider in catena a cui chiedere.", status="error"))
 
     logger.warning(
-        "Il Piano Claude Max non ha risposto entro la scadenza: il turno %s "
-        "passa alla catena. Il costo cambia -- dal forfait al consumo.", job_id)
+        "Il %s non ha risposto entro la scadenza: il turno %s "
+        "passa alla catena. Il costo cambia -- dal forfait al consumo.",
+        SUBSCRIPTION.name, job_id)
 
     cronologia = contesto.get("history") or []
     if not isinstance(cronologia, list):

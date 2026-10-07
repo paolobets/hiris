@@ -4,7 +4,7 @@
 dentro `api/handlers_chat.handle_chat`, intrecciata con la persistenza del
 turno e con la coda -- e il turno di una promessa, che quella funzione non la
 attraversa mai, ne aveva per forza una seconda: andava dritto a `llm_router`,
-dove il ponte non e' nemmeno un anello (`_VALID_BACKEND_NAMES` conosce claude,
+dove il ponte non e' nemmeno un anello (`providers.chain_members()` conosce claude,
 openai, openrouter, ollama).
 
 Non era una svista di chi ha scritto lo Schedulatore: era la struttura a
@@ -50,7 +50,7 @@ from dataclasses import field as _field
 from typing import NamedTuple as _NamedTuple
 
 from .api.handlers_models import _STORE_DEFAULTS, bridge_deadline_min
-from .model_resolution import subscription_has_token
+from .providers import subscription_has_token
 from .reasoning.queue import PRIORITY_BACKGROUND, PRIORITY_CHAT
 
 logger = logging.getLogger(__name__)
