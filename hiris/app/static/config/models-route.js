@@ -108,12 +108,12 @@
        Ollama -- vivono nel backend, dove `load_models_config` li applica.
        Fino alla Tappa 7 (Task 9) qui ce n'era una seconda copia.
 
-       I segni della migrazione (`seminato`, `catena_seminata`,
-       `piano_seminato`) NON ci entrano ed è deliberato: non sono decisioni
-       dell'utente, e un client che li rimandasse a `false` farebbe RIGIRARE la
-       semina al riavvio successivo. Il backend li tiene fuori da `_OUR_KEYS`
-       (`api/handlers_models.py`), quindi `scrivibili` non li nomina e una PUT
-       che li portasse non li toccherebbe. */
+       I segni della migrazione (`catena_seminata`, `piano_seminato`) NON ci
+       entrano ed è deliberato: non sono decisioni dell'utente, e un client
+       che li rimandasse a `false` farebbe RIGIRARE la semina al riavvio
+       successivo. Il backend li tiene fuori da `_OUR_KEYS` (`models_store.py`),
+       quindi `scrivibili` non li nomina e una PUT che li portasse non li
+       toccherebbe. */
     cfg: { chain_order: [] }
   };
 

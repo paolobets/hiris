@@ -31,6 +31,7 @@ Chi le chiama porta i fatti già misurati.
 """
 from __future__ import annotations
 
+from .models_store import bridge_deadline_min as _bridge_deadline_min
 from .providers import (
     OLLAMA,
     OPENROUTER,
@@ -44,6 +45,11 @@ from .providers import (
     privacy,
     providers_in_chain,
 )
+
+#: La scadenza del ponte quando il chiamante non ne passa una: quella
+#: dell'archivio dei modelli senza decisioni (`models_store._STORE_DEFAULTS`).
+#: Era un `5` scritto qui a mano due volte (D-09): si chiede all'archivio.
+DEFAULT_BRIDGE_DEADLINE_MIN = _bridge_deadline_min(None)
 
 # I nomi, le nature, dove va il dato e che cosa manca stavano qui, in quattro
 # tabelle (`DISPLAY_NAMES`, `PRIVACY`, `NATURES`, `MISSING_REASONS`) piu'
@@ -401,7 +407,7 @@ def compose_now(
     credentials: dict[str, bool],
     models: dict[str, str],
     bridge_active: bool,
-    bridge_deadline_min: int = 5,
+    bridge_deadline_min: int = DEFAULT_BRIDGE_DEADLINE_MIN,
 ) -> dict:
     """Chi risponde al prossimo messaggio, e perché.
 
@@ -560,7 +566,7 @@ def compose_topology(
     bridge_active: bool,
     occurrences: dict[str, dict],
     now: float,
-    bridge_deadline_min: int = 5,
+    bridge_deadline_min: int = DEFAULT_BRIDGE_DEADLINE_MIN,
     ollama_timeout_s: int | None = OLLAMA.reply_timeout_s,
 ) -> tuple[list[dict], list[dict]]:
     """La topologia effettiva: chi è in catena, in che ordine, e chi ne sta fuori.

@@ -11,6 +11,7 @@ import logging
 import os
 
 from .providers import DEFAULT_PRESET, OLLAMA, all_providers, chain_members
+from .storage import write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +87,17 @@ _OUR_KEYS = (
 # al riavvio successivo, e una catena svuotata di proposito si ripopolerebbe.
 # Cioe' una perdita silenziosa innescata da un click.
 #
-# `seminato` era il segno della semina delle OPZIONI, uscita il 02/10/2026:
-# nessuno lo scrive ne' lo legge piu'. Resta in questo elenco e nella forma
-# della rotta finche' il cambio di forma non e' dichiarato (registro, M-80).
+# Sono due migrazioni diverse, e un archivio puo' trovarsi a meta': per questo
+# ognuna ha il suo segno. `seminato`, il segno della semina delle OPZIONI
+# (uscita il 02/10/2026), e' uscito anche da qui col Task 10 della Tappa 7
+# (M-80): nessuno lo scriveva ne' lo leggeva, e la rotta lo mostrava ancora.
+# Un archivio che lo porta lo tiene sul disco (la scrittura e'
+# lettura-modifica-scrittura), ma la rotta non lo dice piu'.
 #
 # Il valore sopravvive comunque a ogni PUT: `_store_keys` lo ricava da
 # `base`, che parte dal contenuto GIA' SU DISCO. Solo l'avvio li scrive, con
-# `flags=True`.
-_MIGRATION_FLAGS = ("seminato", "catena_seminata", "piano_seminato")
+# `flags=True` (`options_migration.seed_at_startup`).
+_MIGRATION_FLAGS = ("catena_seminata", "piano_seminato")
 
 
 def bridge_deadline_min(models_config: dict | None) -> int:
@@ -187,20 +191,9 @@ def _store_keys(raw: dict) -> dict:
         # config.yaml). Valeva "", e la differenza faceva contare come
         # «copiato» un valore che nessuno aveva scelto.
         "strategia_ultima": strategy if isinstance(strategy, str) else DEFAULT_PRESET,
-        "seminato": bool(raw.get("seminato", False)),
-        # Il segno della semina della CATENA, distinto da `seminato` (che e'
-        # quello delle OPZIONI). Prima non esisteva e la semina della catena si
-        # regolava su «chain_order e' vuota»: ma una catena vuota, da questa
-        # fetta, e' una DECISIONE esprimibile in due click, e al riavvio veniva
-        # ripopolata dalla regola `legacy` -- cioe' la regola di compatibilita'
-        # tolta dal prodotto rientrava dalla porta della migrazione.
-        "catena_seminata": bool(raw.get("catena_seminata", False)),
-        # Il segno della semina del MODELLO DEL PIANO, distinto dagli altri due:
-        # e' la TERZA migrazione, e un archivio puo' trovarsi a due terzi. Come
-        # gli altri vive fuori da `_OUR_KEYS`: un client che lo rimandasse
-        # a `false` farebbe rigirare la semina al riavvio successivo, e la
-        # semina ricopre `ponte.modello` -- cioe' la scelta dell'utente.
-        "piano_seminato": bool(raw.get("piano_seminato", False)),
+        # I segni delle semine, uno per migrazione: vedi `_MIGRATION_FLAGS`,
+        # da cui si leggono i nomi.
+        **{flag: bool(raw.get(flag, False)) for flag in _MIGRATION_FLAGS},
     }
 
 
@@ -311,14 +304,13 @@ def load_models_config(data_dir: str) -> dict:
 
 
 def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dict:
-    """`flags=True` e' riservato all'avvio (`server._on_startup`): e' l'unico
-    momento in cui `seminato`/`catena_seminata` si scrivono. Ogni altro
+    """`flags=True` e' riservato all'avvio (`options_migration.seed_at_startup`):
+    e' l'unico momento in cui i segni delle semine si scrivono. Ogni altro
     chiamante -- la PUT, e quindi la pagina -- li lascia dove sono: vedi
     `_MIGRATION_FLAGS`."""
     if not isinstance(data, dict):
         data = {}
     path = _models_config_path(data_dir)
-    tmp = path + ".tmp"
     # Lettura-modifica-scrittura (stesso fix di claude_runner._save_usage per
     # 'per_agent'): senza questo, il PRIMO salvataggio dopo un upgrade
     # cancellerebbe silenziosamente un 'brain_model' legacy dal disco -- il
@@ -359,7 +351,5 @@ def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dic
         **_store_keys(base),
     }
     disk_data.update(clean)
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(disk_data, fh)
-    os.replace(tmp, path)
+    write_json_atomic(path, disk_data)
     return clean

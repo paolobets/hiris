@@ -13,15 +13,13 @@ non restituisce mai `None` -- un file assente o illeggibile produce i default.
 import json
 import logging
 import os
-import threading
 from dataclasses import dataclass
+
+from .storage import write_json_atomic
 
 logger = logging.getLogger(__name__)
 
 _SETTINGS_FILE = "impostazioni_chat.json"
-
-# Permessi del file: solo il proprietario legge e scrive (vedi `save()` sotto).
-_FILE_PERMISSIONS = 0o600
 
 # Il default e' scritto in forma CONDIZIONALE («Se in questa conversazione hai
 # lo strumento `search` ... Altrimenti ...»): resta vero sia in un turno che ha
@@ -160,37 +158,18 @@ class ChatSettings:
         )
 
     def save(self, data_dir: str) -> None:
-        """Scrittura atomica e durevole: file temporaneo, `fsync`, `os.replace`.
+        """Scrittura atomica e durevole (`storage.write_json_atomic`).
 
         Un crash a meta' scrittura non deve mai lasciare un
         `impostazioni_chat.json` troncato che il prossimo avvio legge come
         JSON valido ma incompleto -- e queste sono le impostazioni con cui la
         chat riparte dopo un riavvio, cioe' l'unico stato che le sopravvive.
 
-        Tre cure, oltre al semplice tmp+replace:
-
-        1. **`flush` + `fsync` prima del `replace`**: senza, `os.replace` puo'
-           pubblicare un nome che punta a contenuto non ancora sul disco -- su
-           una perdita di alimentazione il file esiste, e' "valido" per il
-           filesystem, ed e' vuoto. L'atomicita' del rename non e' durabilita'
-           del contenuto: sono due garanzie distinte, e qui servono entrambe.
-        2. **Permessi stretti alla creazione** (`os.open` con `_FILE_PERMISSIONS`,
-           non un `chmod` dopo): il file contiene il prompt di sistema, cioe'
-           testo che l'utente ha scritto. Su Linux
-           -- la piattaforma dell'add-on -- e' 0600; su Windows, dove gira solo
-           la suite, i bit di gruppo/altri non esistono e la chiamata incide di
-           fatto solo sul flag di sola lettura: e' il piu' stretto possibile
-           *su questa piattaforma*, non un'illusione di isolamento.
-        3. **Il temporaneo si rimuove se la scrittura fallisce**, invece di
-           restare li' a sporcare `/data` dopo ogni errore.
-
         Solleva `OSError` se il disco non collabora: il chiamante HTTP
         (`api/handlers_settings.handle_save_settings`) la cattura e
         risponde dichiarando il guasto, invece di rispondere "salvato".
         """
-        path = os.path.join(data_dir, _SETTINGS_FILE)
-        tmp = path + ".tmp"
-        data = {
+        write_json_atomic(os.path.join(data_dir, _SETTINGS_FILE), {
             "nome": self.name,
             "system_prompt": self.system_prompt,
             "response_mode": self.response_mode,
@@ -198,26 +177,4 @@ class ChatSettings:
             "max_chat_turns": self.max_chat_turns,
             "restrict_to_home": self.restrict_to_home,
             "giorni_conservazione": self.retention_days,
-        }
-        os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-        with _save_lock:
-            descriptor = os.open(
-                tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _FILE_PERMISSIONS,
-            )
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                    f.flush()
-                    os.fsync(f.fileno())
-            except BaseException:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-                raise
-            os.replace(tmp, path)
-
-
-# Due `save()` concorrenti sullo stesso file non devono poter accavallare la
-# scrittura del `.tmp` e l'`os.replace`.
-_save_lock = threading.Lock()
+        })

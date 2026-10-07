@@ -30,9 +30,10 @@ const CONFIG = {
   ollama: { modello: '', timeout_s: 120 },
   nascondi_gratuiti: false,
   strategia_ultima: 'balanced',
-  seminato: true,
+  catena_seminata: true,
+  piano_seminato: true,
   /* Dalla Tappa 7 (Task 9) l'ordine fisso, i preset e le chiavi scrivibili
-     arrivano dal server (`providers.page_payload`, `handlers_models._OUR_KEYS`):
+     arrivano dal server (`providers.page_payload`, `models_store._OUR_KEYS`):
      la pagina non ne tiene piu' una copia. */
   ordine_fisso: ['claude', 'subscription', 'openrouter', 'openai', 'ollama'],
   preset: [
@@ -280,7 +281,7 @@ test('un GET fallito lo dice, e non lascia il riquadro a metà', async () => {
    caricamento: con `state.catena` e `state.fuoriCatena` vuote, `credenziati`
    e' `{}`, l'ordine filtrato e' `[]`, e `writeChain([])` mandava una PUT con
    lo `state.cfg` DI DEFAULT DEL MODULO -- catena vuota, nessun modello per
-   provider, ponte e Ollama ai predefiniti, e `seminato: false`.
+   provider, ponte e Ollama ai predefiniti, e `catena_seminata: false`.
 
    Il backend applicava tutto (erano tutte in `_OUR_KEYS`). Da quel
    momento la chat rispondeva «Nessun provider utilizzabile in catena», e al
@@ -381,7 +382,7 @@ test('la PUT porta le chiavi che il server dice scrivibili, e solo quelle', asyn
 
      Mutazione eseguita (07/10/2026): la copia di `state.cfg` fatta su tutte le
      chiavi di `cfgRaw` invece che su `scrivibili` -> rosso, la PUT porta
-     `seminato`. Ripristinato, `git diff` di `models-route.js` senza la
+     `seminato` (il segno uscito poi col Task 10). Ripristinato, `git diff` di `models-route.js` senza la
      mutazione. */
   const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   ctx.window.HirisModelsRoute.mount();
@@ -651,8 +652,8 @@ test('«Usa» mette il provider in fondo alla catena, e salva l\'oggetto intero'
     ['chain_order', 'nascondi_gratuiti', 'ollama', 'ponte', 'provider_models',
       'strategia_ultima'],
     'sempre l\'oggetto intero: una PUT parziale su un corpo di sei chiavi '
-    + 'perderebbe le altre cinque. `seminato` NON è una di esse: è il segno '
-    + 'della migrazione (versione A), non una decisione, e un client HTTP non '
+    + 'perderebbe le altre cinque. `catena_seminata` NON è una di esse: è il '
+    + 'segno della migrazione, non una decisione, e un client HTTP non '
     + 'deve poterlo riscrivere');
   assert.equal(righeCatena(ctx.document).length, 3, 'la riga si sposta subito');
   assert.equal(righeCatena(ctx.document)[2].querySelector('.row-pos').textContent, '3');
@@ -1091,7 +1092,7 @@ test('scegliere un modello di OpenRouter salva l\'oggetto intero, e la pagina ri
     ['chain_order', 'nascondi_gratuiti', 'ollama', 'ponte', 'provider_models',
       'strategia_ultima'],
     'sempre l\'oggetto intero, come ogni altra scrittura di questa pagina '
-    + '-- e senza `seminato`, che è un segno di migrazione e non una decisione');
+    + '-- e senza `catena_seminata`, che è un segno di migrazione e non una decisione');
   /* E poi si RILEGGE. Le altre scritture si ridisegnano da sole perché ciò che
      cambiano -- le posizioni -- è già determinato dal gesto; qui no: il
      modello che una riga mostra è quello che il runtime userebbe, «auto» si

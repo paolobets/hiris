@@ -68,7 +68,7 @@ def _models_in_use(store: dict) -> dict[str, str]:
 
 
 async def handle_get_models_config(request: web.Request) -> web.Response:
-    data_dir = request.app.get("data_dir") or "/data"
+    data_dir = request.app["data_dir"]
     payload = load_models_config(data_dir)
     _bridge_on = payload["ponte"]["attivo"]
     # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
@@ -153,7 +153,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
 
 async def handle_save_models_config(request: web.Request) -> web.Response:
     body = await json_object(request)
-    data_dir = request.app.get("data_dir") or "/data"
+    data_dir = request.app["data_dir"]
     clean = save_models_config(data_dir, body)
     request.app["models_config"] = clean   # hot-update per la sessione corrente
     # E poi si RIMETTE IN VIGORE. Aggiornare solo il dizionario cambiava la
@@ -434,7 +434,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
     quel client non esiste — misurato l'01/09, vedi `save_models_config`.
     """
     requested = request.query.get("provider", "")
-    store = load_models_config(request.app.get("data_dir") or "/data")
+    store = load_models_config(request.app["data_dir"])
     hide_free = bool(store["nascondi_gratuiti"])
     # Gli stessi modelli che la riga mostra, dalla stessa funzione: il pannello
     # e la riga da cui si apre non possono dire due cose diverse.

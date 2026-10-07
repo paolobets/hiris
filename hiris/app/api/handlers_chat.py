@@ -708,7 +708,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
 
     runner = chain_runner(request.app)
     contesto = job.get("context") or {}
-    data_dir = request.app.get("data_dir", "/data")
+    data_dir = request.app["data_dir"]
     # Fetta «le chat divise»: soggetto e filo sono quelli DEL JOB, cioe' di chi
     # ha scritto il messaggio -- non di chi per caso fa il poll che scopre la
     # scadenza (spec §4). Il poll di un altro filo e' gia' un 404, ma il turno
@@ -937,7 +937,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     if len(message) > 4000:
         return error_response(413, "message too long (max 4000 chars)")
 
-    data_dir = request.app.get("data_dir", "/data")
+    data_dir = request.app["data_dir"]
     settings = request.app["chat_settings"]
     # Fetta «le chat divise»: il filo di chi scrive, calcolato UNA volta qui e
     # passato a tutto cio' che segue -- cronologia, riassunti, limite dei

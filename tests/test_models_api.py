@@ -77,11 +77,12 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         # l'archivio (load_models_config)
         "chain_order", "provider_models", "ponte", "ollama",
         "nascondi_gratuiti", "strategia_ultima",
-        # I TRE SEGNI di migrazione. Si leggono (il GET descrive l'archivio
+        # I DUE SEGNI di migrazione. Si leggono (il GET descrive l'archivio
         # per intero), ma non si SCRIVONO da qui: `_MIGRATION_FLAGS` li tiene
         # fuori da cio' che una PUT puo' toccare -- vedi
         # `test_una_put_non_puo_riscrivere_i_segni_della_migrazione`.
-        "seminato", "catena_seminata", "piano_seminato",
+        # `seminato` e' uscito col Task 10 della Tappa 7 (M-80).
+        "catena_seminata", "piano_seminato",
         # cio' che la pagina disegna
         "adesso", "catena", "fuori_catena", "fine_catena",
         # Tappa 7, Task 9: cio' che la pagina ricopiava e ora riceve -- l'ordine

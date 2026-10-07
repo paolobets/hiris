@@ -28,6 +28,7 @@ import os
 from datetime import UTC, datetime
 
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ..storage import write_json_atomic
 from .behavior import automation_active
 from .topology import clean_text
 
@@ -313,7 +314,7 @@ class HomeSpace:
     (`hold_behavior`, `hold_dashboards`).
     """
 
-    def __init__(self, data_dir: str = "/data", *, mirror=None) -> None:
+    def __init__(self, data_dir: str, *, mirror=None) -> None:
         # Lo specchio dello stato: `behavior()` gli chiede se un'automazione
         # e' attiva al momento della lettura (A-12). Senza specchio la voce
         # non lo dice: e' un «non lo so», non un «spenta».
@@ -365,15 +366,12 @@ class HomeSpace:
         grezzo e' fatto di istanti; senza il fuso non si sanno nemmeno
         dividere in giorni.
 
-        Si scrive di fianco e si sposta: un riavvio a meta' scrittura
+        Si scrive con `storage.write_json_atomic`: un riavvio a meta' scrittura
         lascerebbe altrimenti un file troncato, e un fuso illeggibile e' peggio
         di un fuso vecchio.
         """
-        temporary = self._frame_path + ".tmp"
         try:
-            with open(temporary, "w", encoding="utf-8") as f:
-                json.dump(frame, f, ensure_ascii=False)
-            os.replace(temporary, self._frame_path)
+            write_json_atomic(self._frame_path, frame)
         except Exception as error:
             logger.warning("sistema di riferimento non scritto (%s: %s)",
                            type(error).__name__, error)

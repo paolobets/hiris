@@ -1049,3 +1049,28 @@ def test_l_avviso_sui_gratuiti_segue_il_CONTENUTO_dell_elenco():
     assert "non ha effetto" not in senza["provenienza"], (
         "l'elenco non ne contiene: l'avviso sarebbe una riga falsa su cio' "
         "che l'utente ha davanti")
+
+
+def test_la_scadenza_predefinita_si_chiede_all_archivio(monkeypatch):
+    """D-09 (Tappa 7, Task 10): quando il chiamante non passa la scadenza del
+    ponte, `compose_now` e `compose_topology` usano quella dell'archivio dei
+    modelli senza decisioni (`models_store._STORE_DEFAULTS`), non un `5`
+    scritto qui a mano.
+
+    Mutazione ESEGUITA (07/10/2026): rimesso `bridge_deadline_min: int = 5`
+    nelle due firme -- rossa (`assert 5 == 7`). Ripristinata, `git diff` di
+    `model_resolution.py` senza la mutazione."""
+    import importlib
+    import inspect
+
+    from hiris.app import model_resolution, models_store
+
+    monkeypatch.setitem(models_store._STORE_DEFAULTS["ponte"], "scadenza_min", 7)
+    try:
+        ricaricato = importlib.reload(model_resolution)
+        for funzione in (ricaricato.compose_now, ricaricato.compose_topology):
+            default = inspect.signature(funzione).parameters["bridge_deadline_min"].default
+            assert default == 7, funzione.__name__
+    finally:
+        monkeypatch.undo()
+        importlib.reload(model_resolution)

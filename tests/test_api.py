@@ -110,8 +110,9 @@ async def test_chat_missing_message(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_no_runner(aiohttp_client):
+async def test_chat_no_runner(aiohttp_client, tmp_path):
     app = create_app()
+    app["data_dir"] = str(tmp_path)  # lo scrive l'avvio, che qui non gira
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None

@@ -303,5 +303,8 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 # `model_resolution`, `llm_router`, `handlers_models`, i consumi e le due pagine sono
 # usciti con la tabella dei provider, e le chiavi dell'archivio che la pagina
 # ricopiava coi predefiniti accanto (ora arrivano in `scrivibili`).
-KNOWN_CEILING = 11
+# 10 dalla Tappa 7 T10 (07/10/2026): `data_dir = '/data'` ripetuto in
+# `handlers_chat` e `chat_thread` (D-09) e' uscito -- ogni lettore chiede
+# `app["data_dir"]`, che l'avvio scrive una volta.
+KNOWN_CEILING = 10
 

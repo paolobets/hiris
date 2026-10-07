@@ -8,7 +8,7 @@ stato di un provider -- quella per cui, sull'unica installazione esistente, due
 provider lavoravano mentre la pagina li mostrava spenti.
 
 Della vecchia regola resta nel repo la sola META' di compatibilita', in
-`server._chain_as_it_was`, ed e' provata li'
+`options_migration._initial_chain` (era `server._chain_as_it_was`), ed e' provata li'
 (`tests/test_options_migration.py`). Il ramo che leggeva gli interruttori e'
 uscito con loro: senza nessuno che esporti i cinque `PROVIDER_*`, era
 irraggiungibile, e il test che lo esercitava difendeva uno stato che nessun

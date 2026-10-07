@@ -192,7 +192,7 @@ async def adopt_if_owner(app, request, thread: ChatThread) -> None:
     from . import chat_store
     from .api.soffitto import is_owner
 
-    data_dir = app.get("data_dir", "/data")
+    data_dir = app["data_dir"]
     agenda = app.get("agenda")
     soggetto = request.get("soggetto") or {}
     if thread.entry_point != "pannello" or soggetto.get("specie") != "persona":
