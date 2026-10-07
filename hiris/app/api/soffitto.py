@@ -466,15 +466,14 @@ WAKE_UNVERIFIED_PERSON = ("non ho potuto verificare in Home Assistant chi aveva 
 
 
 def _approved_service_role(app, subject: dict) -> str | None:
-    """Il ruolo del servizio approvato che porta questo nome, letto adesso
+    """Il ruolo del servizio approvato con questa impronta, letto adesso
     dall'archivio dei servizi -- o `None` se non si puo' sapere con certezza.
 
     Il soggetto ricostruito da un filo (`chat_thread.subject_from_thread`)
-    porta specie e id -- per un servizio l'id e' il nome con cui e' stato
-    approvato (`middleware_internal_auth`) -- ma non il ruolo, che viaggiava
-    con la firma. Si rilegge dall'archivio, e nel dubbio si chiude: un
-    servizio revocato, sconosciuto o con due approvazioni di ruolo diverso
-    sotto lo stesso nome non ha un ruolo che si possa dedurre.
+    porta specie e id -- per un servizio l'id e' l'impronta della sua chiave
+    (`servizi.ServiziStore.fingerprint`, S-16) -- ma non il ruolo, che
+    viaggiava con la firma. Si rilegge dall'archivio, e nel dubbio si chiude:
+    un servizio revocato o sconosciuto non ha un ruolo che si possa dedurre.
     """
     roles = {row.get("ruolo") for row in _service_rows(subject, approved_services(app))}
     return roles.pop() if len(roles) == 1 else None
@@ -500,11 +499,12 @@ def approved_services(app) -> list[dict]:
 
 
 def _service_rows(subject: dict, approved: list[dict]) -> list[dict]:
-    """Le righe approvate che portano il nome e la specie di questo soggetto:
-    una ricerca sola per il ruolo al risveglio (`_approved_service_role`) e
-    il nome sulla pagina (`subject_name`)."""
+    """Le righe approvate che portano l'impronta e la specie di questo
+    soggetto: una ricerca sola per il ruolo al risveglio
+    (`_approved_service_role`) e il nome sulla pagina (`subject_name`). Fino
+    al 07/10/2026 si cercava per nome (S-16)."""
     return [row for row in approved
-            if row.get("nome") == subject.get("id")
+            if row.get("impronta") == subject.get("id")
             and (row.get("specie") or SPECIE_IGNOTA) == subject.get("specie")]
 
 
@@ -522,8 +522,8 @@ async def subject_name(app, subject: dict | None, *,
     scritto un giudizio si nominano qui, allo stesso modo.
 
     Si legge da chi lo SA: per una persona gli utenti di Home Assistant, per
-    un servizio l'archivio -- dove il nome e' lo stesso id con cui e' stato
-    approvato, e la lettura aggiunge che e' **ancora** approvato. Se non c'e',
+    un servizio l'archivio, cercato per impronta -- e la lettura aggiunge che
+    e' **ancora** approvato. Se non c'e',
     il nome che il confine ha attaccato al soggetto (l'intestazione
     dell'ingress, la firma); un soggetto rifatto da un filo non ne porta. Mai
     la chiave: sulla pagina sarebbe un identificatore interno, non un nome.

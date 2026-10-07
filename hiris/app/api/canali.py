@@ -217,9 +217,12 @@ def riconosci(*, chiave: str, momento, unico: str, firma: str, metodo: str,
         return None, "la firma non si è potuta leggere"
 
     visti[unico] = adesso
-    nome = autorizzato["nome"]
-    return new_subject(autorizzato.get("specie") or SPECIE_IGNOTA, ident=nome,
-                       nome=nome, ruolo=ruolo), None
+    # L'id e' l'impronta della chiave, il nome un'etichetta (S-16, D7 della
+    # Tappa 7): fino al 07/10/2026 l'id era il nome, e due servizi omonimi
+    # condividevano il filo della chat.
+    return new_subject(autorizzato.get("specie") or SPECIE_IGNOTA,
+                       ident=autorizzato["impronta"], nome=autorizzato["nome"],
+                       ruolo=ruolo), None
 
 
 def prepara_canali(app) -> None:

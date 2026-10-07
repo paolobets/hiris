@@ -265,7 +265,8 @@ async def test_una_richiesta_FIRMATA_passa_e_dice_quale_servizio(archivio):
 
     assert esito == "ok"
     assert visto["auth_via"] == "canale"
-    assert visto["soggetto"]["id"] == "sviluppo"
+    assert visto["soggetto"]["id"] == ServiziStore.fingerprint(pubblica)
+    assert visto["soggetto"]["nome"] == "sviluppo"
     assert visto["soggetto"]["ruolo"] == "lettore"
     assert visto["soggetto"]["specie"] == "integrazione"
 

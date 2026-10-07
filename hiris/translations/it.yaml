@@ -60,4 +60,4 @@ configuration:
     description: "Quanto scrive HIRIS nel registro. Per segnalare un guasto: metti 'debug', riproduci il problema, allega quello che vedi."
   supervisor_ingress_cidr:
     name: "Avanzate · reti riconosciute come ingress"
-    description: "Chi arriva da queste reti entra senza token, tutti gli altri no. Allargarlo apre la API di HIRIS. Predefinito: la rete del Supervisor."
+    description: "Chi arriva da queste reti entra senza token, tutti gli altri no. Allargarlo apre la API di HIRIS. Vuoto: la rete del Supervisor."

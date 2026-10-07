@@ -397,7 +397,8 @@ async def test_l_amministratore_vede_CHI_ha_chiesto_ogni_proposta_mai_la_chiave(
     app["servizi"] = servizi
     try:
         from_marta = _proposta(app, "k1", thread=ChatThread("persona:u-marta", "pannello"))
-        from_panel = _proposta(app, "k2", thread=ChatThread("luogo:retropanel", "firma"))
+        from_panel = _proposta(app, "k2", thread=ChatThread(
+            f"luogo:{ServiziStore.fingerprint('chiave-pubblica')}", "firma"))
         orfana = _proposta(app, "k3")
         from_bridge = _proposta(app, "k4", thread=ChatThread("nessuno:ponte", "interno"))
         from_unknown = _proposta(app, "k5", thread=ChatThread("persona:u-sparito", "pannello"))
@@ -556,8 +557,10 @@ async def test_il_nome_di_un_servizio_e_quello_APPROVATO(tmp_path):
         servizi.revoca("k-revocato", now_ts=3.0)
         app = {"servizi": servizi}
 
-        vivo = await subject_name(app, {"specie": "luogo", "id": "retropanel"})
-        revocato = await subject_name(app, {"specie": "luogo", "id": "vecchio"})
+        vivo = await subject_name(app, {"specie": "luogo",
+                                         "id": ServiziStore.fingerprint("k-vivo")})
+        revocato = await subject_name(
+            app, {"specie": "luogo", "id": ServiziStore.fingerprint("k-revocato")})
         ponte = await subject_name(app, {"specie": "nessuno", "id": "ponte",
                                          "nome": "ponte"})
     finally:
@@ -597,15 +600,18 @@ async def test_il_rifiuto_di_un_SERVIZIO_si_scrive_col_nome_APPROVATO(cliente, c
                "X-Remote-User-Display-Name": "Nome Riservato"}
 
     risposta = await cliente.get("/api/constructions", headers=testate)
-    cliente.app["servizi"].close()
 
     rifiuti = [r for r in caplog.records if r.name == "hiris.app.api.admission"]
     assert risposta.status == 403
     assert rifiuti, "il rifiuto non ha lasciato nessuna riga"
     assert all(r.levelname == "WARNING" for r in rifiuti)
     assert all("Nome Riservato" not in r.getMessage() for r in rifiuti)
-    assert any("'retropanel'" in r.getMessage() and "luogo:retropanel" in r.getMessage()
+    # Il nome approvato, e l'id che e' l'impronta della chiave (S-16).
+    [servizio] = cliente.app["servizi"].elenco(now_ts=time.time())
+    assert any("'retropanel'" in r.getMessage()
+               and f"luogo:{servizio['impronta']}" in r.getMessage()
                for r in rifiuti)
+    cliente.app["servizi"].close()
 
 
 @pytest.mark.asyncio
@@ -675,12 +681,13 @@ async def test_l_archivio_dei_servizi_si_legge_UNA_volta_per_elenco(cliente):
 
         def elenco(self, *, now_ts):
             _Servizi.letture += 1
-            return [{"nome": "retropanel", "specie": "luogo", "stato": "autorizzato"}]
+            return [{"nome": "retropanel", "specie": "luogo", "stato": "autorizzato",
+                     "impronta": "impronta-retropanel"}]
 
     app = cliente.app
     app["servizi"] = _Servizi()
     for n in range(3):
-        _proposta(app, f"k{n}", thread=ChatThread("luogo:retropanel", "firma"))
+        _proposta(app, f"k{n}", thread=ChatThread("luogo:impronta-retropanel", "firma"))
 
     corpo = await (await cliente.get("/api/constructions", headers=_testate("u-admin"))).json()
 

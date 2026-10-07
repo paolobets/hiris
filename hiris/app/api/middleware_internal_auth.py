@@ -17,9 +17,6 @@ logger = logging.getLogger(__name__)
 # different proxy cannot just attach the header with an arbitrary value.
 _INGRESS_PATH_RE = re.compile(r"^/api/hassio_ingress/[A-Za-z0-9_\-]+(/.*)?$")
 
-# Default HA Supervisor Docker network. The ingress proxy always reaches the
-# add-on from inside this range; a direct LAN/tunnel client never does.
-_DEFAULT_SUPERVISOR_CIDRS = ["172.30.32.0/23"]
 
 
 def allow_no_token() -> bool:
@@ -30,8 +27,13 @@ def allow_no_token() -> bool:
 
 
 def _supervisor_cidrs(request: web.Request) -> list[str]:
-    cidrs = request.app.get("supervisor_ingress_cidrs")
-    return cidrs if cidrs else _DEFAULT_SUPERVISOR_CIDRS
+    """Le reti che l'avvio ha calcolato (`ingresso.perimetro_fidato`), e
+    nient'altro. **Un elenco vuoto resta vuoto** (S-15, Tappa 7): fino al
+    07/10/2026 ripiegava sulla rete Docker intera, proprio nel caso in cui
+    l'avvio aveva scritto nel registro «nessuna rete e' fidata». Il valore di
+    fabbrica ha una casa sola, `ingresso.RETE_PREDEFINITA`, e vale quando il
+    campo e' vuoto, non quando e' sbagliato."""
+    return list(request.app.get("supervisor_ingress_cidrs") or [])
 
 
 async def _is_supervisor_ingress(request: web.Request) -> bool:
@@ -44,9 +46,8 @@ async def _is_supervisor_ingress(request: web.Request) -> bool:
     2. l'indirizzo sorgente sta nel perimetro che l'avvio ha calcolato
        (`ingresso.perimetro_fidato`): dal 22/09/2026 **l'indirizzo a cui
        risponde il nome «supervisor»**, uno solo. Se il nome non si risolve
-       valgono le reti scritte nelle opzioni, e se l'elenco e' vuoto
-       `_supervisor_cidrs` ripiega su `_DEFAULT_SUPERVISOR_CIDRS`, cioe' la
-       rete Docker intera dove vive ogni add-on installato.
+       valgono le reti scritte nelle opzioni (o, se il campo e' vuoto,
+       `ingresso.RETE_PREDEFINITA`); un elenco vuoto non si fida di nessuno.
 
     Un add-on vicino puo' falsificare l'intestazione. Col nome risolto non
     puo' presentarsi dall'indirizzo del Supervisor.

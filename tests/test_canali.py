@@ -60,7 +60,8 @@ class _Archivio:
 
 def _servizi(pubblica, *, nome="sviluppo", ruolo="lettore", specie="integrazione"):
     return _Archivio({pubblica: {"nome": nome, "ruolo": ruolo, "specie": specie,
-                                 "chiave": pubblica, "stato": "autorizzato"}})
+                                 "chiave": pubblica, "stato": "autorizzato",
+                                 "impronta": ServiziStore.fingerprint(pubblica)}})
 
 
 def _firma(privata, *, chiave=None, metodo="GET", percorso="/api/health",

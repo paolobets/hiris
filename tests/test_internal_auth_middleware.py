@@ -293,19 +293,13 @@ async def test_a_neighbour_in_the_docker_network_is_not_the_proxy():
     fida del solo indirizzo del proxy, il vicino resta fuori.
 
     Mutazione ESEGUITA il 03/10/2026: `_supervisor_cidrs` che torna sempre
-    `_DEFAULT_SUPERVISOR_CIDRS` (la `/23`) -- rossa (`assert True is False`),
+    la rete di fabbrica (la `/23`) -- rossa (`assert True is False`),
     mentre `test_a2_un_indirizzo_che_non_e_il_proxy_non_passa` resta verde."""
     request = _ingress_request_from("172.30.32.5", ["172.30.32.2/32"])
 
     assert await _is_supervisor_ingress(request) is False
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "S-15 del registro dei doppioni: `_supervisor_cidrs` legge l'elenco VUOTO "
-    "come «nessuna scelta» e ripiega sulla rete Docker intera, mentre l'avvio "
-    "scrive l'elenco vuoto proprio per dire «non fidarti di nessuno». Il "
-    "difetto del codice si ripara nella sua tappa; la prova fissa gia' cio' "
-    "che serve"))
 @pytest.mark.asyncio
 async def test_an_empty_trusted_list_trusts_no_network():
     """**Il reperto T-14: la prova dice cio' che serve, non cio' che c'e'.**
@@ -317,13 +311,12 @@ async def test_an_empty_trusted_list_trusts_no_network():
     perimetro, che e' esattamente cio' che `api/ingresso.py::reti_fidate`
     dice di non fare.
 
-    Attesa rossa finche' S-15 resta aperto (`strict=True`: il giorno che il
-    codice si ripara, la prova diventa verde e la suite chiede di togliere
-    l'`xfail`).
+    S-15 e' chiuso il 07/10/2026 (Tappa 7, Task 8): l'`xfail` e' uscito e
+    la prova e' verde.
 
-    Mutazione ESEGUITA il 03/10/2026: riparato il codice
-    (`cidrs if cidrs is not None else _DEFAULT_SUPERVISOR_CIDRS`) -- la prova
-    passa, e la suite la segna `XPASS(strict)`, rossa."""
+    Mutazione ESEGUITA il 07/10/2026: rimesso il ripiego in
+    `_supervisor_cidrs` (`... or ["172.30.32.0/23"]`) -- rossa
+    (`assert True is False`)."""
     request = _ingress_request_from("172.30.32.5", [])
 
     assert await _is_supervisor_ingress(request) is False

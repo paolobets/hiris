@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
+from hiris.app.api.servizi import ServiziStore
 from hiris.app.chat_store import (
     _get_store,
     append_assistant_line,
@@ -585,20 +586,25 @@ async def test_al_risveglio_una_persona_amministratrice_comanda_come_prima(tmp_p
         app["servizi"].close()
 
 
+#: Il pannello della cucina com'e' nel filo: specie e impronta della chiave.
+_CUCINA = {"specie": "luogo", "id": ServiziStore.fingerprint("k1")}
+
+
 async def test_al_risveglio_il_ruolo_di_un_servizio_si_rilegge_dall_archivio(tmp_path):
     """Il soggetto ricostruito dal filo non porta il ruolo: si rilegge dal
-    servizio approvato, per nome. Declassato dopo la nascita -> non comanda."""
+    servizio approvato, per impronta della chiave (S-16). Declassato dopo la
+    nascita -> non comanda."""
     from hiris.app.api.soffitto import ceiling_at_wake
 
     app = _app_with_ceiling(tmp_path)
     try:
         _approva(app, "pannello-cucina", "k1", ruolo="utente")
-        prima = await ceiling_at_wake(app, {"specie": "luogo", "id": "pannello-cucina"})
+        prima = await ceiling_at_wake(app, _CUCINA)
         assert prima["comandare"] is True
 
         assert app["servizi"].approva("k1", ruolo="lettore", specie="luogo",
                                       now_ts=ADESSO + 1)
-        dopo = await ceiling_at_wake(app, {"specie": "luogo", "id": "pannello-cucina"})
+        dopo = await ceiling_at_wake(app, _CUCINA)
         assert dopo["comandare"] is False
         assert dopo["perche"]
     finally:

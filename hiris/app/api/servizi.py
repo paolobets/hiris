@@ -32,13 +32,17 @@ senza che ne esca niente di utile a nessuno.
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
+import time
 
 from ..storage import connect, init_schema
 
 # I ruoli e le specie si chiedono al vocabolario del confine (F-02): fino al
 # 07/10/2026 `RUOLI` era scritto due volte, qui e in `canali.py`.
-from .canali import RUOLI, SERVICE_SPECIES
+from .canali import RUOLI, SERVICE_SPECIES, SPECIE_IGNOTA
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS servizi (
@@ -66,7 +70,8 @@ def _row(r) -> dict:
     return {"chiave": r["chiave"], "nome": r["nome"], "indirizzo": r["indirizzo"],
             "stato": r["stato"], "ruolo": r["ruolo"], "specie": r["specie"],
             "visto_ts": r["visto_ts"], "deciso_ts": r["deciso_ts"],
-            "codice": ServiziStore.codice(r["chiave"])}
+            "codice": ServiziStore.codice(r["chiave"]),
+            "impronta": ServiziStore.fingerprint(r["chiave"])}
 
 
 class ServiziStore:
@@ -100,8 +105,20 @@ class ServiziStore:
         quello che il servizio vero mostra sul suo schermo, e il proprietario
         vede due numeri diversi.
         """
-        impronta = hashlib.sha256(str(chiave or "").encode("utf-8")).digest()
-        return f"{int.from_bytes(impronta[:4], 'big') % 10000:04d}"
+        return f"{int(ServiziStore.fingerprint(chiave)[:8], 16) % 10000:04d}"
+
+    @staticmethod
+    def fingerprint(chiave: str) -> str:
+        """**L'identita' di un servizio** (S-16, D7 della Tappa 7): l'impronta
+        SHA-256 della sua chiave pubblica, in esadecimale. E' l'`id` del suo
+        soggetto (`canali.riconosci`) e quindi del suo filo (`specie:id`); il
+        nome e' un'etichetta, e due servizi con lo stesso nome restano due.
+
+        L'impronta e non la chiave perche' la chiave in base64 porta `/` e
+        `+`, e l'id finisce in chiavi, registri e URL. Il codice di
+        accoppiamento (`codice`) si deriva dalla stessa impronta: un fatto,
+        una funzione."""
+        return hashlib.sha256(str(chiave or "").encode("utf-8")).hexdigest()
 
     def presenta(self, *, nome: str, chiave: str, indirizzo: str,
                  now_ts: float) -> dict:
@@ -210,6 +227,58 @@ class ServiziStore:
 #:
 #: Una difesa permanente invecchia. Una porta chiusa no.
 ACCOPPIAMENTO_S = 600.0
+
+
+def service_thread_renames(rows: list[dict]) -> tuple[dict[str, str], list[str]]:
+    """Le chiavi dei fili dei servizi, dal nome all'impronta (S-16, D7 della
+    Tappa 7): `({vecchia: nuova}, [chiavi ambigue])`.
+
+    Una chiave vecchia e' `specie:nome`, com'era fino al 07/10/2026; la nuova
+    `specie:impronta` (`chat_thread.subject_key_for` sul soggetto di
+    `canali.riconosci`). Contano i servizi autorizzati e revocati -- quelli
+    che hanno potuto parlare. **Due servizi con lo stesso nome e la stessa
+    specie non si separano**: il filo era uno, e non c'e' modo di sapere di
+    chi fosse ogni sessione. Restano alla chiave vecchia, cioe' a nessuno, e
+    si nominano nel registro: dare a uno dei due la cronologia dell'altro
+    sarebbe peggio."""
+    owners: dict[str, set[str]] = {}
+    for row in rows:
+        if row.get("stato") not in ("autorizzato", "revocato"):
+            continue
+        old = f"{row.get('specie') or SPECIE_IGNOTA}:{row.get('nome')}"
+        new = f"{row.get('specie') or SPECIE_IGNOTA}:{row.get('impronta')}"
+        owners.setdefault(old, set()).add(new)
+    renames = {old: next(iter(new)) for old, new in owners.items()
+               if len(new) == 1 and old not in new}
+    return renames, sorted(old for old, new in owners.items() if len(new) > 1)
+
+
+def migrate_service_threads(app) -> int:
+    """All'avvio: i fili della chat dei servizi passano dal nome all'impronta
+    della chiave, e il registro dice quanti (la misura dal vivo di D7). Torna
+    il numero di sessioni migrate. Non solleva: una migrazione che non riesce
+    lascia i fili dov'erano, e l'avvio prosegue.
+
+    Si rifa' a ogni avvio, e dal secondo non trova niente: le chiavi vecchie
+    non esistono piu'."""
+    from .. import chat_store
+
+    store = app.get("servizi")
+    if store is None:
+        return 0
+    try:
+        renames, ambiguous = service_thread_renames(store.elenco(now_ts=time.time()))
+        moved = chat_store.rekey_subjects(app["data_dir"], renames)
+    except Exception as exc:
+        logger.warning("servizi: i fili della chat non sono migrati all'impronta "
+                       "della chiave (%s: %s)", type(exc).__name__, exc)
+        return 0
+    logger.info("servizi: %d sessioni di chat migrate dal nome all'impronta della "
+                "chiave (%d servizi)", moved, len(renames))
+    if ambiguous:
+        logger.warning("servizi: %d nomi portati da piu' servizi, i loro fili restano "
+                       "senza padrone: %s", len(ambiguous), ", ".join(ambiguous))
+    return moved
 
 
 def apri_finestra(finestra: dict, *, adesso: float) -> float:
