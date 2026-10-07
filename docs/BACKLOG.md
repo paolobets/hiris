@@ -994,6 +994,37 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### L'officina impara i config flow: `history_stats` prima di tutto — aperta il 07/10/2026
+
+`origine: il proprietario, 07/10/2026 (scelta A sulla nota C8, «l'officina impara i config flow»)` · documento: `/mnt/project-files/attori/2026-10-07-officina-config-flow-proposta.md` · fonti: `/mnt/project-files/attori/2026-10-07-c8-presenza-history-stats-nota.md` · `hiris/app/action/construction/workshop.py` · `hiris/app/proxy/ha_client.py::HELPER_DOMAINS`
+
+**Il fatto.** La Legge I chiede che un tempo in uno stato chiesto ogni giorno (ore in casa oggi,
+quota della settimana, quante volte si e' aperta una porta) sia un sensore di Home Assistant,
+`history_stats`, e non un conto che `compute` rifa' a ogni giro. HIRIS oggi non lo sa creare:
+l'officina scrive automazioni, script, scene e gli otto helper a *storage collection*;
+`history_stats` e' un helper a **config flow** (letto al tag `2026.9.4` il 07/10/2026,
+`manifest.json`: `"config_flow": true`, `"integration_type": "helper"`), e si crea solo camminando
+`POST /api/config/config_entries/flow` e un `POST …/flow/{flow_id}` per passo. E' il buco gia'
+scritto in `docs/design/2026-09-04-i-comandi-verso-home-assistant.md` §2.8, con la sua regola: **il
+POST di un passo non si ritenta mai**.
+
+**La proposta, in breve** (le decisioni sono aperte, e stanno nel documento): solo
+`history_stats`, per ammissione, come oggetto principale; solo `crea` e `cancella`; il cammino
+legge da ogni risposta di HA i campi che il passo chiede invece di ricopiare la sequenza; `propose`
+valida con l'anteprima di HA (`history_stats/start_preview`) e abortisce il flow; l'entita' nata si
+trova con il lettore che c'e' gia' (`Workshop._helper_entities`, `platform` + `unique_id` =
+`entry_id`) e prende l'etichetta HIRIS; `create_helper` resta solo per le storage collection.
+Niente in `server.py`, nessuna rotta nuova.
+
+**Quando.** Dopo la Chiusura dello sprint e il rilascio del ramo d'integrazione. Nel frattempo,
+col Task 3.6, la frase del criterio entra nella domanda dell'analista e del proponente («se la
+stessa misura serve a ogni giro, si propone il sensore; `compute` per cio' che si chiede una
+volta»), e il proponente usa l'esito «a mano» per i sensori di presenza.
+
+**Prima del disegno, in casa:** la cattura di un flow `history_stats` vero, abortito (serve il si'
+di Paolo: apre un flow), il token dell'add-on sulle rotte `require_admin` del flow, la forma
+dell'anteprima, e che un flow abortito non lasci tracce.
+
 ### Registro modelli: `esito.tipo` dice «rifiutato» anche per 429 e 5xx — aperta il 06/10/2026
 
 `origine: giro 47 del revisore e thread «Termometri e falso errore», 06/10/2026; da fare dopo il rilascio` · `hiris/app/provider_occurrences.py` · `hiris/app/static/config/models-route.js::providerRow`
