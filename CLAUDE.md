@@ -428,9 +428,11 @@ intervalli fissi erano diventati ciechi, e la prova restava verde.
 
 **Il conteggio delle prove JS e' un fatto che si confronta** (Paolo, 05/10/2026). Una `npm test`
 che raccoglie meno prove del giro prima, senza nessuna rossa, non e' verde: e' una suite che ha
-smesso di guardare qualcosa. La verifica confronta il numero di prove raccolte con quello del giro
-precedente e lo dice quando scende (la causa del conteggio instabile e lo strumento: BACKLOG,
-Tappa 8).
+smesso di guardare qualcosa. `npm test` lo confronta da se': il reporter
+`tests/js/helpers/conteggio-prove.mjs` conta le prove per file, le confronta con il giro prima su
+questo clone e, se un file ne porta meno, lo nomina e fa uscire la corsa con 1. La causa del
+conteggio instabile del 05/10 (le scritture di coda perse con `--test-force-exit`) e la sua
+correzione stanno in `tests/js/helpers/uscita-intera.mjs`.
 
 **E si deriva la proprieta', non la forma.** Il cancello dei giudizi pretendeva la parola chiave
 `judgments=`; sette chiamate corrette la passavano per posizione. Un cancello che chiama sbagliato

@@ -49,7 +49,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # aggiunge (la pagina #/models non aveva alcun test comportamentale, ed e' la
 # pagina che questa fetta riscrive): 11 + 1 = 12. Il numero e' CONTATO, non
 # incrementato a mano -- chi aggiunge o toglie un file conta di nuovo.
-_MIN_JS_TEST_FILES = 37
+#
+# Il conteggio instabile di `npm test` (07/10/2026): la soglia era rimasta a 37
+# mentre i file erano 42 -- cinque cancellabili in silenzio. Piu'
+# `conteggio-prove.test.mjs`, che questa fetta aggiunge: 43, CONTATO
+# (`ls tests/js/*.test.mjs | wc -l`).
+_MIN_JS_TEST_FILES = 43
 
 
 def _js_test_files():
@@ -72,12 +77,40 @@ def test_npm_test_script_actually_targets_the_js_test_suite():
     verde senza eseguire un solo test JS. Verifica lo script effettivo."""
     pkg = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     script = pkg.get("scripts", {}).get("test", "")
-    assert "node --test" in script, (
+    # `node` con `--test` fra le opzioni, non la sottostringa "node --test":
+    # dal 07/10/2026 fra i due sta `--import` (vedi la prova qui sotto).
+    argomenti = script.split()
+    assert argomenti[:1] == ["node"] and "--test" in argomenti, (
         f'package.json scripts.test deve invocare "node --test", trovato: {script!r}'
     )
     assert "tests/js" in script and ".test.mjs" in script, (
         f'package.json scripts.test deve puntare al glob tests/js/*.test.mjs, trovato: {script!r}'
     )
+
+
+def test_npm_test_non_perde_le_prove_e_confronta_il_conteggio():
+    """Il conteggio instabile di `npm test` (BACKLOG, 05/10/2026; causa
+    trovata il 07/10/2026). Con `--test-force-exit` ogni figlio esce appena
+    l'ultima prova finisce, e sulle pipe POSIX le sue scritture sono
+    asincrone: gli esiti di coda si perdevano senza nessuna rossa (misurato:
+    553, 551 e 552 su 638 col padre rallentato). `uscita-intera.mjs` rende
+    bloccante l'uscita, in ogni processo; il reporter `conteggio-prove.mjs`
+    confronta le prove raccolte col giro prima, e deve stare su una
+    destinazione sua (stderr), o la sua riga si perde con `--test-force-exit`."""
+    pkg = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    argomenti = pkg["scripts"]["test"].split()
+    assert "--import" in argomenti
+    assert argomenti[argomenti.index("--import") + 1] == "./tests/js/helpers/uscita-intera.mjs"
+    # `--import` va prima di `--test`: dopo, node lo passerebbe come file da
+    # provare, e i figli non lo riceverebbero fra i propri `execArgv`.
+    assert argomenti.index("--import") < argomenti.index("--test")
+    def valori(opzione):
+        return [a.split("=", 1)[1] for a in argomenti if a.startswith(opzione + "=")]
+
+    dove = dict(zip(valori("--test-reporter"), valori("--test-reporter-destination"), strict=True))
+    conteggio = dove.pop("./tests/js/helpers/conteggio-prove.mjs", None)
+    assert conteggio is not None, dove
+    assert conteggio not in dove.values(), dove
 
 
 def test_js_test_suite_has_a_minimum_number_of_behavioural_test_files():
