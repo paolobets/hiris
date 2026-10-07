@@ -106,6 +106,43 @@ def test_le_righe_del_piano_passano_a_subscription_e_si_fondono_con_la_gemella(
                      "2 righe di consumo_giorno e 1 di ancora_saldo spostate")]
 
 
+def test_la_fusione_prende_lo_stato_piu_debole_anche_dalla_riga_del_piano_e_somma_i_costi(
+        tmp_path):
+    """N83-1 (giro 83, 07/10/2026): le due regole della fusione che la prova
+    sopra non sorvegliava, perche' la sua gemella e' gia' la piu' debole e
+    nessuna riga ha un costo. Qui la gemella e' la PIU' FORTE (`misurato`
+    contro `compreso`) e tutte e due le righe, nei secchielli e nel saldo,
+    portano un costo noto: la fusione li somma.
+
+    Costi scelti a mano e rappresentabili esatti in binario (0.25 + 0.5), non
+    misure. Mutazioni ESEGUITE (07/10/2026), rosse e ripristinate:
+    - lo stato della riga fusa preso dalla gemella invece del piu' debole ->
+      `'misurato' == 'compreso'`;
+    - nel saldo dell'ancora il costo della gemella invece della somma ->
+      `0.25 == 0.75`."""
+    db = tmp_path / "consumi.db"
+    _archivio_v4(db, [
+        ("2026-09-21", "ponte", "opus", 2, 50, 5, 0, 0, 0.5,
+         "compreso", 0, T2, T3),
+        ("2026-09-21", "subscription", "opus", 1, 7, 3, 0, 0, 0.25,
+         "misurato", 0, T1, T2),
+    ], saldi=[
+        ("ponte", "opus", 2, 50, 5, 0, 0, 0.5, 0),
+        ("subscription", "opus", 1, 7, 3, 0, 0, 0.25, 0),
+    ])
+
+    _apri(db)
+
+    [fusa] = _righe(db, "consumo_giorno")
+    assert fusa["provider"] == "subscription"
+    assert fusa["costo_stato"] == "compreso", "la gemella piu' forte non vince"
+    assert fusa["costo_usd"] == 0.75
+    [saldo] = _righe(db, "ancora_saldo")
+    assert (saldo["provider"], saldo["richieste"], saldo["token_in"]) == (
+        "subscription", 3, 57)
+    assert saldo["costo_usd"] == 0.75
+
+
 def test_la_migrazione_e_idempotente_e_rigira_dopo_un_ritorno_indietro(tmp_path, caplog):
     """Una seconda apertura non fa niente e non dice niente. Un archivio che
     torna alla versione 4 -- la versione vecchia lo ritimbra e riscrive
