@@ -104,7 +104,7 @@
      quello con cui HIRIS dice «questo non l'ho letto» -- la frase che il
      prodotto esiste per dire, servita dal colore meno leggibile che ha.
      Da qui i tre token *-ink: stesso significato, luminosita' abbassata
-     quanto basta. Misurati in Chromium sul bianco: 5.61 / 5.16 / 5.44.
+     quanto basta. Misurati in Chromium sul bianco: 5.16 / 5.61 / 5.44.
      Regola d'uso: `--x-ink` per il testo, `--x` per pallini, bordi e
      riempimenti (dove il contrasto del testo non c'entra). */
   --ok-ink:    oklch(0.52 0.13 155);
