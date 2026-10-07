@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from hiris.app.action.journal import Journal
+from hiris.app.action.journal import CONSTRUCTION, Journal
 
 ADESSO = 1_755_600_000.0
 
@@ -48,8 +48,9 @@ def test_le_righe_vecchie_si_potano_alla_scrittura(cronaca):
 # -- le costruzioni: stessa tabella, `genere` a dire come si legge la riga ----
 
 def test_una_costruzione_si_registra_nella_stessa_cronaca(cronaca):
-    ident = cronaca.log_construction(
-        actor="chat", operation="crea", domain="automation", key="1771",
+    ident = cronaca.log(
+        actor="chat", service="automation.crea", genre=CONSTRUCTION,
+        object_ref="automation.1771",
         entity=["automation.tapparelle_all_alba"], executed=True, now=ADESSO)
     riga = cronaca.read(ident)
     assert riga["genere"] == "costruzione"
@@ -68,9 +69,9 @@ def test_un_comando_resta_di_genere_comando(cronaca):
 
 
 def test_una_costruzione_fallita_porta_il_motivo_di_home_assistant(cronaca):
-    ident = cronaca.log_construction(
-        actor="chat", operation="modifica", domain="script", key="buonanotte",
-        entity=[], executed=False, now=ADESSO,
+    ident = cronaca.log(
+        actor="chat", service="script.modifica", genre=CONSTRUCTION,
+        object_ref="script.buonanotte", entity=[], executed=False, now=ADESSO,
         error="Message malformed: extra keys not allowed @ data['azioni']")
     assert cronaca.read(ident)["eseguito"] is False
     assert "malformed" in cronaca.read(ident)["errore"]
@@ -136,10 +137,10 @@ def test_elenca_filtra_per_entita_senza_confondere_i_prefissi(cronaca):
 def test_elenca_vede_anche_le_costruzioni(cronaca):
     """Una tabella sola perche' la domanda dell'utente e' una sola -- «cosa hai
     fatto?». Un `list` che vedesse solo i comandi avrebbe reintrodotto la
-    divisione che `log_construction` ha evitato."""
-    cronaca.log_construction(actor="chat", operation="crea", domain="automation",
-                                 key="abc", entity=["automation.sveglia"],
-                                 executed=True, now=1000.0)
+    divisione che la tabella sola ha evitato."""
+    cronaca.log(actor="chat", service="automation.crea", genre=CONSTRUCTION,
+                object_ref="automation.abc", entity=["automation.sveglia"],
+                executed=True, now=1000.0)
     righe = cronaca.list(from_ts=0.0, to_ts=9999.0)
     assert righe[0]["genere"] == "costruzione"
     assert righe[0]["oggetto"] == "automation.abc"
@@ -192,3 +193,13 @@ def test_elenca_il_moltiplicatore_ha_un_confine(cronaca):
     # light.cucina_2. La riga di light.cucina non entra nel risultato.
     righe = cronaca.list(from_ts=0.0, to_ts=9999.0, entity="light.cucina", limit=10)
     assert len(righe) == 0  # La riga e' fuori dal tetto di lettura
+
+
+def test_un_genere_sconosciuto_non_si_scrive(cronaca):
+    """Un solo scrittore con il `genere` (Tappa 7 T1, E-02): il genere e' una
+    parola dell'insieme, non un testo libero. Mutazione (eseguita): togliere
+    il controllo in `Journal.log` -- rossa, la riga si scrive."""
+    with pytest.raises(ValueError):
+        cronaca.log(actor="chat", service="a.b", entity=[], executed=True,
+                    now=ADESSO, genre="costruzion")
+    assert cronaca.list(from_ts=0.0, to_ts=ADESSO + 1) == []

@@ -1028,7 +1028,7 @@ def test_reda_segreti_non_esplode_su_un_segreto_vuoto():
     il modo in cui una redazione distrugge cio' che doveva proteggere."""
     assert runner.reda_segreti("abc", "") == "abc"
     assert runner.reda_segreti("abc", None or "") == "abc"
-    assert runner.reda_segreti("a-TOK-b", "TOK") == f"a-{runner.REDATTO}-b"
+    assert runner.reda_segreti("a-TOK-b", "TOK") == f"a-{runner.MASK}-b"
 
 
 def test_reda_segreti_sostituisce_la_forma_piu_lunga_per_prima():
@@ -1036,7 +1036,7 @@ def test_reda_segreti_sostituisce_la_forma_piu_lunga_per_prima():
     sostituisse la corta per prima, resterebbe in giro un pezzo della lunga."""
     testo = "prima ABCDEF poi ABC"
     assert runner.reda_segreti(testo, "ABC", "ABCDEF") == (
-        f"prima {runner.REDATTO} poi {runner.REDATTO}")
+        f"prima {runner.MASK} poi {runner.MASK}")
 
 
 def test_forme_del_token_copre_i_due_livelli_di_annidamento():
@@ -1088,7 +1088,7 @@ def test_canali_1_e_2_il_token_non_esce_dal_log_ne_dalla_reply_su_rc_diverso_da_
         "segnalazione")
     # ...e la diagnosi non si perde: la causa resta leggibile, redatta
     assert "failed to connect to MCP server" in esito["reply"]
-    assert runner.REDATTO in esito["reply"]
+    assert runner.MASK in esito["reply"]
 
 
 @pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
@@ -1107,7 +1107,7 @@ def test_canale_3_il_token_non_esce_dal_dettaglio_strutturato(caplog, token):
 
     assert not _ricostruibile(token, esito["reply"])
     assert not _ricostruibile(token, log_testo)
-    assert runner.REDATTO in esito["reply"]
+    assert runner.MASK in esito["reply"]
 
 
 @pytest.mark.parametrize("token", _TOKEN_SPIE, ids=_TOKEN_IDS)
@@ -1148,7 +1148,7 @@ def test_canale_5_il_token_non_esce_dal_testo_del_risultato(caplog, token):
 
     assert not _ricostruibile(token, esito["reply"])
     assert not _ricostruibile(token, log_testo)
-    assert runner.REDATTO in esito["reply"]
+    assert runner.MASK in esito["reply"]
 
 
 def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
@@ -1169,7 +1169,7 @@ def test_la_redazione_non_tocca_il_turno_senza_strumenti(caplog):
         esito = runner._reason_chat(job, "live")
 
     assert esito["reply"] == "in cucina una luce e' accesa"
-    assert runner.REDATTO not in esito["reply"]
+    assert runner.MASK not in esito["reply"]
 
 
 # ---------------------------------------------------------------------------
@@ -1203,7 +1203,7 @@ def test_il_settimo_canale_l_eccezione_del_giro_non_porta_il_token(monkeypatch, 
         "segnalazione")
     # ...e la diagnosi resta: tipo dell'eccezione e causa, redatta
     assert "LocalProtocolError" in motivo
-    assert "Illegal header value" in motivo and runner.REDATTO in motivo
+    assert "Illegal header value" in motivo and runner.MASK in motivo
 
 
 def test_il_giro_del_runner_logga_l_eccezione_redatta_CON_LA_CREDENZIALE_VERA():

@@ -13,16 +13,16 @@ Qui un attore finto le chiama con `House` e `CasaFinta`, e basta: nessun
 `ToolDispatcher`. E la risposta e' la STESSA del dispatcher sugli stessi
 ingressi e allo stesso istante: lo spostamento e' una pura sostituzione.
 
-Il permesso resta SOPRA, nel dispatcher: il cancello di `ADMIN_KINDS` per
-`errori`/`esecuzioni` e il corpo coperto (`cover_automation_body`). Le prove
+Il permesso resta SOPRA, nel dispatcher: il cancello di `privacy.ADMIN_ONLY_HISTORY_KINDS` per
+`errori`/`esecuzioni` e il corpo coperto (`cover_reserved_body`). Le prove
 di quel permesso sono quelle di sempre (`tests/test_admission.py`,
 `tests/test_history_tool.py`, `tests/test_knowledge_tools.py`), rilanciate con
 le mutazioni dopo lo spostamento (rapporto del Task 13).
 
 Mutazioni ESEGUITE il 04/10/2026, dopo lo spostamento, ripristini verificati:
-- tolto il cancello `ADMIN_KINDS` da `ToolDispatcher._history` -- rosse le
+- tolto il cancello `ADMIN_ONLY_HISTORY_KINDS` da `ToolDispatcher._history` -- rosse le
   prove di chi non amministra (`test_admission.py`, `test_history_tool.py`);
-- tolta la chiamata a `cover_automation_body` -- rosse
+- tolta la chiamata a `cover_reserved_body` -- rosse
   `test_il_CORPO_di_un_automazione_e_degli_amministratori` e
   `test_chi_non_amministra_non_vede_il_corpo_di_un_automazione`;
 - la lettura degli errori ricopiata dentro `_history` -- rossa qui la spia, e

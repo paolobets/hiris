@@ -19,6 +19,7 @@ import threading
 
 from ..home_space.historian import instant_epoch, local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
+from ..proxy._sanitize import CUT, MASK, truncate_with_marker
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
 from .vocabulary import piu_debole
@@ -252,9 +253,6 @@ _ARG_KEYS_MAX = 20
 #: sotto una chiave). Oltre, il ramo si sostituisce: un contenitore piu'
 #: profondo non e' un filtro, e non si lascia passare senza guardarlo.
 _ARG_DEPTH_MAX = 4
-#: Il segnaposto delle credenziali: lo stesso stile di `runner.REDATTO`.
-_ARG_MASK = "***"
-_ARG_TRUNCATED = "..."
 
 
 def _compact_value(value, depth: int):
@@ -270,23 +268,26 @@ def _compact_value(value, depth: int):
     Nei contenitori annidati valgono gli stessi tetti del livello alto: al
     massimo 20 chiavi (o elementi), testi a 200 caratteri, e la discesa si
     ferma a `_ARG_DEPTH_MAX` livelli."""
+    # Il taglio si dichiara (D-29, 07/10/2026): un testo accorciato porta il
+    # marcatore della casa dentro il tetto, e un ramo oltre la profondita'
+    # diventa il marcatore stesso. Prima erano `value[:200]` muto e `"..."`.
     if isinstance(value, str):
-        return value[:_ARG_TEXT_MAX]
+        return truncate_with_marker(value, _ARG_TEXT_MAX)
     if isinstance(value, (dict, list, tuple)):
         if depth >= _ARG_DEPTH_MAX:
-            return _ARG_TRUNCATED
+            return CUT
         if isinstance(value, dict):
             return _compact_mapping(value, depth + 1)
         out = []
         for item in list(value)[:_ARG_KEYS_MAX]:
             if isinstance(item, str) and is_credential("", item, CALL_ARGUMENT_SECRETS):
-                out.append(_ARG_MASK)
+                out.append(MASK)
             else:
                 out.append(_compact_value(item, depth + 1))
         return out
     if value is None or isinstance(value, (bool, int, float)):
         return value
-    return str(value)[:_ARG_TEXT_MAX]
+    return truncate_with_marker(str(value), _ARG_TEXT_MAX)
 
 
 def _compact_mapping(item: dict, depth: int) -> dict:
@@ -298,7 +299,7 @@ def _compact_mapping(item: dict, depth: int) -> dict:
         if str(key).lower() in POSITION_ATTRIBUTES:
             continue
         if is_credential(str(key).lower(), value, CALL_ARGUMENT_SECRETS):
-            kept[str(key)] = _ARG_MASK
+            kept[str(key)] = MASK
         else:
             kept[str(key)] = _compact_value(value, depth)
     return kept

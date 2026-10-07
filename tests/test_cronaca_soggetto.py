@@ -13,7 +13,7 @@ colonna per specie, la prima domanda di ogni lettore sarebbe Â«in quale guardo?Â
 """
 import pytest
 
-from hiris.app.action.journal import Journal
+from hiris.app.action.journal import CONSTRUCTION, Journal
 
 _PERSONA = {"specie": "persona", "id": "u-42", "nome": "Paolo",
             "ruolo": "amministratore"}
@@ -72,9 +72,9 @@ def test_anche_una_COSTRUZIONE_registra_il_soggetto(cronaca):
     meno e tacerebbe il piu'.
 
     Mutazione: passare il soggetto solo ai comandi -- rossa."""
-    cronaca.log_construction(actor="pagina", operation="create",
-                             domain="automation", key="a1", entity=[],
-                             executed=True, now=100.0, subject=_PERSONA)
+    cronaca.log(actor="pagina", service="automation.create", genre=CONSTRUCTION,
+                object_ref="automation.a1", entity=[],
+                executed=True, now=100.0, subject=_PERSONA)
 
     assert cronaca.list(from_ts=0, to_ts=200)[0]["soggetto"]["id"] == "u-42"
 

@@ -363,8 +363,16 @@ def test_invalidare_non_svuota_cio_che_si_sapeva():
     assert not r.empty()
 
 
+def _no_reconnection_pause(monkeypatch) -> None:
+    """La caduta della connessione finta e' una chiusura pulita, che dal
+    07/10/2026 riparte dopo la pausa di una caduta (S-29): a zero, si prova la
+    sequenza, non l'orologio."""
+    from hiris.app.proxy import ha_client as ha_client_module
+    monkeypatch.setattr(ha_client_module, "RECONNECT_DELAY_S", 0)
+
+
 @pytest.mark.asyncio
-async def test_alla_seconda_connessione_lo_specchio_si_rilegge():
+async def test_alla_seconda_connessione_lo_specchio_si_rilegge(monkeypatch):
     """Spec «una porta sola» §6. Dalla Tappa 2 (Task 7, D2 «prima
     l'iscrizione») la PRIMA connessione non avvisa: l'avvio si iscrive e poi
     legge la casa una volta. Qui la prima connessione cade e ne segue una
@@ -375,6 +383,7 @@ async def test_alla_seconda_connessione_lo_specchio_si_rilegge():
     rossa (nessuna chiamata a `get_states`). Che l'avvio lo registri davvero
     lo prova l'app avviata
     (`tests/test_cablaggio_dell_avvio.py::test_a_reconnection_rereads_the_state_mirror`)."""
+    _no_reconnection_pause(monkeypatch)
     client = _client_on_silent_connection()
     # Il client che rilegge lo specchio e' la casa finta; quello che ascolta
     # gli eventi gira sulla connessione finta di lunga vita.
@@ -400,7 +409,7 @@ async def test_alla_seconda_connessione_lo_specchio_si_rilegge():
 
 
 @pytest.mark.asyncio
-async def test_alla_riconnessione_l_osservatore_si_riallinea_con_la_stessa_fotografia():
+async def test_alla_riconnessione_l_osservatore_si_riallinea_con_la_stessa_fotografia(monkeypatch):
     """Il riallineamento (decisione del proprietario del 06/10/2026): la
     casa finta fa da Home Assistant per il websocket e per gli stati, come il
     client vero fa da tutti e due in produzione. La connessione cade e torna:
@@ -410,6 +419,7 @@ async def test_alla_riconnessione_l_osservatore_si_riallinea_con_la_stessa_fotog
 
     Mutazioni ESEGUITE: l'ascoltatore che non riallinea -- rossa;
     `disconnection_recorder` che non consegna -- rossa."""
+    _no_reconnection_pause(monkeypatch)
     house = CasaFinta(synthetic_inputs())
     cache = _specchio_caricato()
     photos, windows = [], []

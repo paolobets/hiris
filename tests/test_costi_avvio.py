@@ -151,7 +151,7 @@ async def _heard_over_two_connections(house) -> dict[str, list]:
     return heard
 
 
-def test_le_connessioni_della_casa_finta_avvisano_come_il_client_vero():
+def test_le_connessioni_della_casa_finta_avvisano_come_il_client_vero(monkeypatch):
     """La casa finta ignorava gli ascoltatori: la rilettura che la prima
     connessione faceva fare a specchio, anagrafe, comportamento e plance non
     passava mai, e il contatore d'avvio contava meno del vero (misurato il
@@ -168,6 +168,12 @@ def test_le_connessioni_della_casa_finta_avvisano_come_il_client_vero():
     `_ws_loop`): verde senza toccare ne' la prova ne' la casa finta; tolto lo
     stesso genere dalla sola derivazione -- rossa (la casa finta non ha la
     lista che `_ws_loop` percorre, e la connessione non arriva in fondo)."""
+    from hiris.app.proxy import ha_client as ha_client_module
+
+    # La caduta e' una chiusura pulita, che dal 07/10/2026 riparte dopo la
+    # pausa di una caduta (S-29): a zero, si prova la sequenza, non l'orologio.
+    monkeypatch.setattr(ha_client_module, "RECONNECT_DELAY_S", 0)
+
     async def real() -> dict[str, list]:
         client = HAClient("http://casa.invalid", "token")
         # La stessa casa dall'altra parte del filo: l'elenco iniziale delle

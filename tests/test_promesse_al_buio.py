@@ -146,27 +146,33 @@ def test_e_l_avviso_dice_COSA_e_cambiato_non_solo_CHE_e_cambiato():
 # mutazione che scriveva `None` al posto del conteggio le lasciava tutte verdi.
 # Misurato, non supposto.
 
-class _PortaFinta:
-    """L'attuatore, ridotto all'unica cosa che il conteggio gli chiede.
+def _casa(entita=(), **faults):
+    """Home Assistant che risolve un bersaglio: il client VERO sul trasporto
+    finto (`scripts/casa_finta.py`), con `extract_from_target` nella forma di
+    `websocket_api/commands.py`. Sopra c'e' la porta VERA
+    (`ActionActuator.verify`, Tappa 7 T1, E-13): la traduzione del bersaglio e
+    la risoluzione sono le sue, non una copia dentro lo strumento.
 
-    Il vero risolve il bersaglio contro Home Assistant; qui basta che dica
-    quante entita' ci sono dentro -- e che possa dire anche «non ci riesco»,
-    che e' il caso che non deve impedire di promettere.
-    """
+    `faults` (`refuse=`/`silence=`) e' il «non ci riesco», che non deve
+    impedire di promettere."""
+    from tests.test_action_targets import _extracted, _target_house
 
-    def __init__(self, entita=(), errore=None, esplode=False):
-        self.entita = list(entita)
-        self.errore = errore
-        self.esplode = esplode
-        self.chiesto = []
+    if faults:
+        return _target_house(**faults)
+    return _target_house(_extracted(referenced_entities=list(entita)))
 
-    async def _resolve(self, target):
-        self.chiesto.append(target)
-        if self.esplode:
-            raise RuntimeError("Home Assistant non risponde")
-        if self.errore:
-            return {"errore": self.errore}
-        return {"entita": self.entita}
+
+def _asked(casa) -> list[dict]:
+    return [extra["target"] for what, extra in casa.calls
+            if what == "extract_from_target"]
+
+
+async def _porta(casa):
+    from hiris.app.action.actuator import ActionActuator
+    from tests.test_action_actuator import FintaCache, _registro_pronto
+
+    cache = FintaCache({eid: "on" for eid in ("light.a", "light.b", "light.c")})
+    return ActionActuator(casa, await _registro_pronto(), cache)
 
 
 def _dispatcher(porta):
@@ -184,16 +190,16 @@ async def test_un_bersaglio_per_AREA_si_conta_alla_nascita():
     sapesse cosa avrebbe toccato.
 
     Mutazione ESEGUITA: scrivere `None` invece del conteggio -- rossa."""
-    porta = _PortaFinta(entita=["light.a", "light.b", "light.c"])
+    casa = _casa(entita=["light.a", "light.b", "light.c"])
 
-    quante = await _dispatcher(porta)._count_target(
+    quante = await _dispatcher(await _porta(casa))._count_target(
         {"servizio": "light.turn_off", "bersaglio": {"aree": ["piano di sopra"]}})
 
     assert quante == 3
-    # Nella forma di Home Assistant (S-20, Tappa 4): la porta risolve
-    # `area_id`, e fino al 05/10/2026 le arrivava `aree` -- con questa porta
-    # finta, che risponde a qualunque cosa, la prova restava verde.
-    assert porta.chiesto == [{"area_id": ["piano di sopra"]}]
+    # Nella forma di Home Assistant (S-20, Tappa 4): Home Assistant riceve
+    # `area_id`, e fino al 05/10/2026 gli arrivava `aree` -- con una casa
+    # che risponde a qualunque cosa, la prova restava verde.
+    assert _asked(casa) == [{"area_id": ["piano di sopra"]}]
 
 
 @pytest.mark.asyncio
@@ -203,13 +209,13 @@ async def test_un_bersaglio_di_sole_ENTITA_non_si_conta():
     Contarlo vorrebbe dire chiedere a Home Assistant per niente.
 
     Mutazione ESEGUITA: contare comunque -- rossa."""
-    porta = _PortaFinta(entita=["light.a"])
+    casa = _casa(entita=["light.a"])
 
-    quante = await _dispatcher(porta)._count_target(
+    quante = await _dispatcher(await _porta(casa))._count_target(
         {"servizio": "light.turn_off", "bersaglio": {"entita": ["light.a"]}})
 
     assert quante is None
-    assert porta.chiesto == [], "ha chiesto a Home Assistant per niente"
+    assert _asked(casa) == [], "ha chiesto a Home Assistant per niente"
 
 
 @pytest.mark.asyncio
@@ -220,8 +226,10 @@ async def test_se_il_conteggio_NON_RIESCE_la_promessa_nasce_lo_stesso():
     piu'.
 
     Mutazione ESEGUITA: lasciar propagare l'eccezione -- rossa."""
-    for porta in (_PortaFinta(errore="area sconosciuta"), _PortaFinta(esplode=True)):
-        quante = await _dispatcher(porta)._count_target(
+    for casa in (_casa(refuse={"extract_from_target": {
+                     "code": "unknown_error", "message": "area sconosciuta"}}),
+                 _casa(silence={"extract_from_target"})):
+        quante = await _dispatcher(await _porta(casa))._count_target(
             {"servizio": "light.turn_off", "bersaglio": {"aree": ["ignota"]}})
 
         assert quante is None

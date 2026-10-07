@@ -122,6 +122,13 @@ RUNNING_STATE = "RUNNING"
 RECONNECT_DELAY_S = 10
 AUTH_RETRY_FIRST_S = 10
 AUTH_RETRY_CEILING_S = 300
+# Quanto si aspetta ogni messaggio della fase di autenticazione (S-29). Non e'
+# un tetto nostro: e' quello di Home Assistant, che chiude la fase se il
+# messaggio non arriva entro `AUTH_MESSAGE_TIMEOUT = 10` secondi
+# (`components/websocket_api/http.py`, riga 42 e `_async_handle_auth_phase`,
+# letto il 07/10/2026 al tag 2026.9.4). Oltre quel tempo, dall'altra parte la
+# fase e' gia' finita: aspettare ancora vuol dire restare appesi a un server muto.
+AUTH_MESSAGE_TIMEOUT_S = 10
 
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
@@ -186,15 +193,21 @@ def _failure(cause: str, text: str, code=None) -> dict:
     porta le trova da tutte (fondamenta 3). Il successo di una lettura NON
     passa di qui: tiene la sua forma.
 
-    **Dove la promessa non vale ancora** (canale della configurazione, Tappa
-    7): il rifiuto di Home Assistant a `save_configuration` e
-    `delete_configuration` e' ancora il solo `{"errore": motivo}`, e le tre
-    primitive della configurazione (con `read_configuration`) sollevano sul
-    trasporto invece di rendere il silenzio. Il rifiuto prima della rete
-    (`_config_route`) e il rifiuto di HA a `read_configuration` hanno gia' la
-    busta intera.
+    **Vale anche per le scritture** dalla Tappa 7 (Task 1, A-30, 07/10/2026):
+    `call_service` e le tre primitive della configurazione rendono la busta
+    sul rifiuto di Home Assistant (col SUO motivo, letto dal corpo) e sul
+    silenzio del trasporto, invece di sollevare. Per una scrittura il
+    silenzio e' un dubbio, non un no: la domanda puo' essere arrivata.
     """
     return {"errore": text, "causa": cause, "codice": code}
+
+
+def _silence(exc: BaseException) -> dict:
+    """La busta di una domanda rimasta senza risposta: il trasporto si e'
+    rotto (connessione rifiutata, caduta, tempo scaduto). Il motivo
+    dell'eccezione si tiene, tagliato e dichiarato."""
+    return _failure(SILENCE,
+                    f"{_HA_SILENT}: {_truncate(str(exc) or type(exc).__name__, 200)}")
 
 
 class HAReadError(Exception):
@@ -462,7 +475,8 @@ class HAClient:
 
         Le tre primitive della configurazione (`read_configuration`,
         `save_configuration`, `delete_configuration`) e `call_service` non
-        passano di qui: sono il canale delle scritture (Tappa 7)."""
+        passano di qui: sono il canale delle scritture, e leggono il motivo
+        di un rifiuto dal corpo (`_http_reason`). La busta e' la stessa."""
         try:
             async with self._session.get(f"{self._base_url}{path}") as resp:
                 if resp.status != 200:
@@ -475,8 +489,7 @@ class HAClient:
                                            "che non e' JSON")
         except Exception as exc:
             logger.debug("lettura REST %s non riuscita: %s", path.split("?")[0], exc)
-            return _failure(SILENCE,
-                            f"{_HA_SILENT}: {_truncate(str(exc) or type(exc).__name__, 200)}")
+            return _silence(exc)
 
     @cost(rest=1)
     async def get_states(self, entity_ids: list[str]) -> list[dict] | dict:
@@ -517,7 +530,7 @@ class HAClient:
         return reply["corpo"]
 
     @cost(rest=1)
-    async def call_service(self, domain: str, service: str, data: dict) -> list[dict]:
+    async def call_service(self, domain: str, service: str, data: dict) -> dict:
         """Chiama un servizio di Home Assistant. La primitiva che ATTUA.
 
         Era uscita con la fetta E3 -- «in un HIRIS che conosce e non agisce la
@@ -553,12 +566,33 @@ class HAClient:
 
         Vuota significa «HA non ha riportato cambiamenti in questa risposta»,
         mai «il dispositivo e' guasto» e nemmeno «non e' cambiato niente».
+
+        **Torna `{"cambiati": [...]}` oppure la busta** (E-10, Tappa 7, Task 1,
+        07/10/2026). Fino a quel giorno faceva `raise_for_status()`: il motivo
+        che Home Assistant scrive nel corpo di un 400 («Invalid service data:
+        ...») si buttava, e la chat diceva «400, message='Bad Request',
+        url=...». Adesso un rifiuto porta il motivo di HA (`_http_reason`, lo
+        stesso delle primitive della configurazione) e lo stato HTTP in
+        `codice`; un guasto del trasporto e' un silenzio (`causa: silenzio`),
+        e chi lo legge non deve dirlo «rifiutato»: la chiamata puo' essere
+        arrivata.
         """
         url = f"{self._base_url}/api/services/{domain}/{service}"
-        async with self._session.post(url, json=data) as resp:
-            resp.raise_for_status()
-            payload = await resp.json()
-        return _changed_states(payload)
+        try:
+            async with self._session.post(url, json=data) as resp:
+                if resp.status != 200:
+                    return _failure(REFUSAL, await self._http_reason(resp), resp.status)
+                try:
+                    payload = await resp.json()
+                except (aiohttp.ContentTypeError, ValueError):
+                    # Il servizio e' stato accettato: e' il resoconto dei
+                    # cambiati a non leggersi, e un resoconto illeggibile e'
+                    # «nessun cambiamento riportato», come una forma ignota.
+                    payload = None
+        except Exception as exc:
+            logger.debug("chiamata %s.%s senza risposta: %s", domain, service, exc)
+            return _silence(exc)
+        return {"cambiati": _changed_states(payload)}
 
     # I tre domini che l'API di configurazione governa. Sono i VALORI delle
     # rotte di `components/config/` (automation.py, script.py, scene.py),
@@ -608,13 +642,11 @@ class HAClient:
             text = ""
         return f"Home Assistant ha risposto {resp.status}. {text}".strip()
 
-    # Punto 6 (residuo, ondata finale punto 1): queste tre primitive sollevano
-    # quello che rompe il trasporto -- non catturano niente da sole. Il loro
-    # UNICO chiamante (`action/construction/workshop.py::Workshop._rete`) le
-    # avvolge apposta: quella guardia e' cio' che trasforma un guasto di rete
-    # in `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire
-    # come eccezione fuori dall'officina. Chi aggiunge un chiamante nuovo a
-    # queste tre non deve aggirarla.
+    # Queste tre primitive non sollevano piu' sul trasporto (A-30, Tappa 7,
+    # Task 1, 07/10/2026): un guasto e' la busta del silenzio, un rifiuto di
+    # Home Assistant la busta del rifiuto col suo motivo. Il loro UNICO
+    # chiamante (`action/construction/workshop.py::Workshop._rete`) legge il
+    # silenzio e lo dice `guasto_rete`, come prima.
     @cost(rest=1)
     async def read_configuration(self, domain: str, key: str) -> dict:
         """Il corpo scritto di un oggetto, letto dalla stessa rotta dell'editor.
@@ -624,25 +656,26 @@ class HAClient:
         `home_space/behavior.py` al suo posto: quello e' l'archivio di HIRIS,
         aggiornato a cadenza propria, e potrebbe essere vecchio di minuti.
 
-        Un rifiuto di Home Assistant e una domanda fermata prima della rete
-        hanno la busta di ogni altra lettura (`_failure`). Solleva solo cio'
-        che rompe il trasporto: il silenzio lo fa busta `guasto_rete` il suo
-        unico chiamante (`Workshop._rete`), con le due scritture (Tappa 7).
+        Un rifiuto di Home Assistant, una domanda fermata prima della rete e un
+        trasporto rotto hanno la busta di ogni altra lettura (`_failure`).
         """
         url, rejection = self._config_route(domain, key)
         if url is None:
             return rejection
-        async with self._session.get(url) as resp:
-            if resp.status == 404:
-                # «Non c'e'» e' un FATTO, non un guasto, ed e' anche il modo
-                # con cui si verifica che un id nuovo sia libero. Confonderlo
-                # con un errore di rete significherebbe, il giorno in cui HA
-                # risponde male, dichiarare libero un id occupato e far
-                # SOSTITUIRE l'automazione che c'era.
-                return {"assente": True}
-            if resp.status != 200:
-                return _failure(REFUSAL, await self._http_reason(resp), resp.status)
-            return {"corpo": await resp.json()}
+        try:
+            async with self._session.get(url) as resp:
+                if resp.status == 404:
+                    # «Non c'e'» e' un FATTO, non un guasto, ed e' anche il modo
+                    # con cui si verifica che un id nuovo sia libero. Confonderlo
+                    # con un errore di rete significherebbe, il giorno in cui HA
+                    # risponde male, dichiarare libero un id occupato e far
+                    # SOSTITUIRE l'automazione che c'era.
+                    return {"assente": True}
+                if resp.status != 200:
+                    return _failure(REFUSAL, await self._http_reason(resp), resp.status)
+                return {"corpo": await resp.json()}
+        except Exception as exc:
+            return _silence(exc)
 
     @cost(rest=1)
     async def save_configuration(self, domain: str, key: str, body: dict) -> dict:
@@ -652,12 +685,12 @@ class HAClient:
         `action/construction/workshop.py`, che compone il corpo dai parametri,
         lo valida, archivia il «prima» e rilegge dopo.
 
-        **Non solleva sul rifiuto**, ed e' la differenza voluta con
-        `call_service` qui sopra: un `400` di Home Assistant su questa rotta
-        non e' un guasto di rete, e' il **validatore vero del dominio**
-        (`async_validate_config_item`) che dice cosa non va. Quella frase deve
-        arrivare al modello perche' si corregga su un fatto di questa
-        installazione. Solleva solo cio' che rompe il trasporto.
+        **Non solleva**: un `400` di Home Assistant su questa rotta non e' un
+        guasto di rete, e' il **validatore vero del dominio**
+        (`async_validate_config_item`) che dice cosa non va, e arriva nella
+        busta del rifiuto col suo motivo intatto. Quella frase deve arrivare al
+        modello perche' si corregga su un fatto di questa installazione. Un
+        trasporto rotto e' la busta del silenzio.
 
         **Chi scrive il file e' Home Assistant**, e lo fa trovando la voce per
         `id` e SOSTITUENDOLA (`components/config/view.py::_write_value`). E'
@@ -668,10 +701,13 @@ class HAClient:
         url, rejection = self._config_route(domain, key)
         if url is None:
             return rejection
-        async with self._session.post(url, json=body) as resp:
-            if resp.status != 200:
-                return {"errore": await self._http_reason(resp)}
-            return {"salvato": True}
+        try:
+            async with self._session.post(url, json=body) as resp:
+                if resp.status != 200:
+                    return _failure(REFUSAL, await self._http_reason(resp), resp.status)
+                return {"salvato": True}
+        except Exception as exc:
+            return _silence(exc)
 
     @cost(rest=1)
     async def delete_configuration(self, domain: str, key: str) -> dict:
@@ -683,15 +719,18 @@ class HAClient:
         di chiamarla (spec §6): dopo, non c'e' piu' nessuna fonte da cui
         rileggerlo.
 
-        Solleva solo cio' che rompe il trasporto.
+        Un rifiuto e un trasporto rotto sono la busta, come per le altre due.
         """
         url, rejection = self._config_route(domain, key)
         if url is None:
             return rejection
-        async with self._session.delete(url) as resp:
-            if resp.status != 200:
-                return {"errore": await self._http_reason(resp)}
-            return {"cancellato": True}
+        try:
+            async with self._session.delete(url) as resp:
+                if resp.status != 200:
+                    return _failure(REFUSAL, await self._http_reason(resp), resp.status)
+                return {"cancellato": True}
+        except Exception as exc:
+            return _silence(exc)
 
     @cost(ws=1)
     async def validate_config(self, *, triggers=None, conditions=None,
@@ -1084,6 +1123,13 @@ class HAClient:
         paths: list[str | None] = [None]
         seen: set[str] = set()
         for d in listing:
+            # S-05: una voce dell'elenco che non e' un oggetto non ha un
+            # percorso da interrogare. Si dichiara, come il duplicato, invece
+            # di far cadere la lettura di tutte le plance.
+            if not isinstance(d, dict):
+                unavailable.append(
+                    f"elenco: una voce non e' un oggetto ({type(d).__name__}), ignorata")
+                continue
             p = d.get("url_path")
             if p is None:
                 continue
@@ -2206,6 +2252,15 @@ class HAClient:
         rows = occurrence["righe"]
         if not isinstance(rows, list):
             return _failure(SHAPE, f"il registro «{key}» non e' arrivato come elenco")
+        # S-34: una riga che non e' un oggetto si scarta lei, non l'intera
+        # lettura -- fra le categorie `{**row, ...}` cadeva con un `TypeError`,
+        # e negli altri registri la riga storta arrivava a chi legge. Lo
+        # scarto si dice nel registro dell'add-on, con il conto.
+        kept = [row for row in rows if isinstance(row, dict)]
+        if len(kept) != len(rows):
+            logger.warning("registro «%s»: %d righe su %d non sono oggetti, scartate",
+                           key, len(rows) - len(kept), len(rows))
+            rows = kept
         scope = extra.get("scope") if key == "categorie" and extra else None
         if scope:
             rows = [{**row, "ambito": scope} for row in rows]
@@ -2516,6 +2571,12 @@ class HAClient:
                         auth_wait = AUTH_RETRY_FIRST_S
                         authenticated = True
                         await self._listen(ws)
+                        # S-29: una chiusura pulita (Home Assistant che si
+                        # riavvia chiude il socket senza errori) riparte con
+                        # la stessa pausa di una caduta, non in un giro stretto.
+                        logger.warning("HA WebSocket chiuso — riconnessione fra %ds",
+                                       RECONNECT_DELAY_S)
+                        pause = RECONNECT_DELAY_S
                     else:
                         logger.error(
                             "HA WebSocket: autenticazione rifiutata da Home Assistant "
@@ -2544,11 +2605,11 @@ class HAClient:
     async def _authenticate(self, ws) -> str | None:
         """`None` se Home Assistant ha accettato il gettone, altrimenti cio'
         che ha scritto nel rifiuto."""
-        auth_req = await ws.receive_json()
+        auth_req = await asyncio.wait_for(ws.receive_json(), timeout=AUTH_MESSAGE_TIMEOUT_S)
         if auth_req.get("type") == "auth_required":
             token = self._headers["Authorization"].removeprefix("Bearer ")
             await ws.send_json({"type": "auth", "access_token": token})
-            auth_resp = await ws.receive_json()
+            auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=AUTH_MESSAGE_TIMEOUT_S)
             if auth_resp.get("type") != "auth_ok":
                 return str(auth_resp.get("message") or auth_resp.get("type"))
         return None

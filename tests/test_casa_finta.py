@@ -60,7 +60,6 @@ import sys
 import time
 from pathlib import Path
 
-import aiohttp
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,7 +68,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import casa_finta
 from casa_finta import CasaFinta, UnservedCommand
 
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy.ha_client import REFUSAL, SILENCE, HAClient
 from tests._casa_sintetica import synthetic_inputs
 from tests.test_fonte_unica import _client_reads
 from tests.test_ha_client_invio import _arguments
@@ -264,7 +263,7 @@ def test_una_scrittura_si_registra_e_riceve_la_risposta_iniettata():
     house = CasaFinta(synthetic_inputs(), answers={
         "POST /api/services/": lambda path, body: changed})
     body = {"entity_id": ["light.luce_uno"]}
-    assert _run(house.call_service("light", "turn_off", body)) == changed
+    assert _run(house.call_service("light", "turn_off", body)) == {"cambiati": changed}
     assert house.calls == [("POST /api/services/light/turn_off", body)]
     assert house.connections == [("rest", "POST /api/services/light/turn_off")]
 
@@ -283,41 +282,41 @@ def test_una_richiesta_che_non_porta_l_indirizzo_della_casa_non_e_servita():
 
 
 def test_una_scrittura_rifiutata_arriva_come_la_manda_home_assistant():
-    """Lo stato e il corpo di Home Assistant, letti dal client vero: `call_service`
-    solleva come `raise_for_status` di aiohttp, la configurazione legge il
-    motivo dal corpo (`_http_reason`), un 404 della lettura e' «assente»."""
+    """Lo stato e il corpo di Home Assistant, letti dal client vero: il servizio
+    e la configurazione leggono il motivo dal corpo (`_http_reason`) e lo
+    rendono nella busta del rifiuto col codice (Tappa 7 T1), un 404 della
+    lettura e' «assente»."""
     key = "/api/config/automation/config/1771"
     house = CasaFinta(synthetic_inputs(), refuse={
         "POST /api/services/light/turn_off": 500,
         f"POST {key}": casa_finta.Refused(400, "Message malformed: extra keys"),
         f"DELETE {key}": casa_finta.Refused(400),
         key: casa_finta.Refused(404, "Resource not found")})
-    with pytest.raises(aiohttp.ClientResponseError) as refused:
-        _run(house.call_service("light", "turn_off", {}))
-    assert refused.value.status == 500
-    assert "Internal Server Error" in str(refused.value)
+    refused = _run(house.call_service("light", "turn_off", {}))
+    assert refused["causa"] == REFUSAL and refused["codice"] == 500
+    assert "Internal Server Error" in refused["errore"]
     assert _run(house.save_configuration("automation", "1771", {})) == {
-        "errore": "Message malformed: extra keys"}
+        "errore": "Message malformed: extra keys", "causa": REFUSAL, "codice": 400}
     # Senza testo e' il corpo di `HTTPBadRequest`, che non e' JSON.
     assert _run(house.delete_configuration("automation", "1771")) == {
-        "errore": "Home Assistant ha risposto 400. 400: Bad Request"}
+        "errore": "Home Assistant ha risposto 400. 400: Bad Request",
+        "causa": REFUSAL, "codice": 400}
     assert _run(house.read_configuration("automation", "1771")) == {"assente": True}
 
 
 def test_una_scrittura_silenziata_fa_cadere_la_connessione():
-    """Il client vero non avvolge le scritture: cio' che rompe il trasporto
-    risale (`call_service`, e le primitive della configurazione per la guardia
-    dell'officina)."""
+    """Cio' che rompe il trasporto torna come busta del silenzio, non risale
+    (Tappa 7 T1, A-30): una scrittura senza risposta puo' essere arrivata, e
+    chi legge non deve dirla «rifiutata»."""
     house = CasaFinta(synthetic_inputs(), silence={"POST /api/services/light/turn_off"})
-    with pytest.raises(aiohttp.ClientConnectionError):
-        _run(house.call_service("light", "turn_off", {}))
+    assert _run(house.call_service("light", "turn_off", {}))["causa"] == SILENCE
     assert house.calls == [("POST /api/services/light/turn_off", {})]
-    # Il silenzio di UNA domanda, col suo motivo: e' cio' che risale.
+    # Il silenzio di UNA domanda, col suo motivo.
     reason = "Cannot connect to host 192.168.1.95:8404"
     house = CasaFinta(synthetic_inputs(), answers={
         "POST /api/config/": lambda path, body: casa_finta.Silence(reason)})
-    with pytest.raises(aiohttp.ClientConnectionError, match="8404"):
-        _run(house.save_configuration("automation", "1771", {}))
+    silent = _run(house.save_configuration("automation", "1771", {}))
+    assert silent["causa"] == SILENCE and "8404" in silent["errore"]
 
 
 # ── le risposte nel tempo: per argomento, in sequenza, in ritardo ───────────

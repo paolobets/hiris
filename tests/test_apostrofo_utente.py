@@ -302,13 +302,25 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # iniettando un'elisione dritta DENTRO UNA STRINGA di ciascuno dei
     # cinque intervalli, compreso `_not_seen` con ENTRAMBI i suoi rami --
     # il cancello arrossisce in 5 casi su 5.
+    #
+    # **Ancorati per contenuto dal 07/10/2026** (Tappa 7, T1): l'import di
+    # `SILENCE` ha spostato di tre righe tutto cio' che sta sotto, e la prova
+    # qui sotto ha arrossito su `_BLIND_MIRROR`. Riletti allora, gli estremi
+    # erano gia' scivolati da prima: `(243, 245)` copriva un commento sopra
+    # `_NO_STATE_TO_REREAD`, `(577, 579)` il docstring di `_record`. Ogni
+    # ancora e' stata verificata iniettando un'elisione dritta nella sua prima
+    # stringa -- il cancello arrossisce in 6 casi su 6.
     "action/actuator.py": (
-        (138, 140),    # _BLIND_MIRROR
-        (151, 154),    # _NO_TARGET_RESOLVER
-        (194, 206),    # _not_seen -- entrambi i rami, listened=False e =True
-        (228, 232),    # _CHANGED_NOT_SHOWABLE
-        (243, 245),    # _NO_STATE_TO_REREAD
-        (577, 579),    # _open_listen: l'annuncio di ascolto assente
+        *ancora("action/actuator.py", "_BLIND_MIRROR = (", quante=3),
+        *ancora("action/actuator.py", "_NO_TARGET_RESOLVER = (", quante=4),
+        # _not_seen -- entrambi i rami, listened=False e =True
+        *ancora("action/actuator.py", "def _not_seen(", quante=14),
+        *ancora("action/actuator.py", "_CHANGED_NOT_SHOWABLE = (", quante=5),
+        *ancora("action/actuator.py", "_NO_STATE_TO_REREAD = (", quante=3),
+        # _open_listen: l'annuncio di ascolto assente
+        *ancora("action/actuator.py",
+                'logger.warning("questo client di Home Assistant non annuncia',
+                quante=3),
     ),
 }
 
