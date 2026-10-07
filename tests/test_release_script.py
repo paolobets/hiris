@@ -147,3 +147,52 @@ def test_git_clean_aborts_on_unexpected_dirty_file():
         mock_run.return_value = MagicMock(stdout=porcelain, returncode=0)
         with pytest.raises(SystemExit):
             rel.check_git_clean()
+
+
+# ---------------------------------------------------------------------------
+# il registro dei doppioni segue il rilascio (N74-3, scelta di Paolo 07/10/2026)
+# ---------------------------------------------------------------------------
+
+_REGISTER = (
+    "## A. Leggere\n\n| Id | Voce | Stato | Unirla | Fonti |\n|---|---|---|---|---|\n"
+    "| A-01 | prima | E | PS | reg · **chiudibile al rilascio** `abc1234`: copia tolta |\n"
+    "| A-03 | terza | D | CC | reg |\n\n"
+    "## Chiuse\n\n| Id | Voce | Chiusa con | Commit | Cosa |\n|---|---|---|---|---|\n"
+    "| A-04 | quarta | Tappa 6, Task 7 | 2222222 | tolta prima del rilascio |\n")
+
+
+def test_il_rilascio_chiude_le_voci_segnate_del_registro(tmp_path):
+    """Mutazione ESEGUITA: tolta da `close_register` la chiamata a
+    `registro.release` -- rossa (A-01 resta aperta)."""
+    document = tmp_path / "registro.md"
+    document.write_text(_REGISTER, encoding="utf-8")
+    with patch.object(rel, "REGISTER", document):
+        rel.close_register("3.78.0", dry_run=False)
+    entries = {entry.id: entry for entry in rel.registro.read_entries(document)}
+    assert entries["A-01"].closed and entries["A-01"].cells[2] == "3.78.0"
+    assert entries["A-04"].cells[2] == "3.78.0"
+    assert not entries["A-03"].closed
+
+
+def test_in_prova_il_registro_non_si_scrive(tmp_path, capsys):
+    """Mutazione ESEGUITA: in `close_register` saltato il ramo della prova --
+    rossa (il registro e' stato scritto)."""
+    document = tmp_path / "registro.md"
+    document.write_text(_REGISTER, encoding="utf-8")
+    with patch.object(rel, "REGISTER", document):
+        rel.close_register("3.78.0", dry_run=True)
+    assert document.read_text(encoding="utf-8") == _REGISTER
+    assert "A-01" in capsys.readouterr().out
+
+
+def test_il_registro_entra_nel_commit_del_rilascio():
+    """Il registro scritto dal rilascio e lasciato fuori dal `git add` sarebbe
+    un file sporco dopo il tag: la versione nel registro e quella nel tag
+    devono stare nello stesso commit.
+    Mutazione ESEGUITA: tolto il registro dalla lista -- rossa."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        rel.git_commit_and_tag("3.78.0", dry_run=False)
+    add = mock_run.call_args_list[0].args[0]
+    assert add[:2] == ["git", "add"]
+    assert "docs/design/2026-10-01-registro-dei-doppioni.md" in add
