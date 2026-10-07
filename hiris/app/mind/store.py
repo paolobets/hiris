@@ -504,19 +504,31 @@ CREATE TABLE IF NOT EXISTS analisi (
 -- `giri_json` e' il filo del «Rifalla»: ogni giro porta la richiesta di
 -- modifica e la forma che ne e' uscita, cosi' il modello vede il filo intero e
 -- non ripropone cio' che e' stato appena scartato.
+--
+-- Non c'e' chi la applica (e' sempre una persona: lo dice la porta delle
+-- Proposte), ne' quando e' stata toccata o chiusa l'ultima volta: nessuno lo
+-- leggeva (vedi `_migration_12`).
 CREATE TABLE IF NOT EXISTS proposte (
     id            TEXT PRIMARY KEY,
     creata_ts     REAL NOT NULL,
-    aggiornata_ts REAL NOT NULL,
     stato         TEXT NOT NULL,
     testo         TEXT NOT NULL,
     perche        TEXT NOT NULL,
-    chi_applica   TEXT NOT NULL,
     impronta      TEXT NOT NULL,
     prova_json    TEXT NOT NULL,
     giri_json     TEXT NOT NULL,
-    esito_ts      REAL,
-    esito_nota    TEXT
+    esito_nota    TEXT,
+    -- Il LIVELLO (attori, strato 4, D13): lo stesso campo delle costruzioni
+    -- (`action/construction/stakes.py`), con lo stesso vocabolario. NULL
+    -- quando nessuno l'ha detto, e per le righe nate prima del 06/10/2026
+    -- (vedi `_migration_11`). Colonna nuova, quindi in inglese.
+    stakes        TEXT,
+    -- «Rendila automatica» (attori, strato 4, Task 4.5; `_migration_13`):
+    -- l'id della costruzione che ne e' nata (un riferimento all'archivio
+    -- delle costruzioni, non una copia), e perche' non si e' potuta rendere
+    -- automatica. Il secondo resta su una proposta ancora in attesa.
+    construction_id    TEXT,
+    automation_refusal TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC);
 
@@ -637,11 +649,177 @@ def _migration_6(conn) -> None:
         conn.execute("ALTER TABLE scope_attempt ADD COLUMN version TEXT")
 
 
+def _migration_11(conn) -> None:
+    """v10 -> v11 (attori, strato 4, Task 4.3): `proposte.stakes`, il livello
+    della proposta da fare a mano.
+
+    Le righe scritte prima rileggono `None`: quelle proposte non sono mai
+    state chieste con un livello, e riempirlo oggi attribuirebbe a ieri un
+    fatto di adesso.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
+    if "stakes" not in existing:
+        conn.execute("ALTER TABLE proposte ADD COLUMN stakes TEXT")
+
+
+#: Le colonne di `proposte` alla versione 12, quelle che la ricostruzione
+#: ricopia. Sono la forma di QUEL gradino, e restano ferme: una colonna nata
+#: dopo arriva con la sua migrazione, come `stakes` con `_migration_11`.
+_PROPOSAL_COLUMNS = ("id", "creata_ts", "stato", "testo", "perche", "impronta",
+                     "prova_json", "giri_json", "esito_nota", "stakes")
+
+
+def _migration_12(conn) -> None:
+    """v11 -> v12 (attori, strato 4, Task 4.6): escono `proposte.chi_applica`,
+    `aggiornata_ts` ed `esito_ts` (censimento del 01/10/2026, punti 6 e 7).
+
+    `chi_applica` era una costante salvata: si scriveva sempre «tu», e la
+    porta delle Proposte la sovrascriveva con la sua
+    (`handlers_constructions._both_queues`). Le due date si scrivevano e
+    nessuno le leggeva: la pagina ordina per `creata_ts`.
+
+    **Si ricostruisce la tabella, non si usa `DROP COLUMN`**: quello vuole
+    SQLite 3.35, e la versione dentro l'immagine dell'add-on non e' stata
+    misurata. La ricostruzione funziona su tutte. Le righe restano, con ogni
+    colonna che resta.
+
+    **Tutto o niente, in una transazione** (revisione indipendente, giro 14,
+    G14-1). Il modulo `sqlite3` non apre una transazione per `ALTER` e
+    `CREATE`: senza `BEGIN` ogni passo si confermava da solo, e una
+    ricostruzione interrotta dopo il `RENAME` lasciava una `proposte` vuota,
+    con le righe in `proposte_v11` dove nessuno le legge. Se un passo fallisce
+    si torna indietro e l'archivio resta alla versione 11, intero: la
+    migrazione si rifara' al prossimo avvio.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
+    if not existing & {"chi_applica", "aggiornata_ts", "esito_ts"}:
+        return
+    columns = ",".join(_PROPOSAL_COLUMNS)
+    # Una migrazione precedente dello stesso avvio puo' averne gia' aperta una
+    # (il modulo la apre da se' davanti a un `UPDATE`): si continua in quella.
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        conn.execute("ALTER TABLE proposte RENAME TO proposte_v11")
+        conn.execute("DROP INDEX IF EXISTS idx_proposte_stato")
+        conn.execute(
+            "CREATE TABLE proposte (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
+            "stato TEXT NOT NULL, testo TEXT NOT NULL, perche TEXT NOT NULL, "
+            "impronta TEXT NOT NULL, prova_json TEXT NOT NULL, "
+            "giri_json TEXT NOT NULL, esito_nota TEXT, stakes TEXT)")
+        conn.execute(f"INSERT INTO proposte({columns}) SELECT {columns} FROM proposte_v11")
+        conn.execute("DROP TABLE proposte_v11")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_proposte_stato "
+                     "ON proposte(stato, creata_ts DESC)")
+    except BaseException:
+        conn.rollback()
+        raise
+
+
+def _migration_13(conn) -> None:
+    """v12 -> v13 (attori, strato 4, Task 4.5): `proposte.construction_id` e
+    `proposte.automation_refusal`, l'esito di «Rendila automatica». Le righe
+    di prima rileggono `None`: nessuno l'aveva chiesto."""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
+    for column in ("construction_id", "automation_refusal"):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE proposte ADD COLUMN {column} TEXT")
+
+
+#: La chiave sotto cui il vecchio attuatore scriveva i suoi esiti dentro
+#: l'analisi, e i suoi tre gesti. Sono nomi RITIRATI (attori, strato 4, Task
+#: 4.6): non esiste una fonte da interrogare, l'elenco e' il fatto, e serve
+#: solo a `_migration_14` per leggere le righe di allora.
+_RETIRED_KEY = "attuazione"
+_RETIRED_INQUIRY = "indagine"
+_RETIRED_REPAIR = "riparazione"
+_RETIRED_PROPOSAL = "proposta"
+
+
+def _retired_outcome(conn, outcome, written_ts: float) -> dict | None:
+    """Un esito del vecchio attuatore nella forma del proponente, o `None`
+    se non si lega a niente (`_migration_14`)."""
+    from . import proposer_turn
+
+    if not isinstance(outcome, dict) or not outcome.get("impronta"):
+        return None
+    key = outcome["impronta"]
+    gesture = outcome.get("gesto")
+    if gesture in (_RETIRED_INQUIRY, _RETIRED_REPAIR):
+        why = str(outcome.get("trovato") or "").strip()
+        return {"impronta": key, "esito": proposer_turn.NOTHING,
+                "perche": why} if why else None
+    if gesture != _RETIRED_PROPOSAL:
+        return None
+    if outcome.get("costruibile"):
+        return {"impronta": key, "esito": proposer_turn.BUILT}
+    row = conn.execute(
+        "SELECT id FROM proposte WHERE impronta = ? AND creata_ts <= ? "
+        "ORDER BY creata_ts DESC, rowid DESC LIMIT 1", (key, written_ts)).fetchone()
+    if row is None:
+        # Senza la riga la pagina direbbe «la trovi in Proposte» dove non
+        # c'e' niente: come l'esito senza impronta, non si porta (revisione,
+        # giro 74, N74-2).
+        return None
+    return {"impronta": key, "esito": proposer_turn.BY_HAND, "proposta_id": row["id"]}
+
+
+def _migration_14(conn) -> None:
+    """v13 -> v14 (attori, strato 4, Task 4.6): gli esiti del vecchio
+    attuatore, archiviati dentro l'analisi sotto `attuazione`, passano alla
+    chiave del proponente (`proposer_turn.OUTCOMES_KEY`), nella sua forma.
+
+    Fino al 06/10/2026 le due chiavi convivevano: la pagina leggeva la
+    vecchia, il proponente scriveva la nuova, e i suoi esiti non arrivavano
+    mai alla pagina. Due chiavi vorrebbero due lettori (fondamenta 2): si
+    portano le righe a una, e il lettore resta uno (`outcomes_of`).
+
+    - un'**indagine** e una **riparazione** non proponevano niente: «niente»,
+      col perche' che l'attuatore aveva scritto (dal 05/10/2026 l'indagine e'
+      dell'analista e la riparazione del giro delle ricette);
+    - una **proposta da fare a mano** cita la riga di `proposte` con la stessa
+      impronta nata prima che l'analisi fosse scritta: il giro di allora la
+      metteva li', o ne trovava gia' una. Senza quella riga non si porta;
+    - una **proposta costruibile** e' «costruita» senza id: l'id della
+      costruzione allora non si scriveva, e non si inventa;
+    - un esito senza impronta non si legava a nessuna osservazione e la pagina
+      non lo mostrava: non si porta.
+
+    Per un'impronta che ha gia' un esito del proponente vale il suo: e' il
+    piu' recente. **Solo le analisi con `attuazione` si riscrivono.**
+    """
+    from . import proposer_turn
+
+    rows = conn.execute(
+        "SELECT giorno, corpo_json, scritto_ts FROM analisi").fetchall()
+    for row in rows:
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(body, dict) or _RETIRED_KEY not in body:
+            continue
+        retired = body.pop(_RETIRED_KEY)
+        retired = retired.get("esiti") or [] if isinstance(retired, dict) else []
+        beside = proposer_turn.outcomes_of(body)
+        answered = {o.get("impronta") for o in beside}
+        for outcome in retired:
+            moved = _retired_outcome(conn, outcome, row["scritto_ts"])
+            if moved is not None and moved["impronta"] not in answered:
+                beside.append(moved)
+                answered.add(moved["impronta"])
+        body[proposer_turn.OUTCOMES_KEY] = beside
+        conn.execute("UPDATE analisi SET corpo_json = ? WHERE giorno = ?",
+                     (json.dumps(body, ensure_ascii=False), row["giorno"]))
+        logger.info("analisi di %s: esiti dell'attuatore portati al proponente",
+                    row["giorno"])
+
+
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 14
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -701,7 +879,9 @@ class ObservationsStore:
                                 5: _migration_5, 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
                                 9: _migration_9,
-                                10: _migration_10})
+                                10: _migration_10, 11: _migration_11,
+                                12: _migration_12, 13: _migration_13,
+                                14: _migration_14})
 
     def close(self) -> None:
         with self._lock:
@@ -1316,8 +1496,18 @@ class ObservationsStore:
     #: Gli esiti che chiudono una proposta da fare a mano. **Chiusi**: una
     #: parola nuova arriverebbe da una rotta e diventerebbe uno stato che
     #: nessuna pagina sa disegnare. `crea` non c'e' -- qui non c'e' niente da
-    #: scrivere in Home Assistant: quella strada e' l'officina.
-    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori")
+    #: scrivere in Home Assistant: quella strada e' l'officina. `superata`
+    #: la scrive solo il proponente, quando la stessa domanda torna come
+    #: proposta costruita (D24-1, scelta del proprietario del 06/10/2026):
+    #: nessuna rotta la offre.
+    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori", "superata")
+
+    #: L'esito di una proposta da fare a mano da cui e' nata un'automazione
+    #: («Rendila automatica», attori Task 4.5; chiudere col legame, scelta
+    #: del proprietario del 06/10/2026). Non sta fra `PROPOSAL_OUTCOMES`:
+    #: quelli li chiude una persona dalla pagina, questo lo chiude solo
+    #: `automate_proposal`, con l'id della costruzione accanto.
+    PROPOSAL_AUTOMATED = "automatizzata"
 
     #: Lo stato di una proposta da fare a mano che aspetta la tua risposta.
     #: Scritto una volta: lo usano le istruzioni qui sotto e la pagina delle
@@ -1326,7 +1516,7 @@ class ObservationsStore:
     PROPOSAL_PENDING = "attesa"
 
     def add_proposal(self, *, text: str, perche: str, fingerprint: str,
-                     prova: dict, chi_applica: str, now_ts: float) -> str:
+                     prova: dict, stakes: str | None, now_ts: float) -> str:
         """Scrive una proposta da fare a mano, e torna il suo identificativo.
 
         **Senza impronta non si scrive**: e' cio' su cui si regge
@@ -1337,35 +1527,47 @@ class ObservationsStore:
         ident = uuid.uuid4().hex
         with self._lock:
             self._conn.execute(
-                "INSERT INTO proposte(id,creata_ts,aggiornata_ts,stato,testo,"
-                "perche,chi_applica,impronta,prova_json,giri_json) "
-                "VALUES(?,?,?,?,?,?,?,?,?,'[]')",
-                (ident, now_ts, now_ts, self.PROPOSAL_PENDING, text, perche,
-                 chi_applica, fingerprint,
-                 json.dumps(prova or {}, ensure_ascii=False)))
+                "INSERT INTO proposte(id,creata_ts,stato,testo,perche,"
+                "impronta,prova_json,giri_json,stakes) "
+                "VALUES(?,?,?,?,?,?,?,'[]',?)",
+                (ident, now_ts, self.PROPOSAL_PENDING, text, perche, fingerprint,
+                 json.dumps(prova or {}, ensure_ascii=False), stakes))
             self._conn.commit()
         return ident
 
-    def proposals(self, *, pending_only: bool = False, limit: int = 200) -> list[dict]:
-        """Le proposte da fare a mano, dalla piu' recente."""
-        sql = ("SELECT id,creata_ts,aggiornata_ts,stato,testo,perche,"
-               "chi_applica,impronta,prova_json,giri_json,esito_ts,esito_nota "
+    def proposals(self, *, pending_only: bool = False, limit: int = 200,
+                  ident: str | None = None) -> list[dict]:
+        """Le proposte da fare a mano, dalla piu' recente. Con `ident`, solo
+        quella (`proposal`)."""
+        sql = ("SELECT id,creata_ts,stato,testo,perche,impronta,prova_json,"
+               "giri_json,esito_nota,stakes,construction_id,automation_refusal "
                "FROM proposte")
         args: tuple = ()
         if pending_only:
             sql += " WHERE stato = ?"
             args = (self.PROPOSAL_PENDING,)
+        if ident is not None:
+            sql += (" AND" if args else " WHERE") + " id = ?"
+            args = (*args, ident)
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
             rows = self._conn.execute(sql, (*args, int(max(1, limit)))).fetchall()
-        return [{"id": r[0], "creata_ts": r[1], "aggiornata_ts": r[2],
-                 "stato": r[3], "testo": r[4], "perche": r[5],
-                 "chi_applica": r[6], "impronta": r[7],
-                 "prova": json.loads(r[8]), "giri": json.loads(r[9]),
-                 "esito_ts": r[10], "esito_nota": r[11]} for r in rows]
+        return [{"id": r[0], "creata_ts": r[1], "stato": r[2], "testo": r[3],
+                 "perche": r[4], "impronta": r[5], "prova": json.loads(r[6]),
+                 "giri": json.loads(r[7]), "esito_nota": r[8], "livello": r[9],
+                 "costruzione_id": r[10], "non_automatizzabile": r[11]}
+                for r in rows]
+
+    def proposal(self, ident: str) -> dict | None:
+        """Una proposta da fare a mano per id, o `None`. **Per id, non fra le
+        ultime**: cercarla nelle prime `limit` di `proposals()` la perdeva
+        quando ce n'erano piu' di 200 piu' recenti, e la tabella non ha
+        scadenza (revisione C3, 07/10/2026)."""
+        found = self.proposals(ident=ident, limit=1)
+        return found[0] if found else None
 
     def close_proposal(self, ident: str, occurrence: str, *,
-                       why: str | None = None, now_ts: float) -> bool:
+                       why: str | None = None) -> bool:
         """Chiude una proposta con uno dei suoi esiti. Torna se ha toccato una riga."""
         if occurrence not in self.PROPOSAL_OUTCOMES:
             raise ValueError(
@@ -1373,61 +1575,117 @@ class ObservationsStore:
                 + ", ".join(self.PROPOSAL_OUTCOMES))
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE proposte SET stato=?, aggiornata_ts=?, esito_ts=?, "
-                "esito_nota=? WHERE id=? AND stato=?",
-                (occurrence, now_ts, now_ts, why, ident, self.PROPOSAL_PENDING))
+                "UPDATE proposte SET stato=?, esito_nota=? WHERE id=? AND stato=?",
+                (occurrence, why, ident, self.PROPOSAL_PENDING))
             self._conn.commit()
         return cur.rowcount > 0
 
-    def add_proposal_round(self, ident: str, *, request: str, text: str,
-                           now_ts: float) -> bool:
-        """Accoda un giro di «Rifalla» e **sostituisce il testo** con la forma
-        nuova.
+    def automate_proposal(self, ident: str, construction_id: str) -> bool:
+        """Chiude una proposta in attesa perche' ne e' nata la costruzione
+        `construction_id`. Torna se ha toccato una riga: una proposta gia'
+        decisa non si richiude, e una seconda costruzione dello stesso turno
+        non sostituisce la prima."""
+        if not str(construction_id or "").strip():
+            raise ValueError("una proposta automatizzata porta l'id della costruzione")
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE proposte SET stato=?, construction_id=? "
+                "WHERE id=? AND stato=?",
+                (self.PROPOSAL_AUTOMATED, construction_id, ident,
+                 self.PROPOSAL_PENDING))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def refuse_automation(self, ident: str, reason: str) -> bool:
+        """Scrive perche' una proposta in attesa non si e' potuta rendere
+        automatica. La proposta resta in attesa: la si puo' ancora fare, o
+        rifare."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE proposte SET automation_refusal=? WHERE id=? AND stato=?",
+                (reason, ident, self.PROPOSAL_PENDING))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def add_proposal_round(self, ident: str, *, request: str, outcome: str,
+                           turn: str, now_ts: float, text: str | None = None,
+                           why: str | None = None,
+                           built: str | None = None) -> bool:
+        """Accoda un giro di «Rifalla» al filo della proposta. Torna se l'ha
+        scritto.
 
         Il filo si accoda e non si sostituisce: il modello deve vedere cosa e'
         stato scartato, o potrebbe tornare alla prima forma al secondo giro.
-        Un giro **non chiude niente**: la proposta resta in attesa.
+        Un giro **non chiude niente**: la proposta resta com'e', in attesa o
+        no -- la chiude, quando serve, chi lo chiama.
+
+        `outcome` e' l'esito del proponente (`proposer_turn.OUTCOMES`, attori,
+        Task 4.4):
+        - **a mano**: `text` e `why` sostituiscono testo e perche', e il
+          giro conserva la forma scartata;
+        - **niente**: la proposta resta com'era, e il giro porta il perche';
+        - **costruita**: il giro porta l'id della proposta costruita.
+
+        `turn` e' l'identita' del turno che ha risposto: **lo stesso turno non
+        scrive due giri**, ed e' cio' che rende innocua una seconda consegna.
         """
+        if outcome not in ("a_mano", "niente", "costruita"):
+            raise ValueError(f"esito di un giro sconosciuto: {outcome!r}")
         with self._lock:
             row = self._conn.execute(
-                "SELECT testo, giri_json FROM proposte WHERE id=?", (ident,)).fetchone()
+                "SELECT testo, perche, giri_json FROM proposte WHERE id=?",
+                (ident,)).fetchone()
             if row is None:
                 return False
-            rounds = json.loads(row[1])
-            rounds.append({"richiesta": request, "scartata": row[0],
-                           "quando_ts": now_ts})
+            rounds = json.loads(row[2])
+            if any(r.get("turno") == turn for r in rounds):
+                return False
+            entry = {"richiesta": request, "esito": outcome, "turno": turn,
+                     "quando_ts": now_ts}
+            kept_text, kept_why = row[0], row[1]
+            refusal_sql = ""
+            if outcome == "a_mano":
+                entry["scartata"] = kept_text
+                # Il testo cambia, e la ragione con lui: una proposta nuova
+                # con la ragione vecchia sarebbe una riga che non si spiega.
+                kept_text, kept_why = text or kept_text, why or kept_why
+                # Una forma nuova si puo' rendere automatica anche se la
+                # vecchia no: il rifiuto di «Rendila automatica» era di
+                # quella. Con «niente» la forma e' la stessa e il rifiuto
+                # resta vero; con «costruita» la proposta si chiude.
+                refusal_sql = ", automation_refusal=NULL"
+            elif outcome == "niente":
+                entry["perche"] = why
+            else:
+                entry["proposta_id"] = built
+            rounds.append(entry)
             self._conn.execute(
-                "UPDATE proposte SET testo=?, giri_json=?, aggiornata_ts=? WHERE id=?",
-                (text, json.dumps(rounds, ensure_ascii=False), now_ts, ident))
+                "UPDATE proposte SET testo=?, perche=?, giri_json=?"
+                + refusal_sql + " WHERE id=?",
+                (kept_text, kept_why, json.dumps(rounds, ensure_ascii=False), ident))
             self._conn.commit()
         return True
 
-    def rewrite_proposal_why(self, ident: str, perche: str) -> bool:
-        """Riscrive il `perche` di una proposta, dopo un giro di «Rifalla».
-
-        Il testo cambia (lo fa `add_proposal_round`), e la ragione con lui: una
-        proposta nuova con la ragione vecchia sarebbe una riga che non si
-        spiega piu'.
-        """
-        with self._lock:
-            cur = self._conn.execute(
-                "UPDATE proposte SET perche=? WHERE id=?", (perche, ident))
-            self._conn.commit()
-        return cur.rowcount > 0
-
     def decided_proposals(self) -> dict[str, dict]:
-        """`{impronta: prova}` per le proposte che l'attuatore non deve rifare.
+        """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}`:
+        cio' che il proponente deve sapere per non rifare una proposta
+        (`proposer_turn.already_answered`). La stessa forma di
+        `ConstructionStore.decided_proposals`: le due code si fondono in
+        `proposer_turn.latest_decided`.
 
-        **Ci stanno anche quelle in ATTESA**: una coda aperta non si duplica.
-        Oggi chi la legge (`_file_proposals`, in `server.py`) salta ogni
-        domanda che ha gia' una proposta, SENZA confrontare la prova: il
-        confronto di `actuator.to_handle`, che la riaprirebbe a prova cambiata,
-        questo dizionario non lo riceve.
+        Per ogni impronta conta **l'ultima** proposta: dopo una prova cambiata
+        la stessa domanda ha due righe, e a decidere e' la piu' recente.
+        `aperta` dice se aspetta ancora una risposta. Una decisa vale solo per
+        la prova contro cui e' stata decisa (S-26, scelta del proprietario del
+        06/10/2026).
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT impronta, prova_json FROM proposte").fetchall()
-        return {r[0]: json.loads(r[1]) for r in rows}
+                "SELECT impronta, prova_json, stato, creata_ts, id FROM proposte "
+                "ORDER BY creata_ts, rowid").fetchall()
+        return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING,
+                       "creata_ts": r[3], "id": r[4], "a_mano": True}
+                for r in rows}
 
     def analysis(self, day: str) -> dict | None:
         """L'analisi di quel giorno, o `None` se non ne ha una.

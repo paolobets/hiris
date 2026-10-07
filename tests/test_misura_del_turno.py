@@ -387,3 +387,25 @@ def test_i_DUE_runner_veri_consegnano_il_modello_coi_token():
         assert consegna.search(inspect.getsource(classe.chat)), (
             f"{classe.__name__} non dice quale modello ha risposto: la chat "
             "sulla catena tornerebbe «ignoto»")
+
+
+@pytest.mark.asyncio
+async def test_il_turno_sa_quale_riga_del_registro_e_sua(app):
+    """L'esito del turno consegna l'id della riga che l'imbuto ha scritto: chi
+    vuole annotare poi quel turno (una risposta rifiutata, strato 3 degli
+    attori) lo collega per identificatore, senza cercarlo per istante."""
+    runner = FintoRunner(giri=1)
+    async with misura_turno(app["usage"], runner, specie="chat",
+                            canale="catena-anthropic", modello="sonnet") as turno:
+        await runner.chat()
+    assert turno.turn_id == app["usage"].turns()[0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_senza_registro_nessun_id(tmp_path):
+    """Nessuno misura (archivio `None`): non si inventa un id."""
+    runner = FintoRunner(giri=1)
+    async with misura_turno(None, runner, specie="chat",
+                            canale="catena-anthropic") as turno:
+        await runner.chat()
+    assert turno.turn_id is None

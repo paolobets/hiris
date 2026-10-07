@@ -42,6 +42,15 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### ⚠️ Prima di rilasciare: il Task 4.2 accende il proponente — aperta il 06/10/2026
+
+`origine: il coordinatore del progetto, 06/10/2026, all'unione del Task 4.2 nel ramo d'integrazione` · `hiris/app/mind/proposer_round.py`
+
+Dal Task 4.2 (strato 4 degli attori) il proponente gira: `actuator_round` e' uscito (M-20 chiusa)
+e al suo posto c'e' `proposer_round`. **Il rilascio che lo contiene viene dopo** due cose: la
+misura dal vivo dello strato 3 e la diagnosi del passo 1 del 4.0 (le due proposte perse). Chi
+prepara la bozza del CHANGELOG controlla questa voce prima di proporre la versione.
+
 ### I prossimi passi, in ordine — aperta il 01/10/2026
 
 `origine: il proprietario, 01/10/2026 («segna nel backlog il da farsi»)` · uscite 3.71.0, 3.71.1, 3.72.0, 3.72.1
@@ -173,13 +182,102 @@ veridicita' della soluzione»).
    diverse: coppie gia' presenti il giorno prima 2 su 7, 3 su 8, 4 su 8), spostata qui dalla
    Tappa 6 il 05/10/2026: e' la memoria delle analisi precedenti che manca, non un doppione di
    codice.
+   *Il codice c'e' dal 06/10/2026, non ancora rilasciato (piano degli attori, Task 3.1-3.4, ramo
+   `claude/attori-strato-3-parti-pure-u24nsp`):* la ricetta al volo (`mind/compute.py`) con
+   `somma_fra` e la presenza dagli stati (`REGISTRY_VERSION` 3: i rifiuti archiviati tornano
+   domande); l'indice al posto delle trenta colonne, con gli inneschi marcati dal codice e
+   l'obiettivo «in vigore dal»; la memoria ricavata da analisi e proposte, con `novita` nella
+   risposta. **Cambia la domanda dell'analista di produzione** senza dargli ancora gli strumenti
+   per scavare (Task 3.6): **si unisce insieme al 3.6** (deciso dal proprietario il 06/10/2026). Dallo stesso giorno «nuova» la scrive il codice, e la ripetizione con la stessa prova si toglie invece di rifiutare l'analisi (D4 cambiata, giro 12 del revisore).
+   D-33 si chiude dal vivo, quando la misura delle ripetizioni (Task 3.0 Passo 3) scende.
+   *Da fare col collegamento del 3.6, o alla Chiusura (giro 66 del revisore, N65-2, 06/10/2026):*
+   il «rimetti» dell'analista valida solo la forma dell'`entity_id` (`analyst_turn._back_in`), e
+   `analyst.bring_back` lo scrive con autore analista. Un id che la casa oggi non ha diventa cosi'
+   una riga «decisa dall'analista» che non si accende mai. La correzione: filtrare il «rimetti»
+   sull'anagrafe di adesso, come fa l'osservatore con `known`; un id assente diventa `rifiutata`,
+   con la ragione «la casa non ha questa entita'». Serve la casa nella chiamata di
+   `_write_analysis` (`server.py`), ed e' per questo che si fa col collegamento 3.6 o alla Chiusura.
+   *Fatto il 07/10/2026 (fetta C2):* `_write_analysis` e' uscita da `server.py` in
+   `mind/analyst_round.py` con un commit di solo spostamento; `analyst.bring_back` riceve la casa di
+   adesso e rifiuta con `NOT_IN_HOUSE` l'id che ne' il registro ne' gli stati conoscono
+   (`House.source`). Prove in `tests/test_mind_togli_rimetti.py`, mutazione eseguita. Nello stesso
+   giorno, su richiesta del coordinatore, anche la fonte finita (`ENDED_SOURCE_STATES`: disabilitata
+   o sparita dagli stati) esce `rifiutata`, con lo stato della fonte nella ragione.
+   *G74-1 (giro 74 del revisore, 07/10/2026):* «non c'e'» si dice solo con l'anagrafe letta e lo
+   specchio leggibile; altrimenti la ragione e' `HOUSE_UNREAD`, «la casa non si e' potuta leggere».
 4. **L'attuatore, con gli strumenti.** `runner.chat` senza strumenti (`server.py`, giro
    dell'attuatore) contro la spec §5 che gli da' la sola lettura; «riscritta» che vuol dire solo
    «file scritto». *Riparato il 05/10/2026 (sprint «Una fonte sola di verita'», Tappa 6, Task 5,
    D5), con l'attuatore sempre in pausa:* il contratto dell'`intenzione` incompatibile con
-   l'officina. Oggi si deriva dallo schema di `propose` (`mind/actuator_turn._intent_contract`) e
+   l'officina. Oggi si deriva dallo schema di `propose` (`mind/proposer_turn._intent_contract`) e
    la risposta passa dalla stessa porta della forma dell'officina (`workshop.form_refusal`) prima
    di arrivarci.
+   *Il 06/10/2026 l'attuatore diventa il **proponente** (D11-D17 del piano degli attori, strati
+   3-4, tutte le consigliate).* Gia' nel codice: il nome (Task 4.1: `steering.PROPOSER_SPECIES`,
+   `mind/proposer_turn.py`), il livello su ogni proposta delle due code, con `alto` imposto dal
+   codice su serrature e allarme (Task 4.3, `action/construction/stakes.py`), e l'uscita delle
+   tre colonne mai lette di `proposte` (parte del Task 4.6). **Le misure e il criterio di
+   spegnimento sono scritti prima del rilascio** (Task 4.7, D17), nella spec
+   `2026-09-21-l-attuatore.md` §8: proposte fatte, accettate, rifiutate e fatte fuori da HA, per
+   livello; i giri di «Rifalla»; i token al giorno; e se dopo due settimane dal rilascio il
+   rifiuto e' l'esito dominante, il proponente si spegne. Aspettano lo strato 3 e la diagnosi
+   delle due proposte costruibili perse (Task 4.0, Passo 1): il turno del proponente con `propose`
+   (Task 4.2), l'avviso per `alto` (D14), «Rifalla» e «sempre si'» (Task 4.4, 4.5), e il resto
+   di cio' che esce (Task 4.6).
+   *Il turno del proponente c'e' dal 06/10/2026, non ancora rilasciato (Task 4.2, ramo
+   `claude/attori-strato-3-parti-pure-u24nsp`):* i lettori dell'analista piu' `propose`, chiesto
+   alla tabella degli strumenti; un esito per osservazione («costruita», «a_mano», «niente»), con
+   l'id della proposta costruita dall'archivio delle costruzioni; il giro in
+   `mind/proposer_round.py` e il lavoro orario `hiris_mind_proposer` (la pausa e la sua prova
+   escono). Escono con lui `actuator_round` e i suoi cinque aiutanti, `mind/actuator.py`, il
+   gesto `indagine`, `_intent_contract`, `INTENT_EXCLUDED` e il controllo anticipato. **Restano
+   al Task 4.6** la lettura di `analisi.attuazione` nella pagina (`mind/view._with_outcomes`,
+   `watcher-cosa-fare.js`), che per le analisi nuove non trova piu' niente: gli esiti nuovi stanno
+   in `analisi.proponente`, e la pagina che li mostra passa da `ux-ui-specialist`. *Fatto il
+   07/10/2026, non ancora rilasciato (fetta C1):* un lettore solo, `proposer_turn.outcomes_of`,
+   per il proponente, la rotta e la pagina; le analisi archiviate con `attuazione` passano alla
+   chiave nuova con la migrazione v14 di `mind/store.py`; la scheda dice tre frasi, una per
+   esito, e rimanda alle Proposte. **Le tre frasi non sono ancora passate da
+   `ux-ui-specialist`** (la fetta e' nata nella nuvola, dove l'agente non c'e'): da fare prima
+   del rilascio. **Si rilascia
+   dopo lo strato 3**, come dice il piano: non va acceso prima che l'analista coi suoi strumenti
+   sia stato misurato dal vivo.
+   *L'avviso per `alto` c'e' dal 06/10/2026, non ancora rilasciato (Task 4.3, D14):* quando il
+   proponente costruisce una proposta `alto`, una push a ogni amministratore di Home Assistant
+   (utenti di sistema esclusi), sui telefoni che dice il recapito delle promesse e dalla porta
+   dei servizi (`keeper/delivery.notify_admins`, ammessa per nome nel cancello §7.1). Il ciclo
+   della push e' uno solo per le promesse e per l'avviso (`keeper/delivery.deliver`). Le
+   proposte da fare a mano restano senza livello: una cosa che fa una persona non e' HIRIS che
+   tocca la casa. Un avviso che non arriva si ritenta a ogni giro finche' arriva (scelta di
+   Paolo, 06/10/2026), e smette quando la proposta e' decisa o scaduta: le proposte da avvisare
+   le dice l'archivio delle costruzioni (tabella `avvisi`), quindi anche una costruita che il
+   modello non cita.
+   *«Rifalla» e' un turno del proponente dal 06/10/2026, non ancora rilasciato (Task 4.4, D16,
+   ramo `claude/project-thread-1k66ii`; scelte di Paolo del 06/10, tutte le consigliate):* stessi
+   strumenti e stesso contratto, su un'osservazione sola, con davanti la forma scartata, il filo
+   e la richiesta (`mind/proposal_redo.py`). Dalla partenza unica: sul ponte la rotta risponde
+   202, il turno ha la precedenza della chat e la consegna scrive l'esito nel filo; lo stato «in
+   rifacimento» lo dice la coda, e la pagina rilegge finche' arriva. Tre esiti: una frase nuova,
+   «niente» (entra nel filo, la proposta resta), o una costruita (la proposta a mano si chiude
+   `superata`, D24-1). Una proposta decisa mentre il giro e' in volo scarta la risposta; alla
+   scadenza si dice, senza ripiegare a consumo. Le soglie e le frasi dell'attesa vivono in
+   `common.js` per la chat e per le Proposte. Escono `_REDO_SYSTEM`, `_read_proposal`, il turno
+   contato come chat, `model_resolution.synchronous_door_note` e il suo caso in `_nota_porta`.
+   **Resta da misurare dal vivo** (Task 4.8): un «Rifalla» sul ponte, dal clic all'esito.
+   *«Sempre si'» c'e' dal 06/10/2026, non ancora rilasciato (Task 4.5, D15; ramo
+   `claude/project-thread-tybpui`):* si chiama **«Rendila automatica»** e sta sulle proposte da
+   fare a mano. Fa comporre al proponente un'automazione (specie di turno `automatizza`,
+   `mind/automate_turn.py`), che arriva fra le costruzioni con anteprima e conferma; quando nasce,
+   la proposta a mano si chiude col legame (esito `automatizzata`, «Nata da» sulla costruzione).
+   Un'automazione che agisce su serrature o allarme si rifiuta dentro il turno, e cosi' una che
+   accende script, scene o automazioni o chiama un servizio scritto come modello (giri 67 e 69;
+   senza leggere i corpi, «Blocca sempre», e un servizio scritto come modello e' `alto` anche
+   nelle proposte normali, «Sì, alto»: scelte di Paolo del 07/10/2026); su una proposta
+   `alto` il comando non c'e'. Le tre scelte sono di Paolo, 06/10/2026. **Da misurare dal vivo:**
+   il turno sul ponte (la consegna chiude col legame) e quanto resta «in preparazione». I token di
+   questa specie vanno contati con quelli del proponente nelle misure di D17. «Rifalla» e «Rendila
+   automatica» non partono insieme sulla stessa proposta, e le due attese della pagina hanno una
+   rilettura sola (giro 68).
 
 **Trasversale, da instradare a parte.** Il ponte e' spento **apposta**, per provare gli attori con
 altri modelli: i difetti che escono sulla catena -- risposte troncate a 4096 token, JSON
@@ -296,7 +394,21 @@ Misurato in casa il 02/10/2026: le 21 ricette archiviate usano 7 operazioni, nes
 operazioni (e allora serve chi gli consegna periodi e letture), o se le domande si servono in un
 altro modo e le dieci escono. Voci del registro dei doppioni: M-12, M-14, M-64, M-65, M-78.
 
+**Deciso dal proprietario il 06/10/2026 (D7 del piano strati 3-4): escono otto, restano due per la
+presenza.** Escono `quante_volte`, `quando_succede`, `misure_durante`, `dentro`, `somma_entita`,
+`media_entita`, `raggruppa_per`, `primo_ultimo_differenza`, con le prove delle sette domande e il
+loro cancello; escono anche `Period.contains` e le forme `SHAPE_COUNTER`, `SHAPE_MEASURES`,
+`SHAPE_MEASURE_MAP`, che servivano solo a loro. Restano `episodio`, `tempo_in_stato` e `Period`,
+non offribili alle ricette e ancora senza chiamante: li alimentera' lo strumento di calcolo (Task
+3.1 e 3.2 dello strato 3, dopo D6). Il catalogo offerto al modello non cambia (l'impronta di
+`REGISTRY_VERSION` 2 resta la stessa), quindi la versione del registro non sale.
+
 ### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
+
+**CHIUSA il 06/10/2026 nel codice, non ancora rilasciata** (attori, strato 4, Task 4.4, D16):
+«Rifalla» e' un turno del proponente dalla partenza unica, e col piano acceso va sul ponte; la
+pagina interroga. Si dice chiusa davvero dopo la verifica dal vivo della chiusura dello strato
+4 (Task 4.8). Il testo sotto e' com'era.
 
 `origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`
 
@@ -896,6 +1008,77 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### L'officina impara i config flow: `history_stats` prima di tutto — aperta il 07/10/2026
+
+`origine: il proprietario, 07/10/2026 (scelta A sulla nota C8, «l'officina impara i config flow»)` · documento: `/mnt/project-files/attori/2026-10-07-officina-config-flow-proposta.md` · fonti: `/mnt/project-files/attori/2026-10-07-c8-presenza-history-stats-nota.md` · `hiris/app/action/construction/workshop.py` · `hiris/app/proxy/ha_client.py::HELPER_DOMAINS`
+
+**Il fatto.** La Legge I chiede che un tempo in uno stato chiesto ogni giorno (ore in casa oggi,
+quota della settimana, quante volte si e' aperta una porta) sia un sensore di Home Assistant,
+`history_stats`, e non un conto che `compute` rifa' a ogni giro. HIRIS oggi non lo sa creare:
+l'officina scrive automazioni, script, scene e gli otto helper a *storage collection*;
+`history_stats` e' un helper a **config flow** (letto al tag `2026.9.4` il 07/10/2026,
+`manifest.json`: `"config_flow": true`, `"integration_type": "helper"`), e si crea solo camminando
+`POST /api/config/config_entries/flow` e un `POST …/flow/{flow_id}` per passo. E' il buco gia'
+scritto in `docs/design/2026-09-04-i-comandi-verso-home-assistant.md` §2.8, con la sua regola: **il
+POST di un passo non si ritenta mai**.
+
+**La proposta, in breve** (le decisioni sono aperte, e stanno nel documento): solo
+`history_stats`, per ammissione, come oggetto principale; solo `crea` e `cancella`; il cammino
+legge da ogni risposta di HA i campi che il passo chiede invece di ricopiare la sequenza; `propose`
+valida con l'anteprima di HA (`history_stats/start_preview`) e abortisce il flow; l'entita' nata si
+trova con il lettore che c'e' gia' (`Workshop._helper_entities`, `platform` + `unique_id` =
+`entry_id`) e prende l'etichetta HIRIS; `create_helper` resta solo per le storage collection.
+Niente in `server.py`, nessuna rotta nuova.
+
+**Quando.** Dopo la Chiusura dello sprint e il rilascio del ramo d'integrazione. Nel frattempo,
+col Task 3.6, la frase del criterio entra nella domanda dell'analista e del proponente («se la
+stessa misura serve a ogni giro, si propone il sensore; `compute` per cio' che si chiede una
+volta»), e il proponente usa l'esito «a mano» per i sensori di presenza.
+
+**Prima del disegno, in casa:** la cattura di un flow `history_stats` vero, abortito (serve il si'
+di Paolo: apre un flow), il token dell'add-on sulle rotte `require_admin` del flow, la forma
+dell'anteprima, e che un flow abortito non lasci tracce.
+
+### Registro modelli: `esito.tipo` dice «rifiutato» anche per 429 e 5xx — aperta il 06/10/2026
+
+`origine: giro 47 del revisore e thread «Termometri e falso errore», 06/10/2026; da fare dopo il rilascio` · `hiris/app/provider_occurrences.py` · `hiris/app/static/config/models-route.js::providerRow`
+
+Il registro dei modelli scrive `esito.tipo` = `"rifiutato"` anche quando il provider ha risposto
+429 o 5xx, cioè un guasto temporaneo. Separarlo (`"temporaneo"`) cambia il pallino e il peso del
+nome nella riga del provider (`providerRow` in `models-route.js`, che legge
+`esito.tipo === 'rifiutato'`) e la regola «da quante». Prima del disegno serve il parere
+dell'agente `ux-ui-specialist`.
+
+### `server.py` si spezza alla Chiusura dello sprint — aperta il 06/10/2026
+
+`origine: il proprietario, 06/10/2026 («ok si» alla proposta sui file monolitici, dopo la verifica di uno specialista)` · documento: `/mnt/project-files/analisi/2026-10-06-file-monolitici-proposta.md` · `hiris/app/server.py::_on_startup`
+
+**Il problema non è la lunghezza, è la fondamenta 4.** `server.py` misurava 5.621 righe il 06/10/2026
+(ramo dello sprint @ `d605aecb`), ma il monolite vero è `_on_startup`: una funzione sola di circa
+1.466 righe con 19 funzioni definite al suo interno, che nessuno può chiamare né provare da fuori.
+Era anche il file più toccato del mese (42 commit), cioè il punto dove i rami paralleli si scontrano.
+
+**Quando:** alla Chiusura dello sprint «Una fonte sola di verità», dopo gli strati 3–4 degli attori
+(che tolgono già `actuator_round` e compagne) e le Tappe 7–8, prima di riscrivere `CLAUDE.md`.
+Mai con altri rami aperti su `server.py`.
+
+**Come:** come la rinomina in inglese — suite verde, un commit per passo, **solo spostamento**
+(se il diff contiene una riga di logica, non è uno spostamento). I passi, da disegnare:
+1. `_on_startup` → funzioni con nome in un modulo di avvio, ognuna chiamabile e provabile;
+2. i giri del cervello (`analyst_round`, `recipe_round`, `reconsideration_round`, scope) in `mind/`;
+3. i rapporti del giorno (`write_day_report`, `backfill_one_report`, `_report_ingredients`…) accanto a `mind/report.py`;
+4. la disinstallazione della card Lovelace in un modulo suo;
+5. la shell HTML (fingerprint, versione, `/api/health`) in `api/`.
+In `server.py` resta `create_app()` con la registrazione delle rotte.
+
+**Il costo noto:** 76 file di prova importano `server` (13 `monkeypatch` sui suoi attributi):
+si aggiornano nello stesso commit dello spostamento.
+
+**Fuori da questa voce, per decisione:** `ha_client.py` (grande per la regola «un canale, una
+porta»), `type_vocabulary.py` (in gran parte dati); `tools.py`, `briefing.py`, `queries.py` si
+rivedono dopo; `agent/runner.py` si decide nel refactor degli agenti. Nessuna soglia di righe per
+file: il criterio è un file, un mestiere.
+
 ### Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato» — aperta il 05/10/2026
 
 `origine: rapporto dell'integrazione delle Tappe 4-6 (B25, domanda 1), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · documento: `/mnt/project-files/2026-10-05-integrazione-tappe-4-6-rapporto.md`, sezione «B25, in dettaglio»
@@ -909,6 +1092,15 @@ su una risposta lunga, non col server finto.
 
 ### Il conteggio instabile di `npm test` — aperta il 05/10/2026
 
+*Fatto nel codice il 07/10/2026 (ramo, non rilasciata):* la causa era `--test-force-exit`. Ogni
+figlio esce con `process.exit()` appena finisce l'ultima prova, e sulle pipe POSIX le sue
+scritture sono asincrone: se il padre legge lento, gli esiti di coda di un file si perdono, il
+figlio esce 0 e nessuna prova e' rossa. Riprodotta fermando a intermittenza il padre: 553, 551 e
+552 prove su 638, sempre 0 rosse; senza `--test-force-exit`, 638 su 638. La correzione rende
+bloccante l'uscita in ogni processo (`tests/js/helpers/uscita-intera.mjs`, con `--import`); il
+confronto col giro prima e' un reporter di `npm test` (`tests/js/helpers/conteggio-prove.mjs`).
+Si chiude col rilascio.
+
 `origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 2, domanda 3), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · stesso documento della voce sopra
 
 `npm test` a volte raccoglie meno prove, senza nessuna rossa. Si cerca la causa, e la verifica
@@ -917,9 +1109,13 @@ confronta il numero di prove JS raccolte con quello del giro precedente (regola 
 
 ### La definizione di `propose` torna alla tabella degli strumenti — aperta il 05/10/2026
 
+*Fatto nel codice il 06/10/2026 (Task 4.2, ramo, non rilasciata):* il catalogo del proponente
+chiede `propose` a `KNOWLEDGE_TOOLS` per nome (`proposer_turn.proposer_tools`), e
+`PROPOSE_TOOL_DEF` non si importa piu' fuori dalla tabella. Si chiude col rilascio.
+
 `origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 3, domanda 5), approvata dal proprietario il 05/10/2026 (consigliata); da fare allo strato 4 degli attori, insieme a B29` · stesso documento delle voci sopra
 
-`mind/actuator_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
+`mind/proposer_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
 degli strumenti (Tappa 5). Si ricollega quando l'attuatore torna (strato 4), con la decisione B29
 (le descrizioni delle proposte servono anche all'attuatore).
 
@@ -993,7 +1189,7 @@ da ottimizzare sui numeri veri:
   il server aiohttp rifiuta una riga di richiesta oltre 8.190 byte: con ~300 entita' si
   sfora. `HAClient.history` legge a pezzi (`_HISTORY_FILTER_MAX = 6000` byte di filtro per richiesta,
   `proxy/ha_client.py`). Il 6.000 e' un margine scelto, **non misurato**: va provato con una
-  ricerca che scelga ~300 entita' (per esempio `history(genere=valori, tipo=sensor)` su tutta la casa).
+  ricerca che scelga ~300 entita' (per esempio `history(cosa=valori, tipo=sensor)` su tutta la casa).
 - **Le domande #14 e #26 della batteria**, le due che la spec nomina: #14 (`da="ieri"`, consumato,
   fasce orarie di Home Assistant oltre le 24 ore) e #26. Si leggono coi cinque criteri di §8.
   Sulla #14 la riga deve portare `al` (l'ora in corso non e' ancora compilata: revisione finale,
@@ -1329,7 +1525,7 @@ D2 del proprietario).** La riparazione non e' piu' dell'attuatore: `_repair_reci
 le ricette rotte le richiede il giro delle ricette (`recipe_turn.recipes_to_repair`, dalla causa
 della misura), sulla catena e sul ponte. Si sposta fra le uscite col rilascio dello strato 1.
 
-`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
+`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/proposer_turn.py::SYSTEM`
 
 Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**
 (`_repair_recipes`, che chiama `recipe_turn.ask` col modello della catena) e aggiunge le
@@ -1337,7 +1533,7 @@ riparazioni all'attuazione come fatti. Sul ponte no: `_enqueue_actuator_turn` co
 con l'elenco delle riparazioni **vuoto**, e nessuna ricetta viene riscritta. Una ricetta rotta,
 sul ponte, arriva al modello come osservazione qualunque e resta rotta.
 
-Il prompt di sistema (`actuator_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
+Il prompt di sistema (`proposer_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
 fetta (28/09/2026): prima affermava «Le ricette rotte le ho gia' riscritte io prima di chiamarti»,
 falso sul ponte. Ora dice che le riparazioni avvenute stanno nella domanda, e che se la domanda non
 ne parla nessuna e' stata riscritta: una ricetta rotta si segnala come proposta da fare a mano. Resta
@@ -1357,7 +1553,7 @@ ricetta rotta sulla casa vera, attuatore sul ponte, e la riga del sapere riscrit
 
 `origine: review del fix round 1 della fetta «l'attuatore sul ponte» (28/09/2026)` · `hiris/app/server.py::_collect_actuator_turn` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_collect_analyst_turn`
 
-Quando la risposta del ponte e' **rifiutata** (`actuator_turn.apply_actuation` torna
+Quando la risposta del ponte e' **rifiutata** (`proposer_turn.apply_actuation` torna
 `attuazione: None` con i `problemi`), `_collect_actuator_turn` la restituisce con `risposta: True`
 senza scrivere niente, e `actuator_round` si ferma li' (`if collected is not None and
 collected.get("risposta"): return collected`). Al giro dopo `queue.latest("attuazione")` e' ancora

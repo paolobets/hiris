@@ -38,6 +38,7 @@ from aiohttp import web
 
 from ..action.construction.revisions import STATES_SOSPESO
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
+from ..mind import automate_turn
 from .boundary import error_response, occurrence_out
 from .soffitto import approved_services, require_builder, subject_name
 
@@ -58,10 +59,10 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
-    # Le scadute si segnano PRIMA di elencare, o la pagina mostrerebbe come
-    # «da approvare» proposte che l'officina rifiuterebbe di applicare -- e il
-    # bottone mentirebbe.
-    store.scadi(time.time())
+    # Una lettura non scrive: le scadute escono scadute da sole
+    # (`revisions._EXPIRED_SQL`). Fino al 06/10/2026 questa rotta le segnava
+    # sul disco prima di elencare, e la chat poteva confermarne una che
+    # nessuno aveva ancora aperto (misura del Task 4.0 degli attori).
     pending_only = request.query.get("pending_only") in ("1", "true", "si")
     return web.json_response(
         {"constructions": await _both_queues(request.app, store, pending_only)})
@@ -113,15 +114,41 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     # `sospesa` e' la regola di ciascuna coda, decisa qui e non nella pagina
     # (C-12): le costruzioni con `_construction_suspended`, le proposte a mano
     # finche' sono `PROPOSAL_PENDING`.
-    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
-             "sospesa": _construction_suspended(row)}
-            for row in store.list(pending_only=pending_only, limit=200)]
     observations = app.get("observations")
+    by_hand = (observations.proposals(pending_only=pending_only)
+               if observations is not None else [])
+    # «Nata da» (attori, Task 4.5): la proposta a mano da cui e' nata una
+    # costruzione, letta per id dall'archivio gemello -- un legame, non una
+    # copia del testo nell'archivio delle costruzioni. Si cerca anche fra le
+    # chiuse: e' proprio chiudendosi che la proposta a mano porta il legame.
+    every_hand = (by_hand if not pending_only or observations is None
+                  else observations.proposals())
+    origins = {p["costruzione_id"]: {"id": p["id"], "testo": p["testo"]}
+               for p in every_hand if p.get("costruzione_id")}
+    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
+             "sospesa": _construction_suspended(row),
+             "nata_da": origins.get(row["id"])}
+            for row in store.list(now=time.time(), pending_only=pending_only, limit=200)]
     if observations is not None:
+        from ..mind import proposal_redo
+
+        # Se il comando «Rendila automatica» c'e', e se un turno la sta
+        # preparando: la regola e' quella della rotta (`automate_turn.refusal`),
+        # e la pagina riceve la risposta invece di ricalcolarla (C-12).
+        # `rifacimento`: un «Rifalla» sul ponte non ancora arrivato, come lo
+        # dice la coda (attori, Task 4.4). La pagina lo disegna nella riga, e
+        # cosi' sopravvive a una ricarica.
+        in_flight = automate_turn.preparing(app)
         rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
                   "a_mano": True,
-                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING}
-                 for row in observations.proposals(pending_only=pending_only)]
+                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING,
+                  "rifacimento": proposal_redo.state(app, row),
+                  "in_preparazione": in_flight == row["id"],
+                  "automatizzabile": automate_turn.refusal(
+                      row, pending=observations.PROPOSAL_PENDING,
+                      in_flight=in_flight,
+                      redoing=proposal_redo.redoing(app, row)) is None}
+                 for row in by_hand]
     return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 
 
@@ -132,7 +159,7 @@ async def handle_get_construction(request: web.Request) -> web.Response:
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
-    row = store.read(request.match_info["id"])
+    row = store.read(request.match_info["id"], now=time.time())
     if row is None:
         return error_response(404, _NOT_FOUND)
     return web.json_response(
@@ -157,7 +184,7 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     if store is None or workshop is None:
         return error_response(503, "officina non disponibile")
     ident = request.match_info["id"]
-    if store.read(ident) is None:
+    if store.read(ident, now=time.time()) is None:
         return error_response(404, _NOT_FOUND)
     method = getattr(workshop, verb)
     occurrence = await method(ident, actor="pagina", exchange=None,
@@ -202,7 +229,7 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     if store is None:
         return error_response(503, "archivio non disponibile")
     ident = request.match_info["id"]
-    if store.read(ident) is None:
+    if store.read(ident, now=time.time()) is None:
         return error_response(404, _NOT_FOUND)
     occurrence = store.mark_cancelled(ident, now=time.time())
     if "errore" in occurrence:

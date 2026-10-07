@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from conftest import SCADENZA_LONTANA
 from hiris.app import server
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
@@ -41,6 +42,7 @@ from hiris.app.api.soffitto import _SOLO_AMMINISTRATORI
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.steering import PROMISE_SPECIES, SPECIES
 from tests.test_construction_workshop import WorkshopHouse, _intento
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -153,7 +155,7 @@ async def test_il_ponte_di_una_persona_non_amministratrice_non_scrive_in_casa(ro
 
     assert _SOLO_AMMINISTRATORI in (esito.get("errore") or ""), esito
     assert casa_ha.salvate == [], "Home Assistant ha ricevuto una scrittura"
-    assert archivio.read(proposta)["stato"] == "in_attesa"
+    assert archivio.read(proposta, now=time.time())["stato"] == "in_attesa"
 
 
 # 2. Lo stesso job, ma di un amministratore: il soffitto lo lascia passare.
@@ -205,7 +207,7 @@ async def test_un_X_HIRIS_Chat_non_valido_non_fa_girare_nessuno_strumento(
 
     assert "non è più valido" in (esito.get("errore") or ""), esito
     assert casa_ha.salvate == [], "Home Assistant ha ricevuto una scrittura"
-    assert archivio.read(proposta)["stato"] == "in_attesa"
+    assert archivio.read(proposta, now=time.time())["stato"] == "in_attesa"
     assert dispatcher_visti == [], "il dispatcher non doveva nemmeno nascere"
     assert "X-HIRIS-Chat" in caplog.text
 
@@ -259,17 +261,22 @@ def test_config_mcp_porta_X_HIRIS_Chat_solo_per_un_job_di_chat():
 
 # 5. Il runner: l'intestazione nell'argv vero, e il soggetto nel registro.
 class _Risposta:
+    """La risposta di `tools/list`, ESATTA per il turno: la sonda rifiuta
+    anche un catalogo piu' largo del suo (G23-1)."""
     status_code = 200
+
+    def __init__(self, specie):
+        self._specie = specie
 
     def json(self):
         return {"jsonrpc": "2.0", "id": 1, "result": {"tools": [
-            {"name": n.split("__")[-1]}
-            for n in {*ponte.mcp_names(), *ponte.mcp_names(by_promise=True)}]}}
+            {"name": n} for n in SPECIES[self._specie].tools_for_turn()]}}
 
 
 class _ClientFinto:
-    def post(self, *_a, **_k):
-        return _Risposta()
+    def post(self, *_a, headers=None, **_k):
+        promessa = "X-HIRIS-Promessa" in (headers or {})
+        return _Risposta(PROMISE_SPECIES if promessa else "chat")
 
 
 class _ProcessoFinto:
@@ -295,7 +302,8 @@ def test_il_runner_manda_X_HIRIS_Chat_e_il_soggetto_solo_per_la_chat(
     if kind == "promessa":
         contesto["promessa_id"] = "p1"
     try:
-        ponte._reason_chat({"job_id": "J1", "kind": kind, "context": contesto},
+        ponte._reason_chat({"deadline_ts": SCADENZA_LONTANA, "job_id": "J1",
+                            "kind": kind, "context": contesto},
                            "live", client=_ClientFinto(),
                            base_url="http://127.0.0.1:8099",
                            headers={"X-HIRIS-Internal-Token": "tok"})

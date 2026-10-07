@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import json
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent.runner import config_mcp
+from hiris.app.steering import PROMISE_SPECIES
 
 
 def _intestazioni(conf: str) -> dict:
@@ -72,7 +74,7 @@ def test_un_kind_promessa_NON_finisce_fra_i_kind_sconosciuti(caplog):
     from hiris.app.agent import runner as ponte
 
     esito = ponte.reason(
-        {"kind": "promessa", "job_id": "j1",
+        {"kind": "promessa", "deadline_ts": SCADENZA_LONTANA, "job_id": "j1",
          "context": {"model": "sonnet", "promessa_id": "p1", "history": [], "system_prompt": ""}},
         "mock")
 
@@ -111,7 +113,7 @@ def test_i_nomi_attesi_seguono_il_catalogo_del_turno():
     from hiris.app.agent.runner import mcp_names
 
     chat = set(mcp_names())
-    promessa = set(mcp_names(by_promise=True))
+    promessa = set(mcp_names(PROMISE_SPECIES))
 
     assert any(n.endswith("__conclude") for n in promessa), (
         "senza «conclude» fra i nomi permessi il turno non ha modo di finire")
@@ -128,13 +130,13 @@ def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
     esito = StreamOccurrence()
     esito.init = {
         "mcp_servers": [{"name": "hiris", "status": "connected"}],
-        "tools": list(mcp_names(by_promise=True)),
+        "tools": list(mcp_names(PROMISE_SPECIES)),
     }
 
-    ok, motivo = verify_init(esito, by_promise=True)
+    ok, motivo = verify_init(esito, species=PROMISE_SPECIES)
     assert ok is True, motivo
 
-    ok_chat, _motivo_chat = verify_init(esito, by_promise=False)
+    ok_chat, _motivo_chat = verify_init(esito, species="chat")
     n_promessa = len(esito.init["tools"])
     assert ok_chat is False, (
         f"col catalogo della chat quegli stessi {n_promessa} strumenti del turno "
@@ -146,7 +148,7 @@ def test_l_argv_permette_concludi_su_un_turno_di_promessa():
     from hiris.app.agent.runner import _chat_claude_args
 
     argv = _chat_claude_args("/sistema.txt", "sonnet", active_tools=True,
-                             mcp_config="{}", by_promise=True)
+                             mcp_config="{}", species=PROMISE_SPECIES)
     permessi = argv[argv.index("--allowedTools") + 1]
     assert "__conclude" in permessi
     assert "__execute" not in permessi
@@ -169,7 +171,7 @@ def test_un_kind_scope_NON_finisce_fra_i_kind_sconosciuti(caplog):
     from hiris.app.agent import runner as ponte
 
     esito = ponte.reason(
-        {"kind": "scope", "job_id": "j3",
+        {"kind": "scope", "deadline_ts": SCADENZA_LONTANA, "job_id": "j3",
          "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                      "system_prompt": "sei l'osservatore"}},
         "mock")
@@ -259,7 +261,7 @@ def test_il_ponte_passa_al_prompt_l_istruzione_che_il_job_porta(monkeypatch):
     monkeypatch.setattr(ponte.prompts, "build_chat_messages", spia)
     try:
         ponte.reason(
-            {"kind": "scope", "job_id": "j9",
+            {"kind": "scope", "deadline_ts": SCADENZA_LONTANA, "job_id": "j9",
              "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                          "system_prompt": "sei l'osservatore",
                          "istruzione": "Rispondi con un SOLO array JSON."}},
@@ -310,7 +312,7 @@ def test_un_turno_di_scope_NON_riceve_gli_strumenti_della_chat(monkeypatch):
     monkeypatch.setattr(ponte, "probe_tools", spia)
     try:
         ponte.reason(
-            {"kind": "scope", "job_id": "js",
+            {"kind": "scope", "deadline_ts": SCADENZA_LONTANA, "job_id": "js",
              "context": {"model": "sonnet", "history": [{"role": "user", "content": "la casa"}],
                          "system_prompt": "sei l'osservatore",
                          "istruzione": "Rispondi con un SOLO array JSON."}},

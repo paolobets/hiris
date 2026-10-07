@@ -163,40 +163,14 @@
      che scrive `m:ss`, ed e' inevitabile -- ma parte solo dopo la prima
      soglia, e viene fermato su OGNI uscita. */
 
-  /* Le durate dell'attesa, in millisecondi, in un posto solo. Le prime tre --
-     quelle che l'utente vive come attesa -- sono calibrate sulla letteratura
-     (i 10 secondi oltre i quali l'attenzione si stacca) e NON su tempi di
-     risposta misurati su questo prodotto: nessuno li ha ancora raccolti. Dopo
-     l'UAT, con la distribuzione vera in mano, cambiarle e' una riga qui dentro
-     e nient'altro. Le ultime due hanno una provenienza diversa, dichiarata
-     accanto a ciascuna. */
-  var WAIT_THRESHOLDS = {
-    /* compare il cronometro */
-    timer: 10000,
-    /* l'etichetta ammette che ci sta mettendo troppo */
-    lenta: 30000,
-    /* compare la riga che dice che fine fa il turno */
-    servizio: 120000,
-    /* Quanto PRIMA della scadenza avvisare che sta per arrendersi. La scadenza
-       non e' scritta qui: la porta chi ce l'ha davvero, cioe' chat/send.js, e
-       arriva insieme al fatto che il turno e' al sicuro sul server (vedi
-       `waitSafeOnServer`). Qui c'era un `270000` con scritto accanto
-       "CHAT_POLL_MAX_MS meno mezzo minuto": un secondo numero, in un secondo
-       file, che dichiarava un legame inesistente -- bastava cambiare la
-       scadenza vera perche' l'avviso mentisse in silenzio. */
-    margineResa: 30000,
-    /* E quando dirlo dove una scadenza non esiste proprio. Questo numero e'
-       arbitrario e lo dichiara: non c'e' niente da cui derivarlo. */
-    senzaScadenza: 270000,
-    /* Quanto la bolla resta una regione live DOPO che ci e' stata scritta
-       dentro la risposta (vedi updateBubble). Sta qui con le altre durate
-       dell'attesa perche' e' l'ultimo atto della stessa vita: l'indicatore che
-       diventa risposta. */
-    uscitaRegioneLive: 1200
-  };
+  /* Le durate dell'attesa, in millisecondi: da common.js, SOGLIE_ATTESA,
+     scritte una volta per la chat e per il «Rifalla» delle Proposte. La
+     scadenza del ponte non sta li': la porta chat/send.js, e arriva insieme
+     al fatto che il turno e' al sicuro sul server (vedi `waitSafeOnServer`). */
+  var WAIT_THRESHOLDS = SOGLIE_ATTESA;
 
   var WAIT_LABEL = 'HIRIS sta elaborando';
-  var SLOW_LABEL = 'Ci sto mettendo più del solito';
+  var SLOW_LABEL = FRASI_ATTESA.lenta;
   /* Due finali diversi, per la stessa ragione delle due frasi di servizio qui
      sotto: su un percorso una resa esiste, sull'altro no.
        - il ramo del ponte ha una scadenza vera (`CHAT_POLL_MAX_MS`, chat/send.js):
@@ -207,8 +181,8 @@
          la risposta arriva o la connessione cade. Dire li "fra poco smetto di
          aspettare" era una promessa che nessuno avrebbe mantenuto, scritta
          nell'istante in cui l'utente decide se abbandonare. */
-  var ALMOST_GIVING_UP_LABEL = 'Ancora niente: fra poco smetto di aspettare';
-  var NO_DEADLINE_LABEL = 'Ancora niente. Continuo ad aspettare: su questo turno non ho un tempo massimo.';
+  var ALMOST_GIVING_UP_LABEL = FRASI_ATTESA.quasiResa;
+  var NO_DEADLINE_LABEL = FRASI_ATTESA.senzaScadenza;
 
   /* Le due frasi dei due minuti dicono cose OPPOSTE su che fine fa il turno se
      l'utente se ne va, e la differenza non e' di stile: e' verificata sul
@@ -272,12 +246,6 @@
       var label = row.querySelector('.tl-label');
       if (label) label.textContent = ALMOST_GIVING_UP_LABEL;
     }, Math.max(0, fraQuanto)));
-  }
-
-  function stopwatchText(ms) {
-    var s = Math.floor(ms / 1000);
-    var ss = s % 60;
-    return Math.floor(s / 60) + ':' + (ss < 10 ? '0' + ss : ss);
   }
 
   function showThinking() {

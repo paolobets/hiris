@@ -514,6 +514,18 @@ def _file_frontend() -> list[Path]:
     )
 
 
+@functools.cache
+def _sponde():
+    """`scripts/sponde_js.py`, caricato per percorso: il censimento si carica
+    anche da fuori (`tests/test_censimento.py`), dove `scripts/` non e' nel
+    percorso di ricerca."""
+    spec = importlib.util.spec_from_file_location(
+        "_censimento_sponde_js", Path(__file__).with_name("sponde_js.py"))
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
 def censisci_rotte(
     file_app: list[Path], file_frontend: list[Path], file_test: list[Path]
 ) -> list[Reperto]:
@@ -536,9 +548,14 @@ def censisci_rotte(
             rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
         corpus_app.append(_RE_ADD_ROUTE.sub(" ", _RE_ADD.sub(" ", testo)))
 
-    # Il frontend resta crudo: _senza_commenti usa il tokenizer Python e su
-    # JavaScript non avrebbe senso applicarlo.
-    fuori = "\n".join(corpus_app + [_leggi(f) for f in file_frontend])
+    # Il JavaScript si legge per le sue STRINGHE, senza commenti (N65-1,
+    # giro 65): un commento in testa a una pagina che nomina la rotta la
+    # teneva viva senza nessuna chiamata. Il tokenizzatore e' quello delle
+    # sponde (`sponde_js.stringhe`), non una seconda copia. HTML e CSS
+    # restano crudi.
+    fuori = "\n".join(corpus_app + [
+        _sponde().stringhe(_leggi(f)) if f.suffix == ".js" else _leggi(f)
+        for f in file_frontend])
     nei_test = "\n".join(_leggi_pulito(f) for f in file_test)
 
     reperti: list[Reperto] = []
@@ -727,6 +744,30 @@ REGISTRO_PY = APP / "mind" / "operations.py"
 COPERTURA_REGISTRO: dict[str, object] = {}
 
 
+def _carica_registro(percorso: Path):
+    """Il modulo del registro: per pacchetto se sta nel repository, se no dal
+    suo percorso (vedi `_nomi_registro`)."""
+    try:
+        relativo = percorso.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        relativo = None
+    if relativo is not None:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        return importlib.import_module(".".join(relativo.with_suffix("").parts))
+    etichetta = "_censimento_registro_operazioni"
+    spec = importlib.util.spec_from_file_location(etichetta, percorso)
+    if spec is None or spec.loader is None:
+        return None
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules[etichetta] = modulo
+    try:
+        spec.loader.exec_module(modulo)
+    finally:
+        sys.modules.pop(etichetta, None)
+    return modulo
+
+
 def _nomi_registro(percorso: Path) -> dict[str, str] | None:
     """I nomi cercabili del registro, o None se non si e' potuto leggerlo.
 
@@ -737,11 +778,14 @@ def _nomi_registro(percorso: Path) -> dict[str, str] | None:
     lascerebbe passare il doppione piu' probabile -- qualcuno che riscrive quel
     conto altrove lo chiamera' in inglese, come il resto del suo file.
 
-    Si carica il modulo dal suo percorso invece di importarlo per pacchetto:
-    il censimento non deve dipendere dal fatto che `hiris.app` sia importabile
-    da dove lo si lancia, e `mind/operations.py` non ha import relativi.
-    Caricarlo lo ESEGUE — e' un modulo di sole definizioni, ma il costo va
-    detto invece che nascosto.
+    Il registro del prodotto si importa **per pacchetto**, come lo importa il
+    prodotto: dal 05/10/2026 (strato 1 degli attori, Task 1.2) chiede il
+    vocabolario della fonte a `..home_space.house`, e il caricamento per
+    percorso falliva su quel relativo -- per un giorno il censimento ha
+    stampato «NON LEGGIBILE» e il cancello e' rimasto verde senza cercare
+    niente. Un registro fuori dal repository (quello finto delle prove) si
+    carica ancora dal suo percorso. Caricarlo lo ESEGUE -- e' un modulo di
+    sole definizioni, ma il costo va detto invece che nascosto.
 
     Torna `{nome cercabile: nome dell'operazione}`, perche' il rapporto deve
     poter dire QUANTE operazioni ci sono -- e i nomi cercabili sono il doppio.
@@ -754,19 +798,15 @@ def _nomi_registro(percorso: Path) -> dict[str, str] | None:
     """
     if not percorso.exists():
         return None
-    etichetta = "_censimento_registro_operazioni"
     try:
-        spec = importlib.util.spec_from_file_location(etichetta, percorso)
-        if spec is None or spec.loader is None:
-            return None
-        modulo = importlib.util.module_from_spec(spec)
-        sys.modules[etichetta] = modulo
-        try:
-            spec.loader.exec_module(modulo)
-        finally:
-            sys.modules.pop(etichetta, None)
-    except Exception:
-        return None  # un registro rotto non deve fermare il censimento
+        modulo = _carica_registro(percorso)
+    except Exception as errore:
+        # Un registro rotto non ferma la lettura: lo dice il rapporto, con la
+        # ragione (una dipendenza mancante non e' un registro rotto).
+        COPERTURA_REGISTRO["errore"] = f"{type(errore).__name__}: {errore}"
+        return None
+    if modulo is None:
+        return None
     registro = getattr(modulo, "REGISTRY", None)
     if registro is None:
         return None
@@ -808,6 +848,7 @@ def censisci_operazioni(
     puo' benissimo essere pubblico -- ed e' il caso peggiore, perche' qualcuno
     lo importa.
     """
+    COPERTURA_REGISTRO.pop("errore", None)
     nomi = _nomi_registro(percorso_registro)
     COPERTURA_REGISTRO["leggibile"] = nomi is not None
     COPERTURA_REGISTRO["operazioni"] = len(set(nomi.values())) if nomi else 0
@@ -1019,6 +1060,16 @@ def run(*, cancello: bool = False, exceptions: Path | None = None) -> int:
     allowed = read_exceptions(exceptions or ECCEZIONI)
     fermanti = stopping(reperti, exceptions=allowed)
     healed = stale_exceptions(reperti, exceptions=allowed)
+    # Un registro che non si legge da' zero reperti con la faccia di uno
+    # pulito: il cancello non ha guardato, e non puo' dire di si'.
+    cieco = COPERTURA_REGISTRO.get("leggibile") is False
+    if cieco:
+        print(file=sys.stderr)
+        print(f"{_ROSSO}CANCELLO: il registro delle operazioni "
+              f"({_rel(REGISTRO_PY)}) non si legge: il controllo dei doppioni "
+              f"delle operazioni non ha cercato niente.{_RESET}", file=sys.stderr)
+        if COPERTURA_REGISTRO.get("errore"):
+            print(f"  {COPERTURA_REGISTRO['errore']}", file=sys.stderr)
     if fermanti:
         print(file=sys.stderr)
         print(f"{_ROSSO}CANCELLO: {len(fermanti)} reperti che fermano. Si toglie "
@@ -1032,7 +1083,7 @@ def run(*, cancello: bool = False, exceptions: Path | None = None) -> int:
               f"{ECCEZIONI.name}: non coprono piu' niente.{_RESET}", file=sys.stderr)
         for category, name in healed:
             print(f"  {category}  {name}", file=sys.stderr)
-    return 1 if fermanti or healed else 0
+    return 1 if fermanti or healed or cieco else 0
 
 
 def main() -> None:

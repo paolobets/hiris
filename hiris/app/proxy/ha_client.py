@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -97,6 +98,19 @@ AUTOMATION_TRIGGERED_EVENT = "automation_triggered"
 # `require_admin` sul comando. L'evento porta una LISTA in `event`, non un
 # evento del bus: si smista per id dell'iscrizione, non per `event_type`.
 CONFIG_ENTRIES_SUBSCRIPTION = "config_entries/subscribe"
+
+#: L'evento con cui Home Assistant dichiara di aver FINITO di avviarsi, e lo
+#: stato del nucleo in cui lo e' (riallineamento alla riconnessione,
+#: 06/10/2026). Letti al tag 2026.9.4: `const.py` riga 276
+#: (`EVENT_HOMEASSISTANT_STARTED`); `core.py`, `CoreState` righe 365-373 e
+#: `async_start` righe 523-562 (`starting`, poi `running` e subito dopo
+#: l'evento); `core_config.py` riga 710 (`"state": self.hass.state.value`
+#: nella risposta di `get_config`, `websocket_api/commands.py` riga 659).
+#: Il websocket e' raggiungibile PRIMA: il server HTTP parte quando e' pronto
+#: `frontend` (`http/__init__.py` riga 207), mentre il nucleo e' ancora
+#: `NOT_RUNNING` o `STARTING`.
+STARTED_EVENT = "homeassistant_started"
+RUNNING_STATE = "RUNNING"
 
 # Le attese del websocket di lunga vita, in secondi. Dopo una caduta si
 # riprova dopo `RECONNECT_DELAY_S`. Dopo un gettone RIFIUTATO (S-04) l'attesa
@@ -421,6 +435,14 @@ class HAClient:
         #: Le connessioni autenticate finora: la prima non avvisa «riconnessione».
         self._connections = 0
         self._reread_at_first_connection = False
+        #: L'orologio della finestra di scollegamento: iniettabile perche' le
+        #: prove fissino gli istanti senza toccare il modulo `time`.
+        self._clock = time.time
+        #: Quando e' caduta la PRIMA connessione autenticata di una finestra
+        #: ancora aperta: si azzera solo quando la finestra si chiude
+        #: (`_close_disconnection`).
+        self._dropped_at: float | None = None
+        self._disconnection_listeners: list[Callable[[dict], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -2427,6 +2449,38 @@ class HAClient:
         else:
             self._reread_at_first_connection = True
 
+    def add_disconnection_listener(self, callback: Callable[[dict], None]) -> None:
+        """callback(finestra) quando si chiude una finestra in cui l'add-on e'
+        rimasto scollegato da Home Assistant: `{"da": epoch, "a": epoch}`,
+        una volta per finestra.
+
+        `da` e' l'istante in cui e' caduta una connessione che Home Assistant
+        aveva autenticato. `a` e' l'istante in cui, a connessione tornata,
+        Home Assistant dichiara di essere AVVIATO: subito, se `get_config`
+        risponde `RUNNING`; altrimenti all'evento `homeassistant_started`
+        (vedi `STARTED_EVENT`). Non il ritorno del socket: il websocket
+        risponde mentre il nucleo e' ancora in avvio, e le entita' che le
+        integrazioni lente lasciano `unavailable` in quel tratto sono del
+        riavvio, non guasti (revisione, giro 41, 06/10/2026). Tutti e due gli
+        istanti sono letti sull'orologio di questo processo. La finestra non
+        dice PERCHE' la connessione e' caduta: un riavvio e un guasto di rete
+        hanno la stessa forma da qui. Alla prima connessione non c'e': il
+        prima non e' stato misurato.
+        """
+        self._disconnection_listeners.append(callback)
+
+    def _close_disconnection(self) -> None:
+        """Chiude la finestra aperta, se ce n'e' una, e la consegna."""
+        if self._dropped_at is None:
+            return
+        window = {"da": self._dropped_at, "a": self._clock()}
+        self._dropped_at = None
+        for cb in self._disconnection_listeners:
+            try:
+                cb(window)
+            except Exception:
+                logger.exception("disconnection_listener callback raised")
+
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
@@ -2454,11 +2508,13 @@ class HAClient:
         auth_wait = AUTH_RETRY_FIRST_S
         while True:
             pause = 0
+            authenticated = False
             try:
                 async with self._session.ws_connect(ws_url) as ws:
                     refusal = await self._authenticate(ws)
                     if refusal is None:
                         auth_wait = AUTH_RETRY_FIRST_S
+                        authenticated = True
                         await self._listen(ws)
                     else:
                         logger.error(
@@ -2474,6 +2530,14 @@ class HAClient:
                 pause = RECONNECT_DELAY_S
             finally:
                 self.ws_ready.clear()
+                # L'inizio della finestra di scollegamento: solo la caduta di
+                # una connessione autenticata, e solo la PRIMA di una finestra
+                # aperta. I tentativi falliti mentre Home Assistant e' giu' non
+                # la spostano, e nemmeno una connessione tornata e ricaduta
+                # prima che Home Assistant si dichiarasse avviato: l'add-on
+                # era gia' scollegato dalla prima caduta.
+                if authenticated and self._dropped_at is None:
+                    self._dropped_at = self._clock()
             if pause:
                 await asyncio.sleep(pause)
 
@@ -2534,6 +2598,18 @@ class HAClient:
             msg_id += 1
             await ws.send_json({"id": msg_id, "type": "subscribe_events",
                                 "event_type": event_type})
+        # La fine di una finestra di scollegamento: prima l'iscrizione a
+        # `STARTED_EVENT`, poi la domanda sullo stato del nucleo -- un avvio
+        # finito fra le due si legge `RUNNING` nella risposta, e l'evento non
+        # si perde. La domanda solo se c'e' una finestra aperta.
+        msg_id += 1
+        await ws.send_json({"id": msg_id, "type": "subscribe_events",
+                            "event_type": STARTED_EVENT})
+        config_request = None
+        if self._dropped_at is not None:
+            msg_id += 1
+            config_request = msg_id
+            await ws.send_json({"id": msg_id, "type": "get_config"})
         # Le integrazioni (Task 7): l'elenco intero arriva subito, poi i
         # cambi -- vedi CONFIG_ENTRIES_SUBSCRIPTION in cima al modulo.
         msg_id += 1
@@ -2559,13 +2635,32 @@ class HAClient:
                 continue
             data = msg.json()
             kind = data.get("type")
-            if kind == "result":
+            if kind == "result" and config_request is not None \
+                    and data.get("id") == config_request:
+                self._core_state_read(data)
+            elif kind == "result":
                 self._subscription_confirmed(data, states_subscription,
                                              entries_subscription)
             elif kind == "event" and data.get("id") == entries_subscription:
                 self._dispatch_integrations(data.get("event"))
             elif kind == "event":
                 self._dispatch_bus_event(data.get("event"))
+
+    def _core_state_read(self, data: dict) -> None:
+        """La risposta a `get_config` chiesta per chiudere la finestra: se il
+        nucleo e' `RUNNING` la finestra si chiude adesso, altrimenti la chiude
+        `STARTED_EVENT`. Una domanda rifiutata la chiude adesso, e lo dice:
+        restare aperta in attesa di un evento forse gia' passato la terrebbe
+        aperta fino alla prossima caduta."""
+        if not data.get("success"):
+            logger.warning("HA WebSocket: get_config rifiutata (%s): la finestra di "
+                           "scollegamento si chiude al ritorno del socket",
+                           data.get("error"))
+            self._close_disconnection()
+            return
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        if result.get("state") == RUNNING_STATE:
+            self._close_disconnection()
 
     def _subscription_confirmed(self, data: dict, states_subscription: int,
                                 entries_subscription: int) -> None:
@@ -2637,6 +2732,8 @@ class HAClient:
                     cb(event.get("data", {}))
                 except Exception:
                     logger.exception("plance_listener callback raised")
+        elif event_type == STARTED_EVENT:
+            self._close_disconnection()
         elif event_type == AUTOMATION_TRIGGERED_EVENT:
             # `event["data"]` porta almeno `entity_id` (vedi
             # AUTOMATION_TRIGGERED_EVENT): chi ascolta decide da solo cosa

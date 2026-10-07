@@ -25,11 +25,13 @@
   // che qualcuno verifica.
   "env": { "browser": true, "es2021": true },
 
-  // I 45 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
-  // 25 namespace pubblicati su `window` e 20 nomi nudi di `common.js` (18
-  // funzioni e due costanti: `SUBSCRIPTION_ONLY_COST_LABEL`, dal collaudo
-  // 3.22 C5, letta da `config/usage-route.js`, e `NOMI_REGISTRI`, letta da
-  // `config/dashboard.js`). Contati il 05/10/2026 dall'elenco qui sotto.
+  // I 48 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
+  // 25 namespace pubblicati su `window` e 23 nomi nudi di `common.js` (19
+  // funzioni e quattro costanti: `SUBSCRIPTION_ONLY_COST_LABEL`, dal collaudo
+  // 3.22 C5, letta da `config/usage-route.js`; `NOMI_REGISTRI`, letta da
+  // `config/dashboard.js`; `SOGLIE_ATTESA` e `FRASI_ATTESA`, con
+  // `stopwatchText`, lette dalla chat e dal «Rifalla» delle Proposte, attori
+  // Task 4.4). Contati il 06/10/2026 dall'elenco qui sotto.
   //
   // `common.js` dichiara altri nomi nudi che NON stanno qui, ed e' deliberato
   // -- `_setUsageText`, `_showUsageRows`, `savedTheme`, `THEME_KEY`, le due
@@ -98,14 +100,17 @@
     "fmtNum": "readonly",
     "isSubscriptionOnly": "readonly",
     "loadUsage": "readonly",
-    "SUBSCRIPTION_ONLY_COST_LABEL": "readonly"
+    "SUBSCRIPTION_ONLY_COST_LABEL": "readonly",
+    "SOGLIE_ATTESA": "readonly",
+    "FRASI_ATTESA": "readonly",
+    "stopwatchText": "readonly"
   },
   "rules": { "no-undef": "error" },
   "overrides": [
     {
       // La suite gira su Node e MONTA i globali del browser nel proprio realm
       // (vedi `tests/js/helpers/dom.mjs`): qui `process`/`global` esistono, e i
-      // 45 si scrivono invece di leggersi soltanto.
+      // 48 si scrivono invece di leggersi soltanto.
       "files": ["tests/js/**"],
       "env": { "browser": true, "es2021": true, "node": true },
       "globals": {

@@ -18,7 +18,7 @@ import json
 import pytest
 import pytest_asyncio
 
-from hiris.app.api.boundary import error_body, error_response
+from hiris.app.api.boundary import BODY_NOT_OBJECT, error_body, error_response
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
 
@@ -222,7 +222,7 @@ async def test_chat_input_refusals_speak_italian(bare_client):
     resp = await bare_client.post("/api/chat", data=b"{non json",
                                   headers={"Content-Type": "application/json"})
     assert resp.status == 400
-    assert await resp.json() == {"error": "Il corpo della richiesta non è JSON valido."}
+    assert await resp.json() == {"error": BODY_NOT_OBJECT}
     resp = await bare_client.post("/api/chat", json={"message": "   "})
     assert resp.status == 400
     assert await resp.json() == {
@@ -282,3 +282,55 @@ def test_unknown_id_sentence_is_written_once():
         "non ho nessuna promessa con quell’identificatore.")
     assert unknown_id_text("nessun servizio", by="quella chiave") == (
         "non ho nessun servizio con quella chiave.")
+
+
+# --- D-66, il corpo JSON letto in un posto solo --------------------------------
+
+@pytest.mark.asyncio
+async def test_nessuna_rotta_risponde_500_a_un_corpo_che_non_e_un_oggetto(bare_client):
+    """Rossa su `8529b30`: la chat, la consegna del ponte e i servizi
+    chiamavano `.get` su un corpo `[]` e rispondevano 500 (D-66). Le rotte si
+    chiedono al router, non si scrivono qui.
+
+    Mutazione ESEGUITA il 06/10/2026: `json_object` che accetta ogni JSON
+    senza guardare se e' un oggetto -- rossa, nominando le rotte che
+    rispondono 500."""
+    routes = [(m, p) for m, p in _api_routes(bare_client.app)
+              if m in ("POST", "PUT", "PATCH") and p != "/api/mcp"]
+    # La prova della derivazione: le rotte che ricevono un corpo sono molte.
+    assert len(routes) >= 10, routes
+    def _guasto(status):
+        return status >= 500 and status != 503
+
+    rotte_500 = []
+    for method, path in routes:
+        # Una rotta che cade anche con un oggetto vuoto cade per altro (qui
+        # mancano gli archivi): non e' il corpo a romperla.
+        resp = await bare_client.request(method, path, json={})
+        if _guasto(resp.status):
+            continue
+        for corpo in (b"[]", b"{non json"):
+            resp = await bare_client.request(
+                method, path, data=corpo, headers={"Content-Type": "application/json"})
+            if _guasto(resp.status):
+                rotte_500.append(f"{method} {path} {corpo!r} -> {resp.status}")
+    assert rotte_500 == []
+
+
+def test_il_corpo_si_legge_solo_dal_confine():
+    """Un posto solo legge il corpo di una richiesta (`boundary.json_object`).
+    Fa eccezione la rotta MCP, che parla JSON-RPC: un corpo storto li' e'
+    l'errore di protocollo -32700, non un rifiuto del confine HTTP."""
+    import ast
+    from pathlib import Path
+
+    api = Path(__file__).resolve().parents[1] / "hiris" / "app"
+    found = []
+    for path in sorted(api.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        found += [f"{path.relative_to(api).as_posix()}:{n.lineno}" for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "json"
+                  and getattr(n.func.value, "id", None) == "request"]
+    lettori = {f.split(":")[0] for f in found}
+    assert "api/boundary.py" in lettori, f"la ricerca e' rotta: {found}"
+    assert lettori - {"api/boundary.py", "api/handlers_mcp.py"} == set(), found

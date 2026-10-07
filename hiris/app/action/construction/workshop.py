@@ -39,7 +39,7 @@ import logging
 from ...chat_thread import ChatThread, unknown_id_text
 from ...home_space.historian import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
-from . import composer
+from . import composer, stakes
 from .advisor import STRUCTURES, consiglia
 
 logger = logging.getLogger(__name__)
@@ -223,8 +223,17 @@ class Workshop:
 
     async def propose(self, intent: dict, *, actor: str, exchange: str | None,
                       now: float, thread: ChatThread | None = None,
-                      reveal_before: bool = True) -> dict:
+                      reveal_before: bool = True,
+                      refuse_high: bool = False) -> dict:
         """Propone; non scrive.
+
+        `refuse_high` (attori, Task 4.5): una proposta di livello `alto` si
+        rifiuta invece di archiviarsi. Lo chiede «Rendila automatica»: un
+        oggetto che agisce da solo su serrature o allarme non chiederebbe
+        piu', e quelle chiedono sempre (`stakes.HIGH_UNATTENDED`); e nemmeno
+        uno che accende script, scene o automazioni, il cui contenuto non si
+        vede (`stakes.opaque_unattended`, G67-1). Il livello si calcola qui e
+        solo qui (`stakes_of`): il chiamante non lo ricalcola.
 
         `reveal_before` falso (chi propone non amministra, spec 2026-09-27, fix
         round 2 del Task 2): l'anteprima non descrive com'e' adesso
@@ -306,11 +315,19 @@ class Workshop:
         preview = self._preview(operation, domain, key, intent, prima, dopo,
                                 consiglio,
                                 reveal_before=reveal_before or domain not in _BODY_ADMIN_ONLY)
+        level = stakes_of(intent, domain, prima, dopo)
+        if refuse_high:
+            refusal = stakes.unattended_refusal(
+                level, acted_on(domain, prima, dopo),
+                self._ha.CONFIGURABLE_DOMAINS,
+                services=services_called(domain, prima, dopo))
+            if refusal is not None:
+                return {"errore": refusal}
         occurrence = self._store.propose(
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
             helper=list(intent.get("helper") or []), preview=preview,
-            now=now, thread=thread)
+            stakes=level, now=now, thread=thread)
         if "errore" in occurrence:
             return occurrence
         # Il motivo del consigliere vive nell'anteprima («Nota: ...»), che e'
@@ -318,6 +335,7 @@ class Workshop:
         # faceva leggere due volte al modello (C-53, Tappa 4). `consiglio`
         # porta il resto del verdetto.
         return {"proposta_id": occurrence["id"], "anteprima": preview,
+                "livello": level,
                 "consiglio": {k: v for k, v in consiglio.items() if k != "motivo"}}
 
     async def _free_key(self, domain: str, intent: dict) -> dict:
@@ -465,10 +483,10 @@ class Workshop:
         `thread` vero, ed e' li' che la restrizione morde.
         """
         if not proposal_id:
-            proposal_id, reason = self._only_pending(exchange, thread)
+            proposal_id, reason = self._only_pending(exchange, thread, now=now)
             if proposal_id is None:
                 return {"errore": reason}
-        proposal = self._store.read(proposal_id)
+        proposal = self._store.read(proposal_id, now=now)
         if proposal is None or not _thread_may_confirm(proposal, thread):
             # **Stesso testo per «non esiste» e «e' di un altro filo»**
             # (decisione 4, spec §5): un rifiuto non deve far capire che una
@@ -603,7 +621,7 @@ class Workshop:
                 "entita": entity, "avviso": notice}
 
     def _only_pending(self, exchange: str | None,
-                      thread: ChatThread | None) -> tuple[str | None, str]:
+                      thread: ChatThread | None, *, now: float) -> tuple[str | None, str]:
         """Quale proposta sta confermando chi ti sta parlando, quando non l'ha nominata.
 
         **Il difetto che chiude** (23/09/2026, misurato sulla casa vera): il
@@ -654,7 +672,7 @@ class Workshop:
         bruciando un posto sotto il tetto per un doppione. Il rifiuto
         rimanda alla pagina, senza nominarle (`_ORPHANS_ELSEWHERE`).
         """
-        all_pending = [r for r in self._store.list(pending_only=True)
+        all_pending = [r for r in self._store.list(now=now, pending_only=True)
                       if r["stato"] == "in_attesa"]
         pending = [r for r in all_pending
                   if thread is None or _same_thread(r, thread)]
@@ -1016,7 +1034,7 @@ class Workshop:
         rimette niente**: il «prima» di questa proposta e' il `dopo` di allora,
         e `apply` lo confronta con la casa (`_changed_since`, S-17).
         """
-        row = self._store.read(construction_id)
+        row = self._store.read(construction_id, now=now)
         if row is None:
             return {"errore": unknown_id_text("nessuna costruzione")}
         if row["stato"] != "applicata":
@@ -1037,7 +1055,8 @@ class Workshop:
         proposal = self._store.propose(
             operation=intent_operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=f"ripristino di {construction_id}", prima=row["dopo"],
-            dopo=dopo, helper=[], preview=preview, now=now)
+            dopo=dopo, helper=[], preview=preview,
+            stakes=stakes_of({}, domain, row["dopo"], dopo), now=now)
         if "errore" in proposal:
             return proposal
         if actor in HUMAN_ACTORS:
@@ -1156,7 +1175,38 @@ def _invalid_form(intent: dict) -> str | None:
     for entry in intent.get("helper") or []:
         if not isinstance(entry, dict) or not isinstance(entry.get("dominio"), str):
             return "ogni helper deve essere un dizionario con un «dominio» testuale."
-    return None
+    # Il livello (attori, strato 4, D13): il modello sceglie fra tre, e
+    # «alto» non e' suo. Si rifiuta, non si corregge: il motivo dice al
+    # modello che quella parola la mette il codice.
+    return stakes.stakes_refusal(intent.get("livello"))
+
+
+def stakes_of(intent: dict, domain: str, prima: dict | None,
+              dopo: dict | None) -> str | None:
+    """Il livello della proposta: quello che il modello ha scelto, o `alto`
+    se il «prima» o il «dopo» agiscono su un dominio della lista
+    (`stakes.HIGH_STAKES_DOMAINS`). I due lati, perche' togliere l'allarme
+    di notte conta quanto aggiungerlo. I servizi li trova l'estrattore unico
+    (`services_named`), sulla sola parte che agisce. Un servizio scritto come
+    modello e' `alto` anche lui (scelta del proprietario, 07/10/2026)."""
+    return stakes.impose(intent.get("livello"), acted_on(domain, prima, dopo),
+                         services=services_called(domain, prima, dopo))
+
+
+def acted_on(domain: str, prima: dict | None, dopo: dict | None) -> set[str]:
+    """I domini su cui il «prima» o il «dopo» agiscono: i servizi chiamati
+    li trova l'estrattore unico (`services_named`), sulla sola parte che
+    agisce. Lo leggono `stakes_of` e il rifiuto di «Rendila automatica»."""
+    return stakes.domains_acted_on(domain, prima, dopo,
+                                   services=services_called(domain, prima, dopo))
+
+
+def services_called(domain: str, prima: dict | None, dopo: dict | None) -> list[str]:
+    """I servizi che il «prima» o il «dopo» chiamano, sulla sola parte che
+    agisce (`services_named`): li leggono `acted_on` e il rifiuto di «Rendila
+    automatica», che guarda anche i nomi scritti come modello."""
+    return [service for body in (prima, dopo)
+            for service in services_named(stakes.acting_part(domain, body))]
 
 
 def _seme_da(intent: dict) -> int:
@@ -1183,6 +1233,14 @@ def _seme_da(intent: dict) -> int:
 _MAX_DEPTH = 50
 
 
+#: Le chiavi in cui Home Assistant scrive il nome del servizio di un passo:
+#: `action` (dal 2024.8), `service` (prima) e `service_template`, che accetta
+#: anch'essa un nome o un modello (`SERVICE_SCHEMA` in
+#: `homeassistant/helpers/config_validation.py`, ramo `dev`, letto il
+#: 06/10/2026; giro di revisione 69, G69-1).
+_SERVICE_KEYS = ("service", "action", "service_template")
+
+
 def services_named(body: dict | None) -> list[str]:
     """I servizi che questo corpo CHIAMA, nell'ordine in cui compaiono.
 
@@ -1199,6 +1257,8 @@ def services_named(body: dict | None) -> list[str]:
     prima c'era `service:`) e -- prima di `actions:` -- per la lista dei passi.
     Una stringa col punto e' un servizio, una lista e' un elenco: la posizione
     cambia da una versione all'altra di HA, il tipo no.
+    Un modello Jinja e' un servizio anche senza punto: il nome lo decide Home
+    Assistant quando il passo gira, e l'anteprima lo mostra com'e' scritto.
 
     Si **deduplica** (un'automazione che accende dieci luci chiama dieci volte
     lo stesso servizio, e dirlo dieci volte renderebbe illeggibile la riga che
@@ -1212,8 +1272,8 @@ def services_named(body: dict | None) -> list[str]:
             return
         if isinstance(node, dict):
             for key, value in node.items():
-                if (key in ("service", "action")
-                        and isinstance(value, str) and "." in value):
+                if (key in _SERVICE_KEYS and isinstance(value, str)
+                        and ("." in value or stakes.is_template(value))):
                     if value not in found:
                         found.append(value)
                     continue

@@ -141,7 +141,7 @@ async def _chat_turn(app) -> list[dict]:
         await dispatcher.dispatch("search", {"nome": "Sensore"}),
         await dispatcher.dispatch("search", {"genere": "area", "riferimento": "stanza_uno"}),
         await dispatcher.dispatch("search", {"genere": "dispositivo"}),
-        await dispatcher.dispatch("history", {"riferimento": ASKED, "genere": "stati",
+        await dispatcher.dispatch("history", {"riferimento": ASKED, "cosa": "stati",
                                               "ore": 24}),
     ]
 

@@ -22,6 +22,7 @@ import importlib
 from pathlib import Path
 
 from hiris.app.agent import runner as ponte
+from hiris.app.steering import PROPOSER_SPECIES, SPECIES
 
 RADICE = Path(__file__).resolve().parent.parent
 APP = RADICE / "hiris" / "app"
@@ -35,7 +36,7 @@ def _risolvi(nodo: ast.expr, spazio: dict):
     """Il valore del primo argomento di `.enqueue(`, chiesto al modulo vivo.
 
     Si risolve **nello spazio dei nomi del modulo che accoda**: un letterale
-    vale se stesso, `SCOPE_TURN_KIND` e `actuator_turn.ACTUATION_TURN_KIND`
+    vale se stesso, `SCOPE_TURN_KIND` e `proposer_turn.PROPOSAL_TURN_KIND`
     valgono cio' che valgono li'. Ricostruire gli import a mano sarebbe una
     seconda risoluzione dei nomi, cioe' un doppione di Python.
     """
@@ -53,23 +54,42 @@ def _risolvi(nodo: ast.expr, spazio: dict):
 
 def specie_accodate() -> dict[str, list[str]]:
     """`{specie: [dove]}` -- ogni `kind` che il codice accoda nella coda del
-    ragionamento, RICAVATO dal sorgente e non elencato."""
+    ragionamento, RICAVATO dal sorgente e non elencato.
+
+    Dalla Tappa 6 (Task 7) si accoda da un posto solo, `steering.enqueue_turn`,
+    che prende il `kind` dalla dichiarazione del mestiere: la specie accodata
+    e' il mestiere passato a ogni chiamata di `enqueue_turn`, risolto nel
+    modulo che accoda e tradotto nel suo `kind` dalle dichiarazioni."""
     trovate: dict[str, list[str]] = {}
     for percorso in sorted(APP.rglob("*.py")):
         albero = ast.parse(percorso.read_text(encoding="utf-8"))
         chiamate = [n for n in ast.walk(albero)
                     if isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Attribute)
-                    and n.func.attr == "enqueue"]
+                    and (getattr(n.func, "id", None) == "enqueue_turn"
+                         or getattr(n.func, "attr", None) == "enqueue_turn")]
         if not chiamate:
             continue
         spazio = vars(importlib.import_module(_modulo(percorso)))
         for chiamata in chiamate:
-            primo = (chiamata.args[0] if chiamata.args
-                     else next(k.value for k in chiamata.keywords if k.arg == "kind"))
+            mestiere = _risolvi(chiamata.args[1], spazio)
             dove = f"{percorso.relative_to(RADICE).as_posix()}:{chiamata.lineno}"
-            trovate.setdefault(_risolvi(primo, spazio), []).append(dove)
+            trovate.setdefault(SPECIES[mestiere].kind, []).append(dove)
     return trovate
+
+
+def test_si_accoda_solo_dalla_partenza_unica():
+    """Un `.enqueue(` fuori da `steering` sarebbe un accodamento che non
+    passa dalla dichiarazione del mestiere, e che la derivazione qui sopra
+    non vedrebbe: il cancello lo pretende assente."""
+    fuori = []
+    for percorso in sorted(APP.rglob("*.py")):
+        if percorso.relative_to(APP).as_posix() in ("steering.py", "reasoning/queue.py"):
+            continue
+        for n in ast.walk(ast.parse(percorso.read_text(encoding="utf-8"))):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "enqueue"):
+                fuori.append(f"{percorso.relative_to(APP).as_posix()}:{n.lineno}")
+    assert fuori == [], fuori
 
 
 def test_la_derivazione_trova_TUTTE_le_specie_che_si_accodano():
@@ -82,7 +102,7 @@ def test_la_derivazione_trova_TUTTE_le_specie_che_si_accodano():
     """
     trovate = specie_accodate()
     assert {"chat", "promessa", "scope", "ricetta", "analisi",
-            "attuazione"} <= set(trovate), (
+            "proposta"} <= set(trovate), (
         f"ho ricavato solo {sorted(trovate)}: la derivazione si e' rotta")
 
 
@@ -103,53 +123,22 @@ def test_ogni_specie_ACCODATA_e_ragionata_dal_ponte_e_ha_un_nome_nel_registro():
             "turni: il ponte lo spenderebbe senza che nessuno lo veda")
 
 
-class _ProcessoFinto:
-    """Cio' che `subprocess.run` restituirebbe, senza lanciare la CLI: una
-    prova unitaria non spende un turno dell'abbonamento."""
+def test_un_turno_del_PROPONENTE_arriva_al_ponte_coi_SUOI_strumenti():
+    """Fino al 06/10/2026 l'attuatore arrivava al ponte senza strumenti, come
+    sulla catena. Dal Task 4.2 (D12) il proponente ha i lettori e `propose`,
+    sulle due strade: il ponte li prende dalla dichiarazione del mestiere, e
+    il catalogo della chat -- `execute` compreso, la porta con cui HIRIS
+    accende e spegne -- resta fuori.
 
-    returncode = 1
-    stdout = ""
-    stderr = "la CLI non e' stata lanciata: e' una prova"
+    Mutazione ESEGUITA (06/10/2026): la dichiarazione del proponente col
+    catalogo della chat -- rossa (`execute` fra i nomi)."""
+    nomi = ponte.mcp_names(PROPOSER_SPECIES)
+    assert ponte.mcp_name("propose") in nomi
+    assert ponte.mcp_name("search") in nomi
+    for fuori in ("execute", "confirm", "remember", "promise", "compute"):
+        assert ponte.mcp_name(fuori) not in nomi, fuori
+    argv = ponte._chat_claude_args("sistema.txt", "sonnet", active_tools=True,
+                                   mcp_config="{}", species=PROPOSER_SPECIES)
+    assert argv[argv.index("--allowedTools") + 1] == ",".join(nomi)
 
 
-def test_un_turno_di_ATTUAZIONE_arriva_al_ponte_SENZA_strumenti(monkeypatch):
-    """Sulla catena l'attuatore chiama `runner.chat` senza strumenti: sul ponte
-    deve essere uguale. Non e' eleganza: col catalogo della chat avrebbe
-    `execute`, la porta con cui HIRIS accende e spegne, e un attore che per
-    contratto «non tocca la casa» potrebbe toccarla senza nessun si'.
-
-    Due fatti, e servono entrambi. Che la CLI venga lanciata dice che il turno
-    e' arrivato a `_reason_chat` e non al ramo della decisione vuota; che la
-    sonda non giri e che nell'argv non ci sia la `--mcp-config` dice che ci e'
-    arrivato senza strumenti. La spia risponde «strumenti presenti»: se fosse
-    interrogata, la `--mcp-config` finirebbe davvero nell'argv.
-
-    Mutazioni ESEGUITE: togliere `attuazione` da `RAGIONABILI` -- rossa (la
-    CLI non parte); toglierla da `_SELF_CONTAINED_KINDS` -- rossa (la sonda
-    gira).
-    """
-    lanci: list[list[str]] = []
-
-    def cli(argv, *a, **kw):
-        lanci.append(list(argv))
-        return _ProcessoFinto()
-
-    sondato = []
-
-    def spia(*a, **kw):
-        sondato.append(kw)
-        return True, ""
-
-    monkeypatch.setattr(ponte.subprocess, "run", cli)
-    monkeypatch.setattr(ponte, "probe_tools", spia)
-
-    ponte.reason(
-        {"kind": "attuazione", "job_id": "ja",
-         "context": {"model": "sonnet", "history": [{"role": "user", "content": "le osservazioni"}],
-                     "system_prompt": "sei l'attuatore",
-                     "istruzione": "Rispondi SOLO con un oggetto JSON."}},
-        "live", client=object(), base_url="http://127.0.0.1:8099")
-
-    assert lanci, "il turno di attuazione non e' arrivato al ponte"
-    assert sondato == [], "un turno di attuazione non ha strumenti da sondare"
-    assert all("--mcp-config" not in argv for argv in lanci)

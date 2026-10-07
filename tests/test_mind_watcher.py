@@ -1444,3 +1444,134 @@ def test_un_soggetto_che_cambia_solo_attributi_resta_fra_quelli_guardati(coppia)
 
     assert archivio.annotati == []
     assert "climate.camera_t" in {g["soggetto"] for g in osservatore.watching()}
+
+
+# ── il riallineamento alla riconnessione (06/10/2026) ──────────────────────
+#
+# Su un archivio VERO: il riallineamento confronta con l'ultima riga del
+# grezzo (`last_before`), e una finta che la ricopiasse proverebbe la finta.
+
+#: Il 24/08/2026 alle 10:00 UTC, e un istante di riferimento per l'orologio.
+_T = 1787565600.0
+
+
+def _iso_at(instant):
+    from datetime import UTC, datetime
+    return datetime.fromtimestamp(instant, UTC).isoformat()
+
+
+@pytest.fixture()
+def grezzo(tmp_path):
+    import os
+
+    from hiris.app.mind.store import ObservationsStore
+    store = ObservationsStore(os.path.join(str(tmp_path), "o.db"))
+    for eid in ("light.cucina", "climate.sala", "sensor.potenza"):
+        store.decide_scope(eid, inside=True, reason="prova", author="observer")
+    yield store
+    store.close()
+
+
+def _foto(eid, state, instant, **attributes):
+    """Uno stato come `get_states` lo manda: la fotografia della rilettura."""
+    return {"entity_id": eid, "state": state, "attributes": dict(attributes),
+            "last_changed": _iso_at(instant), "last_updated": _iso_at(instant)}
+
+
+def _righe(store, subject=None):
+    return [(r["soggetto"], r["da"], r["a"], r["quando_ts"])
+            for r in store.readings(from_ts=0, to_ts=float("inf"))
+            if subject is None or r["soggetto"] == subject]
+
+
+def test_il_riallineamento_scrive_il_cambio_perso_con_l_istante_di_home_assistant(grezzo):
+    """La cucina era accesa alle 9; mentre HIRIS era scollegato e' stata
+    spenta, e Home Assistant la dichiara `off` dalle 10:02. Alla riconnessione
+    la riga mancante entra nel grezzo, da `on` a `off`, all'istante che Home
+    Assistant dichiara -- non a quello in cui l'abbiamo saputo.
+
+    Mutazione ESEGUITA: `realign` che non scrive le entita' -- rossa."""
+    w = Watcher(grezzo, now=lambda: _T + 600)
+    grezzo.record(quando_ts=_T - 3600, source="entita", subject="light.cucina",
+                  da="off", a="on")
+    assert w.realign([_foto("light.cucina", "off", _T + 120)]) == 1
+    assert _righe(grezzo, "light.cucina")[-1] == ("light.cucina", "on", "off", _T + 120)
+
+
+def test_lo_stesso_stato_non_scrive_niente(grezzo):
+    """Il riavvio di Home Assistant muove `last_updated` anche a cio' che non
+    e' cambiato: lo stato uguale all'ultima riga non e' un cambio, e passa dal
+    cancello `da == a` del rubinetto."""
+    w = Watcher(grezzo, now=lambda: _T + 600)
+    grezzo.record(quando_ts=_T - 3600, source="entita", subject="light.cucina",
+                  da="off", a="on")
+    assert w.realign([_foto("light.cucina", "on", _T + 120)]) == 0
+    assert len(_righe(grezzo)) == 1
+
+
+def test_il_grezzo_piu_giovane_della_fotografia_vince(grezzo):
+    """Un evento vivo arrivato dopo l'iscrizione e prima della fotografia ha
+    gia' scritto lo stato nuovo: la fotografia, piu' vecchia, non lo smentisce.
+
+    Mutazione ESEGUITA: togliere il confronto `when <= row["quando_ts"]` --
+    rossa (una riga da `on` a `off` datata prima di quella che l'ha accesa)."""
+    w = Watcher(grezzo, now=lambda: _T + 600)
+    grezzo.record(quando_ts=_T + 200, source="entita", subject="light.cucina",
+                  da="off", a="on")
+    assert w.realign([_foto("light.cucina", "off", _T + 120)]) == 0
+    assert len(_righe(grezzo)) == 1
+
+
+def test_chi_non_ha_righe_o_e_fuori_dallo_scope_non_si_tocca(grezzo):
+    """Il confronto e' contro l'ultima riga vista: senza, non c'e' niente da
+    riallineare. E lo scope resta il cancello: un'entita' con righe vecchie ma
+    uscita dallo scope non torna nel grezzo per la porta di servizio."""
+    w = Watcher(grezzo, now=lambda: _T + 600)
+    grezzo.record(quando_ts=_T - 3600, source="entita", subject="light.fuori",
+                  da="off", a="on")
+    assert w.realign([_foto("climate.sala", "heat", _T + 120),
+                      _foto("light.fuori", "off", _T + 120)]) == 0
+    assert len(_righe(grezzo)) == 1
+
+
+def test_un_sensore_con_statistiche_non_si_riallinea(grezzo):
+    """La regola del rubinetto vale anche qui: cio' che Home Assistant
+    riassume nelle statistiche non si copia nel grezzo (spec §5.3)."""
+    w = Watcher(grezzo, now=lambda: _T + 600)
+    grezzo.record(quando_ts=_T - 3600, source="entita", subject="sensor.potenza",
+                  da="10", a="12")
+    assert w.realign([_foto("sensor.potenza", "40", _T + 120,
+                            state_class="measurement")]) == 0
+
+
+def test_la_finestra_diventa_due_righe_di_sistema(grezzo):
+    """La finestra misurata dal client entra nel grezzo come una condizione
+    di sistema: «scollegato» all'inizio, «chiuso» alla fine, sul soggetto che
+    la cronaca riconosce (`facts.DISCONNECTION_SUBJECT`)."""
+    from hiris.app.mind.facts import DISCONNECTION_SUBJECT
+    w = Watcher(grezzo, now=lambda: _T + 600)
+    assert w.record_disconnection({"da": _T, "a": _T + 180}) == 2
+    assert [(r["fonte"], r["soggetto"], r["a"], r["quando_ts"])
+            for r in grezzo.readings(from_ts=0, to_ts=float("inf"))] == [
+        ("sistema", DISCONNECTION_SUBJECT, "scollegato", _T),
+        ("sistema", DISCONNECTION_SUBJECT, "chiuso", _T + 180)]
+    # Chiusa nella stessa scrittura: al riavvio dell'add-on nessuna
+    # condizione di sistema resta aperta.
+    w2 = Watcher(grezzo)
+    w2.rebuild_conditions()
+    assert w2._conditions == set()
+
+
+def test_il_riallineamento_non_solleva_mai(grezzo):
+    """Come il rubinetto: un archivio che non risponde perde il
+    riallineamento, non ferma chi l'ha chiamato (l'ascoltatore della
+    riconnessione)."""
+    class Rotto:
+        def record(self, **kw):
+            raise RuntimeError("archivio rotto")
+
+        def last_before(self, *a, **kw):
+            raise RuntimeError("archivio rotto")
+
+    assert Watcher(Rotto()).realign([_foto("light.cucina", "off", _T)]) == 0
+    assert Watcher(Rotto()).record_disconnection({"da": _T, "a": _T + 1}) == 0

@@ -1,28 +1,16 @@
-"""«Rifalla» non preleva più in silenzio (reperto C-5b, 23/09/2026).
+"""«Rifalla» e la porta da cui passa (reperto C-5b del 23/09/2026, chiuso
+dal Task 4.4 degli attori, D16).
 
-**Il difetto.** `steering.py` dichiara, dal 22/08/2026, che «le porte chiedono
-alla stessa funzione, e una terza porta che nascesse domani non potrebbe
-inventarsene una terza senza accorgersene». «Rifalla» è nata dopo, e se n'è
-inventata una: chiamava `runner.chat` diretto, senza passare da `who_answers`.
+Fino al 06/10/2026 «Rifalla» andava SEMPRE alla catena, e col piano acceso
+lo diceva: «il piano e' acceso, ma questo giro risponde subito». Adesso e' un
+turno del proponente dalla partenza unica: **col piano acceso va sul ponte**,
+e la frase della porta sincrona e' uscita con il motivo che la giustificava.
 
-Su una casa che gira **interamente sul Piano Max** — che è il caso di chi ha
-scelto il forfait — ogni «Rifalla» andava alla catena, cioè a consumo, senza
-che niente lo dicesse. È lo stesso difetto pagato dal vivo il 21/08 sulle
-promesse, e la regola del proprietario del 13/08 è che **il passaggio dal
-forfait al consumo si annuncia ogni volta**.
+Restano i due casi della catena, che non vanno confusi:
 
-**Due casi distinti, e non vanno confusi.**
-
-- Il piano *non può* rispondere (token assente, tetto pieno): è il ripiego che
-  le altre porte già dichiarano, con le sue tre parole di vocabolario.
-- Il piano *può* rispondere ma questa porta non lo usa: «Rifalla» risponde
-  **subito** e il piano risponde in differita. Non è un guasto del piano, ed è
-  una frase diversa — dire «il piano non ha risposto» sarebbe falso.
-
-**Cosa NON si fa qui**: mandare «Rifalla» sul ponte. Sarebbe la forma giusta,
-e costa una fetta sua (il bottone smette di rispondere e la pagina deve
-interrogare). Sta in `docs/BACKLOG.md` con questa ragione accanto; fino ad
-allora il giro si paga a consumo, e **si dice**.
+- il piano *non puo'* rispondere (token assente, tetto pieno): e' il ripiego,
+  e si dichiara con le parole di vocabolario delle altre porte;
+- il piano non c'e': non si dice niente.
 """
 import json
 import sys
@@ -38,9 +26,14 @@ from hiris.app.mind.store import ObservationsStore
 
 
 class _Modello:
+    """Il proponente che rifa' la proposta: la forma dei suoi esiti
+    (`proposer_turn.ANSWER_CONTRACT`)."""
+
     async def chat(self, **kwargs):
-        return json.dumps({"testo": "Sposta la lavatrice dopo le 14",
-                           "perche": "cosi' cade nelle ore di sole"})
+        return json.dumps({"esiti": [{
+            "osservazione": 0, "esito": "a_mano",
+            "testo": "Sposta la lavatrice dopo le 14",
+            "perche": "cosi' cade nelle ore di sole"}]})
 
 
 class _Registro:
@@ -56,6 +49,10 @@ class _Registro:
 class _Coda:
     def count_exchanges_today(self):
         return 0
+
+    def latest(self, kind, **kw):
+        """Nessun rifacimento in volo (`proposal_redo.state`)."""
+        return
 
 
 def _piano_acceso(monkeypatch) -> None:
@@ -90,6 +87,8 @@ def _richiesta(app, ident, corpo):
             # cancello al confine ha letto (`soffitto.request_role`).
             self._valori = {"soggetto": AMMINISTRATORE, "auth_via": "ingress",
                             "ruolo": "amministratore"}
+            # `aiohttp.web.BaseRequest.body_exists` (`api/boundary.json_object`).
+            self.body_exists = corpo is not None
 
         async def json(self):
             return corpo
@@ -109,7 +108,7 @@ def casa(tmp_path):
         text="Sposta la lavatrice nel primo pomeriggio",
         perche="il prelievo si concentra la mattina",
         fingerprint="dev1|prelievo|None|1",
-        prova={"base": 19}, chi_applica="tu", now_ts=100.0)
+        prova={"base": 19}, stakes=None, now_ts=100.0)
     app = {
         "observations": store,
         "llm_router": _Modello(),
@@ -139,41 +138,33 @@ async def _rifai(app, ident):
 
 
 @pytest.mark.asyncio
-async def test_col_piano_ACCESO_il_giro_dichiara_di_essere_passato_a_consumo(
+async def test_col_piano_ACCESO_il_giro_va_sul_PONTE_e_non_preleva(
         casa, monkeypatch):
-    """**Il reperto.** Il piano e' acceso e potrebbe rispondere; «Rifalla» non
-    lo usa e paga a consumo. Prima non lo diceva nessuno.
+    """**Il reperto, chiuso.** Col piano acceso il giro non passa piu' dalla
+    catena a consumo: si accoda al ponte, e la rotta risponde 202 senza aver
+    chiamato nessun modello.
 
-    Mutazione ESEGUITA: non chiamare `who_answers` -- rossa."""
-    app, _store, ident = casa
+    Mutazione ESEGUITA (06/10/2026): `redo` che ignora la strada e va sempre
+    alla catena -- rossa (503: sul ponte la partenza unica non da' un runner
+    della catena, e il giro non si accoda)."""
+    app, store, ident = casa
     app["bridge_active"] = True
     _piano_acceso(monkeypatch)
+    accodati = []
+
+    class _CodaVera(_Coda):
+        def enqueue(self, kind, wake, context, deadline_ts, **kw):
+            accodati.append((kind, wake))
+            return "job-1"
+
+    app["reasoning_queue"] = _CodaVera()
 
     risposta, corpo = await _rifai(app, ident)
 
-    assert risposta.status == 200
-    assert corpo["nota"], "il giro e' passato a consumo e non l'ha detto"
-    assert "consumo" in corpo["nota"]
-    assert "Claude API" in corpo["nota"], "non dice CHI ha risposto al suo posto"
-
-
-@pytest.mark.asyncio
-async def test_e_NON_dice_che_il_piano_ha_fallito(casa, monkeypatch):
-    """La meta' che distingue le due frasi: il piano sta benissimo, e' la porta
-    che non lo usa. Una nota che dicesse «il piano non ha risposto» manderebbe
-    il proprietario a cercare un guasto che non c'e' -- lo stesso difetto che
-    `downgrade_note` documenta per gli avvisi di `esegui`.
-
-    Mutazione ESEGUITA: riusare `downgrade_note` per questo caso -- rossa."""
-    app, _store, ident = casa
-    app["bridge_active"] = True
-    _piano_acceso(monkeypatch)
-
-    _risposta, corpo = await _rifai(app, ident)
-
-    assert "non ha risposto" not in corpo["nota"]
-    assert "subito" in corpo["nota"], (
-        "non dice PERCHE' il piano non e' stato usato: risponde in differita")
+    assert risposta.status == 202
+    assert accodati and accodati[0][1]["proposta"] == ident
+    assert "nota" not in corpo
+    assert store.proposals()[0]["giri"] == [], "sul ponte il giro arriva dopo"
 
 
 @pytest.mark.asyncio
@@ -211,14 +202,14 @@ async def test_senza_piano_NON_si_dice_niente(casa):
 
 
 @pytest.mark.asyncio
-async def test_la_proposta_si_riscrive_comunque(casa, monkeypatch):
+async def test_col_ripiego_la_proposta_si_riscrive_comunque(casa, monkeypatch):
     """La dichiarazione non e' un rifiuto: il giro si fa, la proposta si
-    riscrive. Togliere una funzione al proprietario per dirgli che costa
-    sarebbe un'altra cosa, e non e' questa.
+    riscrive.
 
-    Mutazione ESEGUITA: rifiutare col piano acceso -- rossa."""
+    Mutazione ESEGUITA: rifiutare col ripiego -- rossa."""
     app, store, ident = casa
     app["bridge_active"] = True
+    app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
     _piano_acceso(monkeypatch)
 
     _risposta, _corpo = await _rifai(app, ident)

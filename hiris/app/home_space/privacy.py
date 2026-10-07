@@ -15,9 +15,12 @@ profondita' -- decisione del proprietario, 29/09/2026:
 """
 from __future__ import annotations
 
+import re
+
 from ..proxy.entity_cache import CREDENTIALS
 from .ha_vocabulary import domain_of
 from .queries import WITHHELD_BASKET
+from .reference import NO_SLUG, slugify
 from .type_vocabulary import domains_by_genre, unknown_states
 
 #: I due soli domini il cui genere e' "presenza", ricavati dalla dichiarazione
@@ -164,3 +167,180 @@ def cover_automation_body(entry: dict, *, kind: str) -> dict:
     if kind != "automazione" or entry.get("corpo") is None:
         return entry
     return {**entry, "corpo": None, "corpo_non_disponibile": AUTOMATION_BODY_ADMIN_ONLY}
+
+
+# ── I nomi delle persone verso un attore (decisione 12, estesa il 06/10/2026)
+
+#: Il segno del SEGNAPOSTO che prende il posto di un identificatore che porta
+#: il nome di una persona (decisione 12 della spec «Una fonte sola di
+#: verita'», Tappa 6, Task 6, 05/10/2026). Il `#` non puo' collidere con
+#: un'entita' vera: Home Assistant ammette nell'object_id solo cifre,
+#: minuscole e `_` (`homeassistant/core.py`, `_OBJECT_ID`, Core 2026.9.3,
+#: letto il 05/10/2026). Viveva in `mind/observer.py` fino al 06/10/2026.
+PRESENCE_MARK = "#"
+
+
+def handles(ids) -> dict[str, str]:
+    """`entity_id` -> segnaposto `<dominio>.#N`, numerato dominio per dominio
+    nell'ordine degli id: cio' che lo rende ricostruibile, a partire dallo
+    stesso insieme, senza archiviare una tabella di corrispondenze."""
+    out: dict[str, str] = {}
+    counters: dict[str, int] = {}
+    for entity_id in sorted(ids):
+        domain = domain_of(entity_id)
+        counters[domain] = counters.get(domain, 0) + 1
+        out[entity_id] = f"{domain}.{PRESENCE_MARK}{counters[domain]}"
+    return out
+
+
+def person_bound(house) -> tuple[list[str], list[str]]:
+    """`(entita', dispositivi)` che portano il nome di una persona: le
+    presenze (`MOVING_DOMAINS`: `person` e i `device_tracker`) e, per ogni
+    dispositivo che porta una presenza, TUTTE le sue entita' -- la batteria
+    del telefono, accanto al suo tracker -- e quelle il cui id porta il nome
+    di una persona (`named_after_person`, G26-1).
+
+    Il legame si chiede a Home Assistant, non si indovina dai nomi: e' il
+    `device_id` del registro delle entita' (`config/entity_registry/list`),
+    che l'anagrafe tiene come `dispositivo_id` (`House.device_entities`).
+    Decisione del proprietario del 06/10/2026 («Segnaposto», dopo la misura
+    del Task 3.0, Passo 4: `search` portava un nome di persona in 4 risposte
+    su 35, quasi sempre dentro il nome di un'entita')."""
+    moving = {e for e in house.entity_ids() if domain_of(e) in MOVING_DOMAINS}
+    devices = [d for d in house.device_ids()
+               if any(e["id"] in moving for e in house.device_entities(d))]
+    sisters = {e["id"] for d in devices for e in house.device_entities(d)}
+    return sorted(moving | sisters | named_after_person(house)), devices
+
+
+def named_after_person(house) -> set[str]:
+    """Le entita' il cui `entity_id` porta il nome di una persona: un
+    `automation.paolo_arriva_a_casa`, un `input_boolean.giulia_in_ferie`, un
+    sensore senza dispositivo (G26-1, giro 26 della revisione, 06/10/2026).
+
+    Nessun legame del registro le unisce alla persona -- non hanno il suo
+    dispositivo -- ma l'id porta il nome, e `search` e `history` restituiscono
+    gli id. Il nome e' quello delle persone dichiarate in Home Assistant
+    (`person.*`), col loro object_id, nella forma che Home Assistant stesso
+    ne ricava per un id
+    (`reference.slugify`, la replica di `homeassistant.util.slugify`): uno o
+    piu' pezzi interi dell'object_id, fra un `_` e l'altro, mai un pezzo di
+    parola («paolone» non e' «paolo»). Un nome che non da' uno slug (un
+    alfabeto che la replica non traslittera: `"unknown"`) non copre niente,
+    invece di coprire ogni id con «unknown» dentro.
+
+    **Limiti dichiarati** (decisione del proprietario del 06/10/2026, «Solo
+    nome intero», dopo il giro 28 della revisione):
+    - **i pezzi di un nome in piu' parole non si coprono da soli.** «Paolo
+      Bets» nata `person.paolo_bets` non copre `automation.paolo_arriva`, e
+      «Paolo» da solo in un testo passa. Coprire ogni pezzo prenderebbe anche
+      le particelle («de», «di», «la»), e per evitarlo servirebbe un elenco
+      o una soglia nostri. Quante persone della casa hanno un nome in piu'
+      parole, e quanti id ne portano un pezzo solo, l'ha misurato lo sprint
+      sugli ingressi del 03/10/2026: nessuna persona col nome in piu'
+      parole, 76 id coperti, 0 id con un pezzo solo;
+    - **un nome che e' anche una parola** («Sole») copre gli id che la
+      contengono (`sensor.sole_elevazione`): informazione tolta, non una
+      fuga, e `unmask` riporta l'id;
+    - **lo slug e' quello della replica** (`reference.slugify`): «Strauß» da'
+      «strau», dove `python-slugify` di Home Assistant da' «strauss»."""
+    slugs = set()
+    for person in house.entity_ids():
+        if domain_of(person) != "person":
+            continue
+        # Il nome dichiarato e l'object_id della persona (G28-1, giro 28):
+        # l'object_id e' cio' che Home Assistant ha ricavato dal nome quando
+        # la persona e' nata, e vale anche quando il nome amichevole manca
+        # (`House.name` ripiega sull'id, che non e' un nome).
+        name = house.name("entita", person)
+        for text in {name if name != person else "", person.partition(".")[2]}:
+            slug = slugify(text)
+            if slug and slug != NO_SLUG:
+                slugs.add(slug)
+    if not slugs:
+        return set()
+    pieces = re.compile(rf"(?:^|_)(?:{'|'.join(map(re.escape, slugs))})(?:_|$)")
+    return {e for e in house.entity_ids()
+            if pieces.search(e.partition(".")[2])}
+
+
+class PresenceMask:
+    """Il filtro dei nomi delle persone **per le risposte degli strumenti di un
+    attore** (decisione 12 estesa: «Segnaposto», 06/10/2026). La chat resta
+    com'e': qui passa solo il guardiano di un mestiere di sfondo
+    (`mind/analyst_turn.AnalystDispatcher`).
+
+    `mask` sostituisce, a ogni profondita' e anche nelle chiavi, l'id di
+    un'entita' legata a una persona (`person_bound`) col suo segnaposto, e
+    con lo stesso segnaposto il suo nome; il nome di un suo dispositivo
+    diventa `dispositivo.#N`. `unmask` riporta i segnaposto agli id veri
+    negli argomenti che il modello manda: il turno legge la cosa giusta senza
+    averne mai visto il nome.
+
+    Un nome si sostituisce solo intero (non dentro un'altra parola), e prima
+    i piu' lunghi: «iPhone di Paolo Batteria» diventa un segnaposto solo,
+    non «dispositivo.#1 Batteria». **Senza badare alle maiuscole** (G26-1,
+    giro 26 della revisione): il nome e' quello che Home Assistant dichiara,
+    ma una risposta lo puo' portare scritto «paolo» o «PAOLO» -- e resta il
+    suo nome. Gli id e i segnaposto, che sono gia' in minuscolo per Home
+    Assistant (`_OBJECT_ID`), si confrontano allo stesso modo senza danno."""
+
+    def __init__(self, house) -> None:
+        ids, devices = person_bound(house)
+        self.handles = handles(ids)
+        words: dict[str, str] = {}
+        for entity_id, handle in self.handles.items():
+            words[entity_id] = handle
+            name = house.name("entita", entity_id)
+            if name and name != entity_id:
+                words.setdefault(name, handle)
+        for number, device_id in enumerate(devices, start=1):
+            name = house.name("dispositivo", device_id)
+            if name and name != device_id:
+                words.setdefault(name, f"dispositivo.{PRESENCE_MARK}{number}")
+        self._mask = _alternation(words)
+        back = {handle: entity_id for entity_id, handle in self.handles.items()}
+        self._unmask = _alternation(back, after=r"(?!\d)")
+
+    def mask(self, value):
+        return _replace(value, self._mask)
+
+    def unmask(self, value):
+        return _replace(value, self._unmask)
+
+
+def _alternation(words: dict[str, str], *, after: str = r"(?!\w)"):
+    """`(espressione, valori)`: un'espressione sola per tutte le parole, le
+    piu' lunghe prima, ognuna solo intera e in qualunque maiuscolo; `None` se
+    non c'e' niente da sostituire.
+
+    **Ogni forma e' un gruppo con nome, e il valore lo dice il gruppo**
+    (`m.lastgroup`), mai una ricerca del testo trovato in un dizionario
+    (G27-1 e G27-2, giro 27 della revisione, 06/10/2026). Per ogni parola le
+    forme sono due, quella dichiarata e quella `casefold`, perche'
+    `re.IGNORECASE` usa le corrispondenze semplici e `casefold` quelle
+    piene: «Strauß» diventa «strauss» (che non trova «Strauß»), e «IŞIL»
+    cercato come «işil» dava `KeyError`. Con le due forme fra le alternative,
+    «Strauß», «STRAUSS» e «strauss» si coprono tutti, e niente solleva."""
+    if not words:
+        return None
+    forms = sorted({(form, value) for word, value in words.items()
+                    for form in (word, word.casefold())},
+                   key=lambda pair: (-len(pair[0]), pair[0]))
+    alternatives = "|".join(f"(?P<w{i}>{re.escape(form)})"
+                            for i, (form, _value) in enumerate(forms))
+    pattern = re.compile(rf"(?<![\w.#])(?:{alternatives}){after}", re.IGNORECASE)
+    return pattern, [value for _form, value in forms]
+
+
+def _replace(value, matcher):
+    if matcher is None:
+        return value
+    if isinstance(value, str):
+        pattern, values = matcher
+        return pattern.sub(lambda m: values[int(m.lastgroup[1:])], value)
+    if isinstance(value, dict):
+        return {_replace(k, matcher): _replace(v, matcher) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_replace(item, matcher) for item in value]
+    return value

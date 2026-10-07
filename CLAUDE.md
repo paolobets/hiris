@@ -274,7 +274,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     │                   CONFIGURAZIONE — composer.py, advisor.py, revisions.py
     ├── mind/           il cervello: osservatore (observer, watcher, scope, facts, report),
     │                   sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
-    │                   analista (analyst, analyst_turn), attuatore (actuator, actuator_turn)
+    │                   analista (analyst, analyst_turn), proponente (actuator, proposer_turn)
     ├── memory/         cio' che le persone hanno detto: store, interpretation, resolver
     ├── keeper/         le promesse dell'utente: promise, store, sweeper, exchange, outcome
     ├── agent/          runner.py (il lavoratore del ponte: polla la coda) + prompts.py
@@ -428,9 +428,13 @@ intervalli fissi erano diventati ciechi, e la prova restava verde.
 
 **Il conteggio delle prove JS e' un fatto che si confronta** (Paolo, 05/10/2026). Una `npm test`
 che raccoglie meno prove del giro prima, senza nessuna rossa, non e' verde: e' una suite che ha
-smesso di guardare qualcosa. La verifica confronta il numero di prove raccolte con quello del giro
-precedente e lo dice quando scende (la causa del conteggio instabile e lo strumento: BACKLOG,
-Tappa 8).
+smesso di guardare qualcosa. `npm test` lo confronta da se': il reporter
+`tests/js/helpers/conteggio-prove.mjs` conta le prove per file, le confronta con il giro prima su
+questo clone e, se un file ne porta meno, lo nomina e fa uscire la corsa con 1. Il conto sceso non
+si salva, quindi rilanciare non lo zittisce: se le prove le hai tolte tu, `HIRIS_PROVE_JS_OK=1 npm
+test` lo accetta (il valore accettato e' esattamente `1`). La causa del
+conteggio instabile del 05/10 (le scritture di coda perse con `--test-force-exit`) e la sua
+correzione stanno in `tests/js/helpers/uscita-intera.mjs`.
 
 **E si deriva la proprieta', non la forma.** Il cancello dei giudizi pretendeva la parola chiave
 `judgments=`; sette chiamate corrette la passavano per posizione. Un cancello che chiama sbagliato
@@ -503,6 +507,11 @@ Il linter c'è, ed è entrato **così**: `ruff` per il Python (configurazione in
 `oxlint` per il JavaScript (`npm run lint`), nel pre-push a **ogni** push e nella CI accanto alla
 suite. Il 26 agosto 2026 il progetto non ne aveva nessuno, e questo paragrafo lo dichiarava come
 debito. `mypy` e un formattatore non ci sono: non si pretende ciò che nessuno strumento controlla.
+
+**Niente di nuovo dentro `server.py`** (il proprietario, 06/10/2026). Un giro nuovo nasce in
+`mind/`, una rotta nuova in un `api/handlers_*`, un pezzo d'avvio in una funzione con nome fuori da
+`_on_startup`. `server.py` registra e avvia: non ospita. Lo spezzettamento di ciò che c'è già ha
+la sua voce nel BACKLOG («`server.py` si spezza alla Chiusura dello sprint»).
 
 ### Il debito dichiarato: la rinomina in inglese
 

@@ -7,7 +7,9 @@ tolleravano il testo intorno al JSON (la staccionata, poi la ricerca per
 parentesi), gli altri due toglievano solo una staccionata **iniziale**. Una
 risposta come «Ecco l'analisi: {...}» era buona per le ricette e illeggibile per
 l'analista. Un quinto lettore, gemello degli ultimi due, viveva nel «Rifalla»
-delle proposte (`api/handlers_proposals._read_proposal`).
+delle proposte (`api/handlers_proposals._read_proposal`), ed e' uscito col
+Task 4.4 degli attori: il «Rifalla» e' un turno del proponente, e legge con
+`proposer_turn.apply_outcomes`.
 
 Queste prove chiedono a OGNI mestiere di accettare cio' che gli altri
 accettano. Sono scritte sul comportamento del mestiere -- la funzione che
@@ -19,21 +21,19 @@ import json
 
 import pytest
 
-from hiris.app.api import handlers_proposals
-from hiris.app.mind import actuator_turn, analyst_turn, observer
+from hiris.app.mind import analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
-from tests.test_mind_actuator_turn import _osservazioni as osservazioni_attuatore
 from tests.test_mind_analyst_turn import _serie as serie_analista
 from tests.test_mind_recipe_turn import CASA, RICETTA_BUONA
+from tests.test_proponente import osservazioni as osservazioni_proponente
 
 DECISIONI = [{"id": "climate.camera_t", "dentro": True, "motivo": "scalda"}]
 ANALISI = {"osservazioni": [{"quale": 0, "innesco": 1,
                              "cosa": "il prelievo e' salito", "spiegato": None,
                              "cosa_cambierebbe": "meno prelievo, meno spesa"}]}
-ATTUAZIONE = {"esiti": [{"osservazione": 0, "gesto": "indagine",
-                         "trovato": "il sensore era fermo"}]}
-PROPOSTA = {"testo": "spegni lo scaldabagno alle 23", "perche": "costa meno"}
+ESITI_PROPONENTE = {"esiti": [{"osservazione": 0, "esito": "niente",
+                               "perche": "il sensore era fermo"}]}
 
 
 def _osservatore(testo):
@@ -54,21 +54,16 @@ def _analista(testo):
     return analyst_turn.apply_analysis(serie_analista(), testo)["problemi"] == []
 
 
-def _attuatore(testo):
-    return actuator_turn.apply_actuation(osservazioni_attuatore(),
-                                         testo)["problemi"] == []
-
-
-def _rifalla(testo):
-    return handlers_proposals._read_proposal(testo)[0] == PROPOSTA["testo"]
+def _proponente(testo):
+    return proposer_turn.apply_outcomes(osservazioni_proponente()[:1],
+                                        testo)["problemi"] == []
 
 
 MESTIERI = {
     "osservatore": (DECISIONI, lambda t, _p: _osservatore(t)),
     "ricette": (RICETTA_BUONA, _ricette),
     "analista": (ANALISI, lambda t, _p: _analista(t)),
-    "attuatore": (ATTUAZIONE, lambda t, _p: _attuatore(t)),
-    "rifalla": (PROPOSTA, lambda t, _p: _rifalla(t)),
+    "proponente": (ESITI_PROPONENTE, lambda t, _p: _proponente(t)),
 }
 
 #: Le forme che un modello usa davvero per incorniciare il JSON. Ognuna e'

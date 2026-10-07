@@ -1,9 +1,10 @@
-"""Runner hiris-agent: polla la coda di ragionamento HIRIS e ragiona (mock|live).
+"""Runner hiris-agent: prende i turni dalla coda di ragionamento HIRIS e li ragiona (mock|live).
 
-Gira dentro l'add-on (`run_loop`, avviato da `server.py`). La credenziale di
-TURNO -- coniata da `server.py`, vive dieci minuti (`api/credenziali.PONTE_S`)
--- serve all'HTTP verso la reasoning API (`/api/reasoning/claim` e
-`/api/reasoning/submit`) e alla rotta degli strumenti (`/api/mcp`).
+Gira dentro l'add-on (`run_loop`, avviato da `server.py`), e la coda la legge
+direttamente: si sveglia quando un turno viene accodato, non la interroga a
+intervalli (A-23). La credenziale di TURNO -- coniata da `server.py`, vive
+dieci minuti (`api/credenziali.PONTE_S`) -- serve alla rotta degli strumenti
+(`/api/mcp`), che la CLI chiama da un altro processo.
 
 **Cosa puo' il ponte.** LEGGE la casa e la memoria e puo' AGIRE su di essa,
 con lo stesso catalogo della chat sincrona (`home_space/tools.KNOWLEDGE_TOOLS`):
@@ -81,17 +82,8 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
-from ..home_space.tools import KNOWLEDGE_TOOLS
-from ..keeper.exchange import promise_tools
-from ..mind.actuator_turn import ACTUATION_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
-from ..steering import (
-    ACTUATOR_SPECIES,
-    ANALYST_SPECIES,
-    OBSERVER_SPECIES,
-    PROMISE_SPECIES,
-    RECIPES_SPECIES,
-)
+from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens
 from . import prompts
 
@@ -150,26 +142,38 @@ def _mcp_server_name() -> str:
     return MCP_SERVER_NAME
 
 
-def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
+def mcp_name(tool: str) -> str:
+    """Il nome con cui il modello vede `tool` sul ponte: la CLI prefissa ogni
+    strumento col nome del server (`search` -> `mcp__hiris__search`). Una
+    funzione sola per l'argv (`mcp_names`) e per il testo della guida
+    (`prompts.guide_with_tools`): fino al 06/10/2026 il testo ricopiava il
+    prefisso a mano, una volta per strumento (D-57)."""
+    return f"mcp__{_mcp_server_name()}__{tool}"
+
+
+def mcp_names(species: str = "chat") -> tuple[str, ...]:
     """I nomi che il modello vede DAVVERO, derivati dal catalogo.
 
     Attraverso MCP la CLI prefissa ogni strumento col nome del server: `search`
     diventa `mcp__hiris__search`, ed e' quello -- non il nome nudo -- cio' che il
     modello legge nell'elenco e cio' che `--allowedTools` deve permettere.
 
-    Si DERIVA da `KNOWLEDGE_TOOLS`: un elenco di stringhe scritto a mano
+    Si DERIVA dal catalogo del mestiere (`steering.Species.catalog`, che per
+    la chat e' `KNOWLEDGE_TOOLS`): un elenco di stringhe scritto a mano
     qui sarebbe il SECONDO catalogo, l'errore che l'intera fetta E2 e' esistita
     per chiudere (tre cataloghi divergenti della stessa cosa). Cosi' uno
     strumento che entra o esce da `home_space/tools.py` arriva qui da solo.
 
     E' una funzione e non una costante di modulo: il catalogo dipende dal
-    turno (`by_promise`), e il prefisso dal nome del server, che si legge con
+    turno (`species`), e il prefisso dal nome del server, che si legge con
     l'import differito qui sopra."""
-    prefix = f"mcp__{_mcp_server_name()}__"
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
     # promessa vede i lettori di `SOLA_LETTURA` piu'
     # `conclude` -- e i due elenchi non sono l'uno il sottoinsieme dell'altro:
-    # `conclude` esiste solo di la', `execute` solo di qua.
+    # `conclude` esiste solo di la', `execute` solo di qua. Dal 06/10/2026
+    # (attori, Task 3.6) lo dice la dichiarazione del mestiere, non piu' un
+    # «promessa si' o no»: un terzo mestiere con strumenti avrebbe ricevuto
+    # i nomi della chat.
     #
     # Difetto trovato dalla VERIFICA LIVE della 3.10.0: la fetta «le promesse
     # seguono la catena» aveva reso il catalogo per-turno nella rotta MCP e
@@ -177,12 +181,12 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     # cinque, `verify_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `conclude`, cioe' senza nessun modo di finire.
-    definitions = promise_tools() if by_promise else KNOWLEDGE_TOOLS
-    return tuple(f"{prefix}{d['name']}" for d in definitions)
+    return tuple(mcp_name(name) for name in SPECIES[species].tools_for_turn())
 
 
 def config_mcp(base_url: str, token: str, exchange_id: str = "",
-               promise_id: str = "", chat_job_id: str = "") -> str:
+               promise_id: str = "", chat_job_id: str = "",
+               work_id: str = "") -> str:
     """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
 
     `exchange_id` (Task 6 della fetta, facoltativo e vuoto per default) diventa
@@ -272,6 +276,13 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     # `X-HIRIS-Promessa` qui sopra.
     if chat_job_id:
         intestazioni["X-HIRIS-Chat"] = chat_job_id
+    # Attori, Task 3.6 (06/10/2026): il turno di un mestiere che non e' chat
+    # ne' promessa dice a `/api/mcp` QUALE job sta servendo, e da li' la
+    # rotta ricava il mestiere: il suo catalogo, il suo guardiano -- o, se
+    # non ne ha uno, niente (G23-1). Stessa disciplina di `X-HIRIS-Chat`: non autentica, e la
+    # rotta la verifica contro un job preso in carico.
+    if work_id:
+        intestazioni["X-HIRIS-Lavoro"] = work_id
     return json.dumps({
         "mcpServers": {
             _mcp_server_name(): {
@@ -414,7 +425,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 4, nit 1 della
     review del Task 3). Un `log.warning("...: %s", exc)` e' il **settimo
-    canale** di perdita del token, e non e' teorico: gli header del claim
+    canale** di perdita del token, e non e' teorico: le intestazioni del turno
     portano `X-HIRIS-Internal-Token`, e con un valore che il protocollo HTTP
     non accetta il client solleva **col valore dentro** (`LocalProtocolError:
     Illegal header value b'...'`, verificato contro un listener vero al fix
@@ -426,7 +437,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     redazione che c'e' gia' (`reda_segreti` su tutte le `token_forms`),
     invece di aprire una via nuova. **Il messaggio non si butta**: perdere il
     testo dell'eccezione renderebbe illeggibile il log del giro
-    (`run_once errore: HTTPStatusError` non dice quale rotta ne' quale codice),
+    (`ponte, turno fallito: HTTPStatusError` non dice quale rotta ne' quale codice),
     e un log che non serve a diagnosticare e' il primo che smette di essere
     letto.
 
@@ -448,11 +459,12 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
 
 
 def probe_tools(client, base_url: str, headers: dict,
-                *, job_id=None, promise_id: str = "") -> tuple[bool, str]:
+                *, job_id=None, promise_id: str = "", species: str = "chat",
+                work_id: str = "") -> tuple[bool, str]:
     """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
 
     Un `POST /api/mcp` con `tools/list` sullo STESSO `httpx.Client` e con gli
-    STESSI header del claim: loopback, ~1 ms, zero token del modello. E' cio'
+    STESSE intestazioni del turno: loopback, ~1 ms, zero token del modello. E' cio'
     che permette di decidere il prompt e l'argv insieme, PRIMA di spendere un
     turno -- invece di scoprire a risposta arrivata che il modello aveva
     strumenti promessi e non serviti.
@@ -490,13 +502,12 @@ def probe_tools(client, base_url: str, headers: dict,
     che pinna contro un listener VERO proprio il fatto che il valore finisce
     nel messaggio dell'eccezione. Provato: la redazione funziona (il motivo
     diventa `Illegal header value b'***'`)."""
-    # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
-    # stessa cosa che il turno usera': con l'intestazione della promessa la
-    # rotta serve il catalogo della promessa, senza quello della chat, e una
-    # sonda che chiedesse l'uno per poi usare l'altro proverebbe il turno
-    # sbagliato.
-    definitions = promise_tools() if promise_id else KNOWLEDGE_TOOLS
-    awaited = {d["name"] for d in definitions}
+    # I nomi NUDI del catalogo di QUESTO turno, dalla dichiarazione del suo
+    # mestiere. La sonda deve interrogare la stessa cosa che il turno usera':
+    # con l'intestazione della promessa la rotta serve il catalogo della
+    # promessa, con quella del lavoro il catalogo del mestiere, e una sonda
+    # che chiedesse l'uno per poi usare l'altro proverebbe il turno sbagliato.
+    awaited = set(SPECIES[species].tools_for_turn())
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 
     def _no(reason: str) -> tuple[bool, str]:
@@ -510,6 +521,8 @@ def probe_tools(client, base_url: str, headers: dict,
         probe_headers = dict(headers or {})
         if promise_id:
             probe_headers["X-HIRIS-Promessa"] = promise_id
+        if work_id:
+            probe_headers["X-HIRIS-Lavoro"] = work_id
         answer = client.post(
             url, headers=probe_headers,
             json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
@@ -539,6 +552,14 @@ def probe_tools(client, base_url: str, headers: dict,
     if missing:
         return _no(f"tools/list non porta {sorted(missing)}: il ponte avrebbe "
                    f"strumenti a meta', e il prompt li afferma tutti")
+    # **Anche cio' che c'e' in piu'** (G23-1, giro 23 della revisione,
+    # 06/10/2026): una sonda che guarda solo cosa manca passa un catalogo piu'
+    # largo del mestiere -- quello della chat, `execute` compreso, servito a
+    # un turno che doveva solo leggere.
+    extra = found - awaited
+    if extra:
+        return _no(f"tools/list porta {sorted(extra)}, che questo turno non "
+                   f"ha: la rotta serve un catalogo che non e' il suo")
     return True, ""
 
 
@@ -578,7 +599,7 @@ def _system_prompt_file(system: str) -> Iterator[str]:
 def _chat_claude_args(system_file: str, model: str, *,
                       active_tools: bool = False,
                       mcp_config: str = "",
-                      by_promise: bool = False) -> list:
+                      species: str = "chat") -> list:
     """L'argv del ponte.
 
     **Ne' la domanda ne' il prompt di sistema stanno qui** (Tappa 6, Task 1,
@@ -645,7 +666,7 @@ def _chat_claude_args(system_file: str, model: str, *,
             "--output-format", "stream-json", "--verbose"]
     if active_tools:
         argv += ["--mcp-config", mcp_config,
-                 "--allowedTools", ",".join(mcp_names(by_promise))]
+                 "--allowedTools", ",".join(mcp_names(species))]
     return argv
 
 
@@ -802,7 +823,7 @@ class StreamOccurrence:
       qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
       (stesso `tool_use_id`, in un evento `user` successivo) ARRIVA ed e'
       `is_error: true`, la voce guadagna una terza chiave, `"is_error": True`:
-      cosi' una chiamata riuscita (esito arrivato, senza errore) resta
+      cosi' una chiamata riuscita (esito arrived, senza errore) resta
       bit-per-bit la stessa forma del ramo sincrono, e una fallita resta
       DISTINGUIBILE invece di sparire nella stessa forma di una riuscita.
 
@@ -900,7 +921,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
     # -- una chiamata reale all'API emette piu' eventi `assistant` con lo
     # STESSO id (uno per blocco), e il giro e' l'id, non l'evento.
     exchange_by_id: dict[str, dict] = {}
-    mcp_prefix = f"mcp__{_mcp_server_name()}__"
+    mcp_prefix = mcp_name("")
     for line in (stdout or "").splitlines():
         line = line.strip()
         if not line:
@@ -993,18 +1014,18 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 # Fix round 1, Important: l'esito e' ARRIVATO -- si segna
                 # SEMPRE (`_risolto`), non solo quando e' un errore. E'
                 # questo marcatore, tolto qui sotto dopo il ciclo, che
-                # distingue "arrivato e riuscito" da "mai arrivato": senza,
+                # distingue "arrived e riuscito" da "mai arrived": senza,
                 # i due casi produrrebbero la stessa forma (vedi il
                 # docstring di `StreamOccurrence.tools_called`).
                 entry["_risolto"] = True
                 if block.get("is_error"):
                     # Solo quando VERO: cosi' una chiamata riuscita (esito
-                    # arrivato, senza errore) resta bit-per-bit
+                    # arrived, senza errore) resta bit-per-bit
                     # {"tool":..., "input":...}, identica alla forma del
                     # ramo sincrono (Step 2 del brief).
                     entry["is_error"] = True
     # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
-    # arrivato (flusso incompleto, o un `result` di errore/max-turns che
+    # arrived (flusso incompleto, o un `result` di errore/max-turns che
     # chiude tutto con una chiamata ancora aperta) restano senza il
     # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
     # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
@@ -1064,7 +1085,7 @@ def _resolved_tools(occurrence: StreamOccurrence) -> set:
 #
 # Perche' esiste. I due campi qui sotto sono prove che non si possono ricavare
 # da nessun file del repository -- il `Dockerfile` dice cosa e' stato chiesto,
-# non cosa e' arrivato -- e fino a oggi vivevano SOLO dentro una riga di log,
+# non cosa e' arrived -- e fino a oggi vivevano SOLO dentro una riga di log,
 # leggibile nel momento in cui un turno passava. E' il motivo per cui la
 # verifica del pin 2.1.241 e' stata rimandata il 24 agosto e poi dimenticata
 # per settimane: richiedeva di essere nel posto giusto al momento giusto.
@@ -1099,7 +1120,7 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
       girando DAVVERO. La ragione non e' caduta col pin, e' migliorata: prima
       serviva a sapere QUALE CLI fosse capitata dentro l'immagine, perche'
       `@2` ne lasciava entrare una qualunque; adesso serve a PROVARE che il
-      pin sia arrivato fino al container -- e a smascherare l'immagine
+      pin sia arrived fino al container -- e a smascherare l'immagine
       installata piu' vecchia di quella che si crede, che il `Dockerfile` da
       solo non puo' dire.
     - `apiKeySource`: e' l'**unica prova a runtime** che questo ponte stia
@@ -1118,10 +1139,10 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
     if occurrence.init is None:
         log.warning(
             "flusso stream-json senza evento system/init (job_id=%s): l'init "
-            "non e' arrivato. Le cause possibili, in nessun ordine di colpa: "
+            "non e' arrived. Le cause possibili, in nessun ordine di colpa: "
             "la CLI puo' essere morta prima di emetterlo (guardare rc e "
             "stderr, che questo modulo logga a parte), oppure --verbose non e' "
-            "arrivato alla CLI, oppure il formato del flusso e' cambiato. "
+            "arrived alla CLI, oppure il formato del flusso e' cambiato. "
             "Quando gli strumenti erano attesi questa assenza NON e' una "
             "conferma e vale come guasto: la decide `verifica_init`", job_id)
         return
@@ -1145,7 +1166,7 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
         len(tools) if isinstance(tools, list) else 0)
 
 
-def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple[bool, str]:
+def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bool, str]:
     """Difesa (2) del progetto: la CLI ci e' ARRIVATA, agli strumenti?
 
     `probe_tools` (difesa 1) prova che la rotta risponde con tutti i nomi
@@ -1166,7 +1187,7 @@ def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple
       perche' il prompt li nomina uno per uno.
 
     **Un `init` assente vale guasto, non successo.** Una CLI piu' vecchia, un
-    `--verbose` che non e' arrivato o un formato cambiato producono la stessa
+    `--verbose` che non e' arrived o un formato cambiato producono la stessa
     assenza: trattarla come conferma vorrebbe dire far dipendere la promessa
     del prompt da cio' che NON e' stato detto. Un'assenza non e' una conferma.
 
@@ -1179,14 +1200,20 @@ def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple
     if occurrence.init is None:
         return False, ("il flusso non porta l'evento system/init: un'assenza "
                        "non e' una conferma (CLI piu' vecchia, --verbose non "
-                       "arrivato, o formato cambiato)")
+                       "arrived, o formato cambiato)")
     server = _declared_servers(occurrence)
     state = next((s.get("status") for s in server if s.get("name") == name), None)
-    missing = sorted(set(mcp_names(by_promise)) - _resolved_tools(occurrence))
-    if str(state or "").strip().lower() != "connected" or missing:
+    awaited = set(mcp_names(species))
+    resolved = _resolved_tools(occurrence)
+    missing = sorted(awaited - resolved)
+    # Anche quelli in piu' del NOSTRO server (G23-1): gli strumenti propri
+    # della CLI non portano il prefisso, e non sono un catalogo che serviamo.
+    extra = sorted(t for t in resolved - awaited if t.startswith(mcp_name("")))
+    if str(state or "").strip().lower() != "connected" or missing or extra:
         return False, (f"mcp_servers={server}; server {name!r} stato={state!r} "
                        f"(atteso 'connected'); strumenti non risolti dalla CLI="
-                       f"{missing}")
+                       f"{missing}; strumenti del server che il turno non ha="
+                       f"{extra}")
     return True, ""
 
 
@@ -1199,7 +1226,7 @@ def set_usage_logger(fn) -> None:
     """Collega (o scollega) l'archivio dei consumi al ponte.
 
     Un attributo di modulo e non un parametro passato di mano in mano perche'
-    `_logga_uso` sta in fondo a cinque chiamate (`run_loop` -> `run_once` ->
+    `_logga_uso` sta in fondo a cinque chiamate (`run_loop` -> `serve` ->
     `reason` -> `_reason_chat` -> `_invoca`) e nessuna delle cinque ha motivo
     di conoscere i consumi: infilarcelo vorrebbe dire allargare cinque firme
     per un dato che riguarda solo l'ultima.
@@ -1225,28 +1252,13 @@ def set_turn_logger(fn) -> None:
     _log_turn = fn
 
 
-#: Come il ponte chiama le sue specie, e come le chiama il registro.
-#:
-#: Sono due vocabolari per gli stessi attori, e la traduzione esiste **in un
-#: posto solo**: `steering.misura_turno` RIFIUTA una specie che non conosce
-#: -- giustamente, perche' due nomi per lo stesso attore renderebbero il
-#: registro inservibile sulla domanda per cui esiste, «chi spende cosa» --
-#: e senza questa tabella il ponte gliene passerebbe tre inventate.
-#:
-#: `tests/test_misura_del_ponte.py` tiene la tabella allineata a
-#: `RAGIONABILI` da una parte e a `steering.SPECIE` dall'altra: il giorno in
-#: cui nasce una specie ragionabile nuova, la prova diventa rossa invece
-#: che il registro muto. E dal 28/09/2026 `tests/test_attuatore_sul_ponte.py`
-#: la tiene allineata anche a cio' che il server ACCODA: la sesta specie,
-#: `attuazione`, si accodava da una settimana e non stava in nessuna delle due.
-JOB_SPECIES = {
-    "chat": "chat",
-    "promessa": PROMISE_SPECIES,
-    "scope": OBSERVER_SPECIES,
-    "ricetta": RECIPES_SPECIES,
-    "analisi": ANALYST_SPECIES,
-    ACTUATION_TURN_KIND: ACTUATOR_SPECIES,
-}
+#: Come il ponte chiama le sue specie, e come le chiama il registro: dalla
+#: Tappa 6 (Task 7) e' una vista sulle dichiarazioni dei mestieri
+#: (`steering.JOB_SPECIES`). `steering.misura_turno` RIFIUTA una specie che
+#: non conosce, e senza questa traduzione il ponte gliene passerebbe di
+#: inventate. `tests/test_misura_del_ponte.py` la tiene allineata a
+#: `RAGIONABILI`, e `tests/test_attuatore_sul_ponte.py` a cio' che il server
+#: ACCODA.
 
 
 def _bare_tool_name(name: str) -> str:
@@ -1267,15 +1279,16 @@ def _bare_tool_name(name: str) -> str:
     propri della CLI -- resta com'e': e' un attore diverso, e fonderlo coi
     nostri direbbe che HIRIS ha strumenti che non ha.
     """
-    prefix = f"mcp__{_mcp_server_name()}__"
-    return name.removeprefix(prefix)
+    return name.removeprefix(mcp_name(""))
 
 
 def _measure_turn(job: dict, *, duration_ms: int, tools: list,
                   occurrence: "StreamOccurrence | None",
                   outcome: str, exchange_id: str = "",
-                  composition: dict | None = None) -> None:
-    """La riga del registro per un turno del PONTE.
+                  composition: dict | None = None) -> str | None:
+    """La riga del registro per un turno del PONTE. Torna l'id della riga, o
+    `None` se non e' stata scritta: il mestiere che rifiuta la risposta lo
+    usa per scriverci sopra «rifiutata» (`steering.declare_refused`, D10).
 
     **Perche' non basta `steering.misura_turno`.** Quella misura avvolge una
     chiamata a `runner.chat()` e raccoglie i pesi del carico a ogni giro dal
@@ -1299,14 +1312,14 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
     """
     try:
         if _log_turn is None:
-            return
+            return None
         species = JOB_SPECIES.get((job or {}).get("kind"))
         if species is None:
             # Un `reasoning.db` lasciato da un'installazione precedente puo'
             # portare una specie che nessuno ragiona piu'. Si tace invece di
             # scrivere un nome inventato: `reason()` l'ha gia' dichiarata nel
             # log, e una riga sbagliata sarebbe peggio di una riga assente.
-            return
+            return None
         models = exchange_usages(occurrence) if occurrence is not None else []
         # I giri sono le chiamate al modello, uno per `message.id`: e' cio'
         # che `iterations` vuol dire sulla catena. `num_turns` della CLI NON
@@ -1327,7 +1340,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
         # vocabolario da tradurre a meta' strada: `server.py` le passa
         # dritte. Una traduzione in mezzo sarebbe un posto in piu' in cui
         # una colonna nuova si dimentica.
-        _log_turn({
+        return _log_turn({
             "species": species,
             "channel": "ponte",
             # Il nome con cui la pagina Modelli chiama questa strada, cosi'
@@ -1363,6 +1376,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
     except Exception as error:  # guasto dell'archivio
         log.warning("la misura del turno del ponte non si e' potuta scrivere "
                     "(%s: %s)", type(error).__name__, error)
+        return None
 
 
 def _logga_uso(occurrence: StreamOccurrence, job_id) -> None:
@@ -1495,11 +1509,11 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     non c'e' nessun `/api/mcp` a cui puntare la mcp-config, quindi gli strumenti
     non sono nemmeno ATTESI -- il turno vale esattamente quanto valeva prima di
     questo task, senza avvisi e senza righe di degrado. Chi li passa (il solo
-    `run_once`, cioe' il percorso di produzione) dichiara con quel gesto che il
+    `serve`, cioe' il percorso di produzione) dichiara con quel gesto che il
     ponte e' configurato per averli: da li' in poi la loro assenza e' un
     guasto, e come tale si dichiara.
 
-    Gli header sono gli STESSI del claim (`run_once` passa i suoi): l'add-on non
+    Gli header sono quelli del turno (`serve` passa i suoi): l'add-on non
     deve avere due modi di autenticarsi verso se' stesso."""
     context = job.get("context") or {}
     history = context.get("history") or []
@@ -1528,6 +1542,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "job senza `model` (job_id=%s, kind=%r): nessun modello scelto "
             "dal proprietario per questo turno -- non si ragiona, decisione "
             "vuota", (job or {}).get("job_id"), (job or {}).get("kind"))
+        return {}
+    # **Il tempo della CLI e' quello che resta al turno** (S-09, Tappa 6,
+    # Task 8). Fino al 06/10/2026 era `timeout=300` fisso, mentre il turno ha
+    # la sua scadenza (`deadline_ts`, dalla Tappa 6, Task 2): passata quella,
+    # la coda chiude il job (`sweep_expired`; la chat ripiega sulla catena) e
+    # una risposta che arriva dopo non la riceve nessuno. Ogni job della coda
+    # la porta (`reasoning_jobs.deadline_ts NOT NULL`): un job senza e' un job
+    # che non viene dalla coda, e si dichiara come quello senza modello.
+    deadline_ts = (job or {}).get("deadline_ts")
+    if not isinstance(deadline_ts, (int, float)) or isinstance(deadline_ts, bool):
+        log.error(
+            "job senza `deadline_ts` (job_id=%s, kind=%r): non si sa quanto "
+            "tempo ha il turno -- non si ragiona, decisione vuota",
+            (job or {}).get("job_id"), (job or {}).get("kind"))
         return {}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
@@ -1600,6 +1628,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # Solo la chat: una promessa o un turno dell'osservatore non hanno nessuna
     # persona davanti.
     chat_job_id = (job_id or "") if job.get("kind") == "chat" else ""
+    # Il mestiere del turno, dalla sua dichiarazione: il catalogo che la
+    # sonda chiede, `--allowedTools`, `verify_init` e il prompt vengono tutti
+    # da qui. Un `kind` che nessun mestiere dichiara resta sul catalogo della
+    # chat, come prima (lo rifiuta comunque `misura_turno`).
+    species = SPECIES.get(JOB_SPECIES.get(job.get("kind")))
+    species_name = species.name if species is not None else "chat"
+    # Attori, Task 3.6: ogni turno che non e' chat ne' promessa si fa
+    # riconoscere dalla rotta MCP col suo job (`X-HIRIS-Lavoro`, vedi
+    # `config_mcp`). Non solo quelli con un guardiano (G23-1, giro 23): un
+    # mestiere dichiarato con un catalogo e senza guardiano, senza
+    # intestazione, riceverebbe il catalogo della chat; con l'intestazione la
+    # rotta lo chiude.
+    work_id = ("" if species_name in ("chat", PROMISE_SPECIES)
+               else (job_id or ""))
     # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
     # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
@@ -1623,7 +1665,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     if awaited:
         tools, _reason = probe_tools(client, base_url, intestazioni,
                                      job_id=job_id,
-                                     promise_id=promise_id)
+                                     promise_id=promise_id,
+                                     species=species_name, work_id=work_id)
     else:
         tools = False
     token = intestazioni.get("X-HIRIS-Internal-Token", "")
@@ -1660,7 +1703,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # che `_remember` la veda. Ma questa lista accumula l'input grezzo del
     # modello ANCHE quando il dispatch lo rifiuta: un `detto_da` (un
     # identificativo di PERSONA) tentato dal modello resta scritto qui lo
-    # stesso, anche se non e' mai arrivato all'archivio. Per `search`, la
+    # stesso, anche se non e' mai arrived all'archivio. Per `search`, la
     # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
     # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
@@ -1721,7 +1764,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # misura che perde i turni degli altri cinque, ed e' esattamente il
         # buco che questa riga chiude -- il 24/09/2026 il registro aveva 37
         # turni della catena e ZERO del ponte.
-        _measure_turn(
+        turn_id = _measure_turn(
             job, duration_ms=int((time.perf_counter() - turn_started) * 1000),
             tools=tools_called_in_exchange,
             occurrence=last_occurrence[-1] if last_occurrence else None,
@@ -1734,10 +1777,30 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # annotazioni orfane escono dal tetto LRU di `BridgeLoads`.
             exchange_id="" if retried_cell else exchange_id,
             composition=composition_cell[-1] if composition_cell else None)
-        return {"reply": reda_segreti(text, *forms),
-               "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
+        # **L'esito viaggia con la risposta** (06/10/2026): lo stesso che va
+        # nel registro dei turni, fino alla coda. Chi raccoglie un turno del
+        # cervello lo legge da li' (`reasoning.queue.turn_answer`): un
+        # `[runner non disponibile]` non e' una risposta del modello, e
+        # trattato come tale bloccava l'analista per un giorno intero. La chat
+        # mostra comunque il testo, che e' la diagnosi per chi la legge.
+        decision = {"reply": reda_segreti(text, *forms),
+                    "tools_called": _reda_struttura(tools_called_in_exchange, *forms),
+                    "outcome": outcome}
+        if isinstance(turn_id, str) and turn_id:
+            # La riga del registro di questo turno: chi raccoglie la risposta
+            # e la rifiuta ci scrive sopra «rifiutata» (D10).
+            decision["turn_id"] = turn_id
+        if work_id and exchange_id and not retried_cell:
+            # L'identita' del turno sulla rotta MCP, per i mestieri di sfondo:
+            # l'officina la scrive accanto a ogni proposta nata nel turno, e
+            # chi raccoglie la risposta del proponente rilegge da li' quali
+            # sono (D12, `ConstructionStore.proposed_in`).
+            decision["exchange_id"] = exchange_id
+        return decision
 
     invocations = 0
+    # Gli strumenti che la dichiarazione del mestiere ammette in questo turno.
+    turn_tools = species.tools_for_turn() if species is not None else ()
 
     def _invoca(active_tools: bool) -> Invocation | None:
         """UN'invocazione intera della CLI, composta dal SOLO `active_tools`.
@@ -1770,7 +1833,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # cosi' che il tetto per-turno della rotta MCP resta un tetto sul
         # turno anche quando il turno si sdoppia (Task 4).
         mcp_config = (config_mcp(base_url, token, exchange_id, promise_id,
-                                 chat_job_id=chat_job_id)
+                                 chat_job_id=chat_job_id, work_id=work_id)
                       if active_tools else "")
         # Le DUE righe che leggono lo stesso booleano, una accanto all'altra.
         # Non esiste un secondo posto in cui il prompt e l'argv possono
@@ -1782,7 +1845,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                        if isinstance(context, dict) else "")
         system, user = prompts.build_chat_messages(
             system_prompt, history, contesto=contesto,
-            active_tools=active_tools,
+            # I NOMI degli strumenti del mestiere, dalla sua dichiarazione:
+            # il compositore da' le regole di quelli e basta (Tappa 6, T7).
+            active_tools=turn_tools if active_tools else (),
             restrict_to_home=restrict_to_home, response_mode=response_mode,
             # **Il contratto di risposta appartiene a chi pone la domanda.**
             # Un turno di chat e uno di promessa non ne portano uno e
@@ -1814,13 +1879,20 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # vedi `_system_prompt_file`. `encoding` esplicito per entrambi i
             # versi: la CLI legge e scrive UTF-8, e non deve dipendere dalla
             # localizzazione del contenitore.
+            # Il tempo che resta, letto ADESSO: la seconda invocazione dello
+            # stesso turno ha quello che la prima le ha lasciato.
+            time_left = deadline_ts - time.time()
+            if time_left <= 0:
+                log.warning("turno scaduto prima di invocare la CLI (job_id=%s)",
+                            job_id)
+                return None
             with _system_prompt_file(system) as system_file:
                 argv = _chat_claude_args(system_file, model,
                                          active_tools=active_tools,
                                          mcp_config=mcp_config,
-                                         by_promise=bool(promise_id))
+                                         species=species_name)
                 proc = subprocess.run(argv, input=user, capture_output=True,
-                                      encoding="utf-8", timeout=300,
+                                      encoding="utf-8", timeout=time_left,
                                       env=_safe_subprocess_env(), check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
             log.warning("claude non eseguibile: %s", type(exc).__name__)
@@ -1902,12 +1974,13 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # all'utente una risposta invece di un `[errore runner rc=...]`.
     #
     # L'esito (5) resta fuori di proposito: senza flusso non c'e' nessuna
-    # smentita da leggere, e ritentare pagherebbe un secondo timeout da 300s
-    # per un guasto che il ritentativo non ripara (la CLI non c'e').
+    # smentita da leggere, e ritentare pagherebbe un secondo timeout (il resto
+    # della scadenza del turno) per un guasto che il ritentativo non ripara
+    # (la CLI non c'e').
     ritentato = False
     if tools:
         confermato, reason = verify_init(invocation.occurrence,
-                                         by_promise=bool(promise_id))
+                                         species=species_name)
         if not confermato:
             # Silenzio dichiarato ② della fetta. Il motivo si reda come tutto
             # cio' che nasce dal sottoprocesso: non c'e' una seconda via.
@@ -1977,7 +2050,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         notice = (
             f"{_INCOMPLETE_STREAM_SENTINEL} In questo turno la risposta si e' "
             "chiusa senza il messaggio finale del modello: quello che e' "
-            "arrivato non e' una risposta completa, e non te la presento come "
+            "arrived non e' una risposta completa, e non te la presento come "
             "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
             "cambiato e va guardato il log dell’add-on.")
         # Il pezzo grezzo resta nella reply, come faceva il vecchio ramo "JSON
@@ -2003,31 +2076,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         return _reply(f"{MISSING_TOOLS_NOTICE}\n\n{text}")
     return _reply(text)
 
-#: Il nome della specie dell'osservatore, usato anche fuori dal dispaccio (la
-#: sonda degli strumenti, il ramo del contesto): un letterale ripetuto in tre
-#: punti di questo file sarebbe un refuso che non fallisce, solo cambia
-#: comportamento in silenzio.
-_SCOPE_KIND = "scope"
-
-#: La specie del turno che chiede una RICETTA per un dispositivo
-#: (`mind/recipe_turn.RECIPE_TURN_KIND`), dal 13/09/2026.
-#:
-#: **Trovata dal vivo, non leggendo.** Il giro delle ricette e' partito alle
-#: 19:58 del 13/09 e ha accodato il suo primo turno; due secondi dopo il ponte
-#: ha scritto «nessun ramo lo ragiona piu'» e ha restituito una decisione
-#: vuota. Il docstring di `SCOPE_TURN_KIND` lo diceva in anticipo -- *«chi lo
-#: serve dichiara per conto suo quali specie sa ragionare»* -- ed e' stato
-#: letto e non applicato.
-_RECIPE_KIND = "ricetta"
-
-#: La specie del turno dell'analista (spec §10, 15/09/2026). Entra qui sotto
-#: **insieme** al modulo che la produce, e non dopo: il 13/09 il turno delle
-#: ricette fu accodato a un ponte che non sapeva ragionarlo -- «job non-chat in
-#: coda: nessun ramo lo ragiona piu'» -- e la decisione vuota che ne usci' fu
-#: scritta come «non capito» di un modello mai interpellato.
-_ANALYSIS_KIND = "analisi"
-
-#: Le specie la cui DOMANDA porta gia' tutto, e che non devono poter agire.
+#: Le specie la cui DOMANDA porta gia' tutto, e che non devono poter agire:
+#: i mestieri **autosufficienti** della dichiarazione (`steering.SPECIES`).
 #: Il nome e' inglese come il resto del codice: «senza nucleo» descriveva solo
 #: meta' di cio' che fanno, e portava una preposizione italiana in un
 #: identificatore (cancello `test_preposizioni_italiane.py`).
@@ -2042,29 +2092,20 @@ _ANALYSIS_KIND = "analisi"
 #: che la review indipendente aveva chiuso per lo scope l'11/09/2026, e che il
 #: turno delle ricette avrebbe riaperto.
 #:
-#: **L'attuatore entra il 28/09/2026, una settimana tardi.** Dalla 3.56.0 (21/09)
-#: `server.py::_enqueue_actuator_turn` accodava `attuazione` ogni ora e il
-#: ponte la mandava nel ramo della decisione vuota: misurato dal vivo nel
-#: registro dell'add-on, l'attuatore sul ponte non ha mai prodotto niente.
-#: Sulla catena chiama `runner.chat` SENZA strumenti -- sul ponte uguale: e'
-#: un attore che per contratto «non tocca la casa», e col catalogo della chat
-#: avrebbe `execute`. La costante e' quella del produttore
-#: (`mind/actuator_turn`), non una copia: quel modulo importa da HIRIS il solo
-#: `steering` (il lettore unico, Tappa 6), che non importa `agent` -- l'import
-#: non chiude nessun ciclo (provato il 05/10/2026 importando
-#: `mind.actuator_turn` da solo: `agent.runner` non entra). Da allora il cancello
-#: `tests/test_attuatore_sul_ponte.py` RICAVA dal codice ogni specie che si
-#: accoda e pretende che sia qui: la prossima volta non la scopre il registro.
-_SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,
-                         ACTUATION_TURN_KIND)
+#: **Una vista, non un elenco** (Tappa 6, Task 7). Fino al 06/10/2026 era una
+#: lista scritta qui, e ricopiava una proprieta' dei mestieri: l'attuatore e'
+#: entrato il 28/09/2026 con una settimana di ritardo -- dalla 3.56.0 si
+#: accodava ogni ora e il ponte lo mandava nel ramo della decisione vuota. Ora
+#: un mestiere dichiarato senza strumenti e' qui da solo.
+_SELF_CONTAINED_KINDS = tuple(kind for kind, name in JOB_SPECIES.items()
+                              if SPECIES[name].self_contained)
 
-#: Le specie di turno che il ponte sa servire. E' un'affermazione **di questo
-#: modulo su se stesso** -- «questi so ragionarli» -- non una copia dei nomi
-#: che i produttori si danno. Tutte finiscono in `_reason_chat`, perche' un
-#: turno e' un turno: cambia il CONTENUTO (la domanda, il prompt di sistema,
-#: l'intestazione MCP), e il contenuto arriva tutto dal contesto del job.
-RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND,
-               _ANALYSIS_KIND, ACTUATION_TURN_KIND)
+#: Le specie di turno che il ponte sa servire: tutti i mestieri dichiarati.
+#: Tutte finiscono in `_reason_chat`, perche' un turno e' un turno: cambia il
+#: CONTENUTO (la domanda, il prompt di sistema, l'intestazione MCP), e il
+#: contenuto arriva tutto dal contesto del job. Fino al 06/10/2026 era una
+#: terza lista degli stessi job, accanto a `JOB_SPECIES` e a quella qui sopra.
+RAGIONABILI = tuple(JOB_SPECIES)
 
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",
@@ -2078,8 +2119,8 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
     cancello `tests/test_attuatore_sul_ponte.py` esiste per questo).
     Non lo si ignora in silenzio -- un pass muto sarebbe indistinguibile da
     un'assenza di problemi: un log esplicito lo dichiara e la decisione
-    restituita e' VUOTA. A valle, `handle_reasoning_submit`
-    (api/handlers_reasoning.py) la registra e basta."""
+    restituita e' VUOTA. A valle, `consegna`
+    (reasoning/consegna.py) la registra e basta."""
     kind = (job or {}).get("kind")
     if kind in RAGIONABILI:
         # Un turno di promessa E' un turno: stessa sonda degli strumenti,
@@ -2097,7 +2138,7 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
         # specie: il docstring dice cosa serve davvero.
         # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): il client e
         # la base_url del giro passano di qui SENZA essere ricostruiti. La sonda
-        # degli strumenti deve girare sullo STESSO `httpx.Client` del claim e
+        # degli strumenti deve girare sullo STESSO `httpx.Client` del lavoratore e
         # con gli STESSI header: un secondo client (o un secondo modo di
         # autenticarsi) sarebbe un secondo posto da tenere allineato.
         return _reason_chat(job, mode, client=client, base_url=base_url,
@@ -2109,57 +2150,104 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
     return {}
 
 
-def run_once(client, base_url: str, headers: dict, mode: str) -> str:
-    r = client.post(f"{base_url}/api/reasoning/claim", headers=headers, json={})
-    r.raise_for_status()
-    job = (r.json() or {}).get("job")
-    if not job:
-        return "idle"
-    job_id = job.get("job_id"); nonce = job.get("nonce")
-    if not job_id or not nonce:
-        log.warning("claim malformato (job senza id/nonce)")
-        return "failed"
-    decision = reason(job, mode, client=client, base_url=base_url,
-                      headers=headers)
-    sr = client.post(f"{base_url}/api/reasoning/submit", headers=headers,
-                     json={"job_id": job_id, "nonce": nonce, "decision": decision})
-    sr.raise_for_status()
-    return "done" if (sr.json() or {}).get("ok") else "failed"
+async def serve(job: dict, consegna, client, base_url: str, get_headers,
+                mode: str, clock=time.time) -> str:
+    """Un turno gia' preso dalla coda: lo ragiona e lo consegna.
 
-async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> None:
-    """Coroutine per il task asyncio in-addon (server.py, task 4). `run_once`
-    resta sincrono (subprocess.run + httpx.Client): girano sullo stesso loop
-    asyncio dell'intero addon (aiohttp), quindi vanno eseguiti in un thread
-    executor (`run_in_executor`) e MAI chiamati direttamente nella coroutine,
-    altrimenti un job claimato blocca l'intero addon fino a ~5 minuti
-    (subprocess timeout=300, httpx.Client timeout=330)."""
-    # **Le intestazioni del giro vivono FUORI dal `try`**, e non e' stile.
-    # `_exception_reason` deve poter redigere la credenziale che questo giro
-    # sta davvero usando: fino al 22/09/2026 la leggeva da `INTERNAL_TOKEN`
-    # nell'ambiente, e quando quel segreto e' uscito la redazione e' rimasta
-    # senza bersaglio -- cioe' la credenziale sarebbe finita nel registro, che
-    # e' il file che si incolla in una segnalazione. **L'ha preso la suite, non
-    # una rilettura.**
+    Tutto dentro il processo (A-23, 06/10/2026): `consegna` e'
+    `reasoning/consegna.consegna` legata all'app (`server.py`). Fino a quel
+    giorno il lavoratore chiamava se stesso via HTTP (`/api/reasoning/claim` e
+    `/api/reasoning/submit`).
+
+    Il ragionamento e' sincrono (subprocess.run + httpx.Client) e gira sullo
+    stesso loop asyncio dell'intero addon (aiohttp): va in un thread executor
+    (`run_in_executor`), MAI chiamato direttamente nella coroutine, altrimenti
+    un turno preso blocca l'intero addon per tutto il tempo che resta al turno
+    (il `timeout` della CLI e' la sua scadenza, S-09). La consegna resta sul
+    loop: e' breve, e scrive nella chat, che vive li'.
+
+    Le intestazioni si coniano qui, a turno preso: servono alla sonda e alla
+    rotta degli strumenti (`/api/mcp`, che la CLI chiama da un altro
+    processo), e una credenziale coniata per un giro vuoto non servirebbe a
+    nessuno."""
+    headers = get_headers()
+    loop = asyncio.get_running_loop()
+    decision = await loop.run_in_executor(
+        None, lambda: reason(job, mode, client=client, base_url=base_url,
+                             headers=headers))
+    delivered = await consegna(job["job_id"], job["nonce"], decision, clock())
+    return "failed" if delivered is None else "done"
+
+
+async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,
+                   clock=time.time) -> None:
+    """Il lavoratore del ponte (task asyncio in-addon, avviato da `server.py`).
+
+    **Non interroga la coda a intervalli** (A-23, 06/10/2026). Serve i turni
+    finche' ce ne sono, poi aspetta che `ReasoningQueue.enqueue` lo svegli.
+    Prima chiedeva `/api/reasoning/claim` ogni tre secondi
+    (`HIRIS_AGENT_POLL_SECONDS`), anche a coda vuota, per sempre.
+
+    L'evento si azzera PRIMA di guardare la coda: un turno accodato mentre il
+    lavoratore la guarda lo risveglia comunque, e non resta li' ad aspettare
+    il turno dopo. La sveglia passa da `call_soon_threadsafe` perche' chi
+    accoda puo' farlo da un altro thread.
+
+    Un turno che fallisce (un'eccezione mentre lo si serve) e' perso -- lo
+    chiude la spazzata alla scadenza, e la chat ripiega -- e il lavoratore
+    passa al successivo: ogni giro consuma un turno, quindi non gira a vuoto.
+    Se e' la coda stessa a fallire, invece, si aspetta il prossimo turno
+    accodato: riprovare subito girerebbe a vuoto senza pause."""
+    # **Le intestazioni del giro si ricordano FUORI dal `try`**, e non e'
+    # stile. `_exception_reason` deve poter redigere la credenziale che questo
+    # giro sta davvero usando: fino al 22/09/2026 la leggeva da
+    # `INTERNAL_TOKEN` nell'ambiente, e quando quel segreto e' uscito la
+    # redazione e' rimasta senza bersaglio -- cioe' la credenziale sarebbe
+    # finita nel registro, che e' il file che si incolla in una segnalazione.
+    # **L'ha preso la suite, non una rilettura.**
     #
     # Cosi' e' anche piu' preciso di prima: si reda la credenziale IN CORSO,
     # non quella che per caso stava in un ambiente.
     intestazioni_correnti: dict = {}
+
+    def _intestazioni() -> dict:
+        nonlocal intestazioni_correnti
+        intestazioni_correnti = get_headers()
+        return intestazioni_correnti
+
     loop = asyncio.get_running_loop()
-    with httpx.Client(timeout=330) as client:
-        while True:
-            try:
-                headers = get_headers()
-                intestazioni_correnti = headers
-                outcome = await loop.run_in_executor(
-                    None, run_once, client, base_url, headers, mode)
-                if outcome != "idle":
-                    log.info("run: %s", outcome)
-            except Exception as exc:
-                # Task 4, nit 1: `%s` sull'eccezione GREZZA e' il settimo
-                # canale di perdita del token (gli header del claim lo
-                # portano, e un valore non consegnabile risale col valore
-                # dentro). Si passa da `_exception_reason`: tipo + messaggio
-                # REDATTO, cosi' il log resta diagnosticabile.
-                log.warning("run_once errore: %s", _exception_reason(
-                    exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
-            await asyncio.sleep(poll_seconds)
+    arrived = asyncio.Event()
+
+    def wake() -> None:
+        loop.call_soon_threadsafe(arrived.set)
+
+    queue.on_enqueue(wake)
+    try:
+        with httpx.Client(timeout=330) as client:
+            while True:
+                arrived.clear()
+                try:
+                    job = queue.claim(clock())
+                except Exception as exc:
+                    log.warning("ponte: la coda non risponde: %s",
+                                _exception_reason(exc))
+                    job = None
+                if job is None:
+                    await arrived.wait()
+                    continue
+                try:
+                    log.info("run: %s", await serve(
+                        job, consegna, client, base_url, _intestazioni, mode,
+                        clock))
+                except Exception as exc:
+                    # Task 4, nit 1: `%s` sull'eccezione GREZZA e' il settimo
+                    # canale di perdita del token (le intestazioni del turno
+                    # lo portano, e un valore non consegnabile risale col
+                    # valore dentro). Si passa da `_exception_reason`: tipo +
+                    # messaggio REDATTO, cosi' il log resta diagnosticabile.
+                    log.warning("ponte, turno fallito: %s", _exception_reason(
+                        exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
+    finally:
+        # Si toglie solo la PROPRIA sveglia: spegnere e riaccendere il ponte
+        # puo' registrare il lavoratore nuovo prima che questo `finally` giri.
+        queue.on_enqueue(None, only_if=wake)

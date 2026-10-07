@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
@@ -11,6 +11,29 @@ const SORGENTE = fs.readFileSync(
   new URL('../../hiris/app/static/common.js', import.meta.url), 'utf8')
   + '\n' + fs.readFileSync(
   new URL('../../hiris/app/static/config/constructions-route.js', import.meta.url), 'utf8');
+
+/* I giri accesi dalla pagina si spengono alla fine di ogni prova (giro di
+   revisione 71). Senza, un giro di riletture o l'orologio di un'attesa
+   restano vivi dopo una prova rossa, e il file non termina: in CI si
+   leggerebbe come un tempo scaduto, non come la prova che e' fallita. Anche i
+   finti timer di `montaConLetture` tornano veri qui. Mutazione ESEGUITA
+   (06/10/2026): senza le due righe che spengono e che ridanno il vero
+   `clearInterval`, il file non termina (fermato a 60 s); con una sola delle
+   due termina, e la pagina si spegne da se'. */
+const TIMER_VERI = { setInterval: global.setInterval, clearInterval: global.clearInterval };
+const accesi = new Set();
+function setIntervalSorvegliato(fn, ms) {
+  const h = TIMER_VERI.setInterval(fn, ms);
+  accesi.add(h);
+  return h;
+}
+global.setInterval = setIntervalSorvegliato;
+afterEach(() => {
+  accesi.forEach((h) => TIMER_VERI.clearInterval(h));
+  accesi.clear();
+  global.setInterval = setIntervalSorvegliato;
+  global.clearInterval = TIMER_VERI.clearInterval;
+});
 
 function montaCon(risposta) {
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
@@ -301,6 +324,18 @@ test('una proposta da fare a mano si legge, e dice che la fai tu', async () => {
   assert.match(testo, /la fai tu/i, 'chi la applica non si legge');
 });
 
+test('una proposta a mano SUPERATA da una costruibile lo dice, e non si legge come un rifiuto', async () => {
+  /* D24-1 (06/10/2026): la stessa domanda e' tornata costruibile, e la
+     proposta a mano si chiude «superata». Mutazione ESEGUITA: togliere il
+     ramo `superata` -- rossa, la pagina dice «Rifiutata.». */
+  const { dom } = montaCon({ constructions: [propostaAMano({ stato: 'superata', sospesa: false })] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+
+  const testo = dom.window.document.body.textContent;
+  assert.match(testo, /Superata: ora c’è una proposta che HIRIS può costruire/);
+  assert.doesNotMatch(testo, /Rifiutata\./);
+});
+
 test('una proposta a mano ha TRE comandi, e nessun «Approva»', async () => {
   /* «Crea» non si applica: non c'e' niente da scrivere in Home Assistant.
      Mutazione che la uccide: riusare i bottoni dell'officina. */
@@ -425,10 +460,11 @@ test('una proposta che non chiama niente non inventa una riga', async () => {
 });
 
 /* ── Da quale porta è passato il giro (reperto C-5, 23/09/2026) ────────────
-   «Rifalla» risponde subito e il Piano Max risponde in differita: col piano
-   acceso quel giro si paga a consumo. Il backend lo dichiara; prima questa
-   pagina buttava via la risposta (`.then(function () { reload(); })`) e la
-   frase non arrivava a nessuno. */
+   Sulla catena, quando il piano non ha potuto rispondere, il giro si paga a
+   consumo. Il backend lo dichiara; prima questa pagina buttava via la
+   risposta (`.then(function () { reload(); })`) e la frase non arrivava a
+   nessuno. Dal 06/10/2026 (attori, Task 4.4) col piano acceso il giro va sul
+   ponte, e la nota resta solo per il ripiego. */
 
 test('«Rifalla» mostra la nota del backend su dove è passato il giro', async () => {
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
@@ -440,7 +476,8 @@ test('«Rifalla» mostra la nota del backend su dove è passato il giro', async 
   dom.window.fetch = async (url) => ({
     ok: true, status: 200,
     json: async () => (/redo/.test(String(url))
-      ? { proposta: {}, nota: 'Il Piano Claude Max e\' acceso, ma questo giro risponde subito.' }
+      ? { proposta: {}, esito: 'a_mano',
+          nota: 'Il Piano Claude Max ha raggiunto il tetto di oggi: ha risposto Claude API.' }
       : { constructions: [propostaAMano()] }),
   });
   global.fetch = dom.window.fetch;
@@ -555,4 +592,269 @@ test('la sezione «In attesa» la decide il server (`sospesa`), non lo stato let
   assert.match(aperte, /Sospesa per il server/);
   assert.doesNotMatch(aperte, /Conclusa per il server/);
   assert.match(storico, /Conclusa per il server/);
+});
+
+/* -------------------------------------------------------------------------
+   «Rendila automatica» (attori, strato 4, Task 4.5; parere di
+   ux-ui-specialist e scelte del proprietario del 06/10/2026). Il bottone c'e'
+   solo se il server dice `automatizzabile`: la regola e' una, lato server.
+   ------------------------------------------------------------------------- */
+
+function bottoni(dom) {
+  return [...dom.window.document.querySelectorAll('button')].map((b) => b.textContent);
+}
+
+test('«Rendila automatica» c’è solo dove il server lo dice, e mai per «alto»', async () => {
+  /* Mutazione ESEGUITA (06/10/2026): il bottone disegnato senza guardare
+     `automatizzabile` -- rossa. */
+  const { dom } = montaCon({ constructions: [
+    propostaAMano({ id: 'si', automatizzabile: true }),
+    propostaAMano({ id: 'no', automatizzabile: false, livello: 'alto' }),
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const automatiche = dom.window.document.querySelectorAll('[data-azione="proposta-automate"]');
+  assert.equal(automatiche.length, 1);
+  assert.equal(automatiche[0].getAttribute('data-id'), 'si');
+  assert.equal(automatiche[0].textContent, 'Rendila automatica');
+  /* Niente bottone spento al posto di quello che non c'e'. */
+  assert.equal(dom.window.document.querySelectorAll('button[disabled]').length, 0);
+  /* La spiegazione e' legata al bottone. */
+  const spiega = dom.window.document.getElementById(
+    automatiche[0].getAttribute('aria-describedby'));
+  assert.match(spiega.textContent, /decidi tu se crearla/);
+});
+
+test('«Rendila automatica» chiama la sua rotta, senza chiedere conferma', async () => {
+  const { dom, chiamate } = montaCon({ constructions: [
+    propostaAMano({ automatizzabile: true })] });
+  dom.window.confirm = () => { throw new Error('nessuna conferma: il clic non crea niente'); };
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  dom.window.document.querySelector('[data-azione="proposta-automate"]').click();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(chiamate.some((c) => /api\/proposals\/m1\/automate/.test(String(c[0]))
+    && c[1] && c[1].method === 'POST'), JSON.stringify(chiamate.map((c) => c[0])));
+});
+
+test('mentre si prepara: il segno, la frase, e resta solo «Rifiuta»', async () => {
+  /* Mutazione ESEGUITA (06/10/2026): senza la riga che spegne «L'ho fatta
+     io» e «Rifalla» -- rossa. */
+  /* La pagina rilegge finche' l'automazione si prepara: il giro si cattura
+     invece di aspettarlo (`montaConLetture`). */
+  const { dom, giri } = montaConLetture([{ constructions: [
+    propostaAMano({ in_preparazione: true, automatizzabile: false })] }], {});
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  assert.equal(giri.length, 1, 'nessun giro: la riga resterebbe «in preparazione»');
+  const document = dom.window.document;
+  const segno = document.querySelector('[data-preparazione="m1"]');
+  assert.ok(segno);
+  assert.equal(segno.getAttribute('aria-label'), 'Automazione in preparazione');
+  assert.match(document.body.textContent, /sta preparando l’automazione/);
+  const attivi = [...document.querySelectorAll('button')]
+    .filter((b) => !b.disabled && b.closest('.construction'))
+    .map((b) => b.textContent);
+  assert.deepEqual(attivi, ['Rifiuta']);
+});
+
+test('«non si può»: la ragione resta scritta, e il bottone non torna', async () => {
+  const { dom } = montaCon({ constructions: [propostaAMano({
+    automatizzabile: false, non_automatizzabile: 'tocca la serratura' })] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  assert.match(dom.window.document.body.textContent,
+    /Non si può rendere automatica: tocca la serratura/);
+  assert.ok(!bottoni(dom).includes('Rendila automatica'));
+});
+
+test('il legame si legge dai due lati: «Ne è nata» e «Nata da»', async () => {
+  /* Mutazione ESEGUITA (06/10/2026): senza la riga «Nata da» -- rossa. */
+  const { dom } = montaCon({ constructions: [
+    propostaAMano({ stato: 'automatizzata', sospesa: false, costruzione_id: 'p9' }),
+    { id: 'p9', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
+      chiave: '9', anteprima: 'Creo', prima: null, dopo: { alias: 'Lavatrice' },
+      creata_ts: 1756000200,
+      nata_da: { id: 'm1', testo: 'Sposta la lavatrice nel primo pomeriggio' } },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const document = dom.window.document;
+  assert.match(document.getElementById('constructions-history-body').textContent,
+    /Ne è nata un’automazione/);
+  assert.match(document.getElementById('constructions-open-body').textContent,
+    /Nata da: “Sposta la lavatrice nel primo pomeriggio”/);
+});
+
+test('le due attese, «Rifalla» e «in preparazione», hanno UNA rilettura sola', async () => {
+  /* G68-2 (giro di revisione 68): prima dell'unione erano due timer, uno per
+     attesa. Con le due attese insieme i giri sono quanti col solo «Rifalla»
+     (la rilettura e l'orologio del cronometro), e con la sola automazione
+     c'e' la rilettura. Mutazione ESEGUITA (06/10/2026): `afterDraw` che non
+     guarda `in_preparazione` -- rossa. */
+  async function giriDi(righe) {
+    const { dom, giri } = montaConLetture([{ constructions: righe }], {});
+    await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+    return giri.length;
+  }
+  const preparando = propostaAMano({ id: 'm2', in_preparazione: true, automatizzabile: false });
+  assert.equal(await giriDi([inCorso(), preparando]), await giriDi([inCorso()]));
+  assert.equal(await giriDi([preparando]), 1);
+});
+
+test('quando l’automazione arriva, la rilettura ridisegna la riga', async () => {
+  const { dom, giri } = montaConLetture([
+    { constructions: [propostaAMano({ in_preparazione: true, automatizzabile: false })] },
+    { constructions: [propostaAMano({ stato: 'automatizzata', sospesa: false,
+      costruzione_id: 'p9' })] },
+  ], {});
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  assert.ok(dom.window.document.querySelector('[data-preparazione="m1"]'));
+  giri[0]();
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(dom.window.document.querySelector('[data-preparazione="m1"]'), null);
+  assert.match(dom.window.document.getElementById('constructions-history-body').textContent,
+    /Ne è nata un’automazione/);
+});
+
+test('una proposta «superata» dice perché nello storico', async () => {
+  /* Avvertenza del giro 67: `superata` (Task 4.4) entra in CLOSED_TEXT
+     accanto ad `automatizzata`. */
+  const { dom } = montaCon({ constructions: [
+    propostaAMano({ stato: 'superata', sospesa: false })] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  assert.match(dom.window.document.getElementById('constructions-history-body').textContent,
+    /Superata: ora c’è una proposta che HIRIS può costruire/);
+});
+
+test('l’esito dei comandi si annuncia senza spostare il fuoco', async () => {
+  const { dom } = montaCon({ constructions: [] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const stato = dom.window.document.getElementById('constructions-status');
+  assert.equal(stato.getAttribute('role'), 'status');
+  assert.equal(stato.getAttribute('aria-live'), 'polite');
+});
+
+/* ── «Rifalla» sul ponte: la pagina interroga (attori, Task 4.4; D16) ─────
+   Parere di ux-ui-specialist del 06/10/2026: l'attesa sta nella riga, la
+   disegna cio' che dice il server, e cosi' sopravvive a una ricarica. */
+
+function inCorso(extra) {
+  return propostaAMano({ rifacimento: Object.assign({
+    stato: 'in_corso', richiesta: 'non toccare il termostato',
+    avvio_ts: Date.now() / 1000, scadenza_ts: Date.now() / 1000 + 600 }, extra) });
+}
+
+/* Una pagina le cui letture rispondono, in ordine, con le risposte date (la
+   ultima si ripete), e i cui `setInterval` si fanno girare a mano. Il
+   sorgente gira nel contesto di Node (`global.window`), quindi i timer da
+   fingere sono quelli di `global`: i giri veri continuerebbero a interrogare
+   con la `fetch` del test dopo. Ogni file di prove e' un processo suo. */
+function montaConLetture(letture, redo) {
+  const dom = new JSDOM('<div id="route-outlet"></div>',
+    { url: 'http://localhost/#/constructions' });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  const giri = [];
+  global.setInterval = (fn) => { giri.push(fn); return giri.length; };
+  global.clearInterval = () => {};
+  const chiamate = [];
+  let n = 0;
+  dom.window.fetch = async (url, opzioni) => {
+    chiamate.push([url, opzioni]);
+    if (/redo/.test(String(url))) {
+      return { ok: redo.ok !== false, status: redo.status || 202, json: async () => redo.corpo || {} };
+    }
+    const risposta = letture[Math.min(n, letture.length - 1)];
+    n += 1;
+    return { ok: true, status: 200, json: async () => risposta };
+  };
+  global.fetch = dom.window.fetch;
+  new dom.window.Function(SORGENTE)();
+  return { dom, giri, chiamate };
+}
+
+const aspetta = () => new Promise((r) => setTimeout(r, 0));
+
+test('un rifacimento IN CORSO si vede nella riga, e «Rifalla» non c’è', async () => {
+  /* Mutazione ESEGUITA (06/10/2026): `lineAMano` senza `redoWaiting` -- rossa,
+     la riga mostra «Rifalla» e un secondo clic farebbe un doppio giro. */
+  const { dom } = montaConLetture([{ constructions: [inCorso()] }], {});
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const riga = dom.window.document.querySelector('.construction');
+
+  assert.match(riga.textContent, /Sto rifacendo la proposta/);
+  assert.match(riga.textContent, /Avevi chiesto: non toccare il termostato/);
+  assert.equal(riga.getAttribute('aria-busy'), 'true');
+  const testi = [...riga.querySelectorAll('button')].map((b) => b.textContent);
+  assert.ok(!testi.some((t) => /Rifalla/.test(t)), 'un secondo giro su un turno aperto');
+  assert.ok(testi.some((t) => /Rifiuta/.test(t)), 'si puo\' rifiutare mentre e\' in volo');
+});
+
+test('l’attesa dice le frasi della chat, e sul ponte che si può chiudere', async () => {
+  /* Le soglie e le frasi vivono in common.js per le due porte. Mutazione
+     ESEGUITA: `paintWait` senza la riga dei due minuti -- rossa. */
+  const tre = Date.now() / 1000 - 180;
+  const { dom } = montaConLetture([{ constructions: [inCorso({ avvio_ts: tre })] }], {});
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const attesa = dom.window.document.querySelector('.redo-wait');
+
+  assert.match(attesa.textContent, /Ci sto mettendo più del solito/);
+  assert.match(attesa.textContent, /Puoi anche chiudere: se arriva, la nuova proposta la trovi qui/);
+  assert.match(attesa.querySelector('.redo-timer').textContent, /^3:0\d$/);
+  assert.equal(attesa.querySelector('.redo-timer').getAttribute('aria-hidden'), 'true');
+});
+
+test('la pagina interroga finché il giro arriva, e lo annuncia', async () => {
+  /* Il ponte risponde minuti dopo: la pagina rilegge l'elenco al ritmo della
+     chat, e quando la riga non e' piu' in corso dice l'esito nella riga di
+     stato, che e' una regione live.
+
+     Mutazione ESEGUITA (06/10/2026): `afterDraw` senza il giro di riletture
+     -- rossa, l'esito non arriva mai. */
+  const fatto = propostaAMano({ testo: 'Spegni lo scaldabagno alle 23', giri: [
+    { richiesta: 'non toccare il termostato', esito: 'a_mano',
+      scartata: 'Sposta la lavatrice', turno: 'j1' }] });
+  const { dom, giri } = montaConLetture(
+    [{ constructions: [inCorso()] }, { constructions: [fatto] }], {});
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  assert.equal(giri.length >= 1, true, 'nessun giro di riletture');
+
+  giri[0]();
+  await aspetta(); await aspetta();
+
+  const stato = dom.window.document.getElementById('constructions-status');
+  assert.equal(stato.getAttribute('role'), 'status');
+  assert.equal(stato.getAttribute('aria-live'), 'polite');
+  assert.match(stato.textContent, /Ho rifatto la proposta\./);
+  assert.equal(dom.window.document.activeElement.getAttribute('data-proposta'), 'm1',
+    'il fuoco va sul testo nuovo');
+});
+
+test('i giri NIENTE e COSTRUITA si leggono nel filo', async () => {
+  /* Scelta del proprietario: «niente» entra nel filo come un giro qualunque.
+     Mutazione ESEGUITA: `roundOutcome` che ignora `esito` -- rossa. */
+  const { dom } = montaConLetture([{ constructions: [propostaAMano({ giri: [
+    { richiesta: 'senza termostato', esito: 'niente', perche: 'non resta niente da spostare' },
+  ] })] }], {});
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+
+  assert.match(dom.window.document.body.textContent,
+    /Nessuna proposta: non resta niente da spostare/);
+});
+
+test('un rifacimento che non riesce lascia la richiesta scritta', async () => {
+  /* La richiesta non si perde: il campo si riapre compilato, e la frase del
+     server si legge alla lettera. Mutazione ESEGUITA: `sendRedo` senza
+     `lasciate` -- rossa, il campo si riapre vuoto. */
+  const { dom } = montaConLetture([{ constructions: [propostaAMano()] }],
+    { ok: false, status: 503, corpo: { error: 'il modello non ha risposto: riprova.' } });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const bottone = (re) => [...dom.window.document.querySelectorAll('button')]
+    .filter((b) => re.test(b.textContent))[0];
+  bottone(/^Rifalla$/).click();
+  dom.window.document.querySelector('textarea').value = 'dopo le 14';
+  bottone(/Rifalla adesso/).click();
+  await aspetta(); await aspetta(); await aspetta();
+
+  const stato = dom.window.document.getElementById('constructions-status');
+  assert.match(stato.textContent, /il modello non ha risposto: riprova\./);
+  bottone(/^Rifalla$/).click();
+  assert.equal(dom.window.document.querySelector('textarea').value, 'dopo le 14');
 });

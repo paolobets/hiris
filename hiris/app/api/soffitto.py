@@ -395,6 +395,24 @@ async def sole_owner(app) -> dict | None:
     return {"specie": "persona", "id": owners[0]} if len(owners) == 1 else None
 
 
+async def administrators(app) -> list[dict] | None:
+    """I soggetti (`{"specie", "id"}`) di chi amministra la casa, o `None` se
+    Home Assistant non l'ha detto.
+
+    Lo chiede l'avviso per una proposta `alto` (`keeper/delivery.
+    notify_admins`, D14 del piano degli attori). Stessa lettura di
+    `sole_owner` e la stessa regola del cancello al confine (`_role_of`,
+    `is_admin_role`). Fuori gli utenti **di sistema** (`system_generated`:
+    il Supervisor, i servizi interni): Home Assistant li mette fra gli
+    amministratori, ma non sono persone e non hanno un telefono.
+    """
+    users = await _ha_users(app)
+    if users is None:
+        return None
+    return [{"specie": "persona", "id": uid} for uid, row in users.items()
+            if is_admin_role(_role_of(row)) and not row.get("sistema")]
+
+
 async def ceiling_for(app, soggetto: dict | None) -> dict:
     """Il soffitto di questo soggetto.
 
@@ -590,9 +608,8 @@ def require_builder(request) -> web.Response | None:
 
     Una funzione sola per ogni rotta della pagina Costruzioni, delle proposte
     a mano e dei giudizi: la regola e' una, e due copie divergerebbero al
-    primo ritocco. Si chiama PRIMA di toccare qualunque archivio -- anche la
-    lettura dell'elenco scrive (`store.scadi`), e un 403 detto dopo avrebbe
-    gia' scritto.
+    primo ritocco. Si chiama PRIMA di toccare qualunque archivio: un 403
+    detto dopo avrebbe gia' letto, o scritto.
 
     Il rifiuto si registra a `info`: un non amministratore che apre la pagina
     per URL e' un caso normale, non un allarme. Si scrive la chiave del

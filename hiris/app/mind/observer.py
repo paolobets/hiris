@@ -29,9 +29,9 @@ import logging
 
 from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.house import House
-from ..home_space.privacy import MOVING_DOMAINS
+from ..home_space.privacy import MOVING_DOMAINS, PRESENCE_MARK, handles
 from ..home_space.topology import is_pseudo_area
-from ..steering import OBSERVER_SPECIES, misura_turno, read_json
+from ..steering import OBSERVER_SPECIES, SPECIES, chain_answer, chain_turn, read_json
 from .scope import OBSERVER
 
 logger = logging.getLogger(__name__)
@@ -43,12 +43,11 @@ logger = logging.getLogger(__name__)
 #: JSON rotto che si butta intero.
 MAX_ANSWER_TOKENS = 16000
 
-#: Come si chiama, nella coda del ragionamento, un turno dell'osservatore.
-#: Le altre due specie sono `chat` (`api/handlers_chat.py`) e `promessa`
-#: (`keeper/exchange.py`), e come loro il nome vive **dove il turno nasce**:
-#: chi lo serve -- `agent/runner.reason` -- dichiara per conto suo quali
-#: specie sa ragionare, che e' un'affermazione sua e non una copia di questa.
-SCOPE_TURN_KIND = "scope"
+#: Come si chiama, nella coda del ragionamento, un turno dell'osservatore:
+#: il `kind` della sua dichiarazione (`steering.SPECIES`, Tappa 6, Task 7).
+#: Fino al 06/10/2026 il nome viveva qui e, ricopiato, nel lavoratore che lo
+#: serve (`agent/runner._SCOPE_KIND`).
+SCOPE_TURN_KIND = SPECIES[OBSERVER_SPECIES].kind
 
 SYSTEM = """Sei l'osservatore di HIRIS, un sistema che guarda una casa domotica.
 
@@ -98,32 +97,23 @@ def watched_ids(house: House, only: set[str] | None = None) -> list[str]:
 #: `cv.entities_domain(DEVICE_TRACKER_DOMAIN)`), letti nel sorgente di Core
 #: 2026.9.3 il 05/10/2026.
 #:
-#: Il `#` non puo' collidere con un'entita' vera: Home Assistant ammette
-#: nell'object_id solo cifre, minuscole e `_` (`homeassistant/core.py`,
-#: `_OBJECT_ID`, Core 2026.9.3, letto il 05/10/2026).
+#: Il segnaposto e il suo segno (`PRESENCE_MARK`) vivono in
+#: `home_space/privacy.py` dal 06/10/2026: li usa anche il guardiano degli
+#: attori (`privacy.PresenceMask`), e un segnaposto con due case diventerebbe
+#: due forme della stessa cosa.
 #:
 #: **La deroga «salvo che l'obiettivo li chieda» non nasce.** L'obiettivo e'
 #: testo libero (`mind/store.objective`): non c'e' un modo per dire «le persone
 #: si', per nome» che non sia indovinarlo da una frase. Se servira', nascera'
 #: come campo dell'obiettivo, non come lettura della prosa.
-PRESENCE_MARK = "#"
 
 
 def presence_handles(ids) -> dict[str, str]:
-    """`entity_id` -> segnaposto, per le sole presenze fra `ids`.
-
-    Il numero e' la posizione nell'ordine degli id, dominio per dominio: e'
-    cio' che lo rende ricostruibile quando la risposta torna -- sul ponte
-    minuti dopo, da un altro processo -- a partire dallo stesso insieme
-    chiesto, senza archiviare una tabella di corrispondenze."""
-    handles: dict[str, str] = {}
-    counters: dict[str, int] = {}
-    for entity_id in sorted(ids):
-        domain = domain_of(entity_id)
-        if domain in MOVING_DOMAINS:
-            counters[domain] = counters.get(domain, 0) + 1
-            handles[entity_id] = f"{domain}.{PRESENCE_MARK}{counters[domain]}"
-    return handles
+    """`entity_id` -> segnaposto, per le sole presenze fra `ids`: la
+    numerazione e' quella di `privacy.handles`, sul lotto chiesto. E' cio' che
+    la rende ricostruibile quando la risposta torna -- sul ponte minuti dopo,
+    da un altro processo -- a partire dallo stesso insieme."""
+    return handles(i for i in ids if domain_of(i) in MOVING_DOMAINS)
 
 
 def house_lines(house: House, only: set[str] | None = None) -> list[str]:
@@ -497,26 +487,25 @@ async def reconsider(runner, store, house: House, *, reason: str,
         # e basta, e un posizionale ci morirebbe sopra al primo giro in
         # produzione senza che nessuna finta lo veda.
         # **La specie si DICHIARA, non si deduce da `agent_type`.** Quello
-        # qui sopra vale «observer» e risponde a «quale modello scelgo»; lo
-        # passa anche `recipe_turn`, quindi misurare su di lui renderebbe
-        # l'osservatore e le ricette indistinguibili -- proprio la
-        # distinzione per cui il registro esiste.
+        # qui sotto vale «observer» e risponde a «quale modello scelgo»; fino
+        # al 07/10/2026 lo passava anche `recipe_turn`, e misurare su di lui
+        # avrebbe reso l'osservatore e le ricette indistinguibili -- proprio
+        # la distinzione per cui il registro esiste.
         #
         # `misure` e' `None` quando nessuno misura (il caso dei test e di un
         # chiamante che non ha l'archivio): la misura non e' un requisito per
         # girare.
-        async with misura_turno(measurements, runner, specie=OBSERVER_SPECIES,
-                                canale="catena", modello=model) as turn:
-            answer = await runner.chat(
-                user_message=question, system_prompt=SYSTEM,
-                model=model, agent_type="observer",
-                max_tokens=MAX_ANSWER_TOKENS)
+        answer, turn = await chain_turn(
+            runner, OBSERVER_SPECIES, usage=measurements, modello=model,
+            max_tokens=MAX_ANSWER_TOKENS,
+            user_message=question, system_prompt=SYSTEM,
+            model=model, agent_type="observer")
     except Exception as error:
         logger.warning("osservatore: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)
         return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
 
-    return apply_answer(store, house, answer, reason=reason,
+    return apply_answer(store, house, chain_answer(answer, turn), reason=reason,
                         window_s=window_s, cadence_s=cadence_s,
                         asked=set(watched_ids(house, only)),
                         record=record, campaign_ts=campaign_ts, now=now,

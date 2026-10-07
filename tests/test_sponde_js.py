@@ -101,6 +101,11 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # e' l'abbonamento) -- stessa specie di `fmtNum`/`fmtEuro` qui sopra, non
     # private come `_setUsageText`.
     assert {"isSubscriptionOnly", "SUBSCRIPTION_ONLY_COST_LABEL"} <= globali
+    # 45 -> 48 col «Rifalla» sul ponte (attori, Task 4.4, 06/10/2026):
+    # `SOGLIE_ATTESA`, `FRASI_ATTESA` e `stopwatchText` sono le soglie e le
+    # frasi dell'attesa, scritte in common.js per la chat e per le Proposte.
+    assert {"SOGLIE_ATTESA", "FRASI_ATTESA", "stopwatchText"} <= globali
+    #
     # 34 -> 45 con `static/common.js` (Tappa 4, Task 3, 05/10/2026): le
     # utilita' che ogni pagina si riscriveva -- `el`, `clearEl`, `byId`,
     # `api`, `pad2`, `renderError`, `setDisclosure`, `nomiRegistriInItaliano`
@@ -128,7 +133,7 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # nell'elenco anche se nessuno li legge NUDI -- il guscio li risolve per
     # nome -- e' scritta accanto a loro in `.oxlintrc.json`: e' il punto 1 di
     # questo stesso cancello a sorvegliarli.
-    assert len(globali) == 45
+    assert len(globali) == 48
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():

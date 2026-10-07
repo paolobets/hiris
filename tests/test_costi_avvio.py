@@ -43,6 +43,7 @@ rossa (`get_states`: 5, tetto 4). Rieseguita col tetto sceso (Task 6): rossa
 """
 import asyncio
 import collections
+import itertools
 import sys
 from pathlib import Path
 
@@ -136,6 +137,10 @@ async def _heard_over_two_connections(house) -> dict[str, list]:
     heard: dict[str, list] = {kind: [] for kind in casa_finta.listener_kinds()}
     for kind, received in heard.items():
         getattr(house, f"add_{kind}_listener")(received.append)
+    # La finestra di scollegamento porta due istanti dell'orologio del client:
+    # lo stesso orologio di passi, da tutte e due le parti, perche' il
+    # confronto guardi chi ascolta e non quando.
+    house._clock = itertools.count(1.0).__next__
     await house.start_websocket()
     await _until_listening(house._session, 1)
     house._session.drop()

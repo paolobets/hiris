@@ -321,19 +321,51 @@ def test_le_entita_che_la_ricetta_NOMINA_si_leggono_senza_eseguirla():
 #    giorni, a ogni riavvio, per sempre.
 
 
-def test_una_ricetta_che_nomina_un_operazione_NON_scrivibile_si_rifiuta():
-    """`episodio` resta nel registro -- `aggregate_day` lo usa -- ma non e'
-    scrivibile in una ricetta: `is_on` e' una funzione, e un dato non porta
-    funzioni. Il rifiuto dice PERCHE', o il modello riproverebbe.
+def test_una_ricetta_che_nomina_un_operazione_sugli_STATI_si_rifiuta():
+    """`episodio` vuole gli stati di un'entita', e dentro una ricetta `@entita`
+    consegna solo la serie delle statistiche: il primo modello che l'ha
+    scritta, il 14/09/2026, ha ucciso la riaggregazione di due giorni. Il
+    rifiuto dice le due forme, o il modello riproverebbe.
 
-    Mutazione: togliere il controllo su `in_recipes` da `validate` -- rossa.
+    Mutazione ESEGUITA: far consegnare a `@entita` anche le letture in una
+    ricetta (`entity_shapes` di fabbrica con `SHAPE_READINGS`) -- rossa.
     """
     ricetta = ric.Recipe({"why": "quanto e' stato acceso",
                       "steps": [{"name": "acceso", "operation": "episodio",
-                                 "inputs": ["@climate.x"]}]})
+                                 "inputs": ["@climate.x"],
+                                 "params": {"state": "heat", "period_start": 0,
+                                            "period_end": 3600}}]})
     esito = ricetta.validate(entities={"climate.x"})
     assert not esito.valid
-    assert any("episodio" in p and "non si puo' scrivere in una ricetta" in p
+    assert any("episodio" in p and "vuole letture" in p
+               for p in esito.problems), esito.problems
+
+
+def test_un_passo_che_consegna_un_PERIODO_lo_consegna_solo_a_chi_lo_vuole():
+    """`$passo` consegna cio' che l'operazione di quel passo dichiara
+    (`Operation.gives`): il periodo di `episodio` va a `tempo_in_stato`, una
+    misura no. Fino al 06/10/2026 `$passo` era «una misura» per costruzione.
+
+    Mutazione ESEGUITA: `_shapes_of` che per `$passo` torna sempre
+    `SHAPE_RESULT` -- rossa su entrambe le ricette.
+    """
+    from hiris.app.mind.operations import SHAPE_READINGS, SHAPE_SERIES
+
+    with_states = (SHAPE_SERIES, SHAPE_READINGS)
+    giusta = ric.Recipe({"why": "in casa", "steps": [
+        {"name": "in_casa", "operation": "episodio", "inputs": ["@person.a"],
+         "params": {"state": "home", "period_start": 0, "period_end": 3600}},
+        {"name": "quanto", "operation": "tempo_in_stato", "inputs": ["$in_casa"]}]},
+        entity_shapes=with_states)
+    storta = ric.Recipe({"why": "x", "steps": [
+        {"name": "t", "operation": "somma_periodo", "inputs": ["@sensor.a"],
+         "params": {"unit": "kWh"}},
+        {"name": "quanto", "operation": "tempo_in_stato", "inputs": ["$t"]}]},
+        entity_shapes=with_states)
+
+    assert giusta.validate(entities={"person.a"}).valid
+    esito = storta.validate(entities={"sensor.a"})
+    assert any("tempo_in_stato" in p and "vuole periodo" in p
                for p in esito.problems), esito.problems
 
 
@@ -370,21 +402,19 @@ def test_tutte_le_operazioni_OFFERTE_al_modello_sono_eseguibili_da_una_ricetta()
     obbligatori un JSON non sa portare e' una trappola che aspetta.
 
     Un parametro obbligatorio e' portabile da una ricetta solo se il suo valore
-    e' un letterale JSON. Una funzione (`is_on`) non lo e'; un `Period` neanche
-    -- va calcolato da un passo, e i passi si passano come `inputs`
-    POSIZIONALI, non come parametri.
+    e' un letterale JSON. Una funzione (`is_on`, che `episodio` prendeva fino
+    al 06/10/2026) non lo e'; un `Period` neanche -- va calcolato da un passo,
+    e i passi si passano come `inputs` POSIZIONALI, non come parametri.
 
-    Mutazione: rimettere `in_recipes=True` su `episodio` -- rossa.
+    Mutazione: rimettere `is_on` fra i parametri di `episodio` -- rossa.
     """
     import inspect
 
     from hiris.app.mind.operations import REGISTRY
 
-    valori_esclusi = {"is_on", "period", "period_end"}
+    valori_esclusi = {"is_on", "period"}
     colpevoli = []
     for name, operation in REGISTRY.items():
-        if not operation.in_recipes:
-            continue
         firma = inspect.signature(operation.run)
         for p in firma.parameters.values():
             if (p.kind is p.KEYWORD_ONLY and p.default is p.empty
@@ -508,8 +538,7 @@ def _parametro_finto(name: str):
     un messaggio che dice cosa aggiungere -- meglio di un finto `None` che
     passerebbe per caso.
     """
-    valori = {"unit": "kWh", "zone": "Europe/Rome",
-              "key": "classe", "reduce": "somma_entita"}
+    valori = {"unit": "kWh"}
     assert name in valori, (
         f"parametro obbligatorio nuovo: \u00ab{name}\u00bb. Aggiungi qui un valore "
         "plausibile, o la prova non puo' eseguire l'operazione che lo vuole.")
@@ -558,7 +587,7 @@ def test_ogni_operazione_dichiara_una_forma_per_ogni_ingresso():
     controllato**, ed e' esattamente il buco da cui e' passato il difetto del
     14/09/2026.
 
-    Mutazione: togliere una forma da una qualunque delle diciotto voci --
+    Mutazione: togliere una forma da una qualunque voce del registro --
     rossa.
     """
     from hiris.app.mind.operations import REGISTRY
@@ -578,55 +607,11 @@ def test_le_forme_dichiarate_sono_quelle_del_vocabolario_chiuso():
     """
     from hiris.app.mind import operations as ops
 
-    vocabolario = {ops.SHAPE_SERIES, ops.SHAPE_COUNTER, ops.SHAPE_RESULT,
-                   ops.SHAPE_READINGS, ops.SHAPE_PERIOD, ops.SHAPE_MEASURES,
-                   ops.SHAPE_MEASURE_MAP}
+    vocabolario = {ops.SHAPE_SERIES, ops.SHAPE_RESULT,
+                   ops.SHAPE_READINGS, ops.SHAPE_PERIOD}
     fuori = [(n, f) for n, o in ops.REGISTRY.items() for f in o.takes
              if f not in vocabolario]
     assert fuori == [], fuori
-
-def test_primo_ultimo_differenza_NON_si_puo_scrivere_in_una_ricetta():
-    """**Un numero SBAGLIATO, misurato sulla casa vera il 14/09/2026**: il
-    resoconto del 26/08 portava `energia_consumata = -0,98 kWh`. Energia
-    consumata negativa.
-
-    La causa non e' del modello, e' nostra. `primo_ultimo_differenza` risponde
-    a *«quanto e' salito un CONTATORE: ultima meno prima»*, e vuole le letture
-    cumulate. Ma dentro una ricetta `@entita` consegna le **statistiche orarie**
-    di Home Assistant, dove ogni punto e' il `cambio` di quell'ora: fare
-    `ultima - prima` su quelle calcola la variazione della variazione, che non
-    e' niente -- e sull'ora giusta esce negativa.
-
-    Due cose diverse dette con una parola sola (`serie`), e si separano alla
-    fonte: `SHAPE_COUNTER` e' le letture cumulate, e dentro una ricetta nessuno
-    le sa produrre.
-
-    Mutazione: rimettere `SHAPE_SERIES` su `primo_ultimo_differenza` -- rossa.
-    """
-    from hiris.app.mind.operations import REGISTRY, SHAPE_COUNTER
-
-    voce = REGISTRY["primo_ultimo_differenza"]
-    assert voce.takes == (SHAPE_COUNTER,)
-    assert not voce.offerable
-    # E resta nel registro: `mind/facts.aggregate_day` la usa sul grezzo, dove
-    # le letture SONO cumulate.
-    assert voce.in_recipes
-
-
-def test_una_ricetta_che_da_una_serie_oraria_a_un_contatore_si_rifiuta():
-    """Il rifiuto dice le due forme, cosi' chi legge capisce **perche'** e non
-    riprova con la stessa.
-
-    Mutazione: togliere `SHAPE_COUNTER` dal vocabolario e rimetterlo uguale a
-    `SHAPE_SERIES` -- rossa.
-    """
-    r = ric.Recipe({"why": "quanto ha consumato", "steps": [
-        {"name": "consumo", "operation": "primo_ultimo_differenza",
-         "inputs": ["@sensor.contatore"], "params": {"unit": "kWh"}}]})
-    esito = r.validate(entities={"sensor.contatore"})
-    assert not esito.valid
-    assert any("primo_ultimo_differenza" in p for p in esito.problems), esito.problems
-
 
 def test_il_dominio_delle_statistiche_ha_una_casa_sola():
     """«Per quale dominio Home Assistant compila statistiche» vive in

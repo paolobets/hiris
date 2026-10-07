@@ -50,7 +50,9 @@ _KW = frozenset([
 
 
 def _tokens(src: str) -> list[tuple[str, str]]:
-    """(specie, valore), saltando commenti, stringhe e regex.
+    """(specie, valore), saltando commenti e regex. Le stringhe escono come
+    `("str", contenuto)`: per le sponde non sono nomi, e il censimento ci
+    cerca le rotte (`stringhe`).
 
     Non e' un parser: serve solo a NON scambiare una stringa o un commento per
     un identificatore. E' la stessa ragione per cui `rinomina.py` usa
@@ -84,6 +86,7 @@ def _tokens(src: str) -> list[tuple[str, str]]:
                 if src[j] == c:
                     break
                 j += 1
+            fuori.append(("str", src[i + 1:j]))
             i = j + 1
             continue
         if c == "/":
@@ -127,6 +130,14 @@ def _tokens(src: str) -> list[tuple[str, str]]:
         fuori.append(("punct", c))
         i += 1
     return fuori
+
+
+def stringhe(src: str) -> str:
+    """Le stringhe di un sorgente JavaScript, una per riga, **senza i
+    commenti**: e' il testo in cui il censimento cerca chi chiama una rotta
+    (N65-1, giro 65). Un commento che nomina `/api/x` non e' una chiamata, e
+    il frontend letto crudo lo contava come tale."""
+    return "\n".join(v for k, v in _tokens(src) if k == "str")
 
 
 def profilo(percorso: Path) -> tuple[set[str], set[str]]:

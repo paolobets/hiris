@@ -21,9 +21,11 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
+from conftest import SCADENZA_LONTANA
 from hiris.app import server, steering
 from hiris.app.agent import runner as ponte
 from hiris.app.keeper import exchange
+from hiris.app.mind import proposer_round
 from hiris.app.mind.store import ObservationsStore
 from tests.test_agent_runner_inaddon import _ProcFelice
 from tests.test_mind_analyst_turn import _serie
@@ -35,19 +37,17 @@ APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 
 # -- il tetto ------------------------------------------------------------------
 
-def _model_calls() -> list[tuple[str, int, ast.Call]]:
-    """Le chiamate `<qualcosa>.chat(...)` del prodotto, **chieste al
-    sorgente**. Si saltano quelle che inoltrano `**kwargs` (il router verso i
-    backend): il tetto viaggia dentro, ed e' gia' stato dichiarato da chi ha
-    chiamato il router."""
+def _turn_calls() -> list[tuple[str, int, ast.Call]]:
+    """Le partenze dei turni sulla catena: le chiamate di
+    `steering.chain_turn`, **chieste al sorgente**. Dalla Tappa 6 (Task 7)
+    e' l'unico posto che chiama `runner.chat` (`tests/test_un_turno.py`)."""
     trovate = []
     for percorso in sorted(APP.rglob("*.py")):
         albero = ast.parse(percorso.read_text(encoding="utf-8"))
         for nodo in ast.walk(albero):
             if (isinstance(nodo, ast.Call)
-                    and isinstance(nodo.func, ast.Attribute)
-                    and nodo.func.attr == "chat"
-                    and not any(k.arg is None for k in nodo.keywords)):
+                    and (getattr(nodo.func, "id", None) == "chain_turn"
+                         or getattr(nodo.func, "attr", None) == "chain_turn")):
                 trovate.append((str(percorso.relative_to(APP)), nodo.lineno, nodo))
     return trovate
 
@@ -57,11 +57,20 @@ def test_ogni_chiamata_a_un_modello_DICHIARA_il_suo_tetto():
     `server.py`, il «Rifalla» in `api/handlers_proposals.py`.
 
     Mutazione ESEGUITA: tolto `max_tokens=` dalla chiamata dell'analista --
-    rossa, nominando `server.py`."""
-    chiamate = _model_calls()
-    # **La prova della derivazione**: su `5bce65d` le chiamate dirette sono
-    # otto (piano della Tappa 6, «Misurato prima di disegnare»). Il Task 7 le
-    # porta tutte nel modulo dei turni: allora questa ricerca va puntata la'.
+    rossa, nominando `server.py`.
+
+    Dal Task 7 la chiamata e' una sola, e il tetto e' un argomento di
+    `chain_turn` **senza predefinito**: Python stesso rifiuta un turno che non
+    lo dichiara. La prova guarda anche ogni partenza, per nome."""
+    import inspect
+
+    parametro = inspect.signature(steering.chain_turn).parameters["max_tokens"]
+    assert parametro.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parametro.default is inspect.Parameter.empty
+    chiamate = _turn_calls()
+    # **La prova della derivazione**: su `5bce65d` le chiamate dirette erano
+    # otto (piano della Tappa 6, «Misurato prima di disegnare»), e sono
+    # diventate otto partenze.
     assert len(chiamate) >= 8, (
         f"la ricerca delle chiamate e' rotta: ne ha trovate {len(chiamate)}")
     senza = [f"{file}:{riga}" for file, riga, nodo in chiamate
@@ -72,10 +81,10 @@ def test_ogni_chiamata_a_un_modello_DICHIARA_il_suo_tetto():
 def test_il_tetto_dell_analista_e_quello_di_prima_SCRITTO():
     """D3: 4.096 finche' la misura dal vivo (T9) non ne sceglie un altro.
     Cambiarlo senza la misura e' un numero inventato."""
-    from hiris.app.mind import actuator_turn, analyst_turn
+    from hiris.app.mind import analyst_turn, proposer_turn
 
     assert analyst_turn.MAX_ANSWER_TOKENS == 4096
-    assert actuator_turn.MAX_ANSWER_TOKENS == 4096
+    assert proposer_turn.MAX_ANSWER_TOKENS == 4096
 
 
 # -- il modello degli attori sul ponte -----------------------------------------
@@ -144,12 +153,11 @@ def test_ricette_analista_attuatore_e_promessa_portano_il_modello(tmp_path):
             assert _accodato(app).get("model") == "opus", nome
 
         app["reasoning_queue"].accodati.clear()
-        app["observations"].replace_analysis("2026-10-05", {"osservazioni": [
+        proposer_round._enqueue(app, "2026-10-05", [
             {"soggetto": "dev1", "misura": "prelievo", "chiave": None,
              "innesco": 1, "base": 3, "cosa": "sale",
-             "cosa_cambierebbe": "spendere meno"}]})
-        server._enqueue_actuator_turn(app, "2026-10-05")
-        assert _accodato(app).get("model") == "opus", "attuatore"
+             "cosa_cambierebbe": "spendere meno"}], [])
+        assert _accodato(app).get("model") == "opus", "proponente"
     finally:
         app["observations"].close()
 
@@ -165,7 +173,7 @@ def test_il_modello_del_ponte_si_legge_in_UN_posto():
 
 
 def _job(kind="osservatore", **context):
-    return {"job_id": "J", "kind": kind,
+    return {"deadline_ts": SCADENZA_LONTANA, "job_id": "J", "kind": kind,
             "context": {"system_prompt": "Sei HIRIS.",
                         "history": [{"role": "user", "content": "guarda"}],
                         "contesto": "", **context}}
@@ -204,3 +212,51 @@ def test_un_job_SENZA_modello_e_un_errore_dichiarato_non_sonnet(caplog):
     assert chiamata == []
     assert any("model" in r.getMessage() for r in caplog.records)
 
+
+
+# -- il tempo della CLI (S-09, Tappa 6, Task 8) --------------------------------
+
+def test_la_CLI_ha_il_tempo_che_resta_al_turno():
+    """Rossa su `8529b30`: `timeout=300` fisso, qualunque scadenza avesse il
+    turno.
+
+    Mutazione ESEGUITA il 06/10/2026: rimesso `timeout=300` -- rossa, 300
+    contro i circa 120 secondi che restavano."""
+    import time
+
+    visto = {}
+
+    def _cli(argv, *a, **k):
+        visto["timeout"] = k.get("timeout")
+        return _ProcFelice()
+
+    adesso = time.time()
+    with patch.object(ponte.subprocess, "run", _cli):
+        ponte._reason_chat(_job(model="opus") | {"deadline_ts": adesso + 120}, "live")
+    assert 110 < visto["timeout"] <= 120, visto
+
+
+def test_un_turno_gia_scaduto_non_invoca_la_CLI():
+    """La coda chiude il job alla scadenza (`sweep_expired`): una risposta
+    che arrivasse dopo non la riceverebbe nessuno."""
+    import time
+
+    chiamata = []
+    with patch.object(ponte.subprocess, "run",
+                      lambda *a, **k: chiamata.append(a) or _ProcFelice()):
+        ponte._reason_chat(_job(model="opus") | {"deadline_ts": time.time() - 1}, "live")
+    assert chiamata == []
+
+
+def test_un_job_SENZA_scadenza_e_un_errore_dichiarato(caplog):
+    """Ogni job della coda la porta (`deadline_ts NOT NULL`): uno senza non
+    viene dalla coda. Si dichiara, come il job senza modello."""
+    chiamata = []
+    job = _job(model="opus")
+    del job["deadline_ts"]
+    with (patch.object(ponte.subprocess, "run",
+                       lambda *a, **k: chiamata.append(a) or _ProcFelice()),
+          caplog.at_level(logging.ERROR, logger="hiris.agent")):
+        decisione = ponte._reason_chat(job, "live")
+    assert (decisione, chiamata) == ({}, [])
+    assert any("deadline_ts" in r.getMessage() for r in caplog.records)

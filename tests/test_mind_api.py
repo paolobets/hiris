@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from aiohttp import web
 
 from hiris.app.api.handlers_mind import (
     handle_analysis,
@@ -483,8 +484,13 @@ async def test_un_corpo_storto_e_un_400_non_un_500(tmp_path):
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         for corpo in ({}, {"testo": 12}, {"altro": "x"}, [], _ILLEGGIBILE):
-            r = await handle_set_objective(_richiesta_scritta(
-                {"observations": archivio}, corpo))
+            try:
+                r = await handle_set_objective(_richiesta_scritta(
+                    {"observations": archivio}, corpo))
+            except web.HTTPBadRequest as rifiuto:
+                # Un corpo che non e' un oggetto lo rifiuta il confine
+                # (`api/boundary.json_object`).
+                r = rifiuto
             assert r.status == 400, corpo
     finally:
         archivio.close()
@@ -1074,60 +1080,76 @@ async def test_una_voce_di_config_entry_NON_inventa_un_integrazione():
 
 
 # ---------------------------------------------------------------------------
-# L'ATTUAZIONE sulla rotta dell'analisi (spec 2026-09-21 §2).
+# Gli ESITI DEL PROPONENTE sulla rotta dell'analisi (attori, strato 4, Task 4.6).
 #
-# Gli esiti dell'attuatore sono la risposta alle domande dell'analista, e la
-# pagina li legge ACCANTO alla domanda: e' il server a rimetterli insieme,
-# perche' e' lui che conosce la regola dell'impronta -- rifarla in JavaScript
-# sarebbe il secondo posto in cui si decide chi risponde a chi.
+# Gli esiti sono la risposta alle domande dell'analista, e la pagina li legge
+# ACCANTO alla domanda: e' il server a rimetterli insieme, perche' e' lui che
+# conosce la regola dell'impronta -- rifarla in JavaScript sarebbe il secondo
+# posto in cui si decide chi risponde a chi. Il lettore e' UNO,
+# `proposer_turn.outcomes_of`: lo stesso del proponente.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_l_ESITO_dell_attuatore_arriva_ACCANTO_alla_sua_osservazione(tmp_path):
-    """Mutazione ESEGUITA: non attaccare l'esito -- rossa (la pagina dovrebbe
-    rifare la regola dell'impronta per conto suo)."""
-    from hiris.app.mind import actuator
+async def test_l_ESITO_del_proponente_arriva_ACCANTO_alla_sua_osservazione(tmp_path):
+    """Rossa su `9f478891`: la rotta leggeva ancora `attuazione`, la chiave
+    del vecchio attuatore, e un esito scritto dal proponente non arrivava mai
+    alla pagina.
+
+    Mutazione ESEGUITA: rimettere in `_with_outcomes` la lettura di
+    `attuazione` -- rossa."""
+    from hiris.app.mind import analyst, proposer_turn
     from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     osservazione = {"soggetto": "dev1", "misura": "prelievo", "chiave": None,
                     "innesco": 1, "base": 19, "cosa": "x", "cosa_cambierebbe": "y"}
+    esito = {"impronta": analyst.observation_key(osservazione),
+             "esito": proposer_turn.NOTHING, "perche": "lo scaldabagno, fra le 19 e le 22"}
     try:
         archivio.replace_analysis("2026-09-20", {
-            "osservazioni": [osservazione],
-            "attuazione": {"su_fondamento": "aaa", "esiti": [
-                {"gesto": "indagine", "trovato": "fra le 19 e le 22",
-                 "impronta": actuator.observation_key(osservazione)}]}})
+            "osservazioni": [osservazione], proposer_turn.OUTCOMES_KEY: [esito]})
 
         r = await handle_analysis(_richiesta({"observations": archivio},
                                              {"day": "2026-09-20"}))
 
         analisi = json.loads(r.text)["analisi"]
-        assert analisi["osservazioni"][0]["esito"]["trovato"] == "fra le 19 e le 22"
+        assert analisi["osservazioni"][0]["esito"] == esito
+        # Una cosa sola, in un posto solo: l'elenco grezzo non viaggia accanto
+        # agli esiti gia' attaccati.
+        assert proposer_turn.OUTCOMES_KEY not in analisi
     finally:
         archivio.close()
 
 
 @pytest.mark.asyncio
 async def test_un_osservazione_SENZA_esito_non_ne_guadagna_uno_finto(tmp_path):
-    """Il silenzio dell'attuatore e' un fatto: la pagina lo dice con parole
-    sue, e non deve trovarsi un esito vuoto che sembra una risposta.
+    """Un'osservazione a cui il proponente non ha ancora risposto non deve
+    trovarsi un esito vuoto che sembra una risposta.
 
     Mutazione ESEGUITA: attaccare `{}` a chi non ha esito -- rossa.
     """
+    from hiris.app.mind import analyst, proposer_turn
     from hiris.app.mind.store import ObservationsStore
 
+    risposta = {"soggetto": "dev2", "misura": "prelievo", "chiave": None, "innesco": 1}
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
+        # Una sorella CON esito: senza, nessun esito da attaccare e la
+        # funzione tornerebbe prima, e la mutazione qui sotto resterebbe
+        # verde (misurato: la prima stesura di questa prova lo era).
         archivio.replace_analysis("2026-09-20", {
             "osservazioni": [{"soggetto": "dev1", "misura": "prelievo",
-                              "chiave": None, "innesco": 1}],
-            "attuazione": {"su_fondamento": "aaa", "esiti": []}})
+                              "chiave": None, "innesco": 1}, risposta],
+            proposer_turn.OUTCOMES_KEY: [
+                {"impronta": analyst.observation_key(risposta),
+                 "esito": proposer_turn.NOTHING, "perche": "x"}]})
 
         r = await handle_analysis(_richiesta({"observations": archivio},
                                              {"day": "2026-09-20"}))
 
-        assert "esito" not in json.loads(r.text)["analisi"]["osservazioni"][0]
+        prima, seconda = json.loads(r.text)["analisi"]["osservazioni"]
+        assert "esito" not in prima
+        assert seconda["esito"]["perche"] == "x"
     finally:
         archivio.close()
 

@@ -5,6 +5,7 @@ from hiris.app.action.construction.workshop import Workshop
 from hiris.app.agent.runner import mcp_names
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import promise_tools
+from hiris.app.steering import PROMISE_SPECIES
 from tests._contracts import assert_stessa_firma
 
 
@@ -16,7 +17,7 @@ class FintaOfficina:
                                           "entita": ["automation.x"], "avviso": None}
 
     async def propose(self, intento, *, actor, exchange, now, thread=None,
-                      reveal_before=True):
+                      reveal_before=True, refuse_high=False):
         self.chiamate.append(("propose", intento, actor, exchange))
         return self._proponi
 
@@ -56,7 +57,7 @@ def test_il_turno_di_una_promessa_non_li_riceve():
     nomi = [d["name"] for d in promise_tools()]
     assert "propose" not in nomi
     assert "confirm" not in nomi
-    assert "mcp__hiris__propose" not in mcp_names(by_promise=True)
+    assert "mcp__hiris__propose" not in mcp_names(PROMISE_SPECIES)
 
 
 @pytest.mark.asyncio

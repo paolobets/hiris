@@ -15,17 +15,9 @@ Il precedente e' gia' stato pagato in questo progetto: `_difference` con un
 punto solo restituiva `0.0`, cioe' «non e' cambiato niente» travestito da dato
 (`mind/facts.py`, corretto il 26/08/2026).
 """
-import contextlib
-import dataclasses
-from zoneinfo import ZoneInfo
-
 import pytest
 
 from hiris.app.mind import operations as ops
-
-#: Il fuso della casa, gia' risolto -- come lo riceve il registro, che non sa
-#: dove sta la casa e non deve impararlo.
-ROMA = ZoneInfo("Europe/Rome")
 
 
 def _kwh(valore: float) -> "ops.Measurement":
@@ -156,11 +148,10 @@ def test_il_non_lo_so_si_propaga_CON_la_sua_causa():
     letto = ops.Measurement(4.0, unit="kWh", coverage=1.0)
     for operation, args in (("quota", (spento, letto)), ("quota", (letto, spento)),
                             ("differenza_fra", (spento, letto)),
+                            ("somma_fra", (spento, letto)),
                             ("confronto_periodi", (letto, spento))):
         result = ops.REGISTRY[operation].run(*args)
         assert result.cause == "spenta_dal_proprietario", operation
-    tutte_mute = ops.REGISTRY["somma_entita"].run([spento, spento])
-    assert tutte_mute.cause == "spenta_dal_proprietario"
 
 
 @pytest.mark.parametrize("operation, args, params, cause", [
@@ -197,13 +188,8 @@ def test_un_non_calcolabile_dice_perche_e_non_ha_valore():
 
 # -- il periodo: un ELENCO di finestre, non un intervallo solo --------------
 #
-# Tre delle sette domande del proprietario (docs/design/
-# 2026-09-11-le-domande-del-proprietario.md) chiedono la stessa cosa:
-# restringere un calcolo ai periodi in cui qualcosa era vero -- «mentre il
-# riscaldamento scaldava», «quando c'era qualcuno in casa». Sembrava
-# un'operazione in piu'; non lo e', se il PERIODO e' un elenco di finestre:
-# allora `episodio` produce finestre, e ogni altra operazione le accetta. La
-# restrizione diventa composizione, e il registro resta a quindici mattoni.
+# `episodio` lo produce e `tempo_in_stato` lo misura: e' la coppia che resta
+# per la presenza (D7 del proprietario, 06/10/2026).
 
 
 def test_un_periodo_e_fatto_di_finestre_e_ne_conosce_la_durata():
@@ -234,17 +220,6 @@ def test_le_finestre_si_ORDINANO_e_si_FONDONO_quando_si_toccano():
     p = ops.Period([(7200.0, 9000.0), (0.0, 3600.0), (3600.0, 5400.0)])
 
     assert p.windows == ((0.0, 5400.0), (7200.0, 9000.0))
-
-
-def test_un_periodo_dice_se_un_istante_gli_appartiene():
-    p = ops.Period([(0.0, 3600.0), (7200.0, 9000.0)])
-
-    assert p.contains(1800.0) is True
-    assert p.contains(5000.0) is False
-    # Il confine destro e' ESCLUSO: due finestre adiacenti non devono
-    # contenere entrambe lo stesso istante, o un evento verrebbe contato due
-    # volte.
-    assert p.contains(3600.0) is False
 
 
 # -- il registro: chiuso, versionato, e ogni voce dichiara tutto ------------
@@ -389,14 +364,13 @@ def test_tre_ore_RICEVUTE_su_ventiquattro_attese_non_sono_un_totale_del_giorno()
 # ESTRATTE da `mind/facts.py`: `_share` -> `quota`, il `consumo - prelievo` di
 # `_balance_moments` -> `differenza_fra`, la somma delle ore conosciute di
 # `build_balance_body` -> `somma_periodo`, `_dimension_points` + `forma` ->
-# `per_ora`, `_difference` -> `primo_ultimo_differenza`. Le fonti sono uscite
+# `per_ora`. Le fonti sono uscite
 # dal repo col bilancio il 01/10/2026; le operazioni restano, e le ricette del
 # sapere le usano ogni notte.
 #
 # `media_min_max` **non e' estratta**: in `facts.py` non c'era nessuna media.
 # (Una riga precedente diceva che veniva da `_percent`, che era
 # l'arrotondamento della batteria a un decimale: e' uscito col bilancio.)
-# Nasce dalla domanda 4, sul comfort quando qualcuno c'e'.
 
 
 def test_quota_e_una_frazione_fra_zero_e_uno():
@@ -565,48 +539,27 @@ def test_per_ora_su_una_giornata_BUCATA_porta_l_ora_vera_non_quella_ricostruita(
     ]
 
 
-def test_primo_ultimo_differenza_con_UN_SOLO_punto_non_dice_zero():
-    """**Il difetto fondativo di questa fetta.** Con un solo punto, iniziale e
-    finale sono la stessa lettura: il conto tornerebbe `0.0`, cioe' «non e'
-    cambiato niente» travestito da dato. Corretto in `None` il 26/08/2026; qui
-    dice anche perche'.
-
-    Mutazione che la uccide: togliere la guardia sul numero di punti.
-    """
-    r = ops.REGISTRY["primo_ultimo_differenza"].run(_ore([128.389]), unit="kWh")
-
-    assert not r.computable
-    assert "un solo punto" in r.reason
-
-
-def test_primo_ultimo_differenza_dice_di_quanto_e_salito_il_contatore():
-    """La conversione dal grezzo -- dove un contatore scrive stringhe -- avviene
-    al confine, non qui: il registro parla una forma sola."""
-    r = ops.REGISTRY["primo_ultimo_differenza"].run(
-        _ore([127.628, 128.389]), unit="kWh")
-
-    assert r.value == 0.76
-
-
-# -- le operazioni sul grezzo: episodi, durate, conteggi --------------------
+# -- gli stati: episodi e durate ---------------------------------------------
 #
-# ESTRATTE dal ciclo apri/chiudi di `mind/facts.aggregate_day`. Le letture sono
-# `(istante, stato)` come le scrive `mind/watcher.watch_reading`.
+# Delle sei operazioni sugli stati ne restano due, quelle che servono alla
+# presenza (D7 del proprietario, 06/10/2026, piano degli attori strati 3-4); le
+# altre quattro sono uscite con le sette domande dell'11/09/2026. Le letture
+# sono `(istante, stato)`, con lo stato com'e' scritto da Home Assistant.
 
-ACCESO = ("heat", "on", "not_home")
 
-
-def _acceso(state):
-    return str(state).strip().lower() in ACCESO
+def _episodio(letture, state="heat", start=0.0, end=21600.0):
+    return ops.REGISTRY["episodio"].run(letture, state=state, period_start=start,
+                                        period_end=end)
 
 
 def test_episodio_apre_e_chiude_e_restituisce_un_periodo():
     readings = [(0.0, "off"), (3600.0, "heat"), (9000.0, "off"), (18000.0, "heat")]
 
-    r = ops.REGISTRY["episodio"].run(readings, is_on=_acceso, period_end=21600.0)
+    r = _episodio(readings)
 
     assert r.computable
     assert r.value.windows == ((3600.0, 9000.0), (18000.0, 21600.0))
+    assert r.coverage == 1.0
 
 
 def test_un_episodio_ancora_APERTO_arriva_alla_fine_del_periodo_e_non_oltre():
@@ -616,124 +569,161 @@ def test_un_episodio_ancora_APERTO_arriva_alla_fine_del_periodo_e_non_oltre():
 
     Mutazione che la uccide: chiudere all'ultima lettura.
     """
-    r = ops.REGISTRY["episodio"].run([(3600.0, "heat")], is_on=_acceso,
-                                        period_end=21600.0)
+    r = _episodio([(0.0, "off"), (3600.0, "heat")])
 
     assert r.value.windows == ((3600.0, 21600.0),)
 
 
-def test_senza_nessun_acceso_non_c_e_nessun_episodio_e_si_dice():
+def test_senza_lo_stato_chiesto_non_c_e_nessun_episodio_e_si_dice():
     """Zero episodi non e' un periodo vuoto da restituire: e' una risposta, e
     va detta -- `Period` rifiuta un elenco vuoto apposta."""
-    r = ops.REGISTRY["episodio"].run([(0.0, "off")], is_on=_acceso,
-                                        period_end=3600.0)
+    r = _episodio([(0.0, "off")], end=3600.0)
 
     assert not r.computable
     assert "nessun episodio" in r.reason
+    assert r.cause == ops.NO_ANSWER
 
 
-def test_episodio_i_due_capi_NON_si_trattano_allo_stesso_modo():
-    """In coda si va oltre l'ultima lettura, in testa no -- e la differenza e'
-    quanto sappiamo dei due silenzi.
-
-    Dopo l'ultimo «acceso» nessuno ha detto «finito»: l'assenza di uno
-    spegnimento e' informazione, e l'episodio arriva a fine periodo. Prima
-    della prima lettura invece non stavamo guardando: allungare all'indietro
-    inventerebbe un acceso che nessuno ha visto. Chi SA che era gia' acceso lo
-    dice consegnando una lettura all'inizio, come fa `aggregate_day` con lo
-    stato ereditato dal giorno prima.
+def test_episodio_in_testa_NON_va_prima_della_prima_lettura():
+    """In coda si va oltre l'ultima lettura, in testa no: prima della prima
+    lettura non stavamo guardando, e allungare all'indietro inventerebbe uno
+    stato che nessuno ha visto.
 
     Mutazione che la uccide: far cominciare la prima finestra a zero invece
     che alla prima lettura.
     """
     letture = [(3600.0, "heat"), (7200.0, "off"), (10800.0, "heat")]
 
-    r = ops.REGISTRY["episodio"].run(
-        letture, is_on=lambda s: s == "heat", period_end=86400.0)
+    r = _episodio(letture, end=14400.0)
 
-    assert r.value.windows == ((3600.0, 7200.0), (10800.0, 86400.0))
+    assert r.value.windows == ((3600.0, 7200.0), (10800.0, 14400.0))
 
 
-def test_tempo_in_stato_e_la_durata_del_periodo():
-    p = ops.Period([(3600.0, 9000.0), (18000.0, 21600.0)])
+def test_episodio_su_stati_che_coprono_POCO_del_periodo_si_rifiuta():
+    """Il registro degli stati di Home Assistant tiene circa otto giorni (R0,
+    03/10/2026): chiesto un mese, la prima lettura arriva tre settimane dopo
+    l'inizio. Un tempo misurato su una settimana non e' il tempo del mese.
+
+    Mutazione ESEGUITA: copertura sempre 1.0 -- rossa.
+    """
+    giorno = 86400.0
+    letture = [(22 * giorno, "home"), (25 * giorno, "not_home")]
+
+    r = _episodio(letture, state="home", start=0.0, end=30 * giorno)
+
+    assert not r.computable
+    assert r.cause == ops.COVERAGE_LOW
+    assert "27%" in r.reason, r.reason
+
+
+def test_episodio_dice_la_copertura_VERA_quando_basta():
+    letture = [(1000.0, "heat"), (5000.0, "off")]
+
+    r = _episodio(letture, start=0.0, end=10000.0)
+
+    assert r.coverage == 0.9
+
+
+def test_tempo_in_stato_e_la_durata_del_periodo_con_la_sua_copertura():
+    p = ops.Measurement(ops.Period([(3600.0, 9000.0), (18000.0, 21600.0)]),
+                        unit="periodo", coverage=0.9)
 
     r = ops.REGISTRY["tempo_in_stato"].run(p)
 
     assert r.value == 9000.0
     assert r.unit == "s"
+    assert r.coverage == 0.9
 
 
-def test_quante_volte_conta_le_ACCENSIONI_non_le_letture():
-    """Otto termostati producono migliaia di righe al giorno e otto cambi
-    veri: contare le letture darebbe un numero enorme e falso."""
-    p = ops.Period([(3600.0, 9000.0), (18000.0, 21600.0)])
+def test_tempo_in_stato_EREDITA_il_non_lo_so_dell_episodio():
+    """Mutazione ESEGUITA: in `_time_in_state` non controllare `computable`
+    -- rossa con `AttributeError` su `value`."""
+    muto = ops.NotComputable("nessuna lettura", cause=ops.COVERAGE_LOW)
 
-    r = ops.REGISTRY["quante_volte"].run(p)
-
-    assert r.value == 2
-    assert r.unit == "volte"
+    assert ops.REGISTRY["tempo_in_stato"].run(muto) == muto
 
 
-def test_quando_succede_dice_le_ORE_in_cui_comincia():
-    """A che ore del giorno comincia -- serve alle domande 1 e 4bis del
-    proprietario. L'ora si legge sul fuso della CASA, che arriva da fuori
-    **gia' risolto**: un'ora calcolata sul fuso di chi guarda risponderebbe a
-    un'altra domanda.
-
-    **Questa prova e' nata verde e non poteva fallire.** La prima stesura
-    asseriva `0 <= ora <= 23`, che e' vero in QUALUNQUE fuso: la mutazione
-    `fromtimestamp(zona)` -> `utcfromtimestamp`, eseguita il 12/09/2026, la
-    lasciava verde. Riscritta sugli istanti veri, la stessa mutazione la fa
-    arrossire -- e' il difetto n.1 di questo progetto, trovato su una prova
-    scritta per difendere proprio dal fuso sbagliato.
-
-    Gli istanti sono le 15:30 del 10/09/2026 e le 16:05 dell'11/09/2026 sul
-    fuso di Roma: in UTC sono le 13 e le 14, quindi l'asserzione distingue
-    davvero i due letture.
-
-    Mutazione che la uccide: usare l'ora UTC.
-    """
-    p = ops.Period([(1789047000.0, 1789050000.0),
-                     (1789135500.0, 1789139000.0)])
-
-    r = ops.REGISTRY["quando_succede"].run(p, zone=ROMA)
-
-    assert r.value == [15, 16], "in UTC sarebbero le 13 e le 14"
-    assert r.unit == "ora del giorno"
-
-
-def test_misure_durante_prende_solo_cio_che_e_dentro_le_finestre():
-    """*«Mentre scaldava, da 18 a 21»*. Il limite non e' estetico: una misura
-    presa PRIMA che l'episodio cominciasse e' il clima di prima, non l'effetto
-    di quell'episodio.
-
-    Mutazione che la uccide: ignorare il periodo e prendere tutte le letture.
-    """
-    p = ops.Period([(3600.0, 9000.0)])
-    readings = [(0.0, "15.0"), (4000.0, "18.0"), (8000.0, "21.0"), (12000.0, "24.0")]
-
-    r = ops.REGISTRY["misure_durante"].run(readings, period=p, unit="°C")
-
-    assert [x["valore"] for x in r.value] == [18.0, 21.0]
-
-
-def test_misure_durante_senza_niente_dentro_le_finestre_lo_dice():
-    p = ops.Period([(3600.0, 9000.0)])
-
-    r = ops.REGISTRY["misure_durante"].run([(0.0, "15.0")], period=p, unit="°C")
+def test_tempo_in_stato_su_una_misura_che_NON_e_un_periodo_si_rifiuta():
+    r = ops.REGISTRY["tempo_in_stato"].run(_kwh(3.0))
 
     assert not r.computable
-    assert "nessuna misura" in r.reason
+    assert r.cause == ops.RECIPE_BROKEN
 
 
-# -- le cinque nuove: ognuna da una domanda posta davvero -------------------
+def test_LA_PRESENZA_quanto_tempo_qualcuno_e_stato_in_casa():
+    """La domanda per cui `episodio` e `tempo_in_stato` restano (D7, 06/10/2026):
+    *quanto tempo una persona e' stata in casa*, dagli stati di `person`.
+
+    Lo stato di una `person` e' lo stato del `device_tracker` che la alimenta
+    (`homeassistant/components/person/__init__.py`, `_parse_source_state`:
+    `self._attr_state = state.state`, letto sul ramo `dev` il 06/10/2026), cioe'
+    `home`, `not_home` o il nome di una zona: conta solo `home`, e una zona
+    diversa da casa non e' casa.
+
+    Mutazione ESEGUITA: togliere `tempo_in_stato` dal registro -- rossa con
+    `KeyError: 'tempo_in_stato'`.
+    """
+    letture = [(0.0, "not_home"), (3600.0, "home"), (10800.0, "Lavoro"),
+               (14400.0, "home")]
+
+    in_casa = _episodio(letture, state="home")
+    quanto = ops.REGISTRY["tempo_in_stato"].run(in_casa)
+
+    assert in_casa.value.windows == ((3600.0, 10800.0), (14400.0, 21600.0))
+    assert quanto.value == 7200.0 + 7200.0
+    assert quanto.unit == "s"
+
+
+# -- la somma di due misure (D8, 06/10/2026) ---------------------------------
+
+
+def test_somma_fra_due_misure_tiene_l_unita_e_la_copertura_PEGGIORE():
+    r = ops.REGISTRY["somma_fra"].run(
+        ops.Measurement(2.5, unit="kWh", coverage=1.0),
+        ops.Measurement(1.25, unit="kWh", coverage=0.8))
+
+    assert r.value == 3.75
+    assert r.unit == "kWh"
+    assert r.coverage == 0.8
+
+
+def test_somma_fra_unita_diverse_si_rifiuta():
+    r = ops.REGISTRY["somma_fra"].run(_kwh(1.0),
+                                      ops.Measurement(1.0, unit="°C", coverage=1.0))
+
+    assert not r.computable
+    assert r.cause == ops.RECIPE_BROKEN
+
+
+def test_somma_fra_EREDITA_il_non_lo_so():
+    spento = ops.NotComputable("spento", cause="spenta_dal_proprietario")
+
+    assert ops.REGISTRY["somma_fra"].run(spento, _kwh(1.0)) == spento
+    assert ops.REGISTRY["somma_fra"].run(_kwh(1.0), spento) == spento
+
+
+def test_la_consumata_con_somma_fra_torna_coi_conti_a_mano():
+    """Il caso per cui D8 esiste: consumata = prodotta - immessa + prelevata +
+    scaricata - caricata, che prima si scriveva con quattro differenze in
+    catena. Conti a mano: 20 - 8 + 3 + 2 - 4 = 13."""
+    prodotta, immessa, prelevata, scaricata, caricata = (
+        _kwh(20.0), _kwh(8.0), _kwh(3.0), _kwh(2.0), _kwh(4.0))
+    somma = ops.REGISTRY["somma_fra"].run
+    meno = ops.REGISTRY["differenza_fra"].run
+
+    consumata = meno(somma(somma(meno(prodotta, immessa), prelevata), scaricata),
+                     caricata)
+
+    assert consumata.value == 13.0
+
+
+# -- confronti e relazioni fra serie ---------------------------------------
 #
-# `docs/design/2026-09-11-le-domande-del-proprietario.md`. Nessuna di queste
-# nasce da un preventivo: `confronto_periodi` e `tendenza` dalla domanda 2
+# `confronto_periodi` e `tendenza` nacquero dalla domanda 2 del proprietario
 # («si puo' ottimizzare gestendo la diversa produzione per mese?»),
-# `correlazione` dalla 3 (l'irrigazione contro il tempo che fa),
-# `somma_entita` dalla 5 (le ore irrigate di TUTTE le zone),
-# `raggruppa_per` dalla 6 (la CO2 di tutto il piano terra).
+# `correlazione` dalla 3 (l'irrigazione contro il tempo che fa):
+# `docs/design/2026-09-11-le-domande-del-proprietario.md`, oggi storia. Sono
+# offribili alle ricette, e restano per questo.
 
 
 def test_confronto_periodi_dice_la_differenza_e_di_quanto_in_percentuale():
@@ -828,460 +818,6 @@ def test_correlazione_ALTA_su_due_serie_che_NON_si_causano():
     assert r.unit == "coefficiente"
 
 
-def test_somma_entita_mette_insieme_piu_misure_della_stessa_unita():
-    """Domanda 5: «il totale delle ore irrigate» -- tutte le zone insieme."""
-    zone = [ops.Measurement(3600.0, unit="s", coverage=1.0),
-            ops.Measurement(1800.0, unit="s", coverage=1.0)]
-
-    r = ops.REGISTRY["somma_entita"].run(zone)
-
-    assert r.value == 5400.0
-    assert r.unit == "s"
-
-
-def test_somma_entita_la_copertura_e_UNA_FRAZIONE_SOLA_e_chi_manca_vale_zero():
-    """Una somma che ignorasse un'entita' non calcolabile direbbe un totale
-    piu' piccolo con la faccia di uno completo: la copertura deve pagarlo.
-
-    **La formula e' cambiata il 12/09/2026, dopo la revisione indipendente.**
-    Era `min(copertura) * quota di calcolabili` -- due grandezze diverse
-    moltiplicate in un numero solo: chi leggeva 0,6 non poteva sapere se fosse
-    0,9 di tempo su due terzi delle zone o 0,6 di tempo su tutte. Adesso ogni
-    entita' porta la SUA copertura, chi manca porta zero, e la media di quelle
-    e' «quanta parte di cio' che serviva si e' avuta» -- la definizione che la
-    spec da' alla parola (§6), una sola.
-
-    Qui: tre zone, coperture 1,0 / assente / 0,9 -> (1,0 + 0 + 0,9) / 3.
-    La vecchia formula avrebbe detto 0,9 x 2/3 = 0,6.
-
-    Mutazione ESEGUITA: `coverage=1.0` -- rossa.
-    """
-    zone = [ops.Measurement(3600.0, unit="s", coverage=1.0),
-            ops.NotComputable("questa zona non ha dati", cause=ops.COVERAGE_LOW),
-            ops.Measurement(1800.0, unit="s", coverage=0.9)]
-
-    r = ops.REGISTRY["somma_entita"].run(zone)
-
-    assert r.value == 5400.0
-    assert r.coverage == pytest.approx(1.9 / 3)
-
-
-def test_media_entita_NON_e_la_loro_somma_e_paga_la_stessa_copertura():
-    """La media fra entita', con la stessa regola di copertura della somma.
-
-    Esiste perche' `raggruppa_per` la chiama per la domanda 6: sommare due
-    concentrazioni non produce una concentrazione.
-
-    Mutazione ESEGUITA: `coverage=1.0` in `_average_entities` -- rossa.
-    """
-    stanze = [ops.Measurement(400.0, unit="ppm", coverage=1.0),
-              ops.NotComputable("questo sensore non risponde", cause="non_disponibile"),
-              ops.Measurement(500.0, unit="ppm", coverage=0.5)]
-
-    r = ops.REGISTRY["media_entita"].run(stanze)
-
-    assert r.value == 450.0
-    assert r.unit == "ppm"
-    assert r.coverage == pytest.approx(1.5 / 3)
-
-
-def test_media_entita_di_unita_diverse_non_misura_niente():
-    """Gradi e ppm mediati insieme danno un numero: quel numero e' una bugia.
-
-    Mutazione che la uccide: togliere il controllo sulle unita'.
-    """
-    r = ops.REGISTRY["media_entita"].run(
-        [ops.Measurement(20.0, unit="°C", coverage=1.0),
-         ops.Measurement(400.0, unit="ppm", coverage=1.0)])
-
-    assert not r.computable
-    assert "unita" in r.reason
-
-
-def test_somma_entita_di_sole_non_calcolabili_non_e_zero():
-    r = ops.REGISTRY["somma_entita"].run([ops.NotComputable("niente dati", cause=ops.COVERAGE_LOW)])
-
-    assert not r.computable
-
-
-def test_raggruppa_per_mette_insieme_le_entita_per_una_chiave():
-    """Domanda 6: «la CO2 di tutto il piano terra». Il raggruppamento e' su un
-    ramo dell'anagrafe, e la chiave arriva da fuori: questo modulo non sa
-    cos'e' un piano, e non deve impararlo."""
-    measurements = {"sensor.a": ops.Measurement(400.0, unit="ppm", coverage=1.0),
-              "sensor.b": ops.Measurement(500.0, unit="ppm", coverage=1.0),
-              "sensor.c": ops.Measurement(900.0, unit="ppm", coverage=1.0)}
-    key = {"sensor.a": "terra", "sensor.b": "terra", "sensor.c": "primo"}
-
-    r = ops.REGISTRY["raggruppa_per"].run(
-        measurements, key=key.get, reduce="media_entita")
-
-    assert r.computable
-    # 400 e 500 sul piano terra fanno 450 di media, non 900 di somma: due
-    # concentrazioni sommate non sono una concentrazione.
-    assert r.value["terra"].value == 450.0
-    assert r.value["primo"].value == 900.0
-
-
-def test_raggruppa_per_NON_sceglie_da_solo_come_ridurre_un_gruppo():
-    """**Il difetto trovato in revisione il 12/09/2026.** La prima stesura
-    riduceva ogni gruppo con `somma_entita` per difetto, e «la CO2 del piano
-    terra» rispondeva 900 ppm sommando 400 e 500 -- un numero senza
-    significato con un'unita' accanto, cioe' la prima fondamenta rotta dentro
-    l'operazione che doveva difenderla.
-
-    La cura non e' scegliere meglio il valore per difetto: e' toglierlo.
-    Sommare e mediare sono due domande diverse, e nessuna delle due e' «quella
-    normale».
-
-    Mutazione che la uccide: rimettere un valore per difetto a `reduce`.
-    """
-    measurements = {"sensor.a": ops.Measurement(400.0, unit="ppm", coverage=1.0)}
-
-    with pytest.raises(TypeError):
-        ops.REGISTRY["raggruppa_per"].run(measurements, key=lambda _: "terra")
-
-
-def test_raggruppa_per_con_un_riduttore_INESISTENTE_lo_dice():
-    """Un nome che non e' nel registro non produce gruppi vuoti ne' un crash:
-    produce un rifiuto che dice quale nome non esiste.
-
-    Mutazione che la uccide: `_REGISTRY[reduce]` nudo -- solleverebbe
-    `KeyError` dentro l'aggregazione notturna invece di rispondere.
-    """
-    measurements = {"sensor.a": ops.Measurement(400.0, unit="ppm", coverage=1.0)}
-
-    r = ops.REGISTRY["raggruppa_per"].run(
-        measurements, key=lambda _: "terra", reduce="media_aritmetica")
-
-    assert not r.computable
-    assert "media_aritmetica" in r.reason
-
-
-def test_raggruppa_per_NON_inventa_un_gruppo_per_chi_non_ha_chiave():
-    """Un'entita' senza area non finisce in un gruppo «altro»: comparirebbe in
-    un totale che nessuno ha chiesto. Si dichiara fuori, e si conta."""
-    measurements = {"sensor.a": ops.Measurement(400.0, unit="ppm", coverage=1.0),
-              "sensor.orfana": ops.Measurement(500.0, unit="ppm", coverage=1.0)}
-
-    r = ops.REGISTRY["raggruppa_per"].run(
-        measurements, key=lambda e: "terra" if e == "sensor.a" else None,
-        reduce="somma_entita")
-
-    assert set(r.value) == {"terra"}
-    assert r.value["terra"].value == 400.0
-
-
-def test_dentro_restringe_un_periodo_a_un_altro():
-    """Il mattone che il cancello ha scoperto mancare: incrociare due periodi.
-
-    Mutazione che la uccide: prendere tutto il primo periodo invece
-    dell'intersezione.
-    """
-    scalda = ops.Period([(0.0, 7200.0), (18000.0, 21600.0)])
-    in_casa = ops.Period([(3600.0, 10800.0)])
-
-    r = ops.REGISTRY["dentro"].run(scalda, in_casa)
-
-    assert r.value.windows == ((3600.0, 7200.0),)
-
-
-def test_due_periodi_che_non_si_toccano_MAI_lo_dicono(monkeypatch):
-    """**Questa prova mancava, e la mutazione l'ha rivelato.** Il ramo di
-    rifiuto di `inside` non era esercitato da nessuno: la mutazione che lo
-    toglieva usciva VERDE (eseguita il 12/09/2026). Senza, un'intersezione
-    vuota proverebbe a costruire un `Period([])` e solleverebbe, invece di
-    dire cos'e' successo -- che e' il contrario del contratto del registro.
-    """
-    r = ops.REGISTRY["dentro"].run(ops.Period([(0.0, 3600.0)]),
-                                      ops.Period([(7200.0, 10800.0)]))
-
-    assert not r.computable
-    assert "non si sovrappongono" in r.reason
-
-
-# ── IL CANCELLO DELLA FETTA: le sette domande del proprietario ─────────────
-#
-# Spec §6: *«Il set non si dimensiona a preventivo: si chiude con un test -- e'
-# abbastanza ricco quando le domande vere del proprietario e il resoconto
-# giornaliero si esprimono tutti senza aggiungerne una»*.
-#
-# Le domande sono in `docs/design/2026-09-11-le-domande-del-proprietario.md`,
-# raccolte l'11/09/2026 con le parole del proprietario. Ogni prova qui sotto
-# **compone una domanda con i mattoni del registro** e mostra che esce una
-# risposta -- o un rifiuto motivato, dove la risposta onesta e' che HIRIS non
-# puo' saperlo.
-#
-# Il cancello chiude da DUE lati, e serve che li chiuda entrambi:
-#   1. nessuna domanda ha bisogno di un'operazione che non c'e';
-#   2. nessuna operazione del registro e' orfana -- se nessuna domanda la
-#      chiama, per la regola della spec non deve esistere.
-
-
-def _letture_stato(pairs):
-    return list(pairs)
-
-
-def test_domanda_1_il_riscaldamento_l_effetto_e_le_persone():
-    """*«Quando si accende il riscaldamento e porta la casa in temperatura, poi
-    qualcuno e' in casa o meno?»*
-
-    Quattro mattoni in fila: l'episodio del termostato, l'effetto misurato
-    mentre durava, a che ora capita, e -- la parte che conta -- **il pezzo di
-    quell'episodio in cui qualcuno c'era davvero**.
-    """
-    termostato = _letture_stato([(0.0, "off"), (3600.0, "heat"), (10800.0, "off")])
-    temperatura = [(3700.0, "18.0"), (10000.0, "21.0")]
-    presenza = [(0.0, "home"), (7200.0, "not_home")]
-
-    scalda = ops.REGISTRY["episodio"].run(
-        termostato, is_on=lambda s: s == "heat", period_end=14400.0)
-    effetto_scaldata = ops.REGISTRY["misure_durante"].run(
-        temperatura, period=scalda.value, unit="°C")
-    effetto = ops.REGISTRY["primo_ultimo_differenza"].run(
-        effetto_scaldata.value, unit="°C")
-    orario = ops.REGISTRY["quando_succede"].run(scalda.value, zone=ROMA)
-    in_casa = ops.REGISTRY["episodio"].run(
-        presenza, is_on=lambda s: s == "home", period_end=14400.0)
-    utile = ops.REGISTRY["dentro"].run(scalda.value, in_casa.value)
-    servito = ops.REGISTRY["tempo_in_stato"].run(utile.value)
-    sprecato = ops.REGISTRY["differenza_fra"].run(
-        ops.REGISTRY["tempo_in_stato"].run(scalda.value), servito)
-
-    assert effetto.value == 3.0, "la casa e' salita di tre gradi mentre scaldava"
-    assert orario.computable
-    # Ha scaldato per due ore, di cui una sola con qualcuno in casa.
-    assert servito.value == 3600.0
-    assert sprecato.value == 3600.0
-
-
-def test_domanda_2_l_energia_e_la_stagione():
-    """*«La mia produzione energetica copre bene casa mia, o si puo' ottimizzare
-    gestendo la diversa produzione per mese?»*"""
-    produzione = _ore([2.0] * 12 + [0.0] * 12)
-    consumo = _ore([1.0] * 24)
-
-    prodotta = ops.REGISTRY["somma_periodo"].run(produzione, unit="kWh")
-    consumata = ops.REGISTRY["somma_periodo"].run(consumo, unit="kWh")
-    coverage = ops.REGISTRY["quota"].run(consumata, prodotta)
-    profilo = ops.REGISTRY["per_ora"].run(produzione, unit="kWh")
-    mese_scorso = ops.Measurement(30.0, unit="kWh", coverage=1.0)
-    confronto = ops.REGISTRY["confronto_periodi"].run(mese_scorso, prodotta)
-    dove_va = ops.REGISTRY["tendenza"].run(_ore([30.0, 28.0, 24.0]), unit="kWh")
-
-    assert prodotta.value == 24.0
-    assert coverage.value == 1.0
-    assert len(profilo.value) == 24
-    assert confronto.value["differenza"] == -6.0
-    assert dove_va.value["verso"] == "in discesa"
-
-
-def test_domanda_3_l_irrigazione_e_il_prato():
-    """*«L'irrigazione sta gestendo bene il fabbisogno del prato per il periodo
-    in cui siamo?»*
-
-    Il **fabbisogno del prato** non e' un dato di Home Assistant, e il registro
-    non finge di saperlo: produce quanto si e' irrigato, quando, e quanto va
-    d'accordo col tempo che faceva. Il giudizio sta fuori.
-    """
-    valvola = _letture_stato([(0.0, "off"), (3600.0, "on"), (5400.0, "off"),
-                              (90000.0, "on"), (93600.0, "off")])
-
-    giri = ops.REGISTRY["episodio"].run(
-        valvola, is_on=lambda s: s == "on", period_end=172800.0)
-    quante = ops.REGISTRY["quante_volte"].run(giri.value)
-    quanto = ops.REGISTRY["tempo_in_stato"].run(giri.value)
-    correlazione_meteo = ops.REGISTRY["correlazione"].run(
-        _ore([30.0, 28.0, 31.0, 33.0]), _ore([1.5, 1.0, 1.6, 1.8]))
-
-    assert quante.value == 2
-    assert quanto.value == 5400.0
-    assert correlazione_meteo.computable
-
-
-def test_domanda_4_il_comfort_quando_conta():
-    """*«A livello di comfort la casa e' sana quando c'e' qualcuno in casa?»*
-
-    Una media di ventiquattr'ore risponderebbe a un'altra domanda: la
-    grandezza si restringe ai periodi in cui una persona c'era.
-    """
-    presenza = _letture_stato([(0.0, "not_home"), (7200.0, "home"), (18000.0, "not_home")])
-    co2 = [(3600.0, "1400.0"), (9000.0, "600.0"), (14400.0, "700.0"),
-           (20000.0, "1500.0")]
-
-    in_casa = ops.REGISTRY["episodio"].run(
-        presenza, is_on=lambda s: s == "home", period_end=21600.0)
-    mentre = ops.REGISTRY["misure_durante"].run(
-        co2, period=in_casa.value, unit="ppm")
-    com_era = ops.REGISTRY["media_min_max"].run(mentre.value, unit="ppm")
-
-    # I due picchi a 1400 e 1500 sono FUORI dalle finestre di presenza: una
-    # media di ventiquattr'ore li avrebbe contati, e avrebbe risposto a
-    # un'altra domanda.
-    assert com_era.value == {"media": 650.0, "minimo": 600.0, "massimo": 700.0}
-
-
-def test_domanda_4bis_le_automazioni_rispondono_ancora():
-    """*«Le automazioni presenti rispondono alle esigenze della casa?»*"""
-    esecuzioni = _letture_stato([(0.0, "off"), (3600.0, "on"), (3660.0, "off"),
-                                 (90000.0, "on"), (90060.0, "off")])
-
-    scatti = ops.REGISTRY["episodio"].run(
-        esecuzioni, is_on=lambda s: s == "on", period_end=172800.0)
-    quante = ops.REGISTRY["quante_volte"].run(scatti.value)
-    quando = ops.REGISTRY["quando_succede"].run(scatti.value, zone=ROMA)
-
-    assert quante.value == 2
-    assert quando.computable
-
-
-def test_domanda_5_le_ore_irrigate_su_una_STAGIONE_si_rifiuta_con_la_ragione():
-    """*«Dammi il totale delle ore irrigate tra maggio e settembre.»*
-
-    Cinque mesi, con 22 giorni di grezzo e una valvola di cui Home Assistant
-    non tiene statistiche: la risposta onesta non e' il totale delle tre
-    settimane che abbiamo, spacciato per cinque mesi. Quel difetto ha gia' un
-    precedente pagato (`_difference` che restituiva `0.0`).
-
-    **Attenzione a cosa prova davvero questa prova, e la revisione
-    indipendente del 12/09/2026 ha avuto ragione a chiederlo.** Il docstring
-    diceva *«e' l'unica che prova che il registro sappia dire di no»*: falso.
-    Il rifiuto *«il periodo chiesto sta fuori dalla memoria disponibile»* lo
-    costruisce il CHIAMANTE e glielo consegna -- nessuna operazione del
-    registro sa cosa sia la memoria disponibile, e nessuna `refuses_when` lo
-    dichiara. Qui si difende la propagazione: **un totale di soli «non lo so»
-    non e' zero**, e il registro non lo trasforma in un numero.
-
-    I due rifiuti che la spec §6 chiede -- «l'entita' non ha statistiche», «il
-    periodo e' fuori dalla memoria disponibile» -- **non sono implementati da
-    nessuna operazione**, perche' tutti e due hanno bisogno di sapere fin dove
-    arriva l'archivio, che e' conoscenza della casa e non del calcolo. Sono a
-    backlog col disegno (12/09/2026).
-
-    Mutazione che la uccide: in `_sum_entities`, restituire `Measurement(0.0,
-    ...)` quando nessuna entita' e' calcolabile.
-    """
-    zone = [ops.NotComputable("il periodo chiesto sta fuori dalla memoria "
-                               "disponibile: la valvola non ha statistiche e il "
-                               "grezzo arriva a 22 giorni", cause=ops.COVERAGE_LOW)
-            for _ in range(3)]
-
-    totale = ops.REGISTRY["somma_entita"].run(zone)
-
-    assert not totale.computable
-    assert "zero" in totale.reason
-
-
-def test_domanda_6_la_co2_di_un_piano():
-    """*«Dammi il livello di CO2 di tutto il piano terra.»*
-
-    «Tutto il piano terra» e' un ramo dell'anagrafe, e la chiave arriva da
-    fuori: il registro non sa cos'e' un piano.
-    """
-    measurements = {"sensor.a": ops.Measurement(400.0, unit="ppm", coverage=1.0),
-              "sensor.b": ops.Measurement(500.0, unit="ppm", coverage=1.0),
-              "sensor.c": ops.Measurement(900.0, unit="ppm", coverage=1.0)}
-    piano = {"sensor.a": "terra", "sensor.b": "terra", "sensor.c": "primo"}
-
-    per_piano = ops.REGISTRY["raggruppa_per"].run(
-        measurements, key=piano.get, reduce="media_entita")
-
-    # **La media, non la somma**: 400 e 500 ppm fanno un piano a 450, non uno a
-    # 900. Come ridurre il gruppo lo dice la domanda, e il registro non lo
-    # sceglie per nessuno.
-    assert per_piano.value["terra"].value == 450.0
-
-
-def test_domanda_7_i_problemi_NON_hanno_bisogno_di_un_calcolo():
-    """*«Dammi tutti i problemi emersi in casa.»*
-
-    **La domanda che dice dove finisce il mestiere del registro.** La risposta
-    e' la cronaca del resoconto giornaliero, non un'operazione: al registro
-    servono solo l'episodio -- aperto quando, chiuso quando, o ancora aperto --
-    e da quanto dura. Una prova che dimostri che non tutte le domande si
-    rispondono con un calcolo vale quanto una che dimostri il contrario: il
-    rischio opposto, inventare un'operazione per ogni domanda, e' il modo in cui
-    un registro «chiuso» smette di esserlo.
-    """
-    guasto = _letture_stato([(0.0, "chiuso"), (3600.0, "setup_retry")])
-
-    aperto = ops.REGISTRY["episodio"].run(
-        guasto, is_on=lambda s: s != "chiuso", period_end=90000.0)
-    durata_aperto = ops.REGISTRY["tempo_in_stato"].run(aperto.value)
-
-    assert durata_aperto.value == 86400.0
-
-
-@contextlib.contextmanager
-def _registro_spiato(eseguite: set):
-    """Il registro con ogni operazione avvolta da una spia che ne annota il nome.
-
-    Si sostituiscono le voci di `_REGISTRY` -- non di `REGISTRY`, che e' la
-    vista di sola lettura -- cosi' che anche le operazioni chiamate **da
-    dentro** un'altra (`raggruppa_per` chiama il suo riduttore) finiscano
-    annotate. `Operation` e' congelata: se ne fa una copia con `replace`.
-    """
-    originali = dict(ops._REGISTRY)
-    try:
-        for nome, operazione in originali.items():
-            def spia(*a, _nome=nome, _run=operazione.run, **k):
-                eseguite.add(_nome)
-                return _run(*a, **k)
-            ops._REGISTRY[nome] = dataclasses.replace(operazione, run=spia)
-        yield
-    finally:
-        ops._REGISTRY.clear()
-        ops._REGISTRY.update(originali)
-
-
-def test_IL_CANCELLO_nessuna_operazione_del_registro_e_ORFANA():
-    """**L'altra meta' del cancello.** La spec e' netta: *«le nuove nascono
-    ciascuna da una domanda posta davvero, non da un preventivo»*. Se
-    un'operazione non serve a nessuna delle domande, non deve stare nel
-    registro.
-
-    Questa prova ha gia' lavorato due volte: `somma_entita`/`raggruppa_per`
-    stavano per essere cancellate, e sono state salvate dalle domande 5 e 6,
-    che il proprietario ha dato quando gli e' stato chiesto se una domanda di
-    quella forma gli venisse naturale; `dentro` e' nata perche' la domanda 1
-    non si scriveva senza.
-
-    **Riscritta il 12/09/2026, dopo la revisione indipendente.** La prima
-    stesura cercava la stringa `REGISTRY["nome"]` nel proprio sorgente fra due
-    marcatori: difendeva *«il testo lo nomina»*, non *«una domanda lo
-    esegue»*. Un commento l'avrebbe soddisfatta, una domanda scritta sotto il
-    marcatore sarebbe stata invisibile, e `media_entita` -- che `raggruppa_per`
-    chiama per nome, non per citazione -- risultava orfana pur essendo la
-    risposta alla domanda 6. Adesso le domande si **eseguono** e si guarda
-    quali operazioni hanno girato davvero.
-
-    **Meta' del cancello della spec non e' qui, ed e' dichiarato**: §6 chiude
-    il set su *«le domande vere del proprietario E il resoconto giornaliero»*.
-    Il resoconto e' la Fetta 5: finche' non esiste, questa prova difende la
-    prima meta' e nient'altro.
-
-    Mutazione ESEGUITA: registrare un'operazione che nessuna domanda chiama
-    (`media_entita` prima che la domanda 6 la usasse) -- rossa, col nome
-    nell'elenco.
-    """
-    eseguite: set[str] = set()
-    domande = sorted((nome, f) for nome, f in globals().items()
-                     if nome.startswith("test_domanda_") and callable(f))
-    assert len(domande) >= 7, (
-        f"le domande del proprietario sono sette, qui ne girano {len(domande)}: "
-        "un cancello che non le esegue tutte non e' il cancello")
-
-    with _registro_spiato(eseguite):
-        for _, funzione in domande:
-            funzione()
-
-    orfane = sorted(set(ops.REGISTRY) - eseguite)
-
-    assert not orfane, (
-        f"operazioni che nessuna domanda del proprietario esegue: {orfane}. "
-        "Per la regola della spec non devono esistere: si tolgono, oppure si "
-        "chiede al proprietario la domanda che le giustifica")
-
 # ── Le misure istantanee: 56 entita' che le ricette non vedevano ────────────
 #
 # Misurato sulla casa vera il 14/09/2026 chiedendo a Home Assistant:
@@ -1291,7 +827,7 @@ def test_IL_CANCELLO_nessuna_operazione_del_registro_e_ORFANA():
 #   campi di una measurement: start, end, min, max, mean, last_reset
 #
 # Le 56 non hanno un `change`: hanno `mean`, `min`, `max`. Il nostro client li
-# legge e li traduce gia' (`media`/`minimo`/`massimo`), e poi `_punti_orari`
+# legge e li traduce gia' (`media`/`minimo`/`massimo`), e poi `recipes.hourly_points`
 # teneva SOLO `cambio` e buttava gli altri tre. Le ricette ricevevano una serie
 # di `None` e rifiutavano dicendo «la serie e' vuota»: 21 misure su 32, in un
 # giorno solo, tutte su temperatura, umidita', CO2, rumore, segnale, potenza.
@@ -1412,7 +948,9 @@ def test_somma_periodo_su_una_misura_istantanea_RIFIUTA_dicendo_perche():
 #: L'impronta di CIO' CHE IL MODELLO PUO' CHIEDERE, per la versione qui sotto.
 #: Nomi, ingressi, resa, parametri obbligatori, forme e rifiuti dichiarati --
 #: delle sole operazioni offribili. Cambia con `REGISTRY_VERSION`, mai da sola.
-CATALOGUE_FINGERPRINT = {2: "bc902cb7f8ce6c78"}
+#: La 3 aggiunge solo `somma_fra` (D8, 06/10/2026): tolta lei, l'impronta
+#: torna quella della 2 -- verificato quando e' stata scritta.
+CATALOGUE_FINGERPRINT = {2: "bc902cb7f8ce6c78", 3: "2dd6d318e8f1a119"}
 
 
 def _impronta() -> str:

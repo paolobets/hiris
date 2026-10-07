@@ -60,7 +60,7 @@ due funzioni sopra legge mai mentre calcola il nome del servizio; e **mai**
 il titolo della config entry, che `webhook_update_registration` non
 aggiorna), passato per la STESSA `slugify()` di Home Assistant
 (`homeassistant.util.slugify(testo, separator="_")`, che a sua volta chiama
-il pacchetto PyPI `python-slugify`) -- replicata qui in `_slugify()` invece
+il pacchetto PyPI `python-slugify`) -- replicata in `home_space/reference.slugify()` invece
 di aggiungere quella dipendenza per una funzione di poche righe
 (`hiris/requirements.txt` la tiene minima di proposito, vedi il suo commento
 sulla rimozione di `model2vec`). **L'entity_id resta un SECONDO candidato**,
@@ -89,7 +89,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-from ..home_space.reference import fold_accents
+from ..home_space.reference import slugify
 from ..proxy.ha_client import HAReadError
 
 logger = logging.getLogger(__name__)
@@ -99,38 +99,6 @@ logger = logging.getLogger(__name__)
 #: candidato che non potrebbe mai essere un servizio notify vero, non una
 #: fonte -- l'esistenza si accerta comunque contro il registro dei servizi.
 _SLUG_RE = re.compile(r"^[a-z0-9_]+$")
-
-
-def _slugify(text: str | None) -> str:
-    """Replica di `homeassistant.util.slugify(text, separator="_")`
-    (che a sua volta chiama il pacchetto PyPI `python-slugify`), per i nomi
-    Latini con accenti che un dispositivo smart-home porta nella pratica --
-    niente dipendenza nuova per una funzione di poche righe.
-
-    La piegatura degli accenti e' quella di tutto il prodotto
-    (`home_space/reference.fold_accents`, Tappa 3, Task 9, B-20); il filtro
-    ASCII che segue resta di qui, perche' e' la forma dello slug: `"é"` -> `"e"`,
-    `"à"` -> `"a"`. Copre il range Latino che un nome di dispositivo usa in
-    pratica; **non** e' una traslitterazione fonetica come quella che
-    `python-slugify` usa per altri alfabeti (cirillico, greco, CJK
-    diventerebbero stringhe vuote qui, non una resa approssimata) -- se la
-    casa vera lo richiedesse un giorno, la verifica contro il registro dei
-    servizi piu' sotto scarta comunque un candidato sbagliato invece di spingere al
-    posto sbagliato.
-
-    Stessa forma dei due casi limite di HA (`homeassistant/util/
-    __init__.py::slugify`): testo vuoto o `None` -> stringa vuota; testo che
-    si riduce al niente dopo la traslitterazione -> `"unknown"`.
-
-    **Pinnata** in `tests/test_keeper_recipient.py` con i quattro nomi
-    misurati sulla casa vera piu' un caso con spazi e accenti (fix round 1,
-    26/09/2026).
-    """
-    if text is None or text == "":
-        return ""
-    ascii_only = fold_accents(text).encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-z0-9]+", "_", ascii_only.lower()).strip("_")
-    return slug or "unknown"
 
 
 #: Le due specie dei servizi firmati (`api/servizi.py::SPECIE`): nessuna
@@ -347,7 +315,7 @@ async def recipients_for(subject: dict | None, ha, services) -> Recipients:
         slug_candidates = []
         device = by_device_id.get(entry.get("device_id"))
         if device:
-            device_slug = _slugify(device.get("name"))
+            device_slug = slugify(device.get("name"))
             if device_slug:
                 slug_candidates.append(device_slug)
         _, _, suffix = tracker_id.partition(".")

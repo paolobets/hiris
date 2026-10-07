@@ -35,6 +35,7 @@ from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space import historian
+from hiris.app.mind import realignment
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import EntityCache
@@ -395,14 +396,49 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
         for listener in house.registered("topology"):
             listener("riconnessione")
     try:
+        # Dal riallineamento dell'osservatore (06/10/2026) la rilettura gira
+        # in `mind/realignment.py`, che con la stessa fotografia riallinea: si
+        # riconosce dalla funzione e da cio' che porta con se'.
         rereads = [c for c in spawned
-                   if c.cr_code is EntityCache.reload.__code__
-                   and c.cr_frame.f_locals.get("self") is started_app["entity_cache"]
-                   and c.cr_frame.f_locals.get("ha_client") is house]
+                   if c.cr_code is realignment.reload_and_realign.__code__
+                   and c.cr_frame.f_locals.get("entity_cache") is started_app["entity_cache"]
+                   and c.cr_frame.f_locals.get("client") is house]
         assert len(rereads) == 1, [c.cr_code.co_qualname for c in spawned]
+        # E l'osservatore che riallinea e' quello dell'app, chiesto all'avviso
+        # e non fissato all'iscrizione: l'ascoltatore nasce prima di lui.
+        # Mutazione ESEGUITA: `lambda: None` al posto di `app.get("watcher")`
+        # nell'iscrizione -- rossa.
+        assert started_app.get("watcher") is not None
+        assert rereads[0].cr_frame.f_locals["watcher"]() is started_app["watcher"]
     finally:
         for coroutine in spawned:
             coroutine.close()
+
+
+async def test_a_closed_disconnection_window_reaches_the_app_watcher(started_app):
+    """La finestra di scollegamento, chiusa quando Home Assistant si dichiara
+    avviato, arriva all'osservatore DELL'APP: l'avvio iscrive il suo
+    ascoltatore. La finestra si consegna a un osservatore finto messo al posto
+    di quello dell'app, e lo si rimette subito.
+
+    Mutazione ESEGUITA: tolta
+    `ha_client.add_disconnection_listener(disconnection_recorder(...))` --
+    rossa."""
+    house = started_app["ha_client"]
+    real = started_app["watcher"]
+    windows = []
+
+    class Osservatore:
+        def record_disconnection(self, window):
+            windows.append(window)
+
+    started_app["watcher"] = Osservatore()
+    try:
+        for listener in house.registered("disconnection"):
+            listener({"da": 1.0, "a": 2.0})
+    finally:
+        started_app["watcher"] = real
+    assert windows == [{"da": 1.0, "a": 2.0}]
 
 
 async def test_a_reference_change_rereads_the_state_words(started_app):

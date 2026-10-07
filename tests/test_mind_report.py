@@ -899,7 +899,7 @@ def test_la_serie_delle_misure_porta_la_causa_nei_tratti():
 #    (piano degli attori, strato 2, Task 2.4, Passo 1)
 
 #: Un giorno di sole con la batteria, ora per ora, nella forma in cui il
-#: resoconto riceve le serie orarie (`server._punti_orari`: il `cambio` di
+#: resoconto riceve le serie orarie (`recipes.hourly_points`: il `cambio` di
 #: ogni ora). La produzione e' quella del 29/09/2026 (20,2 kWh, BACKLOG, voce
 #: del contatore congelato); le altre quattro serie sono SINTETICHE, con la
 #: forma di un giorno vero: immissione fra le 13 e le 18, carica a meta'
@@ -943,8 +943,7 @@ def _difference(name: str, first: str, second: str) -> dict:
 #: consumata = prodotta - immessa + prelevata + scaricata - caricata.
 #:
 #: **Il motore non ha una somma di due misure** fra le operazioni che una
-#: ricetta puo' scrivere (`somma_entita` non e' offribile, e somma serie,
-#: non misure): la consumata si compone con quattro `differenza_fra` in
+#: ricetta puo' scrivere: la consumata si compone con quattro `differenza_fra` in
 #: catena -- (scaricata - (immessa - prodotta)) - (caricata - prelevata).
 #: Il conto torna, ma e' il passo che un modello sbaglia piu' facilmente.
 ROLE_RECIPE = {"why": "prova del motore coi ruoli della dashboard", "steps": [
@@ -1003,7 +1002,7 @@ def test_self_consumption_and_sufficiency_match_hand_computation():
 #: Lo stato di carica della batteria nella forma in cui il resoconto lo
 #: riceve: una MISURA ISTANTANEA (`state_class: measurement`, misurato sulla
 #: casa il 06/10/2026, attori Task 2.0), quindi ogni ora porta media, minimo e
-#: massimo e nessun cambio (`server._punti_orari`). I valori sono SINTETICI,
+#: massimo e nessun cambio (`recipes.hourly_points`). I valori sono SINTETICI,
 #: e crescono ora per ora: della forma conta solo che sia istantanea.
 _SOC_DAY = [{"valore": None, "media": 20.0 + 3 * h, "minimo": 19.0 + 3 * h,
              "massimo": 21.5 + 3 * h} for h in range(_HOURS)]

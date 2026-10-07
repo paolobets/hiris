@@ -9,8 +9,8 @@ Gli attori e cio' su cui lavorano (ricavato da `ls` il 28/09/2026):
   `operations`, `judgments`;
 - l'**analista** legge le misure e ne trae osservazioni: `analyst`,
   `analyst_turn`;
-- l'**attuatore** fa il passo successivo -- indaga o propone, non tocca la
-  casa: `actuator`, `actuator_turn`;
+- il **proponente** (fino al 06/10/2026 l'attuatore) propone, non tocca la
+  casa: `proposer_turn` (il turno), `proposer_round` (il giro);
 - l'archivio di tutti: `store`.
 
 Il **verificatore** non c'e' ancora, e questo pacchetto NON prepara ingressi

@@ -69,6 +69,29 @@ PRIORITY_CHAT = 1
 PRIORITY_BACKGROUND = 0
 
 
+def turn_answer(turn: dict | None) -> str:
+    """La risposta che un turno ha dato, o `""` se non ne ha data una.
+
+    **Un turno che il ponte dichiara fallito non ha risposto** (06/10/2026).
+    Il ponte, quando la CLI manca, scade o esce male, consegna comunque un
+    testo -- `[runner non disponibile]`, `[errore runner rc=...]` -- e lo
+    accompagna con `outcome: "fallito"` (`agent/runner._reply`, lo stesso
+    esito che scrive nel registro dei turni). Quel testo e' per la chat, che
+    lo mostra; chi raccoglie un turno del cervello deve leggerlo come
+    «nessuna risposta». Misurato nel registro dell'add-on dal 05/10 13:32 al
+    06/10 14:05: l'analista rifiutava come «non JSON» lo stesso turno fallito
+    ogni ora, fino a mezzanotte.
+
+    Una decisione scritta prima di questa versione non porta l'esito, e si
+    legge com'era. Fino a qui la stessa espressione era scritta in quattro
+    raccoglitori di `server.py`.
+    """
+    decision = (turn or {}).get("decision") or {}
+    if decision.get("outcome") == "fallito":
+        return ""
+    return decision.get("reply") or ""
+
+
 def _row(r) -> dict:
     # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
     # (Task 14): chi ripiega alla scadenza registra nel registro degli esiti
@@ -146,6 +169,23 @@ class ReasoningQueue:
         # gia' usato per UsageStore (server.py, costruzione di
         # `app["usage"]`).
         self._read_timezone = read_timezone or (lambda: None)
+        # Chi aspetta un turno nuovo (A-23, 06/10/2026): il lavoratore del
+        # ponte non interroga piu' la coda a intervalli, si fa svegliare da
+        # `enqueue`. Uno solo, perche' il consumatore e' uno solo.
+        self._on_enqueue = None
+
+    def on_enqueue(self, listener, *, only_if=None) -> None:
+        """Registra (o, con `None`, toglie) chi va svegliato a ogni turno
+        accodato. Si chiama dopo il commit e fuori dal lucchetto: chi si
+        sveglia trova il turno gia' scritto, e puo' prenderlo subito.
+
+        Con `only_if` la sostituzione avviene solo se la sveglia in vigore e'
+        ancora quella: un lavoratore che si ferma toglie la SUA, e non quella
+        di un lavoratore nuovo che si fosse gia' registrato (G18-1 della
+        revisione del 06/10/2026)."""
+        if only_if is not None and self._on_enqueue is not only_if:
+            return
+        self._on_enqueue = listener
 
     def close(self) -> None:
         with self._lock:
@@ -164,6 +204,9 @@ class ReasoningQueue:
                 (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now,
                  *thread_params(thread), int(priority)))
             self._conn.commit()
+        listener = self._on_enqueue
+        if listener is not None:
+            listener()
         return jid
 
     def claim(self, now: float) -> dict | None:
@@ -197,9 +240,9 @@ class ReasoningQueue:
     # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun
     # lettore lo riapre dopo la risoluzione: `handle_chat_reply_poll` legge
     # solo `decision` dal job (`handlers_chat.py`, il ramo di poll), MAI
-    # `context`; `handle_reasoning_submit` chiama `q.get(job_id)` anche lui
-    # DOPO il proprio submit, ma legge solo `job.get("kind")`
-    # (`handlers_reasoning.py`); `has_pending_chat(thread, now=None)` e' una
+    # `context`; `consegna` chiama `q.get(job_id)` anche lui
+    # DOPO il proprio submit, ma legge solo `kind`, `wake`, `thread` e
+    # `created_ts` (`reasoning/consegna.py`); `has_pending_chat(thread, now=None)` e' una
     # SELECT indicizzata su `kind`/`subject_key`/`entry_point`/`status` (dal
     # Task 2 "la coda porta il filo": prima solo su `status`/`deadline_ts`,
     # senza filo) che non riapre mai `context_json` (il metodo e' piu' sotto
@@ -348,7 +391,8 @@ class ReasoningQueue:
             self._conn.commit()
             return cur.rowcount
 
-    def latest(self, kind: str) -> dict | None:
+    def latest(self, kind: str, *, wake_key: str | None = None,
+               wake_value: str | None = None) -> dict | None:
         """L'ultimo turno accodato di quella specie, con la sua decisione.
 
         **Perche' esiste, e perche' sta qui.** Un turno instradato sul ponte
@@ -365,14 +409,29 @@ class ReasoningQueue:
         secondo: leggendo il primo aspetterebbe per sempre una risposta che
         nessuno dara' piu'.
 
+        Con `wake_key`, solo i turni la cui sveglia porta quella chiave (e,
+        con `wake_value`, quel valore).
+
         La forma e' quella di `get()`, `decision` compresa: sono la stessa
         riga letta con due chiavi diverse, e due forme diverse per la stessa
         riga sarebbero la fondamenta 3 rotta dentro un file solo.
         """
+        sql, args = "SELECT * FROM reasoning_jobs WHERE kind=?", [kind]
+        if wake_key is not None:
+            # **Due domande nella stessa specie** (attori, Task 4.4): il giro
+            # orario del proponente porta `giorno` nella sveglia, un
+            # «Rifalla» porta `proposta`. Senza questo filtro l'ultimo
+            # «Rifalla» nasconderebbe al giro la risposta che aspetta.
+            path = "$." + wake_key
+            if wake_value is None:
+                sql += " AND json_extract(wake_json, ?) IS NOT NULL"
+                args.append(path)
+            else:
+                sql += " AND json_extract(wake_json, ?) = ?"
+                args += [path, wake_value]
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE kind=? "
-                "ORDER BY created_ts DESC, id DESC LIMIT 1", (kind,)).fetchone()
+                sql + " ORDER BY created_ts DESC, id DESC LIMIT 1", args).fetchone()
         if r is None:
             return None
         out = _row(r)
@@ -447,18 +506,28 @@ class ReasoningQueue:
                 (*thread_params(thread), ts)).fetchone()
         return row is not None
 
+    def claimed(self, job_id: str) -> dict | None:
+        """Il job SOLO se e' preso in carico (status='claimed'), di qualunque
+        specie; altrimenti None.
+
+        La chiama `/api/mcp` (`handlers_mcp._exchange_species`) per verificare
+        `X-HIRIS-Lavoro`: un job che non e' in lavorazione non presta a
+        nessuno il catalogo del suo mestiere (attori, Task 3.6)."""
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM reasoning_jobs WHERE job_id=? AND status='claimed'",
+                (job_id,)).fetchone()
+        return _row(r) if r is not None else None
+
     def claimed_chat(self, job_id: str) -> dict | None:
-        """Il job SOLO se e' una chat presa in carico (status='claimed'),
-        altrimenti None -- qualunque altro stato o specie.
+        """Il job SOLO se e' una chat presa in carico (`claimed`), altrimenti
+        None -- qualunque altro stato o specie.
 
         La chiama `/api/mcp` (`handlers_mcp._exchange_chat_job`) per
         verificare `X-HIRIS-Chat`: un job che non e' una chat presa in carico
         non presta a nessuno il suo soggetto ne' il suo soffitto."""
-        with self._lock:
-            r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE job_id=? AND kind='chat' "
-                "AND status='claimed'", (job_id,)).fetchone()
-        return _row(r) if r is not None else None
+        job = self.claimed(job_id)
+        return job if job is not None and job.get("kind") == "chat" else None
 
     def count_exchanges_today(self, now: float | None = None) -> int:
         """Quanti turni del piano sono stati accodati oggi -- di OGNI specie.

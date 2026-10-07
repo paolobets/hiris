@@ -68,11 +68,11 @@ _REGISTRO = [{"name": "homeassistant.components.hydrawise", "level": "ERROR",
               "timestamp": NOW - 600, "count": 1, "first_occurred": NOW - 600,
               "source": ["hydrawise.py", 10]}]
 _DOMANDE = {
-    "stati": {"genere": "stati", "riferimento": "light.cucina_1"},
-    "valori": {"genere": "valori", "riferimento": "sensor.energia_oggi"},
-    "esecuzioni": {"genere": "esecuzioni", "nome": "rifiuto carta"},
-    "esecuzioni-script": {"genere": "esecuzioni", "riferimento": "script.buonanotte"},
-    "errori": {"genere": "errori"},
+    "stati": {"cosa": "stati", "riferimento": "light.cucina_1"},
+    "valori": {"cosa": "valori", "riferimento": "sensor.energia_oggi"},
+    "esecuzioni": {"cosa": "esecuzioni", "nome": "rifiuto carta"},
+    "esecuzioni-script": {"cosa": "esecuzioni", "riferimento": "script.buonanotte"},
+    "errori": {"cosa": "errori"},
 }
 
 

@@ -25,8 +25,9 @@ e tutti e tre guardano NUMERI:
 numeri, e trenta giorni ci stanno in un prompt.
 
 **La cronaca e' un INDICE** -- quando, chi, cosa. Oggi la legge la pagina
-(`as_page`): l'analista riceve le sole serie delle misure
-(`analyst_turn.build_question`) e non ha strumenti con cui scavare. La spec §10
+(`as_page`): l'analista riceve l'indice delle misure, una riga per misura
+coi numeri gia' calcolati (`analyst.index`, dal 06/10/2026), e non ha ancora
+strumenti con cui scavare (piano degli attori, Task 3.6). La spec §10
 lo voleva capace di partire dall'indice e scavare in Home Assistant o nel
 nostro grezzo, dicendo quale dei due ha usato: non e' costruito.
 
@@ -55,7 +56,7 @@ from __future__ import annotations
 
 import logging
 
-from ..home_space.ha_vocabulary import domain_of
+from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.log_source import (
     integration_name,
     integration_slug,
@@ -96,10 +97,15 @@ BACKFILL_EVERY_MINUTES = 5
 #: Home Assistant non nomina piu', con la sua causa (`facts.build_episodes`).
 #: Senza, la voce direbbe una fine normale.
 #:
+#: `interrotto` e `assenti` (06/10/2026, Task 1.4, Passo 3): un episodio
+#: finito perche' la fonte ha smesso di rispondere, e le entita' di
+#: un'istanza sparita tutta insieme. Senza, la prima voce direbbe una fine
+#: vista e la seconda non direbbe di chi era l'assenza.
+#:
 #: Tutto il resto -- il clima mentre durava, il contesto ricco -- **non entra**,
 #: e si va a prendere quando serve.
 _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts",
-           "chiusa_dalla_fonte")
+           "chiusa_dalla_fonte", "interrotto", "assenti")
 
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
@@ -588,6 +594,24 @@ def _front_page_mark(entry: dict, judgments) -> dict | None:
     """
     state = entry.get("cosa")
     if entry.get("genere") == SYSTEM_GENRE:
+        # **L'assenza di un'entita' sola resta nella cronaca** (G17-1,
+        # decisione del proprietario del 06/10/2026, «Solo integrazione»):
+        # in primo piano sale la voce dell'ISTANZA sparita insieme
+        # (`integrazione:` piu' l'id, `facts._absences`), non la luce che non
+        # ha risposto per dieci minuti. Il genere e' lo stesso -- la voce
+        # parla della fonte -- ma il soggetto no: una condizione di sistema
+        # non ha mai per soggetto un `entity_id`, un'assenza di entita' si'.
+        if is_entity_id(entry.get("chi")):
+            return None
+        # **Nemmeno la finestra in cui l'add-on e' rimasto scollegato**
+        # (riallineamento alla riconnessione, 06/10/2026): un riavvio di Home
+        # Assistant non e' un guasto della casa, e la decisione del
+        # proprietario esiste perche' le assenze del riavvio non sembrino
+        # guasti. Resta nella cronaca, con le assenze che ha raccolto.
+        # Importata qui e non in cima: `facts` importa questo modulo.
+        from .facts import DISCONNECTION_SUBJECT
+        if entry.get("chi") == DISCONNECTION_SUBJECT:
+            return None
         # **L'impalcatura non sveglia nessuno** (decisione del proprietario,
         # 20/09/2026): Home Assistant che parla di se' -- il Supervisor, HACS,
         # il frontend -- resta nella cronaca e non sale in cima. Chi lo dice e'
@@ -605,8 +629,10 @@ def _front_page_mark(entry: dict, judgments) -> dict | None:
     domain = domain_of(subject)
     device_class = entry.get("classe")
     # **La condizione d'uso di `stato_da_sapere_subito`, custodita qui invece
-    # che data per scontata**: `mind/facts.py` non scrive mai una cronaca con
-    # `unavailable`/`unknown`, ma un tipo senza `lavoro` li leggerebbe come
+    # che data per scontata**: `mind/facts.py` non scrive mai l'EPISODIO di
+    # un'entita' con `unavailable`/`unknown` (dal 06/10/2026 un'assenza e' una
+    # voce col genere di sistema, e passa dal ramo sopra), ma un tipo senza
+    # `lavoro` li leggerebbe come
     # «non e' un riposo» e li farebbe entrare in primo piano. Una riga «il sensore
     # non risponde» in cima alla pagina, col vestito di un allarme.
     if str(state).strip().lower() in unknown_states():

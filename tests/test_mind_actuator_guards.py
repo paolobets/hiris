@@ -30,8 +30,8 @@ import re
 
 import pytest
 
-from hiris.app import server
 from hiris.app.home_space import historian
+from hiris.app.mind.proposer_round import proposer_round
 from hiris.app.mind.store import ObservationsStore
 
 OGGI = historian.today(historian.house_timezone(None)).isoformat()
@@ -39,7 +39,11 @@ OGGI = historian.today(historian.house_timezone(None)).isoformat()
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 _CLIENT = RADICE / "hiris" / "app" / "proxy" / "ha_client.py"
 _APP = RADICE / "hiris" / "app"
-_SERVER = _APP / "server.py"
+_GIRO = _APP / "mind" / "proposer_round.py"
+
+#: La radice del grafo: il giro del proponente (attori, Task 4.2). Fino al
+#: 06/10/2026 era `actuator_round`, in `server.py`.
+RADICE_GIRO = "proposer_round"
 
 #: Il gesto dell'attuatore che PUO' toccare una porta, e perche'.
 #:
@@ -47,10 +51,21 @@ _SERVER = _APP / "server.py"
 #: scrittura e' un turno diverso, col si' del proprietario (spec §3). E' il gesto
 #: «propone», ed e' l'unica ragione per cui l'attuatore nomina l'officina.
 #:
+#: `notify_admins` (`keeper/delivery.py`) e' una FUNZIONE, non un metodo di una
+#: porta: l'avviso agli amministratori per una proposta `alto` (D14 del piano
+#: degli attori, strati 3-4, approvata dal proprietario il 06/10/2026: «una
+#: notifica agli amministratori, con lo stesso recapito delle promesse,
+#: attraverso `action/actuator.py`»). Il proponente la chiama, e il grafo **si
+#: ferma li'**: il suo corpo legge gli utenti e i telefoni da Home Assistant e
+#: spinge dalla porta dei servizi, ma solo una push di forma fissa
+#: (`promise.delivery_call`) verso i servizi che dice il recapito -- mai un
+#: servizio scelto dal modello. Ammettere `execute` al posto suo avrebbe dato
+#: al proponente l'intera porta dei servizi.
+#:
 #: Questa lista non ricopia niente: **dice cosa il cancello ammette**. Un metodo
 #: nuovo dell'officina non entra qui da solo -- va ammesso a mano, con la ragione,
 #: che e' esattamente il momento in cui qualcuno deve pensarci.
-AMMESSI = frozenset({"propose"})
+AMMESSI = frozenset({"propose", "notify_admins"})
 
 
 def _albero(percorso: pathlib.Path):
@@ -126,12 +141,14 @@ def _funzioni(moduli) -> dict[str, list[tuple[str, ast.AST, str]]]:
     return funzioni
 
 
-def _chiamate_dirette(funzioni: dict, radice: str) -> set[str]:
-    """I nomi raggiungibili da `radice` seguendo le sole chiamate dirette."""
+def _chiamate_dirette(funzioni: dict, radice: str,
+                      fermate=frozenset()) -> set[str]:
+    """I nomi raggiungibili da `radice` seguendo le sole chiamate dirette.
+    Nelle `fermate` non si scende: sono le funzioni ammesse per nome."""
     visti: set[str] = set()
 
     def scendi(nome: str) -> None:
-        if nome in visti or nome not in funzioni:
+        if nome in visti or nome in fermate or nome not in funzioni:
             return
         visti.add(nome)
         for _, definizione, _ in funzioni[nome]:
@@ -148,10 +165,12 @@ def superficie_attuatore(moduli=None) -> dict[str, str]:
 
     Due pezzi, e il secondo e' quello che il cancello vecchio non vedeva:
 
-    1. i moduli `mind/actuator*.py`, presi **dalla cartella** e non elencati;
-    2. il **giro** (`actuator_round`, che la spec §6 dichiara parte
-       dell'attuatore) e cio' che chiama, dove `ha_client` e' a portata di mano
-       dovunque. Si ricava dal grafo delle chiamate, **meno** cio' che
+    1. i moduli `mind/actuator*.py` e `mind/proposer*.py` (l'attore si chiama
+       proponente dal 06/10/2026, D11), presi **dalla cartella** e non
+       elencati;
+    2. il **giro** (`proposer_round`, che la spec §6 dichiara parte
+       dell'attore; fino al 06/10/2026 `actuator_round`, in `server.py`) e
+       cio' che chiama, dovunque viva. Si ricava dal grafo delle chiamate, **meno** cio' che
        raggiungono anche gli altri giri (le funzioni pubbliche `*_round`): una
        funzione condivisa non e' dell'attuatore, e sorvegliarla qui farebbe
        diventare rosso questo cancello per colpa di qualcun altro.
@@ -164,19 +183,20 @@ def superficie_attuatore(moduli=None) -> dict[str, str]:
     che la derivazione larga contenga quella stretta.
     """
     superficie = {p.name: p.read_text(encoding="utf-8")
-                  for p in sorted((_APP / "mind").glob("actuator*.py"))}
-    assert superficie, "non trovo nessun modulo `mind/actuator*.py`"
+                  for pattern in ("actuator*.py", "proposer*.py")
+                  for p in sorted((_APP / "mind").glob(pattern))}
+    assert superficie, "non trovo nessun modulo `mind/actuator*.py` o `mind/proposer*.py`"
 
     funzioni = _funzioni(moduli if moduli is not None else sorted(_APP.rglob("*.py")))
     altri_giri = {n for n in funzioni
                   if n.endswith("_round") and not n.startswith("_")
-                  and n != "actuator_round"}
+                  and n != RADICE_GIRO}
     condivise: set[str] = set()
     for giro in altri_giri:
         condivise |= _chiamate_dirette(funzioni, giro)
 
-    sole_sue = _chiamate_dirette(funzioni, "actuator_round") - condivise
-    assert "actuator_round" in sole_sue
+    sole_sue = _chiamate_dirette(funzioni, RADICE_GIRO, AMMESSI) - condivise
+    assert RADICE_GIRO in sole_sue
     for nome in sorted(sole_sue):
         for modulo, definizione, sorgente in funzioni[nome]:
             superficie[f"{modulo}::{nome}"] = ast.get_source_segment(sorgente, definizione) or ""
@@ -218,23 +238,24 @@ def test_una_porta_NUOVA_entra_nel_cancello_da_sola():
             "nell'insieme derivato: il cancello sorveglia un canale su due")
 
 
-def test_la_superficie_comprende_il_GIRO_nel_server_non_solo_i_due_moduli():
-    """**I-0.** Il cancello vecchio leggeva due file in `mind/`. Il giro vero
-    dell'attuatore vive in `server.py` (spec §6), dove `ha_client` e' a portata
-    di mano: una scrittura aggiunta li' era **invisibile**.
+def test_la_superficie_comprende_il_GIRO_non_solo_i_moduli():
+    """**I-0.** Il cancello vecchio leggeva due file in `mind/` mentre il giro
+    viveva in `server.py`: una scrittura aggiunta li' era **invisibile**. Dal
+    06/10/2026 il giro vive in `mind/proposer_round.py`, e il grafo parte da
+    lui: i gesti del giro sono sorvegliati per nome, non per cartella.
 
-    Mutazione ESEGUITA: restringere la superficie ai soli `mind/actuator*.py` --
-    rossa.
+    Mutazione ESEGUITA (06/10/2026): `RADICE_GIRO` su un nome che non esiste
+    -- rossa.
     """
     superficie = superficie_attuatore()
 
-    assert "actuator.py" in superficie and "actuator_turn.py" in superficie
-    for gesto in ("_file_proposals", "_write_actuation"):
-        assert f"server.py::{gesto}" in superficie, (
-            f"`{gesto}` e' un gesto dell'attuatore e non e' sorvegliato")
+    assert "proposer_turn.py" in superficie and "proposer_round.py" in superficie
+    for gesto in ("_settle", "_chain", "_collect", "_alert_high"):
+        assert f"mind/proposer_round.py::{gesto}" in superficie, (
+            f"`{gesto}` e' un gesto del proponente e non e' sorvegliato")
 
 
-def test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_server():
+def test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_giro():
     """**La derivazione larga non si e' svuotata.** Il grafo delle chiamate
     costruito su tutto `hiris/app` deve vedere almeno cio' che vedeva quello
     costruito sul solo `server.py`: se la derivazione larga si rompesse (un
@@ -247,11 +268,11 @@ def test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_server():
     cancello di `test_l_attuatore_non_tocca_MAI_home_assistant` col grafo del
     solo `server.py` restava VERDE, col grafo di tutto il prodotto e' rosso.
     """
-    stretta = superficie_attuatore([_SERVER])
+    stretta = superficie_attuatore([_GIRO])
     larga = superficie_attuatore()
 
     assert set(stretta) <= set(larga), sorted(set(stretta) - set(larga))
-    assert any(nome.startswith("server.py::") for nome in larga)
+    assert any(nome.startswith("mind/proposer_round.py::") for nome in larga)
 
 
 def test_le_due_porte_si_leggono_da_CLAUDE_md():
@@ -268,6 +289,28 @@ def test_le_due_porte_si_leggono_da_CLAUDE_md():
         "cambiate, o il documento non le nomina piu' per percorso")
 
 
+def test_una_funzione_AMMESSA_ha_un_nome_solo_nel_prodotto():
+    """Il grafo si ferma alle funzioni ammesse **per nome** (Task 4.3). Una
+    seconda funzione con lo stesso nome, nata altrove, verrebbe saltata anche
+    lei: l'ammissione coprirebbe un corpo che nessuno ha guardato. Quindi ogni
+    nome di `AMMESSI` che e' una funzione del prodotto e' definito UNA volta.
+
+    Mutazione ESEGUITA (06/10/2026): una `notify_admins` di primo livello in
+    `action/rhythm.py` -- rossa.
+    """
+    funzioni = _funzioni(sorted(_APP.rglob("*.py")))
+    ammesse = {nome: funzioni[nome] for nome in AMMESSI if nome in funzioni}
+
+    assert "notify_admins" in ammesse, (
+        "`notify_admins` non e' piu' una funzione del prodotto: l'ammissione "
+        "e' orfana, toglila da `AMMESSI`")
+    for nome, definizioni in ammesse.items():
+        dove = sorted(modulo for modulo, _, _ in definizioni)
+        assert len(dove) == 1, (
+            f"`{nome}` e' ammessa per nome e la definiscono {dove}: il cancello "
+            "salterebbe tutte e due. Rinomina la nuova, o ammettila a parte")
+
+
 def test_l_attuatore_non_tocca_MAI_home_assistant():
     """**Il confine del 25/08/2026**: «l'attuatore non guadagna un canale di
     scrittura suo». Finche' nessuno lo custodisce e' una promessa, e le promesse
@@ -282,7 +325,12 @@ def test_l_attuatore_non_tocca_MAI_home_assistant():
     invece di ricopiare un fatto.
 
     Mutazione ESEGUITA: `await ha_client.call_service(...)` in `actuator.py` --
-    rossa. E `self._workshop.apply(...)` in `_file_proposals` -- rossa.
+    rossa. E `self._workshop.apply(...)` in `_file_proposals` -- rossa. Dal
+    06/10/2026 (Task 4.2, Passo 5): `app["action_actuator"].execute(...)` in
+    `proposer_round._settle` -- rossa. Dal Task 4.3 (06/10/2026): `AMMESSI`
+    senza `notify_admins` -- rossa su `soffitto._refresh_users` (`users`);
+    `app["action_actuator"].execute(...)` in `_alert_high`, accanto
+    all'avviso ammesso -- rossa.
     """
     vietati = (porte_home_assistant()
                | {m for porta in porte_dichiarate() for m in _metodi_pubblici(porta)}
@@ -305,12 +353,12 @@ class _FintoModello:
     async def chat(self, **kwargs):
         self.chiamate += 1
         await asyncio.sleep(0)
-        return json.dumps({"esiti": [{"osservazione": 0, "gesto": "indagine",
-                                      "trovato": "guardato"}]})
+        return json.dumps({"esiti": [{"osservazione": 0, "esito": "niente",
+                                      "perche": "guardato"}]})
 
 
 @pytest.mark.asyncio
-async def test_due_giri_insieme_non_fanno_DUE_attuazioni(tmp_path):
+async def test_due_giri_insieme_non_fanno_DUE_turni(tmp_path):
     """Lo schedulatore ha un `misfire_grace_time` di mezz'ora: due giri
     possono partire insieme dopo una sosta dell'add-on. Senza guardia si
     pagherebbero due turni per la stessa analisi -- e il secondo scriverebbe
@@ -328,7 +376,7 @@ async def test_due_giri_insieme_non_fanno_DUE_attuazioni(tmp_path):
                               "cosa": "x", "cosa_cambierebbe": "y"}],
             "fondamento": {"giorni": 3, "impronta": "aaa"}})
 
-        await asyncio.gather(server.actuator_round(app), server.actuator_round(app))
+        await asyncio.gather(proposer_round(app), proposer_round(app))
 
         assert modello.chiamate == 1
     finally:
@@ -352,10 +400,11 @@ async def test_le_due_forme_non_si_MESCOLANO_negli_archivi(tmp_path):
     mano sarebbe un «crea» senza niente da creare.
 
     Qui si prova la meta' che le altre prove non toccano: **una proposta da
-    fare a mano non chiama l'officina**.
+    fare a mano non chiama l'officina** -- dal 06/10/2026 l'officina la chiama
+    solo lo strumento `propose`, dentro il turno.
 
-    Mutazione ESEGUITA: mandare all'officina anche le non costruibili --
-    rossa."""
+    Mutazione ESEGUITA sul giro dell'attuatore: mandare all'officina anche le
+    non costruibili -- rossa."""
     store = ObservationsStore(str(tmp_path / "oss.db"))
     officina = _OfficinaCheConta()
 
@@ -364,8 +413,9 @@ async def test_le_due_forme_non_si_MESCOLANO_negli_archivi(tmp_path):
 
         async def chat(self, **kwargs):
             return json.dumps({"esiti": [
-                {"osservazione": 0, "gesto": "proposta", "costruibile": False,
-                 "trovato": "Sposta la lavatrice nel pomeriggio"}]})
+                {"osservazione": 0, "esito": "a_mano",
+                 "testo": "Sposta la lavatrice nel pomeriggio",
+                 "perche": "costa meno"}]})
 
     app = {"observations": store, "llm_router": _Modello(), "bridge_active": False,
            "workshop": officina}
@@ -376,7 +426,7 @@ async def test_le_due_forme_non_si_MESCOLANO_negli_archivi(tmp_path):
                               "cosa": "x", "cosa_cambierebbe": "y"}],
             "fondamento": {"giorni": 3, "impronta": "aaa"}})
 
-        await server.actuator_round(app)
+        await proposer_round(app)
 
         assert officina.chiamate == 0, (
             "una proposta da fare a mano e' finita all'officina")

@@ -948,9 +948,10 @@ async def test_un_404_del_provider_arriva_al_router_come_famiglia_modello(tmp_pa
         await runner.chat(user_message="hi", model="gpt-4o")
 
     assert info.value.family == "modello" and info.value.code == 404
-    assert info.value.friendly_message == (
-        "Errore temporaneo del servizio AI. Riprova tra poco."
-    )
+    # S-37: un modello che non esiste non passa riprovando.
+    assert info.value.friendly_message.startswith(
+        "Il servizio AI ha rifiutato la richiesta: il modello non esiste più (404).")
+    assert "temporaneo" not in info.value.friendly_message
 
 
 @pytest.mark.asyncio
@@ -973,6 +974,35 @@ async def test_un_402_di_openrouter_arriva_al_router_come_credenziale(tmp_path):
         await runner.chat(user_message="hi", model="gpt-4o")
 
     assert info.value.family == "credenziale" and info.value.code == 402
+    assert "credito esaurito (402)" in info.value.friendly_message
+    assert "temporaneo" not in info.value.friendly_message
+
+
+@pytest.mark.asyncio
+async def test_la_quota_della_chiave_finita_non_e_un_errore_temporaneo(tmp_path):
+    """S-37, il caso misurato (registro dell'add-on, 05/10/2026): OpenRouter
+    risponde 403 «Key limit exceeded (total limit)». Fino a qui la chat diceva
+    «Errore temporaneo del servizio AI. Riprova tra poco.»; riprovare non
+    cambia niente."""
+    import openai
+
+    runner = OpenAICompatRunner(
+        base_url="https://openrouter.ai/api/v1", api_key="sk-or-test")
+
+    class _Quota(openai.APIError):
+        def __init__(self):
+            Exception.__init__(self, "Key limit exceeded (total limit)")
+            self.status_code = 403
+            self.body = None
+
+    runner._client.chat.completions.create = AsyncMock(side_effect=_Quota())
+    with pytest.raises(RunnerBackendError) as info:
+        await runner.chat(user_message="hi", model="gpt-4o")
+
+    assert info.value.family == "credenziale" and info.value.code == 403
+    assert info.value.friendly_message == (
+        "Il servizio AI ha rifiutato la richiesta: la chiave non è accettata (403). "
+        "Riprovare non basta: si sistema nella pagina Modelli.")
 
 
 def test_il_codice_di_un_errore_d_api_si_legge_e_quello_di_una_connessione_no():

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -115,27 +116,27 @@ def _wrong_for_kind(kind: str, a: dict) -> str | None:
     """Il filtro che non vale per questo genere, detto (spec §2): ignorato,
     la storia risponderebbe con sicurezza a un'altra domanda."""
     if _given(a, "esecuzione") and kind != "esecuzioni":
-        return "esecuzione vale solo con genere=esecuzioni"
+        return "esecuzione vale solo con cosa=esecuzioni"
     if _given(a, "livello") and kind != "errori":
-        return "livello vale solo con genere=errori"
+        return "livello vale solo con cosa=errori"
     if kind == "errori":
         wrong = [key for key in _WHO_KEYS if _given(a, key) and key not in _ERROR_WHO_KEYS]
         if wrong:
             verb = "vale" if len(wrong) == 1 else "valgono"
-            return (f"{', '.join(wrong)}: non {verb} per genere=errori -- il registro "
+            return (f"{', '.join(wrong)}: non {verb} per cosa=errori -- il registro "
                     "di Home Assistant non sa di aree ne' di cose della casa: accetta "
                     "solo integrazione e livello")
     if kind == "esecuzioni":
         if _given(a, "classe"):
-            return ("classe non vale per genere=esecuzioni: le esecuzioni sono di "
+            return ("classe non vale per cosa=esecuzioni: le esecuzioni sono di "
                     "automazioni e script")
         if _given(a, "tipo") and a["tipo"] not in BEHAVIOR_DOMAINS:
-            return ("genere=esecuzioni vale per automazioni e script: tipo accetta "
+            return ("cosa=esecuzioni vale per automazioni e script: tipo accetta "
                     "automation o script")
         reference = str(a.get("riferimento") or "")
         if reference and reference.split(".", 1)[0] not in BEHAVIOR_DOMAINS:
             return (f"«{reference}» non e' un'automazione ne' uno script: "
-                    "genere=esecuzioni vale solo per loro")
+                    "cosa=esecuzioni vale solo per loro")
     return None
 
 
@@ -217,10 +218,10 @@ def parse_query(arguments: dict, *, now: float,
                 timezone: str | None) -> HistoryQuery | dict:
     """Gli argomenti di `history` -> una domanda validata, o `{"errore"}`."""
     a = dict(arguments or {})
-    # `genere` e `livello` fuori vocabolario li rifiuta `ToolDispatcher.
+    # `cosa` e `livello` fuori vocabolario li rifiuta `ToolDispatcher.
     # dispatch` contro l'`enum` dello schema (`KINDS`, `LEVELS`): fino al
     # 05/10/2026 si rivalidavano anche qui (D-40).
-    kind = a.get("genere") or "stati"
+    kind = a.get("cosa") or "stati"
     wrong = _wrong_for_kind(kind, a)
     if wrong:
         return {"errore": wrong}
@@ -1319,6 +1320,18 @@ async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
     return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
 
 
+async def read_bands(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
+    """Le statistiche orarie di Home Assistant nella finestra: `{"serie"}` o la
+    busta del guasto, intera (`read_failure`). L'unica lettura delle fasce
+    orarie: la chiedono i valori di `history` e la ricetta al volo
+    (`mind/compute.py`)."""
+    answer = await ha.hourly_statistics(
+        entity_ids, query.start.isoformat(), query.end.isoformat())
+    if not isinstance(answer, dict) or "serie" not in answer:
+        return read_failure(answer, "le statistiche orarie non sono arrivate")
+    return {"serie": answer["serie"]}
+
+
 def journal_acts(journal, query: HistoryQuery) -> list[dict] | None:
     """Gli atti di HIRIS nella finestra, per dire «per mano di HIRIS».
     `None` -- non `[]` -- quando la cronaca non c'e' o non risponde: «non
@@ -1370,11 +1383,9 @@ async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -
               else {"serie": {}, "troncato": False})
     if "errore" in detail:
         return detail
-    bands = (await ha.hourly_statistics(
-        band_ids, query.start.isoformat(), query.end.isoformat()) if band_ids
-        else {"serie": {}})
-    if not isinstance(bands, dict) or "serie" not in bands:
-        return read_failure(bands, "le statistiche orarie non sono arrivate")
+    bands = await read_bands(ha, band_ids, query) if band_ids else {"serie": {}}
+    if "errore" in bands:
+        return bands
     return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
                       truncated=detail["troncato"], surfaces=surfaces,
                       units=mirror.units, state_classes=state_classes,
@@ -1533,3 +1544,37 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     if "errore" not in response and not mirror.readable:
         response["stato_non_letto"] = True
     return response
+
+
+#: Quanto vale una lettura di `statistic_ids` per i giri che la condividono
+#: (A-05, Tappa 2, Task 8): quattro minuti, cioe' meno del giro piu' frequente
+#: che la usa (il recupero dei resoconti, ogni cinque; le ricette, ogni dieci).
+#: Cosi' un giro non riusa mai la propria lettura precedente -- ogni giro
+#: vede l'elenco fresco di Home Assistant -- ma due giri vicini ne fanno una
+#: sola. La prova (`tests/test_giro_statistic_ids.py`) chiede i giri allo
+#: schedulatore e al grafo delle chiamate, non li ricopia.
+STATISTIC_IDS_MEMORY_S = 240.0
+
+
+async def statistic_ids_for_round(app, ha_client, *,
+                                  now: float | None = None) -> set[str] | dict:
+    """Le entita' con statistiche (`HAClient.statistic_ids`), lette UNA volta
+    per i giri vicini.
+
+    Fino al 04/10/2026 il giro delle ricette e gli ingredienti del resoconto
+    leggevano lo stesso elenco ognuno per conto suo (A-05). Viveva in
+    `server.py` fino al 06/10/2026 (attori, Task 3.6): la chiede anche il
+    guardiano dell'analista, che il ponte costruisce in `/api/mcp`, e la porta
+    della storia e' la casa che entrambi possono importare. La lettura buona
+    si tiene in `app["statistic_ids_held"]` per `STATISTIC_IDS_MEMORY_S`;
+    **un guasto non si tiene mai**: la busta (D3) torna al chiamante, e il
+    giro dopo richiede.
+    """
+    now = time.monotonic() if now is None else now
+    held = app.get("statistic_ids_held")
+    if held is not None and now - held[0] < STATISTIC_IDS_MEMORY_S:
+        return held[1]
+    reading = await ha_client.statistic_ids()
+    if not isinstance(reading, dict):
+        app["statistic_ids_held"] = (now, reading)
+    return reading

@@ -25,6 +25,8 @@ e questo prodotto parla italiano alle persone.
 """
 from __future__ import annotations
 
+import json
+
 from aiohttp import web
 
 
@@ -47,3 +49,37 @@ def error_body(text: str, **fields) -> dict:
 def error_response(status: int, text: str, *, headers=None, **fields) -> web.Response:
     """La risposta d'errore di una rotta, nella forma unica del confine."""
     return web.json_response(error_body(text, **fields), status=status, headers=headers)
+
+
+#: Il rifiuto di un corpo che non e' un oggetto JSON: una frase sola per
+#: tutte le rotte che ne leggono uno (`json_object`).
+BODY_NOT_OBJECT = "Il corpo della richiesta non è un oggetto JSON valido."
+
+
+async def json_object(request: web.Request, *, optional: bool = False,
+                      **fields) -> dict:
+    """Il corpo di una richiesta, che dev'essere un oggetto JSON.
+
+    **Una lettura sola** (D-66, Tappa 6, Task 8). Fino al 06/10/2026 ogni
+    rotta leggeva il corpo a modo suo, in cinque stili: chi rifiutava con 400
+    e un testo suo, chi ripiegava in silenzio su `{}`, chi non guardava se
+    il JSON fosse un oggetto -- e la chat, la consegna del ponte e i servizi
+    rispondevano 500 a un corpo come `[]`, perche' chiamavano `.get` su una
+    lista.
+
+    Un corpo che non si decodifica, o che non e' un oggetto, solleva un 400
+    nella forma del confine (`error_body`, con i `fields` che la rotta
+    aggiunge). `optional`: un corpo VUOTO vale `{}` -- per le rotte in cui
+    ogni campo e' facoltativo -- ma un corpo presente e storto si rifiuta lo
+    stesso, invece di essere scambiato per un corpo assente."""
+    if optional and not request.body_exists:
+        return {}
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest(
+            text=json.dumps(error_body(BODY_NOT_OBJECT, **fields), ensure_ascii=False),
+            content_type="application/json")
+    return body
