@@ -253,6 +253,16 @@ def service_thread_renames(rows: list[dict]) -> tuple[dict[str, str], list[str]]
     return renames, sorted(old for old, new in owners.items() if len(new) > 1)
 
 
+def open_services(app, path: str) -> ServiziStore:
+    """All'avvio: apre l'archivio dei servizi accoppiati e porta i fili della
+    chat dei servizi all'impronta della chiave (`migrate_service_threads`).
+    Vive qui e non in `server.py` (regola del 06/10/2026: `server.py` registra
+    e avvia, non ospita); l'avvio la chiama al posto del costruttore."""
+    app["servizi"] = store = ServiziStore(path)
+    migrate_service_threads(app)
+    return store
+
+
 def migrate_service_threads(app) -> int:
     """All'avvio: i fili della chat dei servizi passano dal nome all'impronta
     della chiave, e il registro dice quanti (la misura dal vivo di D7). Torna

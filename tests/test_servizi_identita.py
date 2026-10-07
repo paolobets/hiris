@@ -21,6 +21,7 @@ from hiris.app.api import canali, ingresso
 from hiris.app.api.servizi import (
     ServiziStore,
     migrate_service_threads,
+    open_services,
     service_thread_renames,
 )
 from hiris.app.chat_store import close_all_stores
@@ -117,6 +118,28 @@ def test_la_migrazione_porta_i_fili_dal_nome_all_IMPRONTA(tmp_path, caplog):
 
     assert migrate_service_threads(app) == 0
     app["servizi"].close()
+
+
+def test_l_avvio_apre_l_archivio_e_migra_nello_stesso_gesto(tmp_path):
+    """L'avvio chiama `open_services` (la chiamata sta fuori da `server.py`,
+    regola del 06/10/2026): apre l'archivio, lo mette in `app["servizi"]` e
+    migra i fili. Mutazione ESEGUITA (07/10/2026): togliere
+    `migrate_service_threads(app)` da `open_services` -- rossa, il filo resta
+    sotto il nome."""
+    data_dir = str(tmp_path)
+    path = str(tmp_path / "servizi.db")
+    prima = {"servizi": ServiziStore(path), "data_dir": data_dir}
+    _privata, pubblica = servizio_approvato(prima, "utente", nome="cucina", specie="luogo")
+    prima["servizi"].close()
+    _sessione(data_dir, "luogo:cucina", "accendi la luce")
+
+    app = {"data_dir": data_dir}
+    store = open_services(app, path)
+
+    assert app["servizi"] is store
+    assert _testi(data_dir, f"luogo:{ServiziStore.fingerprint(pubblica)}") == [
+        "accendi la luce"]
+    store.close()
 
 
 def test_la_tabella_dei_nomi_conta_autorizzati_e_revocati_e_basta():
