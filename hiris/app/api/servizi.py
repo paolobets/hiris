@@ -35,6 +35,7 @@ import hashlib
 import logging
 import threading
 import time
+from collections.abc import Callable
 
 from ..storage import connect, init_schema
 
@@ -254,37 +255,67 @@ def service_thread_renames(rows: list[dict]) -> tuple[dict[str, str], list[str]]
 
 
 def open_services(app, path: str) -> ServiziStore:
-    """All'avvio: apre l'archivio dei servizi accoppiati e porta i fili della
-    chat dei servizi all'impronta della chiave (`migrate_service_threads`).
-    Vive qui e non in `server.py` (regola del 06/10/2026: `server.py` registra
-    e avvia, non ospita); l'avvio la chiama al posto del costruttore."""
+    """All'avvio: apre l'archivio dei servizi accoppiati e porta i fili dei
+    servizi all'impronta della chiave (`migrate_service_threads`). Vive qui e
+    non in `server.py` (regola del 06/10/2026: `server.py` registra e avvia,
+    non ospita); l'avvio la chiama al posto del costruttore, DOPO aver aperto
+    gli archivi che la migrazione tocca."""
     app["servizi"] = store = ServiziStore(path)
     migrate_service_threads(app)
     return store
 
 
-def migrate_service_threads(app) -> int:
-    """All'avvio: i fili della chat dei servizi passano dal nome all'impronta
-    della chiave, e il registro dice quanti (la misura dal vivo di D7). Torna
-    il numero di sessioni migrate. Non solleva: una migrazione che non riesce
-    lascia i fili dov'erano, e l'avvio prosegue.
+def _service_thread_archives(app) -> list[tuple[str, Callable[[dict[str, str]], int]]]:
+    """Gli archivi che portano il soggetto di chi ha parlato in una colonna,
+    con la funzione che lo rinomina: `(nome per il registro, rekey)`. Un
+    archivio che l'avvio non ha aperto (il sapere puo' restare `None`) non
+    c'e', e il registro lo tace.
 
-    Si rifa' a ogni avvio, e dal secondo non trova niente: le chiavi vecchie
-    non esistono piu'."""
+    Fino al 07/10/2026 migravano solo i fili della chat (T8); il soggetto
+    vive anche qui, e con la chiave vecchia un servizio perdeva le sue
+    promesse in agenda (G83-3, scelta di Paolo: «Migra tutto»)."""
     from .. import chat_store
 
+    archives: list[tuple[str, Callable[[dict[str, str]], int]]] = [
+        ("sessioni di chat",
+         lambda renames: chat_store.rekey_subjects(app["data_dir"], renames)),
+    ]
+    named = (("promesse", "agenda"),)
+    for label, key in named:
+        archive = app.get(key)
+        if archive is not None:
+            archives.append((label, archive.rekey_subjects))
+    return archives
+
+
+def migrate_service_threads(app) -> dict[str, int]:
+    """All'avvio: il soggetto dei servizi passa dal nome all'impronta della
+    chiave in ogni archivio che lo porta (`_service_thread_archives`), con la
+    stessa mappa (`service_thread_renames`), e il registro dice quante righe
+    per archivio (la misura dal vivo di D7). Torna `{archivio: righe}`.
+
+    Non solleva: un archivio che non riesce lascia le sue righe dov'erano,
+    lo dice, e gli altri migrano lo stesso. Si rifa' a ogni avvio, e dal
+    secondo non trova niente: le chiavi vecchie non esistono piu'."""
     store = app.get("servizi")
     if store is None:
-        return 0
+        return {}
     try:
         renames, ambiguous = service_thread_renames(store.elenco(now_ts=time.time()))
-        moved = chat_store.rekey_subjects(app["data_dir"], renames)
     except Exception as exc:
-        logger.warning("servizi: i fili della chat non sono migrati all'impronta "
-                       "della chiave (%s: %s)", type(exc).__name__, exc)
-        return 0
-    logger.info("servizi: %d sessioni di chat migrate dal nome all'impronta della "
-                "chiave (%d servizi)", moved, len(renames))
+        logger.warning("servizi: i fili non sono migrati all'impronta della chiave "
+                       "(%s: %s)", type(exc).__name__, exc)
+        return {}
+    moved: dict[str, int] = {}
+    for label, rekey in _service_thread_archives(app):
+        try:
+            moved[label] = rekey(renames)
+        except Exception as exc:
+            logger.warning("servizi: %s non migrate all'impronta della chiave "
+                           "(%s: %s)", label, type(exc).__name__, exc)
+    logger.info("servizi: dal nome all'impronta della chiave (%d servizi) -- %s",
+                len(renames),
+                ", ".join(f"{n} {label}" for label, n in moved.items()) or "niente")
     if ambiguous:
         logger.warning("servizi: %d nomi portati da piu' servizi, i loro fili restano "
                        "senza padrone: %s", len(ambiguous), ", ".join(ambiguous))

@@ -26,6 +26,7 @@ from hiris.app.api.servizi import (
 )
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread, subject_key_for, thread_for
+from hiris.app.keeper.store import AgendaStore
 from tests.test_admission import _compose
 
 _HIRIS = Path(__file__).resolve().parents[1] / "hiris"
@@ -107,17 +108,66 @@ def test_la_migrazione_porta_i_fili_dal_nome_all_IMPRONTA(tmp_path, caplog):
 
     nuova = subject_key_for(_riconosci(app, privata, pubblica))
     assert nuova == f"luogo:{ServiziStore.fingerprint(pubblica)}"
-    assert moved == 1
+    assert moved == {"sessioni di chat": 1}
     assert _testi(data_dir, nuova) == ["accendi la luce"]
     assert _testi(data_dir, "luogo:cucina") == []
     assert _testi(data_dir, "integrazione:gemello") == ["di chi sono"]
     assert _testi(data_dir, "persona:u-paolo") == ["ciao"]
     righe = [r.getMessage() for r in caplog.records]
-    assert any("1 sessioni di chat migrate" in r for r in righe), righe
+    assert any("1 sessioni di chat" in r for r in righe), righe
     assert any("integrazione:gemello" in r for r in righe), righe
 
-    assert migrate_service_threads(app) == 0
+    assert migrate_service_threads(app) == {"sessioni di chat": 0}
     app["servizi"].close()
+
+
+T_NASCITA = 1_790_000_000.0  # un istante fisso, scelto a mano: non e' una misura
+
+
+def _servizio_parlante(tmp_path) -> tuple[dict, str]:
+    """Una casa con un servizio `luogo:cucina` approvato e gli archivi che la
+    migrazione tocca; torna l'app e la chiave nuova del servizio."""
+    app = {"servizi": ServiziStore(str(tmp_path / "servizi.db")),
+           "data_dir": str(tmp_path),
+           "agenda": AgendaStore(str(tmp_path / "promesse.db"))}
+    privata, pubblica = servizio_approvato(app, "utente", nome="cucina", specie="luogo")
+    return app, subject_key_for(_riconosci(app, privata, pubblica))
+
+
+def _chiudi(app) -> None:
+    for chiave in ("servizi", "agenda"):
+        app[chiave].close()
+
+
+def test_le_promesse_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
+    """G83-3 (giro 83; Paolo, 07/10/2026: «Migra tutto»). Con la chiave
+    vecchia il servizio non vedeva piu' le sue promesse in agenda, non le
+    poteva disdire, e l'esito di un `fai` andava nel filo vecchio. Le
+    promesse di un altro soggetto non si toccano; la seconda volta non c'e'
+    niente.
+
+    Mutazione ESEGUITA (07/10/2026): l'agenda tolta dagli archivi di
+    `_service_thread_archives` -- rossa, la promessa resta sotto il nome."""
+    app, nuova = _servizio_parlante(tmp_path)
+    sua = app["agenda"].create(
+        {"specie": "chiedi", "frase": "x", "quando_ts": T_NASCITA + 3600,
+         "domanda": "?"}, thread=ChatThread("luogo:cucina", "canale"),
+        now=T_NASCITA)["promessa"]["id"]
+    altrui = app["agenda"].create(
+        {"specie": "chiedi", "frase": "y", "quando_ts": T_NASCITA + 3600,
+         "domanda": "?"}, thread=ChatThread("persona:u-paolo", "interno"),
+        now=T_NASCITA)["promessa"]["id"]
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.api.servizi"):
+        moved = migrate_service_threads(app)
+
+    assert app["agenda"].read_in_thread(sua, ChatThread(nuova, "canale")) is not None
+    assert moved["promesse"] == 1
+    assert app["agenda"].read_in_thread(altrui, ChatThread("persona:u-paolo",
+                                                           "interno")) is not None
+    assert "1 promesse" in caplog.text
+    assert migrate_service_threads(app)["promesse"] == 0
+    _chiudi(app)
 
 
 def test_l_avvio_apre_l_archivio_e_migra_nello_stesso_gesto(tmp_path):

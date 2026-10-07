@@ -88,6 +88,29 @@ _JSON_PERMISSIONS = 0o600
 _json_lock = threading.Lock()
 
 
+def rekey(conn: sqlite3.Connection, update_sql: str,
+          renames: dict[str, str]) -> int:
+    """`update_sql` -- `UPDATE <tabella> SET <colonna> = ? WHERE <colonna> = ?`
+    -- per ogni coppia (vecchia, nuova) di `renames`, in una transazione;
+    ritorna quante righe.
+
+    E' la migrazione dei fili dei servizi dal nome all'impronta della chiave
+    (`servizi.migrate_service_threads`, Tappa 7 T8 e G83-3), scritta una volta
+    per gli archivi che portano il soggetto in una colonna. L'istruzione la
+    scrive per intero l'archivio che chiama, e non si compone qui: un nome di
+    tabella composto a runtime acceca il censimento delle scritture
+    (`scripts/censimento.py`, misurato il 07/10/2026). Il lock, se l'archivio
+    ne ha uno, lo prende chi chiama."""
+    try:
+        moved = sum(conn.execute(update_sql, (new, old)).rowcount
+                    for old, new in renames.items())
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return moved
+
+
 def write_json_atomic(path: str, data: Any) -> None:
     """Scrive un file JSON in modo atomico e durevole: temporaneo, `fsync`,
     `os.replace`.

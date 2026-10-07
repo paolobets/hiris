@@ -18,7 +18,7 @@ import threading
 import time
 
 from ..chat_thread import ChatThread, thread_condition, thread_params, unknown_id_text
-from ..storage import connect, init_schema
+from ..storage import connect, init_schema, rekey
 from .promise import (
     CEILING_IN_SOSPESO,
     CONSERVAZIONE_S,
@@ -183,6 +183,16 @@ class AgendaStore:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+    def rekey_subjects(self, renames: dict[str, str]) -> int:
+        """Le promesse dei soggetti di `renames` (chiave vecchia -> nuova)
+        passano alla chiave nuova; ritorna quante. CHI cambia chiave lo decide
+        `servizi.migrate_service_threads` (G83-3, 07/10/2026): senza, un
+        servizio non vedeva piu' le sue promesse in agenda e non le poteva
+        disdire, e l'esito di un `fai` andava nel filo vecchio."""
+        with self._lock:
+            return rekey(self._conn, "UPDATE promesse SET subject_key = ? "
+                         "WHERE subject_key = ?", renames)
 
     # -- scrivere ------------------------------------------------------
 

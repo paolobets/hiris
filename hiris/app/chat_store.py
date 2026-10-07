@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from .chat_thread import ChatThread, thread_condition, thread_params
 from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
-from .storage import connect, init_schema
+from .storage import connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -693,15 +693,8 @@ class ChatStore:
         `servizi.migrate_service_threads`): l'archivio non sa cosa sia un
         servizio. L'ingresso resta quello di ogni sessione."""
         with self._mu:
-            try:
-                moved = sum(self._conn.execute(
-                    "UPDATE chat_sessions SET subject_key = ? WHERE subject_key = ?",
-                    (new, old)).rowcount for old, new in renames.items())
-                self._conn.commit()
-            except Exception:
-                self._conn.rollback()
-                raise
-            return moved
+            return rekey(self._conn, "UPDATE chat_sessions SET subject_key = ? "
+                         "WHERE subject_key = ?", renames)
 
     def delete_old_messages(self, retention_days: int) -> int:
         """Hard-delete chat messages older than retention_days. Returns row count deleted."""
