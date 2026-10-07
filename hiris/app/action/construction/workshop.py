@@ -1147,8 +1147,9 @@ class Workshop:
         **Anche un'`incerta` si rimette** (G83-2, giro 83, 07/10/2026): la
         riga si tiene perche' puo' portare l'unico «prima» rimasto, e un dato
         che nessuno puo' chiedere non esiste (fondamenta 4). Prima si guarda
-        la casa: se e' gia' com'era prima, la scrittura non era arrivata e non
-        c'e' niente da rimettere -- senza questa domanda la conferma direbbe
+        la casa: se e' gia' com'era prima non c'e' niente da rimettere, e si
+        dice solo questo (la scrittura forse non era arrivata, o un ripristino
+        l'ha gia' disfatta) -- senza questa domanda la conferma direbbe
         «e' cambiato da quando te l'ho proposto», che e' falso. Altrimenti si
         rimette come per un'`applicata`, e se la casa non ha nemmeno il `dopo`
         di allora la conferma rifiuta come sempre.
@@ -1169,9 +1170,11 @@ class Workshop:
             loaded = await self._read_now(domain, key)
             if (loaded.get("assente") and prima is None) or (
                     "corpo" in loaded and loaded["corpo"] == prima):
-                return refused(f"la scrittura del {self._data(row['creata_ts'])} "
-                               f"non era arrivata: {domain}.{key} e' gia' com’era "
-                               "prima, non c’e' niente da rimettere.")
+                # Solo il fatto, non la causa (N84-1, giro 84): la casa com'era
+                # prima la lascia anche un ripristino gia' riuscito, e la riga
+                # resta `incerta` -- «non era arrivata» sarebbe falso.
+                return refused(f"{domain}.{key} e' gia' com’era prima: non c’e' "
+                               "niente da rimettere.")
         if prima is None:
             # Ripristinare una CREAZIONE significa cancellare cio' che e' nato.
             intent_operation, dopo = "cancella", None

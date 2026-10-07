@@ -1019,7 +1019,9 @@ async def test_una_costruzione_incerta_mai_arrivata_lo_dice_e_non_scrive(banco):
     """L'altro lato del dubbio: la scrittura non era arrivata, e la casa e'
     gia' com'era prima. Non si scrive niente, e la frase dice questo -- non
     «e' cambiato da quando te l'ho proposto», che sarebbe falso e che e'
-    cio' che direbbe la conferma (`_changed_since`) senza questa domanda.
+    cio' che direbbe la conferma (`_changed_since`) senza questa domanda. E
+    dice SOLO il fatto, non «non era arrivata» (N84-1, giro 84): la stessa
+    casa la lascia un ripristino gia' riuscito, vedi la prova sotto.
 
     Mutazione ESEGUITA (07/10/2026): tolto il confronto con il «prima» in
     `restore` -- rossa, la frase diventa quella del «cambiato»."""
@@ -1030,8 +1032,34 @@ async def test_una_costruzione_incerta_mai_arrivata_lo_dice_e_non_scrive(banco):
                                    now=ADESSO + 120)
 
     assert esito["eseguito"] is False
-    assert "non era arrivata" in esito["errore"], esito["errore"]
-    assert "com’era prima" in esito["errore"]
+    assert esito["errore"] == ("automation.1771 e' gia' com’era prima: non "
+                               "c’e' niente da rimettere."), esito["errore"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_un_incerta_gia_rimessa_al_secondo_clic_non_inventa_la_causa(banco):
+    """N84-1 (giro 84, 07/10/2026). Il ripristino di un'`incerta` riuscito
+    lascia la riga `incerta` (il ripristino e' un'ALTRA costruzione), e la
+    casa e' di nuovo com'era prima. Al secondo clic il rifiuto dice il fatto,
+    senza dire che la scrittura non era arrivata: era arrivata.
+
+    Rossa sulla frase di prima (verificato il 07/10/2026: «la scrittura del
+    ... non era arrivata»)."""
+    officina, ha, archivio, _ = banco
+    proposta_id = await _incerta(officina, ha, arriva=True)
+    primo = await officina.restore(proposta_id, actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+    assert primo["eseguito"] is True, primo
+    assert archivio.read(proposta_id, now=ADESSO)["stato"] == UNCERTAIN
+    ha.salvate.clear()
+
+    secondo = await officina.restore(proposta_id, actor="pagina", exchange=None,
+                                     now=ADESSO + 180)
+
+    assert secondo["eseguito"] is False
+    assert "arrivata" not in secondo["errore"], secondo["errore"]
+    assert "gia' com’era prima" in secondo["errore"]
     assert ha.salvate == []
 
 
