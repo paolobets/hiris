@@ -38,21 +38,22 @@ _CANALE = {"specie": "integrazione", "id": "gateway", "nome": "gateway"}
 _LUOGO = {"specie": "luogo", "id": "retropanel", "nome": "Retro Panel"}
 
 
-@pytest.mark.parametrize("ruolo,legge,comanda,costruisce", [
+@pytest.mark.parametrize("ruolo,legge,comanda,amministra", [
     ("amministratore", True, True, True),
     ("utente", True, True, False),
     ("lettore", True, False, False),
 ])
-def test_i_tre_ruoli_decidono_tutto(ruolo, legge, comanda, costruisce):
+def test_i_tre_ruoli_decidono_tutto(ruolo, legge, comanda, amministra):
     """La tabella della spec §4, pinnata sul soffitto e non solo sul modulo dei
     canali: sono due lettori dello stesso fatto, e devono dire la stessa cosa.
 
-    Mutazione ESEGUITA: dare `costruire` a «utente» -- rossa."""
+    Mutazione ESEGUITA: dare `amministrare` a «utente» -- rossa (dal
+    07/10/2026 `costruire` e' uscito in `amministrare`, F-03)."""
     esito = consente(_PERSONA, ruolo=ruolo)
 
     assert esito["leggere"] is legge
     assert esito["comandare"] is comanda
-    assert esito["costruire"] is costruisce
+    assert esito["amministrare"] is amministra
 
 
 def test_un_utente_qualunque_NON_costruisce_ma_comanda():
@@ -63,7 +64,7 @@ def test_un_utente_qualunque_NON_costruisce_ma_comanda():
     che descrive l'errore di disegno evitato."""
     esito = consente(_PERSONA, ruolo="utente")
 
-    assert esito["costruire"] is False
+    assert esito["amministrare"] is False
     assert esito["comandare"] is True, (
         "vietare a un utente di HA di comandare dalla chat cio' che comanda "
         "dalla plancia e' teatro, non sicurezza")
@@ -74,12 +75,12 @@ def test_il_ruolo_ILLEGGIBILE_vale_lettore():
     """Ruling L-4 (27/09/2026): se Home Assistant non ha risposto, chi chiede
     legge e basta -- un guasto nella lettura non diventa un permesso.
 
-    Mutazione ESEGUITA: `_PERSONA_IGNOTA` di nuovo `utente` -- rossa."""
+    Mutazione ESEGUITA: `PERSONA_IGNOTA` di nuovo `utente` -- rossa."""
     esito = consente(_PERSONA, ruolo=None)
 
     assert esito["ruolo"] == "lettore"
-    assert (esito["leggere"], esito["comandare"], esito["costruire"],
-            esito["amministrare"]) == (True, False, False, False)
+    assert (esito["leggere"], esito["comandare"],
+            esito["amministrare"]) == (True, False, False)
     assert "leggo soltanto" in esito["perche"]
     assert ruolo_letto(esito) is False, "e si sa che il ruolo non e' stato letto"
 
@@ -93,7 +94,7 @@ def test_un_ANONIMO_legge_e_basta():
     esito = consente(_ANONIMO, ruolo=None)
 
     assert esito["comandare"] is False
-    assert esito["costruire"] is False
+    assert esito["amministrare"] is False
 
 
 def test_un_CANALE_vale_il_ruolo_della_sua_registrazione():
@@ -103,9 +104,9 @@ def test_un_CANALE_vale_il_ruolo_della_sua_registrazione():
     Mutazione ESEGUITA: far ereditare a un canale il ramo delle persone --
     rossa (un canale «lettore» comanderebbe)."""
     assert consente(_CANALE, ruolo="utente")["comandare"] is True
-    assert consente(_CANALE, ruolo="utente")["costruire"] is False
+    assert consente(_CANALE, ruolo="utente")["amministrare"] is False
     assert consente(_CANALE, ruolo="lettore")["comandare"] is False
-    assert consente(_LUOGO, ruolo="amministratore")["costruire"] is True
+    assert consente(_LUOGO, ruolo="amministratore")["amministrare"] is True
 
 
 def test_un_CANALE_senza_ruolo_non_puo_niente():
@@ -119,7 +120,7 @@ def test_un_CANALE_senza_ruolo_non_puo_niente():
 
     assert esito["leggere"] is False
     assert esito["comandare"] is False
-    assert esito["costruire"] is False
+    assert esito["amministrare"] is False
 
 
 def test_un_ruolo_INVENTATO_ricade_dove_ricade_uno_MANCANTE():
@@ -136,7 +137,7 @@ def test_un_ruolo_INVENTATO_ricade_dove_ricade_uno_MANCANTE():
     rossa."""
     persona = consente(_PERSONA, ruolo="capo")
     assert persona["leggere"] is True and persona["comandare"] is False
-    assert persona["costruire"] is False
+    assert persona["amministrare"] is False
     assert persona == consente(_PERSONA, ruolo=None)
 
     macchina = consente(_CANALE, ruolo="capo")
@@ -209,15 +210,15 @@ async def test_ceiling_for_legge_il_ruolo_da_home_assistant():
 
     app: dict = {"ha_client": _house()}
     prepara_ruoli(app)
-    assert (await ceiling_for(app, _PERSONA))["costruire"] is False
+    assert (await ceiling_for(app, _PERSONA))["amministrare"] is False
     assert (await ceiling_for(app, {"specie": "persona", "id": "u-2"}))[
-        "costruire"] is True
+        "amministrare"] is True
 
 
 # ---------------------------------------------------------------------------
 # `ruolo_letto` -- fix round 1, Task 5 Important 3 (fetta «le chat divise»).
-# `consente()` restituisce "utente" SIA per una persona letta davvero da HA
-# come non-amministratrice SIA per il ripiego quando la lettura fallisce: la
+# `consente()` restituisce "lettore" SIA per una persona letta davvero da HA
+# come di sola lettura SIA per il ripiego quando la lettura fallisce: la
 # sezione "Chi ti sta parlando" del contesto della chat deve poter dire quale
 # dei due e', e questa e' la funzione che glielo dice.
 # ---------------------------------------------------------------------------

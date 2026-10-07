@@ -369,8 +369,8 @@ async def test_can_configure_nello_SVILUPPO_e_vero(casa, monkeypatch):
 ])
 async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa, method, path, utente):
     """Extra 1 e fix round 1: il ruolo lo legge il cancello, e i gestori --
-    i pallini, il cancello di chi costruisce (`require_builder`), quello dei
-    servizi -- lo prendono dalla richiesta. Con la copia dei ruoli scaduta ad
+    i pallini, il gesto delle rotte (`admission.gesture_refusal`) -- lo
+    prendono dalla richiesta. Con la copia dei ruoli scaduta ad
     ogni lettura, una seconda domanda nel gestore farebbe due letture per
     richiesta."""
     app = casa.app
@@ -441,7 +441,11 @@ def test_la_riduzione_e_cio_che_la_CHAT_legge():
 # la stessa decisione per amministratore, utente, lettore, servizio, ponte e
 # sviluppo sulle strade che la usavano -- `require_builder`
 # (`GET /api/constructions`), `handlers_servizi._solo_amministratori`
-# (`POST /api/services/window/open`) e il soffitto del turno di chat.
+# (`POST /api/services/window/open`) e il soffitto del turno di chat. Dal
+# 07/10/2026 le due strade le decide il gesto della rotta (F-01, Tappa 7):
+# cambia lo sviluppo, che il cancello unico non restringe come non lo
+# restringevano gli strumenti, e il ponte, che porta il ruolo della sua
+# credenziale (`credenziali.RUOLO_TURNO`).
 
 async def _chat_ceiling(request):
     """Come `handlers_chat` calcola il soffitto del turno: fino a efc38564
@@ -473,17 +477,17 @@ def _caller_headers(client, chi, monkeypatch, method, path):
     return {}
 
 
-#: Lo status di ogni strada per ogni chiamante, misurato su efc38564. Chi non
+#: Lo status di ogni strada per ogni chiamante, misurato su efc38564 e
+#: rimisurato il 07/10/2026 (lo sviluppo: 403 allora, passa adesso). Chi non
 #: amministra dall'ingress lo ferma gia' il cancello (403); il 503 e' un
-#: archivio che la fixture non monta, cioe' il cancello di chi costruisce
-#: superato.
+#: archivio che la fixture non monta, cioe' il gesto della rotta superato.
 _STRADE_EFC38564 = {
     ("GET", "/api/constructions"): {
         "admin": 503, "utente": 403, "lettore": 403, "servizio-amministratore": 503,
-        "servizio-utente": 403, "servizio-lettore": 403, "ponte": 403, "sviluppo": 403},
+        "servizio-utente": 403, "servizio-lettore": 403, "ponte": 403, "sviluppo": 503},
     ("POST", "/api/services/window/open"): {
         "admin": 200, "utente": 403, "lettore": 403, "servizio-amministratore": 200,
-        "servizio-utente": 403, "servizio-lettore": 403, "ponte": 403, "sviluppo": 403},
+        "servizio-utente": 403, "servizio-lettore": 403, "ponte": 403, "sviluppo": 200},
 }
 
 
@@ -504,11 +508,13 @@ async def test_PIN_la_stessa_DECISIONE_sulle_strade_di_chi_costruisce(
 
 
 #: Il soffitto che la chat mette nel turno (`ruolo`, i gesti, e se il ruolo e'
-#: stato letto), per ogni chiamante, misurato su efc38564.
-_TUTTO = {"leggere": True, "comandare": True, "costruire": True, "amministrare": True}
-_UTENTE = {"leggere": True, "comandare": True, "costruire": False, "amministrare": False}
-_LETTORE = {"leggere": True, "comandare": False, "costruire": False, "amministrare": False}
-_NIENTE = {"leggere": False, "comandare": False, "costruire": False, "amministrare": False}
+#: stato letto), per ogni chiamante, misurato su efc38564. Dal 07/10/2026
+#: senza `costruire`, uscito in `amministrare` (F-03), e il ponte col ruolo
+#: della sua credenziale.
+_TUTTO = {"leggere": True, "comandare": True, "amministrare": True}
+_UTENTE = {"leggere": True, "comandare": True, "amministrare": False}
+_LETTORE = {"leggere": True, "comandare": False, "amministrare": False}
+_NIENTE = {"leggere": False, "comandare": False, "amministrare": False}
 _SOFFITTO_EFC38564 = {
     "admin": ({**_TUTTO, "ruolo": "amministratore"}, True),
     "utente": ({**_UTENTE, "ruolo": "utente"}, True),
@@ -516,7 +522,7 @@ _SOFFITTO_EFC38564 = {
     "servizio-amministratore": ({**_TUTTO, "ruolo": "amministratore"}, True),
     "servizio-utente": ({**_UTENTE, "ruolo": "utente"}, True),
     "servizio-lettore": ({**_LETTORE, "ruolo": "lettore"}, True),
-    "ponte": ({**_NIENTE, "ruolo": None}, True),
+    "ponte": ({**_LETTORE, "ruolo": "lettore"}, True),
     "sviluppo": ({**_NIENTE, "ruolo": None}, True),
 }
 
@@ -540,6 +546,7 @@ async def test_PIN_il_SOFFITTO_della_richiesta_per_ogni_chiamante(
     app.router.add_get("/api/prova-soffitto", eco)
     monkeypatch.setattr(admission, "_ADMITTED",
                         admission._ADMITTED | {("GET", "/api/prova-soffitto")})
+    monkeypatch.setitem(admission._GESTURES, ("GET", "/api/prova-soffitto"), "leggere")
     client = await aiohttp_client(app)
     try:
         headers = _caller_headers(client, chi, monkeypatch, "GET", "/api/prova-soffitto")

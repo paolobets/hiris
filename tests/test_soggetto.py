@@ -298,18 +298,35 @@ async def test_una_firma_SBAGLIATA_non_passa_nemmeno_col_token_giusto(archivio):
         "e' il difetto n.1, e l'ha presa la suite il 22/09/2026")
 
 
+class _Rotta:
+    """La rotta che aiohttp ha risolto prima dei middleware: quanto basta al
+    cancello delle rotte, che chiede il gesto per metodo e modello."""
+
+    def __init__(self, canonical):
+        self.route = type("R", (), {"resource": type("S", (), {"canonical": canonical})()})()
+
+
 @pytest.mark.asyncio
-async def test_un_LETTORE_non_scrive(archivio):
+async def test_un_LETTORE_non_configura(archivio):
     """La porta di sviluppo, decisa dal proprietario: misurare sì, comandare
-    no. Il soffitto del metodo morde al confine, prima di ogni rotta.
+    no. Fino al 07/10/2026 lo diceva il metodo HTTP (`consente_metodo`: un
+    `lettore` faceva solo GET); dal cancello unico (F-01, Tappa 7) lo dice il
+    gesto della rotta, chiesto al soffitto come per una persona di sola
+    lettura: configurare (`amministrare`) e' negato al confine, prima di ogni
+    rotta. Comandare la casa dentro un turno di chat lo nega il soffitto del
+    dispatcher (`tests/test_admission.py::
+    test_chi_ha_SOLA_LETTURA_non_comanda_dalla_chat`).
 
-    Mutazione ESEGUITA: non guardare il metodo -- rossa."""
+    Mutazione ESEGUITA: `gesture_refusal` saltato per i servizi firmati --
+    rossa."""
     privata, pubblica = _firmante(archivio, ruolo="lettore")
+    richiesta = _richiesta_firmata(privata, pubblica, archivio, metodo="PUT",
+                                   percorso="/api/models/config", corpo=b"{}")
+    richiesta.match_info = _Rotta("/api/models/config")
 
-    esito, _ = await _passa(_richiesta_firmata(
-        privata, pubblica, archivio, metodo="POST", percorso="/api/chat",
-        corpo=b'{"message":"spegni tutto"}'))
+    esito, _ = await _passa(richiesta)
 
+    assert esito != "ok", "il confine l'ha lasciata arrivare al gestore"
     assert esito.status == 403
 
 
@@ -448,3 +465,48 @@ async def test_la_credenziale_si_guarda_PRIMA_del_segreto_condiviso():
 # insieme a `/api/reasoning/claim` e `/api/reasoning/submit`: il lavoratore
 # del ponte legge la coda dentro il processo, e una rotta che non esiste non
 # si difende. Che non rientrino lo prova `tests/test_reasoning_wiring.py`.
+
+
+# --- il soggetto, in una forma sola (F-19, Tappa 7) --------------------------
+
+@pytest.mark.asyncio
+async def test_ogni_porta_attacca_il_soggetto_nella_STESSA_forma(archivio, confine_vero,
+                                                                monkeypatch):
+    """Fondamenta 3: lo stesso fatto ha la stessa forma da tutte le porte.
+    Fino al 07/10/2026 il soggetto lo costruivano otto punti in quattro forme
+    (5, 4, 2 e 1 chiave); adesso uno solo, `chat_thread.new_subject`, e la
+    forma si CHIEDE a lui, non si ricopia qui. Le porte: l'ingress, la firma,
+    la credenziale di turno, lo sviluppo, il filo (`subject_from_thread`).
+
+    Mutazione ESEGUITA: `_soggetto` della persona di nuovo un dizionario a
+    quattro chiavi, senza `ruolo` -- rossa sull'ingress."""
+    from hiris.app.api import credenziali
+    from hiris.app.chat_thread import ChatThread, new_subject, subject_from_thread
+
+    forma = set(new_subject("x"))
+    assert forma >= {"specie", "id", "nome", "ruolo"}, "la derivazione si e' rotta"
+    viste = {}
+
+    _, visto = await _passa(_Richiesta(
+        headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI}, remote="172.30.32.2"))
+    viste["ingress"] = visto["soggetto"]
+
+    privata, pubblica = _firmante(archivio)
+    _, visto = await _passa(_richiesta_firmata(privata, pubblica, archivio))
+    viste["firma"] = visto["soggetto"]
+
+    turno = _Firmata(headers={}, remote="127.0.0.1")
+    turno.app["credenziali"] = {}
+    turno.headers["X-HIRIS-Internal-Token"] = credenziali.conia(
+        turno.app["credenziali"], mestiere="ponte", durata_s=60, adesso=time.time())
+    _, visto = await _passa(turno)
+    viste["turno"] = visto["soggetto"]
+
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
+    _, visto = await _passa(_Richiesta(headers={}, remote="10.0.0.9"))
+    viste["sviluppo"] = visto["soggetto"]
+
+    viste["filo"] = subject_from_thread(ChatThread("persona:u-42", "pannello"))
+
+    assert {porta: set(soggetto) for porta, soggetto in viste.items()} == {
+        porta: forma for porta in viste}

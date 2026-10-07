@@ -128,7 +128,7 @@ def test_service_states_match_store(tmp_path):
     # questa prova non lega ruoli e specie al JavaScript, e nominarli nel
     # codice la farebbe passare per il loro legame agli occhi di
     # `scripts/doppioni.py` (`_costanti_gia_legate`).
-    role, kind = vars(servizi)["RUOLI"][0], vars(servizi)["SPECIE"][0]
+    role, kind = vars(servizi)["RUOLI"][0], vars(servizi)["SERVICE_SPECIES"][0]
     try:
         pending = store.presenta(nome="n", chiave="k", indirizzo="i", now_ts=1.0)["stato"]
         store.approva("k", ruolo=role, specie=kind, now_ts=2.0)

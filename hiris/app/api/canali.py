@@ -43,14 +43,19 @@ import logging
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from ..chat_thread import new_subject
+
 logger = logging.getLogger(__name__)
 
-#: Quanto puo' essere lontano il momento di una richiesta, in entrambi i versi.
+#: Quanto puo' essere lontano il momento di una richiesta FIRMATA, in entrambi
+#: i versi. Non e' la finestra dell'accoppiamento (`servizi.ACCOPPIAMENTO_S`,
+#: dieci minuti): fino al 07/10/2026 i due fatti si chiamavano entrambi
+#: `FINESTRA_S` (F-21).
 #:
 #: **In entrambi**, e non solo nel passato: guardare solo indietro lascerebbe
 #: che un orologio avanti di un'ora allarghi la finestra di un'ora, cioe'
 #: lascerebbe **al chiamante** il compito di deciderla.
-FINESTRA_S = 30.0
+SCARTO_MOMENTO_S = 30.0
 
 #: Il vocabolario dei ruoli, e **non e' nostro**: `amministratore` e `utente`
 #: sono cio' che Home Assistant chiama admin e non-admin, cosi' chi conosce HA
@@ -58,27 +63,37 @@ FINESTRA_S = 30.0
 #: che deve **misurare senza toccare** e, dal 27/09/2026, una persona del
 #: gruppo `system-read-only` di Home Assistant (verificato sul sorgente di Core
 #: 2026.9.3, `auth/const.py::GROUP_ID_READ_ONLY`): il caso c'era anche in HA.
+#:
+#: **La sua sola casa** (F-02, 07/10/2026): l'archivio dei servizi
+#: (`servizi.py`) e il soffitto (`soffitto.py`) lo chiedono qui. Insieme
+#: CHIUSO: una parola nuova arriverebbe da una rotta e diventerebbe un
+#: permesso che nessuna pagina sa disegnare.
 RUOLI = ("amministratore", "utente", "lettore")
 
-#: Cosa concede ogni ruolo. `utente` e' quello che il proprietario ha descritto
-#: il 21/09: «cosi' non gestisce automazioni e altro, quindi comanda».
+#: Cosa concede ogni ruolo, un gesto per colonna (`soffitto.GESTI`). `utente`
+#: e' quello che il proprietario ha descritto il 21/09: «cosi' non gestisce
+#: automazioni e altro, quindi comanda».
 #:
-#: `costruire` e `amministrare` sono le cose riservate. `amministrare` e'
-#: toccare cio' che Home Assistant riserva ai soli amministratori, verificato
-#: il 27/09/2026 su Core 2026.9.3: le letture `@websocket_api.require_admin`
-#: (`system_log/list`, `trace/list`, `trace/get`, `automation/config`) e i
-#: servizi `async_register_admin_service` del dominio `homeassistant`.
+#: `amministrare` e' la cosa riservata: toccare cio' che Home Assistant
+#: riserva ai soli amministratori, verificato il 27/09/2026 su Core 2026.9.3 --
+#: le letture `@websocket_api.require_admin` (`system_log/list`, `trace/list`,
+#: `trace/get`, `automation/config`), i servizi `async_register_admin_service`
+#: del dominio `homeassistant` -- e scrivere la configurazione, che Home
+#: Assistant nega a chi non amministra (`helpers/service.py`). Fino al
+#: 07/10/2026 la scrittura aveva un gesto suo, `costruire`, con lo stesso
+#: valore di `amministrare` per tutti e tre i ruoli: due nomi per un fatto
+#: (F-03, D6 della Tappa 7), e uno e' uscito.
 PUO = {
-    "amministratore": {"leggere": True, "comandare": True, "costruire": True,
-                       "amministrare": True},
-    "utente": {"leggere": True, "comandare": True, "costruire": False,
-               "amministrare": False},
-    "lettore": {"leggere": True, "comandare": False, "costruire": False,
-                "amministrare": False},
+    "amministratore": {"leggere": True, "comandare": True, "amministrare": True},
+    "utente": {"leggere": True, "comandare": True, "amministrare": False},
+    "lettore": {"leggere": True, "comandare": False, "amministrare": False},
 }
 
-#: I metodi che non cambiano niente. Un `lettore` fa questi e basta.
-_SICURI = frozenset({"GET", "HEAD", "OPTIONS"})
+#: Che cosa e' un servizio, dalla sua approvazione. Una macchina non sta in
+#: nessun posto, un pannello si' -- e nella cronaca sono due fatti diversi.
+#: Qui e non nell'archivio (F-02): la specie ignota qui sotto deve stare fra
+#: queste, e l'archivio le chiede a questo modulo.
+SERVICE_SPECIES = ("integrazione", "luogo")
 
 #: Che cosa e' un servizio a cui nessuno ha scritto la specie. **Una macchina**,
 #: che e' il caso comune e quello che concede meno: un `luogo` dice alla cronaca
@@ -107,18 +122,6 @@ def materia_firmata(metodo: str, percorso: str, momento: float, unico: str,
     )).encode("utf-8")
 
 
-def consente_metodo(ruolo: str, metodo: str) -> bool:
-    """Se quel ruolo può usare quel metodo HTTP.
-
-    Il verso del dubbio: un ruolo sconosciuto nega tutto. Una parola nuova non
-    è un permesso — è un ruolo su cui nessuno ha deciso.
-    """
-    puo = PUO.get(ruolo)
-    if puo is None:
-        return False
-    return True if puo["comandare"] else str(metodo).upper() in _SICURI
-
-
 def _chiave(grezza: str) -> Ed25519PublicKey | None:
     """La chiave pubblica dal testo che il proprietario ha incollato.
 
@@ -140,22 +143,23 @@ def _pota(visti: dict, adesso: float) -> None:
     momento è già fuori finestra.
     """
     for unico in [u for u, quando in visti.items()
-                  if adesso - quando > FINESTRA_S * 2]:
+                  if adesso - quando > SCARTO_MOMENTO_S * 2]:
         del visti[unico]
 
 
 def riconosci(*, chiave: str, momento, unico: str, firma: str, metodo: str,
               percorso: str, corpo: bytes, servizi, visti: dict,
               adesso: float) -> tuple[dict | None, str | None]:
-    """Quale servizio ha firmato, se la firma regge — `({servizio, ruolo, specie}, None)`.
+    """Quale servizio ha firmato, se la firma regge — `(soggetto, None)`, nella
+    forma di `chat_thread.new_subject`.
 
     Si chiama «riconosci» e non «verifica» perché **torna un'identità**, non un
     sì o un no: chi legge il nome deve sapere che a valle avrà un soggetto, non
     un booleano.
 
-    Torna `servizio` e non `canale`: il canale è la strada, il servizio è chi ci
-    parla dentro, e chiamarli con la stessa parola li farebbe confondere al
-    primo lettore nuovo.
+    Torna il SOGGETTO, e non un dizionario suo (F-19): il confine lo attacca
+    alla richiesta cosi' com'e', e una seconda forma di «chi ha firmato» da
+    tradurre sarebbe un secondo costruttore del soggetto.
 
     **Ogni rifiuto dice cosa manca**: la chiave non appartiene a un servizio
     autorizzato; il servizio non ha un ruolo valido; il momento è fuori
@@ -184,9 +188,9 @@ def riconosci(*, chiave: str, momento, unico: str, firma: str, metodo: str,
         quando = float(momento)
     except (TypeError, ValueError):
         return None, "il momento della richiesta non è un numero"
-    if abs(adesso - quando) > FINESTRA_S:
+    if abs(adesso - quando) > SCARTO_MOMENTO_S:
         return None, ("il momento della richiesta è troppo lontano da adesso: "
-                      f"la finestra è di {int(FINESTRA_S)} secondi, in entrambi "
+                      f"la finestra è di {int(SCARTO_MOMENTO_S)} secondi, in entrambi "
                       "i versi")
 
     _pota(visti, adesso)
@@ -213,8 +217,9 @@ def riconosci(*, chiave: str, momento, unico: str, firma: str, metodo: str,
         return None, "la firma non si è potuta leggere"
 
     visti[unico] = adesso
-    return {"servizio": autorizzato["nome"], "ruolo": ruolo,
-            "specie": autorizzato.get("specie") or SPECIE_IGNOTA}, None
+    nome = autorizzato["nome"]
+    return new_subject(autorizzato.get("specie") or SPECIE_IGNOTA, ident=nome,
+                       nome=nome, ruolo=ruolo), None
 
 
 def prepara_canali(app) -> None:

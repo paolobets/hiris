@@ -1647,7 +1647,18 @@ per tutte sarebbe una lista che invecchia. **Cosa la chiude**: una fonte per sap
 servizio, se Home Assistant lo riserva agli amministratori — o la misura che sulla casa non ce n'e'
 nessuno raggiungibile con un bersaglio.
 
-### In sviluppo `can_configure` e' vero mentre `can_build` e' falso — aperta il 27/09/2026
+### ~~In sviluppo `can_configure` e' vero mentre `can_build` e' falso~~ — CHIUSA il 07/10/2026 nel codice, non ancora rilasciata (Tappa 7, T6)
+
+**Come si e' chiusa.** Con il cancello unico delle rotte (`api/admission.ADMISSION`, il gesto di ogni
+rotta chiesto a `soffitto.denies` per ogni soggetto, D4 della Tappa 7) e `costruire` fuso in
+`amministrare` (D6), la domanda e' una sola: `can_build` e `can_configure` portano lo stesso valore,
+e lo sviluppo con l'interruttore acceso apre anche la pagina Costruzioni e i gesti della pagina
+Servizi -- come la chat glieli apriva gia' (`confirm`). Era la «scelta del proprietario» scritta
+qui sotto: la si e' presa perche' il cancello unico non ha un secondo ramo per lo sviluppo, e
+tenerlo chiuso solo sulle rotte `amministrare` avrebbe chiuso allo sviluppo anche le sei rotte di
+configurazione che fino ad allora gli erano aperte. In produzione quel soggetto non esiste. Resta
+da unire, nel guscio, le due chiavi che portano lo stesso fatto (`pending-badge.js`).
+
 
 `origine: review del Task 3 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/handlers_pending.py`
 

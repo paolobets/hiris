@@ -21,7 +21,7 @@ _CONFINE = RADICE / "hiris" / "app" / "api" / "middleware_internal_auth.py"
 
 def test_la_specie_di_RIPIEGO_e_una_specie_che_esiste():
     """Dal 22/09/2026 la specie di un servizio la decide il proprietario quando
-    approva, e l'insieme chiuso vive in `servizi.SPECIE`. Ma una riga
+    approva, e l'insieme chiuso vive in `canali.SERVICE_SPECIES`. Ma una riga
     d'archivio senza specie c'e' comunque un ripiego, e quel ripiego finisce
     nella cronaca: se fosse una parola fuori dall'insieme, sarebbe una parola
     che nessun lettore sa interpretare -- e «integrazione» e «luogo» non sono
@@ -29,11 +29,10 @@ def test_la_specie_di_RIPIEGO_e_una_specie_che_esiste():
 
     Mutazione ESEGUITA: ripiegare su «luogo» (che esiste) -- verde, come deve
     essere; ripiegare su «dispositivo» -- rossa."""
-    from hiris.app.api import servizi
 
-    assert canali.SPECIE_IGNOTA in servizi.SPECIE, (
+    assert canali.SPECIE_IGNOTA in canali.SERVICE_SPECIES, (
         f"il ripiego è {canali.SPECIE_IGNOTA!r}, che non è una specie: "
-        f"sono {', '.join(servizi.SPECIE)}")
+        f"sono {', '.join(canali.SERVICE_SPECIES)}")
 
 
 def test_la_tabella_dei_ruoli_e_ORDINATA_dal_piu_largo_al_piu_stretto():

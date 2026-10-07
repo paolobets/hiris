@@ -129,14 +129,23 @@ async def test_un_corpo_storto_e_un_400(archivio, corpo):
 
 
 @pytest.mark.asyncio
-async def test_chi_non_costruisce_non_toglie(archivio):
-    """Una decisione `OWNER` non la scavalca nessuno: la scrive solo chi puo'
-    costruire (`soffitto.require_builder`), come i giudizi sui tipi."""
-    archivio.decide_scope("sensor.x", inside=True, reason="pesa", author=OBSERVER)
-    r = await handle_set_scope(_richiesta({"observations": archivio}, {
-        "soggetto": "sensor.x", "dentro": False}, ruolo="utente"))
-    assert r.status == 403
-    assert archivio.scope()["sensor.x"]["autore"] == OBSERVER
+def test_chi_non_amministra_non_toglie():
+    """Una decisione `OWNER` non la scavalca nessuno: la scrive solo chi
+    amministra -- il gesto della riga `POST /api/mind/scope` nella tabella
+    delle rotte (`admission.ADMISSION`), che il confine chiede prima del
+    gestore (F-01, Tappa 7), come per i giudizi sui tipi. Fino al 07/10/2026
+    lo chiedeva il gestore (`soffitto.require_builder`).
+
+    Mutazione ESEGUITA: la riga col gesto `leggere` -- rossa."""
+    from hiris.app.api.admission import ADMISSION
+    from hiris.app.api.soffitto import consente, denies
+
+    [gesto] = [r.gesture for r in ADMISSION
+               if (r.method, r.canonical) == ("POST", "/api/mind/scope")]
+    chi = {"specie": "persona", "id": "u-1"}
+
+    assert denies(consente(chi, ruolo="utente"), gesto, chi)
+    assert not denies(consente(chi, ruolo="amministratore"), gesto, chi)
 
 
 @pytest.mark.asyncio

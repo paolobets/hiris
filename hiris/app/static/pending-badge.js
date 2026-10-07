@@ -136,7 +136,7 @@ window.HirisPendingBadge = (function () {
      `data-configure-only`. Tutti nascono `hidden`, e li
      mostra solo un `true` del server: una risposta che non lo porta non e'
      un permesso. Nasconderli non e' la difesa (le rotte rispondono 403 da
-     sole, `api/admission.py` e `soffitto.require_builder`): e' non offrire
+     sole, col gesto di ogni rotta in `api/admission.py`): e' non offrire
      una strada chiusa.
 
      **L'ultima risposta si ricorda** (fix round 1 del Task 4 della fetta

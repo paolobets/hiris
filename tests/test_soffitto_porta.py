@@ -257,7 +257,7 @@ async def test_un_soffitto_PERMISSIVO_lascia_confermare():
 
     Mutazione: negare sempre -- rossa."""
     officina = _OfficinaContata()
-    ammesso = {"comandare": True, "costruire": True, "rinviato": False,
+    ammesso = {"comandare": True, "amministrare": True, "rinviato": False,
                "perche": None}
 
     await _dispatcher(officina, ammesso).dispatch("confirm", {"proposta_id": "c1"})

@@ -264,9 +264,9 @@ def test_aprirla_la_tiene_aperta_DIECI_minuti():
     finestra = {}
     mod.apri_finestra(finestra, adesso=100.0)
 
-    assert mod.finestra_aperta(finestra, adesso=100.0 + mod.FINESTRA_S - 1) is True
-    assert mod.finestra_aperta(finestra, adesso=100.0 + mod.FINESTRA_S + 1) is False
-    assert mod.FINESTRA_S == 600.0
+    assert mod.finestra_aperta(finestra, adesso=100.0 + mod.ACCOPPIAMENTO_S - 1) is True
+    assert mod.finestra_aperta(finestra, adesso=100.0 + mod.ACCOPPIAMENTO_S + 1) is False
+    assert mod.ACCOPPIAMENTO_S == 600.0
 
 
 def test_si_puo_CHIUDERE_prima():

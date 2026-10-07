@@ -46,7 +46,7 @@ from ..mind.scope import OWNER
 from ..mind.store import READING_RETENTION_S
 from ..mind.view import MindView
 from .boundary import error_response, json_object
-from .soffitto import require_builder, subject_name
+from .soffitto import subject_name
 
 
 def mind_view(app) -> MindView:
@@ -189,14 +189,12 @@ async def handle_set_judgment(request) -> web.Response:
 
     E' una scrittura: passa dal `csrf_middleware` come l'obiettivo.
 
-    **Ed e' di chi costruisce** (spec 2026-09-26 §3, decisione 6): il
-    cancello `soffitto.require_builder` viene prima di tutto. L'autore della
+    **Ed e' di chi amministra** (spec 2026-09-26 §3, decisione 6): il gesto
+    `amministrare` della sua riga in `admission.ADMISSION` si chiede al
+    confine, prima di tutto. L'autore della
     riga e' il soggetto che il confine ha attaccato alla richiesta, mai un
     campo del corpo.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     if request.app.get("knowledge") is None:
         return error_response(503, "il sapere non e' disponibile")
     body = await json_object(request)
@@ -251,12 +249,9 @@ async def handle_set_scope(request) -> web.Response:
     entita' e non passano dallo scope: 400.
 
     `OWNER` non lo scavalca nessuno (`scope.may_overwrite`): per questo la
-    scrive solo chi puo' costruire (`soffitto.require_builder`), come i
-    giudizi sui tipi. E' una scrittura: passa dal `csrf_middleware`.
+    scrive solo chi amministra (il gesto della sua riga in
+    `admission.ADMISSION`), come i giudizi sui tipi. E' una scrittura: passa dal `csrf_middleware`.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = request.app.get("observations")
     if store is None:
         return error_response(503, "archivio non disponibile")

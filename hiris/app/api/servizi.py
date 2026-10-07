@@ -36,14 +36,9 @@ import threading
 
 from ..storage import connect, init_schema
 
-#: I ruoli, dal vocabolario di Home Assistant (spec 2026-09-21 §4). Insieme
-#: CHIUSO: una parola nuova arriverebbe da una rotta e diventerebbe un permesso
-#: che nessuna pagina sa disegnare.
-RUOLI = ("amministratore", "utente", "lettore")
-
-#: Che cosa e' chi chiede. Una macchina non sta in nessun posto, un pannello
-#: si' -- e nella cronaca sono due fatti diversi.
-SPECIE = ("integrazione", "luogo")
+# I ruoli e le specie si chiedono al vocabolario del confine (F-02): fino al
+# 07/10/2026 `RUOLI` era scritto due volte, qui e in `canali.py`.
+from .canali import RUOLI, SERVICE_SPECIES
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS servizi (
@@ -144,8 +139,8 @@ class ServiziStore:
         """Il sì del proprietario, col ruolo e la specie che decide lui."""
         if ruolo not in RUOLI:
             raise ValueError(f"ruolo {ruolo!r}: sono {', '.join(RUOLI)}")
-        if specie not in SPECIE:
-            raise ValueError(f"specie {specie!r}: sono {', '.join(SPECIE)}")
+        if specie not in SERVICE_SPECIES:
+            raise ValueError(f"specie {specie!r}: sono {', '.join(SERVICE_SPECIES)}")
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE servizi SET stato='autorizzato', ruolo=?, specie=?, "
@@ -203,7 +198,9 @@ class ServiziStore:
 
 
 #: Quanto resta aperta la finestra di accoppiamento. **Dieci minuti**, decisione
-#: del proprietario del 22/09/2026, e sta scritta dove si applica.
+#: del proprietario del 22/09/2026, e sta scritta dove si applica. Non e' lo
+#: scarto ammesso sul momento di una firma (`canali.SCARTO_MOMENTO_S`): fino al
+#: 07/10/2026 i due fatti avevano lo stesso nome (F-21).
 #:
 #: La rotta di presentazione e' l'unica superficie che questo prodotto non puo'
 #: autenticare: un servizio che non hai ancora approvato **non ha modo** di
@@ -212,12 +209,12 @@ class ServiziStore:
 #: **non farla esistere**: c'e' solo nei dieci minuti in cui l'hai aperta tu.
 #:
 #: Una difesa permanente invecchia. Una porta chiusa no.
-FINESTRA_S = 600.0
+ACCOPPIAMENTO_S = 600.0
 
 
 def apri_finestra(finestra: dict, *, adesso: float) -> float:
-    """Apre l'accoppiamento per `FINESTRA_S` secondi. Torna quando si chiude."""
-    finestra["scade"] = adesso + FINESTRA_S
+    """Apre l'accoppiamento per `ACCOPPIAMENTO_S` secondi. Torna quando si chiude."""
+    finestra["scade"] = adesso + ACCOPPIAMENTO_S
     return finestra["scade"]
 
 

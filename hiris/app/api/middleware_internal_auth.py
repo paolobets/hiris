@@ -6,7 +6,8 @@ import time
 
 from aiohttp import web
 
-from .admission import admission_refusal
+from ..chat_thread import new_subject
+from .admission import admission_refusal, gesture_refusal
 from .boundary import error_response
 
 logger = logging.getLogger(__name__)
@@ -132,12 +133,11 @@ def _soggetto(request: web.Request, specie: str) -> dict:
     non si autenticano nello stesso modo e non possono valere lo stesso.
     """
     if specie != "persona":
-        return {"specie": specie, "id": None, "nome": None, "utente": None}
-    return {"specie": "persona",
-            "id": request.headers.get(_CHI) or None,
-            "nome": (request.headers.get(_NOME)
-                     or request.headers.get(_UTENTE) or None),
-            "utente": request.headers.get(_UTENTE) or None}
+        return new_subject(specie)
+    return new_subject("persona", ident=request.headers.get(_CHI),
+                       nome=(request.headers.get(_NOME)
+                             or request.headers.get(_UTENTE)),
+                       utente=request.headers.get(_UTENTE))
 
 
 async def _firmatario(request: web.Request):
@@ -204,11 +204,8 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
             and finestra_aperta(request.app.get("finestra_servizi"),
                                 adesso=time.time())):
         request["auth_via"] = "accoppiamento"
-        request["soggetto"] = {"specie": "nessuno", "id": None, "nome": None,
-                               "utente": None, "ruolo": None}
+        request["soggetto"] = new_subject("nessuno")
         return await handler(request)
-
-    from .canali import consente_metodo
 
     firmato, motivo = await _firmatario(request)
     if motivo is not None:
@@ -216,19 +213,17 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
                        request.remote, motivo)
         return error_response(401, motivo)
     if firmato is not None:
-        if not consente_metodo(firmato["ruolo"], request.method):
-            logger.warning(
-                "servizio: «%s» ha ruolo «%s» e ha chiesto %s %s — negato",
-                firmato["servizio"], firmato["ruolo"], request.method,
-                request.path)
-            return error_response(403, f"il servizio «{firmato['servizio']}» ha il ruolo "
-                                       f"«{firmato['ruolo']}»: legge e non scrive")
+        # **Il gesto della rotta, come per una persona** (F-17, D4 della
+        # Tappa 7): fino al 07/10/2026 un servizio passava da un controllo
+        # suo, che guardava solo lettura contro scrittura, e un servizio
+        # `utente` scriveva la configurazione dei modelli. Il soggetto e'
+        # quello che la firma ha riconosciuto (`canali.riconosci`), col ruolo
+        # dell'approvazione.
         request["auth_via"] = "canale"
-        request["soggetto"] = {"specie": firmato["specie"],
-                               "id": firmato["servizio"],
-                               "nome": firmato["servizio"],
-                               "utente": None,
-                               "ruolo": firmato["ruolo"]}
+        request["soggetto"] = firmato
+        refusal = gesture_refusal(request)
+        if refusal is not None:
+            return refusal
         return await handler(request)
 
     if await _is_supervisor_ingress(request):
@@ -248,16 +243,18 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     # Il ponte non e' una persona e non e' un'integrazione registrata: e' HIRIS
     # che lavora per conto suo, per il tempo di un turno. Da cui `specie:
     # nessuno`, che e' cio' che la cronaca deve scrivere.
-    from .credenziali import riconosci
+    from .credenziali import RUOLO_TURNO, riconosci
 
     turno = riconosci(request.app.get("credenziali") or {},
                       request.headers.get("X-HIRIS-Internal-Token"),
                       adesso=time.time())
     if turno is not None:
         request["auth_via"] = "turno"
-        request["soggetto"] = {"specie": "nessuno", "id": turno["mestiere"],
-                               "nome": turno["mestiere"], "utente": None,
-                               "ruolo": None}
+        request["soggetto"] = new_subject("nessuno", ident=turno["mestiere"],
+                                          nome=turno["mestiere"], ruolo=RUOLO_TURNO)
+        refusal = gesture_refusal(request)
+        if refusal is not None:
+            return refusal
         return await handler(request)
 
     # **Qui finiva la convivenza col segreto condiviso, e il 22/09/2026 e'
@@ -284,6 +281,12 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
             "SECURITY: HIRIS_ALLOW_NO_TOKEN=1 is set — authentication is DISABLED")
         request["auth_via"] = "no_token"
         request["soggetto"] = _soggetto(request, "sviluppo")
+        # Lo stesso cancello di tutti: con l'interruttore acceso lo sviluppo
+        # non si restringe per ruolo (`soffitto.denies`), quindi qui passa --
+        # ma passa dalla stessa domanda, non da una strada che non la fa.
+        refusal = gesture_refusal(request)
+        if refusal is not None:
+            return refusal
         return await handler(request)
 
     logger.warning(

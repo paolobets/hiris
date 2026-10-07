@@ -19,9 +19,12 @@ sta accoppiando QUEL servizio e non qualcun altro che si e' messo in mezzo.
 Qui arriva solo la pubblica, che non e' un segreto -- ed e' per questo che
 l'archivio dei servizi si puo' leggere per intero senza che ne esca niente.
 
-**Approvare e revocare sono gesti da amministratore**, e passano dal soffitto
-come le scritture verso Home Assistant: dare a una macchina il diritto di
-comandare la casa non e' meno di scriverci un'automazione.
+**Aprire la finestra, approvare e revocare sono gesti da amministratore**: il
+gesto `amministrare` delle loro righe in `admission.ADMISSION`, chiesto dal
+confine come per le scritture verso Home Assistant -- dare a una macchina il
+diritto di comandare la casa non e' meno di scriverci un'automazione. Fino al
+07/10/2026 lo chiedeva qui `_solo_amministratori`, copia di
+`soffitto.require_builder` con un altro testo (F-03).
 """
 from __future__ import annotations
 
@@ -32,15 +35,13 @@ from aiohttp import web
 
 from ..chat_thread import unknown_id_text
 from .boundary import error_response, json_object
+from .canali import RUOLI, SERVICE_SPECIES
 from .servizi import (
-    RUOLI,
-    SPECIE,
     apri_finestra,
     chiudi_finestra,
     finestra_aperta,
     finestra_resta,
 )
-from .soffitto import request_ceiling
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +52,6 @@ ROTTA_APERTA = "/api/services/present"
 
 _CHIUSA = ("l’accoppiamento è chiuso. Aprilo da HIRIS, nella pagina dei "
            "servizi: resta aperto dieci minuti.")
-_SOLO_AMMINISTRATORI = ("approvare o revocare un servizio è un gesto da "
-                        "amministratore: dare a una macchina il diritto di "
-                        "comandare la casa non è meno che scriverci "
-                        "un’automazione.")
 #: Approvare e revocare cercano per chiave, non per id: la frase e' quella di
 #: ogni id che non c'e' (C-07), con cio' con cui si e' cercato.
 _UNKNOWN_KEY = unknown_id_text("nessun servizio", by="quella chiave")
@@ -104,23 +101,11 @@ async def handle_services(request: web.Request) -> web.Response:
         "servizi": archivio.elenco(now_ts=adesso),
         "finestra": {"aperta": finestra_aperta(finestra, adesso=adesso),
                      "resta_s": round(finestra_resta(finestra, adesso=adesso))},
-        "ruoli": list(RUOLI), "specie": list(SPECIE)})
-
-
-def _solo_amministratori(request) -> web.Response | None:
-    permesso = request_ceiling(request)
-    if permesso["costruire"]:
-        return None
-    logger.warning("servizi: gesto negato a %r — %s",
-                   (request.get("soggetto") or {}).get("nome"), permesso["perche"])
-    return error_response(403, _SOLO_AMMINISTRATORI)
+        "ruoli": list(RUOLI), "specie": list(SERVICE_SPECIES)})
 
 
 async def handle_open_window(request: web.Request) -> web.Response:
     """Apre l'accoppiamento per dieci minuti."""
-    negato = _solo_amministratori(request)
-    if negato is not None:
-        return negato
     finestra = request.app.get("finestra_servizi")
     if finestra is None:
         return error_response(503, "finestra non disponibile")
@@ -134,9 +119,6 @@ async def handle_open_window(request: web.Request) -> web.Response:
 
 async def handle_close_window(request: web.Request) -> web.Response:
     """La chiude subito, senza aspettare i minuti che avanzano."""
-    negato = _solo_amministratori(request)
-    if negato is not None:
-        return negato
     chiudi_finestra(request.app.get("finestra_servizi") or {})
     logger.info("servizi: accoppiamento chiuso")
     return web.json_response({"aperta": False, "resta_s": 0})
@@ -144,9 +126,6 @@ async def handle_close_window(request: web.Request) -> web.Response:
 
 async def handle_service_approve(request: web.Request) -> web.Response:
     """Il sì: il servizio è autorizzato, col ruolo e la specie che decidi tu."""
-    negato = _solo_amministratori(request)
-    if negato is not None:
-        return negato
     archivio = _archivio(request)
     if archivio is None:
         return error_response(503, "archivio non disponibile")
@@ -168,9 +147,6 @@ async def handle_service_approve(request: web.Request) -> web.Response:
 
 async def handle_service_revoke(request: web.Request) -> web.Response:
     """Il no, o il ripensamento. Vale **subito**."""
-    negato = _solo_amministratori(request)
-    if negato is not None:
-        return negato
     archivio = _archivio(request)
     if archivio is None:
         return error_response(503, "archivio non disponibile")

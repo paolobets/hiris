@@ -30,7 +30,7 @@ from hiris.app.chat_store import (
     close_all_stores,
     load_history,
 )
-from hiris.app.chat_thread import ChatThread
+from hiris.app.chat_thread import ChatThread, new_subject
 from hiris.app.keeper.promise import (
     DELIVERY_TITLE,
     MAX_SERVICES_PER_PROMISE,
@@ -235,7 +235,7 @@ async def test_la_push_parte_per_ogni_servizio_del_recapito_con_la_forma_unica(
         assert chiamata["dati"]["title"] == DELIVERY_TITLE
         assert chiamata["dati"]["message"] == "e' salita di 2 gradi"
     # La cronaca della push nomina chi l'aveva chiesta, come quella di un fai.
-    assert porta.soggetti == [{"specie": "persona", "id": "paolo"}] * 2
+    assert porta.soggetti == [new_subject("persona", ident="paolo")] * 2
     p = archivio.read(ident)
     assert (p["stato"], p["motivo"]) == ("mantenuta", None)
 
@@ -253,7 +253,7 @@ async def test_il_recapito_si_risolve_al_risveglio_dal_filo_senza_nome(
                     turno=TurnoFinto({"avvisare": True, "testo": "fa caldo"}),
                     ).batti(ADESSO + 11)
 
-    assert recapito.soggetti == [{"specie": "persona", "id": "paolo"}]
+    assert recapito.soggetti == [new_subject("persona", ident="paolo")]
 
 
 async def test_zero_servizi_niente_push_e_il_motivo_e_quello_del_recapito(
@@ -510,7 +510,7 @@ async def test_un_fai_di_chi_non_puo_piu_comandare_non_si_esegue(archivio, carte
                     soffitto=soffitto).batti(ADESSO + 11)
 
     assert porta.chiamate == []
-    assert soffitto.soggetti == [{"specie": "persona", "id": "paolo"}]
+    assert soffitto.soggetti == [new_subject("persona", ident="paolo")]
     p = archivio.read(ident)
     assert (p["stato"], p["motivo"]) == ("fallita", "PERCHE-DEL-SOFFITTO")
     assert "PERCHE-DEL-SOFFITTO" in load_history(cartella, thread=PAOLO)[0]["content"]
@@ -892,7 +892,7 @@ async def test_un_fai_orfano_che_matura_prima_di_ogni_accesso_si_esegue_nel_filo
         app["servizi"].close()
 
     assert [c["servizio"] for c, _ in porta.chiamate] == ["light.turn_on"]
-    assert porta.soggetti == [{"specie": "persona", "id": "paolo"}]
+    assert porta.soggetti == [new_subject("persona", ident="paolo")]
     p = archivio.read(ident)
     assert (p["stato"], p["thread"]) == ("mantenuta", PAOLO)
     assert [m["content"] for m in load_history(cartella, thread=PAOLO)] == [
@@ -938,7 +938,7 @@ async def test_un_chiedi_orfano_porta_l_esito_nel_filo_del_proprietario_e_ai_suo
     finally:
         app["servizi"].close()
 
-    assert recapito.soggetti == [{"specie": "persona", "id": "paolo"}]
+    assert recapito.soggetti == [new_subject("persona", ident="paolo")]
     assert [c["servizio"] for c, _ in porta.chiamate] == ["notify.mobile_app_iphone_bet"]
     assert [m["content"] for m in load_history(cartella, thread=PAOLO)] == [
         "Esito della promessa «detta prima»:\nfa caldo"]

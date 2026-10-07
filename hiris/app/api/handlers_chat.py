@@ -41,9 +41,10 @@ from ..steering import (
     who_answers,
 )
 from .boundary import error_body, error_response, json_object
+from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
 from .handlers_mind import mind_view
-from .soffitto import ceiling_for, request_ceiling, ruolo_letto
+from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
 
@@ -338,10 +339,11 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
     prosa del prompt.
 
     **Il ruolo sconosciuto non si spaccia per "utente"** (fix round 1,
-    Important 3): `soffitto.consente()` restituisce la stringa "utente" SIA
-    quando Home Assistant ha risposto "non amministratore" SIA quando la
-    lettura e' fallita e HIRIS ripiega per non spegnere la chat -- due fatti
-    diversi dietro la stessa parola. Il parametro `role_known` (valorizzato
+    Important 3): `soffitto.consente()` restituisce lo stesso ruolo
+    (`soffitto.PERSONA_IGNOTA`, `lettore`) SIA quando Home Assistant ha detto
+    che la persona e' di sola lettura SIA quando la lettura e' fallita e HIRIS
+    ripiega per non spegnere la chat -- due fatti diversi dietro la stessa
+    parola. Il parametro `role_known` (valorizzato
     da `soffitto.ruolo_letto()`, chiamata dai due compositori di
     `compose_chat_context` qui sotto -- rinominato dal Task 8 perche' un
     parametro omonimo della funzione importata faceva ombra a quella
@@ -364,7 +366,7 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
         nome = s.get("nome")
         chi = f"«{sanitize_ha_value(nome)}»" if nome else \
             "una persona che Home Assistant non ha nominato"
-    elif specie in ("integrazione", "luogo"):
+    elif specie in SERVICE_SPECIES:
         nome = s.get("nome")
         chi = f"«{sanitize_ha_value(nome)}»" if nome else "un servizio senza nome"
     elif soggetto is None:
@@ -378,9 +380,12 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
         if ruolo and role_known:
             righe.append(f"- ruolo in Home Assistant: {ruolo}")
         else:
+            # Come la tratta il soffitto, chiesto al soffitto (X-66): fino al
+            # 07/10/2026 qui c'era scritto «utente» mentre il soffitto
+            # applicava `lettore`.
             righe.append("- ruolo in Home Assistant: non l'ho potuto sapere "
-                         "(trattato come utente)")
-    elif specie in ("integrazione", "luogo") and ruolo:
+                         f"(trattato come {PERSONA_IGNOTA})")
+    elif specie in SERVICE_SPECIES and ruolo:
         righe.append(f"- un servizio approvato dal proprietario, ruolo {ruolo}")
 
     righe.append(f"- da: {thread.entry_point}")

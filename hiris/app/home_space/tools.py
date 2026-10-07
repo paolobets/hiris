@@ -2726,9 +2726,11 @@ TOOLS: tuple[Tool, ...] = (
          mask="amministrare"),
     # La porta della configurazione ha due lati, il clic sulla pagina e
     # questo strumento: custodirne uno solo lascerebbe spalancato l'altro
-    # (I-1), il piu' facile da attraversare -- basta scrivere «conferma».
+    # (I-1), il piu' facile da attraversare -- basta scrivere «conferma». Lo
+    # stesso gesto della pagina (`admission.ADMISSION`), dal 07/10/2026
+    # `amministrare`: `costruire` aveva lo stesso valore per ogni ruolo (F-03).
     Tool(CONFIRM_TOOL_DEF, ToolDispatcher._confirm, resources=("officina",),
-         permissions=(Permission("costruire"),)),
+         permissions=(Permission("amministrare"),)),
     # Il canale, non la casa: gli errori si chiedono anche con la casa non
     # ancora caricata, e il gestore dice da se' quando gli serve.
     Tool(HISTORY_TOOL_DEF, ToolDispatcher._history, resources=("ha",),

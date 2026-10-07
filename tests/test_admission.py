@@ -233,21 +233,38 @@ async def test_PIN_lo_statico_per_l_amministratore(casa, path, statuses):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method,path,status", [
-    ("PUT", "/api/models/config", 200),
-    ("POST", "/api/usage/reset", 409),
+@pytest.mark.parametrize("method,path", [
+    ("PUT", "/api/models/config"),
+    ("POST", "/api/usage/reset"),
+    ("PUT", "/api/chat-settings"),
+    ("POST", "/api/mind/objective"),
 ])
-async def test_PIN_un_servizio_utente_firmato_passa_come_prima(casa, method, path, status):
-    """Pin 4: un servizio approvato come `utente` raggiunge queste rotte oggi
-    (`consente_metodo` guarda solo lettura contro scrittura -- rischio
-    dichiarato, security-constraints 5.9): il cancello non lo tocca, perche'
-    vale solo per le persone dall'ingress."""
+async def test_un_servizio_utente_firmato_NON_configura(casa, caplog, method, path):
+    """Il «Pin 4» rovesciato (F-17, D4 della Tappa 7). Fino al 07/10/2026 un
+    servizio approvato come `utente` raggiungeva queste rotte
+    (`consente_metodo` guardava solo lettura contro scrittura -- rischio
+    dichiarato, security-constraints 5.9): `PUT /api/models/config` gli
+    rispondeva 200. Adesso il gesto della rotta (`amministrare`) si chiede al
+    suo soffitto come a quello di una persona: 403 col testo delle pagine
+    riservate, e una riga nel registro col nome del servizio e il modello
+    della rotta.
+
+    Mutazione ESEGUITA: la riga `PUT /api/models/config` di `ADMISSION` col
+    gesto `leggere` -- rossa su quella rotta (200 invece di 403); e
+    `gesture_refusal` saltato per i servizi firmati nel middleware -- rosse
+    tutte e quattro (200 o 409 invece di 403)."""
+    caplog.set_level("WARNING", logger="hiris.app.api.admission")
     privata, pubblica = servizio_approvato(casa.app, "utente")
     body = b"{}"
     headers = {**firma(privata, pubblica, method, path, body),
                "Content-Type": "application/json", "X-Requested-With": "fetch"}
 
-    assert await _ask(casa, method, path, headers, data=body) == status
+    status, corpo = await _risposta(casa, method, path, headers, data=body)
+
+    assert (status, corpo) == (403, _rifiuto_json(NOT_ADMITTED))
+    righe = [r.getMessage() for r in caplog.records
+             if r.name == "hiris.app.api.admission" and r.levelname == "WARNING"]
+    assert any(path in riga and "servizio" in riga for riga in righe), righe
 
 
 @pytest.mark.asyncio
@@ -390,13 +407,19 @@ async def _gate_refused(client, method, path, headers, testo=NOT_ADMITTED, **kw)
     return status == 403 and body == _rifiuto_json(testo)
 
 
+#: Le righe che si aprono a chi non amministra: una vista sulla tabella, non
+#: una sua copia.
+_APERTE = {(r.method, r.canonical) for r in ADMISSION if r.open_reason}
+
+
 def test_la_lista_nomina_solo_rotte_VERE_del_router():
     """Nessun fantasma (2.27): ogni voce e' una rotta del router vivo.
 
     Mutazione ESEGUITA: tolta `add_get("/api/memories", ...)` da `server.py`
     -- rossa col nome della voce."""
     vive = live_routes(create_app())
-    fantasmi = [(m, c) for m, c, _ in ADMISSION if (m, c) not in vive]
+    fantasmi = [(r.method, r.canonical) for r in ADMISSION
+                if (r.method, r.canonical) not in vive]
 
     assert not fantasmi, f"voci della lista che il router non ha: {fantasmi}"
 
@@ -412,12 +435,59 @@ def test_la_derivazione_dal_router_VEDE_le_rotte():
     assert ("HEAD", "/api/health") in vive and ("GET", "/static") in vive
 
 
-def test_ogni_voce_porta_la_sua_RAGIONE_e_nessuna_e_doppia():
-    assert len({(m, c) for m, c, _ in ADMISSION}) == len(ADMISSION)
-    for method, canonical, reason in ADMISSION:
-        assert method == method.upper() and method != "HEAD", (method, canonical)
-        assert canonical.startswith("/"), canonical
-        assert reason and len(reason) > 20, f"«{method} {canonical}» senza ragione"
+def test_ogni_voce_porta_il_suo_GESTO_e_nessuna_e_doppia():
+    """Ogni riga e' una rotta sola, chiede un gesto del soffitto
+    (`soffitto.GESTI`, chiesto e non ricopiato) e, se si apre a chi non
+    amministra, dice perche'."""
+    from hiris.app.api.soffitto import GESTI
+
+    assert len({(r.method, r.canonical) for r in ADMISSION}) == len(ADMISSION)
+    for route in ADMISSION:
+        assert route.method == route.method.upper() and route.method != "HEAD", route
+        assert route.canonical.startswith("/"), route
+        assert route.gesture in GESTI, f"«{route.method} {route.canonical}»: {route.gesture!r}"
+        if route.open_reason is not None:
+            assert len(route.open_reason) > 20, f"«{route.method} {route.canonical}» senza ragione"
+
+
+def test_ogni_rotta_dell_app_AVVIATA_ha_il_suo_gesto():
+    """**Il cancello unico chiude per difetto** (F-01, D4 della Tappa 7):
+    l'elenco delle rotte si CHIEDE al router dell'app vera, e ognuna deve
+    avere la sua riga in `ADMISSION` -- HEAD vale come GET. Una rotta nuova
+    senza riga e' negata a tutti, amministratore compreso: questa prova lo
+    dice prima del primo 403 dal vivo.
+
+    Mutazione ESEGUITA: tolta la riga `POST /api/proposals/{id}/automate` da
+    `ADMISSION` -- rossa col nome della rotta. Che la derivazione non si sia
+    rotta lo dice `test_la_derivazione_dal_router_VEDE_le_rotte`."""
+    senza = sorted({("GET" if m == "HEAD" else m, c)
+                    for m, c in live_routes(create_app())}
+                   - {(r.method, r.canonical) for r in ADMISSION})
+
+    assert not senza, f"rotte senza gesto: {senza}"
+
+
+@pytest.mark.asyncio
+async def test_una_rotta_SENZA_gesto_e_chiusa_anche_all_amministratore(casa):
+    """La contropartita dal vivo: si toglie un gesto e la rotta si chiude a
+    tutti -- persona amministratrice e servizio amministratore -- col testo
+    delle pagine riservate.
+
+    Mutazione ESEGUITA: `gesture_refusal` che lascia passare un gesto `None`
+    -- rossa."""
+    from hiris.app.api.admission import _GESTURES
+
+    privata, pubblica = servizio_approvato(casa.app, "amministratore")
+    firmata = firma(privata, pubblica, "GET", "/api/models")
+    assert (await casa.get("/api/models", headers=_persona("u-admin"))).status == 200
+    del _GESTURES[("GET", "/api/models")]
+    try:
+        persona = await _risposta(casa, "GET", "/api/models", _persona("u-admin"))
+        servizio = await _risposta(casa, "GET", "/api/models", firmata)
+    finally:
+        _GESTURES[("GET", "/api/models")] = "leggere"
+
+    assert persona == servizio == (403, _rifiuto_json(NOT_ADMITTED))
 
 
 #: Cio' che chi non amministra NON deve mai raggiungere (security-constraints
@@ -434,7 +504,7 @@ _VIETATE_ESATTE = {("PUT", "/api/chat-settings"), ("PATCH", "/api/memories/{id}"
 def test_la_lista_NON_tocca_le_rotte_vietate():
     """Mutazione ESEGUITA: aggiunta a `ADMISSION` la voce `GET /api/usage` --
     rossa."""
-    toccate = [(m, c) for m, c, _ in ADMISSION
+    toccate = [(m, c) for m, c in _APERTE
                if c.startswith(_VIETATE_PREFISSI) or (m, c) in _VIETATE_ESATTE]
 
     assert not toccate, f"la lista ammette rotte vietate: {toccate}"
@@ -488,7 +558,7 @@ async def test_ogni_rotta_NON_in_lista_e_chiusa_a_chi_non_amministra(aperta):
     `router.add_get("/api/prova", handle_config)` senza toccare la lista --
     la prova la vede e resta verde, perche' la rotta nasce chiusa. Che la
     derivazione non si sia rotta lo dice il pavimento qui sopra."""
-    ammesse = {(m, c) for m, c, _ in ADMISSION}
+    ammesse = _APERTE
     aperte = []
     for method, canonical in sorted(live_routes(aperta.app)):
         guardata = "GET" if method == "HEAD" else method
@@ -526,7 +596,7 @@ async def test_ogni_voce_della_lista_si_APRE_a_chi_non_amministra(aperta):
     """La contropartita: una voce ammessa non riceve il rifiuto del cancello
     (riceve cio' che il suo gestore risponde)."""
     chiuse = []
-    for method, canonical, _ in ADMISSION:
+    for method, canonical in sorted(_APERTE):
         kw = {"json": {}} if method in _MUTANTI else {}
         if await _gate_refused(aperta, method, _concrete(canonical),
                                _persona("u-marta"), **kw):
@@ -538,7 +608,8 @@ async def test_ogni_voce_della_lista_si_APRE_a_chi_non_amministra(aperta):
 @pytest.mark.asyncio
 async def test_una_rotta_NUOVA_nasce_chiusa(aiohttp_client, tmp_path):
     """Una rotta aggiunta al router senza toccare la lista e' chiusa a chi non
-    amministra e aperta all'amministratore."""
+    amministra; e, dal 07/10/2026, anche all'amministratore: non ha un gesto
+    (F-01). Con il gesto in tabella si apre a lui."""
     app = _compose(tmp_path, access=True)
 
     async def prova(request):
@@ -548,7 +619,13 @@ async def test_una_rotta_NUOVA_nasce_chiusa(aiohttp_client, tmp_path):
     client = await aiohttp_client(app)
 
     assert await _gate_refused(client, "GET", "/api/prova", _persona("u-marta"))
-    assert (await _risposta(client, "GET", "/api/prova", _persona("u-admin")))[0] == 200
+    assert await _gate_refused(client, "GET", "/api/prova", _persona("u-admin"))
+    admission._GESTURES[("GET", "/api/prova")] = "leggere"
+    try:
+        assert (await _risposta(client, "GET", "/api/prova", _persona("u-admin")))[0] == 200
+        assert await _gate_refused(client, "GET", "/api/prova", _persona("u-marta"))
+    finally:
+        del admission._GESTURES[("GET", "/api/prova")]
     app["memory_store"].close()
     app["servizi"].close()
 
@@ -956,6 +1033,7 @@ from hiris.app.api.soffitto import (
     boundary_role,
     ceiling_for,
     consente,
+    nothing_granted,
 )
 from hiris.app.home_space.tools import ToolDispatcher
 
@@ -1049,8 +1127,8 @@ async def test_il_ruolo_di_SOLA_LETTURA_arriva_al_soffitto_della_chat(casa):
     soffitto = await ceiling_for(casa.app, {"specie": "persona", "id": "u-lettore"})
 
     assert soffitto["ruolo"] == "lettore"
-    assert (soffitto["leggere"], soffitto["comandare"], soffitto["costruire"],
-            soffitto["amministrare"]) == (True, False, False, False)
+    assert (soffitto["leggere"], soffitto["comandare"],
+            soffitto["amministrare"]) == (True, False, False)
     visto = await boundary_role(casa.app, {"specie": "persona", "id": "u-lettore"})
     assert (visto.role, visto.read, visto.known) == ("lettore", True, True)
 
@@ -1190,11 +1268,13 @@ async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme():
 
 
 @pytest.mark.asyncio
-async def test_il_cancello_lascia_il_RUOLO_sulla_richiesta(aiohttp_client, tmp_path):
+async def test_il_cancello_lascia_il_RUOLO_sulla_richiesta(aiohttp_client, tmp_path,
+                                                          monkeypatch):
     """I4: chi viene dopo il cancello legge il ruolo da qui, senza chiedere di
     nuovo a Home Assistant.
 
     Mutazione ESEGUITA: il cancello non scrive `request["ruolo"]` -- rossa."""
+    monkeypatch.setitem(admission._GESTURES, ("GET", "/api/prova-ruolo"), "leggere")
     app = _compose(tmp_path, access=True)
 
     async def eco(request):
@@ -1424,9 +1504,7 @@ def _officina(tmp_path):
     (consente(_PERSONA_MARTA, ruolo="utente"), "automation", "modifica", False),
     (consente(_PERSONA_MARTA, ruolo="lettore"), "scene", "modifica", False),
     # Il soffitto di un risveglio senza ruolo verificato: niente.
-    ({"leggere": False, "comandare": False, "costruire": False,
-      "amministrare": False, "ruolo": None, "perche": "x"}, "automation", "modifica",
-     False),
+    (nothing_granted("x"), "automation", "modifica", False),
     (consente(_PERSONA_MARTA, ruolo="utente"), "script", "modifica", True),
     (consente(_PERSONA_MARTA, ruolo="amministratore"), "automation", "modifica", True),
     (None, "automation", "modifica", True),

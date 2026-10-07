@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.action.actuator import ActionActuator
-from hiris.app.chat_thread import ChatThread
+from hiris.app.chat_thread import ChatThread, new_subject
 from hiris.app.keeper.promise import TOLLERANZA_S
 from hiris.app.keeper.recipient import _REASON_LINK_PERSON, Recipients
 from hiris.app.keeper.store import AgendaStore
@@ -173,7 +173,7 @@ async def test_la_cronaca_del_fai_nomina_chi_l_aveva_chiesto(archivio):
     porta = PortaFinta()
     await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
 
-    assert porta.soggetti == [{"specie": "persona", "id": "paolo"}]
+    assert porta.soggetti == [new_subject("persona", ident="paolo")]
 
 
 async def test_oltre_la_tolleranza_non_si_esegue_mai_e_il_motivo_misura(archivio):

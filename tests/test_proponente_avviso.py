@@ -28,6 +28,7 @@ from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.stakes import domains_acted_on, impose
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.api import soffitto
+from hiris.app.chat_thread import new_subject
 from hiris.app.home_space import historian
 from hiris.app.keeper import delivery
 from hiris.app.keeper.promise import DELIVERY_TITLE
@@ -199,7 +200,7 @@ async def test_una_proposta_ALTO_avvisa_gli_amministratori(casa):
     assert chiamata["call"]["dati"]["title"] == DELIVERY_TITLE
     assert "Chiudi la porta di notte" in chiamata["call"]["dati"]["message"]
     assert chiamata["actor"] == "proponente"
-    assert chiamata["subject"] == {"specie": "persona", "id": "u-paolo"}
+    assert chiamata["subject"] == new_subject("persona", ident="u-paolo")
 
 
 @pytest.mark.asyncio
@@ -357,7 +358,7 @@ async def test_gli_amministratori_sono_quelli_di_HA_senza_gli_utenti_di_sistema(
 
     Mutazione ESEGUITA (06/10/2026): senza il filtro `sistema` -- rossa."""
     assert await soffitto.administrators(casa) == [
-        {"specie": "persona", "id": "u-paolo"}]
+        new_subject("persona", ident="u-paolo")]
 
 
 @pytest.mark.asyncio

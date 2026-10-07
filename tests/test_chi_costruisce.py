@@ -1,7 +1,8 @@
 """Chi costruisce, chi corregge (spec 2026-09-26 §3, decisioni 5 e 6).
 
-La pagina Costruzioni e le correzioni al sapere sono di chi costruisce: un
-cancello solo (`api/soffitto.require_builder`) davanti a ogni rotta di
+La pagina Costruzioni e le correzioni al sapere sono di chi amministra: un
+cancello solo -- il gesto `amministrare` nella tabella delle rotte
+(`api/admission.ADMISSION`), chiesto dal confine -- davanti a ogni rotta di
 `/api/constructions`, `/api/proposals` e `POST /api/mind/judgment`; un
 giudizio porta il suo autore vero; `/api/pending` non conta le proposte a chi
 non le puo' decidere.
@@ -228,12 +229,27 @@ class _RichiestaFinta(dict):
     # Il turno del ponte: HIRIS che lavora per conto suo non costruisce.
     ({"specie": "nessuno", "id": "ponte", "nome": "ponte", "ruolo": None},
      _UTENTI, False),
-    # Lo sviluppo senza token (`HIRIS_ALLOW_NO_TOKEN`): nessun ruolo, e la
-    # pagina Costruzioni resta chiusa -- dichiarato, non dedotto.
-    ({"specie": "sviluppo", "id": None, "nome": None}, _UTENTI, False),
+    # Lo sviluppo senza token (`HIRIS_ALLOW_NO_TOKEN`): l'autenticazione e'
+    # spenta, e dal 07/10/2026 il cancello delle rotte fa la domanda degli
+    # strumenti (`soffitto.denies`), che non lo restringe -- fino ad allora
+    # la pagina Costruzioni gli restava chiusa e la chat no (BACKLOG, «In
+    # sviluppo `can_configure` e' vero mentre `can_build` e' falso»).
+    ({"specie": "sviluppo", "id": None, "nome": None}, _UTENTI, True),
 ])
-async def test_il_cancello_decide_per_ogni_ingresso(soggetto, utenti, passa):
-    from hiris.app.api.soffitto import boundary_role, require_builder
+async def test_il_cancello_decide_per_ogni_ingresso(soggetto, utenti, passa, monkeypatch):
+    """Il gesto della pagina Costruzioni, chiesto al soffitto di ogni
+    ingresso con la domanda unica del cancello (`soffitto.denies`, F-01).
+
+    Mutazione ESEGUITA: la riga `GET /api/constructions` col gesto
+    `leggere` -- rosse le cinque righe di chi non amministra e legge: la
+    persona utente, la persona sconosciuta, quella con Home Assistant muto e
+    i due servizi `utente` e `lettore`."""
+    from hiris.app.api.admission import ADMISSION
+    from hiris.app.api.soffitto import boundary_role, denies, request_ceiling
+
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
+    [gesto] = [r.gesture for r in ADMISSION
+               if (r.method, r.canonical) == ("GET", "/api/constructions")]
 
     # `utenti` None: Home Assistant non risponde a `config/auth/list`.
     house = (CasaFinta(synthetic_inputs(), silence={"config/auth/list"}) if utenti is None
@@ -241,16 +257,13 @@ async def test_il_cancello_decide_per_ogni_ingresso(soggetto, utenti, passa):
                             answers={"config/auth/list": lambda extra: utenti}))
     app = {"ha_client": house, "ruoli": {"quando": 0.0, "per_id": {}}}
     # Il ruolo lo legge il cancello al confine, con la stessa regola del
-    # soffitto; `require_builder` lo prende dalla richiesta.
+    # soffitto; il cancello delle rotte lo prende dalla richiesta.
     letto = await boundary_role(app, soggetto)
 
-    rifiuto = require_builder(_RichiestaFinta(app, soggetto, letto.role))
+    richiesta = _RichiestaFinta(app, soggetto, letto.role)
+    negato = denies(request_ceiling(richiesta), gesto, soggetto)
 
-    if passa:
-        assert rifiuto is None
-    else:
-        assert rifiuto is not None and rifiuto.status == 403
-        assert json.loads(rifiuto.body)["error"], "un rifiuto senza motivo e' un ordine"
+    assert negato is not passa
 
 
 # --- le rotte, per chi non costruisce (4.1, 4.9) -----------------------------
@@ -555,11 +568,11 @@ async def test_il_nome_di_un_servizio_e_quello_APPROVATO(tmp_path):
 
 # --- il registro (4.10) ------------------------------------------------------
 
-#: Dal 27/09/2026 una PERSONA che non amministra si ferma al confine, prima
-#: di `require_builder` (spec 2026-09-27 §3): le due prove gemelle del suo
-#: rifiuto stanno in `tests/test_admission.py`. Il cancello di chi costruisce
-#: scrive ancora la sua riga per chi ci arriva davvero -- un servizio firmato
-#: col ruolo `utente` -- e queste due prove la guardano li'.
+#: Una PERSONA che non amministra si ferma al confine (spec 2026-09-27 §3):
+#: le due prove gemelle del suo rifiuto stanno in `tests/test_admission.py`.
+#: Il rifiuto di un servizio firmato col ruolo `utente` ha la sua riga, dal
+#: 07/10/2026 nel cancello delle rotte (`admission.gesture_refusal`), e queste
+#: due prove la guardano li'.
 def _firmata(app, tmp_path, path):
     from conftest import firma, servizio_approvato
     from hiris.app.api.servizi import ServiziStore
@@ -570,23 +583,29 @@ def _firmata(app, tmp_path, path):
 
 
 @pytest.mark.asyncio
-async def test_il_rifiuto_si_scrive_a_INFO_e_senza_il_nome(cliente, caplog, tmp_path):
-    """Un rifiuto del cancello di chi costruisce e' un caso normale, non un
-    allarme: `info`. E un nome scritto dal chiamante non entra nel registro:
-    basta la chiave."""
-    caplog.set_level("INFO", logger="hiris.app.api.soffitto")
+async def test_il_rifiuto_di_un_SERVIZIO_si_scrive_col_nome_APPROVATO(cliente, caplog,
+                                                                    tmp_path):
+    """Il rifiuto di un servizio firmato si scrive a `warning`, col nome con
+    cui il proprietario l'ha approvato e la sua chiave (D4 della Tappa 7):
+    un'integrazione che il cancello unico ha chiuso si vede al primo
+    tentativo, dal registro, senza toccare niente. Un nome scritto in
+    un'intestazione dal chiamante non entra nel registro.
+
+    Mutazione ESEGUITA: la riga del servizio scritta a `info` -- rossa."""
+    caplog.set_level("INFO", logger="hiris.app.api.admission")
     testate = {**_firmata(cliente.app, tmp_path, "/api/constructions"),
                "X-Remote-User-Display-Name": "Nome Riservato"}
 
     risposta = await cliente.get("/api/constructions", headers=testate)
     cliente.app["servizi"].close()
 
-    rifiuti = [r for r in caplog.records if r.name == "hiris.app.api.soffitto"]
+    rifiuti = [r for r in caplog.records if r.name == "hiris.app.api.admission"]
     assert risposta.status == 403
     assert rifiuti, "il rifiuto non ha lasciato nessuna riga"
-    assert all(r.levelname == "INFO" for r in rifiuti)
+    assert all(r.levelname == "WARNING" for r in rifiuti)
     assert all("Nome Riservato" not in r.getMessage() for r in rifiuti)
-    assert any("luogo:retropanel" in r.getMessage() for r in rifiuti)
+    assert any("'retropanel'" in r.getMessage() and "luogo:retropanel" in r.getMessage()
+               for r in rifiuti)
 
 
 @pytest.mark.asyncio
@@ -597,14 +616,14 @@ async def test_il_rifiuto_scrive_il_MODELLO_della_rotta_non_il_percorso(cliente,
 
     Mutazione ESEGUITA: `request.path` al posto di `_route_pattern(request)`
     -- rossa."""
-    caplog.set_level("INFO", logger="hiris.app.api.soffitto")
+    caplog.set_level("INFO", logger="hiris.app.api.admission")
     testate = _firmata(cliente.app, tmp_path, "/api/constructions/abc\nsoffitto: concesso")
 
     risposta = await cliente.get("/api/constructions/abc%0Asoffitto:%20concesso",
                                  headers=testate)
     cliente.app["servizi"].close()
 
-    [riga] = [r.getMessage() for r in caplog.records if r.name == "hiris.app.api.soffitto"]
+    [riga] = [r.getMessage() for r in caplog.records if r.name == "hiris.app.api.admission"]
     assert risposta.status == 403
     assert "/api/constructions/{id}" in riga
     assert "\n" not in riga and "concesso" not in riga

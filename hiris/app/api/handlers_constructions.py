@@ -25,10 +25,10 @@ basta, e farlo passare dall'officina gli darebbe la stessa superficie di
 rischio di una conferma. Non e' una quinta rotta uguale alle altre: e'
 un'assenza deliberata.
 
-**Tutte e cinque sono di chi costruisce** (spec 2026-09-26 §3, decisione 5):
-ognuna chiama per prima `soffitto.require_builder`, prima di toccare un
-archivio. `tests/test_soffitto_cancello.py` deriva l'elenco dal router e lo
-verifica.
+**Tutte e cinque sono di chi amministra** (spec 2026-09-26 §3, decisione 5):
+ognuna porta il gesto `amministrare` nella tabella delle rotte
+(`admission.ADMISSION`), e il confine lo chiede per ogni soggetto prima di
+qualunque gestore, quindi prima di toccare un archivio (F-01, Tappa 7).
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ from ..action.construction.revisions import STATES_SOSPESO
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..mind import automate_turn
 from .boundary import error_response, occurrence_out
-from .soffitto import approved_services, require_builder, subject_name
+from .soffitto import approved_services, subject_name
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
@@ -53,9 +53,6 @@ def _store(request):
 
 
 async def handle_get_constructions(request: web.Request) -> web.Response:
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
@@ -153,9 +150,6 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
 
 
 async def handle_get_construction(request: web.Request) -> web.Response:
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")
@@ -170,15 +164,11 @@ async def handle_get_construction(request: web.Request) -> web.Response:
 async def _act(request: web.Request, verb: str) -> web.Response:
     """Le due scritture della pagina verso Home Assistant, da un punto solo.
 
-    Passano dallo stesso cancello di tutte le rotte di questa pagina
-    (`soffitto.require_builder`): dal 26/09/2026 la pagina intera e' di chi
-    costruisce (spec 2026-09-26 §3, decisione 5), e una regola per le
-    scritture e un'altra per le letture sarebbero due regole.
+    Passano dallo stesso cancello di tutte le rotte di questa pagina (il
+    gesto `amministrare` in `admission.ADMISSION`): dal 26/09/2026 la pagina
+    intera e' di chi amministra (spec 2026-09-26 §3, decisione 5), e una
+    regola per le scritture e un'altra per le letture sarebbero due regole.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
-
     store = _store(request)
     workshop = request.app.get("workshop")
     if store is None or workshop is None:
@@ -222,9 +212,6 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     26/09 dire di no era di tutti, perche' chi non costruiva vedeva comunque
     la coda. Adesso la coda e' di chi costruisce, e il suo «no» con lei.
     """
-    refusal = require_builder(request)
-    if refusal is not None:
-        return refusal
     store = _store(request)
     if store is None:
         return error_response(503, "archivio non disponibile")

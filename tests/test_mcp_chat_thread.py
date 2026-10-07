@@ -171,7 +171,7 @@ async def test_il_ponte_di_un_amministratore_attraversa_il_soffitto(
     assert esito.get("applicata"), esito
     assert casa_ha.salvate, "la conferma dell'amministratore non ha scritto"
     visto = dispatcher_visti[-1]
-    assert visto["soffitto"]["costruire"] is True
+    assert visto["soffitto"]["amministrare"] is True
     assert visto["soggetto"] == PAOLO
     assert visto["frase"] == "sì, procedi"
 

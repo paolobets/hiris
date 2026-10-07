@@ -502,6 +502,13 @@ _RE_ADD = re.compile(
 _RE_ADD_ROUTE = re.compile(
     r"""add_route\(\s*["'](\w+)["']\s*,\s*["']([^"']+)["']"""
 )
+#: Una riga della tabella delle rotte (`api/admission.ADMISSION`, Tappa 7):
+#: dichiara il gesto di una rotta, come `add_get` la registra -- non la
+#: chiama. Senza toglierla dal corpo, ogni rotta del prodotto sembrerebbe
+#: citata e nessuna risulterebbe piu' senza chiamanti.
+_RE_GESTO_ROTTA = re.compile(
+    r"""Route\(\s*["']\w+["']\s*,\s*["'][^"']+["']"""
+)
 
 
 def _file_frontend() -> list[Path]:
@@ -546,7 +553,8 @@ def censisci_rotte(
             rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
         for m in _RE_ADD_ROUTE.finditer(testo):
             rotte.setdefault(m.group(2), f"{_rel(f)}:{_riga(testo, m.start())}")
-        corpus_app.append(_RE_ADD_ROUTE.sub(" ", _RE_ADD.sub(" ", testo)))
+        corpus_app.append(_RE_GESTO_ROTTA.sub(
+            " ", _RE_ADD_ROUTE.sub(" ", _RE_ADD.sub(" ", testo))))
 
     # Il JavaScript si legge per le sue STRINGHE, senza commenti (N65-1,
     # giro 65): un commento in testa a una pagina che nomina la rotta la
