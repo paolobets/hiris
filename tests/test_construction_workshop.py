@@ -971,6 +971,85 @@ async def test_rilettura_muta_lascia_incerta_e_non_disfa(banco):
     assert cronaca.read(esito["esecuzione_id"])["errore"] == esito["errore"]
 
 
+async def _incerta(officina, ha, *, arriva: bool):
+    """Una modifica di `1771` che resta `incerta`: la scrittura tace e la
+    rilettura cade. Con `arriva` la scrittura e' arrivata davvero (la casa
+    ha il `dopo`), senza no. Poi la casa torna a rispondere."""
+    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+    if arriva:
+        ha.scrittura_muta = True
+    else:
+        ha._override["salva"] = SILENT
+    ha.cadute_successive = {"read_configuration"}
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert "non so se e' arrivata" in esito["errore"]
+    ha.scrittura_muta = False
+    ha._override.pop("salva", None)
+    ha.cadute_successive = set()
+    ha._solleva = set()
+    ha.salvate.clear()
+    return p["proposta_id"]
+
+
+@pytest.mark.asyncio
+async def test_una_costruzione_incerta_arrivata_si_rimette_com_era(banco):
+    """G83-2 (giro 83, 07/10/2026). Un'`incerta` si tiene perche' puo'
+    portare l'unico «prima» rimasto al mondo (fondamenta 4: se nessuno puo'
+    chiederlo, non esiste). Fino a questo giro `restore` la rifiutava con
+    «non e' mai stata applicata», falso: forse lo era. Se la casa non e' piu'
+    com'era prima, la scrittura e' arrivata, e il prima si rimette.
+
+    Rossa sul codice di prima (verificato il 07/10/2026: «non e' mai stata
+    applicata»)."""
+    officina, ha, archivio, _ = banco
+    proposta_id = await _incerta(officina, ha, arriva=True)
+    assert archivio.read(proposta_id, now=ADESSO)["stato"] == UNCERTAIN
+
+    esito = await officina.restore(proposta_id, actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+
+    assert esito["eseguito"] is True, esito
+    assert ha.salvate[0][2]["alias"] == "com'era"
+
+
+@pytest.mark.asyncio
+async def test_una_costruzione_incerta_mai_arrivata_lo_dice_e_non_scrive(banco):
+    """L'altro lato del dubbio: la scrittura non era arrivata, e la casa e'
+    gia' com'era prima. Non si scrive niente, e la frase dice questo -- non
+    «e' cambiato da quando te l'ho proposto», che sarebbe falso e che e'
+    cio' che direbbe la conferma (`_changed_since`) senza questa domanda.
+
+    Mutazione ESEGUITA (07/10/2026): tolto il confronto con il «prima» in
+    `restore` -- rossa, la frase diventa quella del «cambiato»."""
+    officina, ha, _archivio, _ = banco
+    proposta_id = await _incerta(officina, ha, arriva=False)
+
+    esito = await officina.restore(proposta_id, actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+
+    assert esito["eseguito"] is False
+    assert "non era arrivata" in esito["errore"], esito["errore"]
+    assert "com’era prima" in esito["errore"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_una_costruzione_mai_applicata_non_si_rimette(banco):
+    """Una proposta ancora in attesa non ha niente da rimettere, e lo dice."""
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
+                               actor="chat", exchange="t1", now=ADESSO)
+
+    esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
+                                   now=ADESSO + 60)
+
+    assert esito["eseguito"] is False
+    assert "mai stata applicata" in esito["errore"]
+    assert ha.salvate == []
+
+
 @pytest.mark.asyncio
 async def test_scrittura_muta_non_arrivata_rifiutata(banco):
     """Il terzo caso del dubbio: silenzio, e rileggendo la scrittura non

@@ -92,7 +92,12 @@
    HIRIS ha provato e non ce l'ha fatta, `motivo` verbatim) · scaduta
    "Scaduta" (ambra, non rosso: tempo passato senza decisione, non un
    fallimento) · disdetta -- il «no» del proprietario, badge NEUTRO come
-   `in_attesa`, mai la faccia di `rifiutata`.
+   `in_attesa`, mai la faccia di `rifiutata` · incerta "Esito incerto"
+   (ambra come `scaduta`: Home Assistant non ha risposto e non si sa se la
+   scrittura sia arrivata; offre Ripristina, e il server dice se c'era
+   qualcosa da rimettere). Etichetta e badge di `incerta` (G83-2, giro 83,
+   07/10/2026) riusano lo stile che c'era: il passaggio da ux-ui-specialist
+   NON e' stato fatto, e va fatto.
    ADATTAMENTO rispetto al testo letterale della guida (confermato dalla
    review indipendente del Task 11: la guida si contraddiceva da sola,
    proponendo nella STESSA sezione l'etichetta "Rifiutata da te" per
@@ -158,7 +163,8 @@ window.HirisConstructions = (function () {
        parola "rifiutata" su una riga che e' il "no" del proprietario. */
     disdetta: 'Declinata da te',
     rifiutata: 'Non riuscita',
-    scaduta: 'Scaduta'
+    scaduta: 'Scaduta',
+    incerta: 'Esito incerto'
   };
   var STATE_BADGE = {
     in_attesa: 'badge-off',
@@ -166,7 +172,8 @@ window.HirisConstructions = (function () {
     applicata: 'badge-on',
     disdetta: 'badge-off',
     rifiutata: 'badge-err',
-    scaduta: 'badge-warn'
+    scaduta: 'badge-warn',
+    incerta: 'badge-warn'
   };
 
   var DOMAIN_NAME = { automation: 'Automazione', script: 'Script', scene: 'Scena' };
@@ -366,6 +373,12 @@ window.HirisConstructions = (function () {
 
   /* guida §7: il testo del confirm() composto solo da campi reali. */
   function restoreMessage(c) {
+    if (c.stato === 'incerta') {
+      return 'Non so se la modifica del ' + fmtData(c.creata_ts) + ' sia arrivata. ' +
+        'Se è arrivata rimetto ' + objectArticle(c) + ' «' + objectName(c) +
+        '» com’era prima, e le modifiche fatte dopo vengono sovrascritte; ' +
+        'se non lo è, non scrivo niente. Procedo?';
+    }
     return 'Rimetto ' + objectArticle(c) + ' «' + objectName(c) + '» com’era il ' +
       fmtData(c.creata_ts) + '. Le modifiche fatte dopo vengono sovrascritte. Procedo?';
   }
@@ -962,7 +975,7 @@ window.HirisConstructions = (function () {
       actions.appendChild(bConfirm);
       actions.appendChild(bReject);
     }
-    if (c.stato === 'applicata') {
+    if (c.stato === 'applicata' || c.stato === 'incerta') {
       actions.appendChild(actionButton('restore', 'Rimetti com’era',
         'btn btn-ghost btn-ghost-danger', c, statusEl, reload));
     }

@@ -1143,15 +1143,35 @@ class Workshop:
         **Se dopo quella costruzione l'oggetto e' cambiato ancora, non si
         rimette niente**: il «prima» di questa proposta e' il `dopo` di allora,
         e `apply` lo confronta con la casa (`_changed_since`, S-17).
+
+        **Anche un'`incerta` si rimette** (G83-2, giro 83, 07/10/2026): la
+        riga si tiene perche' puo' portare l'unico «prima» rimasto, e un dato
+        che nessuno puo' chiedere non esiste (fondamenta 4). Prima si guarda
+        la casa: se e' gia' com'era prima, la scrittura non era arrivata e non
+        c'e' niente da rimettere -- senza questa domanda la conferma direbbe
+        «e' cambiato da quando te l'ho proposto», che e' falso. Altrimenti si
+        rimette come per un'`applicata`, e se la casa non ha nemmeno il `dopo`
+        di allora la conferma rifiuta come sempre.
         """
+        # Locale: `revisions` importa gia' questo modulo.
+        from .revisions import UNCERTAIN
+
         row = self._store.read(construction_id, now=now)
         if row is None:
             return refused(unknown_id_text("nessuna costruzione"))
-        if row["stato"] != "applicata":
+        if row["stato"] not in ("applicata", UNCERTAIN):
             return refused("quella costruzione non e' mai stata applicata: "
                            "non c’e' niente da rimettere.")
         prima = row["prima"]
         domain, key = row["dominio"], row["chiave"]
+        uncertain = row["stato"] == UNCERTAIN
+        if uncertain:
+            loaded = await self._read_now(domain, key)
+            if (loaded.get("assente") and prima is None) or (
+                    "corpo" in loaded and loaded["corpo"] == prima):
+                return refused(f"la scrittura del {self._data(row['creata_ts'])} "
+                               f"non era arrivata: {domain}.{key} e' gia' com’era "
+                               "prima, non c’e' niente da rimettere.")
         if prima is None:
             # Ripristinare una CREAZIONE significa cancellare cio' che e' nato.
             intent_operation, dopo = "cancella", None
@@ -1162,6 +1182,11 @@ class Workshop:
                 return refused(f"non posso rimettere com’era: {reason}")
         preview = (f"Rimetto l’oggetto {domain}.{key} com’era prima "
                      f"del {self._data(row['creata_ts'])}.")
+        if uncertain:
+            preview = ("Non sapevo se la scrittura del "
+                       f"{self._data(row['creata_ts'])} fosse arrivata: "
+                       f"{domain}.{key} non e' piu' com’era prima, quindi "
+                       "rimetto il prima.")
         proposal = self._store.propose(
             operation=intent_operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=f"ripristino di {construction_id}", prima=row["dopo"],

@@ -161,13 +161,46 @@ test('una riga «disdetta» col vecchio motivo (righe scritte prima del 26/09/20
     'vecchio e nuovo motivo devono avere la stessa faccia: sono entrambi un no, non un fallimento');
 });
 
-test('solo le costruzioni applicate offrono il ripristino', async () => {
+test('solo le costruzioni applicate o incerte offrono il ripristino', async () => {
   const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
       chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   assert.equal(dom.window.document.querySelectorAll('[data-azione="restore"]').length, 0);
+});
+
+test('una costruzione «incerta» ha la sua faccia di avviso e si può rimettere', async () => {
+  // G83-2 (giro 83, 07/10/2026). Fino a questo giro la pagina non conosceva
+  // lo stato: la riga usciva con la parola grezza e il badge neutro di
+  // `in_attesa`, cioe' senza avviso, e senza il ripristino che il server
+  // ora ammette. Etichetta e badge vengono dallo stile degli stati che ci
+  // sono gia' (l'ambra di `scaduta`): il passaggio da ux-ui-specialist
+  // MANCA, ed e' dichiarato nel commento di testa della pagina.
+  const { dom } = montaCon({ constructions: [
+    { id: 'i1', stato: 'incerta', gesto: 'modifica', dominio: 'automation',
+      chiave: '1771', anteprima: '', prima: { alias: 'Luci' }, dopo: { alias: 'Luci' },
+      creata_ts: 1790000000,
+      motivo: 'Home Assistant non ha risposto alla scrittura' },
+  ] });
+  let chiesto = null;
+  dom.window.confirm = (testo) => { chiesto = testo; return false; };
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const riga = dom.window.document.querySelector('.construction');
+  assert.doesNotMatch(riga.textContent, /incerta/, 'lo stato interno non esce grezzo');
+  assert.match(riga.textContent, /Esito incerto/);
+  // Il badge dello STATO, cercato per il suo testo: anche quello del gesto
+  // («modifica») e' un `.agent-badge`, e da solo renderebbe la prova cieca
+  // (mutazione ESEGUITA il 07/10/2026: `badge-off` per `incerta` restava
+  // verde finche' si cercava un `.badge-warn` qualunque nella riga).
+  const stato = [...riga.querySelectorAll('.agent-badge')]
+    .filter((b) => b.textContent === 'Esito incerto');
+  assert.equal(stato.length, 1);
+  assert.ok(stato[0].classList.contains('badge-warn'), 'un avviso, non la faccia neutra');
+  const rimetti = riga.querySelector('[data-azione="restore"]');
+  assert.ok(rimetti, 'il ripristino c’è anche per un’incerta');
+  rimetti.click();
+  assert.match(chiesto, /Non so se la modifica del .* sia arrivata/);
 });
 
 test('una scena mostra il conteggio e gli entity_id anche se `entities` è un dizionario', async () => {
