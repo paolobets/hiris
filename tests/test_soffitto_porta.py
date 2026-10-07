@@ -58,12 +58,12 @@ class _Officina:
                     confirm_phrase=None, thread=None):
         self.applicate.append((ident, actor))
         self.soggetti.append(subject)
-        return {"applicata": ident}
+        return {"eseguito": True}
 
     async def restore(self, ident, *, actor, exchange, now, subject=None):
         self.applicate.append((ident, actor))
         self.soggetti.append(subject)
-        return {"ripristinata": ident}
+        return {"eseguito": True}
 
 
 class _Archivio:
@@ -221,7 +221,7 @@ class _OfficinaContata:
     async def apply(self, ident, *, actor, exchange, now, subject=None,
                     confirm_phrase=None, thread=None):
         self.applicate.append(ident)
-        return {"applicata": ident}
+        return {"eseguito": True}
 
 
 def _dispatcher(officina, soffitto):

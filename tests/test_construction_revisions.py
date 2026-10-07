@@ -4,7 +4,11 @@ import sqlite3
 
 import pytest
 
-from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.action.construction.revisions import (
+    REASON_RESTARTED,
+    UNCERTAIN,
+    ConstructionStore,
+)
 from hiris.app.chat_thread import ChatThread
 
 ADESSO = 1_756_000_000.0
@@ -51,11 +55,68 @@ def test_applicare_scrive_lo_stato_e_il_collegamento_alla_cronaca(archivio):
     assert riga["esecuzione_id"] == "abc123"
 
 
-def test_rifiutare_conserva_il_motivo(archivio):
+def test_rifiutare_cita_la_cronaca_senza_copiarne_il_motivo(archivio):
+    """D-26 (Tappa 7, Task 3, 07/10/2026): il motivo di un tentativo vive
+    nella cronaca, e la riga la cita per `esecuzione_id` invece di copiarne
+    il testo. Fino a quel giorno la stessa frase stava in due archivi.
+
+    Mutazione ESEGUITA (07/10/2026): `mark_rejected` che passa `None` al
+    posto di `execution_id` a `_change_state` -- rossa su
+    `esecuzione_id == 'e9'` (`None != 'e9'`); ripristinata e verificata col
+    confronto del file."""
     ident = _proponi(archivio)["id"]
-    archivio.mark_rejected(ident, now=ADESSO + 5, reason="l'utente ha detto di no")
-    assert archivio.read(ident, now=ADESSO)["stato"] == "rifiutata"
-    assert "no" in archivio.read(ident, now=ADESSO)["motivo"]
+    archivio.mark_rejected(ident, now=ADESSO + 5, execution_id="e9")
+    riga = archivio.read(ident, now=ADESSO)
+    assert riga["stato"] == "rifiutata"
+    assert riga["esecuzione_id"] == "e9"
+    assert riga["motivo"] is None
+
+
+def test_una_riga_incerta_sopravvive_alla_potatura(archivio):
+    """E-11, D3a: di una scrittura che forse e' arrivata, il «prima» puo'
+    essere l'unica copia rimasta al mondo -- come per l'ultima applicata.
+
+    Mutazione ESEGUITA (07/10/2026): in `_prune` `AND stato != ?` sostituito
+    da `AND ? IS NOT NULL` (il filtro cade, il parametro resta) -- rossa su
+    «la riga incerta e' stata potata»; ripristinata e verificata col
+    confronto del file."""
+    incerta = _proponi(archivio, operation="modifica", prima={"alias": "a"},
+                       dopo={"alias": "b"})["id"]
+    archivio.claim(incerta, now=ADESSO + 1)
+    archivio.mark_uncertain(incerta, now=ADESSO + 2, execution_id="e1")
+    tardi = ADESSO + ConstructionStore.RETENTION_S + 86400
+    with archivio._lock:
+        archivio._prune(tardi)
+    riga = archivio.read(incerta, now=ADESSO)
+    assert riga is not None, "la riga incerta e' stata potata"
+    assert riga["stato"] == UNCERTAIN
+
+
+def test_la_migrazione_v6_porta_a_incerta_solo_le_risanate(tmp_path):
+    """Le righe che `risana` chiudeva `rifiutata` col motivo del riavvio
+    passano a `incerta`; una `rifiutata` con un altro motivo resta com'e'.
+
+    Mutazione ESEGUITA (07/10/2026): in `_migration_6` `AND motivo=?`
+    sostituito da `AND ? IS NOT NULL` -- rossa su `r2` diventata `incerta`;
+    ripristinata e verificata col confronto del file."""
+    db = str(tmp_path / "c.db")
+    a = ConstructionStore(db)
+    r1 = _proponi(a, key="k1")["id"]
+    r2 = _proponi(a, key="k2")["id"]
+    a.close()
+    c = sqlite3.connect(db)
+    c.execute("UPDATE costruzioni SET stato='rifiutata', motivo=? WHERE id=?",
+              (REASON_RESTARTED, r1))
+    c.execute("UPDATE costruzioni SET stato='rifiutata', motivo=? WHERE id=?",
+              ("Home Assistant ha detto di no", r2))
+    c.execute("PRAGMA user_version=5")
+    c.commit()
+    c.close()
+
+    a = ConstructionStore(db)
+    assert a.read(r1, now=ADESSO)["stato"] == UNCERTAIN
+    assert a.read(r2, now=ADESSO)["stato"] == "rifiutata"
+    a.close()
 
 
 def test_oltre_il_tetto_non_si_propone_e_il_rifiuto_dice_quante(archivio):
@@ -194,7 +255,8 @@ def test_una_rivendicata_al_riavvio_si_risana_e_non_riparte(archivio):
 
     assert quante == 1
     riga = archivio.read(ident, now=ADESSO)
-    assert riga["stato"] == "rifiutata"
+    # `incerta` dal 07/10/2026 (E-11): non si sa se la scrittura sia arrivata.
+    assert riga["stato"] == UNCERTAIN
     assert "riavviato" in riga["motivo"]
     # Non riparte: dopo `risana` non e' piu' rivendicabile ne' scaduta.
     assert "errore" in archivio.claim(ident, now=ADESSO + 200)

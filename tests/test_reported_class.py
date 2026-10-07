@@ -116,9 +116,16 @@ def test_lo_specchio_tiene_gli_attributi_del_meteo():
 def test_l_impronta_di_esegui_porta_l_unita():
     """«adesso e' a 21, in stanza ci sono 69.8» senza scala e' un numero, non
     un fatto -- e il modello non puo' dedurla, perche' il nucleo gli vieta di
-    applicare l'unita' della casa a una singola entita'."""
+    applicare l'unita' della casa a una singola entita'.
+
+    **Con le parole della resa** (C-64, Tappa 7, Task 2, 07/10/2026): `stato`
+    e `unita`, come ogni altra porta che racconta un'entita' al modello, non
+    `state` e `unit`. Mutazione eseguita il 07/10/2026: in `_fingerprint`
+    rimesso `{"state": entry.get("state")}` -> rossa su `{'state': '17.5',
+    'unita': '°C'} == {'stato': '17.5', ...}`; ripristinata, e la riga
+    `{"stato": ...}` di nuovo nel sorgente."""
     from hiris.app.action.actuator import _fingerprint
     impronta = _fingerprint(
         {"id": "sensor.esterno", "state": "17.5", "unit": "°C"})
-    assert impronta["unit"] == "°C"
-    assert _fingerprint({"id": "x", "state": "on", "unit": ""}) == {"state": "on"}
+    assert impronta == {"stato": "17.5", "unita": "°C"}
+    assert _fingerprint({"id": "x", "state": "on", "unit": ""}) == {"stato": "on"}

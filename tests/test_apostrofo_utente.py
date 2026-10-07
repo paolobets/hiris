@@ -62,7 +62,7 @@ handler, lettura del frontend che la mostra) prima di dichiararli.
   che e' un log), `action/actuator.py` (`_BLIND_MIRROR`, `_NO_TARGET_
   RESOLVER`, `_not_seen`, `_CHANGED_NOT_SHOWABLE`, `_NO_STATE_TO_REREAD`, e
   il log di `_open_listen` -- **non** il resto del file: `_states`,
-  `_preview`, `_record`, `_no_change`, l'esecuzione vera e propria, che sono
+  `_target_report`, `_record`, `_no_change`, l'esecuzione vera e propria, che sono
   log o campi della cronaca che la pagina non rende).
 
 **Rilievo R2 della revisione indipendente (07/09), chiuso.** Il confine
@@ -71,7 +71,7 @@ stringhe della sua cronaca (`errore`/`avviso`) uscivano verbatim su Impegni
 («Cosa e' cambiato», `agenda-route.js:228,238`) e come `motivo` di un `fai`
 fallito (`agenda-route.js:259`). Corrette le sei elisioni, e allargato
 `SORVEGLIATO` alle funzioni che le portano davvero -- **non** a tutto il
-file: `_states`/`_preview`/`_record`/`_no_change`/l'esecuzione restano
+file: `_states`/`_target_report`/`_record`/`_no_change`/l'esecuzione restano
 fuori, log e campi che la pagina non rende. Riscansionate le 189 stringhe
 fuori registro degli altri 31 file (stessa regex, fuori da `SORVEGLIATO`):
 sono log con segnaposto (`%s`/`%r`/`%d`), prompt di sistema, o `{"errore":
@@ -236,8 +236,21 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
         *corpo("action/construction/workshop.py", "apply"),
         *corpo("action/construction/workshop.py", "restore"),
         *corpo("action/construction/workshop.py", "_translate_rejection"),
+        # Il dubbio dopo la scrittura e l'entita' non comparsa (E-11, A-15,
+        # 07/10/2026): frasi che arrivano in chat e, dalla cronaca, sulla
+        # pagina Costruzioni come `motivo`.
+        *corpo("action/construction/workshop.py", "_uncertain"),
+        *corpo("action/construction/workshop.py", "_reread"),
     ),
-    "action/construction/revisions.py": ((254, 255),),     # risana (solo `reason`)
+    # `risana`: il suo motivo e' la costante `REASON_RESTARTED` (Tappa 7,
+    # Task 3, 07/10/2026). Fino a quel giorno qui c'era l'intervallo fisso
+    # (254, 255), che guardava ormai le righe di `_row`: cieco. Mutazione
+    # ESEGUITA (07/10/2026): «l’add-on» scritto con l'apostrofo dritto nella
+    # costante -- rossa su `revisions.py:87`; ripristinata.
+    "action/construction/revisions.py": (
+        *ancora("action/construction/revisions.py",
+                "REASON_RESTARTED = (", quante=2),
+    ),
     # **Si ANCORA, non si conta** (22/09/2026, seconda volta in un giorno).
     #
     # Qui c'erano due numeri di riga, e due volte nello stesso giorno sono
@@ -286,7 +299,7 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # stringhe della cronaca (`errore`/`avviso`) escono verbatim su Impegni
     # («Cosa e' cambiato», `agenda-route.js:228,238`) e come `motivo` di un
     # `fai` fallito (`agenda-route.js:259`, che legge `esito.errore`). Le
-    # altre funzioni del file (`_states`, `_preview`, `_record`, l'esecuzione
+    # altre funzioni del file (`_states`, `_target_report`, `_record`, l'esecuzione
     # vera e propria) restano fuori: sono log, o campi che la cronaca porta
     # ma la pagina non rende (`entity_before`/`entity_after`).
     # Intervalli rinumerati il 07/09/2026 (fetta dell'eredita' degli

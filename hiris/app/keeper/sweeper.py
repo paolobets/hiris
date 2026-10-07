@@ -195,7 +195,7 @@ class Sweeper:
             # chi legge l'esito non deve andare a contare.
             #
             # Il numero di adesso viene dal `bersaglio` che la porta scrive
-            # gia' nell'esito (`actuator._preview`): non si risolve una seconda
+            # gia' nell'esito (`actuator._target_report`): non si risolve una seconda
             # volta. E si confronta **lo stesso numero** contato alla nascita
             # (`tools._count_target`): `risolte`, cio' che il bersaglio COPRE --
             # non `toccate`, che toglie cio' che il servizio non tocca e su

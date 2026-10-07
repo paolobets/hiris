@@ -2289,13 +2289,6 @@ class ToolDispatcher:
             # Task 7, spec §5: «confirm e' del filo». Il filo di QUESTO
             # turno, non quello della proposta -- l'officina confronta i due.
             thread=self._thread)
-        # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
-        # `_rete`) -- `handlers_constructions.py` lo toglie gia' sul percorso
-        # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal
-        # corpo). Qui, sul percorso chat, questo dizionario va DIRETTO al
-        # modello: senza questa riga il flag ci arrivava integro, e «interno»
-        # sarebbe stato vero da una sola delle due porte.
-        occurrence.pop("guasto_rete", None)
         # Come dopo `execute`: una configurazione applicata cambia la casa,
         # e la casa di questo turno si rilegge alla prossima domanda.
         self._house = None

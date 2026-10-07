@@ -74,6 +74,27 @@ def test_uno_slug_che_si_svuota_non_diventa_stringa_vuota():
     """Un alias fatto solo di punteggiatura non puo' produrre una chiave vuota:
     finirebbe in un URL come `/api/config/script/config/` -- un'altra rotta."""
     assert available_slug("!!!", set()) != ""
+    assert available_slug("", set()) != ""
+
+
+def test_lo_slug_e_quello_unico_piu_suffisso():
+    """B-21 (Tappa 7, Task 3, 07/10/2026): lo slug delle chiavi di script e'
+    `reference.slugify`, la replica di quello di Home Assistant; la funzione
+    ci aggiunge solo il suffisso contro le collisioni. Sul testo che si
+    svuota da' `unknown` come HA, non piu' `script_hiris`.
+
+    Mutazioni ESEGUITE (07/10/2026), una per volta: `reading = slugify(base)
+    or "script_hiris"` (il vecchio ripiego al posto di `NO_SLUG`) -- rossa su
+    `"!!!"` (`script_hiris` contro `unknown`); la vecchia regex
+    (`[^a-z0-9_]+`) al posto di `slugify` -- rossa su `"a__b"` (`a__b`
+    contro `a_b`). Ripristinate e verificate col confronto del file."""
+    from hiris.app.home_space.reference import NO_SLUG, slugify
+
+    assert available_slug("!!!", set()) == NO_SLUG
+    assert available_slug("", set()) == NO_SLUG
+    for testo in ("Buona notte!", "a__b", "Perché  la Città?"):
+        assert available_slug(testo, set()) == slugify(testo)
+    assert available_slug("!!!", {NO_SLUG}) == f"{NO_SLUG}_2"
 
 
 def test_da_validare_manda_i_tre_pezzi_dell_automazione():

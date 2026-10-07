@@ -269,9 +269,9 @@ def truncate_with_marker(text, cap: int) -> str:
     cap 300 per il messaggio di un guasto di rete verso Home Assistant, due
     delle quattro superfici in cui finisce sono permanenti nella cronaca
     SQLite) -- unificata qui nello stesso giro (M1, terzo giro,
-    correzioni-minori.md). Quel modulo tiene il proprio cap come costante
-    locale (`_NETWORK_ERROR_CAP`, una sua scelta) e importa solo l'algoritmo,
-    come `ha_client.py`.
+    correzioni-minori.md). Dal 07/10/2026 (Tappa 7, Task 2) quel modulo non
+    tiene piu' un taglio suo: il guasto di trasporto e' la busta del silenzio
+    del client (`ha_client._silence`), col taglio del client.
 
     Il risultato non supera mai `cap`, marcatore incluso nel conteggio. Se
     `cap` e' cosi' piccolo da non poter ospitare il marcatore si taglia e

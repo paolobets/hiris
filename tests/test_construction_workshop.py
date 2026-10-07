@@ -14,9 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import SILENT, CasaFinta, Refused, Silence
 
 from hiris.app.action.construction import workshop as officina_modulo
-from hiris.app.action.construction.revisions import ConstructionStore
-from hiris.app.action.construction.workshop import Workshop
+from hiris.app.action.construction.revisions import UNCERTAIN, ConstructionStore
+from hiris.app.action.construction.workshop import Workshop, _entity_platform
 from hiris.app.action.journal import Journal
+from hiris.app.action.write_outcome import silent
 from hiris.app.chat_thread import ChatThread
 from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
@@ -100,15 +101,21 @@ class WorkshopHouse:
             override.get("helper_ids") or {})
         self.registro_entita: list[dict] = [
             dict(v) for v in (override.get("registro_entita") or [])]
-        self.stati = [{"entity_id": "automation.tapparelle_all_alba",
-                       "state": "on", "attributes": {"id": "1771"}}]
+        # Se l'oggetto scritto compare nel registro delle entita' (A-15): un
+        # test che vuole «l'entita' non compare mai» lo spegne.
+        self.entita_compare = True
         self._solleva: set[str] = set()
+        # E-11 (Tappa 7, Task 3): `scrittura_muta` -- la scrittura ARRIVA e la
+        # risposta si perde (il caso che la rilettura deve riconoscere);
+        # `cadute_successive` -- le primitive che cadono dal primo salvataggio in
+        # poi (la rilettura che non risponde nemmeno lei).
+        self.scrittura_muta = False
+        self.cadute_successive: set[str] = set()
         answers = {
             "validate_config": self._validate,
             "/api/config/": self._read,
             "POST /api/config/": self._save,
             "DELETE /api/config/": self._delete,
-            "/api/states": lambda _path: self.stati,
             "config/entity_registry/list": self._entity_rows,
             "config/label_registry/list": lambda extra: [{"label_id": "hiris",
                                                           "name": "HIRIS"}],
@@ -152,6 +159,7 @@ class WorkshopHouse:
 
     def _save(self, path, body):
         broken = self._broken("save_configuration")
+        self._solleva |= self.cadute_successive
         if broken is not None:
             return broken
         if "salva" in self._override:
@@ -159,13 +167,24 @@ class WorkshopHouse:
         domain, key = self._parts(path)
         self.salvate.append((domain, key, body))
         self.corpi[key] = dict(body)
-        # Dopo la scrittura l'entita' esiste, e porta l'id appena scritto:
-        # senza questo Home Assistant direbbe sempre «non e' comparsa», e il
-        # test dell'etichetta misurerebbe la casa, non il codice. Quando un
-        # test svuota `stati` apposta (l'entita' che non compare mai) non c'e'
-        # nessuna voce da aggiornare.
-        if self.stati:
-            self.stati[0]["attributes"]["id"] = key
+        # Dopo la scrittura (e la ricarica) l'entita' esiste nel registro, con
+        # la chiave come `unique_id` e la piattaforma che Home Assistant le
+        # da' (`_entity_platform` dell'officina, letta nei ganci di
+        # `components/config/*.py` al tag 2026.9.4): senza questo Home
+        # Assistant direbbe sempre «non e' comparsa», e il test
+        # dell'etichetta misurerebbe la casa, non il codice. L'`entity_id`
+        # dell'automazione viene dal suo alias, come in Home Assistant; per
+        # gli altri domini basta la chiave.
+        if self.entita_compare:
+            platform = {"scene": "homeassistant"}.get(domain, domain)
+            entity_id = ("automation.tapparelle_all_alba" if domain == "automation"
+                         else f"{domain}.{key}")
+            self.registro_entita = [v for v in self.registro_entita
+                                    if (v["platform"], v["unique_id"]) != (platform, key)]
+            self.registro_entita.append({"entity_id": entity_id, "platform": platform,
+                                         "unique_id": key})
+        if self.scrittura_muta:
+            return Silence("finta risposta persa dopo la scrittura")
         return {"result": "ok"}
 
     def _delete(self, path, body):
@@ -341,7 +360,7 @@ async def test_confermare_in_un_turno_successivo_scrive_davvero(banco):
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.salvate[0][0] == "automation"
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
     riga = cronaca.read(esito["esecuzione_id"])
@@ -369,7 +388,7 @@ async def test_dalla_pagina_si_applica_sempre(banco):
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
 
 
 @pytest.mark.asyncio
@@ -406,11 +425,11 @@ async def test_un_identificatore_non_verificabile_ferma_la_proposta(banco):
 async def test_se_l_entita_non_compare_lo_dice_invece_di_dichiarare_riuscito(banco):
     """Dire cosa e' successo, non cosa e' stato chiesto (spec §2.3)."""
     officina, ha, _, cronaca = banco
-    ha.stati = []
+    ha.entita_compare = False
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert esito["avviso"]
     assert cronaca.read(esito["esecuzione_id"])["avviso"]
 
@@ -483,7 +502,7 @@ async def test_ripristinare_rimette_il_prima_passando_dalla_stessa_officina(banc
     ha.salvate.clear()
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
                                       now=ADESSO + 120)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.salvate[0][2]["alias"] == "com'era"
 
 
@@ -731,7 +750,7 @@ async def test_ripristinare_dalla_chat_e_un_giro_in_due_tempi(banco):
     assert ha.salvate == []
     esito2 = await officina.apply(esito["proposta_id"], actor="chat", exchange="t4",
                                     now=ADESSO + 180)
-    assert esito2["applicata"] is True
+    assert esito2["eseguito"] is True
     assert ha.salvate[0][2]["alias"] == "com'era"
 
 
@@ -800,7 +819,7 @@ async def test_cancellare_chiama_cancella_configurazione_con_la_chiave_giusta(ba
                                actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.cancellate == [("automation", "1771")]
 
 
@@ -815,7 +834,7 @@ async def test_ripristinare_una_creazione_la_cancella(banco):
     chiave_nata = ha.salvate[0][1]
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
                                       now=ADESSO + 120)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.cancellate == [("automation", chiave_nata)]
 
 
@@ -865,10 +884,11 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
 
 
 @pytest.mark.asyncio
-async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco):
+async def test_guasto_rete_durante_applica_causa_silenzio(banco):
     """Punto 7 (terza pulizia): `_act` (handlers_constructions.py) deve poter
     distinguere un guasto di TRASPORTO da un rifiuto vero di Home Assistant,
-    per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
+    per rispondere 503 e non 409 -- la causa che questo test pinna (la busta
+    del silenzio, non piu' un flag)."""
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     ha._solleva.add("save_configuration")
@@ -876,7 +896,7 @@ async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
 
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
 
 
 @pytest.mark.asyncio
@@ -892,8 +912,171 @@ async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
                                    now=ADESSO + 60)
 
     assert "errore" in esito
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
+
+
+@pytest.mark.asyncio
+async def test_scrittura_arrivata_senza_risposta_applicata(banco):
+    """E-11, D3a: un silenzio della scrittura non vale «non scritto». Home
+    Assistant scrive sotto lock e in modo atomico (`config/view.py`, tag
+    2026.9.4): se rileggendo l'oggetto la scrittura c'e', e' arrivata.
+
+    Mutazione ESEGUITA (07/10/2026): in `apply` `if arrived:` sostituito da
+    `if False:` (l'arrivata cade nel ramo «non arrivata») -- rossa su
+    `esito["eseguito"] is True` (era False, causa silenzio); ripristinata e
+    verificata col confronto del file."""
+    officina, ha, archivio, cronaca = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    ha.scrittura_muta = True
+
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 now=ADESSO + 60)
+
+    assert esito["eseguito"] is True
+    assert "e' arrivata" in esito["avviso"]
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
+    assert cronaca.read(esito["esecuzione_id"])["eseguito"] is True
+
+
+@pytest.mark.asyncio
+async def test_rilettura_muta_lascia_incerta_e_non_disfa(banco):
+    """E-11, D3a: se dopo il silenzio nemmeno la rilettura risponde, non si
+    sa. La riga diventa `incerta` e gli helper nati restano -- toglierli
+    romperebbe un oggetto che forse e' vivo. La causa resta il silenzio
+    (la pagina risponde 503).
+
+    Mutazione ESEGUITA (07/10/2026): in `apply` il ramo `if arrived is
+    None:` tolto (il dubbio cade nel ramo «non arrivata») -- rossa su
+    `ha.helper_cancellati == []` (l'helper era stato disfatto) e sullo
+    stato `rifiutata`; ripristinata e verificata col confronto del file."""
+    officina, ha, archivio, cronaca = banco
+    intento = _intento(helper=[{"dominio": "input_boolean",
+                                "dati": {"name": "Modalita notte"}}])
+    p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
+    ha._override["salva"] = SILENT
+    ha.cadute_successive = {"read_configuration"}
+
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 now=ADESSO + 60)
+
+    assert esito["eseguito"] is False
+    assert silent(esito)
+    assert "non so se e' arrivata" in esito["errore"]
+    assert "input_boolean.modalita_notte" in esito["errore"]
+    assert ha.helper_cancellati == []
+    riga = archivio.read(p["proposta_id"], now=ADESSO)
+    assert riga["stato"] == UNCERTAIN
+    assert riga["esecuzione_id"] == esito["esecuzione_id"]
+    assert cronaca.read(esito["esecuzione_id"])["errore"] == esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_scrittura_muta_non_arrivata_rifiutata(banco):
+    """Il terzo caso del dubbio: silenzio, e rileggendo la scrittura non
+    c'e'. Allora non e' arrivata: si disfa come per un rifiuto, e la causa
+    resta il silenzio.
+
+    Mutazione ESEGUITA (07/10/2026): `_arrived` che per un oggetto assente
+    rende `True` invece di `proposal["gesto"] == "cancella"` -- rossa su
+    `esito["eseguito"] is False`; ripristinata e verificata col
+    confronto del file."""
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    ha._override["salva"] = SILENT
+
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 now=ADESSO + 60)
+
+    assert esito["eseguito"] is False
+    assert silent(esito)
+    assert "non e' arrivata" in esito["errore"]
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
+
+
+@pytest.mark.asyncio
+async def test_il_no_non_tocca_home_assistant(banco):
+    """`Workshop.reject` (E-12): il no passa dalla porta del canale e chiude
+    la proposta `disdetta`, senza scrivere niente in casa.
+
+    Mutazione ESEGUITA (07/10/2026): `reject` che chiama
+    `self._store.mark_rejected(proposal_id, now=now, execution_id=None)` --
+    rossa su `stato == "disdetta"` (era `rifiutata`); ripristinata e
+    verificata col confronto del file."""
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+
+    esito = officina.reject(p["proposta_id"], now=ADESSO + 60)
+
+    assert esito == {"id": p["proposta_id"], "stato": "disdetta"}
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "disdetta"
+    assert ha.salvate == [] and ha.cancellate == []
+
+
+@pytest.mark.asyncio
+async def test_helper_dominio_ignoto_rifiutato_subito(banco):
+    """E-12: il dominio di un helper si valida ALLA PROPOSTA, contro
+    `HAClient.HELPER_DOMAINS`. Fino al 07/10/2026 passava, e cadeva solo
+    dopo il si', con l'oggetto gia' rivendicato.
+
+    Mutazione ESEGUITA (07/10/2026): in `form_refusal` il controllo sul
+    dominio dell'helper tolto -- rossa su `"proposta_id" not in esito`;
+    ripristinata e verificata col confronto del file."""
+    officina, _ha, archivio, _ = banco
+    intento = _intento(helper=[{"dominio": "input_banana", "dati": {"name": "X"}}])
+
+    esito = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
+
+    assert "proposta_id" not in esito
+    assert "input_banana" in esito["errore"]
+    assert "input_boolean" in esito["errore"], "il rifiuto dice cosa si puo'"
+    assert archivio.list(now=ADESSO) == []
+
+
+@pytest.mark.asyncio
+async def test_scena_letta_registro_piattaforma_homeassistant(banco):
+    """A-15: l'entita' nata si legge dal registro per `(platform,
+    unique_id)`, e la piattaforma di una scena e' `homeassistant`, non
+    `scene` (ganci di `components/config/scene.py`, tag 2026.9.4).
+
+    Mutazione ESEGUITA (07/10/2026): `_PLATFORM_NOT_DOMAIN = {"scene": "scene"}`
+    -- rossa su `esito["entita"]` (lista vuota, avviso «non e' ancora
+    comparsa»); ripristinata e verificata col confronto del file."""
+    officina, ha, _archivio, _ = banco
+    p = await officina.propose(
+        _intento(dominio="scene", innesco=[], azioni=[], richiesto="scena",
+                 stati=[{"entity_id": "light.salotto", "state": "on"}]),
+        actor="chat", exchange="t1", now=ADESSO)
+    assert "proposta_id" in p, p
+
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 now=ADESSO + 60)
+
+    (salvata,) = ha.salvate
+    assert esito["entita"] == [f"scene.{salvata[1]}"]
+    assert esito["avviso"] is None
+
+
+#: La piattaforma dell'entita' di ogni dominio costruibile, come la cercano
+#: i ganci di cancellazione di `components/config/{automation,script,
+#: scene}.py` al tag 2026.9.4 (letti il 07/10/2026). L'elenco E' il fatto, e
+#: vive in Home Assistant: non c'e' una fonte nostra da interrogare.
+_PIATTAFORME_HA = {"automation": "automation", "script": "script",
+                   "scene": "homeassistant"}
+
+
+def test_piattaforme_coprono_domini_configurabili():
+    """Ogni dominio che il client sa scrivere ha la piattaforma che Home
+    Assistant gli da': un dominio nuovo in `HAClient.CONFIGURABLE_DOMAINS`
+    arrossisce qui finche' qualcuno non legge la sua nel sorgente.
+
+    Mutazioni ESEGUITE (07/10/2026), una per volta: `"switch"` aggiunto a
+    `CONFIGURABLE_DOMAINS` -- rossa sull'insieme; `_PLATFORM_NOT_DOMAIN`
+    vuoto -- rossa su `scene`. Ripristinate e verificate col confronto del
+    file."""
+    assert set(_PIATTAFORME_HA) == set(HAClient.CONFIGURABLE_DOMAINS)
+    for dominio in HAClient.CONFIGURABLE_DOMAINS:
+        assert _entity_platform(dominio) == _PIATTAFORME_HA[dominio], dominio
 
 
 @pytest.mark.asyncio
@@ -1001,7 +1184,7 @@ async def test_l_etichetta_va_sull_entita_LETTA_non_su_quella_supposta(tmp_path)
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata") is True
+    assert esito.get("eseguito") is True
     # I due identificatori sono davvero diversi: senza questo, la prova
     # tornerebbe a misurare un caso in cui coincidono.
     assert ha.helper_creati and ha.helper_ids["input_boolean"] == ["vacanza", "vacanza_2"]
@@ -1030,8 +1213,11 @@ async def test_l_etichetta_di_ogni_helper_nato_va_sulla_SUA_entita(tmp_path):
 
     await officina.apply(p["proposta_id"], actor="chat", exchange="t2", now=ADESSO + 60)
 
+    # Solo gli HELPER: dal 07/10/2026 anche l'automazione scritta ha la sua
+    # voce nel registro della casa finta (A-15).
     nati = [(v["platform"], v["unique_id"]) for v in ha.registro_entita
-            if (v["platform"], v["unique_id"]) not in
+            if v["platform"] in HAClient.HELPER_DOMAINS
+            and (v["platform"], v["unique_id"]) not in
             (("input_boolean", "vacanza"), ("counter", "giri"))]
     attese = {v["entity_id"] for v in ha.registro_entita
               if (v["platform"], v["unique_id"]) in nati}
@@ -1063,12 +1249,13 @@ async def test_se_il_registro_non_risponde_l_etichetta_MANCATA_si_dichiara(tmp_p
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                  now=ADESSO + 60)
 
-    assert esito.get("applicata") is True
-    # L'automazione, letta da `_reread`, l'etichetta la prende: e' un'entita'
-    # VISTA. L'helper no -- nessuno ha confermato il suo identificatore.
-    assert ("automation.tapparelle_all_alba", "hiris") in ha.etichettate
-    assert not [eid for eid, _ in ha.etichettate if eid.startswith("input_boolean.")], (
+    assert esito.get("eseguito") is True
+    # Dal 07/10/2026 l'oggetto e gli helper si leggono dalla STESSA lettura
+    # del registro (A-15): senza registro nessuno dei due e' un'entita' vista,
+    # e nessuna etichetta va su un id che nessuno ha confermato.
+    assert ha.etichettate == [], (
         "nessuna etichetta su un id che nessuno ha confermato")
+    assert "registro delle entita'" in (esito.get("avviso") or "")
     assert "input_boolean.modalita_notte" in (esito.get("avviso") or "")
     assert "etichetta HIRIS" in esito["avviso"]
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
@@ -1125,7 +1312,7 @@ async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
 # Oggi i quattro siti che chiamano `read_configuration`/
 # `save_configuration`/`delete_configuration` sono tutti avvolti in
 # `self._rete(...)`: e' cio' che trasforma un guasto di TRASPORTO in
-# `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire come
+# la busta del silenzio del client invece di lasciarlo risalire come
 # eccezione fuori dall'officina (il modulo dichiara "non solleva mai"). Ma
 # oggi questo e' solo disciplina -- nessun test lo garantisce -- e un quinto
 # sito aggiunto domani senza l'involucro riaprirebbe il difetto IN SILENZIO,
@@ -1228,7 +1415,7 @@ def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
         f"primitive REST chiamate fuori da self._rete(...): {nude}. Un "
         "guasto di trasporto in quel punto risalirebbe come eccezione fuori "
         "dall'officina, invece di diventare "
-        "{'errore': ..., 'guasto_rete': True} come ovunque altrove.")
+        "la busta del silenzio, come ovunque altrove.")
 
 
 # ---------------------------------------------------------------------------
@@ -1252,7 +1439,7 @@ async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(ban
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
 
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
     assert "non ha risposto" in esito["errore"]
     assert "gestite a mano" not in esito["errore"]
 
@@ -1427,7 +1614,7 @@ async def test_nel_proprio_filo_si_conferma_come_prima(banco):
     esito = await officina.apply(None, actor="chat", exchange="t2",
                                  thread=PAOLO, now=ADESSO + 60)
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert ha.salvate
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
 
@@ -1441,7 +1628,7 @@ async def test_una_proposta_senza_filo_resta_confermabile_per_id_da_chiunque(ban
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                  thread=MARTA, now=ADESSO + 60)
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
 
 
 @pytest.mark.asyncio
@@ -1476,7 +1663,7 @@ async def test_thread_assente_non_restringe_come_la_pagina(banco):
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
 
 
@@ -1496,7 +1683,7 @@ async def test_ripristinare_dalla_pagina_di_una_proposta_nata_con_filo_non_si_re
                                    now=ADESSO + 120)
 
     assert "errore" not in esito
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
 
 
 @pytest.mark.asyncio
@@ -1589,7 +1776,7 @@ async def test_se_la_rilettura_non_risponde_non_si_scrive_e_si_dice_guasto(banco
     ha._solleva.add("read_configuration")
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
-    assert esito.get("guasto_rete") is True
+    assert silent(esito)
     assert "cambiat" not in esito["errore"]
     assert ha.salvate == []
 
@@ -1601,7 +1788,7 @@ async def test_un_oggetto_rimasto_com_era_si_scrive_come_prima(banco):
                                actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
-    assert esito["applicata"] is True
+    assert esito["eseguito"] is True
     assert len(ha.salvate) == 1
 
 
@@ -1662,7 +1849,7 @@ async def test_ripristinare_una_cancellazione_rimette_l_oggetto(banco):
     esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
                                    now=ADESSO + 120)
 
-    assert esito.get("applicata") is True, esito
+    assert esito.get("eseguito") is True, esito
     assert ha.corpi["1771"]["alias"] == "com'era"
 
 

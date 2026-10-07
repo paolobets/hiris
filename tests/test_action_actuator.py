@@ -366,12 +366,12 @@ async def test_esegue_e_racconta_cosa_e_cambiato():
     assert _chiamate(client) == [("light", "turn_off", {"entity_id": ["light.salotto"]})]
     assert esito["servizio"] == "light.turn_off"
     assert esito["entita"] == ["light.salotto"]
-    assert esito["prima"] == {"light.salotto": {"state": "on"}}
+    assert esito["prima"] == {"light.salotto": {"stato": "on"}}
     # `supported_color_modes` viaggia nell'annuncio ed e' una capacita' che
     # Home Assistant dichiara (`LightEntityCapabilityAttribute`): dalla fetta
     # dell'eredita' l'impronta la porta invece di buttarla. E' la meta'
     # «cosa sa fare» che sopravvive anche a luce spenta.
-    assert esito["dopo"] == {"light.salotto": {"state": "off",
+    assert esito["dopo"] == {"light.salotto": {"stato": "off",
                                                "supported_color_modes": ["hs"]}}
     assert esito["cambiato"] == ["light.salotto"]
     assert "avviso" not in esito
@@ -627,8 +627,8 @@ async def test_prima_e_dopo_mostrano_la_differenza_che_cambiato_dichiara():
     registro = await _registro_pronto()
     porta = ActionActuator(client, registro, cache)
     esito = await porta.execute(METTI_A_21, actor="chat")
-    assert esito["prima"] == {"climate.salotto": {"state": "heat", "temperature": 19}}
-    assert esito["dopo"] == {"climate.salotto": {"state": "heat", "temperature": 21}}
+    assert esito["prima"] == {"climate.salotto": {"stato": "heat", "temperature": 19}}
+    assert esito["dopo"] == {"climate.salotto": {"stato": "heat", "temperature": 21}}
     for entita in esito["cambiato"]:
         assert esito["prima"][entita] != esito["dopo"][entita]
 
@@ -662,7 +662,7 @@ def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
     sparire l'attributo -- finirebbe fra i non interpretati, e l'impronta lo
     porterebbe lo stesso, che e' il guadagno di questa fetta. Cio' che lo fa
     sparire e' aggiungerlo a `_CREDENTIAL_ATTRIBUTES`, e allora questo test
-    torna rosso su `assert _fingerprint(voce) == {"state": "heat",
+    torna rosso su `assert _fingerprint(voce) == {"stato": "heat",
     "temperature": 21}`.
     """
     from hiris.app.action.actuator import _fingerprint
@@ -670,7 +670,7 @@ def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
 
     voce = _to_minimal({"entity_id": "climate.salotto", "state": "heat",
                         "attributes": {"temperature": 21, "friendly_name": "Salotto"}})
-    assert _fingerprint(voce) == {"state": "heat", "temperature": 21}, (
+    assert _fingerprint(voce) == {"stato": "heat", "temperature": 21}, (
         "l'attributo che regge «metti il termostato a 21» non arriva piu' "
         "dall'inventario alla porta: o e' finito fra le credenziali, o la "
         "voce minimale ha cambiato forma")
@@ -731,8 +731,8 @@ async def test_un_comando_riuscito_e_raccontato_come_riuscito_con_lo_specchio_in
         "la luce si e' spenta davvero e HA l'ha riportato: raccontarlo come "
         "«nulla e' cambiato» e' l'esatto opposto dell'invariante di questa "
         "fetta, ed e' il difetto misurato sulla casa vera")
-    assert esito["prima"] == {"light.salotto": {"state": "on"}}
-    assert esito["dopo"] == {"light.salotto": {"state": "off",
+    assert esito["prima"] == {"light.salotto": {"stato": "on"}}
+    assert esito["dopo"] == {"light.salotto": {"stato": "off",
                                                "supported_color_modes": ["hs"]}}
     assert "avviso" not in esito, (
         "un comando riuscito non porta avvisi: l'avviso era la meta' della "
@@ -794,7 +794,7 @@ async def test_lo_specchio_resta_il_ripiego_di_cio_di_cui_nessuno_ha_detto_nient
         actor="chat")
 
     assert esito["cambiato"] == ["light.salotto"]
-    assert esito["dopo"]["light.cucina"] == {"state": "on"}, (
+    assert esito["dopo"]["light.cucina"] == {"stato": "on"}, (
         "l'entita' di cui nessuno ha detto niente e' finita a `None`: il "
         "ripiego sullo specchio e' sparito, e con lui la distinzione fra "
         "«non e' cambiato» e «non l'ho visto»")
@@ -851,7 +851,7 @@ async def test_un_dispositivo_lento_resta_un_caso_vero():
     assert esito["eseguito"] is True
     assert esito["cambiato"] == []
     assert "ho aspettato" in esito["avviso"]
-    assert esito["dopo"] == {"light.salotto": {"state": "on"}}, (
+    assert esito["dopo"] == {"light.salotto": {"stato": "on"}}, (
         "lo stato che si e' potuto vedere va mostrato lo stesso: e' cio' che "
         "distingue «non e' ancora cambiato» da «non l'ho visto»")
 
@@ -991,8 +991,8 @@ async def test_le_luci_si_accendono_e_hiris_lo_racconta_anche_se_la_chiamata_tac
         "le luci si sono accese davvero e Home Assistant l'ha annunciato: "
         "raccontarlo come «non e' cambiato niente» e' il difetto che il "
         "proprietario ha visto tre volte")
-    assert esito["prima"] == {eid: {"state": "off"} for eid in ABAT_JOUR}
-    assert esito["dopo"] == {eid: {"state": "on", "brightness": 255,
+    assert esito["prima"] == {eid: {"stato": "off"} for eid in ABAT_JOUR}
+    assert esito["dopo"] == {eid: {"stato": "on", "brightness": 255,
                                    "supported_color_modes": ["hs"]}
                              for eid in ABAT_JOUR}
     assert "avviso" not in esito, (
@@ -1022,7 +1022,7 @@ async def test_un_annuncio_arrivato_durante_la_chiamata_non_si_perde():
     durata = time.monotonic() - inizio
 
     assert esito["cambiato"] == ["light.salotto"]
-    assert esito["dopo"] == {"light.salotto": {"state": "off",
+    assert esito["dopo"] == {"light.salotto": {"stato": "off",
                                                "supported_color_modes": ["hs"]}}
     assert "avviso" not in esito
     assert durata < porta_modulo.STATE_WAIT_S, (
