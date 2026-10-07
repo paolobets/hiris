@@ -25,7 +25,7 @@ import secrets
 import threading
 
 from ...chat_thread import ChatThread, thread_from_columns, thread_params
-from ...storage import connect, init_schema
+from ...storage import connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +304,17 @@ class ConstructionStore:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+    def rekey_subjects(self, renames: dict[str, str]) -> int:
+        """Le costruzioni dei soggetti di `renames` (chiave vecchia -> nuova)
+        passano alla chiave nuova; ritorna quante. CHI cambia chiave lo decide
+        `servizi.migrate_service_threads` (G83-3, 07/10/2026): con la chiave
+        vecchia una costruzione chiesta da un servizio perdeva il nome di chi
+        l'aveva chiesta (`soffitto.subject_name` cerca per impronta), e il
+        servizio non la ritrovava nel suo filo."""
+        with self._lock:
+            return rekey(self._conn, "UPDATE costruzioni SET subject_key = ? "
+                                     "WHERE subject_key = ?", renames)
 
     def propose(self, *, operation: str, domain: str, key: str, actor: str,
                 exchange: str | None, phrase: str | None, prima: dict | None,

@@ -17,6 +17,7 @@ import pytest_asyncio
 
 from conftest import firma, servizio_approvato
 from hiris.app import chat_store
+from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.api import canali, ingresso
 from hiris.app.api.servizi import (
     ServiziStore,
@@ -129,13 +130,14 @@ def _servizio_parlante(tmp_path) -> tuple[dict, str]:
     migrazione tocca; torna l'app e la chiave nuova del servizio."""
     app = {"servizi": ServiziStore(str(tmp_path / "servizi.db")),
            "data_dir": str(tmp_path),
-           "agenda": AgendaStore(str(tmp_path / "promesse.db"))}
+           "agenda": AgendaStore(str(tmp_path / "promesse.db")),
+           "constructions": ConstructionStore(str(tmp_path / "costruzioni.db"))}
     privata, pubblica = servizio_approvato(app, "utente", nome="cucina", specie="luogo")
     return app, subject_key_for(_riconosci(app, privata, pubblica))
 
 
 def _chiudi(app) -> None:
-    for chiave in ("servizi", "agenda"):
+    for chiave in ("servizi", "agenda", "constructions"):
         app[chiave].close()
 
 
@@ -167,6 +169,37 @@ def test_le_promesse_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
                                                            "interno")) is not None
     assert "1 promesse" in caplog.text
     assert migrate_service_threads(app)["promesse"] == 0
+    _chiudi(app)
+
+
+def test_le_costruzioni_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
+    """G83-3: con la chiave vecchia una costruzione chiesta da un servizio
+    perdeva il nome di chi l'aveva chiesta (`subject_name` cerca per
+    impronta) e non stava piu' nel suo filo. Quelle di un altro soggetto non
+    si toccano.
+
+    Mutazione ESEGUITA (07/10/2026): le costruzioni tolte dagli archivi di
+    `_service_thread_archives` -- rossa, la riga resta sotto il nome."""
+    app, nuova = _servizio_parlante(tmp_path)
+
+    def _proposta(soggetto: str) -> str:
+        return app["constructions"].propose(
+            operation="crea", domain="automation", key=soggetto.split(":")[1], actor="chat",
+            exchange="t1", phrase="x", prima=None, dopo={"alias": "x"},
+            helper=[], preview="x", stakes=None, now=T_NASCITA,
+            thread=ChatThread(soggetto, "canale"))["id"]
+
+    sua, altrui = _proposta("luogo:cucina"), _proposta("persona:u-paolo")
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.api.servizi"):
+        moved = migrate_service_threads(app)
+
+    leggi = app["constructions"].read
+    assert leggi(sua, now=T_NASCITA)["thread"].subject_key == nuova
+    assert leggi(altrui, now=T_NASCITA)["thread"].subject_key == "persona:u-paolo"
+    assert moved["costruzioni"] == 1
+    assert "1 costruzioni" in caplog.text
+    assert migrate_service_threads(app)["costruzioni"] == 0
     _chiudi(app)
 
 
