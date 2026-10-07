@@ -114,10 +114,12 @@ def unattended_refusal(level: str | None, acted_on, opaque,
     modello (`services`), o un'azione su un oggetto il cui contenuto non si
     vede (`opaque`). Finche' il codice non legge quei corpi, un oggetto che
     agisce da solo non li chiama."""
-    if level == HIGH:
-        return HIGH_UNATTENDED
+    # Il modello prima di `alto`: un servizio scritto come modello e' anche
+    # `alto` (`impose`), e il rifiuto deve dire la ragione vera.
     if any(is_template(service) for service in services):
         return TEMPLATE_UNATTENDED
+    if level == HIGH:
+        return HIGH_UNATTENDED
     if set(acted_on or ()) & set(opaque):
         return opaque_unattended(opaque)
     return None
@@ -220,11 +222,19 @@ def domains_acted_on(domain: str, *bodies, services=()) -> set[str]:
     return found
 
 
-def impose(chosen: str | None, acted_on) -> str | None:
+def impose(chosen: str | None, acted_on, services=()) -> str | None:
     """Il livello della proposta: `alto` se agisce su un dominio della lista,
-    altrimenti quello scelto dal modello. `None` quando nessuno l'ha detto e
-    il codice non ha niente da imporre: e' un fatto («non detto»), non un
-    livello inventato."""
+    o se chiama un servizio scritto come modello (`services`), altrimenti
+    quello scelto dal modello. `None` quando nessuno l'ha detto e il codice
+    non ha niente da imporre: e' un fatto («non detto»), non un livello
+    inventato.
+
+    Il servizio scritto come modello e' `alto` per scelta del proprietario
+    (07/10/2026, scheda «Sì, alto», dopo il giro di revisione 69): quale
+    servizio sia lo decide Home Assistant quando il passo gira, e potrebbe
+    essere `lock.unlock`. Chi conferma deve saperlo prima, non dopo."""
     if set(acted_on or ()) & set(HIGH_STAKES_DOMAINS):
+        return HIGH
+    if any(is_template(service) for service in services):
         return HIGH
     return chosen if chosen in CHOSEN_BY_MODEL else None

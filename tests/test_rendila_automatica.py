@@ -311,6 +311,7 @@ def test_SERVICE_TEMPLATE_e_un_servizio_e_la_serratura_si_vede():
                           "target": {"area_id": "ingresso"}}]}
     assert workshop.services_named(corpo) == ["lock.unlock"]
     assert workshop.acted_on("automation", None, corpo) == {"lock"}
+    assert workshop.stakes_of({}, "automation", None, corpo) == stakes.HIGH
 
 
 @pytest.mark.asyncio
@@ -323,11 +324,13 @@ def test_SERVICE_TEMPLATE_e_un_servizio_e_la_serratura_si_vede():
 async def test_un_servizio_SCRITTO_COME_MODELLO_non_diventa_automatico(banco, passo):
     """G69-1 (giro 69): `action: "{{ 'lock.unlock' }}"` usciva senza livello
     e passava il rifiuto. Il nome lo decide Home Assistant quando gira: con
-    `refuse_high` l'officina lo rifiuta; senza, la proposta normale passa
-    (il livello delle proposte normali e' una scelta di Paolo, non toccata).
+    `refuse_high` l'officina lo rifiuta; senza, la proposta normale passa,
+    ed e' `alto` (scelta di Paolo, 07/10/2026, scheda «Sì, alto»): chi la
+    conferma lo sa prima.
 
-    Mutazione ESEGUITA (06/10/2026): `unattended_refusal` senza il controllo
-    dei modelli -- rosse le tre."""
+    Mutazioni ESEGUITE: `unattended_refusal` senza il controllo dei modelli
+    (06/10/2026) -- rosse le tre; `impose` senza il controllo dei modelli
+    (07/10/2026) -- rosse le tre."""
     officina, _, archivio, _ = banco
     rifiutata = await officina.propose(_intento(azioni=[passo]), actor="x",
                                        exchange="t1", now=1.0, refuse_high=True)
@@ -336,6 +339,7 @@ async def test_un_servizio_SCRITTO_COME_MODELLO_non_diventa_automatico(banco, pa
 
     assert rifiutata == {"errore": stakes.TEMPLATE_UNATTENDED}
     assert "proposta_id" in passata
+    assert passata["livello"] == stakes.HIGH
     assert len(archivio.list(now=1.0, pending_only=False, limit=10)) == 1
 
 

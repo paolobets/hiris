@@ -256,7 +256,9 @@ veridicita' della soluzione»).
    `mind/automate_turn.py`), che arriva fra le costruzioni con anteprima e conferma; quando nasce,
    la proposta a mano si chiude col legame (esito `automatizzata`, «Nata da» sulla costruzione).
    Un'automazione che agisce su serrature o allarme si rifiuta dentro il turno, e cosi' una che
-   accende script, scene o automazioni o chiama un servizio scritto come modello (giri 67 e 69); su una proposta
+   accende script, scene o automazioni o chiama un servizio scritto come modello (giri 67 e 69;
+   senza leggere i corpi, «Blocca sempre», e un servizio scritto come modello e' `alto` anche
+   nelle proposte normali, «Sì, alto»: scelte di Paolo del 07/10/2026); su una proposta
    `alto` il comando non c'e'. Le tre scelte sono di Paolo, 06/10/2026. **Da misurare dal vivo:**
    il turno sul ponte (la consegna chiude col legame) e quanto resta «in preparazione». I token di
    questa specie vanno contati con quelli del proponente nelle misure di D17. «Rifalla» e «Rendila

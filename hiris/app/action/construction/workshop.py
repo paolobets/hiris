@@ -1187,8 +1187,10 @@ def stakes_of(intent: dict, domain: str, prima: dict | None,
     se il «prima» o il «dopo» agiscono su un dominio della lista
     (`stakes.HIGH_STAKES_DOMAINS`). I due lati, perche' togliere l'allarme
     di notte conta quanto aggiungerlo. I servizi li trova l'estrattore unico
-    (`services_named`), sulla sola parte che agisce."""
-    return stakes.impose(intent.get("livello"), acted_on(domain, prima, dopo))
+    (`services_named`), sulla sola parte che agisce. Un servizio scritto come
+    modello e' `alto` anche lui (scelta del proprietario, 07/10/2026)."""
+    return stakes.impose(intent.get("livello"), acted_on(domain, prima, dopo),
+                         services=services_called(domain, prima, dopo))
 
 
 def acted_on(domain: str, prima: dict | None, dopo: dict | None) -> set[str]:
