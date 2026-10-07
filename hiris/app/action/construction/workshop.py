@@ -87,6 +87,23 @@ _ORPHANS_ELSEWHERE = ("ci sono proposte in sospeso che non sono nate in questa "
 
 OPERATIONS = ("crea", "modifica", "cancella")
 
+#: Le `platform` che NON coincidono col dominio, fra quelle con cui Home
+#: Assistant registra l'entita' di un oggetto costruibile (la chiave della
+#: configurazione e' il suo `unique_id`). Letta al tag `2026.9.4` il
+#: 07/10/2026 nei ganci di cancellazione di `components/config/{automation,
+#: script,scene}.py`, che cercano l'entita' con `async_get_entity_id(dominio,
+#: platform, chiave)`: per automazioni e script la piattaforma e' il dominio,
+#: per le scene e' `homeassistant`. Solo l'eccezione si scrive: i domini
+#: costruibili vivono in `HAClient.CONFIGURABLE_DOMAINS`, e una seconda
+#: copia della loro lista sarebbe un vocabolario parallelo (C-10).
+_PLATFORM_NOT_DOMAIN = {"scene": "homeassistant"}
+
+
+def _entity_platform(domain: str) -> str:
+    """La `platform` dell'entita' di un oggetto di `domain`: vedi
+    `_PLATFORM_NOT_DOMAIN` per la fonte."""
+    return _PLATFORM_NOT_DOMAIN.get(domain, domain)
+
 # Le due forme dell'articolo -- indeterminativo per «crea», determinativo per
 # «modifica»/«cancella» -- per i tre domini che questa fetta costruisce.
 # Script e scena non prendono MAI l'apostrofo: iniziano per consonante.
@@ -240,7 +257,8 @@ class Workshop:
         """
         operation = intent.get("gesto")
         domain = intent.get("dominio")
-        form_reason = form_refusal(intent, self._ha.CONFIGURABLE_DOMAINS)
+        form_reason = form_refusal(intent, self._ha.CONFIGURABLE_DOMAINS,
+                                   self._ha.HELPER_DOMAINS)
         if form_reason is not None:
             return {"errore": form_reason}
 
@@ -536,6 +554,27 @@ class Workshop:
                 self._ha.save_configuration(domain, key, proposal["dopo"]))
             riuscito = "salvato" in written
 
+        arrived_notice = None
+        if not riuscito and silent(written):
+            # Il dubbio si rilegge (E-11, D3a): un silenzio della scrittura non
+            # vale «non scritto». Vedi `_arrived` per cosa dice Home Assistant
+            # a una scrittura interrotta.
+            arrived = await self._arrived(proposal)
+            if arrived is None:
+                return self._uncertain(proposal, now, actor, written, nati,
+                                       senza_id, subject=subject)
+            if arrived:
+                riuscito = True
+                arrived_notice = ("Home Assistant non ha risposto alla scrittura, "
+                                  "ma rileggendo l’oggetto la trovo: e' arrivata.")
+            else:
+                note = await self._disfa(nati, senza_id)
+                return self._fallita(
+                    proposal, now, actor,
+                    f"{written['errore']}, e rileggendo {domain}.{key} la "
+                    f"scrittura non c’e': non e' arrivata.{note}",
+                    cause=written, subject=subject)
+
         if not riuscito:
             note = await self._disfa(nati, senza_id)
             # La frase di HIRIS va in `errore`; il motivo di Home Assistant
@@ -545,7 +584,13 @@ class Workshop:
                                  _translate_rejection(written, domain) + note,
                                  cause=written, subject=subject)
 
-        entity, notice = await self._reread(domain, key, operation)
+        # Le entita' nate -- l'oggetto e gli helper -- si leggono dal registro
+        # delle entita' in UNA lettura (A-15): vedi `_entity_index`.
+        index = (await self._entity_index()
+                 if operation != "cancella" or nati else {})
+        entity, notice = self._reread(domain, key, operation, index)
+        if arrived_notice is not None:
+            notice = f"{arrived_notice} {notice}" if notice else arrived_notice
         if operation == "crea":
             # L'etichetta dice CHI L'HA FATTO, e su una modifica non l'ha fatto
             # HIRIS (spec §5). Un oggetto scritto dal proprietario resta suo
@@ -569,7 +614,7 @@ class Workshop:
         # `{dominio}.{id di archivio}`: sono due spazi di identificatori con
         # due insiemi di collisioni, e il perche' per esteso -- con le fonti
         # di Home Assistant al tag -- sta in `_helper_entities`.
-        labelable, unmatched = await self._helper_entities(nati)
+        labelable, unmatched = self._helper_entities(nati, index)
         for entity_id in labelable:
             await self._label(entity_id)
         if unmatched:
@@ -852,39 +897,121 @@ class Workshop:
             actor=actor, service=f"{proposal['dominio']}.{proposal['gesto']}",
             genre=CONSTRUCTION, object_ref=f"{proposal['dominio']}.{proposal['chiave']}",
             entity=[], executed=False, now=now, error=reason, subject=subject)
+        # Il motivo non si copia nella riga (D-26): vive nella cronaca, alla
+        # voce `execution_id`, ed e' di la' che la pagina lo legge.
         occurrence_state = self._store.mark_rejected(proposal["id"], now=now,
-                                                      reason=reason)
+                                                      execution_id=execution_id)
         if "errore" in occurrence_state:
             logger.warning("mark_rejected non riuscita per %s: %s", proposal["id"],
                            occurrence_state["errore"])
         return {**refused(reason, cause), "esecuzione_id": execution_id}
 
-    async def _reread(self, domain: str, key: str,
-                       operation: str) -> tuple[list[str], str | None]:
+    async def _arrived(self, proposal: dict) -> bool | None:
+        """Dopo una scrittura senza risposta: e' arrivata? (E-11, D3a)
+
+        `True` se rileggendo l'oggetto la scrittura c'e', `False` se non
+        c'e', `None` se nemmeno la rilettura risponde -- e allora non si sa.
+
+        **Perche' la rilettura decide.** Sorgente di Home Assistant letto al
+        tag `2026.9.4` il 07/10/2026 (`components/config/view.py`): il POST
+        su `/api/config/<dominio>/config/<chiave>` valida, poi sotto
+        `mutation_lock` legge il file, ci scrive la voce e lo riscrive con
+        `write_utf8_file_atomic`; la ricarica parte DOPO, in un task suo. Il
+        GET legge lo stesso file: vede o il file di prima o quello nuovo,
+        mai una meta'. Quindi un silenzio sulla risposta non dice niente, e
+        la rilettura dice tutto. Cosa risponde Home Assistant vero a una
+        scrittura interrotta a meta' non e' stato misurato: resta da fare
+        sul PC.
+
+        **«C'e'» vuol dire che ogni campo del `dopo` sta nel corpo riletto**,
+        non che i due corpi siano uguali: per automazione e scena Home
+        Assistant scrive `{id: chiave}` davanti al corpo ricevuto
+        (`automation.py`, `scene.py`, stesso tag), per lo script lo scrive
+        cosi' com'e' (`script.py`). Per una cancellazione, «c'e'» vuol dire
+        che l'oggetto non c'e' piu' (il GET di una chiave mancante risponde
+        404, che il client rende `assente`).
+        """
+        loaded = await self._read_now(proposal["dominio"], proposal["chiave"])
+        if loaded.get("assente"):
+            return proposal["gesto"] == "cancella"
+        if "errore" in loaded:
+            return None
+        if proposal["gesto"] == "cancella":
+            return False
+        body = loaded.get("corpo") or {}
+        return all(body.get(k) == v for k, v in (proposal["dopo"] or {}).items())
+
+    def _uncertain(self, proposal: dict, now: float, actor: str, written: dict,
+                   nati: list[tuple[str, str]], senza_id: list[str], *,
+                   subject: dict | None = None) -> dict:
+        """Il silenzio che nemmeno la rilettura scioglie (E-11, D3a): la riga
+        diventa `incerta`, e **non si disfa niente** -- gli helper nati
+        servono all'oggetto se la scrittura e' arrivata, e toglierli
+        romperebbe un'automazione viva. Si nominano, perche' chi legge sappia
+        cosa controllare. L'esito resta un rifiuto (`eseguito: False`) con
+        la busta del silenzio come causa: la pagina risponde 503."""
+        domain, key = proposal["dominio"], proposal["chiave"]
+        reason = (f"Home Assistant non ha risposto alla scrittura, e non sono "
+                  f"riuscito a rileggere {domain}.{key}: non so se e' arrivata. "
+                  "Non disfo niente: controlla in Home Assistant.")
+        lasciati = [f"{d}.{h}" for d, h in nati] + [f"un helper {d} senza id"
+                                                   for d in senza_id]
+        if lasciati:
+            reason += " Ho creato anche " + ", ".join(lasciati) + ", e li lascio."
+        execution_id = self._journal.log(
+            actor=actor, service=f"{domain}.{proposal['gesto']}",
+            genre=CONSTRUCTION, object_ref=f"{domain}.{key}",
+            entity=[], executed=False, now=now, error=reason, subject=subject)
+        occurrence_state = self._store.mark_uncertain(proposal["id"], now=now,
+                                                      execution_id=execution_id)
+        if "errore" in occurrence_state:
+            logger.warning("mark_uncertain non riuscita per %s: %s", proposal["id"],
+                           occurrence_state["errore"])
+        return {**refused(reason, written), "esecuzione_id": execution_id}
+
+    async def _entity_index(self) -> dict[tuple[str, str], str] | None:
+        """Il registro delle entita' di Home Assistant, come
+        `{(platform, unique_id): entity_id}`: UNA lettura per l'oggetto
+        scritto e per gli helper nati (A-15). `None` se il registro non si
+        legge."""
+        registry = await self._ha.read_registry("entita")
+        if "errore" in registry:
+            logger.warning("registro delle entita' non letto dopo la scrittura: %s",
+                           registry.get("causa"))
+            return None
+        index: dict[tuple[str, str], str] = {}
+        for row in registry["entita"]:
+            platform, unique = row.get("platform"), row.get("unique_id")
+            entity_id = row.get("entity_id")
+            if platform and unique is not None and entity_id:
+                index[(platform, str(unique))] = entity_id
+        return index
+
+    def _reread(self, domain: str, key: str, operation: str,
+                index: dict[tuple[str, str], str] | None) -> tuple[list[str], str | None]:
         """Cosa e' comparso davvero. Dire cosa e' successo, non cosa e' stato
-        chiesto (spec §2.3)."""
+        chiesto (spec §2.3).
+
+        **Dal registro delle entita', non dagli stati** (A-15, 07/10/2026).
+        Fino a quel giorno qui si leggevano TUTTI gli stati della casa per
+        cercarne uno con `attributes.id == chiave`: una lettura intera per un
+        fatto che il registro tiene per chiave. La piattaforma di ogni
+        dominio la da' `_entity_platform`, con la sua fonte."""
         if operation == "cancella":
             return [], None
-        states = await self._ha.get_states([])
-        if isinstance(states, dict):  # la busta del guasto (D3)
-            logger.debug("rilettura dopo la scrittura fallita: %s", states.get("errore"))
-            return [], ("ho scritto, ma non sono riuscito a rileggere lo stato: "
-                        "controlla in Home Assistant.")
-        trovate = []
-        for state in states:
-            eid = state.get("entity_id") or ""
-            if not eid.startswith(f"{domain}."):
-                continue
-            attributes = state.get("attributes") or {}
-            if attributes.get("id") == key or eid == f"{domain}.{key}":
-                trovate.append(eid)
-        if not trovate:
+        if index is None:
+            return [], ("ho scritto, ma non sono riuscito a rileggere il registro "
+                        "delle entita': controlla in Home Assistant.")
+        entity_id = index.get((_entity_platform(domain), key))
+        if entity_id is None:
             return [], ("Home Assistant ha accettato la scrittura ma l’entita' non e' "
                         "ancora comparsa: potrebbe servire un riavvio, o la ricarica "
                         "non e' andata a buon fine.")
-        return trovate, None
+        return [entity_id], None
 
-    async def _helper_entities(self, born: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
+    def _helper_entities(self, born: list[tuple[str, str]],
+                         index: dict[tuple[str, str], str] | None
+                         ) -> tuple[list[str], list[str]]:
         """L’`entity_id` VERO di ogni helper appena nato, LETTO dal registro
         delle entita'. Restituisce `(trovati, non trovati)`.
 
@@ -924,27 +1051,22 @@ class Workshop:
         uno per uno: `get_entity_registry` era gia' uscita una volta perche'
         emetteva lo stesso comando WS per conto suo (review dei doppioni,
         17/08), e fino al 03/10/2026 qui si leggeva l'anagrafe intera, alias
-        compresi, per usarne una tabella (A-06).
+        compresi, per usarne una tabella (A-06). Dal 07/10/2026 la lettura la
+        fa `_entity_index`, una volta sola per l'oggetto e per gli helper
+        (A-15): `index` e' il suo risultato, `None` se il registro non si e'
+        letto.
         """
         if not born:
             return [], []
-        composti = [f"{domain}.{helper_id}" for domain, helper_id in born]
-        registry = await self._ha.read_registry("entita")
-        if "errore" in registry:
-            logger.warning("registro delle entita' non letto dopo la nascita di %s "
-                           "(%s): nessuna etichetta applicata",
-                           composti, registry.get("causa"))
+        if index is None:
+            composti = [f"{domain}.{helper_id}" for domain, helper_id in born]
+            logger.warning("registro delle entita' non letto dopo la nascita di %s: "
+                           "nessuna etichetta applicata", composti)
             return [], composti
-        per_unico: dict[tuple[str, str], str] = {}
-        for row in registry["entita"]:
-            platform, unique = row.get("platform"), row.get("unique_id")
-            entity_id = row.get("entity_id")
-            if platform and unique is not None and entity_id:
-                per_unico[(platform, str(unique))] = entity_id
         found: list[str] = []
         missing: list[str] = []
         for domain, helper_id in born:
-            entity_id = per_unico.get((domain, str(helper_id)))
+            entity_id = index.get((domain, str(helper_id)))
             if entity_id:
                 found.append(entity_id)
             else:
@@ -996,6 +1118,19 @@ class Workshop:
                 return False
             self._label_id = (creata.get("etichetta") or {}).get("label_id")
         return self._label_id is not None
+
+    # ---- dire di no -----------------------------------------------------
+
+    def reject(self, proposal_id: str, *, now: float) -> dict:
+        """Il «no» di chi costruisce, dalla porta della configurazione.
+
+        Non tocca Home Assistant -- una proposta respinta non ha niente da
+        scrivere -- ma passa di qui lo stesso (E-12, Tappa 7, Task 3,
+        07/10/2026): fino a quel giorno la rotta della pagina chiamava
+        l'archivio direttamente, e la porta del canale non sapeva che una sua
+        proposta era stata chiusa. Una porta per canale vuol dire anche una
+        porta per le sue transizioni."""
+        return self._store.mark_cancelled(proposal_id, now=now)
 
     # ---- ripristinare ---------------------------------------------------
 
@@ -1066,40 +1201,36 @@ class Workshop:
         return {"proposta_id": proposal["id"], "anteprima": preview}
 
 
-def closed_fields(domains) -> dict[str, tuple[str, ...]]:
-    """I campi dell'intento che la porta accetta solo da un vocabolario
-    chiuso, e che lo schema dello strumento `propose` descrive soltanto a
-    parole (`home_space/tools.PROPOSE_TOOL_DEF`: «crea, modifica o
-    cancella.»). `domains` e' cio' che il client sa configurare
-    (`HAClient.CONFIGURABLE_DOMAINS`): la porta lo chiede al suo client, chi
-    compone un contratto lo chiede alla classe. «richiesto» non c'e': il suo
-    vocabolario lo schema lo enumera gia' (`advisor.STRUCTURES`).
-
-    Lo legge il contratto dell'attuatore (Tappa 6, Task 5, D5) per offrire al
-    modello le alternative che `form_refusal` poi impone: due copie degli
-    stessi elenchi divergerebbero al primo gesto nuovo."""
-    return {"gesto": OPERATIONS, "dominio": tuple(domains)}
-
-
-def form_refusal(intent: dict, domains) -> str | None:
+def form_refusal(intent: dict, domains, helper_domains) -> str | None:
     """Il motivo per cui la porta rifiuta la FORMA di un intento, o `None`.
 
-    E' la prima meta' di `Workshop.propose` -- gesto, dominio, e la forma dei
-    campi (`_invalid_form`) -- separata perche' serve anche PRIMA della porta:
-    l'attuatore valida la sua `intenzione` con questa stessa funzione prima di
-    chiamare `propose` (Tappa 6, Task 5, D5). Fino al 05/10/2026 il suo
-    contratto chiedeva una forma che questa funzione rifiutava, e lo si
-    scopriva solo dopo aver speso il turno.
+    E' la prima meta' di `Workshop.propose`: gesto, dominio, la forma dei
+    campi (`_invalid_form`) e il dominio di ogni helper. I vocabolari chiusi
+    sono quelli del client -- `domains` e' cio' che sa configurare
+    (`HAClient.CONFIGURABLE_DOMAINS`), `helper_domains` gli helper che sa
+    creare (`HAClient.HELPER_DOMAINS`) -- e la porta li chiede al suo client,
+    non li ricopia.
+
+    **Il dominio dell'helper si valida qui, alla proposta** (E-12, Tappa 7,
+    Task 3, 07/10/2026). Fino a quel giorno lo guardava solo `create_helper`,
+    cioe' dopo il si': una proposta con un helper che nessuno sa creare
+    arrivava fino alla conferma, si faceva approvare, e cadeva li'.
     """
-    vocabularies = closed_fields(domains)
     operation = intent.get("gesto")
-    if operation not in vocabularies["gesto"]:
-        return f"gesto sconosciuto: {operation}. Gesti: {', '.join(vocabularies['gesto'])}."
+    if operation not in OPERATIONS:
+        return f"gesto sconosciuto: {operation}. Gesti: {', '.join(OPERATIONS)}."
     domain = intent.get("dominio")
-    if domain not in vocabularies["dominio"]:
+    if domain not in domains:
         return (f"non so costruire «{domain}». So costruire: "
-                f"{', '.join(vocabularies['dominio'])}.")
-    return _invalid_form(intent)
+                f"{', '.join(domains)}.")
+    invalid = _invalid_form(intent)
+    if invalid is not None:
+        return invalid
+    for helper in intent.get("helper") or []:
+        if helper["dominio"] not in helper_domains:
+            return (f"non so far nascere un helper «{helper['dominio']}». "
+                    f"So creare: {', '.join(helper_domains)}.")
+    return None
 
 
 def _invalid_form(intent: dict) -> str | None:

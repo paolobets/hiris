@@ -284,7 +284,7 @@ async def test_una_proposta_DECISA_non_si_avvisa_piu(casa):
     (riga,) = casa["constructions"].list(now=time.time())
 
     casa["constructions"].mark_rejected(riga["id"], now=riga["creata_ts"] + 1,
-                                        reason="no")
+                                        execution_id=None)
     await pr.proposer_round(casa)
 
     assert len(porta.chiamate) == 1

@@ -90,7 +90,18 @@ async def _out(app, row: dict, approved: list[dict]) -> dict:
     code hanno la stessa forma. Il nome viene da `soffitto.subject_name`, la
     stessa casa dell'autore di un giudizio; `approved` e' l'archivio dei
     servizi letto UNA volta per risposta, non una per riga.
+
+    **Il motivo di un tentativo si legge dalla cronaca** (D-26, Tappa 7,
+    Task 3, 07/10/2026): l'officina non lo copia piu' nella riga, che porta
+    l'`esecuzione_id` della voce che lo dice. Le righe che un motivo proprio
+    ce l'hanno -- scaduta, disdetta, risanata al riavvio, e quelle scritte
+    prima di quel giorno -- lo tengono.
     """
+    if row.get("motivo") is None and row.get("esecuzione_id"):
+        journal = app.get("journal")
+        voce = journal.read(row["esecuzione_id"]) if journal is not None else None
+        if voce is not None and voce.get("errore"):
+            row = {**row, "motivo": voce["errore"]}
     return {**without_thread(row),
             "chiesta_da": await subject_name(app, subject_from_thread(row.get("thread")),
                                              approved=approved)}
@@ -212,13 +223,14 @@ async def handle_restore_construction(request: web.Request) -> web.Response:
 
 
 async def handle_reject_construction(request: web.Request) -> web.Response:
-    """Il «no»: si scrive nell'archivio e basta.
+    """Il «no»: passa dall'officina, che lo scrive nell'archivio e basta.
 
-    Non passa dall'officina, e non e' una svista: non c'e' niente da scrivere
-    su Home Assistant, e farlo passare da li' darebbe a un rifiuto la stessa
-    superficie di rischio di una conferma.
+    Non tocca Home Assistant -- non c'e' niente da scrivere -- ma passa
+    dalla porta del canale della configurazione (`Workshop.reject`, E-12,
+    Tappa 7, Task 3, 07/10/2026): fino a quel giorno questa rotta chiamava
+    l'archivio da se', e le transizioni di una proposta avevano due porte.
 
-    **Ma passa dal cancello** (spec 2026-09-26 §3, decisione 5): fino al
+    **E passa dal cancello** (spec 2026-09-26 §3, decisione 5): fino al
     26/09 dire di no era di tutti, perche' chi non costruiva vedeva comunque
     la coda. Adesso la coda e' di chi costruisce, e il suo «no» con lei.
     """
@@ -226,12 +238,13 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     if refusal is not None:
         return refusal
     store = _store(request)
-    if store is None:
-        return error_response(503, "archivio non disponibile")
+    workshop = request.app.get("workshop")
+    if store is None or workshop is None:
+        return error_response(503, "officina non disponibile")
     ident = request.match_info["id"]
     if store.read(ident, now=time.time()) is None:
         return error_response(404, _NOT_FOUND)
-    occurrence = store.mark_cancelled(ident, now=time.time())
+    occurrence = workshop.reject(ident, now=time.time())
     if "errore" in occurrence:
         return web.json_response(occurrence_out(occurrence), status=409)
     return web.json_response(occurrence_out(occurrence))

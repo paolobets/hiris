@@ -132,8 +132,9 @@ OWNERS = {
 #: `topology.visibility`. Era 17 prima della Tappa 3, Task 8: i sei letterali
 #: di stato di B-07, B-08, B-09 chiedono ora al vocabolario, ed e' entrato il
 #: campo omonimo dell'istanza (`disabilitata_da`, due letture in `house.py`,
-#: dichiarate nell'elenco con la ragione).
-CEILING = 13
+#: dichiarate nell'elenco con la ragione). Era 13 prima della Tappa 7, Task 3:
+#: `workshop._reread` non legge piu' gli stati (A-15).
+CEILING = 12
 
 #: Le letture del client che il cancello NON puo' attribuire, perche' il nome
 #: e' anche di un'altra funzione del prodotto. Lista di AMMISSIONE: una voce
@@ -251,12 +252,9 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
 #: ragione. Lista di AMMISSIONE: una voce si toglie quando il secondo chiamante
 #: smette, e la prova lo pretende.
 SHARED_READS: dict[str, dict[str, tuple[str, str]]] = {
+    # `action/construction/workshop.py` (A-15) e' uscita il 07/10/2026
+    # (Tappa 7, Task 3): `_reread` legge il registro delle entita'.
     "get_states": {
-        "action/construction/workshop.py": (
-            "A-15",
-            ("D4 della Tappa 2 (03/10/2026, «restano»): `_reread` rilegge gli "
-             "stati SUBITO dopo una scrittura, e lo specchio arriva per evento, "
-             "dopo. Si riguarda alla Tappa 7 («rileggere prima di scrivere»).")),
         "keeper/recipient.py": (
             "A-03",
             ("D4 della Tappa 2 (03/10/2026, «restano», con la condizione di "

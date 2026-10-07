@@ -9,7 +9,7 @@ import pytest_asyncio
 from aiohttp import web
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from casa_finta import CasaFinta
+from casa_finta import CasaFinta, Refused
 
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
@@ -35,10 +35,9 @@ from tests.test_settings_api import csrf_stretto  # noqa: F401
 
 
 class FintoArchivio:
-    def __init__(self, righe=None, esito_disdetta=None):
+    def __init__(self, righe=None):
         self._righe = righe or []
         self.disdette = []
-        self._esito_disdetta = esito_disdetta
 
     def list(self, *, now, pending_only=False, limit=200):
         if pending_only:
@@ -53,13 +52,18 @@ class FintoArchivio:
 
     def mark_cancelled(self, ident, *, now):
         self.disdette.append(ident)
-        return self._esito_disdetta or {"id": ident, "stato": "disdetta"}
+        return {"id": ident, "stato": "disdetta"}
 
 
 class FintaOfficina:
-    def __init__(self, esito):
+    def __init__(self, esito, esito_no=None):
         self.esito = esito
         self.chiamate = []
+        self._esito_no = esito_no
+
+    def reject(self, proposal_id, *, now):
+        self.chiamate.append(("reject", proposal_id))
+        return self._esito_no or {"id": proposal_id, "stato": "disdetta"}
 
     async def apply(self, proposta_id, *, actor, exchange, now, subject=None,
                     confirm_phrase=None, thread=None):
@@ -81,6 +85,7 @@ def test_i_finti_combaciano_con_la_firma_vera():
                         nome="mark_cancelled")
     assert_stessa_firma(Workshop.apply, FintaOfficina.apply, nome="apply")
     assert_stessa_firma(Workshop.restore, FintaOfficina.restore, nome="restore")
+    assert_stessa_firma(Workshop.reject, FintaOfficina.reject, nome="reject")
 
 
 #: Chi sta confermando, in queste prove. Dal 21/09/2026 (invariante I-1) la
@@ -326,24 +331,42 @@ async def test_confermare_senza_officina_da_503():
 
 
 @pytest.mark.asyncio
-async def test_rifiutare_dalla_pagina_non_tocca_home_assistant():
-    """Il no non passa dall'officina: non c'e' niente da scrivere."""
+async def test_rifiutare_passa_officina():
+    """Il no passa dalla porta del canale (E-12, Tappa 7, Task 3, 07/10/2026):
+    fino a quel giorno la rotta chiamava l'archivio da se'. Che
+    `Workshop.reject` non tocchi Home Assistant lo prova
+    `test_construction_workshop.py::test_il_no_non_tocca_home_assistant`.
+
+    Mutazione ESEGUITA (07/10/2026): la rotta che torna a chiamare
+    `store.mark_cancelled(ident, ...)` al posto di `workshop.reject` -- rossa
+    su `officina.chiamate == [("reject", "p1")]` (lista vuota); ripristinata
+    e verificata col confronto del file."""
     officina = FintaOfficina({"eseguito": True})
     archivio = FintoArchivio([{"id": "p1", "stato": "in_attesa"}])
     app = _app(archivio, officina)
     risposta = await handle_reject_construction(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 200
-    assert officina.chiamate == [], "il rifiuto non deve passare dall'officina"
-    assert archivio.disdette == ["p1"]
+    assert officina.chiamate == [("reject", "p1")]
+    assert archivio.disdette == [], "il no non scrive l'archivio da se'"
 
 
 @pytest.mark.asyncio
 async def test_rifiutare_cio_che_non_e_piu_in_attesa_da_409():
-    archivio = FintoArchivio([{"id": "p1", "stato": "applicata"}],
-                             esito_disdetta={"errore": "quella proposta non e' piu' in attesa"})
+    archivio = FintoArchivio([{"id": "p1", "stato": "applicata"}])
+    officina = FintaOfficina({}, esito_no={"errore": "quella proposta non e' piu' in attesa"})
     risposta = await handle_reject_construction(
-        FintaRichiesta(_app(archivio, FintaOfficina({})), ident="p1"))
+        FintaRichiesta(_app(archivio, officina), ident="p1"))
     assert risposta.status == 409
+
+
+@pytest.mark.asyncio
+async def test_rifiutare_senza_officina_da_503():
+    """Senza la porta il no non si dice: 503, come le altre due POST."""
+    archivio = FintoArchivio([{"id": "p1", "stato": "in_attesa"}])
+    risposta = await handle_reject_construction(
+        FintaRichiesta(_app(archivio, None), ident="p1"))
+    assert risposta.status == 503
+    assert archivio.disdette == []
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +533,37 @@ async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client,
                                  headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident, now=ADESSO_HTTP)["stato"] == "disdetta"
+
+
+@pytest.mark.asyncio
+async def test_il_motivo_esce_letto_cronaca(client):
+    """D-26 (Tappa 7, Task 3, 07/10/2026): l'officina non copia piu' il
+    motivo di un tentativo fallito nella riga della costruzione; la pagina
+    lo legge dalla cronaca, alla voce `esecuzione_id`, e lo vede uguale.
+
+    Mutazione ESEGUITA (07/10/2026): in `_out` il ramo che legge
+    `journal.read(...)["errore"]` tolto -- rossa su `motivo` (`None`);
+    ripristinata e verificata col confronto del file."""
+    archivio = client.app["constructions"]
+    ident = archivio.propose(
+        operation="crea", domain="automation", key="tapparelle_motivo",
+        actor="chat", exchange="turno-1", phrase="crea", prima=None,
+        dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
+        stakes=None, now=ADESSO_HTTP)["id"]
+    client.app["_fake_ha"]._override["salva"] = Refused(400, "Message malformed: bad actions")
+
+    risposta = await client.post(f"/api/constructions/{ident}/confirm",
+                                 headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
+    assert risposta.status == 409
+    riga = archivio.read(ident, now=ADESSO_HTTP)
+    assert riga["motivo"] is None, "il motivo non si copia nella riga"
+    voce = client.app["journal"].read(riga["esecuzione_id"])
+
+    letta = await client.get(f"/api/constructions/{ident}", headers=_INGRESS_ADMIN)
+    assert letta.status == 200
+    costruzione = (await letta.json())["construction"]
+    assert costruzione["motivo"] == voce["errore"]
+    assert "bad actions" in costruzione["motivo"]
 
 
 def _edit_proposal(archivio, chiave):

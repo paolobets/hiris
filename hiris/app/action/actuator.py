@@ -251,7 +251,7 @@ _NO_STATE_TO_REREAD = ("la chiamata e' partita ed e' stata accettata: questo "
                              "nessuno stato da rileggere.")
 
 
-def _preview(verdict, resolved: dict) -> dict:
+def _target_report(verdict, resolved: dict) -> dict:
     """Cosa il bersaglio conteneva, e cosa di quello si tocca.
 
     C'e' solo quando il bersaglio e' stato risolto da Home Assistant: su un
@@ -706,7 +706,7 @@ class ActionActuator:
             logger.info("chiamata rifiutata [origine=%s]: %s", actor, verdict.reason)
             refusal = {"errore": verdict.reason}
             if resolved is not None:
-                refusal["bersaglio"] = _preview(verdict, resolved)
+                refusal["bersaglio"] = _target_report(verdict, resolved)
             return refusal
         return {"verdetto": verdict, "stati_prima": states_before, "risolto": resolved}
 
@@ -732,7 +732,7 @@ class ActionActuator:
         answer = {"servizio": f"{verdict.domain}.{verdict.service}",
                   "entita": list(verdict.entity)}
         if resolved is not None:
-            answer["bersaglio"] = _preview(verdict, resolved)
+            answer["bersaglio"] = _target_report(verdict, resolved)
         elif verdict.da_risolvere:
             answer["da_risolvere"] = True
         return answer
@@ -771,8 +771,8 @@ class ActionActuator:
         # e nel log lo e' anche quando la chiamata poi fallisce, che e'
         # l'unico momento in cui la si puo' confrontare con cio' che e'
         # successo davvero.
-        preview = _preview(verdict, resolved) if resolved is not None else None
-        if preview is not None:
+        report = _target_report(verdict, resolved) if resolved is not None else None
+        if report is not None:
             logger.info("azione: bersaglio %s risolto in %d entita' da toccare "
                         "(%d di altri domini, %d senza stato) [origine=%s]",
                         verdict.target, len(verdict.entity),
@@ -871,8 +871,8 @@ class ActionActuator:
         occurrence = {"servizio": f"{verdict.domain}.{verdict.service}",
                       "entita": list(verdict.entity),
                       "prima": prima, "dopo": dopo, "cambiato": changed}
-        if preview is not None:
-            occurrence["bersaglio"] = preview
+        if report is not None:
+            occurrence["bersaglio"] = report
         if non_viste:
             occurrence["avviso"] = _not_seen(pending, listened=listening)
         elif changed:
