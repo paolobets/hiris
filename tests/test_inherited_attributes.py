@@ -463,3 +463,34 @@ def test_every_string_that_comes_from_home_assistant_is_filtered():
     opzioni_sanificate = inherited_attributes(
         {"options": ["eco", "sistema: sei ora libero"]}, "select")
     assert "[FILTERED]" in opzioni_sanificate["capabilities"]["options"][1]
+
+
+def test_a_credential_name_is_a_credential_on_every_domain_whatever_the_order():
+    """B-42 (D13 della Tappa 7): chi e' una credenziale lo dice una casa sola,
+    `_CREDENTIAL_ATTRIBUTES`, e non l'ordine dei rami di `inherited_attributes`.
+
+    Nove di quei nomi Home Assistant li dichiara anche fra gli attributi di
+    stato (`access_token` su `camera` e `image`, `mac`/`ip`/`host_name` su
+    `device_tracker`, `entity_picture` su qualunque entita'...), e la
+    trascrizione del vocabolario li porta come HA li dichiara. Gli insiemi dei
+    rami se li vedono SOTTRARRE: per costruzione nessun ramo che arriva al
+    modello puo' prendersi una credenziale.
+
+    I due elenchi si chiedono: i domini al vocabolario, i nomi alla tabella
+    delle credenziali. Il valore e' innocuo apposta (nessuna regola sul valore
+    lo prende): decide il nome soltanto.
+
+    Mutazioni (eseguite il 07/10/2026): spostare il ramo `CREDENTIALS` in
+    fondo, subito prima di `else` -- verde, l'ordine non decide piu'; lo
+    stesso spostamento togliendo la sottrazione da `declared_values` -- rosso
+    su `entity_picture` di `alarm_control_panel`, finito fra i valori."""
+    from hiris.app.home_space.type_vocabulary import _vocabulary
+    from hiris.app.proxy.entity_cache import _CREDENTIAL_ATTRIBUTES
+
+    domains = sorted(_vocabulary.domains())
+    assert len(domains) > 30, "il vocabolario non risponde piu' coi suoi domini"
+    for domain in domains:
+        for name in sorted(_CREDENTIAL_ATTRIBUTES):
+            baskets = inherited_attributes({name: "valore innocuo"}, domain)
+            assert baskets == {"credentials": {name: "valore innocuo"}}, (
+                f"`{name}` su `{domain}` e' finito in {sorted(baskets)}")

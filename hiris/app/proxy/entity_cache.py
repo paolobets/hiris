@@ -267,6 +267,9 @@ _CREDENTIAL_ATTRIBUTES: dict[str, str] = {
     "serial": "il numero di serie del dispositivo",
     "media_content_id": "l’indirizzo del contenuto, con la chiave della sessione dentro",
 }
+#: I nomi di quella tabella, come insieme: la casa resta `_CREDENTIAL_ATTRIBUTES`
+#: (nome -> ragione), questa ne e' la vista.
+_CREDENTIAL_NAMES = frozenset(_CREDENTIAL_ATTRIBUTES)
 
 #: Le chiavi con cui una CHIAMATA DI SERVIZIO porta un segreto (29/09/2026,
 #: registro dei turni: `execute` e `propose` mettono i dati del servizio negli
@@ -289,7 +292,7 @@ SERVICE_CALL_SECRETS = frozenset({
 #: Cio' che si maschera negli argomenti salvati di una chiamata: i segreti di
 #: un servizio e, per le stesse chiavi che il modello puo' ricopiare da
 #: un'entita', gli attributi di stato che lo specchio trattiene.
-CALL_ARGUMENT_SECRETS = SERVICE_CALL_SECRETS | frozenset(_CREDENTIAL_ATTRIBUTES)
+CALL_ARGUMENT_SECRETS = SERVICE_CALL_SECRETS | _CREDENTIAL_NAMES
 
 # La ragione con cui esce cio' che nessun nome della tabella prevedeva.
 _CREDENTIAL_BY_VALUE = (
@@ -427,10 +430,21 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
     cesta, e scriverla direbbe «ho guardato e non c'e' niente» su ogni entita'
     della casa.
     """
-    capability_names = type_vocabulary.capability_attributes(domain)
-    membership_names = type_vocabulary.group_membership_attributes()
-    assumable_names = type_vocabulary.assumable_attributes(domain)
-    declared_values = type_vocabulary.state_attributes(domain)
+    # **Chi e' una credenziale lo dice una casa sola: `_CREDENTIAL_ATTRIBUTES`**
+    # (B-42, D13 della Tappa 7). Nove di quei nomi (`access_token`,
+    # `entity_picture`, `mac`, `ip`...) Home Assistant li dichiara anche fra
+    # gli attributi di stato, e il vocabolario li trascrive come li dichiara:
+    # la trascrizione e' un fatto di HA, pinnato alla fonte
+    # (`tests/test_attribute_tables_pinned_to_source.py`), e resta intatta,
+    # come resta intatta quella dei membri di un gruppo. Il giudizio nostro si
+    # SOTTRAE qui, dichiarato: gli insiemi dei rami sotto sono disgiunti dalle
+    # credenziali per costruzione, e non e' piu' l'ordine dei rami a decidere
+    # la riservatezza.
+    capability_names = (type_vocabulary.capability_attributes(domain)
+                        - _CREDENTIAL_NAMES)
+    membership_names = type_vocabulary.group_membership_attributes() - _CREDENTIAL_NAMES
+    assumable_names = type_vocabulary.assumable_attributes(domain) - _CREDENTIAL_NAMES
+    declared_values = type_vocabulary.state_attributes(domain) - _CREDENTIAL_NAMES
     baskets: dict[str, dict] = {}
     for name, value in raw_attributes.items():
         if not isinstance(name, str) or name in _ATTRIBUTES_PROMOTED_TO_THEIR_OWN_KEY:
