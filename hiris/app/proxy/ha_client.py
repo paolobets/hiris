@@ -122,6 +122,13 @@ RUNNING_STATE = "RUNNING"
 RECONNECT_DELAY_S = 10
 AUTH_RETRY_FIRST_S = 10
 AUTH_RETRY_CEILING_S = 300
+# Quanto si aspetta ogni messaggio della fase di autenticazione (S-29). Non e'
+# un tetto nostro: e' quello di Home Assistant, che chiude la fase se il
+# messaggio non arriva entro `AUTH_MESSAGE_TIMEOUT = 10` secondi
+# (`components/websocket_api/http.py`, riga 42 e `_async_handle_auth_phase`,
+# letto il 07/10/2026 al tag 2026.9.4). Oltre quel tempo, dall'altra parte la
+# fase e' gia' finita: aspettare ancora vuol dire restare appesi a un server muto.
+AUTH_MESSAGE_TIMEOUT_S = 10
 
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
@@ -1084,6 +1091,13 @@ class HAClient:
         paths: list[str | None] = [None]
         seen: set[str] = set()
         for d in listing:
+            # S-05: una voce dell'elenco che non e' un oggetto non ha un
+            # percorso da interrogare. Si dichiara, come il duplicato, invece
+            # di far cadere la lettura di tutte le plance.
+            if not isinstance(d, dict):
+                unavailable.append(
+                    f"elenco: una voce non e' un oggetto ({type(d).__name__}), ignorata")
+                continue
             p = d.get("url_path")
             if p is None:
                 continue
@@ -2206,6 +2220,15 @@ class HAClient:
         rows = occurrence["righe"]
         if not isinstance(rows, list):
             return _failure(SHAPE, f"il registro «{key}» non e' arrivato come elenco")
+        # S-34: una riga che non e' un oggetto si scarta lei, non l'intera
+        # lettura -- fra le categorie `{**row, ...}` cadeva con un `TypeError`,
+        # e negli altri registri la riga storta arrivava a chi legge. Lo
+        # scarto si dice nel registro dell'add-on, con il conto.
+        kept = [row for row in rows if isinstance(row, dict)]
+        if len(kept) != len(rows):
+            logger.warning("registro «%s»: %d righe su %d non sono oggetti, scartate",
+                           key, len(rows) - len(kept), len(rows))
+            rows = kept
         scope = extra.get("scope") if key == "categorie" and extra else None
         if scope:
             rows = [{**row, "ambito": scope} for row in rows]
@@ -2516,6 +2539,12 @@ class HAClient:
                         auth_wait = AUTH_RETRY_FIRST_S
                         authenticated = True
                         await self._listen(ws)
+                        # S-29: una chiusura pulita (Home Assistant che si
+                        # riavvia chiude il socket senza errori) riparte con
+                        # la stessa pausa di una caduta, non in un giro stretto.
+                        logger.warning("HA WebSocket chiuso — riconnessione fra %ds",
+                                       RECONNECT_DELAY_S)
+                        pause = RECONNECT_DELAY_S
                     else:
                         logger.error(
                             "HA WebSocket: autenticazione rifiutata da Home Assistant "
@@ -2544,11 +2573,11 @@ class HAClient:
     async def _authenticate(self, ws) -> str | None:
         """`None` se Home Assistant ha accettato il gettone, altrimenti cio'
         che ha scritto nel rifiuto."""
-        auth_req = await ws.receive_json()
+        auth_req = await asyncio.wait_for(ws.receive_json(), timeout=AUTH_MESSAGE_TIMEOUT_S)
         if auth_req.get("type") == "auth_required":
             token = self._headers["Authorization"].removeprefix("Bearer ")
             await ws.send_json({"type": "auth", "access_token": token})
-            auth_resp = await ws.receive_json()
+            auth_resp = await asyncio.wait_for(ws.receive_json(), timeout=AUTH_MESSAGE_TIMEOUT_S)
             if auth_resp.get("type") != "auth_ok":
                 return str(auth_resp.get("message") or auth_resp.get("type"))
         return None
