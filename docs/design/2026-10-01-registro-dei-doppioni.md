@@ -19,7 +19,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 |---|---|---|---|---|---|---|
 | A-03 | `GET /api/states` intero riletto da tre percorsi oltre allo specchio | NV | DP |  | cop-9 (incompleta) | reg · cop-9 |
 | A-08 | Anagrafe e specchio degli stati: due rappresentazioni vive della stessa casa, non coordinate | NV | DP |  | cop-4 (conteggio) | reg · cop-4 N-15 |
-| A-15 | `workshop._reread`: la terza casa dello stato | NV | DP |  |  | reg · cop-9 |
+| A-15 | `workshop._reread`: la terza casa dello stato | NV | DP |  |  | reg · cop-9 · **chiudibile al rilascio** `b3cf69ce`: `_reread` legge l'entita' nata dal registro delle entita' per `(platform, unique_id)`, una lettura per oggetto e helper (`_entity_index`); `get_states` esce dall'officina e da `SHARED_READS` (Tappa 7 T3, 07/10/2026) |
 | A-16 | Dizionari ricostruiti al volo che ricopiano l'anagrafe | D | CC |  | cop-1 (righe, incompleta); cop-4 (righe); cop-6 (conteggio, righe, incompleta) | reg · cop-1 · cop-4 · cop-6 · Tappa 3 (D5) · Tappa 3, Task 5 e 12: escono quelli di osservatore, ricette, nomi dei dispositivi; restano `briefing` (nomi dei dispositivi del nucleo, Task 8), `house_history.read_runs` e `topology.compare_with_home_assistant` (l'indice delle entita' per id) |
 | A-17 | Copie dei dati nei DB del cervello e della memoria: volute e non volute | D | DP |  | cop-6 (incompleta) | reg · cop-6 · cop-9 · Tappa 8 (D5) |
 | A-22 | `hiris_state_translations` rifà ogni 5 minuti significati e `seed` anche da cache | NV | CC |  |  | cop-2 A1 · Tappa 8 (D5) |
@@ -38,7 +38,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | Id | Voce (max 14 parole) | Stato | Unirla | Sulla casa vera | Corretta da | Fonti |
 |---|---|---|---|---|---|---|
 | B-13 | Conti primo/ultimo/min/max/media/consumato: due case | D | CC | differiscono in 2/2040 (1 giorno), 28/272 (7 giorni), 9/68 (30 giorni) |  | reg · cop-3 |
-| B-21 | Slug: `composer.available_slug` e `reference.slugify` | D | CC |  | Tappa 7, T0 (testo) | reg · cop-9 · Tappa 7 (D10 della Tappa 3) |
+| B-21 | Slug: `composer.available_slug` e `reference.slugify` | D | CC |  | Tappa 7, T0 (testo) | reg · cop-9 · Tappa 7 (D10 della Tappa 3) · **chiudibile al rilascio** `b3cf69ce`: lo slug e' uno: `composer.available_slug` = `reference.slugify` + suffisso (`unknown` sul testo vuoto, come HA); `_NON_SLUG` esce (Tappa 7 T3, 07/10/2026) |
 | B-22 | Vocabolari dei tipi: giudizi e significati in più case | NV | DP |  | cop-5 (incompleta); cop-6 (righe) | reg · cop-5 · cop-6 · Tappa 8 (D10 della Tappa 3) |
 | B-23 | Tabelle di nomi italiani di domini e struttura «automazione/script/scena» | E | PS |  | cop-4 (conteggio); cop-5 (imprecisa) | reg · cop-4 · cop-5 · cop-9 · Tappa 3, Task 7: a meta' (`BEHAVIOR_DOMAINS` da `LINK_NAME`); restano `house_query.KINDS` e la tabella in `house_history` |
 | B-24 | Identificatori e costanti piccole: `_ENTITY_ID_RE`, dominio da entity_id, tetti | E | PS |  | cop-3 (incompleta); cop-5 (incompleta); cop-6 (incompleta); Tappa 3 (incompleta) | reg · cop-3 · cop-4 · cop-5 · cop-6 · cop-9 · Tappa 3, Task 7: `_ENTITY_ID_RE` e le copie del dominio uscite; restano 4 domini in linea (`house_query` 1, `house_history` 3), ammessi con la ragione in `tests/test_identificatori_ha.py`; i tetti non sono nel piano |
@@ -104,7 +104,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | C-61 | `ha_statistiche` contro `statistiche`: lo stesso fatto con due nomi | D | CC |  |  | Tappa 4, trovato 4 (`energy.py:151` contro `house.py:265`); D1, D13 |
 | C-62 | `dove.integrazione` è uno slug nudo; area, piano e dispositivo escono come `{id, nome}` | D | CC |  |  | Tappa 4, trovato 5 (`house.py:143`); D1 |
 | C-63 | `_with_live_kind` scrive `classe: None` e `unita: None` espliciti; altrove la chiave manca | D | CC |  |  | Tappa 4, trovato 6 (`api/handlers_home_space.py:72-74`); D1, regola dell'assenza |
-| C-64 | `state` e `unit` in inglese dentro `prima`/`dopo` del dispositivo, mandati al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`; `unit` a `:339`, trovata dal Task 1); D1 |
+| C-64 | `state` e `unit` in inglese dentro `prima`/`dopo` del dispositivo, mandati al modello | D | CC |  |  | Tappa 4, trovato 7 (`action/actuator.py:283`, `:331`; `unit` a `:339`, trovata dal Task 1); D1 · **chiudibile al rilascio** `4ac004c1`: l'impronta di `esegui` porta `stato` e `unita`, in italiano come il resto di `prima`/`dopo` (Tappa 7 T2, 07/10/2026) |
 
 ---
 
@@ -132,7 +132,7 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | D-22 | Altre sovrapposizioni fra strumenti (11 proprietà condivise fra `search` e `history`) | E | DP |  | cop-3 (conteggio, righe) | reg · cop-3 |
 | D-24 | Promesse: tre archivi dell'esito, quattro frasi, tre macchine a stati, tre vie di chiusura | D | CC |  | cop-9 (righe, incompleta) | reg · cop-9 · Tappa 8: archivi dell'esito, non forma degli strumenti (piano della Tappa 5) · Tappa 8 (Tappa 6, T0) |
 | D-25 | Validazione dello stesso ingresso in più punti | E | DP |  |  | reg · cop-3 |
-| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa); Tappa 7, T0 (testo) | reg · cop-3 · cop-9 · Tappa 7: e' lo scrivere, non la forma degli strumenti (piano della Tappa 5) · Tappa 7 (Tappa 6, T0) |
+| D-26 | Costruire: due archivi dello stesso esito, tre porte, due «_preview» | E | PS |  | cop-3 (imprecisa); Tappa 7, T0 (testo) | reg · cop-3 · cop-9 · Tappa 7: e' lo scrivere, non la forma degli strumenti (piano della Tappa 5) · Tappa 7 (Tappa 6, T0) · **chiudibile al rilascio** `b3cf69ce`: l'esito ha un archivio solo: `mark_rejected` non copia piu' il motivo, la pagina lo legge dalla cronaca per `esecuzione_id`; `actuator._preview` diventa `_target_report` (Tappa 7 T3, 07/10/2026) |
 | D-27 | Archivi per `data_dir` e migrazioni «chat divise» | E | PS |  | cop-3 (rimando rotto) | reg · cop-3 · Tappa 8: archivi (piano della Tappa 5) · Tappa 8 (Tappa 6, T0) |
 | D-29 | Riservatezza: sette maschere, uscite che non passano da nessuna | D | CC |  | cop-3 (incompleta); cop-5 (righe); cop-9 (righe, incompleta) | reg · cop-3 · cop-5 · cop-9 · Tappa 5, Task 2: le due maschere degli strumenti (corpo in `search`, «prima» in `propose`) chiedono il soffitto da `dispatch` (`Tool.mask`); le altre restano · **chiudibile al rilascio** `480f7212`: la parte rimasta: il registro dei turni taglia con `truncate_with_marker` e maschera con `_sanitize.MASK`, come il ponte (Tappa 7 T5, 07/10/2026) |
 | D-30 | Strumenti di lettura nei turni degli attori: cosa manca al turno | NV | DP |  | cop-8 (righe) | reg · cop-8 |
@@ -170,13 +170,13 @@ File relativi a `hiris/app/` salvo diverso avviso.
 | E-01 | Scritture verso HA che non passano da nessuna delle due porte | D | DP |  |  | reg · cop-2 · cop-5 |
 | E-02 | La cronaca delle azioni: una tabella, due scrittori | E | PS |  |  | reg · cop-9 · **chiudibile al rilascio** `21dd4422`: un solo scrittore, `Journal.log` col `genere`; `log_construction` uscita (Tappa 7 T1, 07/10/2026) |
 | E-03 | «HA ha rifiutato la chiamata» e l'occorrenza di successo, due volte in `actuator` | E | PS |  |  | reg · **chiudibile al rilascio** `21dd4422`: un solo rifiuto e silenzio (`_failed`) e un solo successo (`_succeeded`) in `actuator.py`; `_call_no_target` uscita (Tappa 7 T1, 07/10/2026) |
-| E-04 | Le forme del rifiuto e del successo fra le due porte | D | CC |  | cop-9 (righe) | reg · cop-9 |
-| E-05 | Cosa controlla una porta e l'altra no | D | DP |  |  | reg · cop-9 |
+| E-04 | Le forme del rifiuto e del successo fra le due porte | D | CC |  | cop-9 (righe) | reg · cop-9 · **chiudibile al rilascio** `4ac004c1`: una forma dell'esito per le due porte, `action/write_outcome.py`: `eseguito` sempre, e sul rifiuto `errore` (la frase di HIRIS) accanto a `causa`, la busta del client intatta; `applicata` e `guasto_rete` escono (Tappa 7 T2, 07/10/2026) |
+| E-05 | Cosa controlla una porta e l'altra no | D | DP |  |  | reg · cop-9 · **chiudibile al rilascio** `4ac004c1`: voluta (D14a): cosa controlla ciascuna porta resta diverso perche' i canali sono diversi, ed e' scritto una volta nel docstring di `write_outcome.py`; cio' che si condivide (la forma dell'esito) vive li' (Tappa 7 T2, 07/10/2026) |
 | E-06 | Più client verso HA e verso il Supervisor | E | DP |  |  | reg |
 | E-09 | «Verificare senza eseguire» non è un metodo della porta: `promise` lo ricompone | D | CC |  |  | cop-3 E-n1 · **chiudibile al rilascio** `21dd4422`: la promessa chiede `ActionActuator.verify` invece di ricomporre il pre-volo (Tappa 7 T1, 07/10/2026) |
 | E-10 | `call_service` butta il motivo di HA, senza guardia; le primitive di configurazione no | D | CC |  |  | cop-5 E1 · **chiudibile al rilascio** `21dd4422`: `call_service` rende la busta: il motivo di HA intatto col codice, il guasto di trasporto come silenzio (Tappa 7 T1, 07/10/2026) |
-| E-11 | «La scrittura è arrivata?»: due regole opposte; la riga incerta esce dalla potatura | D | DP |  |  | cop-9 N-E-2 |
-| E-12 | Il dominio dell'helper non si valida alla proposta: l'errore arriva dopo il «sì» | D | CC |  |  | cop-9 N-E-3 |
+| E-11 | «La scrittura è arrivata?»: due regole opposte; la riga incerta esce dalla potatura | D | DP |  |  | cop-9 N-E-2 · **chiudibile al rilascio** `b3cf69ce`: un silenzio della scrittura si rilegge (`Workshop._arrived`): arrivata -> applicata, assente -> rifiutata, rilettura muta -> `incerta` senza disfare; `risana` scrive `incerta`, migrazione 6, `_prune` non pota le incerte (Tappa 7 T3, 07/10/2026) |
+| E-12 | Il dominio dell'helper non si valida alla proposta: l'errore arriva dopo il «sì» | D | CC |  |  | cop-9 N-E-3 · **chiudibile al rilascio** `b3cf69ce`: il dominio dell'helper si valida alla proposta (`form_refusal`, contro `HAClient.HELPER_DOMAINS`); il «no» della pagina passa da `Workshop.reject` (Tappa 7 T3, 07/10/2026) |
 | E-13 | «Verificare senza eseguire» non ha una porta pubblica: `verification()` è atomica, `ActionActuator.verify(call)` non esiste; chi ne ha bisogno ricompone il pre-volo (si lega a E-09) | D | CC |  |  | compl §2.1 · **chiudibile al rilascio** `21dd4422`: `ActionActuator.verify(call)` pubblico; nessuno fuori dalla porta chiama `_resolve` (Tappa 7 T1, 07/10/2026) |
 
 ---
