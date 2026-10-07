@@ -205,7 +205,7 @@ class _ModelloCheRimette:
 
 @pytest.mark.asyncio
 async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
-    """Il collegamento: senza la chiamata in `server._write_analysis` il
+    """Il collegamento: senza la chiamata in `analyst_round.write_analysis` il
     `rimetti` validato dal Task 3.5 finirebbe nell'archivio e basta, e lo
     scope non cambierebbe mai."""
     from hiris.app import server
