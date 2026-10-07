@@ -45,7 +45,7 @@ from dataclasses import dataclass
 
 from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES, type_subject
 from ..home_space.type_vocabulary import Provenance
-from ..storage import connect, init_schema
+from ..storage import connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -624,6 +624,16 @@ class KnowledgeStore:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+    def rekey_subjects(self, renames: dict[str, str]) -> int:
+        """Le righe dei soggetti di `renames` (chiave vecchia -> nuova) passano
+        alla chiave nuova in `said_by`; ritorna quante. CHI cambia chiave lo
+        decide `servizi.migrate_service_threads` (G83-3, 07/10/2026). `who`,
+        il nome, resta com'e'. Il commit e' `_commit`: e' una scrittura, e la
+        versione avanza come per le altre."""
+        with self._lock:
+            return rekey(self._conn, "UPDATE knowledge SET said_by = ? WHERE said_by = ?",
+                         renames, commit=self._commit)
 
     # -- scrittura ---------------------------------------------------------
 

@@ -29,6 +29,7 @@ from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread, subject_key_for, thread_for
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.memory.store import MemoryStore
+from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from tests.test_admission import _compose
 
 _HIRIS = Path(__file__).resolve().parents[1] / "hiris"
@@ -133,13 +134,14 @@ def _servizio_parlante(tmp_path) -> tuple[dict, str]:
            "data_dir": str(tmp_path),
            "agenda": AgendaStore(str(tmp_path / "promesse.db")),
            "constructions": ConstructionStore(str(tmp_path / "costruzioni.db")),
-           "memory_store": MemoryStore(str(tmp_path / "memoria.db"))}
+           "memory_store": MemoryStore(str(tmp_path / "memoria.db")),
+           "knowledge": KnowledgeStore(str(tmp_path / "sapere.db"))}
     privata, pubblica = servizio_approvato(app, "utente", nome="cucina", specie="luogo")
     return app, subject_key_for(_riconosci(app, privata, pubblica))
 
 
 def _chiudi(app) -> None:
-    for chiave in ("servizi", "agenda", "constructions", "memory_store"):
+    for chiave in ("servizi", "agenda", "constructions", "memory_store", "knowledge"):
         app[chiave].close()
 
 
@@ -230,6 +232,41 @@ def test_i_ricordi_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
     assert moved["ricordi"] == 1
     assert "1 ricordi" in caplog.text
     assert migrate_service_threads(app)["ricordi"] == 0
+    _chiudi(app)
+
+
+def test_le_righe_del_sapere_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
+    """G83-3: un giudizio scritto da un servizio porta la sua chiave in
+    `said_by`; migra con le altre, `who` (il nome) resta, e la versione del
+    sapere avanza come per ogni scrittura (chi tiene una risposta in memoria
+    la confronta). Un sapere che l'avvio non ha aperto (`None`) si salta.
+
+    Mutazione ESEGUITA (07/10/2026): il sapere tolto dagli archivi di
+    `_service_thread_archives` -- rossa, la riga resta sotto il nome; e il
+    commit di `conn` al posto di `_commit` -- rossa, la versione non avanza."""
+    app, nuova = _servizio_parlante(tmp_path)
+    sapere = app["knowledge"]
+    for chi, soggetto in (("cucina", "luogo:cucina"), ("Paolo", "persona:u-paolo")):
+        sapere.write(Fact(
+            subject_kind="tipo", subject=f"sensor.{chi.lower()}", field="genere",
+            value="presenza", provenance="nostro", who=chi, when_ts=T_NASCITA,
+            said_by=soggetto))
+    prima = sapere.version()
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.api.servizi"):
+        moved = migrate_service_threads(app)
+
+    suo = sapere.get("tipo", "sensor.cucina", "genere")
+    assert (suo.said_by, suo.who) == (nuova, "cucina")
+    assert sapere.get("tipo", "sensor.paolo", "genere").said_by == "persona:u-paolo"
+    assert moved["righe del sapere"] == 1
+    assert sapere.version() > prima
+    assert "1 righe del sapere" in caplog.text
+    assert migrate_service_threads(app)["righe del sapere"] == 0
+
+    app["knowledge"] = None
+    assert "righe del sapere" not in migrate_service_threads(app)
+    app["knowledge"] = sapere
     _chiudi(app)
 
 

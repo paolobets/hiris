@@ -88,8 +88,8 @@ _JSON_PERMISSIONS = 0o600
 _json_lock = threading.Lock()
 
 
-def rekey(conn: sqlite3.Connection, update_sql: str,
-          renames: dict[str, str]) -> int:
+def rekey(conn: sqlite3.Connection, update_sql: str, renames: dict[str, str], *,
+          commit: Callable[[], None] | None = None) -> int:
     """`update_sql` -- `UPDATE <tabella> SET <colonna> = ? WHERE <colonna> = ?`
     -- per ogni coppia (vecchia, nuova) di `renames`, in una transazione;
     ritorna quante righe.
@@ -100,11 +100,12 @@ def rekey(conn: sqlite3.Connection, update_sql: str,
     scrive per intero l'archivio che chiama, e non si compone qui: un nome di
     tabella composto a runtime acceca il censimento delle scritture
     (`scripts/censimento.py`, misurato il 07/10/2026). Il lock, se l'archivio
-    ne ha uno, lo prende chi chiama."""
+    ne ha uno, lo prende chi chiama; `commit`, se l'archivio ne ha uno suo
+    (il sapere fa avanzare la sua versione a ogni scrittura), lo passa."""
     try:
         moved = sum(conn.execute(update_sql, (new, old)).rowcount
                     for old, new in renames.items())
-        conn.commit()
+        (commit or conn.commit)()
     except Exception:
         conn.rollback()
         raise
