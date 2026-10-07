@@ -864,7 +864,7 @@ async def ask(runner, store, house: House, device_id: str, *,
             runner, RECIPES_SPECIES, usage=measurements, modello=model,
             max_tokens=MAX_ANSWER_TOKENS,
             user_message=question, system_prompt=SYSTEM,
-            model=model, agent_type="observer")
+            model=model, agent_type=RECIPES_SPECIES)
     except Exception as error:
         logger.warning("ricetta: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)

@@ -850,10 +850,12 @@ PROPOSE_TOOL_DEF = {
             # Il livello (attori, strato 4, D13): l'enumerazione viene dalla
             # sua casa (`action/construction/stakes.py`) e porta solo cio' che
             # il modello puo' scegliere. «alto» non c'e': lo impone l'officina
-            # quando la proposta agisce su serrature o allarme.
+            # (`stakes.impose`). La descrizione non ricopia QUANDO: fino al
+            # 07/10/2026 diceva «su serrature e allarme», e la regola nuova
+            # sui servizi scritti come modello l'aveva gia' resa incompleta
+            # (revisione, giro 73). Piu' corta, e non invecchia.
             "livello": {"type": "string", "enum": list(STAKES_CHOSEN_BY_MODEL),
-                        "description": "Su serrature e allarme e' «alto», "
-                                       "da solo."},
+                        "description": "«alto» lo impone il codice, non tu."},
             "frase": {"type": "string",
                       "description": "La frase di chi ti sta parlando da cui nasce, "
                                      "verbatim."},

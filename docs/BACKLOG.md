@@ -225,7 +225,13 @@ veridicita' della soluzione»).
    gesto `indagine`, `_intent_contract`, `INTENT_EXCLUDED` e il controllo anticipato. **Restano
    al Task 4.6** la lettura di `analisi.attuazione` nella pagina (`mind/view._with_outcomes`,
    `watcher-cosa-fare.js`), che per le analisi nuove non trova piu' niente: gli esiti nuovi stanno
-   in `analisi.proponente`, e la pagina che li mostra passa da `ux-ui-specialist`. **Si rilascia
+   in `analisi.proponente`, e la pagina che li mostra passa da `ux-ui-specialist`. *Fatto il
+   07/10/2026, non ancora rilasciato (fetta C1):* un lettore solo, `proposer_turn.outcomes_of`,
+   per il proponente, la rotta e la pagina; le analisi archiviate con `attuazione` passano alla
+   chiave nuova con la migrazione v14 di `mind/store.py`; la scheda dice tre frasi, una per
+   esito, e rimanda alle Proposte. **Le tre frasi non sono ancora passate da
+   `ux-ui-specialist`** (la fetta e' nata nella nuvola, dove l'agente non c'e'): da fare prima
+   del rilascio. **Si rilascia
    dopo lo strato 3**, come dice il piano: non va acceso prima che l'analista coi suoi strumenti
    sia stato misurato dal vivo.
    *L'avviso per `alto` c'e' dal 06/10/2026, non ancora rilasciato (Task 4.3, D14):* quando il
