@@ -527,7 +527,7 @@ entry in [`CHANGELOG.md`](CHANGELOG.md). You do not have to clean up after it:
 on first start after the update HIRIS **uninstalls what it had installed** —
 the copy under `<ha-config>/www/hiris/` and the registered Lovelace resource —
 touching only those, never a resource it did not add, and saying so in the log
-(`hiris/app/server.py`, `_disinstalla_card_lovelace`). Removing the now-empty
+(`hiris/app/action/installation.py`, `_disinstalla_card_lovelace`). Removing the now-empty
 card tile from your dashboard is the one gesture left to you.
 
 ---
