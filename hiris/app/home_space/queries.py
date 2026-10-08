@@ -159,11 +159,11 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
 
     `_view_behavior` chiama questa funzione come gli altri tre rami.
     """
-    detail = {"esiste": False, "tipo": kind, "riferimento": reference}
+    detail = {"esiste": False, "genere": kind, "riferimento": reference}
     if kind is None:
         # Un `riferimento` dato alla porta senza genere (`house_query`, dal
         # 30/09/2026): il tipo non si inventa.
-        del detail["tipo"]
+        del detail["genere"]
     if unavailable:
         detail["non_disponibile"] = True
     else:
@@ -281,7 +281,7 @@ def _view_area(house: House, memories: list[dict], reference,
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incomplete = sorted(set(unavailable) & {"aree", "dispositivi", "entita"})
     detail = {
-        "esiste": True, "tipo": "area", "id": area["id"], "nome": area["nome"],
+        "esiste": True, "genere": "area", "id": area["id"], "nome": area["nome"],
         "entita": entity,
         "ricordi": _tethered_memories(memories, "area", reference),
     }
@@ -296,7 +296,7 @@ def _view_area(house: House, memories: list[dict], reference,
     # pseudo-aree (`__senza_area__` e le sorelle) sono tutte «senza area».
     where = "senza area" if is_pseudo_area(area["id"]) else area["id"]
     _within_ceiling(detail, f"chiedi «search» con area=\"{where}\" e un filtro "
-                            "(tipo, stato, classe): l'insieme si restringe, e "
+                            "(dominio, stato, classe): l'insieme si restringe, e "
                             "la porta lo pagina con `oltre` e `salta`")
     # Le entita' di riferimento della stanza: solo quando l'utente le ha
     # dichiarate. Una chiave `null` su ogni area sarebbe rumore, e per giunta
@@ -381,7 +381,7 @@ def _view_device(house: House, memories: list[dict], reference,
                                           translations=translations,
                                           judgments=judgments)
     detail = {
-        "esiste": True, "tipo": "dispositivo", "id": device["id"],
+        "esiste": True, "genere": "dispositivo", "id": device["id"],
         "nome": device_name(device),
         "disabilitato": bool(device.get("disabilitato")),
         "entita": device_entities,
@@ -393,7 +393,7 @@ def _view_device(house: House, memories: list[dict], reference,
     if disabled_count:
         detail["entita_disabilitate"] = disabled_count
     # Lo stesso tetto dell'area: un dispositivo «Home Assistant» ne porta 55.
-    _within_ceiling(detail, "chiedi «search» con un filtro (tipo, stato, "
+    _within_ceiling(detail, "chiedi «search» con un filtro (dominio, stato, "
                             "integrazione, area) per restringere l'insieme, o "
                             "con `riferimento` = l'id di un'entita' per il suo "
                             "dettaglio")
@@ -428,7 +428,7 @@ def _view_behavior(behavior: list[dict], memories: list[dict],
         # rami, con la stessa frase (`_not_found_detail`).
         return _not_found_detail(kind, reference, bool(unread_bodies))
     return {
-        "esiste": True, "tipo": kind, "id": entry["id"], "nome": entry.get("nome"),
+        "esiste": True, "genere": kind, "id": entry["id"], "nome": entry.get("nome"),
         # **Il corpo passa dal confine** (reperto B-1, 22/09/2026), e passa
         # QUI e non in archivio. L'esenzione di prima aveva una ragione
         # scaduta -- «e' un file locale che il proprietario modifica» -- e dal
@@ -469,7 +469,7 @@ def _view_memory(memories: list[dict], reference) -> dict:
     composto a mano, e taceva `corretto_da_utente` (C-41)."""
     memory = next((r for r in memories if r.get("id") == reference), None)
     if memory is None:
-        return {"esiste": False, "tipo": MEMORY_KIND, "riferimento": reference}
+        return {"esiste": False, "genere": MEMORY_KIND, "riferimento": reference}
     return {"esiste": True, **memory}
 
 
@@ -656,7 +656,7 @@ def _view_integration(house: House, reference,
     mute = [e for e in own if mirror.state.get(e["id"]) == STATE_UNAVAILABLE]
     unknown = [e for e in own if mirror.state.get(e["id"]) == STATE_UNKNOWN]
     detail = {
-        "esiste": True, "tipo": "integrazione", "dominio": domain,
+        "esiste": True, "genere": "integrazione", "dominio": domain,
         "voci": entries,
         "entita_totali": len(own),
         "entita_mute": len(mute),
@@ -723,15 +723,15 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     "sala_da_pranzo")`, sette luci mescolate, quattro nascoste) ha mostrato
     che marcarle SENZA separarle non basta -- il campo c'era gia' e non ha
     impedito che venissero elencate. Una singola entita' guardata da sola
-    (`_view_entity`) continua a portare il campo `nascosta` invece che una
-    chiave a parte: non c'e' un elenco da cui separarla, hai chiesto
-    esplicitamente proprio lei.
+    (`_view_entity`) lo dice col suo `fuori` (`{classe: nascosta, causa}`,
+    `render.render_entity`) invece che con una chiave a parte: non c'e' un
+    elenco da cui separarla, hai chiesto esplicitamente proprio lei.
 
     Sui rami che possono confondere un NOME con un id -- area, entita',
     dispositivo, automazione e script -- `esiste: False`
     porta anche `suggerimento` (`_search_suggestion`): invita a chiamare
     `search` col riferimento ricevuto. STESSA chiave, STESSA frase su tutti
-    questi rami (fondamenta 3) -- non su `_view_memory`, il solo tipo il
+    questi rami (fondamenta 3) -- non su `_view_memory`, il solo genere il
     cui id (numerico, interno a HIRIS, mai uno slug di Home Assistant) non
     si scrive mai al posto di un nome.
 
@@ -872,7 +872,7 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     # sbagliata detta con sicurezza su una cosa che Home Assistant gli aveva
     # appena mostrato. Stessa disciplina di `non_disponibile`: «non l'ho
     # trovato» e «non ho potuto guardare» sono due fatti diversi.
-    return {"esiste": False, "tipo": kind, "riferimento": reference,
+    return {"esiste": False, "genere": kind, "riferimento": reference,
             "non_so_guardare": True}
 
 
@@ -925,5 +925,5 @@ def related(answer: dict, kind: str, reference) -> dict:
     # insiemi, e due letture identiche produrrebbero due risposte con le
     # chiavi in ordine diverso. I VALORI li ordina gia' il client, e per la
     # stessa ragione.
-    return {"tipo": kind, "riferimento": reference,
+    return {"genere": kind, "riferimento": reference,
             "legami": {name: translated[name] for name in sorted(translated)}}

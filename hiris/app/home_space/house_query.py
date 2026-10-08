@@ -49,7 +49,7 @@ _BEHAVIOR_KINDS = frozenset(BEHAVIOR_DOMAINS.values())
 _DETAIL_ONLY_KINDS = ("dispositivo", "ricordo", "integrazione")
 
 #: Il nome di ogni filtro nella lingua dello strumento, per dirlo nell'errore.
-_PARAMETER_OF = {"name": "nome", "reference": "riferimento", "domain": "tipo",
+_PARAMETER_OF = {"name": "nome", "reference": "riferimento", "domain": "dominio",
                  "state": "stato", "device_class": "classe", "area": "area",
                  "floor": "piano", "platform": "integrazione",
                  "idle_for_s": "fermo_da_ore", "changed_within_s": "cambiato_da_ore",
@@ -114,7 +114,7 @@ def parse_filters(arguments: dict) -> HouseFilters | dict:
     a = dict(arguments or {})
     fields: dict = {}
     for key, attr in (("genere", "kind"), ("nome", "name"),
-                      ("riferimento", "reference"), ("tipo", "domain"),
+                      ("riferimento", "reference"), ("dominio", "domain"),
                       ("stato", "state"), ("classe", "device_class"),
                       ("area", "area"), ("piano", "floor"),
                       ("integrazione", "platform"), ("ordina", "order_by")):
@@ -512,7 +512,7 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
         f = replace(f, kind=BEHAVIOR_DOMAINS[f.domain], domain=None)
-    # Qui convergono `genere=automazione` e `tipo=automation`: un filtro che
+    # Qui convergono `genere=automazione` e `dominio=automation`: un filtro che
     # su un genere non ha senso si dice, non si ignora -- ignorato, darebbe
     # con sicurezza l'insieme intero (spec §2.4). Una domanda per solo nome o
     # riferimento cerca in tutti i generi, e non porta altri filtri.

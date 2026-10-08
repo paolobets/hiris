@@ -49,7 +49,7 @@ def test_search_dichiara_tutti_i_filtri_e_nessuno_e_obbligatorio():
     search = next(d for d in KNOWLEDGE_TOOLS if d["name"] == "search")
     schema = search["input_schema"]
     assert set(schema["properties"]) == {
-        "nome", "genere", "riferimento", "tipo", "stato", "classe", "area",
+        "nome", "genere", "riferimento", "dominio", "stato", "classe", "area",
         "piano", "integrazione", "fermo_da_ore", "cambiato_da_ore", "sopra", "sotto",
         "in_esecuzione", "includi_nascoste", "includi_servizio", "ordina",
         "limite", "salta"}
@@ -60,7 +60,7 @@ def test_search_dichiara_tutti_i_filtri_e_nessuno_e_obbligatorio():
 async def test_una_domanda_di_stato_passa_dai_filtri(dispatcher):
     """Mutazione ESEGUITA: `_search` risponde nella forma vecchia
     (`{"trovati": []}`) senza passare dalla porta -- rossa."""
-    r = await dispatcher.dispatch("search", {"tipo": "light", "stato": "on"})
+    r = await dispatcher.dispatch("search", {"dominio": "light", "stato": "on"})
     assert {"trovate", "escluse", "profondita", "voci"} <= set(r)
 
 
@@ -182,7 +182,7 @@ async def test_una_domanda_per_filtri_senza_esito_non_porta_il_suggerimento_dei_
     """`nulla_riconosciuto` parla di NOMI: su «luci con stato xyz» non c'e'
     nessun nome da non aver riconosciuto, e `escluse` dice gia' cosa manca.
     Mutazione ESEGUITA: dichiararlo a ogni `trovate == 0` -- rossa."""
-    r = await dispatcher.dispatch("search", {"tipo": "light", "stato": "xyz"})
+    r = await dispatcher.dispatch("search", {"dominio": "light", "stato": "xyz"})
     assert r["trovate"] == 0
     assert "nulla_riconosciuto" not in r
 
@@ -198,7 +198,7 @@ async def test_senza_la_memoria_la_porta_risponde_e_il_ricordo_lo_dice(archivio_
     -- rossa; togliere il ramo `self._memory is None` del ricordo -- rossa
     (`non_disponibile` manca); togliere `ricordi_non_letti` -- rossa."""
     d = ToolDispatcher(archivio_casa, None)
-    r = await d.dispatch("search", {"tipo": "light"})
+    r = await d.dispatch("search", {"dominio": "light"})
     assert "errore" not in r and r["trovate"] >= 1
     r = await d.dispatch("search", {"genere": "ricordo", "riferimento": "1"})
     voce, = r["voci"]

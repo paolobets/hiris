@@ -78,7 +78,7 @@ WINDOW_MAX_HOURS = 24 * 90
 LEVELS = ("WARNING", "ERROR", "CRITICAL")
 #: Le chiavi di «di chi», e della pagina: le stesse di `search`, lette da
 #: `parse_filters` e da nessun altro.
-_WHO_KEYS = ("nome", "riferimento", "tipo", "classe", "area", "piano",
+_WHO_KEYS = ("nome", "riferimento", "dominio", "classe", "area", "piano",
              "integrazione", "includi_nascoste", "includi_servizio",
              "limite", "salta")
 #: Il registro di Home Assistant non sa di aree ne' di cose della casa: per
@@ -127,8 +127,8 @@ def _wrong_for_kind(kind: str, a: dict) -> str | None:
         if _given(a, "classe"):
             return ("classe non vale per cosa=esecuzioni: le esecuzioni sono di "
                     "automazioni e script")
-        if _given(a, "tipo") and a["tipo"] not in BEHAVIOR_DOMAINS:
-            return ("cosa=esecuzioni vale per automazioni e script: tipo accetta "
+        if _given(a, "dominio") and a["dominio"] not in BEHAVIOR_DOMAINS:
+            return ("cosa=esecuzioni vale per automazioni e script: dominio accetta "
                     "automation o script")
         reference = str(a.get("riferimento") or "")
         if reference and reference.split(".", 1)[0] not in BEHAVIOR_DOMAINS:

@@ -201,7 +201,7 @@ _SUBJECT_FILTERS = {
         "description": ("Un nome, un alias o un pezzo di nome, confrontato anche "
                         "per radice («rifiuti» trova «rifiuto»)."),
     },
-    "tipo": {
+    "dominio": {
         "type": "string",
         "description": "Il dominio di Home Assistant: light, sensor, switch, automation...",
     },
@@ -291,11 +291,11 @@ SEARCH_TOOL_DEF = {
             "attributi e ultimo cambio",
             f"una riga per voce, al massimo {ROWS_MAX}")
         + "\n" + _COUNT_RULE + "\n"
-        "Guarda `tipo` e l'id prima di concludere: «luci» puo' essere un "
+        "Guarda l'id prima di concludere: «luci» puo' essere un "
         "`sensor` che le CONTA invece che una luce. Se piu' voci hanno lo "
         "stesso nome (due «Bagno» su piani diversi) scegli guardando la "
         "conversazione o chiedi a chi ti sta parlando: non prendere la prima.\n"
-        "Una voce con `nascosta: true` esiste: la persona l'ha tolta dalle "
+        "Una voce nascosta (`fuori`) esiste: la persona l'ha tolta dalle "
         "proprie viste in Home Assistant, non cancellata. Non proporla di tua "
         "iniziativa; se la domanda la riguarda, usala e dillo.\n"
         "Le posizioni di persone e dispositivi che si spostano non escono: di "
@@ -368,7 +368,7 @@ RELATED_TOOL_DEF = {
         "che senza questo strumento non hanno risposta: «perche' si e' accesa la "
         "luce del corridoio?» e -- prima di proporre di cancellare o cambiare "
         "qualcosa -- «se tolgo questa, cosa smette di funzionare?». "
-        "Richiede `tipo` (uno fra: " + ", ".join(_OUR_LINK_TYPES) + ") e "
+        "Richiede `genere` (uno fra: " + ", ".join(_OUR_LINK_TYPES) + ") e "
         "`riferimento`, l'identificatore ESATTO (usa `search` se hai solo un nome). "
         "Lo calcola Home Assistant su TUTTO cio' che ha caricato, ovunque sia "
         "scritto -- pacchetti, `!include`, cartelle, scene, gruppi -- mentre "
@@ -395,7 +395,7 @@ RELATED_TOOL_DEF = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "tipo": {
+            "genere": {
                 "type": "string",
                 "description": "Che cosa e' la cosa di cui vuoi i legami: uno fra "
                                + ", ".join(_OUR_LINK_TYPES) + ".",
@@ -409,7 +409,7 @@ RELATED_TOOL_DEF = {
                 ),
             },
         },
-        "required": ["tipo", "riferimento"],
+        "required": ["genere", "riferimento"],
     },
 }
 
@@ -533,7 +533,7 @@ FETCH_TOOL_DEF = {
         "un'entita' o un dispositivo -- dato il suo identificatore esatto "
         "(`riferimento`; usa `search` per trovarlo se hai solo un nome). Serve a "
         "rispondere a domande come 'cosa mi hai gia' detto sulla cucina?' senza "
-        "dover rileggere ogni ricordo uno per uno. Se `tipo` non e' specificato, "
+        "dover rileggere ogni ricordo uno per uno. Se `genere` non e' specificato, "
         "cerca fra tutti e tre i tipi di ancora (area, entita', dispositivo); "
         "specificalo solo se lo sai gia' con certezza. Se nessun ricordo e' "
         "ancorato a quel riferimento, `ricordi` e' una lista vuota: non "
@@ -548,9 +548,9 @@ FETCH_TOOL_DEF = {
                 "type": "string",
                 "description": "L'identificatore esatto di un'area, entita' o dispositivo.",
             },
-            "tipo": {
+            "genere": {
                 "type": "string",
-                "description": "area, entita o dispositivo -- ometti per cercare su tutti e tre.",
+                "description": "area, entita o dispositivo.",
             },
         },
         "required": ["riferimento"],
@@ -1773,14 +1773,14 @@ class ToolDispatcher:
         # convertibile non e' un errore da sollevare -- e' lo stesso "non l'ho
         # trovato" degli altri tipi.
         if kind == "ricordo" and self._memory is None:
-            return {"esiste": False, "tipo": "ricordo", "riferimento": reference,
+            return {"esiste": False, "genere": "ricordo", "riferimento": reference,
                     "non_disponibile": True,
                     "motivo": "l'archivio della memoria non e' ancora stato caricato"}
         if kind == "ricordo" and not isinstance(reference, int):
             try:
                 reference = int(reference)
             except (TypeError, ValueError):
-                return {"esiste": False, "tipo": "ricordo", "riferimento": reference}
+                return {"esiste": False, "genere": "ricordo", "riferimento": reference}
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
@@ -1857,7 +1857,7 @@ class ToolDispatcher:
         forma della risposta stanno in `queries.related`, che e' pura e si
         prova senza rete.
         """
-        kind = arguments.get("tipo")
+        kind = arguments.get("genere")
         reference = arguments.get("riferimento")
         # Gli obbligatori li controlla `dispatch()` (`_bad_arguments`), da
         # `RELATED_TOOL_DEF["input_schema"]["required"]`.
@@ -1951,8 +1951,8 @@ class ToolDispatcher:
         # `test_a_required_argument_present_but_null_is_missing_too`
         # (`tests/test_knowledge_tools.py`) passa `riferimento: None` a
         # `fetch` e vede il rifiuto centrale.
-        kind = arguments.get("tipo")
-        # Fix E1-②: un `tipo` fuori dal vocabolario delle ancore ("stanza",
+        kind = arguments.get("genere")
+        # Fix E1-②: un `genere` fuori dal vocabolario delle ancore ("stanza",
         # o "entita'" con l'accento -- plausibilissimo per un modello
         # italiano che non lo sta copiando da uno schema) finiva silenzioso
         # in `per_tether(tipo, riferimento)`, che semplicemente non trova
@@ -1969,7 +1969,7 @@ class ToolDispatcher:
         kinds = (kind,) if kind else _TETHER_TYPES
 
         # Il modello puo' non sapere se «cucina» e' un'area o un dispositivo
-        # (o, in teoria, un'entita'): senza `tipo` si cerca su tutti e tre e
+        # (o, in teoria, un'entita'): senza `genere` si cerca su tutti e tre e
         # si uniscono i risultati, invece di pretendere che lo specifichi
         # sempre -- una ricerca che fallisce solo perche' il tipo indovinato
         # era sbagliato sarebbe un "non ho trovato niente" bugiardo.

@@ -116,7 +116,7 @@ def test_i_filtri_di_chi_sono_quelli_di_search():
 
     Mutazione ESEGUITA: leggere `area` a mano in `parse_query` e non
     passarla a `parse_filters` -- rossa."""
-    argomenti = {"area": "Cucina", "tipo": "light", "includi_nascoste": True,
+    argomenti = {"area": "Cucina", "dominio": "light", "includi_nascoste": True,
                  "limite": 10, "salta": 5}
     assert _q(**argomenti).who == hq.parse_filters(argomenti)
 
@@ -138,7 +138,7 @@ def test_i_filtri_di_chi_sono_quelli_di_search():
     ({"cosa": "errori", "area": "Cucina"}, "area: non vale per cosa=errori"),
     ({"cosa": "esecuzioni", "riferimento": "light.cucina_1"},
      "non e' un'automazione ne' uno script"),
-    ({"cosa": "esecuzioni", "tipo": "light"}, "tipo accetta automation o script"),
+    ({"cosa": "esecuzioni", "dominio": "light"}, "dominio accetta automation o script"),
     ({"cosa": "esecuzioni", "classe": "door"}, "classe non vale"),
     ({"cosa": "esecuzioni", "esecuzione": "   "}, "un testo non vuoto"),
     ({"limite": 51}, "limite va da 0 a 50"),
@@ -290,7 +290,7 @@ def test_un_entita_rumorosa_si_ferma_a_cinquanta_righe_dal_piu_recente():
 
     Mutazione ESEGUITA: non scrivere `oltre` -- rossa; ordinare dal piu'
     vecchio -- rossa sulla prima riga."""
-    query = _q(tipo="light")
+    query = _q(dominio="light")
     chosen = _scegli(query)
     assert chosen.depth == "media" and chosen.found == 2
     notte = [_punto((datetime(2026, 9, 29, 0, 0, tzinfo=ZoneInfo("UTC"))
@@ -399,7 +399,7 @@ def test_limite_zero_non_legge_nessuno_e_conta():
 
     Mutazione ESEGUITA: in `choose`, restituire `subjects` anche con
     `limit` 0 nella completa e nella media -- rossa (due soggetti)."""
-    chosen = _scegli(_q(tipo="light", limite=0))
+    chosen = _scegli(_q(dominio="light", limite=0))
     assert chosen.found == 2 and chosen.subjects == []
 
 
@@ -450,7 +450,7 @@ def test_nella_corta_chi_e_cambiato_nella_finestra_viene_prima():
     l'ordine della casa) -- rossa; tagliare la pagina in `choose` sui
     soggetti come prima -- rossa (`subjects` sono 5, non 16)."""
     casa, stati, serie = _sedici_luci()
-    query = _q(tipo="light", limite=5)
+    query = _q(dominio="light", limite=5)
     chosen = _scegli(query, casa=casa, stati=stati)
     assert chosen.depth == "corta" and len(chosen.subjects) == 16
     uscita = hh.state_rows(query, chosen, serie, truncated=False, acts=[],
@@ -473,7 +473,7 @@ def test_nella_corta_salta_su_una_finestra_fissa_non_salta_ne_ripete():
     casa, stati, serie = _sedici_luci()
     visti, pagine = [], []
     for salta in (0, 5, 10, 15):
-        query = _q(tipo="light", limite=5, salta=salta)
+        query = _q(dominio="light", limite=5, salta=salta)
         uscita = hh.state_rows(query, _scegli(query, casa=casa, stati=stati), serie,
                                truncated=False, acts=[], current=stati)
         visti += [v["id"] for v in uscita["voci"]]
@@ -570,7 +570,7 @@ def test_i_conti_di_una_serie_sono_di_hiris_e_la_media_pesa_il_tempo():
     vale 6 ore, il 22 dodici, il 18 sei: la media e' 20,5, non 20.
 
     Mutazione ESEGUITA: media aritmetica dei punti -- rossa (20,0)."""
-    riga = _valori(_q(cosa="valori", tipo="sensor"), ["sensor.temperatura"],
+    riga = _valori(_q(cosa="valori", dominio="sensor"), ["sensor.temperatura"],
                    dettaglio=_TEMPERATURA,
                    classi={"sensor.temperatura": "measurement"},
                    unita={"sensor.temperatura": "°C"})["voci"][0]

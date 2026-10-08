@@ -433,7 +433,7 @@ def _tool_calls(home_space: dict) -> dict[str, tuple[str, dict]]:
         domains[domain] = domains.get(domain, 0) + 1
     busiest = sorted(domains, key=lambda name: (-domains[name], name))[:BUSIEST_DOMAINS]
     for domain in busiest:
-        calls[f"search(tipo={domain})"] = ("search", {"tipo": domain})
+        calls[f"search(dominio={domain})"] = ("search", {"dominio": domain})
     ordered = sorted(home_space["entita"], key=lambda entity: entity["id"])
     positions = sorted({round(index * (len(ordered) - 1) / (SAMPLED_ENTITIES - 1))
                         for index in range(SAMPLED_ENTITIES)}) if ordered else []
