@@ -334,9 +334,14 @@ class HomeSpace:
         self._behavior_problems: list[str] = []
         self._unread_bodies: dict[str, str] = {}
         self._behavior_loaded_at: str | None = None
+        # Il segno della replica conservata (G-16, Tappa 8): la ragione per
+        # cui l'ultima rilettura NON ha sostituito cio' che si tiene. `None`
+        # quando la replica e' quella dell'ultima rilettura.
+        self._behavior_kept: str | None = None
         self._dashboard_entries: list[dict] = []
         self._unavailable_dashboards: list[str] = []
         self._dashboards_loaded_at: str | None = None
+        self._dashboards_kept: str | None = None
         # La dashboard Energia (`home_space/energy.py`): letta alla prima
         # domanda dopo ogni ricostruzione, non a ogni domanda.
         self._energy: dict | None = None
@@ -474,6 +479,24 @@ class HomeSpace:
         self._behavior_problems = list(problems or [])
         self._unread_bodies = dict(unread_bodies or {})
         self._behavior_loaded_at = datetime.now(UTC).isoformat(timespec="seconds")
+        self._behavior_kept = None
+
+    def keep_behavior(self, reason: str) -> None:
+        """La rilettura del comportamento NON ha sostituito la replica, e
+        `reason` dice perche' (`behavior.reread`, le sue due guardie). Fino
+        alla Tappa 8 (G-16) lo diceva solo il log, e il nucleo presentava la
+        replica come se fosse fresca. Il segno resta finche' una rilettura
+        buona non consegna (`hold_behavior`)."""
+        self._behavior_kept = reason
+
+    def behavior_kept(self) -> dict | None:
+        """La replica conservata, come oggetto che si legge da solo: perche'
+        (`motivo`) e di quando e' la replica che si tiene (`letto_il`, `None`
+        se non si e' mai letta). `None` quando la replica e' quella
+        dell'ultima rilettura."""
+        if self._behavior_kept is None:
+            return None
+        return {"motivo": self._behavior_kept, "letto_il": self._behavior_loaded_at}
 
     def behavior(self) -> list[dict]:
         """Le voci del comportamento, con `attiva` e `nome` chiesti allo
@@ -524,6 +547,23 @@ class HomeSpace:
         self._dashboard_entries = list(entries)
         self._unavailable_dashboards = list(unavailable or [])
         self._dashboards_loaded_at = datetime.now(UTC).isoformat(timespec="seconds")
+        self._dashboards_kept = None
+
+    def keep_dashboards(self, reason: str, unavailable: list[str] | None = None) -> None:
+        """La rilettura delle plance NON ha sostituito la replica
+        (`behavior.reread_dashboards`): il segno, come `keep_behavior`. I non
+        disponibili sono quelli della lettura di ADESSO: fino alla Tappa 8
+        restavano quelli della replica, e dicevano «tutto leggibile» proprio
+        mentre niente lo era."""
+        self._dashboards_kept = reason
+        self._unavailable_dashboards = list(unavailable or [])
+
+    def dashboards_kept(self) -> dict | None:
+        """La replica conservata delle plance, nella forma di
+        `behavior_kept`."""
+        if self._dashboards_kept is None:
+            return None
+        return {"motivo": self._dashboards_kept, "letto_il": self._dashboards_loaded_at}
 
     def dashboards(self) -> list[dict]:
         return self._dashboard_entries

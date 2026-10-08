@@ -109,3 +109,28 @@ async def test_a_completely_failed_read_does_not_delete_the_dashboards(archivio,
     assert esito["conteggi"]["plance"] == 0
     assert archivio.dashboards()[0]["titolo"] == "Principale"
     assert archivio.dashboards()[0]["config"] == _CONFIG_DEFAULT
+
+
+@pytest.mark.asyncio
+async def test_la_replica_conservata_delle_plance_lo_dice_coi_non_disponibili_di_adesso(
+        archivio):
+    """G-16 (Tappa 8, Task 10), lo stesso per le plance: la replica tenuta
+    porta il segno, e i non disponibili sono quelli della lettura fallita --
+    prima restavano quelli della replica, e dicevano «tutto leggibile» proprio
+    mentre niente lo era. Una lettura buona toglie il segno.
+
+    Mutazione eseguita: togliere `keep_dashboards` dal ramo della guardia ->
+    rossa."""
+    await reread_dashboards(_house(_CONFIG_DEFAULT), archivio)
+    assert archivio.dashboards_kept() is None and archivio.unavailable_dashboards() == []
+    letto_il = archivio.dashboards_loaded_at()
+
+    await reread_dashboards(_house(None, unavailable=["principale"]), archivio)
+
+    assert archivio.dashboards_kept() == {"motivo": "nessuna plancia leggibile",
+                                          "letto_il": letto_il}
+    assert archivio.unavailable_dashboards() != []
+    assert archivio.dashboards()[0]["config"] == _CONFIG_DEFAULT
+
+    await reread_dashboards(_house(_CONFIG_DEFAULT), archivio)
+    assert archivio.dashboards_kept() is None

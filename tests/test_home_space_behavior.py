@@ -292,3 +292,37 @@ async def test_un_nome_legittimo_non_si_mutila(casa, cartella):
 
     assert (_per_id(casa.behavior())["automation.buona"]["nome"]
             == "Sveglia dell'ospite (piano 1, n°2)")
+
+
+@pytest.mark.asyncio
+async def test_la_replica_conservata_porta_il_suo_segno_finche_una_lettura_non_riesce(
+        casa, cartella):
+    """G-16 (Tappa 8, Task 10): la guardia che conserva la replica lo dice
+    all'anagrafe (`behavior_kept`), con la ragione e la data della replica
+    che si tiene; una rilettura buona toglie il segno.
+
+    Mutazione eseguita: togliere `keep_behavior` dal ramo della guardia ->
+    rossa (`behavior_kept()` resta `None`)."""
+    pieno = _house(stati=[_stato("automation.sveglia", "Sveglia")],
+                   configurazioni={"automation.sveglia": {"alias": "Sveglia"}})
+    await reread(pieno, casa, cartella)
+    assert casa.behavior_kept() is None
+    letto_il = casa.behavior_loaded_at()
+
+    await reread(_house(stati=[_stato("light.cucina")]), casa, cartella)
+
+    assert casa.behavior_kept() == {"motivo": behavior.BEHAVIOR_NOT_LOADED,
+                                    "letto_il": letto_il}
+    await reread(pieno, casa, cartella)
+    assert casa.behavior_kept() is None
+
+
+@pytest.mark.asyncio
+async def test_uno_specchio_illeggibile_conserva_la_replica_e_lo_dice(casa, cartella):
+    """L'altra guardia: lo specchio non si legge, la rilettura si ferma e la
+    replica resta. Anche questo e' un segno, non solo un'eccezione nel log."""
+    with pytest.raises(RuntimeError):
+        await behavior.reread(_house(), EntityCache(), casa, cartella)
+    kept = casa.behavior_kept()
+    assert kept is not None and kept["letto_il"] is None
+    assert kept["motivo"]
