@@ -92,7 +92,21 @@ def turn_answer(turn: dict | None) -> str:
     return decision.get("reply") or ""
 
 
+#: Le colonne che `_row` legge: ogni lettura della coda le nomina (D-62,
+#: Tappa 8), invece di `SELECT *` -- sette letture che prendevano anche cio'
+#: che nessuno legge (`claimed_ts`, `delivered_ts`) e che si sarebbero prese
+#: in silenzio ogni colonna futura.
+_COLUMNS = ("job_id, kind, status, nonce, wake_json, context_json, deadline_ts, "
+            "created_ts, priority, subject_key, entry_point, decision_json, decided_ts")
+
+
 def _row(r) -> dict:
+    # **Una forma sola** per ogni lettura della coda (D-62, Tappa 8): `get` e
+    # `latest` leggono la stessa riga con due chiavi diverse, e fino a qui
+    # `decided_ts` usciva solo da `latest` -- la fondamenta 3 rotta dentro un
+    # file solo. `decision` e `decided_ts` sono `None` finche' il turno non e'
+    # deciso.
+    #
     # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
     # (Task 14): chi ripiega alla scadenza registra nel registro degli esiti
     # QUANTO il piano ha avuto per rispondere, e quel numero e'
@@ -104,7 +118,9 @@ def _row(r) -> dict:
             "context": json.loads(r["context_json"]),
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"],
             "priority": r["priority"],
-            "thread": thread_from_columns(r["subject_key"], r["entry_point"])}
+            "thread": thread_from_columns(r["subject_key"], r["entry_point"]),
+            "decision": json.loads(r["decision_json"]) if r["decision_json"] else None,
+            "decided_ts": r["decided_ts"]}
 
 def _migration_2(conn) -> None:
     """Versione 2 (23/09/2026, reperto C-6): la colonna della consegna.
@@ -216,7 +232,7 @@ class ReasoningQueue:
         che `submit` rifiutera'."""
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE status='pending' AND deadline_ts > ? "
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE status='pending' AND deadline_ts > ? "
                 "ORDER BY priority DESC, created_ts ASC, id ASC LIMIT 1",
                 (now,)).fetchone()
             if r is None:
@@ -259,7 +275,7 @@ class ReasoningQueue:
     def submit(self, job_id: str, nonce: str, decision: dict, now: float) -> bool:
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=?", (job_id,)
             ).fetchone()
             if (r is None or r["status"] != "claimed" or r["nonce"] != nonce
                     or r["deadline_ts"] <= now):
@@ -288,7 +304,7 @@ class ReasoningQueue:
         # dopo, come dimostra `get(job_id)` chiamato di nuovo.
         with self._lock:
             rows = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE status IN ('pending','claimed') "
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE status IN ('pending','claimed') "
                 "AND deadline_ts <= ?",
                 (now,)).fetchall()
             for r in rows:
@@ -342,7 +358,7 @@ class ReasoningQueue:
         """
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE job_id=? AND kind='chat' "
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=? AND kind='chat' "
                 "AND status IN ('pending','claimed') AND deadline_ts <= ?",
                 (job_id, now)).fetchone()
             if r is None:
@@ -416,7 +432,7 @@ class ReasoningQueue:
         riga letta con due chiavi diverse, e due forme diverse per la stessa
         riga sarebbero la fondamenta 3 rotta dentro un file solo.
         """
-        sql, args = "SELECT * FROM reasoning_jobs WHERE kind=?", [kind]
+        sql, args = f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE kind=?", [kind]
         if wake_key is not None:
             # **Due domande nella stessa specie** (attori, Task 4.4): il giro
             # orario del proponente porta `giorno` nella sveglia, un
@@ -432,29 +448,20 @@ class ReasoningQueue:
         with self._lock:
             r = self._conn.execute(
                 sql + " ORDER BY created_ts DESC, id DESC LIMIT 1", args).fetchone()
-        if r is None:
-            return None
-        out = _row(r)
-        out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
-        # **Quando la risposta e' arrivata**, non quando la domanda e' partita.
-        # Serve a chi raccoglie per sapere se ha gia' letto QUESTA risposta:
-        # una raccolta fallita non scrive nessuna riconsiderazione, quindi
-        # senza questo istante lo stesso turno storto verrebbe riletto e
-        # riannotato a ogni giro (rilievo della review indipendente,
-        # 11/09/2026).
-        out["decided_ts"] = r["decided_ts"]
-        return out
+        # `decided_ts` -- **quando la risposta e' arrivata**, non quando la
+        # domanda e' partita -- serve a chi raccoglie per sapere se ha gia'
+        # letto QUESTA risposta: una raccolta fallita non scrive nessuna
+        # riconsiderazione, quindi senza questo istante lo stesso turno storto
+        # verrebbe riletto e riannotato a ogni giro (rilievo della review
+        # indipendente, 11/09/2026). Lo porta `_row`, per ogni lettura.
+        return None if r is None else _row(r)
 
     def get(self, job_id: str) -> dict | None:
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=?", (job_id,)
             ).fetchone()
-        if r is None:
-            return None
-        out = _row(r)
-        out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
-        return out
+        return None if r is None else _row(r)
 
     def has_pending_chat(self, thread: ChatThread, now: float | None = None) -> bool:
         """True se QUESTO filo ha gia' un kind="chat" in volo (status
@@ -515,7 +522,7 @@ class ReasoningQueue:
         nessuno il catalogo del suo mestiere (attori, Task 3.6)."""
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE job_id=? AND status='claimed'",
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=? AND status='claimed'",
                 (job_id,)).fetchone()
         return _row(r) if r is not None else None
 

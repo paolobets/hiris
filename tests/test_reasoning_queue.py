@@ -465,3 +465,45 @@ def test_latest_e_None_quando_non_ce_n_e_nessuno(q):
     """`None` e' «nessuno ha mai chiesto», e non si confonde con «ha chiesto e
     non ha ricevuto»: il secondo e' un job con uno stato."""
     assert q.latest("scope") is None
+
+
+def test_get_e_latest_danno_la_stessa_forma_della_stessa_riga(q):
+    """D-62 (Tappa 8, Task 10b): `get` e `latest` leggono la stessa riga con
+    due chiavi diverse, e la restituivano in due forme -- `decided_ts` solo in
+    `latest`. Ora la forma e' una (`_row`), per ogni lettura della coda.
+
+    Rosso letto prima del codice: `decided_ts` mancava da `get`."""
+    q.enqueue("holistic", {"signal_kind": "holistic"}, {}, deadline_ts=100.0,
+              job_id="J", now=1.0)
+    c = q.claim(now=10.0)
+    q.submit("J", c["nonce"], {"reply": "fatto"}, now=11.0)
+
+    assert q.get("J") == q.latest("holistic")
+    assert q.get("J")["decided_ts"] == 11.0
+    assert set(c) == set(q.get("J")), "anche la presa in carico ha la stessa forma"
+
+
+def test_la_coda_legge_colonne_nominate(q):
+    """D-62: le letture della coda nominano le colonne che leggono (`_COLUMNS`)
+    invece di `SELECT *`. Le istruzioni si chiedono a SQLite mentre si
+    percorre ogni lettura, non si cercano nel sorgente.
+
+    Mutazione eseguita: `claim` che torna a `SELECT *` -> rossa."""
+    viste: list[str] = []
+    q._conn.set_trace_callback(viste.append)
+    try:
+        q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="A", now=1.0, thread=PAOLO)
+        q.enqueue("chat", {}, {}, deadline_ts=5.0, job_id="B", now=1.0, thread=PAOLO)
+        c = q.claim(now=2.0)
+        q.claimed(c["job_id"])
+        q.submit("A", c["nonce"], {"reply": "x"}, now=3.0)
+        q.get("A")
+        q.latest("chat")
+        q.reclaim_expired("B", now=10.0)
+        q.enqueue("chat", {}, {}, deadline_ts=5.0, job_id="C", now=1.0, thread=PAOLO)
+        q.sweep_expired(now=10.0)
+    finally:
+        q._conn.set_trace_callback(None)
+    letture = [s for s in viste if s.lstrip().upper().startswith("SELECT")]
+    assert len(letture) >= 7, "la prova deve percorrere le letture della coda"
+    assert not [s for s in letture if "SELECT *" in s.upper()]
