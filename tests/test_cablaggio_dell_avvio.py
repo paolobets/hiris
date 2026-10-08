@@ -34,7 +34,7 @@ from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
-from hiris.app.home_space import historian
+from hiris.app.home_space import historian, registry_follower
 from hiris.app.mind import realignment
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
@@ -392,7 +392,10 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
         spawned.append(coroutine)
 
     house = started_app["ha_client"]
-    with mock.patch.object(server, "_spawn", capture):
+    # Due moduli creano i compiti degli ascoltatori di topologia: lo specchio
+    # in `server.py`, la ricostruzione in `home_space/registry_follower.py`.
+    with (mock.patch.object(server, "_spawn", capture),
+          mock.patch.object(registry_follower, "_spawn", capture)):
         for listener in house.registered("topology"):
             listener("riconnessione")
     try:
@@ -450,23 +453,26 @@ async def test_a_reference_change_rereads_the_state_words(started_app):
     vecchia.
 
     Il lavoro si cattura come nella prova qui sopra; la ricostruzione catturata
-    si fa girare senza la sua attesa, con le parole degli stati sostituite da
-    una registrazione."""
+    si fa girare senza la sua attesa, col suo seguito sostituito da una
+    registrazione. Dalla Tappa 8 (Task 1) il seguito e'
+    `mind/reconciliation.after_rebuild`: le parole degli stati, poi la
+    riconciliazione degli archivi (`tests/test_riconciliazione.py`)."""
     spawned = []
 
     def capture(coroutine, *, name=None):
         spawned.append(coroutine)
 
     house = started_app["ha_client"]
-    with mock.patch.object(server, "_spawn", capture):
+    with (mock.patch.object(server, "_spawn", capture),
+          mock.patch.object(registry_follower, "_spawn", capture)):
         for listener in house.registered("topology"):
             listener("core_config_updated")
-    primed = mock.AsyncMock(return_value={"lette": True})
+    primed = mock.AsyncMock(return_value=None)
     try:
         rebuilds = [c for c in spawned if c.cr_code.co_name == "_fra_poco"
                     and "rebuild" in c.cr_code.co_names]
         assert len(rebuilds) == 1, [c.cr_code.co_qualname for c in spawned]
-        with (mock.patch.object(server, "prime_state_translations", primed),
+        with (mock.patch.object(server, "after_rebuild", primed),
               mock.patch("asyncio.sleep", mock.AsyncMock())):
             await rebuilds[0]
     finally:

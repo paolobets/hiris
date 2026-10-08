@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from ..memory.resolver import Lookup, costruisci_indice
+from ..memory.resolver import STORE_KEY_PER_TYPE, Lookup, costruisci_indice
 from ..proxy.entity_cache import disclosable_attributes
 from . import topology
 from .ha_vocabulary import (
@@ -564,3 +564,40 @@ class House:
         if self._lookup is None:
             self._lookup = costruisci_indice(self.home_space)
         return self._lookup
+
+    def unverifiable_tether_kinds(self) -> frozenset[str]:
+        """I tipi di ancora (`area`/`entita`/`dispositivo`) per cui questa
+        anagrafe non puo' dare una risposta affidabile.
+
+        Un'anagrafe mai letta (`{}`) non ne verifica nessuno; una letta con un
+        registro caduto (`unavailable`, compresa la copia di prima che
+        `reader._carried_over` tiene al suo posto) non verifica il tipo di
+        quel registro, e gli altri si'. Fino all'08/10/2026 (G-21, Tappa 8,
+        Task 1) la regola era scritta due volte: in `api/handlers_memory.py`
+        (`_unverifiable_types`) e dentro `remember` in `tools.py`."""
+        if not self.home_space:
+            return frozenset(STORE_KEY_PER_TYPE)
+        fallen = set(self.unavailable)
+        return frozenset(kind for kind, key in STORE_KEY_PER_TYPE.items() if key in fallen)
+
+    def tether(self, tether: dict) -> dict:
+        """Un'ancora di un ricordo con il nome che l'anagrafe conosce OGGI
+        (`nome_attuale`) e se il suo riferimento c'e' ancora (`esiste`).
+
+        «Non ho potuto controllare» (anagrafe mai letta, o il registro di quel
+        tipo caduto) e «ho controllato e non c'e' piu'» sono due fatti
+        diversi: nel primo `esiste` resta `None`, mai `False`.
+
+        **Tutte le porte da cui un ricordo esce la chiedono qui** (G-21,
+        Tappa 8, Task 1, 08/10/2026): la pagina Memoria, `view` (il dettaglio
+        di un ricordo e i ricordi ancorati a un'area, un'entita', un
+        dispositivo) e `fetch`. Fino a quel giorno la risolveva solo la
+        pagina (`handlers_memory._resolve_tether`): il modello riceveva
+        l'ancora grezza e non poteva dire «quell'entita' non c'e' piu'». Il
+        ricordo non si tocca: sono parole del proprietario, e la memoria non
+        evapora."""
+        if tether.get("tipo") in self.unverifiable_tether_kinds():
+            return {**tether, "nome_attuale": None, "esiste": None}
+        entry = self.lookup().verify(tether.get("tipo"), tether.get("riferimento"))
+        return {**tether, "nome_attuale": entry.get("nome") if entry else None,
+                "esiste": entry is not None}

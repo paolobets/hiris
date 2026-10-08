@@ -67,6 +67,13 @@ RECIPE_TURN_KIND = SPECIES[RECIPES_SPECIES].kind
 # `DECLINED_FIELD` -- vivono con gli altri nomi dei campi del sapere in
 # `home_space/type_judgments.py` (B-22, Tappa 8), con le loro ragioni.
 
+#: Le tre risposte del sapere su un dispositivo: una sola alla volta
+#: (`_only_answer`). Chi le chiede tutte -- chi chiedere, chi riparare, la
+#: riconciliazione che toglie quelle dei dispositivi spariti
+#: (`mind/reconciliation.py`) -- le chiede qui: fino all'08/10/2026 la tupla
+#: era scritta tre volte in questo file.
+ANSWER_FIELDS = (RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD)
+
 #: Contro quale registro il rifiuto e' stato deciso.
 #:
 #: **I rifiuti sono importanti, e per questo non sono definitivi** (decisione
@@ -418,7 +425,7 @@ def _only_answer(store, device_id: str, kept: str) -> None:
     `devices_to_ask` era corretto; era la pagina a mentire. Trovato dalla
     revisione indipendente il 15/09/2026.
     """
-    for field in (RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD):
+    for field in ANSWER_FIELDS:
         if field != kept:
             store.forget("dispositivo", device_id, field)
 
@@ -583,7 +590,7 @@ def devices_to_ask(store, house: House, watched: set[str]) -> list[str]:
     """
     # Le risposte di tutti, in una lettura (A-38); l'ordine e' quello
     # dell'anagrafe, su cui ruota `who_to_ask`.
-    given = store.device_answers((RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD))
+    given = store.device_answers(ANSWER_FIELDS)
     to_ask = []
     for device_id in house.device_ids():
         if not set(house.entities_of(device_id)) & watched:
@@ -697,7 +704,7 @@ def recipes_to_repair(store, house: House, *, with_series: set[str] | None,
     if with_series is None:
         return {}
     house_now = house.with_statistics(with_series)
-    given = store.device_answers((RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD))
+    given = store.device_answers(ANSWER_FIELDS)
     out: dict[str, Repair] = {}
     for device_id, named in _named_recipes(store, house):
         answers = given.get(device_id, {})

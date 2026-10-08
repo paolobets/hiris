@@ -1870,26 +1870,16 @@ class ToolDispatcher:
         if not isinstance(text, str) or not text.strip():
             return {"errore": "«remember» richiede un «testo» non vuoto."}
 
-        # `aggiornata_il` decide sia "anagrafe letta?" sia la chiave della
-        # cache sotto: letto una volta sola, nessun await fra le due letture
-        # in questa funzione sincrona, quindi non possono mai disallinearsi.
-        updated_at = self._home_space.updated_at()
-        topology_loaded = updated_at is not None
-
         # L'indice dalla casa del turno (A-13, Tappa 3, Task 12): la stessa
         # istantanea dello specchio delle unita' qui sotto, costruito una
         # volta per casa. Un'anagrafe mai letta e' `{}`, e il suo indice e'
-        # vuoto.
-        lookup = self._turn_house().lookup()
-        if not topology_loaded:
-            # L'anagrafe non e' mai stata letta: NESSUNA ancora si puo'
-            # verificare, non solo quelle il cui registro e' caduto -- stessa
-            # distinzione di `handlers_memory._unverifiable_types`.
-            unverifiable_kinds = frozenset(_TETHER_TYPES)
-        else:
-            fallen_stores = set(self._home_space.unavailable())
-            unverifiable_kinds = frozenset(
-                kind for kind, key in STORE_KEY_PER_TYPE.items() if key in fallen_stores)
+        # vuoto. Quali ancore non si possono verificare -- tutte, con
+        # l'anagrafe mai letta; quelle del registro caduto, altrimenti -- lo
+        # dice la stessa casa (`House.unverifiable_tether_kinds`, G-21): la
+        # regola era scritta qui e in `handlers_memory`.
+        house = self._turn_house()
+        lookup = house.lookup()
+        unverifiable_kinds = house.unverifiable_tether_kinds()
 
         interpretation = {
             "forza": arguments.get("forza"),
@@ -1985,8 +1975,9 @@ class ToolDispatcher:
         # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
         # l'archivio direttamente, non passa da `queries.view` -- senza
         # questa riga il testo uscirebbe filtrato dal dettaglio e grezzo da
-        # `fetch`. Stessa funzione condivisa, un punto solo.
-        return {"ricordi": _sanitized_memories(memories)}
+        # `fetch`. Stessa funzione condivisa, un punto solo -- e con la casa
+        # del turno le ancore portano `nome_attuale` ed `esiste` (G-21).
+        return {"ricordi": _sanitized_memories(memories, self._turn_house())}
 
     # -- execute -------------------------------------------------------
 

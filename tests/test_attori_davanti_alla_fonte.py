@@ -14,8 +14,9 @@ guardano e misurano parlano ancora:
   e scriveva un rifiuto PER PASSO, sempre lo stesso (G-02, G-03).
 
 Lo stato della fonte si chiede a `House.source(id)` (Tappa 3, Task 8): qui non
-si legge `disabled_by` ne' lo specchio. **Nessuna riga si cancella dagli
-archivi** (D1): la pulizia di scope, ricette e resoconti e' della Tappa 8.
+si legge `disabled_by` ne' lo specchio. Qui nessuna riga si cancella dagli
+archivi: dalla Tappa 8 (D1) le righe di chi non ha piu' un referente le toglie
+la riconciliazione (`tests/test_riconciliazione.py`).
 
 La casa e' quella di `tests/test_fonte_della_casa.py` (righe nella forma di
 Home Assistant, passate dal lettore vero): ogni stato della fonte c'e' una
@@ -169,6 +170,30 @@ async def test_la_rotta_della_pagina_porta_la_fonte(store):
     rows = {row["soggetto"]: row for row in body["watching"]}
     assert rows["light.sparita"]["fonte"]["stato"] == "sparita"
     assert rows["light.viva"]["fonte"]["stato"] == "viva"
+
+
+@pytest.mark.asyncio
+async def test_anche_cio_che_e_fuori_porta_la_fonte_nella_stessa_forma(store):
+    """La stessa riga dello scope, dall'altra meta' (trovato della Tappa 8,
+    Task 1): fino all'08/10/2026 `fuori` (`MindView._left_out`) non portava la
+    `fonte` che `watching` porta. Una forma sola, `watcher.scope_row`.
+
+    Mutazione ESEGUITA: `_left_out` che torna a comporre la riga senza la
+    casa -- rossa (`fonte` assente)."""
+    app = {"watcher": Watcher(store), "observations": store,
+           "home_space_store": _HomeSpaceStore(_registries()),
+           "entity_cache": _mirror_cache()}
+
+    class _Request:
+        def __init__(self):
+            self.app = app
+            self.query = {}
+
+    import json
+    body = json.loads((await handle_watching(_Request())).body)
+    (left,) = [row for row in body["fuori"] if row["soggetto"] == "sensor.mai_attivata"]
+    assert left["fonte"]["stato"] == "spenta_da_home_assistant"
+    assert set(left) == set(body["watching"][0]) | {"fonte"}
 
 
 @pytest.mark.parametrize("home_space_store", [None, _HomeSpaceStore({})],

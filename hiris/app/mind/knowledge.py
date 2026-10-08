@@ -822,13 +822,19 @@ class KnowledgeStore:
         importato «Indice AQI», la frase piu' ricca aggiunta da un rilascio
         successivo non sarebbe atterrata mai.
 
-        Torna quante righe ha davvero scritto o corretto.
+        Torna quante righe ha davvero scritto o corretto. **La versione
+        avanza solo se ne ha scritta almeno una** (A-22, Tappa 8, Task 9): un
+        seme che non cambia niente non deve far credere a chi tiene una
+        risposta del sapere (`Watcher._wanted_attributes`) che sia vecchia.
         """
         written = 0
         with self._lock:
             for fact in facts:
                 written += self._seed_one(fact, priority)
-            self._commit()
+            if written:
+                self._commit()
+            else:
+                self._conn.commit()
         return written
 
     # -- lettura -----------------------------------------------------------
