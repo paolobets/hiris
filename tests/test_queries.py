@@ -198,7 +198,7 @@ def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
     Il ricordo porta `detto_il`, come ogni riga dell'archivio (colonna
     `NOT NULL`): dalla resa unica (Tappa 9, F3) una chiave assente nella riga
     resta assente, e la prova chiede che quella presente esca."""
-    ricordi = [dict(_RICORDI[0], detto_il="2026-10-01T06:00:00+00:00")]
+    ricordi = [{**_RICORDI[0], "detto_il": "2026-10-01T06:00:00+00:00"}]
     dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, ricordi, "ricordo", 1)
     assert dettaglio["esiste"] is True
     assert dettaglio["testo"] == _RICORDI[0]["testo"]
