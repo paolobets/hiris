@@ -21,6 +21,7 @@ from ..chat_thread import ChatThread, thread_condition, thread_params, unknown_i
 from ..storage import (
     Retention,
     add_missing_columns,
+    archive_name,
     connect,
     init_schema,
     prune_declared,
@@ -210,6 +211,7 @@ class AgendaStore:
 
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=4,
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})

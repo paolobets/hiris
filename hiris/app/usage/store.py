@@ -25,6 +25,7 @@ from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import (
     Retention,
     add_missing_columns,
+    archive_name,
     connect,
     init_schema,
     prune_declared,
@@ -477,6 +478,7 @@ class UsageStore:
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=5,
                     migrations={2: _migration_2, 3: _migration_3,

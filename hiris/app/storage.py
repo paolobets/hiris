@@ -106,12 +106,12 @@ def prune_declared(conn: sqlite3.Connection, conservation: Retention,
     return removed
 
 
-def database_name(conn: sqlite3.Connection) -> str:
-    """Il nome del file su cui `conn` e' aperta, chiesto a SQLite (`PRAGMA
-    database_list`) e non ricordato a parte: e' cio' che `/api/health`
-    mostra come nome dell'archivio."""
-    row = conn.execute("PRAGMA database_list").fetchone()
-    return os.path.basename(row[2]) if row and row[2] else ""
+def archive_name(db_path: str) -> str:
+    """Il nome con cui un archivio si presenta: quello del suo file, cioe'
+    cio' che si vede in `/data` e che `/api/health` mostra (D7). Lo dice
+    l'archivio stesso, aperto su `db_path`: chi lo elenca non deve leggere la
+    sua connessione fuori dal suo lucchetto (rilievo N98-2, giro 98)."""
+    return os.path.basename(db_path)
 
 
 def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
