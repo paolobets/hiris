@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from .chat_thread import ChatThread, thread_condition, thread_params
 from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
-from .storage import connect, init_schema, rekey
+from .storage import add_missing_columns, connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -269,10 +269,10 @@ CREATE INDEX IF NOT EXISTS idx_sess_last_msg ON chat_sessions(last_msg_at);
 
 # L'indice del filo NON sta in `_SCHEMA`: `init_schema` esegue lo script PRIMA
 # delle migrazioni, e su un archivio v3 (senza le due colonne) un `CREATE INDEX`
-# su `subject_key` farebbe fallire l'apertura invece di migrare. Si crea in
-# `ChatStore.__init__`, subito dopo `init_schema()`: li' le colonne esistono
-# sempre, che l'archivio sia appena nato o appena migrato. Stesso giro di
-# `reasoning/queue.py::_IDX_THREAD_SQL`.
+# su `subject_key` farebbe fallire l'apertura invece di migrare. Lo crea
+# `init_schema` dopo le migrazioni (`after_sql`, G-13): li' le colonne
+# esistono sempre, che l'archivio sia appena nato o appena migrato. Stesso
+# giro di `reasoning/queue.py::_IDX_THREAD_SQL`.
 _IDX_THREAD_SQL = ("CREATE INDEX IF NOT EXISTS idx_sess_thread "
                    "ON chat_sessions(subject_key, entry_point, last_msg_at)")
 
@@ -325,11 +325,8 @@ def _migration_4(conn: sqlite3.Connection) -> None:
     orfana: invisibile a tutti finche' `adopt_orphans` non la da' al
     proprietario. `ALTER TABLE` solo se la colonna manca: un DB che arriva
     qui passando da `_reset` (pre-v3) ha gia' le colonne da `_SCHEMA`."""
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()}
-    if "subject_key" not in colonne:
-        conn.execute("ALTER TABLE chat_sessions ADD COLUMN subject_key TEXT")
-    if "entry_point" not in colonne:
-        conn.execute("ALTER TABLE chat_sessions ADD COLUMN entry_point TEXT")
+    add_missing_columns(conn, "chat_sessions",
+                        {"subject_key": "TEXT", "entry_point": "TEXT"})
 
 
 class ChatStore:
@@ -337,9 +334,8 @@ class ChatStore:
         self._conn = connect(db_path)
         self._mu = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=4,
-                    migrations={2: _reset, 3: _reset, 4: _migration_4})
-        self._conn.execute(_IDX_THREAD_SQL)
-        self._conn.commit()
+                    migrations={2: _reset, 3: _reset, 4: _migration_4},
+                    after_sql=_IDX_THREAD_SQL)
 
     # ------------------------------------------------------------------
     # Internal helpers (called with self._mu already held)

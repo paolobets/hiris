@@ -31,7 +31,7 @@ import json
 import secrets
 import threading
 
-from ..storage import connect, init_schema
+from ..storage import add_missing_columns, connect, init_schema
 
 # Quanto si conserva un'esecuzione (riuscita o fallita) in questo registro.
 # E' una politica di QUESTO modulo, non presa in prestito da altrove: la
@@ -84,12 +84,8 @@ def _migration_2(conn) -> None:
     sono. Una migrazione che ricostruisce la tabella per due colonne
     rischierebbe di perdere una cronaca vera per un guadagno estetico.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(esecuzioni)")}
-    if "genere" not in existing:
-        conn.execute("ALTER TABLE esecuzioni ADD COLUMN genere TEXT NOT NULL "
-                     "DEFAULT 'comando'")
-    if "oggetto" not in existing:
-        conn.execute("ALTER TABLE esecuzioni ADD COLUMN oggetto TEXT")
+    add_missing_columns(conn, "esecuzioni", {
+        "genere": "TEXT NOT NULL DEFAULT 'comando'", "oggetto": "TEXT"})
 
 
 def _migration_3(conn) -> None:
@@ -106,9 +102,7 @@ def _migration_3(conn) -> None:
     Si AGGIUNGE e non si riscrive: le righe di ieri restano com'erano, con
     `subject` a `NULL`, che e' cio' che sono -- atti di cui non si sapeva chi.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(esecuzioni)")}
-    if "soggetto_json" not in existing:
-        conn.execute("ALTER TABLE esecuzioni ADD COLUMN soggetto_json TEXT")
+    add_missing_columns(conn, "esecuzioni", {"soggetto_json": "TEXT"})
 
 
 def _row(r) -> dict:

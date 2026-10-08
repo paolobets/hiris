@@ -1,0 +1,8 @@
+{
+ "pragma-table-info": {
+  "hiris/app/mind/store.py": {
+   "conta": 5,
+   "ragione": "Tappa 8, Task 5, dopo l'unione: `mind/store.py` lo sta cambiando un altro lavoratore (la migrazione 14), e `_add_missing_columns` con le quattro letture delle migrazioni 9-12 passano a `storage.add_missing_columns` dopo l'unione dei due rami"
+  }
+ }
+}

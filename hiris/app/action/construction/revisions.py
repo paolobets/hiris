@@ -25,7 +25,7 @@ import secrets
 import threading
 
 from ...chat_thread import ChatThread, thread_from_columns, thread_params
-from ...storage import connect, init_schema, rekey
+from ...storage import add_missing_columns, connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -156,11 +156,8 @@ def _migration_2(conn) -> None:
     un volume che lo giustifichi -- il tetto e' 20 pendenti, e le due query
     che leggono il filo (`_only_pending`, il controllo per id) gia' passano
     da `list(pending_only=True)`/`read`, che restano su `stato`/`id`."""
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
-    if "subject_key" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN subject_key TEXT")
-    if "entry_point" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN entry_point TEXT")
+    add_missing_columns(conn, "costruzioni",
+                        {"subject_key": "TEXT", "entry_point": "TEXT"})
 
 
 def _migration_3(conn) -> None:
@@ -193,9 +190,7 @@ def _migration_4(conn) -> None:
     oggi il livello di una proposta di ieri le attribuirebbe un fatto che
     allora non c'era, e nessuno di quei si' e' stato chiesto con un livello.
     """
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
-    if "stakes" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN stakes TEXT")
+    add_missing_columns(conn, "costruzioni", {"stakes": "TEXT"})
 
 
 def _migration_5(conn) -> None:
@@ -208,11 +203,8 @@ def _migration_5(conn) -> None:
     bozze). Le righe scritte prima rileggono `None`: quale domanda le abbia
     fatte nascere non e' scritto da nessuna parte, e non si indovina.
     """
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
-    if "impronta" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN impronta TEXT")
-    if "prova_json" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN prova_json TEXT")
+    add_missing_columns(conn, "costruzioni",
+                        {"impronta": "TEXT", "prova_json": "TEXT"})
 
 
 def _migration_6(conn) -> None:

@@ -45,7 +45,7 @@ from dataclasses import dataclass
 
 from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES, type_subject
 from ..home_space.type_vocabulary import Provenance
-from ..storage import connect, init_schema, rekey
+from ..storage import add_missing_columns, connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -233,11 +233,8 @@ def _migration_2(conn) -> None:
     e' piu' correggibile dal seme -- il che e' il comportamento prudente:
     «non so se qualcuno l'ha toccata» si tratta come «qualcuno l'ha toccata».
     """
-    for column, kind in (("seeded_value", "TEXT"),
-                         ("seeded_priority", "INTEGER NOT NULL DEFAULT 0")):
-        esistenti = {r[1] for r in conn.execute("PRAGMA table_info(knowledge)")}
-        if column not in esistenti:
-            conn.execute(f"ALTER TABLE knowledge ADD COLUMN {column} {kind}")
+    add_missing_columns(conn, "knowledge", {
+        "seeded_value": "TEXT", "seeded_priority": "INTEGER NOT NULL DEFAULT 0"})
 
 
 def _migration_3(conn) -> None:
@@ -451,8 +448,7 @@ def _migration_8(conn) -> None:
     la chiave. I giudizi scritti dalla porta prima di allora restano
     riconoscibili dal loro autore, «proprietario» (`judgments.judgment_listing`).
     """
-    if "said_by" not in {r[1] for r in conn.execute("PRAGMA table_info(knowledge)")}:
-        conn.execute("ALTER TABLE knowledge ADD COLUMN said_by TEXT")
+    add_missing_columns(conn, "knowledge", {"said_by": "TEXT"})
 
 
 #: I campi che nessuno legge piu', e che la migrazione 9 toglie dagli archivi

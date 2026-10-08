@@ -22,7 +22,7 @@ from ..home_space.privacy import POSITION_ATTRIBUTES
 from ..providers import CLAUDE, OLLAMA, OPENAI, OPENROUTER, SUBSCRIPTION, get, ids
 from ..proxy._sanitize import CUT, MASK, truncate_with_marker
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
-from ..storage import connect, init_schema
+from ..storage import add_missing_columns, connect, init_schema
 from .vocabulary import piu_debole
 
 logger = logging.getLogger(__name__)
@@ -211,18 +211,11 @@ def _migration_2(conn) -> None:
     Le righe gia' scritte restano NULL -- non sono state misurate, e non si
     inventa che lo siano.
     """
-    columns = {r[1] for r in conn.execute("PRAGMA table_info(payload)").fetchall()}
     column_types = {"cache_ttl": "TEXT", "cost_usd": "REAL"}
-    for name in TOKEN_COLUMNS:
-        if name not in columns:
-            conn.execute(f"ALTER TABLE payload ADD COLUMN {name} "
-                         f"{column_types.get(name, 'INTEGER')}")
-    turn_columns = {r[1] for r in conn.execute(
-        "PRAGMA table_info(turn)").fetchall()}
-    if "output_tokens" not in turn_columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN output_tokens INTEGER")
-    if "list_cost_usd" not in turn_columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN list_cost_usd REAL")
+    add_missing_columns(conn, "payload", {
+        name: column_types.get(name, "INTEGER") for name in TOKEN_COLUMNS})
+    add_missing_columns(conn, "turn", {"output_tokens": "INTEGER",
+                                       "list_cost_usd": "REAL"})
 
 
 def _migration_3(conn) -> None:
@@ -231,9 +224,7 @@ def _migration_3(conn) -> None:
     Stessa cura della 2: la colonna si aggiunge solo se manca. Le righe gia'
     scritte restano NULL -- gli argomenti non furono registrati, e non si
     inventa che siano `[]`."""
-    columns = {r[1] for r in conn.execute("PRAGMA table_info(turn)").fetchall()}
-    if "tool_args" not in columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN tool_args TEXT")
+    add_missing_columns(conn, "turn", {"tool_args": "TEXT"})
 
 
 def _migration_4(conn) -> None:
@@ -241,9 +232,7 @@ def _migration_4(conn) -> None:
     risposta rifiutata, sulla riga del suo turno. Stessa cura della 2 e della
     3: la colonna si aggiunge solo se manca, e le righe gia' scritte restano
     NULL -- nessuno le aveva rifiutate per iscritto."""
-    columns = {r[1] for r in conn.execute("PRAGMA table_info(turn)").fetchall()}
-    if "problems" not in columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN problems TEXT")
+    add_missing_columns(conn, "turn", {"problems": "TEXT"})
 
 
 #: La chiave con cui i consumi chiamavano il piano fino alla Tappa 7 (Task 9).

@@ -39,8 +39,36 @@ def connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def add_missing_columns(conn: sqlite3.Connection, table: str,
+                        columns: dict[str, str]) -> None:
+    """Aggiunge a `table` le colonne di `columns` (`{nome: tipo}`) che non ci
+    sono ancora, nell'ordine dato.
+
+    **L'idioma delle migrazioni, scritto una volta** (G-13, Tappa 8, Task 6).
+    Era ricopiato in nove archivi -- `PRAGMA table_info` e poi un `ALTER TABLE
+    ... ADD COLUMN` per colonna -- e una copia sola, in `mind/store`, era
+    diventata un aiuto, per una tabella sola.
+
+    Il controllo su `PRAGMA table_info`, e non un `try`/`except` attorno
+    all'`ALTER`, e' una scelta: un `except sqlite3.OperationalError`
+    inghiottirebbe QUALUNQUE errore dell'`ALTER`, non solo «la colonna c'e'
+    gia'» -- anche un archivio bloccato o un disco pieno -- e `init_schema`
+    timbrerebbe l'archivio alla versione nuova senza la colonna.
+
+    **Perche' una colonna gia' presente non e' un errore**: il DDL di SQLite
+    fa commit da solo, e una caduta fra un `ALTER` e il timbro lascia un
+    archivio alla versione vecchia con parte delle colonne; e un archivio che
+    nasce oggi le porta gia' dal suo schema. In entrambi i casi la migrazione
+    rigira e deve trovare il lavoro fatto."""
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for name, kind in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+
+
 def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
-                migrations: dict[int, Migration] | None = None) -> int:
+                migrations: dict[int, Migration] | None = None,
+                after_sql: str | None = None) -> int:
     """Ensure the schema exists and is at `version`, migrating idempotently.
 
     Detection (before creating tables): a DB with NO user tables is 'fresh' and
@@ -48,6 +76,13 @@ def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
     migrations. A pre-versioning existing DB (has tables but user_version==0) is
     baselined to 1, then migrations 2..version run in order. A DB already at
     version N runs only N+1..version. `migrations[k]` migrates k-1 → k.
+
+    `after_sql` runs AFTER the migrations, before the version is stamped: the
+    indexes on columns that a migration adds. In `schema_sql` they would make
+    an old archive fail to open (the script runs before the migrations, and a
+    `CREATE INDEX` on a column that does not exist yet raises), so the
+    archives created them by hand after this call. One statement, and
+    idempotent (`IF NOT EXISTS`): it runs at every opening.
 
     The caller is responsible for holding any lock if called concurrently
     (normally this runs once at store construction, single-threaded).
@@ -73,6 +108,11 @@ def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
                 "versione senza migrazione si dichiara con una funzione vuota, "
                 "non si lascia come un buco nel dizionario")
         migrations[target](conn)
+    if after_sql:
+        # `execute` e non `executescript`: il secondo fa commit prima di
+        # cominciare, e separerebbe le scritture delle migrazioni dal timbro.
+        # Una frase sola, quindi -- due farebbero sollevare subito.
+        conn.execute(after_sql)
     conn.execute(f"PRAGMA user_version = {int(version)}")
     conn.commit()
     return version

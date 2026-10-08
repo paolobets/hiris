@@ -7,7 +7,7 @@ import time
 
 from ..chat_thread import ChatThread, thread_condition, thread_from_columns, thread_params
 from ..home_space.historian import day_boundaries, local_date
-from ..storage import connect, init_schema
+from ..storage import add_missing_columns, connect, init_schema
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS reasoning_jobs (
@@ -47,7 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_reasoning_status ON reasoning_jobs(status, create
 # non ha ancora `subject_key`/`entry_point` -- e un `CREATE INDEX` su una
 # colonna che non esiste ancora fa fallire l'apertura invece di migrare
 # (verificato: prova diretta con sqlite3, "no such column"). Si crea invece
-# UNA VOLTA SOLA, in `__init__`, subito dopo che `init_schema()` e' tornata:
+# dopo le migrazioni, con `init_schema(..., after_sql=...)` (G-13, Tappa 8):
 # a quel punto le colonne esistono davvero SEMPRE, che l'archivio sia appena
 # nato (le porta gia' `_SCHEMA`) o appena migrato da v1/v2 (le ha appena
 # aggiunte `_migration_3`) -- e' idempotente (`IF NOT EXISTS`), quindi non
@@ -113,10 +113,7 @@ def _migration_2(conn) -> None:
     `NULL`: per loro non si sa se la risposta sia stata consegnata, e nel
     dubbio NON si dimentica. Le pota la potatura a sette giorni, come prima.
     """
-    colonne = {r[1] for r in conn.execute(
-        "PRAGMA table_info(reasoning_jobs)").fetchall()}
-    if "delivered_ts" not in colonne:
-        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN delivered_ts REAL")
+    add_missing_columns(conn, "reasoning_jobs", {"delivered_ts": "REAL"})
 
 
 def _migration_3(conn) -> None:
@@ -124,16 +121,10 @@ def _migration_3(conn) -> None:
 
     Stesso pattern di `_migration_2`: `ALTER TABLE ADD COLUMN` solo se manca,
     cosi' una seconda apertura dello stesso archivio non fallisce. L'indice
-    NON si crea qui: lo crea `__init__`, una volta sola, dopo `init_schema()`
-    (vedi il commento su `_IDX_THREAD_SQL`) -- farlo anche qui lo creerebbe
-    due volte a ogni migrazione, senza guadagnare nulla (e' gia' idempotente
-    li')."""
-    colonne = {r[1] for r in conn.execute(
-        "PRAGMA table_info(reasoning_jobs)").fetchall()}
-    if "subject_key" not in colonne:
-        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN subject_key TEXT")
-    if "entry_point" not in colonne:
-        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN entry_point TEXT")
+    NON si crea qui: lo crea `init_schema` dopo le migrazioni (`after_sql`,
+    vedi il commento su `_IDX_THREAD_SQL`)."""
+    add_missing_columns(conn, "reasoning_jobs",
+                        {"subject_key": "TEXT", "entry_point": "TEXT"})
 
 
 def _migration_4(conn) -> None:
@@ -143,27 +134,21 @@ def _migration_4(conn) -> None:
     solo se manca. Le righe di prima prendono `PRIORITY_BACKGROUND` (il
     `DEFAULT 0`): un turno accodato prima di questa versione si serve
     nell'ordine d'arrivo, com'era quando e' stato accodato."""
-    colonne = {r[1] for r in conn.execute(
-        "PRAGMA table_info(reasoning_jobs)").fetchall()}
-    if "priority" not in colonne:
-        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN "
-                     "priority INTEGER NOT NULL DEFAULT 0")
+    add_missing_columns(conn, "reasoning_jobs",
+                        {"priority": "INTEGER NOT NULL DEFAULT 0"})
 
 
 class ReasoningQueue:
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
+        # L'indice del filo dopo le migrazioni (`after_sql`): e' l'UNICO
+        # punto in cui le colonne esistono sempre, qualunque sia stata la
+        # strada per arrivarci. Vedi il commento su `_IDX_THREAD_SQL`.
         init_schema(self._conn, _SCHEMA, version=4,
                     migrations={2: _migration_2, 3: _migration_3,
-                                4: _migration_4})
-        # Qui e non dentro `_migration_3`, e non dentro `_SCHEMA`: e' l'UNICO
-        # punto in cui le colonne esistono sempre, per costruzione, qualunque
-        # sia stata la strada per arrivarci -- appena nato (`_SCHEMA` le
-        # porta gia'), o appena migrato da v1/v2 (`_migration_3` le ha appena
-        # aggiunte). Vedi il commento su `_IDX_THREAD_SQL`.
-        self._conn.execute(_IDX_THREAD_SQL)
-        self._conn.commit()
+                                4: _migration_4},
+                    after_sql=_IDX_THREAD_SQL)
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
         # gia' usato per UsageStore (server.py, costruzione di

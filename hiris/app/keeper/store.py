@@ -18,7 +18,7 @@ import threading
 import time
 
 from ..chat_thread import ChatThread, thread_condition, thread_params, unknown_id_text
-from ..storage import connect, init_schema, rekey
+from ..storage import add_missing_columns, connect, init_schema, rekey
 from .promise import (
     CEILING_IN_SOSPESO,
     CONSERVAZIONE_S,
@@ -115,9 +115,7 @@ def _migration_2(conn) -> None:
     NULL`: una riga gia' segnata non viene ri-timbrata, che era la sola cosa
     che la vecchia guardia proteggeva davvero.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(promesse)")}
-    if "esito_letto_ts" not in existing:
-        conn.execute("ALTER TABLE promesse ADD COLUMN esito_letto_ts REAL")
+    add_missing_columns(conn, "promesse", {"esito_letto_ts": "REAL"})
     conn.execute(
         f"UPDATE promesse SET esito_letto_ts=? WHERE stato IN ({_ESITI}) "
         "AND esito_letto_ts IS NULL",
@@ -141,9 +139,7 @@ def _migration_3(conn) -> None:
     Il nome e' in INGLESE perche' le colonne nuove lo sono: le italiane sono
     debito, e si migrano in una fetta loro.
     """
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(promesse)")}
-    if "entities_at_birth" not in colonne:
-        conn.execute("ALTER TABLE promesse ADD COLUMN entities_at_birth INTEGER")
+    add_missing_columns(conn, "promesse", {"entities_at_birth": "INTEGER"})
 
 
 def _migration_4(conn) -> None:
@@ -157,11 +153,8 @@ def _migration_4(conn) -> None:
     e l'indice su `stato` le serve gia'. Le righe esistenti restano NULL:
     sono di prima, e le adotta il proprietario (`chat_thread.adopt_if_owner`).
     """
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(promesse)")}
-    if "subject_key" not in colonne:
-        conn.execute("ALTER TABLE promesse ADD COLUMN subject_key TEXT")
-    if "entry_point" not in colonne:
-        conn.execute("ALTER TABLE promesse ADD COLUMN entry_point TEXT")
+    add_missing_columns(conn, "promesse",
+                        {"subject_key": "TEXT", "entry_point": "TEXT"})
 
 
 # La condizione «di questo filo» (`thread_condition`): ogni lettura e

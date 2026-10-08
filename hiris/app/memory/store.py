@@ -48,7 +48,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
-from ..storage import connect, init_schema, rekey
+from ..storage import add_missing_columns, connect, init_schema, rekey
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS ricordi (
@@ -101,9 +101,7 @@ def _migration_2(conn: sqlite3.Connection) -> None:
     colonna manca, come le migrazioni sorelle: un archivio che la ha gia'
     ma dichiara ancora v1 (una migrazione interrotta fra l'ALTER e il bump
     della versione) altrimenti non si aprirebbe piu' -- «duplicate column»."""
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(ricordi)").fetchall()}
-    if "said_by" not in colonne:
-        conn.execute("ALTER TABLE ricordi ADD COLUMN said_by TEXT")
+    add_missing_columns(conn, "ricordi", {"said_by": "TEXT"})
 
 
 def _author_clause(said_by: str | None) -> tuple[str, tuple]:
