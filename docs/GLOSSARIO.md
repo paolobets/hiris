@@ -3617,7 +3617,7 @@ stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamen
 | `ultimo_cambio` | l'ultimo cambio di stato | istante (D3: ISO 8601 con l'offset della casa) | `entita` `automazione` `script` `scena` | `da_quando` | `queries.py:504`, `:1035`, `:1213` |
 | `ultima_esecuzione` | l'ultima volta che e' girata | istante | `automazione` `script` | — | — |
 | `quando` | l'istante di un evento o di una misura | istante | `evento` `misura` | `quando_ts` `misurato_ts` `letta_alle` `deciso_ts` `da_quando_ts` | `energy.py:154` (`letta_alle`); C-46 (`deciso_ts`, `da_quando_ts`) |
-| `dal` `al` | un intervallo | due istanti | `finestra` | — | — |
+| `dal` `al` | un intervallo. **`al` e' escluso** (D4 della Tappa 9, 08/10/2026): il primo istante, o il primo giorno, che non ne fa piu' parte -- la `end` di Home Assistant, che il componente `calendar` dichiara esclusa anche per gli eventi giornalieri (letto sul tag `2026.10.0`) | due istanti; due date per un impegno giornaliero | `finestra` `impegno` | `inizio` `fine` | usciti l'08/10/2026 da `appointments.read_appointment` (B-28), dove la `fine` di un giornaliero era l'ultimo giorno COMPRESO |
 | `genere` | il nostro genere di oggetto | uno di `house_query.KINDS` | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` `ricordo` | `tipo` | `tipo` nella risposta (`"tipo": "entita"` di `view`) |
 | `dominio` | il dominio di Home Assistant | stringa di Home Assistant (`light`, `sensor`...) | `entita` | `tipo` | `tipo` nel parametro di `search` (D7) |
 | `unita` | l'unita' dell'entita' | stringa di Home Assistant | `entita` | `unit` | `unit` dentro `prima`/`dopo`, accanto a `state` (`actuator._fingerprint`, `:339`; trovata dal Task 1, la stessa voce C-64) |
@@ -3640,9 +3640,9 @@ Stanno qui perche' il vocabolario dica **tutti** i campi dell'entita', non solo 
 un cancello che conosce meta' dei campi sa riconoscere meta' delle copie.
 
 La colonna «di chi» usa i generi di `house_query.KINDS` (`entita`, `area`, `dispositivo`,
-`automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e cinque parole per cio' che non
+`automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e sei parole per cio' che non
 e' un oggetto della casa: `casa` (la cornice), `evento` e `misura` (una riga di storia o di
-un'istantanea), `finestra` (l'intervallo di una risposta), `lettura` (l'esito di un insieme letto).
+un'istantanea), `finestra` (l'intervallo di una risposta), `lettura` (l'esito di un insieme letto), `impegno` (un appuntamento di `calendar`, una voce di `impegni`: non una promessa di `agenda`, che la descrizione di `calendar` chiama anche lei «impegni di HIRIS»).
 
 **Due regole che vanno con il vocabolario** (D1, approvate in blocco):
 

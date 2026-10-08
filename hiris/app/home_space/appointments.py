@@ -4,41 +4,47 @@ Il Task 1 (`HAClient.calendar_events`, `proxy/ha_client.py`) legge i calendari
 e i loro eventi GREZZI come Home Assistant li manda -- otto chiavi sempre,
 `null` compresi, in ordine cronologico. Questo modulo compone: `read_appointment`
 prende UN evento grezzo e lo trasforma in un IMPEGNO leggibile, con le chiavi
-**italiane** che una risposta puo' mostrare direttamente (`titolo`, `inizio`,
-`fine`, `giornaliero`, `luogo`, `descrizione`); `sort_appointments` fonde gli
+**italiane** che una risposta puo' mostrare direttamente (`titolo`, `dal`,
+`al`, `giornaliero`, `luogo`, `descrizione`); `sort_appointments` fonde gli
 impegni GIA' letti di uno o piu' calendari in un unico elenco ordinato.
 
 E' PURO: nessuna rete, nessun archivio, niente da scrivere -- la stessa
 scelta di `home_space/queries.py` e per la stessa ragione: e' cio' che lo
 rende verificabile senza finti elaborati.
 
-**La trappola, misurata sulla casa vera il 06/09/2026**: un evento
-giornaliero ha la FINE ESCLUSIVA (convenzione iCal). «ANNIVERSARIO» va dal
-`2026-08-30` al `2026-08-31` ed e' un giorno solo; «Ferie estive» va dal
-`2026-08-17` al `2026-08-31` e finisce il 30 agosto. Verificato alla fonte,
-non assunto: `home-assistant/core`,
-`homeassistant/components/calendar/__init__.py`, sui tag RILASCIATI
-`2024.7.0` (il minimo dichiarato da `hiris/config.yaml:22`) e `2026.9.0` (il
-piu' recente visto finora) -- identico sui due tag. **La prova diretta e'
-`_get_datetime_local`** (`2024.7.0:436-442`, `2026.9.0:464-470`): una `date`
-nuda diventa `dt_util.start_of_local_day(...)`, cioe' la MEZZANOTTE
-d'inizio di quella data -- percio' `end_datetime_local` di un giornaliero e'
-la mezzanotte d'inizio di `end.date`, non un istante dentro quel giorno.
-Ed e' cosi' che HA stessa smette di considerare "in corso" l'evento: lo
-stato del calendario si spegne li' (`2026.9.0:601`,
-`event.start_datetime_local <= now < event.end_datetime_local`) -- e' un
-comportamento, non solo una correzione isolata. La prova INDIRETTA, che
-conferma la stessa cosa da un altro lato: `CalendarEvent.__post_init__`
-corregge un evento giornaliero con `start == end` allungando `end` di un
-giorno esatto (`self.end = self.start + timedelta(days=1)`) per dargli una
-durata di un giorno -- un giornaliero di un giorno solo ha percio' SEMPRE
-`end.date == start.date + 1 giorno`, mai uguale. Sbagliare questa
-convenzione sposta OGNI evento giornaliero di un giorno, ed e' un errore
-che una persona nota subito perche' tocca esattamente la domanda per cui
-questo modulo esiste ("fino a quando sono le ferie?").
+**`dal`/`al`: un intervallo, con un significato solo** (B-28, decisione D4
+della Tappa 9, approvata dal proprietario l'08/10/2026). `al` e' il primo
+giorno (giornaliero) o il primo istante (a orario) che NON fa piu' parte
+dell'impegno: e' la `end` di Home Assistant, ESCLUSA, ed esce cosi' com'e',
+senza tradurla al confine. Sono i nomi del vocabolario dei campi
+(`docs/GLOSSARIO.md`, «Il vocabolario dei campi»: `dal` `al`), gli stessi
+delle righe di `history`.
 
-**Per un evento a orario `end.dateTime` e' la fine vera e non si tocca** --
-applicare la correzione anche li' sarebbe il difetto opposto.
+**Cosa dice Home Assistant, letto l'08/10/2026** sul tag `2026.10.0` di
+`home-assistant/core` (`6a811d3`) e sulla documentazione per gli
+sviluppatori (`developers.home-assistant.io`, `docs/core/entity/calendar.md`
+@ `8da484e`):
+- la documentazione di `CalendarEvent`: «start: The start (inclusive) of the
+  event», «end: The end (exclusive) of the event», per una `datetime` come per
+  una `date`;
+- `calendar/helper.py::get_datetime_local` (righe 193-199): una `date` nuda
+  vale `dt_util.start_of_local_day(...)`, cioe' la MEZZANOTTE d'inizio di quel
+  giorno -- percio' la fine di un giornaliero e' la mezzanotte d'inizio di
+  `end.date`, non un istante dentro quel giorno;
+- `calendar/__init__.py`, lo stato del calendario (riga 360):
+  `event.start_datetime_local <= now < event.end_datetime_local` -- HA stessa
+  smette di considerare l'evento in corso a `end`, per i due generi;
+- `CalendarEvent.__post_init__` (righe 228-236): un giornaliero con
+  `start == end` diventa lungo un giorno (`end = start + 1 giorno`): un
+  giornaliero di un giorno ha SEMPRE `end.date == start.date + 1 giorno`.
+
+Misurato sulla casa vera il 06/09/2026: «ANNIVERSARIO» va dal `2026-08-30`
+al `2026-08-31` ed e' un giorno solo; «Ferie estive» va dal `2026-08-17` al
+`2026-08-31` e l'ultimo giorno di ferie e' il 30. Fino all'08/10/2026 il
+giornaliero usciva come `fine` = l'ultimo giorno COMPRESO, e l'evento a
+orario come `fine` = l'istante ESCLUSO: due significati sotto un nome solo,
+e il modello non poteva sapere quale leggeva (fondamenta 3). La descrizione
+dello strumento `calendar` dice ora la regola una volta per tutti e due.
 
 **Il fuso e' quello della casa, non UTC**, e non si indovina: arriva come
 parametro (`str | None` -- il produttore vero, `ToolDispatcher._timezone()`
@@ -75,7 +81,7 @@ calendario per calendario spetta a chi chiama (il Task 3), perche' e' li'
 che si puo' nominare un calendario che non risponde -- fondere prima
 avrebbe perso quell'informazione. Il fuso non serve piu' su questa firma:
 serviva solo perche' prima la funzione faceva due cose (leggere E fondere),
-ed era gia' inerte per l'ORDINAMENTO (che lavora su `inizio`, stringa gia'
+ed era gia' inerte per l'ORDINAMENTO (che lavora su `dal`, stringa gia'
 scritta) mentre contava solo per la LETTURA -- che ora e' compito di chi
 chiama, una volta per calendario, prima di passare qui il risultato.
 `sort_appointments` non serve a riordinare UN calendario, che arriva gia'
@@ -86,7 +92,6 @@ sola.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
 from functools import cache
 
 # Import RELATIVO, come ogni altro modulo del prodotto. Assoluto
@@ -128,7 +133,7 @@ def read_appointment(event: dict, *, timezone: str | None) -> dict:
     """UN evento grezzo del Task 1 -> UN impegno leggibile.
 
     Chiavi italiane, sempre le stesse due (`titolo`, `giornaliero`) piu'
-    `inizio`/`fine`; `luogo`/`descrizione` SOLO quando hanno qualcosa da
+    `dal`/`al` (`al` escluso, vedi il modulo); `luogo`/`descrizione` SOLO quando hanno qualcosa da
     dire (vedi il modulo). `uid`, `recurrence_id` e `rrule` non escono: sono
     identificatori tecnici di HA, non parte di cio' che una persona legge.
 
@@ -147,13 +152,12 @@ def read_appointment(event: dict, *, timezone: str | None) -> dict:
         "giornaliero": all_day,
     }
     if all_day:
-        result["inizio"] = start["date"]
-        last_day = date.fromisoformat(end["date"]) - timedelta(days=1)
-        result["fine"] = last_day.isoformat()
+        result["dal"] = start["date"]
+        result["al"] = end["date"]
     else:
         zone = _cached_zone(timezone)
-        result["inizio"] = instant_out(start["dateTime"], zone)
-        result["fine"] = instant_out(end["dateTime"], zone)
+        result["dal"] = instant_out(start["dateTime"], zone)
+        result["al"] = instant_out(end["dateTime"], zone)
 
     location = _stripped_text(event.get("location"))
     if location:
@@ -167,7 +171,7 @@ def read_appointment(event: dict, *, timezone: str | None) -> dict:
 def sort_appointments(appointments: list[dict]) -> list[dict]:
     """Impegni GIA' letti (uno o piu' calendari, ciascuno gia' ordinato dal
     Task 1 e gia' passato per `read_appointment`) -> un unico elenco fuso,
-    ordinato per `inizio`.
+    ordinato per `dal`.
 
     Non riordina un calendario gia' ordinato: fonde. Ogni calendario arriva
     ordinato per conto suo, ma concatenare due elenchi ordinati non produce
@@ -175,20 +179,20 @@ def sort_appointments(appointments: list[dict]) -> list[dict]:
     esattamente cio' che c'e' qui.
 
     **Si ordina per istante, non per testo** (A17, approvata il 05/10/2026).
-    Fino a quel giorno l'ordine era lessicografico sull'`inizio`, e
+    Fino a quel giorno l'ordine era lessicografico su `dal` (allora `inizio`), e
     l'ultima domenica di ottobre `02:30+02:00` usciva dopo `02:10+01:00`
     perche' si confrontava l'ora SCRITTA: dichiarato e lasciato. La chiave
     e' il giorno della casa (i primi dieci caratteri: un orario e' gia'
     scritto nell'ora della casa da `read_appointment`, un giornaliero e' la
     sua data), poi il giornaliero prima di ogni orario dello stesso giorno
-    (comincia a mezzanotte), poi l'istante. Un `inizio` che non si legge come
+    (comincia a mezzanotte), poi l'istante. Un `dal` che non si legge come
     istante resta al suo testo, in coda agli orari del suo giorno.
     """
     return sorted(appointments, key=_start_key)
 
 
 def _start_key(appointment: dict) -> tuple:
-    start = str(appointment.get("inizio") or "")
+    start = str(appointment.get("dal") or "")
     epoch = instant_epoch(start) if len(start) > 10 else None
     return (start[:10], len(start) > 10, epoch is None, epoch or 0.0, start)
 

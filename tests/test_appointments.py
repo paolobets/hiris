@@ -4,11 +4,13 @@ diventa un impegno che una persona legge.
 `read_appointment` compone UN evento; `sort_appointments` fonde impegni GIA'
 letti di piu' calendari (ciascuno gia' ordinato per conto suo) in un unico
 elenco ordinato -- vedi `hiris/app/home_space/appointments.py` per il perche'
-di ogni scelta, in particolare la trappola della fine esclusiva sui
-giornalieri (misurata sulla casa vera il 06/09/2026) e la legge sulle chiavi
-che non hanno niente da dire.
+di ogni scelta, in particolare `al`, escluso come la `end` di Home Assistant
+anche per i giornalieri (B-28, letto nel sorgente di HA l'08/10/2026), e la
+legge sulle chiavi che non hanno niente da dire.
 """
+from datetime import date, datetime, time
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from hiris.app.home_space import appointments as appointments_module
 from hiris.app.home_space.appointments import (
@@ -40,17 +42,62 @@ def _all_day_event(**fields):
 
 
 # --------------------------------------------------------------------------
-# read_appointment -- la trappola della fine esclusiva
+# read_appointment -- `dal`/`al`, un significato solo (B-28, D4 della Tappa 9)
 # --------------------------------------------------------------------------
 
-def test_an_all_day_event_ends_the_day_before_its_end_date():
-    """Misurato sulla casa vera il 06/09/2026: «ANNIVERSARIO» va dal 30 al 31
-    agosto ed e' UN GIORNO SOLO; «Ferie estive» dal 17 al 31 finisce il 30. E'
-    la fine esclusiva di iCal, e sbagliarla sposta OGNI evento giornaliero di
-    un giorno.
+def _first_instant_outside(appointment: dict) -> float:
+    """L'istante in cui l'intervallo finisce, letto da `al` come lo legge
+    Home Assistant: una data nuda vale la sua mezzanotte nel fuso della casa
+    (`get_datetime_local` -> `dt_util.start_of_local_day`, `home-assistant/core`
+    @ 2026.10.0), un istante vale se stesso."""
+    al = appointment["al"]
+    if len(al) == 10:
+        al = datetime.combine(date.fromisoformat(al), time.min,
+                              tzinfo=ZoneInfo("Europe/Rome")).isoformat()
+    return datetime.fromisoformat(al).timestamp()
 
-    Mutazione: usare `end["date"]` cosi' com'e' -- il test torna rosso su
-    `assert appointment["fine"] == "2026-08-30"`.
+
+def test_al_ha_lo_stesso_significato_per_un_giornaliero_e_per_uno_a_orario():
+    """B-28: `al` e' il primo giorno (o istante) che NON fa piu' parte
+    dell'impegno, per tutti e due i generi -- la `end` di Home Assistant,
+    esclusa (documentazione: «The end (exclusive) of the event»,
+    developers.home-assistant.io `docs/core/entity/calendar.md` @ `8da484e`;
+    sorgente: lo stato `on` vale `start <= now < end`, `home-assistant/core`
+    @ 2026.10.0, letto l'08/10/2026).
+
+    Due impegni che finiscono alla STESSA mezzanotte -- «ANNIVERSARIO»,
+    giornaliero del 30 agosto, e una veglia a orario che finisce alle 00:00 del
+    31 -- hanno lo stesso `al`, letto allo stesso modo. Prima di B-28 la
+    `fine` del giornaliero era l'ultimo giorno COMPRESO (`2026-08-30`) e quella
+    a orario l'istante ESCLUSO: due significati sotto un nome solo.
+
+    Rossa prima del codice: `KeyError: 'dal'` (la chiave non esisteva).
+    Mutazione ESEGUITA l'08/10/2026: in `read_appointment` il giornaliero
+    torna a togliere un giorno (`date.fromisoformat(end["date"]) -
+    timedelta(days=1)`) -- rossa sulla coppia `(dal, al)`: «AssertionError:
+    assert ('2026-08-30', '2026-08-30') == ('2026-08-30', '2026-08-31')»;
+    ripristinato e verificato col diff.
+    """
+    all_day = read_appointment(_all_day_event(), timezone="Europe/Rome")
+    timed = read_appointment(
+        _timed_event(start={"dateTime": "2026-08-30T22:00:00+02:00"},
+                     end={"dateTime": "2026-08-31T00:00:00+02:00"}),
+        timezone="Europe/Rome")
+
+    assert (all_day["dal"], all_day["al"]) == ("2026-08-30", "2026-08-31")
+    assert timed["al"] == "2026-08-31T00:00:00+02:00"
+    assert _first_instant_outside(all_day) == _first_instant_outside(timed)
+    for appointment in (all_day, timed):
+        assert "inizio" not in appointment and "fine" not in appointment
+
+
+def test_un_giornaliero_di_piu_giorni_tiene_la_fine_di_home_assistant():
+    """Misurato sulla casa vera il 06/09/2026: «Ferie estive» va dal 17 al 31
+    agosto e l'ultimo giorno di ferie e' il 30. `al` e' il 31, come lo scrive
+    Home Assistant: nessuna traduzione al confine.
+
+    Mutazione ESEGUITA, la stessa del test qui sopra -- rossa su `assert
+    appointment["al"] == "2026-08-31"`: «assert '2026-08-30' == '2026-08-31'».
     """
     appointment = read_appointment(
         {"start": {"date": "2026-08-17"}, "end": {"date": "2026-08-31"},
@@ -58,40 +105,24 @@ def test_an_all_day_event_ends_the_day_before_its_end_date():
          "uid": "270019B2", "recurrence_id": None, "rrule": None},
         timezone="Europe/Rome")
     assert appointment["giornaliero"] is True
-    assert appointment["inizio"] == "2026-08-17"
-    assert appointment["fine"] == "2026-08-30"
+    assert appointment["dal"] == "2026-08-17"
+    assert appointment["al"] == "2026-08-31"
 
 
-def test_a_single_day_all_day_event_lasts_exactly_one_day():
-    """Il caso misurato per «ANNIVERSARIO»: `start` e `end` un giorno
-    diverso, ma la durata vera e' un giorno solo -- `inizio` e `fine`
-    devono coincidere.
+def test_un_impegno_a_orario_esce_nel_fuso_della_casa():
+    """L'evento arriva in UTC apposta: `dal` e `al` portano il fuso della
+    casa, non la stringa di Home Assistant.
 
-    Mutazione: non sottrarre nessun giorno (`end["date"]` cosi' com'e') --
-    il test torna rosso su `assert appointment["fine"] == "2026-08-30"`, che
-    troverebbe invece `"2026-08-31"`.
-    """
-    appointment = read_appointment(_all_day_event(), timezone="Europe/Rome")
-    assert appointment["inizio"] == "2026-08-30"
-    assert appointment["fine"] == "2026-08-30"
-
-
-def test_a_timed_event_keeps_its_end_untouched():
-    """La correzione vale SOLO per i giornalieri: su un evento a orario la
-    fine e' la fine, e togliere un giorno anche li' sarebbe il difetto
-    opposto. L'evento arriva in UTC apposta: un `fine` corretto deve anche
-    portare il fuso della casa, non solo il giorno giusto.
-
-    Mutazione: applicare il -1 anche al ramo a orario -- il test torna rosso
-    su `assert appointment["fine"] == "2026-09-05T23:00:00+02:00"`.
+    Mutazione: emettere `end["dateTime"]` grezzo, senza `instant_out` --
+    rossa su `assert appointment["al"] == "2026-09-05T23:00:00+02:00"`.
     """
     appointment = read_appointment(
         _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"},
                      end={"dateTime": "2026-09-05T21:00:00+00:00"}),
         timezone="Europe/Rome")
     assert appointment["giornaliero"] is False
-    assert appointment["inizio"] == "2026-09-05T22:00:00+02:00"
-    assert appointment["fine"] == "2026-09-05T23:00:00+02:00"
+    assert appointment["dal"] == "2026-09-05T22:00:00+02:00"
+    assert appointment["al"] == "2026-09-05T23:00:00+02:00"
 
 
 def test_a_timed_event_is_rewritten_in_the_home_timezone_not_left_as_is():
@@ -101,13 +132,13 @@ def test_a_timed_event_is_rewritten_in_the_home_timezone_not_left_as_is():
 
     Mutazione: emettere `start["dateTime"]`/`end["dateTime"]` grezzi senza
     passare da `home_space_zone`/`astimezone` -- il test torna rosso su
-    `assert appointment["inizio"] == "2026-09-05T22:00:00+02:00"`, che
+    `assert appointment["dal"] == "2026-09-05T22:00:00+02:00"`, che
     troverebbe invece la stringa UTC originale.
     """
     appointment = read_appointment(
         _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"}),
         timezone="Europe/Rome")
-    assert appointment["inizio"] == "2026-09-05T22:00:00+02:00"
+    assert appointment["dal"] == "2026-09-05T22:00:00+02:00"
 
 
 def test_an_unrecognized_timezone_falls_back_to_utc_like_home_space_zone_does():
@@ -124,7 +155,7 @@ def test_an_unrecognized_timezone_falls_back_to_utc_like_home_space_zone_does():
     appointment = read_appointment(
         _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"}),
         timezone="Fuso/Inventato")
-    assert appointment["inizio"] == "2026-09-05T20:00:00+00:00"
+    assert appointment["dal"] == "2026-09-05T20:00:00+00:00"
 
 
 def test_a_missing_timezone_falls_back_to_utc_too():
@@ -143,7 +174,7 @@ def test_a_missing_timezone_falls_back_to_utc_too():
     appointment = read_appointment(
         _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"}),
         timezone=None)
-    assert appointment["inizio"] == "2026-09-05T20:00:00+00:00"
+    assert appointment["dal"] == "2026-09-05T20:00:00+00:00"
 
 
 def test_the_timezone_is_resolved_once_per_distinct_name_not_once_per_appointment():
@@ -221,7 +252,7 @@ def test_a_key_with_something_to_say_does_come_out():
 def test_technical_identifiers_do_not_come_out_of_a_readable_appointment():
     """`uid`, `recurrence_id`, `rrule` sono identificatori tecnici di HA, non
     parte di cio' che una persona legge: l'interfaccia dichiara solo
-    `titolo`, `inizio`, `fine`, `giornaliero`, `luogo`, `descrizione`.
+    `titolo`, `dal`, `al`, `giornaliero`, `luogo`, `descrizione`.
 
     Mutazione: propagare anche `uid` nel dizionario letto -- il test torna
     rosso su `assert "uid" not in appointment`.
@@ -297,20 +328,20 @@ def test_sort_appointments_merges_two_already_sorted_calendars_into_one_order():
     assert titles == ["A-mattina", "B-mattina", "A-sera", "B-sera"]
 
 
-def test_sort_appointments_only_looks_at_inizio_not_at_a_raw_event():
+def test_sort_appointments_only_looks_at_dal_not_at_a_raw_event():
     """`sort_appointments` prende impegni GIA' letti, non eventi grezzi da
-    rileggere: non ha bisogno di nessun altro campo che `inizio` per fare
+    rileggere: non ha bisogno di nessun altro campo che `dal` per fare
     il suo lavoro, ed e' per questo che la firma non porta piu' `timezone`
     (serviva solo perche' prima la funzione leggeva ANCHE, non solo
     fondeva).
 
     Mutazione: provare a rileggere l'evento (es. cercare `start`/`end`
-    invece di usare `inizio` gia' scritto) -- il test torna rosso su
+    invece di usare `dal` gia' scritto) -- il test torna rosso su
     `assert titles == ["a", "b"]`, con un `KeyError: 'start'` (questi
-    impegni minimi non hanno `start`, solo `inizio` e `titolo`).
+    impegni minimi non hanno `start`, solo `dal` e `titolo`).
     """
-    minimal = [{"titolo": "b", "inizio": "2026-09-05T10:00:00+02:00"},
-               {"titolo": "a", "inizio": "2026-09-05T08:00:00+02:00"}]
+    minimal = [{"titolo": "b", "dal": "2026-09-05T10:00:00+02:00"},
+               {"titolo": "a", "dal": "2026-09-05T08:00:00+02:00"}]
     merged = sort_appointments(minimal)
     titles = [appointment["titolo"] for appointment in merged]
     assert titles == ["a", "b"]
@@ -323,13 +354,13 @@ def test_sort_appointments_orders_by_the_instant_the_night_the_clock_goes_back()
     sbagliava una notte l'anno, dichiarato e lasciato. Ora si ordina per
     istante, come `search` (Tappa 4, T4).
 
-    Mutazione eseguita: la chiave riportata al solo `inizio` come testo ->
+    Mutazione eseguita: la chiave riportata al solo `dal` come testo ->
     rossa, «dopo» prima di «prima»."""
     appointments = [
-        {"titolo": "dopo", "inizio": "2026-10-25T02:10:00+01:00"},
-        {"titolo": "prima", "inizio": "2026-10-25T02:30:00+02:00"},
-        {"titolo": "giornaliero", "inizio": "2026-10-25"},
-        {"titolo": "il giorno dopo", "inizio": "2026-10-26"},
+        {"titolo": "dopo", "dal": "2026-10-25T02:10:00+01:00"},
+        {"titolo": "prima", "dal": "2026-10-25T02:30:00+02:00"},
+        {"titolo": "giornaliero", "dal": "2026-10-25"},
+        {"titolo": "il giorno dopo", "dal": "2026-10-26"},
     ]
     titles = [a["titolo"] for a in sort_appointments(appointments)]
     assert titles == ["giornaliero", "prima", "dopo", "il giorno dopo"]
@@ -341,7 +372,7 @@ def test_sort_appointments_places_an_all_day_event_before_a_timed_event_the_same
     prefisso di ogni orario di quel giorno (stessa proprieta' di
     `HAClient.calendar_events`).
 
-    Mutazione: ordinare per `titolo` invece che per `inizio` -- il test
+    Mutazione: ordinare per `titolo` invece che per `dal` -- il test
     torna rosso su `assert titles == ["Giornaliero", "A orario"]`, che con
     l'ordine alfabetico troverebbe l'inverso.
     """

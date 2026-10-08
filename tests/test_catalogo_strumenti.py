@@ -54,7 +54,11 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 #
 # 07/10/2026 (attori, Task 4.6): la descrizione di `livello` non ricopia piu'
 # quando il codice impone «alto». Misurato: 30.519.
-CATALOG_CEILING = 30519
+#
+# 08/10/2026 (Tappa 9, T5, B-28): la descrizione di `calendar` dice `dal`/`al`
+# e che `al` e' escluso, e accorcia due spiegazioni per non salire.
+# Misurato: 30.517.
+CATALOG_CEILING = 30517
 
 
 def catalog_chars(definitions) -> int:
