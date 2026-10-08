@@ -405,7 +405,7 @@ def _kept_behavior_notice(kept: dict | None, frame: dict | None) -> str:
     timezone, label = _house_zone(frame)
     when = datetime.fromisoformat(read_at).astimezone(timezone)
     return ("cio' che la casa fa da sola e' la replica letta alle {} del {} (fuso {}): "
-            "l'ultima rilettura non l'ha sostituita ({}).").format(
+            "l’ultima rilettura non l’ha sostituita ({}).").format(
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label, reason)
 
 
