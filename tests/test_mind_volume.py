@@ -33,8 +33,7 @@ def archivio(tmp_path):
 
 def _scrivi(archivio, quando, soggetto="sensor.x", fonte="entita"):
     archivio.record(quando_ts=quando, source=fonte, subject=soggetto,
-                    da="1", a="2", device_class=None, state_class=None,
-                    source_type=None, friendly_name=None)
+                    da="1", a="2", device_class=None, friendly_name=None)
 
 
 def test_su_un_archivio_vuoto_si_conta_zero_non_niente(archivio):

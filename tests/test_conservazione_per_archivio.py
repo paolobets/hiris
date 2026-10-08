@@ -123,3 +123,15 @@ def test_il_GREZZO_continua_a_scadere_a_22_giorni(store):
     giorni, _ragione, _cancellazione = CONSERVAZIONE["cambi"]
 
     assert giorni == 22
+
+
+def test_la_potatura_del_grezzo_chiede_i_giorni_a_chi_li_legge():
+    """G-18 (Tappa 8, T3): i 22 giorni stavano scritti due volte nello stesso
+    file, `READING_RETENTION_S` per cronaca, osservatore e pagina, e un 22
+    letterale per `prune`. Ora la potatura li chiede: una sola fonte.
+
+    Mutazione ESEGUITA: il 22 letterale rimesso con `READING_RETENTION_S`
+    portato a 23 giorni -- rossa."""
+    from hiris.app.mind.store import READING_RETENTION_S
+
+    assert CONSERVAZIONE["cambi"][0] * 86400 == READING_RETENTION_S

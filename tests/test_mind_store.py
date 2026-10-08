@@ -16,6 +16,7 @@ from hiris.app.mind.store import (
     READING_RETENTION_S,
     SCHEMA_VERSION,
     ObservationsStore,
+    _migration_14,
 )
 
 ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC
@@ -34,37 +35,34 @@ def test_un_cambio_si_rilegge_intero(archivio):
     righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)
     assert righe == [{"quando_ts": ADESSO, "fonte": "entita",
                       "soggetto": "climate.camera_t", "da": "off", "a": "heat",
-                      "device_class": None, "state_class": None, "source_type": None,
+                      "device_class": None,
                       "domain": None, "title": None, "friendly_name": None,
                       "attributes": None,
                       "first_occurred": None}]
 
 
-def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
-    """Queste tre classi arrivarono col Task 3, punto 0, quando decidevano il
-    pavimento e la gamba -- entrambi usciti (11/09 e 17/09/2026). Oggi solo
-    `device_class` ha un lettore vivo: senza di lei, `genre_for` non puo'
-    ricostruire il genere di un rilevatore di fumo o di un allagamento
-    quando l'aggregazione rilegge il grezzo."""
+def test_annota_scrive_la_classe_quando_c_e(archivio):
+    """Tre classi arrivarono col Task 3, punto 0, quando decidevano il
+    pavimento e la gamba -- entrambi usciti (11/09 e 17/09/2026). Resta solo
+    `device_class`, l'unica con un lettore vivo: senza di lei, `genre_for` non
+    puo' ricostruire il genere di un rilevatore di fumo o di un allagamento
+    quando l'aggregazione rilegge il grezzo. Le altre due sono uscite con
+    `_migration_15`."""
     archivio.record(quando_ts=ADESSO, source="entita",
                     subject="binary_sensor.fumo_cucina", da="off", a="on",
-                    device_class="smoke", state_class=None, source_type=None)
+                    device_class="smoke")
     riga = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]
     assert riga["device_class"] == "smoke"
-    assert riga["state_class"] is None
-    assert riga["source_type"] is None
 
 
-def test_annota_senza_classi_scrive_none(archivio):
+def test_annota_senza_classe_scrive_none(archivio):
     """Le condizioni di sistema, e il grezzo scritto prima di questa
-    correzione, non portano le tre classi: devono rileggersi come `None`, non
+    correzione, non portano la classe: deve rileggersi come `None`, non
     far sollevare `record`."""
     archivio.record(quando_ts=ADESSO, source="sistema",
                     subject="problema:sonos.x", da=None, a="aperto")
     riga = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]
     assert riga["device_class"] is None
-    assert riga["state_class"] is None
-    assert riga["source_type"] is None
 
 
 def test_i_cambi_tornano_dal_PIU_VECCHIO(archivio):
@@ -1034,11 +1032,13 @@ def test_migration_14_porta_gli_esiti_del_vecchio_attuatore_alla_chiave_del_prop
             {"gesto": "proposta", "costruibile": True, "trovato": "un'automazione",
              "impronta": "imp-cos"},
             {"gesto": "indagine", "trovato": "orfano"}]}})
-    store._conn.execute("PRAGMA user_version = 13")
+    # Il gradino da solo: dalla migrazione 15 queste righe, nate prima del
+    # proponente, escono dall'archivio (D3), e con loro gli esiti che le
+    # citano. Qui si guarda come la 14 le lega.
+    _migration_14(store._conn)
     store._conn.commit()
-    store.close()
 
-    riaperto = ObservationsStore(percorso)
+    riaperto = store
     try:
         analisi = riaperto.analysis("2026-09-20")
         assert "attuazione" not in analisi
@@ -1122,11 +1122,13 @@ def test_migration_14_cita_la_proposta_nata_PRIMA_dell_analisi(tmp_path):
         "INSERT INTO analisi(giorno,corpo_json,scritto_ts) VALUES(?,?,?)",
         ("2026-09-20", json.dumps({"osservazioni": [], "attuazione": {"esiti": [
             {"gesto": "proposta", "trovato": "a", "impronta": "imp"}]}}), 2.0))
-    store._conn.execute("PRAGMA user_version = 13")
+    # Il gradino da solo: dalla migrazione 15 queste righe, nate prima del
+    # proponente, escono dall'archivio (D3), e con loro gli esiti che le
+    # citano. Qui si guarda come la 14 le lega.
+    _migration_14(store._conn)
     store._conn.commit()
-    store.close()
 
-    riaperto = ObservationsStore(percorso)
+    riaperto = store
     try:
         assert proposer_turn.outcomes_of(riaperto.analysis("2026-09-20")) == [
             {"impronta": "imp", "esito": proposer_turn.BY_HAND, "proposta_id": allora}]
@@ -1153,3 +1155,338 @@ def test_migration_14_non_porta_una_proposta_a_mano_senza_riga(tmp_path):
         assert proposer_turn.outcomes_of(analisi) == []
     finally:
         riaperto.close()
+
+
+#: La `cambi` di un archivio alla versione 14, con le due colonne che nessuno
+#: leggeva: e' la forma che la migrazione 15 trova sul disco del proprietario.
+_CAMBI_V14 = (
+    "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    " quando_ts REAL NOT NULL,"
+    " fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')),"
+    " soggetto TEXT NOT NULL, da TEXT, a TEXT, device_class TEXT,"
+    " state_class TEXT, source_type TEXT, domain TEXT, title TEXT,"
+    " first_occurred TEXT, friendly_name TEXT, attributes TEXT);"
+    "CREATE INDEX idx_cambi_quando ON cambi(quando_ts);"
+    "CREATE INDEX idx_cambi_soggetto ON cambi(soggetto, quando_ts);")
+
+
+def _archive_v14(tmp_path) -> str:
+    """Un archivio alla 14 con tre cambi veri, e il piu' vecchio gia' potato:
+    la potatura toglie dal fondo."""
+    percorso = str(tmp_path / "oss.db")
+    ObservationsStore(percorso).close()
+    conn = sqlite3.connect(percorso)
+    conn.executescript(
+        "DROP TABLE cambi;" + _CAMBI_V14
+        + "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,state_class,"
+          "source_type,domain,title,first_occurred,friendly_name,attributes) VALUES"
+          "(800.0,'entita','light.potata','on','off',NULL,NULL,NULL,NULL,NULL,NULL,"
+          "NULL,NULL),"
+          "(900.0,'entita','sensor.contatore','1','2','energy','total_increasing',"
+          "NULL,NULL,NULL,NULL,'Contatore','{\"x\": 1}'),"
+          "(901.0,'sistema','log:abc',NULL,'aperto',NULL,NULL,NULL,'sonos',"
+          "'Errore',  '880.5',NULL,NULL),"
+          "(902.0,'entita','device_tracker.tel','home','not_home',NULL,NULL,'gps',"
+          "NULL,NULL,NULL,'Telefono',NULL);"
+          "DELETE FROM cambi WHERE id = 1;"
+          "PRAGMA user_version = 14;")
+    conn.commit()
+    conn.close()
+    return percorso
+
+
+def _shape(percorso) -> tuple:
+    conn = sqlite3.connect(percorso)
+    try:
+        return (
+            [r[1] for r in conn.execute("PRAGMA table_info(cambi)")],
+            conn.execute("SELECT * FROM cambi ORDER BY id").fetchall(),
+            sorted(r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' "
+                "AND tbl_name = 'cambi' AND name LIKE 'idx_%'")),
+            conn.execute("PRAGMA user_version").fetchone()[0],
+            [r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE name LIKE 'cambi_v%'")])
+    finally:
+        conn.close()
+
+
+def test_migration_15_toglie_le_due_colonne_mai_lette_senza_perdere_i_cambi(tmp_path):
+    """`cambi.state_class` e `source_type` si scrivevano a ogni cambio e
+    nessuno le leggeva (Tappa 8, G-06): escono ricostruendo la tabella, come
+    `_migration_12`. Le righe restano coi loro id e con ogni colonna che
+    resta, gli indici tornano, e la riga nuova prende l'id dopo l'ultimo. Una
+    seconda apertura non cambia niente.
+
+    Mutazioni ESEGUITE: `_MIGRATION_15_STEPS` vuoto -- rossa sulle colonne;
+    senza ricreare gli indici -- rossa sugli indici.
+    """
+    percorso = _archive_v14(tmp_path)
+
+    store = ObservationsStore(percorso)
+    try:
+        store.record(quando_ts=903.0, source="entita", subject="light.x",
+                     da="off", a="on")
+        righe = store.readings(from_ts=0.0, to_ts=2000.0)
+    finally:
+        store.close()
+
+    colonne, tabella, indici, versione, avanzi = _shape(percorso)
+    assert "state_class" not in colonne and "source_type" not in colonne
+    assert colonne == ["id", "quando_ts", "fonte", "soggetto", "da", "a",
+                       "device_class", "domain", "title", "first_occurred",
+                       "friendly_name", "attributes"]
+    assert [r[0] for r in tabella] == [2, 3, 4, 5]
+    assert [(r["soggetto"], r["device_class"], r["friendly_name"], r["attributes"],
+             r["domain"], r["title"], r["first_occurred"]) for r in righe] == [
+        ("sensor.contatore", "energy", "Contatore", '{"x": 1}', None, None, None),
+        ("log:abc", None, None, None, "sonos", "Errore", 880.5),
+        ("device_tracker.tel", None, "Telefono", None, None, None, None),
+        ("light.x", None, None, None, None, None, None)]
+    assert indici == ["idx_cambi_quando", "idx_cambi_soggetto"]
+    assert versione == SCHEMA_VERSION
+    assert avanzi == []
+
+    prima = _shape(percorso)
+    ObservationsStore(percorso).close()
+    assert _shape(percorso) == prima
+
+
+def test_migration_15_rifiuta_ancora_una_fonte_sconosciuta(tmp_path):
+    """La tabella ricostruita porta il `CHECK` su `fonte`: senza, un refuso
+    dello scrittore entrerebbe in silenzio (vedi `test_fonte_invalida_solleva`).
+
+    Mutazione ESEGUITA: il `CHECK` tolto dalla ricostruzione -- rossa."""
+    store = ObservationsStore(_archive_v14(tmp_path))
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            store.record(quando_ts=1.0, source="altro", subject="x", da=None, a="1")
+    finally:
+        store.close()
+
+
+# -- C-48: un lettore solo per le colonne JSON (Tappa 8, T3) ---------------
+
+def _json_loads_in_store() -> tuple[list[str], list[str]]:
+    """I `json.loads` di `mind/store.py`, chiesti ad `ast`: quelli dentro il
+    lettore unico o una migrazione, e quelli fuori, come `funzione:riga`."""
+    import ast
+    import inspect
+
+    from hiris.app.mind import store as modulo
+
+    allowed, outside = [], []
+    # I passi della 15 sono migrazioni anche se non si chiamano cosi': si
+    # chiedono alla lista che la 15 esegue, non si ricopiano.
+    steps = {step.__name__ for step in modulo._MIGRATION_15_STEPS}
+
+    def visit(node, owners):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            owners = (*owners, node.name)
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "loads"
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "json"):
+            where = f"{'.'.join(owners) or '<modulo>'}:{node.lineno}"
+            if any(o == "_json_column" or o.startswith("_migration_") or o in steps
+                   for o in owners):
+                allowed.append(where)
+            else:
+                outside.append(where)
+        for child in ast.iter_child_nodes(node):
+            visit(child, owners)
+
+    visit(ast.parse(inspect.getsource(modulo)), ())
+    return allowed, outside
+
+
+def test_le_letture_json_dello_store_passano_tutte_dal_lettore_unico():
+    """C-48: quattro letture con la guardia e sette senza, e con una riga
+    storta `proposals()` faceva cadere l'intera `GET /api/constructions`. Ogni
+    lettura passa da `_json_column`; le migrazioni tengono i loro, perche'
+    devono dire fra due anni la stessa cosa.
+
+    La prova vede ancora qualcosa: il lettore e le migrazioni che leggono JSON
+    (8, 9, 14) ci sono, o la derivazione si e' rotta e la prova direbbe si'
+    guardando il vuoto.
+
+    Mutazione ESEGUITA: `json.loads(r[6])` rimesso in `proposals` -- rossa qui
+    e in `test_constructions_api` (la rotta torna a cadere)."""
+    allowed, outside = _json_loads_in_store()
+    assert outside == []
+    owners = {where.split(":")[0].split(".")[-1] for where in allowed}
+    assert {"_json_column", "_migration_8", "_migration_9", "_migration_14"} <= owners
+
+
+def _guasta(store, sql: str, *args) -> None:
+    store._conn.execute(sql, args)
+    store._conn.commit()
+
+
+def test_una_riga_guasta_si_salta_negli_elenchi_e_lo_dice_una_volta(tmp_path, caplog):
+    """Chi legge un elenco salta la riga guasta, le altre arrivano; chi legge
+    una riga sola riceve `None` come per `analysis()`; un giro di «Rifalla» su
+    un filo illeggibile non lo riscrive da capo. Il log lo dice una volta per
+    riga, non a ogni lettura.
+
+    Mutazione ESEGUITA: senza `_unreadable_told` (il log a ogni lettura) --
+    rossa sul conteggio delle righe dette."""
+    import logging
+
+    from hiris.app.mind import store as modulo
+
+    modulo._unreadable_told.clear()
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        buona = store.add_proposal(text="a", perche="p", fingerprint="f1", prova={"v": 1},
+                                   stakes=None, now_ts=1.0)
+        rotta = store.add_proposal(text="b", perche="p", fingerprint="f2", prova={"v": 2},
+                                   stakes=None, now_ts=2.0)
+        _guasta(store, "UPDATE proposte SET giri_json = '{rotto' WHERE id = ?", rotta)
+        store.replace_report("2026-09-01", {"giorno": "2026-09-01"})
+        store.replace_report("2026-09-02", {"giorno": "2026-09-02"})
+        _guasta(store, "UPDATE resoconto SET corpo_json = 'x' WHERE giorno = '2026-09-02'")
+        store.replace_analysis("2026-09-01", {"osservazioni": []})
+        store.replace_analysis("2026-09-02", {"osservazioni": []})
+        _guasta(store, "UPDATE analisi SET corpo_json = 'x' WHERE giorno = '2026-09-02'")
+
+        with caplog.at_level(logging.WARNING, logger="hiris.app.mind.store"):
+            assert [p["id"] for p in store.proposals()] == [buona]
+            assert [p["id"] for p in store.proposals()] == [buona]
+            assert store.proposal(rotta) is None
+            assert store.add_proposal_round(rotta, request="r", outcome="niente",
+                                            turn="t1", now_ts=3.0) is False
+            assert [r["giorno"] for r in store.reports()] == ["2026-09-01"]
+            assert store.report("2026-09-02") is None
+            assert [a["giorno"] for a in store.analyses()] == ["2026-09-01"]
+            assert store.analysis("2026-09-02") is None
+            assert not any(store.reseal(lambda testo: testo).values())
+        assert store._conn.execute("SELECT giri_json FROM proposte WHERE id = ?",
+                                   (rotta,)).fetchone()[0] == "{rotto"
+        _guasta(store, "UPDATE proposte SET prova_json = '[' WHERE id = ?", buona)
+        assert "f1" not in store.decided_proposals()
+    finally:
+        store.close()
+    # Quattro righe guaste, quattro righe di log: le letture ripetute non
+    # ne aggiungono.
+    detti = [r.getMessage() for r in caplog.records]
+    assert len(detti) == 4, detti
+    assert any(rotta in d and "proposte" in d for d in detti)
+
+
+# -- D3: le proposte a mano dell'attuatore escono (Tappa 8, T3, G-04) -------
+
+#: Prima e dopo la nascita del proponente (06/10/2026 16:00:56 UTC).
+_ACTUATOR_TS = 1790000000.0   # 21/09/2026
+_PROPOSER_TS = 1791400000.0   # 07/10/2026
+
+
+def test_migration_15_cancella_le_proposte_dell_attuatore_e_gli_esiti_che_le_citano(
+        tmp_path, caplog):
+    """D3, decisione del proprietario dell'08/10/2026: escono tutte le
+    proposte a mano dell'attuatore, in attesa e rifiutate (misurato
+    l'08/10/2026 sul backup: 9 righe, 7 `attesa` e 2 `rifiutata`). Le
+    riconosce l'istante: nate prima del codice del proponente. Una del
+    proponente resta. Gli esiti `a_mano` che le citavano escono dall'analisi,
+    o la pagina direbbe «la trovi in Proposte» dove non c'e' niente; gli altri
+    restano. Una riga di log per id. Una seconda apertura non cambia niente.
+
+    Mutazioni ESEGUITE: il passo tolto da `_MIGRATION_15_STEPS` -- rossa
+    sulle righe; `_PROPOSER_BORN_TS` spostato dopo la riga del proponente --
+    rossa sulla riga che resta; senza il filtro delle analisi --
+    rossa sugli esiti."""
+    import logging
+
+    from hiris.app.mind import proposer_turn
+
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    attesa = store.add_proposal(text="a", perche="p", fingerprint="f1", prova={},
+                                stakes=None, now_ts=_ACTUATOR_TS)
+    rifiutata = store.add_proposal(text="b", perche="p", fingerprint="f2", prova={},
+                                   stakes=None, now_ts=_ACTUATOR_TS + 1)
+    store.close_proposal(rifiutata, "rifiutata")
+    nuova = store.add_proposal(text="c", perche="p", fingerprint="f3", prova={},
+                               stakes=None, now_ts=_PROPOSER_TS)
+    esiti = [{"impronta": "f1", "esito": proposer_turn.BY_HAND, "proposta_id": attesa},
+             {"impronta": "f9", "esito": proposer_turn.NOTHING, "perche": "x"},
+             {"impronta": "f3", "esito": proposer_turn.BY_HAND, "proposta_id": nuova}]
+    store.replace_analysis("2026-09-21", {"osservazioni": [],
+                                          proposer_turn.OUTCOMES_KEY: esiti[:2]})
+    store.replace_analysis("2026-10-07", {"osservazioni": [],
+                                          proposer_turn.OUTCOMES_KEY: esiti[2:]})
+    store._conn.execute("PRAGMA user_version = 14")
+    store._conn.commit()
+    store.close()
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.mind.store"):
+        riaperto = ObservationsStore(percorso)
+    try:
+        assert [p["id"] for p in riaperto.proposals()] == [nuova]
+        assert proposer_turn.outcomes_of(riaperto.analysis("2026-09-21")) == [esiti[1]]
+        assert proposer_turn.outcomes_of(riaperto.analysis("2026-10-07")) == [esiti[2]]
+        prima = riaperto._conn.execute(
+            "SELECT giorno, corpo_json, scritto_ts FROM analisi ORDER BY giorno").fetchall()
+    finally:
+        riaperto.close()
+    detti = [r.getMessage() for r in caplog.records if "dell'attuatore" in r.getMessage()]
+    assert len(detti) == 2
+    assert any(attesa in d and "attesa" in d for d in detti)
+    assert any(rifiutata in d and "rifiutata" in d for d in detti)
+
+    ancora = ObservationsStore(percorso)
+    try:
+        assert [p["id"] for p in ancora.proposals()] == [nuova]
+        assert ancora._conn.execute(
+            "SELECT giorno, corpo_json, scritto_ts FROM analisi ORDER BY giorno"
+        ).fetchall() == prima
+    finally:
+        ancora.close()
+
+
+# -- S-32: il sigillo a posteriori copre anche analisi e proposte ----------
+
+def test_il_sigillo_a_posteriori_copre_anche_analisi_e_proposte(tmp_path):
+    """S-32 (Tappa 8, T3): il sigillo passato all'avvio copriva `cambi` e
+    `resoconto`, ma l'analista legge i resoconti e il proponente le analisi:
+    cio' che avevano scritto prima del sigillo poteva citare un titolo in
+    chiaro. Ora si sigilla ogni testo dell'analisi, e della proposta il testo,
+    il perche', la nota e il filo del «Rifalla». L'impronta e gli id no: sono
+    legami, non frasi. La seconda volta non cambia niente.
+
+    Mutazioni ESEGUITE: senza le analisi -- rossa; `impronta` tolta da
+    `_SEAL_KEEPS` -- rossa sull'impronta."""
+    from hiris.app.mind import proposer_turn
+
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        ident = store.add_proposal(text="riavvia: token SEGRETO", perche="log SEGRETO",
+                                   fingerprint="log:SEGRETO|x", prova={}, stakes=None,
+                                   now_ts=1.0)
+        store.add_proposal_round(ident, request="piu' corta SEGRETO", outcome="niente",
+                                 turn="t-SEGRETO", now_ts=2.0, why="resta SEGRETO")
+        store.close_proposal(ident, "rifiutata", why="no, SEGRETO")
+        store.replace_analysis("2026-09-21", {
+            "osservazioni": [{"cosa": "errore con SEGRETO", "impronta": "log:SEGRETO|x"}],
+            proposer_turn.OUTCOMES_KEY: [{"impronta": "log:SEGRETO|x",
+                                          "esito": proposer_turn.BY_HAND,
+                                          "proposta_id": ident}]})
+
+        def sigillo(testo):
+            return testo.replace("SEGRETO", "***")
+
+        assert store.reseal(sigillo) == {"cambi": 0, "resoconto": 0,
+                                         "analisi": 1, "proposte": 1}
+        analisi = store.analysis("2026-09-21")
+        assert analisi["osservazioni"][0] == {"cosa": "errore con ***",
+                                              "impronta": "log:SEGRETO|x"}
+        assert proposer_turn.outcomes_of(analisi)[0]["impronta"] == "log:SEGRETO|x"
+        riga = store.proposal(ident)
+        assert (riga["testo"], riga["perche"], riga["esito_nota"]) == (
+            "riavvia: token ***", "log ***", "no, ***")
+        assert riga["impronta"] == "log:SEGRETO|x"
+        assert riga["giri"][0]["richiesta"] == "piu' corta ***"
+        assert riga["giri"][0]["perche"] == "resta ***"
+        assert riga["giri"][0]["turno"] == "t-SEGRETO"
+        assert not any(store.reseal(sigillo).values())
+    finally:
+        store.close()

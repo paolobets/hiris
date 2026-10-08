@@ -359,14 +359,12 @@ class Watcher:
                 quando_ts=when, source="entita", subject=str(eid),
                 da=da, a=a,
                 device_class=_text_or_none(attributes.get("device_class")),
-                state_class=_text_or_none(attributes.get("state_class")),
-                source_type=_text_or_none(attributes.get("source_type")),
                 # Il nome amichevole si SALVA qui, non si risolve dopo: fra
                 # sei mesi l'entita' puo' non esistere piu' e il resoconto
                 # resta (i `cambi` vivono 22 giorni, i resoconti finche'
                 # l'utente non li cancella -- vedi `store.py::_migration_5`).
                 # Costa zero: `attributes` e' gia' letto qui sopra e gia'
-                # spremuto per le tre classi. E' la stringa che Home
+                # spremuto per `device_class`. E' la stringa che Home
                 # Assistant ha GIA' composto (`helpers/entity.py:1161` ->
                 # `entity_registry.py:592-603` @ `2026.9.1`), non una
                 # ricomposta da noi da `name`/`original_name`/dispositivo.
@@ -1005,15 +1003,15 @@ class Watcher:
         if not seal.readable:
             return
         try:
-            rows, reports = self._store.reseal_titles(
-                lambda text: seal_free_text(text, seal))
+            changed = self._store.reseal(lambda text: seal_free_text(text, seal))
         except Exception as error:
             logger.warning("osservatore: titoli archiviati non sigillati (%s)",
                            type(error).__name__)
             return
-        if rows or reports:
-            logger.info("osservatore: sigillati i segreti in %d titoli archiviati "
-                        "e %d resoconti", rows, reports)
+        if any(changed.values()):
+            logger.info("osservatore: sigillati i segreti in %d titoli archiviati, "
+                        "%d resoconti, %d analisi e %d proposte", changed["cambi"],
+                        changed["resoconto"], changed["analisi"], changed["proposte"])
 
     def rebuild_conditions(self) -> None:
         """Risemina `self._conditions` **e** `self._automation_faults` da
@@ -1070,7 +1068,8 @@ class Watcher:
         Python a ogni avvio.
 
         **Prima, il sigillo dei segreti sui titoli gia' archiviati**
-        (`_reseal_archived_titles`, Tappa 3, Task 0): questo e' l'unico
+        (`_reseal_archived_titles`, Tappa 3, Task 0; dalla Tappa 8 anche
+        analisi e proposte): questo e' l'unico
         passo dell'avvio in cui l'osservatore rilegge il proprio archivio, e
         quelle righe sono sue.
         """

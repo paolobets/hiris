@@ -73,8 +73,11 @@ READING_RETENTION_S = 22 * 86400
 #: perderebbe la copertura su tutte le ventiquattro tabelle scritte qui.
 #: Misurato: il censimento passava da 38 reperti a 39.
 CONSERVAZIONE: dict[str, tuple[int | None, str, str | None]] = {
+    # Chiesto a `READING_RETENTION_S`, non ricopiato (G-18, Tappa 8): i 22
+    # giorni del grezzo sono un fatto solo, letto da cronaca, osservatore e
+    # pagina da li', e da `prune` da qui.
     "cambi": (
-        22,
+        READING_RETENTION_S // 86400,
         ("il grezzo: serve a vedere cosa e' successo di recente, e oltre tre "
          "settimane nessuno lo rilegge piu'"),
         "DELETE FROM cambi WHERE quando_ts < ?"),
@@ -152,10 +155,11 @@ def _migration_2(conn) -> None:
     queste tre classi sono usciti interi il 17/09/2026 (spec 2026-09-16 §11):
     oggi solo `device_class` ha un lettore vivo (`facts.genre_for` e
     `facts._is_on`, attraverso l'istantanea dei giudizi); `state_class` e
-    `source_type` non ne hanno nessuno. Restano comunque QUI, nel grezzo: non
-    sono tolte dallo schema, e sono i LETTORI che sono spariti, non
-    `store.py` che smette di conservarle -- i 22 giorni di grezzo
-    permettono di rifare il giudizio anche se un domani tornassero a servire.
+    `source_type` non ne hanno nessuno, e sono uscite con `_migration_15`
+    (Tappa 8, G-06): una colonna scritta a ogni cambio e mai letta e' un
+    doppione dello specchio di Home Assistant che nessuno interroga. Questa
+    migrazione resta com'e', perche' deve dire fra due anni la stessa cosa:
+    un archivio alla versione 1 le riceve qui e le perde alla 15.
 
     Tre colonne aggiunte, nessuna riscritta: le righe gia' in casa restano
     esattamente com'erano e diventano NULL sulle tre, che e' cio' che sono
@@ -218,9 +222,10 @@ def _migration_5(conn) -> None:
     parola la ragione gia' scritta accanto a `domain`/`title` nello schema
     qui sotto: fra tre settimane quell'entita' potrebbe non esistere piu', e
     la riga deve dire ancora di CHE COSA si parlava. E c'e' un secondo
-    motivo, proprio di questa colonna: le due tabelle hanno due vite -- i
-    `cambi` vivono 22 giorni, gli `oggetti` finche' l'utente non li cancella.
-    Un oggetto di sei mesi fa su un'entita' sostituita non avrebbe NESSUN
+    motivo, proprio di questa colonna: il grezzo e cio' che se ne capisce
+    hanno due vite -- i `cambi` vivono 22 giorni, i resoconti (allora gli
+    `oggetti`, usciti con `_migration_10`) finche' l'utente non li cancella.
+    Un giorno di sei mesi fa su un'entita' sostituita non avrebbe NESSUN
     nome da risolvere, e la riga tornerebbe all'`entity_id` grezzo: il
     difetto che questa fetta chiude ricrescerebbe da solo, un pezzo alla
     volta, senza che nessuno se ne accorga.
@@ -417,8 +422,6 @@ CREATE TABLE IF NOT EXISTS cambi (
     da TEXT,
     a TEXT,
     device_class TEXT,
-    state_class TEXT,
-    source_type TEXT,
     -- Le colonne NUOVE si scrivono in inglese (decisione del proprietario,
     -- 04/09/2026). Le italiane qui sopra sono debito in attesa della fetta
     -- «il vocabolario del dato», non un modello da imitare.
@@ -437,8 +440,8 @@ CREATE TABLE IF NOT EXISTS cambi (
     -- Il nome che Home Assistant ha gia' composto per l'entita' al momento
     -- del cambio (`attributes.friendly_name` dello specchio dello stato).
     -- Sta nel GREZZO per la stessa ragione di `domain`/`title` qui sopra, e
-    -- per una in piu' che vale solo per lui: gli `oggetti` vivono piu' a
-    -- lungo dei `cambi`, quindi un nome risolto dopo su un oggetto vecchio
+    -- per una in piu' che vale solo per lui: i resoconti vivono piu' a
+    -- lungo dei `cambi`, quindi un nome risolto dopo su un giorno vecchio
     -- non si troverebbe piu'. NULL per le condizioni di sistema (un
     -- `problema:`/`integrazione:`/`log:`/`automazione:` non e' un'entita' e
     -- non ne porta uno) e per le entita' su cui HA non scrive l'attributo.
@@ -465,16 +468,6 @@ CREATE TABLE IF NOT EXISTS cambi (
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
 
--- IL RESOCONTO DEL GIORNO (spec §9, fetta 5). Una riga per giorno, e **resta**:
--- il grezzo scade, il resoconto no.
---
--- **Una colonna JSON e non due tabelle**, e la ragione e' che le due parti si
--- leggono insieme o non si leggono affatto: l'analista scorre le misure di
--- trenta giorni e poi chiede la cronaca di UNO -- due letture, non due
--- tabelle. E la forma delle due parti cambiera' ancora (le ricette crescono,
--- l'ancora della cronaca puo' stringersi): una colonna per campo vorrebbe dire
--- una migrazione a ogni cosa imparata, che e' cio' che questa fetta esiste per
--- togliere.
 -- L'ANALISI di un giorno (spec §10): cosa l'analista ha visto, e perche'.
 -- Una per giorno, sostituibile come il resoconto: rifare un giorno lo rifa'.
 --
@@ -499,8 +492,9 @@ CREATE TABLE IF NOT EXISTS analisi (
 -- «Un posto solo dove si decide» e' una promessa sulla PAGINA, non sulla
 -- tabella: e' la pagina a mostrarle insieme, con l'etichetta di chi le applica.
 --
--- `impronta` e `prova_json` sono l'anti-ripetizione: l'attuatore salta una
--- domanda gia' decisa **finche' la sua prova non cambia**.
+-- `impronta` e `prova_json` sono l'anti-ripetizione: il proponente salta una
+-- domanda gia' decisa **finche' la sua prova non cambia**
+-- (`proposer_turn.already_answered`).
 --
 -- `giri_json` e' il filo del «Rifalla»: ogni giro porta la richiesta di
 -- modifica e la forma che ne e' uscita, cosi' il modello vede il filo intero e
@@ -533,6 +527,16 @@ CREATE TABLE IF NOT EXISTS proposte (
 );
 CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC);
 
+-- IL RESOCONTO DEL GIORNO (spec §9, fetta 5). Una riga per giorno, e **resta**:
+-- il grezzo scade, il resoconto no.
+--
+-- **Una colonna JSON e non due tabelle**, e la ragione e' che le due parti si
+-- leggono insieme o non si leggono affatto: l'analista scorre le misure di
+-- trenta giorni e poi chiede la cronaca di UNO -- due letture, non due
+-- tabelle. E la forma delle due parti cambiera' ancora (le ricette crescono,
+-- l'ancora della cronaca puo' stringersi): una colonna per campo vorrebbe dire
+-- una migrazione a ogni cosa imparata, che e' cio' che questa fetta esiste per
+-- togliere.
 CREATE TABLE IF NOT EXISTS resoconto (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
@@ -816,11 +820,140 @@ def _migration_14(conn) -> None:
                     row["giorno"])
 
 
+#: Le colonne di `cambi` alla versione 15, quelle che la ricostruzione
+#: ricopia. Sono la forma di QUEL gradino, e restano ferme come
+#: `_PROPOSAL_COLUMNS`: una colonna nata dopo arriva con la sua migrazione.
+_READING_COLUMNS = ("id", "quando_ts", "fonte", "soggetto", "da", "a",
+                    "device_class", "domain", "title", "first_occurred",
+                    "friendly_name", "attributes")
+
+
+def _drop_unread_reading_columns(conn) -> None:
+    """Escono `cambi.state_class` e `cambi.source_type` (Tappa 8, G-06 e
+    M-40): si scrivevano a ogni cambio e nessuno le leggeva dal 17/09/2026,
+    quando e' uscita la gamba che le usava (vedi `_migration_2`). Il fatto
+    vive gia' nello specchio di Home Assistant, che e' dove chi ne ha bisogno
+    lo chiede (`house.mirror.state_classes`).
+
+    **Si ricostruisce la tabella**, come `_migration_12`: `DROP COLUMN` vuole
+    SQLite 3.35. Gli indici seguono la tabella rinominata e se ne vanno con
+    lei: si ricreano dopo il `DROP`, quando il nome e' di nuovo libero. Il
+    contatore di `AUTOINCREMENT` riparte dall'id piu' alto ricopiato, e basta:
+    la potatura toglie le righe piu' vecchie, mai l'ultima, quindi nessun id
+    gia' dato torna.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
+    if not existing & {"state_class", "source_type"}:
+        return
+    columns = ",".join(_READING_COLUMNS)
+    conn.execute("ALTER TABLE cambi RENAME TO cambi_v14")
+    conn.execute(
+        "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "quando_ts REAL NOT NULL, "
+        "fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')), "
+        "soggetto TEXT NOT NULL, da TEXT, a TEXT, device_class TEXT, "
+        "domain TEXT, title TEXT, first_occurred TEXT, friendly_name TEXT, "
+        "attributes TEXT)")
+    conn.execute(f"INSERT INTO cambi({columns}) SELECT {columns} FROM cambi_v14")
+    conn.execute("DROP TABLE cambi_v14")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cambi_soggetto "
+                 "ON cambi(soggetto, quando_ts)")
+
+
+#: L'istante in cui e' nato il codice del proponente: il commit `b79c347`
+#: («il turno con `propose`», attori, Task 4.2), 06/10/2026 16:00:56 UTC.
+#: **Una proposta nata prima non l'ha scritta il proponente**, perche' il
+#: codice che la scrive non esisteva: l'ha scritta l'attuatore, che dal
+#: 01/10/2026 era in pausa. E' il fatto da cui si legge «chi l'ha scritta»,
+#: che la riga non porta: `stakes` e' nullo anche sulle righe del proponente
+#: (`proposer_round`, D13), e la prova ha la stessa forma.
+_PROPOSER_BORN_TS = 1791302456.0
+
+
+def _drop_actuator_proposals(conn) -> None:
+    """Escono le proposte da fare a mano scritte dall'attuatore (Tappa 8,
+    G-04, D3: decisione del proprietario dell'08/10/2026, «elimina anche le 2
+    rifiutate»). Misurato l'08/10/2026 sul backup dell'add-on: 9 righe, 7
+    `attesa` e 2 `rifiutata`, `esito_nota` vuota su tutte, nessuna del
+    proponente.
+
+    **Perche' escono.** Nate su dati rotti (0 utili su 9), e una in attesa
+    blocca il proponente: ritrovando la stessa impronta non scrive il suo
+    testo, cita la vecchia (`proposer_round`, D24-1). Le 2 rifiutate escono
+    anche loro: il proponente le avrebbe lette come una decisione su una
+    domanda posta male.
+
+    Una riga di log per id, con lo stato. **Escono anche gli esiti che le
+    citano** dentro le analisi (`a_mano` con quel `proposta_id`, portati li'
+    da `_migration_14` o scritti dal proponente che le ha trovate in attesa):
+    la pagina direbbe «la trovi in Proposte» dove non c'e' niente, la stessa
+    ragione per cui `_migration_14` non porta un «a mano» senza la sua riga
+    (N74-2). Solo le analisi toccate si riscrivono.
+    """
+    from . import proposer_turn
+
+    gone = conn.execute(
+        "SELECT id, stato FROM proposte WHERE creata_ts < ? ORDER BY creata_ts",
+        (_PROPOSER_BORN_TS,)).fetchall()
+    if not gone:
+        return
+    for row in gone:
+        logger.info("proposta a mano %s (%s) dell'attuatore cancellata", row["id"],
+                    row["stato"])
+    conn.execute("DELETE FROM proposte WHERE creata_ts < ?", (_PROPOSER_BORN_TS,))
+    idents = {row["id"] for row in gone}
+    for row in conn.execute("SELECT giorno, corpo_json FROM analisi").fetchall():
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(body, dict):
+            continue
+        outcomes = proposer_turn.outcomes_of(body)
+        kept = [o for o in outcomes
+                if not (isinstance(o, dict) and o.get("esito") == proposer_turn.BY_HAND
+                        and o.get("proposta_id") in idents)]
+        if len(kept) == len(outcomes):
+            continue
+        body[proposer_turn.OUTCOMES_KEY] = kept
+        conn.execute("UPDATE analisi SET corpo_json = ? WHERE giorno = ?",
+                     (json.dumps(body, ensure_ascii=False), row["giorno"]))
+
+
+#: I passi della migrazione 15, in ordine (Tappa 8, Task 3). **Una
+#: migrazione sola per la tappa**, con un passo per cambio: chi porta il suo
+#: (la marca `regole` dei resoconti del Task 2, le parole degli stati delle
+#: proposte del Task 4) aggiunge una funzione qui, idempotente, senza
+#: riscrivere le altre. Vale finche' la 15 non e' uscita in un rilascio: dopo,
+#: un passo nuovo e' una migrazione 16.
+_MIGRATION_15_STEPS = (_drop_unread_reading_columns, _drop_actuator_proposals)
+
+
+def _migration_15(conn) -> None:
+    """v14 -> v15 (Tappa 8, «gli archivi seguono la casa»): i passi di
+    `_MIGRATION_15_STEPS`.
+
+    **Tutto o niente, in una transazione**, per la ragione di `_migration_12`
+    (G14-1): un passo interrotto a meta' non lascia l'archivio dichiarato
+    alla 15 con meta' dei cambi. Se uno fallisce si torna indietro, l'archivio
+    resta alla 14 e la migrazione si rifa' al prossimo avvio.
+    """
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        for step in _MIGRATION_15_STEPS:
+            step(conn)
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -846,6 +979,43 @@ ATTEMPT_FAILED = "non_riuscito"
 ATTEMPT_EXPIRED = "scaduta"
 
 
+#: Le chiavi dentro un'analisi o un filo del «Rifalla» che `reseal` non
+#: sigilla: non sono frasi, sono legami (l'impronta dell'antiripetizione, l'id
+#: di una proposta, l'identita' di un turno). Oscurarne un pezzo romperebbe il
+#: legame senza nascondere niente che qualcuno abbia scritto.
+_SEAL_KEEPS = frozenset({"impronta", "proposta_id", "turno"})
+
+#: Cio' che `_json_column` torna per un corpo che non si legge. Un oggetto e
+#: non `None`: `null` e' un JSON valido, e una riga che lo porta non e' guasta.
+_UNREADABLE = object()
+
+#: Le righe guaste gia' dette nel log, `(tabella, chiave)`: una pagina che si
+#: ricarica ogni pochi secondi non deve ripetere la stessa riga a ogni giro.
+_unreadable_told: set[tuple[str, str]] = set()
+
+
+def _json_column(raw, *, table: str, key) -> object:
+    """Il corpo JSON di una colonna, o `_UNREADABLE` se non si legge (C-48,
+    Tappa 8). **L'unico `json.loads` delle letture di questo archivio**: lo
+    pretende `tests/test_mind_store.py`, chiedendolo ad `ast`. Le migrazioni
+    hanno i loro, perche' devono dire fra due anni la stessa cosa.
+
+    Fino alla Tappa 8 quattro letture avevano la guardia e sette no: con una
+    riga storta `proposals()` faceva cadere l'intera `GET /api/constructions`,
+    che fonde le due code. **Chi legge un elenco salta la riga guasta**, e il
+    log lo dice una volta per riga, con la tabella e la chiave per ritrovarla.
+    """
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        told = (table, str(key))
+        if told not in _unreadable_told:
+            _unreadable_told.add(told)
+            logger.warning("osservazioni: la riga %s di `%s` ha un corpo JSON "
+                           "illeggibile, e chi legge la salta", key, table)
+        return _UNREADABLE
+
+
 def _reading_row(r) -> dict:
     # `first_occurred` e' TEXT in colonna (stessa forma di `_add_missing_
     # columns`, vedi il suo docstring), ma e' un ISTANTE: si torna al
@@ -855,8 +1025,7 @@ def _reading_row(r) -> dict:
     first_occurred = r["first_occurred"]
     return {"quando_ts": r["quando_ts"], "fonte": r["fonte"],
             "soggetto": r["soggetto"], "da": r["da"], "a": r["a"],
-            "device_class": r["device_class"], "state_class": r["state_class"],
-            "source_type": r["source_type"],
+            "device_class": r["device_class"],
             "domain": r["domain"], "title": r["title"],
             "friendly_name": r["friendly_name"],
             # Il JSON resta una STRINGA fino a chi lo legge: una riga vecchia
@@ -865,6 +1034,13 @@ def _reading_row(r) -> dict:
             # una riga. Chi lo apre e' `mind/facts.py`, che sa cosa farsene.
             "attributes": r["attributes"],
             "first_occurred": None if first_occurred is None else float(first_occurred)}
+
+
+def _scope_decision(r) -> dict:
+    """Una riga di `scope` nella forma che ne esce, da `scope()` e da
+    `decision()`: la stessa decisione ha la stessa forma dalle due porte."""
+    return {"dentro": bool(r["inside"]), "motivo": r["reason"],
+            "autore": r["author"], "quando": r["decided_ts"]}
 
 
 class ObservationsStore:
@@ -882,7 +1058,7 @@ class ObservationsStore:
                                 9: _migration_9,
                                 10: _migration_10, 11: _migration_11,
                                 12: _migration_12, 13: _migration_13,
-                                14: _migration_14})
+                                14: _migration_14, 15: _migration_15})
 
     def close(self) -> None:
         with self._lock:
@@ -892,8 +1068,6 @@ class ObservationsStore:
 
     def record(self, *, quando_ts: float, source: str, subject: str,
                da, a, device_class: str | None = None,
-               state_class: str | None = None,
-               source_type: str | None = None,
                domain: str | None = None, title: str | None = None,
                friendly_name: str | None = None,
                first_occurred: float | None = None,
@@ -905,14 +1079,14 @@ class ObservationsStore:
         `fonte` e' vincolata a `'entita'` o `'sistema'` (CHECK di schema): un
         refuso dello scrittore futuro non deve entrare in silenzio.
 
-        `device_class`, `state_class` e `source_type` sono le tre classi che
-        Home Assistant dichiara sull'entita' -- **grezzo per definizione**, non
-        un giudizio nostro: e' `device_class` cio' che serve a `facts.genre_for`
-        per decidere il genere di `sensor` e `binary_sensor` quando
-        l'aggregazione rilegge la riga, giorni dopo che l'evento e' passato.
-        Tutti e tre annullabili: le condizioni di sistema non li portano, e una
-        riga scritta prima che queste colonne esistessero li rilegge come
-        `None`.
+        `device_class` e' la classe che Home Assistant dichiara sull'entita'
+        -- **grezzo per definizione**, non un giudizio nostro: serve a
+        `facts.genre_for` per decidere il genere di `sensor` e `binary_sensor`
+        quando l'aggregazione rilegge la riga, giorni dopo che l'evento e'
+        passato. Annullabile: le condizioni di sistema non la portano, e una
+        riga scritta prima che la colonna esistesse la rilegge come `None`.
+        `state_class` e `source_type` non si scrivono piu': nessuno le leggeva
+        (`_migration_15`).
 
         `domain` e `title` sono dominio e titolo della voce di configurazione
         di una condizione di SISTEMA (`watcher.py::watch_system`) -- **grezzo
@@ -946,12 +1120,11 @@ class ObservationsStore:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
-                "state_class,source_type,domain,title,friendly_name,first_occurred,"
-                "attributes) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "domain,title,friendly_name,first_occurred,attributes) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (float(quando_ts), source, subject,
                  None if da is None else str(da), None if a is None else str(a),
-                 device_class, state_class, source_type, domain, title, friendly_name,
+                 device_class, domain, title, friendly_name,
                  None if first_occurred is None else str(float(first_occurred)),
                  attributes))
             self._conn.commit()
@@ -974,10 +1147,10 @@ class ObservationsStore:
                 (day, json.dumps(report, ensure_ascii=False), _time.time()))
             self._conn.commit()
 
-    def reseal_titles(self, seal_text) -> tuple[int, int]:
-        """Ripassa `seal_text` sui titoli GIA' scritti delle condizioni `log:`
-        e sui `titolo` dei resoconti, e torna quante righe e quanti resoconti
-        ha cambiato.
+    def reseal(self, seal_text) -> dict[str, int]:
+        """Ripassa `seal_text` sui titoli GIA' scritti delle condizioni `log:`,
+        sui `titolo` dei resoconti, sulle analisi e sulle proposte da fare a
+        mano, e torna quante righe ha cambiato in ciascuna tabella.
 
         **Perche' esiste** (Tappa 3, Task 0, decisione del proprietario del
         03/10/2026). Fino alla 3.73.2 l'osservatore archiviava il titolo di
@@ -996,16 +1169,31 @@ class ObservationsStore:
         l'istante e' cio' che sveglia il giro dell'analista
         (`report_stamps`).
 
-        Idempotente: un testo gia' sigillato non cambia, e dal secondo avvio
-        torna `(0, 0)` senza scrivere niente.
+        **Anche le analisi e le proposte da fare a mano** (S-32, Tappa 8):
+        l'analista legge i resoconti e il proponente le analisi, e cio' che
+        hanno scritto prima del sigillo puo' citare un titolo in chiaro, in
+        qualunque frase. Dell'analisi si sigilla ogni testo; della proposta
+        il testo, il perche', la nota dell'esito e il filo del «Rifalla». Non
+        l'impronta: e' la chiave dell'antiripetizione, non una frase. Lo
+        stesso prezzo dichiarato del sigillo, su piu' testo.
+
+        Torna `{tabella: righe cambiate}` per `cambi`, `resoconto`, `analisi`
+        e `proposte`. Idempotente: un testo gia' sigillato non cambia, e dal
+        secondo avvio torna tutti zeri senza scrivere niente.
         """
-        def resealed(value):
+        def prose(text):
+            return seal_text(text) if isinstance(text, str) else text
+
+        def resealed(value, *, every: bool = False):
             if isinstance(value, dict):
-                return {key: (seal_text(item) if key == "titolo" and isinstance(item, str)
-                              else resealed(item))
+                return {key: (item if key in _SEAL_KEEPS
+                              else seal_text(item)
+                              if isinstance(item, str) and (every or key == "titolo")
+                              else resealed(item, every=every))
                         for key, item in value.items()}
             if isinstance(value, list):
-                return [resealed(item) for item in value]
+                return [seal_text(item) if every and isinstance(item, str)
+                        else resealed(item, every=every) for item in value]
             return value
 
         with self._lock:
@@ -1018,29 +1206,67 @@ class ObservationsStore:
                 "SELECT giorno, corpo_json FROM resoconto").fetchall()
             changed_reports = []
             for r in reports:
-                body = json.loads(r["corpo_json"])
+                body = _json_column(r["corpo_json"], table="resoconto", key=r["giorno"])
+                if body is _UNREADABLE:
+                    continue
                 sealed = resealed(body)
                 if sealed != body:
                     changed_reports.append(
                         (json.dumps(sealed, ensure_ascii=False), r["giorno"]))
-            if changed_rows or changed_reports:
+            changed_analyses = []
+            for r in self._conn.execute("SELECT giorno, corpo_json FROM analisi").fetchall():
+                body = _json_column(r["corpo_json"], table="analisi", key=r["giorno"])
+                if body is _UNREADABLE:
+                    continue
+                sealed = resealed(body, every=True)
+                if sealed != body:
+                    changed_analyses.append(
+                        (json.dumps(sealed, ensure_ascii=False), r["giorno"]))
+            changed_proposals = []
+            for r in self._conn.execute(
+                    "SELECT id, testo, perche, esito_nota, giri_json "
+                    "FROM proposte").fetchall():
+                rounds = _json_column(r["giri_json"], table="proposte", key=r["id"])
+                if rounds is _UNREADABLE:
+                    continue
+                before = (r["testo"], r["perche"], r["esito_nota"], rounds)
+                after = (prose(r["testo"]), prose(r["perche"]),
+                         prose(r["esito_nota"]), resealed(rounds, every=True))
+                if after != before:
+                    changed_proposals.append(
+                        (*after[:3], json.dumps(after[3], ensure_ascii=False), r["id"]))
+            if changed_rows or changed_reports or changed_analyses or changed_proposals:
                 self._conn.executemany("UPDATE cambi SET title = ? WHERE id = ?",
                                        changed_rows)
                 self._conn.executemany(
                     "UPDATE resoconto SET corpo_json = ? WHERE giorno = ?",
                     changed_reports)
+                self._conn.executemany(
+                    "UPDATE analisi SET corpo_json = ? WHERE giorno = ?",
+                    changed_analyses)
+                self._conn.executemany(
+                    "UPDATE proposte SET testo = ?, perche = ?, esito_nota = ?, "
+                    "giri_json = ? WHERE id = ?", changed_proposals)
                 self._conn.commit()
-        return len(changed_rows), len(changed_reports)
+        return {"cambi": len(changed_rows), "resoconto": len(changed_reports),
+                "analisi": len(changed_analyses), "proposte": len(changed_proposals)}
 
     def report(self, day: str) -> dict | None:
         """Il resoconto di un giorno, o `None` se quel giorno non e' mai stato
         aggregato. **Non e' un resoconto vuoto**: «non e' successo niente» e
-        «non l'abbiamo guardato» sono due cose diverse."""
+        «non l'abbiamo guardato» sono due cose diverse.
+
+        Un corpo illeggibile torna `None` come `analysis()`, e il log lo dice
+        (`_json_column`): il giro dei resoconti lo rifa' finche' il grezzo
+        c'e', e lo rifa' sostituendolo."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT corpo_json FROM resoconto WHERE giorno = ?",
                 (day,)).fetchone()
-        return json.loads(row["corpo_json"]) if row else None
+        if row is None:
+            return None
+        body = _json_column(row["corpo_json"], table="resoconto", key=day)
+        return None if body is _UNREADABLE else body
 
     def reports(self, *, limit: int = 30) -> list[dict]:
         """Gli ultimi resoconti, dal piu' recente.
@@ -1053,9 +1279,11 @@ class ObservationsStore:
         """
         with self._lock:
             righe = self._conn.execute(
-                "SELECT corpo_json FROM resoconto ORDER BY giorno DESC LIMIT ?",
+                "SELECT giorno, corpo_json FROM resoconto ORDER BY giorno DESC LIMIT ?",
                 (int(max(1, limit)),)).fetchall()
-        return [json.loads(r["corpo_json"]) for r in righe]
+        bodies = (_json_column(r["corpo_json"], table="resoconto", key=r["giorno"])
+                  for r in righe)
+        return [body for body in bodies if body is not _UNREADABLE]
 
     def oldest_reading_ts(self) -> float | None:
         """L'istante della riga piu' vecchia del grezzo, o `None` se non ce
@@ -1240,9 +1468,18 @@ class ObservationsStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT subject, inside, reason, author, decided_ts FROM scope").fetchall()
-        return {r["subject"]: {"dentro": bool(r["inside"]), "motivo": r["reason"],
-                               "autore": r["author"], "quando": r["decided_ts"]}
-                for r in rows}
+        return {r["subject"]: _scope_decision(r) for r in rows}
+
+    def decision(self, subject: str) -> dict | None:
+        """La decisione su un soggetto, nella forma di una voce di `scope()`,
+        o `None` se nessuno ha deciso (A-37, Tappa 8). **Una riga per chiave
+        primaria**: chi decide su un soggetto solo non rilegge il perimetro
+        intero, centinaia di righe a ogni decisione."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT inside, reason, author, decided_ts FROM scope WHERE subject = ?",
+                (subject,)).fetchone()
+        return None if row is None else _scope_decision(row)
 
     def is_watched(self, subject: str) -> bool:
         """Se questo soggetto e' dentro lo scope. **La domanda che il rubinetto
@@ -1313,7 +1550,7 @@ class ObservationsStore:
         clean = (reason or "").strip()
         if not clean:
             return False
-        standing = self.scope().get(subject)
+        standing = self.decision(subject)
         if not may_overwrite(author, standing["autore"] if standing else None):
             return False
         with self._lock:
@@ -1410,11 +1647,21 @@ class ObservationsStore:
         `scritto_ts` a `None` dice che nessuno l'ha mai scritto e vale quello di
         fabbrica -- che non e' la stessa cosa di «l'ha scritto qualcuno e per
         caso coincide col default».
+
+        E' l'ultimo scritto, a qualunque istante: lo stesso `_objective_row`
+        di `objective_at`, senza confine.
         """
+        return self._objective_row(float("inf"))
+
+    def _objective_row(self, ts: float) -> dict:
+        """L'ultimo obiettivo scritto fino a `ts` incluso, o quello di
+        fabbrica (G-17, Tappa 8): la query sta qui una volta, per `objective`
+        e `objective_at`. La copia in `_migration_9` resta: una migrazione
+        deve dire fra due anni la stessa cosa, anche se questo metodo cambia."""
         with self._lock:
             row = self._conn.execute(
-                "SELECT text, written_ts FROM objective "
-                "ORDER BY written_ts DESC, id DESC LIMIT 1").fetchone()
+                "SELECT text, written_ts FROM objective WHERE written_ts <= ? "
+                "ORDER BY written_ts DESC, id DESC LIMIT 1", (float(ts),)).fetchone()
         if row is None:
             return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
         return {"testo": row["text"], "scritto_ts": row["written_ts"]}
@@ -1452,13 +1699,7 @@ class ObservationsStore:
         14:00. Prima del primo scritto vale quello di fabbrica: la casa c'era
         comunque, e l'osservatore guardava.
         """
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT text, written_ts FROM objective WHERE written_ts <= ? "
-                "ORDER BY written_ts DESC, id DESC LIMIT 1", (float(ts),)).fetchone()
-        if row is None:
-            return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
-        return {"testo": row["text"], "scritto_ts": row["written_ts"]}
+        return self._objective_row(ts)
 
     # -- l'analisi (spec §10) ------------------------------------------
 
@@ -1553,11 +1794,17 @@ class ObservationsStore:
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
             rows = self._conn.execute(sql, (*args, int(max(1, limit)))).fetchall()
-        return [{"id": r[0], "creata_ts": r[1], "stato": r[2], "testo": r[3],
-                 "perche": r[4], "impronta": r[5], "prova": json.loads(r[6]),
-                 "giri": json.loads(r[7]), "esito_nota": r[8], "livello": r[9],
-                 "costruzione_id": r[10], "non_automatizzabile": r[11]}
-                for r in rows]
+        out = []
+        for r in rows:
+            prova = _json_column(r[6], table="proposte", key=r[0])
+            rounds = _json_column(r[7], table="proposte", key=r[0])
+            if prova is _UNREADABLE or rounds is _UNREADABLE:
+                continue
+            out.append({"id": r[0], "creata_ts": r[1], "stato": r[2], "testo": r[3],
+                        "perche": r[4], "impronta": r[5], "prova": prova,
+                        "giri": rounds, "esito_nota": r[8], "livello": r[9],
+                        "costruzione_id": r[10], "non_automatizzabile": r[11]})
+        return out
 
     def proposal(self, ident: str) -> dict | None:
         """Una proposta da fare a mano per id, o `None`. **Per id, non fra le
@@ -1566,6 +1813,30 @@ class ObservationsStore:
         scadenza (revisione C3, 07/10/2026)."""
         found = self.proposals(ident=ident, limit=1)
         return found[0] if found else None
+
+    def pending_proposals_count(self) -> int:
+        """Quante proposte da fare a mano aspettano una risposta, **contate in
+        SQL** (Tappa 8, T3): la lunghezza di `proposals()` si fermava al suo
+        tetto di 200 senza dirlo, la stessa ragione di `readings_count`."""
+        with self._lock:
+            return int(self._conn.execute(
+                "SELECT COUNT(*) FROM proposte WHERE stato = ?",
+                (self.PROPOSAL_PENDING,)).fetchone()[0])
+
+    def proposal_origins(self, construction_ids) -> dict[str, dict]:
+        """`{id della costruzione: {"id", "testo"}}`: la proposta a mano da cui
+        e' nata ciascuna di queste costruzioni («Rendila automatica», Task
+        4.5), chiesta per legame (Tappa 8, T3). Cercata fra le ultime 200 di
+        `proposals()` si perdeva quando la proposta era piu' vecchia."""
+        wanted = sorted({str(c) for c in construction_ids or () if c})
+        if not wanted:
+            return {}
+        marks = ",".join("?" * len(wanted))
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT id, testo, construction_id FROM proposte "
+                f"WHERE construction_id IN ({marks})", tuple(wanted)).fetchall()
+        return {r["construction_id"]: {"id": r["id"], "testo": r["testo"]} for r in rows}
 
     def close_proposal(self, ident: str, occurrence: str, *,
                        why: str | None = None) -> bool:
@@ -1638,8 +1909,10 @@ class ObservationsStore:
                 (ident,)).fetchone()
             if row is None:
                 return False
-            rounds = json.loads(row[2])
-            if any(r.get("turno") == turn for r in rounds):
+            # Un filo illeggibile non si riscrive da capo: si perderebbe
+            # cio' che c'era. Il giro non si scrive, e il log lo dice.
+            rounds = _json_column(row[2], table="proposte", key=ident)
+            if rounds is _UNREADABLE or any(r.get("turno") == turn for r in rounds):
                 return False
             entry = {"richiesta": request, "esito": outcome, "turno": turn,
                      "quando_ts": now_ts}
@@ -1684,9 +1957,13 @@ class ObservationsStore:
             rows = self._conn.execute(
                 "SELECT impronta, prova_json, stato, creata_ts, id FROM proposte "
                 "ORDER BY creata_ts, rowid").fetchall()
-        return {r[0]: {"prova": json.loads(r[1]), "aperta": r[2] == self.PROPOSAL_PENDING,
-                       "creata_ts": r[3], "id": r[4], "a_mano": True}
-                for r in rows}
+        decided = {}
+        for r in rows:
+            prova = _json_column(r[1], table="proposte", key=r[4])
+            if prova is not _UNREADABLE:
+                decided[r[0]] = {"prova": prova, "aperta": r[2] == self.PROPOSAL_PENDING,
+                                 "creata_ts": r[3], "id": r[4], "a_mano": True}
+        return decided
 
     def analysis(self, day: str) -> dict | None:
         """L'analisi di quel giorno, o `None` se non ne ha una.
@@ -1699,10 +1976,8 @@ class ObservationsStore:
                 "SELECT corpo_json FROM analisi WHERE giorno = ?", (day,)).fetchone()
         if row is None:
             return None
-        try:
-            return json.loads(row["corpo_json"])
-        except (TypeError, ValueError):
-            return None
+        body = _json_column(row["corpo_json"], table="analisi", key=day)
+        return None if body is _UNREADABLE else body
 
     def analyses(self, *, limit: int = 30) -> list[dict]:
         """Le analisi, **dalla piu' recente**: una cronaca si legge da adesso
@@ -1713,11 +1988,9 @@ class ObservationsStore:
                 "ORDER BY giorno DESC LIMIT ?", (int(limit),)).fetchall()
         out = []
         for row in rows:
-            try:
-                body = json.loads(row["corpo_json"])
-            except (TypeError, ValueError):
-                continue
-            out.append({**body, "giorno": row["giorno"]})
+            body = _json_column(row["corpo_json"], table="analisi", key=row["giorno"])
+            if body is not _UNREADABLE:
+                out.append({**body, "giorno": row["giorno"]})
         return out
 
     def prune(self, now_ts: float) -> int:
