@@ -73,8 +73,11 @@ READING_RETENTION_S = 22 * 86400
 #: perderebbe la copertura su tutte le ventiquattro tabelle scritte qui.
 #: Misurato: il censimento passava da 38 reperti a 39.
 CONSERVAZIONE: dict[str, tuple[int | None, str, str | None]] = {
+    # Chiesto a `READING_RETENTION_S`, non ricopiato (G-18, Tappa 8): i 22
+    # giorni del grezzo sono un fatto solo, letto da cronaca, osservatore e
+    # pagina da li', e da `prune` da qui.
     "cambi": (
-        22,
+        READING_RETENTION_S // 86400,
         ("il grezzo: serve a vedere cosa e' successo di recente, e oltre tre "
          "settimane nessuno lo rilegge piu'"),
         "DELETE FROM cambi WHERE quando_ts < ?"),
@@ -1593,11 +1596,21 @@ class ObservationsStore:
         `scritto_ts` a `None` dice che nessuno l'ha mai scritto e vale quello di
         fabbrica -- che non e' la stessa cosa di «l'ha scritto qualcuno e per
         caso coincide col default».
+
+        E' l'ultimo scritto, a qualunque istante: lo stesso `_objective_row`
+        di `objective_at`, senza confine.
         """
+        return self._objective_row(float("inf"))
+
+    def _objective_row(self, ts: float) -> dict:
+        """L'ultimo obiettivo scritto fino a `ts` incluso, o quello di
+        fabbrica (G-17, Tappa 8): la query sta qui una volta, per `objective`
+        e `objective_at`. La copia in `_migration_9` resta: una migrazione
+        deve dire fra due anni la stessa cosa, anche se questo metodo cambia."""
         with self._lock:
             row = self._conn.execute(
-                "SELECT text, written_ts FROM objective "
-                "ORDER BY written_ts DESC, id DESC LIMIT 1").fetchone()
+                "SELECT text, written_ts FROM objective WHERE written_ts <= ? "
+                "ORDER BY written_ts DESC, id DESC LIMIT 1", (float(ts),)).fetchone()
         if row is None:
             return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
         return {"testo": row["text"], "scritto_ts": row["written_ts"]}
@@ -1635,13 +1648,7 @@ class ObservationsStore:
         14:00. Prima del primo scritto vale quello di fabbrica: la casa c'era
         comunque, e l'osservatore guardava.
         """
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT text, written_ts FROM objective WHERE written_ts <= ? "
-                "ORDER BY written_ts DESC, id DESC LIMIT 1", (float(ts),)).fetchone()
-        if row is None:
-            return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
-        return {"testo": row["text"], "scritto_ts": row["written_ts"]}
+        return self._objective_row(ts)
 
     # -- l'analisi (spec §10) ------------------------------------------
 
