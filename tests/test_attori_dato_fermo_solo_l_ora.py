@@ -200,6 +200,8 @@ async def test_il_06_10_un_ora_ferma_toglie_l_ora_e_non_il_giorno():
             "Dalle 01:00 alle 02:00 tutti i sensori di questo dispositivo sono "
             "rimasti uguali mentre il resto della casa si muoveva: quelle ore non "
             "entrano nel calcolo.")
+        assert declared["parola"] == "dispositivo fermo"
+        assert declared["ore"] == ["01:00", "02:00"]
     # Il resto della casa non c'entra.
     assert "esclusi" not in rows["consumo"]
 

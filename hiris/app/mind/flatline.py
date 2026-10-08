@@ -63,10 +63,12 @@ stessi ingredienti.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Hashable, Mapping
 from datetime import UTC
 
 from ..home_space.historian import instant_epoch, instant_out
+from ..home_space.house import is_instance_group
 from .operations import FROZEN, Exclusion, NotComputable
 from .recipes import EXCLUDED_MARK
 
@@ -265,34 +267,33 @@ def frozen_day(series: Mapping[str, list],
                 # Solo le ore del giorno: un tratto cominciato ieri toglie a
                 # oggi le ore da mezzanotte, e la frase dice il tratto intero.
                 start_ts = max(stretch["dal"], day_start_ts)
-                said_from = instant_out(start_ts, zone)
-                exclusions.setdefault(entity_id, []).append(Exclusion(
-                    start_ts=start_ts, end_ts=stretch["al"],
-                    start=said_from, end=said_end,
-                    reason=reason, cause=FROZEN,
-                    summary=_summary(group, said_from, said_end)))
+                exclusions.setdefault(entity_id, []).append(_exclusion(
+                    group, start_ts=start_ts, end_ts=stretch["al"], zone=zone,
+                    reason=reason))
     return refusals, exclusions
 
 
-def _clock(said: str, *, end: bool = False) -> str:
-    """L'ora di un istante gia' detto nell'ora della casa (`instant_out`):
-    «2026-10-06T01:00:00+02:00» -> «01:00». La mezzanotte che chiude un
-    tratto e' la fine del giorno, e si dice «24:00»."""
-    clock = said[11:16]
-    return "24:00" if end and clock == "00:00" else clock
-
-
-def _summary(group, said_from: str, said_end: str) -> str:
-    """La frase per chi legge la pagina, nella sua lingua (parere di
-    ux-ui-specialist, 08/10/2026): niente id, niente vocabolario interno. Il
-    gruppo e' `House.sibling_group`: un dispositivo, o l'istanza
+def _wording(group) -> tuple[str, str]:
+    """Chi si e' fermato, detto per chi legge la pagina (parere di
+    ux-ui-specialist, 08/10/2026): `(soggetto della frase, parola breve)`.
+    Il gruppo e' `House.sibling_group`: un dispositivo, o l'istanza
     dell'integrazione per le entita' sole sul loro dispositivo."""
-    who = ("tutti i dispositivi di questa integrazione"
-           if isinstance(group, tuple) and group[:1] == ("istanza",)
-           else "tutti i sensori di questo dispositivo")
-    return (f"Dalle {_clock(said_from)} alle {_clock(said_end, end=True)} {who} "
-            "sono rimasti uguali mentre il resto della casa si muoveva: quelle ore "
-            "non entrano nel calcolo.")
+    if is_instance_group(group):
+        return "tutti i dispositivi di questa integrazione", "integrazione ferma"
+    return "tutti i sensori di questo dispositivo", "dispositivo fermo"
+
+
+def _exclusion(group, *, start_ts, end_ts, zone, reason) -> Exclusion:
+    """L'esclusione di un tratto, con le sue due frasi: quella con gli id
+    (`reason`) e quella senza, scritte qui insieme alla parola breve."""
+    said_from, said_end = instant_out(start_ts, zone), instant_out(end_ts, zone)
+    who, label = _wording(group)
+    draft = Exclusion(start_ts=start_ts, end_ts=end_ts, start=said_from, end=said_end,
+                      reason=reason, cause=FROZEN, summary="-", label=label)
+    return dataclasses.replace(draft, summary=(
+        f"Dalle {draft.start_clock} alle {draft.end_clock} {who} sono rimasti "
+        "uguali mentre il resto della casa si muoveva: quelle ore non entrano "
+        "nel calcolo."))
 
 
 def mark_excluded(points, exclusions) -> list[dict]:

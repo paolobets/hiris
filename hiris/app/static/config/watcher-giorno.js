@@ -212,20 +212,11 @@ window.HirisWatcherGiorno = (function () {
     });
   }
 
-  /* «2026-10-06T01:00:00+02:00» -> «01:00»: l'ora come la casa l'ha detta.
-     La mezzanotte che CHIUDE un tratto e' la fine del giorno: «24:00». */
-  function oraDellaCasa(iso, fine) {
-    var ora = String(iso || '').slice(11, 16);
-    return (fine && ora === '00:00') ? '24:00' : ora;
-  }
-
-  /* La causa di un'esclusione detta a chi legge la pagina: mai il codice
-     grezzo del vocabolario. A fermarsi e' il gruppo, non un sensore solo
-     (parere di ux-ui-specialist, 08/10/2026). Una causa nuova senza parola
-     prende il ripiego neutro finche' qualcuno non la scrive qui. */
-  var PAROLE_DELLA_CAUSA = { ferma: 'dispositivo fermo' };
-  function parolaCausa(causa) {
-    return PAROLE_DELLA_CAUSA[causa] || 'dato non usabile';
+  /* La parola breve di un'esclusione la scrive il server, accanto alla frase
+     che la spiega (`Exclusion.out`, N91-3): qui non si traduce niente. Se
+     manca, un ripiego neutro -- mai il codice grezzo della causa. */
+  function parolaEsclusione(x) {
+    return x.parola || 'dato non usabile';
   }
 
   /* Gli id dei «perche'» aperti dai bottoni, unici nella pagina. */
@@ -250,16 +241,18 @@ window.HirisWatcherGiorno = (function () {
     /* Le ore lasciate fuori dal numero (il dato fermo, 08/10/2026; parere di
        ux-ui-specialist dello stesso giorno): UNA riga con la copertura,
        «su 96% del giorno · escluse 01:00–02:00: dispositivo fermo», i tratti
-       uniti da « e » per causa. L'ora e' quella che la riga gia' porta, nella
-       zona della casa, non ricalcolata nel fuso del browser. La frase tecnica
+       uniti da « e » per parola. Le ore arrivano gia' dette dal server
+       (`ore`, nell'ora della casa e con il «24:00» di fine giorno, N91-1):
+       qui non si ricalcolano. La frase tecnica
        (con gli id) resta nel `title`; quella per chi legge si apre sotto,
        da un bottone che si raggiunge anche da tastiera. */
     var tratti = {};
     var parole = [];
     esclusi.forEach(function (x) {
-      var parola = parolaCausa(x.causa);
+      var parola = parolaEsclusione(x);
+      var ore = x.ore || [];
       if (!tratti[parola]) { tratti[parola] = []; parole.push(parola); }
-      tratti[parola].push(oraDellaCasa(x.dal) + '–' + oraDellaCasa(x.al, true));
+      tratti[parola].push(ore[0] + '–' + ore[1]);
     });
     var detto = parole.map(function (p) {
       return 'escluse ' + tratti[p].join(' e ') + ': ' + p;
