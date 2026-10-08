@@ -1026,6 +1026,13 @@ def _reading_row(r) -> dict:
             "first_occurred": None if first_occurred is None else float(first_occurred)}
 
 
+def _scope_decision(r) -> dict:
+    """Una riga di `scope` nella forma che ne esce, da `scope()` e da
+    `decision()`: la stessa decisione ha la stessa forma dalle due porte."""
+    return {"dentro": bool(r["inside"]), "motivo": r["reason"],
+            "autore": r["author"], "quando": r["decided_ts"]}
+
+
 class ObservationsStore:
     """La memoria dell'osservatore. Il lock e' lo stesso delle scritture anche
     in lettura: la connessione e' condivisa fra thread (`check_same_thread=
@@ -1407,9 +1414,18 @@ class ObservationsStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT subject, inside, reason, author, decided_ts FROM scope").fetchall()
-        return {r["subject"]: {"dentro": bool(r["inside"]), "motivo": r["reason"],
-                               "autore": r["author"], "quando": r["decided_ts"]}
-                for r in rows}
+        return {r["subject"]: _scope_decision(r) for r in rows}
+
+    def decision(self, subject: str) -> dict | None:
+        """La decisione su un soggetto, nella forma di una voce di `scope()`,
+        o `None` se nessuno ha deciso (A-37, Tappa 8). **Una riga per chiave
+        primaria**: chi decide su un soggetto solo non rilegge il perimetro
+        intero, centinaia di righe a ogni decisione."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT inside, reason, author, decided_ts FROM scope WHERE subject = ?",
+                (subject,)).fetchone()
+        return None if row is None else _scope_decision(row)
 
     def is_watched(self, subject: str) -> bool:
         """Se questo soggetto e' dentro lo scope. **La domanda che il rubinetto
@@ -1480,7 +1496,7 @@ class ObservationsStore:
         clean = (reason or "").strip()
         if not clean:
             return False
-        standing = self.scope().get(subject)
+        standing = self.decision(subject)
         if not may_overwrite(author, standing["autore"] if standing else None):
             return False
         with self._lock:

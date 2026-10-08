@@ -442,7 +442,7 @@ def bring_back(store, analysis: dict, house, *, when_ts: float | None = None) ->
     outcomes = []
     for item in asked:
         subject, why = item["id"], item["perche"]
-        standing = store.scope().get(subject)
+        standing = store.decision(subject)
         source = house.source(subject)
         if source is None:
             outcomes.append({**item, "esito": BACK_IN_REFUSED,
