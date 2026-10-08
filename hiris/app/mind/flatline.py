@@ -265,11 +265,34 @@ def frozen_day(series: Mapping[str, list],
                 # Solo le ore del giorno: un tratto cominciato ieri toglie a
                 # oggi le ore da mezzanotte, e la frase dice il tratto intero.
                 start_ts = max(stretch["dal"], day_start_ts)
+                said_from = instant_out(start_ts, zone)
                 exclusions.setdefault(entity_id, []).append(Exclusion(
                     start_ts=start_ts, end_ts=stretch["al"],
-                    start=instant_out(start_ts, zone), end=said_end,
-                    reason=reason, cause=FROZEN))
+                    start=said_from, end=said_end,
+                    reason=reason, cause=FROZEN,
+                    summary=_summary(group, said_from, said_end)))
     return refusals, exclusions
+
+
+def _clock(said: str, *, end: bool = False) -> str:
+    """L'ora di un istante gia' detto nell'ora della casa (`instant_out`):
+    «2026-10-06T01:00:00+02:00» -> «01:00». La mezzanotte che chiude un
+    tratto e' la fine del giorno, e si dice «24:00»."""
+    clock = said[11:16]
+    return "24:00" if end and clock == "00:00" else clock
+
+
+def _summary(group, said_from: str, said_end: str) -> str:
+    """La frase per chi legge la pagina, nella sua lingua (parere di
+    ux-ui-specialist, 08/10/2026): niente id, niente vocabolario interno. Il
+    gruppo e' `House.sibling_group`: un dispositivo, o l'istanza
+    dell'integrazione per le entita' sole sul loro dispositivo."""
+    who = ("tutti i dispositivi di questa integrazione"
+           if isinstance(group, tuple) and group[:1] == ("istanza",)
+           else "tutti i sensori di questo dispositivo")
+    return (f"Dalle {_clock(said_from)} alle {_clock(said_end, end=True)} {who} "
+            "sono rimasti uguali mentre il resto della casa si muoveva: quelle ore "
+            "non entrano nel calcolo.")
 
 
 def mark_excluded(points, exclusions) -> list[dict]:

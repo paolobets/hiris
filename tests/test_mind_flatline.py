@@ -24,6 +24,12 @@ rosse per la ragione giusta:
 - il contatore rifiutato anche quando il tratto non arriva a fine giornata --
   rossa la prova del contatore che recupera.
 
+Mutazioni ESEGUITE l'08/10/2026 (giro 90 del revisore), ripristinate:
+- `Recipe._run_step` che dice `ferma` per ogni rifiuto con ore escluse --
+  rossa la prova della copertura bassa che resta tale (G90-1);
+- `frozen_day` senza il taglio dell'inizio alla mezzanotte -- rossa la prova
+  del blocco di tre giorni (G90-2).
+
 Dall'08/10/2026 (decisione del proprietario sul dato fermo) una misura
 istantanea non si rifiuta piu': perde le ore del tratto (`frozen_day` ->
 esclusioni). Le prove qui sotto contano chi e' toccato -- rifiutato o con ore
@@ -33,7 +39,7 @@ escluse -- e quelle in fondo dicono quali ore e cosa resta del conto.
 from datetime import UTC, datetime, timedelta
 
 from hiris.app.mind.flatline import HISTORY_DAYS, frozen_day, mark_excluded, split_at
-from hiris.app.mind.operations import FROZEN, Measurement
+from hiris.app.mind.operations import COVERAGE_LOW, FROZEN, Measurement
 from hiris.app.mind.recipes import Recipe
 
 DAY = datetime(2026, 9, 30, tzinfo=UTC)
@@ -129,7 +135,14 @@ def test_un_blocco_di_tre_giorni_arriva_fino_a_oggi():
     block = {"sensor.e": series("contatore", lambda m: 0.0 if m.timestamp() >= start else 0.3),
              "sensor.w": series("istantanea", lambda m: (7, 7) if m.timestamp() >= start
                                 else (100, 300))}
-    assert set(judge(block)) == set(block)
+    found = judge(block)
+    assert set(found) == set(block)
+    # G90-2: l'esclusione comincia alla mezzanotte del giorno, non dove
+    # comincia il tratto -- un'ora detta fuori dal giorno sarebbe falsa.
+    [stretch] = found["sensor.w"]
+    assert stretch.start_ts == FROZEN_FROM
+    assert stretch.out()["dal"] == "2026-09-30T00:00:00+00:00"
+    assert stretch.reason.startswith("sensor.w e' ferma: dalle 2026-09-28T00:00:00+00:00 ")
 
 
 def test_il_contatore_che_recupera_tiene_il_suo_totale():
@@ -243,7 +256,12 @@ def test_l_esclusione_e_il_tratto_detto_nell_ora_della_casa():
                                                  FROZEN_FROM + 11 * 3600)
     assert stretch.out() == {"dal": "2026-09-30T08:00:00+00:00",
                              "al": "2026-09-30T11:00:00+00:00",
-                             "causa": FROZEN, "perche": stretch.reason}
+                             "causa": FROZEN, "perche": stretch.reason,
+                             "in_breve": (
+                                 "Dalle 08:00 alle 11:00 tutti i sensori di questo "
+                                 "dispositivo sono rimasti uguali mentre il resto "
+                                 "della casa si muoveva: quelle ore non entrano nel "
+                                 "calcolo.")}
 
 
 def test_il_contatore_fermo_che_recupera_tiene_il_totale_e_la_potenza_perde_tre_ore():
@@ -284,7 +302,40 @@ def test_un_passo_che_legge_una_misura_con_ore_escluse_le_eredita():
     assert results["tutto"].excluded == ()
 
 
+def test_se_rifiuta_anche_con_le_ore_ferme_il_perche_resta_la_copertura():
+    """G90-1: un giorno che ha dato solo dodici ore -- sotto il minimo anche
+    senza togliere niente -- e dentro tre ore ferme. Il rifiuto e' la
+    copertura bassa, non il dato fermo: dire `ferma` sarebbe una causa falsa."""
+    _refusals, exclusions = verdicts(METER)
+    day = _day("sensor.m_potenza", exclusions)
+    thin = [p if p.get("inizio") < "2026-09-30T12" else {"inizio": p["inizio"],
+                                                          "fine": p["fine"]}
+            for p in day]
+    recipe = Recipe({"why": "prova", "steps": [
+        {"name": "potenza", "operation": "media_min_max",
+         "inputs": ["@sensor.m_potenza"], "params": {"unit": "W", "expected_parts": 24}}]})
+    result = recipe.run(series={"sensor.m_potenza": thin})["potenza"]
+    assert result.cause == COVERAGE_LOW, result
+
+
 def test_il_contatore_fermo_fino_a_sera_si_rifiuta():
     refusals, exclusions = verdicts(INVERTER)
     assert refusals["sensor.prodotta"].cause == FROZEN
     assert "sensor.prodotta" not in exclusions
+
+
+def test_la_frase_per_la_pagina_dice_l_integrazione_e_la_fine_del_giorno():
+    """Un gruppo d'istanza (entita' sole sul loro dispositivo) si dice
+    «integrazione», non «dispositivo»; un tratto che arriva a mezzanotte
+    finisce alle «24:00», non alle «00:00»."""
+    evening = {"sensor.t1": series("istantanea", lambda m: (21, 21) if (
+                   after(m) and m.hour >= 20) else (19 + m.hour / 10, 19.2 + m.hour / 10)),
+               "sensor.t2": series("istantanea", lambda m: (55, 55) if (
+                   after(m) and m.hour >= 20) else (40 + m.hour, 41 + m.hour))}
+    groups = {**{e: ("istanza", "e_hub") for e in evening}, "sensor.casa": None}
+    _refusals, exclusions = frozen_day({**evening, **REST}, groups, day_start_ts=FROZEN_FROM)
+    [stretch] = exclusions["sensor.t1"]
+    assert stretch.summary == (
+        "Dalle 20:00 alle 24:00 tutti i dispositivi di questa integrazione sono "
+        "rimasti uguali mentre il resto della casa si muoveva: quelle ore non "
+        "entrano nel calcolo.")

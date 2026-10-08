@@ -1405,8 +1405,9 @@ stazione di un dispositivo e' rimasta ferma dalle 01:00 alle 02:00 ora della cas
 ha rifiutato per intero media, minimo e massimo di temperatura e umidita' della stanza. Ora una
 misura istantanea perde solo le ore del tratto fermo: si calcola sul resto, la copertura scende
 col conto di sempre, e la misura porta le ore escluse (`esclusi`: dal, al, causa `ferma`, la
-frase del gruppo) nel resoconto, nella serie dell'analista (`esclusi_oggi` nell'indice) e sulla
-piastrella della pagina del giorno. Se tolte quelle ore la misura non si puo' piu' fare (sotto
+frase del gruppo, e `in_breve` per chi legge la pagina) nel resoconto, nella serie dell'analista
+(`esclusi_oggi` nell'indice) e sulla piastrella della pagina del giorno, nella forma suggerita da
+ux-ui-specialist (una riga sola con la copertura, la causa a parole, il perche' dietro un bottone). Se tolte quelle ore la misura non si puo' piu' fare (sotto
 `MINIMUM_COVERAGE`, o un giorno intero fermo) il rifiuto resta `ferma`, non `copertura_bassa`. I
 contatori non cambiano: si rifiutano solo se il blocco arriva a fine giornata.
 

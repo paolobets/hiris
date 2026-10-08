@@ -212,10 +212,24 @@ window.HirisWatcherGiorno = (function () {
     });
   }
 
-  /* «2026-10-06T01:00:00+02:00» -> «01:00»: l'ora come la casa l'ha detta. */
-  function oraDellaCasa(iso) {
-    return String(iso || '').slice(11, 16);
+  /* «2026-10-06T01:00:00+02:00» -> «01:00»: l'ora come la casa l'ha detta.
+     La mezzanotte che CHIUDE un tratto e' la fine del giorno: «24:00». */
+  function oraDellaCasa(iso, fine) {
+    var ora = String(iso || '').slice(11, 16);
+    return (fine && ora === '00:00') ? '24:00' : ora;
   }
+
+  /* La causa di un'esclusione detta a chi legge la pagina: mai il codice
+     grezzo del vocabolario. A fermarsi e' il gruppo, non un sensore solo
+     (parere di ux-ui-specialist, 08/10/2026). Una causa nuova senza parola
+     prende il ripiego neutro finche' qualcuno non la scrive qui. */
+  var PAROLE_DELLA_CAUSA = { ferma: 'dispositivo fermo' };
+  function parolaCausa(causa) {
+    return PAROLE_DELLA_CAUSA[causa] || 'dato non usabile';
+  }
+
+  /* Gli id dei «perche'» aperti dai bottoni, unici nella pagina. */
+  var prossimoPerche = 0;
 
   function piastrellaMisura(m) {
     var tile = el('div', 'stat-tile');
@@ -226,19 +240,50 @@ window.HirisWatcherGiorno = (function () {
     /* La copertura si dice SOLO quando non e' piena: «100%» accanto a ogni
        numero sarebbe rumore su cui l'occhio smette di fermarsi, ed e' proprio
        quando NON e' piena che deve fermarsi. */
-    if (typeof m.copertura === 'number' && m.copertura < 1) {
-      tile.appendChild(el('div', 'st-delta', 'su ' + fmtPercent(m.copertura) + ' del giorno'));
+    var copertura = (typeof m.copertura === 'number' && m.copertura < 1)
+      ? 'su ' + fmtPercent(m.copertura) + ' del giorno' : '';
+    var esclusi = m.esclusi || [];
+    if (!esclusi.length) {
+      if (copertura) tile.appendChild(el('div', 'st-delta', copertura));
+      return tile;
     }
-    /* Le ore lasciate fuori dal numero (il dato fermo, 08/10/2026): la riga
-       le porta con l'ora della casa gia' scritta, e qui se ne legge l'ora
-       senza ricalcolarla nel fuso del browser. La frase intera resta nel
-       titolo, per chi vuole sapere perche'. */
-    (m.esclusi || []).forEach(function (x) {
-      var riga = el('div', 'st-delta', 'senza ' + oraDellaCasa(x.dal) + '–'
-        + oraDellaCasa(x.al) + ' (' + x.causa + ')');
-      if (x.perche) riga.title = x.perche;
-      tile.appendChild(riga);
+    /* Le ore lasciate fuori dal numero (il dato fermo, 08/10/2026; parere di
+       ux-ui-specialist dello stesso giorno): UNA riga con la copertura,
+       «su 96% del giorno · escluse 01:00–02:00: dispositivo fermo», i tratti
+       uniti da « e » per causa. L'ora e' quella che la riga gia' porta, nella
+       zona della casa, non ricalcolata nel fuso del browser. La frase tecnica
+       (con gli id) resta nel `title`; quella per chi legge si apre sotto,
+       da un bottone che si raggiunge anche da tastiera. */
+    var tratti = {};
+    var parole = [];
+    esclusi.forEach(function (x) {
+      var parola = parolaCausa(x.causa);
+      if (!tratti[parola]) { tratti[parola] = []; parole.push(parola); }
+      tratti[parola].push(oraDellaCasa(x.dal) + '–' + oraDellaCasa(x.al, true));
     });
+    var detto = parole.map(function (p) {
+      return 'escluse ' + tratti[p].join(' e ') + ': ' + p;
+    }).join(' · ');
+    var riga = el('div', 'st-delta excluded', (copertura ? copertura + ' · ' : '') + detto);
+    riga.title = esclusi.map(function (x) { return x.perche || ''; }).filter(Boolean).join('\n');
+    tile.appendChild(riga);
+    var spiegazione = esclusi.map(function (x) { return x.in_breve || ''; }).filter(Boolean).join(' ');
+    if (spiegazione) {
+      prossimoPerche += 1;
+      var perche = el('div', 'st-delta st-why', spiegazione);
+      perche.id = 'st-why-' + prossimoPerche;
+      perche.hidden = true;
+      var bottone = el('button', 'btn btn-ghost btn-sm st-info', 'Perché?');
+      bottone.type = 'button';
+      bottone.setAttribute('aria-expanded', 'false');
+      bottone.setAttribute('aria-controls', perche.id);
+      bottone.addEventListener('click', function () {
+        perche.hidden = !perche.hidden;
+        bottone.setAttribute('aria-expanded', perche.hidden ? 'false' : 'true');
+      });
+      tile.appendChild(bottone);
+      tile.appendChild(perche);
+    }
     return tile;
   }
 

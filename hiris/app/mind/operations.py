@@ -358,6 +358,10 @@ class Exclusion:
     tolgono i punti; `start`/`end` gli stessi detti nell'ora della casa
     (`historian.instant_out`), una volta sola, da chi conosce la zona. La
     `cause` e' una parola del vocabolario chiuso, come per un rifiuto.
+
+    Due frasi, per due lettori: `reason` dice il fatto con gli id (l'analista,
+    il registro, chi ripara); `summary` lo dice a chi apre la pagina, senza id
+    ne' parole interne (parere di ux-ui-specialist, 08/10/2026).
     """
 
     start_ts: float
@@ -366,9 +370,10 @@ class Exclusion:
     end: str
     reason: str
     cause: str
+    summary: str
 
     def __post_init__(self) -> None:
-        if not str(self.reason or "").strip():
+        if not str(self.reason or "").strip() or not str(self.summary or "").strip():
             raise ValueError("un'esclusione senza ragione e' un buco, non una dichiarazione")
         if self.cause not in CAUSES:
             raise ValueError(f"causa fuori dal vocabolario: {self.cause!r}")
@@ -384,7 +389,7 @@ class Exclusion:
         (`report._measurements`) e la serie dell'analista
         (`report.series_of_measures`) la ricevono gia' fatta."""
         return {"dal": self.start, "al": self.end, "causa": self.cause,
-                "perche": self.reason}
+                "perche": self.reason, "in_breve": self.summary}
 
 
 # ── Il registro ────────────────────────────────────────────────────────────

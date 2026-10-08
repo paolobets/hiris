@@ -195,6 +195,11 @@ async def test_il_06_10_un_ora_ferma_toglie_l_ora_e_non_il_giorno():
             f"{entity_id} e' ferma: dalle 2026-10-06T01:00:00+02:00 alle "
             "2026-10-06T02:00:00+02:00 non varia nessuna delle 2 entita' del suo "
             f"gruppo ({TEMPERATURE}, {HUMIDITY})")
+        # E la frase per la pagina, senza id: chi la legge e' il proprietario.
+        assert declared["in_breve"] == (
+            "Dalle 01:00 alle 02:00 tutti i sensori di questo dispositivo sono "
+            "rimasti uguali mentre il resto della casa si muoveva: quelle ore non "
+            "entrano nel calcolo.")
     # Il resto della casa non c'entra.
     assert "esclusi" not in rows["consumo"]
 

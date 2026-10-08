@@ -134,18 +134,65 @@ test('seam _rendiResoconto: la copertura si dice solo quando NON e\' piena', () 
   assert.match(parziale.corpo.textContent, /83% del giorno/);
 });
 
-test('seam _rendiResoconto: le ore lasciate fuori si dicono sulla piastrella, nell\'ora della casa', () => {
-  // Mutazione che la uccide: togliere il ciclo su `m.esclusi`.
-  const perche = "sensor.t e' ferma: dalle 2026-10-06T01:00:00+02:00 alle 2026-10-06T02:00:00+02:00";
-  const conOre = rendiResoconto(resoconto({ misure: [misura({ copertura: 23 / 24, esclusi: [
-    { dal: '2026-10-06T01:00:00+02:00', al: '2026-10-06T02:00:00+02:00', causa: 'ferma', perche }] })] }));
-  assert.match(conOre.corpo.textContent, /senza 01:00–02:00 \(ferma\)/);
-  const riga = Array.from(conOre.corpo.querySelectorAll('.st-delta'))
-    .find((r) => /senza 01:00/.test(r.textContent));
-  assert.equal(riga.title, perche);
+/* Le ore lasciate fuori da una misura (il dato fermo, 08/10/2026; parere di
+   ux-ui-specialist dello stesso giorno). */
+const PERCHE_TECNICO = "sensor.t e' ferma: dalle 2026-10-06T01:00:00+02:00 alle 2026-10-06T02:00:00+02:00";
+const IN_BREVE = 'Dalle 01:00 alle 02:00 tutti i sensori di questo dispositivo sono rimasti '
+  + 'uguali mentre il resto della casa si muoveva: quelle ore non entrano nel calcolo.';
+function esclusa(dal, al, extra) {
+  return Object.assign({ dal: '2026-10-06T' + dal + ':00+02:00', al: '2026-10-06T' + al + ':00+02:00',
+    causa: 'ferma', perche: PERCHE_TECNICO, in_breve: IN_BREVE }, extra || {});
+}
 
-  const senza = rendiResoconto(resoconto({ misure: [misura()] }));
-  assert.doesNotMatch(senza.corpo.textContent, /senza \d/);
+test('seam _rendiResoconto: copertura e ore escluse stanno in UNA riga, coi tratti uniti da «e»', () => {
+  // Mutazioni che la uccidono: togliere il ciclo su `m.esclusi`; separare la
+  // copertura in una riga sua.
+  const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 0.9, esclusi: [
+    esclusa('01:00', '02:00'), esclusa('22:00', '00:00')] })] }));
+  const righe = Array.from(corpo.querySelectorAll('.stat-tile .st-delta'))
+    .filter((r) => !r.classList.contains('st-why'));
+  assert.equal(righe.length, 1, righe.map((r) => r.textContent).join(' | '));
+  assert.equal(righe[0].textContent,
+    'su 90% del giorno · escluse 01:00–02:00 e 22:00–24:00: dispositivo fermo');
+  assert.ok(righe[0].classList.contains('excluded'));
+  assert.equal(righe[0].title, PERCHE_TECNICO + '\n' + PERCHE_TECNICO);
+
+  const senza = rendiResoconto(resoconto({ misure: [misura({ copertura: 0.83 })] }));
+  assert.match(senza.corpo.textContent, /su 83% del giorno/);
+  assert.doesNotMatch(senza.corpo.textContent, /escluse/);
+});
+
+test('seam _rendiResoconto: la causa si dice a parole, mai col codice, e una causa nuova ha un ripiego', () => {
+  // Mutazione che la uccide: scrivere `x.causa` invece di `parolaCausa(x.causa)`.
+  const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 22 / 24, esclusi: [
+    esclusa('01:00', '02:00'), esclusa('05:00', '06:00', { causa: 'causa_futura' })] })] }));
+  const testo = corpo.querySelector('.st-delta.excluded').textContent;
+  assert.match(testo, /escluse 01:00–02:00: dispositivo fermo · escluse 05:00–06:00: dato non usabile/);
+  assert.doesNotMatch(testo, /ferma\b|causa_futura/);
+});
+
+test('seam _rendiResoconto: il perche\' si apre da un bottone, anche da tastiera', () => {
+  // Mutazione che la uccide: non aggiornare `aria-expanded` al clic.
+  const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 23 / 24,
+    esclusi: [esclusa('01:00', '02:00')] })] }));
+  const bottone = corpo.querySelector('button.st-info');
+  const perche = corpo.querySelector('.st-why');
+  assert.equal(bottone.type, 'button');
+  assert.equal(bottone.getAttribute('aria-controls'), perche.id);
+  assert.equal(bottone.getAttribute('aria-expanded'), 'false');
+  assert.equal(perche.hidden, true);
+  assert.equal(perche.textContent, IN_BREVE);
+  assert.doesNotMatch(perche.textContent, /sensor\./, 'gli id restano nel title');
+  // Un <button> vero, nell'ordine di tabulazione: Invio e spazio lo premono
+  // da soli, senza un gestore di tastiera scritto a mano.
+  assert.equal(bottone.tagName, 'BUTTON');
+  assert.equal(bottone.tabIndex, 0);
+  bottone.click();
+  assert.equal(perche.hidden, false);
+  assert.equal(bottone.getAttribute('aria-expanded'), 'true');
+  bottone.click();
+  assert.equal(perche.hidden, true);
+  assert.equal(bottone.getAttribute('aria-expanded'), 'false');
 });
 
 test('seam _rendiResoconto: la cronaca dice quando, chi, cosa — e i cambi di attributo', () => {
