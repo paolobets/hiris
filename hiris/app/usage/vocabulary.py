@@ -37,8 +37,14 @@ def piu_debole(a: str, b: str) -> str:
     Una riga non puo' mai affermare piu' della chiamata peggiore che contiene:
     se in uno stesso giorno lo stesso modello produce una chiamata col costo
     dichiarato e una senza, la riga dice `non_noto`, non `reale`.
+
+    **Restituisce sempre una parola del vocabolario** (rilievo N96-1, giro
+    96): uno stato che il vocabolario non conosce vale il rango piu' debole, e
+    si dice con la parola di quel rango, la stessa che da' la lettura
+    aggregata in SQL (`weakest_rank_sql` + `state_at`). Una regola sola, una
+    parola sola.
     """
-    return min(a, b, key=_rank)
+    return state_at(min(_rank(a), _rank(b)))
 
 
 def weakest_rank_sql(column: str) -> str:
