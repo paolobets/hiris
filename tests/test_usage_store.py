@@ -142,3 +142,28 @@ def test_lo_stato_piu_debole_di_un_insieme_e_quello_della_regola_unica(
                 f"{a} e {b} insieme")
         finally:
             archivio.close()
+
+
+def test_uno_stato_sconosciuto_vale_il_piu_debole_anche_in_sql(tmp_path):
+    """Una riga scritta da una versione futura, con uno stato che il
+    vocabolario non conosce, vale il piu' debole in `piu_debole` (`_rank`), e
+    lo stesso deve valere nella lettura aggregata: e' il ramo `ELSE 0` di
+    `weakest_rank_sql` (rilievo N94-1, giro 94). Accanto a una riga `reale`
+    l'aggregato dice `non_noto`: il rango di `piu_debole`, detto con una parola
+    del vocabolario (la lettura aggregata non restituisce mai una parola che
+    la pagina non sa leggere).
+
+    Mutazione ESEGUITA: `ELSE 0` portato a `ELSE {len(STATES) - 1}` -- rossa
+    (l'aggregato direbbe `reale`)."""
+
+    archivio = UsageStore(str(tmp_path / "consumi.db"), read_timezone=lambda: ROMA)
+    try:
+        _stato_aggregato(archivio, "reale", "misurato")
+        archivio._conn.execute("UPDATE consumo_giorno SET costo_stato = 'dal_futuro' "
+                               "WHERE costo_stato = 'misurato'")
+        archivio._conn.commit()
+        [sezione] = archivio.sezioni()
+        [modello] = sezione["modelli"]
+        assert modello["costo_stato"] == "non_noto"
+    finally:
+        archivio.close()

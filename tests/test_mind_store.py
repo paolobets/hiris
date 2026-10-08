@@ -1265,6 +1265,37 @@ def test_migration_15_rifiuta_ancora_una_fonte_sconosciuta(tmp_path):
         store.close()
 
 
+def test_migration_15_e_tutto_o_niente(tmp_path, monkeypatch):
+    """Un passo che solleva dopo che un altro ha gia' ricostruito `cambi`:
+    l'archivio resta alla 14 con la sua forma intera, e la migrazione si rifa'
+    al prossimo avvio (rilievo G94-1, giro 94). Il primo passo e' quello vero
+    che ricostruisce la tabella, perche' e' DDL: senza la transazione aperta
+    a mano, Python lo eseguirebbe fuori da ogni transazione e il ritorno
+    indietro non lo toglierebbe.
+
+    Mutazione ESEGUITA: senza `conn.execute("BEGIN")` in `_migration_15` --
+    rossa (le due colonne sono gia' uscite su un archivio rimasto alla 14).
+    """
+    from hiris.app.mind import store as modulo
+
+    percorso = _archive_v14(tmp_path)
+    prima = _shape(percorso)
+
+    def guasto(conn):
+        raise RuntimeError("passo guasto")
+
+    monkeypatch.setattr(modulo, "_MIGRATION_15_STEPS",
+                        (modulo._drop_unread_reading_columns, guasto))
+    with pytest.raises(RuntimeError, match="passo guasto"):
+        ObservationsStore(percorso)
+    assert _shape(percorso) == prima
+    assert prima[3] == 14
+
+    monkeypatch.undo()
+    ObservationsStore(percorso).close()
+    assert _shape(percorso)[3] == SCHEMA_VERSION
+
+
 # -- C-48: un lettore solo per le colonne JSON (Tappa 8, T3) ---------------
 
 def _json_loads_in_store() -> tuple[list[str], list[str]]:
