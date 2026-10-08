@@ -102,6 +102,7 @@ from .mind.recipes import (
     silent_entities,
     unread_series,
 )
+from .mind.reconciliation import after_rebuild
 from .mind.seed import (
     REPO_PRIORITY,
     attribute_seed,
@@ -2921,13 +2922,13 @@ async def _on_startup(app: web.Application) -> None:
     # ascoltatori, e le letture partono solo all'avviso o piu' sotto.
     #
     # L'anagrafe: si ricostruisce quando la casa cambia, e dopo ogni
-    # ricostruzione riscalda le parole degli stati (`prime_state_translations`
-    # legge `app.get("state_translations")`: un avviso arrivato prima della
-    # sua nascita, piu' sotto, lo dice e non solleva). Lo specchio si rilegge
-    # alla riconnessione.
+    # ricostruzione riscalda le parole degli stati e riconcilia gli archivi
+    # (`mind/reconciliation.after_rebuild`; legge `app.get(...)`: un avviso
+    # arrivato prima della nascita di cio' che chiede, piu' sotto, lo dice e
+    # non solleva). Lo specchio si rilegge alla riconnessione.
     ha_client.add_topology_listener(
         schedule_registry_rebuild(ha_client, home_space_store,
-                                  then=lambda: prime_state_translations(app)))
+                                  then=lambda: after_rebuild(app)))
     ha_client.add_topology_listener(
         mirror_reload_listener(ha_client, entity_cache, lambda: app.get("watcher")))
     ha_client.add_disconnection_listener(disconnection_recorder(lambda: app.get("watcher")))
@@ -3169,7 +3170,11 @@ async def _on_startup(app: web.Application) -> None:
     # (`test_mind_wiring.py::_estrai_blocco_riparazione_avvio`), e infilarci
     # dentro una chiamata che quella prova non conosce l'avrebbe fatta fallire
     # su un nome mancante invece che sull'ordine che sorveglia.
-    await prime_state_translations(app)
+    #
+    # E' il seguito della prima ricostruzione, lo stesso delle altre: con le
+    # parole degli stati, la riconciliazione degli archivi (Tappa 8, D1), che
+    # da sola si ferma se Home Assistant non si e' ancora dichiarato avviato.
+    await after_rebuild(app)
 
     # L'archivio dei consumi: l'UNICA casa di «quanto ho speso, e per cosa».
     # Nasce DOPO `home_space_store` perche' gli chiede il fuso -- a ogni

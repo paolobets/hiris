@@ -102,7 +102,12 @@ CONSERVAZIONE: dict[str, tuple[int | None, str, str | None]] = {
         None),
     "objective": (None, "parole sue", None),
     "scope": (
-        None, "il perimetro: parole sue, una riga per soggetto", None),
+        None,
+        ("il perimetro, una riga per soggetto: la decisione dell'osservatore, "
+         "dell'analista o del proprietario. Non scade col tempo: esce quando "
+         "Home Assistant non conosce piu' il soggetto (la riconciliazione, "
+         "`mind/reconciliation.py`)"),
+        None),
     "reconsideration": (
         None,
         ("quando e perche' il perimetro e' stato ripensato: poche righe, e "
@@ -1325,6 +1330,23 @@ class ObservationsStore:
                  float(when_ts if when_ts is not None else _time.time())))
             self._conn.commit()
         return True
+
+    def forget_scope(self, subjects) -> int:
+        """Toglie dallo scope le righe di questi soggetti, dentro e fuori;
+        torna quante. **La chiama solo la riconciliazione**
+        (`mind/reconciliation.py`, D1 della Tappa 8), per i soggetti che Home
+        Assistant non conosce piu': chi decide QUALI e' lei, con le sue
+        guardie. Se l'id torna, l'osservatore lo richiede da solo
+        (`undecided`)."""
+        wanted = sorted(set(subjects))
+        if not wanted:
+            return 0
+        with self._lock:
+            cur = self._conn.execute(
+                f"DELETE FROM scope WHERE subject IN ({', '.join('?' * len(wanted))})",
+                wanted)
+            self._conn.commit()
+        return cur.rowcount or 0
 
     # -- La riconsiderazione -----------------------------------------------
 

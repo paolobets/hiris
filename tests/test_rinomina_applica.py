@@ -1982,13 +1982,18 @@ def test_product_dataclasses_are_30_with_164_fields():
     **Trenta e 164 dal 07/10/2026**, Tappa 7, Task 10: il settimo campo di
     `Tool`, `read_only` -- lo strumento legge e basta, e le letture della
     stessa risposta partono insieme (S-12, D15a).
+
+    **Trentuno e 167 dall'08/10/2026**, Tappa 8, Task 1: `Reconciliation`
+    (`hiris/app/mind/reconciliation.py`) coi suoi tre campi -- `scope`,
+    `devices`, `stopped` -- cosa la riconciliazione toglie dallo scope e dal
+    sapere, o la guardia che l'ha fermata.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (30, 164), (classi, campi)
+    assert (classi, campi) == (31, 167), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

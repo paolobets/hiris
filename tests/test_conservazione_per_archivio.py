@@ -8,8 +8,10 @@ deciso niente.
 **Cosa cambia davvero, detto senza gonfiarlo.** Misurate, sei delle sette
 *devono* restare per sempre e adesso lo **dichiarano**: un'analisi al giorno,
 un resoconto al giorno, le proposte con la decisione che il proprietario ci ha
-messo sopra, l'obiettivo e il perimetro che sono parole sue. Cancellarle
-libererebbe qualche megabyte e perderebbe mesi.
+messo sopra, l'obiettivo che sono parole sue, il perimetro. Cancellarle
+libererebbe qualche megabyte e perderebbe mesi. (Il perimetro non scade col
+tempo, ma dalla Tappa 8 perde le righe dei soggetti che Home Assistant non
+conosce piu': la riconciliazione, `tests/test_riconciliazione.py`.)
 
 La settima è diversa: `scope_attempt` sono **tentativi**, diagnostica pura,
 una riga ogni giro anche fallito, e la pagina ne mostra una manciata. Quella

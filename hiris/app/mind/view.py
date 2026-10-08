@@ -33,6 +33,7 @@ from ..home_space.topology import read_mirror
 from . import proposer_turn
 from .analyst import observation_key
 from .report import NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
+from .watcher import scope_row
 
 #: Quanti giorni di righe grezze si mostrano (`volume`). **Non e' la durata del grezzo**
 #: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
@@ -136,12 +137,15 @@ class MindView:
 
         Chi non e' nello scope affatto non compare: non e' stato lasciato
         fuori, non e' stato considerato -- e dirlo di 452 entita' riempirebbe
-        la lettura di righe senza ragione accanto."""
+        la lettura di righe senza ragione accanto.
+
+        Ogni riga ha la forma di quelle di `watching` (`watcher.scope_row`),
+        `fonte` compresa: e' la stessa riga dello scope, dall'altra meta'."""
         if self.store is None:
             return []
+        house = self._house_read()
         return sorted(
-            ({"soggetto": subject, "motivo": v["motivo"], "autore": v["autore"],
-              "quando": v["quando"]}
+            (scope_row(subject, v, house)
              for subject, v in self.store.scope().items() if not v["dentro"]),
             key=lambda v: v["soggetto"])
 
