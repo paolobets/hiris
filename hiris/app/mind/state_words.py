@@ -37,8 +37,22 @@ async def prime_state_translations(app) -> dict:
     (Fable 5.1, 13/09/2026): quando la lettura riesce, i significati delle
     classi che l'installazione pubblica entrano nell'archivio del sapere. Sta
     qui e non altrove perche' e' lo stesso dizionario -- nessuna lettura di
-    rete in piu' -- e il giro periodico che richiama questa funzione ogni
-    cinque minuti ripete una `seed`, che dopo la prima volta non scrive niente.
+    rete in piu'.
+
+    **Si semina solo quando la tabella e' NUOVA** (`appena_lette`, A-22,
+    Tappa 8, Task 9, 08/10/2026). Fino a quel giorno il giro dei cinque minuti
+    rifaceva `seed` sulla tabella gia' tenuta: non scriveva niente dopo la prima
+    volta, ma ricalcolava tutto e faceva avanzare la versione del sapere, che a
+    sua volta svuotava la memoria degli attributi dell'osservatore ogni cinque
+    minuti. Una tabella che non e' cambiata non ha niente di nuovo da dire.
+
+    **Il giro resta a intervallo**, ed e' una lettura del sorgente di Home
+    Assistant, non una scelta (tag 2026.9.4, 08/10/2026): nessun evento dice
+    «le traduzioni sono cambiate». `helpers/translation.py` le carica in una
+    memoria che non scarica mai, componente per componente, e ascolta solo
+    `core_config_updated` per la lingua nuova -- che qui arriva gia' con la
+    ricostruzione dell'anagrafe (`mind/reconciliation.after_rebuild`). Il giro
+    serve alla prima lettura fallita.
     """
     cache = app.get("state_translations")
     if cache is None:
@@ -65,7 +79,7 @@ async def prime_state_translations(app) -> dict:
     # («la potenza ISTANTANEA, non un'energia») quella resta, e il NOME che HA
     # pubblica («Potenza») non la schiaccia.
     sapere = app.get("knowledge")
-    if sapere is not None:
+    if sapere is not None and report.get("appena_lette"):
         # **B2: senza versione o lingua non si importa niente.** La fonte di
         # una riga deve dire da quale versione e in che lingua viene: scrivere
         # «sconosciuta» sarebbe una citazione che non permette di controllare
