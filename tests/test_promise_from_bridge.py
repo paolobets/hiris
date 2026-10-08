@@ -210,7 +210,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
     minuti; nel frattempo l'utente ha portato la scadenza a tre. Fino alla
     Tappa 6 il motivo diceva «3 minuti»: una durata che quel turno non ha
     mai avuto."""
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -218,7 +218,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
         app = {"agenda": promesse,
                "models_config": {"ponte": {"scadenza_min": 3}}}
 
-        _close_expired_promise(app, {"wake": {"promessa_id": ident},
+        close_expired_promise(app, {"wake": {"promessa_id": ident},
                                      "created_ts": 100.0, "deadline_ts": 700.0})
 
         p = promesse.read(ident)
@@ -234,7 +234,7 @@ def test_un_turno_scaduto_sul_piano_lascia_un_fallimento_nel_registro(tmp_path):
     scaduta senza risposta -- non scriveva nel registro degli esiti quanto le
     altre due. Stessa famiglia `scaduto` del ramo chat (`handlers_chat.py`,
     `family="scaduto"`): il piano non ha rifiutato, non ha risposto."""
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -243,7 +243,7 @@ def test_un_turno_scaduto_sul_piano_lascia_un_fallimento_nel_registro(tmp_path):
         app = {"agenda": promesse, "occurrence_registry": registry,
                "models_config": {"ponte": {"scadenza_min": 10}}}
 
-        _close_expired_promise(app, {"wake": {"promessa_id": ident},
+        close_expired_promise(app, {"wake": {"promessa_id": ident},
                                       "created_ts": 100.0, "deadline_ts": 700.0})
 
         esito = registry.occurrence("subscription")
@@ -259,7 +259,7 @@ def test_un_turno_scaduto_sul_piano_lascia_un_fallimento_nel_registro(tmp_path):
 def test_una_promessa_gia_conclusa_dalla_scadenza_non_registra_un_secondo_esito(tmp_path):
     """`conclude` puo' essere arrivato mentre il turno finiva: lo sweep non
     deve scrivere un fallimento sopra un successo gia' registrato altrove."""
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -269,7 +269,7 @@ def test_una_promessa_gia_conclusa_dalla_scadenza_non_registra_un_secondo_esito(
         registry = OccurrenceRegistry(clock=lambda: 999.0)
         registry.successo("subscription")
 
-        _close_expired_promise({"agenda": promesse, "occurrence_registry": registry,
+        close_expired_promise({"agenda": promesse, "occurrence_registry": registry,
                                 "models_config": {}},
                                {"wake": {"promessa_id": ident}})
 
@@ -281,7 +281,7 @@ def test_una_promessa_gia_conclusa_dalla_scadenza_non_registra_un_secondo_esito(
 def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
     """`conclude` puo' essere arrivato mentre il turno finiva: riaprirla
     cancellerebbe un testo che l'utente puo' gia' aver letto."""
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -289,7 +289,7 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
         promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
                           text="tutto fermo", avvisare=False)
 
-        _close_expired_promise({"agenda": promesse, "models_config": {}},
+        close_expired_promise({"agenda": promesse, "models_config": {}},
                                {"wake": {"promessa_id": ident}})
 
         assert promesse.read(ident)["stato"] == "mantenuta"
@@ -298,9 +298,9 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
 
 
 def test_un_job_scaduto_senza_promessa_non_esplode(tmp_path):
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
-    _close_expired_promise({"agenda": None, "models_config": {}}, {"wake": {}})
+    close_expired_promise({"agenda": None, "models_config": {}}, {"wake": {}})
 
 
 # --- ruling 3.8: i fallimenti chiusi da qui lo dicono nel filo, senza push ----
@@ -332,7 +332,7 @@ async def test_un_turno_senza_conclusione_lascia_una_riga_breve_nel_filo(consegn
 
 
 def test_un_turno_scaduto_sul_piano_lascia_una_riga_breve_nel_filo(tmp_path):
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -342,7 +342,7 @@ def test_un_turno_scaduto_sul_piano_lascia_una_riga_breve_nel_filo(tmp_path):
 
         # Un job vero porta sempre i due istanti (colonne NOT NULL della
         # coda), e l'attesa detta e' la loro differenza (S-02).
-        _close_expired_promise(app, {"wake": {"promessa_id": ident},
+        close_expired_promise(app, {"wake": {"promessa_id": ident},
                                      "created_ts": 100.0, "deadline_ts": 700.0})
 
         righe = load_history(str(tmp_path), thread=PAOLO)
@@ -355,7 +355,7 @@ def test_un_turno_scaduto_sul_piano_lascia_una_riga_breve_nel_filo(tmp_path):
 
 
 def test_una_scadenza_su_una_promessa_orfana_non_scrive_in_nessun_filo(tmp_path):
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -367,7 +367,7 @@ def test_una_scadenza_su_una_promessa_orfana_non_scrive_in_nessun_filo(tmp_path)
         app = {"agenda": promesse, "data_dir": str(tmp_path),
                "models_config": {"ponte": {"scadenza_min": 10}}}
 
-        _close_expired_promise(app, {"wake": {"promessa_id": "orfana"}})
+        close_expired_promise(app, {"wake": {"promessa_id": "orfana"}})
 
         assert promesse.read("orfana")["stato"] == "fallita"
         assert _chat_rows(str(tmp_path)) == ([], [])
@@ -377,7 +377,7 @@ def test_una_scadenza_su_una_promessa_orfana_non_scrive_in_nessun_filo(tmp_path)
 
 
 def test_una_scadenza_gia_conclusa_non_scrive_una_seconda_riga(tmp_path):
-    from hiris.app.server import _close_expired_promise
+    from hiris.app.keeper.outcome import close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -385,7 +385,7 @@ def test_una_scadenza_gia_conclusa_non_scrive_una_seconda_riga(tmp_path):
         promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
                           text="tutto fermo", avvisare=False)
 
-        _close_expired_promise({"agenda": promesse, "data_dir": str(tmp_path),
+        close_expired_promise({"agenda": promesse, "data_dir": str(tmp_path),
                                 "models_config": {}},
                                {"wake": {"promessa_id": ident}})
 

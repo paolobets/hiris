@@ -73,7 +73,7 @@ from .home_space.topology import (
     tree_areas,
 )
 from .keeper.exchange import interpreta_promise
-from .keeper.outcome import tell_failure
+from .keeper.outcome import close_expired_promise
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
@@ -150,56 +150,6 @@ from .version import read_version
 
 logger = logging.getLogger(__name__)
 
-
-
-def _close_expired_promise(app, job: dict) -> None:
-    """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
-
-    Estratta invece che scritta in linea dentro lo sweep perche' ha una
-    ragione sua e va provata da sola: e' l'unico punto che impedisce a una
-    promessa servita dal ponte di restare `in_corso` per sempre quando il
-    piano non risponde. `risana()` la chiuderebbe soltanto al prossimo
-    riavvio -- cioe' forse mai.
-
-    L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
-    `submit`, e `wake` e' la sola parte del job che sopravvive.
-    """
-    ident = (job.get("wake") or {}).get("promessa_id") or ""
-    store = app.get("agenda")
-    riga = store.read(ident) if (store is not None and ident) else None
-    if riga is None or riga.get("stato") != "in_corso":
-        # Gia' conclusa da `concludi` mentre il turno finiva: non si
-        # riapre. E' lo stesso ordine di controlli della consegna
-        # (`reasoning/consegna`), per la stessa ragione.
-        return
-    # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
-    # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
-    # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
-    # che il registro degli esiti riceve qui sotto: una sola, letta una volta.
-    durata_s = (float(job.get("deadline_ts", 0.0))
-                - float(job.get("created_ts", 0.0)))
-    minuti = round(durata_s / 60)
-    reason = (f"ho aspettato il {SUBSCRIPTION.name} per {minuti} minuti e non ha "
-              "risposto: non so cosa dirti.")
-    # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
-    # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
-    # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
-    if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
-        tell_failure(app.get("data_dir"), riga, reason)
-    # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
-    # terza strada delle promesse sul ponte, dopo il successo (`api/
-    # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/
-    # consegna`). Stessa famiglia `scaduto` del ramo chat
-    # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
-    registry = app.get("occurrence_registry")
-    if registry is not None:
-        registry.fallimento(
-            SUBSCRIPTION.id, family="scaduto", code=None,
-            message="nessuna conclusione entro la scadenza del ponte (promessa)",
-            durata_s=durata_s)
-    logger.warning(
-        "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
-        ident, minuti)
 
 
 def _promise_delivery(app) -> dict:
@@ -3962,7 +3912,7 @@ async def _on_startup(app: web.Application) -> None:
                 # puo' restare `in_corso` -- sarebbe invisibile, e peggio di
                 # una fallita: `risana()` la chiuderebbe solo al prossimo
                 # riavvio, cioe' forse mai.
-                _close_expired_promise(app, job)
+                close_expired_promise(app, job)
                 continue
             if job.get("kind") == SCOPE_TURN_KIND:
                 # **Un turno dell'osservatore scaduto deve lasciare traccia**
@@ -3972,7 +3922,7 @@ async def _on_startup(app: web.Application) -> None:
                 # mai: un worker fermo con un token buono diventa
                 # indistinguibile da un'attesa legittima -- lo stesso guasto
                 # appiattito su un'assenza che questa fetta esiste per togliere.
-                # E' il gemello di `_close_expired_promise` qui sopra.
+                # E' il gemello di `keeper/outcome.close_expired_promise`.
                 store = app.get("observations")
                 if store is not None:
                     attesa = max(0.0, job.get("deadline_ts", 0) - job.get("created_ts", 0))
