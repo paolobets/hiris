@@ -30,7 +30,7 @@ _ILLEGGIBILE = object()
 #: 2026-09-26 §3, decisione 6): prima firmava tutto «proprietario».
 AUTORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
 #: L'autore delle righe scritte dalla porta PRIMA del 26/09/2026: per loro e'
-#: vero, e restano correzioni (`judgments._LEGACY_AUTHOR`).
+#: vero, e la migrazione 10 del sapere le porta a `chiesto` (G-05, Tappa 8).
 AUTORE_STORICO = "proprietario"
 
 
@@ -271,7 +271,7 @@ async def test_sapere_porta_giudizi_ORIGINE_quando(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         s.write(Fact(subject_kind="tipo", subject="binary_sensor.occupancy",
-                     field="genere", value="presenza", provenance="nostro",
+                     field="genere", value="presenza", provenance="chiesto",
                      who=AUTORE_STORICO, when_ts=5.0))
         r = await handle_knowledge(_richiesta(app))
         assert r.status == 200

@@ -39,11 +39,12 @@ from ..home_space.type_vocabulary import (
 from .knowledge import Fact
 from .seed import REPO_PRIORITY, SEED_AUTHOR
 
-#: L'autore dei giudizi scritti dalla porta PRIMA del 26/09/2026, quando la
-#: porta non sapeva chi scriveva e firmava tutto cosi'. Per quelle righe e'
-#: vero (spec 2026-09-26 §3: «i giudizi gia' scritti restano "proprietario"»),
-#: e resta scritto qui solo per riconoscerle: nessuna riga nuova lo porta.
-_LEGACY_AUTHOR = "proprietario"
+#: La provenienza di una riga scritta dalla porta: **il proprietario l'ha
+#: detto** (`knowledge.PROVENANCES`). Fino al 08/10/2026 la porta scriveva
+#: `nostro`, la parola del seme, e la pagina doveva indovinare l'autore da
+#: `said_by` e da una firma (G-05); le righe gia' scritte le porta qui
+#: `knowledge._migration_10`.
+ASKED_PROVENANCE = "chiesto"
 
 #: L'origine di una riga scritta dalla porta, in `judgment_listing`: una
 #: CORREZIONE, di chiunque sia -- chi l'ha scritta e' `chi`, un altro campo.
@@ -224,11 +225,11 @@ def judgment_listing(knowledge) -> list[dict]:
 
     `da` non si legge dal solo `who`: l'archivio si corregge anche a mano con
     un `UPDATE` che non cambia l'autore (`knowledge.py`, schema). Quindi:
-    `correzione` se l'ha scritta la porta -- dal 26/09/2026 la riga porta la
-    chiave di chi l'ha scritta (`said_by`), prima portava l'autore
-    `_LEGACY_AUTHOR`; `seme` se l'autore e' il seme E il valore e' quello che
-    il seme del repo scrive oggi; `altro` in ogni altro caso -- una riga che
-    nessuno rivendica. Chi ha scritto una correzione lo dice `chi`. Una riga
+    `correzione` se la provenienza e' `chiesto` -- la parola che la porta
+    scrive (G-05, Tappa 8); `seme` se l'autore e' il seme E il valore e'
+    quello che il seme del repo scrive oggi; `altro` in ogni altro caso --
+    una riga che nessuno rivendica. Chi ha scritto una correzione lo dice
+    `chi`. Una riga
     che l'archivio salta perche' non si regge (`knowledge._facts`) qui non
     compare. La chiave non esce: alla pagina serve il nome.
 
@@ -239,7 +240,7 @@ def judgment_listing(knowledge) -> list[dict]:
     seeded = _seed_values()
     listing = []
     for fact in knowledge.judgment_rows():
-        if fact.said_by is not None or fact.who == _LEGACY_AUTHOR:
+        if fact.provenance == ASKED_PROVENANCE:
             origin = CORRECTION_ORIGIN
         elif (fact.who == SEED_AUTHOR
               and seeded.get((fact.subject_kind, fact.subject, fact.field)) == fact.value):
@@ -358,7 +359,7 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
                    [] if fact is None else [fact], priority=REPO_PRIORITY)
     else:
         fact = Fact(subject_kind=subject_kind, subject=subject, field=field, value=value,
-                    provenance="nostro", who=author_name, said_by=said_by,
+                    provenance=ASKED_PROVENANCE, who=author_name, said_by=said_by,
                     when_ts=now())
         _writing(knowledge.write, fact)
     judgments, status = build_judgments(knowledge)

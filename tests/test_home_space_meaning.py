@@ -25,7 +25,6 @@ def sapere(tmp_path):
     s = KnowledgeStore(str(tmp_path / "sapere.db"))
     s.write(Fact(subject_kind="tipo", subject="sensor.aqi", field="significato",
                  value="Indice di qualita' dell'aria", provenance="importato",
-                 verification="confermata",
                  source="frontend/get_translations (Home Assistant 2026.9.1)",
                  who="prova", when_ts=1789000000.0))
     yield s

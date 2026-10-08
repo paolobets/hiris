@@ -766,11 +766,55 @@ class _FintoSapere:
         # le ricette usano il sapere vero.
         return {}
 
+    def field_rows(self, fields):
+        # Significati, attributi e rifiuti hanno la loro prova, sul sapere vero
+        # (`test_significati_attributi_e_rifiuti_si_CHIEDONO_riga_per_riga`).
+        return []
+
 
 assert_stessa_firma(sap.KnowledgeStore.judgment_rows, _FintoSapere.judgment_rows,
                     nome="judgment_rows")
 assert_stessa_firma(sap.KnowledgeStore.device_answers, _FintoSapere.device_answers,
                     nome="device_answers")
+assert_stessa_firma(sap.KnowledgeStore.field_rows, _FintoSapere.field_rows,
+                    nome="field_rows")
+
+
+@pytest.mark.asyncio
+async def test_significati_attributi_e_rifiuti_si_CHIEDONO_riga_per_riga(tmp_path):
+    """G-05 (Tappa 8, fondamenta 4): la porta li contava soltanto. Ora li
+    elenca, ognuno nel suo elenco e con la stessa forma delle righe non
+    capite (fondamenta 3) -- la fonte compresa.
+
+    Mutazione ESEGUITA: togliere `rifiuti` dalla risposta -- rossa."""
+    from hiris.app.mind.seed import attribute_seed, meaning_seed
+
+    sapere = sap.KnowledgeStore(str(tmp_path / "sapere.db"))
+    try:
+        sapere.seed(meaning_seed(when_ts=1.0))
+        sapere.seed(attribute_seed(when_ts=1.0))
+        sapere.write(sap.Fact(
+            subject_kind="dispositivo", subject="dev1", field="ricetta_non_serve",
+            value="una luce sola: niente da misurare", provenance="dedotto",
+            evidence="il modello ha risposto", who="modello", when_ts=2.0))
+        sapere.write(sap.Fact(
+            subject_kind="dispositivo", subject="dev2", field="ricetta_non_capita",
+            value="non ho capito", provenance="dedotto", evidence="le entita'",
+            verification="non_capito", who="modello", when_ts=3.0))
+        corpo = json.loads((await handle_knowledge(_richiesta({"knowledge": sapere}))).text)
+    finally:
+        sapere.close()
+    assert len(corpo["significati"]) == len(meaning_seed(when_ts=1.0))
+    assert {r["campo"] for r in corpo["significati"]} == {"significato"}
+    potenza = next(r for r in corpo["significati"] if r["soggetto"] == "sensor.power")
+    assert potenza["provenienza"] == "importato" and potenza["fonte"]
+    assert {r["soggetto"] for r in corpo["attributi"]} == {"climate", "water_heater",
+                                                           "humidifier"}
+    assert [(r["soggetto"], r["valore"]) for r in corpo["rifiuti"]] == [
+        ("dev1", "una luce sola: niente da misurare")]
+    forme = {frozenset(corpo[k][0]) for k in ("non_capito", "significati", "attributi",
+                                              "rifiuti")}
+    assert len(forme) == 1
 
 
 @pytest.mark.asyncio

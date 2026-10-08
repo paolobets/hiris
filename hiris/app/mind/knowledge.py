@@ -11,9 +11,9 @@ serviva un rilascio.
 
 **I due assi restano due, e non si negoziano.** `provenance` dice **da dove
 viene** -- chiesto al proprietario, importato da una fonte, nostro come
-giudizio, dedotto dal modello, ereditato da un altro soggetto. `verification`
-dice **cosa ha detto il controllo** -- confermata, non confermabile, non
-capito, oppure niente perche' nessun controllo era possibile. Fonderle in una
+giudizio, dedotto dal modello. `verification` dice **cosa ha detto il
+controllo** -- non capito, oppure niente perche' nessun controllo era
+possibile. Fonderle in una
 parola sola («attendibilita'», «qualita'», «stato») e' il difetto che questo
 progetto ha gia' pagato sei volte, e il modo di non rifarlo non e'
 ricordarselo: e' un costruttore che non lascia nascere la riga sbagliata.
@@ -76,19 +76,35 @@ SUBJECT_KINDS = ("tipo", "integrazione", "entita", "dispositivo")
 #: - `importato`  -- letto da una fonte che lo dichiara (l'installazione, la
 #:                   documentazione di Home Assistant);
 #: - `nostro`     -- un giudizio nostro, che nessuna API puo' darci;
-#: - `dedotto`    -- il modello l'ha inferito da cio' che ha letto;
-#: - `ereditato`  -- viene da un soggetto piu' generale (il tipo, l'integrazione).
+#: - `dedotto`    -- il modello l'ha inferito da cio' che ha letto.
 #:
 #: `importato` e `nostro` sono le due provenienze del vocabolario dei tipi
 #: (`type_vocabulary.Provenance`): la parola e' la stessa perche' il seme le
 #: copia qui, e si prende da li' invece di riscriverla (B-43, Tappa 3, Task 7,
-#: 04/10/2026). Le altre tre il vocabolario non le ha: nascono solo qui.
+#: 04/10/2026). Le altre due il vocabolario non le ha: nascono solo qui.
+#: `chiesto` lo scrive la porta dei giudizi (`mind/judgments.write_judgment`),
+#: `dedotto` il turno delle ricette.
+#:
+#: **Ogni valore ha il suo produttore** (G-05, decisione D8 della Tappa 8,
+#: 08/10/2026): `ereditato` -- «viene da un soggetto piu' generale» -- era
+#: ammesso e nessun codice lo scriveva, ed e' uscito (la casa non ne aveva
+#: righe: misurato l'08/10/2026 sul backup dell'add-on). Una riga scritta a mano
+#: con quella provenienza non si regge piu' e l'archivio la salta dicendolo
+#: (`_facts_and_skipped`); la migrazione 10 le nomina nel registro.
 PROVENANCES = ("chiesto", Provenance.IMPORTED.value, Provenance.OURS.value,
-               "dedotto", "ereditato")
+               "dedotto")
 
-#: Cosa ha detto il controllo. `None` e' il quarto esito e significa «nessun
+#: Cosa ha detto il controllo. `None` e' l'altro esito e significa «nessun
 #: controllo era possibile», che e' diverso da «non capito».
-VERIFICATIONS = ("confermata", "non_confermabile", "non_capito")
+#:
+#: `confermata` e `non_confermabile` sono uscite con `ereditato` (G-05, D8):
+#: ammesse dal 12/09/2026 e mai scritte da nessun codice (sulla casa, verifica
+#: nulla su tutte le 361 righe: misurato l'08/10/2026). Il seme non le usa
+#: di proposito (`mind/seed.meanings_from_translations`): il controllo sarebbe
+#: la stessa fonte della provenienza. Torneranno col primo controllo fatto
+#: contro una fonte DIVERSA, insieme alla loro regola (una conferma porta la
+#: sua citazione).
+VERIFICATIONS = ("non_capito",)
 
 # I nomi dei campi non vivono qui: sono la FORMA dell'archivio, e chi legge ne
 # ha bisogno quanto chi scrive. Stanno tutti in `home_space/type_judgments.py`
@@ -105,12 +121,9 @@ class Fact:
 
     - **un campo `nostro` non puo' essere verificato.** La spec lo dice alla
       lettera: *«e' un giudizio che HA non puo' darci, e `verifica` per lui e'
-      NULL»*. Scrivere «confermata» su un giudizio nostro afferma che qualcuno
-      la' fuori ce l'ha confermato, e non e' successo: e' la forma esatta
-      della motivazione falsa;
-    - **una verifica confermata senza la sua citazione non nasce.** `source` e'
-      *«la citazione, con la versione»*: una conferma che nessuno puo'
-      controllare non e' una conferma;
+      NULL»*. Un esito di controllo su un giudizio nostro afferma che qualcuno
+      la' fuori l'ha controllato, e non e' successo: e' la forma esatta della
+      motivazione falsa;
     - **una deduzione senza prove non nasce.** `evidence` e' *«cosa e' stato
       letto per dedurlo»*: senza, la deduzione non si puo' ne' rifare ne'
       smentire, e fra sei mesi resta li' come se fosse un fatto.
@@ -153,12 +166,8 @@ class Fact:
         if self.provenance == "nostro" and self.verification is not None:
             raise ValueError(
                 "un campo nostro non puo' portare una verifica: e' un giudizio "
-                "che Home Assistant non puo' darci, e dire «confermata» "
-                "affermerebbe che qualcuno l'ha confermato")
-        if self.verification == "confermata" and not str(self.source or "").strip():
-            raise ValueError(
-                "una verifica confermata senza la sua fonte non e' una "
-                "conferma: serve la citazione, con la versione")
+                "che Home Assistant non puo' darci, e un esito di controllo "
+                "affermerebbe che qualcuno l'ha controllato")
         if self.provenance == "dedotto" and not str(self.evidence or "").strip():
             raise ValueError(
                 "una deduzione senza prove non si puo' ne' rifare ne' "
@@ -436,8 +445,8 @@ def _migration_8(conn) -> None:
     seguito delle chat divise», spec 2026-09-26 §3).
 
     Le righe di prima rileggono `NULL`, ed e' vero: nessuno aveva registrato
-    la chiave. I giudizi scritti dalla porta prima di allora restano
-    riconoscibili dal loro autore, «proprietario» (`judgments.judgment_listing`).
+    la chiave. I giudizi scritti dalla porta prima di allora portano l'autore
+    «proprietario»: la migrazione 10 li riconosce da quello.
     """
     if "said_by" not in {r[1] for r in conn.execute("PRAGMA table_info(knowledge)")}:
         conn.execute("ALTER TABLE knowledge ADD COLUMN said_by TEXT")
@@ -491,6 +500,82 @@ def _migration_9(conn) -> None:
         (_DEAD_FIELD, len(_DEAD_FIELD_PREFIX), _DEAD_FIELD_PREFIX))
 
 
+#: La firma con cui la porta dei giudizi scriveva PRIMA del 26/09/2026, quando
+#: non sapeva chi scriveva (spec 2026-09-26 §3: «i giudizi gia' scritti
+#: restano "proprietario"»). Scritta qui per esteso e non importata: la
+#: migrazione deve dire fra due anni la stessa cosa che dice adesso.
+_PORT_AUTHOR_BEFORE_SAID_BY = "proprietario"
+
+#: I valori ammessi fino alla versione 9 che nessun codice ha mai scritto.
+#: Per esteso, come sopra.
+_RETIRED_PROVENANCE = "ereditato"
+_RETIRED_VERIFICATIONS = ("confermata", "non_confermabile")
+
+
+def _migration_10(conn) -> None:
+    """v9 -> v10: le correzioni del proprietario diventano `chiesto` (G-05,
+    decisione D8 della Tappa 8, 08/10/2026).
+
+    **Fino alla 9 la porta dei giudizi scriveva `nostro`**, mentre `chiesto`
+    e' definito «il proprietario l'ha detto»: la pagina doveva indovinare
+    l'autore da `said_by` e da una firma. Da qui la porta scrive `chiesto`, e
+    le righe che aveva gia' scritto si portano alla stessa parola.
+
+    **Come si riconoscono, da due proprieta' certe** -- solo fra le righe
+    `nostro`:
+
+    - `said_by` non nullo: dal 26/09/2026 lo scrive **solo** la porta dei
+      giudizi (`api/handlers_mind.handle_set_judgment` ->
+      `judgments.write_judgment`); il seme, l'installazione e le ricette non
+      lo scrivono mai;
+    - `who = 'proprietario'` con `said_by` nullo: la firma unica della porta
+      prima del 26/09/2026. Nessun altro scrittore l'ha mai usata (il seme
+      firma «seme del repo», l'installazione «l'installazione di questa
+      casa», le ricette col nome del modello e con provenienza `dedotto`).
+
+    Il seme non le tocca dopo: `seed` corregge solo cio' che vale ancora il
+    suo `seeded_value`, e una correzione non lo vale.
+
+    **Sulla casa del proprietario non ne trova nessuna** (misurato l'08/10/2026
+    sul backup dell'add-on, 361 righe): `said_by` e' nullo su tutte, e gli
+    autori sono solo l'installazione, il seme del repo e il modello (ponte e
+    catena) -- nessuna firma «proprietario». La migrazione resta per le case in
+    cui la porta e' stata usata.
+
+    **Escono i tre valori senza produttore** (`ereditato`, `confermata`,
+    `non_confermabile`), e qui la scelta e' la piu' prudente: **le righe che
+    li portano NON si toccano**. Nessun codice le ha mai scritte, quindi se ci
+    sono le ha scritte una persona a mano, e non si indovina cosa intendesse.
+    Si nominano una per una nel registro, col valore; da qui l'archivio le
+    salta dicendolo (`_facts_and_skipped`, e `/api/health` per i giudizi), e
+    il riassunto del sapere continua a contarle per provenienza. Restano sul
+    disco per una decisione del proprietario. Sulla casa del proprietario
+    non ce n'e' nessuna (misurato l'08/10/2026 sul backup: provenienze solo
+    `importato` 177, `nostro` 101, `dedotto` 83; verifica nulla su 361 righe
+    su 361).
+    """
+    cur = conn.execute(
+        "UPDATE knowledge SET provenance = 'chiesto' "
+        "WHERE provenance = 'nostro' AND (said_by IS NOT NULL OR who = ?)",
+        (_PORT_AUTHOR_BEFORE_SAID_BY,))
+    if cur.rowcount:
+        logger.info(
+            "sapere: %d correzioni del proprietario portate da «nostro» a "
+            "«chiesto» -- le aveva scritte la porta dei giudizi", cur.rowcount)
+    marks = ", ".join("?" * len(_RETIRED_VERIFICATIONS))
+    rows = conn.execute(
+        "SELECT subject_kind, subject, field, value, provenance, verification, who "
+        f"FROM knowledge WHERE provenance = ? OR verification IN ({marks}) "
+        "ORDER BY subject_kind, subject, field",
+        (_RETIRED_PROVENANCE, *_RETIRED_VERIFICATIONS)).fetchall()
+    for row in rows:
+        logger.warning(
+            "sapere: riga con un valore che non e' piu' ammesso, lasciata sul "
+            "disco e non piu' letta -- %s/%s/%s = %r (provenienza %s, verifica "
+            "%s, scritta da %s)", row["subject_kind"], row["subject"], row["field"],
+            row["value"], row["provenance"], row["verification"], row["who"])
+
+
 def _why_from_evidence(evidence: str | None) -> str:
     """Il `why` del modello dentro le prove, o la stringa vuota.
 
@@ -522,7 +607,7 @@ def _why_from_evidence(evidence: str | None) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-_SCHEMA_VERSION = 9
+_SCHEMA_VERSION = 10
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts", "said_by")
@@ -589,7 +674,7 @@ class KnowledgeStore:
                                 4: _migration_4, 5: _migration_5,
                                 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
-                                9: _migration_9})
+                                9: _migration_9, 10: _migration_10})
         self._version = 0
 
     def version(self) -> int:
@@ -836,6 +921,25 @@ class KnowledgeStore:
                 # soggetto, che e' stabile e leggibile.
                 "ORDER BY when_ts DESC, subject").fetchall()
         return _facts(rows)
+
+    def field_rows(self, fields) -> list[Fact]:
+        """Le righe dei campi dati, di qualunque genere di soggetto, in un
+        ordine stabile: genere, soggetto, campo.
+
+        **La quarta fondamenta** (G-05, Tappa 8): significati, attributi e
+        rifiuti ragionati il sapere li conteneva e la sua porta li contava
+        soltanto (`summary`); da qui si possono chiedere riga per riga. Una
+        riga che non si regge si salta come altrove (`_facts`)."""
+        wanted = sorted(set(fields))
+        if not wanted:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
+                f"WHERE field IN ({', '.join('?' for _ in wanted)}) "
+                "ORDER BY subject_kind, subject, field", wanted).fetchall()
+        return _facts(rows)
+
     def device_answers(self, fields) -> dict[str, dict[str, Fact]]:
         """Le righe di TUTTI i dispositivi per i campi dati, in una lettura
         sola (A-38, Tappa 3, Task 12): `{dispositivo: {campo: Fact}}`, solo i

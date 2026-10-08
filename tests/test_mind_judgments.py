@@ -30,7 +30,8 @@ from tests._casa_sintetica import synthetic_inputs
 #: vero (spec 2026-09-26 §3, decisione 6): prima firmava tutto «proprietario».
 AUTORE = {"author_name": "Paolo", "said_by": "persona:u-admin"}
 #: L'autore delle righe scritte dalla porta PRIMA del 26/09/2026: per loro e'
-#: vero, e restano correzioni (`judgments._LEGACY_AUTHOR`).
+#: vero. Scritte `nostro`, la migrazione 10 del sapere le porta a `chiesto`
+#: (G-05, Tappa 8), e da li' restano correzioni.
 AUTORE_STORICO = "proprietario"
 
 
@@ -264,7 +265,9 @@ def test_scrivere_rileggere_DAL_LETTORE(tmp_path):
                                  "campo": "genere", "valore": "presenza",
                                  "chi": "Paolo", "quando_ts": 2.0}
         riga = s.get("tipo", "binary_sensor.occupancy", "genere")
-        assert (riga.value, riga.who, riga.provenance) == ("presenza", "Paolo", "nostro")
+        # `chiesto`: il proprietario l'ha detto (G-05, Tappa 8). Mutazione
+        # ESEGUITA: rimettere `"nostro"` nella porta -- rossa qui.
+        assert (riga.value, riga.who, riga.provenance) == ("presenza", "Paolo", "chiesto")
         assert riga.said_by == "persona:u-admin"
     finally:
         s.close()
@@ -997,7 +1000,8 @@ def test_un_archivio_v7_si_riapre_e_le_correzioni_di_prima_restano_correzioni(tm
     senza la colonna `said_by` -- si riapre con la colonna, le righe di prima
     rileggono `said_by IS NULL` (nessuno aveva registrato la chiave) e un
     giudizio scritto allora dalla porta, `who='proprietario'`, resta una
-    `correzione` nell'elenco della pagina.
+    `correzione` nell'elenco della pagina (dal 08/10/2026 perche' la
+    migrazione 10, che segue, lo porta a `chiesto`).
 
     L'archivio v7 si ricava da uno v8 togliendo la colonna: e' la forma che
     aveva prima della fetta. Mutazione ESEGUITA: togliere `8: _migration_8`
@@ -1029,3 +1033,126 @@ def test_un_archivio_v7_si_riapre_e_le_correzioni_di_prima_restano_correzioni(tm
         assert (riga["da"], riga["chi"]) == ("correzione", AUTORE_STORICO)
     finally:
         nuovo.close()
+
+
+# -- G-05 (Tappa 8, D8): la migrazione 10 del sapere ----------------------------
+
+_COLONNE_V9 = ("subject_kind", "subject", "field", "value", "provenance", "verification",
+               "evidence", "source", "who", "when_ts", "said_by", "seeded_value")
+
+#: Le righe di un archivio v9 come la casa le puo' avere: una correzione con la
+#: chiave, una della firma di prima del 26/09, una del seme, una deduzione, e
+#: tre righe scritte a mano coi valori che escono.
+_RIGHE_V9 = [
+    ("tipo", "light", "genere", "sicurezza", "nostro", None, None, None,
+     "Paolo", 2.0, "persona:u-admin", None),
+    ("entita", "switch.x", "genere", "nessuno", "nostro", None, None, None,
+     "proprietario", 3.0, None, None),
+    ("tipo", "person", "genere", "presenza", "nostro", None, None, None,
+     SEED_AUTHOR, 1.0, None, "presenza"),
+    ("dispositivo", "dev1", "ricetta", "{}", "dedotto", None, "prove", None,
+     "un modello", 4.0, None, None),
+    ("tipo", "fan", "genere", "funzionamento", "ereditato", None, None, None,
+     "a mano", 5.0, None, None),
+    ("tipo", "sensor.aqi", "significato", "Aria", "importato", "confermata", None,
+     "una fonte", "a mano", 6.0, None, None),
+    ("tipo", "sensor.co2", "significato", "CO2", "importato", "non_confermabile", None,
+     None, "a mano", 7.0, None, None),
+]
+
+
+def _archivio_v9(tmp_path) -> str:
+    """Un archivio alla versione 9 con le righe di `_RIGHE_V9`, scritte in SQL
+    come le troverebbe la migrazione: tre di loro `Fact` non le lascia piu'
+    nascere."""
+    from hiris.app.storage import connect
+
+    db = str(tmp_path / "sapere.db")
+    KnowledgeStore(db).close()
+    conn = connect(db)
+    conn.executemany(
+        f"INSERT INTO knowledge ({', '.join(_COLONNE_V9)}) "
+        f"VALUES ({', '.join('?' * len(_COLONNE_V9))})", _RIGHE_V9)
+    conn.execute("PRAGMA user_version = 9")
+    conn.commit()
+    conn.close()
+    return db
+
+
+def _disco(store) -> list[tuple]:
+    return [tuple(r) for r in store._conn.execute(
+        f"SELECT {', '.join(_COLONNE_V9)} FROM knowledge ORDER BY subject_kind, subject, field")]
+
+
+def test_migrazione_10_porta_a_CHIESTO_le_correzioni_e_solo_quelle(tmp_path):
+    """Le righe `nostro` con `said_by`, e quelle con la firma di prima
+    (`proprietario`), diventano `chiesto`; il seme e la deduzione restano come
+    sono. La pagina le dice `correzione` leggendo la provenienza.
+
+    Mutazioni ESEGUITE: la migrazione scrive `nostro` invece di `chiesto` --
+    rossa; la condizione su `who` resa sempre falsa -- rossa (la riga di prima
+    resta `nostro` e la pagina la dice `altro`). Togliere `10: _migration_10`
+    dalla mappa non e' una mutazione utile: `init_schema` rifiuta il gradino
+    mancante prima di tutto."""
+    nuovo = KnowledgeStore(_archivio_v9(tmp_path))
+    try:
+        provenienze = {(r[0], r[1]): r[4] for r in _disco(nuovo)}
+        assert provenienze[("tipo", "light")] == "chiesto"
+        assert provenienze[("entita", "switch.x")] == "chiesto"
+        assert provenienze[("tipo", "person")] == "nostro"
+        assert provenienze[("dispositivo", "dev1")] == "dedotto"
+        da = {(g["soggetto"], g["campo"]): g["da"] for g in judgment_listing(nuovo)}
+        assert da[("light", "genere")] == "correzione"
+        assert da[("switch.x", "genere")] == "correzione"
+        assert da[("person", "genere")] == "seme"
+    finally:
+        nuovo.close()
+
+
+def test_migrazione_10_LASCIA_sul_disco_le_righe_coi_valori_che_escono(tmp_path, caplog):
+    """`ereditato`, `confermata`, `non_confermabile`: nessun codice le ha mai
+    scritte, quindi le ha scritte una persona, e non si indovina cosa
+    intendesse. Restano identiche sul disco, si nominano nel registro una per
+    una, e da qui l'archivio le salta (`_facts_and_skipped`). Il riassunto le
+    conta ancora, per provenienza.
+
+    Mutazione ESEGUITA: un `DELETE` di quelle righe nella migrazione -- rossa."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.mind.knowledge"):
+        nuovo = KnowledgeStore(_archivio_v9(tmp_path))
+    try:
+        per_soggetto = {r[1]: r for r in _disco(nuovo)}
+        for riga in _RIGHE_V9[4:]:
+            assert per_soggetto[riga[1]] == riga
+        nominate = [r.getMessage() for r in caplog.records
+                    if "non e' piu' ammesso" in r.getMessage()]
+        assert len(nominate) == 3
+        assert any("tipo/fan/genere" in m and "ereditato" in m for m in nominate)
+        assert nuovo.get("tipo", "fan", "genere") is None
+        assert nuovo.get("tipo", "sensor.aqi", "significato") is None
+        conteggi = {(r["campo"], r["provenienza"]): r["quante"]
+                    for r in nuovo.summary()["righe"]}
+        assert conteggi[("genere", "ereditato")] == 1
+    finally:
+        nuovo.close()
+
+
+def test_migrazione_10_una_seconda_apertura_non_cambia_niente(tmp_path, caplog):
+    """La migrazione si prova due volte: la seconda apertura trova l'archivio
+    alla 10 e non tocca niente, ne' scrive di nuovo nel registro."""
+    import logging
+
+    db = _archivio_v9(tmp_path)
+    primo = KnowledgeStore(db)
+    prima = _disco(primo)
+    primo.close()
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="hiris.app.mind.knowledge"):
+        secondo = KnowledgeStore(db)
+    try:
+        assert _disco(secondo) == prima
+        assert secondo._conn.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert not [r for r in caplog.records if "sapere:" in r.getMessage()]
+    finally:
+        secondo.close()

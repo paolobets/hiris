@@ -33,6 +33,7 @@ from aiohttp import web
 from ..chat_thread import subject_key_for
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.open_questions import OPEN_QUESTIONS
+from ..home_space.type_judgments import ATTRIBUTE_FIELD, DECLINED_FIELD, MEANING_FIELD
 from ..mind import analyst, recipe_turn
 from ..mind.judgments import (
     JudgmentNotInEffect,
@@ -294,12 +295,25 @@ async def handle_analysis(request) -> web.Response:
 
 
 
+def _fact_row(fact) -> dict:
+    """Una riga del sapere per la pagina, **in una forma sola** per ogni
+    elenco di `handle_knowledge` (fondamenta 3). La chiave di chi l'ha
+    scritta (`said_by`) non esce: alla pagina serve il nome."""
+    return {"specie": fact.subject_kind, "soggetto": fact.subject,
+            "campo": fact.field, "valore": fact.value,
+            "provenienza": fact.provenance, "verifica": fact.verification,
+            "prove": fact.evidence, "fonte": fact.source,
+            "chi": fact.who, "quando_ts": fact.when_ts}
+
+
 async def handle_knowledge(request) -> web.Response:
     """Il **sapere**: cosa HIRIS ha capito della casa, e cosa non ha capito.
 
-    Torna `{"conteggi": {...}, "non_capito": [...], "giudizi": [...],
-    "domande_aperte": [...]}`. `giudizi` sono le righe dei giudizi sui tipi che
-    l'archivio sa leggere, con da dove vengono (`mind/judgments.judgment_listing`:
+    Torna `{"conteggi": {...}, "non_capito": [...], "significati": [...],
+    "attributi": [...], "rifiuti": [...], "giudizi": [...],
+    "domande_aperte": [...], "ricette": [...], "cronaca": {...}}`. `giudizi`
+    sono le righe dei giudizi sui tipi che l'archivio sa leggere, con da dove
+    vengono (`mind/judgments.judgment_listing`:
     una riga che l'archivio salta non c'e'); `domande_aperte` le
     domande del censore (`open_questions.OPEN_QUESTIONS`) a cui la pagina chiede
     di rispondere (spec 2026-09-16 §7).
@@ -322,19 +336,25 @@ async def handle_knowledge(request) -> web.Response:
 
     **Senza archivio e' un 503, non un sapere vuoto**: «non e' collegato» e
     «non ha capito niente della casa» sono due cose diverse.
+
+    **Significati, attributi e rifiuti si elencano riga per riga** (G-05,
+    Tappa 8, fondamenta 4): fino al 08/10/2026 la porta li contava soltanto, e
+    un significato importato da Home Assistant o un «niente da misurare» del
+    modello si potevano sapere solo sommati. Ogni riga ha la stessa forma di
+    quelle di `non_capito` (`_fact_row`), con la sua fonte: per un significato
+    e' la citazione, col tag (B-47).
     """
     sapere = request.app.get("knowledge")
     if sapere is None:
         return error_response(503, "il sapere non e' disponibile")
     names = mind_view(request.app).device_names()
-    unexplained = [{"specie": f.subject_kind, "soggetto": f.subject,
-                   "campo": f.field, "valore": f.value,
-                   "provenienza": f.provenance, "prove": f.evidence,
-                   "chi": f.who, "quando_ts": f.when_ts}
-                  for f in sapere.not_understood()]
+    listed = sapere.field_rows((MEANING_FIELD, ATTRIBUTE_FIELD, DECLINED_FIELD))
     return web.json_response({
         "conteggi": sapere.summary(),
-        "non_capito": unexplained,
+        "non_capito": [_fact_row(f) for f in sapere.not_understood()],
+        "significati": [_fact_row(f) for f in listed if f.field == MEANING_FIELD],
+        "attributi": [_fact_row(f) for f in listed if f.field == ATTRIBUTE_FIELD],
+        "rifiuti": [_fact_row(f) for f in listed if f.field == DECLINED_FIELD],
         "giudizi": judgment_listing(sapere),
         "domande_aperte": [{"chiavi": sorted(question.keys), "domanda": question.question}
                            for question in OPEN_QUESTIONS],

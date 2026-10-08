@@ -33,10 +33,10 @@ def _letta(sapere, subject="zcsazzurro", field="direzione:energy_generating_toda
 
 def test_una_riga_del_sapere_porta_i_due_assi_separati():
     """Provenienza e verifica sono due campi, e si leggono separatamente."""
-    f = _riga(verification="confermata", source="manifest zcsazzurro 1.4.2")
+    f = _riga(verification="non_capito")
 
     assert f.provenance == "dedotto"
-    assert f.verification == "confermata"
+    assert f.verification == "non_capito"
 
 
 def test_un_genere_di_soggetto_inventato_NON_nasce():
@@ -71,15 +71,14 @@ def test_un_campo_NOSTRO_non_puo_essere_verificato():
     confermato ne' dedotto: e' un giudizio che HA non puo' darci, e `verifica`
     per lui e' NULL»*.
 
-    Non e' pedanteria: «confermata» su un giudizio nostro vorrebbe dire che
-    qualcuno la' fuori ce l'ha confermato, e non e' successo. E' la forma
-    esatta della motivazione falsa.
+    Non e' pedanteria: un esito di controllo su un giudizio nostro vorrebbe
+    dire che qualcuno la' fuori l'ha controllato, e non e' successo. E' la
+    forma esatta della motivazione falsa.
 
     Mutazione che la uccide: togliere il controllo su `nostro`.
     """
     with pytest.raises(ValueError, match="nostro"):
-        _riga(provenance="nostro", verification="confermata",
-              source="una fonte qualunque")
+        _riga(provenance="nostro", verification="non_capito")
 
 
 def test_un_campo_NOSTRO_con_verifica_vuota_nasce_benissimo():
@@ -88,16 +87,22 @@ def test_un_campo_NOSTRO_con_verifica_vuota_nasce_benissimo():
     assert f.verification is None
 
 
-def test_una_verifica_CONFERMATA_senza_la_sua_citazione_NON_nasce():
-    """La spec vuole `fonte` come *«la citazione, con la versione, quando la
-    verifica ha confermato»*. Una conferma senza la citazione e' una parola
-    che nessuno puo' controllare: e' la forma della motivazione falsa, e
-    questo progetto ne ha gia' pagate diverse.
+@pytest.mark.parametrize("campo,valore", [
+    ("provenance", "ereditato"),
+    ("verification", "confermata"),
+    ("verification", "non_confermabile"),
+])
+def test_i_valori_SENZA_produttore_non_nascono_piu(campo, valore):
+    """G-05 (Tappa 8, D8): `ereditato`, `confermata` e `non_confermabile`
+    erano ammessi dal 12/09/2026 e nessun codice li ha mai scritti. Sono
+    usciti, e con `confermata` la sua regola (una conferma porta la fonte).
+    Rovescia la prova di allora, che pretendeva la fonte accanto a
+    `confermata`.
 
-    Mutazione che la uccide: accettare `source=None` con `confermata`.
-    """
-    with pytest.raises(ValueError, match="fonte"):
-        _riga(verification="confermata", source=None)
+    Mutazione ESEGUITA: rimettere `"ereditato"` in `PROVENANCES` -- rossa la
+    prima riga."""
+    with pytest.raises(ValueError, match="sconosciuta"):
+        _riga(**{campo: valore, "source": "una fonte qualunque"})
 
 
 def test_una_deduzione_senza_prove_NON_nasce():
