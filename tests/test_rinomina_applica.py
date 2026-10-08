@@ -697,7 +697,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # Tracciato qui, con la grana fine sotto, invece che applicato di sfuggita.
 _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("keeper", "keeper",
-     frozenset({Path("store.py"), Path("sweeper.py")})),
+     frozenset({Path("store.py"), Path("sweeper.py"), Path("outcome.py")})),
     # `proxy` entra il 01/09 col lotto 19c, e **senza residui**: zero
     # composti da decidere e zero applicazioni su tutti e quattro i suoi
     # file, misurato prima di scrivere questa riga. E' il primo
@@ -714,7 +714,13 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # `store.concludi(...)` elencati qui sopra. Non e' un debito nuovo, e' lo
     # stesso chiamante che ha cambiato cartella; la grana fine e' nella prova
     # del residuo di `keeper`, che ora guarda anche questo file.
-    ("reasoning", "reasoning", frozenset({Path("consegna.py")})),
+    #
+    # L'08/10/2026 (Tappa 8, T4, D-24) la chiamata a `store.concludi(...)`
+    # e' tornata dentro `keeper`: la consegna e la scadenza chiudono la
+    # promessa con `keeper/outcome.fail_unfinished`. `consegna.py` esce dal
+    # residuo, `outcome.py` entra in quello di `keeper`: lo stesso
+    # chiamante, una cartella piu' in la'.
+    ("reasoning", "reasoning", frozenset()),
     # `agent` entra il 01/09, senza residui, al SECONDO tentativo: il primo e'
     # stato annullato perche' la mappa conteneva nomi che sembravano suoi e non
     # lo erano (cinque costanti importate da `chat_store.py`, la famiglia dei
@@ -782,7 +788,7 @@ def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
 
     from _comune import ROOT
     for ambito, nome in (("keeper", "store.py"), ("keeper", "sweeper.py"),
-                         ("reasoning", "consegna.py")):
+                         ("keeper", "outcome.py")):
         base = ROOT / "hiris" / "app" / ambito / nome
         copia = tmp_path / nome
         shutil.copy(base, copia)
