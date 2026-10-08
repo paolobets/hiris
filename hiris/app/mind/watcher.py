@@ -573,7 +573,6 @@ class Watcher:
         return sorted(self._marked_automations)
 
     def watch_automation_outcome(self, entity_id: str, outcome: str, *,
-                                   domain: str | None = None,
                                    title: str | None = None) -> bool:
         """L'ultimo esito noto di UN'esecuzione di un'automazione segnata,
         verso l'archivio. **Scrive un cambio solo per un esito in errore o
@@ -669,13 +668,14 @@ class Watcher:
         significa «non e' scattata», non «e' guarita» -- nessun conteggio
         di giri mancati per questo soggetto.
 
-        `domain`/`title` viaggiano verso `store.record()` come per le altre
+        `title` viaggia verso `store.record()` come per le altre
         condizioni di sistema, ma **solo sulla riga d'APERTURA** -- la
-        chiusura non li porta, come gia' fa `watch_system` per le sue tre
-        famiglie. `domain` resta `None` (a differenza di
+        chiusura non lo porta, come gia' fa `watch_system` per le sue tre
+        famiglie. `domain` non si scrive (a differenza di
         `problema:`/`integrazione:`, il dominio di un'automazione non
         varia mai -- e' sempre "automation", gia' nel prefisso del
-        soggetto, e non aggiunge niente da scrivere due volte). `title`
+        soggetto): fino alla Tappa 8 (Task 5) era un parametro che nessuno
+        passava, ed e' uscito. `title`
         (giro di correzioni, rilievo 5) e' il nome dell'automazione che la
         casa da' all'esito (`House.name`, chiesto da
         `server.py::watch_automation_outcomes`; A-18) -- senza, il soggetto
@@ -692,7 +692,7 @@ class Watcher:
                 return False
             self._store.record(quando_ts=self._now(), source="sistema",
                                   subject=subject, da=None, a=outcome,
-                                  domain=domain, title=title)
+                                  title=title)
             self._automation_faults.add(subject)
             return True
         if outcome == "finished":

@@ -427,6 +427,15 @@ CREATE TABLE IF NOT EXISTS cambi (
     -- e finora si buttavano. Stanno nel GREZZO e non si risolvono dopo
     -- dall'anagrafe, perche' fra tre settimane quella voce potrebbe non
     -- esistere piu' e la riga deve dire ancora cosa si era rotto.
+    --
+    -- **Chi porta `domain`, dichiarato** (Tappa 8, Task 5): solo le righe di
+    -- sistema di cui Home Assistant DICHIARA un dominio -- `problema:` e
+    -- `integrazione:` (il dominio dell'integrazione), `log:` (il logger, che
+    -- HA scrive nello stesso posto). NULL per le entita' (il dominio sta
+    -- nell'`entity_id`, `domain_of`), per `automazione:` (e' sempre
+    -- `automation`, gia' nel prefisso) e per `connessione:` (non e' una voce
+    -- di HA). Non si riempie col prefisso: sarebbe un dominio che HA non ha
+    -- detto, scritto accanto a quelli che ha detto.
     domain TEXT,
     title TEXT,
     -- L'istante che HA dichiara per una voce del registro di errori
