@@ -10,8 +10,9 @@ import { FRASI, tupla } from './helpers/stati.mjs';
    tre code -- promesse, costruzioni, proposte da fare a mano -- le compongono
    da li', e la rotta manda a ogni riga la frase del suo stato
    (`stato_leggibile`, C-10). Le pagine non tengono piu' una tabella delle
-   parole (`STATE_LABEL`, uscita l'08/10/2026): tengono il COLORE del badge
-   (`STATE_BADGE`) e, la pagina Impegni, i due filtri delle sue sezioni
+   parole (`STATE_LABEL`, uscita l'08/10/2026); il COLORE del badge e' uno
+   per tutte le code (`STATE_BADGE` in common.js, dall'08/10/2026) e, la
+   pagina Impegni, tiene i due filtri delle sue sezioni
    (`PENDING_STATES`, `OUTCOME_STATES`). Sono quelle copie che possono
    divergere in silenzio, e questo file le lega ai vocabolari Python per
    VALORI, mai per nomi.
@@ -20,8 +21,8 @@ import { FRASI, tupla } from './helpers/stati.mjs';
    conclusivo aggiunto in Python e dimenticato nel JavaScript sparirebbe in
    silenzio dalla sezione «In sospeso» della pagina.
 
-   Mutazioni ESEGUITE l'08/10/2026: tolta `fallita` da `STATE_BADGE` di
-   constructions-route.js -- rossa; aggiunto uno stato a `STATES_CONCLUSI`
+   Mutazioni ESEGUITE l'08/10/2026: tolta `fallita` da `STATE_BADGE` (allora
+   di constructions-route.js, oggi di common.js) -- rossa; aggiunto uno stato a `STATES_CONCLUSI`
    di promise.py senza la sua frase in states.py -- rosse la prova del
    badge e della frase, e quella che vuole i due insiemi diversi della sola
    `disdetta`. */
@@ -32,6 +33,8 @@ const AGENDA_JS = readFileSync(
   new URL('../../hiris/app/static/config/agenda-route.js', import.meta.url), 'utf8');
 const COSTRUZIONI_JS = readFileSync(
   new URL('../../hiris/app/static/config/constructions-route.js', import.meta.url), 'utf8');
+const COMMON_JS = readFileSync(
+  new URL('../../hiris/app/static/common.js', import.meta.url), 'utf8');
 
 function elencoJs(sorgente, nome) {
   const m = sorgente.match(new RegExp('var ' + nome + ' = \\[([^\\]]*)\\]'));
@@ -55,28 +58,39 @@ test('gli stati in sospeso: lo stesso insieme in states.py (SUSPENDED) e in agen
     'gli stati "in sospeso" devono essere lo stesso insieme in Python e in JavaScript');
 });
 
-test('ogni stato di una promessa ha un badge in agenda-route.js e una frase in states.py', () => {
+test('ogni stato di una promessa ha un badge in common.js e una frase in states.py', () => {
   const stati = tupla('PROMISE_STATES');
   // I conclusivi di promise.py sono fra questi: la tupla li compone dal vocabolario.
   for (const s of tupla('STATES_CONCLUSI', PROMESSA_PY)) assert.ok(stati.includes(s), s);
-  const badge = chiaviDiOggetto(AGENDA_JS, 'STATE_BADGE');
+  const badge = chiaviDiOggetto(COMMON_JS, 'STATE_BADGE');
   for (const stato of stati) {
-    assert.ok(badge.has(stato), 'STATE_BADGE di agenda-route.js non conosce «' + stato + '»');
+    assert.ok(badge.has(stato), 'STATE_BADGE di common.js non conosce «' + stato + '»');
     assert.ok(FRASI[stato], 'states.READABLE non ha la frase di «' + stato + '»');
   }
 });
 
-test('ogni stato di una costruzione ha un badge in constructions-route.js e una frase in states.py', () => {
-  const badge = chiaviDiOggetto(COSTRUZIONI_JS, 'STATE_BADGE');
+test('ogni stato di una costruzione ha un badge in common.js e una frase in states.py', () => {
+  const badge = chiaviDiOggetto(COMMON_JS, 'STATE_BADGE');
   for (const stato of tupla('CONSTRUCTION_STATES')) {
-    assert.ok(badge.has(stato), 'STATE_BADGE di constructions-route.js non conosce «' + stato + '»');
+    assert.ok(badge.has(stato), 'STATE_BADGE di common.js non conosce «' + stato + '»');
     assert.ok(FRASI[stato], 'states.READABLE non ha la frase di «' + stato + '»');
   }
   /* E non conosce parole che il vocabolario non ha: un colore per uno stato
      che nessun archivio scrive e' una copia rimasta indietro (era `rifiutata`
      fino all'08/10/2026). */
-  const note = new Set(tupla('CONSTRUCTION_STATES'));
+  const note = new Set([...tupla('CONSTRUCTION_STATES'), ...tupla('PROMISE_STATES')]);
   for (const stato of badge) assert.ok(note.has(stato), 'STATE_BADGE conosce «' + stato + '», che non e\' uno stato');
+});
+
+test('il colore del badge e\' uno per tutte le code: le pagine non tengono una mappa loro', () => {
+  /* Fino all'08/10/2026 agenda-route.js e constructions-route.js avevano
+     ciascuna la sua `STATE_BADGE` (ux-ui-specialist, 08/10/2026).
+     Mutazione ESEGUITA: una `var STATE_BADGE` rimessa in agenda-route.js --
+     rossa. */
+  for (const [nome, sorgente] of [['agenda-route.js', AGENDA_JS], ['constructions-route.js', COSTRUZIONI_JS]]) {
+    assert.doesNotMatch(sorgente, /var STATE_BADGE\b/, nome + ' ha di nuovo la sua mappa dei colori');
+    assert.match(sorgente, /stateBadge\(\w+\.stato\)/, nome + ' non chiede il colore a common.js');
+  }
 });
 
 test('ogni stato di una proposta da fare a mano ha una frase in states.py', () => {
