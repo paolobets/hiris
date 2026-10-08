@@ -1554,6 +1554,15 @@ def _resoconti_v14(tmp_path) -> str:
         "2026-08-29": {"giorno": "2026-08-29", "misure": [], "obiettivo": None},
         "2026-08-30": {"giorno": "2026-08-30", "misure": [],
                        "obiettivo": {"testo": "mai scritto", "scritto_ts": 1787100000.0}},
+        # L'istante di una riga vera con un testo che quella riga non ha: la
+        # certezza vuole istante E testo (rilievo G97-1, giro 97).
+        "2026-08-31": {"giorno": "2026-08-31", "misure": [],
+                       "obiettivo": {"testo": "un altro testo",
+                                     "scritto_ts": 1787000000.0}},
+        # Senza istante ma col testo che non e' quello di fabbrica: non e'
+        # l'obiettivo di fabbrica (G97-1).
+        "2026-09-01": {"giorno": "2026-09-01", "misure": [],
+                       "obiettivo": {"testo": "scritto a mano", "scritto_ts": None}},
     }
     conn = sqlite3.connect(percorso)
     for giorno, corpo in corpi.items():
@@ -1585,7 +1594,9 @@ def test_migration_15_marca_regole_null_e_porta_l_obiettivo_a_riferimento(tmp_pa
     Mutazioni ESEGUITE: `_mark_reports_without_rules` tolto da
     `_MIGRATION_15_STEPS` -- rossa; `_objective_references` tolto -- rossa;
     la ricerca della riga per il solo `written_ts`, senza il testo -- rossa
-    sul giorno senza riga."""
+    sul 31/08 (l'istante di una riga vera col testo di un'altra); `{"id":
+    None}` per ogni `scritto_ts` nullo, senza guardare il testo -- rossa sul
+    01/09 (rilievo G97-1, giro 97)."""
     import logging
 
     percorso = _resoconti_v14(tmp_path)
@@ -1594,7 +1605,8 @@ def test_migration_15_marca_regole_null_e_porta_l_obiettivo_a_riferimento(tmp_pa
     try:
         letti = {g: riaperto.report(g) for g in ("2026-08-26", "2026-08-27",
                                                  "2026-08-28", "2026-08-29",
-                                                 "2026-08-30")}
+                                                 "2026-08-30", "2026-08-31",
+                                                 "2026-09-01")}
         tutti = {r["giorno"]: r for r in riaperto.reports(limit=30)}
     finally:
         riaperto.close()
@@ -1608,7 +1620,12 @@ def test_migration_15_marca_regole_null_e_porta_l_obiettivo_a_riferimento(tmp_pa
     assert corpi["2026-08-29"][0]["obiettivo"] is None
     assert corpi["2026-08-30"][0]["obiettivo"] == {"testo": "mai scritto",
                                                   "scritto_ts": 1787100000.0}
-    assert any("2026-08-30" in r.getMessage() for r in caplog.records)
+    assert corpi["2026-08-31"][0]["obiettivo"] == {"testo": "un altro testo",
+                                                  "scritto_ts": 1787000000.0}
+    assert corpi["2026-09-01"][0]["obiettivo"] == {"testo": "scritto a mano",
+                                                  "scritto_ts": None}
+    for giorno in ("2026-08-30", "2026-08-31", "2026-09-01"):
+        assert any(giorno in r.getMessage() for r in caplog.records), giorno
 
     assert letti["2026-08-26"]["obiettivo"] == {"id": None, "testo": DEFAULT_OBJECTIVE,
                                                 "scritto_ts": None}

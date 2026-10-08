@@ -34,6 +34,7 @@ import threading
 from ..storage import (
     Retention,
     add_missing_columns,
+    archive_name,
     connect,
     init_schema,
     prune_declared,
@@ -150,6 +151,7 @@ class Journal:
 
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=3,
                     migrations={2: _migration_2, 3: _migration_3})

@@ -12,7 +12,7 @@ from .chat_settings import DEFAULT_RETENTION_DAYS
 from .chat_thread import ChatThread, thread_condition, thread_params
 from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
-from .storage import Retention, add_missing_columns, connect, init_schema, rekey
+from .storage import Retention, add_missing_columns, archive_name, connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -382,6 +382,7 @@ class ChatStore:
         self._read_retention_days = read_retention_days or (
             lambda: DEFAULT_RETENTION_DAYS)
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         self._mu = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=4,
                     migrations={2: _reset, 3: _reset, 4: _migration_4},

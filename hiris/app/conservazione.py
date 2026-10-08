@@ -44,7 +44,6 @@ from .mind.store import ATTEMPT_EXPIRED
 from .models_store import bridge_deadline_min
 from .reasoning.consegna import close_expired_promise
 from .steering import JOB_SPECIES
-from .storage import database_name
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -57,13 +56,14 @@ def archives(app) -> list[tuple[str, object]]:
     solo, e uno senza dichiarazione lo ferma la prova che confronta questo
     insieme coi chiamanti di `storage.init_schema`.
 
-    Il nome e' quello del file, chiesto alla connessione dell'archivio
-    (`storage.database_name`): e' il nome che si vede in `/data`."""
+    Il nome lo dice l'archivio (`archive_name`, `storage.archive_name`): e'
+    quello del file, che si vede in `/data`, e chiederlo non tocca la
+    connessione fuori dal lucchetto dell'archivio (rilievo N98-2, giro 98)."""
     found = []
     for value in app.values():
         kind = type(value)
         if hasattr(kind, "CONSERVAZIONE") and callable(getattr(kind, "prune", None)):
-            found.append((database_name(value._conn), value))
+            found.append((value.archive_name, value))
     return found
 
 
