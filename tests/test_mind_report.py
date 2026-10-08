@@ -250,7 +250,8 @@ def test_il_resoconto_porta_il_suo_giorno_la_domanda_e_le_tre_parti():
                          recipes={"dev1": RICETTA}, names={})
 
     assert r["giorno"] == "2026-09-13"
-    assert set(r) == {"giorno", "obiettivo", "misure", "forme", "cronaca", "giudizio"}
+    assert set(r) == {"giorno", "obiettivo", "regole", "misure", "forme", "cronaca",
+                      "giudizio"}
 
 
 def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
@@ -260,8 +261,8 @@ def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
     r = rep.build_report(day="2026-09-13", episodes=[], series={},
                          recipes={}, names={})
 
-    assert r == {"giorno": "2026-09-13", "obiettivo": None, "misure": [],
-                 "forme": [], "cronaca": [], "giudizio": None}
+    assert r == {"giorno": "2026-09-13", "obiettivo": None, "regole": rep.rules_mark(),
+                 "misure": [], "forme": [], "cronaca": [], "giudizio": None}
 
 
 # -- il documento: DERIVATO, mai scritto ------------------------------------
@@ -1041,3 +1042,34 @@ def test_state_of_charge_measured_like_any_role():
     assert "valore" not in sommata
     assert "ISTANTANEA" in sommata["non_calcolabile"]
     assert sommata["causa"] == "ricetta_storta"
+
+
+
+# -- le regole con cui un giorno e' misurato (Tappa 8, G-03, D2) -------------
+
+def test_un_resoconto_nuovo_porta_le_REGOLE_con_cui_e_misurato():
+    """Ogni resoconto nuovo dice con quali regole e' nato: la versione del
+    registro delle operazioni e quella della regola del dato fermo, con le
+    chiavi che dicono quale e' quale (fondamenta 1). Le versioni si chiedono
+    alle loro case, non si ricopiano.
+
+    Mutazione ESEGUITA: senza il timbro in `build_report` -- rossa."""
+    from hiris.app.mind import flatline, operations
+
+    r = rep.build_report(day="2026-09-13", episodes=[], series={}, recipes={}, names={})
+    assert r["regole"] == {"registro_operazioni": operations.REGISTRY_VERSION,
+                           "dato_fermo": flatline.FROZEN_RULE}
+
+
+def test_la_serie_dice_in_TRATTI_con_quali_regole_e_misurata():
+    """`regole: None` e' un tratto anche lui, e il piu' importante: lo legge
+    l'analista. Un resoconto senza la chiave vale come `None` (nessuna regola
+    detta)."""
+    segno = rep.rules_mark()
+    serie = rep.series_of_measures([
+        {"giorno": "2026-09-13", "regole": segno, "misure": []},
+        {"giorno": "2026-09-11", "regole": None, "misure": []},
+        {"giorno": "2026-09-12", "misure": []}])
+    assert serie["regole"] == [
+        {"dal": "2026-09-11", "al": "2026-09-12", "regole": None},
+        {"dal": "2026-09-13", "al": "2026-09-13", "regole": segno}]

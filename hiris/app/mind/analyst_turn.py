@@ -390,6 +390,10 @@ def build_question(series: dict, previous: list[dict] | None = None, *,
     lines = ["L'obiettivo di questa casa:"]
     lines.extend(_objective_lines(series.get("obiettivi") or [], days))
     lines.append("")
+    rules = _rules_lines(series.get("regole") or [])
+    if rules:
+        lines.extend(rules)
+        lines.append("")
     if days:
         lines.append(f"I resoconti vanno dal {days[0]} al {days[-1]}: "
                      f"{len(days)} giorni. «ultimo» e' il {days[-1]}.")
@@ -431,6 +435,26 @@ def _objective_lines(runs: list[dict], days: list[str]) -> list[str]:
             out.append(f"  in vigore dal {run['dal']}: {run['testo']}")
         else:
             out.append(f"  dal {run['dal']} fino al {run['al']}: {run['testo']}")
+    return out
+
+
+def _rules_lines(runs: list[dict]) -> list[str]:
+    """I giorni misurati prima della regola del dato fermo (Tappa 8, G-03, D2):
+    i tratti con `regole: None` (`report._rules_runs`). Senza questa riga
+    l'analista leggerebbe come vero un valore che puo' venire da una fonte
+    ferma -- la produzione a zero del 30/09/2026, con la copertura piena. Una
+    lista vuota quando ogni giorno porta le sue regole: la frase non serve."""
+    before = [run for run in runs if run.get("regole") is None]
+    if not before:
+        return []
+    out = [("Misurati prima della regola del dato fermo (le regole con cui "
+            "sono nati non sono scritte): un valore di questi giorni puo' "
+            "venire da una fonte che aveva smesso di parlare.")]
+    for run in before:
+        if run.get("dal") == run.get("al"):
+            out.append(f"  il {run.get('dal')}")
+        else:
+            out.append(f"  dal {run.get('dal')} al {run.get('al')}")
     return out
 
 

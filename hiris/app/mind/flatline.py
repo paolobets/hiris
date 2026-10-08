@@ -87,6 +87,24 @@ HISTORY_DAYS = 7
 #: sensori di luce e i 2 del 17/09) e i 58 blocchi veri restano.
 NEIGHBOUR_HOURS = 1
 
+#: La versione di questa regola, scritta in ogni resoconto accanto alla
+#: versione del registro delle operazioni (`report.rules_mark`, Tappa 8, G-03,
+#: decisione D2 del proprietario dell'08/10/2026): un resoconto dice con quali
+#: regole e' stato misurato, e chi lo legge sa se il dato fermo c'era.
+#:
+#: **SI ALZA QUANDO CAMBIA COSA LA REGOLA TOGLIE A UN GIORNO**: il gruppo, cosa
+#: vuol dire «fermo» e «anomala», cosa esce da una misura istantanea o da un
+#: contatore. Non per un ritocco della frase o della lettura.
+#:
+#: - assente (`regole: null` nel resoconto): misurato prima che i resoconti
+#:   portassero le regole, cioe' senza la regola del dato fermo o con una sua
+#:   forma precedente -- la 3.77.0 rifiutava per intero una misura istantanea
+#:   con un'ora ferma, e quale delle due un resoconto archiviato abbia
+#:   incontrato il corpo non lo dice;
+#: - 1 (08/10/2026): la regola com'e' oggi -- il gruppo di sorelle, e a una
+#:   misura istantanea si tolgono solo le ore del tratto (`frozen_day`).
+FROZEN_RULE = 1
+
 
 def _still(point: dict) -> bool | None:
     """Se l'ora non varia: `True`, `False`, o `None` se di lei non si sa niente."""
