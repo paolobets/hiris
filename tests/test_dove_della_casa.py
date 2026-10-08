@@ -101,7 +101,13 @@ def test_la_scheda_di_un_entita_dice_dove_sta(house):
     """B-10: fino al Task 6 la scheda di `guarda` non diceva l'area."""
     detail = view(house, [], [], "entita", "sensor.sensore_a_temperatura",
                   judgments=None)
-    assert detail["dove"] == house.where("sensor.sensore_a_temperatura")
+    where = house.where("sensor.sensore_a_temperatura")
+    # Tappa 9, F2 (C-05): il posto esce in chiaro, senza la busta `dove`, e
+    # l'integrazione e' `{id, nome}` come le altre parti.
+    assert {k: detail.get(k) for k in ("area", "piano", "dispositivo")} == \
+        {k: where[k] for k in ("area", "piano", "dispositivo")}
+    assert detail.get("area_ereditata", False) is where["area_ereditata"]
+    assert detail["integrazione"]["id"] == where["integrazione"]
 
 
 # --- i cancelli: ogni regola dalla sua funzione ---------------------------

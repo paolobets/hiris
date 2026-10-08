@@ -116,7 +116,6 @@ from .house_query import (
     KINDS,
     ORDERS,
     ROWS_MAX,
-    depth_for,
     parse_filters,
     query_house,
 )
@@ -130,6 +129,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
+from .render import depth_for, render_memory
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -191,7 +191,7 @@ logger = logging.getLogger(__name__)
 # stavano in due schemi con parole diverse («Includi le entita' nascoste. Di
 # norma no.» / «Anche le entita' nascoste.»), e la regola della profondita'
 # in due prose con le soglie scritte a mano («fino a 10», «da 2 a 10»),
-# mentre la soglia vera e' una e la applica `house_query.depth_for` per
+# mentre la soglia vera e' una e la applica `render.depth_for` per
 # entrambe. Le differenze vere restano in chiaro accanto a
 # ciascuno schema: `riferimento` (un ricordo ha un numero, la storia no) e
 # `integrazione` (per gli errori e' chi ha scritto la voce).
@@ -281,7 +281,7 @@ SEARCH_TOOL_DEF = {
         "Dove valgono: per le aree solo `nome` e `piano`; per i dispositivi "
         "`nome`, `area`, `piano`, `integrazione`; `classe`, `sopra` e `sotto` "
         "solo per le entita'; `in_esecuzione` solo per automazioni e script, e "
-        "per loro `stato` dice se sono abilitate e `fermo_da`/`cambiato_da` "
+        "per loro `stato` dice se sono abilitate e `fermo_da_ore`/`cambiato_da_ore` "
         "contano l'ultima esecuzione. Un filtro che non vale per il genere "
         "chiesto torna un `errore`, mai un insieme intero.\n"
         + _depth_rule(
@@ -329,13 +329,13 @@ SEARCH_TOOL_DEF = {
                 "type": "string",
                 "description": "Lo stato: on, off, unavailable, unknown, home...",
             },
-            "fermo_da": {
-                "type": "string",
-                "description": "Fermo da almeno questa durata: 30d, 2h, 15m.",
+            "fermo_da_ore": {
+                "type": "number", "minimum": 0,
+                "description": "Fermo da almeno N ore.",
             },
-            "cambiato_da": {
-                "type": "string",
-                "description": "Cambiato entro questa durata: 30d, 2h, 15m.",
+            "cambiato_da_ore": {
+                "type": "number", "minimum": 0,
+                "description": "Cambiato nelle ultime N ore.",
             },
             "sopra": {"type": "number", "description": "Stato numerico maggiore di."},
             "sotto": {"type": "number", "description": "Stato numerico minore di."},
@@ -995,8 +995,8 @@ HISTORY_TOOL_DEF = {
                                 + " Per gli errori, chi ha scritto la voce."),
             },
             "ore": {"type": "number", "maximum": WINDOW_MAX_HOURS,
-                    "description": "Le ultime N ore, da adesso. Predefinito 24, al "
-                                   "massimo 2160 (90 giorni). Non insieme a da/a."},
+                    "description": "Le ultime N ore, da adesso. Predefinito 24. "
+                                   "Non insieme a da/a."},
             "da": {"type": "string",
                    "description": "L'inizio: «oggi», «ieri» (la loro mezzanotte, nel "
                                   "fuso della casa) o un istante ISO col fuso."},
@@ -1074,10 +1074,10 @@ CALENDAR_TOOL_DEF = {
     "description": (
         "I PROSSIMI appuntamenti scritti dalle persone sui calendari di questa "
         "casa («cosa ho in programma questa settimana?»). Non e' `agenda`, che "
-        "sono gli impegni di HIRIS. Ogni impegno porta `titolo`, `inizio`, "
-        "`fine`, `giornaliero` (dura tutta la giornata), `calendario` (il nome "
-        "di chi lo tiene: i calendari si fondono in un elenco solo, e da quale "
-        "viene e' meta' della risposta) e, se scritti, `luogo` e `descrizione`. "
+        "sono gli impegni di HIRIS. Ogni impegno porta `titolo`, `dal`, `al` "
+        "(escluso: il primo giorno o istante che non ne fa parte), `giornaliero` "
+        "(tutto il giorno), `calendario` (il nome di chi lo tiene: i calendari "
+        "si fondono in un elenco) e, se scritti, `luogo` e `descrizione`. "
         "**Un calendario dice solo cio' che ci e' scritto**: `impegni: []` "
         "vuol dire nessun impegno segnato nella finestra, non una casa vuota, "
         "ed e' normale. `calendari_guardati` c'e' sempre: i calendari che ho "
@@ -1150,8 +1150,9 @@ def _has_type(value: Any, json_type: str) -> bool:
 
 
 def _wrong_value(key: str, value: Any, schema: dict) -> str | None:
-    """Cosa non va in un valore rispetto al suo schema (`type`, `enum`), o
-    `None`. Un `null` e' un argomento omesso: lo giudica `required`."""
+    """Cosa non va in un valore rispetto al suo schema (`type`, `enum`,
+    `minimum`, `maximum`), o `None`. Un `null` e' un argomento omesso: lo
+    giudica `required`."""
     if value is None:
         return None
     declared = schema.get("type")
@@ -1162,6 +1163,13 @@ def _wrong_value(key: str, value: Any, schema: dict) -> str | None:
     allowed = schema.get("enum")
     if allowed is not None and value not in allowed:
         return f"{_quoted([key])} vale uno fra {_quoted(allowed)}, non {_quoted([value])}"
+    # `minimum` e `maximum` di JSON Schema (B-33, 08/10/2026): una durata e'
+    # un numero con l'unita' nel nome, e il suo intervallo lo dice lo schema.
+    # Scritti a rovescio (`not value >= ...`) perche' NaN non passi.
+    if "minimum" in schema and not value >= schema["minimum"]:
+        return f"{_quoted([key])} vale almeno {schema['minimum']}"
+    if "maximum" in schema and not value <= schema["maximum"]:
+        return f"{_quoted([key])} vale al massimo {schema['maximum']}"
     return None
 
 
@@ -1409,7 +1417,7 @@ class ToolDispatcher:
         self._thread = thread
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
         # provenienza. Ne esce il SIGNIFICATO della classe di un'entita'
-        # sul dettaglio di `search` (`queries._class_meaning`). `None` e'
+        # sul dettaglio di `search` (`render._class_meaning`). `None` e'
         # legittimo.
         self._knowledge = knowledge
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -1610,7 +1618,8 @@ class ToolDispatcher:
                                           translations=translations, masked=masked)
 
         response = query_house(house, self._home_space.behavior(), filters,
-                               detail=detail, timezone=self._timezone())
+                               detail=detail, timezone=self._timezone(),
+                               translations=translations, judgments=self._judgments)
         if "errore" in response:
             return response
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
@@ -1791,6 +1800,7 @@ class ToolDispatcher:
                               # Il sapere: cosa significa la classe di
                               # un'entita'. `None` e' legittimo.
                               knowledge=self._knowledge,
+                              zone=historian.home_space_zone(self._timezone()),
                               # L'istantanea dei giudizi (spec §3): mai `None`
                               # qui -- `__init__` l'ha gia' ricaduta sul seme.
                               judgments=self._judgments)
@@ -1975,9 +1985,11 @@ class ToolDispatcher:
         # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
         # l'archivio direttamente, non passa da `queries.view` -- senza
         # questa riga il testo uscirebbe filtrato dal dettaglio e grezzo da
-        # `fetch`. Stessa funzione condivisa, un punto solo -- e con la casa
-        # del turno le ancore portano `nome_attuale` ed `esiste` (G-21).
-        return {"ricordi": _sanitized_memories(memories, self._turn_house())}
+        # `fetch`. Stessa funzione condivisa, un punto solo; poi la resa del
+        # ricordo, la stessa delle altre porte (`render_memory`, Tappa 9 F3),
+        # con le ancore risolte sulla casa del turno (G-21).
+        house = self._turn_house()
+        return {"ricordi": [render_memory(r, house) for r in _sanitized_memories(memories)]}
 
     # -- execute -------------------------------------------------------
 

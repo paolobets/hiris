@@ -1606,7 +1606,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # o "diagnostic") ma non ha mai dichiarato: prima di questa fetta il
     # digesto le escludeva in silenzio, e alla domanda «quante sono le
     # entita' di servizio?» HIRIS non aveva un numero -- solo il dettaglio
-    # di un'entita' (che porta `categoria`, `queries.py::_enrich_entity`)
+    # di un'entita' (che porta `categoria`, `render.py::render_entity`)
     # poteva dirlo, una per una. A differenza delle nascoste, «La casa» le
     # CONTA (`hierarchy()` non guarda `categoria`): restano fuori dalle
     # capacita', e da `search` finche' non le si chiede.

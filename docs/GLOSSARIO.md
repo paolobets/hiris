@@ -3601,11 +3601,13 @@ italiano: la regola e' quella di CLAUDE.md, «il dominio in italiano, il confine
 sistema esterno». Per questo la tabella **non ha la colonna «inglese»**: un campo non si rinomina,
 si sceglie una volta.
 
-**Dove vive, e per quanto.** Fino al Task 7 della Tappa 4 la fonte e' questa tabella, e la legge
-la prova `tests/test_resa_unica.py` (lo scheletro del cancello R3). Al Task 7 nasce
-`home_space/field_vocabulary.py`, una costante per campo col suo significato e la sua forma: da
-quel giorno la fonte e' il modulo, e questa tabella esce lasciando qui il rimando. Due copie della
-stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamenta 2).
+**Dove vive.** Dall'08/10/2026 (Tappa 9, F2) il prodotto legge `home_space/field_vocabulary.py`
+(`FIELDS`: il fatto, la forma, chi lo porta, i nomi che ha tolto). Questa tabella **resta**: e' il
+registro dei nomi che il proprietario approva, e il prodotto non puo' leggerla (`docs/` non entra
+nell'immagine). Il piano della Tappa 4 la faceva uscire; resta perche' un nome nuovo si decide qui
+prima che nel codice. Che le due non divergano lo prova `tests/test_vocabolario_dei_campi.py`:
+stessi campi, stessi proprietari, stessi nomi tolti, nei due versi. Il cancello R3
+(`tests/test_resa_unica.py`) chiede i campi al modulo.
 
 | campo | il fatto | forma | di chi | nomi che escono | dove escono oggi |
 |---|---|---|---|---|---|
@@ -3617,7 +3619,7 @@ stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamen
 | `ultimo_cambio` | l'ultimo cambio di stato | istante (D3: ISO 8601 con l'offset della casa) | `entita` `automazione` `script` `scena` | `da_quando` | `queries.py:504`, `:1035`, `:1213` |
 | `ultima_esecuzione` | l'ultima volta che e' girata | istante | `automazione` `script` | — | — |
 | `quando` | l'istante di un evento o di una misura | istante | `evento` `misura` | `quando_ts` `misurato_ts` `letta_alle` `deciso_ts` `da_quando_ts` | `energy.py:154` (`letta_alle`); C-46 (`deciso_ts`, `da_quando_ts`) |
-| `dal` `al` | un intervallo | due istanti | `finestra` | — | — |
+| `dal` `al` | un intervallo. **`al` e' escluso** (D4 della Tappa 9, 08/10/2026): il primo istante, o il primo giorno, che non ne fa piu' parte -- la `end` di Home Assistant, che il componente `calendar` dichiara esclusa anche per gli eventi giornalieri (letto sul tag `2026.10.0`) | due istanti; due date per un impegno giornaliero | `finestra` `impegno` | `inizio` `fine` | usciti l'08/10/2026 da `appointments.read_appointment` (B-28), dove la `fine` di un giornaliero era l'ultimo giorno COMPRESO |
 | `genere` | il nostro genere di oggetto | uno di `house_query.KINDS` | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` `ricordo` | `tipo` | `tipo` nella risposta (`"tipo": "entita"` di `view`) |
 | `dominio` | il dominio di Home Assistant | stringa di Home Assistant (`light`, `sensor`...) | `entita` | `tipo` | `tipo` nel parametro di `search` (D7) |
 | `unita` | l'unita' dell'entita' | stringa di Home Assistant | `entita` | `unit` | `unit` dentro `prima`/`dopo`, accanto a `state` (`actuator._fingerprint`, `:339`; trovata dal Task 1, la stessa voce C-64) |
@@ -3634,15 +3636,29 @@ stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamen
 | `nome` | il nome che Home Assistant mostra | stringa | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` | — | resta |
 | `classe` | la classe dichiarata da Home Assistant (`device_class`) | stringa di Home Assistant | `entita` | — | resta |
 | `attributi` | gli attributi dello stato, filtrati | dizionario | `entita` | — | resta (C-34: filtrati anche alla media) |
+| `stato_non_reso` | perche' lo stato in parole manca quando la tabella delle traduzioni non si e' letta | `{silenzio, motivo}` | `entita` | — | resta |
+| `capacita` | cosa un'entita' sa fare, decodificato da `supported_features` | elenco di frasi | `entita` | — | resta |
+| `stato_presunto` | Home Assistant non legge lo stato, lo presume (`assumed_state`) | vero, solo quando lo e' | `entita` | — | resta |
+| `etichette` | le etichette scritte dal proprietario | elenco «Nome (id: X)» | `entita` `dispositivo` `area` `automazione` `script` `scena` | — | resta |
+| `categorie` | le categorie scritte dal proprietario | `{ambito: nome}` | `entita` `automazione` `script` `scena` | — | resta |
+| `regola` | la regola di misura di un'entita' di servizio | frase | `entita` | — | resta |
+| `significato` | cosa significa la classe, dal sapere | frase | `entita` | — | resta |
+| `membri` | di cosa e' fatto un gruppo, e cosa non e' di tutti | dizionario | `entita` | — | resta |
+| `comandi` | cosa si puo' chiedere a un'entita', con i limiti | `{servizio: parametri}` | `entita` | — | resta |
 
-Le ultime tre righe non sono di D1: sono campi che escono gia' oggi col loro nome e lo tengono.
-Stanno qui perche' il vocabolario dica **tutti** i campi dell'entita', non solo quelli che cambiano:
-un cancello che conosce meta' dei campi sa riconoscere meta' delle copie.
+Le righe da `nome` in giu' non sono di D1: sono campi che escono gia' oggi col loro nome e lo
+tengono (le ultime nove le ha aggiunte la Tappa 9, F2, l'08/10/2026). Stanno qui perche' il
+vocabolario dica **tutti** i campi dell'entita', non solo quelli che cambiano: un cancello che
+conosce meta' dei campi sa riconoscere meta' delle copie. Il controllo di collisione delle nove,
+eseguito l'08/10/2026: `etichette`, `regola` e `significato` hanno gia' una riga ordinaria nello
+stesso senso (`etichette -> labels`, `regola -> rule`, `significato -> meaning`); `comandi` compare
+in «I nomi degli strumenti» come parola scartata per il nome di uno strumento (`comandi -> comando`),
+un altro oggetto; le altre cinque non hanno righe ne' citazioni con un altro senso.
 
 La colonna «di chi» usa i generi di `house_query.KINDS` (`entita`, `area`, `dispositivo`,
-`automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e cinque parole per cio' che non
+`automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e sei parole per cio' che non
 e' un oggetto della casa: `casa` (la cornice), `evento` e `misura` (una riga di storia o di
-un'istantanea), `finestra` (l'intervallo di una risposta), `lettura` (l'esito di un insieme letto).
+un'istantanea), `finestra` (l'intervallo di una risposta), `lettura` (l'esito di un insieme letto), `impegno` (un appuntamento di `calendar`, una voce di `impegni`: non una promessa di `agenda`, che la descrizione di `calendar` chiama anche lei «impegni di HIRIS»).
 
 **Due regole che vanno con il vocabolario** (D1, approvate in blocco):
 
@@ -3687,6 +3703,26 @@ glossario (righe e citazioni fra backtick) e nelle chiavi letterali di `hiris/ap
 **Le domande aperte non fermano il Task 0.** `genere` e `classe` restano nella tabella come li ha
 approvati il proprietario; la scelta se rinominare un senso o dichiararli qualificati si prende
 **prima del Task 7**, che scrive il vocabolario nel codice.
+
+### La durata nei parametri degli strumenti (Tappa 9, D5, 08/10/2026)
+
+Non sono campi che escono: sono **parametri** che il modello scrive, e la regola e' una sola
+(decisione D5 della Tappa 9, approvata dal proprietario l'08/10/2026): **una durata e' un numero,
+con l'unita' nel nome del parametro** (fondamenta 1). Lo schema dello strumento ne dichiara tipo,
+`minimum` e `maximum`, e li fa valere `ToolDispatcher.dispatch`.
+
+| parametro | strumento | unita' | era |
+|---|---|---|---|
+| `ore` | `history` | ore | — (e' il modello della regola) |
+| `giorni_avanti` `giorni_indietro` | `calendar` | giorni | — |
+| `fermo_da_ore` | `search` | ore | `fermo_da`, una stringa `30d`/`2h`/`15m` (`house_query._DURATION`, uscita) |
+| `cambiato_da_ore` | `search` | ore | `cambiato_da`, la stessa stringa |
+
+**Il controllo di collisione, eseguito l'08/10/2026** su questo documento e sulle chiavi letterali
+di `hiris/app/`: `fermo_da_ore` e `cambiato_da_ore` non compaiono in nessuna riga ne' in nessuna
+citazione; `ore -> hours` e `cambiato -> changed` sono righe ordinarie con lo stesso senso;
+`fermo` non ha una riga (c'e' `ferma -> stop`, il verbo, che qui non si usa). Nessuna collisione. Le ore e non i minuti perche' la regola nomina `ore` di `history` come modello,
+e il parametro e' un `number`: un quarto d'ora si scrive `0.25`.
 
 ## Il vocabolario del turno (Tappa 6, Task 0, 05/10/2026)
 

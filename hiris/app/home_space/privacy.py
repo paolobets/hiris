@@ -19,8 +19,8 @@ import re
 
 from ..proxy.entity_cache import CREDENTIALS
 from .ha_vocabulary import HA_LINK_TYPE, domain_of
-from .queries import WITHHELD_BASKET
 from .reference import NO_SLUG, slugify
+from .render import WITHHELD_BASKET
 from .type_vocabulary import domains_by_genre, unknown_states
 
 #: I due soli domini il cui genere e' "presenza", ricavati dalla dichiarazione
@@ -80,7 +80,7 @@ def redact_attributes(entity_id: str, attributes: dict | None) -> dict | None:
 #: Le chiavi che portano gli attributi di UNA voce: il filtro li passa da
 #: `redact_attributes`, non li attraversa come elenchi di righe.
 _ATTRIBUTE_KEYS = ("attributi", "attributes")
-#: Lo stato in parole accanto al grezzo (`queries._enrich_entity`). Quando il
+#: Lo stato in parole accanto al grezzo (`render.render_entity`). Quando il
 #: grezzo si riduce a `not_home`, la resa del grezzo non vale piu' e il suo
 #: motivo potrebbe ripeterlo: escono con lui.
 _RENDERED_STATE_KEYS = ("stato_leggibile", "stato_non_reso")

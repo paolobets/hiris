@@ -1126,6 +1126,24 @@ In `server.py` resta `create_app()` con la registrazione delle rotte.
 **Il costo noto:** 76 file di prova importano `server` (13 `monkeypatch` sui suoi attributi):
 si aggiornano nello stesso commit dello spostamento.
 
+**Le chiavi di `app` vanno con lo spostamento (X-31, X-32 del registro; Tappa 9, D2 = B,
+08/10/2026).** Due fatti, letti l'08/10/2026 su `f3af525`:
+- **X-32** — nessuna chiave di `app` e' un `web.AppKey` (zero occorrenze in `hiris/app/`): sono
+  stringhe, e la stessa chiave scritta in due moduli si accorda solo per caso. **Ogni chiave si
+  dichiara come `web.AppKey` nel modulo che la possiede, nello stesso commit che la sposta** da
+  `server.py`: non prima (toccherebbe `server.py` due volte), non in un modulo di sole chiavi
+  (sarebbe una tabella che ricopia i proprietari). Non tutte stanno in `server.py`: le
+  assegnano all'avvio anche `api/soffitto.py`, `api/canali.py`, `api/servizi.py`,
+  `api/credenziali.py`, `api/handlers_mcp.py` e `usage/bridge_loads.py` (che ha gia' la costante
+  del nome, ancora una stringa). Quelle hanno gia' il loro modulo, e diventano `web.AppKey` nel
+  passo in cui si toccano le chiavi di `server.py` che le leggono.
+- **X-31** — la regola «non si scrive in `app[...]` a richiesta servita» e' violata in
+  `api/handlers_models.py` (`request.app["models_config"] = clean`, nel salvataggio della catena) e
+  in `api/handlers_settings.py` (`request.app["chat_settings"] = updated`). Il valore che cambia a
+  richiesta vive in un oggetto che `app` porta dall'avvio (con un metodo per aggiornarlo), non in
+  una riassegnazione della chiave. Si ripara quando la chiave diventa `web.AppKey`, nello stesso
+  commit.
+
 **Fuori da questa voce, per decisione:** `ha_client.py` (grande per la regola «un canale, una
 porta»), `type_vocabulary.py` (in gran parte dati); `tools.py`, `briefing.py`, `queries.py` si
 rivedono dopo; `agent/runner.py` si decide nel refactor degli agenti. Nessuna soglia di righe per

@@ -846,7 +846,7 @@ def entity_category_measure_rule(domain: str, category: str | None,
     current, battery, enum, timestamp -- e su quelle questa funzione ritorna
     `None`, correttamente).
 
-    `classe`/`unita'` vanno passati COSI' COME `queries._enrich_entity` li
+    `classe`/`unita'` vanno passati COSI' COME `render.render_entity` li
     ha gia' risolti (specchio vivo sopra il registro,
     `topology.live_first`): il registro delle entita' non manda ne' l'uno ne'
     l'altro (`topology.py`, il docstring di `live_mirror`), quindi una

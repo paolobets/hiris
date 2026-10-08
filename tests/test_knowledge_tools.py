@@ -746,7 +746,7 @@ async def test_il_piano_e_un_filtro_della_porta(dispatcher):
     di `query_house` -- rossa (sul piano che non c'e': 4 invece di 0)."""
     esito = await dispatcher.dispatch("search", {"piano": "Piano terra"})
     assert esito["trovate"] == 4
-    assert {v["area"] for v in esito["voci"]} == {"Cucina", "Sala"}
+    assert {v["area"]["nome"] for v in esito["voci"]} == {"Cucina", "Sala"}
     altrove = await dispatcher.dispatch("search", {"piano": "Mansarda"})
     assert altrove["trovate"] == 0
 

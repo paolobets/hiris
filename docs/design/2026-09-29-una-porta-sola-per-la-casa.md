@@ -128,6 +128,12 @@ descrizione lo dice per ciascuno.
 **Non** entrano: le **etichette** (0 entità le usano in questa casa: peso nella descrizione senza
 uso), e «cosa tocca un'automazione» (già servito da `related` e dal dettaglio completo).
 
+> **Cambiato dopo la costruzione: la durata è un numero di ore (08/10/2026, Tappa 9, B-33).**
+> `fermo_da` e `cambiato_da` sono diventati `fermo_da_ore` e `cambiato_da_ore`: un numero, con
+> l'unità nel nome, come `ore` di `history` (decisione D5 della Tappa 9). La grammatica `30d`/`2h`
+> era la terza delle tre del prodotto, e la validava solo `house_query`: ora tipo e minimo li
+> rifiuta lo schema in `dispatch`. Nessun alias del nome vecchio.
+
 > **Cambiato durante la costruzione: un filtro che non vale si dice, non si lascia cadere
 > (29-30/09/2026).** La spec diceva «solo entità» per `classe`, `sopra`, `sotto` e non diceva cosa
 > succede a chi li usa altrove; ma §2.4 vieta il filtro taciuto. Con un genere di comportamento

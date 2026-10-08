@@ -31,7 +31,8 @@ omogeneo passerebbe anche con la frase mai implementata.
 import pytest
 
 from hiris.app.home_space.house import House
-from hiris.app.home_space.queries import group_membership, view
+from hiris.app.home_space.queries import view
+from hiris.app.home_space.render import group_membership
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.home_space.type_vocabulary import (
     capability_attributes,

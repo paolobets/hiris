@@ -385,7 +385,7 @@ def test_the_three_dead_keys_have_no_callers_left():
       `climate.set_hvac_mode` (e di `climate.set_temperature`), che esiste
       eccome: e' proprio perche' la modalita' e' lo `state` che si cambia con
       un servizio invece che scrivendo un attributo;
-    - `queries.py`, `"color_temp"` -- il tipo di SELETTORE che Home Assistant
+    - `render.py`, `"color_temp"` -- il tipo di SELETTORE che Home Assistant
       pubblica per `light.turn_on.color_temp_kelvin`
       (`selector: {color_temp: {unit: kelvin, min: 2000, max: 6500}}`), non
       l'attributo morto omonimo.
@@ -401,7 +401,7 @@ def test_the_three_dead_keys_have_no_callers_left():
     # (file, parola) -> quante volte, e perche' non e' l'attributo morto.
     omonimie = {
         ("type_vocabulary.py", "hvac_mode"): 1,   # parametro di climate.set_hvac_mode
-        ("queries.py", "color_temp"): 1,          # tipo di selettore di Home Assistant
+        ("render.py", "color_temp"): 1,           # tipo di selettore di Home Assistant
     }
     found = []
     conteggio = {}

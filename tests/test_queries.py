@@ -193,15 +193,20 @@ def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
     non usciva: lo stesso ricordo aveva DUE FORME a seconda della porta. Il
     modello ne imparava una dentro `view("area", ...)`, poi leggeva
     `r["forza"]` sul dettaglio -> assente, e riferiva «di questo ricordo non
-    so la forza» su un ricordo che ce l'ha."""
-    dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, _RICORDI, "ricordo", 1)
+    so la forza» su un ricordo che ce l'ha.
+
+    Il ricordo porta `detto_il`, come ogni riga dell'archivio (colonna
+    `NOT NULL`): dalla resa unica (Tappa 9, F3) una chiave assente nella riga
+    resta assente, e la prova chiede che quella presente esca."""
+    ricordi = [{**_RICORDI[0], "detto_il": "2026-10-01T06:00:00+00:00"}]
+    dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, ricordi, "ricordo", 1)
     assert dettaglio["esiste"] is True
     assert dettaglio["testo"] == _RICORDI[0]["testo"]
     assert dettaglio["forza"] == "preferenza"
     assert "interpretazione" not in dettaglio, "il livello annidato non deve tornare"
     # `detto_il` c'era in `fetch` e spariva qui: alla domanda «quando te
     # l'ho detto?» la risposta dipendeva da quale strumento il modello sceglie.
-    assert "detto_il" in dettaglio
+    assert dettaglio["detto_il"] == "2026-10-01T06:00:00+00:00"
 
 
 def test_guarda_un_ricordo_porta_said_by_come_fetch():
@@ -515,7 +520,9 @@ def test_guarda_un_area_conta_le_entita_disabilitate_invece_di_elencarle():
     per_id = {e["id"]: e for e in dettaglio["entita"]}
     assert "light.cucina_morta" not in per_id
     assert dettaglio["entita_disabilitate"] == 1
-    assert per_id["light.cucina_1"]["disabilitata"] is False
+    # M-50 (Tappa 9, F2): la riga annidata non porta piu' `disabilitata: false`;
+    # una visibile non ha `fuori`.
+    assert "fuori" not in per_id["light.cucina_1"]
 
 
 def test_l_entita_orfana_finisce_nella_pseudo_area_giusta():
@@ -765,7 +772,7 @@ def test_guarda_un_entita_nascosta_resta_raggiungibile_da_sola():
     dettaglio = view(House(_casa_sala_da_pranzo(), Mirror(names=_ripiego_sala_da_pranzo())), [], [],
                      "entita", "light.lampadario_fake")
     assert dettaglio["esiste"] is True
-    assert dettaglio["nascosta"] is True
+    assert dettaglio["fuori"]["classe"] == "nascosta"
     assert dettaglio["nome"] == "Lampadario fake"
 
 
@@ -863,7 +870,7 @@ def test_le_entita_di_un_integrazione_passano_dalla_PORTA_UNICA():
     """Audit delle fondamenta, rilievo 3 (seconda sede) -- la stessa entita'
     con due forme a seconda della porta.
 
-    `_enrich_entity` si dichiara «LA PORTA UNICA per tutto cio' che si
+    `render_entity` si dichiara «LA PORTA UNICA per tutto cio' che si
     aggiunge a un'entita'», e `_view_integration` costruiva le sue righe
     FUORI. Misurato dal vivo l'08/09/2026: `view(integrazione, hydrawise)`
     elencava 24 entita' mute con `{id, nome, stato, da_quando}` -- senza
@@ -893,10 +900,10 @@ def test_le_entita_di_un_integrazione_passano_dalla_PORTA_UNICA():
     assert riga["nome"] == "Aiuola nord", (
         "otto valvole senza nome nel registro si chiamavano tutte "
         "«Irrigazione»: il nome vero e' nello specchio")
-    assert riga["piattaforma"] == "hydrawise", (
+    assert riga["integrazione"]["id"] == "hydrawise", (
         "«di chi e' questa entita'» usciva dalle altre tre porte e non da qui")
-    assert riga["disabilitata"] is False
-    assert {"id", "nome", "stato", "da_quando"} < set(riga), (
+    assert "fuori" not in riga
+    assert {"id", "nome", "stato", "ultimo_cambio"} < set(riga), (
         "le quattro chiavi di prima restano tutte: questa porta non perde "
         "niente, ne guadagna")
 
@@ -904,7 +911,7 @@ def test_le_entita_di_un_integrazione_passano_dalla_PORTA_UNICA():
 def test_un_entita_muta_ha_la_STESSA_forma_da_view_integrazione_e_da_view_entita():
     """La consistenza detta come proprieta', non come elenco di campi.
 
-    Un campo aggiunto domani a `_enrich_entity` uscirebbe da tre porte su
+    Un campo aggiunto domani a `render_entity` uscirebbe da tre porte su
     quattro senza che niente diventasse rosso: e' esattamente com'e' nato
     questo rilievo, e prima di lui il rilievo I1."""
     house = {"entita": [
@@ -925,7 +932,7 @@ def test_un_entita_muta_ha_la_STESSA_forma_da_view_integrazione_e_da_view_entita
 
     riga = from_integration["entita"][0]
     comuni = set(riga) & set(from_entity)
-    assert "nome" in comuni and "piattaforma" in comuni
+    assert "nome" in comuni and "integrazione" in comuni
     for chiave in comuni:
         assert riga[chiave] == from_entity[chiave], (
             f"«{chiave}» vale {riga[chiave]!r} da `integrazione` e "
@@ -1458,7 +1465,7 @@ def test_a_diagnostic_with_only_a_live_class_stays_silent():
 
     Mutazione: leggere `entity.get("classe")` (il registro, sempre vuoto
     su questa casa) invece di `detail.get("classe")` (lo specchio vivo,
-    gia' risolto da `_enrich_entity`) -- il test torna rosso su
+    gia' risolto da `render_entity`) -- il test torna rosso su
     `assert "regola" not in detail`."""
     detail = view(House(_house_with_sensor(),
                         Mirror(state={"sensor.persons": "80"},
@@ -1543,8 +1550,8 @@ def test_area_listing_a_diagnostic_sensor_does_not_repeat_the_rule():
     dispositivo "Home Assistant" ne ha 53, ~18 KB di testo identico in
     un'unica vista). Il capitolato stesso dice "la vista di UN'entita'".
 
-    Mutazione: spostare l'emissione di `regola` dentro `_enrich_entity`
-    (la porta condivisa da area/dispositivo/entita') -- il test torna rosso
+    Mutazione: spostare l'emissione di `regola` alla media di `render_entity`
+    (la profondita' delle righe di area e dispositivo) -- il test torna rosso
     su `assert "regola" not in entity`."""
     detail = view(House(_house_with_sensor(), Mirror(state={"sensor.persons": "3"})), [], [],
                   "area", "sala")
@@ -1563,7 +1570,7 @@ def test_un_limite_corretto_dalla_casa_arriva_ai_comandi():
     `type_vocabulary.parameter_limits`», uscita col Task 8.
     """
     from hiris.app.home_space import type_vocabulary as tv
-    from hiris.app.home_space.queries import _limits_of_entity
+    from hiris.app.home_space.render import _limits_of_entity
     from hiris.app.home_space.type_judgments import TypeJudgments
     righe = tuple(r for r in tv.judgment_seed_rows()
                   if not (r[1] == "light" and r[2] == "limiti_parametri"))

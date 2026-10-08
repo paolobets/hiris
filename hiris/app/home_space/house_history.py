@@ -48,7 +48,6 @@ from .historian import (
 )
 from .house_query import (
     HouseFilters,
-    depth_for,
     envelope,
     page_rows,
     parse_filters,
@@ -58,6 +57,7 @@ from .privacy import MOVING_DOMAINS, redact_nested, redact_state
 from .queries import ROWS_MAX
 from .redaction import seal_free_text
 from .reference import normalize
+from .render import depth_for
 from .topology import live_name
 
 if TYPE_CHECKING:

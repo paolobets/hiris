@@ -50,7 +50,7 @@ def test_search_dichiara_tutti_i_filtri_e_nessuno_e_obbligatorio():
     schema = search["input_schema"]
     assert set(schema["properties"]) == {
         "nome", "genere", "riferimento", "tipo", "stato", "classe", "area",
-        "piano", "integrazione", "fermo_da", "cambiato_da", "sopra", "sotto",
+        "piano", "integrazione", "fermo_da_ore", "cambiato_da_ore", "sopra", "sotto",
         "in_esecuzione", "includi_nascoste", "includi_servizio", "ordina",
         "limite", "salta"}
     assert not schema.get("required")
@@ -114,10 +114,55 @@ async def test_un_ricordo_si_apre_col_suo_numero_anche_scritto_come_testo(
 @pytest.mark.asyncio
 async def test_un_filtro_sbagliato_torna_l_errore_della_porta(dispatcher):
     """`parse_filters` dice cosa non va: `_search` lo restituisce com'e'.
+    Si chiama il gestore senza `dispatch`: dal 08/10/2026 lo schema ferma
+    prima ogni valore fuori tipo o fuori intervallo (B-33), e `parse_filters`
+    resta la guardia di chi lo chiama da fuori (la storia).
     Mutazione ESEGUITA: passare a `query_house` anche un esito d'errore --
     rossa (AttributeError, dichiarato come guasto dello strumento)."""
-    r = await dispatcher.dispatch("search", {"fermo_da": "tre giorni"})
-    assert r["errore"].startswith("fermo_da vuole una durata")
+    r = await dispatcher._search({"limite": 51}, masked=False)
+    assert r["errore"].startswith("limite va da 0 a")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("argomento", ["fermo_da_ore", "cambiato_da_ore"])
+async def test_una_durata_e_un_numero_di_ore_e_la_stringa_la_rifiuta_lo_schema(
+        dispatcher, argomento):
+    """B-33, D5 della Tappa 9: una grammatica sola della durata, un numero
+    con l'unita' nel nome del parametro, come `ore` di `history`. La
+    stringa `"1h"` (la grammatica di `house_query._DURATION`, uscita) la
+    rifiuta lo schema in `dispatch`, prima del gestore.
+
+    Rossa prima del codice: «non conosco «fermo_da_ore»» -- il parametro non
+    esisteva, e la frase non dice «vuole un numero».
+    Mutazione ESEGUITA l'08/10/2026: `"type": "string"` nello schema di
+    `fermo_da_ore` -- rossa: la stringa passava fino a `parse_filters` e
+    l'errore era «lo strumento «search» ha incontrato un problema: could not
+    convert string to float: '1h'», un guasto invece di un rifiuto;
+    ripristinato, verificato col diff.
+    """
+    r = await dispatcher.dispatch("search", {argomento: "1h"})
+    assert f"«{argomento}» vuole un numero" in r["errore"]
+
+
+@pytest.mark.asyncio
+async def test_i_nomi_vecchi_della_durata_non_esistono_piu(dispatcher):
+    """Un comportamento solo: nessun alias di `fermo_da`/`cambiato_da`.
+    Rossa prima del codice: `"30d"` era accettato, nessun `errore`."""
+    r = await dispatcher.dispatch("search", {"fermo_da": "30d", "cambiato_da": "1h"})
+    assert "non conosco «fermo_da», «cambiato_da»" in r["errore"]
+
+
+@pytest.mark.asyncio
+async def test_una_durata_negativa_la_rifiuta_lo_schema(dispatcher):
+    """Il `minimum` dello schema vale davvero: `_wrong_value` lo legge
+    (prima leggeva solo `type` ed `enum`). La vecchia grammatica rifiutava
+    il segno meno; il numero non deve accettarlo.
+    Mutazione ESEGUITA l'08/10/2026: tolto il controllo di `minimum` in
+    `_wrong_value` -- rossa, `KeyError: 'errore'` (-1 ore passava, e il
+    filtro trovava tutto); ripristinato, verificato col diff."""
+    r = await dispatcher.dispatch("search", {"genere": "automazione",
+                                             "fermo_da_ore": -1})
+    assert "«fermo_da_ore» vale almeno 0" in r["errore"]
 
 
 @pytest.mark.asyncio

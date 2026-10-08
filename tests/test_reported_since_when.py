@@ -9,13 +9,8 @@ La fondamenta 3 e' il cuore di questo file: se lo stato esce da un punto di
 risposte diverse a seconda di come ci si arriva. I punti sono quattro, e il
 test che li CONTA e' quello che impedisce al sesto di nascere senza.
 """
-import re
-from pathlib import Path
-
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.proxy.entity_cache import _to_minimal
-
-_SORGENTE_DOMANDE = Path(__file__).parent.parent / "hiris" / "app" / "home_space" / "queries.py"
 
 
 def test_la_proiezione_conserva_l_istante_del_cambio():
@@ -45,34 +40,36 @@ def test_lo_specchio_porta_l_istante_accanto_allo_stato():
 def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
     """La fondamenta 3, resa impossibile da dimenticare.
 
-    Un'asserzione che si accontentasse di vedere «da_quando» da qualche parte
-    nel file non difenderebbe niente: qui si LEGA ogni occorrenza di
-    `"stato": mirror.state.get(` alla presenza del suo gemello nelle righe
-    immediatamente seguenti.
+    Fino all'08/10/2026 lo stato si scriveva in tre punti di `queries.py`, e
+    questa prova legava con una regex ogni `"stato": mirror.state.get(` al
+    suo `da_quando` nelle righe vicine. Dalla Tappa 9 (F2) lo stato di
+    un'entita' lo scrive una funzione sola, `render.render_entity`, e
+    l'istante si chiama `ultimo_cambio` (D1 della Tappa 4): la prova
+    guarda le PORTE, non il testo -- la scheda di un'entita', le righe di
+    un'area e le voci di `search`, a ogni profondita'.
+    Mutazione ESEGUITA: `render_entity` senza `ultimo_cambio` -- rossa."""
+    from hiris.app.home_space.house import House
+    from hiris.app.home_space.house_query import parse_filters, query_house
+    from hiris.app.home_space.queries import view
+    from hiris.app.home_space.render import DEPTHS, render_entity
+    from hiris.app.home_space.topology import Mirror
 
-    Erano quattro occorrenze TESTUALI il 24/08/2026 (una per lista di
-    entita' che `_view_area` costruiva a mano); dalla fetta "nascoste
-    fuori dagli elenchi" (2026-08-25) sono TRE, non perche' un punto abbia
-    perso l'istante, ma perche' `_entity_rows()` ha unito in una porta sola
-    cio' che prima erano due list comprehension duplicate dentro
-    `_view_area` (fondamenta: nessun doppione) -- e quella porta sola serve
-    oggi QUATTRO punti logici (`entita`, `entita_disabilitate` di un'area,
-    `entita_nascoste` di un'area e di un dispositivo), non uno. Il conteggio
-    resta una guardia contro una regex che non trova NIENTE, non una
-    proiezione 1:1 sui punti logici: la difesa vera e' il ciclo qui sotto.
-
-    Dal 04/10/2026 (B-41) lo stato si legge dallo specchio in una forma,
-    `mirror.state.get(`: la regex segue il nome nuovo.
-    """
-    sorgente = _SORGENTE_DOMANDE.read_text(encoding="utf-8")
-    righe = sorgente.splitlines()
-    punti = [i for i, r in enumerate(righe) if re.search(r'"stato":\s*mirror\.state\.get\(', r)]
-    # Tre, verificati col grep sul sorgente vero al 25/08/2026 (righe 447 --
-    # `_entity_rows`, condivisa --, 565 -- `_view_entity` --, 636 --
-    # `_view_device` --). Il conteggio serve solo a impedire che una
-    # regex che non trova NIENTE passi per verde: la difesa vera e' il ciclo
-    # qui sotto, che lega ogni occorrenza al suo gemello.
-    assert len(punti) >= 3, "i punti che emettono uno stato sono cambiati: rileggi"
-    for i in punti:
-        vicinato = "\n".join(righe[max(0, i - 2):i + 3])
-        assert "da_quando" in vicinato, f"riga {i + 1}: stato senza istante"
+    casa = {"aree": [{"id": "camera", "nome": "Camera"}], "piani": [],
+            "dispositivi": [], "entita": [
+                {"id": "sensor.camera", "nome": "Camera", "area_id": "camera",
+                 "dispositivo_id": None}]}
+    specchio = Mirror(state={"sensor.camera": "22.4"},
+                      since={"sensor.camera": "2026-08-24T11:00:00+00:00"})
+    house = House(casa, specchio)
+    righe = [render_entity(house, "sensor.camera", d) for d in DEPTHS]
+    righe.append(view(house, [], [], "entita", "sensor.camera"))
+    righe.extend(view(house, [], [], "area", "camera")["entita"])
+    # Una voce sola apre la scheda (`render.depth_for`): `detail` la chiede a `view`.
+    voci = query_house(house, [], parse_filters({"tipo": "sensor"}),
+                       detail=lambda genere, rif: view(house, [], [], genere, rif),
+                       now=0.0)["voci"]
+    righe.extend(voci)
+    assert len(righe) == 6
+    for riga in righe:
+        assert riga["stato"] == "22.4"
+        assert riga["ultimo_cambio"].startswith("2026-08-24T11:00:00"), riga

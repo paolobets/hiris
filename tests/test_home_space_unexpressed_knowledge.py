@@ -72,7 +72,8 @@ def test_guarda_un_entita_dice_da_quale_integrazione_viene(casa):
     """«Questa luce e' una Hue o un template?» e' una domanda che si fa
     davvero -- per capire perche' non risponde, o cosa si puo' chiederle."""
     d = view(House(casa, Mirror()), [], [], "entita", "sensor.frigo_temp")
-    assert d["piattaforma"] == "zwave_js"
+    # Tappa 9, F2 (C-62): `integrazione` `{id, nome}` al posto di `piattaforma`.
+    assert d["integrazione"]["id"] == "zwave_js"
 
 
 def test_senza_piattaforma_la_chiave_non_compare(casa):
@@ -293,11 +294,11 @@ def test_guarda_dice_se_un_entita_e_nascosta():
         {"id": "sensor.b", "nome": "B"},
     ]}
     a = view(House(casa, Mirror()), [], [], "entita", "sensor.a")
-    assert a["nascosta"] is True
-    assert a["categoria"] == "diagnostic"
+    # Tappa 9, F2 (D4 della Tappa 4): un campo solo, `fuori`, con la prima
+    # classe nell'ordine di precedenza (`topology.visibility_classes`).
+    assert a["fuori"] == {"classe": "nascosta", "causa": None}
     b = view(House(casa, Mirror()), [], [], "entita", "sensor.b")
-    assert "nascosta" not in b, "false su ogni entita' sarebbe rumore in ogni risposta"
-    assert "categoria" not in b
+    assert "fuori" not in b, "un fuori vuoto su ogni entita' sarebbe rumore in ogni risposta"
 
 
 def test_guarda_un_dispositivo_dice_marca_e_modello():
