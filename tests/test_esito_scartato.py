@@ -1,5 +1,8 @@
-"""L'esito «rifiutata» nel registro dei turni, e il freno che lo conta (D10
-del piano degli attori, Task 3.6 Passo 3, approvata il 06/10/2026).
+"""L'esito «scartato» nel registro dei turni, e il freno che lo conta (D10
+del piano degli attori, Task 3.6 Passo 3, approvata il 06/10/2026). Fino
+all'08/10/2026 la parola era «rifiutata», e il file si chiamava
+`test_esito_rifiutata.py`: la Tappa 8 (D4, `usage` alla 6) le ha dato la
+parola che non dice anche il «no» dell'utente (rilievo N100-1).
 
 Fino a qui una risposta che il mestiere rifiutava -- un JSON leggibile con
 dentro un id che non c'e' -- restava «riuscito» nel registro: il freno della
@@ -182,7 +185,7 @@ class _ProcessoFinto:
 
 def test_sul_ponte_la_decisione_porta_la_riga_del_suo_turno(monkeypatch):
     """Chi raccoglie la risposta del ponte, minuti dopo, deve poter scrivere
-    «rifiutata» sulla riga giusta: il runner gliela consegna nella decisione.
+    «scartato» sulla riga giusta: il runner gliela consegna nella decisione.
 
     Mutazione ESEGUITA (06/10/2026): `_measure_turn` che non torna l'id --
     rossa (`turn_id` assente)."""

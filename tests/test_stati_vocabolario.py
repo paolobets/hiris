@@ -300,7 +300,8 @@ def test_la_migrazione_7_delle_costruzioni(tmp_path):
     altra colonna intatte. La seconda apertura non cambia niente.
 
     Mutazioni ESEGUITE (08/10/2026): senza l'`UPDATE` delle parole -- rossa
-    su `rifiutata`; senza la ricostruzione -- rossa sulle colonne."""
+    su `rifiutata`; senza la ricostruzione -- rossa sulle colonne; senza
+    `stato=?` nella pulizia dei motivi -- rossa su `guasto2` (N100-1)."""
     path = str(tmp_path / "costruzioni.db")
     conn = sqlite3.connect(path)
     conn.executescript(_V6)
@@ -309,6 +310,8 @@ def test_la_migrazione_7_delle_costruzioni(tmp_path):
     _v6_row(conn, "no1", "disdetta", "rifiutata dalla pagina")
     _v6_row(conn, "no2", "disdetta", "rifiutata dal proprietario")
     _v6_row(conn, "no3", "disdetta", "un altro testo")
+    # Uno dei due testi su una riga che NON e' una disdetta: resta (N100-1).
+    _v6_row(conn, "guasto2", "fallita", "rifiutata dalla pagina")
     _v6_row(conn, "fatta", "applicata")
     _v6_row(conn, "aspetta", "in_attesa", ts=ADESSO + 9)
     conn.execute("INSERT INTO avvisi VALUES('aspetta', ?)", (ADESSO,))
@@ -323,9 +326,10 @@ def test_la_migrazione_7_delle_costruzioni(tmp_path):
         store.close()
     assert {k: r["stato"] for k, r in rows.items()} == {
         "guasto": "fallita", "dubbio": "incerta", "no1": "disdetta", "no2": "disdetta",
-        "no3": "disdetta", "fatta": "applicata", "aspetta": "in_attesa"}
-    assert [rows[k]["motivo"] for k in ("dubbio", "no1", "no2", "no3")] == [
-        "non so", None, None, "un altro testo"]
+        "no3": "disdetta", "guasto2": "fallita", "fatta": "applicata",
+        "aspetta": "in_attesa"}
+    assert [rows[k]["motivo"] for k in ("dubbio", "no1", "no2", "no3", "guasto2")] == [
+        "non so", None, None, "un altro testo", "rifiutata dalla pagina"]
     assert rows["fatta"]["thread"] == PAOLO and rows["fatta"]["livello"] == "alto"
     assert alerted == [], "l'avviso gia' arrivato non si ripete"
     conn = sqlite3.connect(path)
@@ -340,6 +344,57 @@ def test_la_migrazione_7_delle_costruzioni(tmp_path):
     first = _dump(path)
     ConstructionStore(path).close()
     assert _dump(path) == first
+
+
+def _user_version(path: str) -> int:
+    conn = sqlite3.connect(path)
+    try:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_la_migrazione_7_delle_costruzioni_e_tutto_o_niente(tmp_path, monkeypatch):
+    """Un guasto dopo il `RENAME`: l'archivio resta alla 6 con le sue righe
+    in `costruzioni`, e senza guasto la migrazione si rifa' fino alla 7
+    (rilievo G100-1, giro 100; lo stesso di G94-1 sulla 15 delle
+    osservazioni). Il guasto e' l'`INSERT ... SELECT` che chiede una colonna
+    che `costruzioni_v6` non ha: solleva dopo il `RENAME` e il `CREATE`.
+
+    Mutazioni ESEGUITE (08/10/2026): senza il `rollback` -- rossa (la
+    ricostruzione resta a meta' in una transazione aperta, e l'archivio e'
+    bloccato: «database is locked»); senza il `BEGIN` e
+    con la ricostruzione spostata prima degli `UPDATE` -- rossa, il DDL va in
+    autocommit. Senza il solo `BEGIN` resta verde, ed e' giusto: l'`UPDATE`
+    in testa apre gia' la transazione (il modulo `sqlite3` la apre prima di
+    ogni DML), ed e' questa prova a fermare chi spostasse l'ordine."""
+    from hiris.app.action.construction import revisions as modulo
+
+    path = str(tmp_path / "costruzioni.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(_V6)
+    _v6_row(conn, "guasto", "rifiutata")
+    _v6_row(conn, "fatta", "applicata")
+    conn.execute("INSERT INTO avvisi VALUES('fatta', ?)", (ADESSO,))
+    conn.commit()
+    conn.close()
+    before = _dump(path)
+
+    monkeypatch.setattr(modulo, "_CONSTRUCTION_COLUMNS",
+                        (*modulo._CONSTRUCTION_COLUMNS, "colonna_fantasma"))
+    with pytest.raises(sqlite3.OperationalError, match="colonna_fantasma"):
+        ConstructionStore(path)
+    assert _dump(path) == before
+    assert _user_version(path) == 6
+
+    monkeypatch.undo()
+    store = ConstructionStore(path)
+    try:
+        states_by_id = {r["id"]: r["stato"] for r in store.list(now=ADESSO + 10)}
+    finally:
+        store.close()
+    assert states_by_id == {"guasto": "fallita", "fatta": "applicata"}
+    assert _user_version(path) == 7
 
 
 def test_la_migrazione_6_dei_consumi_porta_l_esito_scartato(tmp_path):
