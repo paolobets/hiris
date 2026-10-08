@@ -623,7 +623,7 @@ voce non prevedeva: la memoria (i ricordi) **non si è divisa** — resta di HIR
 ricordo sa ora chi l'ha detto, e il modello sa chi gli sta parlando. Ciò che questa fetta lascia
 fuori è dichiarato sotto, voce per voce.
 
-### `chatbots.json` resta finché non lo guardi — aperta il 24/09/2026
+### ~~`chatbots.json` resta finché non lo guardi~~ — **CHIUSA** l'08/10/2026 (Tappa 8, D6)
 
 `origine: decisione del proprietario, 24/09/2026`
 
@@ -633,6 +633,10 @@ mesi che non viene migrato. Si guarda cosa c'è dentro, poi si decide.
 
 Il criterio scritto con la fetta è: **un archivio si cancella quando è morto E quando qualcuno ha
 deciso** — non per la sola prima metà.
+
+**Chiusa l'08/10/2026**: lo Sprint ha mostrato il file al proprietario (D6 della Tappa 8, «prima si
+guarda, poi si cancella»), e `chatbots.json` è entrato in `conservazione.RESIDUI_DISMESSI` con
+`agents.json`; l'annuncio d'avvio è uscito.
 
 ### ~~La CLI del ponte sale alla 2.1.278 nel prossimo rilascio~~ — **USCITA** con la v3.66.0
 

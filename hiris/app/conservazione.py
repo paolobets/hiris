@@ -23,9 +23,8 @@ schiantati e dimentica le risposte consegnate dopo un quarto d'ora. Gira
 coda non accoda niente, e a ponte spento un ripiego schiantato teneva la
 conversazione bloccata sul 409.
 
-**I residui** (`RESIDUI_DISMESSI`, `cancella_residui`, `decidi_vault`,
-`announce_chatbots_json`): gli archivi dismessi che l'avvio cancella, e
-l'annuncio di `chatbots.json`, che invece resta.
+**I residui** (`RESIDUI_DISMESSI`, `cancella_residui`, `decidi_vault`): gli
+archivi dismessi che l'avvio cancella.
 
 Spostati da `server.py` l'08/10/2026; `server.py` li iscrive allo
 schedulatore, o li chiama all'avvio, e basta.
@@ -118,17 +117,15 @@ async def nightly(app) -> None:
 #: sono tabelle di nessun archivio vivo, quindi non avevano ne' una
 #: dichiarazione ne' un cancellatore.
 #:
-#: **`chatbots.json` NON e' in questo elenco**, per decisione del
-#: proprietario: contiene il prompt personalizzato che aveva salvato sul bot
-#: di default, e va guardato prima. Un residuo si cancella quando e' morto
-#: **e** quando qualcuno ha deciso -- non per la sola prima meta'. Lo dice
-#: all'avvio `announce_chatbots_json`, e la Tappa 8 (D6) lo lascia com'e'
-#: finche' il proprietario non lo ha guardato.
-#:
 #: Entrati l'08/10/2026 (Tappa 8, Task 7, D6):
-#: - `agents.json`, il predecessore di `chatbots.json` (prima della rinomina
-#:   SP-4): il prompt da guardare sta nel successore, e di lui nessun codice
-#:   legge niente dalla fetta E4;
+#: - `chatbots.json`: conteneva il prompt personalizzato del bot di default, e
+#:   per decisione del proprietario si cancellava solo dopo che lo aveva
+#:   guardato (D6, «prima si guarda, poi si cancella»). Lo Sprint gliel'ha
+#:   mostrato l'08/10/2026, e lui ha risposto «se non serve puo' essere
+#:   eliminato»: nessun codice lo legge ne' lo scrive dalla fetta E4, quindi
+#:   esce con gli altri;
+#: - `agents.json`, il suo predecessore (prima della rinomina SP-4), che
+#:   nessun codice legge dalla fetta E4;
 #: - `casa.db` col suo diario (`-wal`) e la sua memoria condivisa (`-shm`):
 #:   la copia impoverita dei registri di Home Assistant che l'anagrafe dal
 #:   vivo ha sostituito, e che nessun codice apre piu' (M-40). Un `-wal` senza
@@ -143,6 +140,7 @@ RESIDUI_DISMESSI = (
     "casa.db",
     "casa.db-shm",
     "casa.db-wal",
+    "chatbots.json",
     "dashboard_backups.json",
     "ha_health.json",
     "history.db",
@@ -252,30 +250,6 @@ def decidi_vault(data_dir: str) -> None:
             "leggeva piu' da quando brain/privacy.py e' uscito, e nessuna "
             "interfaccia lo svuotava: restava solo a farsi copiare nei backup.",
             righe)
-
-
-def announce_chatbots_json(data_dir: str) -> None:
-    """L'annuncio di `chatbots.json` all'avvio (uscito da `server.py` nella
-    Tappa 8, Task 7).
-
-    Un `chatbots.json` di un'installazione precedente non ha piu' nessun
-    lettore ne' scrittore: l'entita' Chatbot e la sua migrazione sono uscite
-    con la fetta E4. Il prompt personalizzato eventualmente salvato sul bot di
-    default NON viene migrato nelle impostazioni della chat, e il file **resta
-    su disco finche' il proprietario non lo ha guardato** (D6 della Tappa 8):
-    per lui e solo per lui la frase «resta, intatto» e' vera. Il predecessore
-    `agents.json` e' invece un residuo, e lo cancella `cancella_residui`.
-    """
-    if os.path.exists(os.path.join(data_dir, "chatbots.json")):
-        logger.info(
-            "chatbots.json presente in %s da un'installazione precedente: da "
-            "fetta E4 Task 4 nessun codice lo legge ne' lo scrive piu' "
-            "(l'entita' Chatbot e' uscita, sostituita dalle impostazioni della "
-            "chat). Il prompt personalizzato eventualmente salvato sul bot di "
-            "default non viene migrato -- si riparte con i default nel codice. "
-            "Il file resta su disco, intatto, finche' non lo guardi.",
-            data_dir,
-        )
 
 
 # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal

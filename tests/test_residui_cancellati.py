@@ -20,8 +20,9 @@ soltanto `claude`; il C-6 ha dichiarato la conservazione delle sette tabelle
 vive, e questi file non sono tabelle di nessun archivio vivo: non avevano né
 una dichiarazione né un cancellatore.
 
-**`chatbots.json` resta**, per decisione del proprietario: contiene il prompt
-personalizzato che aveva salvato sul bot di default, e va guardato prima.
+`chatbots.json` e' restato per decisione del proprietario finche' non lo ha
+guardato (D6 della Tappa 8): conteneva il prompt personalizzato del bot di
+default. Lo Sprint gliel'ha mostrato l'08/10/2026, ed e' entrato fra i residui.
 """
 import json
 import pathlib
@@ -48,19 +49,19 @@ def test_i_residui_dichiarati_se_ne_VANNO(tmp_path):
         "un residuo dichiarato è sopravvissuto")
 
 
-def test_chatbots_json_RESTA(tmp_path):
-    """Decisione del proprietario: contiene il prompt personalizzato salvato
-    sul bot di default, e va guardato prima di cancellarlo. La regola non è
-    «cancella tutto ciò che è morto» — è «cancella ciò che è morto **e** su
-    cui è stato deciso».
+def test_chatbots_json_si_cancella_DOPO_che_il_proprietario_lo_ha_guardato(tmp_path):
+    """**Rovesciata l'08/10/2026.** Fino ad allora pretendeva che
+    `chatbots.json` restasse: la regola non e' «cancella tutto cio' che e'
+    morto», e' «cancella cio' che e' morto **e** su cui si e' deciso». Il
+    proprietario lo ha guardato l'08/10/2026 (D6), e adesso e' deciso.
 
-    Mutazione ESEGUITA: metterlo nell'elenco -- rossa."""
-    resta = _fai(tmp_path, "chatbots.json", json.dumps({"prompt": "sei tu"}))
+    Mutazione ESEGUITA: toglierlo dall'elenco -- rossa."""
+    file = _fai(tmp_path, "chatbots.json", json.dumps({"prompt": "sei tu"}))
 
     cancella_residui(str(tmp_path))
 
-    assert resta.exists(), "cancellato un file che il proprietario tiene"
-    assert "chatbots.json" not in RESIDUI_DISMESSI
+    assert not file.exists()
+    assert "chatbots.json" in RESIDUI_DISMESSI
 
 
 def test_non_si_tocca_NIENTE_che_non_sia_dichiarato(tmp_path):
