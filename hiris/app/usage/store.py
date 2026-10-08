@@ -22,7 +22,13 @@ from ..home_space.privacy import POSITION_ATTRIBUTES
 from ..providers import CLAUDE, OLLAMA, OPENAI, OPENROUTER, SUBSCRIPTION, get, ids
 from ..proxy._sanitize import CUT, MASK, truncate_with_marker
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
-from ..storage import add_missing_columns, connect, init_schema
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+)
 from .vocabulary import piu_debole
 
 logger = logging.getLogger(__name__)
@@ -176,14 +182,54 @@ CREATE TABLE IF NOT EXISTS payload (
 );
 """
 
-#: **Per quanto si tengono i due registri della misura.** Trenta giorni, e si
-#: dichiara: un registro di misura che cresce per sempre e' esattamente il
-#: difetto che il reperto C-6 ha chiuso il 23/09/2026 -- ogni archivio dice
-#: per quanto tiene. E' il SOLO contenuto di questo file che scade: i
-#: secchielli al giorno sono minuscoli (meno di duemila righe l'anno) e
-#: restano per sempre, con la loro ragione scritta in cima al modulo. Questi
-#: no: un turno puo' scrivere fino a cinquanta righe di `payload`.
-TURNS_RETENTION_S = 30 * 86400
+#: I giorni dei due registri della misura: una costante perche' li dichiarano
+#: tutte e due le tabelle, il turno e i suoi giri, che scadono INSIEME.
+_MEASURE_DAYS = 30
+
+#: **Per quanto tiene ogni tabella di questo archivio**, nella forma di ogni
+#: archivio (`storage.Retention`).
+#:
+#: I due registri della misura scadono, e si dichiara: un registro di misura
+#: che cresce per sempre e' esattamente il difetto che il reperto C-6 ha
+#: chiuso il 23/09/2026. Sono il SOLO contenuto di questo file che scade: un
+#: turno puo' scrivere fino a cinquanta righe di `payload`. **I due scadono
+#: insieme, e il carico non sopravvive al suo turno**: righe di `payload`
+#: orfane non rispondono a nessuna domanda -- la specie del turno e' cio' che
+#: distingue «l'analista spende cosi'» da «la chat spende cosi'». Per questo
+#: `payload` sta PRIMA di `turn`: la sua cancellazione chiede i turni scaduti,
+#: e dopo non ci sarebbero piu'.
+#:
+#: Fino alla Tappa 8 (D5) i due DELETE giravano a ogni turno (`log_turn`);
+#: adesso nel lavoro notturno (`conservazione.nightly`).
+CONSERVAZIONE: Retention = {
+    "consumo_giorno": (
+        None,
+        ("un secchiello al giorno per provider e modello: meno di duemila righe "
+         "l'anno, ed e' la storia di quanto si e' speso"),
+        None),
+    "ancora": (None, "una riga sola: da quando si conta", None),
+    "ancora_saldo": (
+        None, "il saldo di prima dell'ancora, una riga per modello", None),
+    "legacy_importati": (
+        None,
+        ("quali file di prima sono gia' entrati: senza, rientrerebbero a ogni "
+         "avvio e i totali raddoppierebbero"),
+        None),
+    "fallback": (
+        None,
+        ("un secchiello al giorno per agente e motivo dei ripieghi a consumo: "
+         "minuscolo come i consumi, e spiega perche' la bolletta e' cresciuta"),
+        None),
+    "payload": (
+        _MEASURE_DAYS,
+        "i giri di un turno: seguono il loro turno, e scadono con lui",
+        "DELETE FROM payload WHERE turn_id IN (SELECT id FROM turn WHERE ts < ?)"),
+    "turn": (
+        _MEASURE_DAYS,
+        ("i turni misurati: servono a vedere dove va il costo di questo mese, "
+         "e il dettaglio di un turno di due mesi fa non lo chiede nessuno"),
+        "DELETE FROM turn WHERE ts < ?"),
+}
 
 #: Le colonne dei token di un giro, nell'ordine della tabella. **Una sola
 #: lista, dentro questo file**: la leggono la migrazione, l'INSERT e la
@@ -425,6 +471,8 @@ def log_safely(log_usage, provider: str, model: str, **fields) -> None:
 
 
 class UsageStore:
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
@@ -584,7 +632,6 @@ class UsageStore:
         # di dominio italiano.
         ident = secrets.token_urlsafe(9)
         with self._lock:
-            self._scadi_misure(now)
             self._conn.execute(
                 "INSERT INTO turn(id,ts,species,provider,model,channel,"
                 "subject_json,duration_ms,iterations,tools,outcome,"
@@ -661,16 +708,10 @@ class UsageStore:
                  *valori_token))
             self._conn.commit()
 
-    def _scadi_misure(self, now: float) -> None:
-        """I due registri scadono INSIEME, e il carico non sopravvive al suo
-        turno: righe di `payload` orfane non rispondono a nessuna domanda --
-        la specie del turno e' cio' che distingue «l'analista spende cosi'» da
-        «la chat spende cosi'»."""
-        limit = now - TURNS_RETENTION_S
-        self._conn.execute(
-            "DELETE FROM payload WHERE turn_id IN "
-            "(SELECT id FROM turn WHERE ts < ?)", (limit,))
-        self._conn.execute("DELETE FROM turn WHERE ts < ?", (limit,))
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le righe tolte."""
+        with self._lock:
+            return prune_declared(self._conn, CONSERVAZIONE, now)
 
     def turns(self, *, limit: int = 500, species: str | None = None) -> list[dict]:
         """I turni, dal piu' recente. `tools` torna SCIOLTO dal JSON: una

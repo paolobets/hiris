@@ -49,8 +49,9 @@ from .api.middleware_internal_auth import internal_auth_middleware
 # modulo di `mind/`, che non importa questo file.
 from .background import spawn as _spawn
 from .chat_settings import ChatSettings, file_lacks_retention_days
+from .chat_store import open_store as open_chat_store
 from .chat_thread import SyncTurnsInFlight, thread_for
-from .conservazione import prune_observations, reasoning_sweep, run_retention
+from .conservazione import nightly, reasoning_sweep
 from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.energy import energy_dashboard
@@ -3321,6 +3322,10 @@ async def _on_startup(app: web.Application) -> None:
     # (vedi `chat_settings.py`).
     chat_settings = ChatSettings.load(data_dir)
     app["chat_settings"] = chat_settings
+    # L'archivio della chat, come gli altri (D-27): la finestra la legge dalle
+    # impostazioni a ogni potatura, perche' la pagina la cambia a caldo.
+    app["chat_store"] = open_chat_store(
+        data_dir, read_retention_days=lambda: app["chat_settings"].retention_days)
 
     # `giorni_conservazione` arriva al disco al primo avvio. `load()` da' il
     # default quando la chiave non c'e', ma non lo SCRIVE, e `save()` ha un solo
@@ -3746,11 +3751,12 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
-    # La potatura del grezzo: `conservazione.prune_observations`.
+    # La conservazione: un lavoro solo, alle 03:00, per tutti gli archivi
+    # (`conservazione.nightly`).
     scheduler.add_job(
-        partial(prune_observations, app),
+        partial(nightly, app),
         trigger="cron", hour=3, minute=0,
-        id="hiris_mind_pruning", replace_existing=True,
+        id="hiris_retention", replace_existing=True,
         misfire_grace_time=3600,
     )
 
@@ -3810,17 +3816,6 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", seconds=15,
         id="hiris_keeper_heartbeat", replace_existing=True,
         misfire_grace_time=30,
-    )
-
-    # La conservazione della chat: `conservazione.run_retention`.
-    scheduler.add_job(
-        partial(run_retention, app),
-        trigger="cron",
-        hour=3,
-        minute=0,
-        id="hiris_retention",
-        replace_existing=True,
-        misfire_grace_time=3600,
     )
 
     from .backends.openai_compat_runner import OpenAICompatRunner

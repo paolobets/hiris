@@ -66,6 +66,54 @@ def add_missing_columns(conn: sqlite3.Connection, table: str,
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
 
+#: **Per quanto tiene ogni tabella di un archivio, e perche'**: la forma che
+#: `mind/store.CONSERVAZIONE` ha dal reperto C-6 (23/09/2026), e che dalla
+#: Tappa 8 (Task 6) ogni archivio dichiara accanto al suo schema.
+#:
+#: `{tabella: (giorni | None, ragione, cancellazione)}`. `giorni` a `None` =
+#: per sempre, e allora la `cancellazione` e' `None` anche lei. La
+#: `cancellazione` e' una frase SQL intera, col nome della tabella scritto in
+#: chiaro accanto a `DELETE FROM` (il censimento vede una scrittura solo
+#: cosi'), e con un solo `?`, la soglia `now - giorni`; o nessuno, se la
+#: tabella segue un'altra e non ha una soglia sua (le righe di un turno
+#: seguono il turno). Lo pretende `tests/test_conservazione_archivi.py`.
+Retention = dict[str, tuple[int | None, str, str | None]]
+
+DAY_S = 86400
+
+
+def prune_declared(conn: sqlite3.Connection, conservation: Retention,
+                   now: float) -> int:
+    """Applica una dichiarazione di conservazione, tabella per tabella, e
+    torna quante righe ha tolto. Una tabella `None` non si tocca.
+
+    Le cancellazioni girano nell'ordine della dichiarazione, che e' quindi
+    anche l'ordine in cui una tabella che ne segue un'altra deve stare: dopo
+    quella che segue. Il lock, se l'archivio ne ha uno, lo prende chi chiama;
+    il commit e' qui, una volta, per tutte le tabelle -- e solo se una
+    cancellazione e' girata: un archivio che tiene tutto per sempre non
+    committa la transazione aperta di qualcun altro."""
+    removed = 0
+    deleted = False
+    for days, _reason, deletion in conservation.values():
+        if days is None or deletion is None:
+            continue
+        params = (float(now) - days * DAY_S,) if "?" in deletion else ()
+        removed += conn.execute(deletion, params).rowcount or 0
+        deleted = True
+    if deleted:
+        conn.commit()
+    return removed
+
+
+def database_name(conn: sqlite3.Connection) -> str:
+    """Il nome del file su cui `conn` e' aperta, chiesto a SQLite (`PRAGMA
+    database_list`) e non ricordato a parte: e' cio' che `/api/health`
+    mostra come nome dell'archivio."""
+    row = conn.execute("PRAGMA database_list").fetchone()
+    return os.path.basename(row[2]) if row and row[2] else ""
+
+
 def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
                 migrations: dict[int, Migration] | None = None,
                 after_sql: str | None = None) -> int:

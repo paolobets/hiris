@@ -18,10 +18,16 @@ import threading
 import time
 
 from ..chat_thread import ChatThread, thread_condition, thread_params, unknown_id_text
-from ..storage import add_missing_columns, connect, init_schema, rekey
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+    rekey,
+)
 from .promise import (
     CEILING_IN_SOSPESO,
-    CONSERVAZIONE_S,
     HOUSE_CEILING_IN_SOSPESO,
     STATES_CONCLUSI,
     STATES_ESITO,
@@ -78,6 +84,39 @@ _SOSPESI = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 # qui sopra -- vedi li' perche' non coincide con `_CONCLUSI`.
 _ESITI = ",".join(f"'{s}'" for s in STATES_ESITO)
 
+#: **Quanto si conserva una promessa CONCLUSA** (spec §8.1), nella forma di
+#: ogni archivio (`storage.Retention`). Un registro che cresce per sempre su
+#: una scheda SD e' un guasto rimandato.
+#:
+#: E' una politica di QUESTO strato (lo Schedulatore), indipendente da quella
+#: della cronaca delle esecuzioni (`action/journal.CONSERVAZIONE`, nello strato
+#: sotto): oggi vale lo stesso numero, 90 giorni, ma sono due fatti distinti --
+#: per quanto si conserva una PROMESSA conclusa, per quanto si conserva
+#: un'ESECUZIONE -- che possono divergere senza che l'uno insegua l'altro.
+#:
+#: **Le promesse in sospeso non si potano mai**, qualunque eta' abbiano: il
+#: tetto dei 30 giorni le tiene gia' entro un limite. **L'eta' si misura da
+#: `risvegliata_ts`, non da `nata_ts`** (fix review finale, rilievo minore):
+#: novanta giorni dalla CONCLUSIONE. Una promessa nata 91 giorni fa e mantenuta
+#: ieri (legittimo -- l'orizzonte di nascita e' 30 giorni, non di conclusione)
+#: resta novanta giorni da ieri. `risvegliata_ts` e' sempre popolato per uno
+#: stato concluso: `concludi()` e `cancel()` lo scrivono con
+#: `COALESCE(risvegliata_ts, adesso)`.
+#:
+#: Fino alla Tappa 8 (D5) la potatura girava a ogni promessa nuova, «alla
+#: scrittura, non con un lavoro periodico» (spec §8.1): la ragione era non
+#: avere un secondo posto che sapesse QUANDO. Quel posto adesso e' uno solo
+#: per tutti gli archivi, il lavoro notturno (`conservazione.nightly`).
+CONSERVAZIONE: Retention = {
+    "promesse": (
+        90,
+        ("le promesse concluse: l'agenda le mostra, e il pallino degli "
+         "Impegni conta gli esiti da leggere; oltre un trimestre dalla "
+         "conclusione nessuno le rilegge"),
+        (f"DELETE FROM promesse WHERE stato IN ({_CONCLUSI}) "
+         "AND risvegliata_ts < ?")),
+}
+
 
 def _migration_2(conn) -> None:
     """v1 -> v2: l'archivio ricorda se un esito e' stato letto.
@@ -88,7 +127,7 @@ def _migration_2(conn) -> None:
 
     **Il travaso non e' neutro, ed e' una decisione.** Dopo l'`ALTER TABLE`
     ogni riga vale NULL, cioe' «non letta»: su una casa vera vuol dire che
-    tutto lo storico degli ultimi 90 giorni (`CONSERVAZIONE_S`) risulterebbe
+    tutto lo storico degli ultimi 90 giorni (`CONSERVAZIONE`) risulterebbe
     da leggere, e il pallino degli Impegni si accenderebbe al primo avvio con
     un numero che parla di fatti di settimane fa. Le concluse che esistono
     gia' si segnano lette. Non e' vero che il proprietario le ha lette: e' che
@@ -167,6 +206,8 @@ def _json(value) -> str | None:
 
 
 class AgendaStore:
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
@@ -205,7 +246,6 @@ class AgendaStore:
         if reason is not None:
             return {"errore": reason}
         with self._lock:
-            self._prune(now)
             mine = self._count(thread, pending=True)
             if mine >= CEILING_IN_SOSPESO:
                 return {"errore": (
@@ -518,29 +558,7 @@ class AgendaStore:
 
     # -- potare --------------------------------------------------------
 
-    def _prune(self, now: float) -> None:
-        """Alla scrittura, non con un lavoro periodico (spec §8.1).
-
-        Un lavoro in piu' sarebbe un secondo posto che sa QUANDO, cioe'
-        precisamente cio' che la fetta successiva si e' impegnata a togliere.
-        Le promesse in sospeso non si potano mai, qualunque eta' abbiano: il
-        tetto dei 30 giorni le tiene gia' entro un limite.
-
-        **L'eta' si misura da `risvegliata_ts`, non da `nata_ts`** (fix
-        review finale, rilievo minore). La spec §8.1 dice novanta giorni
-        «per le promesse CONCLUSE»: l'orologio della potatura deve partire
-        da quando una promessa si e' conclusa, non da quando e' nata. Una
-        promessa nata 91 giorni fa e mantenuta ieri (legittimo -- l'orizzonte
-        di nascita e' 30 giorni, non di conclusione) doveva restare per
-        novanta giorni dalla conclusione, e con `nata_ts` spariva domani.
-        `risvegliata_ts` e' sempre popolato per uno stato concluso: sia
-        `concludi()` sia `cancel()` lo scrivono con
-        `COALESCE(risvegliata_ts, adesso)`, quindi non serve un ripiego su
-        `nata_ts` per le righe che non sono mai passate da `prendi()`.
-
-        Chiamata con il lock gia' preso.
-        """
-        self._conn.execute(
-            f"DELETE FROM promesse WHERE stato IN ({_CONCLUSI}) AND risvegliata_ts < ?",
-            (now - CONSERVAZIONE_S,),
-        )
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le righe tolte."""
+        with self._lock:
+            return prune_declared(self._conn, CONSERVAZIONE, now)

@@ -50,14 +50,14 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 # `giorni_conservazione` fa DUE lavori:
-#   1. la potatura notturna (`conservazione.run_retention`, cron alle 3) cancella
+#   1. la potatura notturna (`ChatStore.prune`, dal lavoro delle 3) cancella
 #      dal disco i messaggi piu' vecchi di questo numero di giorni;
 #   2. lo STESSO numero limita quanto `chat_store.load_context()` rilegge
 #      della conversazione in corso -- abbassarlo non libera spazio, fa
 #      DIMENTICARE PRIMA.
 # E `0` non cancella e non limita MAI niente: i due lettori di `chat_store`
 # scrivono la stessa regola al contrario (`if days > 0` in `load_context`,
-# `if retention_days <= 0: return 0` in `delete_old_messages`) -- il contrario
+# `if days <= 0: return 0` in `ChatStore.prune`) -- il contrario
 # di cio' che chiunque si aspetta da una "conservazione" messa a zero, e per
 # questo va detto esplicitamente, non lasciato dedurre.
 #
@@ -90,6 +90,13 @@ def file_lacks_retention_days(data_dir: str) -> bool:
     return not isinstance(raw, dict) or "giorni_conservazione" not in raw
 
 
+#: Quanti giorni di conversazione si conservano, finche' il proprietario non
+#: ne sceglie un altro numero dalla pagina Impostazioni chat (0 = per sempre).
+#: Una costante perche' lo leggono la dataclass qui sotto e i parametri di
+#: `chat_store`, che fino alla Tappa 8 ricopiavano il 90 sei volte.
+DEFAULT_RETENTION_DAYS = 90
+
+
 @dataclass
 class ChatSettings:
     """La configurazione dell'unica conversazione che HIRIS sa avere.
@@ -103,7 +110,7 @@ class ChatSettings:
     thinking_budget: int = 0
     max_chat_turns: int = 0
     restrict_to_home: bool = False
-    retention_days: int = 90
+    retention_days: int = DEFAULT_RETENTION_DAYS
 
     @classmethod
     def load(cls, data_dir: str) -> "ChatSettings":

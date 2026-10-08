@@ -7,7 +7,13 @@ import time
 
 from ..chat_thread import ChatThread, thread_condition, thread_from_columns, thread_params
 from ..home_space.historian import day_boundaries, local_date
-from ..storage import add_missing_columns, connect, init_schema
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS reasoning_jobs (
@@ -67,6 +73,28 @@ _IDX_THREAD_SQL = ("CREATE INDEX IF NOT EXISTS idx_reasoning_thread "
 #: dalla dichiarazione della specie di turno.
 PRIORITY_CHAT = 1
 PRIORITY_BACKGROUND = 0
+
+#: **Per quanto si tiene un turno chiuso**, nella forma di ogni archivio
+#: (`storage.Retention`): sette giorni, per i turni decisi, scaduti o falliti.
+#: Quelli ancora in volo (`pending`, `claimed`, `ripiego`) non si potano: li
+#: chiude la spazzata (`sweep_expired`, `fail_stuck_downgrades`).
+#:
+#: Il testo di una risposta consegnata NON aspetta i sette giorni: si
+#: dimentica un quarto d'ora dopo la consegna (`forget_delivered`, reperto
+#: C-6), e resta solo la riga, che il tetto giornaliero del ponte conta.
+#:
+#: Fino alla Tappa 8 il sette era un letterale in `server.py`, e la potatura
+#: girava solo a ponte acceso (G-11): a ponte spento le righe vecchie
+#: restavano per sempre. Adesso la fa il lavoro notturno
+#: (`conservazione.nightly`), acceso o spento che sia il ponte.
+CONSERVAZIONE: Retention = {
+    "reasoning_jobs": (
+        7,
+        ("i turni del ponte: il tetto giornaliero conta le righe di oggi, e "
+         "un turno chiuso da una settimana non lo cerca nessuno"),
+        ("DELETE FROM reasoning_jobs WHERE status IN ('decided','expired','failed') "
+         "AND created_ts < ?")),
+}
 
 
 def turn_answer(turn: dict | None) -> str:
@@ -139,6 +167,8 @@ def _migration_4(conn) -> None:
 
 
 class ReasoningQueue:
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
@@ -588,11 +618,7 @@ class ReasoningQueue:
             self._conn.commit()
             return cur.rowcount
 
-    def prune(self, before_ts: float) -> int:
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna i turni tolti."""
         with self._lock:
-            cur = self._conn.execute(
-                "DELETE FROM reasoning_jobs WHERE status IN ('decided','expired','failed') "
-                "AND created_ts < ?",
-                (before_ts,))
-            self._conn.commit()
-            return cur.rowcount
+            return prune_declared(self._conn, CONSERVAZIONE, now)

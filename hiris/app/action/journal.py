@@ -31,20 +31,36 @@ import json
 import secrets
 import threading
 
-from ..storage import add_missing_columns, connect, init_schema
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+)
 
-# Quanto si conserva un'esecuzione (riuscita o fallita) in questo registro.
-# E' una politica di QUESTO modulo, non presa in prestito da altrove: la
-# cronaca vive ACCANTO alla porta (vedi il docstring del file) e deve reggersi
-# da sola, come la porta stessa -- oggi `action/` non importa nulla da
-# `keeper/`, e farlo per un solo numero invertirebbe gli strati per
-# risparmiare una riga. Vale 90 giorni come la conservazione delle promesse
-# concluse (`keeper/promise.py::CONSERVAZIONE_S`): sono due fatti
-# distinti -- per quanto si conserva una PROMESSA conclusa, per quanto si
-# conserva un'ESECUZIONE -- che oggi COINCIDONO, non uno che insegue l'altro.
-# Si possono cambiare separatamente, in futuro, senza che l'altro se ne
-# accorga.
-EXECUTIONS_RETENTION_S = 90 * 86400
+#: **Per quanto si conserva un'esecuzione** (riuscita o fallita), nella forma
+#: di ogni archivio (`storage.Retention`).
+#:
+#: E' una politica di QUESTO modulo, non presa in prestito da altrove: la
+#: cronaca vive ACCANTO alla porta (vedi il docstring del file) e deve reggersi
+#: da sola, come la porta stessa -- oggi `action/` non importa nulla da
+#: `keeper/`, e farlo per un solo numero invertirebbe gli strati per
+#: risparmiare una riga. Vale 90 giorni come la conservazione delle promesse
+#: concluse (`keeper/store.CONSERVAZIONE`): sono due fatti distinti -- per
+#: quanto si conserva una PROMESSA conclusa, per quanto si conserva
+#: un'ESECUZIONE -- che oggi COINCIDONO, non uno che insegue l'altro.
+#:
+#: Si pota nel lavoro notturno (`conservazione.nightly`), non a ogni atto:
+#: fino alla Tappa 8 (D5) la cancellazione girava dentro `log`, a ogni comando.
+CONSERVAZIONE: Retention = {
+    "esecuzioni": (
+        90,
+        ("la cronaca di cio' che HIRIS ha fatto alla casa, comandi e "
+         "costruzioni: risponde a «cosa hai fatto» e «chi ha spento la luce», "
+         "e oltre un trimestre nessuno la richiede"),
+        "DELETE FROM esecuzioni WHERE quando_ts < ?"),
+}
 
 # Quante righe torna UNA interrogazione. La cronaca conserva 90 giorni: senza
 # tetto, «cosa hai fatto» su una casa attiva restituirebbe l'intero trimestre
@@ -130,6 +146,8 @@ def _row(r) -> dict:
 
 
 class Journal:
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
@@ -139,6 +157,11 @@ class Journal:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le righe tolte."""
+        with self._lock:
+            return prune_declared(self._conn, CONSERVAZIONE, now)
 
     def log(self, *, actor: str, service: str, entity: list[str],
             executed: bool, now: float, genre: str = COMMAND,
@@ -166,9 +189,6 @@ class Journal:
             raise ValueError(f"genere sconosciuto: {genre!r}")
         ident = secrets.token_urlsafe(9)
         with self._lock:
-            self._conn.execute(
-                "DELETE FROM esecuzioni WHERE quando_ts < ?",
-                (now - EXECUTIONS_RETENTION_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto,"
@@ -211,7 +231,7 @@ class Journal:
         risultato puo' essere vuoto o incompleto pur avendone nella finestra.
 
         La finestra rispetta il vincolo di conservazione: righe piu' vecchie
-        di 90 giorni dalla data di oggi sono potate a ogni scrittura, quindi
+        di 90 giorni dalla data di oggi le pota il lavoro notturno, quindi
         una finestra interamente oltre quel confine restituisce `[]`,
         indistinguibile da «non ho fatto niente in quel periodo».
 

@@ -414,7 +414,7 @@ _NOTE_ITALIANE = frozenset({
     "nei_preset", "nei_test", "nel_prompt", "nell_argv", "non_c_e", "non_chiesto",
     "non_disponibili", "non_esiste", "non_letti",
     "non_letto", "non_viste", "notte_30_oltre_confine", "parole_di_scadenza",
-    "poco_dopo", "porta_con_canale",
+    "porta_con_canale",
     "prima_dei_guasti", "prima_rivendicazione", "resp_con",
     "resp_senza", "riepilogo_non_chiesto",
     "riepilogo_non_letto", "riga_di", "rompe_dalla_lettura",

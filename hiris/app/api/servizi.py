@@ -37,7 +37,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from ..storage import connect, init_schema
+from ..storage import DAY_S, Retention, connect, init_schema, prune_declared
 
 # I ruoli e le specie si chiedono al vocabolario del confine (F-02): fino al
 # 07/10/2026 `RUOLI` era scritto due volte, qui e in `canali.py`.
@@ -61,10 +61,33 @@ CREATE INDEX IF NOT EXISTS idx_servizi_stato ON servizi(stato, visto_ts DESC);
 
 
 #: Una presentazione che nessuno ha guardato entro `ServiziStore.ATTESA_S`.
-#: Una condizione sola per chi la cancella (`_prune`) e per chi la salta
-#: (`elenco`, `approva`, `revoca`): fra la scadenza e la prossima scrittura la
-#: riga sta ancora su disco, e nessuna porta la deve vedere.
+#: Una condizione sola per chi la cancella (`CONSERVAZIONE`) e per chi la
+#: salta (`elenco`, `approva`, `revoca`): fra la scadenza e la potatura
+#: notturna la riga sta ancora su disco, e nessuna porta la deve vedere.
 _EXPIRED_SQL = "(stato='in_attesa' AND visto_ts < ?)"
+
+#: **Per quanto resta una presentazione che nessuno ha guardato**, nella forma
+#: di ogni archivio (`storage.Retention`): un giorno.
+#:
+#: Chiunque possa raggiungere HIRIS puo' presentarsi: senza scadenza la
+#: pagina si riempie di rumore, e una pagina piena di rumore e' una pagina
+#: che non si guarda piu'. Le AUTORIZZATE e le REVOCATE non scadono -- quelle
+#: le hai decise tu, e sparire da sole sarebbe un servizio vivo che muore in
+#: silenzio, o una revoca che si scorda.
+#:
+#: Fino alla Tappa 7 la potatura girava a ogni lettura della pagina, poi a
+#: ogni presentazione (Task 0b: una `GET` non scrive); dalla Tappa 8 (D5) nel
+#: lavoro notturno, con tutti gli archivi. La rotta che fa crescere la tabella
+#: esiste solo nei dieci minuti dell'accoppiamento (`ACCOPPIAMENTO_S`), e chi
+#: legge salta le scadute da se' (`_EXPIRED_SQL`): fra una notte e l'altra il
+#: disco tiene al piu' le presentazioni di un giorno in piu'.
+CONSERVAZIONE: Retention = {
+    "servizi": (
+        1,
+        ("solo le presentazioni in attesa: chi si presenta e non viene "
+         "guardato entro un giorno sparisce; autorizzati e revocati restano"),
+        f"DELETE FROM servizi WHERE {_EXPIRED_SQL}"),
+}
 
 
 def _row(r) -> dict:
@@ -78,14 +101,10 @@ def _row(r) -> dict:
 class ServiziStore:
     """Chi ha chiesto di parlare con HIRIS, e cosa gli hai risposto."""
 
-    #: Per quanto resta in pagina una presentazione che nessuno ha guardato.
-    #:
-    #: Chiunque possa raggiungere HIRIS puo' presentarsi: senza scadenza la
-    #: pagina si riempie di rumore, e una pagina piena di rumore e' una pagina
-    #: che non si guarda piu'. Le AUTORIZZATE non scadono -- quelle le hai
-    #: decise tu, e sparire da sole sarebbe un servizio vivo che muore in
-    #: silenzio.
-    ATTESA_S = 24 * 3600.0
+    CONSERVAZIONE = CONSERVAZIONE
+    #: Per quanto resta in pagina una presentazione che nessuno ha guardato:
+    #: chiesto alla dichiarazione, che e' la sua casa.
+    ATTESA_S = float(CONSERVAZIONE["servizi"][0] * DAY_S)
 
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
@@ -133,9 +152,6 @@ class ServiziStore:
         if not str(chiave or "").strip():
             raise ValueError("un servizio senza chiave pubblica non si presenta")
         with self._lock:
-            # La potatura vive nella scrittura che fa crescere l'archivio, non
-            # nella lettura (Tappa 7, Task 0b): una `GET` non scrive.
-            self._prune(now_ts)
             esistente = self._conn.execute(
                 "SELECT * FROM servizi WHERE chiave=?", (chiave,)).fetchone()
             if esistente is None:
@@ -207,12 +223,10 @@ class ServiziStore:
     def _expiry(self, now_ts: float) -> float:
         return now_ts - self.ATTESA_S
 
-    def _prune(self, now_ts: float) -> None:
-        """Toglie dal disco le presentazioni che nessuno ha guardato entro
-        `ATTESA_S`. La chiama `presenta`, che tiene il lucchetto: e' l'unica
-        scrittura che fa crescere l'archivio."""
-        self._conn.execute(f"DELETE FROM servizi WHERE {_EXPIRED_SQL}",
-                           (self._expiry(now_ts),))
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le presentazioni tolte."""
+        with self._lock:
+            return prune_declared(self._conn, CONSERVAZIONE, now)
 
 
 #: Quanto resta aperta la finestra di accoppiamento. **Dieci minuti**, decisione

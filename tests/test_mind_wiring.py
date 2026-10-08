@@ -15,6 +15,7 @@ avrebbe lasciato nascere (task-5-correzioni.md):
 import asyncio
 import logging
 import re
+import sqlite3
 import sys
 from datetime import UTC, timedelta
 from pathlib import Path
@@ -71,85 +72,97 @@ def _conservation_lines(caplog) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.name == CONSERVATION_LOGGER]
 
 
-class _ArchivioOsservazioniFinto:
-    """La finta deve saper produrre il difetto che sorveglia (feedback
-    ricorrente di questo progetto): oltre a tornare un numero da `prune()`,
-    deve poter SOLLEVARE a comando, per provare che la potatura ha una rete
-    propria (punto 3 del mandato)."""
+_FINTA = {"finta": (1, "una prova", "DELETE FROM finta WHERE ts < ?")}
 
-    def __init__(self, quanti: int = 0, *, pota_solleva: bool = False):
+
+class _ArchivioFinto:
+    """Un archivio come li cerca `conservazione.archives`: dichiara la sua
+    conservazione, sa potarsi e tiene una connessione (da cui si chiede il
+    nome del file). La finta deve saper produrre il difetto che sorveglia
+    (feedback ricorrente di questo progetto): oltre a tornare un numero da
+    `prune()`, deve poter SOLLEVARE a comando, per provare che un archivio
+    guasto non ferma gli altri."""
+
+    CONSERVAZIONE = _FINTA
+
+    def __init__(self, path, quanti: int = 0, *, pota_solleva: bool = False):
+        self._conn = sqlite3.connect(str(path))
         self._quanti = quanti
         self._pota_solleva = pota_solleva
         self.chiamate = 0
 
-    def prune(self, now_ts):
+    def prune(self, now):
         self.chiamate += 1
         if self._pota_solleva:
             raise RuntimeError("disco pieno")
         return self._quanti
 
 
-async def _prune_with(app, finto, caplog, level):
-    """Il lavoro `hiris_mind_pruning` dell'app avviata, con l'archivio delle
-    osservazioni sostituito per la durata della prova."""
-    with mock.patch.dict(app, {"observations": finto}), \
+async def _nightly_with(app, finti: dict, caplog, level):
+    """Il lavoro notturno `hiris_retention` dell'app avviata, con gli archivi
+    finti aggiunti all'app per la durata della prova (gli archivi veri
+    dell'app, appena aperti, non hanno niente da potare)."""
+    with mock.patch.dict(app, finti), \
             caplog.at_level(level, logger=CONSERVATION_LOGGER):
-        await _job(app, "hiris_mind_pruning")()
+        await _job(app, "hiris_retention")()
+
+
+def _lines_about(caplog, name: str) -> list[str]:
+    return [line for line in _conservation_lines(caplog) if name in line]
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_la_potatura_logga_il_numero_vero_di_giorni(started_app, caplog):
-    """Punto 1, seconda meta' (task-5-fix-brief.md): il test precedente
-    verificava che la riga `giorni = READING_RETENTION_S // 86400`
-    ESISTESSE nel sorgente, non che la riga di log la USASSE davvero -- un
-    mutante che tiene l'assegnazione morta e passa `21` letterale al posto
-    di `giorni` restava verde. Qui si esegue il lavoro vero e si legge il
-    messaggio prodotto.
+async def test_la_potatura_logga_il_numero_vero_di_righe(started_app, caplog, tmp_path):
+    """Il lavoro notturno (Tappa 8, Task 6) dice quale archivio ha potato e
+    quante righe: il numero e' quello che `prune()` ha tornato, non un
+    letterale. Fino all'08/10/2026 la riga era quella del solo grezzo
+    (`cervello: N cambi oltre i 22 giorni`): adesso la finestra di ogni
+    archivio sta nella sua dichiarazione, e si legge da `/api/health`."""
+    finto = _ArchivioFinto(tmp_path / "finto.db", quanti=5)
 
-    Mutazione ESEGUITA (03/10/2026, sul lavoro dell'app avviata): nella riga
-    di log `days` sostituito con `21` letterale -- rossa (`'... oltre i 21
-    giorni ...' == '... oltre i 22 giorni ...'`)."""
-    assert READING_RETENTION_S // 86400 == 22
-    finto = _ArchivioOsservazioniFinto(quanti=5)
-
-    await _prune_with(started_app, finto, caplog, logging.INFO)
+    await _nightly_with(started_app, {"finto": finto}, caplog, logging.INFO)
 
     assert finto.chiamate == 1
-    [messaggio] = _conservation_lines(caplog)
-    assert messaggio == "cervello: 5 cambi oltre i 22 giorni sono usciti"
+    assert _lines_about(caplog, "finto.db") == [
+        "conservazione: finto.db, 5 righe oltre la finestra sono uscite"]
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_la_potatura_non_logga_niente_quando_non_pota_niente(started_app, caplog):
-    """`if quanti:` -- una notte senza niente da potare non deve produrre
+async def test_la_potatura_non_logga_niente_quando_non_pota_niente(started_app, caplog, tmp_path):
+    """`if removed:` -- una notte senza niente da potare non deve produrre
     una riga di log vuota di significato.
 
-    Mutazione ESEGUITA (03/10/2026): `if count:` -> `if True:` -- rossa."""
-    finto = _ArchivioOsservazioniFinto(quanti=0)
+    Mutazione ESEGUITA (08/10/2026, su `conservazione.nightly`): `if
+    removed:` -> `if True:` -- rossa."""
+    finto = _ArchivioFinto(tmp_path / "finto.db", quanti=0)
 
-    await _prune_with(started_app, finto, caplog, logging.INFO)
+    await _nightly_with(started_app, {"finto": finto}, caplog, logging.INFO)
 
     assert finto.chiamate == 1
     assert _conservation_lines(caplog) == []
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_la_potatura_non_lascia_uscire_l_eccezione(started_app, caplog):
-    """Punto 3 del mandato: `_prune_observations` era l'unico dei tre lavori
-    SENZA un try/except suo -- un guasto di SQLite alle tre di notte finiva
-    nel registro di apscheduler senza il prefisso 'cervello:', a differenza
-    dei due lavori fratelli. Qui si prova che un errore di `prune()` sia
-    catturato e loggato con quel prefisso, non lasciato propagare.
+async def test_un_archivio_guasto_non_ferma_gli_altri(started_app, caplog, tmp_path):
+    """Un errore di `prune()` alle tre di notte si cattura, si dice quale
+    archivio e perche', e gli archivi dopo di lui si potano lo stesso: e'
+    igiene, e un disco che non collabora su un archivio non deve lasciar
+    crescere tutti gli altri.
 
-    Mutazione ESEGUITA (03/10/2026): la rete del lavoro ristretta
-    (`except Exception` -> `except KeyError`) -- rossa (`RuntimeError: disco
-    pieno` esce dal lavoro)."""
-    finto = _ArchivioOsservazioniFinto(pota_solleva=True)
+    Mutazione ESEGUITA (08/10/2026): `continue` -> `raise` nella rete di
+    `conservazione.nightly` -- rossa (`RuntimeError: disco pieno` esce dal
+    lavoro e il secondo archivio non si pota)."""
+    guasto = _ArchivioFinto(tmp_path / "guasto.db", pota_solleva=True)
+    sano = _ArchivioFinto(tmp_path / "sano.db", quanti=2)
 
-    await _prune_with(started_app, finto, caplog, logging.WARNING)  # non solleva
+    await _nightly_with(started_app, {"guasto": guasto, "sano": sano},
+                        caplog, logging.INFO)  # non solleva
 
-    assert finto.chiamate == 1
-    assert any(line.startswith("cervello:") for line in _conservation_lines(caplog))
+    assert (guasto.chiamate, sano.chiamate) == (1, 1)
+    [riga] = _lines_about(caplog, "guasto.db")
+    assert "disco pieno" in riga
+    assert _lines_about(caplog, "sano.db") == [
+        "conservazione: sano.db, 2 righe oltre la finestra sono uscite"]
 
 
 # --------------------------------------------------------------------------

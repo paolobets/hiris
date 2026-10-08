@@ -48,7 +48,14 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
-from ..storage import add_missing_columns, connect, init_schema, rekey
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+    rekey,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS ricordi (
@@ -110,13 +117,36 @@ def _author_clause(said_by: str | None) -> tuple[str, tuple]:
     return (" WHERE said_by = ?", (said_by,)) if said_by is not None else ("", ())
 
 
+#: **Per quanto tiene ogni tabella: per sempre**, nella forma di ogni archivio
+#: (`storage.Retention`). E' il contratto, non una dimenticanza: «la memoria
+#: non evapora» (docs/design/2026-08-05-la-conoscenza-di-hiris.md, e il
+#: docstring di questo modulo). Un ricordo esce solo quando una persona lo
+#: dimentica.
+CONSERVAZIONE: Retention = {
+    "ricordi": (
+        None,
+        ("cio' che le persone hanno detto: la memoria non evapora, esce solo "
+         "quando qualcuno la dimentica"),
+        None),
+    "ancore": (None, "seguono il loro ricordo, ed escono con lui", None),
+    "condizioni": (None, "seguono il loro ricordo, ed escono con lui", None),
+}
+
+
 class MemoryStore:
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str = "/data/memoria.db") -> None:
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         self._conn.close()
+
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`, che tiene tutto: non toglie niente, e non
+        apre ne' chiude transazioni (`storage.prune_declared`)."""
+        return prune_declared(self._conn, CONSERVAZIONE, now)
 
     def rekey_subjects(self, renames: dict[str, str]) -> int:
         """I ricordi dei soggetti di `renames` (chiave vecchia -> nuova) passano

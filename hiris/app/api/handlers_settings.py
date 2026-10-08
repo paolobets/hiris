@@ -36,7 +36,7 @@ presente non appena il modello cambia.
 **`retention_days` (Task 12).** Arrivato da `history_retention_days`,
 l'opzione dell'add-on -- non e' aspetto, non e' una chiave, non e' rete: e'
 una decisione sulla conversazione, come le altre sei. Fa DUE lavori: la
-potatura notturna (`conservazione.run_retention`) e quanto HIRIS rilegge della
+potatura notturna (`ChatStore.prune`, dal lavoro delle 3) e quanto HIRIS rilegge della
 conversazione in corso (`chat_store.load_history`, chiamato da
 `handlers_chat.py` con questo stesso valore). `0` non attiva mai nessuno dei
 due -- non cancella e non limita niente, il contrario di cio' che ci si

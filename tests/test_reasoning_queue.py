@@ -3,7 +3,11 @@ import sqlite3
 import pytest
 
 from hiris.app.chat_thread import ChatThread
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.reasoning.queue import CONSERVAZIONE, ReasoningQueue
+from hiris.app.storage import DAY_S
+
+# La finestra della coda, chiesta alla sua dichiarazione (Tappa 8, Task 6).
+_FINESTRA_S = CONSERVAZIONE["reasoning_jobs"][0] * DAY_S
 
 # Filo di comodo per i test che non riguardano il filo in se' (tutto tranne
 # la sezione "il filo" qui sotto): un solo soggetto, un solo ingresso, cosi'
@@ -59,7 +63,9 @@ def test_sweep_expired_marks_and_returns(q):
 def test_prune(q):
     q.enqueue("holistic", {}, {}, deadline_ts=5.0, job_id="E", now=1.0)
     q.sweep_expired(now=10.0)
-    assert q.prune(before_ts=100.0) == 1
+    # Nato a 1.0: alla fine esatta della finestra resta, un attimo dopo esce.
+    assert q.prune(1.0 + _FINESTRA_S) == 0
+    assert q.prune(2.0 + _FINESTRA_S) == 1
     assert q.get("E") is None
 
 
@@ -333,7 +339,7 @@ def test_un_ripiego_schiantato_diventa_failed_e_la_potatura_lo_prende(q):
     job = q.get(jid)
     assert job["status"] == "failed"
     assert job["context"] == {}
-    assert q.prune(before_ts=1.0) == 1
+    assert q.prune(1.0 + _FINESTRA_S) == 1
 
 
 def test_lo_sweep_non_ruba_il_lavoro_al_poll(q):

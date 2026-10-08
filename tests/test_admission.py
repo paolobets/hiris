@@ -291,7 +291,7 @@ async def test_PIN_impostazioni_e_salute_per_l_amministratore(casa):
 
     assert "system_prompt" in impostazioni
     assert set(salute) == {"status", "version", "build", "ponte", "riparazione",
-                           "istantanea"}
+                           "istantanea", "conservazione"}
 
 
 @pytest.mark.asyncio
@@ -1010,14 +1010,15 @@ def test_il_cancello_sta_DOPO_il_soggetto_e_PRIMA_del_gestore():
 @pytest.mark.asyncio
 async def test_la_salute_di_chi_non_amministra_dice_solo_STATO_e_VERSIONE(aperta):
     """R-2.23 e fix round 1 (I1): la diagnostica (`ponte`, `riparazione`,
-    `istantanea`) resta all'amministratore; l'impronta del guscio (`build`),
-    che il guscio porta gia' scritta, arriva a tutti."""
+    `istantanea`, e dalla Tappa 8 `conservazione`) resta all'amministratore;
+    l'impronta del guscio (`build`), che il guscio porta gia' scritta, arriva
+    a tutti."""
     corpo = await (await aperta.get("/api/health", headers=_persona("u-marta"))).json()
     admin = await (await aperta.get("/api/health", headers=_persona("u-admin"))).json()
 
     assert set(corpo) == {"status", "version", "build"}
     assert set(admin) == {"status", "version", "build", "ponte", "riparazione",
-                          "istantanea"}
+                          "istantanea", "conservazione"}
 
 
 @pytest.mark.asyncio

@@ -45,7 +45,14 @@ from dataclasses import dataclass
 
 from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES, type_subject
 from ..home_space.type_vocabulary import Provenance
-from ..storage import add_missing_columns, connect, init_schema, rekey
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+    rekey,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -581,6 +588,20 @@ def _facts_and_skipped(rows) -> tuple[list[Fact], list[str]]:
     return facts, skipped
 
 
+#: **Per quanto tiene il sapere: per sempre**, nella forma di ogni archivio
+#: (`storage.Retention`). Una riga e' un giudizio o una ricetta che vale
+#: finche' vale il suo soggetto: non scade col tempo. Le righe che non hanno
+#: piu' un referente nella casa le toglie la riconciliazione (piano della
+#: Tappa 8, Task 1), non un orologio.
+CONSERVAZIONE: Retention = {
+    "knowledge": (
+        None,
+        ("giudizi e ricette: valgono finche' vale il loro soggetto, e una "
+         "scadenza a tempo cancellerebbe un sapere ancora vero"),
+        None),
+}
+
+
 class KnowledgeStore:
     """L'archivio del sapere. Una riga per `(genere, soggetto, campo)`.
 
@@ -588,6 +609,8 @@ class KnowledgeStore:
     due volte deve restare una cosa sola, o le due copie divergono e nessuno
     sa quale valga. E' la seconda fondamenta applicata all'archivio.
     """
+
+    CONSERVAZIONE = CONSERVAZIONE
 
     def __init__(self, db_path: str) -> None:
         self._lock = threading.Lock()
@@ -620,6 +643,15 @@ class KnowledgeStore:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le righe tolte. Se ne toglie, la
+        versione avanza come per ogni scrittura (`version`)."""
+        with self._lock:
+            removed = prune_declared(self._conn, CONSERVAZIONE, now)
+            if removed:
+                self._version += 1
+            return removed
 
     def rekey_subjects(self, renames: dict[str, str]) -> int:
         """Le righe dei soggetti di `renames` (chiave vecchia -> nuova) passano
