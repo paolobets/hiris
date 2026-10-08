@@ -14,7 +14,6 @@ con sicurezza quando le accese sono nascoste.
 """
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -42,8 +41,6 @@ if TYPE_CHECKING:
 KINDS = ("entita", "area", "dispositivo", "automazione", "script",
          "ricordo", "integrazione")
 ORDERS = ("nome", "ultimo_cambio", "valore")
-_DURATION = re.compile(r"^\s*(\d+)\s*([smhd])\s*$")
-_UNIT_S = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 #: I generi che hanno uno stato nello specchio e un'ultima esecuzione.
 _BEHAVIOR_KINDS = frozenset(BEHAVIOR_DOMAINS.values())
 #: I generi che si chiedono per `riferimento` e rispondono col dettaglio
@@ -55,7 +52,7 @@ _DETAIL_ONLY_KINDS = ("dispositivo", "ricordo", "integrazione")
 _PARAMETER_OF = {"name": "nome", "reference": "riferimento", "domain": "tipo",
                  "state": "stato", "device_class": "classe", "area": "area",
                  "floor": "piano", "platform": "integrazione",
-                 "idle_for_s": "fermo_da", "changed_within_s": "cambiato_da",
+                 "idle_for_s": "fermo_da_ore", "changed_within_s": "cambiato_da_ore",
                  "above": "sopra", "below": "sotto", "running": "in_esecuzione"}
 _PLACE = ("area", "floor", "platform")
 #: I filtri che valgono per ciascun genere (spec §2.1: «i filtri valgono
@@ -90,8 +87,8 @@ class HouseFilters:
     area: str | None = None
     floor: str | None = None
     platform: str | None = None
-    idle_for_s: int | None = None
-    changed_within_s: int | None = None
+    idle_for_s: float | None = None
+    changed_within_s: float | None = None
     above: float | None = None
     below: float | None = None
     running: bool | None = None
@@ -113,11 +110,6 @@ class HouseFilters:
             self.running is not None))
 
 
-def _seconds(text) -> int | None:
-    m = _DURATION.match(str(text))
-    return int(m.group(1)) * _UNIT_S[m.group(2)] if m else None
-
-
 def parse_filters(arguments: dict) -> HouseFilters | dict:
     a = dict(arguments or {})
     fields: dict = {}
@@ -131,13 +123,15 @@ def parse_filters(arguments: dict) -> HouseFilters | dict:
     # `genere` e `ordina` fuori vocabolario li rifiuta `ToolDispatcher.
     # dispatch` contro l'`enum` dello schema (`KINDS`, `ORDERS`), prima di
     # arrivare qui: fino al 05/10/2026 si rivalidavano anche qui (D-40).
-    for key, attr in (("fermo_da", "idle_for_s"),
-                      ("cambiato_da", "changed_within_s")):
+    # Una durata e' un numero di ore, con l'unita' nel nome del parametro,
+    # come `ore` di `history` (B-33, D5 della Tappa 9, 08/10/2026): tipo e
+    # minimo li rifiuta `ToolDispatcher.dispatch` contro lo schema, prima di
+    # arrivare qui. Fino a quel giorno era una stringa con una grammatica sua
+    # (`"30d"`, `"2h"`, `"15m"`), validata qui e da nessun'altra parte.
+    for key, attr in (("fermo_da_ore", "idle_for_s"),
+                      ("cambiato_da_ore", "changed_within_s")):
         if a.get(key) is not None:
-            s = _seconds(a[key])
-            if s is None:
-                return {"errore": f"{key} vuole una durata come 30d, 2h, 15m"}
-            fields[attr] = s
+            fields[attr] = float(a[key]) * 3600
     for key, attr in (("sopra", "above"), ("sotto", "below")):
         if a.get(key) is not None:
             try:

@@ -337,12 +337,13 @@ def test_le_automazioni_ordinate_dalla_piu_ferma():
 
 
 def test_il_filtro_fermo_legge_l_ultima_esecuzione_delle_automazioni():
-    """Il filtro `fermo_da` sulle automazioni.
+    """Il filtro `fermo_da_ore` sulle automazioni: 720 ore, i trenta giorni
+    della vecchia `"30d"`.
 
-    Mutazione ESEGUITA: ignorare `fermo_da` fra le automazioni -- rossa."""
+    Mutazione ESEGUITA: ignorare `fermo_da_ore` fra le automazioni -- rossa."""
     r = _chiedi_automazioni([("vecchia", "2026-02-17T10:00:00+00:00"),
                              ("nuova", "2026-09-28T10:00:00+00:00")],
-                            {"genere": "automazione", "fermo_da": "30d"})
+                            {"genere": "automazione", "fermo_da_ore": 720})
     assert r["trovate"] == 1 and r["voci"][0]["id"] == "automation.vecchia"
 
 
@@ -354,7 +355,7 @@ def test_tipo_automation_senza_genere_legge_l_ultima_esecuzione():
     r = _chiedi_automazioni([("vecchia", "2026-02-17T10:00:00+00:00"),
                              ("antica", "2026-01-01T10:00:00+00:00"),
                              ("nuova", "2026-09-28T10:00:00+00:00")],
-                            {"tipo": "automation", "fermo_da": "30d"})
+                            {"tipo": "automation", "fermo_da_ore": 720})
     assert r["trovate"] == 2
     assert {v["id"] for v in r["voci"]} == {"automation.vecchia",
                                             "automation.antica"}
@@ -457,13 +458,14 @@ def test_un_dispositivo_disabilitato_e_fuori_e_contato():
     assert r["trovate"] == 0 and r["escluse"]["disabilitate"] == 1
 
 
-@pytest.mark.parametrize("argomenti", [{"limite": 51}, {"fermo_da": "tre giorni"},
-                                       {"sopra": "x"}])
+@pytest.mark.parametrize("argomenti", [{"limite": 51}, {"sopra": "x"}])
 def test_un_filtro_sbagliato_si_dice_non_si_indovina(argomenti):
-    """Mutazione ESEGUITA, una per caso: togliere il tetto di `limite`, il
-    controllo della durata, quello del numero -- ognuna rossa sul proprio
-    caso. Il genere fuori vocabolario lo rifiuta lo schema in `dispatch` dal
-    05/10/2026 (`tests/test_tabella_strumenti.py`, D-40)."""
+    """Mutazione ESEGUITA, una per caso: togliere il tetto di `limite`,
+    quello del numero -- ognuna rossa sul proprio caso. Il genere fuori
+    vocabolario lo rifiuta lo schema in `dispatch` dal 05/10/2026
+    (`tests/test_tabella_strumenti.py`, D-40); la durata fuori tipo o
+    negativa dall'08/10/2026 (B-33, `tests/test_porta_della_casa.py`): il
+    caso `{"fermo_da": "tre giorni"}` e' uscito con la grammatica."""
     assert "errore" in hq.parse_filters(argomenti)
 
 
