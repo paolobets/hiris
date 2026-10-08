@@ -39,7 +39,9 @@ def test_un_comando_registra_chi_lo_ha_chiesto(cronaca):
     riga = cronaca.list(from_ts=0, to_ts=200)[0]
     assert riga["origine"] == "chat"
     assert riga["soggetto"]["id"] == "u-42"
-    assert riga["soggetto"]["nome"] == "Paolo"
+    # CHI e' una chiave, non una copia (A-17, Tappa 8): il nome lo dice la
+    # casa quando serve, e una copia resterebbe vecchia per novanta giorni.
+    assert riga["soggetto"]["nome"] is None
 
 
 def test_anche_un_LUOGO_si_registra(cronaca):
