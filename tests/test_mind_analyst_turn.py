@@ -556,3 +556,27 @@ def test_l_osservazione_arricchita_porta_ANCORA_soggetto_misura_e_chiave():
     assert vista["chiave"] == "massimo"
     assert vista["nome"] == "Sala"
     assert "quale" not in vista, "il numero e' un dettaglio del turno, non un dato"
+
+
+
+def test_la_domanda_dice_quali_giorni_sono_misurati_PRIMA_della_regola_del_dato_fermo():
+    """G-03, D2 (Tappa 8): i resoconti archiviati prima della regola portano
+    `regole: null`, e l'analista lo deve sapere -- un valore di quei giorni
+    puo' venire da una fonte ferma. I giorni con le regole non si nominano.
+
+    Mutazione ESEGUITA: senza la chiamata a `_rules_lines` in
+    `build_question` -- rossa."""
+    serie = _serie()
+    serie["regole"] = [
+        {"dal": "2026-09-12", "al": "2026-09-13", "regole": None},
+        {"dal": "2026-09-14", "al": "2026-09-14",
+         "regole": {"registro_operazioni": 3, "dato_fermo": 1}}]
+    q = at.build_question(serie)
+    assert "Misurati prima della regola del dato fermo" in q
+    blocco = q.split("Misurati prima")[1].split("\n\n")[0]
+    assert "dal 2026-09-12 al 2026-09-13" in blocco
+    assert "2026-09-14" not in blocco
+
+    serie["regole"] = [{"dal": "2026-09-12", "al": "2026-09-14",
+                        "regole": {"registro_operazioni": 3, "dato_fermo": 1}}]
+    assert "prima della regola del dato fermo" not in at.build_question(serie)

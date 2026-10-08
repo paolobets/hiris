@@ -322,6 +322,17 @@ window.HirisWatcherGiorno = (function () {
     }
 
     subheading(body, 'Le misure');
+    /* **Le regole con cui e' stato misurato** (Tappa 8, G-03, D2): `regole:
+       null` e' un resoconto archiviato prima che lo dicesse
+       (`report.rules_mark`), e un suo valore puo' venire da una fonte che
+       aveva smesso di parlare. `=== null` e non `== null`: dalla migrazione
+       15 la chiave c'e' sempre, e una chiave assente non e' un fatto. Una
+       riga sola, nello stile delle vicine: il disegno aspetta
+       ux-ui-specialist. */
+    if (report.regole === null) {
+      line(body, 'Misurato prima della regola del dato fermo: un valore di questo giorno ' +
+        'può venire da una fonte che aveva smesso di parlare.', TONE_UNKNOWN);
+    }
     if (!misure.length) {
       line(body, 'Nessuna misura per questo giorno: nessun dispositivo ha ancora una ricetta, ' +
         'oppure nessuna ha potuto calcolarsi.', TONE_CALM);

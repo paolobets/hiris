@@ -222,6 +222,17 @@ test('seam _rendiResoconto: un giorno senza niente lo DICE, e non tace', () => {
   assert.match(corpo.textContent, /Nessun fatto/);
 });
 
+test('seam _rendiResoconto: un resoconto con `regole: null` dice che è misurato PRIMA della regola del dato fermo', () => {
+  // Tappa 8, G-03 (D2). Mutazione ESEGUITA: togliere la riga -- rossa.
+  const prima = rendiResoconto(resoconto({ regole: null, misure: [misura()] }));
+  assert.match(prima.corpo.textContent, /Misurato prima della regola del dato fermo/);
+
+  const dopo = rendiResoconto(resoconto({
+    regole: { registro_operazioni: 3, dato_fermo: 1 }, misure: [misura()] }));
+  assert.doesNotMatch(dopo.corpo.textContent, /prima della regola del dato fermo/,
+    'un resoconto con le sue regole non porta l\'avviso');
+});
+
 /* --------------------------------------- il resoconto, montato sulla pagina
 
    Le prove qui sopra pinnano la RESA. Queste pinnano il FILO: la chiave che

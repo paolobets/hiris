@@ -13,6 +13,7 @@ import pytest
 
 from hiris.app.mind.store import (
     ATTEMPTS_SHOWN,
+    DEFAULT_OBJECTIVE,
     READING_RETENTION_S,
     SCHEMA_VERSION,
     ObservationsStore,
@@ -862,11 +863,12 @@ def test_migration_8_non_tocca_un_resoconto_tutto_buono(tmp_path):
     """
     percorso = str(tmp_path / "oss.db")
     store = ObservationsStore(percorso)
-    # `obiettivo` c'e' gia': cosi' nemmeno `_migration_9` ha ragione di
-    # toccarlo, e resta in piedi la proprieta' che questa prova sorveglia --
-    # un resoconto SANO non si riscrive.
-    grezzo = ('{"giorno": "2026-09-13",   "obiettivo": {"testo": "x", '
-              '"scritto_ts": 1.0},   "misure": [{"soggetto": "dev2", '
+    # `obiettivo` c'e' gia', come riferimento, e `regole` anche: cosi' ne'
+    # `_migration_9` ne' i passi della 15 hanno ragione di toccarlo, e resta
+    # in piedi la proprieta' che questa prova sorveglia -- un resoconto SANO
+    # non si riscrive, da nessuna migrazione.
+    grezzo = ('{"giorno": "2026-09-13",   "obiettivo": {"id": null}, '
+              '"regole": null,   "misure": [{"soggetto": "dev2", '
               '"misura": "produzione", "operazione": "somma_periodo", '
               '"valore": 23.31, "unita": "kWh", "copertura": 1.0}], '
               '"forme": [],   "cronaca": []}')
@@ -1490,3 +1492,121 @@ def test_il_sigillo_a_posteriori_copre_anche_analisi_e_proposte(tmp_path):
         assert not any(store.reseal(sigillo).values())
     finally:
         store.close()
+
+
+
+# -- i resoconti: le regole (G-03, D2) e l'obiettivo per riferimento (A-17) --
+
+def _resoconti_v14(tmp_path) -> str:
+    """Un archivio alla 14 coi resoconti nelle forme che la 15 trova sul
+    disco: l'obiettivo copiato per intero (una riga scritta, quello di
+    fabbrica, `None`, e uno senza riga), e nessuno con `regole`. Scritti a
+    mano nella colonna: `replace_report` di oggi salverebbe gia' il
+    riferimento."""
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    store.set_objective("spendere meno di sera", when_ts=1787000000.0)
+    store.set_objective("tenere caldo il bagno", when_ts=1787500000.0)
+    store.close()
+    corpi = {
+        "2026-08-26": {"giorno": "2026-08-26", "misure": [],
+                       "obiettivo": {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}},
+        "2026-08-27": {"giorno": "2026-08-27", "misure": [],
+                       "obiettivo": {"testo": "spendere meno di sera",
+                                     "scritto_ts": 1787000000.0}},
+        "2026-08-28": {"giorno": "2026-08-28", "misure": [],
+                       "obiettivo": {"testo": "tenere caldo il bagno",
+                                     "scritto_ts": 1787500000.0}},
+        "2026-08-29": {"giorno": "2026-08-29", "misure": [], "obiettivo": None},
+        "2026-08-30": {"giorno": "2026-08-30", "misure": [],
+                       "obiettivo": {"testo": "mai scritto", "scritto_ts": 1787100000.0}},
+    }
+    conn = sqlite3.connect(percorso)
+    for giorno, corpo in corpi.items():
+        conn.execute("INSERT INTO resoconto(giorno,corpo_json,scritto_ts) VALUES(?,?,?)",
+                     (giorno, json.dumps(corpo), 1787600000.0))
+    conn.execute("PRAGMA user_version = 14")
+    conn.commit()
+    conn.close()
+    return percorso
+
+
+def _corpi(percorso) -> dict:
+    conn = sqlite3.connect(percorso)
+    try:
+        return {g: (json.loads(c), t) for g, c, t in conn.execute(
+            "SELECT giorno, corpo_json, scritto_ts FROM resoconto ORDER BY giorno")}
+    finally:
+        conn.close()
+
+
+def test_migration_15_marca_regole_null_e_porta_l_obiettivo_a_riferimento(tmp_path, caplog):
+    """G-03 (D2): ogni resoconto archiviato porta `regole: null`, senza
+    cambiare `scritto_ts` (marcare non e' rifare il giorno). A-17 (D8):
+    l'obiettivo diventa `{"id"}` della sua riga -- la trova per `written_ts`
+    e testo; quello di fabbrica e' `{"id": None}`; `None` resta `None`; uno
+    senza riga resta col suo testo e il log lo dice. In lettura torna intero.
+    Una seconda apertura non cambia niente.
+
+    Mutazioni ESEGUITE: `_mark_reports_without_rules` tolto da
+    `_MIGRATION_15_STEPS` -- rossa; `_objective_references` tolto -- rossa;
+    la ricerca della riga per il solo `written_ts`, senza il testo -- rossa
+    sul giorno senza riga."""
+    import logging
+
+    percorso = _resoconti_v14(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="hiris.app.mind.store"):
+        riaperto = ObservationsStore(percorso)
+    try:
+        letti = {g: riaperto.report(g) for g in ("2026-08-26", "2026-08-27",
+                                                 "2026-08-28", "2026-08-29",
+                                                 "2026-08-30")}
+        tutti = {r["giorno"]: r for r in riaperto.reports(limit=30)}
+    finally:
+        riaperto.close()
+
+    corpi = _corpi(percorso)
+    assert all(c["regole"] is None for c, _ in corpi.values())
+    assert all(t == 1787600000.0 for _, t in corpi.values())
+    assert corpi["2026-08-26"][0]["obiettivo"] == {"id": None}
+    assert corpi["2026-08-27"][0]["obiettivo"] == {"id": 1}
+    assert corpi["2026-08-28"][0]["obiettivo"] == {"id": 2}
+    assert corpi["2026-08-29"][0]["obiettivo"] is None
+    assert corpi["2026-08-30"][0]["obiettivo"] == {"testo": "mai scritto",
+                                                  "scritto_ts": 1787100000.0}
+    assert any("2026-08-30" in r.getMessage() for r in caplog.records)
+
+    assert letti["2026-08-26"]["obiettivo"] == {"id": None, "testo": DEFAULT_OBJECTIVE,
+                                                "scritto_ts": None}
+    assert letti["2026-08-27"]["obiettivo"] == {"id": 1, "testo": "spendere meno di sera",
+                                                "scritto_ts": 1787000000.0}
+    assert letti["2026-08-28"]["obiettivo"]["testo"] == "tenere caldo il bagno"
+    assert letti["2026-08-29"]["obiettivo"] is None
+    assert letti["2026-08-30"]["obiettivo"]["testo"] == "mai scritto"
+    assert {g: r["obiettivo"] for g, r in tutti.items()} == {
+        g: r["obiettivo"] for g, r in letti.items()}
+
+    ObservationsStore(percorso).close()
+    assert _corpi(percorso) == corpi
+
+
+def test_il_resoconto_salva_l_obiettivo_come_RIFERIMENTO_e_lo_rende_intero(archivio):
+    """A-17 (D8): il testo dell'obiettivo vive nella tabella `objective`, e il
+    resoconto ne salva solo l'id; chi lo legge lo riceve intero, nella stessa
+    forma di `objective_at` (fondamenta 3). Una riga scritta DOPO non cambia
+    l'obiettivo di un giorno vecchio.
+
+    Mutazioni ESEGUITE: senza la riduzione in `replace_report` -- rossa sul
+    corpo salvato; senza la risoluzione in `report` -- rossa sulla lettura."""
+    archivio.set_objective("spendere meno di sera", when_ts=ADESSO - 10)
+    allora = archivio.objective_at(ADESSO)
+    archivio.replace_report("2026-08-24", {"giorno": "2026-08-24", "obiettivo": allora,
+                                           "misure": []})
+    archivio.set_objective("tenere caldo il bagno", when_ts=ADESSO + 10)
+
+    grezzo = json.loads(archivio._conn.execute(
+        "SELECT corpo_json FROM resoconto WHERE giorno = '2026-08-24'").fetchone()[0])
+    assert grezzo["obiettivo"] == {"id": allora["id"]}
+    assert archivio.report("2026-08-24")["obiettivo"] == allora
+    assert allora["testo"] == "spendere meno di sera"
+    assert archivio.objective()["id"] != allora["id"]
