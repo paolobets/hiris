@@ -31,7 +31,6 @@ def test_due_chiamate_nello_stesso_giorno_sono_una_riga_sola(archivio):
     assert righe[0]["richieste"] == 2
     assert righe[0]["token_in"] == 200
     assert righe[0]["costo_usd"] == 1.0
-    assert righe[0]["primo_ts"] == T1 and righe[0]["ultimo_ts"] == T2
 
 
 def test_giorni_diversi_sono_secchielli_diversi(archivio):

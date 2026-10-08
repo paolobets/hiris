@@ -63,7 +63,7 @@ from ..proxy.entity_cache import (
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
 from .behavior import BEHAVIOR_DOMAINS
 from .ha_vocabulary import LINK_NAME, domain_of, entity_category_measure_rule
-from .historian import instant_epoch
+from .historian import home_space_zone, instant_epoch, instant_out
 from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
@@ -1332,7 +1332,8 @@ def _view_memory(memories: list[dict], reference) -> dict:
     return detail
 
 
-def sanitized_memories(memories: list[dict] | None, house: House | None = None) -> list[dict]:
+def sanitized_memories(memories: list[dict] | None, house: House | None = None,
+                       zone=None) -> list[dict]:
     """I ricordi con `testo` passato dal sanitizzatore -- funzione condivisa,
     non una riga ripetuta a ogni porta che restituisce ricordi al modello.
 
@@ -1352,10 +1353,18 @@ def sanitized_memories(memories: list[dict] | None, house: House | None = None) 
     con una terza porta futura.
 
     Il testo ARCHIVIATO non cambia (`memory/store.py`, regola 1): questa
-    e' una copia, non una riscrittura -- vedi il docstring di `view()`."""
+    e' una copia, non una riscrittura -- vedi il docstring di `view()`.
+
+    **`detto_il` esce nell'ora della casa** (D3), col fuso `zone`
+    (`home_space_zone`; UTC se non lo si passa): l'archivio lo restituisce in
+    epoca (G-14, Tappa 8), e al modello un istante arriva sempre come ISO con
+    l'offset, come da ogni altra porta (`instant_out`)."""
     out = []
     for r in memories or []:
         copy = dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
+        if isinstance(r.get("detto_il"), int | float):
+            copy = {**copy, "detto_il": instant_out(r["detto_il"],
+                                                    zone or home_space_zone(None))}
         if house is not None and isinstance(r.get("ancore"), list):
             copy = dict(copy, ancore=[house.tether(a) if isinstance(a, dict) else a
                                       for a in r["ancore"]])
@@ -1559,7 +1568,8 @@ def view(house: House, behavior: list[dict], memories: list[dict],
          registry=None,
          translations: dict | None = None,
          knowledge=None,
-         judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+         judgments: TypeJudgments = REPO_JUDGMENTS,
+         zone=None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -1702,7 +1712,7 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     sorveglia che la catena interna -- che quella prova strutturale non guarda
     -- lo inoltri davvero fino a `_limits_of_entity`.
     """
-    memories = sanitized_memories(memories, house)
+    memories = sanitized_memories(memories, house, zone)
     if kind == "area":
         return _view_area(house, memories, reference, translations)
     if kind == "entita":

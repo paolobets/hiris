@@ -39,16 +39,6 @@ def connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    """I nomi delle colonne di `table`, letti da SQLite.
-
-    La casa sola di `PRAGMA table_info` (Tappa 8, Task 4): la usano
-    `add_missing_columns` qui sotto e le migrazioni che RICOSTRUISCONO una
-    tabella per toglierne una colonna (`revisions._migration_7`), che devono
-    sapere se la colonna c'e' ancora per restare idempotenti."""
-    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
-
-
 def add_missing_columns(conn: sqlite3.Connection, table: str,
                         columns: dict[str, str]) -> None:
     """Aggiunge a `table` le colonne di `columns` (`{nome: tipo}`) che non ci
@@ -74,6 +64,62 @@ def add_missing_columns(conn: sqlite3.Connection, table: str,
     for name, kind in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+
+
+def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """I nomi delle colonne di `table`, chiesti a SQLite (`PRAGMA
+    table_info`): l'insieme vuoto se la tabella non c'e'.
+
+    E' l'unico posto del prodotto che fa questa domanda (il cancello di
+    `tests/test_archivi.py`): la chiedono `add_missing_columns`,
+    `rebuild_table` e le migrazioni che decidono se c'e' ancora lavoro da
+    fare (fra queste `revisions._migration_7`, che ricostruisce da se')."""
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def rebuild_table(conn: sqlite3.Connection, table: str, create_sql: str,
+                  columns: tuple[str, ...], *, select_sql: str | None = None,
+                  indexes: tuple[str, ...] = ()) -> None:
+    """Ricostruisce `table` con `create_sql`, ricopiando le righe: **la forma
+    sola con cui una colonna esce da un archivio** (Tappa 8, Task 5).
+
+    `DROP COLUMN` vuole SQLite 3.35, e la versione dentro l'immagine
+    dell'add-on non e' stata misurata: la ricostruzione funziona su tutte. Era
+    scritta a mano due volte in `mind/store` (`_migration_12`, e il passo
+    della 15 che toglie le colonne di `cambi`), e la Tappa 8 ne chiedeva
+    altre tre.
+
+    - `columns` sono le colonne della tabella nuova che si riempiono; le
+      righe vengono da `SELECT <columns> FROM` la vecchia, o da `select_sql`
+      quando un valore si calcola (deve restituire le colonne nello stesso
+      ordine, leggendo dalla tabella `<table>_old`).
+    - Gli indici seguono la tabella rinominata e se ne vanno con lei: si
+      ricreano con `indexes`, dopo il `DROP`, quando i nomi sono di nuovo
+      liberi.
+    - **Tutto o niente, in una transazione** (G14-1): il modulo `sqlite3`
+      non ne apre una davanti ad `ALTER` e `CREATE`, e una ricostruzione
+      interrotta dopo il `RENAME` lascerebbe la tabella vuota con le righe
+      dove nessuno le legge. Se ce n'e' gia' una aperta (una migrazione
+      precedente dello stesso avvio) si continua in quella; se un passo
+      fallisce si torna indietro, e l'archivio resta alla versione di prima.
+
+    Il nome di `table` lo scrive chi chiama, in chiaro: e' un nome di
+    tabella dello schema, mai un valore che arriva da fuori."""
+    old = f"{table}_old"
+    names = ",".join(columns)
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        conn.execute(f"ALTER TABLE {table} RENAME TO {old}")
+        conn.execute(create_sql)
+        conn.execute(f"INSERT INTO {table}({names}) "
+                     + (select_sql or f"SELECT {names} FROM {old}"))
+        conn.execute(f"DROP TABLE {old}")
+        for statement in indexes:
+            conn.execute(statement)
+    except BaseException:
+        conn.rollback()
+        raise
 
 
 #: **Per quanto tiene ogni tabella di un archivio, e perche'**: la forma che

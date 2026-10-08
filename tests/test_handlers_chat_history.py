@@ -1,5 +1,5 @@
 import json
-import re
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -91,7 +91,10 @@ async def test_get_chat_history_returns_the_real_timestamp_not_read_time(tmp_pat
 
     resp = await handle_get_chat_history(request)
     data = json.loads(resp.body)
-    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", data["messages"][0]["timestamp"])
+    # In epoca, come ogni istante degli archivi (G-14, Tappa 8): l'ora
+    # della scrittura, non quella della lettura.
+    assert isinstance(data["messages"][0]["timestamp"], float)
+    assert abs(data["messages"][0]["timestamp"] - time.time()) < 60
 
 
 @pytest.mark.asyncio

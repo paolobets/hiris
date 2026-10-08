@@ -451,7 +451,10 @@ def test_il_turno_registra_CHI_ha_chiesto(consumi):
     La forma è quella del soggetto della cronaca, non una nuova: è la stessa
     domanda, e due forme per la stessa domanda divergono.
 
-    Mutazione ESEGUITA: non scrivere `subject_json` -- rossa."""
+    Mutazione ESEGUITA: non scrivere `subject_json` -- rossa.
+
+    Dalla Tappa 8 (Task 5, A-17) la colonna e' la CHIAVE del soggetto
+    (`subject_key`), come nella cronaca: esce specie e id, il nome no."""
     soggetto = {"specie": "integrazione", "id": "retropanel",
                 "nome": "Retro Panel", "ruolo": "utente"}
 
@@ -459,7 +462,10 @@ def test_il_turno_registra_CHI_ha_chiesto(consumi):
                      channel="ponte", duration_ms=1, iterations=1, tools=[],
                      outcome="riuscito", now=ADESSO, subject=soggetto)
 
-    assert consumi.turns()[0]["subject"] == soggetto
+    from hiris.app.chat_thread import new_subject
+
+    assert consumi.turns()[0]["subject"] == new_subject("integrazione",
+                                                        ident="retropanel")
 
 
 def test_un_giro_NOTTURNO_non_ha_nessun_soggetto(consumi):

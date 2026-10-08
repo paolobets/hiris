@@ -17,11 +17,12 @@
      cronologia che per qualunque ragione arrivasse senza quel campo -- non
      succede oggi, ma questa funzione non deve indovinare comunque), l'ora
      resta VUOTA: mai un `nowHHMM()` di ripiego, che sarebbe esattamente la
-     stessa bugia che questa fetta corregge, solo spostata di una riga. */
-  function fmtHistoryTime(iso) {
-    if (!iso) return '';
-    var d = new Date(iso);
-    return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+     stessa bugia che questa fetta corregge, solo spostata di una riga.
+     Arriva in epoca, come ogni istante degli archivi (G-14, Tappa 8): una
+     forma diversa non si indovina, e l'ora resta vuota. */
+  function fmtHistoryTime(epoch) {
+    if (typeof epoch !== 'number' || !isFinite(epoch)) return '';
+    return new Date(epoch * 1000).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
 
   function formatContent(text) {

@@ -1793,7 +1793,9 @@ class ToolDispatcher:
                               knowledge=self._knowledge,
                               # L'istantanea dei giudizi (spec §3): mai `None`
                               # qui -- `__init__` l'ha gia' ricaduta sul seme.
-                              judgments=self._judgments)
+                              judgments=self._judgments,
+                              # L'ora della casa per `detto_il` (D3, G-14).
+                              zone=historian.home_space_zone(self._timezone()))
         if self._memory is None and isinstance(detail, dict) and "ricordi" in detail:
             # I ricordi ancorati a questa cosa non si sono potuti leggere: si
             # dice, invece di un `ricordi: []` che direbbe «nessuno».
@@ -1977,7 +1979,8 @@ class ToolDispatcher:
         # questa riga il testo uscirebbe filtrato dal dettaglio e grezzo da
         # `fetch`. Stessa funzione condivisa, un punto solo -- e con la casa
         # del turno le ancore portano `nome_attuale` ed `esiste` (G-21).
-        return {"ricordi": _sanitized_memories(memories, self._turn_house())}
+        return {"ricordi": _sanitized_memories(
+            memories, self._turn_house(), historian.home_space_zone(self._timezone()))}
 
     # -- execute -------------------------------------------------------
 

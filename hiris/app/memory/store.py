@@ -49,6 +49,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 
+from ..home_space.historian import instant_epoch
 from ..storage import (
     Retention,
     add_missing_columns,
@@ -360,6 +361,12 @@ class MemoryStore:
         """
         by_id = {}
         for row in rows:
+            # **L'istante esce in epoca** (G-14, Tappa 8, D8): come ogni altro
+            # istante degli archivi. Sul disco resta l'ISO con `+00:00` che
+            # `remember` scrive (la forma del disco cambia con la fetta della
+            # rinomina, spec §9); si converte qui, in lettura, con l'unica
+            # lettura di un istante del prodotto. `None` se non si legge.
+            row["detto_il"] = instant_epoch(row["detto_il"])
             row["ancore"], row["condizioni"] = [], []
             by_id[row["id"]] = row
         if not by_id:

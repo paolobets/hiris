@@ -20,7 +20,7 @@ La voce e' in `docs/BACKLOG.md`.
 **Non e' una porta aperta.** Sta dietro il perimetro come tutto il resto
 (`middleware_internal_auth`): ci arriva chi il proprietario ha approvato -- il
 canale firmato o l'ingress. E' importante che ci resti, perche' i turni
-portano `subject_json`, cioe' CHI ha chiesto.
+portano `subject_key`, cioe' CHI ha chiesto.
 
 **Porta gli argomenti degli strumenti** (`tool_args`, dal 29/09/2026, spec
 «una porta sola» §7), allineati a `tools` e ridotti dall'archivio: testi a 200

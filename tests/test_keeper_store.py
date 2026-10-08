@@ -201,9 +201,9 @@ def test_le_concluse_vecchie_si_potano_le_in_sospeso_mai(archivio):
 def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
     """Fix review finale, rilievo minore. La spec §8.1 dice novanta giorni
     "per le promesse concluse": l'orologio della potatura deve partire da
-    QUANDO si e' conclusa (`risvegliata_ts`), non da quando e' nata
+    QUANDO si e' conclusa (`closed_ts`), non da quando e' nata
     (`nata_ts`). Il test sopra non lo vedeva: crea e conclude quasi nello
-    stesso istante, quindi `nata_ts` e `risvegliata_ts` sono troppo vicini
+    stesso istante, quindi `nata_ts` e `closed_ts` sono troppo vicini
     per distinguere i due criteri.
 
     Qui una promessa nata 91 giorni fa (oltre la conservazione, se si
@@ -211,7 +211,7 @@ def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
     dev'essere per una conclusione recente) non deve sparire.
 
     Mutazione che deve farlo fallire: rimettere `nata_ts` al posto di
-    `risvegliata_ts` nella dichiarazione `CONSERVAZIONE`.
+    `closed_ts` nella dichiarazione `CONSERVAZIONE`.
     """
     nata = ADESSO - 91 * 86400
     conclusa = ADESSO - 86400  # ieri
@@ -223,7 +223,7 @@ def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
 
     assert archivio.read(ident) is not None, (
         "nata 91 giorni fa ma CONCLUSA ieri: l'eta' della potatura deve "
-        "partire dalla conclusione (risvegliata_ts), non dalla nascita "
+        "partire dalla conclusione (closed_ts), non dalla nascita "
         "(nata_ts) -- altrimenti una promessa legittimamente mantenuta ieri "
         "sparirebbe oggi solo perche' e' nata tardi")
 
@@ -253,3 +253,31 @@ def test_il_motivo_di_una_promessa_conclusa_si_aggiorna_da_solo(archivio):
     p = archivio.read(ident)
     assert (p["stato"], p["motivo"], p["testo"]) == (
         "mantenuta", "la notifica non è arrivata", "t")
+
+
+def test_la_presa_e_la_chiusura_sono_due_istanti(archivio):
+    """G-20 (Tappa 8, Task 5): `risvegliata_ts` e' la PRESA e la scrive solo
+    `prendi`; `closed_ts` e' la CHIUSURA e la scrivono `concludi`, `cancel` e
+    `risana`. La potatura legge la chiusura.
+
+    Mutazione ESEGUITA (08/10/2026): la potatura di nuovo su `risvegliata_ts`
+    -- rossa, la promessa presa 91 giorni fa e chiusa ieri sparisce."""
+    presa = ADESSO - 91 * 86400
+    lunga = archivio.create(_fai(quando_ts=presa), thread=PAOLO,
+                            now=presa - 60)["promessa"]["id"]
+    archivio.prendi(lunga, now=presa)
+    archivio.concludi(lunga, state="mantenuta", now=ADESSO - 86400)
+    disdetta = archivio.create(_fai(), thread=PAOLO, now=ADESSO)["promessa"]["id"]
+    archivio.cancel(disdetta, thread=PAOLO, now=ADESSO + 1)
+    appesa = archivio.create(_fai(quando_ts=ADESSO + 5), thread=PAOLO,
+                             now=ADESSO)["promessa"]["id"]
+    archivio.prendi(appesa, now=ADESSO + 5)
+    archivio.risana(now=ADESSO + 9)
+
+    assert (archivio.read(lunga)["risvegliata_ts"],
+            archivio.read(lunga)["closed_ts"]) == (presa, ADESSO - 86400)
+    assert (archivio.read(disdetta)["risvegliata_ts"],
+            archivio.read(disdetta)["closed_ts"]) == (None, ADESSO + 1)
+    assert archivio.read(appesa)["closed_ts"] == ADESSO + 9
+    assert archivio.prune(ADESSO) == 0
+    assert archivio.read(lunga) is not None

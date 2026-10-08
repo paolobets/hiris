@@ -28,9 +28,11 @@ interrogarle entrambe e a fonderle a mano.
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import threading
 
+from ..chat_thread import subject_from_key, subject_key_for
 from ..storage import (
     Retention,
     add_missing_columns,
@@ -38,7 +40,11 @@ from ..storage import (
     connect,
     init_schema,
     prune_declared,
+    rebuild_table,
+    table_columns,
 )
+
+logger = logging.getLogger(__name__)
 
 #: **Per quanto si conserva un'esecuzione** (riuscita o fallita), nella forma
 #: di ogni archivio (`storage.Retention`).
@@ -87,7 +93,14 @@ CREATE TABLE IF NOT EXISTS esecuzioni (
     avviso TEXT,
     genere TEXT NOT NULL DEFAULT 'comando',
     oggetto TEXT,
-    soggetto_json TEXT
+    -- CHI (spec 2026-09-21 §11), come chiave `specie:id`
+    -- (`chat_thread.subject_key_for`), non come copia del soggetto: il nome
+    -- cambia, e una copia mente al primo cambio (A-17, Tappa 8). NULL quando
+    -- non c'era nessuno (lo schedulatore senza filo).
+    subject_key TEXT,
+    -- La frase che ha confermato una costruzione (B-5): l'unico fatto che
+    -- il soggetto della cronaca portava e che non vive altrove.
+    confirm_phrase TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_esecuzioni_quando ON esecuzioni(quando_ts DESC);
 """
@@ -122,6 +135,74 @@ def _migration_3(conn) -> None:
     add_missing_columns(conn, "esecuzioni", {"soggetto_json": "TEXT"})
 
 
+#: Le colonne di `esecuzioni` alla versione 4, quelle che la ricostruzione
+#: riempie: la forma di QUEL gradino, ferma.
+_COLUMNS_V4 = ("id", "quando_ts", "origine", "servizio", "entita_json", "eseguito",
+               "cambiato_json", "errore", "avviso", "genere", "oggetto",
+               "subject_key", "confirm_phrase")
+
+
+def _subject_columns(subject: dict | None) -> tuple[str | None, str | None]:
+    """Il soggetto di un atto nelle due colonne: la chiave di CHI e la frase
+    che ha confermato. La frase viaggia dentro il soggetto dall'officina
+    (`workshop._add_phrase`), e un soggetto che porta solo lei -- una
+    conferma senza nessuno davanti -- non ha un CHI: chiave NULL."""
+    if subject is None:
+        return None, None
+    who = {k: v for k, v in subject.items() if k != "confirm_phrase"}
+    return (subject_key_for(who) if who else None), subject.get("confirm_phrase")
+
+
+def _migration_4(conn) -> None:
+    """v3 -> v4 (Tappa 8, Task 5; A-17, D8): `soggetto_json` diventa
+    `subject_key` piu' `confirm_phrase`.
+
+    La colonna copiava il soggetto INTERO -- nome e nome utente compresi --
+    in ogni riga: un nome cambiato in Home Assistant restava vecchio in
+    novanta giorni di cronaca. Chi legge chiede CHI per chiave (la rotta
+    delle esecuzioni confronta `subject_key_for`), e il nome lo chiede alla
+    casa quando serve. La frase di conferma era l'unico fatto della copia
+    che non vive altrove: ha la sua colonna.
+
+    Un JSON illeggibile non ferma la migrazione: la riga perde il soggetto e
+    il registro lo dice. **Tutto o niente**: le colonne nuove, il travaso e
+    la ricostruzione stanno in una transazione (`storage.rebuild_table`).
+    Idempotente: senza `soggetto_json` non c'e' niente da fare."""
+    if "soggetto_json" not in table_columns(conn, "esecuzioni"):
+        return
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        add_missing_columns(conn, "esecuzioni",
+                            {"subject_key": "TEXT", "confirm_phrase": "TEXT"})
+        rows = conn.execute("SELECT id, soggetto_json FROM esecuzioni "
+                            "WHERE soggetto_json IS NOT NULL").fetchall()
+        for row in rows:
+            try:
+                subject = json.loads(row["soggetto_json"])
+            except (TypeError, ValueError):
+                subject = None
+            if not isinstance(subject, dict):
+                logger.warning("cronaca: il soggetto dell'esecuzione %s non si "
+                               "legge, e la riga lo perde", row["id"])
+                continue
+            conn.execute("UPDATE esecuzioni SET subject_key = ?, confirm_phrase = ? "
+                         "WHERE id = ?", (*_subject_columns(subject), row["id"]))
+        rebuild_table(
+            conn, "esecuzioni",
+            "CREATE TABLE esecuzioni (id TEXT PRIMARY KEY, quando_ts REAL NOT NULL, "
+            "origine TEXT NOT NULL, servizio TEXT NOT NULL, entita_json TEXT NOT NULL, "
+            "eseguito INTEGER NOT NULL, cambiato_json TEXT, errore TEXT, avviso TEXT, "
+            "genere TEXT NOT NULL DEFAULT 'comando', oggetto TEXT, subject_key TEXT, "
+            "confirm_phrase TEXT)",
+            _COLUMNS_V4,
+            indexes=(("CREATE INDEX IF NOT EXISTS idx_esecuzioni_quando "
+                      "ON esecuzioni(quando_ts DESC)"),))
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 def _row(r) -> dict:
     return {
         "id": r["id"],
@@ -135,15 +216,20 @@ def _row(r) -> dict:
         "avviso": r["avviso"],
         "genere": r["genere"],
         "oggetto": r["oggetto"],
-        # `None` e un dizionario vuoto sono due fatti diversi: «non c'era
-        # nessuno» (lo schedulatore) contro «c'era qualcuno e non so chi».
-        # La CHIAVE resta italiana come `origine`, `servizio` ed `entita`: e'
-        # un dato del dominio, e il dominio di questo prodotto e' in italiano.
-        # Inglese e' il nome del PARAMETRO, perche' `action/` e' uno degli
-        # ambiti gia' convertiti (vedi `scripts/rinomina.py`).
-        "soggetto": (None if r["soggetto_json"] is None
-                     else json.loads(r["soggetto_json"])),
+        # CHI, nella forma di `new_subject` letta dalla chiave: specie e id,
+        # niente nome (A-17, Tappa 8). `None`: non c'era nessuno. La CHIAVE
+        # resta italiana come `origine`, `servizio` ed `entita`: e' un dato
+        # del dominio. Inglese e' il nome del PARAMETRO, perche' `action/` e'
+        # uno degli ambiti gia' convertiti (vedi `scripts/rinomina.py`).
+        "soggetto": subject_from_key(r["subject_key"]),
+        # La frase su cui una costruzione e' nata (B-5); `None` quando
+        # nessuno ha parlato (il clic della pagina, una promessa notturna).
+        "confirm_phrase": r["confirm_phrase"],
     }
+
+
+#: A che versione sta lo schema: chi lo prova lo chiede qui.
+SCHEMA_VERSION = 4
 
 
 class Journal:
@@ -153,8 +239,8 @@ class Journal:
         self._conn = connect(db_path)
         self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3,
-                    migrations={2: _migration_2, 3: _migration_3})
+        init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
+                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
 
     def close(self) -> None:
         with self._lock:
@@ -194,13 +280,12 @@ class Journal:
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto,"
-                "soggetto_json) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "subject_key,confirm_phrase) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ident, now, actor, service, json.dumps(list(entity)),
                  int(bool(executed)),
                  None if changed is None else json.dumps(list(changed)),
-                 error, notice, genre, object_ref,
-                 None if subject is None else json.dumps(subject)))
+                 error, notice, genre, object_ref, *_subject_columns(subject)))
             self._conn.commit()
         return ident
 

@@ -66,11 +66,12 @@ window.HirisMemoryRoute = (function () {
   ];
   var TETHER_TYPE_LABELS = { area: 'Area', entita: 'Entità', dispositivo: 'Dispositivo' };
 
-  /* L'istante arriva in ISO 8601 UTC (`detto_il`, `store.py`): l'utente
-     legge l'ora locale. `null` se manca o non è interpretabile — si
+  /* L'istante arriva in epoca, in secondi (`detto_il`: dalla Tappa 8, G-14,
+     ogni archivio restituisce gli istanti cosi'; prima era ISO 8601 UTC):
+     l'utente legge l'ora locale. `null` se manca o non è un numero — si
      dichiara "data non disponibile", non se ne inventa una. */
-  function fmtWhen(iso) {
-    var t = iso ? Date.parse(iso) : NaN;
+  function fmtWhen(epoch) {
+    var t = typeof epoch === 'number' && isFinite(epoch) ? epoch * 1000 : NaN;
     if (isNaN(t)) return null;
     try {
       return new Date(t).toLocaleString('it-IT', {

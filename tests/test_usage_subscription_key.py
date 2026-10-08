@@ -23,10 +23,26 @@ T2 = 1_790_000_600.0
 T3 = 1_790_001_200.0
 
 
+#: `consumo_giorno` com'era alla versione 4, con i due istanti che la 6 toglie
+#: (Tappa 8, G-07): una fotografia, e non si aggiorna.
+_DAY_V4 = """
+CREATE TABLE consumo_giorno (
+    giorno TEXT NOT NULL, provider TEXT NOT NULL, modello TEXT NOT NULL,
+    richieste INTEGER NOT NULL DEFAULT 0, token_in INTEGER NOT NULL DEFAULT 0,
+    token_out INTEGER NOT NULL DEFAULT 0, cache_lettura INTEGER NOT NULL DEFAULT 0,
+    cache_scrittura INTEGER NOT NULL DEFAULT 0, costo_usd REAL,
+    costo_stato TEXT NOT NULL, errori_rate_limit INTEGER NOT NULL DEFAULT 0,
+    primo_ts REAL NOT NULL, ultimo_ts REAL NOT NULL,
+    PRIMARY KEY (giorno, provider, modello));
+"""
+
+
 def _archivio_v4(path, righe, saldi=()):
-    """Un archivio alla versione 4: lo schema di oggi (la 5 non cambia
-    tabelle) e `user_version = 4`."""
+    """Un archivio alla versione 4: `consumo_giorno` com'era allora, il resto
+    dallo schema di oggi (le altre tabelle che la 6 tocca restano vuote), e
+    `user_version = 4`."""
     conn = sqlite3.connect(path)
+    conn.executescript(_DAY_V4)
     conn.executescript(store_module._SCHEMA)
     for r in righe:
         conn.execute(
@@ -95,7 +111,6 @@ def test_le_righe_del_piano_passano_a_subscription_e_si_fondono_con_la_gemella(
             fusa["errori_rate_limit"]) == (3, 57, 8, 1)
     assert fusa["costo_usd"] is None
     assert fusa["costo_stato"] == "non_noto", "si fonde verso il piu' debole"
-    assert (fusa["primo_ts"], fusa["ultimo_ts"]) == (T1, T3)
     assert righe[("2026-09-21", "claude")]["richieste"] == 4
 
     saldi = _righe(db, "ancora_saldo")
@@ -143,11 +158,14 @@ def test_la_fusione_prende_lo_stato_piu_debole_anche_dalla_riga_del_piano_e_somm
     assert saldo["costo_usd"] == 0.75
 
 
-def test_la_migrazione_e_idempotente_e_rigira_dopo_un_ritorno_indietro(tmp_path, caplog):
-    """Una seconda apertura non fa niente e non dice niente. Un archivio che
-    torna alla versione 4 -- la versione vecchia lo ritimbra e riscrive
-    `ponte` -- rigira la migrazione al ritorno, e la riga nuova si fonde con
-    quella gia' migrata."""
+def test_la_migrazione_e_idempotente(tmp_path, caplog):
+    """Una seconda apertura non fa niente e non dice niente.
+
+    **Il ritorno indietro non si prova piu'** (Tappa 8, Task 5): dalla
+    versione 6 `consumo_giorno` non ha `primo_ts` e `ultimo_ts`, e una
+    versione dell'add-on precedente non potrebbe scriverci un secchiello --
+    il suo `INSERT` le nomina. Lo stesso vale per ogni archivio da cui una
+    colonna esce ricostruendo la tabella (`mind/store` `_migration_12`)."""
     db = tmp_path / "consumi.db"
     _archivio_v4(db, [("2026-09-20", "ponte", "opus", 2, 10, 1, 0, 0, None,
                        "compreso", 0, T1, T2)])
@@ -159,21 +177,8 @@ def test_la_migrazione_e_idempotente_e_rigira_dopo_un_ritorno_indietro(tmp_path,
         _apri(db)
     assert _righe(db, "consumo_giorno") == prima
     assert "il piano passa" not in caplog.text
-
-    conn = sqlite3.connect(db)
-    conn.execute(
-        "INSERT INTO consumo_giorno (giorno, provider, modello, richieste, "
-        "token_in, token_out, cache_lettura, cache_scrittura, costo_usd, "
-        "costo_stato, errori_rate_limit, primo_ts, ultimo_ts) "
-        "VALUES ('2026-09-20', 'ponte', 'opus', 1, 5, 1, 0, 0, NULL, 'compreso', 0, ?, ?)",
-        (T2, T3))
-    conn.execute("PRAGMA user_version = 4")
-    conn.commit()
-    conn.close()
-    _apri(db)
     [riga] = _righe(db, "consumo_giorno")
-    assert (riga["provider"], riga["richieste"], riga["token_in"]) == ("subscription", 3, 15)
-    assert (riga["primo_ts"], riga["ultimo_ts"]) == (T1, T3)
+    assert (riga["provider"], riga["richieste"], riga["token_in"]) == ("subscription", 2, 10)
 
 
 def test_la_pagina_consumi_chiama_il_piano_come_la_pagina_modelli(tmp_path):

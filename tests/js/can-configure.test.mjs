@@ -166,7 +166,7 @@ async function bootConfig(t, { canConfigure, hash = '', remembered, answers = {}
     'api/health': json(404, {}),
     'api/memories': json(200, {
       available: true, total: 1, shown: 1,
-      memories: [{ id: 'm1', testo: 'Mi piace il caffè', detto_il: '2026-09-27T08:00:00Z' }],
+      memories: [{ id: 'm1', testo: 'Mi piace il caffè', detto_il: 1790496000 }],
     }),
     ...answers,
   });

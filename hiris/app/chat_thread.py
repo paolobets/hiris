@@ -143,7 +143,20 @@ def subject_from_thread(thread: ChatThread | None) -> dict | None:
     """
     if thread is None:
         return None
-    specie, _sep, ident = thread.subject_key.partition(":")
+    return subject_from_key(thread.subject_key)
+
+
+def subject_from_key(key: str | None) -> dict | None:
+    """Il soggetto di una chiave `specie:id` (`subject_key_for`), nella forma
+    di `new_subject`: specie e id, niente nome -- il nome cambia, la chiave
+    no. `None` per una chiave assente.
+
+    E' la lettura degli archivi che portano CHI come chiave e non come copia
+    del soggetto intero (A-17, Tappa 8: la cronaca, i turni misurati): la
+    stessa di `subject_from_thread`, perche' sono la stessa domanda."""
+    if not key:
+        return None
+    specie, _sep, ident = key.partition(":")
     return new_subject(specie, ident=None if ident in ("", "-") else ident)
 
 
