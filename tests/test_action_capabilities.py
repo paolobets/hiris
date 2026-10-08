@@ -40,7 +40,8 @@ from hiris.app.action.registry import ServiceRegistry, field_applies
 from hiris.app.action.verification import verification
 from hiris.app.home_space import type_vocabulary
 from hiris.app.home_space.house import House
-from hiris.app.home_space.queries import commands_for, view
+from hiris.app.home_space.queries import view
+from hiris.app.home_space.render import commands_for
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.memory.store import MemoryStore
@@ -606,7 +607,7 @@ def test_un_limite_dell_entita_si_prende_solo_intero():
     meta = {"entity_id": "light.meta", "state": "on", "attributes": {
         "min_color_temp_kelvin": 1500, "supported_color_modes": ["color_temp"],
         "friendly_name": "Meta"}}
-    from hiris.app.home_space.queries import _limits_of_entity
+    from hiris.app.home_space.render import _limits_of_entity
     assert _limits_of_entity("light", "color_temp_kelvin",
                              _attributes(meta)) == {}
 

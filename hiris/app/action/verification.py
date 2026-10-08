@@ -56,7 +56,7 @@ lettore futuro non le scambi per dimenticanze:
   il campo di un cursore, non il dispositivo. Chi restringesse sul selettore
   negherebbe una temperatura che quella lampadina sa fare davvero. I limiti
   veri escono verso il modello dal dettaglio di un'entita'
-  (`home_space/queries.commands_for`), che li prende dall'entita';
+  (`home_space/render.commands_for`), che li prende dall'entita';
 - **non rifiuta su cio' che non si e' potuto misurare**: `field_applies`
   risponde `None` e qui `None` non diventa un no. Stessa disciplina di
   `fields` due paragrafi sotto;

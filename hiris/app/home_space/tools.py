@@ -1409,7 +1409,7 @@ class ToolDispatcher:
         self._thread = thread
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
         # provenienza. Ne esce il SIGNIFICATO della classe di un'entita'
-        # sul dettaglio di `search` (`queries._class_meaning`). `None` e'
+        # sul dettaglio di `search` (`render._class_meaning`). `None` e'
         # legittimo.
         self._knowledge = knowledge
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui

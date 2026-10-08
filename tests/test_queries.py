@@ -1563,7 +1563,7 @@ def test_un_limite_corretto_dalla_casa_arriva_ai_comandi():
     `type_vocabulary.parameter_limits`», uscita col Task 8.
     """
     from hiris.app.home_space import type_vocabulary as tv
-    from hiris.app.home_space.queries import _limits_of_entity
+    from hiris.app.home_space.render import _limits_of_entity
     from hiris.app.home_space.type_judgments import TypeJudgments
     righe = tuple(r for r in tv.judgment_seed_rows()
                   if not (r[1] == "light" and r[2] == "limiti_parametri"))

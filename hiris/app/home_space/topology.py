@@ -806,7 +806,7 @@ def live_first(declared: str | None, live: str | None) -> str | None:
 
     Esiste come funzione, e non come due righe scritte dove servono, perche'
     questa decisione la prendono piu' posti: cosa tenere nell'anagrafe
-    (`reader._entity`), cosa mostrare (`queries._enrich_entity`) e cosa
+    (`reader._entity`), cosa mostrare (`render._enrich_entity`) e cosa
     dedurre (`memory.interpretation.deduci_unit`). Se non c'e' ne' l'una ne'
     l'altra, resta `None`: **non si inventa** -- vedi `reference_frame`, che
     descrive la casa e non le sue entita'.
@@ -887,7 +887,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     parallela, `entita_nascoste`. Il proprietario ha misurato in produzione
     che il dettaglio dell'area `sala_da_pranzo` restituiva sette luci mescolate,
     quattro delle quali nascoste: il campo `nascosta` c'era gia' su ogni
-    entita' (`queries._enrich_entity`), ma stare nella STESSA lista non
+    entita' (`render._enrich_entity`), ma stare nella STESSA lista non
     ha impedito che venissero elencate lo stesso -- la prova che un dato
     presente non basta, la sua POSIZIONE deve escluderlo da chi legge solo
     "cosa c'e' in questa stanza". Regola del proprietario: "HIRIS non prende
