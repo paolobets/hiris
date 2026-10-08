@@ -50,7 +50,7 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 # `giorni_conservazione` fa DUE lavori:
-#   1. la potatura notturna (`server.py::_run_retention`, cron alle 3) cancella
+#   1. la potatura notturna (`conservazione.run_retention`, cron alle 3) cancella
 #      dal disco i messaggi piu' vecchi di questo numero di giorni;
 #   2. lo STESSO numero limita quanto `chat_store.load_context()` rilegge
 #      della conversazione in corso -- abbassarlo non libera spazio, fa

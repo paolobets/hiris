@@ -62,6 +62,15 @@ def _server_lines(caplog) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.name == SERVER_LOGGER]
 
 
+#: Il registro della conservazione: la potatura e' uscita da `server.py`
+#: l'08/10/2026 (Tappa 8, Task 6), e scrive col nome del suo modulo.
+CONSERVATION_LOGGER = "hiris.app.conservazione"
+
+
+def _conservation_lines(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == CONSERVATION_LOGGER]
+
+
 class _ArchivioOsservazioniFinto:
     """La finta deve saper produrre il difetto che sorveglia (feedback
     ricorrente di questo progetto): oltre a tornare un numero da `prune()`,
@@ -84,7 +93,7 @@ async def _prune_with(app, finto, caplog, level):
     """Il lavoro `hiris_mind_pruning` dell'app avviata, con l'archivio delle
     osservazioni sostituito per la durata della prova."""
     with mock.patch.dict(app, {"observations": finto}), \
-            caplog.at_level(level, logger=SERVER_LOGGER):
+            caplog.at_level(level, logger=CONSERVATION_LOGGER):
         await _job(app, "hiris_mind_pruning")()
 
 
@@ -106,7 +115,7 @@ async def test_la_potatura_logga_il_numero_vero_di_giorni(started_app, caplog):
     await _prune_with(started_app, finto, caplog, logging.INFO)
 
     assert finto.chiamate == 1
-    [messaggio] = _server_lines(caplog)
+    [messaggio] = _conservation_lines(caplog)
     assert messaggio == "cervello: 5 cambi oltre i 22 giorni sono usciti"
 
 
@@ -121,7 +130,7 @@ async def test_la_potatura_non_logga_niente_quando_non_pota_niente(started_app, 
     await _prune_with(started_app, finto, caplog, logging.INFO)
 
     assert finto.chiamate == 1
-    assert _server_lines(caplog) == []
+    assert _conservation_lines(caplog) == []
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -140,7 +149,7 @@ async def test_la_potatura_non_lascia_uscire_l_eccezione(started_app, caplog):
     await _prune_with(started_app, finto, caplog, logging.WARNING)  # non solleva
 
     assert finto.chiamate == 1
-    assert any(line.startswith("cervello:") for line in _server_lines(caplog))
+    assert any(line.startswith("cervello:") for line in _conservation_lines(caplog))
 
 
 # --------------------------------------------------------------------------

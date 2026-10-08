@@ -33,6 +33,7 @@ from pathlib import Path
 import pytest
 
 from hiris.app import server
+from hiris.app.steering import JOB_SPECIES
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -98,7 +99,7 @@ async def test_expired_holistic_job_is_logged_and_left_expired(tmp_path, monkeyp
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", sorted(
-    k for k in server.JOB_SPECIES if k not in ("chat", "promessa", server.SCOPE_TURN_KIND)))
+    k for k in JOB_SPECIES if k not in ("chat", "promessa", server.SCOPE_TURN_KIND)))
 async def test_un_turno_dichiarato_scade_e_non_e_un_orfano(tmp_path, kind, caplog):
     """Rossa su `8529b30`: analisi, ricette e attuazione scadute finivano
     nel registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2 della

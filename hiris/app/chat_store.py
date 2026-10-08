@@ -181,7 +181,7 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
 
 # fetta "Modelli" (2.0), Task 12: la costante di modulo `HISTORY_RETENTION_DAYS`
 # e' uscita -- viveva qui, letta all'IMPORT da due lettori (questo modulo
-# stesso, in `ChatStore.load_context`, e `server.py::_run_retention`), e
+# stesso, in `ChatStore.load_context`, e `conservazione.run_retention`), e
 # scriverla a runtime (com'era pensato dal vecchio commento "overridable at
 # startup via configure()", che non esisteva davvero: nessun `configure()` e'
 # mai stato definito in questo file) non l'avrebbe mai fatta arrivare a un

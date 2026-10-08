@@ -281,7 +281,7 @@ class ReasoningQueue:
         #
         # `rows` e' letto PRIMA di questa UPDATE: i dict restituiti da
         # `_row(r)` sotto portano ancora il `context` originale (oltre a
-        # `kind`, l'unico campo che `_reasoning_sweep`, server.py, legge dal
+        # `kind`, l'unico campo che `conservazione.reasoning_sweep` legge dal
         # valore di ritorno per il suo log). Non e' una svista -- e' il valore
         # di ritorno di QUESTA chiamata, non una rilettura del DB: il
         # `context_json` sulla riga persistita e' comunque '{}' da subito
@@ -382,7 +382,7 @@ class ReasoningQueue:
         ragione delle altre due chiusure.
 
         `before_ts` e' un CONFINE, non una durata: lo calcola il chiamante
-        (`server._reasoning_sweep`) dalla scadenza configurata, cosi' questo
+        (`conservazione.reasoning_sweep`) dalla scadenza configurata, cosi' questo
         modulo non ha bisogno di conoscere ne' l'archivio ne' un orologio."""
         with self._lock:
             cur = self._conn.execute(

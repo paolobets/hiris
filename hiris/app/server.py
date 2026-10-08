@@ -8,6 +8,7 @@ import re
 import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 
 from aiohttp import web
@@ -49,6 +50,7 @@ from .api.middleware_internal_auth import internal_auth_middleware
 from .background import spawn as _spawn
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
+from .conservazione import prune_observations, reasoning_sweep, run_retention
 from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.energy import energy_dashboard
@@ -73,7 +75,6 @@ from .home_space.topology import (
     tree_areas,
 )
 from .keeper.exchange import interpreta_promise
-from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
@@ -111,7 +112,6 @@ from .mind.seed import (
 )
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
-from .models_store import bridge_deadline_min
 from .panel_visibility import parse_access_flag
 from .provider_occurrences import OccurrenceRegistry
 from .providers import (
@@ -133,7 +133,6 @@ from .proxy.state_translations import StateTranslations
 from .reasoning.queue import turn_answer
 from .steering import (
     ANALYST_SPECIES,
-    JOB_SPECIES,
     OBSERVER_SPECIES,
     RECIPES_SPECIES,
     SPECIES,
@@ -150,56 +149,6 @@ from .version import read_version
 
 logger = logging.getLogger(__name__)
 
-
-
-def _close_expired_promise(app, job: dict) -> None:
-    """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
-
-    Estratta invece che scritta in linea dentro lo sweep perche' ha una
-    ragione sua e va provata da sola: e' l'unico punto che impedisce a una
-    promessa servita dal ponte di restare `in_corso` per sempre quando il
-    piano non risponde. `risana()` la chiuderebbe soltanto al prossimo
-    riavvio -- cioe' forse mai.
-
-    L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
-    `submit`, e `wake` e' la sola parte del job che sopravvive.
-    """
-    ident = (job.get("wake") or {}).get("promessa_id") or ""
-    store = app.get("agenda")
-    riga = store.read(ident) if (store is not None and ident) else None
-    if riga is None or riga.get("stato") != "in_corso":
-        # Gia' conclusa da `concludi` mentre il turno finiva: non si
-        # riapre. E' lo stesso ordine di controlli della consegna
-        # (`reasoning/consegna`), per la stessa ragione.
-        return
-    # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
-    # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
-    # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
-    # che il registro degli esiti riceve qui sotto: una sola, letta una volta.
-    durata_s = (float(job.get("deadline_ts", 0.0))
-                - float(job.get("created_ts", 0.0)))
-    minuti = round(durata_s / 60)
-    reason = (f"ho aspettato il {SUBSCRIPTION.name} per {minuti} minuti e non ha "
-              "risposto: non so cosa dirti.")
-    # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
-    # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
-    # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
-    if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
-        tell_failure(app.get("data_dir"), riga, reason)
-    # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
-    # terza strada delle promesse sul ponte, dopo il successo (`api/
-    # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/
-    # consegna`). Stessa famiglia `scaduto` del ramo chat
-    # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
-    registry = app.get("occurrence_registry")
-    if registry is not None:
-        registry.fallimento(
-            SUBSCRIPTION.id, family="scaduto", code=None,
-            message="nessuna conclusione entro la scadenza del ponte (promessa)",
-            durata_s=durata_s)
-    logger.warning(
-        "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
-        ident, minuti)
 
 
 def _promise_delivery(app) -> dict:
@@ -2696,7 +2645,7 @@ def _recompute_chain(app) -> None:
     """
     cfg = app.get("models_config") or {}
     # Un valore solo, derivato una volta, letto da tutti: la spazzata
-    # (`_reasoning_sweep`), l'instradamento (`steering.who_answers`), la
+    # (`conservazione.reasoning_sweep`), l'instradamento (`steering.who_answers`), la
     # pagina Consumi, il gate del lavoratore qui sotto. Nessuno dei quattro
     # ricalcola niente, quindi nessuno dei quattro puo' dire una cosa diversa.
     app["bridge_active"] = _bridge_active(cfg)
@@ -3797,31 +3746,9 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
-    # La potatura del grezzo: senza, l'archivio dei cambi cresce per sempre.
-    # Il numero di giorni non si scrive a mano -- si deriva dalla costante
-    # dell'archivio (`mind/store.READING_RETENTION_S`, 22 giorni: 21
-    # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
-    # la riga di log non puo' mentire quando la costante cambia
-    # (task-5-correzioni.md, punto C).
-    #
-    # try/except proprio (task-5-fix-brief.md, punto 3): era l'unico dei tre
-    # lavori del cervello senza una rete sua -- un guasto di SQLite alle tre
-    # di notte finiva nel registro di apscheduler senza il prefisso
-    # «cervello:», mentre i due fratelli (le condizioni, l'aggregazione) ce
-    # l'hanno gia'.
-    async def _prune_observations() -> None:
-        try:
-            count = app["observations"].prune(_time.time())
-            if count:
-                days = READING_RETENTION_S // 86400
-                logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
-                            count, days)
-        except Exception as error:
-            logger.warning("cervello: potatura fallita (%s: %s)",
-                           type(error).__name__, error)
-
+    # La potatura del grezzo: `conservazione.prune_observations`.
     scheduler.add_job(
-        _prune_observations,
+        partial(prune_observations, app),
         trigger="cron", hour=3, minute=0,
         id="hiris_mind_pruning", replace_existing=True,
         misfire_grace_time=3600,
@@ -3885,30 +3812,9 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=30,
     )
 
-    # Daily retention job (chat messages only -- knowledge/memory items no
-    # longer expire, Task 6 "la memoria non evapora": handle_save_memory
-    # stopped computing a valid_until, so purge_expired_chatbot had no more
-    # work fed to it and was removed).
-    #
-    # Task 12: la fonte del numero di giorni non e' piu' il globale di modulo
-    # `chat_store.HISTORY_RETENTION_DAYS` (uscito dal modulo) ma
-    # `app["chat_settings"].retention_days` -- letto AD OGNI GIRO
-    # dentro la chiusura, non catturato una volta sola all'avvio: un PUT su
-    # /api/chat-settings riassegna quella chiave a caldo
-    # (`handlers_settings.handle_save_settings`), e la potatura di
-    # stanotte deve vedere il valore che l'utente ha scelto oggi, non quello
-    # con cui l'add-on e' partito.
-    from .chat_store import delete_old_messages as _delete_old_messages
-
-    def _run_retention() -> None:
-        days = app["chat_settings"].retention_days
-        if days > 0:
-            n = _delete_old_messages(data_dir, days)
-            if n:
-                logger.info("Retention: deleted %d old chat messages", n)
-
+    # La conservazione della chat: `conservazione.run_retention`.
     scheduler.add_job(
-        _run_retention,
+        partial(run_retention, app),
         trigger="cron",
         hour=3,
         minute=0,
@@ -3930,109 +3836,9 @@ async def _on_startup(app: web.Application) -> None:
 
     app["submit_chat_reply"] = _chat_reply_submitter(app, data_dir)
 
-    # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal
-    # runner remoto. Il ramo chat resta (Slice 4b): un job "chat" scaduto
-    # resta semplicemente 'expired', esposto alla sua stessa route di poll.
-    # fetta E3 Task 4: il ramo di fallback olistico (ragionava in locale via
-    # _run_decision) e' uscito con `_holistic_reason`, l'unico produttore di
-    # job kind="holistic" -- nessun job di quel tipo viene piu' accodato.
-    # Silenzio dichiarato: un job kind="holistic" qui puo' arrivare SOLO da
-    # un reasoning.db lasciato da un'installazione precedente questo
-    # deploy -- nessun fallback locale lo ragiona piu', quindi non e' un
-    # pass silenzioso: un log esplicito lo dichiara prima di lasciarlo
-    # scadere (sweep_expired lo ha gia' marcato 'expired' sopra).
-    async def _reasoning_sweep() -> None:
-        # Lo STESSO VALORE dell'instradamento, non la stessa espressione: fino
-        # alla 2.5.0 i due gate chiamavano `_bridge_active` ciascuno per conto
-        # suo sugli stessi due ingressi, e il fail-safe «mai accodare in una
-        # coda che nessuno spazza» reggeva sul fatto che le due chiamate
-        # restassero identiche. Adesso il valore e' derivato UNA volta
-        # (`_recompute_chain`) e qui si LEGGE: due letture dello stesso slot
-        # non possono divergere nemmeno per distrazione. Ed e' anche cio' che
-        # rende la spazzata sensibile al ponte spento dalla pagina, senza un
-        # riavvio.
-        if not app.get("bridge_active"):
-            return
-        for job in reasoning_queue.sweep_expired(_time.time()):
-            if job.get("kind") == "promessa":
-                # Fetta «le promesse seguono la catena» (22/08/2026): il turno
-                # e' scaduto senza che il piano rispondesse. La promessa non
-                # puo' restare `in_corso` -- sarebbe invisibile, e peggio di
-                # una fallita: `risana()` la chiuderebbe solo al prossimo
-                # riavvio, cioe' forse mai.
-                _close_expired_promise(app, job)
-                continue
-            if job.get("kind") == SCOPE_TURN_KIND:
-                # **Un turno dell'osservatore scaduto deve lasciare traccia**
-                # (correzione della review indipendente, 11/09/2026). Senza,
-                # l'ultimo tentativo resta «accodata» per sempre e la pagina
-                # dice «in corso da N minuti» mentre il piano non rispondera'
-                # mai: un worker fermo con un token buono diventa
-                # indistinguibile da un'attesa legittima -- lo stesso guasto
-                # appiattito su un'assenza che questa fetta esiste per togliere.
-                # E' il gemello di `_close_expired_promise` qui sopra.
-                store = app.get("observations")
-                if store is not None:
-                    attesa = max(0.0, job.get("deadline_ts", 0) - job.get("created_ts", 0))
-                    store.record_attempt(
-                        outcome="scaduta",
-                        detail=f"il piano non ha risposto entro {attesa / 60:.0f} minuti",
-                        version=read_version())
-                logger.warning(
-                    "osservatore: il turno %s e' scaduto senza risposta dal piano",
-                    job.get("job_id"))
-                continue
-            if job.get("kind") == "chat":
-                continue
-            # Una specie dichiarata (`steering.JOB_SPECIES`) e' un turno che il
-            # piano non ha fatto in tempo a servire, non un orfano: fino al
-            # 06/10/2026 analisi, ricette e attuazione scadute finivano nel
-            # registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2
-            # della Tappa 6). Orfano resta solo un tipo che nessuno dichiara
-            # piu', come l'olistico di un archivio di prima della fetta E3.
-            if job.get("kind") in JOB_SPECIES:
-                logger.warning(
-                    "reasoning sweep: il turno %s (%s) e' scaduto senza risposta "
-                    "dal piano", job.get("job_id"), job.get("kind"))
-            else:
-                logger.warning(
-                    "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, "
-                    "fetta E3 Task 4), scartato",
-                    job.get("job_id"), job.get("kind"))
-        # fetta «la catena diventa l'unica verita'», Task 14. Lo sweep NON ruba
-        # il lavoro al poll: `sweep_expired` guarda solo 'pending'/'claimed' e
-        # non tocca i job in 'ripiego' -- e' cio' che rende sicura la
-        # convivenza fra i due, visto che il ripiego vive nella rotta di poll
-        # (ogni 3,5 s) e non qui (ogni 2 minuti).
-        #
-        # Ma un job rimasto in 'ripiego' oltre il DOPPIO della scadenza e' un
-        # ripiego che si e' schiantato: il processo e' caduto mentre chiedeva
-        # alla catena, e nessuno chiudera' piu' quel job. Non puo' restare in
-        # volo per sempre -- `prune` cancella 'decided', 'expired' e 'failed',
-        # mai 'ripiego' -- e finche' resta li' tiene anche la conversazione
-        # bloccata sul 409 (`has_pending_chat` conta i ripieghi come in volo).
-        # Il doppio, e non la scadenza secca, perche' il ripiego COMINCIA alla
-        # scadenza: il margine e' il tempo che la catena ha per rispondere.
-        reasoning_queue.fail_stuck_downgrades(
-            _time.time() - 2 * 60 * bridge_deadline_min(app.get("models_config")))
-        # **Le risposte consegnate si dimenticano** (reperto C-6,
-        # 23/09/2026). La domanda si azzera alla consegna da sempre
-        # (`submit`); la risposta restava fino alla potatura a sette giorni,
-        # anche dopo che il proprietario aveva cancellato la conversazione.
-        #
-        # Un quarto d'ora di margine, e non zero: un ricaricamento della
-        # pagina rifa' il poll sullo stesso lavoro, e una risposta svuotata
-        # all'istante gli tornerebbe come «non e' arrivata in tempo». La
-        # spazzata gira ogni due minuti, quindi il ritardo vero e' il margine.
-        dimenticate = reasoning_queue.forget_delivered(
-            before_ts=_time.time() - 15 * 60)
-        if dimenticate:
-            logger.info("coda del ragionamento: dimenticate %d risposte gia' "
-                        "consegnate", dimenticate)
-        reasoning_queue.prune(_time.time() - 7 * 86400)
-
+    # La spazzata della coda del ponte: `conservazione.reasoning_sweep`.
     scheduler.add_job(
-        _reasoning_sweep, trigger="interval", minutes=2,
+        partial(reasoning_sweep, app), trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
     # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno
