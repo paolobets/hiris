@@ -463,10 +463,13 @@ async def test_un_giudizio_porta_il_suo_AUTORE_e_la_sua_chiave(cliente):
 
 @pytest.mark.asyncio
 async def test_un_giudizio_scritto_prima_e_ancora_una_correzione(cliente):
-    """I vecchi restano «proprietario» (spec §3) e stanno fra le correzioni."""
+    """I vecchi restano «proprietario» (spec §3) e stanno fra le correzioni.
+    Sul disco sono `chiesto`: scritti `nostro`, li ha portati li' la
+    migrazione 10 del sapere (G-05, Tappa 8), che ha la sua prova
+    (`test_mind_judgments.py`)."""
     cliente.app["knowledge"].write(Fact(
         subject_kind="tipo", subject="binary_sensor.occupancy", field="genere",
-        value="presenza", provenance="nostro", who="proprietario", when_ts=5.0))
+        value="presenza", provenance="chiesto", who="proprietario", when_ts=5.0))
 
     giudizi = (await (await cliente.get("/api/mind/knowledge",
                                         headers=_testate("u-admin"))).json())["giudizi"]

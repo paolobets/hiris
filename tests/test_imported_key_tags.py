@@ -49,8 +49,8 @@ _CLASSI_SOLO_RECENTE = {"sensor": "uptime"}
 _CLASSI_DUE_TAG = {"number", "button", "switch", "update", "media_player", "valve"}
 
 
-def _atteso(solo_recente, ai_due) -> dict[str, tuple[str, ...]]:
-    return {**{d: (RECENTE,) for d in solo_recente}, **{d: (VECCHIO, RECENTE) for d in ai_due}}
+def _atteso(solo_recente, entrambi) -> dict[str, tuple[str, ...]]:
+    return {**{d: (RECENTE,) for d in solo_recente}, **{d: (VECCHIO, RECENTE) for d in entrambi}}
 
 
 def test_tag_capacita_misurati():

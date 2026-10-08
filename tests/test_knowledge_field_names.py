@@ -119,7 +119,7 @@ class _Cercatore(ast.NodeVisitor):
             self._segna(node, _sql(node.value))
 
 
-def _fuori_casa() -> list[str]:
+def _sparsi() -> list[str]:
     porte = _porte()
     trovati = []
     for path in sorted(RADICE.rglob("*.py")):
@@ -155,8 +155,8 @@ def test_le_ammissioni_non_sono_scadute():
                    for n in ast.walk(albero)), (rel, funzione)
 
 
-def test_nessun_nome_campo_scritto_fuori_casa():
-    trovati = _fuori_casa()
+def test_nessun_nome_campo_scritto_sparsi():
+    trovati = _sparsi()
     assert not trovati, (
         "nomi di campi del sapere scritti per esteso fuori da "
         f"`{CASA}` -- si importano da li': {trovati}")
