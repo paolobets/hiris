@@ -176,6 +176,15 @@ test('seam _rendiResoconto: la parola breve la dice il server, e senza parola c\
   assert.doesNotMatch(testo, /: ferma\b|causa_futura/);
 });
 
+test('seam _rendiResoconto: un\'esclusione senza ore dice solo la parola, mai «undefined»', () => {
+  // Mutazione che la uccide: spingere il tratto anche senza `x.ore`.
+  const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 0.9, esclusi: [
+    esclusa('01:00', '02:00', { ore: undefined })] })] }));
+  const testo = corpo.querySelector('.st-delta.excluded').textContent;
+  assert.equal(testo, 'su 90% del giorno · dispositivo fermo');
+  assert.doesNotMatch(testo, /undefined/);
+});
+
 test('seam _rendiResoconto: il perche\' si apre da un bottone, anche da tastiera', () => {
   // Mutazione che la uccide: non aggiornare `aria-expanded` al clic.
   const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 23 / 24,

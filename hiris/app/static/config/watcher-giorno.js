@@ -250,12 +250,12 @@ window.HirisWatcherGiorno = (function () {
     var parole = [];
     esclusi.forEach(function (x) {
       var parola = parolaEsclusione(x);
-      var ore = x.ore || [];
       if (!tratti[parola]) { tratti[parola] = []; parole.push(parola); }
-      tratti[parola].push(ore[0] + '–' + ore[1]);
+      /* Senza ore dette dal server non se ne inventano: resta la parola. */
+      if (x.ore) tratti[parola].push(x.ore[0] + '–' + x.ore[1]);
     });
     var detto = parole.map(function (p) {
-      return 'escluse ' + tratti[p].join(' e ') + ': ' + p;
+      return tratti[p].length ? 'escluse ' + tratti[p].join(' e ') + ': ' + p : p;
     }).join(' · ');
     var riga = el('div', 'st-delta excluded', (copertura ? copertura + ' · ' : '') + detto);
     riga.title = esclusi.map(function (x) { return x.perche || ''; }).filter(Boolean).join('\n');

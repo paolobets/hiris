@@ -344,3 +344,16 @@ def test_la_frase_per_la_pagina_dice_l_integrazione_e_la_fine_del_giorno():
     # di fine arriva gia' detta, «24:00».
     assert stretch.out()["parola"] == "integrazione ferma"
     assert stretch.out()["ore"] == ["20:00", "24:00"]
+
+
+def test_un_esclusione_senza_parola_breve_non_nasce():
+    """N93-1: la parola breve e' obbligatoria come le due frasi: una riga
+    della piastrella senza parola non direbbe cosa e' successo."""
+    import dataclasses
+
+    import pytest
+    _refusals, exclusions = verdicts(METER)
+    [stretch] = exclusions["sensor.m_potenza"]
+    for empty in ("", "  "):
+        with pytest.raises(ValueError, match="senza ragione"):
+            dataclasses.replace(stretch, label=empty)
