@@ -215,7 +215,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
         ident = _promessa_in_corso(promesse)
-        app = {"agenda": promesse,
+        app = {"agenda": promesse, "data_dir": str(tmp_path),
                "models_config": {"ponte": {"scadenza_min": 3}}}
 
         _close_expired_promise(app, {"wake": {"promessa_id": ident},
@@ -241,6 +241,7 @@ def test_un_turno_scaduto_sul_piano_lascia_un_fallimento_nel_registro(tmp_path):
         ident = _promessa_in_corso(promesse)
         registry = OccurrenceRegistry(clock=lambda: 999.0)
         app = {"agenda": promesse, "occurrence_registry": registry,
+               "data_dir": str(tmp_path),
                "models_config": {"ponte": {"scadenza_min": 10}}}
 
         _close_expired_promise(app, {"wake": {"promessa_id": ident},

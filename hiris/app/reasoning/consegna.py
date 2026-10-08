@@ -96,7 +96,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
             # risposta del modello citata nel motivo passa dal filtro dei
             # veleni da sola (`quoted`).
             if store.concludi(ident, state="fallita", now=now, reason=reason):
-                tell_failure(app.get("data_dir"), row, reason,
+                tell_failure(app["data_dir"], row, reason,
                              quoted=reply if isinstance(reply, str) and reply.strip()
                              else None)
             # Rilievo R1 della revisione indipendente sul tratto
@@ -226,7 +226,7 @@ def close_expired_promise(app, job: dict) -> None:
     # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
     # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
     if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
-        tell_failure(app.get("data_dir"), promise, reason)
+        tell_failure(app["data_dir"], promise, reason)
     # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
     # terza strada delle promesse sul ponte, dopo il successo (`api/
     # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/

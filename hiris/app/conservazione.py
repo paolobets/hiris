@@ -37,6 +37,7 @@ import logging
 import os
 import sqlite3
 import time
+from collections.abc import Iterable
 
 from .mind.observer import SCOPE_TURN_KIND
 from .models_store import bridge_deadline_min
@@ -119,13 +120,28 @@ async def nightly(app) -> None:
 #: **`chatbots.json` NON e' in questo elenco**, per decisione del
 #: proprietario: contiene il prompt personalizzato che aveva salvato sul bot
 #: di default, e va guardato prima. Un residuo si cancella quando e' morto
-#: **e** quando qualcuno ha deciso -- non per la sola prima meta'.
+#: **e** quando qualcuno ha deciso -- non per la sola prima meta'. Lo dice
+#: all'avvio `announce_chatbots_json`, e la Tappa 8 (D6) lo lascia com'e'
+#: finche' il proprietario non lo ha guardato.
+#:
+#: Entrati l'08/10/2026 (Tappa 8, Task 7, D6):
+#: - `agents.json`, il predecessore di `chatbots.json` (prima della rinomina
+#:   SP-4): il prompt da guardare sta nel successore, e di lui nessun codice
+#:   legge niente dalla fetta E4;
+#: - `casa.db` col suo diario (`-wal`) e la sua memoria condivisa (`-shm`):
+#:   la copia impoverita dei registri di Home Assistant che l'anagrafe dal
+#:   vivo ha sostituito, e che nessun codice apre piu' (M-40). Un `-wal` senza
+#:   il suo archivio non e' leggibile da nessuno.
 #:
 #: L'elenco e' NOMINATO, mai un'euristica sul nome: un archivio vivo che
 #: somigliasse a un residuo, o uno che nascera' domani, non deve poter
 #: sparire per assonanza.
 RESIDUI_DISMESSI = (
     "advisory.db",
+    "agents.json",
+    "casa.db",
+    "casa.db-shm",
+    "casa.db-wal",
     "dashboard_backups.json",
     "ha_health.json",
     "history.db",
@@ -139,8 +155,20 @@ RESIDUI_DISMESSI = (
 )
 
 
-def cancella_residui(data_dir: str) -> None:
+#: Perche' un residuo se ne va: la frase che il registro dice accanto al nome.
+_DISMESSO = ("nessun codice lo leggeva piu', e un archivio dismesso entra nei "
+             "backup di Home Assistant come tutto il resto di /data.")
+_IMPORTATO = ("il suo totale e' gia' nell'archivio dei consumi "
+              "(`legacy_importati`), e nessun codice lo legge piu'.")
+
+
+def cancella_residui(data_dir: str, imported: Iterable[str] = ()) -> None:
     """Cancella gli archivi dismessi, **dicendo quali e quanto erano grandi**.
+
+    `imported` sono i contatori di prima (`usage*.json`) che l'archivio dei
+    consumi ha gia' registrato come importati (`UsageStore.legacy_imported`,
+    D6 della Tappa 8): da li' in poi sono un residuo come gli altri. Uno che
+    non si e' potuto importare -- illeggibile -- non e' fra questi, e resta.
 
     Cancellare dati di un utente in silenzio e' proibito dalle fondamenta di
     questo progetto: si dice il nome e la dimensione, non «ho fatto pulizia».
@@ -153,8 +181,10 @@ def cancella_residui(data_dir: str) -> None:
     permesso negato o un disco pieno non devono impedire a HIRIS di partire --
     stessa disciplina di `decidi_vault`.
     """
-    for nome in RESIDUI_DISMESSI:
-        percorso = os.path.join(data_dir, nome)
+    residues = [(os.path.join(data_dir, nome), _DISMESSO) for nome in RESIDUI_DISMESSI]
+    residues += [(percorso, _IMPORTATO) for percorso in imported]
+    for percorso, ragione in residues:
+        nome = os.path.basename(percorso)
         try:
             if not os.path.exists(percorso):
                 continue
@@ -165,10 +195,7 @@ def cancella_residui(data_dir: str) -> None:
                 "%s non si e' potuto cancellare (%s: %s): resta su disco",
                 nome, type(errore).__name__, errore)
             continue
-        logger.info(
-            "%s cancellato (%d byte): nessun codice lo leggeva piu', e un "
-            "archivio dismesso entra nei backup di Home Assistant come tutto "
-            "il resto di /data.", nome, quanto)
+        logger.info("%s cancellato (%d byte): %s", nome, quanto, ragione)
 
 
 def decidi_vault(data_dir: str) -> None:
@@ -227,29 +254,25 @@ def decidi_vault(data_dir: str) -> None:
 
 
 def announce_chatbots_json(data_dir: str) -> None:
-    """L'annuncio di `chatbots.json` all'avvio, uscito da `server.py`
-    (Tappa 8, Task 7) senza cambiare una riga."""
-    # Silenzio dichiarato, stessa disciplina di advisory.db/sentinel.db/ecc.
-    # (tests/test_startup_legacy_db_silence.py): un chatbots.json (o il suo
-    # predecessore agents.json) di un'installazione precedente non ha piu'
-    # nessun lettore/scrittore -- l'entita' Chatbot e la sua migrazione
-    # (ChatbotEngine._load, chatbot_engine.py) sono uscite per intero con
-    # questo task. Decisione utente (vedi il commit): il prompt
-    # personalizzato eventualmente salvato sul bot di default NON viene
-    # migrato in ChatSettings -- si riparte puliti, coi default nel
-    # codice. I file restano su disco, intatti (mai dati utente cancellati
-    # in /data).
-    _chatbots_json_path = os.path.join(data_dir, "chatbots.json")
-    _agents_json_path_legacy = os.path.join(data_dir, "agents.json")
-    if os.path.exists(_chatbots_json_path) or os.path.exists(_agents_json_path_legacy):
+    """L'annuncio di `chatbots.json` all'avvio (uscito da `server.py` nella
+    Tappa 8, Task 7).
+
+    Un `chatbots.json` di un'installazione precedente non ha piu' nessun
+    lettore ne' scrittore: l'entita' Chatbot e la sua migrazione sono uscite
+    con la fetta E4. Il prompt personalizzato eventualmente salvato sul bot di
+    default NON viene migrato nelle impostazioni della chat, e il file **resta
+    su disco finche' il proprietario non lo ha guardato** (D6 della Tappa 8):
+    per lui e solo per lui la frase «resta, intatto» e' vera. Il predecessore
+    `agents.json` e' invece un residuo, e lo cancella `cancella_residui`.
+    """
+    if os.path.exists(os.path.join(data_dir, "chatbots.json")):
         logger.info(
-            "chatbots.json (o il suo predecessore agents.json) presente in %s "
-            "da un'installazione precedente: da fetta E4 Task 4 nessun codice "
-            "li legge ne' li scrive piu' (l'entita' Chatbot e' uscita, "
-            "sostituita dalle impostazioni della chat). Il prompt "
-            "personalizzato eventualmente salvato sul bot di default non "
-            "viene migrato -- si riparte con i default nel codice. I file "
-            "restano su disco, intatti.",
+            "chatbots.json presente in %s da un'installazione precedente: da "
+            "fetta E4 Task 4 nessun codice lo legge ne' lo scrive piu' "
+            "(l'entita' Chatbot e' uscita, sostituita dalle impostazioni della "
+            "chat). Il prompt personalizzato eventualmente salvato sul bot di "
+            "default non viene migrato -- si riparte con i default nel codice. "
+            "Il file resta su disco, intatto, finche' non lo guardi.",
             data_dir,
         )
 

@@ -9,9 +9,10 @@ non giravano mai. Sono usciti il 02/10/2026 con le ventidue prove che li
 fissavano; che l'avvio non prometta piu' cio' che non mantiene lo prova
 `tests/test_residui_cancellati.py`, eseguendo l'avvio vero.
 
-Resta `chatbots.json` (con il suo predecessore `agents.json`): non e' fra i
-residui che si cancellano, per decisione del proprietario, e il suo annuncio
-dice il vero.
+Resta `chatbots.json`: non e' fra i residui che si cancellano, per decisione
+del proprietario (D6 della Tappa 8: prima si guarda, poi si cancella), e il
+suo annuncio dice il vero. Il suo predecessore `agents.json` fino
+all'08/10/2026 si annunciava con lui; adesso e' un residuo, e si cancella.
 
 Fino al 03/10/2026 il blocco si ritagliava dal testo di `_on_startup` e si
 eseguiva isolato; adesso l'app si avvia davvero (`tests/_avvio.py`) sulla
@@ -54,14 +55,25 @@ async def test_chatbots_json_presence_logged_when_file_exists(tmp_path, caplog):
 
 
 @pytest.mark.asyncio
-async def test_agents_json_legacy_presence_logged_when_file_exists(tmp_path, caplog):
-    """Il predecessore di chatbots.json (prima della rinomina SP-4 Fase A)
-    deve dichiararsi anche da solo, senza che chatbots.json esista.
+async def test_agents_json_si_cancella_e_chatbots_json_resta(tmp_path, caplog):
+    """**Rovesciata nella Tappa 8 (Task 7, D6).** Fino all'08/10/2026 si
+    chiamava `test_agents_json_legacy_presence_logged_when_file_exists` e
+    pretendeva che il predecessore di chatbots.json si annunciasse da solo,
+    e restasse. Adesso e' un residuo: l'avvio lo cancella e lo dice, e non
+    lo annuncia piu' come un file che resta. `chatbots.json`, accanto, resta
+    e si annuncia.
 
-    Mutazione ESEGUITA (03/10/2026): la condizione guarda il solo
-    `chatbots.json` -- rossa."""
+    Mutazione ESEGUITA (08/10/2026): tolto `"agents.json"` da
+    `RESIDUI_DISMESSI` -- rossa (il file resta su disco)."""
     (tmp_path / "agents.json").write_text("{}")
-    assert _announced(await _startup_lines(tmp_path, caplog))
+    (tmp_path / "chatbots.json").write_text("{}")
+    lines = await _startup_lines(tmp_path, caplog)
+
+    assert not (tmp_path / "agents.json").exists()
+    assert any(line.startswith("agents.json cancellato") for line in lines), lines
+    assert (tmp_path / "chatbots.json").exists()
+    assert _announced(lines)
+    assert not any("agents.json" in line and "resta" in line for line in lines)
 
 
 @pytest.mark.asyncio

@@ -3277,10 +3277,6 @@ async def _on_startup(app: web.Application) -> None:
     app["theme"] = os.environ.get("THEME", "auto")
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
-    # Serve solo all'importazione una-tantum dei contatori di prima
-    # (`usage/store.importa_legacy`): i runner non scrivono piu' su
-    # questi file, e i file restano dov'erano.
-    usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
     if local_model_url:
         try:
@@ -3328,7 +3324,6 @@ async def _on_startup(app: web.Application) -> None:
     # questa versione produce.
 
     decidi_vault(data_dir)
-    cancella_residui(data_dir)
 
     # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
     # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo
@@ -3752,19 +3747,20 @@ async def _on_startup(app: web.Application) -> None:
             log_usage=app["usage"].log,
         )
 
-    _usage_base, _usage_ext = os.path.splitext(usage_path)
-    _usage_ext = _usage_ext or ".json"
-
     # I quattro contatori di prima entrano nell'archivio UNA volta sola, come
     # una riga «(prima del dettaglio)» per provider: il totale ereditato non si
     # puo' attribuire a un modello -- nessuno lo ha mai registrato -- e dirlo
-    # e' meglio che spalmarlo. I file NON vengono cancellati.
+    # e' meglio che spalmarlo. Stanno nella cartella dei dati: fino
+    # all'08/10/2026 il primo si leggeva da `USAGE_DATA_PATH`, una variabile
+    # che `run.sh` non esportava (D6 della Tappa 8).
     app["usage"].importa_legacy([
-        usage_path,
-        f"{_usage_base}_openai{_usage_ext}",
-        f"{_usage_base}_openrouter{_usage_ext}",
-        f"{_usage_base}_ollama{_usage_ext}",
+        os.path.join(data_dir, name)
+        for name in ("usage.json", "usage_openai.json", "usage_openrouter.json",
+                     "usage_ollama.json")
     ], now=time.time())
+    # I residui si cancellano DOPO l'importazione: un contatore registrato
+    # come importato e' un residuo come gli altri (D6).
+    cancella_residui(data_dir, imported=app["usage"].legacy_imported())
 
     openai_runner = None
     if openai_api_key and _credentials[OPENAI.id]:

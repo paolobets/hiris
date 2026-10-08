@@ -329,7 +329,6 @@ def frozen_clock(clock: float):
 #: cartella dei dati e i due indirizzi verso cui non si deve uscire.
 def _environment(data_dir: str) -> dict[str, str]:
     return {"HIRIS_DATA_DIR": data_dir,
-            "USAGE_DATA_PATH": str(Path(data_dir) / "usage.json"),
             "HA_BASE_URL": NOWHERE,
             "HIRIS_ALLOW_NO_TOKEN": "1"}
 

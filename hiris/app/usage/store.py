@@ -212,8 +212,9 @@ CONSERVAZIONE: Retention = {
         None, "il saldo di prima dell'ancora, una riga per modello", None),
     "legacy_importati": (
         None,
-        ("quali file di prima sono gia' entrati: senza, rientrerebbero a ogni "
-         "avvio e i totali raddoppierebbero"),
+        ("quali file di prima sono gia' entrati, e quindi si cancellano: "
+         "senza, un file tornato da un backup rientrerebbe e i totali "
+         "raddoppierebbero"),
         None),
     "fallback": (
         None,
@@ -514,48 +515,62 @@ class UsageStore:
         sulla riga del modello che l'ha preso, senza contarla come una
         richiesta servita.
         """
-        day = local_date(now, self._timezone()).isoformat()
         with self._lock:
-            row = self._conn.execute(
-                "SELECT costo_usd, costo_stato FROM consumo_giorno "
-                "WHERE giorno=? AND provider=? AND modello=?",
-                (day, provider, model)).fetchone()
-            if row is None:
-                self._conn.execute(
-                    "INSERT INTO consumo_giorno (giorno, provider, modello, "
-                    "richieste, token_in, token_out, cache_lettura, "
-                    "cache_scrittura, costo_usd, costo_stato, "
-                    "errori_rate_limit, primo_ts, ultimo_ts) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (day, provider, model, richieste, token_in, token_out,
-                     cache_read, cache_write, cost_usd, cost_state,
-                     errori_rate_limit, now, now))
-            else:
-                state = piu_debole(row["costo_stato"], cost_state)
-                if state != row["costo_stato"]:
-                    logger.info(
-                        "consumi: %s/%s del %s degrada da «%s» a «%s» -- il "
-                        "provider ha cambiato comportamento",
-                        provider, model, day, row["costo_stato"], state)
-                # I costi si sommano solo fra quelli NOTI. Una riga degradata
-                # tiene cio' che ha gia' pagato e diventa un pavimento -- lo
-                # stesso concetto del totale in cima alla pagina, a una scala
-                # piu' piccola. Buttarlo direbbe «non ho speso niente», che e'
-                # falso quanto lo zero da cui nasce la fetta.
-                noti = [c for c in (row["costo_usd"], cost_usd) if c is not None]
-                self._conn.execute(
-                    "UPDATE consumo_giorno SET richieste=richieste+?, "
-                    "token_in=token_in+?, token_out=token_out+?, "
-                    "cache_lettura=cache_lettura+?, cache_scrittura=cache_scrittura+?, "
-                    "costo_usd=?, costo_stato=?, "
-                    "errori_rate_limit=errori_rate_limit+?, "
-                    "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
-                    "WHERE giorno=? AND provider=? AND modello=?",
-                    (richieste, token_in, token_out, cache_read,
-                     cache_write, sum(noti) if noti else None, state,
-                     errori_rate_limit, now, now,
-                     day, provider, model))
+            self._add(provider, model, richieste=richieste, token_in=token_in,
+                      token_out=token_out, cache_read=cache_read,
+                      cache_write=cache_write, cost_usd=cost_usd,
+                      cost_state=cost_state, errori_rate_limit=errori_rate_limit,
+                      now=now)
             self._conn.commit()
+
+    def _add(self, provider: str, model: str, *, richieste: int, token_in: int,
+             token_out: int, cache_read: int, cache_write: int,
+             cost_usd: float | None, cost_state: str, errori_rate_limit: int,
+             now: float) -> None:
+        """La scrittura nel secchiello, **senza lucchetto e senza commit**:
+        li tiene il chiamante. Esiste perche' `importa_legacy` scriva il
+        totale e la sua riga in `legacy_importati` in una transazione sola
+        (S-18, Tappa 8)."""
+        day = local_date(now, self._timezone()).isoformat()
+        row = self._conn.execute(
+            "SELECT costo_usd, costo_stato FROM consumo_giorno "
+            "WHERE giorno=? AND provider=? AND modello=?",
+            (day, provider, model)).fetchone()
+        if row is None:
+            self._conn.execute(
+                "INSERT INTO consumo_giorno (giorno, provider, modello, "
+                "richieste, token_in, token_out, cache_lettura, "
+                "cache_scrittura, costo_usd, costo_stato, "
+                "errori_rate_limit, primo_ts, ultimo_ts) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, provider, model, richieste, token_in, token_out,
+                 cache_read, cache_write, cost_usd, cost_state,
+                 errori_rate_limit, now, now))
+        else:
+            state = piu_debole(row["costo_stato"], cost_state)
+            if state != row["costo_stato"]:
+                logger.info(
+                    "consumi: %s/%s del %s degrada da «%s» a «%s» -- il "
+                    "provider ha cambiato comportamento",
+                    provider, model, day, row["costo_stato"], state)
+            # I costi si sommano solo fra quelli NOTI. Una riga degradata
+            # tiene cio' che ha gia' pagato e diventa un pavimento -- lo
+            # stesso concetto del totale in cima alla pagina, a una scala
+            # piu' piccola. Buttarlo direbbe «non ho speso niente», che e'
+            # falso quanto lo zero da cui nasce la fetta.
+            noti = [c for c in (row["costo_usd"], cost_usd) if c is not None]
+            self._conn.execute(
+                "UPDATE consumo_giorno SET richieste=richieste+?, "
+                "token_in=token_in+?, token_out=token_out+?, "
+                "cache_lettura=cache_lettura+?, cache_scrittura=cache_scrittura+?, "
+                "costo_usd=?, costo_stato=?, "
+                "errori_rate_limit=errori_rate_limit+?, "
+                "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
+                "WHERE giorno=? AND provider=? AND modello=?",
+                (richieste, token_in, token_out, cache_read,
+                 cache_write, sum(noti) if noti else None, state,
+                 errori_rate_limit, now, now,
+                 day, provider, model))
 
     def log_fallback(self, agent: str, reason: str, *, now: float) -> None:
         """Un giro e' passato dal forfait al consumo: si conta.
@@ -1013,8 +1028,15 @@ class UsageStore:
         invece di spalmarlo su modelli che potrebbero non averlo speso.
 
         Datato all'ultimo azzeramento, che e' l'unica data vera che quei file
-        portano. I file NON vengono cancellati: mai dati dell'utente rimossi in
-        silenzio.
+        portano.
+
+        **Il totale e la sua riga in `legacy_importati` entrano in una
+        transazione sola** (S-18, Tappa 8): fino all'08/10/2026 erano due
+        commit, e un'interruzione fra i due reimportava il totale al prossimo
+        avvio -- la spesa dell'utente raddoppiata. E' anche la condizione per
+        cancellare il file: un file registrato come importato e' un residuo, e
+        lo cancella `conservazione.cancella_residui`, dicendo nome e
+        dimensione (D6). Uno illeggibile non si registra, e resta.
         """
         import json as _json
         import os
@@ -1049,21 +1071,30 @@ class UsageStore:
             when = instant_epoch(data.get("last_reset"))
             if when is None:
                 when = now
-            self.log(
-                provider, "(prima del dettaglio)",
-                richieste=int(data.get("total_requests") or 0),
-                token_in=int(data.get("total_input_tokens") or 0),
-                token_out=int(data.get("total_output_tokens") or 0),
-                cost_usd=float(data.get("total_cost_usd") or 0.0),
-                cost_state="misurato",
-                errori_rate_limit=int(data.get("total_rate_limit_errors") or 0),
-                now=when)
-            with self._lock:
+            # `with self._conn`: commit se tutto e' andato, ROLLBACK se una
+            # delle due scritture si interrompe -- mai il totale senza la riga.
+            with self._lock, self._conn:
+                self._add(
+                    provider, "(prima del dettaglio)",
+                    richieste=int(data.get("total_requests") or 0),
+                    token_in=int(data.get("total_input_tokens") or 0),
+                    token_out=int(data.get("total_output_tokens") or 0),
+                    cache_read=0, cache_write=0,
+                    cost_usd=float(data.get("total_cost_usd") or 0.0),
+                    cost_state="misurato",
+                    errori_rate_limit=int(data.get("total_rate_limit_errors") or 0),
+                    now=when)
                 self._conn.execute(
                     "INSERT OR IGNORE INTO legacy_importati (percorso) VALUES (?)",
                     (path,))
-                self._conn.commit()
             importati += 1
             logger.info("consumi: importato %s come «(prima del dettaglio)» "
                         "sul provider %s", path, provider)
         return importati
+
+    def legacy_imported(self) -> list[str]:
+        """I contatori di prima gia' importati, per percorso: da qui in poi
+        sono residui (`conservazione.cancella_residui`, D6)."""
+        with self._lock:
+            return [row[0] for row in self._conn.execute(
+                "SELECT percorso FROM legacy_importati ORDER BY percorso")]
