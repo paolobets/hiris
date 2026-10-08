@@ -207,8 +207,8 @@ def close_expired_promise(app, job: dict) -> None:
 
     ident = (job.get("wake") or {}).get("promessa_id") or ""
     store = app.get("agenda")
-    riga = store.read(ident) if (store is not None and ident) else None
-    if riga is None or riga.get("stato") != "in_corso":
+    promise = store.read(ident) if (store is not None and ident) else None
+    if promise is None or promise.get("stato") != "in_corso":
         # Gia' conclusa da `concludi` mentre il turno finiva: non si
         # riapre. E' lo stesso ordine di controlli della consegna
         # (`reasoning/consegna`), per la stessa ragione.
@@ -226,7 +226,7 @@ def close_expired_promise(app, job: dict) -> None:
     # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
     # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
     if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
-        tell_failure(app.get("data_dir"), riga, reason)
+        tell_failure(app.get("data_dir"), promise, reason)
     # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
     # terza strada delle promesse sul ponte, dopo il successo (`api/
     # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/

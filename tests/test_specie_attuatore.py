@@ -43,7 +43,8 @@ GUARDED = steering.SPECIE - {"chat"}
 _OTHER_SENSES = {
     ("reasoning/consegna.py", "promessa"): (
         1, "il `kind` del job della coda"),
-    ("server.py", "promessa"): (1, "il `kind` del job della coda"),
+    ("conservazione.py", "promessa"): (
+        1, "il `kind` del job della coda (la spazzata, uscita da server.py nella Tappa 8)"),
     ("keeper/store.py", "promessa"): (
         2, "il campo che porta la riga di una promessa"),
     ("home_space/tools.py", "promessa"): (
