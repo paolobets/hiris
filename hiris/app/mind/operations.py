@@ -361,7 +361,9 @@ class Exclusion:
 
     Due frasi, per due lettori: `reason` dice il fatto con gli id (l'analista,
     il registro, chi ripara); `summary` lo dice a chi apre la pagina, senza id
-    ne' parole interne (parere di ux-ui-specialist, 08/10/2026).
+    ne' parole interne (parere di ux-ui-specialist, 08/10/2026), e `label` e'
+    la sua parola breve per la riga della piastrella, scritta dallo stesso
+    posto che scrive `summary` perche' le due non si contraddicano (N91-3).
     """
 
     start_ts: float
@@ -371,9 +373,10 @@ class Exclusion:
     reason: str
     cause: str
     summary: str
+    label: str
 
     def __post_init__(self) -> None:
-        if not str(self.reason or "").strip() or not str(self.summary or "").strip():
+        if not all(str(text or "").strip() for text in (self.reason, self.summary, self.label)):
             raise ValueError("un'esclusione senza ragione e' un buco, non una dichiarazione")
         if self.cause not in CAUSES:
             raise ValueError(f"causa fuori dal vocabolario: {self.cause!r}")
@@ -389,7 +392,21 @@ class Exclusion:
         (`report._measurements`) e la serie dell'analista
         (`report.series_of_measures`) la ricevono gia' fatta."""
         return {"dal": self.start, "al": self.end, "causa": self.cause,
-                "perche": self.reason, "in_breve": self.summary}
+                "perche": self.reason, "in_breve": self.summary,
+                "parola": self.label, "ore": [self.start_clock, self.end_clock]}
+
+    @property
+    def start_clock(self) -> str:
+        """L'ora d'inizio come la dice la casa: «01:00»."""
+        return self.start[11:16]
+
+    @property
+    def end_clock(self) -> str:
+        """L'ora di fine come la dice la casa. La mezzanotte che CHIUDE un
+        tratto e' la fine del giorno, e si dice «24:00»: la regola vive qui,
+        e la pagina legge l'ora gia' detta (N91-1)."""
+        clock = self.end[11:16]
+        return "24:00" if clock == "00:00" else clock
 
 
 # ── Il registro ────────────────────────────────────────────────────────────

@@ -140,15 +140,19 @@ const PERCHE_TECNICO = "sensor.t e' ferma: dalle 2026-10-06T01:00:00+02:00 alle 
 const IN_BREVE = 'Dalle 01:00 alle 02:00 tutti i sensori di questo dispositivo sono rimasti '
   + 'uguali mentre il resto della casa si muoveva: quelle ore non entrano nel calcolo.';
 function esclusa(dal, al, extra) {
-  return Object.assign({ dal: '2026-10-06T' + dal + ':00+02:00', al: '2026-10-06T' + al + ':00+02:00',
-    causa: 'ferma', perche: PERCHE_TECNICO, in_breve: IN_BREVE }, extra || {});
+  /* `ore` come le dice il server (`Exclusion.out`): la fine del giorno e'
+     gia' «24:00», e la pagina non la ricalcola. */
+  return Object.assign({ dal: '2026-10-06T' + dal + ':00+02:00',
+    al: '2026-10-06T' + (al === '24:00' ? '00:00' : al) + ':00+02:00', ore: [dal, al],
+    causa: 'ferma', parola: 'dispositivo fermo', perche: PERCHE_TECNICO, in_breve: IN_BREVE },
+  extra || {});
 }
 
 test('seam _rendiResoconto: copertura e ore escluse stanno in UNA riga, coi tratti uniti da «e»', () => {
   // Mutazioni che la uccidono: togliere il ciclo su `m.esclusi`; separare la
   // copertura in una riga sua.
   const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 0.9, esclusi: [
-    esclusa('01:00', '02:00'), esclusa('22:00', '00:00')] })] }));
+    esclusa('01:00', '02:00'), esclusa('22:00', '24:00')] })] }));
   const righe = Array.from(corpo.querySelectorAll('.stat-tile .st-delta'))
     .filter((r) => !r.classList.contains('st-why'));
   assert.equal(righe.length, 1, righe.map((r) => r.textContent).join(' | '));
@@ -162,13 +166,14 @@ test('seam _rendiResoconto: copertura e ore escluse stanno in UNA riga, coi trat
   assert.doesNotMatch(senza.corpo.textContent, /escluse/);
 });
 
-test('seam _rendiResoconto: la causa si dice a parole, mai col codice, e una causa nuova ha un ripiego', () => {
-  // Mutazione che la uccide: scrivere `x.causa` invece di `parolaCausa(x.causa)`.
-  const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 22 / 24, esclusi: [
-    esclusa('01:00', '02:00'), esclusa('05:00', '06:00', { causa: 'causa_futura' })] })] }));
+test('seam _rendiResoconto: la parola breve la dice il server, e senza parola c\'e\' un ripiego, mai il codice', () => {
+  // Mutazione che la uccide: scrivere `x.causa` invece di `parolaEsclusione(x)`.
+  const { corpo } = rendiResoconto(resoconto({ misure: [misura({ copertura: 0.9, esclusi: [
+    esclusa('01:00', '02:00', { parola: 'integrazione ferma' }),
+    esclusa('05:00', '06:00', { causa: 'causa_futura', parola: undefined })] })] }));
   const testo = corpo.querySelector('.st-delta.excluded').textContent;
-  assert.match(testo, /escluse 01:00–02:00: dispositivo fermo · escluse 05:00–06:00: dato non usabile/);
-  assert.doesNotMatch(testo, /ferma\b|causa_futura/);
+  assert.match(testo, /escluse 01:00–02:00: integrazione ferma · escluse 05:00–06:00: dato non usabile/);
+  assert.doesNotMatch(testo, /: ferma\b|causa_futura/);
 });
 
 test('seam _rendiResoconto: il perche\' si apre da un bottone, anche da tastiera', () => {

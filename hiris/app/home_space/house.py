@@ -83,6 +83,19 @@ SOURCE_STATES = (SOURCE_LIVE, SOURCE_SWITCHED_OFF_BY_OWNER, SOURCE_SWITCHED_OFF_
                  "integrazione_ferma", "non_disponibile", "senza_valore", SOURCE_GONE)
 
 
+
+#: Il genere di un gruppo di sorelle (`House.sibling_group`): il primo
+#: elemento della coppia. Chi deve sapere di che gruppo si tratta lo chiede a
+#: `is_instance_group`, non confronta la parola.
+SIBLINGS_BY_DEVICE = "dispositivo"
+SIBLINGS_BY_INSTANCE = "istanza"
+
+
+def is_instance_group(group) -> bool:
+    """Se `group` (`House.sibling_group`) e' l'istanza di un'integrazione
+    invece di un dispositivo."""
+    return isinstance(group, tuple) and group[:1] == (SIBLINGS_BY_INSTANCE,)
+
 class House:
     """L'anagrafe, lo specchio e i registri caduti di UN momento, con la
     gerarchia calcolata alla prima richiesta e tenuta.
@@ -500,9 +513,9 @@ class House:
         device_id = entry.get("dispositivo_id")
         if device_id and sum(1 for e in self.device_entities(device_id)
                              if self.has_statistics(e["id"])) >= 2:
-            return ("dispositivo", device_id)
+            return (SIBLINGS_BY_DEVICE, device_id)
         if entry.get("config_entry_id"):
-            return ("istanza", entry["config_entry_id"])
+            return (SIBLINGS_BY_INSTANCE, entry["config_entry_id"])
         return None
 
     def possible_siblings(self, entity_id: str) -> list[str]:

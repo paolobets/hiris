@@ -261,7 +261,8 @@ def test_l_esclusione_e_il_tratto_detto_nell_ora_della_casa():
                                  "Dalle 08:00 alle 11:00 tutti i sensori di questo "
                                  "dispositivo sono rimasti uguali mentre il resto "
                                  "della casa si muoveva: quelle ore non entrano nel "
-                                 "calcolo.")}
+                                 "calcolo."),
+                             "parola": "dispositivo fermo", "ore": ["08:00", "11:00"]}
 
 
 def test_il_contatore_fermo_che_recupera_tiene_il_totale_e_la_potenza_perde_tre_ore():
@@ -339,3 +340,7 @@ def test_la_frase_per_la_pagina_dice_l_integrazione_e_la_fine_del_giorno():
         "Dalle 20:00 alle 24:00 tutti i dispositivi di questa integrazione sono "
         "rimasti uguali mentre il resto della casa si muoveva: quelle ore non "
         "entrano nel calcolo.")
+    # N91-3: la parola breve dice la stessa cosa della frase; N91-1: l'ora
+    # di fine arriva gia' detta, «24:00».
+    assert stretch.out()["parola"] == "integrazione ferma"
+    assert stretch.out()["ore"] == ["20:00", "24:00"]
