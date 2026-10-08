@@ -146,7 +146,7 @@ def test_l_elenco_degli_archivi_non_tocca_la_loro_connessione():
     Mutazione ESEGUITA: `archives` che chiede il nome alla connessione --
     rossa (`AttributeError` su `_conn`)."""
     class Archive:
-        CONSERVAZIONE: dict = {}
+        CONSERVAZIONE = None
         archive_name = "finto.db"
 
         def prune(self, now):

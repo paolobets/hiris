@@ -15,7 +15,6 @@ avrebbe lasciato nascere (task-5-correzioni.md):
 import asyncio
 import logging
 import re
-import sqlite3
 import sys
 from datetime import UTC, timedelta
 from pathlib import Path
@@ -36,6 +35,7 @@ from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.server import integration_follower, watch_system_conditions
+from hiris.app.storage import archive_name
 from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
@@ -77,8 +77,8 @@ _FINTA = {"finta": (1, "una prova", "DELETE FROM finta WHERE ts < ?")}
 
 class _ArchivioFinto:
     """Un archivio come li cerca `conservazione.archives`: dichiara la sua
-    conservazione, sa potarsi e tiene una connessione (da cui si chiede il
-    nome del file). La finta deve saper produrre il difetto che sorveglia
+    conservazione, sa potarsi e dice il suo nome (`archive_name`, il nome del
+    file). La finta deve saper produrre il difetto che sorveglia
     (feedback ricorrente di questo progetto): oltre a tornare un numero da
     `prune()`, deve poter SOLLEVARE a comando, per provare che un archivio
     guasto non ferma gli altri."""
@@ -86,7 +86,7 @@ class _ArchivioFinto:
     CONSERVAZIONE = _FINTA
 
     def __init__(self, path, quanti: int = 0, *, pota_solleva: bool = False):
-        self._conn = sqlite3.connect(str(path))
+        self.archive_name = archive_name(str(path))
         self._quanti = quanti
         self._pota_solleva = pota_solleva
         self.chiamate = 0
