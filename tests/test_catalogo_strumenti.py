@@ -58,7 +58,12 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # 08/10/2026 (Tappa 9, T5, B-28): la descrizione di `calendar` dice `dal`/`al`
 # e che `al` e' escluso, e accorcia due spiegazioni per non salire.
 # Misurato: 30.517.
-CATALOG_CEILING = 30517
+#
+# 08/10/2026 (Tappa 9, T5, B-33): `fermo_da`/`cambiato_da` diventano
+# `fermo_da_ore`/`cambiato_da_ore`, numeri col `minimum` nello schema; la
+# descrizione di `ore` (`history`) non ripete il `maximum` che lo schema gia'
+# dice e che `dispatch` ora fa valere. Misurato: 30.495.
+CATALOG_CEILING = 30495
 
 
 def catalog_chars(definitions) -> int:

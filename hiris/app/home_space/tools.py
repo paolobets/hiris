@@ -281,7 +281,7 @@ SEARCH_TOOL_DEF = {
         "Dove valgono: per le aree solo `nome` e `piano`; per i dispositivi "
         "`nome`, `area`, `piano`, `integrazione`; `classe`, `sopra` e `sotto` "
         "solo per le entita'; `in_esecuzione` solo per automazioni e script, e "
-        "per loro `stato` dice se sono abilitate e `fermo_da`/`cambiato_da` "
+        "per loro `stato` dice se sono abilitate e `fermo_da_ore`/`cambiato_da_ore` "
         "contano l'ultima esecuzione. Un filtro che non vale per il genere "
         "chiesto torna un `errore`, mai un insieme intero.\n"
         + _depth_rule(
@@ -329,13 +329,13 @@ SEARCH_TOOL_DEF = {
                 "type": "string",
                 "description": "Lo stato: on, off, unavailable, unknown, home...",
             },
-            "fermo_da": {
-                "type": "string",
-                "description": "Fermo da almeno questa durata: 30d, 2h, 15m.",
+            "fermo_da_ore": {
+                "type": "number", "minimum": 0,
+                "description": "Fermo da almeno N ore.",
             },
-            "cambiato_da": {
-                "type": "string",
-                "description": "Cambiato entro questa durata: 30d, 2h, 15m.",
+            "cambiato_da_ore": {
+                "type": "number", "minimum": 0,
+                "description": "Cambiato nelle ultime N ore.",
             },
             "sopra": {"type": "number", "description": "Stato numerico maggiore di."},
             "sotto": {"type": "number", "description": "Stato numerico minore di."},
@@ -995,8 +995,8 @@ HISTORY_TOOL_DEF = {
                                 + " Per gli errori, chi ha scritto la voce."),
             },
             "ore": {"type": "number", "maximum": WINDOW_MAX_HOURS,
-                    "description": "Le ultime N ore, da adesso. Predefinito 24, al "
-                                   "massimo 2160 (90 giorni). Non insieme a da/a."},
+                    "description": "Le ultime N ore, da adesso. Predefinito 24. "
+                                   "Non insieme a da/a."},
             "da": {"type": "string",
                    "description": "L'inizio: «oggi», «ieri» (la loro mezzanotte, nel "
                                   "fuso della casa) o un istante ISO col fuso."},
@@ -1150,8 +1150,9 @@ def _has_type(value: Any, json_type: str) -> bool:
 
 
 def _wrong_value(key: str, value: Any, schema: dict) -> str | None:
-    """Cosa non va in un valore rispetto al suo schema (`type`, `enum`), o
-    `None`. Un `null` e' un argomento omesso: lo giudica `required`."""
+    """Cosa non va in un valore rispetto al suo schema (`type`, `enum`,
+    `minimum`, `maximum`), o `None`. Un `null` e' un argomento omesso: lo
+    giudica `required`."""
     if value is None:
         return None
     declared = schema.get("type")
@@ -1162,6 +1163,13 @@ def _wrong_value(key: str, value: Any, schema: dict) -> str | None:
     allowed = schema.get("enum")
     if allowed is not None and value not in allowed:
         return f"{_quoted([key])} vale uno fra {_quoted(allowed)}, non {_quoted([value])}"
+    # `minimum` e `maximum` di JSON Schema (B-33, 08/10/2026): una durata e'
+    # un numero con l'unita' nel nome, e il suo intervallo lo dice lo schema.
+    # Scritti a rovescio (`not value >= ...`) perche' NaN non passi.
+    if "minimum" in schema and not value >= schema["minimum"]:
+        return f"{_quoted([key])} vale almeno {schema['minimum']}"
+    if "maximum" in schema and not value <= schema["maximum"]:
+        return f"{_quoted([key])} vale al massimo {schema['maximum']}"
     return None
 
 

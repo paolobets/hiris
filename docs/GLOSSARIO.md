@@ -3688,6 +3688,26 @@ glossario (righe e citazioni fra backtick) e nelle chiavi letterali di `hiris/ap
 approvati il proprietario; la scelta se rinominare un senso o dichiararli qualificati si prende
 **prima del Task 7**, che scrive il vocabolario nel codice.
 
+### La durata nei parametri degli strumenti (Tappa 9, D5, 08/10/2026)
+
+Non sono campi che escono: sono **parametri** che il modello scrive, e la regola e' una sola
+(decisione D5 della Tappa 9, approvata dal proprietario l'08/10/2026): **una durata e' un numero,
+con l'unita' nel nome del parametro** (fondamenta 1). Lo schema dello strumento ne dichiara tipo,
+`minimum` e `maximum`, e li fa valere `ToolDispatcher.dispatch`.
+
+| parametro | strumento | unita' | era |
+|---|---|---|---|
+| `ore` | `history` | ore | — (e' il modello della regola) |
+| `giorni_avanti` `giorni_indietro` | `calendar` | giorni | — |
+| `fermo_da_ore` | `search` | ore | `fermo_da`, una stringa `30d`/`2h`/`15m` (`house_query._DURATION`, uscita) |
+| `cambiato_da_ore` | `search` | ore | `cambiato_da`, la stessa stringa |
+
+**Il controllo di collisione, eseguito l'08/10/2026** su questo documento e sulle chiavi letterali
+di `hiris/app/`: `fermo_da_ore` e `cambiato_da_ore` non compaiono in nessuna riga ne' in nessuna
+citazione; `ore -> hours` e `cambiato -> changed` sono righe ordinarie con lo stesso senso;
+`fermo` non ha una riga (c'e' `ferma -> stop`, il verbo, che qui non si usa). Nessuna collisione. Le ore e non i minuti perche' la regola nomina `ore` di `history` come modello,
+e il parametro e' un `number`: un quarto d'ora si scrive `0.25`.
+
 ## Il vocabolario del turno (Tappa 6, Task 0, 05/10/2026)
 
 Il piano della Tappa 6 (`piani/2026-10-tappa-6-un-turno.md`, cartella del progetto) lavora con
