@@ -34,7 +34,7 @@ const BASE_RICORDO = {
   id: 1,
   testo: 'un ricordo qualsiasi',
   detto_da: 'paolo',
-  detto_il: '2026-09-01T09:00:00Z',
+  detto_il: 1788253200,  // 2026-09-01T09:00:00Z, in epoca (G-14)
   forza: 'fatto',
   grandezza: null,
   minimo: null,
