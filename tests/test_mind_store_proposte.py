@@ -308,3 +308,25 @@ def test_una_proposta_si_trova_per_ID_anche_oltre_le_ultime_duecento(archivio):
     assert prima not in {p["id"] for p in archivio.proposals()}
     assert archivio.proposal(prima)["testo"] == "la prima"
     assert archivio.proposal("non-esiste") is None
+
+
+def test_il_conteggio_e_il_legame_non_si_fermano_alle_ultime_duecento(archivio):
+    """Il tetto silenzioso di `proposals()` (Tappa 8, T3): il conteggio delle
+    pendenti (`handlers_pending`) e la proposta da cui e' nata una costruzione
+    (`handlers_constructions`, «nata da») li ricavavano dall'elenco, che si
+    ferma a 200 senza dirlo. Ora si chiedono all'archivio.
+
+    Mutazioni ESEGUITE: `pending_proposals_count` come
+    `len(self.proposals(pending_only=True))` -- rossa (200); `proposal_origins`
+    cercata fra `self.proposals()` -- rossa (la piu' vecchia non si trova)."""
+    prima = archivio.add_proposal(text="la prima", perche="p", fingerprint="f0",
+                                  prova={}, stakes=None, now_ts=1.0)
+    assert archivio.automate_proposal(prima, "cos-1")
+    for n in range(201):
+        archivio.add_proposal(text=f"dopo {n}", perche="p", fingerprint=f"f{n + 1}",
+                              prova={}, stakes=None, now_ts=10.0 + n)
+    assert len(archivio.proposals(pending_only=True)) == 200
+    assert archivio.pending_proposals_count() == 201
+    assert archivio.proposal_origins(["cos-1", "cos-ignota"]) == {
+        "cos-1": {"id": prima, "testo": "la prima"}}
+    assert archivio.proposal_origins([]) == {}

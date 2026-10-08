@@ -128,16 +128,16 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
                if observations is not None else [])
     # «Nata da» (attori, Task 4.5): la proposta a mano da cui e' nata una
     # costruzione, letta per id dall'archivio gemello -- un legame, non una
-    # copia del testo nell'archivio delle costruzioni. Si cerca anche fra le
-    # chiuse: e' proprio chiudendosi che la proposta a mano porta il legame.
-    every_hand = (by_hand if not pending_only or observations is None
-                  else observations.proposals())
-    origins = {p["costruzione_id"]: {"id": p["id"], "testo": p["testo"]}
-               for p in every_hand if p.get("costruzione_id")}
+    # copia del testo nell'archivio delle costruzioni. Si chiede per legame,
+    # fra le chiuse comprese (e' proprio chiudendosi che la proposta a mano
+    # porta il legame), e non fra le ultime 200 (Tappa 8, T3).
+    built = store.list(now=time.time(), pending_only=pending_only, limit=200)
+    origins = (observations.proposal_origins(row["id"] for row in built)
+               if observations is not None else {})
     rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
              "sospesa": _construction_suspended(row),
              "nata_da": origins.get(row["id"])}
-            for row in store.list(now=time.time(), pending_only=pending_only, limit=200)]
+            for row in built]
     if observations is not None:
         from ..mind import proposal_redo
 

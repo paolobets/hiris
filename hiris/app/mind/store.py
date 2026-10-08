@@ -1763,6 +1763,30 @@ class ObservationsStore:
         found = self.proposals(ident=ident, limit=1)
         return found[0] if found else None
 
+    def pending_proposals_count(self) -> int:
+        """Quante proposte da fare a mano aspettano una risposta, **contate in
+        SQL** (Tappa 8, T3): la lunghezza di `proposals()` si fermava al suo
+        tetto di 200 senza dirlo, la stessa ragione di `readings_count`."""
+        with self._lock:
+            return int(self._conn.execute(
+                "SELECT COUNT(*) FROM proposte WHERE stato = ?",
+                (self.PROPOSAL_PENDING,)).fetchone()[0])
+
+    def proposal_origins(self, construction_ids) -> dict[str, dict]:
+        """`{id della costruzione: {"id", "testo"}}`: la proposta a mano da cui
+        e' nata ciascuna di queste costruzioni («Rendila automatica», Task
+        4.5), chiesta per legame (Tappa 8, T3). Cercata fra le ultime 200 di
+        `proposals()` si perdeva quando la proposta era piu' vecchia."""
+        wanted = sorted({str(c) for c in construction_ids or () if c})
+        if not wanted:
+            return {}
+        marks = ",".join("?" * len(wanted))
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT id, testo, construction_id FROM proposte "
+                f"WHERE construction_id IN ({marks})", tuple(wanted)).fetchall()
+        return {r["construction_id"]: {"id": r["id"], "testo": r["testo"]} for r in rows}
+
     def close_proposal(self, ident: str, occurrence: str, *,
                        why: str | None = None) -> bool:
         """Chiude una proposta con uno dei suoi esiti. Torna se ha toccato una riga."""
