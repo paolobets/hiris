@@ -1359,7 +1359,7 @@ def test_una_riga_guasta_si_salta_negli_elenchi_e_lo_dice_una_volta(tmp_path, ca
             assert store.report("2026-09-02") is None
             assert [a["giorno"] for a in store.analyses()] == ["2026-09-01"]
             assert store.analysis("2026-09-02") is None
-            assert store.reseal_titles(lambda testo: testo) == (0, 0)
+            assert not any(store.reseal(lambda testo: testo).values())
         assert store._conn.execute("SELECT giri_json FROM proposte WHERE id = ?",
                                    (rotta,)).fetchone()[0] == "{rotto"
         _guasta(store, "UPDATE proposte SET prova_json = '[' WHERE id = ?", buona)
@@ -1441,3 +1441,52 @@ def test_migration_15_cancella_le_proposte_dell_attuatore_e_gli_esiti_che_le_cit
         ).fetchall() == prima
     finally:
         ancora.close()
+
+
+# -- S-32: il sigillo a posteriori copre anche analisi e proposte ----------
+
+def test_il_sigillo_a_posteriori_copre_anche_analisi_e_proposte(tmp_path):
+    """S-32 (Tappa 8, T3): il sigillo passato all'avvio copriva `cambi` e
+    `resoconto`, ma l'analista legge i resoconti e il proponente le analisi:
+    cio' che avevano scritto prima del sigillo poteva citare un titolo in
+    chiaro. Ora si sigilla ogni testo dell'analisi, e della proposta il testo,
+    il perche', la nota e il filo del «Rifalla». L'impronta e gli id no: sono
+    legami, non frasi. La seconda volta non cambia niente.
+
+    Mutazioni ESEGUITE: senza le analisi -- rossa; `impronta` tolta da
+    `_SEAL_KEEPS` -- rossa sull'impronta."""
+    from hiris.app.mind import proposer_turn
+
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        ident = store.add_proposal(text="riavvia: token SEGRETO", perche="log SEGRETO",
+                                   fingerprint="log:SEGRETO|x", prova={}, stakes=None,
+                                   now_ts=1.0)
+        store.add_proposal_round(ident, request="piu' corta SEGRETO", outcome="niente",
+                                 turn="t-SEGRETO", now_ts=2.0, why="resta SEGRETO")
+        store.close_proposal(ident, "rifiutata", why="no, SEGRETO")
+        store.replace_analysis("2026-09-21", {
+            "osservazioni": [{"cosa": "errore con SEGRETO", "impronta": "log:SEGRETO|x"}],
+            proposer_turn.OUTCOMES_KEY: [{"impronta": "log:SEGRETO|x",
+                                          "esito": proposer_turn.BY_HAND,
+                                          "proposta_id": ident}]})
+
+        def sigillo(testo):
+            return testo.replace("SEGRETO", "***")
+
+        assert store.reseal(sigillo) == {"cambi": 0, "resoconto": 0,
+                                         "analisi": 1, "proposte": 1}
+        analisi = store.analysis("2026-09-21")
+        assert analisi["osservazioni"][0] == {"cosa": "errore con ***",
+                                              "impronta": "log:SEGRETO|x"}
+        assert proposer_turn.outcomes_of(analisi)[0]["impronta"] == "log:SEGRETO|x"
+        riga = store.proposal(ident)
+        assert (riga["testo"], riga["perche"], riga["esito_nota"]) == (
+            "riavvia: token ***", "log ***", "no, ***")
+        assert riga["impronta"] == "log:SEGRETO|x"
+        assert riga["giri"][0]["richiesta"] == "piu' corta ***"
+        assert riga["giri"][0]["perche"] == "resta ***"
+        assert riga["giri"][0]["turno"] == "t-SEGRETO"
+        assert not any(store.reseal(sigillo).values())
+    finally:
+        store.close()

@@ -978,6 +978,12 @@ ATTEMPT_FAILED = "non_riuscito"
 ATTEMPT_EXPIRED = "scaduta"
 
 
+#: Le chiavi dentro un'analisi o un filo del «Rifalla» che `reseal` non
+#: sigilla: non sono frasi, sono legami (l'impronta dell'antiripetizione, l'id
+#: di una proposta, l'identita' di un turno). Oscurarne un pezzo romperebbe il
+#: legame senza nascondere niente che qualcuno abbia scritto.
+_SEAL_KEEPS = frozenset({"impronta", "proposta_id", "turno"})
+
 #: Cio' che `_json_column` torna per un corpo che non si legge. Un oggetto e
 #: non `None`: `null` e' un JSON valido, e una riga che lo porta non e' guasta.
 _UNREADABLE = object()
@@ -1140,10 +1146,10 @@ class ObservationsStore:
                 (day, json.dumps(report, ensure_ascii=False), _time.time()))
             self._conn.commit()
 
-    def reseal_titles(self, seal_text) -> tuple[int, int]:
-        """Ripassa `seal_text` sui titoli GIA' scritti delle condizioni `log:`
-        e sui `titolo` dei resoconti, e torna quante righe e quanti resoconti
-        ha cambiato.
+    def reseal(self, seal_text) -> dict[str, int]:
+        """Ripassa `seal_text` sui titoli GIA' scritti delle condizioni `log:`,
+        sui `titolo` dei resoconti, sulle analisi e sulle proposte da fare a
+        mano, e torna quante righe ha cambiato in ciascuna tabella.
 
         **Perche' esiste** (Tappa 3, Task 0, decisione del proprietario del
         03/10/2026). Fino alla 3.73.2 l'osservatore archiviava il titolo di
@@ -1162,16 +1168,31 @@ class ObservationsStore:
         l'istante e' cio' che sveglia il giro dell'analista
         (`report_stamps`).
 
-        Idempotente: un testo gia' sigillato non cambia, e dal secondo avvio
-        torna `(0, 0)` senza scrivere niente.
+        **Anche le analisi e le proposte da fare a mano** (S-32, Tappa 8):
+        l'analista legge i resoconti e il proponente le analisi, e cio' che
+        hanno scritto prima del sigillo puo' citare un titolo in chiaro, in
+        qualunque frase. Dell'analisi si sigilla ogni testo; della proposta
+        il testo, il perche', la nota dell'esito e il filo del «Rifalla». Non
+        l'impronta: e' la chiave dell'antiripetizione, non una frase. Lo
+        stesso prezzo dichiarato del sigillo, su piu' testo.
+
+        Torna `{tabella: righe cambiate}` per `cambi`, `resoconto`, `analisi`
+        e `proposte`. Idempotente: un testo gia' sigillato non cambia, e dal
+        secondo avvio torna tutti zeri senza scrivere niente.
         """
-        def resealed(value):
+        def prose(text):
+            return seal_text(text) if isinstance(text, str) else text
+
+        def resealed(value, *, every: bool = False):
             if isinstance(value, dict):
-                return {key: (seal_text(item) if key == "titolo" and isinstance(item, str)
-                              else resealed(item))
+                return {key: (item if key in _SEAL_KEEPS
+                              else seal_text(item)
+                              if isinstance(item, str) and (every or key == "titolo")
+                              else resealed(item, every=every))
                         for key, item in value.items()}
             if isinstance(value, list):
-                return [resealed(item) for item in value]
+                return [seal_text(item) if every and isinstance(item, str)
+                        else resealed(item, every=every) for item in value]
             return value
 
         with self._lock:
@@ -1191,14 +1212,43 @@ class ObservationsStore:
                 if sealed != body:
                     changed_reports.append(
                         (json.dumps(sealed, ensure_ascii=False), r["giorno"]))
-            if changed_rows or changed_reports:
+            changed_analyses = []
+            for r in self._conn.execute("SELECT giorno, corpo_json FROM analisi").fetchall():
+                body = _json_column(r["corpo_json"], table="analisi", key=r["giorno"])
+                if body is _UNREADABLE:
+                    continue
+                sealed = resealed(body, every=True)
+                if sealed != body:
+                    changed_analyses.append(
+                        (json.dumps(sealed, ensure_ascii=False), r["giorno"]))
+            changed_proposals = []
+            for r in self._conn.execute(
+                    "SELECT id, testo, perche, esito_nota, giri_json "
+                    "FROM proposte").fetchall():
+                rounds = _json_column(r["giri_json"], table="proposte", key=r["id"])
+                if rounds is _UNREADABLE:
+                    continue
+                before = (r["testo"], r["perche"], r["esito_nota"], rounds)
+                after = (prose(r["testo"]), prose(r["perche"]),
+                         prose(r["esito_nota"]), resealed(rounds, every=True))
+                if after != before:
+                    changed_proposals.append(
+                        (*after[:3], json.dumps(after[3], ensure_ascii=False), r["id"]))
+            if changed_rows or changed_reports or changed_analyses or changed_proposals:
                 self._conn.executemany("UPDATE cambi SET title = ? WHERE id = ?",
                                        changed_rows)
                 self._conn.executemany(
                     "UPDATE resoconto SET corpo_json = ? WHERE giorno = ?",
                     changed_reports)
+                self._conn.executemany(
+                    "UPDATE analisi SET corpo_json = ? WHERE giorno = ?",
+                    changed_analyses)
+                self._conn.executemany(
+                    "UPDATE proposte SET testo = ?, perche = ?, esito_nota = ?, "
+                    "giri_json = ? WHERE id = ?", changed_proposals)
                 self._conn.commit()
-        return len(changed_rows), len(changed_reports)
+        return {"cambi": len(changed_rows), "resoconto": len(changed_reports),
+                "analisi": len(changed_analyses), "proposte": len(changed_proposals)}
 
     def report(self, day: str) -> dict | None:
         """Il resoconto di un giorno, o `None` se quel giorno non e' mai stato
