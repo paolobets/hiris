@@ -359,14 +359,12 @@ class Watcher:
                 quando_ts=when, source="entita", subject=str(eid),
                 da=da, a=a,
                 device_class=_text_or_none(attributes.get("device_class")),
-                state_class=_text_or_none(attributes.get("state_class")),
-                source_type=_text_or_none(attributes.get("source_type")),
                 # Il nome amichevole si SALVA qui, non si risolve dopo: fra
                 # sei mesi l'entita' puo' non esistere piu' e il resoconto
                 # resta (i `cambi` vivono 22 giorni, i resoconti finche'
                 # l'utente non li cancella -- vedi `store.py::_migration_5`).
                 # Costa zero: `attributes` e' gia' letto qui sopra e gia'
-                # spremuto per le tre classi. E' la stringa che Home
+                # spremuto per `device_class`. E' la stringa che Home
                 # Assistant ha GIA' composto (`helpers/entity.py:1161` ->
                 # `entity_registry.py:592-603` @ `2026.9.1`), non una
                 # ricomposta da noi da `name`/`original_name`/dispositivo.

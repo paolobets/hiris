@@ -34,37 +34,34 @@ def test_un_cambio_si_rilegge_intero(archivio):
     righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)
     assert righe == [{"quando_ts": ADESSO, "fonte": "entita",
                       "soggetto": "climate.camera_t", "da": "off", "a": "heat",
-                      "device_class": None, "state_class": None, "source_type": None,
+                      "device_class": None,
                       "domain": None, "title": None, "friendly_name": None,
                       "attributes": None,
                       "first_occurred": None}]
 
 
-def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
-    """Queste tre classi arrivarono col Task 3, punto 0, quando decidevano il
-    pavimento e la gamba -- entrambi usciti (11/09 e 17/09/2026). Oggi solo
-    `device_class` ha un lettore vivo: senza di lei, `genre_for` non puo'
-    ricostruire il genere di un rilevatore di fumo o di un allagamento
-    quando l'aggregazione rilegge il grezzo."""
+def test_annota_scrive_la_classe_quando_c_e(archivio):
+    """Tre classi arrivarono col Task 3, punto 0, quando decidevano il
+    pavimento e la gamba -- entrambi usciti (11/09 e 17/09/2026). Resta solo
+    `device_class`, l'unica con un lettore vivo: senza di lei, `genre_for` non
+    puo' ricostruire il genere di un rilevatore di fumo o di un allagamento
+    quando l'aggregazione rilegge il grezzo. Le altre due sono uscite con
+    `_migration_15`."""
     archivio.record(quando_ts=ADESSO, source="entita",
                     subject="binary_sensor.fumo_cucina", da="off", a="on",
-                    device_class="smoke", state_class=None, source_type=None)
+                    device_class="smoke")
     riga = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]
     assert riga["device_class"] == "smoke"
-    assert riga["state_class"] is None
-    assert riga["source_type"] is None
 
 
-def test_annota_senza_classi_scrive_none(archivio):
+def test_annota_senza_classe_scrive_none(archivio):
     """Le condizioni di sistema, e il grezzo scritto prima di questa
-    correzione, non portano le tre classi: devono rileggersi come `None`, non
+    correzione, non portano la classe: deve rileggersi come `None`, non
     far sollevare `record`."""
     archivio.record(quando_ts=ADESSO, source="sistema",
                     subject="problema:sonos.x", da=None, a="aperto")
     riga = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]
     assert riga["device_class"] is None
-    assert riga["state_class"] is None
-    assert riga["source_type"] is None
 
 
 def test_i_cambi_tornano_dal_PIU_VECCHIO(archivio):
@@ -1153,3 +1150,111 @@ def test_migration_14_non_porta_una_proposta_a_mano_senza_riga(tmp_path):
         assert proposer_turn.outcomes_of(analisi) == []
     finally:
         riaperto.close()
+
+
+#: La `cambi` di un archivio alla versione 14, con le due colonne che nessuno
+#: leggeva: e' la forma che la migrazione 15 trova sul disco del proprietario.
+_CAMBI_V14 = (
+    "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    " quando_ts REAL NOT NULL,"
+    " fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')),"
+    " soggetto TEXT NOT NULL, da TEXT, a TEXT, device_class TEXT,"
+    " state_class TEXT, source_type TEXT, domain TEXT, title TEXT,"
+    " first_occurred TEXT, friendly_name TEXT, attributes TEXT);"
+    "CREATE INDEX idx_cambi_quando ON cambi(quando_ts);"
+    "CREATE INDEX idx_cambi_soggetto ON cambi(soggetto, quando_ts);")
+
+
+def _archive_v14(tmp_path) -> str:
+    """Un archivio alla 14 con tre cambi veri, e il piu' vecchio gia' potato:
+    la potatura toglie dal fondo."""
+    percorso = str(tmp_path / "oss.db")
+    ObservationsStore(percorso).close()
+    conn = sqlite3.connect(percorso)
+    conn.executescript(
+        "DROP TABLE cambi;" + _CAMBI_V14
+        + "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,state_class,"
+          "source_type,domain,title,first_occurred,friendly_name,attributes) VALUES"
+          "(800.0,'entita','light.potata','on','off',NULL,NULL,NULL,NULL,NULL,NULL,"
+          "NULL,NULL),"
+          "(900.0,'entita','sensor.contatore','1','2','energy','total_increasing',"
+          "NULL,NULL,NULL,NULL,'Contatore','{\"x\": 1}'),"
+          "(901.0,'sistema','log:abc',NULL,'aperto',NULL,NULL,NULL,'sonos',"
+          "'Errore',  '880.5',NULL,NULL),"
+          "(902.0,'entita','device_tracker.tel','home','not_home',NULL,NULL,'gps',"
+          "NULL,NULL,NULL,'Telefono',NULL);"
+          "DELETE FROM cambi WHERE id = 1;"
+          "PRAGMA user_version = 14;")
+    conn.commit()
+    conn.close()
+    return percorso
+
+
+def _shape(percorso) -> tuple:
+    conn = sqlite3.connect(percorso)
+    try:
+        return (
+            [r[1] for r in conn.execute("PRAGMA table_info(cambi)")],
+            conn.execute("SELECT * FROM cambi ORDER BY id").fetchall(),
+            sorted(r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' "
+                "AND tbl_name = 'cambi' AND name LIKE 'idx_%'")),
+            conn.execute("PRAGMA user_version").fetchone()[0],
+            [r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE name LIKE 'cambi_v%'")])
+    finally:
+        conn.close()
+
+
+def test_migration_15_toglie_le_due_colonne_mai_lette_senza_perdere_i_cambi(tmp_path):
+    """`cambi.state_class` e `source_type` si scrivevano a ogni cambio e
+    nessuno le leggeva (Tappa 8, G-06): escono ricostruendo la tabella, come
+    `_migration_12`. Le righe restano coi loro id e con ogni colonna che
+    resta, gli indici tornano, e la riga nuova prende l'id dopo l'ultimo. Una
+    seconda apertura non cambia niente.
+
+    Mutazioni ESEGUITE: `_MIGRATION_15_STEPS` vuoto -- rossa sulle colonne;
+    senza ricreare gli indici -- rossa sugli indici.
+    """
+    percorso = _archive_v14(tmp_path)
+
+    store = ObservationsStore(percorso)
+    try:
+        store.record(quando_ts=903.0, source="entita", subject="light.x",
+                     da="off", a="on")
+        righe = store.readings(from_ts=0.0, to_ts=2000.0)
+    finally:
+        store.close()
+
+    colonne, tabella, indici, versione, avanzi = _shape(percorso)
+    assert "state_class" not in colonne and "source_type" not in colonne
+    assert colonne == ["id", "quando_ts", "fonte", "soggetto", "da", "a",
+                       "device_class", "domain", "title", "first_occurred",
+                       "friendly_name", "attributes"]
+    assert [r[0] for r in tabella] == [2, 3, 4, 5]
+    assert [(r["soggetto"], r["device_class"], r["friendly_name"], r["attributes"],
+             r["domain"], r["title"], r["first_occurred"]) for r in righe] == [
+        ("sensor.contatore", "energy", "Contatore", '{"x": 1}', None, None, None),
+        ("log:abc", None, None, None, "sonos", "Errore", 880.5),
+        ("device_tracker.tel", None, "Telefono", None, None, None, None),
+        ("light.x", None, None, None, None, None, None)]
+    assert indici == ["idx_cambi_quando", "idx_cambi_soggetto"]
+    assert versione == SCHEMA_VERSION
+    assert avanzi == []
+
+    prima = _shape(percorso)
+    ObservationsStore(percorso).close()
+    assert _shape(percorso) == prima
+
+
+def test_migration_15_rifiuta_ancora_una_fonte_sconosciuta(tmp_path):
+    """La tabella ricostruita porta il `CHECK` su `fonte`: senza, un refuso
+    dello scrittore entrerebbe in silenzio (vedi `test_fonte_invalida_solleva`).
+
+    Mutazione ESEGUITA: il `CHECK` tolto dalla ricostruzione -- rossa."""
+    store = ObservationsStore(_archive_v14(tmp_path))
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            store.record(quando_ts=1.0, source="altro", subject="x", da=None, a="1")
+    finally:
+        store.close()

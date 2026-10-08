@@ -152,10 +152,11 @@ def _migration_2(conn) -> None:
     queste tre classi sono usciti interi il 17/09/2026 (spec 2026-09-16 §11):
     oggi solo `device_class` ha un lettore vivo (`facts.genre_for` e
     `facts._is_on`, attraverso l'istantanea dei giudizi); `state_class` e
-    `source_type` non ne hanno nessuno. Restano comunque QUI, nel grezzo: non
-    sono tolte dallo schema, e sono i LETTORI che sono spariti, non
-    `store.py` che smette di conservarle -- i 22 giorni di grezzo
-    permettono di rifare il giudizio anche se un domani tornassero a servire.
+    `source_type` non ne hanno nessuno, e sono uscite con `_migration_15`
+    (Tappa 8, G-06): una colonna scritta a ogni cambio e mai letta e' un
+    doppione dello specchio di Home Assistant che nessuno interroga. Questa
+    migrazione resta com'e', perche' deve dire fra due anni la stessa cosa:
+    un archivio alla versione 1 le riceve qui e le perde alla 15.
 
     Tre colonne aggiunte, nessuna riscritta: le righe gia' in casa restano
     esattamente com'erano e diventano NULL sulle tre, che e' cio' che sono
@@ -218,9 +219,10 @@ def _migration_5(conn) -> None:
     parola la ragione gia' scritta accanto a `domain`/`title` nello schema
     qui sotto: fra tre settimane quell'entita' potrebbe non esistere piu', e
     la riga deve dire ancora di CHE COSA si parlava. E c'e' un secondo
-    motivo, proprio di questa colonna: le due tabelle hanno due vite -- i
-    `cambi` vivono 22 giorni, gli `oggetti` finche' l'utente non li cancella.
-    Un oggetto di sei mesi fa su un'entita' sostituita non avrebbe NESSUN
+    motivo, proprio di questa colonna: il grezzo e cio' che se ne capisce
+    hanno due vite -- i `cambi` vivono 22 giorni, i resoconti (allora gli
+    `oggetti`, usciti con `_migration_10`) finche' l'utente non li cancella.
+    Un giorno di sei mesi fa su un'entita' sostituita non avrebbe NESSUN
     nome da risolvere, e la riga tornerebbe all'`entity_id` grezzo: il
     difetto che questa fetta chiude ricrescerebbe da solo, un pezzo alla
     volta, senza che nessuno se ne accorga.
@@ -416,8 +418,6 @@ CREATE TABLE IF NOT EXISTS cambi (
     da TEXT,
     a TEXT,
     device_class TEXT,
-    state_class TEXT,
-    source_type TEXT,
     -- Le colonne NUOVE si scrivono in inglese (decisione del proprietario,
     -- 04/09/2026). Le italiane qui sopra sono debito in attesa della fetta
     -- «il vocabolario del dato», non un modello da imitare.
@@ -436,8 +436,8 @@ CREATE TABLE IF NOT EXISTS cambi (
     -- Il nome che Home Assistant ha gia' composto per l'entita' al momento
     -- del cambio (`attributes.friendly_name` dello specchio dello stato).
     -- Sta nel GREZZO per la stessa ragione di `domain`/`title` qui sopra, e
-    -- per una in piu' che vale solo per lui: gli `oggetti` vivono piu' a
-    -- lungo dei `cambi`, quindi un nome risolto dopo su un oggetto vecchio
+    -- per una in piu' che vale solo per lui: i resoconti vivono piu' a
+    -- lungo dei `cambi`, quindi un nome risolto dopo su un giorno vecchio
     -- non si troverebbe piu'. NULL per le condizioni di sistema (un
     -- `problema:`/`integrazione:`/`log:`/`automazione:` non e' un'entita' e
     -- non ne porta uno) e per le entita' su cui HA non scrive l'attributo.
@@ -464,16 +464,6 @@ CREATE TABLE IF NOT EXISTS cambi (
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
 
--- IL RESOCONTO DEL GIORNO (spec §9, fetta 5). Una riga per giorno, e **resta**:
--- il grezzo scade, il resoconto no.
---
--- **Una colonna JSON e non due tabelle**, e la ragione e' che le due parti si
--- leggono insieme o non si leggono affatto: l'analista scorre le misure di
--- trenta giorni e poi chiede la cronaca di UNO -- due letture, non due
--- tabelle. E la forma delle due parti cambiera' ancora (le ricette crescono,
--- l'ancora della cronaca puo' stringersi): una colonna per campo vorrebbe dire
--- una migrazione a ogni cosa imparata, che e' cio' che questa fetta esiste per
--- togliere.
 -- L'ANALISI di un giorno (spec §10): cosa l'analista ha visto, e perche'.
 -- Una per giorno, sostituibile come il resoconto: rifare un giorno lo rifa'.
 --
@@ -498,8 +488,9 @@ CREATE TABLE IF NOT EXISTS analisi (
 -- «Un posto solo dove si decide» e' una promessa sulla PAGINA, non sulla
 -- tabella: e' la pagina a mostrarle insieme, con l'etichetta di chi le applica.
 --
--- `impronta` e `prova_json` sono l'anti-ripetizione: l'attuatore salta una
--- domanda gia' decisa **finche' la sua prova non cambia**.
+-- `impronta` e `prova_json` sono l'anti-ripetizione: il proponente salta una
+-- domanda gia' decisa **finche' la sua prova non cambia**
+-- (`proposer_turn.already_answered`).
 --
 -- `giri_json` e' il filo del «Rifalla»: ogni giro porta la richiesta di
 -- modifica e la forma che ne e' uscita, cosi' il modello vede il filo intero e
@@ -532,6 +523,16 @@ CREATE TABLE IF NOT EXISTS proposte (
 );
 CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC);
 
+-- IL RESOCONTO DEL GIORNO (spec §9, fetta 5). Una riga per giorno, e **resta**:
+-- il grezzo scade, il resoconto no.
+--
+-- **Una colonna JSON e non due tabelle**, e la ragione e' che le due parti si
+-- leggono insieme o non si leggono affatto: l'analista scorre le misure di
+-- trenta giorni e poi chiede la cronaca di UNO -- due letture, non due
+-- tabelle. E la forma delle due parti cambiera' ancora (le ricette crescono,
+-- l'ancora della cronaca puo' stringersi): una colonna per campo vorrebbe dire
+-- una migrazione a ogni cosa imparata, che e' cio' che questa fetta esiste per
+-- togliere.
 CREATE TABLE IF NOT EXISTS resoconto (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
@@ -815,11 +816,80 @@ def _migration_14(conn) -> None:
                     row["giorno"])
 
 
+#: Le colonne di `cambi` alla versione 15, quelle che la ricostruzione
+#: ricopia. Sono la forma di QUEL gradino, e restano ferme come
+#: `_PROPOSAL_COLUMNS`: una colonna nata dopo arriva con la sua migrazione.
+_READING_COLUMNS = ("id", "quando_ts", "fonte", "soggetto", "da", "a",
+                    "device_class", "domain", "title", "first_occurred",
+                    "friendly_name", "attributes")
+
+
+def _drop_unread_reading_columns(conn) -> None:
+    """Escono `cambi.state_class` e `cambi.source_type` (Tappa 8, G-06 e
+    M-40): si scrivevano a ogni cambio e nessuno le leggeva dal 17/09/2026,
+    quando e' uscita la gamba che le usava (vedi `_migration_2`). Il fatto
+    vive gia' nello specchio di Home Assistant, che e' dove chi ne ha bisogno
+    lo chiede (`house.mirror.state_classes`).
+
+    **Si ricostruisce la tabella**, come `_migration_12`: `DROP COLUMN` vuole
+    SQLite 3.35. Gli indici seguono la tabella rinominata e se ne vanno con
+    lei: si ricreano dopo il `DROP`, quando il nome e' di nuovo libero. Il
+    contatore di `AUTOINCREMENT` riparte dall'id piu' alto ricopiato, e basta:
+    la potatura toglie le righe piu' vecchie, mai l'ultima, quindi nessun id
+    gia' dato torna.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
+    if not existing & {"state_class", "source_type"}:
+        return
+    columns = ",".join(_READING_COLUMNS)
+    conn.execute("ALTER TABLE cambi RENAME TO cambi_v14")
+    conn.execute(
+        "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "quando_ts REAL NOT NULL, "
+        "fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')), "
+        "soggetto TEXT NOT NULL, da TEXT, a TEXT, device_class TEXT, "
+        "domain TEXT, title TEXT, first_occurred TEXT, friendly_name TEXT, "
+        "attributes TEXT)")
+    conn.execute(f"INSERT INTO cambi({columns}) SELECT {columns} FROM cambi_v14")
+    conn.execute("DROP TABLE cambi_v14")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cambi_soggetto "
+                 "ON cambi(soggetto, quando_ts)")
+
+
+#: I passi della migrazione 15, in ordine (Tappa 8, Task 3). **Una
+#: migrazione sola per la tappa**, con un passo per cambio: chi porta il suo
+#: (la marca `regole` dei resoconti, le parole degli stati delle proposte, la
+#: cancellazione delle proposte dell'attuatore) aggiunge una funzione qui,
+#: idempotente, senza riscrivere le altre. Vale finche' la 15 non e' uscita in
+#: un rilascio: dopo, un passo nuovo e' una migrazione 16.
+_MIGRATION_15_STEPS = (_drop_unread_reading_columns,)
+
+
+def _migration_15(conn) -> None:
+    """v14 -> v15 (Tappa 8, «gli archivi seguono la casa»): i passi di
+    `_MIGRATION_15_STEPS`.
+
+    **Tutto o niente, in una transazione**, per la ragione di `_migration_12`
+    (G14-1): un passo interrotto a meta' non lascia l'archivio dichiarato
+    alla 15 con meta' dei cambi. Se uno fallisce si torna indietro, l'archivio
+    resta alla 14 e la migrazione si rifa' al prossimo avvio.
+    """
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        for step in _MIGRATION_15_STEPS:
+            step(conn)
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 #: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -854,8 +924,7 @@ def _reading_row(r) -> dict:
     first_occurred = r["first_occurred"]
     return {"quando_ts": r["quando_ts"], "fonte": r["fonte"],
             "soggetto": r["soggetto"], "da": r["da"], "a": r["a"],
-            "device_class": r["device_class"], "state_class": r["state_class"],
-            "source_type": r["source_type"],
+            "device_class": r["device_class"],
             "domain": r["domain"], "title": r["title"],
             "friendly_name": r["friendly_name"],
             # Il JSON resta una STRINGA fino a chi lo legge: una riga vecchia
@@ -881,7 +950,7 @@ class ObservationsStore:
                                 9: _migration_9,
                                 10: _migration_10, 11: _migration_11,
                                 12: _migration_12, 13: _migration_13,
-                                14: _migration_14})
+                                14: _migration_14, 15: _migration_15})
 
     def close(self) -> None:
         with self._lock:
@@ -891,8 +960,6 @@ class ObservationsStore:
 
     def record(self, *, quando_ts: float, source: str, subject: str,
                da, a, device_class: str | None = None,
-               state_class: str | None = None,
-               source_type: str | None = None,
                domain: str | None = None, title: str | None = None,
                friendly_name: str | None = None,
                first_occurred: float | None = None,
@@ -904,14 +971,14 @@ class ObservationsStore:
         `fonte` e' vincolata a `'entita'` o `'sistema'` (CHECK di schema): un
         refuso dello scrittore futuro non deve entrare in silenzio.
 
-        `device_class`, `state_class` e `source_type` sono le tre classi che
-        Home Assistant dichiara sull'entita' -- **grezzo per definizione**, non
-        un giudizio nostro: e' `device_class` cio' che serve a `facts.genre_for`
-        per decidere il genere di `sensor` e `binary_sensor` quando
-        l'aggregazione rilegge la riga, giorni dopo che l'evento e' passato.
-        Tutti e tre annullabili: le condizioni di sistema non li portano, e una
-        riga scritta prima che queste colonne esistessero li rilegge come
-        `None`.
+        `device_class` e' la classe che Home Assistant dichiara sull'entita'
+        -- **grezzo per definizione**, non un giudizio nostro: serve a
+        `facts.genre_for` per decidere il genere di `sensor` e `binary_sensor`
+        quando l'aggregazione rilegge la riga, giorni dopo che l'evento e'
+        passato. Annullabile: le condizioni di sistema non la portano, e una
+        riga scritta prima che la colonna esistesse la rilegge come `None`.
+        `state_class` e `source_type` non si scrivono piu': nessuno le leggeva
+        (`_migration_15`).
 
         `domain` e `title` sono dominio e titolo della voce di configurazione
         di una condizione di SISTEMA (`watcher.py::watch_system`) -- **grezzo
@@ -945,12 +1012,11 @@ class ObservationsStore:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
-                "state_class,source_type,domain,title,friendly_name,first_occurred,"
-                "attributes) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "domain,title,friendly_name,first_occurred,attributes) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (float(quando_ts), source, subject,
                  None if da is None else str(da), None if a is None else str(a),
-                 device_class, state_class, source_type, domain, title, friendly_name,
+                 device_class, domain, title, friendly_name,
                  None if first_occurred is None else str(float(first_occurred)),
                  attributes))
             self._conn.commit()

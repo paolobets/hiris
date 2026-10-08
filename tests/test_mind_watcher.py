@@ -107,7 +107,6 @@ def test_una_cosa_dentro_lo_scope_si_annota(coppia):
     assert archivio.annotati == [{"quando_ts": 1787572800.0, "source": "entita",
                                   "subject": "climate.camera_t",
                                   "da": "off", "a": "heat", "device_class": None,
-                                  "state_class": None, "source_type": None,
                                   "friendly_name": None,
                                   "attributes": None}]
 
@@ -169,13 +168,15 @@ def test_il_filtro_vale_SOLO_per_il_dominio_sensor(coppia):
     assert archivio.annotati
 
 
-# -- Correzione 0: il grezzo porta le tre classi che il pavimento legge -----
+# -- Correzione 0: il grezzo porta la classe che l'aggregazione legge -------
 
-def test_guarda_cambio_scrive_le_tre_classi_quando_ci_sono(coppia):
+def test_guarda_cambio_scrive_la_classe_quando_c_e(coppia):
     """Senza `device_class` nel grezzo, `aggregate_day` non puo' sapere che
     `binary_sensor.fumo_cucina` e' un rilevatore di fumo: il genere
     `sicurezza` per la sua coppia non nasce mai (Task 3, punto 0; il genere
-    si chiede all'istantanea dei giudizi dal 17/09/2026, spec 2026-09-16 §5)."""
+    si chiede all'istantanea dei giudizi dal 17/09/2026, spec 2026-09-16 §5).
+    `state_class` e `source_type` non si scrivono piu' (`_migration_15`):
+    nessuno le leggeva."""
     archivio, osservatore = coppia
     ev = _evento("binary_sensor.fumo_cucina", "off", "on",
                  {"device_class": "smoke", "state_class": "measurement",
@@ -183,17 +184,13 @@ def test_guarda_cambio_scrive_le_tre_classi_quando_ci_sono(coppia):
     assert osservatore.watch_reading(ev) is True
     riga = archivio.annotati[0]
     assert riga["device_class"] == "smoke"
-    assert riga["state_class"] == "measurement"
-    assert riga["source_type"] == "cloud"
 
 
-def test_guarda_cambio_scrive_none_quando_le_classi_mancano(coppia):
+def test_guarda_cambio_scrive_none_quando_la_classe_manca(coppia):
     archivio, osservatore = coppia
     osservatore.watch_reading(_evento("climate.camera_t", "off", "heat"))
     riga = archivio.annotati[0]
     assert riga["device_class"] is None
-    assert riga["state_class"] is None
-    assert riga["source_type"] is None
 
 
 # -- Giro di pulizia (26 agosto), punto 6: due residui dell'osservatore ----
@@ -212,8 +209,6 @@ def test_guarda_cambio_scrive_none_per_attributi_non_testuali(coppia):
     assert osservatore.watch_reading(ev) is True
     riga = archivio.annotati[0]
     assert riga["device_class"] is None
-    assert riga["state_class"] is None
-    assert riga["source_type"] is None
 
 
 def test_una_cosa_ESCLUSA_dallo_scope_NON_si_annota(coppia):
