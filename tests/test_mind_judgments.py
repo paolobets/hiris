@@ -1041,8 +1041,8 @@ _COLONNE_V9 = ("subject_kind", "subject", "field", "value", "provenance", "verif
                "evidence", "source", "who", "when_ts", "said_by", "seeded_value")
 
 #: Le righe di un archivio v9 come la casa le puo' avere: una correzione con la
-#: chiave, una della firma di prima del 26/09, una del seme, una deduzione, e
-#: tre righe scritte a mano coi valori che escono.
+#: chiave, una della firma di prima del 26/09, una del seme, due deduzioni (una
+#: firmata dal proprietario), e tre righe scritte a mano coi valori che escono.
 _RIGHE_V9 = [
     ("tipo", "light", "genere", "sicurezza", "nostro", None, None, None,
      "Paolo", 2.0, "persona:u-admin", None),
@@ -1052,6 +1052,11 @@ _RIGHE_V9 = [
      SEED_AUTHOR, 1.0, None, "presenza"),
     ("dispositivo", "dev1", "ricetta", "{}", "dedotto", None, "prove", None,
      "un modello", 4.0, None, None),
+    # Una deduzione con la firma e la chiave del proprietario: la guardia
+    # `provenance = 'nostro'` della migrazione e' cio' che la lascia `dedotto`
+    # (rilievo N92-1, giro 92).
+    ("dispositivo", "dev2", "ricetta", "{}", "dedotto", None, "prove", None,
+     "proprietario", 8.0, "persona:u-admin", None),
     ("tipo", "fan", "genere", "funzionamento", "ereditato", None, None, None,
      "a mano", 5.0, None, None),
     ("tipo", "sensor.aqi", "significato", "Aria", "importato", "confermata", None,
@@ -1091,7 +1096,9 @@ def test_migrazione_10_porta_a_CHIESTO_le_correzioni_e_solo_quelle(tmp_path):
 
     Mutazioni ESEGUITE: la migrazione scrive `nostro` invece di `chiesto` --
     rossa; la condizione su `who` resa sempre falsa -- rossa (la riga di prima
-    resta `nostro` e la pagina la dice `altro`). Togliere `10: _migration_10`
+    resta `nostro` e la pagina la dice `altro`); senza la guardia
+    `provenance = 'nostro'` -- rossa (la deduzione firmata dal proprietario
+    diventerebbe `chiesto`). Togliere `10: _migration_10`
     dalla mappa non e' una mutazione utile: `init_schema` rifiuta il gradino
     mancante prima di tutto."""
     nuovo = KnowledgeStore(_archivio_v9(tmp_path))
@@ -1101,6 +1108,7 @@ def test_migrazione_10_porta_a_CHIESTO_le_correzioni_e_solo_quelle(tmp_path):
         assert provenienze[("entita", "switch.x")] == "chiesto"
         assert provenienze[("tipo", "person")] == "nostro"
         assert provenienze[("dispositivo", "dev1")] == "dedotto"
+        assert provenienze[("dispositivo", "dev2")] == "dedotto"
         da = {(g["soggetto"], g["campo"]): g["da"] for g in judgment_listing(nuovo)}
         assert da[("light", "genere")] == "correzione"
         assert da[("switch.x", "genere")] == "correzione"

@@ -112,6 +112,20 @@ def _text_or_none(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def scope_row(subject: str, decision: dict, house=None) -> dict:
+    """Una riga dello scope come la leggono la pagina e il modello: soggetto,
+    motivo, autore, quando, e -- con la casa, per un'entita' -- la sua
+    `fonte` (`House.source`). **Una forma sola per dentro e fuori**
+    (fondamenta 3): fino all'08/10/2026 `watching` portava la fonte e
+    `MindView._left_out` no, e la stessa riga dello scope aveva due forme a
+    seconda di quale meta' la mostrava (trovato della Tappa 8, Task 1)."""
+    row = {"soggetto": subject, "motivo": decision["motivo"],
+           "autore": decision["autore"], "quando": decision["quando"]}
+    if house is not None and is_entity_id(subject):
+        row["fonte"] = house.source(subject)
+    return row
+
+
 class Watcher:
     """Il rubinetto e le condizioni di sistema, verso l'archivio.
 
@@ -359,14 +373,12 @@ class Watcher:
                 quando_ts=when, source="entita", subject=str(eid),
                 da=da, a=a,
                 device_class=_text_or_none(attributes.get("device_class")),
-                state_class=_text_or_none(attributes.get("state_class")),
-                source_type=_text_or_none(attributes.get("source_type")),
                 # Il nome amichevole si SALVA qui, non si risolve dopo: fra
                 # sei mesi l'entita' puo' non esistere piu' e il resoconto
                 # resta (i `cambi` vivono 22 giorni, i resoconti finche'
                 # l'utente non li cancella -- vedi `store.py::_migration_5`).
                 # Costa zero: `attributes` e' gia' letto qui sopra e gia'
-                # spremuto per le tre classi. E' la stringa che Home
+                # spremuto per `device_class`. E' la stringa che Home
                 # Assistant ha GIA' composto (`helpers/entity.py:1161` ->
                 # `entity_registry.py:592-603` @ `2026.9.1`), non una
                 # ricomposta da noi da `name`/`original_name`/dispositivo.
@@ -1005,15 +1017,15 @@ class Watcher:
         if not seal.readable:
             return
         try:
-            rows, reports = self._store.reseal_titles(
-                lambda text: seal_free_text(text, seal))
+            changed = self._store.reseal(lambda text: seal_free_text(text, seal))
         except Exception as error:
             logger.warning("osservatore: titoli archiviati non sigillati (%s)",
                            type(error).__name__)
             return
-        if rows or reports:
-            logger.info("osservatore: sigillati i segreti in %d titoli archiviati "
-                        "e %d resoconti", rows, reports)
+        if any(changed.values()):
+            logger.info("osservatore: sigillati i segreti in %d titoli archiviati, "
+                        "%d resoconti, %d analisi e %d proposte", changed["cambi"],
+                        changed["resoconto"], changed["analisi"], changed["proposte"])
 
     def rebuild_conditions(self) -> None:
         """Risemina `self._conditions` **e** `self._automation_faults` da
@@ -1070,7 +1082,8 @@ class Watcher:
         Python a ogni avvio.
 
         **Prima, il sigillo dei segreti sui titoli gia' archiviati**
-        (`_reseal_archived_titles`, Tappa 3, Task 0): questo e' l'unico
+        (`_reseal_archived_titles`, Tappa 3, Task 0; dalla Tappa 8 anche
+        analisi e proposte): questo e' l'unico
         passo dell'avvio in cui l'osservatore rilegge il proprio archivio, e
         quelle righe sono sue.
         """
@@ -1180,17 +1193,12 @@ class Watcher:
         (sulla casa, 26 soggetti guardati su 95 senza stato, nessuno marcato:
         registro, G-01). `fonte: None` e' il `None` di `House.source`: ne' il
         registro ne' gli stati conoscono quell'id. Senza la casa la chiave
-        manca: non si afferma niente. Nessuna riga dello scope si tocca (D1:
-        la pulizia e' della Tappa 8).
+        manca: non si afferma niente. Le righe di chi non ha piu' un referente
+        le toglie la riconciliazione (`mind/reconciliation.py`, Tappa 8, D1),
+        dopo ogni ricostruzione dell'anagrafe.
         """
-        def _entity_row(subject: str, decision: dict) -> dict:
-            row = {"soggetto": subject, "motivo": decision["motivo"],
-                   "autore": decision["autore"], "quando": decision["quando"]}
-            if house is not None and is_entity_id(subject):
-                row["fonte"] = house.source(subject)
-            return row
-
-        entity = (_entity_row(s, v) for s, v in self._store.scope().items() if v["dentro"])
+        entity = (scope_row(s, v, house) for s, v in self._store.scope().items()
+                  if v["dentro"])
         system = ({"soggetto": s, "motivo": _SYSTEM_REASON,
                    "autore": None, "quando": None}
                   for s in self._conditions)

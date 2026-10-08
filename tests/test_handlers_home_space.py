@@ -71,9 +71,10 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     # non un fatto finto. `conteggi`/`voci` sono contenitori naturali.
     assert corpo["comportamento"] == {
         "letto_il": None, "conteggi": {}, "senza_corpo": None,
-        "problemi": None, "corpi_non_letti": None, "voci": [],
+        "problemi": None, "corpi_non_letti": None, "conservato": None, "voci": [],
     }
-    assert corpo["plance"] == {"lette_il": None, "non_disponibili": None, "voci": []}
+    assert corpo["plance"] == {"lette_il": None, "non_disponibili": None,
+                               "conservato": None, "voci": []}
 
 
 @pytest.mark.asyncio
@@ -481,3 +482,37 @@ async def test_senza_corpo_conta_cio_che_HIRIS_non_sa_non_cio_che_copre(aiohttp_
     risposta = await (await client.get("/api/home-space")).json()
     assert risposta["comportamento"]["senza_corpo"] == 1
     archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_la_replica_conservata_esce_dalle_due_porte_nella_stessa_forma(
+        aiohttp_client, tmp_path):
+    """G-16 (Tappa 8, Task 10): il segno della replica conservata si chiede a
+    `/api/home-space` (l'oggetto, per il comportamento e per le plance) e
+    arriva al nucleo di `/api/briefing` (a parole, con la data). Mutazione
+    eseguita: non passare `behavior_kept` a `compose` -> rossa sull'avviso."""
+    archivio = HomeSpace(str(tmp_path))
+    archivio.hold_behavior([{"id": "automation.sveglia", "tipo": "automazione",
+                             "nome": "Sveglia", "corpo": {"trigger": []}}])
+    archivio.keep_behavior("Home Assistant non le ha ancora caricate")
+    archivio.keep_dashboards("nessuna plancia leggibile", unavailable=["principale"])
+    app = web.Application()
+    app["home_space_store"] = archivio
+    app["memory_store"] = None
+    app["entity_cache"] = None
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    app.router.add_get("/api/briefing", handle_get_briefing)
+    client = await aiohttp_client(app)
+
+    casa = await (await client.get("/api/home-space")).json()
+    nucleo = await (await client.get("/api/briefing")).json()
+    archivio.close()
+
+    assert casa["comportamento"]["conservato"] == {
+        "motivo": "Home Assistant non le ha ancora caricate",
+        "letto_il": casa["comportamento"]["letto_il"]}
+    assert casa["plance"]["conservato"] == {"motivo": "nessuna plancia leggibile",
+                                           "letto_il": None}
+    assert casa["plance"]["non_disponibili"] == ["principale"]
+    assert any("replica letta" in a and "non le ha ancora caricate" in a
+               for a in nucleo["summary"]["notices"])

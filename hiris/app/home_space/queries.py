@@ -1332,9 +1332,15 @@ def _view_memory(memories: list[dict], reference) -> dict:
     return detail
 
 
-def sanitized_memories(memories: list[dict] | None) -> list[dict]:
+def sanitized_memories(memories: list[dict] | None, house: House | None = None) -> list[dict]:
     """I ricordi con `testo` passato dal sanitizzatore -- funzione condivisa,
     non una riga ripetuta a ogni porta che restituisce ricordi al modello.
+
+    **Con la casa, ogni ancora porta `nome_attuale` ed `esiste`**
+    (`House.tether`, G-21, Tappa 8, Task 1): la stessa forma che la pagina
+    Memoria mostra, cosi' il modello puo' dire «quell'entita' non c'e' piu'»
+    invece di riferire un'ancora grezza come viva. Il nucleo la chiama senza
+    casa: le sue righe non stampano le ancore.
 
     C-2/I1 (L1-sicurezza.md, review indipendente del 25/08/2026): la prima
     versione di questa correzione sanificava il testo dentro `view()` ma
@@ -1347,8 +1353,14 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
 
     Il testo ARCHIVIATO non cambia (`memory/store.py`, regola 1): questa
     e' una copia, non una riscrittura -- vedi il docstring di `view()`."""
-    return [dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
-           for r in (memories or [])]
+    out = []
+    for r in memories or []:
+        copy = dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
+        if house is not None and isinstance(r.get("ancore"), list):
+            copy = dict(copy, ancore=[house.tether(a) if isinstance(a, dict) else a
+                                      for a in r["ancore"]])
+        out.append(copy)
+    return out
 
 
 # Ampiezza (in secondi) fra il primo e l'ultimo istante delle entita' mute di
@@ -1690,7 +1702,7 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     sorveglia che la catena interna -- che quella prova strutturale non guarda
     -- lo inoltri davvero fino a `_limits_of_entity`.
     """
-    memories = sanitized_memories(memories)
+    memories = sanitized_memories(memories, house)
     if kind == "area":
         return _view_area(house, memories, reference, translations)
     if kind == "entita":

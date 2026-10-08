@@ -13,7 +13,7 @@ sorgente vero della casa (`http://192.168.1.95:8123/api/states`, 07/09/2026),
 non importate da `hiris.app.home_space.ha_vocabulary`.
 
 Fonte per il contenuto delle voci pinnate: sorgente vero di Home Assistant,
-tag `2026.9.1` -- vedi `ha_vocabulary.VOCABULARY_SOURCE` per la citazione
+tag `2026.9.1` -- vedi la fonte in testa a `ha_vocabulary` per la citazione
 file per file.
 """
 from hiris.app.home_space.ha_vocabulary import (
@@ -21,7 +21,6 @@ from hiris.app.home_space.ha_vocabulary import (
     ENTITY_CATEGORY_MEANING,
     STATE_CLASS_MEANING,
     VOCABULARY_HA_VERSION,
-    VOCABULARY_SOURCE,
     entity_category_measure_rule,
     house_is_newer_than_vocabulary,
 )
@@ -67,19 +66,6 @@ _MEASURED_DEVICE_CLASS_PAIRS = (
 _MEASURED_STATE_CLASSES = ("measurement", "total", "total_increasing")
 
 
-def test_the_vocabulary_declares_where_it_comes_from():
-    """«Non si deduce e non si indovina: si importa, si dichiara la fonte, e
-    una prova si accorge quando diverge.» Un vocabolario senza fonte e'
-    un'opinione con l'aspetto di un fatto.
-
-    Mutazione: svuotare `VOCABULARY_SOURCE` (`= ""`) -- il test torna rosso
-    su `assert VOCABULARY_SOURCE`.
-    """
-    assert VOCABULARY_SOURCE
-    assert "2026.9.1" in VOCABULARY_SOURCE
-    assert "dev" not in VOCABULARY_SOURCE.split()
-
-
 def test_the_vocabulary_says_which_version_it_came_from():
     """Il pezzo che rende duraturo tutto il tema: quando la casa supera la
     versione del vocabolario, qualcuno lo DICE -- invece di scoprirlo da un
@@ -93,21 +79,6 @@ def test_the_vocabulary_says_which_version_it_came_from():
     # "dev" non lo e' mai, ed e' il vincolo che il capitolato vieta di violare.
     assert VOCABULARY_HA_VERSION != "dev"
     assert VOCABULARY_HA_VERSION.split(".")[0].isdigit()
-
-
-def test_the_version_and_the_source_cannot_drift_apart():
-    """`VOCABULARY_HA_VERSION` e `VOCABULARY_SOURCE` sono due dichiarazioni
-    dello STESSO fatto (il tag su cui il modulo e' stato verificato) scritte
-    in due punti diversi: senza un legame, cambiare la prima senza
-    riverificare la fonte (e senza aggiornare la seconda) resta verde mentre
-    la fonte citata dice ancora il tag vecchio -- due idee della stessa
-    versione che divergono in silenzio.
-
-    Mutazione: cambiare `VOCABULARY_HA_VERSION` in `"2027.1.0"` senza
-    toccare `VOCABULARY_SOURCE` (che continua a citare `2026.9.1`) -- il
-    test torna rosso su `assert VOCABULARY_HA_VERSION in VOCABULARY_SOURCE`.
-    """
-    assert VOCABULARY_HA_VERSION in VOCABULARY_SOURCE
 
 
 def test_a_house_newer_than_the_vocabulary_is_a_fact_not_an_error():
@@ -300,29 +271,6 @@ def test_uptime_is_documented_as_a_point_in_time_not_a_duration():
     meaning = DEVICE_CLASS_MEANING[("sensor", "uptime")]
     assert "ISTANTE" in meaning
     assert "NON" in meaning
-
-
-def test_la_fonte_dichiara_PERCHE_unavailable_e_unknown_sono_un_buco_di_ha():
-    """La differenza fra `unavailable` e `unknown` e' scritta in
-    `ha_vocabulary.py` perche' Home Assistant non pubblica MAI la distinzione
-    fra i due stati verso un add-on, e la prova di quel buco e' una riga di
-    sorgente:
-    `translation.py:469-470`, dove `async_translate_state` restituisce
-    `unavailable`/`unknown` grezzi prima di guardare qualunque tabella. Senza
-    questa citazione dentro `VOCABULARY_SOURCE`, fra sei mesi le due
-    spiegazioni si leggerebbero come conoscenza inventata, non importata da
-    una fonte verificabile.
-
-    Mutazione ESEGUITA: togliere la citazione di `translation.py` da
-    `VOCABULARY_SOURCE` -- il test torna rosso su
-    `assert "helpers/translation.py:469-470" in VOCABULARY_SOURCE`.
-    """
-    assert "helpers/translation.py:469-470" in VOCABULARY_SOURCE
-    assert "async_translate_state" in VOCABULARY_SOURCE
-
-
-# --- `entity_category`: pinnato contro la fonte, non contro se stesso ------
-# (Task 5, §6c -- il primo consumatore a runtime del vocabolario)
 
 
 def test_entity_category_meaning_matches_the_source_word_for_word():

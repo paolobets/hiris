@@ -50,7 +50,7 @@ def _proposals_pending(app) -> int:
     observations = app.get("observations")
     if observations is None:
         return 0
-    return len(observations.proposals(pending_only=True))
+    return observations.pending_proposals_count()
 
 
 async def handle_get_pending(request: web.Request) -> web.Response:

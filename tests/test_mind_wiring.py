@@ -1324,7 +1324,7 @@ def test_i_significati_delle_classi_entrano_nel_sapere_dalle_TRADUZIONI(tmp_path
             "knowledge": sapere,
             "home_space_store": _CasaConFuso(),
             "state_translations": _CacheTraduzioni({
-                "lette": True, "lingua": "it", "risorse": {
+                "lette": True, "lingua": "it", "appena_lette": True, "risorse": {
                     "component.binary_sensor.entity_component.gas.name": "Gas"}}),
         }
 

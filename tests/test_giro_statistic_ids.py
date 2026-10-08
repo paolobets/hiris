@@ -284,3 +284,33 @@ async def test_una_ricetta_rotta_si_richiede_nello_stesso_giro(stores):
     assert "Inverter" in modello.domande[0]
     assert "non funziona piu'" in modello.domande[0]
     assert _asked(house) == 1
+
+
+async def test_due_giri_che_partono_insieme_a_memoria_vuota_leggono_una_volta():
+    """S-30 (Tappa 8, Task 8): la memoria non aveva lucchetto. Due giri che
+    partono insieme a memoria vuota -- il recupero dei resoconti e le ricette
+    allo stesso minuto -- trovavano entrambi la memoria vuota e leggevano
+    entrambi, perche' la lettura cede il controllo mentre aspetta Home
+    Assistant. Col lucchetto il secondo aspetta la lettura del primo e la usa.
+
+    Rosso letto prima del codice: `assert 2 == 1`."""
+    import asyncio
+
+    trattieni = asyncio.Event()
+    house = CasaFinta(synthetic_inputs(), answers={
+        _LIST: lambda extra: [{"statistic_id": "sensor.prodotta"}]},
+        delay={_LIST: trattieni})
+    app = {}
+
+    async def _lascia():
+        for _ in range(5):
+            await asyncio.sleep(0)
+        trattieni.set()
+
+    first, second, _ = await asyncio.gather(
+        house_history.statistic_ids_for_round(app, house),
+        house_history.statistic_ids_for_round(app, house),
+        _lascia())
+
+    assert _asked(house) == 1
+    assert first == second == {"sensor.prodotta"}

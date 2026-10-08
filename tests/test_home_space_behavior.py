@@ -292,3 +292,75 @@ async def test_un_nome_legittimo_non_si_mutila(casa, cartella):
 
     assert (_per_id(casa.behavior())["automation.buona"]["nome"]
             == "Sveglia dell'ospite (piano 1, n°2)")
+
+
+@pytest.mark.asyncio
+async def test_la_replica_conservata_porta_il_suo_segno_finche_una_lettura_non_riesce(
+        casa, cartella):
+    """G-16 (Tappa 8, Task 10): la guardia che conserva la replica lo dice
+    all'anagrafe (`behavior_kept`), con la ragione e la data della replica
+    che si tiene; una rilettura buona toglie il segno.
+
+    Mutazione eseguita: togliere `keep_behavior` dal ramo della guardia ->
+    rossa (`behavior_kept()` resta `None`)."""
+    pieno = _house(stati=[_stato("automation.sveglia", "Sveglia")],
+                   configurazioni={"automation.sveglia": {"alias": "Sveglia"}})
+    await reread(pieno, casa, cartella)
+    assert casa.behavior_kept() is None
+    read_at = casa.behavior_loaded_at()
+
+    await reread(_house(stati=[_stato("light.cucina")]), casa, cartella)
+
+    assert casa.behavior_kept() == {"motivo": behavior.BEHAVIOR_NOT_LOADED,
+                                    "letto_il": read_at}
+    await reread(pieno, casa, cartella)
+    assert casa.behavior_kept() is None
+
+
+@pytest.mark.asyncio
+async def test_uno_specchio_illeggibile_conserva_la_replica_e_lo_dice(casa, cartella):
+    """L'altra guardia: lo specchio non si legge, la rilettura si ferma e la
+    replica resta. Anche questo e' un segno, non solo un'eccezione nel log."""
+    with pytest.raises(RuntimeError):
+        await behavior.reread(_house(), EntityCache(), casa, cartella)
+    kept = casa.behavior_kept()
+    assert kept is not None and kept["letto_il"] is None
+    assert kept["motivo"]
+
+
+@pytest.mark.asyncio
+async def test_dopo_una_riconnessione_il_comportamento_legge_lo_specchio_riletto(
+        casa, cartella):
+    """S-31 (Tappa 8, Task 10): alla riconnessione partono insieme la
+    rilettura dello specchio (`EntityCache.reload`) e, tre secondi dopo, quella
+    del comportamento -- che leggeva lo specchio cosi' com'era, anche se la
+    sua rilettura non era finita. Un'automazione nata mentre la connessione
+    era giu' compariva solo alla cadenza dopo. Ora la rilettura del
+    comportamento aspetta che lo specchio abbia finito (`settled`).
+
+    Rosso letto prima del codice: la replica restava vuota.
+    Mutazione eseguita: `settled` che torna subito -> rossa."""
+    import asyncio
+
+    prima = _house(stati=[_stato("light.cucina")])
+    mirror = EntityCache()
+    await mirror.load(prima)
+
+    dopo = _house(stati=[_stato("light.cucina"), _stato("automation.nuova", "Nuova")],
+                  configurazioni={"automation.nuova": {"alias": "Nuova"}})
+    lenta = asyncio.Event()
+    get_states = dopo.get_states
+
+    async def _get_states_lenta(*args, **kwargs):
+        await lenta.wait()
+        return await get_states(*args, **kwargs)
+
+    dopo.get_states = _get_states_lenta
+    specchio = asyncio.create_task(mirror.reload(dopo))
+    await asyncio.sleep(0)
+    comportamento = asyncio.create_task(behavior.reread(dopo, mirror, casa, cartella))
+    await asyncio.sleep(0)
+    lenta.set()
+    await asyncio.gather(specchio, comportamento)
+
+    assert set(_per_id(casa.behavior())) == {"automation.nuova"}

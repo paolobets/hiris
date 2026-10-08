@@ -858,3 +858,66 @@ def test_il_riassunto_tiene_l_esito_che_ha_aperto_la_conversazione(tmp_path):
     assert "21 gradi" in row["summary"]
     assert "quindi va bene" in row["summary"]
     store.close()
+
+
+def _letture(store, fai):
+    """Le istruzioni SELECT che `fai()` manda all'archivio (`set_trace_callback`)."""
+    viste: list[str] = []
+    store._conn.set_trace_callback(viste.append)
+    try:
+        fai()
+    finally:
+        store._conn.set_trace_callback(None)
+    return [s for s in viste if s.lstrip().upper().startswith("SELECT")]
+
+
+def test_ogni_operazione_del_turno_chiede_la_conversazione_attiva_una_volta(tmp_path):
+    """D-65 (Tappa 8, Task 10b): «qual e' la conversazione attiva di questo
+    filo» si chiedeva con una lettura a parte prima di scrivere, di caricare e
+    di contare -- e la scrittura ne faceva due (la fresca, poi le aperte da
+    chiudere). Ora la domanda e' un frammento SQL solo (`_FRESH_SESSION`)
+    dentro la lettura che serve: contare, caricare e scrivere fanno una
+    lettura ciascuno.
+
+    Rosso letto prima del codice: due letture per contare, due per caricare,
+    due per scrivere.
+    Mutazione eseguita: `count_user_turns` che torna a chiedere prima la
+    sessione (`_fresh_session_id`) -> rossa."""
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    store.append([{"role": "user", "content": "ciao"},
+                  {"role": "assistant", "content": "ciao a te"}], T)
+
+    assert len(_letture(store, lambda: store.count_user_turns(T))) == 1
+    assert len(_letture(store, lambda: store.load_context(T))) == 1
+    assert len(_letture(store, lambda: store.append(
+        [{"role": "user", "content": "e adesso?"}], T))) == 1
+    assert store.count_user_turns(T) == 2
+    assert [m["content"] for m in store.load_context(T)] == [
+        "ciao", "ciao a te", "e adesso?"]
+    store.close()
+
+
+def test_la_scrittura_chiude_le_altre_aperte_del_filo_con_la_stessa_lettura(tmp_path):
+    """La regola che la lettura unica non deve perdere: un filo ha al piu' una
+    sessione aperta, la piu' fresca; scrivere chiude le altre (l'adozione puo'
+    portarne una seconda)."""
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    vecchia = (datetime.now(UTC) - timedelta(minutes=30)).strftime(_TS_FMT)
+    store._conn.execute(
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)", (*_TK, "adottata", vecchia, vecchia))
+    store._conn.execute(
+        "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
+        ("adottata", "user", "di prima", vecchia))
+    store.append([{"role": "user", "content": "nuova"}], T)   # va nella fresca
+    store._conn.execute(
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)", (*_TK, "seconda", vecchia, vecchia))
+    store._conn.commit()
+
+    store.append([{"role": "assistant", "content": "risposta"}], T)
+
+    aperte = store._conn.execute(
+        "SELECT session_id FROM chat_sessions WHERE summary IS NULL").fetchall()
+    assert [r["session_id"] for r in aperte] == ["adottata"]
+    store.close()

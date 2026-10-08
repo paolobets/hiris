@@ -199,7 +199,7 @@ def _silent_inside(store, house: House) -> list[tuple[str, dict | None]]:
     grezzo, e per una persona o un dispositivo che la segue l'id e' il nome.
     Il segnaposto delle righe (`presence_handles`) vale per il lotto chiesto,
     non per questi soggetti: finche' non ne hanno uno loro restano fuori, e
-    dentro allo scope come sono (D1). Trovato all'integrazione delle Tappe
+    dentro allo scope come sono. Trovato all'integrazione delle Tappe
     4-6 con il Task 1.5, il 05/10/2026."""
     if not house.mirror.readable:
         return []
@@ -220,7 +220,11 @@ def gone_lines(store, house: House) -> list[str]:
     """Una riga per soggetto dentro che tace (`_silent_inside`): l'id e la
     fonte. La domanda che apre la campagna li porta a parte, cosi' il modello
     puo' toglierli alla prossima cadenza (piano degli attori, Task 1.5). Il
-    codice non toglie niente: nessuna riga dello scope si cancella (D1)."""
+    codice toglie da se' soltanto chi non ha piu' un referente (`House.source`
+    -> `None`), con la riconciliazione dopo ogni ricostruzione dell'anagrafe
+    (`mind/reconciliation.py`, Tappa 8, D1): finche' una guardia la ferma,
+    quei soggetti arrivano anche qui. Gli spenti e i muti restano al modello:
+    possono tornare."""
     return [f"{subject} · fonte: "
             + (source["stato"] if source is not None
                else "nessuna (ne' nel registro ne' negli stati di Home Assistant)")

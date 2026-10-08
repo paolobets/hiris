@@ -235,7 +235,7 @@ async def handle_set_scope(request) -> web.Response:
     3.7): una decisione sullo scope con autore `OWNER`.
 
     Corpo: `{"soggetto": entity_id, "dentro": bool, "motivo": testo?}`. Torna
-    `{"soggetto", "decisione": {...}}`, la riga di `store.scope()` dopo la
+    `{"soggetto", "decisione": {...}}`, la riga di `store.decision()` dopo la
     scrittura.
 
     **Il motivo e' facoltativo per chi preme, non per l'archivio**:
@@ -262,14 +262,14 @@ async def handle_set_scope(request) -> web.Response:
             or not (why is None or isinstance(why, str))):
         return error_response(400, "servono `soggetto` (un entity_id), `dentro` (vero o "
                                    "falso) e, se vuoi, `motivo` come testo.")
-    if subject not in store.scope():
+    if store.decision(subject) is None:
         return error_response(404, f"su {subject} nessuno ha ancora deciso: non c'e' "
                                    "niente da togliere o rimettere.")
     reason = (why or "").strip() or (
         analyst.OWNER_BROUGHT_BACK if inside else analyst.OWNER_REMOVED)
     store.decide_scope(subject, inside=inside, reason=reason, author=OWNER)
     return web.json_response({"soggetto": subject,
-                              "decisione": store.scope()[subject]})
+                              "decisione": store.decision(subject)})
 
 
 async def handle_analysis(request) -> web.Response:

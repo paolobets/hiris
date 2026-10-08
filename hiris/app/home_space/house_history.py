@@ -26,6 +26,7 @@ La scelta dei soggetti NON si fa qui: la fa `House.select`, la stessa di
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
@@ -1567,12 +1568,22 @@ async def statistic_ids_for_round(app, ha_client, *,
     si tiene in `app["statistic_ids_held"]` per `STATISTIC_IDS_MEMORY_S`;
     **un guasto non si tiene mai**: la busta (D3) torna al chiamante, e il
     giro dopo richiede.
+
+    **Col lucchetto** (`app["statistic_ids_lock"]`, S-30, Tappa 8): la
+    lettura cede il controllo mentre aspetta Home Assistant, e senza
+    lucchetto due giri che partono insieme a memoria vuota leggevano tutti e
+    due. Il secondo aspetta il primo, e trova la sua lettura (o, dopo un
+    guasto, richiede).
     """
-    now = time.monotonic() if now is None else now
-    held = app.get("statistic_ids_held")
-    if held is not None and now - held[0] < STATISTIC_IDS_MEMORY_S:
-        return held[1]
-    reading = await ha_client.statistic_ids()
-    if not isinstance(reading, dict):
-        app["statistic_ids_held"] = (now, reading)
-    return reading
+    lock = app.get("statistic_ids_lock")
+    if lock is None:
+        lock = app["statistic_ids_lock"] = asyncio.Lock()
+    async with lock:
+        moment = time.monotonic() if now is None else now
+        held = app.get("statistic_ids_held")
+        if held is not None and moment - held[0] < STATISTIC_IDS_MEMORY_S:
+            return held[1]
+        reading = await ha_client.statistic_ids()
+        if not isinstance(reading, dict):
+            app["statistic_ids_held"] = (moment, reading)
+        return reading

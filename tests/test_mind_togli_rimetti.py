@@ -114,6 +114,45 @@ async def test_si_tocca_solo_cio_su_cui_qualcuno_ha_deciso(archivio):
     assert archivio.scope() == {}
 
 
+def _whole_scope_reads(archivio) -> list[str]:
+    """Le query su `scope` che rileggono il perimetro intero, registrate da
+    adesso: quelle senza `WHERE`."""
+    seen: list[str] = []
+    archivio._conn.set_trace_callback(seen.append)
+    return seen
+
+
+def _whole(seen: list[str]) -> list[str]:
+    return [q for q in seen if "FROM scope" in q and "WHERE" not in q]
+
+
+@pytest.mark.asyncio
+async def test_chi_decide_su_un_soggetto_non_rilegge_tutto_il_perimetro(archivio):
+    """A-37 (Tappa 8, T3): `decide_scope`, `analyst.bring_back` e la rotta del
+    togli/rimetti chiedono la riga del soggetto (`decision`), non la tabella
+    intera, centinaia di righe a ogni decisione. E la riga ha la forma di una
+    voce di `scope()`: la stessa decisione dalle due porte.
+
+    Mutazione ESEGUITA: `standing = self.scope().get(subject)` rimesso in
+    `decide_scope` -- rossa."""
+    for n in range(5):
+        archivio.decide_scope(f"sensor.s{n}", inside=False, reason="non pesa",
+                              author=OBSERVER, when_ts=1000.0)
+    seen = _whole_scope_reads(archivio)
+
+    archivio.decide_scope("sensor.s0", inside=True, reason="pesa", author=OBSERVER)
+    analyst.bring_back(archivio, _analisi("sensor.s1"), _casa("sensor.s1"), when_ts=2000.0)
+    r = await handle_set_scope(_richiesta({"observations": archivio}, {
+        "soggetto": "sensor.s2", "dentro": True}))
+
+    assert r.status == 200
+    assert seen, "il tracciamento non vede le query: la prova guarderebbe il vuoto"
+    assert _whole(seen) == []
+    archivio._conn.set_trace_callback(None)
+    assert archivio.decision("sensor.s1") == archivio.scope()["sensor.s1"]
+    assert archivio.decision("sensor.mai_visto") is None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("corpo", [
     {"soggetto": "log:zha", "dentro": False},

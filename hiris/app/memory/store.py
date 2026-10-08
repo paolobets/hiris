@@ -45,6 +45,7 @@ resta condivisa.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 
@@ -182,7 +183,7 @@ class MemoryStore:
         righe = self._conn.execute(
             f"SELECT * FROM ricordi{where} ORDER BY id DESC LIMIT ?",
             (*params, limit)).fetchall()
-        return [self._compose(dict(r)) for r in righe]
+        return self._compose([dict(r) for r in righe])
 
     def per_tether(self, type: str, reference: str) -> list[dict]:
         """I ricordi ancorati a `riferimento` con quel `tipo` (un'area,
@@ -202,7 +203,7 @@ class MemoryStore:
             "JOIN ancore a ON a.ricordo_id = r.id "
             "WHERE a.tipo = ? AND a.riferimento = ? ORDER BY r.id DESC",
             (type, reference)).fetchall()
-        return [self._compose(dict(r)) for r in righe]
+        return self._compose([dict(r) for r in righe])
 
     def get(self, id: int) -> dict | None:
         """Un ricordo per id, con ancore e condizioni gia' risolte, o
@@ -214,7 +215,7 @@ class MemoryStore:
         quando la richiesta ne tocca solo meta', non contro `None`.
         """
         row = self._conn.execute("SELECT * FROM ricordi WHERE id = ?", (id,)).fetchone()
-        return self._compose(dict(row)) if row else None
+        return self._compose([dict(row)])[0] if row else None
 
     def count(self, *, said_by: str | None = None) -> int:
         """Quanti ricordi ci sono in tutto -- non solo i `limit` che
@@ -316,14 +317,37 @@ class MemoryStore:
                 "INSERT INTO condizioni (ricordo_id, tipo, valore) VALUES (?,?,?)",
                 (ricordo_id, cond["tipo"], cond["valore"]))
 
-    def _compose(self, row: dict) -> dict:
-        """Un ricordo con le sue ancore e condizioni gia' sciolte: le liste
-        vengono da tabelle proprie, non da una colonna JSON."""
-        ricordo_id = row["id"]
-        row["ancore"] = [dict(a) for a in self._conn.execute(
-            "SELECT tipo, riferimento, nome_visto FROM ancore WHERE ricordo_id = ? "
-            "ORDER BY rowid", (ricordo_id,)).fetchall()]
-        row["condizioni"] = [dict(c) for c in self._conn.execute(
-            "SELECT tipo, valore FROM condizioni WHERE ricordo_id = ? ORDER BY rowid",
-            (ricordo_id,)).fetchall()]
-        return row
+    def _compose(self, rows: list[dict]) -> list[dict]:
+        """I ricordi letti, ognuno con le sue ancore e condizioni gia' sciolte:
+        le liste vengono da tabelle proprie, non da una colonna JSON.
+
+        **Una lettura sola per le figlie di tutti** (D-50, Tappa 8): il nucleo
+        rilegge OGNI ricordo a ogni composizione, e fino a qui ognuno costava
+        due letture in piu' -- 1 + 2N, quattrocentouno istruzioni per duecento
+        ricordi. Ancore e condizioni dei ricordi chiesti arrivano insieme
+        (`UNION ALL`, gli id passati come un elenco JSON: nessun tetto al
+        numero dei parametri), ciascuna nell'ordine in cui e' stata scritta.
+        """
+        by_id = {}
+        for row in rows:
+            row["ancore"], row["condizioni"] = [], []
+            by_id[row["id"]] = row
+        if not by_id:
+            return rows
+        ids = json.dumps(list(by_id))
+        for child in self._conn.execute(
+                "SELECT 'ancore' AS lista, ricordo_id, rowid AS ordine, tipo, "
+                "riferimento, nome_visto, NULL AS valore FROM ancore "
+                "WHERE ricordo_id IN (SELECT value FROM json_each(?)) "
+                "UNION ALL "
+                "SELECT 'condizioni', ricordo_id, rowid, tipo, NULL, NULL, valore "
+                "FROM condizioni WHERE ricordo_id IN (SELECT value FROM json_each(?)) "
+                "ORDER BY lista, ricordo_id, ordine", (ids, ids)):
+            row = by_id[child["ricordo_id"]]
+            if child["lista"] == "ancore":
+                row["ancore"].append({"tipo": child["tipo"],
+                                      "riferimento": child["riferimento"],
+                                      "nome_visto": child["nome_visto"]})
+            else:
+                row["condizioni"].append({"tipo": child["tipo"], "valore": child["valore"]})
+        return rows

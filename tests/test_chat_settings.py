@@ -338,3 +338,35 @@ async def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, caplog):
         "la migrazione ha parlato di nuovo al secondo avvio: non era piu' il "
         "suo momento"
     )
+
+
+@pytest.mark.parametrize("contenuto,campo", [
+    ([1, 2], None),
+    ("una stringa", None),
+    ({"thinking_budget": "abc", "nome": "Casa"}, "thinking_budget"),
+    ({"max_chat_turns": [3], "nome": "Casa"}, "max_chat_turns"),
+    ({"giorni_conservazione": "trenta", "nome": "Casa"}, "giorni_conservazione"),
+])
+def test_un_valore_storto_torna_al_default_e_lo_dice_nel_log(tmp_path, caplog,
+                                                             contenuto, campo):
+    """S-19 (Tappa 8, Task 8): un file che e' JSON valido ma di forma
+    sbagliata faceva sollevare `load` (`AttributeError` sulla radice che non e'
+    un oggetto, `ValueError` sul numero non convertibile), e l'avvio la chiama
+    senza `try`: un file d'impostazioni rovinato fermava l'add-on. Ora il
+    valore storto torna al suo default, e il log lo dice; gli altri campi
+    restano quelli scritti."""
+    (tmp_path / "impostazioni_chat.json").write_text(json.dumps(contenuto),
+                                                     encoding="utf-8")
+    with caplog.at_level("ERROR"):
+        imp = ChatSettings.load(str(tmp_path))
+    if campo is None:
+        assert imp == ChatSettings()
+    else:
+        assert imp.name == "Casa", "i campi buoni restano"
+        default = ChatSettings()
+        attributo = {"giorni_conservazione": "retention_days"}.get(campo, campo)
+        assert getattr(imp, attributo) == getattr(default, attributo)
+    messaggi = " ".join(rec.getMessage() for rec in caplog.records)
+    assert "Impostazioni chat" in messaggi
+    if campo is not None:
+        assert campo in messaggi, "il log nomina il campo storto"

@@ -100,3 +100,45 @@ def test_un_fuso_che_solleva_non_ferma_la_scrittura(tmp_path):
         assert len(_righe(a)) == 1
     finally:
         a.close()
+
+
+def _stato_aggregato(archivio, *stati):
+    """Lo stato che la lettura aggregata (`sezioni`) da' a un modello che ha
+    una riga per giorno, una per stato."""
+    for giorno, stato in enumerate(stati):
+        archivio.log("claude", "m", cost_usd=None, cost_state=stato,
+                     now=T1 + giorno * 86400)
+    [sezione] = archivio.sezioni()
+    [modello] = sezione["modelli"]
+    return modello["costo_stato"]
+
+
+@pytest.mark.parametrize("ordine", [
+    None,  # l'ordine vero
+    ("non_noto", "compreso", "misurato", "gratuito", "reale"),
+    ("reale", "misurato", "gratuito", "compreso", "non_noto"),
+])
+def test_lo_stato_piu_debole_di_un_insieme_e_quello_della_regola_unica(
+        tmp_path, monkeypatch, ordine):
+    """G-23 (Tappa 8, Task 8): «lo stato piu' debole» si rispondeva due volte,
+    con `piu_debole` in Python e con `MIN(costo_stato)` in SQL, e le due
+    risposte coincidevano solo perche' l'ordine alfabetico, tolto `non_noto`,
+    e' per caso quello di `STATES`. Ora la lettura aggregata si compone da
+    `STATES`: qualunque ordine dichiari il vocabolario, l'aggregato e' quello
+    di `piu_debole` su ogni coppia.
+
+    L'ordine si cambia per finta qui (`monkeypatch`), ed e' la mutazione
+    stessa: col `MIN` alfabetico gli ordini permutati arrossiscono."""
+    from itertools import combinations
+
+    from hiris.app.usage import vocabulary
+    if ordine is not None:
+        monkeypatch.setattr(vocabulary, "STATES", ordine)
+    for n, (a, b) in enumerate(combinations(vocabulary.STATES, 2)):
+        archivio = UsageStore(str(tmp_path / f"consumi{n}.db"),
+                              read_timezone=lambda: ROMA)
+        try:
+            assert _stato_aggregato(archivio, a, b) == vocabulary.piu_debole(a, b), (
+                f"{a} e {b} insieme")
+        finally:
+            archivio.close()

@@ -208,29 +208,31 @@ HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
 # mai `dev`, mai un ricordo. Le frasi che descrivono ogni classe (non solo il
 # nome della costante) sono citate cosi' come compaiono nella documentazione
 # per sviluppatori, verificata lo stesso giorno della misura sulla casa.
-VOCABULARY_SOURCE = (
-    "home-assistant/core, tag 2026.9.1 -- "
-    "homeassistant/components/sensor/const.py (SensorDeviceClass, SensorStateClass); "
-    "homeassistant/components/number/const.py (NumberDeviceClass); "
-    "homeassistant/components/button/__init__.py (ButtonDeviceClass); "
-    "homeassistant/components/switch/__init__.py (SwitchDeviceClass); "
-    "homeassistant/components/update/__init__.py (UpdateDeviceClass); "
-    "homeassistant/components/media_player/__init__.py (MediaPlayerDeviceClass); "
-    "homeassistant/components/valve/const.py (ValveDeviceClass); "
-    "homeassistant/const.py (EntityCategory); "
-    "homeassistant/config_entries.py (ConfigEntryState); "
-    "homeassistant/helpers/entity.py, Entity._stringify_state "
-    "(la distinzione fra `unavailable` e `unknown`); "
-    "homeassistant/helpers/translation.py:469-470, async_translate_state "
-    "(la PROVA che `unavailable`/`unknown` HA non li traduce mai: li "
-    "restituisce tali e quali prima di ogni gradino, e il suo frontend li "
-    "rende da un bundle proprio che il backend non pubblica -- "
-    "src/common/entity/compute_state_display.ts:94-101 @ frontend "
-    "20260826.6) -- "
-    "e developers.home-assistant.io/docs/core/entity/"
-    "{button,switch,media-player,update,valve,sensor}/ (le frasi che "
-    "descrivono ogni classe, verificate il 07/09/2026)."
-)
+#
+# Era la costante `VOCABULARY_SOURCE`, finche' la leggeva il seme; dal Task 0b
+# della Tappa 8 (B-47) il seme cita per dominio (`device_class_source`) e la
+# costante era rimasta senza lettori (rilievo N92-2, 08/10/2026): resta la
+# citazione, come commento, per chi rilegge il modulo.
+#
+# Fonte: home-assistant/core, tag 2026.9.1 --
+# homeassistant/components/sensor/const.py (SensorDeviceClass,
+# SensorStateClass); homeassistant/components/number/const.py
+# (NumberDeviceClass); homeassistant/components/button/__init__.py
+# (ButtonDeviceClass); homeassistant/components/switch/__init__.py
+# (SwitchDeviceClass); homeassistant/components/update/__init__.py
+# (UpdateDeviceClass); homeassistant/components/media_player/__init__.py
+# (MediaPlayerDeviceClass); homeassistant/components/valve/const.py
+# (ValveDeviceClass); homeassistant/const.py (EntityCategory);
+# homeassistant/config_entries.py (ConfigEntryState);
+# homeassistant/helpers/entity.py, Entity._stringify_state (la distinzione fra
+# `unavailable` e `unknown`); homeassistant/helpers/translation.py:469-470,
+# async_translate_state (la PROVA che `unavailable`/`unknown` HA non li
+# traduce mai: li restituisce tali e quali prima di ogni gradino, e il suo
+# frontend li rende da un bundle proprio che il backend non pubblica --
+# src/common/entity/compute_state_display.ts:94-101 @ frontend 20260826.6) --
+# e developers.home-assistant.io/docs/core/entity/
+# {button,switch,media-player,update,valve,sensor}/ (le frasi che descrivono
+# ogni classe, verificate il 07/09/2026).
 
 # La versione che questo modulo rappresenta: NON la piu' recente possibile,
 # la versione DEI TAG SOPRA -- se un domani si riverifica un tag piu' nuovo,
@@ -367,7 +369,7 @@ STATE_CLASS_MEANING = {
 # fondamenta vietano.
 #
 # Fonte per ogni riga: `homeassistant/components/<dominio>/const.py` o
-# `__init__.py` (tag `2026.9.1`, vedi `VOCABULARY_SOURCE`) per il valore
+# `__init__.py` (tag `2026.9.1`, vedi la fonte in testa al modulo) per il valore
 # della costante e l'unita' dichiarata; per `button`, `switch`,
 # `media_player`, `update`, `valve` -- domini le cui classi non portano un
 # docstring nel sorgente -- la frase e' quella della pagina per sviluppatori
