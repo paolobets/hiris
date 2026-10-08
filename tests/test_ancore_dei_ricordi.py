@@ -18,6 +18,7 @@ from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
+from hiris.app.home_space.topology import Mirror
 from hiris.app.memory.store import MemoryStore
 
 _REGISTRI = {
@@ -84,3 +85,27 @@ async def test_fetch_porta_l_ancora_risolta(anagrafe, memoria):
     assert esito["ricordi"][0]["ancore"][0]["esiste"] is False
     # Il ricordo resta: sono parole del proprietario.
     assert memoria.count() == 1
+
+
+def test_il_nome_dell_ancora_e_il_nome_vivo(anagrafe):
+    """S-22 (Tappa 9, F3, 08/10/2026): il nome di un'entita' ancorata e' il
+    nome che Home Assistant mostra (`House.name`, `topology.live_name`: il
+    `friendly_name` dello specchio, poi il registro, poi l'id), non il solo
+    nome del registro. Fino a quel giorno `House.tether` leggeva la voce
+    dell'indice della memoria (`name` o `original_name`), e la pagina Memoria
+    mostrava un'entita' senza nome nel registro col nome visto il giorno del
+    ricordo, o col suo id.
+
+    Mutazione ESEGUITA: `House.tether` che torna a leggere `entry.get("nome")`
+    -- rossa con `assert None == 'Luce del portico'`."""
+    registri = dict(_REGISTRI, entita=[
+        *_REGISTRI["entita"], {"entity_id": "light.portico", "area_id": "cucina"}])
+    anagrafe.hold_registries(registri)
+    letta = House.read(anagrafe, None)
+    casa = House(letta.home_space, Mirror(names={"light.portico": "Luce del portico"}))
+    portico = {"tipo": "entita", "riferimento": "light.portico", "nome_visto": "portico"}
+    assert casa.tether(portico)["nome_attuale"] == "Luce del portico"
+    # Una regola sola: per ogni genere d'ancora, il nome e' quello di `House.name`.
+    for ancora in (_VIVA, portico, {"tipo": "area", "riferimento": "cucina"}):
+        assert casa.tether(ancora)["nome_attuale"] == casa.name(
+            ancora["tipo"], ancora["riferimento"])
