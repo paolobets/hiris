@@ -35,7 +35,10 @@ Tappa 9): da `ce10f64` (gli attori dichiarano il loro soffitto)
 costruiva senza. Lo `xfail` stretto restava «atteso» per un `ValueError`, non
 per i ricordi mancanti: un rosso per la ragione sbagliata. Ora il turno porta
 il soffitto di chi amministra, come le altre prove della chat
-(`tests/test_mind_tool.py`), e il rosso e' di nuovo quello dei tre ricordi.
+(`tests/test_mind_tool.py`), e il rosso e' di nuovo quello dei ricordi. E gli
+`xfail` dichiarano `raises=AssertionError`: un rosso per un'altra eccezione
+non e' piu' «atteso» ma fallito (mutazione ESEGUITA: il dispatcher di nuovo
+senza soffitto -- `FAILED` col `ValueError`, non `xfailed`).
 """
 from __future__ import annotations
 
@@ -58,7 +61,7 @@ _GAP = ("fetch porta i ricordi di entita' e dispositivi disabilitati, che "
         "decisione del proprietario")
 
 
-@pytest.mark.xfail(strict=True, reason=_GAP)
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_GAP)
 def test_la_tabella_non_ha_fetch():
     assert "fetch" not in {tool.name for tool in TOOLS}
 
@@ -91,7 +94,7 @@ async def _missing(app) -> dict[str, list[int]]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, reason=_GAP)
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_GAP)
 async def test_i_ricordi_di_fetch_escono_anche_da_search(tmp_path):
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
         assert await _missing(app) == {}
