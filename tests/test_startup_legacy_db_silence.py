@@ -15,22 +15,29 @@ dice il vero.
 
 Fino al 03/10/2026 il blocco si ritagliava dal testo di `_on_startup` e si
 eseguiva isolato; adesso l'app si avvia davvero (`tests/_avvio.py`) sulla
-`data_dir` della prova, e si legge il registro di `server.py`.
+`data_dir` della prova, e si legge il registro di `conservazione.py`, dove
+l'annuncio e' uscito da `server.py` l'08/10/2026 (Tappa 8, Task 7).
 """
 import logging
 
 import pytest
 
+CONSERVATION_LOGGER = "hiris.app.conservazione"
+
 
 async def _startup_lines(data_dir, caplog) -> list[str]:
-    """Le righe che l'avvio vero ha scritto nel registro di `server.py`."""
+    """Le righe che l'avvio vero ha scritto nei registri di `server.py` e
+    della conservazione: l'annuncio sta nel secondo, ma su una casa pulita
+    il secondo tace, e la prova che il registro catturi qualcosa la da' il
+    primo."""
     from tests._avvio import SERVER_LOGGER, started_with
 
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER), \
+            caplog.at_level(logging.INFO, logger=CONSERVATION_LOGGER):
         async with started_with(data_dir):
             pass
     return [rec.getMessage() for rec in caplog.records
-            if rec.name == SERVER_LOGGER]
+            if rec.name in (SERVER_LOGGER, CONSERVATION_LOGGER)]
 
 
 def _announced(lines) -> bool:

@@ -19,7 +19,7 @@ import logging
 import pathlib
 import sqlite3
 
-from hiris.app.server import decidi_vault
+from hiris.app.conservazione import decidi_vault
 
 
 def _vault(tmp_path, *, righe: int) -> pathlib.Path:
@@ -52,7 +52,7 @@ def test_e_si_dice_COSA_e_stato_cancellato(tmp_path, caplog):
     Mutazione ESEGUITA: cancellare senza dirlo -- rossa."""
     _vault(tmp_path, righe=3)
 
-    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.conservazione"):
         decidi_vault(str(tmp_path))
 
     detto = " ".join(r.getMessage() for r in caplog.records)
@@ -67,7 +67,7 @@ def test_un_vault_VUOTO_se_ne_va_in_silenzio(tmp_path, caplog):
     Mutazione ESEGUITA: avvisare sempre -- rossa."""
     percorso = _vault(tmp_path, righe=0)
 
-    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.conservazione"):
         decidi_vault(str(tmp_path))
 
     assert not percorso.exists()

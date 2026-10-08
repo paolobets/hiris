@@ -5,7 +5,6 @@ import hashlib
 import logging
 import os
 import re
-import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -51,7 +50,13 @@ from .background import spawn as _spawn
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_store import open_store as open_chat_store
 from .chat_thread import SyncTurnsInFlight, thread_for
-from .conservazione import nightly, reasoning_sweep
+from .conservazione import (
+    announce_chatbots_json,
+    cancella_residui,
+    decidi_vault,
+    nightly,
+    reasoning_sweep,
+)
 from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.energy import energy_dashboard
@@ -2090,132 +2095,6 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
     return esito
 
 
-#: **Gli archivi dismessi che si cancellano** (23/09/2026).
-#:
-#: Erano undici, dichiarati morti nel codice e annunciati a ogni avvio, e
-#: restavano per sempre per una regola scritta: «mai dati utente in /data».
-#: Ma quella regola era gia' stata contraddetta lo stesso giorno da noi --
-#: `vault.db`, cancellato con la fetta 7 -- e il criterio vero non era mai
-#: stato scritto.
-#:
-#: Eccolo: **un archivio che nessun codice legge piu' non e' un dato
-#: dell'utente, e' un residuo.** E un residuo entra nei backup di Home
-#: Assistant, che non sono cifrati se il proprietario non ci mette una
-#: password: il reperto C-4 ne ha escluso il solo `claude`, e il C-6 ha
-#: dichiarato la conservazione delle sette tabelle VIVE -- questi file non
-#: sono tabelle di nessun archivio vivo, quindi non avevano ne' una
-#: dichiarazione ne' un cancellatore.
-#:
-#: **`chatbots.json` NON e' in questo elenco**, per decisione del
-#: proprietario: contiene il prompt personalizzato che aveva salvato sul bot
-#: di default, e va guardato prima. Un residuo si cancella quando e' morto
-#: **e** quando qualcuno ha deciso -- non per la sola prima meta'.
-#:
-#: L'elenco e' NOMINATO, mai un'euristica sul nome: un archivio vivo che
-#: somigliasse a un residuo, o uno che nascera' domani, non deve poter
-#: sparire per assonanza.
-RESIDUI_DISMESSI = (
-    "advisory.db",
-    "dashboard_backups.json",
-    "ha_health.json",
-    "history.db",
-    "history_policy.json",
-    "hiris_memory.db",
-    "knowledge.db",
-    "portrait.db",
-    "proposals.db",
-    "sentinel.db",
-    "tasks.json",
-)
-
-
-def cancella_residui(data_dir: str) -> None:
-    """Cancella gli archivi dismessi, **dicendo quali e quanto erano grandi**.
-
-    Cancellare dati di un utente in silenzio e' proibito dalle fondamenta di
-    questo progetto: si dice il nome e la dimensione, non «ho fatto pulizia».
-
-    **Un file che non c'e' non fa rumore.** La casa di chi installa oggi non
-    ne ha nessuno, e una riga per ognuno a ogni avvio sarebbe rumore sano che
-    seppellisce quello vero.
-
-    Non solleva mai: e' igiene, non una condizione di funzionamento. Un
-    permesso negato o un disco pieno non devono impedire a HIRIS di partire --
-    stessa disciplina di `decidi_vault`.
-    """
-    for nome in RESIDUI_DISMESSI:
-        percorso = os.path.join(data_dir, nome)
-        try:
-            if not os.path.exists(percorso):
-                continue
-            quanto = os.path.getsize(percorso)
-            os.remove(percorso)
-        except OSError as errore:
-            logger.warning(
-                "%s non si e' potuto cancellare (%s: %s): resta su disco",
-                nome, type(errore).__name__, errore)
-            continue
-        logger.info(
-            "%s cancellato (%d byte): nessun codice lo leggeva piu', e un "
-            "archivio dismesso entra nei backup di Home Assistant come tutto "
-            "il resto di /data.", nome, quanto)
-
-
-def decidi_vault(data_dir: str) -> None:
-    """Cancella `vault.db`, e dice cosa conteneva (reperto C-6, 23/09/2026).
-
-    **Prima lo ANNUNCIAVA.** Una riga informativa all'avvio diceva che il file
-    conteneva «DATI PERSONALI IN CHIARO» -- la mappa PII<->token della
-    pseudonimizzazione, la cui cifratura a riposo fu rinviata e mai fatta --
-    che nessun codice lo legge piu', e che cancellarlo era «una decisione
-    tua». Ma una riga fra centinaia di righe di avvio non e' un modo di dire
-    una cosa a una persona, e quella persona per decidere avrebbe dovuto
-    aprire un file SQLite dentro il contenitore dell'add-on.
-
-    Quindi decide HIRIS, ed e' la decisione facile: un file che nessuno legge,
-    che nessuna interfaccia svuota e che contiene dati personali in chiaro e'
-    solo un rischio -- tanto piu' da quando si sa che entrava nei backup.
-
-    **Si dice cosa e' stato cancellato**, non «ho fatto pulizia»: cancellare
-    dati di un utente in silenzio e' proibito dalle fondamenta di questo
-    progetto. Un file vuoto se ne va senza avvisi: non c'era niente da
-    raccontare, e il rumore sano seppellisce quello vero.
-
-    Non solleva mai: e' igiene, non una condizione di funzionamento.
-    """
-    percorso = os.path.join(data_dir, "vault.db")
-    if not os.path.exists(percorso):
-        return
-    righe = None
-    try:
-        conn = sqlite3.connect(percorso)
-        try:
-            righe = conn.execute("SELECT COUNT(*) FROM pii").fetchone()[0]
-        finally:
-            conn.close()
-    except Exception as errore:
-        # Corrotto, o senza la tabella che ci si aspetta: si cancella lo
-        # stesso -- nessuno lo legge -- e si dice che non lo si e' potuto
-        # contare, invece di affermare uno zero che nessuno ha misurato.
-        logger.info("vault.db non si e' potuto leggere prima di cancellarlo "
-                    "(%s: %s)", type(errore).__name__, errore)
-    try:
-        os.remove(percorso)
-    except OSError as errore:
-        logger.warning("vault.db non si e' potuto cancellare (%s: %s): resta "
-                       "su disco, e contiene dati personali in chiaro",
-                       type(errore).__name__, errore)
-        return
-    if righe:
-        logger.warning(
-            "vault.db cancellato: conteneva %d righe della mappa PII<->token "
-            "della pseudonimizzazione, con la colonna `value` IN CHIARO (la "
-            "cifratura a riposo fu rinviata e mai fatta). Nessun codice lo "
-            "leggeva piu' da quando brain/privacy.py e' uscito, e nessuna "
-            "interfaccia lo svuotava: restava solo a farsi copiare nei backup.",
-            righe)
-
-
 def _record_attempt(store, outcome: dict, *, route: str = "ponte",
                     downgrade: str = "") -> None:
     """Annota com'e' andato il tentativo, **riuscito o no**.
@@ -3358,29 +3237,7 @@ async def _on_startup(app: web.Application) -> None:
                 chat_settings.retention_days, exc,
             )
 
-    # Silenzio dichiarato, stessa disciplina di advisory.db/sentinel.db/ecc.
-    # (tests/test_startup_legacy_db_silence.py): un chatbots.json (o il suo
-    # predecessore agents.json) di un'installazione precedente non ha piu'
-    # nessun lettore/scrittore -- l'entita' Chatbot e la sua migrazione
-    # (ChatbotEngine._load, chatbot_engine.py) sono uscite per intero con
-    # questo task. Decisione utente (vedi il commit): il prompt
-    # personalizzato eventualmente salvato sul bot di default NON viene
-    # migrato in ChatSettings -- si riparte puliti, coi default nel
-    # codice. I file restano su disco, intatti (mai dati utente cancellati
-    # in /data).
-    _chatbots_json_path = os.path.join(data_dir, "chatbots.json")
-    _agents_json_path_legacy = os.path.join(data_dir, "agents.json")
-    if os.path.exists(_chatbots_json_path) or os.path.exists(_agents_json_path_legacy):
-        logger.info(
-            "chatbots.json (o il suo predecessore agents.json) presente in %s "
-            "da un'installazione precedente: da fetta E4 Task 4 nessun codice "
-            "li legge ne' li scrive piu' (l'entita' Chatbot e' uscita, "
-            "sostituita dalle impostazioni della chat). Il prompt "
-            "personalizzato eventualmente salvato sul bot di default non "
-            "viene migrato -- si riparte con i default nel codice. I file "
-            "restano su disco, intatti.",
-            data_dir,
-        )
+    announce_chatbots_json(data_dir)
 
     # Lo scheduler (APScheduler) non era mai stato concettualmente
     # dell'entita' Chatbot -- ci viveva sopra solo perche' ChatbotEngine lo

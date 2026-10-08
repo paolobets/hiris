@@ -26,7 +26,7 @@ personalizzato che aveva salvato sul bot di default, e va guardato prima.
 import json
 import pathlib
 
-from hiris.app.server import RESIDUI_DISMESSI, cancella_residui
+from hiris.app.conservazione import RESIDUI_DISMESSI, cancella_residui
 
 
 def _fai(cartella: pathlib.Path, nome: str, contenuto: str = "x") -> pathlib.Path:
@@ -107,7 +107,7 @@ def test_un_residuo_che_NON_C_E_non_fa_rumore(tmp_path, caplog):
     rossa."""
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.conservazione"):
         cancella_residui(str(tmp_path))
 
     assert caplog.text.strip() == "", (
@@ -218,7 +218,7 @@ def _startup_messages(tmp_path) -> list[str]:
             messages.append(record.getMessage())
 
     handler = _Collect(level=logging.DEBUG)
-    registro = logging.getLogger("hiris.app.server")
+    registro = logging.getLogger("hiris.app.conservazione")
     earlier = registro.level
     registro.addHandler(handler)
     registro.setLevel(logging.DEBUG)
@@ -241,7 +241,7 @@ def test_nessun_messaggio_d_avvio_promette_un_file_che_sta_per_cancellare(tmp_pa
     qualche riga piu' sotto `cancella_residui` lo cancellava. Le altre tre
     frasi stavano dopo la cancellazione, e non giravano mai.
 
-    L'elenco dei nomi si CHIEDE a `server.RESIDUI_DISMESSI`: un residuo
+    L'elenco dei nomi si CHIEDE a `conservazione.RESIDUI_DISMESSI`: un residuo
     aggiunto domani entra in questa prova da solo.
 
     Mutazione ESEGUITA: rimesso in `_on_startup`, prima di `cancella_residui`,
