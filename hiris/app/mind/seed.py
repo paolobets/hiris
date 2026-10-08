@@ -83,9 +83,13 @@ def meaning_seed(when_ts: float | None = None) -> list[Fact]:
     diventare un campo di quelle righe, con la sua provenienza `importato`,
     quando la fetta che collega i vocabolari arrivera'»*. E' questa.
 
-    **La provenienza e' `importato` e la fonte e' la citazione col tag**: non
-    sono giudizi nostri, sono frasi lette nel sorgente di Home Assistant, e chi
-    legge la riga fra sei mesi deve poter sapere da quale versione.
+    **La provenienza e' `importato` e la fonte dice cosa lo e'**: «chiave
+    importata, parola nostra» (B-47, decisione D8 della Tappa 8, 08/10/2026).
+    La coppia (dominio, classe) e' di Home Assistant e si cita col tag in cui
+    esiste, per dominio (`ha_vocabulary.device_class_source`); la frase
+    italiana che arriva al modello l'abbiamo scritta noi, leggendo il sorgente
+    e la documentazione. Prima la fonte era il vocabolario intero, e la frase
+    nostra passava per una citazione.
 
     Il dizionario **resta nel repo**: e' il seme, ed e' cio' che la spec
     chiede -- *«restano scritte, riviste, linterate e in git, e la casa scrive
@@ -93,18 +97,13 @@ def meaning_seed(when_ts: float | None = None) -> list[Fact]:
     (`scripts/censore_tipi.py`) lo interroga per sapere cosa il REPO
     rivendica, che e' una domanda diversa da «cosa significa».
     """
-    from ..home_space.ha_vocabulary import (
-        DEVICE_CLASS_MEANING,
-        VOCABULARY_HA_VERSION,
-        VOCABULARY_SOURCE,
-    )
+    from ..home_space.ha_vocabulary import DEVICE_CLASS_MEANING, device_class_source
 
     when = when_ts if when_ts is not None else now_ts()
-    citation = f"{VOCABULARY_SOURCE} (Home Assistant {VOCABULARY_HA_VERSION})"
     return [
         Fact(subject_kind="tipo", subject=type_subject(domain, device_class),
              field=MEANING_FIELD, value=meaning,
-             provenance="importato", source=citation,
+             provenance="importato", source=device_class_source(domain),
              who=SEED_AUTHOR, when_ts=when)
         for (domain, device_class), meaning in sorted(DEVICE_CLASS_MEANING.items())
     ]

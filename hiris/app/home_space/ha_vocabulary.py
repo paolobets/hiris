@@ -215,7 +215,7 @@ VOCABULARY_SOURCE = (
     "homeassistant/components/button/__init__.py (ButtonDeviceClass); "
     "homeassistant/components/switch/__init__.py (SwitchDeviceClass); "
     "homeassistant/components/update/__init__.py (UpdateDeviceClass); "
-    "homeassistant/components/media_player/const.py (MediaPlayerDeviceClass); "
+    "homeassistant/components/media_player/__init__.py (MediaPlayerDeviceClass); "
     "homeassistant/components/valve/const.py (ValveDeviceClass); "
     "homeassistant/const.py (EntityCategory); "
     "homeassistant/config_entries.py (ConfigEntryState); "
@@ -236,6 +236,29 @@ VOCABULARY_SOURCE = (
 # la versione DEI TAG SOPRA -- se un domani si riverifica un tag piu' nuovo,
 # questa stringa e' cio' che si aggiorna, e nessun altro punto del modulo.
 VOCABULARY_HA_VERSION = "2026.9.1"
+
+#: Il tag piu' vecchio su cui le chiavi importate sono state verificate: e' il
+#: minimo che l'add-on dichiara (`hiris/config.yaml: homeassistant`), ma e' un
+#: fatto diverso -- dice dove si e' GUARDATO, non cosa si supporta.
+OLDEST_VERIFIED_TAG = "2024.7.0"
+
+#: Cosa viene da Home Assistant e cosa no, in una tabella che traduce le sue
+#: chiavi (B-47, decisione D8 della Tappa 8, 08/10/2026). La CHIAVE -- un bit
+#: di `*EntityFeature`, una coppia (dominio, `*DeviceClass`) -- e' sua, e si
+#: cita col tag in cui esiste; la PAROLA italiana che arriva al modello
+#: l'abbiamo scritta noi. Fino a quel giorno le due tabelle si dichiaravano
+#: «importate» per intero, e la parola nostra passava per una citazione.
+IMPORTED_KEY_OUR_WORD = "chiave importata, parola nostra"
+
+
+def imported_key_source(what: str, domain: str, tags) -> str:
+    """La fonte di una tabella «chiave importata, parola nostra»: cosa e' la
+    chiave (`what`, la classe di Home Assistant), il dominio, e i tag in cui
+    TUTTE le chiavi di quel dominio esistono. Una forma sola per le due
+    tabelle (`DEVICE_CLASS_MEANING` qui, le capacita' in `type_vocabulary`)."""
+    return (f"{IMPORTED_KEY_OUR_WORD} -- {what} di `{domain}`: home-assistant/core, "
+            f"tag {' e '.join(tags)}, homeassistant/components/{domain}/ "
+            "(const.py o __init__.py), mai `dev`; la parola italiana e' nostra")
 
 
 def _parsed_version(version: str) -> tuple[int, ...]:
@@ -460,6 +483,30 @@ DEVICE_CLASS_MEANING = {
         "misurata su questa casa.)"
     ),
 }
+
+#: Per ogni dominio di `DEVICE_CLASS_MEANING`, i tag di Home Assistant in cui
+#: **tutte** le sue classi esistono (B-47). Misurato l'08/10/2026 sul sorgente
+#: (`raw.githubusercontent.com/home-assistant/core/<tag>/...`, il
+#: `*DeviceClass` di ogni dominio): `sensor` a `2024.7.0` non ha `uptime`, che
+#: nasce dopo, quindi la sua chiave si cita solo al tag recente. Le altre sei
+#: esistono identiche ai due tag. `tests/test_imported_key_tags.py` riscrive
+#: la misura a mano e non la importa da qui.
+DEVICE_CLASS_TAGS = {
+    "sensor": (VOCABULARY_HA_VERSION,),
+    "number": (OLDEST_VERIFIED_TAG, VOCABULARY_HA_VERSION),
+    "button": (OLDEST_VERIFIED_TAG, VOCABULARY_HA_VERSION),
+    "switch": (OLDEST_VERIFIED_TAG, VOCABULARY_HA_VERSION),
+    "update": (OLDEST_VERIFIED_TAG, VOCABULARY_HA_VERSION),
+    "media_player": (OLDEST_VERIFIED_TAG, VOCABULARY_HA_VERSION),
+    "valve": (OLDEST_VERIFIED_TAG, VOCABULARY_HA_VERSION),
+}
+
+
+def device_class_source(domain: str) -> str:
+    """La fonte del significato di una classe di `domain`: la coppia e' di
+    Home Assistant al tag in cui esiste, la frase e' nostra (B-47)."""
+    return imported_key_source("la classe (`*DeviceClass`)", domain,
+                               DEVICE_CLASS_TAGS[domain])
 
 
 # --- `unavailable` contro `unknown`: due fatti diversi, non due sinonimi ---

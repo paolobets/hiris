@@ -101,7 +101,11 @@ from collections.abc import Iterable, Mapping
 from enum import Enum
 from types import MappingProxyType
 
-from .ha_vocabulary import VOCABULARY_HA_VERSION
+from .ha_vocabulary import (
+    OLDEST_VERIFIED_TAG,
+    VOCABULARY_HA_VERSION,
+    imported_key_source,
+)
 from .type_judgments import (
     DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
@@ -204,7 +208,7 @@ class Imported(Field):
     vecchio si continua a credere per sempre: e' misurato, non temuto -- lo
     stesso bit (64) e' stato rimosso in due domini indipendenti fra `2024.7.0`
     e `2026.9.1`. Il costruttore esige la fonte, come `Field` esige la
-    provenienza, e la fonte cita il tag (`FEATURE_SOURCE`,
+    provenienza, e la fonte cita il tag (`feature_source`,
     `CAPABILITY_ATTRIBUTE_SOURCE`, composte da `VOCABULARY_HA_VERSION`).
 
     Fino al 04/10/2026 la versione era anche un argomento a parte,
@@ -479,15 +483,38 @@ SYSTEM_GENRE = "guasto"
 # La versione e' quella del vocabolario di Home Assistant
 # (`ha_vocabulary.VOCABULARY_HA_VERSION`), l'unica che si confronta con la
 # casa: fino al 04/10/2026 questo modulo ne pinnava altre due uguali, mai
-# confrontate con niente (B-44). `2024.7.0` resta scritto: e' il minimo che
-# l'add-on dichiara (`hiris/config.yaml: homeassistant`), un fatto diverso.
-FEATURE_SOURCE = (
-    f"home-assistant/core, tag 2024.7.0 e {VOCABULARY_HA_VERSION} -- "
-    "homeassistant/components/<dominio>/const.py (o __init__.py) per ogni "
-    "`*EntityFeature`, scaricati e confrontati riga per riga sui DUE tag, mai "
-    "su `dev`. Vedi `tests/test_feature_tables_pinned_to_source.py`, che "
-    "riporta i bit alla fonte invece di importarli da qui."
-)
+# confrontate con niente (B-44). Il tag vecchio e' `OLDEST_VERIFIED_TAG`.
+#
+# **La fonte e' per dominio, e dice «chiave importata, parola nostra»** (B-47,
+# decisione D8 della Tappa 8, 08/10/2026). Fino a quel giorno una fonte sola
+# citava i DUE tag per tutte le tabelle, e per sette domini era falso: misurato
+# l'08/10/2026 sul sorgente (`raw.githubusercontent.com/home-assistant/core`),
+# a `2024.7.0` mancano bit che le tabelle decodificano -- `climate` 512,
+# `media_player` 4194304, `cover` 256, `fan` 16 e 32, `vacuum` 16384 -- e
+# `conversation` e `assist_satellite` non hanno ancora il loro
+# `*EntityFeature`. Per quei sette la chiave si cita solo al tag recente: un
+# tag si cita quando TUTTE le chiavi del dominio vi esistono.
+# `tests/test_imported_key_tags.py` riscrive la misura a mano.
+_BOTH_TAGS = (OLDEST_VERIFIED_TAG, VOCABULARY_HA_VERSION)
+_RECENT_TAG = (VOCABULARY_HA_VERSION,)
+FEATURE_TAGS = {
+    "update": _BOTH_TAGS, "light": _BOTH_TAGS, "notify": _BOTH_TAGS,
+    "camera": _BOTH_TAGS, "climate": _RECENT_TAG, "media_player": _RECENT_TAG,
+    "valve": _BOTH_TAGS, "cover": _RECENT_TAG, "fan": _RECENT_TAG,
+    "water_heater": _BOTH_TAGS, "vacuum": _RECENT_TAG, "weather": _BOTH_TAGS,
+    "siren": _BOTH_TAGS, "todo": _BOTH_TAGS, "alarm_control_panel": _BOTH_TAGS,
+    "calendar": _BOTH_TAGS, "remote": _BOTH_TAGS, "conversation": _RECENT_TAG,
+    "lock": _BOTH_TAGS, "humidifier": _BOTH_TAGS, "lawn_mower": _BOTH_TAGS,
+    "assist_satellite": _RECENT_TAG,
+}
+
+
+def feature_source(domain: str) -> str:
+    """La fonte dei nomi delle capacita' di `domain`: il bit e' di Home
+    Assistant ai tag in cui esiste, il nome italiano e' nostro (B-47).
+    `tests/test_feature_tables_pinned_to_source.py` riporta i bit alla fonte
+    invece di importarli da qui."""
+    return imported_key_source("il bit (`*EntityFeature`)", domain, FEATURE_TAGS[domain])
 
 
 # --------------------------------------------------------------------------
@@ -1103,7 +1130,7 @@ _FEATURE_TABLES: dict[str, dict[int, str]] = {
 }
 
 for _domain, _bits in _FEATURE_TABLES.items():
-    _table = Imported(_bits, source=FEATURE_SOURCE)
+    _table = Imported(_bits, source=feature_source(_domain))
     if _vocabulary.row(_domain) is None:
         _vocabulary.add(_domain, capability_names=_table)
     else:
