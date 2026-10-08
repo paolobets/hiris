@@ -307,12 +307,12 @@ async def test_la_replica_conservata_porta_il_suo_segno_finche_una_lettura_non_r
                    configurazioni={"automation.sveglia": {"alias": "Sveglia"}})
     await reread(pieno, casa, cartella)
     assert casa.behavior_kept() is None
-    letto_il = casa.behavior_loaded_at()
+    read_at = casa.behavior_loaded_at()
 
     await reread(_house(stati=[_stato("light.cucina")]), casa, cartella)
 
     assert casa.behavior_kept() == {"motivo": behavior.BEHAVIOR_NOT_LOADED,
-                                    "letto_il": letto_il}
+                                    "letto_il": read_at}
     await reread(pieno, casa, cartella)
     assert casa.behavior_kept() is None
 

@@ -46,7 +46,7 @@ from .ha_vocabulary import (
     domain_of,
     house_is_newer_than_vocabulary,
 )
-from .historian import home_space_zone
+from .historian import home_space_zone, instant_epoch
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
@@ -402,8 +402,12 @@ def _kept_behavior_notice(kept: dict | None, frame: dict | None) -> str:
     read_at = kept.get("letto_il")
     if not read_at:
         return f"il comportamento della casa non si e' ancora potuto leggere ({reason})."
+    epoch = instant_epoch(read_at)
+    if epoch is None:
+        return ("cio' che la casa fa da sola e' una replica conservata: "
+                f"l’ultima rilettura non l’ha sostituita ({reason}).")
     timezone, label = _house_zone(frame)
-    when = datetime.fromisoformat(read_at).astimezone(timezone)
+    when = datetime.fromtimestamp(epoch, timezone)
     return ("cio' che la casa fa da sola e' la replica letta alle {} del {} (fuso {}): "
             "l’ultima rilettura non l’ha sostituita ({}).").format(
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label, reason)

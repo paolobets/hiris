@@ -296,20 +296,21 @@ async def test_due_giri_che_partono_insieme_a_memoria_vuota_leggono_una_volta():
     Rosso letto prima del codice: `assert 2 == 1`."""
     import asyncio
 
-    class _ClienteLento:
-        letture = 0
-
-        async def statistic_ids(self):
-            self.letture += 1
-            await asyncio.sleep(0)
-            return {"sensor.prodotta"}
-
-    cliente = _ClienteLento()
+    trattieni = asyncio.Event()
+    house = CasaFinta(synthetic_inputs(), answers={
+        _LIST: lambda extra: [{"statistic_id": "sensor.prodotta"}]},
+        delay={_LIST: trattieni})
     app = {}
 
-    first, second = await asyncio.gather(
-        house_history.statistic_ids_for_round(app, cliente),
-        house_history.statistic_ids_for_round(app, cliente))
+    async def _lascia():
+        for _ in range(5):
+            await asyncio.sleep(0)
+        trattieni.set()
 
-    assert cliente.letture == 1
+    first, second, _ = await asyncio.gather(
+        house_history.statistic_ids_for_round(app, house),
+        house_history.statistic_ids_for_round(app, house),
+        _lascia())
+
+    assert _asked(house) == 1
     assert first == second == {"sensor.prodotta"}

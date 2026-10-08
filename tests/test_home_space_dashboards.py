@@ -123,12 +123,12 @@ async def test_la_replica_conservata_delle_plance_lo_dice_coi_non_disponibili_di
     rossa."""
     await reread_dashboards(_house(_CONFIG_DEFAULT), archivio)
     assert archivio.dashboards_kept() is None and archivio.unavailable_dashboards() == []
-    letto_il = archivio.dashboards_loaded_at()
+    read_at = archivio.dashboards_loaded_at()
 
     await reread_dashboards(_house(None, unavailable=["principale"]), archivio)
 
     assert archivio.dashboards_kept() == {"motivo": "nessuna plancia leggibile",
-                                          "letto_il": letto_il}
+                                          "letto_il": read_at}
     assert archivio.unavailable_dashboards() != []
     assert archivio.dashboards()[0]["config"] == _CONFIG_DEFAULT
 
