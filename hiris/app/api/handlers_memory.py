@@ -11,9 +11,10 @@ si puo' ricordare subito solo se poi si puo' guardare e correggere.
 
 Tre cose, non di piu':
 
-1. GET mostra la frase E cosa HIRIS ha capito -- le ancore col nome che
-   l'anagrafe conosce OGGI (`Lookup.verify`), non l'identificatore nudo: e'
-   il motivo per cui si ancora a un identificatore invece che a una parola.
+1. GET mostra la frase E cosa HIRIS ha capito -- la resa del ricordo
+   (`home_space.render.render_memory`), con le ancore col nome che la casa
+   da' OGGI (`House.tether`), non l'identificatore nudo: e' il motivo per
+   cui si ancora a un identificatore invece che a una parola.
    Se l'identificatore non esiste piu' nell'anagrafe, questa vista lo dice
    (`esiste: false`), non lo tace ne' fa finta che l'ancora non ci sia. Se
    invece l'anagrafe (o il registro che servirebbe) non e' mai stata letta,
@@ -38,6 +39,7 @@ from aiohttp import web
 
 from ..chat_thread import subject_key_for
 from ..home_space.house import House
+from ..home_space.render import render_memory
 from ..memory.interpretation import deduci_unit, validate
 from ..proxy._sanitize import sanitize_ha_value
 from .boundary import error_response, json_object
@@ -88,12 +90,13 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     else:
         memories = store.fetch(limit=_MEMORIES_SHOWN_LIMIT)
         total = store.count()
-    for r in memories:
-        r["corretto_da_utente"] = bool(r["corretto_da_utente"])
-        r["ancore"] = [house.tether(a) for a in r["ancore"]]
     return web.json_response({
         "available": True,
-        "memories": memories,
+        # La resa del ricordo, la stessa di `search` e di `fetch`
+        # (`render_memory`, Tappa 9 F3): fino all'08/10/2026 la pagina
+        # componeva la sua, ed era l'unica a dare `corretto_da_utente` come
+        # booleano.
+        "memories": [render_memory(r, house) for r in memories],
         # La pagina si chiama "cio' che HIRIS sa": senza il totale, i
         # ricordi oltre `_MEMORIES_SHOWN_LIMIT` sono invisibili, e un
         # ricordo invisibile e' indistinguibile da uno cancellato -- la

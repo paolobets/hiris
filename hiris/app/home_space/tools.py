@@ -130,6 +130,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
+from .render import render_memory
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -1975,9 +1976,11 @@ class ToolDispatcher:
         # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
         # l'archivio direttamente, non passa da `queries.view` -- senza
         # questa riga il testo uscirebbe filtrato dal dettaglio e grezzo da
-        # `fetch`. Stessa funzione condivisa, un punto solo -- e con la casa
-        # del turno le ancore portano `nome_attuale` ed `esiste` (G-21).
-        return {"ricordi": _sanitized_memories(memories, self._turn_house())}
+        # `fetch`. Stessa funzione condivisa, un punto solo; poi la resa del
+        # ricordo, la stessa delle altre porte (`render_memory`, Tappa 9 F3),
+        # con le ancore risolte sulla casa del turno (G-21).
+        house = self._turn_house()
+        return {"ricordi": [render_memory(r, house) for r in _sanitized_memories(memories)]}
 
     # -- execute -------------------------------------------------------
 
