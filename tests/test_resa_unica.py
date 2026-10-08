@@ -17,10 +17,10 @@ nessuna chiave, e non e' toccata.
 
 **Ogni elenco si chiede.**
 
-- I campi dell'entita' al vocabolario: oggi la tabella «Il vocabolario dei
-  campi» del glossario (`docs/GLOSSARIO.md`), dal Task 7
-  `home_space/field_vocabulary.py`, che la sostituisce (allora cambia
-  `entity_fields`, non la prova). Sono campi dell'entita' i nomi delle righe
+- I campi dell'entita' al vocabolario, `home_space/field_vocabulary.py`
+  (dalla Tappa 9, F2, 08/10/2026; fino ad allora la tabella del glossario,
+  che il modulo ricopia e `tests/test_vocabolario_dei_campi.py` tiene uguale).
+  Sono campi dell'entita' i nomi delle righe
   che hanno `entita` fra i loro proprietari, con i nomi che escono; meno quelli
   che ogni oggetto porta (`id`, `nome`, `genere`, i riferimenti `area`,
   `piano`, `dispositivo`): una riga che vale anche per area e dispositivo non
@@ -55,20 +55,19 @@ e la vede il Task 8 coi generi.
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.field_vocabulary import FIELDS
+
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "hiris" / "app"
-GLOSSARY = ROOT / "docs" / "GLOSSARIO.md"
 ENTITY = "entita"
 #: I generi che, se una riga del vocabolario li porta insieme, dicono che il
 #: campo e' di ogni oggetto e non dell'entita'.
 SHARED_BY = {"dispositivo", "area"}
-#: Dal Task 7 la casa del vocabolario e' questo modulo; fino ad allora non
-#: esiste e si legge il glossario.
+#: I moduli della resa: li' un'entita' si compone, ed e' il loro mestiere.
 RENDER_MODULES = {"home_space/render.py", "home_space/field_vocabulary.py"}
 
 #: Lista di AMMISSIONE: `modulo::funzione` -> perche' non e' una resa.
@@ -95,20 +94,14 @@ ADMITTED: dict[str, str] = {
 
 
 def entity_fields() -> set[str]:
-    """I nomi dei campi dell'entita', chiesti al vocabolario."""
-    text = GLOSSARY.read_text(encoding="utf-8")
-    section = text[text.index("## Il vocabolario dei campi"):
-                   text.index("### Il controllo di collisione, eseguito")]
-    rows = []
-    for row in section.splitlines():
-        if row.startswith("| `"):
-            cells = row.strip().strip("|").split("|")
-            names = (set(re.findall(r"`([a-z_]+)`", cells[0]))
-                     | set(re.findall(r"`([a-z_]+)`", cells[4])))
-            owners = set(re.findall(r"`([a-z_]+)`", cells[3]))
-            rows.append((names, owners))
-    shared = set().union(*(names for names, owners in rows if SHARED_BY <= owners))
-    return set().union(*(names for names, owners in rows if ENTITY in owners)) - shared
+    """I nomi dei campi dell'entita', chiesti al vocabolario
+    (`home_space/field_vocabulary.FIELDS`, dalla Tappa 9): i campi che hanno
+    `entita` fra i proprietari, con i nomi che hanno tolto; meno quelli che
+    valgono anche per area e dispositivo."""
+    shared = set().union(*({name, *field.replaces} for name, field in FIELDS.items()
+                           if SHARED_BY <= field.owners))
+    return set().union(*({name, *field.replaces} for name, field in FIELDS.items()
+                         if ENTITY in field.owners)) - shared
 
 
 def _module_path(name: str) -> Path | None:

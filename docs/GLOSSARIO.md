@@ -3601,11 +3601,13 @@ italiano: la regola e' quella di CLAUDE.md, «il dominio in italiano, il confine
 sistema esterno». Per questo la tabella **non ha la colonna «inglese»**: un campo non si rinomina,
 si sceglie una volta.
 
-**Dove vive, e per quanto.** Fino al Task 7 della Tappa 4 la fonte e' questa tabella, e la legge
-la prova `tests/test_resa_unica.py` (lo scheletro del cancello R3). Al Task 7 nasce
-`home_space/field_vocabulary.py`, una costante per campo col suo significato e la sua forma: da
-quel giorno la fonte e' il modulo, e questa tabella esce lasciando qui il rimando. Due copie della
-stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamenta 2).
+**Dove vive.** Dall'08/10/2026 (Tappa 9, F2) il prodotto legge `home_space/field_vocabulary.py`
+(`FIELDS`: il fatto, la forma, chi lo porta, i nomi che ha tolto). Questa tabella **resta**: e' il
+registro dei nomi che il proprietario approva, e il prodotto non puo' leggerla (`docs/` non entra
+nell'immagine). Il piano della Tappa 4 la faceva uscire; resta perche' un nome nuovo si decide qui
+prima che nel codice. Che le due non divergano lo prova `tests/test_vocabolario_dei_campi.py`:
+stessi campi, stessi proprietari, stessi nomi tolti, nei due versi. Il cancello R3
+(`tests/test_resa_unica.py`) chiede i campi al modulo.
 
 | campo | il fatto | forma | di chi | nomi che escono | dove escono oggi |
 |---|---|---|---|---|---|
@@ -3634,10 +3636,24 @@ stessa tabella sarebbero il doppione che lo sprint esiste per togliere (fondamen
 | `nome` | il nome che Home Assistant mostra | stringa | `entita` `dispositivo` `area` `integrazione` `automazione` `script` `scena` | — | resta |
 | `classe` | la classe dichiarata da Home Assistant (`device_class`) | stringa di Home Assistant | `entita` | — | resta |
 | `attributi` | gli attributi dello stato, filtrati | dizionario | `entita` | — | resta (C-34: filtrati anche alla media) |
+| `stato_non_reso` | perche' lo stato in parole manca quando la tabella delle traduzioni non si e' letta | `{silenzio, motivo}` | `entita` | — | resta |
+| `capacita` | cosa un'entita' sa fare, decodificato da `supported_features` | elenco di frasi | `entita` | — | resta |
+| `stato_presunto` | Home Assistant non legge lo stato, lo presume (`assumed_state`) | vero, solo quando lo e' | `entita` | — | resta |
+| `etichette` | le etichette scritte dal proprietario | elenco «Nome (id: X)» | `entita` `dispositivo` `area` `automazione` `script` `scena` | — | resta |
+| `categorie` | le categorie scritte dal proprietario | `{ambito: nome}` | `entita` `automazione` `script` `scena` | — | resta |
+| `regola` | la regola di misura di un'entita' di servizio | frase | `entita` | — | resta |
+| `significato` | cosa significa la classe, dal sapere | frase | `entita` | — | resta |
+| `membri` | di cosa e' fatto un gruppo, e cosa non e' di tutti | dizionario | `entita` | — | resta |
+| `comandi` | cosa si puo' chiedere a un'entita', con i limiti | `{servizio: parametri}` | `entita` | — | resta |
 
-Le ultime tre righe non sono di D1: sono campi che escono gia' oggi col loro nome e lo tengono.
-Stanno qui perche' il vocabolario dica **tutti** i campi dell'entita', non solo quelli che cambiano:
-un cancello che conosce meta' dei campi sa riconoscere meta' delle copie.
+Le righe da `nome` in giu' non sono di D1: sono campi che escono gia' oggi col loro nome e lo
+tengono (le ultime nove le ha aggiunte la Tappa 9, F2, l'08/10/2026). Stanno qui perche' il
+vocabolario dica **tutti** i campi dell'entita', non solo quelli che cambiano: un cancello che
+conosce meta' dei campi sa riconoscere meta' delle copie. Il controllo di collisione delle nove,
+eseguito l'08/10/2026: `etichette`, `regola` e `significato` hanno gia' una riga ordinaria nello
+stesso senso (`etichette -> labels`, `regola -> rule`, `significato -> meaning`); `comandi` compare
+in «I nomi degli strumenti» come parola scartata per il nome di uno strumento (`comandi -> comando`),
+un altro oggetto; le altre cinque non hanno righe ne' citazioni con un altro senso.
 
 La colonna «di chi» usa i generi di `house_query.KINDS` (`entita`, `area`, `dispositivo`,
 `automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e cinque parole per cio' che non
