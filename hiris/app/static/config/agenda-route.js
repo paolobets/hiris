@@ -68,7 +68,7 @@
    all'apertura). Il bottone e' un `<button>` semplice: raggiungibile da
    tastiera e con il focus visibile del browser di serie, stessa disciplina
    del bottone «Disdici» qui sotto -- nessun sistema nuovo. Un 404 (riga
-   potata dopo 90 giorni, `action/journal.py::EXECUTIONS_RETENTION_S`) si
+   potata dopo 90 giorni, `action/journal.py::CONSERVAZIONE`) si
    dichiara onestamente dentro il pannello; un guasto di rete passa dalla
    riga di stato di pagina (`setStatus`), come ogni altro guasto di rete qui.
    L'`avviso` della porta (`action/actuator.py`) non si appiattisce MAI in

@@ -92,7 +92,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # comportamento, plance) e un unico campo di primo livello senza
             # nome che dica di cosa parla prometterebbe una freschezza che
             # vale solo per una delle tre.
-            "anagrafe_letta_il": None, "non_disponibili": None, "conteggi": {}, "piani": [],
+            "anagrafe_letta_il": None, "non_disponibili": None,
+            "non_disponibili_letti_il": None, "conteggi": {}, "piani": [],
             # `None` e non `{}`: qui non e' "la casa non dichiara un sistema
             # di riferimento", e' "non abbiamo letto niente". La stessa
             # distinzione di `non_disponibili` qui sopra.
@@ -142,6 +143,10 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # campo una casa senza piani e un registro dei piani caduto sarebbero
         # la stessa schermata.
         "non_disponibili": unavailable,
+        # E per ognuno, quando e' stata letta la copia che l'anagrafe tiene al
+        # suo posto (`HomeSpace.unavailable_since`, S-36): `None` se quel
+        # registro non ha mai risposto e la tabella e' vuota.
+        "non_disponibili_letti_il": store.unavailable_since(),
         "conteggi": {key: len(value) for key, value in home_space.items()},
         # Il sistema di riferimento della casa: unita', fuso, valuta, lingua,
         # versione di Home Assistant. Esposto qui e non solo nel nucleo perche'

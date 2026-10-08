@@ -867,7 +867,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     decision = job.get("decision") or {}
     reply = decision.get("reply")
     if status in (JOB_EXPIRED, JOB_FAILED):
-        # Never spin forever: the sweep (server.py's `_reasoning_sweep`)
+        # Never spin forever: the sweep (`conservazione.reasoning_sweep`)
         # leaves jobs in this state without routing them anywhere else --
         # this is the only place they get surfaced to the user.
         return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))

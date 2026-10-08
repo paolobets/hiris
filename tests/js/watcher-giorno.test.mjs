@@ -222,6 +222,30 @@ test('seam _rendiResoconto: un giorno senza niente lo DICE, e non tace', () => {
   assert.match(corpo.textContent, /Nessun fatto/);
 });
 
+test('seam _rendiResoconto: un resoconto con `regole: null` lo dice in una nota discreta, col perché a parte', () => {
+  // Tappa 8, G-03 (D2), disegno di ux-ui-specialist (08/10/2026).
+  // Mutazioni ESEGUITE: togliere la nota -- rossa; togliere `&& misure.length`
+  // -- rossa sul giorno senza misure; togliere `role="note"` -- rossa.
+  const prima = rendiResoconto(resoconto({ regole: null, misure: [misura()] }));
+  const nota = prima.corpo.querySelector('[role="note"].field-hint');
+  assert.ok(nota, 'la nota c\'è, con il suo ruolo e il testo secondario');
+  assert.match(nota.textContent, /Giorno misurato prima del controllo sui dispositivi bloccati/);
+  const perche = nota.querySelector('details');
+  assert.ok(perche, 'il perché sta in un <details>');
+  assert.equal(perche.querySelector('summary').textContent, 'Perché?');
+  assert.match(perche.textContent, /prima che HIRIS imparasse a scartare i dati di un dispositivo bloccato/);
+  assert.ok(!nota.getAttribute('style'), 'nessun colore pieno sulla nota');
+
+  const dopo = rendiResoconto(resoconto({
+    regole: { registro_operazioni: 3, dato_fermo: 1 }, misure: [misura()] }));
+  assert.equal(dopo.corpo.querySelector('[role="note"]'), null,
+    'un resoconto con le sue regole non porta la nota');
+
+  const vuoto = rendiResoconto(resoconto({ regole: null, misure: [] }));
+  assert.equal(vuoto.corpo.querySelector('[role="note"]'), null,
+    'senza misure non c\'è niente da mettere in dubbio');
+});
+
 /* --------------------------------------- il resoconto, montato sulla pagina
 
    Le prove qui sopra pinnano la RESA. Queste pinnano il FILO: la chiave che

@@ -1237,15 +1237,20 @@ def test_il_resoconto_porta_l_impronta_dei_giudizi_con_cui_e_nata_la_cronaca(arc
 
 def test_rifare_la_cronaca_NON_tocca_misure_forme_obiettivo(archivio):
     """Spec §6: solo `cronaca` e `giudizio` cambiano, byte per byte il resto.
-    Mutazione ESEGUITA: in `rebuild_chronicle` chiamare `aggregate_day` (che
-    riscrive tutto con misure vuote) -- rossa."""
+    Anche le `regole` (Tappa 8, G-03): le misure restano quelle di allora, e
+    cosi' le regole con cui sono nate -- un `null` resta `null`.
+    Mutazioni ESEGUITE: in `rebuild_chronicle` chiamare `aggregate_day` (che
+    riscrive tutto con misure vuote) -- rossa; scrivere le `regole` di
+    `build_report` -- rossa."""
     import json
 
     from hiris.app.mind.facts import rebuild_chronicle
 
     archivio.record(quando_ts=ts(9, 0), source="entita", subject="binary_sensor.fp300",
                     da="off", a="on", device_class="occupancy")
-    archivio.replace_report(G, {"giorno": G, "obiettivo": {"testo": "x", "scritto_ts": 1.0},
+    archivio.set_objective("x", when_ts=1.0)
+    archivio.replace_report(G, {"giorno": G, "obiettivo": archivio.objective_at(ts(9, 0)),
+                                "regole": None,
                                 "misure": [{"soggetto": "d", "misura": "m", "valore": 3,
                                             "unita": "kWh", "copertura": 1.0}],
                                 "forme": [{"soggetto": "d", "valore": [1, 2]}],
@@ -1254,8 +1259,9 @@ def test_rifare_la_cronaca_NON_tocca_misure_forme_obiettivo(archivio):
     giudizi = _giudizi(("tipo", "binary_sensor.occupancy", "genere", "presenza"))
     assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi)
     dopo = archivio.report(G)
-    for chiave in ("giorno", "obiettivo", "misure", "forme"):
+    for chiave in ("giorno", "obiettivo", "regole", "misure", "forme"):
         assert json.dumps(dopo[chiave], sort_keys=True) == json.dumps(prima[chiave], sort_keys=True)
+    assert dopo["regole"] is None and dopo["obiettivo"]["testo"] == "x"
     assert len(dopo["cronaca"]) == 1
     assert dopo["giudizio"] == {"impronta": giudizi.chronicle_fingerprint(),
                                 "regola": CHRONICLE_RULE}

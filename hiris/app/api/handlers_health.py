@@ -4,6 +4,7 @@ Uscito da `server.py` per solo spostamento (Tappa 7, Task 11).
 """
 from aiohttp import web
 
+from ..conservazione import declarations
 from ..version import read_version
 from .soffitto import restricted_person
 
@@ -36,6 +37,12 @@ async def handle_health(request: web.Request) -> web.Response:
     # non saprebbe dirle che la sua pagina e' vecchia. Il ruolo e' quello che
     # il cancello ha letto e lasciato sulla richiesta: nessuna seconda domanda
     # a Home Assistant (`restricted_person`). Servizi, ponte e sviluppo invariati.
+    #
+    # `conservazione` dice per quanto tempo HIRIS ricorda ogni cosa (D7 della
+    # Tappa 8): per ogni tabella di ogni archivio la finestra in giorni (`null`
+    # = per sempre) e la ragione, chieste alle dichiarazioni degli archivi
+    # (`conservazione.declarations`). In sola lettura: una finestra e' una
+    # decisione scritta accanto allo schema, non una manopola.
     if restricted_person(request):
         return web.json_response({"status": "ok", "version": read_version(),
                                   "build": request.app.get("build_stamp", "")})
@@ -43,4 +50,5 @@ async def handle_health(request: web.Request) -> web.Response:
                               "build": request.app.get("build_stamp", ""),
                               "ponte": last_bridge_init(),
                               "riparazione": request.app.get("ultima_riparazione"),
-                              "istantanea": request.app.get("type_judgments_status")})
+                              "istantanea": request.app.get("type_judgments_status"),
+                              "conservazione": declarations(request.app)})

@@ -525,8 +525,8 @@ def _max_tokens_message(text_blocks: list[str]) -> str:
 # backends/openai_compat_runner.py -- senza nessun log. Una casa sola, non
 # due costanti con parentela dichiarata (il pattern usato quando due strati
 # NON possono importare l'uno dall'altro senza invertire la gerarchia, come
-# action/journal.py::CONSERVAZIONE_ESECUZIONI_S rispetto a
-# keeper/promise.py::CONSERVAZIONE_S): qui la gerarchia va gia' in un
+# action/journal.py::CONSERVAZIONE rispetto a
+# keeper/store.py::CONSERVAZIONE): qui la gerarchia va gia' in un
 # verso solo -- backends/openai_compat_runner.py importa GIA' da questo
 # modulo (_TRUNCATION_NOTICE, RESTRICT_PROMPT, COMPACT_PROMPT, MINIMAL_
 # PROMPT), mai il contrario -- quindi definirla due volte sarebbe il

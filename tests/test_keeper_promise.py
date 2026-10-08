@@ -4,7 +4,6 @@ from pathlib import Path
 
 from hiris.app.keeper.promise import (
     CEILING_IN_SOSPESO,
-    CONSERVAZIONE_S,
     ORIZZONTE_S,
     STATES_CONCLUSI,
     TOLLERANZA_S,
@@ -12,6 +11,7 @@ from hiris.app.keeper.promise import (
     serializza,
     validate,
 )
+from hiris.app.keeper.store import CONSERVAZIONE
 from hiris.app.states import PROMISE_STATES, READABLE, SUSPENDED
 
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
@@ -122,8 +122,8 @@ def test_il_motivo_del_ritardo_dice_i_minuti_misurati():
 
 
 def test_le_costanti_sono_quelle_dichiarate_nella_spec():
-    assert (TOLLERANZA_S, ORIZZONTE_S, CEILING_IN_SOSPESO, CONSERVAZIONE_S) == (
-        120, 30 * 86400, 50, 90 * 86400)
+    assert (TOLLERANZA_S, ORIZZONTE_S, CEILING_IN_SOSPESO,
+            CONSERVAZIONE["promesse"][0]) == (120, 30 * 86400, 50, 90)
 
 
 # ---------------------------------------------------------------------------

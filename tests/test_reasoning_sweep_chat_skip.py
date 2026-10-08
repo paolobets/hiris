@@ -1,5 +1,5 @@
-"""Slice 4b Task 2, Fix 1: the ponte-push sweep (server.py's
-``_reasoning_sweep``, scheduled as ``hiris_reasoning_sweep``) must not treat
+"""Slice 4b Task 2, Fix 1: the ponte-push sweep (``conservazione.reasoning_sweep``,
+spostata da server.py nella Tappa 8; scheduled as ``hiris_reasoning_sweep``) must not treat
 an expired ``kind="chat"`` job as anything else -- it stays 'expired' for its
 own caller (the chat poll route) to surface.
 
@@ -21,9 +21,10 @@ spazzata non si ritaglia piu' dal sorgente di ``_on_startup`` per eseguirla
 in un namespace preparato a mano: si avvia l'app davvero
 (``fotografia_porte.mounted``) e si fa girare il lavoro
 ``hiris_reasoning_sweep`` che lo schedulatore ha registrato, sulla coda vera
-dell'app (``app["reasoning_queue"]``). Cio' che il namespace di prima
-garantiva -- la spazzata LEGGE ``app["bridge_active"]`` invece di derivarlo --
-qui si prova cambiando quella chiave e guardando la spazzata obbedire.
+dell'app (``app["reasoning_queue"]``).
+
+Dalla Tappa 8 (Task 6, D5) la spazzata non guarda piu' ``app["bridge_active"]``:
+gira acceso o spento che sia il ponte (`test_a_ponte_spento_la_coda_si_spazza`).
 """
 import contextlib
 import sys
@@ -33,6 +34,7 @@ from pathlib import Path
 import pytest
 
 from hiris.app import server
+from hiris.app.steering import JOB_SPECIES
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -98,7 +100,7 @@ async def test_expired_holistic_job_is_logged_and_left_expired(tmp_path, monkeyp
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", sorted(
-    k for k in server.JOB_SPECIES if k not in ("chat", "promessa", server.SCOPE_TURN_KIND)))
+    k for k in JOB_SPECIES if k not in ("chat", "promessa", server.SCOPE_TURN_KIND)))
 async def test_un_turno_dichiarato_scade_e_non_e_un_orfano(tmp_path, kind, caplog):
     """Rossa su `8529b30`: analisi, ricette e attuazione scadute finivano
     nel registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2 della
@@ -141,21 +143,24 @@ async def test_mixed_sweep_only_non_chat_kind_logged(tmp_path, monkeypatch, capl
 
 
 @pytest.mark.asyncio
-async def test_sweep_no_op_when_bridge_and_subscription_both_off(tmp_path, monkeypatch):
-    """The sweep READS `app["bridge_active"]` (written by `_recompute_chain`)
-    instead of deriving it: switching that key off stops it.
+async def test_a_ponte_spento_la_coda_si_spazza(tmp_path):
+    """**Rovesciata nella Tappa 8 (Task 6, D5, G-11).** Fino all'08/10/2026
+    questa prova si chiamava `test_sweep_no_op_when_bridge_and_subscription_both_off`
+    e difendeva il contrario: a ponte spento la spazzata usciva subito, i
+    turni rimasti in coda non scadevano mai e un ripiego schiantato teneva la
+    conversazione sul 409. Spazzare cio' che e' gia' in coda non accoda
+    niente: il fail-safe «mai accodare in una coda che nessuno spazza» e'
+    dell'instradamento, non della spazzata.
 
-    Mutation EXECUTED: the early return removed from `_reasoning_sweep` --
-    red (the job expires)."""
+    Mutazione ESEGUITA l'08/10/2026: rimesso `if not app.get("bridge_active"):
+    return` in testa a `conservazione.reasoning_sweep` -- rossa, il turno
+    resta 'pending'."""
     async with _started_sweep(tmp_path, bridge_active=False) as (sweep, q, _app):
         now = _time.time()
-        q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home",
-                               "severity_hint": "info"},
-                  {"snapshot": {}}, now - 10, job_id="holistic-job", now=now - 100)
+        q.enqueue("chat", {}, {"history": []}, now - 10, job_id="chat-job", now=now - 100)
         await sweep()
 
-        # Early return before sweep_expired: the job is untouched (still 'pending').
-        assert q.get("holistic-job")["status"] == "pending"
+        assert q.get("chat-job")["status"] == "expired"
 
 
 # ---------------------------------------------------------------------------
@@ -188,9 +193,9 @@ async def test_lo_sweep_non_tocca_un_ripiego_in_corso(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_lo_sweep_raccoglie_i_ripieghi_schiantati(tmp_path, monkeypatch):
     """Un ripiego che non finisce mai -- processo caduto a meta' chiamata --
-    non puo' restare in volo per sempre: `prune` cancella 'decided', 'expired'
-    e 'failed', mai 'ripiego', e finche' resta li' tiene anche la
-    conversazione bloccata sul 409.
+    non puo' restare in volo per sempre: la potatura notturna cancella
+    'decided', 'expired' e 'failed', mai 'ripiego', e finche' resta li' tiene
+    anche la conversazione bloccata sul 409.
 
     L'orologio non avanza da solo: si finge un ripiego reclamato molto tempo
     fa (oltre il doppio della scadenza) invece di aspettare, che e' l'unico
@@ -247,7 +252,7 @@ async def test_un_turno_di_scope_scaduto_lascia_scritto_che_e_scaduto(tmp_path):
     pagina dell'osservatore dice «in corso da N minuti» mentre nessuna
     risposta arrivera' -- un worker fermo con un token buono diventa
     indistinguibile da un turno che sta ancora pensando. E' il gemello di
-    `keeper/outcome.close_expired_promise`, ed e' un rilievo della review indipendente
+    `reasoning/consegna.close_expired_promise`, ed e' un rilievo della review indipendente
     dell'11/09/2026.
 
     Mutazione che la uccide: togliere il ramo `SCOPE_TURN_KIND` dalla

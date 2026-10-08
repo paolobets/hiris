@@ -26,7 +26,7 @@ personalizzato che aveva salvato sul bot di default, e va guardato prima.
 import json
 import pathlib
 
-from hiris.app.server import RESIDUI_DISMESSI, cancella_residui
+from hiris.app.conservazione import RESIDUI_DISMESSI, cancella_residui
 
 
 def _fai(cartella: pathlib.Path, nome: str, contenuto: str = "x") -> pathlib.Path:
@@ -107,7 +107,7 @@ def test_un_residuo_che_NON_C_E_non_fa_rumore(tmp_path, caplog):
     rossa."""
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.conservazione"):
         cancella_residui(str(tmp_path))
 
     assert caplog.text.strip() == "", (
@@ -175,15 +175,21 @@ def test_nessun_residuo_dell_elenco_e_un_archivio_che_il_prodotto_apre():
     02/10/2026, con la mutazione che il suo docstring dichiarava rossa).
 
     **Anche quando il nome sta in fondo a un percorso** (revisione del
-    02/10/2026): `server.py` apre `"/data/usage.json"`, e un confronto fra
-    letterali interi non lo vedeva.
+    02/10/2026): `server.py` apriva `"/data/usage.json"`, e un confronto fra
+    letterali interi non lo vedeva. Dall'08/10/2026 (D6) quel percorso e'
+    `os.path.join(data_dir, "usage.json")`: il ramo del percorso si prova su
+    un letterale fabbricato, il nome nudo sul prodotto.
 
     Mutazioni ESEGUITE, entrambe rosse col nome e i punti che lo nominano:
     aggiunto `"consumi.db"` a `RESIDUI_DISMESSI`; aggiunto `"usage.json"`
-    (la seconda, prima, restava verde)."""
+    (la seconda, prima, restava verde). Mutazione ESEGUITA l'08/10/2026
+    (Tappa 8, Task 7): in `chat_settings.file_lacks_retention_days` un
+    `os.path.exists(os.path.join(data_dir, "casa.db"))` -- rossa, con
+    `casa.db` e i due file che lo nominano."""
     literals = _string_literals_in_the_product()
     assert len(literals) > 5000, "la raccolta dei letterali si e' rotta"
-    assert _named_by("usage.json", literals), (
+    assert _named_by("usage.json", literals), "la prova non vede piu' un nome nudo"
+    assert _named_by("usage.json", [("/data/usage.json", "x.py")]) == ["x.py"], (
         "la prova non vede piu' un nome in fondo a un percorso")
     alive = {name: _named_by(name, literals) for name in RESIDUI_DISMESSI
              if len(_named_by(name, literals)) != 1}
@@ -218,7 +224,7 @@ def _startup_messages(tmp_path) -> list[str]:
             messages.append(record.getMessage())
 
     handler = _Collect(level=logging.DEBUG)
-    registro = logging.getLogger("hiris.app.server")
+    registro = logging.getLogger("hiris.app.conservazione")
     earlier = registro.level
     registro.addHandler(handler)
     registro.setLevel(logging.DEBUG)
@@ -241,7 +247,7 @@ def test_nessun_messaggio_d_avvio_promette_un_file_che_sta_per_cancellare(tmp_pa
     qualche riga piu' sotto `cancella_residui` lo cancellava. Le altre tre
     frasi stavano dopo la cancellazione, e non giravano mai.
 
-    L'elenco dei nomi si CHIEDE a `server.RESIDUI_DISMESSI`: un residuo
+    L'elenco dei nomi si CHIEDE a `conservazione.RESIDUI_DISMESSI`: un residuo
     aggiunto domani entra in questa prova da solo.
 
     Mutazione ESEGUITA: rimesso in `_on_startup`, prima di `cancella_residui`,
@@ -262,3 +268,40 @@ def test_nessun_messaggio_d_avvio_promette_un_file_che_sta_per_cancellare(tmp_pa
             lies.append(f"{nome}: «{promised[0][-60:]}»")
     assert not lies, (
         "l'avvio promette che un file resta e poi lo cancella: " + "; ".join(lies))
+
+
+def test_un_contatore_IMPORTATO_sparisce_uno_illeggibile_resta(tmp_path):
+    """D6 della Tappa 8: un `usage*.json` registrato in `legacy_importati`
+    e' un residuo, e l'avvio lo cancella dopo averlo importato -- il suo
+    totale e' gia' nell'archivio dei consumi. Uno illeggibile non si importa,
+    quindi non si registra, e resta: il suo totale non e' da nessuna parte.
+
+    Sull'avvio vero, perche' l'ordine conta: cancellare prima di importare
+    perderebbe il totale.
+
+    Mutazione ESEGUITA (08/10/2026): `cancella_residui` chiamato senza
+    `imported` -- rossa (il contatore importato resta)."""
+    import asyncio
+    import sys
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "scripts"))
+    import fotografia_porte
+
+    from tests._casa_sintetica import synthetic_inputs
+
+    importato = _fai(tmp_path, "usage.json", json.dumps({"total_requests": 3}))
+    rotto = _fai(tmp_path, "usage_openai.json", "{non e' json")
+    seen: dict = {}
+
+    async def boot() -> None:
+        async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+            seen["richieste"] = app["usage"].totali()["richieste"]
+            seen["importati"] = app["usage"].legacy_imported()
+
+    asyncio.run(boot())
+
+    assert seen["importati"] == [str(importato)]
+    assert seen["richieste"] == 3
+    assert not importato.exists(), "un contatore gia' importato e' rimasto su disco"
+    assert rotto.exists(), "cancellato un contatore che non e' stato contato"

@@ -322,6 +322,30 @@ window.HirisWatcherGiorno = (function () {
     }
 
     subheading(body, 'Le misure');
+    /* **Le regole con cui e' stato misurato** (Tappa 8, G-03, D2): `regole:
+       null` e' un resoconto archiviato prima che lo dicesse
+       (`report.rules_mark`), e un suo valore puo' venire da un dispositivo
+       bloccato. `=== null` e non `== null`: dalla migrazione 15 la chiave c'e'
+       sempre, e una chiave assente non e' un fatto. Solo se ci sono misure:
+       senza numeri non c'e' niente da mettere in dubbio.
+       Il disegno e' di ux-ui-specialist (08/10/2026): una nota discreta in
+       testo secondario (`field-hint`, `--text-3`, 5.29:1 sul fondo chiaro e
+       5.28:1 sullo scuro, calcolato dai token), senza colore pieno, con
+       `role="note"`; il nome della regola si spiega solo nel «Perché?». */
+    if (report.regole === null && misure.length) {
+      var nota = el('div', 'field-hint');
+      nota.setAttribute('role', 'note');
+      nota.appendChild(el('div', null, 'Giorno misurato prima del controllo sui dispositivi ' +
+        'bloccati: un valore anomalo (es. 0 kWh) può essere un dispositivo fermo, non un dato vero.'));
+      var dettagli = el('details');
+      dettagli.appendChild(el('summary', null, 'Perché?'));
+      dettagli.appendChild(el('div', null, 'Questo giorno è stato misurato prima che HIRIS ' +
+        'imparasse a scartare i dati di un dispositivo bloccato. Se un valore ti sembra strano ' +
+        '(per esempio 0 kWh di produzione), potrebbe essere stato un dispositivo fermo e non ' +
+        'un giorno senza sole.'));
+      nota.appendChild(dettagli);
+      body.appendChild(nota);
+    }
     if (!misure.length) {
       line(body, 'Nessuna misura per questo giorno: nessun dispositivo ha ancora una ricetta, ' +
         'oppure nessuna ha potuto calcolarsi.', TONE_CALM);

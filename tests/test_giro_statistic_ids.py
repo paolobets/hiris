@@ -237,7 +237,10 @@ async def test_la_memoria_e_piu_breve_di_ogni_giro_che_la_usa(started_app):
     portata a 300 secondi, la cadenza del recupero -- rossa."""
     graph = _call_graph()
     users = [job for job in started_app["scheduler"].get_jobs()
-             if _reaches(graph, job.func.__name__, "statistic_ids_for_round")]
+             # Un lavoro iscritto come `partial(funzione, app)` (i giri usciti
+             # in `conservazione.py`, Tappa 8) si guarda nella funzione.
+             if _reaches(graph, getattr(job.func, "func", job.func).__name__,
+                         "statistic_ids_for_round")]
     intervals = [job.trigger.interval.total_seconds() for job in users
                  if hasattr(job.trigger, "interval")]
     assert len(intervals) >= 2, [job.id for job in users]

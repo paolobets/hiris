@@ -1862,7 +1862,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_31_with_171_fields():
+def test_product_dataclasses_are_32_with_174_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1988,13 +1988,17 @@ def test_product_dataclasses_are_31_with_171_fields():
     istanti del tratto, gli stessi detti nell'ora della casa, la ragione, la
     causa e la frase per la pagina -- le ore che una misura lascia fuori,
     dette dalla misura.
+    **Trentadue e 174 dall'08/10/2026**, Tappa 8, Task 1: `Reconciliation`
+    (`hiris/app/mind/reconciliation.py`) coi suoi tre campi -- `scope`,
+    `devices`, `stopped` -- cosa la riconciliazione toglie dallo scope e dal
+    sapere, o la guardia che l'ha fermata.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (31, 171), (classi, campi)
+    assert (classi, campi) == (32, 174), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass, field, replace
 
 from ..proxy import state_translations
+from ..proxy.ha_client import RUNNING_STATE
 from . import type_vocabulary
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,20 @@ async def _read_reference_frame(client) -> tuple[dict, bool]:
         return {}, False
     frame = reference_frame(config)
     return frame, bool(frame)
+
+
+async def ha_running(client) -> bool:
+    """Se Home Assistant si dichiara AVVIATO adesso: `get_config` risponde
+    `state` `RUNNING` (`proxy/ha_client.RUNNING_STATE`, con la fonte). E' lo
+    `state` che `reference_frame` non tiene perche' e' momentaneo: qui si
+    chiede ogni volta. Un guasto, o un client che non sa chiederlo, e' «non
+    so», cioe' no. La chiede la riconciliazione degli archivi
+    (`mind/reconciliation.py`, quarta guardia di D1 della Tappa 8)."""
+    reader = getattr(client, "get_config", None)
+    if reader is None:
+        return False
+    config = await reader()
+    return isinstance(config, dict) and config.get("state") == RUNNING_STATE
 
 
 # Id espliciti per le pseudo-aree e i piani-contenitore: mai None, cosi' un

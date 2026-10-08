@@ -478,6 +478,11 @@ class StateTranslations:
     lette e uno stato senza traduzione sono due fatti diversi, e chi PRODUCE
     il motivo deve etichettarlo -- non chi lo consuma indovinarlo.
 
+    **`appena_lette`** dice se QUESTA risposta e' arrivata adesso da Home
+    Assistant (`True`) o dalla cache (`False`): chi ne ricava qualcosa da
+    scrivere -- il seme del sapere, `mind/state_words.prime_state_translations`
+    -- lo rifa' solo quando la tabella e' nuova (A-22, Tappa 8, Task 9).
+
     **`published_device_classes`** (sopra, in questo stesso modulo) distilla
     dalle stesse chiavi cio' che una casa DICHIARA di avere -- non da questa
     cache, che resta la sola lettura sincrona per rendere uno stato. Le sue
@@ -528,7 +533,8 @@ class StateTranslations:
             # senza, due letture simultanee farebbero due chiamate identiche a
             # Home Assistant.
             if self._resources is not None and self._key == key:
-                return {"lette": True, "lingua": language, "risorse": self._resources}
+                return {"lette": True, "lingua": language, "risorse": self._resources,
+                        "appena_lette": False}
             report = await self._client.get_translations(language, category=self._category)
             if "risorse" not in report:
                 reason = report.get("errore") or "motivo non dichiarato"
@@ -538,4 +544,5 @@ class StateTranslations:
             self._key = key
             logger.info("traduzioni degli stati lette da Home Assistant: %d chiavi (%s, HA %s)",
                         len(self._resources), language, ha_version)
-        return {"lette": True, "lingua": language, "risorse": self._resources}
+        return {"lette": True, "lingua": language, "risorse": self._resources,
+                "appena_lette": True}

@@ -39,8 +39,94 @@ def connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """I nomi delle colonne di `table`, letti da SQLite.
+
+    La casa sola di `PRAGMA table_info` (Tappa 8, Task 4): la usano
+    `add_missing_columns` qui sotto e le migrazioni che RICOSTRUISCONO una
+    tabella per toglierne una colonna (`revisions._migration_7`), che devono
+    sapere se la colonna c'e' ancora per restare idempotenti."""
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def add_missing_columns(conn: sqlite3.Connection, table: str,
+                        columns: dict[str, str]) -> None:
+    """Aggiunge a `table` le colonne di `columns` (`{nome: tipo}`) che non ci
+    sono ancora, nell'ordine dato.
+
+    **L'idioma delle migrazioni, scritto una volta** (G-13, Tappa 8, Task 6).
+    Era ricopiato in nove archivi -- `PRAGMA table_info` e poi un `ALTER TABLE
+    ... ADD COLUMN` per colonna -- e una copia sola, in `mind/store`, era
+    diventata un aiuto, per una tabella sola.
+
+    Il controllo su `PRAGMA table_info`, e non un `try`/`except` attorno
+    all'`ALTER`, e' una scelta: un `except sqlite3.OperationalError`
+    inghiottirebbe QUALUNQUE errore dell'`ALTER`, non solo «la colonna c'e'
+    gia'» -- anche un archivio bloccato o un disco pieno -- e `init_schema`
+    timbrerebbe l'archivio alla versione nuova senza la colonna.
+
+    **Perche' una colonna gia' presente non e' un errore**: il DDL di SQLite
+    fa commit da solo, e una caduta fra un `ALTER` e il timbro lascia un
+    archivio alla versione vecchia con parte delle colonne; e un archivio che
+    nasce oggi le porta gia' dal suo schema. In entrambi i casi la migrazione
+    rigira e deve trovare il lavoro fatto."""
+    existing = table_columns(conn, table)
+    for name, kind in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+
+
+#: **Per quanto tiene ogni tabella di un archivio, e perche'**: la forma che
+#: `mind/store.CONSERVAZIONE` ha dal reperto C-6 (23/09/2026), e che dalla
+#: Tappa 8 (Task 6) ogni archivio dichiara accanto al suo schema.
+#:
+#: `{tabella: (giorni | None, ragione, cancellazione)}`. `giorni` a `None` =
+#: per sempre, e allora la `cancellazione` e' `None` anche lei. La
+#: `cancellazione` e' una frase SQL intera, col nome della tabella scritto in
+#: chiaro accanto a `DELETE FROM` (il censimento vede una scrittura solo
+#: cosi'), e con un solo `?`, la soglia `now - giorni`; o nessuno, se la
+#: tabella segue un'altra e non ha una soglia sua (le righe di un turno
+#: seguono il turno). Lo pretende `tests/test_conservazione_archivi.py`.
+Retention = dict[str, tuple[int | None, str, str | None]]
+
+DAY_S = 86400
+
+
+def prune_declared(conn: sqlite3.Connection, conservation: Retention,
+                   now: float) -> int:
+    """Applica una dichiarazione di conservazione, tabella per tabella, e
+    torna quante righe ha tolto. Una tabella `None` non si tocca.
+
+    Le cancellazioni girano nell'ordine della dichiarazione, che e' quindi
+    anche l'ordine in cui una tabella che ne segue un'altra deve stare: dopo
+    quella che segue. Il lock, se l'archivio ne ha uno, lo prende chi chiama;
+    il commit e' qui, una volta, per tutte le tabelle -- e solo se una
+    cancellazione e' girata: un archivio che tiene tutto per sempre non
+    committa la transazione aperta di qualcun altro."""
+    removed = 0
+    deleted = False
+    for days, _reason, deletion in conservation.values():
+        if days is None or deletion is None:
+            continue
+        params = (float(now) - days * DAY_S,) if "?" in deletion else ()
+        removed += conn.execute(deletion, params).rowcount or 0
+        deleted = True
+    if deleted:
+        conn.commit()
+    return removed
+
+
+def database_name(conn: sqlite3.Connection) -> str:
+    """Il nome del file su cui `conn` e' aperta, chiesto a SQLite (`PRAGMA
+    database_list`) e non ricordato a parte: e' cio' che `/api/health`
+    mostra come nome dell'archivio."""
+    row = conn.execute("PRAGMA database_list").fetchone()
+    return os.path.basename(row[2]) if row and row[2] else ""
+
+
 def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
-                migrations: dict[int, Migration] | None = None) -> int:
+                migrations: dict[int, Migration] | None = None,
+                after_sql: str | None = None) -> int:
     """Ensure the schema exists and is at `version`, migrating idempotently.
 
     Detection (before creating tables): a DB with NO user tables is 'fresh' and
@@ -48,6 +134,13 @@ def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
     migrations. A pre-versioning existing DB (has tables but user_version==0) is
     baselined to 1, then migrations 2..version run in order. A DB already at
     version N runs only N+1..version. `migrations[k]` migrates k-1 → k.
+
+    `after_sql` runs AFTER the migrations, before the version is stamped: the
+    indexes on columns that a migration adds. In `schema_sql` they would make
+    an old archive fail to open (the script runs before the migrations, and a
+    `CREATE INDEX` on a column that does not exist yet raises), so the
+    archives created them by hand after this call. One statement, and
+    idempotent (`IF NOT EXISTS`): it runs at every opening.
 
     The caller is responsible for holding any lock if called concurrently
     (normally this runs once at store construction, single-threaded).
@@ -73,6 +166,11 @@ def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
                 "versione senza migrazione si dichiara con una funzione vuota, "
                 "non si lascia come un buco nel dizionario")
         migrations[target](conn)
+    if after_sql:
+        # `execute` e non `executescript`: il secondo fa commit prima di
+        # cominciare, e separerebbe le scritture delle migrazioni dal timbro.
+        # Una frase sola, quindi -- due farebbero sollevare subito.
+        conn.execute(after_sql)
     conn.execute(f"PRAGMA user_version = {int(version)}")
     conn.commit()
     return version

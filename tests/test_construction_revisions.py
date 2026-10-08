@@ -5,13 +5,17 @@ import sqlite3
 import pytest
 
 from hiris.app.action.construction.revisions import (
+    CONSERVAZIONE,
     REASON_RESTARTED,
     UNCERTAIN,
     ConstructionStore,
 )
 from hiris.app.chat_thread import ChatThread
+from hiris.app.storage import DAY_S
 
 ADESSO = 1_756_000_000.0
+# La finestra delle costruzioni, chiesta alla dichiarazione (Tappa 8, Task 6).
+FINESTRA_S = CONSERVAZIONE["costruzioni"][0] * DAY_S
 PAOLO = ChatThread("persona:p", "pannello")
 
 
@@ -76,17 +80,17 @@ def test_una_riga_incerta_sopravvive_alla_potatura(archivio):
     """E-11, D3a: di una scrittura che forse e' arrivata, il «prima» puo'
     essere l'unica copia rimasta al mondo -- come per l'ultima applicata.
 
-    Mutazione ESEGUITA (07/10/2026): in `_prune` `AND stato != ?` sostituito
-    da `AND ? IS NOT NULL` (il filtro cade, il parametro resta) -- rossa su
+    Mutazione ESEGUITA (07/10/2026): in `_prune` (oggi la dichiarazione
+    `CONSERVAZIONE`) `AND stato != ?` sostituito da `AND ? IS NOT NULL`
+    (il filtro cade, il parametro resta) -- rossa su
     «la riga incerta e' stata potata»; ripristinata e verificata col
     confronto del file."""
     incerta = _proponi(archivio, operation="modifica", prima={"alias": "a"},
                        dopo={"alias": "b"})["id"]
     archivio.claim(incerta, now=ADESSO + 1)
     archivio.mark_uncertain(incerta, now=ADESSO + 2, execution_id="e1")
-    tardi = ADESSO + ConstructionStore.RETENTION_S + 86400
-    with archivio._lock:
-        archivio._prune(tardi)
+    tardi = ADESSO + FINESTRA_S + 86400
+    archivio.prune(tardi)
     riga = archivio.read(incerta, now=ADESSO)
     assert riga is not None, "la riga incerta e' stata potata"
     assert riga["stato"] == UNCERTAIN
@@ -183,9 +187,10 @@ def test_la_potatura_non_cancella_mai_l_ultima_versione_di_un_oggetto(archivio):
     vecchia = _proponi(archivio, operation="modifica", prima={"alias": "a"},
                        dopo={"alias": "b"})["id"]
     archivio.mark_applied(vecchia, now=ADESSO, execution_id="e1")
-    # Una scrittura molto piu' tardi innesca la potatura.
-    tardi = ADESSO + ConstructionStore.RETENTION_S + 86400
+    # La potatura e' notturna (Tappa 8, D5): non la innesca piu' una proposta.
+    tardi = ADESSO + FINESTRA_S + 86400
     nuova = _proponi(archivio, key="altra", now=tardi)["id"]
+    archivio.prune(tardi)
     assert archivio.read(nuova, now=ADESSO) is not None
     assert archivio.read(vecchia, now=ADESSO) is not None, "l'unica copia del «prima» e' sparita"
 
@@ -197,11 +202,10 @@ def test_una_riga_vecchia_e_superata_si_pota(archivio):
     recente = _proponi(archivio, operation="modifica", prima={"alias": "b"},
                        dopo={"alias": "c"}, now=ADESSO + 60)["id"]
     archivio.mark_applied(recente, now=ADESSO + 60, execution_id="e2")
-    tardi = ADESSO + ConstructionStore.RETENTION_S + 86400
-    # `_prune` e' l'unica operazione irreversibile del modulo: il suo
+    tardi = ADESSO + FINESTRA_S + 86400
+    # `prune` e' l'unica operazione irreversibile del modulo: il suo
     # conteggio va sorvegliato quanto quello di `_scadi`.
-    with archivio._lock:
-        quante = archivio._prune(tardi)
+    quante = archivio.prune(tardi)
     assert quante == 1
     assert archivio.read(superata, now=ADESSO) is None
     assert archivio.read(recente, now=ADESSO) is not None
@@ -292,7 +296,7 @@ def test_non_si_disdice_una_riga_gia_rivendicata(archivio):
     che la scrittura torni. Se la disdetta fosse permessa da `in_corso`, la
     scrittura arriverebbe comunque a Home Assistant -- l'automazione
     esisterebbe DAVVERO -- ma la riga che la descrive resterebbe `disdetta`,
-    fuori dall'insieme che `_prune` protegge per sempre: il suo «prima»,
+    fuori dall'insieme che `prune` protegge per sempre: il suo «prima»,
     l'unica copia al mondo di com'era l'oggetto, diventerebbe cancellabile a
     90 giorni. Impedendo la transizione da `in_corso`, chi ha vinto la
     rivendicazione e' l'unico che puo' portare la riga a uno stato finale."""

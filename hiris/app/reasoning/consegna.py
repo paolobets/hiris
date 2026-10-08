@@ -22,14 +22,22 @@ Cosa fa una consegna, per specie di turno:
   alla costruzione nata nel turno, o scrive perche' non si e' potuta fare
   (`mind/automate_turn.deliver`). Non ha un giro periodico che raccolga: e'
   un gesto di chi amministra, e la pagina aspetta questa consegna.
+
+E la strada opposta, il turno di promessa che **non** arriva:
+`close_expired_promise`, chiamata dalla spazzata della coda
+(`conservazione.reasoning_sweep`). Spostata qui da `server.py` l'08/10/2026
+(Tappa 8, Task 6), accanto al suo gemello: dal Task 4 (D-24) i due
+chiudono la promessa con lo stesso giro, `keeper/outcome.fail_unfinished`.
 """
 from __future__ import annotations
 
 import logging
+import time
 
 from ..mind.observer import SCOPE_TURN_KIND
 from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
 from ..mind.proposer_turn import PROPOSAL_TURN_KIND
+from ..providers import SUBSCRIPTION
 
 logger = logging.getLogger(__name__)
 
@@ -163,3 +171,35 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
             "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
             "decisione solo registrata", job_id, (job or {}).get("kind"))
     return outcome
+
+
+def close_expired_promise(app, job: dict) -> None:
+    """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
+
+    E' l'unico punto che impedisce a una promessa servita dal ponte di
+    restare `in_corso` per sempre quando il piano non risponde. `risana()` la
+    chiuderebbe soltanto al prossimo riavvio -- cioe' forse mai.
+
+    L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
+    `submit`, e `wake` e' la sola parte del job che sopravvive.
+    """
+    from ..keeper.outcome import CLOSED, fail_unfinished
+    from ..keeper.promise import bridge_silence_reason
+
+    ident = (job.get("wake") or {}).get("promessa_id") or ""
+    # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
+    # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
+    # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
+    # che il registro degli esiti riceve: una sola, letta una volta.
+    durata_s = (float(job.get("deadline_ts", 0.0))
+                - float(job.get("created_ts", 0.0)))
+    minuti = round(durata_s / 60)
+    closed = fail_unfinished(
+        app, ident, reason=bridge_silence_reason(SUBSCRIPTION.name, minuti),
+        now=time.time(), family="scaduto",
+        message="nessuna conclusione entro la scadenza del ponte (promessa)",
+        durata_s=durata_s)
+    if closed == CLOSED:
+        logger.warning(
+            "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
+            ident, minuti)

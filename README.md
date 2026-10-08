@@ -67,7 +67,7 @@ one of the twelve tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **seventeen** APScheduler jobs
+Periodic work *does* run — the scheduler registers **sixteen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
 the paragraph above needed the caveat. Most are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
@@ -76,16 +76,20 @@ Assistant's own diagnosed issues every 5 minutes
 (`server.py::_reread_problems`), the tree-vs-Home-Assistant comparison
 sample every 15 minutes (`server.py::tree_comparison_round`), the reread of
 automation and script bodies straight from Home Assistant every 5 minutes
-(`server.py::behavior_reader`), chat-history retention at 03:00, the
-reasoning-queue sweep every 2 minutes, and four more added by the "the
+(`server.py::behavior_reader`), the nightly retention at 03:00
+(`conservazione.py::nightly`) — one job for every archive: each one declares,
+next to its schema, how long it keeps every table and why, and `/api/health`
+lists those declarations; until 08/10/2026 there were two jobs at 03:00 and
+four prunings run on every write — the
+reasoning-queue sweep every 2 minutes, which runs whether or not the bridge is
+on, and three more added by the "the
 observer" slice (`hiris/app/mind/`) and its follow-up, "the traces and the
 log": the system-conditions read — the same diagnosed issues plus the
 integrations Home Assistant has not loaded, folded into the observer's
-fault objects — every 10 minutes (`server.py::_watch_conditions`), the
+fault objects — every 10 minutes (`server.py::_watch_conditions`) and the
 nightly aggregation of the previous day's raw state changes into objects
-at 00:20 (`server.py::_aggrega_ieri` → `mind/facts.py::aggregate_day`),
-and the pruning of raw changes older than 22 days at 03:00
-(`server.py::_prune_observations`) all belong to "the observer"; the
+at 00:20 (`server.py::_aggrega_ieri` → `mind/facts.py::aggregate_day`)
+belong to "the observer"; the
 automation-outcome trace read every 2 minutes
 (`server.py::_watch_automation_traces` →
 `mind/watcher.py::Watcher.watch_automation_outcome`) belongs to "the
@@ -178,7 +182,7 @@ model never writes a number — it names which measure, and the code attaches
 value, coverage, deviation and base from the series, so that a wrong number
 inside an authoritative-looking report is impossible.
 
-The seventeenth is the proposer (`mind/proposer_round.py::proposer_round`),
+The sixteenth is the proposer (`mind/proposer_round.py::proposer_round`),
 on the same hourly beat — the actor that was called the actuator until
 06/10/2026, paused from 01/10 because its turn started with no read tools. It
 does nothing until today's analysis has observations still open: the analyst

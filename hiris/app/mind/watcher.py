@@ -112,6 +112,20 @@ def _text_or_none(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def scope_row(subject: str, decision: dict, house=None) -> dict:
+    """Una riga dello scope come la leggono la pagina e il modello: soggetto,
+    motivo, autore, quando, e -- con la casa, per un'entita' -- la sua
+    `fonte` (`House.source`). **Una forma sola per dentro e fuori**
+    (fondamenta 3): fino all'08/10/2026 `watching` portava la fonte e
+    `MindView._left_out` no, e la stessa riga dello scope aveva due forme a
+    seconda di quale meta' la mostrava (trovato della Tappa 8, Task 1)."""
+    row = {"soggetto": subject, "motivo": decision["motivo"],
+           "autore": decision["autore"], "quando": decision["quando"]}
+    if house is not None and is_entity_id(subject):
+        row["fonte"] = house.source(subject)
+    return row
+
+
 class Watcher:
     """Il rubinetto e le condizioni di sistema, verso l'archivio.
 
@@ -1179,17 +1193,12 @@ class Watcher:
         (sulla casa, 26 soggetti guardati su 95 senza stato, nessuno marcato:
         registro, G-01). `fonte: None` e' il `None` di `House.source`: ne' il
         registro ne' gli stati conoscono quell'id. Senza la casa la chiave
-        manca: non si afferma niente. Nessuna riga dello scope si tocca (D1:
-        la pulizia e' della Tappa 8).
+        manca: non si afferma niente. Le righe di chi non ha piu' un referente
+        le toglie la riconciliazione (`mind/reconciliation.py`, Tappa 8, D1),
+        dopo ogni ricostruzione dell'anagrafe.
         """
-        def _entity_row(subject: str, decision: dict) -> dict:
-            row = {"soggetto": subject, "motivo": decision["motivo"],
-                   "autore": decision["autore"], "quando": decision["quando"]}
-            if house is not None and is_entity_id(subject):
-                row["fonte"] = house.source(subject)
-            return row
-
-        entity = (_entity_row(s, v) for s, v in self._store.scope().items() if v["dentro"])
+        entity = (scope_row(s, v, house) for s, v in self._store.scope().items()
+                  if v["dentro"])
         system = ({"soggetto": s, "motivo": _SYSTEM_REASON,
                    "autore": None, "quando": None}
                   for s in self._conditions)

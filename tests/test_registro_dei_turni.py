@@ -349,12 +349,18 @@ def test_i_due_registri_SCADONO_a_trenta_giorni(consumi):
     giorni, ed è il solo di `consumi.db` che scade — gli altri sono secchielli
     al giorno, minuscoli, e restano per sempre con la loro ragione.
 
+    Dall'08/10/2026 (Tappa 8, Task 6, D5) non pota piu' `log_turn` a ogni
+    turno: la finestra sta nella dichiarazione `CONSERVAZIONE`, e la applica
+    il lavoro notturno (`prune`).
+
     Mutazione ESEGUITA: togliere la cancellazione dal `log_turn` -- rossa.
     Mutazione ESEGUITA: cancellare anche le righe dentro i trenta giorni --
-    rossa."""
-    from hiris.app.usage.store import TURNS_RETENTION_S
+    rossa. Rieseguita l'08/10/2026 sulla dichiarazione: `ts < ?` -> `ts <
+    ? + 86400 * 2` per il registro dei turni -- rossa."""
+    from hiris.app.usage.store import CONSERVAZIONE
 
-    assert TURNS_RETENTION_S == 30 * 86400
+    assert (CONSERVAZIONE["turn"][0], CONSERVAZIONE["payload"][0]) == (30, 30)
+    finestra_s = CONSERVAZIONE["turn"][0] * 86400
 
     vecchio = consumi.log_turn(species="chat", provider="ponte", model="x",
                                channel="catena-anthropic",
@@ -364,20 +370,22 @@ def test_i_due_registri_SCADONO_a_trenta_giorni(consumi):
                         core_chars=1, history_chars=1, results_chars=1,
                         now=ADESSO)
 
-    # **Un turno DENTRO la finestra, scritto prima della potatura.** Senza di
-    # lui la prova non guarda il confine: la riga che scatena la cancellazione
-    # viene inserita DOPO, quindi sopravvive anche a un limite sbagliato che
-    # cancella tutto. Trovato da una mutazione, non leggendo.
+    # **Un turno DENTRO la finestra.** Senza di lui la prova non guarda il
+    # confine: un limite sbagliato che cancella tutto passerebbe. Trovato da
+    # una mutazione, non leggendo.
     dentro = consumi.log_turn(species="chat", provider="ponte", model="x",
                               channel="catena-anthropic",
                               duration_ms=1, iterations=1, tools=[],
                               outcome="riuscito", now=ADESSO + 86400)
 
-    dopo = ADESSO + TURNS_RETENTION_S + 1
+    dopo = ADESSO + finestra_s + 1
     recente = consumi.log_turn(species="chat", provider="ponte", model="x",
                                channel="catena-anthropic",
                                duration_ms=1, iterations=1, tools=[],
                                outcome="riuscito", now=dopo)
+    assert vecchio in [r["id"] for r in consumi.turns()], (
+        "un turno nuovo ha potato il registro: la potatura e' notturna")
+    assert consumi.prune(dopo) == 2   # il turno e il suo carico
 
     identificatori = [r["id"] for r in consumi.turns()]
     assert vecchio not in identificatori, "il turno scaduto non è stato tolto"

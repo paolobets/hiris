@@ -74,15 +74,6 @@ CEILING_IN_SOSPESO = 50
 # della scheda SD e il battito dell'orologio (che legge le scadute ogni 15
 # secondi) nell'ordine di grandezza di oggi: quattro fili pieni, non di piu'.
 HOUSE_CEILING_IN_SOSPESO = 200
-# Quanto si conserva una promessa CONCLUSA (spec §8.1). Un registro che cresce
-# per sempre su una scheda SD e' un guasto rimandato. E' una politica di
-# QUESTO strato (lo Schedulatore), indipendente da quella della cronaca delle
-# esecuzioni (`action/journal.py::EXECUTIONS_RETENTION_S`, nello strato
-# sotto): oggi vale lo stesso numero, 90 giorni, ma sono due fatti distinti --
-# per quanto si conserva una PROMESSA conclusa, per quanto si conserva
-# un'ESECUZIONE -- che possono divergere in futuro senza che l'uno debba
-# inseguire l'altro.
-CONSERVAZIONE_S = 90 * 86400
 
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
@@ -355,7 +346,7 @@ def delay_reason(delay_s: float) -> str:
 
 def bridge_silence_reason(provider_name: str, minutes: int) -> str:
     """Il motivo di una promessa il cui turno sul ponte e' scaduto senza
-    risposta (`outcome.close_expired_promise`): quanto si e' aspettato, e chi.
+    risposta (`reasoning/consegna.close_expired_promise`): quanto si e' aspettato, e chi.
     Come `delay_reason`, dice cio' che si e' misurato e nient'altro."""
     return (f"ho aspettato il {provider_name} per {minutes} minuti e non ha "
             "risposto: non so cosa dirti.")

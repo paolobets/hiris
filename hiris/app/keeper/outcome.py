@@ -3,8 +3,8 @@
 Due chiamanti, una guardia (fix round 1, M2): l'orologio (`Sweeper._tell`,
 col suo scrittore montato) e le due strade che chiudono una promessa FUORI
 dall'orologio (ruling 3.8) -- la scadenza del turno sul ponte
-(`close_expired_promise`, qui sotto) e il turno del ponte finito senza
-«conclude» (`reasoning/consegna`), che passano tutte e due da
+(`reasoning/consegna.close_expired_promise`) e il turno del ponte finito senza
+«conclude» (`reasoning/consegna.consegna`), che passano tutte e due da
 `fail_unfinished`. Le regole sono le stesse per tutti:
 solo se c'e' un filo, filtro dei veleni (anche sul testo del modello citato,
 `quoted`), mai un'eccezione. E dalle due strade di fuori nessuna push: non
@@ -13,12 +13,11 @@ c'e' una risposta da portare al telefono, solo un fallimento da dichiarare.
 from __future__ import annotations
 
 import logging
-import time
 
 from ..chat_store import append_assistant_line
 from ..providers import SUBSCRIPTION
 from ..states import FAILED, TAKEN
-from .promise import bridge_silence_reason, failure_message
+from .promise import failure_message
 
 logger = logging.getLogger(__name__)
 
@@ -44,15 +43,13 @@ def write_line(write, promise: dict, content: str, *,
     return written
 
 
-def tell_failure(data_dir: str | None, promise: dict, reason, *,
+def tell_failure(data_dir: str, promise: dict, reason, *,
                  quoted: str | None = None) -> bool:
     """La riga breve di una promessa fallita, per chi ha `data_dir` e non
-    l'orologio. Senza `data_dir` (un'app non montata del tutto) non si
-    scrive: la cartella di ripiego `/data` e' quella di produzione, e
-    scriverci da un contesto che non la conosce sarebbe scrivere nel posto
-    sbagliato."""
-    if not data_dir:
-        return False
+    l'orologio. `data_dir` e' `app["data_dir"]`, letto senza ripiego (D-27,
+    Tappa 8): fino all'08/10/2026 qui c'era una guardia per «un'app non
+    montata del tutto», cioe' per le prove che costruivano un'app senza la
+    cartella -- in produzione l'avvio la scrive sempre per prima."""
 
     def write(thread, content, *, quoted=None):
         return append_assistant_line(content, data_dir, thread=thread,
@@ -78,8 +75,8 @@ def fail_unfinished(app, ident: str, *, reason: str, now: float, family: str,
     **La sua casa sola** (D-24, Tappa 8): fino all'08/10/2026 lo stesso
     giro -- rileggere la promessa, chiuderla solo se ancora presa in carico,
     dirlo nel filo, contarlo nel registro degli esiti -- era scritto due
-    volte, nella scadenza del turno (`close_expired_promise`, qui sotto, allora
-    in `server.py`) e nella consegna di un turno finito senza «conclude»
+    volte, nella scadenza del turno (`reasoning/consegna.close_expired_promise`)
+    e nella consegna di un turno finito senza «conclude»
     (`reasoning/consegna`), con l'ordine dei controlli tenuto uguale a mano.
 
     Una promessa che non e' piu' presa in carico e' gia' stata conclusa
@@ -105,38 +102,10 @@ def fail_unfinished(app, ident: str, *, reason: str, now: float, family: str,
     if row.get("stato") != TAKEN:
         return ALREADY_CLOSED
     if store.concludi(ident, state=FAILED, now=now, reason=reason):
-        tell_failure(app.get("data_dir"), row, reason, quoted=quoted)
+        tell_failure(app["data_dir"], row, reason, quoted=quoted)
     registry = app.get("occurrence_registry")
     if registry is not None:
         registry.fallimento(SUBSCRIPTION.id, family=family, code=None,
                             message=message, durata_s=durata_s)
     return CLOSED
 
-
-def close_expired_promise(app, job: dict) -> None:
-    """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
-
-    E' l'unico punto che impedisce a una promessa servita dal ponte di
-    restare `in_corso` per sempre quando il piano non risponde. `risana()` la
-    chiuderebbe soltanto al prossimo riavvio -- cioe' forse mai.
-
-    L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
-    `submit`, e `wake` e' la sola parte del job che sopravvive.
-    """
-    ident = (job.get("wake") or {}).get("promessa_id") or ""
-    # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
-    # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
-    # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
-    # che il registro degli esiti riceve: una sola, letta una volta.
-    durata_s = (float(job.get("deadline_ts", 0.0))
-                - float(job.get("created_ts", 0.0)))
-    minuti = round(durata_s / 60)
-    closed = fail_unfinished(
-        app, ident, reason=bridge_silence_reason(SUBSCRIPTION.name, minuti),
-        now=time.time(), family="scaduto",
-        message="nessuna conclusione entro la scadenza del ponte (promessa)",
-        durata_s=durata_s)
-    if closed == CLOSED:
-        logger.warning(
-            "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
-            ident, minuti)

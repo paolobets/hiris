@@ -142,3 +142,44 @@ def test_lo_stato_piu_debole_di_un_insieme_e_quello_della_regola_unica(
                 f"{a} e {b} insieme")
         finally:
             archivio.close()
+
+
+def test_uno_stato_sconosciuto_vale_il_piu_debole_anche_in_sql(tmp_path):
+    """Una riga scritta da una versione futura, con uno stato che il
+    vocabolario non conosce, vale il piu' debole in `piu_debole` (`_rank`), e
+    lo stesso deve valere nella lettura aggregata: e' il ramo `ELSE 0` di
+    `weakest_rank_sql` (rilievo N94-1, giro 94). Accanto a una riga `reale`
+    l'aggregato dice `non_noto`: il rango di `piu_debole`, detto con una parola
+    del vocabolario (la lettura aggregata non restituisce mai una parola che
+    la pagina non sa leggere), e la stessa parola di `piu_debole`.
+
+    Mutazione ESEGUITA: `ELSE 0` portato a `ELSE {len(STATES) - 1}` -- rossa
+    (l'aggregato direbbe `reale`)."""
+    from hiris.app.usage import vocabulary
+
+    archivio = UsageStore(str(tmp_path / "consumi.db"), read_timezone=lambda: ROMA)
+    try:
+        _stato_aggregato(archivio, "reale", "misurato")
+        archivio._conn.execute("UPDATE consumo_giorno SET costo_stato = 'dal_futuro' "
+                               "WHERE costo_stato = 'misurato'")
+        archivio._conn.commit()
+        [sezione] = archivio.sezioni()
+        [modello] = sezione["modelli"]
+        assert modello["costo_stato"] == "non_noto"
+        assert modello["costo_stato"] == vocabulary.piu_debole("reale", "dal_futuro")
+    finally:
+        archivio.close()
+
+
+def test_piu_debole_dice_sempre_una_parola_del_vocabolario():
+    """Uno stato fuori dal vocabolario vale il piu' debole, e `piu_debole` lo
+    dice con la parola di quel rango, come la lettura aggregata in SQL: la
+    parola sconosciuta non esce mai (rilievo N96-1, giro 96).
+
+    Mutazione ESEGUITA: `min(a, b, key=_rank)` rimesso -- rossa (esce
+    `dal_futuro`)."""
+    from hiris.app.usage import vocabulary
+
+    assert vocabulary.piu_debole("reale", "dal_futuro") == "non_noto"
+    assert vocabulary.piu_debole("dal_futuro", "misurato") == "non_noto"
+    assert vocabulary.piu_debole("misurato", "reale") == "misurato"

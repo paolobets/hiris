@@ -1,5 +1,5 @@
-"""fetta "Modelli" (2.0), Task 12: la potatura notturna (`server.py::
-_run_retention`, cron alle 3) e' il PRIMO dei due lettori di
+"""fetta "Modelli" (2.0), Task 12: la potatura notturna (`conservazione.nightly`,
+cron alle 3; fino alla Tappa 8 `server.py::_run_retention`) e' il PRIMO dei due lettori di
 `giorni_conservazione` -- il secondo e' `chat_store.load_context`, pinnato
 in `tests/test_chat_store.py`/`tests/test_api.py`.
 
@@ -18,7 +18,10 @@ Dal 03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'») la prova
 non ritaglia piu' il blocco dal sorgente di `_on_startup` per eseguirlo: avvia
 l'app davvero (`fotografia_porte.mounted`) e fa girare il lavoro
 `hiris_retention` che lo schedulatore ha registrato. Un blocco spostato non la
-rompe piu'; un lavoro che non pota, si'."""
+rompe piu'; un lavoro che non pota, si'.
+
+Dalla Tappa 8 (Task 6, D-27) l'archivio della chat e' `app["chat_store"]`, e
+la finestra la chiede alle impostazioni a ogni potatura (`read_retention_days`)."""
 import sys
 from datetime import UTC
 from pathlib import Path
@@ -39,7 +42,9 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
     stanotte deve vedere QUEL valore, non uno catturato all'avvio.
 
     Mutazione ESEGUITA (03/10/2026): i giorni letti una volta sola all'avvio,
-    fuori da `_run_retention` -- rossa."""
+    fuori da `_run_retention` -- rossa. Rieseguita l'08/10/2026 sul codice
+    nuovo: `read_retention_days` costruito col valore dell'avvio invece che
+    con la lettura di `app["chat_settings"]` -- rossa."""
     from datetime import datetime, timedelta
 
     from hiris.app.chat_store import append_messages, close_all_stores, load_history
@@ -65,12 +70,12 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
         run_retention = app["scheduler"].get_job("hiris_retention").func
         app["chat_settings"] = ChatSettings(retention_days=5)
-        run_retention()
+        await run_retention()
         assert load_history(data_dir, thread=T) == [], (
             "5 giorni: il messaggio di 10 giorni fa doveva sparire")
 
         # Ora lo stesso oggetto app, ma con la chiave riassegnata a un valore che
-        # NON pota niente (com'e' dopo un PUT che alza la soglia): _run_retention
+        # NON pota niente (com'e' dopo un PUT che alza la soglia): la potatura
         # deve vederlo, non un 5 catturato alla costruzione della chiusura.
         append_messages([{"role": "user", "content": "recente"}], data_dir, thread=T)
         store2 = _get_store(data_dir)
@@ -81,7 +86,7 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
         )
         store2._conn.commit()
         app["chat_settings"] = ChatSettings(retention_days=0)
-        run_retention()
+        await run_retention()
         assert load_history(data_dir, thread=T) == [{"role": "user", "content": "recente"}], (
             "0: la potatura non deve aver toccato niente"
         )
