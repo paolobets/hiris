@@ -477,11 +477,13 @@ async def test_le_rotte_dei_ricordi_chiedono_l_indice_alla_casa(
     ident = memory.remember("mi piace il caffe' forte", detto_da="paolo")
     client = await aiohttp_client(_app(archivio_memoria=memory, archivio_casa=home_space))
 
-    assert (await client.get("/api/memories")).status == 200
-    assert built == [1]
     resp = await client.patch(f"/api/memories/{ident}", json={
         "ancore": [{"tipo": "area", "riferimento": "cucina", "nome_visto": "cucina"}]})
     assert resp.status == 200
+    assert built == [1]
+    # Il GET lo costruisce quando un'ancora c'e' da risolvere (`House.tether`,
+    # G-21): per questo la correzione viene prima.
+    assert (await client.get("/api/memories")).status == 200
     assert built == [1, 1]
 
     home_space.close()

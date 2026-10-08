@@ -39,7 +39,6 @@ from aiohttp import web
 from ..chat_thread import subject_key_for
 from ..home_space.house import House
 from ..memory.interpretation import deduci_unit, validate
-from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..proxy._sanitize import sanitize_ha_value
 from .boundary import error_response, json_object
 from .soffitto import restricted_person
@@ -60,55 +59,6 @@ _CORRECTABLE_FIELDS = {
 _MEMORIES_SHOWN_LIMIT = 200
 
 
-def _topology_loaded(home_space_store) -> bool:
-    """Vero solo se l'anagrafe e' stata DAVVERO letta almeno una volta.
-
-    `create_app()` istanzia sempre `home_space_store`: in produzione non e'
-    mai `None`. Ma un archivio appena creato (Home Assistant non ancora
-    pronto all'avvio: `handle_get_home_space` lo dichiara possibile) ha
-    `updated_at() is None` -- una casa vuota, non una casa cambiata.
-    Trattarla come "letta e senza ancore" farebbe sparire ogni ancora
-    valida al primo avvio, che e' esattamente il bug che questa funzione
-    esiste per evitare.
-    """
-    return home_space_store is not None and home_space_store.updated_at() is not None
-
-
-def _unverifiable_types(home_space_store, topology_loaded: bool) -> frozenset[str]:
-    """I tipi di ancora (`area`/`entita`/`dispositivo`) per cui l'anagrafe
-    non puo' dare una risposta affidabile in questo momento.
-
-    Se l'anagrafe intera non e' mai stata letta, sono TUTTI i tipi. Se e'
-    stata letta ma un registro specifico non ha risposto
-    (`home_space_store.unavailable()` -- per esempio il registro delle
-    aree e' caduto ma quello delle entita' no), e' solo il tipo di quel
-    registro: gli altri restano verificabili normalmente.
-    """
-    if not topology_loaded:
-        return frozenset(STORE_KEY_PER_TYPE)
-    unavailable_keys = set(home_space_store.unavailable())
-    return frozenset(kind for kind, key in STORE_KEY_PER_TYPE.items()
-                      if key in unavailable_keys)
-
-
-def _resolve_tether(tether: dict, lookup, unverifiable: frozenset[str]) -> dict:
-    """Un'ancora arricchita col nome che l'anagrafe conosce OGGI.
-
-    "non ho potuto controllare" (`lookup is None`, l'anagrafe non e' mai
-    stata letta; oppure il tipo di questa ancora e' fra i registri che non
-    hanno risposto all'ultima lettura) e "ho controllato e non c'e' piu'"
-    sono due fatti diversi: `esiste` resta `None` nel primo caso, mai
-    `False` -- dichiarare un'assenza che non si e' potuta controllare
-    sarebbe lo stesso silenzio non dichiarato che questo ramo ha gia'
-    pagato quattordici volte.
-    """
-    if lookup is None or tether["tipo"] in unverifiable:
-        return {**tether, "nome_attuale": None, "esiste": None}
-    entry = lookup.verify(tether["tipo"], tether["riferimento"])
-    return {**tether, "nome_attuale": entry.get("nome") if entry else None,
-            "esiste": entry is not None}
-
-
 async def handle_get_memories(request: web.Request) -> web.Response:
     store = request.app.get("memory_store")
     if store is None:
@@ -118,18 +68,10 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         # contenitore naturale, non l'affermazione di un fatto.
         return web.json_response({"available": False, "memories": []})
 
-    home_space_store = request.app.get("home_space_store")
-    topology_loaded = _topology_loaded(home_space_store)
-    # Fino alla 3.72.2 qui si passavano anche i NOMI DI RIPIEGO (dallo
-    # specchio), per mostrare il nome di un'entita' senza nome nel registro.
-    # Non hanno mai avuto effetto: entravano solo nell'indice di `find()`, e
-    # `_resolve_tether` legge `nome`. E' un difetto della pagina, scritto nel
-    # registro (capitolo S); il parametro inerte e' uscito con la Tappa 0.
-    # L'indice dalla casa di questa richiesta (A-13): la stessa funzione e
-    # la stessa istantanea di `remember` in chat.
-    lookup = (House.read(home_space_store, request.app.get("entity_cache")).lookup()
-              if topology_loaded else None)
-    unverifiable = _unverifiable_types(home_space_store, topology_loaded)
+    # Le ancore si risolvono sulla casa di questa richiesta (A-13), con la
+    # regola che tutte le porte dei ricordi chiedono a `House.tether` (G-21):
+    # un'anagrafe mai letta, o un registro caduto, lasciano `esiste` a `None`.
+    house = House.read(request.app.get("home_space_store"), request.app.get("entity_cache"))
 
     # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): i ricordi
     # che ha detto lei, con la chiave che scrive `remember` in chat e dal ponte
@@ -148,7 +90,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         total = store.count()
     for r in memories:
         r["corretto_da_utente"] = bool(r["corretto_da_utente"])
-        r["ancore"] = [_resolve_tether(a, lookup, unverifiable) for a in r["ancore"]]
+        r["ancore"] = [house.tether(a) for a in r["ancore"]]
     return web.json_response({
         "available": True,
         "memories": memories,
@@ -188,8 +130,6 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     if not fields:
         return error_response(400, "nessun campo correggibile nella richiesta")
 
-    home_space_store = request.app.get("home_space_store")
-    topology_loaded = _topology_loaded(home_space_store)
     # L'anagrafe puo' mancare o non essere ancora stata letta (Home
     # Assistant non ancora pronto): un indice costruito su una casa vuota
     # non verifica NESSUNA ancora, che e' il comportamento giusto in
@@ -198,10 +138,9 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     # arriva all'utente deve dirlo com'e' (`unverifiable_types`, sotto):
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
-    house = House.read(home_space_store if topology_loaded else None,
-                       request.app.get("entity_cache"))
+    house = House.read(request.app.get("home_space_store"), request.app.get("entity_cache"))
     lookup = house.lookup()
-    unverifiable_types = _unverifiable_types(home_space_store, topology_loaded)
+    unverifiable_types = house.unverifiable_tether_kinds()
     # Classi e unita' vive, dalla stessa fonte che usa `remember` in chat. Senza,
     # correggere la grandezza di un ricordo DA QUESTA PAGINA avrebbe dedotto
     # un'unita' diversa da quella dedotta dalla chat sullo stesso ricordo: lo
