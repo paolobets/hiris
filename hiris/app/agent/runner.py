@@ -1287,7 +1287,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
                   composition: dict | None = None) -> str | None:
     """La riga del registro per un turno del PONTE. Torna l'id della riga, o
     `None` se non e' stata scritta: il mestiere che rifiuta la risposta lo
-    usa per scriverci sopra «rifiutata» (`steering.declare_refused`, D10).
+    usa per scriverci sopra «scartato» (`steering.declare_refused`, D10).
 
     **Perche' non basta `steering.misura_turno`.** Quella misura avvolge una
     chiamata a `runner.chat()` e raccoglie i pesi del carico a ogni giro dal
@@ -1793,7 +1793,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                     "outcome": outcome}
         if isinstance(turn_id, str) and turn_id:
             # La riga del registro di questo turno: chi raccoglie la risposta
-            # e la rifiuta ci scrive sopra «rifiutata» (D10).
+            # e la rifiuta ci scrive sopra «scartato» (D10).
             decision["turn_id"] = turn_id
         if work_id and exchange_id and not retried_cell:
             # L'identita' del turno sulla rotta MCP, per i mestieri di sfondo:

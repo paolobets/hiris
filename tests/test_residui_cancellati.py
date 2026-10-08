@@ -20,8 +20,9 @@ soltanto `claude`; il C-6 ha dichiarato la conservazione delle sette tabelle
 vive, e questi file non sono tabelle di nessun archivio vivo: non avevano né
 una dichiarazione né un cancellatore.
 
-**`chatbots.json` resta**, per decisione del proprietario: contiene il prompt
-personalizzato che aveva salvato sul bot di default, e va guardato prima.
+`chatbots.json` e' restato per decisione del proprietario finche' non lo ha
+guardato (D6 della Tappa 8): conteneva il prompt personalizzato del bot di
+default. Lo Sprint gliel'ha mostrato l'08/10/2026, ed e' entrato fra i residui.
 """
 import json
 import pathlib
@@ -48,19 +49,19 @@ def test_i_residui_dichiarati_se_ne_VANNO(tmp_path):
         "un residuo dichiarato è sopravvissuto")
 
 
-def test_chatbots_json_RESTA(tmp_path):
-    """Decisione del proprietario: contiene il prompt personalizzato salvato
-    sul bot di default, e va guardato prima di cancellarlo. La regola non è
-    «cancella tutto ciò che è morto» — è «cancella ciò che è morto **e** su
-    cui è stato deciso».
+def test_chatbots_json_si_cancella_DOPO_che_il_proprietario_lo_ha_guardato(tmp_path):
+    """**Rovesciata l'08/10/2026.** Fino ad allora pretendeva che
+    `chatbots.json` restasse: la regola non e' «cancella tutto cio' che e'
+    morto», e' «cancella cio' che e' morto **e** su cui si e' deciso». Il
+    proprietario lo ha guardato l'08/10/2026 (D6), e adesso e' deciso.
 
-    Mutazione ESEGUITA: metterlo nell'elenco -- rossa."""
-    resta = _fai(tmp_path, "chatbots.json", json.dumps({"prompt": "sei tu"}))
+    Mutazione ESEGUITA: toglierlo dall'elenco -- rossa."""
+    file = _fai(tmp_path, "chatbots.json", json.dumps({"prompt": "sei tu"}))
 
     cancella_residui(str(tmp_path))
 
-    assert resta.exists(), "cancellato un file che il proprietario tiene"
-    assert "chatbots.json" not in RESIDUI_DISMESSI
+    assert not file.exists()
+    assert "chatbots.json" in RESIDUI_DISMESSI
 
 
 def test_non_si_tocca_NIENTE_che_non_sia_dichiarato(tmp_path):
@@ -305,3 +306,35 @@ def test_un_contatore_IMPORTATO_sparisce_uno_illeggibile_resta(tmp_path):
     assert seen["richieste"] == 3
     assert not importato.exists(), "un contatore gia' importato e' rimasto su disco"
     assert rotto.exists(), "cancellato un contatore che non e' stato contato"
+
+
+def test_gli_undici_file_scelti_dal_proprietario_se_ne_vanno_e_la_cornice_resta(tmp_path, caplog):
+    """L'08/10/2026 il backup della casa ha mostrato undici file di
+    installazioni precedenti che nessun codice nomina piu', e il proprietario
+    ha scelto «Tutti». Se ne vanno col nome e la dimensione nel registro, come
+    gli altri residui. `reference_frame.json` sta accanto ma e' vivo: lo
+    legge e lo scrive l'anagrafe, e il nome si chiede a lei, non si ricopia.
+
+    Mutazioni ESEGUITE: tolto `home_map.db` dall'elenco -- rossa; aggiunto
+    `reference_frame.json` all'elenco -- rossa."""
+    import logging
+
+    from hiris.app.home_space.reader import REFERENCE_FRAME_FILE
+
+    scelti = ("brain_reasoning.db", "suggestions.db", "hiris_knowledge.db",
+              "home_map.db", "hiris_memory.db.migrated", "home_semantic_map.json",
+              "semantic_context_map.json", "gateway_policy.json",
+              "sentinel_policy.json", "chat_history_hiris-default.json",
+              ".mqtt_discovery_migrated_v2")
+    fatti = [_fai(tmp_path, nome) for nome in scelti]
+    cornice = _fai(tmp_path, REFERENCE_FRAME_FILE, "{}")
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.conservazione"):
+        cancella_residui(str(tmp_path))
+
+    assert [p.name for p in fatti if p.exists()] == []
+    for nome in scelti:
+        assert any(r.getMessage().startswith(f"{nome} cancellato (1 byte)")
+                   for r in caplog.records), nome
+    assert cornice.exists()
+    assert REFERENCE_FRAME_FILE not in RESIDUI_DISMESSI

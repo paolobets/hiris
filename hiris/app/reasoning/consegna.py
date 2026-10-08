@@ -26,8 +26,8 @@ Cosa fa una consegna, per specie di turno:
 E la strada opposta, il turno di promessa che **non** arriva:
 `close_expired_promise`, chiamata dalla spazzata della coda
 (`conservazione.reasoning_sweep`). Spostata qui da `server.py` l'08/10/2026
-(Tappa 8, Task 6), senza cambiare una riga, accanto al suo gemello: la loro
-riunione e' del Task 4.
+(Tappa 8, Task 6), accanto al suo gemello: dal Task 4 (D-24) i due
+chiudono la promessa con lo stesso giro, `keeper/outcome.fail_unfinished`.
 """
 from __future__ import annotations
 
@@ -73,49 +73,31 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         # restare su disco). `wake` no, ed e' per questo che
         # `keeper/exchange._enqueue_to_bridge` ce lo mette.
         from ..keeper.exchange import _senza_conclusione
-        from ..keeper.outcome import tell_failure
+        from ..keeper.outcome import ALREADY_CLOSED, UNKNOWN, fail_unfinished
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
-        store = app.get("agenda")
-        row = store.read(ident) if (store is not None and ident) else None
-        if row is None:
+        reply = decision.get("reply")
+        # Il giro di chiusura e' quello della scadenza (`keeper/outcome.
+        # fail_unfinished`, D-24). Qui la famiglia e' `altro`: il turno E'
+        # finito e NON ha chiamato «conclude» -- il piano ha risposto, senza
+        # seguire il protocollo. Non e' una scadenza (`scaduto` e' per chi non
+        # risponde affatto, vedi `handlers_chat.py`) ne' un rifiuto con causa
+        # nota: e' `altro`, come ogni guasto che si misura senza inventarne il
+        # perche'. Una promessa mantenuta dal ponte si conclude altrove
+        # (`api/handlers_mcp`, dove sta il `.successo(...)` gemello).
+        closed = fail_unfinished(
+            app, ident, reason=_senza_conclusione(reply), now=now, family="altro",
+            message="promessa sul ponte finita senza chiamare «conclude»",
+            durata_s=now - float((job or {}).get("created_ts", now)),
+            quoted=reply if isinstance(reply, str) and reply.strip() else None)
+        if closed == UNKNOWN:
             logger.warning(
                 "consegna di un turno di promessa senza promessa (job_id=%s, "
                 "id=%r): non c'e' niente da chiudere", job_id, ident)
             outcome = "promessa_sconosciuta"
-        elif row.get("stato") != "in_corso":
-            # `conclude` e' gia' arrivato: la promessa e' chiusa e non si
-            # riapre. Riaprirla cancellerebbe un testo che l'utente puo' gia'
-            # aver letto -- o peggio, farebbe partire una seconda notifica.
+        elif closed == ALREADY_CLOSED:
             outcome = "promessa_gia_conclusa"
         else:
-            reply = decision.get("reply")
-            reason = _senza_conclusione(reply)
-            # Ruling 3.8: una riga breve nel filo di chi l'ha chiesta, nessuna
-            # push -- la stessa forma della scadenza (`keeper/outcome.py`). La
-            # risposta del modello citata nel motivo passa dal filtro dei
-            # veleni da sola (`quoted`).
-            if store.concludi(ident, state="fallita", now=now, reason=reason):
-                tell_failure(app["data_dir"], row, reason,
-                             quoted=reply if isinstance(reply, str) and reply.strip()
-                             else None)
-            # Rilievo R1 della revisione indipendente sul tratto
-            # `v3.22.2..HEAD`: il registro degli esiti vedeva il successo
-            # della chat e la scadenza, e niente delle promesse. Una promessa
-            # mantenuta dal ponte si conclude altrove (`api/handlers_mcp`,
-            # dove sta il `.successo(...)` gemello di questa riga) -- questo
-            # e' il ramo in cui il turno E' finito e NON ha chiamato
-            # «conclude»: il piano ha risposto, e ha risposto senza seguire
-            # il protocollo. Non e' una scadenza (`family="scaduto"` e' per
-            # chi non risponde affatto, vedi `handlers_chat.py`) ne' un
-            # rifiuto con causa nota: e' `family="altro"`, come ogni guasto
-            # che si misura senza inventarne il perche'.
-            registry = app.get("occurrence_registry")
-            if registry is not None:
-                registry.fallimento(
-                    SUBSCRIPTION.id, family="altro", code=None,
-                    message="promessa sul ponte finita senza chiamare «conclude»",
-                    durata_s=now - float(job.get("created_ts", now)))
             outcome = "promessa_senza_conclusione"
         return outcome
 
@@ -194,50 +176,30 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
 def close_expired_promise(app, job: dict) -> None:
     """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
 
-    Estratta invece che scritta in linea dentro lo sweep perche' ha una
-    ragione sua e va provata da sola: e' l'unico punto che impedisce a una
-    promessa servita dal ponte di restare `in_corso` per sempre quando il
-    piano non risponde. `risana()` la chiuderebbe soltanto al prossimo
-    riavvio -- cioe' forse mai.
+    E' l'unico punto che impedisce a una promessa servita dal ponte di
+    restare `in_corso` per sempre quando il piano non risponde. `risana()` la
+    chiuderebbe soltanto al prossimo riavvio -- cioe' forse mai.
 
     L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
     `submit`, e `wake` e' la sola parte del job che sopravvive.
     """
-    from ..keeper.outcome import tell_failure
+    from ..keeper.outcome import CLOSED, fail_unfinished
+    from ..keeper.promise import bridge_silence_reason
 
     ident = (job.get("wake") or {}).get("promessa_id") or ""
-    store = app.get("agenda")
-    promise = store.read(ident) if (store is not None and ident) else None
-    if promise is None or promise.get("stato") != "in_corso":
-        # Gia' conclusa da `concludi` mentre il turno finiva: non si
-        # riapre. E' lo stesso ordine di controlli della consegna
-        # (`reasoning/consegna`), per la stessa ragione.
-        return
     # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
     # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
     # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
-    # che il registro degli esiti riceve qui sotto: una sola, letta una volta.
+    # che il registro degli esiti riceve: una sola, letta una volta.
     durata_s = (float(job.get("deadline_ts", 0.0))
                 - float(job.get("created_ts", 0.0)))
     minuti = round(durata_s / 60)
-    reason = (f"ho aspettato il {SUBSCRIPTION.name} per {minuti} minuti e non ha "
-              "risposto: non so cosa dirti.")
-    # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
-    # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
-    # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
-    if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
-        tell_failure(app["data_dir"], promise, reason)
-    # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
-    # terza strada delle promesse sul ponte, dopo il successo (`api/
-    # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/
-    # consegna`). Stessa famiglia `scaduto` del ramo chat
-    # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
-    registry = app.get("occurrence_registry")
-    if registry is not None:
-        registry.fallimento(
-            SUBSCRIPTION.id, family="scaduto", code=None,
-            message="nessuna conclusione entro la scadenza del ponte (promessa)",
-            durata_s=durata_s)
-    logger.warning(
-        "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
-        ident, minuti)
+    closed = fail_unfinished(
+        app, ident, reason=bridge_silence_reason(SUBSCRIPTION.name, minuti),
+        now=time.time(), family="scaduto",
+        message="nessuna conclusione entro la scadenza del ponte (promessa)",
+        durata_s=durata_s)
+    if closed == CLOSED:
+        logger.warning(
+            "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
+            ident, minuti)

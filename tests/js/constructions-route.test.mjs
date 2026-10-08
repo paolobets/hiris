@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { installaFogli, displayRisolto } from './helpers/dom.mjs';
+import { conFrase, etichetta } from './helpers/stati.mjs';
+
+/* Una risposta della rotta come la manda il server: ogni riga con la frase
+   del suo stato (`stato_leggibile`, C-10 della Tappa 8), chiesta al
+   vocabolario e non ricopiata qui. */
+function conFrasi(risposta) {
+  return risposta && Array.isArray(risposta.constructions)
+    ? { ...risposta, constructions: risposta.constructions.map(conFrase) } : risposta;
+}
 
 /* La pagina carica common.js per primo (le utilita' scritte una volta):
    qui si valuta insieme alla route, nello stesso corpo, cosi' la route ne
@@ -42,7 +51,7 @@ function montaCon(risposta) {
   const chiamate = [];
   dom.window.fetch = async (url, opzioni) => {
     chiamate.push([url, opzioni]);
-    return { ok: true, status: 200, json: async () => risposta };
+    return { ok: true, status: 200, json: async () => conFrasi(risposta) };
   };
   global.fetch = dom.window.fetch;
   new dom.window.Function(SORGENTE)();
@@ -112,53 +121,54 @@ test('una proposta in attesa offre sia Approva sia Rifiuta', async () => {
 });
 
 test('il no di chi costruisce non si mostra come un fallimento', async () => {
-  // `disdetta` e `rifiutata` sono due cose diverse e non devono leggersi
+  // `disdetta` e `fallita` sono due cose diverse e non devono leggersi
   // uguali: la prima e' la persona che ha deciso, la seconda e' HIRIS che non
   // ce l'ha fatta. Se il vocabolario le confondesse, la pagina punirebbe
-  // l'unica cosa che deve essere facile fare.
+  // l'unica cosa che deve essere facile fare. Fino all'08/10/2026 il guasto
+  // si chiamava `rifiutata`, la parola del «no» sulle proposte a mano: la
+  // parola non torna sulla pagina (Tappa 8, D4).
   const { dom } = montaCon({ constructions: [
     { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
-      motivo: 'rifiutata dalla pagina' },
-    { id: 'r1', stato: 'rifiutata', gesto: 'crea', dominio: 'automation',
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1, motivo: null },
+    { id: 'r1', stato: 'fallita', gesto: 'crea', dominio: 'automation',
       chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
-      motivo: 'Home Assistant ha rifiutato' },
+      motivo: 'Home Assistant non ha accettato la configurazione' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const testo = dom.window.document.body.textContent;
-  assert.doesNotMatch(testo, /disdetta|rifiutata\b/i,
+  assert.doesNotMatch(testo, /rifiutata\b|fallita\b/i,
     'gli stati interni non devono uscire come token grezzi');
+  const badge = [...dom.window.document.querySelectorAll('.agent-badge')].map((b) => b.textContent);
+  assert.ok(badge.includes(etichetta('disdetta')) && badge.includes(etichetta('fallita')), badge);
   const righe = dom.window.document.querySelectorAll('.construction');
   assert.notEqual(righe[0].className, righe[1].className,
     'il no della persona e il fallimento di HIRIS non possono avere la stessa faccia');
 });
 
-test('una riga «disdetta» col vecchio motivo (righe scritte prima del 26/09/2026) resta un no, non un fallimento', async () => {
-  // Sicurezza 5.5, fix round 1: `revisions.py::_migration_3` riscrive UNA
-  // volta le righe vecchie (dal letterale "rifiutata dal proprietario" alla
-  // costante `REASON_DISDETTA`, "rifiutata dalla pagina") aprendo
-  // l'archivio -- ma un archivio non ancora aggiornato, o una riga letta
-  // prima che la migrazione giri, porta ancora il vecchio testo. Questa
-  // pagina non lo riscrive e non lo distingue dal nuovo: nasconde `motivo`
-  // guardando lo STATO (`disdetta`), mai il testo -- quindi il valore
-  // vecchio deve rendere ESATTAMENTE come il nuovo, con entrambi i
-  // letterali provati qui uno accanto all'altro.
+test('una riga «disdetta» non mostra il motivo, qualunque testo porti: e\' un no, non un fallimento', async () => {
+  // M-76 (Tappa 8): dall'08/10/2026 una disdetta non porta un motivo, e
+  // `revisions._migration_7` toglie i due testi di prima («rifiutata dal
+  // proprietario», «rifiutata dalla pagina»). Un archivio non ancora
+  // aggiornato puo' portarli ancora: la pagina nasconde `motivo` guardando lo
+  // STATO, mai il testo -- quindi una riga col vecchio motivo rende
+  // ESATTAMENTE come una senza.
   const { dom } = montaCon({ constructions: [
     { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
       chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 2,
       motivo: 'rifiutata dal proprietario' },
     { id: 'd2', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
       chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
-      motivo: 'rifiutata dalla pagina' },
+      motivo: null },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const testo = dom.window.document.body.textContent;
-  assert.doesNotMatch(testo, /disdetta|rifiutata\b|proprietario/i,
-    'ne\' lo stato interno ne\' il vecchio motivo devono uscire come testo grezzo');
+  assert.doesNotMatch(testo, /rifiutata\b|proprietario/i,
+    'il vecchio motivo non deve uscire come testo grezzo');
   const righe = dom.window.document.querySelectorAll('.construction');
   assert.equal(righe.length, 2);
   assert.equal(righe[0].className, righe[1].className,
-    'vecchio e nuovo motivo devono avere la stessa faccia: sono entrambi un no, non un fallimento');
+    'con e senza il vecchio motivo devono avere la stessa faccia: sono entrambi un no');
+  assert.equal(righe[0].textContent.replace('1', ''), righe[1].textContent.replace('2', ''));
 });
 
 test('solo le costruzioni applicate o incerte offrono il ripristino', async () => {
@@ -535,7 +545,7 @@ test('«Rifalla» mostra la nota del backend su dove è passato il giro', async 
     json: async () => (/redo/.test(String(url))
       ? { proposta: {}, esito: 'a_mano',
           nota: 'Il Piano Claude Max ha raggiunto il tetto di oggi: ha risposto Claude API.' }
-      : { constructions: [propostaAMano()] }),
+      : conFrasi({ constructions: [propostaAMano()] })),
   });
   global.fetch = dom.window.fetch;
   new dom.window.Function(SORGENTE)();
@@ -820,7 +830,7 @@ function montaConLetture(letture, redo) {
     }
     const risposta = letture[Math.min(n, letture.length - 1)];
     n += 1;
-    return { ok: true, status: 200, json: async () => risposta };
+    return { ok: true, status: 200, json: async () => conFrasi(risposta) };
   };
   global.fetch = dom.window.fetch;
   new dom.window.Function(SORGENTE)();

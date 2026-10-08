@@ -1,128 +1,109 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { FRASI, tupla } from './helpers/stati.mjs';
 
-/* Review finale della fetta «lo schedulatore», rilievo ②: il vocabolario
-   degli stati «in sospeso» (`in_attesa`, `in_corso`) vive in Python
-   (`hiris/app/keeper/promise.py::STATES_SOSPESO`, usata da
-   `store.py` per le sue due query) E in JavaScript
-   (`static/config/agenda-route.js::STATI_SOSPESO`, che filtra
-   `GET /api/agenda?all=1` lato client) -- senza niente che li legasse.
-   Il vocabolario degli stati «conclusi» (`STATES_CONCLUSI`) ha la stessa
-   forma: Python lo usa per `concludi()`/potatura, il JavaScript lo rispecchia
-   in `STATE_LABEL`/`STATE_BADGE`.
+/* Il vocabolario degli stati e le due pagine che lo disegnano (Impegni e
+   Proposte).
 
-   Nota sulla rinomina in inglese: `promise.py` e' gia' stato convertito
-   (`STATI_SOSPESO` -> `STATES_SOSPESO`, `STATI_CONCLUSI` -> `STATES_CONCLUSI`);
-   `agenda-route.js` no. I due lati parlano quindi due lingue diverse per i
-   NOMI delle costanti -- per questo il confronto qui sotto e' e resta sui
-   VALORI (gli insiemi di stringhe), mai sui nomi degli identificatori.
+   **Le parole vivono in Python** (`hiris/app/states.py`, Tappa 8, D4): le
+   tre code -- promesse, costruzioni, proposte da fare a mano -- le compongono
+   da li', e la rotta manda a ogni riga la frase del suo stato
+   (`stato_leggibile`, C-10). Le pagine non tengono piu' una tabella delle
+   parole (`STATE_LABEL`, uscita l'08/10/2026): tengono il COLORE del badge
+   (`STATE_BADGE`) e, la pagina Impegni, i due filtri delle sue sezioni
+   (`PENDING_STATES`, `OUTCOME_STATES`). Sono quelle copie che possono
+   divergere in silenzio, e questo file le lega ai vocabolari Python per
+   VALORI, mai per nomi.
 
-   `scripts/doppioni.py` cerca apposta queste coppie (vocabolario Python i
-   cui membri compaiono tutti in un file JS), e per costruzione smette di
-   segnalarle SOLO quando una prova le confronta: qui e' quella prova, dal
-   lato JavaScript -- lo stesso pattern di lettura di un sorgente con
-   `readFileSync(new URL(...))` gia' usato da `tree-route.test.mjs`
-   ("wiring: la rotta #/tree...") e da `dashboard-knowledge.test.mjs`
-   ("le sole rotte raggiungibili..."), adottato qui per leggere un file
-   Python invece di un altro file JS o config.html.
+   Review finale della fetta «lo schedulatore», rilievo ②: uno stato non
+   conclusivo aggiunto in Python e dimenticato nel JavaScript sparirebbe in
+   silenzio dalla sezione «In sospeso» della pagina.
 
-   Mutazione che deve far diventare rosso questo file: aggiungere un quinto
-   stato "sospeso" (o un quinto stato "concluso") da UN lato solo -- Python o
-   JavaScript -- lasciando l'altro fermo. E' esattamente il rischio che la
-   spec §12 nomina per la fetta successiva: uno stato non conclusivo
-   aggiunto in Python per un lavoro di sistema ricorrente, dimenticato nel
-   JavaScript, sparirebbe in silenzio dalla sezione «In sospeso» della
-   pagina. */
+   Mutazioni ESEGUITE l'08/10/2026: tolta `fallita` da `STATE_BADGE` di
+   constructions-route.js -- rossa; aggiunto uno stato a `STATES_CONCLUSI`
+   di promise.py senza la sua frase in states.py -- rosse la prova del
+   badge e della frase, e quella che vuole i due insiemi diversi della sola
+   `disdetta`. */
 
 const PROMESSA_PY = readFileSync(
   new URL('../../hiris/app/keeper/promise.py', import.meta.url), 'utf8');
-const ROUTE_JS = readFileSync(
+const AGENDA_JS = readFileSync(
   new URL('../../hiris/app/static/config/agenda-route.js', import.meta.url), 'utf8');
+const COSTRUZIONI_JS = readFileSync(
+  new URL('../../hiris/app/static/config/constructions-route.js', import.meta.url), 'utf8');
 
-/* Una tupla Python di stringhe: `NOME = ("a", "b", ...)`. Regex, non un
-   parser -- e' lo stesso grado di sofisticazione delle letture gia' in uso
-   nei due file citati sopra (`.includes(...)`, `.match(...)`). */
-function tuplaPython(nomeCostante) {
-  const m = PROMESSA_PY.match(new RegExp(nomeCostante + '\\s*=\\s*\\(([^)]*)\\)'));
-  assert.ok(m, 'costante Python non trovata: ' + nomeCostante +
-    ' (promise.py e\' cambiato sotto questo test?)');
+function elencoJs(sorgente, nome) {
+  const m = sorgente.match(new RegExp('var ' + nome + ' = \\[([^\\]]*)\\]'));
+  assert.ok(m, nome + ' non trovata');
   return m[1].split(',').map((s) => s.trim()).filter(Boolean)
     .map((s) => s.replace(/^["']|["']$/g, ''));
 }
 
-test('gli stati in sospeso: lo stesso insieme in promise.py (STATES_SOSPESO) e in agenda-route.js (PENDING_STATES)', () => {
-  const python = tuplaPython('STATES_SOSPESO');
-  // Se questa riga fallisse, il problema e' la lettura del sorgente Python
-  // (un rinominamento, un formato diverso), non ancora un confronto col JS:
-  // separarla aiuta a leggere subito quale delle due cose si e' rotta.
+function chiaviDiOggetto(sorgente, nome) {
+  const m = sorgente.match(new RegExp('var ' + nome + ' = \\{([\\s\\S]*?)\\};'));
+  assert.ok(m, nome + ' non trovata');
+  return new Set(Array.from(m[1].matchAll(/(\w+):/g)).map((mm) => mm[1]));
+}
+
+test('gli stati in sospeso: lo stesso insieme in states.py (SUSPENDED) e in agenda-route.js (PENDING_STATES)', () => {
+  const python = tupla('SUSPENDED');
+  // Se questa riga fallisse, il problema e' la lettura del sorgente Python,
+  // non ancora un confronto col JS.
   assert.deepEqual(new Set(python), new Set(['in_attesa', 'in_corso']));
-
-  // Il nome JS e' passato all'inglese il 02/09 (fetta del frontend);
-  // `STATES_SOSPESO` di `promise.py` e' ancora mezzo italiano, ed e' un
-  // residuo del lotto Python -- questo test lega i due INSIEMI, non i due
-  // nomi, ed e' per questo che sopravvive a una rinomina di un lato solo.
-  const m = ROUTE_JS.match(/var PENDING_STATES = \[([^\]]*)\];/);
-  assert.ok(m, 'PENDING_STATES non trovata in agenda-route.js');
-  const js = m[1].split(',').map((s) => s.trim()).filter(Boolean)
-    .map((s) => s.replace(/^['"]|['"]$/g, ''));
-
-  assert.deepEqual(new Set(js), new Set(python),
+  assert.deepEqual(new Set(elencoJs(AGENDA_JS, 'PENDING_STATES')), new Set(python),
     'gli stati "in sospeso" devono essere lo stesso insieme in Python e in JavaScript');
 });
 
-test('STATI_CONCLUSI: ogni stato concluso di promise.py (STATES_CONCLUSI) ha una voce in STATE_LABEL e in STATE_BADGE', () => {
-  const python = tuplaPython('STATES_CONCLUSI');
-  assert.deepEqual(new Set(python), new Set(['mantenuta', 'saltata', 'disdetta', 'fallita']));
+test('ogni stato di una promessa ha un badge in agenda-route.js e una frase in states.py', () => {
+  const stati = tupla('PROMISE_STATES');
+  // I conclusivi di promise.py sono fra questi: la tupla li compone dal vocabolario.
+  for (const s of tupla('STATES_CONCLUSI', PROMESSA_PY)) assert.ok(stati.includes(s), s);
+  const badge = chiaviDiOggetto(AGENDA_JS, 'STATE_BADGE');
+  for (const stato of stati) {
+    assert.ok(badge.has(stato), 'STATE_BADGE di agenda-route.js non conosce «' + stato + '»');
+    assert.ok(FRASI[stato], 'states.READABLE non ha la frase di «' + stato + '»');
+  }
+});
 
-  // Il JavaScript non ripete `STATI_CONCLUSI` come proprio insieme a se':
-  // "concluso" e' li' "tutto cio' che non e' in STATI_SOSPESO" (vedi
-  // `carica()` in agenda-route.js -- e' l'insieme SOSPESO che va confrontato
-  // per identita', non due volte lo stesso complemento). Cio' che PUO'
-  // divergere in silenzio, e che questo test copre, sono le due tendine di
-  // resa: uno stato concluso che ne fosse privo diventerebbe "undefined" a
-  // schermo, o un badge neutro invece di uno che porta il significato.
-  const chiaviDiOggetto = (nomeCostante) => {
-    const m = ROUTE_JS.match(new RegExp('var ' + nomeCostante + ' = \\{([\\s\\S]*?)\\};'));
-    assert.ok(m, nomeCostante + ' non trovata in agenda-route.js');
-    return new Set(Array.from(m[1].matchAll(/(\w+):/g)).map((mm) => mm[1]));
-  };
-  const label = chiaviDiOggetto('STATE_LABEL');
-  const badge = chiaviDiOggetto('STATE_BADGE');
+test('ogni stato di una costruzione ha un badge in constructions-route.js e una frase in states.py', () => {
+  const badge = chiaviDiOggetto(COSTRUZIONI_JS, 'STATE_BADGE');
+  for (const stato of tupla('CONSTRUCTION_STATES')) {
+    assert.ok(badge.has(stato), 'STATE_BADGE di constructions-route.js non conosce «' + stato + '»');
+    assert.ok(FRASI[stato], 'states.READABLE non ha la frase di «' + stato + '»');
+  }
+  /* E non conosce parole che il vocabolario non ha: un colore per uno stato
+     che nessun archivio scrive e' una copia rimasta indietro (era `rifiutata`
+     fino all'08/10/2026). */
+  const note = new Set(tupla('CONSTRUCTION_STATES'));
+  for (const stato of badge) assert.ok(note.has(stato), 'STATE_BADGE conosce «' + stato + '», che non e\' uno stato');
+});
 
-  for (const stato of python) {
-    assert.ok(label.has(stato), 'STATE_LABEL non conosce lo stato concluso "' + stato + '"');
-    assert.ok(badge.has(stato), 'STATE_BADGE non conosce lo stato concluso "' + stato + '"');
+test('ogni stato di una proposta da fare a mano ha una frase in states.py', () => {
+  for (const stato of tupla('PROPOSAL_STATES')) {
+    assert.ok(FRASI[stato], 'states.READABLE non ha la frase di «' + stato + '»');
+  }
+});
+
+test('le pagine non tengono piu\' una tabella delle parole: la frase arriva dalla rotta', () => {
+  for (const [nome, sorgente] of [['agenda-route.js', AGENDA_JS], ['constructions-route.js', COSTRUZIONI_JS]]) {
+    assert.doesNotMatch(sorgente, /var STATE_LABEL\b/, nome + ' ha di nuovo la sua tabella delle parole');
+    assert.match(sorgente, /stateLabel\(\w+\.stato_leggibile/, nome + ' non legge la frase della rotta');
   }
 });
 
 /* Il terzo vocabolario: gli stati che sono una NOTIZIA (`STATES_ESITO` /
-   `OUTCOME_STATES`). Nasce con la fetta «i menu esecutivi» e non coincide
-   con quello dei conclusi: `disdetta` e' fuori, perche' una promessa
-   disdetta e' un ordine dell'utente, non un esito che gli e' capitato.
-
-   Mutazione che deve far diventare rosso questo test: rimettere `disdetta`
-   da UN lato solo -- cioe' precisamente il difetto che una review
-   indipendente ha trovato (rilievo 5), quando il lato JavaScript ricavava
-   l'insieme per complemento di `PENDING_STATES` invece di nominarlo. */
+   `OUTCOME_STATES`). Non coincide con quello dei conclusi: `disdetta` e'
+   fuori, perche' una promessa disdetta e' un ordine dell'utente, non un
+   esito che gli e' capitato. */
 test('gli stati che sono una notizia: lo stesso insieme in promise.py (STATES_ESITO) e in agenda-route.js (OUTCOME_STATES)', () => {
-  const python = tuplaPython('STATES_ESITO');
+  const python = tupla('STATES_ESITO', PROMESSA_PY);
   assert.deepEqual(new Set(python), new Set(['mantenuta', 'saltata', 'fallita']));
-
-  const m = ROUTE_JS.match(/var OUTCOME_STATES = \[([^\]]*)\]/);
-  assert.ok(m, 'OUTCOME_STATES non trovata in agenda-route.js');
-  const js = m[1].split(',').map((s) => s.trim()).filter(Boolean)
-    .map((s) => s.replace(/^["']|["']$/g, ''));
-
-  assert.deepEqual(new Set(js), new Set(python));
+  assert.deepEqual(new Set(elencoJs(AGENDA_JS, 'OUTCOME_STATES')), new Set(python));
 });
 
 test('«disdetta» e\' conclusa ma NON e\' una notizia: i due insiemi differiscono di lei sola', () => {
-  /* Se qualcuno un giorno facesse coincidere i due insiemi, la pagina
-     tornerebbe a dire «da quando non guardavi» di un click appena fatto. */
-  const conclusi = new Set(tuplaPython('STATES_CONCLUSI'));
-  const esiti = new Set(tuplaPython('STATES_ESITO'));
-
-  const differenza = [...conclusi].filter((s) => !esiti.has(s));
-  assert.deepEqual(differenza, ['disdetta']);
+  const conclusi = new Set(tupla('STATES_CONCLUSI', PROMESSA_PY));
+  const esiti = new Set(tupla('STATES_ESITO', PROMESSA_PY));
+  assert.deepEqual([...conclusi].filter((s) => !esiti.has(s)), ['disdetta']);
 });

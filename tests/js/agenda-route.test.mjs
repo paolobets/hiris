@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick, installaFogli, displayRisolto } from './helpers/dom.mjs';
+import { conFrase, etichetta } from './helpers/stati.mjs';
 
 /* fetta «lo schedulatore» Task 9: la pagina #/agenda (config/agenda-route.js).
    Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
@@ -13,7 +14,10 @@ import { loadScripts, tick, installaFogli, displayRisolto } from './helpers/dom.
    - la DELETE riuscita risponde 200 con {"promessa": {...}}, MAI 204 come
      /api/memories/{id} -- un test lo pinza sotto;
    - il vocabolario mostrato non e' quello del backend: `saltata` -> «Non
-     eseguita», `fallita` -> «Non riuscita» (guida §0/§3);
+     eseguita», `fallita` -> «Non riuscita» (guida §0/§3). Dalla Tappa 8
+     (C-10) la frase la manda la rotta (`stato_leggibile`, da
+     `hiris/app/states.py`): il finto server la mette con `conFrase`, e le
+     prove la chiedono a `etichetta` invece di ricopiarla;
    - nessun window.confirm() per disdire: e' reversibile (chiedendo di nuovo a
      voce) e la riga non sparisce, passa allo storico. */
 
@@ -89,7 +93,9 @@ function montaConServer(opts = {}) {
       if (opts.getRotto) throw new Error('rete giu\'');
       if (opts.get503) return jsonResponse({ agenda: [], error: 'archivio non disponibile' }, 503);
       const corpo = getCount === 1 || opts.getSuccessivo === undefined ? opts.get : opts.getSuccessivo;
-      return jsonResponse(corpo !== undefined ? corpo : { agenda: PROMESSE });
+      const scelto = corpo !== undefined ? corpo : { agenda: PROMESSE };
+      return jsonResponse(scelto && Array.isArray(scelto.agenda)
+        ? { ...scelto, agenda: scelto.agenda.map(conFrase) } : scelto);
     }
     if (method === 'POST' && u.indexOf('api/agenda/read') === 0) {
       if (opts.readRotto) throw new Error('rete giu');
@@ -131,7 +137,9 @@ test('le in sospeso e lo storico stanno in due sezioni distinte', async () => {
 test('una promessa saltata mostra il motivo, non solo lo stato', async () => {
   const { document } = await monta();
   assert.ok(document.body.textContent.includes('41 minuti'));
-  assert.match(document.body.textContent, /Non eseguita/, 'il vocabolario a schermo, non "saltata"');
+  assert.ok(document.body.textContent.includes(etichetta('saltata')),
+    'il vocabolario a schermo, non "saltata"');
+  assert.doesNotMatch(document.body.textContent, /\bsaltata\b/);
 });
 
 test('un chiedi concluso in silenzio mostra comunque cio\' che ha trovato', async () => {
@@ -203,7 +211,7 @@ test('una promessa mantenuta con motivo resta badge verde, ma il motivo si vede 
   assert.match(testo, /nessun modo di avvisarti/, 'il motivo deve essere visibile, non taciuto');
 
   const badge = Array.from(document.querySelectorAll('.agent-badge'))
-    .find((b) => b.textContent === 'Mantenuta');
+    .find((b) => b.textContent === etichetta('mantenuta'));
   assert.ok(badge, 'il badge deve restare quello del successo, "Mantenuta"');
   assert.ok(badge.classList.contains('badge-on'), 'verde: e\' successo davvero, non e\' un fallimento');
   assert.ok(!badge.classList.contains('badge-err') && !badge.classList.contains('badge-warn'),
@@ -220,14 +228,14 @@ test('una promessa fallita dice «Non riuscita», mai «Non eseguita»', async (
     get: { agenda: [{ ...PROMESSE[1], id: 'p4', stato: 'fallita', motivo: 'il servizio ha rifiutato la chiamata' }] },
   });
   const testo = document.body.textContent;
-  assert.match(testo, /Non riuscita/);
-  assert.doesNotMatch(testo, /Non eseguita/);
+  assert.ok(testo.includes(etichetta('fallita')));
+  assert.ok(!testo.includes(etichetta('saltata')));
 });
 
 test('il badge di "Non eseguita" non e\' rosso: e\' una scelta del prodotto, non un guasto', async () => {
   const { document } = await monta();
   const badge = Array.from(document.querySelectorAll('.agent-badge'))
-    .find((b) => b.textContent === 'Non eseguita');
+    .find((b) => b.textContent === etichetta('saltata'));
   assert.ok(badge, 'deve esistere il badge "Non eseguita"');
   assert.ok(badge.classList.contains('badge-warn'), 'ambra, non rosso: classList=' + badge.className);
   assert.ok(!badge.classList.contains('badge-err'));

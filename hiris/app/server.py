@@ -51,7 +51,6 @@ from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_store import open_store as open_chat_store
 from .chat_thread import SyncTurnsInFlight, thread_for
 from .conservazione import (
-    announce_chatbots_json,
     cancella_residui,
     decidi_vault,
     nightly,
@@ -3128,8 +3127,6 @@ async def _on_startup(app: web.Application) -> None:
                 "Impostazioni chat.",
                 chat_settings.retention_days, exc,
             )
-
-    announce_chatbots_json(data_dir)
 
     # Lo scheduler (APScheduler) non era mai stato concettualmente
     # dell'entita' Chatbot -- ci viveva sopra solo perche' ChatbotEngine lo
