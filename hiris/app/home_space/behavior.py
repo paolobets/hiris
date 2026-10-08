@@ -128,7 +128,15 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> None:
     stato e il nome di una ventina -- cose che lo specchio sa gia', aggiornate
     a ogni evento. Da Home Assistant si chiede solo cio' che lo specchio non
     porta: il corpo (`behavior_configs`).
+
+    **Lo specchio si legge quando ha finito di rileggersi** (S-31, Tappa 8):
+    alla riconnessione la rilettura dello specchio e questa partono dallo
+    stesso evento, e fino all'08/10/2026 questa leggeva la casa di prima della
+    caduta se l'altra non era finita (`EntityCache.settled`).
     """
+    # Lo specchio si legge quando ha finito di rileggersi (S-31): alla
+    # riconnessione la sua rilettura e questa partono insieme.
+    await mirror.settled()
     failure = unreadable_inventory_error(mirror)
     if failure is not None:
         # Uno specchio che non si legge non e' una casa senza automazioni: la

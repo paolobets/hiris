@@ -678,6 +678,21 @@ class EntityCache:
         """
         return self._stale
 
+    async def settled(self) -> None:
+        """Aspetta che la rilettura intera in corso, se ce n'e' una, sia
+        finita; torna subito se non ce n'e'.
+
+        Per chi legge lo specchio INTERO dopo un evento che lo fa rileggere
+        (S-31, Tappa 8): alla riconnessione la rilettura del comportamento
+        partiva tre secondi dopo quella dello specchio senza aspettarla, e
+        leggeva la casa di prima della caduta. Non c'e' un evento di Home
+        Assistant da aspettare al suo posto: letto il sorgente l'08/10/2026
+        (tag `2026.9.1` e ramo `dev`), `automation_reloaded` si emette solo
+        alla fine del servizio `automation.reload`, non al caricamento dopo
+        un riavvio, e `script` non ne emette nessuno."""
+        async with self._reload_lock:
+            return
+
     async def load(self, ha_client) -> None:
         """La prima lettura dello specchio: la stessa rilettura di `reload`,
         che SOLLEVA se Home Assistant non ha dato gli stati. Chi la chiama
