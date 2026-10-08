@@ -79,15 +79,6 @@ CEILING_IN_SOSPESO = 50
 # della scheda SD e il battito dell'orologio (che legge le scadute ogni 15
 # secondi) nell'ordine di grandezza di oggi: quattro fili pieni, non di piu'.
 HOUSE_CEILING_IN_SOSPESO = 200
-# Quanto si conserva una promessa CONCLUSA (spec §8.1). Un registro che cresce
-# per sempre su una scheda SD e' un guasto rimandato. E' una politica di
-# QUESTO strato (lo Schedulatore), indipendente da quella della cronaca delle
-# esecuzioni (`action/journal.py::EXECUTIONS_RETENTION_S`, nello strato
-# sotto): oggi vale lo stesso numero, 90 giorni, ma sono due fatti distinti --
-# per quanto si conserva una PROMESSA conclusa, per quanto si conserva
-# un'ESECUZIONE -- che possono divergere in futuro senza che l'uno debba
-# inseguire l'altro.
-CONSERVAZIONE_S = 90 * 86400
 
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",

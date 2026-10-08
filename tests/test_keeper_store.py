@@ -4,11 +4,10 @@ import os
 import pytest
 
 from hiris.app.chat_thread import ChatThread
-from hiris.app.keeper.promise import (
-    CEILING_IN_SOSPESO,
-    CONSERVAZIONE_S,
-)
-from hiris.app.keeper.store import AgendaStore
+from hiris.app.keeper.promise import CEILING_IN_SOSPESO
+from hiris.app.keeper.store import CONSERVAZIONE, AgendaStore
+
+CONSERVAZIONE_S = CONSERVAZIONE["promesse"][0] * 86400
 
 ADESSO = 1_755_600_000.0
 # Il filo di chi chiede: ogni promessa ne ha uno (spec 2026-09-26 §2). Le
@@ -178,7 +177,7 @@ def test_lo_stato_in_corso_conta_nel_tetto_delle_in_sospeso(archivio):
     assert "errore" in esito, "in_corso deve continuare a contare per il tetto"
 
 
-def test_le_concluse_vecchie_si_potano_alla_scrittura_le_in_sospeso_mai(archivio):
+def test_le_concluse_vecchie_si_potano_le_in_sospeso_mai(archivio):
     vecchia = archivio.create(_fai(quando_ts=ADESSO + 10),
                             thread=PAOLO, now=ADESSO)["promessa"]["id"]
     archivio.prendi(vecchia, now=ADESSO + 10)
@@ -191,8 +190,8 @@ def test_le_concluse_vecchie_si_potano_alla_scrittura_le_in_sospeso_mai(archivio
     archivio.prendi(recente, now=dopo + 3600)
     archivio.concludi(recente, state="mantenuta", now=dopo + 3600)
 
-    poco_dopo = dopo + 100  # troppo presto perche' «recente» sia fuori conservazione
-    archivio.create(_fai(quando_ts=poco_dopo + 3600), thread=PAOLO, now=poco_dopo)
+    # La potatura e' notturna (Tappa 8, D5): non la innesca piu' una scrittura.
+    assert archivio.prune(dopo + 100) == 1
 
     assert archivio.read(vecchia) is None      # potata: piu' vecchia della conservazione
     assert archivio.read(in_sospeso) is not None  # mai potata: e' ancora una promessa
@@ -212,7 +211,7 @@ def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
     dev'essere per una conclusione recente) non deve sparire.
 
     Mutazione che deve farlo fallire: rimettere `nata_ts` al posto di
-    `risvegliata_ts` nella query di `_prune`.
+    `risvegliata_ts` nella dichiarazione `CONSERVAZIONE`.
     """
     nata = ADESSO - 91 * 86400
     conclusa = ADESSO - 86400  # ieri
@@ -220,8 +219,7 @@ def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
     archivio.prendi(ident, now=conclusa)
     archivio.concludi(ident, state="mantenuta", now=conclusa)
 
-    # una scrittura successiva e' cio' che innesca la potatura (spec §8.1)
-    archivio.create(_fai(quando_ts=ADESSO + 3600), thread=PAOLO, now=ADESSO)
+    assert archivio.prune(ADESSO) == 0
 
     assert archivio.read(ident) is not None, (
         "nata 91 giorni fa ma CONCLUSA ieri: l'eta' della potatura deve "

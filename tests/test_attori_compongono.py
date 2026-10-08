@@ -148,10 +148,15 @@ def _calls(func: ast.AST) -> set[str]:
 def _job_sources(app) -> tuple[set[str], set[pathlib.Path]]:
     """I lavori periodici dell'app avviata, e i moduli in cui vivono: tutti e
     due si chiedono allo schedulatore (`job.func`), non si scrivono qui. Se
-    domani i giri escono dal modulo di oggi, il cancello li segue."""
+    domani i giri escono dal modulo di oggi, il cancello li segue.
+
+    Un lavoro iscritto come `functools.partial(funzione, app)` si guarda
+    nella funzione che avvolge (`.func`): e' cosi' che `server.py` iscrive i
+    lavori usciti in `conservazione.py` (Tappa 8)."""
     jobs = app["scheduler"].get_jobs()
-    names = {job.func.__name__ for job in jobs}
-    files = {pathlib.Path(sys.modules[job.func.__module__].__file__) for job in jobs}
+    funcs = [getattr(job.func, "func", job.func) for job in jobs]
+    names = {func.__name__ for func in funcs}
+    files = {pathlib.Path(sys.modules[func.__module__].__file__) for func in funcs}
     return names, files
 
 

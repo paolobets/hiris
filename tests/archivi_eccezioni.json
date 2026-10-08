@@ -1,0 +1,8 @@
+{
+ "pragma-table-info": {
+  "hiris/app/mind/store.py": {
+   "conta": 6,
+   "ragione": "Tappa 8, Task 5, dopo l'unione: `_add_missing_columns`, le quattro letture delle migrazioni 9-12 e quella del passo di `_MIGRATION_15_STEPS` che toglie le due colonne di `cambi` (Task 3, nato in parallelo al cancello) passano a `storage` nel Task 5"
+  }
+ }
+}

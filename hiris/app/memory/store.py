@@ -49,7 +49,14 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 
-from ..storage import connect, init_schema, rekey
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+    rekey,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS ricordi (
@@ -102,9 +109,7 @@ def _migration_2(conn: sqlite3.Connection) -> None:
     colonna manca, come le migrazioni sorelle: un archivio che la ha gia'
     ma dichiara ancora v1 (una migrazione interrotta fra l'ALTER e il bump
     della versione) altrimenti non si aprirebbe piu' -- «duplicate column»."""
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(ricordi)").fetchall()}
-    if "said_by" not in colonne:
-        conn.execute("ALTER TABLE ricordi ADD COLUMN said_by TEXT")
+    add_missing_columns(conn, "ricordi", {"said_by": "TEXT"})
 
 
 def _author_clause(said_by: str | None) -> tuple[str, tuple]:
@@ -113,13 +118,36 @@ def _author_clause(said_by: str | None) -> tuple[str, tuple]:
     return (" WHERE said_by = ?", (said_by,)) if said_by is not None else ("", ())
 
 
+#: **Per quanto tiene ogni tabella: per sempre**, nella forma di ogni archivio
+#: (`storage.Retention`). E' il contratto, non una dimenticanza: «la memoria
+#: non evapora» (docs/design/2026-08-05-la-conoscenza-di-hiris.md, e il
+#: docstring di questo modulo). Un ricordo esce solo quando una persona lo
+#: dimentica.
+CONSERVAZIONE: Retention = {
+    "ricordi": (
+        None,
+        ("cio' che le persone hanno detto: la memoria non evapora, esce solo "
+         "quando qualcuno la dimentica"),
+        None),
+    "ancore": (None, "seguono il loro ricordo, ed escono con lui", None),
+    "condizioni": (None, "seguono il loro ricordo, ed escono con lui", None),
+}
+
+
 class MemoryStore:
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str = "/data/memoria.db") -> None:
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         self._conn.close()
+
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`, che tiene tutto: non toglie niente, e non
+        apre ne' chiude transazioni (`storage.prune_declared`)."""
+        return prune_declared(self._conn, CONSERVAZIONE, now)
 
     def rekey_subjects(self, renames: dict[str, str]) -> int:
         """I ricordi dei soggetti di `renames` (chiave vecchia -> nuova) passano

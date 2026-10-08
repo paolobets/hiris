@@ -25,7 +25,14 @@ import secrets
 import threading
 
 from ...chat_thread import ChatThread, thread_from_columns, thread_params
-from ...storage import connect, init_schema, rekey
+from ...storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+    rekey,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +82,7 @@ REASON_EXPIRED = "scaduta senza risposta"
 #: esserlo. Nasce in due posti: l'officina, quando dopo un silenzio della
 #: scrittura nemmeno la rilettura dell'oggetto risponde (`Workshop.apply`), e
 #: `risana`, all'avvio, per una riga rimasta `in_corso`. Una riga cosi' **non
-#: si pota** (`_prune`): puo' portare l'unico «prima» rimasto al mondo.
+#: si pota** (`CONSERVAZIONE`): puo' portare l'unico «prima» rimasto al mondo.
 #: Il nome e' il minimo, al femminile come gli altri stati della costruzione;
 #: il vocabolario unico degli stati e' della Tappa 8, che non ne ha ancora
 #: uno per questo caso (piano della Tappa 8, D4, letto il 07/10/2026).
@@ -86,6 +93,43 @@ UNCERTAIN = "incerta"
 #: righe che `risana` segnava `rifiutata` fino al 07/10/2026.
 REASON_RESTARTED = ("l’add-on si e' riavviato mentre la stavo applicando: non so "
                     "se la scrittura sia arrivata a Home Assistant.")
+
+#: I giorni dopo cui una proposta si pota: una costante perche' li dichiarano
+#: due tabelle, la proposta e i suoi avvisi, che la seguono.
+_RETENTION_DAYS = 90
+
+#: **Per quanto si tiene una proposta, e i suoi avvisi** (spec §7), nella
+#: forma di ogni archivio (`storage.Retention`).
+#:
+#: Le righe vecchie se ne vanno -- **tranne l'ultima applicata di ogni
+#: oggetto**, che e' l'unica copia del «prima» rimasta al mondo, **e le
+#: `incerta`** (E-11, D3a): di una scrittura che forse e' arrivata, il «prima»
+#: puo' essere l'unica copia anche lui. E' l'unica operazione irreversibile
+#: del modulo: il lavoro notturno (`conservazione.nightly`) scrive nel
+#: registro quante righe ha tolto, cosi' una regressione nella soglia o nella
+#: chiave di partizione lascia una traccia invece di sparire in silenzio.
+#:
+#: Fino alla Tappa 8 (D5) la potatura girava a ogni proposta nuova.
+CONSERVAZIONE: Retention = {
+    "costruzioni": (
+        _RETENTION_DAYS,
+        ("le proposte di costruzione e le versioni: la pagina Costruzioni le "
+         "mostra, e «Rimetti com'era» rilegge il «prima»; l'ultima applicata "
+         "di ogni oggetto e le incerte restano, perche' portano l'unico «prima» "
+         "rimasto"),
+        ("DELETE FROM costruzioni WHERE creata_ts < ? "
+         f"AND stato != '{UNCERTAIN}' AND id NOT IN ("
+         "  SELECT id FROM ("
+         "    SELECT id, ROW_NUMBER() OVER ("
+         "      PARTITION BY dominio, chiave ORDER BY creata_ts DESC) AS rn"
+         "    FROM costruzioni WHERE stato='applicata'"
+         "  ) WHERE rn = 1)")),
+    "avvisi": (
+        _RETENTION_DAYS,
+        ("gli avvisi seguono la loro proposta: una riga senza proposta non "
+         "dice piu' niente a nessuno"),
+        "DELETE FROM avvisi WHERE proposta_id NOT IN (SELECT id FROM costruzioni)"),
+}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
@@ -156,11 +200,8 @@ def _migration_2(conn) -> None:
     un volume che lo giustifichi -- il tetto e' 20 pendenti, e le due query
     che leggono il filo (`_only_pending`, il controllo per id) gia' passano
     da `list(pending_only=True)`/`read`, che restano su `stato`/`id`."""
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
-    if "subject_key" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN subject_key TEXT")
-    if "entry_point" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN entry_point TEXT")
+    add_missing_columns(conn, "costruzioni",
+                        {"subject_key": "TEXT", "entry_point": "TEXT"})
 
 
 def _migration_3(conn) -> None:
@@ -193,9 +234,7 @@ def _migration_4(conn) -> None:
     oggi il livello di una proposta di ieri le attribuirebbe un fatto che
     allora non c'era, e nessuno di quei si' e' stato chiesto con un livello.
     """
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
-    if "stakes" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN stakes TEXT")
+    add_missing_columns(conn, "costruzioni", {"stakes": "TEXT"})
 
 
 def _migration_5(conn) -> None:
@@ -208,11 +247,8 @@ def _migration_5(conn) -> None:
     bozze). Le righe scritte prima rileggono `None`: quale domanda le abbia
     fatte nascere non e' scritto da nessuna parte, e non si indovina.
     """
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
-    if "impronta" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN impronta TEXT")
-    if "prova_json" not in colonne:
-        conn.execute("ALTER TABLE costruzioni ADD COLUMN prova_json TEXT")
+    add_missing_columns(conn, "costruzioni",
+                        {"impronta": "TEXT", "prova_json": "TEXT"})
 
 
 def _migration_6(conn) -> None:
@@ -292,7 +328,7 @@ class ConstructionStore:
     # cambiare e' un secondo comportamento da mantenere.
     MAX_PENDING = 20
     DEADLINE_S = 7 * 86400
-    RETENTION_S = 90 * 86400
+    CONSERVAZIONE = CONSERVAZIONE
 
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
@@ -323,7 +359,6 @@ class ConstructionStore:
                 thread: ChatThread | None = None) -> dict:
         ident = secrets.token_urlsafe(9)
         with self._lock:
-            self._prune(now)
             # Le scadute si segnano qui, dove si scrive comunque, e si
             # contano fuori dal tetto: e' l'unico punto che le scrive sul
             # disco. Chi legge non lo aspetta (`_EXPIRED_SQL`).
@@ -611,7 +646,7 @@ class ConstructionStore:
 
         **Transita SOLO da `in_attesa`** -- una `WHERE` dedicata, non quella
         (`IN ('in_attesa','in_corso')`) condivisa da `_change_state` (ondata
-        finale, punto 2). L'invariante della potatura (`_prune`, sopra) fu
+        finale, punto 2). L'invariante della potatura (`CONSERVAZIONE`) fu
         dimostrato quando la transizione `in_attesa -> applicata` era a senso
         unico: aggiungere `disdetta` sopra la `WHERE` di `_change_state`
         l'ha rotto in silenzio. La corsa che apriva: una conferma dalla chat
@@ -674,36 +709,7 @@ class ConstructionStore:
         self._conn.commit()
         return cur.rowcount
 
-    def _prune(self, now: float) -> int:
-        """Le righe vecchie se ne vanno -- tranne l'ultima applicata di ogni
-        oggetto, che e' l'unica copia del «prima» rimasta al mondo, e le
-        `incerta` (E-11, D3a): di una scrittura che forse e' arrivata, il
-        «prima» puo' essere l'unica copia anche lui.
-
-        E' l'unica operazione irreversibile del modulo: restituisce quante
-        righe ha tolto e lo scrive nel log quando ne toglie almeno una, cosi'
-        una regressione nella soglia o nella chiave di partizione lascia una
-        traccia invece di sparire in silenzio. Committa da sola: la sua
-        durabilita' non puo' dipendere dal commit di un metodo chiamato dopo.
-
-        Va chiamata con il lock gia' preso.
-        """
-        threshold = now - self.RETENTION_S
-        cur = self._conn.execute(
-            "DELETE FROM costruzioni WHERE creata_ts < ? AND stato != ? AND id NOT IN ("
-            "  SELECT id FROM ("
-            "    SELECT id, ROW_NUMBER() OVER ("
-            "      PARTITION BY dominio, chiave ORDER BY creata_ts DESC) AS rn"
-            "    FROM costruzioni WHERE stato='applicata'"
-            "  ) WHERE rn = 1)",
-            (threshold, UNCERTAIN))
-        # Gli avvisi seguono la loro proposta: una riga senza proposta non
-        # dice piu' niente a nessuno.
-        self._conn.execute(
-            "DELETE FROM avvisi WHERE proposta_id NOT IN (SELECT id FROM costruzioni)")
-        self._conn.commit()
-        count = cur.rowcount
-        if count:
-            logger.info("costruzioni: potate %d righe piu' vecchie della soglia %s "
-                        "(l'ultima applicata di ogni oggetto e' esclusa)", count, threshold)
-        return count
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le proposte e gli avvisi tolti."""
+        with self._lock:
+            return prune_declared(self._conn, CONSERVAZIONE, now)

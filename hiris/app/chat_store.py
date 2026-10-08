@@ -8,10 +8,11 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
+from .chat_settings import DEFAULT_RETENTION_DAYS
 from .chat_thread import ChatThread, thread_condition, thread_params
 from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
-from .storage import connect, init_schema, rekey
+from .storage import Retention, add_missing_columns, connect, init_schema, rekey
 
 logger = logging.getLogger(__name__)
 
@@ -181,15 +182,15 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
 
 # fetta "Modelli" (2.0), Task 12: la costante di modulo `HISTORY_RETENTION_DAYS`
 # e' uscita -- viveva qui, letta all'IMPORT da due lettori (questo modulo
-# stesso, in `ChatStore.load_context`, e `server.py::_run_retention`), e
+# stesso, in `ChatStore.load_context`, e la potatura notturna), e
 # scriverla a runtime (com'era pensato dal vecchio commento "overridable at
 # startup via configure()", che non esisteva davvero: nessun `configure()` e'
 # mai stato definito in questo file) non l'avrebbe mai fatta arrivare a un
 # lettore che la importa per valore all'avvio. La sorgente di verita' e' ora
 # `ChatSettings.retention_days` (`chat_settings.py`): entrambi i
 # lettori la ricevono come PARAMETRO a ogni chiamata, non piu' come un globale
-# fissato una volta. `load_context` sotto porta `days` con un default (90,
-# lo stesso valore che questa costante aveva) solo per i chiamanti di questo
+# fissato una volta. `load_context` sotto porta `days` con un default
+# (`chat_settings.DEFAULT_RETENTION_DAYS`) solo per i chiamanti di questo
 # repo che non hanno un'opinione sulla conservazione (i test che non la
 # esercitano); i due lettori di produzione lo passano sempre esplicitamente.
 SESSION_GAP_HOURS = 2
@@ -242,13 +243,15 @@ _HAS_RETAINED_MESSAGE = ("EXISTS (SELECT 1 FROM chat_messages m "
                          "WHERE m.session_id = s.session_id AND m.timestamp >= ?)")
 
 
-def _retention_cutoff(days: int) -> str:
-    """Il primo istante che la conservazione ricorda; `""` quando `days` e'
-    `0` (nessun filtro: ogni `timestamp` e' `>= ""`), la stessa regola di
-    `delete_old_messages`."""
+def _retention_cutoff(days: int, now: float | None = None) -> str:
+    """Il primo istante che la conservazione ricorda, nella forma dei
+    `timestamp` di questo archivio; `""` quando `days` e' `0` (nessun filtro:
+    ogni `timestamp` e' `>= ""`). La regola sola di chi legge e della
+    potatura (`ChatStore.prune`), che passa il suo `now`."""
     if days <= 0:
         return ""
-    return (datetime.now(UTC) - timedelta(days=days)).strftime(_TS_FMT)
+    moment = datetime.now(UTC) if now is None else datetime.fromtimestamp(now, UTC)
+    return (moment - timedelta(days=days)).strftime(_TS_FMT)
 
 
 _stores: dict[str, "ChatStore"] = {}
@@ -288,10 +291,10 @@ CREATE INDEX IF NOT EXISTS idx_sess_last_msg ON chat_sessions(last_msg_at);
 
 # L'indice del filo NON sta in `_SCHEMA`: `init_schema` esegue lo script PRIMA
 # delle migrazioni, e su un archivio v3 (senza le due colonne) un `CREATE INDEX`
-# su `subject_key` farebbe fallire l'apertura invece di migrare. Si crea in
-# `ChatStore.__init__`, subito dopo `init_schema()`: li' le colonne esistono
-# sempre, che l'archivio sia appena nato o appena migrato. Stesso giro di
-# `reasoning/queue.py::_IDX_THREAD_SQL`.
+# su `subject_key` farebbe fallire l'apertura invece di migrare. Lo crea
+# `init_schema` dopo le migrazioni (`after_sql`, G-13): li' le colonne
+# esistono sempre, che l'archivio sia appena nato o appena migrato. Stesso
+# giro di `reasoning/queue.py::_IDX_THREAD_SQL`.
 _IDX_THREAD_SQL = ("CREATE INDEX IF NOT EXISTS idx_sess_thread "
                    "ON chat_sessions(subject_key, entry_point, last_msg_at)")
 
@@ -344,21 +347,45 @@ def _migration_4(conn: sqlite3.Connection) -> None:
     orfana: invisibile a tutti finche' `adopt_orphans` non la da' al
     proprietario. `ALTER TABLE` solo se la colonna manca: un DB che arriva
     qui passando da `_reset` (pre-v3) ha gia' le colonne da `_SCHEMA`."""
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()}
-    if "subject_key" not in colonne:
-        conn.execute("ALTER TABLE chat_sessions ADD COLUMN subject_key TEXT")
-    if "entry_point" not in colonne:
-        conn.execute("ALTER TABLE chat_sessions ADD COLUMN entry_point TEXT")
+    add_missing_columns(conn, "chat_sessions",
+                        {"subject_key": "TEXT", "entry_point": "TEXT"})
+
+
+#: **Per quanto si conserva una conversazione**, nella forma di ogni archivio
+#: (`storage.Retention`). La finestra la sceglie il proprietario
+#: (`giorni_conservazione`, pagina Impostazioni chat): qui c'e' il default, e
+#: `ChatStore.CONSERVAZIONE` la dice com'e' adesso. Le sessioni seguono i loro
+#: messaggi: una sessione senza messaggi non ha piu' niente da riassumere.
+CONSERVAZIONE: Retention = {
+    "chat_messages": (
+        DEFAULT_RETENTION_DAYS,
+        ("le conversazioni: la finestra e' quella che il proprietario sceglie "
+         "dalla pagina Impostazioni chat, e 0 vuol dire per sempre"),
+        "DELETE FROM chat_messages WHERE timestamp < ?"),
+    "chat_sessions": (
+        DEFAULT_RETENTION_DAYS,
+        "le sessioni seguono i loro messaggi, ed escono con l'ultimo",
+        ("DELETE FROM chat_sessions WHERE session_id NOT IN "
+         "(SELECT DISTINCT session_id FROM chat_messages)")),
+}
+
+#: Il nome del file dell'archivio, nella cartella dei dati.
+_FILE = "chat_history.db"
 
 
 class ChatStore:
-    def __init__(self, db_path: str):
+    """`read_retention_days` dice la finestra di adesso (D5 della Tappa 8):
+    la pagina la cambia a caldo, e la potatura di stanotte deve vedere il
+    valore scelto oggi, non quello con cui l'add-on e' partito."""
+
+    def __init__(self, db_path: str, *, read_retention_days=None):
+        self._read_retention_days = read_retention_days or (
+            lambda: DEFAULT_RETENTION_DAYS)
         self._conn = connect(db_path)
         self._mu = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=4,
-                    migrations={2: _reset, 3: _reset, 4: _migration_4})
-        self._conn.execute(_IDX_THREAD_SQL)
-        self._conn.commit()
+                    migrations={2: _reset, 3: _reset, 4: _migration_4},
+                    after_sql=_IDX_THREAD_SQL)
 
     # ------------------------------------------------------------------
     # Internal helpers (called with self._mu already held)
@@ -490,7 +517,7 @@ class ChatStore:
             self._conn.commit()
 
     def load_context(
-        self, thread: ChatThread, max_turns: int = 30, *, days: int = 90,
+        self, thread: ChatThread, max_turns: int = 30, *, days: int = DEFAULT_RETENTION_DAYS,
         include_timestamp: bool = False,
     ) -> list[dict]:
         """Return last max_turns pairs from the thread's active (non-stale) session.
@@ -500,8 +527,8 @@ class ChatStore:
         sooner -- messages older than `days` days, even inside the still-open
         active session, are not read back into the model's context. `0`
         disables this (never filters), and the nightly pruning agrees on what
-        `0` means -- `delete_old_messages` below writes the same rule the other
-        way round, `if retention_days <= 0: return 0`.
+        `0` means -- `prune` below writes the same rule the other
+        way round, `if days <= 0: return 0`.
 
         `include_timestamp` (collaudo 3.22, C4 -- "la chat inventa l'ora dei
         messaggi"): di default `False`, e il dizionario resta `{role, content}`
@@ -565,7 +592,8 @@ class ChatStore:
     # esattamente come un id che non esiste (security 6.3).
     # ------------------------------------------------------------------
 
-    def list_conversations(self, thread: ChatThread, *, days: int = 90) -> list[dict]:
+    def list_conversations(self, thread: ChatThread, *,
+                           days: int = DEFAULT_RETENTION_DAYS) -> list[dict]:
         """Le conversazioni del filo, la piu' recente in testa: `{id, titolo,
         ultimo_messaggio, attiva}`.
 
@@ -620,7 +648,7 @@ class ChatStore:
                 raise
 
     def resume_conversation(self, thread: ChatThread, session_id: str, *,
-                            days: int = 90) -> bool:
+                            days: int = DEFAULT_RETENTION_DAYS) -> bool:
         """Torna attiva una conversazione del filo; `False` se non ce n'e'
         una con quell'id -- altrui, orfana, inesistente o dimenticata.
 
@@ -709,21 +737,31 @@ class ChatStore:
             return rekey(self._conn, "UPDATE chat_sessions SET subject_key = ? "
                          "WHERE subject_key = ?", renames)
 
-    def delete_old_messages(self, retention_days: int) -> int:
-        """Hard-delete chat messages older than retention_days. Returns row count deleted."""
-        if retention_days <= 0:
+    @property
+    def CONSERVAZIONE(self) -> Retention:
+        """La dichiarazione con la finestra di ADESSO: quella che il
+        proprietario ha scelto, `None` (per sempre) se ha scelto 0."""
+        days = self._read_retention_days()
+        window = days if days > 0 else None
+        return {table: (window, reason, deletion if window is not None else None)
+                for table, (_default, reason, deletion) in CONSERVAZIONE.items()}
+
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE` con la finestra di adesso; torna i
+        messaggi e le sessioni tolti. Con 0 giorni non tocca niente.
+
+        Non e' `storage.prune_declared`: i `timestamp` di questo archivio sono
+        testo ISO (`_TS_FMT`), e la soglia va scritta nella stessa forma."""
+        days = self._read_retention_days()
+        if days <= 0:
             return 0
-        cutoff = _retention_cutoff(retention_days)
+        cutoff = _retention_cutoff(days, now)
         with self._mu:
-            cur = self._conn.execute(
-                "DELETE FROM chat_messages WHERE timestamp < ?", (cutoff,)
-            )
-            self._conn.execute(
-                "DELETE FROM chat_sessions WHERE session_id NOT IN "
-                "(SELECT DISTINCT session_id FROM chat_messages)"
-            )
+            removed = self._conn.execute(
+                CONSERVAZIONE["chat_messages"][2], (cutoff,)).rowcount
+            removed += self._conn.execute(CONSERVAZIONE["chat_sessions"][2]).rowcount
             self._conn.commit()
-            return cur.rowcount
+        return removed
 
     def close(self) -> None:
         with self._mu:
@@ -738,9 +776,25 @@ def _get_store(data_dir: str) -> ChatStore:
     if data_dir not in _stores:
         with _lock:
             if data_dir not in _stores:
-                db_path = os.path.join(data_dir, "chat_history.db")
-                _stores[data_dir] = ChatStore(db_path)
+                _stores[data_dir] = ChatStore(os.path.join(data_dir, _FILE))
     return _stores[data_dir]
+
+
+def open_store(data_dir: str, *, read_retention_days) -> ChatStore:
+    """L'archivio della chat dell'app, aperto all'avvio come gli altri
+    (`app["chat_store"]`, D-27 della Tappa 8), con la finestra letta dalle
+    impostazioni della chat.
+
+    E' la stessa istanza che le funzioni di modulo qui sotto trovano per
+    `data_dir`: un archivio aperto prima (una prova che prepara il disco
+    prima dell'avvio) si chiude e si riapre, cosi' che ce ne sia uno solo."""
+    with _lock:
+        earlier = _stores.pop(data_dir, None)
+        if earlier is not None:
+            earlier.close()
+        store = _stores[data_dir] = ChatStore(
+            os.path.join(data_dir, _FILE), read_retention_days=read_retention_days)
+    return store
 
 
 # ---------------------------------------------------------------------------
@@ -752,7 +806,7 @@ def _get_store(data_dir: str) -> ChatStore:
 # ---------------------------------------------------------------------------
 
 def load_history(
-    data_dir: str, *, thread: ChatThread, days: int = 90,
+    data_dir: str, *, thread: ChatThread, days: int = DEFAULT_RETENTION_DAYS,
     include_timestamp: bool = False,
 ) -> list[dict]:
     """Return [{role, content}] for the thread's active session (Claude API format).
@@ -803,7 +857,7 @@ def append_assistant_line(content: str, data_dir: str, *,
 
 
 def list_conversations(data_dir: str, *, thread: ChatThread,
-                       days: int = 90) -> list[dict]:
+                       days: int = DEFAULT_RETENTION_DAYS) -> list[dict]:
     """Le conversazioni del filo -- vedi `ChatStore.list_conversations`."""
     return _get_store(data_dir).list_conversations(thread, days=days)
 
@@ -814,7 +868,7 @@ def new_conversation(data_dir: str, *, thread: ChatThread) -> None:
 
 
 def resume_conversation(data_dir: str, *, thread: ChatThread, session_id: str,
-                        days: int = 90) -> bool:
+                        days: int = DEFAULT_RETENTION_DAYS) -> bool:
     """Riprende una conversazione del filo -- vedi `ChatStore.resume_conversation`."""
     return _get_store(data_dir).resume_conversation(thread, session_id, days=days)
 
@@ -849,11 +903,6 @@ def adopt_orphans(data_dir: str, *, thread: ChatThread) -> int:
 def rekey_subjects(data_dir: str, renames: dict[str, str]) -> int:
     """Le sessioni dei soggetti di `renames` passano alla chiave nuova; ritorna quante."""
     return _get_store(data_dir).rekey_subjects(renames)
-
-
-def delete_old_messages(data_dir: str, retention_days: int) -> int:
-    """Hard-delete chat messages older than retention_days days."""
-    return _get_store(data_dir).delete_old_messages(retention_days)
 
 
 def close_all_stores() -> None:

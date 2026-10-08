@@ -729,13 +729,16 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
     una regola da non sbagliare: due opzioni distinte, combinate a mano nel
     punto giusto. Poi due chiamate alla stessa funzione. Adesso e' una
     struttura: `_recompute_chain` e' l'UNICO posto che deriva il valore, e
-    `_reasoning_sweep` lo legge invece di ricalcolarlo.
+    l'instradamento lo legge invece di ricalcolarlo. Dall'08/10/2026 (Tappa 8,
+    Task 6, D5) la spazzata non lo legge piu': gira acceso o spento che sia il
+    ponte, perche' spazzare cio' che e' gia' in coda non accoda niente -- il
+    fail-safe e' tutto dell'instradamento, l'unico che accoda.
 
     Fino al 03/10/2026 questa prova guardava il testo di `_recompute_chain` e
     di `_on_startup`; adesso guarda il comportamento, in tre prove:
     questa (il ricalcolo passa dal combinatore condiviso), e le due qui sotto
     sull'app avviata (il valore segue l'archivio, all'avvio e dopo; la
-    spazzata LEGGE il valore invece di ricalcolarlo).
+    spazzata non obbedisce ne' al valore ne' all'archivio).
 
     Mutazione ESEGUITA (03/10/2026): in `_recompute_chain`
     `app["bridge_active"] = _bridge_active(cfg)` ->
@@ -789,16 +792,16 @@ async def test_il_ponte_segue_l_archivio_all_avvio_e_dopo(tmp_path):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_la_spazzata_LEGGE_il_valore_e_non_lo_ricalcola(started_app):
-    """La spazzata e l'instradamento leggono lo STESSO slot: se la spazzata
-    rideriva il valore dall'archivio, le due derivazioni possono divergere --
-    ed e' esattamente il buco che l'AND di prima serviva a chiudere. Qui lo
-    slot e l'archivio dicono cose OPPOSTE apposta, e si guarda a chi
-    obbedisce il lavoro vero (`hiris_reasoning_sweep`).
+async def test_la_spazzata_non_obbedisce_al_ponte(started_app):
+    """**Rovesciata nella Tappa 8 (Task 6, D5, G-11).** Fino all'08/10/2026
+    si chiamava `test_la_spazzata_LEGGE_il_valore_e_non_lo_ricalcola` e
+    pretendeva che la spazzata si fermasse a slot spento. Adesso la spazzata
+    gira sempre: in ognuna delle quattro combinazioni di slot e archivio il
+    lavoro vero (`hiris_reasoning_sweep`) spazza.
 
-    Mutazione ESEGUITA (03/10/2026): nella spazzata
-    `if not app.get("bridge_active"):` ->
-    `if not _bridge_active(app.get("models_config")):` -- rossa.
+    Mutazione ESEGUITA (08/10/2026): rimesso `if not app.get("bridge_active"):
+    return` in testa a `conservazione.reasoning_sweep` -- rossa (slot spento,
+    nessuna spazzata).
 
     L'app condivisa del file: `mock.patch.dict` rimette lo slot e l'archivio
     come li ha trovati, e la coda finta non tocca quella vera."""
@@ -807,17 +810,15 @@ async def test_la_spazzata_LEGGE_il_valore_e_non_lo_ricalcola(started_app):
     app = started_app
     sweep = app["scheduler"].get_job("hiris_reasoning_sweep").func
     queue = app["reasoning_queue"]
-    for slot, archivio, spazza in ((True, False, True), (False, True, False)):
+    for slot, archivio in ((True, True), (True, False), (False, True), (False, False)):
         with mock.patch.dict(app, {
                 "bridge_active": slot,
                 "models_config": {**app["models_config"],
                                   "ponte": {"attivo": archivio}}}), \
                 mock.patch.object(queue, "sweep_expired", return_value=[]) as expired:
             await sweep()
-        assert expired.called is spazza, (
-            f"slot {slot}, archivio {archivio}: la spazzata "
-            f"{'non ha' if spazza else 'ha'} spazzato -- non legge il valore condiviso"
-        )
+        assert expired.called, (
+            f"slot {slot}, archivio {archivio}: la spazzata non ha spazzato")
 
 
 def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():

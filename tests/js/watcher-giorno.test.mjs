@@ -239,7 +239,8 @@ test('seam _rendiResoconto: un giorno senza niente lo DICE, e non tace', () => {
 test('seam _rendiResoconto: un resoconto con `regole: null` lo dice in una nota discreta, col perché a parte', () => {
   // Tappa 8, G-03 (D2), disegno di ux-ui-specialist (08/10/2026).
   // Mutazioni ESEGUITE: togliere la nota -- rossa; togliere `&& misure.length`
-  // -- rossa sul giorno senza misure; togliere `role="note"` -- rossa.
+  // -- rossa sul giorno senza misure; togliere `role="note"` -- rossa;
+  // `=== null` portato a `== null` -- rossa sulla chiave assente (N97-1).
   const prima = rendiResoconto(resoconto({ regole: null, misure: [misura()] }));
   const nota = prima.corpo.querySelector('[role="note"].field-hint');
   assert.ok(nota, 'la nota c\'è, con il suo ruolo e il testo secondario');
@@ -254,6 +255,13 @@ test('seam _rendiResoconto: un resoconto con `regole: null` lo dice in una nota 
     regole: { registro_operazioni: 3, dato_fermo: 1 }, misure: [misura()] }));
   assert.equal(dopo.corpo.querySelector('[role="note"]'), null,
     'un resoconto con le sue regole non porta la nota');
+
+  // Una chiave assente non è un fatto: dalla migrazione 15 `regole` c'è
+  // sempre, e un corpo che non la porta non si dice «misurato prima»
+  // (rilievo N97-1, giro 97). `resoconto()` non ha la chiave.
+  const senzaChiave = rendiResoconto(resoconto({ misure: [misura()] }));
+  assert.equal(senzaChiave.corpo.querySelector('[role="note"]'), null,
+    'una chiave `regole` assente non porta la nota');
 
   const vuoto = rendiResoconto(resoconto({ regole: null, misure: [] }));
   assert.equal(vuoto.corpo.querySelector('[role="note"]'), null,

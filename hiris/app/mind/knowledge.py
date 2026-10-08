@@ -45,7 +45,14 @@ from dataclasses import dataclass
 
 from ..home_space.type_judgments import ATTRIBUTE_FIELD, JUDGMENT_FIELD_NAMES, type_subject
 from ..home_space.type_vocabulary import Provenance
-from ..storage import connect, init_schema, rekey
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+    rekey,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -230,11 +237,8 @@ def _migration_2(conn) -> None:
     e' piu' correggibile dal seme -- il che e' il comportamento prudente:
     «non so se qualcuno l'ha toccata» si tratta come «qualcuno l'ha toccata».
     """
-    for column, kind in (("seeded_value", "TEXT"),
-                         ("seeded_priority", "INTEGER NOT NULL DEFAULT 0")):
-        esistenti = {r[1] for r in conn.execute("PRAGMA table_info(knowledge)")}
-        if column not in esistenti:
-            conn.execute(f"ALTER TABLE knowledge ADD COLUMN {column} {kind}")
+    add_missing_columns(conn, "knowledge", {
+        "seeded_value": "TEXT", "seeded_priority": "INTEGER NOT NULL DEFAULT 0"})
 
 
 def _migration_3(conn) -> None:
@@ -448,8 +452,7 @@ def _migration_8(conn) -> None:
     la chiave. I giudizi scritti dalla porta prima di allora portano l'autore
     «proprietario»: la migrazione 10 li riconosce da quello.
     """
-    if "said_by" not in {r[1] for r in conn.execute("PRAGMA table_info(knowledge)")}:
-        conn.execute("ALTER TABLE knowledge ADD COLUMN said_by TEXT")
+    add_missing_columns(conn, "knowledge", {"said_by": "TEXT"})
 
 
 #: I campi che nessuno legge piu', e che la migrazione 9 toglie dagli archivi
@@ -658,6 +661,20 @@ def _facts_and_skipped(rows) -> tuple[list[Fact], list[str]]:
     return facts, skipped
 
 
+#: **Per quanto tiene il sapere: per sempre**, nella forma di ogni archivio
+#: (`storage.Retention`). Una riga e' un giudizio o una ricetta che vale
+#: finche' vale il suo soggetto: non scade col tempo. Le righe che non hanno
+#: piu' un referente nella casa le toglie la riconciliazione (piano della
+#: Tappa 8, Task 1), non un orologio.
+CONSERVAZIONE: Retention = {
+    "knowledge": (
+        None,
+        ("giudizi e ricette: valgono finche' vale il loro soggetto, e una "
+         "scadenza a tempo cancellerebbe un sapere ancora vero"),
+        None),
+}
+
+
 class KnowledgeStore:
     """L'archivio del sapere. Una riga per `(genere, soggetto, campo)`.
 
@@ -665,6 +682,8 @@ class KnowledgeStore:
     due volte deve restare una cosa sola, o le due copie divergono e nessuno
     sa quale valga. E' la seconda fondamenta applicata all'archivio.
     """
+
+    CONSERVAZIONE = CONSERVAZIONE
 
     def __init__(self, db_path: str) -> None:
         self._lock = threading.Lock()
@@ -697,6 +716,15 @@ class KnowledgeStore:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le righe tolte. Se ne toglie, la
+        versione avanza come per ogni scrittura (`version`)."""
+        with self._lock:
+            removed = prune_declared(self._conn, CONSERVAZIONE, now)
+            if removed:
+                self._version += 1
+            return removed
 
     def rekey_subjects(self, renames: dict[str, str]) -> int:
         """Le righe dei soggetti di `renames` (chiave vecchia -> nuova) passano

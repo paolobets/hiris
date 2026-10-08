@@ -22,7 +22,13 @@ from ..home_space.privacy import POSITION_ATTRIBUTES
 from ..providers import CLAUDE, OLLAMA, OPENAI, OPENROUTER, SUBSCRIPTION, get, ids
 from ..proxy._sanitize import CUT, MASK, truncate_with_marker
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
-from ..storage import connect, init_schema
+from ..storage import (
+    Retention,
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+)
 from . import vocabulary
 
 logger = logging.getLogger(__name__)
@@ -176,14 +182,55 @@ CREATE TABLE IF NOT EXISTS payload (
 );
 """
 
-#: **Per quanto si tengono i due registri della misura.** Trenta giorni, e si
-#: dichiara: un registro di misura che cresce per sempre e' esattamente il
-#: difetto che il reperto C-6 ha chiuso il 23/09/2026 -- ogni archivio dice
-#: per quanto tiene. E' il SOLO contenuto di questo file che scade: i
-#: secchielli al giorno sono minuscoli (meno di duemila righe l'anno) e
-#: restano per sempre, con la loro ragione scritta in cima al modulo. Questi
-#: no: un turno puo' scrivere fino a cinquanta righe di `payload`.
-TURNS_RETENTION_S = 30 * 86400
+#: I giorni dei due registri della misura: una costante perche' li dichiarano
+#: tutte e due le tabelle, il turno e i suoi giri, che scadono INSIEME.
+_MEASURE_DAYS = 30
+
+#: **Per quanto tiene ogni tabella di questo archivio**, nella forma di ogni
+#: archivio (`storage.Retention`).
+#:
+#: I due registri della misura scadono, e si dichiara: un registro di misura
+#: che cresce per sempre e' esattamente il difetto che il reperto C-6 ha
+#: chiuso il 23/09/2026. Sono il SOLO contenuto di questo file che scade: un
+#: turno puo' scrivere fino a cinquanta righe di `payload`. **I due scadono
+#: insieme, e il carico non sopravvive al suo turno**: righe di `payload`
+#: orfane non rispondono a nessuna domanda -- la specie del turno e' cio' che
+#: distingue «l'analista spende cosi'» da «la chat spende cosi'». Per questo
+#: `payload` sta PRIMA di `turn`: la sua cancellazione chiede i turni scaduti,
+#: e dopo non ci sarebbero piu'.
+#:
+#: Fino alla Tappa 8 (D5) i due DELETE giravano a ogni turno (`log_turn`);
+#: adesso nel lavoro notturno (`conservazione.nightly`).
+CONSERVAZIONE: Retention = {
+    "consumo_giorno": (
+        None,
+        ("un secchiello al giorno per provider e modello: meno di duemila righe "
+         "l'anno, ed e' la storia di quanto si e' speso"),
+        None),
+    "ancora": (None, "una riga sola: da quando si conta", None),
+    "ancora_saldo": (
+        None, "il saldo di prima dell'ancora, una riga per modello", None),
+    "legacy_importati": (
+        None,
+        ("quali file di prima sono gia' entrati, e quindi si cancellano: "
+         "senza, un file tornato da un backup rientrerebbe e i totali "
+         "raddoppierebbero"),
+        None),
+    "fallback": (
+        None,
+        ("un secchiello al giorno per agente e motivo dei ripieghi a consumo: "
+         "minuscolo come i consumi, e spiega perche' la bolletta e' cresciuta"),
+        None),
+    "payload": (
+        _MEASURE_DAYS,
+        "i giri di un turno: seguono il loro turno, e scadono con lui",
+        "DELETE FROM payload WHERE turn_id IN (SELECT id FROM turn WHERE ts < ?)"),
+    "turn": (
+        _MEASURE_DAYS,
+        ("i turni misurati: servono a vedere dove va il costo di questo mese, "
+         "e il dettaglio di un turno di due mesi fa non lo chiede nessuno"),
+        "DELETE FROM turn WHERE ts < ?"),
+}
 
 #: Le colonne dei token di un giro, nell'ordine della tabella. **Una sola
 #: lista, dentro questo file**: la leggono la migrazione, l'INSERT e la
@@ -211,18 +258,11 @@ def _migration_2(conn) -> None:
     Le righe gia' scritte restano NULL -- non sono state misurate, e non si
     inventa che lo siano.
     """
-    columns = {r[1] for r in conn.execute("PRAGMA table_info(payload)").fetchall()}
     column_types = {"cache_ttl": "TEXT", "cost_usd": "REAL"}
-    for name in TOKEN_COLUMNS:
-        if name not in columns:
-            conn.execute(f"ALTER TABLE payload ADD COLUMN {name} "
-                         f"{column_types.get(name, 'INTEGER')}")
-    turn_columns = {r[1] for r in conn.execute(
-        "PRAGMA table_info(turn)").fetchall()}
-    if "output_tokens" not in turn_columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN output_tokens INTEGER")
-    if "list_cost_usd" not in turn_columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN list_cost_usd REAL")
+    add_missing_columns(conn, "payload", {
+        name: column_types.get(name, "INTEGER") for name in TOKEN_COLUMNS})
+    add_missing_columns(conn, "turn", {"output_tokens": "INTEGER",
+                                       "list_cost_usd": "REAL"})
 
 
 def _migration_3(conn) -> None:
@@ -231,9 +271,7 @@ def _migration_3(conn) -> None:
     Stessa cura della 2: la colonna si aggiunge solo se manca. Le righe gia'
     scritte restano NULL -- gli argomenti non furono registrati, e non si
     inventa che siano `[]`."""
-    columns = {r[1] for r in conn.execute("PRAGMA table_info(turn)").fetchall()}
-    if "tool_args" not in columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN tool_args TEXT")
+    add_missing_columns(conn, "turn", {"tool_args": "TEXT"})
 
 
 def _migration_4(conn) -> None:
@@ -241,9 +279,7 @@ def _migration_4(conn) -> None:
     risposta rifiutata, sulla riga del suo turno. Stessa cura della 2 e della
     3: la colonna si aggiunge solo se manca, e le righe gia' scritte restano
     NULL -- nessuno le aveva rifiutate per iscritto."""
-    columns = {r[1] for r in conn.execute("PRAGMA table_info(turn)").fetchall()}
-    if "problems" not in columns:
-        conn.execute("ALTER TABLE turn ADD COLUMN problems TEXT")
+    add_missing_columns(conn, "turn", {"problems": "TEXT"})
 
 
 #: La chiave con cui i consumi chiamavano il piano fino alla Tappa 7 (Task 9).
@@ -436,6 +472,8 @@ def log_safely(log_usage, provider: str, model: str, **fields) -> None:
 
 
 class UsageStore:
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
@@ -477,48 +515,62 @@ class UsageStore:
         sulla riga del modello che l'ha preso, senza contarla come una
         richiesta servita.
         """
-        day = local_date(now, self._timezone()).isoformat()
         with self._lock:
-            row = self._conn.execute(
-                "SELECT costo_usd, costo_stato FROM consumo_giorno "
-                "WHERE giorno=? AND provider=? AND modello=?",
-                (day, provider, model)).fetchone()
-            if row is None:
-                self._conn.execute(
-                    "INSERT INTO consumo_giorno (giorno, provider, modello, "
-                    "richieste, token_in, token_out, cache_lettura, "
-                    "cache_scrittura, costo_usd, costo_stato, "
-                    "errori_rate_limit, primo_ts, ultimo_ts) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (day, provider, model, richieste, token_in, token_out,
-                     cache_read, cache_write, cost_usd, cost_state,
-                     errori_rate_limit, now, now))
-            else:
-                state = vocabulary.piu_debole(row["costo_stato"], cost_state)
-                if state != row["costo_stato"]:
-                    logger.info(
-                        "consumi: %s/%s del %s degrada da «%s» a «%s» -- il "
-                        "provider ha cambiato comportamento",
-                        provider, model, day, row["costo_stato"], state)
-                # I costi si sommano solo fra quelli NOTI. Una riga degradata
-                # tiene cio' che ha gia' pagato e diventa un pavimento -- lo
-                # stesso concetto del totale in cima alla pagina, a una scala
-                # piu' piccola. Buttarlo direbbe «non ho speso niente», che e'
-                # falso quanto lo zero da cui nasce la fetta.
-                noti = [c for c in (row["costo_usd"], cost_usd) if c is not None]
-                self._conn.execute(
-                    "UPDATE consumo_giorno SET richieste=richieste+?, "
-                    "token_in=token_in+?, token_out=token_out+?, "
-                    "cache_lettura=cache_lettura+?, cache_scrittura=cache_scrittura+?, "
-                    "costo_usd=?, costo_stato=?, "
-                    "errori_rate_limit=errori_rate_limit+?, "
-                    "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
-                    "WHERE giorno=? AND provider=? AND modello=?",
-                    (richieste, token_in, token_out, cache_read,
-                     cache_write, sum(noti) if noti else None, state,
-                     errori_rate_limit, now, now,
-                     day, provider, model))
+            self._add(provider, model, richieste=richieste, token_in=token_in,
+                      token_out=token_out, cache_read=cache_read,
+                      cache_write=cache_write, cost_usd=cost_usd,
+                      cost_state=cost_state, errori_rate_limit=errori_rate_limit,
+                      now=now)
             self._conn.commit()
+
+    def _add(self, provider: str, model: str, *, richieste: int, token_in: int,
+             token_out: int, cache_read: int, cache_write: int,
+             cost_usd: float | None, cost_state: str, errori_rate_limit: int,
+             now: float) -> None:
+        """La scrittura nel secchiello, **senza lucchetto e senza commit**:
+        li tiene il chiamante. Esiste perche' `importa_legacy` scriva il
+        totale e la sua riga in `legacy_importati` in una transazione sola
+        (S-18, Tappa 8)."""
+        day = local_date(now, self._timezone()).isoformat()
+        row = self._conn.execute(
+            "SELECT costo_usd, costo_stato FROM consumo_giorno "
+            "WHERE giorno=? AND provider=? AND modello=?",
+            (day, provider, model)).fetchone()
+        if row is None:
+            self._conn.execute(
+                "INSERT INTO consumo_giorno (giorno, provider, modello, "
+                "richieste, token_in, token_out, cache_lettura, "
+                "cache_scrittura, costo_usd, costo_stato, "
+                "errori_rate_limit, primo_ts, ultimo_ts) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, provider, model, richieste, token_in, token_out,
+                 cache_read, cache_write, cost_usd, cost_state,
+                 errori_rate_limit, now, now))
+        else:
+            state = vocabulary.piu_debole(row["costo_stato"], cost_state)
+            if state != row["costo_stato"]:
+                logger.info(
+                    "consumi: %s/%s del %s degrada da «%s» a «%s» -- il "
+                    "provider ha cambiato comportamento",
+                    provider, model, day, row["costo_stato"], state)
+            # I costi si sommano solo fra quelli NOTI. Una riga degradata
+            # tiene cio' che ha gia' pagato e diventa un pavimento -- lo
+            # stesso concetto del totale in cima alla pagina, a una scala
+            # piu' piccola. Buttarlo direbbe «non ho speso niente», che e'
+            # falso quanto lo zero da cui nasce la fetta.
+            noti = [c for c in (row["costo_usd"], cost_usd) if c is not None]
+            self._conn.execute(
+                "UPDATE consumo_giorno SET richieste=richieste+?, "
+                "token_in=token_in+?, token_out=token_out+?, "
+                "cache_lettura=cache_lettura+?, cache_scrittura=cache_scrittura+?, "
+                "costo_usd=?, costo_stato=?, "
+                "errori_rate_limit=errori_rate_limit+?, "
+                "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
+                "WHERE giorno=? AND provider=? AND modello=?",
+                (richieste, token_in, token_out, cache_read,
+                 cache_write, sum(noti) if noti else None, state,
+                 errori_rate_limit, now, now,
+                 day, provider, model))
 
     def log_fallback(self, agent: str, reason: str, *, now: float) -> None:
         """Un giro e' passato dal forfait al consumo: si conta.
@@ -595,7 +647,6 @@ class UsageStore:
         # di dominio italiano.
         ident = secrets.token_urlsafe(9)
         with self._lock:
-            self._scadi_misure(now)
             self._conn.execute(
                 "INSERT INTO turn(id,ts,species,provider,model,channel,"
                 "subject_json,duration_ms,iterations,tools,outcome,"
@@ -672,16 +723,10 @@ class UsageStore:
                  *valori_token))
             self._conn.commit()
 
-    def _scadi_misure(self, now: float) -> None:
-        """I due registri scadono INSIEME, e il carico non sopravvive al suo
-        turno: righe di `payload` orfane non rispondono a nessuna domanda --
-        la specie del turno e' cio' che distingue «l'analista spende cosi'» da
-        «la chat spende cosi'»."""
-        limit = now - TURNS_RETENTION_S
-        self._conn.execute(
-            "DELETE FROM payload WHERE turn_id IN "
-            "(SELECT id FROM turn WHERE ts < ?)", (limit,))
-        self._conn.execute("DELETE FROM turn WHERE ts < ?", (limit,))
+    def prune(self, now: float) -> int:
+        """Applica `CONSERVAZIONE`; torna le righe tolte."""
+        with self._lock:
+            return prune_declared(self._conn, CONSERVAZIONE, now)
 
     def turns(self, *, limit: int = 500, species: str | None = None) -> list[dict]:
         """I turni, dal piu' recente. `tools` torna SCIOLTO dal JSON: una
@@ -980,8 +1025,15 @@ class UsageStore:
         invece di spalmarlo su modelli che potrebbero non averlo speso.
 
         Datato all'ultimo azzeramento, che e' l'unica data vera che quei file
-        portano. I file NON vengono cancellati: mai dati dell'utente rimossi in
-        silenzio.
+        portano.
+
+        **Il totale e la sua riga in `legacy_importati` entrano in una
+        transazione sola** (S-18, Tappa 8): fino all'08/10/2026 erano due
+        commit, e un'interruzione fra i due reimportava il totale al prossimo
+        avvio -- la spesa dell'utente raddoppiata. E' anche la condizione per
+        cancellare il file: un file registrato come importato e' un residuo, e
+        lo cancella `conservazione.cancella_residui`, dicendo nome e
+        dimensione (D6). Uno illeggibile non si registra, e resta.
         """
         import json as _json
         import os
@@ -1016,21 +1068,30 @@ class UsageStore:
             when = instant_epoch(data.get("last_reset"))
             if when is None:
                 when = now
-            self.log(
-                provider, "(prima del dettaglio)",
-                richieste=int(data.get("total_requests") or 0),
-                token_in=int(data.get("total_input_tokens") or 0),
-                token_out=int(data.get("total_output_tokens") or 0),
-                cost_usd=float(data.get("total_cost_usd") or 0.0),
-                cost_state="misurato",
-                errori_rate_limit=int(data.get("total_rate_limit_errors") or 0),
-                now=when)
-            with self._lock:
+            # `with self._conn`: commit se tutto e' andato, ROLLBACK se una
+            # delle due scritture si interrompe -- mai il totale senza la riga.
+            with self._lock, self._conn:
+                self._add(
+                    provider, "(prima del dettaglio)",
+                    richieste=int(data.get("total_requests") or 0),
+                    token_in=int(data.get("total_input_tokens") or 0),
+                    token_out=int(data.get("total_output_tokens") or 0),
+                    cache_read=0, cache_write=0,
+                    cost_usd=float(data.get("total_cost_usd") or 0.0),
+                    cost_state="misurato",
+                    errori_rate_limit=int(data.get("total_rate_limit_errors") or 0),
+                    now=when)
                 self._conn.execute(
                     "INSERT OR IGNORE INTO legacy_importati (percorso) VALUES (?)",
                     (path,))
-                self._conn.commit()
             importati += 1
             logger.info("consumi: importato %s come «(prima del dettaglio)» "
                         "sul provider %s", path, provider)
         return importati
+
+    def legacy_imported(self) -> list[str]:
+        """I contatori di prima gia' importati, per percorso: da qui in poi
+        sono residui (`conservazione.cancella_residui`, D6)."""
+        with self._lock:
+            return [row[0] for row in self._conn.execute(
+                "SELECT percorso FROM legacy_importati ORDER BY percorso")]

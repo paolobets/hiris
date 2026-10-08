@@ -22,10 +22,17 @@ Cosa fa una consegna, per specie di turno:
   alla costruzione nata nel turno, o scrive perche' non si e' potuta fare
   (`mind/automate_turn.deliver`). Non ha un giro periodico che raccolga: e'
   un gesto di chi amministra, e la pagina aspetta questa consegna.
+
+E la strada opposta, il turno di promessa che **non** arriva:
+`close_expired_promise`, chiamata dalla spazzata della coda
+(`conservazione.reasoning_sweep`). Spostata qui da `server.py` l'08/10/2026
+(Tappa 8, Task 6), senza cambiare una riga, accanto al suo gemello: la loro
+riunione e' del Task 4.
 """
 from __future__ import annotations
 
 import logging
+import time
 
 from ..mind.observer import SCOPE_TURN_KIND
 from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
@@ -89,7 +96,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
             # risposta del modello citata nel motivo passa dal filtro dei
             # veleni da sola (`quoted`).
             if store.concludi(ident, state="fallita", now=now, reason=reason):
-                tell_failure(app.get("data_dir"), row, reason,
+                tell_failure(app["data_dir"], row, reason,
                              quoted=reply if isinstance(reply, str) and reply.strip()
                              else None)
             # Rilievo R1 della revisione indipendente sul tratto
@@ -182,3 +189,55 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
             "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
             "decisione solo registrata", job_id, (job or {}).get("kind"))
     return outcome
+
+
+def close_expired_promise(app, job: dict) -> None:
+    """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
+
+    Estratta invece che scritta in linea dentro lo sweep perche' ha una
+    ragione sua e va provata da sola: e' l'unico punto che impedisce a una
+    promessa servita dal ponte di restare `in_corso` per sempre quando il
+    piano non risponde. `risana()` la chiuderebbe soltanto al prossimo
+    riavvio -- cioe' forse mai.
+
+    L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
+    `submit`, e `wake` e' la sola parte del job che sopravvive.
+    """
+    from ..keeper.outcome import tell_failure
+
+    ident = (job.get("wake") or {}).get("promessa_id") or ""
+    store = app.get("agenda")
+    promise = store.read(ident) if (store is not None and ident) else None
+    if promise is None or promise.get("stato") != "in_corso":
+        # Gia' conclusa da `concludi` mentre il turno finiva: non si
+        # riapre. E' lo stesso ordine di controlli della consegna
+        # (`reasoning/consegna`), per la stessa ragione.
+        return
+    # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
+    # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
+    # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
+    # che il registro degli esiti riceve qui sotto: una sola, letta una volta.
+    durata_s = (float(job.get("deadline_ts", 0.0))
+                - float(job.get("created_ts", 0.0)))
+    minuti = round(durata_s / 60)
+    reason = (f"ho aspettato il {SUBSCRIPTION.name} per {minuti} minuti e non ha "
+              "risposto: non so cosa dirti.")
+    # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
+    # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
+    # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
+    if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
+        tell_failure(app["data_dir"], promise, reason)
+    # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
+    # terza strada delle promesse sul ponte, dopo il successo (`api/
+    # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/
+    # consegna`). Stessa famiglia `scaduto` del ramo chat
+    # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
+    registry = app.get("occurrence_registry")
+    if registry is not None:
+        registry.fallimento(
+            SUBSCRIPTION.id, family="scaduto", code=None,
+            message="nessuna conclusione entro la scadenza del ponte (promessa)",
+            durata_s=durata_s)
+    logger.warning(
+        "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
+        ident, minuti)
