@@ -20,6 +20,14 @@ piano dice di fermarsi e chiedere. Su 19 oggetti, `search` -- anche con
 Finche' il proprietario non decide, `fetch` resta e questa prova e' un
 `xfail` stretto: diventa verde da sola il giorno in cui `search` porta quei
 ricordi, e allora lo `xfail` va tolto.
+
+**Era cieca dal 07/10/2026 all'08/10/2026** (trovato dalla fetta F3 della
+Tappa 9): da `ce10f64` (gli attori dichiarano il loro soffitto)
+`create_tool_dispatcher` rifiuta un turno senza soffitto, e questa prova lo
+costruiva senza. Lo `xfail` stretto restava «atteso» per un `ValueError`, non
+per i ricordi mancanti: un rosso per la ragione sbagliata. Ora il turno porta
+il soffitto di chi amministra, come le altre prove della chat
+(`tests/test_mind_tool.py`), e il rosso e' di nuovo quello dei tre ricordi.
 """
 from __future__ import annotations
 
@@ -29,6 +37,7 @@ from pathlib import Path
 import pytest
 
 from hiris.app.api.handlers_chat import create_tool_dispatcher
+from hiris.app.api.soffitto import consente
 from hiris.app.home_space.tools import TOOLS
 from tests._casa_sintetica import synthetic_inputs
 
@@ -61,7 +70,7 @@ async def test_i_ricordi_di_fetch_escono_anche_da_search(tmp_path):
         for kind, ident in objects:
             memory.remember(f"un ricordo su {ident}",
                             ancore=[{"tipo": kind, "riferimento": ident}])
-        dispatcher = create_tool_dispatcher(app)
+        dispatcher = create_tool_dispatcher(app, soffitto=consente(None, ruolo="amministratore"))
         missing = {}
         for _kind, ident in objects:
             fetched = await dispatcher.dispatch("fetch", {"riferimento": ident})
