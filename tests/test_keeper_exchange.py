@@ -513,3 +513,33 @@ async def test_senza_ripiego_non_si_annuncia_niente():
     esito = await interpreta_promise(app, _promessa_chiedi())
 
     assert not esito.get("nota")
+
+
+@pytest.mark.parametrize("nome", ["_senza_conclusione", "_unanswered_reason"])
+def test_il_motivo_che_cita_il_modello_si_taglia_una_volta_sola(nome):
+    """B-54 (Tappa 8, Task 8): il motivo che cita la risposta del modello
+    tagliava la citazione a un tetto suo (`_CEILING_RIPORTO`, 300) e poi
+    `failure_message` tagliava di nuovo il motivo intero allo stesso numero
+    (`REASON_CAP`): due tagli lungo una strada, e la citazione perdeva la sua
+    chiusa. Ora la citazione si taglia perche' il motivo intero stia nel tetto
+    unico, e il secondo taglio non trova niente da tagliare."""
+    from hiris.app.keeper import exchange
+    from hiris.app.keeper.promise import REASON_CAP, failure_message
+    from hiris.app.proxy._sanitize import CUT
+
+    motivo = getattr(exchange, nome)("parola " * 400)
+    assert len(motivo) <= REASON_CAP
+    assert motivo.count(CUT) == 1
+    racconto = failure_message({"frase": "spegni la luce"}, motivo)
+    assert racconto.endswith(motivo), "il secondo taglio non tocca il motivo"
+    if nome == "_senza_conclusione":
+        assert motivo.endswith(f"{CUT}»"), "la citazione si chiude"
+
+
+@pytest.mark.parametrize("nome", ["_senza_conclusione", "_unanswered_reason"])
+def test_un_motivo_corto_non_porta_il_segno_del_taglio(nome):
+    from hiris.app.keeper import exchange
+    from hiris.app.proxy._sanitize import CUT
+
+    motivo = getattr(exchange, nome)("credito esaurito")
+    assert CUT not in motivo and "credito esaurito" in motivo

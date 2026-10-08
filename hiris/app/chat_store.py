@@ -199,6 +199,25 @@ _DIGEST_TURNS = 3       # user+assistant pairs to include in the session digest
 _DIGEST_MSG_LEN = 120   # max chars per message in the digest
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+#: «Qual e' la conversazione attiva di questo filo», in SQL e in un posto solo
+#: (D-65, Tappa 8): la sessione aperta piu' recente del filo, se ha scritto
+#: entro `SESSION_GAP_HOURS`; `NULL` altrimenti. Si mette dentro la lettura
+#: che serve -- contare, caricare, scrivere --, che cosi' e' una sola; prima
+#: ognuna chiedeva prima la sessione con una lettura a parte. I parametri sono
+#: `_fresh_session_params`. Il confronto fra testi vale perche' `last_msg_at`
+#: ha sempre la forma fissa di `_TS_FMT` (lo scrive solo `_now`).
+_FRESH_SESSION = (
+    "(SELECT session_id FROM (SELECT session_id, last_msg_at FROM chat_sessions "
+    f"WHERE summary IS NULL AND {thread_condition()} "
+    "ORDER BY last_msg_at DESC LIMIT 1) WHERE last_msg_at > ?)")
+
+
+def _fresh_session_params(thread: ChatThread) -> tuple:
+    """I parametri di `_FRESH_SESSION`: il filo, e il primo istante che la
+    finestra delle due ore non ricorda piu'."""
+    gap_start = datetime.now(UTC) - timedelta(hours=SESSION_GAP_HOURS)
+    return (*thread_params(thread), gap_start.strftime(_TS_FMT))
+
 #: Il titolo di una conversazione (spec 2026-09-26 §4) non si salva: e' la
 #: prima frase dell'utente nella sessione, letta quando serve. Il taglio che
 #: si VEDE e' dell'ellissi del CSS (spec §4), non di questo tetto: questo e'
@@ -350,25 +369,17 @@ class ChatStore:
 
     def _fresh_session_id(self, thread: ChatThread) -> str | None:
         """Return the thread's open session_id only if within the gap window — no side effects."""
-        row = self._conn.execute(
-            "SELECT session_id, last_msg_at FROM chat_sessions "
-            f"WHERE summary IS NULL AND {thread_condition()} "
-            "ORDER BY last_msg_at DESC LIMIT 1",
-            thread_params(thread),
-        ).fetchone()
-        if not row:
-            return None
-        try:
-            last = datetime.strptime(row["last_msg_at"], _TS_FMT).replace(tzinfo=UTC)
-        except ValueError:
-            return row["session_id"]
-        if (datetime.now(UTC) - last).total_seconds() < SESSION_GAP_HOURS * 3600:
-            return row["session_id"]
-        return None
+        row = self._conn.execute(f"SELECT {_FRESH_SESSION} AS session_id",
+                                 _fresh_session_params(thread)).fetchone()
+        return row["session_id"]
 
     def _active_session(self, thread: ChatThread) -> str | None:
         """Return the thread's fresh session_id, closing every OTHER open
         session of the thread as side effect (write path only).
+
+        Una lettura sola (D-65, Tappa 8): le sessioni aperte del filo, con
+        quella fresca segnata dal frammento di `_FRESH_SESSION`. Prima erano
+        due -- la fresca, poi le aperte da chiudere.
 
         Una regola sola: un filo ha al piu' UNA sessione aperta, la piu'
         fresca. Prima si chiudeva solo l'ultima ferma; ma l'adozione
@@ -377,8 +388,15 @@ class ChatStore:
         si sarebbe chiusa mai -- ne' riassunta, ne' mostrata fra le sessioni
         precedenti. La chiusura tocca SOLO questo filo: il silenzio di Paolo
         non chiude la conversazione di Marta."""
-        sid = self._fresh_session_id(thread)
-        self._close_other_open_sessions(thread, keep=sid)
+        rows = self._conn.execute(
+            f"SELECT session_id, session_id = {_FRESH_SESSION} AS fresh "
+            f"FROM chat_sessions WHERE summary IS NULL AND {thread_condition()}",
+            (*_fresh_session_params(thread), *thread_params(thread)),
+        ).fetchall()
+        sid = next((r["session_id"] for r in rows if r["fresh"]), None)
+        for row in rows:
+            if row["session_id"] != sid:
+                self._close_session(thread, row["session_id"])
         return sid
 
     def _close_other_open_sessions(self, thread: ChatThread, keep: str | None) -> None:
@@ -496,13 +514,10 @@ class ChatStore:
         colonna (`timestamp`, scritta da `append()` a ogni turno): mancava
         solo restituirla a chi la chiede, non inventare una seconda fonte."""
         with self._mu:
-            sid = self._fresh_session_id(thread)
-            if not sid:
-                return []
             rows = self._conn.execute(
                 "SELECT role, content, timestamp FROM chat_messages "
-                "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
-                (sid, _retention_cutoff(days)),
+                f"WHERE session_id = {_FRESH_SESSION} AND timestamp >= ? ORDER BY id",
+                (*_fresh_session_params(thread), _retention_cutoff(days)),
             ).fetchall()
             messages = [
                 {"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]}
@@ -535,12 +550,10 @@ class ChatStore:
     def count_user_turns(self, thread: ChatThread) -> int:
         """Count user messages in the thread's active (non-stale) session."""
         with self._mu:
-            sid = self._fresh_session_id(thread)
-            if not sid:
-                return 0
             cnt = self._conn.execute(
-                "SELECT COUNT(*) FROM chat_messages WHERE session_id = ? AND role = 'user'",
-                (sid,),
+                "SELECT COUNT(*) FROM chat_messages "
+                f"WHERE session_id = {_FRESH_SESSION} AND role = 'user'",
+                _fresh_session_params(thread),
             ).fetchone()
             return cnt[0] if cnt else 0
 

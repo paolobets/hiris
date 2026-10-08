@@ -115,8 +115,10 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # combacia», e qui non si e' confrontato niente.
             "confronto": None,
             "comportamento": {"letto_il": None, "conteggi": {}, "senza_corpo": None,
-                              "problemi": None, "corpi_non_letti": None, "voci": []},
-            "plance": {"lette_il": None, "non_disponibili": None, "voci": []},
+                              "problemi": None, "corpi_non_letti": None,
+                              "conservato": None, "voci": []},
+            "plance": {"lette_il": None, "non_disponibili": None, "conservato": None,
+                       "voci": []},
         })
     home_space = store.read()
     unavailable = store.unavailable()
@@ -216,6 +218,11 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # `behavior.reread()`.
             "problemi": store.behavior_problems(),
             "corpi_non_letti": store.unread_bodies(),
+            # La replica conservata (G-16): `None` quando e' quella
+            # dell'ultima rilettura, altrimenti perche' non e' stata
+            # sostituita e di quando e'. Lo stesso oggetto che il nucleo
+            # dice a parole.
+            "conservato": store.behavior_kept(),
             "voci": behavior_entries,
         },
         "plance": {
@@ -224,6 +231,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # risolvere -- stesso principio di "non_disponibili" sopra,
             # applicato alle plance invece che ai registri.
             "non_disponibili": store.unavailable_dashboards(),
+            "conservato": store.dashboards_kept(),
             "voci": store.dashboards(),
         },
     })
@@ -269,6 +277,7 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
         behavior: list[dict] = []
         behavior_problems: tuple[str, ...] = ()
         unread_bodies: dict[str, str] = {}
+        behavior_kept: dict | None = None
         reference_frame: dict = {}
     else:
         behavior = home_space_store.behavior()
@@ -278,6 +287,8 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
         # parametro per riceverli.
         behavior_problems = tuple(home_space_store.behavior_problems())
         unread_bodies = home_space_store.unread_bodies()
+        # G-16: la replica conservata dalla guardia si dichiara, con la data.
+        behavior_kept = home_space_store.behavior_kept()
         # Unita', fuso, valuta, lingua: senza, il modello legge "72" senza
         # sapere in che scala e "alle 8" senza sapere in che fuso.
         reference_frame = home_space_store.reference_frame()
@@ -360,6 +371,7 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
         reliable_state=reliable_state,
         behavior_problems=behavior_problems,
         unread_bodies=unread_bodies,
+        behavior_kept=behavior_kept,
         reference_frame=reference_frame,
         problems=problems,
         comparison=comparison,

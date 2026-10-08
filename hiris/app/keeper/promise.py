@@ -119,8 +119,8 @@ DELIVERY_TITLE = "HIRIS"
 # legge, non si notifica.
 PUSH_MESSAGE_CAP = 500
 # Il tetto di un motivo o di un errore che entra in un racconto (vincolo
-# 3.7): stesso numero di `exchange._CEILING_RIPORTO`, per la stessa ragione --
-# una riga da leggere, non un allegato.
+# 3.7): una riga da leggere, non un allegato. E' anche il tetto del motivo che
+# cita la risposta del modello (`exchange._quoting`): un tetto solo (B-54).
 REASON_CAP = 300
 # La frase originale citata nel messaggio d'esito: e' di chi ha chiesto e
 # torna a lui, ma resta un campo limitato come gli altri.

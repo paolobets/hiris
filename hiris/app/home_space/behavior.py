@@ -61,6 +61,12 @@ BEHAVIOR_DOMAINS = {domain: LINK_NAME[domain] for domain in ("automation", "scri
 BODY_NOT_READ = "configurazione non letta da Home Assistant"
 SECRETS_UNCHECKABLE = "segreti non controllabili: il corpo non si archivia"
 
+#: Perche' la guardia dello stato conserva la replica (`reread`): e' il segno
+#: che arriva al nucleo (`HomeSpace.keep_behavior`, G-16).
+BEHAVIOR_NOT_LOADED = ("Home Assistant non ha nello stato nessuna automazione "
+                       "ne' script: probabilmente non li ha ancora caricati "
+                       "(riavvio, safe mode)")
+
 
 def automation_active(entity_id: str, row: dict | None) -> bool | None:
     """Se un'automazione e' attiva, dalla sua riga nello specchio; `None`
@@ -122,12 +128,21 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> None:
     stato e il nome di una ventina -- cose che lo specchio sa gia', aggiornate
     a ogni evento. Da Home Assistant si chiede solo cio' che lo specchio non
     porta: il corpo (`behavior_configs`).
+
+    **Lo specchio si legge quando ha finito di rileggersi** (S-31, Tappa 8):
+    alla riconnessione la rilettura dello specchio e questa partono dallo
+    stesso evento, e fino all'08/10/2026 questa leggeva la casa di prima della
+    caduta se l'altra non era finita (`EntityCache.settled`).
     """
+    # Lo specchio si legge quando ha finito di rileggersi (S-31): alla
+    # riconnessione la sua rilettura e questa partono insieme.
+    await mirror.settled()
     failure = unreadable_inventory_error(mirror)
     if failure is not None:
         # Uno specchio che non si legge non e' una casa senza automazioni: la
         # rilettura si ferma e la replica resta quella di prima -- chi chiama
-        # (`server.watch_behavior`) lo registra.
+        # (`server.watch_behavior`) lo registra, e la replica lo dice.
+        home_space.keep_behavior(failure["error"])
         raise RuntimeError(failure["error"])
     behavior_states = [s for s in mirror.all_states()
                        if domain_of(s.get("id", "")) in BEHAVIOR_DOMAINS]
@@ -140,6 +155,7 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> None:
             "sostituito, mantenuta la replica precedente"
         )
         logger.warning("comportamento: %s", message)
+        home_space.keep_behavior(BEHAVIOR_NOT_LOADED)
         return
 
     seal = (SecretSeal.from_file(ha_folder / _SECRETS) if ha_folder is not None
@@ -249,10 +265,11 @@ async def reread_dashboards(client, home_space) -> dict:
     list_failed = any(nd.split(":", 1)[0] == "elenco" for nd in unavailable)
     readable = [p for p in dashboards if p.get("config") is not None]
     if not readable or list_failed:
-        logger.warning(
-            "plance: %s (non disponibili: %s) — replica precedente conservata",
-            "elenco delle plance non arrivato" if list_failed else "nessuna leggibile",
-            unavailable)
+        reason = ("elenco delle plance non arrivato" if list_failed
+                  else "nessuna plancia leggibile")
+        logger.warning("plance: %s (non disponibili: %s) — replica precedente conservata",
+                       reason, unavailable)
+        home_space.keep_dashboards(reason, unavailable=unavailable)
         return {"conteggi": {"plance": 0}, "non_disponibili": unavailable}
 
     # **La forma e' quella dell'anagrafe, non quella di Home Assistant.** Le

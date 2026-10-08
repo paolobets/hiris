@@ -24,6 +24,13 @@ STATES: tuple[str, ...] = ("non_noto", "compreso", "gratuito", "misurato", "real
 # `Provider.usage_note`), e il piano e' `subscription` anche qui.
 
 
+def _rank(state: str) -> int:
+    """La forza di uno stato: il suo posto in `STATES`. Uno stato che il
+    vocabolario non conosce -- una riga scritta da una versione futura -- vale
+    il piu' debole: non puo' affermare piu' di quanto si sappia leggere."""
+    return STATES.index(state) if state in STATES else 0
+
+
 def piu_debole(a: str, b: str) -> str:
     """Lo stato piu' debole fra due.
 
@@ -31,7 +38,26 @@ def piu_debole(a: str, b: str) -> str:
     se in uno stesso giorno lo stesso modello produce una chiamata col costo
     dichiarato e una senza, la riga dice `non_noto`, non `reale`.
     """
-    return min(a, b, key=lambda s: STATES.index(s) if s in STATES else 0)
+    return min(a, b, key=_rank)
+
+
+def weakest_rank_sql(column: str) -> str:
+    """La stessa regola di `piu_debole`, per un insieme di righe letto in SQL:
+    l'espressione aggregata che da' il rango (in `STATES`) dello stato piu'
+    debole di `column`. Si legge con `state_at`.
+
+    Prima la lettura aggregata usava `MIN(costo_stato)`, che e' alfabetico e
+    coincideva con `STATES` solo per caso (G-23, Tappa 8, Task 8). Composta da
+    `STATES`, la regola resta una anche quando l'ordine cambia.
+    """
+    cases = " ".join(f"WHEN '{s}' THEN {i}" for i, s in enumerate(STATES))
+    return f"MIN(CASE {column} {cases} ELSE 0 END)"
+
+
+def state_at(rank: int) -> str:
+    """Lo stato che sta al rango `rank` di `STATES` (il ritorno di
+    `weakest_rank_sql`)."""
+    return STATES[rank]
 
 
 def cost_state_and_value(provider: str, model: str, *,

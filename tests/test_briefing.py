@@ -984,3 +984,33 @@ def test_same_title_different_domains_stay_separate_not_merged():
     assert "2 voci di configurazione" in text
 
 
+
+
+def test_la_replica_conservata_del_comportamento_si_dichiara_con_la_data():
+    """G-16 (Tappa 8, Task 10): quando la guardia di `behavior.reread`
+    conserva la replica vecchia, il nucleo lo dice con la data della replica,
+    nel fuso della casa e col fuso scritto -- prima lo diceva solo il log, e
+    il nucleo presentava la replica come fresca."""
+    testo, summary = compose(
+        _CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+        behavior_kept={"motivo": "Home Assistant non le ha ancora caricate",
+                       "letto_il": "2026-10-08T05:30:00+00:00"},
+        reference_frame={"fuso": "Europe/Rome"})
+    notice = next(a for a in summary["notices"] if "replica letta" in a)
+    assert "07:30 del 08/10/2026 (fuso Europe/Rome)" in notice
+    assert "non le ha ancora caricate" in notice
+    assert notice in testo
+
+
+def test_una_replica_fresca_non_porta_l_avviso():
+    _, summary = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                         behavior_kept=None, reference_frame={"fuso": "Europe/Rome"})
+    assert not any("replica" in a for a in summary["notices"])
+
+
+def test_un_comportamento_mai_letto_e_conservato_lo_dice_senza_data():
+    _, summary = compose(_CASA, [], _RICORDI, _STATO,
+                         behavior_kept={"motivo": "inventario non pronto",
+                                        "letto_il": None})
+    assert any("non si e' ancora potuto leggere (inventario non pronto)" in a
+               for a in summary["notices"])

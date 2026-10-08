@@ -30,6 +30,7 @@ from ..steering import (
     refused_tool,
     start,
 )
+from .promise import REASON_CAP
 
 logger = logging.getLogger(__name__)
 
@@ -230,10 +231,19 @@ async def interpreta_promise(app, promise: dict) -> dict:
     return conclusione
 
 
-# Quanto della risposta del modello entra nel motivo. Il motivo finisce in una
-# colonna di SQLite e in una riga della pagina Promesse: riportarla intera
-# sarebbe un allegato, non un motivo.
-_CEILING_RIPORTO = 300
+def _quoting(prefix: str, detto: str, suffix: str = "") -> str:
+    """Un motivo che cita la risposta del modello: `prefix`, la citazione e
+    `suffix`, col tutto dentro il tetto dei motivi (`promise.REASON_CAP`).
+
+    Il motivo finisce in una colonna di SQLite, in una riga della pagina
+    Promesse e nel racconto di `failure_message`, che lo taglia a quel tetto:
+    si taglia qui la sola citazione, perche' il motivo intero ci stia e il
+    secondo taglio non trovi niente. Fino alla Tappa 8 (B-54) la citazione
+    aveva un tetto suo dello stesso numero (`_CEILING_RIPORTO`): il motivo
+    usciva piu' lungo del tetto, e il racconto lo tagliava di nuovo, perdendo
+    la chiusa della citazione."""
+    room = max(0, REASON_CAP - len(prefix) - len(suffix))
+    return f"{prefix}{truncate_with_marker(detto, room)}{suffix}"
 
 
 def _senza_conclusione(answer) -> str:
@@ -255,8 +265,7 @@ def _senza_conclusione(answer) -> str:
     detto = answer.strip() if isinstance(answer, str) else ""
     if not detto:
         return "il turno non ha concluso: non so cosa dirti."
-    detto = truncate_with_marker(detto, _CEILING_RIPORTO)
-    return f"il turno non ha concluso. Aveva risposto a parole: «{detto}»"
+    return _quoting("il turno non ha concluso. Aveva risposto a parole: «", detto, "»")
 
 
 def _unanswered_reason(answer) -> str:
@@ -266,7 +275,7 @@ def _unanswered_reason(answer) -> str:
     detto = answer.strip() if isinstance(answer, str) else ""
     if not detto:
         return f"{NO_ANSWER_REASON}."
-    return f"{NO_ANSWER_REASON}: {truncate_with_marker(detto, _CEILING_RIPORTO)}"
+    return _quoting(f"{NO_ANSWER_REASON}: ", detto)
 
 
 def _downgrade_note(reason: str) -> str:

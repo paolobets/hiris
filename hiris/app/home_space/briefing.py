@@ -46,7 +46,7 @@ from .ha_vocabulary import (
     domain_of,
     house_is_newer_than_vocabulary,
 )
-from .historian import home_space_zone
+from .historian import home_space_zone, instant_epoch
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
@@ -356,6 +356,17 @@ _MEASUREMENT_NAMES = {
 }
 
 
+def _house_zone(frame: dict | None):
+    """Il fuso della casa e il nome con cui lo si scrive accanto a un'ora.
+
+    Il fuso lo costruisce `historian.home_space_zone`, l'unico posto (Tappa 3,
+    Task 10): qui c'era un secondo `ZoneInfo` col suo ripiego. Quando ricade
+    su UTC lo si scrive, invece del nome che non vale."""
+    name = (frame or {}).get("fuso") or ""
+    timezone = home_space_zone(name)
+    return timezone, (name if timezone is not UTC else "UTC")
+
+
 def _now_line(frame: dict | None, now: float | None) -> str:
     """Che ore sono, nel fuso della casa. Vuota se nessuno l'ha detto.
 
@@ -374,15 +385,32 @@ def _now_line(frame: dict | None, now: float | None) -> str:
     """
     if now is None:
         return ""
-    name = (frame or {}).get("fuso") or ""
-    # Il fuso lo costruisce `historian.home_space_zone`, l'unico posto
-    # (Tappa 3, Task 10): qui c'era un secondo `ZoneInfo` col suo ripiego.
-    # Quando ricade su UTC lo si scrive, invece del nome che non vale.
-    timezone = home_space_zone(name)
-    label = name if timezone is not UTC else "UTC"
+    timezone, label = _house_zone(frame)
     when = datetime.fromtimestamp(now, timezone)
     return "Adesso sono le {} del {} (fuso {}).".format(
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label)
+
+
+def _kept_behavior_notice(kept: dict | None, frame: dict | None) -> str:
+    """Il comportamento qui sotto non e' quello dell'ultima rilettura (G-16,
+    Tappa 8): la guardia di `behavior.reread` ha conservato la replica, e la
+    frase lo dice con la data della replica, nel fuso della casa e col fuso
+    scritto (come `_now_line`). Vuota quando la replica e' fresca."""
+    if not kept:
+        return ""
+    reason = str(kept.get("motivo") or "").strip()
+    read_at = kept.get("letto_il")
+    if not read_at:
+        return f"il comportamento della casa non si e' ancora potuto leggere ({reason})."
+    epoch = instant_epoch(read_at)
+    if epoch is None:
+        return ("cio' che la casa fa da sola e' una replica conservata: "
+                f"l’ultima rilettura non l’ha sostituita ({reason}).")
+    timezone, label = _house_zone(frame)
+    when = datetime.fromtimestamp(epoch, timezone)
+    return ("cio' che la casa fa da sola e' la replica letta alle {} del {} (fuso {}): "
+            "l’ultima rilettura non l’ha sostituita ({}).").format(
+        when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label, reason)
 
 
 def _vocabulary_freshness_line(frame: dict | None) -> str:
@@ -1406,6 +1434,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             reliable_state: bool = True,
             behavior_problems: tuple[str, ...] = (),
             unread_bodies: dict[str, str] | None = None,
+            behavior_kept: dict | None = None,
             reference_frame: dict | None = None,
             problems: dict | None = None,
             comparison: dict | None = None,
@@ -1483,6 +1512,11 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     `.unread_bodies()`): senza un parametro per riceverle, il PERCHE' di
     un'automazione di cui non si conosce il corpo non arriverebbe
     mai al modello.
+
+    `behavior_kept` e' il segno della replica conservata
+    (`HomeSpace.behavior_kept()`, G-16): quando l'ultima rilettura non ha
+    sostituito il comportamento, il nucleo lo dice con la data della replica
+    che porta, invece di presentarla come fresca. Vedi `_kept_behavior_notice`.
 
     Quando serve tagliare per stare sotto `ceiling`, si tagliano prima le
     capacita', poi cio' che la casa fa da sola, poi -- fino a una riserva
@@ -1630,6 +1664,10 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         notices.append(
             f"di {n} fra automazioni e script non conosco il corpo: so che ci "
             "sono e come si chiamano, non cosa fanno.")
+
+    kept = _kept_behavior_notice(behavior_kept, reference_frame)
+    if kept:
+        notices.append(kept)
 
     # `compose()` resta PURA. I nomi dei dispositivi non si vanno a prendere:
     # sono gia' in `home_space["dispositivi"]`, la stessa struttura che il

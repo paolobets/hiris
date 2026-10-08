@@ -241,3 +241,48 @@ def test_un_salvataggio_a_meta_non_lascia_un_ricordo_monco(memory):
         memory.remember("seconda", detto_da="paolo",
                         ancore=[{"tipo": "area"}])       # manca `riferimento`
     assert [r["testo"] for r in memory.fetch()] == ["prima frase"]
+
+
+def _letture(memory, fai):
+    """Le istruzioni SELECT che `fai()` manda all'archivio (`set_trace_callback`),
+    e il suo risultato."""
+    viste: list[str] = []
+    memory._conn.set_trace_callback(viste.append)
+    try:
+        esito = fai()
+    finally:
+        memory._conn.set_trace_callback(None)
+    return [s for s in viste if s.lstrip().upper().startswith("SELECT")], esito
+
+
+def test_rileggere_tutti_i_ricordi_costa_due_letture_quanti_che_siano(memory):
+    """D-50 (Tappa 8, Task 10b): a ogni composizione del nucleo si rileggono
+    TUTTI i ricordi (`fetch(limit=count())`), e ognuno costava due letture in
+    piu', ancore e condizioni: 1 + 2N. Ora le figlie di tutti i ricordi letti
+    si chiedono in una lettura sola: due in tutto, con undici ricordi come con
+    uno, e ognuno con le sue ancore e condizioni nell'ordine di scrittura.
+
+    Rosso letto prima del codice: 23 letture per undici ricordi.
+    Mutazione eseguita: rimettere la lettura per ricordo -> rossa."""
+    for n in range(10):
+        memory.remember(
+            f"ricordo {n}",
+            ancore=[{"tipo": "area", "riferimento": f"stanza_{n}", "nome_visto": "S"},
+                    {"tipo": "entita", "riferimento": f"light.l{n}"}],
+            conditions=[{"tipo": "stagione", "valore": "inverno"},
+                        {"tipo": "presenza", "valore": n}])
+    memory.remember("nudo")
+
+    quanti = memory.count()
+    letture, ricordi = _letture(memory, lambda: memory.fetch(limit=quanti))
+
+    assert len(letture) == 2
+    assert ricordi[0]["testo"] == "nudo"
+    assert ricordi[0]["ancore"] == [] and ricordi[0]["condizioni"] == []
+    sette = next(r for r in ricordi if r["testo"] == "ricordo 7")
+    assert sette["ancore"] == [
+        {"tipo": "area", "riferimento": "stanza_7", "nome_visto": "S"},
+        {"tipo": "entita", "riferimento": "light.l7", "nome_visto": None}]
+    assert sette["condizioni"] == [{"tipo": "stagione", "valore": "inverno"},
+                                   {"tipo": "presenza", "valore": "7"}]
+    assert memory.get(sette["id"]) == sette, "get e fetch danno la stessa forma"
