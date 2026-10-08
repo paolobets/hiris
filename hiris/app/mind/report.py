@@ -62,7 +62,8 @@ from ..home_space.log_source import (
     integration_slug,
 )
 from ..home_space.type_vocabulary import SYSTEM_GENRE, unknown_states
-from .operations import RECIPE_BROKEN, NotComputable
+from .flatline import FROZEN_RULE
+from .operations import RECIPE_BROKEN, REGISTRY_VERSION, NotComputable
 from .recipes import Recipe
 
 logger = logging.getLogger(__name__)
@@ -108,13 +109,31 @@ _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts",
            "chiusa_dalla_fonte", "interrotto", "assenti")
 
 
+def rules_mark() -> dict:
+    """Le regole con cui si misura un giorno ADESSO (Tappa 8, G-03, decisione
+    D2 del proprietario dell'08/10/2026): la versione del registro delle
+    operazioni (`operations.REGISTRY_VERSION`) e quella della regola del dato
+    fermo (`flatline.FROZEN_RULE`). Ogni resoconto la porta in `regole`.
+
+    **Si legge da sola** (fondamenta 1): le chiavi dicono di quale regola e'
+    la versione, e chi la riceve non deve sapere altro per capirla.
+
+    **`regole: null` e' un resoconto misurato prima di questa riga**
+    (`store._mark_reports_without_rules`): la pagina e l'analista lo dicono,
+    perche' un valore di quei giorni puo' venire da una fonte che aveva
+    smesso di parlare. Non si inventa una versione per il passato: oltre i 22
+    giorni del grezzo quel resoconto e' l'unica copia, e resta com'e'.
+    """
+    return {"registro_operazioni": REGISTRY_VERSION, "dato_fermo": FROZEN_RULE}
+
+
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
                  names: dict, objective: dict | None = None,
                  silent: dict[str, NotComputable] | None = None,
                  judgment: dict | None = None,
                  muted: dict[str, dict] | None = None) -> dict:
-    """Il resoconto di un giorno: `{giorno, obiettivo, misure, forme, cronaca,
-    giudizio}`.
+    """Il resoconto di un giorno: `{giorno, obiettivo, regole, misure, forme,
+    cronaca, giudizio}`.
 
     **Puro**: nessuna lettura di rete e nessun archivio. Le serie arrivano gia'
     lette dal chiamante, le ricette gia' lette dal sapere, gli episodi gia'
@@ -128,7 +147,10 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     arriva gia' letta da chi chiama -- `store.objective_at(fine del giorno)`.
     Chi legge trenta giorni di misure in serie deve sapere se in mezzo la
     domanda e' cambiata, o legge una tendenza dove c'e' un cambio d'obiettivo:
-    e' proprio il modo in cui l'analista le legge.
+    e' proprio il modo in cui l'analista le legge. Il resoconto la porta
+    com'e', con il suo `id`; **l'archivio ne salva solo il riferimento**
+    (A-17, Tappa 8: il testo vive nella tabella `objective`, per sempre) e la
+    risolve in lettura (`store.replace_report`, `store.report`).
 
     **`None` resta `None`**: un resoconto scritto prima che questa riga
     esistesse non deve spacciare l'obiettivo di OGGI per quello di allora --
@@ -153,11 +175,15 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     `{dispositivo: {non_calcolabile, causa}}`. Escono con UNA riga per
     dispositivo, non con un rifiuto per passo; chi chiama non le mette fra
     `recipes`.
+
+    **`regole`** sono quelle con cui si misura adesso (`rules_mark`). Chi
+    rifa' solo la cronaca (`facts.rebuild_chronicle`) non le prende da qui:
+    le misure restano quelle di allora, e cosi' le loro regole.
     """
     measured, shapes = _measurements(series, recipes, names, silent, muted)
-    return {"giorno": day, "obiettivo": objective, "misure": measured,
-            "forme": shapes, "cronaca": [_entry(e) for e in episodes or []],
-            "giudizio": judgment}
+    return {"giorno": day, "obiettivo": objective, "regole": rules_mark(),
+            "misure": measured, "forme": shapes,
+            "cronaca": [_entry(e) for e in episodes or []], "giudizio": judgment}
 
 
 def _measurements(series: dict, recipes: dict, names: dict,
@@ -286,8 +312,9 @@ def _entry(episode: dict) -> dict:
 def series_of_measures(reports, names: dict | None = None) -> dict:
     """I resoconti pivotati: **una riga per misura**, coi suoi valori nei giorni.
 
-    Torna `{"giorni": [...], "obiettivi": [...], "serie": [{soggetto, nome,
-    misura, chiave, operazione, unita, valori, coperture, perche, esclusi}]}`.
+    Torna `{"giorni": [...], "obiettivi": [...], "regole": [...], "serie":
+    [{soggetto, nome, misura, chiave, operazione, unita, valori, coperture,
+    perche, esclusi}]}`.
     `esclusi` e' `{giorno: [{dal, al, causa, perche}]}`: le ore che il
     resoconto di quel giorno ha lasciato fuori dal valore (il dato fermo,
     08/10/2026), accanto al valore che hanno cambiato.
@@ -406,7 +433,31 @@ def series_of_measures(reports, names: dict | None = None) -> dict:
                       key=lambda r: (str(r["soggetto"] or ""), str(r["misura"] or ""),
                                      _KEY_ORDER.get(r["chiave"], 9), str(r["chiave"] or "")))
     return {"giorni": days, "obiettivi": _objective_runs(ordered),
-            "serie": ordinate}
+            "regole": _rules_runs(ordered), "serie": ordinate}
+
+
+def _rules_runs(reports) -> list[dict]:
+    """Con quali regole sono state misurate le serie: un tratto per regole,
+    `{dal, al, regole}` (Tappa 8, G-03, D2).
+
+    Come l'obiettivo, e per la stessa ragione: le regole cambiano qualche
+    volta, e chi legge una serie deve sapere dove. **`regole: None` e' un
+    tratto anche lui**, e il piu' importante: i giorni misurati prima della
+    regola del dato fermo (`rules_mark`), dove un valore puo' venire da una
+    fonte che aveva smesso di parlare. Lo dice all'analista
+    `analyst_turn._rules_lines`.
+    """
+    out: list[dict] = []
+    open_run: dict | None = None
+    for report in reports:
+        day = str(report.get("giorno") or "")
+        rules = report.get("regole")
+        if open_run is not None and open_run["regole"] == rules:
+            open_run["al"] = day
+            continue
+        open_run = {"dal": day, "al": day, "regole": rules}
+        out.append(open_run)
+    return out
 
 
 def _objective_runs(reports) -> list[dict]:

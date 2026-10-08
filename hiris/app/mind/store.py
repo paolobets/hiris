@@ -103,7 +103,8 @@ CONSERVAZIONE: dict[str, tuple[int | None, str, str | None]] = {
          "-- accettata, rifiutata, fatta a mano: e' un registro delle sue "
          "scelte, non un archivio tecnico"),
         None),
-    "objective": (None, "parole sue", None),
+    "objective": (
+        None, "parole sue, e i resoconti le citano per riga (A-17)", None),
     "scope": (
         None,
         ("il perimetro, una riga per soggetto: la decisione dell'osservatore, "
@@ -542,6 +543,11 @@ CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC)
 -- l'ancora della cronaca puo' stringersi): una colonna per campo vorrebbe dire
 -- una migrazione a ogni cosa imparata, che e' cio' che questa fetta esiste per
 -- togliere.
+--
+-- Nel corpo, `obiettivo` e' un riferimento alla riga di `objective`, `{"id"}`
+-- (`{"id": null}` quello di fabbrica, `null` se non dichiarato), e si risolve in
+-- lettura (A-17, Tappa 8); `regole` dice con quali regole e' stato misurato,
+-- `null` prima che il resoconto lo dicesse (G-03, `report.rules_mark`).
 CREATE TABLE IF NOT EXISTS resoconto (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
@@ -926,13 +932,90 @@ def _drop_actuator_proposals(conn) -> None:
                      (json.dumps(body, ensure_ascii=False), row["giorno"]))
 
 
+def _mark_reports_without_rules(conn) -> None:
+    """I resoconti archiviati si marcano `regole: null` (Tappa 8, G-03, D2:
+    decisione del proprietario dell'08/10/2026). Sono nati prima che il
+    resoconto dicesse con quali regole e' stato misurato (`report.rules_mark`),
+    cioe' prima della regola del dato fermo o con una sua forma precedente: la
+    pagina e l'analista lo dicono. Misurato dallo sprint il 07/10/2026 sulla
+    casa: 29 resoconti su 30 senza la causa nelle misure non calcolabili.
+
+    **Restano, e non si rifanno**: oltre i 22 giorni del grezzo il resoconto
+    e' l'unica copia. Si aggiunge la chiave e basta; `scritto_ts` non cambia,
+    perche' marcare non e' rifare il giorno, e l'istante e' cio' che sveglia
+    l'analista (`report_stamps`). Un corpo che la chiave ce l'ha gia' -- anche
+    `null` -- non si tocca: e' cio' che rende il passo idempotente.
+    """
+    for row in conn.execute("SELECT giorno, corpo_json FROM resoconto").fetchall():
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(body, dict) or "regole" in body:
+            continue
+        body["regole"] = None
+        conn.execute("UPDATE resoconto SET corpo_json = ? WHERE giorno = ?",
+                     (json.dumps(body, ensure_ascii=False), row["giorno"]))
+
+
+def _objective_references(conn) -> None:
+    """L'obiettivo dei resoconti archiviati diventa un riferimento alla sua
+    riga (A-17, Tappa 8, D8): `{"testo", "scritto_ts"}` -> `{"id"}`. Il testo
+    vive nella tabella `objective`, che non si pota mai (`CONSERVAZIONE`).
+
+    **Come si trova la riga, e perche' e' certo.** Ogni obiettivo scritto in
+    un resoconto viene da quella tabella -- `objective_at` in
+    `facts.aggregate_day`, la sua copia in `_migration_9` -- con il suo
+    `written_ts` e il suo testo, e la tabella si accoda soltanto. Si cerca
+    quindi la riga con lo stesso `written_ts` E lo stesso testo; due righe
+    identiche in entrambi direbbero la stessa cosa, e si prende la prima.
+    `scritto_ts: None` e' quello di fabbrica, `{"id": None}`, se il testo e'
+    `DEFAULT_OBJECTIVE`.
+
+    **Cio' che non si trova resta com'e'**, col suo testo, e il log lo dice
+    una volta per giorno: e' meglio un corpo nella forma di prima che un
+    riferimento inventato. Non dovrebbe succedere (il testo di fabbrica non e'
+    mai cambiato, e nessuno cancella una riga di `objective`); se succede, il
+    lettore lo passa com'e' (`_resolved_objectives`). `None` resta `None`. Un
+    corpo che ha gia' il riferimento non si tocca.
+
+    La query e' qui e non in un metodo per la ragione di `_migration_9`: una
+    migrazione deve dire fra due anni la stessa cosa.
+    """
+    for row in conn.execute("SELECT giorno, corpo_json FROM resoconto").fetchall():
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        aim = body.get("obiettivo") if isinstance(body, dict) else None
+        if not isinstance(aim, dict) or "id" in aim:
+            continue
+        written = aim.get("scritto_ts")
+        found = None
+        if written is None:
+            found = {"id": None} if aim.get("testo") == DEFAULT_OBJECTIVE else None
+        elif isinstance(written, int | float):
+            line = conn.execute(
+                "SELECT id FROM objective WHERE written_ts = ? AND text = ? "
+                "ORDER BY id LIMIT 1", (float(written), aim.get("testo"))).fetchone()
+            found = None if line is None else {"id": line["id"]}
+        if found is None:
+            logger.warning("resoconto di %s: l'obiettivo non ha una riga in `objective`, "
+                           "resta col suo testo", row["giorno"])
+            continue
+        body["obiettivo"] = found
+        conn.execute("UPDATE resoconto SET corpo_json = ? WHERE giorno = ?",
+                     (json.dumps(body, ensure_ascii=False), row["giorno"]))
+
+
 #: I passi della migrazione 15, in ordine (Tappa 8, Task 3). **Una
 #: migrazione sola per la tappa**, con un passo per cambio: chi porta il suo
 #: (la marca `regole` dei resoconti del Task 2, le parole degli stati delle
 #: proposte del Task 4) aggiunge una funzione qui, idempotente, senza
 #: riscrivere le altre. Vale finche' la 15 non e' uscita in un rilascio: dopo,
 #: un passo nuovo e' una migrazione 16.
-_MIGRATION_15_STEPS = (_drop_unread_reading_columns, _drop_actuator_proposals)
+_MIGRATION_15_STEPS = (_drop_unread_reading_columns, _drop_actuator_proposals,
+                       _mark_reports_without_rules, _objective_references)
 
 
 def _migration_15(conn) -> None:
@@ -966,6 +1049,29 @@ SCHEMA_VERSION = 15
 #: un rispetto-a-cosa. Un obiettivo vuoto sarebbe una manopola girata a zero,
 #: non una manopola assente.
 DEFAULT_OBJECTIVE = "ottimizzare la casa e renderla confortevole"
+
+def _factory_objective() -> dict:
+    """L'obiettivo di fabbrica, nella forma di una riga: nessuno l'ha
+    scritto, quindi niente `id` e niente `scritto_ts`."""
+    return {"id": None, "testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
+
+
+def _objective_out(row) -> dict:
+    """Una riga di `objective`, nella forma che esce: `{"id", "testo",
+    "scritto_ts"}` -- la stessa da `objective()`, `objective_at()` e dai
+    resoconti letti (fondamenta 3)."""
+    return {"id": row["id"], "testo": row["text"], "scritto_ts": row["written_ts"]}
+
+
+def _objective_ref(body) -> dict | None:
+    """Il riferimento all'obiettivo di un resoconto, `{"id"}`, o `None` se il
+    corpo non ne porta uno (obiettivo `None`, o un corpo che la migrazione 15
+    ha lasciato col suo testo)."""
+    aim = body.get("obiettivo") if isinstance(body, dict) else None
+    if isinstance(aim, dict) and "id" in aim:
+        return {"id": aim["id"]}
+    return None
+
 
 #: Quanti tentativi mostra la pagina. Abbastanza da distinguere «e' andata
 #: male una volta» da «sta fallendo da un'ora» -- con un giro ogni dieci
@@ -1143,7 +1249,15 @@ class ObservationsStore:
         resoconto costa **un giorno**, e solo
         finche' il grezzo di quel giorno esiste -- e' la promessa dei due
         strati, e senza la sostituzione non sarebbe vera.
+
+        **L'obiettivo si salva come riferimento** (A-17, Tappa 8): del suo
+        `{"id", "testo", "scritto_ts"}` resta `{"id"}`, perche' il testo vive
+        nella tabella `objective` per sempre e una copia accanto sarebbe un
+        doppione. `report` e `reports` lo risolvono.
         """
+        aim = _objective_ref(report)
+        if aim is not None:
+            report = {**report, "obiettivo": aim}
         with self._lock:
             self._conn.execute(
                 "INSERT INTO resoconto(giorno, corpo_json, scritto_ts) "
@@ -1271,7 +1385,10 @@ class ObservationsStore:
         if row is None:
             return None
         body = _json_column(row["corpo_json"], table="resoconto", key=day)
-        return None if body is _UNREADABLE else body
+        if body is _UNREADABLE:
+            return None
+        self._resolved_objectives([body])
+        return body
 
     def reports(self, *, limit: int = 30) -> list[dict]:
         """Gli ultimi resoconti, dal piu' recente.
@@ -1288,7 +1405,9 @@ class ObservationsStore:
                 (int(max(1, limit)),)).fetchall()
         bodies = (_json_column(r["corpo_json"], table="resoconto", key=r["giorno"])
                   for r in righe)
-        return [body for body in bodies if body is not _UNREADABLE]
+        kept = [body for body in bodies if body is not _UNREADABLE]
+        self._resolved_objectives(kept)
+        return kept
 
     def oldest_reading_ts(self) -> float | None:
         """L'istante della riga piu' vecchia del grezzo, o `None` se non ce
@@ -1664,11 +1783,12 @@ class ObservationsStore:
     # -- L'obiettivo -------------------------------------------------------
 
     def objective(self) -> dict:
-        """L'obiettivo che vale adesso: `{"testo", "scritto_ts"}`.
+        """L'obiettivo che vale adesso: `{"id", "testo", "scritto_ts"}`.
 
         `scritto_ts` a `None` dice che nessuno l'ha mai scritto e vale quello di
         fabbrica -- che non e' la stessa cosa di «l'ha scritto qualcuno e per
-        caso coincide col default».
+        caso coincide col default». `id` e' la riga di `objective`, `None` per
+        quello di fabbrica: e' cio' che un resoconto salva (A-17).
 
         E' l'ultimo scritto, a qualunque istante: lo stesso `_objective_row`
         di `objective_at`, senza confine.
@@ -1682,11 +1802,40 @@ class ObservationsStore:
         deve dire fra due anni la stessa cosa, anche se questo metodo cambia."""
         with self._lock:
             row = self._conn.execute(
-                "SELECT text, written_ts FROM objective WHERE written_ts <= ? "
+                "SELECT id, text, written_ts FROM objective WHERE written_ts <= ? "
                 "ORDER BY written_ts DESC, id DESC LIMIT 1", (float(ts),)).fetchone()
         if row is None:
-            return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
-        return {"testo": row["text"], "scritto_ts": row["written_ts"]}
+            return _factory_objective()
+        return _objective_out(row)
+
+    def _resolved_objectives(self, bodies: list) -> None:
+        """Risolve **sul posto** il riferimento all'obiettivo dei resoconti
+        letti: `{"id": n}` diventa `{"id", "testo", "scritto_ts"}` (A-17,
+        Tappa 8). L'archivio salva solo il riferimento (`replace_report`); chi
+        legge riceve l'obiettivo intero, che si interpreta da solo
+        (fondamenta 1). `{"id": None}` e' quello di fabbrica; `None` resta
+        `None`. Un corpo che porta ancora il testo (la migrazione 15 non ha
+        trovato la sua riga, e l'ha detto nel log) passa com'e'.
+
+        Una query per tutti i resoconti letti: la tabella e' di poche righe,
+        ma trenta resoconti non devono costare trenta letture."""
+        wanted = {aim["id"] for aim in (_objective_ref(b) for b in bodies)
+                  if aim is not None and aim["id"] is not None}
+        found: dict = {}
+        if wanted:
+            marks = ",".join("?" * len(wanted))
+            with self._lock:
+                rows = self._conn.execute(
+                    f"SELECT id, text, written_ts FROM objective WHERE id IN ({marks})",
+                    tuple(wanted)).fetchall()
+            found = {row["id"]: _objective_out(row) for row in rows}
+        for body in bodies:
+            aim = _objective_ref(body)
+            if aim is None:
+                continue
+            ident = aim["id"]
+            body["obiettivo"] = (_factory_objective() if ident is None else found.get(
+                ident, {"id": ident, "testo": None, "scritto_ts": None}))
 
     def set_objective(self, text: str, *, when_ts: float | None = None) -> bool:
         """Scrive un obiettivo nuovo. Torna `False` se non ha scritto niente.
