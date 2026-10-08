@@ -115,9 +115,12 @@ class ChatSettings:
         File assente e file non-JSON convergono sullo stesso `raw = {}`: un
         solo percorso produce i default, non due.
 
-        **Puo' sollevare** su un file che e' JSON valido ma di forma
-        sbagliata (eseguito il 02/10/2026): una radice che non e' un oggetto
-        da' `AttributeError`, un numero non convertibile `ValueError`."""
+        **Non solleva nemmeno su un file JSON valido ma di forma sbagliata**
+        (S-19, Tappa 8): fino all'08/10/2026 una radice che non e' un oggetto
+        dava `AttributeError` e un numero non convertibile `ValueError`, e
+        l'avvio, che la chiama senza `try`, si fermava. Ora una radice storta
+        vale i default, un numero storto il default del suo campo, e il log
+        lo dice nominando il campo."""
         path = os.path.join(data_dir, _SETTINGS_FILE)
         raw: dict = {}
         if os.path.exists(path):
@@ -130,7 +133,24 @@ class ChatSettings:
                     path, exc,
                 )
                 raw = {}
+        if not isinstance(raw, dict):
+            logger.error(
+                "Impostazioni chat in %s: la radice e' %s, non un oggetto: "
+                "uso i default nel codice.", path, type(raw).__name__,
+            )
+            raw = {}
         default = cls()
+
+        def number(key: str, value, fallback: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                logger.error(
+                    "Impostazioni chat in %s: %s=%r non e' un numero: uso %r.",
+                    path, key, value, fallback,
+                )
+                return fallback
+
         # NOTA il contrasto deliberato con `thinking_budget`/`max_chat_turns`
         # piu' sotto: quelli usano `raw.get(k, 0) or 0`, che trasforma
         # ANCHE un valore presente ma falsy (0) nel ripiego -- corretto per
@@ -143,7 +163,8 @@ class ChatSettings:
         if "giorni_conservazione" in raw:
             value = raw.get("giorni_conservazione")
             retention_days = (
-                default.retention_days if value is None else int(value)
+                default.retention_days if value is None
+                else number("giorni_conservazione", value, default.retention_days)
             )
         else:
             retention_days = default.retention_days
@@ -151,8 +172,12 @@ class ChatSettings:
             name=raw.get("nome", default.name),
             system_prompt=raw.get("system_prompt") or default.system_prompt,
             response_mode=raw.get("response_mode", default.response_mode),
-            thinking_budget=int(raw.get("thinking_budget", 0) or 0),
-            max_chat_turns=int(raw.get("max_chat_turns", 0) or 0),
+            thinking_budget=number("thinking_budget",
+                                   raw.get("thinking_budget", 0) or 0,
+                                   default.thinking_budget),
+            max_chat_turns=number("max_chat_turns",
+                                  raw.get("max_chat_turns", 0) or 0,
+                                  default.max_chat_turns),
             restrict_to_home=bool(raw.get("restrict_to_home", default.restrict_to_home)),
             retention_days=retention_days,
         )
