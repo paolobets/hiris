@@ -17,6 +17,7 @@ import logging
 import secrets
 import threading
 
+from ..chat_thread import subject_from_key, subject_key_for
 from ..home_space.historian import instant_epoch, local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
 from ..providers import CLAUDE, OLLAMA, OPENAI, OPENROUTER, SUBSCRIPTION, get, ids
@@ -28,6 +29,8 @@ from ..storage import (
     connect,
     init_schema,
     prune_declared,
+    rebuild_table,
+    table_columns,
 )
 from . import vocabulary
 
@@ -46,8 +49,6 @@ CREATE TABLE IF NOT EXISTS consumo_giorno (
     costo_usd         REAL,
     costo_stato       TEXT    NOT NULL,
     errori_rate_limit INTEGER NOT NULL DEFAULT 0,
-    primo_ts          REAL    NOT NULL,
-    ultimo_ts         REAL    NOT NULL,
     PRIMARY KEY (giorno, provider, modello)
 );
 CREATE INDEX IF NOT EXISTS idx_consumo_giorno ON consumo_giorno(giorno);
@@ -65,6 +66,18 @@ CREATE TABLE IF NOT EXISTS ancora_saldo (
     PRIMARY KEY (provider, modello)
 );
 CREATE TABLE IF NOT EXISTS legacy_importati (percorso TEXT PRIMARY KEY);
+-- **I ripieghi del giorno dell'ancora, all'istante dell'ancora** (G-22,
+-- Tappa 8): la stessa fotografia di `ancora_saldo`, per i ripieghi. Senza,
+-- «Riparti da adesso» filtrava i ripieghi per GIORNO mentre i consumi
+-- partono dall'ISTANTE, e quelli di stamattina prima dell'azzeramento
+-- restavano contati. Una riga per (agente, motivo), del solo giorno
+-- dell'ancora: i giorni dopo non hanno niente da togliere.
+CREATE TABLE IF NOT EXISTS anchor_fallback (
+    agent TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (agent, reason)
+);
 -- **I giri passati dal forfait al consumo** (reperto C-5, 23/09/2026).
 --
 -- Sta QUI perche' un ripiego e' un fatto sui soldi, e questo archivio e' gia'
@@ -104,9 +117,11 @@ CREATE TABLE IF NOT EXISTS fallback (
 -- il valore di `code`, `pin`, `password`, `token`... si scrive `***`.
 --
 -- Colonne NUOVE, quindi in inglese.
--- `subject_json` ha la STESSA forma del soggetto della cronaca
+-- `subject_key` ha la STESSA forma del soggetto della cronaca
 -- (`action/journal.py`), e non e' un caso: e' la stessa domanda -- chi sta
--- chiedendo, e da quale sistema. Oggi la chat e' una sola; il giorno in cui
+-- chiedendo, e da quale sistema. Dalla Tappa 8 (A-17) e' la CHIAVE
+-- (`specie:id`, `chat_thread.subject_key_for`), non la copia del soggetto
+-- con il nome, che cambia. Oggi la chat e' una sola; il giorno in cui
 -- HIRIS riceve input da chat diverse per utente e per sistema (Retro Panel,
 -- per dire), `species='chat'` le schiaccerebbe insieme -- lo stesso difetto
 -- di `agent_type='observer'` che schiacciava osservatore e ricette. Una
@@ -126,7 +141,7 @@ CREATE TABLE IF NOT EXISTS turn (
     provider     TEXT    NOT NULL,
     model        TEXT    NOT NULL,
     channel      TEXT    NOT NULL,
-    subject_json TEXT,
+    subject_key  TEXT,
     duration_ms  INTEGER NOT NULL,
     iterations   INTEGER NOT NULL,
     tools        TEXT    NOT NULL,
@@ -210,6 +225,9 @@ CONSERVAZIONE: Retention = {
     "ancora": (None, "una riga sola: da quando si conta", None),
     "ancora_saldo": (
         None, "il saldo di prima dell'ancora, una riga per modello", None),
+    "anchor_fallback": (
+        None, "i ripieghi di prima dell'ancora, una riga per agente e motivo",
+        None),
     "legacy_importati": (
         None,
         ("quali file di prima sono gia' entrati, e quindi si cancellano: "
@@ -361,6 +379,87 @@ def _migration_5(conn) -> None:
             "e %d di ancora_saldo spostate", old, new, len(days), len(balances))
 
 
+#: Le colonne di `consumo_giorno` e di `turn` alla versione 6, quelle che la
+#: ricostruzione riempie: la forma di QUEL gradino, ferma.
+_DAY_COLUMNS_V6 = ("giorno", "provider", "modello", "richieste", "token_in",
+                   "token_out", "cache_lettura", "cache_scrittura", "costo_usd",
+                   "costo_stato", "errori_rate_limit")
+_TURN_COLUMNS_V6 = ("id", "ts", "species", "provider", "model", "channel",
+                    "subject_key", "duration_ms", "iterations", "tools", "outcome",
+                    "output_tokens", "list_cost_usd", "tool_args", "problems")
+
+
+def _drop_bucket_instants(conn) -> None:
+    """Escono `consumo_giorno.primo_ts` e `ultimo_ts` (G-07): si scrivevano a
+    ogni chiamata e nessuno le leggeva -- la pagina dice il giorno, e il
+    giorno e' la chiave del secchiello."""
+    if not table_columns(conn, "consumo_giorno") & {"primo_ts", "ultimo_ts"}:
+        return
+    rebuild_table(
+        conn, "consumo_giorno",
+        "CREATE TABLE consumo_giorno (giorno TEXT NOT NULL, provider TEXT NOT NULL, "
+        "modello TEXT NOT NULL, richieste INTEGER NOT NULL DEFAULT 0, "
+        "token_in INTEGER NOT NULL DEFAULT 0, token_out INTEGER NOT NULL DEFAULT 0, "
+        "cache_lettura INTEGER NOT NULL DEFAULT 0, "
+        "cache_scrittura INTEGER NOT NULL DEFAULT 0, costo_usd REAL, "
+        "costo_stato TEXT NOT NULL, errori_rate_limit INTEGER NOT NULL DEFAULT 0, "
+        "PRIMARY KEY (giorno, provider, modello))",
+        _DAY_COLUMNS_V6,
+        indexes=("CREATE INDEX IF NOT EXISTS idx_consumo_giorno ON consumo_giorno(giorno)",))
+
+
+def _turn_subject_key(conn) -> None:
+    """`turn.subject_json` diventa `subject_key` (A-17, D8): la copia del
+    soggetto intero diventa la sua chiave, come nella cronaca. Un JSON
+    illeggibile perde il soggetto e il registro lo dice."""
+    if "subject_json" not in table_columns(conn, "turn"):
+        return
+    add_missing_columns(conn, "turn", {"subject_key": "TEXT"})
+    for row in conn.execute("SELECT id, subject_json FROM turn "
+                            "WHERE subject_json IS NOT NULL").fetchall():
+        try:
+            subject = json.loads(row["subject_json"])
+        except (TypeError, ValueError):
+            subject = None
+        if not isinstance(subject, dict) or not subject:
+            logger.warning("consumi: il soggetto del turno %s non si legge, e la "
+                           "riga lo perde", row["id"])
+            continue
+        conn.execute("UPDATE turn SET subject_key = ? WHERE id = ?",
+                     (subject_key_for(subject), row["id"]))
+    rebuild_table(
+        conn, "turn",
+        "CREATE TABLE turn (id TEXT PRIMARY KEY, ts REAL NOT NULL, "
+        "species TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, "
+        "channel TEXT NOT NULL, subject_key TEXT, duration_ms INTEGER NOT NULL, "
+        "iterations INTEGER NOT NULL, tools TEXT NOT NULL, outcome TEXT NOT NULL, "
+        "output_tokens INTEGER, list_cost_usd REAL, tool_args TEXT, problems TEXT)",
+        _TURN_COLUMNS_V6,
+        indexes=("CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn(ts DESC)",))
+
+
+def _migration_6(conn) -> None:
+    """Versione 6 (08/10/2026, Tappa 8, Task 5): le colonne che nessuno
+    leggeva escono, e il soggetto di un turno diventa la sua chiave. Il
+    ripiego dell'ancora (`anchor_fallback`, G-22) e' una tabella nuova: la
+    crea lo schema, che gira prima delle migrazioni, e parte vuota -- un'ancora
+    spostata prima di oggi non ha fotografato i suoi ripieghi, e non si
+    inventa che l'abbia fatto.
+
+    **Tutto o niente**, in una transazione (`storage.rebuild_table`): un
+    passo interrotto lascia l'archivio alla versione 5, intero, e la
+    migrazione si rifa' al prossimo avvio. Idempotente: ogni passo guarda
+    prima se ha ancora lavoro da fare."""
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        _drop_bucket_instants(conn)
+        _turn_subject_key(conn)
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 #: Quanto si tiene di un argomento. Testo libero lungo non deve gonfiare il
 #: registro; e sono filtri e nomi della casa, non contenuti.
 _ARG_TEXT_MAX = 200
@@ -471,6 +570,10 @@ def log_safely(log_usage, provider: str, model: str, **fields) -> None:
                        provider, model, type(error).__name__, error)
 
 
+#: A che versione sta lo schema: chi lo prova lo chiede qui.
+SCHEMA_VERSION = 6
+
+
 class UsageStore:
     CONSERVAZIONE = CONSERVAZIONE
 
@@ -478,9 +581,10 @@ class UsageStore:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=5,
+        init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3,
-                                4: _migration_4, 5: _migration_5})
+                                4: _migration_4, 5: _migration_5,
+                                6: _migration_6})
 
     def close(self) -> None:
         with self._lock:
@@ -541,11 +645,11 @@ class UsageStore:
                 "INSERT INTO consumo_giorno (giorno, provider, modello, "
                 "richieste, token_in, token_out, cache_lettura, "
                 "cache_scrittura, costo_usd, costo_stato, "
-                "errori_rate_limit, primo_ts, ultimo_ts) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "errori_rate_limit) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (day, provider, model, richieste, token_in, token_out,
                  cache_read, cache_write, cost_usd, cost_state,
-                 errori_rate_limit, now, now))
+                 errori_rate_limit))
         else:
             state = vocabulary.piu_debole(row["costo_stato"], cost_state)
             if state != row["costo_stato"]:
@@ -564,13 +668,11 @@ class UsageStore:
                 "token_in=token_in+?, token_out=token_out+?, "
                 "cache_lettura=cache_lettura+?, cache_scrittura=cache_scrittura+?, "
                 "costo_usd=?, costo_stato=?, "
-                "errori_rate_limit=errori_rate_limit+?, "
-                "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
+                "errori_rate_limit=errori_rate_limit+? "
                 "WHERE giorno=? AND provider=? AND modello=?",
                 (richieste, token_in, token_out, cache_read,
                  cache_write, sum(noti) if noti else None, state,
-                 errori_rate_limit, now, now,
-                 day, provider, model))
+                 errori_rate_limit, day, provider, model))
 
     def log_fallback(self, agent: str, reason: str, *, now: float) -> None:
         """Un giro e' passato dal forfait al consumo: si conta.
@@ -649,11 +751,11 @@ class UsageStore:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO turn(id,ts,species,provider,model,channel,"
-                "subject_json,duration_ms,iterations,tools,outcome,"
+                "subject_key,duration_ms,iterations,tools,outcome,"
                 "output_tokens,list_cost_usd,tool_args) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ident, now, species, provider, model, channel,
-                 None if subject is None else json.dumps(subject),
+                 None if not subject else subject_key_for(subject),
                  int(duration_ms), int(iterations), json.dumps(list(tools)),
                  outcome, None if output_tokens is None else int(output_tokens),
                  None if list_cost_usd is None else float(list_cost_usd),
@@ -740,7 +842,7 @@ class UsageStore:
         where, args = ("WHERE species = ? ", (species,)) if species else ("", ())
         with self._lock:
             righe = self._conn.execute(
-                "SELECT id,ts,species,provider,model,channel,subject_json,"
+                "SELECT id,ts,species,provider,model,channel,subject_key,"
                 "duration_ms,iterations,tools,outcome,output_tokens,"
                 "list_cost_usd,tool_args,problems FROM turn " + where +
                 "ORDER BY ts DESC LIMIT ?",
@@ -748,8 +850,8 @@ class UsageStore:
         return [{"id": r["id"], "ts": r["ts"], "species": r["species"],
                  "provider": r["provider"], "model": r["model"],
                  "channel": r["channel"],
-                 "subject": (None if r["subject_json"] is None
-                             else json.loads(r["subject_json"])),
+                 # CHI, letto dalla chiave come nella cronaca (A-17).
+                 "subject": subject_from_key(r["subject_key"]),
                  "duration_ms": r["duration_ms"], "iterations": r["iterations"],
                  "tools": json.loads(r["tools"]), "outcome": r["outcome"],
                  "output_tokens": r["output_tokens"],
@@ -789,7 +891,22 @@ class UsageStore:
                 f"FROM fallback {where} "
                 "ORDER BY day DESC, count DESC, agent ASC",
                 params).fetchall()
-        return [dict(r) for r in righe]
+            before = ({} if not from_anchor else {
+                (r["agent"], r["reason"]): r["count"] for r in self._conn.execute(
+                    "SELECT agent, reason, count FROM anchor_fallback")})
+        # I ripieghi del giorno dell'ancora contano da DOPO l'ancora (G-22):
+        # la fotografia si toglie, come il saldo dai consumi. Una riga che
+        # scende a zero e' tutta di prima, e non si mostra.
+        anchor_day = self._anchor_day() if before else ""
+        out = []
+        for r in righe:
+            row = dict(r)
+            if row["day"] == anchor_day:
+                row["count"] -= before.get((row["agent"], row["reason"]), 0)
+                if row["count"] <= 0:
+                    continue
+            out.append(row)
+        return out
 
     # -- leggere -------------------------------------------------------
     #
@@ -966,6 +1083,10 @@ class UsageStore:
         colonne = ", ".join(CAMPI)
         with self._lock:
             self._conn.execute("DELETE FROM ancora_saldo")
+            self._conn.execute("DELETE FROM anchor_fallback")
+            self._conn.execute(
+                "INSERT INTO anchor_fallback (agent, reason, count) "
+                "SELECT agent, reason, count FROM fallback WHERE day = ?", (day,))
             self._conn.execute(
                 f"INSERT INTO ancora_saldo (provider, modello, {colonne}, costo_usd) "
                 f"SELECT provider, modello, {colonne}, costo_usd "
