@@ -23,7 +23,7 @@ from ..providers import CLAUDE, OLLAMA, OPENAI, OPENROUTER, SUBSCRIPTION, get, i
 from ..proxy._sanitize import CUT, MASK, truncate_with_marker
 from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
-from .vocabulary import piu_debole
+from . import vocabulary
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +296,7 @@ def _migration_5(conn) -> None:
             "WHERE giorno=? AND provider=? AND modello=?",
             (*(r[c] for c in CAMPI),
              _known_sum(twin["costo_usd"], r["costo_usd"]),
-             piu_debole(twin["costo_stato"], r["costo_stato"]),
+             vocabulary.piu_debole(twin["costo_stato"], r["costo_stato"]),
              r["primo_ts"], r["ultimo_ts"], r["giorno"], new, r["modello"]))
         conn.execute("DELETE FROM consumo_giorno "
                      "WHERE giorno=? AND provider=? AND modello=?",
@@ -494,7 +494,7 @@ class UsageStore:
                      cache_read, cache_write, cost_usd, cost_state,
                      errori_rate_limit, now, now))
             else:
-                state = piu_debole(row["costo_stato"], cost_state)
+                state = vocabulary.piu_debole(row["costo_stato"], cost_state)
                 if state != row["costo_stato"]:
                     logger.info(
                         "consumi: %s/%s del %s degrada da «%s» a «%s» -- il "
@@ -754,18 +754,15 @@ class UsageStore:
     # alla pagina di spacciare un pavimento per un costo.
 
     #: Lo stato del costo di un insieme di righe -- un modello su piu' giorni,
-    #: un provider in un giorno --: le due colonne che lo leggono (`uno_stato`,
-    #: `ignoti`) e la regola che le combina (`_aggregate_state`). Scritte una
-    #: volta per le due somme, `sezioni` e `storia` (C-08, Tappa 4, Task 5).
-    _STATE_COLUMNS = ("MIN(costo_stato) AS uno_stato, "
-                      "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti")
-
+    #: un provider in un giorno --: le due colonne che lo leggono
+    #: (`rango_debole`, `ignoti`), scritte una volta per le due somme,
+    #: `sezioni` e `storia` (C-08, Tappa 4, Task 5). La regola dello stato piu'
+    #: debole e' quella di `piu_debole`, composta in SQL dal vocabolario (G-23).
+    #: Si compone a ogni lettura perche' l'ordine vive in `STATES`, e non qui.
     @staticmethod
-    def _aggregate_state(r) -> str:
-        """`MIN(costo_stato)` e' alfabetico e non significa niente: se anche
-        una sola riga e' ignota, l'insieme lo e'. Si sceglie esplicitamente
-        invece di fidarsi dell'ordine delle lettere."""
-        return "non_noto" if r["ignoti"] else r["uno_stato"]
+    def _state_columns() -> str:
+        return (f"{vocabulary.weakest_rank_sql('costo_stato')} AS rango_debole, "
+                "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti")
 
     def _where(self, da: str) -> tuple[str, tuple]:
         return ("WHERE giorno >= ?", (da,)) if da else ("", ())
@@ -791,7 +788,7 @@ class UsageStore:
         with self._lock:
             righe = self._conn.execute(
                 f"SELECT provider, modello, {somme}, SUM(costo_usd) AS costo_usd, "
-                f"{self._STATE_COLUMNS}, "
+                f"{self._state_columns()}, "
                 "MIN(giorno) AS primo_uso, MAX(giorno) AS ultimo_uso "
                 f"FROM consumo_giorno {where} GROUP BY provider, modello "
                 "ORDER BY provider, modello", arg).fetchall()
@@ -825,7 +822,7 @@ class UsageStore:
             section["modelli"].append({
                 "modello": r["modello"],
                 "costo_usd": r["costo_usd"],
-                "costo_stato": self._aggregate_state(r),
+                "costo_stato": vocabulary.state_at(r["rango_debole"]),
                 "primo_uso": r["primo_uso"],
                 "ultimo_uso": r["ultimo_uso"],
                 **{c: r[c] or 0 for c in CAMPI},
@@ -881,7 +878,7 @@ class UsageStore:
         with self._lock:
             righe = self._conn.execute(
                 f"SELECT giorno, provider, {somme}, SUM(costo_usd) AS costo_usd, "
-                f"{self._STATE_COLUMNS} "
+                f"{self._state_columns()} "
                 "FROM consumo_giorno WHERE giorno >= ? AND giorno <= ? "
                 "GROUP BY giorno, provider ORDER BY giorno, provider", (da, a)).fetchall()
         giorni: dict[str, dict] = {}
@@ -890,7 +887,7 @@ class UsageStore:
                                   {"giorno": r["giorno"], "per_provider": {}})
             g["per_provider"][r["provider"]] = {
                 "costo_usd": r["costo_usd"],
-                "costo_stato": self._aggregate_state(r),
+                "costo_stato": vocabulary.state_at(r["rango_debole"]),
                 **{c: r[c] or 0 for c in CAMPI},
             }
         return list(giorni.values())

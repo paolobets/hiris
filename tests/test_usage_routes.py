@@ -297,13 +297,13 @@ def test_l_interruttore_da_sempre_cambia_davvero_i_numeri(app):
 
 def test_il_secchiello_dice_lo_stato_del_costo_come_la_riga_di_modello(tmp_path):
     """C-08 (Tappa 4, Task 5): il secchiello di un giorno porta `cost_state`,
-    con la stessa regola della riga di modello (`UsageStore._aggregate_state`):
+    con la stessa regola della riga di modello (`UsageStore._state_columns`):
     se anche un solo modello di quel provider, quel giorno, ha un costo
     ignoto, il secchiello lo e'. E i campi che le due righe hanno in comune
     escono uguali, perche' escono dallo stesso mappatore.
 
     Mutazioni eseguite: il secchiello senza `costo_stato` nell'archivio ->
-    rossa (KeyError); `_aggregate_state` che legge il solo `MIN` -> rossa sul
+    rossa (KeyError); la lettura che usa il solo `MIN` alfabetico -> rossa sul
     giorno misto (direbbe «gratuito»)."""
     archivio = UsageStore(str(tmp_path / "usage.db"), read_timezone=lambda: ROMA)
     # «gratuito» viene PRIMA di «non_noto» in ordine alfabetico: e' il caso
