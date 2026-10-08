@@ -7,12 +7,12 @@ from hiris.app.keeper.promise import (
     CONSERVAZIONE_S,
     ORIZZONTE_S,
     STATES_CONCLUSI,
-    STATES_SOSPESO,
     TOLLERANZA_S,
     delay_reason,
     serializza,
     validate,
 )
+from hiris.app.states import PROMISE_STATES, READABLE, SUSPENDED
 
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
@@ -127,13 +127,12 @@ def test_le_costanti_sono_quelle_dichiarate_nella_spec():
 
 
 # ---------------------------------------------------------------------------
-# PENDING_STATES (JS, era STATI_SOSPESO) / STATI_CONCLUSI: lo stesso insieme di
-# STATES_SOSPESO / STATES_CONCLUSI (Python) e nel
-# JavaScript della pagina (review finale, rilievo ②). Il vocabolario di
-# `agenda-route.js` esiste PRIMA di questo test -- qui non e' un doppione
-# costruito apposta, e' quello LEGATO da una prova (`scripts/doppioni.py`,
-# `_costanti_gia_legate`): la divergenza smette di essere silenziosa perche'
-# questo test la vede.
+# PENDING_STATES / STATE_BADGE (JS): lo stesso insieme di `states.SUSPENDED`
+# e degli stati delle promesse (`states.PROMISE_STATES`, da cui si compone
+# anche `STATES_CONCLUSI`), nel JavaScript della pagina Impegni (review
+# finale, rilievo ②). La parola di ogni stato la manda la rotta dalla Tappa
+# 8 (C-10, `stato_leggibile`): la pagina tiene solo il colore, e la prova
+# lega quello, con la frase che il vocabolario deve avere.
 #
 # Un test gemello, dal lato JavaScript, vive in
 # `tests/js/agenda-route-vocabulary.test.mjs` (stesso confronto, letto
@@ -148,21 +147,18 @@ def _promesse_route_js() -> str:
 
 def test_stati_sospeso_e_lo_stesso_insieme_nel_javascript_della_pagina():
     js = _promesse_route_js()
-    # Il nome JS e' passato all'inglese il 02/09 (fetta del frontend); questo
-    # test lega i due INSIEMI e non i due nomi, quindi sopravvive.
     m = re.search(r"var PENDING_STATES = \[([^\]]*)\];", js)
     assert m, "PENDING_STATES non trovata in agenda-route.js"
     dal_js = {s.strip().strip("'\"") for s in m.group(1).split(",") if s.strip()}
-    assert dal_js == set(STATES_SOSPESO)
+    assert dal_js == set(SUSPENDED)
 
 
-def test_ogni_stato_concluso_ha_una_voce_in_stato_label_e_stato_badge():
+def test_ogni_stato_di_una_promessa_ha_un_badge_e_una_frase():
     js = _promesse_route_js()
-    label = re.search(r"var STATE_LABEL = \{([\s\S]*?)\};", js)
     badge = re.search(r"var STATE_BADGE = \{([\s\S]*?)\};", js)
-    assert label and badge, "STATE_LABEL / STATE_BADGE non trovati in agenda-route.js"
-    chiavi_label = set(re.findall(r"(\w+):", label.group(1)))
+    assert badge, "STATE_BADGE non trovato in agenda-route.js"
     chiavi_badge = set(re.findall(r"(\w+):", badge.group(1)))
-    for stato in STATES_CONCLUSI:
-        assert stato in chiavi_label, f"STATE_LABEL non conosce «{stato}»"
+    assert set(STATES_CONCLUSI) <= set(PROMISE_STATES)
+    for stato in PROMISE_STATES:
         assert stato in chiavi_badge, f"STATE_BADGE non conosce «{stato}»"
+        assert READABLE.get(stato), f"il vocabolario non ha la frase di «{stato}»"

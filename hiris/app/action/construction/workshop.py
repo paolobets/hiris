@@ -42,6 +42,7 @@ from ...home_space.historian import home_space_zone
 from ...home_space.privacy import BEFORE_ADMIN_ONLY, body_is_admin_only
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from ...proxy.ha_client import _silence
+from ...states import APPLIED, PENDING, UNCERTAIN, readable
 from ..journal import CONSTRUCTION
 from ..write_outcome import refused, silent
 from . import composer, stakes
@@ -117,24 +118,6 @@ ARTICOLO_INDETERMINATIVO = {"automation": "un’automazione", "script": "uno scr
                             "scene": "una scena"}
 ARTICOLO_DETERMINATIVO = {"automation": "l’automazione", "script": "lo script",
                           "scene": "la scena"}
-
-# Gli stati interni (snake_case) tradotti per una frase rivolta all'utente.
-# «applicata», «rifiutata» e «scaduta» sono gia' parole italiane leggibili
-# cosi' come sono; «in_corso» no -- e' l'unico che il round 3 della review ha
-# trovato a fuoriuscire grezzo in un messaggio d'errore. `.get(stato, stato)`
-# tiene la mappa un ripiego, non un obbligo di completezza: uno stato nuovo
-# non ancora tradotto resta comunque leggibile, solo con l'underscore.
-READABLE_STATE = {
-    "applicata": "applicata",
-    "rifiutata": "rifiutata",
-    "scaduta": "scaduta",
-    "in_corso": "in corso",
-}
-
-
-def _readable_state(state: str) -> str:
-    return READABLE_STATE.get(state, state)
-
 
 #: Quanto si conserva della frase che conferma (B-5). La cronaca la rilegge
 #: `history` («per mano di HIRIS»), che ne porta al modello l'atto: un muro di testo
@@ -494,8 +477,12 @@ class Workshop:
             # (decisione 4, spec §5): un rifiuto non deve far capire che una
             # proposta con quell'id esiste, solo altrove -- vedi `_UNKNOWN_ID`.
             return refused(_UNKNOWN_ID)
-        if proposal["stato"] != "in_attesa":
-            return refused(f"quella proposta e' gia' {_readable_state(proposal['stato'])}.")
+        if proposal["stato"] != PENDING:
+            # La frase dello stato, dal vocabolario (Tappa 8, D4): fino
+            # all'08/10/2026 una tabella di questo modulo traduceva quattro
+            # parole, e le altre uscivano grezze.
+            return refused("quella proposta non e' piu' in attesa: "
+                           f"{readable(proposal['stato'])}.")
         cancello = self._cancello(proposal, actor, exchange)
         if cancello is not None:
             return refused(cancello)
@@ -695,7 +682,7 @@ class Workshop:
         rimanda alla pagina, senza nominarle (`_ORPHANS_ELSEWHERE`).
         """
         all_pending = [r for r in self._store.list(now=now, pending_only=True)
-                      if r["stato"] == "in_attesa"]
+                      if r["stato"] == PENDING]
         pending = [r for r in all_pending
                   if thread is None or _same_thread(r, thread)]
         confirmable = [r for r in pending if r["turno"] != exchange]
@@ -897,10 +884,10 @@ class Workshop:
             entity=[], executed=False, now=now, error=reason, subject=subject)
         # Il motivo non si copia nella riga (D-26): vive nella cronaca, alla
         # voce `execution_id`, ed e' di la' che la pagina lo legge.
-        occurrence_state = self._store.mark_rejected(proposal["id"], now=now,
+        occurrence_state = self._store.mark_failed(proposal["id"], now=now,
                                                       execution_id=execution_id)
         if "errore" in occurrence_state:
-            logger.warning("mark_rejected non riuscita per %s: %s", proposal["id"],
+            logger.warning("mark_failed non riuscita per %s: %s", proposal["id"],
                            occurrence_state["errore"])
         return {**refused(reason, cause), "esecuzione_id": execution_id}
 
@@ -1154,13 +1141,10 @@ class Workshop:
         rimette come per un'`applicata`, e se la casa non ha nemmeno il `dopo`
         di allora la conferma rifiuta come sempre.
         """
-        # Locale: `revisions` importa gia' questo modulo.
-        from .revisions import UNCERTAIN
-
         row = self._store.read(construction_id, now=now)
         if row is None:
             return refused(unknown_id_text("nessuna costruzione"))
-        if row["stato"] not in ("applicata", UNCERTAIN):
+        if row["stato"] not in (APPLIED, UNCERTAIN):
             return refused("quella costruzione non e' mai stata applicata: "
                            "non c’e' niente da rimettere.")
         prima = row["prima"]

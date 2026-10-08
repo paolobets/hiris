@@ -18,6 +18,7 @@ import threading
 import time
 
 from ..chat_thread import ChatThread, thread_condition, thread_params, unknown_id_text
+from ..states import CANCELLED, FAILED, PENDING, SUSPENDED, TAKEN, readable, sql_list
 from ..storage import connect, init_schema, rekey
 from .promise import (
     CEILING_IN_SOSPESO,
@@ -25,14 +26,13 @@ from .promise import (
     HOUSE_CEILING_IN_SOSPESO,
     STATES_CONCLUSI,
     STATES_ESITO,
-    STATES_SOSPESO,
     serializza,
     validate,
 )
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA = """
+_SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS promesse (
     id TEXT PRIMARY KEY,
     specie TEXT NOT NULL,
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS promesse (
     -- colonna resta perche' le righe vecchie la portano, e togliere una
     -- colonna in SQLite e' una riscrittura della tabella per niente.
     recapito TEXT,
-    stato TEXT NOT NULL DEFAULT 'in_attesa',
+    stato TEXT NOT NULL DEFAULT '{PENDING}',
     motivo TEXT,
     esecuzione_id TEXT,
     testo TEXT,
@@ -68,15 +68,16 @@ CREATE TABLE IF NOT EXISTS promesse (
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
 
-_CONCLUSI = ",".join(f"'{s}'" for s in STATES_CONCLUSI)
+_CONCLUSI = sql_list(STATES_CONCLUSI)
 # Stessa forma di `_CONCLUSI` qui sopra, per lo stesso motivo: composta UNA
-# volta dal vocabolario di `promise.py`, mai riscritta a mano nelle due
-# query sotto (review finale, rilievo ②).
-_SOSPESI = ",".join(f"'{s}'" for s in STATES_SOSPESO)
+# volta dal vocabolario (`states.SUSPENDED`), mai riscritta a mano nelle
+# query sotto (review finale, rilievo ②). Lo stesso vale per ogni stato
+# scritto qui dentro (Tappa 8, D4): nessuna parola di stato e' un letterale.
+_SOSPESI = sql_list(SUSPENDED)
 # Gli stati che sono una notizia per chi legge: `STATES_CONCLUSI` meno
 # `disdetta`. Composto UNA volta dal vocabolario di `promise.py`, come i due
 # qui sopra -- vedi li' perche' non coincide con `_CONCLUSI`.
-_ESITI = ",".join(f"'{s}'" for s in STATES_ESITO)
+_ESITI = sql_list(STATES_ESITO)
 
 
 def _migration_2(conn) -> None:
@@ -236,12 +237,12 @@ class AgendaStore:
                 "INSERT INTO promesse(id,specie,frase,quando_ts,quando_detto,fuso,"
                 "chiamata_json,domanda,istantanea_json,stato,nata_ts,"
                 "entities_at_birth,subject_key,entry_point) "
-                "VALUES(?,?,?,?,?,?,?,?,?,'in_attesa',?,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ident, data["specie"], data["frase"].strip(), float(data["quando_ts"]),
                  data.get("quando_detto"), data.get("fuso"),
                  _json(data.get("chiamata")), data.get("domanda"),
                  _json(data.get("istantanea")),
-                 now,
+                 PENDING, now,
                  # Quante entita' toccava il bersaglio alla nascita (B-6).
                  # `None` quando non c'e' niente da risolvere -- un bersaglio
                  # di sole entita' -- ed e' diverso da `0`, che direbbe
@@ -260,8 +261,8 @@ class AgendaStore:
         """
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE promesse SET stato='in_corso', risvegliata_ts=? "
-                "WHERE id=? AND stato='in_attesa'", (now, promise_id))
+                "UPDATE promesse SET stato=?, risvegliata_ts=? "
+                "WHERE id=? AND stato=?", (TAKEN, now, promise_id, PENDING))
             self._conn.commit()
             return cur.rowcount == 1
 
@@ -342,10 +343,10 @@ class AgendaStore:
         """
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE promesse SET stato='disdetta', "
+                "UPDATE promesse SET stato=?, "
                 "risvegliata_ts=COALESCE(risvegliata_ts, ?) "
-                f"WHERE id=? AND stato='in_attesa' AND {thread_condition()}",
-                (now, promise_id, *thread_params(thread)))
+                f"WHERE id=? AND stato=? AND {thread_condition()}",
+                (CANCELLED, now, promise_id, PENDING, *thread_params(thread)))
             self._conn.commit()
             riuscita = cur.rowcount == 1
         row = self.read_in_thread(promise_id, thread)
@@ -353,8 +354,11 @@ class AgendaStore:
             return {"promessa": row}
         if row is None:
             return {"errore": unknown_id_text("nessuna promessa")}
+        # La frase dello stato, non la parola dell'archivio (C-54, Tappa 8):
+        # «e' gia' in_corso» arrivava al modello, e da li' a una persona.
         return {
-            "errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(row["stato"])
+            "errore": ("quella promessa non e' piu' in attesa ({}): non si disdice, "
+                       "si legge.").format(readable(row["stato"]))
         }
 
     def risana(self, *, now: float) -> int:
@@ -392,10 +396,10 @@ class AgendaStore:
             "fuori tempo sarebbe sbagliata.")
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE promesse SET stato='fallita', "
+                "UPDATE promesse SET stato=?, "
                 "motivo=CASE WHEN specie='fai' THEN ? ELSE ? END "
-                "WHERE stato='in_corso'",
-                (_REASON_FAI, _REASON_CHIEDI))
+                "WHERE stato=?",
+                (FAILED, _REASON_FAI, _REASON_CHIEDI, TAKEN))
             self._conn.commit()
             count = cur.rowcount
         if count:
@@ -519,8 +523,8 @@ class AgendaStore:
     def scadute(self, now: float) -> list[dict]:
         with self._lock:
             righe = self._conn.execute(
-                "SELECT * FROM promesse WHERE stato='in_attesa' AND quando_ts<=? "
-                "ORDER BY quando_ts ASC", (now,)).fetchall()
+                "SELECT * FROM promesse WHERE stato=? AND quando_ts<=? "
+                "ORDER BY quando_ts ASC", (PENDING, now)).fetchall()
         return [serializza(r) for r in righe]
 
     # -- potare --------------------------------------------------------

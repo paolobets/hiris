@@ -1404,9 +1404,12 @@ def test_migration_15_cancella_le_proposte_dell_attuatore_e_gli_esiti_che_le_cit
                                 stakes=None, now_ts=_ACTUATOR_TS)
     rifiutata = store.add_proposal(text="b", perche="p", fingerprint="f2", prova={},
                                    stakes=None, now_ts=_ACTUATOR_TS + 1)
-    store.close_proposal(rifiutata, "rifiutata")
     nuova = store.add_proposal(text="c", perche="p", fingerprint="f3", prova={},
                                stakes=None, now_ts=_PROPOSER_TS)
+    # Le parole di allora (prima della Tappa 8, D4): l'archivio vero le porta.
+    store._conn.execute("UPDATE proposte SET stato='attesa' WHERE id IN (?, ?)",
+                        (attesa, nuova))
+    store._conn.execute("UPDATE proposte SET stato='rifiutata' WHERE id=?", (rifiutata,))
     esiti = [{"impronta": "f1", "esito": proposer_turn.BY_HAND, "proposta_id": attesa},
              {"impronta": "f9", "esito": proposer_turn.NOTHING, "perche": "x"},
              {"impronta": "f3", "esito": proposer_turn.BY_HAND, "proposta_id": nuova}]
@@ -1464,7 +1467,7 @@ def test_il_sigillo_a_posteriori_copre_anche_analisi_e_proposte(tmp_path):
                                    now_ts=1.0)
         store.add_proposal_round(ident, request="piu' corta SEGRETO", outcome="niente",
                                  turn="t-SEGRETO", now_ts=2.0, why="resta SEGRETO")
-        store.close_proposal(ident, "rifiutata", why="no, SEGRETO")
+        store.close_proposal(ident, "disdetta", why="no, SEGRETO")
         store.replace_analysis("2026-09-21", {
             "osservazioni": [{"cosa": "errore con SEGRETO", "impronta": "log:SEGRETO|x"}],
             proposer_turn.OUTCOMES_KEY: [{"impronta": "log:SEGRETO|x",

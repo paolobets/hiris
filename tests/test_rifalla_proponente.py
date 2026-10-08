@@ -86,7 +86,7 @@ async def test_il_secondo_giro_vede_la_forma_SCARTATA_e_la_richiesta(casa):
     assert riga["testo"] == "Spegni lo scaldabagno alle 22"
     assert riga["perche"] == "un'ora prima costa meno"
     assert [g["esito"] for g in riga["giri"]] == ["a_mano", "a_mano"]
-    assert riga["stato"] == "attesa", "un giro a mano non chiude niente"
+    assert riga["stato"] == "in_attesa", "un giro a mano non chiude niente"
 
 
 @pytest.mark.asyncio
@@ -116,7 +116,7 @@ async def test_NIENTE_lascia_la_proposta_com_era_e_lo_scrive_nel_filo(casa):
     riga = _proposta(casa, ident)
     assert esito["esito"] == pt.NOTHING
     assert riga["testo"] == "Abbassa il termostato di notte"
-    assert riga["stato"] == "attesa"
+    assert riga["stato"] == "in_attesa"
     assert riga["giri"][-1]["perche"].startswith("senza il termostato")
 
 
@@ -154,7 +154,7 @@ async def test_una_COSTRUITA_inventata_non_chiude_niente(casa):
     esito = await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
 
     assert esito["esito"] == redo.UNREADABLE
-    assert _proposta(casa, ident)["stato"] == "attesa"
+    assert _proposta(casa, ident)["stato"] == "in_attesa"
     assert _proposta(casa, ident)["giri"] == []
 
 
@@ -289,7 +289,7 @@ async def test_una_proposta_DECISA_mentre_il_giro_e_in_volo_scarta_la_risposta(p
     casa, coda = ponte
     ident = _manuale(casa)
     await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
-    casa["observations"].close_proposal(ident, "rifiutata")
+    casa["observations"].close_proposal(ident, "disdetta")
     turno, decisione = _risposta_piano(coda, _esiti(
         esito="a_mano", testo="Spegni lo scaldabagno", perche="x"))
 

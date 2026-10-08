@@ -91,7 +91,7 @@ async def test_RIFIUTARE_chiude_la_proposta(casa):
     r = await handle_proposal_reject(_richiesta(app, {"id": ident}))
 
     assert r.status == 200
-    assert store.proposals()[0]["stato"] == "rifiutata"
+    assert store.proposals()[0]["stato"] == "disdetta"
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,7 @@ async def test_RIFALLA_accoda_il_giro_e_riscrive_il_testo(casa, monkeypatch):
     assert r.status == 200
     riga = store.proposals()[0]
     assert riga["testo"] == "Sposta la lavatrice dopo le 14"
-    assert riga["stato"] == "attesa", "un giro non chiude niente"
+    assert riga["stato"] == "in_attesa", "un giro non chiude niente"
     assert [g["richiesta"] for g in riga["giri"]] == ["troppo presto, dopo le 14"]
     assert "troppo presto" in domande[0], "la tua richiesta non e' arrivata al modello"
     assert "Sposta la lavatrice nel primo pomeriggio" in domande[0], (
@@ -240,11 +240,11 @@ class _FintaOfficina:
 
     def list(self, *, now, pending_only=False, limit=200):
         if pending_only:
-            return [r for r in self._righe if r["stato"] == "attesa"]
+            return [r for r in self._righe if r["stato"] == "in_attesa"]
         return list(self._righe)
 
     def count_pending(self, now=None):
-        return len([r for r in self._righe if r["stato"] == "attesa"])
+        return len([r for r in self._righe if r["stato"] == "in_attesa"])
 
 
 @pytest.mark.asyncio
@@ -258,7 +258,7 @@ async def test_la_pagina_legge_le_DUE_code_in_un_elenco_solo(casa):
 
     app, _store, _ident = casa
     app["constructions"] = _FintaOfficina([
-        {"id": "c1", "stato": "attesa", "gesto": "crea", "dominio": "automation",
+        {"id": "c1", "stato": "in_attesa", "gesto": "crea", "dominio": "automation",
          "creata_ts": 50.0}])
 
     r = await handle_get_constructions(_richiesta(app))
@@ -280,7 +280,7 @@ async def test_l_elenco_unito_e_ordinato_dalla_PIU_RECENTE(casa):
 
     app, _store, _ident = casa
     app["constructions"] = _FintaOfficina([
-        {"id": "c1", "stato": "attesa", "gesto": "crea", "creata_ts": 999.0}])
+        {"id": "c1", "stato": "in_attesa", "gesto": "crea", "creata_ts": 999.0}])
 
     r = await handle_get_constructions(_richiesta(app))
 
@@ -298,7 +298,7 @@ async def test_il_PALLINO_somma_le_due_code(casa):
 
     app, _store, _ident = casa
     app["constructions"] = _FintaOfficina([
-        {"id": "c1", "stato": "attesa", "gesto": "crea", "creata_ts": 50.0}])
+        {"id": "c1", "stato": "in_attesa", "gesto": "crea", "creata_ts": 50.0}])
     app["agenda"] = _FintaAgenda()
 
     r = await handle_get_pending(_richiesta(app))

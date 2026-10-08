@@ -60,14 +60,14 @@ def test_rifiutare_cita_la_cronaca_senza_copiarne_il_motivo(archivio):
     nella cronaca, e la riga la cita per `esecuzione_id` invece di copiarne
     il testo. Fino a quel giorno la stessa frase stava in due archivi.
 
-    Mutazione ESEGUITA (07/10/2026): `mark_rejected` che passa `None` al
+    Mutazione ESEGUITA (07/10/2026): `mark_failed` che passa `None` al
     posto di `execution_id` a `_change_state` -- rossa su
     `esecuzione_id == 'e9'` (`None != 'e9'`); ripristinata e verificata col
     confronto del file."""
     ident = _proponi(archivio)["id"]
-    archivio.mark_rejected(ident, now=ADESSO + 5, execution_id="e9")
+    archivio.mark_failed(ident, now=ADESSO + 5, execution_id="e9")
     riga = archivio.read(ident, now=ADESSO)
-    assert riga["stato"] == "rifiutata"
+    assert riga["stato"] == "fallita"
     assert riga["esecuzione_id"] == "e9"
     assert riga["motivo"] is None
 
@@ -94,7 +94,8 @@ def test_una_riga_incerta_sopravvive_alla_potatura(archivio):
 
 def test_la_migrazione_v6_porta_a_incerta_solo_le_risanate(tmp_path):
     """Le righe che `risana` chiudeva `rifiutata` col motivo del riavvio
-    passano a `incerta`; una `rifiutata` con un altro motivo resta com'e'.
+    passano a `incerta`; una `rifiutata` con un altro motivo resta un guasto,
+    e la migrazione 7 la porta alla parola del vocabolario, `fallita`.
 
     Mutazione ESEGUITA (07/10/2026): in `_migration_6` `AND motivo=?`
     sostituito da `AND ? IS NOT NULL` -- rossa su `r2` diventata `incerta`;
@@ -115,7 +116,7 @@ def test_la_migrazione_v6_porta_a_incerta_solo_le_risanate(tmp_path):
 
     a = ConstructionStore(db)
     assert a.read(r1, now=ADESSO)["stato"] == UNCERTAIN
-    assert a.read(r2, now=ADESSO)["stato"] == "rifiutata"
+    assert a.read(r2, now=ADESSO)["stato"] == "fallita"
     a.close()
 
 
@@ -263,14 +264,15 @@ def test_una_rivendicata_al_riavvio_si_risana_e_non_riparte(archivio):
 
 
 def test_il_no_del_proprietario_e_uno_stato_suo_non_un_fallimento(archivio):
-    """`rifiutata` vuol dire «ho provato e non ci sono riuscito». Il no
-    dell'utente non e' un fallimento e non deve leggersi come tale."""
+    """`fallita` vuol dire «ho provato e non ci sono riuscito». Il no
+    dell'utente non e' un fallimento e non deve leggersi come tale: e' uno
+    stato suo, senza un motivo che lo spieghi (M-76, Tappa 8)."""
     ident = _proponi(archivio)["id"]
     esito = archivio.mark_cancelled(ident, now=ADESSO + 5)
     assert "errore" not in esito
     riga = archivio.read(ident, now=ADESSO)
     assert riga["stato"] == "disdetta"
-    assert riga["motivo"]
+    assert riga["motivo"] is None
 
 
 def test_non_si_disdice_cio_che_e_gia_stato_applicato(archivio):

@@ -71,6 +71,17 @@ function el(tag, cls, text) {
   return e;
 }
 
+/* La frase di uno stato messa in testa a un'etichetta: la prima lettera
+   maiuscola, il resto com'e'. La frase arriva dalla rotta
+   (`stato_leggibile`, dal vocabolario `hiris/app/states.py`, C-10 della
+   Tappa 8), minuscola perche' il server la mette anche in mezzo a una
+   frase; le pagine non tengono una tabella loro delle parole. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/agenda-route.js e config/constructions-route.js
+function stateLabel(phrase) {
+  var text = phrase == null ? '' : String(phrase);
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /* Svuota un nodo e lo restituisce; un nodo assente resta assente. */
 function clearEl(node) {
   while (node && node.firstChild) node.removeChild(node.firstChild);

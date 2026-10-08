@@ -325,6 +325,33 @@ def _migration_5(conn) -> None:
             "e %d di ancora_saldo spostate", old, new, len(days), len(balances))
 
 
+#: La parola con cui fino all'08/10/2026 il registro chiamava una risposta che
+#: il mestiere aveva scartato. RITIRATA (Tappa 8, D4): diceva «rifiutata» come
+#: il «no» di una persona su una proposta, e serve solo a `_migration_6`.
+_RETIRED_REFUSED = "rifiutata"
+
+
+def _migration_6(conn) -> None:
+    """Versione 6 (Tappa 8, D4 (a), decisa dal proprietario l'08/10/2026):
+    l'esito di un turno che il mestiere ha scartato passa da «rifiutata» a
+    `steering.REFUSED` («scartato», maschile come gli altri esiti del turno).
+
+    Si riscrive perche' l'esito si rilegge: il giro dopo rimette nella domanda
+    i problemi dell'ultimo turno scartato (`steering.refused_problems`), e la
+    batteria degli attori li conta. Una riga con la parola vecchia sarebbe un
+    turno scartato che nessuno riconosce piu'. Idempotente: una seconda volta
+    non trova la parola vecchia. Non misurato sulla casa: il backup
+    dell'08/10/2026 e' stato letto per le tre code, non per questo registro.
+    """
+    from ..steering import REFUSED
+
+    moved = conn.execute("UPDATE turn SET outcome=? WHERE outcome=?",
+                         (REFUSED, _RETIRED_REFUSED)).rowcount
+    if moved:
+        logger.info("consumi: %d turni da «%s» a «%s»", moved, _RETIRED_REFUSED,
+                    REFUSED)
+
+
 #: Quanto si tiene di un argomento. Testo libero lungo non deve gonfiare il
 #: registro; e sono filtri e nomi della casa, non contenuti.
 _ARG_TEXT_MAX = 200
@@ -440,9 +467,9 @@ class UsageStore:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=5,
+        init_schema(self._conn, _SCHEMA, version=6,
                     migrations={2: _migration_2, 3: _migration_3,
-                                4: _migration_4, 5: _migration_5})
+                                4: _migration_4, 5: _migration_5, 6: _migration_6})
 
     def close(self) -> None:
         with self._lock:
@@ -623,7 +650,7 @@ class UsageStore:
         esiti non vive qui, come quello delle specie: lo possiede
         `steering`, che passa anche `only_from` -- l'esito che la riga deve
         avere per essere corretta (G31-1: un «fallito» non diventa
-        «rifiutata»). Torna `False` se la riga non c'e' o ha un altro esito."""
+        «scartato»). Torna `False` se la riga non c'e' o ha un altro esito."""
         written = (None if problems is None
                    else json.dumps([str(p) for p in problems], ensure_ascii=False))
         with self._lock:

@@ -70,7 +70,7 @@ I criteri di chiusura dello strato 3 si leggono qui, sotto `analista`:
   e' proprio questo. La memoria arriva fin dove arriva la rotta (le ultime
   `RECENT_DAYS` analisi): per i giorni piu' vecchi della finestra e' piu'
   corta di quella che il giro aveva;
-- **risposte rifiutate per motivo**: le righe `rifiutata` del registro dei
+- **risposte rifiutate per motivo**: le righe `scartato` del registro dei
   turni (D10) portano i `problems` della risposta. Il prodotto non da' un
   codice del motivo, solo la frase, e la frase porta i numeri e le parti
   citate di quella risposta: si conta la sua **forma** -- numeri, «citazioni»,

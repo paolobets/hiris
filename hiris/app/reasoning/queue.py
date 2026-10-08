@@ -68,6 +68,18 @@ _IDX_THREAD_SQL = ("CREATE INDEX IF NOT EXISTS idx_reasoning_thread "
 PRIORITY_CHAT = 1
 PRIORITY_BACKGROUND = 0
 
+#: Gli stati di un turno nella coda del ponte (D-59, Tappa 8). Restano parole
+#: inglesi: sono un contratto interno, fuori dal vocabolario delle tre code
+#: (`states.py`, D4). Vivono qui, e chi legge un turno fuori da questo modulo
+#: li chiede qui invece di riscriverli.
+JOB_PENDING = "pending"
+JOB_CLAIMED = "claimed"
+JOB_DECIDED = "decided"
+JOB_EXPIRED = "expired"
+JOB_FAILED = "failed"
+#: In volo: accodato o preso in carico, non ancora deciso.
+JOB_WAITING = (JOB_PENDING, JOB_CLAIMED)
+
 
 def turn_answer(turn: dict | None) -> str:
     """La risposta che un turno ha dato, o `""` se non ne ha data una.

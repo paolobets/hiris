@@ -77,17 +77,12 @@
 window.HirisAgendaRoute = (function () {
   'use strict';
 
-  /* Vocabolario dell'interfaccia (guida di disegno §0), diverso dai nomi
-     tecnici di `stato` in archivio: non toccare senza rileggere quella
-     guida, la distinzione non e' un dettaglio estetico. */
-  var STATE_LABEL = {
-    in_attesa: 'In attesa',
-    in_corso: 'In corso',
-    mantenuta: 'Mantenuta',
-    saltata: 'Non eseguita',
-    fallita: 'Non riuscita',
-    disdetta: 'Disdetta'
-  };
+  /* La parola che una persona legge per uno stato non vive qui: arriva
+     dalla rotta (`stato_leggibile`, dal vocabolario `hiris/app/states.py`,
+     C-10 della Tappa 8), e `stateLabel` le alza la prima lettera. Fino
+     all'08/10/2026 questa pagina ne teneva una tabella sua, e la pagina
+     Costruzioni un'altra: `disdetta` si leggeva «Disdetta» qui e «Declinata
+     da te» li'. Resta qui il colore del badge, che e' della pagina. */
   var STATE_BADGE = {
     in_attesa: 'badge-off',
     in_corso: 'badge-on',
@@ -358,7 +353,7 @@ window.HirisAgendaRoute = (function () {
     line.appendChild(phrase);
 
     line.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[p.stato] || 'badge-off'),
-      STATE_LABEL[p.stato] || p.stato));
+      stateLabel(p.stato_leggibile || p.stato)));
 
     if (p.motivo) {
       var reason = el('p', null, p.motivo);

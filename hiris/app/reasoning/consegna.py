@@ -30,7 +30,6 @@ import logging
 from ..mind.observer import SCOPE_TURN_KIND
 from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
 from ..mind.proposer_turn import PROPOSAL_TURN_KIND
-from ..providers import SUBSCRIPTION
 
 logger = logging.getLogger(__name__)
 
@@ -66,49 +65,31 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         # restare su disco). `wake` no, ed e' per questo che
         # `keeper/exchange._enqueue_to_bridge` ce lo mette.
         from ..keeper.exchange import _senza_conclusione
-        from ..keeper.outcome import tell_failure
+        from ..keeper.outcome import ALREADY_CLOSED, UNKNOWN, fail_unfinished
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
-        store = app.get("agenda")
-        row = store.read(ident) if (store is not None and ident) else None
-        if row is None:
+        reply = decision.get("reply")
+        # Il giro di chiusura e' quello della scadenza (`keeper/outcome.
+        # fail_unfinished`, D-24). Qui la famiglia e' `altro`: il turno E'
+        # finito e NON ha chiamato «conclude» -- il piano ha risposto, senza
+        # seguire il protocollo. Non e' una scadenza (`scaduto` e' per chi non
+        # risponde affatto, vedi `handlers_chat.py`) ne' un rifiuto con causa
+        # nota: e' `altro`, come ogni guasto che si misura senza inventarne il
+        # perche'. Una promessa mantenuta dal ponte si conclude altrove
+        # (`api/handlers_mcp`, dove sta il `.successo(...)` gemello).
+        closed = fail_unfinished(
+            app, ident, reason=_senza_conclusione(reply), now=now, family="altro",
+            message="promessa sul ponte finita senza chiamare «conclude»",
+            durata_s=now - float((job or {}).get("created_ts", now)),
+            quoted=reply if isinstance(reply, str) and reply.strip() else None)
+        if closed == UNKNOWN:
             logger.warning(
                 "consegna di un turno di promessa senza promessa (job_id=%s, "
                 "id=%r): non c'e' niente da chiudere", job_id, ident)
             outcome = "promessa_sconosciuta"
-        elif row.get("stato") != "in_corso":
-            # `conclude` e' gia' arrivato: la promessa e' chiusa e non si
-            # riapre. Riaprirla cancellerebbe un testo che l'utente puo' gia'
-            # aver letto -- o peggio, farebbe partire una seconda notifica.
+        elif closed == ALREADY_CLOSED:
             outcome = "promessa_gia_conclusa"
         else:
-            reply = decision.get("reply")
-            reason = _senza_conclusione(reply)
-            # Ruling 3.8: una riga breve nel filo di chi l'ha chiesta, nessuna
-            # push -- la stessa forma della scadenza (`keeper/outcome.py`). La
-            # risposta del modello citata nel motivo passa dal filtro dei
-            # veleni da sola (`quoted`).
-            if store.concludi(ident, state="fallita", now=now, reason=reason):
-                tell_failure(app.get("data_dir"), row, reason,
-                             quoted=reply if isinstance(reply, str) and reply.strip()
-                             else None)
-            # Rilievo R1 della revisione indipendente sul tratto
-            # `v3.22.2..HEAD`: il registro degli esiti vedeva il successo
-            # della chat e la scadenza, e niente delle promesse. Una promessa
-            # mantenuta dal ponte si conclude altrove (`api/handlers_mcp`,
-            # dove sta il `.successo(...)` gemello di questa riga) -- questo
-            # e' il ramo in cui il turno E' finito e NON ha chiamato
-            # «conclude»: il piano ha risposto, e ha risposto senza seguire
-            # il protocollo. Non e' una scadenza (`family="scaduto"` e' per
-            # chi non risponde affatto, vedi `handlers_chat.py`) ne' un
-            # rifiuto con causa nota: e' `family="altro"`, come ogni guasto
-            # che si misura senza inventarne il perche'.
-            registry = app.get("occurrence_registry")
-            if registry is not None:
-                registry.fallimento(
-                    SUBSCRIPTION.id, family="altro", code=None,
-                    message="promessa sul ponte finita senza chiamare «conclude»",
-                    durata_s=now - float(job.get("created_ts", now)))
             outcome = "promessa_senza_conclusione"
         return outcome
 
