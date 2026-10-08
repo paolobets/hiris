@@ -1400,6 +1400,17 @@ veri su 58, 15 falsi (13 forse veri), nessun blocco perso. Cambia la D3 (da «op
 precisa la D4 (proposta: `/mnt/project-files/attori/2026-10-06-dato-fermo-proposta.md`).
 Le assenze in cronaca sono il Task 1.4.
 
+**Precisata dal proprietario l'08/10/2026 (si toglie l'ora ferma, non il giorno).** Il 06/10 una
+stazione di un dispositivo e' rimasta ferma dalle 01:00 alle 02:00 ora della casa, e il resoconto
+ha rifiutato per intero media, minimo e massimo di temperatura e umidita' della stanza. Ora una
+misura istantanea perde solo le ore del tratto fermo: si calcola sul resto, la copertura scende
+col conto di sempre, e la misura porta le ore escluse (`esclusi`: dal, al, causa `ferma`, la
+frase del gruppo, e `in_breve` per chi legge la pagina) nel resoconto, nella serie dell'analista
+(`esclusi_oggi` nell'indice) e sulla piastrella della pagina del giorno, nella forma suggerita da
+ux-ui-specialist (una riga sola con la copertura, la causa a parole, il perche' dietro un bottone). Se tolte quelle ore la misura non si puo' piu' fare (sotto
+`MINIMUM_COVERAGE`, o un giorno intero fermo) il rifiuto resta `ferma`, non `copertura_bassa`. I
+contatori non cambiano: si rifiutano solo se il blocco arriva a fine giornata.
+
 ### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
 
 `origine: spec del 29/09/2026 §8, «si cambia una cosa alla volta»` · nessun documento

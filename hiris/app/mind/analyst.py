@@ -194,7 +194,8 @@ def index(series: dict) -> list[tuple[int, dict]]:
 
 def index_row(row: dict, days: list[str]) -> dict:
     """Una riga dell'indice: chi e' la misura, i numeri di `with_deviation`,
-    la copertura riassunta, la causa se oggi non si calcola, e i fatti che la
+    la copertura riassunta, la causa se oggi non si calcola, le ore che oggi
+    il valore ha lasciato fuori (`esclusi_oggi`), e i fatti che la
     rendono candidata a ciascun innesco (`trigger_facts`)."""
     deviation = row.get("scostamento") or {}
     values = list(row.get("valori") or [])
@@ -210,6 +211,11 @@ def index_row(row: dict, days: list[str]) -> dict:
     cause = cause_today(row, days)
     if cause is not None:
         out["causa_oggi"] = cause
+    # L'ultimo valore fatto senza qualche ora (il dato fermo, 08/10/2026):
+    # lo scostamento si legge sapendo su cosa si e' misurato.
+    excluded = (row.get("esclusi") or {}).get(days[-1]) if days else None
+    if excluded:
+        out["esclusi_oggi"] = excluded
     out["inneschi"] = trigger_facts(row, days)
     return out
 

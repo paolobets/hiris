@@ -1123,6 +1123,14 @@
 }
 .stat-tile .st-delta.up { color: var(--ok); }
 .stat-tile .st-delta.down { color: var(--err); }
+/* Le ore lasciate fuori da una misura (il dato fermo, 08/10/2026): in
+   corsivo, nessun colore -- quanto ne manchi non ha una soglia che lo renda
+   un avviso (spec dei tre attori §10). Il bottone del perche' ha un'area di
+   tocco di almeno 44 px, come gli altri. */
+.stat-tile .st-delta.excluded { font-style: italic; }
+/* Il perche' aperto dal bottone: una frase da leggere, non un dettaglio. */
+.stat-tile .st-delta.st-why { color: var(--text-2); }
+.stat-tile .st-info { min-height: 44px; min-width: 44px; margin-top: var(--sp-1); }
 /* Il badge di provenienza dentro una tessera (bilancio dell'energia): a
    differenza di un badge isolato in una riga flessibile (dove `flex-wrap`
    gli lascia andare a capo INTERO), qui non c'e' un fratello dopo cui

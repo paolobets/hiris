@@ -1862,7 +1862,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_30_with_164_fields():
+def test_product_dataclasses_are_31_with_171_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1982,13 +1982,19 @@ def test_product_dataclasses_are_30_with_164_fields():
     **Trenta e 164 dal 07/10/2026**, Tappa 7, Task 10: il settimo campo di
     `Tool`, `read_only` -- lo strumento legge e basta, e le letture della
     stessa risposta partono insieme (S-12, D15a).
+
+    **Trentuno e 171 dall'08/10/2026**, il dato fermo che toglie l'ora e non
+    il giorno: `Exclusion` (`mind/operations.py`) coi suoi sette campi -- gli
+    istanti del tratto, gli stessi detti nell'ora della casa, la ragione, la
+    causa e la frase per la pagina -- le ore che una misura lascia fuori,
+    dette dalla misura.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (30, 164), (classi, campi)
+    assert (classi, campi) == (31, 171), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

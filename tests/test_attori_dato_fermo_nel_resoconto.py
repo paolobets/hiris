@@ -306,19 +306,25 @@ async def _thermometer_ingredients(day, *, frozen_from, statistic_ids):
                "d_contatore": HOUSE_RECIPE}
     with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
             mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        _ricette, _serie, _nomi, silent, _mute = await server._report_ingredients(
+        ricette, serie, nomi, silent, mute = await server._report_ingredients(
             _thermometer_app(), house, giorno=day, timezone=TIMEZONE)
-    return silent or {}, asked
+    # Un termometro e' una misura istantanea: dall'08/10/2026 il dato fermo
+    # gli toglie le ore ferme -- qui il giorno intero -- e la misura che
+    # resta senza un numero si rifiuta `ferma` (`Recipe.run`).
+    report = build_report(day=day, episodes=[], series=serie, recipes=ricette,
+                          names=nomi, silent=silent, muted=mute)
+    [row] = [r for r in report["misure"] if r["misura"] == "temperatura"]
+    return row, asked
 
 
 @pytest.mark.asyncio
 async def test_con_l_elenco_i_termometri_del_29_09_sono_fermi():
     """Il controllo: con l'elenco letto i tre termometri stanno nella loro
     istanza, e il blocco si vede."""
-    silent, _asked = await _thermometer_ingredients(
+    row, _asked = await _thermometer_ingredients(
         "2026-09-29", frozen_from=_start("2026-09-29"),
         statistic_ids={*THERMOMETERS, HOUSE_METER})
-    assert silent[THERMOMETERS[0]].cause == FROZEN
+    assert row["causa"] == FROZEN, row
 
 
 @pytest.mark.asyncio
@@ -327,9 +333,9 @@ async def test_con_l_elenco_guasto_i_termometri_restano_nella_loro_istanza():
     `state_class` dei termometri. Le sorelle le dice la risposta delle serie
     di Home Assistant -- chi ha statistiche nella finestra -- e il blocco del
     29/09 resta preso."""
-    silent, asked = await _thermometer_ingredients(
+    row, asked = await _thermometer_ingredients(
         "2026-09-29", frozen_from=_start("2026-09-29"),
         statistic_ids={"errore": "giu'", "causa": "rete"})
-    assert silent[THERMOMETERS[0]].cause == FROZEN
-    assert THERMOMETERS[2] in silent[THERMOMETERS[0]].reason
+    assert row["causa"] == FROZEN, row
+    assert THERMOMETERS[2] in row["non_calcolabile"]
     assert len(asked) == 1

@@ -231,6 +231,11 @@ def _measurements(series: dict, recipes: dict, names: dict,
                 row["valore"] = outcome.value
                 row["unita"] = outcome.unit
                 row["copertura"] = outcome.coverage
+                # Le ore lasciate fuori, con la misura che ha lasciate
+                # (il dato fermo, 08/10/2026): la chiave c'e' solo se ce ne
+                # sono, come `causa` c'e' solo su un rifiuto.
+                if outcome.excluded:
+                    row["esclusi"] = [x.out() for x in outcome.excluded]
                 # **Una LISTA e' una forma; tutto il resto e' una misura.**
                 # Il criterio della prima stesura era «non e' un numero», e
                 # sarebbe stato sbagliato: `media_min_max`, `tendenza` e
@@ -282,7 +287,10 @@ def series_of_measures(reports, names: dict | None = None) -> dict:
     """I resoconti pivotati: **una riga per misura**, coi suoi valori nei giorni.
 
     Torna `{"giorni": [...], "obiettivi": [...], "serie": [{soggetto, nome,
-    misura, chiave, operazione, unita, valori, coperture, perche}]}`.
+    misura, chiave, operazione, unita, valori, coperture, perche, esclusi}]}`.
+    `esclusi` e' `{giorno: [{dal, al, causa, perche}]}`: le ore che il
+    resoconto di quel giorno ha lasciato fuori dal valore (il dato fermo,
+    08/10/2026), accanto al valore che hanno cambiato.
 
     **Perche' esiste, col numero.** Misurato sulla casa vera il 15/09/2026 sui
     venti giorni archiviati: i resoconti **come sono**, portati a trenta
@@ -353,7 +361,7 @@ def series_of_measures(reports, names: dict | None = None) -> dict:
                      "misura": line.get("misura"), "chiave": key,
                      "operazione": line.get("operazione"), "unita": line.get("unita"),
                      "valori": [None] * len(days), "coperture": [None] * len(days),
-                     "perche": {}}
+                     "perche": {}, "esclusi": {}}
             rows[where] = found
         # **L'archivio dice cio' che sapeva; il lettore risolve cio' che puo'
         # oggi.** Un resoconto che il nome ce l'ha porta quello di ALLORA, ed
@@ -389,6 +397,8 @@ def series_of_measures(reports, names: dict | None = None) -> dict:
                 slot = _slot(line, key)
                 slot["valori"][index[day]] = value
                 slot["coperture"][index[day]] = line.get("copertura")
+                if line.get("esclusi"):
+                    slot["esclusi"][day] = line["esclusi"]
 
     for slot in rows.values():
         slot["perche"] = _runs(days, slot["perche"])

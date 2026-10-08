@@ -85,7 +85,7 @@ from .mind.facts import (
     chronicle_is_stale,
     rebuild_chronicle,
 )
-from .mind.flatline import HISTORY_DAYS, frozen_refusals, split_at
+from .mind.flatline import HISTORY_DAYS, frozen_day, mark_excluded, split_at
 from .mind.judgments import build_judgments
 from .mind.knowledge import KnowledgeStore
 from .mind.observer import SCOPE_TURN_KIND
@@ -1618,16 +1618,18 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
         for sorella in counted.siblings(e) or [e]:
             gruppi[sorella] = counted.sibling_group(sorella)
     finestra = {e: hourly_points(report["serie"].get(e) or []) for e in gruppi}
-    serie = {e: split_at(finestra[e], da_ts)[1] for e in entita}
-    # **Una misura su una fonte ferma si rifiuta** (D4): il 30/09/2026 il
+    # **Una fonte ferma non da' un numero falso** (D4): il 30/09/2026 il
     # resoconto ha scritto produzione 0 con copertura 1.0, e lo zero era
-    # falso. I rifiuti entrano fra le entita' che tacciono, la strada che
-    # `Recipe.run` conosce gia'.
-    ferme = frozen_refusals(finestra, gruppi, day_start_ts=da_ts, entity_ids=entita,
-                            zone=home_space_zone(timezone))
-    if ferme:
-        logger.info("resoconto: %d entita' ferme il %s -- le loro misure "
-                    "diranno perche'", len(ferme), giorno)
+    # falso. Un contatore fermo fino a sera si rifiuta, fra le entita' che
+    # tacciono; una misura istantanea perde solo le ore ferme, segnate sui
+    # punti (decisione dell'08/10/2026, `mind/flatline.frozen_day`).
+    ferme, escluse = frozen_day(finestra, gruppi, day_start_ts=da_ts, entity_ids=entita,
+                                zone=home_space_zone(timezone))
+    serie = {e: mark_excluded(split_at(finestra[e], da_ts)[1], escluse.get(e))
+             for e in entita}
+    if ferme or escluse:
+        logger.info("resoconto: %d entita' ferme il %s, %d con ore ferme -- le "
+                    "loro misure diranno perche'", len(ferme), giorno, len(escluse))
     if not list_read:
         # Di quali entita' non abbiano statistiche non si afferma niente: una
         # serie vuota nella finestra non e' «nessuna statistica». Che una

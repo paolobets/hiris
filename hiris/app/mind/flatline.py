@@ -36,10 +36,17 @@ l'istanza dell'integrazione per un'entita' sola sul suo dispositivo. Un'ora e':
 
 Un **tratto** sono ore ferme per il gruppo consecutive, sull'intera finestra
 letta (storia e giorno): un blocco cominciato tre giorni fa e' un tratto solo
-che arriva a oggi. Conta se ha almeno un'ora anomala. Le misure del giorno si
-rifiutano (D4) se un tratto «ferma» lo tocca; per un CONTATORE solo se il
-tratto arriva all'ultima ora della finestra: un blocco che recupera prima di
-sera non toglie niente al totale (G4-2).
+che arriva a oggi. Conta se ha almeno un'ora anomala. Cosa toglie al giorno
+(`frozen_day`):
+
+- a una MISURA ISTANTANEA, le sole ore del tratto (decisione del
+  proprietario, 08/10/2026). Fino ad allora la misura si rifiutava per intero
+  (D4), e il 06/10 un'ora ferma di una stazione ha cancellato la giornata di
+  temperatura e umidita' della stanza. Ora la misura si fa sul resto, e
+  dichiara le ore che ha lasciato fuori (`operations.Exclusion`);
+- a un CONTATORE, tutto, ma solo se il tratto arriva all'ultima ora della
+  finestra: un blocco che recupera prima di sera non toglie niente al totale
+  (G4-2), e un totale con un buco in fondo non si sa quanto valga.
 
 **Nessuna soglia sulla casa.** `NEIGHBOUR_HOURS` e' la risoluzione della
 griglia oraria delle statistiche, non quanto deve durare un blocco;
@@ -47,10 +54,11 @@ griglia oraria delle statistiche, non quanto deve durare un blocco;
 
 **Funzione pura**: le serie arrivano da chi chiama, nella forma di
 `recipes.hourly_points`. `server._report_ingredients` legge in UNA richiesta il
-giorno e la sua storia, per le entita' delle ricette e per le loro sorelle, e
-passa i rifiuti fra le entita' che tacciono (`silent`), la strada che
-`Recipe.run` conosce gia'. Notte, recupero e riparazione d'avvio passano
-dagli stessi ingredienti.
+giorno e la sua storia, per le entita' delle ricette e per le loro sorelle;
+passa i rifiuti dei contatori fra le entita' che tacciono (`silent`), e segna
+le ore escluse sui punti del giorno (`mark_excluded`): tutte e due le strade
+le conosce `Recipe.run`. Notte, recupero e riparazione d'avvio passano dagli
+stessi ingredienti.
 """
 
 from __future__ import annotations
@@ -59,7 +67,8 @@ from collections.abc import Hashable, Mapping
 from datetime import UTC
 
 from ..home_space.historian import instant_epoch, instant_out
-from .operations import FROZEN, NotComputable
+from .operations import FROZEN, Exclusion, NotComputable
+from .recipes import EXCLUDED_MARK
 
 _DAY_S = 86400
 _HOUR_S = 3600
@@ -203,20 +212,34 @@ def _group_stretches(entities, outside, hours_of, held, every_hour) -> list[dict
     return stretches
 
 
-def frozen_refusals(series: Mapping[str, list],
-                    groups: Mapping[str, Hashable | None], *,
-                    day_start_ts: float, entity_ids=None,
-                    zone=UTC) -> dict[str, NotComputable]:
-    """Il rifiuto delle misure del giorno per le entita' ferme:
-    `{entity_id: NotComputable(..., cause=FROZEN)}`.
+def frozen_day(series: Mapping[str, list],
+               groups: Mapping[str, Hashable | None], *,
+               day_start_ts: float, entity_ids=None, zone=UTC
+               ) -> tuple[dict[str, NotComputable], dict[str, list[Exclusion]]]:
+    """Cosa il dato fermo toglie al giorno: `(rifiuti, esclusioni)`.
+
+    - `rifiuti`, `{entity_id: NotComputable(..., cause=FROZEN)}`: i CONTATORI
+      il cui tratto fermo arriva all'ultima ora della finestra. Il loro totale
+      non e' recuperato, e una parte non si toglie da un totale (G4-2);
+    - `esclusioni`, `{entity_id: [Exclusion]}`: le MISURE ISTANTANEE toccate
+      da un tratto fermo, con le sole ore del tratto che cadono nel giorno
+      (decisione del proprietario, 08/10/2026). Il 06/10 un'ora ferma di una
+      stazione faceva rifiutare la giornata intera; ora esce solo quell'ora,
+      e la misura si fa sul resto (`recipes.Recipe.run`).
+
+    Un contatore che recupera prima di sera non perde niente: le ore ferme
+    portano un cambio 0 e quella della ripresa porta il recupero, il totale
+    e' giusto cosi'.
 
     `entity_ids` sono quelle di cui si chiede (le entita' delle ricette); le
     altre servono solo da sorelle e da «resto della casa». La frase parla
-    nell'ora della casa (G4-4).
+    nell'ora della casa (G4-4), ed e' la stessa per il rifiuto e per
+    l'esclusione: e' il fatto del gruppo, non della misura.
     """
-    _hours, counters, _held = _index(series)
-    last = max((ts for hours in _hours.values() for ts in hours), default=None)
+    hours, counters, _held = _index(series)
+    last = max((ts for by_hour in hours.values() for ts in by_hour), default=None)
     refusals: dict[str, NotComputable] = {}
+    exclusions: dict[str, list[Exclusion]] = {}
     wanted = set(series) if entity_ids is None else set(entity_ids)
     for group, stretches in frozen_stretches(series, groups).items():
         siblings = sorted(e for e, g in groups.items() if g == group and e in series)
@@ -229,12 +252,63 @@ def frozen_refusals(series: Mapping[str, list],
             for entity_id in siblings:
                 if entity_id not in wanted or entity_id in refusals:
                     continue
-                if entity_id in counters and not reaches_end:
-                    continue
-                refusals[entity_id] = NotComputable(
+                reason = (
                     f"{entity_id} e' ferma: dalle {said_start} alle {said_end} non "
                     f"varia nessuna delle {len(siblings)} entita' del suo gruppo "
                     f"({', '.join(siblings)}), mentre il resto della casa si muove, "
                     f"e a quell'ora il gruppo non era mai fermo nei "
-                    f"{stretch['giorni_di_storia']} giorni di storia", cause=FROZEN)
-    return refusals
+                    f"{stretch['giorni_di_storia']} giorni di storia")
+                if entity_id in counters:
+                    if reaches_end:
+                        refusals[entity_id] = NotComputable(reason, cause=FROZEN)
+                    continue
+                # Solo le ore del giorno: un tratto cominciato ieri toglie a
+                # oggi le ore da mezzanotte, e la frase dice il tratto intero.
+                start_ts = max(stretch["dal"], day_start_ts)
+                said_from = instant_out(start_ts, zone)
+                exclusions.setdefault(entity_id, []).append(Exclusion(
+                    start_ts=start_ts, end_ts=stretch["al"],
+                    start=said_from, end=said_end,
+                    reason=reason, cause=FROZEN,
+                    summary=_summary(group, said_from, said_end)))
+    return refusals, exclusions
+
+
+def _clock(said: str, *, end: bool = False) -> str:
+    """L'ora di un istante gia' detto nell'ora della casa (`instant_out`):
+    «2026-10-06T01:00:00+02:00» -> «01:00». La mezzanotte che chiude un
+    tratto e' la fine del giorno, e si dice «24:00»."""
+    clock = said[11:16]
+    return "24:00" if end and clock == "00:00" else clock
+
+
+def _summary(group, said_from: str, said_end: str) -> str:
+    """La frase per chi legge la pagina, nella sua lingua (parere di
+    ux-ui-specialist, 08/10/2026): niente id, niente vocabolario interno. Il
+    gruppo e' `House.sibling_group`: un dispositivo, o l'istanza
+    dell'integrazione per le entita' sole sul loro dispositivo."""
+    who = ("tutti i dispositivi di questa integrazione"
+           if isinstance(group, tuple) and group[:1] == ("istanza",)
+           else "tutti i sensori di questo dispositivo")
+    return (f"Dalle {_clock(said_from)} alle {_clock(said_end, end=True)} {who} "
+            "sono rimasti uguali mentre il resto della casa si muoveva: quelle ore "
+            "non entrano nel calcolo.")
+
+
+def mark_excluded(points, exclusions) -> list[dict]:
+    """I punti del giorno, con l'esclusione accanto a quelli che le ore
+    escluse coprono (`recipes.EXCLUDED_MARK`).
+
+    Il punto resta com'e', col suo valore: lo toglie dal conto
+    `Recipe.run`, che sa anche dire se senza quelle ore la copertura sarebbe
+    bastata. Un punto porta cosi' il perche' del suo stesso buco, invece di
+    una seconda mappa da tenere allineata alla serie (fondamenta 1 e 2).
+    """
+    if not exclusions:
+        return list(points or [])
+    marked = []
+    for point in points or []:
+        start = instant_epoch(point.get("inizio")) if isinstance(point, dict) else None
+        found = next((x for x in exclusions if start is not None and x.covers(start)), None)
+        marked.append(point if found is None else {**point, EXCLUDED_MARK: found})
+    return marked
