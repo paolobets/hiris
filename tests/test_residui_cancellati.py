@@ -306,3 +306,35 @@ def test_un_contatore_IMPORTATO_sparisce_uno_illeggibile_resta(tmp_path):
     assert seen["richieste"] == 3
     assert not importato.exists(), "un contatore gia' importato e' rimasto su disco"
     assert rotto.exists(), "cancellato un contatore che non e' stato contato"
+
+
+def test_gli_undici_file_scelti_dal_proprietario_se_ne_vanno_e_la_cornice_resta(tmp_path, caplog):
+    """L'08/10/2026 il backup della casa ha mostrato undici file di
+    installazioni precedenti che nessun codice nomina piu', e il proprietario
+    ha scelto «Tutti». Se ne vanno col nome e la dimensione nel registro, come
+    gli altri residui. `reference_frame.json` sta accanto ma e' vivo: lo
+    legge e lo scrive l'anagrafe, e il nome si chiede a lei, non si ricopia.
+
+    Mutazioni ESEGUITE: tolto `home_map.db` dall'elenco -- rossa; aggiunto
+    `reference_frame.json` all'elenco -- rossa."""
+    import logging
+
+    from hiris.app.home_space.reader import REFERENCE_FRAME_FILE
+
+    scelti = ("brain_reasoning.db", "suggestions.db", "hiris_knowledge.db",
+              "home_map.db", "hiris_memory.db.migrated", "home_semantic_map.json",
+              "semantic_context_map.json", "gateway_policy.json",
+              "sentinel_policy.json", "chat_history_hiris-default.json",
+              ".mqtt_discovery_migrated_v2")
+    fatti = [_fai(tmp_path, nome) for nome in scelti]
+    cornice = _fai(tmp_path, REFERENCE_FRAME_FILE, "{}")
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.conservazione"):
+        cancella_residui(str(tmp_path))
+
+    assert [p.name for p in fatti if p.exists()] == []
+    for nome in scelti:
+        assert any(r.getMessage().startswith(f"{nome} cancellato (1 byte)")
+                   for r in caplog.records), nome
+    assert cornice.exists()
+    assert REFERENCE_FRAME_FILE not in RESIDUI_DISMESSI

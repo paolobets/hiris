@@ -130,26 +130,46 @@ async def nightly(app) -> None:
 #:   la copia impoverita dei registri di Home Assistant che l'anagrafe dal
 #:   vivo ha sostituito, e che nessun codice apre piu' (M-40). Un `-wal` senza
 #:   il suo archivio non e' leggibile da nessuno.
+#: - gli undici file di installazioni precedenti trovati nel backup della casa
+#:   l'08/10/2026 e che nessun codice nomina piu' (cercati nel sorgente quel
+#:   giorno): `brain_reasoning.db`, `suggestions.db`, `hiris_knowledge.db`,
+#:   `home_map.db`, `hiris_memory.db.migrated`, `home_semantic_map.json`,
+#:   `semantic_context_map.json`, `gateway_policy.json`,
+#:   `sentinel_policy.json`, `chat_history_hiris-default.json`,
+#:   `.mqtt_discovery_migrated_v2`. Li ha scelti il proprietario («Tutti»,
+#:   08/10/2026). `reference_frame.json` NO: lo legge e lo scrive l'anagrafe
+#:   (`home_space/reader.REFERENCE_FRAME_FILE`).
 #:
 #: L'elenco e' NOMINATO, mai un'euristica sul nome: un archivio vivo che
 #: somigliasse a un residuo, o uno che nascera' domani, non deve poter
 #: sparire per assonanza.
 RESIDUI_DISMESSI = (
+    ".mqtt_discovery_migrated_v2",
     "advisory.db",
     "agents.json",
+    "brain_reasoning.db",
     "casa.db",
     "casa.db-shm",
     "casa.db-wal",
+    "chat_history_hiris-default.json",
     "chatbots.json",
     "dashboard_backups.json",
+    "gateway_policy.json",
     "ha_health.json",
+    "hiris_knowledge.db",
+    "hiris_memory.db",
+    "hiris_memory.db.migrated",
     "history.db",
     "history_policy.json",
-    "hiris_memory.db",
+    "home_map.db",
+    "home_semantic_map.json",
     "knowledge.db",
     "portrait.db",
     "proposals.db",
+    "semantic_context_map.json",
     "sentinel.db",
+    "sentinel_policy.json",
+    "suggestions.db",
     "tasks.json",
 )
 
