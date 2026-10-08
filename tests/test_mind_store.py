@@ -1258,3 +1258,107 @@ def test_migration_15_rifiuta_ancora_una_fonte_sconosciuta(tmp_path):
             store.record(quando_ts=1.0, source="altro", subject="x", da=None, a="1")
     finally:
         store.close()
+
+
+# -- C-48: un lettore solo per le colonne JSON (Tappa 8, T3) ---------------
+
+def _json_loads_in_store() -> tuple[list[str], list[str]]:
+    """I `json.loads` di `mind/store.py`, chiesti ad `ast`: quelli dentro il
+    lettore unico o una migrazione, e quelli fuori, come `funzione:riga`."""
+    import ast
+    import inspect
+
+    from hiris.app.mind import store as modulo
+
+    allowed, outside = [], []
+
+    def visit(node, owners):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            owners = (*owners, node.name)
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "loads"
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "json"):
+            where = f"{'.'.join(owners) or '<modulo>'}:{node.lineno}"
+            if any(o == "_json_column" or o.startswith("_migration_") for o in owners):
+                allowed.append(where)
+            else:
+                outside.append(where)
+        for child in ast.iter_child_nodes(node):
+            visit(child, owners)
+
+    visit(ast.parse(inspect.getsource(modulo)), ())
+    return allowed, outside
+
+
+def test_le_letture_json_dello_store_passano_tutte_dal_lettore_unico():
+    """C-48: quattro letture con la guardia e sette senza, e con una riga
+    storta `proposals()` faceva cadere l'intera `GET /api/constructions`. Ogni
+    lettura passa da `_json_column`; le migrazioni tengono i loro, perche'
+    devono dire fra due anni la stessa cosa.
+
+    La prova vede ancora qualcosa: il lettore e le migrazioni che leggono JSON
+    (8, 9, 14) ci sono, o la derivazione si e' rotta e la prova direbbe si'
+    guardando il vuoto.
+
+    Mutazione ESEGUITA: `json.loads(r[6])` rimesso in `proposals` -- rossa qui
+    e in `test_constructions_api` (la rotta torna a cadere)."""
+    allowed, outside = _json_loads_in_store()
+    assert outside == []
+    owners = {where.split(":")[0].split(".")[-1] for where in allowed}
+    assert {"_json_column", "_migration_8", "_migration_9", "_migration_14"} <= owners
+
+
+def _guasta(store, sql: str, *args) -> None:
+    store._conn.execute(sql, args)
+    store._conn.commit()
+
+
+def test_una_riga_guasta_si_salta_negli_elenchi_e_lo_dice_una_volta(tmp_path, caplog):
+    """Chi legge un elenco salta la riga guasta, le altre arrivano; chi legge
+    una riga sola riceve `None` come per `analysis()`; un giro di «Rifalla» su
+    un filo illeggibile non lo riscrive da capo. Il log lo dice una volta per
+    riga, non a ogni lettura.
+
+    Mutazione ESEGUITA: senza `_unreadable_told` (il log a ogni lettura) --
+    rossa sul conteggio delle righe dette."""
+    import logging
+
+    from hiris.app.mind import store as modulo
+
+    modulo._unreadable_told.clear()
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        buona = store.add_proposal(text="a", perche="p", fingerprint="f1", prova={"v": 1},
+                                   stakes=None, now_ts=1.0)
+        rotta = store.add_proposal(text="b", perche="p", fingerprint="f2", prova={"v": 2},
+                                   stakes=None, now_ts=2.0)
+        _guasta(store, "UPDATE proposte SET giri_json = '{rotto' WHERE id = ?", rotta)
+        store.replace_report("2026-09-01", {"giorno": "2026-09-01"})
+        store.replace_report("2026-09-02", {"giorno": "2026-09-02"})
+        _guasta(store, "UPDATE resoconto SET corpo_json = 'x' WHERE giorno = '2026-09-02'")
+        store.replace_analysis("2026-09-01", {"osservazioni": []})
+        store.replace_analysis("2026-09-02", {"osservazioni": []})
+        _guasta(store, "UPDATE analisi SET corpo_json = 'x' WHERE giorno = '2026-09-02'")
+
+        with caplog.at_level(logging.WARNING, logger="hiris.app.mind.store"):
+            assert [p["id"] for p in store.proposals()] == [buona]
+            assert [p["id"] for p in store.proposals()] == [buona]
+            assert store.proposal(rotta) is None
+            assert store.add_proposal_round(rotta, request="r", outcome="niente",
+                                            turn="t1", now_ts=3.0) is False
+            assert [r["giorno"] for r in store.reports()] == ["2026-09-01"]
+            assert store.report("2026-09-02") is None
+            assert [a["giorno"] for a in store.analyses()] == ["2026-09-01"]
+            assert store.analysis("2026-09-02") is None
+            assert store.reseal_titles(lambda testo: testo) == (0, 0)
+        assert store._conn.execute("SELECT giri_json FROM proposte WHERE id = ?",
+                                   (rotta,)).fetchone()[0] == "{rotto"
+        _guasta(store, "UPDATE proposte SET prova_json = '[' WHERE id = ?", buona)
+        assert "f1" not in store.decided_proposals()
+    finally:
+        store.close()
+    # Quattro righe guaste, quattro righe di log: le letture ripetute non
+    # ne aggiungono.
+    detti = [r.getMessage() for r in caplog.records]
+    assert len(detti) == 4, detti
+    assert any(rotta in d and "proposte" in d for d in detti)

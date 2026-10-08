@@ -611,6 +611,33 @@ async def test_conferma_con_la_rilettura_in_guasto_e_503_e_non_scrive(client, cs
 
 
 @pytest.mark.asyncio
+async def test_una_proposta_a_mano_guasta_non_fa_cadere_l_elenco(tmp_path):
+    """C-48 (Tappa 8, T3): con una riga storta in `proposte`, `proposals()`
+    faceva cadere l'intera rotta, che fonde le due code: la pagina perdeva
+    anche le costruzioni. Ora la riga guasta si salta, e le altre arrivano.
+
+    Mutazione ESEGUITA: `json.loads(r[6])` rimesso in `proposals` -- la rotta
+    solleva `JSONDecodeError`, cioe' un 500."""
+    from hiris.app.mind.store import ObservationsStore
+
+    app = _app(FintoArchivio([{"id": "a", "stato": "in_attesa", "creata_ts": 3}]))
+    osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
+    buona = osservazioni.add_proposal(text="t", perche="p", fingerprint="f1", prova={},
+                                      stakes=None, now_ts=5.0)
+    rotta = osservazioni.add_proposal(text="t", perche="p", fingerprint="f2", prova={},
+                                      stakes=None, now_ts=4.0)
+    osservazioni._conn.execute("UPDATE proposte SET prova_json = '{' WHERE id = ?", (rotta,))
+    osservazioni._conn.commit()
+    app["observations"] = osservazioni
+    try:
+        risposta = await handle_get_constructions(FintaRichiesta(app))
+        assert risposta.status == 200
+        assert {c["id"] for c in _corpo(risposta)["constructions"]} == {buona, "a"}
+    finally:
+        osservazioni.close()
+
+
+@pytest.mark.asyncio
 async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path):
     """C-12 (Tappa 4, Task 5): «In attesa» o «Storico» lo decide il server.
 
