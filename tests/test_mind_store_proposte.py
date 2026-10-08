@@ -201,14 +201,16 @@ def test_una_proposta_senza_IMPRONTA_non_si_scrive(archivio):
 
 #: La tabella com'era fino alla versione 11 dello schema (06/10/2026), con
 #: le tre colonne che il censimento del 01/10/2026 ha trovato inutili
-#: (`attori/censimento-database-2026-10-01.md`, punti 6 e 7).
+#: (`attori/censimento-database-2026-10-01.md`, punti 6 e 7). La riga nasce
+#: dopo il proponente (07/10/2026): una piu' vecchia uscirebbe con la
+#: migrazione 15 (D3, le proposte dell'attuatore), e queste prove guardano la 12.
 _PROPOSTE_V11 = """
 CREATE TABLE proposte (
     id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, aggiornata_ts REAL NOT NULL,
     stato TEXT NOT NULL, testo TEXT NOT NULL, perche TEXT NOT NULL,
     chi_applica TEXT NOT NULL, impronta TEXT NOT NULL, prova_json TEXT NOT NULL,
     giri_json TEXT NOT NULL, esito_ts REAL, esito_nota TEXT, stakes TEXT);
-INSERT INTO proposte VALUES ('p1', 100.0, 300.0, 'fatta_fuori', 'Sposta la
+INSERT INTO proposte VALUES ('p1', 1791400000.0, 300.0, 'fatta_fuori', 'Sposta la
 lavatrice', 'il prelievo', 'tu', 'dev1|prelievo|None|1', '{"base": 19}', '[]',
 300.0, 'fatto ieri sera', NULL);
 PRAGMA user_version = 11;
@@ -244,7 +246,7 @@ def test_le_tre_colonne_MAI_LETTE_escono_e_le_righe_restano(tmp_path):
     assert righe[0]["id"] == "p1" and righe[0]["stato"] == "fatta_fuori"
     assert righe[0]["esito_nota"] == "fatto ieri sera"
     assert righe[0]["prova"] == {"base": 19}
-    assert righe[0]["creata_ts"] == 100.0
+    assert righe[0]["creata_ts"] == 1791400000.0
 
 
 def test_una_ricostruzione_INTERROTTA_non_perde_le_proposte(tmp_path, monkeypatch):

@@ -16,6 +16,7 @@ from hiris.app.mind.store import (
     READING_RETENTION_S,
     SCHEMA_VERSION,
     ObservationsStore,
+    _migration_14,
 )
 
 ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC
@@ -1031,11 +1032,13 @@ def test_migration_14_porta_gli_esiti_del_vecchio_attuatore_alla_chiave_del_prop
             {"gesto": "proposta", "costruibile": True, "trovato": "un'automazione",
              "impronta": "imp-cos"},
             {"gesto": "indagine", "trovato": "orfano"}]}})
-    store._conn.execute("PRAGMA user_version = 13")
+    # Il gradino da solo: dalla migrazione 15 queste righe, nate prima del
+    # proponente, escono dall'archivio (D3), e con loro gli esiti che le
+    # citano. Qui si guarda come la 14 le lega.
+    _migration_14(store._conn)
     store._conn.commit()
-    store.close()
 
-    riaperto = ObservationsStore(percorso)
+    riaperto = store
     try:
         analisi = riaperto.analysis("2026-09-20")
         assert "attuazione" not in analisi
@@ -1119,11 +1122,13 @@ def test_migration_14_cita_la_proposta_nata_PRIMA_dell_analisi(tmp_path):
         "INSERT INTO analisi(giorno,corpo_json,scritto_ts) VALUES(?,?,?)",
         ("2026-09-20", json.dumps({"osservazioni": [], "attuazione": {"esiti": [
             {"gesto": "proposta", "trovato": "a", "impronta": "imp"}]}}), 2.0))
-    store._conn.execute("PRAGMA user_version = 13")
+    # Il gradino da solo: dalla migrazione 15 queste righe, nate prima del
+    # proponente, escono dall'archivio (D3), e con loro gli esiti che le
+    # citano. Qui si guarda come la 14 le lega.
+    _migration_14(store._conn)
     store._conn.commit()
-    store.close()
 
-    riaperto = ObservationsStore(percorso)
+    riaperto = store
     try:
         assert proposer_turn.outcomes_of(riaperto.analysis("2026-09-20")) == [
             {"impronta": "imp", "esito": proposer_turn.BY_HAND, "proposta_id": allora}]
@@ -1271,6 +1276,9 @@ def _json_loads_in_store() -> tuple[list[str], list[str]]:
     from hiris.app.mind import store as modulo
 
     allowed, outside = [], []
+    # I passi della 15 sono migrazioni anche se non si chiamano cosi': si
+    # chiedono alla lista che la 15 esegue, non si ricopiano.
+    steps = {step.__name__ for step in modulo._MIGRATION_15_STEPS}
 
     def visit(node, owners):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1279,7 +1287,8 @@ def _json_loads_in_store() -> tuple[list[str], list[str]]:
                 and node.func.attr == "loads"
                 and isinstance(node.func.value, ast.Name) and node.func.value.id == "json"):
             where = f"{'.'.join(owners) or '<modulo>'}:{node.lineno}"
-            if any(o == "_json_column" or o.startswith("_migration_") for o in owners):
+            if any(o == "_json_column" or o.startswith("_migration_") or o in steps
+                   for o in owners):
                 allowed.append(where)
             else:
                 outside.append(where)
@@ -1362,3 +1371,73 @@ def test_una_riga_guasta_si_salta_negli_elenchi_e_lo_dice_una_volta(tmp_path, ca
     detti = [r.getMessage() for r in caplog.records]
     assert len(detti) == 4, detti
     assert any(rotta in d and "proposte" in d for d in detti)
+
+
+# -- D3: le proposte a mano dell'attuatore escono (Tappa 8, T3, G-04) -------
+
+#: Prima e dopo la nascita del proponente (06/10/2026 16:00:56 UTC).
+_ACTUATOR_TS = 1790000000.0   # 21/09/2026
+_PROPOSER_TS = 1791400000.0   # 07/10/2026
+
+
+def test_migration_15_cancella_le_proposte_dell_attuatore_e_gli_esiti_che_le_citano(
+        tmp_path, caplog):
+    """D3, decisione del proprietario dell'08/10/2026: escono tutte le
+    proposte a mano dell'attuatore, in attesa e rifiutate (misurato
+    l'08/10/2026 sul backup: 9 righe, 7 `attesa` e 2 `rifiutata`). Le
+    riconosce l'istante: nate prima del codice del proponente. Una del
+    proponente resta. Gli esiti `a_mano` che le citavano escono dall'analisi,
+    o la pagina direbbe «la trovi in Proposte» dove non c'e' niente; gli altri
+    restano. Una riga di log per id. Una seconda apertura non cambia niente.
+
+    Mutazioni ESEGUITE: il passo tolto da `_MIGRATION_15_STEPS` -- rossa
+    sulle righe; `_PROPOSER_BORN_TS` spostato dopo la riga del proponente --
+    rossa sulla riga che resta; senza il filtro delle analisi --
+    rossa sugli esiti."""
+    import logging
+
+    from hiris.app.mind import proposer_turn
+
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    attesa = store.add_proposal(text="a", perche="p", fingerprint="f1", prova={},
+                                stakes=None, now_ts=_ACTUATOR_TS)
+    rifiutata = store.add_proposal(text="b", perche="p", fingerprint="f2", prova={},
+                                   stakes=None, now_ts=_ACTUATOR_TS + 1)
+    store.close_proposal(rifiutata, "rifiutata")
+    nuova = store.add_proposal(text="c", perche="p", fingerprint="f3", prova={},
+                               stakes=None, now_ts=_PROPOSER_TS)
+    esiti = [{"impronta": "f1", "esito": proposer_turn.BY_HAND, "proposta_id": attesa},
+             {"impronta": "f9", "esito": proposer_turn.NOTHING, "perche": "x"},
+             {"impronta": "f3", "esito": proposer_turn.BY_HAND, "proposta_id": nuova}]
+    store.replace_analysis("2026-09-21", {"osservazioni": [],
+                                          proposer_turn.OUTCOMES_KEY: esiti[:2]})
+    store.replace_analysis("2026-10-07", {"osservazioni": [],
+                                          proposer_turn.OUTCOMES_KEY: esiti[2:]})
+    store._conn.execute("PRAGMA user_version = 14")
+    store._conn.commit()
+    store.close()
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.mind.store"):
+        riaperto = ObservationsStore(percorso)
+    try:
+        assert [p["id"] for p in riaperto.proposals()] == [nuova]
+        assert proposer_turn.outcomes_of(riaperto.analysis("2026-09-21")) == [esiti[1]]
+        assert proposer_turn.outcomes_of(riaperto.analysis("2026-10-07")) == [esiti[2]]
+        prima = riaperto._conn.execute(
+            "SELECT giorno, corpo_json, scritto_ts FROM analisi ORDER BY giorno").fetchall()
+    finally:
+        riaperto.close()
+    detti = [r.getMessage() for r in caplog.records if "dell'attuatore" in r.getMessage()]
+    assert len(detti) == 2
+    assert any(attesa in d and "attesa" in d for d in detti)
+    assert any(rifiutata in d and "rifiutata" in d for d in detti)
+
+    ancora = ObservationsStore(percorso)
+    try:
+        assert [p["id"] for p in ancora.proposals()] == [nuova]
+        assert ancora._conn.execute(
+            "SELECT giorno, corpo_json, scritto_ts FROM analisi ORDER BY giorno"
+        ).fetchall() == prima
+    finally:
+        ancora.close()

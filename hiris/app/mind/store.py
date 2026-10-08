@@ -857,13 +857,73 @@ def _drop_unread_reading_columns(conn) -> None:
                  "ON cambi(soggetto, quando_ts)")
 
 
+#: L'istante in cui e' nato il codice del proponente: il commit `b79c347`
+#: («il turno con `propose`», attori, Task 4.2), 06/10/2026 16:00:56 UTC.
+#: **Una proposta nata prima non l'ha scritta il proponente**, perche' il
+#: codice che la scrive non esisteva: l'ha scritta l'attuatore, che dal
+#: 01/10/2026 era in pausa. E' il fatto da cui si legge «chi l'ha scritta»,
+#: che la riga non porta: `stakes` e' nullo anche sulle righe del proponente
+#: (`proposer_round`, D13), e la prova ha la stessa forma.
+_PROPOSER_BORN_TS = 1791302456.0
+
+
+def _drop_actuator_proposals(conn) -> None:
+    """Escono le proposte da fare a mano scritte dall'attuatore (Tappa 8,
+    G-04, D3: decisione del proprietario dell'08/10/2026, «elimina anche le 2
+    rifiutate»). Misurato l'08/10/2026 sul backup dell'add-on: 9 righe, 7
+    `attesa` e 2 `rifiutata`, `esito_nota` vuota su tutte, nessuna del
+    proponente.
+
+    **Perche' escono.** Nate su dati rotti (0 utili su 9), e una in attesa
+    blocca il proponente: ritrovando la stessa impronta non scrive il suo
+    testo, cita la vecchia (`proposer_round`, D24-1). Le 2 rifiutate escono
+    anche loro: il proponente le avrebbe lette come una decisione su una
+    domanda posta male.
+
+    Una riga di log per id, con lo stato. **Escono anche gli esiti che le
+    citano** dentro le analisi (`a_mano` con quel `proposta_id`, portati li'
+    da `_migration_14` o scritti dal proponente che le ha trovate in attesa):
+    la pagina direbbe «la trovi in Proposte» dove non c'e' niente, la stessa
+    ragione per cui `_migration_14` non porta un «a mano» senza la sua riga
+    (N74-2). Solo le analisi toccate si riscrivono.
+    """
+    from . import proposer_turn
+
+    gone = conn.execute(
+        "SELECT id, stato FROM proposte WHERE creata_ts < ? ORDER BY creata_ts",
+        (_PROPOSER_BORN_TS,)).fetchall()
+    if not gone:
+        return
+    for row in gone:
+        logger.info("proposta a mano %s (%s) dell'attuatore cancellata", row["id"],
+                    row["stato"])
+    conn.execute("DELETE FROM proposte WHERE creata_ts < ?", (_PROPOSER_BORN_TS,))
+    idents = {row["id"] for row in gone}
+    for row in conn.execute("SELECT giorno, corpo_json FROM analisi").fetchall():
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(body, dict):
+            continue
+        outcomes = proposer_turn.outcomes_of(body)
+        kept = [o for o in outcomes
+                if not (isinstance(o, dict) and o.get("esito") == proposer_turn.BY_HAND
+                        and o.get("proposta_id") in idents)]
+        if len(kept) == len(outcomes):
+            continue
+        body[proposer_turn.OUTCOMES_KEY] = kept
+        conn.execute("UPDATE analisi SET corpo_json = ? WHERE giorno = ?",
+                     (json.dumps(body, ensure_ascii=False), row["giorno"]))
+
+
 #: I passi della migrazione 15, in ordine (Tappa 8, Task 3). **Una
 #: migrazione sola per la tappa**, con un passo per cambio: chi porta il suo
-#: (la marca `regole` dei resoconti, le parole degli stati delle proposte, la
-#: cancellazione delle proposte dell'attuatore) aggiunge una funzione qui,
-#: idempotente, senza riscrivere le altre. Vale finche' la 15 non e' uscita in
-#: un rilascio: dopo, un passo nuovo e' una migrazione 16.
-_MIGRATION_15_STEPS = (_drop_unread_reading_columns,)
+#: (la marca `regole` dei resoconti del Task 2, le parole degli stati delle
+#: proposte del Task 4) aggiunge una funzione qui, idempotente, senza
+#: riscrivere le altre. Vale finche' la 15 non e' uscita in un rilascio: dopo,
+#: un passo nuovo e' una migrazione 16.
+_MIGRATION_15_STEPS = (_drop_unread_reading_columns, _drop_actuator_proposals)
 
 
 def _migration_15(conn) -> None:
