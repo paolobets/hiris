@@ -632,9 +632,17 @@ class House:
         pagina (`handlers_memory._resolve_tether`): il modello riceveva
         l'ancora grezza e non poteva dire «quell'entita' non c'e' piu'». Il
         ricordo non si tocca: sono parole del proprietario, e la memoria non
-        evapora."""
-        if tether.get("tipo") in self.unverifiable_tether_kinds():
+        evapora.
+
+        **Il nome e' quello di `name`** (S-22, Tappa 9, F3, 08/10/2026): per
+        un'entita' il nome che Home Assistant mostra (`topology.live_name`),
+        per un dispositivo `topology.device_name`. Fino a quel giorno era la
+        voce dell'indice (`name` o `original_name` del registro, mai il
+        `friendly_name`): la pagina Memoria chiamava un'entita' in un modo e
+        il resto del prodotto in un altro."""
+        kind, reference = tether.get("tipo"), tether.get("riferimento")
+        if kind in self.unverifiable_tether_kinds():
             return {**tether, "nome_attuale": None, "esiste": None}
-        entry = self.lookup().verify(tether.get("tipo"), tether.get("riferimento"))
-        return {**tether, "nome_attuale": entry.get("nome") if entry else None,
-                "esiste": entry is not None}
+        exists = self.lookup().verify(kind, reference) is not None
+        return {**tether, "nome_attuale": self.name(kind, reference) if exists else None,
+                "esiste": exists}

@@ -193,15 +193,20 @@ def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
     non usciva: lo stesso ricordo aveva DUE FORME a seconda della porta. Il
     modello ne imparava una dentro `view("area", ...)`, poi leggeva
     `r["forza"]` sul dettaglio -> assente, e riferiva «di questo ricordo non
-    so la forza» su un ricordo che ce l'ha."""
-    dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, _RICORDI, "ricordo", 1)
+    so la forza» su un ricordo che ce l'ha.
+
+    Il ricordo porta `detto_il`, come ogni riga dell'archivio (colonna
+    `NOT NULL`): dalla resa unica (Tappa 9, F3) una chiave assente nella riga
+    resta assente, e la prova chiede che quella presente esca."""
+    ricordi = [{**_RICORDI[0], "detto_il": "2026-10-01T06:00:00+00:00"}]
+    dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, ricordi, "ricordo", 1)
     assert dettaglio["esiste"] is True
     assert dettaglio["testo"] == _RICORDI[0]["testo"]
     assert dettaglio["forza"] == "preferenza"
     assert "interpretazione" not in dettaglio, "il livello annidato non deve tornare"
     # `detto_il` c'era in `fetch` e spariva qui: alla domanda «quando te
     # l'ho detto?» la risposta dipendeva da quale strumento il modello sceglie.
-    assert "detto_il" in dettaglio
+    assert dettaglio["detto_il"] == "2026-10-01T06:00:00+00:00"
 
 
 def test_guarda_un_ricordo_porta_said_by_come_fetch():

@@ -54,7 +54,7 @@ from .behavior import BEHAVIOR_DOMAINS
 from .ha_vocabulary import LINK_NAME
 from .historian import instant_epoch
 from .reference import normalize
-from .render import _add_labels, render_entity, rows_depth
+from .render import MEMORY_KIND, _add_labels, render_entity, render_memory, rows_depth
 from .topology import (
     device_name,
     is_pseudo_area,
@@ -82,10 +82,10 @@ def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]
     pura, non interroga l'archivio da sola.
 
     E' il senso delle ancore: «quali preferenze riguardano questa stanza».
-    Un tipo come "automazione", "script" o "ricordo" -- fuori dal
-    vocabolario delle ancore (memory/interpretation.py: area, entita,
-    dispositivo) -- semplicemente non trova mai nulla qui: non e' un
-    errore, e' un tipo di "cosa" per cui nessun ricordo si ancora.
+    Un tipo fuori dal vocabolario delle ancore (memory/interpretation.py:
+    area, entita, dispositivo) non trova mai nulla qui: per questo la scheda
+    di un'automazione o di uno script chiede `entita` col suo entity_id, non
+    il suo genere (M-32).
     """
     found = []
     for r in memories:
@@ -448,56 +448,40 @@ def _view_behavior(behavior: list[dict], memories: list[dict],
         # valori diversi, e il confine non li confonde riscrivendoli.
         "corpo": (None if entry.get("corpo") is None
                   else sanitize_structure(entry.get("corpo"))),
-        "ricordi": _tethered_memories(memories, kind, reference),
+        # I ricordi ancorati a lui come ENTITA' (M-32, Tappa 9, F3,
+        # 08/10/2026): un'automazione o uno script e' un'entita' del registro
+        # di Home Assistant (`automation.x`, `script.y`), e `remember` la
+        # ancora cosi' -- il vocabolario delle ancore non ha «automazione».
+        # Fino a quel giorno la scheda cercava `(kind, id)` e la chiave era
+        # sempre vuota.
+        "ricordi": _tethered_memories(memories, "entita", reference),
     }
 
 
 def _view_memory(memories: list[dict], reference) -> dict:
+    """Il dettaglio di un ricordo: la sua resa (`render.render_memory`, gia'
+    fatta da `view` per tutti i ricordi), con `esiste`.
+
+    La forma e' PIATTA e una sola, la stessa di `fetch`, della pagina Memoria
+    e dei `ricordi` che ogni altro ramo di `view` restituisce. Fino al
+    05/10/2026 l'interpretazione era annidata sotto `interpretazione` e
+    `detto_il` non usciva; fino all'08/10/2026 (Tappa 9, F3) il dettaglio era
+    composto a mano, e taceva `corretto_da_utente` (C-41)."""
     memory = next((r for r in memories if r.get("id") == reference), None)
     if memory is None:
-        return {"esiste": False, "tipo": "ricordo", "riferimento": reference}
-    # La forma e' PIATTA, la stessa di `fetch` e dei `ricordi` che ogni
-    # altro ramo di `view` gia' restituisce (`_tethered_memories`).
-    #
-    # Prima l'interpretazione era annidata sotto una chiave `interpretazione`
-    # e `detto_il` non usciva affatto: lo stesso ricordo aveva due forme a
-    # seconda della porta. Il modello ne imparava una dentro
-    # `view("area", ...)`, poi chiedeva il dettaglio con
-    # `view("ricordo", id)` e leggeva `r["forza"]` -> assente, e riferiva
-    # «di questo ricordo non so la forza» su un ricordo che ce l'ha. E alla
-    # domanda «quando te l'ho detto?» la risposta dipendeva da quale strumento
-    # il modello avesse scelto.
-    #
-    # Le caselle restano distinte dal TESTO -- che e' la verita' e non si
-    # riscrive -- ma la distinzione la fanno i nomi dei campi, non un livello
-    # di annidamento in piu' che esiste da una porta sola.
-    detail = {
-        "esiste": True, "tipo": "ricordo", "id": memory["id"], "testo": memory["testo"],
-        "detto_da": memory.get("detto_da"),
-        # La chiave stabile del soggetto (Task 6, decisione 5) -- stessa forma
-        # di `fetch` e di `/api/memories`, che la portano gia' perche' leggono
-        # la riga intera: qui il dettaglio e' composto a mano, e senza questa
-        # riga sarebbe l'unica porta a tacerla (fondamenta 3).
-        "said_by": memory.get("said_by"),
-        "detto_il": memory.get("detto_il"),
-        "forza": memory.get("forza"), "grandezza": memory.get("grandezza"),
-        "minimo": memory.get("minimo"), "massimo": memory.get("massimo"),
-        "unita": memory.get("unita"),
-        "ancore": memory.get("ancore") or [],
-        "condizioni": memory.get("condizioni") or [],
-    }
-    return detail
+        return {"esiste": False, "tipo": MEMORY_KIND, "riferimento": reference}
+    return {"esiste": True, **memory}
 
 
-def sanitized_memories(memories: list[dict] | None, house: House | None = None) -> list[dict]:
+def sanitized_memories(memories: list[dict] | None) -> list[dict]:
     """I ricordi con `testo` passato dal sanitizzatore -- funzione condivisa,
     non una riga ripetuta a ogni porta che restituisce ricordi al modello.
 
-    **Con la casa, ogni ancora porta `nome_attuale` ed `esiste`**
-    (`House.tether`, G-21, Tappa 8, Task 1): la stessa forma che la pagina
-    Memoria mostra, cosi' il modello puo' dire «quell'entita' non c'e' piu'»
-    invece di riferire un'ancora grezza come viva. Il nucleo la chiama senza
-    casa: le sue righe non stampano le ancore.
+    Le ancore risolte (`nome_attuale`, `esiste`: `House.tether`, G-21) le
+    porta la resa (`render.render_memory`), che le porte del modello chiamano
+    DOPO questa funzione; fino all'08/10/2026 (Tappa 9, F3) le risolveva
+    anche questa, con la casa come secondo argomento. Il nucleo la chiama da
+    sola: le sue righe non stampano le ancore.
 
     C-2/I1 (L1-sicurezza.md, review indipendente del 25/08/2026): la prima
     versione di questa correzione sanificava il testo dentro `view()` ma
@@ -512,11 +496,7 @@ def sanitized_memories(memories: list[dict] | None, house: House | None = None) 
     e' una copia, non una riscrittura -- vedi il docstring di `view()`."""
     out = []
     for r in memories or []:
-        copy = dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
-        if house is not None and isinstance(r.get("ancore"), list):
-            copy = dict(copy, ancore=[house.tether(a) if isinstance(a, dict) else a
-                                      for a in r["ancore"]])
-        out.append(copy)
+        out.append(dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r)
     return out
 
 
@@ -860,7 +840,7 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     sorveglia che la catena interna -- che quella prova strutturale non guarda
     -- lo inoltri davvero fino a `_limits_of_entity`.
     """
-    memories = sanitized_memories(memories, house)
+    memories = [render_memory(r, house) for r in sanitized_memories(memories)]
     if kind == "area":
         return _view_area(house, memories, reference, translations, zone,
                           judgments=judgments)
