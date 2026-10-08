@@ -235,7 +235,9 @@ def test_la_soglia_della_profondita_la_legge_solo_depth_for():
     corta» era scritta due volte, in `house_query._select` (per `search`) e
     in `house_history.depth_for` (per `history`). Ora vive in
     `house_query.depth_for`, accanto alla soglia, e la storia la importa.
+    Dall'08/10/2026 (Tappa 9, F2) vive nella resa: `render.rows_depth` legge
+    la soglia, `render.depth_for` la chiama, e la porta e la storia importano.
 
     Rossa prima del codice (05/10/2026) con
     `['home_space/house_history.py:depth_for', 'home_space/house_query.py:_select']`."""
-    assert _readers_of("DETAIL_MEDIUM_MAX") == ["home_space/house_query.py:depth_for"]
+    assert _readers_of("DETAIL_MEDIUM_MAX") == ["home_space/render.py:rows_depth"]

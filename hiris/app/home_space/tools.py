@@ -116,7 +116,6 @@ from .house_query import (
     KINDS,
     ORDERS,
     ROWS_MAX,
-    depth_for,
     parse_filters,
     query_house,
 )
@@ -130,6 +129,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
+from .render import depth_for
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -191,7 +191,7 @@ logger = logging.getLogger(__name__)
 # stavano in due schemi con parole diverse («Includi le entita' nascoste. Di
 # norma no.» / «Anche le entita' nascoste.»), e la regola della profondita'
 # in due prose con le soglie scritte a mano («fino a 10», «da 2 a 10»),
-# mentre la soglia vera e' una e la applica `house_query.depth_for` per
+# mentre la soglia vera e' una e la applica `render.depth_for` per
 # entrambe. Le differenze vere restano in chiaro accanto a
 # ciascuno schema: `riferimento` (un ricordo ha un numero, la storia no) e
 # `integrazione` (per gli errori e' chi ha scritto la voce).
@@ -1610,7 +1610,8 @@ class ToolDispatcher:
                                           translations=translations, masked=masked)
 
         response = query_house(house, self._home_space.behavior(), filters,
-                               detail=detail, timezone=self._timezone())
+                               detail=detail, timezone=self._timezone(),
+                               translations=translations, judgments=self._judgments)
         if "errore" in response:
             return response
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
@@ -1791,6 +1792,7 @@ class ToolDispatcher:
                               # Il sapere: cosa significa la classe di
                               # un'entita'. `None` e' legittimo.
                               knowledge=self._knowledge,
+                              zone=historian.home_space_zone(self._timezone()),
                               # L'istantanea dei giudizi (spec §3): mai `None`
                               # qui -- `__init__` l'ha gia' ricaduta sul seme.
                               judgments=self._judgments)

@@ -9,6 +9,8 @@ compongono (R3, `tests/test_resa_unica.py`).
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..action.registry import field_applies
 from ..proxy.entity_cache import (
     ASSUMABLE,
@@ -17,22 +19,27 @@ from ..proxy.entity_cache import (
     VALUES,
     disclosable_attributes,
     group_members,
+    withheld_credentials,
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
-from .ha_vocabulary import domain_of
+from .ha_vocabulary import domain_of, entity_category_measure_rule
+from .historian import instant_out
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
-    Mirror,
+    VISIBLE,
     categories_with_name,
     clean_text,
     decoded_capabilities,
     labels_with_id,
-    live_first,
+    live_name,
     readable_state,
     visibility_classes,
 )
 from .type_judgments import MEANING_FIELD, TypeJudgments, type_subject
 from .type_vocabulary import REPO_JUDGMENTS
+
+if TYPE_CHECKING:
+    from .house import House
 
 # Chiavi che `entity_cache._to_minimal` mette nello STESSO dizionario grezzo
 # di `options` per ragioni di trasporto (arrivano dalla stessa proiezione,
@@ -80,175 +87,260 @@ _WITHHELD_BASKET = "trattenuti"
 WITHHELD_BASKET = _WITHHELD_BASKET
 
 
-def _enrich_entity(entity_detail: dict, entry: dict, mirror: Mirror,
-                   label_lookup: dict[str, str] | None = None,
-                   category_lookup: dict[tuple[str, str], str] | None = None,
-                   translations: dict | None = None) -> dict:
-    """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
+# --------------------------------------------------------------------------
+# LE PROFONDITA'
+# --------------------------------------------------------------------------
 
-    Arricchisce `entity_detail` con cio' che lo SPECCHIO VIVO sa e il
-    registro no (l'unita' di misura, la classe) e con cio' che il
-    registro sa e la proiezione lascerebbe indietro (la piattaforma, le
-    etichette e le categorie).
+#: Fino a quante voci un elenco si rende alla profondita' media; oltre, alla
+#: corta. Vive qui dal 08/10/2026 (Tappa 9, F2): la profondita' e' della resa,
+#: e la porta della casa (`house_query`) e la storia la chiedono a lei.
+DETAIL_MEDIUM_MAX = 10
+#: Le tre profondita' di ogni resa (glossario, «Il vocabolario dei campi»):
+#: `corta` una riga per oggetto, quando sono tanti; `media` fino a
+#: `DETAIL_MEDIUM_MAX` oggetti; `completa` uno solo, la scheda.
+DEPTHS = ("corta", "media", "completa")
 
-    Prende la VOCE del registro, non il solo `entity_id`: e' il cambiamento
-    che rende questa porta capace di portare anche i campi dichiarati. Con il
-    solo id, chi aggiungeva un campo nuovo era costretto a scriverlo nel
-    proprio ramo -- ed e' esattamente quello che era appena successo con
-    `piattaforma` ed `etichette`, uscite da una porta su tre: lo stesso
-    difetto (I1) per cui questa funzione era nata.
 
-    Il NOME non passa di qui: lo scrive chi costruisce la riga, con
-    `topology.live_name` (D1 «vivo», 04/10/2026). Fino a quel giorno questa
-    funzione aggiungeva `nome_dedotto` -- il `friendly_name` -- solo quando il
-    registro non aveva un nome, mentre `search` dava il `friendly_name`
-    sempre: due nomi per la stessa entita' da due porte.
+def rows_depth(count: int) -> str:
+    """La profondita' delle righe di un ELENCO di `count` oggetti: media fino
+    a `DETAIL_MEDIUM_MAX`, corta oltre. Mai completa: la scheda e' di un
+    oggetto chiesto da solo. Vale per le voci di `search` e per le entita'
+    annidate nella scheda di un'area, di un dispositivo, di un'integrazione:
+    la stessa entita', nello stesso numero di compagne, ha la stessa forma da
+    tutte le porte (fondamenta 3)."""
+    return "media" if count <= DETAIL_MEDIUM_MAX else "corta"
 
-    `unita`: `_to_minimal`
-    la conserva (`proxy/entity_cache.py`) e nessuno la rileggeva, cosi' il
-    modello riceveva `72` senza sapere se fossero gradi Celsius o Fahrenheit.
-    L'unita' VIVA vince su quella del registro: Home Assistant converte le
-    unita' **solo alla prima aggiunta del sensore**, quindi il registro puo'
-    portare quella vecchia mentre lo specchio porta quella che HA sta usando
-    adesso. La chiave compare solo quando c'e' un'unita': una lampada non ne
-    ha, e `unita: null` su ogni luce sarebbe rumore in ogni risposta.
 
-    Condivisa fra i TRE rami di `view` che elencano entita' (I1, review
-    finale): prima di quel fix solo `_view_entity` applicava il nome dedotto,
-    e le altre due porte mostravano `nome: null` secco. L'unita' entra da
-    questa porta unica, per non ripetere quella storia.
+def depth_for(count: int) -> str:
+    """La profondita' di una risposta dal numero di voci trovate, per
+    `search` e per `history` (spec §3): 1 -> completa, poi `rows_depth`. Una
+    regola sola (B-30, Tappa 5)."""
+    return "completa" if count == 1 else rows_depth(count)
 
-    `capacita` e `stato_presunto` vengono dallo SPECCHIO VIVO come `unita`, e
-    per la stessa ragione: `_to_minimal` li conserva gia'
-    (`proxy/entity_cache.py`), e nessun lettore li metteva davanti a chi
-    compone la risposta -- vedi i due commenti sotto, accanto a dove
-    escono davvero."""
-    entity_id = entry.get("id")
-    unit = live_first(entry.get("unita"), mirror.units.get(entity_id))
-    if unit:
-        entity_detail["unita"] = unit
-    # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
-    # manda affatto (`topology.live_first`). Prima questa riga usciva
-    # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
-    # dei significati.
-    device_class = live_first(entry.get("classe"), mirror.classes.get(entity_id))
-    if device_class:
-        entity_detail["classe"] = device_class
-    # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
-    # `stato` e' il fatto, `readable_state` e' l'interpretazione, e non si
-    # sovrascrivono.
-    #
-    # Senza, `view` rispondeva `on` e basta: un allagamento aveva la forma di
-    # una lampadina accesa. Il digesto lo rendeva gia', ma `view` e' la
-    # porta che il modello usa quando la domanda e' PRECISA, o quando il
-    # digesto ha tagliato, o quando l'entita' e' `config`/`diagnostic` e nel
-    # digesto non entra affatto. **La fonte e' la stessa** -- le traduzioni che
-    # Home Assistant pubblica, lette una volta e tenute in cache: due tabelle
-    # sarebbero due significati, e fino all'08/09/2026 erano scritte a mano.
-    #
-    # Il DOMINIO e l'`hvac_action` (dallo specchio vivo, mai dal registro:
-    # `topology.live_first` vale anche qui) alimentano il solo caso in
-    # cui uno stato grezzo mente da solo -- un termostato IMPOSTATO su
-    # riscaldamento e FERMO che si legge «heat» com'e' il difetto misurato dal
-    # proprietario (2026-08-25, `topology.readable_state`). Passati anche
-    # quando l'entita' non e' un termostato: `readable_state` li ignora per
-    # ogni altro dominio, e ricalcolarli qui una volta e' piu' semplice che
-    # farlo condizionale.
-    value = entity_detail.get("stato")
+
+# --------------------------------------------------------------------------
+# L'ENTITA'
+# --------------------------------------------------------------------------
+
+#: Il genere di un'entita' (`house_query.KINDS`, vocabolario: `genere`).
+ENTITY = "entita"
+
+
+def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
+                  translations: dict | None = None, registry=None, knowledge=None,
+                  judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+    """UN'ENTITA', a una profondita': la sola funzione che la compone (R3).
+
+    Fino all'08/10/2026 erano circa quattordici (registro, C-01): la scheda di
+    `view`, le righe annidate di area e dispositivo, le voci di `search`, la
+    pagina della casa, l'istantanea di una promessa... ognuna coi suoi nomi.
+    La stessa entita' usciva con `da_quando` da una porta e `ultimo_cambio`
+    dall'altra, con `piattaforma` e `dove.integrazione` nella stessa scheda,
+    con l'area come nome nudo o come `{id, nome}`.
+
+    **Le tre profondita'** (`DEPTHS`), ognuna contiene la precedente:
+
+    - `corta` -- `id`, `genere`, `nome`, `area`, `stato` con
+      `stato_leggibile` (o `stato_non_reso`), `unita`, `ultimo_cambio`,
+      `fuori`. Lo stato in parole c'e' gia' qui: un allagamento non deve
+      avere la forma di una lampadina accesa in nessuna riga. L'unita'
+      pure (fondamenta 1: `72` senza unita' e' un frammento);
+    - `media` -- piu' `classe`, `integrazione`, `capacita`,
+      `stato_presunto`, `etichette`, `categorie` e gli `attributi`
+      filtrati nelle loro ceste, come alla completa (C-34);
+    - `completa` -- la scheda: piu' `piano`, `dispositivo`,
+      `area_ereditata`, `fonte`, `regola`, `significato`, `membri`,
+      `comandi`.
+
+    **L'assenza.** Una chiave assente vuol dire «non lo so» o «non c'e'
+    niente da dire»; `null` vuol dire «so che non c'e'» (glossario). Lo
+    `stato` e' `null` quando lo specchio e' stato letto e l'entita' non ci
+    sta; assente quando lo specchio non si e' potuto leggere. `fuori` c'e'
+    solo per un'entita' fuori dai visibili (D4 della Tappa 4: un campo solo,
+    al posto di `disabilitata`, `nascosta`, `categoria` e dei loro `_da`).
+
+    Il filtro di riservatezza NON e' qui: e' sulla porta che parla al
+    modello (`privacy.redact_row`), un punto solo; la pagina e gli attori
+    ricevono lo stato vero.
+
+    `zone` e' il fuso della casa (`historian.home_space_zone`), per gli
+    istanti; `translations`, `registry`, `knowledge` e `judgments` servono
+    solo cio' che li usa (lo stato in parole; comandi, significato e regola
+    della completa)."""
+    if depth not in DEPTHS:
+        raise ValueError(f"profondita' sconosciuta: {depth!r}")
+    mirror = house.mirror
+    entry = house.entry(entity_id) or {}
+    row: dict = {"id": entity_id, "genere": ENTITY,
+                 "nome": live_name(entity_id, entry.get("nome"), mirror)}
+    where = house.where(entity_id)
+    if where is not None:
+        row["area"] = where["area"]
+    if mirror.readable:
+        row["stato"] = mirror.state.get(entity_id)
     # `disclosable_attributes` e non una lettura diretta: lo specchio porta
     # gli attributi divisi in ceste (`entity_cache.inherited_attributes`), e
     # chi cerca un attributo per nome non deve sapere in quale sta -- ne'
-    # inciampare nelle
-    # credenziali, che di qui non passano mai.
+    # inciampare nelle credenziali, che di qui non passano mai.
     attributes = disclosable_attributes(mirror.attributes.get(entity_id))
-    if value is not None:
-        hvac_action = attributes.get(HVAC_ACTION_ATTRIBUTE)
-        rendered = readable_state(
-            value, domain=domain_of(entity_id),
-            device_class=entity_detail.get("classe"), hvac_action=hvac_action,
-            translations=translations)
-        if rendered.get("letto"):
-            entity_detail["stato_leggibile"] = rendered["valore"]
-        elif rendered.get("silenzio") in TABLE_MISSING_SILENCES:
-            # **Il vuoto non si consegna, il motivo si'.** Fino all'08/09/2026
-            # una tabella scritta a mano rispondeva sempre, quindi questo ramo
-            # non poteva esistere; adesso la fonte e' Home Assistant e puo'
-            # tacere -- e «non ho potuto leggere le traduzioni» e «questo stato
-            # non ha resa» sono due fatti diversi, che chi legge deve poter
-            # distinguere invece di trovarsi una chiave in meno e nessuna
-            # spiegazione. Lo `stato` grezzo resta dov'e': e' il fatto.
-            #
-            # **Solo i due silenzi che riguardano la TABELLA**, e il perche' e'
-            # misurato sulla casa vera (08/09/2026): con le traduzioni lette per
-            # intero, 431 entita' su 841 -- ogni `sensor`, ogni `number`, ogni
-            # `select` -- non hanno una resa e non devono averla, perche'
-            # MISURANO invece di stare in uno stato. Dichiararle una per una
-            # avrebbe messo 431 blocchi di scusa dentro le risposte di `view`
-            # per dire ogni volta la stessa cosa non-notizia, contro la legge di
-            # questo prodotto («una chiave senza niente da dire non esce»). La
-            # distinzione non si perde, e si legge come proprio qui, dentro
-            # `_enrich_entity`: la chiave ASSENTE con lo
-            # `stato` grezzo significa «questo stato non ha resa, e Home
-            # Assistant stesso mostrerebbe il grezzo»; la chiave PRESENTE
-            # significa «non ho potuto chiedere», col motivo dentro.
-            entity_detail["stato_non_reso"] = {
-                "silenzio": rendered.get("silenzio"),
-                "motivo": rendered.get("motivo"),
-            }
-    # L'integrazione che la fornisce (hue, zwave_js, template): dice perche'
-    # una cosa non risponde e cosa le si puo' chiedere.
-    platform = (entry.get("piattaforma") or "").strip()
-    if platform:
-        entity_detail["piattaforma"] = platform
+    kind = house.kind_of(entity_id) or {}
+    _state_in_words(row, entity_id, kind.get("classe"), attributes, translations)
+    # L'unita' VIVA vince su quella del registro (`House.kind_of`,
+    # `topology.live_first`): Home Assistant converte le unita' solo alla
+    # prima aggiunta del sensore. La chiave compare solo quando c'e' un'unita':
+    # una lampada non ne ha, e `unita: null` su ogni luce sarebbe rumore.
+    if kind.get("unita"):
+        row["unita"] = kind["unita"]
+    since = mirror.since.get(entity_id)
+    if since is not None:
+        row["ultimo_cambio"] = instant_out(since, zone)
+    outside = house.visibility(entity_id)
+    if outside is not None and outside[0] != VISIBLE:
+        row["fuori"] = {"classe": outside[0], "causa": outside[1]}
+    if depth == "corta":
+        return row
+    # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
+    # manda affatto (`topology.live_first`, dentro `kind_of`).
+    if kind.get("classe"):
+        row["classe"] = kind["classe"]
+    integration = _integration_of(house, entry)
+    if integration is not None:
+        row["integrazione"] = integration
     # `capacita`: COSA UN'ENTITA' SA FARE, decodificato da `supported_features`
     # (`decoded_capabilities`, `topology.py` -- tabelle verificate alla fonte,
-    # per dominio). E' il guadagno vero di questa fetta: 181 entita' su 834
-    # (misurato il 06/09/2026) lo dichiarano, e la conoscenza non lo citava
-    # in NESSUN punto prima d'ora.
-    #
-    # Solo quando la decodifica produce qualcosa: 653 entita' su 834 non
-    # hanno `supported_features` affatto, e una tabella senza fonte per il
-    # dominio non decodifica niente -- `capacita: []` (o peggio, `null`) su
-    # ognuna sarebbe il rumore che seppellisce le 181 dove c'e' davvero.
-    # Stessa disciplina di `unita`/`categoria` due righe sopra.
-    capabilities = decoded_capabilities(domain_of(entity_id), attributes.get("supported_features"))
+    # per dominio): 181 entita' su 834 lo dichiarano (misurato il 06/09/2026).
+    # Solo quando la decodifica produce qualcosa: `capacita: []` sulle altre
+    # 653 sarebbe il rumore che seppellisce quelle dove c'e' davvero.
+    capabilities = decoded_capabilities(domain_of(entity_id),
+                                        attributes.get("supported_features"))
     if capabilities:
-        entity_detail["capacita"] = capabilities
-    # `stato_presunto`: Home Assistant lo manda SOLO quando e' vero
-    # (`assumed_state`, verificato alla fonte -- vedi `entity_cache._to_minimal`).
-    # Leggerlo quando c'e' costa zero, ma su questa casa non e' MAI arrivato
-    # (0 entita' su 834, misurato il 06/09/2026): non e' -- e non diventa,
-    # scrivendo questa riga -- il fondamento su cui HIRIS regge la certezza
-    # del dato in generale.
+        row["capacita"] = capabilities
+    # `stato_presunto`: Home Assistant manda `assumed_state` SOLO quando e'
+    # vero (`entity_cache._to_minimal`). Su questa casa non e' MAI arrivato
+    # (0 entita' su 834, misurato il 06/09/2026).
     if attributes.get("assumed_state"):
-        entity_detail["stato_presunto"] = True
-    # NASCOSTA e CATEGORIA: fuori dalle gestioni, dentro la conoscenza.
-    #
-    # Il digesto conta le nascoste e scrive «esistono, e `view` le riporta se
-    # gliele chiedi» -- una promessa che `view` non poteva mantenere, perche'
-    # il campo non usciva da nessuna porta. Alla domanda «quali sono?» il
-    # modello o si contraddiceva o inventava.
-    #
-    # Solo quando sono vere: `nascosta: false` su ogni entita' di una casa da
-    # trecento sarebbe rumore in ogni risposta, e `categoria: null` pure.
-    #
-    # Dalla regola del fuori (`topology.visibility_classes`, B-01): la causa
-    # della classe `servizio` E' l'`entity_category`.
-    outside = dict(visibility_classes(entry))
-    if "nascosta" in outside:
-        entity_detail["nascosta"] = True
-    if outside.get("servizio"):
-        entity_detail["categoria"] = outside["servizio"]
-    # `regola` NON esce da questa porta -- review indipendente (Task 5,
-    # rigiro): questa funzione e' condivisa da `_view_area`/`_view_device`
-    # (elencano entita' a decine) E da `_view_entity` (una sola). Un
-    # dispositivo con 53 sensori diagnostici (misurato il 07/09/2026: "Home
-    # Assistant", 55 entita' vive) ripeterebbe la STESSA stringa 53 volte in
-    # un'unica vista -- ~18 KB, quasi 4.500 token identici che seppellirebbero
-    # il resto della vista. Stessa decisione, stessa ragione di `attributi`
-    # (sotto in `_view_entity`): solo sul dettaglio di UNA entita' sola.
-    _add_categories(entity_detail, entry, category_lookup or {})
-    return _add_labels(entity_detail, entry, label_lookup or {})
+        row["stato_presunto"] = True
+    _add_labels(row, entry, house.labels())
+    _add_categories(row, entry, house.categories())
+    baskets = _baskets(mirror.attributes.get(entity_id))
+    if baskets:
+        row["attributi"] = baskets
+    if depth == "media":
+        return row
+    if where is not None:
+        if where["piano"] is not None:
+            row["piano"] = where["piano"]
+        if where["dispositivo"] is not None:
+            row["dispositivo"] = where["dispositivo"]
+        if where["area_ereditata"]:
+            row["area_ereditata"] = True
+    # LA FONTE (Tappa 3, Task 8, B-25; D6): perche' parla o tace, con la
+    # causa che Home Assistant scrive, da `House.source`.
+    row["fonte"] = house.source(entity_id)
+    # `regola`: la vista CITA il vocabolario (`ha_vocabulary.py`) invece di
+    # lasciare che il modello indovini dal nome -- solo nella scheda: un
+    # dispositivo con 53 sensori diagnostici ripeterebbe la stessa stringa
+    # 53 volte (~18 KB, misurato il 07/09/2026).
+    rule = entity_category_measure_rule(
+        domain_of(entity_id), dict(visibility_classes(entry)).get("servizio"),
+        row.get("classe"), row.get("unita"))
+    if rule:
+        row["regola"] = rule
+    # COSA SIGNIFICA LA CLASSE, dal sapere (fetta «il sapere e le ricette»,
+    # 12/09/2026): tace quando non sa, mai una stringa vuota.
+    meaning = _class_meaning(knowledge, domain_of(entity_id), row.get("classe"))
+    if meaning:
+        row["significato"] = meaning
+    # I MEMBRI: di cosa questa entita' e' fatta (`group_membership`). La
+    # chiave non compare su cio' che un gruppo non e'.
+    membership = group_membership(entity_id, mirror.attributes)
+    if membership:
+        row[_MEMBERS_KEY] = membership
+    # I COMANDI: cosa si puo' CHIEDERE a questa entita', e con quali limiti
+    # (`commands_for`). Senza registro, o senza servizi per il dominio, la
+    # chiave non compare: `comandi: {}` su ogni sensore sarebbe rumore.
+    commands = commands_for(entity_id, registry, attributes, judgments=judgments)
+    if commands:
+        row["comandi"] = commands
+    return row
+
+
+def _integration_of(house: House, entry: dict) -> dict | None:
+    """L'integrazione di un'entita' come riferimento `{id, nome}` (C-05,
+    C-62): l'id e' il dominio della piattaforma -- quello che
+    `search(genere=integrazione, riferimento=...)` ritrova --, il nome e' il
+    titolo dell'istanza che l'ha creata, cioe' cio' che Home Assistant mostra
+    nella pagina delle integrazioni sotto quel dominio (`reader._integration`,
+    `title` della voce di configurazione); senza istanza nota, il dominio.
+
+    Fino all'08/10/2026 usciva due volte nella stessa scheda (`piattaforma` e
+    `dove.integrazione`), e come slug nudo, mentre area, piano e dispositivo
+    uscivano gia' come `{id, nome}`."""
+    platform = (entry.get("piattaforma") or "").strip()
+    if not platform:
+        return None
+    instance = house.instance(entry.get("config_entry_id")) or {}
+    return {"id": platform, "nome": instance.get("titolo") or platform}
+
+
+def _state_in_words(row: dict, entity_id: str, device_class, attributes: dict,
+                    translations: dict | None) -> None:
+    """Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
+    `stato` e' il fatto, `stato_leggibile` l'interpretazione.
+
+    Senza, una risposta diceva `on` e basta: un allagamento aveva la forma
+    di una lampadina accesa. **La fonte e' una** -- le traduzioni che Home
+    Assistant pubblica (`topology.readable_state`), lette una volta. Il
+    DOMINIO e l'`hvac_action` alimentano il solo caso in cui uno stato grezzo
+    mente da solo: un termostato IMPOSTATO su riscaldamento e FERMO
+    (misurato dal proprietario il 25/08/2026).
+
+    **Il vuoto non si consegna, il motivo si'**: quando la tabella delle
+    traduzioni non si e' potuta leggere, `stato_non_reso` dice perche'. Solo
+    per i due silenzi della TABELLA: 431 entita' su 841 (misurato il
+    08/09/2026) -- ogni `sensor`, `number`, `select` -- non hanno una resa e
+    non devono averla, perche' misurano; la chiave assente con lo `stato`
+    grezzo vuol dire esattamente questo."""
+    value = row.get("stato")
+    if value is None:
+        return
+    rendered = readable_state(
+        value, domain=domain_of(entity_id), device_class=device_class,
+        hvac_action=attributes.get(HVAC_ACTION_ATTRIBUTE), translations=translations)
+    if rendered.get("letto"):
+        row["stato_leggibile"] = rendered["valore"]
+    elif rendered.get("silenzio") in TABLE_MISSING_SILENCES:
+        row["stato_non_reso"] = {"silenzio": rendered.get("silenzio"),
+                                 "motivo": rendered.get("motivo")}
+
+
+def _baskets(attributes) -> dict:
+    """GLI ATTRIBUTI EREDITATI (`proxy/entity_cache.inherited_attributes`)
+    nelle loro ceste, coi nomi che il modello legge (`_BASKET_NAMES`).
+
+    «Cosa puo' fare», «cosa puo' assumere», «com'e' adesso» e «non so cosa
+    sia» sono fatti di qualita' diversa, e appiattirli consegnerebbe
+    `ave_window_state: 0` accanto a `hvac_modes` come se fossero la stessa
+    qualita' di sapere. In piu' c'e' `trattenuti`: la sola trattenuta resa
+    VISIBILE -- nome e ragione, mai il valore. `supported_features` e
+    `assumed_state` non escono da qui: hanno gia' una porta decodificata
+    (`capacita`, `stato_presunto`), in ogni cesta.
+
+    Alla media e alla completa la STESSA funzione (C-34): fino all'08/10/2026
+    le voci medie di `search` portavano le ceste grezze dello specchio, con le
+    credenziali tolte solo dal filtro di riservatezza."""
+    if not isinstance(attributes, dict) or not attributes:
+        return {}
+    baskets: dict = {}
+    for basket, italian_name in _BASKET_NAMES.items():
+        content = {k: v for k, v in (attributes.get(basket) or {}).items()
+                   if k not in _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR}
+        if content:
+            baskets[italian_name] = content
+    withheld = withheld_credentials(attributes)
+    if withheld:
+        baskets[_WITHHELD_BASKET] = withheld
+    return baskets
 
 
 def _add_categories(detail: dict, entry: dict,

@@ -2,7 +2,7 @@
 
 `supported_features`/`assumed_state` uscivano DUE volte da `guarda('entita',
 ...)`: una decodificata (`capacita'`/`stato_presunto`, dentro
-`_enrich_entity`) e una GREZZA, dentro `attributi` -- il dizionario che
+`render_entity`) e una GREZZA, dentro `attributi` -- il dizionario che
 `_view_entity` scarica per intero dallo specchio dello stato. Misurato sulla
 catena vera:
 

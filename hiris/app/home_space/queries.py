@@ -50,34 +50,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..proxy._sanitize import sanitize_structure, sanitize_text
-from ..proxy.entity_cache import (
-    disclosable_attributes,
-    withheld_credentials,
-)
 from .behavior import BEHAVIOR_DOMAINS
-from .ha_vocabulary import LINK_NAME, domain_of, entity_category_measure_rule
+from .ha_vocabulary import LINK_NAME
 from .historian import instant_epoch
 from .reference import normalize
-from .render import (
-    _BASKET_NAMES,
-    _MEMBERS_KEY,
-    _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR,
-    _WITHHELD_BASKET,
-    _add_labels,
-    _class_meaning,
-    _enrich_entity,
-    commands_for,
-    group_membership,
-)
+from .render import _add_labels, render_entity, rows_depth
 from .topology import (
-    Mirror,
-    category_names,
     device_name,
     is_pseudo_area,
-    label_names,
-    live_name,
     visibility,
-    visibility_classes,
 )
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS, STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -190,39 +171,20 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     return detail
 
 
-def _entity_rows(entries: list[dict], mirror: Mirror, disabled: bool,
-                 label_lookup: dict[str, str],
-                 category_lookup: dict[tuple[str, str], str],
-                 translations: dict | None = None) -> list[dict]:
-    """Un elenco grezzo di voci dell'anagrafe (`entita`/`entita_disabilitate`/
-    `entita_nascoste` di `hierarchy()`) arricchito UNA riga alla volta con
-    `_enrich_entity` -- il ciclo si scriveva tre volte in `_view_area`
-    (una per lista) con la stessa forma, e tre copie sono tre posti in cui la
-    stessa correzione si dimentica di una.
+def _entity_rows(house: House, entries: list[dict], depth: str, *, zone=None,
+                 translations: dict | None = None,
+                 judgments: TypeJudgments = REPO_JUDGMENTS) -> list[dict]:
+    """Le entita' annidate nella scheda di un'area, di un dispositivo o di
+    un'integrazione, rese da `render.render_entity` alla profondita' `depth`
+    (`render.rows_depth` del numero di righe che la scheda elenca).
 
-    `disabilitata` e' un valore FISSO per l'intero elenco, non letto dalla
-    voce: chi chiama sa gia' da quale lista viene (le disabilitate hanno gia'
-    lasciato `per_area`/`per_area_hidden` in `hierarchy()`).
-
-    **Niente `classe` qui dentro** (corretto il 09/09/2026, audit delle
-    fondamenta -- era `docs/BACKLOG.md`, «`classe: null` esce, `unita`
-    assente no»): la stessa ragione per cui questo dizionario non porta
-    `unita` -- `_enrich_entity` la aggiunge dallo specchio vivo, e SOLO
-    quando c'e' -- vale identica per `classe`, che infatti `_enrich_entity`
-    scrive con lo stesso `if device_class: ...`. Pre-seminarla qui a
-    `e.get("classe")` (quasi sempre `None`: il registro delle entita' non la
-    manda affatto) la faceva uscire come chiave **esplicita**, mentre
-    `unita` -- assente nella stessa condizione -- non compariva: due chiavi
-    mute trattate in due modi dalla stessa porta."""
-    return [
-        _enrich_entity(
-            {"id": e["id"], "nome": live_name(e["id"], e.get("nome"), mirror),
-             "stato": mirror.state.get(e["id"]),
-             "da_quando": mirror.since.get(e["id"]),
-             "disabilitata": disabled},
-            e, mirror, label_lookup, category_lookup, translations)
-        for e in entries
-    ]
+    Fino all'08/10/2026 (Tappa 9, F2) questa funzione componeva la riga da se',
+    con `da_quando` e un `disabilitata` FISSO per l'elenco -- sempre `False`,
+    perche' le disabilitate qui si contano e non si elencano (M-50): ogni riga
+    annidata portava `disabilitata: false`."""
+    return [render_entity(house, e["id"], depth, zone=zone, translations=translations,
+                          judgments=judgments)
+            for e in entries]
 
 
 #: Il tetto delle righe di UNA risposta della porta della casa (spec
@@ -267,8 +229,9 @@ def _within_ceiling(detail: dict, hint: str) -> dict:
 
 
 def _view_area(house: House, memories: list[dict], reference,
-               translations: dict | None = None) -> dict:
-    home_space, mirror, unavailable = house.home_space, house.mirror, house.unavailable
+               translations: dict | None = None, zone=None,
+               judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+    unavailable = house.unavailable
     # `unavailable` va PROPAGATO, non solo ricevuto: senza, `hierarchy()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -279,8 +242,6 @@ def _view_area(house: House, memories: list[dict], reference,
     # L'albero e' quello dell'istantanea (`House.hierarchy`), calcolato una
     # volta per turno: fino al 04/10/2026 questa porta se ne rifaceva uno.
     floors = house.hierarchy()
-    label_lookup = label_names(home_space)
-    category_lookup = category_names(home_space)
     area = _find_area(floors, reference)
     if area is None:
         # CRITICAL ③: se il registro delle aree non ha risposto, "non
@@ -297,8 +258,9 @@ def _view_area(house: House, memories: list[dict], reference,
     # il dettaglio a ~64.000 caratteri, oltre il limite del ponte. E' la
     # regola della porta per ogni insieme («disabilitate sempre escluse e
     # contate», spec §2.4), e `_view_integration` la applicava gia'.
-    entity = _entity_rows(area["entita"], mirror, False, label_lookup, category_lookup,
-                          translations)
+    depth = rows_depth(len(area["entita"]) + len(area.get("entita_nascoste") or []))
+    entity = _entity_rows(house, area["entita"], depth, zone=zone, translations=translations,
+                          judgments=judgments)
     disabled_count = len(area.get("entita_disabilitate") or [])
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
@@ -313,8 +275,9 @@ def _view_area(house: House, memories: list[dict], reference,
     # un campo. Restano pero' COMPLETE e raggiungibili qui, per la stessa
     # domanda esplicita -- "cosa hai nascosto?" -- che il campo `nascosta`
     # serviva gia' quando l'entita' si guarda da sola (`_view_entity`).
-    hidden_entities = _entity_rows(area.get("entita_nascoste", []), mirror, False,
-                                   label_lookup, category_lookup, translations)
+    hidden_entities = _entity_rows(house, area.get("entita_nascoste", []), depth,
+                                   zone=zone, translations=translations,
+                                   judgments=judgments)
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incomplete = sorted(set(unavailable) & {"aree", "dispositivi", "entita"})
     detail = {
@@ -342,7 +305,7 @@ def _view_area(house: House, memories: list[dict], reference,
         value = (area.get(key) or "").strip()
         if value:
             detail[key] = value
-    _add_labels(detail, area, label_lookup)
+    _add_labels(detail, area, house.labels())
     if incomplete:
         detail["elenco_incompleto"] = incomplete
     return detail
@@ -352,172 +315,31 @@ def _view_entity(house: House, memories: list[dict], reference,
                  registry=None,
                  translations: dict | None = None,
                  knowledge=None,
-                 judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
-    home_space, mirror, unavailable = house.home_space, house.mirror, house.unavailable
-    entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
-    if entity is None:
+                 judgments: TypeJudgments = REPO_JUDGMENTS, zone=None) -> dict:
+    """La scheda di UN'entita': la sua resa completa (`render.render_entity`),
+    con `esiste` davanti e i ricordi ancorati dietro. Un'entita' disabilitata
+    resta in anagrafe (e' in Home Assistant e non funziona) e si trova qui,
+    con `fuori` che dice perche' non e' fra le visibili.
+
+    Fino all'08/10/2026 (Tappa 9, F2) la scheda si componeva qui, coi suoi
+    nomi: `tipo`, `da_quando`, `disabilitata`, `piattaforma` accanto a
+    `dove.integrazione`. Ora la compone la resa, e questa porta la inoltra."""
+    if house.entry(reference) is None:
         # Col registro "entita" caduto (una lettura parziale lascia la
         # tabella vuota), un'entita' vera non trovata qui non e'
         # un'entita' che non esiste -- e' un registro che non ha risposto.
-        return _not_found_detail("entita", reference, "entita" in unavailable)
-    detail = {
-        "esiste": True, "tipo": "entita", "id": entity["id"],
-        "nome": live_name(entity["id"], entity.get("nome"), mirror),
-        # Ne' `unita` ne' `classe` vengono da qui: `config/entity_registry/
-        # list` risponde con `as_partial_dict`, che non contiene ne' l'una ne'
-        # l'altra ne' gli alias (verificato sul sorgente di HA). Le aggiunge
-        # `_enrich_entity` dallo specchio vivo, che ce le ha davvero -- e solo
-        # quando ci sono. Fino al 09/09/2026 (audit delle fondamenta,
-        # `docs/BACKLOG.md` -- «`classe: null` esce, `unita` assente no») la
-        # riga qui sotto pre-seminava `classe` col valore quasi sempre vuoto
-        # del registro: una promessa che non ha mai mantenuto niente, e che
-        # per giunta usciva come chiave ESPLICITA (`classe: null`) mentre
-        # `unita`, assente nella stessa identica condizione, non compariva.
-        # Un'entita' disabilitata resta in anagrafe (e' in Home Assistant e
-        # non funziona) ma sparisce dall'albero di `hierarchy()` -- questo
-        # campo dice perche' `view` la trova comunque, senza far credere
-        # che sia una stanza arredata (stesso principio di topology.py).
-        "disabilitata": visibility(entity)[0] == "disabilitata",
-        "stato": mirror.state.get(entity["id"]),
-        "da_quando": mirror.since.get(entity["id"]),
-        "ricordi": _tethered_memories(memories, "entita", reference),
-        # DOVE sta (Tappa 3, Task 6, B-10): area -- ereditata dal
-        # dispositivo, se non ne ha una propria --, piano, dispositivo e
-        # integrazione, da `House.where`. Fino al 04/10/2026 la scheda di
-        # un'entita' non diceva in che stanza fosse: il modello doveva
-        # cercarla nell'albero del nucleo, dove una disabilitata non c'e'.
-        "dove": house.where(entity["id"]),
-        # LA FONTE (Tappa 3, Task 8, B-25; D6): perche' parla o tace --
-        # spenta dal proprietario o da Home Assistant, integrazione ferma,
-        # non disponibile, senza valore, sparita -- con la causa che Home
-        # Assistant scrive, da `House.source`. Fino al 04/10/2026 la scheda
-        # diceva solo `disabilitata: true` e lo stato grezzo.
-        "fonte": house.source(entity["id"]),
-    }
-    detail = _enrich_entity(detail, entity, mirror, label_names(home_space),
-                            category_names(home_space), translations)
-    # `regola`: la vista CITA il vocabolario (Task 4, `ha_vocabulary.py`)
-    # invece di lasciare che il modello indovini dal nome -- SOLO qui, sul
-    # dettaglio di UNA entita' sola, stessa decisione e stessa ragione di
-    # `attributi` (poco sotto): un dispositivo con decine di sensori
-    # diagnostici ripeterebbe la STESSA stringa una volta a entita' (review
-    # indipendente, misurato il 07/09/2026: il dispositivo "Home Assistant"
-    # ne ha 53, ~18 KB di testo identico in un'unica vista) -- il capitolato
-    # stesso dice "la vista di UN'entita'".
-    #
-    # `classe`/`unita'` letti da `detail` (gia' risolti da `_enrich_entity`,
-    # specchio vivo sopra registro), NON da `entity["classe"]`/
-    # `entity["unita"]` -- il registro non li manda mai (docstring di
-    # `topology.live_mirror`), e leggerli da li' troverebbe sempre
-    # classe/unita' assenti anche su una diagnostica con una classe VIVA
-    # vera (batteria, tensione: 24 diagnostiche su 89 misurate il
-    # 07/09/2026) -- il difetto misurato dal revisore su questo stesso task.
-    rule = entity_category_measure_rule(
-        domain_of(entity["id"]), dict(visibility_classes(entity)).get("servizio"),
-        detail.get("classe"), detail.get("unita"))
-    if rule:
-        detail["regola"] = rule
-    # COSA SIGNIFICA LA CLASSE, dal sapere (fetta «il sapere e le ricette»,
-    # 12/09/2026). E' il lettore che rende vero quell'archivio: fino a ieri il
-    # significato di una classe viveva in una tabella a mano di 27 voci, e
-    # delle altre HIRIS non sapeva dire niente -- misurate il 12/09, 44 classi
-    # di `sensor` su 62 e 28 su 28 di `binary_sensor`.
-    #
-    # **Dal sapere e non dalle traduzioni**, che pure sono gia' qui: le due
-    # cose non coincidono. Home Assistant pubblica un NOME («Potenza»), il
-    # repo dove ha guardato porta una frase che dice cosa quel valore E' («la
-    # potenza ISTANTANEA, non un'energia»), e il sapere tiene la piu' ricca.
-    # Leggere le traduzioni direttamente da qui perderebbe proprio quella.
-    #
-    # **Tace quando non sa**, come `regola` qui sopra: nessuna chiave, mai una
-    # stringa vuota. E non chiede niente per un'entita' senza classe -- sarebbe
-    # una domanda su una riga che non puo' esistere, ripetuta per la
-    # maggioranza delle entita' di questa casa.
-    meaning = _class_meaning(knowledge, domain_of(entity["id"]), detail.get("classe"))
-    if meaning:
-        detail["significato"] = meaning
-    # GLI ATTRIBUTI EREDITATI (`proxy/entity_cache.inherited_attributes`): solo
-    # QUI, sul dettaglio di UNA entita' sola -- decisione del proprietario,
-    # fetta "attributi al modello" (2026-08-25). `_view_area` e
-    # `_view_device` elencano entita' a decine (un'area con venti
-    # cose, un dispositivo con le sue entita'): mettere gli attributi di
-    # ognuna dentro quegli elenchi gonfierebbe la risposta di un dato che
-    # nessuno ha chiesto per la singola cosa. Qui invece il modello ha gia'
-    # chiesto IL DETTAGLIO di questa entita' precisa, ed e' il momento in cui
-    # l'informazione si paga -- non prima. `hvac_action` (climate) alimenta
-    # comunque `readable_state` ovunque, dentro `_enrich_entity`: la
-    # differenza qui e' solo se il resto degli attributi grezzi (luminosita',
-    # posizione, titolo del brano...) esce come chiave a se'.
-    # `supported_features`/`assumed_state` NON escono da qui: vivono nello
-    # stesso dizionario grezzo per una ragione di trasporto (arrivano dalla
-    # stessa proiezione, `entity_cache._to_minimal`), ma hanno gia' una
-    # porta propria e DECODIFICATA -- `capacita'`/`stato_presunto`, poche
-    # righe sopra dentro `_enrich_entity`. Lasciarli passare anche QUI
-    # sarebbe farli uscire due volte: un numero grezzo (`supported_features:
-    # 27` su un sensore senza tabella, `supported_features: 0` su
-    # un'entita' che non accende nessun bit) accanto alla stessa cosa gia'
-    # detta in parole -- rumore nel primo caso, doppione nel secondo. Vedi
-    # `_RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR` per la lista di chi ha gia' un
-    # posto e non deve ripetersi qui, e si applica a OGNI cesta: un
-    # `supported_features` che un'integrazione manda fuori standard (un
-    # booleano invece di un bitmask) finisce fra i non interpretati, e non
-    # deve ricomparire da quella porta.
-    #
-    # LE CESTE, e perche' sono chiavi distinte e non un dizionario piatto:
-    # «cosa puo' fare», «cosa puo' assumere», «com'e' adesso» e «non so cosa
-    # sia» sono fatti di qualita' diversa (`_BASKET_NAMES`), e appiattirli
-    # consegnerebbe `ave_window_state: 0` accanto a `hvac_modes` come se
-    # fossero la stessa qualita' di sapere. In piu' c'e' `trattenuti`: la
-    # sola trattenuta di questo prodotto resa VISIBILE -- nome e ragione, mai
-    # il valore, mai un silenzio.
-    attributes = mirror.attributes.get(entity["id"])
-    if isinstance(attributes, dict) and attributes:
-        baskets: dict = {}
-        for basket, italian_name in _BASKET_NAMES.items():
-            content = {k: v for k, v in (attributes.get(basket) or {}).items()
-                       if k not in _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR}
-            if content:
-                baskets[italian_name] = content
-        withheld = withheld_credentials(attributes)
-        if withheld:
-            baskets[_WITHHELD_BASKET] = withheld
-        if baskets:
-            detail["attributi"] = baskets
-    # I MEMBRI (`group_membership`, poco sopra): DI COSA questa entita' e'
-    # fatta, e cosa di cio' che dichiara non e' di tutti i suoi membri. Fuori
-    # da `attributi` di proposito -- e' composizione, non un attributo fra gli
-    # altri -- e solo qui, sul dettaglio di UNA entita' sola, per la stessa
-    # ragione di `attributi` e di `regola`. La chiave non compare su cio' che
-    # un gruppo non e': `membri: []` su ogni luce della casa sarebbe rumore in
-    # ogni risposta.
-    membership = group_membership(entity["id"], mirror.attributes)
-    if membership:
-        detail[_MEMBERS_KEY] = membership
-    # I COMANDI (`commands_for`, poco sopra): cosa si puo' CHIEDERE a questa
-    # entita', e con quali limiti -- l'altra meta' del requisito del
-    # proprietario (spec §13), accanto a cio' che l'entita' e'.
-    #
-    # Gli attributi che si passano sono quelli PIATTI e senza credenziali
-    # (`disclosable_attributes`, gia' calcolati da `_enrich_entity` con la
-    # stessa porta): il filtro di Home Assistant nomina l'attributo per nome
-    # -- `supported_color_modes` -- e chi lo confronta non deve sapere in
-    # quale cesta stia. Senza registro, o senza servizi per questo dominio,
-    # la chiave non compare affatto: `comandi: {}` su ogni sensore della casa
-    # sarebbe rumore, e per giunta indistinguibile da «questa entita' non si
-    # comanda».
-    commands = commands_for(entity["id"], registry,
-                            disclosable_attributes(mirror.attributes.get(entity["id"])),
-                            judgments=judgments)
-    if commands:
-        detail["comandi"] = commands
-    return detail
+        return _not_found_detail("entita", reference, "entita" in house.unavailable)
+    return {"esiste": True,
+            **render_entity(house, reference, "completa", zone=zone,
+                            translations=translations, registry=registry,
+                            knowledge=knowledge, judgments=judgments),
+            "ricordi": _tethered_memories(memories, "entita", reference)}
 
 
 def _view_device(house: House, memories: list[dict], reference,
-                 translations: dict | None = None) -> dict:
-    home_space, mirror, unavailable = house.home_space, house.mirror, house.unavailable
-    label_lookup = label_names(home_space)
-    category_lookup = category_names(home_space)
+                 translations: dict | None = None, zone=None,
+               judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+    home_space, unavailable = house.home_space, house.unavailable
     device = next(
         (d for d in home_space.get("dispositivi") or [] if d.get("id") == reference), None)
     if device is None:
@@ -549,26 +371,15 @@ def _view_device(house: House, memories: list[dict], reference,
     disabled_count = sum(1 for _e, cls in classes if cls == "disabilitata")
     raw_hidden = [e for e, cls in classes if cls == "nascosta"]
     raw_visible = [e for e, cls in classes if cls not in ("disabilitata", "nascosta")]
-    device_entities = [
-        _enrich_entity(
-            # `stato` come dall'area: la stessa entita' e' la stessa cosa da
-            # tutte le porte. Senza lo stato, questa porta usciva con
-            # `unita: "C"` e nessun valore -- un'unita' di misura di un numero
-            # che non c'e', e il modello o dice "non lo so" o lo inventa.
-            #
-            # **Niente `classe` pre-seminata qui** (corretto il 09/09/2026,
-            # stessa correzione di `_entity_rows` e `_view_entity` qui sopra):
-            # `_enrich_entity` la scrive dallo specchio vivo, e solo quando
-            # c'e' -- esattamente come fa gia' per `unita`.
-            {"id": e["id"], "nome": live_name(e["id"], e.get("nome"), mirror),
-             "stato": mirror.state.get(e["id"]),
-             "da_quando": mirror.since.get(e["id"]),
-             "disabilitata": False},
-            e, mirror, label_lookup, category_lookup, translations)
-        for e in raw_visible
-    ]
-    device_hidden_entities = _entity_rows(
-        raw_hidden, mirror, False, label_lookup, category_lookup, translations)
+    # Le righe dalla resa, come quelle dell'area: la stessa entita' e' la
+    # stessa cosa da tutte le porte (fino all'08/10/2026 qui la riga visibile
+    # si componeva in linea, una terza copia del dizionario base).
+    depth = rows_depth(len(raw_visible) + len(raw_hidden))
+    device_entities = _entity_rows(house, raw_visible, depth, zone=zone,
+                                   translations=translations, judgments=judgments)
+    device_hidden_entities = _entity_rows(house, raw_hidden, depth, zone=zone,
+                                          translations=translations,
+                                          judgments=judgments)
     detail = {
         "esiste": True, "tipo": "dispositivo", "id": device["id"],
         "nome": device_name(device),
@@ -593,7 +404,7 @@ def _view_device(house: House, memories: list[dict], reference,
         value = (device.get(key) or "").strip()
         if value:
             detail[key] = value
-    _add_labels(detail, device, label_lookup)
+    _add_labels(detail, device, house.labels())
     # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
     # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda
     # -- stesso principio di `_view_area`.
@@ -725,7 +536,8 @@ _SYNCHRONY_WINDOW_SECONDS = 2.0
 
 
 def _view_integration(house: House, reference,
-                      translations: dict | None = None) -> dict:
+                      translations: dict | None = None, zone=None,
+               judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """Un'integrazione con le sue entita' e quante di esse rispondono.
 
     **La salute di un'integrazione non e' il suo `stato`** (spec §4): sulla
@@ -836,7 +648,7 @@ def _view_integration(house: House, reference,
     modello deve poterle nominare), presente solo quando ce n'e' almeno una.
     Una cosa spenta dall'utente non e' una cosa che non risponde.
 
-    **Le righe delle entita' passano da `_enrich_entity`**, come quelle
+    **Le righe delle entita' passano da `render_entity`**, come quelle
     dell'area, del dispositivo e dell'entita' singola. Fino all'08/09/2026
     questa funzione se le costruiva in proprio -- `{id, nome, stato,
     da_quando}` e basta -- ed era la seconda casa di una regola che ne ha
@@ -870,9 +682,8 @@ def _view_integration(house: House, reference,
         "entita_mute": len(mute),
         # `disabilitata=False` non e' un'ipotesi: `mute` esce da `own`, che
         # ha gia' tolto le disabilitate qualche riga sopra.
-        "entita": _entity_rows(mute, mirror, False, label_names(home_space),
-                               category_names(home_space),
-                               translations),
+        "entita": _entity_rows(house, mute, rows_depth(len(mute)), zone=zone,
+                               translations=translations, judgments=judgments),
     }
     # `entita` sono le mute, e `entita_mute` resta il loro numero intero.
     _within_ceiling(detail, f"chiedi «search» con integrazione=\"{domain}\" e "
@@ -905,7 +716,7 @@ def view(house: House, behavior: list[dict], memories: list[dict],
          registry=None,
          translations: dict | None = None,
          knowledge=None,
-         judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+         judgments: TypeJudgments = REPO_JUDGMENTS, zone=None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -995,23 +806,24 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     diverse, e non allo stesso modo:
 
     - `readable_state` lo legge SEMPRE, su ogni ramo che elenca entita'
-      (dentro `_enrich_entity`), perche' e' un campo che gia' usciva
+      (dentro `render_entity`), perche' e' un campo che gia' usciva
       ovunque e che per un termostato mentiva da solo -- vedi
       `topology.readable_state`. Il difetto misurato dal proprietario
       (2026-08-25): `hvac_mode: heat` con `hvac_action: idle` usciva come
       «heat», indistinguibile da un termostato che sta scaldando davvero.
-    - Il dizionario `attributi` INTERO esce solo dal ramo `entita` (decisione
-      del proprietario): un'area o un dispositivo elencano entita' a decine,
-      e mettere tutti gli attributi di ognuna dentro quegli elenchi
-      gonfierebbe la risposta di un dato che nessuno ha chiesto per la
-      singola cosa. Il dettaglio di UNA entita' e' il momento in cui il
-      modello ha gia' chiesto quella cosa precisa, e l'informazione si paga
-      solo li'.
+    - Il dizionario `attributi`, filtrato nelle sue ceste, segue la
+      profondita' (`render.render_entity`): esce dalla scheda di un'entita'
+      e dalle righe di un elenco fino a `render.DETAIL_MEDIUM_MAX`; oltre,
+      l'elenco e' corto e non lo porta. Fino all'08/10/2026 usciva solo dal
+      ramo `entita` (decisione del 25/08/2026); la regola delle profondita'
+      approvata il 05/10/2026 (D1 della Tappa 4, C-34) vale per ogni
+      elenco, e prima `search` alla media portava le ceste grezze mentre
+      un'area non portava niente.
 
     `registry` (il registro dei servizi, `action/registry.ServiceRegistry`)
-    serve al SOLO ramo `entita`, e per la stessa ragione per cui il dizionario
-    `attributi` esce solo da li': e' il momento in cui il modello ha gia'
-    chiesto quella cosa precisa. Con lui la vista dice anche COSA SI PUO'
+    serve al SOLO ramo `entita` (i comandi sono della profondita' completa):
+    e' il momento in cui il modello ha gia' chiesto quella cosa precisa. Con
+    lui la vista dice anche COSA SI PUO'
     CHIEDERE a quell'entita' -- quali servizi, quali parametri, e i limiti
     veri, che sono quelli dell'entita' e non quelli del cursore generico del
     servizio (spec §13). `None` e' legittimo e non e' un guasto: chi non ce
@@ -1050,18 +862,21 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     """
     memories = sanitized_memories(memories, house)
     if kind == "area":
-        return _view_area(house, memories, reference, translations)
+        return _view_area(house, memories, reference, translations, zone,
+                          judgments=judgments)
     if kind == "entita":
         return _view_entity(house, memories, reference, registry,
-                            translations, knowledge, judgments=judgments)
+                            translations, knowledge, judgments=judgments, zone=zone)
     if kind == "dispositivo":
-        return _view_device(house, memories, reference, translations)
+        return _view_device(house, memories, reference, translations, zone,
+                            judgments=judgments)
     if kind in _BEHAVIOR_TYPES:
         return _view_behavior(behavior, memories, kind, reference, unread_bodies)
     if kind == "ricordo":
         return _view_memory(memories, reference)
     if kind == "integrazione":
-        return _view_integration(house, reference, translations)
+        return _view_integration(house, reference, translations, zone,
+                                 judgments=judgments)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
     # stesso caso di "non l'ho trovato", solo con una causa diversa (il
     # modello ha nominato un tipo che non esiste, non un riferimento che

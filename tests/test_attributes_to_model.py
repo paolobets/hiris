@@ -140,17 +140,28 @@ def test_e_senza_hvac_action_non_si_inventa_un_funzionamento():
 
 # --- il confine deciso: attributi SOLO sul dettaglio, mai nelle liste -----
 
-def test_f_un_area_NON_porta_gli_attributi_di_ogni_entita():
-    """Decisione del proprietario: un'area puo' elencare venti entita', e
-    mettere tutti gli attributi di ognuna dentro quell'elenco gonfierebbe la
-    risposta di un dato che nessuno ha chiesto per la singola cosa. Il
-    dettaglio di UNA entita' (`_view_entity`) e' l'unico posto dove esce."""
+def test_f_un_area_porta_gli_attributi_alla_media_e_non_alla_corta():
+    """Il 25/08/2026 il proprietario aveva deciso che un elenco non portasse
+    gli attributi di ogni entita'. Il 05/10/2026 ha approvato la regola delle
+    profondita' (D1 della Tappa 4, C-34): un elenco fino a
+    `render.DETAIL_MEDIUM_MAX` oggetti esce alla MEDIA, con gli attributi
+    filtrati come alla completa; oltre esce alla CORTA, senza. La seconda
+    decisione vale per ogni elenco -- prima `search` portava le ceste grezze
+    alla media e la scheda di un'area niente (fondamenta 3, Tappa 9, F2)."""
     mirror = _specchio_del_termostato()
     dettaglio = view(House(_CASA, Mirror(state=mirror.state, attributes=mirror.attributes)), [], [],
                      "area", "camera")
     entita = dettaglio["entita"][0]
-    assert "attributi" not in entita, (
-        "gli attributi grezzi sono usciti in una LISTA: violano il confine deciso")
+    assert entita["attributi"]["valori"]["hvac_action"] == "idle"
+    molte = dict(_CASA, entita=[dict(_CASA["entita"][0], id=f"climate.t{i}")
+                                for i in range(11)])
+    stati = {f"climate.t{i}": "heat" for i in range(11)}
+    attributi = {f"climate.t{i}": mirror.attributes["climate.matrimoniale"]
+                 for i in range(11)}
+    dettaglio = view(House(molte, Mirror(state=stati, attributes=attributi)), [], [],
+                     "area", "camera")
+    assert all("attributi" not in e for e in dettaglio["entita"]), (
+        "oltre dieci righe l'elenco e' corto: niente attributi")
 
 
 def test_g_un_area_porta_comunque_lo_stato_leggibile_onesto():
@@ -168,7 +179,7 @@ def test_g_un_area_porta_comunque_lo_stato_leggibile_onesto():
         "impostato su Riscaldamento, azione in corso: Inattivo")
 
 
-def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
+def test_h_un_dispositivo_porta_lo_stato_leggibile_e_gli_attributi_filtrati():
     casa = {
         "aree": [], "dispositivi": [{"id": "dev_t", "nome": "Termostato camera",
                                       "disabilitato": False}],
@@ -181,7 +192,8 @@ def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
                      "dispositivo", "dev_t",
                        translations=house_translations())
     entita = dettaglio["entita"][0]
-    assert "attributi" not in entita
+    # Una riga sola: media, come in `test_f_...` qui sopra.
+    assert entita["attributi"]["valori"]["hvac_action"] == "idle"
     assert entita["stato_leggibile"] == (
         "impostato su Riscaldamento, azione in corso: Inattivo")
 

@@ -155,7 +155,8 @@ def test_categoria_e_categorie_restano_due_fatti_distinti(casa):
     la tassonomia dell'UTENTE. Sulla stessa entita' convivono e non si
     sovrascrivono."""
     d = view(House(casa, Mirror()), [], [], "entita", "input_boolean.vacanza")
-    assert d["categoria"] == "config"
+    # Tappa 9, F2 (D4 della Tappa 4): `categoria` esce come causa del `fuori`.
+    assert d["fuori"] == {"classe": "servizio", "causa": "config"}
     assert d["categorie"] == {"helpers": "Vacanza casa"}
 
 
@@ -163,7 +164,7 @@ def test_categoria_e_categorie_restano_due_fatti_distinti(casa):
 
 def test_le_tre_porte_di_guarda_dicono_la_stessa_cosa(casa):
     """CONSISTENZA. `piattaforma` ed `etichette` uscivano da una porta su tre,
-    ed e' il difetto per cui `_enrich_entity` e' nata: un campo nuovo che
+    ed e' il difetto per cui `render_entity` e' nata: un campo nuovo che
     entra da un ramo solo lo rifa'."""
     dall_entita = view(House(casa, Mirror()), [], [], "entita", "switch.pompa")
     dal_dispositivo = view(House(casa, Mirror()), [], [], "dispositivo", "d1")

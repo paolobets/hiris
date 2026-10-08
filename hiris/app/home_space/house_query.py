@@ -4,7 +4,7 @@ Una funzione pura: l'istantanea della casa (`house.House`: l'albero
 dell'anagrafe e lo specchio degli stati, una volta per turno) entra, un
 insieme di voci esce. La profondita' la decide lo strumento, dal numero di voci trovate:
 una -> il dettaglio completo (`detail`, che il dispatcher lega a
-`queries.view`); fino a `DETAIL_MEDIUM_MAX` -> media; oltre -> corta, al
+`queries.view`); fino a `render.DETAIL_MEDIUM_MAX` -> media; oltre -> corta, al
 massimo `ROWS_MAX` righe e poi `oltre`.
 
 **Nessun riepilogo** (decisione del proprietario, 29/09/2026): niente conti
@@ -24,6 +24,7 @@ from .historian import home_space_zone, instant_epoch, instant_out
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
+from .render import depth_for, render_entity
 from .topology import (
     _ID_WITHOUT_AREA,
     Mirror,
@@ -32,11 +33,12 @@ from .topology import (
     live_first,
     live_name,
 )
+from .type_judgments import TypeJudgments
+from .type_vocabulary import REPO_JUDGMENTS
 
 if TYPE_CHECKING:
     from .house import House
 
-DETAIL_MEDIUM_MAX = 10
 KINDS = ("entita", "area", "dispositivo", "automazione", "script",
          "ricordo", "integrazione")
 ORDERS = ("nome", "ultimo_cambio", "valore")
@@ -242,36 +244,6 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) ->
         if f.below is not None and value >= f.below:
             return False
     return True
-
-
-def _entity_row(entry, area, where, mirror: Mirror, medium: bool, zone) -> dict:
-    eid = entry["id"]
-    row = {"id": eid, "nome": live_name(eid, entry.get("nome"), mirror),
-           "area": _area_name(area), "stato": mirror.state.get(eid)}
-    # L'istante nell'ora della casa (D3, 05/10/2026: prima l'UTC grezzo dello
-    # specchio). Senza un ultimo cambio noto la chiave non esce: e' «non lo
-    # so», e un `null` direbbe «non e' mai cambiata».
-    since = mirror.since.get(eid)
-    if since is not None:
-        row["ultimo_cambio"] = instant_out(since, zone)
-    if where == "nascosta":
-        row["nascosta"] = True
-    if medium:
-        row["genere"] = "entita"
-        # Classe e unita' di adesso, con la regola di `House.kind_of`
-        # (`live_first`, B-17): fino al 04/10/2026 l'unita' era la sola viva,
-        # la classe la viva o quella che l'anagrafe aveva congelato.
-        unit = live_first(entry.get("unita"), mirror.units.get(eid))
-        if unit:
-            row["unita"] = unit
-        device_class = live_first(entry.get("classe"), mirror.classes.get(eid))
-        if device_class:
-            row["classe"] = device_class
-        if entry.get("piattaforma"):
-            row["integrazione"] = entry["piattaforma"]
-        if mirror.attributes.get(eid):
-            row["attributi"] = mirror.attributes[eid]
-    return row
 
 
 #: Dove sta un'automazione che il registro delle entita' non conosce: in
@@ -490,18 +462,10 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     return page, beyond
 
 
-def depth_for(count: int) -> str:
-    """La profondita' di una risposta dal numero di voci trovate, per
-    `search` e per `history` (spec §3): 1 -> completa, fino a
-    `DETAIL_MEDIUM_MAX` -> media, oltre -> corta. Una regola sola (B-30,
-    Tappa 5): fino al 05/10/2026 era scritta anche in `_select`."""
-    if count == 1:
-        return "completa"
-    return "media" if count <= DETAIL_MEDIUM_MAX else "corta"
-
-
 def _select(f: HouseFilters, house: House, behavior, detail,
-            now, excluded: dict, zone) -> tuple[int, str, list[dict], dict | None]:
+            now, excluded: dict, zone,
+            translations: dict | None,
+            judgments: TypeJudgments) -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
     if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
@@ -530,19 +494,26 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     # Con `limite` 0 la voce sola non si apre: chi chiede zero righe vuole
     # solo il conto, e la profondita' resta quella di un elenco.
     medium = depth != "corta"
-    rows = ([_entity_row(entry, area, where, house.mirror, medium, zone)
-             for entry, area, where in matched]
+    rows_at = "media" if medium else "corta"
+    # Le entita' dalla resa (Tappa 9, F2): fino all'08/10/2026 `_entity_row`
+    # le componeva qui, con l'area come nome nudo, l'integrazione come slug e
+    # le ceste grezze dello specchio alla media.
+    rows = ([render_entity(house, entry["id"], rows_at, zone=zone,
+                           translations=translations, judgments=judgments)
+             for entry, _area, _where in matched]
             + [_behavior_row(item, values, house.mirror, medium, zone)
                for item, values in behaving]
             + others)
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)
-    return found, "media" if medium else "corta", page, beyond
+    return found, rows_at, page, beyond
 
 
 def query_house(house: House, behavior, filters: HouseFilters, *,
                 detail, now: float | None = None,
-                timezone: str | None = None) -> dict:
+                timezone: str | None = None,
+                translations: dict | None = None,
+                judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
@@ -569,7 +540,8 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
     # nome che il dispatcher legge da `historian.house_timezone`; `None` =
     # non si sa, e si resta in UTC con l'offset scritto.
     found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded,
-                                         home_space_zone(timezone))
+                                         home_space_zone(timezone), translations,
+                                         judgments)
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
     return envelope(found, depth, [redact_row(v) for v in page],

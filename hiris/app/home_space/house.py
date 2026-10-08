@@ -123,6 +123,8 @@ class House:
         self._visible_set: frozenset[str] | None = None
         self._lookup: Lookup | None = None
         self._entry_index: dict[str, dict] | None = None
+        self._labels: dict[str, str] | None = None
+        self._categories: dict[tuple[str, str], str] | None = None
 
     @classmethod
     def read(cls, home_space_store, cache, statistic_ids=None) -> House:
@@ -259,16 +261,33 @@ class House:
                               if isinstance(e, dict) and e.get("id")}
         return self._entities
 
-    def _entity(self, entity_id: str) -> dict | None:
-        """La voce dell'anagrafe di un'entita', per id."""
+    def entry(self, entity_id: str) -> dict | None:
+        """La voce dell'anagrafe di un'entita', per id: cio' che il registro
+        dichiara (`reader._entity`). La resa la legge (Tappa 9, F2); fino
+        all'08/10/2026 era privata, e chi rendeva un'entita' la ricercava
+        scorrendo `home_space["entita"]` da se'."""
         return self._entity_index().get(entity_id)
+
+    def labels(self) -> dict[str, str]:
+        """label_id -> nome (`topology.label_names`), una volta per casa: la
+        resa lo chiede per ogni entita' che rende."""
+        if self._labels is None:
+            self._labels = topology.label_names(self.home_space)
+        return self._labels
+
+    def categories(self) -> dict[tuple[str, str], str]:
+        """(ambito, category_id) -> nome (`topology.category_names`), una
+        volta per casa."""
+        if self._categories is None:
+            self._categories = topology.category_names(self.home_space)
+        return self._categories
 
     def visibility(self, entity_id: str) -> tuple[str, str | None] | None:
         """VISIBILITA' (§4.1): la classe di un'entita' con la sua causa --
         `("disabilitata", "user")`, `("servizio", "diagnostic")`,
         `("visibile", None)` -- dalla regola unica, `topology.visibility`.
         `None` per un id che l'anagrafe non conosce: non e' «visibile»."""
-        entry = self._entity(entity_id)
+        entry = self.entry(entity_id)
         return None if entry is None else topology.visibility(entry)
 
     def name(self, kind: str, identifier: str) -> str | None:
@@ -281,7 +300,7 @@ class House:
         lettore riempie gia' con l'id quando manca. `None` per un dispositivo,
         un'area o un piano che l'anagrafe non conosce."""
         if kind in ("entita", *_BEHAVIOR_KINDS):
-            entry = self._entity(identifier) or {}
+            entry = self.entry(identifier) or {}
             return topology.live_name(identifier, entry.get("nome"), self.mirror)
         table = {"dispositivo": "dispositivi", "area": "aree", "piano": "piani"}.get(kind)
         if table is None:
@@ -303,7 +322,7 @@ class House:
         Home Assistant usa adesso. Ora l'anagrafe porta solo cio' che il
         registro dichiara, e il vivo si chiede qui. `None` per un id che ne'
         il registro ne' lo specchio conoscono."""
-        entry = self._entity(entity_id)
+        entry = self.entry(entity_id)
         if entry is None and entity_id not in self.mirror.state:
             return None
         entry = entry or {}
@@ -336,6 +355,11 @@ class House:
         Nessuna lettura nuova: chi la chiama ha gia' l'elenco in mano
         (`server.statistic_ids_for_round`, la lettura unica del giro)."""
         return House(self.home_space, self.mirror, self.unavailable, statistic_ids)
+
+    def instance(self, entry_id: str | None) -> dict | None:
+        """L'istanza d'integrazione dell'anagrafe (`reader._integration`) con
+        questo `entry_id`; `None` se l'anagrafe non la conosce."""
+        return self._instances().get(entry_id) if entry_id else None
 
     def _instances(self) -> dict[str, dict]:
         if self._entry_index is None:
@@ -405,7 +429,7 @@ class House:
         «perche' tace» non si puo' spiegare con una deduzione.
 
         `None` per un id che ne' il registro ne' lo specchio conoscono."""
-        entry = self._entity(entity_id)
+        entry = self.entry(entity_id)
         readable = self.mirror.readable
         in_states = entity_id in self.mirror.state
         if entry is None and not in_states:
@@ -509,7 +533,7 @@ class House:
         dispositivi con un'entita' ciascuno fermi insieme."""
         if not self.has_statistics(entity_id):
             return None
-        entry = self._entity(entity_id) or {}
+        entry = self.entry(entity_id) or {}
         device_id = entry.get("dispositivo_id")
         if device_id and sum(1 for e in self.device_entities(device_id)
                              if self.has_statistics(e["id"])) >= 2:
@@ -527,7 +551,7 @@ class House:
         rimisura dello sprint su 413ce7a7): si chiedono le serie di tutte, e
         chi ha statistiche lo dice la risposta di Home Assistant
         (`server._report_ingredients`)."""
-        entry = self._entity(entity_id) or {}
+        entry = self.entry(entity_id) or {}
         device_id, instance = entry.get("dispositivo_id"), entry.get("config_entry_id")
         return [eid for eid, e in self._entity_index().items()
                 if eid == entity_id

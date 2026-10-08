@@ -124,10 +124,10 @@ def test_includi_nascoste_le_riporta_e_dice_che_sono_nascoste():
     """Mutazione ESEGUITA: non scrivere `nascosta` sulla riga -- rossa."""
     r = _chiedi(tipo="light", stato="on", includi_nascoste=True)
     assert r["trovate"] == 3
-    nascoste = [v for v in r["voci"] if v.get("nascosta")]
+    nascoste = [v for v in r["voci"] if v.get("fuori", {}).get("classe") == "nascosta"]
     assert {v["id"] for v in nascoste} == {"light.servizio_sala",
                                            "light.servizio_cancello"}
-    assert all(v["area"] is None for v in nascoste)
+    assert all(v["area"]["id"] == "__senza_area__" for v in nascoste)
 
 
 def test_le_disabilitate_sono_sempre_fuori_e_contate():
@@ -191,8 +191,9 @@ def test_dieci_voci_sono_ancora_medie_undici_sono_corte():
     assert r10["trovate"] == 10 and r10["profondita"] == "media"
     assert "genere" in r10["voci"][0]
     assert r11["trovate"] == 11 and r11["profondita"] == "corta"
-    assert set(r11["voci"][0]) <= {"id", "nome", "area", "stato",
-                                   "ultimo_cambio", "nascosta"}
+    assert set(r11["voci"][0]) <= {"id", "genere", "nome", "area", "stato",
+                                   "stato_leggibile", "stato_non_reso", "unita",
+                                   "ultimo_cambio", "fuori"}
 
 
 def test_oltre_il_limite_si_dichiara_e_si_scorre_con_salta():

@@ -855,7 +855,7 @@ def test_search_e_history_dicono_la_profondita_con_le_stesse_parole():
     ESEGUITA: `DETAIL_MEDIUM_MAX = 12` in `house_query.py` -- verde senza
     toccare ne' le descrizioni ne' questa prova: il numero si chiede a
     `depth_for`."""
-    from hiris.app.home_space.house_query import DETAIL_MEDIUM_MAX
+    from hiris.app.home_space.render import DETAIL_MEDIUM_MAX
     from hiris.app.home_space.tools import (
         _SUBJECT_FILTERS,
         HISTORY_TOOL_DEF,

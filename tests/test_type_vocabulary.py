@@ -133,7 +133,7 @@ def test_the_domain_decides_which_word_a_state_gets():
 
 def test_service_entities_are_counted_even_when_not_announced():
     """Task 3 di «rifiutare e importare» (§7①): `entity_category` era gia'
-    letto (`store.py:385`, e da questa stessa fetta anche da `_enrich_entity`,
+    letto (`store.py:385`, e da questa stessa fetta anche da `render_entity`,
     `queries.py`) ma nessun lettore lo metteva DAVANTI -- il digesto le
     escludeva in silenzio da «Notevole adesso» (uscita il 29/09/2026) senza
     mai dire QUANTE fossero. Stessa disciplina delle nascoste due sezioni sopra:
