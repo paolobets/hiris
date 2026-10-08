@@ -110,6 +110,25 @@ async def test_lo_stesso_ricordo_ha_la_stessa_forma_da_ogni_porta(tmp_path):
                                          "scheda": expected, "fetch": expected}
 
 
+def test_la_scheda_di_un_automazione_porta_i_ricordi_ancorati_a_lei():
+    """M-32: la scheda di un comportamento cercava i ricordi con l'ancora
+    `("automazione", id)`, un tipo che il vocabolario delle ancore non ha
+    (`resolver.STORE_KEY_PER_TYPE`: area, entita, dispositivo): la chiave
+    `ricordi` era sempre vuota. Un'automazione e' un'entita' del registro di
+    Home Assistant (`automation.x`), e `remember` la ancora come `entita`:
+    la scheda chiede quella coppia.
+
+    Mutazione ESEGUITA: `_view_behavior` che torna a cercare il tipo del
+    comportamento -- rossa con `assert [] == [4]`."""
+    behavior = [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+                 "corpo": None}]
+    ricordi = [{"id": 4, "testo": "la sveglia non suona nel weekend",
+                "ancore": [{"tipo": "entita", "riferimento": "automation.sveglia"}],
+                "condizioni": []}]
+    scheda = view(House({}, Mirror()), behavior, ricordi, "automazione", "automation.sveglia")
+    assert [m["id"] for m in scheda["ricordi"]] == [4]
+
+
 async def _route(app, path: str) -> dict:
     """La risposta di una rotta GET del prodotto, chiesta al suo router."""
     import json

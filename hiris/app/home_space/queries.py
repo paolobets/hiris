@@ -105,10 +105,10 @@ def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]
     pura, non interroga l'archivio da sola.
 
     E' il senso delle ancore: «quali preferenze riguardano questa stanza».
-    Un tipo come "automazione", "script" o "ricordo" -- fuori dal
-    vocabolario delle ancore (memory/interpretation.py: area, entita,
-    dispositivo) -- semplicemente non trova mai nulla qui: non e' un
-    errore, e' un tipo di "cosa" per cui nessun ricordo si ancora.
+    Un tipo fuori dal vocabolario delle ancore (memory/interpretation.py:
+    area, entita, dispositivo) non trova mai nulla qui: per questo la scheda
+    di un'automazione o di uno script chiede `entita` col suo entity_id, non
+    il suo genere (M-32).
     """
     found = []
     for r in memories:
@@ -1292,7 +1292,13 @@ def _view_behavior(behavior: list[dict], memories: list[dict],
         # valori diversi, e il confine non li confonde riscrivendoli.
         "corpo": (None if entry.get("corpo") is None
                   else sanitize_structure(entry.get("corpo"))),
-        "ricordi": _tethered_memories(memories, kind, reference),
+        # I ricordi ancorati a lui come ENTITA' (M-32, Tappa 9, F3,
+        # 08/10/2026): un'automazione o uno script e' un'entita' del registro
+        # di Home Assistant (`automation.x`, `script.y`), e `remember` la
+        # ancora cosi' -- il vocabolario delle ancore non ha «automazione».
+        # Fino a quel giorno la scheda cercava `(kind, id)` e la chiave era
+        # sempre vuota.
+        "ricordi": _tethered_memories(memories, "entita", reference),
     }
 
 
