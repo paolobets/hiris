@@ -150,3 +150,42 @@ def test_un_file_illeggibile_si_dichiara_e_non_ferma_gli_altri(archivio, tmp_pat
 
     assert archivio.importa_legacy([str(rotto), str(buono)], now=POMERIGGIO) == 1
     assert archivio.totali()["richieste"] == 7
+    assert archivio.legacy_imported() == [str(buono)], (
+        "un file illeggibile non e' importato: non diventa un residuo")
+
+
+def test_il_totale_e_la_sua_riga_entrano_INSIEME_o_per_niente(archivio, tmp_path):
+    """S-18 (Tappa 8, Task 7): il totale ereditato e la riga di
+    `legacy_importati` sono una transazione sola. Fino all'08/10/2026 erano
+    due commit: un'interruzione fra i due lasciava il totale senza la riga, e
+    l'avvio dopo lo reimportava -- la spesa dell'utente raddoppiata. E il file
+    si cancella quando e' registrato: con due commit si sarebbe contato due
+    volte un file mai registrato.
+
+    L'interruzione si fabbrica con un trigger che rifiuta la seconda
+    scrittura.
+
+    Mutazione ESEGUITA (08/10/2026): `with self._lock, self._conn:` ->
+    `with self._lock:` con un `commit()` dopo il totale -- rossa (il totale
+    resta senza la sua riga)."""
+    import sqlite3
+
+    vecchio = tmp_path / "usage.json"
+    vecchio.write_text(json.dumps({"total_requests": 9, "total_cost_usd": 1.5}),
+                       encoding="utf-8")
+    archivio._conn.execute(
+        "CREATE TRIGGER interrotto BEFORE INSERT ON legacy_importati "
+        "BEGIN SELECT RAISE(ABORT, 'interrotto'); END")
+    archivio._conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        archivio.importa_legacy([str(vecchio)], now=POMERIGGIO)
+
+    assert archivio.totali()["richieste"] == 0, "il totale e' entrato senza la sua riga"
+    assert archivio.legacy_imported() == []
+
+    archivio._conn.execute("DROP TRIGGER interrotto")
+    archivio._conn.commit()
+    assert archivio.importa_legacy([str(vecchio)], now=POMERIGGIO) == 1
+    assert archivio.totali()["richieste"] == 9
+    assert archivio.legacy_imported() == [str(vecchio)]

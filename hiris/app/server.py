@@ -5,9 +5,9 @@ import hashlib
 import logging
 import os
 import re
-import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 
 from aiohttp import web
@@ -48,7 +48,15 @@ from .api.middleware_internal_auth import internal_auth_middleware
 # modulo di `mind/`, che non importa questo file.
 from .background import spawn as _spawn
 from .chat_settings import ChatSettings, file_lacks_retention_days
+from .chat_store import open_store as open_chat_store
 from .chat_thread import SyncTurnsInFlight, thread_for
+from .conservazione import (
+    announce_chatbots_json,
+    cancella_residui,
+    decidi_vault,
+    nightly,
+    reasoning_sweep,
+)
 from .home_space import historian
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.energy import energy_dashboard
@@ -74,7 +82,6 @@ from .home_space.topology import (
     tree_areas,
 )
 from .keeper.exchange import interpreta_promise
-from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
@@ -112,7 +119,6 @@ from .mind.seed import (
 from .mind.state_words import prime_state_translations
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
-from .models_store import bridge_deadline_min
 from .panel_visibility import parse_access_flag
 from .provider_occurrences import OccurrenceRegistry
 from .providers import (
@@ -134,7 +140,6 @@ from .proxy.state_translations import StateTranslations
 from .reasoning.queue import turn_answer
 from .steering import (
     ANALYST_SPECIES,
-    JOB_SPECIES,
     OBSERVER_SPECIES,
     RECIPES_SPECIES,
     SPECIES,
@@ -151,56 +156,6 @@ from .version import read_version
 
 logger = logging.getLogger(__name__)
 
-
-
-def _close_expired_promise(app, job: dict) -> None:
-    """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
-
-    Estratta invece che scritta in linea dentro lo sweep perche' ha una
-    ragione sua e va provata da sola: e' l'unico punto che impedisce a una
-    promessa servita dal ponte di restare `in_corso` per sempre quando il
-    piano non risponde. `risana()` la chiuderebbe soltanto al prossimo
-    riavvio -- cioe' forse mai.
-
-    L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
-    `submit`, e `wake` e' la sola parte del job che sopravvive.
-    """
-    ident = (job.get("wake") or {}).get("promessa_id") or ""
-    store = app.get("agenda")
-    riga = store.read(ident) if (store is not None and ident) else None
-    if riga is None or riga.get("stato") != "in_corso":
-        # Gia' conclusa da `concludi` mentre il turno finiva: non si
-        # riapre. E' lo stesso ordine di controlli della consegna
-        # (`reasoning/consegna`), per la stessa ragione.
-        return
-    # **L'attesa e' quella del turno** (S-02, Tappa 6 Task 2): la scadenza
-    # viaggia col job, e la `scadenza_min` di ADESSO puo' essere un'altra --
-    # l'utente puo' averla cambiata mentre il turno era in coda. Stessa durata
-    # che il registro degli esiti riceve qui sotto: una sola, letta una volta.
-    durata_s = (float(job.get("deadline_ts", 0.0))
-                - float(job.get("created_ts", 0.0)))
-    minuti = round(durata_s / 60)
-    reason = (f"ho aspettato il {SUBSCRIPTION.name} per {minuti} minuti e non ha "
-              "risposto: non so cosa dirti.")
-    # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
-    # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
-    # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
-    if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
-        tell_failure(app.get("data_dir"), riga, reason)
-    # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
-    # terza strada delle promesse sul ponte, dopo il successo (`api/
-    # handlers_mcp`) e il turno finito senza «conclude» (`reasoning/
-    # consegna`). Stessa famiglia `scaduto` del ramo chat
-    # (`api/handlers_chat`): il piano non ha rifiutato, non ha risposto.
-    registry = app.get("occurrence_registry")
-    if registry is not None:
-        registry.fallimento(
-            SUBSCRIPTION.id, family="scaduto", code=None,
-            message="nessuna conclusione entro la scadenza del ponte (promessa)",
-            durata_s=durata_s)
-    logger.warning(
-        "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
-        ident, minuti)
 
 
 def _promise_delivery(app) -> dict:
@@ -2028,132 +1983,6 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
     return esito
 
 
-#: **Gli archivi dismessi che si cancellano** (23/09/2026).
-#:
-#: Erano undici, dichiarati morti nel codice e annunciati a ogni avvio, e
-#: restavano per sempre per una regola scritta: «mai dati utente in /data».
-#: Ma quella regola era gia' stata contraddetta lo stesso giorno da noi --
-#: `vault.db`, cancellato con la fetta 7 -- e il criterio vero non era mai
-#: stato scritto.
-#:
-#: Eccolo: **un archivio che nessun codice legge piu' non e' un dato
-#: dell'utente, e' un residuo.** E un residuo entra nei backup di Home
-#: Assistant, che non sono cifrati se il proprietario non ci mette una
-#: password: il reperto C-4 ne ha escluso il solo `claude`, e il C-6 ha
-#: dichiarato la conservazione delle sette tabelle VIVE -- questi file non
-#: sono tabelle di nessun archivio vivo, quindi non avevano ne' una
-#: dichiarazione ne' un cancellatore.
-#:
-#: **`chatbots.json` NON e' in questo elenco**, per decisione del
-#: proprietario: contiene il prompt personalizzato che aveva salvato sul bot
-#: di default, e va guardato prima. Un residuo si cancella quando e' morto
-#: **e** quando qualcuno ha deciso -- non per la sola prima meta'.
-#:
-#: L'elenco e' NOMINATO, mai un'euristica sul nome: un archivio vivo che
-#: somigliasse a un residuo, o uno che nascera' domani, non deve poter
-#: sparire per assonanza.
-RESIDUI_DISMESSI = (
-    "advisory.db",
-    "dashboard_backups.json",
-    "ha_health.json",
-    "history.db",
-    "history_policy.json",
-    "hiris_memory.db",
-    "knowledge.db",
-    "portrait.db",
-    "proposals.db",
-    "sentinel.db",
-    "tasks.json",
-)
-
-
-def cancella_residui(data_dir: str) -> None:
-    """Cancella gli archivi dismessi, **dicendo quali e quanto erano grandi**.
-
-    Cancellare dati di un utente in silenzio e' proibito dalle fondamenta di
-    questo progetto: si dice il nome e la dimensione, non «ho fatto pulizia».
-
-    **Un file che non c'e' non fa rumore.** La casa di chi installa oggi non
-    ne ha nessuno, e una riga per ognuno a ogni avvio sarebbe rumore sano che
-    seppellisce quello vero.
-
-    Non solleva mai: e' igiene, non una condizione di funzionamento. Un
-    permesso negato o un disco pieno non devono impedire a HIRIS di partire --
-    stessa disciplina di `decidi_vault`.
-    """
-    for nome in RESIDUI_DISMESSI:
-        percorso = os.path.join(data_dir, nome)
-        try:
-            if not os.path.exists(percorso):
-                continue
-            quanto = os.path.getsize(percorso)
-            os.remove(percorso)
-        except OSError as errore:
-            logger.warning(
-                "%s non si e' potuto cancellare (%s: %s): resta su disco",
-                nome, type(errore).__name__, errore)
-            continue
-        logger.info(
-            "%s cancellato (%d byte): nessun codice lo leggeva piu', e un "
-            "archivio dismesso entra nei backup di Home Assistant come tutto "
-            "il resto di /data.", nome, quanto)
-
-
-def decidi_vault(data_dir: str) -> None:
-    """Cancella `vault.db`, e dice cosa conteneva (reperto C-6, 23/09/2026).
-
-    **Prima lo ANNUNCIAVA.** Una riga informativa all'avvio diceva che il file
-    conteneva «DATI PERSONALI IN CHIARO» -- la mappa PII<->token della
-    pseudonimizzazione, la cui cifratura a riposo fu rinviata e mai fatta --
-    che nessun codice lo legge piu', e che cancellarlo era «una decisione
-    tua». Ma una riga fra centinaia di righe di avvio non e' un modo di dire
-    una cosa a una persona, e quella persona per decidere avrebbe dovuto
-    aprire un file SQLite dentro il contenitore dell'add-on.
-
-    Quindi decide HIRIS, ed e' la decisione facile: un file che nessuno legge,
-    che nessuna interfaccia svuota e che contiene dati personali in chiaro e'
-    solo un rischio -- tanto piu' da quando si sa che entrava nei backup.
-
-    **Si dice cosa e' stato cancellato**, non «ho fatto pulizia»: cancellare
-    dati di un utente in silenzio e' proibito dalle fondamenta di questo
-    progetto. Un file vuoto se ne va senza avvisi: non c'era niente da
-    raccontare, e il rumore sano seppellisce quello vero.
-
-    Non solleva mai: e' igiene, non una condizione di funzionamento.
-    """
-    percorso = os.path.join(data_dir, "vault.db")
-    if not os.path.exists(percorso):
-        return
-    righe = None
-    try:
-        conn = sqlite3.connect(percorso)
-        try:
-            righe = conn.execute("SELECT COUNT(*) FROM pii").fetchone()[0]
-        finally:
-            conn.close()
-    except Exception as errore:
-        # Corrotto, o senza la tabella che ci si aspetta: si cancella lo
-        # stesso -- nessuno lo legge -- e si dice che non lo si e' potuto
-        # contare, invece di affermare uno zero che nessuno ha misurato.
-        logger.info("vault.db non si e' potuto leggere prima di cancellarlo "
-                    "(%s: %s)", type(errore).__name__, errore)
-    try:
-        os.remove(percorso)
-    except OSError as errore:
-        logger.warning("vault.db non si e' potuto cancellare (%s: %s): resta "
-                       "su disco, e contiene dati personali in chiaro",
-                       type(errore).__name__, errore)
-        return
-    if righe:
-        logger.warning(
-            "vault.db cancellato: conteneva %d righe della mappa PII<->token "
-            "della pseudonimizzazione, con la colonna `value` IN CHIARO (la "
-            "cifratura a riposo fu rinviata e mai fatta). Nessun codice lo "
-            "leggeva piu' da quando brain/privacy.py e' uscito, e nessuna "
-            "interfaccia lo svuotava: restava solo a farsi copiare nei backup.",
-            righe)
-
-
 def _record_attempt(store, outcome: dict, *, route: str = "ponte",
                     downgrade: str = "") -> None:
     """Annota com'e' andato il tentativo, **riuscito o no**.
@@ -2584,7 +2413,7 @@ def _recompute_chain(app) -> None:
     """
     cfg = app.get("models_config") or {}
     # Un valore solo, derivato una volta, letto da tutti: la spazzata
-    # (`_reasoning_sweep`), l'instradamento (`steering.who_answers`), la
+    # (`conservazione.reasoning_sweep`), l'instradamento (`steering.who_answers`), la
     # pagina Consumi, il gate del lavoratore qui sotto. Nessuno dei quattro
     # ricalcola niente, quindi nessuno dei quattro puo' dire una cosa diversa.
     app["bridge_active"] = _bridge_active(cfg)
@@ -3264,6 +3093,10 @@ async def _on_startup(app: web.Application) -> None:
     # (vedi `chat_settings.py`).
     chat_settings = ChatSettings.load(data_dir)
     app["chat_settings"] = chat_settings
+    # L'archivio della chat, come gli altri (D-27): la finestra la legge dalle
+    # impostazioni a ogni potatura, perche' la pagina la cambia a caldo.
+    app["chat_store"] = open_chat_store(
+        data_dir, read_retention_days=lambda: app["chat_settings"].retention_days)
 
     # `giorni_conservazione` arriva al disco al primo avvio. `load()` da' il
     # default quando la chiave non c'e', ma non lo SCRIVE, e `save()` ha un solo
@@ -3296,29 +3129,7 @@ async def _on_startup(app: web.Application) -> None:
                 chat_settings.retention_days, exc,
             )
 
-    # Silenzio dichiarato, stessa disciplina di advisory.db/sentinel.db/ecc.
-    # (tests/test_startup_legacy_db_silence.py): un chatbots.json (o il suo
-    # predecessore agents.json) di un'installazione precedente non ha piu'
-    # nessun lettore/scrittore -- l'entita' Chatbot e la sua migrazione
-    # (ChatbotEngine._load, chatbot_engine.py) sono uscite per intero con
-    # questo task. Decisione utente (vedi il commit): il prompt
-    # personalizzato eventualmente salvato sul bot di default NON viene
-    # migrato in ChatSettings -- si riparte puliti, coi default nel
-    # codice. I file restano su disco, intatti (mai dati utente cancellati
-    # in /data).
-    _chatbots_json_path = os.path.join(data_dir, "chatbots.json")
-    _agents_json_path_legacy = os.path.join(data_dir, "agents.json")
-    if os.path.exists(_chatbots_json_path) or os.path.exists(_agents_json_path_legacy):
-        logger.info(
-            "chatbots.json (o il suo predecessore agents.json) presente in %s "
-            "da un'installazione precedente: da fetta E4 Task 4 nessun codice "
-            "li legge ne' li scrive piu' (l'entita' Chatbot e' uscita, "
-            "sostituita dalle impostazioni della chat). Il prompt "
-            "personalizzato eventualmente salvato sul bot di default non "
-            "viene migrato -- si riparte con i default nel codice. I file "
-            "restano su disco, intatti.",
-            data_dir,
-        )
+    announce_chatbots_json(data_dir)
 
     # Lo scheduler (APScheduler) non era mai stato concettualmente
     # dell'entita' Chatbot -- ci viveva sopra solo perche' ChatbotEngine lo
@@ -3358,10 +3169,6 @@ async def _on_startup(app: web.Application) -> None:
     app["theme"] = os.environ.get("THEME", "auto")
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
-    # Serve solo all'importazione una-tantum dei contatori di prima
-    # (`usage/store.importa_legacy`): i runner non scrivono piu' su
-    # questi file, e i file restano dov'erano.
-    usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
     if local_model_url:
         try:
@@ -3409,7 +3216,6 @@ async def _on_startup(app: web.Application) -> None:
     # questa versione produce.
 
     decidi_vault(data_dir)
-    cancella_residui(data_dir)
 
     # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
     # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo
@@ -3689,33 +3495,12 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
-    # La potatura del grezzo: senza, l'archivio dei cambi cresce per sempre.
-    # Il numero di giorni non si scrive a mano -- si deriva dalla costante
-    # dell'archivio (`mind/store.READING_RETENTION_S`, 22 giorni: 21
-    # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
-    # la riga di log non puo' mentire quando la costante cambia
-    # (task-5-correzioni.md, punto C).
-    #
-    # try/except proprio (task-5-fix-brief.md, punto 3): era l'unico dei tre
-    # lavori del cervello senza una rete sua -- un guasto di SQLite alle tre
-    # di notte finiva nel registro di apscheduler senza il prefisso
-    # «cervello:», mentre i due fratelli (le condizioni, l'aggregazione) ce
-    # l'hanno gia'.
-    async def _prune_observations() -> None:
-        try:
-            count = app["observations"].prune(_time.time())
-            if count:
-                days = READING_RETENTION_S // 86400
-                logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
-                            count, days)
-        except Exception as error:
-            logger.warning("cervello: potatura fallita (%s: %s)",
-                           type(error).__name__, error)
-
+    # La conservazione: un lavoro solo, alle 03:00, per tutti gli archivi
+    # (`conservazione.nightly`).
     scheduler.add_job(
-        _prune_observations,
+        partial(nightly, app),
         trigger="cron", hour=3, minute=0,
-        id="hiris_mind_pruning", replace_existing=True,
+        id="hiris_retention", replace_existing=True,
         misfire_grace_time=3600,
     )
 
@@ -3777,38 +3562,6 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=30,
     )
 
-    # Daily retention job (chat messages only -- knowledge/memory items no
-    # longer expire, Task 6 "la memoria non evapora": handle_save_memory
-    # stopped computing a valid_until, so purge_expired_chatbot had no more
-    # work fed to it and was removed).
-    #
-    # Task 12: la fonte del numero di giorni non e' piu' il globale di modulo
-    # `chat_store.HISTORY_RETENTION_DAYS` (uscito dal modulo) ma
-    # `app["chat_settings"].retention_days` -- letto AD OGNI GIRO
-    # dentro la chiusura, non catturato una volta sola all'avvio: un PUT su
-    # /api/chat-settings riassegna quella chiave a caldo
-    # (`handlers_settings.handle_save_settings`), e la potatura di
-    # stanotte deve vedere il valore che l'utente ha scelto oggi, non quello
-    # con cui l'add-on e' partito.
-    from .chat_store import delete_old_messages as _delete_old_messages
-
-    def _run_retention() -> None:
-        days = app["chat_settings"].retention_days
-        if days > 0:
-            n = _delete_old_messages(data_dir, days)
-            if n:
-                logger.info("Retention: deleted %d old chat messages", n)
-
-    scheduler.add_job(
-        _run_retention,
-        trigger="cron",
-        hour=3,
-        minute=0,
-        id="hiris_retention",
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
 
@@ -3822,109 +3575,9 @@ async def _on_startup(app: web.Application) -> None:
 
     app["submit_chat_reply"] = _chat_reply_submitter(app, data_dir)
 
-    # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal
-    # runner remoto. Il ramo chat resta (Slice 4b): un job "chat" scaduto
-    # resta semplicemente 'expired', esposto alla sua stessa route di poll.
-    # fetta E3 Task 4: il ramo di fallback olistico (ragionava in locale via
-    # _run_decision) e' uscito con `_holistic_reason`, l'unico produttore di
-    # job kind="holistic" -- nessun job di quel tipo viene piu' accodato.
-    # Silenzio dichiarato: un job kind="holistic" qui puo' arrivare SOLO da
-    # un reasoning.db lasciato da un'installazione precedente questo
-    # deploy -- nessun fallback locale lo ragiona piu', quindi non e' un
-    # pass silenzioso: un log esplicito lo dichiara prima di lasciarlo
-    # scadere (sweep_expired lo ha gia' marcato 'expired' sopra).
-    async def _reasoning_sweep() -> None:
-        # Lo STESSO VALORE dell'instradamento, non la stessa espressione: fino
-        # alla 2.5.0 i due gate chiamavano `_bridge_active` ciascuno per conto
-        # suo sugli stessi due ingressi, e il fail-safe «mai accodare in una
-        # coda che nessuno spazza» reggeva sul fatto che le due chiamate
-        # restassero identiche. Adesso il valore e' derivato UNA volta
-        # (`_recompute_chain`) e qui si LEGGE: due letture dello stesso slot
-        # non possono divergere nemmeno per distrazione. Ed e' anche cio' che
-        # rende la spazzata sensibile al ponte spento dalla pagina, senza un
-        # riavvio.
-        if not app.get("bridge_active"):
-            return
-        for job in reasoning_queue.sweep_expired(_time.time()):
-            if job.get("kind") == "promessa":
-                # Fetta «le promesse seguono la catena» (22/08/2026): il turno
-                # e' scaduto senza che il piano rispondesse. La promessa non
-                # puo' restare `in_corso` -- sarebbe invisibile, e peggio di
-                # una fallita: `risana()` la chiuderebbe solo al prossimo
-                # riavvio, cioe' forse mai.
-                _close_expired_promise(app, job)
-                continue
-            if job.get("kind") == SCOPE_TURN_KIND:
-                # **Un turno dell'osservatore scaduto deve lasciare traccia**
-                # (correzione della review indipendente, 11/09/2026). Senza,
-                # l'ultimo tentativo resta «accodata» per sempre e la pagina
-                # dice «in corso da N minuti» mentre il piano non rispondera'
-                # mai: un worker fermo con un token buono diventa
-                # indistinguibile da un'attesa legittima -- lo stesso guasto
-                # appiattito su un'assenza che questa fetta esiste per togliere.
-                # E' il gemello di `_close_expired_promise` qui sopra.
-                store = app.get("observations")
-                if store is not None:
-                    attesa = max(0.0, job.get("deadline_ts", 0) - job.get("created_ts", 0))
-                    store.record_attempt(
-                        outcome="scaduta",
-                        detail=f"il piano non ha risposto entro {attesa / 60:.0f} minuti",
-                        version=read_version())
-                logger.warning(
-                    "osservatore: il turno %s e' scaduto senza risposta dal piano",
-                    job.get("job_id"))
-                continue
-            if job.get("kind") == "chat":
-                continue
-            # Una specie dichiarata (`steering.JOB_SPECIES`) e' un turno che il
-            # piano non ha fatto in tempo a servire, non un orfano: fino al
-            # 06/10/2026 analisi, ricette e attuazione scadute finivano nel
-            # registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2
-            # della Tappa 6). Orfano resta solo un tipo che nessuno dichiara
-            # piu', come l'olistico di un archivio di prima della fetta E3.
-            if job.get("kind") in JOB_SPECIES:
-                logger.warning(
-                    "reasoning sweep: il turno %s (%s) e' scaduto senza risposta "
-                    "dal piano", job.get("job_id"), job.get("kind"))
-            else:
-                logger.warning(
-                    "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, "
-                    "fetta E3 Task 4), scartato",
-                    job.get("job_id"), job.get("kind"))
-        # fetta «la catena diventa l'unica verita'», Task 14. Lo sweep NON ruba
-        # il lavoro al poll: `sweep_expired` guarda solo 'pending'/'claimed' e
-        # non tocca i job in 'ripiego' -- e' cio' che rende sicura la
-        # convivenza fra i due, visto che il ripiego vive nella rotta di poll
-        # (ogni 3,5 s) e non qui (ogni 2 minuti).
-        #
-        # Ma un job rimasto in 'ripiego' oltre il DOPPIO della scadenza e' un
-        # ripiego che si e' schiantato: il processo e' caduto mentre chiedeva
-        # alla catena, e nessuno chiudera' piu' quel job. Non puo' restare in
-        # volo per sempre -- `prune` cancella 'decided', 'expired' e 'failed',
-        # mai 'ripiego' -- e finche' resta li' tiene anche la conversazione
-        # bloccata sul 409 (`has_pending_chat` conta i ripieghi come in volo).
-        # Il doppio, e non la scadenza secca, perche' il ripiego COMINCIA alla
-        # scadenza: il margine e' il tempo che la catena ha per rispondere.
-        reasoning_queue.fail_stuck_downgrades(
-            _time.time() - 2 * 60 * bridge_deadline_min(app.get("models_config")))
-        # **Le risposte consegnate si dimenticano** (reperto C-6,
-        # 23/09/2026). La domanda si azzera alla consegna da sempre
-        # (`submit`); la risposta restava fino alla potatura a sette giorni,
-        # anche dopo che il proprietario aveva cancellato la conversazione.
-        #
-        # Un quarto d'ora di margine, e non zero: un ricaricamento della
-        # pagina rifa' il poll sullo stesso lavoro, e una risposta svuotata
-        # all'istante gli tornerebbe come «non e' arrivata in tempo». La
-        # spazzata gira ogni due minuti, quindi il ritardo vero e' il margine.
-        dimenticate = reasoning_queue.forget_delivered(
-            before_ts=_time.time() - 15 * 60)
-        if dimenticate:
-            logger.info("coda del ragionamento: dimenticate %d risposte gia' "
-                        "consegnate", dimenticate)
-        reasoning_queue.prune(_time.time() - 7 * 86400)
-
+    # La spazzata della coda del ponte: `conservazione.reasoning_sweep`.
     scheduler.add_job(
-        _reasoning_sweep, trigger="interval", minutes=2,
+        partial(reasoning_sweep, app), trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
     # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno
@@ -3986,19 +3639,20 @@ async def _on_startup(app: web.Application) -> None:
             log_usage=app["usage"].log,
         )
 
-    _usage_base, _usage_ext = os.path.splitext(usage_path)
-    _usage_ext = _usage_ext or ".json"
-
     # I quattro contatori di prima entrano nell'archivio UNA volta sola, come
     # una riga «(prima del dettaglio)» per provider: il totale ereditato non si
     # puo' attribuire a un modello -- nessuno lo ha mai registrato -- e dirlo
-    # e' meglio che spalmarlo. I file NON vengono cancellati.
+    # e' meglio che spalmarlo. Stanno nella cartella dei dati: fino
+    # all'08/10/2026 il primo si leggeva da `USAGE_DATA_PATH`, una variabile
+    # che `run.sh` non esportava (D6 della Tappa 8).
     app["usage"].importa_legacy([
-        usage_path,
-        f"{_usage_base}_openai{_usage_ext}",
-        f"{_usage_base}_openrouter{_usage_ext}",
-        f"{_usage_base}_ollama{_usage_ext}",
+        os.path.join(data_dir, name)
+        for name in ("usage.json", "usage_openai.json", "usage_openrouter.json",
+                     "usage_ollama.json")
     ], now=time.time())
+    # I residui si cancellano DOPO l'importazione: un contatore registrato
+    # come importato e' un residuo come gli altri (D6).
+    cancella_residui(data_dir, imported=app["usage"].legacy_imported())
 
     openai_runner = None
     if openai_api_key and _credentials[OPENAI.id]:

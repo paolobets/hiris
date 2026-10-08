@@ -114,7 +114,7 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     # difesa da attacco -- questa rotta sta dietro CSRF e in rete locale --
     # e' che un 400 dice la verita' e un 500 no. Le promesse in sospeso hanno
     # un tetto (`promise.HOUSE_CEILING_IN_SOSPESO`) e lo storico e' potato
-    # (`promise.CONSERVAZIONE_S`): la pagina non ne disegnera' mai
+    # (`keeper/store.CONSERVAZIONE`): la pagina non ne disegnera' mai
     # tanti, quindi il tetto non puo' tagliare una richiesta legittima.
     if len(ids) > _MAX_IDS:
         return error_response(400, f"troppi identificatori in una volta (il tetto e' {_MAX_IDS}).")
@@ -126,7 +126,7 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     """La riga di cronaca di un'esecuzione -- cosi' com'e', da `Journal.read`.
 
     404 «non ne ho piu' il dettaglio» copre sia l'id sbagliato sia la riga
-    potata dopo 90 giorni (`journal.py::EXECUTIONS_RETENTION_S`): dal
+    potata dopo 90 giorni (`journal.CONSERVAZIONE`): dal
     lato della pagina sono la stessa cosa -- non c'e' piu' niente da mostrare
     -- e nessuna delle due merita un errore che sembri un guasto.
 

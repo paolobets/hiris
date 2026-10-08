@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from hiris.app.action.journal import CONSTRUCTION, Journal
+from hiris.app.action.journal import CONSERVAZIONE, CONSTRUCTION, Journal
 
 ADESSO = 1_755_600_000.0
 
@@ -37,12 +37,26 @@ def test_una_riga_fallita_porta_il_motivo(cronaca):
     assert "500" in riga["errore"]
 
 
-def test_le_righe_vecchie_si_potano_alla_scrittura(cronaca):
+def test_le_righe_vecchie_si_potano_di_notte_non_alla_scrittura(cronaca):
+    """Rovesciata nella Tappa 8 (Task 6, D5): fino all'08/10/2026 ogni
+    comando potava la cronaca (`test_le_righe_vecchie_si_potano_alla_scrittura`).
+    Adesso la finestra sta nella dichiarazione, e la applica il lavoro
+    notturno.
+
+    Mutazione ESEGUITA (08/10/2026): rimesso in `log` il DELETE della
+    dichiarazione -- rossa (la vecchia sparisce alla scrittura)."""
+    finestra_s = CONSERVAZIONE["esecuzioni"][0] * 86400
     vecchia = cronaca.log(actor="chat", service="a.b", entity=[],
-                               executed=True, now=ADESSO)
+                          executed=True, now=ADESSO)
+    dentro = cronaca.log(actor="chat", service="e.f", entity=[], executed=True,
+                         now=ADESSO + 86400)
     cronaca.log(actor="chat", service="c.d", entity=[], executed=True,
-                     now=ADESSO + 91 * 86400)
+                now=ADESSO + finestra_s + 1)
+    assert cronaca.read(vecchia) is not None, "un comando ha potato la cronaca"
+
+    assert cronaca.prune(ADESSO + finestra_s + 1) == 1
     assert cronaca.read(vecchia) is None
+    assert cronaca.read(dentro) is not None
 
 
 # -- le costruzioni: stessa tabella, `genere` a dire come si legge la riga ----

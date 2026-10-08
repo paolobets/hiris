@@ -37,7 +37,7 @@ import threading
 import time as _time
 import uuid
 
-from ..storage import connect, init_schema
+from ..storage import connect, init_schema, prune_declared
 from .scope import may_overwrite
 
 # 22 giorni, non 21: i 21 sono la promessa (tre mercoledi'), il 22esimo e' la
@@ -1159,6 +1159,8 @@ class ObservationsStore:
     in lettura: la connessione e' condivisa fra thread (`check_same_thread=
     False`), ed e' il pattern gia' consolidato in `action/journal.py`."""
 
+    CONSERVAZIONE = CONSERVAZIONE
+
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
@@ -2178,13 +2180,5 @@ class ObservationsStore:
         che se li portasse via cancellerebbe mesi per liberare qualche
         megabyte.
         """
-        righe_tolte = 0
         with self._lock:
-            for giorni, _ragione, cancellazione in CONSERVAZIONE.values():
-                if giorni is None or cancellazione is None:
-                    continue
-                cur = self._conn.execute(
-                    cancellazione, (float(now_ts) - giorni * 86400,))
-                righe_tolte += cur.rowcount or 0
-            self._conn.commit()
-        return righe_tolte
+            return prune_declared(self._conn, CONSERVAZIONE, now_ts)

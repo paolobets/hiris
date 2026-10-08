@@ -3,7 +3,7 @@
 Due chiamanti, una guardia (fix round 1, M2): l'orologio (`Sweeper._tell`,
 col suo scrittore montato) e le due strade che chiudono una promessa FUORI
 dall'orologio (ruling 3.8) -- la scadenza del turno sul ponte
-(`server._close_expired_promise`) e il turno del ponte finito senza
+(`reasoning/consegna.close_expired_promise`) e il turno del ponte finito senza
 «conclude» (`reasoning/consegna`). Le regole sono le stesse per tutti:
 solo se c'e' un filo, filtro dei veleni (anche sul testo del modello citato,
 `quoted`), mai un'eccezione. E dalle due strade di fuori nessuna push: non
@@ -40,15 +40,13 @@ def write_line(write, promise: dict, content: str, *,
     return written
 
 
-def tell_failure(data_dir: str | None, promise: dict, reason, *,
+def tell_failure(data_dir: str, promise: dict, reason, *,
                  quoted: str | None = None) -> bool:
     """La riga breve di una promessa fallita, per chi ha `data_dir` e non
-    l'orologio. Senza `data_dir` (un'app non montata del tutto) non si
-    scrive: la cartella di ripiego `/data` e' quella di produzione, e
-    scriverci da un contesto che non la conosce sarebbe scrivere nel posto
-    sbagliato."""
-    if not data_dir:
-        return False
+    l'orologio. `data_dir` e' `app["data_dir"]`, letto senza ripiego (D-27,
+    Tappa 8): fino all'08/10/2026 qui c'era una guardia per «un'app non
+    montata del tutto», cioe' per le prove che costruivano un'app senza la
+    cartella -- in produzione l'avvio la scrive sempre per prima."""
 
     def write(thread, content, *, quoted=None):
         return append_assistant_line(content, data_dir, thread=thread,

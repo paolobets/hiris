@@ -2,7 +2,7 @@
 
 Il difetto che queste prove esistono per impedire non e' «la colonna manca»:
 e' che la colonna ci sia e sia tutta NULL. Su una casa vera lo storico
-contiene fino a 90 giorni di promesse concluse (`promise.py::CONSERVAZIONE_S`);
+contiene fino a 90 giorni di promesse concluse (`keeper/store.py::CONSERVAZIONE`);
 senza il travaso il pallino degli Impegni si accenderebbe, al primo avvio dopo
 l'aggiornamento, col numero di TUTTE. Un allarme per fatti di settimane fa.
 

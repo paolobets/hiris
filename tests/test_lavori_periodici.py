@@ -31,11 +31,11 @@ def _job(app, job_id):
 
 
 async def test_i_lavori_del_cervello_sono_registrati(started_app):
-    """L'aggregazione notturna e la potatura. Senza il primo il grezzo si
-    accumula e nessun oggetto nasce; senza il secondo l'archivio cresce per
-    sempre."""
+    """L'aggregazione notturna e la conservazione. Senza il primo il grezzo
+    si accumula e nessun oggetto nasce; senza il secondo gli archivi crescono
+    per sempre."""
     _job(started_app, "hiris_mind_aggregation")
-    _job(started_app, "hiris_mind_pruning")
+    _job(started_app, "hiris_retention")
 
 
 async def test_l_aggregazione_gira_alle_00_20_della_casa(started_app):
@@ -49,9 +49,14 @@ async def test_l_aggregazione_gira_alle_00_20_della_casa(started_app):
 
 async def test_la_potatura_gira_alle_03_00(started_app):
     """Lontana dall'aggregazione apposta: l'una deve finire prima che l'altra
-    cominci a leggere il grezzo."""
-    assert str(_job(started_app, "hiris_mind_pruning").trigger) == \
+    cominci a leggere il grezzo. Un lavoro solo per tutti gli archivi (Tappa
+    8, Task 6): fino all'08/10/2026 erano due, alla stessa ora.
+
+    Mutazione ESEGUITA (08/10/2026): `hour=3` -> `hour=4` nell'`add_job` di
+    `hiris_retention` -- rossa."""
+    assert str(_job(started_app, "hiris_retention").trigger) == \
         "cron[hour='3', minute='0']"
+    assert started_app["scheduler"].get_job("hiris_mind_pruning") is None
 
 
 async def test_le_condizioni_di_sistema_si_rileggono_ogni_dieci_minuti(started_app):
@@ -92,25 +97,27 @@ async def test_l_inventario_si_ricarica_ogni_due_minuti(started_app):
     assert reloaded.await_args.args[0] is started_app["entity_cache"]
 
 
-async def test_i_lavori_periodici_sono_diciassette_come_dichiara_il_readme(started_app):
+async def test_i_lavori_periodici_sono_sedici_come_dichiara_il_readme(started_app):
     """Un lavoro periodico gira per sempre e costa per sempre: aggiungerne uno
     senza accorgersene e' il modo in cui una casa comincia a fare rumore di
     notte. Il numero vive anche nel README, e questa prova esiste perche' non
     divergano (la storia dei sedici: `docs/BACKLOG.md` e il README; il
-    diciassettesimo e' il proponente, attori Task 4.2, 06/10/2026).
+    diciassettesimo e' il proponente, attori Task 4.2, 06/10/2026; tornano
+    sedici l'08/10/2026, quando le due potature delle 03:00 diventano una,
+    Tappa 8 Task 6).
 
     Mutazione ESEGUITA: un `add_job` in piu' in `_on_startup` -- rossa."""
     jobs = started_app["scheduler"].get_jobs()
-    assert len(jobs) == 17, sorted(job.id for job in jobs)
+    assert len(jobs) == 16, sorted(job.id for job in jobs)
     readme = (pathlib.Path(__file__).resolve().parents[1] / "README.md").read_text(
         encoding="utf-8")
-    assert "registers **seventeen** APScheduler jobs" in readme, (
-        "il README non dichiara piu' diciassette lavori periodici: il numero "
+    assert "registers **sixteen** APScheduler jobs" in readme, (
+        "il README non dichiara piu' sedici lavori periodici: il numero "
         "vive in due posti e questa prova esiste perche' non divergano.")
 
 
 async def test_il_proponente_gira_ogni_ora(started_app):
-    """Il diciassettesimo (attori, Task 4.2): lo stesso battito
+    """Il proponente (attori, Task 4.2): lo stesso battito
     dell'analista, col giro che vive in `mind/proposer_round.py`."""
     from hiris.app.mind.proposer_round import proposer_round
 

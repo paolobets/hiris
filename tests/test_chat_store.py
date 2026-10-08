@@ -1,4 +1,5 @@
 import sqlite3
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -9,7 +10,6 @@ from hiris.app.chat_store import (
     append_messages,
     close_all_stores,
     count_user_turns,
-    delete_old_messages,
     get_past_summaries,
     load_history,
 )
@@ -199,7 +199,6 @@ def test_zero_giorni_non_cancella_mai_niente(tmp_path):
     `if days > 0`: la stessa regola scritta al contrario -- non «cancella
     subito», il contrario di cio' che chiunque si aspetta da una
     "conservazione" messa a zero."""
-    data_dir = str(tmp_path)
     vecchissimo_ts = (datetime.now(UTC) - timedelta(days=3650)).strftime(_TS_FMT)
     store = ChatStore(str(tmp_path / "chat_history.db"))
     conn = store._conn
@@ -214,11 +213,9 @@ def test_zero_giorni_non_cancella_mai_niente(tmp_path):
     )
     conn.commit()
     store.close()
-    close_all_stores()
 
-    assert delete_old_messages(data_dir, 0) == 0
-
-    store = ChatStore(str(tmp_path / "chat_history.db"))
+    store = ChatStore(str(tmp_path / "chat_history.db"), read_retention_days=lambda: 0)
+    assert store.prune(time.time()) == 0
     ancora_li = store._conn.execute(
         "SELECT COUNT(*) FROM chat_messages WHERE content = ?",
         ("un ricordo di dieci anni fa",),

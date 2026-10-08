@@ -188,11 +188,13 @@ def test_una_presentazione_mai_guardata_SCADE(archivio, tmp_path):
 
     Le AUTORIZZATE non scadono: quelle le hai decise tu.
 
-    Dal 07/10/2026 (Tappa 7, Task 0b) la scaduta esce dal disco alla
-    presentazione successiva, non alla lettura.
+    Dal 07/10/2026 (Tappa 7, Task 0b) la scaduta non esce piu' alla lettura;
+    dall'08/10/2026 (Tappa 8, Task 6, D5) esce alla potatura notturna, che
+    applica la dichiarazione `CONSERVAZIONE`.
 
     Mutazione ESEGUITA: potare anche le autorizzate -- rossa (un servizio vivo
-    sparirebbe da solo)."""
+    sparirebbe da solo). Rieseguita l'08/10/2026 sulla dichiarazione: la
+    cancellazione scritta `WHERE visto_ts < ?`, senza lo stato -- rossa."""
     _, in_attesa = _coppia()
     _, viva = _coppia()
     _, terza = _coppia()
@@ -202,6 +204,7 @@ def test_una_presentazione_mai_guardata_SCADE(archivio, tmp_path):
     dopo = 100.0 + ServiziStore.ATTESA_S + 1
 
     archivio.presenta(nome="nuova", chiave=terza, indirizzo="x", now_ts=dopo)
+    assert archivio.prune(dopo) == 1
 
     assert _su_disco(tmp_path) == ["nuova", "vera"]
     assert [r["nome"] for r in archivio.elenco(now_ts=dopo)] == ["nuova", "vera"]
@@ -309,7 +312,7 @@ def test_il_contenitore_della_finestra_nasce_con_l_app():
 
 def test_una_presentazione_scaduta_non_si_LEGGE_anche_se_e_ancora_su_disco(archivio):
     """Tappa 7, Task 0b: la potatura non vive piu' nella lettura, quindi fra la
-    scadenza e la prossima scrittura la riga sta ancora su disco. Nessuna porta
+    scadenza e la potatura notturna la riga sta ancora su disco. Nessuna porta
     la deve vedere: non l'elenco, non il si', non il no.
 
     Mutazione ESEGUITA: togliere `NOT _EXPIRED_SQL` da `elenco` -- rossa."""
@@ -323,12 +326,18 @@ def test_una_presentazione_scaduta_non_si_LEGGE_anche_se_e_ancora_su_disco(archi
     assert archivio.autorizzato(scaduta) is None
 
 
-def test_la_potatura_avviene_alla_PRESENTAZIONE(archivio, tmp_path):
-    """L'unica scrittura che fa crescere l'archivio e' quella che lo pota:
-    senza, le presentazioni scadute resterebbero su disco per sempre, ora che
-    la lettura non le toglie piu'.
+def test_la_potatura_e_notturna_non_alla_presentazione(archivio, tmp_path):
+    """**Rovesciata nella Tappa 8 (Task 6, D5).** Fino all'08/10/2026 si
+    chiamava `test_la_potatura_avviene_alla_PRESENTAZIONE` e pretendeva che
+    ogni presentazione potasse l'archivio. Le potature fatte alla scrittura
+    sono uscite tutte: le fa il lavoro notturno, una volta, per ogni archivio
+    (`conservazione.nightly`). La porta che legge salta comunque le scadute
+    (`_EXPIRED_SQL`), quindi fra una notte e l'altra il disco tiene al piu'
+    un giorno di rumore in piu', e nessuno lo vede.
 
-    Mutazione ESEGUITA: togliere `self._prune` da `presenta` -- rossa."""
+    Mutazione ESEGUITA (08/10/2026): rimesso `self._conn.execute(DELETE ...
+    _EXPIRED_SQL)` in `presenta` -- rossa (la vecchia sparisce alla
+    presentazione)."""
     _, vecchia = _coppia()
     _, nuova = _coppia()
     archivio.presenta(nome="vecchia", chiave=vecchia, indirizzo="x", now_ts=100.0)
@@ -337,5 +346,7 @@ def test_la_potatura_avviene_alla_PRESENTAZIONE(archivio, tmp_path):
 
     archivio.presenta(nome="nuova", chiave=nuova, indirizzo="x",
                       now_ts=100.0 + ServiziStore.ATTESA_S + 1)
+    assert _su_disco(tmp_path) == ["nuova", "vecchia"]   # nemmeno la presentazione
 
+    assert archivio.prune(100.0 + ServiziStore.ATTESA_S + 1) == 1
     assert _su_disco(tmp_path) == ["nuova"]
