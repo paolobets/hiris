@@ -52,6 +52,7 @@ from datetime import UTC, datetime
 from ..storage import (
     Retention,
     add_missing_columns,
+    archive_name,
     connect,
     init_schema,
     prune_declared,
@@ -139,6 +140,7 @@ class MemoryStore:
 
     def __init__(self, db_path: str = "/data/memoria.db") -> None:
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:

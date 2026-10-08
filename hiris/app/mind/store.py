@@ -37,7 +37,7 @@ import threading
 import time as _time
 import uuid
 
-from ..storage import connect, init_schema, prune_declared
+from ..storage import archive_name, connect, init_schema, prune_declared
 from .scope import may_overwrite
 
 # 22 giorni, non 21: i 21 sono la promessa (tre mercoledi'), il 22esimo e' la
@@ -1163,6 +1163,7 @@ class ObservationsStore:
 
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,

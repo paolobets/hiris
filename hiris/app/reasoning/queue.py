@@ -10,6 +10,7 @@ from ..home_space.historian import day_boundaries, local_date
 from ..storage import (
     Retention,
     add_missing_columns,
+    archive_name,
     connect,
     init_schema,
     prune_declared,
@@ -187,6 +188,7 @@ class ReasoningQueue:
 
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
         # L'indice del filo dopo le migrazioni (`after_sql`): e' l'UNICO
         # punto in cui le colonne esistono sempre, qualunque sia stata la

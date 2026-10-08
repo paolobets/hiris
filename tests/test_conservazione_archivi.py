@@ -135,6 +135,29 @@ async def test_l_app_avviata_pota_tutti_e_soli_gli_archivi(started_app):
             f"{name}: tabelle senza decisione {sorted(_tables(store) - declared)}, "
             f"decisioni senza tabella {sorted(declared - _tables(store))}")
         assert isinstance(store.prune(time.time()), int), name
+        assert name == store.archive_name and name.endswith(".db"), name
+
+
+def test_l_elenco_degli_archivi_non_tocca_la_loro_connessione():
+    """L'archivio dice il suo nome (`archive_name`): chi li elenca non legge
+    la connessione di nessuno, che si usa solo sotto il lucchetto
+    dell'archivio (rilievo N98-2, giro 98).
+
+    Mutazione ESEGUITA: `archives` che chiede il nome alla connessione --
+    rossa (`AttributeError` su `_conn`)."""
+    class Archive:
+        CONSERVAZIONE: dict = {}
+        archive_name = "finto.db"
+
+        def prune(self, now):
+            return 0
+
+        @property
+        def _conn(self):
+            raise AttributeError("la connessione si legge sotto il lucchetto")
+
+    store = Archive()
+    assert conservazione.archives({"finto": store, "altro": 3}) == [("finto.db", store)]
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -178,4 +201,15 @@ async def test_la_coda_del_ponte_si_pota_a_ponte_spento(started_app):
     with mock.patch.dict(started_app, {"bridge_active": False}):
         await started_app["scheduler"].get_job("hiris_retention").func()
 
-    assert queue.get("vecchio") is None
+    # Riletta da una seconda connessione: una cancellazione non committata si
+    # vedrebbe dalla connessione dell'archivio e da nessun'altra (rilievo
+    # N98-1, giro 98). Mutazione ESEGUITA: il commit tolto da
+    # `storage.prune_declared` -- rossa.
+    import sqlite3
+    path = queue._conn.execute("PRAGMA database_list").fetchone()[2]
+    other = sqlite3.connect(path)
+    try:
+        assert other.execute("SELECT COUNT(*) FROM reasoning_jobs WHERE job_id = 'vecchio'"
+                             ).fetchone()[0] == 0
+    finally:
+        other.close()
