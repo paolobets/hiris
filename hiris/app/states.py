@@ -85,15 +85,18 @@ CONSTRUCTION_STATES = (PENDING, TAKEN, APPLIED, CANCELLED, FAILED, UNCERTAIN,
 PROPOSAL_STATES = (PENDING, CANCELLED, DONE_ELSEWHERE, SUPERSEDED, AUTOMATED)
 
 #: La frase leggibile di ogni stato. Proposte l'08/10/2026 nel tono delle
-#: etichette che le pagine avevano (In attesa, Non riuscita, Non eseguita...);
-#: si scelgono sul glossario. `disdetta` ha UNA frase per le tre code: la
-#: proposta che hai rifiutato si legge come la costruzione che hai declinato
-#: e la promessa che hai disdetto, e nessuna delle tre porta la parola
-#: «rifiutata», che sulla pagina Costruzioni voleva dire un guasto.
+#: etichette che le pagine avevano (In attesa, Non riuscita, Non eseguita...),
+#: e approvate dal proprietario lo stesso giorno («Si' bene»); stanno anche nel
+#: glossario (§4). `disdetta` ha UNA frase per le tre code: la proposta che
+#: hai rifiutato si legge come la costruzione che hai declinato e la promessa
+#: che hai disdetto, e nessuna delle tre porta la parola «rifiutata», che
+#: sulla pagina Costruzioni voleva dire un guasto. La frase e' «annullata da
+#: te», scelta dal proprietario l'08/10/2026 contro «disdetta da te»: il
+#: codice resta `disdetta`, cambia solo cio' che si legge.
 READABLE = {
     PENDING: "in attesa",
     TAKEN: "in corso",
-    CANCELLED: "disdetta da te",
+    CANCELLED: "annullata da te",
     FAILED: "non riuscita",
     KEPT: "mantenuta",
     SKIPPED: "non eseguita",

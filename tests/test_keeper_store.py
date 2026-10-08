@@ -6,6 +6,7 @@ import pytest
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.promise import CEILING_IN_SOSPESO
 from hiris.app.keeper.store import CONSERVAZIONE, AgendaStore
+from hiris.app.states import CANCELLED, readable
 
 CONSERVAZIONE_S = CONSERVAZIONE["promesse"][0] * 86400
 
@@ -117,7 +118,7 @@ def test_disdire_una_promessa_in_attesa_riesce_e_una_conclusa_no(archivio):
 
     secondo = archivio.cancel(ident, thread=PAOLO, now=ADESSO + 2)
     assert "errore" in secondo
-    assert "disdetta" in secondo["errore"]
+    assert readable(CANCELLED) in secondo["errore"]  # la frase, chiesta al vocabolario
 
 
 def test_una_promessa_presa_non_si_disdice(archivio):
