@@ -1230,7 +1230,7 @@ def test_lo_schema_si_chiede_a_sqlite_non_a_una_regex(tmp_path):
     """Le colonne vengono da `PRAGMA table_info` su uno schema creato in
     memoria: un vincolo di tabella (`PRIMARY KEY (a, b)`) non e' una colonna,
     e una colonna con la virgola nel DEFAULT resta una."""
-    assert censimento.colonne_dello_schema(
+    assert censimento.schema_columns(
         "CREATE TABLE t (a TEXT DEFAULT 'x,y', b INTEGER, PRIMARY KEY (a, b));"
     ) == {"t": ["a", "b"]}
 

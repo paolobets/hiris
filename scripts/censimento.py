@@ -425,7 +425,7 @@ _RE_COMMENTO_JS = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
 COPERTURA_COLONNE: dict[str, int] = {}
 
 
-def _nomi_di_modulo(albero: ast.Module) -> dict[str, ast.AST]:
+def _module_names(albero: ast.Module) -> dict[str, ast.AST]:
     """Le funzioni e gli assegnamenti di primo livello, per nome."""
     nomi: dict[str, ast.AST] = {}
     for nodo in albero.body:
@@ -446,7 +446,7 @@ def _chiamate_init_schema(albero: ast.Module) -> list[ast.Call]:
                  or (isinstance(n.func, ast.Attribute) and n.func.attr == "init_schema"))]
 
 
-def _schemi_e_costruzione(albero: ast.Module) -> tuple[list[tuple[str, int]], set[int]] | None:
+def _schema_sources(albero: ast.Module) -> tuple[list[tuple[str, int]], set[int]] | None:
     """Gli schemi che il modulo passa a `init_schema`, e i nodi che li
     COSTRUISCONO (lo schema, gli indici di `after_sql`, le migrazioni con cio'
     che chiamano nel modulo): un nome che compare solo li' non e' letto.
@@ -454,7 +454,7 @@ def _schemi_e_costruzione(albero: ast.Module) -> tuple[list[tuple[str, int]], se
     `None` se il modulo chiama `init_schema` con uno schema che non si legge
     dall'albero (un nome che non e' una costante di modulo, una f-string): il
     cancello non ha guardato, e non puo' dire di si'."""
-    nomi = _nomi_di_modulo(albero)
+    nomi = _module_names(albero)
     schemi: list[tuple[str, int]] = []
     semi: list[ast.AST] = []
     for chiamata in _chiamate_init_schema(albero):
@@ -488,7 +488,7 @@ def _schemi_e_costruzione(albero: ast.Module) -> tuple[list[tuple[str, int]], se
     return schemi, costruzione
 
 
-def colonne_dello_schema(schema: str) -> dict[str, list[str]]:
+def schema_columns(schema: str) -> dict[str, list[str]]:
     """`{tabella: [colonne]}` di uno schema, chieste a SQLite: lo schema si
     crea in un database in memoria e si legge con `PRAGMA table_info`."""
     import sqlite3
@@ -527,13 +527,13 @@ def censisci_colonne(file_app: list[Path], file_frontend: list[Path]) -> list[Re
         except SyntaxError:
             illeggibili.append(_rel(f))
             continue
-        letto = _schemi_e_costruzione(albero)
+        letto = _schema_sources(albero)
         if letto is None:
             illeggibili.append(_rel(f))
             continue
         schemi, costruzione = letto
         for testo, riga in schemi:
-            archivi.append((f, riga, colonne_dello_schema(testo)))
+            archivi.append((f, riga, schema_columns(testo)))
         for nodo in _letterali_codice(albero):
             if id(nodo) not in costruzione:
                 lette |= _parole_lette(nodo.value)
